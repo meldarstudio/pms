@@ -1,0 +1,34 @@
+{
+  "version": "7",
+  "dialect": "sqlite",
+  "entries": [
+    {
+      "idx": 0,
+      "version": "6",
+      "when": 1791217864717,
+      "tag": "0000_high_sunset_bain",
+      "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "6",
+      "when": 1791217864718,
+      "tag": "0001_overlap_triggers",
+      "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "6",
+      "when": 1791249016862,
+      "tag": "0002_real_namorita",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "6",
+      "when": 1791249016863,
+      "tag": "0003_closure_triggers",
+      "breakpoints": true
+    }
+  ]
+}
