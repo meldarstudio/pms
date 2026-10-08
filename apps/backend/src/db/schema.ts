@@ -14,7 +14,6 @@ export const rooms = sqliteTable('rooms', {
   roomTypeId: text('room_type_id')
     .notNull()
     .references(() => roomTypes.id),
-  status: text('status').notNull().default('in_service'),
 })
 
 export const roomClosures = sqliteTable(

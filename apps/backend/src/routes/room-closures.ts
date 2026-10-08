@@ -5,7 +5,7 @@ import { getDb } from '../db'
 import { reservationRooms, reservations, roomClosures, rooms } from '../db/schema'
 import type { Env } from '../env'
 import { HttpError, rethrowConflict, validate } from '../http'
-import { inServiceCounts, occupiedCounts } from '../inventory'
+import { roomCounts, occupiedCounts } from '../inventory'
 import { requireStay } from '../rules'
 
 const blockingStay = ['confirmed', 'checked_in', 'checked_out']
@@ -24,7 +24,7 @@ function present(row: typeof roomClosures.$inferSelect) {
 
 async function assertCanClose(
   db: ReturnType<typeof getDb>,
-  room: { id: string; roomTypeId: string; status: string },
+  room: { id: string; roomTypeId: string },
   starts: string,
   ends: string,
   excludeId?: string,
@@ -57,15 +57,11 @@ async function assertCanClose(
     )
     .limit(1)
   if (other.length > 0) throw new HttpError(409, 'room is already closed on those dates')
-  if (room.status !== 'in_service') {
-    if (!excludeId) throw new HttpError(409, 'room is out of order')
-    return
-  }
-  const [inService, occupied] = await Promise.all([
-    inServiceCounts(db),
+  const [capacity, occupied] = await Promise.all([
+    roomCounts(db),
     occupiedCounts(db, starts, ends, undefined, excludeId),
   ])
-  const free = (inService.get(room.roomTypeId) ?? 0) - (occupied.get(room.roomTypeId) ?? 0)
+  const free = (capacity.get(room.roomTypeId) ?? 0) - (occupied.get(room.roomTypeId) ?? 0)
   if (free < 1) throw new HttpError(409, 'no availability')
 }
 

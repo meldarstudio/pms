@@ -1,12 +1,11 @@
 import { useQueryClient } from "@tanstack/react-query"
 import { useState } from "react"
+import { cn } from "cn"
 import {
   addDays,
   differenceInCalendarDays,
   eachDayOfInterval,
   format,
-  max,
-  min,
   parse,
   startOfDay,
   startOfToday,
@@ -17,6 +16,7 @@ import {
   ChevronRightIcon,
   ChevronsLeftIcon,
   ChevronsRightIcon,
+  PanelRightIcon,
   PlusIcon,
   RefreshCwIcon,
 } from "lucide-react"
@@ -26,6 +26,11 @@ import {
   RoomClosureDialog,
   type ClosureTarget,
 } from "@/components/room-closure-dialog"
+import {
+  RoomBookingDialog,
+  type BookingTarget,
+} from "@/components/room-booking-dialog"
+import { RoomAssignmentPanel } from "@/components/room-assignment-panel"
 import { Button } from "@/components/ui/button"
 import { ButtonGroup } from "@/components/ui/button-group"
 import { Calendar } from "@/components/ui/calendar"
@@ -43,7 +48,13 @@ import {
   SelectValue,
 } from "@/components/ui/select"
 import { Skeleton } from "@/components/ui/skeleton"
-import { type Reservation, type Room, type RoomClosure } from "@/lib/api"
+import { type RoomClosure } from "@/lib/api"
+import {
+  reservationStays,
+  unassignedStays,
+  type ReservationStay,
+} from "@/lib/room-assignment"
+import { useRoomAssignment } from "@/lib/use-room-assignment"
 import {
   useReservations,
   useRoomClosures,
@@ -56,17 +67,6 @@ const spans = [
   { label: "14 days", value: "14" },
 ]
 
-const openStatuses = new Set(["confirmed", "checked_in"])
-
-type Stay = {
-  id: string
-  guestName: string
-  checkIn: string
-  checkOut: string
-  roomId: string | null
-  roomTypeId: string
-}
-
 type TrackItem = {
   id: string
   kind: "stay" | "closure"
@@ -78,15 +78,34 @@ type TrackItem = {
 
 type PlacedTrack = TrackItem & { start: number; end: number; lane: number }
 
+type AssignmentPreview = {
+  stay: PlacedTrack
+  selected: boolean
+  disabled: boolean
+  onSelect: () => void
+}
+
 function clipStay(stay: TrackItem, rangeStart: Date, dayCount: number) {
-  const rangeEnd = addDays(rangeStart, dayCount)
-  const from = max([parse(stay.checkIn, "yyyy-MM-dd", rangeStart), rangeStart])
-  const to = min([parse(stay.checkOut, "yyyy-MM-dd", rangeStart), rangeEnd])
-  if (from >= to) return null
+  // Both bookings and closures block nights, with half-day endpoints.
+  const start = Math.max(
+    0,
+    differenceInCalendarDays(
+      parse(stay.checkIn, "yyyy-MM-dd", rangeStart),
+      rangeStart
+    ) + 0.5
+  )
+  const end = Math.min(
+    dayCount,
+    differenceInCalendarDays(
+      parse(stay.checkOut, "yyyy-MM-dd", rangeStart),
+      rangeStart
+    ) + 0.5
+  )
+  if (start >= end) return null
   return {
     ...stay,
-    start: differenceInCalendarDays(from, rangeStart),
-    end: differenceInCalendarDays(to, rangeStart),
+    start,
+    end,
   }
 }
 
@@ -109,25 +128,7 @@ function placeStays(stays: TrackItem[], rangeStart: Date, dayCount: number) {
   })
 }
 
-function staysFrom(reservations: Reservation[]) {
-  const stays: Stay[] = []
-  for (const reservation of reservations) {
-    for (const line of reservation.rooms) {
-      if (!openStatuses.has(line.status)) continue
-      stays.push({
-        id: line.id,
-        guestName: reservation.guestName,
-        checkIn: reservation.checkIn,
-        checkOut: reservation.checkOut,
-        roomId: line.roomId,
-        roomTypeId: line.roomTypeId,
-      })
-    }
-  }
-  return stays
-}
-
-function stayTrack(stay: Stay): TrackItem {
+function stayTrack(stay: ReservationStay): TrackItem {
   return {
     id: stay.id,
     kind: "stay",
@@ -151,21 +152,29 @@ function closureTrack(closure: RoomClosure): TrackItem {
   }
 }
 
-function barStyle(item: PlacedTrack, dayCount: number) {
+function barStyle(item: PlacedTrack, dayCount: number, laneCount: number) {
   return {
-    top: `${item.lane * 1.75 + 0.375}rem`,
-    height: "1.25rem",
+    top: `calc(${(item.lane / laneCount) * 100}% + 0.25rem)`,
+    height: `calc(${100 / laneCount}% - 0.5rem)`,
     left: `calc(${(item.start / dayCount) * 100}% + 0.25rem)`,
     width: `calc(${((item.end - item.start) / dayCount) * 100}% - 0.5rem)`,
   }
 }
 
-function StayBar({ stay, dayCount }: { stay: PlacedTrack; dayCount: number }) {
+function StayBar({
+  stay,
+  dayCount,
+  laneCount,
+}: {
+  stay: PlacedTrack
+  dayCount: number
+  laneCount: number
+}) {
   return (
     <div
       title={stay.title}
-      className="absolute flex items-center rounded-md border border-booking-foreground/20 bg-booking px-2.5 text-xs text-booking-foreground"
-      style={barStyle(stay, dayCount)}
+      className="absolute z-10 flex items-center overflow-hidden rounded-md border border-booking-foreground/20 bg-booking px-2.5 text-xs text-booking-foreground"
+      style={barStyle(stay, dayCount, laneCount)}
     >
       <span className="truncate">{stay.label}</span>
     </div>
@@ -175,18 +184,20 @@ function StayBar({ stay, dayCount }: { stay: PlacedTrack; dayCount: number }) {
 function ClosureBar({
   item,
   dayCount,
+  laneCount,
   onOpen,
 }: {
   item: PlacedTrack
   dayCount: number
+  laneCount: number
   onOpen: (id: string) => void
 }) {
   return (
     <button
       type="button"
       title={item.title}
-      className="absolute flex items-center rounded-md border border-closure-foreground/20 bg-closure px-2.5 text-left text-xs text-closure-foreground outline-none focus-visible:ring-1 focus-visible:ring-ring"
-      style={barStyle(item, dayCount)}
+      className="absolute z-10 flex items-center overflow-hidden rounded-md border border-closure-foreground/20 bg-closure px-2.5 text-left text-xs text-closure-foreground outline-none focus-visible:ring-1 focus-visible:ring-ring"
+      style={barStyle(item, dayCount, laneCount)}
       onClick={() => onOpen(item.id)}
     >
       <span className="truncate">{item.label}</span>
@@ -198,29 +209,67 @@ function RoomTrack({
   stays,
   dayCount,
   days,
+  roomNumber,
+  onBookDay,
   onOpenClosure,
+  assignmentActive = false,
+  assignmentReason,
+  assignmentPreview,
 }: {
   stays: PlacedTrack[]
   dayCount: number
   days: Date[]
+  roomNumber: string
+  onBookDay?: (day: Date) => void
   onOpenClosure?: (id: string) => void
+  assignmentActive?: boolean
+  assignmentReason?: string
+  assignmentPreview?: AssignmentPreview
 }) {
   const lanes = stays.reduce((max, stay) => Math.max(max, stay.lane + 1), 1)
   return (
     <div
-      className="relative min-w-0 border-b"
+      className={cn(
+        "relative isolate min-w-0 border-b",
+        assignmentActive && !assignmentPreview && "bg-muted/30 opacity-50"
+      )}
+      title={assignmentReason}
       style={{
         gridColumn: `2 / span ${dayCount}`,
         minHeight: `${Math.max(2.5, lanes * 1.75 + 0.75)}rem`,
       }}
     >
       <div
-        className="pointer-events-none absolute inset-0 grid"
+        className="absolute inset-0 grid"
         style={{ gridTemplateColumns: `repeat(${dayCount}, minmax(0, 1fr))` }}
       >
-        {days.map((day) => (
-          <div key={format(day, "yyyy-MM-dd")} className="border-r" />
-        ))}
+        {days.map((day) => {
+          const date = format(day, "yyyy-MM-dd")
+          // Availability is based on nights, not the bar's half-day drawing.
+          const occupied = stays.some(
+            (stay) => stay.checkIn <= date && stay.checkOut > date
+          )
+          const morningBlocked = stays.some((stay) => stay.checkOut === date)
+          const disabled =
+            !onBookDay ||
+            occupied ||
+            date < format(startOfToday(), "yyyy-MM-dd")
+
+          return (
+            <div key={date} className="relative border-r">
+              {onBookDay ? (
+                <button
+                  type="button"
+                  className="absolute inset-y-0 right-0 outline-none enabled:cursor-pointer enabled:hover:bg-accent/50 enabled:focus-visible:bg-accent enabled:focus-visible:ring-1 enabled:focus-visible:ring-ring enabled:focus-visible:ring-inset disabled:cursor-default"
+                  style={{ width: morningBlocked ? "50%" : "100%" }}
+                  aria-label={`Book room ${roomNumber} on ${format(day, "MMM d, yyyy")}`}
+                  disabled={disabled}
+                  onClick={() => onBookDay(day)}
+                />
+              ) : null}
+            </div>
+          )
+        })}
       </div>
       {stays.map((stay) =>
         stay.kind === "closure" && onOpenClosure ? (
@@ -228,12 +277,35 @@ function RoomTrack({
             key={`closure-${stay.id}`}
             item={stay}
             dayCount={dayCount}
+            laneCount={lanes}
             onOpen={onOpenClosure}
           />
         ) : (
-          <StayBar key={`stay-${stay.id}`} stay={stay} dayCount={dayCount} />
+          <StayBar
+            key={`stay-${stay.id}`}
+            stay={stay}
+            dayCount={dayCount}
+            laneCount={lanes}
+          />
         )
       )}
+      {assignmentPreview ? (
+        <button
+          type="button"
+          aria-label={`Assign ${assignmentPreview.stay.label} to room ${roomNumber}, ${assignmentPreview.stay.checkIn} to ${assignmentPreview.stay.checkOut}`}
+          aria-pressed={assignmentPreview.selected}
+          disabled={assignmentPreview.disabled}
+          onClick={assignmentPreview.onSelect}
+          className={cn(
+            "absolute z-20 flex cursor-pointer items-center overflow-hidden rounded-md border border-dashed border-booking-foreground/50 bg-booking/40 px-2.5 text-left text-xs text-booking-foreground outline-none hover:bg-booking/70 focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-default",
+            assignmentPreview.selected &&
+              "border-solid bg-booking ring-1 ring-booking-foreground/50"
+          )}
+          style={barStyle(assignmentPreview.stay, dayCount, 1)}
+        >
+          <span className="truncate">{assignmentPreview.stay.label}</span>
+        </button>
+      ) : null}
     </div>
   )
 }
@@ -245,7 +317,11 @@ export function RoomCalendar() {
   const [span, setSpan] = useState(7)
   const [pickerOpen, setPickerOpen] = useState(false)
   const [closureTarget, setClosureTarget] = useState<ClosureTarget | null>(null)
-  const rangeFrom = format(start, "yyyy-MM-dd")
+  const [bookingTarget, setBookingTarget] = useState<BookingTarget | null>(null)
+  const [panelOpen, setPanelOpen] = useState(true)
+  // Include bookings and closures ending on the first visible morning.
+  // Both list APIs use an exclusive end boundary for their `from` filter.
+  const rangeFrom = format(addDays(start, -1), "yyyy-MM-dd")
   const rangeTo = format(addDays(start, span - 1), "yyyy-MM-dd")
   const roomsQuery = useRooms()
   const typesQuery = useRoomTypes()
@@ -269,29 +345,61 @@ export function RoomCalendar() {
   const error =
     roomsQuery.error?.message ??
     typesQuery.error?.message ??
+    reservationsQuery.error?.message ??
     closuresQuery.error?.message ??
     null
+  const bookingDataReady =
+    !reservationsQuery.isPending &&
+    !reservationsQuery.isFetching &&
+    !reservationsQuery.isPlaceholderData &&
+    !reservationsQuery.isError &&
+    !closuresQuery.isPending &&
+    !closuresQuery.isFetching &&
+    !closuresQuery.isPlaceholderData &&
+    !closuresQuery.isError
   const stays = reservationsQuery.isError
     ? []
-    : staysFrom(reservationsQuery.data ?? [])
+    : reservationStays(reservationsQuery.data ?? []).filter(
+        (stay) => clipStay(stayTrack(stay), start, span) !== null
+      )
+  const assignment = useRoomAssignment(rooms)
+  const unassigned = unassignedStays(
+    reservationsQuery.isError ? [] : (reservationsQuery.data ?? []),
+    format(start, "yyyy-MM-dd"),
+    rangeTo
+  )
+  const listLoading =
+    loading ||
+    reservationsQuery.isPending ||
+    reservationsQuery.isFetching ||
+    reservationsQuery.isPlaceholderData
+  const listError =
+    roomsQuery.error?.message ??
+    typesQuery.error?.message ??
+    reservationsQuery.error?.message ??
+    null
+  const previewTrack = assignment.target
+    ? placeStays([stayTrack(assignment.target)], start, span)[0]
+    : undefined
 
   function refresh() {
     void queryClient.invalidateQueries()
+  }
+
+  function changeStart(date: Date) {
+    if (assignment.pending) return
+    assignment.cancel()
+    setStart(date)
   }
 
   const days = eachDayOfInterval({
     start,
     end: addDays(start, span - 1),
   })
-  const roomIds = new Set(rooms?.map((room) => room.id))
-  const byRoom = new Map<string, Stay[]>()
+  const byRoom = new Map<string, ReservationStay[]>()
   const closuresByRoom = new Map<string, RoomClosure[]>()
-  const unassigned: Stay[] = []
   for (const stay of stays) {
-    if (!stay.roomId || !roomIds.has(stay.roomId)) {
-      unassigned.push(stay)
-      continue
-    }
+    if (!stay.roomId) continue
     const list = byRoom.get(stay.roomId) ?? []
     list.push(stay)
     byRoom.set(stay.roomId, list)
@@ -314,6 +422,29 @@ export function RoomCalendar() {
     })
   }
 
+  const panel = (
+    <RoomAssignmentPanel
+      stays={unassigned}
+      typeNames={typeNames}
+      loading={listLoading}
+      listError={listError}
+      rangeLabel={`${format(start, "MMM d")} to ${format(addDays(start, span - 1), "MMM d, yyyy")}`}
+      target={assignment.target}
+      selectedRoom={assignment.selectedRoom}
+      checking={assignment.checking}
+      ready={assignment.ready}
+      eligibleCount={assignment.eligibleCount}
+      canAssign={assignment.canAssign}
+      pending={assignment.pending}
+      error={assignment.error}
+      onSelect={assignment.selectStay}
+      onConfirm={() => void assignment.confirm()}
+      onCancel={assignment.cancel}
+      onClose={() => setPanelOpen(false)}
+      onRetry={refresh}
+    />
+  )
+
   return (
     <div className="flex min-h-0 min-w-0 flex-1 flex-col">
       <RoomClosureDialog
@@ -321,19 +452,27 @@ export function RoomCalendar() {
         timeZone={timeZone}
         onClose={() => setClosureTarget(null)}
       />
+      <RoomBookingDialog
+        target={bookingTarget}
+        onClose={() => setBookingTarget(null)}
+      />
       <div className="flex flex-wrap items-center justify-between gap-2 border-b px-2.5 py-2">
         <div className="flex items-center gap-2">
           <Select
             items={spans}
             value={String(span)}
+            disabled={assignment.pending}
             onValueChange={(value) => {
-              if (value) setSpan(Number(value))
+              if (value) {
+                assignment.cancel()
+                setSpan(Number(value))
+              }
             }}
           >
             <SelectTrigger className="w-28">
               <SelectValue />
             </SelectTrigger>
-            <SelectContent>
+            <SelectContent alignItemWithTrigger={false} align="start">
               <SelectGroup>
                 {spans.map((item) => (
                   <SelectItem key={item.value} value={item.value}>
@@ -343,14 +482,18 @@ export function RoomCalendar() {
               </SelectGroup>
             </SelectContent>
           </Select>
-          <Button variant="outline" onClick={() => setStart(startOfToday())}>
+          <Button
+            variant="outline"
+            disabled={assignment.pending}
+            onClick={() => changeStart(startOfToday())}
+          >
             Today
           </Button>
           <Button
             variant="outline"
             size="icon"
             aria-label="Refresh"
-            disabled={rooms === null}
+            disabled={rooms === null || assignment.pending}
             onClick={refresh}
           >
             <RefreshCwIcon />
@@ -361,7 +504,8 @@ export function RoomCalendar() {
             variant="outline"
             size="icon"
             aria-label="Previous period"
-            onClick={() => setStart((value) => addDays(value, -span))}
+            disabled={assignment.pending}
+            onClick={() => changeStart(addDays(start, -span))}
           >
             <ChevronsLeftIcon />
           </Button>
@@ -369,7 +513,8 @@ export function RoomCalendar() {
             variant="outline"
             size="icon"
             aria-label="Previous day"
-            onClick={() => setStart((value) => addDays(value, -1))}
+            disabled={assignment.pending}
+            onClick={() => changeStart(addDays(start, -1))}
           >
             <ChevronLeftIcon />
           </Button>
@@ -379,6 +524,7 @@ export function RoomCalendar() {
                 <Button
                   variant="outline"
                   className="min-w-36 justify-between"
+                  disabled={assignment.pending}
                 />
               }
             >
@@ -392,7 +538,7 @@ export function RoomCalendar() {
                 timeZone={timeZone}
                 onSelect={(date) => {
                   if (!date) return
-                  setStart(startOfDay(date))
+                  changeStart(startOfDay(date))
                   setPickerOpen(false)
                 }}
               />
@@ -402,7 +548,8 @@ export function RoomCalendar() {
             variant="outline"
             size="icon"
             aria-label="Next day"
-            onClick={() => setStart((value) => addDays(value, 1))}
+            disabled={assignment.pending}
+            onClick={() => changeStart(addDays(start, 1))}
           >
             <ChevronRightIcon />
           </Button>
@@ -410,12 +557,23 @@ export function RoomCalendar() {
             variant="outline"
             size="icon"
             aria-label="Next period"
-            onClick={() => setStart((value) => addDays(value, span))}
+            disabled={assignment.pending}
+            onClick={() => changeStart(addDays(start, span))}
           >
             <ChevronsRightIcon />
           </Button>
         </ButtonGroup>
         <div className="flex items-center gap-2">
+          <Button
+            variant="outline"
+            aria-expanded={panelOpen}
+            aria-controls="unassigned-panel"
+            disabled={assignment.pending}
+            onClick={() => setPanelOpen((open) => !open)}
+          >
+            <PanelRightIcon data-icon="inline-start" />
+            Unassigned · {listLoading ? "…" : unassigned.length}
+          </Button>
           <Button>
             <PlusIcon data-icon="inline-start" />
             New Booking
@@ -430,97 +588,124 @@ export function RoomCalendar() {
           </Button>
         </div>
       ) : null}
-      <div className="min-h-0 min-w-0 flex-1 overflow-x-hidden overflow-y-auto">
-        <div
-          className="grid w-full"
-          style={{
-            gridTemplateColumns: `max-content repeat(${span}, minmax(0, 1fr))`,
-          }}
-        >
-          <div className="sticky top-0 left-0 z-30 border-r border-b bg-background" />
-          {days.map((day) => (
-            <div
-              key={format(day, "yyyy-MM-dd")}
-              className="sticky top-0 z-20 flex min-w-0 flex-col items-center gap-0.5 border-r border-b bg-background px-2.5 py-1.5"
-            >
-              <span className="text-xs tracking-wide text-muted-foreground uppercase">
-                {format(day, "EEE")}
-              </span>
-              <span className="text-xs font-medium">{format(day, "d")}</span>
-              <span className="text-xs text-muted-foreground">
-                {format(day, "MMM")}
-              </span>
-            </div>
-          ))}
-          {rooms === null
-            ? Array.from({ length: 8 }, (_, index) => (
-                <div key={index} className="contents">
-                  <div className="sticky left-0 z-10 border-r border-b bg-background px-2.5 py-2">
-                    <Skeleton className="h-6 w-16" />
-                  </div>
-                  <div
-                    className="border-b"
-                    style={{
-                      gridColumn: `2 / span ${span}`,
-                      minHeight: "2.5rem",
-                    }}
-                  />
-                </div>
-              ))
-            : null}
-          {rooms?.map((room) => (
-            <RoomRowView
-              key={room.id}
-              number={room.number}
-              typeName={room.typeName}
-              status={room.status}
-              stays={placeStays(
-                [
-                  ...(byRoom.get(room.id) ?? []).map(stayTrack),
-                  ...(closuresByRoom.get(room.id) ?? []).map(closureTrack),
-                ],
-                start,
-                span
-              )}
-              days={days}
-              dayCount={span}
-              onCloseRoom={
-                room.status === "in_service"
-                  ? () =>
-                      setClosureTarget({
-                        mode: "create",
-                        roomId: room.id,
-                        number: room.number,
-                        typeName: room.typeName,
-                      })
-                  : undefined
-              }
-              onOpenClosure={openClosure}
-            />
-          ))}
-          {rooms !== null && rooms.length === 0 && !error ? (
-            <div className="col-span-full px-2.5 py-4 text-xs text-muted-foreground">
-              No rooms yet.
-            </div>
-          ) : null}
-          {unassigned.length > 0 ? (
-            <>
-              <div className="sticky left-0 z-10 col-span-full border-b bg-muted px-2.5 py-1.5 text-xs text-muted-foreground">
-                Unassigned
+      <div className="flex min-h-0 min-w-0 flex-1">
+        <div className="min-h-0 min-w-0 flex-1 overflow-auto overscroll-contain">
+          <div
+            className="grid w-full"
+            style={{
+              gridTemplateColumns: `12rem repeat(${span}, minmax(6rem, 1fr))`,
+              minWidth: `${12 + span * 6}rem`,
+            }}
+          >
+            <div className="sticky top-0 left-0 z-40 border-r border-b bg-background" />
+            {days.map((day) => (
+              <div
+                key={format(day, "yyyy-MM-dd")}
+                className="sticky top-0 z-30 flex min-w-0 flex-col items-center gap-0.5 border-r border-b bg-background px-2.5 py-1.5"
+              >
+                <span className="text-xs tracking-wide text-muted-foreground uppercase">
+                  {format(day, "EEE")}
+                </span>
+                <span className="text-xs font-medium">{format(day, "d")}</span>
+                <span className="text-xs text-muted-foreground">
+                  {format(day, "MMM")}
+                </span>
               </div>
-              {unassigned.map((stay) => (
-                <RoomRowView
-                  key={stay.id}
-                  number="Unassigned"
-                  typeName={typeNames.get(stay.roomTypeId) ?? "Room"}
-                  stays={placeStays([stayTrack(stay)], start, span)}
-                  days={days}
-                  dayCount={span}
-                />
-              ))}
-            </>
-          ) : null}
+            ))}
+            {rooms === null
+              ? Array.from({ length: 8 }, (_, index) => (
+                  <div key={index} className="contents">
+                    <div className="sticky left-0 z-20 border-r border-b bg-background px-2.5 py-2">
+                      <Skeleton className="h-6 w-16" />
+                    </div>
+                    <div
+                      className="border-b"
+                      style={{
+                        gridColumn: `2 / span ${span}`,
+                        minHeight: "2.5rem",
+                      }}
+                    />
+                  </div>
+                ))
+              : null}
+            {rooms?.map((room) => (
+              <RoomRowView
+                key={room.id}
+                number={room.number}
+                typeName={room.typeName}
+                stays={placeStays(
+                  [
+                    ...(byRoom.get(room.id) ?? []).map(stayTrack),
+                    ...(closuresByRoom.get(room.id) ?? []).map(closureTrack),
+                  ],
+                  start,
+                  span
+                )}
+                days={days}
+                dayCount={span}
+                onCloseRoom={() =>
+                  setClosureTarget({
+                    mode: "create",
+                    roomId: room.id,
+                    number: room.number,
+                    typeName: room.typeName,
+                  })
+                }
+                onBookDay={
+                  bookingDataReady && !assignment.target
+                    ? (day) =>
+                        setBookingTarget({
+                          roomId: room.id,
+                          roomTypeId: room.roomTypeId,
+                          number: room.number,
+                          typeName: room.typeName,
+                          checkIn: format(day, "yyyy-MM-dd"),
+                        })
+                    : undefined
+                }
+                onOpenClosure={openClosure}
+                assignmentActive={assignment.target !== null}
+                assignmentReason={
+                  assignment.target
+                    ? assignment.checking
+                      ? "Checking availability for the full stay"
+                      : (assignment.error ??
+                        assignment.roomIssues.get(room.id) ??
+                        undefined)
+                    : undefined
+                }
+                assignmentPreview={
+                  assignment.ready &&
+                  previewTrack &&
+                  assignment.roomIssues.get(room.id) === null
+                    ? {
+                        stay: previewTrack,
+                        selected: assignment.selectedRoom?.id === room.id,
+                        disabled: assignment.pending,
+                        onSelect: () => {
+                          assignment.selectRoom(room.id)
+                          setPanelOpen(true)
+                        },
+                      }
+                    : undefined
+                }
+              />
+            ))}
+            {rooms !== null && rooms.length === 0 && !error ? (
+              <div className="col-span-full px-2.5 py-4 text-xs text-muted-foreground">
+                No rooms yet.
+              </div>
+            ) : null}
+          </div>
         </div>
+        {panelOpen ? (
+          <aside
+            aria-label="Unassigned reservations"
+            className="min-h-0 w-80 shrink-0 border-l"
+          >
+            {panel}
+          </aside>
+        ) : null}
       </div>
     </div>
   )
@@ -529,42 +714,65 @@ export function RoomCalendar() {
 function RoomRowView({
   number,
   typeName,
-  status,
   stays,
   days,
   dayCount,
   onCloseRoom,
+  onBookDay,
   onOpenClosure,
+  assignmentActive = false,
+  assignmentReason,
+  assignmentPreview,
 }: {
   number: string
   typeName: string
-  status?: Room["status"]
   stays: PlacedTrack[]
   days: Date[]
   dayCount: number
   onCloseRoom?: () => void
+  onBookDay?: (day: Date) => void
   onOpenClosure?: (id: string) => void
+  assignmentActive?: boolean
+  assignmentReason?: string
+  assignmentPreview?: AssignmentPreview
 }) {
   return (
     <>
-      <div className="sticky left-0 z-10 flex w-max items-center gap-1 border-r border-b bg-background px-2.5">
-        <div className="flex flex-col justify-center gap-0.5">
-          <span className="text-xs font-medium whitespace-nowrap">
+      <div
+        className={cn(
+          "sticky left-0 z-20 flex min-w-0 items-center gap-1 border-r border-b bg-background px-2.5",
+          assignmentActive && !assignmentPreview && "text-muted-foreground",
+          assignmentPreview && "bg-booking"
+        )}
+        title={assignmentReason}
+      >
+        <div className="flex min-w-0 flex-1 flex-col justify-center gap-0.5">
+          <span className="truncate text-xs font-medium" title={number}>
             {number}
           </span>
-          <span className="text-xs whitespace-nowrap text-muted-foreground">
-            {status === "out_of_order" ? "Out of order" : typeName}
+          <span
+            className="truncate text-xs text-muted-foreground"
+            title={typeName}
+          >
+            {typeName}
           </span>
         </div>
         {onCloseRoom ? (
-          <RoomActionsMenu number={number} onCloseRoom={onCloseRoom} />
+          <div className="shrink-0">
+            <RoomActionsMenu number={number} onCloseRoom={onCloseRoom} />
+          </div>
         ) : null}
       </div>
       <RoomTrack
         stays={stays}
         dayCount={dayCount}
         days={days}
+        roomNumber={number}
+        onBookDay={onBookDay}
         onOpenClosure={onOpenClosure}
+        assignmentActive={assignmentActive}
+        assignmentReason={assignmentReason}
+        assignmentPreview={assignmentPreview}
       />
     </>
   )

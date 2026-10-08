@@ -1,0 +1,131 @@
+/// <reference types="node" />
+
+import { readFileSync } from 'node:fs'
+import { DatabaseSync } from 'node:sqlite'
+import { URL } from 'node:url'
+import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+
+const migrationsDir = new URL('../../drizzle/', import.meta.url)
+const journal = JSON.parse(readFileSync(new URL('meta/_journal.json', migrationsDir), 'utf8')) as {
+  entries: { tag: string }[]
+}
+
+let db: DatabaseSync
+
+function reservation(id: string, checkIn = '2026-10-05', checkOut = '2026-10-07') {
+  db.prepare(`INSERT INTO reservations (id, code, guest_id, check_in, check_out, created_at)
+    VALUES (?, ?, 'guest', ?, ?, '2026-10-05')`).run(id, id, checkIn, checkOut)
+}
+
+function line(id: string, roomId: string | null = null, status = 'confirmed') {
+  db.prepare(`INSERT INTO reservation_rooms
+    (id, reservation_id, room_type_id, room_id, adults, status, created_at)
+    VALUES (?, ?, 'type', ?, 1, ?, '2026-10-05')`).run(id, id, roomId, status)
+}
+
+function closure(id: string, roomId: string, starts = '2026-10-05', ends = '2026-10-07') {
+  db.prepare(`INSERT INTO room_closures (id, room_id, starts, ends, created_at)
+    VALUES (?, ?, ?, ?, '2026-10-05')`).run(id, roomId, starts, ends)
+}
+
+beforeEach(() => {
+  db = new DatabaseSync(':memory:')
+  db.exec('PRAGMA foreign_keys = ON')
+  for (const entry of journal.entries) {
+    // Exercise the upgrade with real data, including a previously blocked room.
+    if (entry.tag === '0004_charming_steel_serpent') {
+      db.exec(`
+        INSERT INTO room_types VALUES ('type', 'Standard', 2, 10000, '2026-10-05');
+        INSERT INTO rooms VALUES ('room-101', '101', 'type', 'out_of_order');
+        INSERT INTO rooms VALUES ('room-102', '102', 'type', 'in_service');
+        INSERT INTO guests (id, first_name, last_name, created_at)
+          VALUES ('guest', 'Ada', 'Lovelace', '2026-10-05');
+      `)
+      closure('existing', 'room-102', '2026-11-01', '2026-11-02')
+    }
+    db.exec(readFileSync(new URL(`${entry.tag}.sql`, migrationsDir), 'utf8'))
+  }
+})
+
+afterEach(() => db.close())
+
+describe('closure-only room inventory migration', () => {
+  it('preserves rooms and existing closures while removing operational status', () => {
+    expect(db.prepare('SELECT id, number, room_type_id FROM rooms ORDER BY number').all()).toEqual([
+      { id: 'room-101', number: '101', room_type_id: 'type' },
+      { id: 'room-102', number: '102', room_type_id: 'type' },
+    ])
+    expect(db.prepare('SELECT id FROM room_closures').all()).toEqual([{ id: 'existing' }])
+    expect(db.prepare('PRAGMA table_info(rooms)').all().map((column) => column.name)).not.toContain('status')
+    expect(db.prepare('PRAGMA foreign_key_check').all()).toEqual([])
+  })
+
+  it('includes previously out-of-order rooms in capacity and assignment', () => {
+    reservation('first')
+    line('first', 'room-101')
+    reservation('second')
+    line('second', 'room-102')
+    reservation('third')
+    expect(() => line('third')).toThrow('no availability')
+  })
+
+  it('subtracts closures from booking capacity and allows reopening-day arrivals', () => {
+    closure('closed', 'room-101')
+    reservation('first')
+    line('first', 'room-102')
+    reservation('second')
+    expect(() => line('second')).toThrow('no availability')
+    reservation('arrival', '2026-10-07', '2026-10-08')
+    expect(() => line('arrival', 'room-101')).not.toThrow()
+  })
+
+  it('checks capacity when reactivating a cancelled line', () => {
+    closure('closed', 'room-101')
+    reservation('first')
+    line('first')
+    reservation('cancelled')
+    line('cancelled', null, 'cancelled')
+    expect(() => db.exec("UPDATE reservation_rooms SET status = 'confirmed' WHERE id = 'cancelled'"))
+      .toThrow('no availability')
+  })
+
+  it('checks capacity when moving a reservation into a closed range', () => {
+    closure('closed', 'room-101')
+    reservation('first')
+    line('first')
+    reservation('moving', '2026-10-07', '2026-10-08')
+    line('moving')
+    expect(() => db.exec("UPDATE reservations SET check_in = '2026-10-05' WHERE id = 'moving'"))
+      .toThrow('no availability')
+  })
+
+  it('prevents closing inventory consumed by unassigned reservations', () => {
+    reservation('first')
+    line('first')
+    reservation('second')
+    line('second')
+    expect(() => closure('closed', 'room-101')).toThrow('no availability')
+  })
+
+  it('checks capacity when extending a closure', () => {
+    closure('closed', 'room-101', '2026-10-07', '2026-10-08')
+    reservation('first')
+    line('first')
+    reservation('second')
+    line('second')
+    expect(() => db.exec("UPDATE room_closures SET starts = '2026-10-05' WHERE id = 'closed'"))
+      .toThrow('no availability')
+  })
+
+  it('keeps assignment and closure overlap protections', () => {
+    closure('closed', 'room-101')
+    reservation('first')
+    line('first')
+    expect(() => db.exec("UPDATE reservation_rooms SET room_id = 'room-101' WHERE id = 'first'"))
+      .toThrow('room closed')
+    expect(() => db.exec("UPDATE room_closures SET starts = '2026-11-01', ends = '2026-11-02' WHERE id = 'closed'"))
+      .not.toThrow()
+    db.exec("UPDATE reservation_rooms SET room_id = 'room-101' WHERE id = 'first'")
+    expect(() => closure('overlap', 'room-101')).toThrow(/closure overlaps stay|no availability/)
+  })
+})

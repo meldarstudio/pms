@@ -11,14 +11,13 @@ export async function loadRoomTypes(db: Db, ids?: string[]) {
   return db.select().from(roomTypes).where(inArray(roomTypes.id, ids))
 }
 
-export async function inServiceCounts(db: Db) {
+export async function roomCounts(db: Db) {
   const rows = await db
     .select({
       roomTypeId: rooms.roomTypeId,
       count: sql<number>`count(*)`,
     })
     .from(rooms)
-    .where(eq(rooms.status, 'in_service'))
     .groupBy(rooms.roomTypeId)
   return new Map(rows.map((row) => [row.roomTypeId, Number(row.count)]))
 }
@@ -53,7 +52,6 @@ export async function closureCounts(db: Db, checkIn: string, checkOut: string, e
     .innerJoin(rooms, eq(rooms.id, roomClosures.roomId))
     .where(
       and(
-        eq(rooms.status, 'in_service'),
         lt(roomClosures.starts, checkOut),
         gt(roomClosures.ends, checkIn),
         excludeClosureId ? ne(roomClosures.id, excludeClosureId) : undefined,
@@ -86,12 +84,12 @@ export function countRequested(lines: { roomTypeId: string }[]) {
 }
 
 export function assertCapacity(
-  inService: Map<string, number>,
+  capacity: Map<string, number>,
   booked: Map<string, number>,
   requested: Map<string, number>,
 ) {
   for (const [roomTypeId, count] of requested) {
-    const free = (inService.get(roomTypeId) ?? 0) - (booked.get(roomTypeId) ?? 0)
+    const free = (capacity.get(roomTypeId) ?? 0) - (booked.get(roomTypeId) ?? 0)
     if (count > free) throw new HttpError(409, 'no availability')
   }
 }

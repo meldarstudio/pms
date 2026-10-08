@@ -2,7 +2,6 @@ export type Room = {
   id: string
   number: string
   roomTypeId: string
-  status: "in_service" | "out_of_order"
 }
 
 export type RoomType = {
@@ -33,6 +32,51 @@ export type RoomClosure = {
   reason: string | null
 }
 
+export type Availability = {
+  checkIn: string
+  checkOut: string
+  nights: number
+  currency: string
+  roomTypes: {
+    id: string
+    name: string
+    maxOccupancy: number
+    free: number
+    totalCents: number
+    nights: { date: string; priceCents: number }[]
+  }[]
+}
+
+export type ReservationDetail = {
+  id: string
+  code: string
+  checkIn: string
+  checkOut: string
+  currency: string
+  totalCents: number
+  rooms: {
+    id: string
+    roomTypeId: string
+    roomId: string | null
+    roomNumber: string | null
+  }[]
+}
+
+export type CreateReservationInput = {
+  guest: {
+    firstName: string
+    lastName: string
+    phone?: string
+  }
+  checkIn: string
+  checkOut: string
+  rooms: {
+    roomTypeId: string
+    adults: number
+    children: number
+  }[]
+}
+
 const bases = ["http://127.0.0.1:8788", "http://127.0.0.1:8787", "/api"]
 
 let basePromise: Promise<string> | null = null
@@ -61,17 +105,6 @@ function apiBase() {
   return basePromise
 }
 
-async function getJson<T>(path: string, signal?: AbortSignal): Promise<T> {
-  const base = await apiBase()
-  const response = await fetch(`${base}${path}`, { signal })
-  if (!response.ok) throw new Error(`Request failed (${response.status})`)
-  return (await response.json()) as T
-}
-
-export function listRooms(signal?: AbortSignal) {
-  return getJson<Room[]>("/rooms", signal)
-}
-
 async function errorMessage(response: Response) {
   const fallback = `Request failed (${response.status})`
   try {
@@ -80,6 +113,17 @@ async function errorMessage(response: Response) {
   } catch {
     return fallback
   }
+}
+
+async function getJson<T>(path: string, signal?: AbortSignal): Promise<T> {
+  const base = await apiBase()
+  const response = await fetch(`${base}${path}`, { signal })
+  if (!response.ok) throw new Error(await errorMessage(response))
+  return (await response.json()) as T
+}
+
+export function listRooms(signal?: AbortSignal) {
+  return getJson<Room[]>("/rooms", signal)
 }
 
 async function writeJson<T>(path: string, method: string, body?: unknown) {
@@ -96,6 +140,33 @@ async function writeJson<T>(path: string, method: string, body?: unknown) {
 
 export function listRoomTypes(signal?: AbortSignal) {
   return getJson<RoomType[]>("/room-types", signal)
+}
+
+export function getAvailability(
+  checkIn: string,
+  checkOut: string,
+  signal?: AbortSignal
+) {
+  return getJson<Availability>(
+    `/availability?checkIn=${checkIn}&checkOut=${checkOut}`,
+    signal
+  )
+}
+
+export function createReservation(body: CreateReservationInput) {
+  return writeJson<ReservationDetail>("/reservations", "POST", body)
+}
+
+export function assignRoom(
+  reservationId: string,
+  lineId: string,
+  roomId: string
+) {
+  return writeJson<ReservationDetail>(
+    `/reservations/${reservationId}/rooms/${lineId}/assign-room`,
+    "POST",
+    { roomId }
+  )
 }
 
 export function listRoomClosures(

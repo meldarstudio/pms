@@ -6,13 +6,17 @@ import {
 } from "@tanstack/react-query"
 
 import {
+  assignRoom,
+  createReservation,
   createRoomClosure,
   deleteRoomClosure,
+  getAvailability,
   listReservations,
   listRoomClosures,
   listRoomTypes,
   listRooms,
   patchRoomClosure,
+  type CreateReservationInput,
 } from "@/lib/api"
 
 export function useRooms() {
@@ -29,11 +33,41 @@ export function useRoomTypes() {
   })
 }
 
-export function useRoomClosures(from: string, to: string) {
+export function useAvailability(checkIn: string, checkOut: string) {
+  return useQuery({
+    queryKey: ["availability", checkIn, checkOut],
+    queryFn: ({ signal }) => getAvailability(checkIn, checkOut, signal),
+  })
+}
+
+export function useCreateReservation() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: (input: CreateReservationInput) => createReservation(input),
+    onSuccess: () =>
+      queryClient.invalidateQueries({ queryKey: ["reservations"] }),
+  })
+}
+
+export function useAssignRoom() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: (input: {
+      reservationId: string
+      lineId: string
+      roomId: string
+    }) => assignRoom(input.reservationId, input.lineId, input.roomId),
+    onSuccess: () =>
+      queryClient.invalidateQueries({ queryKey: ["reservations"] }),
+  })
+}
+
+export function useRoomClosures(from: string, to: string, enabled = true) {
   return useQuery({
     queryKey: ["room-closures", from, to],
     queryFn: ({ signal }) => listRoomClosures(from, to, signal),
     placeholderData: keepPreviousData,
+    enabled,
   })
 }
 
@@ -73,10 +107,11 @@ export function useDeleteRoomClosure() {
   })
 }
 
-export function useReservations(from: string, to: string) {
+export function useReservations(from: string, to: string, enabled = true) {
   return useQuery({
     queryKey: ["reservations", from, to],
     queryFn: ({ signal }) => listReservations(from, to, signal),
     placeholderData: keepPreviousData,
+    enabled,
   })
 }

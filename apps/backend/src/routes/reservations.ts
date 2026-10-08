@@ -23,7 +23,7 @@ import { currency, HttpError, rethrowConflict, validate } from '../http'
 import { chunks } from '../lib/chunks'
 import { confirmationCode } from '../lib/codes'
 import { overridesFor, quoteNights } from '../lib/quote'
-import { assertCapacity, countRequested, inServiceCounts, loadRoomTypes, occupiedCounts, ratesBetween } from '../inventory'
+import { assertCapacity, countRequested, roomCounts, loadRoomTypes, occupiedCounts, ratesBetween } from '../inventory'
 import { requireLine, reservationDetail } from '../load'
 import { assertOccupancy, requireStay } from '../rules'
 
@@ -166,12 +166,12 @@ reservationRoutes.post('/', validate('json', createReservationSchema), async (c)
       createdAt: new Date().toISOString(),
     }
   }
-  const [inService, occupied, rates] = await Promise.all([
-    inServiceCounts(db),
+  const [capacity, occupied, rates] = await Promise.all([
+    roomCounts(db),
     occupiedCounts(db, body.checkIn, body.checkOut),
     ratesBetween(db, typeIds, body.checkIn, body.checkOut),
   ])
-  assertCapacity(inService, occupied, countRequested(body.rooms))
+  assertCapacity(capacity, occupied, countRequested(body.rooms))
   const now = new Date().toISOString()
   const reservationId = crypto.randomUUID()
   const lines = body.rooms.map((room) => ({
@@ -249,11 +249,11 @@ reservationRoutes.patch('/:id', validate('json', patchReservationSchema), async 
   const typeById = new Map(types.map((type) => [type.id, type]))
   const flats = new Map(body.rooms?.map((room) => [room.id, room.nightlyRateCents]) ?? [])
   if (datesChanged) {
-    const [inService, occupied] = await Promise.all([
-      inServiceCounts(db),
+    const [capacity, occupied] = await Promise.all([
+      roomCounts(db),
       occupiedCounts(db, checkIn, checkOut, id),
     ])
-    assertCapacity(inService, occupied, countRequested(active))
+    assertCapacity(capacity, occupied, countRequested(active))
   }
   const rates = await ratesBetween(db, typeIds, checkIn, checkOut)
   const nights = targets.flatMap((line) => {
@@ -287,12 +287,12 @@ reservationRoutes.post('/:id/rooms', validate('json', addRoomSchema), async (c) 
   if (!type) throw new HttpError(404, 'room type not found')
   assertOccupancy(body.adults, body.children ?? 0, type.maxOccupancy)
   const stay = requireStay(reservation.checkIn, reservation.checkOut)
-  const [inService, occupied, rates] = await Promise.all([
-    inServiceCounts(db),
+  const [capacity, occupied, rates] = await Promise.all([
+    roomCounts(db),
     occupiedCounts(db, reservation.checkIn, reservation.checkOut),
     ratesBetween(db, [type.id], reservation.checkIn, reservation.checkOut),
   ])
-  assertCapacity(inService, occupied, countRequested([{ roomTypeId: type.id }]))
+  assertCapacity(capacity, occupied, countRequested([{ roomTypeId: type.id }]))
   const lineId = crypto.randomUUID()
   const nights = nightRows(
     lineId,
@@ -328,7 +328,6 @@ reservationRoutes.post('/:id/rooms/:lineId/assign-room', validate('json', assign
   const [room] = await db.select().from(rooms).where(eq(rooms.id, roomId))
   if (!room) throw new HttpError(404, 'room not found')
   if (room.roomTypeId !== line.roomTypeId) throw new HttpError(400, 'room is a different type')
-  if (room.status !== 'in_service') throw new HttpError(409, 'room is out of order')
   const [reservation] = await db.select().from(reservations).where(eq(reservations.id, id))
   if (!reservation) throw new HttpError(404, 'reservation not found')
   const conflicts = await db

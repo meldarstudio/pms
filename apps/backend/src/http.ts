@@ -34,11 +34,9 @@ export function rethrowConflict(err: unknown): never {
   const text = errorText(err)
   if (text.includes('no availability')) throw new HttpError(409, 'no availability')
   if (text.includes('room taken')) throw new HttpError(409, 'room is already assigned for those dates')
-  if (text.includes('room assigned')) throw new HttpError(409, 'room has a current or upcoming stay')
   if (text.includes('room closed')) throw new HttpError(409, 'room is closed for those dates')
   if (text.includes('closure overlaps stay')) throw new HttpError(409, 'room has a stay on those dates')
   if (text.includes('closure overlaps closure')) throw new HttpError(409, 'room is already closed on those dates')
-  if (text.includes('room is out of order')) throw new HttpError(409, 'room is out of order')
   if (text.includes('rooms.number')) throw new HttpError(409, 'room number already exists')
   if (text.includes('room_types.name')) throw new HttpError(409, 'room type already exists')
   throw err

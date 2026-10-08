@@ -13,6 +13,7 @@
     "typecheck": "pnpm -r --if-present typecheck",
     "db:generate": "pnpm --filter @pms/backend db:generate",
     "db:migrate:local": "pnpm --filter @pms/backend db:migrate:local",
-    "db:seed:local": "pnpm --filter @pms/backend db:seed:local"
+    "db:seed:local": "pnpm --filter @pms/backend db:seed:local",
+    "db:reset:local": "pnpm --filter @pms/backend db:reset:local"
   }
 }

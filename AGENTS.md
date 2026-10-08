@@ -28,7 +28,7 @@ The Vite proxy sends `/api` to `http://127.0.0.1:8788` and strips the `/api` pre
 
 - Dates are `YYYY-MM-DD` UTC calendar dates. Stay nights are `[checkIn, checkOut)`. A checkout morning is free for the next arrival. Rate ranges include both ends. A stay cannot exceed 60 nights.
 - Money is integer cents. A night price is the flat rate, else that date's override, else `baseRateCents`.
-- Room status is `in_service` or `out_of_order`. `PATCH /rooms/:id` with `out_of_order` returns 409 when the room has a current or upcoming `confirmed` or `checked_in` stay.
+- Rooms have no operational status. Dated room closures are the only way to block a room and reduce room-type availability. Closures cannot overlap assigned stays or other closures.
 - Capacity, overlap, and assignment conflicts are SQLite triggers in `apps/backend/drizzle/0001_overlap_triggers.sql`. That file is hand-written and listed in `drizzle/meta/_journal.json`. `rethrowConflict` maps the trigger abort text to 409. Do not delete or regenerate `0001_overlap_triggers.sql` when running `db:generate`. `0000_high_sunset_bain.sql` is the drizzle-kit migration.
 
 ## Portal style

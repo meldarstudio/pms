@@ -79,13 +79,11 @@ export const patchRoomTypeSchema = roomTypeSchema.partial().refine((value) => Ob
 export const roomSchema = z.object({
   number: text(20),
   roomTypeId: z.string().min(1),
-  status: z.enum(['in_service', 'out_of_order']).optional(),
 })
 
 export const patchRoomSchema = z
   .object({
     number: text(20).optional(),
-    status: z.enum(['in_service', 'out_of_order']).optional(),
   })
   .refine((value) => Object.keys(value).length > 0, { message: 'send a field to update' })
 
@@ -115,7 +113,6 @@ export const paymentListQuerySchema = z.object({
 
 export const roomListQuerySchema = z.object({
   roomTypeId: z.string().min(1).optional(),
-  status: z.enum(['in_service', 'out_of_order']).optional(),
 })
 
 export const rateRangeQuerySchema = z.object({

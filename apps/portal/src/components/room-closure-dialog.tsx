@@ -238,25 +238,21 @@ function ClosureForm({
   })
   const [endDate, setEndDate] = useState<Date | null>(() => {
     if (target.mode !== "edit") return null
-    return startOfDay(
-      addDays(parse(target.closure.ends, "yyyy-MM-dd", new Date()), -1)
-    )
+    return startOfDay(parse(target.closure.ends, "yyyy-MM-dd", new Date()))
   })
   const [reason, setReason] = useState(
     target.mode === "edit" ? (target.closure.reason ?? "") : ""
   )
   const [localError, setLocalError] = useState<string | null>(null)
   const nights =
-    startDate && endDate
-      ? differenceInCalendarDays(addDays(endDate, 1), startDate)
-      : 0
+    startDate && endDate ? differenceInCalendarDays(endDate, startDate) : 0
   const shownError = localError ?? error
 
   function onSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
     if (!startDate || !endDate || pending) return
     if (nights < 1) {
-      setLocalError("End date must be on or after the start date.")
+      setLocalError("The reopening date must be after the closing date.")
       return
     }
     if (nights > 60) {
@@ -268,7 +264,7 @@ function ClosureForm({
       id: target.mode === "edit" ? target.closure.id : undefined,
       roomId: target.mode === "edit" ? target.closure.roomId : target.roomId,
       starts: format(startDate, "yyyy-MM-dd"),
-      ends: format(addDays(endDate, 1), "yyyy-MM-dd"),
+      ends: format(endDate, "yyyy-MM-dd"),
       reason: reason.trim() || undefined,
     })
   }
@@ -288,10 +284,10 @@ function ClosureForm({
           <div className="grid grid-cols-2 gap-2">
             <DateField
               id="closure-start"
-              label="Start"
+              label="Closes"
               value={startDate}
               timeZone={timeZone}
-              disabled={endDate ? { after: endDate } : undefined}
+              disabled={endDate ? { after: addDays(endDate, -1) } : undefined}
               onChange={(date) => {
                 setStartDate(date)
                 setLocalError(null)
@@ -299,12 +295,15 @@ function ClosureForm({
             />
             <DateField
               id="closure-end"
-              label="End"
+              label="Reopens"
               value={endDate}
               timeZone={timeZone}
               disabled={
                 startDate
-                  ? [{ before: startDate }, { after: addDays(startDate, 59) }]
+                  ? [
+                      { before: addDays(startDate, 1) },
+                      { after: addDays(startDate, 60) },
+                    ]
                   : undefined
               }
               onChange={(date) => {
@@ -315,8 +314,8 @@ function ClosureForm({
           </div>
           <FieldDescription>
             {startDate && endDate && nights >= 1
-              ? `Closed ${format(startDate, "MMM d")} to ${format(endDate, "MMM d")}. Free on ${format(addDays(endDate, 1), "MMM d, yyyy")}.`
-              : "Pick the first and last night. The room is free the next morning."}
+              ? `${nights} ${nights === 1 ? "night" : "nights"} closed. Free on ${format(endDate, "MMM d, yyyy")}.`
+              : "Pick the closing date and the morning the room reopens."}
           </FieldDescription>
           {shownError ? <FieldError>{shownError}</FieldError> : null}
         </Field>
@@ -352,7 +351,9 @@ function ClosureForm({
         </DialogClose>
         <Button
           type="submit"
-          disabled={!startDate || !endDate || nights < 1 || pending}
+          disabled={
+            !startDate || !endDate || nights < 1 || nights > 60 || pending
+          }
         >
           {savePending ? <Spinner data-icon="inline-start" /> : null}
           {target.mode === "edit" ? "Save" : "Close room"}
