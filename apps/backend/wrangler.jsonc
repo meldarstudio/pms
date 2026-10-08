@@ -1,17 +1,32 @@
 {
   "$schema": "node_modules/wrangler/config-schema.json",
-  "name": "backend",
+  "name": "pms-api",
   "main": "src/index.ts",
-  "compatibility_date": "2026-10-05",
+  "compatibility_date": "2026-10-08",
+  "workers_dev": true,
+  "preview_urls": true,
   "vars": {
     "CURRENCY": "USD"
   },
   "d1_databases": [
     {
       "binding": "DB",
-      "database_name": "pms",
-      "database_id": "00000000-0000-4000-8000-000000000001",
+      "database_name": "pms-production",
+      "database_id": "cd3e5df8-7646-44d9-991f-e8b126b40eb3",
       "migrations_dir": "drizzle"
     }
-  ]
+  ],
+  "previews": {
+    "vars": {
+      "CURRENCY": "USD"
+    },
+    "d1_databases": [
+      {
+        "binding": "DB",
+        "database_name": "pms-preview",
+        "database_id": "6be91972-e0e0-439f-a830-a51ec8182c70",
+        "migrations_dir": "drizzle"
+      }
+    ]
+  }
 }

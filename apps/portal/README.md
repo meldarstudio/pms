@@ -1,21 +1,36 @@
-# React + TypeScript + Vite + shadcn/ui
+# Portal
 
-This is a template for a new Vite project with React, TypeScript, and shadcn/ui.
+The portal is a Vite SPA deployed as static assets on the `pms-portal`
+Cloudflare Worker.
 
-## Adding components
+Run it locally from the repository root:
 
-To add components to your app, run the following command:
-
-```bash
-npx shadcn@latest add button
+```sh
+pnpm dev:portal
 ```
 
-This will place the ui components in the `src/components` directory.
+The local client tries the local API ports before the Vite `/api` proxy. A
+Cloudflare build embeds the matching `pms-api` Worker URL in the JavaScript
+bundle.
 
-## Using components
+## Deployment
 
-To use the components in your app, import them as follows:
+Build and deploy production from the repository root:
 
-```tsx
-import { Button } from "@/components/ui/button"
+```sh
+WORKERS_CI_BRANCH=main \
+  CLOUDFLARE_WORKERS_SUBDOMAIN=meldar \
+  pnpm --filter @pms/portal build:cloudflare
+pnpm --filter @pms/portal run deploy
 ```
+
+For Workers Builds, use these settings:
+
+- Build command: `pnpm --filter @pms/portal build:cloudflare`
+- Deploy command: `pnpm --filter @pms/portal run deploy`
+- Preview command: `pnpm --filter @pms/portal run deploy:preview`
+- Build variable: `CLOUDFLARE_WORKERS_SUBDOMAIN=meldar`
+
+Workers Builds provides `WORKERS_CI_BRANCH`. The build script uses it to embed
+the production API URL for `main` and the corresponding API Preview URL for
+other branches.

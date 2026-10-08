@@ -77,7 +77,10 @@ export type CreateReservationInput = {
   }[]
 }
 
-const bases = ["http://127.0.0.1:8788", "http://127.0.0.1:8787", "/api"]
+const configuredBase = import.meta.env.VITE_API_BASE_URL?.replace(/\/+$/, "")
+const bases = configuredBase
+  ? [configuredBase]
+  : ["http://127.0.0.1:8788", "http://127.0.0.1:8787", "/api"]
 
 let basePromise: Promise<string> | null = null
 

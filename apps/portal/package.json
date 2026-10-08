@@ -6,6 +6,9 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",
+    "build:cloudflare": "node ../../scripts/portal-build.mjs",
+    "deploy": "wrangler deploy",
+    "deploy:preview": "node ../../scripts/worker-preview.mjs",
     "lint": "eslint .",
     "test": "node --experimental-strip-types --test tests/*.test.ts",
     "format": "prettier --write \"**/*.{ts,tsx}\"",
@@ -43,6 +46,7 @@
     "prettier-plugin-tailwindcss": "^0.8.1",
     "typescript": "~6.0.2",
     "typescript-eslint": "^8",
-    "vite": "^8"
+    "vite": "^8",
+    "wrangler": "^4.147.0"
   }
 }

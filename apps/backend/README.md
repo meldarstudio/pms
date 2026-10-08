@@ -52,8 +52,25 @@ and rooms; use `pnpm db:reset:local` to undo edits and reload all sample data.
 ## Deployment and Worker types
 
 ```sh
-pnpm --filter @pms/backend deploy
+pnpm --filter @pms/backend run deploy
 pnpm --filter @pms/backend cf-typegen
 ```
+
+The deploy command applies pending migrations to `pms-production` before
+deploying the `pms-api` Worker. Production starts with schema only.
+
+Worker Previews use the shared `pms-preview` database. Reset its sample data
+with:
+
+```sh
+pnpm --filter @pms/backend db:reset:preview
+```
+
+The reset command is destructive and only targets the database declared in
+`wrangler.preview-migrations.jsonc`.
+
+For Workers Builds, use `pnpm --filter @pms/backend typecheck` as the build
+command, `pnpm --filter @pms/backend run deploy` as the deploy command, and
+`pnpm --filter @pms/backend run deploy:preview` as the Preview command.
 
 The Hono application uses the `Env` type from `src/env.ts`.
