@@ -32,6 +32,10 @@ app.onError((err, c) => {
 app.notFound((c) => c.json({ error: 'not found' }, 404))
 
 app.get('/', (c) => c.json({ name: 'pms' }))
+app.get('/health', async (c) => {
+  await c.env.DB.prepare('SELECT 1').first()
+  return c.json({ ok: true })
+})
 app.route('/room-types', roomTypeRoutes)
 app.route('/rooms', roomRoutes)
 app.route('/room-closures', roomClosureRoutes)
