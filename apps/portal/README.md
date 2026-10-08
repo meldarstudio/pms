@@ -15,6 +15,8 @@ bundle.
 
 ## Deployment
 
+Production portal: `https://pms-portal.meldar.workers.dev`
+
 Build and deploy production from the repository root:
 
 ```sh

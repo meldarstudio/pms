@@ -51,6 +51,8 @@ and rooms; use `pnpm db:reset:local` to undo edits and reload all sample data.
 
 ## Deployment and Worker types
 
+Production API: `https://pms-api.meldar.workers.dev`
+
 ```sh
 pnpm --filter @pms/backend run deploy
 pnpm --filter @pms/backend cf-typegen
