@@ -22,7 +22,7 @@ Run these from the repo root.
 
 ## Local API
 
-The Vite proxy sends `/api` to `http://127.0.0.1:8788` and strips the `/api` prefix. The portal client tries `http://127.0.0.1:8788`, then `http://127.0.0.1:8787`, then `/api`, and keeps the first base whose `GET /` returns `{ name: "pms" }`. `wrangler dev` defaults to port 8787, so the proxy misses it unless you pass `--port 8788`. CORS allows local origins and `pms-portal` production or Preview Workers under the `meldar` workers.dev account.
+The portal reads its API origin from `VITE_API_BASE_URL`, inlined at build time. `apps/portal/.env.development` sets it to `http://127.0.0.1:8788` for `pnpm dev`, which matches the backend `dev` script (`wrangler dev --port 8788`). Override it in `.env.local`. `vite build` and the module itself fail if it is unset. On Cloudflare, set it as a Workers Builds build variable (production `https://pms-api.meldar.workers.dev`, other branches `https://staging-pms-api.meldar.workers.dev`), not a runtime variable. There is no Vite proxy. CORS allows local origins and `pms-portal` production or Preview Workers under the `meldar` workers.dev account.
 
 ## Domain
 

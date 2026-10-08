@@ -6,7 +6,6 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",
-    "build:cloudflare": "node ../../scripts/portal-build.mjs",
     "deploy": "wrangler deploy",
     "deploy:preview": "wrangler preview",
     "lint": "eslint .",
