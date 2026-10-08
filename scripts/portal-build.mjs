@@ -1,6 +1,5 @@
 import { spawnSync } from 'node:child_process'
 import { fileURLToPath } from 'node:url'
-import { previewName } from './preview-name.mjs'
 
 const branch = process.env.WORKERS_CI_BRANCH
 const workersSubdomain = process.env.CLOUDFLARE_WORKERS_SUBDOMAIN
@@ -11,9 +10,7 @@ if (!workersSubdomain || !/^[a-z0-9-]+$/.test(workersSubdomain)) {
   throw new Error('CLOUDFLARE_WORKERS_SUBDOMAIN must be a workers.dev subdomain')
 }
 
-const apiWorker = branch === productionBranch
-  ? 'pms-api'
-  : `${previewName(branch)}-pms-api`
+const apiWorker = branch === productionBranch ? 'pms-api' : 'staging-pms-api'
 const apiOrigin = `https://${apiWorker}.${workersSubdomain}.workers.dev`
 const portalDir = fileURLToPath(new URL('../apps/portal/', import.meta.url))
 

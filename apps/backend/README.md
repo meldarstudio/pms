@@ -53,6 +53,8 @@ and rooms; use `pnpm db:reset:local` to undo edits and reload all sample data.
 
 Production API: `https://pms-api.meldar.workers.dev`
 
+Staging API: `https://staging-pms-api.meldar.workers.dev`
+
 ```sh
 pnpm --filter @pms/backend run deploy
 pnpm --filter @pms/backend cf-typegen
@@ -61,8 +63,8 @@ pnpm --filter @pms/backend cf-typegen
 The deploy command applies pending migrations to `pms-production` before
 deploying the `pms-api` Worker. Production starts with schema only.
 
-Worker Previews use the shared `pms-preview` database. Reset its sample data
-with:
+The persistent `staging` branch and API feature-branch Previews use the shared
+`pms-preview` database. Reset its sample data with:
 
 ```sh
 pnpm --filter @pms/backend db:reset:preview
@@ -76,5 +78,22 @@ command, `pnpm --filter @pms/backend run deploy:ci` as the deploy command, and
 `pnpm --filter @pms/backend run deploy:preview:ci` as the Preview command. These
 commands deploy code without changing either database. Apply new migrations
 explicitly before deploying a schema change.
+
+Under **Settings > Build > Build watch paths**, set the API Worker's include
+paths to:
+
+```text
+apps/backend/*
+packages/shared/*
+scripts/*
+package.json
+pnpm-lock.yaml
+pnpm-workspace.yaml
+```
+
+Leave exclude paths empty. This prevents portal-only commits from deploying the
+API. Pushes to the `staging` branch create or update the stable
+`staging-pms-api` Preview. Other branches can still create isolated API
+Previews for direct API testing.
 
 The Hono application uses the `Env` type from `src/env.ts`.

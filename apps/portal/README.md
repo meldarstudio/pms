@@ -10,8 +10,9 @@ pnpm dev:portal
 ```
 
 The local client tries the local API ports before the Vite `/api` proxy. A
-Cloudflare build embeds the matching `pms-api` Worker URL in the JavaScript
-bundle.
+production Cloudflare build embeds the production API URL. Every branch Preview
+uses the stable staging API at
+`https://staging-pms-api.meldar.workers.dev`.
 
 ## Deployment
 
@@ -34,5 +35,20 @@ For Workers Builds, use these settings:
 - Build variable: `CLOUDFLARE_WORKERS_SUBDOMAIN=meldar`
 
 Workers Builds provides `WORKERS_CI_BRANCH`. The build script uses it to embed
-the production API URL for `main` and the corresponding API Preview URL for
-other branches.
+the production API URL for `main` and the stable staging API URL for every other
+branch. Portal Previews therefore do not require matching API branch Previews.
+
+Under **Settings > Build > Build watch paths**, set the portal Worker's include
+paths to:
+
+```text
+apps/portal/*
+packages/shared/*
+scripts/*
+package.json
+pnpm-lock.yaml
+pnpm-workspace.yaml
+```
+
+Leave exclude paths empty. This prevents backend-only commits from deploying
+the portal. Keep `CLOUDFLARE_WORKERS_SUBDOMAIN=meldar` in the build variables.
