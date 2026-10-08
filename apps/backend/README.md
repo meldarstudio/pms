@@ -85,7 +85,6 @@ paths to:
 ```text
 apps/backend/*
 packages/shared/*
-scripts/*
 package.json
 pnpm-lock.yaml
 pnpm-workspace.yaml
@@ -93,7 +92,8 @@ pnpm-workspace.yaml
 
 Leave exclude paths empty. This prevents portal-only commits from deploying the
 API. Pushes to the `staging` branch create or update the stable
-`staging-pms-api` Preview. Other branches can still create isolated API
-Previews for direct API testing.
+`staging-pms-api` Preview. Other branches can still create branch-specific API
+Preview deployments for direct testing. All API Previews share the
+`pms-preview` database.
 
 The Hono application uses the `Env` type from `src/env.ts`.

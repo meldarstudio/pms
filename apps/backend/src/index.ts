@@ -17,7 +17,7 @@ app.use(
   cors({
     origin: (origin) =>
       /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/.test(origin) ||
-      /^https:\/\/(?:[a-z0-9-]+-)?pms-portal\.[a-z0-9-]+\.workers\.dev$/.test(origin)
+      /^https:\/\/(?:[a-z0-9-]+-)?pms-portal\.meldar\.workers\.dev$/.test(origin)
         ? origin
         : null,
   }),

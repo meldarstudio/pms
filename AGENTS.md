@@ -4,8 +4,8 @@ pnpm workspace. `packageManager` is `pnpm@11.22.0`. Do not use npm or npx for pr
 
 ## Packages
 
-- `@pms/portal` in `apps/portal` is the Vite React SPA. There is no router. Tabs live in `src/App.tsx`. Dashboard and Reservations are empty placeholders. Fetch helpers and response types are hand-written in `src/lib/api.ts`. TanStack Query hooks are in `src/lib/queries.ts`. Those types are not imported from `@pms/shared`.
-- `@pms/backend` in `apps/backend` is the Hono Worker. Entry is `src/index.ts`. D1 binding is `DB`, database name is `pms`. Request schemas come from `@pms/shared`. Routes call `validate()` and throw `HttpError` with status 400, 404, or 409. Error JSON is `{ error: string }`. The backend README's `CloudflareBindings` generic is stale. The app uses `Env` from `src/env.ts`.
+- `@pms/portal` in `apps/portal` is the Vite React SPA. There is no router. Tabs live in `src/App.tsx`. Dashboard and Reservations are empty placeholders. Fetch helpers and response types are hand-written in `src/lib/api.ts`. TanStack Query hooks are in `src/lib/queries.ts`. It does not depend on `@pms/shared`.
+- `@pms/backend` in `apps/backend` is the Hono Worker. Entry is `src/index.ts`. D1 binding is `DB`; local, production, and Preview databases are `pms`, `pms-production`, and `pms-preview`. Request schemas come from `@pms/shared`. Routes call `validate()` and throw `HttpError` with status 400, 404, or 409. Error JSON is `{ error: string }`. The app uses `Env` from `src/env.ts`.
 - `@pms/shared` in `packages/shared` is Zod schemas only. It exports `./src/index.ts` and has no build or typecheck script.
 
 ## Commands
@@ -13,7 +13,7 @@ pnpm workspace. `packageManager` is `pnpm@11.22.0`. Do not use npm or npx for pr
 Run these from the repo root.
 
 - `pnpm dev` starts portal and backend. `pnpm dev:portal` and `pnpm dev:backend` start one.
-- `pnpm test` runs backend Vitest only. One file: `pnpm --filter @pms/backend exec vitest run src/lib/dates.test.ts`. Tests are colocated `*.test.ts` files under `apps/backend/src`. There is no Vitest config and no portal test script.
+- `pnpm test` runs backend Vitest only. Tests are colocated under `apps/backend/src`. The portal has a separate Node test script: `pnpm --filter @pms/portal test`.
 - `pnpm lint` is portal ESLint only. Format the portal with `pnpm --filter @pms/portal format`.
 - `pnpm typecheck` runs each package that defines `typecheck`. Shared does not.
 - After a schema edit in `apps/backend/src/db/schema.ts`, run `pnpm db:generate`, then `pnpm db:migrate:local`. First local data load is `pnpm db:seed:local` (`apps/backend/seed.sql` uses `INSERT OR IGNORE`).
@@ -22,7 +22,7 @@ Run these from the repo root.
 
 ## Local API
 
-The Vite proxy sends `/api` to `http://127.0.0.1:8788` and strips the `/api` prefix. The portal client tries `http://127.0.0.1:8788`, then `http://127.0.0.1:8787`, then `/api`, and keeps the first base whose `GET /` returns `{ name: "pms" }`. `wrangler dev` defaults to port 8787, so the proxy misses it unless you pass `--port 8788`. CORS allows only `localhost` and `127.0.0.1`.
+The Vite proxy sends `/api` to `http://127.0.0.1:8788` and strips the `/api` prefix. The portal client tries `http://127.0.0.1:8788`, then `http://127.0.0.1:8787`, then `/api`, and keeps the first base whose `GET /` returns `{ name: "pms" }`. `wrangler dev` defaults to port 8787, so the proxy misses it unless you pass `--port 8788`. CORS allows local origins and `pms-portal` production or Preview Workers under the `meldar` workers.dev account.
 
 ## Domain
 

@@ -22,7 +22,6 @@ Build and deploy production from the repository root:
 
 ```sh
 WORKERS_CI_BRANCH=main \
-  CLOUDFLARE_WORKERS_SUBDOMAIN=meldar \
   pnpm --filter @pms/portal build:cloudflare
 pnpm --filter @pms/portal run deploy
 ```
@@ -32,7 +31,6 @@ For Workers Builds, use these settings:
 - Build command: `pnpm --filter @pms/portal build:cloudflare`
 - Deploy command: `pnpm --filter @pms/portal run deploy`
 - Preview command: `pnpm --filter @pms/portal run deploy:preview`
-- Build variable: `CLOUDFLARE_WORKERS_SUBDOMAIN=meldar`
 
 Workers Builds provides `WORKERS_CI_BRANCH`. The build script uses it to embed
 the production API URL for `main` and the stable staging API URL for every other
@@ -43,12 +41,11 @@ paths to:
 
 ```text
 apps/portal/*
-packages/shared/*
-scripts/*
+scripts/portal-build.mjs
 package.json
 pnpm-lock.yaml
 pnpm-workspace.yaml
 ```
 
 Leave exclude paths empty. This prevents backend-only commits from deploying
-the portal. Keep `CLOUDFLARE_WORKERS_SUBDOMAIN=meldar` in the build variables.
+the portal.
