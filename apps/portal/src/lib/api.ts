@@ -77,35 +77,10 @@ export type CreateReservationInput = {
   }[]
 }
 
-const configuredBase = import.meta.env.VITE_API_BASE_URL?.replace(/\/+$/, "")
-const bases = configuredBase
-  ? [configuredBase]
-  : ["http://127.0.0.1:8788", "http://127.0.0.1:8787", "/api"]
+const API_BASE = import.meta.env.VITE_API_BASE_URL?.replace(/\/+$/, "")
 
-let basePromise: Promise<string> | null = null
-
-async function resolveBase() {
-  for (const base of bases) {
-    try {
-      const response = await fetch(`${base}/`, {
-        signal: AbortSignal.timeout(2000),
-      })
-      if (!response.ok) continue
-      const body = (await response.json()) as { name?: string }
-      if (body.name === "pms") return base
-    } catch {
-      continue
-    }
-  }
-  throw new Error("Could not reach the API. Start the backend and try again.")
-}
-
-function apiBase() {
-  basePromise ??= resolveBase().catch((err: unknown) => {
-    basePromise = null
-    throw err
-  })
-  return basePromise
+if (!API_BASE) {
+  throw new Error("VITE_API_BASE_URL is not set. Set it before building.")
 }
 
 async function errorMessage(response: Response) {
@@ -119,8 +94,7 @@ async function errorMessage(response: Response) {
 }
 
 async function getJson<T>(path: string, signal?: AbortSignal): Promise<T> {
-  const base = await apiBase()
-  const response = await fetch(`${base}${path}`, { signal })
+  const response = await fetch(`${API_BASE}${path}`, { signal })
   if (!response.ok) throw new Error(await errorMessage(response))
   return (await response.json()) as T
 }
@@ -130,8 +104,7 @@ export function listRooms(signal?: AbortSignal) {
 }
 
 async function writeJson<T>(path: string, method: string, body?: unknown) {
-  const base = await apiBase()
-  const response = await fetch(`${base}${path}`, {
+  const response = await fetch(`${API_BASE}${path}`, {
     method,
     headers:
       body === undefined ? undefined : { "content-type": "application/json" },
