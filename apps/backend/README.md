@@ -70,7 +70,9 @@ The reset command is destructive and only targets the database declared in
 `wrangler.preview-migrations.jsonc`.
 
 For Workers Builds, use `pnpm --filter @pms/backend typecheck` as the build
-command, `pnpm --filter @pms/backend run deploy` as the deploy command, and
-`pnpm --filter @pms/backend run deploy:preview` as the Preview command.
+command, `pnpm --filter @pms/backend run deploy:ci` as the deploy command, and
+`pnpm --filter @pms/backend run deploy:preview:ci` as the Preview command. These
+commands deploy code without changing either database. Apply new migrations
+explicitly before deploying a schema change.
 
 The Hono application uses the `Env` type from `src/env.ts`.
