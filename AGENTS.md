@@ -20,6 +20,14 @@ Run these from the repo root.
 - Refresh Worker types with `pnpm --filter @pms/backend cf-typegen`. Do not edit `apps/backend/worker-configuration.d.ts`.
 - Deploy is not a root script. Use `pnpm --filter @pms/backend deploy`.
 
+## Branch and deployment workflow
+
+- Feature PRs, including portal and backend changes, target `staging`. Merge `staging` into `main` through a PR when the combined changes are ready for production.
+- The `staging` branch deploys the stable `staging-pms-api` endpoint against `pms-preview`; the production `main` branch deploys `pms-api` against `pms-production`.
+- The portal's non-main builds use `https://staging-pms-api.meldar.workers.dev`; production builds use `https://pms-api.meldar.workers.dev`. `VITE_API_BASE_URL` is a Workers Builds build variable, inlined at build time.
+- Apply schema migrations to the target database before deploying code that requires them: local migrations for local development, `pms-preview` for staging, and `pms-production` when releasing to production. Do not apply a production migration as part of a feature PR.
+- Since `staging` is the integration environment, backend changes needed by portal changes should be merged to `staging` before testing the combined app there. Merge or fast-forward `main` back into `staging` after production-only hotfixes.
+
 ## Local API
 
 The portal reads its API origin from `VITE_API_BASE_URL`, inlined at build time. `apps/portal/.env.development` sets it to `http://127.0.0.1:8788` for `pnpm dev`, which matches the backend `dev` script (`wrangler dev --port 8788`). Override it in `.env.local`. `vite build` and the module itself fail if it is unset. On Cloudflare, set it as a Workers Builds build variable (production `https://pms-api.meldar.workers.dev`, other branches `https://staging-pms-api.meldar.workers.dev`), not a runtime variable. There is no Vite proxy. CORS allows local origins and `pms-portal` production or Preview Workers under the `meldar` workers.dev account.
