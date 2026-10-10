@@ -37,6 +37,10 @@ export type Inventory = {
 }
 
 export type ReservationLine = {
+  checkIn?: string
+  checkOut?: string
+  actualDeparture?: string | null
+  assignmentStart?: string | null
   id: string
   roomTypeId: string
   roomId: string | null
@@ -44,6 +48,9 @@ export type ReservationLine = {
 }
 
 export type Reservation = {
+  code?: string
+  balanceCents?: number
+  totalCents?: number
   id: string
   guestName: string
   checkIn: string
@@ -76,11 +83,26 @@ export type Availability = {
 
 export type ReservationGuest = {
   id: string
-  firstName: string
-  lastName: string
+  fullName: string
+
   email: string | null
   phone: string | null
   notes: string | null
+  documentType?: string | null
+  documentNumber?: string | null
+}
+
+export type BookingContact = {
+  fullName: string
+
+  email: string | null
+  phone: string | null
+  documentType?: string | null
+  documentNumber?: string | null
+}
+export type StayingGuest = BookingContact & {
+  id: string
+  reservationRoomId: string | null
 }
 
 export type PaymentMethod = "cash" | "card" | "transfer" | "yape" | "other"
@@ -114,18 +136,27 @@ export type PatchReservationInput = {
 }
 
 export type PatchGuestInput = {
-  firstName?: string
-  lastName?: string
+  fullName?: string
+
   email?: string
   phone?: string
   notes?: string
 }
 
 export type ReservationDetail = {
+  version: number
+  cancelledAt: string | null
+  notes: string | null
+  waiverCents: number
+  refundCents: number
+  creditCents: number
+  financialEntries: FinancialEntry[]
+  history: WorkflowEvent[]
   id: string
   code: string
   guestId: string
   guest: ReservationGuest
+  stayingGuests: StayingGuest[]
   checkIn: string
   checkOut: string
   currency: string
@@ -138,6 +169,15 @@ export type ReservationDetail = {
   rooms: {
     id: string
     roomTypeId: string
+    checkIn: string
+    checkOut: string
+    originalCheckIn: string | null
+    originalCheckOut: string | null
+    originalNights: string | null
+    actualArrival: string | null
+    actualDeparture: string | null
+    assignmentStart: string | null
+    cancellationReason: string | null
     roomTypeName: string | null
     roomId: string | null
     roomNumber: string | null
@@ -153,8 +193,8 @@ export type ReservationDetail = {
 
 export type CreateReservationInput = {
   guest: {
-    firstName: string
-    lastName: string
+    fullName: string
+
     email?: string
     phone?: string
     notes?: string
@@ -295,16 +335,33 @@ export function patchGuest(id: string, body: PatchGuestInput) {
   return writeJson<ReservationGuest>(`/guests/${id}`, "PATCH", body)
 }
 
-export function assignRoom(
+export async function assignRoom(
   reservationId: string,
   lineId: string,
   roomId: string
 ) {
-  return writeJson<ReservationDetail>(
-    `/reservations/${reservationId}/rooms/${lineId}/assign-room`,
-    "POST",
-    { roomId }
-  )
+  const detail = await getReservation(reservationId)
+  const line = detail.rooms.find((l) => l.id === lineId)
+  if (!line || line.status !== "confirmed" || line.roomId)
+    throw new Error("La habitación cambió. Actualiza la reserva.")
+  return sendWorkflow(reservationId, {
+    requestId: crypto.randomUUID(),
+    version: detail.version,
+    actions: [
+      {
+        type: "edit-room",
+        lineId,
+        room: {
+          roomTypeId: line.roomTypeId,
+          roomId,
+          adults: line.adults,
+          children: line.children,
+          checkIn: line.checkIn,
+          checkOut: line.checkOut,
+        },
+      },
+    ],
+  })
 }
 
 export function unassignRoom(reservationId: string, lineId: string) {
@@ -378,4 +435,121 @@ export async function listReservations(
     if (page.length < limit || offset >= 2000) return rows
     offset += limit
   }
+}
+
+export type WorkflowRoom = {
+  roomTypeId: string
+  roomId: string | null
+  adults: number
+  children: number
+  checkIn: string
+  checkOut: string
+  nightlyRateCents?: number
+}
+export type FinancialInput = {
+  kind: "payment" | "refund" | "discount" | "waiver"
+  amountCents: number
+  reason?: string
+  method?: PaymentMethod
+  occurredAt?: string
+  paymentDate?: string
+  reference?: string
+}
+export type FinancialEntry = Omit<
+  FinancialInput,
+  "kind" | "reason" | "method" | "reference" | "paymentDate"
+> & {
+  id: string
+  kind: FinancialInput["kind"] | "legacy_signed" | "legacy_discount_excluded"
+  appliedCents: number
+  reason: string | null
+  method: PaymentMethod | null
+  occurredAt: string
+  paymentDate: string | null
+  reference: string | null
+  createdAt: string
+  voidedAt: string | null
+  correctionReason: string | null
+  replacesId: string | null
+  legacy: number
+}
+export type WorkflowAction =
+  | { type: "contact"; contact: BookingContact }
+  | { type: "set-guests"; guests: StayingGuest[] }
+  | { type: "edit-room"; lineId: string; room: WorkflowRoom }
+  | { type: "add-room"; room: WorkflowRoom }
+  | { type: "check-in" | "check-out"; lineIds: string[] }
+  | { type: "move"; lineId: string; roomId: string }
+  | {
+      type: "undo-check-in"
+      lineId: string
+      reason: string
+      guestsNotArrived: true
+    }
+  | {
+      type: "cancel-room"
+      lineId: string
+      reason?: string
+      accidental?: boolean
+    }
+  | { type: "no-show"; lineId: string; reason: string }
+  | { type: "cancel"; reason?: string; confirmed: true }
+  | { type: "financial"; entry: FinancialInput }
+  | {
+      type: "correct-financial"
+      entryId: string
+      reason: string
+      replacement?: FinancialInput
+    }
+  | { type: "notes"; notes: string }
+export type WorkflowCommand = {
+  requestId: string
+  version: number
+  actions: WorkflowAction[]
+}
+export type WorkflowPreview = Pick<
+  ReservationDetail,
+  | "subtotalCents"
+  | "totalCents"
+  | "discountCents"
+  | "waiverCents"
+  | "paidCents"
+  | "refundCents"
+  | "balanceCents"
+  | "creditCents"
+> & {
+  settlementBlocked: boolean
+  rooms: ReservationDetail["rooms"]
+  financialEntries: ReservationDetail["financialEntries"]
+}
+export type WorkflowEvent = {
+  id: string
+  kind: string
+  reason: string | null
+  createdAt: string
+  before: { lines?: ReservationDetail["rooms"] } | null
+  after: { lines?: ReservationDetail["rooms"] } | ReservationDetail["rooms"]
+}
+export function sendWorkflow(id: string, body: WorkflowCommand) {
+  return writeJson<ReservationDetail>(
+    `/reservations/${id}/commands`,
+    "POST",
+    body
+  )
+}
+export function previewWorkflow(id: string, body: WorkflowCommand) {
+  return writeJson<WorkflowPreview>(`/reservations/${id}/preview`, "POST", body)
+}
+export function createWorkflowBooking(body: {
+  requestId: string
+  guest: CreateReservationInput["guest"]
+  rooms: WorkflowRoom[]
+  notes?: string
+}) {
+  return writeJson<ReservationDetail>("/reservations", "POST", body)
+}
+export function searchReservations(q: string, status: string, offset = 0) {
+  return getJson<(ReservationDetail & { guestName: string })[]>(
+    `/reservations?limit=50&offset=${offset}${q ? `&q=${encodeURIComponent(q)}` : ""}${status ? `&status=${status}` : ""}`
+  )
 }

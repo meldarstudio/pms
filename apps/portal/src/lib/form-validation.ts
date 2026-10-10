@@ -1,13 +1,8 @@
 export type FieldErrors = Record<string, string | null>
 
-export function contactErrors(
-  firstName: string,
-  lastName: string,
-  email: string
-) {
+export function contactErrors(fullName: string, email: string) {
   return {
-    firstName: firstName.trim() ? null : "Ingresa los nombres.",
-    lastName: lastName.trim() ? null : "Ingresa los apellidos.",
+    fullName: fullName.trim() ? null : "Ingresa el nombre completo.",
     email:
       email.trim() && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())
         ? "Ingresa un correo válido."

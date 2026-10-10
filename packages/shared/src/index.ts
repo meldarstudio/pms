@@ -5,8 +5,7 @@ export const dateSchema = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'date must be 
 const text = (max: number) => z.string().trim().min(1).max(max)
 
 export const guestFields = z.object({
-  firstName: text(100),
-  lastName: text(100),
+  fullName: text(200),
   email: z
     .string()
     .trim()
@@ -70,7 +69,10 @@ export const assignRoomSchema = z.object({
 })
 
 export const paymentSchema = z.object({
-  amountCents: z.number().int().refine((value) => value !== 0, 'amount cannot be zero'),
+  amountCents: z
+    .number()
+    .int()
+    .refine((value) => value !== 0, 'amount cannot be zero'),
   method: z.enum(['cash', 'card', 'transfer', 'yape', 'other']),
   reference: text(200).optional(),
   paidAt: z.string().min(1).optional(),
@@ -83,9 +85,11 @@ export const roomTypeSchema = z.object({
   baseRateCents: z.number().int().min(0),
 })
 
-export const patchRoomTypeSchema = roomTypeSchema.partial().refine((value) => Object.keys(value).length > 0, {
-  message: 'send a field to update',
-})
+export const patchRoomTypeSchema = roomTypeSchema
+  .partial()
+  .refine((value) => Object.keys(value).length > 0, {
+    message: 'send a field to update',
+  })
 
 export const roomSchema = z.object({
   number: text(20),
@@ -172,3 +176,133 @@ export type PatchRoomInput = z.infer<typeof patchRoomSchema>
 export type RateWriteInput = z.infer<typeof rateWriteSchema>
 export type RoomClosureInput = z.infer<typeof roomClosureSchema>
 export type PatchRoomClosureInput = z.infer<typeof patchRoomClosureSchema>
+
+const cents = z.number().int().min(1).max(1000000000)
+const reason = text(2000)
+export const financialInputSchema = z
+  .object({
+    kind: z.enum(['payment', 'refund', 'discount', 'waiver']),
+    amountCents: cents,
+    reason: reason.optional(),
+    method: z.enum(['cash', 'card', 'transfer', 'yape', 'other']).optional(),
+    occurredAt: z.iso.datetime().optional(),
+    paymentDate: z.iso.date().optional(),
+    reference: text(200).optional(),
+  })
+  .strict()
+  .superRefine((v, ctx) => {
+    if (['refund', 'waiver'].includes(v.kind) && !v.reason)
+      ctx.addIssue({ code: 'custom', message: 'reason is required' })
+    if (['payment', 'refund'].includes(v.kind) && !v.method)
+      ctx.addIssue({ code: 'custom', message: 'method is required' })
+    if (v.kind === 'payment' && !v.paymentDate)
+      ctx.addIssue({ code: 'custom', message: 'payment date is required' })
+  })
+const workflowRoom = z
+  .object({
+    roomTypeId: z.string().min(1),
+    roomId: z.string().min(1).nullable().optional(),
+    adults: z.number().int().min(1).max(100),
+    children: z.number().int().min(0).max(100),
+    checkIn: dateSchema,
+    checkOut: dateSchema,
+    nightlyRateCents: z.number().int().min(0).max(1000000000).optional(),
+  })
+  .strict()
+export const contactSchema = guestFields
+  .extend({
+    email: guestFields.shape.email.unwrap().nullable(),
+    phone: text(40).nullable(),
+    documentType: text(40).nullable().optional(),
+    documentNumber: text(60).nullable().optional(),
+  })
+  .omit({ notes: true })
+  .strict()
+export const stayingGuestSchema = contactSchema.extend({
+  id: z.uuid(),
+  reservationRoomId: z.string().min(1).nullable(),
+})
+export const workflowActionSchema = z.discriminatedUnion('type', [
+  z.object({ type: z.literal('contact'), contact: contactSchema }).strict(),
+  z
+    .object({ type: z.literal('set-guests'), guests: z.array(stayingGuestSchema).max(200) })
+    .strict(),
+  z
+    .object({
+      type: z.literal('edit-room'),
+      lineId: z.string(),
+      room: workflowRoom.omit({ nightlyRateCents: true }),
+    })
+    .strict(),
+  z.object({ type: z.literal('add-room'), room: workflowRoom }).strict(),
+  z.object({ type: z.literal('check-in'), lineIds: z.array(z.string()).min(1).max(60) }).strict(),
+  z.object({ type: z.literal('check-out'), lineIds: z.array(z.string()).min(1).max(60) }).strict(),
+  z.object({ type: z.literal('move'), lineId: z.string(), roomId: z.string() }).strict(),
+  z
+    .object({
+      type: z.literal('undo-check-in'),
+      lineId: z.string(),
+      reason,
+      guestsNotArrived: z.literal(true),
+    })
+    .strict(),
+  z
+    .object({
+      type: z.literal('cancel-room'),
+      lineId: z.string(),
+      reason: z.string().trim().max(2000).optional(),
+      accidental: z.boolean().optional(),
+    })
+    .strict(),
+  z.object({ type: z.literal('no-show'), lineId: z.string(), reason: reason.optional() }).strict(),
+  z
+    .object({
+      type: z.literal('cancel'),
+      reason: z.string().trim().max(2000).optional(),
+      confirmed: z.literal(true),
+    })
+    .strict(),
+  z.object({ type: z.literal('financial'), entry: financialInputSchema }).strict(),
+  z
+    .object({
+      type: z.literal('correct-financial'),
+      entryId: z.string(),
+      reason,
+      replacement: financialInputSchema.optional(),
+    })
+    .strict(),
+  z
+    .object({
+      type: z.literal('set-status'),
+      lineId: z.string().min(1),
+      status: z.enum(['confirmed', 'checked_in', 'checked_out', 'cancelled', 'no_show']),
+    })
+    .strict(),
+  z
+    .object({
+      type: z.literal('edit-financial'),
+      entryId: z.string().min(1),
+      entry: financialInputSchema,
+    })
+    .strict(),
+  z.object({ type: z.literal('delete-financial'), entryId: z.string().min(1) }).strict(),
+  z.object({ type: z.literal('notes'), notes: z.string().max(2000) }).strict(),
+])
+export const workflowCommandSchema = z
+  .object({
+    requestId: z.uuid(),
+    version: z.number().int().min(0),
+    actions: z.array(workflowActionSchema).min(1).max(60),
+  })
+  .strict()
+export const workflowCreateSchema = z
+  .object({
+    requestId: z.uuid(),
+    guest: guestFields,
+    rooms: z.array(workflowRoom).min(1).max(60),
+    notes: z.string().max(2000).optional(),
+  })
+  .strict()
+export type WorkflowAction = z.infer<typeof workflowActionSchema>
+export type WorkflowCommand = z.infer<typeof workflowCommandSchema>
+export type WorkflowCreate = z.infer<typeof workflowCreateSchema>

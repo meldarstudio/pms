@@ -16,7 +16,7 @@ import {
   partyCounts,
 } from "../src/lib/form-validation.ts"
 
-const guest = { firstName: "Ana", lastName: "Pérez" }
+const guest = { fullName: "Ana Pérez" }
 const room: BookingRoomRequest = {
   key: "draft-a",
   roomTypeId: "double",
@@ -75,15 +75,14 @@ function assigned(detail: ReservationDetail, lineId: string, roomId: string) {
 
 describe("reservation field validation", () => {
   it("rejects whitespace-only names and permits an omitted or trimmed email", () => {
-    const errors = contactErrors("  ", "\t", "  ")
-    assert.ok(errors.firstName)
-    assert.ok(errors.lastName)
+    const errors = contactErrors("  ", "  ")
+    assert.ok(errors.fullName)
     assert.equal(errors.email, null)
     assert.equal(
-      contactErrors(" Ana ", " Pérez ", " ana@example.com ").email,
+      contactErrors(" Ana Pérez ", " ana@example.com ").email,
       null
     )
-    assert.ok(contactErrors("Ana", "Pérez", "ana@").email)
+    assert.ok(contactErrors("Ana Pérez", "ana@").email)
   })
 
   it("does not silently treat an empty child count as zero", () => {

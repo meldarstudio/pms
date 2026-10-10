@@ -5,7 +5,7 @@ import { HttpError } from './http'
 import { nightsBetween } from './lib/dates'
 import { peakOccupied } from './lib/inventory-grid'
 
-const openStatuses = ['confirmed', 'checked_in']
+const openStatuses = ['confirmed', 'checked_in', 'checked_out']
 
 export async function loadRoomTypes(db: Db, ids?: string[]) {
   if (ids && ids.length === 0) return []
@@ -38,16 +38,16 @@ export async function occupiedCounts(
       .select({
         roomTypeId: reservationRooms.roomTypeId,
         status: reservationRooms.status,
-        checkIn: reservations.checkIn,
-        checkOut: reservations.checkOut,
+        checkIn: sql<string>`coalesce(${reservationRooms.checkIn}, ${reservations.checkIn})`,
+        checkOut: sql<string>`coalesce(${reservationRooms.checkOut}, ${reservations.checkOut})`,
       })
       .from(reservationRooms)
       .innerJoin(reservations, eq(reservations.id, reservationRooms.reservationId))
       .where(
         and(
           inArray(reservationRooms.status, openStatuses),
-          lt(reservations.checkIn, checkOut),
-          gt(reservations.checkOut, checkIn),
+          lt(reservationRooms.checkIn, checkOut),
+          gt(reservationRooms.checkOut, checkIn),
           excludeReservationId ? ne(reservations.id, excludeReservationId) : undefined,
         ),
       ),

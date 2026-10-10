@@ -1,4 +1,4 @@
-const inactive = new Set(['cancelled', 'no_show', 'checked_out'])
+const inactive = new Set(['cancelled', 'no_show'])
 
 export type GridStay = {
   roomTypeId: string

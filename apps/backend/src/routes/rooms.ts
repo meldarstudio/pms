@@ -7,7 +7,7 @@ import type { Env } from '../env'
 import { HttpError, rethrowConflict, validate } from '../http'
 import { todayUtc } from '../lib/dates'
 
-const assignedStay = ['confirmed', 'checked_in']
+const assignedStay = ['confirmed', 'checked_in', 'checked_out']
 
 export const roomRoutes = new Hono<Env>()
 
@@ -62,7 +62,7 @@ roomRoutes.patch('/:id', validate('json', patchRoomSchema), async (c) => {
         and(
           eq(reservationRooms.roomId, room.id),
           inArray(reservationRooms.status, assignedStay),
-          gt(reservations.checkOut, todayUtc()),
+          gt(reservationRooms.checkOut, todayUtc()),
         ),
       )
       .limit(1)

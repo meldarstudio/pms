@@ -1,5 +1,5 @@
 import { guestFields, listQuerySchema } from '@pms/shared'
-import { asc, desc, eq, like, or, sql } from 'drizzle-orm'
+import { asc, desc, eq, like, or } from 'drizzle-orm'
 import { Hono } from 'hono'
 import { getDb } from '../db'
 import { guests, reservations } from '../db/schema'
@@ -23,14 +23,14 @@ guestRoutes.get('/', validate('query', listQuerySchema), async (c) => {
     .where(
       pattern
         ? or(
-            like(sql`${guests.firstName} || ' ' || ${guests.lastName}`, pattern),
+            like(guests.fullName, pattern),
             like(guests.email, pattern),
             like(guests.phone, pattern),
             like(guests.documentNumber, pattern),
           )
         : undefined,
     )
-    .orderBy(asc(guests.lastName), asc(guests.firstName))
+    .orderBy(asc(guests.fullName))
     .limit(query.limit ?? 50)
     .offset(query.offset ?? 0)
   return c.json(rows.map(presentGuest))
@@ -41,8 +41,9 @@ guestRoutes.post('/', validate('json', guestFields), async (c) => {
   const db = getDb(c.env.DB)
   const row = {
     id: crypto.randomUUID(),
-    firstName: body.firstName,
-    lastName: body.lastName,
+    fullName: body.fullName,
+    firstName: '',
+    lastName: '',
     email: body.email ?? null,
     phone: body.phone ?? null,
     documentType: body.documentType ?? null,

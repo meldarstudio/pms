@@ -1,35 +1,64 @@
-import { useId, useRef, useState, type FormEvent } from "react"
 import {
-  addDays,
-  differenceInCalendarDays,
-  parse,
-  startOfDay,
-  startOfToday,
-} from "date-fns"
-
-import { EllipsisIcon, PlusIcon, UnlinkIcon, XIcon } from "lucide-react"
-
+  useCallback,
+  useEffect,
+  useId,
+  useMemo,
+  useRef,
+  useState,
+  type ReactNode,
+} from "react"
+import { useQuery, useQueryClient } from "@tanstack/react-query"
 import {
-  BookingSummary,
-  type BookingSummaryRoom,
-} from "@/components/booking-summary"
-import { DateField } from "@/components/date-field"
-import { ReservationPayments } from "@/components/reservation-payments"
-import { ReservationStatusSelect } from "@/components/reservation-status-select"
+  ArrowUpRightIcon,
+  EllipsisIcon,
+  PlusIcon,
+  Undo2Icon,
+  XIcon,
+} from "lucide-react"
+import { cn } from "cn"
+import {
+  Empty,
+  EmptyHeader,
+  EmptyTitle,
+  EmptyDescription,
+} from "@/components/ui/empty"
+import {
+  contactValue,
+  guestValues,
+  isActiveStay,
+  nextStayAction,
+  overlappingRoomIds,
+  unavailableRoomIds,
+  roomEdits,
+  sharedStay,
+  stayValue,
+  type RoomDraft,
+} from "@/lib/reservation-editor"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import {
   Dialog,
   DialogContent,
-  DialogFooter,
+  DialogDescription,
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog"
+import {
+  AlertDialog,
+  AlertDialogContent,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogCancel,
+  AlertDialogAction,
+} from "@/components/ui/alert-dialog"
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuGroup,
   DropdownMenuItem,
+  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
 import {
@@ -37,67 +66,39 @@ import {
   FieldError,
   FieldGroup,
   FieldLabel,
-  FieldLegend,
-  FieldSet,
 } from "@/components/ui/field"
-import { Input } from "@/components/ui/input"
-import {
-  Select,
-  SelectContent,
-  SelectGroup,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select"
-import { Spinner } from "@/components/ui/spinner"
+import { Checkbox } from "@/components/ui/checkbox"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { Textarea } from "@/components/ui/textarea"
+import { Skeleton } from "@/components/ui/skeleton"
+import { Separator } from "@/components/ui/separator"
+import { TextField, ChoiceField } from "@/components/workflow-fields"
+import { WorkflowBill } from "@/components/workflow-bill"
+import { BookingSummary } from "@/components/booking-summary"
+import { format } from "@/lib/dates"
+import { parseISO } from "date-fns"
 import {
-  type CreateReservationInput,
-  type PatchGuestInput,
-  type PatchReservationInput,
+  createWorkflowBooking,
+  previewWorkflow,
+  type BookingContact,
+  type StayingGuest,
+  type FinancialEntry,
+  type FinancialInput,
   type ReservationDetail,
-  type ReservationGuest,
-  type RecordPaymentInput,
-  type ReservationStatusAction,
+  type WorkflowAction,
+  type WorkflowCommand,
+  type WorkflowRoom,
 } from "@/lib/api"
 import {
-  useAddReservationRoom,
-  useAssignRoom,
-  useUnassignRoom,
-  useCancelReservationRoom,
   useAvailability,
-  useChangeReservationStatus,
-  useCreateReservation,
-  usePatchGuest,
-  usePatchReservation,
   useReservation,
   useReservations,
   useRoomClosures,
   useRooms,
-  useRecordReservationPayment,
+  useRoomTypes,
+  useWorkflowCommand,
 } from "@/lib/queries"
-import { bookingRoomCharges, bookingSummary } from "@/lib/booking-prices"
-import { createBooking, type CreatedBooking } from "@/lib/create-booking"
-import {
-  contactErrors,
-  partyCounts,
-  type FieldErrors,
-} from "@/lib/form-validation"
-import { useFieldValidation } from "@/lib/use-field-validation"
-import { translateError } from "@/lib/errors"
-import { roomLineActions } from "@/lib/reservation-room-actions"
-import {
-  isRoomStatus,
-  planBulkStatus,
-  type RoomStatus,
-  type StatusRoom,
-} from "@/lib/reservation-status"
-import { CURRENCY, formatMajor, parseMajorToCents } from "@/lib/money"
-import { format } from "@/lib/dates"
 import { toast } from "@/lib/toast"
-
-const openStatuses = new Set(["confirmed", "checked_in"])
+import { formatMajor, formatMoney, parseMajorToCents } from "@/lib/money"
 
 export type BookingTarget =
   | {
@@ -108,9 +109,7 @@ export type BookingTarget =
       typeName: string
       checkIn: string
     }
-  | {
-      mode: "new"
-    }
+  | { mode: "new" }
   | {
       mode: "edit"
       reservationId: string
@@ -118,223 +117,71 @@ export type BookingTarget =
       number: string
       typeName: string
     }
-
-type RoomLineChoice = {
-  key: string
-  typeId: string | null
-  roomId: string | null
-  adults: string
-  children: string
-  discount: string
-  savedDiscountCents: number | null
-  lineId: string | null
-  status: string | null
-  savedRoomId: string | null
-  roomNumber: string | null
-  savedAdults: number | null
-  savedChildren: number | null
-  typeName: string | null
-  removed: boolean
+const labels: Record<string, string> = {
+  confirmed: "Confirmada",
+  checked_in: "En estancia",
+  checked_out: "Salida registrada",
+  cancelled: "Cancelada",
+  no_show: "No se presentó",
+  payment: "Pago",
+  refund: "Devolución",
+  discount: "Descuento",
+  waiver: "Condonación",
+  legacy_signed: "Movimiento histórico",
+  legacy_discount_excluded: "Descuento histórico excluido",
 }
-
-function emptyRoomLine(): RoomLineChoice {
-  return {
-    key: crypto.randomUUID(),
-    typeId: null,
-    roomId: null,
-    adults: "1",
-    children: "0",
-    discount: "",
-    savedDiscountCents: null,
-    lineId: null,
-    status: null,
-    savedRoomId: null,
-    roomNumber: null,
-    savedAdults: null,
-    savedChildren: null,
-    typeName: null,
-    removed: false,
-  }
+const eventLabels: Record<string, string> = {
+  created: "Reserva creada",
+  contact: "Contacto actualizado",
+  "set-guests": "Huéspedes actualizados",
+  "edit-room": "Habitación modificada",
+  "add-room": "Habitación añadida",
+  "check-in": "Llegada registrada",
+  "check-out": "Salida registrada",
+  move: "Cambio de habitación",
+  "undo-check-in": "Llegada corregida",
+  "cancel-room": "Habitación cancelada",
+  "no-show": "No se presentó",
+  cancel: "Reserva cancelada",
+  financial: "Movimiento financiero",
+  "correct-financial": "Corrección financiera",
+  notes: "Notas actualizadas",
 }
-
-function linesFromDetail(rooms: ReservationDetail["rooms"]): RoomLineChoice[] {
-  return rooms.map((room) => ({
-    key: room.id,
-    typeId: room.roomTypeId,
-    roomId: room.roomId,
-    adults: String(room.adults),
-    children: String(room.children),
-    discount: room.discountCents === 0 ? "" : formatMajor(room.discountCents),
-    savedDiscountCents: room.discountCents,
-    lineId: room.id,
-    status: room.status,
-    savedRoomId: room.roomId,
-    roomNumber: room.roomNumber,
-    savedAdults: room.adults,
-    savedChildren: room.children,
-    typeName: room.roomTypeName,
-    removed: false,
-  }))
-}
-
-function removedRoomLabel(line: RoomLineChoice, typeName: string) {
-  if (line.roomNumber) return `Habitación ${line.roomNumber}`
-  return typeName
-}
-
-function bookingError(error: unknown) {
-  return error instanceof Error
-    ? translateError(error.message)
-    : "No se pudo guardar la reserva."
-}
-
-function createdToast(
-  reservation: Pick<ReservationDetail, "id" | "code">,
-  onView: (id: string) => void
-) {
-  const toastId = toast.add({
-    title: `Reserva creada · ${reservation.code}`,
-    type: "success",
-    timeout: 8000,
-    actionProps: {
-      children: "Ver reserva",
-      onClick: () => {
-        toast.close(toastId)
-        onView(reservation.id)
-      },
-    },
-  })
-}
-
-function overlapsDay(start: string, end: string, day: string) {
-  const nextDay = format(
-    addDays(parse(day, "yyyy-MM-dd", new Date()), 1),
-    "yyyy-MM-dd"
-  )
-  return start < nextDay && end > day
-}
-
-function openRooms(
-  typeId: string | null,
-  excludeRoomId: string | null,
-  rooms: { id: string; number: string; roomTypeId: string }[] | undefined,
-  reservations:
-    | {
-        id: string
-        checkIn: string
-        checkOut: string
-        rooms: { roomId: string | null; status: string }[]
-      }[]
-    | undefined,
-  closures: { roomId: string; starts: string; ends: string }[] | undefined,
-  ready: boolean,
-  checkIn: string,
-  checkOut: string,
-  excludeReservationId?: string
-) {
-  if (!typeId || !ready || !rooms || !reservations || !closures) return []
-  return rooms
-    .filter((room) => room.roomTypeId === typeId && room.id !== excludeRoomId)
-    .filter(
-      (room) =>
-        !reservations.some(
-          (reservation) =>
-            reservation.id !== excludeReservationId &&
-            reservation.checkIn < checkOut &&
-            reservation.checkOut > checkIn &&
-            reservation.rooms.some(
-              (item) => item.roomId === room.id && openStatuses.has(item.status)
-            )
-        ) &&
-        !closures.some(
-          (closure) =>
-            closure.roomId === room.id &&
-            closure.starts < checkOut &&
-            closure.ends > checkIn
-        )
-    )
-    .sort((a, b) =>
-      a.number.localeCompare(b.number, undefined, { numeric: true })
-    )
-}
-
-function maxFreeNights(
-  checkInDate: Date,
-  roomIds: string[],
-  reservations:
-    | {
-        id: string
-        checkIn: string
-        checkOut: string
-        rooms: { roomId: string | null; status: string }[]
-      }[]
-    | undefined,
-  closures: { roomId: string; starts: string; ends: string }[] | undefined,
-  ready: boolean,
-  excludeReservationId?: string
-) {
-  if (!ready || !reservations || !closures || roomIds.length === 0) return 60
-  let limit = 60
-  for (const roomId of roomIds) {
-    for (let offset = 0; offset < limit; offset += 1) {
-      const day = format(addDays(checkInDate, offset), "yyyy-MM-dd")
-      const hasStay = reservations.some(
-        (reservation) =>
-          reservation.id !== excludeReservationId &&
-          overlapsDay(reservation.checkIn, reservation.checkOut, day) &&
-          reservation.rooms.some(
-            (item) => item.roomId === roomId && openStatuses.has(item.status)
-          )
-      )
-      const hasClosure = closures.some(
-        (closure) =>
-          closure.roomId === roomId &&
-          overlapsDay(closure.starts, closure.ends, day)
-      )
-      if (hasStay || hasClosure) {
-        limit = offset
-        break
-      }
+const today = () => new Date().toISOString().slice(0, 10)
+const tomorrow = (date: string) =>
+  new Date(new Date(`${date}T00:00:00Z`).getTime() + 86400000)
+    .toISOString()
+    .slice(0, 10)
+type Intent =
+  | { type: "financial"; kind: FinancialInput["kind"] }
+  | { type: "correction"; entry: FinancialEntry }
+  | {
+      type: "move" | "undo-check-in" | "cancel-room" | "no-show"
+      lineId: string
     }
-  }
-  return limit
-}
+  | { type: "cancel" }
 
-function clampCheckOut(checkIn: Date, checkOut: Date) {
-  const nights = differenceInCalendarDays(checkOut, checkIn)
-  if (nights < 1) return addDays(checkIn, 1)
-  if (nights > 60) return addDays(checkIn, 60)
-  return checkOut
-}
-
-function guestChanges(
-  guest: ReservationGuest,
-  values: {
-    firstName: string
-    lastName: string
-    email: string
-    phone: string
-    notes: string
-  }
-) {
-  const body: PatchGuestInput = {}
-  if (values.firstName !== guest.firstName) body.firstName = values.firstName
-  if (values.lastName !== guest.lastName) body.lastName = values.lastName
-  if (values.email && values.email !== (guest.email ?? "")) {
-    body.email = values.email
-  }
-  if (values.phone && values.phone !== (guest.phone ?? "")) {
-    body.phone = values.phone
-  }
-  if (values.notes && values.notes !== (guest.notes ?? "")) {
-    body.notes = values.notes
-  }
-  return Object.keys(body).length > 0 ? body : null
+export function ReservationStatus({ detail }: { detail: ReservationDetail }) {
+  const statuses = [
+    ...new Set(
+      detail.rooms
+        .filter((room) => room.status !== "cancelled")
+        .map((room) => room.status)
+    ),
+  ]
+  return (
+    <Badge variant="secondary">
+      {detail.cancelledAt
+        ? "Cancelada"
+        : statuses.length > 1
+          ? "Estados diferentes"
+          : (labels[statuses[0]] ?? "Cancelada")}
+    </Badge>
+  )
 }
 
 export function RoomBookingDialog({
   target,
-  timeZone,
   onClose,
   onViewReservation,
 }: {
@@ -343,1596 +190,1233 @@ export function RoomBookingDialog({
   onClose: () => void
   onViewReservation: (id: string) => void
 }) {
-  const [tab, setTab] = useState<"details" | "payments">("details")
-  const [saving, setSaving] = useState(false)
-  const editingId = target?.mode === "edit" ? target.reservationId : null
-  const detail = useReservation(editingId)
-  const create = useCreateReservation()
-  const assign = useAssignRoom()
-  const unassign = useUnassignRoom()
-  const addRoom = useAddReservationRoom()
-  const cancelRoom = useCancelReservationRoom()
-  const patchReservation = usePatchReservation()
-  const patchGuest = usePatchGuest()
-  const recordPayment = useRecordReservationPayment()
-  const changeStatus = useChangeReservationStatus()
-  const pending =
-    saving ||
-    create.isPending ||
-    assign.isPending ||
-    unassign.isPending ||
-    addRoom.isPending ||
-    cancelRoom.isPending ||
-    patchReservation.isPending ||
-    patchGuest.isPending ||
-    recordPayment.isPending ||
-    changeStatus.isPending
-
+  const detail = useReservation(
+    target?.mode === "edit" ? target.reservationId : null
+  )
+  const dirty = useRef(false)
+  const [tab, setTab] = useState("details")
+  const [leave, setLeave] = useState<(() => void) | null>(null)
+  const onDirtyChange = useCallback((value: boolean) => {
+    dirty.current = value
+  }, [])
+  function navigate(action: () => void) {
+    if (dirty.current) setLeave(() => action)
+    else action()
+  }
   function close() {
-    create.reset()
-    assign.reset()
-    unassign.reset()
-    addRoom.reset()
-    cancelRoom.reset()
-    patchReservation.reset()
-    patchGuest.reset()
-    recordPayment.reset()
-    changeStatus.reset()
+    dirty.current = false
     setTab("details")
     onClose()
   }
-
-  function viewReservation(id: string) {
-    setTab("details")
-    onViewReservation(id)
-  }
-
   return (
     <Dialog
       open={target !== null}
-      onOpenChange={(next) => {
-        if (!next && pending) return
-        if (!next) close()
-      }}
+      onOpenChange={(open) => !open && navigate(close)}
     >
-      <DialogContent className="w-[calc(100%-2rem)] sm:max-w-5xl">
+      <DialogContent
+        className={cn(
+          "max-h-[94svh]",
+          target?.mode === "edit"
+            ? "flex flex-col overflow-hidden sm:max-w-4xl"
+            : "overflow-y-auto sm:max-w-5xl"
+        )}
+      >
+        <DialogHeader
+          className={target?.mode === "edit" ? "sr-only" : undefined}
+        >
+          <div className="flex flex-wrap items-center gap-3 pr-8">
+            <DialogTitle>
+              {target?.mode === "edit"
+                ? `Editar reserva · ${detail.data?.code ?? ""}`
+                : "Nueva reserva"}
+            </DialogTitle>
+            {target?.mode === "edit" && detail.data && (
+              <ReservationStatus detail={detail.data} />
+            )}
+          </div>
+          <DialogDescription
+            className={target?.mode === "edit" ? "sr-only" : undefined}
+          >
+            {target?.mode === "edit"
+              ? "Detalles de la reserva, huéspedes y pagos."
+              : "Reserva por tipo y asigna una habitación ahora o antes de la llegada."}
+          </DialogDescription>
+        </DialogHeader>
         {target?.mode === "edit" ? (
           detail.isPending ? (
-            <div className="flex flex-col gap-4">
-              <DialogHeader>
-                <DialogTitle>Editar reserva</DialogTitle>
-              </DialogHeader>
-              <div className="flex justify-center py-6">
-                <Spinner />
-              </div>
-            </div>
-          ) : detail.error || !detail.data ? (
-            <div className="flex flex-col gap-4">
-              <DialogHeader>
-                <DialogTitle>Editar reserva</DialogTitle>
-              </DialogHeader>
-              <Field data-invalid>
-                <FieldError>
-                  {detail.error
-                    ? bookingError(detail.error)
-                    : "No se pudo cargar esta reserva."}
-                </FieldError>
-              </Field>
-              <DialogFooter>
-                <Button type="button" variant="outline" onClick={close}>
-                  Cerrar
-                </Button>
-              </DialogFooter>
-            </div>
+            <Skeleton className="h-80 w-full" />
+          ) : detail.error ? (
+            <FieldError>{detail.error.message}</FieldError>
           ) : (
-            <BookingForm
-              key={detail.data.id}
-              mode="edit"
+            detail.data && (
+              <BookingEditor
+                key={`${detail.data.id}-${detail.data.version}`}
+                detail={detail.data}
+                onRefresh={() => void detail.refetch()}
+                initialTab={tab}
+                onTabChange={setTab}
+                onDirtyChange={onDirtyChange}
+                onClose={() => navigate(close)}
+                onViewReservation={(id) =>
+                  navigate(() => onViewReservation(id))
+                }
+              />
+            )
+          )
+        ) : (
+          target && (
+            <NewBooking
+              key={
+                target.mode === "create"
+                  ? target.roomId + target.checkIn
+                  : "new"
+              }
               target={target}
-              detail={detail.data}
-              timeZone={timeZone}
-              pending={pending}
-              onSaving={setSaving}
-              activeTab={tab}
-              onTab={setTab}
-              onViewReservation={viewReservation}
-              onRecordPayment={(id, body) =>
-                recordPayment.mutateAsync({ id, body })
-              }
-              onCreate={(input) => create.mutateAsync(input)}
-              onAssign={(input) => assign.mutateAsync(input)}
-              onUnassign={(input) => unassign.mutateAsync(input)}
-              onPatchReservation={(input) =>
-                patchReservation.mutateAsync(input)
-              }
-              onPatchGuest={(input) => patchGuest.mutateAsync(input)}
-              onAddRoom={(input) => addRoom.mutateAsync(input)}
-              onChangeStatus={(input) => changeStatus.mutateAsync(input)}
-              onCancelRoom={(input) => cancelRoom.mutateAsync(input)}
-              onDone={close}
+              onCreated={onViewReservation}
             />
           )
-        ) : target?.mode === "create" ? (
-          <BookingForm
-            key={`${target.roomId}-${target.checkIn}`}
-            mode="create"
-            target={target}
-            timeZone={timeZone}
-            pending={pending}
-            onSaving={setSaving}
-            activeTab={tab}
-            onTab={setTab}
-            onViewReservation={viewReservation}
-            onRecordPayment={(id, body) =>
-              recordPayment.mutateAsync({ id, body })
-            }
-            onCreate={(input) => create.mutateAsync(input)}
-            onAssign={(input) => assign.mutateAsync(input)}
-            onUnassign={(input) => unassign.mutateAsync(input)}
-            onPatchReservation={(input) => patchReservation.mutateAsync(input)}
-            onPatchGuest={(input) => patchGuest.mutateAsync(input)}
-            onAddRoom={(input) => addRoom.mutateAsync(input)}
-            onChangeStatus={(input) => changeStatus.mutateAsync(input)}
-            onCancelRoom={(input) => cancelRoom.mutateAsync(input)}
-            onDone={close}
-          />
-        ) : target?.mode === "new" ? (
-          <BookingForm
-            key="new"
-            mode="create"
-            target={target}
-            timeZone={timeZone}
-            pending={pending}
-            onSaving={setSaving}
-            activeTab={tab}
-            onTab={setTab}
-            onViewReservation={viewReservation}
-            onRecordPayment={(id, body) =>
-              recordPayment.mutateAsync({ id, body })
-            }
-            onCreate={(input) => create.mutateAsync(input)}
-            onAssign={(input) => assign.mutateAsync(input)}
-            onUnassign={(input) => unassign.mutateAsync(input)}
-            onPatchReservation={(input) => patchReservation.mutateAsync(input)}
-            onPatchGuest={(input) => patchGuest.mutateAsync(input)}
-            onAddRoom={(input) => addRoom.mutateAsync(input)}
-            onChangeStatus={(input) => changeStatus.mutateAsync(input)}
-            onCancelRoom={(input) => cancelRoom.mutateAsync(input)}
-            onDone={close}
-          />
-        ) : null}
+        )}
       </DialogContent>
+      {leave && (
+        <DiscardChanges
+          onStay={() => setLeave(null)}
+          onLeave={() => {
+            dirty.current = false
+            setLeave(null)
+            leave()
+          }}
+        />
+      )}
     </Dialog>
   )
 }
 
-function BookingForm({
-  mode,
-  target,
-  detail,
-  timeZone,
-  pending,
-  onSaving,
-  activeTab,
-  onTab,
-  onViewReservation,
-  onRecordPayment,
-  onCreate,
-  onAssign,
-  onUnassign,
-  onPatchReservation,
-  onPatchGuest,
-  onAddRoom,
-  onChangeStatus,
-  onCancelRoom,
-  onDone,
+function RoomFields({
+  room,
+  onChange,
+  locked = false,
+  extension = false,
+  blockedRoomIds = new Set<string>(),
 }: {
-  mode: "create" | "edit"
-  target: BookingTarget
-  detail?: ReservationDetail
-  timeZone: string
-  pending: boolean
-  onSaving: (saving: boolean) => void
-  activeTab: "details" | "payments"
-  onTab: (tab: "details" | "payments") => void
-  onViewReservation: (id: string) => void
-  onRecordPayment: (
-    id: string,
-    body: RecordPaymentInput
-  ) => Promise<ReservationDetail>
-  onCreate: (input: CreateReservationInput) => Promise<ReservationDetail>
-  onAssign: (input: {
-    reservationId: string
-    lineId: string
-    roomId: string
-  }) => Promise<ReservationDetail>
-  onUnassign: (input: {
-    reservationId: string
-    lineId: string
-  }) => Promise<ReservationDetail>
-  onPatchReservation: (
-    input: { id: string } & PatchReservationInput
-  ) => Promise<ReservationDetail>
-  onPatchGuest: (input: {
-    id: string
-    body: PatchGuestInput
-  }) => Promise<ReservationGuest>
-  onAddRoom: (input: {
-    id: string
-    roomTypeId: string
-    adults: number
-    children: number
-    discountCents: number
-  }) => Promise<ReservationDetail>
-  onChangeStatus: (input: {
-    id: string
-    action: ReservationStatusAction
-  }) => Promise<ReservationDetail>
-  onCancelRoom: (input: {
-    id: string
-    lineId: string
-  }) => Promise<ReservationDetail>
-  onDone: () => void
+  room: WorkflowRoom
+  onChange: (room: WorkflowRoom) => void
+  locked?: boolean
+  extension?: boolean
+  blockedRoomIds?: Set<string>
 }) {
-  const detailsFormId = useId()
-  const paymentFormId = useId()
-  const statusSelectId = useId()
-  const blank = target.mode === "new"
-  const editing = mode === "edit" && detail && target.mode === "edit"
-  const line = editing
-    ? (detail.rooms.find((room) => room.roomId === target.roomId) ??
-      detail.rooms[0])
-    : undefined
-  const today = format(startOfToday(), "yyyy-MM-dd")
-  const initialCheckIn =
-    target.mode === "edit"
-      ? (detail?.checkIn ?? "")
-      : target.mode === "create"
-        ? target.checkIn
-        : today
-  const initialCheckOut =
-    target.mode === "edit"
-      ? (detail?.checkOut ?? "")
-      : format(
-          addDays(parse(initialCheckIn, "yyyy-MM-dd", new Date()), 1),
-          "yyyy-MM-dd"
-        )
-  const [checkInDate, setCheckInDate] = useState(() =>
-    startOfDay(parse(initialCheckIn, "yyyy-MM-dd", new Date()))
-  )
-  const [checkOutDate, setCheckOutDate] = useState(() =>
-    startOfDay(parse(initialCheckOut, "yyyy-MM-dd", new Date()))
-  )
-  const [roomLines, setRoomLines] = useState<RoomLineChoice[]>(() =>
-    target.mode === "edit" && detail
-      ? linesFromDetail(detail.rooms)
-      : [emptyRoomLine()]
-  )
-  const [linkedLines, setLinkedLines] = useState<Record<string, string>>({})
-  const [adults, setAdults] = useState(line ? String(line.adults) : "1")
-  const [children, setChildren] = useState(line ? String(line.children) : "0")
-  const [firstName, setFirstName] = useState(
-    editing ? detail.guest.firstName : ""
-  )
-  const [lastName, setLastName] = useState(editing ? detail.guest.lastName : "")
-  const [email, setEmail] = useState(editing ? (detail.guest.email ?? "") : "")
-  const [phone, setPhone] = useState(editing ? (detail.guest.phone ?? "") : "")
-  const [notes, setNotes] = useState(editing ? (detail.guest.notes ?? "") : "")
-  const [statusChoice, setStatusChoice] = useState<RoomStatus | null>(null)
-  const [created, setCreated] = useState<CreatedBooking | null>(null)
-  const createdRef = useRef<CreatedBooking | null>(null)
-  const submitting = useRef(false)
-  const [localError, setLocalError] = useState<string | null>(null)
-  const [paymentError, setPaymentError] = useState<string | null>(null)
-  const checkIn = format(checkInDate, "yyyy-MM-dd")
-  const checkOut = format(checkOutDate, "yyyy-MM-dd")
-  const datesChanged =
-    !editing || checkIn !== detail.checkIn || checkOut !== detail.checkOut
-  const nights = differenceInCalendarDays(checkOutDate, checkInDate)
-  const rangeTo = format(addDays(checkInDate, 59), "yyyy-MM-dd")
-  const reservations = useReservations(checkIn, rangeTo)
-  const closures = useRoomClosures(checkIn, rangeTo)
-  const availability = useAvailability(checkIn, checkOut)
-  const counts = partyCounts(adults, children)
-  const { adultCount, childCount, valid: partyValid } = counts
-  const emailValue = email.trim()
-  const contact = contactErrors(firstName, lastName, email)
-  const roomTypeId =
-    line?.roomTypeId ?? (target.mode === "create" ? target.roomTypeId : "")
-  const typeName =
-    line?.roomTypeName ??
-    (target.mode === "create"
-      ? target.typeName
-      : (availability.data?.roomTypes.find((item) => item.id === roomTypeId)
-          ?.name ?? ""))
-  const roomType = availability.data?.roomTypes.find(
-    (item) => item.id === roomTypeId
-  )
-  const rooms = useRooms()
-  const conflictsReady =
-    Boolean(reservations.data && closures.data) &&
-    !reservations.isPlaceholderData &&
-    !closures.isPlaceholderData &&
-    !reservations.isError &&
-    !closures.isError
-  const excludeReservationId = editing ? detail.id : created?.reservation.id
-
-  const rows = blank || Boolean(editing)
-  const constraintRoomIds =
-    target.mode === "create"
-      ? [target.roomId]
-      : editing
-        ? roomLines.flatMap((roomLine) => {
-            if (roomLine.removed) return []
-            if (roomLine.status && !openStatuses.has(roomLine.status)) return []
-            return roomLine.roomId ? [roomLine.roomId] : []
-          })
-        : []
-  const maxNights = maxFreeNights(
-    checkInDate,
-    constraintRoomIds,
-    reservations.data,
-    closures.data,
-    conflictsReady,
-    excludeReservationId
-  )
-
-  const stayError =
-    editing && !datesChanged
-      ? null
-      : nights < 1
-        ? "La salida debe ser posterior a la entrada."
-        : nights > 60
-          ? "La estancia no puede superar las 60 noches."
-          : null
-  const locked = created !== null
-  const datesLocked =
-    locked ||
-    Boolean(
-      editing && detail.rooms.some((room) => room.status === "checked_out")
-    )
-  const partyLocked =
-    locked || (Boolean(editing) && (!line || !openStatuses.has(line.status)))
-  const occupancyError =
-    !rows &&
-    !partyLocked &&
-    partyValid &&
-    roomType &&
-    adultCount + childCount > roomType.maxOccupancy
-      ? `${typeName} admite hasta ${roomType.maxOccupancy} huéspedes.`
-      : null
-  const needsConflict = !blank && (!editing || datesChanged)
-  const catalog = availability.data?.roomTypes ?? []
-  const freeFor = (typeId: string | null) =>
-    openRooms(
-      typeId,
-      null,
-      rooms.data,
-      reservations.data,
-      closures.data,
-      conflictsReady,
-      checkIn,
-      checkOut,
-      excludeReservationId
-    )
-  const lineViews = roomLines.map((roomLine) => {
-    const counts = partyCounts(roomLine.adults, roomLine.children)
-    const type = catalog.find((item) => item.id === roomLine.typeId)
-    const closed = Boolean(
-      roomLine.status && !openStatuses.has(roomLine.status)
-    )
-    const freshTaken = roomLines.filter(
-      (item) =>
-        !item.removed &&
-        !item.lineId &&
-        item.key !== roomLine.key &&
-        item.typeId === roomLine.typeId
-    ).length
-    const free = freeFor(roomLine.typeId).filter(
-      (room) =>
-        !roomLines.some(
-          (item) =>
-            !item.removed &&
-            (!item.status || openStatuses.has(item.status)) &&
-            item.key !== roomLine.key &&
-            item.roomId === room.id
-        )
-    )
-    const pinned =
-      rooms.data?.find((room) => room.id === roomLine.roomId) ??
-      (roomLine.roomId
-        ? {
-            id: roomLine.roomId,
-            number: roomLine.roomNumber ?? roomLine.roomId,
-          }
-        : undefined)
-    const roomChoices =
-      pinned && !free.some((room) => room.id === pinned.id)
-        ? [pinned, ...free]
-        : free
-    const roomReady =
-      !roomLine.roomId ||
-      (roomLine.lineId !== null &&
-        roomLine.roomId === roomLine.savedRoomId &&
-        (locked || !datesChanged)) ||
-      (conflictsReady && free.some((room) => room.id === roomLine.roomId))
-    const lineOccupancyError =
-      !closed &&
-      counts.valid &&
-      type &&
-      counts.adultCount + counts.childCount > type.maxOccupancy
-        ? `${type.name} admite hasta ${type.maxOccupancy} huéspedes.`
-        : null
-    const lineTypeName = roomLine.typeName ?? type?.name ?? "Tipo de habitación"
-    const saved = (detail ?? created?.reservation)?.rooms.find(
-      (room) => room.id === roomLine.lineId
-    )
-    const discountCents = parseMajorToCents(roomLine.discount.trim() || "0")
-    const quoteDatesChanged = !saved || (!locked && !closed && datesChanged)
-    const charges = bookingRoomCharges(
-      saved?.nights,
-      type?.nights,
-      quoteDatesChanged,
-      discountCents ?? 0
-    )
-    const discountError =
-      discountCents === null
-        ? "Ingresa un importe no negativo con hasta dos decimales."
-        : charges &&
-            discountCents > charges.subtotalCents &&
-            discountCents !== roomLine.savedDiscountCents
-          ? "El descuento no puede superar el importe de la habitación."
-          : null
-    return {
-      line: roomLine,
-      counts,
-      type,
-      closed,
-      free: roomChoices,
-      roomReady,
-      occupancyError: lineOccupancyError,
-      typeName: lineTypeName,
-      charges,
-      roomNumber: pinned?.number ?? null,
-      discountCents,
-      discountError,
-      prefix: `booking-room-${roomLine.key}`,
-      actions: roomLineActions(roomLine, roomLines),
-      typeError:
-        !roomLine.lineId && !closed
-          ? !roomLine.typeId
-            ? "Selecciona un tipo de habitación."
-            : availability.data && (!type || type.free - freshTaken < 1)
-              ? "Este tipo ya no está disponible para la estancia."
-              : null
-          : null,
-      roomError:
-        !closed && conflictsReady && rooms.data && !roomReady
-          ? "Esta habitación ya no está disponible para la estancia."
-          : null,
-      types: roomLine.lineId
-        ? [{ id: roomLine.typeId ?? "", name: lineTypeName, free: 1 }]
-        : catalog.map((item) => ({
-            ...item,
-            free:
-              item.free -
-              roomLines.filter(
-                (other) =>
-                  !other.removed &&
-                  !other.lineId &&
-                  other.key !== roomLine.key &&
-                  other.typeId === item.id
-              ).length,
-          })),
-    }
-  })
-  const roomError =
-    target.mode === "create" && conflictsReady && maxNights < nights
-      ? "Esta habitación ya no está disponible para la estancia."
-      : null
-  const availabilityError =
-    !editing && !created && roomType && roomType.free < 1
-      ? `No hay habitaciones ${typeName} disponibles para la estancia.`
-      : null
-  const needsAvailability =
-    !locked &&
-    (!editing ||
-      datesChanged ||
-      roomLines.some(
-        (item) =>
-          !item.removed &&
-          (!item.lineId ||
-            (item.status &&
-              openStatuses.has(item.status) &&
-              (Number(item.adults) !== item.savedAdults ||
-                Number(item.children) !== item.savedChildren)))
-      ))
-  const queryError =
-    reservations.error?.message ??
-    closures.error?.message ??
-    (rows ? rooms.error?.message : null) ??
-    (needsAvailability ? availability.error?.message : null) ??
-    null
-  const loading =
-    ((needsConflict || rows) &&
-      (reservations.isFetching || closures.isFetching)) ||
-    (rows && rooms.isPending) ||
-    (needsAvailability && availability.isFetching)
-  const nightLabel = `${nights} ${nights === 1 ? "noche" : "noches"}`
-  const currency = CURRENCY
-  const singleDiscountCents = parseMajorToCents(
-    roomLines[0]?.discount.trim() || "0"
-  )
-  const singleCharges = bookingRoomCharges(
-    created?.reservation.rooms[0]?.nights,
-    roomType?.nights,
-    !locked,
-    singleDiscountCents ?? 0
-  )
-  const singleDiscountError =
-    singleDiscountCents === null
-      ? "Ingresa un importe no negativo con hasta dos decimales."
-      : singleCharges && singleDiscountCents > singleCharges.subtotalCents
-        ? "El descuento no puede superar el importe de la habitación."
-        : null
-  const paidCents = detail?.paidCents ?? 0
-  const summaryRooms: BookingSummaryRoom[] = rows
-    ? lineViews.map((view) => ({
-        key: view.line.key,
-        typeName: view.typeName,
-        adults: view.counts.valid ? view.counts.adultCount : null,
-        children: view.counts.valid ? view.counts.childCount : null,
-        status: view.line.removed ? "cancelled" : view.line.status,
-        charges: view.charges,
-        invalid: view.line.removed
-          ? false
-          : Boolean(stayError || view.discountError),
-      }))
-    : [
-        {
-          key: roomLines[0]!.key,
-          typeName: typeName || "Tipo de habitación",
-          adults: partyValid ? adultCount : null,
-          children: partyValid ? childCount : null,
-          status: null,
-          charges: singleCharges,
-          invalid: Boolean(stayError || singleDiscountError),
-        },
-      ]
-  const summary = stayError ? null : bookingSummary(summaryRooms, paidCents)
-  const dateFormat =
-    checkInDate.getFullYear() === checkOutDate.getFullYear()
-      ? "d MMM"
-      : "d MMM yyyy"
-  const stayLabel = `${format(checkInDate, dateFormat)} al ${format(checkOutDate, dateFormat)} · ${nightLabel}`
-  const summaryMessage = summary
-    ? "Importes en soles."
-    : stayError ||
-        (rows
-          ? lineViews.some((view) => !view.line.removed && view.discountError)
-          : singleDiscountError)
-      ? "Ingresa fechas y descuentos válidos para ver el total."
-      : availability.error
-        ? "No se pudieron cargar los precios."
-        : rows && lineViews.some((view) => !view.line.typeId)
-          ? "Selecciona un tipo de habitación para ver el total."
-          : "Consultando precios..."
-  const errors: FieldErrors = {
-    "booking-first-name": locked ? null : contact.firstName,
-    "booking-last-name": locked ? null : contact.lastName,
-    "booking-email": locked ? null : contact.email,
-    "booking-check-out": datesLocked ? null : stayError,
-  }
-  if (rows) {
-    for (const view of lineViews) {
-      if (view.line.removed) continue
-      errors[`${view.prefix}-type`] = view.typeError
-      errors[`${view.prefix}-room`] = view.roomError
-      errors[`${view.prefix}-adults`] =
-        locked || view.closed
-          ? null
-          : (view.counts.adultsError ?? view.occupancyError)
-      errors[`${view.prefix}-children`] =
-        locked || view.closed
-          ? null
-          : (view.counts.childrenError ?? view.occupancyError)
-      errors[`${view.prefix}-discount`] =
-        locked || view.line.status === "cancelled" ? null : view.discountError
-    }
-  } else {
-    errors["booking-check-out"] = datesLocked
-      ? null
-      : (stayError ?? roomError ?? availabilityError)
-    errors["booking-adults"] = partyLocked
-      ? null
-      : (counts.adultsError ?? occupancyError)
-    errors["booking-children"] = partyLocked
-      ? null
-      : (counts.childrenError ?? occupancyError)
-    errors["booking-discount"] = locked ? null : singleDiscountError
-  }
-  const validation = useFieldValidation(errors)
-  const firstNameError = validation.errorFor("booking-first-name")
-  const lastNameError = validation.errorFor("booking-last-name")
-  const emailError = validation.errorFor("booking-email")
-  const singleOccupancyError =
-    occupancyError &&
-    (validation.errorFor("booking-adults") ||
-      validation.errorFor("booking-children"))
-  const checkOutError = validation.errorFor("booking-check-out")
-  const shownError = localError ?? queryError
-  const statusRooms: StatusRoom[] = roomLines.flatMap((roomLine) =>
-    roomLine.removed
-      ? []
-      : [
-          {
-            status:
-              roomLine.status && isRoomStatus(roomLine.status)
-                ? roomLine.status
-                : "confirmed",
-            roomId: roomLine.roomId,
-          },
-        ]
-  )
-
-  function moveCheckIn(date: Date) {
-    setCheckInDate(date)
-    setCheckOutDate((current) => clampCheckOut(date, current))
-  }
-
-  async function submit(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault()
-    if (pending || submitting.current) return
-    if (!validation.validate(event.currentTarget)) return
-    if (loading || queryError) return
-    setLocalError(null)
-    submitting.current = true
-    onSaving(true)
-    try {
-      await save()
-    } finally {
-      submitting.current = false
-      onSaving(false)
-    }
-  }
-
-  async function save() {
-    if (editing && detail && target.mode === "edit") {
-      const datesChanged =
-        checkIn !== detail.checkIn || checkOut !== detail.checkOut
-      const guest = guestChanges(detail.guest, {
-        firstName: firstName.trim(),
-        lastName: lastName.trim(),
-        email: emailValue,
-        phone: phone.trim(),
-        notes: notes.trim(),
-      })
-      const resolvedId = (roomLine: RoomLineChoice) =>
-        roomLine.lineId ?? linkedLines[roomLine.key] ?? null
-      const partyRooms = lineViews.flatMap((view) => {
-        const lineId = resolvedId(view.line)
-        if (!lineId || view.line.removed) return []
-        const partyChanged =
-          !view.closed &&
-          view.counts.valid &&
-          (view.counts.adultCount !== view.line.savedAdults ||
-            view.counts.childCount !== view.line.savedChildren)
-        const discountChanged =
-          view.discountCents !== null &&
-          view.discountCents !== view.line.savedDiscountCents
-        if (!partyChanged && !discountChanged) return []
-        return [
-          {
-            id: lineId,
-            ...(partyChanged
-              ? {
-                  adults: view.counts.adultCount,
-                  children: view.counts.childCount,
-                }
-              : {}),
-            ...(discountChanged ? { discountCents: view.discountCents! } : {}),
-          },
-        ]
-      })
-      const statusPlan = statusChoice
-        ? planBulkStatus(statusRooms, statusChoice)
-        : null
-      if (statusPlan && !statusPlan.ok) {
-        setLocalError(statusPlan.reason)
-        return
-      }
-      const assigns = lineViews.flatMap((view) => {
-        const lineId = resolvedId(view.line)
-        if (!lineId || view.line.removed || view.closed || !view.line.roomId)
-          return []
-        if (view.line.roomId === view.line.savedRoomId) return []
-        return [{ key: view.line.key, lineId, roomId: view.line.roomId }]
-      })
-      const unassigns = lineViews.flatMap((view) => {
-        const lineId = resolvedId(view.line)
-        if (
-          !lineId ||
-          view.line.removed ||
-          view.line.status !== "confirmed" ||
-          view.line.roomId ||
-          !view.line.savedRoomId
-        )
-          return []
-        return [{ key: view.line.key, lineId }]
-      })
-      const additions = lineViews.filter(
-        (view) =>
-          !view.line.removed &&
-          !resolvedId(view.line) &&
-          view.line.typeId &&
-          view.counts.valid
-      )
-      const removals = lineViews.flatMap((view) => {
-        if (
-          !view.line.removed ||
-          !view.line.lineId ||
-          view.line.status !== "confirmed"
-        )
-          return []
-        return [{ key: view.line.key, lineId: view.line.lineId }]
-      })
-      if (
-        !datesChanged &&
-        !guest &&
-        partyRooms.length === 0 &&
-        assigns.length === 0 &&
-        unassigns.length === 0 &&
-        additions.length === 0 &&
-        removals.length === 0 &&
-        !statusPlan
-      ) {
-        onDone()
-        return
-      }
-      try {
-        for (const removal of removals) {
-          await onCancelRoom({ id: detail.id, lineId: removal.lineId })
-          setRoomLines((current) =>
-            current.map((item) =>
-              item.key === removal.key
-                ? { ...item, status: "cancelled", removed: false }
-                : item
-            )
-          )
-        }
-      } catch (error) {
-        setLocalError(`No se pudo quitar la habitación. ${bookingError(error)}`)
-        return
-      }
-      try {
-        for (const unassign of unassigns) {
-          await onUnassign({
-            reservationId: detail.id,
-            lineId: unassign.lineId,
-          })
-          setRoomLines((current) =>
-            current.map((item) =>
-              item.key === unassign.key
-                ? { ...item, savedRoomId: null, roomNumber: null }
-                : item
-            )
-          )
-        }
-      } catch (error) {
-        setLocalError(
-          `No se pudo desasignar la habitación. ${bookingError(error)}`
-        )
-        return
-      }
-      try {
-        if (datesChanged || partyRooms.length > 0) {
-          await onPatchReservation({
-            id: detail.id,
-            ...(datesChanged ? { checkIn, checkOut } : {}),
-            ...(partyRooms.length > 0 ? { rooms: partyRooms } : {}),
-          })
-        }
-        if (guest) await onPatchGuest({ id: detail.guest.id, body: guest })
-      } catch (error) {
-        const message = bookingError(error)
-        setLocalError(message)
-        return
-      }
-      try {
-        for (const assign of assigns) {
-          await onAssign({
-            reservationId: detail.id,
-            lineId: assign.lineId,
-            roomId: assign.roomId,
-          })
-          setRoomLines((current) =>
-            current.map((item) =>
-              item.key === assign.key
-                ? { ...item, savedRoomId: assign.roomId }
-                : item
-            )
-          )
-        }
-      } catch (error) {
-        setLocalError(
-          `La reserva existe, pero no se completó la asignación. ${bookingError(error)}`
-        )
-        return
-      }
-      const known = { ...linkedLines }
-      const knownIds = new Set([
-        ...detail.rooms.map((room) => room.id),
-        ...Object.values(known),
-      ])
-      let assignmentError: string | null = null
-      try {
-        for (const view of additions) {
-          if (!view.line.typeId) continue
-          const created = await onAddRoom({
-            id: detail.id,
-            roomTypeId: view.line.typeId,
-            adults: view.counts.adultCount,
-            children: view.counts.childCount,
-            discountCents: view.discountCents!,
-          })
-          const createdLine = created.rooms.find(
-            (room) => !knownIds.has(room.id)
-          )
-          if (!createdLine)
-            throw new Error("La reserva no contiene habitaciones.")
-          known[view.line.key] = createdLine.id
-          knownIds.add(createdLine.id)
-          setLinkedLines({ ...known })
-          setRoomLines((current) =>
-            current.map((item) =>
-              item.key === view.line.key
-                ? {
-                    ...item,
-                    lineId: createdLine.id,
-                    status: "confirmed",
-                    savedAdults: view.counts.adultCount,
-                    savedChildren: view.counts.childCount,
-                    savedDiscountCents: createdLine.discountCents,
-                  }
-                : item
-            )
-          )
-          if (!view.line.roomId) continue
-          try {
-            await onAssign({
-              reservationId: detail.id,
-              lineId: createdLine.id,
-              roomId: view.line.roomId,
-            })
-            setRoomLines((current) =>
-              current.map((item) =>
-                item.key === view.line.key
-                  ? { ...item, savedRoomId: view.line.roomId }
-                  : item
-              )
-            )
-          } catch (error) {
-            assignmentError = bookingError(error)
-          }
-        }
-      } catch (error) {
-        const message = bookingError(error)
-        setLocalError(message)
-        return
-      }
-      if (assignmentError) {
-        setLocalError(
-          `La habitación se añadió a la reserva, pero no se asignó. ${assignmentError}`
-        )
-        return
-      }
-      if (statusPlan?.ok) {
-        try {
-          await onChangeStatus({ id: detail.id, action: statusPlan.action })
-        } catch (error) {
-          setLocalError(
-            `Los demás cambios se guardaron, pero no se pudo cambiar el estado. ${bookingError(error)}`
-          )
-          return
-        }
-      }
-      onDone()
-      return
-    }
-
-    const phoneValue = phone.trim()
-    const notesValue = notes.trim()
-    const guestInput = {
-      firstName: firstName.trim(),
-      lastName: lastName.trim(),
-      ...(emailValue ? { email: emailValue } : {}),
-      ...(phoneValue ? { phone: phoneValue } : {}),
-      ...(notesValue ? { notes: notesValue } : {}),
-    }
-    const requested = blank
-      ? lineViews.map((view) => ({
-          key: view.line.key,
-          roomTypeId: view.line.typeId!,
-          adults: view.counts.adultCount,
-          children: view.counts.childCount,
-          discountCents: view.discountCents!,
-          roomId: view.line.roomId,
-        }))
-      : target.mode === "create"
-        ? [
-            {
-              key: roomLines[0]!.key,
-              roomTypeId: target.roomTypeId,
-              adults: adultCount,
-              children: childCount,
-              discountCents: singleDiscountCents!,
-              roomId: target.roomId,
-            },
-          ]
-        : []
-    try {
-      const reservation = await createBooking({
-        input: {
-          guest: guestInput,
-          checkIn,
-          checkOut,
-          rooms: requested.map(
-            ({ roomTypeId, adults, children, discountCents }) => ({
-              roomTypeId,
-              adults,
-              children,
-              discountCents,
-            })
-          ),
-        },
-        rooms: requested,
-        saved: createdRef.current,
-        create: onCreate,
-        assign: onAssign,
-        onProgress: (saved) => {
-          createdRef.current = saved
-          setCreated(saved)
-          setRoomLines((current) =>
-            current.map((item) => {
-              const line = saved.reservation.rooms.find(
-                (room) => room.id === saved.lineIds[item.key]
-              )
-              return line
-                ? {
-                    ...item,
-                    lineId: line.id,
-                    status: line.status,
-                    savedAdults: line.adults,
-                    savedChildren: line.children,
-                    savedDiscountCents: line.discountCents,
-                    savedRoomId: line.roomId,
-                  }
-                : item
-            })
-          )
-        },
-      })
-      createdToast(reservation, onViewReservation)
-      onDone()
-    } catch (error) {
-      const message = bookingError(error)
-      setLocalError(
-        createdRef.current
-          ? `La reserva ${createdRef.current.reservation.code} se creó, pero no se completó la asignación. ${message}`
-          : message
-      )
-    }
-  }
-
-  const detailsForm = (
-    <form
-      id={detailsFormId}
-      noValidate
-      onSubmit={submit}
-      aria-busy={pending}
-      className="grid gap-6 py-5 md:grid-cols-[minmax(0,1fr)_18rem] md:items-start"
-    >
-      <FieldGroup className="min-w-0 gap-6">
-        <FieldSet>
-          <FieldLegend className="sr-only">Fechas de estancia</FieldLegend>
-          <FieldGroup className="grid max-w-md grid-cols-2 gap-3">
-            <DateField
-              id="booking-check-in"
-              label="Entrada"
-              value={checkInDate}
-              timeZone={timeZone}
-              locked={datesLocked || pending}
-              onBlur={() => validation.touch("booking-check-out")}
-              disabled={{ before: startOfToday() }}
-              onChange={moveCheckIn}
-            />
-            <DateField
-              id="booking-check-out"
-              label="Salida"
-              value={checkOutDate}
-              timeZone={timeZone}
-              locked={datesLocked || pending}
-              error={checkOutError}
-              onBlur={() => validation.touch("booking-check-out")}
-              disabled={[
-                { before: addDays(checkInDate, 1) },
-                { after: addDays(checkInDate, maxNights) },
-              ]}
-              onChange={(date) => {
-                setCheckOutDate(clampCheckOut(checkInDate, date))
-              }}
-            />
-          </FieldGroup>
-        </FieldSet>
-
-        <FieldSet>
-          <FieldLegend>Habitaciones y huéspedes</FieldLegend>
-          {rows ? (
-            <FieldGroup className="gap-3">
-              {lineViews.map((view, index) =>
-                view.line.removed ? (
-                  <RemovedRoomRow
-                    key={view.line.key}
-                    label={removedRoomLabel(view.line, view.typeName)}
-                    disabled={pending}
-                    onUndo={() => {
-                      setRoomLines((current) =>
-                        current.map((item) =>
-                          item.key === view.line.key
-                            ? { ...item, removed: false }
-                            : item
-                        )
-                      )
-                    }}
-                  />
-                ) : (
-                  <RoomLineRow
-                    key={view.line.key}
-                    prefix={view.prefix}
-                    index={index}
-                    typeId={view.line.typeId}
-                    typeName={view.typeName}
-                    roomId={view.line.roomId}
-                    adults={view.line.adults}
-                    children={view.line.children}
-                    discount={view.line.discount}
-                    typeError={
-                      view.line.typeId && view.typeError
-                        ? view.typeError
-                        : validation.errorFor(`${view.prefix}-type`)
-                    }
-                    roomError={
-                      view.roomError ??
-                      validation.errorFor(`${view.prefix}-room`)
-                    }
-                    adultsError={
-                      view.counts.adultsError &&
-                      validation.errorFor(`${view.prefix}-adults`)
-                    }
-                    childrenError={
-                      view.counts.childrenError &&
-                      validation.errorFor(`${view.prefix}-children`)
-                    }
-                    occupancyError={
-                      view.occupancyError &&
-                      (validation.errorFor(`${view.prefix}-adults`) ||
-                        validation.errorFor(`${view.prefix}-children`))
-                    }
-                    discountError={validation.errorFor(
-                      `${view.prefix}-discount`
-                    )}
-                    discountDisabled={
-                      locked || pending || view.line.status === "cancelled"
-                    }
-                    types={view.types}
-                    rooms={view.free}
-                    typesLoading={availability.isPending && !view.line.lineId}
-                    roomsLoading={Boolean(view.line.typeId) && !conflictsReady}
-                    disabled={pending || view.closed}
-                    partyDisabled={locked || pending || view.closed}
-                    typeLocked={locked || Boolean(view.line.lineId)}
-                    allowLater={
-                      !view.line.savedRoomId || view.line.status === "confirmed"
-                    }
-                    status={view.line.status}
-                    actions={view.actions}
-                    onBlur={validation.touch}
-                    onType={(value) => {
-                      if (view.line.lineId) return
-                      setRoomLines((current) =>
-                        current.map((item) =>
-                          item.key === view.line.key
-                            ? { ...item, typeId: value, roomId: null }
-                            : item
-                        )
-                      )
-                    }}
-                    onRoom={(value) => {
-                      if (
-                        !value &&
-                        view.line.savedRoomId &&
-                        view.line.status !== "confirmed"
-                      )
-                        return
-                      setRoomLines((current) =>
-                        current.map((item) =>
-                          item.key === view.line.key
-                            ? { ...item, roomId: value }
-                            : item
-                        )
-                      )
-                    }}
-                    onAdults={(value) => {
-                      setRoomLines((current) =>
-                        current.map((item) =>
-                          item.key === view.line.key
-                            ? { ...item, adults: value }
-                            : item
-                        )
-                      )
-                    }}
-                    onChildren={(value) => {
-                      setRoomLines((current) =>
-                        current.map((item) =>
-                          item.key === view.line.key
-                            ? { ...item, children: value }
-                            : item
-                        )
-                      )
-                    }}
-                    onDiscount={(value) => {
-                      setRoomLines((current) =>
-                        current.map((item) =>
-                          item.key === view.line.key
-                            ? { ...item, discount: value }
-                            : item
-                        )
-                      )
-                    }}
-                    onUnassign={() => {
-                      setRoomLines((current) =>
-                        current.map((item) =>
-                          item.key === view.line.key &&
-                          roomLineActions(item, current).canUnassign
-                            ? { ...item, roomId: null }
-                            : item
-                        )
-                      )
-                    }}
-                    onRemove={() => {
-                      setRoomLines((current) => {
-                        const item = current.find(
-                          (item) => item.key === view.line.key
-                        )
-                        if (!item || !roomLineActions(item, current).canRemove)
-                          return current
-                        return item.lineId
-                          ? current.map((line) =>
-                              line.key === item.key
-                                ? { ...line, removed: true }
-                                : line
-                            )
-                          : current.filter((line) => line.key !== item.key)
-                      })
-                    }}
-                  />
-                )
-              )}
-              <Button
-                type="button"
-                variant="outline"
-                className="self-start"
-                disabled={
-                  locked ||
-                  pending ||
-                  lineViews.filter((view) => !view.line.removed).length >= 60
-                }
-                onClick={() =>
-                  setRoomLines((current) => [...current, emptyRoomLine()])
-                }
-              >
-                <PlusIcon data-icon="inline-start" />
-                Añadir habitación
-              </Button>
-            </FieldGroup>
-          ) : (
-            <FieldGroup className="grid grid-cols-2 gap-3 @2xs/field-group:grid-cols-3 @xl/field-group:grid-cols-[minmax(0,1fr)_7rem_4rem_4rem_6.5rem]">
-              <Field
-                className="col-span-2 min-w-0 @xl/field-group:col-span-1"
-                data-disabled
-              >
-                <FieldLabel htmlFor="booking-room-type">Tipo</FieldLabel>
-                <Input id="booking-room-type" value={typeName} disabled />
-              </Field>
-              <Field className="min-w-0" data-disabled>
-                <FieldLabel htmlFor="booking-room">Hab.</FieldLabel>
-                <Input
-                  id="booking-room"
-                  value={target.mode === "create" ? target.number : ""}
-                  disabled
-                />
-              </Field>
-              <GuestCountField
-                id="booking-adults"
-                label="Adultos"
-                min={1}
-                value={adults}
-                disabled={partyLocked || pending}
-                error={
-                  counts.adultsError && validation.errorFor("booking-adults")
-                }
-                occupancyErrorId={
-                  singleOccupancyError ? "booking-occupancy-error" : undefined
-                }
-                onBlur={() => validation.touch("booking-adults")}
-                onChange={setAdults}
-              />
-              <GuestCountField
-                id="booking-children"
-                label="Niños"
-                min={0}
-                value={children}
-                disabled={partyLocked || pending}
-                error={
-                  counts.childrenError &&
-                  validation.errorFor("booking-children")
-                }
-                occupancyErrorId={
-                  singleOccupancyError ? "booking-occupancy-error" : undefined
-                }
-                onBlur={() => validation.touch("booking-children")}
-                onChange={setChildren}
-              />
-              <DiscountField
-                id="booking-discount"
-                value={roomLines[0]?.discount ?? ""}
-                error={validation.errorFor("booking-discount")}
-                disabled={locked || pending}
-                onBlur={() => validation.touch("booking-discount")}
-                onChange={(value) => {
-                  setRoomLines((current) =>
-                    current.map((item, index) =>
-                      index === 0 ? { ...item, discount: value } : item
-                    )
-                  )
-                }}
-              />
-              {singleOccupancyError ? (
-                <FieldError
-                  id="booking-occupancy-error"
-                  className="col-span-full"
-                >
-                  {singleOccupancyError}
-                </FieldError>
-              ) : null}
-            </FieldGroup>
-          )}
-        </FieldSet>
-
-        <FieldSet className="min-w-0">
-          <FieldLegend>Contacto principal</FieldLegend>
-          <FieldGroup className="gap-3">
-            <FieldGroup className="grid grid-cols-2 gap-3">
-              <Field
-                data-invalid={Boolean(firstNameError) || undefined}
-                data-disabled={locked || pending || undefined}
-              >
-                <FieldLabel htmlFor="booking-first-name">Nombres</FieldLabel>
-                <Input
-                  id="booking-first-name"
-                  autoComplete="given-name"
-                  maxLength={100}
-                  required
-                  value={firstName}
-                  disabled={locked || pending}
-                  aria-invalid={Boolean(firstNameError) || undefined}
-                  aria-describedby={
-                    firstNameError ? "booking-first-name-error" : undefined
-                  }
-                  onBlur={() => validation.touch("booking-first-name")}
-                  onChange={(event) => setFirstName(event.target.value)}
-                />
-                {firstNameError ? (
-                  <FieldError id="booking-first-name-error">
-                    {firstNameError}
-                  </FieldError>
-                ) : null}
-              </Field>
-              <Field
-                data-invalid={Boolean(lastNameError) || undefined}
-                data-disabled={locked || pending || undefined}
-              >
-                <FieldLabel htmlFor="booking-last-name">Apellidos</FieldLabel>
-                <Input
-                  id="booking-last-name"
-                  autoComplete="family-name"
-                  maxLength={100}
-                  required
-                  value={lastName}
-                  disabled={locked || pending}
-                  aria-invalid={Boolean(lastNameError) || undefined}
-                  aria-describedby={
-                    lastNameError ? "booking-last-name-error" : undefined
-                  }
-                  onBlur={() => validation.touch("booking-last-name")}
-                  onChange={(event) => setLastName(event.target.value)}
-                />
-                {lastNameError ? (
-                  <FieldError id="booking-last-name-error">
-                    {lastNameError}
-                  </FieldError>
-                ) : null}
-              </Field>
-            </FieldGroup>
-            <FieldGroup className="grid gap-3 @sm/field-group:grid-cols-2">
-              <Field
-                data-invalid={Boolean(emailError) || undefined}
-                data-disabled={locked || pending || undefined}
-              >
-                <FieldLabel htmlFor="booking-email">Correo</FieldLabel>
-                <Input
-                  id="booking-email"
-                  type="email"
-                  autoComplete="email"
-                  placeholder="Opcional"
-                  aria-invalid={Boolean(emailError) || undefined}
-                  aria-describedby={
-                    emailError ? "booking-email-error" : undefined
-                  }
-                  value={email}
-                  disabled={locked || pending}
-                  onBlur={() => validation.touch("booking-email")}
-                  onChange={(event) => {
-                    setEmail(event.target.value)
-                  }}
-                />
-                {emailError ? (
-                  <FieldError id="booking-email-error">{emailError}</FieldError>
-                ) : null}
-              </Field>
-              <Field>
-                <FieldLabel htmlFor="booking-phone">Teléfono</FieldLabel>
-                <Input
-                  id="booking-phone"
-                  type="tel"
-                  autoComplete="tel"
-                  maxLength={40}
-                  placeholder="Opcional"
-                  value={phone}
-                  disabled={locked || pending}
-                  onChange={(event) => setPhone(event.target.value)}
-                />
-              </Field>
-            </FieldGroup>
-            <Field>
-              <FieldLabel htmlFor="booking-notes">Notas del huésped</FieldLabel>
-              <Textarea
-                id="booking-notes"
-                maxLength={2000}
-                placeholder="Opcional"
-                value={notes}
-                disabled={locked || pending}
-                onChange={(event) => setNotes(event.target.value)}
-              />
-            </Field>
-          </FieldGroup>
-        </FieldSet>
-      </FieldGroup>
-      <BookingSummary
-        rooms={summaryRooms}
-        summary={summary}
-        paidCents={paidCents}
-        currency={currency}
-        stayLabel={stayLabel}
-        showPayments={Boolean(editing)}
-        message={summaryMessage}
+  const types = useRoomTypes(),
+    rooms = useRooms()
+  const set = (patch: Partial<WorkflowRoom>) => onChange({ ...room, ...patch })
+  return (
+    <FieldGroup className="grid grid-cols-2 gap-3 lg:grid-cols-6">
+      <ChoiceField
+        label="Tipo"
+        value={room.roomTypeId}
+        disabled={locked || extension}
+        options={(types.data ?? []).map((t) => ({
+          value: t.id,
+          label: t.name,
+        }))}
+        onChange={(roomTypeId) => {
+          if (roomTypeId !== room.roomTypeId) set({ roomTypeId, roomId: null })
+        }}
       />
-    </form>
+      <ChoiceField
+        label="Hab."
+        value={room.roomId ?? "unassigned"}
+        disabled={locked || extension}
+        options={[
+          { value: "unassigned", label: "Sin asignar" },
+          ...(rooms.data ?? [])
+            .filter(
+              (r) =>
+                r.roomTypeId === room.roomTypeId && !blockedRoomIds.has(r.id)
+            )
+            .map((r) => ({
+              value: r.id,
+              label: r.number,
+            })),
+        ]}
+        onChange={(v) => set({ roomId: v === "unassigned" ? null : v })}
+      />
+      <TextField
+        label="Llegada prevista"
+        type="date"
+        value={room.checkIn}
+        disabled={locked || extension}
+        onChange={(checkIn) => set({ checkIn })}
+      />
+      <TextField
+        label={extension ? "Extender hasta" : "Salida prevista"}
+        type="date"
+        value={room.checkOut}
+        disabled={locked}
+        onChange={(checkOut) => set({ checkOut })}
+      />
+      <TextField
+        label="Adultos"
+        type="number"
+        min={1}
+        value={room.adults}
+        disabled={locked || extension}
+        onChange={(v) => set({ adults: Number(v) })}
+      />
+      <TextField
+        label="Niños"
+        type="number"
+        min={0}
+        value={room.children}
+        disabled={locked || extension}
+        onChange={(v) => set({ children: Number(v) })}
+      />
+    </FieldGroup>
   )
-  const paymentTab = editing && activeTab === "payments"
-  const content = (
-    <>
-      <DialogHeader className="shrink-0 gap-2 pr-8 pb-1">
-        <DialogTitle className="flex flex-wrap items-center gap-2">
-          {editing ? "Editar reserva" : "Nueva reserva"}
-          {editing ? <Badge variant="secondary">{detail.code}</Badge> : null}
-        </DialogTitle>
-        {editing ? (
-          <TabsList
-            variant="line"
-            className="mt-1 -ml-1.5"
-            aria-label="Secciones de la reserva"
-          >
-            <TabsTrigger value="details" disabled={pending}>
-              Detalles
-            </TabsTrigger>
-            <TabsTrigger value="payments" disabled={pending}>
-              Pagos
-            </TabsTrigger>
-          </TabsList>
-        ) : null}
-      </DialogHeader>
+}
 
-      <div className="min-h-0 overflow-y-auto px-1">
-        {editing ? (
-          <TabsContent
-            value="details"
-            keepMounted
-            className="data-hidden:hidden"
-          >
-            {detailsForm}
-          </TabsContent>
-        ) : (
-          detailsForm
-        )}
-        {editing ? (
-          <TabsContent
-            value="payments"
-            keepMounted
-            className="data-hidden:hidden"
-          >
-            <ReservationPayments
-              formId={paymentFormId}
-              reservation={detail}
-              pending={pending}
-              onError={setPaymentError}
-              onRecord={(body) => onRecordPayment(detail.id, body)}
+function NewBooking({
+  target,
+  onCreated,
+}: {
+  target: Exclude<BookingTarget, { mode: "edit" }>
+  onCreated: (id: string) => void
+}) {
+  const client = useQueryClient()
+  const start = target.mode === "create" ? target.checkIn : today()
+  const [fullName, setFullName] = useState(""),
+    [phone, setPhone] = useState(""),
+    [email, setEmail] = useState("")
+  const [drafts, setDrafts] = useState<WorkflowRoom[]>([
+    {
+      roomTypeId: target.mode === "create" ? target.roomTypeId : "",
+      roomId: target.mode === "create" ? target.roomId : null,
+      adults: 1,
+      children: 0,
+      checkIn: start,
+      checkOut: tomorrow(start),
+    },
+  ])
+  const [error, setError] = useState(""),
+    [busy, setBusy] = useState(false)
+  const retry = useRef<{ payload: string; requestId: string } | null>(null)
+  async function save() {
+    setBusy(true)
+    setError("")
+    try {
+      const data = {
+        guest: {
+          fullName,
+          ...(phone ? { phone } : {}),
+          ...(email ? { email } : {}),
+        },
+        rooms: drafts,
+      }
+      const payload = JSON.stringify(data)
+      if (retry.current?.payload !== payload)
+        retry.current = { payload, requestId: crypto.randomUUID() }
+      const result = await createWorkflowBooking({
+        ...data,
+        requestId: retry.current!.requestId,
+      })
+      await client.invalidateQueries()
+      onCreated(result.id)
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "No se pudo guardar.")
+    } finally {
+      setBusy(false)
+    }
+  }
+  return (
+    <form
+      className="flex flex-col gap-5"
+      onSubmit={(e) => {
+        e.preventDefault()
+        void save()
+      }}
+    >
+      <fieldset disabled={busy} className="flex min-w-0 flex-col gap-5">
+        <FieldGroup className="grid grid-cols-2 gap-3">
+          <TextField
+            label="Nombre completo"
+            value={fullName}
+            onChange={setFullName}
+          />
+          <TextField label="Teléfono" value={phone} onChange={setPhone} />
+          <TextField
+            label="Correo"
+            type="email"
+            value={email}
+            onChange={setEmail}
+          />
+        </FieldGroup>
+        <Separator />
+        {drafts.map((room, i) => (
+          <section key={i} className="flex flex-col gap-3 border p-3">
+            <div className="flex items-center justify-between">
+              <h3 className="font-medium">Habitación {i + 1}</h3>
+              {drafts.length > 1 && (
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon-sm"
+                  aria-label={`Quitar habitación ${i + 1}`}
+                  onClick={() => setDrafts((d) => d.filter((_, n) => n !== i))}
+                >
+                  <XIcon />
+                </Button>
+              )}
+            </div>
+            <RoomFields
+              room={room}
+              blockedRoomIds={overlappingRoomIds(
+                room,
+                drafts.filter((_, n) => n !== i)
+              )}
+              onChange={(r) =>
+                setDrafts((d) => d.map((v, n) => (n === i ? r : v)))
+              }
             />
-          </TabsContent>
-        ) : null}
-      </div>
-
-      <DialogFooter className="grid shrink-0 grid-cols-2 pt-3 sm:flex sm:flex-wrap sm:items-end">
-        {(paymentTab ? paymentError : shownError) ? (
-          <FieldError className="col-span-2 min-w-0 wrap-anywhere sm:basis-full">
-            {paymentTab ? paymentError : shownError}
-          </FieldError>
-        ) : null}
-        {!paymentTab && loading ? (
-          <p role="status" className="col-span-2 min-w-0 sm:basis-full">
-            Consultando disponibilidad...
-          </p>
-        ) : null}
-        {editing && !paymentTab && !created ? (
-          <FieldGroup className="col-span-2 min-w-0 sm:mr-auto sm:max-w-sm">
-            <ReservationStatusSelect
-              id={statusSelectId}
-              rooms={statusRooms}
-              choice={statusChoice}
-              disabled={pending}
-              onChange={(status) => {
-                setLocalError(null)
-                setStatusChoice(status)
-              }}
-            />
-          </FieldGroup>
-        ) : null}
-        {created ? (
-          <Button
-            type="button"
-            variant="outline"
-            className="col-span-2"
-            disabled={pending}
-            onClick={() => onViewReservation(created.reservation.id)}
-          >
-            Ver reserva
-          </Button>
-        ) : null}
+            <NewRoomPrice room={room} />
+          </section>
+        ))}
         <Button
           type="button"
           variant="outline"
-          disabled={pending}
-          onClick={onDone}
+          className="w-fit"
+          onClick={() =>
+            setDrafts((d) => [...d, { ...d[d.length - 1], roomId: null }])
+          }
         >
-          {editing || created ? "Cerrar" : "Cancelar"}
+          <PlusIcon data-icon="inline-start" />
+          Añadir habitación
         </Button>
+      </fieldset>
+      <FieldError>{error}</FieldError>
+      <div className="flex justify-end">
         <Button
           type="submit"
-          form={paymentTab ? paymentFormId : detailsFormId}
-          disabled={pending || (!paymentTab && loading)}
+          disabled={
+            busy || !fullName.trim() || drafts.some((d) => !d.roomTypeId)
+          }
         >
-          {pending ? <Spinner data-icon="inline-start" /> : null}
-          {paymentTab
-            ? "Registrar pago"
-            : created
-              ? "Reintentar asignación"
-              : editing
-                ? "Guardar"
-                : "Crear reserva"}
+          {busy ? "Guardando…" : "Crear reserva"}
         </Button>
-      </DialogFooter>
-    </>
+      </div>
+    </form>
   )
+}
+function NewRoomPrice({ room }: { room: WorkflowRoom }) {
+  const q = useAvailability(room.checkIn, room.checkOut),
+    type = q.data?.roomTypes.find((t) => t.id === room.roomTypeId)
+  return q.error ? (
+    <FieldError>{q.error.message}</FieldError>
+  ) : type ? (
+    <p className="text-muted-foreground">
+      {q.data?.nights} noches · {formatMoney(type.totalCents)} · {type.free}{" "}
+      disponibles de este tipo. La disponibilidad se valida al guardar.
+    </p>
+  ) : null
+}
 
-  return editing ? (
-    <Tabs
-      className="max-h-[calc(100svh-4rem)] min-h-0 gap-0"
-      value={activeTab}
-      onValueChange={(value) => {
-        if (!pending && (value === "details" || value === "payments"))
-          onTab(value)
+export function BookingEditor({
+  detail,
+  onClose,
+  onViewReservation,
+  onDirtyChange,
+  full = false,
+  initialTab = "details",
+  onTabChange,
+}: {
+  detail: ReservationDetail
+  onRefresh: () => void
+  onClose?: () => void
+  onViewReservation?: (id: string) => void
+  onDirtyChange?: (dirty: boolean) => void
+  full?: boolean
+  initialTab?: string
+  onTabChange?: (tab: string) => void
+}) {
+  const [drafts, setDrafts] = useState<RoomDraft[]>(
+    detail.rooms.map((l) => ({
+      id: l.id,
+      room: stayValue(l),
+      removed: false,
+      reason: "",
+    }))
+  )
+  const [notes, setNotes] = useState(detail.notes ?? "")
+  const [contact] = useState<BookingContact>(contactValue(detail.guest))
+  const [guests, setGuests] = useState<StayingGuest[]>(
+    guestValues(detail.stayingGuests)
+  )
+  const roomTypes = useRoomTypes()
+  const physicalRooms = useRooms()
+  const [expandedRooms, setExpandedRooms] = useState<Set<string>>(new Set())
+  const [intent, setIntent] = useState<Intent | null>(null)
+  const [pendingActions, setPendingActions] = useState<WorkflowAction[]>([])
+  const [tab, setTab] = useState(initialTab)
+  const [error, setError] = useState("")
+  const formRef = useRef<HTMLFormElement>(null)
+  const [paymentDirty, setPaymentDirty] = useState(false)
+  const changes = roomEdits(detail, drafts)
+  if (notes !== (detail.notes ?? "")) changes.push({ type: "notes", notes })
+  if (
+    JSON.stringify(contactValue(contact)) !==
+    JSON.stringify(contactValue(detail.guest))
+  )
+    changes.push({ type: "contact", contact: contactValue(contact) })
+  if (
+    JSON.stringify(guestValues(guests)) !==
+    JSON.stringify(guestValues(detail.stayingGuests))
+  )
+    changes.push({ type: "set-guests", guests: guestValues(guests) })
+  changes.push(...pendingActions)
+  const dirty = changes.length > 0
+  const changesKey = JSON.stringify(changes)
+  const editCommand = useMemo<WorkflowCommand>(
+    () => ({
+      requestId: crypto.randomUUID(),
+      version: detail.version,
+      actions: JSON.parse(changesKey) as WorkflowAction[],
+    }),
+    [changesKey, detail.version]
+  )
+  const [previewCommand, setPreviewCommand] = useState(editCommand)
+  useEffect(() => {
+    const timer = setTimeout(() => setPreviewCommand(editCommand), 300)
+    return () => clearTimeout(timer)
+  }, [editCommand])
+  const editPreview = useQuery({
+    queryKey: ["workflow-edit-preview", detail.id, previewCommand],
+    queryFn: () => previewWorkflow(detail.id, previewCommand),
+    enabled: dirty && previewCommand.actions.length > 0,
+    retry: false,
+    refetchOnWindowFocus: false,
+  })
+  const previewCurrent = previewCommand === editCommand
+  const billing = dirty
+    ? previewCurrent
+      ? editPreview.data
+      : undefined
+    : detail
+  const billingRooms = dirty ? (billing?.rooms ?? []) : detail.rooms
+  const saveMutation = useWorkflowCommand()
+  useEffect(() => {
+    onDirtyChange?.(dirty || paymentDirty)
+  }, [dirty, paymentDirty, onDirtyChange])
+  const activeDrafts = drafts.filter(
+    (d) =>
+      !d.removed &&
+      (!detail.rooms.some((l) => l.id === d.id) ||
+        isActiveStay(detail.rooms.find((l) => l.id === d.id)!.status))
+  )
+  const common = sharedStay(activeDrafts)
+  const projectedDetail = billing ? { ...detail, ...billing } : detail
+  const projectedRooms = projectedDetail.rooms.map((room) => ({
+    ...room,
+    roomTypeName:
+      roomTypes.data?.find((type) => type.id === room.roomTypeId)?.name ??
+      room.roomTypeName,
+    roomNumber:
+      physicalRooms.data?.find((physical) => physical.id === room.roomId)
+        ?.number ?? room.roomNumber,
+  }))
+  const current = projectedRooms.filter((l) => isActiveStay(l.status))
+  const next = nextStayAction(projectedRooms)
+  const unassigned = current.some((l) => !l.roomId)
+  const update = (id: string, patch: Partial<WorkflowRoom>) =>
+    setDrafts((ds) =>
+      ds.map((d) => (d.id === id ? { ...d, room: { ...d.room, ...patch } } : d))
+    )
+  const cancel = () => setIntent({ type: "cancel" })
+  function review(_title: string, actions: WorkflowAction[]) {
+    setError("")
+    setPendingActions((pending) => [...pending, ...actions])
+  }
+  async function saveChanges() {
+    setError("")
+    if (
+      !contact.fullName.trim() ||
+      (contact.email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(contact.email))
+    ) {
+      setTab("details")
+      setError(
+        "Completa el nombre completo del contacto. Si indicas un email, revisa que sea válido."
+      )
+      return
+    }
+    if (guests.some((g) => !g.fullName.trim())) {
+      setTab("guests")
+      setError("Completa el nombre completo de cada huésped.")
+      return
+    }
+    if (
+      guests.some(
+        (g) =>
+          g.email?.trim() && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(g.email.trim())
+      )
+    ) {
+      setTab("guests")
+      setError("Revisa el email de los huéspedes en Más datos.")
+      return
+    }
+    if (!formRef.current?.reportValidity()) return
+    if (!dirty || !billing || editPreview.isFetching || saveMutation.isPending)
+      return
+    try {
+      await saveMutation.mutateAsync({ id: detail.id, command: editCommand })
+      toast.add({ title: "Reserva guardada", type: "success" })
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "No se pudo guardar.")
+    }
+  }
+  return (
+    <form
+      ref={formRef}
+      noValidate
+      className={cn(
+        "flex min-w-0 flex-col gap-4",
+        !full && "min-h-0 flex-1 overflow-hidden"
+      )}
+      onSubmit={(e) => {
+        e.preventDefault()
+        void saveChanges()
       }}
     >
-      {content}
-    </Tabs>
-  ) : (
-    <div className="flex max-h-[calc(100svh-4rem)] min-h-0 flex-col">
-      {content}
-    </div>
-  )
-}
-
-function RemovedRoomRow({
-  label,
-  disabled,
-  onUndo,
-}: {
-  label: string
-  disabled: boolean
-  onUndo: () => void
-}) {
-  return (
-    <div className="flex min-w-0 items-center justify-between gap-3 border p-3">
-      <p className="min-w-0 truncate">{label} quitada</p>
-      <Button
-        type="button"
-        variant="ghost"
-        size="sm"
-        disabled={disabled}
-        onClick={onUndo}
+      <div className="flex shrink-0 flex-wrap items-center gap-1 pr-8">
+        <span className="text-lg font-semibold">
+          {`${contact.fullName}`.trim()}
+        </span>
+        <span className="text-lg text-muted-foreground"> · {detail.code}</span>
+        {!full && onViewReservation && (
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon-sm"
+            aria-label="Ver reserva completa"
+            title="Ver reserva completa"
+            onClick={() => onViewReservation(detail.id)}
+          >
+            <ArrowUpRightIcon />
+          </Button>
+        )}
+        {!full && !detail.cancelledAt && (
+          <DropdownMenu>
+            <DropdownMenuTrigger
+              render={
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon-sm"
+                  aria-label="Más acciones de reserva"
+                />
+              }
+            >
+              <EllipsisIcon />
+            </DropdownMenuTrigger>
+            <DropdownMenuContent>
+              <DropdownMenuGroup>
+                <DropdownMenuItem
+                  variant="destructive"
+                  disabled={saveMutation.isPending || (dirty && !billing)}
+                  onClick={cancel}
+                >
+                  Cancelar reserva
+                </DropdownMenuItem>
+              </DropdownMenuGroup>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        )}
+      </div>
+      {(contact.phone || contact.email) && (
+        <p className="-mt-2 shrink-0 text-sm wrap-anywhere text-muted-foreground">
+          {[contact.phone, contact.email].filter(Boolean).join(" · ")}
+        </p>
+      )}
+      <Tabs
+        value={tab}
+        onValueChange={(value) => {
+          setTab(value)
+          onTabChange?.(value)
+        }}
+        className={cn("gap-4", !full && "min-h-0 overflow-y-auto")}
       >
-        Deshacer
-      </Button>
-    </div>
+        <TabsList variant="line" className="shrink-0">
+          <TabsTrigger value="details">Detalles</TabsTrigger>
+          <TabsTrigger value="guests">Huéspedes</TabsTrigger>
+          <TabsTrigger value="payments">Pagos</TabsTrigger>
+          {full && <TabsTrigger value="history">Historial</TabsTrigger>}
+        </TabsList>
+        <div className="grid min-w-0 shrink-0 gap-6 p-px lg:grid-cols-[minmax(0,1fr)_280px]">
+          <div className="min-w-0">
+            <TabsContent value="details" className="flex flex-col gap-5">
+              {common ? (
+                <section className="flex flex-col gap-2">
+                  <FieldGroup className="grid grid-cols-2 gap-3">
+                    <TextField
+                      label="Check-in"
+                      type="date"
+                      required
+                      value={common.checkIn}
+                      disabled={current.some((l) => l.status === "checked_in")}
+                      onChange={(checkIn) =>
+                        setDrafts((ds) =>
+                          ds.map((d) =>
+                            activeDrafts.some((a) => a.id === d.id)
+                              ? { ...d, room: { ...d.room, checkIn } }
+                              : d
+                          )
+                        )
+                      }
+                    />
+                    <TextField
+                      label="Check-out"
+                      type="date"
+                      required
+                      value={common.checkOut}
+                      min={
+                        current.some((l) => l.status === "checked_in")
+                          ? current.reduce(
+                              (date, l) =>
+                                l.checkOut > date ? l.checkOut : date,
+                              ""
+                            )
+                          : undefined
+                      }
+                      onChange={(checkOut) =>
+                        setDrafts((ds) =>
+                          ds.map((d) =>
+                            activeDrafts.some((a) => a.id === d.id)
+                              ? { ...d, room: { ...d.room, checkOut } }
+                              : d
+                          )
+                        )
+                      }
+                    />
+                  </FieldGroup>
+                </section>
+              ) : activeDrafts.length > 0 ? (
+                <p className="text-muted-foreground">
+                  Las habitaciones tienen fechas diferentes. Revisa las fechas
+                  de cada una en las opciones.
+                </p>
+              ) : null}
+              <section className="flex flex-col gap-3">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <h3 className="font-medium">Habitaciones</h3>
+                </div>
+                {drafts
+                  .filter(
+                    (d) =>
+                      projectedRooms.find((l) => l.id === d.id)?.status !==
+                      "cancelled"
+                  )
+                  .map((draft, i) => {
+                    const saved = projectedRooms.find((l) => l.id === draft.id)
+                    const locked = !!saved && !isActiveStay(saved.status)
+                    const occupied = saved?.status === "checked_in"
+                    return (
+                      <section
+                        key={draft.id}
+                        className="flex min-w-0 flex-col gap-3"
+                      >
+                        {draft.removed ? (
+                          <div className="flex flex-col gap-3">
+                            <p>
+                              Hab. {saved?.roomNumber ?? i + 1} se retirará al
+                              guardar.
+                            </p>
+                            <FieldGroup>
+                              <TextField
+                                label="Motivo de la retirada"
+                                required
+                                value={draft.reason}
+                                onChange={(reason) =>
+                                  setDrafts((ds) =>
+                                    ds.map((d) =>
+                                      d.id === draft.id ? { ...d, reason } : d
+                                    )
+                                  )
+                                }
+                              />
+                            </FieldGroup>
+                            <Button
+                              type="button"
+                              variant="outline"
+                              className="w-fit"
+                              onClick={() =>
+                                setDrafts((ds) =>
+                                  ds.map((d) =>
+                                    d.id === draft.id
+                                      ? { ...d, removed: false }
+                                      : d
+                                  )
+                                )
+                              }
+                            >
+                              <Undo2Icon data-icon="inline-start" />
+                              Deshacer retirada
+                            </Button>
+                          </div>
+                        ) : (
+                          <>
+                            <CompactRoomFields
+                              reservationId={detail.id}
+                              room={draft.room}
+                              blockedRoomIds={overlappingRoomIds(
+                                draft.room,
+                                drafts
+                                  .filter((other) => {
+                                    const status = projectedRooms.find(
+                                      (line) => line.id === other.id
+                                    )?.status
+                                    return (
+                                      other.id !== draft.id &&
+                                      !other.removed &&
+                                      status !== "cancelled" &&
+                                      status !== "no_show"
+                                    )
+                                  })
+                                  .map((other) => other.room)
+                              )}
+                              locked={locked}
+                              occupied={occupied}
+                              onChange={(room) => update(draft.id, room)}
+                              actions={
+                                <RoomStatusMenu
+                                  expanded={expandedRooms.has(draft.id)}
+                                  onToggleAdvanced={() =>
+                                    setExpandedRooms((current) => {
+                                      const next = new Set(current)
+                                      if (next.has(draft.id))
+                                        next.delete(draft.id)
+                                      else next.add(draft.id)
+                                      return next
+                                    })
+                                  }
+                                  saved={saved}
+                                  disabled={
+                                    saveMutation.isPending ||
+                                    (dirty && !billing)
+                                  }
+                                  onCancel={() => {
+                                    if (!saved)
+                                      setDrafts((ds) =>
+                                        ds.filter((d) => d.id !== draft.id)
+                                      )
+                                    else if (
+                                      detail.rooms.filter(
+                                        (l) => l.status !== "cancelled"
+                                      ).length === 1
+                                    )
+                                      cancel()
+                                    else
+                                      setIntent({
+                                        type: "cancel-room",
+                                        lineId: saved.id,
+                                      })
+                                  }}
+                                />
+                              }
+                            />
+                            {!common && (
+                              <div className="text-xs text-muted-foreground">
+                                {`${draft.room.checkIn} al ${draft.room.checkOut}`}
+                              </div>
+                            )}
+                            {expandedRooms.has(draft.id) && (
+                              <div className="flex flex-col gap-3">
+                                <FieldGroup className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+                                  <TextField
+                                    label="Check-in de habitación"
+                                    type="date"
+                                    required
+                                    value={draft.room.checkIn}
+                                    disabled={locked || occupied}
+                                    onChange={(checkIn) =>
+                                      update(draft.id, { checkIn })
+                                    }
+                                  />
+                                  <TextField
+                                    label={
+                                      occupied
+                                        ? "Extender hasta"
+                                        : "Check-out de habitación"
+                                    }
+                                    type="date"
+                                    required
+                                    value={draft.room.checkOut}
+                                    disabled={locked}
+                                    min={occupied ? saved.checkOut : undefined}
+                                    onChange={(checkOut) =>
+                                      update(draft.id, { checkOut })
+                                    }
+                                  />
+                                  <ChoiceField
+                                    label="Estado"
+                                    value={saved?.status ?? "confirmed"}
+                                    disabled={
+                                      !saved ||
+                                      saveMutation.isPending ||
+                                      (dirty && !billing)
+                                    }
+                                    options={[
+                                      {
+                                        value: "confirmed",
+                                        label: "Confirmada",
+                                        disabled:
+                                          !saved ||
+                                          !["confirmed", "checked_in"].includes(
+                                            saved.status
+                                          ),
+                                      },
+                                      {
+                                        value: "checked_in",
+                                        label: "Check-in",
+                                        disabled:
+                                          !saved?.roomId ||
+                                          !["confirmed", "checked_in"].includes(
+                                            saved?.status ?? ""
+                                          ),
+                                      },
+                                      {
+                                        value: "checked_out",
+                                        label: "Check-out",
+                                        disabled: ![
+                                          "checked_in",
+                                          "checked_out",
+                                        ].includes(saved?.status ?? ""),
+                                      },
+                                      ...(saved?.status === "no_show"
+                                        ? [
+                                            {
+                                              value: "no_show",
+                                              label: "No se presentó",
+                                              disabled: true,
+                                            },
+                                          ]
+                                        : []),
+                                    ]}
+                                    onChange={(status) => {
+                                      if (!saved || status === saved.status)
+                                        return
+                                      if (status === "confirmed")
+                                        setIntent({
+                                          type: "undo-check-in",
+                                          lineId: saved.id,
+                                        })
+                                      else
+                                        review(
+                                          status === "checked_in"
+                                            ? "Check-in de habitación"
+                                            : "Check-out de habitación",
+                                          [
+                                            {
+                                              type:
+                                                status === "checked_in"
+                                                  ? "check-in"
+                                                  : "check-out",
+                                              lineIds: [saved.id],
+                                            },
+                                          ]
+                                        )
+                                    }}
+                                  />
+                                </FieldGroup>
+                                {saved && full && (
+                                  <div className="flex flex-wrap gap-2">
+                                    <RoomOtherActions
+                                      saved={saved}
+                                      detail={detail}
+                                      disabled={
+                                        saveMutation.isPending ||
+                                        (dirty && !billing)
+                                      }
+                                      onIntent={setIntent}
+                                      onRemove={() =>
+                                        setDrafts((ds) =>
+                                          ds.map((d) =>
+                                            d.id === saved.id
+                                              ? {
+                                                  ...d,
+                                                  removed: true,
+                                                  reason:
+                                                    "Habitación añadida por error",
+                                                }
+                                              : d
+                                          )
+                                        )
+                                      }
+                                    />
+                                  </div>
+                                )}
+                              </div>
+                            )}
+                          </>
+                        )}
+                      </section>
+                    )
+                  })}
+                {activeDrafts.length > 0 && (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    className="w-fit"
+                    disabled={drafts.length >= 60}
+                    onClick={() =>
+                      setDrafts((ds) => [
+                        ...ds,
+                        {
+                          id: crypto.randomUUID(),
+                          room: { ...activeDrafts[0].room, roomId: null },
+                          removed: false,
+                          reason: "",
+                        },
+                      ])
+                    }
+                  >
+                    <PlusIcon data-icon="inline-start" />
+                    Agregar habitación
+                  </Button>
+                )}
+              </section>
+              <section className="flex flex-col gap-3">
+                <FieldGroup>
+                  <TextField
+                    label="Notas"
+                    type="textarea"
+                    max={2000}
+                    value={notes}
+                    onChange={setNotes}
+                  />
+                </FieldGroup>
+              </section>
+            </TabsContent>
+            <TabsContent value="guests" className="flex flex-col gap-4">
+              <GuestFields
+                guests={guests}
+                detail={detail}
+                onChange={setGuests}
+              />
+            </TabsContent>
+            <TabsContent
+              value="payments"
+              keepMounted
+              className="flex flex-col gap-5"
+            >
+              <PaymentForm
+                detail={projectedDetail}
+                disabled={saveMutation.isPending || (dirty && !billing)}
+                onDirtyChange={setPaymentDirty}
+                onReady={review}
+              />
+              <details>
+                <summary className="cursor-pointer text-xs">
+                  Más opciones de facturación
+                </summary>
+                <div className="mt-3 flex flex-wrap gap-2">
+                  {(["discount", "waiver", "refund"] as const).map((kind) => (
+                    <Button
+                      type="button"
+                      key={kind}
+                      variant="outline"
+                      disabled={
+                        dirty ||
+                        (kind === "waiver" && detail.balanceCents <= 0) ||
+                        (kind === "refund" && detail.creditCents <= 0)
+                      }
+                      onClick={() => setIntent({ type: "financial", kind })}
+                    >
+                      {labels[kind]}
+                    </Button>
+                  ))}
+                </div>
+              </details>
+              <FinancialList
+                detail={projectedDetail}
+                disabled={saveMutation.isPending || (dirty && !billing)}
+                onCorrect={(entry) => setIntent({ type: "correction", entry })}
+              />
+            </TabsContent>
+            {full && (
+              <TabsContent value="history" className="flex flex-col gap-5">
+                <ReservationHistory detail={detail} />
+              </TabsContent>
+            )}
+          </div>
+          <aside className="min-w-0 md:self-start">
+            <BookingSummary
+              rooms={billingRooms.map((room) => ({
+                key: room.id,
+                typeName:
+                  roomTypes.data?.find((type) => type.id === room.roomTypeId)
+                    ?.name ??
+                  room.roomTypeName ??
+                  "Habitación",
+                adults: room.adults,
+                children: room.children,
+                status: room.status,
+                charges: {
+                  subtotalCents: room.subtotalCents,
+                  discountCents: room.discountCents,
+                  totalCents: room.totalCents,
+                },
+                invalid: false,
+              }))}
+              summary={billing ?? null}
+              paidCents={billing?.paidCents ?? detail.paidCents}
+              waiverCents={billing?.waiverCents ?? detail.waiverCents}
+              refundCents={billing?.refundCents ?? detail.refundCents}
+              currency={detail.currency}
+              stayLabel={`${format(parseISO(common?.checkIn ?? detail.checkIn), "d MMM")} – ${format(parseISO(common?.checkOut ?? detail.checkOut), "d MMM yyyy")}`}
+              showPayments
+              message={
+                editPreview.error && previewCurrent
+                  ? "Revisa los cambios para calcular el total."
+                  : "Calculando…"
+              }
+            />
+            {dirty &&
+              billing &&
+              "settlementBlocked" in billing &&
+              billing.settlementBlocked && (
+                <FieldError>
+                  Registra un pago o una condonación antes de guardar la salida
+                  final.
+                </FieldError>
+              )}
+            {dirty && previewCurrent && editPreview.error && (
+              <FieldError>{editPreview.error.message}</FieldError>
+            )}
+          </aside>
+        </div>
+      </Tabs>
+      {error && <FieldError role="alert">{error}</FieldError>}
+      <div className="flex shrink-0 flex-wrap items-center justify-end gap-3">
+        <div className="flex flex-wrap gap-2">
+          {full && !detail.cancelledAt && (
+            <Button
+              type="button"
+              variant="destructive"
+              disabled={saveMutation.isPending || (dirty && !billing)}
+              onClick={cancel}
+            >
+              Cancelar reserva
+            </Button>
+          )}
+          {tab === "details" && next && (
+            <Button
+              type="button"
+              disabled={
+                saveMutation.isPending || (next === "check-in" && unassigned)
+              }
+              onClick={() =>
+                review(
+                  next === "check-in"
+                    ? "Revisar check-in"
+                    : "Revisar check-out",
+                  [{ type: next, lineIds: current.map((l) => l.id) }]
+                )
+              }
+            >
+              {next === "check-in" ? "Check-in" : "Check-out"}
+              {current.length > 1 ? ` · ${current.length} habitaciones` : ""}
+            </Button>
+          )}
+          <Button
+            type="submit"
+            disabled={
+              !dirty ||
+              !!editPreview.error ||
+              !billing ||
+              ("settlementBlocked" in billing && billing.settlementBlocked) ||
+              editPreview.isFetching ||
+              saveMutation.isPending
+            }
+          >
+            {saveMutation.isPending ? "Guardando…" : "Guardar"}
+          </Button>
+          {!full && onClose && (
+            <Button type="button" variant="outline" onClick={onClose}>
+              Cerrar
+            </Button>
+          )}
+        </div>
+      </div>
+      {tab === "details" && next === "check-in" && unassigned && (
+        <p className="text-xs text-muted-foreground">
+          Asigna una habitación a cada estancia antes del check-in.
+        </p>
+      )}
+      {intent && (
+        <ActionForm
+          detail={projectedDetail}
+          intent={intent}
+          onClose={() => setIntent(null)}
+          onReady={(title, actions) => {
+            setIntent(null)
+            review(title, actions)
+          }}
+        />
+      )}
+    </form>
   )
 }
 
-function RoomLineMenu({
-  index,
+function useRoomAssignmentOptions(room: WorkflowRoom, reservationId?: string) {
+  const reservations = useReservations(room.checkIn, room.checkOut)
+  const closures = useRoomClosures(room.checkIn, room.checkOut)
+  return {
+    blocked: unavailableRoomIds(
+      room,
+      reservations.data ?? [],
+      closures.data ?? [],
+      reservationId
+    ),
+    ready:
+      !!reservations.data &&
+      !!closures.data &&
+      !reservations.isPlaceholderData &&
+      !closures.isPlaceholderData &&
+      !reservations.isError &&
+      !closures.isError,
+    error: reservations.error?.message ?? closures.error?.message,
+  }
+}
+
+function CompactRoomFields({
+  room,
+  reservationId,
+  blockedRoomIds,
+  locked,
+  occupied,
+  onChange,
   actions,
-  disabled,
-  size = "icon",
-  onUnassign,
-  onRemove,
 }: {
-  index: number
-  actions: ReturnType<typeof roomLineActions>
-  disabled: boolean
-  size?: "icon" | "icon-sm"
-  onUnassign: () => void
-  onRemove: () => void
+  room: WorkflowRoom
+  reservationId: string
+  blockedRoomIds: Set<string>
+  locked: boolean
+  occupied: boolean
+  onChange: (room: WorkflowRoom) => void
+  actions: ReactNode
 }) {
+  const types = useRoomTypes(),
+    rooms = useRooms()
+  const availability = useRoomAssignmentOptions(room, reservationId)
+  return (
+    <FieldGroup className="grid grid-cols-2 gap-3 sm:grid-cols-[minmax(0,1fr)_88px_56px_56px_28px]">
+      <ChoiceField
+        label="Tipo"
+        value={room.roomTypeId}
+        disabled={locked || occupied}
+        options={(types.data ?? []).map((t) => ({
+          value: t.id,
+          label: t.name,
+        }))}
+        onChange={(roomTypeId) => {
+          if (roomTypeId !== room.roomTypeId)
+            onChange({ ...room, roomTypeId, roomId: null })
+        }}
+      />
+      <ChoiceField
+        label="Hab."
+        value={room.roomId ?? "unassigned"}
+        disabled={locked || !availability.ready}
+        options={[
+          ...(!occupied ? [{ value: "unassigned", label: "Sin asignar" }] : []),
+          ...(rooms.data ?? [])
+            .filter(
+              (r) =>
+                r.roomTypeId === room.roomTypeId &&
+                !blockedRoomIds.has(r.id) &&
+                !availability.blocked.has(r.id)
+            )
+            .map((r) => ({
+              value: r.id,
+              label: r.number,
+            })),
+        ]}
+        onChange={(roomId) =>
+          onChange({ ...room, roomId: roomId === "unassigned" ? null : roomId })
+        }
+      />
+      <TextField
+        label="Adultos"
+        type="number"
+        required
+        min={1}
+        max={100}
+        disabled={locked || occupied}
+        value={Number.isNaN(room.adults) ? "" : room.adults}
+        onChange={(v) =>
+          onChange({ ...room, adults: v === "" ? NaN : Number(v) })
+        }
+      />
+      <TextField
+        label="Niños"
+        type="number"
+        required
+        min={0}
+        max={100}
+        disabled={locked || occupied}
+        value={Number.isNaN(room.children) ? "" : room.children}
+        onChange={(v) =>
+          onChange({ ...room, children: v === "" ? NaN : Number(v) })
+        }
+      />
+      {availability.error && (
+        <FieldError className="col-span-full">{availability.error}</FieldError>
+      )}
+      <div className="col-start-2 self-end justify-self-end sm:col-start-auto">
+        {actions}
+      </div>
+    </FieldGroup>
+  )
+}
+
+function RoomStatusMenu({
+  expanded,
+  onToggleAdvanced,
+  saved,
+  disabled,
+  onCancel,
+}: {
+  expanded: boolean
+  onToggleAdvanced: () => void
+  saved?: ReservationDetail["rooms"][number]
+  disabled: boolean
+  onCancel: () => void
+}) {
+  const status = saved?.status ?? "confirmed"
   return (
     <DropdownMenu>
       <DropdownMenuTrigger
-        disabled={disabled}
         render={
           <Button
             type="button"
             variant="ghost"
-            size={size}
-            aria-label={`Opciones de habitación ${index + 1}`}
+            size="icon-sm"
+            aria-label={`Opciones de habitación ${saved?.roomNumber ?? "sin asignar"}`}
+            disabled={status === "cancelled"}
           />
         }
       >
         <EllipsisIcon />
       </DropdownMenuTrigger>
-      <DropdownMenuContent align="end" className="w-44">
+      <DropdownMenuContent align="end" className="w-48">
+        <DropdownMenuGroup>
+          <DropdownMenuItem onClick={onToggleAdvanced}>
+            {expanded ? "Ocultar opciones avanzadas" : "Opciones avanzadas"}
+          </DropdownMenuItem>
+        </DropdownMenuGroup>
+        <DropdownMenuSeparator />
         <DropdownMenuGroup>
           <DropdownMenuItem
-            disabled={!actions.canUnassign}
-            onClick={onUnassign}
-          >
-            <UnlinkIcon />
-            Desasignar habitación
-          </DropdownMenuItem>
-          <DropdownMenuItem
             variant="destructive"
-            disabled={!actions.canRemove}
-            onClick={onRemove}
+            disabled={!!saved && disabled}
+            onClick={onCancel}
           >
-            <XIcon />
-            Quitar habitación
+            Cancelar habitación
           </DropdownMenuItem>
         </DropdownMenuGroup>
       </DropdownMenuContent>
@@ -1940,370 +1424,915 @@ function RoomLineMenu({
   )
 }
 
-function RoomLineRow({
-  prefix,
-  index,
-  typeId,
-  typeName,
-  roomId,
-  adults,
-  children,
-  discount,
-  typeError,
-  roomError,
-  adultsError,
-  childrenError,
-  occupancyError,
-  discountError,
-  discountDisabled,
-  types,
-  rooms,
-  typesLoading,
-  roomsLoading,
+function RoomOtherActions({
+  saved,
+  detail,
   disabled,
-  partyDisabled,
-  typeLocked,
-  allowLater,
-  status,
-  actions,
-  onBlur,
-  onType,
-  onRoom,
-  onAdults,
-  onChildren,
-  onDiscount,
-  onUnassign,
+  onIntent,
   onRemove,
 }: {
-  prefix: string
-  index: number
-  typeId: string | null
-  typeName: string
-  roomId: string | null
-  adults: string
-  children: string
-  discount: string
-  typeError: string | null
-  roomError: string | null
-  adultsError: string | null
-  childrenError: string | null
-  occupancyError: string | null
-  discountError: string | null
-  discountDisabled: boolean
-  types: { id: string; name: string; free: number }[]
-  rooms: { id: string; number: string }[]
-  typesLoading: boolean
-  roomsLoading: boolean
+  saved: ReservationDetail["rooms"][number]
+  detail: ReservationDetail
   disabled: boolean
-  partyDisabled: boolean
-  typeLocked: boolean
-  allowLater: boolean
-  status: string | null
-  actions: ReturnType<typeof roomLineActions>
-  onBlur: (id: string) => void
-  onType: (value: string | null) => void
-  onRoom: (value: string | null) => void
-  onAdults: (value: string) => void
-  onChildren: (value: string) => void
-  onDiscount: (value: string) => void
-  onUnassign: () => void
+  onIntent: (intent: Intent) => void
   onRemove: () => void
 }) {
-  const [typeOpen, setTypeOpen] = useState(false)
-  const [roomOpen, setRoomOpen] = useState(false)
-  const typeItems = [
-    { value: null, label: "Seleccionar tipo", disabled: false },
-    ...types.map((type) => ({
-      value: type.id,
-      label: type.name,
-      disabled: typeLocked ? false : type.free < 1,
-    })),
-  ]
-  if (typeId && !typeItems.some((item) => item.value === typeId)) {
-    typeItems.push({ value: typeId, label: typeName, disabled: !typeLocked })
-  }
-  const roomItems = [
-    ...(allowLater
-      ? [{ value: null, label: "Sin asignar", disabled: false }]
-      : []),
-    ...rooms.map((room) => ({
-      value: room.id,
-      label: room.number,
-      disabled: room.id === roomId && Boolean(roomError),
-    })),
-  ]
-  const typeDisabled = disabled || typeLocked || typesLoading
-  const statusLabel =
-    status === "checked_out"
-      ? "Salida"
-      : status === "cancelled"
-        ? "Cancelada"
-        : status === "no_show"
-          ? "No se presentó"
-          : null
-
+  if (!isActiveStay(saved.status)) return null
   return (
-    <FieldSet className="@container/room-line min-w-0 gap-3 border p-3">
-      <FieldLegend variant="label" className="sr-only">
-        Habitación {index + 1}
-      </FieldLegend>
-      <div className="flex items-center justify-between gap-3 @xl/room-line:hidden">
-        <div className="flex flex-wrap items-center gap-2">
-          <span className="font-medium">Habitación {index + 1}</span>
-          {statusLabel ? (
-            <Badge variant="secondary">{statusLabel}</Badge>
-          ) : null}
-        </div>
-        {actions.visible ? (
-          <RoomLineMenu
-            index={index}
-            actions={actions}
-            size="icon-sm"
-            disabled={disabled}
-            onUnassign={onUnassign}
-            onRemove={onRemove}
-          />
-        ) : null}
-      </div>
-      <FieldGroup className="grid grid-cols-2 gap-3 @2xs/room-line:grid-cols-3 @xl/room-line:grid-cols-[minmax(0,1fr)_7rem_4rem_4rem_6.5rem_2rem]">
-        <Field
-          className="col-span-2 min-w-0 @xl/room-line:col-span-1"
-          data-disabled={typeDisabled || undefined}
-          data-invalid={Boolean(typeError) || undefined}
-        >
-          <FieldLabel htmlFor={`${prefix}-type`}>Tipo</FieldLabel>
-          <Select
-            items={typeItems}
-            value={typeId}
-            disabled={typeDisabled}
-            onValueChange={onType}
-            onOpenChange={(open) => {
-              setTypeOpen(open)
-              if (!open) onBlur(`${prefix}-type`)
-            }}
-          >
-            <SelectTrigger
-              id={`${prefix}-type`}
-              className="w-full"
-              aria-invalid={Boolean(typeError) || undefined}
-              aria-describedby={typeError ? `${prefix}-type-error` : undefined}
-              onBlur={() => {
-                if (!typeOpen) onBlur(`${prefix}-type`)
-              }}
+    <DropdownMenu>
+      <DropdownMenuTrigger
+        render={
+          <Button type="button" size="sm" variant="ghost" disabled={disabled} />
+        }
+      >
+        Más acciones
+        <EllipsisIcon data-icon="inline-end" />
+      </DropdownMenuTrigger>
+      <DropdownMenuContent>
+        <DropdownMenuGroup>
+          {saved.status === "confirmed" && (
+            <>
+              <DropdownMenuItem
+                onClick={() => onIntent({ type: "no-show", lineId: saved.id })}
+              >
+                No se presentó
+              </DropdownMenuItem>
+              <DropdownMenuItem
+                disabled={
+                  detail.rooms.filter((l) => isActiveStay(l.status)).length < 2
+                }
+                onClick={onRemove}
+              >
+                Retirar habitación añadida por error
+              </DropdownMenuItem>
+            </>
+          )}
+          {saved.status === "checked_in" && (
+            <DropdownMenuItem
+              onClick={() =>
+                onIntent({ type: "undo-check-in", lineId: saved.id })
+              }
             >
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectGroup>
-                {typeItems.map((item) => (
-                  <SelectItem
-                    key={item.value ?? "type-placeholder"}
-                    value={item.value}
-                    disabled={item.disabled}
-                  >
-                    {item.label}
-                  </SelectItem>
-                ))}
-              </SelectGroup>
-            </SelectContent>
-          </Select>
-          {typeError ? (
-            <FieldError id={`${prefix}-type-error`}>{typeError}</FieldError>
-          ) : null}
-          {statusLabel ? (
-            <div className="hidden @xl/room-line:block">
-              <Badge variant="secondary">{statusLabel}</Badge>
-            </div>
-          ) : null}
-        </Field>
-        <Field
-          className="min-w-0"
-          data-disabled={disabled || !typeId || roomsLoading || undefined}
-          data-invalid={Boolean(roomError) || undefined}
-        >
-          <FieldLabel htmlFor={`${prefix}-room`}>Hab.</FieldLabel>
-          <Select
-            items={roomItems}
-            value={roomId}
-            disabled={disabled || !typeId || roomsLoading}
-            onValueChange={onRoom}
-            onOpenChange={(open) => {
-              setRoomOpen(open)
-              if (!open) onBlur(`${prefix}-room`)
-            }}
-          >
-            <SelectTrigger
-              id={`${prefix}-room`}
-              className="w-full"
-              aria-invalid={Boolean(roomError) || undefined}
-              aria-describedby={roomError ? `${prefix}-room-error` : undefined}
-              onBlur={() => {
-                if (!roomOpen) onBlur(`${prefix}-room`)
-              }}
+              Corregir llegada por error
+            </DropdownMenuItem>
+          )}
+        </DropdownMenuGroup>
+      </DropdownMenuContent>
+    </DropdownMenu>
+  )
+}
+
+function GuestFields({
+  guests,
+  detail,
+  onChange,
+}: {
+  guests: StayingGuest[]
+  detail: ReservationDetail
+  onChange: (guests: StayingGuest[]) => void
+}) {
+  const patch = (id: string, changes: Partial<StayingGuest>) =>
+    onChange(guests.map((g) => (g.id === id ? { ...g, ...changes } : g)))
+  return (
+    <>
+      {!guests.length && (
+        <Empty>
+          <EmptyHeader>
+            <EmptyTitle>Sin huéspedes registrados</EmptyTitle>
+            <EmptyDescription>
+              Agrega a las personas que se alojan. Pueden ser distintas del
+              contacto principal.
+            </EmptyDescription>
+          </EmptyHeader>
+        </Empty>
+      )}
+      {guests.map((g, i) => (
+        <section key={g.id} className="flex flex-col gap-3">
+          <div className="flex items-center justify-between gap-2">
+            <h4 className="font-medium">Huésped {i + 1}</h4>
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon-sm"
+              aria-label={`Quitar huésped ${i + 1}`}
+              onClick={() => onChange(guests.filter((p) => p.id !== g.id))}
             >
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectGroup>
-                {roomItems.map((item) => (
-                  <SelectItem
-                    key={item.value ?? "room-placeholder"}
-                    value={item.value}
-                    disabled={item.disabled}
-                  >
-                    {item.label}
-                  </SelectItem>
-                ))}
-              </SelectGroup>
-            </SelectContent>
-          </Select>
-          {roomError ? (
-            <FieldError id={`${prefix}-room-error`}>{roomError}</FieldError>
-          ) : null}
-        </Field>
-        <GuestCountField
-          id={`${prefix}-adults`}
-          label="Adultos"
-          min={1}
-          value={adults}
-          disabled={partyDisabled}
-          error={adultsError}
-          occupancyErrorId={
-            occupancyError ? `${prefix}-occupancy-error` : undefined
-          }
-          onBlur={() => onBlur(`${prefix}-adults`)}
-          onChange={onAdults}
-        />
-        <GuestCountField
-          id={`${prefix}-children`}
-          label="Niños"
-          min={0}
-          value={children}
-          disabled={partyDisabled}
-          error={childrenError}
-          occupancyErrorId={
-            occupancyError ? `${prefix}-occupancy-error` : undefined
-          }
-          onBlur={() => onBlur(`${prefix}-children`)}
-          onChange={onChildren}
-        />
-        <DiscountField
-          id={`${prefix}-discount`}
-          value={discount}
-          error={discountError}
-          disabled={discountDisabled}
-          onBlur={() => onBlur(`${prefix}-discount`)}
-          onChange={onDiscount}
-        />
-        {actions.visible ? (
-          <div className="hidden flex-col gap-2 self-start @xl/room-line:flex">
-            <span
-              className="text-xs leading-snug select-none"
-              aria-hidden="true"
-            >
-              &nbsp;
-            </span>
-            <RoomLineMenu
-              index={index}
-              actions={actions}
-              disabled={disabled}
-              onUnassign={onUnassign}
-              onRemove={onRemove}
-            />
+              <XIcon />
+            </Button>
           </div>
-        ) : null}
-      </FieldGroup>
-      {occupancyError ? (
-        <FieldError id={`${prefix}-occupancy-error`}>
-          {occupancyError}
-        </FieldError>
-      ) : null}
-    </FieldSet>
+          <FieldGroup className="grid grid-cols-2 gap-3 sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_110px]">
+            <TextField
+              label="Nombre completo"
+              required
+              value={g.fullName}
+              onChange={(fullName) => patch(g.id, { fullName })}
+            />
+            <ChoiceField
+              label="Hab. del huésped"
+              value={g.reservationRoomId ?? "none"}
+              onChange={(v) =>
+                patch(g.id, { reservationRoomId: v === "none" ? null : v })
+              }
+              options={[
+                { value: "none", label: "Sin indicar" },
+                ...detail.rooms.map((l, n) => ({
+                  value: l.id,
+                  label: `${l.roomNumber ?? `Sin asignar · ${n + 1}`}${l.status === "cancelled" ? " · Cancelada" : ""}`,
+                })),
+              ]}
+            />
+          </FieldGroup>
+          <details>
+            <summary className="cursor-pointer text-xs text-muted-foreground">
+              Más datos
+            </summary>
+            <FieldGroup className="mt-3 grid grid-cols-2 gap-3">
+              <ChoiceField
+                label="Documento"
+                value={g.documentType ?? "none"}
+                onChange={(v) =>
+                  patch(g.id, { documentType: v === "none" ? null : v })
+                }
+                options={[
+                  { value: "none", label: "Sin indicar" },
+                  { value: "DNI", label: "DNI" },
+                  { value: "Pasaporte", label: "Pasaporte" },
+                  { value: "Otro", label: "Otro" },
+                ]}
+              />
+              <TextField
+                label="Número de documento"
+                value={g.documentNumber ?? ""}
+                onChange={(documentNumber) => patch(g.id, { documentNumber })}
+              />
+              <TextField
+                label="Email del huésped"
+                type="email"
+                value={g.email ?? ""}
+                onChange={(email) => patch(g.id, { email })}
+              />
+              <TextField
+                label="Teléfono del huésped"
+                type="tel"
+                placeholder="+51…"
+                value={g.phone ?? ""}
+                onChange={(phone) => patch(g.id, { phone })}
+              />
+            </FieldGroup>
+          </details>
+          <Separator />
+        </section>
+      ))}
+      <Button
+        type="button"
+        variant="outline"
+        className="w-fit"
+        disabled={guests.length >= 200}
+        onClick={() =>
+          onChange([
+            ...guests,
+            {
+              id: crypto.randomUUID(),
+              reservationRoomId:
+                detail.rooms.length === 1 ? detail.rooms[0].id : null,
+              fullName: "",
+              email: null,
+              phone: null,
+              documentType: null,
+              documentNumber: null,
+            },
+          ])
+        }
+      >
+        <PlusIcon data-icon="inline-start" />
+        Agregar huésped
+      </Button>
+    </>
   )
 }
 
-function DiscountField({
-  id,
-  value,
-  error,
+const paymentMethods = [
+  { value: "cash", label: "Efectivo" },
+  { value: "card", label: "Tarjeta" },
+  { value: "transfer", label: "Transferencia" },
+  { value: "yape", label: "Yape" },
+  { value: "other", label: "Otro" },
+]
+function PaymentForm({
+  detail,
   disabled,
-  onBlur,
-  onChange,
+  onReady,
+  onDirtyChange,
 }: {
-  id: string
-  value: string
-  error: string | null
+  detail: ReservationDetail
   disabled: boolean
-  onBlur: () => void
-  onChange: (value: string) => void
+  onReady: (title: string, actions: WorkflowAction[]) => void
+  onDirtyChange: (dirty: boolean) => void
 }) {
+  const [amount, setAmount] = useState(
+    detail.balanceCents > 0 ? formatMajor(detail.balanceCents) : ""
+  )
+  const [method, setMethod] = useState("cash")
+  const [date, setDate] = useState(today())
+  const [reference, setReference] = useState("")
+  const [error, setError] = useState("")
+  const initial = useRef({ amount, date })
+  useEffect(() => {
+    onDirtyChange(
+      amount !== initial.current.amount ||
+        date !== initial.current.date ||
+        method !== "cash" ||
+        !!reference
+    )
+  }, [amount, date, method, reference, onDirtyChange])
+  function reviewPayment() {
+    setError("")
+    const amountCents = parseMajorToCents(amount)
+    if (!amountCents || amountCents <= 0) {
+      setError("Introduce un importe positivo con hasta dos decimales.")
+      return
+    }
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || date > today()) {
+      setError("Indica una fecha de pago válida, hasta hoy.")
+      return
+    }
+    onReady("Revisar pago", [
+      {
+        type: "financial",
+        entry: {
+          kind: "payment",
+          amountCents,
+          method: method as FinancialInput["method"],
+          paymentDate: date,
+          ...(reference.trim() ? { reference: reference.trim() } : {}),
+        },
+      },
+    ])
+    initial.current = { amount: "", date }
+    setAmount("")
+    setReference("")
+    setMethod("cash")
+  }
   return (
-    <Field
-      data-invalid={Boolean(error) || undefined}
-      data-disabled={disabled || undefined}
-    >
-      <FieldLabel htmlFor={id}>Descuento</FieldLabel>
-      <Input
-        id={id}
-        inputMode="decimal"
-        placeholder="0"
-        value={value}
-        disabled={disabled}
-        aria-invalid={Boolean(error) || undefined}
-        aria-describedby={error ? `${id}-error` : undefined}
-        onBlur={onBlur}
-        onChange={(event) => onChange(event.target.value)}
-      />
-      {error ? <FieldError id={`${id}-error`}>{error}</FieldError> : null}
-    </Field>
+    <section className="flex flex-col gap-3">
+      <h3 className="font-medium">Registrar pago</h3>
+      <fieldset disabled={disabled} className="flex min-w-0 flex-col gap-3">
+        <FieldGroup className="grid grid-cols-2 gap-3">
+          <TextField
+            label="Importe S/"
+            required
+            value={amount}
+            placeholder="0.00"
+            onChange={setAmount}
+            disabled={disabled}
+          />
+          <ChoiceField
+            label="Método"
+            value={method}
+            onChange={setMethod}
+            options={paymentMethods}
+            disabled={disabled}
+          />
+          <TextField
+            label="Fecha del pago"
+            type="date"
+            required
+            max={today()}
+            value={date}
+            onChange={setDate}
+            disabled={disabled}
+          />
+          <TextField
+            label="Referencia · Opcional"
+            value={reference}
+            placeholder="N.º de operación o comprobante"
+            onChange={setReference}
+            disabled={disabled}
+          />
+        </FieldGroup>
+        <Button
+          type="button"
+          className="w-fit"
+          disabled={disabled}
+          onClick={reviewPayment}
+        >
+          Agregar pago
+        </Button>
+      </fieldset>
+      {error && <FieldError role="alert">{error}</FieldError>}
+    </section>
   )
 }
 
-function GuestCountField({
-  id,
-  label,
-  min,
-  value,
+function FinancialList({
+  detail,
   disabled,
-  error,
-  occupancyErrorId,
-  onBlur,
-  onChange,
+  onCorrect,
 }: {
-  id: string
-  label: string
-  min: number
-  value: string
+  detail: ReservationDetail
   disabled: boolean
-  error: string | null
-  occupancyErrorId?: string
-  onBlur: () => void
-  onChange: (value: string) => void
+  onCorrect: (entry: FinancialEntry) => void
 }) {
-  const description = [error ? `${id}-error` : null, occupancyErrorId]
-    .filter(Boolean)
-    .join(" ")
-  const invalid = Boolean(error || occupancyErrorId)
+  if (!detail.financialEntries.length)
+    return (
+      <Empty>
+        <EmptyHeader>
+          <EmptyTitle>Sin movimientos</EmptyTitle>
+          <EmptyDescription>
+            Los pagos registrados aparecerán aquí.
+          </EmptyDescription>
+        </EmptyHeader>
+      </Empty>
+    )
   return (
-    <Field
-      data-invalid={invalid || undefined}
-      data-disabled={disabled || undefined}
-    >
-      <FieldLabel htmlFor={id}>{label}</FieldLabel>
-      <Input
-        id={id}
-        type="number"
-        min={min}
-        step={1}
-        required
-        value={value}
-        disabled={disabled}
-        aria-invalid={invalid || undefined}
-        aria-describedby={description || undefined}
-        onBlur={onBlur}
-        onChange={(event) => onChange(event.target.value)}
-      />
-      {error ? <FieldError id={`${id}-error`}>{error}</FieldError> : null}
-    </Field>
+    <section className="flex flex-col gap-3">
+      <h3 className="font-medium">Movimientos</h3>
+      {[...detail.financialEntries]
+        .sort((a, b) => b.createdAt.localeCompare(a.createdAt))
+        .map((e) => (
+          <article key={e.id} className="flex flex-col gap-2 border-b pb-3">
+            <div className="flex items-start justify-between gap-3">
+              <div className="flex min-w-0 flex-col gap-1">
+                <p>
+                  {labels[e.kind]}
+                  {e.method
+                    ? ` · ${paymentMethods.find((m) => m.value === e.method)?.label ?? e.method}`
+                    : ""}
+                </p>
+                <p className="text-xs text-muted-foreground">
+                  {e.paymentDate ?? e.occurredAt.slice(0, 10)}
+                  {e.voidedAt ? " · Anulado" : ""}
+                </p>
+                <p className="text-xs break-words text-muted-foreground">
+                  {e.reference || "Sin referencia"}
+                </p>
+              </div>
+              <div className="flex items-center gap-2">
+                <span className="tabular-nums">
+                  {formatMoney(e.amountCents)}
+                </span>
+                {!e.voidedAt && e.kind !== "legacy_discount_excluded" && (
+                  <DropdownMenu>
+                    <DropdownMenuTrigger
+                      render={
+                        <Button
+                          type="button"
+                          size="icon-sm"
+                          variant="ghost"
+                          disabled={disabled}
+                          aria-label={`Acciones de ${labels[e.kind]} ${e.paymentDate ?? e.occurredAt.slice(0, 10)}`}
+                        />
+                      }
+                    >
+                      <EllipsisIcon />
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent>
+                      <DropdownMenuGroup>
+                        <DropdownMenuItem onClick={() => onCorrect(e)}>
+                          Corregir movimiento
+                        </DropdownMenuItem>
+                      </DropdownMenuGroup>
+                    </DropdownMenuContent>
+                  </DropdownMenu>
+                )}
+              </div>
+            </div>
+            {e.reason && (
+              <p className="text-xs text-muted-foreground">{e.reason}</p>
+            )}
+            {e.voidedAt && (
+              <p className="text-xs text-muted-foreground">
+                Corrección: {e.correctionReason}
+              </p>
+            )}
+            {["discount", "waiver"].includes(e.kind) && (
+              <p className="text-xs text-muted-foreground">
+                Aplicado: {formatMoney(e.appliedCents)}
+              </p>
+            )}
+          </article>
+        ))}
+    </section>
+  )
+}
+
+function ReservationHistory({ detail }: { detail: ReservationDetail }) {
+  const physical = useRooms()
+  const roomName = (id: string | null) =>
+    physical.data?.find((r) => r.id === id)?.number ??
+    (id ? "Habitación no disponible" : "Sin asignar")
+  return (
+    <>
+      <h3 className="font-medium">Estancias y precios guardados</h3>
+      {detail.rooms.map((l, i) => (
+        <article key={l.id} className="flex flex-col gap-2 border-b pb-4">
+          <h4 className="font-medium">
+            {l.roomTypeName} · Hab. {l.roomNumber ?? i + 1}
+          </h4>
+          <p>
+            Reserva original: {l.originalCheckIn ?? "No disponible"} al{" "}
+            {l.originalCheckOut ?? "No disponible"}
+          </p>
+          <p>
+            Fechas actuales: {l.checkIn} al {l.checkOut}
+          </p>
+          <p>Llegada real: {l.actualArrival ?? "No registrada"}</p>
+          <p>Salida real: {l.actualDeparture ?? "No registrada"}</p>
+          {l.cancellationReason && <p>Motivo: {l.cancellationReason}</p>}
+          <details>
+            <summary className="cursor-pointer">Precios por noche</summary>
+            <div className="mt-2 flex flex-col gap-1">
+              {l.nights.map((n) => (
+                <p key={n.date}>
+                  {n.date} · {formatMoney(n.priceCents)}
+                </p>
+              ))}
+            </div>
+          </details>
+        </article>
+      ))}
+      <h3 className="font-medium">Historial de la reserva</h3>
+      {!detail.history.length && (
+        <p className="text-muted-foreground">
+          No hay cambios registrados. Las reservas anteriores pueden no tener
+          historial.
+        </p>
+      )}
+      {[...detail.history]
+        .sort((a, b) => b.createdAt.localeCompare(a.createdAt))
+        .map((e) => (
+          <article key={e.id} className="flex flex-col gap-2 border-l-2 pl-3">
+            <h4 className="font-medium">
+              {e.kind
+                .split(", ")
+                .map((k) => eventLabels[k] ?? k)
+                .join(" · ")}
+            </h4>
+            <p className="text-xs text-muted-foreground">{e.createdAt}</p>
+            {e.reason && <p>{e.reason}</p>}
+            {e.before?.lines?.map((before) => {
+              const after = !Array.isArray(e.after)
+                ? e.after?.lines?.find((l) => l.id === before.id)
+                : undefined
+              return after && before.roomId !== after.roomId ? (
+                <p key={before.id}>
+                  Asignación: {roomName(before.roomId)} →{" "}
+                  {roomName(after.roomId)}
+                </p>
+              ) : null
+            })}
+            <details>
+              <summary className="cursor-pointer text-xs">
+                Ver datos del cambio
+              </summary>
+              <pre className="mt-2 max-h-80 overflow-auto bg-muted p-3 text-xs break-all whitespace-pre-wrap">
+                {JSON.stringify({ antes: e.before, después: e.after }, null, 2)}
+              </pre>
+            </details>
+          </article>
+        ))}
+    </>
+  )
+}
+
+function ActionForm({
+  detail,
+  intent,
+  onClose,
+  onReady,
+}: {
+  detail: ReservationDetail
+  intent: Intent
+  onClose: () => void
+  onReady: (title: string, actions: WorkflowAction[]) => void
+}) {
+  const rooms = useRooms()
+  const entry = intent.type === "correction" ? intent.entry : null
+  const confirmationId = useId()
+  const initialKind =
+    intent.type === "financial"
+      ? intent.kind
+      : entry?.kind === "legacy_signed" ||
+          entry?.kind === "legacy_discount_excluded"
+        ? "payment"
+        : (entry?.kind ?? "payment")
+  const [kind, setKind] = useState<FinancialInput["kind"]>(initialKind)
+  const [amount, setAmount] = useState(
+    formatMajor(
+      entry?.amountCents && entry.amountCents > 0
+        ? entry.amountCents
+        : initialKind === "waiver"
+          ? Math.max(0, detail.balanceCents)
+          : initialKind === "refund"
+            ? detail.creditCents
+            : Math.max(0, detail.balanceCents)
+    )
+  )
+  const [reason, setReason] = useState("")
+  const isCancellation =
+    intent.type === "cancel" || intent.type === "cancel-room"
+  const cancellationLineId =
+    intent.type === "cancel-room" ? intent.lineId : null
+  const cancellationCommand = useMemo<WorkflowCommand>(
+    () => ({
+      requestId: crypto.randomUUID(),
+      version: detail.version,
+      actions: [
+        cancellationLineId
+          ? {
+              type: "cancel-room",
+              lineId: cancellationLineId,
+              ...(reason.trim() ? { reason: reason.trim() } : {}),
+            }
+          : {
+              type: "cancel",
+              confirmed: true,
+              ...(reason.trim() ? { reason: reason.trim() } : {}),
+            },
+      ],
+    }),
+    [detail.version, reason, cancellationLineId]
+  )
+  const cancellationPreview = useQuery({
+    queryKey: ["cancellation-preview", detail.id, cancellationCommand],
+    queryFn: () => previewWorkflow(detail.id, cancellationCommand),
+    enabled: isCancellation,
+    retry: false,
+    refetchOnWindowFocus: false,
+  })
+  const cancellation = useWorkflowCommand()
+
+  const [entryReason, setEntryReason] = useState(entry?.reason ?? "")
+  const [method, setMethod] = useState<string>(entry?.method ?? "cash")
+  const [date, setDate] = useState(
+    entry?.paymentDate ?? entry?.occurredAt.slice(0, 10) ?? today()
+  )
+  const [reference, setReference] = useState(entry?.reference ?? "")
+  const [replace, setReplace] = useState("replace")
+  const [roomId, setRoomId] = useState("")
+  const [confirmed, setConfirmed] = useState(false)
+  const [error, setError] = useState("")
+  const line =
+    "lineId" in intent ? detail.rooms.find((l) => l.id === intent.lineId) : null
+  const title =
+    intent.type === "financial"
+      ? {
+          payment: "Registrar pago",
+          refund: "Registrar devolución",
+          discount: "Aplicar descuento",
+          waiver: "Condonar saldo",
+        }[kind]
+      : intent.type === "correction"
+        ? "Corregir movimiento"
+        : {
+            move: "Mover habitación ahora",
+            "undo-check-in": "Corregir llegada por error",
+            "cancel-room": "Cancelar habitación",
+            "no-show": "No se presentó",
+            cancel: "Cancelar reserva",
+          }[intent.type]
+  async function submit() {
+    setError("")
+    if (
+      intent.type !== "financial" &&
+      intent.type !== "cancel" &&
+      intent.type !== "cancel-room" &&
+      !reason.trim() &&
+      intent.type !== "move"
+    ) {
+      setError("Escribe un motivo.")
+      return
+    }
+    let action: WorkflowAction
+    if (intent.type === "financial" || intent.type === "correction") {
+      const cents = parseMajorToCents(amount)
+      if (
+        (intent.type === "financial" || replace === "replace") &&
+        (!cents || cents <= 0)
+      ) {
+        setError("Introduce un importe positivo con hasta dos decimales.")
+        return
+      }
+      const r = intent.type === "correction" ? entryReason : reason
+      if (
+        (intent.type === "financial" || replace === "replace") &&
+        (!/^\d{4}-\d{2}-\d{2}$/.test(date) || date > today())
+      ) {
+        setError("Indica una fecha válida, hasta hoy.")
+        return
+      }
+      if (
+        (intent.type === "financial" || replace === "replace") &&
+        kind !== "payment" &&
+        !r.trim()
+      ) {
+        setError("Escribe el motivo del movimiento.")
+        return
+      }
+      const financial: FinancialInput = {
+        kind,
+        amountCents: cents ?? 0,
+        method: method as FinancialInput["method"],
+        ...(r.trim() ? { reason: r.trim() } : {}),
+        ...(kind === "payment"
+          ? { paymentDate: date }
+          : { occurredAt: `${date}T00:00:00.000Z` }),
+        ...(reference.trim() ? { reference: reference.trim() } : {}),
+      }
+      action =
+        intent.type === "financial"
+          ? { type: "financial", entry: financial }
+          : {
+              type: "correct-financial",
+              entryId: intent.entry.id,
+              reason,
+              ...(replace === "replace" ? { replacement: financial } : {}),
+            }
+    } else if (intent.type === "move")
+      action = { type: "move", lineId: intent.lineId, roomId }
+    else if (intent.type === "undo-check-in") {
+      if (!confirmed) return
+      action = {
+        type: "undo-check-in",
+        lineId: intent.lineId,
+        reason,
+        guestsNotArrived: true,
+      }
+    } else if (isCancellation) {
+      if (
+        (intent.type === "cancel" && !confirmed) ||
+        !cancellationPreview.data ||
+        cancellationPreview.isFetching ||
+        cancellationPreview.error ||
+        cancellation.isPending
+      )
+        return
+      try {
+        await cancellation.mutateAsync({
+          id: detail.id,
+          command: cancellationCommand,
+        })
+        toast.add({
+          title:
+            intent.type === "cancel-room"
+              ? "Habitación cancelada"
+              : "Reserva cancelada",
+          type: "success",
+        })
+        onClose()
+      } catch (cause) {
+        setError(
+          cause instanceof Error
+            ? cause.message
+            : "No se pudo cancelar la reserva."
+        )
+      }
+      return
+    } else
+      action = {
+        type: intent.type as "cancel-room" | "no-show",
+        lineId: intent.lineId,
+        reason,
+      }
+    onReady(title, [action])
+  }
+  const financial = intent.type === "financial" || intent.type === "correction"
+  const Root = isCancellation ? AlertDialog : Dialog
+  const Content = isCancellation ? AlertDialogContent : DialogContent
+  const Header = isCancellation ? AlertDialogHeader : DialogHeader
+  const Title = isCancellation ? AlertDialogTitle : DialogTitle
+  const Description = isCancellation
+    ? AlertDialogDescription
+    : DialogDescription
+  const Footer = isCancellation ? AlertDialogFooter : "div"
+  const CancelButton = isCancellation ? AlertDialogCancel : Button
+  const ConfirmButton = isCancellation ? AlertDialogAction : Button
+  return (
+    <Root open onOpenChange={(v) => !v && !cancellation.isPending && onClose()}>
+      <Content
+        className="max-h-[90svh] overflow-y-auto sm:max-w-lg"
+        {...(!isCancellation
+          ? { showCloseButton: !cancellation.isPending }
+          : {})}
+      >
+        <Header>
+          <Title>{title}</Title>
+          <Description>
+            {intent.type === "cancel"
+              ? "Se cancelarán todas las habitaciones y sus cargos, incluso las noches utilizadas. Los pagos quedarán como crédito. Confirmar aplicará el cambio inmediatamente. Otros cambios sin guardar se descartarán. No devuelve dinero."
+              : intent.type === "correction"
+                ? "El original quedará visible como anulado. Registra lo que realmente ocurrió; esta corrección no mueve dinero."
+                : intent.type === "move"
+                  ? "El cambio se registra ahora. Se conserva el precio y la habitación anterior queda libre para el resto de la estancia."
+                  : intent.type === "cancel-room"
+                    ? "Se eliminarán los cargos de esta habitación y se conservará su estancia real. Confirmar aplicará el cambio inmediatamente. Otros cambios sin guardar se descartarán."
+                    : "Revisa los datos y el saldo antes de confirmar."}
+          </Description>
+        </Header>
+        <FieldGroup>
+          {intent.type === "correction" && (
+            <ChoiceField
+              label="Corrección"
+              value={replace}
+              onChange={setReplace}
+              options={[
+                { value: "replace", label: "Anular y reemplazar" },
+                { value: "void", label: "Anular sin reemplazo" },
+              ]}
+            />
+          )}
+          {financial &&
+            (intent.type !== "correction" || replace === "replace") && (
+              <>
+                {entry?.kind === "legacy_signed" && (
+                  <ChoiceField
+                    label="Tipo del movimiento real"
+                    value={kind}
+                    onChange={(v) => setKind(v as FinancialInput["kind"])}
+                    options={[
+                      { value: "payment", label: "Pago" },
+                      { value: "refund", label: "Devolución" },
+                    ]}
+                  />
+                )}
+                <TextField
+                  label="Importe S/"
+                  value={amount}
+                  onChange={setAmount}
+                />
+                {["payment", "refund"].includes(kind) && (
+                  <ChoiceField
+                    label="Método"
+                    value={method}
+                    onChange={setMethod}
+                    options={[
+                      { value: "cash", label: "Efectivo" },
+                      { value: "card", label: "Tarjeta" },
+                      { value: "transfer", label: "Transferencia" },
+                      { value: "yape", label: "Yape" },
+                      { value: "other", label: "Otro" },
+                    ]}
+                  />
+                )}
+                <TextField
+                  label={
+                    kind === "payment"
+                      ? "Fecha del pago"
+                      : "Fecha del movimiento"
+                  }
+                  type="date"
+                  required
+                  max={today()}
+                  value={date}
+                  onChange={setDate}
+                />
+                <TextField
+                  label="Referencia · Opcional"
+                  value={reference}
+                  onChange={setReference}
+                />
+                {intent.type === "correction" && (
+                  <TextField
+                    label="Motivo del movimiento corregido"
+                    value={entryReason}
+                    onChange={setEntryReason}
+                  />
+                )}
+              </>
+            )}
+          {intent.type === "move" ? (
+            <ChoiceField
+              label="Nueva habitación del mismo tipo"
+              value={roomId}
+              onChange={setRoomId}
+              options={(rooms.data ?? [])
+                .filter(
+                  (r) =>
+                    r.roomTypeId === line?.roomTypeId && r.id !== line?.roomId
+                )
+                .map((r) => ({ value: r.id, label: r.number }))}
+            />
+          ) : (
+            <TextField
+              label={
+                intent.type === "correction"
+                  ? "Motivo de la corrección"
+                  : intent.type === "cancel" || intent.type === "cancel-room"
+                    ? "Motivo (opcional)"
+                    : kind === "payment" && intent.type === "financial"
+                      ? "Nota opcional"
+                      : "Motivo obligatorio"
+              }
+              value={reason}
+              disabled={cancellation.isPending}
+              onChange={setReason}
+            />
+          )}
+          {intent.type === "undo-check-in" && (
+            <Field orientation="horizontal">
+              <Checkbox
+                id={confirmationId}
+                disabled={cancellation.isPending}
+                checked={confirmed}
+                onCheckedChange={setConfirmed}
+              />
+              <FieldLabel htmlFor={confirmationId}>
+                Los huéspedes no llegaron. La entrada fue un error de registro.
+              </FieldLabel>
+            </Field>
+          )}
+          {intent.type === "cancel" && (
+            <Field orientation="horizontal">
+              <Checkbox
+                id={confirmationId}
+                disabled={cancellation.isPending}
+                checked={confirmed}
+                onCheckedChange={setConfirmed}
+              />
+              <FieldLabel htmlFor={confirmationId}>
+                Confirmo la cancelación de toda la reserva.
+              </FieldLabel>
+            </Field>
+          )}
+          {intent.type === "correction" && entry?.kind === "refund" && (
+            <p>
+              El dinero que realmente se devolvió debe permanecer registrado. No
+              anules una devolución real para aumentar el crédito.
+            </p>
+          )}
+        </FieldGroup>
+        {isCancellation &&
+          (cancellationPreview.data ? (
+            <WorkflowBill bill={cancellationPreview.data} />
+          ) : cancellationPreview.error ? (
+            <FieldError>{cancellationPreview.error.message}</FieldError>
+          ) : (
+            <p role="status" className="text-muted-foreground">
+              Calculando cancelación…
+            </p>
+          ))}
+        <FieldError>{error}</FieldError>
+        <Footer className="flex justify-end gap-2">
+          <CancelButton
+            type="button"
+            variant="outline"
+            disabled={cancellation.isPending}
+            onClick={onClose}
+          >
+            Volver
+          </CancelButton>
+          <ConfirmButton
+            type="button"
+            variant={isCancellation ? "destructive" : "default"}
+            onClick={() => void submit()}
+            disabled={
+              cancellation.isPending ||
+              (isCancellation &&
+                (!cancellationPreview.data ||
+                  cancellationPreview.isFetching ||
+                  !!cancellationPreview.error)) ||
+              (["cancel", "undo-check-in"].includes(intent.type) &&
+                !confirmed) ||
+              (intent.type === "move" && !roomId)
+            }
+          >
+            {cancellation.isPending
+              ? "Cancelando…"
+              : isCancellation
+                ? "Confirmar"
+                : "Aplicar"}
+          </ConfirmButton>
+        </Footer>
+      </Content>
+    </Root>
+  )
+}
+
+export function DiscardChanges({
+  onStay,
+  onLeave,
+}: {
+  onStay: () => void
+  onLeave: () => void
+}) {
+  return (
+    <Dialog open onOpenChange={(open) => !open && onStay()}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Hay cambios sin guardar</DialogTitle>
+          <DialogDescription>
+            Si sales ahora, se descartarán tus cambios en esta reserva.
+          </DialogDescription>
+        </DialogHeader>
+        <div className="flex flex-wrap justify-end gap-2">
+          <Button type="button" variant="outline" onClick={onStay}>
+            Seguir editando
+          </Button>
+          <Button type="button" variant="destructive" onClick={onLeave}>
+            Descartar y salir
+          </Button>
+        </div>
+      </DialogContent>
+    </Dialog>
   )
 }

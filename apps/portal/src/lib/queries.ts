@@ -6,6 +6,8 @@ import {
 } from "@tanstack/react-query"
 
 import {
+  sendWorkflow,
+  type WorkflowCommand,
   addReservationRoom,
   assignRoom,
   cancelReservationRoom,
@@ -79,6 +81,8 @@ export function useReservation(id: string | null) {
     queryKey: ["reservation", id],
     queryFn: ({ signal }) => getReservation(id!, signal),
     enabled: id !== null,
+    refetchOnWindowFocus: false,
+    refetchOnReconnect: false,
   })
 }
 
@@ -316,5 +320,21 @@ export function useReservations(from: string, to: string, enabled = true) {
     queryFn: ({ signal }) => listReservations(from, to, signal),
     placeholderData: keepPreviousData,
     enabled,
+  })
+}
+
+export function useWorkflowCommand() {
+  const client = useQueryClient()
+  return useMutation({
+    mutationFn: ({ id, command }: { id: string; command: WorkflowCommand }) =>
+      sendWorkflow(id, command),
+    onSuccess: async (data) => {
+      client.setQueryData(["reservation", data.id], data)
+      await Promise.all(
+        ["reservations", "availability", "inventory"].map((key) =>
+          client.invalidateQueries({ queryKey: [key] })
+        )
+      )
+    },
   })
 }

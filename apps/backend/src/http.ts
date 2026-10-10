@@ -32,6 +32,10 @@ function errorText(err: unknown): string {
 
 export function rethrowConflict(err: unknown): never {
   const text = errorText(err)
+  if (text.includes('stale reservation')) throw new HttpError(409, 'stale reservation; reload before saving')
+  if (text.includes('reservation_requests.id')) throw new HttpError(409, 'request ID reused with a different payload')
+  if (text.includes('invalid room assignment')) throw new HttpError(409, 'room is a different type')
+  if (text.includes('invalid occupancy')) throw new HttpError(409, 'too many guests for this room type')
   if (text.includes('no availability')) throw new HttpError(409, 'no availability')
   if (text.includes('room taken')) throw new HttpError(409, 'room is already assigned for those dates')
   if (text.includes('room closed')) throw new HttpError(409, 'room is closed for those dates')

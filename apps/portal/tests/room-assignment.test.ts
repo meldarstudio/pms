@@ -263,3 +263,14 @@ describe("room assignment", () => {
     )
   })
 })
+
+
+describe("completed calendar stays", () => {
+  it("keeps status and actual checkout dates for calendar bars without adding completed stays to assignment lists", () => {
+    const completed = reservation({ rooms: [{ id: "completed", roomId: room.id, roomTypeId: room.roomTypeId, status: "checked_out", actualDeparture: "2026-10-06T10:00:00Z" }] })
+    assert.equal(reservationStays([completed]).length, 0)
+    const [stay] = reservationStays([completed], true)
+    assert.equal(stay.status, "checked_out")
+    assert.equal(stay.checkOut, "2026-10-06")
+  })
+})

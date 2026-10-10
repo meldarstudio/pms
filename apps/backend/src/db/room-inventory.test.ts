@@ -95,7 +95,7 @@ describe('closure-only room inventory migration', () => {
     line('first')
     reservation('moving', '2026-10-07', '2026-10-08')
     line('moving')
-    expect(() => db.exec("UPDATE reservations SET check_in = '2026-10-05' WHERE id = 'moving'"))
+    expect(() => db.exec("UPDATE reservation_rooms SET check_in = '2026-10-05' WHERE id = 'moving'"))
       .toThrow('no availability')
   })
 
@@ -135,19 +135,19 @@ describe('closure-only room inventory migration', () => {
     expect(() => line('span')).toThrow('no availability')
   })
 
-  it('does not count a checked-out line toward capacity or assignment', () => {
+  it('counts a checked-out line over its final saved dates', () => {
     reservation('left', '2026-10-05', '2026-10-07')
     line('left', 'room-101', 'checked_out')
     reservation('stay', '2026-10-05', '2026-10-07')
     line('stay', 'room-102')
     reservation('another', '2026-10-05', '2026-10-07')
-    expect(() => line('another', 'room-101')).not.toThrow()
+    expect(() => line('another', 'room-101')).toThrow()
   })
 
-  it('allows a closure on a room whose overlapping stay is checked out', () => {
+  it('rejects a closure overlapping the final dates of a checked-out stay', () => {
     reservation('left', '2026-10-05', '2026-10-07')
     line('left', 'room-101', 'checked_out')
-    expect(() => closure('after', 'room-101')).not.toThrow()
+    expect(() => closure('after', 'room-101')).toThrow('closure overlaps stay')
   })
 
   it('rejects a room type change that would overbook a future night', () => {

@@ -30,6 +30,8 @@ export function BookingSummary({
   stayLabel,
   showPayments,
   message,
+  waiverCents = 0,
+  refundCents = 0,
 }: {
   rooms: BookingSummaryRoom[]
   summary: ReturnType<typeof bookingSummary>
@@ -38,6 +40,8 @@ export function BookingSummary({
   stayLabel: string
   showPayments: boolean
   message: string
+  waiverCents?: number
+  refundCents?: number
 }) {
   const titleId = useId()
   const credit = summary !== null && summary.balanceCents < 0
@@ -53,14 +57,16 @@ export function BookingSummary({
         </CardHeader>
         <CardContent className="flex flex-col gap-3">
           <div className="flex flex-col gap-4">
-            {rooms.map((room, index) => (
-              <RoomSummary
-                key={room.key}
-                room={room}
-                index={index}
-                currency={currency}
-              />
-            ))}
+            {rooms
+              .filter((room) => room.status !== "cancelled")
+              .map((room, index) => (
+                <RoomSummary
+                  key={room.key}
+                  room={room}
+                  index={index}
+                  currency={currency}
+                />
+              ))}
           </div>
           <Separator />
           <dl className="flex flex-col gap-2">
@@ -76,6 +82,13 @@ export function BookingSummary({
                 currency={currency}
               />
             ) : null}
+            {waiverCents > 0 && (
+              <SummaryRow
+                label="Saldo condonado"
+                cents={-waiverCents}
+                currency={currency}
+              />
+            )}
           </dl>
           {showPayments ? (
             <dl className="flex flex-col gap-2">
@@ -89,6 +102,13 @@ export function BookingSummary({
                 cents={paidCents}
                 currency={currency}
               />
+              {refundCents > 0 && (
+                <SummaryRow
+                  label="Devuelto"
+                  cents={refundCents}
+                  currency={currency}
+                />
+              )}
             </dl>
           ) : null}
           {!summary ? (
@@ -171,7 +191,7 @@ function SummaryRow({
   excluded?: boolean
 }) {
   return (
-    <div className="flex items-baseline justify-between gap-4">
+    <div className="grid min-w-0 grid-cols-[minmax(0,1fr)_auto] items-baseline gap-4">
       <dt className="min-w-0 wrap-anywhere">{label}</dt>
       <dd className="shrink-0 text-right tabular-nums">
         {excluded ? (

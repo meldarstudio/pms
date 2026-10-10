@@ -8,7 +8,7 @@ import { HttpError, rethrowConflict, validate } from '../http'
 import { roomCounts, occupiedCounts } from '../inventory'
 import { requireStay } from '../rules'
 
-const blockingStay = ['confirmed', 'checked_in']
+const blockingStay = ['confirmed', 'checked_in', 'checked_out']
 
 export const roomClosureRoutes = new Hono<Env>()
 
@@ -38,8 +38,8 @@ async function assertCanClose(
       and(
         eq(reservationRooms.roomId, room.id),
         inArray(reservationRooms.status, blockingStay),
-        lt(reservations.checkIn, ends),
-        gt(reservations.checkOut, starts),
+        lt(reservationRooms.checkIn, ends),
+        gt(reservationRooms.checkOut, starts),
       ),
     )
     .limit(1)

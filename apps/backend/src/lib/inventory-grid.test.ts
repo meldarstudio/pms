@@ -38,7 +38,7 @@ describe('inventoryGrid', () => {
     expect(type?.nights.map((night) => night.free)).toEqual([1, 1, 2])
   })
 
-  it('ignores cancelled, no-show, and checked-out lines', () => {
+  it('ignores cancelled and no-show lines but counts the final checked-out dates', () => {
     const [type] = inventoryGrid(
       ['2026-12-24'],
       [deluxe],
@@ -51,7 +51,7 @@ describe('inventoryGrid', () => {
       [],
       [],
     )
-    expect(type?.nights[0]).toMatchObject({ booked: 0, free: 2 })
+    expect(type?.nights[0]).toMatchObject({ booked: 1, free: 1 })
   })
 
   it('uses the busiest night when stays do not overlap', () => {
@@ -64,7 +64,7 @@ describe('inventoryGrid', () => {
       ],
       [],
     )
-    expect(peak.get('deluxe')).toBe(1)
+    expect(peak.get('deluxe')).toBe(2)
   })
 
   it('counts distinct closed rooms and floors free at zero', () => {

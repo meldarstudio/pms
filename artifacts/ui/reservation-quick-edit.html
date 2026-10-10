@@ -1,0 +1,221 @@
+<div id="three-tab-reservation-sketch" class="viz-dotted-background">
+  <style>
+    #three-tab-reservation-sketch { --p-paper:light-dark(#fff,#222); --p-ink:light-dark(#282828,#ededed); --p-line:light-dark(#c6c6c6,#626262); --p-muted:light-dark(#616161,#bcbcbc); --p-soft:light-dark(#f4f4f4,#2e2e2e); font:14px/1.45 system-ui,sans-serif; color:var(--p-ink); padding:18px 4px; }
+    #three-tab-reservation-sketch * { box-sizing:border-box; }
+    #three-tab-reservation-sketch [hidden] { display:none!important; }
+    #three-tab-reservation-sketch .window { max-width:736px; margin:auto; padding:20px; border:1px solid var(--p-line); border-radius:5px; background:var(--p-paper); }
+    #three-tab-reservation-sketch h2 { font-size:17px; font-weight:500; margin:0; }
+    #three-tab-reservation-sketch h3 { font-size:14px; font-weight:500; margin:0 0 12px; }
+    #three-tab-reservation-sketch p { margin:8px 0; }
+    #three-tab-reservation-sketch .header { padding-right:80px; }
+    #three-tab-reservation-sketch .heading { display:flex; flex-wrap:wrap; gap:9px; align-items:center; }
+    #three-tab-reservation-sketch .badge { border:1px solid var(--p-line); padding:1px 6px; font-size:12px; }
+    #three-tab-reservation-sketch .subtle { font-size:12px; color:var(--p-muted); }
+    #three-tab-reservation-sketch button,#three-tab-reservation-sketch input,#three-tab-reservation-sketch select { color:var(--p-ink); font:inherit; border:1px solid var(--p-line); border-radius:3px; background:var(--p-paper); padding:5px 8px; min-height:32px; }
+    #three-tab-reservation-sketch button { white-space:normal; }
+    #three-tab-reservation-sketch input,#three-tab-reservation-sketch select { width:100%; min-width:0; font-size:13px; }
+    #three-tab-reservation-sketch label { display:grid; gap:5px; font-size:12px; min-width:0; }
+    #three-tab-reservation-sketch .tabs { display:flex; gap:20px; border-bottom:1px solid var(--p-line); margin:17px 0 18px; }
+    #three-tab-reservation-sketch .tabs button { background:transparent; border:0; border-radius:0; padding:5px 0 9px; }
+    #three-tab-reservation-sketch .tabs button[aria-selected=true] { box-shadow:inset 0 -2px var(--p-ink); }
+    #three-tab-reservation-sketch .columns { display:grid; grid-template-columns:minmax(0,1fr) 192px; gap:20px; }
+    #three-tab-reservation-sketch .dates,#three-tab-reservation-sketch .contact { display:grid; grid-template-columns:1fr 1fr; gap:10px; }
+    #three-tab-reservation-sketch .dates-note { margin:5px 0 20px; }
+    #three-tab-reservation-sketch .row { padding-bottom:12px; border-bottom:1px solid var(--p-line); margin-bottom:12px; }
+    #three-tab-reservation-sketch .fields { display:grid; grid-template-columns:minmax(80px,1fr) 100px 52px 52px; gap:8px; }
+    #three-tab-reservation-sketch .sectionhead { display:flex; flex-wrap:wrap; gap:8px; justify-content:space-between; align-items:center; margin:0 0 10px; }
+    #three-tab-reservation-sketch .sectionhead h3 { margin:0; }
+    #three-tab-reservation-sketch .link { border:0; background:transparent; text-decoration:underline; padding:2px 0; min-height:26px; font-size:12px; }
+    #three-tab-reservation-sketch .exception { font-size:12px; margin:8px 0 0; }
+    #three-tab-reservation-sketch .extra { background:var(--p-soft); padding:12px; margin-top:10px; }
+    #three-tab-reservation-sketch .extrahead { display:flex; gap:8px; flex-wrap:wrap; align-items:center; margin-bottom:10px; }
+    #three-tab-reservation-sketch .extrahead label { display:flex; align-items:center; }
+    #three-tab-reservation-sketch input[type=checkbox] { width:16px; min-height:16px; height:16px; accent-color:var(--p-ink); }
+    #three-tab-reservation-sketch .extrahead details { margin-left:auto; }
+    #three-tab-reservation-sketch summary { min-height:28px; padding:4px 0; font-size:12px; }
+    #three-tab-reservation-sketch .menu { display:flex; flex-wrap:wrap; gap:6px; padding:8px 0; }
+    #three-tab-reservation-sketch .menu button { font-size:12px; }
+    #three-tab-reservation-sketch .spaced { margin-top:22px; }
+    #three-tab-reservation-sketch .notes { margin-top:10px; }
+    #three-tab-reservation-sketch .bill { padding:14px; border:1px solid var(--p-line); align-self:start; }
+    #three-tab-reservation-sketch .sumline { display:flex; justify-content:space-between; gap:8px; font-size:12px; margin:9px 0; }
+    #three-tab-reservation-sketch .sumline span:last-child { white-space:nowrap; font-variant-numeric:tabular-nums; }
+    #three-tab-reservation-sketch .total { border-top:1px solid var(--p-line); margin-top:14px; padding-top:10px; font-weight:500; }
+    #three-tab-reservation-sketch .footer { display:flex; flex-wrap:wrap; gap:8px; align-items:center; border-top:1px solid var(--p-line); margin-top:22px; padding-top:14px; }
+    #three-tab-reservation-sketch .grow { flex:1; }
+    #three-tab-reservation-sketch .primary { color:var(--p-paper); background:var(--p-ink); border-color:var(--p-ink); }
+    #three-tab-reservation-sketch .review { border:1px dashed var(--p-line); padding:14px; margin-top:16px; }
+    #three-tab-reservation-sketch .review h3 { margin-bottom:8px; }
+    #three-tab-reservation-sketch .review ul { padding-left:20px; margin:8px 0; }
+    #three-tab-reservation-sketch .review .actions { display:flex; flex-wrap:wrap; gap:8px; margin-top:14px; }
+    #three-tab-reservation-sketch .ledger { width:100%; border-collapse:collapse; font-size:12px; margin-top:16px; }
+    #three-tab-reservation-sketch .ledger th { font-weight:500; text-align:left; }
+    #three-tab-reservation-sketch .ledger td,#three-tab-reservation-sketch .ledger th { padding:9px 3px; border-bottom:1px solid var(--p-line); }
+    #three-tab-reservation-sketch .payform { display:grid; grid-template-columns:1fr 1fr; gap:10px; }
+    #three-tab-reservation-sketch .payform button { justify-self:start; grid-column:1/-1; }
+    #three-tab-reservation-sketch .guest { border-bottom:1px solid var(--p-line); padding:0 0 14px; margin:0 0 14px; }
+    #three-tab-reservation-sketch .guestfields { display:grid; grid-template-columns:minmax(0,1fr) minmax(0,1fr) 85px; gap:8px; }
+    #three-tab-reservation-sketch .guest-extra { padding:10px 0 0; }
+    @media(max-width:420px) { #three-tab-reservation-sketch .guestfields { grid-template-columns:1fr 1fr; } #three-tab-reservation-sketch .guestfields label:last-child { grid-column:1/-1; } }
+    @media(max-width:650px) { #three-tab-reservation-sketch .columns { grid-template-columns:1fr; } #three-tab-reservation-sketch .bill { margin-top:0; } }
+    @media(max-width:420px) { #three-tab-reservation-sketch .window { padding:12px; } #three-tab-reservation-sketch .fields { grid-template-columns:1fr 1fr; } #three-tab-reservation-sketch .header { padding-right:60px; } #three-tab-reservation-sketch .payform { grid-template-columns:1fr; } }
+    @media(pointer:coarse) { #three-tab-reservation-sketch button,#three-tab-reservation-sketch summary { min-height:44px; } #three-tab-reservation-sketch input,#three-tab-reservation-sketch select { min-height:44px; font-size:16px; } }
+  </style>
+  <div class="window" aria-label="Reservation with details, guests and payments">
+    <div class="header"><div class="heading"><h2>Editar reserva</h2><span class="badge">AB12CD</span></div><p class="subtle booking-state"></p></div>
+    <div class="tabs" role="tablist" aria-label="Secciones de la reserva"><button id="simple-details-tab" class="cursor-interaction" role="tab" aria-controls="simple-details" aria-selected="true" type="button" data-tab="details">Detalles</button><button id="simple-guests-tab" class="cursor-interaction" role="tab" aria-controls="simple-guests" aria-selected="false" type="button" data-tab="guests">Huéspedes</button><button id="simple-payments-tab" class="cursor-interaction" role="tab" aria-controls="simple-payments" aria-selected="false" type="button" data-tab="payments">Pagos</button></div>
+    <div class="columns">
+      <div>
+        <div id="simple-details" role="tabpanel" aria-labelledby="simple-details-tab">
+          <div class="shared-dates"></div>
+          <div class="sectionhead"><h3>Habitaciones</h3><button class="link cursor-interaction" type="button" data-action="advanced" aria-expanded="false">Opciones por habitación</button></div>
+          <div class="rooms"></div>
+          <button class="cursor-interaction" type="button" data-action="add">+ Agregar habitación</button>
+          <h3 class="spaced">Contacto principal</h3>
+          <div class="contact"><label>Nombre<input value="Ana"></label><label>Apellido<input value="García"></label><label>Email<input value="ana@example.com"></label><label>Teléfono<input value="999 123 456"></label></div>
+          <label class="notes">Notas<input placeholder="Agregar una nota"></label>
+        </div>
+        <div id="simple-guests" role="tabpanel" aria-labelledby="simple-guests-tab" hidden>
+          <h3>Personas que se alojan</h3>
+          <p class="subtle">El contacto principal de la reserva se edita en Detalles.</p>
+          <div class="guest-list spaced">
+            <div class="guest"><div class="guestfields"><label>Nombre<input value="Ana"></label><label>Apellido<input value="García"></label><label>Hab.<select><option>101</option><option>102</option><option>Sin indicar</option></select></label></div><details><summary class="cursor-interaction">Más datos</summary><div class="contact guest-extra"><label>Documento<select><option>Sin indicar</option><option>DNI</option><option>Pasaporte</option></select></label><label>Número<input placeholder="Opcional"></label><label>Email<input type="email" placeholder="Opcional"></label><label>Teléfono<input placeholder="Opcional"></label></div></details></div>
+            <div class="guest"><div class="guestfields"><label>Nombre<input value="Carlos"></label><label>Apellido<input value="García"></label><label>Hab.<select><option>101</option><option>102</option><option>Sin indicar</option></select></label></div><details><summary class="cursor-interaction">Más datos</summary><div class="contact guest-extra"><label>Documento<select><option>Sin indicar</option><option>DNI</option><option>Pasaporte</option></select></label><label>Número<input placeholder="Opcional"></label><label>Email<input type="email" placeholder="Opcional"></label><label>Teléfono<input placeholder="Opcional"></label></div></details></div>
+            <div class="guest"><div class="guestfields"><label>Nombre<input value="Lucía"></label><label>Apellido<input value="López"></label><label>Hab.<select><option>102</option><option>101</option><option>Sin indicar</option></select></label></div><details><summary class="cursor-interaction">Más datos</summary><div class="contact guest-extra"><label>Documento<select><option>Sin indicar</option><option>DNI</option><option>Pasaporte</option></select></label><label>Número<input placeholder="Opcional"></label><label>Email<input type="email" placeholder="Opcional"></label><label>Teléfono<input placeholder="Opcional"></label></div></details></div>
+            <div class="guest"><div class="guestfields"><label>Nombre<input value="Diego"></label><label>Apellido<input value="López"></label><label>Hab.<select><option>102</option><option>101</option><option>Sin indicar</option></select></label></div><details><summary class="cursor-interaction">Más datos</summary><div class="contact guest-extra"><label>Documento<select><option>Sin indicar</option><option>DNI</option><option>Pasaporte</option></select></label><label>Número<input placeholder="Opcional"></label><label>Email<input type="email" placeholder="Opcional"></label><label>Teléfono<input placeholder="Opcional"></label></div></details></div>
+          </div>
+          <button type="button" class="cursor-interaction" data-action="add-guest">+ Agregar huésped</button>
+        </div>
+        <div id="simple-payments" role="tabpanel" aria-labelledby="simple-payments-tab" hidden>
+          <h3>Registrar pago</h3>
+          <div class="payform"><label>Importe en soles<input data-payment-amount type="number" min="0.01" step="0.01" placeholder="0.00" required></label><label>Método<select data-payment-method><option>Efectivo</option><option>Tarjeta</option><option>Transferencia</option></select></label><label>Fecha del pago · Obligatoria<input data-payment-date type="date" required></label><label>Referencia · Opcional<input data-payment-reference type="text" placeholder="N.º de operación o comprobante"></label><button type="button" class="primary cursor-interaction" data-action="payment">Revisar pago</button></div>
+          <details class="spaced"><summary class="cursor-interaction">Más opciones de facturación</summary><div class="menu"><button type="button" class="cursor-interaction" data-action="discount">Descuento</button><button type="button" class="cursor-interaction" data-action="waiver">Condonar deuda</button><button type="button" class="cursor-interaction" data-action="refund">Reembolso</button></div></details>
+          <table class="ledger"><thead><tr><th>Fecha / movimiento</th><th>Referencia</th><th>Importe</th><th></th></tr></thead><tbody><tr><td>10 oct 2026<br>Pago · Efectivo</td><td>Sin referencia</td><td class="paid-amount"></td><td><details><summary class="cursor-interaction" aria-label="Acciones del pago">…</summary><button type="button" class="cursor-interaction" data-action="correction">Corregir pago</button></details></td></tr></tbody></table>
+        </div>
+      </div>
+      <aside class="bill" aria-label="Resumen de reserva"></aside>
+    </div>
+    <div class="footer"><button type="button" class="link cursor-interaction" data-action="full-reservation">Ver reserva completa</button><span class="grow"></span><button type="button" class="cursor-interaction" data-action="cancel">Cancelar reserva</button><button type="button" class="cursor-interaction" data-action="save" hidden>Guardar cambios</button><button type="button" class="primary cursor-interaction" data-action="main"></button></div>
+    <div class="review" aria-live="polite" hidden></div>
+  </div>
+  <script>
+    (()=>{
+      const root=document.getElementById('three-tab-reservation-sketch');
+      const today=new Date();
+      root.querySelector('[data-payment-date]').value=[today.getFullYear(),String(today.getMonth()+1).padStart(2,'0'),String(today.getDate()).padStart(2,'0')].join('-');
+      const dialog=root.querySelector('.window');
+      const state={advanced:false,tab:'details',moment:'confirmed',differentDates:false,debt:false,selected:[1,2],dirty:false,guestsDirty:false,checkIn:'2026-10-12',checkOut:'2026-10-15'};
+      const money=n=>`S/ ${n.toLocaleString('es-PE')}`;
+      const reviews=root.querySelector('.review');
+      let proposed=null;
+      function restore(snapshot){
+        const s=snapshot?.privateContent?.threeTabReservation;
+        if(!s)return;
+        for(const key of ['advanced','differentDates','debt'])if(typeof s[key]==='boolean')state[key]=s[key];
+        if(['confirmed','checked_in','mixed','checked_out'].includes(s.moment))state.moment=s.moment;
+        if(['details','guests','payments'].includes(s.tab))state.tab=s.tab;
+      }
+      function persist(){window.openai?.setWidgetState?.({modelContent:{reservationDesign:{simplified:true,advancedOpen:state.advanced,tab:state.tab,example:state.moment,differentDates:state.differentDates}},privateContent:{threeTabReservation:state}})?.catch(()=>{});}
+      function rooms(){return [1,2].map(n=>({id:n,number:100+n,status:state.moment==='mixed'?(n===1?'checked_in':'confirmed'):state.moment,checkIn:state.checkIn,checkOut:state.differentDates&&n===2?'2026-10-16':state.checkOut}));}
+      function nights(r){return Math.max(1,Math.round((Date.parse(r.checkOut)-Date.parse(r.checkIn))/86400000));}
+      function bill(){const r=rooms(),total=r.reduce((s,x)=>s+nights(x)*150,0),paid=state.debt?600:900;return {total,paid,balance:total-paid};}
+      function statusLabel(s){return {confirmed:'Confirmada',checked_in:'En casa',checked_out:'Check-out realizado'}[s];}
+      function notice(heading,body,confirmAction){
+        proposed=confirmAction||null;
+        reviews.innerHTML=`<h3>${heading}</h3><div>${body}</div><div class="actions"><button type="button" class="cursor-interaction" data-action="dismiss">Volver</button>${confirmAction?'<button type="button" class="primary cursor-interaction" data-action="confirm">Confirmar</button>':''}</div>`;
+        reviews.hidden=false;
+      }
+      function render(){
+        const r=rooms(),b=bill();
+        root.querySelector('.booking-state').textContent=state.moment==='mixed'?'Estado mixto · 1 en casa · 1 confirmada':`${statusLabel(state.moment)} · 2 habitaciones`;
+        root.querySelectorAll('[data-tab]').forEach(x=>x.setAttribute('aria-selected',String(x.dataset.tab===state.tab)));
+        root.querySelector('#simple-details').hidden=state.tab!=='details';root.querySelector('#simple-guests').hidden=state.tab!=='guests';root.querySelector('#simple-payments').hidden=state.tab!=='payments';
+        root.querySelector('.shared-dates').innerHTML=state.differentDates?'<p>Las habitaciones tienen fechas diferentes.</p><p class="dates-note"><button type="button" class="link cursor-interaction" data-action="advanced">Ver fechas por habitación</button></p>':`<div class="dates"><label>Check-in<input type="date" data-date="checkIn" value="${state.checkIn}"></label><label>Check-out<input type="date" data-date="checkOut" value="${state.checkOut}"></label></div><p class="subtle dates-note">Fechas para las 2 habitaciones</p>`;
+        root.querySelector('.rooms').innerHTML=r.map(x=>`<div class="row"><div class="fields"><label>Tipo<select aria-label="Tipo de habitación ${x.number}"><option>Doble</option></select></label><label>Hab.<select aria-label="Asignación ${x.number}"><option>${x.number}</option>${x.status==='confirmed'?'<option>Sin asignar</option>':''}</select></label><label>Adultos<input value="2" type="number" min="1"></label><label>Niños<input value="0" type="number" min="0"></label></div>${!state.advanced&&(state.differentDates||state.moment==='mixed')?`<p class="exception">${statusLabel(x.status)} · ${x.checkIn.slice(-2)} al ${x.checkOut.slice(-2)} oct</p>`:''}${state.advanced?`<div class="extra"><div class="extrahead"><label><input type="checkbox" data-select="${x.id}" ${state.selected.includes(x.id)?'checked':''}>Seleccionar ${x.number}</label><span class="badge">${statusLabel(x.status)}</span><details><summary class="cursor-interaction">Acciones…</summary><div class="menu"><button type="button" class="cursor-interaction" data-action="move">Cambiar habitación</button><button type="button" class="cursor-interaction" data-action="room-cancel">Cancelar habitación</button></div></details></div><div class="dates"><label>Check-in<input type="date" value="${x.checkIn}" data-own-date="${x.id}"></label><label>Check-out<input type="date" value="${x.checkOut}" data-own-date="${x.id}"></label></div></div>`:''}</div>`).join('');
+        const toggle=root.querySelector('.sectionhead [data-action=advanced]');toggle.textContent=state.advanced?'Ocultar opciones por habitación':'Opciones por habitación';toggle.setAttribute('aria-expanded',String(state.advanced));
+        root.querySelector('.bill').innerHTML=`<h3>Resumen de reserva</h3>${r.map(x=>`<div class="sumline"><span>${x.number} · ${nights(x)} noches</span><span>${money(nights(x)*150)}</span></div>`).join('')}<div class="sumline total"><span>${state.dirty?'Total propuesto':'Total'}</span><span>${money(b.total)}</span></div><div class="sumline"><span>Pagado</span><span>${money(b.paid)}</span></div><div class="sumline"><span>${b.balance<0?'Crédito':'Saldo pendiente'}</span><span>${money(Math.abs(b.balance))}</span></div>`;
+        root.querySelector('.paid-amount').textContent=money(b.paid);
+        const main=root.querySelector('[data-action=main]');
+        main.textContent=state.moment==='mixed'?'Revisar acciones por habitación':state.moment==='confirmed'?'Check-in · 2 habitaciones':state.moment==='checked_in'?'Check-out · 2 habitaciones':'';
+        if(state.advanced&&state.moment!=='checked_out')main.textContent='Revisar habitaciones seleccionadas';
+        main.hidden=state.tab!=='details'||state.moment==='checked_out';
+        const save=root.querySelector('[data-action=save]');
+        save.hidden=state.tab==='payments'||(state.tab==='details'?!state.dirty:!state.guestsDirty);
+        save.textContent=state.tab==='guests'?'Guardar huéspedes':'Guardar cambios';
+        root.querySelectorAll('button,summary').forEach(x=>x.classList.add('cursor-interaction'));
+      }
+      root.addEventListener('click',e=>{
+        const button=e.target.closest('button');if(!button)return;
+        if(button.dataset.tab){state.tab=button.dataset.tab;reviews.hidden=true;render();persist();return;}
+        const action=button.dataset.action;
+        if(action==='payment'){
+          const amount=root.querySelector('[data-payment-amount]');
+          const date=root.querySelector('[data-payment-date]');
+          if(!date.reportValidity()||!amount.reportValidity())return;
+          const reference=root.querySelector('[data-payment-reference]').value.trim();
+          const method=root.querySelector('[data-payment-method]').value;
+          notice('Revisar pago','');
+          const preview=document.createElement('p');
+          const resulting=bill().balance-Number(amount.value);
+          preview.textContent=`Fecha del pago: ${date.value}. ${method} · S/ ${Number(amount.value).toFixed(2)}. Referencia: ${reference||'Sin referencia'}. ${resulting<0?'Crédito resultante':'Saldo resultante'}: S/ ${Math.abs(resulting).toFixed(2)}.`;
+          reviews.querySelector('div').append(preview);return;
+        }
+        if(action==='add-guest'){
+          const template=root.querySelector('.guest').cloneNode(true);
+          template.querySelectorAll('input').forEach(x=>x.value='');
+          template.querySelectorAll('select').forEach(x=>x.value='Sin indicar');
+          template.querySelectorAll('details').forEach(x=>x.open=false);
+          root.querySelector('.guest-list').append(template);
+          state.guestsDirty=true;render();return;
+        }
+        if(action==='save'&&state.tab==='guests'){state.guestsDirty=false;render();notice('Huéspedes','Boceto · Se guardaría la lista de huéspedes de la reserva.');return;}
+        if(action==='advanced'){state.advanced=!state.advanced;render();persist();return;}
+        if(action==='dismiss'){reviews.hidden=true;return;}
+        if(action==='cancel'){
+          notice('Cancelar reserva AB12CD','<p>Se cancelarán las habitaciones 101 y 102. Los pagos registrados se conservarán; cualquier reembolso se gestionará en Pagos.</p><label>Motivo de cancelación<input data-cancel-reason required placeholder="Escribe el motivo"></label>','cancel');
+          reviews.querySelector('[data-action=confirm]').textContent='Confirmar cancelación';return;
+        }
+        if(action==='confirm'){
+          if(proposed==='cancel'){
+            if(!reviews.querySelector('[data-cancel-reason]').reportValidity())return;
+            notice('Cancelación de reserva','Boceto · Aquí se enviaría la cancelación confirmada con su motivo.');return;
+          }
+          if(proposed==='check-in')state.moment='checked_in';
+          if(proposed==='check-out')state.moment='checked_out';
+          if(proposed==='save')state.dirty=false;
+          reviews.hidden=true;render();persist();return;
+        }
+        if(action==='main'){
+          if(state.moment==='mixed'||state.advanced){state.advanced=true;render();const chosen=rooms().filter(x=>state.selected.includes(x.id));if(!chosen.length){notice('Selecciona habitaciones','Marca las habitaciones para revisar la acción.');return;}if(new Set(chosen.map(x=>x.status)).size>1){notice('Habitaciones en estados diferentes','Selecciona las confirmadas para check-in o las que están en casa para check-out.');return;}const departure=chosen[0].status==='checked_in';const final=departure&&chosen.length===rooms().filter(x=>['confirmed','checked_in'].includes(x.status)).length;const balance=bill().balance;notice(final&&balance>0?'Falta liquidar el saldo':departure?'Revisar check-out':'Revisar check-in',`Habitaciones seleccionadas · ${chosen.map(x=>x.number).join(', ')}<p>Saldo de la reserva · ${money(balance)}</p>${final&&balance>0?'<p>Registra el pago antes del check-out final.</p>':departure&&!final?'<p>Salida parcial. La deuda puede mantenerse mientras otra habitación siga activa.</p>':'<p>Las demás habitaciones conservan sus fechas y estado.</p>'}`);return;}
+          if(state.moment==='checked_out')return;
+          const departure=state.moment==='checked_in',b=bill();
+          if(state.dirty){notice('Revisa los cambios primero','Guarda los cambios de fechas antes de registrar la llegada o salida.');return;}
+          const blocked=departure&&b.balance>0;
+          notice(blocked?'Falta liquidar el saldo':departure?'Revisar check-out':'Revisar check-in',`<p>Habitaciones · 101 y 102</p><p>${departure?'Salida':'Llegada'} de las 2 habitaciones.</p><p>Total · ${money(b.total)} · Saldo ${money(b.balance)}</p>${blocked?'<p>Registra el pago antes del check-out final.</p>':''}`,blocked?null:departure?'check-out':'check-in');return;
+        }
+        const messages={
+          add:['Agregar habitación','La nueva habitación usa las fechas comunes. Puedes cambiar sus fechas en Opciones por habitación.'],
+          save:['Revisar cambios',`Total propuesto · ${money(bill().total)}<p>Las fechas comunes se aplican a las 2 habitaciones.</p>`],
+          payment:['Revisar pago','Importe, método y nuevo saldo antes de confirmar.'],
+          discount:['Descuento de reserva','Importe fijo, motivo y saldo resultante.'],
+          waiver:['Condonar deuda','Importe, motivo y deuda que se condona.'],
+          refund:['Revisar reembolso','Solo disponible cuando la reserva tiene crédito.'],
+          correction:['Corregir pago','Motivo, nuevo importe y saldo resultante. El original queda visible como anulado.'],
+          'full-reservation':['Reserva completa','Boceto · Abriría la página de la reserva con todos sus datos, historial de cambios, tiempos reales de llegada y salida, y controles menos frecuentes.'],
+          move:['Cambiar habitación','Elegir una habitación disponible del mismo tipo y revisar el movimiento.'],
+          'room-cancel':['Cancelar habitación','Revisar el motivo y el saldo resultante. Cancelar la última habitación requiere confirmar la cancelación de toda la reserva.']
+        };
+        if(messages[action])notice(...messages[action],action==='save'?'save':null);
+      });
+      root.addEventListener('change',e=>{
+        if(e.target.closest('#simple-guests')){state.guestsDirty=true;const save=root.querySelector('[data-action=save]');save.hidden=false;save.textContent='Guardar huéspedes';return;}
+        if(e.target.dataset.select){const id=Number(e.target.dataset.select);state.selected=e.target.checked?[...state.selected,id]:state.selected.filter(x=>x!==id);persist();return;}
+        if(e.target.dataset.date){state[e.target.dataset.date]=e.target.value;state.dirty=true;render();return;}
+        if(e.target.dataset.ownDate){notice('Cambio de fecha individual','Solo cambia esta habitación. Revisar disponibilidad y total antes de guardar.');return;}
+      });
+      restore(window.openai?.widgetState);render();
+      window.addEventListener('openai:set_globals',e=>{restore(e.detail?.globals?.widgetState);render();});
+      if(globalThis.Tweak){const tweak=new Tweak({container:dialog,onChange:()=>{reviews.hidden=true;render();}});tweak.addSelect(state,'moment',{label:'Booking example',options:[{label:'All confirmed',value:'confirmed'},{label:'All checked in',value:'checked_in'},{label:'Mixed statuses',value:'mixed'}]});tweak.addToggle(state,'differentDates',{label:'Different room dates'});tweak.addToggle(state,'debt',{label:'Outstanding balance'});}
+    })();
+  </script>
+</div>

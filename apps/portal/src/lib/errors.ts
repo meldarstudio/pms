@@ -1,4 +1,50 @@
 const messages: Record<string, string> = {
+  "payment date is required": "Indica la fecha del pago.",
+  "guest room must belong to this reservation":
+    "Asigna al huésped a una habitación de esta reserva.",
+  "guest belongs to another reservation":
+    "Este huésped pertenece a otra reserva. Recarga los datos.",
+  "duplicate staying guest": "Un huésped está repetido en la lista.",
+  "stale reservation; reload before saving":
+    "La reserva cambió en otra sesión. Recárgala antes de guardar.",
+  "request ID reused with a different payload":
+    "Esta solicitud ya se utilizó con otros datos. Recarga la reserva.",
+  "refund exceeds available credit":
+    "La devolución supera el saldo a favor disponible.",
+  "waiver exceeds outstanding balance":
+    "La condonación supera el saldo pendiente.",
+  "waiver correction cannot forgive later debt; record a new waiver":
+    "Esta corrección no puede condonar cargos nuevos. Registra otra condonación con su motivo.",
+  "reason is required": "Escribe un motivo.",
+  "method is required": "Selecciona un método de pago o devolución.",
+  "financial date cannot be in the future":
+    "La fecha del movimiento no puede ser futura.",
+  "final checkout requires settlement of the revised shared balance":
+    "La última salida requiere saldar la cuenta revisada.",
+  "check-in requires a confirmed assigned room":
+    "La llegada requiere una habitación confirmada y asignada.",
+  "amend booked dates before arrival outside the stay":
+    "Guarda las fechas correctas antes de registrar una llegada fuera de la estancia.",
+  "departure outside booked stay requires a date amendment":
+    "La salida está fuera de las fechas guardadas. Amplía la estancia antes de registrar la salida.",
+  "checked-in rooms only allow extensions; use move for assignment changes":
+    "Durante la estancia puedes ampliar fechas o usar la acción de cambio de habitación.",
+  "use whole-booking cancellation for the final room":
+    "Usa Cancelar reserva para cancelar la última habitación.",
+  "accidental removal must retain another active room":
+    "Debe quedar otra habitación activa al retirar una habitación por error.",
+  "cannot undo arrival after a room move":
+    "No se puede deshacer una llegada después de un cambio de habitación.",
+  "room is a different type":
+    "La habitación debe ser del mismo tipo reservado.",
+  "reservation is closed":
+    "La reserva está cerrada. No se pueden añadir habitaciones.",
+  "room cannot be edited in this status":
+    "No se puede editar una habitación en este estado.",
+  "financial entry is missing or already void":
+    "El movimiento ya fue anulado. Recarga la reserva.",
+  "replacement must have the same financial kind":
+    "El reemplazo debe ser del mismo tipo de movimiento.",
   "no availability": "No hay disponibilidad para esas fechas.",
   "room is already assigned for those dates":
     "Esta habitación acaba de asignarse a otra reserva.",

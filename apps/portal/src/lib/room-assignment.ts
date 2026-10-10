@@ -7,6 +7,7 @@ export type ReservationStay = {
   id: string
   reservationId: string
   guestName: string
+  status?: string
   checkIn: string
   checkOut: string
   roomId: string | null
@@ -15,17 +16,38 @@ export type ReservationStay = {
   roomCount: number
 }
 
-export function reservationStays(reservations: Reservation[]) {
+function calendarCheckout(
+  reservation: Reservation,
+  line: Reservation["rooms"][number]
+) {
+  const bookedEnd = line.checkOut ?? reservation.checkOut
+  if (line.status !== "checked_out" || !line.actualDeparture) return bookedEnd
+  const departure = line.actualDeparture.slice(0, 10)
+  const start = line.checkIn ?? reservation.checkIn
+  const nextMorning = new Date(`${start}T00:00:00Z`)
+  nextMorning.setUTCDate(nextMorning.getUTCDate() + 1)
+  const actualEnd =
+    departure <= start ? nextMorning.toISOString().slice(0, 10) : departure
+  return actualEnd < bookedEnd ? actualEnd : bookedEnd
+}
+
+export function reservationStays(
+  reservations: Reservation[],
+  includeCompleted = false
+) {
   return reservations.flatMap((reservation) =>
     reservation.rooms.flatMap((line, index): ReservationStay[] =>
-      openStatuses.has(line.status)
+      openStatuses.has(line.status) ||
+      (includeCompleted && line.status === "checked_out")
         ? [
             {
               id: line.id,
               reservationId: reservation.id,
               guestName: reservation.guestName,
-              checkIn: reservation.checkIn,
-              checkOut: reservation.checkOut,
+              status: line.status,
+              checkIn:
+                line.assignmentStart ?? line.checkIn ?? reservation.checkIn,
+              checkOut: calendarCheckout(reservation, line),
               roomId: line.roomId,
               roomTypeId: line.roomTypeId,
               roomIndex: index + 1,
@@ -70,8 +92,9 @@ export function assignmentTargetIssue(
     return "This reserved room has already been assigned. Select another reservation."
   }
   if (
-    reservation.checkIn !== target.checkIn ||
-    reservation.checkOut !== target.checkOut ||
+    (line.assignmentStart ?? line.checkIn ?? reservation.checkIn) !==
+      target.checkIn ||
+    (line.checkOut ?? reservation.checkOut) !== target.checkOut ||
     line.roomTypeId !== target.roomTypeId
   ) {
     return "This reservation has changed. Select it again to check the updated stay."
@@ -87,16 +110,16 @@ export function roomAssignmentIssue(
 ) {
   if (room.roomTypeId !== target.roomTypeId) return "Different room type"
 
-  const occupied = reservations.some(
-    (reservation) =>
-      reservation.checkIn < target.checkOut &&
-      reservation.checkOut > target.checkIn &&
-      reservation.rooms.some(
-        (line) =>
-          line.id !== target.id &&
-          line.roomId === room.id &&
-          !inactiveStatuses.has(line.status)
-      )
+  const occupied = reservations.some((reservation) =>
+    reservation.rooms.some(
+      (line) =>
+        (line.assignmentStart ?? line.checkIn ?? reservation.checkIn) <
+          target.checkOut &&
+        (line.checkOut ?? reservation.checkOut) > target.checkIn &&
+        line.id !== target.id &&
+        line.roomId === room.id &&
+        !inactiveStatuses.has(line.status)
+    )
   )
   if (occupied) return "Occupied during this stay"
 

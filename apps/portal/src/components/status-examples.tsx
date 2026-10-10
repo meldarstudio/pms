@@ -205,9 +205,7 @@ export function StatusExamples() {
             <dl className="grid gap-3 text-sm sm:grid-cols-3">
               <div className="flex flex-col gap-1">
                 <dt className="text-muted-foreground">Huésped</dt>
-                <dd>
-                  {reservation.guest.firstName} {reservation.guest.lastName}
-                </dd>
+                <dd>{reservation.guest.fullName}</dd>
               </div>
               <div className="flex flex-col gap-1">
                 <dt className="text-muted-foreground">Estado guardado</dt>
@@ -370,14 +368,9 @@ function ExampleDialog({
     ),
     invalid: false,
   }))
-  const contact = contactErrors(
-    draft.guest.firstName,
-    draft.guest.lastName,
-    draft.guest.email ?? ""
-  )
+  const contact = contactErrors(draft.guest.fullName, draft.guest.email ?? "")
   const validation = useFieldValidation({
-    [`${formId}-first-name`]: contact.firstName,
-    [`${formId}-last-name`]: contact.lastName,
+    [`${formId}-full-name`]: contact.fullName,
     [`${formId}-email`]: contact.email,
   })
   const reasons = Object.fromEntries(
@@ -787,8 +780,7 @@ function ExampleDialog({
                   <FieldGroup className="grid grid-cols-2 gap-3">
                     {(
                       [
-                        ["firstName", "Nombres", "first-name"],
-                        ["lastName", "Apellidos", "last-name"],
+                        ["fullName", "Nombre completo", "full-name"],
                         ["email", "Correo", "email"],
                         ["phone", "Teléfono", "phone"],
                       ] as const

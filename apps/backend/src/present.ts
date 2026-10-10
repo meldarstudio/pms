@@ -1,8 +1,19 @@
-import type { guests, payments, reservationRoomNights, reservationRooms, reservations, roomTypes, rooms } from './db/schema'
+import type {
+  reservationGuests,
+  financialEntries,
+  reservationEvents,
+  guests,
+  payments,
+  reservationRoomNights,
+  reservationRooms,
+  reservations,
+  roomTypes,
+  rooms,
+} from './db/schema'
 import { nightsBetween } from './lib/dates'
-import { roomCharges } from './lib/billing'
+import { bill } from './lib/workflow-billing'
 
-type Guest = typeof guests.$inferSelect
+type Guest = Omit<typeof guests.$inferSelect, 'firstName' | 'lastName'>
 type Reservation = typeof reservations.$inferSelect
 type Line = typeof reservationRooms.$inferSelect
 type Night = typeof reservationRoomNights.$inferSelect
@@ -10,13 +21,12 @@ type Payment = typeof payments.$inferSelect
 type RoomType = typeof roomTypes.$inferSelect
 type Room = typeof rooms.$inferSelect
 
-const unbilled = new Set(['cancelled'])
+const unbilled = new Set(['cancelled', 'no_show'])
 
 export function presentGuest(guest: Guest) {
   return {
     id: guest.id,
-    firstName: guest.firstName,
-    lastName: guest.lastName,
+    fullName: guest.fullName,
     email: guest.email,
     phone: guest.phone,
     documentType: guest.documentType,
@@ -34,7 +44,10 @@ export function presentReservation(input: {
   payments: Payment[]
   types: RoomType[]
   roomRows: Room[]
+  entries: (typeof financialEntries.$inferSelect)[]
+  events: (typeof reservationEvents.$inferSelect)[]
   currency: string
+  stayingGuests?: (typeof reservationGuests.$inferSelect)[]
 }) {
   const typeById = new Map(input.types.map((type) => [type.id, type]))
   const roomById = new Map(input.roomRows.map((room) => [room.id, room]))
@@ -49,6 +62,9 @@ export function presentReservation(input: {
     const nights = (nightsByLine.get(line.id) ?? []).sort((a, b) => a.date.localeCompare(b.date))
     const lineTotal = nights.reduce((sum, night) => sum + night.priceCents, 0)
     return {
+      ...line,
+      checkIn: line.checkIn ?? input.reservation.checkIn,
+      checkOut: line.checkOut ?? input.reservation.checkOut,
       id: line.id,
       roomTypeId: line.roomTypeId,
       roomTypeName: typeById.get(line.roomTypeId)?.name ?? null,
@@ -57,23 +73,26 @@ export function presentReservation(input: {
       adults: line.adults,
       children: line.children,
       status: line.status,
-      ...roomCharges(lineTotal, line.discountCents),
+      subtotalCents: lineTotal,
+      discountCents: 0,
+      totalCents: ['cancelled', 'no_show'].includes(line.status) ? 0 : lineTotal,
       nights: nights.map((night) => ({ date: night.date, priceCents: night.priceCents })),
     }
   })
 
   const billable = roomsOut.filter((line) => !unbilled.has(line.status))
   const subtotalCents = billable.reduce((sum, line) => sum + line.subtotalCents, 0)
-  const discountCents = billable.reduce((sum, line) => sum + line.discountCents, 0)
-  const totalCents = subtotalCents - discountCents
-  const paidCents = input.payments.reduce((sum, payment) => sum + payment.amountCents, 0)
-  const paymentRows = [...input.payments].sort((a, b) => a.paidAt.localeCompare(b.paidAt))
+  const totals = bill(subtotalCents, billable.length ? input.entries : [])
+  const { applied, ...financialTotals } = totals
 
   return {
     id: input.reservation.id,
     code: input.reservation.code,
+    version: input.reservation.version,
+    cancelledAt: input.reservation.cancelledAt,
     guestId: input.reservation.guestId,
     guest: presentGuest(input.guest),
+    stayingGuests: input.stayingGuests ?? [],
     checkIn: input.reservation.checkIn,
     checkOut: input.reservation.checkOut,
     source: input.reservation.source,
@@ -81,19 +100,27 @@ export function presentReservation(input: {
     createdAt: input.reservation.createdAt,
     currency: input.currency,
     nights: nightsBetween(input.reservation.checkIn, input.reservation.checkOut).length,
-    totalCents,
-    subtotalCents,
-    discountCents,
-    paidCents,
-    balanceCents: totalCents - paidCents,
+    ...financialTotals,
     rooms: roomsOut,
-    payments: paymentRows.map((payment) => ({
-      id: payment.id,
-      amountCents: payment.amountCents,
-      method: payment.method,
-      reference: payment.reference,
-      paidAt: payment.paidAt,
-      notes: payment.notes,
+    financialEntries: input.entries.map((e) => ({
+      ...e,
+      appliedCents: e.voidedAt ? 0 : (applied.get(e.id) ?? 0),
     })),
+    history: input.events.map((e) => ({
+      ...e,
+      before: JSON.parse(e.before),
+      after: JSON.parse(e.after),
+    })),
+    payments: input.entries
+      .filter((e) => e.kind === 'payment' || e.kind === 'legacy_signed')
+      .map((e) => ({
+        id: e.id,
+        amountCents: e.amountCents,
+        method: e.method,
+        reference: e.reference,
+        paidAt: e.occurredAt,
+        notes: e.reason,
+        voidedAt: e.voidedAt,
+      })),
   }
 }

@@ -10,6 +10,7 @@ import {
   startOfToday,
 } from "date-fns"
 import {
+  CircleHelpIcon,
   CalendarIcon,
   ChevronLeftIcon,
   ChevronRightIcon,
@@ -34,6 +35,11 @@ import {
   type BookingTarget,
 } from "@/components/room-booking-dialog"
 import { RoomAssignmentPanel } from "@/components/room-assignment-panel"
+import {
+  Tooltip,
+  TooltipTrigger,
+  TooltipContent,
+} from "@/components/ui/tooltip"
 import { Button } from "@/components/ui/button"
 import { ButtonGroup } from "@/components/ui/button-group"
 import { Calendar } from "@/components/ui/calendar"
@@ -71,9 +77,23 @@ const spans = [
   { label: "14 días", value: "14" },
 ]
 
+const stayColors: Record<string, string> = {
+  confirmed:
+    "border-booking-confirmed-foreground/20 bg-booking-confirmed text-booking-confirmed-foreground",
+  checked_in: "border-booking-foreground/20 bg-booking text-booking-foreground",
+  checked_out:
+    "border-booking-completed-foreground/20 bg-booking-completed text-booking-completed-foreground",
+}
+const stayLabels: Record<string, string> = {
+  confirmed: "Confirmada",
+  checked_in: "Check-in",
+  checked_out: "Check-out",
+}
+
 type TrackItem = {
   id: string
   reservationId?: string
+  status?: string
   kind: "stay" | "closure"
   label: string
   title: string
@@ -138,8 +158,9 @@ function stayTrack(stay: ReservationStay): TrackItem {
     id: stay.id,
     reservationId: stay.reservationId,
     kind: "stay",
+    status: stay.status,
     label: stay.guestName,
-    title: `${stay.guestName}, ${stay.checkIn} al ${stay.checkOut}`,
+    title: `${stay.guestName} · ${stayLabels[stay.status ?? "confirmed"]}, ${stay.checkIn} al ${stay.checkOut}`,
     checkIn: stay.checkIn,
     checkOut: stay.checkOut,
   }
@@ -178,8 +199,10 @@ function StayBar({
   laneCount: number
   onOpen?: (reservationId: string) => void
 }) {
-  const className =
-    "absolute z-10 flex items-center overflow-hidden rounded-md border border-booking-foreground/20 bg-booking px-2.5 text-left text-xs text-booking-foreground"
+  const className = cn(
+    "absolute z-10 flex items-center overflow-hidden rounded-md border px-2.5 text-left text-xs",
+    stayColors[stay.status ?? "confirmed"] ?? stayColors.confirmed
+  )
   if (!onOpen || !stay.reservationId) {
     return (
       <div
@@ -196,7 +219,7 @@ function StayBar({
     <button
       type="button"
       title={stay.title}
-      aria-label={`Editar reserva de ${stay.label}`}
+      aria-label={`Editar reserva de ${stay.label} · ${stayLabels[stay.status ?? "confirmed"]}`}
       className={cn(
         className,
         "cursor-pointer outline-none focus-visible:ring-1 focus-visible:ring-ring"
@@ -341,9 +364,14 @@ function RoomTrack({
   )
 }
 
-export function RoomCalendar() {
+export function RoomCalendar({
+  onOpenReservation,
+}: {
+  onOpenReservation: (id: string) => void
+}) {
   const timeZone = Intl.DateTimeFormat().resolvedOptions().timeZone
   const queryClient = useQueryClient()
+  const today = format(startOfToday(), "yyyy-MM-dd")
   const [start, setStart] = useState(startOfToday)
   const [span, setSpan] = useState(7)
   const [pickerOpen, setPickerOpen] = useState(false)
@@ -391,7 +419,7 @@ export function RoomCalendar() {
     !closuresQuery.isError
   const stays = reservationsQuery.isError
     ? []
-    : reservationStays(reservationsQuery.data ?? []).filter(
+    : reservationStays(reservationsQuery.data ?? [], true).filter(
         (stay) => clipStay(stayTrack(stay), start, span) !== null
       )
   const assignment = useRoomAssignment(rooms)
@@ -489,15 +517,10 @@ export function RoomCalendar() {
         target={bookingTarget}
         timeZone={timeZone}
         onClose={() => setBookingTarget(null)}
-        onViewReservation={(reservationId) =>
-          setBookingTarget({
-            mode: "edit",
-            reservationId,
-            roomId: "",
-            number: "",
-            typeName: "",
-          })
-        }
+        onViewReservation={(id) => {
+          setBookingTarget(null)
+          onOpenReservation(id)
+        }}
       />
       <div className="flex flex-wrap items-center justify-between gap-2 border-b px-2.5 py-2">
         <div className="flex items-center gap-2">
@@ -607,6 +630,46 @@ export function RoomCalendar() {
           </Button>
         </ButtonGroup>
         <div className="flex items-center gap-2">
+          <Tooltip>
+            <TooltipTrigger
+              render={
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon"
+                  aria-label="Colores de reservas"
+                />
+              }
+            >
+              <CircleHelpIcon />
+            </TooltipTrigger>
+            <TooltipContent side="bottom">
+              <div
+                aria-label="Colores de reservas"
+                className="flex flex-col gap-2 py-1"
+              >
+                {Object.entries(stayLabels).map(([status, label]) => (
+                  <span key={status} className="flex items-center gap-1.5">
+                    <span
+                      aria-hidden="true"
+                      className={cn(
+                        "size-3 rounded-sm border",
+                        stayColors[status]
+                      )}
+                    />
+                    {label}
+                  </span>
+                ))}
+                <span className="flex items-center gap-1.5">
+                  <span
+                    aria-hidden="true"
+                    className="size-3 rounded-sm border border-closure-foreground/20 bg-closure"
+                  />
+                  Cerrada
+                </span>
+              </div>
+            </TooltipContent>
+          </Tooltip>
           <Button
             variant="outline"
             aria-expanded={panelOpen}
@@ -649,10 +712,28 @@ export function RoomCalendar() {
                 key={format(day, "yyyy-MM-dd")}
                 className="sticky top-0 z-30 flex min-w-0 flex-col items-center gap-0.5 border-r border-b bg-background px-2.5 py-1.5"
               >
-                <span className="text-xs tracking-wide text-muted-foreground uppercase">
-                  {format(day, "EEE")}
+                <span
+                  className={cn(
+                    "text-xs tracking-wide uppercase",
+                    format(day, "yyyy-MM-dd") === today
+                      ? "font-medium text-primary"
+                      : "text-muted-foreground"
+                  )}
+                >
+                  {format(day, "yyyy-MM-dd") === today
+                    ? "Hoy"
+                    : format(day, "EEE")}
                 </span>
-                <span className="text-xs font-medium">{format(day, "d")}</span>
+                <span
+                  className={cn(
+                    "flex h-5 min-w-5 items-center justify-center px-1 text-xs",
+                    format(day, "yyyy-MM-dd") === today
+                      ? "bg-primary font-medium text-primary-foreground"
+                      : "text-muted-foreground"
+                  )}
+                >
+                  {format(day, "d")}
+                </span>
                 <span className="text-xs text-muted-foreground">
                   {format(day, "MMM")}
                 </span>

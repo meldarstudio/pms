@@ -40,12 +40,11 @@ for (const example of examples) {
   const rooms = example.types.map((id) => {
     const type = types.find((item) => item.id === id)
     if (!type) throw new Error(`Falta el tipo ${id}. Ejecuta primero la carga local de habitaciones.`)
-    return { roomTypeId: type.id, adults: 1, children: 0 }
+    return { roomTypeId: type.id, adults: 1, children: 0, checkIn, checkOut }
   })
   const reservation = await request('/reservations', {
-    guest: { firstName: example.firstName, lastName: 'Demo' },
-    checkIn,
-    checkOut,
+    guest: { fullName: guestName },
+    requestId: crypto.randomUUID(),
     notes: 'Reserva de prueba para asignar habitaciones desde el calendario.',
     rooms,
   })

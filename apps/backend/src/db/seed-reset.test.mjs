@@ -9,13 +9,23 @@ const backendDir = new URL('../../', import.meta.url)
 const migrationsDir = new URL('drizzle/', backendDir)
 const journal = JSON.parse(readFileSync(new URL('meta/_journal.json', migrationsDir), 'utf8'))
 const tables = [
-  'room_types', 'rooms', 'guests', 'reservations', 'reservation_rooms',
-  'reservation_room_nights', 'payments', 'room_type_rates', 'room_closures',
+  'room_types',
+  'rooms',
+  'guests',
+  'reservations',
+  'reservation_rooms',
+  'reservation_room_nights',
+  'financial_entries',
+  'payments',
+  'room_type_rates',
+  'room_closures',
 ]
 let db
 
 function snapshot() {
-  return Object.fromEntries(tables.map((table) => [table, db.prepare(`SELECT * FROM ${table} ORDER BY id`).all()]))
+  return Object.fromEntries(
+    tables.map((table) => [table, db.prepare(`SELECT * FROM ${table} ORDER BY id`).all()]),
+  )
 }
 
 beforeEach(() => {
@@ -24,7 +34,9 @@ beforeEach(() => {
   for (const entry of journal.entries) {
     db.exec(readFileSync(new URL(`${entry.tag}.sql`, migrationsDir), 'utf8'))
   }
-  db.exec("CREATE TABLE d1_migrations (id INTEGER PRIMARY KEY, name TEXT); INSERT INTO d1_migrations VALUES (1, 'applied');")
+  db.exec(
+    "CREATE TABLE d1_migrations (id INTEGER PRIMARY KEY, name TEXT); INSERT INTO d1_migrations VALUES (1, 'applied');",
+  )
 })
 
 afterEach(() => {
@@ -37,7 +49,9 @@ describe('local dummy data reset', () => {
     const sql = buildResetSql('2026-10-06')
     db.exec(sql)
     const baseline = snapshot()
-    const triggers = db.prepare("SELECT name, sql FROM sqlite_master WHERE type = 'trigger' ORDER BY name").all()
+    const triggers = db
+      .prepare("SELECT name, sql FROM sqlite_master WHERE type = 'trigger' ORDER BY name")
+      .all()
     db.exec(`
       UPDATE room_types SET name = 'Edited Standard', base_rate_cents = 12345 WHERE id = 'type-standard';
       UPDATE rooms SET number = 'edited-101' WHERE id = 'room-101';
@@ -46,8 +60,8 @@ describe('local dummy data reset', () => {
       UPDATE reservation_rooms SET room_id = 'room-104', status = 'checked_in' WHERE id = 'line-alex-1';
       UPDATE reservation_room_nights SET price_cents = 1 WHERE reservation_room_id = 'line-arrival-1';
       UPDATE reservation_rooms SET discount_cents = 1 WHERE id = 'line-arrival-1';
-      UPDATE payments SET amount_cents = 100 WHERE id = 'payment-family';
-      DELETE FROM payments WHERE id = 'refund-cancelled';
+      UPDATE financial_entries SET amount_cents = 100 WHERE id = 'payment-family';
+      DELETE FROM financial_entries WHERE id = 'payment-cancelled';
       DELETE FROM room_type_rates WHERE room_type_id = 'type-suite';
       DELETE FROM room_closures WHERE id = 'closure-110';
       DELETE FROM reservation_room_nights WHERE reservation_room_id = 'line-sam-1';
@@ -75,7 +89,9 @@ describe('local dummy data reset', () => {
     expect(snapshot()).toEqual(baseline)
     expect(db.prepare('PRAGMA foreign_key_check').all()).toEqual([])
     expect(db.prepare('SELECT * FROM d1_migrations').all()).toEqual([{ id: 1, name: 'applied' }])
-    expect(db.prepare("SELECT name, sql FROM sqlite_master WHERE type = 'trigger' ORDER BY name").all()).toEqual(triggers)
+    expect(
+      db.prepare("SELECT name, sql FROM sqlite_master WHERE type = 'trigger' ORDER BY name").all(),
+    ).toEqual(triggers)
   })
 
   it('creates valid stays, occupancies, nightly prices, payments, and closures', () => {
@@ -83,69 +99,151 @@ describe('local dummy data reset', () => {
     expect(db.prepare('SELECT COUNT(*) AS count FROM rooms').get().count).toBe(60)
     expect(db.prepare('SELECT COUNT(*) AS count FROM reservations').get().count).toBe(21)
     expect(db.prepare('SELECT COUNT(*) AS count FROM room_closures').get().count).toBe(3)
-    expect(db.prepare('SELECT DISTINCT status FROM reservation_rooms ORDER BY status').all().map((row) => row.status))
-      .toEqual(['cancelled', 'checked_in', 'checked_out', 'confirmed', 'no_show'])
-    expect(db.prepare("SELECT COUNT(*) AS count FROM reservation_rooms WHERE room_id IS NULL AND status = 'confirmed'").get().count).toBe(4)
-    expect(db.prepare(`SELECT rr.id FROM reservation_rooms rr
-      JOIN room_types t ON t.id = rr.room_type_id WHERE rr.adults + rr.children > t.max_occupancy`).all()).toEqual([])
-    expect(db.prepare(`SELECT rr.id FROM reservation_rooms rr
+    expect(
+      db
+        .prepare('SELECT DISTINCT status FROM reservation_rooms ORDER BY status')
+        .all()
+        .map((row) => row.status),
+    ).toEqual(['cancelled', 'checked_in', 'checked_out', 'confirmed', 'no_show'])
+    expect(
+      db
+        .prepare(
+          "SELECT COUNT(*) AS count FROM reservation_rooms WHERE room_id IS NULL AND status = 'confirmed'",
+        )
+        .get().count,
+    ).toBe(4)
+    expect(
+      db
+        .prepare(
+          `SELECT rr.id FROM reservation_rooms rr
+      JOIN room_types t ON t.id = rr.room_type_id WHERE rr.adults + rr.children > t.max_occupancy`,
+        )
+        .all(),
+    ).toEqual([])
+    expect(
+      db
+        .prepare(
+          `SELECT rr.id FROM reservation_rooms rr
       JOIN reservations r ON r.id = rr.reservation_id
       LEFT JOIN reservation_room_nights n ON n.reservation_room_id = rr.id
-      WHERE rr.status != 'checked_out'
-      GROUP BY rr.id HAVING COUNT(n.id) != julianday(r.check_out) - julianday(r.check_in)
-      OR MIN(n.date) != r.check_in OR MAX(n.date) != date(r.check_out, '-1 day')`).all()).toEqual([])
-    expect(db.prepare(`SELECT n.id FROM reservation_room_nights n
+            GROUP BY rr.id HAVING COUNT(n.id) != julianday(rr.check_out) - julianday(rr.check_in)
+      OR MIN(n.date) != rr.check_in OR MAX(n.date) != date(rr.check_out, '-1 day')`,
+        )
+        .all(),
+    ).toEqual([])
+    expect(
+      db
+        .prepare(
+          `SELECT n.id FROM reservation_room_nights n
       JOIN reservation_rooms rr ON rr.id = n.reservation_room_id
       JOIN room_types t ON t.id = rr.room_type_id
       LEFT JOIN room_type_rates rate ON rate.room_type_id = t.id AND rate.date = n.date
-      WHERE n.price_cents != CASE WHEN rr.id = 'line-long-stay-1' THEN 9500 ELSE COALESCE(rate.price_cents, t.base_rate_cents) END`).all()).toEqual([])
-    expect(db.prepare("SELECT SUM(amount_cents) AS paid FROM payments WHERE reservation_id = 'reservation-cancelled'").get().paid).toBe(0)
-    expect(db.prepare("SELECT last_name FROM guests WHERE id = 'guest-arrival'").get().last_name).toBe("O'Brien")
+      WHERE n.price_cents != CASE WHEN rr.id = 'line-long-stay-1' THEN 9500 ELSE COALESCE(rate.price_cents, t.base_rate_cents) END`,
+        )
+        .all(),
+    ).toEqual([])
+    expect(
+      db
+        .prepare(
+          "SELECT SUM(amount_cents) AS paid FROM financial_entries WHERE kind='payment' AND reservation_id = 'reservation-cancelled'",
+        )
+        .get().paid,
+    ).toBeGreaterThan(0)
+    expect(
+      db.prepare("SELECT last_name FROM guests WHERE id = 'guest-arrival'").get().last_name,
+    ).toBe("O'Brien")
     expect(db.prepare('PRAGMA foreign_key_check').all()).toEqual([])
   })
 
-  it('seeds discounted totals, full waivers, multiple payments, and early-departure credits', () => {
+  it('seeds discounted totals, full discounts, multiple payments, and early-departure credits', () => {
     db.exec(buildResetSql('2026-10-06'))
-    const balance = (id) => db.prepare(`
+    const balance = (id) =>
+      db
+        .prepare(
+          `
       SELECT
         (SELECT SUM((SELECT SUM(price_cents) FROM reservation_room_nights WHERE reservation_room_id = rr.id) - rr.discount_cents)
           FROM reservation_rooms rr WHERE rr.reservation_id = r.id AND rr.status != 'cancelled')
-        - COALESCE((SELECT SUM(amount_cents) FROM payments WHERE reservation_id = r.id), 0) AS balance
+        - COALESCE((SELECT SUM(amount_cents) FROM financial_entries WHERE kind = 'payment' AND reservation_id = r.id), 0) AS balance
       FROM reservations r WHERE r.id = ?
-    `).get(id).balance
+    `,
+        )
+        .get(id).balance
     expect(balance('reservation-family')).toBe(0)
     expect(balance('reservation-installments')).toBe(0)
-    expect(balance('reservation-waiver')).toBe(0)
+    expect(balance('reservation-discount')).toBe(0)
     expect(balance('reservation-early-departure')).toBe(-5000)
-    expect(db.prepare("SELECT COUNT(*) AS count FROM payments WHERE reservation_id = 'reservation-installments'").get().count).toBe(3)
-    expect(db.prepare('SELECT DISTINCT method FROM payments ORDER BY method').all().map((row) => row.method))
-      .toEqual(['card', 'cash', 'other', 'transfer'])
-    expect(db.prepare(`SELECT rr.id FROM reservation_rooms rr
+    expect(
+      db
+        .prepare(
+          "SELECT COUNT(*) AS count FROM financial_entries WHERE kind='payment' AND reservation_id = 'reservation-installments'",
+        )
+        .get().count,
+    ).toBe(3)
+    expect(
+      db
+        .prepare(
+          "SELECT DISTINCT method FROM financial_entries WHERE kind='payment' ORDER BY method",
+        )
+        .all()
+        .map((row) => row.method),
+    ).toEqual(['card', 'cash', 'other', 'transfer'])
+    expect(
+      db
+        .prepare(
+          `SELECT rr.id FROM reservation_rooms rr
       JOIN reservation_room_nights n ON n.reservation_room_id = rr.id
-      GROUP BY rr.id HAVING rr.discount_cents < 0 OR rr.discount_cents > SUM(n.price_cents)`).all()).toEqual([])
-    expect(db.prepare("SELECT check_in, check_out FROM reservations WHERE id = 'reservation-early-departure'").get())
-      .toEqual({ check_in: '2026-10-06', check_out: '2026-10-06' })
-    expect(db.prepare(`SELECT rr.id, rr.status, COUNT(n.id) AS nights FROM reservation_rooms rr
+      GROUP BY rr.id HAVING rr.discount_cents < 0 OR rr.discount_cents > SUM(n.price_cents)`,
+        )
+        .all(),
+    ).toEqual([])
+    expect(
+      db
+        .prepare(
+          "SELECT check_in, check_out FROM reservations WHERE id = 'reservation-early-departure'",
+        )
+        .get(),
+    ).toEqual({ check_in: '2026-10-05', check_out: '2026-10-06' })
+    expect(
+      db
+        .prepare(
+          `SELECT rr.id, rr.status, COUNT(n.id) AS nights FROM reservation_rooms rr
       JOIN reservation_room_nights n ON n.reservation_room_id = rr.id
-      WHERE rr.reservation_id = 'reservation-split-departure' GROUP BY rr.id ORDER BY rr.id`).all())
-      .toEqual([
-        { id: 'line-split-departure-1', status: 'checked_out', nights: 1 },
-        { id: 'line-split-departure-2', status: 'checked_in', nights: 3 },
-      ])
-    expect(db.prepare(`SELECT rr.id FROM reservation_rooms rr
+      WHERE rr.reservation_id = 'reservation-split-departure' GROUP BY rr.id ORDER BY rr.id`,
+        )
+        .all(),
+    ).toEqual([
+      { id: 'line-split-departure-1', status: 'checked_out', nights: 1 },
+      { id: 'line-split-departure-2', status: 'checked_in', nights: 3 },
+    ])
+    expect(
+      db
+        .prepare(
+          `SELECT rr.id FROM reservation_rooms rr
       JOIN reservations r ON r.id = rr.reservation_id
       JOIN reservation_room_nights n ON n.reservation_room_id = rr.id
       WHERE rr.status = 'checked_out' GROUP BY rr.id
-      HAVING COUNT(n.id) < 1 OR MIN(n.date) != r.check_in
-      OR MAX(n.date) >= CASE WHEN r.check_out = r.check_in THEN date(r.check_in, '+1 day') ELSE r.check_out END`).all()).toEqual([])
+      HAVING COUNT(n.id) < 1 OR MIN(n.date) != rr.check_in
+      OR MAX(n.date) >= rr.check_out`,
+        )
+        .all(),
+    ).toEqual([])
   })
 
   it('moves scenarios across month boundaries using UTC dates and leap days', () => {
     db.exec(buildResetSql('2028-02-28'))
-    expect(db.prepare("SELECT check_in, check_out FROM reservations WHERE id = 'reservation-turnover'").get())
-      .toEqual({ check_in: '2028-03-01', check_out: '2028-03-04' })
-    expect(db.prepare("SELECT date FROM reservation_room_nights WHERE reservation_room_id = 'line-arrival-1' ORDER BY date").all())
-      .toEqual([{ date: '2028-02-28' }, { date: '2028-02-29' }, { date: '2028-03-01' }])
+    expect(
+      db
+        .prepare("SELECT check_in, check_out FROM reservations WHERE id = 'reservation-turnover'")
+        .get(),
+    ).toEqual({ check_in: '2028-03-01', check_out: '2028-03-04' })
+    expect(
+      db
+        .prepare(
+          "SELECT date FROM reservation_room_nights WHERE reservation_room_id = 'line-arrival-1' ORDER BY date",
+        )
+        .all(),
+    ).toEqual([{ date: '2028-02-28' }, { date: '2028-02-29' }, { date: '2028-03-01' }])
   })
 
   it('defaults to today in UTC', () => {
@@ -153,19 +251,37 @@ describe('local dummy data reset', () => {
     vi.setSystemTime(new Date('2026-12-31T20:30:00-08:00'))
     expect(referenceDate()).toBe('2027-01-01')
     db.exec(buildResetSql())
-    expect(db.prepare("SELECT check_in FROM reservations WHERE id = 'reservation-arrival'").get().check_in).toBe('2027-01-01')
+    expect(
+      db.prepare("SELECT check_in FROM reservations WHERE id = 'reservation-arrival'").get()
+        .check_in,
+    ).toBe('2027-01-01')
   })
 
-  it.each(['2026-02-29', '2026-02-30', '2026-13-01', '2026-1-01', 'not-a-date', '9999-12-31', '0000-01-01'])
-    ('rejects an invalid reference or out-of-range scenario date: %s', (value) => {
-      expect(() => buildResetSql(value)).toThrow('Date must be a valid UTC calendar date')
-    })
+  it.each([
+    '2026-02-29',
+    '2026-02-30',
+    '2026-13-01',
+    '2026-1-01',
+    'not-a-date',
+    '9999-12-31',
+    '0000-01-01',
+  ])('rejects an invalid reference or out-of-range scenario date: %s', (value) => {
+    expect(() => buildResetSql(value)).toThrow('Date must be a valid UTC calendar date')
+  })
 
-  it.each([['--remote'], ['--date=2026-02-30'], ['--date'], ['--date=2026-10-06', '--date=2026-10-07']])
-    ('rejects invalid CLI arguments before running Wrangler: %j', (...args) => {
-      const result = spawnSync(process.execPath, [fileURLToPath(new URL('seed-reset.mjs', backendDir)), ...args], { encoding: 'utf8' })
-      expect(result.status).toBe(1)
-      expect(result.stderr).toBeTruthy()
-      expect(result.stdout).toBe('')
-    })
+  it.each([
+    ['--remote'],
+    ['--date=2026-02-30'],
+    ['--date'],
+    ['--date=2026-10-06', '--date=2026-10-07'],
+  ])('rejects invalid CLI arguments before running Wrangler: %j', (...args) => {
+    const result = spawnSync(
+      process.execPath,
+      [fileURLToPath(new URL('seed-reset.mjs', backendDir)), ...args],
+      { encoding: 'utf8' },
+    )
+    expect(result.status).toBe(1)
+    expect(result.stderr).toBeTruthy()
+    expect(result.stdout).toBe('')
+  })
 })
