@@ -1,15 +1,9 @@
-import { useState, type ComponentProps, type FormEvent } from "react"
-import {
-  addDays,
-  differenceInCalendarDays,
-  format,
-  parse,
-  startOfDay,
-} from "date-fns"
-import { CalendarIcon, EllipsisIcon } from "lucide-react"
+import { useState, type FormEvent } from "react"
+import { addDays, differenceInCalendarDays, parse, startOfDay } from "date-fns"
+import { EllipsisIcon } from "lucide-react"
 
+import { DateField } from "@/components/date-field"
 import { Button } from "@/components/ui/button"
-import { Calendar } from "@/components/ui/calendar"
 import {
   Dialog,
   DialogClose,
@@ -34,14 +28,10 @@ import {
   FieldLabel,
 } from "@/components/ui/field"
 import { Input } from "@/components/ui/input"
-import {
-  Popover,
-  PopoverContent,
-  PopoverTrigger,
-} from "@/components/ui/popover"
 import { Spinner } from "@/components/ui/spinner"
 import { type RoomClosure } from "@/lib/api"
 import { useDeleteRoomClosure, useSaveRoomClosure } from "@/lib/queries"
+import { format } from "@/lib/dates"
 
 export type ClosureTarget =
   | {
@@ -59,16 +49,16 @@ export type ClosureTarget =
 
 function closureError(error: Error) {
   if (error.message === "room has a stay on those dates") {
-    return "This room has a stay on those dates."
+    return "Esta habitación tiene una reserva para esas fechas."
   }
   if (error.message === "room is already closed on those dates") {
-    return "This room is already closed on those dates."
+    return "Esta habitación ya está cerrada para esas fechas."
   }
   if (error.message === "no availability") {
-    return "No availability for those dates."
+    return "No hay disponibilidad para esas fechas."
   }
   if (error.message === "stay cannot be longer than 60 nights") {
-    return "A closure cannot be longer than 60 nights."
+    return "El cierre no puede superar las 60 noches."
   }
   return error.message
 }
@@ -77,64 +67,13 @@ function formKey(target: ClosureTarget) {
   return target.mode === "edit" ? target.closure.id : `new-${target.roomId}`
 }
 
-function DateField({
-  id,
-  label,
-  value,
-  timeZone,
-  disabled,
-  onChange,
-}: {
-  id: string
-  label: string
-  value: Date | null
-  timeZone: string
-  disabled?: ComponentProps<typeof Calendar>["disabled"]
-  onChange: (date: Date) => void
-}) {
-  const [open, setOpen] = useState(false)
-
-  return (
-    <div className="flex flex-col gap-2">
-      <FieldLabel htmlFor={id}>{label}</FieldLabel>
-      <Popover open={open} onOpenChange={setOpen}>
-        <PopoverTrigger
-          render={
-            <Button
-              id={id}
-              type="button"
-              variant="outline"
-              className="w-full justify-between font-normal"
-            />
-          }
-        >
-          {value ? format(value, "MMM d, yyyy") : "Select date"}
-          <CalendarIcon data-icon="inline-end" />
-        </PopoverTrigger>
-        <PopoverContent className="w-auto p-0" align="start">
-          <Calendar
-            mode="single"
-            selected={value ?? undefined}
-            timeZone={timeZone}
-            defaultMonth={value ?? undefined}
-            disabled={disabled}
-            onSelect={(date) => {
-              if (!date) return
-              onChange(startOfDay(date))
-              setOpen(false)
-            }}
-          />
-        </PopoverContent>
-      </Popover>
-    </div>
-  )
-}
-
 export function RoomActionsMenu({
   number,
+  onEditRoom,
   onCloseRoom,
 }: {
   number: string
+  onEditRoom: () => void
   onCloseRoom: () => void
 }) {
   return (
@@ -144,7 +83,7 @@ export function RoomActionsMenu({
           <Button
             variant="ghost"
             size="icon-xs"
-            aria-label={`Actions for room ${number}`}
+            aria-label={`Acciones de habitación ${number}`}
           />
         }
       >
@@ -152,7 +91,12 @@ export function RoomActionsMenu({
       </DropdownMenuTrigger>
       <DropdownMenuContent align="start">
         <DropdownMenuGroup>
-          <DropdownMenuItem onClick={onCloseRoom}>Close room</DropdownMenuItem>
+          <DropdownMenuItem onClick={onEditRoom}>
+            Editar habitación
+          </DropdownMenuItem>
+          <DropdownMenuItem onClick={onCloseRoom}>
+            Cerrar habitación
+          </DropdownMenuItem>
         </DropdownMenuGroup>
       </DropdownMenuContent>
     </DropdownMenu>
@@ -252,11 +196,11 @@ function ClosureForm({
     event.preventDefault()
     if (!startDate || !endDate || pending) return
     if (nights < 1) {
-      setLocalError("The reopening date must be after the closing date.")
+      setLocalError("La reapertura debe ser posterior al inicio del cierre.")
       return
     }
     if (nights > 60) {
-      setLocalError("A closure cannot be longer than 60 nights.")
+      setLocalError("El cierre no puede superar las 60 noches.")
       return
     }
     setLocalError(null)
@@ -273,7 +217,7 @@ function ClosureForm({
     <form className="flex flex-col gap-4" onSubmit={onSubmit}>
       <DialogHeader>
         <DialogTitle>
-          {target.mode === "edit" ? "Edit closure" : "Close room"}
+          {target.mode === "edit" ? "Editar cierre" : "Cerrar habitación"}
         </DialogTitle>
         <DialogDescription>
           {target.number}, {target.typeName}
@@ -284,7 +228,7 @@ function ClosureForm({
           <div className="grid grid-cols-2 gap-2">
             <DateField
               id="closure-start"
-              label="Closes"
+              label="Desde"
               value={startDate}
               timeZone={timeZone}
               disabled={endDate ? { after: addDays(endDate, -1) } : undefined}
@@ -295,7 +239,7 @@ function ClosureForm({
             />
             <DateField
               id="closure-end"
-              label="Reopens"
+              label="Reapertura"
               value={endDate}
               timeZone={timeZone}
               disabled={
@@ -314,18 +258,18 @@ function ClosureForm({
           </div>
           <FieldDescription>
             {startDate && endDate && nights >= 1
-              ? `${nights} ${nights === 1 ? "night" : "nights"} closed. Free on ${format(endDate, "MMM d, yyyy")}.`
-              : "Pick the closing date and the morning the room reopens."}
+              ? `${nights} ${nights === 1 ? "noche cerrada" : "noches cerradas"}. Disponible el ${format(endDate, "d MMM yyyy")}.`
+              : "Selecciona el inicio del cierre y la fecha de reapertura."}
           </FieldDescription>
           {shownError ? <FieldError>{shownError}</FieldError> : null}
         </Field>
         <Field>
-          <FieldLabel htmlFor="closure-reason">Reason</FieldLabel>
+          <FieldLabel htmlFor="closure-reason">Motivo</FieldLabel>
           <Input
             id="closure-reason"
             value={reason}
             maxLength={80}
-            placeholder="Optional"
+            placeholder="Opcional"
             onChange={(event) => setReason(event.target.value)}
           />
         </Field>
@@ -340,14 +284,14 @@ function ClosureForm({
             onClick={() => onRemove(target.closure.id)}
           >
             {removePending ? <Spinner data-icon="inline-start" /> : null}
-            Remove
+            Eliminar
           </Button>
         ) : null}
         <DialogClose
           disabled={pending}
           render={<Button variant="outline" type="button" />}
         >
-          Cancel
+          Cancelar
         </DialogClose>
         <Button
           type="submit"
@@ -356,7 +300,7 @@ function ClosureForm({
           }
         >
           {savePending ? <Spinner data-icon="inline-start" /> : null}
-          {target.mode === "edit" ? "Save" : "Close room"}
+          {target.mode === "edit" ? "Guardar" : "Cerrar habitación"}
         </Button>
       </DialogFooter>
     </form>

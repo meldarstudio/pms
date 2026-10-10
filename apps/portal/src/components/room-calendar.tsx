@@ -5,7 +5,6 @@ import {
   addDays,
   differenceInCalendarDays,
   eachDayOfInterval,
-  format,
   parse,
   startOfDay,
   startOfToday,
@@ -26,6 +25,10 @@ import {
   RoomClosureDialog,
   type ClosureTarget,
 } from "@/components/room-closure-dialog"
+import {
+  RoomEditDialog,
+  type RoomEditTarget,
+} from "@/components/room-edit-dialog"
 import {
   RoomBookingDialog,
   type BookingTarget,
@@ -55,6 +58,7 @@ import {
   type ReservationStay,
 } from "@/lib/room-assignment"
 import { useRoomAssignment } from "@/lib/use-room-assignment"
+import { format } from "@/lib/dates"
 import {
   useReservations,
   useRoomClosures,
@@ -63,12 +67,13 @@ import {
 } from "@/lib/queries"
 
 const spans = [
-  { label: "7 days", value: "7" },
-  { label: "14 days", value: "14" },
+  { label: "7 días", value: "7" },
+  { label: "14 días", value: "14" },
 ]
 
 type TrackItem = {
   id: string
+  reservationId?: string
   kind: "stay" | "closure"
   label: string
   title: string
@@ -131,9 +136,10 @@ function placeStays(stays: TrackItem[], rangeStart: Date, dayCount: number) {
 function stayTrack(stay: ReservationStay): TrackItem {
   return {
     id: stay.id,
+    reservationId: stay.reservationId,
     kind: "stay",
     label: stay.guestName,
-    title: `${stay.guestName}, ${stay.checkIn} to ${stay.checkOut}`,
+    title: `${stay.guestName}, ${stay.checkIn} al ${stay.checkOut}`,
     checkIn: stay.checkIn,
     checkOut: stay.checkOut,
   }
@@ -143,10 +149,10 @@ function closureTrack(closure: RoomClosure): TrackItem {
   return {
     id: closure.id,
     kind: "closure",
-    label: closure.reason || "Closed",
+    label: closure.reason || "Cerrada",
     title: closure.reason
-      ? `${closure.reason}, ${closure.starts} to ${closure.ends}`
-      : `Closed, ${closure.starts} to ${closure.ends}`,
+      ? `${closure.reason}, ${closure.starts} al ${closure.ends}`
+      : `Cerrada, ${closure.starts} al ${closure.ends}`,
     checkIn: closure.starts,
     checkOut: closure.ends,
   }
@@ -165,19 +171,41 @@ function StayBar({
   stay,
   dayCount,
   laneCount,
+  onOpen,
 }: {
   stay: PlacedTrack
   dayCount: number
   laneCount: number
+  onOpen?: (reservationId: string) => void
 }) {
+  const className =
+    "absolute z-10 flex items-center overflow-hidden rounded-md border border-booking-foreground/20 bg-booking px-2.5 text-left text-xs text-booking-foreground"
+  if (!onOpen || !stay.reservationId) {
+    return (
+      <div
+        title={stay.title}
+        className={className}
+        style={barStyle(stay, dayCount, laneCount)}
+      >
+        <span className="truncate">{stay.label}</span>
+      </div>
+    )
+  }
+  const reservationId = stay.reservationId
   return (
-    <div
+    <button
+      type="button"
       title={stay.title}
-      className="absolute z-10 flex items-center overflow-hidden rounded-md border border-booking-foreground/20 bg-booking px-2.5 text-xs text-booking-foreground"
+      aria-label={`Editar reserva de ${stay.label}`}
+      className={cn(
+        className,
+        "cursor-pointer outline-none focus-visible:ring-1 focus-visible:ring-ring"
+      )}
       style={barStyle(stay, dayCount, laneCount)}
+      onClick={() => onOpen(reservationId)}
     >
       <span className="truncate">{stay.label}</span>
-    </div>
+    </button>
   )
 }
 
@@ -211,6 +239,7 @@ function RoomTrack({
   days,
   roomNumber,
   onBookDay,
+  onOpenStay,
   onOpenClosure,
   assignmentActive = false,
   assignmentReason,
@@ -221,6 +250,7 @@ function RoomTrack({
   days: Date[]
   roomNumber: string
   onBookDay?: (day: Date) => void
+  onOpenStay?: (reservationId: string) => void
   onOpenClosure?: (id: string) => void
   assignmentActive?: boolean
   assignmentReason?: string
@@ -262,7 +292,7 @@ function RoomTrack({
                   type="button"
                   className="absolute inset-y-0 right-0 outline-none enabled:cursor-pointer enabled:hover:bg-accent/50 enabled:focus-visible:bg-accent enabled:focus-visible:ring-1 enabled:focus-visible:ring-ring enabled:focus-visible:ring-inset disabled:cursor-default"
                   style={{ width: morningBlocked ? "50%" : "100%" }}
-                  aria-label={`Book room ${roomNumber} on ${format(day, "MMM d, yyyy")}`}
+                  aria-label={`Nueva reserva para habitación ${roomNumber} el ${format(day, "d MMM yyyy")}`}
                   disabled={disabled}
                   onClick={() => onBookDay(day)}
                 />
@@ -286,13 +316,14 @@ function RoomTrack({
             stay={stay}
             dayCount={dayCount}
             laneCount={lanes}
+            onOpen={onOpenStay}
           />
         )
       )}
       {assignmentPreview ? (
         <button
           type="button"
-          aria-label={`Assign ${assignmentPreview.stay.label} to room ${roomNumber}, ${assignmentPreview.stay.checkIn} to ${assignmentPreview.stay.checkOut}`}
+          aria-label={`Asignar ${assignmentPreview.stay.label} a habitación ${roomNumber}, ${assignmentPreview.stay.checkIn} al ${assignmentPreview.stay.checkOut}`}
           aria-pressed={assignmentPreview.selected}
           disabled={assignmentPreview.disabled}
           onClick={assignmentPreview.onSelect}
@@ -317,8 +348,9 @@ export function RoomCalendar() {
   const [span, setSpan] = useState(7)
   const [pickerOpen, setPickerOpen] = useState(false)
   const [closureTarget, setClosureTarget] = useState<ClosureTarget | null>(null)
+  const [roomTarget, setRoomTarget] = useState<RoomEditTarget | null>(null)
   const [bookingTarget, setBookingTarget] = useState<BookingTarget | null>(null)
-  const [panelOpen, setPanelOpen] = useState(true)
+  const [panelOpen, setPanelOpen] = useState(false)
   // Include bookings and closures ending on the first visible morning.
   // Both list APIs use an exclusive end boundary for their `from` filter.
   const rangeFrom = format(addDays(start, -1), "yyyy-MM-dd")
@@ -428,7 +460,7 @@ export function RoomCalendar() {
       typeNames={typeNames}
       loading={listLoading}
       listError={listError}
-      rangeLabel={`${format(start, "MMM d")} to ${format(addDays(start, span - 1), "MMM d, yyyy")}`}
+      rangeLabel={`${format(start, "d MMM")} al ${format(addDays(start, span - 1), "d MMM yyyy")}`}
       target={assignment.target}
       selectedRoom={assignment.selectedRoom}
       checking={assignment.checking}
@@ -452,9 +484,20 @@ export function RoomCalendar() {
         timeZone={timeZone}
         onClose={() => setClosureTarget(null)}
       />
+      <RoomEditDialog target={roomTarget} onClose={() => setRoomTarget(null)} />
       <RoomBookingDialog
         target={bookingTarget}
+        timeZone={timeZone}
         onClose={() => setBookingTarget(null)}
+        onViewReservation={(reservationId) =>
+          setBookingTarget({
+            mode: "edit",
+            reservationId,
+            roomId: "",
+            number: "",
+            typeName: "",
+          })
+        }
       />
       <div className="flex flex-wrap items-center justify-between gap-2 border-b px-2.5 py-2">
         <div className="flex items-center gap-2">
@@ -487,12 +530,12 @@ export function RoomCalendar() {
             disabled={assignment.pending}
             onClick={() => changeStart(startOfToday())}
           >
-            Today
+            Hoy
           </Button>
           <Button
             variant="outline"
             size="icon"
-            aria-label="Refresh"
+            aria-label="Actualizar"
             disabled={rooms === null || assignment.pending}
             onClick={refresh}
           >
@@ -503,7 +546,7 @@ export function RoomCalendar() {
           <Button
             variant="outline"
             size="icon"
-            aria-label="Previous period"
+            aria-label="Período anterior"
             disabled={assignment.pending}
             onClick={() => changeStart(addDays(start, -span))}
           >
@@ -512,7 +555,7 @@ export function RoomCalendar() {
           <Button
             variant="outline"
             size="icon"
-            aria-label="Previous day"
+            aria-label="Día anterior"
             disabled={assignment.pending}
             onClick={() => changeStart(addDays(start, -1))}
           >
@@ -528,7 +571,7 @@ export function RoomCalendar() {
                 />
               }
             >
-              {format(start, "MMM d, yyyy")}
+              {format(start, "d MMM yyyy")}
               <CalendarIcon data-icon="inline-end" />
             </PopoverTrigger>
             <PopoverContent className="w-auto p-0">
@@ -547,7 +590,7 @@ export function RoomCalendar() {
           <Button
             variant="outline"
             size="icon"
-            aria-label="Next day"
+            aria-label="Día siguiente"
             disabled={assignment.pending}
             onClick={() => changeStart(addDays(start, 1))}
           >
@@ -556,7 +599,7 @@ export function RoomCalendar() {
           <Button
             variant="outline"
             size="icon"
-            aria-label="Next period"
+            aria-label="Período siguiente"
             disabled={assignment.pending}
             onClick={() => changeStart(addDays(start, span))}
           >
@@ -572,11 +615,14 @@ export function RoomCalendar() {
             onClick={() => setPanelOpen((open) => !open)}
           >
             <PanelRightIcon data-icon="inline-start" />
-            Unassigned · {listLoading ? "…" : unassigned.length}
+            Sin asignar · {listLoading ? "…" : unassigned.length}
           </Button>
-          <Button>
+          <Button
+            disabled={assignment.pending}
+            onClick={() => setBookingTarget({ mode: "new" })}
+          >
             <PlusIcon data-icon="inline-start" />
-            New Booking
+            Nueva reserva
           </Button>
         </div>
       </div>
@@ -584,7 +630,7 @@ export function RoomCalendar() {
         <div className="flex items-center justify-between gap-2 border-b px-2.5 py-2">
           <p className="text-xs text-muted-foreground">{error}</p>
           <Button variant="outline" size="sm" onClick={refresh}>
-            Try again
+            Reintentar
           </Button>
         </div>
       ) : null}
@@ -643,6 +689,14 @@ export function RoomCalendar() {
                 )}
                 days={days}
                 dayCount={span}
+                onEditRoom={() =>
+                  setRoomTarget({
+                    roomId: room.id,
+                    number: room.number,
+                    roomTypeId: room.roomTypeId,
+                    typeName: room.typeName,
+                  })
+                }
                 onCloseRoom={() =>
                   setClosureTarget({
                     mode: "create",
@@ -655,6 +709,7 @@ export function RoomCalendar() {
                   bookingDataReady && !assignment.target
                     ? (day) =>
                         setBookingTarget({
+                          mode: "create",
                           roomId: room.id,
                           roomTypeId: room.roomTypeId,
                           number: room.number,
@@ -663,12 +718,24 @@ export function RoomCalendar() {
                         })
                     : undefined
                 }
+                onOpenStay={
+                  assignment.target
+                    ? undefined
+                    : (reservationId) =>
+                        setBookingTarget({
+                          mode: "edit",
+                          reservationId,
+                          roomId: room.id,
+                          number: room.number,
+                          typeName: room.typeName,
+                        })
+                }
                 onOpenClosure={openClosure}
                 assignmentActive={assignment.target !== null}
                 assignmentReason={
                   assignment.target
                     ? assignment.checking
-                      ? "Checking availability for the full stay"
+                      ? "Consultando disponibilidad para toda la estancia"
                       : (assignment.error ??
                         assignment.roomIssues.get(room.id) ??
                         undefined)
@@ -693,15 +760,15 @@ export function RoomCalendar() {
             ))}
             {rooms !== null && rooms.length === 0 && !error ? (
               <div className="col-span-full px-2.5 py-4 text-xs text-muted-foreground">
-                No rooms yet.
+                Aún no hay habitaciones.
               </div>
             ) : null}
           </div>
         </div>
         {panelOpen ? (
           <aside
-            aria-label="Unassigned reservations"
-            className="min-h-0 w-80 shrink-0 border-l"
+            aria-label="Reservas sin asignar"
+            className="min-h-0 w-80 shrink-0 bg-muted"
           >
             {panel}
           </aside>
@@ -717,8 +784,10 @@ function RoomRowView({
   stays,
   days,
   dayCount,
+  onEditRoom,
   onCloseRoom,
   onBookDay,
+  onOpenStay,
   onOpenClosure,
   assignmentActive = false,
   assignmentReason,
@@ -729,8 +798,10 @@ function RoomRowView({
   stays: PlacedTrack[]
   days: Date[]
   dayCount: number
+  onEditRoom?: () => void
   onCloseRoom?: () => void
   onBookDay?: (day: Date) => void
+  onOpenStay?: (reservationId: string) => void
   onOpenClosure?: (id: string) => void
   assignmentActive?: boolean
   assignmentReason?: string
@@ -740,13 +811,17 @@ function RoomRowView({
     <>
       <div
         className={cn(
-          "sticky left-0 z-20 flex min-w-0 items-center gap-1 border-r border-b bg-background px-2.5",
+          "group/room sticky left-0 z-20 flex min-w-0 items-center gap-1 border-r border-b bg-background px-2.5",
+          "can-hover:has-data-popup-open:[&_[data-slot=room-label]]:pr-7",
           assignmentActive && !assignmentPreview && "text-muted-foreground",
           assignmentPreview && "bg-booking"
         )}
         title={assignmentReason}
       >
-        <div className="flex min-w-0 flex-1 flex-col justify-center gap-0.5">
+        <div
+          data-slot="room-label"
+          className="flex min-w-0 flex-1 flex-col justify-center gap-0.5 can-hover:group-focus-within/room:pr-7 can-hover:group-hover/room:pr-7"
+        >
           <span className="truncate text-xs font-medium" title={number}>
             {number}
           </span>
@@ -757,9 +832,21 @@ function RoomRowView({
             {typeName}
           </span>
         </div>
-        {onCloseRoom ? (
-          <div className="shrink-0">
-            <RoomActionsMenu number={number} onCloseRoom={onCloseRoom} />
+        {onEditRoom && onCloseRoom ? (
+          <div
+            className={cn(
+              "shrink-0",
+              "can-hover:pointer-events-none can-hover:absolute can-hover:top-1/2 can-hover:right-2.5 can-hover:-translate-y-1/2 can-hover:opacity-0",
+              "can-hover:group-hover/room:pointer-events-auto can-hover:group-hover/room:opacity-100",
+              "can-hover:group-focus-within/room:pointer-events-auto can-hover:group-focus-within/room:opacity-100",
+              "can-hover:has-data-popup-open:pointer-events-auto can-hover:has-data-popup-open:opacity-100"
+            )}
+          >
+            <RoomActionsMenu
+              number={number}
+              onEditRoom={onEditRoom}
+              onCloseRoom={onCloseRoom}
+            />
           </div>
         ) : null}
       </div>
@@ -769,6 +856,7 @@ function RoomRowView({
         days={days}
         roomNumber={number}
         onBookDay={onBookDay}
+        onOpenStay={onOpenStay}
         onOpenClosure={onOpenClosure}
         assignmentActive={assignmentActive}
         assignmentReason={assignmentReason}

@@ -21,7 +21,7 @@ export function validate<T extends z.ZodType>(target: 'json' | 'query', schema: 
 }
 
 export function currency(c: Context<Env>): string {
-  return c.env.CURRENCY || 'USD'
+  return c.env.CURRENCY || 'PEN'
 }
 
 function errorText(err: unknown): string {
@@ -37,6 +37,7 @@ export function rethrowConflict(err: unknown): never {
   if (text.includes('room closed')) throw new HttpError(409, 'room is closed for those dates')
   if (text.includes('closure overlaps stay')) throw new HttpError(409, 'room has a stay on those dates')
   if (text.includes('closure overlaps closure')) throw new HttpError(409, 'room is already closed on those dates')
+  if (text.includes('room has an assigned stay')) throw new HttpError(409, 'room has an assigned stay')
   if (text.includes('rooms.number')) throw new HttpError(409, 'room number already exists')
   if (text.includes('room_types.name')) throw new HttpError(409, 'room type already exists')
   throw err

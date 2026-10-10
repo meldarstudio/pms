@@ -12,10 +12,10 @@
     "typecheck": "tsc --noEmit",
     "cf-typegen": "wrangler types --env-interface CloudflareBindings",
     "db:generate": "drizzle-kit generate",
-    "db:migrate:local": "wrangler d1 migrations apply pms --local",
+    "db:migrate:local": "wrangler d1 migrations apply DB --local",
     "db:migrate:remote": "wrangler d1 migrations apply pms-production --remote",
     "db:migrate:preview": "wrangler d1 migrations apply PREVIEW_DB --remote --config wrangler.preview-migrations.jsonc",
-    "db:seed:local": "wrangler d1 execute pms --local --file=./seed.sql",
+    "db:seed:local": "wrangler d1 execute DB --local --file=./seed.sql",
     "db:reset:local": "node seed-reset.mjs",
     "db:reset:preview": "node seed-reset.mjs --remote-preview",
     "db:seed:unassigned": "node seed-unassigned.mjs"

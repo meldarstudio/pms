@@ -36,9 +36,15 @@ function ToastList() {
                   {item.description}
                 </ToastPrimitive.Description>
               ) : null}
+              {item.actionProps ? (
+                <ToastPrimitive.Action
+                  className="mt-2"
+                  render={<Button variant="outline" size="xs" />}
+                />
+              ) : null}
             </ToastPrimitive.Content>
             <ToastPrimitive.Close
-              aria-label="Dismiss notification"
+              aria-label="Cerrar notificación"
               render={<Button variant="ghost" size="icon-xs" />}
             >
               <XIcon />

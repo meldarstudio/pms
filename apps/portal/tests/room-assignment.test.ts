@@ -107,7 +107,7 @@ describe("room assignment", () => {
     )
   })
 
-  it("matches the backend's conflict handling for checked-out stays", () => {
+  it("does not treat a checked-out stay as occupying the room", () => {
     assert.equal(
       roomAssignmentIssue(
         room,
@@ -115,7 +115,7 @@ describe("room assignment", () => {
         [occupied("2026-10-05", "2026-10-06", "checked_out")],
         []
       ),
-      "Occupied during this stay"
+      null
     )
   })
 

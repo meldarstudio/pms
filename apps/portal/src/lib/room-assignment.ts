@@ -1,7 +1,7 @@
 import type { Reservation, Room, RoomClosure } from "./api"
 
 const openStatuses = new Set(["confirmed", "checked_in"])
-const inactiveStatuses = new Set(["cancelled", "no_show"])
+const inactiveStatuses = new Set(["cancelled", "no_show", "checked_out"])
 
 export type ReservationStay = {
   id: string

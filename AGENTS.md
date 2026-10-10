@@ -5,7 +5,7 @@ pnpm workspace. `packageManager` is `pnpm@11.22.0`. Do not use npm or npx for pr
 ## Packages
 
 - `@pms/portal` in `apps/portal` is the Vite React SPA. There is no router. Tabs live in `src/App.tsx`. Dashboard and Reservations are empty placeholders. Fetch helpers and response types are hand-written in `src/lib/api.ts`. TanStack Query hooks are in `src/lib/queries.ts`. It does not depend on `@pms/shared`.
-- `@pms/backend` in `apps/backend` is the Hono Worker. Entry is `src/index.ts`. D1 binding is `DB`; local, production, and Preview databases are `pms`, `pms-production`, and `pms-preview`. Request schemas come from `@pms/shared`. Routes call `validate()` and throw `HttpError` with status 400, 404, or 409. Error JSON is `{ error: string }`. The app uses `Env` from `src/env.ts`.
+- `@pms/backend` in `apps/backend` is the Hono Worker. Entry is `src/index.ts`. D1 binding is `DB`. `DB --local` and `wrangler dev` use `preview_database_id` (`pms-preview`). Production remote uses `pms-production`. Request schemas come from `@pms/shared`. Routes call `validate()` and throw `HttpError` with status 400, 404, or 409. Error JSON is `{ error: string }`. The app uses `Env` from `src/env.ts`.
 - `@pms/shared` in `packages/shared` is Zod schemas only. It exports `./src/index.ts` and has no build or typecheck script.
 
 ## Commands

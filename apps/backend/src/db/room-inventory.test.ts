@@ -117,6 +117,61 @@ describe('closure-only room inventory migration', () => {
       .toThrow('no availability')
   })
 
+  it('allows a stay that covers non-overlapping bookings', () => {
+    reservation('early', '2026-10-01', '2026-10-03')
+    line('early', 'room-101')
+    reservation('late', '2026-10-05', '2026-10-07')
+    line('late', 'room-102')
+    reservation('span', '2026-10-01', '2026-10-07')
+    expect(() => line('span')).not.toThrow()
+  })
+
+  it('rejects a stay whose busiest night is already full', () => {
+    reservation('early', '2026-10-01', '2026-10-04')
+    line('early')
+    reservation('late', '2026-10-02', '2026-10-05')
+    line('late')
+    reservation('span', '2026-10-01', '2026-10-05')
+    expect(() => line('span')).toThrow('no availability')
+  })
+
+  it('does not count a checked-out line toward capacity or assignment', () => {
+    reservation('left', '2026-10-05', '2026-10-07')
+    line('left', 'room-101', 'checked_out')
+    reservation('stay', '2026-10-05', '2026-10-07')
+    line('stay', 'room-102')
+    reservation('another', '2026-10-05', '2026-10-07')
+    expect(() => line('another', 'room-101')).not.toThrow()
+  })
+
+  it('allows a closure on a room whose overlapping stay is checked out', () => {
+    reservation('left', '2026-10-05', '2026-10-07')
+    line('left', 'room-101', 'checked_out')
+    expect(() => closure('after', 'room-101')).not.toThrow()
+  })
+
+  it('rejects a room type change that would overbook a future night', () => {
+    db.exec(`INSERT INTO room_types VALUES ('deluxe', 'Deluxe', 2, 20000, '2026-10-05')`)
+    reservation('early', '2099-01-01', '2099-01-03')
+    line('early')
+    reservation('late', '2099-01-05', '2099-01-07')
+    line('late')
+    expect(() => db.exec(`UPDATE rooms SET room_type_id = 'deluxe' WHERE id = 'room-101'`)).not.toThrow()
+    db.exec(`UPDATE rooms SET room_type_id = 'type' WHERE id = 'room-101'`)
+    reservation('overlap', '2099-01-01', '2099-01-03')
+    line('overlap')
+    expect(() => db.exec(`UPDATE rooms SET room_type_id = 'deluxe' WHERE id = 'room-101'`)).toThrow('no availability')
+  })
+
+  it('rejects a room type change while a future stay is assigned to that room', () => {
+    db.exec(`INSERT INTO room_types VALUES ('deluxe', 'Deluxe', 2, 20000, '2026-10-05')`)
+    reservation('assigned', '2099-01-01', '2099-01-03')
+    line('assigned', 'room-101')
+    expect(() => db.exec(`UPDATE rooms SET room_type_id = 'deluxe' WHERE id = 'room-101'`)).toThrow(
+      'room has an assigned stay',
+    )
+  })
+
   it('keeps assignment and closure overlap protections', () => {
     closure('closed', 'room-101')
     reservation('first')

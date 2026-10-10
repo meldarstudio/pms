@@ -3,6 +3,23 @@ export type NightPrice = {
   priceCents: number
 }
 
+export function mergeStayNights(
+  existing: { date: string; priceCents: number }[],
+  dates: string[],
+  quoted: { date: string; priceCents: number }[],
+  flatRateCents?: number,
+): NightPrice[] {
+  if (flatRateCents !== undefined) {
+    return dates.map((date) => ({ date, priceCents: flatRateCents }))
+  }
+  const kept = new Map(existing.map((night) => [night.date, night.priceCents]))
+  const prices = new Map(quoted.map((night) => [night.date, night.priceCents]))
+  return dates.map((date) => ({
+    date,
+    priceCents: kept.get(date) ?? prices.get(date) ?? 0,
+  }))
+}
+
 export function quoteNights(
   dates: string[],
   baseRateCents: number,

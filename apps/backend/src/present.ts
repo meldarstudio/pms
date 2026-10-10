@@ -1,5 +1,6 @@
 import type { guests, payments, reservationRoomNights, reservationRooms, reservations, roomTypes, rooms } from './db/schema'
 import { nightsBetween } from './lib/dates'
+import { roomCharges } from './lib/billing'
 
 type Guest = typeof guests.$inferSelect
 type Reservation = typeof reservations.$inferSelect
@@ -56,14 +57,15 @@ export function presentReservation(input: {
       adults: line.adults,
       children: line.children,
       status: line.status,
-      totalCents: lineTotal,
+      ...roomCharges(lineTotal, line.discountCents),
       nights: nights.map((night) => ({ date: night.date, priceCents: night.priceCents })),
     }
   })
 
-  const totalCents = roomsOut
-    .filter((line) => !unbilled.has(line.status))
-    .reduce((sum, line) => sum + line.totalCents, 0)
+  const billable = roomsOut.filter((line) => !unbilled.has(line.status))
+  const subtotalCents = billable.reduce((sum, line) => sum + line.subtotalCents, 0)
+  const discountCents = billable.reduce((sum, line) => sum + line.discountCents, 0)
+  const totalCents = subtotalCents - discountCents
   const paidCents = input.payments.reduce((sum, payment) => sum + payment.amountCents, 0)
   const paymentRows = [...input.payments].sort((a, b) => a.paidAt.localeCompare(b.paidAt))
 
@@ -80,6 +82,8 @@ export function presentReservation(input: {
     currency: input.currency,
     nights: nightsBetween(input.reservation.checkIn, input.reservation.checkOut).length,
     totalCents,
+    subtotalCents,
+    discountCents,
     paidCents,
     balanceCents: totalCents - paidCents,
     rooms: roomsOut,

@@ -6,19 +6,20 @@
   "workers_dev": true,
   "preview_urls": true,
   "vars": {
-    "CURRENCY": "USD"
+    "CURRENCY": "PEN"
   },
   "d1_databases": [
     {
       "binding": "DB",
       "database_name": "pms-production",
       "database_id": "cd3e5df8-7646-44d9-991f-e8b126b40eb3",
+      "preview_database_id": "6be91972-e0e0-439f-a830-a51ec8182c70",
       "migrations_dir": "drizzle"
     }
   ],
   "previews": {
     "vars": {
-      "CURRENCY": "USD"
+      "CURRENCY": "PEN"
     },
     "d1_databases": [
       {

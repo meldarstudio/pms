@@ -1,9 +1,11 @@
-import { and, eq, gt, inArray, lt, ne, notInArray, sql } from 'drizzle-orm'
+import { and, eq, gt, inArray, lt, ne, sql } from 'drizzle-orm'
 import type { Db } from './db'
 import { reservationRooms, reservations, roomClosures, roomTypeRates, roomTypes, rooms } from './db/schema'
 import { HttpError } from './http'
+import { nightsBetween } from './lib/dates'
+import { peakOccupied } from './lib/inventory-grid'
 
-const inactive = ['cancelled', 'no_show']
+const openStatuses = ['confirmed', 'checked_in']
 
 export async function loadRoomTypes(db: Db, ids?: string[]) {
   if (ids && ids.length === 0) return []
@@ -22,45 +24,6 @@ export async function roomCounts(db: Db) {
   return new Map(rows.map((row) => [row.roomTypeId, Number(row.count)]))
 }
 
-export async function bookedCounts(db: Db, checkIn: string, checkOut: string, excludeReservationId?: string) {
-  const rows = await db
-    .select({
-      roomTypeId: reservationRooms.roomTypeId,
-      count: sql<number>`count(*)`,
-    })
-    .from(reservationRooms)
-    .innerJoin(reservations, eq(reservations.id, reservationRooms.reservationId))
-    .where(
-      and(
-        notInArray(reservationRooms.status, inactive),
-        lt(reservations.checkIn, checkOut),
-        gt(reservations.checkOut, checkIn),
-        excludeReservationId ? ne(reservations.id, excludeReservationId) : undefined,
-      ),
-    )
-    .groupBy(reservationRooms.roomTypeId)
-  return new Map(rows.map((row) => [row.roomTypeId, Number(row.count)]))
-}
-
-export async function closureCounts(db: Db, checkIn: string, checkOut: string, excludeClosureId?: string) {
-  const rows = await db
-    .select({
-      roomTypeId: rooms.roomTypeId,
-      count: sql<number>`count(distinct ${roomClosures.roomId})`,
-    })
-    .from(roomClosures)
-    .innerJoin(rooms, eq(rooms.id, roomClosures.roomId))
-    .where(
-      and(
-        lt(roomClosures.starts, checkOut),
-        gt(roomClosures.ends, checkIn),
-        excludeClosureId ? ne(roomClosures.id, excludeClosureId) : undefined,
-      ),
-    )
-    .groupBy(rooms.roomTypeId)
-  return new Map(rows.map((row) => [row.roomTypeId, Number(row.count)]))
-}
-
 export async function occupiedCounts(
   db: Db,
   checkIn: string,
@@ -68,13 +31,44 @@ export async function occupiedCounts(
   excludeReservationId?: string,
   excludeClosureId?: string,
 ) {
-  const [booked, closed] = await Promise.all([
-    bookedCounts(db, checkIn, checkOut, excludeReservationId),
-    closureCounts(db, checkIn, checkOut, excludeClosureId),
+  const dates = nightsBetween(checkIn, checkOut)
+  if (dates.length === 0) return new Map<string, number>()
+  const [stays, closures] = await Promise.all([
+    db
+      .select({
+        roomTypeId: reservationRooms.roomTypeId,
+        status: reservationRooms.status,
+        checkIn: reservations.checkIn,
+        checkOut: reservations.checkOut,
+      })
+      .from(reservationRooms)
+      .innerJoin(reservations, eq(reservations.id, reservationRooms.reservationId))
+      .where(
+        and(
+          inArray(reservationRooms.status, openStatuses),
+          lt(reservations.checkIn, checkOut),
+          gt(reservations.checkOut, checkIn),
+          excludeReservationId ? ne(reservations.id, excludeReservationId) : undefined,
+        ),
+      ),
+    db
+      .select({
+        roomId: roomClosures.roomId,
+        roomTypeId: rooms.roomTypeId,
+        starts: roomClosures.starts,
+        ends: roomClosures.ends,
+      })
+      .from(roomClosures)
+      .innerJoin(rooms, eq(rooms.id, roomClosures.roomId))
+      .where(
+        and(
+          lt(roomClosures.starts, checkOut),
+          gt(roomClosures.ends, checkIn),
+          excludeClosureId ? ne(roomClosures.id, excludeClosureId) : undefined,
+        ),
+      ),
   ])
-  const occupied = new Map(booked)
-  for (const [id, count] of closed) occupied.set(id, (occupied.get(id) ?? 0) + count)
-  return occupied
+  return peakOccupied(dates, stays, closures)
 }
 
 export function countRequested(lines: { roomTypeId: string }[]) {

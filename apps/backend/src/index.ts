@@ -3,6 +3,7 @@ import { cors } from 'hono/cors'
 import type { Env } from './env'
 import { HttpError } from './http'
 import { availabilityRoutes } from './routes/availability'
+import { inventoryRoutes } from './routes/inventory'
 import { guestRoutes } from './routes/guests'
 import { paymentRoutes } from './routes/payments'
 import { reservationRoutes } from './routes/reservations'
@@ -36,6 +37,7 @@ app.route('/room-types', roomTypeRoutes)
 app.route('/rooms', roomRoutes)
 app.route('/room-closures', roomClosureRoutes)
 app.route('/availability', availabilityRoutes)
+app.route('/inventory', inventoryRoutes)
 app.route('/guests', guestRoutes)
 app.route('/reservations', reservationRoutes)
 app.route('/payments', paymentRoutes)

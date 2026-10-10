@@ -1,7 +1,7 @@
 INSERT OR IGNORE INTO room_types (id, name, max_occupancy, base_rate_cents, created_at) VALUES
-  ('type-standard', 'Standard', 2, 10000, '2026-01-01T00:00:00.000Z'),
-  ('type-deluxe', 'Deluxe', 3, 15000, '2026-01-01T00:00:00.000Z'),
-  ('type-suite', 'Suite', 4, 25000, '2026-01-01T00:00:00.000Z');
+  ('type-standard', 'Estándar', 2, 18000, '2026-01-01T00:00:00.000Z'),
+  ('type-deluxe', 'Superior', 3, 28000, '2026-01-01T00:00:00.000Z'),
+  ('type-suite', 'Suite familiar', 4, 42000, '2026-01-01T00:00:00.000Z');
 
 INSERT OR IGNORE INTO rooms (id, number, room_type_id) VALUES
   ('room-101', '101', 'type-standard'),

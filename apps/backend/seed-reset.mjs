@@ -60,8 +60,8 @@ function main() {
       console.log('Remote preview database reset.')
     } else {
       console.log(`Replacing local PMS data with sample data around ${anchor} UTC.`)
-      runWrangler(['d1', 'migrations', 'apply', 'pms', '--local', ...persistArgs])
-      runWrangler(['d1', 'execute', 'pms', '--local', ...persistArgs, '--file', sqlPath, '--json'], true)
+      runWrangler(['d1', 'migrations', 'apply', 'DB', '--local', ...persistArgs])
+      runWrangler(['d1', 'execute', 'DB', '--local', ...persistArgs, '--file', sqlPath, '--json'], true)
       console.log('Local database reset. Refresh the portal to load the sample data.')
     }
   } finally {

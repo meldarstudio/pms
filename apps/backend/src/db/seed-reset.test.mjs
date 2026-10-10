@@ -45,6 +45,7 @@ describe('local dummy data reset', () => {
       UPDATE reservations SET notes = 'Edited booking' WHERE id = 'reservation-arrival';
       UPDATE reservation_rooms SET room_id = 'room-104', status = 'checked_in' WHERE id = 'line-alex-1';
       UPDATE reservation_room_nights SET price_cents = 1 WHERE reservation_room_id = 'line-arrival-1';
+      UPDATE reservation_rooms SET discount_cents = 1 WHERE id = 'line-arrival-1';
       UPDATE payments SET amount_cents = 100 WHERE id = 'payment-family';
       DELETE FROM payments WHERE id = 'refund-cancelled';
       DELETE FROM room_type_rates WHERE room_type_id = 'type-suite';
@@ -80,7 +81,7 @@ describe('local dummy data reset', () => {
   it('creates valid stays, occupancies, nightly prices, payments, and closures', () => {
     db.exec(buildResetSql('2026-10-06'))
     expect(db.prepare('SELECT COUNT(*) AS count FROM rooms').get().count).toBe(60)
-    expect(db.prepare('SELECT COUNT(*) AS count FROM reservations').get().count).toBe(16)
+    expect(db.prepare('SELECT COUNT(*) AS count FROM reservations').get().count).toBe(21)
     expect(db.prepare('SELECT COUNT(*) AS count FROM room_closures').get().count).toBe(3)
     expect(db.prepare('SELECT DISTINCT status FROM reservation_rooms ORDER BY status').all().map((row) => row.status))
       .toEqual(['cancelled', 'checked_in', 'checked_out', 'confirmed', 'no_show'])
@@ -90,6 +91,7 @@ describe('local dummy data reset', () => {
     expect(db.prepare(`SELECT rr.id FROM reservation_rooms rr
       JOIN reservations r ON r.id = rr.reservation_id
       LEFT JOIN reservation_room_nights n ON n.reservation_room_id = rr.id
+      WHERE rr.status != 'checked_out'
       GROUP BY rr.id HAVING COUNT(n.id) != julianday(r.check_out) - julianday(r.check_in)
       OR MIN(n.date) != r.check_in OR MAX(n.date) != date(r.check_out, '-1 day')`).all()).toEqual([])
     expect(db.prepare(`SELECT n.id FROM reservation_room_nights n
@@ -100,6 +102,42 @@ describe('local dummy data reset', () => {
     expect(db.prepare("SELECT SUM(amount_cents) AS paid FROM payments WHERE reservation_id = 'reservation-cancelled'").get().paid).toBe(0)
     expect(db.prepare("SELECT last_name FROM guests WHERE id = 'guest-arrival'").get().last_name).toBe("O'Brien")
     expect(db.prepare('PRAGMA foreign_key_check').all()).toEqual([])
+  })
+
+  it('seeds discounted totals, full waivers, multiple payments, and early-departure credits', () => {
+    db.exec(buildResetSql('2026-10-06'))
+    const balance = (id) => db.prepare(`
+      SELECT
+        (SELECT SUM((SELECT SUM(price_cents) FROM reservation_room_nights WHERE reservation_room_id = rr.id) - rr.discount_cents)
+          FROM reservation_rooms rr WHERE rr.reservation_id = r.id AND rr.status != 'cancelled')
+        - COALESCE((SELECT SUM(amount_cents) FROM payments WHERE reservation_id = r.id), 0) AS balance
+      FROM reservations r WHERE r.id = ?
+    `).get(id).balance
+    expect(balance('reservation-family')).toBe(0)
+    expect(balance('reservation-installments')).toBe(0)
+    expect(balance('reservation-waiver')).toBe(0)
+    expect(balance('reservation-early-departure')).toBe(-5000)
+    expect(db.prepare("SELECT COUNT(*) AS count FROM payments WHERE reservation_id = 'reservation-installments'").get().count).toBe(3)
+    expect(db.prepare('SELECT DISTINCT method FROM payments ORDER BY method').all().map((row) => row.method))
+      .toEqual(['card', 'cash', 'other', 'transfer'])
+    expect(db.prepare(`SELECT rr.id FROM reservation_rooms rr
+      JOIN reservation_room_nights n ON n.reservation_room_id = rr.id
+      GROUP BY rr.id HAVING rr.discount_cents < 0 OR rr.discount_cents > SUM(n.price_cents)`).all()).toEqual([])
+    expect(db.prepare("SELECT check_in, check_out FROM reservations WHERE id = 'reservation-early-departure'").get())
+      .toEqual({ check_in: '2026-10-06', check_out: '2026-10-06' })
+    expect(db.prepare(`SELECT rr.id, rr.status, COUNT(n.id) AS nights FROM reservation_rooms rr
+      JOIN reservation_room_nights n ON n.reservation_room_id = rr.id
+      WHERE rr.reservation_id = 'reservation-split-departure' GROUP BY rr.id ORDER BY rr.id`).all())
+      .toEqual([
+        { id: 'line-split-departure-1', status: 'checked_out', nights: 1 },
+        { id: 'line-split-departure-2', status: 'checked_in', nights: 3 },
+      ])
+    expect(db.prepare(`SELECT rr.id FROM reservation_rooms rr
+      JOIN reservations r ON r.id = rr.reservation_id
+      JOIN reservation_room_nights n ON n.reservation_room_id = rr.id
+      WHERE rr.status = 'checked_out' GROUP BY rr.id
+      HAVING COUNT(n.id) < 1 OR MIN(n.date) != r.check_in
+      OR MAX(n.date) >= CASE WHEN r.check_out = r.check_in THEN date(r.check_in, '+1 day') ELSE r.check_out END`).all()).toEqual([])
   })
 
   it('moves scenarios across month boundaries using UTC dates and leap days', () => {

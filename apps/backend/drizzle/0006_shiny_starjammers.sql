@@ -1,0 +1,1 @@
+ALTER TABLE `reservation_rooms` ADD `discount_cents` integer DEFAULT 0 NOT NULL;

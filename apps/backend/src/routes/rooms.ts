@@ -1,10 +1,13 @@
 import { patchRoomSchema, roomListQuerySchema, roomSchema } from '@pms/shared'
-import { eq } from 'drizzle-orm'
+import { and, eq, gt, inArray } from 'drizzle-orm'
 import { Hono } from 'hono'
 import { getDb } from '../db'
-import { roomTypes, rooms } from '../db/schema'
+import { reservationRooms, reservations, roomTypes, rooms } from '../db/schema'
 import type { Env } from '../env'
 import { HttpError, rethrowConflict, validate } from '../http'
+import { todayUtc } from '../lib/dates'
+
+const assignedStay = ['confirmed', 'checked_in']
 
 export const roomRoutes = new Hono<Env>()
 
@@ -48,6 +51,23 @@ roomRoutes.patch('/:id', validate('json', patchRoomSchema), async (c) => {
   const db = getDb(c.env.DB)
   const [room] = await db.select().from(rooms).where(eq(rooms.id, c.req.param('id')))
   if (!room) throw new HttpError(404, 'room not found')
+  if (body.roomTypeId && body.roomTypeId !== room.roomTypeId) {
+    const [type] = await db.select().from(roomTypes).where(eq(roomTypes.id, body.roomTypeId))
+    if (!type) throw new HttpError(404, 'room type not found')
+    const [stay] = await db
+      .select({ id: reservationRooms.id })
+      .from(reservationRooms)
+      .innerJoin(reservations, eq(reservations.id, reservationRooms.reservationId))
+      .where(
+        and(
+          eq(reservationRooms.roomId, room.id),
+          inArray(reservationRooms.status, assignedStay),
+          gt(reservations.checkOut, todayUtc()),
+        ),
+      )
+      .limit(1)
+    if (stay) throw new HttpError(409, 'room has an assigned stay')
+  }
   try {
     await db.update(rooms).set(body).where(eq(rooms.id, room.id))
   } catch (err) {

@@ -23,6 +23,7 @@ export const lineFields = z.object({
   adults: z.number().int().min(1),
   children: z.number().int().min(0).optional(),
   nightlyRateCents: z.number().int().min(0).optional(),
+  discountCents: z.number().int().min(0).optional(),
 })
 
 export const createReservationSchema = z
@@ -38,18 +39,28 @@ export const createReservationSchema = z
     message: 'send a guestId or a guest',
   })
 
+const patchReservationRoomSchema = z
+  .object({
+    id: z.string().min(1),
+    nightlyRateCents: z.number().int().min(0).optional(),
+    discountCents: z.number().int().min(0).optional(),
+    adults: z.number().int().min(1).optional(),
+    children: z.number().int().min(0).optional(),
+  })
+  .refine(
+    (value) =>
+      value.nightlyRateCents !== undefined ||
+      value.discountCents !== undefined ||
+      value.adults !== undefined ||
+      value.children !== undefined,
+    { message: 'send a field to update' },
+  )
+
 export const patchReservationSchema = z.object({
   notes: z.string().trim().max(2000).nullable().optional(),
   checkIn: dateSchema.optional(),
   checkOut: dateSchema.optional(),
-  rooms: z
-    .array(
-      z.object({
-        id: z.string().min(1),
-        nightlyRateCents: z.number().int().min(0),
-      }),
-    )
-    .optional(),
+  rooms: z.array(patchReservationRoomSchema).optional(),
 })
 
 export const addRoomSchema = lineFields
@@ -60,7 +71,7 @@ export const assignRoomSchema = z.object({
 
 export const paymentSchema = z.object({
   amountCents: z.number().int().refine((value) => value !== 0, 'amount cannot be zero'),
-  method: z.enum(['cash', 'card', 'transfer', 'other']),
+  method: z.enum(['cash', 'card', 'transfer', 'yape', 'other']),
   reference: text(200).optional(),
   paidAt: z.string().min(1).optional(),
   notes: text(2000).optional(),
@@ -84,6 +95,7 @@ export const roomSchema = z.object({
 export const patchRoomSchema = z
   .object({
     number: text(20).optional(),
+    roomTypeId: z.string().min(1).optional(),
   })
   .refine((value) => Object.keys(value).length > 0, { message: 'send a field to update' })
 

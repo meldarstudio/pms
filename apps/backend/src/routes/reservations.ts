@@ -6,9 +6,9 @@ import {
   paymentSchema,
   reservationListQuerySchema,
 } from '@pms/shared'
-import { and, desc, eq, exists, gt, inArray, like, lt, lte, notInArray, or, sql } from 'drizzle-orm'
+import { and, desc, eq, exists, gt, gte, inArray, like, lt, lte, or, sql } from 'drizzle-orm'
 import { Hono } from 'hono'
-import { getDb, runBatch } from '../db'
+import { getDb, runBatch, type Db } from '../db'
 import {
   guests,
   payments,
@@ -22,13 +22,14 @@ import type { Env } from '../env'
 import { currency, HttpError, rethrowConflict, validate } from '../http'
 import { chunks } from '../lib/chunks'
 import { confirmationCode } from '../lib/codes'
-import { overridesFor, quoteNights } from '../lib/quote'
+import { addDays, todayUtc } from '../lib/dates'
+import { roomCharges } from '../lib/billing'
+import { mergeStayNights, overridesFor, quoteNights, totalCents } from '../lib/quote'
 import { assertCapacity, countRequested, roomCounts, loadRoomTypes, occupiedCounts, ratesBetween } from '../inventory'
 import { requireLine, reservationDetail } from '../load'
-import { assertOccupancy, requireStay } from '../rules'
+import { assertDiscount, assertOccupancy, requireStay } from '../rules'
 
 const openStatuses = ['confirmed', 'checked_in']
-const inactive = ['cancelled', 'no_show']
 
 function pattern(q: string) {
   return `%${q.replace(/[%_]/g, '')}%`
@@ -41,6 +42,16 @@ function nightRows(lineId: string, nights: { date: string; priceCents: number }[
     date: night.date,
     priceCents: night.priceCents,
   }))
+}
+
+function capDiscount(db: Db, lineId: string, discountCents?: number) {
+  return db
+    .update(reservationRooms)
+    .set({
+      discountCents: sql`min(${discountCents ?? reservationRooms.discountCents},
+        (SELECT COALESCE(SUM(price_cents), 0) FROM reservation_room_nights WHERE reservation_room_id = ${lineId}))`,
+    })
+    .where(eq(reservationRooms.id, lineId))
 }
 
 function paidAtValue(value?: string) {
@@ -96,11 +107,15 @@ reservationRoutes.get('/', validate('query', reservationListQuerySchema), async 
       ? []
       : await db.select().from(reservationRoomNights).where(inArray(reservationRoomNights.reservationRoomId, lineIds))
   const paymentRows = await db.select().from(payments).where(inArray(payments.reservationId, ids))
-  const nightTotal = new Map<string, number>()
+  const lineTotals = new Map<string, number>()
   for (const night of nights) {
-    const line = lines.find((item) => item.id === night.reservationRoomId)
-    if (!line || line.status === 'cancelled') continue
-    nightTotal.set(line.reservationId, (nightTotal.get(line.reservationId) ?? 0) + night.priceCents)
+    lineTotals.set(night.reservationRoomId, (lineTotals.get(night.reservationRoomId) ?? 0) + night.priceCents)
+  }
+  const nightTotal = new Map<string, number>()
+  for (const line of lines) {
+    if (line.status === 'cancelled') continue
+    const charges = roomCharges(lineTotals.get(line.id) ?? 0, line.discountCents)
+    nightTotal.set(line.reservationId, (nightTotal.get(line.reservationId) ?? 0) + charges.totalCents)
   }
   const paidTotal = new Map<string, number>()
   for (const payment of paymentRows) {
@@ -182,12 +197,15 @@ reservationRoutes.post('/', validate('json', createReservationSchema), async (c)
     adults: room.adults,
     children: room.children ?? 0,
     status: 'confirmed',
+    discountCents: room.discountCents ?? 0,
     createdAt: now,
     flat: room.nightlyRateCents,
   }))
   const nights = lines.flatMap((line) => {
     const type = typeById.get(line.roomTypeId)!
-    return nightRows(line.id, quoteNights(stay, type.baseRateCents, overridesFor(rates, type.id), line.flat))
+    const quoted = quoteNights(stay, type.baseRateCents, overridesFor(rates, type.id), line.flat)
+    assertDiscount(line.discountCents, totalCents(quoted))
+    return nightRows(line.id, quoted)
   })
   try {
     await runBatch(db, [
@@ -202,7 +220,7 @@ reservationRoutes.post('/', validate('json', createReservationSchema), async (c)
         notes: body.notes ?? null,
         createdAt: now,
       }),
-      ...chunks(lines, 20).map((chunk) =>
+      ...chunks(lines, 10).map((chunk) =>
         db.insert(reservationRooms).values(chunk.map(({ flat: _flat, ...line }) => line)),
       ),
       ...chunks(nights, 20).map((chunk) => db.insert(reservationRoomNights).values(chunk)),
@@ -232,23 +250,76 @@ reservationRoutes.patch('/:id', validate('json', patchReservationSchema), async 
     throw new HttpError(400, 'change dates before check-out')
   }
   const notes = body.notes === undefined ? reservation.notes : body.notes || null
-  if (!datesChanged && !body.rooms) {
+  const rooms = body.rooms ?? []
+  const partyRooms = rooms.filter((room) => room.adults !== undefined || room.children !== undefined)
+  const flats = new Map(
+    rooms.flatMap((room) =>
+      room.nightlyRateCents === undefined ? [] : [[room.id, room.nightlyRateCents] as const],
+    ),
+  )
+  const discounts = new Map(
+    rooms.flatMap((room) =>
+      room.discountCents === undefined ? [] : [[room.id, room.discountCents] as const],
+    ),
+  )
+  if (!datesChanged && partyRooms.length === 0 && flats.size === 0 && discounts.size === 0) {
     await db.update(reservations).set({ notes }).where(eq(reservations.id, id))
     return c.json(await reservationDetail(db, id, currency(c)))
   }
   const active = lines.filter((line) => openStatuses.includes(line.status))
-  const targets = datesChanged ? active : active.filter((line) => body.rooms?.some((room) => room.id === line.id))
-  if (body.rooms) {
-    for (const room of body.rooms) {
-      if (!active.some((line) => line.id === room.id)) throw new HttpError(404, 'room line not found')
+  for (const room of rooms) {
+    const line = lines.find((line) => line.id === room.id)
+    if (!line) throw new HttpError(404, 'room line not found')
+    const editsStay = room.adults !== undefined || room.children !== undefined || room.nightlyRateCents !== undefined
+    if (editsStay && !openStatuses.includes(line.status)) {
+      throw new HttpError(400, 'room cannot be edited in this status')
     }
+  }
+  const partyLines = partyRooms.map((room) => active.find((line) => line.id === room.id)!)
+  const partyTypeIds = [...new Set(partyLines.map((line) => line.roomTypeId))]
+  const partyTypes = partyTypeIds.length > 0 ? await loadRoomTypes(db, partyTypeIds) : []
+  if (partyTypes.length !== partyTypeIds.length) throw new HttpError(404, 'room type not found')
+  const partyTypeById = new Map(partyTypes.map((type) => [type.id, type]))
+  const partyUpdates = partyRooms.map((room) => {
+    const line = active.find((item) => item.id === room.id)!
+    const type = partyTypeById.get(line.roomTypeId)!
+    const adults = room.adults ?? line.adults
+    const children = room.children ?? line.children
+    assertOccupancy(adults, children, type.maxOccupancy)
+    return db.update(reservationRooms).set({ adults, children }).where(eq(reservationRooms.id, line.id))
+  })
+  const targets = datesChanged ? active : active.filter((line) => flats.has(line.id))
+  const stored = await db
+    .select()
+    .from(reservationRoomNights)
+    .where(inArray(reservationRoomNights.reservationRoomId, lines.map((line) => line.id)))
+  const validateDiscounts = (nights: typeof stored) => {
+    for (const [lineId, discount] of discounts) {
+      assertDiscount(discount, totalCents(nights.filter((night) => night.reservationRoomId === lineId)))
+    }
+  }
+  if (targets.length === 0) {
+    validateDiscounts(stored)
+    await runBatch(db, [
+      db.update(reservations).set({ notes }).where(eq(reservations.id, id)),
+      ...partyUpdates,
+      ...[...discounts].map(([lineId, discount]) => capDiscount(db, lineId, discount)),
+    ])
+    return c.json(await reservationDetail(db, id, currency(c)))
   }
   const stay = requireStay(checkIn, checkOut)
   const typeIds = [...new Set(targets.map((line) => line.roomTypeId))]
   const types = await loadRoomTypes(db, typeIds)
   const typeById = new Map(types.map((type) => [type.id, type]))
-  const flats = new Map(body.rooms?.map((room) => [room.id, room.nightlyRateCents]) ?? [])
   if (datesChanged) {
+    const today = todayUtc()
+    const next = new Set(stay)
+    const checkedIn = new Set(
+      targets.filter((line) => line.status === 'checked_in').map((line) => line.id),
+    )
+    if (stored.some((night) => checkedIn.has(night.reservationRoomId) && night.date < today && !next.has(night.date))) {
+      throw new HttpError(400, 'nights already stayed cannot be removed')
+    }
     const [capacity, occupied] = await Promise.all([
       roomCounts(db),
       occupiedCounts(db, checkIn, checkOut, id),
@@ -258,15 +329,23 @@ reservationRoutes.patch('/:id', validate('json', patchReservationSchema), async 
   const rates = await ratesBetween(db, typeIds, checkIn, checkOut)
   const nights = targets.flatMap((line) => {
     const type = typeById.get(line.roomTypeId)!
-    return nightRows(line.id, quoteNights(stay, type.baseRateCents, overridesFor(rates, type.id), flats.get(line.id)))
+    const quoted = quoteNights(stay, type.baseRateCents, overridesFor(rates, type.id), flats.get(line.id))
+    const existing = stored.filter((night) => night.reservationRoomId === line.id)
+    return nightRows(line.id, datesChanged ? mergeStayNights(existing, stay, quoted, flats.get(line.id)) : quoted)
   })
+  const targetIds = new Set(targets.map((line) => line.id))
+  validateDiscounts([...stored.filter((night) => !targetIds.has(night.reservationRoomId)), ...nights])
   try {
     await runBatch(db, [
       db.update(reservations).set({ checkIn, checkOut, notes }).where(eq(reservations.id, id)),
+      ...partyUpdates,
       ...targets.map((line) =>
         db.delete(reservationRoomNights).where(eq(reservationRoomNights.reservationRoomId, line.id)),
       ),
       ...chunks(nights, 20).map((chunk) => db.insert(reservationRoomNights).values(chunk)),
+      ...lines
+        .filter((line) => targetIds.has(line.id) || discounts.has(line.id))
+        .map((line) => capDiscount(db, line.id, discounts.get(line.id))),
     ])
   } catch (err) {
     if (err instanceof HttpError) throw err
@@ -298,6 +377,7 @@ reservationRoutes.post('/:id/rooms', validate('json', addRoomSchema), async (c) 
     lineId,
     quoteNights(stay, type.baseRateCents, overridesFor(rates, type.id), body.nightlyRateCents),
   )
+  assertDiscount(body.discountCents ?? 0, totalCents(nights))
   try {
     await runBatch(db, [
       db.insert(reservationRooms).values({
@@ -308,6 +388,7 @@ reservationRoutes.post('/:id/rooms', validate('json', addRoomSchema), async (c) 
         adults: body.adults,
         children: body.children ?? 0,
         status: 'confirmed',
+        discountCents: body.discountCents ?? 0,
         createdAt: new Date().toISOString(),
       }),
       ...chunks(nights, 20).map((chunk) => db.insert(reservationRoomNights).values(chunk)),
@@ -338,7 +419,7 @@ reservationRoutes.post('/:id/rooms/:lineId/assign-room', validate('json', assign
       and(
         eq(reservationRooms.roomId, room.id),
         sql`${reservationRooms.id} != ${line.id}`,
-        notInArray(reservationRooms.status, inactive),
+        inArray(reservationRooms.status, openStatuses),
         sql`${reservations.checkIn} < ${reservation.checkOut}`,
         sql`${reservations.checkOut} > ${reservation.checkIn}`,
       ),
@@ -365,6 +446,18 @@ reservationRoutes.post('/:id/rooms/:lineId/assign-room', validate('json', assign
   return c.json(await reservationDetail(db, id, currency(c)))
 })
 
+reservationRoutes.post('/:id/rooms/:lineId/unassign-room', async (c) => {
+  const db = getDb(c.env.DB)
+  const id = c.req.param('id')
+  const line = await requireLine(db, id, c.req.param('lineId'))
+  if (line.status !== 'confirmed') throw new HttpError(400, 'only a confirmed room can be unassigned')
+  await db
+    .update(reservationRooms)
+    .set({ roomId: null })
+    .where(and(eq(reservationRooms.id, line.id), eq(reservationRooms.status, 'confirmed')))
+  return c.json(await reservationDetail(db, id, currency(c)))
+})
+
 async function setStatus(
   c: { env: Env['Bindings']; req: { param: (name: string) => string } },
   from: string[],
@@ -386,8 +479,27 @@ reservationRoutes.post('/:id/rooms/:lineId/check-in', async (c) => {
 })
 
 reservationRoutes.post('/:id/rooms/:lineId/check-out', async (c) => {
-  await setStatus(c, ['checked_in'], 'checked_out', 'room is not checked in')
-  return c.json(await reservationDetail(getDb(c.env.DB), c.req.param('id'), currency(c)))
+  const db = getDb(c.env.DB)
+  const id = c.req.param('id')
+  const line = await requireLine(db, id, c.req.param('lineId'))
+  if (line.status !== 'checked_in') throw new HttpError(400, 'room is not checked in')
+  const [reservation] = await db.select().from(reservations).where(eq(reservations.id, id))
+  if (!reservation) throw new HttpError(404, 'reservation not found')
+  const today = todayUtc()
+  if (today < reservation.checkIn) throw new HttpError(400, 'cannot check out before arrival date')
+  const removeFrom = today === reservation.checkIn ? addDays(today, 1) : today
+  try {
+    await runBatch(db, [
+      db
+        .delete(reservationRoomNights)
+        .where(and(eq(reservationRoomNights.reservationRoomId, line.id), gte(reservationRoomNights.date, removeFrom))),
+      db.update(reservationRooms).set({ status: 'checked_out' }).where(eq(reservationRooms.id, line.id)),
+      capDiscount(db, line.id),
+    ])
+  } catch (err) {
+    rethrowConflict(err)
+  }
+  return c.json(await reservationDetail(db, id, currency(c)))
 })
 
 reservationRoutes.post('/:id/rooms/:lineId/cancel', async (c) => {
@@ -398,6 +510,44 @@ reservationRoutes.post('/:id/rooms/:lineId/cancel', async (c) => {
 reservationRoutes.post('/:id/rooms/:lineId/no-show', async (c) => {
   await setStatus(c, ['confirmed'], 'no_show', 'only a confirmed room can be marked no-show')
   return c.json(await reservationDetail(getDb(c.env.DB), c.req.param('id'), currency(c)))
+})
+
+reservationRoutes.post('/:id/check-out', async (c) => {
+  const db = getDb(c.env.DB)
+  const id = c.req.param('id')
+  const today = todayUtc()
+  const [reservation] = await db.select().from(reservations).where(eq(reservations.id, id))
+  if (!reservation) throw new HttpError(404, 'reservation not found')
+  const lines = await db.select().from(reservationRooms).where(eq(reservationRooms.reservationId, id))
+  const open = lines.filter((line) => openStatuses.includes(line.status))
+  if (!open.some((line) => line.status === 'checked_in')) throw new HttpError(400, 'no rooms to check out')
+  if (open.some((line) => line.status === 'confirmed')) {
+    throw new HttpError(400, 'check in every room before check-out')
+  }
+  if (today < reservation.checkIn) throw new HttpError(400, 'cannot check out before arrival date')
+  const removeFrom = today === reservation.checkIn ? addDays(today, 1) : today
+  const checkOut = today < reservation.checkOut ? today : reservation.checkOut
+  const unfinished = lines.filter((line) => line.status !== 'checked_out')
+  try {
+    await runBatch(db, [
+      ...unfinished.map((line) =>
+        db
+          .delete(reservationRoomNights)
+          .where(and(eq(reservationRoomNights.reservationRoomId, line.id), gte(reservationRoomNights.date, removeFrom))),
+      ),
+      db
+        .update(reservationRooms)
+        .set({ status: 'checked_out' })
+        .where(and(eq(reservationRooms.reservationId, id), eq(reservationRooms.status, 'checked_in'))),
+      ...unfinished.map((line) => capDiscount(db, line.id)),
+      ...(checkOut === reservation.checkOut
+        ? []
+        : [db.update(reservations).set({ checkOut }).where(eq(reservations.id, id))]),
+    ])
+  } catch (err) {
+    rethrowConflict(err)
+  }
+  return c.json(await reservationDetail(db, id, currency(c)))
 })
 
 reservationRoutes.post('/:id/check-in', async (c) => {
@@ -413,6 +563,20 @@ reservationRoutes.post('/:id/check-in', async (c) => {
     .update(reservationRooms)
     .set({ status: 'checked_in' })
     .where(and(eq(reservationRooms.reservationId, id), eq(reservationRooms.status, 'confirmed')))
+  return c.json(await reservationDetail(db, id, currency(c)))
+})
+
+reservationRoutes.post('/:id/undo-check-in', async (c) => {
+  const db = getDb(c.env.DB)
+  const id = c.req.param('id')
+  const [reservation] = await db.select().from(reservations).where(eq(reservations.id, id))
+  if (!reservation) throw new HttpError(404, 'reservation not found')
+  const lines = await db.select().from(reservationRooms).where(eq(reservationRooms.reservationId, id))
+  if (!lines.some((line) => line.status === 'checked_in')) throw new HttpError(400, 'no rooms to undo check-in')
+  await db
+    .update(reservationRooms)
+    .set({ status: 'confirmed' })
+    .where(and(eq(reservationRooms.reservationId, id), eq(reservationRooms.status, 'checked_in')))
   return c.json(await reservationDetail(db, id, currency(c)))
 })
 

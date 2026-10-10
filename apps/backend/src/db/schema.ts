@@ -77,6 +77,7 @@ export const reservationRooms = sqliteTable(
     adults: integer('adults').notNull(),
     children: integer('children').notNull().default(0),
     status: text('status').notNull(),
+    discountCents: integer('discount_cents').notNull().default(0),
     createdAt: text('created_at').notNull(),
   },
   (table) => [

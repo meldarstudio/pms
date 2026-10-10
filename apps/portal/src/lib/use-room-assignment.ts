@@ -9,6 +9,7 @@ import {
   type ReservationStay,
 } from "@/lib/room-assignment"
 import { toast } from "@/lib/toast"
+import { translateError } from "@/lib/errors"
 
 export function useRoomAssignment(rooms: Room[] | null) {
   const queryClient = useQueryClient()
@@ -48,11 +49,13 @@ export function useRoomAssignment(rooms: Room[] | null) {
     for (const room of rooms ?? []) {
       roomIssues.set(
         room.id,
-        roomAssignmentIssue(
-          room,
-          target,
-          reservations.data ?? [],
-          closures.data ?? []
+        translateNullableIssue(
+          roomAssignmentIssue(
+            room,
+            target,
+            reservations.data ?? [],
+            closures.data ?? []
+          )
         )
       )
     }
@@ -93,8 +96,8 @@ export function useRoomAssignment(rooms: Room[] | null) {
         roomId: selectedRoom.id,
       })
       toast.add({
-        title: "Room assigned",
-        description: `${target.guestName} assigned to room ${selectedRoom.number}.`,
+        title: "Habitación asignada",
+        description: `${target.guestName} tiene asignada la habitación ${selectedRoom.number}.`,
         type: "success",
         timeout: 5000,
       })
@@ -102,14 +105,16 @@ export function useRoomAssignment(rooms: Room[] | null) {
       setRoomId(null)
     } catch (cause) {
       const message =
-        cause instanceof Error ? cause.message : "Assignment failed."
+        cause instanceof Error
+          ? cause.message
+          : "No se pudo asignar la habitación."
       toast.add({
-        title: "Could not assign room",
+        title: "No se pudo asignar la habitación",
         description:
           message === "room is already assigned for those dates"
-            ? "That room was just assigned to another stay. Choose another room."
+            ? "Esta habitación acaba de asignarse a otra reserva. Elige otra habitación."
             : message === "room is closed for those dates"
-              ? "That room is now closed during this stay. Choose another room."
+              ? "Esta habitación está cerrada durante la estancia. Elige otra habitación."
               : message,
         type: "error",
         priority: "high",
@@ -133,10 +138,14 @@ export function useRoomAssignment(rooms: Room[] | null) {
     roomIssues,
     canAssign,
     pending: assign.isPending,
-    error: queryError ?? targetIssue,
+    error: translateNullableIssue(queryError ?? targetIssue),
     selectStay,
     selectRoom,
     cancel,
     confirm,
   }
+}
+
+function translateNullableIssue(issue: string | null) {
+  return issue === null ? null : translateError(issue)
 }

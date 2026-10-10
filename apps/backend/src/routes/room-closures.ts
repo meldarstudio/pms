@@ -8,7 +8,7 @@ import { HttpError, rethrowConflict, validate } from '../http'
 import { roomCounts, occupiedCounts } from '../inventory'
 import { requireStay } from '../rules'
 
-const blockingStay = ['confirmed', 'checked_in', 'checked_out']
+const blockingStay = ['confirmed', 'checked_in']
 
 export const roomClosureRoutes = new Hono<Env>()
 

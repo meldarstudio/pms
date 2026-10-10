@@ -1,5 +1,5 @@
 // Run against the local Worker with pnpm --filter @pms/backend db:seed:unassigned.
-const base = process.env.PMS_API_URL ?? 'http://127.0.0.1:8787'
+const base = process.env.PMS_API_URL ?? 'http://127.0.0.1:8788'
 
 async function request(path, body) {
   const response = await fetch(`${base}${path}`, {
@@ -14,16 +14,16 @@ async function request(path, body) {
 
 function date(offset) {
   const value = new Date()
-  value.setDate(value.getDate() + offset)
-  return `${value.getFullYear()}-${String(value.getMonth() + 1).padStart(2, '0')}-${String(value.getDate()).padStart(2, '0')}`
+  value.setUTCDate(value.getUTCDate() + offset)
+  return value.toISOString().slice(0, 10)
 }
 
 const types = await request('/room-types')
-const existing = await request(`/reservations?q=Demo&from=${date(0)}&to=${date(1)}&limit=200`)
+const existing = await request(`/reservations?q=Demo&from=${date(0)}&to=${date(10)}&limit=200`)
 const examples = [
-  { firstName: 'Alex', arrival: 0, nights: 1, types: ['Standard'] },
-  { firstName: 'Sam', arrival: 1, nights: 3, types: ['Deluxe'] },
-  { firstName: 'Jamie', arrival: 0, nights: 9, types: ['Standard', 'Suite'] },
+  { firstName: 'Alejandro', arrival: 0, nights: 1, types: ['type-standard'] },
+  { firstName: 'Sofía', arrival: 1, nights: 3, types: ['type-deluxe'] },
+  { firstName: 'Javier', arrival: 0, nights: 9, types: ['type-standard', 'type-suite'] },
 ]
 
 for (const example of examples) {
@@ -34,20 +34,20 @@ for (const example of examples) {
     (reservation) => reservation.guestName === guestName && reservation.checkIn === checkIn && reservation.checkOut === checkOut,
   )
   if (found) {
-    console.log(`${guestName}: already exists, ${found.code}`)
+    console.log(`${guestName}: ya existe, ${found.code}`)
     continue
   }
-  const rooms = example.types.map((name) => {
-    const type = types.find((item) => item.name === name)
-    if (!type) throw new Error(`Missing room type ${name}. Run the local room seed first.`)
+  const rooms = example.types.map((id) => {
+    const type = types.find((item) => item.id === id)
+    if (!type) throw new Error(`Falta el tipo ${id}. Ejecuta primero la carga local de habitaciones.`)
     return { roomTypeId: type.id, adults: 1, children: 0 }
   })
   const reservation = await request('/reservations', {
     guest: { firstName: example.firstName, lastName: 'Demo' },
     checkIn,
     checkOut,
-    notes: 'Sample reservation for testing manual calendar assignment.',
+    notes: 'Reserva de prueba para asignar habitaciones desde el calendario.',
     rooms,
   })
-  console.log(`${guestName}: ${reservation.code}, ${checkIn} to ${checkOut}, ${rooms.length} unassigned ${rooms.length === 1 ? 'room' : 'rooms'}`)
+  console.log(`${guestName}: ${reservation.code}, ${checkIn} al ${checkOut}, ${rooms.length} ${rooms.length === 1 ? 'habitación sin asignar' : 'habitaciones sin asignar'}`)
 }

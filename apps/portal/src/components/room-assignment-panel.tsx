@@ -1,9 +1,4 @@
-import {
-  differenceInCalendarDays,
-  format,
-  parseISO,
-  startOfToday,
-} from "date-fns"
+import { differenceInCalendarDays, parseISO, startOfToday } from "date-fns"
 import { CheckIcon, XIcon } from "lucide-react"
 import { cn } from "cn"
 
@@ -12,13 +7,14 @@ import { Skeleton } from "@/components/ui/skeleton"
 import { Spinner } from "@/components/ui/spinner"
 import type { Room } from "@/lib/api"
 import type { ReservationStay } from "@/lib/room-assignment"
+import { format } from "@/lib/dates"
 
 export function assignmentStayLabel(stay: ReservationStay) {
   const nights = differenceInCalendarDays(
     parseISO(stay.checkOut),
     parseISO(stay.checkIn)
   )
-  return `${format(parseISO(stay.checkIn), "MMM d")} to ${format(parseISO(stay.checkOut), "MMM d, yyyy")} · ${nights} ${nights === 1 ? "night" : "nights"}`
+  return `${format(parseISO(stay.checkIn), "d MMM")} al ${format(parseISO(stay.checkOut), "d MMM yyyy")} · ${nights} ${nights === 1 ? "noche" : "noches"}`
 }
 
 type RoomAssignmentPanelProps = {
@@ -68,21 +64,21 @@ export function RoomAssignmentPanel({
     <section
       id="unassigned-panel"
       aria-labelledby="unassigned-heading"
-      className="flex h-full min-h-0 flex-col bg-background text-xs"
+      className="flex h-full min-h-0 flex-col bg-muted text-xs"
     >
       <div className="flex items-start justify-between gap-2 border-b p-3">
         <div>
           <h2 id="unassigned-heading" className="font-medium">
-            Unassigned · {loading ? "…" : stays.length}
+            Sin asignar · {loading ? "…" : stays.length}
           </h2>
           <p className="mt-1 text-muted-foreground">
-            Stays overlapping {rangeLabel}
+            Estancias entre {rangeLabel}
           </p>
         </div>
         <Button
           variant="ghost"
           size="icon-sm"
-          aria-label="Close unassigned panel"
+          aria-label="Cerrar reservas sin asignar"
           disabled={pending}
           onClick={onClose}
         >
@@ -95,21 +91,18 @@ export function RoomAssignmentPanel({
           <div role="alert" className="space-y-2">
             <p className="text-destructive">{listError}</p>
             <Button variant="outline" size="sm" onClick={onRetry}>
-              Try again
+              Reintentar
             </Button>
           </div>
         ) : loading ? (
-          <div
-            className="space-y-2"
-            aria-label="Loading unassigned reservations"
-          >
+          <div className="space-y-2" aria-label="Cargando reservas sin asignar">
             {Array.from({ length: 3 }, (_, index) => (
               <Skeleton key={index} className="h-24 w-full" />
             ))}
           </div>
         ) : stays.length === 0 ? (
           <p className="py-4 text-muted-foreground">
-            All reserved rooms in these dates are assigned.
+            Todas las habitaciones reservadas en estas fechas están asignadas.
           </p>
         ) : (
           <ul className="space-y-2">
@@ -139,16 +132,16 @@ export function RoomAssignmentPanel({
                       ) : null}
                     </span>
                     <span className="text-muted-foreground">
-                      {typeNames.get(stay.roomTypeId) ?? "Room"}
+                      {typeNames.get(stay.roomTypeId) ?? "Habitación"}
                       {stay.roomCount > 1
-                        ? ` · Room ${stay.roomIndex} of ${stay.roomCount}`
+                        ? ` · Habitación ${stay.roomIndex} de ${stay.roomCount}`
                         : ""}
                     </span>
                     <span className="text-muted-foreground">
                       {assignmentStayLabel(stay)}
                     </span>
                     {stay.checkIn === today ? (
-                      <span className="font-medium">Arrives today</span>
+                      <span className="font-medium">Llega hoy</span>
                     ) : null}
                   </button>
                 </li>
@@ -161,11 +154,13 @@ export function RoomAssignmentPanel({
       {target ? (
         <div className="space-y-3 border-t p-3">
           <div className="space-y-1">
-            <p className="font-medium">Assign room for {target.guestName}</p>
+            <p className="font-medium">
+              Asignar habitación a {target.guestName}
+            </p>
             <p className="text-muted-foreground">
-              {typeNames.get(target.roomTypeId) ?? "Room"}
+              {typeNames.get(target.roomTypeId) ?? "Habitación"}
               {target.roomCount > 1
-                ? ` · Room ${target.roomIndex} of ${target.roomCount}`
+                ? ` · Habitación ${target.roomIndex} de ${target.roomCount}`
                 : ""}
             </p>
             <p className="text-muted-foreground">
@@ -174,14 +169,14 @@ export function RoomAssignmentPanel({
           </div>
           <p role="status" className="text-muted-foreground">
             {pending
-              ? "Assigning room…"
+              ? "Asignando habitación…"
               : checking
-                ? "Checking rooms for the entire stay…"
+                ? "Consultando habitaciones para toda la estancia…"
                 : ready && eligibleCount === 0
-                  ? "No matching room is free for the full stay."
+                  ? "No hay habitaciones de este tipo disponibles para toda la estancia."
                   : ready
-                    ? `${eligibleCount} ${eligibleCount === 1 ? "room" : "rooms"} available.`
-                    : "Room availability could not be confirmed."}
+                    ? `${eligibleCount} ${eligibleCount === 1 ? "habitación disponible" : "habitaciones disponibles"}.`
+                    : "No se pudo confirmar la disponibilidad."}
           </p>
           {error ? (
             <div role="alert" className="space-y-2">
@@ -192,7 +187,7 @@ export function RoomAssignmentPanel({
                 disabled={pending}
                 onClick={onRetry}
               >
-                Check again
+                Consultar de nuevo
               </Button>
             </div>
           ) : null}
@@ -200,11 +195,11 @@ export function RoomAssignmentPanel({
             <Button disabled={!canAssign || pending} onClick={onConfirm}>
               {pending ? <Spinner data-icon="inline-start" /> : null}
               {selectedRoom
-                ? `Assign to room ${selectedRoom.number}`
-                : "Assign room"}
+                ? `Asignar habitación ${selectedRoom.number}`
+                : "Asignar habitación"}
             </Button>
             <Button variant="outline" disabled={pending} onClick={onCancel}>
-              Cancel assignment
+              Cancelar asignación
             </Button>
           </div>
         </div>
