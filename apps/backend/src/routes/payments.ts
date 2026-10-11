@@ -1,8 +1,8 @@
 import { paymentListQuerySchema } from '@pms/shared'
-import { sql, and, asc, eq, gte, lte, isNull, inArray, exists } from 'drizzle-orm'
+import { sql, and, asc, eq, gte, lte, isNull, inArray } from 'drizzle-orm'
 import { Hono } from 'hono'
 import { getDb } from '../db'
-import { guests, financialEntries as payments, reservations, reservationRooms } from '../db/schema'
+import { guests, financialEntries as payments, reservations } from '../db/schema'
 import type { Env } from '../env'
 import { currency, validate } from '../http'
 import { requireInclusiveRange } from '../rules'
@@ -34,17 +34,6 @@ paymentRoutes.get('/', validate('query', paymentListQuerySchema), async (c) => {
         gte(paidOn, from),
         lte(paidOn, to),
         isNull(payments.voidedAt),
-        exists(
-          db
-            .select({ id: reservationRooms.id })
-            .from(reservationRooms)
-            .where(
-              and(
-                eq(reservationRooms.reservationId, reservations.id),
-                inArray(reservationRooms.status, ['confirmed', 'checked_in', 'checked_out']),
-              ),
-            ),
-        ),
         inArray(payments.kind, ['payment', 'refund', 'legacy_signed']),
       ),
     )

@@ -74,7 +74,7 @@ export const paymentSchema = z.object({
     .int()
     .refine((value) => value !== 0, 'amount cannot be zero'),
   method: z.enum(['cash', 'card', 'transfer', 'yape', 'other']),
-  reference: text(200).optional(),
+  reference: text(200).toUpperCase().optional(),
   paidAt: z.string().min(1).optional(),
   notes: text(2000).optional(),
 })
@@ -187,7 +187,7 @@ export const financialInputSchema = z
     method: z.enum(['cash', 'card', 'transfer', 'yape', 'other']).optional(),
     occurredAt: z.iso.datetime().optional(),
     paymentDate: z.iso.date().optional(),
-    reference: text(200).optional(),
+    reference: text(200).toUpperCase().optional(),
   })
   .strict()
   .superRefine((v, ctx) => {

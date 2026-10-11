@@ -1,7 +1,6 @@
 import {
   useCallback,
   useEffect,
-  useId,
   useMemo,
   useRef,
   useState,
@@ -24,9 +23,11 @@ import {
 } from "@/components/ui/empty"
 import {
   contactValue,
+  billingPreviewActions,
+  changeCheckIn,
+  minimumCheckOut,
   guestValues,
   isActiveStay,
-  nextStayAction,
   overlappingRoomIds,
   unavailableRoomIds,
   roomEdits,
@@ -61,21 +62,23 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
-import {
-  Field,
-  FieldError,
-  FieldGroup,
-  FieldLabel,
-} from "@/components/ui/field"
-import { Checkbox } from "@/components/ui/checkbox"
+import { FieldError, FieldGroup } from "@/components/ui/field"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table"
 import { Skeleton } from "@/components/ui/skeleton"
 import { Separator } from "@/components/ui/separator"
 import { TextField, ChoiceField } from "@/components/workflow-fields"
 import { WorkflowBill } from "@/components/workflow-bill"
 import { BookingSummary } from "@/components/booking-summary"
 import { format } from "@/lib/dates"
-import { parseISO } from "date-fns"
+import { differenceInCalendarDays, isValid, parseISO } from "date-fns"
 import {
   createWorkflowBooking,
   previewWorkflow,
@@ -98,6 +101,8 @@ import {
   useWorkflowCommand,
 } from "@/lib/queries"
 import { toast } from "@/lib/toast"
+import { contactErrors } from "@/lib/form-validation"
+import { createWorkflowSaver } from "@/lib/workflow-save"
 import { formatMajor, formatMoney, parseMajorToCents } from "@/lib/money"
 
 export type BookingTarget =
@@ -130,35 +135,27 @@ const labels: Record<string, string> = {
   legacy_signed: "Movimiento histórico",
   legacy_discount_excluded: "Descuento histórico excluido",
 }
-const eventLabels: Record<string, string> = {
-  created: "Reserva creada",
-  contact: "Contacto actualizado",
-  "set-guests": "Huéspedes actualizados",
-  "edit-room": "Habitación modificada",
-  "add-room": "Habitación añadida",
-  "check-in": "Llegada registrada",
-  "check-out": "Salida registrada",
-  move: "Cambio de habitación",
-  "undo-check-in": "Llegada corregida",
-  "cancel-room": "Habitación cancelada",
-  "no-show": "No se presentó",
-  cancel: "Reserva cancelada",
-  financial: "Movimiento financiero",
-  "correct-financial": "Corrección financiera",
-  notes: "Notas actualizadas",
+const stayDate = (value: string, pattern: string) => {
+  const date = parseISO(value)
+  return isValid(date) ? format(date, pattern) : "—"
+}
+const roomStayLabel = (dates: { checkIn: string; checkOut: string }) => {
+  const nights = differenceInCalendarDays(
+    parseISO(dates.checkOut),
+    parseISO(dates.checkIn)
+  )
+  const length =
+    Number.isFinite(nights) && nights > 0
+      ? `${nights} ${nights === 1 ? "noche" : "noches"}`
+      : "Revisa las fechas"
+  return `${stayDate(dates.checkIn, "d MMM")} – ${stayDate(dates.checkOut, "d MMM yyyy")} · ${length}`
 }
 const today = () => new Date().toISOString().slice(0, 10)
-const tomorrow = (date: string) =>
-  new Date(new Date(`${date}T00:00:00Z`).getTime() + 86400000)
-    .toISOString()
-    .slice(0, 10)
+const paymentToday = () => format(new Date(), "yyyy-MM-dd")
 type Intent =
   | { type: "financial"; kind: FinancialInput["kind"] }
-  | { type: "correction"; entry: FinancialEntry }
-  | {
-      type: "move" | "undo-check-in" | "cancel-room" | "no-show"
-      lineId: string
-    }
+  | { type: "edit-financial" | "delete-financial"; entry: FinancialEntry }
+  | { type: "cancel-room"; lineId: string }
   | { type: "cancel" }
 
 export function ReservationStatus({ detail }: { detail: ReservationDetail }) {
@@ -250,7 +247,7 @@ export function RoomBookingDialog({
           ) : (
             detail.data && (
               <BookingEditor
-                key={`${detail.data.id}-${detail.data.version}`}
+                key={detail.data.id}
                 detail={detail.data}
                 onRefresh={() => void detail.refetch()}
                 initialTab={tab}
@@ -306,7 +303,12 @@ function RoomFields({
 }) {
   const types = useRoomTypes(),
     rooms = useRooms()
-  const set = (patch: Partial<WorkflowRoom>) => onChange({ ...room, ...patch })
+  const set = (patch: Partial<WorkflowRoom>) =>
+    onChange(
+      patch.checkIn
+        ? changeCheckIn({ ...room, ...patch }, patch.checkIn)
+        : { ...room, ...patch }
+    )
   return (
     <FieldGroup className="grid grid-cols-2 gap-3 lg:grid-cols-6">
       <ChoiceField
@@ -350,6 +352,7 @@ function RoomFields({
         label={extension ? "Extender hasta" : "Salida prevista"}
         type="date"
         value={room.checkOut}
+        min={minimumCheckOut(room.checkIn)}
         disabled={locked}
         onChange={(checkOut) => set({ checkOut })}
       />
@@ -392,7 +395,7 @@ function NewBooking({
       adults: 1,
       children: 0,
       checkIn: start,
-      checkOut: tomorrow(start),
+      checkOut: minimumCheckOut(start),
     },
   ])
   const [error, setError] = useState(""),
@@ -545,9 +548,7 @@ export function BookingEditor({
   )
   const [notes, setNotes] = useState(detail.notes ?? "")
   const [contact] = useState<BookingContact>(contactValue(detail.guest))
-  const [guests, setGuests] = useState<StayingGuest[]>(
-    guestValues(detail.stayingGuests)
-  )
+  const [guestDirty, setGuestDirty] = useState(false)
   const roomTypes = useRoomTypes()
   const physicalRooms = useRooms()
   const [expandedRooms, setExpandedRooms] = useState<Set<string>>(new Set())
@@ -564,13 +565,11 @@ export function BookingEditor({
     JSON.stringify(contactValue(detail.guest))
   )
     changes.push({ type: "contact", contact: contactValue(contact) })
-  if (
-    JSON.stringify(guestValues(guests)) !==
-    JSON.stringify(guestValues(detail.stayingGuests))
-  )
-    changes.push({ type: "set-guests", guests: guestValues(guests) })
   changes.push(...pendingActions)
   const dirty = changes.length > 0
+  const previewActions = billingPreviewActions(changes)
+  const billingDirty = previewActions.length > 0
+  const previewActionsKey = JSON.stringify(previewActions)
   const changesKey = JSON.stringify(changes)
   const editCommand = useMemo<WorkflowCommand>(
     () => ({
@@ -580,39 +579,90 @@ export function BookingEditor({
     }),
     [changesKey, detail.version]
   )
-  const [previewCommand, setPreviewCommand] = useState(editCommand)
+  const billingCommand = useMemo<WorkflowCommand>(
+    () => ({
+      requestId: crypto.randomUUID(),
+      version: detail.version,
+      actions: JSON.parse(previewActionsKey) as WorkflowAction[],
+    }),
+    [previewActionsKey, detail.version]
+  )
+  const [previewCommand, setPreviewCommand] = useState(billingCommand)
   useEffect(() => {
-    const timer = setTimeout(() => setPreviewCommand(editCommand), 300)
+    const timer = setTimeout(() => setPreviewCommand(billingCommand), 300)
     return () => clearTimeout(timer)
-  }, [editCommand])
+  }, [billingCommand])
   const editPreview = useQuery({
     queryKey: ["workflow-edit-preview", detail.id, previewCommand],
     queryFn: () => previewWorkflow(detail.id, previewCommand),
-    enabled: dirty && previewCommand.actions.length > 0,
+    enabled: billingDirty && previewCommand.actions.length > 0,
     retry: false,
     refetchOnWindowFocus: false,
   })
-  const previewCurrent = previewCommand === editCommand
-  const billing = dirty
+  const previewCurrent = previewCommand === billingCommand
+  const billing = billingDirty
     ? previewCurrent
       ? editPreview.data
       : undefined
     : detail
-  const billingRooms = dirty ? (billing?.rooms ?? []) : detail.rooms
+  const billingRooms = billing?.rooms ?? []
   const saveMutation = useWorkflowCommand()
+  const guestMutation = useWorkflowCommand()
+  const financialMutation = useWorkflowCommand()
+  const busy =
+    saveMutation.isPending ||
+    guestMutation.isPending ||
+    financialMutation.isPending
+  const [guestSaver] = useState(createWorkflowSaver)
+  const [financialSaver] = useState(createWorkflowSaver)
+  async function saveGuests(guests: StayingGuest[]) {
+    await guestSaver(
+      [{ type: "set-guests", guests: guestValues(guests) }],
+      detail.version,
+      (command) => guestMutation.mutateAsync({ id: detail.id, command })
+    )
+  }
   useEffect(() => {
-    onDirtyChange?.(dirty || paymentDirty)
-  }, [dirty, paymentDirty, onDirtyChange])
+    onDirtyChange?.(dirty || paymentDirty || guestDirty || busy)
+  }, [dirty, paymentDirty, guestDirty, busy, onDirtyChange])
+  function resetDetails(saved: ReservationDetail) {
+    setDrafts(
+      saved.rooms.map((room) => ({
+        id: room.id,
+        room: stayValue(room),
+        removed: false,
+        reason: "",
+      }))
+    )
+    setNotes(saved.notes ?? "")
+    setPendingActions([])
+  }
+  async function saveFinancial(title: string, actions: WorkflowAction[]) {
+    await financialSaver(actions, detail.version, (command) =>
+      financialMutation.mutateAsync({ id: detail.id, command })
+    )
+    toast.add({ title, type: "success" })
+  }
+
+  const statusFor = (id: string) => {
+    const action = pendingActions.findLast(
+      (a) => a.type === "set-status" && a.lineId === id
+    )
+    return action?.type === "set-status"
+      ? action.status
+      : (detail.rooms.find((room) => room.id === id)?.status ?? "confirmed")
+  }
   const activeDrafts = drafts.filter(
-    (d) =>
-      !d.removed &&
-      (!detail.rooms.some((l) => l.id === d.id) ||
-        isActiveStay(detail.rooms.find((l) => l.id === d.id)!.status))
+    (d) => !d.removed && isActiveStay(statusFor(d.id))
   )
-  const common = sharedStay(activeDrafts)
+  const datedDrafts = activeDrafts.length
+    ? activeDrafts
+    : drafts.filter((d) => !d.removed)
+  const common = sharedStay(datedDrafts)
   const projectedDetail = billing ? { ...detail, ...billing } : detail
   const projectedRooms = projectedDetail.rooms.map((room) => ({
     ...room,
+    status: statusFor(room.id),
     roomTypeName:
       roomTypes.data?.find((type) => type.id === room.roomTypeId)?.name ??
       room.roomTypeName,
@@ -620,17 +670,45 @@ export function BookingEditor({
       physicalRooms.data?.find((physical) => physical.id === room.roomId)
         ?.number ?? room.roomNumber,
   }))
-  const current = projectedRooms.filter((l) => isActiveStay(l.status))
-  const next = nextStayAction(projectedRooms)
-  const unassigned = current.some((l) => !l.roomId)
+  const remainingDrafts = drafts.filter((draft) => !draft.removed)
+  const visibleDrafts = remainingDrafts.filter(
+    (draft) => statusFor(draft.id) !== "cancelled"
+  )
+  const stateDrafts = visibleDrafts.length ? visibleDrafts : remainingDrafts
+  const reservationState = stateDrafts.every(
+    (draft) => statusFor(draft.id) === statusFor(stateDrafts[0]?.id ?? "")
+  )
+    ? statusFor(stateDrafts[0]?.id ?? "")
+    : "mixed"
+  const unassigned = stateDrafts.some((draft) => !draft.room.roomId)
   const update = (id: string, patch: Partial<WorkflowRoom>) =>
     setDrafts((ds) =>
-      ds.map((d) => (d.id === id ? { ...d, room: { ...d.room, ...patch } } : d))
+      ds.map((d) =>
+        d.id === id
+          ? {
+              ...d,
+              room: patch.checkIn
+                ? changeCheckIn({ ...d.room, ...patch }, patch.checkIn)
+                : { ...d.room, ...patch },
+            }
+          : d
+      )
     )
   const cancel = () => setIntent({ type: "cancel" })
   function review(_title: string, actions: WorkflowAction[]) {
     setError("")
-    setPendingActions((pending) => [...pending, ...actions])
+    setPendingActions((pending) =>
+      actions.reduce((result, action) => {
+        if (action.type === "set-status")
+          return [
+            ...result.filter(
+              (a) => a.type !== "set-status" || a.lineId !== action.lineId
+            ),
+            action,
+          ]
+        return [...result, action]
+      }, pending)
+    )
   }
   async function saveChanges() {
     setError("")
@@ -644,26 +722,21 @@ export function BookingEditor({
       )
       return
     }
-    if (guests.some((g) => !g.fullName.trim())) {
-      setTab("guests")
-      setError("Completa el nombre completo de cada huésped.")
-      return
-    }
-    if (
-      guests.some(
-        (g) =>
-          g.email?.trim() && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(g.email.trim())
-      )
-    ) {
-      setTab("guests")
-      setError("Revisa el email de los huéspedes en Más datos.")
-      return
-    }
     if (!formRef.current?.reportValidity()) return
-    if (!dirty || !billing || editPreview.isFetching || saveMutation.isPending)
+    if (
+      tab !== "details" ||
+      !dirty ||
+      !billing ||
+      (billingDirty && editPreview.isFetching) ||
+      busy
+    )
       return
     try {
-      await saveMutation.mutateAsync({ id: detail.id, command: editCommand })
+      const saved = await saveMutation.mutateAsync({
+        id: detail.id,
+        command: editCommand,
+      })
+      resetDetails(saved)
       toast.add({ title: "Reserva guardada", type: "success" })
     } catch (e) {
       setError(e instanceof Error ? e.message : "No se pudo guardar.")
@@ -679,7 +752,7 @@ export function BookingEditor({
       )}
       onSubmit={(e) => {
         e.preventDefault()
-        void saveChanges()
+        if (tab === "details") void saveChanges()
       }}
     >
       <div className="flex shrink-0 flex-wrap items-center gap-1 pr-8">
@@ -717,7 +790,7 @@ export function BookingEditor({
               <DropdownMenuGroup>
                 <DropdownMenuItem
                   variant="destructive"
-                  disabled={saveMutation.isPending || (dirty && !billing)}
+                  disabled={busy || (dirty && !billing)}
                   onClick={cancel}
                 >
                   Cancelar reserva
@@ -744,358 +817,290 @@ export function BookingEditor({
           <TabsTrigger value="details">Detalles</TabsTrigger>
           <TabsTrigger value="guests">Huéspedes</TabsTrigger>
           <TabsTrigger value="payments">Pagos</TabsTrigger>
-          {full && <TabsTrigger value="history">Historial</TabsTrigger>}
         </TabsList>
         <div className="grid min-w-0 shrink-0 gap-6 p-px lg:grid-cols-[minmax(0,1fr)_280px]">
           <div className="min-w-0">
             <TabsContent value="details" className="flex flex-col gap-5">
-              {common ? (
-                <section className="flex flex-col gap-2">
-                  <FieldGroup className="grid grid-cols-2 gap-3">
-                    <TextField
-                      label="Check-in"
-                      type="date"
-                      required
-                      value={common.checkIn}
-                      disabled={current.some((l) => l.status === "checked_in")}
-                      onChange={(checkIn) =>
-                        setDrafts((ds) =>
-                          ds.map((d) =>
-                            activeDrafts.some((a) => a.id === d.id)
-                              ? { ...d, room: { ...d.room, checkIn } }
-                              : d
-                          )
-                        )
-                      }
-                    />
-                    <TextField
-                      label="Check-out"
-                      type="date"
-                      required
-                      value={common.checkOut}
-                      min={
-                        current.some((l) => l.status === "checked_in")
-                          ? current.reduce(
-                              (date, l) =>
-                                l.checkOut > date ? l.checkOut : date,
-                              ""
+              <fieldset
+                disabled={saveMutation.isPending}
+                className="flex min-w-0 flex-col gap-5"
+              >
+                {common ? (
+                  <section className="flex flex-col gap-2">
+                    <FieldGroup className="grid grid-cols-2 gap-3">
+                      <TextField
+                        label="Check-in"
+                        type="date"
+                        required
+                        value={common.checkIn}
+                        onChange={(checkIn) =>
+                          setDrafts((ds) =>
+                            ds.map((d) =>
+                              datedDrafts.some((a) => a.id === d.id)
+                                ? { ...d, room: changeCheckIn(d.room, checkIn) }
+                                : d
                             )
-                          : undefined
-                      }
-                      onChange={(checkOut) =>
-                        setDrafts((ds) =>
-                          ds.map((d) =>
-                            activeDrafts.some((a) => a.id === d.id)
-                              ? { ...d, room: { ...d.room, checkOut } }
-                              : d
                           )
-                        )
-                      }
-                    />
-                  </FieldGroup>
-                </section>
-              ) : activeDrafts.length > 0 ? (
-                <p className="text-muted-foreground">
-                  Las habitaciones tienen fechas diferentes. Revisa las fechas
-                  de cada una en las opciones.
-                </p>
-              ) : null}
-              <section className="flex flex-col gap-3">
-                <div className="flex flex-wrap items-center justify-between gap-2">
-                  <h3 className="font-medium">Habitaciones</h3>
-                </div>
-                {drafts
-                  .filter(
-                    (d) =>
-                      projectedRooms.find((l) => l.id === d.id)?.status !==
-                      "cancelled"
-                  )
-                  .map((draft, i) => {
-                    const saved = projectedRooms.find((l) => l.id === draft.id)
-                    const locked = !!saved && !isActiveStay(saved.status)
-                    const occupied = saved?.status === "checked_in"
-                    return (
-                      <section
-                        key={draft.id}
-                        className="flex min-w-0 flex-col gap-3"
-                      >
-                        {draft.removed ? (
-                          <div className="flex flex-col gap-3">
-                            <p>
-                              Hab. {saved?.roomNumber ?? i + 1} se retirará al
-                              guardar.
-                            </p>
-                            <FieldGroup>
-                              <TextField
-                                label="Motivo de la retirada"
-                                required
-                                value={draft.reason}
-                                onChange={(reason) =>
+                        }
+                      />
+                      <TextField
+                        label="Check-out"
+                        type="date"
+                        required
+                        value={common.checkOut}
+                        min={minimumCheckOut(common.checkIn)}
+                        onChange={(checkOut) =>
+                          setDrafts((ds) =>
+                            ds.map((d) =>
+                              datedDrafts.some((a) => a.id === d.id)
+                                ? { ...d, room: { ...d.room, checkOut } }
+                                : d
+                            )
+                          )
+                        }
+                      />
+                    </FieldGroup>
+                  </section>
+                ) : null}
+                <section className="flex flex-col gap-3">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <h3 className="font-medium">Habitaciones</h3>
+                  </div>
+                  {drafts
+                    .filter((draft) => statusFor(draft.id) !== "cancelled")
+                    .map((draft, i) => {
+                      const saved = projectedRooms.find(
+                        (l) => l.id === draft.id
+                      )
+                      const occupied = saved?.status === "checked_in"
+                      return (
+                        <section
+                          key={draft.id}
+                          className="flex min-w-0 flex-col gap-3"
+                        >
+                          {draft.removed ? (
+                            <div className="flex flex-col gap-3">
+                              <p>
+                                Hab. {saved?.roomNumber ?? i + 1} se retirará al
+                                guardar.
+                              </p>
+                              <FieldGroup>
+                                <TextField
+                                  label="Motivo de la retirada"
+                                  required
+                                  value={draft.reason}
+                                  onChange={(reason) =>
+                                    setDrafts((ds) =>
+                                      ds.map((d) =>
+                                        d.id === draft.id ? { ...d, reason } : d
+                                      )
+                                    )
+                                  }
+                                />
+                              </FieldGroup>
+                              <Button
+                                type="button"
+                                variant="outline"
+                                className="w-fit"
+                                onClick={() =>
                                   setDrafts((ds) =>
                                     ds.map((d) =>
-                                      d.id === draft.id ? { ...d, reason } : d
+                                      d.id === draft.id
+                                        ? { ...d, removed: false }
+                                        : d
                                     )
                                   )
                                 }
-                              />
-                            </FieldGroup>
-                            <Button
-                              type="button"
-                              variant="outline"
-                              className="w-fit"
-                              onClick={() =>
-                                setDrafts((ds) =>
-                                  ds.map((d) =>
-                                    d.id === draft.id
-                                      ? { ...d, removed: false }
-                                      : d
-                                  )
-                                )
-                              }
-                            >
-                              <Undo2Icon data-icon="inline-start" />
-                              Deshacer retirada
-                            </Button>
-                          </div>
-                        ) : (
-                          <>
-                            <CompactRoomFields
-                              reservationId={detail.id}
-                              room={draft.room}
-                              blockedRoomIds={overlappingRoomIds(
-                                draft.room,
-                                drafts
-                                  .filter((other) => {
-                                    const status = projectedRooms.find(
-                                      (line) => line.id === other.id
-                                    )?.status
-                                    return (
-                                      other.id !== draft.id &&
-                                      !other.removed &&
-                                      status !== "cancelled" &&
-                                      status !== "no_show"
-                                    )
-                                  })
-                                  .map((other) => other.room)
-                              )}
-                              locked={locked}
-                              occupied={occupied}
-                              onChange={(room) => update(draft.id, room)}
-                              actions={
-                                <RoomStatusMenu
-                                  expanded={expandedRooms.has(draft.id)}
-                                  onToggleAdvanced={() =>
-                                    setExpandedRooms((current) => {
-                                      const next = new Set(current)
-                                      if (next.has(draft.id))
-                                        next.delete(draft.id)
-                                      else next.add(draft.id)
-                                      return next
-                                    })
-                                  }
-                                  saved={saved}
-                                  disabled={
-                                    saveMutation.isPending ||
-                                    (dirty && !billing)
-                                  }
-                                  onCancel={() => {
-                                    if (!saved)
-                                      setDrafts((ds) =>
-                                        ds.filter((d) => d.id !== draft.id)
+                              >
+                                <Undo2Icon data-icon="inline-start" />
+                                Deshacer retirada
+                              </Button>
+                            </div>
+                          ) : (
+                            <>
+                              <CompactRoomFields
+                                reservationId={detail.id}
+                                room={draft.room}
+                                blockedRoomIds={overlappingRoomIds(
+                                  draft.room,
+                                  drafts
+                                    .filter((other) => {
+                                      const status = projectedRooms.find(
+                                        (line) => line.id === other.id
+                                      )?.status
+                                      return (
+                                        other.id !== draft.id &&
+                                        !other.removed &&
+                                        status !== "cancelled" &&
+                                        status !== "no_show"
                                       )
-                                    else if (
-                                      detail.rooms.filter(
-                                        (l) => l.status !== "cancelled"
-                                      ).length === 1
-                                    )
-                                      cancel()
-                                    else
-                                      setIntent({
-                                        type: "cancel-room",
-                                        lineId: saved.id,
+                                    })
+                                    .map((other) => other.room)
+                                )}
+                                occupied={occupied}
+                                onChange={(room) => update(draft.id, room)}
+                                actions={
+                                  <RoomStatusMenu
+                                    expanded={expandedRooms.has(draft.id)}
+                                    onToggleAdvanced={() =>
+                                      setExpandedRooms((current) => {
+                                        const next = new Set(current)
+                                        if (next.has(draft.id))
+                                          next.delete(draft.id)
+                                        else next.add(draft.id)
+                                        return next
                                       })
-                                  }}
-                                />
-                              }
-                            />
-                            {!common && (
-                              <div className="text-xs text-muted-foreground">
-                                {`${draft.room.checkIn} al ${draft.room.checkOut}`}
-                              </div>
-                            )}
-                            {expandedRooms.has(draft.id) && (
-                              <div className="flex flex-col gap-3">
-                                <FieldGroup className="grid grid-cols-2 gap-3 sm:grid-cols-3">
-                                  <TextField
-                                    label="Check-in de habitación"
-                                    type="date"
-                                    required
-                                    value={draft.room.checkIn}
-                                    disabled={locked || occupied}
-                                    onChange={(checkIn) =>
-                                      update(draft.id, { checkIn })
                                     }
-                                  />
-                                  <TextField
-                                    label={
-                                      occupied
-                                        ? "Extender hasta"
-                                        : "Check-out de habitación"
-                                    }
-                                    type="date"
-                                    required
-                                    value={draft.room.checkOut}
-                                    disabled={locked}
-                                    min={occupied ? saved.checkOut : undefined}
-                                    onChange={(checkOut) =>
-                                      update(draft.id, { checkOut })
-                                    }
-                                  />
-                                  <ChoiceField
-                                    label="Estado"
-                                    value={saved?.status ?? "confirmed"}
+                                    saved={saved}
                                     disabled={
-                                      !saved ||
                                       saveMutation.isPending ||
                                       (dirty && !billing)
                                     }
-                                    options={[
-                                      {
-                                        value: "confirmed",
-                                        label: "Confirmada",
-                                        disabled:
-                                          !saved ||
-                                          !["confirmed", "checked_in"].includes(
-                                            saved.status
-                                          ),
-                                      },
-                                      {
-                                        value: "checked_in",
-                                        label: "Check-in",
-                                        disabled:
-                                          !saved?.roomId ||
-                                          !["confirmed", "checked_in"].includes(
-                                            saved?.status ?? ""
-                                          ),
-                                      },
-                                      {
-                                        value: "checked_out",
-                                        label: "Check-out",
-                                        disabled: ![
-                                          "checked_in",
-                                          "checked_out",
-                                        ].includes(saved?.status ?? ""),
-                                      },
-                                      ...(saved?.status === "no_show"
-                                        ? [
-                                            {
-                                              value: "no_show",
-                                              label: "No se presentó",
-                                              disabled: true,
-                                            },
-                                          ]
-                                        : []),
-                                    ]}
-                                    onChange={(status) => {
-                                      if (!saved || status === saved.status)
-                                        return
-                                      if (status === "confirmed")
+                                    onCancel={() => {
+                                      if (!saved)
+                                        setDrafts((ds) =>
+                                          ds.filter((d) => d.id !== draft.id)
+                                        )
+                                      else if (
+                                        detail.rooms.filter(
+                                          (l) => l.status !== "cancelled"
+                                        ).length === 1
+                                      )
+                                        cancel()
+                                      else
                                         setIntent({
-                                          type: "undo-check-in",
+                                          type: "cancel-room",
                                           lineId: saved.id,
                                         })
-                                      else
-                                        review(
-                                          status === "checked_in"
-                                            ? "Check-in de habitación"
-                                            : "Check-out de habitación",
-                                          [
-                                            {
-                                              type:
-                                                status === "checked_in"
-                                                  ? "check-in"
-                                                  : "check-out",
-                                              lineIds: [saved.id],
-                                            },
-                                          ]
-                                        )
                                     }}
                                   />
-                                </FieldGroup>
-                                {saved && full && (
-                                  <div className="flex flex-wrap gap-2">
-                                    <RoomOtherActions
-                                      saved={saved}
-                                      detail={detail}
-                                      disabled={
-                                        saveMutation.isPending ||
-                                        (dirty && !billing)
-                                      }
-                                      onIntent={setIntent}
-                                      onRemove={() =>
-                                        setDrafts((ds) =>
-                                          ds.map((d) =>
-                                            d.id === saved.id
-                                              ? {
-                                                  ...d,
-                                                  removed: true,
-                                                  reason:
-                                                    "Habitación añadida por error",
-                                                }
-                                              : d
-                                          )
-                                        )
+                                }
+                              />
+                              {expandedRooms.has(draft.id) && (
+                                <div className="flex flex-col gap-3">
+                                  <FieldGroup className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+                                    <TextField
+                                      label="Check-in de habitación"
+                                      type="date"
+                                      required
+                                      value={draft.room.checkIn}
+                                      onChange={(checkIn) =>
+                                        update(draft.id, { checkIn })
                                       }
                                     />
-                                  </div>
-                                )}
-                              </div>
-                            )}
-                          </>
-                        )}
-                      </section>
-                    )
-                  })}
-                {activeDrafts.length > 0 && (
-                  <Button
-                    type="button"
-                    variant="outline"
-                    className="w-fit"
-                    disabled={drafts.length >= 60}
-                    onClick={() =>
-                      setDrafts((ds) => [
-                        ...ds,
-                        {
-                          id: crypto.randomUUID(),
-                          room: { ...activeDrafts[0].room, roomId: null },
-                          removed: false,
-                          reason: "",
-                        },
-                      ])
-                    }
-                  >
-                    <PlusIcon data-icon="inline-start" />
-                    Agregar habitación
-                  </Button>
-                )}
-              </section>
-              <section className="flex flex-col gap-3">
-                <FieldGroup>
-                  <TextField
-                    label="Notas"
-                    type="textarea"
-                    max={2000}
-                    value={notes}
-                    onChange={setNotes}
-                  />
-                </FieldGroup>
-              </section>
+                                    <TextField
+                                      label="Check-out de habitación"
+                                      type="date"
+                                      required
+                                      value={draft.room.checkOut}
+                                      min={minimumCheckOut(draft.room.checkIn)}
+                                      onChange={(checkOut) =>
+                                        update(draft.id, { checkOut })
+                                      }
+                                    />
+                                    <ChoiceField
+                                      label="Estado"
+                                      value={saved?.status ?? "confirmed"}
+                                      disabled={
+                                        !saved || saveMutation.isPending
+                                      }
+                                      options={[
+                                        {
+                                          value: "confirmed",
+                                          label: "Confirmada",
+                                        },
+                                        {
+                                          value: "checked_in",
+                                          label: "Check-in",
+                                          disabled: !draft.room.roomId,
+                                        },
+                                        {
+                                          value: "checked_out",
+                                          label: "Check-out",
+                                        },
+                                        {
+                                          value: "no_show",
+                                          label: "No se presentó",
+                                        },
+                                        ...(saved?.status === "cancelled"
+                                          ? [
+                                              {
+                                                value: "cancelled",
+                                                label: "Cancelada",
+                                                disabled: true,
+                                              },
+                                            ]
+                                          : []),
+                                      ]}
+                                      onChange={(status) => {
+                                        if (!saved || status === saved.status)
+                                          return
+                                        review("Estado", [
+                                          {
+                                            type: "set-status",
+                                            lineId: saved.id,
+                                            status: status as Extract<
+                                              WorkflowAction,
+                                              { type: "set-status" }
+                                            >["status"],
+                                          },
+                                        ])
+                                      }}
+                                    />
+                                  </FieldGroup>
+                                </div>
+                              )}
+                            </>
+                          )}
+                        </section>
+                      )
+                    })}
+                  {activeDrafts.length > 0 && (
+                    <Button
+                      type="button"
+                      variant="outline"
+                      className="w-fit"
+                      disabled={drafts.length >= 60}
+                      onClick={() =>
+                        setDrafts((ds) => [
+                          ...ds,
+                          {
+                            id: crypto.randomUUID(),
+                            room: { ...activeDrafts[0].room, roomId: null },
+                            removed: false,
+                            reason: "",
+                          },
+                        ])
+                      }
+                    >
+                      <PlusIcon data-icon="inline-start" />
+                      Agregar habitación
+                    </Button>
+                  )}
+                </section>
+                <section className="flex flex-col gap-3">
+                  <FieldGroup>
+                    <TextField
+                      label="Notas"
+                      type="textarea"
+                      max={2000}
+                      value={notes}
+                      onChange={setNotes}
+                    />
+                  </FieldGroup>
+                </section>
+              </fieldset>
             </TabsContent>
-            <TabsContent value="guests" className="flex flex-col gap-4">
+            <TabsContent
+              value="guests"
+              keepMounted
+              className="flex flex-col gap-5"
+            >
               <GuestFields
-                guests={guests}
                 detail={detail}
-                onChange={setGuests}
+                disabled={busy}
+                onSave={saveGuests}
+                onDirtyChange={setGuestDirty}
               />
             </TabsContent>
             <TabsContent
@@ -1104,44 +1109,20 @@ export function BookingEditor({
               className="flex flex-col gap-5"
             >
               <PaymentForm
-                detail={projectedDetail}
-                disabled={saveMutation.isPending || (dirty && !billing)}
+                detail={detail}
+                disabled={busy}
                 onDirtyChange={setPaymentDirty}
-                onReady={review}
+                onReady={saveFinancial}
               />
-              <details>
-                <summary className="cursor-pointer text-xs">
-                  Más opciones de facturación
-                </summary>
-                <div className="mt-3 flex flex-wrap gap-2">
-                  {(["discount", "waiver", "refund"] as const).map((kind) => (
-                    <Button
-                      type="button"
-                      key={kind}
-                      variant="outline"
-                      disabled={
-                        dirty ||
-                        (kind === "waiver" && detail.balanceCents <= 0) ||
-                        (kind === "refund" && detail.creditCents <= 0)
-                      }
-                      onClick={() => setIntent({ type: "financial", kind })}
-                    >
-                      {labels[kind]}
-                    </Button>
-                  ))}
-                </div>
-              </details>
-              <FinancialList
-                detail={projectedDetail}
-                disabled={saveMutation.isPending || (dirty && !billing)}
-                onCorrect={(entry) => setIntent({ type: "correction", entry })}
+              <PaymentList
+                detail={detail}
+                disabled={busy}
+                onEdit={(entry) => setIntent({ type: "edit-financial", entry })}
+                onDelete={(entry) =>
+                  setIntent({ type: "delete-financial", entry })
+                }
               />
             </TabsContent>
-            {full && (
-              <TabsContent value="history" className="flex flex-col gap-5">
-                <ReservationHistory detail={detail} />
-              </TabsContent>
-            )}
           </div>
           <aside className="min-w-0 md:self-start">
             <BookingSummary
@@ -1155,6 +1136,11 @@ export function BookingEditor({
                 adults: room.adults,
                 children: room.children,
                 status: room.status,
+                stayLabel: !common
+                  ? roomStayLabel(
+                      drafts.find((draft) => draft.id === room.id)?.room ?? room
+                    )
+                  : undefined,
                 charges: {
                   subtotalCents: room.subtotalCents,
                   discountCents: room.discountCents,
@@ -1167,94 +1153,113 @@ export function BookingEditor({
               waiverCents={billing?.waiverCents ?? detail.waiverCents}
               refundCents={billing?.refundCents ?? detail.refundCents}
               currency={detail.currency}
-              stayLabel={`${format(parseISO(common?.checkIn ?? detail.checkIn), "d MMM")} – ${format(parseISO(common?.checkOut ?? detail.checkOut), "d MMM yyyy")}`}
+              stayLabel={
+                common
+                  ? `${stayDate(common.checkIn, "d MMM")} – ${stayDate(common.checkOut, "d MMM yyyy")}`
+                  : null
+              }
               showPayments
               message={
-                editPreview.error && previewCurrent
+                billingDirty && editPreview.error && previewCurrent
                   ? "Revisa los cambios para calcular el total."
                   : "Calculando…"
               }
             />
-            {dirty &&
-              billing &&
-              "settlementBlocked" in billing &&
-              billing.settlementBlocked && (
-                <FieldError>
-                  Registra un pago o una condonación antes de guardar la salida
-                  final.
-                </FieldError>
-              )}
-            {dirty && previewCurrent && editPreview.error && (
+            {billingDirty && previewCurrent && editPreview.error && (
               <FieldError>{editPreview.error.message}</FieldError>
             )}
           </aside>
         </div>
       </Tabs>
       {error && <FieldError role="alert">{error}</FieldError>}
-      <div className="flex shrink-0 flex-wrap items-center justify-end gap-3">
-        <div className="flex flex-wrap gap-2">
-          {full && !detail.cancelledAt && (
-            <Button
-              type="button"
-              variant="destructive"
-              disabled={saveMutation.isPending || (dirty && !billing)}
-              onClick={cancel}
-            >
-              Cancelar reserva
-            </Button>
-          )}
-          {tab === "details" && next && (
-            <Button
-              type="button"
+      <div className="flex shrink-0 flex-wrap items-end justify-end gap-3">
+        {tab === "details" && reservationState !== "mixed" && (
+          <FieldGroup className="w-48">
+            <ChoiceField
+              label="Estado de la reserva"
+              hideLabel
+              value={reservationState}
               disabled={
-                saveMutation.isPending || (next === "check-in" && unassigned)
-              }
-              onClick={() =>
-                review(
-                  next === "check-in"
-                    ? "Revisar check-in"
-                    : "Revisar check-out",
-                  [{ type: next, lineIds: current.map((l) => l.id) }]
+                busy ||
+                stateDrafts.some(
+                  (draft) => !detail.rooms.some((room) => room.id === draft.id)
                 )
               }
+              options={[
+                { value: "confirmed", label: "Confirmada" },
+                {
+                  value: "checked_in",
+                  label: "Check-in",
+                  disabled: unassigned,
+                },
+                { value: "checked_out", label: "Check-out" },
+                { value: "no_show", label: "No se presentó" },
+                { value: "cancelled", label: "Cancelada" },
+              ]}
+              onChange={(status) => {
+                if (status === reservationState) return
+                if (status === "cancelled") {
+                  cancel()
+                  return
+                }
+                review(
+                  "Estado de la reserva",
+                  stateDrafts.map((draft) => ({
+                    type: "set-status" as const,
+                    lineId: draft.id,
+                    status: status as Extract<
+                      WorkflowAction,
+                      { type: "set-status" }
+                    >["status"],
+                  }))
+                )
+              }}
+            />
+          </FieldGroup>
+        )}
+        <div className="flex flex-wrap gap-2">
+          {tab === "details" && (
+            <Button
+              type="submit"
+              disabled={
+                !dirty ||
+                (billingDirty && previewCurrent && !!editPreview.error) ||
+                !billing ||
+                (billingDirty && editPreview.isFetching) ||
+                busy
+              }
             >
-              {next === "check-in" ? "Check-in" : "Check-out"}
-              {current.length > 1 ? ` · ${current.length} habitaciones` : ""}
+              {saveMutation.isPending ? "Guardando…" : "Guardar"}
             </Button>
           )}
-          <Button
-            type="submit"
-            disabled={
-              !dirty ||
-              !!editPreview.error ||
-              !billing ||
-              ("settlementBlocked" in billing && billing.settlementBlocked) ||
-              editPreview.isFetching ||
-              saveMutation.isPending
-            }
-          >
-            {saveMutation.isPending ? "Guardando…" : "Guardar"}
-          </Button>
           {!full && onClose && (
-            <Button type="button" variant="outline" onClick={onClose}>
+            <Button
+              type="button"
+              variant="outline"
+              disabled={busy}
+              onClick={onClose}
+            >
               Cerrar
             </Button>
           )}
         </div>
       </div>
-      {tab === "details" && next === "check-in" && unassigned && (
+      {tab === "details" && unassigned && (
         <p className="text-xs text-muted-foreground">
           Asigna una habitación a cada estancia antes del check-in.
         </p>
       )}
       {intent && (
         <ActionForm
-          detail={projectedDetail}
+          detail={detail}
           intent={intent}
           onClose={() => setIntent(null)}
-          onReady={(title, actions) => {
+          onSaved={(saved) => {
+            resetDetails(saved)
+          }}
+          onReady={async (title, actions) => {
+            await saveFinancial(title, actions)
             setIntent(null)
-            review(title, actions)
           }}
         />
       )}
@@ -1287,7 +1292,6 @@ function CompactRoomFields({
   room,
   reservationId,
   blockedRoomIds,
-  locked,
   occupied,
   onChange,
   actions,
@@ -1295,7 +1299,6 @@ function CompactRoomFields({
   room: WorkflowRoom
   reservationId: string
   blockedRoomIds: Set<string>
-  locked: boolean
   occupied: boolean
   onChange: (room: WorkflowRoom) => void
   actions: ReactNode
@@ -1308,7 +1311,6 @@ function CompactRoomFields({
       <ChoiceField
         label="Tipo"
         value={room.roomTypeId}
-        disabled={locked || occupied}
         options={(types.data ?? []).map((t) => ({
           value: t.id,
           label: t.name,
@@ -1321,7 +1323,7 @@ function CompactRoomFields({
       <ChoiceField
         label="Hab."
         value={room.roomId ?? "unassigned"}
-        disabled={locked || !availability.ready}
+        disabled={!availability.ready}
         options={[
           ...(!occupied ? [{ value: "unassigned", label: "Sin asignar" }] : []),
           ...(rooms.data ?? [])
@@ -1346,7 +1348,6 @@ function CompactRoomFields({
         required
         min={1}
         max={100}
-        disabled={locked || occupied}
         value={Number.isNaN(room.adults) ? "" : room.adults}
         onChange={(v) =>
           onChange({ ...room, adults: v === "" ? NaN : Number(v) })
@@ -1358,7 +1359,6 @@ function CompactRoomFields({
         required
         min={0}
         max={100}
-        disabled={locked || occupied}
         value={Number.isNaN(room.children) ? "" : room.children}
         onChange={(v) =>
           onChange({ ...room, children: v === "" ? NaN : Number(v) })
@@ -1387,7 +1387,6 @@ function RoomStatusMenu({
   disabled: boolean
   onCancel: () => void
 }) {
-  const status = saved?.status ?? "confirmed"
   return (
     <DropdownMenu>
       <DropdownMenuTrigger
@@ -1397,7 +1396,6 @@ function RoomStatusMenu({
             variant="ghost"
             size="icon-sm"
             aria-label={`Opciones de habitación ${saved?.roomNumber ?? "sin asignar"}`}
-            disabled={status === "cancelled"}
           />
         }
       >
@@ -1424,78 +1422,298 @@ function RoomStatusMenu({
   )
 }
 
-function RoomOtherActions({
-  saved,
+function GuestFields({
   detail,
   disabled,
-  onIntent,
-  onRemove,
+  onSave,
+  onDirtyChange,
 }: {
-  saved: ReservationDetail["rooms"][number]
   detail: ReservationDetail
   disabled: boolean
-  onIntent: (intent: Intent) => void
-  onRemove: () => void
+  onSave: (guests: StayingGuest[]) => Promise<void>
+  onDirtyChange: (dirty: boolean) => void
 }) {
-  if (!isActiveStay(saved.status)) return null
-  return (
-    <DropdownMenu>
-      <DropdownMenuTrigger
-        render={
-          <Button type="button" size="sm" variant="ghost" disabled={disabled} />
-        }
+  const emptyGuest = (): StayingGuest => {
+    const rooms = detail.rooms.filter((room) => room.status !== "cancelled")
+    return {
+      id: crypto.randomUUID(),
+      reservationRoomId: rooms.length === 1 ? rooms[0].id : null,
+      fullName: "",
+      email: null,
+      phone: null,
+      documentType: null,
+      documentNumber: null,
+    }
+  }
+  const [draft, setDraft] = useState<StayingGuest>(emptyGuest)
+  const [editing, setEditing] = useState(false)
+  const [addDraft, setAddDraft] = useState(draft)
+  const [leaving, setLeaving] = useState(false)
+  const [error, setError] = useState("")
+  const [attempted, setAttempted] = useState(false)
+  const [baseline, setBaseline] = useState(draft)
+  const [addBaseline, setAddBaseline] = useState(draft)
+  const dirty =
+    JSON.stringify(guestValues([draft])) !==
+    JSON.stringify(guestValues([baseline]))
+  useEffect(() => onDirtyChange(dirty), [dirty, onDirtyChange])
+  const validation = contactErrors(draft.fullName, draft.email ?? "")
+  const patch = (changes: Partial<StayingGuest>) => {
+    setDraft((guest) => ({ ...guest, ...changes }))
+    setError("")
+  }
+  const reset = () => {
+    const next = emptyGuest()
+    setDraft(editing ? addDraft : next)
+    setBaseline(editing ? addBaseline : next)
+    setEditing(false)
+    setLeaving(false)
+    setAttempted(false)
+    setError("")
+  }
+  async function submit() {
+    if (disabled) return
+    setAttempted(true)
+    if (Object.values(validation).some(Boolean)) return
+    try {
+      await onSave(
+        editing
+          ? detail.stayingGuests.map((guest) =>
+              guest.id === draft.id ? draft : guest
+            )
+          : [...detail.stayingGuests, draft]
+      )
+      reset()
+      toast.add({
+        title: editing ? "Huésped actualizado" : "Huésped agregado",
+        type: "success",
+      })
+    } catch (cause) {
+      setError(
+        cause instanceof Error
+          ? cause.message
+          : "No se pudo guardar el huésped."
+      )
+    }
+  }
+  async function remove(id: string) {
+    try {
+      await onSave(detail.stayingGuests.filter((guest) => guest.id !== id))
+      if (draft.id === id) reset()
+      toast.add({ title: "Huésped eliminado", type: "success" })
+    } catch (cause) {
+      setError(
+        cause instanceof Error
+          ? cause.message
+          : "No se pudo eliminar el huésped."
+      )
+    }
+  }
+  const roomLabel = (id: string | null) =>
+    detail.rooms.find((room) => room.id === id)?.roomNumber ?? "Sin indicar"
+  const closeEdit = () => {
+    if (disabled) return
+    if (dirty) setLeaving(true)
+    else reset()
+  }
+  const guestForm = (isEdit: boolean) => {
+    const values = !isEdit && editing ? addDraft : draft
+    return (
+      <fieldset
+        disabled={disabled}
+        className="flex min-w-0 flex-col gap-3"
+        onKeyDown={(event) => {
+          if (
+            event.key === "Enter" &&
+            !event.nativeEvent.isComposing &&
+            event.target instanceof HTMLInputElement
+          ) {
+            event.preventDefault()
+            event.stopPropagation()
+            void submit()
+          }
+        }}
       >
-        Más acciones
-        <EllipsisIcon data-icon="inline-end" />
-      </DropdownMenuTrigger>
-      <DropdownMenuContent>
-        <DropdownMenuGroup>
-          {saved.status === "confirmed" && (
-            <>
-              <DropdownMenuItem
-                onClick={() => onIntent({ type: "no-show", lineId: saved.id })}
-              >
-                No se presentó
-              </DropdownMenuItem>
-              <DropdownMenuItem
-                disabled={
-                  detail.rooms.filter((l) => isActiveStay(l.status)).length < 2
-                }
-                onClick={onRemove}
-              >
-                Retirar habitación añadida por error
-              </DropdownMenuItem>
-            </>
+        <FieldGroup className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+          <TextField
+            label="Nombre completo"
+            value={values.fullName}
+            error={
+              attempted && isEdit === editing
+                ? (validation.fullName ?? undefined)
+                : undefined
+            }
+            onChange={(fullName) => patch({ fullName })}
+          />
+          <ChoiceField
+            label="Hab. del huésped"
+            value={values.reservationRoomId ?? "none"}
+            onChange={(value) =>
+              patch({ reservationRoomId: value === "none" ? null : value })
+            }
+            options={[
+              { value: "none", label: "Sin indicar" },
+              ...detail.rooms
+                .filter(
+                  (room) =>
+                    room.status !== "cancelled" ||
+                    room.id === values.reservationRoomId
+                )
+                .map((room, index) => ({
+                  value: room.id,
+                  label: room.roomNumber ?? `Sin asignar · ${index + 1}`,
+                })),
+            ]}
+          />
+        </FieldGroup>
+        <FieldGroup className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+          <ChoiceField
+            label="Documento"
+            value={values.documentType ?? "none"}
+            onChange={(value) =>
+              patch({ documentType: value === "none" ? null : value })
+            }
+            options={[
+              { value: "none", label: "Sin indicar" },
+              { value: "DNI", label: "DNI" },
+              { value: "Pasaporte", label: "Pasaporte" },
+              { value: "Otro", label: "Otro" },
+            ]}
+          />
+          <TextField
+            label="Número de documento"
+            value={values.documentNumber ?? ""}
+            onChange={(documentNumber) => patch({ documentNumber })}
+          />
+          <TextField
+            label="Email del huésped"
+            type="email"
+            value={values.email ?? ""}
+            error={
+              attempted && isEdit === editing
+                ? (validation.email ?? undefined)
+                : undefined
+            }
+            onChange={(email) => patch({ email })}
+          />
+          <TextField
+            label="Teléfono del huésped"
+            type="tel"
+            placeholder="+51…"
+            value={values.phone ?? ""}
+            onChange={(phone) => patch({ phone })}
+          />
+        </FieldGroup>
+        {error && <FieldError role="alert">{error}</FieldError>}
+        <div className="flex items-center gap-2">
+          <Button
+            type="button"
+            disabled={
+              disabled || (!isEdit && detail.stayingGuests.length >= 200)
+            }
+            onClick={() => void submit()}
+          >
+            {!isEdit && <PlusIcon data-icon="inline-start" />}
+            {disabled ? "Guardando…" : isEdit ? "Guardar" : "Agregar huésped"}
+          </Button>
+          {isEdit && (
+            <Button type="button" variant="ghost" onClick={closeEdit}>
+              Cancelar
+            </Button>
           )}
-          {saved.status === "checked_in" && (
-            <DropdownMenuItem
-              onClick={() =>
-                onIntent({ type: "undo-check-in", lineId: saved.id })
-              }
-            >
-              Corregir llegada por error
-            </DropdownMenuItem>
-          )}
-        </DropdownMenuGroup>
-      </DropdownMenuContent>
-    </DropdownMenu>
-  )
-}
-
-function GuestFields({
-  guests,
-  detail,
-  onChange,
-}: {
-  guests: StayingGuest[]
-  detail: ReservationDetail
-  onChange: (guests: StayingGuest[]) => void
-}) {
-  const patch = (id: string, changes: Partial<StayingGuest>) =>
-    onChange(guests.map((g) => (g.id === id ? { ...g, ...changes } : g)))
+        </div>
+      </fieldset>
+    )
+  }
   return (
     <>
-      {!guests.length && (
+      {guestForm(false)}
+      <Dialog
+        open={editing}
+        onOpenChange={(open) => {
+          if (!open) closeEdit()
+        }}
+      >
+        <DialogContent className="sm:max-w-lg" aria-describedby={undefined}>
+          <DialogHeader>
+            <DialogTitle>Editar huésped</DialogTitle>
+          </DialogHeader>
+          {guestForm(true)}
+        </DialogContent>
+      </Dialog>
+      {leaving && (
+        <DiscardChanges onStay={() => setLeaving(false)} onLeave={reset} />
+      )}
+
+      {detail.stayingGuests.length ? (
+        <section className="flex flex-col gap-3">
+          <h3 className="font-medium">Huéspedes registrados</h3>
+          <ul aria-label="Huéspedes registrados" className="flex flex-col">
+            {detail.stayingGuests.map((guest, index) => (
+              <li key={guest.id}>
+                {index > 0 && <Separator />}
+                <div className="flex items-center justify-between gap-3 py-3">
+                  <div className="flex min-w-0 flex-col gap-1">
+                    <p className="font-medium wrap-anywhere">
+                      {guest.fullName}
+                    </p>
+                    <p className="text-xs wrap-anywhere text-muted-foreground">
+                      {[
+                        guest.reservationRoomId
+                          ? `Hab. ${roomLabel(guest.reservationRoomId)}`
+                          : "Sin habitación indicada",
+                        [guest.documentType, guest.documentNumber]
+                          .filter(Boolean)
+                          .join(" "),
+                      ]
+                        .filter(Boolean)
+                        .join(" · ")}
+                    </p>
+                  </div>
+                  <DropdownMenu>
+                    <DropdownMenuTrigger
+                      render={
+                        <Button
+                          type="button"
+                          size="icon-sm"
+                          variant="ghost"
+                          disabled={disabled || dirty}
+                          aria-label={`Acciones de ${guest.fullName}`}
+                        />
+                      }
+                    >
+                      <EllipsisIcon />
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent>
+                      <DropdownMenuGroup>
+                        <DropdownMenuItem
+                          onClick={() => {
+                            setAddDraft(draft)
+                            setAddBaseline(baseline)
+                            setDraft({ ...guest })
+                            setBaseline({ ...guest })
+                            setEditing(true)
+                            setAttempted(false)
+                            setError("")
+                          }}
+                        >
+                          Editar
+                        </DropdownMenuItem>
+                        <DropdownMenuItem
+                          variant="destructive"
+                          onClick={() => void remove(guest.id)}
+                        >
+                          Eliminar
+                        </DropdownMenuItem>
+                      </DropdownMenuGroup>
+                    </DropdownMenuContent>
+                  </DropdownMenu>
+                </div>
+              </li>
+            ))}
+          </ul>
+        </section>
+      ) : (
         <Empty>
           <EmptyHeader>
             <EmptyTitle>Sin huéspedes registrados</EmptyTitle>
@@ -1506,107 +1724,6 @@ function GuestFields({
           </EmptyHeader>
         </Empty>
       )}
-      {guests.map((g, i) => (
-        <section key={g.id} className="flex flex-col gap-3">
-          <div className="flex items-center justify-between gap-2">
-            <h4 className="font-medium">Huésped {i + 1}</h4>
-            <Button
-              type="button"
-              variant="ghost"
-              size="icon-sm"
-              aria-label={`Quitar huésped ${i + 1}`}
-              onClick={() => onChange(guests.filter((p) => p.id !== g.id))}
-            >
-              <XIcon />
-            </Button>
-          </div>
-          <FieldGroup className="grid grid-cols-2 gap-3 sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_110px]">
-            <TextField
-              label="Nombre completo"
-              required
-              value={g.fullName}
-              onChange={(fullName) => patch(g.id, { fullName })}
-            />
-            <ChoiceField
-              label="Hab. del huésped"
-              value={g.reservationRoomId ?? "none"}
-              onChange={(v) =>
-                patch(g.id, { reservationRoomId: v === "none" ? null : v })
-              }
-              options={[
-                { value: "none", label: "Sin indicar" },
-                ...detail.rooms.map((l, n) => ({
-                  value: l.id,
-                  label: `${l.roomNumber ?? `Sin asignar · ${n + 1}`}${l.status === "cancelled" ? " · Cancelada" : ""}`,
-                })),
-              ]}
-            />
-          </FieldGroup>
-          <details>
-            <summary className="cursor-pointer text-xs text-muted-foreground">
-              Más datos
-            </summary>
-            <FieldGroup className="mt-3 grid grid-cols-2 gap-3">
-              <ChoiceField
-                label="Documento"
-                value={g.documentType ?? "none"}
-                onChange={(v) =>
-                  patch(g.id, { documentType: v === "none" ? null : v })
-                }
-                options={[
-                  { value: "none", label: "Sin indicar" },
-                  { value: "DNI", label: "DNI" },
-                  { value: "Pasaporte", label: "Pasaporte" },
-                  { value: "Otro", label: "Otro" },
-                ]}
-              />
-              <TextField
-                label="Número de documento"
-                value={g.documentNumber ?? ""}
-                onChange={(documentNumber) => patch(g.id, { documentNumber })}
-              />
-              <TextField
-                label="Email del huésped"
-                type="email"
-                value={g.email ?? ""}
-                onChange={(email) => patch(g.id, { email })}
-              />
-              <TextField
-                label="Teléfono del huésped"
-                type="tel"
-                placeholder="+51…"
-                value={g.phone ?? ""}
-                onChange={(phone) => patch(g.id, { phone })}
-              />
-            </FieldGroup>
-          </details>
-          <Separator />
-        </section>
-      ))}
-      <Button
-        type="button"
-        variant="outline"
-        className="w-fit"
-        disabled={guests.length >= 200}
-        onClick={() =>
-          onChange([
-            ...guests,
-            {
-              id: crypto.randomUUID(),
-              reservationRoomId:
-                detail.rooms.length === 1 ? detail.rooms[0].id : null,
-              fullName: "",
-              email: null,
-              phone: null,
-              documentType: null,
-              documentNumber: null,
-            },
-          ])
-        }
-      >
-        <PlusIcon data-icon="inline-start" />
-        Agregar huésped
-      </Button>
     </>
   )
 }
@@ -1626,64 +1743,71 @@ function PaymentForm({
 }: {
   detail: ReservationDetail
   disabled: boolean
-  onReady: (title: string, actions: WorkflowAction[]) => void
+  onReady: (title: string, actions: WorkflowAction[]) => Promise<void>
   onDirtyChange: (dirty: boolean) => void
 }) {
-  const [amount, setAmount] = useState(
-    detail.balanceCents > 0 ? formatMajor(detail.balanceCents) : ""
-  )
+  const [enteredAmount, setEnteredAmount] = useState<string | null>(null)
+  const amount =
+    enteredAmount ??
+    (detail.balanceCents > 0 ? formatMajor(detail.balanceCents) : "")
   const [method, setMethod] = useState("cash")
-  const [date, setDate] = useState(today())
+  const [date, setDate] = useState(paymentToday())
   const [reference, setReference] = useState("")
   const [error, setError] = useState("")
   const initial = useRef({ amount, date })
   useEffect(() => {
     onDirtyChange(
-      amount !== initial.current.amount ||
+      (enteredAmount !== null && amount !== initial.current.amount) ||
         date !== initial.current.date ||
         method !== "cash" ||
         !!reference
     )
-  }, [amount, date, method, reference, onDirtyChange])
-  function reviewPayment() {
+  }, [amount, enteredAmount, date, method, reference, onDirtyChange])
+  async function reviewPayment() {
     setError("")
     const amountCents = parseMajorToCents(amount)
     if (!amountCents || amountCents <= 0) {
       setError("Introduce un importe positivo con hasta dos decimales.")
       return
     }
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || date > today()) {
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || date > paymentToday()) {
       setError("Indica una fecha de pago válida, hasta hoy.")
       return
     }
-    onReady("Revisar pago", [
-      {
-        type: "financial",
-        entry: {
-          kind: "payment",
-          amountCents,
-          method: method as FinancialInput["method"],
-          paymentDate: date,
-          ...(reference.trim() ? { reference: reference.trim() } : {}),
+    try {
+      await onReady("Pago registrado", [
+        {
+          type: "financial",
+          entry: {
+            kind: "payment",
+            amountCents,
+            method: method as FinancialInput["method"],
+            paymentDate: date,
+            ...(reference.trim()
+              ? { reference: reference.trim().toUpperCase() }
+              : {}),
+          },
         },
-      },
-    ])
-    initial.current = { amount: "", date }
-    setAmount("")
-    setReference("")
-    setMethod("cash")
+      ])
+      initial.current = { amount: "", date }
+      setEnteredAmount("")
+      setReference("")
+      setMethod("cash")
+    } catch (cause) {
+      setError(
+        cause instanceof Error ? cause.message : "No se pudo guardar el pago."
+      )
+    }
   }
   return (
     <section className="flex flex-col gap-3">
-      <h3 className="font-medium">Registrar pago</h3>
       <fieldset disabled={disabled} className="flex min-w-0 flex-col gap-3">
         <FieldGroup className="grid grid-cols-2 gap-3">
           <TextField
             label="Importe S/"
-            required
             value={amount}
             placeholder="0.00"
-            onChange={setAmount}
+            onChange={setEnteredAmount}
             disabled={disabled}
           />
           <ChoiceField
@@ -1696,8 +1820,7 @@ function PaymentForm({
           <TextField
             label="Fecha del pago"
             type="date"
-            required
-            max={today()}
+            max={paymentToday()}
             value={date}
             onChange={setDate}
             disabled={disabled}
@@ -1706,7 +1829,7 @@ function PaymentForm({
             label="Referencia · Opcional"
             value={reference}
             placeholder="N.º de operación o comprobante"
-            onChange={setReference}
+            onChange={(value) => setReference(value.toUpperCase())}
             disabled={disabled}
           />
         </FieldGroup>
@@ -1714,7 +1837,7 @@ function PaymentForm({
           type="button"
           className="w-fit"
           disabled={disabled}
-          onClick={reviewPayment}
+          onClick={() => void reviewPayment()}
         >
           Agregar pago
         </Button>
@@ -1724,20 +1847,25 @@ function PaymentForm({
   )
 }
 
-function FinancialList({
+function PaymentList({
   detail,
   disabled,
-  onCorrect,
+  onEdit,
+  onDelete,
 }: {
   detail: ReservationDetail
   disabled: boolean
-  onCorrect: (entry: FinancialEntry) => void
+  onEdit: (entry: FinancialEntry) => void
+  onDelete: (entry: FinancialEntry) => void
 }) {
-  if (!detail.financialEntries.length)
+  const entries = detail.financialEntries.filter(
+    (e) => !e.voidedAt && (e.kind === "payment" || e.kind === "legacy_signed")
+  )
+  if (!entries.length)
     return (
       <Empty>
         <EmptyHeader>
-          <EmptyTitle>Sin movimientos</EmptyTitle>
+          <EmptyTitle>Sin pagos registrados</EmptyTitle>
           <EmptyDescription>
             Los pagos registrados aparecerán aquí.
           </EmptyDescription>
@@ -1746,32 +1874,43 @@ function FinancialList({
     )
   return (
     <section className="flex flex-col gap-3">
-      <h3 className="font-medium">Movimientos</h3>
-      {[...detail.financialEntries]
-        .sort((a, b) => b.createdAt.localeCompare(a.createdAt))
-        .map((e) => (
-          <article key={e.id} className="flex flex-col gap-2 border-b pb-3">
-            <div className="flex items-start justify-between gap-3">
-              <div className="flex min-w-0 flex-col gap-1">
-                <p>
-                  {labels[e.kind]}
-                  {e.method
-                    ? ` · ${paymentMethods.find((m) => m.value === e.method)?.label ?? e.method}`
-                    : ""}
-                </p>
-                <p className="text-xs text-muted-foreground">
-                  {e.paymentDate ?? e.occurredAt.slice(0, 10)}
-                  {e.voidedAt ? " · Anulado" : ""}
-                </p>
-                <p className="text-xs break-words text-muted-foreground">
-                  {e.reference || "Sin referencia"}
-                </p>
-              </div>
-              <div className="flex items-center gap-2">
-                <span className="tabular-nums">
-                  {formatMoney(e.amountCents)}
-                </span>
-                {!e.voidedAt && e.kind !== "legacy_discount_excluded" && (
+      <h3 className="font-medium">Pagos registrados</h3>
+      <Table aria-label="Pagos registrados">
+        <TableHeader>
+          <TableRow>
+            <TableHead>Fecha</TableHead>
+            <TableHead>Método</TableHead>
+            <TableHead>Referencia</TableHead>
+            <TableHead className="text-right">Importe</TableHead>
+            <TableHead className="w-10">
+              <span className="sr-only">Acciones</span>
+            </TableHead>
+          </TableRow>
+        </TableHeader>
+        <TableBody>
+          {[...entries]
+            .sort((a, b) => b.createdAt.localeCompare(a.createdAt))
+            .map((e) => (
+              <TableRow key={e.id}>
+                <TableCell>
+                  {stayDate(
+                    e.paymentDate ?? e.occurredAt.slice(0, 10),
+                    "d MMM yyyy"
+                  )}
+                </TableCell>
+                <TableCell>
+                  {paymentMethods.find((method) => method.value === e.method)
+                    ?.label ??
+                    e.method ??
+                    "—"}
+                </TableCell>
+                <TableCell className="max-w-40 break-words whitespace-normal">
+                  {e.reference?.toUpperCase() || "—"}
+                </TableCell>
+                <TableCell className="text-right tabular-nums">
+                  {formatMoney(e.amountCents, detail.currency)}
+                </TableCell>
+                <TableCell className="text-right">
                   <DropdownMenu>
                     <DropdownMenuTrigger
                       render={
@@ -1780,7 +1919,7 @@ function FinancialList({
                           size="icon-sm"
                           variant="ghost"
                           disabled={disabled}
-                          aria-label={`Acciones de ${labels[e.kind]} ${e.paymentDate ?? e.occurredAt.slice(0, 10)}`}
+                          aria-label={`Acciones del pago de ${formatMoney(e.amountCents, detail.currency)} del ${e.paymentDate ?? e.occurredAt.slice(0, 10)}`}
                         />
                       }
                     >
@@ -1788,110 +1927,24 @@ function FinancialList({
                     </DropdownMenuTrigger>
                     <DropdownMenuContent>
                       <DropdownMenuGroup>
-                        <DropdownMenuItem onClick={() => onCorrect(e)}>
-                          Corregir movimiento
+                        <DropdownMenuItem onClick={() => onEdit(e)}>
+                          Editar
+                        </DropdownMenuItem>
+                        <DropdownMenuItem
+                          variant="destructive"
+                          onClick={() => onDelete(e)}
+                        >
+                          Eliminar
                         </DropdownMenuItem>
                       </DropdownMenuGroup>
                     </DropdownMenuContent>
                   </DropdownMenu>
-                )}
-              </div>
-            </div>
-            {e.reason && (
-              <p className="text-xs text-muted-foreground">{e.reason}</p>
-            )}
-            {e.voidedAt && (
-              <p className="text-xs text-muted-foreground">
-                Corrección: {e.correctionReason}
-              </p>
-            )}
-            {["discount", "waiver"].includes(e.kind) && (
-              <p className="text-xs text-muted-foreground">
-                Aplicado: {formatMoney(e.appliedCents)}
-              </p>
-            )}
-          </article>
-        ))}
+                </TableCell>
+              </TableRow>
+            ))}
+        </TableBody>
+      </Table>
     </section>
-  )
-}
-
-function ReservationHistory({ detail }: { detail: ReservationDetail }) {
-  const physical = useRooms()
-  const roomName = (id: string | null) =>
-    physical.data?.find((r) => r.id === id)?.number ??
-    (id ? "Habitación no disponible" : "Sin asignar")
-  return (
-    <>
-      <h3 className="font-medium">Estancias y precios guardados</h3>
-      {detail.rooms.map((l, i) => (
-        <article key={l.id} className="flex flex-col gap-2 border-b pb-4">
-          <h4 className="font-medium">
-            {l.roomTypeName} · Hab. {l.roomNumber ?? i + 1}
-          </h4>
-          <p>
-            Reserva original: {l.originalCheckIn ?? "No disponible"} al{" "}
-            {l.originalCheckOut ?? "No disponible"}
-          </p>
-          <p>
-            Fechas actuales: {l.checkIn} al {l.checkOut}
-          </p>
-          <p>Llegada real: {l.actualArrival ?? "No registrada"}</p>
-          <p>Salida real: {l.actualDeparture ?? "No registrada"}</p>
-          {l.cancellationReason && <p>Motivo: {l.cancellationReason}</p>}
-          <details>
-            <summary className="cursor-pointer">Precios por noche</summary>
-            <div className="mt-2 flex flex-col gap-1">
-              {l.nights.map((n) => (
-                <p key={n.date}>
-                  {n.date} · {formatMoney(n.priceCents)}
-                </p>
-              ))}
-            </div>
-          </details>
-        </article>
-      ))}
-      <h3 className="font-medium">Historial de la reserva</h3>
-      {!detail.history.length && (
-        <p className="text-muted-foreground">
-          No hay cambios registrados. Las reservas anteriores pueden no tener
-          historial.
-        </p>
-      )}
-      {[...detail.history]
-        .sort((a, b) => b.createdAt.localeCompare(a.createdAt))
-        .map((e) => (
-          <article key={e.id} className="flex flex-col gap-2 border-l-2 pl-3">
-            <h4 className="font-medium">
-              {e.kind
-                .split(", ")
-                .map((k) => eventLabels[k] ?? k)
-                .join(" · ")}
-            </h4>
-            <p className="text-xs text-muted-foreground">{e.createdAt}</p>
-            {e.reason && <p>{e.reason}</p>}
-            {e.before?.lines?.map((before) => {
-              const after = !Array.isArray(e.after)
-                ? e.after?.lines?.find((l) => l.id === before.id)
-                : undefined
-              return after && before.roomId !== after.roomId ? (
-                <p key={before.id}>
-                  Asignación: {roomName(before.roomId)} →{" "}
-                  {roomName(after.roomId)}
-                </p>
-              ) : null
-            })}
-            <details>
-              <summary className="cursor-pointer text-xs">
-                Ver datos del cambio
-              </summary>
-              <pre className="mt-2 max-h-80 overflow-auto bg-muted p-3 text-xs break-all whitespace-pre-wrap">
-                {JSON.stringify({ antes: e.before, después: e.after }, null, 2)}
-              </pre>
-            </details>
-          </article>
-        ))}
-    </>
   )
 }
 
@@ -1900,37 +1953,44 @@ function ActionForm({
   intent,
   onClose,
   onReady,
+  onSaved,
 }: {
   detail: ReservationDetail
   intent: Intent
   onClose: () => void
-  onReady: (title: string, actions: WorkflowAction[]) => void
+  onReady: (title: string, actions: WorkflowAction[]) => Promise<void>
+  onSaved: (detail: ReservationDetail) => void
 }) {
-  const rooms = useRooms()
-  const entry = intent.type === "correction" ? intent.entry : null
-  const confirmationId = useId()
-  const initialKind =
+  const entry = "entry" in intent ? intent.entry : null
+  const kind: FinancialInput["kind"] =
     intent.type === "financial"
       ? intent.kind
-      : entry?.kind === "legacy_signed" ||
-          entry?.kind === "legacy_discount_excluded"
-        ? "payment"
-        : (entry?.kind ?? "payment")
-  const [kind, setKind] = useState<FinancialInput["kind"]>(initialKind)
+      : entry?.kind === "discount"
+        ? "discount"
+        : "payment"
   const [amount, setAmount] = useState(
-    formatMajor(
-      entry?.amountCents && entry.amountCents > 0
-        ? entry.amountCents
-        : initialKind === "waiver"
-          ? Math.max(0, detail.balanceCents)
-          : initialKind === "refund"
-            ? detail.creditCents
-            : Math.max(0, detail.balanceCents)
-    )
+    entry ? formatMajor(entry.amountCents) : ""
   )
-  const [reason, setReason] = useState("")
+  const [method, setMethod] = useState<string>(entry?.method ?? "cash")
+  const [date, setDate] = useState(
+    entry?.paymentDate ?? entry?.occurredAt.slice(0, 10) ?? paymentToday()
+  )
+  const [reference, setReference] = useState(
+    entry?.reference?.toUpperCase() ?? ""
+  )
+  const [reason, setReason] = useState(entry?.reason ?? "")
+  const [error, setError] = useState("")
+  const [saving, setSaving] = useState(false)
+  const [leaving, setLeaving] = useState(false)
+  const [initial] = useState(() =>
+    JSON.stringify({ amount, method, date, reference, reason })
+  )
+  const changed =
+    JSON.stringify({ amount, method, date, reference, reason }) !== initial
   const isCancellation =
     intent.type === "cancel" || intent.type === "cancel-room"
+  const deleting = intent.type === "delete-financial"
+  const confirmation = isCancellation || deleting
   const cancellationLineId =
     intent.type === "cancel-room" ? intent.lineId : null
   const cancellationCommand = useMemo<WorkflowCommand>(
@@ -1961,106 +2021,28 @@ function ActionForm({
     refetchOnWindowFocus: false,
   })
   const cancellation = useWorkflowCommand()
-
-  const [entryReason, setEntryReason] = useState(entry?.reason ?? "")
-  const [method, setMethod] = useState<string>(entry?.method ?? "cash")
-  const [date, setDate] = useState(
-    entry?.paymentDate ?? entry?.occurredAt.slice(0, 10) ?? today()
-  )
-  const [reference, setReference] = useState(entry?.reference ?? "")
-  const [replace, setReplace] = useState("replace")
-  const [roomId, setRoomId] = useState("")
-  const [confirmed, setConfirmed] = useState(false)
-  const [error, setError] = useState("")
-  const line =
-    "lineId" in intent ? detail.rooms.find((l) => l.id === intent.lineId) : null
-  const title =
-    intent.type === "financial"
-      ? {
-          payment: "Registrar pago",
-          refund: "Registrar devolución",
-          discount: "Aplicar descuento",
-          waiver: "Condonar saldo",
-        }[kind]
-      : intent.type === "correction"
-        ? "Corregir movimiento"
-        : {
-            move: "Mover habitación ahora",
-            "undo-check-in": "Corregir llegada por error",
-            "cancel-room": "Cancelar habitación",
-            "no-show": "No se presentó",
-            cancel: "Cancelar reserva",
-          }[intent.type]
+  const title = isCancellation
+    ? intent.type === "cancel-room"
+      ? "Cancelar habitación"
+      : "Cancelar reserva"
+    : deleting
+      ? kind === "discount"
+        ? "Eliminar descuento"
+        : "Eliminar pago"
+      : intent.type === "edit-financial"
+        ? kind === "discount"
+          ? "Editar descuento"
+          : "Editar pago"
+        : "Agregar descuento"
+  function close() {
+    if (cancellation.isPending || saving) return
+    if (changed && !confirmation) setLeaving(true)
+    else onClose()
+  }
   async function submit() {
     setError("")
-    if (
-      intent.type !== "financial" &&
-      intent.type !== "cancel" &&
-      intent.type !== "cancel-room" &&
-      !reason.trim() &&
-      intent.type !== "move"
-    ) {
-      setError("Escribe un motivo.")
-      return
-    }
-    let action: WorkflowAction
-    if (intent.type === "financial" || intent.type === "correction") {
-      const cents = parseMajorToCents(amount)
+    if (isCancellation) {
       if (
-        (intent.type === "financial" || replace === "replace") &&
-        (!cents || cents <= 0)
-      ) {
-        setError("Introduce un importe positivo con hasta dos decimales.")
-        return
-      }
-      const r = intent.type === "correction" ? entryReason : reason
-      if (
-        (intent.type === "financial" || replace === "replace") &&
-        (!/^\d{4}-\d{2}-\d{2}$/.test(date) || date > today())
-      ) {
-        setError("Indica una fecha válida, hasta hoy.")
-        return
-      }
-      if (
-        (intent.type === "financial" || replace === "replace") &&
-        kind !== "payment" &&
-        !r.trim()
-      ) {
-        setError("Escribe el motivo del movimiento.")
-        return
-      }
-      const financial: FinancialInput = {
-        kind,
-        amountCents: cents ?? 0,
-        method: method as FinancialInput["method"],
-        ...(r.trim() ? { reason: r.trim() } : {}),
-        ...(kind === "payment"
-          ? { paymentDate: date }
-          : { occurredAt: `${date}T00:00:00.000Z` }),
-        ...(reference.trim() ? { reference: reference.trim() } : {}),
-      }
-      action =
-        intent.type === "financial"
-          ? { type: "financial", entry: financial }
-          : {
-              type: "correct-financial",
-              entryId: intent.entry.id,
-              reason,
-              ...(replace === "replace" ? { replacement: financial } : {}),
-            }
-    } else if (intent.type === "move")
-      action = { type: "move", lineId: intent.lineId, roomId }
-    else if (intent.type === "undo-check-in") {
-      if (!confirmed) return
-      action = {
-        type: "undo-check-in",
-        lineId: intent.lineId,
-        reason,
-        guestsNotArrived: true,
-      }
-    } else if (isCancellation) {
-      if (
-        (intent.type === "cancel" && !confirmed) ||
         !cancellationPreview.data ||
         cancellationPreview.isFetching ||
         cancellationPreview.error ||
@@ -2068,10 +2050,11 @@ function ActionForm({
       )
         return
       try {
-        await cancellation.mutateAsync({
+        const saved = await cancellation.mutateAsync({
           id: detail.id,
           command: cancellationCommand,
         })
+        onSaved(saved)
         toast.add({
           title:
             intent.type === "cancel-room"
@@ -2082,229 +2065,178 @@ function ActionForm({
         onClose()
       } catch (cause) {
         setError(
-          cause instanceof Error
-            ? cause.message
-            : "No se pudo cancelar la reserva."
+          cause instanceof Error ? cause.message : "No se pudo cancelar."
         )
       }
       return
-    } else
-      action = {
-        type: intent.type as "cancel-room" | "no-show",
-        lineId: intent.lineId,
-        reason,
-      }
-    onReady(title, [action])
+    }
+    if (deleting && entry) {
+      await commit([{ type: "delete-financial", entryId: entry.id }])
+      return
+    }
+    const amountCents = parseMajorToCents(amount)
+    if (!amountCents || amountCents <= 0) {
+      setError("Introduce un importe positivo con hasta dos decimales.")
+      return
+    }
+    if (
+      kind === "payment" &&
+      (!/^\d{4}-\d{2}-\d{2}$/.test(date) || date > paymentToday())
+    ) {
+      setError("Indica una fecha de pago válida, hasta hoy.")
+      return
+    }
+    const input: FinancialInput = {
+      kind,
+      amountCents,
+      ...(kind === "payment"
+        ? { method: method as FinancialInput["method"], paymentDate: date }
+        : {}),
+      ...(reference.trim()
+        ? { reference: reference.trim().toUpperCase() }
+        : {}),
+      ...(reason.trim() ? { reason: reason.trim() } : {}),
+    }
+    await commit([
+      intent.type === "edit-financial" && entry
+        ? { type: "edit-financial", entryId: entry.id, entry: input }
+        : { type: "financial", entry: input },
+    ])
   }
-  const financial = intent.type === "financial" || intent.type === "correction"
-  const Root = isCancellation ? AlertDialog : Dialog
-  const Content = isCancellation ? AlertDialogContent : DialogContent
-  const Header = isCancellation ? AlertDialogHeader : DialogHeader
-  const Title = isCancellation ? AlertDialogTitle : DialogTitle
-  const Description = isCancellation
-    ? AlertDialogDescription
-    : DialogDescription
-  const Footer = isCancellation ? AlertDialogFooter : "div"
-  const CancelButton = isCancellation ? AlertDialogCancel : Button
-  const ConfirmButton = isCancellation ? AlertDialogAction : Button
+  async function commit(actions: WorkflowAction[]) {
+    if (saving) return
+    setSaving(true)
+    try {
+      await onReady(title, actions)
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "No se pudo guardar.")
+    } finally {
+      setSaving(false)
+    }
+  }
+  const Root = confirmation ? AlertDialog : Dialog
+  const Content = confirmation ? AlertDialogContent : DialogContent
+  const Header = confirmation ? AlertDialogHeader : DialogHeader
+  const Title = confirmation ? AlertDialogTitle : DialogTitle
+  const Description = confirmation ? AlertDialogDescription : DialogDescription
+  const Footer = confirmation ? AlertDialogFooter : "div"
+  const CancelButton = confirmation ? AlertDialogCancel : Button
+  const ConfirmButton = confirmation ? AlertDialogAction : Button
   return (
-    <Root open onOpenChange={(v) => !v && !cancellation.isPending && onClose()}>
-      <Content
-        className="max-h-[90svh] overflow-y-auto sm:max-w-lg"
-        {...(!isCancellation
-          ? { showCloseButton: !cancellation.isPending }
-          : {})}
-      >
-        <Header>
-          <Title>{title}</Title>
-          <Description>
-            {intent.type === "cancel"
-              ? "Se cancelarán todas las habitaciones y sus cargos, incluso las noches utilizadas. Los pagos quedarán como crédito. Confirmar aplicará el cambio inmediatamente. Otros cambios sin guardar se descartarán. No devuelve dinero."
-              : intent.type === "correction"
-                ? "El original quedará visible como anulado. Registra lo que realmente ocurrió; esta corrección no mueve dinero."
-                : intent.type === "move"
-                  ? "El cambio se registra ahora. Se conserva el precio y la habitación anterior queda libre para el resto de la estancia."
-                  : intent.type === "cancel-room"
-                    ? "Se eliminarán los cargos de esta habitación y se conservará su estancia real. Confirmar aplicará el cambio inmediatamente. Otros cambios sin guardar se descartarán."
-                    : "Revisa los datos y el saldo antes de confirmar."}
-          </Description>
-        </Header>
-        <FieldGroup>
-          {intent.type === "correction" && (
-            <ChoiceField
-              label="Corrección"
-              value={replace}
-              onChange={setReplace}
-              options={[
-                { value: "replace", label: "Anular y reemplazar" },
-                { value: "void", label: "Anular sin reemplazo" },
-              ]}
-            />
-          )}
-          {financial &&
-            (intent.type !== "correction" || replace === "replace") && (
-              <>
-                {entry?.kind === "legacy_signed" && (
-                  <ChoiceField
-                    label="Tipo del movimiento real"
-                    value={kind}
-                    onChange={(v) => setKind(v as FinancialInput["kind"])}
-                    options={[
-                      { value: "payment", label: "Pago" },
-                      { value: "refund", label: "Devolución" },
-                    ]}
-                  />
+    <>
+      <Root open onOpenChange={(open) => !open && close()}>
+        <Content className="max-h-[90svh] overflow-y-auto sm:max-w-lg">
+          <Header>
+            <Title>{title}</Title>
+            <Description>
+              {isCancellation
+                ? "Se liberará la disponibilidad y se quitarán los cargos. Los pagos se conservarán como saldo a favor si no quedan otras habitaciones con cargos. Confirmar aplica la cancelación y descarta otros cambios sin guardar."
+                : deleting
+                  ? `Se eliminará ${kind === "discount" ? "el descuento" : "el pago"} de ${formatMoney(entry?.amountCents ?? 0)} al confirmar.`
+                  : "El cambio se guardará al confirmar. Los cambios de Detalles se guardan por separado."}
+            </Description>
+          </Header>
+          {!deleting && (
+            <fieldset disabled={saving || cancellation.isPending}>
+              <FieldGroup>
+                {!isCancellation && (
+                  <>
+                    <TextField
+                      label="Importe S/"
+                      value={amount}
+                      placeholder="0.00"
+                      onChange={setAmount}
+                    />
+                    {kind === "payment" && (
+                      <>
+                        <ChoiceField
+                          label="Método"
+                          value={method}
+                          onChange={setMethod}
+                          options={paymentMethods}
+                        />
+                        <TextField
+                          label="Fecha del pago"
+                          type="date"
+                          required
+                          max={paymentToday()}
+                          value={date}
+                          onChange={setDate}
+                        />
+                        <TextField
+                          label="Referencia · Opcional"
+                          value={reference}
+                          onChange={(value) =>
+                            setReference(value.toUpperCase())
+                          }
+                        />
+                      </>
+                    )}
+                  </>
                 )}
-                <TextField
-                  label="Importe S/"
-                  value={amount}
-                  onChange={setAmount}
-                />
-                {["payment", "refund"].includes(kind) && (
-                  <ChoiceField
-                    label="Método"
-                    value={method}
-                    onChange={setMethod}
-                    options={[
-                      { value: "cash", label: "Efectivo" },
-                      { value: "card", label: "Tarjeta" },
-                      { value: "transfer", label: "Transferencia" },
-                      { value: "yape", label: "Yape" },
-                      { value: "other", label: "Otro" },
-                    ]}
-                  />
-                )}
-                <TextField
-                  label={
-                    kind === "payment"
-                      ? "Fecha del pago"
-                      : "Fecha del movimiento"
-                  }
-                  type="date"
-                  required
-                  max={today()}
-                  value={date}
-                  onChange={setDate}
-                />
-                <TextField
-                  label="Referencia · Opcional"
-                  value={reference}
-                  onChange={setReference}
-                />
-                {intent.type === "correction" && (
+                {(isCancellation || kind === "discount") && (
                   <TextField
-                    label="Motivo del movimiento corregido"
-                    value={entryReason}
-                    onChange={setEntryReason}
+                    label={
+                      isCancellation ? "Motivo · Opcional" : "Nota · Opcional"
+                    }
+                    value={reason}
+                    disabled={cancellation.isPending || saving}
+                    onChange={setReason}
                   />
                 )}
-              </>
-            )}
-          {intent.type === "move" ? (
-            <ChoiceField
-              label="Nueva habitación del mismo tipo"
-              value={roomId}
-              onChange={setRoomId}
-              options={(rooms.data ?? [])
-                .filter(
-                  (r) =>
-                    r.roomTypeId === line?.roomTypeId && r.id !== line?.roomId
-                )
-                .map((r) => ({ value: r.id, label: r.number }))}
-            />
-          ) : (
-            <TextField
-              label={
-                intent.type === "correction"
-                  ? "Motivo de la corrección"
-                  : intent.type === "cancel" || intent.type === "cancel-room"
-                    ? "Motivo (opcional)"
-                    : kind === "payment" && intent.type === "financial"
-                      ? "Nota opcional"
-                      : "Motivo obligatorio"
+              </FieldGroup>
+            </fieldset>
+          )}
+          {isCancellation &&
+            (cancellationPreview.data ? (
+              <WorkflowBill bill={cancellationPreview.data} />
+            ) : cancellationPreview.error ? (
+              <FieldError>{cancellationPreview.error.message}</FieldError>
+            ) : (
+              <p role="status" className="text-muted-foreground">
+                Calculando…
+              </p>
+            ))}
+          {error && <FieldError role="alert">{error}</FieldError>}
+          <Footer className="flex justify-end gap-2">
+            <CancelButton
+              type="button"
+              variant="outline"
+              disabled={cancellation.isPending || saving}
+              onClick={close}
+            >
+              Volver
+            </CancelButton>
+            <ConfirmButton
+              type="button"
+              variant={confirmation ? "destructive" : "default"}
+              onClick={() => void submit()}
+              disabled={
+                cancellation.isPending ||
+                saving ||
+                (isCancellation &&
+                  (!cancellationPreview.data ||
+                    cancellationPreview.isFetching ||
+                    !!cancellationPreview.error))
               }
-              value={reason}
-              disabled={cancellation.isPending}
-              onChange={setReason}
-            />
-          )}
-          {intent.type === "undo-check-in" && (
-            <Field orientation="horizontal">
-              <Checkbox
-                id={confirmationId}
-                disabled={cancellation.isPending}
-                checked={confirmed}
-                onCheckedChange={setConfirmed}
-              />
-              <FieldLabel htmlFor={confirmationId}>
-                Los huéspedes no llegaron. La entrada fue un error de registro.
-              </FieldLabel>
-            </Field>
-          )}
-          {intent.type === "cancel" && (
-            <Field orientation="horizontal">
-              <Checkbox
-                id={confirmationId}
-                disabled={cancellation.isPending}
-                checked={confirmed}
-                onCheckedChange={setConfirmed}
-              />
-              <FieldLabel htmlFor={confirmationId}>
-                Confirmo la cancelación de toda la reserva.
-              </FieldLabel>
-            </Field>
-          )}
-          {intent.type === "correction" && entry?.kind === "refund" && (
-            <p>
-              El dinero que realmente se devolvió debe permanecer registrado. No
-              anules una devolución real para aumentar el crédito.
-            </p>
-          )}
-        </FieldGroup>
-        {isCancellation &&
-          (cancellationPreview.data ? (
-            <WorkflowBill bill={cancellationPreview.data} />
-          ) : cancellationPreview.error ? (
-            <FieldError>{cancellationPreview.error.message}</FieldError>
-          ) : (
-            <p role="status" className="text-muted-foreground">
-              Calculando cancelación…
-            </p>
-          ))}
-        <FieldError>{error}</FieldError>
-        <Footer className="flex justify-end gap-2">
-          <CancelButton
-            type="button"
-            variant="outline"
-            disabled={cancellation.isPending}
-            onClick={onClose}
-          >
-            Volver
-          </CancelButton>
-          <ConfirmButton
-            type="button"
-            variant={isCancellation ? "destructive" : "default"}
-            onClick={() => void submit()}
-            disabled={
-              cancellation.isPending ||
-              (isCancellation &&
-                (!cancellationPreview.data ||
-                  cancellationPreview.isFetching ||
-                  !!cancellationPreview.error)) ||
-              (["cancel", "undo-check-in"].includes(intent.type) &&
-                !confirmed) ||
-              (intent.type === "move" && !roomId)
-            }
-          >
-            {cancellation.isPending
-              ? "Cancelando…"
-              : isCancellation
-                ? "Confirmar"
-                : "Aplicar"}
-          </ConfirmButton>
-        </Footer>
-      </Content>
-    </Root>
+            >
+              {saving
+                ? "Guardando…"
+                : cancellation.isPending
+                  ? "Cancelando…"
+                  : deleting
+                    ? "Eliminar"
+                    : isCancellation
+                      ? "Confirmar"
+                      : "Guardar"}
+            </ConfirmButton>
+          </Footer>
+        </Content>
+      </Root>
+      {leaving && (
+        <DiscardChanges onStay={() => setLeaving(false)} onLeave={onClose} />
+      )}
+    </>
   )
 }
 

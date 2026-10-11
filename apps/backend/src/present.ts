@@ -21,7 +21,7 @@ type Payment = typeof payments.$inferSelect
 type RoomType = typeof roomTypes.$inferSelect
 type Room = typeof rooms.$inferSelect
 
-const unbilled = new Set(['cancelled', 'no_show'])
+const unbilled = new Set(['cancelled'])
 
 export function presentGuest(guest: Guest) {
   return {
@@ -75,14 +75,14 @@ export function presentReservation(input: {
       status: line.status,
       subtotalCents: lineTotal,
       discountCents: 0,
-      totalCents: ['cancelled', 'no_show'].includes(line.status) ? 0 : lineTotal,
+      totalCents: line.status === 'cancelled' ? 0 : lineTotal,
       nights: nights.map((night) => ({ date: night.date, priceCents: night.priceCents })),
     }
   })
 
   const billable = roomsOut.filter((line) => !unbilled.has(line.status))
   const subtotalCents = billable.reduce((sum, line) => sum + line.subtotalCents, 0)
-  const totals = bill(subtotalCents, billable.length ? input.entries : [])
+  const totals = bill(subtotalCents, input.entries, { cancelled: billable.length === 0 })
   const { applied, ...financialTotals } = totals
 
   return {

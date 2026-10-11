@@ -36,15 +36,12 @@ const fail = (message: string): never => {
 }
 export const charges = (state: State) =>
   state.lines
-    .filter((l) => l.status !== 'cancelled' && l.status !== 'no_show')
+    .filter((l) => l.status !== 'cancelled')
     .reduce((sum, l) => sum + l.nights.reduce((s, n) => s + n.priceCents, 0), 0)
 export const totals = (state: State) =>
-  bill(
-    charges(state),
-    state.lines.some((l) => l.status !== 'cancelled' && l.status !== 'no_show')
-      ? state.entries
-      : [],
-  )
+  bill(charges(state), state.entries, {
+    cancelled: state.lines.every((line) => line.status === 'cancelled'),
+  })
 
 export async function loadState(db: Db, id: string): Promise<State> {
   const [reservation] = await db.select().from(reservations).where(eq(reservations.id, id))
@@ -172,7 +169,7 @@ export async function plan(
       method: input.method ?? null,
       occurredAt: at,
       paymentDate: input.paymentDate ?? null,
-      reference: input.reference ?? null,
+      reference: input.reference?.trim().toUpperCase() || null,
       createdAt: now,
       voidedAt: null,
       correctionReason: null,
@@ -325,7 +322,7 @@ export async function plan(
     if (line.status === 'checked_in' && !line.roomId) fail('check-in requires an assigned room')
   }
   const settlementBlocked = false
-  const billableLines = state.lines.filter((line) => active(line.status))
+  const billableLines = state.lines.filter((line) => line.status !== 'cancelled')
   const datedLines = billableLines.length ? billableLines : state.lines
   state.reservation.checkIn = datedLines.reduce(
     (d, l) => (l.checkIn! < d ? l.checkIn! : d),

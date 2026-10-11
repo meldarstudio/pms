@@ -14,8 +14,26 @@ export type RoomDraft = {
   removed: boolean
   reason: string
 }
+export function minimumCheckOut(checkIn: string) {
+  const date = new Date(`${checkIn}T00:00:00Z`)
+  date.setUTCDate(date.getUTCDate() + 1)
+  return date.toISOString().slice(0, 10)
+}
+
+export function changeCheckIn(
+  room: WorkflowRoom,
+  checkIn: string
+): WorkflowRoom {
+  return {
+    ...room,
+    checkIn,
+    checkOut:
+      room.checkOut > checkIn ? room.checkOut : minimumCheckOut(checkIn),
+  }
+}
+
 export const isActiveStay = (status: string) =>
-  status === "confirmed" || status === "checked_in"
+  ["confirmed", "checked_in", "checked_out", "no_show"].includes(status)
 export const stayValue = (
   line: ReservationDetail["rooms"][number]
 ): WorkflowRoom => ({
@@ -68,23 +86,8 @@ export function roomEdits(
     } else if (!saved) actions.push({ type: "add-room", room: draft.room })
     else {
       const previous = stayValue(saved)
-      // Assignment changes during occupancy are moves; extensions remain date amendments.
-      const amended =
-        saved.status === "checked_in"
-          ? { ...draft.room, roomId: previous.roomId }
-          : draft.room
-      if (JSON.stringify(amended) !== JSON.stringify(previous))
-        actions.push({ type: "edit-room", lineId: saved.id, room: amended })
-      if (
-        saved.status === "checked_in" &&
-        draft.room.roomId &&
-        draft.room.roomId !== previous.roomId
-      )
-        actions.push({
-          type: "move",
-          lineId: saved.id,
-          roomId: draft.room.roomId,
-        })
+      if (JSON.stringify(draft.room) !== JSON.stringify(previous))
+        actions.push({ type: "edit-room", lineId: saved.id, room: draft.room })
     }
   }
   return actions
@@ -92,7 +95,9 @@ export function roomEdits(
 export function nextStayAction(
   rooms: ReservationDetail["rooms"]
 ): "check-in" | "check-out" | null {
-  const active = rooms.filter((l) => isActiveStay(l.status))
+  const active = rooms.filter(
+    (l) => l.status === "confirmed" || l.status === "checked_in"
+  )
   if (!active.length) return null
   if (active.every((l) => l.status === "confirmed")) return "check-in"
   if (active.every((l) => l.status === "checked_in")) return "check-out"
@@ -133,7 +138,7 @@ export function unavailableRoomIds(
         line.status === "no_show"
       )
         continue
-      const start = line.assignmentStart ?? line.checkIn ?? reservation.checkIn
+      const start = line.checkIn ?? reservation.checkIn
       if (overlaps(start, line.checkOut ?? reservation.checkOut))
         ids.add(line.roomId)
     }
@@ -142,4 +147,45 @@ export function unavailableRoomIds(
     if (overlaps(closure.starts, closure.ends)) ids.add(closure.roomId)
   }
   return ids
+}
+
+// Preview-generated IDs belong to unsaved additions. Edit or remove their draft
+// action rather than sending a command against an entry that is not saved yet.
+export function stageFinancialChange(
+  saved: ReservationDetail["financialEntries"],
+  projected: ReservationDetail["financialEntries"],
+  pending: WorkflowAction[],
+  change: Extract<
+    WorkflowAction,
+    { type: "edit-financial" | "delete-financial" }
+  >
+): WorkflowAction[] {
+  if (saved.some((entry) => entry.id === change.entryId)) {
+    const rest = pending.filter(
+      (action) =>
+        !(
+          action.type === "edit-financial" || action.type === "delete-financial"
+        ) || action.entryId !== change.entryId
+    )
+    return [...rest, change]
+  }
+  const additions = projected.filter(
+    (entry) => !saved.some((original) => original.id === entry.id)
+  )
+  const ordinal = additions.findIndex((entry) => entry.id === change.entryId)
+  if (ordinal < 0) return pending
+  let index = -1
+  return pending.flatMap((action) => {
+    if (action.type !== "financial" || ++index !== ordinal) return [action]
+    return change.type === "delete-financial"
+      ? []
+      : [{ type: "financial" as const, entry: change.entry }]
+  })
+}
+
+// Notes and guest/contact text do not change charges or dated inventory.
+export function billingPreviewActions(actions: WorkflowAction[]) {
+  return actions.filter(
+    (action) => !["notes", "contact", "set-guests"].includes(action.type)
+  )
 }

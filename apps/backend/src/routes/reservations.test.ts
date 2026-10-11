@@ -164,7 +164,7 @@ describe('reservation workflow', () => {
     expect(d.balanceCents).toBe(60000)
     expect(d.rooms.every((l) => l.checkOut === '2026-10-13' && l.nights.length === 3)).toBe(true)
   })
-  it('excludes no-show room charges while retaining the other room and shared payments', async () => {
+  it('retains no-show room charges and shared payments', async () => {
     let d = await create(2)
     d = await command(d, [
       roomEdit(d),
@@ -172,9 +172,30 @@ describe('reservation workflow', () => {
       { type: 'no-show', lineId: d.rooms[1].id },
     ])
     d = await command(d, [pay(10000), { type: 'check-out', lineIds: [d.rooms[0].id] }])
-    expect(d.totalCents).toBe(30000)
-    expect(d.balanceCents).toBe(20000)
-    expect(d.rooms[1].totalCents).toBe(0)
+    expect(d.totalCents).toBe(60000)
+    expect(d.balanceCents).toBe(50000)
+    expect(d.rooms[1].totalCents).toBe(30000)
+  })
+  it('previews and saves a deposit-only no-show fee through an ordinary discount', async () => {
+    let d = await command(await create(), [pay(10000)])
+    const actions: WorkflowAction[] = [
+      { type: 'set-status', lineId: d.rooms[0].id, status: 'no_show' },
+      adjust('discount', 20000),
+    ]
+    const preview = await request(`/reservations/${d.id}/preview`, 'POST', {
+      requestId: crypto.randomUUID(), version: d.version, actions,
+    })
+    expect(preview.status).toBe(200)
+    expect(await preview.json()).toMatchObject({
+      subtotalCents: 30000, discountCents: 20000, totalCents: 10000,
+      paidCents: 10000, balanceCents: 0,
+    })
+    d = await command(d, actions)
+    expect(d).toMatchObject({ totalCents: 10000, paidCents: 10000, balanceCents: 0 })
+    d = await command(d, [{ type: 'cancel', confirmed: true }])
+    expect(d).toMatchObject({ totalCents: 0, discountCents: 0, balanceCents: -10000 })
+    d = await command(d, [{ type: 'delete-financial', entryId: d.financialEntries.find((e) => e.kind === 'payment')!.id }])
+    expect(d).toMatchObject({ totalCents: 0, paidCents: 0, balanceCents: 0 })
   })
   it('applies discounts in full after room cancellation and allows editing and deleting them', async () => {
     let d = await create(2)
@@ -190,15 +211,15 @@ describe('reservation workflow', () => {
     d = await command(d, [{ type: 'delete-financial', entryId: id }])
     expect(d.balanceCents).toBe(10000)
   })
-  it('soft deletes cancelled bookings from totals and payment reports while preserving records', async () => {
+  it('removes cancelled charges but retains payments as credit and in payment reports', async () => {
     let d = await arrive(await create())
-    d = await command(d, [pay(30000), all(d, 'check-out')])
+    d = await command(d, [pay(30000), adjust('discount', 5000), all(d, 'check-out')])
     d = await command(d, [{ type: 'cancel', confirmed: true }])
-    expect(d).toMatchObject({ totalCents: 0, paidCents: 0, creditCents: 0, balanceCents: 0 })
+    expect(d).toMatchObject({ totalCents: 0, paidCents: 30000, discountCents: 0, creditCents: 30000, balanceCents: -30000 })
     expect(d.financialEntries[0].amountCents).toBe(30000)
     expect(d.rooms[0].nights).toHaveLength(3)
     const report = await (await request('/payments?from=2026-10-10&to=2026-10-10')).json()
-    expect(report).toMatchObject({ totalCents: 0, payments: [] })
+    expect(report).toMatchObject({ totalCents: 30000, payments: [{ amountCents: 30000 }] })
   })
   it('rejects new refunds, waivers, and the old correction workflow', async () => {
     const d = await command(await create(), [pay(40000)])
@@ -295,7 +316,7 @@ describe('reservation workflow', () => {
       id,
       amountCents: 10000,
       paymentDate: '2026-10-09',
-      reference: 'Actual receipt',
+      reference: 'ACTUAL RECEIPT',
       voidedAt: null,
     })
     const report = await (await request('/payments?from=2026-10-09&to=2026-10-09')).json()
@@ -591,7 +612,7 @@ describe('quick-edit contacts, staying guests, and payment details', () => {
           amountCents: 1000,
           method: 'transfer',
           paymentDate: '2026-10-08',
-          reference: ' OP-123 ',
+          reference: ' op-123 ',
         },
       },
     ])
@@ -615,7 +636,7 @@ describe('quick-edit contacts, staying guests, and payment details', () => {
           amountCents: 1000,
           method: 'transfer',
           paymentDate: '2026-10-09',
-          reference: 'OP-124',
+          reference: 'oP-124',
         },
       },
     ])
@@ -770,13 +791,13 @@ describe('editable final reservation record', () => {
     expect(fresh.paidCents).toBe(11000)
     expect(fresh.rooms[0].checkOut).toBe('2026-10-11')
   })
-  it('keeps no-show records inactive and checks availability before restoring their label', async () => {
+  it('keeps no-shows billable while releasing availability and checks restoration conflicts', async () => {
     let d = await arrive(await create())
     d = await command(d, [
       pay(10000),
       { type: 'set-status', lineId: d.rooms[0].id, status: 'no_show' },
     ])
-    expect(d).toMatchObject({ totalCents: 0, paidCents: 0, balanceCents: 0, creditCents: 0 })
+    expect(d).toMatchObject({ totalCents: 30000, paidCents: 10000, balanceCents: 20000, creditCents: 0 })
     expect(d.financialEntries[0].amountCents).toBe(10000)
     const next = await create()
     await command(next, [roomEdit(next)])
@@ -794,14 +815,14 @@ describe('editable final reservation record', () => {
     ).toBe(409)
     await command(d, actions, 409)
     expect(await (await request('/payments?from=2026-10-10&to=2026-10-10')).json()).toMatchObject({
-      payments: [],
-      totalCents: 0,
+      payments: [{ amountCents: 10000 }],
+      totalCents: 10000,
     })
   })
   it('restores a cancelled booking through the ordinary label edit', async () => {
     let d = await command(await create(), [pay(10000), adjust('discount', 1000)])
     d = await command(d, [{ type: 'cancel', confirmed: true }])
-    expect(d.balanceCents).toBe(0)
+    expect(d.balanceCents).toBe(-10000)
     d = await command(d, [{ type: 'set-status', lineId: d.rooms[0].id, status: 'confirmed' }])
     expect(d.cancelledAt).toBeNull()
     expect(d).toMatchObject({ totalCents: 29000, paidCents: 10000, balanceCents: 19000 })

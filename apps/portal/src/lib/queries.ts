@@ -331,7 +331,7 @@ export function useWorkflowCommand() {
     onSuccess: async (data) => {
       client.setQueryData(["reservation", data.id], data)
       await Promise.all(
-        ["reservations", "availability", "inventory"].map((key) =>
+        ["reservations", "availability", "inventory", "payments"].map((key) =>
           client.invalidateQueries({ queryKey: [key] })
         )
       )

@@ -131,7 +131,7 @@ reservationRoutes.post('/:id/preview', validate('json', workflowCommandSchema), 
         ...line,
         subtotalCents,
         discountCents: 0,
-        totalCents: ['cancelled', 'no_show'].includes(line.status) ? 0 : subtotalCents,
+        totalCents: line.status === 'cancelled' ? 0 : subtotalCents,
       }
     }),
     financialEntries: result.state.entries.map((e) => ({

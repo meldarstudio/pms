@@ -1,4 +1,12 @@
 const messages: Record<string, string> = {
+  "check-in requires an assigned room":
+    "Asigna una habitación antes del check-in.",
+  "financial entry not found":
+    "Este pago o descuento ya no existe. Actualiza la reserva.",
+  "financial kind cannot change":
+    "Un pago no puede convertirse en descuento, ni un descuento en pago.",
+  "reservation is cancelled":
+    "Restaura una habitación antes de añadir otra a la reserva.",
   "payment date is required": "Indica la fecha del pago.",
   "guest room must belong to this reservation":
     "Asigna al huésped a una habitación de esta reserva.",

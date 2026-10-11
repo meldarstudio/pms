@@ -68,7 +68,7 @@ export function ReservationPage({
       ) : (
         query.data && (
           <BookingEditor
-            key={`${id}-${query.data.version}`}
+            key={id}
             detail={query.data}
             full
             initialTab={tab}

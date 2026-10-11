@@ -200,7 +200,7 @@ function StayBar({
   onOpen?: (reservationId: string) => void
 }) {
   const className = cn(
-    "absolute z-10 flex items-center overflow-hidden rounded-md border px-2.5 text-left text-xs",
+    "absolute z-10 flex items-center overflow-hidden rounded-none border px-2.5 text-left text-xs",
     stayColors[stay.status ?? "confirmed"] ?? stayColors.confirmed
   )
   if (!onOpen || !stay.reservationId) {
@@ -247,7 +247,7 @@ function ClosureBar({
     <button
       type="button"
       title={item.title}
-      className="absolute z-10 flex items-center overflow-hidden rounded-md border border-closure-foreground/20 bg-closure px-2.5 text-left text-xs text-closure-foreground outline-none focus-visible:ring-1 focus-visible:ring-ring"
+      className="absolute z-10 flex items-center overflow-hidden rounded-none border border-closure-foreground/20 bg-closure px-2.5 text-left text-xs text-closure-foreground outline-none focus-visible:ring-1 focus-visible:ring-ring"
       style={barStyle(item, dayCount, laneCount)}
       onClick={() => onOpen(item.id)}
     >
@@ -351,7 +351,7 @@ function RoomTrack({
           disabled={assignmentPreview.disabled}
           onClick={assignmentPreview.onSelect}
           className={cn(
-            "absolute z-20 flex cursor-pointer items-center overflow-hidden rounded-md border border-dashed border-booking-foreground/50 bg-booking/40 px-2.5 text-left text-xs text-booking-foreground outline-none hover:bg-booking/70 focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-default",
+            "absolute z-20 flex cursor-pointer items-center overflow-hidden rounded-none border border-dashed border-booking-foreground/50 bg-booking/40 px-2.5 text-left text-xs text-booking-foreground outline-none hover:bg-booking/70 focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-default",
             assignmentPreview.selected &&
               "border-solid bg-booking ring-1 ring-booking-foreground/50"
           )}
@@ -635,7 +635,7 @@ export function RoomCalendar({
               render={
                 <Button
                   type="button"
-                  variant="ghost"
+                  variant="outline"
                   size="icon"
                   aria-label="Colores de reservas"
                 />
@@ -643,27 +643,32 @@ export function RoomCalendar({
             >
               <CircleHelpIcon />
             </TooltipTrigger>
-            <TooltipContent side="bottom">
+            <TooltipContent
+              variant="legend"
+              side="bottom"
+              align="end"
+              sideOffset={8}
+            >
               <div
                 aria-label="Colores de reservas"
-                className="flex flex-col gap-2 py-1"
+                className="flex min-w-40 flex-col gap-2.5"
               >
                 {Object.entries(stayLabels).map(([status, label]) => (
-                  <span key={status} className="flex items-center gap-1.5">
+                  <span key={status} className="flex items-center gap-2">
                     <span
                       aria-hidden="true"
                       className={cn(
-                        "size-3 rounded-sm border",
+                        "size-3 rounded-none border",
                         stayColors[status]
                       )}
                     />
                     {label}
                   </span>
                 ))}
-                <span className="flex items-center gap-1.5">
+                <span className="flex items-center gap-2">
                   <span
                     aria-hidden="true"
-                    className="size-3 rounded-sm border border-closure-foreground/20 bg-closure"
+                    className="size-3 rounded-none border border-closure-foreground/20 bg-closure"
                   />
                   Cerrada
                 </span>

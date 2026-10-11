@@ -15,7 +15,7 @@ export function bookingRoomCharges(
     (sum, night) => sum + (kept.get(night.date) ?? night.priceCents),
     0
   )
-  const discount = Math.min(discountCents, subtotalCents)
+  const discount = discountCents
   return {
     subtotalCents,
     discountCents: discount,

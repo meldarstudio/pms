@@ -107,7 +107,7 @@ describe("room assignment", () => {
     )
   })
 
-  it("does not treat a checked-out stay as occupying the room", () => {
+  it("checks the saved dates of a checked-out stay", () => {
     assert.equal(
       roomAssignmentIssue(
         room,
@@ -115,7 +115,7 @@ describe("room assignment", () => {
         [occupied("2026-10-05", "2026-10-06", "checked_out")],
         []
       ),
-      null
+      "Occupied during this stay"
     )
   })
 
@@ -264,10 +264,20 @@ describe("room assignment", () => {
   })
 })
 
-
 describe("completed calendar stays", () => {
-  it("keeps status and actual checkout dates for calendar bars without adding completed stays to assignment lists", () => {
-    const completed = reservation({ rooms: [{ id: "completed", roomId: room.id, roomTypeId: room.roomTypeId, status: "checked_out", actualDeparture: "2026-10-06T10:00:00Z" }] })
+  it("uses final saved dates for completed calendar bars without adding them to assignment lists", () => {
+    const completed = reservation({
+      rooms: [
+        {
+          id: "completed",
+          roomId: room.id,
+          roomTypeId: room.roomTypeId,
+          status: "checked_out",
+          actualDeparture: "2026-10-05T10:00:00Z",
+          assignmentStart: "2026-10-06",
+        },
+      ],
+    })
     assert.equal(reservationStays([completed]).length, 0)
     const [stay] = reservationStays([completed], true)
     assert.equal(stay.status, "checked_out")

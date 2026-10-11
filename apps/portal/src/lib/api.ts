@@ -447,7 +447,7 @@ export type WorkflowRoom = {
   nightlyRateCents?: number
 }
 export type FinancialInput = {
-  kind: "payment" | "refund" | "discount" | "waiver"
+  kind: "payment" | "discount"
   amountCents: number
   reason?: string
   method?: PaymentMethod
@@ -460,7 +460,12 @@ export type FinancialEntry = Omit<
   "kind" | "reason" | "method" | "reference" | "paymentDate"
 > & {
   id: string
-  kind: FinancialInput["kind"] | "legacy_signed" | "legacy_discount_excluded"
+  kind:
+    | FinancialInput["kind"]
+    | "refund"
+    | "waiver"
+    | "legacy_signed"
+    | "legacy_discount_excluded"
   appliedCents: number
   reason: string | null
   method: PaymentMethod | null
@@ -496,11 +501,13 @@ export type WorkflowAction =
   | { type: "cancel"; reason?: string; confirmed: true }
   | { type: "financial"; entry: FinancialInput }
   | {
-      type: "correct-financial"
-      entryId: string
-      reason: string
-      replacement?: FinancialInput
+      type: "set-status"
+      lineId: string
+      status:
+        "confirmed" | "checked_in" | "checked_out" | "cancelled" | "no_show"
     }
+  | { type: "edit-financial"; entryId: string; entry: FinancialInput }
+  | { type: "delete-financial"; entryId: string }
   | { type: "notes"; notes: string }
 export type WorkflowCommand = {
   requestId: string

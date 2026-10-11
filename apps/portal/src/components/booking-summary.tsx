@@ -20,6 +20,7 @@ export type BookingSummaryRoom = {
   status: string | null
   charges: ReturnType<typeof bookingRoomCharges>
   invalid: boolean
+  stayLabel?: string
 }
 
 export function BookingSummary({
@@ -37,7 +38,7 @@ export function BookingSummary({
   summary: ReturnType<typeof bookingSummary>
   paidCents: number
   currency: string
-  stayLabel: string
+  stayLabel: string | null
   showPayments: boolean
   message: string
   waiverCents?: number
@@ -53,7 +54,7 @@ export function BookingSummary({
           <CardTitle>
             <h3 id={titleId}>Resumen de reserva</h3>
           </CardTitle>
-          <CardDescription>{stayLabel}</CardDescription>
+          {stayLabel && <CardDescription>{stayLabel}</CardDescription>}
         </CardHeader>
         <CardContent className="flex flex-col gap-3">
           <div className="flex flex-col gap-4">
@@ -175,6 +176,9 @@ function RoomSummary({
       <p className="text-xs text-muted-foreground">
         {cancelled ? "Cancelada" : guests}
       </p>
+      {room.stayLabel && (
+        <p className="text-xs text-muted-foreground">{room.stayLabel}</p>
+      )}
     </section>
   )
 }

@@ -9,6 +9,16 @@ const entry = (kind: string, amount: number): LedgerEntry => ({
   voidedAt: null,
 })
 describe('shared bill', () => {
+  it('keeps actual money movements as cancellation credit without applying discounts', () => {
+    const entries = [entry('payment', 30000), entry('refund', 5000),
+      entry('discount', 20000), entry('waiver', 10000)]
+    expect(bill(0, entries, { cancelled: true })).toMatchObject({
+      totalCents: 0, discountCents: 0, waiverCents: 0,
+      paidCents: 30000, refundCents: 5000, balanceCents: -25000, creditCents: 25000,
+    })
+    expect(entries[2].amountCents).toBe(20000)
+    expect(bill(50000, entries).discountCents).toBe(20000)
+  })
   it('retires forgiven debt on reduction without manufacturing credit or forgiving later additions', () => {
     const entries = [entry('payment', 20000), entry('waiver', 10000)]
     expect(bill(30000, entries).balanceCents).toBe(0)

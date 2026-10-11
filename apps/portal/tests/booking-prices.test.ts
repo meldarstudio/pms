@@ -40,7 +40,7 @@ describe("booking price preview", () => {
     })
   })
 
-  it("caps the discount on a shortened stay without prorating it", () => {
+  it("keeps the full discount on a shortened stay", () => {
     assert.deepEqual(bookingRoomCharges(saved, saved.slice(0, 1), true, 6000), {
       subtotalCents: 10000,
       discountCents: 6000,
@@ -50,13 +50,13 @@ describe("booking price preview", () => {
       bookingRoomCharges(saved, saved.slice(0, 1), true, 25000),
       {
         subtotalCents: 10000,
-        discountCents: 10000,
-        totalCents: 0,
+        discountCents: 25000,
+        totalCents: -15000,
       }
     )
   })
 
-  it("allows a full waiver of retained charges even without an availability quote", () => {
+  it("allows a full discount of retained charges even without an availability quote", () => {
     assert.deepEqual(
       bookingRoomCharges(saved.slice(0, 1), undefined, false, 10000),
       {
@@ -107,7 +107,7 @@ describe("booking summary", () => {
     assert.equal(preview(12000)?.balanceCents, 8000)
   })
 
-  it("uses the capped discount after early departure and preserves an overpayment", () => {
+  it("keeps an uncapped discount after early departure and preserves credit", () => {
     assert.deepEqual(
       bookingSummary(
         [
@@ -121,15 +121,15 @@ describe("booking summary", () => {
       ),
       {
         subtotalCents: 10000,
-        discountCents: 10000,
-        totalCents: 0,
-        balanceCents: -15000,
+        discountCents: 25000,
+        totalCents: -15000,
+        balanceCents: -30000,
       }
     )
   })
 
-  it("keeps no-show charges billable and shows a zero balance for a paid stay", () => {
-    assert.equal(
+  it("retains no-show charges, discounts, and payments", () => {
+    assert.deepEqual(
       bookingSummary(
         [
           {
@@ -139,8 +139,13 @@ describe("booking summary", () => {
           },
         ],
         24000
-      )?.balanceCents,
-      0
+      ),
+      {
+        subtotalCents: 30000,
+        discountCents: 6000,
+        totalCents: 24000,
+        balanceCents: 0,
+      }
     )
   })
 
@@ -160,7 +165,7 @@ describe("booking summary", () => {
     assert.equal(bookingSummary([{ ...priced, invalid: true }], 0), null)
   })
 
-  it("shows existing payments as credit when every room is cancelled", () => {
+  it("shows payments as credit when every room is cancelled", () => {
     assert.deepEqual(
       bookingSummary(
         [{ status: "cancelled", charges: null, invalid: false }],

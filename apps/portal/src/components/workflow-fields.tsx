@@ -94,17 +94,21 @@ export function ChoiceField({
   onChange,
   options,
   disabled = false,
+  hideLabel = false,
 }: {
   label: string
   value: string
   onChange: (value: string) => void
   options: { value: string; label: string; disabled?: boolean }[]
   disabled?: boolean
+  hideLabel?: boolean
 }) {
   const id = useId()
   return (
     <Field data-disabled={disabled}>
-      <FieldLabel htmlFor={id}>{label}</FieldLabel>
+      <FieldLabel htmlFor={id} className={hideLabel ? "sr-only" : undefined}>
+        {label}
+      </FieldLabel>
       <Select
         items={options}
         value={value}

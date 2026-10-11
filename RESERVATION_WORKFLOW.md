@@ -54,9 +54,10 @@ same type does not change the price. Staff manages unusual rates in the existing
 availability/rate table; no additional price override workflow is required.
 
 Example: a five-night stay becomes three nights. Staff changes checkout, sees the
-three-night price preview, adds or edits a discount if needed to match the guest's
-agreement, and saves. Staff can also mark the stay checked out. Both changes can
-be submitted in one command. The saved three nights are the final stay record.
+three-night price preview, and saves the details. Staff adds or edits a discount
+in Pagos if needed to match the guest's agreement; that action saves separately.
+Staff can also mark the stay checked out with the detail changes. The saved
+three nights are the final stay record.
 
 ## Multiple rooms
 
@@ -91,7 +92,7 @@ Staff will notice a negative balance and can correct a mistaken discount.
 For active reservations:
 
 ```text
-Room charges = sum of saved nightly prices of non-cancelled, non-no-show rooms
+Room charges = sum of saved nightly prices of non-cancelled rooms
 Reservation total = room charges - discounts
 Balance = reservation total - payments
 Client credit = max(0, -balance)
@@ -108,26 +109,43 @@ changes never reopen a completed stay.
 
 ## Cancellation and no-show
 
-Cancellation and no-show are soft deletions. Preserve the reservation, room
-records, saved nights, and attached financial records for reference. They do not
-consume inventory or contribute room charges to active totals.
+Cancellation removes room charges and releases availability. Preserve room
+records, dates, payments, and discounts for reference. If all rooms are cancelled,
+charges and applied discounts/waivers are zero. Payments remain in the balance
+and payment report, with any legacy refunds deducted from credit. Show the
+remaining amount as Saldo a favor until a refund is handled. Do not add refund
+controls in this version. Restoring a cancelled room reapplies its saved charges
+and discounts after validating availability.
 
-When every room is cancelled or no-show, all computed booking totals, paid
-amount, balance, and credit are zero, and its payments are excluded from the
-active payment report. Attached payment records remain readable. This exclusion
-does not mean staff returned money.
+No-show means the guest never arrived. It releases availability but retains
+saved charges, discounts, payments, and the balance. Staff can add, edit, or remove
+ordinary discounts to reflect the agreed no-show fee. Never mark no-show
+automatically when the arrival date passes.
 
-For a mixed booking, exclude cancelled/no-show room charges while keeping shared
-payments and discounts on the remaining billable rooms. Payments are not
-allocated to individual rooms. A reservation with remaining confirmed,
-checked-in, or checked-out rooms is still financially active.
+Example: a S/ 500 booking with a S/ 100 deposit receives a S/ 400 discount when
+staff agrees to retain only the deposit. Its final no-show charge is S/ 100 and
+balance is zero. A full discount waives charges; an existing deposit then becomes
+client credit.
 
-Staff can correct an inactive label. Restoring the room must validate its saved
-dates and assignment against other stays and closures before committing.
-Whole-reservation cancellation retains a simple deliberate confirmation.
+For mixed bookings, exclude only cancelled room charges while retaining shared
+payments and discounts on remaining billable rooms, including no-shows. Payments
+are not allocated to individual rooms. Apply no-show per room when only some
+guests fail to arrive. Restoring a no-show to a status that consumes inventory
+must check its dates and assignment against stays and closures.
 
 ## Saving and scope
 
+- Guardar appears only in Detalles and saves room details, dates, status, and notes.
+- Huéspedes uses an add/edit form above a compact list of registered guests.
+  Agregar huésped and Guardar huésped save independently. Each row offers Editar
+  and Eliminar. Editar opens a guest dialog with its own Guardar and Cancelar.
+  Confirm discarding changed guest edits on close. Retain form inputs after
+  errors and allow retrying the action.
+- Payment and discount Add/Edit/Delete actions save on their own confirmation.
+  Retain form values on failure and reuse the request ID when retrying an
+  uncertain response. Do not clear unsubmitted payment fields on another save.
+- Guest or payment saves must preserve unsaved Detalles drafts. Recalculate the
+  details preview using the newly saved financial records without saving dates.
 - Confirm discarding unsaved changes before leaving the editor.
 - No staff-facing simultaneous-edit warnings or conflict-resolution workflow.
 - Keep duplicate-submit protection for payments and saves. Transaction rollback
@@ -136,7 +154,7 @@ Whole-reservation cancellation retains a simple deliberate confirmation.
   data and legacy columns; they do not control the editable final record.
 - Do not deploy or reset remote databases as part of local implementation.
 
-## Backend implementation and portal follow-up
+## Backend and portal implementation
 
 The backend uses the existing per-room dates, statuses, saved nightly prices,
 and financial_entries table. No table/column rewrite is needed. Migration
@@ -160,10 +178,22 @@ longer rejects a normal edit; the existing database version guard remains an
 internal transaction check. A genuinely overlapping concurrent commit may still
 fail rather than partially overwrite data.
 
-The portal still needs to expose these actions and remove its older restrictions,
-refund/waiver/correction controls, history controls, and settlement messaging.
-Its date previews, status examples, billing helpers, room assignment logic, and
-tests must follow these rules. Backend completion does not mean that UI is done.
+The portal exposes these actions through the existing three-tab editor. Its
+header, compact room rows, notes, right-hand summary, and footer retain the
+agreed layout. Dates, room types, assignments, and occupancy remain editable
+after arrival and departure. The room menu provides status corrections and
+restoration of cancelled rooms; cancelled rooms can be shown when needed.
+No-show rooms remain visible and billable while releasing availability.
+
+Date and room edits preview charges and availability before saving in Detalles.
+Guest additions, edits, and deletions save separately. Payments and discounts save through their own
+Add/Edit/Delete controls in Pagos, without submitting detail drafts. Checkout
+permits debt and changes the label without changing dates. Negative balances
+display as client credit.
+History, refund, waiver, settlement, and separate correction flows are absent
+from the editor. Unsaved changes prompt before leaving. Billing helpers,
+calendar occupancy, and status examples use final dates and the cancellation
+and no-show rules above.
 
 ## Required verification
 
@@ -179,8 +209,12 @@ Exercise the actual routes and full SQLite migration chain, including:
   wrongly attached payment and enter it on another reservation.
 - Reject invalid amounts/dates and attempts to edit another booking's entries.
 - Add/edit/delete uncapped discounts; preserve negative balances and credit.
-- Exclude cancelled/no-show bookings from inventory and active financial totals
+- Exclude cancelled/no-show rooms from inventory; retain no-show charges and
+  cancelled-booking payments as client credit in financial totals
   while retaining records. Verify mixed-room behavior and restoration.
 - Verify failed multi-action writes leave payments, rooms, and totals intact.
 - Retry the same save without duplicate payments or rows.
 - Reset sample data repeatedly without breaking constraints or migrations.
+
+Payment references use uppercase in entry forms, displays, and saved data. Trim
+surrounding whitespace when saving. Existing references are normalized by migration.

@@ -2,8 +2,8 @@
 
 > Business-rule update, 2026-10-10: RESERVATION_WORKFLOW.md supersedes the older
 > correction, checkout settlement, actual-date, history, and refund requirements
-> below. Keep this document for layout direction; the simplified portal controls
-> still need implementation.
+> below. Keep this document for layout direction. The portal now exposes the
+> simplified workflow within the existing three-tab editor.
 
 Last updated: 2026-10-10.
 
@@ -486,3 +486,79 @@ Room and whole-booking cancellation confirmations use shadcn AlertDialog.
 They retain the billing preview and optional reason. Buttons read Volver and
 Confirmar; Confirmar commits immediately. Outside clicks do not dismiss these
 alerts, and dismissal is blocked while cancellation is pending.
+
+## Reservation state select, 2026-10-10
+
+The edit dialog footer uses an Estado de la reserva select in place of the
+Check-in/Check-out action button. It shows the current label, or Estados mixtos
+for rooms with different labels. A selection applies to all rooms; individual
+room status controls remain available in the room menu. Changes preview and
+apply with Guardar. Choosing Cancelada opens the deliberate cancellation
+confirmation. The existing header, tabs, room rows, summary, and notes stay in
+place.
+
+## Cancellation and no-show finances, 2026-10-10
+
+Cancelled rooms release availability and remove charges. A wholly cancelled
+booking ignores saved discounts and retains payments as client credit. No-show
+rooms release availability but retain charges and payments; staff adjusts the
+agreed fee using ordinary discounts. Both retain records, and payments remain in
+the payment report. Refund handling remains outside the current editor.
+
+## Mixed room states and dates, 2026-10-10
+
+Hide the reservation state select when room states differ. Staff edits each
+room's state through its room options. When room date ranges differ, hide the
+general range beneath Resumen de reserva and show each room's range and night
+count in its summary row. Keep the general range when all billable rooms share
+dates.
+
+## Saving by tab, 2026-10-10
+
+Guardar belongs only to Detalles. Huéspedes has an add/edit form and a compact
+list with the guest name, room and document details, and an Editar/Eliminar menu. Guest actions
+save independently and preserve input on errors. Pagos saves additions,
+edits, deletions, and discounts through each action's own control. Failed
+financial saves retain their inputs. Guest and financial saves update the saved
+record without remounting the editor or discarding pending Detalles drafts.
+Cancellation retains its separate deliberate confirmation.
+
+## Checkout picker minimum, 2026-10-10
+
+Checkout starts at the day after check-in for new, shared, and individual room
+date controls. Moving check-in to or beyond checkout moves checkout to the next
+day. Preserve a later valid checkout. Dates and charges still preview before
+Guardar applies the stay change.
+
+## Payments tab contents, 2026-10-10
+
+Pagos lists only current payments, including imported payment records. Do not
+show discounts, waivers, or refund entries in that list. The empty state and
+section heading refer to payments. Discounts continue to affect the reservation
+summary; Pagos has no Agregar descuento button.
+
+## Registered payments table, 2026-10-10
+
+The user selected the Table proposal. Render Pagos registrados with the project's
+shadcn base-lyra Table components: Fecha, Método, Referencia, right-aligned
+Importe, and a per-payment ellipsis menu for Editar/Eliminar. Use normal project
+tokens and table styles. Missing references display a dash; omit payment notes
+from the table. Preserve payment-only filtering and immediate saving.
+
+## Payment date cutoff, 2026-10-10
+
+Both new and edited payment date pickers allow today and earlier. Compute the
+cutoff using the browser's local calendar date, matching the picker timezone.
+Disable future dates and validate the same inclusive cutoff before submission.
+
+Guest edits open in a dialog matching payment edits. The Huéspedes tab keeps
+the add form and compact list. Closing a changed guest dialog asks to discard
+changes; failed saves retain the draft.
+
+## Guest form visibility, 2026-10-10
+
+Show all guest fields directly, including document, email, and phone. Do not
+collapse them under Más datos. Agregar huésped and the edit dialog's Guardar
+use the primary button style. Keep the add form mounted while editing a guest;
+the edit dialog has a separate draft and closing it restores the add draft.
+Enter in a guest input submits that guest form independently of Detalles.

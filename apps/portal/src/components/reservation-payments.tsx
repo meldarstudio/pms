@@ -102,7 +102,9 @@ export function ReservationPayments({
         amountCents: amountCents!,
         method,
         paidAt,
-        ...(reference.trim() ? { reference: reference.trim() } : {}),
+        ...(reference.trim()
+          ? { reference: reference.trim().toUpperCase() }
+          : {}),
         ...(notes.trim() ? { notes: notes.trim() } : {}),
       })
       setAmount("")
@@ -199,7 +201,9 @@ export function ReservationPayments({
                     placeholder="Opcional"
                     value={reference}
                     disabled={pending}
-                    onChange={(event) => setReference(event.target.value)}
+                    onChange={(event) =>
+                      setReference(event.target.value.toUpperCase())
+                    }
                   />
                 </Field>
               </FieldGroup>
@@ -256,7 +260,7 @@ export function ReservationPayments({
                   </time>
                   {payment.reference ? (
                     <p className="wrap-anywhere text-muted-foreground">
-                      Referencia: {payment.reference}
+                      Referencia: {payment.reference.toUpperCase()}
                     </p>
                   ) : null}
                   {payment.notes ? (

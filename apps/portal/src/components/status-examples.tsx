@@ -226,7 +226,6 @@ export function StatusExamples() {
                   key={`${design}-${scenario}-${resetKey}`}
                   design={design}
                   saved={reservation}
-                  today={today}
                   onSave={(next) =>
                     setExamples((current) => ({ ...current, [design]: next }))
                   }
@@ -316,14 +315,12 @@ function StatusSelect({
 function ExampleDialog({
   design,
   saved,
-  today,
   onSave,
   onClose,
   onReset,
 }: {
   design: Design
   saved: ExampleReservation
-  today: string
   onSave: (reservation: ExampleReservation) => void
   onClose: () => void
   onReset: () => void
@@ -353,7 +350,7 @@ function ExampleDialog({
       status: saved.rooms.find((item) => item.id === room.id)!.status,
     })),
   }
-  const preview = saveStatusExample(saved, draft, today)
+  const preview = saveStatusExample(saved, draft)
   const summaryRooms = preview.rooms.map((room) => ({
     key: room.id,
     typeName: `${room.roomTypeName} · ${room.roomNumber ?? "Sin asignar"}`,
@@ -378,11 +375,11 @@ function ExampleDialog({
       item.value,
       commonStatus(baseline.rooms) === item.value
         ? null
-        : bulkTransition(baseline, item.value, today).reason,
+        : bulkTransition(baseline, item.value).reason,
     ])
   )
   const affected = bulkChoice
-    ? bulkTransition(baseline, bulkChoice, today).roomIds
+    ? bulkTransition(baseline, bulkChoice).roomIds
     : []
   const scope =
     bulkChoice && affected.length
@@ -402,7 +399,7 @@ function ExampleDialog({
               (room) =>
                 room.status !== "confirmed" && room.status !== "checked_in"
             )
-          ? "Esta reserva tiene estados finales. No hay cambios de estado disponibles."
+          ? "Puedes corregir el estado de cada habitación."
           : "El cambio general se aplica a las habitaciones elegibles al pulsar Guardar."
 
   function update(next: ExampleReservation) {
@@ -413,9 +410,7 @@ function ExampleDialog({
 
   function selectBulk(next: ExampleStatus) {
     const restoring = commonStatus(baseline.rooms) === next
-    const targetIds = restoring
-      ? []
-      : bulkTransition(baseline, next, today).roomIds
+    const targetIds = restoring ? [] : bulkTransition(baseline, next).roomIds
     update({
       ...draft,
       rooms: draft.rooms.map((room) => ({
@@ -476,7 +471,7 @@ function ExampleDialog({
       return
     }
     try {
-      const next = saveStatusExample(saved, draft, today)
+      const next = saveStatusExample(saved, draft)
       onSave(next)
       setDraft(structuredClone(next))
       setBulkChoice(null)
@@ -681,7 +676,6 @@ function ExampleDialog({
                               <RoomStatus
                                 room={room}
                                 saved={saved}
-                                today={today}
                                 onChange={(status) =>
                                   selectRoom(room.id, status)
                                 }
@@ -931,24 +925,17 @@ function ExampleDialog({
 function RoomStatus({
   room,
   saved,
-  today,
   onChange,
 }: {
   room: ExampleRoom
   saved: ExampleReservation
-  today: string
   onChange: (status: ExampleStatus) => void
 }) {
   const baseline = saved.rooms.find((item) => item.id === room.id)!
   const reasons = Object.fromEntries(
     exampleStatuses.map((item) => [
       item.value,
-      roomTransitionReason(
-        { ...room, status: baseline.status },
-        item.value,
-        saved.checkIn,
-        today
-      ),
+      roomTransitionReason({ ...room, status: baseline.status }, item.value),
     ])
   )
   const description =
@@ -957,7 +944,7 @@ function RoomStatus({
       : baseline.status === "checked_out" ||
           baseline.status === "cancelled" ||
           baseline.status === "no_show"
-        ? "Esta habitación tiene un estado final."
+        ? "Puedes corregir el estado de esta habitación."
         : room.status !== baseline.status
           ? `Estado guardado: ${statusLabel(baseline.status)}. El cambio se aplicará con Guardar.`
           : undefined

@@ -8,7 +8,11 @@ export type LedgerEntry = {
 }
 
 // Discounts apply in full. Legacy waivers retain their previously applied debt.
-export function bill(charges: number, entries: LedgerEntry[]) {
+export function bill(
+  charges: number,
+  entries: LedgerEntry[],
+  options: { cancelled?: boolean } = {},
+) {
   let remaining = charges
   let discountCents = 0
   let waiverCents = 0
@@ -16,7 +20,9 @@ export function bill(charges: number, entries: LedgerEntry[]) {
   let refundCents = 0
   const applied = new Map<string, number>()
   const active = entries
-    .filter((e) => !e.voidedAt)
+    .filter(
+      (e) => !e.voidedAt && !(options.cancelled && (e.kind === 'discount' || e.kind === 'waiver')),
+    )
     .sort((a, b) => a.createdAt.localeCompare(b.createdAt) || a.id.localeCompare(b.id))
   for (const e of active) {
     if (e.kind === 'discount') {

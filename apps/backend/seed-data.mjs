@@ -391,7 +391,7 @@ export function buildResetSql(value) {
           reservation_id: reservationId,
           amount_cents: amount,
           method: example.method ?? (index % 2 === 0 ? 'card' : 'transfer'),
-          reference: `DEMO-${example.id}`,
+          reference: `DEMO-${example.id}`.toUpperCase(),
           paid_at: `${date(Math.min(0, example.arrival - 1))}T12:00:00.000Z`,
           notes:
             example.payment === 'credit'

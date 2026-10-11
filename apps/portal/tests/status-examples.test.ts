@@ -38,15 +38,15 @@ describe("interactive status examples", () => {
 
   it("blocks a general check-in until every confirmed room has an assignment", () => {
     const reservation = createStatusExample("unassigned", today)
-    assert.ok(bulkTransition(reservation, "checked_in", today).reason)
+    assert.ok(bulkTransition(reservation, "checked_in").reason)
     const draft = structuredClone(reservation)
     draft.rooms[1].roomId = "example-room-102"
     draft.rooms[1].roomNumber = "102"
-    assert.equal(bulkTransition(draft, "checked_in", today).reason, null)
+    assert.equal(bulkTransition(draft, "checked_in").reason, null)
     draft.rooms.forEach((room) => {
       room.status = "checked_in"
     })
-    const saved = saveStatusExample(reservation, draft, today)
+    const saved = saveStatusExample(reservation, draft)
     assert.ok(saved.rooms.every((room) => room.status === "checked_in"))
     assert.equal(reservation.rooms[1].roomId, null)
   })
@@ -55,7 +55,7 @@ describe("interactive status examples", () => {
     const reservation = createStatusExample("multiple", today)
     const draft = structuredClone(reservation)
     draft.rooms[0].status = "checked_in"
-    const saved = saveStatusExample(reservation, draft, today)
+    const saved = saveStatusExample(reservation, draft)
     assert.deepEqual(
       saved.rooms.map((room) => room.status),
       ["checked_in", "confirmed"]
@@ -67,74 +67,56 @@ describe("interactive status examples", () => {
   it("identifies the scope of general actions for mixed bookings", () => {
     const reservation = createStatusExample("mixed", today)
     for (const status of ["checked_in", "cancelled", "no_show"] as const) {
-      const action = bulkTransition(reservation, status, today)
+      const action = bulkTransition(reservation, status)
       assert.deepEqual(action.roomIds, [reservation.rooms[1].id])
       assert.equal(action.reason, null)
     }
-    assert.ok(bulkTransition(reservation, "checked_out", today).reason)
+    assert.equal(bulkTransition(reservation, "checked_out").reason, null)
     assert.equal(
-      roomTransitionReason(
-        reservation.rooms[0],
-        "checked_out",
-        reservation.checkIn,
-        today
-      ),
+      roomTransitionReason(reservation.rooms[0], "checked_out"),
       null
     )
   })
 
-  it("releases cancelled and no-show rooms but excludes only cancellations from the bill", () => {
+  it("excludes cancelled charges and retains no-show charges", () => {
     const reservation = createStatusExample("multiple", today)
     for (const status of ["cancelled", "no_show"] as const) {
       const draft = structuredClone(reservation)
       draft.rooms[0].status = status
-      const saved = saveStatusExample(reservation, draft, today)
+      const saved = saveStatusExample(reservation, draft)
       assert.equal(saved.totalCents, status === "cancelled" ? 45000 : 90000)
       assert.equal(saved.paidCents, reservation.paidCents)
     }
   })
 
-  it("removes future nights at checkout and preserves the other room's stay", () => {
+  it("preserves saved nights and dates when the checkout label changes", () => {
     const reservation = createStatusExample("mixed", today)
     const draft = structuredClone(reservation)
     draft.rooms[0].status = "checked_out"
-    const saved = saveStatusExample(reservation, draft, today)
-    assert.equal(saved.rooms[0].nights.length, 1)
+    const saved = saveStatusExample(reservation, draft)
+    assert.equal(saved.rooms[0].nights.length, 3)
     assert.equal(saved.rooms[1].nights.length, 3)
-    assert.equal(saved.totalCents, 60000)
+    assert.equal(saved.totalCents, 90000)
     assert.equal(saved.checkOut, reservation.checkOut)
     assert.equal(reservation.rooms[0].nights.length, 3)
   })
 
-  it("rejects skipping check-in, checking out before arrival, and reopening terminal statuses", () => {
-    const reservation = createStatusExample("single", today)
-    const draft = structuredClone(reservation)
-    draft.rooms[0].status = "checked_out"
-    assert.throws(
-      () => saveStatusExample(reservation, draft, today),
-      /check-in/
-    )
-    const arrived = { ...reservation.rooms[0], status: "checked_in" as const }
-    assert.ok(roomTransitionReason(arrived, "checked_out", "2026-10-10", today))
+  it("allows correcting labels and restoring inactive rooms without changing dates", () => {
     for (const status of ["checked_out", "cancelled", "no_show"] as const) {
-      const terminal = createStatusExample(status, today)
-      assert.equal(
-        roomTransitionReason(
-          terminal.rooms[0],
-          status,
-          terminal.checkIn,
-          today
-        ),
-        null
-      )
-      assert.ok(
-        roomTransitionReason(
-          terminal.rooms[0],
-          "confirmed",
-          terminal.checkIn,
-          today
-        )
-      )
+      const reservation = createStatusExample("single", today)
+      const draft = structuredClone(reservation)
+      draft.rooms[0].status = status
+      const saved = saveStatusExample(reservation, draft)
+      assert.equal(saved.rooms[0].checkOut, reservation.rooms[0].checkOut)
+      const restored = structuredClone(saved)
+      restored.rooms[0].status = "confirmed"
+      assert.equal(saveStatusExample(saved, restored).totalCents, 45000)
+      if (status === "cancelled") {
+        assert.equal(saved.totalCents, 0)
+        assert.equal(saved.paidCents, 15000)
+        assert.equal(saved.balanceCents, -15000)
+        assert.equal(saved.payments.length, 1)
+      }
     }
   })
 
@@ -161,7 +143,7 @@ describe("interactive status examples", () => {
     assert.equal(reduced.balanceCents, 30000)
     assert.deepEqual(reduced.payments, reservation.payments)
     assert.equal(reduced.rooms[0].status, "checked_in")
-    const saved = saveStatusExample(reservation, reduced, today)
+    const saved = saveStatusExample(reservation, reduced)
     assert.equal(saved.rooms.length, 1)
     assert.equal(saved.rooms[0].id, reservation.rooms[0].id)
     assert.equal(reservation.rooms.length, 2)
@@ -175,19 +157,14 @@ describe("interactive status examples", () => {
       /al menos una/
     )
     assert.throws(
-      () => saveStatusExample(single, { ...single, rooms: [] }, today),
+      () => saveStatusExample(single, { ...single, rooms: [] }),
       /al menos una/
     )
     const mixed = createStatusExample("mixed", today)
     assert.ok(roomRemovalReason(mixed, mixed, mixed.rooms[0].id))
     assert.equal(roomRemovalReason(mixed, mixed, mixed.rooms[1].id), null)
     assert.throws(
-      () =>
-        saveStatusExample(
-          mixed,
-          { ...mixed, rooms: mixed.rooms.slice(1) },
-          today
-        ),
+      () => saveStatusExample(mixed, { ...mixed, rooms: mixed.rooms.slice(1) }),
       /confirmada/
     )
     for (const status of ["checked_out", "cancelled", "no_show"] as const) {
@@ -216,6 +193,6 @@ describe("interactive status examples", () => {
     assert.equal(reduced.paidCents, 75000)
     assert.equal(reduced.totalCents, 45000)
     assert.equal(reduced.balanceCents, -30000)
-    assert.equal(bulkTransition(reduced, "checked_in", today).reason, null)
+    assert.equal(bulkTransition(reduced, "checked_in").reason, null)
   })
 })

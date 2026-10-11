@@ -50,7 +50,7 @@ export const exampleScenarios = [
   {
     value: "no_show",
     label: "No se presentó",
-    hint: "La habitación queda libre y los cargos se conservan.",
+    hint: "La habitación queda libre; los cargos y pagos se conservan.",
   },
 ] as const
 
@@ -91,7 +91,7 @@ export function recalculateExample(
       (sum, night) => sum + night.priceCents,
       0
     )
-    const discountCents = Math.min(room.discountCents, subtotalCents)
+    const discountCents = room.discountCents
     return {
       ...room,
       subtotalCents,
@@ -145,8 +145,8 @@ export function createStatusExample(
     return {
       id: `example-line-${index + 1}`,
       roomTypeId: "example-double",
-      checkIn: "2026-10-10",
-      checkOut: "2026-10-13",
+      checkIn,
+      checkOut: status === "checked_out" ? today : checkOut,
       originalCheckIn: null,
       originalCheckOut: null,
       originalNights: null,
@@ -215,29 +215,15 @@ export function createStatusExample(
 }
 
 // A draft may contain an assignment, but transitions always start from the saved status.
-export function roomTransitionReason(
-  room: ExampleRoom,
-  next: ExampleStatus,
-  checkIn: string,
-  today: string
-) {
-  if (room.status === next) return null
-  if (room.status === "confirmed") {
-    if (next === "checked_in")
-      return room.roomId ? null : "Asigna una habitación primero."
-    if (next === "cancelled" || next === "no_show") return null
-    return "Registra el check-in primero."
-  }
-  if (room.status === "checked_in" && next === "checked_out") {
-    return today < checkIn ? "La fecha de llegada aún no ha pasado." : null
-  }
-  return "Este cambio de estado no está disponible."
+export function roomTransitionReason(room: ExampleRoom, next: ExampleStatus) {
+  if (next === "checked_in" && !room.roomId)
+    return "Asigna una habitación primero."
+  return null
 }
 
 export function bulkTransition(
   reservation: ExampleReservation,
-  next: ExampleStatus,
-  today: string
+  next: ExampleStatus
 ) {
   const from = next === "checked_out" ? "checked_in" : "confirmed"
   const targets =
@@ -247,19 +233,10 @@ export function bulkTransition(
   let reason: string | null
   if (targets.length === 0)
     reason = "No hay habitaciones a las que aplicar este cambio."
-  else if (
-    next === "checked_out" &&
-    reservation.rooms.some((room) => room.status === "confirmed")
-  ) {
+  else {
     reason =
-      "Resuelve las habitaciones confirmadas antes del check-out general."
-  } else {
-    reason =
-      targets
-        .map((room) =>
-          roomTransitionReason(room, next, reservation.checkIn, today)
-        )
-        .find(Boolean) ?? null
+      targets.map((room) => roomTransitionReason(room, next)).find(Boolean) ??
+      null
   }
   return { roomIds: targets.map((room) => room.id), reason }
 }
@@ -294,8 +271,7 @@ export function removeExampleRoom(
 
 export function saveStatusExample(
   saved: ExampleReservation,
-  draft: ExampleReservation,
-  today: string
+  draft: ExampleReservation
 ) {
   if (draft.rooms.length === 0)
     throw new Error("La reserva debe conservar al menos una habitación.")
@@ -310,34 +286,12 @@ export function saveStatusExample(
     const before = saved.rooms.find((item) => item.id === room.id)!
     const reason = roomTransitionReason(
       { ...room, status: before.status },
-      room.status,
-      saved.checkIn,
-      today
+      room.status
     )
     if (reason) throw new Error(reason)
-    if (room.status !== "checked_out" || before.status === "checked_out")
-      return room
-    const removeFrom = today === saved.checkIn ? offsetDate(today, 1) : today
-    return {
-      ...room,
-      nights: room.nights.filter((night) => night.date < removeFrom),
-    }
+    return room
   })
-  const allResolved = rooms.every(
-    (room) => room.status !== "confirmed" && room.status !== "checked_in"
-  )
-  const checkedOut = rooms.some((room) => room.status === "checked_out")
-  return recalculateExample({
-    ...draft,
-    rooms,
-    checkOut:
-      allResolved &&
-      checkedOut &&
-      today >= saved.checkIn &&
-      today < saved.checkOut
-        ? today
-        : saved.checkOut,
-  })
+  return recalculateExample({ ...draft, rooms })
 }
 
 export function recordExamplePayment(
