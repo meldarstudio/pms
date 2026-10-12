@@ -161,7 +161,7 @@ const examples = [
     nights: 1,
     status: 'checked_out',
     payment: 'credit',
-    rooms: [{ type: 'standard', room: '107', adults: 1, billedNights: 1, discountCents: 2500 }],
+    rooms: [{ type: 'standard', room: '107', adults: 1, discountCents: 2500 }],
   },
   {
     id: 'reused-room',
@@ -172,6 +172,7 @@ const examples = [
   },
   {
     id: 'split-departure',
+    status: 'checked_in',
     name: ['Carolina', 'Huamán'],
     arrival: -1,
     nights: 3,
@@ -181,11 +182,9 @@ const examples = [
         type: 'standard',
         room: '108',
         adults: 1,
-        status: 'checked_out',
-        billedNights: 1,
         discountCents: 1000,
       },
-      { type: 'standard', room: '109', adults: 2, status: 'checked_in', discountCents: 3000 },
+      { type: 'standard', room: '109', adults: 2, discountCents: 3000 },
     ],
   },
   {
@@ -309,6 +308,10 @@ export function buildResetSql(value) {
         guest_id: guestId,
         check_in: checkIn,
         check_out: checkOut,
+        status: example.status ?? 'confirmed',
+        cancelled_at: example.status === 'cancelled' ? createdAt : null,
+        actual_arrival: ['checked_in','checked_out'].includes(example.status) ? `${checkIn}T15:00:00.000Z` : null,
+        actual_departure: example.status === 'checked_out' ? `${checkOut}T11:00:00.000Z` : null,
         source: 'desk',
         notes: 'Reserva de prueba. Restablecer con pnpm db:reset:local.',
         created_at: createdAt,
@@ -316,11 +319,12 @@ export function buildResetSql(value) {
     )
 
     let total = 0
+    let totalDiscount = 0
     for (const [lineIndex, room] of example.rooms.entries()) {
       const baseRate = baseRates.get(room.type)
       if (baseRate === undefined) throw new Error(`Missing type-${room.type} in seed.sql`)
       const lineId = `line-${example.id}-${lineIndex + 1}`
-      const nights = Array.from({ length: room.billedNights ?? example.nights }, (_, night) => {
+      const nights = Array.from({ length: example.nights }, (_, night) => {
         const day = date(example.arrival + night)
         return {
           date: day,
@@ -333,6 +337,7 @@ export function buildResetSql(value) {
         throw new Error(`Invalid discount for ${lineId}`)
       }
       total += subtotal - discount
+      totalDiscount += discount
       statements.push(
         insert('reservation_rooms', {
           id: lineId,
@@ -341,11 +346,6 @@ export function buildResetSql(value) {
           room_id: room.room ? `room-${room.room}` : null,
           adults: room.adults,
           children: room.children ?? 0,
-          status: room.status ?? example.status ?? 'confirmed',
-          discount_cents: discount,
-          check_in: checkIn,
-          check_out: date(example.arrival + (room.billedNights ?? example.nights)),
-          assignment_start: checkIn,
           created_at: createdAt,
         }),
       )
@@ -361,6 +361,7 @@ export function buildResetSql(value) {
       }
     }
 
+    statements.push(`UPDATE reservations SET discount_cents = ${totalDiscount} WHERE id = ${literal(reservationId)};`)
     if (example.payment) {
       if (example.payment === 'installments') {
         const third = Math.floor(total / 3)
@@ -403,8 +404,6 @@ export function buildResetSql(value) {
   }
   statements.push(`INSERT INTO financial_entries (id,reservation_id,kind,amount_cents,applied_cents,reason,method,occurred_at,payment_date,reference,created_at,legacy)
     SELECT id,reservation_id,'payment',amount_cents,0,notes,method,paid_at,substr(paid_at,1,10),reference,paid_at,0 FROM payments;`)
-  statements.push(`INSERT INTO financial_entries (id,reservation_id,kind,amount_cents,applied_cents,occurred_at,created_at,legacy)
-    SELECT 'discount-' || id,reservation_id,'discount',discount_cents,discount_cents,created_at,created_at,0 FROM reservation_rooms WHERE discount_cents>0;`)
   // Keep the legacy table empty; financial_entries is the application's payment store.
   statements.push('DELETE FROM payments;')
   return statements.join('\n')

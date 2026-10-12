@@ -61,8 +61,8 @@ roomRoutes.patch('/:id', validate('json', patchRoomSchema), async (c) => {
       .where(
         and(
           eq(reservationRooms.roomId, room.id),
-          inArray(reservationRooms.status, assignedStay),
-          gt(reservationRooms.checkOut, todayUtc()),
+          inArray(reservations.status, assignedStay),
+          gt(reservations.checkOut, todayUtc()),
         ),
       )
       .limit(1)

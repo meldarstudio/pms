@@ -7,7 +7,6 @@ export function createWorkflowSaver() {
   let saving = false
   return async function save<T>(
     actions: WorkflowAction[],
-    version: number,
     commit: (command: WorkflowCommand) => Promise<T>
   ): Promise<T> {
     if (saving) throw new Error("Espera a que termine el guardado.")
@@ -19,7 +18,6 @@ export function createWorkflowSaver() {
           payload,
           command: {
             requestId: crypto.randomUUID(),
-            version,
             actions: JSON.parse(payload) as WorkflowAction[],
           },
         }

@@ -37,17 +37,13 @@ export type Inventory = {
 }
 
 export type ReservationLine = {
-  checkIn?: string
-  checkOut?: string
-  actualDeparture?: string | null
-  assignmentStart?: string | null
   id: string
   roomTypeId: string
   roomId: string | null
-  status: string
 }
 
 export type Reservation = {
+  status: string
   code?: string
   balanceCents?: number
   totalCents?: number
@@ -116,15 +112,6 @@ export type ReservationPayment = {
   notes: string | null
 }
 
-// Input for the local status examples. Live payments use workflow commands.
-export type RecordPaymentInput = {
-  amountCents: number
-  method: PaymentMethod
-  reference?: string
-  paidAt?: string
-  notes?: string
-}
-
 export type PatchGuestInput = {
   fullName?: string
 
@@ -134,7 +121,10 @@ export type PatchGuestInput = {
 }
 
 export type ReservationDetail = {
-  version: number
+  status: string
+  actualArrival: string | null
+  actualDeparture: string | null
+  cancellationReason: string | null
   cancelledAt: string | null
   notes: string | null
   waiverCents: number
@@ -160,21 +150,11 @@ export type ReservationDetail = {
   rooms: {
     id: string
     roomTypeId: string
-    checkIn: string
-    checkOut: string
-    originalCheckIn: string | null
-    originalCheckOut: string | null
-    originalNights: string | null
-    actualArrival: string | null
-    actualDeparture: string | null
-    assignmentStart: string | null
-    cancellationReason: string | null
     roomTypeName: string | null
     roomId: string | null
     roomNumber: string | null
     adults: number
     children: number
-    status: string
     subtotalCents: number
     discountCents: number
     totalCents: number
@@ -278,10 +258,6 @@ export function getReservation(id: string, signal?: AbortSignal) {
   return getJson<ReservationDetail>(`/reservations/${id}`, signal)
 }
 
-// Action names used by the bulk-status planner, not standalone HTTP routes.
-export type ReservationStatusAction =
-  "check-in" | "undo-check-in" | "check-out" | "cancel"
-
 export function patchGuest(id: string, body: PatchGuestInput) {
   return writeJson<ReservationGuest>(`/guests/${id}`, "PATCH", body)
 }
@@ -293,11 +269,10 @@ export async function assignRoom(
 ) {
   const detail = await getReservation(reservationId)
   const line = detail.rooms.find((l) => l.id === lineId)
-  if (!line || line.status !== "confirmed" || line.roomId)
+  if (!line || detail.status !== "confirmed" || line.roomId)
     throw new Error("La habitación cambió. Actualiza la reserva.")
   return sendWorkflow(reservationId, {
     requestId: crypto.randomUUID(),
-    version: detail.version,
     actions: [
       {
         type: "edit-room",
@@ -307,8 +282,6 @@ export async function assignRoom(
           roomId,
           adults: line.adults,
           children: line.children,
-          checkIn: line.checkIn,
-          checkOut: line.checkOut,
         },
       },
     ],
@@ -367,8 +340,6 @@ export type WorkflowRoom = {
   roomId: string | null
   adults: number
   children: number
-  checkIn: string
-  checkOut: string
   nightlyRateCents?: number
 }
 export type FinancialInput = {
@@ -408,27 +379,13 @@ export type WorkflowAction =
   | { type: "set-guests"; guests: StayingGuest[] }
   | { type: "edit-room"; lineId: string; room: WorkflowRoom }
   | { type: "add-room"; room: WorkflowRoom }
-  | { type: "check-in" | "check-out"; lineIds: string[] }
-  | { type: "move"; lineId: string; roomId: string }
-  | {
-      type: "undo-check-in"
-      lineId: string
-      reason: string
-      guestsNotArrived: true
-    }
-  | {
-      type: "cancel-room"
-      lineId: string
-      reason?: string
-      accidental?: boolean
-    }
-  | { type: "no-show"; lineId: string; reason: string }
-  | { type: "cancel"; reason?: string; confirmed: true }
+  | { type: "dates"; checkIn: string; checkOut: string }
+  | { type: "remove-room"; lineId: string }
   | { type: "set-discount"; amountCents: number }
   | { type: "financial"; entry: FinancialInput }
   | {
       type: "set-status"
-      lineId: string
+      reason?: string
       status:
         "confirmed" | "checked_in" | "checked_out" | "cancelled" | "no_show"
     }
@@ -437,11 +394,13 @@ export type WorkflowAction =
   | { type: "notes"; notes: string }
 export type WorkflowCommand = {
   requestId: string
-  version: number
   actions: WorkflowAction[]
 }
 export type WorkflowPreview = Pick<
   ReservationDetail,
+  | "status"
+  | "checkIn"
+  | "checkOut"
   | "subtotalCents"
   | "totalCents"
   | "discountCents"
@@ -452,7 +411,6 @@ export type WorkflowPreview = Pick<
   | "creditCents"
   | "savedDiscountCents"
 > & {
-  settlementBlocked: boolean
   rooms: ReservationDetail["rooms"]
   financialEntries: ReservationDetail["financialEntries"]
 }
@@ -475,6 +433,8 @@ export function previewWorkflow(id: string, body: WorkflowCommand) {
   return writeJson<WorkflowPreview>(`/reservations/${id}/preview`, "POST", body)
 }
 export function createWorkflowBooking(body: {
+  checkIn: string
+  checkOut: string
   requestId: string
   guest: {
     fullName: string

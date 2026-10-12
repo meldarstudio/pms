@@ -3,7 +3,7 @@ import {
   workflowCommandSchema,
   workflowCreateSchema,
 } from '@pms/shared'
-import { and, desc, eq, exists, gt, inArray, like, lte, or } from 'drizzle-orm'
+import { and, desc, eq, gt, inArray, like, lte, or } from 'drizzle-orm'
 import { Hono } from 'hono'
 import { getDb } from '../db'
 import {
@@ -31,20 +31,7 @@ reservationRoutes.get('/', validate('query', reservationListQuerySchema), async 
   if (q.checkIn) filters.push(eq(reservations.checkIn, q.checkIn))
   if (q.from) filters.push(gt(reservations.checkOut, q.from))
   if (q.to) filters.push(lte(reservations.checkIn, q.to))
-  if (q.status)
-    filters.push(
-      exists(
-        db
-          .select({ id: reservationRooms.id })
-          .from(reservationRooms)
-          .where(
-            and(
-              eq(reservationRooms.reservationId, reservations.id),
-              eq(reservationRooms.status, q.status),
-            ),
-          ),
-      ),
-    )
+  if (q.status) filters.push(eq(reservations.status, q.status))
   if (q.q) {
     const pattern = `%${q.q.replace(/[%_]/g, '')}%`
     filters.push(
@@ -124,6 +111,9 @@ reservationRoutes.post('/:id/preview', validate('json', workflowCommandSchema), 
   const { applied, ...bill } = totals(result.state)
   return c.json({
     ...bill,
+    status: result.state.reservation.status,
+    checkIn: result.state.reservation.checkIn,
+    checkOut: result.state.reservation.checkOut,
     savedDiscountCents: result.state.reservation.discountCents,
     rooms: result.state.lines.map((line) => {
       const subtotalCents = line.nights.reduce((sum, night) => sum + night.priceCents, 0)
@@ -131,14 +121,13 @@ reservationRoutes.post('/:id/preview', validate('json', workflowCommandSchema), 
         ...line,
         subtotalCents,
         discountCents: 0,
-        totalCents: line.status === 'cancelled' ? 0 : subtotalCents,
+        totalCents: result.state!.reservation.status === 'cancelled' ? 0 : subtotalCents,
       }
     }),
     financialEntries: result.state.entries.map((e) => ({
       ...e,
       appliedCents: applied.get(e.id) ?? 0,
     })),
-    settlementBlocked: result.settlementBlocked,
   })
 })
 reservationRoutes.post('/:id/commands', validate('json', workflowCommandSchema), async (c) => {

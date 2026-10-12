@@ -1,6 +1,6 @@
 import type { WorkflowAction, WorkflowCommand, WorkflowCreate } from '@pms/shared'
 import { eq, inArray } from 'drizzle-orm'
-import { getDb, runBatch, type Db } from './db'
+import { runBatch, type Db } from './db'
 import {
   financialEntries,
   guests,
@@ -35,12 +35,13 @@ const fail = (message: string): never => {
   throw new HttpError(400, message)
 }
 export const charges = (state: State) =>
-  state.lines
-    .filter((l) => l.status !== 'cancelled')
-    .reduce((sum, l) => sum + l.nights.reduce((s, n) => s + n.priceCents, 0), 0)
+  (state.reservation.status === 'cancelled' ? [] : state.lines).reduce(
+    (sum, l) => sum + l.nights.reduce((s, n) => s + n.priceCents, 0),
+    0,
+  )
 export const totals = (state: State) =>
   bill(charges(state), state.entries, state.reservation.discountCents, {
-    cancelled: state.lines.every((line) => line.status === 'cancelled'),
+    cancelled: state.reservation.status === 'cancelled',
   })
 
 export async function loadState(db: Db, id: string): Promise<State> {
@@ -76,8 +77,6 @@ export async function loadState(db: Db, id: string): Promise<State> {
     stayingGuests,
     lines: lines.map((l) => ({
       ...l,
-      checkIn: l.checkIn ?? reservation.checkIn,
-      checkOut: l.checkOut ?? reservation.checkOut,
       nights: nights
         .filter((n) => n.reservationRoomId === l.id)
         .map((n) => ({ date: n.date, priceCents: n.priceCents })),
@@ -115,8 +114,9 @@ async function newLine(
   id: string,
   room: Extract<WorkflowAction, { type: 'add-room' }>['room'],
   now: string,
+  dates: { checkIn: string; checkOut: string },
 ): Promise<Stay> {
-  const nights = await price(db, room)
+  const nights = await price(db, { ...room, ...dates })
   const line: Stay = {
     id: crypto.randomUUID(),
     reservationId: id,
@@ -124,18 +124,7 @@ async function newLine(
     roomId: room.roomId ?? null,
     adults: room.adults,
     children: room.children,
-    status: 'confirmed',
-    discountCents: 0,
     createdAt: now,
-    checkIn: room.checkIn,
-    checkOut: room.checkOut,
-    originalCheckIn: room.checkIn,
-    originalCheckOut: room.checkOut,
-    actualArrival: null,
-    actualDeparture: null,
-    assignmentStart: room.checkIn,
-    cancellationReason: null,
-    originalNights: JSON.stringify(nights),
     nights,
   }
   await validateAssignment(db, line)
@@ -150,8 +139,6 @@ export async function plan(
 ) {
   const state = structuredClone(original)
 
-  if (actions.some((a) => a.type === 'cancel') && actions.length !== 1)
-    fail('cancel booking separately from other changes')
   const lineFor = (id: string) =>
     state.lines.find((l) => l.id === id) ?? fail('room line not found')
   const addFinancial = (input: Extract<WorkflowAction, { type: 'financial' }>['entry']) => {
@@ -205,13 +192,45 @@ export async function plan(
       })
     }
     if (action.type === 'set-status') {
-      const line = lineFor(action.lineId)
-      if (action.status === 'checked_in' && !line.roomId) fail('check-in requires an assigned room')
-      line.status = action.status
-      line.assignmentStart = line.checkIn
-      line.actualArrival = action.status === 'confirmed' ? null : line.actualArrival
-      line.actualDeparture = action.status === 'checked_out' ? line.actualDeparture : null
-      if (state.lines.some((l) => l.status !== 'cancelled')) state.reservation.cancelledAt = null
+      const previous = state.reservation.status
+      Object.assign(state.reservation, {
+        status: action.status,
+        cancelledAt: action.status === 'cancelled' ? (state.reservation.cancelledAt ?? now) : null,
+        cancellationReason:
+          action.status === 'cancelled' || action.status === 'no_show'
+            ? action.reason || null
+            : null,
+        actualArrival:
+          action.status === 'confirmed' || action.status === 'no_show'
+            ? null
+            : action.status === 'checked_in'
+              ? (state.reservation.actualArrival ?? now)
+              : state.reservation.actualArrival,
+        actualDeparture:
+          action.status === 'checked_out'
+            ? (state.reservation.actualDeparture ?? now)
+            : action.status === 'cancelled' && previous === 'checked_in'
+              ? now
+              : null,
+      })
+    }
+    if (action.type === 'dates') {
+      requireStay(action.checkIn, action.checkOut)
+      Object.assign(state.reservation, { checkIn: action.checkIn, checkOut: action.checkOut })
+      for (const line of state.lines) {
+        const saved = new Map(line.nights.map((n) => [n.date, n.priceCents]))
+        line.nights = (await price(db, { ...line, ...state.reservation })).map((n) => ({
+          ...n,
+          priceCents: saved.get(n.date) ?? n.priceCents,
+        }))
+      }
+    }
+    if (action.type === 'remove-room') {
+      lineFor(action.lineId)
+      state.lines = state.lines.filter((line) => line.id !== action.lineId)
+      for (const guest of state.stayingGuests) {
+        if (guest.reservationRoomId === action.lineId) guest.reservationRoomId = null
+      }
     }
     if (action.type === 'edit-financial' || action.type === 'delete-financial') {
       const entry =
@@ -238,13 +257,12 @@ export async function plan(
     if (action.type === 'notes') state.reservation.notes = action.notes || null
     if (action.type === 'add-room') {
       if (state.lines.length >= 60) fail('reservation cannot exceed 60 rooms')
-      if (state.reservation.cancelledAt) fail('reservation is cancelled')
-      state.lines.push(await newLine(db, state.reservation.id, action.room, now))
+      state.lines.push(await newLine(db, state.reservation.id, action.room, now, state.reservation))
     }
     if (action.type === 'edit-room') {
       const line = lineFor(action.lineId),
         room = action.room
-      const nights = await price(db, room)
+      const nights = await price(db, { ...room, ...state.reservation })
       const typeChanged = room.roomTypeId !== line.roomTypeId
       const saved = new Map(line.nights.map((n) => [n.date, n.priceCents]))
       line.nights = nights.map((n) => ({
@@ -252,87 +270,17 @@ export async function plan(
         priceCents: !typeChanged && saved.has(n.date) ? saved.get(n.date)! : n.priceCents,
       }))
       Object.assign(line, room, { roomId: room.roomId ?? null })
-      line.assignmentStart = room.checkIn
       await validateAssignment(db, line)
-    }
-    if (action.type === 'check-in' || action.type === 'check-out') {
-      if (new Set(action.lineIds).size !== action.lineIds.length) fail('duplicate selected room')
-      for (const id of action.lineIds) {
-        const line = lineFor(id)
-        if (action.type === 'check-in') {
-          if (line.status !== 'confirmed' || !line.roomId)
-            fail('check-in requires a confirmed assigned room')
-          line.status = 'checked_in'
-          line.actualArrival = now
-        } else {
-          if (line.status !== 'checked_in') fail('room is not checked in')
-          line.actualDeparture = now
-          line.status = 'checked_out'
-        }
-      }
-    }
-    if (action.type === 'move') {
-      const line = lineFor(action.lineId)
-      if (line.status !== 'checked_in') fail('only a checked-in room can move')
-      if (line.roomId === action.roomId) fail('choose another room')
-      line.roomId = action.roomId
-      line.assignmentStart = line.checkIn
-      await validateAssignment(db, line)
-    }
-    if (action.type === 'undo-check-in') {
-      const line = lineFor(action.lineId)
-      if (line.status !== 'checked_in') fail('room is not checked in')
-      line.status = 'confirmed'
-      line.actualArrival = null
-    }
-    if (action.type === 'cancel-room' || action.type === 'no-show') {
-      const line = lineFor(action.lineId)
-      if (action.type === 'no-show' && line.status !== 'confirmed')
-        fail('only confirmed rooms can be marked no-show')
-      if (action.type === 'cancel-room') {
-        if (line.status === 'cancelled') fail('room already cancelled')
-        if (state.lines.filter((l) => l.status !== 'cancelled').length === 1)
-          fail('use whole-booking cancellation for the final room')
-        if (
-          action.accidental &&
-          (line.status !== 'confirmed' ||
-            !state.lines.some((l) => l.id !== line.id && active(l.status)))
-        )
-          fail('accidental removal must retain another active room')
-      }
-      if (line.status === 'checked_in') line.actualDeparture = now
-      line.status = action.type === 'no-show' ? 'no_show' : 'cancelled'
-      line.cancellationReason = action.reason || null
-    }
-    if (action.type === 'cancel') {
-      state.reservation.cancelledAt ??= now
-      for (const line of state.lines) {
-        if (line.status === 'checked_in') line.actualDeparture = now
-        if (line.status !== 'cancelled') line.cancellationReason = action.reason || null
-        line.status = 'cancelled'
-      }
     }
     if (action.type === 'financial') addFinancial(action.entry)
-    if (action.type === 'correct-financial') fail('use edit-financial or delete-financial')
     const after = totals(state)
     if (after.subtotalCents - after.discountCents < before.subtotalCents - before.discountCents)
       reduceWaivers(charges(state), state.entries, state.reservation.discountCents)
   }
-  for (const line of state.lines) {
-    if (line.status === 'checked_in' && !line.roomId) fail('check-in requires an assigned room')
-  }
-  const settlementBlocked = false
-  const billableLines = state.lines.filter((line) => line.status !== 'cancelled')
-  const datedLines = billableLines.length ? billableLines : state.lines
-  state.reservation.checkIn = datedLines.reduce(
-    (d, l) => (l.checkIn! < d ? l.checkIn! : d),
-    datedLines[0].checkIn!,
-  )
-  state.reservation.checkOut = datedLines.reduce(
-    (d, l) => (l.checkOut! > d ? l.checkOut! : d),
-    datedLines[0].checkOut!,
-  )
-  return { state, settlementBlocked }
+  if (!state.lines.length) fail('reservation requires at least one room')
+  if (state.reservation.status === 'checked_in' && state.lines.some((line) => !line.roomId))
+    fail('check-in requires an assigned room')
+  return { state }
 }
 
 function lineWrites(db: Db, line: Stay, existing: boolean) {
@@ -361,13 +309,13 @@ export async function execute(db: Db, id: string, command: WorkflowCommand, prev
   if (seen) {
     if (seen.reservationId !== id || seen.payload !== payload)
       throw new HttpError(409, 'request ID reused with a different payload')
-    return { replayed: true, settlementBlocked: false }
+    return { replayed: true }
   }
   const original = await loadState(db, id)
-  const { state, settlementBlocked } = await plan(db, original, command.actions)
+  const { state } = await plan(db, original, command.actions)
   if (preview) {
     await validateAvailability(db, state)
-    return { state, settlementBlocked, replayed: false }
+    return { state, replayed: false }
   }
   const now = new Date().toISOString()
   const changed = state.lines.filter(
@@ -378,20 +326,20 @@ export async function execute(db: Db, id: string, command: WorkflowCommand, prev
       db.insert(reservationRequests).values({
         id: command.requestId,
         reservationId: id,
-        expectedVersion: original.reservation.version,
         payload,
         createdAt: now,
       }),
-      // Release all revised lines inside this transaction before validating their
-      // final state. This permits atomic swaps without transient overbooking.
-      ...changed
-        .filter((l) => original.lines.some((o) => o.id === l.id))
-        .map((l) =>
+      // Release the reservation inside the transaction so room swaps are atomic.
+      db.update(reservations).set({ status: 'cancelled' }).where(eq(reservations.id, id)),
+      db.delete(reservationGuests).where(eq(reservationGuests.reservationId, id)),
+      ...original.lines
+        .filter((line) => !state.lines.some((saved) => saved.id === line.id))
+        .flatMap((line) => [
           db
-            .update(reservationRooms)
-            .set({ status: 'cancelled' })
-            .where(eq(reservationRooms.id, l.id)),
-        ),
+            .delete(reservationRoomNights)
+            .where(eq(reservationRoomNights.reservationRoomId, line.id)),
+          db.delete(reservationRooms).where(eq(reservationRooms.id, line.id)),
+        ]),
       ...changed.flatMap((l) =>
         lineWrites(
           db,
@@ -414,6 +362,10 @@ export async function execute(db: Db, id: string, command: WorkflowCommand, prev
       db
         .update(reservations)
         .set({
+          status: state.reservation.status,
+          actualArrival: state.reservation.actualArrival,
+          actualDeparture: state.reservation.actualDeparture,
+          cancellationReason: state.reservation.cancellationReason,
           notes: state.reservation.notes,
           checkIn: state.reservation.checkIn,
           checkOut: state.reservation.checkOut,
@@ -424,14 +376,7 @@ export async function execute(db: Db, id: string, command: WorkflowCommand, prev
       ...(JSON.stringify(state.contact) !== JSON.stringify(original.contact)
         ? [db.update(guests).set(state.contact).where(eq(guests.id, state.contact.id))]
         : []),
-      ...(JSON.stringify(state.stayingGuests) !== JSON.stringify(original.stayingGuests)
-        ? [
-            db.delete(reservationGuests).where(eq(reservationGuests.reservationId, id)),
-            ...chunks(state.stayingGuests, 8).map((rows) =>
-              db.insert(reservationGuests).values(rows),
-            ),
-          ]
-        : []),
+      ...chunks(state.stayingGuests, 8).map((rows) => db.insert(reservationGuests).values(rows)),
     ])
   } catch (error) {
     // Another copy of the same request may have committed while this one read.
@@ -439,11 +384,10 @@ export async function execute(db: Db, id: string, command: WorkflowCommand, prev
       .select()
       .from(reservationRequests)
       .where(eq(reservationRequests.id, command.requestId))
-    if (retry && retry.reservationId === id && retry.payload === payload)
-      return { replayed: true, settlementBlocked: false }
+    if (retry && retry.reservationId === id && retry.payload === payload) return { replayed: true }
     rethrowConflict(error)
   }
-  return { replayed: false, settlementBlocked: false }
+  return { replayed: false }
 }
 
 export async function createWorkflow(db: Db, input: WorkflowCreate) {
@@ -461,7 +405,7 @@ export async function createWorkflow(db: Db, input: WorkflowCreate) {
     id = crypto.randomUUID(),
     guestId = crypto.randomUUID()
   const lines: Stay[] = []
-  for (const room of input.rooms) lines.push(await newLine(db, id, room, now))
+  for (const room of input.rooms) lines.push(await newLine(db, id, room, now, input))
   try {
     await runBatch(db, [
       db
@@ -471,18 +415,14 @@ export async function createWorkflow(db: Db, input: WorkflowCreate) {
         id,
         code: confirmationCode(),
         guestId,
-        checkIn: lines.map((l) => l.checkIn!).sort()[0],
-        checkOut: lines
-          .map((l) => l.checkOut!)
-          .sort()
-          .at(-1)!,
+        checkIn: input.checkIn,
+        checkOut: input.checkOut,
         notes: input.notes,
         createdAt: now,
       }),
       db.insert(reservationRequests).values({
         id: input.requestId,
         reservationId: id,
-        expectedVersion: 0,
         payload,
         createdAt: now,
       }),
@@ -504,16 +444,31 @@ export async function createWorkflow(db: Db, input: WorkflowCreate) {
 // availability checks under the write transaction to close the concurrency gap.
 async function validateAvailability(db: Db, state: State) {
   const [otherLines, physical, closures] = await Promise.all([
-    db.select().from(reservationRooms),
+    db
+      .select({ line: reservationRooms, reservation: reservations })
+      .from(reservationRooms)
+      .innerJoin(reservations, eq(reservations.id, reservationRooms.reservationId)),
     db.select().from(rooms),
     db.select().from(roomClosures),
   ])
   const lines = [
-    ...otherLines.filter((l) => l.reservationId !== state.reservation.id),
-    ...state.lines,
+    ...otherLines
+      .filter((l) => l.reservation.id !== state.reservation.id)
+      .map(({ line, reservation }) => ({
+        ...line,
+        checkIn: reservation.checkIn,
+        checkOut: reservation.checkOut,
+        status: reservation.status,
+      })),
+    ...state.lines.map((line) => ({
+      ...line,
+      checkIn: state.reservation.checkIn,
+      checkOut: state.reservation.checkOut,
+      status: state.reservation.status,
+    })),
   ].filter((l) => active(l.status))
   const overlap = (a: string, b: string, c: string, d: string) => a < d && b > c
-  for (const line of state.lines.filter((l) => active(l.status))) {
+  for (const line of lines.filter((l) => l.reservationId === state.reservation.id)) {
     for (const date of requireStay(line.checkIn!, line.checkOut!)) {
       const count = lines.filter(
         (l) => l.roomTypeId === line.roomTypeId && l.checkIn! <= date && l.checkOut! > date,

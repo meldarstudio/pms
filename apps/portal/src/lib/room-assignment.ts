@@ -22,16 +22,16 @@ export function reservationStays(
 ) {
   return reservations.flatMap((reservation) =>
     reservation.rooms.flatMap((line, index): ReservationStay[] =>
-      openStatuses.has(line.status) ||
-      (includeCompleted && line.status === "checked_out")
+      openStatuses.has(reservation.status) ||
+      (includeCompleted && reservation.status === "checked_out")
         ? [
             {
               id: line.id,
               reservationId: reservation.id,
               guestName: reservation.guestName,
-              status: line.status,
-              checkIn: line.checkIn ?? reservation.checkIn,
-              checkOut: line.checkOut ?? reservation.checkOut,
+              status: reservation.status,
+              checkIn: reservation.checkIn,
+              checkOut: reservation.checkOut,
               roomId: line.roomId,
               roomTypeId: line.roomTypeId,
               roomIndex: index + 1,
@@ -69,15 +69,15 @@ export function assignmentTargetIssue(
     (item) => item.id === target.reservationId
   )
   const line = reservation?.rooms.find((item) => item.id === target.id)
-  if (!reservation || !line || !openStatuses.has(line.status)) {
+  if (!reservation || !line || !openStatuses.has(reservation.status)) {
     return "This reserved room is no longer awaiting assignment. Select another reservation."
   }
   if (line.roomId !== null) {
     return "This reserved room has already been assigned. Select another reservation."
   }
   if (
-    (line.checkIn ?? reservation.checkIn) !== target.checkIn ||
-    (line.checkOut ?? reservation.checkOut) !== target.checkOut ||
+    reservation.checkIn !== target.checkIn ||
+    reservation.checkOut !== target.checkOut ||
     line.roomTypeId !== target.roomTypeId
   ) {
     return "This reservation has changed. Select it again to check the updated stay."
@@ -96,11 +96,11 @@ export function roomAssignmentIssue(
   const occupied = reservations.some((reservation) =>
     reservation.rooms.some(
       (line) =>
-        (line.checkIn ?? reservation.checkIn) < target.checkOut &&
-        (line.checkOut ?? reservation.checkOut) > target.checkIn &&
+        reservation.checkIn < target.checkOut &&
+        reservation.checkOut > target.checkIn &&
         line.id !== target.id &&
         line.roomId === room.id &&
-        !inactiveStatuses.has(line.status)
+        !inactiveStatuses.has(reservation.status)
     )
   )
   if (occupied) return "Occupied during this stay"

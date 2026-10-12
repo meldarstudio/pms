@@ -21,7 +21,7 @@ it('preserves legacy totals, signed payment effects, unknown history, and exclud
    INSERT INTO reservation_rooms (id,reservation_id,room_type_id,room_id,adults,status,discount_cents,created_at) VALUES ('l','b','t','r',1,'checked_out',1000,'2026-10-10'),('c','b','t',NULL,1,'cancelled',5000,'2026-10-10');
    INSERT INTO reservation_room_nights VALUES ('n','l','2026-10-10',10000),('n2','c','2026-10-10',10000);
    INSERT INTO payments (id,reservation_id,amount_cents,method,paid_at,reference) VALUES ('p','b',20000,'cash','2026-10-10T13:45:00Z',' old-receipt '),('negative','b',-3000,'cash','2026-10-10',NULL);`)
-    for (const e of journal.entries.filter((e) => e.idx > 6))
+    for (const e of journal.entries.filter((e) => e.idx > 6 && e.idx <= 15))
       db.exec(readFileSync(new URL(`${e.tag}.sql`, dir), 'utf8'))
     const entries = db
       .prepare(

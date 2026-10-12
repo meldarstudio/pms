@@ -16,7 +16,7 @@ import {
   InputGroupInput,
   InputGroupText,
 } from "@/components/ui/input-group"
-import type { bookingRoomCharges, bookingSummary } from "@/lib/booking-prices"
+import type { ReservationDetail } from "@/lib/api"
 import { formatMajor, formatMoney, parseMajorToCents } from "@/lib/money"
 
 const amountColumn = "w-24 shrink-0 text-right tabular-nums"
@@ -26,14 +26,15 @@ export type BookingSummaryRoom = {
   typeName: string
   adults: number | null
   children: number | null
-  status: string | null
-  charges: ReturnType<typeof bookingRoomCharges>
-  invalid: boolean
-  stayLabel?: string
+  charges: Pick<
+    ReservationDetail["rooms"][number],
+    "subtotalCents" | "discountCents" | "totalCents"
+  >
 }
 
 export function BookingSummary({
   rooms,
+  cancelled,
   summary,
   paidCents,
   currency,
@@ -48,7 +49,11 @@ export function BookingSummary({
   onDiscountDirtyChange,
 }: {
   rooms: BookingSummaryRoom[]
-  summary: ReturnType<typeof bookingSummary>
+  cancelled: boolean
+  summary: Pick<
+    ReservationDetail,
+    "subtotalCents" | "discountCents" | "totalCents" | "balanceCents"
+  > | null
   paidCents: number
   currency: string
   stayLabel: string | null
@@ -75,16 +80,14 @@ export function BookingSummary({
         </CardHeader>
         <CardContent className="flex flex-col gap-3">
           <div className="flex flex-col gap-4">
-            {rooms
-              .filter((room) => room.status !== "cancelled")
-              .map((room, index) => (
-                <RoomSummary
-                  key={room.key}
-                  room={room}
-                  index={index}
-                  currency={currency}
-                />
-              ))}
+            {(cancelled ? [] : rooms).map((room, index) => (
+              <RoomSummary
+                key={room.key}
+                room={room}
+                index={index}
+                currency={currency}
+              />
+            ))}
           </div>
           <Separator />
           <dl className="flex flex-col gap-2">
@@ -278,8 +281,6 @@ function RoomSummary({
   index: number
   currency: string
 }) {
-  const cancelled = room.status === "cancelled"
-  const charges = room.invalid ? null : room.charges
   const guests =
     room.adults === null || room.children === null
       ? "Revisa el número de huéspedes"
@@ -293,17 +294,11 @@ function RoomSummary({
       <dl>
         <SummaryRow
           label={room.typeName}
-          cents={cancelled ? null : (charges?.totalCents ?? null)}
+          cents={room.charges.totalCents}
           currency={currency}
-          excluded={cancelled}
         />
       </dl>
-      <p className="text-xs text-muted-foreground">
-        {cancelled ? "Cancelada" : guests}
-      </p>
-      {room.stayLabel && (
-        <p className="text-xs text-muted-foreground">{room.stayLabel}</p>
-      )}
+      <p className="text-xs text-muted-foreground">{guests}</p>
     </section>
   )
 }
@@ -312,20 +307,16 @@ function SummaryRow({
   label,
   cents,
   currency,
-  excluded = false,
 }: {
   label: string
   cents: number | null
   currency: string
-  excluded?: boolean
 }) {
   return (
     <div className="grid min-w-0 grid-cols-[minmax(0,1fr)_6rem] items-baseline gap-4">
       <dt className="min-w-0 wrap-anywhere">{label}</dt>
       <dd className={amountColumn}>
-        {excluded ? (
-          <span className="text-muted-foreground">Excluida</span>
-        ) : cents === null ? (
+        {cents === null ? (
           <span aria-label="No disponible">...</span>
         ) : (
           formatMoney(cents === 0 ? 0 : cents, currency)

@@ -49,7 +49,10 @@ export const reservations = sqliteTable(
   {
     id: text('id').primaryKey(),
     code: text('code').notNull().unique(),
-    version: integer('version').notNull().default(0),
+    status: text('status').notNull().default('confirmed'),
+    actualArrival: text('actual_arrival'),
+    actualDeparture: text('actual_departure'),
+    cancellationReason: text('cancellation_reason'),
     discountCents: integer('discount_cents').notNull().default(0),
     cancelledAt: text('cancelled_at'),
     guestId: text('guest_id')
@@ -80,17 +83,6 @@ export const reservationRooms = sqliteTable(
     roomId: text('room_id').references(() => rooms.id),
     adults: integer('adults').notNull(),
     children: integer('children').notNull().default(0),
-    status: text('status').notNull(),
-    discountCents: integer('discount_cents').notNull().default(0),
-    checkIn: text('check_in'),
-    checkOut: text('check_out'),
-    originalCheckIn: text('original_check_in'),
-    originalCheckOut: text('original_check_out'),
-    actualArrival: text('actual_arrival'),
-    actualDeparture: text('actual_departure'),
-    assignmentStart: text('assignment_start'),
-    cancellationReason: text('cancellation_reason'),
-    originalNights: text('original_nights'),
     createdAt: text('created_at').notNull(),
   },
   (table) => [
@@ -210,7 +202,6 @@ export const reservationRequests = sqliteTable('reservation_requests', {
   reservationId: text('reservation_id')
     .notNull()
     .references(() => reservations.id),
-  expectedVersion: integer('expected_version').notNull(),
   payload: text('payload').notNull(),
   createdAt: text('created_at').notNull(),
 })

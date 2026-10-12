@@ -19,7 +19,7 @@ type Night = typeof reservationRoomNights.$inferSelect
 type RoomType = typeof roomTypes.$inferSelect
 type Room = typeof rooms.$inferSelect
 
-const unbilled = new Set(['cancelled'])
+const cancelled = (reservation: Reservation) => reservation.status === 'cancelled'
 
 export function presentGuest(guest: Guest) {
   return {
@@ -60,8 +60,6 @@ export function presentReservation(input: {
     const lineTotal = nights.reduce((sum, night) => sum + night.priceCents, 0)
     return {
       ...line,
-      checkIn: line.checkIn ?? input.reservation.checkIn,
-      checkOut: line.checkOut ?? input.reservation.checkOut,
       id: line.id,
       roomTypeId: line.roomTypeId,
       roomTypeName: typeById.get(line.roomTypeId)?.name ?? null,
@@ -69,15 +67,14 @@ export function presentReservation(input: {
       roomNumber: line.roomId ? (roomById.get(line.roomId)?.number ?? null) : null,
       adults: line.adults,
       children: line.children,
-      status: line.status,
       subtotalCents: lineTotal,
       discountCents: 0,
-      totalCents: line.status === 'cancelled' ? 0 : lineTotal,
+      totalCents: cancelled(input.reservation) ? 0 : lineTotal,
       nights: nights.map((night) => ({ date: night.date, priceCents: night.priceCents })),
     }
   })
 
-  const billable = roomsOut.filter((line) => !unbilled.has(line.status))
+  const billable = cancelled(input.reservation) ? [] : roomsOut
   const subtotalCents = billable.reduce((sum, line) => sum + line.subtotalCents, 0)
   const totals = bill(subtotalCents, input.entries, input.reservation.discountCents, {
     cancelled: billable.length === 0,
@@ -87,7 +84,10 @@ export function presentReservation(input: {
   return {
     id: input.reservation.id,
     code: input.reservation.code,
-    version: input.reservation.version,
+    status: input.reservation.status,
+    actualArrival: input.reservation.actualArrival,
+    actualDeparture: input.reservation.actualDeparture,
+    cancellationReason: input.reservation.cancellationReason,
     cancelledAt: input.reservation.cancelledAt,
     guestId: input.reservation.guestId,
     guest: presentGuest(input.guest),

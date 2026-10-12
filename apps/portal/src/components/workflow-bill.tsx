@@ -5,7 +5,7 @@ export function WorkflowBill({
   bill,
   compact = false,
 }: {
-  bill: Omit<WorkflowPreview, "settlementBlocked" | "rooms">
+  bill: Omit<WorkflowPreview, "rooms">
   compact?: boolean
 }) {
   return (

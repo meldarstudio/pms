@@ -37,9 +37,9 @@ async function assertCanClose(
     .where(
       and(
         eq(reservationRooms.roomId, room.id),
-        inArray(reservationRooms.status, blockingStay),
-        lt(reservationRooms.checkIn, ends),
-        gt(reservationRooms.checkOut, starts),
+        inArray(reservations.status, blockingStay),
+        lt(reservations.checkIn, ends),
+        gt(reservations.checkOut, starts),
       ),
     )
     .limit(1)

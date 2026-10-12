@@ -1,5 +1,5 @@
 import { rateRangeQuerySchema } from '@pms/shared'
-import { and, eq, gt, lt, sql } from 'drizzle-orm'
+import { and, eq, gt, lt } from 'drizzle-orm'
 import { Hono } from 'hono'
 import { getDb } from '../db'
 import { reservationRooms, reservations, roomClosures, rooms } from '../db/schema'
@@ -23,13 +23,13 @@ inventoryRoutes.get('/', validate('query', rateRangeQuerySchema), async (c) => {
     db
       .select({
         roomTypeId: reservationRooms.roomTypeId,
-        status: reservationRooms.status,
-        checkIn: sql<string>`coalesce(${reservationRooms.checkIn}, ${reservations.checkIn})`,
-        checkOut: sql<string>`coalesce(${reservationRooms.checkOut}, ${reservations.checkOut})`,
+        status: reservations.status,
+        checkIn: reservations.checkIn,
+        checkOut: reservations.checkOut,
       })
       .from(reservationRooms)
       .innerJoin(reservations, eq(reservations.id, reservationRooms.reservationId))
-      .where(and(lt(reservationRooms.checkIn, windowEnd), gt(reservationRooms.checkOut, from))),
+      .where(and(lt(reservations.checkIn, windowEnd), gt(reservations.checkOut, from))),
     db
       .select({
         roomId: roomClosures.roomId,

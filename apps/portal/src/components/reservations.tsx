@@ -79,8 +79,8 @@ export function Reservations({
             "Habitaciones en estancia",
             String(
               rows
-                .flatMap((r) => r.rooms)
-                .filter((l) => l.status === "checked_in").length
+                .filter((r) => r.status === "checked_in")
+                .flatMap((r) => r.rooms).length
             ),
             "Llegada registrada",
           ],
@@ -165,7 +165,7 @@ export function Reservations({
                   {r.checkIn} al {r.checkOut}
                 </p>
                 <div className="flex flex-wrap gap-1">
-                  {[...new Set(r.rooms.map((l) => l.status))].map((s) => (
+                  {[r.status].map((s) => (
                     <Badge key={s} variant="secondary">
                       {statuses.find((o) => o.value === s)?.label ?? s}
                     </Badge>

@@ -57,9 +57,10 @@ describe('local dummy data reset', () => {
       UPDATE rooms SET number = 'edited-101' WHERE id = 'room-101';
       UPDATE guests SET first_name = 'Edited', notes = 'Changed in portal' WHERE id = 'guest-arrival';
       UPDATE reservations SET notes = 'Edited booking' WHERE id = 'reservation-arrival';
-      UPDATE reservation_rooms SET room_id = 'room-104', status = 'checked_in' WHERE id = 'line-alex-1';
+      UPDATE reservation_rooms SET room_id = 'room-104' WHERE id = 'line-alex-1';
+      UPDATE reservations SET status = 'checked_in' WHERE id = 'reservation-alex';
       UPDATE reservation_room_nights SET price_cents = 1 WHERE reservation_room_id = 'line-arrival-1';
-      UPDATE reservation_rooms SET discount_cents = 1 WHERE id = 'line-arrival-1';
+      UPDATE reservations SET discount_cents = 1 WHERE id = 'reservation-arrival';
       UPDATE financial_entries SET amount_cents = 100 WHERE id = 'payment-family';
       DELETE FROM financial_entries WHERE id = 'payment-cancelled';
       DELETE FROM room_type_rates WHERE room_type_id = 'type-suite';
@@ -73,8 +74,8 @@ describe('local dummy data reset', () => {
       INSERT INTO guests (id, first_name, last_name, created_at) VALUES ('custom', 'New', 'Guest', '2026-10-06');
       INSERT INTO reservations (id, code, guest_id, check_in, check_out, created_at)
         VALUES ('custom', 'CUSTOM', 'custom', '2026-10-06', '2026-10-07', '2026-10-06');
-      INSERT INTO reservation_rooms (id, reservation_id, room_type_id, room_id, adults, status, created_at)
-        VALUES ('custom', 'custom', 'custom', 'custom', 1, 'confirmed', '2026-10-06');
+      INSERT INTO reservation_rooms (id, reservation_id, room_type_id, room_id, adults, created_at)
+        VALUES ('custom', 'custom', 'custom', 'custom', 1, '2026-10-06');
       INSERT INTO reservation_room_nights VALUES ('custom', 'custom', '2026-10-06', 5000);
       INSERT INTO payments (id, reservation_id, amount_cents, method, paid_at)
         VALUES ('custom', 'custom', 5000, 'cash', '2026-10-06');
@@ -101,14 +102,14 @@ describe('local dummy data reset', () => {
     expect(db.prepare('SELECT COUNT(*) AS count FROM room_closures').get().count).toBe(3)
     expect(
       db
-        .prepare('SELECT DISTINCT status FROM reservation_rooms ORDER BY status')
+        .prepare('SELECT DISTINCT status FROM reservations ORDER BY status')
         .all()
         .map((row) => row.status),
     ).toEqual(['cancelled', 'checked_in', 'checked_out', 'confirmed', 'no_show'])
     expect(
       db
         .prepare(
-          "SELECT COUNT(*) AS count FROM reservation_rooms WHERE room_id IS NULL AND status = 'confirmed'",
+          "SELECT COUNT(*) AS count FROM reservation_rooms rr JOIN reservations r ON r.id=rr.reservation_id WHERE rr.room_id IS NULL AND r.status='confirmed'",
         )
         .get().count,
     ).toBe(4)
@@ -126,8 +127,8 @@ describe('local dummy data reset', () => {
           `SELECT rr.id FROM reservation_rooms rr
       JOIN reservations r ON r.id = rr.reservation_id
       LEFT JOIN reservation_room_nights n ON n.reservation_room_id = rr.id
-            GROUP BY rr.id HAVING COUNT(n.id) != julianday(rr.check_out) - julianday(rr.check_in)
-      OR MIN(n.date) != rr.check_in OR MAX(n.date) != date(rr.check_out, '-1 day')`,
+            GROUP BY rr.id HAVING COUNT(n.id) != julianday(r.check_out) - julianday(r.check_in)
+      OR MIN(n.date) != r.check_in OR MAX(n.date) != date(r.check_out, '-1 day')`,
         )
         .all(),
     ).toEqual([])
@@ -162,8 +163,8 @@ describe('local dummy data reset', () => {
         .prepare(
           `
       SELECT
-        (SELECT SUM((SELECT SUM(price_cents) FROM reservation_room_nights WHERE reservation_room_id = rr.id) - rr.discount_cents)
-          FROM reservation_rooms rr WHERE rr.reservation_id = r.id AND rr.status != 'cancelled')
+        (SELECT SUM((SELECT SUM(price_cents) FROM reservation_room_nights WHERE reservation_room_id = rr.id))
+          FROM reservation_rooms rr WHERE rr.reservation_id = r.id AND r.status != 'cancelled') - r.discount_cents
         - COALESCE((SELECT SUM(amount_cents) FROM financial_entries WHERE kind = 'payment' AND reservation_id = r.id), 0) AS balance
       FROM reservations r WHERE r.id = ?
     `,
@@ -192,8 +193,9 @@ describe('local dummy data reset', () => {
       db
         .prepare(
           `SELECT rr.id FROM reservation_rooms rr
+      JOIN reservations r ON r.id=rr.reservation_id
       JOIN reservation_room_nights n ON n.reservation_room_id = rr.id
-      GROUP BY rr.id HAVING rr.discount_cents < 0 OR rr.discount_cents > SUM(n.price_cents)`,
+      GROUP BY r.id HAVING r.discount_cents < 0 OR r.discount_cents > SUM(n.price_cents)`,
         )
         .all(),
     ).toEqual([])
@@ -207,13 +209,14 @@ describe('local dummy data reset', () => {
     expect(
       db
         .prepare(
-          `SELECT rr.id, rr.status, COUNT(n.id) AS nights FROM reservation_rooms rr
+          `SELECT rr.id, r.status, COUNT(n.id) AS nights FROM reservation_rooms rr
+      JOIN reservations r ON r.id=rr.reservation_id
       JOIN reservation_room_nights n ON n.reservation_room_id = rr.id
       WHERE rr.reservation_id = 'reservation-split-departure' GROUP BY rr.id ORDER BY rr.id`,
         )
         .all(),
     ).toEqual([
-      { id: 'line-split-departure-1', status: 'checked_out', nights: 1 },
+      { id: 'line-split-departure-1', status: 'checked_in', nights: 3 },
       { id: 'line-split-departure-2', status: 'checked_in', nights: 3 },
     ])
     expect(
@@ -222,9 +225,9 @@ describe('local dummy data reset', () => {
           `SELECT rr.id FROM reservation_rooms rr
       JOIN reservations r ON r.id = rr.reservation_id
       JOIN reservation_room_nights n ON n.reservation_room_id = rr.id
-      WHERE rr.status = 'checked_out' GROUP BY rr.id
-      HAVING COUNT(n.id) < 1 OR MIN(n.date) != rr.check_in
-      OR MAX(n.date) >= rr.check_out`,
+      WHERE r.status = 'checked_out' GROUP BY rr.id
+      HAVING COUNT(n.id) < 1 OR MIN(n.date) != r.check_in
+      OR MAX(n.date) >= r.check_out`,
         )
         .all(),
     ).toEqual([])

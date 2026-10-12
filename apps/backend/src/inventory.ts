@@ -36,17 +36,17 @@ export async function occupiedCounts(
     db
       .select({
         roomTypeId: reservationRooms.roomTypeId,
-        status: reservationRooms.status,
-        checkIn: sql<string>`coalesce(${reservationRooms.checkIn}, ${reservations.checkIn})`,
-        checkOut: sql<string>`coalesce(${reservationRooms.checkOut}, ${reservations.checkOut})`,
+        status: reservations.status,
+        checkIn: reservations.checkIn,
+        checkOut: reservations.checkOut,
       })
       .from(reservationRooms)
       .innerJoin(reservations, eq(reservations.id, reservationRooms.reservationId))
       .where(
         and(
-          inArray(reservationRooms.status, openStatuses),
-          lt(reservationRooms.checkIn, checkOut),
-          gt(reservationRooms.checkOut, checkIn),
+          inArray(reservations.status, openStatuses),
+          lt(reservations.checkIn, checkOut),
+          gt(reservations.checkOut, checkIn),
           excludeReservationId ? ne(reservations.id, excludeReservationId) : undefined,
         ),
       ),

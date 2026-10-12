@@ -27,11 +27,9 @@ import {
   changeCheckIn,
   minimumCheckOut,
   guestValues,
-  isActiveStay,
   overlappingRoomIds,
   unavailableRoomIds,
   roomEdits,
-  sharedStay,
   stayValue,
   type RoomDraft,
 } from "@/lib/reservation-editor"
@@ -59,7 +57,6 @@ import {
   DropdownMenuContent,
   DropdownMenuGroup,
   DropdownMenuItem,
-  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
 import { FieldError, FieldGroup } from "@/components/ui/field"
@@ -78,7 +75,7 @@ import { TextField, ChoiceField } from "@/components/workflow-fields"
 import { WorkflowBill } from "@/components/workflow-bill"
 import { BookingSummary } from "@/components/booking-summary"
 import { format } from "@/lib/dates"
-import { differenceInCalendarDays, isValid, parseISO } from "date-fns"
+import { isValid, parseISO } from "date-fns"
 import {
   createWorkflowBooking,
   previewWorkflow,
@@ -139,41 +136,16 @@ const stayDate = (value: string, pattern: string) => {
   const date = parseISO(value)
   return isValid(date) ? format(date, pattern) : "—"
 }
-const roomStayLabel = (dates: { checkIn: string; checkOut: string }) => {
-  const nights = differenceInCalendarDays(
-    parseISO(dates.checkOut),
-    parseISO(dates.checkIn)
-  )
-  const length =
-    Number.isFinite(nights) && nights > 0
-      ? `${nights} ${nights === 1 ? "noche" : "noches"}`
-      : "Revisa las fechas"
-  return `${stayDate(dates.checkIn, "d MMM")} – ${stayDate(dates.checkOut, "d MMM yyyy")} · ${length}`
-}
 const today = () => new Date().toISOString().slice(0, 10)
 const paymentToday = () => format(new Date(), "yyyy-MM-dd")
 type Intent =
   | { type: "financial"; kind: FinancialInput["kind"] }
   | { type: "edit-financial" | "delete-financial"; entry: FinancialEntry }
-  | { type: "cancel-room"; lineId: string }
   | { type: "cancel" }
 
 export function ReservationStatus({ detail }: { detail: ReservationDetail }) {
-  const statuses = [
-    ...new Set(
-      detail.rooms
-        .filter((room) => room.status !== "cancelled")
-        .map((room) => room.status)
-    ),
-  ]
   return (
-    <Badge variant="secondary">
-      {detail.cancelledAt
-        ? "Cancelada"
-        : statuses.length > 1
-          ? "Estados diferentes"
-          : (labels[statuses[0]] ?? "Cancelada")}
-    </Badge>
+    <Badge variant="secondary">{labels[detail.status] ?? detail.status}</Badge>
   )
 }
 
@@ -291,30 +263,20 @@ export function RoomBookingDialog({
 function RoomFields({
   room,
   onChange,
-  locked = false,
-  extension = false,
   blockedRoomIds = new Set<string>(),
 }: {
   room: WorkflowRoom
   onChange: (room: WorkflowRoom) => void
-  locked?: boolean
-  extension?: boolean
   blockedRoomIds?: Set<string>
 }) {
   const types = useRoomTypes(),
     rooms = useRooms()
-  const set = (patch: Partial<WorkflowRoom>) =>
-    onChange(
-      patch.checkIn
-        ? changeCheckIn({ ...room, ...patch }, patch.checkIn)
-        : { ...room, ...patch }
-    )
+  const set = (patch: Partial<WorkflowRoom>) => onChange({ ...room, ...patch })
   return (
-    <FieldGroup className="grid grid-cols-2 gap-3 lg:grid-cols-6">
+    <FieldGroup className="grid grid-cols-2 gap-3 lg:grid-cols-4">
       <ChoiceField
         label="Tipo"
         value={room.roomTypeId}
-        disabled={locked || extension}
         options={(types.data ?? []).map((t) => ({
           value: t.id,
           label: t.name,
@@ -326,7 +288,6 @@ function RoomFields({
       <ChoiceField
         label="Hab."
         value={room.roomId ?? "unassigned"}
-        disabled={locked || extension}
         options={[
           { value: "unassigned", label: "Sin asignar" },
           ...(rooms.data ?? [])
@@ -342,26 +303,10 @@ function RoomFields({
         onChange={(v) => set({ roomId: v === "unassigned" ? null : v })}
       />
       <TextField
-        label="Llegada prevista"
-        type="date"
-        value={room.checkIn}
-        disabled={locked || extension}
-        onChange={(checkIn) => set({ checkIn })}
-      />
-      <TextField
-        label={extension ? "Extender hasta" : "Salida prevista"}
-        type="date"
-        value={room.checkOut}
-        min={minimumCheckOut(room.checkIn)}
-        disabled={locked}
-        onChange={(checkOut) => set({ checkOut })}
-      />
-      <TextField
         label="Adultos"
         type="number"
         min={1}
         value={room.adults}
-        disabled={locked || extension}
         onChange={(v) => set({ adults: Number(v) })}
       />
       <TextField
@@ -369,7 +314,6 @@ function RoomFields({
         type="number"
         min={0}
         value={room.children}
-        disabled={locked || extension}
         onChange={(v) => set({ children: Number(v) })}
       />
     </FieldGroup>
@@ -388,14 +332,16 @@ function NewBooking({
   const [fullName, setFullName] = useState(""),
     [phone, setPhone] = useState(""),
     [email, setEmail] = useState("")
+  const [stay, setStay] = useState({
+    checkIn: start,
+    checkOut: minimumCheckOut(start),
+  })
   const [drafts, setDrafts] = useState<WorkflowRoom[]>([
     {
       roomTypeId: target.mode === "create" ? target.roomTypeId : "",
       roomId: target.mode === "create" ? target.roomId : null,
       adults: 1,
       children: 0,
-      checkIn: start,
-      checkOut: minimumCheckOut(start),
     },
   ])
   const [error, setError] = useState(""),
@@ -411,6 +357,7 @@ function NewBooking({
           ...(phone ? { phone } : {}),
           ...(email ? { email } : {}),
         },
+        ...stay,
         rooms: drafts,
       }
       const payload = JSON.stringify(data)
@@ -451,6 +398,23 @@ function NewBooking({
             onChange={setEmail}
           />
         </FieldGroup>
+        <FieldGroup className="grid grid-cols-2 gap-3">
+          <TextField
+            label="Check-in"
+            type="date"
+            required
+            value={stay.checkIn}
+            onChange={(checkIn) => setStay(changeCheckIn(stay, checkIn))}
+          />
+          <TextField
+            label="Check-out"
+            type="date"
+            required
+            min={minimumCheckOut(stay.checkIn)}
+            value={stay.checkOut}
+            onChange={(checkOut) => setStay({ ...stay, checkOut })}
+          />
+        </FieldGroup>
         <Separator />
         {drafts.map((room, i) => (
           <section key={i} className="flex flex-col gap-3 border p-3">
@@ -471,14 +435,13 @@ function NewBooking({
             <RoomFields
               room={room}
               blockedRoomIds={overlappingRoomIds(
-                room,
                 drafts.filter((_, n) => n !== i)
               )}
               onChange={(r) =>
                 setDrafts((d) => d.map((v, n) => (n === i ? r : v)))
               }
             />
-            <NewRoomPrice room={room} />
+            <NewRoomPrice room={room} stay={stay} />
           </section>
         ))}
         <Button
@@ -507,8 +470,14 @@ function NewBooking({
     </form>
   )
 }
-function NewRoomPrice({ room }: { room: WorkflowRoom }) {
-  const q = useAvailability(room.checkIn, room.checkOut),
+function NewRoomPrice({
+  room,
+  stay,
+}: {
+  room: WorkflowRoom
+  stay: { checkIn: string; checkOut: string }
+}) {
+  const q = useAvailability(stay.checkIn, stay.checkOut),
     type = q.data?.roomTypes.find((t) => t.id === room.roomTypeId)
   return q.error ? (
     <FieldError>{q.error.message}</FieldError>
@@ -543,30 +512,40 @@ export function BookingEditor({
       id: l.id,
       room: stayValue(l),
       removed: false,
-      reason: "",
     }))
   )
   const [notes, setNotes] = useState(detail.notes ?? "")
   const [contact] = useState<BookingContact>(contactValue(detail.guest))
   const [guestDirty, setGuestDirty] = useState(false)
   const roomTypes = useRoomTypes()
-  const physicalRooms = useRooms()
-  const [expandedRooms, setExpandedRooms] = useState<Set<string>>(new Set())
+  const [common, setCommon] = useState({
+    checkIn: detail.checkIn,
+    checkOut: detail.checkOut,
+  })
+  const [reservationState, setReservationState] = useState(detail.status)
   const [intent, setIntent] = useState<Intent | null>(null)
-  const [pendingActions, setPendingActions] = useState<WorkflowAction[]>([])
   const [tab, setTab] = useState(initialTab)
   const [error, setError] = useState("")
   const formRef = useRef<HTMLFormElement>(null)
   const [paymentDirty, setPaymentDirty] = useState(false)
   const [discountDirty, setDiscountDirty] = useState(false)
   const changes = roomEdits(detail, drafts)
+  if (common.checkIn !== detail.checkIn || common.checkOut !== detail.checkOut)
+    changes.unshift({ type: "dates", ...common })
+  if (reservationState !== detail.status)
+    changes.push({
+      type: "set-status",
+      status: reservationState as Extract<
+        WorkflowAction,
+        { type: "set-status" }
+      >["status"],
+    })
   if (notes !== (detail.notes ?? "")) changes.push({ type: "notes", notes })
   if (
     JSON.stringify(contactValue(contact)) !==
     JSON.stringify(contactValue(detail.guest))
   )
     changes.push({ type: "contact", contact: contactValue(contact) })
-  changes.push(...pendingActions)
   const dirty = changes.length > 0
   const previewActions = billingPreviewActions(changes)
   const billingDirty = previewActions.length > 0
@@ -575,18 +554,16 @@ export function BookingEditor({
   const editCommand = useMemo<WorkflowCommand>(
     () => ({
       requestId: crypto.randomUUID(),
-      version: detail.version,
       actions: JSON.parse(changesKey) as WorkflowAction[],
     }),
-    [changesKey, detail.version]
+    [changesKey]
   )
   const billingCommand = useMemo<WorkflowCommand>(
     () => ({
       requestId: crypto.randomUUID(),
-      version: detail.version,
       actions: JSON.parse(previewActionsKey) as WorkflowAction[],
     }),
-    [previewActionsKey, detail.version]
+    [previewActionsKey]
   )
   const [previewCommand, setPreviewCommand] = useState(billingCommand)
   useEffect(() => {
@@ -623,7 +600,6 @@ export function BookingEditor({
     await discountSave.current
     await guestSaver(
       [{ type: "set-guests", guests: guestValues(guests) }],
-      detail.version,
       (command) => guestMutation.mutateAsync({ id: detail.id, command })
     )
   }
@@ -651,15 +627,15 @@ export function BookingEditor({
         id: room.id,
         room: stayValue(room),
         removed: false,
-        reason: "",
       }))
     )
+    setCommon({ checkIn: saved.checkIn, checkOut: saved.checkOut })
+    setReservationState(saved.status)
     setNotes(saved.notes ?? "")
-    setPendingActions([])
   }
   async function saveFinancial(title: string, actions: WorkflowAction[]) {
     await discountSave.current
-    await financialSaver(actions, detail.version, (command) =>
+    await financialSaver(actions, (command) =>
       financialMutation.mutateAsync({ id: detail.id, command })
     )
     toast.add({ title, type: "success" })
@@ -667,7 +643,6 @@ export function BookingEditor({
   async function saveDiscount(amountCents: number) {
     const pending = discountSaver(
       [{ type: "set-discount", amountCents }],
-      detail.version,
       (command) => discountMutation.mutateAsync({ id: detail.id, command })
     )
     discountSave.current = pending
@@ -678,72 +653,13 @@ export function BookingEditor({
     }
   }
 
-  const statusFor = (id: string) => {
-    const action = pendingActions.findLast(
-      (a) => a.type === "set-status" && a.lineId === id
-    )
-    return action?.type === "set-status"
-      ? action.status
-      : (detail.rooms.find((room) => room.id === id)?.status ?? "confirmed")
-  }
-  const activeDrafts = drafts.filter(
-    (d) => !d.removed && isActiveStay(statusFor(d.id))
-  )
-  const datedDrafts = activeDrafts.length
-    ? activeDrafts
-    : drafts.filter((d) => !d.removed)
-  const common = sharedStay(datedDrafts)
-  const projectedDetail = billing ? { ...detail, ...billing } : detail
-  const projectedRooms = projectedDetail.rooms.map((room) => ({
-    ...room,
-    status: statusFor(room.id),
-    roomTypeName:
-      roomTypes.data?.find((type) => type.id === room.roomTypeId)?.name ??
-      room.roomTypeName,
-    roomNumber:
-      physicalRooms.data?.find((physical) => physical.id === room.roomId)
-        ?.number ?? room.roomNumber,
-  }))
-  const remainingDrafts = drafts.filter((draft) => !draft.removed)
-  const visibleDrafts = remainingDrafts.filter(
-    (draft) => statusFor(draft.id) !== "cancelled"
-  )
-  const stateDrafts = visibleDrafts.length ? visibleDrafts : remainingDrafts
-  const reservationState = stateDrafts.every(
-    (draft) => statusFor(draft.id) === statusFor(stateDrafts[0]?.id ?? "")
-  )
-    ? statusFor(stateDrafts[0]?.id ?? "")
-    : "mixed"
-  const unassigned = stateDrafts.some((draft) => !draft.room.roomId)
+  const activeDrafts = drafts.filter((draft) => !draft.removed)
+  const unassigned = activeDrafts.some((draft) => !draft.room.roomId)
   const update = (id: string, patch: Partial<WorkflowRoom>) =>
     setDrafts((ds) =>
-      ds.map((d) =>
-        d.id === id
-          ? {
-              ...d,
-              room: patch.checkIn
-                ? changeCheckIn({ ...d.room, ...patch }, patch.checkIn)
-                : { ...d.room, ...patch },
-            }
-          : d
-      )
+      ds.map((d) => (d.id === id ? { ...d, room: { ...d.room, ...patch } } : d))
     )
   const cancel = () => setIntent({ type: "cancel" })
-  function review(_title: string, actions: WorkflowAction[]) {
-    setError("")
-    setPendingActions((pending) =>
-      actions.reduce((result, action) => {
-        if (action.type === "set-status")
-          return [
-            ...result.filter(
-              (a) => a.type !== "set-status" || a.lineId !== action.lineId
-            ),
-            action,
-          ]
-        return [...result, action]
-      }, pending)
-    )
-  }
   async function saveChanges() {
     setError("")
     if (
@@ -860,236 +776,90 @@ export function BookingEditor({
                 disabled={saveMutation.isPending}
                 className="flex min-w-0 flex-col gap-5"
               >
-                {common ? (
-                  <section className="flex flex-col gap-2">
-                    <FieldGroup className="grid grid-cols-2 gap-3">
-                      <TextField
-                        label="Check-in"
-                        type="date"
-                        required
-                        value={common.checkIn}
-                        onChange={(checkIn) =>
-                          setDrafts((ds) =>
-                            ds.map((d) =>
-                              datedDrafts.some((a) => a.id === d.id)
-                                ? { ...d, room: changeCheckIn(d.room, checkIn) }
-                                : d
-                            )
-                          )
-                        }
-                      />
-                      <TextField
-                        label="Check-out"
-                        type="date"
-                        required
-                        value={common.checkOut}
-                        min={minimumCheckOut(common.checkIn)}
-                        onChange={(checkOut) =>
-                          setDrafts((ds) =>
-                            ds.map((d) =>
-                              datedDrafts.some((a) => a.id === d.id)
-                                ? { ...d, room: { ...d.room, checkOut } }
-                                : d
-                            )
-                          )
-                        }
-                      />
-                    </FieldGroup>
-                  </section>
-                ) : null}
+                <FieldGroup className="grid grid-cols-2 gap-3">
+                  <TextField
+                    label="Check-in"
+                    type="date"
+                    required
+                    value={common.checkIn}
+                    onChange={(checkIn) =>
+                      setCommon(changeCheckIn(common, checkIn))
+                    }
+                  />
+                  <TextField
+                    label="Check-out"
+                    type="date"
+                    required
+                    value={common.checkOut}
+                    min={minimumCheckOut(common.checkIn)}
+                    onChange={(checkOut) => setCommon({ ...common, checkOut })}
+                  />
+                </FieldGroup>
                 <section className="flex flex-col gap-3">
                   <div className="flex flex-wrap items-center justify-between gap-2">
                     <h3 className="font-medium">Habitaciones</h3>
                   </div>
-                  {drafts
-                    .filter((draft) => statusFor(draft.id) !== "cancelled")
-                    .map((draft, i) => {
-                      const saved = projectedRooms.find(
-                        (l) => l.id === draft.id
-                      )
-                      const occupied = saved?.status === "checked_in"
-                      return (
-                        <section
-                          key={draft.id}
-                          className="flex min-w-0 flex-col gap-3"
-                        >
-                          {draft.removed ? (
-                            <div className="flex flex-col gap-3">
-                              <p>
-                                Hab. {saved?.roomNumber ?? i + 1} se retirará al
-                                guardar.
-                              </p>
-                              <FieldGroup>
-                                <TextField
-                                  label="Motivo de la retirada"
-                                  required
-                                  value={draft.reason}
-                                  onChange={(reason) =>
-                                    setDrafts((ds) =>
-                                      ds.map((d) =>
-                                        d.id === draft.id ? { ...d, reason } : d
-                                      )
-                                    )
-                                  }
-                                />
-                              </FieldGroup>
-                              <Button
-                                type="button"
-                                variant="outline"
-                                className="w-fit"
-                                onClick={() =>
-                                  setDrafts((ds) =>
-                                    ds.map((d) =>
-                                      d.id === draft.id
-                                        ? { ...d, removed: false }
-                                        : d
-                                    )
-                                  )
-                                }
-                              >
-                                <Undo2Icon data-icon="inline-start" />
-                                Deshacer retirada
-                              </Button>
-                            </div>
-                          ) : (
-                            <>
-                              <CompactRoomFields
-                                reservationId={detail.id}
-                                room={draft.room}
-                                blockedRoomIds={overlappingRoomIds(
-                                  draft.room,
-                                  drafts
-                                    .filter((other) => {
-                                      const status = projectedRooms.find(
-                                        (line) => line.id === other.id
-                                      )?.status
-                                      return (
-                                        other.id !== draft.id &&
-                                        !other.removed &&
-                                        status !== "cancelled" &&
-                                        status !== "no_show"
-                                      )
-                                    })
-                                    .map((other) => other.room)
-                                )}
-                                occupied={occupied}
-                                onChange={(room) => update(draft.id, room)}
-                                actions={
-                                  <RoomStatusMenu
-                                    expanded={expandedRooms.has(draft.id)}
-                                    onToggleAdvanced={() =>
-                                      setExpandedRooms((current) => {
-                                        const next = new Set(current)
-                                        if (next.has(draft.id))
-                                          next.delete(draft.id)
-                                        else next.add(draft.id)
-                                        return next
-                                      })
-                                    }
-                                    saved={saved}
-                                    disabled={
-                                      saveMutation.isPending ||
-                                      (dirty && !billing)
-                                    }
-                                    onCancel={() => {
-                                      if (!saved)
-                                        setDrafts((ds) =>
-                                          ds.filter((d) => d.id !== draft.id)
-                                        )
-                                      else if (
-                                        detail.rooms.filter(
-                                          (l) => l.status !== "cancelled"
-                                        ).length === 1
-                                      )
-                                        cancel()
-                                      else
-                                        setIntent({
-                                          type: "cancel-room",
-                                          lineId: saved.id,
-                                        })
-                                    }}
-                                  />
-                                }
-                              />
-                              {expandedRooms.has(draft.id) && (
-                                <div className="flex flex-col gap-3">
-                                  <FieldGroup className="grid grid-cols-2 gap-3 sm:grid-cols-3">
-                                    <TextField
-                                      label="Check-in de habitación"
-                                      type="date"
-                                      required
-                                      value={draft.room.checkIn}
-                                      onChange={(checkIn) =>
-                                        update(draft.id, { checkIn })
-                                      }
-                                    />
-                                    <TextField
-                                      label="Check-out de habitación"
-                                      type="date"
-                                      required
-                                      value={draft.room.checkOut}
-                                      min={minimumCheckOut(draft.room.checkIn)}
-                                      onChange={(checkOut) =>
-                                        update(draft.id, { checkOut })
-                                      }
-                                    />
-                                    <ChoiceField
-                                      label="Estado"
-                                      value={saved?.status ?? "confirmed"}
-                                      disabled={
-                                        !saved || saveMutation.isPending
-                                      }
-                                      options={[
-                                        {
-                                          value: "confirmed",
-                                          label: "Confirmada",
-                                        },
-                                        {
-                                          value: "checked_in",
-                                          label: "Check-in",
-                                          disabled: !draft.room.roomId,
-                                        },
-                                        {
-                                          value: "checked_out",
-                                          label: "Check-out",
-                                        },
-                                        {
-                                          value: "no_show",
-                                          label: "No se presentó",
-                                        },
-                                        ...(saved?.status === "cancelled"
-                                          ? [
-                                              {
-                                                value: "cancelled",
-                                                label: "Cancelada",
-                                                disabled: true,
-                                              },
-                                            ]
-                                          : []),
-                                      ]}
-                                      onChange={(status) => {
-                                        if (!saved || status === saved.status)
-                                          return
-                                        review("Estado", [
-                                          {
-                                            type: "set-status",
-                                            lineId: saved.id,
-                                            status: status as Extract<
-                                              WorkflowAction,
-                                              { type: "set-status" }
-                                            >["status"],
-                                          },
-                                        ])
-                                      }}
-                                    />
-                                  </FieldGroup>
-                                </div>
-                              )}
-                            </>
+                  {drafts.map((draft, i) => (
+                    <section
+                      key={draft.id}
+                      className="flex min-w-0 flex-col gap-3"
+                    >
+                      {draft.removed ? (
+                        <div className="flex items-center justify-between gap-3">
+                          <p>Habitación {i + 1} se retirará al guardar.</p>
+                          <Button
+                            type="button"
+                            variant="outline"
+                            onClick={() =>
+                              setDrafts((ds) =>
+                                ds.map((d) =>
+                                  d.id === draft.id
+                                    ? { ...d, removed: false }
+                                    : d
+                                )
+                              )
+                            }
+                          >
+                            <Undo2Icon />
+                            Deshacer
+                          </Button>
+                        </div>
+                      ) : (
+                        <CompactRoomFields
+                          reservationId={detail.id}
+                          stay={common}
+                          room={draft.room}
+                          blockedRoomIds={overlappingRoomIds(
+                            activeDrafts
+                              .filter((other) => other.id !== draft.id)
+                              .map((other) => other.room)
                           )}
-                        </section>
-                      )
-                    })}
+                          occupied={reservationState === "checked_in"}
+                          onChange={(room) => update(draft.id, room)}
+                          actions={
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="icon-sm"
+                              aria-label={`Quitar habitación ${i + 1}`}
+                              disabled={activeDrafts.length <= 1}
+                              onClick={() =>
+                                setDrafts((ds) =>
+                                  ds.map((d) =>
+                                    d.id === draft.id
+                                      ? { ...d, removed: true }
+                                      : d
+                                  )
+                                )
+                              }
+                            >
+                              <XIcon />
+                            </Button>
+                          }
+                        />
+                      )}
+                    </section>
+                  ))}
                   {activeDrafts.length > 0 && (
                     <Button
                       type="button"
@@ -1103,7 +873,6 @@ export function BookingEditor({
                             id: crypto.randomUUID(),
                             room: { ...activeDrafts[0].room, roomId: null },
                             removed: false,
-                            reason: "",
                           },
                         ])
                       }
@@ -1161,6 +930,7 @@ export function BookingEditor({
           </div>
           <aside className="min-w-0 md:self-start">
             <BookingSummary
+              cancelled={reservationState === "cancelled"}
               rooms={billingRooms.map((room) => ({
                 key: room.id,
                 typeName:
@@ -1170,18 +940,11 @@ export function BookingEditor({
                   "Habitación",
                 adults: room.adults,
                 children: room.children,
-                status: room.status,
-                stayLabel: !common
-                  ? roomStayLabel(
-                      drafts.find((draft) => draft.id === room.id)?.room ?? room
-                    )
-                  : undefined,
                 charges: {
                   subtotalCents: room.subtotalCents,
                   discountCents: room.discountCents,
                   totalCents: room.totalCents,
                 },
-                invalid: false,
               }))}
               summary={billing ?? null}
               paidCents={billing?.paidCents ?? detail.paidCents}
@@ -1212,18 +975,13 @@ export function BookingEditor({
       </Tabs>
       {error && <FieldError role="alert">{error}</FieldError>}
       <div className="flex shrink-0 flex-wrap items-end justify-end gap-3">
-        {tab === "details" && reservationState !== "mixed" && (
+        {tab === "details" && (
           <FieldGroup className="w-48">
             <ChoiceField
               label="Estado de la reserva"
               hideLabel
               value={reservationState}
-              disabled={
-                busy ||
-                stateDrafts.some(
-                  (draft) => !detail.rooms.some((room) => room.id === draft.id)
-                )
-              }
+              disabled={busy}
               options={[
                 { value: "confirmed", label: "Confirmada" },
                 {
@@ -1241,17 +999,7 @@ export function BookingEditor({
                   cancel()
                   return
                 }
-                review(
-                  "Estado de la reserva",
-                  stateDrafts.map((draft) => ({
-                    type: "set-status" as const,
-                    lineId: draft.id,
-                    status: status as Extract<
-                      WorkflowAction,
-                      { type: "set-status" }
-                    >["status"],
-                  }))
-                )
+                setReservationState(status)
               }}
             />
           </FieldGroup>
@@ -1306,7 +1054,10 @@ export function BookingEditor({
   )
 }
 
-function useRoomAssignmentOptions(room: WorkflowRoom, reservationId?: string) {
+function useRoomAssignmentOptions(
+  room: { checkIn: string; checkOut: string },
+  reservationId?: string
+) {
   const reservations = useReservations(room.checkIn, room.checkOut)
   const closures = useRoomClosures(room.checkIn, room.checkOut)
   return {
@@ -1329,6 +1080,7 @@ function useRoomAssignmentOptions(room: WorkflowRoom, reservationId?: string) {
 
 function CompactRoomFields({
   room,
+  stay,
   reservationId,
   blockedRoomIds,
   occupied,
@@ -1337,6 +1089,7 @@ function CompactRoomFields({
 }: {
   room: WorkflowRoom
   reservationId: string
+  stay: { checkIn: string; checkOut: string }
   blockedRoomIds: Set<string>
   occupied: boolean
   onChange: (room: WorkflowRoom) => void
@@ -1344,7 +1097,7 @@ function CompactRoomFields({
 }) {
   const types = useRoomTypes(),
     rooms = useRooms()
-  const availability = useRoomAssignmentOptions(room, reservationId)
+  const availability = useRoomAssignmentOptions(stay, reservationId)
   return (
     <FieldGroup className="grid grid-cols-2 gap-3 sm:grid-cols-[minmax(0,1fr)_88px_56px_56px_28px]">
       <ChoiceField
@@ -1413,54 +1166,6 @@ function CompactRoomFields({
   )
 }
 
-function RoomStatusMenu({
-  expanded,
-  onToggleAdvanced,
-  saved,
-  disabled,
-  onCancel,
-}: {
-  expanded: boolean
-  onToggleAdvanced: () => void
-  saved?: ReservationDetail["rooms"][number]
-  disabled: boolean
-  onCancel: () => void
-}) {
-  return (
-    <DropdownMenu>
-      <DropdownMenuTrigger
-        render={
-          <Button
-            type="button"
-            variant="ghost"
-            size="icon-sm"
-            aria-label={`Opciones de habitación ${saved?.roomNumber ?? "sin asignar"}`}
-          />
-        }
-      >
-        <EllipsisIcon />
-      </DropdownMenuTrigger>
-      <DropdownMenuContent align="end" className="w-48">
-        <DropdownMenuGroup>
-          <DropdownMenuItem onClick={onToggleAdvanced}>
-            {expanded ? "Ocultar opciones avanzadas" : "Opciones avanzadas"}
-          </DropdownMenuItem>
-        </DropdownMenuGroup>
-        <DropdownMenuSeparator />
-        <DropdownMenuGroup>
-          <DropdownMenuItem
-            variant="destructive"
-            disabled={!!saved && disabled}
-            onClick={onCancel}
-          >
-            Cancelar habitación
-          </DropdownMenuItem>
-        </DropdownMenuGroup>
-      </DropdownMenuContent>
-    </DropdownMenu>
-  )
-}
-
 function GuestFields({
   detail,
   disabled,
@@ -1473,7 +1178,7 @@ function GuestFields({
   onDirtyChange: (dirty: boolean) => void
 }) {
   const emptyGuest = (): StayingGuest => {
-    const rooms = detail.rooms.filter((room) => room.status !== "cancelled")
+    const rooms = detail.rooms
     return {
       id: crypto.randomUUID(),
       reservationRoomId: rooms.length === 1 ? rooms[0].id : null,
@@ -1595,7 +1300,7 @@ function GuestFields({
               ...detail.rooms
                 .filter(
                   (room) =>
-                    room.status !== "cancelled" ||
+                    detail.status !== "cancelled" ||
                     room.id === values.reservationRoomId
                 )
                 .map((room, index) => ({
@@ -2026,31 +1731,21 @@ function ActionForm({
   )
   const changed =
     JSON.stringify({ amount, method, date, reference, reason }) !== initial
-  const isCancellation =
-    intent.type === "cancel" || intent.type === "cancel-room"
+  const isCancellation = intent.type === "cancel"
   const deleting = intent.type === "delete-financial"
   const confirmation = isCancellation || deleting
-  const cancellationLineId =
-    intent.type === "cancel-room" ? intent.lineId : null
   const cancellationCommand = useMemo<WorkflowCommand>(
     () => ({
       requestId: crypto.randomUUID(),
-      version: detail.version,
       actions: [
-        cancellationLineId
-          ? {
-              type: "cancel-room",
-              lineId: cancellationLineId,
-              ...(reason.trim() ? { reason: reason.trim() } : {}),
-            }
-          : {
-              type: "cancel",
-              confirmed: true,
-              ...(reason.trim() ? { reason: reason.trim() } : {}),
-            },
+        {
+          type: "set-status",
+          status: "cancelled",
+          ...(reason.trim() ? { reason: reason.trim() } : {}),
+        },
       ],
     }),
-    [detail.version, reason, cancellationLineId]
+    [reason]
   )
   const cancellationPreview = useQuery({
     queryKey: ["cancellation-preview", detail.id, cancellationCommand],
@@ -2061,9 +1756,7 @@ function ActionForm({
   })
   const cancellation = useWorkflowCommand()
   const title = isCancellation
-    ? intent.type === "cancel-room"
-      ? "Cancelar habitación"
-      : "Cancelar reserva"
+    ? "Cancelar reserva"
     : deleting
       ? kind === "discount"
         ? "Eliminar descuento"
@@ -2095,10 +1788,7 @@ function ActionForm({
         })
         onSaved(saved)
         toast.add({
-          title:
-            intent.type === "cancel-room"
-              ? "Habitación cancelada"
-              : "Reserva cancelada",
+          title: "Reserva cancelada",
           type: "success",
         })
         onClose()

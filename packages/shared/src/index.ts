@@ -137,8 +137,6 @@ const workflowRoom = z
     roomId: z.string().min(1).nullable().optional(),
     adults: z.number().int().min(1).max(100),
     children: z.number().int().min(0).max(100),
-    checkIn: dateSchema,
-    checkOut: dateSchema,
     nightlyRateCents: z.number().int().min(0).max(1000000000).optional(),
   })
   .strict()
@@ -168,33 +166,8 @@ export const workflowActionSchema = z.discriminatedUnion('type', [
     })
     .strict(),
   z.object({ type: z.literal('add-room'), room: workflowRoom }).strict(),
-  z.object({ type: z.literal('check-in'), lineIds: z.array(z.string()).min(1).max(60) }).strict(),
-  z.object({ type: z.literal('check-out'), lineIds: z.array(z.string()).min(1).max(60) }).strict(),
-  z.object({ type: z.literal('move'), lineId: z.string(), roomId: z.string() }).strict(),
-  z
-    .object({
-      type: z.literal('undo-check-in'),
-      lineId: z.string(),
-      reason,
-      guestsNotArrived: z.literal(true),
-    })
-    .strict(),
-  z
-    .object({
-      type: z.literal('cancel-room'),
-      lineId: z.string(),
-      reason: z.string().trim().max(2000).optional(),
-      accidental: z.boolean().optional(),
-    })
-    .strict(),
-  z.object({ type: z.literal('no-show'), lineId: z.string(), reason: reason.optional() }).strict(),
-  z
-    .object({
-      type: z.literal('cancel'),
-      reason: z.string().trim().max(2000).optional(),
-      confirmed: z.literal(true),
-    })
-    .strict(),
+  z.object({ type: z.literal('remove-room'), lineId: z.string().min(1) }).strict(),
+  z.object({ type: z.literal('dates'), checkIn: dateSchema, checkOut: dateSchema }).strict(),
   z
     .object({
       type: z.literal('set-discount'),
@@ -204,17 +177,9 @@ export const workflowActionSchema = z.discriminatedUnion('type', [
   z.object({ type: z.literal('financial'), entry: financialInputSchema }).strict(),
   z
     .object({
-      type: z.literal('correct-financial'),
-      entryId: z.string(),
-      reason,
-      replacement: financialInputSchema.optional(),
-    })
-    .strict(),
-  z
-    .object({
       type: z.literal('set-status'),
-      lineId: z.string().min(1),
       status: z.enum(['confirmed', 'checked_in', 'checked_out', 'cancelled', 'no_show']),
+      reason: z.string().trim().max(2000).optional(),
     })
     .strict(),
   z
@@ -230,7 +195,6 @@ export const workflowActionSchema = z.discriminatedUnion('type', [
 export const workflowCommandSchema = z
   .object({
     requestId: z.uuid(),
-    version: z.number().int().min(0),
     actions: z.array(workflowActionSchema).min(1).max(60),
   })
   .strict()
@@ -238,6 +202,8 @@ export const workflowCreateSchema = z
   .object({
     requestId: z.uuid(),
     guest: guestFields,
+    checkIn: dateSchema,
+    checkOut: dateSchema,
     rooms: z.array(workflowRoom).min(1).max(60),
     notes: z.string().max(2000).optional(),
   })

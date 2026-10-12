@@ -15,11 +15,11 @@ function reservation(overrides: Partial<Reservation> = {}): Reservation {
   return {
     id: "reservation-1",
     guestName: "Alex Demo",
+    status: "confirmed",
+
     checkIn: "2026-10-05",
     checkOut: "2026-10-06",
-    rooms: [
-      { id: "line-1", roomTypeId: "deluxe", roomId: null, status: "confirmed" },
-    ],
+    rooms: [{ id: "line-1", roomTypeId: "deluxe", roomId: null }],
     ...overrides,
   }
 }
@@ -31,9 +31,8 @@ function occupied(checkIn: string, checkOut: string, status = "confirmed") {
     id: "other-reservation",
     checkIn,
     checkOut,
-    rooms: [
-      { id: "other-line", roomTypeId: "deluxe", roomId: room.id, status },
-    ],
+    status,
+    rooms: [{ id: "other-line", roomTypeId: "deluxe", roomId: room.id }],
   })
 }
 
@@ -157,13 +156,11 @@ describe("room assignment", () => {
           id: "line-1",
           roomTypeId: "deluxe",
           roomId: room.id,
-          status: "confirmed",
         },
         {
           id: "line-2",
           roomTypeId: "deluxe",
           roomId: null,
-          status: "confirmed",
         },
       ],
     })
@@ -201,12 +198,12 @@ describe("room assignment", () => {
         occupied("2026-10-05", "2026-10-06"),
         reservation({
           id: "cancelled",
+          status: "cancelled",
           rooms: [
             {
               id: "cancelled-line",
               roomTypeId: "deluxe",
               roomId: null,
-              status: "cancelled",
             },
           ],
         }),
@@ -234,7 +231,6 @@ describe("room assignment", () => {
           id: target.id,
           roomTypeId: "deluxe",
           roomId: room.id,
-          status: "confirmed",
         },
       ],
     })
@@ -254,7 +250,6 @@ describe("room assignment", () => {
               id: target.id,
               roomTypeId: "suite",
               roomId: null,
-              status: "confirmed",
             },
           ],
         }),
@@ -267,14 +262,12 @@ describe("room assignment", () => {
 describe("completed calendar stays", () => {
   it("uses final saved dates for completed calendar bars without adding them to assignment lists", () => {
     const completed = reservation({
+      status: "checked_out",
       rooms: [
         {
           id: "completed",
           roomId: room.id,
           roomTypeId: room.roomTypeId,
-          status: "checked_out",
-          actualDeparture: "2026-10-05T10:00:00Z",
-          assignmentStart: "2026-10-06",
         },
       ],
     })

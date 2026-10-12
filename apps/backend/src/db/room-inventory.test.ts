@@ -18,9 +18,10 @@ function reservation(id: string, checkIn = '2026-10-05', checkOut = '2026-10-07'
 }
 
 function line(id: string, roomId: string | null = null, status = 'confirmed') {
+  db.prepare('UPDATE reservations SET status = ? WHERE id = ?').run(status, id)
   db.prepare(`INSERT INTO reservation_rooms
-    (id, reservation_id, room_type_id, room_id, adults, status, created_at)
-    VALUES (?, ?, 'type', ?, 1, ?, '2026-10-05')`).run(id, id, roomId, status)
+    (id, reservation_id, room_type_id, room_id, adults, created_at)
+    VALUES (?, ?, 'type', ?, 1, '2026-10-05')`).run(id, id, roomId)
 }
 
 function closure(id: string, roomId: string, starts = '2026-10-05', ends = '2026-10-07') {
@@ -79,13 +80,13 @@ describe('closure-only room inventory migration', () => {
     expect(() => line('arrival', 'room-101')).not.toThrow()
   })
 
-  it('checks capacity when reactivating a cancelled line', () => {
+  it('checks capacity when reactivating a cancelled reservation', () => {
     closure('closed', 'room-101')
     reservation('first')
     line('first')
     reservation('cancelled')
     line('cancelled', null, 'cancelled')
-    expect(() => db.exec("UPDATE reservation_rooms SET status = 'confirmed' WHERE id = 'cancelled'"))
+    expect(() => db.exec("UPDATE reservations SET status = 'confirmed' WHERE id = 'cancelled'"))
       .toThrow('no availability')
   })
 
@@ -95,7 +96,7 @@ describe('closure-only room inventory migration', () => {
     line('first')
     reservation('moving', '2026-10-07', '2026-10-08')
     line('moving')
-    expect(() => db.exec("UPDATE reservation_rooms SET check_in = '2026-10-05' WHERE id = 'moving'"))
+    expect(() => db.exec("UPDATE reservations SET check_in = '2026-10-05' WHERE id = 'moving'"))
       .toThrow('no availability')
   })
 

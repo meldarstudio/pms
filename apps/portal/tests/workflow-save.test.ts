@@ -18,20 +18,20 @@ describe("independent reservation saves", () => {
     const save = createWorkflowSaver()
     const commands: WorkflowCommand[] = []
     await assert.rejects(
-      save([payment], 1, async (command) => {
+      save([payment], async (command) => {
         commands.push(command)
         throw new Error("Connection lost after commit")
       })
     )
-    await save([payment], 2, async (command) => {
+    await save([payment], async (command) => {
       commands.push(command)
     })
     assert.deepEqual(commands[1], commands[0])
-    await save([payment], 2, async (command) => {
+    await save([payment], async (command) => {
       commands.push(command)
     })
     assert.notEqual(commands[2].requestId, commands[0].requestId)
-    assert.equal(commands[2].version, 2)
+    assert.equal("version" in commands[2], false)
   })
 
   it("blocks a second submission while the first payment is saving", async () => {
@@ -39,7 +39,6 @@ describe("independent reservation saves", () => {
     let finish!: () => void
     const first = save(
       [payment],
-      1,
       () =>
         new Promise<void>((resolve) => {
           finish = resolve
@@ -47,7 +46,7 @@ describe("independent reservation saves", () => {
     )
     let duplicates = 0
     await assert.rejects(
-      save([payment], 1, async () => {
+      save([payment], async () => {
         duplicates++
       }),
       /termine/
@@ -71,14 +70,14 @@ describe("independent reservation saves", () => {
     ]
     let savedGuestCommand!: WorkflowCommand
     let finish!: () => void
-    const first = saveGuests([{ type: "set-guests", guests }], 1, (command) => {
+    const first = saveGuests([{ type: "set-guests", guests }], (command) => {
       savedGuestCommand = command
       return new Promise<void>((resolve) => {
         finish = resolve
       })
     })
     guests[0].fullName = "Ana Pérez"
-    await savePayments([payment], 1, async (command) => {
+    await savePayments([payment], async (command) => {
       assert.deepEqual(command.actions, [payment])
     })
     assert.equal(savedGuestCommand.actions[0].type, "set-guests")
@@ -87,7 +86,7 @@ describe("independent reservation saves", () => {
     }
     finish()
     await first
-    await saveGuests([{ type: "set-guests", guests }], 3, async (command) => {
+    await saveGuests([{ type: "set-guests", guests }], async (command) => {
       assert.notEqual(command.requestId, savedGuestCommand.requestId)
       assert.deepEqual(command.actions, [{ type: "set-guests", guests }])
     })
