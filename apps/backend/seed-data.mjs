@@ -306,8 +306,6 @@ export function buildResetSql(value) {
         check_out: checkOut,
         status: example.status ?? 'confirmed',
         cancelled_at: example.status === 'cancelled' ? createdAt : null,
-        actual_arrival: ['checked_in','checked_out'].includes(example.status) ? `${checkIn}T15:00:00.000Z` : null,
-        actual_departure: example.status === 'checked_out' ? `${checkOut}T11:00:00.000Z` : null,
         source: 'desk',
         notes: 'Reserva de prueba. Restablecer con pnpm db:reset:local.',
         created_at: createdAt,

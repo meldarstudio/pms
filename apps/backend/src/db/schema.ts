@@ -48,8 +48,6 @@ export const reservations = sqliteTable(
     id: text('id').primaryKey(),
     code: text('code').notNull().unique(),
     status: text('status').notNull().default('confirmed'),
-    actualArrival: text('actual_arrival'),
-    actualDeparture: text('actual_departure'),
     cancellationReason: text('cancellation_reason'),
     discountCents: integer('discount_cents').notNull().default(0),
     cancelledAt: text('cancelled_at'),

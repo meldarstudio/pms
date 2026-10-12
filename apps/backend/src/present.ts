@@ -82,8 +82,6 @@ export function presentReservation(input: {
     id: input.reservation.id,
     code: input.reservation.code,
     status: input.reservation.status,
-    actualArrival: input.reservation.actualArrival,
-    actualDeparture: input.reservation.actualDeparture,
     cancellationReason: input.reservation.cancellationReason,
     cancelledAt: input.reservation.cancelledAt,
     guestId: input.reservation.guestId,

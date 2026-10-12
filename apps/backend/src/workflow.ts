@@ -180,7 +180,6 @@ export async function plan(
       })
     }
     if (action.type === 'set-status') {
-      const previous = state.reservation.status
       Object.assign(state.reservation, {
         status: action.status,
         cancelledAt: action.status === 'cancelled' ? (state.reservation.cancelledAt ?? now) : null,
@@ -188,18 +187,6 @@ export async function plan(
           action.status === 'cancelled' || action.status === 'no_show'
             ? action.reason || null
             : null,
-        actualArrival:
-          action.status === 'confirmed' || action.status === 'no_show'
-            ? null
-            : action.status === 'checked_in'
-              ? (state.reservation.actualArrival ?? now)
-              : state.reservation.actualArrival,
-        actualDeparture:
-          action.status === 'checked_out'
-            ? (state.reservation.actualDeparture ?? now)
-            : action.status === 'cancelled' && previous === 'checked_in'
-              ? now
-              : null,
       })
     }
     if (action.type === 'dates') {
@@ -341,8 +328,6 @@ export async function execute(db: Db, id: string, command: WorkflowCommand, prev
         .update(reservations)
         .set({
           status: state.reservation.status,
-          actualArrival: state.reservation.actualArrival,
-          actualDeparture: state.reservation.actualDeparture,
           cancellationReason: state.reservation.cancellationReason,
           notes: state.reservation.notes,
           checkIn: state.reservation.checkIn,

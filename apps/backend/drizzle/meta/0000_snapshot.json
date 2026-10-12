@@ -1,7 +1,7 @@
 {
   "version": "6",
   "dialect": "sqlite",
-  "id": "b175d172-802d-436f-b5fe-58598f82b9fc",
+  "id": "e4f80678-8364-4714-a204-4024bc3f2500",
   "prevId": "00000000-0000-0000-0000-000000000000",
   "tables": {
     "guests": {
@@ -532,20 +532,6 @@
           "notNull": true,
           "autoincrement": false,
           "default": "'confirmed'"
-        },
-        "actual_arrival": {
-          "name": "actual_arrival",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        },
-        "actual_departure": {
-          "name": "actual_departure",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
         },
         "cancellation_reason": {
           "name": "cancellation_reason",

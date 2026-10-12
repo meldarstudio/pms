@@ -132,8 +132,6 @@ export type PatchGuestInput = {
 
 export type ReservationDetail = {
   status: string
-  actualArrival: string | null
-  actualDeparture: string | null
   cancellationReason: string | null
   cancelledAt: string | null
   notes: string | null

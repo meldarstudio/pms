@@ -28,6 +28,11 @@ it('creates the current schema without legacy financial and history tables', () 
     expect(columns).not.toContain('first_name')
     expect(columns).not.toContain('last_name')
   }
+  const reservationColumns = db.prepare('PRAGMA table_info(reservations)').all().map((row) => row.name)
+  expect(reservationColumns).toContain('check_in')
+  expect(reservationColumns).toContain('check_out')
+  expect(reservationColumns).not.toContain('actual_arrival')
+  expect(reservationColumns).not.toContain('actual_departure')
 })
 
 it('rejects a staying guest assigned to a different reservation', () => {

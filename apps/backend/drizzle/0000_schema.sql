@@ -75,8 +75,6 @@ CREATE TABLE `reservations` (
 	`id` text PRIMARY KEY NOT NULL,
 	`code` text NOT NULL,
 	`status` text DEFAULT 'confirmed' NOT NULL,
-	`actual_arrival` text,
-	`actual_departure` text,
 	`cancellation_reason` text,
 	`discount_cents` integer DEFAULT 0 NOT NULL,
 	`cancelled_at` text,

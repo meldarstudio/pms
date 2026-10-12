@@ -7,6 +7,14 @@ pnpm install
 pnpm dev
 ```
 
+## Reservation dates
+
+Each reservation has one `checkIn` and `checkOut` date shared by all its rooms.
+These dates determine the booked nights, availability, and nightly charges.
+Check-in and checkout actions change the reservation status. They do not record
+separate arrival or departure timestamps or change the dates. For an early
+departure, save the shorter date range together with the checkout status.
+
 ## Reset local dummy data
 
 ```sh

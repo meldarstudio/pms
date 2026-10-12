@@ -602,17 +602,17 @@ describe('reservation workflow', () => {
   })
 })
 describe('reservation dates and lifecycle', () => {
-  it('has one status and date range, with no per-room lifecycle or versions', async () => {
+  it('has one status and date range, with no actual timestamps, per-room lifecycle or versions', async () => {
     const d = await create(2)
     expect(d.status).toBe('confirmed')
     expect(d).not.toHaveProperty('version')
+    expect(d).not.toHaveProperty('actualArrival')
+    expect(d).not.toHaveProperty('actualDeparture')
     for (const line of d.rooms) {
       for (const key of [
         'status',
         'checkIn',
         'checkOut',
-        'actualArrival',
-        'actualDeparture',
         'assignmentStart',
         'originalNights',
       ])
@@ -622,11 +622,11 @@ describe('reservation dates and lifecycle', () => {
   it('checks in and checks out every room together while retaining debt and saved dates', async () => {
     let d = await arrive(await create(2))
     expect(d.status).toBe('checked_in')
-    expect(d.actualArrival).toBe('2026-10-10T15:00:00.000Z')
+    expect(d.checkIn).toBe('2026-10-10')
     vi.setSystemTime(new Date('2026-10-11T11:00:00Z'))
     d = await command(d, [all(d, 'check-out')])
     expect(d.status).toBe('checked_out')
-    expect(d.actualDeparture).toBe('2026-10-11T11:00:00.000Z')
+    expect(d.checkIn).toBe('2026-10-10')
     expect(d.checkOut).toBe('2026-10-13')
     expect(d.balanceCents).toBe(60000)
     expect(d.rooms.every((line) => line.nights.length === 3)).toBe(true)
@@ -641,13 +641,13 @@ describe('reservation dates and lifecycle', () => {
       400,
     )
   })
-  it('allows correcting a reservation status and clears arrival and departure when confirmed', async () => {
+  it('allows correcting a reservation status while retaining the shared stay dates', async () => {
     let d = await arrive(await create(2))
     d = await command(d, [all(d, 'check-out')])
     d = await command(d, [{ type: 'set-status', status: 'confirmed' }])
-    expect(d.actualArrival).toBeNull()
-    expect(d.actualDeparture).toBeNull()
     expect(d.status).toBe('confirmed')
+    expect(d.checkIn).toBe('2026-10-10')
+    expect(d.checkOut).toBe('2026-10-13')
   })
   it('changes dates and nightly charges for all rooms in one save', async () => {
     let d = await create(2)
