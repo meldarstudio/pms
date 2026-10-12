@@ -4,6 +4,7 @@ import { DatabaseSync } from 'node:sqlite'
 import { fileURLToPath } from 'node:url'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { buildResetSql, referenceDate } from '../../seed-data.mjs'
+import { buildSchemaResetSql } from '../../schema-reset.mjs'
 
 const backendDir = new URL('../../', import.meta.url)
 const migrationsDir = new URL('drizzle/', backendDir)
@@ -15,7 +16,8 @@ const tables = [
   'reservations',
   'reservation_rooms',
   'reservation_room_nights',
-  'financial_entries',
+  'reservation_guests',
+  'reservation_requests',
   'payments',
   'room_type_rates',
   'room_closures',
@@ -45,6 +47,28 @@ afterEach(() => {
 })
 
 describe('local dummy data reset', () => {
+  it('rebuilds existing PMS tables, legacy tables, triggers, and migration history', () => {
+    db.exec(buildResetSql('2026-10-06'))
+    const baseline = snapshot()
+    db.exec(`
+      CREATE TABLE financial_entries (id TEXT PRIMARY KEY, reservation_id TEXT REFERENCES reservations(id));
+      CREATE TABLE reservation_events (id TEXT PRIMARY KEY, reservation_id TEXT REFERENCES reservations(id));
+      INSERT INTO financial_entries VALUES ('old', 'reservation-arrival');
+      INSERT INTO reservation_events VALUES ('old', 'reservation-arrival');
+      CREATE TRIGGER old_financial_guard BEFORE INSERT ON financial_entries BEGIN SELECT 1; END;
+      CREATE TABLE unrelated (id TEXT PRIMARY KEY);
+      INSERT INTO unrelated VALUES ('keep');
+    `)
+    const objects = db.prepare("SELECT type, name, tbl_name FROM sqlite_master WHERE type IN ('table','trigger')").all()
+    db.exec(buildSchemaResetSql(objects))
+    expect(db.prepare("SELECT name FROM sqlite_master WHERE type='table'").all()).toEqual([{ name: 'unrelated' }])
+    for (const entry of journal.entries) db.exec(readFileSync(new URL(`${entry.tag}.sql`, migrationsDir), 'utf8'))
+    db.exec(buildResetSql('2026-10-06'))
+    expect(snapshot()).toEqual(baseline)
+    expect(db.prepare('SELECT * FROM unrelated').all()).toEqual([{ id: 'keep' }])
+    expect(db.prepare('PRAGMA foreign_key_check').all()).toEqual([])
+  })
+
   it('restores every application table after edits, deletions, assignments, and additions', () => {
     const sql = buildResetSql('2026-10-06')
     db.exec(sql)
@@ -55,14 +79,14 @@ describe('local dummy data reset', () => {
     db.exec(`
       UPDATE room_types SET name = 'Edited Standard', base_rate_cents = 12345 WHERE id = 'type-standard';
       UPDATE rooms SET number = 'edited-101' WHERE id = 'room-101';
-      UPDATE guests SET first_name = 'Edited', notes = 'Changed in portal' WHERE id = 'guest-arrival';
+      UPDATE guests SET full_name = 'Edited', notes = 'Changed in portal' WHERE id = 'guest-arrival';
       UPDATE reservations SET notes = 'Edited booking' WHERE id = 'reservation-arrival';
       UPDATE reservation_rooms SET room_id = 'room-104' WHERE id = 'line-alex-1';
       UPDATE reservations SET status = 'checked_in' WHERE id = 'reservation-alex';
       UPDATE reservation_room_nights SET price_cents = 1 WHERE reservation_room_id = 'line-arrival-1';
       UPDATE reservations SET discount_cents = 1 WHERE id = 'reservation-arrival';
-      UPDATE financial_entries SET amount_cents = 100 WHERE id = 'payment-family';
-      DELETE FROM financial_entries WHERE id = 'payment-cancelled';
+      UPDATE payments SET amount_cents = 100 WHERE id = 'payment-family';
+      DELETE FROM payments WHERE id = 'payment-cancelled';
       DELETE FROM room_type_rates WHERE room_type_id = 'type-suite';
       DELETE FROM room_closures WHERE id = 'closure-110';
       DELETE FROM reservation_room_nights WHERE reservation_room_id = 'line-sam-1';
@@ -71,14 +95,14 @@ describe('local dummy data reset', () => {
       DELETE FROM guests WHERE id = 'guest-sam';
       INSERT INTO room_types VALUES ('custom', 'Custom', 2, 5000, '2026-10-06');
       INSERT INTO rooms VALUES ('custom', '999', 'custom');
-      INSERT INTO guests (id, first_name, last_name, created_at) VALUES ('custom', 'New', 'Guest', '2026-10-06');
+      INSERT INTO guests (id, full_name, created_at) VALUES ('custom', 'New Guest', '2026-10-06');
       INSERT INTO reservations (id, code, guest_id, check_in, check_out, created_at)
         VALUES ('custom', 'CUSTOM', 'custom', '2026-10-06', '2026-10-07', '2026-10-06');
       INSERT INTO reservation_rooms (id, reservation_id, room_type_id, room_id, adults, created_at)
         VALUES ('custom', 'custom', 'custom', 'custom', 1, '2026-10-06');
       INSERT INTO reservation_room_nights VALUES ('custom', 'custom', '2026-10-06', 5000);
-      INSERT INTO payments (id, reservation_id, amount_cents, method, paid_at)
-        VALUES ('custom', 'custom', 5000, 'cash', '2026-10-06');
+      INSERT INTO payments (id, reservation_id, amount_cents, method, payment_date, created_at)
+        VALUES ('custom', 'custom', 5000, 'cash', '2026-10-06', '2026-10-06T12:00:00.000Z');
       INSERT INTO room_type_rates VALUES ('custom', 'custom', '2026-10-07', 6000);
       INSERT INTO room_closures (id, room_id, starts, ends, created_at)
         VALUES ('custom', 'custom', '2026-10-07', '2026-10-08', '2026-10-06');
@@ -146,13 +170,13 @@ describe('local dummy data reset', () => {
     expect(
       db
         .prepare(
-          "SELECT SUM(amount_cents) AS paid FROM financial_entries WHERE kind='payment' AND reservation_id = 'reservation-cancelled'",
+          "SELECT SUM(amount_cents) AS paid FROM payments WHERE reservation_id = 'reservation-cancelled'",
         )
         .get().paid,
     ).toBeGreaterThan(0)
     expect(
-      db.prepare("SELECT last_name FROM guests WHERE id = 'guest-arrival'").get().last_name,
-    ).toBe("O'Brien")
+      db.prepare("SELECT full_name FROM guests WHERE id = 'guest-arrival'").get().full_name,
+    ).toBe("Camila O'Brien")
     expect(db.prepare('PRAGMA foreign_key_check').all()).toEqual([])
   })
 
@@ -165,7 +189,7 @@ describe('local dummy data reset', () => {
       SELECT
         (SELECT SUM((SELECT SUM(price_cents) FROM reservation_room_nights WHERE reservation_room_id = rr.id))
           FROM reservation_rooms rr WHERE rr.reservation_id = r.id AND r.status != 'cancelled') - r.discount_cents
-        - COALESCE((SELECT SUM(amount_cents) FROM financial_entries WHERE kind = 'payment' AND reservation_id = r.id), 0) AS balance
+        - COALESCE((SELECT SUM(amount_cents) FROM payments WHERE reservation_id = r.id), 0) AS balance
       FROM reservations r WHERE r.id = ?
     `,
         )
@@ -177,14 +201,14 @@ describe('local dummy data reset', () => {
     expect(
       db
         .prepare(
-          "SELECT COUNT(*) AS count FROM financial_entries WHERE kind='payment' AND reservation_id = 'reservation-installments'",
+          "SELECT COUNT(*) AS count FROM payments WHERE reservation_id = 'reservation-installments'",
         )
         .get().count,
     ).toBe(3)
     expect(
       db
         .prepare(
-          "SELECT DISTINCT method FROM financial_entries WHERE kind='payment' ORDER BY method",
+          "SELECT DISTINCT method FROM payments ORDER BY method",
         )
         .all()
         .map((row) => row.method),

@@ -17,8 +17,21 @@ This command applies local migrations, deletes all local application data, and
 reloads the sample dataset. It leaves the database schema, triggers, and migration
 history in place. It only targets local D1 and does not need a running backend.
 
-The dataset contains three room types, 60 rooms, 16 guests and reservations,
-nightly prices, payments and a refund, rate overrides, and three room closures.
+The schema has a fresh baseline in `drizzle/0000_schema.sql` and hand-written
+inventory guards in `drizzle/0001_overlap_triggers.sql`. Older databases must be
+rebuilt once before using it:
+
+```sh
+pnpm db:reset:local --rebuild-schema
+```
+
+This removes PMS tables, their triggers, and the D1 migration ledger, applies the
+current schema, and reloads sample data. Subsequent resets can omit the flag.
+It preserves unrelated tables and Cloudflare metadata. The rebuild also supports
+`--persist-to` for an isolated local database.
+
+The dataset contains three room types, 60 rooms, 21 guests and reservations,
+nightly prices and payments, rate overrides, and three room closures.
 Bookings include past stays, current stays, arrivals and departures today,
 upcoming stays, cancelled and no-show bookings, and multi-room bookings. Alex,
 Sam, and Jamie Demo have confirmed unassigned rooms for testing manual assignment.
@@ -69,6 +82,16 @@ The persistent `staging` branch and API feature-branch Previews use the shared
 ```sh
 pnpm --filter @pms/backend db:reset:preview
 ```
+
+After a schema-baseline change, rebuild preview once with:
+
+```sh
+pnpm --filter @pms/backend db:reset:preview --rebuild-schema
+```
+
+Rebuild preview before deploying the matching backend and portal. An existing
+production database also needs a deliberate rebuild or replacement before this
+baseline can be deployed; the deploy script does not rebuild it.
 
 The reset command is destructive and only targets the database declared in
 `wrangler.preview-migrations.jsonc`.

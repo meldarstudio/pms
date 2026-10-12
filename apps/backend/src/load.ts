@@ -2,8 +2,7 @@ import { eq, inArray } from 'drizzle-orm'
 import type { Db } from './db'
 import {
   reservationGuests,
-  financialEntries,
-  reservationEvents,
+  payments,
   guests,
   reservationRoomNights,
   reservationRooms,
@@ -41,11 +40,7 @@ export async function reservationDetail(db: Db, id: string, currency: string) {
     roomIds.length === 0 ? [] : await db.select().from(rooms).where(inArray(rooms.id, roomIds))
   return presentReservation({
     stayingGuests: await db.select().from(reservationGuests).where(eq(reservationGuests.reservationId, id)),
-    entries: await db.select().from(financialEntries).where(eq(financialEntries.reservationId, id)),
-    events: await db
-      .select()
-      .from(reservationEvents)
-      .where(eq(reservationEvents.reservationId, id)),
+    payments: await db.select().from(payments).where(eq(payments.reservationId, id)),
     reservation,
     guest,
     lines,

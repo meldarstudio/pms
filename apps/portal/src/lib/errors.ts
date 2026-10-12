@@ -3,10 +3,6 @@ const messages: Record<string, string> = {
     "La reserva debe tener al menos una habitación.",
   "check-in requires an assigned room":
     "Asigna todas las habitaciones antes del check-in.",
-  "financial entry not found":
-    "Este pago o descuento ya no existe. Actualiza la reserva.",
-  "financial kind cannot change":
-    "Un pago no puede convertirse en descuento, ni un descuento en pago.",
   "payment date is required": "Indica la fecha del pago.",
   "guest room must belong to this reservation":
     "Asigna al huésped a una habitación de esta reserva.",
@@ -15,22 +11,11 @@ const messages: Record<string, string> = {
   "duplicate staying guest": "Un huésped está repetido en la lista.",
   "request ID reused with a different payload":
     "Esta solicitud ya se utilizó con otros datos. Recarga la reserva.",
-  "refund exceeds available credit":
-    "La devolución supera el saldo a favor disponible.",
-  "waiver exceeds outstanding balance":
-    "La condonación supera el saldo pendiente.",
-  "waiver correction cannot forgive later debt; record a new waiver":
-    "Esta corrección no puede condonar cargos nuevos. Registra otra condonación con su motivo.",
-  "reason is required": "Escribe un motivo.",
-  "method is required": "Selecciona un método de pago o devolución.",
-  "financial date cannot be in the future":
-    "La fecha del movimiento no puede ser futura.",
+  "method is required": "Selecciona un método de pago.",
+  "payment date cannot be in the future":
+    "La fecha del pago no puede ser futura.",
   "room is a different type":
     "La habitación debe ser del mismo tipo reservado.",
-  "financial entry is missing or already void":
-    "El movimiento ya fue anulado. Recarga la reserva.",
-  "replacement must have the same financial kind":
-    "El reemplazo debe ser del mismo tipo de movimiento.",
   "no availability": "No hay disponibilidad para esas fechas.",
   "room is already assigned for those dates":
     "Esta habitación acaba de asignarse a otra reserva.",
@@ -55,10 +40,7 @@ const messages: Record<string, string> = {
     "La estancia no puede superar las 60 noches.",
   "stay must be at least one night":
     "La estancia debe tener al menos una noche.",
-  "discount cannot exceed room charges":
-    "El descuento no puede superar el importe de la habitación.",
   "invalid email": "Ingresa un correo válido.",
-  "invalid paidAt": "Ingresa una fecha y hora de pago válidas.",
   "amount cannot be zero": "El importe debe ser distinto de cero.",
   "Different room type": "Tipo de habitación diferente",
   "Occupied during this stay": "Ocupada durante la estancia",

@@ -1,7 +1,6 @@
 import type {
   reservationGuests,
-  financialEntries,
-  reservationEvents,
+  payments,
   guests,
   reservationRoomNights,
   reservationRooms,
@@ -12,7 +11,7 @@ import type {
 import { nightsBetween } from './lib/dates'
 import { bill } from './lib/workflow-billing'
 
-type Guest = Omit<typeof guests.$inferSelect, 'firstName' | 'lastName'>
+type Guest = typeof guests.$inferSelect
 type Reservation = typeof reservations.$inferSelect
 type Line = typeof reservationRooms.$inferSelect
 type Night = typeof reservationRoomNights.$inferSelect
@@ -41,8 +40,7 @@ export function presentReservation(input: {
   nights: Night[]
   types: RoomType[]
   roomRows: Room[]
-  entries: (typeof financialEntries.$inferSelect)[]
-  events: (typeof reservationEvents.$inferSelect)[]
+  payments: (typeof payments.$inferSelect)[]
   currency: string
   stayingGuests?: (typeof reservationGuests.$inferSelect)[]
 }) {
@@ -76,10 +74,9 @@ export function presentReservation(input: {
 
   const billable = cancelled(input.reservation) ? [] : roomsOut
   const subtotalCents = billable.reduce((sum, line) => sum + line.subtotalCents, 0)
-  const totals = bill(subtotalCents, input.entries, input.reservation.discountCents, {
-    cancelled: billable.length === 0,
+  const totals = bill(subtotalCents, input.payments, input.reservation.discountCents, {
+    cancelled: cancelled(input.reservation),
   })
-  const { applied, ...financialTotals } = totals
 
   return {
     id: input.reservation.id,
@@ -99,28 +96,9 @@ export function presentReservation(input: {
     createdAt: input.reservation.createdAt,
     currency: input.currency,
     nights: nightsBetween(input.reservation.checkIn, input.reservation.checkOut).length,
-    ...financialTotals,
+    ...totals,
     savedDiscountCents: input.reservation.discountCents,
     rooms: roomsOut,
-    financialEntries: input.entries.map((e) => ({
-      ...e,
-      appliedCents: e.voidedAt ? 0 : (applied.get(e.id) ?? 0),
-    })),
-    history: input.events.map((e) => ({
-      ...e,
-      before: JSON.parse(e.before),
-      after: JSON.parse(e.after),
-    })),
-    payments: input.entries
-      .filter((e) => e.kind === 'payment' || e.kind === 'legacy_signed')
-      .map((e) => ({
-        id: e.id,
-        amountCents: e.amountCents,
-        method: e.method,
-        reference: e.reference,
-        paidAt: e.occurredAt,
-        notes: e.reason,
-        voidedAt: e.voidedAt,
-      })),
+    payments: input.payments,
   }
 }

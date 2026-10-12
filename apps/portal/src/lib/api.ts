@@ -103,13 +103,23 @@ export type StayingGuest = BookingContact & {
 
 export type PaymentMethod = "cash" | "card" | "transfer" | "yape" | "other"
 
-export type ReservationPayment = {
-  id: string
+export type PaymentInput = {
   amountCents: number
   method: PaymentMethod
+  paymentDate: string
+  reference?: string
+  notes?: string
+}
+
+export type ReservationPayment = {
+  id: string
+  reservationId: string
+  amountCents: number
+  method: PaymentMethod
+  paymentDate: string
   reference: string | null
-  paidAt: string
   notes: string | null
+  createdAt: string
 }
 
 export type PatchGuestInput = {
@@ -127,12 +137,8 @@ export type ReservationDetail = {
   cancellationReason: string | null
   cancelledAt: string | null
   notes: string | null
-  waiverCents: number
-  refundCents: number
   creditCents: number
   savedDiscountCents: number
-  financialEntries: FinancialEntry[]
-  history: WorkflowEvent[]
   id: string
   code: string
   guestId: string
@@ -140,6 +146,7 @@ export type ReservationDetail = {
   stayingGuests: StayingGuest[]
   checkIn: string
   checkOut: string
+  source: string
   currency: string
   totalCents: number
   subtotalCents: number
@@ -342,38 +349,6 @@ export type WorkflowRoom = {
   children: number
   nightlyRateCents?: number
 }
-export type FinancialInput = {
-  kind: "payment" | "discount"
-  amountCents: number
-  reason?: string
-  method?: PaymentMethod
-  occurredAt?: string
-  paymentDate?: string
-  reference?: string
-}
-export type FinancialEntry = Omit<
-  FinancialInput,
-  "kind" | "reason" | "method" | "reference" | "paymentDate"
-> & {
-  id: string
-  kind:
-    | FinancialInput["kind"]
-    | "refund"
-    | "waiver"
-    | "legacy_signed"
-    | "legacy_discount_excluded"
-  appliedCents: number
-  reason: string | null
-  method: PaymentMethod | null
-  occurredAt: string
-  paymentDate: string | null
-  reference: string | null
-  createdAt: string
-  voidedAt: string | null
-  correctionReason: string | null
-  replacesId: string | null
-  legacy: number
-}
 export type WorkflowAction =
   | { type: "contact"; contact: BookingContact }
   | { type: "set-guests"; guests: StayingGuest[] }
@@ -382,15 +357,15 @@ export type WorkflowAction =
   | { type: "dates"; checkIn: string; checkOut: string }
   | { type: "remove-room"; lineId: string }
   | { type: "set-discount"; amountCents: number }
-  | { type: "financial"; entry: FinancialInput }
+  | { type: "add-payment"; payment: PaymentInput }
   | {
       type: "set-status"
       reason?: string
       status:
         "confirmed" | "checked_in" | "checked_out" | "cancelled" | "no_show"
     }
-  | { type: "edit-financial"; entryId: string; entry: FinancialInput }
-  | { type: "delete-financial"; entryId: string }
+  | { type: "edit-payment"; paymentId: string; payment: PaymentInput }
+  | { type: "delete-payment"; paymentId: string }
   | { type: "notes"; notes: string }
 export type WorkflowCommand = {
   requestId: string
@@ -404,23 +379,13 @@ export type WorkflowPreview = Pick<
   | "subtotalCents"
   | "totalCents"
   | "discountCents"
-  | "waiverCents"
   | "paidCents"
-  | "refundCents"
   | "balanceCents"
   | "creditCents"
   | "savedDiscountCents"
 > & {
   rooms: ReservationDetail["rooms"]
-  financialEntries: ReservationDetail["financialEntries"]
-}
-export type WorkflowEvent = {
-  id: string
-  kind: string
-  reason: string | null
-  createdAt: string
-  before: { lines?: ReservationDetail["rooms"] } | null
-  after: { lines?: ReservationDetail["rooms"] } | ReservationDetail["rooms"]
+  payments: ReservationDetail["payments"]
 }
 export function sendWorkflow(id: string, body: WorkflowCommand) {
   return writeJson<ReservationDetail>(

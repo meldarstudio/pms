@@ -33,25 +33,20 @@ beforeEach(() => {
   db = new DatabaseSync(':memory:')
   db.exec('PRAGMA foreign_keys = ON')
   for (const entry of journal.entries) {
-    // Exercise the upgrade with real data, including a previously blocked room.
-    if (entry.tag === '0004_charming_steel_serpent') {
-      db.exec(`
-        INSERT INTO room_types VALUES ('type', 'Standard', 2, 10000, '2026-10-05');
-        INSERT INTO rooms VALUES ('room-101', '101', 'type', 'out_of_order');
-        INSERT INTO rooms VALUES ('room-102', '102', 'type', 'in_service');
-        INSERT INTO guests (id, first_name, last_name, created_at)
-          VALUES ('guest', 'Ada', 'Lovelace', '2026-10-05');
-      `)
-      closure('existing', 'room-102', '2026-11-01', '2026-11-02')
-    }
     db.exec(readFileSync(new URL(`${entry.tag}.sql`, migrationsDir), 'utf8'))
   }
+  db.exec(`
+    INSERT INTO room_types VALUES ('type', 'Standard', 2, 10000, '2026-10-05');
+    INSERT INTO rooms VALUES ('room-101', '101', 'type'), ('room-102', '102', 'type');
+    INSERT INTO guests (id, full_name, created_at) VALUES ('guest', 'Ada Lovelace', '2026-10-05');
+  `)
+  closure('existing', 'room-102', '2026-11-01', '2026-11-02')
 })
 
 afterEach(() => db.close())
 
-describe('closure-only room inventory migration', () => {
-  it('preserves rooms and existing closures while removing operational status', () => {
+describe('closure-only room inventory', () => {
+  it('stores rooms and closures without operational status', () => {
     expect(db.prepare('SELECT id, number, room_type_id FROM rooms ORDER BY number').all()).toEqual([
       { id: 'room-101', number: '101', room_type_id: 'type' },
       { id: 'room-102', number: '102', room_type_id: 'type' },
@@ -61,7 +56,7 @@ describe('closure-only room inventory migration', () => {
     expect(db.prepare('PRAGMA foreign_key_check').all()).toEqual([])
   })
 
-  it('includes previously out-of-order rooms in capacity and assignment', () => {
+  it('includes every room in capacity and assignment', () => {
     reservation('first')
     line('first', 'room-101')
     reservation('second')

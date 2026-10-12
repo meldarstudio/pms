@@ -123,8 +123,8 @@ const roomEdit = (d: Detail, i = 0, patch: Record<string, unknown> = {}): Workfl
   },
 })
 const pay = (amountCents: number): WorkflowAction => ({
-  type: 'financial',
-  entry: { kind: 'payment', amountCents, method: 'cash', paymentDate: '2026-10-10' },
+  type: 'add-payment',
+  payment: { amountCents, method: 'cash', paymentDate: '2026-10-10' },
 })
 const setDiscount = (amountCents: number): WorkflowAction => ({ type: 'set-discount', amountCents })
 const all = (_d: Detail, type: 'check-in' | 'check-out'): WorkflowAction => ({
@@ -159,9 +159,12 @@ describe('reservation workflow', () => {
     expect(d.rooms[0].roomId).toBeNull()
     await command(d, [all(d, 'check-in')], 400)
   })
-  it('rejects discounts as financial entries and negative discount amounts', async () => {
+  it('rejects discount-shaped payment payloads and negative discount amounts', async () => {
     const d = await create()
-    await command(d, [{ type: 'financial', entry: { kind: 'discount', amountCents: 1000 } }], 400)
+    expect((await request(`/reservations/${d.id}/commands`, 'POST', {
+      requestId: crypto.randomUUID(),
+      actions: [{ type: 'add-payment', payment: { kind: 'discount', amountCents: 1000 } }],
+    })).status).toBe(400)
     await command(d, [{ type: 'set-discount', amountCents: -1 }], 400)
     await command(d, [{ type: 'set-discount', amountCents: 1.5 }], 400)
   })
@@ -177,7 +180,7 @@ describe('reservation workflow', () => {
       creditCents: 30000,
       balanceCents: -30000,
     })
-    expect(d.financialEntries[0].amountCents).toBe(30000)
+    expect(d.payments[0].amountCents).toBe(30000)
     expect(d.rooms[0].nights).toHaveLength(3)
     const report = await (await request('/payments?from=2026-10-10&to=2026-10-10')).json()
     expect(report).toMatchObject({ totalCents: 30000, payments: [{ amountCents: 30000 }] })
@@ -206,13 +209,14 @@ describe('reservation workflow', () => {
   it('edits a mistaken cash payment in place after checkout without reopening the stay', async () => {
     let d = await arrive(await create())
     d = await command(d, [pay(11000), all(d, 'check-out')])
-    const id = d.financialEntries[0].id
+    const id = d.payments[0].id
+    const createdAt = d.payments[0].createdAt
+    vi.setSystemTime(new Date('2026-10-11T15:00:00Z'))
     d = await command(d, [
       {
-        type: 'edit-financial',
-        entryId: id,
-        entry: {
-          kind: 'payment',
+        type: 'edit-payment',
+        paymentId: id,
+        payment: {
           amountCents: 10000,
           method: 'cash',
           paymentDate: '2026-10-09',
@@ -222,13 +226,13 @@ describe('reservation workflow', () => {
     ])
     expect(d.balanceCents).toBe(20000)
     expect(d.status).toBe('checked_out')
-    expect(d.financialEntries).toHaveLength(1)
-    expect(d.financialEntries[0]).toMatchObject({
+    expect(d.payments).toHaveLength(1)
+    expect(d.payments[0]).toMatchObject({
       id,
       amountCents: 10000,
       paymentDate: '2026-10-09',
       reference: 'ACTUAL RECEIPT',
-      voidedAt: null,
+      createdAt,
     })
     const report = await (await request('/payments?from=2026-10-09&to=2026-10-09')).json()
     expect(report).toMatchObject({ totalCents: 10000 })
@@ -236,23 +240,23 @@ describe('reservation workflow', () => {
   it('deletes a payment on the wrong booking and permits entering it on another', async () => {
     let d = await command(await create(), [pay(10000)])
     const other = await create()
-    const id = d.financialEntries[0].id
-    await command(other, [{ type: 'delete-financial', entryId: id }], 400)
+    const id = d.payments[0].id
+    await command(other, [{ type: 'delete-payment', paymentId: id }], 400)
     await command(
       other,
       [
         {
-          type: 'edit-financial',
-          entryId: id,
-          entry: { kind: 'payment', amountCents: 10000, method: 'cash', paymentDate: '2026-10-10' },
+          type: 'edit-payment',
+          paymentId: id,
+          payment: { amountCents: 10000, method: 'cash', paymentDate: '2026-10-10' },
         },
       ],
       400,
     )
-    d = await command(d, [{ type: 'delete-financial', entryId: id }])
+    d = await command(d, [{ type: 'delete-payment', paymentId: id }])
     expect(d.paidCents).toBe(0)
-    expect(d.financialEntries).toEqual([])
-    expect(sqlite.prepare('SELECT id FROM financial_entries WHERE id=?').get(id)).toBeUndefined()
+    expect(d.payments).toEqual([])
+    expect(sqlite.prepare('SELECT id FROM payments WHERE id=?').get(id)).toBeUndefined()
     expect((await command(other, [pay(10000)])).paidCents).toBe(10000)
   })
   it('deduplicates retries and rejects changed payloads without a version contract', async () => {
@@ -271,18 +275,18 @@ describe('reservation workflow', () => {
   })
   it('keeps payment and stay edits atomic when a later action fails', async () => {
     let d = await command(await create(), [pay(11000)])
-    const id = d.financialEntries[0].id
+    const id = d.payments[0].id
     await command(
       d,
       [
-        { type: 'delete-financial', entryId: id },
+        { type: 'delete-payment', paymentId: id },
         { type: 'dates', checkIn: d.checkIn, checkOut: '2026-10-09' },
       ],
       400,
     )
     d = (await (await request(`/reservations/${d.id}`)).json()) as Detail
     expect(d.paidCents).toBe(11000)
-    expect(d.financialEntries[0].id).toBe(id)
+    expect(d.payments[0].id).toBe(id)
   })
   it('previews checkout with debt without writing', async () => {
     const d = await arrive(await create())
@@ -443,22 +447,16 @@ describe('reservation workflow', () => {
   it('requires a valid payment date, accepts an optional reference, and keeps audit creation time separate', async () => {
     let d = await create()
     for (const paymentDate of [undefined, '', '2026-02-30', '2026-10-11']) {
-      await command(
-        d,
-        [
-          {
-            type: 'financial',
-            entry: { kind: 'payment', amountCents: 1000, method: 'cash', paymentDate },
-          },
-        ],
-        400,
-      )
+      const response = await request(`/reservations/${d.id}/commands`, 'POST', {
+        requestId: crypto.randomUUID(),
+        actions: [{ type: 'add-payment', payment: { amountCents: 1000, method: 'cash', paymentDate } }],
+      })
+      expect(response.status).toBe(400)
     }
     d = await command(d, [
       {
-        type: 'financial',
-        entry: {
-          kind: 'payment',
+        type: 'add-payment',
+        payment: {
           amountCents: 1000,
           method: 'transfer',
           paymentDate: '2026-10-08',
@@ -466,7 +464,7 @@ describe('reservation workflow', () => {
         },
       },
     ])
-    const entry = d.financialEntries[0]
+    const entry = d.payments[0]
     expect(entry).toMatchObject({
       paymentDate: '2026-10-08',
       reference: 'OP-123',
@@ -474,15 +472,17 @@ describe('reservation workflow', () => {
     })
     expect(d.payments[0].reference).toBe('OP-123')
     const report = (await (await request('/payments?from=2026-10-08&to=2026-10-08')).json()) as {
-      payments: { reference: string }[]
+      payments: { reference: string; paymentDate: string }[]
     }
     expect(report.payments[0].reference).toBe('OP-123')
+    expect(report.payments[0].paymentDate).toBe('2026-10-08')
+    const creationDayReport = await (await request('/payments?from=2026-10-10&to=2026-10-10')).json()
+    expect(creationDayReport).toMatchObject({ totalCents: 0, payments: [] })
     d = await command(d, [
       {
-        type: 'edit-financial',
-        entryId: entry.id,
-        entry: {
-          kind: 'payment',
+        type: 'edit-payment',
+        paymentId: entry.id,
+        payment: {
           amountCents: 1000,
           method: 'transfer',
           paymentDate: '2026-10-09',
@@ -490,8 +490,8 @@ describe('reservation workflow', () => {
         },
       },
     ])
-    expect(d.financialEntries.find((e) => e.id === entry.id)?.reference).toBe('OP-124')
-    expect(d.financialEntries).toHaveLength(1)
+    expect(d.payments.find((e) => e.id === entry.id)?.reference).toBe('OP-124')
+    expect(d.payments).toHaveLength(1)
   })
   it('returns per-room draft prices without changing the saved reservation', async () => {
     const d = await create(2)
@@ -541,7 +541,7 @@ describe('reservation workflow', () => {
       balanceCents: 20000,
       creditCents: 0,
     })
-    expect(d.financialEntries[0].amountCents).toBe(10000)
+    expect(d.payments[0].amountCents).toBe(10000)
     const next = await create()
     await command(next, [roomEdit(next)])
     const actions: WorkflowAction[] = [{ type: 'set-status', status: 'confirmed' }]
@@ -569,15 +569,15 @@ describe('reservation workflow', () => {
   })
   it('rejects invalid payment edits atomically and deduplicates edits and deletes', async () => {
     let d = await command(await create(), [pay(11000)])
-    const id = d.financialEntries[0].id
+    const id = d.payments[0].id
     for (const entry of [
-      { kind: 'payment', amountCents: 0, method: 'cash', paymentDate: '2026-10-10' },
-      { kind: 'payment', amountCents: 10000, method: 'cash', paymentDate: '2026-10-11' },
+      { amountCents: 0, method: 'cash', paymentDate: '2026-10-10' },
+      { amountCents: 10000, method: 'cash', paymentDate: '2026-10-11' },
       { kind: 'discount', amountCents: 10000 },
     ]) {
       const response = await request(`/reservations/${d.id}/commands`, 'POST', {
         requestId: crypto.randomUUID(),
-        actions: [{ type: 'edit-financial', entryId: id, entry }],
+        actions: [{ type: 'edit-payment', paymentId: id, payment: entry }],
       })
       expect(response.status).toBe(400)
     }
@@ -586,18 +586,18 @@ describe('reservation workflow', () => {
     )
     for (const action of [
       {
-        type: 'edit-financial',
-        entryId: id,
-        entry: { kind: 'payment', amountCents: 10000, method: 'card', paymentDate: '2026-10-10' },
+        type: 'edit-payment',
+        paymentId: id,
+        payment: { amountCents: 10000, method: 'card', paymentDate: '2026-10-10' },
       },
-      { type: 'delete-financial', entryId: id },
+      { type: 'delete-payment', paymentId: id },
     ]) {
       const body = { requestId: crypto.randomUUID(), actions: [action] }
       expect((await request(`/reservations/${d.id}/commands`, 'POST', body)).status).toBe(200)
       expect((await request(`/reservations/${d.id}/commands`, 'POST', body)).status).toBe(200)
     }
     d = (await (await request(`/reservations/${d.id}`)).json()) as Detail
-    expect(d.financialEntries).toEqual([])
+    expect(d.payments).toEqual([])
     expect(d.balanceCents).toBe(30000)
   })
 })

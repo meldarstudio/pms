@@ -228,8 +228,6 @@ export function buildResetSql(value) {
   const createdAt = `${date(-14)}T12:00:00.000Z`
   const statements = [
     'DELETE FROM reservation_requests;',
-    'DELETE FROM reservation_events;',
-    'DELETE FROM financial_entries;',
     'DELETE FROM reservation_guests;',
     'DELETE FROM reservation_room_nights;',
     'DELETE FROM payments;',
@@ -291,8 +289,6 @@ export function buildResetSql(value) {
       insert('guests', {
         id: guestId,
         full_name: example.name.join(' '),
-        first_name: example.name[0],
-        last_name: example.name[1],
         email: `${example.id}@example.com`,
         phone: `+51 9${String(index + 1).padStart(8, '0')}`,
         document_type: 'DNI',
@@ -373,7 +369,8 @@ export function buildResetSql(value) {
               amount_cents: amount,
               method: ['cash', 'transfer', 'card'][part],
               reference: `DEMO-CUOTA-${part + 1}`,
-              paid_at: `${date(example.arrival)}T${String(12 + part).padStart(2, '0')}:00:00.000Z`,
+              payment_date: date(Math.min(0, example.arrival)),
+              created_at: createdAt,
               notes: `Pago ${part + 1} de 3.`,
             }),
           )
@@ -393,7 +390,8 @@ export function buildResetSql(value) {
           amount_cents: amount,
           method: example.method ?? (index % 2 === 0 ? 'card' : 'transfer'),
           reference: `DEMO-${example.id}`.toUpperCase(),
-          paid_at: `${date(Math.min(0, example.arrival - 1))}T12:00:00.000Z`,
+          payment_date: date(Math.min(0, example.arrival - 1)),
+          created_at: createdAt,
           notes:
             example.payment === 'credit'
               ? 'Pago con saldo a favor por salida anticipada.'
@@ -402,9 +400,5 @@ export function buildResetSql(value) {
       )
     }
   }
-  statements.push(`INSERT INTO financial_entries (id,reservation_id,kind,amount_cents,applied_cents,reason,method,occurred_at,payment_date,reference,created_at,legacy)
-    SELECT id,reservation_id,'payment',amount_cents,0,notes,method,paid_at,substr(paid_at,1,10),reference,paid_at,0 FROM payments;`)
-  // Keep the legacy table empty; financial_entries is the application's payment store.
-  statements.push('DELETE FROM payments;')
   return statements.join('\n')
 }

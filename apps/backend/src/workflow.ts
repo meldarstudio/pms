@@ -2,7 +2,7 @@ import type { WorkflowAction, WorkflowCommand, WorkflowCreate } from '@pms/share
 import { eq, inArray } from 'drizzle-orm'
 import { runBatch, type Db } from './db'
 import {
-  financialEntries,
+  payments,
   guests,
   reservationGuests,
   reservationRequests,
@@ -15,7 +15,7 @@ import {
 } from './db/schema'
 import { HttpError, rethrowConflict } from './http'
 import { ratesBetween } from './inventory'
-import { bill, reduceWaivers } from './lib/workflow-billing'
+import { bill } from './lib/workflow-billing'
 import { quoteNights, overridesFor } from './lib/quote'
 import { assertOccupancy, requireStay } from './rules'
 import { confirmationCode } from './lib/codes'
@@ -28,7 +28,7 @@ export type State = {
   contact: typeof guests.$inferSelect
   stayingGuests: (typeof reservationGuests.$inferSelect)[]
   lines: Stay[]
-  entries: (typeof financialEntries.$inferSelect)[]
+  payments: (typeof payments.$inferSelect)[]
 }
 const active = (s: string) => ['confirmed', 'checked_in', 'checked_out'].includes(s)
 const fail = (message: string): never => {
@@ -40,7 +40,7 @@ export const charges = (state: State) =>
     0,
   )
 export const totals = (state: State) =>
-  bill(charges(state), state.entries, state.reservation.discountCents, {
+  bill(charges(state), state.payments, state.reservation.discountCents, {
     cancelled: state.reservation.status === 'cancelled',
   })
 
@@ -67,10 +67,10 @@ export async function loadState(db: Db, id: string): Promise<State> {
           ),
         )
     : []
-  const entries = await db
+  const paymentRows = await db
     .select()
-    .from(financialEntries)
-    .where(eq(financialEntries.reservationId, id))
+    .from(payments)
+    .where(eq(payments.reservationId, id))
   return {
     reservation,
     contact,
@@ -81,7 +81,7 @@ export async function loadState(db: Db, id: string): Promise<State> {
         .filter((n) => n.reservationRoomId === l.id)
         .map((n) => ({ date: n.date, priceCents: n.priceCents })),
     })),
-    entries,
+    payments: paymentRows,
   }
 }
 
@@ -141,30 +141,20 @@ export async function plan(
 
   const lineFor = (id: string) =>
     state.lines.find((l) => l.id === id) ?? fail('room line not found')
-  const addFinancial = (input: Extract<WorkflowAction, { type: 'financial' }>['entry']) => {
-    if (input.kind !== 'payment') fail('only payments can be added as financial entries')
-    const at = input.paymentDate ? `${input.paymentDate}T00:00:00.000Z` : (input.occurredAt ?? now)
-    if (at > now) fail('financial date cannot be in the future')
-    state.entries.push({
+  const newPayment = (input: Extract<WorkflowAction, { type: 'add-payment' }>['payment']) => {
+    if (input.paymentDate > now.slice(0, 10)) fail('payment date cannot be in the future')
+    return {
       id: crypto.randomUUID(),
       reservationId: state.reservation.id,
-      kind: input.kind,
       amountCents: input.amountCents,
-      appliedCents: 0,
-      reason: input.reason ?? null,
-      method: input.method ?? null,
-      occurredAt: at,
-      paymentDate: input.paymentDate ?? null,
+      method: input.method,
+      paymentDate: input.paymentDate,
       reference: input.reference?.trim().toUpperCase() || null,
+      notes: input.notes ?? null,
       createdAt: now,
-      voidedAt: null,
-      correctionReason: null,
-      replacesId: null,
-      legacy: 0,
-    })
+    }
   }
   for (const action of actions) {
-    const before = totals(state)
     if (action.type === 'contact') Object.assign(state.contact, action.contact)
     if (action.type === 'set-guests') {
       if (new Set(action.guests.map((g) => g.id)).size !== action.guests.length)
@@ -182,8 +172,6 @@ export async function plan(
           fail('guest room must belong to this reservation')
         return {
           ...guest,
-          firstName: '',
-          lastName: '',
           documentType: guest.documentType ?? null,
           documentNumber: guest.documentNumber ?? null,
           reservationId: state.reservation.id,
@@ -232,25 +220,18 @@ export async function plan(
         if (guest.reservationRoomId === action.lineId) guest.reservationRoomId = null
       }
     }
-    if (action.type === 'edit-financial' || action.type === 'delete-financial') {
-      const entry =
-        state.entries.find((e) => e.id === action.entryId) ?? fail('financial entry not found')
-      if (entry.voidedAt) fail('financial entry not found')
-      if (entry.kind !== 'payment' && entry.kind !== 'legacy_signed')
-        fail('only payments can be edited or deleted')
-      if (action.type === 'delete-financial') {
-        state.entries = state.entries.filter((e) => e.id !== entry.id)
+    if (action.type === 'edit-payment' || action.type === 'delete-payment') {
+      const index = state.payments.findIndex((payment) => payment.id === action.paymentId)
+      if (index === -1) fail('payment not found')
+      const payment = state.payments[index]
+      if (action.type === 'delete-payment') {
+        state.payments.splice(index, 1)
       } else {
-        if (
-          action.entry.kind !== entry.kind &&
-          !(entry.kind === 'legacy_signed' && action.entry.kind === 'payment')
-        )
-          fail('financial kind cannot change')
-        const index = state.entries.indexOf(entry)
-        state.entries.splice(index, 1)
-        addFinancial(action.entry)
-        const replacement = state.entries.pop()!
-        state.entries.splice(index, 0, { ...replacement, id: entry.id, createdAt: entry.createdAt })
+        state.payments[index] = {
+          ...newPayment(action.payment),
+          id: payment.id,
+          createdAt: payment.createdAt,
+        }
       }
     }
     if (action.type === 'set-discount') state.reservation.discountCents = action.amountCents
@@ -272,10 +253,7 @@ export async function plan(
       Object.assign(line, room, { roomId: room.roomId ?? null })
       await validateAssignment(db, line)
     }
-    if (action.type === 'financial') addFinancial(action.entry)
-    const after = totals(state)
-    if (after.subtotalCents - after.discountCents < before.subtotalCents - before.discountCents)
-      reduceWaivers(charges(state), state.entries, state.reservation.discountCents)
+    if (action.type === 'add-payment') state.payments.push(newPayment(action.payment))
   }
   if (!state.lines.length) fail('reservation requires at least one room')
   if (state.reservation.status === 'checked_in' && state.lines.some((line) => !line.roomId))
@@ -347,17 +325,17 @@ export async function execute(db: Db, id: string, command: WorkflowCommand, prev
           original.lines.some((o) => o.id === l.id),
         ),
       ),
-      ...original.entries
-        .filter((e) => !state.entries.some((saved) => saved.id === e.id))
-        .map((e) => db.delete(financialEntries).where(eq(financialEntries.id, e.id))),
-      ...state.entries
+      ...original.payments
+        .filter((e) => !state.payments.some((saved) => saved.id === e.id))
+        .map((e) => db.delete(payments).where(eq(payments.id, e.id))),
+      ...state.payments
         .filter(
-          (e) => JSON.stringify(e) !== JSON.stringify(original.entries.find((o) => o.id === e.id)),
+          (e) => JSON.stringify(e) !== JSON.stringify(original.payments.find((o) => o.id === e.id)),
         )
         .map((e) =>
-          original.entries.some((o) => o.id === e.id)
-            ? db.update(financialEntries).set(e).where(eq(financialEntries.id, e.id))
-            : db.insert(financialEntries).values(e),
+          original.payments.some((o) => o.id === e.id)
+            ? db.update(payments).set(e).where(eq(payments.id, e.id))
+            : db.insert(payments).values(e),
         ),
       db
         .update(reservations)
@@ -410,7 +388,7 @@ export async function createWorkflow(db: Db, input: WorkflowCreate) {
     await runBatch(db, [
       db
         .insert(guests)
-        .values({ id: guestId, ...input.guest, firstName: '', lastName: '', createdAt: now }),
+        .values({ id: guestId, ...input.guest, createdAt: now }),
       db.insert(reservations).values({
         id,
         code: confirmationCode(),

@@ -42,8 +42,6 @@ guestRoutes.post('/', validate('json', guestFields), async (c) => {
   const row = {
     id: crypto.randomUUID(),
     fullName: body.fullName,
-    firstName: '',
-    lastName: '',
     email: body.email ?? null,
     phone: body.phone ?? null,
     documentType: body.documentType ?? null,

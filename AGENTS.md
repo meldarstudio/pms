@@ -41,7 +41,7 @@ The portal reads its API origin from `VITE_API_BASE_URL`, inlined at build time.
 - Dates are `YYYY-MM-DD` UTC calendar dates. Stay nights are `[checkIn, checkOut)`. A checkout morning is free for the next arrival. Rate ranges include both ends. A stay cannot exceed 60 nights.
 - Money is integer cents. A night price is the flat rate, else that date's override, else `baseRateCents`.
 - Rooms have no operational status. Dated room closures are the only way to block a room and reduce room-type availability. Closures cannot overlap assigned stays or other closures.
-- Capacity, overlap, and assignment conflicts are SQLite triggers in `apps/backend/drizzle/0001_overlap_triggers.sql`. That file is hand-written and listed in `drizzle/meta/_journal.json`. `rethrowConflict` maps the trigger abort text to 409. Do not delete or regenerate `0001_overlap_triggers.sql` when running `db:generate`. `0000_high_sunset_bain.sql` is the drizzle-kit migration.
+- Capacity, overlap, and assignment conflicts are SQLite triggers in `apps/backend/drizzle/0001_overlap_triggers.sql`. That file is hand-written and listed in `drizzle/meta/_journal.json`. `rethrowConflict` maps the trigger abort text to 409. Do not delete or regenerate `0001_overlap_triggers.sql` when running `db:generate`. `0000_schema.sql` is the current drizzle-kit baseline. The migration history was consolidated for disposable seed data; use `pnpm db:reset:local --rebuild-schema` to replace an older local schema.
 
 ## Portal style
 

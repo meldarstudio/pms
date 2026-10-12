@@ -7,7 +7,7 @@ import { and, desc, eq, gt, inArray, like, lte, or } from 'drizzle-orm'
 import { Hono } from 'hono'
 import { getDb } from '../db'
 import {
-  financialEntries,
+  payments,
   guests,
   reservationRoomNights,
   reservationRooms,
@@ -51,7 +51,7 @@ reservationRoutes.get('/', validate('query', reservationListQuerySchema), async 
     .offset(q.offset ?? 0)
   if (!rows.length) return c.json([])
   const ids = rows.map((r) => r.reservation.id)
-  const [lines, entries, types, roomRows] = await Promise.all([
+  const [lines, paymentRows, types, roomRows] = await Promise.all([
     Promise.all(
       chunks(ids, 80).map((ids) =>
         db.select().from(reservationRooms).where(inArray(reservationRooms.reservationId, ids)),
@@ -59,7 +59,7 @@ reservationRoutes.get('/', validate('query', reservationListQuerySchema), async 
     ).then((r) => r.flat()),
     Promise.all(
       chunks(ids, 80).map((ids) =>
-        db.select().from(financialEntries).where(inArray(financialEntries.reservationId, ids)),
+        db.select().from(payments).where(inArray(payments.reservationId, ids)),
       ),
     ).then((r) => r.flat()),
     db.select().from(roomTypes),
@@ -87,8 +87,7 @@ reservationRoutes.get('/', validate('query', reservationListQuerySchema), async 
         guest,
         lines: ownLines,
         nights: nights.filter((n) => ownIds.has(n.reservationRoomId)),
-        entries: entries.filter((e) => e.reservationId === reservation.id),
-        events: [],
+        payments: paymentRows.filter((payment) => payment.reservationId === reservation.id),
         types,
         roomRows,
         currency: currency(c),
@@ -108,7 +107,7 @@ reservationRoutes.get('/:id', async (c) =>
 reservationRoutes.post('/:id/preview', validate('json', workflowCommandSchema), async (c) => {
   const result = await execute(getDb(c.env.DB), c.req.param('id'), c.req.valid('json'), true)
   if (!result.state) return c.json({ replayed: true })
-  const { applied, ...bill } = totals(result.state)
+  const bill = totals(result.state)
   return c.json({
     ...bill,
     status: result.state.reservation.status,
@@ -124,10 +123,7 @@ reservationRoutes.post('/:id/preview', validate('json', workflowCommandSchema), 
         totalCents: result.state!.reservation.status === 'cancelled' ? 0 : subtotalCents,
       }
     }),
-    financialEntries: result.state.entries.map((e) => ({
-      ...e,
-      appliedCents: applied.get(e.id) ?? 0,
-    })),
+    payments: result.state.payments,
   })
 })
 reservationRoutes.post('/:id/commands', validate('json', workflowCommandSchema), async (c) => {

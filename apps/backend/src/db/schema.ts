@@ -33,9 +33,7 @@ export const roomClosures = sqliteTable(
 
 export const guests = sqliteTable('guests', {
   id: text('id').primaryKey(),
-  fullName: text('full_name').notNull().default(''),
-  firstName: text('first_name').notNull(),
-  lastName: text('last_name').notNull(),
+  fullName: text('full_name').notNull(),
   email: text('email'),
   phone: text('phone'),
   documentType: text('document_type'),
@@ -113,9 +111,7 @@ export const reservationGuests = sqliteTable(
     id: text('id').primaryKey(),
     reservationId: text('reservation_id').notNull().references(() => reservations.id),
     reservationRoomId: text('reservation_room_id').references(() => reservationRooms.id),
-    fullName: text('full_name').notNull().default(''),
-  firstName: text('first_name').notNull(),
-    lastName: text('last_name').notNull(),
+    fullName: text('full_name').notNull(),
     email: text('email'),
     phone: text('phone'),
     documentType: text('document_type'),
@@ -135,12 +131,13 @@ export const payments = sqliteTable(
     amountCents: integer('amount_cents').notNull(),
     method: text('method').notNull(),
     reference: text('reference'),
-    paidAt: text('paid_at').notNull(),
+    paymentDate: text('payment_date').notNull(),
+    createdAt: text('created_at').notNull(),
     notes: text('notes'),
   },
   (table) => [
     index('payments_reservation').on(table.reservationId),
-    index('payments_paid_at').on(table.paidAt),
+    index('payments_date').on(table.paymentDate),
   ],
 )
 
@@ -155,46 +152,6 @@ export const roomTypeRates = sqliteTable(
     priceCents: integer('price_cents').notNull(),
   },
   (table) => [uniqueIndex('room_type_rates_unique').on(table.roomTypeId, table.date)],
-)
-
-export const financialEntries = sqliteTable(
-  'financial_entries',
-  {
-    id: text('id').primaryKey(),
-    reservationId: text('reservation_id')
-      .notNull()
-      .references(() => reservations.id),
-    kind: text('kind').notNull(),
-    amountCents: integer('amount_cents').notNull(),
-    appliedCents: integer('applied_cents').notNull().default(0),
-    reason: text('reason'),
-    method: text('method'),
-    occurredAt: text('occurred_at').notNull(),
-    paymentDate: text('payment_date'),
-    reference: text('reference'),
-    createdAt: text('created_at').notNull(),
-    voidedAt: text('voided_at'),
-    correctionReason: text('correction_reason'),
-    replacesId: text('replaces_id'),
-    legacy: integer('legacy').notNull().default(0),
-  },
-  (table) => [index('financial_reservation').on(table.reservationId)],
-)
-
-export const reservationEvents = sqliteTable(
-  'reservation_events',
-  {
-    id: text('id').primaryKey(),
-    reservationId: text('reservation_id')
-      .notNull()
-      .references(() => reservations.id),
-    kind: text('kind').notNull(),
-    reason: text('reason'),
-    before: text('before').notNull(),
-    after: text('after').notNull(),
-    createdAt: text('created_at').notNull(),
-  },
-  (table) => [index('events_reservation').on(table.reservationId)],
 )
 
 export const reservationRequests = sqliteTable('reservation_requests', {

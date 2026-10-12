@@ -5,120 +5,15 @@
     {
       "idx": 0,
       "version": "6",
-      "when": 1791217864717,
-      "tag": "0000_high_sunset_bain",
+      "when": 1791828237177,
+      "tag": "0000_schema",
       "breakpoints": true
     },
     {
       "idx": 1,
       "version": "6",
-      "when": 1791217864718,
+      "when": 1791828237178,
       "tag": "0001_overlap_triggers",
-      "breakpoints": true
-    },
-    {
-      "idx": 2,
-      "version": "6",
-      "when": 1791249016862,
-      "tag": "0002_real_namorita",
-      "breakpoints": true
-    },
-    {
-      "idx": 3,
-      "version": "6",
-      "when": 1791249016863,
-      "tag": "0003_closure_triggers",
-      "breakpoints": true
-    },
-    {
-      "idx": 4,
-      "version": "6",
-      "when": 1791255339758,
-      "tag": "0004_charming_steel_serpent",
-      "breakpoints": true
-    },
-    {
-      "idx": 5,
-      "version": "6",
-      "when": 1791255400000,
-      "tag": "0005_nightly_capacity",
-      "breakpoints": true
-    },
-    {
-      "idx": 6,
-      "version": "6",
-      "when": 1791566382316,
-      "tag": "0006_shiny_starjammers",
-      "breakpoints": true
-    },
-    {
-      "idx": 7,
-      "version": "6",
-      "when": 1791609626010,
-      "tag": "0007_heavy_thundra",
-      "breakpoints": true
-    },
-    {
-      "idx": 8,
-      "version": "6",
-      "when": 1791609653041,
-      "tag": "0008_reservation_workflow",
-      "breakpoints": true
-    },
-    {
-      "idx": 9,
-      "version": "6",
-      "when": 1791610158797,
-      "tag": "0009_legacy_history",
-      "breakpoints": true
-    },
-    {
-      "idx": 10,
-      "version": "6",
-      "when": 1791644485373,
-      "tag": "0010_living_hedge_knight",
-      "breakpoints": true
-    },
-    {
-      "idx": 11,
-      "version": "6",
-      "when": 1791644485374,
-      "tag": "0011_guest_and_payment_guards",
-      "breakpoints": true
-    },
-    {
-      "idx": 12,
-      "version": "6",
-      "when": 1791655570868,
-      "tag": "0012_high_gargoyle",
-      "breakpoints": true
-    },
-    {
-      "idx": 13,
-      "version": "6",
-      "when": 1791655570869,
-      "tag": "0013_final_stay_dates",
-      "breakpoints": true
-    },
-    {
-      "idx": 14,
-      "version": "6",
-      "when": 1791655570870,
-      "tag": "0014_uppercase_payment_references",
-      "breakpoints": true
-    },
-    {
-      "idx": 15,
-      "version": "6",
-      "when": 1791727780983,
-      "tag": "0015_cool_puck",
-      "breakpoints": true
-    },
-    {
-      "idx": 16,
-      "version": "6",
-      "when": 1791826644454,
-      "tag": "0016_noisy_bedlam",
       "breakpoints": true
     }
   ]

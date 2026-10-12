@@ -41,8 +41,6 @@ export function BookingSummary({
   stayLabel,
   showPayments,
   message,
-  waiverCents = 0,
-  refundCents = 0,
   editableDiscountCents,
   discountDisabled = false,
   onDiscountSave,
@@ -59,8 +57,6 @@ export function BookingSummary({
   stayLabel: string | null
   showPayments: boolean
   message: string
-  waiverCents?: number
-  refundCents?: number
   editableDiscountCents?: number
   discountDisabled?: boolean
   onDiscountSave?: (amountCents: number) => Promise<void>
@@ -110,13 +106,6 @@ export function BookingSummary({
                 currency={currency}
               />
             ) : null}
-            {waiverCents > 0 && (
-              <SummaryRow
-                label="Saldo condonado"
-                cents={-waiverCents}
-                currency={currency}
-              />
-            )}
           </dl>
           {showPayments ? (
             <dl className="flex flex-col gap-2">
@@ -130,13 +119,6 @@ export function BookingSummary({
                 cents={paidCents}
                 currency={currency}
               />
-              {refundCents > 0 && (
-                <SummaryRow
-                  label="Devuelto"
-                  cents={refundCents}
-                  currency={currency}
-                />
-              )}
             </dl>
           ) : null}
           {!summary ? (

@@ -1,7 +1,6 @@
 CREATE TABLE `guests` (
 	`id` text PRIMARY KEY NOT NULL,
-	`first_name` text NOT NULL,
-	`last_name` text NOT NULL,
+	`full_name` text NOT NULL,
 	`email` text,
 	`phone` text,
 	`document_type` text,
@@ -16,13 +15,37 @@ CREATE TABLE `payments` (
 	`amount_cents` integer NOT NULL,
 	`method` text NOT NULL,
 	`reference` text,
-	`paid_at` text NOT NULL,
+	`payment_date` text NOT NULL,
+	`created_at` text NOT NULL,
 	`notes` text,
 	FOREIGN KEY (`reservation_id`) REFERENCES `reservations`(`id`) ON UPDATE no action ON DELETE no action
 );
 --> statement-breakpoint
 CREATE INDEX `payments_reservation` ON `payments` (`reservation_id`);--> statement-breakpoint
-CREATE INDEX `payments_paid_at` ON `payments` (`paid_at`);--> statement-breakpoint
+CREATE INDEX `payments_date` ON `payments` (`payment_date`);--> statement-breakpoint
+CREATE TABLE `reservation_guests` (
+	`id` text PRIMARY KEY NOT NULL,
+	`reservation_id` text NOT NULL,
+	`reservation_room_id` text,
+	`full_name` text NOT NULL,
+	`email` text,
+	`phone` text,
+	`document_type` text,
+	`document_number` text,
+	`created_at` text NOT NULL,
+	FOREIGN KEY (`reservation_id`) REFERENCES `reservations`(`id`) ON UPDATE no action ON DELETE no action,
+	FOREIGN KEY (`reservation_room_id`) REFERENCES `reservation_rooms`(`id`) ON UPDATE no action ON DELETE no action
+);
+--> statement-breakpoint
+CREATE INDEX `reservation_guests_reservation` ON `reservation_guests` (`reservation_id`);--> statement-breakpoint
+CREATE TABLE `reservation_requests` (
+	`id` text PRIMARY KEY NOT NULL,
+	`reservation_id` text NOT NULL,
+	`payload` text NOT NULL,
+	`created_at` text NOT NULL,
+	FOREIGN KEY (`reservation_id`) REFERENCES `reservations`(`id`) ON UPDATE no action ON DELETE no action
+);
+--> statement-breakpoint
 CREATE TABLE `reservation_room_nights` (
 	`id` text PRIMARY KEY NOT NULL,
 	`reservation_room_id` text NOT NULL,
@@ -39,7 +62,6 @@ CREATE TABLE `reservation_rooms` (
 	`room_id` text,
 	`adults` integer NOT NULL,
 	`children` integer DEFAULT 0 NOT NULL,
-	`status` text NOT NULL,
 	`created_at` text NOT NULL,
 	FOREIGN KEY (`reservation_id`) REFERENCES `reservations`(`id`) ON UPDATE no action ON DELETE no action,
 	FOREIGN KEY (`room_type_id`) REFERENCES `room_types`(`id`) ON UPDATE no action ON DELETE no action,
@@ -52,6 +74,12 @@ CREATE INDEX `reservation_rooms_room` ON `reservation_rooms` (`room_id`);--> sta
 CREATE TABLE `reservations` (
 	`id` text PRIMARY KEY NOT NULL,
 	`code` text NOT NULL,
+	`status` text DEFAULT 'confirmed' NOT NULL,
+	`actual_arrival` text,
+	`actual_departure` text,
+	`cancellation_reason` text,
+	`discount_cents` integer DEFAULT 0 NOT NULL,
+	`cancelled_at` text,
 	`guest_id` text NOT NULL,
 	`check_in` text NOT NULL,
 	`check_out` text NOT NULL,
@@ -64,6 +92,17 @@ CREATE TABLE `reservations` (
 CREATE UNIQUE INDEX `reservations_code_unique` ON `reservations` (`code`);--> statement-breakpoint
 CREATE INDEX `reservations_dates` ON `reservations` (`check_in`,`check_out`);--> statement-breakpoint
 CREATE INDEX `reservations_guest` ON `reservations` (`guest_id`);--> statement-breakpoint
+CREATE TABLE `room_closures` (
+	`id` text PRIMARY KEY NOT NULL,
+	`room_id` text NOT NULL,
+	`starts` text NOT NULL,
+	`ends` text NOT NULL,
+	`reason` text,
+	`created_at` text NOT NULL,
+	FOREIGN KEY (`room_id`) REFERENCES `rooms`(`id`) ON UPDATE no action ON DELETE no action
+);
+--> statement-breakpoint
+CREATE INDEX `room_closures_room` ON `room_closures` (`room_id`,`starts`,`ends`);--> statement-breakpoint
 CREATE TABLE `room_type_rates` (
 	`id` text PRIMARY KEY NOT NULL,
 	`room_type_id` text NOT NULL,
@@ -86,7 +125,6 @@ CREATE TABLE `rooms` (
 	`id` text PRIMARY KEY NOT NULL,
 	`number` text NOT NULL,
 	`room_type_id` text NOT NULL,
-	`status` text DEFAULT 'in_service' NOT NULL,
 	FOREIGN KEY (`room_type_id`) REFERENCES `room_types`(`id`) ON UPDATE no action ON DELETE no action
 );
 --> statement-breakpoint

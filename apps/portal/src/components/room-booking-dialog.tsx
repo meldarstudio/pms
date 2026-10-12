@@ -81,8 +81,8 @@ import {
   previewWorkflow,
   type BookingContact,
   type StayingGuest,
-  type FinancialEntry,
-  type FinancialInput,
+  type ReservationPayment,
+  type PaymentInput,
   type ReservationDetail,
   type WorkflowAction,
   type WorkflowCommand,
@@ -125,12 +125,6 @@ const labels: Record<string, string> = {
   checked_out: "Salida registrada",
   cancelled: "Cancelada",
   no_show: "No se presentó",
-  payment: "Pago",
-  refund: "Devolución",
-  discount: "Descuento",
-  waiver: "Condonación",
-  legacy_signed: "Movimiento histórico",
-  legacy_discount_excluded: "Descuento histórico excluido",
 }
 const stayDate = (value: string, pattern: string) => {
   const date = parseISO(value)
@@ -139,8 +133,7 @@ const stayDate = (value: string, pattern: string) => {
 const today = () => new Date().toISOString().slice(0, 10)
 const paymentToday = () => format(new Date(), "yyyy-MM-dd")
 type Intent =
-  | { type: "financial"; kind: FinancialInput["kind"] }
-  | { type: "edit-financial" | "delete-financial"; entry: FinancialEntry }
+  | { type: "edit-payment" | "delete-payment"; entry: ReservationPayment }
   | { type: "cancel" }
 
 export function ReservationStatus({ detail }: { detail: ReservationDetail }) {
@@ -586,15 +579,15 @@ export function BookingEditor({
   const billingRooms = billing?.rooms ?? []
   const saveMutation = useWorkflowCommand()
   const guestMutation = useWorkflowCommand()
-  const financialMutation = useWorkflowCommand()
+  const paymentMutation = useWorkflowCommand()
   const discountMutation = useWorkflowCommand()
   const discountSave = useRef<Promise<ReservationDetail> | null>(null)
   const busy =
     saveMutation.isPending ||
     guestMutation.isPending ||
-    financialMutation.isPending
+    paymentMutation.isPending
   const [guestSaver] = useState(createWorkflowSaver)
-  const [financialSaver] = useState(createWorkflowSaver)
+  const [paymentSaver] = useState(createWorkflowSaver)
   const [discountSaver] = useState(createWorkflowSaver)
   async function saveGuests(guests: StayingGuest[]) {
     await discountSave.current
@@ -633,10 +626,10 @@ export function BookingEditor({
     setReservationState(saved.status)
     setNotes(saved.notes ?? "")
   }
-  async function saveFinancial(title: string, actions: WorkflowAction[]) {
+  async function savePayment(title: string, actions: WorkflowAction[]) {
     await discountSave.current
-    await financialSaver(actions, (command) =>
-      financialMutation.mutateAsync({ id: detail.id, command })
+    await paymentSaver(actions, (command) =>
+      paymentMutation.mutateAsync({ id: detail.id, command })
     )
     toast.add({ title, type: "success" })
   }
@@ -916,14 +909,14 @@ export function BookingEditor({
                 detail={detail}
                 disabled={busy}
                 onDirtyChange={setPaymentDirty}
-                onReady={saveFinancial}
+                onReady={savePayment}
               />
               <PaymentList
                 detail={detail}
                 disabled={busy}
-                onEdit={(entry) => setIntent({ type: "edit-financial", entry })}
+                onEdit={(entry) => setIntent({ type: "edit-payment", entry })}
                 onDelete={(entry) =>
-                  setIntent({ type: "delete-financial", entry })
+                  setIntent({ type: "delete-payment", entry })
                 }
               />
             </TabsContent>
@@ -948,8 +941,6 @@ export function BookingEditor({
               }))}
               summary={billing ?? null}
               paidCents={billing?.paidCents ?? detail.paidCents}
-              waiverCents={billing?.waiverCents ?? detail.waiverCents}
-              refundCents={billing?.refundCents ?? detail.refundCents}
               editableDiscountCents={detail.savedDiscountCents}
               discountDisabled={busy || discountMutation.isPending}
               onDiscountSave={saveDiscount}
@@ -1045,7 +1036,7 @@ export function BookingEditor({
             resetDetails(saved)
           }}
           onReady={async (title, actions) => {
-            await saveFinancial(title, actions)
+            await savePayment(title, actions)
             setIntent(null)
           }}
         />
@@ -1521,11 +1512,10 @@ function PaymentForm({
     try {
       await onReady("Pago registrado", [
         {
-          type: "financial",
-          entry: {
-            kind: "payment",
+          type: "add-payment",
+          payment: {
             amountCents,
-            method: method as FinancialInput["method"],
+            method: method as PaymentInput["method"],
             paymentDate: date,
             ...(reference.trim()
               ? { reference: reference.trim().toUpperCase() }
@@ -1599,12 +1589,10 @@ function PaymentList({
 }: {
   detail: ReservationDetail
   disabled: boolean
-  onEdit: (entry: FinancialEntry) => void
-  onDelete: (entry: FinancialEntry) => void
+  onEdit: (entry: ReservationPayment) => void
+  onDelete: (entry: ReservationPayment) => void
 }) {
-  const entries = detail.financialEntries.filter(
-    (e) => !e.voidedAt && (e.kind === "payment" || e.kind === "legacy_signed")
-  )
+  const entries = detail.payments
   if (!entries.length)
     return (
       <Empty>
@@ -1636,12 +1624,7 @@ function PaymentList({
             .sort((a, b) => b.createdAt.localeCompare(a.createdAt))
             .map((e) => (
               <TableRow key={e.id}>
-                <TableCell>
-                  {stayDate(
-                    e.paymentDate ?? e.occurredAt.slice(0, 10),
-                    "d MMM yyyy"
-                  )}
-                </TableCell>
+                <TableCell>{stayDate(e.paymentDate, "d MMM yyyy")}</TableCell>
                 <TableCell>
                   {paymentMethods.find((method) => method.value === e.method)
                     ?.label ??
@@ -1663,7 +1646,7 @@ function PaymentList({
                           size="icon-sm"
                           variant="ghost"
                           disabled={disabled}
-                          aria-label={`Acciones del pago de ${formatMoney(e.amountCents, detail.currency)} del ${e.paymentDate ?? e.occurredAt.slice(0, 10)}`}
+                          aria-label={`Acciones del pago de ${formatMoney(e.amountCents, detail.currency)} del ${e.paymentDate}`}
                         />
                       }
                     >
@@ -1706,23 +1689,15 @@ function ActionForm({
   onSaved: (detail: ReservationDetail) => void
 }) {
   const entry = "entry" in intent ? intent.entry : null
-  const kind: FinancialInput["kind"] =
-    intent.type === "financial"
-      ? intent.kind
-      : entry?.kind === "discount"
-        ? "discount"
-        : "payment"
   const [amount, setAmount] = useState(
     entry ? formatMajor(entry.amountCents) : ""
   )
   const [method, setMethod] = useState<string>(entry?.method ?? "cash")
-  const [date, setDate] = useState(
-    entry?.paymentDate ?? entry?.occurredAt.slice(0, 10) ?? paymentToday()
-  )
+  const [date, setDate] = useState(entry?.paymentDate ?? paymentToday())
   const [reference, setReference] = useState(
     entry?.reference?.toUpperCase() ?? ""
   )
-  const [reason, setReason] = useState(entry?.reason ?? "")
+  const [reason, setReason] = useState(entry?.notes ?? "")
   const [error, setError] = useState("")
   const [saving, setSaving] = useState(false)
   const [leaving, setLeaving] = useState(false)
@@ -1732,7 +1707,7 @@ function ActionForm({
   const changed =
     JSON.stringify({ amount, method, date, reference, reason }) !== initial
   const isCancellation = intent.type === "cancel"
-  const deleting = intent.type === "delete-financial"
+  const deleting = intent.type === "delete-payment"
   const confirmation = isCancellation || deleting
   const cancellationCommand = useMemo<WorkflowCommand>(
     () => ({
@@ -1758,14 +1733,8 @@ function ActionForm({
   const title = isCancellation
     ? "Cancelar reserva"
     : deleting
-      ? kind === "discount"
-        ? "Eliminar descuento"
-        : "Eliminar pago"
-      : intent.type === "edit-financial"
-        ? kind === "discount"
-          ? "Editar descuento"
-          : "Editar pago"
-        : "Agregar descuento"
+      ? "Eliminar pago"
+      : "Editar pago"
   function close() {
     if (cancellation.isPending || saving) return
     if (changed && !confirmation) setLeaving(true)
@@ -1800,7 +1769,7 @@ function ActionForm({
       return
     }
     if (deleting && entry) {
-      await commit([{ type: "delete-financial", entryId: entry.id }])
+      await commit([{ type: "delete-payment", paymentId: entry.id }])
       return
     }
     const amountCents = parseMajorToCents(amount)
@@ -1808,29 +1777,23 @@ function ActionForm({
       setError("Introduce un importe positivo con hasta dos decimales.")
       return
     }
-    if (
-      kind === "payment" &&
-      (!/^\d{4}-\d{2}-\d{2}$/.test(date) || date > paymentToday())
-    ) {
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || date > paymentToday()) {
       setError("Indica una fecha de pago válida, hasta hoy.")
       return
     }
-    const input: FinancialInput = {
-      kind,
+    const input: PaymentInput = {
       amountCents,
-      ...(kind === "payment"
-        ? { method: method as FinancialInput["method"], paymentDate: date }
-        : {}),
+      method: method as PaymentInput["method"],
+      paymentDate: date,
       ...(reference.trim()
         ? { reference: reference.trim().toUpperCase() }
         : {}),
-      ...(reason.trim() ? { reason: reason.trim() } : {}),
+      ...(reason.trim() ? { notes: reason.trim() } : {}),
     }
-    await commit([
-      intent.type === "edit-financial" && entry
-        ? { type: "edit-financial", entryId: entry.id, entry: input }
-        : { type: "financial", entry: input },
-    ])
+    if (entry)
+      await commit([
+        { type: "edit-payment", paymentId: entry.id, payment: input },
+      ])
   }
   async function commit(actions: WorkflowAction[]) {
     if (saving) return
@@ -1861,7 +1824,7 @@ function ActionForm({
               {isCancellation
                 ? "Se liberará la disponibilidad y se quitarán los cargos. Los pagos se conservarán como saldo a favor si no quedan otras habitaciones con cargos. Confirmar aplica la cancelación y descarta otros cambios sin guardar."
                 : deleting
-                  ? `Se eliminará ${kind === "discount" ? "el descuento" : "el pago"} de ${formatMoney(entry?.amountCents ?? 0)} al confirmar.`
+                  ? `Se eliminará el pago de ${formatMoney(entry?.amountCents ?? 0)} al confirmar.`
                   : "El cambio se guardará al confirmar. Los cambios de Detalles se guardan por separado."}
             </Description>
           </Header>
@@ -1876,43 +1839,35 @@ function ActionForm({
                       placeholder="0.00"
                       onChange={setAmount}
                     />
-                    {kind === "payment" && (
-                      <>
-                        <ChoiceField
-                          label="Método"
-                          value={method}
-                          onChange={setMethod}
-                          options={paymentMethods}
-                        />
-                        <TextField
-                          label="Fecha del pago"
-                          type="date"
-                          required
-                          max={paymentToday()}
-                          value={date}
-                          onChange={setDate}
-                        />
-                        <TextField
-                          label="Referencia · Opcional"
-                          value={reference}
-                          onChange={(value) =>
-                            setReference(value.toUpperCase())
-                          }
-                        />
-                      </>
-                    )}
+                    <ChoiceField
+                      label="Método"
+                      value={method}
+                      onChange={setMethod}
+                      options={paymentMethods}
+                    />
+                    <TextField
+                      label="Fecha del pago"
+                      type="date"
+                      required
+                      max={paymentToday()}
+                      value={date}
+                      onChange={setDate}
+                    />
+                    <TextField
+                      label="Referencia · Opcional"
+                      value={reference}
+                      onChange={(value) => setReference(value.toUpperCase())}
+                    />
                   </>
                 )}
-                {(isCancellation || kind === "discount") && (
-                  <TextField
-                    label={
-                      isCancellation ? "Motivo · Opcional" : "Nota · Opcional"
-                    }
-                    value={reason}
-                    disabled={cancellation.isPending || saving}
-                    onChange={setReason}
-                  />
-                )}
+                <TextField
+                  label={
+                    isCancellation ? "Motivo · Opcional" : "Nota · Opcional"
+                  }
+                  value={reason}
+                  disabled={cancellation.isPending || saving}
+                  onChange={setReason}
+                />
               </FieldGroup>
             </fieldset>
           )}

@@ -4,9 +4,8 @@ import type { WorkflowAction, WorkflowCommand } from "../src/lib/api.ts"
 import { createWorkflowSaver } from "../src/lib/workflow-save.ts"
 
 const payment: WorkflowAction = {
-  type: "financial",
-  entry: {
-    kind: "payment",
+  type: "add-payment",
+  payment: {
     amountCents: 10000,
     method: "cash",
     paymentDate: "2026-10-10",

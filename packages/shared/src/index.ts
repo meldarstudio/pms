@@ -111,26 +111,15 @@ export type RoomClosureInput = z.infer<typeof roomClosureSchema>
 export type PatchRoomClosureInput = z.infer<typeof patchRoomClosureSchema>
 
 const cents = z.number().int().min(1).max(1000000000)
-const reason = text(2000)
-export const financialInputSchema = z
+export const paymentInputSchema = z
   .object({
-    kind: z.enum(['payment', 'refund', 'discount', 'waiver']),
     amountCents: cents,
-    reason: reason.optional(),
-    method: z.enum(['cash', 'card', 'transfer', 'yape', 'other']).optional(),
-    occurredAt: z.iso.datetime().optional(),
-    paymentDate: z.iso.date().optional(),
+    method: z.enum(['cash', 'card', 'transfer', 'yape', 'other']),
+    paymentDate: z.iso.date(),
     reference: text(200).toUpperCase().optional(),
+    notes: text(2000).optional(),
   })
   .strict()
-  .superRefine((v, ctx) => {
-    if (['refund', 'waiver'].includes(v.kind) && !v.reason)
-      ctx.addIssue({ code: 'custom', message: 'reason is required' })
-    if (['payment', 'refund'].includes(v.kind) && !v.method)
-      ctx.addIssue({ code: 'custom', message: 'method is required' })
-    if (v.kind === 'payment' && !v.paymentDate)
-      ctx.addIssue({ code: 'custom', message: 'payment date is required' })
-  })
 const workflowRoom = z
   .object({
     roomTypeId: z.string().min(1),
@@ -174,7 +163,7 @@ export const workflowActionSchema = z.discriminatedUnion('type', [
       amountCents: z.number().int().min(0).max(1000000000),
     })
     .strict(),
-  z.object({ type: z.literal('financial'), entry: financialInputSchema }).strict(),
+  z.object({ type: z.literal('add-payment'), payment: paymentInputSchema }).strict(),
   z
     .object({
       type: z.literal('set-status'),
@@ -184,12 +173,12 @@ export const workflowActionSchema = z.discriminatedUnion('type', [
     .strict(),
   z
     .object({
-      type: z.literal('edit-financial'),
-      entryId: z.string().min(1),
-      entry: financialInputSchema,
+      type: z.literal('edit-payment'),
+      paymentId: z.string().min(1),
+      payment: paymentInputSchema,
     })
     .strict(),
-  z.object({ type: z.literal('delete-financial'), entryId: z.string().min(1) }).strict(),
+  z.object({ type: z.literal('delete-payment'), paymentId: z.string().min(1) }).strict(),
   z.object({ type: z.literal('notes'), notes: z.string().max(2000) }).strict(),
 ])
 export const workflowCommandSchema = z

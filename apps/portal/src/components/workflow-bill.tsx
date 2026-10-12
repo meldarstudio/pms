@@ -13,10 +13,8 @@ export function WorkflowBill({
       {[
         ["Habitaciones", bill.subtotalCents],
         ["Descuentos aplicados", -bill.discountCents],
-        ["Saldo condonado", -bill.waiverCents],
         ["Total de la cuenta", bill.totalCents],
         ["Pagos recibidos", compact ? bill.paidCents : -bill.paidCents],
-        ["Devoluciones registradas", bill.refundCents],
       ]
         .filter(
           ([label, value]) =>

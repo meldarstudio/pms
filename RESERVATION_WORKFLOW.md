@@ -9,7 +9,7 @@ erDiagram
     reservations ||--|{ reservation_rooms : contains
     reservation_rooms ||--|{ reservation_room_nights : prices
     reservations ||--o{ reservation_guests : hosts
-    reservations ||--o{ financial_entries : receives
+    reservations ||--o{ payments : receives
     reservations ||--o{ reservation_requests : deduplicates
 ```
 
@@ -18,6 +18,9 @@ erDiagram
 - `reservation_rooms`: room type, optional physical room assignment, and adult
   and child counts. There are no room dates or room statuses.
 - `reservation_room_nights`: saved prices for each room and each booked night.
+- `payments`: positive amounts, method, `payment_date`, optional reference and notes,
+  and a separate creation timestamp. Discounts belong to the reservation.
+  There are no financial kinds, waivers, voids, corrections, or history snapshots.
 
 ## Dates and status
 
@@ -63,6 +66,12 @@ For example, shortening a reservation and checking out all its rooms is one save
   ]
 }
 ```
+
+Payment changes use `add-payment` with `payment`, `edit-payment` with
+`paymentId` and `payment`, and `delete-payment` with `paymentId`. Payment input
+requires `amountCents`, `method`, and `paymentDate` in `YYYY-MM-DD` format.
+The date cannot be in the future. References and notes are optional. Edits
+retain the payment ID and creation timestamp.
 
 Room assignment changes use `edit-room`; adding and removing lines use
 `add-room` and `remove-room`. There are no partial check-in, partial checkout,
