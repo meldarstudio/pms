@@ -1,4 +1,5 @@
-import { useCallback, useRef, useState } from "react"
+import { useRef, useState } from "react"
+import { useBlocker } from "@tanstack/react-router"
 import { ArrowLeftIcon } from "lucide-react"
 import {
   BookingEditor,
@@ -13,30 +14,21 @@ import { useReservation } from "@/lib/queries"
 export function ReservationPage({
   id,
   onBack,
-  onDirtyChange: reportDirty,
 }: {
   id: string
   onBack: () => void
-  onDirtyChange: (dirty: boolean) => void
 }) {
   const query = useReservation(id)
   const dirty = useRef(false)
-  const onDirtyChange = useCallback(
-    (value: boolean) => {
-      dirty.current = value
-      reportDirty(value)
-    },
-    [reportDirty]
-  )
-  const [leaving, setLeaving] = useState(false)
+  const blocker = useBlocker({
+    shouldBlockFn: () => dirty.current,
+    withResolver: true,
+  })
   const [tab, setTab] = useState("details")
   return (
     <main className="mx-auto flex w-full max-w-6xl flex-col gap-6 overflow-y-auto p-4 md:p-8">
       <header className="flex flex-col items-start gap-4">
-        <Button
-          variant="ghost"
-          onClick={() => (dirty.current ? setLeaving(true) : onBack())}
-        >
+        <Button variant="ghost" onClick={onBack}>
           <ArrowLeftIcon data-icon="inline-start" />
           Volver a reservas
         </Button>
@@ -73,13 +65,15 @@ export function ReservationPage({
             full
             initialTab={tab}
             onTabChange={setTab}
-            onDirtyChange={onDirtyChange}
+            onDirtyChange={(value) => {
+              dirty.current = value
+            }}
             onRefresh={() => void query.refetch()}
           />
         )
       )}
-      {leaving && (
-        <DiscardChanges onStay={() => setLeaving(false)} onLeave={onBack} />
+      {blocker.status === "blocked" && (
+        <DiscardChanges onStay={blocker.reset} onLeave={blocker.proceed} />
       )}
     </main>
   )

@@ -25,6 +25,7 @@ import { Skeleton } from "@/components/ui/skeleton"
 import { ChoiceField, TextField } from "@/components/workflow-fields"
 import { searchReservations } from "@/lib/api"
 import { formatMoney } from "@/lib/money"
+import type { ReservationsSearch } from "@/lib/route-search"
 const statuses = [
   { value: "all", label: "Todos los estados" },
   { value: "confirmed", label: "Confirmadas" },
@@ -34,19 +35,24 @@ const statuses = [
   { value: "cancelled", label: "Canceladas" },
 ]
 export function Reservations({
+  search,
+  onSearchChange,
   onOpenReservation,
 }: {
+  search: ReservationsSearch
+  onSearchChange: (search: Partial<ReservationsSearch>) => void
   onOpenReservation: (id: string) => void
 }) {
-  const [search, setSearch] = useState(""),
-    [status, setStatus] = useState("all"),
-    [page, setPage] = useState(0),
-    [target, setTarget] = useState<BookingTarget | null>(null)
-  const q = useDeferredValue(search)
+  const [target, setTarget] = useState<BookingTarget | null>(null)
+  const q = useDeferredValue(search.q)
   const query = useQuery({
-    queryKey: ["reservations", "search", q, status, page],
+    queryKey: ["reservations", "search", q, search.status, search.page],
     queryFn: () =>
-      searchReservations(q, status === "all" ? "" : status, page * 50),
+      searchReservations(
+        q,
+        search.status === "all" ? "" : search.status,
+        search.page * 50
+      ),
   })
   const rows = query.data ?? []
   function open(id: string) {
@@ -106,19 +112,17 @@ export function Reservations({
       <FieldGroup className="grid gap-3 sm:grid-cols-[1fr_240px]">
         <TextField
           label="Buscar por huésped o código"
-          value={search}
+          value={search.q}
           onChange={(v) => {
-            setSearch(v)
-            setPage(0)
+            onSearchChange({ q: v, page: 0 })
           }}
         />
         <ChoiceField
           label="Estado de habitación"
-          value={status}
+          value={search.status}
           options={statuses}
           onChange={(v) => {
-            setStatus(v)
-            setPage(0)
+            onSearchChange({ status: v, page: 0 })
           }}
         />
       </FieldGroup>
@@ -201,15 +205,15 @@ export function Reservations({
       <div className="flex justify-end gap-2">
         <Button
           variant="outline"
-          disabled={page === 0 || query.isFetching}
-          onClick={() => setPage((p) => p - 1)}
+          disabled={search.page === 0 || query.isFetching}
+          onClick={() => onSearchChange({ page: search.page - 1 })}
         >
           Anterior
         </Button>
         <Button
           variant="outline"
           disabled={rows.length < 50 || query.isFetching}
-          onClick={() => setPage((p) => p + 1)}
+          onClick={() => onSearchChange({ page: search.page + 1 })}
         >
           Siguiente
         </Button>

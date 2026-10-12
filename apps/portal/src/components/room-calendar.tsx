@@ -365,15 +365,21 @@ function RoomTrack({
 }
 
 export function RoomCalendar({
+  start,
+  span,
+  onStartChange,
+  onSpanChange,
   onOpenReservation,
 }: {
+  start: Date
+  span: 7 | 14
+  onStartChange: (date: Date) => void
+  onSpanChange: (span: 7 | 14) => void
   onOpenReservation: (id: string) => void
 }) {
   const timeZone = Intl.DateTimeFormat().resolvedOptions().timeZone
   const queryClient = useQueryClient()
   const today = format(startOfToday(), "yyyy-MM-dd")
-  const [start, setStart] = useState(startOfToday)
-  const [span, setSpan] = useState(7)
   const [pickerOpen, setPickerOpen] = useState(false)
   const [closureTarget, setClosureTarget] = useState<ClosureTarget | null>(null)
   const [roomTarget, setRoomTarget] = useState<RoomEditTarget | null>(null)
@@ -449,7 +455,7 @@ export function RoomCalendar({
   function changeStart(date: Date) {
     if (assignment.pending) return
     assignment.cancel()
-    setStart(date)
+    onStartChange(date)
   }
 
   const days = eachDayOfInterval({
@@ -531,7 +537,7 @@ export function RoomCalendar({
             onValueChange={(value) => {
               if (value) {
                 assignment.cancel()
-                setSpan(Number(value))
+                onSpanChange(Number(value) as 7 | 14)
               }
             }}
           >

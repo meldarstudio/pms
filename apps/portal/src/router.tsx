@@ -1,0 +1,195 @@
+import {
+  createRootRoute,
+  createRoute,
+  createRouter,
+  Link,
+  redirect,
+  stripSearchParams,
+} from "@tanstack/react-router"
+import { useEffect } from "react"
+import { format, parse } from "date-fns"
+import { useNavigate } from "@tanstack/react-router"
+import App from "@/App"
+import { ReservationPage } from "@/components/reservation-page"
+import { Reservations } from "@/components/reservations"
+import { RoomCalendar } from "@/components/room-calendar"
+import { Inventory } from "@/components/inventory"
+import {
+  calendarSearch,
+  inventorySearch,
+  lastCalendarSearch,
+  lastReservationsSearch,
+  reservationsSearch,
+} from "@/lib/route-search"
+
+const rootRoute = createRootRoute({
+  component: App,
+  notFoundComponent: () => (
+    <main className="m-auto flex flex-col items-center gap-3 p-8">
+      <h1 className="text-xl font-semibold">No se encontró esta página</h1>
+      <Link
+        to="/calendar"
+        search={{ from: format(new Date(), "yyyy-MM-dd"), span: 7 }}
+        className="text-primary underline"
+      >
+        Ir al calendario
+      </Link>
+    </main>
+  ),
+})
+
+const indexRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/",
+  beforeLoad: () => {
+    throw redirect({
+      to: "/calendar",
+      search: {
+        from: format(new Date(), "yyyy-MM-dd"),
+        span: 7,
+      },
+      replace: true,
+    })
+  },
+})
+
+function CalendarRoute() {
+  const search = calendarRoute.useSearch()
+  const navigate = useNavigate({ from: "/calendar" })
+  useEffect(() => {
+    lastCalendarSearch.current = search
+  }, [search])
+  const start = parse(search.from, "yyyy-MM-dd", new Date())
+  const update = (next: { from?: string; span?: 7 | 14 }) =>
+    navigate({
+      search: (previous) => ({ ...previous, ...next }),
+      replace: true,
+    })
+
+  return (
+    <RoomCalendar
+      start={start}
+      span={search.span}
+      onStartChange={(date) => update({ from: format(date, "yyyy-MM-dd") })}
+      onSpanChange={(span) => update({ span })}
+      onOpenReservation={(id) =>
+        void navigate({
+          to: "/reservations/$reservationId",
+          params: { reservationId: id },
+        })
+      }
+    />
+  )
+}
+
+const calendarRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/calendar",
+  validateSearch: calendarSearch,
+  search: {
+    middlewares: [stripSearchParams({ span: 7 })],
+  },
+  component: CalendarRoute,
+})
+
+function ReservationsRoute() {
+  const search = reservationsRoute.useSearch()
+  const navigate = useNavigate({ from: "/reservations" })
+  useEffect(() => {
+    lastReservationsSearch.current = search
+  }, [search])
+  return (
+    <Reservations
+      search={search}
+      onSearchChange={(next) =>
+        navigate({
+          search: (previous) => ({ ...previous, ...next }),
+          replace: true,
+        })
+      }
+      onOpenReservation={(id) =>
+        void navigate({
+          to: "/reservations/$reservationId",
+          params: { reservationId: id },
+        })
+      }
+    />
+  )
+}
+
+const reservationsRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/reservations",
+  validateSearch: reservationsSearch,
+  search: {
+    middlewares: [stripSearchParams({ q: "", status: "all", page: 0 })],
+  },
+  component: ReservationsRoute,
+})
+
+const reservationRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/reservations/$reservationId",
+  component: ReservationRoute,
+})
+
+function ReservationRoute() {
+  const { reservationId } = reservationRoute.useParams()
+  const navigate = useNavigate()
+  return (
+    <ReservationPage
+      id={reservationId}
+      onBack={() =>
+        void navigate({
+          to: "/reservations",
+          search: lastReservationsSearch.current,
+        })
+      }
+    />
+  )
+}
+
+function InventoryRoute() {
+  const search = inventoryRoute.useSearch()
+  const navigate = useNavigate({ from: "/inventory" })
+  const start = parse(search.from, "yyyy-MM-dd", new Date())
+  const update = (next: { from?: string; span?: 7 | 14 }) =>
+    navigate({
+      search: (previous) => ({ ...previous, ...next }),
+      replace: true,
+    })
+  return (
+    <Inventory
+      start={start}
+      span={search.span}
+      onStartChange={(date) => update({ from: format(date, "yyyy-MM-dd") })}
+      onSpanChange={(span) => update({ span })}
+    />
+  )
+}
+
+const inventoryRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/inventory",
+  validateSearch: inventorySearch,
+  search: {
+    middlewares: [stripSearchParams({ span: 14 })],
+  },
+  component: InventoryRoute,
+})
+
+const routeTree = rootRoute.addChildren([
+  indexRoute,
+  calendarRoute,
+  reservationsRoute,
+  reservationRoute,
+  inventoryRoute,
+])
+
+export const router = createRouter({ routeTree })
+
+declare module "@tanstack/react-router" {
+  interface Register {
+    router: typeof router
+  }
+}

@@ -81,11 +81,19 @@ function availabilityLabel(nights: InventoryNight[]) {
   return `${nights.length} noches, mínimo de habitaciones libres: ${lowest}`
 }
 
-export function Inventory() {
+export function Inventory({
+  start,
+  span,
+  onStartChange,
+  onSpanChange,
+}: {
+  start: Date
+  span: 7 | 14
+  onStartChange: (date: Date) => void
+  onSpanChange: (span: 7 | 14) => void
+}) {
   const timeZone = Intl.DateTimeFormat().resolvedOptions().timeZone
   const queryClient = useQueryClient()
-  const [start, setStart] = useState(startOfToday)
-  const [span, setSpan] = useState(14)
   const [pickerOpen, setPickerOpen] = useState(false)
   const [selection, setSelection] = useState<Selection | null>(null)
   const [editor, setEditor] = useState<Selection | null>(null)
@@ -134,7 +142,7 @@ export function Inventory() {
     dragging.current = false
     choose(null)
     setEditor(null)
-    setStart(startOfDay(next))
+    onStartChange(startOfDay(next))
   }
 
   function onCellPointerDown(
@@ -187,7 +195,7 @@ export function Inventory() {
               dragging.current = false
               choose(null)
               setEditor(null)
-              setSpan(Number(value))
+              onSpanChange(Number(value) as 7 | 14)
             }}
           >
             <SelectTrigger className="w-28">
