@@ -14,10 +14,6 @@ All current application data is local sample data. There is no real customer or 
 - Use `pnpm db:reset:local --rebuild-schema` to replace local tables, triggers, and migration history and reload sample data. Use `pnpm db:reset:local` when only the sample data needs resetting.
 - This policy applies to local development. Remote database changes follow the branch and deployment workflow below.
 
-## Reservation design context
-
-Before changing reservation UI, read `UI_DESIGN.md` for the user's agreed quick-edit dialog and full reservation page direction. Read `RESERVATION_WORKFLOW.md` for business rules. The saved sketches describe design intent, not completed application behavior.
-
 ## Packages
 
 - `@pms/portal` in `apps/portal` is the Vite React SPA. There is no router. Tabs live in `src/App.tsx`. Calendar bookings open quick edit; the Reservations list opens the full reservation page. Fetch helpers and response types are hand-written in `src/lib/api.ts`. TanStack Query hooks are in `src/lib/queries.ts`. It does not depend on `@pms/shared`.
