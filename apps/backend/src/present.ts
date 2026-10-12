@@ -82,7 +82,9 @@ export function presentReservation(input: {
 
   const billable = roomsOut.filter((line) => !unbilled.has(line.status))
   const subtotalCents = billable.reduce((sum, line) => sum + line.subtotalCents, 0)
-  const totals = bill(subtotalCents, input.entries, { cancelled: billable.length === 0 })
+  const totals = bill(subtotalCents, input.entries, input.reservation.discountCents, {
+    cancelled: billable.length === 0,
+  })
   const { applied, ...financialTotals } = totals
 
   return {
@@ -101,6 +103,7 @@ export function presentReservation(input: {
     currency: input.currency,
     nights: nightsBetween(input.reservation.checkIn, input.reservation.checkOut).length,
     ...financialTotals,
+    savedDiscountCents: input.reservation.discountCents,
     rooms: roomsOut,
     financialEntries: input.entries.map((e) => ({
       ...e,

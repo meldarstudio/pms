@@ -125,6 +125,7 @@ reservationRoutes.post('/:id/preview', validate('json', workflowCommandSchema), 
   const { applied, ...bill } = totals(result.state)
   return c.json({
     ...bill,
+    savedDiscountCents: result.state.reservation.discountCents,
     rooms: result.state.lines.map((line) => {
       const subtotalCents = line.nights.reduce((sum, night) => sum + night.priceCents, 0)
       return {

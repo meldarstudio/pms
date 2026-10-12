@@ -262,6 +262,12 @@ export const workflowActionSchema = z.discriminatedUnion('type', [
       confirmed: z.literal(true),
     })
     .strict(),
+  z
+    .object({
+      type: z.literal('set-discount'),
+      amountCents: z.number().int().min(0).max(1000000000),
+    })
+    .strict(),
   z.object({ type: z.literal('financial'), entry: financialInputSchema }).strict(),
   z
     .object({

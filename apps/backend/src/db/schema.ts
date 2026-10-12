@@ -50,6 +50,7 @@ export const reservations = sqliteTable(
     id: text('id').primaryKey(),
     code: text('code').notNull().unique(),
     version: integer('version').notNull().default(0),
+    discountCents: integer('discount_cents').notNull().default(0),
     cancelledAt: text('cancelled_at'),
     guestId: text('guest_id')
       .notNull()

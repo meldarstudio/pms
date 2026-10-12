@@ -28,11 +28,15 @@ it('preserves legacy totals, signed payment effects, unknown history, and exclud
         'SELECT id,kind,amount_cents AS amountCents,applied_cents AS appliedCents,created_at AS createdAt,voided_at AS voidedAt FROM financial_entries',
       )
       .all() as unknown as Parameters<typeof bill>[1]
-    expect(bill(10000, entries)).toMatchObject({
+    expect(bill(10000, entries, 1000)).toMatchObject({
       totalCents: 9000,
       paidCents: 17000,
       creditCents: 8000,
     })
+    expect(db.prepare("SELECT discount_cents FROM reservations WHERE id='b'").get()).toEqual({
+      discount_cents: 1000,
+    })
+    expect(entries.find((e) => e.id === 'legacy-discount-l')).toBeUndefined()
     expect(entries.find((e) => e.id === 'legacy-discount-c')).toMatchObject({
       kind: 'legacy_discount_excluded',
       amountCents: 5000,

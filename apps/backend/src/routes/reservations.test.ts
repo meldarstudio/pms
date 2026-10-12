@@ -129,7 +129,8 @@ const pay = (amountCents: number): WorkflowAction => ({
   type: 'financial',
   entry: { kind: 'payment', amountCents, method: 'cash', paymentDate: '2026-10-10' },
 })
-const adjust = (kind: 'discount' | 'waiver' | 'refund', amountCents: number): WorkflowAction => ({
+const setDiscount = (amountCents: number): WorkflowAction => ({ type: 'set-discount', amountCents })
+const adjust = (kind: 'waiver' | 'refund', amountCents: number): WorkflowAction => ({
   type: 'financial',
   entry: { kind, amountCents, method: 'cash', reason: 'Acordado con el huésped' },
 })
@@ -180,7 +181,7 @@ describe('reservation workflow', () => {
     let d = await command(await create(), [pay(10000)])
     const actions: WorkflowAction[] = [
       { type: 'set-status', lineId: d.rooms[0].id, status: 'no_show' },
-      adjust('discount', 20000),
+      setDiscount(20000),
     ]
     const preview = await request(`/reservations/${d.id}/preview`, 'POST', {
       requestId: crypto.randomUUID(), version: d.version, actions,
@@ -197,25 +198,29 @@ describe('reservation workflow', () => {
     d = await command(d, [{ type: 'delete-financial', entryId: d.financialEntries.find((e) => e.kind === 'payment')!.id }])
     expect(d).toMatchObject({ totalCents: 0, paidCents: 0, balanceCents: 0 })
   })
-  it('applies discounts in full after room cancellation and allows editing and deleting them', async () => {
+  it('applies the discount in full after room cancellation and allows changing and clearing it', async () => {
     let d = await create(2)
-    d = await command(d, [adjust('discount', 50000), pay(20000)])
+    d = await command(d, [setDiscount(50000), pay(20000)])
     d = await command(d, [{ type: 'cancel-room', lineId: d.rooms[0].id }])
     expect(d.totalCents).toBe(-20000)
     expect(d.creditCents).toBe(40000)
-    const id = d.financialEntries.find((e) => e.kind === 'discount')!.id
-    d = await command(d, [
-      { type: 'edit-financial', entryId: id, entry: { kind: 'discount', amountCents: 5000 } },
-    ])
+    d = await command(d, [setDiscount(5000)])
     expect(d.balanceCents).toBe(5000)
-    d = await command(d, [{ type: 'delete-financial', entryId: id }])
+    d = await command(d, [setDiscount(0)])
     expect(d.balanceCents).toBe(10000)
+    expect(d.financialEntries.some((e) => e.kind === 'discount')).toBe(false)
+  })
+  it('rejects discounts as financial entries and negative discount amounts', async () => {
+    const d = await create()
+    await command(d, [{ type: 'financial', entry: { kind: 'discount', amountCents: 1000 } }], 400)
+    await command(d, [{ type: 'set-discount', amountCents: -1 }], 400)
+    await command(d, [{ type: 'set-discount', amountCents: 1.5 }], 400)
   })
   it('removes cancelled charges but retains payments as credit and in payment reports', async () => {
     let d = await arrive(await create())
-    d = await command(d, [pay(30000), adjust('discount', 5000), all(d, 'check-out')])
+    d = await command(d, [pay(30000), setDiscount(5000), all(d, 'check-out')])
     d = await command(d, [{ type: 'cancel', confirmed: true }])
-    expect(d).toMatchObject({ totalCents: 0, paidCents: 30000, discountCents: 0, creditCents: 30000, balanceCents: -30000 })
+    expect(d).toMatchObject({ totalCents: 0, paidCents: 30000, discountCents: 0, savedDiscountCents: 5000, creditCents: 30000, balanceCents: -30000 })
     expect(d.financialEntries[0].amountCents).toBe(30000)
     expect(d.rooms[0].nights).toHaveLength(3)
     const report = await (await request('/payments?from=2026-10-10&to=2026-10-10')).json()
@@ -501,7 +506,7 @@ describe('workflow commit and recovery regressions', () => {
   })
   it('permits a discount with checkout and never treats it as payment', async () => {
     let d = await arrive(await create(2))
-    d = await command(d, [all(d, 'check-out'), adjust('discount', 20000)])
+    d = await command(d, [all(d, 'check-out'), setDiscount(20000)])
     expect(d.balanceCents).toBe(40000)
     expect(d.paidCents).toBe(0)
     expect(d.discountCents).toBe(20000)
@@ -727,7 +732,7 @@ describe('editable final reservation record', () => {
     d = await command(d, [pay(10000)])
     const actions: WorkflowAction[] = [
       roomEdit(d, 0, { checkOut: '2026-10-13' }),
-      { type: 'financial', entry: { kind: 'discount', amountCents: 5000 } },
+      setDiscount(5000),
       all(d, 'check-out'),
     ]
     const response = await request(`/reservations/${d.id}/preview`, 'POST', {
@@ -820,7 +825,7 @@ describe('editable final reservation record', () => {
     })
   })
   it('restores a cancelled booking through the ordinary label edit', async () => {
-    let d = await command(await create(), [pay(10000), adjust('discount', 1000)])
+    let d = await command(await create(), [pay(10000), setDiscount(1000)])
     d = await command(d, [{ type: 'cancel', confirmed: true }])
     expect(d.balanceCents).toBe(-10000)
     d = await command(d, [{ type: 'set-status', lineId: d.rooms[0].id, status: 'confirmed' }])

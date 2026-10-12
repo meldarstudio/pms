@@ -558,6 +558,7 @@ export function BookingEditor({
   const [error, setError] = useState("")
   const formRef = useRef<HTMLFormElement>(null)
   const [paymentDirty, setPaymentDirty] = useState(false)
+  const [discountDirty, setDiscountDirty] = useState(false)
   const changes = roomEdits(detail, drafts)
   if (notes !== (detail.notes ?? "")) changes.push({ type: "notes", notes })
   if (
@@ -609,13 +610,17 @@ export function BookingEditor({
   const saveMutation = useWorkflowCommand()
   const guestMutation = useWorkflowCommand()
   const financialMutation = useWorkflowCommand()
+  const discountMutation = useWorkflowCommand()
+  const discountSave = useRef<Promise<ReservationDetail> | null>(null)
   const busy =
     saveMutation.isPending ||
     guestMutation.isPending ||
     financialMutation.isPending
   const [guestSaver] = useState(createWorkflowSaver)
   const [financialSaver] = useState(createWorkflowSaver)
+  const [discountSaver] = useState(createWorkflowSaver)
   async function saveGuests(guests: StayingGuest[]) {
+    await discountSave.current
     await guestSaver(
       [{ type: "set-guests", guests: guestValues(guests) }],
       detail.version,
@@ -623,8 +628,23 @@ export function BookingEditor({
     )
   }
   useEffect(() => {
-    onDirtyChange?.(dirty || paymentDirty || guestDirty || busy)
-  }, [dirty, paymentDirty, guestDirty, busy, onDirtyChange])
+    onDirtyChange?.(
+      dirty ||
+        paymentDirty ||
+        guestDirty ||
+        discountDirty ||
+        busy ||
+        discountMutation.isPending
+    )
+  }, [
+    dirty,
+    paymentDirty,
+    guestDirty,
+    discountDirty,
+    busy,
+    discountMutation.isPending,
+    onDirtyChange,
+  ])
   function resetDetails(saved: ReservationDetail) {
     setDrafts(
       saved.rooms.map((room) => ({
@@ -638,10 +658,24 @@ export function BookingEditor({
     setPendingActions([])
   }
   async function saveFinancial(title: string, actions: WorkflowAction[]) {
+    await discountSave.current
     await financialSaver(actions, detail.version, (command) =>
       financialMutation.mutateAsync({ id: detail.id, command })
     )
     toast.add({ title, type: "success" })
+  }
+  async function saveDiscount(amountCents: number) {
+    const pending = discountSaver(
+      [{ type: "set-discount", amountCents }],
+      detail.version,
+      (command) => discountMutation.mutateAsync({ id: detail.id, command })
+    )
+    discountSave.current = pending
+    try {
+      await pending
+    } finally {
+      if (discountSave.current === pending) discountSave.current = null
+    }
   }
 
   const statusFor = (id: string) => {
@@ -732,6 +766,7 @@ export function BookingEditor({
     )
       return
     try {
+      await discountSave.current
       const saved = await saveMutation.mutateAsync({
         id: detail.id,
         command: editCommand,
@@ -1152,6 +1187,10 @@ export function BookingEditor({
               paidCents={billing?.paidCents ?? detail.paidCents}
               waiverCents={billing?.waiverCents ?? detail.waiverCents}
               refundCents={billing?.refundCents ?? detail.refundCents}
+              editableDiscountCents={detail.savedDiscountCents}
+              discountDisabled={busy || discountMutation.isPending}
+              onDiscountSave={saveDiscount}
+              onDiscountDirtyChange={setDiscountDirty}
               currency={detail.currency}
               stayLabel={
                 common

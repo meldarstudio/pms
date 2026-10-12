@@ -1,4 +1,4 @@
-import { useId } from "react"
+import { useEffect, useId, useRef, useState } from "react"
 
 import {
   Card,
@@ -9,8 +9,17 @@ import {
   CardTitle,
 } from "@/components/ui/card"
 import { Separator } from "@/components/ui/separator"
+import { Field, FieldError } from "@/components/ui/field"
+import {
+  InputGroup,
+  InputGroupAddon,
+  InputGroupInput,
+  InputGroupText,
+} from "@/components/ui/input-group"
 import type { bookingRoomCharges, bookingSummary } from "@/lib/booking-prices"
-import { formatMoney } from "@/lib/money"
+import { formatMajor, formatMoney, parseMajorToCents } from "@/lib/money"
+
+const amountColumn = "w-24 shrink-0 text-right tabular-nums"
 
 export type BookingSummaryRoom = {
   key: string
@@ -33,6 +42,10 @@ export function BookingSummary({
   message,
   waiverCents = 0,
   refundCents = 0,
+  editableDiscountCents,
+  discountDisabled = false,
+  onDiscountSave,
+  onDiscountDirtyChange,
 }: {
   rooms: BookingSummaryRoom[]
   summary: ReturnType<typeof bookingSummary>
@@ -43,6 +56,10 @@ export function BookingSummary({
   message: string
   waiverCents?: number
   refundCents?: number
+  editableDiscountCents?: number
+  discountDisabled?: boolean
+  onDiscountSave?: (amountCents: number) => Promise<void>
+  onDiscountDirtyChange?: (dirty: boolean) => void
 }) {
   const titleId = useId()
   const credit = summary !== null && summary.balanceCents < 0
@@ -76,7 +93,14 @@ export function BookingSummary({
               cents={summary?.subtotalCents ?? null}
               currency={currency}
             />
-            {!summary || summary.discountCents > 0 ? (
+            {onDiscountSave ? (
+              <DiscountInput
+                amountCents={editableDiscountCents ?? 0}
+                disabled={discountDisabled}
+                onSave={onDiscountSave}
+                onDirtyChange={onDiscountDirtyChange}
+              />
+            ) : !summary || summary.discountCents > 0 ? (
               <SummaryRow
                 label="Descuentos"
                 cents={summary ? -summary.discountCents : null}
@@ -144,6 +168,107 @@ export function BookingSummary({
   )
 }
 
+function discountDraft(cents: number) {
+  return cents % 100 === 0 ? String(cents / 100) : formatMajor(cents)
+}
+
+function DiscountInput({
+  amountCents,
+  disabled,
+  onSave,
+  onDirtyChange,
+}: {
+  amountCents: number
+  disabled: boolean
+  onSave: (amountCents: number) => Promise<void>
+  onDirtyChange?: (dirty: boolean) => void
+}) {
+  const [value, setValue] = useState(() => discountDraft(amountCents))
+  const [error, setError] = useState("")
+  const focused = useRef(false)
+  const saving = useRef(false)
+  useEffect(() => {
+    if (!focused.current) setValue(discountDraft(amountCents))
+  }, [amountCents])
+
+  async function save() {
+    focused.current = false
+    const cents = parseMajorToCents(value.trim() || "0")
+    if (cents === null) {
+      setError("Ingresa un importe válido con hasta dos decimales.")
+      onDirtyChange?.(true)
+      return
+    }
+    setError("")
+    onDirtyChange?.(false)
+    if (cents === amountCents || saving.current) return
+    saving.current = true
+    try {
+      await onSave(cents)
+      setValue(discountDraft(cents))
+    } catch (cause) {
+      setError(
+        cause instanceof Error
+          ? cause.message
+          : "No se pudo guardar el descuento."
+      )
+      onDirtyChange?.(true)
+    } finally {
+      saving.current = false
+    }
+  }
+
+  return (
+    <>
+      <div className="grid min-w-0 grid-cols-[minmax(0,1fr)_6rem] items-center gap-4">
+        <dt className="min-w-0 wrap-anywhere">Descuento</dt>
+        <dd>
+          <Field className="w-24" data-invalid={Boolean(error) || undefined}>
+            <InputGroup>
+              <InputGroupAddon>
+                <InputGroupText>S/</InputGroupText>
+              </InputGroupAddon>
+              <InputGroupInput
+                aria-label="Descuento en soles"
+                aria-invalid={Boolean(error) || undefined}
+                aria-describedby={error ? "discount-input-error" : undefined}
+                autoComplete="off"
+                className="px-2 text-right tabular-nums"
+                inputMode="decimal"
+                value={value}
+                disabled={disabled}
+                onFocus={() => {
+                  focused.current = true
+                }}
+                onChange={(event) => {
+                  setValue(event.target.value)
+                  setError("")
+                  const cents = parseMajorToCents(
+                    event.target.value.trim() || "0"
+                  )
+                  onDirtyChange?.(cents !== amountCents)
+                }}
+                onBlur={() => void save()}
+                onKeyDown={(event) => {
+                  if (event.key === "Enter") {
+                    event.preventDefault()
+                    event.currentTarget.blur()
+                  }
+                }}
+              />
+            </InputGroup>
+          </Field>
+        </dd>
+      </div>
+      {error ? (
+        <FieldError id="discount-input-error" className="col-span-2">
+          {error}
+        </FieldError>
+      ) : null}
+    </>
+  )
+}
+
 function RoomSummary({
   room,
   index,
@@ -195,9 +320,9 @@ function SummaryRow({
   excluded?: boolean
 }) {
   return (
-    <div className="grid min-w-0 grid-cols-[minmax(0,1fr)_auto] items-baseline gap-4">
+    <div className="grid min-w-0 grid-cols-[minmax(0,1fr)_6rem] items-baseline gap-4">
       <dt className="min-w-0 wrap-anywhere">{label}</dt>
-      <dd className="shrink-0 text-right tabular-nums">
+      <dd className={amountColumn}>
         {excluded ? (
           <span className="text-muted-foreground">Excluida</span>
         ) : cents === null ? (

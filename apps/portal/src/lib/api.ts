@@ -150,6 +150,7 @@ export type ReservationDetail = {
   waiverCents: number
   refundCents: number
   creditCents: number
+  savedDiscountCents: number
   financialEntries: FinancialEntry[]
   history: WorkflowEvent[]
   id: string
@@ -499,6 +500,7 @@ export type WorkflowAction =
     }
   | { type: "no-show"; lineId: string; reason: string }
   | { type: "cancel"; reason?: string; confirmed: true }
+  | { type: "set-discount"; amountCents: number }
   | { type: "financial"; entry: FinancialInput }
   | {
       type: "set-status"
@@ -524,6 +526,7 @@ export type WorkflowPreview = Pick<
   | "refundCents"
   | "balanceCents"
   | "creditCents"
+  | "savedDiscountCents"
 > & {
   settlementBlocked: boolean
   rooms: ReservationDetail["rooms"]

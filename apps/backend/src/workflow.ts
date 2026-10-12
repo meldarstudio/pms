@@ -39,7 +39,7 @@ export const charges = (state: State) =>
     .filter((l) => l.status !== 'cancelled')
     .reduce((sum, l) => sum + l.nights.reduce((s, n) => s + n.priceCents, 0), 0)
 export const totals = (state: State) =>
-  bill(charges(state), state.entries, {
+  bill(charges(state), state.entries, state.reservation.discountCents, {
     cancelled: state.lines.every((line) => line.status === 'cancelled'),
   })
 
@@ -155,8 +155,7 @@ export async function plan(
   const lineFor = (id: string) =>
     state.lines.find((l) => l.id === id) ?? fail('room line not found')
   const addFinancial = (input: Extract<WorkflowAction, { type: 'financial' }>['entry']) => {
-    if (input.kind !== 'payment' && input.kind !== 'discount')
-      fail('refunds and waivers are not supported; edit the discount instead')
+    if (input.kind !== 'payment') fail('only payments can be added as financial entries')
     const at = input.paymentDate ? `${input.paymentDate}T00:00:00.000Z` : (input.occurredAt ?? now)
     if (at > now) fail('financial date cannot be in the future')
     state.entries.push({
@@ -164,7 +163,7 @@ export async function plan(
       reservationId: state.reservation.id,
       kind: input.kind,
       amountCents: input.amountCents,
-      appliedCents: input.kind === 'discount' ? input.amountCents : 0,
+      appliedCents: 0,
       reason: input.reason ?? null,
       method: input.method ?? null,
       occurredAt: at,
@@ -218,8 +217,8 @@ export async function plan(
       const entry =
         state.entries.find((e) => e.id === action.entryId) ?? fail('financial entry not found')
       if (entry.voidedAt) fail('financial entry not found')
-      if (entry.kind !== 'payment' && entry.kind !== 'discount' && entry.kind !== 'legacy_signed')
-        fail('only payments and discounts can be edited or deleted')
+      if (entry.kind !== 'payment' && entry.kind !== 'legacy_signed')
+        fail('only payments can be edited or deleted')
       if (action.type === 'delete-financial') {
         state.entries = state.entries.filter((e) => e.id !== entry.id)
       } else {
@@ -235,6 +234,7 @@ export async function plan(
         state.entries.splice(index, 0, { ...replacement, id: entry.id, createdAt: entry.createdAt })
       }
     }
+    if (action.type === 'set-discount') state.reservation.discountCents = action.amountCents
     if (action.type === 'notes') state.reservation.notes = action.notes || null
     if (action.type === 'add-room') {
       if (state.lines.length >= 60) fail('reservation cannot exceed 60 rooms')
@@ -316,7 +316,7 @@ export async function plan(
     if (action.type === 'correct-financial') fail('use edit-financial or delete-financial')
     const after = totals(state)
     if (after.subtotalCents - after.discountCents < before.subtotalCents - before.discountCents)
-      reduceWaivers(charges(state), state.entries)
+      reduceWaivers(charges(state), state.entries, state.reservation.discountCents)
   }
   for (const line of state.lines) {
     if (line.status === 'checked_in' && !line.roomId) fail('check-in requires an assigned room')
@@ -418,6 +418,7 @@ export async function execute(db: Db, id: string, command: WorkflowCommand, prev
           checkIn: state.reservation.checkIn,
           checkOut: state.reservation.checkOut,
           cancelledAt: state.reservation.cancelledAt,
+          discountCents: state.reservation.discountCents,
         })
         .where(eq(reservations.id, id)),
       ...(JSON.stringify(state.contact) !== JSON.stringify(original.contact)
