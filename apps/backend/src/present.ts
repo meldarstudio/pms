@@ -3,7 +3,6 @@ import type {
   financialEntries,
   reservationEvents,
   guests,
-  payments,
   reservationRoomNights,
   reservationRooms,
   reservations,
@@ -17,7 +16,6 @@ type Guest = Omit<typeof guests.$inferSelect, 'firstName' | 'lastName'>
 type Reservation = typeof reservations.$inferSelect
 type Line = typeof reservationRooms.$inferSelect
 type Night = typeof reservationRoomNights.$inferSelect
-type Payment = typeof payments.$inferSelect
 type RoomType = typeof roomTypes.$inferSelect
 type Room = typeof rooms.$inferSelect
 
@@ -41,7 +39,6 @@ export function presentReservation(input: {
   guest: Guest
   lines: Line[]
   nights: Night[]
-  payments: Payment[]
   types: RoomType[]
   roomRows: Room[]
   entries: (typeof financialEntries.$inferSelect)[]

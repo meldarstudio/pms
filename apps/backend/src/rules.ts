@@ -22,7 +22,3 @@ export function requireInclusiveRange(from: string, to: string, maxDays: number)
 export function assertOccupancy(adults: number, children: number, maxOccupancy: number) {
   if (adults + children > maxOccupancy) throw new HttpError(400, 'too many guests for this room type')
 }
-
-export function assertDiscount(discountCents: number, subtotalCents: number) {
-  if (discountCents > subtotalCents) throw new HttpError(400, 'discount cannot exceed room charges')
-}

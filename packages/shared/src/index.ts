@@ -17,68 +17,6 @@ export const guestFields = z.object({
   notes: text(2000).optional(),
 })
 
-export const lineFields = z.object({
-  roomTypeId: z.string().min(1),
-  adults: z.number().int().min(1),
-  children: z.number().int().min(0).optional(),
-  nightlyRateCents: z.number().int().min(0).optional(),
-  discountCents: z.number().int().min(0).optional(),
-})
-
-export const createReservationSchema = z
-  .object({
-    guestId: z.string().min(1).optional(),
-    guest: guestFields.optional(),
-    checkIn: dateSchema,
-    checkOut: dateSchema,
-    notes: text(2000).optional(),
-    rooms: z.array(lineFields).min(1).max(60),
-  })
-  .refine((value) => Boolean(value.guestId) !== Boolean(value.guest), {
-    message: 'send a guestId or a guest',
-  })
-
-const patchReservationRoomSchema = z
-  .object({
-    id: z.string().min(1),
-    nightlyRateCents: z.number().int().min(0).optional(),
-    discountCents: z.number().int().min(0).optional(),
-    adults: z.number().int().min(1).optional(),
-    children: z.number().int().min(0).optional(),
-  })
-  .refine(
-    (value) =>
-      value.nightlyRateCents !== undefined ||
-      value.discountCents !== undefined ||
-      value.adults !== undefined ||
-      value.children !== undefined,
-    { message: 'send a field to update' },
-  )
-
-export const patchReservationSchema = z.object({
-  notes: z.string().trim().max(2000).nullable().optional(),
-  checkIn: dateSchema.optional(),
-  checkOut: dateSchema.optional(),
-  rooms: z.array(patchReservationRoomSchema).optional(),
-})
-
-export const addRoomSchema = lineFields
-
-export const assignRoomSchema = z.object({
-  roomId: z.string().min(1),
-})
-
-export const paymentSchema = z.object({
-  amountCents: z
-    .number()
-    .int()
-    .refine((value) => value !== 0, 'amount cannot be zero'),
-  method: z.enum(['cash', 'card', 'transfer', 'yape', 'other']),
-  reference: text(200).toUpperCase().optional(),
-  paidAt: z.string().min(1).optional(),
-  notes: text(2000).optional(),
-})
-
 export const roomTypeSchema = z.object({
   name: text(80),
   maxOccupancy: z.number().int().min(1),
@@ -164,11 +102,6 @@ export const reservationListQuerySchema = listQuerySchema.extend({
 })
 
 export type GuestInput = z.infer<typeof guestFields>
-export type ReservationLineInput = z.infer<typeof lineFields>
-export type CreateReservationInput = z.infer<typeof createReservationSchema>
-export type PatchReservationInput = z.infer<typeof patchReservationSchema>
-export type AssignRoomInput = z.infer<typeof assignRoomSchema>
-export type PaymentInput = z.infer<typeof paymentSchema>
 export type RoomTypeInput = z.infer<typeof roomTypeSchema>
 export type PatchRoomTypeInput = z.infer<typeof patchRoomTypeSchema>
 export type RoomInput = z.infer<typeof roomSchema>

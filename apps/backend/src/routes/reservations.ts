@@ -3,7 +3,7 @@ import {
   workflowCommandSchema,
   workflowCreateSchema,
 } from '@pms/shared'
-import { and, desc, eq, exists, gt, inArray, like, lte, or, sql } from 'drizzle-orm'
+import { and, desc, eq, exists, gt, inArray, like, lte, or } from 'drizzle-orm'
 import { Hono } from 'hono'
 import { getDb } from '../db'
 import {
@@ -101,7 +101,6 @@ reservationRoutes.get('/', validate('query', reservationListQuerySchema), async 
         lines: ownLines,
         nights: nights.filter((n) => ownIds.has(n.reservationRoomId)),
         entries: entries.filter((e) => e.reservationId === reservation.id),
-        payments: [],
         events: [],
         types,
         roomRows,

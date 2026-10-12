@@ -5,7 +5,6 @@ import {
   financialEntries,
   reservationEvents,
   guests,
-  payments,
   reservationRoomNights,
   reservationRooms,
   reservations,
@@ -32,7 +31,6 @@ export async function reservationDetail(db: Db, id: string, currency: string) {
           .select()
           .from(reservationRoomNights)
           .where(inArray(reservationRoomNights.reservationRoomId, lineIds))
-  const paymentRows = await db.select().from(payments).where(eq(payments.reservationId, id))
   const typeIds = [...new Set(lines.map((line) => line.roomTypeId))]
   const types =
     typeIds.length === 0
@@ -52,15 +50,8 @@ export async function reservationDetail(db: Db, id: string, currency: string) {
     guest,
     lines,
     nights,
-    payments: paymentRows,
     types,
     roomRows,
     currency,
   })
-}
-
-export async function requireLine(db: Db, reservationId: string, lineId: string) {
-  const [line] = await db.select().from(reservationRooms).where(eq(reservationRooms.id, lineId))
-  if (!line || line.reservationId !== reservationId) throw new HttpError(404, 'room line not found')
-  return line
 }

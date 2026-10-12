@@ -116,23 +116,13 @@ export type ReservationPayment = {
   notes: string | null
 }
 
+// Input for the local status examples. Live payments use workflow commands.
 export type RecordPaymentInput = {
   amountCents: number
   method: PaymentMethod
   reference?: string
   paidAt?: string
   notes?: string
-}
-
-export type PatchReservationInput = {
-  checkIn?: string
-  checkOut?: string
-  rooms?: {
-    id: string
-    adults?: number
-    children?: number
-    discountCents?: number
-  }[]
 }
 
 export type PatchGuestInput = {
@@ -189,24 +179,6 @@ export type ReservationDetail = {
     discountCents: number
     totalCents: number
     nights: { date: string; priceCents: number }[]
-  }[]
-}
-
-export type CreateReservationInput = {
-  guest: {
-    fullName: string
-
-    email?: string
-    phone?: string
-    notes?: string
-  }
-  checkIn: string
-  checkOut: string
-  rooms: {
-    roomTypeId: string
-    adults: number
-    children: number
-    discountCents?: number
   }[]
 }
 
@@ -302,35 +274,13 @@ export function getAvailability(
   )
 }
 
-export function createReservation(body: CreateReservationInput) {
-  return writeJson<ReservationDetail>("/reservations", "POST", body)
-}
-
 export function getReservation(id: string, signal?: AbortSignal) {
   return getJson<ReservationDetail>(`/reservations/${id}`, signal)
 }
 
-export function patchReservation(id: string, body: PatchReservationInput) {
-  return writeJson<ReservationDetail>(`/reservations/${id}`, "PATCH", body)
-}
-
-export function recordReservationPayment(id: string, body: RecordPaymentInput) {
-  return writeJson<ReservationDetail>(
-    `/reservations/${id}/payments`,
-    "POST",
-    body
-  )
-}
-
+// Action names used by the bulk-status planner, not standalone HTTP routes.
 export type ReservationStatusAction =
   "check-in" | "undo-check-in" | "check-out" | "cancel"
-
-export function changeReservationStatus(
-  id: string,
-  action: ReservationStatusAction
-) {
-  return writeJson<ReservationDetail>(`/reservations/${id}/${action}`, "POST")
-}
 
 export function patchGuest(id: string, body: PatchGuestInput) {
   return writeJson<ReservationGuest>(`/guests/${id}`, "PATCH", body)
@@ -363,32 +313,6 @@ export async function assignRoom(
       },
     ],
   })
-}
-
-export function unassignRoom(reservationId: string, lineId: string) {
-  return writeJson<ReservationDetail>(
-    `/reservations/${reservationId}/rooms/${lineId}/unassign-room`,
-    "POST"
-  )
-}
-
-export function addReservationRoom(
-  id: string,
-  body: {
-    roomTypeId: string
-    adults: number
-    children?: number
-    discountCents?: number
-  }
-) {
-  return writeJson<ReservationDetail>(`/reservations/${id}/rooms`, "POST", body)
-}
-
-export function cancelReservationRoom(id: string, lineId: string) {
-  return writeJson<ReservationDetail>(
-    `/reservations/${id}/rooms/${lineId}/cancel`,
-    "POST"
-  )
 }
 
 export function listRoomClosures(
@@ -552,7 +476,14 @@ export function previewWorkflow(id: string, body: WorkflowCommand) {
 }
 export function createWorkflowBooking(body: {
   requestId: string
-  guest: CreateReservationInput["guest"]
+  guest: {
+    fullName: string
+    email?: string
+    phone?: string
+    documentType?: string
+    documentNumber?: string
+    notes?: string
+  }
   rooms: WorkflowRoom[]
   notes?: string
 }) {

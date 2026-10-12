@@ -1,7 +1,6 @@
 import { and, eq, gt, inArray, lt, ne, sql } from 'drizzle-orm'
 import type { Db } from './db'
 import { reservationRooms, reservations, roomClosures, roomTypeRates, roomTypes, rooms } from './db/schema'
-import { HttpError } from './http'
 import { nightsBetween } from './lib/dates'
 import { peakOccupied } from './lib/inventory-grid'
 
@@ -69,23 +68,6 @@ export async function occupiedCounts(
       ),
   ])
   return peakOccupied(dates, stays, closures)
-}
-
-export function countRequested(lines: { roomTypeId: string }[]) {
-  const requested = new Map<string, number>()
-  for (const line of lines) requested.set(line.roomTypeId, (requested.get(line.roomTypeId) ?? 0) + 1)
-  return requested
-}
-
-export function assertCapacity(
-  capacity: Map<string, number>,
-  booked: Map<string, number>,
-  requested: Map<string, number>,
-) {
-  for (const [roomTypeId, count] of requested) {
-    const free = (capacity.get(roomTypeId) ?? 0) - (booked.get(roomTypeId) ?? 0)
-    if (count > free) throw new HttpError(409, 'no availability')
-  }
 }
 
 export async function ratesBetween(db: Db, typeIds: string[], checkIn: string, checkOut: string) {

@@ -181,6 +181,7 @@ export function createStatusExample(
     waiverCents: 0,
     refundCents: 0,
     creditCents: 0,
+    savedDiscountCents: 0,
     financialEntries: [],
     stayingGuests: [],
     history: [],

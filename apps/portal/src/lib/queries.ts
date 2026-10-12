@@ -8,11 +8,7 @@ import {
 import {
   sendWorkflow,
   type WorkflowCommand,
-  addReservationRoom,
   assignRoom,
-  cancelReservationRoom,
-  changeReservationStatus,
-  createReservation,
   createRoomClosure,
   deleteRoomClosure,
   deleteRoomTypeRates,
@@ -24,16 +20,9 @@ import {
   listRoomTypes,
   listRooms,
   patchGuest,
-  patchReservation,
-  type PatchReservationInput,
   patchRoom,
   patchRoomClosure,
   putRoomTypeRates,
-  recordReservationPayment,
-  unassignRoom,
-  type RecordPaymentInput,
-  type ReservationStatusAction,
-  type CreateReservationInput,
   type PatchGuestInput,
 } from "@/lib/api"
 
@@ -86,59 +75,6 @@ export function useReservation(id: string | null) {
   })
 }
 
-export function useCreateReservation() {
-  const queryClient = useQueryClient()
-  return useMutation({
-    mutationFn: (input: CreateReservationInput) => createReservation(input),
-    onSuccess: () =>
-      queryClient.invalidateQueries({ queryKey: ["reservations"] }),
-  })
-}
-
-export function usePatchReservation() {
-  const queryClient = useQueryClient()
-  return useMutation({
-    mutationFn: (input: { id: string } & PatchReservationInput) => {
-      const { id, ...body } = input
-      return patchReservation(id, body)
-    },
-    onSuccess: async (_data, input) => {
-      await queryClient.invalidateQueries({ queryKey: ["reservations"] })
-      await queryClient.invalidateQueries({
-        queryKey: ["reservation", input.id],
-      })
-    },
-  })
-}
-
-export function useRecordReservationPayment() {
-  const queryClient = useQueryClient()
-  return useMutation({
-    mutationFn: (input: { id: string; body: RecordPaymentInput }) =>
-      recordReservationPayment(input.id, input.body),
-    onSuccess: async (data, input) => {
-      queryClient.setQueryData(["reservation", input.id], data)
-      await queryClient.invalidateQueries({ queryKey: ["reservations"] })
-    },
-  })
-}
-
-export function useChangeReservationStatus() {
-  const queryClient = useQueryClient()
-  return useMutation({
-    mutationFn: (input: { id: string; action: ReservationStatusAction }) =>
-      changeReservationStatus(input.id, input.action),
-    onSuccess: async (data, input) => {
-      queryClient.setQueryData(["reservation", input.id], data)
-      await Promise.all([
-        queryClient.invalidateQueries({ queryKey: ["reservations"] }),
-        queryClient.invalidateQueries({ queryKey: ["availability"] }),
-        queryClient.invalidateQueries({ queryKey: ["inventory"] }),
-      ])
-    },
-  })
-}
-
 export function usePatchGuest() {
   const queryClient = useQueryClient()
   return useMutation({
@@ -164,59 +100,6 @@ export function useAssignRoom() {
       await queryClient.invalidateQueries({
         queryKey: ["reservation", input.reservationId],
       })
-    },
-  })
-}
-
-export function useUnassignRoom() {
-  const queryClient = useQueryClient()
-  return useMutation({
-    mutationFn: (input: { reservationId: string; lineId: string }) =>
-      unassignRoom(input.reservationId, input.lineId),
-    onSuccess: async (data, input) => {
-      queryClient.setQueryData(["reservation", input.reservationId], data)
-      await Promise.all([
-        queryClient.invalidateQueries({ queryKey: ["reservations"] }),
-        queryClient.invalidateQueries({ queryKey: ["inventory"] }),
-      ])
-    },
-  })
-}
-
-export function useAddReservationRoom() {
-  const queryClient = useQueryClient()
-  return useMutation({
-    mutationFn: (input: {
-      id: string
-      roomTypeId: string
-      adults: number
-      children?: number
-      discountCents?: number
-    }) => {
-      const { id, ...body } = input
-      return addReservationRoom(id, body)
-    },
-    onSuccess: async (_data, input) => {
-      await queryClient.invalidateQueries({ queryKey: ["reservations"] })
-      await queryClient.invalidateQueries({
-        queryKey: ["reservation", input.id],
-      })
-    },
-  })
-}
-
-export function useCancelReservationRoom() {
-  const queryClient = useQueryClient()
-  return useMutation({
-    mutationFn: (input: { id: string; lineId: string }) =>
-      cancelReservationRoom(input.id, input.lineId),
-    onSuccess: async (data, input) => {
-      queryClient.setQueryData(["reservation", input.id], data)
-      await Promise.all([
-        queryClient.invalidateQueries({ queryKey: ["reservations"] }),
-        queryClient.invalidateQueries({ queryKey: ["availability"] }),
-        queryClient.invalidateQueries({ queryKey: ["inventory"] }),
-      ])
     },
   })
 }
