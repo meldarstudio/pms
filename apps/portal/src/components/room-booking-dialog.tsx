@@ -7,13 +7,7 @@ import {
   type ReactNode,
 } from "react"
 import { useQuery, useQueryClient } from "@tanstack/react-query"
-import {
-  ArrowUpRightIcon,
-  EllipsisIcon,
-  PlusIcon,
-  Undo2Icon,
-  XIcon,
-} from "lucide-react"
+import { ArrowUpRightIcon, EllipsisIcon, PlusIcon, XIcon } from "lucide-react"
 import { cn } from "cn"
 import {
   Empty,
@@ -97,8 +91,8 @@ import {
   useRoomTypes,
   useWorkflowCommand,
 } from "@/lib/queries"
-import { toast } from "@/lib/toast"
-import { contactErrors } from "@/lib/form-validation"
+import { toast, toastError } from "@/lib/toast"
+import { contactErrors, partyCounts } from "@/lib/form-validation"
 import { createWorkflowSaver } from "@/lib/workflow-save"
 import { formatMajor, formatMoney, parseMajorToCents } from "@/lib/money"
 
@@ -518,10 +512,11 @@ export function BookingEditor({
   const [reservationState, setReservationState] = useState(detail.status)
   const [intent, setIntent] = useState<Intent | null>(null)
   const [tab, setTab] = useState(initialTab)
-  const [error, setError] = useState("")
-  const formRef = useRef<HTMLFormElement>(null)
   const [paymentDirty, setPaymentDirty] = useState(false)
   const [discountDirty, setDiscountDirty] = useState(false)
+  const countsValid = drafts.every(
+    (draft) => draft.removed || validRoomCounts(draft.room)
+  )
   const changes = roomEdits(detail, drafts)
   if (common.checkIn !== detail.checkIn || common.checkOut !== detail.checkOut)
     changes.unshift({ type: "dates", ...common })
@@ -566,7 +561,11 @@ export function BookingEditor({
   const editPreview = useQuery({
     queryKey: ["workflow-edit-preview", detail.id, previewCommand],
     queryFn: () => previewWorkflow(detail.id, previewCommand),
-    enabled: billingDirty && previewCommand.actions.length > 0,
+    enabled:
+      billingDirty &&
+      previewCommand.actions.length > 0 &&
+      previewCommand === billingCommand &&
+      countsValid,
     retry: false,
     refetchOnWindowFocus: false,
   })
@@ -654,18 +653,16 @@ export function BookingEditor({
     )
   const cancel = () => setIntent({ type: "cancel" })
   async function saveChanges() {
-    setError("")
     if (
       !contact.fullName.trim() ||
       (contact.email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(contact.email))
     ) {
-      setTab("details")
-      setError(
+      toastError(
         "Completa el nombre completo del contacto. Si indicas un email, revisa que sea válido."
       )
       return
     }
-    if (!formRef.current?.reportValidity()) return
+    if (!countsValid) return
     if (
       tab !== "details" ||
       !dirty ||
@@ -683,12 +680,11 @@ export function BookingEditor({
       resetDetails(saved)
       toast.add({ title: "Reserva guardada", type: "success" })
     } catch (e) {
-      setError(e instanceof Error ? e.message : "No se pudo guardar.")
+      toastError("No se pudo guardar", e)
     }
   }
   return (
     <form
-      ref={formRef}
       noValidate
       className={cn(
         "flex min-w-0 flex-col gap-4",
@@ -792,65 +788,43 @@ export function BookingEditor({
                   <div className="flex flex-wrap items-center justify-between gap-2">
                     <h3 className="font-medium">Habitaciones</h3>
                   </div>
-                  {drafts.map((draft, i) => (
+                  {activeDrafts.map((draft, i) => (
                     <section
                       key={draft.id}
                       className="flex min-w-0 flex-col gap-3"
                     >
-                      {draft.removed ? (
-                        <div className="flex items-center justify-between gap-3">
-                          <p>Habitación {i + 1} se retirará al guardar.</p>
+                      <CompactRoomFields
+                        reservationId={detail.id}
+                        stay={common}
+                        room={draft.room}
+                        blockedRoomIds={overlappingRoomIds(
+                          activeDrafts
+                            .filter((other) => other.id !== draft.id)
+                            .map((other) => other.room)
+                        )}
+                        occupied={reservationState === "checked_in"}
+                        onChange={(room) => update(draft.id, room)}
+                        actions={
                           <Button
                             type="button"
-                            variant="outline"
+                            variant="destructive"
+                            size="icon"
+                            aria-label={`Quitar habitación ${i + 1}`}
+                            disabled={activeDrafts.length <= 1}
                             onClick={() =>
                               setDrafts((ds) =>
                                 ds.map((d) =>
                                   d.id === draft.id
-                                    ? { ...d, removed: false }
+                                    ? { ...d, removed: true }
                                     : d
                                 )
                               )
                             }
                           >
-                            <Undo2Icon />
-                            Deshacer
+                            <XIcon />
                           </Button>
-                        </div>
-                      ) : (
-                        <CompactRoomFields
-                          reservationId={detail.id}
-                          stay={common}
-                          room={draft.room}
-                          blockedRoomIds={overlappingRoomIds(
-                            activeDrafts
-                              .filter((other) => other.id !== draft.id)
-                              .map((other) => other.room)
-                          )}
-                          occupied={reservationState === "checked_in"}
-                          onChange={(room) => update(draft.id, room)}
-                          actions={
-                            <Button
-                              type="button"
-                              variant="ghost"
-                              size="icon-sm"
-                              aria-label={`Quitar habitación ${i + 1}`}
-                              disabled={activeDrafts.length <= 1}
-                              onClick={() =>
-                                setDrafts((ds) =>
-                                  ds.map((d) =>
-                                    d.id === draft.id
-                                      ? { ...d, removed: true }
-                                      : d
-                                  )
-                                )
-                              }
-                            >
-                              <XIcon />
-                            </Button>
-                          }
-                        />
-                      )}
+                        }
+                      />
                     </section>
                   ))}
                   {activeDrafts.length > 0 && (
@@ -953,18 +927,20 @@ export function BookingEditor({
               }
               showPayments
               message={
-                billingDirty && editPreview.error && previewCurrent
-                  ? "Revisa los cambios para calcular el total."
+                !countsValid || (editPreview.error && previewCurrent)
+                  ? null
                   : "Calculando…"
               }
             />
-            {billingDirty && previewCurrent && editPreview.error && (
-              <FieldError>{editPreview.error.message}</FieldError>
-            )}
+            {billingDirty &&
+              countsValid &&
+              previewCurrent &&
+              editPreview.error && (
+                <FieldError>{editPreview.error.message}</FieldError>
+              )}
           </aside>
         </div>
       </Tabs>
-      {error && <FieldError role="alert">{error}</FieldError>}
       <div className="flex shrink-0 flex-wrap items-end justify-end gap-3">
         {tab === "details" && (
           <FieldGroup className="w-48">
@@ -1001,6 +977,7 @@ export function BookingEditor({
               type="submit"
               disabled={
                 !dirty ||
+                !countsValid ||
                 (billingDirty && previewCurrent && !!editPreview.error) ||
                 !billing ||
                 (billingDirty && editPreview.isFetching) ||
@@ -1069,6 +1046,23 @@ function useRoomAssignmentOptions(
   }
 }
 
+function roomCountErrors(room: WorkflowRoom) {
+  const counts = partyCounts(String(room.adults), String(room.children))
+  return {
+    adults:
+      counts.adultsError ??
+      (room.adults > 100 ? "Máximo 100 adultos." : undefined),
+    children:
+      counts.childrenError ??
+      (room.children > 100 ? "Máximo 100 niños." : undefined),
+  }
+}
+
+function validRoomCounts(room: WorkflowRoom) {
+  const errors = roomCountErrors(room)
+  return !errors.adults && !errors.children
+}
+
 function CompactRoomFields({
   room,
   stay,
@@ -1089,6 +1083,7 @@ function CompactRoomFields({
   const types = useRoomTypes(),
     rooms = useRooms()
   const availability = useRoomAssignmentOptions(stay, reservationId)
+  const errors = roomCountErrors(room)
   return (
     <FieldGroup className="grid grid-cols-2 gap-3 sm:grid-cols-[minmax(0,1fr)_88px_56px_56px_28px]">
       <ChoiceField
@@ -1132,6 +1127,7 @@ function CompactRoomFields({
         min={1}
         max={100}
         value={Number.isNaN(room.adults) ? "" : room.adults}
+        error={errors.adults}
         onChange={(v) =>
           onChange({ ...room, adults: v === "" ? NaN : Number(v) })
         }
@@ -1143,6 +1139,7 @@ function CompactRoomFields({
         min={0}
         max={100}
         value={Number.isNaN(room.children) ? "" : room.children}
+        error={errors.children}
         onChange={(v) =>
           onChange({ ...room, children: v === "" ? NaN : Number(v) })
         }
@@ -1184,7 +1181,6 @@ function GuestFields({
   const [editing, setEditing] = useState(false)
   const [addDraft, setAddDraft] = useState(draft)
   const [leaving, setLeaving] = useState(false)
-  const [error, setError] = useState("")
   const [attempted, setAttempted] = useState(false)
   const [baseline, setBaseline] = useState(draft)
   const [addBaseline, setAddBaseline] = useState(draft)
@@ -1195,7 +1191,6 @@ function GuestFields({
   const validation = contactErrors(draft.fullName, draft.email ?? "")
   const patch = (changes: Partial<StayingGuest>) => {
     setDraft((guest) => ({ ...guest, ...changes }))
-    setError("")
   }
   const reset = () => {
     const next = emptyGuest()
@@ -1204,7 +1199,6 @@ function GuestFields({
     setEditing(false)
     setLeaving(false)
     setAttempted(false)
-    setError("")
   }
   async function submit() {
     if (disabled) return
@@ -1224,11 +1218,7 @@ function GuestFields({
         type: "success",
       })
     } catch (cause) {
-      setError(
-        cause instanceof Error
-          ? cause.message
-          : "No se pudo guardar el huésped."
-      )
+      toastError("No se pudo guardar el huésped", cause)
     }
   }
   async function remove(id: string) {
@@ -1237,11 +1227,7 @@ function GuestFields({
       if (draft.id === id) reset()
       toast.add({ title: "Huésped eliminado", type: "success" })
     } catch (cause) {
-      setError(
-        cause instanceof Error
-          ? cause.message
-          : "No se pudo eliminar el huésped."
-      )
+      toastError("No se pudo eliminar el huésped", cause)
     }
   }
   const roomLabel = (id: string | null) =>
@@ -1339,7 +1325,6 @@ function GuestFields({
             onChange={(phone) => patch({ phone })}
           />
         </FieldGroup>
-        {error && <FieldError role="alert">{error}</FieldError>}
         <div className="flex items-center gap-2">
           <Button
             type="button"
@@ -1429,7 +1414,6 @@ function GuestFields({
                             setBaseline({ ...guest })
                             setEditing(true)
                             setAttempted(false)
-                            setError("")
                           }}
                         >
                           Editar
@@ -1488,7 +1472,8 @@ function PaymentForm({
   const [method, setMethod] = useState("cash")
   const [date, setDate] = useState(paymentToday())
   const [reference, setReference] = useState("")
-  const [error, setError] = useState("")
+  const [amountError, setAmountError] = useState("")
+  const [dateError, setDateError] = useState("")
   const initial = useRef({ amount, date })
   useEffect(() => {
     onDirtyChange(
@@ -1499,16 +1484,19 @@ function PaymentForm({
     )
   }, [amount, enteredAmount, date, method, reference, onDirtyChange])
   async function reviewPayment() {
-    setError("")
     const amountCents = parseMajorToCents(amount)
-    if (!amountCents || amountCents <= 0) {
-      setError("Introduce un importe positivo con hasta dos decimales.")
-      return
-    }
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || date > paymentToday()) {
-      setError("Indica una fecha de pago válida, hasta hoy.")
-      return
-    }
+    const invalidAmount = !amountCents || amountCents <= 0
+    const invalidDate =
+      !/^\d{4}-\d{2}-\d{2}$/.test(date) || date > paymentToday()
+    setAmountError(
+      invalidAmount
+        ? "Introduce un importe positivo con hasta dos decimales."
+        : ""
+    )
+    setDateError(
+      invalidDate ? "Indica una fecha de pago válida, hasta hoy." : ""
+    )
+    if (!amountCents || invalidAmount || invalidDate) return
     try {
       await onReady("Pago registrado", [
         {
@@ -1528,9 +1516,7 @@ function PaymentForm({
       setReference("")
       setMethod("cash")
     } catch (cause) {
-      setError(
-        cause instanceof Error ? cause.message : "No se pudo guardar el pago."
-      )
+      toastError("No se pudo guardar el pago", cause)
     }
   }
   return (
@@ -1541,7 +1527,11 @@ function PaymentForm({
             label="Importe S/"
             value={amount}
             placeholder="0.00"
-            onChange={setEnteredAmount}
+            error={amountError}
+            onChange={(value) => {
+              setEnteredAmount(value)
+              setAmountError("")
+            }}
             disabled={disabled}
           />
           <ChoiceField
@@ -1556,7 +1546,11 @@ function PaymentForm({
             type="date"
             max={paymentToday()}
             value={date}
-            onChange={setDate}
+            error={dateError}
+            onChange={(value) => {
+              setDate(value)
+              setDateError("")
+            }}
             disabled={disabled}
           />
           <TextField
@@ -1576,7 +1570,6 @@ function PaymentForm({
           Agregar pago
         </Button>
       </fieldset>
-      {error && <FieldError role="alert">{error}</FieldError>}
     </section>
   )
 }
@@ -1698,7 +1691,8 @@ function ActionForm({
     entry?.reference?.toUpperCase() ?? ""
   )
   const [reason, setReason] = useState(entry?.notes ?? "")
-  const [error, setError] = useState("")
+  const [amountError, setAmountError] = useState("")
+  const [dateError, setDateError] = useState("")
   const [saving, setSaving] = useState(false)
   const [leaving, setLeaving] = useState(false)
   const [initial] = useState(() =>
@@ -1741,7 +1735,6 @@ function ActionForm({
     else onClose()
   }
   async function submit() {
-    setError("")
     if (isCancellation) {
       if (
         !cancellationPreview.data ||
@@ -1762,9 +1755,7 @@ function ActionForm({
         })
         onClose()
       } catch (cause) {
-        setError(
-          cause instanceof Error ? cause.message : "No se pudo cancelar."
-        )
+        toastError("No se pudo cancelar", cause)
       }
       return
     }
@@ -1773,14 +1764,18 @@ function ActionForm({
       return
     }
     const amountCents = parseMajorToCents(amount)
-    if (!amountCents || amountCents <= 0) {
-      setError("Introduce un importe positivo con hasta dos decimales.")
-      return
-    }
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || date > paymentToday()) {
-      setError("Indica una fecha de pago válida, hasta hoy.")
-      return
-    }
+    const invalidAmount = !amountCents || amountCents <= 0
+    const invalidDate =
+      !/^\d{4}-\d{2}-\d{2}$/.test(date) || date > paymentToday()
+    setAmountError(
+      invalidAmount
+        ? "Introduce un importe positivo con hasta dos decimales."
+        : ""
+    )
+    setDateError(
+      invalidDate ? "Indica una fecha de pago válida, hasta hoy." : ""
+    )
+    if (!amountCents || invalidAmount || invalidDate) return
     const input: PaymentInput = {
       amountCents,
       method: method as PaymentInput["method"],
@@ -1801,7 +1796,10 @@ function ActionForm({
     try {
       await onReady(title, actions)
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : "No se pudo guardar.")
+      toastError(
+        deleting ? "No se pudo eliminar el pago" : "No se pudo guardar el pago",
+        cause
+      )
     } finally {
       setSaving(false)
     }
@@ -1837,7 +1835,11 @@ function ActionForm({
                       label="Importe S/"
                       value={amount}
                       placeholder="0.00"
-                      onChange={setAmount}
+                      error={amountError}
+                      onChange={(value) => {
+                        setAmount(value)
+                        setAmountError("")
+                      }}
                     />
                     <ChoiceField
                       label="Método"
@@ -1851,7 +1853,11 @@ function ActionForm({
                       required
                       max={paymentToday()}
                       value={date}
-                      onChange={setDate}
+                      error={dateError}
+                      onChange={(value) => {
+                        setDate(value)
+                        setDateError("")
+                      }}
                     />
                     <TextField
                       label="Referencia · Opcional"
@@ -1881,7 +1887,6 @@ function ActionForm({
                 Calculando…
               </p>
             ))}
-          {error && <FieldError role="alert">{error}</FieldError>}
           <Footer className="flex justify-end gap-2">
             <CancelButton
               type="button"

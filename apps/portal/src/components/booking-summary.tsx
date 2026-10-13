@@ -10,6 +10,7 @@ import {
 } from "@/components/ui/card"
 import { Separator } from "@/components/ui/separator"
 import { Field, FieldError } from "@/components/ui/field"
+import { toastError } from "@/lib/toast"
 import {
   InputGroup,
   InputGroupAddon,
@@ -56,7 +57,7 @@ export function BookingSummary({
   currency: string
   stayLabel: string | null
   showPayments: boolean
-  message: string
+  message: string | null
   editableDiscountCents?: number
   discountDisabled?: boolean
   onDiscountSave?: (amountCents: number) => Promise<void>
@@ -121,7 +122,7 @@ export function BookingSummary({
               />
             </dl>
           ) : null}
-          {!summary ? (
+          {!summary && message ? (
             <p role="status" className="text-muted-foreground">
               {message}
             </p>
@@ -192,11 +193,7 @@ function DiscountInput({
       await onSave(cents)
       setValue(discountDraft(cents))
     } catch (cause) {
-      setError(
-        cause instanceof Error
-          ? cause.message
-          : "No se pudo guardar el descuento."
-      )
+      toastError("No se pudo guardar el descuento", cause)
       onDirtyChange?.(true)
     } finally {
       saving.current = false
