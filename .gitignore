@@ -7,6 +7,8 @@ dist-ssr/
 .dev.vars
 *.local
 .DS_Store
+.cursor/skills/verify-pms/.run/
+.cursor/skills/verify-pms/artifacts/
 logs/
 *.log
 npm-debug.log*
