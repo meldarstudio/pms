@@ -1,24 +1,10 @@
 import { useId, type ComponentProps, type FormEvent } from "react"
 import { createFormHook, createFormHookContexts } from "@tanstack/react-form"
 import { TextField, ChoiceField } from "@/components/workflow-fields"
+import { errorMessage } from "./form-errors"
 export { blurThenChange } from "./reservation-form-state"
 
 const { fieldContext, formContext, useFieldContext } = createFormHookContexts()
-
-export function errorMessage(errors: readonly unknown[]) {
-  const messages = errors.flatMap((error) => {
-    if (typeof error === "string") return [error]
-    if (
-      error &&
-      typeof error === "object" &&
-      "message" in error &&
-      typeof error.message === "string"
-    )
-      return [error.message]
-    return []
-  })
-  return [...new Set(messages)].join(" ") || undefined
-}
 
 function FormText({
   live = false,

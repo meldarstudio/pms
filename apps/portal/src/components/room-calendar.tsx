@@ -709,12 +709,12 @@ export function RoomCalendar({
         </div>
       ) : null}
       <div className="flex min-h-0 min-w-0 flex-1">
-        <div className="min-h-0 min-w-0 flex-1 overflow-auto overscroll-contain">
+        <div className="min-h-0 min-w-0 flex-1 overflow-auto overscroll-none">
           <div
             className="grid w-full"
             style={{
-              gridTemplateColumns: `12rem repeat(${span}, minmax(6rem, 1fr))`,
-              minWidth: `${12 + span * 6}rem`,
+              gridTemplateColumns: `10rem repeat(${span}, minmax(6rem, 1fr))`,
+              minWidth: `${10 + span * 6}rem`,
             }}
           >
             <div className="sticky top-0 left-0 z-40 border-r border-b bg-background" />

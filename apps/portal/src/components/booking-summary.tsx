@@ -1,10 +1,7 @@
 import { useEffect, useId, useRef, useState } from "react"
 import { useSelector } from "@tanstack/react-form"
-import {
-  useReservationForm,
-  blurThenChange,
-  errorMessage,
-} from "@/lib/reservation-form"
+import { useReservationForm, blurThenChange } from "@/lib/reservation-form"
+import { errorMessage } from "@/lib/form-errors"
 import { discountSchema } from "@/lib/reservation-form-schemas"
 
 import {

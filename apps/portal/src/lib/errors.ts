@@ -31,6 +31,7 @@ const messages: Record<string, string> = {
   "room type already exists": "Este tipo de habitación ya existe.",
   "room type not found": "Este tipo de habitación ya no existe.",
   "room not found": "Esta habitación ya no existe.",
+  "room closure not found": "Este cierre ya no existe.",
   "reservation not found": "La reserva ya no existe.",
   "guest not found": "El huésped ya no existe.",
   "payment not found": "El pago ya no existe.",

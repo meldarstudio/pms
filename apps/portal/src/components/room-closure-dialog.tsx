@@ -1,5 +1,5 @@
-import { useState, type FormEvent } from "react"
-import { addDays, differenceInCalendarDays, parse, startOfDay } from "date-fns"
+import { useForm, useSelector } from "@tanstack/react-form"
+import { addDays, parseISO } from "date-fns"
 import { EllipsisIcon } from "lucide-react"
 
 import { DateField } from "@/components/date-field"
@@ -18,6 +18,7 @@ import {
   DropdownMenuContent,
   DropdownMenuGroup,
   DropdownMenuItem,
+  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
 import {
@@ -32,6 +33,15 @@ import { Spinner } from "@/components/ui/spinner"
 import { type RoomClosure } from "@/lib/api"
 import { useDeleteRoomClosure, useSaveRoomClosure } from "@/lib/queries"
 import { format } from "@/lib/dates"
+import { errorMessage, setServerErrors } from "@/lib/form-errors"
+import {
+  closureFieldErrors,
+  closureNights,
+  closurePayload,
+  closureUnchanged,
+  roomClosureFormSchema,
+} from "@/lib/room-closure-form"
+import { toast, toastError } from "@/lib/toast"
 
 export type ClosureTarget =
   | {
@@ -47,24 +57,10 @@ export type ClosureTarget =
       typeName: string
     }
 
-function closureError(error: Error) {
-  if (error.message === "room has a stay on those dates") {
-    return "Esta habitación tiene una reserva para esas fechas."
-  }
-  if (error.message === "room is already closed on those dates") {
-    return "Esta habitación ya está cerrada para esas fechas."
-  }
-  if (error.message === "no availability") {
-    return "No hay disponibilidad para esas fechas."
-  }
-  if (error.message === "stay cannot be longer than 60 nights") {
-    return "El cierre no puede superar las 60 noches."
-  }
-  return error.message
-}
-
 function formKey(target: ClosureTarget) {
-  return target.mode === "edit" ? target.closure.id : `new-${target.roomId}`
+  return target.mode === "edit"
+    ? JSON.stringify(target.closure)
+    : `new-${target.roomId}`
 }
 
 export function RoomActionsMenu({
@@ -94,7 +90,10 @@ export function RoomActionsMenu({
           <DropdownMenuItem onClick={onEditRoom}>
             Editar habitación
           </DropdownMenuItem>
-          <DropdownMenuItem onClick={onCloseRoom}>
+        </DropdownMenuGroup>
+        <DropdownMenuSeparator />
+        <DropdownMenuGroup>
+          <DropdownMenuItem onClick={onCloseRoom} variant="destructive">
             Cerrar habitación
           </DropdownMenuItem>
         </DropdownMenuGroup>
@@ -116,12 +115,18 @@ export function RoomClosureDialog({
   const remove = useDeleteRoomClosure()
   const pending = save.isPending || remove.isPending
 
+  function close() {
+    save.reset()
+    remove.reset()
+    onClose()
+  }
+
   return (
     <Dialog
       open={target !== null}
       onOpenChange={(next) => {
         if (!next && pending) return
-        if (!next) onClose()
+        if (!next) close()
       }}
     >
       <DialogContent>
@@ -130,20 +135,26 @@ export function RoomClosureDialog({
             key={formKey(target)}
             target={target}
             timeZone={timeZone}
-            savePending={save.isPending}
             removePending={remove.isPending}
-            error={
-              save.error
-                ? closureError(save.error)
-                : remove.error
-                  ? closureError(remove.error)
-                  : null
-            }
-            onSave={(input) => {
-              save.mutate(input, { onSuccess: onClose })
+            onSave={async (input) => {
+              await save.mutateAsync(input)
+              toast.add({
+                title:
+                  target.mode === "edit"
+                    ? "Cierre actualizado"
+                    : "Habitación cerrada",
+                type: "success",
+              })
+              close()
             }}
-            onRemove={(id) => {
-              remove.mutate(id, { onSuccess: onClose })
+            onRemove={async (id) => {
+              try {
+                await remove.mutateAsync(id)
+                toast.add({ title: "Cierre eliminado", type: "success" })
+                close()
+              } catch (cause) {
+                toastError("No se pudo eliminar el cierre", cause)
+              }
             }}
           />
         ) : null}
@@ -155,124 +166,184 @@ export function RoomClosureDialog({
 function ClosureForm({
   target,
   timeZone,
-  savePending,
   removePending,
-  error,
   onSave,
   onRemove,
 }: {
   target: ClosureTarget
   timeZone: string
-  savePending: boolean
   removePending: boolean
-  error: string | null
   onSave: (input: {
     id?: string
     roomId: string
     starts: string
     ends: string
     reason?: string
-  }) => void
-  onRemove: (id: string) => void
+  }) => Promise<void>
+  onRemove: (id: string) => Promise<void>
 }) {
-  const pending = savePending || removePending
-  const [startDate, setStartDate] = useState<Date | null>(() => {
-    if (target.mode !== "edit") return null
-    return startOfDay(parse(target.closure.starts, "yyyy-MM-dd", new Date()))
+  const form = useForm({
+    defaultValues: {
+      starts: target.mode === "edit" ? target.closure.starts : "",
+      ends: target.mode === "edit" ? target.closure.ends : "",
+      reason: target.mode === "edit" ? (target.closure.reason ?? "") : "",
+    },
+    validators: { onSubmit: roomClosureFormSchema },
+    onSubmit: async ({ value }) => {
+      if (
+        removePending ||
+        (target.mode === "edit" && closureUnchanged(target.closure, value))
+      )
+        return
+      form.setErrorMap({ onServer: undefined })
+      try {
+        await onSave({
+          id: target.mode === "edit" ? target.closure.id : undefined,
+          roomId:
+            target.mode === "edit" ? target.closure.roomId : target.roomId,
+          ...closurePayload(value),
+        })
+      } catch (cause) {
+        const fields = closureFieldErrors(cause)
+        if (fields) setServerErrors(form, fields)
+        else toastError("No se pudo guardar el cierre", cause)
+      }
+    },
   })
-  const [endDate, setEndDate] = useState<Date | null>(() => {
-    if (target.mode !== "edit") return null
-    return startOfDay(parse(target.closure.ends, "yyyy-MM-dd", new Date()))
-  })
-  const [reason, setReason] = useState(
-    target.mode === "edit" ? (target.closure.reason ?? "") : ""
-  )
-  const [localError, setLocalError] = useState<string | null>(null)
-  const nights =
-    startDate && endDate ? differenceInCalendarDays(endDate, startDate) : 0
-  const shownError = localError ?? error
+  const values = useSelector(form.store, (state) => state.values)
+  const submitting = useSelector(form.store, (state) => state.isSubmitting)
+  const pending = submitting || removePending
+  const startDate = values.starts ? parseISO(values.starts) : null
+  const endDate = values.ends ? parseISO(values.ends) : null
+  const nights = closureNights(values.starts, values.ends)
+  const unchanged =
+    target.mode === "edit" && closureUnchanged(target.closure, values)
 
-  function onSubmit(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault()
-    if (!startDate || !endDate || pending) return
-    if (nights < 1) {
-      setLocalError("La reapertura debe ser posterior al inicio del cierre.")
-      return
-    }
-    if (nights > 60) {
-      setLocalError("El cierre no puede superar las 60 noches.")
-      return
-    }
-    setLocalError(null)
-    onSave({
-      id: target.mode === "edit" ? target.closure.id : undefined,
-      roomId: target.mode === "edit" ? target.closure.roomId : target.roomId,
-      starts: format(startDate, "yyyy-MM-dd"),
-      ends: format(endDate, "yyyy-MM-dd"),
-      reason: reason.trim() || undefined,
-    })
+  function clearRangeError() {
+    form.setErrorMap({ onServer: undefined })
+    form.setFieldMeta("ends", (meta) => ({
+      ...meta,
+      errorMap: { ...meta.errorMap, onServer: undefined },
+    }))
   }
 
   return (
-    <form className="flex flex-col gap-4" onSubmit={onSubmit}>
+    <form
+      id="room-closure-form"
+      noValidate
+      className="flex flex-col gap-4"
+      onSubmit={(event) => {
+        event.preventDefault()
+        void form.handleSubmit()
+      }}
+    >
       <DialogHeader>
         <DialogTitle>
           {target.mode === "edit" ? "Editar cierre" : "Cerrar habitación"}
         </DialogTitle>
         <DialogDescription>
-          {target.number}, {target.typeName}
+          {target.number} - {target.typeName}
         </DialogDescription>
       </DialogHeader>
       <FieldGroup>
-        <Field data-invalid={shownError ? true : undefined}>
-          <div className="grid grid-cols-2 gap-2">
-            <DateField
-              id="closure-start"
-              label="Desde"
-              value={startDate}
-              timeZone={timeZone}
-              disabled={endDate ? { after: addDays(endDate, -1) } : undefined}
-              onChange={(date) => {
-                setStartDate(date)
-                setLocalError(null)
-              }}
+        <FieldGroup>
+          <FieldGroup className="grid grid-cols-2 gap-2">
+            <form.Field
+              name="starts"
+              children={(field) => (
+                <DateField
+                  id="closure-start"
+                  label="Desde"
+                  value={startDate}
+                  locked={pending}
+                  error={
+                    field.state.meta.isTouched && !field.state.meta.isValid
+                      ? errorMessage(field.state.meta.errors)
+                      : undefined
+                  }
+                  onBlur={field.handleBlur}
+                  timeZone={timeZone}
+                  disabled={
+                    endDate ? { after: addDays(endDate, -1) } : undefined
+                  }
+                  onChange={(date) => {
+                    clearRangeError()
+                    field.handleChange(format(date, "yyyy-MM-dd"))
+                  }}
+                />
+              )}
             />
-            <DateField
-              id="closure-end"
-              label="Reapertura"
-              value={endDate}
-              timeZone={timeZone}
-              disabled={
-                startDate
-                  ? [
-                      { before: addDays(startDate, 1) },
-                      { after: addDays(startDate, 60) },
-                    ]
-                  : undefined
-              }
-              onChange={(date) => {
-                setEndDate(date)
-                setLocalError(null)
-              }}
+            <form.Field
+              name="ends"
+              children={(field) => (
+                <DateField
+                  id="closure-end"
+                  label="Reapertura"
+                  value={endDate}
+                  locked={pending}
+                  error={
+                    field.state.meta.isTouched && !field.state.meta.isValid
+                      ? errorMessage(field.state.meta.errors)
+                      : undefined
+                  }
+                  onBlur={field.handleBlur}
+                  timeZone={timeZone}
+                  disabled={
+                    startDate
+                      ? [
+                          { before: addDays(startDate, 1) },
+                          { after: addDays(startDate, 60) },
+                        ]
+                      : undefined
+                  }
+                  onChange={(date) => {
+                    clearRangeError()
+                    field.handleChange(format(date, "yyyy-MM-dd"))
+                  }}
+                />
+              )}
             />
-          </div>
+          </FieldGroup>
           <FieldDescription>
             {startDate && endDate && nights >= 1
               ? `${nights} ${nights === 1 ? "noche cerrada" : "noches cerradas"}. Disponible el ${format(endDate, "d MMM yyyy")}.`
               : "Selecciona el inicio del cierre y la fecha de reapertura."}
           </FieldDescription>
-          {shownError ? <FieldError>{shownError}</FieldError> : null}
-        </Field>
-        <Field>
-          <FieldLabel htmlFor="closure-reason">Motivo</FieldLabel>
-          <Input
-            id="closure-reason"
-            value={reason}
-            maxLength={80}
-            placeholder="Opcional"
-            onChange={(event) => setReason(event.target.value)}
-          />
-        </Field>
+        </FieldGroup>
+        <form.Field
+          name="reason"
+          children={(field) => {
+            const isInvalid =
+              field.state.meta.isTouched && !field.state.meta.isValid
+            return (
+              <Field
+                data-invalid={isInvalid || undefined}
+                data-disabled={pending || undefined}
+              >
+                <FieldLabel htmlFor="closure-reason">Motivo</FieldLabel>
+                <Input
+                  id="closure-reason"
+                  name={field.name}
+                  value={field.state.value}
+                  maxLength={80}
+                  placeholder="Opcional"
+                  disabled={pending}
+                  aria-invalid={isInvalid}
+                  onBlur={field.handleBlur}
+                  onChange={(event) => {
+                    clearRangeError()
+                    field.handleChange(event.target.value)
+                  }}
+                />
+                {isInvalid && (
+                  <FieldError>
+                    {errorMessage(field.state.meta.errors)}
+                  </FieldError>
+                )}
+              </Field>
+            )
+          }}
+        />
       </FieldGroup>
       <DialogFooter>
         {target.mode === "edit" ? (
@@ -281,7 +352,7 @@ function ClosureForm({
             variant="destructive"
             className="sm:mr-auto"
             disabled={pending}
-            onClick={() => onRemove(target.closure.id)}
+            onClick={() => void onRemove(target.closure.id)}
           >
             {removePending ? <Spinner data-icon="inline-start" /> : null}
             Eliminar
@@ -296,10 +367,15 @@ function ClosureForm({
         <Button
           type="submit"
           disabled={
-            !startDate || !endDate || nights < 1 || nights > 60 || pending
+            !startDate ||
+            !endDate ||
+            nights < 1 ||
+            nights > 60 ||
+            unchanged ||
+            pending
           }
         >
-          {savePending ? <Spinner data-icon="inline-start" /> : null}
+          {submitting ? <Spinner data-icon="inline-start" /> : null}
           {target.mode === "edit" ? "Guardar" : "Cerrar habitación"}
         </Button>
       </DialogFooter>

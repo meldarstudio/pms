@@ -27,7 +27,7 @@ import {
 } from "@/components/ui/select"
 import { Spinner } from "@/components/ui/spinner"
 import { usePatchRoom, useRoomTypes } from "@/lib/queries"
-import { setServerErrors } from "@/lib/form-errors"
+import { fieldErrors, setServerErrors } from "@/lib/form-errors"
 import { roomEditSchema, roomFieldErrors, roomPatch } from "@/lib/room-form"
 import { toast, toastError } from "@/lib/toast"
 
@@ -36,20 +36,6 @@ export type RoomEditTarget = {
   number: string
   roomTypeId: string
   typeName: string
-}
-
-function fieldErrors(errors: readonly unknown[]) {
-  return errors.flatMap((error) => {
-    if (typeof error === "string") return [{ message: error }]
-    if (
-      error &&
-      typeof error === "object" &&
-      "message" in error &&
-      typeof error.message === "string"
-    )
-      return [{ message: error.message }]
-    return []
-  })
 }
 
 export function RoomEditDialog({
