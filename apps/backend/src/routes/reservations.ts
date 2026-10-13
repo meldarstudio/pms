@@ -3,7 +3,7 @@ import {
   workflowCommandSchema,
   workflowCreateSchema,
 } from '@pms/shared'
-import { and, desc, eq, gt, inArray, like, lte, or } from 'drizzle-orm'
+import { and, asc, eq, gt, inArray, like, lte, or } from 'drizzle-orm'
 import { Hono } from 'hono'
 import { getDb } from '../db'
 import {
@@ -33,20 +33,24 @@ reservationRoutes.get('/', validate('query', reservationListQuerySchema), async 
   if (q.to) filters.push(lte(reservations.checkIn, q.to))
   if (q.status) filters.push(eq(reservations.status, q.status))
   if (q.q) {
-    const pattern = `%${q.q.replace(/[%_]/g, '')}%`
-    filters.push(
-      or(
-        like(reservations.code, pattern),
-        like(guests.fullName, pattern),
-      ),
-    )
+    for (const token of q.q.split(/\s+/)) {
+      const needle = token.replace(/[%_]/g, '')
+      // Skip a token that was only LIKE wildcards so it cannot match every row.
+      if (!needle) continue
+      const pattern = `%${needle}%`
+      filters.push(or(like(reservations.code, pattern), like(guests.fullName, pattern)))
+    }
   }
   const rows = await db
     .select({ reservation: reservations, guest: guests })
     .from(reservations)
     .innerJoin(guests, eq(guests.id, reservations.guestId))
     .where(and(...filters))
-    .orderBy(desc(reservations.createdAt))
+    .orderBy(
+      asc(reservations.checkIn),
+      asc(guests.fullName),
+      asc(reservations.code),
+    )
     .limit(q.limit ?? 50)
     .offset(q.offset ?? 0)
   if (!rows.length) return c.json([])
