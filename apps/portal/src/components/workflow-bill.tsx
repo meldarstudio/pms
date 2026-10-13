@@ -9,7 +9,7 @@ export function WorkflowBill({
   compact?: boolean
 }) {
   return (
-    <dl className="flex flex-col gap-2 tabular-nums">
+    <dl className="flex flex-col gap-2 text-xs/relaxed tabular-nums">
       {[
         ["Habitaciones", bill.subtotalCents],
         ["Descuentos aplicados", -bill.discountCents],
@@ -29,7 +29,7 @@ export function WorkflowBill({
           </div>
         ))}
       <Separator />
-      <div className="flex justify-between gap-4 text-base font-semibold">
+      <div className="flex justify-between gap-4 text-sm font-semibold">
         <dt>
           {bill.balanceCents < 0
             ? "Saldo a favor"

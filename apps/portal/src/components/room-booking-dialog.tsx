@@ -723,33 +723,6 @@ export function BookingEditor({
             <ArrowUpRightIcon />
           </Button>
         )}
-        {!full && !detail.cancelledAt && (
-          <DropdownMenu>
-            <DropdownMenuTrigger
-              render={
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="icon-sm"
-                  aria-label="Más acciones de reserva"
-                />
-              }
-            >
-              <EllipsisIcon />
-            </DropdownMenuTrigger>
-            <DropdownMenuContent>
-              <DropdownMenuGroup>
-                <DropdownMenuItem
-                  variant="destructive"
-                  disabled={busy || (dirty && !billing)}
-                  onClick={cancel}
-                >
-                  Cancelar reserva
-                </DropdownMenuItem>
-              </DropdownMenuGroup>
-            </DropdownMenuContent>
-          </DropdownMenu>
-        )}
       </div>
       {(contact.phone || contact.email) && (
         <p className="-mt-2 shrink-0 text-sm wrap-anywhere text-muted-foreground">
@@ -1005,70 +978,82 @@ export function BookingEditor({
           </aside>
         </div>
       </Tabs>
-      <div className="flex shrink-0 flex-wrap items-end justify-end gap-3">
-        {tab === "details" && (
-          <FieldGroup className="w-48">
-            <form.AppField name="status">
-              {(field) => (
-                <field.Choice
-                  label="Estado de la reserva"
-                  hideLabel
-                  disabled={busy}
-                  options={[
-                    { value: "confirmed", label: "Confirmada" },
-                    {
-                      value: "checked_in",
-                      label: "Check-in",
-                      disabled: unassigned,
-                    },
-                    { value: "checked_out", label: "Check-out" },
-                    { value: "no_show", label: "No se presentó" },
-                    { value: "cancelled", label: "Cancelada" },
-                  ]}
-                  onValueChange={(status) => {
-                    if (status === reservationState) return
-                    if (status === "cancelled") {
-                      field.handleChange(reservationState)
-                      cancel()
-                      return
-                    }
-                  }}
-                />
-              )}
-            </form.AppField>
-          </FieldGroup>
+      <div className="flex shrink-0 flex-wrap items-end gap-3">
+        {!detail.cancelledAt && (
+          <Button
+            type="button"
+            variant="destructive"
+            disabled={busy || (dirty && !billing)}
+            onClick={cancel}
+          >
+            Cancelar reserva
+          </Button>
         )}
-        <div className="flex flex-wrap gap-2">
+        <div className="ml-auto flex flex-wrap items-end justify-end gap-3">
           {tab === "details" && (
-            <Button
-              type="submit"
-              form={formId}
-              disabled={
-                !dirty ||
-                roomTypes.isPending ||
-                roomTypes.isError ||
-                (countsValid &&
-                  billingDirty &&
-                  previewCurrent &&
-                  !!editPreview.error) ||
-                (countsValid && !billing) ||
-                (billingDirty && editPreview.isFetching) ||
-                busy
-              }
-            >
-              {saveMutation.isPending ? "Guardando…" : "Guardar"}
-            </Button>
+            <FieldGroup className="w-48">
+              <form.AppField name="status">
+                {(field) => (
+                  <field.Choice
+                    label="Estado de la reserva"
+                    hideLabel
+                    disabled={busy}
+                    options={[
+                      { value: "confirmed", label: "Confirmada" },
+                      {
+                        value: "checked_in",
+                        label: "Check-in",
+                        disabled: unassigned,
+                      },
+                      { value: "checked_out", label: "Check-out" },
+                      { value: "no_show", label: "No se presentó" },
+                      ...(reservationState === "cancelled"
+                        ? [
+                            {
+                              value: "cancelled",
+                              label: "Cancelada",
+                              disabled: true,
+                            },
+                          ]
+                        : []),
+                    ]}
+                  />
+                )}
+              </form.AppField>
+            </FieldGroup>
           )}
-          {!full && onClose && (
-            <Button
-              type="button"
-              variant="outline"
-              disabled={busy}
-              onClick={onClose}
-            >
-              Cerrar
-            </Button>
-          )}
+          <div className="flex flex-wrap gap-2">
+            {tab === "details" && (
+              <Button
+                type="submit"
+                form={formId}
+                disabled={
+                  !dirty ||
+                  roomTypes.isPending ||
+                  roomTypes.isError ||
+                  (countsValid &&
+                    billingDirty &&
+                    previewCurrent &&
+                    !!editPreview.error) ||
+                  (countsValid && !billing) ||
+                  (billingDirty && editPreview.isFetching) ||
+                  busy
+                }
+              >
+                {saveMutation.isPending ? "Guardando…" : "Guardar"}
+              </Button>
+            )}
+            {!full && onClose && (
+              <Button
+                type="button"
+                variant="outline"
+                disabled={busy}
+                onClick={onClose}
+              >
+                Cerrar
+              </Button>
+            )}
+          </div>
         </div>
       </div>
       {tab === "details" && unassigned && (
@@ -1655,7 +1640,7 @@ function ActionForm({
             <Title>{title}</Title>
             <Description>
               {isCancellation
-                ? "Se liberará la disponibilidad y se quitarán los cargos. Los pagos se conservarán como saldo a favor si no quedan otras habitaciones con cargos. Confirmar aplica la cancelación y descarta otros cambios sin guardar."
+                ? "Se liberará la disponibilidad y se quitarán los cargos; los pagos quedan como saldo a favor. Confirmar descarta los demás cambios sin guardar."
                 : deleting
                   ? `Se eliminará el pago de ${formatMoney(entry?.amountCents ?? 0)} al confirmar.`
                   : "El cambio se guardará al confirmar. Los cambios de Detalles se guardan por separado."}
