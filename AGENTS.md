@@ -13,12 +13,12 @@ All current application data is local sample data. There is no real customer or 
 - Preserve the current business-rule triggers when rebuilding the schema. Update seeds, tests, and documentation to match the resulting schema.
 - `pnpm db:reset:local` applies local migrations, deletes local application data, and reloads sample data. It leaves the schema, triggers, and migration history in place. `pnpm db:reset:local --rebuild-schema` also drops PMS tables, triggers, and the D1 migration ledger, then applies the current baseline. `--date=YYYY-MM-DD` pins sample dates. The default anchor is today in UTC. `--persist-to` must be the same directory passed to Wrangler, or the backend reads a different database.
 - `pnpm db:migrate:local` applies the current migration files without resetting data. `pnpm db:seed:local` only adds missing room types and rooms. `apps/backend/seed.sql` uses `INSERT OR IGNORE`.
-- This policy is local only. Do not run `pnpm --filter @pms/backend db:reset:preview` or `pnpm --filter @pms/backend deploy` unless the task is a remote preview reset or a production release. `db:reset:preview` wipes the shared `pms-preview` database. `deploy` applies migrations to `pms-production` before `wrangler deploy`.
+- This policy is local only. Do not run `pnpm --filter @pms/backend deploy` unless the task is a production release. `deploy` applies migrations to `pms-production` before `wrangler deploy`.
 
 ## Packages
 
 - `@pms/portal` in `apps/portal` is the Vite React SPA using code-based TanStack Router routes in `src/router.tsx`. Tabs live in `src/App.tsx`. A calendar booking opens `RoomBookingDialog`. The Reservations list opens `ReservationPage`. Fetch helpers and response types are hand-written in `src/lib/api.ts`. TanStack Query hooks are in `src/lib/queries.ts`. The portal does not depend on `@pms/shared`.
-- `@pms/backend` in `apps/backend` is the Hono Worker. Entry is `src/index.ts`. D1 binding is `DB`. `pnpm dev:backend` is `wrangler dev --port 8788` and uses the local D1 database, the same one as `pnpm db:reset:local`. It does not use `pms-preview`. Remote production is `pms-production`. Preview Workers bind `DB` to `pms-preview`. Request schemas come from `@pms/shared`. Routes call `validate` and throw `HttpError` with status 400, 404, or 409. Error JSON is `{ error: string }`. The app uses `Env` from `src/env.ts`.
+- `@pms/backend` in `apps/backend` is the Hono Worker. Entry is `src/index.ts`. D1 binding is `DB`. `pnpm dev:backend` is `wrangler dev --port 8788` and uses the local D1 database, the same one as `pnpm db:reset:local`. Remote production is `pms-production`. Request schemas come from `@pms/shared`. Routes call `validate` and throw `HttpError` with status 400, 404, or 409. Error JSON is `{ error: string }`. The app uses `Env` from `src/env.ts`.
 - Reservation creates and edits are workflow commands, not field patches. `POST /reservations` uses `workflowCreateSchema`. `POST /reservations/:id/commands` writes, and `POST /reservations/:id/preview` calculates the same actions. `requestId` deduplicates retries. Reusing an ID with a different payload returns 409. The write batch sets the reservation to `cancelled` inside the transaction so a room swap does not trip overlap triggers, then writes the final status. Do not remove that release step.
 - Backend error strings stay English. Add the same string to `apps/portal/src/lib/errors.ts`, or the portal shows the raw message. `rethrowConflict` maps trigger abort text to those strings.
 - `@pms/shared` in `packages/shared` is Zod schemas only. It exports `./src/index.ts` and has no build or typecheck script.
@@ -34,15 +34,13 @@ Run these from the repo root.
 - `pnpm typecheck` runs each package that defines `typecheck`. Shared does not. Backend `tsc --noEmit` checks backend sources. Portal `typecheck` checks nothing, because `apps/portal/tsconfig.json` sets `"files": []`. Typecheck the portal with `pnpm --filter @pms/portal exec tsc -b`.
 - After a schema edit in `apps/backend/src/db/schema.ts`, regenerate the baseline as described above, then run `pnpm db:reset:local --rebuild-schema`.
 - Refresh Worker types with `pnpm --filter @pms/backend cf-typegen`. Do not edit `apps/backend/worker-configuration.d.ts`.
-- `pnpm --filter @pms/backend deploy` migrates `pms-production`, then deploys `pms-api`. `deploy:ci` and `deploy:preview:ci` deploy code and do not change either database. `db:migrate:remote` targets `pms-production`. `db:migrate:preview` targets `pms-preview` through `wrangler.preview-migrations.jsonc`.
+- `pnpm --filter @pms/backend deploy` migrates `pms-production`, then deploys `pms-api`. `deploy:ci` deploys code and does not change the database. `db:migrate:remote` targets `pms-production`.
 
 ## Branch and deployment workflow
 
-- Feature PRs, including portal and backend changes, target `staging`. Merge `staging` into `main` through a PR when the combined changes are ready for production.
-- The `staging` branch deploys the stable `staging-pms-api` endpoint against `pms-preview`. The production `main` branch deploys `pms-api` against `pms-production`.
-- The portal's non-main builds use `https://staging-pms-api.meldar.workers.dev`. Production builds use `https://pms-api.meldar.workers.dev`. `VITE_API_BASE_URL` is a Workers Builds build variable, inlined at build time.
-- Prepare the target database schema before deploying code that requires it. Rebuild and seed local databases. Apply the matching schema to `pms-preview` for staging, or to `pms-production` when releasing to production. A consolidated baseline requires rebuilding or replacing an older database, not applying it over existing tables. Do not change the production database as part of a feature PR. After a baseline change, run `pnpm --filter @pms/backend db:reset:preview --rebuild-schema` before deploying the matching backend.
-- Since `staging` is the integration environment, backend changes needed by portal changes should be merged to `staging` before testing the combined app there. Merge or fast-forward `main` back into `staging` after production-only hotfixes.
+- Feature branches merge to `main`. `main` deploys `pms-api` against `pms-production`.
+- Production portal builds use `https://pms-api.meldar.workers.dev`. `VITE_API_BASE_URL` is a Workers Builds build variable, inlined at build time.
+- Prepare `pms-production` before deploying code that requires a schema change. Rebuild and seed local databases. A consolidated baseline requires rebuilding or replacing the production database, not applying it over existing tables. `deploy` applies pending migrations and does not rebuild an existing database.
 
 ## Local API
 

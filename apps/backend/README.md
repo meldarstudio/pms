@@ -74,8 +74,6 @@ and rooms; use `pnpm db:reset:local` to undo edits and reload all sample data.
 
 Production API: `https://pms-api.meldar.workers.dev`
 
-Staging API: `https://staging-pms-api.meldar.workers.dev`
-
 ```sh
 pnpm --filter @pms/backend run deploy
 pnpm --filter @pms/backend cf-typegen
@@ -84,30 +82,16 @@ pnpm --filter @pms/backend cf-typegen
 The deploy command applies pending migrations to `pms-production` before
 deploying the `pms-api` Worker. Production starts with schema only.
 
-The persistent `staging` branch and API feature-branch Previews use the shared
-`pms-preview` database. Reset its sample data with:
+`main` is the only deployed branch. Feature branches merge to `main`.
+Day-to-day development uses the local D1 database and `pnpm db:reset:local`.
 
-```sh
-pnpm --filter @pms/backend db:reset:preview
-```
-
-After a schema-baseline change, rebuild preview once with:
-
-```sh
-pnpm --filter @pms/backend db:reset:preview --rebuild-schema
-```
-
-Rebuild preview before deploying the matching backend and portal. An existing
-production database also needs a deliberate rebuild or replacement before this
-baseline can be deployed; the deploy script does not rebuild it.
-
-The reset command is destructive and only targets the database declared in
-`wrangler.preview-migrations.jsonc`.
+A consolidated baseline requires rebuilding or replacing `pms-production`
+before deploying. The deploy script applies pending migrations and does not
+rebuild an existing database.
 
 For Workers Builds, use `pnpm --filter @pms/backend typecheck` as the build
-command, `pnpm --filter @pms/backend run deploy:ci` as the deploy command, and
-`pnpm --filter @pms/backend run deploy:preview:ci` as the Preview command. These
-commands deploy code without changing either database. Apply new migrations
+command and `pnpm --filter @pms/backend run deploy:ci` as the deploy command.
+`deploy:ci` deploys code without changing the database. Apply migrations
 explicitly before deploying a schema change.
 
 Under **Settings > Build > Build watch paths**, set the API Worker's include
@@ -122,9 +106,6 @@ pnpm-workspace.yaml
 ```
 
 Leave exclude paths empty. This prevents portal-only commits from deploying the
-API. Pushes to the `staging` branch create or update the stable
-`staging-pms-api` Preview. Other branches can still create branch-specific API
-Preview deployments for direct testing. All API Previews share the
-`pms-preview` database.
+API. Production builds deploy `pms-api` against `pms-production`.
 
 The Hono application uses the `Env` type from `src/env.ts`.
