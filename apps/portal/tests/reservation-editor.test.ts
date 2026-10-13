@@ -27,14 +27,17 @@ const draft = (room: ReservationDetail["rooms"][number]): RoomDraft => ({
 })
 const dates = { checkIn: "2026-10-12", checkOut: "2026-10-15" }
 describe("reservation edit drafts", () => {
-  it("does not copy lifecycle or dates into room edits", () => {
-    const room = stayValue(line("101"))
-    assert.deepEqual(Object.keys(room).sort(), [
-      "adults",
-      "children",
-      "roomId",
-      "roomTypeId",
-    ])
+  it("copies occupancy and assignment without the line id", () => {
+    assert.deepEqual(
+      stayValue({
+        id: "line-9",
+        roomId: "101",
+        roomTypeId: "double",
+        adults: 2,
+        children: 1,
+      } as ReservationDetail["rooms"][number]),
+      { roomTypeId: "double", roomId: "101", adults: 2, children: 1 }
+    )
   })
   it("removes a saved room and adds a new room through the same reservation command", () => {
     const saved = line("101")
@@ -48,6 +51,21 @@ describe("reservation edit drafts", () => {
         { type: "remove-room", lineId: "101" },
         { type: "add-room", room: added.room },
       ]
+    )
+  })
+  it("edits a changed room and ignores an equal draft or an unsaved removal", () => {
+    const saved = line("101")
+    const changed = { ...stayValue(saved), adults: 3 }
+    assert.deepEqual(
+      roomEdits({ rooms: [saved] } as ReservationDetail, [
+        { id: saved.id, room: changed, removed: false },
+        { id: "new", room: stayValue(line("102")), removed: true },
+      ]),
+      [{ type: "edit-room", lineId: "101", room: changed }]
+    )
+    assert.deepEqual(
+      roomEdits({ rooms: [saved] } as ReservationDetail, [draft(saved)]),
+      []
     )
   })
   it("blocks duplicate physical assignments within a reservation", () => {
@@ -100,6 +118,17 @@ describe("reservation edit drafts", () => {
       ],
       ["102", "106"]
     )
+    assert.deepEqual(
+      [
+        ...unavailableRoomIds(
+          dates,
+          [res("201", "checked_in"), res("202", "checked_out")],
+          [],
+          "101"
+        ),
+      ],
+      ["201", "202"]
+    )
   })
   it("normalizes cleared contact fields to null", () => {
     assert.deepEqual(
@@ -122,8 +151,14 @@ describe("reservation edit drafts", () => {
 })
 describe("shared stay dates", () => {
   it("advances checkout when an arrival would leave less than a night", () => {
-    assert.equal(changeCheckIn(dates, "2026-10-15").checkOut, "2026-10-16")
-    assert.equal(changeCheckIn(dates, "2026-10-10").checkOut, dates.checkOut)
+    assert.deepEqual(changeCheckIn(dates, "2026-10-15"), {
+      checkIn: "2026-10-15",
+      checkOut: "2026-10-16",
+    })
+    assert.deepEqual(changeCheckIn(dates, "2026-10-10"), {
+      checkIn: "2026-10-10",
+      checkOut: dates.checkOut,
+    })
     assert.equal(minimumCheckOut("2026-12-31"), "2027-01-01")
     assert.equal(minimumCheckOut("2028-02-28"), "2028-02-29")
   })
@@ -132,10 +167,23 @@ describe("shared stay dates", () => {
       billingPreviewActions([
         { type: "dates", ...dates },
         { type: "notes", notes: "Note" },
+        {
+          type: "contact",
+          contact: {
+            fullName: "Ana",
+            email: null,
+            phone: null,
+            documentType: null,
+            documentNumber: null,
+          },
+        },
         { type: "set-guests", guests: [] },
         { type: "set-status", status: "checked_out" },
-      ]).map((a) => a.type),
-      ["dates", "set-status"]
+      ]),
+      [
+        { type: "dates", ...dates },
+        { type: "set-status", status: "checked_out" },
+      ]
     )
   })
 })

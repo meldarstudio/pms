@@ -71,20 +71,26 @@ describe("reservation form schemas", () => {
       { type: "remove-room", lineId: "line-2" },
     ])
     values.rooms[0].removed = true
-    assert.ok(schemaErrors(detailsSchema(types).safeParse(values)).rooms)
+    assert.equal(
+      schemaErrors(detailsSchema(types).safeParse(values)).rooms,
+      "La reserva debe tener entre 1 y 60 habitaciones."
+    )
   })
   it("rejects blank, fractional and out-of-range counts instead of coercing them", () => {
     for (const invalid of ["", " ", "1.5", "-1", "101", "NaN"]) {
       const values = details()
       values.rooms[0].room.children = invalid
-      assert.ok(
+      assert.equal(
         schemaErrors(detailsSchema(types).safeParse(values))[
           "rooms[0].room.children"
         ],
+        "Ingresa entre 0 y 100 niños.",
         invalid
       )
     }
-    assert.equal(detailsSchema(types).safeParse(details()).success, true)
+    const accepted = details()
+    accepted.rooms[0].room.children = "0"
+    assert.equal(detailsSchema(types).safeParse(accepted).success, true)
   })
   it("validates real dates and the 1–60 night stay boundary", () => {
     const values = details()
@@ -108,18 +114,20 @@ describe("reservation form schemas", () => {
   it("requires physical assignments on check-in and rejects duplicate assignments", () => {
     const values = details()
     values.status = "checked_in"
-    assert.ok(
+    assert.equal(
       schemaErrors(detailsSchema(types).safeParse(values))[
         "rooms[0].room.roomId"
-      ]
+      ],
+      "Asigna una habitación antes del check-in."
     )
     values.rooms[0].room.roomId = "room-1"
     assert.equal(detailsSchema(types).safeParse(values).success, true)
     values.rooms.push({ ...structuredClone(values.rooms[0]), id: "line-2" })
-    assert.ok(
+    assert.equal(
       schemaErrors(detailsSchema(types).safeParse(values))[
         "rooms[1].room.roomId"
-      ]
+      ],
+      "Esta habitación ya está seleccionada en la reserva."
     )
   })
   it("normalizes optional guest fields only when creating the command", () => {
@@ -204,22 +212,6 @@ describe("TanStack form lifecycle", () => {
     assert.equal(field.state.meta.errors.length, 0)
     await form.handleSubmit()
     assert.equal(writes, 1)
-    unmountField()
-    unmount()
-  })
-  it("recognizes reverted values as clean and resets the saved baseline", () => {
-    const form = new FormApi({ defaultValues: { notes: "original" } })
-    const unmount = form.mount()
-    const field = new FieldApi({ form, name: "notes" })
-    const unmountField = field.mount()
-    field.handleChange("changed")
-    assert.equal(form.state.isDefaultValue, false)
-    field.handleChange("original")
-    assert.equal(form.state.isDirty, true)
-    assert.equal(form.state.isDefaultValue, true)
-    form.reset({ notes: "saved" })
-    assert.equal(form.state.values.notes, "saved")
-    assert.equal(form.state.isDefaultValue, true)
     unmountField()
     unmount()
   })

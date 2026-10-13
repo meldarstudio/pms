@@ -259,6 +259,31 @@ describe("room assignment", () => {
   })
 })
 
+describe("checked-in stays", () => {
+  it("keeps a checked-in stay on the calendar and treats it as occupying the room", () => {
+    const staying = reservation({ status: "checked_in" })
+    const [stay] = reservationStays([staying])
+    assert.equal(stay.status, "checked_in")
+    assert.equal(stay.roomId, null)
+    assert.equal(
+      roomAssignmentIssue(
+        room,
+        target,
+        [occupied("2026-10-05", "2026-10-06", "checked_in")],
+        []
+      ),
+      "Occupied during this stay"
+    )
+  })
+
+  it("does not treat a stay as occupying its own assigned room", () => {
+    const self = reservation({
+      rooms: [{ id: target.id, roomTypeId: "deluxe", roomId: room.id }],
+    })
+    assert.equal(roomAssignmentIssue(room, target, [self], []), null)
+  })
+})
+
 describe("completed calendar stays", () => {
   it("uses final saved dates for completed calendar bars without adding them to assignment lists", () => {
     const completed = reservation({

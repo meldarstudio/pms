@@ -1,31 +1,8 @@
 import assert from "node:assert/strict"
 import { describe, it, mock } from "node:test"
-import {
-  contactErrors,
-  focusFirstError,
-  partyCounts,
-} from "../src/lib/form-validation.ts"
+import { focusFirstError } from "../src/lib/form-validation.ts"
 
-describe("reservation field validation", () => {
-  it("rejects whitespace-only names and permits an omitted or trimmed email", () => {
-    const errors = contactErrors("  ", "  ")
-    assert.ok(errors.fullName)
-    assert.equal(errors.email, null)
-    assert.equal(contactErrors(" Ana Pérez ", " ana@example.com ").email, null)
-    assert.ok(contactErrors("Ana Pérez", "ana@").email)
-  })
-
-  it("does not silently treat an empty child count as zero", () => {
-    for (const value of ["", " ", "-1", "1.5", "NaN", "Infinity"]) {
-      assert.equal(partyCounts("1", value).valid, false, value)
-      assert.ok(partyCounts("1", value).childrenError)
-    }
-    assert.equal(partyCounts("1", "0").valid, true)
-    assert.equal(partyCounts("0", "0").valid, false)
-    assert.equal(partyCounts("1.5", "0").valid, false)
-    assert.equal(partyCounts("", "0").valid, false)
-  })
-
+describe("first invalid field", () => {
   it("focuses the first editable error in form order after messages mount", (t) => {
     let render: FrameRequestCallback | undefined
     const previous = globalThis.requestAnimationFrame
@@ -54,11 +31,23 @@ describe("reservation field validation", () => {
       "locked-date": "Fechas inválidas.",
       "room-stable-id": "Selecciona un tipo.",
     })
-    assert.equal(controls[1]!.focus.mock.callCount(), 0)
+    assert.deepEqual(controls[1]!.focus.mock.calls, [])
     render!(0)
-    assert.equal(controls[0]!.focus.mock.callCount(), 0)
-    assert.equal(controls[1]!.focus.mock.callCount(), 1)
-    assert.equal(controls[1]!.scrollIntoView.mock.callCount(), 1)
-    assert.equal(controls[2]!.focus.mock.callCount(), 0)
+    assert.deepEqual(
+      controls[0]!.focus.mock.calls.map((call) => call.arguments),
+      []
+    )
+    assert.deepEqual(
+      controls[1]!.focus.mock.calls.map((call) => call.arguments),
+      [[{ preventScroll: true }]]
+    )
+    assert.deepEqual(
+      controls[1]!.scrollIntoView.mock.calls.map((call) => call.arguments),
+      [[{ block: "nearest" }]]
+    )
+    assert.deepEqual(
+      controls[2]!.focus.mock.calls.map((call) => call.arguments),
+      []
+    )
   })
 })

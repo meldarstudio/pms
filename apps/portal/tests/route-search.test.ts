@@ -15,8 +15,15 @@ describe("route search validation", () => {
   })
 
   it("applies route-specific span defaults", () => {
+    assert.deepEqual(calendarSearch({ from: "2026-04-30", span: "14" }), {
+      from: "2026-04-30",
+      span: 14,
+    })
     assert.equal(calendarSearch({ span: 99 }).span, 7)
-    assert.equal(inventorySearch({ span: "7" }).span, 7)
+    assert.deepEqual(inventorySearch({ from: "2026-04-30", span: "7" }), {
+      from: "2026-04-30",
+      span: 7,
+    })
     assert.equal(inventorySearch({}).span, 14)
   })
 
@@ -29,5 +36,15 @@ describe("route search validation", () => {
       reservationsSearch({ q: 1, status: "invalid", page: -1 }),
       { q: "", status: "all", page: 0 }
     )
+    assert.deepEqual(reservationsSearch({ page: 1.5 }), {
+      q: "",
+      status: "all",
+      page: 0,
+    })
+    assert.deepEqual(reservationsSearch({ page: "2" }), {
+      q: "",
+      status: "all",
+      page: 2,
+    })
   })
 })
