@@ -244,6 +244,7 @@ export function RoomBookingDialog({
                 onTabChange={setTab}
                 onDirtyChange={onDirtyChange}
                 onClose={() => navigate(close)}
+                onCancelled={close}
                 onViewReservation={(id) =>
                   navigate(() => onViewReservation(id))
                 }
@@ -510,6 +511,7 @@ function NewRoomPrice({
 export function BookingEditor({
   detail,
   onClose,
+  onCancelled,
   onViewReservation,
   onDirtyChange,
   full = false,
@@ -519,6 +521,7 @@ export function BookingEditor({
   detail: ReservationDetail
   onRefresh: () => void
   onClose?: () => void
+  onCancelled?: () => void
   onViewReservation?: (id: string) => void
   onDirtyChange?: (dirty: boolean) => void
   full?: boolean
@@ -1074,6 +1077,7 @@ export function BookingEditor({
           onSaved={(saved) => {
             resetDetails(saved)
             setActionDirty(false)
+            onCancelled?.()
           }}
           onReady={async (title, actions) => {
             await savePayment(title, actions)
