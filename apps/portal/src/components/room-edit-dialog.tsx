@@ -155,7 +155,7 @@ function RoomEditForm({
                   id={field.name}
                   name={field.name}
                   value={field.state.value}
-                  maxLength={5}
+                  maxLength={20}
                   disabled={submitting}
                   aria-invalid={isInvalid}
                   autoComplete="off"

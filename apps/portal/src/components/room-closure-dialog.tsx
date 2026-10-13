@@ -330,10 +330,7 @@ function ClosureForm({
                   disabled={pending}
                   aria-invalid={isInvalid}
                   onBlur={field.handleBlur}
-                  onChange={(event) => {
-                    clearRangeError()
-                    field.handleChange(event.target.value)
-                  }}
+                  onChange={(event) => field.handleChange(event.target.value)}
                 />
                 {isInvalid && (
                   <FieldError>
