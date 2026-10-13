@@ -16,6 +16,7 @@ import { RoomCalendar } from "@/components/room-calendar"
 import { Inventory } from "@/components/inventory"
 import {
   calendarSearch,
+  commitReservationsSearch,
   inventorySearch,
   lastCalendarSearch,
   lastReservationsSearch,
@@ -122,7 +123,10 @@ const reservationsRoute = createRoute({
   path: "/reservations",
   validateSearch: reservationsSearch,
   search: {
-    middlewares: [stripSearchParams({ q: "", status: "all", page: 0 })],
+    middlewares: [
+      ({ search, next }) => commitReservationsSearch(next(search)),
+      stripSearchParams({ q: "", status: "all", page: 0 }),
+    ],
   },
   component: ReservationsRoute,
 })
@@ -142,7 +146,7 @@ function ReservationRoute() {
       onBack={() =>
         void navigate({
           to: "/reservations",
-          search: lastReservationsSearch.current,
+          search: lastReservationsSearch.current ?? reservationsSearch({}),
         })
       }
     />

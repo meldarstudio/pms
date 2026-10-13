@@ -413,8 +413,25 @@ export function createWorkflowBooking(body: {
 }) {
   return writeJson<ReservationDetail>("/reservations", "POST", body)
 }
-export function searchReservations(q: string, status: string, offset = 0) {
+export function searchReservations(
+  params: {
+    q?: string
+    status?: string
+    checkIn?: string
+    offset?: number
+    limit?: number
+  } = {},
+  signal?: AbortSignal
+) {
+  const query = new URLSearchParams({
+    limit: String(params.limit ?? 50),
+    offset: String(params.offset ?? 0),
+  })
+  if (params.q) query.set("q", params.q)
+  if (params.status) query.set("status", params.status)
+  if (params.checkIn) query.set("checkIn", params.checkIn)
   return getJson<(ReservationDetail & { guestName: string })[]>(
-    `/reservations?limit=50&offset=${offset}${q ? `&q=${encodeURIComponent(q)}` : ""}${status ? `&status=${status}` : ""}`
+    `/reservations?${query}`,
+    signal
   )
 }
