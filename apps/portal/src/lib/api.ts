@@ -1,4 +1,4 @@
-import { translateError } from "./errors"
+import { ApiError } from "./api-error"
 
 export type Room = {
   id: string
@@ -9,6 +9,7 @@ export type Room = {
 export type RoomType = {
   id: string
   name: string
+  maxOccupancy: number
 }
 
 export type InventoryNight = {
@@ -173,15 +174,15 @@ if (!API_BASE) {
   throw new Error("VITE_API_BASE_URL is not set. Set it before building.")
 }
 
-async function errorMessage(response: Response) {
+async function responseError(response: Response) {
   const fallback = `No se pudo completar la solicitud (${response.status}).`
   try {
     const body = (await response.json()) as { error?: unknown }
     return typeof body.error === "string" && body.error
-      ? translateError(body.error)
-      : fallback
+      ? new ApiError(response.status, body.error)
+      : new ApiError(response.status, fallback)
   } catch {
-    return fallback
+    return new ApiError(response.status, fallback)
   }
 }
 
@@ -200,7 +201,7 @@ async function request(path: string, init: RequestInit) {
 
 async function getJson<T>(path: string, signal?: AbortSignal): Promise<T> {
   const response = await request(path, { signal })
-  if (!response.ok) throw new Error(await errorMessage(response))
+  if (!response.ok) throw await responseError(response)
   return (await response.json()) as T
 }
 
@@ -222,7 +223,7 @@ async function writeJson<T>(path: string, method: string, body?: unknown) {
       body === undefined ? undefined : { "content-type": "application/json" },
     body: body === undefined ? undefined : JSON.stringify(body),
   })
-  if (!response.ok) throw new Error(await errorMessage(response))
+  if (!response.ok) throw await responseError(response)
   return (await response.json()) as T
 }
 

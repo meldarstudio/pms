@@ -1,4 +1,11 @@
 import { useEffect, useId, useRef, useState } from "react"
+import { useSelector } from "@tanstack/react-form"
+import {
+  useReservationForm,
+  blurThenChange,
+  errorMessage,
+} from "@/lib/reservation-form"
+import { discountSchema } from "@/lib/reservation-form-schemas"
 
 import {
   Card,
@@ -169,85 +176,106 @@ function DiscountInput({
   onSave: (amountCents: number) => Promise<void>
   onDirtyChange?: (dirty: boolean) => void
 }) {
-  const [value, setValue] = useState(() => discountDraft(amountCents))
-  const [error, setError] = useState("")
+  const [defaults] = useState(() => ({ amount: discountDraft(amountCents) }))
   const focused = useRef(false)
-  const saving = useRef(false)
+  const errorId = useId()
+  const form = useReservationForm({
+    defaultValues: defaults,
+    validationLogic: blurThenChange(),
+    validators: { onDynamic: discountSchema },
+    onSubmit: async ({ value }) => {
+      if (disabled) return
+      const cents = parseMajorToCents(
+        discountSchema.parse(value).amount.trim() || "0"
+      )!
+      if (cents === amountCents) {
+        form.reset({ amount: discountDraft(cents) })
+        return
+      }
+      try {
+        await onSave(cents)
+        form.reset({ amount: discountDraft(cents) })
+      } catch (cause) {
+        toastError("No se pudo guardar el descuento", cause)
+      }
+    },
+  })
+  const value = useSelector(form.store, (state) => state.values.amount)
+  const saving = useSelector(form.store, (state) => state.isSubmitting)
   useEffect(() => {
-    if (!focused.current) setValue(discountDraft(amountCents))
-  }, [amountCents])
-
-  async function save() {
-    focused.current = false
-    const cents = parseMajorToCents(value.trim() || "0")
-    if (cents === null) {
-      setError("Ingresa un importe válido con hasta dos decimales.")
-      onDirtyChange?.(true)
-      return
-    }
-    setError("")
-    onDirtyChange?.(false)
-    if (cents === amountCents || saving.current) return
-    saving.current = true
-    try {
-      await onSave(cents)
-      setValue(discountDraft(cents))
-    } catch (cause) {
-      toastError("No se pudo guardar el descuento", cause)
-      onDirtyChange?.(true)
-    } finally {
-      saving.current = false
-    }
-  }
+    onDirtyChange?.(
+      parseMajorToCents(value.trim() || "0") !== amountCents || saving
+    )
+  }, [value, amountCents, saving, onDirtyChange])
+  useEffect(() => {
+    if (
+      !focused.current &&
+      form.state.isDefaultValue &&
+      !form.state.isSubmitting
+    )
+      form.reset({ amount: discountDraft(amountCents) })
+  }, [amountCents, form])
 
   return (
-    <>
-      <div className="grid min-w-0 grid-cols-[minmax(0,1fr)_6rem] items-center gap-4">
-        <dt className="min-w-0 wrap-anywhere">Descuento</dt>
-        <dd>
-          <Field className="w-24" data-invalid={Boolean(error) || undefined}>
-            <InputGroup>
-              <InputGroupAddon>
-                <InputGroupText>S/</InputGroupText>
-              </InputGroupAddon>
-              <InputGroupInput
-                aria-label="Descuento en soles"
-                aria-invalid={Boolean(error) || undefined}
-                aria-describedby={error ? "discount-input-error" : undefined}
-                autoComplete="off"
-                className="px-2 text-right tabular-nums"
-                inputMode="decimal"
-                value={value}
-                disabled={disabled}
-                onFocus={() => {
-                  focused.current = true
-                }}
-                onChange={(event) => {
-                  setValue(event.target.value)
-                  setError("")
-                  const cents = parseMajorToCents(
-                    event.target.value.trim() || "0"
-                  )
-                  onDirtyChange?.(cents !== amountCents)
-                }}
-                onBlur={() => void save()}
-                onKeyDown={(event) => {
-                  if (event.key === "Enter") {
-                    event.preventDefault()
-                    event.currentTarget.blur()
-                  }
-                }}
-              />
-            </InputGroup>
-          </Field>
-        </dd>
-      </div>
-      {error ? (
-        <FieldError id="discount-input-error" className="col-span-2">
-          {error}
-        </FieldError>
-      ) : null}
-    </>
+    <form.Field name="amount">
+      {(field) => {
+        const error =
+          field.state.meta.isBlurred || form.state.submissionAttempts
+            ? errorMessage(field.state.meta.errors)
+            : undefined
+        return (
+          <>
+            <div className="grid min-w-0 grid-cols-[minmax(0,1fr)_6rem] items-center gap-4">
+              <dt className="min-w-0 wrap-anywhere">Descuento</dt>
+              <dd>
+                <Field
+                  className="w-24"
+                  data-invalid={Boolean(error) || undefined}
+                >
+                  <InputGroup>
+                    <InputGroupAddon>
+                      <InputGroupText>S/</InputGroupText>
+                    </InputGroupAddon>
+                    <InputGroupInput
+                      aria-label="Descuento en soles"
+                      aria-invalid={Boolean(error) || undefined}
+                      aria-describedby={error ? errorId : undefined}
+                      autoComplete="off"
+                      className="px-2 text-right tabular-nums"
+                      inputMode="decimal"
+                      value={value}
+                      disabled={disabled || saving}
+                      onFocus={() => {
+                        focused.current = true
+                      }}
+                      onChange={(event) => {
+                        field.handleChange(event.target.value)
+                      }}
+                      onBlur={() => {
+                        focused.current = false
+                        field.handleBlur()
+                        void form.handleSubmit()
+                      }}
+                      onKeyDown={(event) => {
+                        if (event.key === "Enter") {
+                          event.preventDefault()
+                          event.currentTarget.blur()
+                        }
+                      }}
+                    />
+                  </InputGroup>
+                </Field>
+              </dd>
+            </div>
+            {error ? (
+              <FieldError id={errorId} className="col-span-2">
+                {error}
+              </FieldError>
+            ) : null}
+          </>
+        )
+      }}
+    </form.Field>
   )
 }
 

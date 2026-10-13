@@ -1,4 +1,4 @@
-import { useState, type FormEvent } from "react"
+import { useForm, useSelector } from "@tanstack/react-form"
 
 import { Button } from "@/components/ui/button"
 import {
@@ -27,6 +27,9 @@ import {
 } from "@/components/ui/select"
 import { Spinner } from "@/components/ui/spinner"
 import { usePatchRoom, useRoomTypes } from "@/lib/queries"
+import { setServerErrors } from "@/lib/form-errors"
+import { roomEditSchema, roomFieldErrors, roomPatch } from "@/lib/room-form"
+import { toast, toastError } from "@/lib/toast"
 
 export type RoomEditTarget = {
   roomId: string
@@ -35,37 +38,18 @@ export type RoomEditTarget = {
   typeName: string
 }
 
-function roomEditError(error: Error) {
-  if (error.message === "room number already exists") {
-    return "Este número de habitación ya está en uso."
-  }
-  if (error.message === "room has an assigned stay") {
-    return "Desasigna la estancia o muévela a otra habitación antes de cambiar el tipo."
-  }
-  if (error.message === "no availability") {
-    return "Este tipo no tendría suficientes habitaciones para las reservas existentes."
-  }
-  if (error.message === "room type not found") {
-    return "Este tipo de habitación ya no existe."
-  }
-  if (error.message === "room not found") {
-    return "Esta habitación ya no existe."
-  }
-  return error.message
-}
-
-function errorOn(message: string | null) {
-  if (message === "Este número de habitación ya está en uso.") return "number"
-  if (
-    message ===
-      "Desasigna la estancia o muévela a otra habitación antes de cambiar el tipo." ||
-    message === "Este tipo de habitación ya no existe." ||
-    message ===
-      "Este tipo no tendría suficientes habitaciones para las reservas existentes."
-  ) {
-    return "type"
-  }
-  return message ? "number" : null
+function fieldErrors(errors: readonly unknown[]) {
+  return errors.flatMap((error) => {
+    if (typeof error === "string") return [{ message: error }]
+    if (
+      error &&
+      typeof error === "object" &&
+      "message" in error &&
+      typeof error.message === "string"
+    )
+      return [{ message: error.message }]
+    return []
+  })
 }
 
 export function RoomEditDialog({
@@ -95,10 +79,10 @@ export function RoomEditDialog({
           <RoomEditForm
             key={`${target.roomId}-${target.number}-${target.roomTypeId}`}
             target={target}
-            pending={save.isPending}
-            error={save.error ? roomEditError(save.error) : null}
-            onSave={(input) => {
-              save.mutate(input, { onSuccess: close })
+            onSave={async (input) => {
+              await save.mutateAsync(input)
+              toast.add({ title: "Habitación actualizada", type: "success" })
+              close()
             }}
           />
         ) : null}
@@ -109,18 +93,16 @@ export function RoomEditDialog({
 
 function RoomEditForm({
   target,
-  pending,
-  error,
   onSave,
 }: {
   target: RoomEditTarget
-  pending: boolean
-  error: string | null
-  onSave: (input: { id: string; number?: string; roomTypeId?: string }) => void
+  onSave: (input: {
+    id: string
+    number?: string
+    roomTypeId?: string
+  }) => Promise<void>
 }) {
   const typesQuery = useRoomTypes()
-  const [number, setNumber] = useState(target.number)
-  const [roomTypeId, setRoomTypeId] = useState(target.roomTypeId)
   const types = typesQuery.data ?? []
   const typeItems = types.some((type) => type.id === target.roomTypeId)
     ? types.map((type) => ({ value: type.id, label: type.name }))
@@ -128,83 +110,152 @@ function RoomEditForm({
         { value: target.roomTypeId, label: target.typeName },
         ...types.map((type) => ({ value: type.id, label: type.name })),
       ]
-  const trimmed = number.trim()
+  const form = useForm({
+    defaultValues: {
+      number: target.number,
+      roomTypeId: target.roomTypeId,
+    },
+    validators: {
+      onSubmit: roomEditSchema,
+    },
+    onSubmit: async ({ value }) => {
+      const patch = roomPatch(target, value)
+      if (!patch) return
+      form.setErrorMap({ onServer: undefined })
+      try {
+        await onSave({ id: target.roomId, ...patch })
+      } catch (cause) {
+        const fields = roomFieldErrors(cause)
+        if (fields) setServerErrors(form, fields)
+        else toastError("No se pudo guardar la habitación", cause)
+      }
+    },
+  })
+  const number = useSelector(form.store, (state) => state.values.number)
+  const roomTypeId = useSelector(form.store, (state) => state.values.roomTypeId)
+  const submitting = useSelector(form.store, (state) => state.isSubmitting)
   const unchanged =
-    trimmed === target.number && roomTypeId === target.roomTypeId
-  const invalid = errorOn(error)
-  const numberInvalid = invalid === "number"
-  const typeInvalid = invalid === "type"
-
-  function onSubmit(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault()
-    if (!trimmed || unchanged || pending) return
-    onSave({
-      id: target.roomId,
-      ...(trimmed === target.number ? {} : { number: trimmed }),
-      ...(roomTypeId === target.roomTypeId ? {} : { roomTypeId }),
-    })
-  }
+    number.trim() === target.number && roomTypeId === target.roomTypeId
 
   return (
-    <form className="flex flex-col gap-4" onSubmit={onSubmit}>
+    <form
+      id="room-edit-form"
+      noValidate
+      className="flex flex-col gap-4"
+      onSubmit={(event) => {
+        event.preventDefault()
+        void form.handleSubmit()
+      }}
+    >
       <DialogHeader>
         <DialogTitle>Editar habitación</DialogTitle>
         <DialogDescription>
-          {target.number}, {target.typeName}
+          {target.number} - {target.typeName}
         </DialogDescription>
       </DialogHeader>
       <FieldGroup>
-        <Field data-invalid={numberInvalid || undefined}>
-          <FieldLabel htmlFor="room-number">Número</FieldLabel>
-          <Input
-            id="room-number"
-            value={number}
-            maxLength={20}
-            disabled={pending}
-            aria-invalid={numberInvalid || undefined}
-            onChange={(event) => setNumber(event.target.value)}
-          />
-          {numberInvalid ? <FieldError>{error}</FieldError> : null}
-        </Field>
-        <Field data-invalid={typeInvalid || undefined}>
-          <FieldLabel htmlFor="room-type">Tipo</FieldLabel>
-          <Select
-            items={typeItems}
-            value={roomTypeId}
-            disabled={pending || typesQuery.isPending}
-            onValueChange={(value) => {
-              if (value) setRoomTypeId(value)
-            }}
-          >
-            <SelectTrigger
-              id="room-type"
-              className="w-full"
-              aria-invalid={typeInvalid || undefined}
-            >
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectGroup>
-                {typeItems.map((item) => (
-                  <SelectItem key={item.value} value={item.value}>
-                    {item.label}
-                  </SelectItem>
-                ))}
-              </SelectGroup>
-            </SelectContent>
-          </Select>
-          {typeInvalid ? <FieldError>{error}</FieldError> : null}
-        </Field>
+        <form.Field
+          name="number"
+          children={(field) => {
+            const isInvalid =
+              field.state.meta.isTouched && !field.state.meta.isValid
+            return (
+              <Field
+                data-invalid={isInvalid || undefined}
+                data-disabled={submitting || undefined}
+              >
+                <FieldLabel htmlFor={field.name}>Número</FieldLabel>
+                <Input
+                  id={field.name}
+                  name={field.name}
+                  value={field.state.value}
+                  maxLength={5}
+                  disabled={submitting}
+                  aria-invalid={isInvalid}
+                  autoComplete="off"
+                  onBlur={field.handleBlur}
+                  onChange={(event) => {
+                    if (field.state.meta.errorMap.onServer)
+                      field.setMeta((meta) => ({
+                        ...meta,
+                        errorMap: { ...meta.errorMap, onServer: undefined },
+                      }))
+                    field.handleChange(event.target.value)
+                  }}
+                />
+                {isInvalid && (
+                  <FieldError errors={fieldErrors(field.state.meta.errors)} />
+                )}
+              </Field>
+            )
+          }}
+        />
+        <form.Field
+          name="roomTypeId"
+          children={(field) => {
+            const isInvalid =
+              field.state.meta.isTouched && !field.state.meta.isValid
+            const disabled = submitting || typesQuery.isPending
+            return (
+              <Field
+                data-invalid={isInvalid || undefined}
+                data-disabled={disabled || undefined}
+              >
+                <FieldLabel htmlFor={field.name}>Tipo</FieldLabel>
+                <Select
+                  items={typeItems}
+                  name={field.name}
+                  value={field.state.value}
+                  disabled={disabled}
+                  onValueChange={(value) => {
+                    if (!value) return
+                    if (field.state.meta.errorMap.onServer)
+                      field.setMeta((meta) => ({
+                        ...meta,
+                        errorMap: { ...meta.errorMap, onServer: undefined },
+                      }))
+                    field.handleChange(value)
+                  }}
+                >
+                  <SelectTrigger
+                    id={field.name}
+                    className="w-full"
+                    aria-invalid={isInvalid}
+                    onBlur={field.handleBlur}
+                  >
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectGroup>
+                      {typeItems.map((item) => (
+                        <SelectItem key={item.value} value={item.value}>
+                          {item.label}
+                        </SelectItem>
+                      ))}
+                    </SelectGroup>
+                  </SelectContent>
+                </Select>
+                {isInvalid && (
+                  <FieldError errors={fieldErrors(field.state.meta.errors)} />
+                )}
+              </Field>
+            )
+          }}
+        />
       </FieldGroup>
       <DialogFooter>
         <DialogClose
-          disabled={pending}
+          disabled={submitting}
           render={<Button variant="outline" type="button" />}
         >
           Cancelar
         </DialogClose>
-        <Button type="submit" disabled={!trimmed || unchanged || pending}>
-          {pending ? <Spinner data-icon="inline-start" /> : null}
+        <Button
+          type="submit"
+          form="room-edit-form"
+          disabled={!number.trim() || unchanged || submitting}
+        >
+          {submitting ? <Spinner data-icon="inline-start" /> : null}
           Guardar
         </Button>
       </DialogFooter>

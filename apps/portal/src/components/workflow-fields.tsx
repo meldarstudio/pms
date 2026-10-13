@@ -24,6 +24,10 @@ export function TextField({
   required = false,
   placeholder,
   error,
+  id: providedId,
+  name,
+  onBlur,
+  groupErrorId,
 }: {
   label: string
   value: string | number
@@ -35,8 +39,13 @@ export function TextField({
   required?: boolean
   placeholder?: string
   error?: string
+  id?: string
+  name?: string
+  onBlur?: () => void
+  groupErrorId?: string
 }) {
-  const id = useId()
+  const generatedId = useId()
+  const id = providedId ?? generatedId
   if (type === "date") {
     return (
       <DateField
@@ -46,6 +55,7 @@ export function TextField({
         timeZone={Intl.DateTimeFormat().resolvedOptions().timeZone}
         locked={disabled}
         error={error}
+        onBlur={onBlur}
         disabled={[
           ...(min ? [{ before: parseISO(String(min)) }] : []),
           ...(max ? [{ after: parseISO(String(max)) }] : []),
@@ -55,31 +65,43 @@ export function TextField({
     )
   }
   return (
-    <Field data-disabled={disabled} data-invalid={!!error}>
+    <Field data-disabled={disabled} data-invalid={!!error || !!groupErrorId}>
       <FieldLabel htmlFor={id}>{label}</FieldLabel>
       {type === "textarea" ? (
         <Textarea
           id={id}
+          name={name}
+          onBlur={onBlur}
           value={value}
           required={required}
           placeholder={placeholder}
           disabled={disabled}
-          aria-invalid={!!error}
-          aria-describedby={error ? `${id}-error` : undefined}
+          aria-invalid={!!error || !!groupErrorId}
+          aria-describedby={
+            [error ? `${id}-error` : undefined, groupErrorId]
+              .filter(Boolean)
+              .join(" ") || undefined
+          }
           maxLength={typeof max === "number" ? max : undefined}
           onChange={(e) => onChange(e.target.value)}
         />
       ) : (
         <Input
           id={id}
+          name={name}
+          onBlur={onBlur}
           type={type}
           value={value}
           min={min}
           max={max}
           required={required}
           placeholder={placeholder}
-          aria-invalid={!!error}
-          aria-describedby={error ? `${id}-error` : undefined}
+          aria-invalid={!!error || !!groupErrorId}
+          aria-describedby={
+            [error ? `${id}-error` : undefined, groupErrorId]
+              .filter(Boolean)
+              .join(" ") || undefined
+          }
           disabled={disabled}
           onChange={(e) => onChange(e.target.value)}
         />
@@ -95,6 +117,10 @@ export function ChoiceField({
   options,
   disabled = false,
   hideLabel = false,
+  error,
+  id: providedId,
+  name,
+  onBlur,
 }: {
   label: string
   value: string
@@ -102,20 +128,32 @@ export function ChoiceField({
   options: { value: string; label: string; disabled?: boolean }[]
   disabled?: boolean
   hideLabel?: boolean
+  error?: string
+  id?: string
+  name?: string
+  onBlur?: () => void
 }) {
-  const id = useId()
+  const generatedId = useId()
+  const id = providedId ?? generatedId
   return (
-    <Field data-disabled={disabled}>
+    <Field data-disabled={disabled} data-invalid={!!error}>
       <FieldLabel htmlFor={id} className={hideLabel ? "sr-only" : undefined}>
         {label}
       </FieldLabel>
       <Select
         items={options}
+        name={name}
         value={value}
         onValueChange={(v) => v !== null && onChange(v)}
         disabled={disabled}
       >
-        <SelectTrigger id={id} className="w-full">
+        <SelectTrigger
+          id={id}
+          className="w-full"
+          onBlur={onBlur}
+          aria-invalid={!!error}
+          aria-describedby={error ? `${id}-error` : undefined}
+        >
           <SelectValue />
         </SelectTrigger>
         <SelectContent>
@@ -128,6 +166,7 @@ export function ChoiceField({
           </SelectGroup>
         </SelectContent>
       </Select>
+      {error && <FieldError id={`${id}-error`}>{error}</FieldError>}
     </Field>
   )
 }
