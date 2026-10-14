@@ -105,7 +105,6 @@ type PlacedTrack = TrackItem & { start: number; end: number; lane: number }
 
 type AssignmentPreview = {
   stay: PlacedTrack
-  selected: boolean
   disabled: boolean
   onSelect: () => void
 }
@@ -347,14 +346,9 @@ function RoomTrack({
         <button
           type="button"
           aria-label={`Asignar ${assignmentPreview.stay.label} a habitación ${roomNumber}, ${assignmentPreview.stay.checkIn} al ${assignmentPreview.stay.checkOut}`}
-          aria-pressed={assignmentPreview.selected}
           disabled={assignmentPreview.disabled}
           onClick={assignmentPreview.onSelect}
-          className={cn(
-            "absolute z-20 flex cursor-pointer items-center overflow-hidden rounded-none border border-dashed border-booking-foreground/50 bg-booking/40 px-2.5 text-left text-xs text-booking-foreground outline-none hover:bg-booking/70 focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-default",
-            assignmentPreview.selected &&
-              "border-solid bg-booking ring-1 ring-booking-foreground/50"
-          )}
+          className="absolute z-20 flex cursor-pointer items-center overflow-hidden rounded-none border border-dashed border-booking-foreground/50 bg-booking/40 px-2.5 text-left text-xs text-booking-foreground outline-none hover:bg-booking/70 focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-default"
           style={barStyle(assignmentPreview.stay, dayCount, 1)}
         >
           <span className="truncate">{assignmentPreview.stay.label}</span>
@@ -496,15 +490,12 @@ export function RoomCalendar({
       listError={listError}
       rangeLabel={`${format(start, "d MMM")} al ${format(addDays(start, span - 1), "d MMM yyyy")}`}
       target={assignment.target}
-      selectedRoom={assignment.selectedRoom}
       checking={assignment.checking}
       ready={assignment.ready}
       eligibleCount={assignment.eligibleCount}
-      canAssign={assignment.canAssign}
       pending={assignment.pending}
       error={assignment.error}
       onSelect={assignment.selectStay}
-      onConfirm={() => void assignment.confirm()}
       onCancel={assignment.cancel}
       onClose={() => setPanelOpen(false)}
       onRetry={refresh}
@@ -839,11 +830,9 @@ export function RoomCalendar({
                   assignment.roomIssues.get(room.id) === null
                     ? {
                         stay: previewTrack,
-                        selected: assignment.selectedRoom?.id === room.id,
                         disabled: assignment.pending,
                         onSelect: () => {
-                          assignment.selectRoom(room.id)
-                          setPanelOpen(true)
+                          void assignment.assignRoom(room.id)
                         },
                       }
                     : undefined

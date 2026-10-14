@@ -4,8 +4,6 @@ import { cn } from "cn"
 
 import { Button } from "@/components/ui/button"
 import { Skeleton } from "@/components/ui/skeleton"
-import { Spinner } from "@/components/ui/spinner"
-import type { Room } from "@/lib/api"
 import type { ReservationStay } from "@/lib/room-assignment"
 import { format } from "@/lib/dates"
 
@@ -24,15 +22,12 @@ type RoomAssignmentPanelProps = {
   listError: string | null
   rangeLabel: string
   target: ReservationStay | null
-  selectedRoom: Room | null
   checking: boolean
   ready: boolean
   eligibleCount: number
-  canAssign: boolean
   pending: boolean
   error: string | null
   onSelect: (stay: ReservationStay) => void
-  onConfirm: () => void
   onCancel: () => void
   onClose: () => void
   onRetry: () => void
@@ -45,15 +40,12 @@ export function RoomAssignmentPanel({
   listError,
   rangeLabel,
   target,
-  selectedRoom,
   checking,
   ready,
   eligibleCount,
-  canAssign,
   pending,
   error,
   onSelect,
-  onConfirm,
   onCancel,
   onClose,
   onRetry,
@@ -175,7 +167,7 @@ export function RoomAssignmentPanel({
                 : ready && eligibleCount === 0
                   ? "No hay habitaciones de este tipo disponibles para toda la estancia."
                   : ready
-                    ? `${eligibleCount} ${eligibleCount === 1 ? "habitación disponible" : "habitaciones disponibles"}.`
+                    ? `${eligibleCount} ${eligibleCount === 1 ? "habitación disponible" : "habitaciones disponibles"}. Haz clic en la barra punteada para asignarla.`
                     : "No se pudo confirmar la disponibilidad."}
           </p>
           {error ? (
@@ -191,17 +183,9 @@ export function RoomAssignmentPanel({
               </Button>
             </div>
           ) : null}
-          <div className="flex flex-col gap-2">
-            <Button disabled={!canAssign || pending} onClick={onConfirm}>
-              {pending ? <Spinner data-icon="inline-start" /> : null}
-              {selectedRoom
-                ? `Asignar habitación ${selectedRoom.number}`
-                : "Asignar habitación"}
-            </Button>
-            <Button variant="outline" disabled={pending} onClick={onCancel}>
-              Cancelar asignación
-            </Button>
-          </div>
+          <Button variant="outline" disabled={pending} onClick={onCancel}>
+            Cancelar asignación
+          </Button>
         </div>
       ) : null}
     </section>
