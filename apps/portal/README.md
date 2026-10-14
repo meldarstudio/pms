@@ -26,8 +26,9 @@ Room counts and capacity validate on change because they control billing preview
 Known server validation errors appear beside fields; other write failures use
 error toasts. Query failures stay beside the content they block.
 
-Run `pnpm --filter @pms/portal test` from the repository root. Schema and
-workflow tests use Node's test runner and do not need a browser.
+Run `pnpm test` from the repository root (backend then portal), or
+`pnpm --filter @pms/portal test` for the portal alone. Schema and workflow
+tests use Node's test runner and do not need a browser.
 
 ## Deployment
 

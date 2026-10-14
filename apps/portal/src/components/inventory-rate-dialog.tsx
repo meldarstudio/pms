@@ -1,4 +1,4 @@
-import { useState, type FormEvent } from "react"
+import { useForm, useSelector } from "@tanstack/react-form"
 
 import { Button } from "@/components/ui/button"
 import {
@@ -19,7 +19,15 @@ import {
 import { Input } from "@/components/ui/input"
 import { Spinner } from "@/components/ui/spinner"
 import type { InventoryNight } from "@/lib/api"
-import { formatMajor, parseMajorToCents } from "@/lib/money"
+import { fieldErrors, setServerErrors } from "@/lib/form-errors"
+import {
+  inventoryRateSchema,
+  overrideClearDates,
+  rateApplyInput,
+  rateFormError,
+  ratePriceUnchanged,
+  sharedRatePrice,
+} from "@/lib/inventory-rate-form"
 import { useDeleteRoomTypeRates, usePutRoomTypeRates } from "@/lib/queries"
 import { contiguousRanges } from "@/lib/rate-ranges"
 
@@ -29,20 +37,6 @@ export type RateTarget = {
   label: string
   dates: string[]
   nights: InventoryNight[]
-}
-
-function rateError(error: Error) {
-  if (error.message === "room type not found") {
-    return "Este tipo de habitación ya no existe."
-  }
-  return error.message
-}
-
-function sharedPrice(nights: InventoryNight[]) {
-  const prices = new Set(nights.map((night) => night.priceCents))
-  if (prices.size !== 1) return ""
-  const [only] = prices
-  return only === undefined ? "" : formatMajor(only)
 }
 
 export function InventoryRateDialog({
@@ -84,13 +78,6 @@ export function InventoryRateDialog({
             currency={currency}
             pending={pending}
             saving={put.isPending}
-            error={
-              put.error
-                ? rateError(put.error)
-                : clear.error
-                  ? rateError(clear.error)
-                  : null
-            }
             onApply={async (input) => {
               await put.mutateAsync(input)
               finish()
@@ -111,7 +98,6 @@ function RateForm({
   currency,
   pending,
   saving,
-  error,
   onApply,
   onClear,
 }: {
@@ -119,7 +105,6 @@ function RateForm({
   currency: string
   pending: boolean
   saving: boolean
-  error: string | null
   onApply: (input: {
     id: string
     from: string
@@ -128,42 +113,41 @@ function RateForm({
   }) => Promise<void>
   onClear: (ranges: { from: string; to: string }[]) => Promise<void>
 }) {
-  const [price, setPrice] = useState(sharedPrice(target.nights))
-  const [localError, setLocalError] = useState<string | null>(null)
-  const cents = parseMajorToCents(price)
-  const unchanged =
-    cents !== null &&
-    target.nights.length > 0 &&
-    target.nights.every((night) => night.priceCents === cents)
+  const form = useForm({
+    defaultValues: {
+      price: sharedRatePrice(target.nights),
+    },
+    validators: {
+      onSubmit: inventoryRateSchema,
+    },
+    onSubmit: async ({ value }) => {
+      const input = rateApplyInput(target, value.price)
+      if (!input) return
+      form.setErrorMap({ onServer: undefined })
+      try {
+        await onApply(input)
+      } catch (cause) {
+        setServerErrors(form, { price: rateFormError(cause) })
+      }
+    },
+  })
+  const price = useSelector(form.store, (state) => state.values.price)
+  const submitting = useSelector(form.store, (state) => state.isSubmitting)
+  const unchanged = ratePriceUnchanged(target.nights, price)
   const canClear = target.nights.some((night) => night.override)
-  const message = localError ?? error
+  const busy = pending || submitting
   const range = target.dates.length > 1
 
-  async function onSubmit(event: FormEvent) {
-    event.preventDefault()
-    if (cents === null) {
-      setLocalError("Ingresa un precio como 310.00.")
-      return
-    }
-    setLocalError(null)
-    try {
-      await onApply({
-        id: target.roomTypeId,
-        from: target.dates[0],
-        to: target.dates[target.dates.length - 1],
-        priceCents: cents,
-      })
-    } catch (cause) {
-      setLocalError(
-        cause instanceof Error
-          ? rateError(cause)
-          : "No se pudo guardar el precio."
-      )
-    }
-  }
-
   return (
-    <form className="flex flex-col gap-4" onSubmit={onSubmit}>
+    <form
+      id="inventory-rate-form"
+      noValidate
+      className="flex flex-col gap-4"
+      onSubmit={(event) => {
+        event.preventDefault()
+        void form.handleSubmit()
+      }}
+    >
       <DialogHeader>
         <DialogTitle>{target.roomTypeName}</DialogTitle>
         <DialogDescription>
@@ -171,41 +155,65 @@ function RateForm({
         </DialogDescription>
       </DialogHeader>
       <FieldGroup>
-        <Field data-invalid={message ? true : undefined}>
-          <FieldLabel htmlFor="inventory-price">Precio ({currency})</FieldLabel>
-          <Input
-            id="inventory-price"
-            inputMode="decimal"
-            autoComplete="off"
-            placeholder={price ? undefined : "Varios precios"}
-            value={price}
-            disabled={pending}
-            aria-invalid={message ? true : undefined}
-            onChange={(event) => {
-              setPrice(event.target.value)
-              setLocalError(null)
-            }}
-          />
-          {message ? <FieldError>{message}</FieldError> : null}
-        </Field>
+        <form.Field
+          name="price"
+          children={(field) => {
+            const showError =
+              !!field.state.meta.errorMap.onServer ||
+              ((field.state.meta.isTouched ||
+                field.form.state.submissionAttempts > 0) &&
+                !field.state.meta.isValid)
+            return (
+              <Field
+                data-invalid={showError || undefined}
+                data-disabled={busy || undefined}
+              >
+                <FieldLabel htmlFor={field.name}>
+                  Precio ({currency})
+                </FieldLabel>
+                <Input
+                  id={field.name}
+                  name={field.name}
+                  inputMode="decimal"
+                  autoComplete="off"
+                  placeholder={field.state.value ? undefined : "Varios precios"}
+                  value={field.state.value}
+                  disabled={busy}
+                  aria-invalid={showError || undefined}
+                  onBlur={field.handleBlur}
+                  onChange={(event) => {
+                    if (field.state.meta.errorMap.onServer)
+                      field.setMeta((meta) => ({
+                        ...meta,
+                        errorMap: { ...meta.errorMap, onServer: undefined },
+                      }))
+                    field.handleChange(event.target.value)
+                  }}
+                />
+                {showError && (
+                  <FieldError errors={fieldErrors(field.state.meta.errors)} />
+                )}
+              </Field>
+            )
+          }}
+        />
       </FieldGroup>
       <DialogFooter>
         {canClear ? (
           <Button
             type="button"
             variant="outline"
-            disabled={pending}
+            disabled={busy}
             onClick={() => {
-              setLocalError(null)
-              const dates = target.nights
-                .filter((night) => night.override)
-                .map((night) => night.date)
+              form.setErrorMap({ onServer: undefined })
+              const dates = overrideClearDates(target.nights)
               void onClear(contiguousRanges(dates)).catch((cause: unknown) => {
-                setLocalError(
-                  cause instanceof Error
-                    ? rateError(cause)
-                    : "No se pudo restablecer el precio."
-                )
+                setServerErrors(form, {
+                  price:
+                    cause instanceof Error
+                      ? rateFormError(cause)
+                      : "No se pudo restablecer el precio.",
+                })
               })
             }}
           >
@@ -213,12 +221,16 @@ function RateForm({
           </Button>
         ) : null}
         <DialogClose
-          disabled={pending}
+          disabled={busy}
           render={<Button variant="outline" type="button" />}
         >
           Cancelar
         </DialogClose>
-        <Button type="submit" disabled={cents === null || unchanged || pending}>
+        <Button
+          type="submit"
+          form="inventory-rate-form"
+          disabled={unchanged || busy}
+        >
           {saving ? <Spinner data-icon="inline-start" /> : null}
           Guardar
         </Button>
