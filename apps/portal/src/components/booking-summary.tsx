@@ -1,9 +1,11 @@
 import { useEffect, useId, useRef, useState } from "react"
 import { useSelector } from "@tanstack/react-form"
+import { cn } from "cn"
 import { useReservationForm, blurThenChange } from "@/lib/reservation-form"
 import { errorMessage } from "@/lib/form-errors"
 import { discountSchema } from "@/lib/reservation-form-schemas"
 
+import { Badge } from "@/components/ui/badge"
 import {
   Card,
   CardContent,
@@ -50,6 +52,7 @@ export function BookingSummary({
   discountDisabled = false,
   onDiscountSave,
   onDiscountDirtyChange,
+  provisional = false,
 }: {
   rooms: BookingSummaryRoom[]
   cancelled: boolean
@@ -66,16 +69,18 @@ export function BookingSummary({
   discountDisabled?: boolean
   onDiscountSave?: (amountCents: number) => Promise<void>
   onDiscountDirtyChange?: (dirty: boolean) => void
+  provisional?: boolean
 }) {
   const titleId = useId()
   const credit = summary !== null && summary.balanceCents < 0
 
   return (
     <section aria-labelledby={titleId} className="min-w-0">
-      <Card size="sm">
+      <Card size="sm" className={cn(provisional && "bg-muted")}>
         <CardHeader>
-          <CardTitle>
+          <CardTitle className={cn(provisional && "flex items-center gap-2")}>
             <h3 id={titleId}>Resumen de reserva</h3>
+            {provisional && <Badge variant="outline">Borrador</Badge>}
           </CardTitle>
           {stayLabel && <CardDescription>{stayLabel}</CardDescription>}
         </CardHeader>
