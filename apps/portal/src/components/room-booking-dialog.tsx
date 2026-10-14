@@ -525,7 +525,7 @@ export function BookingEditor({
   const contact = detail.guest
   const [guestDirty, setGuestDirty] = useState(false)
   const roomTypes = useRoomTypes()
-  const [defaults] = useState(() => detailsDefaults(detail))
+  const [defaults, setDefaults] = useState(() => detailsDefaults(detail))
   const schema = useMemo(
     () => detailsSchema(roomTypes.data ?? []),
     [roomTypes.data]
@@ -646,7 +646,9 @@ export function BookingEditor({
     onDirtyChange,
   ])
   function resetDetails(saved: ReservationDetail) {
-    form.reset(detailsDefaults(saved))
+    const next = detailsDefaults(saved)
+    setDefaults(next)
+    form.reset(next)
   }
   async function savePayment(title: string, actions: WorkflowAction[]) {
     await discountSave.current
