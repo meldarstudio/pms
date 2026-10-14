@@ -736,7 +736,16 @@ export function BookingEditor({
         className={cn("gap-4", !full && "min-h-0 overflow-y-auto")}
       >
         <TabsList variant="line" className="shrink-0">
-          <TabsTrigger value="details">Detalles</TabsTrigger>
+          <TabsTrigger value="details">
+            Detalles
+            {dirty ? (
+              <span
+                className="size-1.5 shrink-0 rounded-full bg-muted-foreground/70"
+                aria-label="Cambios sin guardar"
+                title="Cambios sin guardar"
+              />
+            ) : null}
+          </TabsTrigger>
           <TabsTrigger value="guests">Huéspedes</TabsTrigger>
           <TabsTrigger value="payments">Pagos</TabsTrigger>
         </TabsList>
