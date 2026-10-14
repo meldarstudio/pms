@@ -15,7 +15,6 @@ export function useRoomAssignment(rooms: Room[] | null) {
   const queryClient = useQueryClient()
   const assign = useAssignRoom()
   const [target, setTarget] = useState<ReservationStay | null>(null)
-  const [roomId, setRoomId] = useState<string | null>(null)
   const reservations = useReservations(
     target?.checkIn ?? "",
     target?.checkOut ?? "",
@@ -63,46 +62,42 @@ export function useRoomAssignment(rooms: Room[] | null) {
   const eligibleCount = [...roomIssues.values()].filter(
     (issue) => issue === null
   ).length
-  const selectedRoom = rooms?.find((room) => room.id === roomId) ?? null
-  const canAssign = Boolean(
-    ready && selectedRoom && roomIssues.get(selectedRoom.id) === null
-  )
 
   function selectStay(stay: ReservationStay) {
     if (assign.isPending) return
     assign.reset()
     setTarget(stay)
-    setRoomId(null)
-  }
-
-  function selectRoom(id: string) {
-    if (assign.isPending || !ready || roomIssues.get(id) !== null) return
-    setRoomId(id)
   }
 
   function cancel() {
     if (assign.isPending) return
     assign.reset()
     setTarget(null)
-    setRoomId(null)
   }
 
-  async function confirm() {
-    if (!target || !selectedRoom || !canAssign || assign.isPending) return
+  async function assignRoom(id: string) {
+    const room = rooms?.find((item) => item.id === id)
+    if (
+      !target ||
+      !room ||
+      !ready ||
+      assign.isPending ||
+      roomIssues.get(room.id) !== null
+    )
+      return
     try {
       await assign.mutateAsync({
         reservationId: target.reservationId,
         lineId: target.id,
-        roomId: selectedRoom.id,
+        roomId: room.id,
       })
       toast.add({
         title: "Habitación asignada",
-        description: `${target.guestName} tiene asignada la habitación ${selectedRoom.number}.`,
+        description: `${target.guestName} tiene asignada la habitación ${room.number}.`,
         type: "success",
         timeout: 5000,
       })
       setTarget(null)
-      setRoomId(null)
     } catch (cause) {
       const message =
         cause instanceof Error
@@ -120,7 +115,6 @@ export function useRoomAssignment(rooms: Room[] | null) {
         priority: "high",
         timeout: 7000,
       })
-      setRoomId(null)
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: ["reservations"] }),
         queryClient.invalidateQueries({ queryKey: ["room-closures"] }),
@@ -131,18 +125,15 @@ export function useRoomAssignment(rooms: Room[] | null) {
 
   return {
     target,
-    selectedRoom,
     checking,
     ready,
     eligibleCount,
     roomIssues,
-    canAssign,
     pending: assign.isPending,
     error: translateNullableIssue(queryError ?? targetIssue),
     selectStay,
-    selectRoom,
+    assignRoom,
     cancel,
-    confirm,
   }
 }
 

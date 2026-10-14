@@ -1,5 +1,6 @@
 import assert from "node:assert/strict"
 import { describe, it } from "node:test"
+import { utcToday } from "../src/lib/reservation-form-schemas.ts"
 import {
   calendarSearch,
   inventorySearch,
@@ -28,23 +29,39 @@ describe("route search validation", () => {
   })
 
   it("normalizes reservation filters and pagination", () => {
+    const today = utcToday()
     assert.deepEqual(
       reservationsSearch({ q: "ana", status: "checked_in", page: 3 }),
-      { q: "ana", status: "checked_in", page: 3 }
+      { q: "ana", status: "checked_in", checkIn: today, page: 3 }
     )
     assert.deepEqual(
       reservationsSearch({ q: 1, status: "invalid", page: -1 }),
-      { q: "", status: "all", page: 0 }
+      { q: "", status: "all", checkIn: today, page: 0 }
     )
     assert.deepEqual(reservationsSearch({ page: 1.5 }), {
       q: "",
       status: "all",
+      checkIn: today,
       page: 0,
     })
     assert.deepEqual(reservationsSearch({ page: "2" }), {
       q: "",
       status: "all",
+      checkIn: today,
       page: 2,
     })
+  })
+
+  it("defaults a missing, empty, invalid, or all check-in to UTC today", () => {
+    const today = utcToday()
+    assert.equal(reservationsSearch({}).checkIn, today)
+    assert.equal(reservationsSearch({ checkIn: "all" }).checkIn, today)
+    assert.equal(reservationsSearch({ checkIn: "" }).checkIn, today)
+    assert.equal(
+      reservationsSearch({ checkIn: "2026-04-30" }).checkIn,
+      "2026-04-30"
+    )
+    assert.equal(reservationsSearch({ checkIn: "2026-02-30" }).checkIn, today)
+    assert.equal(reservationsSearch({ checkIn: "nope" }).checkIn, today)
   })
 })

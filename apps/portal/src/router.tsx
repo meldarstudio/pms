@@ -142,7 +142,7 @@ function ReservationRoute() {
       onBack={() =>
         void navigate({
           to: "/reservations",
-          search: lastReservationsSearch.current,
+          search: lastReservationsSearch.current ?? reservationsSearch({}),
         })
       }
     />

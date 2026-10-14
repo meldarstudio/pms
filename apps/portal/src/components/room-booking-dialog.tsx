@@ -104,6 +104,7 @@ import {
   submitForm,
 } from "@/lib/reservation-form"
 import { serverFieldErrors } from "@/lib/api-error"
+import { reservationStatusLabel } from "@/lib/reservation-list"
 import {
   detailsSchema,
   detailsDefaults,
@@ -135,13 +136,6 @@ export type BookingTarget =
       number: string
       typeName: string
     }
-const labels: Record<string, string> = {
-  confirmed: "Confirmada",
-  checked_in: "En estancia",
-  checked_out: "Salida registrada",
-  cancelled: "Cancelada",
-  no_show: "No se presentó",
-}
 const stayDate = (value: string, pattern: string) => {
   const date = parseISO(value)
   return isValid(date) ? format(date, pattern) : "—"
@@ -163,7 +157,7 @@ type Intent =
 
 export function ReservationStatus({ detail }: { detail: ReservationDetail }) {
   return (
-    <Badge variant="secondary">{labels[detail.status] ?? detail.status}</Badge>
+    <Badge variant="secondary">{reservationStatusLabel(detail.status)}</Badge>
   )
 }
 
@@ -226,7 +220,7 @@ export function RoomBookingDialog({
           >
             {target?.mode === "edit"
               ? "Detalles de la reserva, huéspedes y pagos."
-              : "Reserva por tipo y asigna una habitación ahora o antes de la llegada."}
+              : "Reserva por tipo y asigna una habitación ahora o antes del check-in."}
           </DialogDescription>
         </DialogHeader>
         {target?.mode === "edit" ? (

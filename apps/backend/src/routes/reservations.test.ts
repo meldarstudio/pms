@@ -768,3 +768,60 @@ describe('reservation dates and lifecycle', () => {
     expect(await (await request('/reservations?status=confirmed')).json()).toEqual([])
   })
 })
+
+async function book(
+  fullName: string,
+  dates: { checkIn: string; checkOut: string } = {
+    checkIn: '2026-10-10',
+    checkOut: '2026-10-12',
+  },
+) {
+  const response = await request('/reservations', 'POST', {
+    requestId: crypto.randomUUID(),
+    ...dates,
+    guest: { fullName },
+    rooms: [{ roomTypeId: 'type', adults: 1, children: 0 }],
+  })
+  expect(response.status).toBe(201)
+  return response.json() as Promise<Detail & { guestName: string }>
+}
+
+async function listed(query = '') {
+  const response = await request(`/reservations${query}`)
+  expect(response.status).toBe(200)
+  return response.json() as Promise<Array<Detail & { guestName: string }>>
+}
+
+describe('reservation list search', () => {
+  it('filters by the exact check-in date and still returns overlapping stays for a range', async () => {
+    const arrival = await book('Ada Lovelace', { checkIn: '2026-10-10', checkOut: '2026-10-12' })
+    const later = await book('Grace Hopper', { checkIn: '2026-10-11', checkOut: '2026-10-13' })
+    const exact = await listed('?checkIn=2026-10-10')
+    expect(exact.map((row) => row.id)).toEqual([arrival.id])
+    const covering = await listed('?from=2026-10-11&to=2026-10-11')
+    expect(covering.map((row) => row.id).sort()).toEqual([arrival.id, later.id].sort())
+  })
+
+  it('requires each search token to match the code or the guest name', async () => {
+    const ada = await book('Ada Lovelace')
+    await book('Grace Hopper', { checkIn: '2026-10-11', checkOut: '2026-10-13' })
+    expect((await listed('?q=Ada%20Love')).map((row) => row.id)).toEqual([ada.id])
+    expect(await listed('?q=ada%20hopper')).toEqual([])
+    expect(
+      (await listed(`?q=${encodeURIComponent(`${ada.code} Lovelace`)}`)).map((row) => row.id),
+    ).toEqual([ada.id])
+    expect(await listed(`?q=${encodeURIComponent('A_a Lovelace')}`)).toEqual([])
+    expect((await listed('?q=Love%25lace')).map((row) => row.id)).toEqual([ada.id])
+  })
+
+  it('orders rows by check-in, guest name, then code', async () => {
+    const zoe = await book('Zoe Cruz', { checkIn: '2026-10-13', checkOut: '2026-10-14' })
+    const first = await book('Ada Lovelace', { checkIn: '2026-10-12', checkOut: '2026-10-13' })
+    const second = await book('Ada Lovelace', { checkIn: '2026-10-12', checkOut: '2026-10-13' })
+    const sameDay = [first, second].sort((a, b) =>
+      a.code < b.code ? -1 : a.code > b.code ? 1 : 0,
+    )
+    const rows = await listed()
+    expect(rows.map((row) => row.id)).toEqual([...sameDay.map((row) => row.id), zoe.id])
+  })
+})

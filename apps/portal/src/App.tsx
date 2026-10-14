@@ -1,7 +1,11 @@
 import { Outlet, useNavigate, useRouterState } from "@tanstack/react-router"
 import { format, startOfToday } from "date-fns"
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { lastCalendarSearch, lastReservationsSearch } from "@/lib/route-search"
+import {
+  lastCalendarSearch,
+  lastReservationsSearch,
+  reservationsSearch,
+} from "@/lib/route-search"
 
 export function App() {
   const navigate = useNavigate()
@@ -18,7 +22,7 @@ export function App() {
     if (value === "reservations") {
       void navigate({
         to: "/reservations",
-        search: lastReservationsSearch.current,
+        search: lastReservationsSearch.current ?? reservationsSearch({}),
       })
     }
     if (value === "calendar") {
