@@ -178,7 +178,9 @@ function DiscountInput({
   onSave: (amountCents: number) => Promise<void>
   onDirtyChange?: (dirty: boolean) => void
 }) {
-  const [defaults] = useState(() => ({ amount: discountDraft(amountCents) }))
+  const [defaults, setDefaults] = useState(() => ({
+    amount: discountDraft(amountCents),
+  }))
   const focused = useRef(false)
   const errorId = useId()
   const form = useReservationForm({
@@ -190,13 +192,16 @@ function DiscountInput({
       const cents = parseMajorToCents(
         discountSchema.parse(value).amount.trim() || "0"
       )!
+      const next = { amount: discountDraft(cents) }
       if (cents === amountCents) {
-        form.reset({ amount: discountDraft(cents) })
+        setDefaults(next)
+        form.reset(next)
         return
       }
       try {
         await onSave(cents)
-        form.reset({ amount: discountDraft(cents) })
+        setDefaults(next)
+        form.reset(next)
       } catch (cause) {
         toastError("No se pudo guardar el descuento", cause)
       }
@@ -214,9 +219,12 @@ function DiscountInput({
       !focused.current &&
       form.state.isDefaultValue &&
       !form.state.isSubmitting
-    )
-      form.reset({ amount: discountDraft(amountCents) })
-  }, [amountCents, form])
+    ) {
+      const next = { amount: discountDraft(amountCents) }
+      if (defaults.amount !== next.amount) setDefaults(next)
+      form.reset(next)
+    }
+  }, [amountCents, form, defaults.amount])
 
   return (
     <form.Field name="amount">
