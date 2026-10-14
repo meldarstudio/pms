@@ -51,7 +51,7 @@ export function App() {
             Recepción
           </span>
         </span>
-        <TabsList variant="line" className="h-12">
+        <TabsList variant="line" className="-mb-px h-12">
           <TabsTrigger value="reservations">Reservas</TabsTrigger>
           <TabsTrigger value="calendar">Calendario</TabsTrigger>
           <TabsTrigger value="inventory">Inventario y tarifas</TabsTrigger>
