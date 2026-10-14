@@ -33,3 +33,5 @@ tests use Node's test runner and do not need a browser.
 ## Deployment
 
 Production portal: `https://pms-portal.meldar.workers.dev`
+
+Branch pushes deploy a Workers Preview via Cloudflare Workers Builds.
