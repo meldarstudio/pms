@@ -974,6 +974,7 @@ export function BookingEditor({
                   ? null
                   : "Calculando…"
               }
+              provisional={billingDirty}
             />
             {billingDirty &&
               countsValid &&
@@ -1047,7 +1048,7 @@ export function BookingEditor({
                   busy
                 }
               >
-                {saveMutation.isPending ? "Guardando…" : "Guardar"}
+                {saveMutation.isPending ? "Guardando…" : "Guardar detalles"}
               </Button>
             )}
             {!full && onClose && (
