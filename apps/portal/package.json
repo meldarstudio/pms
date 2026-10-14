@@ -7,7 +7,6 @@
     "dev": "vite",
     "build": "tsc -b && vite build",
     "deploy": "wrangler deploy",
-    "deploy:preview": "wrangler preview",
     "lint": "eslint .",
     "test": "node --experimental-strip-types --test tests/*.test.ts",
     "format": "prettier --write \"**/*.{ts,tsx}\"",

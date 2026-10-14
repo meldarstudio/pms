@@ -33,7 +33,3 @@ tests use Node's test runner and do not need a browser.
 ## Deployment
 
 Production portal: `https://pms-portal.meldar.workers.dev`
-
-Workers Builds uses `pnpm --filter @pms/portal run deploy` on `main` and
-`pnpm --filter @pms/portal run deploy:preview` for branch previews
-(`wrangler preview`). Local `pnpm preview` still runs Vite’s static preview.
