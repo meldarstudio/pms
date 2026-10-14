@@ -836,46 +836,49 @@ export function RoomCalendar({
             ) : null}
           </div>
         </div>
-        {panelOpen ? (
-          <aside
-            aria-label="Reservas sin asignar"
-            className="min-h-0 w-80 shrink-0 bg-muted"
-          >
-            {panel}
-          </aside>
-        ) : null}
-        <button
-          type="button"
-          aria-expanded={panelOpen}
-          aria-controls="unassigned-panel"
-          aria-label={
-            listLoading
-              ? "Reservas sin asignar"
-              : `Reservas sin asignar, ${unassigned.length}`
-          }
-          disabled={assignment.pending}
-          onClick={() => setPanelOpen((open) => !open)}
+        <aside
+          aria-label="Reservas sin asignar"
           className={cn(
-            "flex w-8 shrink-0 flex-col items-center gap-1.5 border-l bg-background py-3 text-muted-foreground transition-colors outline-none hover:bg-muted focus-visible:border-ring focus-visible:ring-1 focus-visible:ring-ring/50 disabled:pointer-events-none disabled:opacity-50",
-            panelOpen && "bg-muted",
-            unassigned.length > 0 &&
-              !listLoading &&
-              "border-l-foreground/25 text-foreground"
+            // -ml-px overlaps the calendar's last cell border-r so the aside
+            // border-l is a single shared edge, not a double stack.
+            "relative z-10 -ml-px flex min-h-0 shrink-0 flex-col border-l bg-muted",
+            panelOpen ? "w-80" : "w-10"
           )}
         >
-          <PanelRightIcon className="size-4" aria-hidden="true" />
-          <span
-            aria-hidden="true"
-            className={cn(
-              "min-w-4 px-1 text-center text-xs tabular-nums",
-              unassigned.length > 0 && !listLoading
-                ? "bg-primary font-medium text-primary-foreground"
-                : "text-muted-foreground"
-            )}
-          >
-            {listLoading ? "…" : unassigned.length}
-          </span>
-        </button>
+          {panelOpen ? (
+            panel
+          ) : (
+            <button
+              type="button"
+              aria-expanded={false}
+              aria-controls="unassigned-panel"
+              aria-label={
+                listLoading
+                  ? "Mostrar reservas sin asignar"
+                  : `Mostrar reservas sin asignar, ${unassigned.length}`
+              }
+              disabled={assignment.pending}
+              onClick={() => setPanelOpen(true)}
+              className={cn(
+                "flex min-h-0 flex-1 flex-col items-center gap-1.5 py-3 text-muted-foreground outline-none hover:bg-background/60 focus-visible:ring-1 focus-visible:ring-ring/50 disabled:pointer-events-none disabled:opacity-50",
+                unassigned.length > 0 && !listLoading && "text-foreground"
+              )}
+            >
+              <PanelRightIcon className="size-4" aria-hidden="true" />
+              <span
+                aria-hidden="true"
+                className={cn(
+                  "text-center text-xs tabular-nums",
+                  unassigned.length > 0 && !listLoading
+                    ? "bg-primary px-1 font-medium text-primary-foreground"
+                    : "text-muted-foreground"
+                )}
+              >
+                {listLoading ? "…" : unassigned.length}
+              </span>
+            </button>
+          )}
+        </aside>
       </div>
     </div>
   )

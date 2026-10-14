@@ -56,7 +56,7 @@ export function RoomAssignmentPanel({
     <section
       id="unassigned-panel"
       aria-labelledby="unassigned-heading"
-      className="flex h-full min-h-0 flex-col bg-muted text-xs"
+      className="flex h-full min-h-0 flex-col text-xs"
     >
       <div className="flex items-start justify-between gap-2 border-b p-3">
         <div>
