@@ -62,3 +62,9 @@ The portal reads its API origin from `VITE_API_BASE_URL`, inlined at build time.
 - Portal Prettier is `apps/portal/.prettierrc`. Double quotes, no semicolons, print width 80, Tailwind plugin.
 - Portal `tsconfig.app.json` enables `verbatimModuleSyntax`, `erasableSyntaxOnly`, and `noUnusedLocals`. Use `import type` or inline `type` imports.
 - shadcn is already set up in `apps/portal`. `components.json` style is `base-lyra`. Primitives come from `@base-ui/react`, not Radix. Icons are `lucide-react`. Aliases use `@/`. UI files import `cn` from `"cn"`, not from `@/lib/utils`. Add a component from `apps/portal` with `pnpm exec shadcn add <name>`. Do not use `npx shadcn`.
+
+## Cursor Cloud specific instructions
+
+- `pnpm dev` serves the API at `http://127.0.0.1:8788` and the portal at `http://localhost:5173`. The Vite dev server binds IPv6 localhost only, so `http://127.0.0.1:5173` is refused.
+- `pnpm db:reset:local` reloads sample data around today UTC and does not need Cloudflare credentials. Wrangler asks before applying migrations when stdin is a terminal. Prefix that command with `CI=true` so a non-interactive shell accepts the fallback and continues.
+- `pnpm build` needs `VITE_API_BASE_URL` in the environment. Dev mode reads `apps/portal/.env.development`.
