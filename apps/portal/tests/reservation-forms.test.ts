@@ -247,6 +247,26 @@ describe("TanStack form lifecycle", () => {
     unmountField()
     unmount()
   })
+  it("keeps reset values when the next render re-passes those same defaults", () => {
+    const initial = { notes: "original" }
+    const saved = { notes: "edited" }
+    const form = new FormApi({ defaultValues: initial })
+    const unmount = form.mount()
+    const field = new FieldApi({ form, name: "notes" })
+    const unmountField = field.mount()
+    field.handleChange(saved.notes)
+    form.reset(saved)
+    assert.equal(form.state.values.notes, saved.notes)
+    assert.equal(form.state.isTouched, false)
+    form.update({ defaultValues: initial })
+    assert.equal(form.state.values.notes, initial.notes)
+    form.reset(saved)
+    form.update({ defaultValues: saved })
+    assert.equal(form.state.values.notes, saved.notes)
+    assert.equal(form.state.isDefaultValue, true)
+    unmountField()
+    unmount()
+  })
   it("preserves failed payment values and reuses the retry command", async () => {
     const saver = createWorkflowSaver()
     const commands: WorkflowCommand[] = []
