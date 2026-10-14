@@ -17,7 +17,17 @@ import {
   EmptyTitle,
   EmptyDescription,
 } from "@/components/ui/empty"
-import { FieldError, FieldGroup } from "@/components/ui/field"
+import {
+  Field,
+  FieldError,
+  FieldGroup,
+  FieldLabel,
+} from "@/components/ui/field"
+import {
+  InputGroup,
+  InputGroupAddon,
+  InputGroupInput,
+} from "@/components/ui/input-group"
 import { Skeleton } from "@/components/ui/skeleton"
 import {
   Table,
@@ -27,7 +37,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table"
-import { ChoiceField, TextField } from "@/components/workflow-fields"
+import { ChoiceField } from "@/components/workflow-fields"
 import { searchReservations } from "@/lib/api"
 import { formatMoney } from "@/lib/money"
 import {
@@ -51,6 +61,7 @@ export function Reservations({
   onOpenReservation: (id: string) => void
 }) {
   const arrivalId = useId()
+  const guestId = useId()
   const [target, setTarget] = useState<BookingTarget | null>(null)
   const q = useDeferredValue(search.q)
   const query = useQuery({
@@ -107,11 +118,21 @@ export function Reservations({
             })
           }
         />
-        <TextField
-          label="Huésped o código"
-          value={search.q}
-          onChange={(value) => onSearchChange({ q: value, page: 0 })}
-        />
+        <Field>
+          <FieldLabel htmlFor={guestId}>Huésped o código</FieldLabel>
+          <InputGroup>
+            <InputGroupAddon>
+              <SearchIcon />
+            </InputGroupAddon>
+            <InputGroupInput
+              id={guestId}
+              value={search.q}
+              onChange={(event) =>
+                onSearchChange({ q: event.target.value, page: 0 })
+              }
+            />
+          </InputGroup>
+        </Field>
         <ChoiceField
           label="Estado"
           value={search.status}
@@ -220,15 +241,8 @@ export function Reservations({
                     <TableCell className="text-right tabular-nums">
                       {formatMoney(row.totalCents, row.currency)}
                     </TableCell>
-                    <TableCell className="text-right">
-                      <div className="tabular-nums">
-                        {formatMoney(Math.abs(row.balanceCents), row.currency)}
-                      </div>
-                      {row.balanceCents < 0 ? (
-                        <div className="text-xs text-muted-foreground">
-                          Saldo a favor
-                        </div>
-                      ) : null}
+                    <TableCell className="text-right tabular-nums">
+                      {formatMoney(Math.abs(row.balanceCents), row.currency)}
                     </TableCell>
                   </TableRow>
                 ))}
