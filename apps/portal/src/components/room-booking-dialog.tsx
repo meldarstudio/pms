@@ -740,11 +740,10 @@ export function BookingEditor({
             Detalles
             {dirty ? (
               <span
-                className="font-normal text-muted-foreground"
+                className="size-1.5 shrink-0 rounded-full bg-muted-foreground/70"
                 aria-label="Cambios sin guardar"
-              >
-                · sin guardar
-              </span>
+                title="Cambios sin guardar"
+              />
             ) : null}
           </TabsTrigger>
           <TabsTrigger value="guests">Huéspedes</TabsTrigger>
