@@ -534,7 +534,7 @@ export function BookingEditor({
   const form = useReservationForm({
     defaultValues: defaults,
     validationLogic: blurThenChange(),
-    validators: { onDynamic: schema, onChange: schema },
+    validators: { onDynamic: schema },
     onSubmit: async () => saveChanges(),
   })
   const values = useSelector(form.store, (state) => state.values)
@@ -597,6 +597,7 @@ export function BookingEditor({
   )
   useEffect(() => {
     if (previewFields) setServerErrors(form, previewFields)
+    else form.setErrorMap({ onServer: undefined })
   }, [form, previewFields])
   const billing = billingDirty
     ? previewCurrent
