@@ -673,16 +673,6 @@ export function RoomCalendar({
             </TooltipContent>
           </Tooltip>
           <Button
-            variant="outline"
-            aria-expanded={panelOpen}
-            aria-controls="unassigned-panel"
-            disabled={assignment.pending}
-            onClick={() => setPanelOpen((open) => !open)}
-          >
-            <PanelRightIcon data-icon="inline-start" />
-            Sin asignar · {listLoading ? "…" : unassigned.length}
-          </Button>
-          <Button
             disabled={assignment.pending}
             onClick={() => setBookingTarget({ mode: "new" })}
           >
@@ -854,6 +844,38 @@ export function RoomCalendar({
             {panel}
           </aside>
         ) : null}
+        <button
+          type="button"
+          aria-expanded={panelOpen}
+          aria-controls="unassigned-panel"
+          aria-label={
+            listLoading
+              ? "Reservas sin asignar"
+              : `Reservas sin asignar, ${unassigned.length}`
+          }
+          disabled={assignment.pending}
+          onClick={() => setPanelOpen((open) => !open)}
+          className={cn(
+            "flex w-8 shrink-0 flex-col items-center gap-1.5 border-l bg-background py-3 text-muted-foreground transition-colors outline-none hover:bg-muted focus-visible:border-ring focus-visible:ring-1 focus-visible:ring-ring/50 disabled:pointer-events-none disabled:opacity-50",
+            panelOpen && "bg-muted",
+            unassigned.length > 0 &&
+              !listLoading &&
+              "border-l-foreground/25 text-foreground"
+          )}
+        >
+          <PanelRightIcon className="size-4" aria-hidden="true" />
+          <span
+            aria-hidden="true"
+            className={cn(
+              "min-w-4 px-1 text-center text-xs tabular-nums",
+              unassigned.length > 0 && !listLoading
+                ? "bg-primary font-medium text-primary-foreground"
+                : "text-muted-foreground"
+            )}
+          >
+            {listLoading ? "…" : unassigned.length}
+          </span>
+        </button>
       </div>
     </div>
   )
