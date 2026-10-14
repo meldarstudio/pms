@@ -28,8 +28,8 @@ All current application data is local sample data. There is no real customer or 
 Run these from the repo root.
 
 - `pnpm dev` starts portal and backend. `pnpm dev:portal` and `pnpm dev:backend` start one.
-- `pnpm test` runs backend Vitest only. Tests are colocated under `apps/backend/src`, including `.test.mjs`. They apply `apps/backend/drizzle` SQL to `node:sqlite`. They do not need a running Worker. One file: `pnpm --filter @pms/backend test -- src/routes/reservations.test.ts`.
-- Portal tests use Node's test runner, not Vitest. `pnpm --filter @pms/portal test` runs `apps/portal/tests`. One file: `pnpm --filter @pms/portal exec node --experimental-strip-types --test tests/form-validation.test.ts`. Those tests import `../src/**/*.ts`. `tsconfig.app.json` does not include them.
+- `pnpm test` runs backend Vitest, then portal Node tests. Backend tests are colocated under `apps/backend/src`, including `.test.mjs`. They apply `apps/backend/drizzle` SQL to `node:sqlite`. They do not need a running Worker. One backend file: `pnpm --filter @pms/backend test -- src/routes/reservations.test.ts`.
+- Portal tests use Node's test runner, not Vitest. `pnpm --filter @pms/portal test` runs `apps/portal/tests` alone. One file: `pnpm --filter @pms/portal exec node --experimental-strip-types --test tests/form-validation.test.ts`. Those tests import `../src/**/*.ts`. `tsconfig.app.json` does not include them.
 - `pnpm lint` is portal ESLint only. Format the portal with `pnpm --filter @pms/portal format`. Backend and shared have no formatter or lint script.
 - `pnpm typecheck` runs each package that defines `typecheck`. Shared does not. Backend `tsc --noEmit` checks backend sources. Portal `typecheck` checks nothing, because `apps/portal/tsconfig.json` sets `"files": []`. Typecheck the portal with `pnpm --filter @pms/portal exec tsc -b`.
 - After a schema edit in `apps/backend/src/db/schema.ts`, regenerate the baseline as described above, then run `pnpm db:reset:local --rebuild-schema`.
