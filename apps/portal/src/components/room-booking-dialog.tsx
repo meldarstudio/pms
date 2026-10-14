@@ -18,7 +18,8 @@ import {
   EmptyDescription,
 } from "@/components/ui/empty"
 import {
-  billingPreviewActions,
+  validationPreviewActions,
+  hasBillingChanges,
   changeCheckIn,
   minimumCheckOut,
   guestValues,
@@ -108,6 +109,7 @@ import { reservationStatusLabel } from "@/lib/reservation-list"
 import {
   detailsSchema,
   detailsDefaults,
+  detailsSummaryRooms,
   emptyDetails,
   workflowDrafts,
   schemaErrors,
@@ -237,7 +239,6 @@ export function RoomBookingDialog({
                 initialTab={tab}
                 onTabChange={setTab}
                 onDirtyChange={onDirtyChange}
-                onClose={() => navigate(close)}
                 onCancelled={close}
                 onViewReservation={(id) =>
                   navigate(() => onViewReservation(id))
@@ -504,7 +505,6 @@ function NewRoomPrice({
 
 export function BookingEditor({
   detail,
-  onClose,
   onCancelled,
   onViewReservation,
   onDirtyChange,
@@ -514,7 +514,6 @@ export function BookingEditor({
 }: {
   detail: ReservationDetail
   onRefresh: () => void
-  onClose?: () => void
   onCancelled?: () => void
   onViewReservation?: (id: string) => void
   onDirtyChange?: (dirty: boolean) => void
@@ -565,46 +564,55 @@ export function BookingEditor({
     })
   if (notes !== (detail.notes ?? "")) changes.push({ type: "notes", notes })
   const dirty = changes.length > 0 || (!validation.success && !unchanged)
-  const previewActions = billingPreviewActions(changes)
-  const billingDirty = previewActions.length > 0
+  const previewActions = validationPreviewActions(changes)
+  const validationNeeded = previewActions.length > 0
+  const billingDirty = hasBillingChanges(detail, changes)
   const previewActionsKey = JSON.stringify(previewActions)
   const changesKey = JSON.stringify(changes)
   const editCommand = useDraftCommand(changesKey)
-  const billingCommand = useDraftCommand(previewActionsKey)
-  const [previewCommand, setPreviewCommand] = useState(billingCommand)
+  const validationCommand = useDraftCommand(previewActionsKey)
+  const [previewCommand, setPreviewCommand] = useState(validationCommand)
   useEffect(() => {
-    const timer = setTimeout(() => setPreviewCommand(billingCommand), 300)
+    const timer = setTimeout(() => setPreviewCommand(validationCommand), 300)
     return () => clearTimeout(timer)
-  }, [billingCommand])
+  }, [validationCommand])
   const editPreview = useQuery({
     queryKey: ["workflow-edit-preview", detail.id, previewCommand],
     queryFn: () => previewWorkflow(detail.id, previewCommand),
     enabled:
-      billingDirty &&
+      validationNeeded &&
       previewCommand.actions.length > 0 &&
-      previewCommand === billingCommand &&
+      previewCommand === validationCommand &&
       countsValid,
     retry: false,
     refetchOnWindowFocus: false,
   })
-  const previewCurrent = previewCommand === billingCommand
+  const previewCurrent = previewCommand === validationCommand
+  const previewReady =
+    !validationNeeded ||
+    (previewCurrent && editPreview.isSuccess && !editPreview.isFetching)
   const previewFields = useMemo(
     () =>
-      billingDirty && previewCurrent
+      validationNeeded && previewCurrent && !editPreview.isFetching
         ? serverFieldErrors(editPreview.error, "details")
         : null,
-    [editPreview.error, billingDirty, previewCurrent]
+    [
+      editPreview.error,
+      editPreview.isFetching,
+      validationNeeded,
+      previewCurrent,
+    ]
   )
   useEffect(() => {
     if (previewFields) setServerErrors(form, previewFields)
     else form.setErrorMap({ onServer: undefined })
   }, [form, previewFields])
   const billing = billingDirty
-    ? previewCurrent
+    ? countsValid && previewReady
       ? editPreview.data
       : undefined
     : detail
-  const billingRooms = billing?.rooms ?? []
+  const billingRooms = detailsSummaryRooms(values, billing?.rooms)
   const saveMutation = useWorkflowCommand()
   const guestMutation = useWorkflowCommand()
   const paymentMutation = useWorkflowCommand()
@@ -678,8 +686,7 @@ export function BookingEditor({
     if (
       tab !== "details" ||
       !dirty ||
-      !billing ||
-      (billingDirty && editPreview.isFetching) ||
+      !previewReady ||
       saveMutation.isPending ||
       guestMutation.isPending ||
       paymentMutation.isPending
@@ -692,7 +699,7 @@ export function BookingEditor({
         command: editCommand,
       })
       resetDetails(saved)
-      toast.add({ title: "Reserva guardada", type: "success" })
+      toast.add({ title: "Detalles guardados", type: "success" })
     } catch (e) {
       const fields = serverFieldErrors(e, "details")
       if (fields) setServerErrors(form, fields)
@@ -742,7 +749,7 @@ export function BookingEditor({
             Detalles
             {dirty ? (
               <span
-                className="size-1.5 shrink-0 rounded-full bg-muted-foreground/70"
+                className="size-1.5 shrink-0 rounded-full bg-primary"
                 aria-label="Cambios sin guardar"
                 title="Cambios sin guardar"
               />
@@ -944,7 +951,7 @@ export function BookingEditor({
             <BookingSummary
               cancelled={reservationState === "cancelled"}
               rooms={billingRooms.map((room) => ({
-                key: room.id,
+                key: room.key,
                 typeName:
                   roomTypes.data?.find((type) => type.id === room.roomTypeId)
                     ?.name ??
@@ -952,11 +959,7 @@ export function BookingEditor({
                   "Habitación",
                 adults: room.adults,
                 children: room.children,
-                charges: {
-                  subtotalCents: room.subtotalCents,
-                  discountCents: room.discountCents,
-                  totalCents: room.totalCents,
-                },
+                charges: room.charges,
               }))}
               summary={billing ?? null}
               paidCents={billing?.paidCents ?? detail.paidCents}
@@ -972,15 +975,20 @@ export function BookingEditor({
               }
               showPayments
               message={
-                !countsValid || (editPreview.error && previewCurrent)
-                  ? null
-                  : "Calculando…"
+                billingDirty &&
+                countsValid &&
+                (!editPreview.error ||
+                  !previewCurrent ||
+                  editPreview.isFetching)
+                  ? "Calculando…"
+                  : null
               }
               provisional={billingDirty}
             />
-            {billingDirty &&
+            {validationNeeded &&
               countsValid &&
               previewCurrent &&
+              !editPreview.isFetching &&
               !previewFields &&
               editPreview.error && (
                 <FieldError>{editPreview.error.message}</FieldError>
@@ -1041,26 +1049,21 @@ export function BookingEditor({
                   !dirty ||
                   roomTypes.isPending ||
                   roomTypes.isError ||
-                  (countsValid &&
-                    billingDirty &&
-                    previewCurrent &&
-                    !!editPreview.error) ||
-                  (countsValid && !billing) ||
-                  (billingDirty && editPreview.isFetching) ||
+                  (countsValid && !previewReady) ||
                   busy
                 }
               >
                 {saveMutation.isPending ? "Guardando…" : "Guardar detalles"}
               </Button>
             )}
-            {!full && onClose && (
+            {!full && tab === "details" && (
               <Button
                 type="button"
                 variant="outline"
-                disabled={busy}
-                onClick={onClose}
+                disabled={!dirty || busy || discountMutation.isPending}
+                onClick={() => form.reset(defaults)}
               >
-                Cerrar
+                Descartar cambios
               </Button>
             )}
           </div>

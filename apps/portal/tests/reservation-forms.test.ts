@@ -5,6 +5,7 @@ import { ApiError, serverFieldErrors } from "../src/lib/api-error.ts"
 import {
   capacityMessage,
   detailsSchema,
+  detailsSummaryRooms,
   discountSchema,
   guestSchema,
   guestPayload,
@@ -185,6 +186,76 @@ describe("reservation form schemas", () => {
     )
     assert.equal(discountSchema.safeParse({ amount: "" }).success, true)
     assert.equal(discountSchema.safeParse({ amount: "-1" }).success, false)
+  })
+})
+
+describe("draft room summaries", () => {
+  const priced = (id = "line-1", totalCents = 15000) =>
+    ({
+      id,
+      roomTypeId: "double",
+      roomTypeName: "Doble",
+      adults: 1,
+      children: 0,
+      subtotalCents: totalCents,
+      discountCents: 0,
+      totalCents,
+    }) as ReservationDetail["rooms"][number]
+
+  it("updates occupancy and keeps saved charges while operational validation is pending", () => {
+    const values = details()
+    values.rooms[0].room.adults = "2"
+    values.rooms[0].room.children = "1"
+    values.rooms[0].room.roomId = "102"
+    const summary = detailsSummaryRooms(values, [priced()])[0]
+    assert.equal(summary.adults, 2)
+    assert.equal(summary.children, 1)
+    assert.deepEqual(summary.charges, {
+      subtotalCents: 15000,
+      discountCents: 0,
+      totalCents: 15000,
+    })
+  })
+
+  it("keeps draft rooms and counts visible while prices are unavailable", () => {
+    const values = details()
+    values.rooms[0].room.roomTypeId = "family"
+    const summary = detailsSummaryRooms(values, undefined)[0]
+    assert.equal(summary.roomTypeId, "family")
+    assert.equal(summary.adults, 1)
+    assert.equal(summary.charges, null)
+  })
+
+  it("does not display blank or invalid counts as zero guests", () => {
+    for (const invalid of ["", " ", "-1", "1.5", "NaN", "101"]) {
+      const values = details()
+      values.rooms[0].room.children = invalid
+      assert.equal(detailsSummaryRooms(values, [priced()])[0].children, null)
+    }
+    const values = details()
+    values.rooms[0].room.adults = "0"
+    assert.equal(detailsSummaryRooms(values, [priced()])[0].adults, null)
+    assert.equal(detailsSummaryRooms(values, [priced()])[0].children, 0)
+  })
+
+  it("matches retained and added room prices after removing a saved room", () => {
+    const values = details()
+    values.rooms[0].removed = true
+    values.rooms.push(
+      { ...details().rooms[0], id: "line-2" },
+      { ...details().rooms[0], id: "draft-new" }
+    )
+    const summary = detailsSummaryRooms(values, [
+      priced("line-2", 22000),
+      priced("server-new", 31000),
+    ])
+    assert.deepEqual(
+      summary.map((room) => [room.key, room.charges?.totalCents]),
+      [
+        ["line-2", 22000],
+        ["draft-new", 31000],
+      ]
+    )
   })
 })
 

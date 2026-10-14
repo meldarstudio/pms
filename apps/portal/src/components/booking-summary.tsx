@@ -36,7 +36,7 @@ export type BookingSummaryRoom = {
   charges: Pick<
     ReservationDetail["rooms"][number],
     "subtotalCents" | "discountCents" | "totalCents"
-  >
+  > | null
 }
 
 export function BookingSummary({
@@ -76,11 +76,11 @@ export function BookingSummary({
 
   return (
     <section aria-labelledby={titleId} className="min-w-0">
-      <Card size="sm" className={cn(provisional && "bg-muted")}>
+      <Card size="sm">
         <CardHeader>
           <CardTitle className={cn(provisional && "flex items-center gap-2")}>
             <h3 id={titleId}>Resumen de reserva</h3>
-            {provisional && <Badge variant="outline">Borrador</Badge>}
+            {provisional && <Badge variant="preview">Vista previa</Badge>}
           </CardTitle>
           {stayLabel && <CardDescription>{stayLabel}</CardDescription>}
         </CardHeader>
@@ -311,7 +311,7 @@ function RoomSummary({
       <dl>
         <SummaryRow
           label={room.typeName}
-          cents={room.charges.totalCents}
+          cents={room.charges?.totalCents ?? null}
           currency={currency}
         />
       </dl>

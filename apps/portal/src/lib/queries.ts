@@ -4,6 +4,7 @@ import {
   useQuery,
   useQueryClient,
 } from "@tanstack/react-query"
+import { refreshWorkflowQueries } from "./workflow-query-cache"
 
 import {
   sendWorkflow,
@@ -211,13 +212,6 @@ export function useWorkflowCommand() {
   return useMutation({
     mutationFn: ({ id, command }: { id: string; command: WorkflowCommand }) =>
       sendWorkflow(id, command),
-    onSuccess: async (data) => {
-      client.setQueryData(["reservation", data.id], data)
-      await Promise.all(
-        ["reservations", "availability", "inventory", "payments"].map((key) =>
-          client.invalidateQueries({ queryKey: [key] })
-        )
-      )
-    },
+    onSuccess: (data) => refreshWorkflowQueries(client, data),
   })
 }

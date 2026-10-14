@@ -107,8 +107,39 @@ export function unavailableRoomIds(
 }
 
 // Notes and guest/contact text do not change charges or dated inventory.
-export function billingPreviewActions(actions: WorkflowAction[]) {
+export function validationPreviewActions(actions: WorkflowAction[]) {
   return actions.filter(
     (action) => !["notes", "contact", "set-guests"].includes(action.type)
   )
+}
+
+export function hasBillingChanges(
+  detail: ReservationDetail,
+  actions: WorkflowAction[]
+) {
+  return actions.some((action) => {
+    switch (action.type) {
+      case "dates":
+        return (
+          action.checkIn !== detail.checkIn ||
+          action.checkOut !== detail.checkOut
+        )
+      case "add-room":
+      case "remove-room":
+        return true
+      case "edit-room":
+        return (
+          action.room.roomTypeId !==
+          detail.rooms.find((room) => room.id === action.lineId)?.roomTypeId
+        )
+      case "set-status":
+        return (
+          (action.status === "cancelled") !== (detail.status === "cancelled")
+        )
+      case "set-discount":
+        return action.amountCents !== detail.savedDiscountCents
+      default:
+        return false
+    }
+  })
 }

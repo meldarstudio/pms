@@ -1,8 +1,13 @@
 import assert from "node:assert/strict"
 import { describe, it } from "node:test"
-import type { Reservation, ReservationDetail } from "../src/lib/api.ts"
+import type {
+  Reservation,
+  ReservationDetail,
+  WorkflowAction,
+} from "../src/lib/api.ts"
 import {
-  billingPreviewActions,
+  validationPreviewActions,
+  hasBillingChanges,
   changeCheckIn,
   minimumCheckOut,
   unavailableRoomIds,
@@ -26,6 +31,127 @@ const draft = (room: ReservationDetail["rooms"][number]): RoomDraft => ({
   removed: false,
 })
 const dates = { checkIn: "2026-10-12", checkOut: "2026-10-15" }
+
+describe("billing changes versus validation", () => {
+  const saved = {
+    ...dates,
+    status: "confirmed",
+    savedDiscountCents: 0,
+    rooms: [line("101")],
+  } as ReservationDetail
+
+  it("validates occupancy and assignment edits without marking billing provisional", () => {
+    for (const patch of [
+      { adults: 3 },
+      { children: 1 },
+      { roomId: "102" },
+      { roomId: null },
+    ]) {
+      const action: WorkflowAction = {
+        type: "edit-room",
+        lineId: "101",
+        room: { ...stayValue(saved.rooms[0]), ...patch },
+      }
+      assert.deepEqual(validationPreviewActions([action]), [action])
+      assert.equal(hasBillingChanges(saved, [action]), false)
+    }
+  })
+
+  it("marks dates, room types, added rooms and removed rooms as billing changes", () => {
+    const actions: WorkflowAction[] = [
+      { type: "dates", ...dates, checkOut: "2026-10-16" },
+      { type: "dates", ...dates, checkIn: "2026-10-11" },
+      {
+        type: "edit-room",
+        lineId: "101",
+        room: {
+          ...stayValue(saved.rooms[0]),
+          roomTypeId: "single",
+          roomId: null,
+        },
+      },
+      { type: "add-room", room: stayValue(line("102")) },
+      { type: "remove-room", lineId: "101" },
+      { type: "set-discount", amountCents: 1000 },
+    ]
+    for (const action of actions) {
+      assert.equal(hasBillingChanges(saved, [action]), true, action.type)
+      assert.deepEqual(validationPreviewActions([action]), [action])
+    }
+  })
+
+  it("validates ordinary status edits and marks cancellation or restoration as billing changes", () => {
+    for (const status of [
+      "confirmed",
+      "checked_in",
+      "checked_out",
+      "no_show",
+    ] as const) {
+      const action: WorkflowAction = { type: "set-status", status }
+      assert.equal(hasBillingChanges(saved, [action]), false)
+      assert.deepEqual(validationPreviewActions([action]), [action])
+      assert.equal(
+        hasBillingChanges({ ...saved, status: "cancelled" }, [action]),
+        true
+      )
+    }
+    assert.equal(
+      hasBillingChanges(saved, [{ type: "set-status", status: "cancelled" }]),
+      true
+    )
+    assert.equal(
+      hasBillingChanges({ ...saved, status: "cancelled" }, [
+        { type: "set-status", status: "cancelled" },
+      ]),
+      false
+    )
+  })
+
+  it("clears the billing badge when the last pricing edit is reverted, even with other unsaved edits", () => {
+    const operational: WorkflowAction = {
+      type: "edit-room",
+      lineId: "101",
+      room: { ...stayValue(saved.rooms[0]), roomId: "102", children: 1 },
+    }
+    const notes: WorkflowAction = { type: "notes", notes: "Late arrival" }
+    const price: WorkflowAction = {
+      type: "dates",
+      ...dates,
+      checkOut: "2026-10-16",
+    }
+    assert.equal(hasBillingChanges(saved, [price, operational, notes]), true)
+    assert.deepEqual(validationPreviewActions([price, operational, notes]), [
+      price,
+      operational,
+    ])
+    assert.equal(hasBillingChanges(saved, [operational, notes]), false)
+    assert.deepEqual(validationPreviewActions([operational, notes]), [
+      operational,
+    ])
+    assert.equal(hasBillingChanges(saved, [{ type: "dates", ...dates }]), false)
+    assert.equal(
+      hasBillingChanges(saved, [{ type: "set-discount", amountCents: 0 }]),
+      false
+    )
+    assert.equal(hasBillingChanges(saved, []), false)
+  })
+
+  it("compares against the saved room type after a save or discard", () => {
+    const drafts = [draft(saved.rooms[0])]
+    drafts[0].room.roomTypeId = "single"
+    const changes = roomEdits(saved, drafts)
+    assert.equal(hasBillingChanges(saved, changes), true)
+    const updated = {
+      ...saved,
+      rooms: [{ ...saved.rooms[0], roomTypeId: "single" }],
+    }
+    assert.equal(hasBillingChanges(updated, roomEdits(updated, drafts)), false)
+    assert.equal(
+      hasBillingChanges(saved, roomEdits(saved, [draft(saved.rooms[0])])),
+      false
+    )
+  })
+})
 describe("reservation edit drafts", () => {
   it("copies occupancy and assignment without the line id", () => {
     assert.deepEqual(
@@ -164,7 +290,7 @@ describe("shared stay dates", () => {
   })
   it("previews dates and status but excludes notes, contact and guests", () => {
     assert.deepEqual(
-      billingPreviewActions([
+      validationPreviewActions([
         { type: "dates", ...dates },
         { type: "notes", notes: "Note" },
         {

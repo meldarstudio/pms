@@ -162,6 +162,34 @@ export function workflowDrafts(values: DetailsValues): RoomDraft[] {
     },
   }))
 }
+
+// Preview room order follows the retained rooms, then the added rooms.
+export function detailsSummaryRooms(
+  values: DetailsValues,
+  pricedRooms: ReservationDetail["rooms"] | undefined
+) {
+  return values.rooms
+    .filter((draft) => !draft.removed)
+    .map((draft, index) => {
+      const priced = pricedRooms?.[index]
+      const adults = count(1, "").safeParse(draft.room.adults)
+      const children = count(0, "").safeParse(draft.room.children)
+      return {
+        key: draft.id,
+        roomTypeId: draft.room.roomTypeId,
+        roomTypeName: priced?.roomTypeName,
+        adults: adults.success ? Number(adults.data) : null,
+        children: children.success ? Number(children.data) : null,
+        charges: priced
+          ? {
+              subtotalCents: priced.subtotalCents,
+              discountCents: priced.discountCents,
+              totalCents: priced.totalCents,
+            }
+          : null,
+      }
+    })
+}
 export const guestSchema = z.object({
   id: z.uuid(),
   fullName: z
