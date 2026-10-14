@@ -77,7 +77,7 @@ const spans = [
   { label: "14 días", value: "14" },
 ]
 
-const stayColors: Record<string, string> = {
+export const stayColors: Record<string, string> = {
   confirmed:
     "border-booking-confirmed-foreground/20 bg-booking-confirmed text-booking-confirmed-foreground",
   checked_in: "border-booking-foreground/20 bg-booking text-booking-foreground",

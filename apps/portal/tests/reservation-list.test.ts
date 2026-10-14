@@ -1,39 +1,38 @@
 import assert from "node:assert/strict"
 import { describe, it } from "node:test"
 import {
-  arrivalBandLabel,
-  groupAdjacentByCheckIn,
   occupantsLabel,
   reservationStatusLabel,
   roomsLabel,
 } from "../src/lib/reservation-list.ts"
 
 describe("reservation list presentation", () => {
-  it("groups only adjacent rows that share a check-in", () => {
-    const groups = groupAdjacentByCheckIn([
-      { id: "a", checkIn: "2026-10-10" },
-      { id: "b", checkIn: "2026-10-10" },
-      { id: "c", checkIn: "2026-10-11" },
-      { id: "d", checkIn: "2026-10-10" },
-    ])
-    assert.deepEqual(
-      groups.map((group) => group.rows.map((row) => row.id)),
-      [["a", "b"], ["c"], ["d"]]
-    )
-  })
-
-  it("labels arrival bands in Spanish and rooms by number", () => {
-    assert.match(arrivalBandLabel("2026-10-13"), /13 de octubre de 2026/)
-    assert.equal(arrivalBandLabel("2026-10-13")[0], "M")
+  it("labels rooms by number, or Sin asignar when any room is missing", () => {
     assert.equal(
       roomsLabel([
-        { roomNumber: "101", roomTypeName: "Doble" },
-        { roomNumber: null, roomTypeName: "Suite" },
+        { roomNumber: "102", roomTypeName: "Estándar" },
+        { roomNumber: "303", roomTypeName: "Suite familiar" },
+      ]),
+      "102, 303"
+    )
+    assert.equal(
+      roomsLabel([
+        { roomNumber: "102", roomTypeName: "Estándar" },
+        { roomNumber: null, roomTypeName: "Suite familiar" },
+      ]),
+      "Sin asignar"
+    )
+    assert.equal(
+      roomsLabel([
+        { roomNumber: null, roomTypeName: "Estándar" },
         { roomNumber: null, roomTypeName: null },
       ]),
-      "101, Suite, Sin asignar"
+      "Sin asignar"
     )
-    assert.equal(roomsLabel([]), "—")
+    assert.equal(roomsLabel([]), "Sin asignar")
+  })
+
+  it("labels occupants and status", () => {
     assert.equal(
       occupantsLabel([
         { adults: 2, children: 0 },
@@ -43,5 +42,7 @@ describe("reservation list presentation", () => {
     )
     assert.equal(occupantsLabel([{ adults: 1, children: 0 }]), "1 adulto")
     assert.equal(reservationStatusLabel("confirmed"), "Confirmada")
+    assert.equal(reservationStatusLabel("checked_in"), "Check-in")
+    assert.equal(reservationStatusLabel("checked_out"), "Check-out")
   })
 })

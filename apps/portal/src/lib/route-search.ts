@@ -62,10 +62,9 @@ function reservationStatus(value: unknown): ReservationsSearch["status"] {
     : "all"
 }
 
-// `all` and "" mean every date. A missing or invalid day is today, read when
-// the URL is parsed so the default is not frozen at module import.
+// A missing, empty, invalid, or `all` day is UTC today, read when the URL is
+// parsed so the default is not frozen at module import.
 function reservationCheckIn(value: unknown) {
-  if (value === "all" || value === "") return ""
   return validDay(value) ?? utcToday()
 }
 
@@ -79,14 +78,6 @@ export function reservationsSearch(
     checkIn: reservationCheckIn(search.checkIn),
     page: Number.isInteger(page) && page >= 0 ? page : 0,
   }
-}
-
-/** Empty check-in is written as `all` so a missing param can still mean today. */
-export function commitReservationsSearch<T extends { checkIn: string }>(
-  search: T
-): T {
-  if (search.checkIn !== "") return search
-  return { ...search, checkIn: "all" }
 }
 
 export const lastReservationsSearch: {

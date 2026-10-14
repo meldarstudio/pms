@@ -8,8 +8,8 @@ export const reservationStatusOptions: {
 }[] = [
   { value: "all", label: "Todos los estados" },
   { value: "confirmed", label: "Confirmada" },
-  { value: "checked_in", label: "En estancia" },
-  { value: "checked_out", label: "Salida registrada" },
+  { value: "checked_in", label: "Check-in" },
+  { value: "checked_out", label: "Check-out" },
   { value: "no_show", label: "No se presentó" },
   { value: "cancelled", label: "Cancelada" },
 ]
@@ -19,23 +19,6 @@ export function reservationStatusLabel(status: string) {
     reservationStatusOptions.find((option) => option.value === status)?.label ??
     status
   )
-}
-
-export function groupAdjacentByCheckIn<T extends { checkIn: string }>(
-  rows: readonly T[]
-) {
-  const groups: { checkIn: string; rows: T[] }[] = []
-  for (const row of rows) {
-    const current = groups.at(-1)
-    if (current?.checkIn === row.checkIn) current.rows.push(row)
-    else groups.push({ checkIn: row.checkIn, rows: [row] })
-  }
-  return groups
-}
-
-export function arrivalBandLabel(checkIn: string) {
-  const label = format(parseISO(checkIn), "EEEE, d 'de' MMMM 'de' yyyy")
-  return label.charAt(0).toUpperCase() + label.slice(1)
 }
 
 export function stayDateLabel(value: string) {
@@ -48,10 +31,11 @@ export function roomsLabel(
     roomTypeName?: string | null
   }[]
 ) {
-  if (rooms.length === 0) return "—"
-  return rooms
-    .map((room) => room.roomNumber ?? room.roomTypeName ?? "Sin asignar")
-    .join(", ")
+  const numbers = rooms.map((room) => room.roomNumber)
+  if (numbers.length === 0 || numbers.some((number) => number == null)) {
+    return "Sin asignar"
+  }
+  return numbers.join(", ")
 }
 
 export function occupantsLabel(

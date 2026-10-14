@@ -1,4 +1,4 @@
-import { Fragment, useDeferredValue, useId, useState } from "react"
+import { useDeferredValue, useId, useState } from "react"
 import { keepPreviousData, useQuery } from "@tanstack/react-query"
 import { format, parseISO } from "date-fns"
 import { PlusIcon, SearchIcon } from "lucide-react"
@@ -7,10 +7,10 @@ import {
   RoomBookingDialog,
   type BookingTarget,
 } from "@/components/room-booking-dialog"
+import { stayColors } from "@/components/room-calendar"
 import { DateField } from "@/components/date-field"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
-import { ButtonGroup } from "@/components/ui/button-group"
 import {
   Empty,
   EmptyHeader,
@@ -31,15 +31,12 @@ import { ChoiceField, TextField } from "@/components/workflow-fields"
 import { searchReservations } from "@/lib/api"
 import { formatMoney } from "@/lib/money"
 import {
-  arrivalBandLabel,
-  groupAdjacentByCheckIn,
   occupantsLabel,
   reservationStatusLabel,
   reservationStatusOptions,
   roomsLabel,
   stayDateLabel,
 } from "@/lib/reservation-list"
-import { utcToday } from "@/lib/reservation-form-schemas"
 import type { ReservationsSearch } from "@/lib/route-search"
 
 const pageSize = 50
@@ -56,7 +53,6 @@ export function Reservations({
   const arrivalId = useId()
   const [target, setTarget] = useState<BookingTarget | null>(null)
   const q = useDeferredValue(search.q)
-  const today = utcToday()
   const query = useQuery({
     queryKey: [
       "reservations",
@@ -71,7 +67,7 @@ export function Reservations({
         {
           q: q || undefined,
           status: search.status === "all" ? undefined : search.status,
-          checkIn: search.checkIn || undefined,
+          checkIn: search.checkIn,
           offset: search.page * pageSize,
           limit: pageSize,
         },
@@ -80,7 +76,6 @@ export function Reservations({
     placeholderData: keepPreviousData,
   })
   const rows = query.data ?? []
-  const groups = groupAdjacentByCheckIn(rows)
   const busy = query.isFetching || search.q !== q
 
   function open(id: string) {
@@ -98,52 +93,20 @@ export function Reservations({
 
   return (
     <main className="mx-auto flex w-full max-w-7xl flex-col gap-6 overflow-y-auto p-4 md:p-8">
-      <div>
-        <p className="text-xs font-medium tracking-widest text-muted-foreground uppercase">
-          Recepción
-        </p>
-        <h1 className="mt-2 text-2xl font-semibold tracking-tight">
-          Reservas y estancias
-        </h1>
-        <p className="mt-1 text-muted-foreground">
-          Revisa quién llega y abre la reserva.
-        </p>
-      </div>
+      <h1 className="text-2xl font-semibold tracking-tight">Reservas</h1>
       <FieldGroup className="grid gap-4 md:grid-cols-[minmax(0,1.15fr)_minmax(0,1.2fr)_220px] md:items-start">
-        <div className="flex flex-col gap-2">
-          <DateField
-            id={arrivalId}
-            label="Llegada"
-            value={search.checkIn ? parseISO(search.checkIn) : null}
-            timeZone={Intl.DateTimeFormat().resolvedOptions().timeZone}
-            onChange={(date) =>
-              onSearchChange({
-                checkIn: format(date, "yyyy-MM-dd"),
-                page: 0,
-              })
-            }
-          />
-          <ButtonGroup>
-            <Button
-              type="button"
-              size="sm"
-              variant={search.checkIn === today ? "secondary" : "outline"}
-              aria-pressed={search.checkIn === today}
-              onClick={() => onSearchChange({ checkIn: today, page: 0 })}
-            >
-              Hoy
-            </Button>
-            <Button
-              type="button"
-              size="sm"
-              variant={search.checkIn === "" ? "secondary" : "outline"}
-              aria-pressed={search.checkIn === ""}
-              onClick={() => onSearchChange({ checkIn: "", page: 0 })}
-            >
-              Todas las fechas
-            </Button>
-          </ButtonGroup>
-        </div>
+        <DateField
+          id={arrivalId}
+          label="Check-in"
+          value={parseISO(search.checkIn)}
+          timeZone={Intl.DateTimeFormat().resolvedOptions().timeZone}
+          onChange={(date) =>
+            onSearchChange({
+              checkIn: format(date, "yyyy-MM-dd"),
+              page: 0,
+            })
+          }
+        />
         <TextField
           label="Huésped o código"
           value={search.q}
@@ -185,7 +148,7 @@ export function Reservations({
                 <SearchIcon />
                 <EmptyTitle>No se encontraron reservas</EmptyTitle>
                 <EmptyDescription>
-                  Cambia la llegada, la búsqueda o el estado, o crea una nueva
+                  Cambia el check-in, la búsqueda o el estado, o crea una nueva
                   reserva.
                 </EmptyDescription>
               </EmptyHeader>
@@ -209,69 +172,65 @@ export function Reservations({
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {groups.map((group, index) => (
-                  <Fragment key={`${group.checkIn}-${index}`}>
-                    <TableRow className="bg-muted/40 hover:bg-muted/40">
-                      <TableCell colSpan={9} className="font-medium">
-                        {arrivalBandLabel(group.checkIn)}
-                      </TableCell>
-                    </TableRow>
-                    {group.rows.map((row) => (
-                      <TableRow
-                        key={row.id}
-                        className="cursor-pointer"
-                        tabIndex={0}
-                        aria-label={`Abrir reserva de ${row.guestName}`}
-                        onClick={() => open(row.id)}
-                        onKeyDown={(event) => {
-                          if (event.key === "Enter" || event.key === " ") {
-                            event.preventDefault()
-                            open(row.id)
-                          }
-                        }}
+                {rows.map((row) => (
+                  <TableRow
+                    key={row.id}
+                    className="cursor-pointer"
+                    tabIndex={0}
+                    aria-label={`Abrir reserva de ${row.guestName}`}
+                    onClick={() => open(row.id)}
+                    onKeyDown={(event) => {
+                      if (event.key === "Enter" || event.key === " ") {
+                        event.preventDefault()
+                        open(row.id)
+                      }
+                    }}
+                  >
+                    <TableCell>
+                      <Badge
+                        variant={
+                          row.status === "cancelled"
+                            ? "destructive"
+                            : "secondary"
+                        }
+                        className={cn(
+                          "w-[6.625rem] justify-center",
+                          row.status === "cancelled"
+                            ? "border-destructive/20"
+                            : stayColors[row.status]
+                        )}
                       >
-                        <TableCell>
-                          <Badge variant="secondary">
-                            {reservationStatusLabel(row.status)}
-                          </Badge>
-                        </TableCell>
-                        <TableCell className="font-medium">
-                          {row.guestName}
-                        </TableCell>
-                        <TableCell className="font-mono text-xs">
-                          {row.code}
-                        </TableCell>
-                        <TableCell>{roomsLabel(row.rooms)}</TableCell>
-                        <TableCell>{occupantsLabel(row.rooms)}</TableCell>
-                        <TableCell className="tabular-nums">
-                          {stayDateLabel(row.checkIn)}
-                        </TableCell>
-                        <TableCell className="tabular-nums">
-                          {stayDateLabel(row.checkOut)}
-                        </TableCell>
-                        <TableCell className="text-right tabular-nums">
-                          {formatMoney(row.totalCents, row.currency)}
-                        </TableCell>
-                        <TableCell className="text-right">
-                          <div className="tabular-nums">
-                            {formatMoney(
-                              Math.abs(row.balanceCents),
-                              row.currency
-                            )}
-                          </div>
-                          {row.balanceCents < 0 ? (
-                            <div className="text-xs text-muted-foreground">
-                              Saldo a favor
-                            </div>
-                          ) : row.balanceCents === 0 ? (
-                            <div className="text-xs text-muted-foreground">
-                              Saldado
-                            </div>
-                          ) : null}
-                        </TableCell>
-                      </TableRow>
-                    ))}
-                  </Fragment>
+                        {reservationStatusLabel(row.status)}
+                      </Badge>
+                    </TableCell>
+                    <TableCell className="font-medium">
+                      {row.guestName}
+                    </TableCell>
+                    <TableCell className="font-mono text-xs">
+                      {row.code}
+                    </TableCell>
+                    <TableCell>{roomsLabel(row.rooms)}</TableCell>
+                    <TableCell>{occupantsLabel(row.rooms)}</TableCell>
+                    <TableCell className="tabular-nums">
+                      {stayDateLabel(row.checkIn)}
+                    </TableCell>
+                    <TableCell className="tabular-nums">
+                      {stayDateLabel(row.checkOut)}
+                    </TableCell>
+                    <TableCell className="text-right tabular-nums">
+                      {formatMoney(row.totalCents, row.currency)}
+                    </TableCell>
+                    <TableCell className="text-right">
+                      <div className="tabular-nums">
+                        {formatMoney(Math.abs(row.balanceCents), row.currency)}
+                      </div>
+                      {row.balanceCents < 0 ? (
+                        <div className="text-xs text-muted-foreground">
+                          Saldo a favor
+                        </div>
+                      ) : null}
+                    </TableCell>
+                  </TableRow>
                 ))}
               </TableBody>
             </Table>

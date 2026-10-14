@@ -3,7 +3,6 @@ import { describe, it } from "node:test"
 import { utcToday } from "../src/lib/reservation-form-schemas.ts"
 import {
   calendarSearch,
-  commitReservationsSearch,
   inventorySearch,
   reservationsSearch,
   validDay,
@@ -53,32 +52,16 @@ describe("route search validation", () => {
     })
   })
 
-  it("defaults a missing check-in to UTC today and keeps all dates explicit", () => {
+  it("defaults a missing, empty, invalid, or all check-in to UTC today", () => {
     const today = utcToday()
     assert.equal(reservationsSearch({}).checkIn, today)
-    assert.equal(reservationsSearch({ checkIn: "all" }).checkIn, "")
-    assert.equal(reservationsSearch({ checkIn: "" }).checkIn, "")
+    assert.equal(reservationsSearch({ checkIn: "all" }).checkIn, today)
+    assert.equal(reservationsSearch({ checkIn: "" }).checkIn, today)
     assert.equal(
       reservationsSearch({ checkIn: "2026-04-30" }).checkIn,
       "2026-04-30"
     )
     assert.equal(reservationsSearch({ checkIn: "2026-02-30" }).checkIn, today)
     assert.equal(reservationsSearch({ checkIn: "nope" }).checkIn, today)
-    assert.deepEqual(
-      commitReservationsSearch({
-        q: "",
-        status: "all" as const,
-        checkIn: "",
-        page: 0,
-      }),
-      { q: "", status: "all", checkIn: "all", page: 0 }
-    )
-    const dated = {
-      q: "ana",
-      status: "confirmed" as const,
-      checkIn: "2026-04-30",
-      page: 1,
-    }
-    assert.equal(commitReservationsSearch(dated), dated)
   })
 })
