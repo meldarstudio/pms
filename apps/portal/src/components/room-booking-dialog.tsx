@@ -67,9 +67,9 @@ import {
 } from "@/components/ui/table"
 import { Skeleton } from "@/components/ui/skeleton"
 import { Separator } from "@/components/ui/separator"
-import { TextField, ChoiceField } from "@/components/workflow-fields"
 import { WorkflowBill } from "@/components/workflow-bill"
 import { BookingSummary } from "@/components/booking-summary"
+import { NewBooking } from "@/components/new-booking"
 import {
   GuestEntryForm,
   PaymentForm,
@@ -78,18 +78,15 @@ import {
 import { format } from "@/lib/dates"
 import { isValid, parseISO } from "date-fns"
 import {
-  createWorkflowBooking,
   previewWorkflow,
   type StayingGuest,
   type ReservationPayment,
   type ReservationDetail,
   type WorkflowAction,
   type WorkflowCommand,
-  type WorkflowRoom,
   type WorkflowBilling,
 } from "@/lib/api"
 import {
-  useAvailability,
   useReservation,
   useReservationSaving,
   useReservations,
@@ -148,7 +145,6 @@ const stayDate = (value: string, pattern: string) => {
   const date = parseISO(value)
   return isValid(date) ? format(date, pattern) : "—"
 }
-const today = () => new Date().toISOString().slice(0, 10)
 const paymentToday = utcToday
 function useDraftCommand(actionsKey: string) {
   return useMemo<WorkflowCommand>(
@@ -183,6 +179,7 @@ export function RoomBookingDialog({
   const reservationId = target?.mode === "edit" ? target.reservationId : null
   const detail = useReservation(reservationId)
   const saving = useReservationSaving(reservationId)
+  const [creating, setCreating] = useState(false)
   const dirty = useRef(false)
   const [tab, setTab] = useState("details")
   const [leave, setLeave] = useState<(() => void) | null>(null)
@@ -190,7 +187,7 @@ export function RoomBookingDialog({
     dirty.current = value
   }, [])
   function navigate(action: () => void) {
-    if (isReservationSaving(client, reservationId)) return
+    if (creating || isReservationSaving(client, reservationId)) return
     if (dirty.current) setLeave(() => action)
     else action()
   }
@@ -205,12 +202,12 @@ export function RoomBookingDialog({
       onOpenChange={(open) => !open && navigate(close)}
     >
       <DialogContent
-        closeDisabled={saving}
+        closeDisabled={saving || creating}
         className={cn(
           "max-h-[94svh]",
           target?.mode === "edit"
             ? "flex flex-col overflow-hidden sm:max-w-4xl"
-            : "overflow-y-auto sm:max-w-5xl"
+            : "overflow-y-auto sm:max-w-4xl"
         )}
       >
         <DialogHeader
@@ -231,7 +228,7 @@ export function RoomBookingDialog({
           >
             {target?.mode === "edit"
               ? "Detalles de la reserva, huéspedes y pagos."
-              : "Reserva por tipo y asigna una habitación cuando lo necesites."}
+              : "Completa la estancia y el contacto principal."}
           </DialogDescription>
         </DialogHeader>
         {target?.mode === "edit" ? (
@@ -264,7 +261,13 @@ export function RoomBookingDialog({
                   : "new"
               }
               target={target}
-              onCreated={onViewReservation}
+              onCreated={() => {
+                toast.add({ title: "Reserva creada", type: "success" })
+                close()
+              }}
+              onCancel={() => navigate(close)}
+              onDirtyChange={onDirtyChange}
+              onSavingChange={setCreating}
             />
           )
         )}
@@ -274,7 +277,7 @@ export function RoomBookingDialog({
           saving={saving}
           onStay={() => setLeave(null)}
           onLeave={() => {
-            if (isReservationSaving(client, reservationId)) return
+            if (creating || isReservationSaving(client, reservationId)) return
             dirty.current = false
             setLeave(null)
             leave()
@@ -283,235 +286,6 @@ export function RoomBookingDialog({
       )}
     </Dialog>
   )
-}
-
-function RoomFields({
-  room,
-  onChange,
-  blockedRoomIds = new Set<string>(),
-}: {
-  room: WorkflowRoom
-  onChange: (room: WorkflowRoom) => void
-  blockedRoomIds?: Set<string>
-}) {
-  const types = useRoomTypes(),
-    rooms = useRooms()
-  const set = (patch: Partial<WorkflowRoom>) => onChange({ ...room, ...patch })
-  return (
-    <FieldGroup className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-      <ChoiceField
-        label="Tipo"
-        value={room.roomTypeId}
-        options={(types.data ?? []).map((t) => ({
-          value: t.id,
-          label: t.name,
-        }))}
-        onChange={(roomTypeId) => {
-          if (roomTypeId !== room.roomTypeId) set({ roomTypeId, roomId: null })
-        }}
-      />
-      <ChoiceField
-        label="Hab."
-        value={room.roomId ?? "unassigned"}
-        options={[
-          { value: "unassigned", label: "Sin asignar" },
-          ...(rooms.data ?? [])
-            .filter(
-              (r) =>
-                r.roomTypeId === room.roomTypeId && !blockedRoomIds.has(r.id)
-            )
-            .map((r) => ({
-              value: r.id,
-              label: r.number,
-            })),
-        ]}
-        onChange={(v) => set({ roomId: v === "unassigned" ? null : v })}
-      />
-      <TextField
-        label="Adultos"
-        type="number"
-        min={1}
-        value={room.adults}
-        onChange={(v) => set({ adults: Number(v) })}
-      />
-      <TextField
-        label="Niños"
-        type="number"
-        min={0}
-        value={room.children}
-        onChange={(v) => set({ children: Number(v) })}
-      />
-    </FieldGroup>
-  )
-}
-
-function NewBooking({
-  target,
-  onCreated,
-}: {
-  target: Exclude<BookingTarget, { mode: "edit" }>
-  onCreated: (id: string) => void
-}) {
-  const client = useQueryClient()
-  const start = target.mode === "create" ? target.checkIn : today()
-  const [fullName, setFullName] = useState(""),
-    [phone, setPhone] = useState(""),
-    [email, setEmail] = useState("")
-  const [stay, setStay] = useState({
-    checkIn: start,
-    checkOut: minimumCheckOut(start),
-  })
-  const [drafts, setDrafts] = useState<WorkflowRoom[]>([
-    {
-      roomTypeId: target.mode === "create" ? target.roomTypeId : "",
-      roomId: target.mode === "create" ? target.roomId : null,
-      adults: 1,
-      children: 0,
-    },
-  ])
-  const [error, setError] = useState(""),
-    [busy, setBusy] = useState(false)
-  const retry = useRef<{ payload: string; requestId: string } | null>(null)
-  async function save() {
-    setBusy(true)
-    setError("")
-    try {
-      const data = {
-        guest: {
-          fullName,
-          ...(phone ? { phone } : {}),
-          ...(email ? { email } : {}),
-        },
-        ...stay,
-        rooms: drafts,
-      }
-      const payload = JSON.stringify(data)
-      if (retry.current?.payload !== payload)
-        retry.current = { payload, requestId: crypto.randomUUID() }
-      const result = await createWorkflowBooking({
-        ...data,
-        requestId: retry.current!.requestId,
-      })
-      await client.invalidateQueries()
-      onCreated(result.id)
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "No se pudo guardar.")
-    } finally {
-      setBusy(false)
-    }
-  }
-  return (
-    <form
-      className="flex flex-col gap-5"
-      onSubmit={(e) => {
-        e.preventDefault()
-        void save()
-      }}
-    >
-      <fieldset disabled={busy} className="flex min-w-0 flex-col gap-5">
-        <FieldGroup className="grid grid-cols-2 gap-3">
-          <TextField
-            label="Nombre completo"
-            value={fullName}
-            onChange={setFullName}
-          />
-          <TextField label="Teléfono" value={phone} onChange={setPhone} />
-          <TextField
-            label="Correo"
-            type="email"
-            value={email}
-            onChange={setEmail}
-          />
-        </FieldGroup>
-        <FieldGroup className="grid grid-cols-2 gap-3">
-          <TextField
-            label="Check-in"
-            type="date"
-            required
-            value={stay.checkIn}
-            onChange={(checkIn) => setStay(changeCheckIn(stay, checkIn))}
-          />
-          <TextField
-            label="Check-out"
-            type="date"
-            required
-            min={minimumCheckOut(stay.checkIn)}
-            value={stay.checkOut}
-            onChange={(checkOut) => setStay({ ...stay, checkOut })}
-          />
-        </FieldGroup>
-        <Separator />
-        {drafts.map((room, i) => (
-          <section key={i} className="flex flex-col gap-3 border p-3">
-            <div className="flex items-center justify-between">
-              <h3 className="font-medium">Habitación {i + 1}</h3>
-              {drafts.length > 1 && (
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="icon-sm"
-                  aria-label={`Quitar habitación ${i + 1}`}
-                  onClick={() => setDrafts((d) => d.filter((_, n) => n !== i))}
-                >
-                  <XIcon />
-                </Button>
-              )}
-            </div>
-            <RoomFields
-              room={room}
-              blockedRoomIds={overlappingRoomIds(
-                drafts.filter((_, n) => n !== i)
-              )}
-              onChange={(r) =>
-                setDrafts((d) => d.map((v, n) => (n === i ? r : v)))
-              }
-            />
-            <NewRoomPrice room={room} stay={stay} />
-          </section>
-        ))}
-        <Button
-          type="button"
-          variant="outline"
-          className="w-fit"
-          onClick={() =>
-            setDrafts((d) => [...d, { ...d[d.length - 1], roomId: null }])
-          }
-        >
-          <PlusIcon data-icon="inline-start" />
-          Añadir habitación
-        </Button>
-      </fieldset>
-      <FieldError>{error}</FieldError>
-      <div className="flex justify-end">
-        <Button
-          type="submit"
-          disabled={
-            busy || !fullName.trim() || drafts.some((d) => !d.roomTypeId)
-          }
-        >
-          {busy ? "Guardando…" : "Crear reserva"}
-        </Button>
-      </div>
-    </form>
-  )
-}
-function NewRoomPrice({
-  room,
-  stay,
-}: {
-  room: WorkflowRoom
-  stay: { checkIn: string; checkOut: string }
-}) {
-  const q = useAvailability(stay.checkIn, stay.checkOut),
-    type = q.data?.roomTypes.find((t) => t.id === room.roomTypeId)
-  return q.error ? (
-    <FieldError>{q.error.message}</FieldError>
-  ) : type ? (
-    <p className="text-muted-foreground">
-      {q.data?.nights} noches · {formatMoney(type.totalCents)} · {type.free}{" "}
-      disponibles de este tipo. La disponibilidad se valida al guardar.
-    </p>
-  ) : null
 }
 
 export function BookingEditor({

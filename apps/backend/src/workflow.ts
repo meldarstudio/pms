@@ -382,6 +382,7 @@ export async function createWorkflow(db: Db, input: WorkflowCreate) {
         checkIn: input.checkIn,
         checkOut: input.checkOut,
         notes: input.notes,
+        discountCents: input.discountCents ?? 0,
         createdAt: now,
       }),
       db.insert(reservationRequests).values({

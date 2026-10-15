@@ -269,6 +269,14 @@ export function paymentPayload(values: PaymentValues): PaymentInput {
   }
 }
 export const discountSchema = z.object({ amount: money(false) })
+export const newBookingSchema = (types: RoomType[]) =>
+  z.intersection(
+    detailsSchema(types),
+    guestSchema
+      .pick({ fullName: true, email: true, phone: true })
+      .extend({ discount: discountSchema.shape.amount })
+  )
+export type NewBookingValues = z.input<ReturnType<typeof newBookingSchema>>
 export const cancellationSchema = z.object({ reason: optionalText(2000) })
 
 export function schemaErrors(

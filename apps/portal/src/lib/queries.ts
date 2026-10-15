@@ -63,10 +63,15 @@ export function usePatchRoom() {
   })
 }
 
-export function useAvailability(checkIn: string, checkOut: string) {
+export function useAvailability(
+  checkIn: string,
+  checkOut: string,
+  enabled = true
+) {
   return useQuery({
     queryKey: ["availability", checkIn, checkOut],
     queryFn: ({ signal }) => getAvailability(checkIn, checkOut, signal),
+    enabled,
   })
 }
 

@@ -195,6 +195,7 @@ export const workflowCreateSchema = z
     checkOut: dateSchema,
     rooms: z.array(workflowRoom).min(1).max(60),
     notes: z.string().max(2000).optional(),
+    discountCents: z.number().int().min(0).max(1000000000).optional(),
   })
   .strict()
 export type WorkflowAction = z.infer<typeof workflowActionSchema>

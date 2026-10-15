@@ -420,6 +420,7 @@ export function createWorkflowBooking(body: {
   }
   rooms: WorkflowRoom[]
   notes?: string
+  discountCents?: number
 }) {
   return writeJson<ReservationDetail>("/reservations", "POST", body)
 }

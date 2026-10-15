@@ -1,4 +1,4 @@
-import { useId } from "react"
+import { useId, useRef } from "react"
 import { format, parseISO } from "date-fns"
 import { DateField } from "@/components/date-field"
 import { Field, FieldError, FieldLabel } from "@/components/ui/field"
@@ -122,6 +122,7 @@ export function ChoiceField({
   name,
   onBlur,
   groupErrorId,
+  placeholder,
 }: {
   label: string
   value: string
@@ -134,9 +135,11 @@ export function ChoiceField({
   name?: string
   onBlur?: () => void
   groupErrorId?: string
+  placeholder?: string
 }) {
   const generatedId = useId()
   const id = providedId ?? generatedId
+  const menuOpen = useRef(false)
   return (
     <Field data-disabled={disabled} data-invalid={!!error || !!groupErrorId}>
       <FieldLabel htmlFor={id} className={hideLabel ? "sr-only" : undefined}>
@@ -145,18 +148,24 @@ export function ChoiceField({
       <Select
         items={options}
         name={name}
-        value={value}
+        value={value || null}
         onValueChange={(v) => v !== null && onChange(v)}
+        onOpenChange={(open) => {
+          menuOpen.current = open
+          if (!open) onBlur?.()
+        }}
         disabled={disabled}
       >
         <SelectTrigger
           id={id}
           className="w-full"
-          onBlur={onBlur}
+          onBlur={() => {
+            if (!menuOpen.current) onBlur?.()
+          }}
           aria-invalid={!!error || !!groupErrorId}
           aria-describedby={groupErrorId ?? (error ? `${id}-error` : undefined)}
         >
-          <SelectValue />
+          <SelectValue placeholder={placeholder} />
         </SelectTrigger>
         <SelectContent>
           <SelectGroup>

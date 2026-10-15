@@ -342,6 +342,30 @@ describe('reservation workflow', () => {
       409,
     )
   })
+  it('saves the primary contact, reservation notes, and initial discount atomically', async () => {
+    const input = {
+      requestId: crypto.randomUUID(),
+      guest: { fullName: 'Ada Lovelace', email: 'ada@example.com', phone: '+51 999 888 777' },
+      checkIn: '2026-10-10',
+      checkOut: '2026-10-13',
+      notes: 'Late arrival',
+      discountCents: 3000,
+      rooms: [{ roomTypeId: 'type', adults: 2, children: 0 }],
+    }
+    const response = await request('/reservations', 'POST', input)
+    expect(response.status).toBe(201)
+    const saved = await response.json() as Detail
+    expect(saved.guest).toMatchObject(input.guest)
+    expect(saved.notes).toBe(input.notes)
+    expect(saved.savedDiscountCents).toBe(3000)
+    expect(saved.totalCents).toBe(27000)
+    expect(saved.balanceCents).toBe(27000)
+    const retry = await request('/reservations', 'POST', input)
+    expect((await retry.json() as Detail).id).toBe(saved.id)
+    expect((await request('/reservations', 'POST', { ...input, discountCents: 0 })).status).toBe(409)
+    for (const discountCents of [-1, 0.5, 1000000001])
+      expect((await request('/reservations', 'POST', { ...input, requestId: crypto.randomUUID(), discountCents })).status).toBe(400)
+  })
   it('rejects one of two distinct bookings competing for the last room', async () => {
     await create(2)
     const responses = await Promise.all(

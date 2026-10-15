@@ -1,4 +1,4 @@
-import { useEffect, useId, useRef, useState } from "react"
+import { useEffect, useId, useMemo, useRef } from "react"
 import { useSelector } from "@tanstack/react-form"
 import { cn } from "cn"
 import { useReservationForm, blurThenChange } from "@/lib/reservation-form"
@@ -178,9 +178,10 @@ function DiscountInput({
   onSave: (amountCents: number) => Promise<void>
   onDirtyChange?: (dirty: boolean) => void
 }) {
-  const [defaults, setDefaults] = useState(() => ({
-    amount: discountDraft(amountCents),
-  }))
+  const defaults = useMemo(
+    () => ({ amount: discountDraft(amountCents) }),
+    [amountCents]
+  )
   const focused = useRef(false)
   const errorId = useId()
   const form = useReservationForm({
@@ -194,13 +195,11 @@ function DiscountInput({
       )!
       const next = { amount: discountDraft(cents) }
       if (cents === amountCents) {
-        setDefaults(next)
         form.reset(next)
         return
       }
       try {
         await onSave(cents)
-        setDefaults(next)
         form.reset(next)
       } catch (cause) {
         toastError("No se pudo guardar el descuento", cause)
@@ -218,11 +217,9 @@ function DiscountInput({
       form.state.isDefaultValue &&
       !form.state.isSubmitting
     ) {
-      const next = { amount: discountDraft(amountCents) }
-      if (defaults.amount !== next.amount) setDefaults(next)
-      form.reset(next)
+      form.reset(defaults)
     }
-  }, [amountCents, form, defaults.amount])
+  }, [form, defaults])
 
   return (
     <form.Field name="amount">
