@@ -42,7 +42,10 @@ const room = z.object({
 })
 export const capacityMessage =
   "La habitación no tiene capacidad para todos los huéspedes."
-export const detailsSchema = (types: RoomType[]) =>
+export const detailsSchema = (
+  types: RoomType[],
+  { validateOperations = true } = {}
+) =>
   z
     .object({
       checkIn: date,
@@ -102,6 +105,7 @@ export const detailsSchema = (types: RoomType[]) =>
             message: children.error.issues[0].message,
           })
         if (
+          validateOperations &&
           adults.success &&
           children.success &&
           type &&
@@ -110,7 +114,7 @@ export const detailsSchema = (types: RoomType[]) =>
         )
           ctx.addIssue({ code: "custom", path, message: capacityMessage })
         if (draft.room.roomId) {
-          if (assignments.has(draft.room.roomId))
+          if (validateOperations && assignments.has(draft.room.roomId))
             ctx.addIssue({
               code: "custom",
               path: [...path, "roomId"],

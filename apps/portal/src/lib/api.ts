@@ -370,7 +370,7 @@ export type WorkflowCommand = {
   requestId: string
   actions: WorkflowAction[]
 }
-export type WorkflowPreview = Pick<
+export type WorkflowBilling = Pick<
   ReservationDetail,
   | "status"
   | "checkIn"
@@ -385,6 +385,16 @@ export type WorkflowPreview = Pick<
 > & {
   rooms: ReservationDetail["rooms"]
   payments: ReservationDetail["payments"]
+}
+export type WorkflowIssue = {
+  code: string
+  // Index in the proposed rooms, excluding removed rooms.
+  roomIndex: number
+  field: "roomId" | "roomTypeId" | "occupancy"
+}
+export type WorkflowPreview = {
+  billing: WorkflowBilling
+  validation: { issues: WorkflowIssue[] }
 }
 export function sendWorkflow(id: string, body: WorkflowCommand) {
   return writeJson<ReservationDetail>(

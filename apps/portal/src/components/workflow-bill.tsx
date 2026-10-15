@@ -1,11 +1,11 @@
 import { Separator } from "@/components/ui/separator"
 import { formatMoney } from "@/lib/money"
-import type { WorkflowPreview } from "@/lib/api"
+import type { WorkflowBilling } from "@/lib/api"
 export function WorkflowBill({
   bill,
   compact = false,
 }: {
-  bill: Omit<WorkflowPreview, "rooms">
+  bill: Omit<WorkflowBilling, "rooms">
   compact?: boolean
 }) {
   return (

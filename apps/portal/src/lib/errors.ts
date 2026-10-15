@@ -16,7 +16,7 @@ const messages: Record<string, string> = {
     "La habitación debe ser del mismo tipo reservado.",
   "no availability": "No hay disponibilidad para esas fechas.",
   "room is already assigned for those dates":
-    "Esta habitación acaba de asignarse a otra reserva.",
+    "Esta habitación está ocupada para esas fechas. Cambia la habitación o las fechas.",
   "room is closed for those dates":
     "Esta habitación está cerrada para esas fechas.",
   "room has a stay on those dates":

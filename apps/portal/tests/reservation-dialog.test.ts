@@ -8,6 +8,8 @@ import type {
   ReservationDetail,
   StayingGuest,
   WorkflowCommand,
+  WorkflowBilling,
+  WorkflowIssue,
 } from "../src/lib/api.ts"
 
 let window: Window
@@ -320,12 +322,25 @@ function mockApi(
   }
 }
 
-async function choose(label: string, option: string, index = 0) {
+function previewResponse(
+  billing: WorkflowBilling,
+  issues: WorkflowIssue[] = []
+) {
+  return Response.json({ billing, validation: { issues } })
+}
+
+function fieldTrigger(label: string, index = 0) {
   const fieldLabel = Array.from(
     window.document.querySelectorAll("label")
   ).filter((item) => item.textContent.trim() === label)[index]
   assert.ok(fieldLabel, `Missing label ${label}`)
-  const trigger = window.document.getElementById(fieldLabel.htmlFor)!
+  return window.document.getElementById(
+    fieldLabel.htmlFor
+  ) as unknown as HTMLButtonElement
+}
+
+async function choose(label: string, option: string, index = 0) {
+  const trigger = fieldTrigger(label, index)
   await until(() => !trigger.hasAttribute("disabled"), `${label} must be ready`)
   await React.act(async () => trigger.click())
   const item = Array.from(
@@ -336,6 +351,215 @@ async function choose(label: string, option: string, index = 0) {
   await React.act(async () => (item as unknown as HTMLElement).click())
 }
 
+it("keeps an extension price visible and identifies the conflicting room without exposing its ID", async () => {
+  const initial = detail()
+  let writes = 0
+  const previews: WorkflowCommand[] = []
+  let finishPreview!: () => void
+  mockApi(async (path, command) => {
+    if (path.endsWith("/commands")) {
+      writes++
+      return Response.json(initial)
+    }
+    previews.push(command)
+    const assignment = command.actions.find(
+      (action) => action.type === "edit-room"
+    )
+    const conflict =
+      !assignment ||
+      assignment.type !== "edit-room" ||
+      assignment.room.roomId !== null
+    const response = previewResponse(
+      {
+        ...initial,
+        checkOut: "2026-10-17",
+        subtotalCents: 45000,
+        totalCents: 45000,
+        balanceCents: 45000,
+        rooms: [
+          { ...initial.rooms[0], subtotalCents: 45000, totalCents: 45000 },
+        ],
+      },
+      conflict
+        ? [
+            {
+              code: "room is already assigned for those dates",
+              roomIndex: 0,
+              field: "roomId",
+            },
+          ]
+        : []
+    )
+    return previews.length === 2
+      ? new Promise<Response>((resolve) => {
+          finishPreview = () => resolve(response)
+        })
+      : response
+  })
+  const fetchApi = globalThis.fetch
+  globalThis.fetch = async (input, init) => {
+    if (!init?.method && new URL(String(input)).pathname === "/reservations")
+      return Response.json([
+        {
+          id: "next-reservation",
+          status: "confirmed",
+          checkIn: "2026-10-16",
+          checkOut: "2026-10-18",
+          rooms: [{ id: "next-line", roomTypeId: "double", roomId: "room-1" }],
+        },
+      ])
+    return fetchApi(input, init)
+  }
+  await render(
+    React.createElement(dialogs.BookingEditor, {
+      detail: initial,
+      onRefresh: () => {},
+    })
+  )
+  await React.act(async () => fieldTrigger("Check-out").click())
+  const day = Array.from(
+    window.document.querySelectorAll<HTMLButtonElement>("button[data-day]")
+  ).find((button) => button.textContent.trim() === "17")
+  assert.ok(day)
+  await React.act(async () => day.click())
+  const room = fieldTrigger("Hab.")
+  await until(
+    () => room.getAttribute("aria-invalid") === "true",
+    "Conflict must mark the assigned room"
+  )
+  assert.equal(
+    room.querySelector('[data-slot="select-value"]')?.textContent.trim(),
+    "101"
+  )
+  assert.equal(button("Guardar detalles").disabled, true)
+  const error = window.document.getElementById(
+    room.getAttribute("aria-describedby")!
+  )!
+  assert.ok(error.textContent.includes("ocupada para esas fechas"))
+  assert.equal(container.querySelector("aside")!.contains(error), false)
+  const subtotal = Array.from(container.querySelectorAll("dt")).find(
+    (item) => item.textContent === "Importe habitaciones"
+  )!
+  assert.equal(
+    subtotal.nextElementSibling?.textContent.replace(/\s/g, ""),
+    "S/450"
+  )
+  assert.ok(container.textContent.includes("Vista previa"))
+  assert.equal(container.textContent.includes("Reintentar"), false)
+  assert.equal(container.textContent.includes("Calculando…"), false)
+  await submit()
+  assert.equal(writes, 0)
+  await React.act(async () => room.click())
+  const options = Array.from(
+    window.document.querySelectorAll<HTMLElement>('[role="option"]')
+  )
+  assert.equal(
+    options
+      .find((item) => item.textContent.trim() === "101")
+      ?.getAttribute("aria-disabled"),
+    "true"
+  )
+  const unassigned = options.find(
+    (item) => item.textContent.trim() === "Sin asignar"
+  )!
+  await React.act(async () => unassigned.click())
+  const assertQuoteVisible = () => {
+    assert.equal(
+      subtotal.nextElementSibling?.textContent.replace(/\s/g, ""),
+      "S/450"
+    )
+    assert.equal(container.textContent.includes("Calculando…"), false)
+    assert.equal(button("Guardar detalles").disabled, true)
+  }
+  assertQuoteVisible()
+  await flush(150)
+  assertQuoteVisible()
+  await until(() => previews.length === 2, "Assignment must be revalidated")
+  assertQuoteVisible()
+  await React.act(async () => finishPreview())
+  await until(
+    () => !button("Guardar detalles").disabled,
+    "Clearing the assignment must resolve the conflict"
+  )
+  assert.equal(room.getAttribute("aria-invalid"), "false")
+  assert.equal(
+    window.document.body.textContent.includes("ocupada para esas fechas"),
+    false
+  )
+  assert.equal(
+    subtotal.nextElementSibling?.textContent.replace(/\s/g, ""),
+    "S/450"
+  )
+  assert.equal(previews.length, 2)
+})
+
+it("keeps pricing an added room when its occupancy is invalid and blocks saving", async () => {
+  const previews: WorkflowCommand[] = []
+  mockApi(async (path, command) => {
+    assert.ok(path.endsWith("/preview"))
+    previews.push(command)
+    const added = command.actions.find((action) => action.type === "add-room")!
+    assert.equal(added.type, "add-room")
+    if (added.type !== "add-room") throw new Error("Expected added room")
+    return previewResponse(
+      {
+        ...detail(),
+        subtotalCents: 60000,
+        totalCents: 60000,
+        balanceCents: 60000,
+        rooms: [
+          ...detail().rooms,
+          { ...detail().rooms[0], id: "new-line", roomId: null, ...added.room },
+        ],
+      },
+      added.room.adults > 2
+        ? [
+            {
+              code: "too many guests for this room type",
+              roomIndex: 1,
+              field: "occupancy",
+            },
+          ]
+        : []
+    )
+  })
+  await render(
+    React.createElement(dialogs.BookingEditor, {
+      detail: detail(),
+      onRefresh: () => {},
+    })
+  )
+  await React.act(async () => button("Agregar habitación").click())
+  await until(
+    () => !button("Guardar detalles").disabled,
+    "Added room must be priced"
+  )
+  await fill("rooms[1].room.adults", "3")
+  await until(
+    () =>
+      previews.length === 2 && !container.textContent.includes("Calculando…"),
+    "Invalid occupancy must still receive a price"
+  )
+  const subtotal = Array.from(container.querySelectorAll("dt")).find(
+    (item) => item.textContent === "Importe habitaciones"
+  )!
+  assert.equal(
+    subtotal.nextElementSibling?.textContent.replace(/\s/g, ""),
+    "S/600"
+  )
+  assert.ok(container.textContent.includes("La habitación no tiene capacidad"))
+  assert.equal(button("Guardar detalles").disabled, true)
+  await fill("rooms[1].room.adults", "2")
+  await until(
+    () => !button("Guardar detalles").disabled,
+    "Corrected occupancy must allow saving"
+  )
+  assert.equal(
+    container.textContent.includes("La habitación no tiene capacidad"),
+    false
+  )
+})
+
 it("allows choosing and saving check-in with an unassigned room", async () => {
   const initial = detail()
   initial.rooms[0].roomId = null
@@ -343,7 +567,10 @@ it("allows choosing and saving check-in with an unassigned room", async () => {
   const writes: WorkflowCommand[] = []
   mockApi(async (path, command) => {
     if (path.endsWith("/commands")) writes.push(command)
-    return Response.json({ ...initial, status: "checked_in" })
+    const saved = { ...initial, status: "checked_in" }
+    return path.endsWith("/preview")
+      ? previewResponse(saved)
+      : Response.json(saved)
   })
   await render(
     React.createElement(dialogs.BookingEditor, {
@@ -378,7 +605,7 @@ it("previews and saves added unassigned rooms after check-in and allows clearing
       (action) => action.type === "add-room"
     )
     const unassigned = { ...initial.rooms[0], roomId: null, roomNumber: null }
-    return Response.json({
+    const saved = {
       ...initial,
       rooms: hasAdded
         ? [unassigned, { ...unassigned, id: "line-2" }]
@@ -386,7 +613,10 @@ it("previews and saves added unassigned rooms after check-in and allows clearing
       subtotalCents: hasAdded ? 60000 : 30000,
       totalCents: hasAdded ? 60000 : 30000,
       balanceCents: hasAdded ? 60000 : 30000,
-    })
+    }
+    return path.endsWith("/preview")
+      ? previewResponse(saved)
+      : Response.json(saved)
   })
   // Match the dialog's subscription to the saved reservation cache.
   client.setQueryData(["reservation", initial.id], initial)
@@ -453,7 +683,7 @@ it("retries a failed validation preview without losing edits and re-enables savi
     previews.push(command)
     return previews.length === 1
       ? Response.json({ error: "Temporary preview failure" }, { status: 503 })
-      : Response.json(detail())
+      : previewResponse(detail())
   })
   await render(
     React.createElement(dialogs.BookingEditor, {
@@ -591,7 +821,7 @@ it("retries a failed cancellation preview without reopening the confirmation", a
           { error: "Temporary cancellation failure" },
           { status: 503 }
         )
-      : Response.json({
+      : previewResponse({
           ...detail(),
           status: "cancelled",
           totalCents: 0,
@@ -649,7 +879,7 @@ it("keeps the cancellation bill stable while typing and saves the latest reason 
   mockApi(async (path, command) => {
     if (path.endsWith("/preview")) {
       previews.push(command)
-      return Response.json({
+      return previewResponse({
         ...detail(),
         status: "cancelled",
         totalCents: 0,

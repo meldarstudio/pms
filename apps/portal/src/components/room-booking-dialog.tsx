@@ -7,7 +7,7 @@ import {
   useId,
   type ReactNode,
 } from "react"
-import { useQuery, useQueryClient } from "@tanstack/react-query"
+import { skipToken, useQuery, useQueryClient } from "@tanstack/react-query"
 import { useSelector } from "@tanstack/react-form"
 import { ArrowUpRightIcon, EllipsisIcon, PlusIcon, XIcon } from "lucide-react"
 import { cn } from "cn"
@@ -20,12 +20,14 @@ import {
 import {
   validationPreviewActions,
   hasBillingChanges,
+  billingPreviewKey,
   changeCheckIn,
   minimumCheckOut,
   guestValues,
   overlappingRoomIds,
   unavailableRoomIds,
   roomEdits,
+  previewFieldErrors,
 } from "@/lib/reservation-editor"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -84,6 +86,7 @@ import {
   type WorkflowAction,
   type WorkflowCommand,
   type WorkflowRoom,
+  type WorkflowBilling,
 } from "@/lib/api"
 import {
   useAvailability,
@@ -107,6 +110,7 @@ import {
   submitForm,
 } from "@/lib/reservation-form"
 import { serverFieldErrors } from "@/lib/api-error"
+import { translateError } from "@/lib/errors"
 import { reservationStatusLabel } from "@/lib/reservation-list"
 import {
   detailsSchema,
@@ -529,11 +533,16 @@ export function BookingEditor({
   onTabChange?: (tab: string) => void
 }) {
   const contact = detail.guest
+  const queryClient = useQueryClient()
   const [guestDirty, setGuestDirty] = useState(false)
   const roomTypes = useRoomTypes()
   const [defaults, setDefaults] = useState(() => detailsDefaults(detail))
   const schema = useMemo(
     () => detailsSchema(roomTypes.data ?? []),
+    [roomTypes.data]
+  )
+  const pricingSchema = useMemo(
+    () => detailsSchema(roomTypes.data ?? [], { validateOperations: false }),
     [roomTypes.data]
   )
   const formId = useId()
@@ -558,6 +567,8 @@ export function BookingEditor({
   const validation = schema.safeParse(values)
   const localErrors = schemaErrors(validation)
   const countsValid = validation.success && !!roomTypes.data
+  const pricingValid =
+    pricingSchema.safeParse(values).success && !!roomTypes.data
   const changes = roomEdits(detail, drafts)
   if (common.checkIn !== detail.checkIn || common.checkOut !== detail.checkOut)
     changes.unshift({ type: "dates", ...common })
@@ -579,35 +590,61 @@ export function BookingEditor({
   const editCommand = useDraftCommand(changesKey)
   const validationCommand = useDraftCommand(previewActionsKey)
   const [previewCommand, setPreviewCommand] = useState(validationCommand)
+  const pricingKey = billingPreviewKey(detail, previewActions)
+  const requestPricingKey = billingPreviewKey(detail, previewCommand.actions)
+  // This query only subscribes to quotes returned by the workflow request.
+  const quote = useQuery<WorkflowBilling>({
+    queryKey: ["workflow-billing-preview", detail.id, pricingKey],
+    queryFn: skipToken,
+  })
   useEffect(() => {
     const timer = setTimeout(() => setPreviewCommand(validationCommand), 300)
     return () => clearTimeout(timer)
   }, [validationCommand])
   const editPreview = useQuery({
-    queryKey: ["workflow-edit-preview", detail.id, previewCommand],
-    queryFn: () => previewWorkflow(detail.id, previewCommand),
+    queryKey: [
+      "workflow-edit-preview",
+      detail.id,
+      previewCommand,
+      requestPricingKey,
+    ],
+    queryFn: async () => {
+      const result = await previewWorkflow(detail.id, previewCommand)
+      queryClient.setQueryData(
+        ["workflow-billing-preview", detail.id, requestPricingKey],
+        result.billing
+      )
+      return result
+    },
     enabled:
       validationNeeded &&
       previewCommand.actions.length > 0 &&
       previewCommand === validationCommand &&
-      countsValid,
+      pricingValid,
     retry: false,
     refetchOnWindowFocus: false,
   })
   const previewCurrent = previewCommand === validationCommand
+  const previewLoaded =
+    previewCurrent && editPreview.isSuccess && !editPreview.isFetching
   const previewReady =
     !validationNeeded ||
-    (previewCurrent && editPreview.isSuccess && !editPreview.isFetching)
+    (previewLoaded && editPreview.data.validation.issues.length === 0)
   const previewFields = useMemo(
     () =>
       validationNeeded && previewCurrent && !editPreview.isFetching
-        ? serverFieldErrors(editPreview.error, "details")
+        ? editPreview.data && editPreview.isSuccess
+          ? previewFieldErrors(editPreview.data.validation.issues, values.rooms)
+          : serverFieldErrors(editPreview.error, "details")
         : null,
     [
       editPreview.error,
+      editPreview.data,
+      editPreview.isSuccess,
       editPreview.isFetching,
       validationNeeded,
       previewCurrent,
+      values.rooms,
     ]
   )
   useEffect(() => {
@@ -615,8 +652,8 @@ export function BookingEditor({
     else form.setErrorMap({ onServer: undefined })
   }, [form, previewFields])
   const billing = billingDirty
-    ? countsValid && previewReady
-      ? editPreview.data
+    ? pricingValid
+      ? quote.data
       : undefined
     : detail
   const billingRooms = detailsSummaryRooms(values, billing?.rooms)
@@ -839,7 +876,7 @@ export function BookingEditor({
                                   roomIndex={values.rooms.findIndex(
                                     (room) => room.id === draft.id
                                   )}
-                                  errors={localErrors}
+                                  errors={{ ...localErrors, ...previewFields }}
                                   reservationId={detail.id}
                                   blockedRoomIds={overlappingRoomIds(
                                     activeDrafts
@@ -974,7 +1011,8 @@ export function BookingEditor({
               showPayments
               message={
                 billingDirty &&
-                countsValid &&
+                pricingValid &&
+                !billing &&
                 (!editPreview.error ||
                   !previewCurrent ||
                   editPreview.isFetching)
@@ -984,7 +1022,7 @@ export function BookingEditor({
               provisional={billingDirty}
             />
             {validationNeeded &&
-              countsValid &&
+              pricingValid &&
               previewCurrent &&
               !editPreview.isFetching &&
               !previewFields &&
@@ -1056,7 +1094,7 @@ export function BookingEditor({
                   !dirty ||
                   roomTypes.isPending ||
                   roomTypes.isError ||
-                  (countsValid && !previewReady) ||
+                  (pricingValid && !previewReady) ||
                   busy
                 }
               >
@@ -1166,6 +1204,10 @@ const CompactRoomFields = withReservationForm({
     }, [room.roomTypeId])
     const capacity = errors[`rooms[${roomIndex}].room`]
     const capacityId = useId()
+    const assignmentError = errors[`rooms[${roomIndex}].room.roomId`]
+    const assignmentErrorId = useId()
+    const typeError = errors[`rooms[${roomIndex}].room.roomTypeId`]
+    const typeErrorId = useId()
     return (
       <FieldGroup className="grid grid-cols-2 gap-3 sm:grid-cols-[minmax(0,1fr)_88px_56px_56px_28px]">
         <form.AppField
@@ -1180,6 +1222,7 @@ const CompactRoomFields = withReservationForm({
           {(field) => (
             <field.Choice
               label="Tipo"
+              groupErrorId={typeError ? typeErrorId : undefined}
               options={(types.data ?? []).map((t) => ({
                 value: t.id,
                 label: t.name,
@@ -1193,18 +1236,24 @@ const CompactRoomFields = withReservationForm({
               label="Hab."
               nullable
               disabled={!availability.ready}
+              groupErrorId={assignmentError ? assignmentErrorId : undefined}
               options={[
                 { value: "none", label: "Sin asignar" },
                 ...(rooms.data ?? [])
                   .filter(
                     (r) =>
-                      r.roomTypeId === room.roomTypeId &&
-                      !blockedRoomIds.has(r.id) &&
-                      !availability.blocked.has(r.id)
+                      r.id === room.roomId ||
+                      (r.roomTypeId === room.roomTypeId &&
+                        !blockedRoomIds.has(r.id) &&
+                        !availability.blocked.has(r.id))
                   )
                   .map((r) => ({
                     value: r.id,
                     label: r.number,
+                    disabled:
+                      blockedRoomIds.has(r.id) ||
+                      availability.blocked.has(r.id) ||
+                      r.roomTypeId !== room.roomTypeId,
                   })),
               ]}
             />
@@ -1242,6 +1291,16 @@ const CompactRoomFields = withReservationForm({
         {capacity && (
           <FieldError id={capacityId} className="col-span-full">
             {capacity}
+          </FieldError>
+        )}
+        {typeError && (
+          <FieldError id={typeErrorId} className="col-span-full">
+            {typeError}
+          </FieldError>
+        )}
+        {assignmentError && (
+          <FieldError id={assignmentErrorId} className="col-span-full">
+            {assignmentError}
           </FieldError>
         )}
         {availability.error && (
@@ -1590,6 +1649,7 @@ function ActionForm({
     if (isCancellation) {
       if (
         !cancellationPreview.data ||
+        cancellationPreview.data.validation.issues.length > 0 ||
         cancellationPreview.isFetching ||
         cancellationPreview.error ||
         cancellation.isPending
@@ -1741,7 +1801,16 @@ function ActionForm({
                 </Button>
               </div>
             ) : cancellationPreview.data ? (
-              <WorkflowBill bill={cancellationPreview.data} />
+              <>
+                <WorkflowBill bill={cancellationPreview.data.billing} />
+                {cancellationPreview.data.validation.issues.map(
+                  (issue, index) => (
+                    <FieldError key={index}>
+                      {translateError(issue.code)}
+                    </FieldError>
+                  )
+                )}
+              </>
             ) : cancellationValid ? (
               <p role="status" className="text-muted-foreground">
                 Calculando…
@@ -1766,6 +1835,7 @@ function ActionForm({
                 (isCancellation &&
                   cancellationValid &&
                   (!cancellationPreview.data ||
+                    cancellationPreview.data.validation.issues.length > 0 ||
                     cancellationPreview.isFetching ||
                     !!cancellationPreview.error))
               }

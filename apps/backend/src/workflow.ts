@@ -17,7 +17,7 @@ import { HttpError, rethrowConflict } from './http'
 import { ratesBetween } from './inventory'
 import { bill } from './lib/workflow-billing'
 import { quoteNights, overridesFor } from './lib/quote'
-import { assertOccupancy, requireStay } from './rules'
+import { requireStay } from './rules'
 import { confirmationCode } from './lib/codes'
 import { chunks } from './lib/chunks'
 
@@ -29,6 +29,11 @@ export type State = {
   stayingGuests: (typeof reservationGuests.$inferSelect)[]
   lines: Stay[]
   payments: (typeof payments.$inferSelect)[]
+}
+export type WorkflowIssue = {
+  code: string
+  roomIndex: number
+  field: 'roomId' | 'roomTypeId' | 'occupancy'
 }
 const active = (s: string) => ['confirmed', 'checked_in', 'checked_out'].includes(s)
 const fail = (message: string): never => {
@@ -99,15 +104,8 @@ async function price(
   const dates = requireStay(room.checkIn, room.checkOut)
   const [type] = await db.select().from(roomTypes).where(eq(roomTypes.id, room.roomTypeId))
   if (!type) throw new HttpError(404, 'room type not found')
-  assertOccupancy(room.adults, room.children, type.maxOccupancy)
   const rates = await ratesBetween(db, [type.id], room.checkIn, room.checkOut)
   return quoteNights(dates, type.baseRateCents, overridesFor(rates, type.id), room.nightlyRateCents)
-}
-async function validateAssignment(db: Db, line: Stay) {
-  if (!line.roomId) return
-  const [room] = await db.select().from(rooms).where(eq(rooms.id, line.roomId))
-  if (!room) throw new HttpError(404, 'room not found')
-  if (room.roomTypeId !== line.roomTypeId) fail('room is a different type')
 }
 async function newLine(
   db: Db,
@@ -127,7 +125,6 @@ async function newLine(
     createdAt: now,
     nights,
   }
-  await validateAssignment(db, line)
   return line
 }
 
@@ -238,7 +235,6 @@ export async function plan(
         priceCents: !typeChanged && saved.has(n.date) ? saved.get(n.date)! : n.priceCents,
       }))
       Object.assign(line, room, { roomId: room.roomId ?? null })
-      await validateAssignment(db, line)
     }
     if (action.type === 'add-payment') state.payments.push(newPayment(action.payment))
   }
@@ -276,10 +272,12 @@ export async function execute(db: Db, id: string, command: WorkflowCommand, prev
   }
   const original = await loadState(db, id)
   const { state } = await plan(db, original, command.actions)
+  const roomIssues = await validateRooms(db, state.lines)
   if (preview) {
-    await validateAvailability(db, state)
-    return { state, replayed: false }
+    const issues = [...roomIssues, ...await validateAvailability(db, state)]
+    return { state, issues, replayed: false }
   }
+  rejectRoomIssues(roomIssues)
   const now = new Date().toISOString()
   const changed = state.lines.filter(
     (l) => JSON.stringify(l) !== JSON.stringify(original.lines.find((o) => o.id === l.id)),
@@ -367,6 +365,7 @@ export async function createWorkflow(db: Db, input: WorkflowCreate) {
     guestId = crypto.randomUUID()
   const lines: Stay[] = []
   for (const room of input.rooms) lines.push(await newLine(db, id, room, now, input))
+  rejectRoomIssues(await validateRooms(db, lines))
   try {
     await runBatch(db, [
       db
@@ -401,9 +400,36 @@ export async function createWorkflow(db: Db, input: WorkflowCreate) {
   return id
 }
 
-// The preview checks the proposed aggregate. Database triggers repeat the
-// availability checks under the write transaction to close the concurrency gap.
+function rejectRoomIssues(issues: WorkflowIssue[]) {
+  const issue = issues[0]
+  if (issue) throw new HttpError(issue.code === 'room not found' ? 404 : 400, issue.code)
+}
+
+// Pricing only needs dates and room types. Operational issues describe the final
+// draft separately so a conflicting assignment does not hide its quoted price.
+async function validateRooms(db: Db, lines: Stay[]): Promise<WorkflowIssue[]> {
+  const [types, physical] = await Promise.all([
+    db.select().from(roomTypes),
+    db.select().from(rooms),
+  ])
+  const issues: WorkflowIssue[] = []
+  lines.forEach((line, roomIndex) => {
+    const type = types.find((type) => type.id === line.roomTypeId)
+    if (type && line.adults + line.children > type.maxOccupancy)
+      issues.push({ code: 'too many guests for this room type', roomIndex, field: 'occupancy' })
+    if (!line.roomId) return
+    const room = physical.find((room) => room.id === line.roomId)
+    if (!room) issues.push({ code: 'room not found', roomIndex, field: 'roomId' })
+    else if (room.roomTypeId !== line.roomTypeId)
+      issues.push({ code: 'room is a different type', roomIndex, field: 'roomId' })
+  })
+  return issues
+}
+
+// Database triggers repeat availability checks under the write transaction to
+// close the concurrency gap. Preview reports all affected rooms without writing.
 async function validateAvailability(db: Db, state: State) {
+  const issues: WorkflowIssue[] = []
   const [otherLines, physical, closures] = await Promise.all([
     db
       .select({ line: reservationRooms, reservation: reservations })
@@ -429,8 +455,11 @@ async function validateAvailability(db: Db, state: State) {
     })),
   ].filter((l) => active(l.status))
   const overlap = (a: string, b: string, c: string, d: string) => a < d && b > c
-  for (const line of lines.filter((l) => l.reservationId === state.reservation.id)) {
-    for (const date of requireStay(line.checkIn!, line.checkOut!)) {
+  for (const [roomIndex, line] of state.lines.entries()) {
+    if (!active(state.reservation.status)) break
+    const checkIn = state.reservation.checkIn
+    const checkOut = state.reservation.checkOut
+    for (const date of requireStay(checkIn, checkOut)) {
       const count = lines.filter(
         (l) => l.roomTypeId === line.roomTypeId && l.checkIn! <= date && l.checkOut! > date,
       ).length
@@ -444,25 +473,28 @@ async function validateAvailability(db: Db, state: State) {
           )
           .map((c) => c.roomId),
       ).size
-      if (count + closed > physical.filter((r) => r.roomTypeId === line.roomTypeId).length)
-        throw new HttpError(409, 'no availability')
+      if (count + closed > physical.filter((r) => r.roomTypeId === line.roomTypeId).length) {
+        issues.push({ code: 'no availability', roomIndex, field: 'roomTypeId' })
+        break
+      }
     }
     if (!line.roomId) continue
-    const start = line.checkIn!
+    const start = checkIn
     if (
       lines.some(
         (l) =>
           l.id !== line.id &&
           l.roomId === line.roomId &&
-          overlap(start, line.checkOut!, l.checkIn!, l.checkOut!),
+          overlap(start, checkOut, l.checkIn!, l.checkOut!),
       )
     )
-      throw new HttpError(409, 'room is already assigned for those dates')
+      issues.push({ code: 'room is already assigned for those dates', roomIndex, field: 'roomId' })
     if (
       closures.some(
-        (c) => c.roomId === line.roomId && overlap(start, line.checkOut!, c.starts, c.ends),
+        (c) => c.roomId === line.roomId && overlap(start, checkOut, c.starts, c.ends),
       )
     )
-      throw new HttpError(409, 'room is closed for those dates')
+      issues.push({ code: 'room is closed for those dates', roomIndex, field: 'roomId' })
   }
+  return issues
 }

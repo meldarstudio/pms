@@ -41,6 +41,21 @@ const details = (): DetailsValues => ({
 })
 
 describe("reservation form schemas", () => {
+  it("allows quoting operationally invalid drafts but still rejects unpriceable inputs", () => {
+    const pricing = detailsSchema(types, { validateOperations: false })
+    const values = details()
+    values.rooms[0].room.adults = "3"
+    values.rooms[0].room.roomId = "101"
+    values.rooms.push({ ...values.rooms[0], id: "new-room" })
+    assert.equal(detailsSchema(types).safeParse(values).success, false)
+    assert.equal(pricing.safeParse(values).success, true)
+    assert.equal(
+      pricing.safeParse({ ...values, checkOut: values.checkIn }).success,
+      false
+    )
+    values.rooms[0].room = { ...values.rooms[0].room, adults: "" }
+    assert.equal(pricing.safeParse(values).success, false)
+  })
   it("places capacity errors on the affected room and revalidates a type change", () => {
     const values = details()
     values.rooms.push({

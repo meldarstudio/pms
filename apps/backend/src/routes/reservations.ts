@@ -113,21 +113,24 @@ reservationRoutes.post('/:id/preview', validate('json', workflowCommandSchema), 
   if (!result.state) return c.json({ replayed: true })
   const bill = totals(result.state)
   return c.json({
-    ...bill,
-    status: result.state.reservation.status,
-    checkIn: result.state.reservation.checkIn,
-    checkOut: result.state.reservation.checkOut,
-    savedDiscountCents: result.state.reservation.discountCents,
-    rooms: result.state.lines.map((line) => {
-      const subtotalCents = line.nights.reduce((sum, night) => sum + night.priceCents, 0)
-      return {
-        ...line,
-        subtotalCents,
-        discountCents: 0,
-        totalCents: result.state!.reservation.status === 'cancelled' ? 0 : subtotalCents,
-      }
-    }),
-    payments: result.state.payments,
+    validation: { issues: result.issues },
+    billing: {
+      ...bill,
+      status: result.state.reservation.status,
+      checkIn: result.state.reservation.checkIn,
+      checkOut: result.state.reservation.checkOut,
+      savedDiscountCents: result.state.reservation.discountCents,
+      rooms: result.state.lines.map((line) => {
+        const subtotalCents = line.nights.reduce((sum, night) => sum + night.priceCents, 0)
+        return {
+          ...line,
+          subtotalCents,
+          discountCents: 0,
+          totalCents: result.state!.reservation.status === 'cancelled' ? 0 : subtotalCents,
+        }
+      }),
+      payments: result.state.payments,
+    },
   })
 })
 reservationRoutes.post('/:id/commands', validate('json', workflowCommandSchema), async (c) => {

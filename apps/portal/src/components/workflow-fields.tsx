@@ -121,6 +121,7 @@ export function ChoiceField({
   id: providedId,
   name,
   onBlur,
+  groupErrorId,
 }: {
   label: string
   value: string
@@ -132,11 +133,12 @@ export function ChoiceField({
   id?: string
   name?: string
   onBlur?: () => void
+  groupErrorId?: string
 }) {
   const generatedId = useId()
   const id = providedId ?? generatedId
   return (
-    <Field data-disabled={disabled} data-invalid={!!error}>
+    <Field data-disabled={disabled} data-invalid={!!error || !!groupErrorId}>
       <FieldLabel htmlFor={id} className={hideLabel ? "sr-only" : undefined}>
         {label}
       </FieldLabel>
@@ -151,8 +153,8 @@ export function ChoiceField({
           id={id}
           className="w-full"
           onBlur={onBlur}
-          aria-invalid={!!error}
-          aria-describedby={error ? `${id}-error` : undefined}
+          aria-invalid={!!error || !!groupErrorId}
+          aria-describedby={groupErrorId ?? (error ? `${id}-error` : undefined)}
         >
           <SelectValue />
         </SelectTrigger>
@@ -166,7 +168,9 @@ export function ChoiceField({
           </SelectGroup>
         </SelectContent>
       </Select>
-      {error && <FieldError id={`${id}-error`}>{error}</FieldError>}
+      {error && !groupErrorId && (
+        <FieldError id={`${id}-error`}>{error}</FieldError>
+      )}
     </Field>
   )
 }

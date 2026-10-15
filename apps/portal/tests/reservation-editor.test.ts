@@ -8,6 +8,7 @@ import type {
 import {
   validationPreviewActions,
   hasBillingChanges,
+  billingPreviewKey,
   changeCheckIn,
   minimumCheckOut,
   unavailableRoomIds,
@@ -16,6 +17,7 @@ import {
   roomEdits,
   stayValue,
   type RoomDraft,
+  previewFieldErrors,
 } from "../src/lib/reservation-editor.ts"
 const line = (id: string) =>
   ({
@@ -33,12 +35,137 @@ const draft = (room: ReservationDetail["rooms"][number]): RoomDraft => ({
 const dates = { checkIn: "2026-10-12", checkOut: "2026-10-15" }
 
 describe("billing changes versus validation", () => {
+  it("maps proposed room issues to retained and added form rows after a removal", () => {
+    assert.deepEqual(
+      previewFieldErrors(
+        [
+          {
+            code: "room is closed for those dates",
+            field: "roomId",
+            roomIndex: 0,
+          },
+          { code: "no availability", field: "roomTypeId", roomIndex: 1 },
+          {
+            code: "too many guests for this room type",
+            field: "occupancy",
+            roomIndex: 1,
+          },
+        ],
+        [{ removed: true }, { removed: false }, { removed: false }]
+      ),
+      {
+        "rooms[1].room.roomId":
+          "Esta habitación está cerrada para esas fechas.",
+        "rooms[2].room.roomTypeId": "No hay disponibilidad para esas fechas.",
+        "rooms[2].room":
+          "La habitación no tiene capacidad para todos los huéspedes.",
+      }
+    )
+    assert.equal(previewFieldErrors([], [{ removed: false }]), null)
+  })
   const saved = {
     ...dates,
     status: "confirmed",
     savedDiscountCents: 0,
     rooms: [line("101")],
   } as ReservationDetail
+
+  it("reuses a date quote across room assignments and headcounts but expires it for pricing changes", () => {
+    const price: WorkflowAction = {
+      type: "dates",
+      ...dates,
+      checkOut: "2026-10-16",
+    }
+    const key = billingPreviewKey(saved, [price])
+    for (const patch of [
+      { roomId: "102" },
+      { roomId: null },
+      { adults: 3 },
+      { children: 1 },
+    ]) {
+      assert.equal(
+        billingPreviewKey(saved, [
+          price,
+          {
+            type: "edit-room",
+            lineId: "101",
+            room: { ...stayValue(saved.rooms[0]), ...patch },
+          },
+        ]),
+        key
+      )
+    }
+    for (const financial of [
+      { type: "dates", ...dates, checkOut: "2026-10-17" },
+      {
+        type: "edit-room",
+        lineId: "101",
+        room: { ...stayValue(saved.rooms[0]), roomTypeId: "single" },
+      },
+      { type: "add-room", room: stayValue(line("102")) },
+      { type: "remove-room", lineId: "101" },
+      { type: "set-status", status: "cancelled" },
+      { type: "set-discount", amountCents: 1000 },
+    ] satisfies WorkflowAction[]) {
+      assert.notEqual(billingPreviewKey(saved, [price, financial]), key)
+    }
+    assert.notEqual(
+      billingPreviewKey({ ...saved, paidCents: 1000 }, [price]),
+      key
+    )
+    assert.notEqual(
+      billingPreviewKey({ ...saved, savedDiscountCents: 1000 }, [price]),
+      key
+    )
+    assert.notEqual(
+      billingPreviewKey(
+        {
+          ...saved,
+          rooms: [
+            {
+              ...saved.rooms[0],
+              nights: [{ date: dates.checkIn, priceCents: 5000 }],
+            },
+          ],
+        },
+        [price]
+      ),
+      key
+    )
+  })
+
+  it("keeps an added or repriced room's quote when only its assignment or headcount changes", () => {
+    const room = stayValue(line("102"))
+    const added = billingPreviewKey(saved, [{ type: "add-room", room }])
+    assert.equal(
+      billingPreviewKey(saved, [
+        {
+          type: "add-room",
+          room: { ...room, roomId: null, adults: 1, children: 1 },
+        },
+      ]),
+      added
+    )
+    assert.notEqual(
+      billingPreviewKey(saved, [
+        { type: "add-room", room: { ...room, nightlyRateCents: 1000 } },
+      ]),
+      added
+    )
+    const repriced = { ...room, roomTypeId: "single" }
+    assert.equal(
+      billingPreviewKey(saved, [
+        { type: "edit-room", lineId: "101", room: repriced },
+      ]),
+      billingPreviewKey(saved, [
+        {
+          type: "edit-room",
+          lineId: "101",
+          room: { ...repriced, roomId: null, adults: 1 },
+        },
+      ])
+    )
+  })
 
   it("validates occupancy and assignment edits without marking billing provisional", () => {
     for (const patch of [

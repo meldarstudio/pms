@@ -6,12 +6,32 @@ import type {
   StayingGuest,
   WorkflowAction,
   WorkflowRoom,
+  WorkflowIssue,
 } from "./api.ts"
+import { translateError } from "./errors.ts"
 
 export type RoomDraft = {
   id: string
   room: WorkflowRoom
   removed: boolean
+}
+
+export function previewFieldErrors(
+  issues: WorkflowIssue[],
+  drafts: { removed: boolean }[]
+): Record<string, string> | null {
+  const indices = drafts.flatMap((draft, index) =>
+    draft.removed ? [] : [index]
+  )
+  const fields: Record<string, string> = {}
+  for (const issue of issues) {
+    const index = indices[issue.roomIndex]
+    if (index === undefined) continue
+    const path = `rooms[${index}].room${issue.field === "occupancy" ? "" : `.${issue.field}`}`
+    const message = translateError(issue.code)
+    fields[path] = fields[path] ? `${fields[path]} ${message}` : message
+  }
+  return Object.keys(fields).length ? fields : null
 }
 export function minimumCheckOut(checkIn: string) {
   const date = new Date(`${checkIn}T00:00:00Z`)
@@ -142,4 +162,50 @@ export function hasBillingChanges(
         return false
     }
   })
+}
+
+// A room assignment or headcount change must revalidate the draft, but can reuse
+// its quote. Include saved prices and totals so independent saves expire it.
+export function billingPreviewKey(
+  detail: ReservationDetail,
+  actions: WorkflowAction[]
+) {
+  const pricingActions = actions
+    .filter((action) => hasBillingChanges(detail, [action]))
+    .map((action) => {
+      switch (action.type) {
+        case "add-room":
+          return {
+            type: action.type,
+            roomTypeId: action.room.roomTypeId,
+            nightlyRateCents: action.room.nightlyRateCents,
+          }
+        case "edit-room":
+          return {
+            type: action.type,
+            lineId: action.lineId,
+            roomTypeId: action.room.roomTypeId,
+          }
+        case "set-status":
+          return { type: action.type, cancelled: action.status === "cancelled" }
+        default:
+          return action
+      }
+    })
+  return JSON.stringify([
+    {
+      id: detail.id,
+      checkIn: detail.checkIn,
+      checkOut: detail.checkOut,
+      cancelled: detail.status === "cancelled",
+      savedDiscountCents: detail.savedDiscountCents,
+      paidCents: detail.paidCents,
+      rooms: detail.rooms.map(({ id, roomTypeId, nights }) => ({
+        id,
+        roomTypeId,
+        nights,
+      })),
+    },
+    pricingActions,
+  ])
 }
