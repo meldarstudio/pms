@@ -219,6 +219,9 @@ export function useWorkflowCommand(id: string) {
   const client = useQueryClient()
   return useMutation({
     mutationKey: workflowMutationKey(id),
+    // Each command reads a reservation snapshot. Finish the previous save before
+    // starting the next so a discount autosave cannot undo a cancellation.
+    scope: { id: `reservation-workflow:${id}` },
     mutationFn: ({ id, command }: { id: string; command: WorkflowCommand }) =>
       sendWorkflow(id, command),
     onSuccess: (data) => refreshWorkflowQueries(client, data),

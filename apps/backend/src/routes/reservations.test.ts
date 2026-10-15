@@ -139,6 +139,14 @@ async function arrive(d: Detail) {
   return command(d, [...d.rooms.map((_, i) => roomEdit(d, i)), all(d, 'check-in')])
 }
 
+async function bookingAfterCapacityReduction(roomCount = 1) {
+  const d = await create(roomCount)
+  const saved = await command(d, [roomEdit(d, 0, { adults: 2 })])
+  const response = await request('/room-types/type', 'PATCH', { maxOccupancy: 1 })
+  expect(response.status).toBe(200)
+  return saved
+}
+
 const guest = (reservationRoomId: string | null) => ({
   id: crypto.randomUUID(),
   reservationRoomId,
@@ -443,6 +451,95 @@ describe('reservation workflow', () => {
     })
     await command(d, actions, 400)
     expect(((await (await request(`/reservations/${d.id}`)).json()) as Detail).rooms).toEqual(d.rooms)
+  })
+  it('allows payments and cancellation with unchanged occupancy after a room capacity reduction', async () => {
+    let d = await bookingAfterCapacityReduction()
+    const paymentPreview = await request(`/reservations/${d.id}/preview`, 'POST', {
+      requestId: crypto.randomUUID(), actions: [pay(5000)],
+    })
+    expect(paymentPreview.status).toBe(200)
+    expect(await paymentPreview.json()).toMatchObject({
+      billing: { totalCents: 30000, paidCents: 5000, balanceCents: 25000 },
+      validation: { issues: [] },
+    })
+    d = await command(d, [pay(5000)])
+    expect(d.paidCents).toBe(5000)
+    d = await command(d, [{ type: 'notes', notes: 'Payment received' }, setDiscount(1000)])
+    expect(d.notes).toBe('Payment received')
+    expect(d.savedDiscountCents).toBe(1000)
+    const actions: WorkflowAction[] = [{ type: 'set-status', status: 'cancelled', reason: 'Plans changed' }]
+    const cancellationPreview = await request(`/reservations/${d.id}/preview`, 'POST', {
+      requestId: crypto.randomUUID(), actions,
+    })
+    expect(cancellationPreview.status).toBe(200)
+    expect(await cancellationPreview.json()).toMatchObject({
+      billing: { status: 'cancelled', totalCents: 0, paidCents: 5000, creditCents: 5000 },
+      validation: { issues: [] },
+    })
+    d = await command(d, actions)
+    expect(d.status).toBe('cancelled')
+    expect(d.creditCents).toBe(5000)
+    expect(d.rooms[0]).toMatchObject({ adults: 2, roomId: 'room-101' })
+    const available = await (await request('/availability?checkIn=2026-10-10&checkOut=2026-10-13')).json()
+    expect(available).toMatchObject({ roomTypes: [{ free: 3 }] })
+  })
+  it('still validates changed rooms and stay dates against the current occupancy limit', async () => {
+    const d = await bookingAfterCapacityReduction()
+    const changes: WorkflowAction[][] = [
+      [{ type: 'dates', checkIn: d.checkIn, checkOut: '2026-10-14' }],
+      [roomEdit(d, 0, { adults: 2, roomId: 'room-102' })],
+      [roomEdit(d, 0, { adults: 2, children: 1 })],
+    ]
+    for (const actions of changes) {
+      const response = await request(`/reservations/${d.id}/preview`, 'POST', {
+        requestId: crypto.randomUUID(), actions,
+      })
+      expect(response.status).toBe(200)
+      expect(await response.json()).toMatchObject({
+        validation: { issues: [{ code: 'too many guests for this room type', roomIndex: 0, field: 'occupancy' }] },
+      })
+      await command(d, actions, 400)
+    }
+    const unchanged = await (await request(`/reservations/${d.id}`)).json() as Detail
+    expect(unchanged.rooms).toEqual(d.rooms)
+    expect(unchanged.checkOut).toBe(d.checkOut)
+    const corrected = await command(d, [roomEdit(d, 0, { adults: 1, roomId: 'room-102' })])
+    expect(corrected.rooms[0]).toMatchObject({ adults: 1, roomId: 'room-102' })
+  })
+  it('validates added rooms without revalidating unchanged rooms and preserves issue indices', async () => {
+    const d = await bookingAfterCapacityReduction(2)
+    const invalid: WorkflowAction[] = [{ type: 'add-room', room: { roomTypeId: 'type', adults: 2, children: 0 } }]
+    const response = await request(`/reservations/${d.id}/preview`, 'POST', {
+      requestId: crypto.randomUUID(), actions: invalid,
+    })
+    expect(response.status).toBe(200)
+    expect(await response.json()).toMatchObject({
+      billing: { totalCents: 90000 },
+      validation: { issues: [{ code: 'too many guests for this room type', roomIndex: 2, field: 'occupancy' }] },
+    })
+    await command(d, invalid, 400)
+    const valid: WorkflowAction[] = [{ type: 'add-room', room: { roomTypeId: 'type', adults: 1, children: 0 } }]
+    const saved = await command(d, valid)
+    expect(saved.rooms).toHaveLength(3)
+    expect(saved.rooms[0].adults).toBe(2)
+    expect(saved.totalCents).toBe(90000)
+  })
+  it('revalidates occupancy when restoring inventory and allows correction in the same command', async () => {
+    let d = await bookingAfterCapacityReduction()
+    d = await command(d, [{ type: 'set-status', status: 'cancelled' }])
+    const restore: WorkflowAction[] = [{ type: 'set-status', status: 'confirmed' }]
+    const response = await request(`/reservations/${d.id}/preview`, 'POST', {
+      requestId: crypto.randomUUID(), actions: restore,
+    })
+    expect(response.status).toBe(200)
+    expect(await response.json()).toMatchObject({
+      validation: { issues: [{ code: 'too many guests for this room type', roomIndex: 0, field: 'occupancy' }] },
+    })
+    await command(d, restore, 400)
+    expect(((await (await request(`/reservations/${d.id}`)).json()) as Detail).status).toBe('cancelled')
+    d = await command(d, [...restore, roomEdit(d, 0, { adults: 1 })])
+    expect(d.status).toBe('confirmed')
+    expect(d.rooms[0].adults).toBe(1)
   })
   it('returns closure issues for every affected proposed room, including an added room after a removal', async () => {
     const d = await create(2)

@@ -272,7 +272,11 @@ export async function execute(db: Db, id: string, command: WorkflowCommand, prev
   }
   const original = await loadState(db, id)
   const { state } = await plan(db, original, command.actions)
-  const roomIssues = await validateRooms(db, state.lines)
+  const revalidateAllRooms =
+    original.reservation.checkIn !== state.reservation.checkIn ||
+    original.reservation.checkOut !== state.reservation.checkOut ||
+    (!active(original.reservation.status) && active(state.reservation.status))
+  const roomIssues = await validateRooms(db, state.lines, revalidateAllRooms ? [] : original.lines)
   if (preview) {
     const issues = [...roomIssues, ...await validateAvailability(db, state)]
     return { state, issues, replayed: false }
@@ -405,15 +409,27 @@ function rejectRoomIssues(issues: WorkflowIssue[]) {
   if (issue) throw new HttpError(issue.code === 'room not found' ? 404 : 400, issue.code)
 }
 
-// Pricing only needs dates and room types. Operational issues describe the final
-// draft separately so a conflicting assignment does not hide its quoted price.
-async function validateRooms(db: Db, lines: Stay[]): Promise<WorkflowIssue[]> {
+// Validate added or edited rooms against current rules. Unchanged saved rooms
+// must not block payments or cancellation after a room type's capacity changes.
+// A new stay period or restoration to inventory revalidates every room.
+async function validateRooms(db: Db, lines: Stay[], previousLines: Stay[] = []): Promise<WorkflowIssue[]> {
+  const previousById = new Map(previousLines.map((line) => [line.id, line]))
+  const affected = lines.flatMap((line, roomIndex) => {
+    const previous = previousById.get(line.id)
+    const unchanged = previous &&
+      previous.roomTypeId === line.roomTypeId &&
+      previous.roomId === line.roomId &&
+      previous.adults === line.adults &&
+      previous.children === line.children
+    return unchanged ? [] : [{ line, roomIndex }]
+  })
+  if (!affected.length) return []
   const [types, physical] = await Promise.all([
     db.select().from(roomTypes),
     db.select().from(rooms),
   ])
   const issues: WorkflowIssue[] = []
-  lines.forEach((line, roomIndex) => {
+  affected.forEach(({ line, roomIndex }) => {
     const type = types.find((type) => type.id === line.roomTypeId)
     if (type && line.adults + line.children > type.maxOccupancy)
       issues.push({ code: 'too many guests for this room type', roomIndex, field: 'occupancy' })

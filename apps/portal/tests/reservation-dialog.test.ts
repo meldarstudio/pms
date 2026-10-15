@@ -182,7 +182,13 @@ function control(name: string) {
 }
 
 async function fill(name: string, value: string) {
-  const input = control(name)
+  await fillControl(control(name), value)
+}
+
+async function fillControl(
+  input: HTMLInputElement | HTMLTextAreaElement,
+  value: string
+) {
   const prototype =
     input.tagName === "TEXTAREA"
       ? window.HTMLTextAreaElement.prototype
@@ -939,3 +945,123 @@ it("keeps the cancellation bill stable while typing and saves the latest reason 
     { type: "set-status", status: "cancelled" },
   ])
 })
+
+for (const discountSucceeds of [true, false]) {
+  it(`queues cancellation behind a discount autosave until it ${discountSucceeds ? "succeeds" : "fails"}`, async () => {
+    let saved = detail()
+    const writes: WorkflowCommand[] = []
+    let finishDiscount: (() => void) | undefined
+    mockApi(async (path, command) => {
+      if (path.endsWith("/preview"))
+        return previewResponse({
+          ...saved,
+          status: "cancelled",
+          subtotalCents: 0,
+          discountCents: 0,
+          totalCents: 0,
+          balanceCents: 0,
+        })
+      assert.ok(path.endsWith("/commands"))
+      writes.push(command)
+      // Model the backend loading its full snapshot when each request starts.
+      const original = structuredClone(saved)
+      const action = command.actions[0]
+      if (action.type === "set-discount")
+        return new Promise<Response>((resolve) => {
+          let finished = false
+          finishDiscount = () => {
+            if (finished) return
+            finished = true
+            if (!discountSucceeds) {
+              resolve(
+                Response.json(
+                  { error: "Temporary discount failure" },
+                  { status: 503 }
+                )
+              )
+              return
+            }
+            saved = {
+              ...original,
+              savedDiscountCents: action.amountCents,
+              discountCents: action.amountCents,
+              totalCents: original.subtotalCents - action.amountCents,
+              balanceCents: original.subtotalCents - action.amountCents,
+            }
+            resolve(Response.json(saved))
+          }
+        })
+      assert.equal(action.type, "set-status")
+      saved = {
+        ...original,
+        status: "cancelled",
+        cancelledAt: "2026-10-14T12:00:00Z",
+        subtotalCents: 0,
+        discountCents: 0,
+        totalCents: 0,
+        balanceCents: 0,
+      }
+      return Response.json(saved)
+    })
+    client.setQueryData(["reservation", saved.id], saved)
+    function Editor() {
+      const reservation = query.useQuery<ReservationDetail>({
+        queryKey: ["reservation", saved.id],
+        queryFn: async () => saved,
+        staleTime: Infinity,
+      })
+      return React.createElement(dialogs.BookingEditor, {
+        detail: reservation.data!,
+        onRefresh: () => {},
+      })
+    }
+    try {
+      await render(React.createElement(Editor))
+      const discount = container.querySelector<HTMLInputElement>(
+        '[aria-label="Descuento en soles"]'
+      )!
+      assert.ok(discount)
+      await fillControl(discount, "10")
+      await React.act(async () => {
+        discount.dispatchEvent(
+          new window.FocusEvent("focusout", {
+            bubbles: true,
+          }) as unknown as Event
+        )
+      })
+      await until(() => writes.length === 1, "Discount autosave must start")
+      await React.act(async () => button("Cancelar reserva").click())
+      await until(
+        () => !button("Confirmar").disabled,
+        "Cancellation preview must finish"
+      )
+      await React.act(async () => button("Confirmar").click())
+      await flush(30)
+      assert.equal(
+        writes.length,
+        1,
+        "Cancellation must not reach the server while discount autosave is pending"
+      )
+      assert.ok(window.document.querySelector('[role="alertdialog"]'))
+      assert.equal(button("Guardando…").disabled, true)
+      await React.act(async () => finishDiscount!())
+      await until(
+        () =>
+          writes.length === 2 &&
+          !window.document.querySelector('[role="alertdialog"]'),
+        "Cancellation must finish after discount autosave settles"
+      )
+      assert.equal(writes[1].actions[0].type, "set-status")
+      assert.equal(saved.status, "cancelled")
+      assert.equal(saved.savedDiscountCents, discountSucceeds ? 1000 : 0)
+      assert.equal(saved.discountCents, 0)
+      assert.equal(
+        client.getQueryData<ReservationDetail>(["reservation", saved.id])
+          ?.status,
+        "cancelled"
+      )
+    } finally {
+      if (finishDiscount) await React.act(async () => finishDiscount!())
+    }
+  })
+}
