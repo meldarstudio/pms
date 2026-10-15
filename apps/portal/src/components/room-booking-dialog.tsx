@@ -88,6 +88,7 @@ import {
 import {
   useAvailability,
   useReservation,
+  useReservationSaving,
   useReservations,
   useRoomClosures,
   useRooms,
@@ -96,6 +97,7 @@ import {
 } from "@/lib/queries"
 import { toast, toastError } from "@/lib/toast"
 import { createWorkflowSaver } from "@/lib/workflow-save"
+import { isReservationSaving } from "@/lib/workflow-query-cache"
 import { formatMoney } from "@/lib/money"
 import { setServerErrors } from "@/lib/form-errors"
 import {
@@ -173,9 +175,10 @@ export function RoomBookingDialog({
   onClose: () => void
   onViewReservation: (id: string) => void
 }) {
-  const detail = useReservation(
-    target?.mode === "edit" ? target.reservationId : null
-  )
+  const client = useQueryClient()
+  const reservationId = target?.mode === "edit" ? target.reservationId : null
+  const detail = useReservation(reservationId)
+  const saving = useReservationSaving(reservationId)
   const dirty = useRef(false)
   const [tab, setTab] = useState("details")
   const [leave, setLeave] = useState<(() => void) | null>(null)
@@ -183,6 +186,7 @@ export function RoomBookingDialog({
     dirty.current = value
   }, [])
   function navigate(action: () => void) {
+    if (isReservationSaving(client, reservationId)) return
     if (dirty.current) setLeave(() => action)
     else action()
   }
@@ -197,6 +201,7 @@ export function RoomBookingDialog({
       onOpenChange={(open) => !open && navigate(close)}
     >
       <DialogContent
+        closeDisabled={saving}
         className={cn(
           "max-h-[94svh]",
           target?.mode === "edit"
@@ -262,8 +267,10 @@ export function RoomBookingDialog({
       </DialogContent>
       {leave && (
         <DiscardChanges
+          saving={saving}
           onStay={() => setLeave(null)}
           onLeave={() => {
+            if (isReservationSaving(client, reservationId)) return
             dirty.current = false
             setLeave(null)
             leave()
@@ -613,10 +620,10 @@ export function BookingEditor({
       : undefined
     : detail
   const billingRooms = detailsSummaryRooms(values, billing?.rooms)
-  const saveMutation = useWorkflowCommand()
-  const guestMutation = useWorkflowCommand()
-  const paymentMutation = useWorkflowCommand()
-  const discountMutation = useWorkflowCommand()
+  const saveMutation = useWorkflowCommand(detail.id)
+  const guestMutation = useWorkflowCommand(detail.id)
+  const paymentMutation = useWorkflowCommand(detail.id)
+  const discountMutation = useWorkflowCommand(detail.id)
   const discountSave = useRef<Promise<ReservationDetail> | null>(null)
   const busy =
     submitting ||
@@ -635,13 +642,7 @@ export function BookingEditor({
   }
   useEffect(() => {
     onDirtyChange?.(
-      dirty ||
-        paymentDirty ||
-        guestDirty ||
-        discountDirty ||
-        actionDirty ||
-        busy ||
-        discountMutation.isPending
+      dirty || paymentDirty || guestDirty || discountDirty || actionDirty
     )
   }, [
     dirty,
@@ -649,8 +650,6 @@ export function BookingEditor({
     guestDirty,
     discountDirty,
     actionDirty,
-    busy,
-    discountMutation.isPending,
     onDirtyChange,
   ])
   function resetDetails(saved: ReservationDetail) {
@@ -725,6 +724,7 @@ export function BookingEditor({
             size="icon-sm"
             aria-label="Ver reserva completa"
             title="Ver reserva completa"
+            disabled={busy || discountMutation.isPending}
             onClick={() => onViewReservation(detail.id)}
           >
             <ArrowUpRightIcon />
@@ -991,7 +991,17 @@ export function BookingEditor({
               !editPreview.isFetching &&
               !previewFields &&
               editPreview.error && (
-                <FieldError>{editPreview.error.message}</FieldError>
+                <div className="flex flex-col items-start gap-2">
+                  <FieldError>{editPreview.error.message}</FieldError>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    disabled={busy || discountMutation.isPending}
+                    onClick={() => void editPreview.refetch()}
+                  >
+                    Reintentar
+                  </Button>
+                </div>
               )}
           </aside>
         </div>
@@ -1548,36 +1558,34 @@ function ActionForm({
     },
     onSubmit: async ({ value }) => submit(value),
   })
-  const reason = useSelector(form.store, (state) => state.values.reason)
-  const cancellationValid = cancellationSchema.safeParse({ reason }).success
+  const cancellationValid = useSelector(
+    form.store,
+    (state) =>
+      cancellationSchema.safeParse({ reason: state.values.reason }).success
+  )
   const saving = useSelector(form.store, (state) => state.isSubmitting)
   const changed = !useSelector(form.store, (state) => state.isDefaultValue)
-  useEffect(
-    () => onDirtyChange(changed || saving),
-    [changed, saving, onDirtyChange]
-  )
+  useEffect(() => onDirtyChange(changed), [changed, onDirtyChange])
   const formId = useId()
-  const cancellationCommand = useMemo<WorkflowCommand>(
-    () => ({
-      requestId: crypto.randomUUID(),
-      actions: [
-        {
-          type: "set-status",
-          status: "cancelled",
-          ...(reason.trim() ? { reason: reason.trim() } : {}),
-        },
-      ],
-    }),
-    [reason]
-  )
+  // The reason is saved on confirmation; it does not change cancellation totals.
+  const [cancellationPreviewCommand] = useState<WorkflowCommand>(() => ({
+    requestId: crypto.randomUUID(),
+    actions: [
+      {
+        type: "set-status",
+        status: "cancelled",
+      },
+    ],
+  }))
+  const [saveCancellation] = useState(createWorkflowSaver)
   const cancellationPreview = useQuery({
-    queryKey: ["cancellation-preview", detail.id, cancellationCommand],
-    queryFn: () => previewWorkflow(detail.id, cancellationCommand),
-    enabled: isCancellation && cancellationValid,
+    queryKey: ["cancellation-preview", detail.id, cancellationPreviewCommand],
+    queryFn: () => previewWorkflow(detail.id, cancellationPreviewCommand),
+    enabled: isCancellation,
     retry: false,
     refetchOnWindowFocus: false,
   })
-  const cancellation = useWorkflowCommand()
+  const cancellation = useWorkflowCommand(detail.id)
   const title = isCancellation
     ? "Cancelar reserva"
     : deleting
@@ -1598,10 +1606,17 @@ function ActionForm({
       )
         return
       try {
-        const saved = await cancellation.mutateAsync({
-          id: detail.id,
-          command: cancellationCommand,
-        })
+        const reason = value.reason.trim()
+        const saved = await saveCancellation(
+          [
+            {
+              type: "set-status",
+              status: "cancelled",
+              ...(reason ? { reason } : {}),
+            },
+          ],
+          (command) => cancellation.mutateAsync({ id: detail.id, command })
+        )
         onSaved(saved)
         toast.add({
           title: "Reserva cancelada",
@@ -1719,10 +1734,24 @@ function ActionForm({
             )}
           </form>
           {isCancellation &&
-            (cancellationPreview.data ? (
+            (cancellationPreview.error ? (
+              <div className="flex flex-col items-start gap-2">
+                <FieldError>{cancellationPreview.error.message}</FieldError>
+                <Button
+                  type="button"
+                  variant="outline"
+                  disabled={
+                    saving ||
+                    cancellation.isPending ||
+                    cancellationPreview.isFetching
+                  }
+                  onClick={() => void cancellationPreview.refetch()}
+                >
+                  Reintentar
+                </Button>
+              </div>
+            ) : cancellationPreview.data ? (
               <WorkflowBill bill={cancellationPreview.data} />
-            ) : cancellationPreview.error ? (
-              <FieldError>{cancellationPreview.error.message}</FieldError>
             ) : cancellationValid ? (
               <p role="status" className="text-muted-foreground">
                 Calculando…
@@ -1774,24 +1803,35 @@ function ActionForm({
 export function DiscardChanges({
   onStay,
   onLeave,
+  saving = false,
 }: {
   onStay: () => void
   onLeave: () => void
+  saving?: boolean
 }) {
   return (
     <Dialog open onOpenChange={(open) => !open && onStay()}>
-      <DialogContent>
+      <DialogContent closeDisabled={saving}>
         <DialogHeader>
-          <DialogTitle>Hay cambios sin guardar</DialogTitle>
+          <DialogTitle>
+            {saving ? "Guardando cambios" : "Hay cambios sin guardar"}
+          </DialogTitle>
           <DialogDescription>
-            Si sales ahora, se descartarán tus cambios en esta reserva.
+            {saving
+              ? "Espera a que termine el guardado antes de salir."
+              : "Si sales ahora, se descartarán tus cambios en esta reserva."}
           </DialogDescription>
         </DialogHeader>
         <div className="flex flex-wrap justify-end gap-2">
           <Button type="button" variant="outline" onClick={onStay}>
             Seguir editando
           </Button>
-          <Button type="button" variant="destructive" onClick={onLeave}>
+          <Button
+            type="button"
+            variant="destructive"
+            disabled={saving}
+            onClick={onLeave}
+          >
             Descartar y salir
           </Button>
         </div>

@@ -210,10 +210,8 @@ function DiscountInput({
   const value = useSelector(form.store, (state) => state.values.amount)
   const saving = useSelector(form.store, (state) => state.isSubmitting)
   useEffect(() => {
-    onDirtyChange?.(
-      parseMajorToCents(value.trim() || "0") !== amountCents || saving
-    )
-  }, [value, amountCents, saving, onDirtyChange])
+    onDirtyChange?.(parseMajorToCents(value.trim() || "0") !== amountCents)
+  }, [value, amountCents, onDirtyChange])
   useEffect(() => {
     if (
       !focused.current &&

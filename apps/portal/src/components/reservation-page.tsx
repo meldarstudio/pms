@@ -1,5 +1,6 @@
 import { useRef, useState } from "react"
 import { useBlocker } from "@tanstack/react-router"
+import { useQueryClient } from "@tanstack/react-query"
 import { ArrowLeftIcon } from "lucide-react"
 import {
   BookingEditor,
@@ -9,7 +10,8 @@ import {
 import { Button } from "@/components/ui/button"
 import { Skeleton } from "@/components/ui/skeleton"
 import { FieldError } from "@/components/ui/field"
-import { useReservation } from "@/lib/queries"
+import { useReservation, useReservationSaving } from "@/lib/queries"
+import { isReservationSaving } from "@/lib/workflow-query-cache"
 
 export function ReservationPage({
   id,
@@ -18,17 +20,19 @@ export function ReservationPage({
   id: string
   onBack: () => void
 }) {
+  const client = useQueryClient()
   const query = useReservation(id)
+  const saving = useReservationSaving(id)
   const dirty = useRef(false)
   const blocker = useBlocker({
-    shouldBlockFn: () => dirty.current,
+    shouldBlockFn: () => isReservationSaving(client, id) || dirty.current,
     withResolver: true,
   })
   const [tab, setTab] = useState("details")
   return (
     <main className="mx-auto flex w-full max-w-6xl flex-col gap-6 overflow-y-auto p-4 md:p-8">
       <header className="flex flex-col items-start gap-4">
-        <Button variant="ghost" onClick={onBack}>
+        <Button variant="ghost" disabled={saving} onClick={onBack}>
           <ArrowLeftIcon data-icon="inline-start" />
           Volver a reservas
         </Button>
@@ -67,13 +71,25 @@ export function ReservationPage({
             onTabChange={setTab}
             onDirtyChange={(value) => {
               dirty.current = value
+              if (
+                !value &&
+                !isReservationSaving(client, id) &&
+                blocker.status === "blocked"
+              )
+                blocker.reset()
             }}
             onRefresh={() => void query.refetch()}
           />
         )
       )}
       {blocker.status === "blocked" && (
-        <DiscardChanges onStay={blocker.reset} onLeave={blocker.proceed} />
+        <DiscardChanges
+          saving={saving}
+          onStay={blocker.reset}
+          onLeave={() => {
+            if (!isReservationSaving(client, id)) blocker.proceed()
+          }}
+        />
       )}
     </main>
   )

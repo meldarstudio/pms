@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react"
+import { useEffect, useMemo, useState } from "react"
 import { useSelector } from "@tanstack/react-form"
 import { PlusIcon } from "lucide-react"
 import { Button } from "@/components/ui/button"
@@ -20,6 +20,7 @@ import {
   paymentPayload,
   utcToday,
   type GuestValues,
+  type PaymentValues,
 } from "@/lib/reservation-form-schemas"
 import { toast, toastError } from "@/lib/toast"
 
@@ -48,7 +49,7 @@ export function GuestEntryForm({
   onDone?: () => void
   onCancel?: () => void
 }) {
-  const [defaults] = useState<GuestValues>(() =>
+  const [defaults, setDefaults] = useState<GuestValues>(() =>
     guest
       ? guestDefaults(guest)
       : {
@@ -77,7 +78,11 @@ export function GuestEntryForm({
               )
             : [...detail.stayingGuests, payload]
         )
-        form.reset({ ...defaults, id: guest?.id ?? crypto.randomUUID() })
+        const next = guest
+          ? guestDefaults(payload)
+          : { ...defaults, id: crypto.randomUUID() }
+        setDefaults(next)
+        form.reset(next)
         toast.add({
           title: guest ? "Huésped actualizado" : "Huésped agregado",
           type: "success",
@@ -92,10 +97,7 @@ export function GuestEntryForm({
   })
   const unchanged = useSelector(form.store, (state) => state.isDefaultValue)
   const submitting = useSelector(form.store, (state) => state.isSubmitting)
-  useEffect(
-    () => onDirtyChange(!unchanged || submitting),
-    [unchanged, submitting, onDirtyChange]
-  )
+  useEffect(() => onDirtyChange(!unchanged), [unchanged, onDirtyChange])
   return (
     <form
       noValidate
@@ -194,8 +196,11 @@ export function PaymentForm({
   onReady: (title: string, actions: WorkflowAction[]) => Promise<void>
   onDirtyChange: (dirty: boolean) => void
 }) {
-  const [defaults] = useState(() => paymentDefaults(detail.balanceCents))
-  const suggestBalance = useRef(true)
+  const [savedDefaults, setSavedDefaults] = useState<PaymentValues | null>(null)
+  const defaults = useMemo(
+    () => savedDefaults ?? paymentDefaults(detail.balanceCents),
+    [savedDefaults, detail.balanceCents]
+  )
   const form = useReservationForm({
     defaultValues: defaults,
     validationLogic: blurThenChange(),
@@ -206,8 +211,9 @@ export function PaymentForm({
         await onReady("Pago registrado", [
           { type: "add-payment", payment: paymentPayload(value) },
         ])
-        suggestBalance.current = false
-        form.reset({ ...paymentDefaults(), date: value.date })
+        const next = { ...paymentDefaults(), date: value.date }
+        setSavedDefaults(next)
+        form.reset(next)
       } catch (cause) {
         const fields = serverFieldErrors(cause, "payment")
         if (fields) setServerErrors(form, fields)
@@ -217,18 +223,7 @@ export function PaymentForm({
   })
   const unchanged = useSelector(form.store, (state) => state.isDefaultValue)
   const submitting = useSelector(form.store, (state) => state.isSubmitting)
-  useEffect(() => {
-    if (
-      suggestBalance.current &&
-      form.state.isDefaultValue &&
-      !form.state.isSubmitting
-    )
-      form.reset(paymentDefaults(detail.balanceCents))
-  }, [detail.balanceCents, form])
-  useEffect(
-    () => onDirtyChange(!unchanged || submitting),
-    [unchanged, submitting, onDirtyChange]
-  )
+  useEffect(() => onDirtyChange(!unchanged), [unchanged, onDirtyChange])
   return (
     <form
       noValidate

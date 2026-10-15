@@ -1,10 +1,14 @@
 import {
   keepPreviousData,
   useMutation,
+  useIsMutating,
   useQuery,
   useQueryClient,
 } from "@tanstack/react-query"
-import { refreshWorkflowQueries } from "./workflow-query-cache"
+import {
+  refreshWorkflowQueries,
+  workflowMutationKey,
+} from "./workflow-query-cache"
 
 import {
   sendWorkflow,
@@ -207,9 +211,14 @@ export function useReservations(from: string, to: string, enabled = true) {
   })
 }
 
-export function useWorkflowCommand() {
+export function useReservationSaving(id: string | null) {
+  return useIsMutating({ mutationKey: workflowMutationKey(id) }) > 0
+}
+
+export function useWorkflowCommand(id: string) {
   const client = useQueryClient()
   return useMutation({
+    mutationKey: workflowMutationKey(id),
     mutationFn: ({ id, command }: { id: string; command: WorkflowCommand }) =>
       sendWorkflow(id, command),
     onSuccess: (data) => refreshWorkflowQueries(client, data),
