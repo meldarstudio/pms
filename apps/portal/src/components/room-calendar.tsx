@@ -295,7 +295,7 @@ function RoomTrack({
         className="absolute inset-0 grid"
         style={{ gridTemplateColumns: `repeat(${dayCount}, minmax(0, 1fr))` }}
       >
-        {days.map((day) => {
+        {days.map((day, dayIndex) => {
           const date = format(day, "yyyy-MM-dd")
           // Availability is based on nights, not the bar's half-day drawing.
           const occupied = stays.some(
@@ -308,7 +308,10 @@ function RoomTrack({
             date < format(startOfToday(), "yyyy-MM-dd")
 
           return (
-            <div key={date} className="relative border-r">
+            <div
+              key={date}
+              className={cn("relative", dayIndex < dayCount - 1 && "border-r")}
+            >
               {onBookDay ? (
                 <button
                   type="button"
@@ -673,16 +676,6 @@ export function RoomCalendar({
             </TooltipContent>
           </Tooltip>
           <Button
-            variant="outline"
-            aria-expanded={panelOpen}
-            aria-controls="unassigned-panel"
-            disabled={assignment.pending}
-            onClick={() => setPanelOpen((open) => !open)}
-          >
-            <PanelRightIcon data-icon="inline-start" />
-            Sin asignar · {listLoading ? "…" : unassigned.length}
-          </Button>
-          <Button
             disabled={assignment.pending}
             onClick={() => setBookingTarget({ mode: "new" })}
           >
@@ -709,10 +702,13 @@ export function RoomCalendar({
             }}
           >
             <div className="sticky top-0 left-0 z-40 border-r border-b bg-background" />
-            {days.map((day) => (
+            {days.map((day, dayIndex) => (
               <div
                 key={format(day, "yyyy-MM-dd")}
-                className="sticky top-0 z-30 flex min-w-0 flex-col items-center gap-0.5 border-r border-b bg-background px-2.5 py-1.5"
+                className={cn(
+                  "sticky top-0 z-30 flex min-w-0 flex-col items-center gap-0.5 border-b bg-background px-2.5 py-1.5",
+                  dayIndex < span - 1 && "border-r"
+                )}
               >
                 <span
                   className={cn(
@@ -846,14 +842,49 @@ export function RoomCalendar({
             ) : null}
           </div>
         </div>
-        {panelOpen ? (
-          <aside
-            aria-label="Reservas sin asignar"
-            className="min-h-0 w-80 shrink-0 bg-muted"
-          >
-            {panel}
-          </aside>
-        ) : null}
+        <aside
+          aria-label="Reservas sin asignar"
+          className={cn(
+            // border-l is the fixed scroll-edge separator; last grid columns
+            // omit border-r so it does not double-stack when flush.
+            "flex min-h-0 shrink-0 flex-col border-l bg-background",
+            panelOpen ? "w-80" : "w-10"
+          )}
+        >
+          {panelOpen ? (
+            panel
+          ) : (
+            <button
+              type="button"
+              aria-expanded={false}
+              aria-controls="unassigned-panel"
+              aria-label={
+                listLoading
+                  ? "Mostrar reservas sin asignar"
+                  : `Mostrar reservas sin asignar, ${unassigned.length}`
+              }
+              disabled={assignment.pending}
+              onClick={() => setPanelOpen(true)}
+              className={cn(
+                "flex min-h-0 flex-1 flex-col items-center gap-1.5 py-3 text-muted-foreground outline-none hover:bg-muted focus-visible:ring-1 focus-visible:ring-ring/50 disabled:pointer-events-none disabled:opacity-50",
+                unassigned.length > 0 && !listLoading && "text-foreground"
+              )}
+            >
+              <PanelRightIcon className="size-4" aria-hidden="true" />
+              <span
+                aria-hidden="true"
+                className={cn(
+                  "text-center text-xs tabular-nums",
+                  unassigned.length > 0 && !listLoading
+                    ? "bg-primary px-1 font-medium text-primary-foreground"
+                    : "text-muted-foreground"
+                )}
+              >
+                {listLoading ? "…" : unassigned.length}
+              </span>
+            </button>
+          )}
+        </aside>
       </div>
     </div>
   )
