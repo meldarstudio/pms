@@ -19,6 +19,7 @@ let createRoot: (typeof import("react-dom/client"))["createRoot"]
 let query: typeof import("@tanstack/react-query")
 let forms: typeof import("../src/components/reservation-entry-forms.tsx")
 let dialogs: typeof import("../src/components/room-booking-dialog.tsx")
+let queries: typeof import("../src/lib/queries.ts")
 let root: Root
 let container: HTMLDivElement
 let client: Client
@@ -76,6 +77,7 @@ before(async () => {
   dialogs = await server.ssrLoadModule(
     "/src/components/room-booking-dialog.tsx"
   )
+  queries = await server.ssrLoadModule("/src/lib/queries.ts")
 })
 
 after(async () => {
@@ -356,6 +358,102 @@ async function choose(label: string, option: string, index = 0) {
   assert.notEqual(item.getAttribute("aria-disabled"), "true")
   await React.act(async () => (item as unknown as HTMLElement).click())
 }
+
+it("reopens a cached reservation with the room saved by the assignment panel", async () => {
+  const assigned = detail()
+  let saved = {
+    ...assigned,
+    rooms: assigned.rooms.map((room) => ({
+      ...room,
+      roomId: null,
+      roomNumber: null,
+    })),
+  }
+  let writes = 0
+  mockApi(async (path, command) => {
+    assert.equal(path, "/reservations/reservation-1/commands")
+    assert.deepEqual(command.actions, [
+      {
+        type: "edit-room",
+        lineId: "line-1",
+        room: {
+          roomTypeId: "double",
+          roomId: "room-1",
+          adults: 1,
+          children: 0,
+        },
+      },
+    ])
+    writes++
+    saved = assigned
+    return Response.json(saved)
+  })
+  const fetchApi = globalThis.fetch
+  globalThis.fetch = async (input, init) => {
+    if (
+      !init?.method &&
+      new URL(String(input)).pathname === "/reservations/reservation-1"
+    )
+      return Response.json(saved)
+    return fetchApi(input, init)
+  }
+  function AssignmentAndDialog() {
+    const assign = queries.useAssignRoom()
+    const [open, setOpen] = React.useState(true)
+    return React.createElement(
+      React.Fragment,
+      null,
+      React.createElement(
+        "button",
+        {
+          onClick: async () => {
+            await assign.mutateAsync({
+              reservationId: saved.id,
+              lineId: "line-1",
+              roomId: "room-1",
+            })
+            setOpen(true)
+          },
+        },
+        "Assign room"
+      ),
+      React.createElement(dialogs.RoomBookingDialog, {
+        target: open
+          ? {
+              mode: "edit",
+              reservationId: saved.id,
+              roomId: "room-1",
+              number: "101",
+              typeName: "Doble",
+            }
+          : null,
+        timeZone: "UTC",
+        onClose: () => setOpen(false),
+        onViewReservation: () => {},
+      })
+    )
+  }
+  await render(React.createElement(AssignmentAndDialog))
+  await until(
+    () => window.document.querySelector('[name="notes"]') !== null,
+    "Initial reservation must load"
+  )
+  assert.match(fieldTrigger("Hab.").textContent, /^Sin asignar/)
+  await React.act(async () => button("Cerrar").click())
+  await until(
+    () => window.document.querySelector('[name="notes"]') === null,
+    "Closing must unmount the editor"
+  )
+  await React.act(async () => button("Assign room").click())
+  await until(
+    () => window.document.querySelector('[name="notes"]') !== null,
+    "Assigned reservation must reopen"
+  )
+  await flush()
+  assert.match(fieldTrigger("Hab.").textContent, /^101/)
+  assert.equal(button("Guardar detalles").disabled, true)
+  assert.equal(writes, 1)
+})
 
 it("keeps an extension price visible and identifies the conflicting room without exposing its ID", async () => {
   const initial = detail()

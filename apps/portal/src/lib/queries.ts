@@ -100,12 +100,7 @@ export function useAssignRoom() {
       lineId: string
       roomId: string
     }) => assignRoom(input.reservationId, input.lineId, input.roomId),
-    onSuccess: async (_data, input) => {
-      await queryClient.invalidateQueries({ queryKey: ["reservations"] })
-      await queryClient.invalidateQueries({
-        queryKey: ["reservation", input.reservationId],
-      })
-    },
+    onSuccess: (data) => refreshWorkflowQueries(queryClient, data),
   })
 }
 
