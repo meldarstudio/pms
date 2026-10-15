@@ -320,6 +320,132 @@ function mockApi(
   }
 }
 
+async function choose(label: string, option: string, index = 0) {
+  const fieldLabel = Array.from(
+    window.document.querySelectorAll("label")
+  ).filter((item) => item.textContent.trim() === label)[index]
+  assert.ok(fieldLabel, `Missing label ${label}`)
+  const trigger = window.document.getElementById(fieldLabel.htmlFor)!
+  await until(() => !trigger.hasAttribute("disabled"), `${label} must be ready`)
+  await React.act(async () => trigger.click())
+  const item = Array.from(
+    window.document.querySelectorAll('[role="option"]')
+  ).find((item) => item.textContent.trim() === option)
+  assert.ok(item, `Missing option ${option}`)
+  assert.notEqual(item.getAttribute("aria-disabled"), "true")
+  await React.act(async () => (item as unknown as HTMLElement).click())
+}
+
+it("allows choosing and saving check-in with an unassigned room", async () => {
+  const initial = detail()
+  initial.rooms[0].roomId = null
+  initial.rooms[0].roomNumber = null
+  const writes: WorkflowCommand[] = []
+  mockApi(async (path, command) => {
+    if (path.endsWith("/commands")) writes.push(command)
+    return Response.json({ ...initial, status: "checked_in" })
+  })
+  await render(
+    React.createElement(dialogs.BookingEditor, {
+      detail: initial,
+      onRefresh: () => {},
+    })
+  )
+  await choose("Estado de la reserva", "Check-in")
+  await until(
+    () => !button("Guardar detalles").disabled,
+    "Check-in must be savable"
+  )
+  await submit()
+  await until(() => writes.length === 1, "Check-in must save")
+  assert.deepEqual(writes[0].actions, [
+    { type: "set-status", status: "checked_in" },
+  ])
+  assert.equal(
+    window.document.body.textContent.includes("antes del check-in"),
+    false
+  )
+})
+
+it("previews and saves added unassigned rooms after check-in and allows clearing assignments", async () => {
+  const initial = { ...detail(), status: "checked_in" }
+  const writes: WorkflowCommand[] = []
+  const previews: WorkflowCommand[] = []
+  mockApi(async (path, command) => {
+    if (path.endsWith("/commands")) writes.push(command)
+    else previews.push(command)
+    const hasAdded = command.actions.some(
+      (action) => action.type === "add-room"
+    )
+    const unassigned = { ...initial.rooms[0], roomId: null, roomNumber: null }
+    return Response.json({
+      ...initial,
+      rooms: hasAdded
+        ? [unassigned, { ...unassigned, id: "line-2" }]
+        : [unassigned],
+      subtotalCents: hasAdded ? 60000 : 30000,
+      totalCents: hasAdded ? 60000 : 30000,
+      balanceCents: hasAdded ? 60000 : 30000,
+    })
+  })
+  // Match the dialog's subscription to the saved reservation cache.
+  client.setQueryData(["reservation", initial.id], initial)
+  function Editor() {
+    const reservation = query.useQuery<ReservationDetail>({
+      queryKey: ["reservation", initial.id],
+      queryFn: async () => initial,
+      staleTime: Infinity,
+    })
+    return React.createElement(dialogs.BookingEditor, {
+      detail: reservation.data!,
+      onRefresh: () => {},
+    })
+  }
+  await render(React.createElement(Editor))
+  await choose("Hab.", "Sin asignar")
+  await React.act(async () => button("Agregar habitación").click())
+  await until(
+    () => !button("Guardar detalles").disabled,
+    "Added room must have a valid preview"
+  )
+  assert.ok(
+    previews.some((command) =>
+      command.actions.some((action) => action.type === "add-room")
+    )
+  )
+  const subtotal = Array.from(window.document.querySelectorAll("dt")).find(
+    (item) => item.textContent === "Importe habitaciones"
+  )!
+  assert.equal(
+    subtotal.nextElementSibling?.textContent.replace(/\s/g, ""),
+    "S/600"
+  )
+  assert.ok(window.document.body.textContent.includes("Vista previa"))
+  await submit()
+  await until(
+    () => writes.length === 1,
+    "Unassigned rooms must save after check-in"
+  )
+  assert.ok(
+    writes[0].actions.some(
+      (action) => action.type === "edit-room" && action.room.roomId === null
+    )
+  )
+  assert.ok(
+    writes[0].actions.some(
+      (action) => action.type === "add-room" && action.room.roomId === null
+    )
+  )
+  await until(
+    () => button("Guardar detalles").disabled,
+    "Successful save must reset changes"
+  )
+  assert.equal(
+    window.document.body.textContent.includes("antes del check-in"),
+    false
+  )
+})
+
 it("retries a failed validation preview without losing edits and re-enables saving", async () => {
   const previews: WorkflowCommand[] = []
   mockApi(async (path, command) => {

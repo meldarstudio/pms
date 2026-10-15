@@ -112,15 +112,10 @@ describe("reservation form schemas", () => {
       true
     )
   })
-  it("requires physical assignments on check-in and rejects duplicate assignments", () => {
+  it("allows unassigned rooms on check-in and rejects duplicate assignments", () => {
     const values = details()
     values.status = "checked_in"
-    assert.equal(
-      schemaErrors(detailsSchema(types).safeParse(values))[
-        "rooms[0].room.roomId"
-      ],
-      "Asigna una habitación antes del check-in."
-    )
+    assert.equal(detailsSchema(types).safeParse(values).success, true)
     values.rooms[0].room.roomId = "room-1"
     assert.equal(detailsSchema(types).safeParse(values).success, true)
     values.rooms.push({ ...structuredClone(values.rooms[0]), id: "line-2" })

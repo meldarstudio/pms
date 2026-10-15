@@ -38,8 +38,6 @@ export function serverFieldErrors(
       cause.code === "stay must be at least one night"
     )
       fields.checkOut = cause.message
-    if (cause.code === "check-in requires an assigned room")
-      fields.status = cause.message
   }
   return Object.keys(fields).length ? fields : null
 }

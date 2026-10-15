@@ -109,12 +109,6 @@ export const detailsSchema = (types: RoomType[]) =>
             type.maxOccupancy
         )
           ctx.addIssue({ code: "custom", path, message: capacityMessage })
-        if (value.status === "checked_in" && !draft.room.roomId)
-          ctx.addIssue({
-            code: "custom",
-            path: [...path, "roomId"],
-            message: "Asigna una habitación antes del check-in.",
-          })
         if (draft.room.roomId) {
           if (assignments.has(draft.room.roomId))
             ctx.addIssue({

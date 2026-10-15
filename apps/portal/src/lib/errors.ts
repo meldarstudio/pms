@@ -1,8 +1,6 @@
 const messages: Record<string, string> = {
   "reservation requires at least one room":
     "La reserva debe tener al menos una habitación.",
-  "check-in requires an assigned room":
-    "Asigna todas las habitaciones antes del check-in.",
   "payment date is required": "Indica la fecha del pago.",
   "guest room must belong to this reservation":
     "Asigna al huésped a una habitación de esta reserva.",

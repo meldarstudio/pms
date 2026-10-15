@@ -227,7 +227,7 @@ export function RoomBookingDialog({
           >
             {target?.mode === "edit"
               ? "Detalles de la reserva, huéspedes y pagos."
-              : "Reserva por tipo y asigna una habitación ahora o antes del check-in."}
+              : "Reserva por tipo y asigna una habitación cuando lo necesites."}
           </DialogDescription>
         </DialogHeader>
         {target?.mode === "edit" ? (
@@ -678,7 +678,6 @@ export function BookingEditor({
   }
 
   const activeDrafts = drafts.filter((draft) => !draft.removed)
-  const unassigned = activeDrafts.some((draft) => !draft.room.roomId)
   const cancel = () => setIntent({ type: "cancel" })
   async function saveChanges() {
     if (!countsValid) return
@@ -847,7 +846,6 @@ export function BookingEditor({
                                       .filter((other) => other.id !== draft.id)
                                       .map((other) => other.room)
                                   )}
-                                  occupied={reservationState === "checked_in"}
                                   actions={
                                     <Button
                                       type="button"
@@ -1031,7 +1029,6 @@ export function BookingEditor({
                       {
                         value: "checked_in",
                         label: "Check-in",
-                        disabled: unassigned,
                       },
                       { value: "checked_out", label: "Check-out" },
                       { value: "no_show", label: "No se presentó" },
@@ -1079,11 +1076,6 @@ export function BookingEditor({
           </div>
         </div>
       </div>
-      {tab === "details" && unassigned && (
-        <p className="text-xs text-muted-foreground">
-          Asigna una habitación a cada estancia antes del check-in.
-        </p>
-      )}
       {intent && (
         <ActionForm
           key={intent.type + ("entry" in intent ? intent.entry.id : "")}
@@ -1146,7 +1138,6 @@ const CompactRoomFields = withReservationForm({
     roomIndex: 0,
     reservationId: "",
     blockedRoomIds: new Set<string>(),
-    occupied: false,
     actions: null as ReactNode,
     errors: {} as Record<string, string>,
   },
@@ -1155,7 +1146,6 @@ const CompactRoomFields = withReservationForm({
     roomIndex,
     reservationId,
     blockedRoomIds,
-    occupied,
     actions,
     errors,
   }) {
@@ -1204,7 +1194,7 @@ const CompactRoomFields = withReservationForm({
               nullable
               disabled={!availability.ready}
               options={[
-                ...(!occupied ? [{ value: "none", label: "Sin asignar" }] : []),
+                { value: "none", label: "Sin asignar" },
                 ...(rooms.data ?? [])
                   .filter(
                     (r) =>

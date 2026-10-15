@@ -150,8 +150,6 @@ CREATE TRIGGER reservations_inventory_update
 BEFORE UPDATE OF status, check_in, check_out ON reservations
 WHEN NEW.status IN ('confirmed', 'checked_in', 'checked_out')
 BEGIN
- SELECT RAISE(ABORT, 'check-in requires an assigned room') WHERE NEW.status = 'checked_in'
-   AND EXISTS (SELECT 1 FROM reservation_rooms WHERE reservation_id = NEW.id AND room_id IS NULL);
  SELECT RAISE(ABORT, 'room taken') WHERE EXISTS (
    SELECT 1 FROM reservation_rooms own JOIN reservation_rooms other ON own.room_id = other.room_id AND own.id != other.id
    JOIN reservations r ON r.id = other.reservation_id

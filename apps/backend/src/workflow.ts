@@ -243,8 +243,6 @@ export async function plan(
     if (action.type === 'add-payment') state.payments.push(newPayment(action.payment))
   }
   if (!state.lines.length) fail('reservation requires at least one room')
-  if (state.reservation.status === 'checked_in' && state.lines.some((line) => !line.roomId))
-    fail('check-in requires an assigned room')
   return { state }
 }
 

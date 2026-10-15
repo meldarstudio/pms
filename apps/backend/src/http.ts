@@ -33,7 +33,6 @@ function errorText(err: unknown): string {
 export function rethrowConflict(err: unknown): never {
   const text = errorText(err)
   if (text.includes('reservation_requests.id')) throw new HttpError(409, 'request ID reused with a different payload')
-  if (text.includes('check-in requires an assigned room')) throw new HttpError(409, 'check-in requires an assigned room')
   if (text.includes('invalid room assignment')) throw new HttpError(409, 'room is a different type')
   if (text.includes('invalid occupancy')) throw new HttpError(409, 'too many guests for this room type')
   if (text.includes('no availability')) throw new HttpError(409, 'no availability')

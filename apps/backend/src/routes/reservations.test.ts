@@ -157,7 +157,9 @@ describe('reservation workflow', () => {
     expect(availability.roomTypes[0].free).toBe(1)
     d = await command(d, [roomEdit(d, 0, { roomId: null })])
     expect(d.rooms[0].roomId).toBeNull()
-    await command(d, [all(d, 'check-in')], 400)
+    d = await command(d, [all(d, 'check-in')])
+    expect(d.status).toBe('checked_in')
+    expect(d.rooms.every((line) => line.roomId === null)).toBe(true)
   })
   it('rejects discount-shaped payment payloads and negative discount amounts', async () => {
     const d = await create()
@@ -631,15 +633,52 @@ describe('reservation dates and lifecycle', () => {
     expect(d.balanceCents).toBe(60000)
     expect(d.rooms.every((line) => line.nights.length === 3)).toBe(true)
   })
-  it('requires an assignment for every room at check-in, including added rooms', async () => {
-    const d = await create(2)
-    await command(d, [roomEdit(d), all(d, 'check-in')], 400)
-    const saved = await command(d, [...d.rooms.map((_, i) => roomEdit(d, i)), all(d, 'check-in')])
-    await command(
-      saved,
-      [{ type: 'add-room', room: { roomTypeId: 'type', adults: 1, children: 0 } }],
-      400,
-    )
+  it('previews and saves check-in with a mix of assigned and unassigned rooms', async () => {
+    let d = await create(2)
+    const actions = [roomEdit(d), all(d, 'check-in')]
+    const response = await request(`/reservations/${d.id}/preview`, 'POST', {
+      requestId: crypto.randomUUID(), actions,
+    })
+    expect(response.status).toBe(200)
+    expect(await response.json()).toMatchObject({
+      status: 'checked_in', totalCents: 60000,
+      rooms: [{ roomId: 'room-101' }, { roomId: null }],
+    })
+    expect(((await (await request(`/reservations/${d.id}`)).json()) as Detail).status).toBe('confirmed')
+    d = await command(d, actions)
+    expect(d.status).toBe('checked_in')
+    expect(d.rooms.map((line) => line.roomId)).toEqual(['room-101', null])
+    d = await command(d, [roomEdit(d, 0, { roomId: null })])
+    expect(d.status).toBe('checked_in')
+    expect(d.rooms.every((line) => line.roomId === null)).toBe(true)
+    expect(d.totalCents).toBe(60000)
+  })
+  it('prices added unassigned rooms after check-in and still rejects overbooking', async () => {
+    let d = await arrive(await create(2))
+    const actions: WorkflowAction[] = [
+      { type: 'add-room', room: { roomTypeId: 'type', adults: 1, children: 0 } },
+    ]
+    const response = await request(`/reservations/${d.id}/preview`, 'POST', {
+      requestId: crypto.randomUUID(), actions,
+    })
+    expect(response.status).toBe(200)
+    const preview = await response.json() as Detail
+    expect(preview.status).toBe('checked_in')
+    expect(preview.totalCents).toBe(90000)
+    expect(preview.rooms[2]).toMatchObject({ roomId: null, totalCents: 30000 })
+    expect(((await (await request(`/reservations/${d.id}`)).json()) as Detail).rooms).toHaveLength(2)
+    d = await command(d, actions)
+    expect(d.status).toBe('checked_in')
+    expect(d.rooms[2]).toMatchObject({ roomId: null, totalCents: 30000 })
+    expect(d.totalCents).toBe(preview.totalCents)
+    const availability = await (await request('/availability?checkIn=2026-10-10&checkOut=2026-10-13')).json()
+    expect(availability).toMatchObject({ roomTypes: [{ free: 0 }] })
+    const overflow = await request(`/reservations/${d.id}/preview`, 'POST', {
+      requestId: crypto.randomUUID(), actions,
+    })
+    expect(overflow.status).toBe(409)
+    expect(await overflow.json()).toMatchObject({ error: 'no availability' })
+    await command(d, actions, 409)
   })
   it('allows correcting a reservation status while retaining the shared stay dates', async () => {
     let d = await arrive(await create(2))
