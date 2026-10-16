@@ -13,9 +13,18 @@ Run `pnpm exec vp test --project backend` or `pnpm --filter @pms/backend test`
 for the backend suite. Tests use `vite-plus/test` and in-memory SQLite; they
 do not require a running Worker. Run `pnpm format` to format maintained repo files,
 including the backend, with Oxfmt defaults. Generated Worker types and Drizzle
-metadata are excluded. `pnpm check` checks formatting across the repo, lints the
-portal, and runs the backend's existing TypeScript 7 typecheck alongside the
-portal's TypeScript checks.
+metadata are excluded. `pnpm check` checks formatting, lint rules, and native
+types across the portal, backend, and shared schemas. `pnpm lint` covers all
+three packages; `pnpm --filter @pms/backend lint` targets the backend. Backend
+source uses Worker globals, while tests, seed scripts, and configuration use
+Node globals. React and browser rules apply only to the portal.
+
+Native type checking covers backend source, configuration, TypeScript tests,
+and shared schemas. Backend `.mjs` scripts and tests receive syntax linting
+without static type checking. `pnpm typecheck` runs native type checks without
+formatting or lint rules. `pnpm --filter @pms/backend typecheck` retains
+`tsc --noEmit` for standalone checks and Workers Builds; root commands do not
+repeat that compiler pass.
 
 ## Reservation dates
 

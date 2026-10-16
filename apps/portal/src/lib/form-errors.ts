@@ -19,6 +19,9 @@ export function errorMessage(errors: readonly unknown[]) {
   return [...new Set(messages)].join(" ") || undefined;
 }
 
-export function setServerErrors(form: AnyFormApi, fields: Record<string, string>) {
+export function setServerErrors(
+  form: Pick<AnyFormApi, "setErrorMap">,
+  fields: Record<string, string>,
+) {
   form.setErrorMap({ onServer: { fields } });
 }

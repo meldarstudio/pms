@@ -32,11 +32,25 @@ for the portal alone. Tests use `vite-plus/test` and do not need a browser.
 The dialog suite uses happy-dom and a Vite SSR server to render the actual
 components.
 
-Run `pnpm check` for Oxfmt, Oxlint, and the package TypeScript checks. The root
-`vite.config.ts` uses Oxfmt defaults across maintained repo files, with Tailwind
+Run `pnpm check` for Oxfmt, Oxlint, and native type checks across the portal,
+backend, and shared schemas. `pnpm --filter @pms/portal typecheck` runs only native type
+checks for portal source, Vite configuration, and tests. The solution tsconfig
+references `tsconfig.app.json`, `tsconfig.node.json`, and `tests/tsconfig.json`.
+The test config inherits the app's strict options and adds Node types. The
+dialog harness uses happy-dom types, with a DOM type conversion at React's
+`createRoot` boundary and module assertions for Vite's dynamic SSR loader.
+
+The portal and backend use the same TypeScript 7 catalog dependency from
+`pnpm-workspace.yaml`. Vite+'s checker also uses TypeScript 7. For a standalone
+compiler check, run `pnpm --filter @pms/portal exec tsc -b`. `pnpm build` runs
+native checking before bundling without a duplicate compiler check.
+
+The root `vite.config.ts` uses Oxfmt defaults across maintained repo files, with Tailwind
 class sorting for portal TS/TSX files. Run `pnpm format` for the whole repo or
 `pnpm --filter @pms/portal format` for only the portal. Generated files are
-excluded. Linting remains scoped to portal TS/TSX files, including React Hooks checks.
+excluded. `pnpm lint` covers all three packages. Use
+`pnpm --filter @pms/portal lint` for portal TS/TSX files only. React Hooks rules
+remain portal-only, and browser globals apply to portal source and tests.
 
 ## Deployment
 

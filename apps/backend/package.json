@@ -7,6 +7,7 @@
     "deploy": "pnpm db:migrate:remote && wrangler deploy --minify",
     "deploy:ci": "wrangler deploy --minify",
     "test": "vp test run",
+    "lint": "vp lint .",
     "typecheck": "tsc --noEmit",
     "cf-typegen": "wrangler types --env-interface CloudflareBindings",
     "db:generate": "drizzle-kit generate",
@@ -26,7 +27,7 @@
   "devDependencies": {
     "@types/node": "^24.19.1",
     "drizzle-kit": "^0.31.11",
-    "typescript": "^7.0.2",
+    "typescript": "catalog:",
     "vite-plus": "catalog:",
     "wrangler": "^4.147.0"
   }

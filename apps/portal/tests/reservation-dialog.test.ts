@@ -1,7 +1,14 @@
 import assert from "node:assert/strict";
 import { fileURLToPath } from "node:url";
 import { afterAll, afterEach, beforeAll, beforeEach, it } from "vite-plus/test";
-import { Window } from "happy-dom";
+import {
+  Window,
+  type HTMLDivElement,
+  type HTMLInputElement,
+  type HTMLTextAreaElement,
+  type HTMLButtonElement,
+  type HTMLElement,
+} from "happy-dom";
 import { createServer, type ViteDevServer } from "vite";
 import type { Root } from "react-dom/client";
 import type { QueryClient as Client } from "@tanstack/react-query";
@@ -73,10 +80,16 @@ beforeAll(async () => {
     server: { middlewareMode: true, hmr: false, ws: false, watch: null },
     mode: "development",
   });
-  forms = await server.ssrLoadModule("/src/components/reservation-entry-forms.tsx");
-  dialogs = await server.ssrLoadModule("/src/components/room-booking-dialog.tsx");
-  newBookings = await server.ssrLoadModule("/src/components/new-booking.tsx");
-  queries = await server.ssrLoadModule("/src/lib/queries.ts");
+  forms = (await server.ssrLoadModule(
+    "/src/components/reservation-entry-forms.tsx",
+  )) as typeof forms;
+  dialogs = (await server.ssrLoadModule(
+    "/src/components/room-booking-dialog.tsx",
+  )) as typeof dialogs;
+  newBookings = (await server.ssrLoadModule(
+    "/src/components/new-booking.tsx",
+  )) as typeof newBookings;
+  queries = (await server.ssrLoadModule("/src/lib/queries.ts")) as typeof queries;
 });
 
 afterAll(async () => {
@@ -86,9 +99,10 @@ afterAll(async () => {
 });
 
 beforeEach(() => {
-  container = window.document.createElement("div") as unknown as HTMLDivElement;
+  container = window.document.createElement("div");
   window.document.body.append(container);
-  root = createRoot(container);
+  // React expects lib.dom nodes; the test DOM implements them through happy-dom.
+  root = createRoot(container as unknown as Parameters<typeof createRoot>[0]);
   client = new query.QueryClient({
     defaultOptions: {
       queries: { retry: false, gcTime: Infinity },
@@ -120,6 +134,7 @@ function detail(): ReservationDetail {
       fullName: "Test Guest",
       phone: null,
       email: null,
+      notes: null,
     },
     stayingGuests: [],
     checkIn: "2026-10-14",
@@ -147,7 +162,7 @@ function detail(): ReservationDetail {
         nights: [],
       },
     ],
-  } as ReservationDetail;
+  };
 }
 
 async function render(element: React.ReactNode) {
@@ -193,7 +208,7 @@ async function fillControl(input: HTMLInputElement | HTMLTextAreaElement, value:
       : window.HTMLInputElement.prototype;
   await React.act(async () => {
     Object.getOwnPropertyDescriptor(prototype, "value")!.set!.call(input, value);
-    input.dispatchEvent(new window.Event("input", { bubbles: true }) as unknown as Event);
+    input.dispatchEvent(new window.Event("input", { bubbles: true }));
   });
 }
 
@@ -204,7 +219,7 @@ async function submit() {
       new window.Event("submit", {
         bubbles: true,
         cancelable: true,
-      }) as unknown as Event,
+      }),
     );
   });
 }
@@ -330,7 +345,7 @@ function fieldTrigger(label: string, index = 0) {
     (item) => item.textContent.trim() === label,
   )[index];
   assert.ok(fieldLabel, `Missing label ${label}`);
-  return window.document.getElementById(fieldLabel.htmlFor) as unknown as HTMLButtonElement;
+  return window.document.getElementById(fieldLabel.htmlFor) as HTMLButtonElement;
 }
 
 async function choose(label: string, option: string, index = 0) {
@@ -342,12 +357,12 @@ async function choose(label: string, option: string, index = 0) {
   );
   assert.ok(item, `Missing option ${option}`);
   assert.notEqual(item.getAttribute("aria-disabled"), "true");
-  await React.act(async () => (item as unknown as HTMLElement).click());
+  await React.act(async () => (item as HTMLElement).click());
 }
 
 it("reopens a cached reservation with the room saved by the assignment panel", async () => {
   const assigned = detail();
-  let saved = {
+  let saved: ReservationDetail = {
     ...assigned,
     rooms: assigned.rooms.map((room) => ({
       ...room,
@@ -530,9 +545,7 @@ it("creates an open-section booking with its contact, notes, room quote, and ini
   const discount = container.querySelector<HTMLInputElement>('[aria-label="Descuento en soles"]')!;
   await fillControl(discount, "30");
   await React.act(async () => {
-    discount.dispatchEvent(
-      new window.FocusEvent("focusout", { bubbles: true }) as unknown as Event,
-    );
+    discount.dispatchEvent(new window.FocusEvent("focusout", { bubbles: true }));
   });
   await until(() => !button("Crear reserva").disabled, "Valid discount must finish updating");
   assert.ok(container.textContent.replace(/\s/g, "").includes("S/570"));
@@ -592,7 +605,7 @@ it("opens a blank room-type menu without a validation error and prices the selec
       new window.FocusEvent("focusout", {
         bubbles: true,
         relatedTarget: option,
-      }) as unknown as Event,
+      }),
     );
   });
   assert.equal(type.getAttribute("aria-invalid"), "false");
@@ -606,9 +619,7 @@ it("opens a blank room-type menu without a validation error and prices the selec
   assert.equal(type.getAttribute("aria-invalid"), "false");
   await fill("fullName", "Ada Lovelace");
   await React.act(async () => {
-    control("fullName").dispatchEvent(
-      new window.FocusEvent("focusout", { bubbles: true }) as unknown as Event,
-    );
+    control("fullName").dispatchEvent(new window.FocusEvent("focusout", { bubbles: true }));
   });
   await submit();
   await until(() => writes.length === 1, "A booking started without a room type must save");
@@ -687,7 +698,7 @@ it("filters sold-out types, occupied and closed room numbers, and inventory alre
     (
       window.document.querySelector(
         '[data-slot="select-content"][data-open] [role="option"]',
-      ) as unknown as HTMLElement
+      ) as HTMLElement
     ).click(),
   );
   await React.act(async () => fieldTrigger("Hab.").click());
@@ -705,7 +716,7 @@ it("filters sold-out types, occupied and closed room numbers, and inventory alre
     (
       window.document.querySelector(
         '[data-slot="select-content"][data-open] [role="option"]',
-      ) as unknown as HTMLElement
+      ) as HTMLElement
     ).click(),
   );
   await React.act(async () => button("Agregar habitación").click());
@@ -715,7 +726,7 @@ it("filters sold-out types, occupied and closed room numbers, and inventory alre
     (
       window.document.querySelector(
         '[data-slot="select-content"][data-open] [role="option"]',
-      ) as unknown as HTMLElement
+      ) as HTMLElement
     ).click(),
   );
   assert.equal(button("Agregar habitación").disabled, true);
@@ -1002,10 +1013,7 @@ it("keeps pricing an added room when its occupancy is invalid and blocks saving"
         subtotalCents: 60000,
         totalCents: 60000,
         balanceCents: 60000,
-        rooms: [
-          ...detail().rooms,
-          { ...detail().rooms[0], id: "new-line", roomId: null, ...added.room },
-        ],
+        rooms: [...detail().rooms, { ...detail().rooms[0], id: "new-line", ...added.room }],
       },
       added.room.adults > 2
         ? [
@@ -1196,7 +1204,7 @@ for (const succeeds of [true, false]) {
           input,
           "Saved note",
         );
-        input.dispatchEvent(new window.Event("input", { bubbles: true }) as unknown as Event);
+        input.dispatchEvent(new window.Event("input", { bubbles: true }));
       });
       await React.act(async () =>
         popup
@@ -1422,7 +1430,7 @@ for (const discountSucceeds of [true, false]) {
         discount.dispatchEvent(
           new window.FocusEvent("focusout", {
             bubbles: true,
-          }) as unknown as Event,
+          }),
         );
       });
       await until(() => writes.length === 1, "Discount autosave must start");

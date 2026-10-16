@@ -27,7 +27,7 @@ export function currency(c: Context<Env>): string {
 function errorText(err: unknown): string {
   if (!err) return "";
   if (err instanceof Error) return `${err.message} ${errorText(err.cause)}`;
-  return String(err);
+  return typeof err === "string" ? err : "";
 }
 
 export function rethrowConflict(err: unknown): never {

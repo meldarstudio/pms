@@ -386,7 +386,7 @@ describe("reservation workflow", () => {
   it("rejects one of two distinct bookings competing for the last room", async () => {
     await create(2);
     const responses = await Promise.all(
-      [1, 2].map(() =>
+      [1, 2].map(async () =>
         request("/reservations", "POST", {
           requestId: crypto.randomUUID(),
           guest: { fullName: "Last Room" },
@@ -402,7 +402,7 @@ describe("reservation workflow", () => {
         }),
       ),
     );
-    expect(responses.map((r) => r.status).sort()).toEqual([201, 409]);
+    expect(responses.map((r) => r.status).sort((a, b) => a - b)).toEqual([201, 409]);
   });
   it("rolls back extension dates and prices when another booking owns the added night", async () => {
     let d = await create(1, { checkIn: "2026-10-10", checkOut: "2026-10-11" });

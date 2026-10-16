@@ -24,8 +24,9 @@ Run these from the repository root.
 | `pnpm dev` or `pnpm exec vp run dev`     | Start the portal and local backend                                         |
 | `pnpm exec vp dev`                       | Start the portal at `http://localhost:5173`                                |
 | `pnpm dev:backend`                       | Start the local API at `http://127.0.0.1:8788`                             |
-| `pnpm check`                             | Check formatting and lint, then run each package's TypeScript compiler     |
-| `pnpm exec vp check .`                   | Check repo formatting and portal lint with the root configuration          |
+| `pnpm lint`                              | Lint and natively type-check the portal, backend, and shared schemas       |
+| `pnpm check` or `pnpm exec vp check .`   | Check repo formatting, lint, and native types                              |
+| `pnpm typecheck`                         | Check native types without formatting or lint rules                        |
 | `pnpm exec vp test`                      | Run all 203 tests across the backend and portal projects                   |
 | `pnpm exec vp test --project portal`     | Run the portal tests only                                                  |
 | `pnpm exec vp test --project backend`    | Run the backend tests only                                                 |
@@ -37,7 +38,7 @@ Run these from the repository root.
 `vp dev`, `vp test`, and `vp build` are built-in tools. `vp run <task>` runs
 the corresponding package script or configured task. The root configuration
 selects the portal for application commands. Direct `vp build` does not run
-the `tsc -b` step in the package's build script; use `pnpm build` for both.
+the native type-check step in the package's build script; use `pnpm build` for both.
 
 Production builds require `VITE_API_BASE_URL`:
 
@@ -55,14 +56,36 @@ selection. Formatting uses Oxfmt defaults across maintained source, configuratio
 and documentation, with Tailwind class sorting enabled for portal TS/TSX files.
 Generated Worker types, Drizzle metadata, lockfiles, installed agent skills,
 coverage, and package stores are excluded, along with Git-ignored files.
-Linting covers portal TS/TSX files and keeps its React Hooks rules.
+Linting covers portal TS/TSX files, backend TypeScript and JavaScript files,
+and shared schemas, including tests and package configuration. Correctness
+and TypeScript rules apply to all packages. React rules apply only to the
+portal. Browser globals are limited to portal source and tests; Worker source
+uses service-worker globals, and tests, scripts, and tooling use Node globals.
+Generated Worker types, migrations, build output, and coverage are excluded.
+
+Use `pnpm --filter @pms/portal lint` or `pnpm --filter @pms/backend lint` for
+one app. The root `pnpm lint` covers all three packages.
 
 The root format and check scripts pass `.` explicitly to cover the repository.
 Use `pnpm --filter @pms/portal format` to format only the portal.
 
-`pnpm check` retains the portal's TypeScript 6 project-reference checks and
-the backend's TypeScript 7 checks. Native Vite+ type checking is disabled
-because it also checks portal tests excluded by the existing tsconfig.
+`pnpm check` enables Vite+'s native type checker with `typeAware: true` and
+`typeCheck: true`. The portal's solution tsconfig references separate app,
+Node configuration, and test projects. `tests/tsconfig.json` extends the strict
+app options and adds Node types for the test runner. Tests remain outside the
+app project's `src` include. Native checking covers all three projects.
+
+The portal and backend share TypeScript 7 through the `typescript` catalog
+entry in `pnpm-workspace.yaml`. Update that entry to upgrade both packages.
+Vite+ uses its bundled TypeScript 7 checker for all three packages. You can also run the
+installed compiler with `pnpm --filter @pms/portal exec tsc -b`; normal check
+and build commands do not run that duplicate compiler pass.
+
+Native checking also covers backend source, configuration, colocated TypeScript
+tests, and shared schemas. Root check and typecheck commands do not repeat the
+backend compiler pass. `pnpm --filter @pms/backend typecheck` remains available
+for standalone backend checks and Workers Builds. Backend `.mjs` scripts and
+tests receive syntax linting but are not type-checked.
 
 The shared package exports TypeScript source directly and needs no `vp pack`
 step. Wrangler still handles backend development and deployment.
