@@ -85,7 +85,7 @@ Use the same `--persist-to` directory when starting Wrangler if you want the
 backend to read that database. Without this option, the reset uses Wrangler's
 default local database, the same one used by `pnpm dev:backend`.
 
-Sample scenarios live in `seed-data.mjs`. Room types and rooms come from
+Sample scenarios live in `scripts/seed-data.mjs`. Room types and rooms come from
 `seed.sql`. The existing `pnpm db:seed:local` command only adds missing room types
 and rooms; use `pnpm db:reset:local` to undo edits and reload all sample data.
 

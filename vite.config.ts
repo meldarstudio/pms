@@ -91,7 +91,7 @@ export default defineConfig({
       {
         files: [
           "apps/*/*.config.ts",
-          "apps/backend/*.mjs",
+          "apps/backend/scripts/**/*.mjs",
           "apps/backend/src/**/*.test.{ts,mjs}",
           "apps/portal/tests/**/*.{ts,tsx}",
         ],

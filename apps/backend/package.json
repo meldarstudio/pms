@@ -14,8 +14,8 @@
     "db:migrate:local": "wrangler d1 migrations apply DB --local",
     "db:migrate:remote": "wrangler d1 migrations apply pms-production --remote",
     "db:seed:local": "wrangler d1 execute DB --local --file=./seed.sql",
-    "db:reset:local": "node seed-reset.mjs",
-    "db:seed:unassigned": "node seed-unassigned.mjs"
+    "db:reset:local": "node scripts/seed-reset.mjs",
+    "db:seed:unassigned": "node scripts/seed-unassigned.mjs"
   },
   "dependencies": {
     "@hono/zod-validator": "^0.9.1",

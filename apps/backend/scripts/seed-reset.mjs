@@ -6,7 +6,7 @@ import { fileURLToPath } from "node:url";
 import { buildResetSql, referenceDate } from "./seed-data.mjs";
 import { buildSchemaResetSql } from "./schema-reset.mjs";
 
-const backendDir = fileURLToPath(new URL(".", import.meta.url));
+const backendDir = fileURLToPath(new URL("..", import.meta.url));
 
 function runWrangler(args, captureOutput = false) {
   const result = spawnSync("pnpm", ["exec", "wrangler", ...args], {

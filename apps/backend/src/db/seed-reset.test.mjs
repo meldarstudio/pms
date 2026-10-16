@@ -3,8 +3,8 @@ import { readFileSync } from "node:fs";
 import { DatabaseSync } from "node:sqlite";
 import { fileURLToPath } from "node:url";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
-import { buildResetSql, referenceDate } from "../../seed-data.mjs";
-import { buildSchemaResetSql } from "../../schema-reset.mjs";
+import { buildResetSql, referenceDate } from "../../scripts/seed-data.mjs";
+import { buildSchemaResetSql } from "../../scripts/schema-reset.mjs";
 
 const backendDir = new URL("../../", import.meta.url);
 const migrationsDir = new URL("drizzle/", backendDir);
@@ -307,7 +307,7 @@ describe("local dummy data reset", () => {
   ])("rejects invalid CLI arguments before running Wrangler: %j", (...args) => {
     const result = spawnSync(
       process.execPath,
-      [fileURLToPath(new URL("seed-reset.mjs", backendDir)), ...args],
+      [fileURLToPath(new URL("scripts/seed-reset.mjs", backendDir)), ...args],
       { encoding: "utf8" },
     );
     expect(result.status).toBe(1);

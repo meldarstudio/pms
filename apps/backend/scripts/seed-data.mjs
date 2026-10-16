@@ -1,6 +1,6 @@
 import { readFileSync } from "node:fs";
 
-const roomSeed = readFileSync(new URL("./seed.sql", import.meta.url), "utf8");
+const roomSeed = readFileSync(new URL("../seed.sql", import.meta.url), "utf8");
 
 export function referenceDate(value = new Date().toISOString().slice(0, 10)) {
   const date = new Date(`${value}T00:00:00.000Z`);
