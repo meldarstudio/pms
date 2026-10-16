@@ -1,11 +1,21 @@
 # Backend
 
-Run commands from the repository root using pnpm.
+Run commands from the repository root using Node 22.22.1 and pnpm 11.22.0.
+Vite+ is installed locally for tests and task commands. Wrangler still runs
+the Worker and handles deployment.
 
 ```sh
 pnpm install
 pnpm dev
 ```
+
+Run `pnpm exec vp test --project backend` or `pnpm --filter @pms/backend test`
+for the backend suite. Tests use `vite-plus/test` and in-memory SQLite; they
+do not require a running Worker. Run `pnpm format` to format maintained repo files,
+including the backend, with Oxfmt defaults. Generated Worker types and Drizzle
+metadata are excluded. `pnpm check` checks formatting across the repo, lints the
+portal, and runs the backend's existing TypeScript 7 typecheck alongside the
+portal's TypeScript checks.
 
 ## Reservation dates
 

@@ -1,15 +1,22 @@
-import { and, eq, gt, inArray, lt, ne, sql } from 'drizzle-orm'
-import type { Db } from './db'
-import { reservationRooms, reservations, roomClosures, roomTypeRates, roomTypes, rooms } from './db/schema'
-import { nightsBetween } from './lib/dates'
-import { peakOccupied } from './lib/inventory-grid'
+import { and, eq, gt, inArray, lt, ne, sql } from "drizzle-orm";
+import type { Db } from "./db";
+import {
+  reservationRooms,
+  reservations,
+  roomClosures,
+  roomTypeRates,
+  roomTypes,
+  rooms,
+} from "./db/schema";
+import { nightsBetween } from "./lib/dates";
+import { peakOccupied } from "./lib/inventory-grid";
 
-const openStatuses = ['confirmed', 'checked_in', 'checked_out']
+const openStatuses = ["confirmed", "checked_in", "checked_out"];
 
 export async function loadRoomTypes(db: Db, ids?: string[]) {
-  if (ids && ids.length === 0) return []
-  if (!ids) return db.select().from(roomTypes)
-  return db.select().from(roomTypes).where(inArray(roomTypes.id, ids))
+  if (ids && ids.length === 0) return [];
+  if (!ids) return db.select().from(roomTypes);
+  return db.select().from(roomTypes).where(inArray(roomTypes.id, ids));
 }
 
 export async function roomCounts(db: Db) {
@@ -19,8 +26,8 @@ export async function roomCounts(db: Db) {
       count: sql<number>`count(*)`,
     })
     .from(rooms)
-    .groupBy(rooms.roomTypeId)
-  return new Map(rows.map((row) => [row.roomTypeId, Number(row.count)]))
+    .groupBy(rooms.roomTypeId);
+  return new Map(rows.map((row) => [row.roomTypeId, Number(row.count)]));
 }
 
 export async function occupiedCounts(
@@ -30,8 +37,8 @@ export async function occupiedCounts(
   excludeReservationId?: string,
   excludeClosureId?: string,
 ) {
-  const dates = nightsBetween(checkIn, checkOut)
-  if (dates.length === 0) return new Map<string, number>()
+  const dates = nightsBetween(checkIn, checkOut);
+  if (dates.length === 0) return new Map<string, number>();
   const [stays, closures] = await Promise.all([
     db
       .select({
@@ -66,12 +73,12 @@ export async function occupiedCounts(
           excludeClosureId ? ne(roomClosures.id, excludeClosureId) : undefined,
         ),
       ),
-  ])
-  return peakOccupied(dates, stays, closures)
+  ]);
+  return peakOccupied(dates, stays, closures);
 }
 
 export async function ratesBetween(db: Db, typeIds: string[], checkIn: string, checkOut: string) {
-  if (typeIds.length === 0) return []
+  if (typeIds.length === 0) return [];
   return db
     .select()
     .from(roomTypeRates)
@@ -81,5 +88,5 @@ export async function ratesBetween(db: Db, typeIds: string[], checkIn: string, c
         sql`${roomTypeRates.date} >= ${checkIn}`,
         sql`${roomTypeRates.date} < ${checkOut}`,
       ),
-    )
+    );
 }

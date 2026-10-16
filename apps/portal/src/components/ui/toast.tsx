@@ -1,13 +1,13 @@
-import { Toast as ToastPrimitive } from "@base-ui/react/toast"
-import { CircleAlertIcon, CircleCheckIcon, XIcon } from "lucide-react"
-import type { ReactNode } from "react"
-import { cn } from "cn"
+import { Toast as ToastPrimitive } from "@base-ui/react/toast";
+import { CircleAlertIcon, CircleCheckIcon, XIcon } from "lucide-react";
+import type { ReactNode } from "react";
+import { cn } from "cn";
 
-import { Button } from "@/components/ui/button"
-import { toast } from "@/lib/toast"
+import { Button } from "@/components/ui/button";
+import { toast } from "@/lib/toast";
 
 function ToastList() {
-  const { toasts } = ToastPrimitive.useToastManager()
+  const { toasts } = ToastPrimitive.useToastManager();
 
   return (
     <ToastPrimitive.Portal>
@@ -19,7 +19,7 @@ function ToastList() {
             data-slot="toast"
             className={cn(
               "relative flex items-start gap-2.5 border bg-popover p-3 text-xs text-popover-foreground shadow-md transition-[opacity,transform] duration-100 outline-none data-ending-style:translate-y-2 data-ending-style:opacity-0 data-limited:hidden data-starting-style:translate-y-2 data-starting-style:opacity-0",
-              item.type === "error" && "border-destructive/40"
+              item.type === "error" && "border-destructive/40",
             )}
           >
             {item.type === "error" ? (
@@ -28,9 +28,7 @@ function ToastList() {
               <CircleCheckIcon className="mt-0.5 size-4 shrink-0 text-booking-foreground" />
             )}
             <ToastPrimitive.Content className="min-w-0 flex-1">
-              <ToastPrimitive.Title className="font-medium">
-                {item.title}
-              </ToastPrimitive.Title>
+              <ToastPrimitive.Title className="font-medium">{item.title}</ToastPrimitive.Title>
               {item.description ? (
                 <ToastPrimitive.Description className="mt-1 text-muted-foreground">
                   {item.description}
@@ -53,7 +51,7 @@ function ToastList() {
         ))}
       </ToastPrimitive.Viewport>
     </ToastPrimitive.Portal>
-  )
+  );
 }
 
 export function ToastProvider({ children }: { children: ReactNode }) {
@@ -62,5 +60,5 @@ export function ToastProvider({ children }: { children: ReactNode }) {
       {children}
       <ToastList />
     </ToastPrimitive.Provider>
-  )
+  );
 }

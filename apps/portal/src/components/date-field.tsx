@@ -1,16 +1,12 @@
-import { useState, type ComponentProps } from "react"
-import { startOfDay } from "date-fns"
-import { format } from "@/lib/dates"
-import { CalendarIcon } from "lucide-react"
+import { useState, type ComponentProps } from "react";
+import { startOfDay } from "date-fns";
+import { format } from "@/lib/dates";
+import { CalendarIcon } from "lucide-react";
 
-import { Button } from "@/components/ui/button"
-import { Calendar } from "@/components/ui/calendar"
-import { Field, FieldError, FieldLabel } from "@/components/ui/field"
-import {
-  Popover,
-  PopoverContent,
-  PopoverTrigger,
-} from "@/components/ui/popover"
+import { Button } from "@/components/ui/button";
+import { Calendar } from "@/components/ui/calendar";
+import { Field, FieldError, FieldLabel } from "@/components/ui/field";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 
 export function DateField({
   id,
@@ -23,29 +19,26 @@ export function DateField({
   onBlur,
   onChange,
 }: {
-  id: string
-  label: string
-  value: Date | null
-  timeZone: string
-  disabled?: ComponentProps<typeof Calendar>["disabled"]
-  locked?: boolean
-  error?: string | null
-  onBlur?: () => void
-  onChange: (date: Date) => void
+  id: string;
+  label: string;
+  value: Date | null;
+  timeZone: string;
+  disabled?: ComponentProps<typeof Calendar>["disabled"];
+  locked?: boolean;
+  error?: string | null;
+  onBlur?: () => void;
+  onChange: (date: Date) => void;
 }) {
-  const [open, setOpen] = useState(false)
+  const [open, setOpen] = useState(false);
 
   return (
-    <Field
-      data-invalid={Boolean(error) || undefined}
-      data-disabled={locked || undefined}
-    >
+    <Field data-invalid={Boolean(error) || undefined} data-disabled={locked || undefined}>
       <FieldLabel htmlFor={id}>{label}</FieldLabel>
       <Popover
         open={open}
         onOpenChange={(next) => {
-          setOpen(next)
-          if (!next) onBlur?.()
+          setOpen(next);
+          if (!next) onBlur?.();
         }}
       >
         <PopoverTrigger
@@ -59,7 +52,7 @@ export function DateField({
               aria-invalid={Boolean(error) || undefined}
               aria-describedby={error ? `${id}-error` : undefined}
               onBlur={() => {
-                if (!open) onBlur?.()
+                if (!open) onBlur?.();
               }}
             />
           }
@@ -75,15 +68,15 @@ export function DateField({
             defaultMonth={value ?? undefined}
             disabled={disabled}
             onSelect={(date) => {
-              if (!date) return
-              onChange(startOfDay(date))
-              setOpen(false)
-              onBlur?.()
+              if (!date) return;
+              onChange(startOfDay(date));
+              setOpen(false);
+              onBlur?.();
             }}
           />
         </PopoverContent>
       </Popover>
       {error ? <FieldError id={`${id}-error`}>{error}</FieldError> : null}
     </Field>
-  )
+  );
 }

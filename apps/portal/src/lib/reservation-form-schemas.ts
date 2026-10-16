@@ -1,24 +1,12 @@
-import { z } from "zod"
-import type {
-  PaymentInput,
-  ReservationDetail,
-  RoomType,
-  StayingGuest,
-} from "./api.ts"
-import { formatMajor, parseMajorToCents } from "./money.ts"
-import type { RoomDraft } from "./reservation-editor.ts"
+import { z } from "zod";
+import type { PaymentInput, ReservationDetail, RoomType, StayingGuest } from "./api.ts";
+import { formatMajor, parseMajorToCents } from "./money.ts";
+import type { RoomDraft } from "./reservation-editor.ts";
 
-export const utcToday = () => new Date().toISOString().slice(0, 10)
-const optionalText = (max: number) =>
-  z.string().trim().max(max, `Máximo ${max} caracteres.`)
-const date = z.iso.date({ error: "Indica una fecha válida." })
-const status = z.enum([
-  "confirmed",
-  "checked_in",
-  "checked_out",
-  "cancelled",
-  "no_show",
-])
+export const utcToday = () => new Date().toISOString().slice(0, 10);
+const optionalText = (max: number) => z.string().trim().max(max, `Máximo ${max} caracteres.`);
+const date = z.iso.date({ error: "Indica una fecha válida." });
+const status = z.enum(["confirmed", "checked_in", "checked_out", "cancelled", "no_show"]);
 const count = (min: number, message: string) =>
   z
     .string()
@@ -28,8 +16,8 @@ const count = (min: number, message: string) =>
         Number.isSafeInteger(Number(value)) &&
         Number(value) >= min &&
         Number(value) <= 100,
-      message
-    )
+      message,
+    );
 const room = z.object({
   id: z.string(),
   removed: z.boolean(),
@@ -39,13 +27,9 @@ const room = z.object({
     adults: z.string(),
     children: z.string(),
   }),
-})
-export const capacityMessage =
-  "La habitación no tiene capacidad para todos los huéspedes."
-export const detailsSchema = (
-  types: RoomType[],
-  { validateOperations = true } = {}
-) =>
+});
+export const capacityMessage = "La habitación no tiene capacidad para todos los huéspedes.";
+export const detailsSchema = (types: RoomType[], { validateOperations = true } = {}) =>
   z
     .object({
       checkIn: date,
@@ -56,9 +40,8 @@ export const detailsSchema = (
     })
     .superRefine((value, ctx) => {
       const nights =
-        (Date.parse(`${value.checkOut}T00:00:00Z`) -
-          Date.parse(`${value.checkIn}T00:00:00Z`)) /
-        86400000
+        (Date.parse(`${value.checkOut}T00:00:00Z`) - Date.parse(`${value.checkIn}T00:00:00Z`)) /
+        86400000;
       if (nights < 1 || nights > 60)
         ctx.addIssue({
           code: "custom",
@@ -67,71 +50,66 @@ export const detailsSchema = (
             nights < 1
               ? "La estancia debe tener al menos una noche."
               : "La estancia no puede superar las 60 noches.",
-        })
-      const active = value.rooms.filter((draft) => !draft.removed)
+        });
+      const active = value.rooms.filter((draft) => !draft.removed);
       if (!active.length || active.length > 60)
         ctx.addIssue({
           code: "custom",
           path: ["rooms"],
           message: "La reserva debe tener entre 1 y 60 habitaciones.",
-        })
-      const assignments = new Set<string>()
+        });
+      const assignments = new Set<string>();
       value.rooms.forEach((draft, index) => {
-        if (draft.removed) return
-        const path = ["rooms", index, "room"]
-        const type = types.find((type) => type.id === draft.room.roomTypeId)
+        if (draft.removed) return;
+        const path = ["rooms", index, "room"];
+        const type = types.find((type) => type.id === draft.room.roomTypeId);
         if (!draft.room.roomTypeId || (types.length && !type))
           ctx.addIssue({
             code: "custom",
             path: [...path, "roomTypeId"],
             message: "Selecciona un tipo de habitación válido.",
-          })
-        const adults = count(1, "Ingresa entre 1 y 100 adultos.").safeParse(
-          draft.room.adults
-        )
-        const children = count(0, "Ingresa entre 0 y 100 niños.").safeParse(
-          draft.room.children
-        )
+          });
+        const adults = count(1, "Ingresa entre 1 y 100 adultos.").safeParse(draft.room.adults);
+        const children = count(0, "Ingresa entre 0 y 100 niños.").safeParse(draft.room.children);
         if (!adults.success)
           ctx.addIssue({
             code: "custom",
             path: [...path, "adults"],
             message: adults.error.issues[0].message,
-          })
+          });
         if (!children.success)
           ctx.addIssue({
             code: "custom",
             path: [...path, "children"],
             message: children.error.issues[0].message,
-          })
+          });
         if (
           validateOperations &&
           adults.success &&
           children.success &&
           type &&
-          Number(draft.room.adults) + Number(draft.room.children) >
-            type.maxOccupancy
+          Number(draft.room.adults) + Number(draft.room.children) > type.maxOccupancy
         )
-          ctx.addIssue({ code: "custom", path, message: capacityMessage })
+          ctx.addIssue({ code: "custom", path, message: capacityMessage });
         if (draft.room.roomId) {
           if (validateOperations && assignments.has(draft.room.roomId))
             ctx.addIssue({
               code: "custom",
               path: [...path, "roomId"],
               message: "Esta habitación ya está seleccionada en la reserva.",
-            })
-          assignments.add(draft.room.roomId)
+            });
+          assignments.add(draft.room.roomId);
         }
-      })
-    })
-export type DetailsValues = z.input<ReturnType<typeof detailsSchema>>
+      });
+    });
+export type DetailsValues = z.input<ReturnType<typeof detailsSchema>>;
 export const emptyDetails: DetailsValues = {
   checkIn: "",
   checkOut: "",
   status: "confirmed",
   notes: "",
   rooms: [],
-}
+};
 export function detailsDefaults(detail: ReservationDetail): DetailsValues {
   return {
     checkIn: detail.checkIn,
@@ -148,7 +126,7 @@ export function detailsDefaults(detail: ReservationDetail): DetailsValues {
         children: String(room.children),
       },
     })),
-  }
+  };
 }
 export function workflowDrafts(values: DetailsValues): RoomDraft[] {
   return values.rooms.map((draft) => ({
@@ -158,20 +136,20 @@ export function workflowDrafts(values: DetailsValues): RoomDraft[] {
       adults: Number(draft.room.adults),
       children: Number(draft.room.children),
     },
-  }))
+  }));
 }
 
 // Preview room order follows the retained rooms, then the added rooms.
 export function detailsSummaryRooms(
   values: DetailsValues,
-  pricedRooms: ReservationDetail["rooms"] | undefined
+  pricedRooms: ReservationDetail["rooms"] | undefined,
 ) {
   return values.rooms
     .filter((draft) => !draft.removed)
     .map((draft, index) => {
-      const priced = pricedRooms?.[index]
-      const adults = count(1, "").safeParse(draft.room.adults)
-      const children = count(0, "").safeParse(draft.room.children)
+      const priced = pricedRooms?.[index];
+      const adults = count(1, "").safeParse(draft.room.adults);
+      const children = count(0, "").safeParse(draft.room.children);
       return {
         key: draft.id,
         roomTypeId: draft.room.roomTypeId,
@@ -185,8 +163,8 @@ export function detailsSummaryRooms(
               totalCents: priced.totalCents,
             }
           : null,
-      }
-    })
+      };
+    });
 }
 export const guestSchema = z.object({
   id: z.uuid(),
@@ -197,14 +175,14 @@ export const guestSchema = z.object({
     .max(200, "Máximo 200 caracteres."),
   email: optionalText(320).refine(
     (value) => !value || /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value),
-    "Ingresa un correo válido."
+    "Ingresa un correo válido.",
   ),
   phone: optionalText(40),
   documentType: optionalText(40),
   documentNumber: optionalText(60),
   reservationRoomId: z.string().nullable(),
-})
-export type GuestValues = z.input<typeof guestSchema>
+});
+export type GuestValues = z.input<typeof guestSchema>;
 export function guestDefaults(guest: StayingGuest): GuestValues {
   return {
     ...guest,
@@ -212,43 +190,38 @@ export function guestDefaults(guest: StayingGuest): GuestValues {
     phone: guest.phone ?? "",
     documentType: guest.documentType ?? "",
     documentNumber: guest.documentNumber ?? "",
-  }
+  };
 }
 export function guestPayload(values: GuestValues): StayingGuest {
-  const parsed = guestSchema.parse(values)
+  const parsed = guestSchema.parse(values);
   return {
     ...parsed,
     email: parsed.email || null,
     phone: parsed.phone || null,
     documentType: parsed.documentType || null,
     documentNumber: parsed.documentNumber || null,
-  }
+  };
 }
 const money = (positive: boolean) =>
   z.string().refine(
     (value) => {
-      const cents = parseMajorToCents(value.trim() || (positive ? "" : "0"))
-      return (
-        cents !== null && cents >= (positive ? 1 : 0) && cents <= 1000000000
-      )
+      const cents = parseMajorToCents(value.trim() || (positive ? "" : "0"));
+      return cents !== null && cents >= (positive ? 1 : 0) && cents <= 1000000000;
     },
     positive
       ? "Introduce un importe positivo con hasta dos decimales, máximo S/ 10 000 000."
-      : "Ingresa un importe válido con hasta dos decimales, máximo S/ 10 000 000."
-  )
+      : "Ingresa un importe válido con hasta dos decimales, máximo S/ 10 000 000.",
+  );
 export const paymentSchema = z.object({
   amount: money(true),
   method: z.enum(["cash", "card", "transfer", "yape", "other"], {
     error: "Selecciona un método de pago válido.",
   }),
-  date: date.refine(
-    (value) => value <= utcToday(),
-    "La fecha del pago no puede ser futura."
-  ),
+  date: date.refine((value) => value <= utcToday(), "La fecha del pago no puede ser futura."),
   reference: optionalText(200),
   reason: optionalText(2000),
-})
-export type PaymentValues = z.input<typeof paymentSchema>
+});
+export type PaymentValues = z.input<typeof paymentSchema>;
 export function paymentDefaults(amountCents = 0): PaymentValues {
   return {
     amount: amountCents > 0 ? formatMajor(amountCents) : "",
@@ -256,33 +229,33 @@ export function paymentDefaults(amountCents = 0): PaymentValues {
     date: utcToday(),
     reference: "",
     reason: "",
-  }
+  };
 }
 export function paymentPayload(values: PaymentValues): PaymentInput {
-  const parsed = paymentSchema.parse(values)
+  const parsed = paymentSchema.parse(values);
   return {
     amountCents: parseMajorToCents(parsed.amount.trim())!,
     method: parsed.method,
     paymentDate: parsed.date,
     ...(parsed.reference ? { reference: parsed.reference.toUpperCase() } : {}),
     ...(parsed.reason ? { notes: parsed.reason } : {}),
-  }
+  };
 }
-export const discountSchema = z.object({ amount: money(false) })
+export const discountSchema = z.object({ amount: money(false) });
 export const newBookingSchema = (types: RoomType[]) =>
   z.intersection(
     detailsSchema(types),
     guestSchema
       .pick({ fullName: true, email: true, phone: true })
-      .extend({ discount: discountSchema.shape.amount })
-  )
-export type NewBookingValues = z.input<ReturnType<typeof newBookingSchema>>
-export const cancellationSchema = z.object({ reason: optionalText(2000) })
+      .extend({ discount: discountSchema.shape.amount }),
+  );
+export type NewBookingValues = z.input<ReturnType<typeof newBookingSchema>>;
+export const cancellationSchema = z.object({ reason: optionalText(2000) });
 
 export function schemaErrors(
-  result: ReturnType<ReturnType<typeof detailsSchema>["safeParse"]>
+  result: ReturnType<ReturnType<typeof detailsSchema>["safeParse"]>,
 ): Record<string, string> {
-  if (result.success) return {}
+  if (result.success) return {};
   return Object.fromEntries(
     result.error.issues.map((issue) => [
       issue.path.reduce<string>(
@@ -292,9 +265,9 @@ export function schemaErrors(
             : path
               ? `${path}.${String(part)}`
               : String(part),
-        ""
+        "",
       ),
       issue.message,
-    ])
-  )
+    ]),
+  );
 }

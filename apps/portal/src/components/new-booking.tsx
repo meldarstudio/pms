@@ -1,48 +1,35 @@
-import { useEffect, useMemo, useRef, useState } from "react"
-import { useSelector } from "@tanstack/react-form"
-import { useQueryClient } from "@tanstack/react-query"
-import { PlusIcon, XIcon } from "lucide-react"
-import { BookingSummary } from "@/components/booking-summary"
-import type { BookingTarget } from "@/components/room-booking-dialog"
-import { Button } from "@/components/ui/button"
-import {
-  FieldError,
-  FieldGroup,
-  FieldLegend,
-  FieldSet,
-} from "@/components/ui/field"
-import { Separator } from "@/components/ui/separator"
-import { createWorkflowBooking } from "@/lib/api"
-import { serverFieldErrors } from "@/lib/api-error"
-import { format } from "@/lib/dates"
-import { parseISO } from "date-fns"
-import { setServerErrors } from "@/lib/form-errors"
-import { CURRENCY, formatMajor, parseMajorToCents } from "@/lib/money"
-import { newBookingAvailability } from "@/lib/new-booking-availability"
+import { useEffect, useMemo, useRef, useState } from "react";
+import { useSelector } from "@tanstack/react-form";
+import { useQueryClient } from "@tanstack/react-query";
+import { PlusIcon, XIcon } from "lucide-react";
+import { BookingSummary } from "@/components/booking-summary";
+import type { BookingTarget } from "@/components/room-booking-dialog";
+import { Button } from "@/components/ui/button";
+import { FieldError, FieldGroup, FieldLegend, FieldSet } from "@/components/ui/field";
+import { Separator } from "@/components/ui/separator";
+import { createWorkflowBooking } from "@/lib/api";
+import { serverFieldErrors } from "@/lib/api-error";
+import { format } from "@/lib/dates";
+import { parseISO } from "date-fns";
+import { setServerErrors } from "@/lib/form-errors";
+import { CURRENCY, formatMajor, parseMajorToCents } from "@/lib/money";
+import { newBookingAvailability } from "@/lib/new-booking-availability";
 import {
   useAvailability,
   useReservations,
   useRoomClosures,
   useRooms,
   useRoomTypes,
-} from "@/lib/queries"
-import {
-  changeCheckIn,
-  minimumCheckOut,
-  unavailableRoomIds,
-} from "@/lib/reservation-editor"
-import {
-  blurThenChange,
-  submitForm,
-  useReservationForm,
-} from "@/lib/reservation-form"
+} from "@/lib/queries";
+import { changeCheckIn, minimumCheckOut, unavailableRoomIds } from "@/lib/reservation-editor";
+import { blurThenChange, submitForm, useReservationForm } from "@/lib/reservation-form";
 import {
   newBookingSchema,
   schemaErrors,
   utcToday,
   workflowDrafts,
   type NewBookingValues,
-} from "@/lib/reservation-form-schemas"
+} from "@/lib/reservation-form-schemas";
 
 export function NewBooking({
   target,
@@ -51,21 +38,18 @@ export function NewBooking({
   onDirtyChange,
   onSavingChange,
 }: {
-  target: Exclude<BookingTarget, { mode: "edit" }>
-  onCreated: (id: string) => void
-  onCancel: () => void
-  onDirtyChange: (dirty: boolean) => void
-  onSavingChange: (saving: boolean) => void
+  target: Exclude<BookingTarget, { mode: "edit" }>;
+  onCreated: (id: string) => void;
+  onCancel: () => void;
+  onDirtyChange: (dirty: boolean) => void;
+  onSavingChange: (saving: boolean) => void;
 }) {
-  const client = useQueryClient()
-  const roomTypes = useRoomTypes()
-  const rooms = useRooms()
-  const schema = useMemo(
-    () => newBookingSchema(roomTypes.data ?? []),
-    [roomTypes.data]
-  )
+  const client = useQueryClient();
+  const roomTypes = useRoomTypes();
+  const rooms = useRooms();
+  const schema = useMemo(() => newBookingSchema(roomTypes.data ?? []), [roomTypes.data]);
   const [defaults] = useState<NewBookingValues>(() => {
-    const checkIn = target.mode === "create" ? target.checkIn : utcToday()
+    const checkIn = target.mode === "create" ? target.checkIn : utcToday();
     return {
       checkIn,
       checkOut: minimumCheckOut(checkIn),
@@ -87,19 +71,19 @@ export function NewBooking({
           },
         },
       ],
-    }
-  })
-  const [error, setError] = useState("")
-  const [discountDirty, setDiscountDirty] = useState(false)
-  const retry = useRef<{ payload: string; requestId: string } | null>(null)
+    };
+  });
+  const [error, setError] = useState("");
+  const [discountDirty, setDiscountDirty] = useState(false);
+  const retry = useRef<{ payload: string; requestId: string } | null>(null);
   const form = useReservationForm({
     defaultValues: defaults,
     validationLogic: blurThenChange(),
     validators: { onDynamic: schema },
     onSubmit: async ({ value }) => {
-      if (!availabilityReady || selection.rooms !== values.rooms) return
-      setError("")
-      const parsed = schema.parse(value)
+      if (!availabilityReady || selection.rooms !== values.rooms) return;
+      setError("");
+      const parsed = schema.parse(value);
       const data = {
         guest: {
           fullName: parsed.fullName,
@@ -111,58 +95,44 @@ export function NewBooking({
         rooms: workflowDrafts(parsed).map((draft) => draft.room),
         notes: parsed.notes,
         discountCents: parseMajorToCents(parsed.discount.trim() || "0")!,
-      }
-      const payload = JSON.stringify(data)
+      };
+      const payload = JSON.stringify(data);
       if (retry.current?.payload !== payload)
-        retry.current = { payload, requestId: crypto.randomUUID() }
+        retry.current = { payload, requestId: crypto.randomUUID() };
       try {
         const result = await createWorkflowBooking({
           ...data,
           requestId: retry.current!.requestId,
-        })
-        await client.invalidateQueries()
-        onDirtyChange(false)
-        onCreated(result.id)
+        });
+        await client.invalidateQueries();
+        onDirtyChange(false);
+        onCreated(result.id);
       } catch (cause) {
-        const fields =
-          serverFieldErrors(cause, "details") ??
-          serverFieldErrors(cause, "guest")
-        if (fields) setServerErrors(form, fields)
-        else
-          setError(
-            cause instanceof Error ? cause.message : "No se pudo guardar."
-          )
+        const fields = serverFieldErrors(cause, "details") ?? serverFieldErrors(cause, "guest");
+        if (fields) setServerErrors(form, fields);
+        else setError(cause instanceof Error ? cause.message : "No se pudo guardar.");
       }
     },
-  })
-  const values = useSelector(form.store, (state) => state.values)
-  const busy = useSelector(form.store, (state) => state.isSubmitting)
-  const unchanged = useSelector(form.store, (state) => state.isDefaultValue)
+  });
+  const values = useSelector(form.store, (state) => state.values);
+  const busy = useSelector(form.store, (state) => state.isSubmitting);
+  const unchanged = useSelector(form.store, (state) => state.isDefaultValue);
   useEffect(
     () => onDirtyChange(!unchanged || discountDirty),
-    [unchanged, discountDirty, onDirtyChange]
-  )
+    [unchanged, discountDirty, onDirtyChange],
+  );
   useEffect(() => {
-    onSavingChange(busy)
-    return () => onSavingChange(false)
-  }, [busy, onSavingChange])
+    onSavingChange(busy);
+    return () => onSavingChange(false);
+  }, [busy, onSavingChange]);
 
   const nights =
-    (Date.parse(`${values.checkOut}T00:00:00Z`) -
-      Date.parse(`${values.checkIn}T00:00:00Z`)) /
-    86400000
-  const validStay = nights >= 1 && nights <= 60
-  const availability = useAvailability(
-    values.checkIn,
-    values.checkOut,
-    validStay
-  )
-  const reservations = useReservations(
-    values.checkIn,
-    values.checkOut,
-    validStay
-  )
-  const closures = useRoomClosures(values.checkIn, values.checkOut, validStay)
+    (Date.parse(`${values.checkOut}T00:00:00Z`) - Date.parse(`${values.checkIn}T00:00:00Z`)) /
+    86400000;
+  const validStay = nights >= 1 && nights <= 60;
+  const availability = useAvailability(values.checkIn, values.checkOut, validStay);
+  const reservations = useReservations(values.checkIn, values.checkOut, validStay);
+  const closures = useRoomClosures(values.checkIn, values.checkOut, validStay);
   const availabilityReady =
     validStay &&
     roomTypes.isSuccess &&
@@ -171,7 +141,7 @@ export function NewBooking({
     reservations.isSuccess &&
     !reservations.isPlaceholderData &&
     closures.isSuccess &&
-    !closures.isPlaceholderData
+    !closures.isPlaceholderData;
   const selection = newBookingAvailability(
     values.rooms,
     availability.data?.roomTypes ?? [],
@@ -179,29 +149,23 @@ export function NewBooking({
     unavailableRoomIds(
       { checkIn: values.checkIn, checkOut: values.checkOut },
       reservations.data ?? [],
-      closures.data ?? []
-    )
-  )
+      closures.data ?? [],
+    ),
+  );
   useEffect(() => {
     if (availabilityReady && !busy && selection.rooms !== values.rooms)
-      form.setFieldValue("rooms", selection.rooms)
-  }, [availabilityReady, busy, selection.rooms, values.rooms, form])
-  const errors = schemaErrors(schema.safeParse(values))
+      form.setFieldValue("rooms", selection.rooms);
+  }, [availabilityReady, busy, selection.rooms, values.rooms, form]);
+  const errors = schemaErrors(schema.safeParse(values));
   const summaryRooms = values.rooms.map((draft) => {
-    const type = availability.data?.roomTypes.find(
-      (type) => type.id === draft.room.roomTypeId
-    )
+    const type = availability.data?.roomTypes.find((type) => type.id === draft.room.roomTypeId);
     return {
       key: draft.id,
       typeName:
-        roomTypes.data?.find((type) => type.id === draft.room.roomTypeId)
-          ?.name ?? "Selecciona un tipo",
-      adults: /^\d+$/.test(draft.room.adults)
-        ? Number(draft.room.adults)
-        : null,
-      children: /^\d+$/.test(draft.room.children)
-        ? Number(draft.room.children)
-        : null,
+        roomTypes.data?.find((type) => type.id === draft.room.roomTypeId)?.name ??
+        "Selecciona un tipo",
+      adults: /^\d+$/.test(draft.room.adults) ? Number(draft.room.adults) : null,
+      children: /^\d+$/.test(draft.room.children) ? Number(draft.room.children) : null,
       charges:
         validStay && !availability.isError && type
           ? {
@@ -210,15 +174,15 @@ export function NewBooking({
               totalCents: type.totalCents,
             }
           : null,
-    }
-  })
+    };
+  });
   const subtotalCents = summaryRooms.reduce(
     (sum, room) => sum + (room.charges?.totalCents ?? 0),
-    0
-  )
-  const discountCents = parseMajorToCents(values.discount.trim() || "0") ?? 0
-  const priced = summaryRooms.every((room) => room.charges !== null)
-  const totalCents = subtotalCents - discountCents
+    0,
+  );
+  const discountCents = parseMajorToCents(values.discount.trim() || "0") ?? 0;
+  const priced = summaryRooms.every((room) => room.charges !== null);
+  const totalCents = subtotalCents - discountCents;
 
   return (
     <form
@@ -226,10 +190,7 @@ export function NewBooking({
       className="flex min-w-0 flex-col gap-5"
       onSubmit={(event) => void submitForm(event, () => form.handleSubmit())}
     >
-      <fieldset
-        disabled={busy}
-        className="grid min-w-0 gap-6 lg:grid-cols-[minmax(0,1fr)_280px]"
-      >
+      <fieldset disabled={busy} className="grid min-w-0 gap-6 lg:grid-cols-[minmax(0,1fr)_280px]">
         <div className="flex min-w-0 flex-col gap-5">
           <FieldGroup className="grid grid-cols-1 gap-3 sm:grid-cols-2">
             <form.AppField
@@ -243,9 +204,9 @@ export function NewBooking({
                         checkIn: value,
                         checkOut: form.getFieldValue("checkOut"),
                       },
-                      value
-                    ).checkOut
-                  )
+                      value,
+                    ).checkOut,
+                  );
                 },
               }}
             >
@@ -267,8 +228,8 @@ export function NewBooking({
             <form.Field name="rooms" mode="array">
               {() =>
                 values.rooms.map((draft, index) => {
-                  const options = selection.options[index]
-                  const capacity = errors[`rooms[${index}].room`]
+                  const options = selection.options[index];
+                  const capacity = errors[`rooms[${index}].room`];
                   return (
                     <FieldGroup
                       key={draft.id}
@@ -289,10 +250,7 @@ export function NewBooking({
                                   }))
                             }
                             onValueChange={() =>
-                              form.setFieldValue(
-                                `rooms[${index}].room.roomId`,
-                                null
-                              )
+                              form.setFieldValue(`rooms[${index}].room.roomId`, null)
                             }
                           />
                         )}
@@ -302,19 +260,13 @@ export function NewBooking({
                           <field.Choice
                             label="Hab."
                             nullable
-                            disabled={
-                              !availabilityReady || !draft.room.roomTypeId
-                            }
+                            disabled={!availabilityReady || !draft.room.roomTypeId}
                             options={[
                               { value: "none", label: "Sin asignar" },
                               ...(availabilityReady
                                 ? options.numbers
                                 : (rooms.data ?? [])
-                                    .filter(
-                                      (room) =>
-                                        room.roomTypeId ===
-                                        draft.room.roomTypeId
-                                    )
+                                    .filter((room) => room.roomTypeId === draft.room.roomTypeId)
                                     .map((room) => ({
                                       value: room.id,
                                       label: room.number,
@@ -332,9 +284,7 @@ export function NewBooking({
                             max={100}
                             required
                             live
-                            groupErrorId={
-                              capacity ? `${draft.id}-capacity` : undefined
-                            }
+                            groupErrorId={capacity ? `${draft.id}-capacity` : undefined}
                           />
                         )}
                       </form.AppField>
@@ -347,9 +297,7 @@ export function NewBooking({
                             max={100}
                             required
                             live
-                            groupErrorId={
-                              capacity ? `${draft.id}-capacity` : undefined
-                            }
+                            groupErrorId={capacity ? `${draft.id}-capacity` : undefined}
                           />
                         )}
                       </form.AppField>
@@ -366,15 +314,12 @@ export function NewBooking({
                         </Button>
                       </div>
                       {capacity && (
-                        <FieldError
-                          id={`${draft.id}-capacity`}
-                          className="col-span-full"
-                        >
+                        <FieldError id={`${draft.id}-capacity`} className="col-span-full">
                           {capacity}
                         </FieldError>
                       )}
                     </FieldGroup>
-                  )
+                  );
                 })
               }
             </form.Field>
@@ -384,46 +329,40 @@ export function NewBooking({
               className="w-fit"
               disabled={!availabilityReady || !selection.canAdd}
               onClick={() => {
-                const lastRoom = values.rooms[values.rooms.length - 1].room
+                const lastRoom = values.rooms[values.rooms.length - 1].room;
                 const type = availability.data?.roomTypes.find(
-                  (type) => type.id === lastRoom.roomTypeId
-                )
+                  (type) => type.id === lastRoom.roomTypeId,
+                );
                 const used = values.rooms.filter(
-                  (draft) => draft.room.roomTypeId === lastRoom.roomTypeId
-                ).length
+                  (draft) => draft.room.roomTypeId === lastRoom.roomTypeId,
+                ).length;
                 form.pushFieldValue("rooms", {
                   id: crypto.randomUUID(),
                   removed: false,
                   room: {
                     ...lastRoom,
-                    roomTypeId:
-                      type && type.free > used ? lastRoom.roomTypeId : "",
+                    roomTypeId: type && type.free > used ? lastRoom.roomTypeId : "",
                     roomId: null,
                   },
-                })
+                });
               }}
             >
               <PlusIcon data-icon="inline-start" />
               Agregar habitación
             </Button>
             {errors.rooms && <FieldError>{errors.rooms}</FieldError>}
-            {availabilityReady &&
-              availability.data.roomTypes.every((type) => type.free === 0) && (
-                <p role="status" className="text-muted-foreground">
-                  No hay habitaciones disponibles para esas fechas.
-                </p>
-              )}
+            {availabilityReady && availability.data.roomTypes.every((type) => type.free === 0) && (
+              <p role="status" className="text-muted-foreground">
+                No hay habitaciones disponibles para esas fechas.
+              </p>
+            )}
           </section>
           <FieldSet>
             <FieldLegend>Contacto principal</FieldLegend>
             <FieldGroup>
               <form.AppField name="fullName">
                 {(field) => (
-                  <field.Text
-                    label="Nombre completo"
-                    placeholder="Nombre y apellidos"
-                    required
-                  />
+                  <field.Text label="Nombre completo" placeholder="Nombre y apellidos" required />
                 )}
               </form.AppField>
               <FieldGroup className="grid grid-cols-1 gap-3 sm:grid-cols-2">
@@ -438,11 +377,7 @@ export function NewBooking({
                 </form.AppField>
                 <form.AppField name="phone">
                   {(field) => (
-                    <field.Text
-                      label="Teléfono · Opcional"
-                      type="tel"
-                      placeholder="+51"
-                    />
+                    <field.Text label="Teléfono · Opcional" type="tel" placeholder="+51" />
                   )}
                 </form.AppField>
               </FieldGroup>
@@ -479,9 +414,7 @@ export function NewBooking({
             currency={availability.data?.currency ?? CURRENCY}
             editableDiscountCents={discountCents}
             discountDisabled={busy}
-            onDiscountSave={async (cents) =>
-              form.setFieldValue("discount", formatMajor(cents))
-            }
+            onDiscountSave={async (cents) => form.setFieldValue("discount", formatMajor(cents))}
             onDiscountDirtyChange={setDiscountDirty}
             stayLabel={
               validStay
@@ -497,32 +430,22 @@ export function NewBooking({
                   : "Selecciona los tipos de habitación para ver el total."
             }
           />
-          {[roomTypes, rooms, availability, reservations, closures].map(
-            (query, index) =>
-              query.error ? (
-                <div key={index} className="flex flex-col items-start gap-2">
-                  <FieldError>{query.error.message}</FieldError>
-                  <Button
-                    type="button"
-                    variant="outline"
-                    onClick={() => void query.refetch()}
-                  >
-                    Reintentar
-                  </Button>
-                </div>
-              ) : null
+          {[roomTypes, rooms, availability, reservations, closures].map((query, index) =>
+            query.error ? (
+              <div key={index} className="flex flex-col items-start gap-2">
+                <FieldError>{query.error.message}</FieldError>
+                <Button type="button" variant="outline" onClick={() => void query.refetch()}>
+                  Reintentar
+                </Button>
+              </div>
+            ) : null,
           )}
         </aside>
       </fieldset>
       <FieldError>{error}</FieldError>
       <Separator />
       <div className="flex flex-wrap justify-end gap-2">
-        <Button
-          type="button"
-          variant="outline"
-          disabled={busy}
-          onClick={onCancel}
-        >
+        <Button type="button" variant="outline" disabled={busy} onClick={onCancel}>
           Cancelar
         </Button>
         <Button
@@ -540,5 +463,5 @@ export function NewBooking({
         </Button>
       </div>
     </form>
-  )
+  );
 }

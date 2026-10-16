@@ -1,6 +1,6 @@
-import { useForm, useSelector } from "@tanstack/react-form"
+import { useForm, useSelector } from "@tanstack/react-form";
 
-import { Button } from "@/components/ui/button"
+import { Button } from "@/components/ui/button";
 import {
   Dialog,
   DialogClose,
@@ -9,14 +9,9 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
-} from "@/components/ui/dialog"
-import {
-  Field,
-  FieldError,
-  FieldGroup,
-  FieldLabel,
-} from "@/components/ui/field"
-import { Input } from "@/components/ui/input"
+} from "@/components/ui/dialog";
+import { Field, FieldError, FieldGroup, FieldLabel } from "@/components/ui/field";
+import { Input } from "@/components/ui/input";
 import {
   Select,
   SelectContent,
@@ -24,40 +19,40 @@ import {
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from "@/components/ui/select"
-import { Spinner } from "@/components/ui/spinner"
-import { usePatchRoom, useRoomTypes } from "@/lib/queries"
-import { fieldErrors, setServerErrors } from "@/lib/form-errors"
-import { roomEditSchema, roomFieldErrors, roomPatch } from "@/lib/room-form"
-import { toast, toastError } from "@/lib/toast"
+} from "@/components/ui/select";
+import { Spinner } from "@/components/ui/spinner";
+import { usePatchRoom, useRoomTypes } from "@/lib/queries";
+import { fieldErrors, setServerErrors } from "@/lib/form-errors";
+import { roomEditSchema, roomFieldErrors, roomPatch } from "@/lib/room-form";
+import { toast, toastError } from "@/lib/toast";
 
 export type RoomEditTarget = {
-  roomId: string
-  number: string
-  roomTypeId: string
-  typeName: string
-}
+  roomId: string;
+  number: string;
+  roomTypeId: string;
+  typeName: string;
+};
 
 export function RoomEditDialog({
   target,
   onClose,
 }: {
-  target: RoomEditTarget | null
-  onClose: () => void
+  target: RoomEditTarget | null;
+  onClose: () => void;
 }) {
-  const save = usePatchRoom()
+  const save = usePatchRoom();
 
   function close() {
-    save.reset()
-    onClose()
+    save.reset();
+    onClose();
   }
 
   return (
     <Dialog
       open={target !== null}
       onOpenChange={(next) => {
-        if (!next && save.isPending) return
-        if (!next) close()
+        if (!next && save.isPending) return;
+        if (!next) close();
       }}
     >
       <DialogContent>
@@ -66,36 +61,32 @@ export function RoomEditDialog({
             key={`${target.roomId}-${target.number}-${target.roomTypeId}`}
             target={target}
             onSave={async (input) => {
-              await save.mutateAsync(input)
-              toast.add({ title: "Habitación actualizada", type: "success" })
-              close()
+              await save.mutateAsync(input);
+              toast.add({ title: "Habitación actualizada", type: "success" });
+              close();
             }}
           />
         ) : null}
       </DialogContent>
     </Dialog>
-  )
+  );
 }
 
 function RoomEditForm({
   target,
   onSave,
 }: {
-  target: RoomEditTarget
-  onSave: (input: {
-    id: string
-    number?: string
-    roomTypeId?: string
-  }) => Promise<void>
+  target: RoomEditTarget;
+  onSave: (input: { id: string; number?: string; roomTypeId?: string }) => Promise<void>;
 }) {
-  const typesQuery = useRoomTypes()
-  const types = typesQuery.data ?? []
+  const typesQuery = useRoomTypes();
+  const types = typesQuery.data ?? [];
   const typeItems = types.some((type) => type.id === target.roomTypeId)
     ? types.map((type) => ({ value: type.id, label: type.name }))
     : [
         { value: target.roomTypeId, label: target.typeName },
         ...types.map((type) => ({ value: type.id, label: type.name })),
-      ]
+      ];
   const form = useForm({
     defaultValues: {
       number: target.number,
@@ -105,23 +96,22 @@ function RoomEditForm({
       onSubmit: roomEditSchema,
     },
     onSubmit: async ({ value }) => {
-      const patch = roomPatch(target, value)
-      if (!patch) return
-      form.setErrorMap({ onServer: undefined })
+      const patch = roomPatch(target, value);
+      if (!patch) return;
+      form.setErrorMap({ onServer: undefined });
       try {
-        await onSave({ id: target.roomId, ...patch })
+        await onSave({ id: target.roomId, ...patch });
       } catch (cause) {
-        const fields = roomFieldErrors(cause)
-        if (fields) setServerErrors(form, fields)
-        else toastError("No se pudo guardar la habitación", cause)
+        const fields = roomFieldErrors(cause);
+        if (fields) setServerErrors(form, fields);
+        else toastError("No se pudo guardar la habitación", cause);
       }
     },
-  })
-  const number = useSelector(form.store, (state) => state.values.number)
-  const roomTypeId = useSelector(form.store, (state) => state.values.roomTypeId)
-  const submitting = useSelector(form.store, (state) => state.isSubmitting)
-  const unchanged =
-    number.trim() === target.number && roomTypeId === target.roomTypeId
+  });
+  const number = useSelector(form.store, (state) => state.values.number);
+  const roomTypeId = useSelector(form.store, (state) => state.values.roomTypeId);
+  const submitting = useSelector(form.store, (state) => state.isSubmitting);
+  const unchanged = number.trim() === target.number && roomTypeId === target.roomTypeId;
 
   return (
     <form
@@ -129,8 +119,8 @@ function RoomEditForm({
       noValidate
       className="flex flex-col gap-4"
       onSubmit={(event) => {
-        event.preventDefault()
-        void form.handleSubmit()
+        event.preventDefault();
+        void form.handleSubmit();
       }}
     >
       <DialogHeader>
@@ -140,16 +130,11 @@ function RoomEditForm({
         </DialogDescription>
       </DialogHeader>
       <FieldGroup>
-        <form.Field
-          name="number"
-          children={(field) => {
-            const isInvalid =
-              field.state.meta.isTouched && !field.state.meta.isValid
+        <form.Field name="number">
+          {(field) => {
+            const isInvalid = field.state.meta.isTouched && !field.state.meta.isValid;
             return (
-              <Field
-                data-invalid={isInvalid || undefined}
-                data-disabled={submitting || undefined}
-              >
+              <Field data-invalid={isInvalid || undefined} data-disabled={submitting || undefined}>
                 <FieldLabel htmlFor={field.name}>Número</FieldLabel>
                 <Input
                   id={field.name}
@@ -165,28 +150,21 @@ function RoomEditForm({
                       field.setMeta((meta) => ({
                         ...meta,
                         errorMap: { ...meta.errorMap, onServer: undefined },
-                      }))
-                    field.handleChange(event.target.value)
+                      }));
+                    field.handleChange(event.target.value);
                   }}
                 />
-                {isInvalid && (
-                  <FieldError errors={fieldErrors(field.state.meta.errors)} />
-                )}
+                {isInvalid && <FieldError errors={fieldErrors(field.state.meta.errors)} />}
               </Field>
-            )
+            );
           }}
-        />
-        <form.Field
-          name="roomTypeId"
-          children={(field) => {
-            const isInvalid =
-              field.state.meta.isTouched && !field.state.meta.isValid
-            const disabled = submitting || typesQuery.isPending
+        </form.Field>
+        <form.Field name="roomTypeId">
+          {(field) => {
+            const isInvalid = field.state.meta.isTouched && !field.state.meta.isValid;
+            const disabled = submitting || typesQuery.isPending;
             return (
-              <Field
-                data-invalid={isInvalid || undefined}
-                data-disabled={disabled || undefined}
-              >
+              <Field data-invalid={isInvalid || undefined} data-disabled={disabled || undefined}>
                 <FieldLabel htmlFor={field.name}>Tipo</FieldLabel>
                 <Select
                   items={typeItems}
@@ -194,13 +172,13 @@ function RoomEditForm({
                   value={field.state.value}
                   disabled={disabled}
                   onValueChange={(value) => {
-                    if (!value) return
+                    if (!value) return;
                     if (field.state.meta.errorMap.onServer)
                       field.setMeta((meta) => ({
                         ...meta,
                         errorMap: { ...meta.errorMap, onServer: undefined },
-                      }))
-                    field.handleChange(value)
+                      }));
+                    field.handleChange(value);
                   }}
                 >
                   <SelectTrigger
@@ -221,19 +199,14 @@ function RoomEditForm({
                     </SelectGroup>
                   </SelectContent>
                 </Select>
-                {isInvalid && (
-                  <FieldError errors={fieldErrors(field.state.meta.errors)} />
-                )}
+                {isInvalid && <FieldError errors={fieldErrors(field.state.meta.errors)} />}
               </Field>
-            )
+            );
           }}
-        />
+        </form.Field>
       </FieldGroup>
       <DialogFooter>
-        <DialogClose
-          disabled={submitting}
-          render={<Button variant="outline" type="button" />}
-        >
+        <DialogClose disabled={submitting} render={<Button variant="outline" type="button" />}>
           Cancelar
         </DialogClose>
         <Button
@@ -246,5 +219,5 @@ function RoomEditForm({
         </Button>
       </DialogFooter>
     </form>
-  )
+  );
 }

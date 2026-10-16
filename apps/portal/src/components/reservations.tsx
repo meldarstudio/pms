@@ -1,34 +1,17 @@
-import { useDeferredValue, useId, useState } from "react"
-import { keepPreviousData, useQuery } from "@tanstack/react-query"
-import { format, parseISO } from "date-fns"
-import { PlusIcon, SearchIcon } from "lucide-react"
-import { cn } from "cn"
-import {
-  RoomBookingDialog,
-  type BookingTarget,
-} from "@/components/room-booking-dialog"
-import { stayColors } from "@/components/room-calendar"
-import { DateField } from "@/components/date-field"
-import { Button } from "@/components/ui/button"
-import { Badge } from "@/components/ui/badge"
-import {
-  Empty,
-  EmptyHeader,
-  EmptyTitle,
-  EmptyDescription,
-} from "@/components/ui/empty"
-import {
-  Field,
-  FieldError,
-  FieldGroup,
-  FieldLabel,
-} from "@/components/ui/field"
-import {
-  InputGroup,
-  InputGroupAddon,
-  InputGroupInput,
-} from "@/components/ui/input-group"
-import { Skeleton } from "@/components/ui/skeleton"
+import { useDeferredValue, useId, useState } from "react";
+import { keepPreviousData, useQuery } from "@tanstack/react-query";
+import { format, parseISO } from "date-fns";
+import { PlusIcon, SearchIcon } from "lucide-react";
+import { cn } from "cn";
+import { RoomBookingDialog, type BookingTarget } from "@/components/room-booking-dialog";
+import { stayColors } from "@/components/room-calendar";
+import { DateField } from "@/components/date-field";
+import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
+import { Empty, EmptyHeader, EmptyTitle, EmptyDescription } from "@/components/ui/empty";
+import { Field, FieldError, FieldGroup, FieldLabel } from "@/components/ui/field";
+import { InputGroup, InputGroupAddon, InputGroupInput } from "@/components/ui/input-group";
+import { Skeleton } from "@/components/ui/skeleton";
 import {
   Table,
   TableBody,
@@ -36,43 +19,36 @@ import {
   TableHead,
   TableHeader,
   TableRow,
-} from "@/components/ui/table"
-import { ChoiceField } from "@/components/workflow-fields"
-import { searchReservations } from "@/lib/api"
-import { formatMoney } from "@/lib/money"
+} from "@/components/ui/table";
+import { ChoiceField } from "@/components/workflow-fields";
+import { searchReservations } from "@/lib/api";
+import { formatMoney } from "@/lib/money";
 import {
   occupantsLabel,
   reservationStatusLabel,
   reservationStatusOptions,
   roomsLabel,
   stayDateLabel,
-} from "@/lib/reservation-list"
-import type { ReservationsSearch } from "@/lib/route-search"
+} from "@/lib/reservation-list";
+import type { ReservationsSearch } from "@/lib/route-search";
 
-const pageSize = 50
+const pageSize = 50;
 
 export function Reservations({
   search,
   onSearchChange,
   onOpenReservation,
 }: {
-  search: ReservationsSearch
-  onSearchChange: (search: Partial<ReservationsSearch>) => void
-  onOpenReservation: (id: string) => void
+  search: ReservationsSearch;
+  onSearchChange: (search: Partial<ReservationsSearch>) => void;
+  onOpenReservation: (id: string) => void;
 }) {
-  const arrivalId = useId()
-  const guestId = useId()
-  const [target, setTarget] = useState<BookingTarget | null>(null)
-  const q = useDeferredValue(search.q)
+  const arrivalId = useId();
+  const guestId = useId();
+  const [target, setTarget] = useState<BookingTarget | null>(null);
+  const q = useDeferredValue(search.q);
   const query = useQuery({
-    queryKey: [
-      "reservations",
-      "search",
-      q,
-      search.status,
-      search.checkIn,
-      search.page,
-    ],
+    queryKey: ["reservations", "search", q, search.status, search.checkIn, search.page],
     queryFn: ({ signal }) =>
       searchReservations(
         {
@@ -82,24 +58,22 @@ export function Reservations({
           offset: search.page * pageSize,
           limit: pageSize,
         },
-        signal
+        signal,
       ),
     placeholderData: keepPreviousData,
-  })
-  const rows = query.data ?? []
-  const busy = query.isFetching || search.q !== q
+  });
+  const rows = query.data ?? [];
+  const busy = query.isFetching || search.q !== q;
 
   function open(id: string) {
-    setTarget(null)
-    onOpenReservation(id)
+    setTarget(null);
+    onOpenReservation(id);
   }
 
   function setStatus(value: string) {
-    const status = reservationStatusOptions.find(
-      (option) => option.value === value
-    )
-    if (!status) return
-    onSearchChange({ status: status.value, page: 0 })
+    const status = reservationStatusOptions.find((option) => option.value === value);
+    if (!status) return;
+    onSearchChange({ status: status.value, page: 0 });
   }
 
   return (
@@ -127,9 +101,7 @@ export function Reservations({
             <InputGroupInput
               id={guestId}
               value={search.q}
-              onChange={(event) =>
-                onSearchChange({ q: event.target.value, page: 0 })
-              }
+              onChange={(event) => onSearchChange({ q: event.target.value, page: 0 })}
             />
           </InputGroup>
         </Field>
@@ -169,16 +141,12 @@ export function Reservations({
                 <SearchIcon />
                 <EmptyTitle>No se encontraron reservas</EmptyTitle>
                 <EmptyDescription>
-                  Cambia el check-in, la búsqueda o el estado, o crea una nueva
-                  reserva.
+                  Cambia el check-in, la búsqueda o el estado, o crea una nueva reserva.
                 </EmptyDescription>
               </EmptyHeader>
             </Empty>
           ) : rows.length > 0 ? (
-            <Table
-              className={cn(busy && "opacity-60")}
-              aria-busy={busy || undefined}
-            >
+            <Table className={cn(busy && "opacity-60")} aria-busy={busy || undefined}>
               <TableHeader>
                 <TableRow>
                   <TableHead>Estado</TableHead>
@@ -202,42 +170,30 @@ export function Reservations({
                     onClick={() => open(row.id)}
                     onKeyDown={(event) => {
                       if (event.key === "Enter" || event.key === " ") {
-                        event.preventDefault()
-                        open(row.id)
+                        event.preventDefault();
+                        open(row.id);
                       }
                     }}
                   >
                     <TableCell>
                       <Badge
-                        variant={
-                          row.status === "cancelled"
-                            ? "destructive"
-                            : "secondary"
-                        }
+                        variant={row.status === "cancelled" ? "destructive" : "secondary"}
                         className={cn(
                           "w-[6.625rem] justify-center",
                           row.status === "cancelled"
                             ? "border-destructive/20"
-                            : stayColors[row.status]
+                            : stayColors[row.status],
                         )}
                       >
                         {reservationStatusLabel(row.status)}
                       </Badge>
                     </TableCell>
-                    <TableCell className="font-medium">
-                      {row.guestName}
-                    </TableCell>
-                    <TableCell className="font-mono text-xs">
-                      {row.code}
-                    </TableCell>
+                    <TableCell className="font-medium">{row.guestName}</TableCell>
+                    <TableCell className="font-mono text-xs">{row.code}</TableCell>
                     <TableCell>{roomsLabel(row.rooms)}</TableCell>
                     <TableCell>{occupantsLabel(row.rooms)}</TableCell>
-                    <TableCell className="tabular-nums">
-                      {stayDateLabel(row.checkIn)}
-                    </TableCell>
-                    <TableCell className="tabular-nums">
-                      {stayDateLabel(row.checkOut)}
-                    </TableCell>
+                    <TableCell className="tabular-nums">{stayDateLabel(row.checkIn)}</TableCell>
+                    <TableCell className="tabular-nums">{stayDateLabel(row.checkOut)}</TableCell>
                     <TableCell className="text-right tabular-nums">
                       {formatMoney(row.totalCents, row.currency)}
                     </TableCell>
@@ -276,5 +232,5 @@ export function Reservations({
         onViewReservation={open}
       />
     </main>
-  )
+  );
 }

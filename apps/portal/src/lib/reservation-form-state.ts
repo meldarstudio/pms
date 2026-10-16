@@ -1,4 +1,4 @@
-import { revalidateLogic } from "@tanstack/react-form"
+import { revalidateLogic } from "@tanstack/react-form";
 
 export const blurThenChange = () =>
-  revalidateLogic({ mode: "blur", modeAfterSubmission: "change" })
+  revalidateLogic({ mode: "blur", modeAfterSubmission: "change" });

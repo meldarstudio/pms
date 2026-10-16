@@ -7,18 +7,18 @@ import type {
   reservations,
   roomTypes,
   rooms,
-} from './db/schema'
-import { nightsBetween } from './lib/dates'
-import { bill } from './lib/workflow-billing'
+} from "./db/schema";
+import { nightsBetween } from "./lib/dates";
+import { bill } from "./lib/workflow-billing";
 
-type Guest = typeof guests.$inferSelect
-type Reservation = typeof reservations.$inferSelect
-type Line = typeof reservationRooms.$inferSelect
-type Night = typeof reservationRoomNights.$inferSelect
-type RoomType = typeof roomTypes.$inferSelect
-type Room = typeof rooms.$inferSelect
+type Guest = typeof guests.$inferSelect;
+type Reservation = typeof reservations.$inferSelect;
+type Line = typeof reservationRooms.$inferSelect;
+type Night = typeof reservationRoomNights.$inferSelect;
+type RoomType = typeof roomTypes.$inferSelect;
+type Room = typeof rooms.$inferSelect;
 
-const cancelled = (reservation: Reservation) => reservation.status === 'cancelled'
+const cancelled = (reservation: Reservation) => reservation.status === "cancelled";
 
 export function presentGuest(guest: Guest) {
   return {
@@ -30,32 +30,32 @@ export function presentGuest(guest: Guest) {
     documentNumber: guest.documentNumber,
     notes: guest.notes,
     createdAt: guest.createdAt,
-  }
+  };
 }
 
 export function presentReservation(input: {
-  reservation: Reservation
-  guest: Guest
-  lines: Line[]
-  nights: Night[]
-  types: RoomType[]
-  roomRows: Room[]
-  payments: (typeof payments.$inferSelect)[]
-  currency: string
-  stayingGuests?: (typeof reservationGuests.$inferSelect)[]
+  reservation: Reservation;
+  guest: Guest;
+  lines: Line[];
+  nights: Night[];
+  types: RoomType[];
+  roomRows: Room[];
+  payments: (typeof payments.$inferSelect)[];
+  currency: string;
+  stayingGuests?: (typeof reservationGuests.$inferSelect)[];
 }) {
-  const typeById = new Map(input.types.map((type) => [type.id, type]))
-  const roomById = new Map(input.roomRows.map((room) => [room.id, room]))
-  const nightsByLine = new Map<string, Night[]>()
+  const typeById = new Map(input.types.map((type) => [type.id, type]));
+  const roomById = new Map(input.roomRows.map((room) => [room.id, room]));
+  const nightsByLine = new Map<string, Night[]>();
   for (const night of input.nights) {
-    const list = nightsByLine.get(night.reservationRoomId) ?? []
-    list.push(night)
-    nightsByLine.set(night.reservationRoomId, list)
+    const list = nightsByLine.get(night.reservationRoomId) ?? [];
+    list.push(night);
+    nightsByLine.set(night.reservationRoomId, list);
   }
 
   const roomsOut = input.lines.map((line) => {
-    const nights = (nightsByLine.get(line.id) ?? []).sort((a, b) => a.date.localeCompare(b.date))
-    const lineTotal = nights.reduce((sum, night) => sum + night.priceCents, 0)
+    const nights = (nightsByLine.get(line.id) ?? []).sort((a, b) => a.date.localeCompare(b.date));
+    const lineTotal = nights.reduce((sum, night) => sum + night.priceCents, 0);
     return {
       ...line,
       id: line.id,
@@ -69,14 +69,14 @@ export function presentReservation(input: {
       discountCents: 0,
       totalCents: cancelled(input.reservation) ? 0 : lineTotal,
       nights: nights.map((night) => ({ date: night.date, priceCents: night.priceCents })),
-    }
-  })
+    };
+  });
 
-  const billable = cancelled(input.reservation) ? [] : roomsOut
-  const subtotalCents = billable.reduce((sum, line) => sum + line.subtotalCents, 0)
+  const billable = cancelled(input.reservation) ? [] : roomsOut;
+  const subtotalCents = billable.reduce((sum, line) => sum + line.subtotalCents, 0);
   const totals = bill(subtotalCents, input.payments, input.reservation.discountCents, {
     cancelled: cancelled(input.reservation),
-  })
+  });
 
   return {
     id: input.reservation.id,
@@ -98,5 +98,5 @@ export function presentReservation(input: {
     savedDiscountCents: input.reservation.discountCents,
     rooms: roomsOut,
     payments: input.payments,
-  }
+  };
 }

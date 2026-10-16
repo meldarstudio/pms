@@ -1,6 +1,6 @@
 # Portal
 
-The portal is a Vite SPA deployed as static assets on the `pms-portal`
+The portal is a Vite+ SPA deployed as static assets on the `pms-portal`
 Cloudflare Worker.
 
 Run it locally from the repository root:
@@ -26,9 +26,17 @@ Room counts and capacity validate on change because they control billing preview
 Known server validation errors appear beside fields; other write failures use
 error toasts. Query failures stay beside the content they block.
 
-Run `pnpm test` from the repository root (backend then portal), or
-`pnpm --filter @pms/portal test` for the portal alone. Schema and workflow
-tests use Node's test runner and do not need a browser.
+Run `pnpm exec vp test` from the repository root for both test projects,
+`pnpm test` to run backend then portal, or `pnpm --filter @pms/portal test`
+for the portal alone. Tests use `vite-plus/test` and do not need a browser.
+The dialog suite uses happy-dom and a Vite SSR server to render the actual
+components.
+
+Run `pnpm check` for Oxfmt, Oxlint, and the package TypeScript checks. The root
+`vite.config.ts` uses Oxfmt defaults across maintained repo files, with Tailwind
+class sorting for portal TS/TSX files. Run `pnpm format` for the whole repo or
+`pnpm --filter @pms/portal format` for only the portal. Generated files are
+excluded. Linting remains scoped to portal TS/TSX files, including React Hooks checks.
 
 ## Deployment
 

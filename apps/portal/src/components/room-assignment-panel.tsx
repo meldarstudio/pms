@@ -1,37 +1,34 @@
-import { differenceInCalendarDays, parseISO, startOfToday } from "date-fns"
-import { CheckIcon, XIcon } from "lucide-react"
-import { cn } from "cn"
+import { differenceInCalendarDays, parseISO, startOfToday } from "date-fns";
+import { CheckIcon, XIcon } from "lucide-react";
+import { cn } from "cn";
 
-import { Button } from "@/components/ui/button"
-import { Skeleton } from "@/components/ui/skeleton"
-import type { ReservationStay } from "@/lib/room-assignment"
-import { format } from "@/lib/dates"
+import { Button } from "@/components/ui/button";
+import { Skeleton } from "@/components/ui/skeleton";
+import type { ReservationStay } from "@/lib/room-assignment";
+import { format } from "@/lib/dates";
 
 export function assignmentStayLabel(stay: ReservationStay) {
-  const nights = differenceInCalendarDays(
-    parseISO(stay.checkOut),
-    parseISO(stay.checkIn)
-  )
-  return `${format(parseISO(stay.checkIn), "d MMM")} al ${format(parseISO(stay.checkOut), "d MMM yyyy")} · ${nights} ${nights === 1 ? "noche" : "noches"}`
+  const nights = differenceInCalendarDays(parseISO(stay.checkOut), parseISO(stay.checkIn));
+  return `${format(parseISO(stay.checkIn), "d MMM")} al ${format(parseISO(stay.checkOut), "d MMM yyyy")} · ${nights} ${nights === 1 ? "noche" : "noches"}`;
 }
 
 type RoomAssignmentPanelProps = {
-  stays: ReservationStay[]
-  typeNames: Map<string, string>
-  loading: boolean
-  listError: string | null
-  rangeLabel: string
-  target: ReservationStay | null
-  checking: boolean
-  ready: boolean
-  eligibleCount: number
-  pending: boolean
-  error: string | null
-  onSelect: (stay: ReservationStay) => void
-  onCancel: () => void
-  onClose: () => void
-  onRetry: () => void
-}
+  stays: ReservationStay[];
+  typeNames: Map<string, string>;
+  loading: boolean;
+  listError: string | null;
+  rangeLabel: string;
+  target: ReservationStay | null;
+  checking: boolean;
+  ready: boolean;
+  eligibleCount: number;
+  pending: boolean;
+  error: string | null;
+  onSelect: (stay: ReservationStay) => void;
+  onCancel: () => void;
+  onClose: () => void;
+  onRetry: () => void;
+};
 
 export function RoomAssignmentPanel({
   stays,
@@ -50,7 +47,7 @@ export function RoomAssignmentPanel({
   onClose,
   onRetry,
 }: RoomAssignmentPanelProps) {
-  const today = format(startOfToday(), "yyyy-MM-dd")
+  const today = format(startOfToday(), "yyyy-MM-dd");
 
   return (
     <section
@@ -63,9 +60,7 @@ export function RoomAssignmentPanel({
           <h2 id="unassigned-heading" className="font-medium">
             Sin asignar · {loading ? "…" : stays.length}
           </h2>
-          <p className="mt-1 text-muted-foreground">
-            Estancias entre {rangeLabel}
-          </p>
+          <p className="mt-1 text-muted-foreground">Estancias entre {rangeLabel}</p>
         </div>
         <Button
           variant="ghost"
@@ -99,7 +94,7 @@ export function RoomAssignmentPanel({
         ) : (
           <ul className="space-y-2">
             {stays.map((stay) => {
-              const selected = target?.id === stay.id
+              const selected = target?.id === stay.id;
               return (
                 <li key={stay.id}>
                   <button
@@ -109,19 +104,14 @@ export function RoomAssignmentPanel({
                     onClick={() => onSelect(stay)}
                     className={cn(
                       "flex w-full cursor-pointer flex-col gap-1 border p-2.5 text-left outline-none hover:bg-accent/50 focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-default disabled:opacity-50",
-                      selected && "border-booking-foreground/40 bg-booking/40"
+                      selected && "border-assignment-foreground/40 bg-assignment/40",
                     )}
                   >
                     <span className="flex w-full min-w-0 items-center gap-2">
-                      <span
-                        className="min-w-0 flex-1 truncate font-medium"
-                        title={stay.guestName}
-                      >
+                      <span className="min-w-0 flex-1 truncate font-medium" title={stay.guestName}>
                         {stay.guestName}
                       </span>
-                      {selected ? (
-                        <CheckIcon className="size-3.5 shrink-0" />
-                      ) : null}
+                      {selected ? <CheckIcon className="size-3.5 shrink-0" /> : null}
                     </span>
                     <span className="text-muted-foreground">
                       {typeNames.get(stay.roomTypeId) ?? "Habitación"}
@@ -129,15 +119,11 @@ export function RoomAssignmentPanel({
                         ? ` · Habitación ${stay.roomIndex} de ${stay.roomCount}`
                         : ""}
                     </span>
-                    <span className="text-muted-foreground">
-                      {assignmentStayLabel(stay)}
-                    </span>
-                    {stay.checkIn === today ? (
-                      <span className="font-medium">Llega hoy</span>
-                    ) : null}
+                    <span className="text-muted-foreground">{assignmentStayLabel(stay)}</span>
+                    {stay.checkIn === today ? <span className="font-medium">Llega hoy</span> : null}
                   </button>
                 </li>
-              )
+              );
             })}
           </ul>
         )}
@@ -146,18 +132,14 @@ export function RoomAssignmentPanel({
       {target ? (
         <div className="space-y-3 border-t p-3">
           <div className="space-y-1">
-            <p className="font-medium">
-              Asignar habitación a {target.guestName}
-            </p>
+            <p className="font-medium">Asignar habitación a {target.guestName}</p>
             <p className="text-muted-foreground">
               {typeNames.get(target.roomTypeId) ?? "Habitación"}
               {target.roomCount > 1
                 ? ` · Habitación ${target.roomIndex} de ${target.roomCount}`
                 : ""}
             </p>
-            <p className="text-muted-foreground">
-              {assignmentStayLabel(target)}
-            </p>
+            <p className="text-muted-foreground">{assignmentStayLabel(target)}</p>
           </div>
           <p role="status" className="text-muted-foreground">
             {pending
@@ -173,21 +155,21 @@ export function RoomAssignmentPanel({
           {error ? (
             <div role="alert" className="space-y-2">
               <p className="text-destructive">{error}</p>
-              <Button
-                variant="outline"
-                size="sm"
-                disabled={pending}
-                onClick={onRetry}
-              >
+              <Button variant="outline" size="sm" disabled={pending} onClick={onRetry}>
                 Consultar de nuevo
               </Button>
             </div>
           ) : null}
-          <Button variant="outline" disabled={pending} onClick={onCancel}>
-            Cancelar asignación
+          <Button
+            variant="outline"
+            disabled={pending}
+            onClick={onCancel}
+            aria-keyshortcuts="Escape"
+          >
+            Cancelar asignación (Esc)
           </Button>
         </div>
       ) : null}
     </section>
-  )
+  );
 }

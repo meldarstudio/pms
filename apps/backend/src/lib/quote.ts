@@ -1,7 +1,7 @@
 export type NightPrice = {
-  date: string
-  priceCents: number
-}
+  date: string;
+  priceCents: number;
+};
 
 export function mergeStayNights(
   existing: { date: string; priceCents: number }[],
@@ -10,14 +10,14 @@ export function mergeStayNights(
   flatRateCents?: number,
 ): NightPrice[] {
   if (flatRateCents !== undefined) {
-    return dates.map((date) => ({ date, priceCents: flatRateCents }))
+    return dates.map((date) => ({ date, priceCents: flatRateCents }));
   }
-  const kept = new Map(existing.map((night) => [night.date, night.priceCents]))
-  const prices = new Map(quoted.map((night) => [night.date, night.priceCents]))
+  const kept = new Map(existing.map((night) => [night.date, night.priceCents]));
+  const prices = new Map(quoted.map((night) => [night.date, night.priceCents]));
   return dates.map((date) => ({
     date,
     priceCents: kept.get(date) ?? prices.get(date) ?? 0,
-  }))
+  }));
 }
 
 export function quoteNights(
@@ -29,11 +29,11 @@ export function quoteNights(
   return dates.map((date) => ({
     date,
     priceCents: flatRateCents ?? overrides.get(date) ?? baseRateCents,
-  }))
+  }));
 }
 
 export function totalCents(nights: { priceCents: number }[]): number {
-  return nights.reduce((sum, night) => sum + night.priceCents, 0)
+  return nights.reduce((sum, night) => sum + night.priceCents, 0);
 }
 
 export function overridesFor(
@@ -41,6 +41,8 @@ export function overridesFor(
   roomTypeId: string,
 ): Map<string, number> {
   return new Map(
-    rates.filter((rate) => rate.roomTypeId === roomTypeId).map((rate) => [rate.date, rate.priceCents]),
-  )
+    rates
+      .filter((rate) => rate.roomTypeId === roomTypeId)
+      .map((rate) => [rate.date, rate.priceCents]),
+  );
 }

@@ -1,9 +1,9 @@
-import { useForm, useSelector } from "@tanstack/react-form"
-import { addDays, parseISO } from "date-fns"
-import { EllipsisIcon } from "lucide-react"
+import { useForm, useSelector } from "@tanstack/react-form";
+import { addDays, parseISO } from "date-fns";
+import { EllipsisIcon } from "lucide-react";
 
-import { DateField } from "@/components/date-field"
-import { Button } from "@/components/ui/button"
+import { DateField } from "@/components/date-field";
+import { Button } from "@/components/ui/button";
 import {
   Dialog,
   DialogClose,
@@ -12,7 +12,7 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
-} from "@/components/ui/dialog"
+} from "@/components/ui/dialog";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -20,47 +20,39 @@ import {
   DropdownMenuItem,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu"
-import {
-  Field,
-  FieldDescription,
-  FieldError,
-  FieldGroup,
-  FieldLabel,
-} from "@/components/ui/field"
-import { Input } from "@/components/ui/input"
-import { Spinner } from "@/components/ui/spinner"
-import { type RoomClosure } from "@/lib/api"
-import { useDeleteRoomClosure, useSaveRoomClosure } from "@/lib/queries"
-import { format } from "@/lib/dates"
-import { errorMessage, setServerErrors } from "@/lib/form-errors"
+} from "@/components/ui/dropdown-menu";
+import { Field, FieldDescription, FieldError, FieldGroup, FieldLabel } from "@/components/ui/field";
+import { Input } from "@/components/ui/input";
+import { Spinner } from "@/components/ui/spinner";
+import { type RoomClosure } from "@/lib/api";
+import { useDeleteRoomClosure, useSaveRoomClosure } from "@/lib/queries";
+import { format } from "@/lib/dates";
+import { errorMessage, setServerErrors } from "@/lib/form-errors";
 import {
   closureFieldErrors,
   closureNights,
   closurePayload,
   closureUnchanged,
   roomClosureFormSchema,
-} from "@/lib/room-closure-form"
-import { toast, toastError } from "@/lib/toast"
+} from "@/lib/room-closure-form";
+import { toast, toastError } from "@/lib/toast";
 
 export type ClosureTarget =
   | {
-      mode: "create"
-      roomId: string
-      number: string
-      typeName: string
+      mode: "create";
+      roomId: string;
+      number: string;
+      typeName: string;
     }
   | {
-      mode: "edit"
-      closure: RoomClosure
-      number: string
-      typeName: string
-    }
+      mode: "edit";
+      closure: RoomClosure;
+      number: string;
+      typeName: string;
+    };
 
 function formKey(target: ClosureTarget) {
-  return target.mode === "edit"
-    ? JSON.stringify(target.closure)
-    : `new-${target.roomId}`
+  return target.mode === "edit" ? JSON.stringify(target.closure) : `new-${target.roomId}`;
 }
 
 export function RoomActionsMenu({
@@ -68,28 +60,22 @@ export function RoomActionsMenu({
   onEditRoom,
   onCloseRoom,
 }: {
-  number: string
-  onEditRoom: () => void
-  onCloseRoom: () => void
+  number: string;
+  onEditRoom: () => void;
+  onCloseRoom: () => void;
 }) {
   return (
     <DropdownMenu>
       <DropdownMenuTrigger
         render={
-          <Button
-            variant="ghost"
-            size="icon-xs"
-            aria-label={`Acciones de habitación ${number}`}
-          />
+          <Button variant="ghost" size="icon-xs" aria-label={`Acciones de habitación ${number}`} />
         }
       >
         <EllipsisIcon />
       </DropdownMenuTrigger>
       <DropdownMenuContent align="start">
         <DropdownMenuGroup>
-          <DropdownMenuItem onClick={onEditRoom}>
-            Editar habitación
-          </DropdownMenuItem>
+          <DropdownMenuItem onClick={onEditRoom}>Editar habitación</DropdownMenuItem>
         </DropdownMenuGroup>
         <DropdownMenuSeparator />
         <DropdownMenuGroup>
@@ -99,7 +85,7 @@ export function RoomActionsMenu({
         </DropdownMenuGroup>
       </DropdownMenuContent>
     </DropdownMenu>
-  )
+  );
 }
 
 export function RoomClosureDialog({
@@ -107,26 +93,26 @@ export function RoomClosureDialog({
   timeZone,
   onClose,
 }: {
-  target: ClosureTarget | null
-  timeZone: string
-  onClose: () => void
+  target: ClosureTarget | null;
+  timeZone: string;
+  onClose: () => void;
 }) {
-  const save = useSaveRoomClosure()
-  const remove = useDeleteRoomClosure()
-  const pending = save.isPending || remove.isPending
+  const save = useSaveRoomClosure();
+  const remove = useDeleteRoomClosure();
+  const pending = save.isPending || remove.isPending;
 
   function close() {
-    save.reset()
-    remove.reset()
-    onClose()
+    save.reset();
+    remove.reset();
+    onClose();
   }
 
   return (
     <Dialog
       open={target !== null}
       onOpenChange={(next) => {
-        if (!next && pending) return
-        if (!next) close()
+        if (!next && pending) return;
+        if (!next) close();
       }}
     >
       <DialogContent>
@@ -137,30 +123,27 @@ export function RoomClosureDialog({
             timeZone={timeZone}
             removePending={remove.isPending}
             onSave={async (input) => {
-              await save.mutateAsync(input)
+              await save.mutateAsync(input);
               toast.add({
-                title:
-                  target.mode === "edit"
-                    ? "Cierre actualizado"
-                    : "Habitación cerrada",
+                title: target.mode === "edit" ? "Cierre actualizado" : "Habitación cerrada",
                 type: "success",
-              })
-              close()
+              });
+              close();
             }}
             onRemove={async (id) => {
               try {
-                await remove.mutateAsync(id)
-                toast.add({ title: "Cierre eliminado", type: "success" })
-                close()
+                await remove.mutateAsync(id);
+                toast.add({ title: "Cierre eliminado", type: "success" });
+                close();
               } catch (cause) {
-                toastError("No se pudo eliminar el cierre", cause)
+                toastError("No se pudo eliminar el cierre", cause);
               }
             }}
           />
         ) : null}
       </DialogContent>
     </Dialog>
-  )
+  );
 }
 
 function ClosureForm({
@@ -170,17 +153,17 @@ function ClosureForm({
   onSave,
   onRemove,
 }: {
-  target: ClosureTarget
-  timeZone: string
-  removePending: boolean
+  target: ClosureTarget;
+  timeZone: string;
+  removePending: boolean;
   onSave: (input: {
-    id?: string
-    roomId: string
-    starts: string
-    ends: string
-    reason?: string
-  }) => Promise<void>
-  onRemove: (id: string) => Promise<void>
+    id?: string;
+    roomId: string;
+    starts: string;
+    ends: string;
+    reason?: string;
+  }) => Promise<void>;
+  onRemove: (id: string) => Promise<void>;
 }) {
   const form = useForm({
     defaultValues: {
@@ -190,41 +173,36 @@ function ClosureForm({
     },
     validators: { onSubmit: roomClosureFormSchema },
     onSubmit: async ({ value }) => {
-      if (
-        removePending ||
-        (target.mode === "edit" && closureUnchanged(target.closure, value))
-      )
-        return
-      form.setErrorMap({ onServer: undefined })
+      if (removePending || (target.mode === "edit" && closureUnchanged(target.closure, value)))
+        return;
+      form.setErrorMap({ onServer: undefined });
       try {
         await onSave({
           id: target.mode === "edit" ? target.closure.id : undefined,
-          roomId:
-            target.mode === "edit" ? target.closure.roomId : target.roomId,
+          roomId: target.mode === "edit" ? target.closure.roomId : target.roomId,
           ...closurePayload(value),
-        })
+        });
       } catch (cause) {
-        const fields = closureFieldErrors(cause)
-        if (fields) setServerErrors(form, fields)
-        else toastError("No se pudo guardar el cierre", cause)
+        const fields = closureFieldErrors(cause);
+        if (fields) setServerErrors(form, fields);
+        else toastError("No se pudo guardar el cierre", cause);
       }
     },
-  })
-  const values = useSelector(form.store, (state) => state.values)
-  const submitting = useSelector(form.store, (state) => state.isSubmitting)
-  const pending = submitting || removePending
-  const startDate = values.starts ? parseISO(values.starts) : null
-  const endDate = values.ends ? parseISO(values.ends) : null
-  const nights = closureNights(values.starts, values.ends)
-  const unchanged =
-    target.mode === "edit" && closureUnchanged(target.closure, values)
+  });
+  const values = useSelector(form.store, (state) => state.values);
+  const submitting = useSelector(form.store, (state) => state.isSubmitting);
+  const pending = submitting || removePending;
+  const startDate = values.starts ? parseISO(values.starts) : null;
+  const endDate = values.ends ? parseISO(values.ends) : null;
+  const nights = closureNights(values.starts, values.ends);
+  const unchanged = target.mode === "edit" && closureUnchanged(target.closure, values);
 
   function clearRangeError() {
-    form.setErrorMap({ onServer: undefined })
+    form.setErrorMap({ onServer: undefined });
     form.setFieldMeta("ends", (meta) => ({
       ...meta,
       errorMap: { ...meta.errorMap, onServer: undefined },
-    }))
+    }));
   }
 
   return (
@@ -233,14 +211,12 @@ function ClosureForm({
       noValidate
       className="flex flex-col gap-4"
       onSubmit={(event) => {
-        event.preventDefault()
-        void form.handleSubmit()
+        event.preventDefault();
+        void form.handleSubmit();
       }}
     >
       <DialogHeader>
-        <DialogTitle>
-          {target.mode === "edit" ? "Editar cierre" : "Cerrar habitación"}
-        </DialogTitle>
+        <DialogTitle>{target.mode === "edit" ? "Editar cierre" : "Cerrar habitación"}</DialogTitle>
         <DialogDescription>
           {target.number} - {target.typeName}
         </DialogDescription>
@@ -248,9 +224,8 @@ function ClosureForm({
       <FieldGroup>
         <FieldGroup>
           <FieldGroup className="grid grid-cols-2 gap-2">
-            <form.Field
-              name="starts"
-              children={(field) => (
+            <form.Field name="starts">
+              {(field) => (
                 <DateField
                   id="closure-start"
                   label="Desde"
@@ -263,19 +238,16 @@ function ClosureForm({
                   }
                   onBlur={field.handleBlur}
                   timeZone={timeZone}
-                  disabled={
-                    endDate ? { after: addDays(endDate, -1) } : undefined
-                  }
+                  disabled={endDate ? { after: addDays(endDate, -1) } : undefined}
                   onChange={(date) => {
-                    clearRangeError()
-                    field.handleChange(format(date, "yyyy-MM-dd"))
+                    clearRangeError();
+                    field.handleChange(format(date, "yyyy-MM-dd"));
                   }}
                 />
               )}
-            />
-            <form.Field
-              name="ends"
-              children={(field) => (
+            </form.Field>
+            <form.Field name="ends">
+              {(field) => (
                 <DateField
                   id="closure-end"
                   label="Reapertura"
@@ -290,19 +262,16 @@ function ClosureForm({
                   timeZone={timeZone}
                   disabled={
                     startDate
-                      ? [
-                          { before: addDays(startDate, 1) },
-                          { after: addDays(startDate, 60) },
-                        ]
+                      ? [{ before: addDays(startDate, 1) }, { after: addDays(startDate, 60) }]
                       : undefined
                   }
                   onChange={(date) => {
-                    clearRangeError()
-                    field.handleChange(format(date, "yyyy-MM-dd"))
+                    clearRangeError();
+                    field.handleChange(format(date, "yyyy-MM-dd"));
                   }}
                 />
               )}
-            />
+            </form.Field>
           </FieldGroup>
           <FieldDescription>
             {startDate && endDate && nights >= 1
@@ -310,16 +279,11 @@ function ClosureForm({
               : "Selecciona el inicio del cierre y la fecha de reapertura."}
           </FieldDescription>
         </FieldGroup>
-        <form.Field
-          name="reason"
-          children={(field) => {
-            const isInvalid =
-              field.state.meta.isTouched && !field.state.meta.isValid
+        <form.Field name="reason">
+          {(field) => {
+            const isInvalid = field.state.meta.isTouched && !field.state.meta.isValid;
             return (
-              <Field
-                data-invalid={isInvalid || undefined}
-                data-disabled={pending || undefined}
-              >
+              <Field data-invalid={isInvalid || undefined} data-disabled={pending || undefined}>
                 <FieldLabel htmlFor="closure-reason">Motivo</FieldLabel>
                 <Input
                   id="closure-reason"
@@ -332,15 +296,11 @@ function ClosureForm({
                   onBlur={field.handleBlur}
                   onChange={(event) => field.handleChange(event.target.value)}
                 />
-                {isInvalid && (
-                  <FieldError>
-                    {errorMessage(field.state.meta.errors)}
-                  </FieldError>
-                )}
+                {isInvalid && <FieldError>{errorMessage(field.state.meta.errors)}</FieldError>}
               </Field>
-            )
+            );
           }}
-        />
+        </form.Field>
       </FieldGroup>
       <DialogFooter>
         {target.mode === "edit" ? (
@@ -355,27 +315,17 @@ function ClosureForm({
             Eliminar
           </Button>
         ) : null}
-        <DialogClose
-          disabled={pending}
-          render={<Button variant="outline" type="button" />}
-        >
+        <DialogClose disabled={pending} render={<Button variant="outline" type="button" />}>
           Cancelar
         </DialogClose>
         <Button
           type="submit"
-          disabled={
-            !startDate ||
-            !endDate ||
-            nights < 1 ||
-            nights > 60 ||
-            unchanged ||
-            pending
-          }
+          disabled={!startDate || !endDate || nights < 1 || nights > 60 || unchanged || pending}
         >
           {submitting ? <Spinner data-icon="inline-start" /> : null}
           {target.mode === "edit" ? "Guardar" : "Cerrar habitación"}
         </Button>
       </DialogFooter>
     </form>
-  )
+  );
 }

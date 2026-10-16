@@ -1,23 +1,23 @@
-import { rateRangeQuerySchema } from '@pms/shared'
-import { and, eq, gt, lt } from 'drizzle-orm'
-import { Hono } from 'hono'
-import { getDb } from '../db'
-import { reservationRooms, reservations, roomClosures, rooms } from '../db/schema'
-import type { Env } from '../env'
-import { currency, validate } from '../http'
-import { loadRoomTypes, ratesBetween, roomCounts } from '../inventory'
-import { addDays } from '../lib/dates'
-import { inventoryGrid } from '../lib/inventory-grid'
-import { requireInclusiveRange } from '../rules'
+import { rateRangeQuerySchema } from "@pms/shared";
+import { and, eq, gt, lt } from "drizzle-orm";
+import { Hono } from "hono";
+import { getDb } from "../db";
+import { reservationRooms, reservations, roomClosures, rooms } from "../db/schema";
+import type { Env } from "../env";
+import { currency, validate } from "../http";
+import { loadRoomTypes, ratesBetween, roomCounts } from "../inventory";
+import { addDays } from "../lib/dates";
+import { inventoryGrid } from "../lib/inventory-grid";
+import { requireInclusiveRange } from "../rules";
 
-export const inventoryRoutes = new Hono<Env>()
+export const inventoryRoutes = new Hono<Env>();
 
-inventoryRoutes.get('/', validate('query', rateRangeQuerySchema), async (c) => {
-  const { from, to } = c.req.valid('query')
-  const dates = requireInclusiveRange(from, to, 366)
-  const windowEnd = addDays(to, 1)
-  const db = getDb(c.env.DB)
-  const types = await loadRoomTypes(db)
+inventoryRoutes.get("/", validate("query", rateRangeQuerySchema), async (c) => {
+  const { from, to } = c.req.valid("query");
+  const dates = requireInclusiveRange(from, to, 366);
+  const windowEnd = addDays(to, 1);
+  const db = getDb(c.env.DB);
+  const types = await loadRoomTypes(db);
   const [capacity, stays, closures, rates] = await Promise.all([
     roomCounts(db),
     db
@@ -46,11 +46,11 @@ inventoryRoutes.get('/', validate('query', rateRangeQuerySchema), async (c) => {
       from,
       windowEnd,
     ),
-  ])
+  ]);
   return c.json({
     from,
     to,
     currency: currency(c),
     roomTypes: inventoryGrid(dates, types, capacity, stays, closures, rates),
-  })
-})
+  });
+});

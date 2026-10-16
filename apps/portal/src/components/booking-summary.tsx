@@ -1,11 +1,11 @@
-import { useEffect, useId, useMemo, useRef } from "react"
-import { useSelector } from "@tanstack/react-form"
-import { cn } from "cn"
-import { useReservationForm, blurThenChange } from "@/lib/reservation-form"
-import { errorMessage } from "@/lib/form-errors"
-import { discountSchema } from "@/lib/reservation-form-schemas"
+import { useEffect, useId, useMemo, useRef } from "react";
+import { useSelector } from "@tanstack/react-form";
+import { cn } from "cn";
+import { useReservationForm, blurThenChange } from "@/lib/reservation-form";
+import { errorMessage } from "@/lib/form-errors";
+import { discountSchema } from "@/lib/reservation-form-schemas";
 
-import { Badge } from "@/components/ui/badge"
+import { Badge } from "@/components/ui/badge";
 import {
   Card,
   CardContent,
@@ -13,31 +13,31 @@ import {
   CardFooter,
   CardHeader,
   CardTitle,
-} from "@/components/ui/card"
-import { Separator } from "@/components/ui/separator"
-import { Field, FieldError } from "@/components/ui/field"
-import { toastError } from "@/lib/toast"
+} from "@/components/ui/card";
+import { Separator } from "@/components/ui/separator";
+import { Field, FieldError } from "@/components/ui/field";
+import { toastError } from "@/lib/toast";
 import {
   InputGroup,
   InputGroupAddon,
   InputGroupInput,
   InputGroupText,
-} from "@/components/ui/input-group"
-import type { ReservationDetail } from "@/lib/api"
-import { formatMajor, formatMoney, parseMajorToCents } from "@/lib/money"
+} from "@/components/ui/input-group";
+import type { ReservationDetail } from "@/lib/api";
+import { formatMajor, formatMoney, parseMajorToCents } from "@/lib/money";
 
-const amountColumn = "w-24 shrink-0 text-right tabular-nums"
+const amountColumn = "w-24 shrink-0 text-right tabular-nums";
 
 export type BookingSummaryRoom = {
-  key: string
-  typeName: string
-  adults: number | null
-  children: number | null
+  key: string;
+  typeName: string;
+  adults: number | null;
+  children: number | null;
   charges: Pick<
     ReservationDetail["rooms"][number],
     "subtotalCents" | "discountCents" | "totalCents"
-  > | null
-}
+  > | null;
+};
 
 export function BookingSummary({
   rooms,
@@ -54,25 +54,25 @@ export function BookingSummary({
   onDiscountDirtyChange,
   provisional = false,
 }: {
-  rooms: BookingSummaryRoom[]
-  cancelled: boolean
+  rooms: BookingSummaryRoom[];
+  cancelled: boolean;
   summary: Pick<
     ReservationDetail,
     "subtotalCents" | "discountCents" | "totalCents" | "balanceCents"
-  > | null
-  paidCents: number
-  currency: string
-  stayLabel: string | null
-  showPayments: boolean
-  message: string | null
-  editableDiscountCents?: number
-  discountDisabled?: boolean
-  onDiscountSave?: (amountCents: number) => Promise<void>
-  onDiscountDirtyChange?: (dirty: boolean) => void
-  provisional?: boolean
+  > | null;
+  paidCents: number;
+  currency: string;
+  stayLabel: string | null;
+  showPayments: boolean;
+  message: string | null;
+  editableDiscountCents?: number;
+  discountDisabled?: boolean;
+  onDiscountSave?: (amountCents: number) => Promise<void>;
+  onDiscountDirtyChange?: (dirty: boolean) => void;
+  provisional?: boolean;
 }) {
-  const titleId = useId()
-  const credit = summary !== null && summary.balanceCents < 0
+  const titleId = useId();
+  const credit = summary !== null && summary.balanceCents < 0;
 
   return (
     <section aria-labelledby={titleId} className="min-w-0">
@@ -87,12 +87,7 @@ export function BookingSummary({
         <CardContent className="flex flex-col gap-3">
           <div className="flex flex-col gap-4">
             {(cancelled ? [] : rooms).map((room, index) => (
-              <RoomSummary
-                key={room.key}
-                room={room}
-                index={index}
-                currency={currency}
-              />
+              <RoomSummary key={room.key} room={room} index={index} currency={currency} />
             ))}
           </div>
           <Separator />
@@ -124,11 +119,7 @@ export function BookingSummary({
                 cents={summary?.totalCents ?? null}
                 currency={currency}
               />
-              <SummaryRow
-                label="Pagado"
-                cents={paidCents}
-                currency={currency}
-              />
+              <SummaryRow label="Pagado" cents={paidCents} currency={currency} />
             </dl>
           ) : null}
           {!summary && message ? (
@@ -141,11 +132,7 @@ export function BookingSummary({
           <dl className="w-full text-sm font-semibold">
             <SummaryRow
               label={
-                showPayments
-                  ? credit
-                    ? "Saldo a favor"
-                    : "Saldo pendiente"
-                  : "Total de reserva"
+                showPayments ? (credit ? "Saldo a favor" : "Saldo pendiente") : "Total de reserva"
               }
               cents={
                 summary
@@ -160,11 +147,11 @@ export function BookingSummary({
         </CardFooter>
       </Card>
     </section>
-  )
+  );
 }
 
 function discountDraft(cents: number) {
-  return cents % 100 === 0 ? String(cents / 100) : formatMajor(cents)
+  return cents % 100 === 0 ? String(cents / 100) : formatMajor(cents);
 }
 
 function DiscountInput({
@@ -173,53 +160,44 @@ function DiscountInput({
   onSave,
   onDirtyChange,
 }: {
-  amountCents: number
-  disabled: boolean
-  onSave: (amountCents: number) => Promise<void>
-  onDirtyChange?: (dirty: boolean) => void
+  amountCents: number;
+  disabled: boolean;
+  onSave: (amountCents: number) => Promise<void>;
+  onDirtyChange?: (dirty: boolean) => void;
 }) {
-  const defaults = useMemo(
-    () => ({ amount: discountDraft(amountCents) }),
-    [amountCents]
-  )
-  const focused = useRef(false)
-  const errorId = useId()
+  const defaults = useMemo(() => ({ amount: discountDraft(amountCents) }), [amountCents]);
+  const focused = useRef(false);
+  const errorId = useId();
   const form = useReservationForm({
     defaultValues: defaults,
     validationLogic: blurThenChange(),
     validators: { onDynamic: discountSchema },
     onSubmit: async ({ value }) => {
-      if (disabled) return
-      const cents = parseMajorToCents(
-        discountSchema.parse(value).amount.trim() || "0"
-      )!
-      const next = { amount: discountDraft(cents) }
+      if (disabled) return;
+      const cents = parseMajorToCents(discountSchema.parse(value).amount.trim() || "0")!;
+      const next = { amount: discountDraft(cents) };
       if (cents === amountCents) {
-        form.reset(next)
-        return
+        form.reset(next);
+        return;
       }
       try {
-        await onSave(cents)
-        form.reset(next)
+        await onSave(cents);
+        form.reset(next);
       } catch (cause) {
-        toastError("No se pudo guardar el descuento", cause)
+        toastError("No se pudo guardar el descuento", cause);
       }
     },
-  })
-  const value = useSelector(form.store, (state) => state.values.amount)
-  const saving = useSelector(form.store, (state) => state.isSubmitting)
+  });
+  const value = useSelector(form.store, (state) => state.values.amount);
+  const saving = useSelector(form.store, (state) => state.isSubmitting);
   useEffect(() => {
-    onDirtyChange?.(parseMajorToCents(value.trim() || "0") !== amountCents)
-  }, [value, amountCents, onDirtyChange])
+    onDirtyChange?.(parseMajorToCents(value.trim() || "0") !== amountCents);
+  }, [value, amountCents, onDirtyChange]);
   useEffect(() => {
-    if (
-      !focused.current &&
-      form.state.isDefaultValue &&
-      !form.state.isSubmitting
-    ) {
-      form.reset(defaults)
+    if (!focused.current && form.state.isDefaultValue && !form.state.isSubmitting) {
+      form.reset(defaults);
     }
-  }, [form, defaults])
+  }, [form, defaults]);
 
   return (
     <form.Field name="amount">
@@ -227,16 +205,13 @@ function DiscountInput({
         const error =
           field.state.meta.isBlurred || form.state.submissionAttempts
             ? errorMessage(field.state.meta.errors)
-            : undefined
+            : undefined;
         return (
           <>
             <div className="grid min-w-0 grid-cols-[minmax(0,1fr)_6rem] items-center gap-4">
               <dt className="min-w-0 wrap-anywhere">Descuento</dt>
               <dd>
-                <Field
-                  className="w-24"
-                  data-invalid={Boolean(error) || undefined}
-                >
+                <Field className="w-24" data-invalid={Boolean(error) || undefined}>
                   <InputGroup>
                     <InputGroupAddon>
                       <InputGroupText>S/</InputGroupText>
@@ -251,20 +226,20 @@ function DiscountInput({
                       value={value}
                       disabled={disabled || saving}
                       onFocus={() => {
-                        focused.current = true
+                        focused.current = true;
                       }}
                       onChange={(event) => {
-                        field.handleChange(event.target.value)
+                        field.handleChange(event.target.value);
                       }}
                       onBlur={() => {
-                        focused.current = false
-                        field.handleBlur()
-                        void form.handleSubmit()
+                        focused.current = false;
+                        field.handleBlur();
+                        void form.handleSubmit();
                       }}
                       onKeyDown={(event) => {
                         if (event.key === "Enter") {
-                          event.preventDefault()
-                          event.currentTarget.blur()
+                          event.preventDefault();
+                          event.currentTarget.blur();
                         }
                       }}
                     />
@@ -278,10 +253,10 @@ function DiscountInput({
               </FieldError>
             ) : null}
           </>
-        )
+        );
       }}
     </form.Field>
-  )
+  );
 }
 
 function RoomSummary({
@@ -289,14 +264,14 @@ function RoomSummary({
   index,
   currency,
 }: {
-  room: BookingSummaryRoom
-  index: number
-  currency: string
+  room: BookingSummaryRoom;
+  index: number;
+  currency: string;
 }) {
   const guests =
     room.adults === null || room.children === null
       ? "Revisa el número de huéspedes"
-      : `${room.adults} ${room.adults === 1 ? "adulto" : "adultos"}${room.children > 0 ? ` · ${room.children} ${room.children === 1 ? "niño" : "niños"}` : ""}`
+      : `${room.adults} ${room.adults === 1 ? "adulto" : "adultos"}${room.children > 0 ? ` · ${room.children} ${room.children === 1 ? "niño" : "niños"}` : ""}`;
 
   return (
     <section
@@ -312,7 +287,7 @@ function RoomSummary({
       </dl>
       <p className="text-xs text-muted-foreground">{guests}</p>
     </section>
-  )
+  );
 }
 
 function SummaryRow({
@@ -320,9 +295,9 @@ function SummaryRow({
   cents,
   currency,
 }: {
-  label: string
-  cents: number | null
-  currency: string
+  label: string;
+  cents: number | null;
+  currency: string;
 }) {
   return (
     <div className="grid min-w-0 grid-cols-[minmax(0,1fr)_6rem] items-baseline gap-4">
@@ -335,5 +310,5 @@ function SummaryRow({
         )}
       </dd>
     </div>
-  )
+  );
 }

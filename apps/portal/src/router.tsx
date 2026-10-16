@@ -5,22 +5,22 @@ import {
   Link,
   redirect,
   stripSearchParams,
-} from "@tanstack/react-router"
-import { useEffect } from "react"
-import { format, parse } from "date-fns"
-import { useNavigate } from "@tanstack/react-router"
-import App from "@/App"
-import { ReservationPage } from "@/components/reservation-page"
-import { Reservations } from "@/components/reservations"
-import { RoomCalendar } from "@/components/room-calendar"
-import { Inventory } from "@/components/inventory"
+} from "@tanstack/react-router";
+import { useEffect } from "react";
+import { format, parseISO } from "date-fns";
+import { useNavigate } from "@tanstack/react-router";
+import App from "@/App";
+import { ReservationPage } from "@/components/reservation-page";
+import { Reservations } from "@/components/reservations";
+import { RoomCalendar } from "@/components/room-calendar";
+import { Inventory } from "@/components/inventory";
 import {
   calendarSearch,
   inventorySearch,
   lastCalendarSearch,
   lastReservationsSearch,
   reservationsSearch,
-} from "@/lib/route-search"
+} from "@/lib/route-search";
 
 const rootRoute = createRootRoute({
   component: App,
@@ -36,7 +36,7 @@ const rootRoute = createRootRoute({
       </Link>
     </main>
   ),
-})
+});
 
 const indexRoute = createRoute({
   getParentRoute: () => rootRoute,
@@ -49,22 +49,22 @@ const indexRoute = createRoute({
         span: 7,
       },
       replace: true,
-    })
+    });
   },
-})
+});
 
 function CalendarRoute() {
-  const search = calendarRoute.useSearch()
-  const navigate = useNavigate({ from: "/calendar" })
+  const search = calendarRoute.useSearch();
+  const navigate = useNavigate({ from: "/calendar" });
   useEffect(() => {
-    lastCalendarSearch.current = search
-  }, [search])
-  const start = parse(search.from, "yyyy-MM-dd", new Date())
+    lastCalendarSearch.current = search;
+  }, [search]);
+  const start = parseISO(search.from);
   const update = (next: { from?: string; span?: 7 | 14 }) =>
     navigate({
       search: (previous) => ({ ...previous, ...next }),
       replace: true,
-    })
+    });
 
   return (
     <RoomCalendar
@@ -79,7 +79,7 @@ function CalendarRoute() {
         })
       }
     />
-  )
+  );
 }
 
 const calendarRoute = createRoute({
@@ -90,14 +90,14 @@ const calendarRoute = createRoute({
     middlewares: [stripSearchParams({ span: 7 })],
   },
   component: CalendarRoute,
-})
+});
 
 function ReservationsRoute() {
-  const search = reservationsRoute.useSearch()
-  const navigate = useNavigate({ from: "/reservations" })
+  const search = reservationsRoute.useSearch();
+  const navigate = useNavigate({ from: "/reservations" });
   useEffect(() => {
-    lastReservationsSearch.current = search
-  }, [search])
+    lastReservationsSearch.current = search;
+  }, [search]);
   return (
     <Reservations
       search={search}
@@ -114,7 +114,7 @@ function ReservationsRoute() {
         })
       }
     />
-  )
+  );
 }
 
 const reservationsRoute = createRoute({
@@ -125,17 +125,17 @@ const reservationsRoute = createRoute({
     middlewares: [stripSearchParams({ q: "", status: "all", page: 0 })],
   },
   component: ReservationsRoute,
-})
+});
 
 const reservationRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/reservations/$reservationId",
   component: ReservationRoute,
-})
+});
 
 function ReservationRoute() {
-  const { reservationId } = reservationRoute.useParams()
-  const navigate = useNavigate()
+  const { reservationId } = reservationRoute.useParams();
+  const navigate = useNavigate();
   return (
     <ReservationPage
       id={reservationId}
@@ -146,18 +146,18 @@ function ReservationRoute() {
         })
       }
     />
-  )
+  );
 }
 
 function InventoryRoute() {
-  const search = inventoryRoute.useSearch()
-  const navigate = useNavigate({ from: "/inventory" })
-  const start = parse(search.from, "yyyy-MM-dd", new Date())
+  const search = inventoryRoute.useSearch();
+  const navigate = useNavigate({ from: "/inventory" });
+  const start = parseISO(search.from);
   const update = (next: { from?: string; span?: 7 | 14 }) =>
     navigate({
       search: (previous) => ({ ...previous, ...next }),
       replace: true,
-    })
+    });
   return (
     <Inventory
       start={start}
@@ -165,7 +165,7 @@ function InventoryRoute() {
       onStartChange={(date) => update({ from: format(date, "yyyy-MM-dd") })}
       onSpanChange={(span) => update({ span })}
     />
-  )
+  );
 }
 
 const inventoryRoute = createRoute({
@@ -176,7 +176,7 @@ const inventoryRoute = createRoute({
     middlewares: [stripSearchParams({ span: 14 })],
   },
   component: InventoryRoute,
-})
+});
 
 const routeTree = rootRoute.addChildren([
   indexRoute,
@@ -184,12 +184,12 @@ const routeTree = rootRoute.addChildren([
   reservationsRoute,
   reservationRoute,
   inventoryRoute,
-])
+]);
 
-export const router = createRouter({ routeTree })
+export const router = createRouter({ routeTree });
 
 declare module "@tanstack/react-router" {
   interface Register {
-    router: typeof router
+    router: typeof router;
   }
 }

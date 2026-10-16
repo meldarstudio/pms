@@ -1,6 +1,6 @@
-import { useQueryClient } from "@tanstack/react-query"
-import { useState } from "react"
-import { cn } from "cn"
+import { useQueryClient } from "@tanstack/react-query";
+import { useState } from "react";
+import { cn } from "cn";
 import {
   addDays,
   differenceInCalendarDays,
@@ -8,7 +8,7 @@ import {
   parse,
   startOfDay,
   startOfToday,
-} from "date-fns"
+} from "date-fns";
 import {
   CircleHelpIcon,
   CalendarIcon,
@@ -19,35 +19,21 @@ import {
   PanelRightIcon,
   PlusIcon,
   RefreshCwIcon,
-} from "lucide-react"
+} from "lucide-react";
 
 import {
   RoomActionsMenu,
   RoomClosureDialog,
   type ClosureTarget,
-} from "@/components/room-closure-dialog"
-import {
-  RoomEditDialog,
-  type RoomEditTarget,
-} from "@/components/room-edit-dialog"
-import {
-  RoomBookingDialog,
-  type BookingTarget,
-} from "@/components/room-booking-dialog"
-import { RoomAssignmentPanel } from "@/components/room-assignment-panel"
-import {
-  Tooltip,
-  TooltipTrigger,
-  TooltipContent,
-} from "@/components/ui/tooltip"
-import { Button } from "@/components/ui/button"
-import { ButtonGroup } from "@/components/ui/button-group"
-import { Calendar } from "@/components/ui/calendar"
-import {
-  Popover,
-  PopoverContent,
-  PopoverTrigger,
-} from "@/components/ui/popover"
+} from "@/components/room-closure-dialog";
+import { RoomEditDialog, type RoomEditTarget } from "@/components/room-edit-dialog";
+import { RoomBookingDialog, type BookingTarget } from "@/components/room-booking-dialog";
+import { RoomAssignmentPanel } from "@/components/room-assignment-panel";
+import { Tooltip, TooltipTrigger, TooltipContent } from "@/components/ui/tooltip";
+import { Button } from "@/components/ui/button";
+import { ButtonGroup } from "@/components/ui/button-group";
+import { Calendar } from "@/components/ui/calendar";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import {
   Select,
   SelectContent,
@@ -55,27 +41,18 @@ import {
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from "@/components/ui/select"
-import { Skeleton } from "@/components/ui/skeleton"
-import { type RoomClosure } from "@/lib/api"
-import {
-  reservationStays,
-  unassignedStays,
-  type ReservationStay,
-} from "@/lib/room-assignment"
-import { useRoomAssignment } from "@/lib/use-room-assignment"
-import { format } from "@/lib/dates"
-import {
-  useReservations,
-  useRoomClosures,
-  useRoomTypes,
-  useRooms,
-} from "@/lib/queries"
+} from "@/components/ui/select";
+import { Skeleton } from "@/components/ui/skeleton";
+import { type RoomClosure } from "@/lib/api";
+import { reservationStays, unassignedStays, type ReservationStay } from "@/lib/room-assignment";
+import { useRoomAssignment } from "@/lib/use-room-assignment";
+import { format } from "@/lib/dates";
+import { useReservations, useRoomClosures, useRoomTypes, useRooms } from "@/lib/queries";
 
 const spans = [
   { label: "7 días", value: "7" },
   { label: "14 días", value: "14" },
-]
+];
 
 export const stayColors: Record<string, string> = {
   confirmed:
@@ -83,73 +60,67 @@ export const stayColors: Record<string, string> = {
   checked_in: "border-booking-foreground/20 bg-booking text-booking-foreground",
   checked_out:
     "border-booking-completed-foreground/20 bg-booking-completed text-booking-completed-foreground",
-}
+};
 const stayLabels: Record<string, string> = {
   confirmed: "Confirmada",
   checked_in: "Check-in",
   checked_out: "Check-out",
-}
+};
 
 type TrackItem = {
-  id: string
-  reservationId?: string
-  status?: string
-  kind: "stay" | "closure"
-  label: string
-  title: string
-  checkIn: string
-  checkOut: string
-}
+  id: string;
+  reservationId?: string;
+  status?: string;
+  kind: "stay" | "closure";
+  label: string;
+  title: string;
+  checkIn: string;
+  checkOut: string;
+};
 
-type PlacedTrack = TrackItem & { start: number; end: number; lane: number }
+type PlacedTrack = TrackItem & { start: number; end: number; lane: number };
 
 type AssignmentPreview = {
-  stay: PlacedTrack
-  disabled: boolean
-  onSelect: () => void
-}
+  stay: PlacedTrack;
+  disabled: boolean;
+  onSelect: () => void;
+};
 
 function clipStay(stay: TrackItem, rangeStart: Date, dayCount: number) {
   // Both bookings and closures block nights, with half-day endpoints.
   const start = Math.max(
     0,
-    differenceInCalendarDays(
-      parse(stay.checkIn, "yyyy-MM-dd", rangeStart),
-      rangeStart
-    ) + 0.5
-  )
+    differenceInCalendarDays(parse(stay.checkIn, "yyyy-MM-dd", rangeStart), rangeStart) + 0.5,
+  );
   const end = Math.min(
     dayCount,
-    differenceInCalendarDays(
-      parse(stay.checkOut, "yyyy-MM-dd", rangeStart),
-      rangeStart
-    ) + 0.5
-  )
-  if (start >= end) return null
+    differenceInCalendarDays(parse(stay.checkOut, "yyyy-MM-dd", rangeStart), rangeStart) + 0.5,
+  );
+  if (start >= end) return null;
   return {
     ...stay,
     start,
     end,
-  }
+  };
 }
 
 function placeStays(stays: TrackItem[], rangeStart: Date, dayCount: number) {
   const clipped = stays.flatMap((stay) => {
-    const next = clipStay(stay, rangeStart, dayCount)
-    return next ? [next] : []
-  })
-  clipped.sort((a, b) => a.start - b.start || a.end - b.end)
-  const laneEnds: number[] = []
+    const next = clipStay(stay, rangeStart, dayCount);
+    return next ? [next] : [];
+  });
+  clipped.sort((a, b) => a.start - b.start || a.end - b.end);
+  const laneEnds: number[] = [];
   return clipped.map((stay) => {
-    let lane = laneEnds.findIndex((end) => end <= stay.start)
+    let lane = laneEnds.findIndex((end) => end <= stay.start);
     if (lane === -1) {
-      lane = laneEnds.length
-      laneEnds.push(stay.end)
+      lane = laneEnds.length;
+      laneEnds.push(stay.end);
     } else {
-      laneEnds[lane] = stay.end
+      laneEnds[lane] = stay.end;
     }
-    return { ...stay, lane }
-  })
+    return { ...stay, lane };
+  });
 }
 
 function stayTrack(stay: ReservationStay): TrackItem {
@@ -162,7 +133,7 @@ function stayTrack(stay: ReservationStay): TrackItem {
     title: `${stay.guestName} · ${stayLabels[stay.status ?? "confirmed"]}, ${stay.checkIn} al ${stay.checkOut}`,
     checkIn: stay.checkIn,
     checkOut: stay.checkOut,
-  }
+  };
 }
 
 function closureTrack(closure: RoomClosure): TrackItem {
@@ -175,7 +146,7 @@ function closureTrack(closure: RoomClosure): TrackItem {
       : `Cerrada, ${closure.starts} al ${closure.ends}`,
     checkIn: closure.starts,
     checkOut: closure.ends,
-  }
+  };
 }
 
 function barStyle(item: PlacedTrack, dayCount: number, laneCount: number) {
@@ -184,7 +155,7 @@ function barStyle(item: PlacedTrack, dayCount: number, laneCount: number) {
     height: `calc(${100 / laneCount}% - 0.5rem)`,
     left: `calc(${(item.start / dayCount) * 100}% + 0.25rem)`,
     width: `calc(${((item.end - item.start) / dayCount) * 100}% - 0.5rem)`,
-  }
+  };
 }
 
 function StayBar({
@@ -193,27 +164,23 @@ function StayBar({
   laneCount,
   onOpen,
 }: {
-  stay: PlacedTrack
-  dayCount: number
-  laneCount: number
-  onOpen?: (reservationId: string) => void
+  stay: PlacedTrack;
+  dayCount: number;
+  laneCount: number;
+  onOpen?: (reservationId: string) => void;
 }) {
   const className = cn(
     "absolute z-10 flex items-center overflow-hidden rounded-none border px-2.5 text-left text-xs",
-    stayColors[stay.status ?? "confirmed"] ?? stayColors.confirmed
-  )
+    stayColors[stay.status ?? "confirmed"] ?? stayColors.confirmed,
+  );
   if (!onOpen || !stay.reservationId) {
     return (
-      <div
-        title={stay.title}
-        className={className}
-        style={barStyle(stay, dayCount, laneCount)}
-      >
+      <div title={stay.title} className={className} style={barStyle(stay, dayCount, laneCount)}>
         <span className="truncate">{stay.label}</span>
       </div>
-    )
+    );
   }
-  const reservationId = stay.reservationId
+  const reservationId = stay.reservationId;
   return (
     <button
       type="button"
@@ -221,14 +188,14 @@ function StayBar({
       aria-label={`Editar reserva de ${stay.label} · ${stayLabels[stay.status ?? "confirmed"]}`}
       className={cn(
         className,
-        "cursor-pointer outline-none focus-visible:ring-1 focus-visible:ring-ring"
+        "cursor-pointer outline-none focus-visible:ring-1 focus-visible:ring-ring",
       )}
       style={barStyle(stay, dayCount, laneCount)}
       onClick={() => onOpen(reservationId)}
     >
       <span className="truncate">{stay.label}</span>
     </button>
-  )
+  );
 }
 
 function ClosureBar({
@@ -237,10 +204,10 @@ function ClosureBar({
   laneCount,
   onOpen,
 }: {
-  item: PlacedTrack
-  dayCount: number
-  laneCount: number
-  onOpen: (id: string) => void
+  item: PlacedTrack;
+  dayCount: number;
+  laneCount: number;
+  onOpen: (id: string) => void;
 }) {
   return (
     <button
@@ -252,7 +219,7 @@ function ClosureBar({
     >
       <span className="truncate">{item.label}</span>
     </button>
-  )
+  );
 }
 
 function RoomTrack({
@@ -267,23 +234,23 @@ function RoomTrack({
   assignmentReason,
   assignmentPreview,
 }: {
-  stays: PlacedTrack[]
-  dayCount: number
-  days: Date[]
-  roomNumber: string
-  onBookDay?: (day: Date) => void
-  onOpenStay?: (reservationId: string) => void
-  onOpenClosure?: (id: string) => void
-  assignmentActive?: boolean
-  assignmentReason?: string
-  assignmentPreview?: AssignmentPreview
+  stays: PlacedTrack[];
+  dayCount: number;
+  days: Date[];
+  roomNumber: string;
+  onBookDay?: (day: Date) => void;
+  onOpenStay?: (reservationId: string) => void;
+  onOpenClosure?: (id: string) => void;
+  assignmentActive?: boolean;
+  assignmentReason?: string;
+  assignmentPreview?: AssignmentPreview;
 }) {
-  const lanes = stays.reduce((max, stay) => Math.max(max, stay.lane + 1), 1)
+  const lanes = stays.reduce((max, stay) => Math.max(max, stay.lane + 1), 1);
   return (
     <div
       className={cn(
         "relative isolate min-w-0 border-b",
-        assignmentActive && !assignmentPreview && "bg-muted/30 opacity-50"
+        assignmentActive && !assignmentPreview && "bg-muted/30 opacity-50",
       )}
       title={assignmentReason}
       style={{
@@ -296,22 +263,14 @@ function RoomTrack({
         style={{ gridTemplateColumns: `repeat(${dayCount}, minmax(0, 1fr))` }}
       >
         {days.map((day, dayIndex) => {
-          const date = format(day, "yyyy-MM-dd")
+          const date = format(day, "yyyy-MM-dd");
           // Availability is based on nights, not the bar's half-day drawing.
-          const occupied = stays.some(
-            (stay) => stay.checkIn <= date && stay.checkOut > date
-          )
-          const morningBlocked = stays.some((stay) => stay.checkOut === date)
-          const disabled =
-            !onBookDay ||
-            occupied ||
-            date < format(startOfToday(), "yyyy-MM-dd")
+          const occupied = stays.some((stay) => stay.checkIn <= date && stay.checkOut > date);
+          const morningBlocked = stays.some((stay) => stay.checkOut === date);
+          const disabled = !onBookDay || occupied || date < format(startOfToday(), "yyyy-MM-dd");
 
           return (
-            <div
-              key={date}
-              className={cn("relative", dayIndex < dayCount - 1 && "border-r")}
-            >
+            <div key={date} className={cn("relative", dayIndex < dayCount - 1 && "border-r")}>
               {onBookDay ? (
                 <button
                   type="button"
@@ -323,7 +282,7 @@ function RoomTrack({
                 />
               ) : null}
             </div>
-          )
+          );
         })}
       </div>
       {stays.map((stay) =>
@@ -343,7 +302,7 @@ function RoomTrack({
             laneCount={lanes}
             onOpen={onOpenStay}
           />
-        )
+        ),
       )}
       {assignmentPreview ? (
         <button
@@ -351,14 +310,14 @@ function RoomTrack({
           aria-label={`Asignar ${assignmentPreview.stay.label} a habitación ${roomNumber}, ${assignmentPreview.stay.checkIn} al ${assignmentPreview.stay.checkOut}`}
           disabled={assignmentPreview.disabled}
           onClick={assignmentPreview.onSelect}
-          className="absolute z-20 flex cursor-pointer items-center overflow-hidden rounded-none border border-dashed border-booking-foreground/50 bg-booking/40 px-2.5 text-left text-xs text-booking-foreground outline-none hover:bg-booking/70 focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-default"
+          className="absolute z-20 flex cursor-pointer items-center overflow-hidden rounded-none border border-dashed border-assignment-foreground/50 bg-assignment/40 px-2.5 text-left text-xs text-assignment-foreground outline-none hover:bg-assignment/70 focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-default"
           style={barStyle(assignmentPreview.stay, dayCount, 1)}
         >
           <span className="truncate">{assignmentPreview.stay.label}</span>
         </button>
       ) : null}
     </div>
-  )
+  );
 }
 
 export function RoomCalendar({
@@ -368,33 +327,31 @@ export function RoomCalendar({
   onSpanChange,
   onOpenReservation,
 }: {
-  start: Date
-  span: 7 | 14
-  onStartChange: (date: Date) => void
-  onSpanChange: (span: 7 | 14) => void
-  onOpenReservation: (id: string) => void
+  start: Date;
+  span: 7 | 14;
+  onStartChange: (date: Date) => void;
+  onSpanChange: (span: 7 | 14) => void;
+  onOpenReservation: (id: string) => void;
 }) {
-  const timeZone = Intl.DateTimeFormat().resolvedOptions().timeZone
-  const queryClient = useQueryClient()
-  const today = format(startOfToday(), "yyyy-MM-dd")
-  const [pickerOpen, setPickerOpen] = useState(false)
-  const [closureTarget, setClosureTarget] = useState<ClosureTarget | null>(null)
-  const [roomTarget, setRoomTarget] = useState<RoomEditTarget | null>(null)
-  const [bookingTarget, setBookingTarget] = useState<BookingTarget | null>(null)
-  const [panelOpen, setPanelOpen] = useState(false)
+  const timeZone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+  const queryClient = useQueryClient();
+  const today = format(startOfToday(), "yyyy-MM-dd");
+  const [pickerOpen, setPickerOpen] = useState(false);
+  const [closureTarget, setClosureTarget] = useState<ClosureTarget | null>(null);
+  const [roomTarget, setRoomTarget] = useState<RoomEditTarget | null>(null);
+  const [bookingTarget, setBookingTarget] = useState<BookingTarget | null>(null);
+  const [panelOpen, setPanelOpen] = useState(false);
   // Include bookings and closures ending on the first visible morning.
   // Both list APIs use an exclusive end boundary for their `from` filter.
-  const rangeFrom = format(addDays(start, -1), "yyyy-MM-dd")
-  const rangeTo = format(addDays(start, span - 1), "yyyy-MM-dd")
-  const roomsQuery = useRooms()
-  const typesQuery = useRoomTypes()
-  const reservationsQuery = useReservations(rangeFrom, rangeTo)
-  const closuresQuery = useRoomClosures(rangeFrom, rangeTo)
+  const rangeFrom = format(addDays(start, -1), "yyyy-MM-dd");
+  const rangeTo = format(addDays(start, span - 1), "yyyy-MM-dd");
+  const roomsQuery = useRooms();
+  const typesQuery = useRoomTypes();
+  const reservationsQuery = useReservations(rangeFrom, rangeTo);
+  const closuresQuery = useRoomClosures(rangeFrom, rangeTo);
 
-  const typeNames = new Map(
-    typesQuery.data?.map((type) => [type.id, type.name]) ?? []
-  )
-  const loading = roomsQuery.isPending || typesQuery.isPending
+  const typeNames = new Map(typesQuery.data?.map((type) => [type.id, type.name]) ?? []);
+  const loading = roomsQuery.isPending || typesQuery.isPending;
   const rooms = loading
     ? null
     : (roomsQuery.data ?? [])
@@ -402,15 +359,13 @@ export function RoomCalendar({
           ...room,
           typeName: typeNames.get(room.roomTypeId) ?? "Room",
         }))
-        .sort((a, b) =>
-          a.number.localeCompare(b.number, undefined, { numeric: true })
-        )
+        .sort((a, b) => a.number.localeCompare(b.number, undefined, { numeric: true }));
   const error =
     roomsQuery.error?.message ??
     typesQuery.error?.message ??
     reservationsQuery.error?.message ??
     closuresQuery.error?.message ??
-    null
+    null;
   const bookingDataReady =
     !reservationsQuery.isPending &&
     !reservationsQuery.isFetching &&
@@ -419,70 +374,70 @@ export function RoomCalendar({
     !closuresQuery.isPending &&
     !closuresQuery.isFetching &&
     !closuresQuery.isPlaceholderData &&
-    !closuresQuery.isError
+    !closuresQuery.isError;
   const stays = reservationsQuery.isError
     ? []
     : reservationStays(reservationsQuery.data ?? [], true).filter(
-        (stay) => clipStay(stayTrack(stay), start, span) !== null
-      )
-  const assignment = useRoomAssignment(rooms)
+        (stay) => clipStay(stayTrack(stay), start, span) !== null,
+      );
+  const assignment = useRoomAssignment(rooms);
   const unassigned = unassignedStays(
     reservationsQuery.isError ? [] : (reservationsQuery.data ?? []),
     format(start, "yyyy-MM-dd"),
-    rangeTo
-  )
+    rangeTo,
+  );
   const listLoading =
     loading ||
     reservationsQuery.isPending ||
     reservationsQuery.isFetching ||
-    reservationsQuery.isPlaceholderData
+    reservationsQuery.isPlaceholderData;
   const listError =
     roomsQuery.error?.message ??
     typesQuery.error?.message ??
     reservationsQuery.error?.message ??
-    null
+    null;
   const previewTrack = assignment.target
     ? placeStays([stayTrack(assignment.target)], start, span)[0]
-    : undefined
+    : undefined;
 
   function refresh() {
-    void queryClient.invalidateQueries()
+    void queryClient.invalidateQueries();
   }
 
   function changeStart(date: Date) {
-    if (assignment.pending) return
-    assignment.cancel()
-    onStartChange(date)
+    if (assignment.pending) return;
+    assignment.cancel();
+    onStartChange(date);
   }
 
   const days = eachDayOfInterval({
     start,
     end: addDays(start, span - 1),
-  })
-  const byRoom = new Map<string, ReservationStay[]>()
-  const closuresByRoom = new Map<string, RoomClosure[]>()
+  });
+  const byRoom = new Map<string, ReservationStay[]>();
+  const closuresByRoom = new Map<string, RoomClosure[]>();
   for (const stay of stays) {
-    if (!stay.roomId) continue
-    const list = byRoom.get(stay.roomId) ?? []
-    list.push(stay)
-    byRoom.set(stay.roomId, list)
+    if (!stay.roomId) continue;
+    const list = byRoom.get(stay.roomId) ?? [];
+    list.push(stay);
+    byRoom.set(stay.roomId, list);
   }
   for (const closure of closuresQuery.data ?? []) {
-    const list = closuresByRoom.get(closure.roomId) ?? []
-    list.push(closure)
-    closuresByRoom.set(closure.roomId, list)
+    const list = closuresByRoom.get(closure.roomId) ?? [];
+    list.push(closure);
+    closuresByRoom.set(closure.roomId, list);
   }
 
   function openClosure(id: string) {
-    const closure = (closuresQuery.data ?? []).find((item) => item.id === id)
-    const room = rooms?.find((item) => item.id === closure?.roomId)
-    if (!closure || !room) return
+    const closure = (closuresQuery.data ?? []).find((item) => item.id === id);
+    const room = rooms?.find((item) => item.id === closure?.roomId);
+    if (!closure || !room) return;
     setClosureTarget({
       mode: "edit",
       closure,
       number: room.number,
       typeName: room.typeName,
-    })
+    });
   }
 
   const panel = (
@@ -503,7 +458,7 @@ export function RoomCalendar({
       onClose={() => setPanelOpen(false)}
       onRetry={refresh}
     />
-  )
+  );
 
   return (
     <div className="flex min-h-0 min-w-0 flex-1 flex-col">
@@ -518,8 +473,8 @@ export function RoomCalendar({
         timeZone={timeZone}
         onClose={() => setBookingTarget(null)}
         onViewReservation={(id) => {
-          setBookingTarget(null)
-          onOpenReservation(id)
+          setBookingTarget(null);
+          onOpenReservation(id);
         }}
       />
       <div className="flex flex-wrap items-center justify-between gap-2 border-b px-2.5 py-2">
@@ -530,8 +485,8 @@ export function RoomCalendar({
             disabled={assignment.pending}
             onValueChange={(value) => {
               if (value) {
-                assignment.cancel()
-                onSpanChange(Number(value) as 7 | 14)
+                assignment.cancel();
+                onSpanChange(Number(value) as 7 | 14);
               }
             }}
           >
@@ -603,9 +558,9 @@ export function RoomCalendar({
                 selected={start}
                 timeZone={timeZone}
                 onSelect={(date) => {
-                  if (!date) return
-                  changeStart(startOfDay(date))
-                  setPickerOpen(false)
+                  if (!date) return;
+                  changeStart(startOfDay(date));
+                  setPickerOpen(false);
                 }}
               />
             </PopoverContent>
@@ -643,24 +598,13 @@ export function RoomCalendar({
             >
               <CircleHelpIcon />
             </TooltipTrigger>
-            <TooltipContent
-              variant="legend"
-              side="bottom"
-              align="end"
-              sideOffset={8}
-            >
-              <div
-                aria-label="Colores de reservas"
-                className="flex min-w-40 flex-col gap-2.5"
-              >
+            <TooltipContent variant="legend" side="bottom" align="end" sideOffset={8}>
+              <div aria-label="Colores de reservas" className="flex min-w-40 flex-col gap-2.5">
                 {Object.entries(stayLabels).map(([status, label]) => (
                   <span key={status} className="flex items-center gap-2">
                     <span
                       aria-hidden="true"
-                      className={cn(
-                        "size-3 rounded-none border",
-                        stayColors[status]
-                      )}
+                      className={cn("size-3 rounded-none border", stayColors[status])}
                     />
                     {label}
                   </span>
@@ -675,10 +619,7 @@ export function RoomCalendar({
               </div>
             </TooltipContent>
           </Tooltip>
-          <Button
-            disabled={assignment.pending}
-            onClick={() => setBookingTarget({ mode: "new" })}
-          >
+          <Button disabled={assignment.pending} onClick={() => setBookingTarget({ mode: "new" })}>
             <PlusIcon data-icon="inline-start" />
             Nueva reserva
           </Button>
@@ -707,7 +648,7 @@ export function RoomCalendar({
                 key={format(day, "yyyy-MM-dd")}
                 className={cn(
                   "sticky top-0 z-30 flex min-w-0 flex-col items-center gap-0.5 border-b bg-background px-2.5 py-1.5",
-                  dayIndex < span - 1 && "border-r"
+                  dayIndex < span - 1 && "border-r",
                 )}
               >
                 <span
@@ -715,26 +656,22 @@ export function RoomCalendar({
                     "text-xs tracking-wide uppercase",
                     format(day, "yyyy-MM-dd") === today
                       ? "font-medium text-primary"
-                      : "text-muted-foreground"
+                      : "text-muted-foreground",
                   )}
                 >
-                  {format(day, "yyyy-MM-dd") === today
-                    ? "Hoy"
-                    : format(day, "EEE")}
+                  {format(day, "yyyy-MM-dd") === today ? "Hoy" : format(day, "EEE")}
                 </span>
                 <span
                   className={cn(
                     "flex h-5 min-w-5 items-center justify-center px-1 text-xs",
                     format(day, "yyyy-MM-dd") === today
                       ? "bg-primary font-medium text-primary-foreground"
-                      : "text-muted-foreground"
+                      : "text-muted-foreground",
                   )}
                 >
                   {format(day, "d")}
                 </span>
-                <span className="text-xs text-muted-foreground">
-                  {format(day, "MMM")}
-                </span>
+                <span className="text-xs text-muted-foreground">{format(day, "MMM")}</span>
               </div>
             ))}
             {rooms === null
@@ -764,7 +701,7 @@ export function RoomCalendar({
                     ...(closuresByRoom.get(room.id) ?? []).map(closureTrack),
                   ],
                   start,
-                  span
+                  span,
                 )}
                 days={days}
                 dayCount={span}
@@ -815,20 +752,16 @@ export function RoomCalendar({
                   assignment.target
                     ? assignment.checking
                       ? "Consultando disponibilidad para toda la estancia"
-                      : (assignment.error ??
-                        assignment.roomIssues.get(room.id) ??
-                        undefined)
+                      : (assignment.error ?? assignment.roomIssues.get(room.id) ?? undefined)
                     : undefined
                 }
                 assignmentPreview={
-                  assignment.ready &&
-                  previewTrack &&
-                  assignment.roomIssues.get(room.id) === null
+                  assignment.ready && previewTrack && assignment.roomIssues.get(room.id) === null
                     ? {
                         stay: previewTrack,
                         disabled: assignment.pending,
                         onSelect: () => {
-                          void assignment.assignRoom(room.id)
+                          void assignment.assignRoom(room.id);
                         },
                       }
                     : undefined
@@ -848,7 +781,7 @@ export function RoomCalendar({
             // border-l is the fixed scroll-edge separator; last grid columns
             // omit border-r so it does not double-stack when flush.
             "flex min-h-0 shrink-0 flex-col border-l bg-background",
-            panelOpen ? "w-80" : "w-10"
+            panelOpen ? "w-80" : "w-10",
           )}
         >
           {panelOpen ? (
@@ -867,7 +800,7 @@ export function RoomCalendar({
               onClick={() => setPanelOpen(true)}
               className={cn(
                 "flex min-h-0 flex-1 flex-col items-center gap-1.5 py-3 text-muted-foreground outline-none hover:bg-muted focus-visible:ring-1 focus-visible:ring-ring/50 disabled:pointer-events-none disabled:opacity-50",
-                unassigned.length > 0 && !listLoading && "text-foreground"
+                unassigned.length > 0 && !listLoading && "text-foreground",
               )}
             >
               <PanelRightIcon className="size-4" aria-hidden="true" />
@@ -877,7 +810,7 @@ export function RoomCalendar({
                   "text-center text-xs tabular-nums",
                   unassigned.length > 0 && !listLoading
                     ? "bg-primary px-1 font-medium text-primary-foreground"
-                    : "text-muted-foreground"
+                    : "text-muted-foreground",
                 )}
               >
                 {listLoading ? "…" : unassigned.length}
@@ -887,7 +820,7 @@ export function RoomCalendar({
         </aside>
       </div>
     </div>
-  )
+  );
 }
 
 function RoomRowView({
@@ -905,19 +838,19 @@ function RoomRowView({
   assignmentReason,
   assignmentPreview,
 }: {
-  number: string
-  typeName: string
-  stays: PlacedTrack[]
-  days: Date[]
-  dayCount: number
-  onEditRoom?: () => void
-  onCloseRoom?: () => void
-  onBookDay?: (day: Date) => void
-  onOpenStay?: (reservationId: string) => void
-  onOpenClosure?: (id: string) => void
-  assignmentActive?: boolean
-  assignmentReason?: string
-  assignmentPreview?: AssignmentPreview
+  number: string;
+  typeName: string;
+  stays: PlacedTrack[];
+  days: Date[];
+  dayCount: number;
+  onEditRoom?: () => void;
+  onCloseRoom?: () => void;
+  onBookDay?: (day: Date) => void;
+  onOpenStay?: (reservationId: string) => void;
+  onOpenClosure?: (id: string) => void;
+  assignmentActive?: boolean;
+  assignmentReason?: string;
+  assignmentPreview?: AssignmentPreview;
 }) {
   return (
     <>
@@ -926,7 +859,7 @@ function RoomRowView({
           "group/room sticky left-0 z-20 flex min-w-0 items-center gap-1 border-r border-b bg-background px-2.5",
           "can-hover:has-data-popup-open:[&_[data-slot=room-label]]:pr-7",
           assignmentActive && !assignmentPreview && "text-muted-foreground",
-          assignmentPreview && "bg-booking"
+          assignmentPreview && "bg-assignment",
         )}
         title={assignmentReason}
       >
@@ -937,10 +870,7 @@ function RoomRowView({
           <span className="truncate text-xs font-medium" title={number}>
             {number}
           </span>
-          <span
-            className="truncate text-xs text-muted-foreground"
-            title={typeName}
-          >
+          <span className="truncate text-xs text-muted-foreground" title={typeName}>
             {typeName}
           </span>
         </div>
@@ -951,14 +881,10 @@ function RoomRowView({
               "can-hover:pointer-events-none can-hover:absolute can-hover:top-1/2 can-hover:right-2.5 can-hover:-translate-y-1/2 can-hover:opacity-0",
               "can-hover:group-hover/room:pointer-events-auto can-hover:group-hover/room:opacity-100",
               "can-hover:group-focus-within/room:pointer-events-auto can-hover:group-focus-within/room:opacity-100",
-              "can-hover:has-data-popup-open:pointer-events-auto can-hover:has-data-popup-open:opacity-100"
+              "can-hover:has-data-popup-open:pointer-events-auto can-hover:has-data-popup-open:opacity-100",
             )}
           >
-            <RoomActionsMenu
-              number={number}
-              onEditRoom={onEditRoom}
-              onCloseRoom={onCloseRoom}
-            />
+            <RoomActionsMenu number={number} onEditRoom={onEditRoom} onCloseRoom={onCloseRoom} />
           </div>
         ) : null}
       </div>
@@ -975,5 +901,5 @@ function RoomRowView({
         assignmentPreview={assignmentPreview}
       />
     </>
-  )
+  );
 }

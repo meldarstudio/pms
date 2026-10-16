@@ -27,10 +27,10 @@ All current application data is local sample data. There is no real customer or 
 
 Run these from the repo root.
 
-- `pnpm dev` starts portal and backend. `pnpm dev:portal` and `pnpm dev:backend` start one.
-- `pnpm test` runs backend Vitest, then portal Node tests. Backend tests are colocated under `apps/backend/src`, including `.test.mjs`. They apply `apps/backend/drizzle` SQL to `node:sqlite`. They do not need a running Worker. One backend file: `pnpm --filter @pms/backend test -- src/routes/reservations.test.ts`.
-- Portal tests use Node's test runner, not Vitest. `pnpm --filter @pms/portal test` runs `apps/portal/tests` alone. One file: `pnpm --filter @pms/portal exec node --experimental-strip-types --test tests/form-validation.test.ts`. Those tests import `../src/**/*.ts`. `tsconfig.app.json` does not include them.
-- `pnpm lint` is portal ESLint only. Format the portal with `pnpm --filter @pms/portal format`. Backend and shared have no formatter or lint script.
+- Use Node 22.22.1 from `.node-version` and pnpm 11.22.0. Vite+ is installed locally; run it with `pnpm exec vp`. `pnpm dev` starts portal and backend. `pnpm dev:portal` and `pnpm dev:backend` start one. `pnpm exec vp dev` starts only the portal; `pnpm exec vp run dev` runs the root script for both services.
+- `pnpm test` runs backend then portal Vite+ tests. `pnpm exec vp test` runs both named test projects from the root. Backend tests are colocated under `apps/backend/src`, including `.test.mjs`. They apply `apps/backend/drizzle` SQL to `node:sqlite`. They do not need a running Worker. One backend file: `pnpm --filter @pms/backend test -- src/routes/reservations.test.ts`.
+- Portal tests use Vitest through `vite-plus/test`. `pnpm --filter @pms/portal test` runs `apps/portal/tests` alone. One file: `pnpm --filter @pms/portal test -- tests/form-validation.test.ts`, or `pnpm exec vp test --project portal tests/form-validation.test.ts`. Those tests import `../src/**/*.ts`. The dialog suite creates its own happy-dom window and Vite SSR server with an explicit portal root. `tsconfig.app.json` does not include the tests.
+- `pnpm lint` is portal Oxlint only. `pnpm format` formats maintained source, configuration, and documentation across the repo. Format only the portal with `pnpm --filter @pms/portal format`. Root `vite.config.ts` owns Oxfmt defaults, the portal Tailwind override, and portal Oxlint correctness and React Hooks rules. Generated Worker types, Drizzle metadata, lockfiles, installed agent skills, coverage, and package stores are excluded from formatting; Git-ignored files are skipped too. `pnpm check` checks formatting across the repo and portal lint, then runs the package-specific TypeScript compilers. Native Vite+ type checking is disabled because it includes portal tests outside the existing tsconfig scope.
 - `pnpm typecheck` runs each package that defines `typecheck`. Shared does not. Backend `tsc --noEmit` checks backend sources. Portal `typecheck` is `tsc -b` (same project-references mode as `build`), so root typecheck covers portal sources.
 - After a schema edit in `apps/backend/src/db/schema.ts`, regenerate the baseline as described above, then run `pnpm db:reset:local --rebuild-schema`.
 - Refresh Worker types with `pnpm --filter @pms/backend cf-typegen`. Do not edit `apps/backend/worker-configuration.d.ts`.
@@ -44,7 +44,7 @@ Run these from the repo root.
 
 ## Local API
 
-The portal reads its API origin from `VITE_API_BASE_URL`, inlined at build time. `apps/portal/.env.development` sets it to `http://127.0.0.1:8788`, which matches `wrangler dev --port 8788`. Override it in `.env.local`. `vite build` and `src/lib/api.ts` fail if it is unset. On Cloudflare, set it as a Workers Builds build variable, not a runtime variable. There is no Vite proxy. CORS allows local origins and `pms-portal` production or Preview Workers under the `meldar` workers.dev account.
+The portal reads its API origin from `VITE_API_BASE_URL`, inlined at build time. `apps/portal/.env.development` sets it to `http://127.0.0.1:8788`, which matches `wrangler dev --port 8788`. Override it in `.env.local`. `vp build` and `src/lib/api.ts` fail if it is unset. On Cloudflare, set it as a Workers Builds build variable, not a runtime variable. There is no Vite proxy. CORS allows local origins and `pms-portal` production or Preview Workers under the `meldar` workers.dev account.
 
 ## Domain
 
@@ -56,10 +56,10 @@ The portal reads its API origin from `VITE_API_BASE_URL`, inlined at build time.
 - Rooms have no operational status. Dated room closures are the only way to block a room and reduce room-type availability. Closures cannot overlap assigned stays or other closures.
 - Capacity, overlap, assignment, and staying-guest conflicts are SQLite triggers in `apps/backend/drizzle/0001_overlap_triggers.sql`. That file is hand-written and listed in `drizzle/meta/_journal.json`. `rethrowConflict` maps the trigger abort text to 409. Drizzle does not generate these guards. `0000_schema.sql` is the current drizzle-kit baseline. Tests execute every journal entry, so an unregistered trigger file does not run in tests.
 
-## Portal style
+## Code style
 
-- Backend and shared use single quotes and no semicolons. They have no Prettier config. Portal TypeScript is 6. Backend TypeScript is 7. Do not align them.
-- Portal Prettier is `apps/portal/.prettierrc`. Double quotes, no semicolons, print width 80, Tailwind plugin.
+- Formatting uses Oxfmt defaults from the root `vite.config.ts` across the repo: double quotes, semicolons, print width 100, and trailing commas wherever supported. The portal TS/TSX override enables Tailwind sorting with `apps/portal/src/index.css` and functions `cn` and `cva`.
+- Portal TypeScript is 6. Backend TypeScript is 7. Do not align their compiler versions.
 - Portal `tsconfig.app.json` enables `verbatimModuleSyntax`, `erasableSyntaxOnly`, and `noUnusedLocals`. Use `import type` or inline `type` imports.
 - shadcn is already set up in `apps/portal`. `components.json` style is `base-lyra`. Primitives come from `@base-ui/react`, not Radix. Icons are `lucide-react`. Aliases use `@/`. UI files import `cn` from `"cn"`, not from `@/lib/utils`. Add a component from `apps/portal` with `pnpm exec shadcn add <name>`. Do not use `npx shadcn`.
 

@@ -1,13 +1,7 @@
-import { useQueryClient } from "@tanstack/react-query"
-import { useEffect, useRef, useState, type PointerEvent } from "react"
-import { cn } from "cn"
-import {
-  addDays,
-  eachDayOfInterval,
-  parse,
-  startOfDay,
-  startOfToday,
-} from "date-fns"
+import { useQueryClient } from "@tanstack/react-query";
+import { useEffect, useRef, useState, type PointerEvent } from "react";
+import { cn } from "cn";
+import { addDays, eachDayOfInterval, parse, startOfDay, startOfToday } from "date-fns";
 import {
   CalendarIcon,
   ChevronLeftIcon,
@@ -15,27 +9,15 @@ import {
   ChevronsLeftIcon,
   ChevronsRightIcon,
   RefreshCwIcon,
-} from "lucide-react"
+} from "lucide-react";
 
-import {
-  InventoryRateDialog,
-  type RateTarget,
-} from "@/components/inventory-rate-dialog"
-import { Badge } from "@/components/ui/badge"
-import { Button } from "@/components/ui/button"
-import { ButtonGroup } from "@/components/ui/button-group"
-import { Calendar } from "@/components/ui/calendar"
-import {
-  Empty,
-  EmptyDescription,
-  EmptyHeader,
-  EmptyTitle,
-} from "@/components/ui/empty"
-import {
-  Popover,
-  PopoverContent,
-  PopoverTrigger,
-} from "@/components/ui/popover"
+import { InventoryRateDialog, type RateTarget } from "@/components/inventory-rate-dialog";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { ButtonGroup } from "@/components/ui/button-group";
+import { Calendar } from "@/components/ui/calendar";
+import { Empty, EmptyDescription, EmptyHeader, EmptyTitle } from "@/components/ui/empty";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import {
   Select,
   SelectContent,
@@ -43,42 +25,42 @@ import {
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from "@/components/ui/select"
-import { Skeleton } from "@/components/ui/skeleton"
-import type { InventoryNight, InventoryRoomType } from "@/lib/api"
-import { CURRENCY, formatMoney } from "@/lib/money"
-import { format } from "@/lib/dates"
-import { useInventory } from "@/lib/queries"
-import { datesBetween } from "@/lib/rate-ranges"
+} from "@/components/ui/select";
+import { Skeleton } from "@/components/ui/skeleton";
+import type { InventoryNight, InventoryRoomType } from "@/lib/api";
+import { CURRENCY, formatMoney } from "@/lib/money";
+import { format } from "@/lib/dates";
+import { useInventory } from "@/lib/queries";
+import { datesBetween } from "@/lib/rate-ranges";
 
 const spans = [
   { label: "7 días", value: "7" },
   { label: "14 días", value: "14" },
-]
+];
 
 type Selection = {
-  roomTypeId: string
-  dates: string[]
-}
+  roomTypeId: string;
+  dates: string[];
+};
 
 function parseDay(value: string) {
-  return parse(value, "yyyy-MM-dd", new Date())
+  return parse(value, "yyyy-MM-dd", new Date());
 }
 
 function nightLabel(dates: string[]) {
-  const first = parseDay(dates[0])
-  const last = parseDay(dates[dates.length - 1])
-  if (dates.length === 1) return format(first, "EEE, d MMM yyyy")
-  return `${format(first, "d MMM")} al ${format(last, "d MMM yyyy")}`
+  const first = parseDay(dates[0]);
+  const last = parseDay(dates[dates.length - 1]);
+  if (dates.length === 1) return format(first, "EEE, d MMM yyyy");
+  return `${format(first, "d MMM")} al ${format(last, "d MMM yyyy")}`;
 }
 
 function availabilityLabel(nights: InventoryNight[]) {
   if (nights.length === 1) {
-    const night = nights[0]
-    return `${night.free} libres, ${night.booked} reservadas, ${night.closed} cerradas`
+    const night = nights[0];
+    return `${night.free} libres, ${night.booked} reservadas, ${night.closed} cerradas`;
   }
-  const lowest = Math.min(...nights.map((night) => night.free))
-  return `${nights.length} noches, mínimo de habitaciones libres: ${lowest}`
+  const lowest = Math.min(...nights.map((night) => night.free));
+  return `${nights.length} noches, mínimo de habitaciones libres: ${lowest}`;
 }
 
 export function Inventory({
@@ -87,96 +69,90 @@ export function Inventory({
   onStartChange,
   onSpanChange,
 }: {
-  start: Date
-  span: 7 | 14
-  onStartChange: (date: Date) => void
-  onSpanChange: (span: 7 | 14) => void
+  start: Date;
+  span: 7 | 14;
+  onStartChange: (date: Date) => void;
+  onSpanChange: (span: 7 | 14) => void;
 }) {
-  const timeZone = Intl.DateTimeFormat().resolvedOptions().timeZone
-  const queryClient = useQueryClient()
-  const [pickerOpen, setPickerOpen] = useState(false)
-  const [selection, setSelection] = useState<Selection | null>(null)
-  const [editor, setEditor] = useState<Selection | null>(null)
-  const selectionRef = useRef<Selection | null>(null)
-  const dragging = useRef(false)
-  const anchor = useRef<Selection | null>(null)
-  const pointerCell = useRef<HTMLButtonElement | null>(null)
-  const from = format(start, "yyyy-MM-dd")
-  const to = format(addDays(start, span - 1), "yyyy-MM-dd")
-  const inventory = useInventory(from, to)
-  const grid =
-    inventory.data?.from === from && inventory.data.to === to
-      ? inventory.data
-      : null
-  const days = eachDayOfInterval({ start, end: addDays(start, span - 1) })
-  const dayIds = days.map((day) => format(day, "yyyy-MM-dd"))
-  const today = format(startOfToday(), "yyyy-MM-dd")
-  const loading = grid === null && !inventory.isError
-  const error = inventory.error?.message ?? null
+  const timeZone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+  const queryClient = useQueryClient();
+  const [pickerOpen, setPickerOpen] = useState(false);
+  const [selection, setSelection] = useState<Selection | null>(null);
+  const [editor, setEditor] = useState<Selection | null>(null);
+  const selectionRef = useRef<Selection | null>(null);
+  const dragging = useRef(false);
+  const anchor = useRef<Selection | null>(null);
+  const pointerCell = useRef<HTMLButtonElement | null>(null);
+  const from = format(start, "yyyy-MM-dd");
+  const to = format(addDays(start, span - 1), "yyyy-MM-dd");
+  const inventory = useInventory(from, to);
+  const grid = inventory.data?.from === from && inventory.data.to === to ? inventory.data : null;
+  const days = eachDayOfInterval({ start, end: addDays(start, span - 1) });
+  const dayIds = days.map((day) => format(day, "yyyy-MM-dd"));
+  const today = format(startOfToday(), "yyyy-MM-dd");
+  const loading = grid === null && !inventory.isError;
+  const error = inventory.error?.message ?? null;
 
   useEffect(() => {
     function onUp(event: Event) {
-      if (!dragging.current) return
-      dragging.current = false
-      const target = event.target
-      const releasedOnStart =
-        target instanceof Node && pointerCell.current?.contains(target)
-      if (releasedOnStart) return
-      const current = selectionRef.current
-      if (current && current.dates.length > 0) setEditor(current)
+      if (!dragging.current) return;
+      dragging.current = false;
+      const target = event.target;
+      const releasedOnStart = target instanceof Node && pointerCell.current?.contains(target);
+      if (releasedOnStart) return;
+      const current = selectionRef.current;
+      if (current && current.dates.length > 0) setEditor(current);
     }
-    window.addEventListener("pointerup", onUp)
-    window.addEventListener("pointercancel", onUp)
+    window.addEventListener("pointerup", onUp);
+    window.addEventListener("pointercancel", onUp);
     return () => {
-      window.removeEventListener("pointerup", onUp)
-      window.removeEventListener("pointercancel", onUp)
-    }
-  }, [])
+      window.removeEventListener("pointerup", onUp);
+      window.removeEventListener("pointercancel", onUp);
+    };
+  }, []);
 
   function choose(next: Selection | null) {
-    selectionRef.current = next
-    setSelection(next)
+    selectionRef.current = next;
+    setSelection(next);
   }
 
   function changeStart(next: Date) {
-    dragging.current = false
-    choose(null)
-    setEditor(null)
-    onStartChange(startOfDay(next))
+    dragging.current = false;
+    choose(null);
+    setEditor(null);
+    onStartChange(startOfDay(next));
   }
 
   function onCellPointerDown(
     event: PointerEvent<HTMLButtonElement>,
     roomTypeId: string,
-    date: string
+    date: string,
   ) {
-    if (event.button !== 0) return
-    pointerCell.current = event.currentTarget
+    if (event.button !== 0) return;
+    pointerCell.current = event.currentTarget;
     if (event.shiftKey && anchor.current?.roomTypeId === roomTypeId) {
       const next = {
         roomTypeId,
         dates: datesBetween(dayIds, anchor.current.dates[0], date),
-      }
-      choose(next)
-      return
+      };
+      choose(next);
+      return;
     }
-    const next = { roomTypeId, dates: [date] }
-    anchor.current = next
-    choose(next)
-    dragging.current = true
+    const next = { roomTypeId, dates: [date] };
+    anchor.current = next;
+    choose(next);
+    dragging.current = true;
   }
 
   function onCellPointerEnter(roomTypeId: string, date: string) {
-    if (!dragging.current || anchor.current?.roomTypeId !== roomTypeId) return
+    if (!dragging.current || anchor.current?.roomTypeId !== roomTypeId) return;
     choose({
       roomTypeId,
       dates: datesBetween(dayIds, anchor.current.dates[0], date),
-    })
+    });
   }
 
-  const rateTarget = editor
-    ? rateTargetFor(grid?.roomTypes ?? [], editor)
-    : null
+  const rateTarget = editor ? rateTargetFor(grid?.roomTypes ?? [], editor) : null;
 
   return (
     <div className="flex min-h-0 min-w-0 flex-1 flex-col">
@@ -191,11 +167,11 @@ export function Inventory({
             items={spans}
             value={String(span)}
             onValueChange={(value) => {
-              if (!value) return
-              dragging.current = false
-              choose(null)
-              setEditor(null)
-              onSpanChange(Number(value) as 7 | 14)
+              if (!value) return;
+              dragging.current = false;
+              choose(null);
+              setEditor(null);
+              onSpanChange(Number(value) as 7 | 14);
             }}
           >
             <SelectTrigger className="w-28">
@@ -219,9 +195,7 @@ export function Inventory({
             size="icon"
             aria-label="Actualizar"
             disabled={loading}
-            onClick={() =>
-              void queryClient.invalidateQueries({ queryKey: ["inventory"] })
-            }
+            onClick={() => void queryClient.invalidateQueries({ queryKey: ["inventory"] })}
           >
             <RefreshCwIcon />
           </Button>
@@ -245,12 +219,7 @@ export function Inventory({
           </Button>
           <Popover open={pickerOpen} onOpenChange={setPickerOpen}>
             <PopoverTrigger
-              render={
-                <Button
-                  variant="outline"
-                  className="min-w-36 justify-between"
-                />
-              }
+              render={<Button variant="outline" className="min-w-36 justify-between" />}
             >
               {format(start, "d MMM yyyy")}
               <CalendarIcon data-icon="inline-end" />
@@ -261,9 +230,9 @@ export function Inventory({
                 selected={start}
                 timeZone={timeZone}
                 onSelect={(date) => {
-                  if (!date) return
-                  changeStart(date)
-                  setPickerOpen(false)
+                  if (!date) return;
+                  changeStart(date);
+                  setPickerOpen(false);
                 }}
               />
             </PopoverContent>
@@ -293,9 +262,7 @@ export function Inventory({
           <Button
             variant="outline"
             size="sm"
-            onClick={() =>
-              void queryClient.invalidateQueries({ queryKey: ["inventory"] })
-            }
+            onClick={() => void queryClient.invalidateQueries({ queryKey: ["inventory"] })}
           >
             Reintentar
           </Button>
@@ -311,22 +278,20 @@ export function Inventory({
         >
           <div className="sticky top-0 left-0 z-40 border-r border-b bg-background" />
           {days.map((day) => {
-            const date = format(day, "yyyy-MM-dd")
-            const weekend = day.getDay() === 0 || day.getDay() === 6
+            const date = format(day, "yyyy-MM-dd");
+            const weekend = day.getDay() === 0 || day.getDay() === 6;
             return (
               <div
                 key={date}
                 className={cn(
                   "sticky top-0 z-30 flex min-w-0 flex-col items-center gap-0.5 border-r border-b bg-background px-1 py-1.5",
-                  weekend && "bg-muted"
+                  weekend && "bg-muted",
                 )}
               >
                 <span
                   className={cn(
                     "text-xs tracking-wide uppercase",
-                    date === today
-                      ? "font-medium text-primary"
-                      : "text-muted-foreground"
+                    date === today ? "font-medium text-primary" : "text-muted-foreground",
                   )}
                 >
                   {date === today ? "Hoy" : format(day, "EEE")}
@@ -336,16 +301,14 @@ export function Inventory({
                     "flex h-5 min-w-5 items-center justify-center px-1 text-xs",
                     date === today
                       ? "bg-primary font-medium text-primary-foreground"
-                      : "text-muted-foreground"
+                      : "text-muted-foreground",
                   )}
                 >
                   {format(day, "d")}
                 </span>
-                <span className="text-xs text-muted-foreground">
-                  {format(day, "MMM")}
-                </span>
+                <span className="text-xs text-muted-foreground">{format(day, "MMM")}</span>
               </div>
-            )
+            );
           })}
           {loading
             ? Array.from({ length: 4 }, (_, index) => (
@@ -381,25 +344,20 @@ export function Inventory({
               type={type}
               currency={CURRENCY}
               days={days}
-              selected={
-                selection?.roomTypeId === type.id ? selection.dates : []
-              }
+              selected={selection?.roomTypeId === type.id ? selection.dates : []}
               onPointerDown={onCellPointerDown}
               onPointerEnter={onCellPointerEnter}
               onOpen={(date, keyboard) => {
                 if (keyboard) {
-                  const next = { roomTypeId: type.id, dates: [date] }
-                  anchor.current = next
-                  choose(next)
-                  setEditor(next)
-                  return
+                  const next = { roomTypeId: type.id, dates: [date] };
+                  anchor.current = next;
+                  choose(next);
+                  setEditor(next);
+                  return;
                 }
-                const current = selectionRef.current
-                if (
-                  current?.roomTypeId === type.id &&
-                  current.dates.includes(date)
-                ) {
-                  setEditor(current)
+                const current = selectionRef.current;
+                if (current?.roomTypeId === type.id && current.dates.includes(date)) {
+                  setEditor(current);
                 }
               }}
             />
@@ -407,25 +365,22 @@ export function Inventory({
         </div>
       </div>
     </div>
-  )
+  );
 }
 
-function rateTargetFor(
-  types: InventoryRoomType[],
-  editor: Selection
-): RateTarget | null {
-  const type = types.find((item) => item.id === editor.roomTypeId)
-  if (!type || editor.dates.length === 0) return null
-  const wanted = new Set(editor.dates)
-  const nights = type.nights.filter((night) => wanted.has(night.date))
-  if (nights.length === 0) return null
+function rateTargetFor(types: InventoryRoomType[], editor: Selection): RateTarget | null {
+  const type = types.find((item) => item.id === editor.roomTypeId);
+  if (!type || editor.dates.length === 0) return null;
+  const wanted = new Set(editor.dates);
+  const nights = type.nights.filter((night) => wanted.has(night.date));
+  if (nights.length === 0) return null;
   return {
     roomTypeId: type.id,
     roomTypeName: type.name,
     label: `${nightLabel(editor.dates)}. ${availabilityLabel(nights)}`,
     dates: editor.dates,
     nights,
-  }
+  };
 }
 
 function TypeRow({
@@ -437,20 +392,16 @@ function TypeRow({
   onPointerEnter,
   onOpen,
 }: {
-  type: InventoryRoomType
-  currency: string
-  days: Date[]
-  selected: string[]
-  onPointerDown: (
-    event: PointerEvent<HTMLButtonElement>,
-    roomTypeId: string,
-    date: string
-  ) => void
-  onPointerEnter: (roomTypeId: string, date: string) => void
-  onOpen: (date: string, keyboard: boolean) => void
+  type: InventoryRoomType;
+  currency: string;
+  days: Date[];
+  selected: string[];
+  onPointerDown: (event: PointerEvent<HTMLButtonElement>, roomTypeId: string, date: string) => void;
+  onPointerEnter: (roomTypeId: string, date: string) => void;
+  onOpen: (date: string, keyboard: boolean) => void;
 }) {
-  const selectedDates = new Set(selected)
-  const byDate = new Map(type.nights.map((night) => [night.date, night]))
+  const selectedDates = new Set(selected);
+  const byDate = new Map(type.nights.map((night) => [night.date, night]));
 
   return (
     <div className="contents">
@@ -461,12 +412,12 @@ function TypeRow({
         </span>
       </div>
       {days.map((day) => {
-        const date = format(day, "yyyy-MM-dd")
-        const night = byDate.get(date)
-        const weekend = day.getDay() === 0 || day.getDay() === 6
-        const isSelected = selectedDates.has(date)
+        const date = format(day, "yyyy-MM-dd");
+        const night = byDate.get(date);
+        const weekend = day.getDay() === 0 || day.getDay() === 6;
+        const isSelected = selectedDates.has(date);
         if (!night) {
-          return <div key={date} className="border-r border-b bg-muted/40" />
+          return <div key={date} className="border-r border-b bg-muted/40" />;
         }
         return (
           <button
@@ -477,7 +428,7 @@ function TypeRow({
             className={cn(
               "flex min-h-16 flex-col items-center justify-center gap-1 border-r border-b bg-background px-1 py-1.5 outline-none hover:bg-accent/60 focus-visible:ring-1 focus-visible:ring-ring focus-visible:ring-inset",
               weekend && "bg-muted/60",
-              isSelected && "bg-accent ring-1 ring-ring ring-inset"
+              isSelected && "bg-accent ring-1 ring-ring ring-inset",
             )}
             onPointerDown={(event) => onPointerDown(event, type.id, date)}
             onPointerEnter={() => onPointerEnter(type.id, date)}
@@ -486,17 +437,15 @@ function TypeRow({
             <span
               className={cn(
                 "text-xs tabular-nums",
-                night.override ? "font-medium" : "text-muted-foreground"
+                night.override ? "font-medium" : "text-muted-foreground",
               )}
             >
               {formatMoney(night.priceCents, currency)}
             </span>
-            <Badge variant={night.free === 0 ? "destructive" : "outline"}>
-              {night.free}
-            </Badge>
+            <Badge variant={night.free === 0 ? "destructive" : "outline"}>{night.free}</Badge>
           </button>
-        )
+        );
       })}
     </div>
-  )
+  );
 }

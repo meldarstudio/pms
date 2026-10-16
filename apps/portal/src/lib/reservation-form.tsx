@@ -1,24 +1,24 @@
-import { useId, type ComponentProps, type FormEvent } from "react"
-import { createFormHook, createFormHookContexts } from "@tanstack/react-form"
-import { TextField, ChoiceField } from "@/components/workflow-fields"
-import { errorMessage } from "./form-errors"
-export { blurThenChange } from "./reservation-form-state"
+import { useId, type ComponentProps, type FormEvent } from "react";
+import { createFormHook, createFormHookContexts } from "@tanstack/react-form";
+import { TextField, ChoiceField } from "@/components/workflow-fields";
+import { errorMessage } from "./form-errors";
+export { blurThenChange } from "./reservation-form-state";
 
-const { fieldContext, formContext, useFieldContext } = createFormHookContexts()
+const { fieldContext, formContext, useFieldContext } = createFormHookContexts();
 
 function FormText({
   live = false,
   ...props
 }: Omit<ComponentProps<typeof TextField>, "value" | "onChange" | "error"> & {
-  live?: boolean
+  live?: boolean;
 }) {
-  const field = useFieldContext<string>()
-  const id = useId()
+  const field = useFieldContext<string>();
+  const id = useId();
   const reveal =
     live ||
     field.state.meta.isBlurred ||
     field.form.state.submissionAttempts > 0 ||
-    !!field.state.meta.errorMap.onServer
+    !!field.state.meta.errorMap.onServer;
   return (
     <TextField
       {...props}
@@ -32,38 +32,33 @@ function FormText({
           field.setMeta((meta) => ({
             ...meta,
             errorMap: { ...meta.errorMap, onServer: undefined },
-          }))
-        field.handleChange(value)
+          }));
+        field.handleChange(value);
       }}
     />
-  )
+  );
 }
 
 function FormChoice(
-  props: Omit<
-    ComponentProps<typeof ChoiceField>,
-    "value" | "onChange" | "error"
-  > & {
-    onValueChange?: (value: string) => void
-    nullable?: boolean
-    blank?: boolean
-  }
+  props: Omit<ComponentProps<typeof ChoiceField>, "value" | "onChange" | "error"> & {
+    onValueChange?: (value: string) => void;
+    nullable?: boolean;
+    blank?: boolean;
+  },
 ) {
-  const field = useFieldContext<string | null>()
-  const id = useId()
-  const { onValueChange, nullable, blank, ...rest } = props
+  const field = useFieldContext<string | null>();
+  const id = useId();
+  const { onValueChange, nullable, blank, ...rest } = props;
   const reveal =
     field.state.meta.isBlurred ||
     field.form.state.submissionAttempts > 0 ||
-    !!field.state.meta.errorMap.onServer
+    !!field.state.meta.errorMap.onServer;
   return (
     <ChoiceField
       {...rest}
       id={id}
       name={field.name}
-      value={
-        (blank ? field.state.value || "none" : field.state.value) ?? "none"
-      }
+      value={(blank ? field.state.value || "none" : field.state.value) ?? "none"}
       error={reveal ? errorMessage(field.state.meta.errors) : undefined}
       onBlur={field.handleBlur}
       onChange={(value) => {
@@ -71,41 +66,31 @@ function FormChoice(
           field.setMeta((meta) => ({
             ...meta,
             errorMap: { ...meta.errorMap, onServer: undefined },
-          }))
+          }));
         field.handleChange(
-          nullable && value === "none"
-            ? null
-            : blank && value === "none"
-              ? ""
-              : value
-        )
-        onValueChange?.(value)
+          nullable && value === "none" ? null : blank && value === "none" ? "" : value,
+        );
+        onValueChange?.(value);
       }}
     />
-  )
+  );
 }
 
-export const { useAppForm: useReservationForm, withForm: withReservationForm } =
-  createFormHook({
-    fieldContext,
-    formContext,
-    fieldComponents: { Text: FormText, Choice: FormChoice },
-    formComponents: {},
-  })
-export async function submitForm(
-  event: FormEvent<HTMLFormElement>,
-  submit: () => Promise<void>
-) {
-  event.preventDefault()
-  event.stopPropagation()
-  const element = event.currentTarget
-  await submit()
+export const { useAppForm: useReservationForm, withForm: withReservationForm } = createFormHook({
+  fieldContext,
+  formContext,
+  fieldComponents: { Text: FormText, Choice: FormChoice },
+  formComponents: {},
+});
+export async function submitForm(event: FormEvent<HTMLFormElement>, submit: () => Promise<void>) {
+  event.preventDefault();
+  event.stopPropagation();
+  const element = event.currentTarget;
+  await submit();
   requestAnimationFrame(() => {
-    if (!element.isConnected) return
-    const control = element.querySelector<HTMLElement>(
-      '[aria-invalid="true"]:not(:disabled)'
-    )
-    control?.focus({ preventScroll: true })
-    control?.scrollIntoView({ block: "nearest" })
-  })
+    if (!element.isConnected) return;
+    const control = element.querySelector<HTMLElement>('[aria-invalid="true"]:not(:disabled)');
+    control?.focus({ preventScroll: true });
+    control?.scrollIntoView({ block: "nearest" });
+  });
 }

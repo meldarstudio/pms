@@ -7,169 +7,143 @@ import type {
   WorkflowAction,
   WorkflowRoom,
   WorkflowIssue,
-} from "./api.ts"
-import { translateError } from "./errors.ts"
+} from "./api.ts";
+import { translateError } from "./errors.ts";
 
 export type RoomDraft = {
-  id: string
-  room: WorkflowRoom
-  removed: boolean
-}
+  id: string;
+  room: WorkflowRoom;
+  removed: boolean;
+};
 
 export function previewFieldErrors(
   issues: WorkflowIssue[],
-  drafts: { removed: boolean }[]
+  drafts: { removed: boolean }[],
 ): Record<string, string> | null {
-  const indices = drafts.flatMap((draft, index) =>
-    draft.removed ? [] : [index]
-  )
-  const fields: Record<string, string> = {}
+  const indices = drafts.flatMap((draft, index) => (draft.removed ? [] : [index]));
+  const fields: Record<string, string> = {};
   for (const issue of issues) {
-    const index = indices[issue.roomIndex]
-    if (index === undefined) continue
-    const path = `rooms[${index}].room${issue.field === "occupancy" ? "" : `.${issue.field}`}`
-    const message = translateError(issue.code)
-    fields[path] = fields[path] ? `${fields[path]} ${message}` : message
+    const index = indices[issue.roomIndex];
+    if (index === undefined) continue;
+    const path = `rooms[${index}].room${issue.field === "occupancy" ? "" : `.${issue.field}`}`;
+    const message = translateError(issue.code);
+    fields[path] = fields[path] ? `${fields[path]} ${message}` : message;
   }
-  return Object.keys(fields).length ? fields : null
+  return Object.keys(fields).length ? fields : null;
 }
 export function minimumCheckOut(checkIn: string) {
-  const date = new Date(`${checkIn}T00:00:00Z`)
-  date.setUTCDate(date.getUTCDate() + 1)
-  return date.toISOString().slice(0, 10)
+  const date = new Date(`${checkIn}T00:00:00Z`);
+  date.setUTCDate(date.getUTCDate() + 1);
+  return date.toISOString().slice(0, 10);
 }
 
 export function changeCheckIn(
   room: { checkIn: string; checkOut: string },
-  checkIn: string
+  checkIn: string,
 ): { checkIn: string; checkOut: string } {
   return {
     ...room,
     checkIn,
-    checkOut:
-      room.checkOut > checkIn ? room.checkOut : minimumCheckOut(checkIn),
-  }
+    checkOut: room.checkOut > checkIn ? room.checkOut : minimumCheckOut(checkIn),
+  };
 }
 
-export const stayValue = (
-  line: ReservationDetail["rooms"][number]
-): WorkflowRoom => ({
+export const stayValue = (line: ReservationDetail["rooms"][number]): WorkflowRoom => ({
   roomTypeId: line.roomTypeId,
   roomId: line.roomId,
   adults: line.adults,
   children: line.children,
-})
+});
 export const contactValue = (contact: BookingContact): BookingContact => ({
   fullName: contact.fullName.trim(),
   email: contact.email?.trim() || null,
   phone: contact.phone?.trim() || null,
   documentType: contact.documentType?.trim() || null,
   documentNumber: contact.documentNumber?.trim() || null,
-})
+});
 export const guestValues = (guests: StayingGuest[]) =>
   guests.map((g) => ({
     ...contactValue(g),
     id: g.id,
     reservationRoomId: g.reservationRoomId,
-  }))
-export function roomEdits(
-  detail: ReservationDetail,
-  drafts: RoomDraft[]
-): WorkflowAction[] {
-  const actions: WorkflowAction[] = []
+  }));
+export function roomEdits(detail: ReservationDetail, drafts: RoomDraft[]): WorkflowAction[] {
+  const actions: WorkflowAction[] = [];
   for (const draft of drafts) {
-    const saved = detail.rooms.find((l) => l.id === draft.id)
+    const saved = detail.rooms.find((l) => l.id === draft.id);
     if (draft.removed) {
       if (saved)
         actions.push({
           type: "remove-room",
           lineId: saved.id,
-        })
-    } else if (!saved) actions.push({ type: "add-room", room: draft.room })
+        });
+    } else if (!saved) actions.push({ type: "add-room", room: draft.room });
     else {
-      const previous = stayValue(saved)
+      const previous = stayValue(saved);
       if (JSON.stringify(draft.room) !== JSON.stringify(previous))
-        actions.push({ type: "edit-room", lineId: saved.id, room: draft.room })
+        actions.push({ type: "edit-room", lineId: saved.id, room: draft.room });
     }
   }
-  return actions
+  return actions;
 }
 export function overlappingRoomIds(others: WorkflowRoom[]): Set<string> {
-  return new Set(others.flatMap((room) => (room.roomId ? [room.roomId] : [])))
+  return new Set(others.flatMap((room) => (room.roomId ? [room.roomId] : [])));
 }
 
 export function unavailableRoomIds(
   room: { checkIn: string; checkOut: string },
   reservations: Reservation[],
   closures: RoomClosure[],
-  reservationId?: string
+  reservationId?: string,
 ): Set<string> {
-  const overlaps = (start: string, end: string) =>
-    room.checkIn < end && start < room.checkOut
-  const ids = new Set<string>()
+  const overlaps = (start: string, end: string) => room.checkIn < end && start < room.checkOut;
+  const ids = new Set<string>();
   for (const reservation of reservations) {
-    if (reservation.id === reservationId) continue
+    if (reservation.id === reservationId) continue;
     for (const line of reservation.rooms) {
-      if (
-        !line.roomId ||
-        reservation.status === "cancelled" ||
-        reservation.status === "no_show"
-      )
-        continue
-      const start = reservation.checkIn
-      if (overlaps(start, reservation.checkOut)) ids.add(line.roomId)
+      if (!line.roomId || reservation.status === "cancelled" || reservation.status === "no_show")
+        continue;
+      const start = reservation.checkIn;
+      if (overlaps(start, reservation.checkOut)) ids.add(line.roomId);
     }
   }
   for (const closure of closures) {
-    if (overlaps(closure.starts, closure.ends)) ids.add(closure.roomId)
+    if (overlaps(closure.starts, closure.ends)) ids.add(closure.roomId);
   }
-  return ids
+  return ids;
 }
 
 // Notes and guest/contact text do not change charges or dated inventory.
 export function validationPreviewActions(actions: WorkflowAction[]) {
-  return actions.filter(
-    (action) => !["notes", "contact", "set-guests"].includes(action.type)
-  )
+  return actions.filter((action) => !["notes", "contact", "set-guests"].includes(action.type));
 }
 
-export function hasBillingChanges(
-  detail: ReservationDetail,
-  actions: WorkflowAction[]
-) {
+export function hasBillingChanges(detail: ReservationDetail, actions: WorkflowAction[]) {
   return actions.some((action) => {
     switch (action.type) {
       case "dates":
-        return (
-          action.checkIn !== detail.checkIn ||
-          action.checkOut !== detail.checkOut
-        )
+        return action.checkIn !== detail.checkIn || action.checkOut !== detail.checkOut;
       case "add-room":
       case "remove-room":
-        return true
+        return true;
       case "edit-room":
         return (
           action.room.roomTypeId !==
           detail.rooms.find((room) => room.id === action.lineId)?.roomTypeId
-        )
+        );
       case "set-status":
-        return (
-          (action.status === "cancelled") !== (detail.status === "cancelled")
-        )
+        return (action.status === "cancelled") !== (detail.status === "cancelled");
       case "set-discount":
-        return action.amountCents !== detail.savedDiscountCents
+        return action.amountCents !== detail.savedDiscountCents;
       default:
-        return false
+        return false;
     }
-  })
+  });
 }
 
 // A room assignment or headcount change must revalidate the draft, but can reuse
 // its quote. Include saved prices and totals so independent saves expire it.
-export function billingPreviewKey(
-  detail: ReservationDetail,
-  actions: WorkflowAction[]
-) {
+export function billingPreviewKey(detail: ReservationDetail, actions: WorkflowAction[]) {
   const pricingActions = actions
     .filter((action) => hasBillingChanges(detail, [action]))
     .map((action) => {
@@ -179,19 +153,19 @@ export function billingPreviewKey(
             type: action.type,
             roomTypeId: action.room.roomTypeId,
             nightlyRateCents: action.room.nightlyRateCents,
-          }
+          };
         case "edit-room":
           return {
             type: action.type,
             lineId: action.lineId,
             roomTypeId: action.room.roomTypeId,
-          }
+          };
         case "set-status":
-          return { type: action.type, cancelled: action.status === "cancelled" }
+          return { type: action.type, cancelled: action.status === "cancelled" };
         default:
-          return action
+          return action;
       }
-    })
+    });
   return JSON.stringify([
     {
       id: detail.id,
@@ -207,5 +181,5 @@ export function billingPreviewKey(
       })),
     },
     pricingActions,
-  ])
+  ]);
 }

@@ -1,6 +1,6 @@
-import { useForm, useSelector } from "@tanstack/react-form"
+import { useForm, useSelector } from "@tanstack/react-form";
 
-import { Button } from "@/components/ui/button"
+import { Button } from "@/components/ui/button";
 import {
   Dialog,
   DialogClose,
@@ -9,17 +9,12 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
-} from "@/components/ui/dialog"
-import {
-  Field,
-  FieldError,
-  FieldGroup,
-  FieldLabel,
-} from "@/components/ui/field"
-import { Input } from "@/components/ui/input"
-import { Spinner } from "@/components/ui/spinner"
-import type { InventoryNight } from "@/lib/api"
-import { fieldErrors, setServerErrors } from "@/lib/form-errors"
+} from "@/components/ui/dialog";
+import { Field, FieldError, FieldGroup, FieldLabel } from "@/components/ui/field";
+import { Input } from "@/components/ui/input";
+import { Spinner } from "@/components/ui/spinner";
+import type { InventoryNight } from "@/lib/api";
+import { fieldErrors, setServerErrors } from "@/lib/form-errors";
 import {
   inventoryRateSchema,
   overrideClearDates,
@@ -27,47 +22,47 @@ import {
   rateFormError,
   ratePriceUnchanged,
   sharedRatePrice,
-} from "@/lib/inventory-rate-form"
-import { useDeleteRoomTypeRates, usePutRoomTypeRates } from "@/lib/queries"
-import { contiguousRanges } from "@/lib/rate-ranges"
+} from "@/lib/inventory-rate-form";
+import { useDeleteRoomTypeRates, usePutRoomTypeRates } from "@/lib/queries";
+import { contiguousRanges } from "@/lib/rate-ranges";
 
 export type RateTarget = {
-  roomTypeId: string
-  roomTypeName: string
-  label: string
-  dates: string[]
-  nights: InventoryNight[]
-}
+  roomTypeId: string;
+  roomTypeName: string;
+  label: string;
+  dates: string[];
+  nights: InventoryNight[];
+};
 
 export function InventoryRateDialog({
   target,
   currency,
   onClose,
 }: {
-  target: RateTarget | null
-  currency: string
-  onClose: () => void
+  target: RateTarget | null;
+  currency: string;
+  onClose: () => void;
 }) {
-  const put = usePutRoomTypeRates()
-  const clear = useDeleteRoomTypeRates()
-  const pending = put.isPending || clear.isPending
+  const put = usePutRoomTypeRates();
+  const clear = useDeleteRoomTypeRates();
+  const pending = put.isPending || clear.isPending;
 
   function finish() {
-    put.reset()
-    clear.reset()
-    onClose()
+    put.reset();
+    clear.reset();
+    onClose();
   }
 
   function close() {
-    if (pending) return
-    finish()
+    if (pending) return;
+    finish();
   }
 
   return (
     <Dialog
       open={target !== null}
       onOpenChange={(next) => {
-        if (!next) close()
+        if (!next) close();
       }}
     >
       <DialogContent>
@@ -79,18 +74,18 @@ export function InventoryRateDialog({
             pending={pending}
             saving={put.isPending}
             onApply={async (input) => {
-              await put.mutateAsync(input)
-              finish()
+              await put.mutateAsync(input);
+              finish();
             }}
             onClear={async (ranges) => {
-              await clear.mutateAsync({ id: target.roomTypeId, ranges })
-              finish()
+              await clear.mutateAsync({ id: target.roomTypeId, ranges });
+              finish();
             }}
           />
         ) : null}
       </DialogContent>
     </Dialog>
-  )
+  );
 }
 
 function RateForm({
@@ -101,17 +96,12 @@ function RateForm({
   onApply,
   onClear,
 }: {
-  target: RateTarget
-  currency: string
-  pending: boolean
-  saving: boolean
-  onApply: (input: {
-    id: string
-    from: string
-    to: string
-    priceCents: number
-  }) => Promise<void>
-  onClear: (ranges: { from: string; to: string }[]) => Promise<void>
+  target: RateTarget;
+  currency: string;
+  pending: boolean;
+  saving: boolean;
+  onApply: (input: { id: string; from: string; to: string; priceCents: number }) => Promise<void>;
+  onClear: (ranges: { from: string; to: string }[]) => Promise<void>;
 }) {
   const form = useForm({
     defaultValues: {
@@ -121,22 +111,22 @@ function RateForm({
       onSubmit: inventoryRateSchema,
     },
     onSubmit: async ({ value }) => {
-      const input = rateApplyInput(target, value.price)
-      if (!input) return
-      form.setErrorMap({ onServer: undefined })
+      const input = rateApplyInput(target, value.price);
+      if (!input) return;
+      form.setErrorMap({ onServer: undefined });
       try {
-        await onApply(input)
+        await onApply(input);
       } catch (cause) {
-        setServerErrors(form, { price: rateFormError(cause) })
+        setServerErrors(form, { price: rateFormError(cause) });
       }
     },
-  })
-  const price = useSelector(form.store, (state) => state.values.price)
-  const submitting = useSelector(form.store, (state) => state.isSubmitting)
-  const unchanged = ratePriceUnchanged(target.nights, price)
-  const canClear = target.nights.some((night) => night.override)
-  const busy = pending || submitting
-  const range = target.dates.length > 1
+  });
+  const price = useSelector(form.store, (state) => state.values.price);
+  const submitting = useSelector(form.store, (state) => state.isSubmitting);
+  const unchanged = ratePriceUnchanged(target.nights, price);
+  const canClear = target.nights.some((night) => night.override);
+  const busy = pending || submitting;
+  const range = target.dates.length > 1;
 
   return (
     <form
@@ -144,8 +134,8 @@ function RateForm({
       noValidate
       className="flex flex-col gap-4"
       onSubmit={(event) => {
-        event.preventDefault()
-        void form.handleSubmit()
+        event.preventDefault();
+        void form.handleSubmit();
       }}
     >
       <DialogHeader>
@@ -155,22 +145,15 @@ function RateForm({
         </DialogDescription>
       </DialogHeader>
       <FieldGroup>
-        <form.Field
-          name="price"
-          children={(field) => {
+        <form.Field name="price">
+          {(field) => {
             const showError =
               !!field.state.meta.errorMap.onServer ||
-              ((field.state.meta.isTouched ||
-                field.form.state.submissionAttempts > 0) &&
-                !field.state.meta.isValid)
+              ((field.state.meta.isTouched || field.form.state.submissionAttempts > 0) &&
+                !field.state.meta.isValid);
             return (
-              <Field
-                data-invalid={showError || undefined}
-                data-disabled={busy || undefined}
-              >
-                <FieldLabel htmlFor={field.name}>
-                  Precio ({currency})
-                </FieldLabel>
+              <Field data-invalid={showError || undefined} data-disabled={busy || undefined}>
+                <FieldLabel htmlFor={field.name}>Precio ({currency})</FieldLabel>
                 <Input
                   id={field.name}
                   name={field.name}
@@ -186,17 +169,15 @@ function RateForm({
                       field.setMeta((meta) => ({
                         ...meta,
                         errorMap: { ...meta.errorMap, onServer: undefined },
-                      }))
-                    field.handleChange(event.target.value)
+                      }));
+                    field.handleChange(event.target.value);
                   }}
                 />
-                {showError && (
-                  <FieldError errors={fieldErrors(field.state.meta.errors)} />
-                )}
+                {showError && <FieldError errors={fieldErrors(field.state.meta.errors)} />}
               </Field>
-            )
+            );
           }}
-        />
+        </form.Field>
       </FieldGroup>
       <DialogFooter>
         {canClear ? (
@@ -205,36 +186,29 @@ function RateForm({
             variant="outline"
             disabled={busy}
             onClick={() => {
-              form.setErrorMap({ onServer: undefined })
-              const dates = overrideClearDates(target.nights)
+              form.setErrorMap({ onServer: undefined });
+              const dates = overrideClearDates(target.nights);
               void onClear(contiguousRanges(dates)).catch((cause: unknown) => {
                 setServerErrors(form, {
                   price:
                     cause instanceof Error
                       ? rateFormError(cause)
                       : "No se pudo restablecer el precio.",
-                })
-              })
+                });
+              });
             }}
           >
             {range ? "Restablecer tarifas" : "Usar tarifa base"}
           </Button>
         ) : null}
-        <DialogClose
-          disabled={busy}
-          render={<Button variant="outline" type="button" />}
-        >
+        <DialogClose disabled={busy} render={<Button variant="outline" type="button" />}>
           Cancelar
         </DialogClose>
-        <Button
-          type="submit"
-          form="inventory-rate-form"
-          disabled={unchanged || busy}
-        >
+        <Button type="submit" form="inventory-rate-form" disabled={unchanged || busy}>
           {saving ? <Spinner data-icon="inline-start" /> : null}
           Guardar
         </Button>
       </DialogFooter>
     </form>
-  )
+  );
 }

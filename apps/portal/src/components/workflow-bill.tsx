@@ -1,12 +1,12 @@
-import { Separator } from "@/components/ui/separator"
-import { formatMoney } from "@/lib/money"
-import type { WorkflowBilling } from "@/lib/api"
+import { Separator } from "@/components/ui/separator";
+import { formatMoney } from "@/lib/money";
+import type { WorkflowBilling } from "@/lib/api";
 export function WorkflowBill({
   bill,
   compact = false,
 }: {
-  bill: Omit<WorkflowBilling, "rooms">
-  compact?: boolean
+  bill: Omit<WorkflowBilling, "rooms">;
+  compact?: boolean;
 }) {
   return (
     <dl className="flex flex-col gap-2 text-xs/relaxed tabular-nums">
@@ -20,7 +20,7 @@ export function WorkflowBill({
           ([label, value]) =>
             !compact ||
             Number(value) !== 0 ||
-            ["Total de la cuenta", "Pagos recibidos"].includes(String(label))
+            ["Total de la cuenta", "Pagos recibidos"].includes(String(label)),
         )
         .map(([label, value]) => (
           <div key={label} className="flex justify-between gap-4">
@@ -45,5 +45,5 @@ export function WorkflowBill({
         </p>
       )}
     </dl>
-  )
+  );
 }

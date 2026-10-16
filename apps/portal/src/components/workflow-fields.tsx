@@ -1,9 +1,9 @@
-import { useId, useRef } from "react"
-import { format, parseISO } from "date-fns"
-import { DateField } from "@/components/date-field"
-import { Field, FieldError, FieldLabel } from "@/components/ui/field"
-import { Input } from "@/components/ui/input"
-import { Textarea } from "@/components/ui/textarea"
+import { useId, useRef } from "react";
+import { format, parseISO } from "date-fns";
+import { DateField } from "@/components/date-field";
+import { Field, FieldError, FieldLabel } from "@/components/ui/field";
+import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
 import {
   Select,
   SelectContent,
@@ -11,7 +11,7 @@ import {
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from "@/components/ui/select"
+} from "@/components/ui/select";
 
 export function TextField({
   label,
@@ -29,23 +29,23 @@ export function TextField({
   onBlur,
   groupErrorId,
 }: {
-  label: string
-  value: string | number
-  onChange: (value: string) => void
-  type?: string
-  disabled?: boolean
-  min?: number | string
-  max?: number | string
-  required?: boolean
-  placeholder?: string
-  error?: string
-  id?: string
-  name?: string
-  onBlur?: () => void
-  groupErrorId?: string
+  label: string;
+  value: string | number;
+  onChange: (value: string) => void;
+  type?: string;
+  disabled?: boolean;
+  min?: number | string;
+  max?: number | string;
+  required?: boolean;
+  placeholder?: string;
+  error?: string;
+  id?: string;
+  name?: string;
+  onBlur?: () => void;
+  groupErrorId?: string;
 }) {
-  const generatedId = useId()
-  const id = providedId ?? generatedId
+  const generatedId = useId();
+  const id = providedId ?? generatedId;
   if (type === "date") {
     return (
       <DateField
@@ -62,7 +62,7 @@ export function TextField({
         ]}
         onChange={(date) => onChange(format(date, "yyyy-MM-dd"))}
       />
-    )
+    );
   }
   return (
     <Field data-disabled={disabled} data-invalid={!!error || !!groupErrorId}>
@@ -78,9 +78,7 @@ export function TextField({
           disabled={disabled}
           aria-invalid={!!error || !!groupErrorId}
           aria-describedby={
-            [error ? `${id}-error` : undefined, groupErrorId]
-              .filter(Boolean)
-              .join(" ") || undefined
+            [error ? `${id}-error` : undefined, groupErrorId].filter(Boolean).join(" ") || undefined
           }
           maxLength={typeof max === "number" ? max : undefined}
           onChange={(e) => onChange(e.target.value)}
@@ -98,9 +96,7 @@ export function TextField({
           placeholder={placeholder}
           aria-invalid={!!error || !!groupErrorId}
           aria-describedby={
-            [error ? `${id}-error` : undefined, groupErrorId]
-              .filter(Boolean)
-              .join(" ") || undefined
+            [error ? `${id}-error` : undefined, groupErrorId].filter(Boolean).join(" ") || undefined
           }
           disabled={disabled}
           onChange={(e) => onChange(e.target.value)}
@@ -108,7 +104,7 @@ export function TextField({
       )}
       {error && <FieldError id={`${id}-error`}>{error}</FieldError>}
     </Field>
-  )
+  );
 }
 export function ChoiceField({
   label,
@@ -124,22 +120,22 @@ export function ChoiceField({
   groupErrorId,
   placeholder,
 }: {
-  label: string
-  value: string
-  onChange: (value: string) => void
-  options: { value: string; label: string; disabled?: boolean }[]
-  disabled?: boolean
-  hideLabel?: boolean
-  error?: string
-  id?: string
-  name?: string
-  onBlur?: () => void
-  groupErrorId?: string
-  placeholder?: string
+  label: string;
+  value: string;
+  onChange: (value: string) => void;
+  options: { value: string; label: string; disabled?: boolean }[];
+  disabled?: boolean;
+  hideLabel?: boolean;
+  error?: string;
+  id?: string;
+  name?: string;
+  onBlur?: () => void;
+  groupErrorId?: string;
+  placeholder?: string;
 }) {
-  const generatedId = useId()
-  const id = providedId ?? generatedId
-  const menuOpen = useRef(false)
+  const generatedId = useId();
+  const id = providedId ?? generatedId;
+  const menuOpen = useRef(false);
   return (
     <Field data-disabled={disabled} data-invalid={!!error || !!groupErrorId}>
       <FieldLabel htmlFor={id} className={hideLabel ? "sr-only" : undefined}>
@@ -151,8 +147,8 @@ export function ChoiceField({
         value={value || null}
         onValueChange={(v) => v !== null && onChange(v)}
         onOpenChange={(open) => {
-          menuOpen.current = open
-          if (!open) onBlur?.()
+          menuOpen.current = open;
+          if (!open) onBlur?.();
         }}
         disabled={disabled}
       >
@@ -160,7 +156,7 @@ export function ChoiceField({
           id={id}
           className="w-full"
           onBlur={() => {
-            if (!menuOpen.current) onBlur?.()
+            if (!menuOpen.current) onBlur?.();
           }}
           aria-invalid={!!error || !!groupErrorId}
           aria-describedby={groupErrorId ?? (error ? `${id}-error` : undefined)}
@@ -177,9 +173,7 @@ export function ChoiceField({
           </SelectGroup>
         </SelectContent>
       </Select>
-      {error && !groupErrorId && (
-        <FieldError id={`${id}-error`}>{error}</FieldError>
-      )}
+      {error && !groupErrorId && <FieldError id={`${id}-error`}>{error}</FieldError>}
     </Field>
-  )
+  );
 }
