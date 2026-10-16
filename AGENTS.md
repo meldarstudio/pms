@@ -69,3 +69,20 @@ The portal reads its API origin from `VITE_API_BASE_URL`, inlined at build time.
 - `pnpm dev` serves the API at `http://127.0.0.1:8788` and the portal at `http://localhost:5173`. The Vite dev server binds IPv6 localhost only, so `http://127.0.0.1:5173` is refused.
 - `pnpm db:reset:local` reloads sample data around today UTC and does not need Cloudflare credentials. Wrangler asks before applying migrations when stdin is a terminal. Prefix that command with `CI=true` so a non-interactive shell accepts the fallback and continues.
 - `pnpm build` needs `VITE_API_BASE_URL` in the environment. Dev mode reads `apps/portal/.env.development`.
+
+## Agent skills
+
+### Issue tracker
+
+Track issues and specs in GitHub Issues for `meldarstudio/pms`.
+Before issue tracker operations, read `docs/agents/issue-tracker.md`.
+
+### Triage labels
+
+Use the five default triage labels.
+Before triage, read `docs/agents/triage-labels.md`.
+
+### Domain docs
+
+Use a single-context layout shared across all packages.
+Before exploring domain concepts or architecture, read `docs/agents/domain.md`.
