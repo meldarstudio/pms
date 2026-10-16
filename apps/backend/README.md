@@ -34,6 +34,59 @@ Check-in and checkout actions change the reservation status. They do not record
 separate arrival or departure timestamps or change the dates. For an early
 departure, save the shorter date range together with the checkout status.
 
+## Concurrent reservation saves
+
+The reservation workflow loads the reservation, booking contact, room lines,
+nightly prices, staying guests, and payments in one D1 batch. Commands commit
+against internal reservation and contact revisions. Revisions are database
+details and do not appear in request or response payloads.
+
+If another command commits first, the stale attempt rolls back its entire batch,
+including its request receipt and any payment or contact writes. The workflow
+reloads the current state and reapplies the original actions, with at most three
+attempts. A later intentional edit wins on the same field; unrelated edits remain.
+Actions that are no longer valid, such as editing a deleted payment, return their
+ordinary validation error. Persistent contention returns 409 with
+`reservation changed while saving; please try again`.
+
+Booking contact edits also check the guest revision. The guest editor increments
+that revision with its partial updates, so a reservation command cannot replace
+concurrent guest notes with an older copy. Retrying a committed request ID still
+replays the existing save without adding duplicate payments. Reusing that ID with
+a different payload still returns 409.
+
+The revision check deliberately fails the revision column's NOT NULL constraint
+on a mismatch. A conditional update affecting zero rows would not abort the
+remaining statements in a D1 batch. The workflow recognizes only these revision
+constraint failures as retryable. Inventory conflicts retain their existing
+trigger checks and error responses. The temporary `cancelled` status that permits
+atomic room swaps remains inside the write transaction.
+
+## Room validation at save time
+
+The workflow decides which rooms need current-rule validation from the original
+and proposed reservation states. Added or changed rooms, changed stay dates, and
+restoration from `cancelled` or `no_show` to an inventory-holding status require
+validation. Unchanged saved rooms can still accept payments, notes, discounts,
+status corrections within inventory-holding statuses, and cancellation after a
+room type's occupancy limit is reduced.
+
+TypeScript preflight provides preview pricing and per-room issues. Database
+triggers own the authoritative occupancy, room-type agreement, inventory, closure,
+and overlap checks during writes. For restoration and changed dates, the workflow
+updates each proposed room's type column to itself inside the write batch. This
+runs the existing room-validity triggers even for unchanged room rows, without
+rewriting their saved nightly prices. The final reservation update checks
+inventory against the proposed dates and status.
+
+The workflow bases that extra validation on the original state, before the
+transaction's temporary `cancelled` release. Checking occupancy on every final
+status update would reject ordinary saves of unchanged rooms. A concurrent room
+type or assignment change can invalidate a successful preview or preflight; the
+write then returns the existing 409 error and rolls back the entire command,
+including its request receipt. Preview remains advisory and does not reserve
+inventory or freeze room rules.
+
 ## Reset local dummy data
 
 ```sh

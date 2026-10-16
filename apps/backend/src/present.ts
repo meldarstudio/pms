@@ -14,13 +14,16 @@ import { bill } from "./lib/workflow-billing";
 type Guest = typeof guests.$inferSelect;
 type Reservation = typeof reservations.$inferSelect;
 type Line = typeof reservationRooms.$inferSelect;
-type Night = typeof reservationRoomNights.$inferSelect;
+type Night = Pick<
+  typeof reservationRoomNights.$inferSelect,
+  "reservationRoomId" | "date" | "priceCents"
+>;
 type RoomType = typeof roomTypes.$inferSelect;
 type Room = typeof rooms.$inferSelect;
 
 const cancelled = (reservation: Reservation) => reservation.status === "cancelled";
 
-export function presentGuest(guest: Guest) {
+export function presentGuest(guest: Omit<Guest, "revision">) {
   return {
     id: guest.id,
     fullName: guest.fullName,

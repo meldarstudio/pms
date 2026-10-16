@@ -1,7 +1,7 @@
 {
   "version": "6",
   "dialect": "sqlite",
-  "id": "e4f80678-8364-4714-a204-4024bc3f2500",
+  "id": "b3e2add0-cc2c-466d-a025-93fcc33cea2c",
   "prevId": "00000000-0000-0000-0000-000000000000",
   "tables": {
     "guests": {
@@ -13,6 +13,14 @@
           "primaryKey": true,
           "notNull": true,
           "autoincrement": false
+        },
+        "revision": {
+          "name": "revision",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": 0
         },
         "full_name": {
           "name": "full_name",
@@ -517,6 +525,14 @@
           "primaryKey": true,
           "notNull": true,
           "autoincrement": false
+        },
+        "revision": {
+          "name": "revision",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": 0
         },
         "code": {
           "name": "code",

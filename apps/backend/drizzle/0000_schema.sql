@@ -1,5 +1,6 @@
 CREATE TABLE `guests` (
 	`id` text PRIMARY KEY NOT NULL,
+	`revision` integer DEFAULT 0 NOT NULL,
 	`full_name` text NOT NULL,
 	`email` text,
 	`phone` text,
@@ -73,6 +74,7 @@ CREATE INDEX `reservation_rooms_type` ON `reservation_rooms` (`room_type_id`);--
 CREATE INDEX `reservation_rooms_room` ON `reservation_rooms` (`room_id`);--> statement-breakpoint
 CREATE TABLE `reservations` (
 	`id` text PRIMARY KEY NOT NULL,
+	`revision` integer DEFAULT 0 NOT NULL,
 	`code` text NOT NULL,
 	`status` text DEFAULT 'confirmed' NOT NULL,
 	`cancellation_reason` text,

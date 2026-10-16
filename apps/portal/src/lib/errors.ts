@@ -8,6 +8,8 @@ const messages: Record<string, string> = {
   "duplicate staying guest": "Un huésped está repetido en la lista.",
   "request ID reused with a different payload":
     "Esta solicitud ya se utilizó con otros datos. Recarga la reserva.",
+  "reservation changed while saving; please try again":
+    "La reserva cambió mientras se guardaba. Intenta guardar de nuevo.",
   "method is required": "Selecciona un método de pago.",
   "payment date cannot be in the future": "La fecha del pago no puede ser futura.",
   "room is a different type": "La habitación debe ser del mismo tipo reservado.",

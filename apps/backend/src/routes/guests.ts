@@ -1,5 +1,5 @@
 import { guestFields, listQuerySchema } from "@pms/shared";
-import { asc, desc, eq, like, or } from "drizzle-orm";
+import { asc, desc, eq, like, or, sql } from "drizzle-orm";
 import { Hono } from "hono";
 import { getDb } from "../db";
 import { guests, reservations } from "../db/schema";
@@ -82,7 +82,10 @@ guestRoutes.patch("/:id", validate("json", guestFields.partial()), async (c) => 
     .where(eq(guests.id, c.req.param("id")));
   if (!guest) throw new HttpError(404, "guest not found");
   if (Object.keys(body).length === 0) throw new HttpError(400, "send a field to update");
-  await db.update(guests).set(body).where(eq(guests.id, guest.id));
+  await db
+    .update(guests)
+    .set({ ...body, revision: sql`${guests.revision} + 1` })
+    .where(eq(guests.id, guest.id));
   const [updated] = await db.select().from(guests).where(eq(guests.id, guest.id));
   return c.json(presentGuest(updated));
 });

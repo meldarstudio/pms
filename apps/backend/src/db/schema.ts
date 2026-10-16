@@ -33,6 +33,7 @@ export const roomClosures = sqliteTable(
 
 export const guests = sqliteTable("guests", {
   id: text("id").primaryKey(),
+  revision: integer("revision").notNull().default(0),
   fullName: text("full_name").notNull(),
   email: text("email"),
   phone: text("phone"),
@@ -46,6 +47,7 @@ export const reservations = sqliteTable(
   "reservations",
   {
     id: text("id").primaryKey(),
+    revision: integer("revision").notNull().default(0),
     code: text("code").notNull().unique(),
     status: text("status").notNull().default("confirmed"),
     cancellationReason: text("cancellation_reason"),

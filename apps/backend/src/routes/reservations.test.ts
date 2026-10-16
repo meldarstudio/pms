@@ -19,7 +19,16 @@ let batchTail: Promise<unknown> = Promise.resolve();
 
 // Run the actual Hono routes and Drizzle SQL against SQLite with D1-style batches.
 function statement(sql: string, params: SQLInputValue[] = []) {
+  const execute = () => {
+    if (sqlite.prepare(sql).columns().length) {
+      return { success: true, results: sqlite.prepare(`SELECT * FROM (${sql})`).all(...params) };
+    }
+    sqlite.prepare(sql).run(...params);
+    return { success: true, results: [] };
+  };
   return {
+    sql,
+    execute,
     bind: (...values: SQLInputValue[]) => statement(sql, values),
     raw: async () => {
       // The subquery gives duplicate join columns distinct names on Node 22.
@@ -28,10 +37,7 @@ function statement(sql: string, params: SQLInputValue[] = []) {
         .all(...params)
         .map((row) => Object.values(row));
     },
-    run: async () => {
-      sqlite.prepare(sql).run(...params);
-      return { success: true, results: [] };
-    },
+    run: async () => execute(),
     all: async () => ({ success: true, results: sqlite.prepare(sql).all(...params) }),
   };
 }
@@ -54,11 +60,11 @@ beforeEach(() => {
   binding = {
     prepare: (sql: string) => statement(sql),
     batch: (queries: ReturnType<typeof statement>[]) => {
-      const result = batchTail.then(async () => {
+      const result = batchTail.then(() => {
         sqlite.exec("BEGIN");
         try {
           const results = [];
-          for (const query of queries) results.push(await query.run());
+          for (const query of queries) results.push(query.execute());
           sqlite.exec("COMMIT");
           return results;
         } catch (error) {
@@ -78,7 +84,7 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
-function request(path: string, method = "GET", body?: unknown) {
+function request(path: string, method = "GET", body?: unknown, database = binding) {
   return app.request(
     path,
     {
@@ -87,7 +93,7 @@ function request(path: string, method = "GET", body?: unknown) {
         ? {}
         : { headers: { "content-type": "application/json" }, body: JSON.stringify(body) }),
     },
-    { DB: binding, CURRENCY: "PEN" },
+    { DB: database, CURRENCY: "PEN" },
   );
 }
 
@@ -158,6 +164,514 @@ const guest = (reservationRoomId: string | null) => ({
   phone: null,
   documentType: "DNI",
   documentNumber: "12345678",
+});
+
+function isCommandBatch(queries: D1PreparedStatement[]) {
+  return queries.some((query) =>
+    (query as unknown as ReturnType<typeof statement>).sql.startsWith(
+      'insert into "reservation_requests"',
+    ),
+  );
+}
+
+// Hold one planned command before its transaction. Other requests can commit
+// through the same database while it waits, without timers or application hooks.
+function pauseCommandBatch() {
+  const batch = binding.batch.bind(binding);
+  let resume = () => {};
+  let reached = () => {};
+  const blocked = new Promise<void>((resolve) => {
+    resume = resolve;
+  });
+  const ready = new Promise<void>((resolve) => {
+    reached = resolve;
+  });
+  const spy = vi
+    .spyOn(binding, "batch")
+    .mockImplementation(async <T>(queries: D1PreparedStatement[]) => {
+      if (isCommandBatch(queries)) {
+        spy.mockRestore();
+        reached();
+        await blocked;
+      }
+      return batch<T>(queries);
+    });
+  return { ready, resume };
+}
+
+describe("concurrent reservation commands", () => {
+  it.each(
+    (["cancelled", "no_show"] as const).flatMap((from) =>
+      (["confirmed", "checked_in", "checked_out"] as const).map((to) => ({ from, to })),
+    ),
+  )(
+    "rejects restoration from $from to $to when capacity changes after preflight",
+    async ({ from, to }) => {
+      let d = await create();
+      // Cover both assigned and unassigned saved rooms.
+      d = await command(d, [
+        roomEdit(d, 0, { adults: 2, roomId: from === "no_show" ? null : "room-101" }),
+      ]);
+      d = await command(d, [{ type: "set-status", status: from }]);
+      const body = {
+        requestId: crypto.randomUUID(),
+        actions: [{ type: "set-status", status: to }],
+      };
+      const preview = await request(`/reservations/${d.id}/preview`, "POST", body);
+      expect(preview.status).toBe(200);
+      expect(await preview.json()).toMatchObject({
+        billing: { status: to, totalCents: 30000 },
+        validation: { issues: [] },
+      });
+      const paused = pauseCommandBatch();
+      const pending = request(`/reservations/${d.id}/commands`, "POST", body);
+      await paused.ready;
+      try {
+        const response = await request("/room-types/type", "PATCH", { maxOccupancy: 1 });
+        expect(response.status).toBe(200);
+      } finally {
+        paused.resume();
+      }
+      const response = await pending;
+      expect(response.status).toBe(409);
+      expect(await response.json()).toEqual({ error: "too many guests for this room type" });
+      expect(await (await request(`/reservations/${d.id}`)).json()).toEqual(d);
+      expect(
+        sqlite.prepare("SELECT id FROM reservation_requests WHERE id = ?").get(body.requestId),
+      ).toBeUndefined();
+      const invalidPreview = await request(`/reservations/${d.id}/preview`, "POST", body);
+      expect(invalidPreview.status).toBe(200);
+      expect(await invalidPreview.json()).toMatchObject({
+        billing: { totalCents: 30000 },
+        validation: {
+          issues: [
+            { code: "too many guests for this room type", roomIndex: 0, field: "occupancy" },
+          ],
+        },
+      });
+    },
+  );
+
+  it.each([
+    { status: "confirmed", checkIn: "2026-10-10", checkOut: "2026-10-12" },
+    { status: "cancelled", checkIn: "2026-10-10", checkOut: "2026-10-14" },
+    { status: "no_show", checkIn: "2026-10-11", checkOut: "2026-10-14" },
+  ] as const)(
+    "rejects changed dates for $status when capacity changes after preflight",
+    async ({ status, checkIn, checkOut }) => {
+      let d = await create();
+      d = await command(d, [roomEdit(d, 0, { adults: 2 }), { type: "set-status", status }]);
+      const nights = sqlite.prepare("SELECT * FROM reservation_room_nights ORDER BY id").all();
+      const paused = pauseCommandBatch();
+      const pending = command(d, [{ type: "dates", checkIn, checkOut }, pay(5000)], 409);
+      await paused.ready;
+      try {
+        expect((await request("/room-types/type", "PATCH", { maxOccupancy: 1 })).status).toBe(200);
+      } finally {
+        paused.resume();
+      }
+      expect(await pending).toEqual({ error: "too many guests for this room type" });
+      expect(await (await request(`/reservations/${d.id}`)).json()).toEqual(d);
+      expect(sqlite.prepare("SELECT * FROM reservation_room_nights ORDER BY id").all()).toEqual(
+        nights,
+      );
+    },
+  );
+
+  it("rolls back every restoration write and allows the same request to succeed and replay later", async () => {
+    let d = await create(2);
+    d = await command(d, [roomEdit(d), roomEdit(d, 1, { adults: 2 })]);
+    d = await command(d, [
+      { type: "set-guests", guests: [guest(d.rooms[1].id)] },
+      { type: "set-status", status: "cancelled" },
+    ]);
+    const snapshot = () =>
+      [
+        "reservations",
+        "guests",
+        "reservation_rooms",
+        "reservation_room_nights",
+        "reservation_guests",
+        "payments",
+        "reservation_requests",
+      ].map((table) => sqlite.prepare(`SELECT * FROM ${table} ORDER BY id`).all());
+    const before = snapshot();
+    const body = {
+      requestId: crypto.randomUUID(),
+      actions: [
+        { type: "set-status", status: "confirmed" },
+        roomEdit(d, 0, { roomId: "room-103" }),
+        { type: "contact", contact: { fullName: "Changed contact", email: null, phone: null } },
+        { type: "notes", notes: "Restored" },
+        setDiscount(1000),
+        pay(5000),
+      ],
+    };
+    const paused = pauseCommandBatch();
+    const pending = request(`/reservations/${d.id}/commands`, "POST", body);
+    await paused.ready;
+    try {
+      expect((await request("/room-types/type", "PATCH", { maxOccupancy: 1 })).status).toBe(200);
+    } finally {
+      paused.resume();
+    }
+    const failed = await pending;
+    expect(failed.status).toBe(409);
+    expect(await failed.json()).toEqual({ error: "too many guests for this room type" });
+    expect(snapshot()).toEqual(before);
+    expect((await request("/room-types/type")).status).toBe(200);
+    expect(await (await request("/room-types/type")).json()).toMatchObject({ maxOccupancy: 1 });
+
+    expect((await request("/room-types/type", "PATCH", { maxOccupancy: 2 })).status).toBe(200);
+    const saved = await request(`/reservations/${d.id}/commands`, "POST", body);
+    expect(saved.status).toBe(200);
+    const detail = (await saved.json()) as Detail;
+    expect(detail).toMatchObject({
+      status: "confirmed",
+      notes: "Restored",
+      savedDiscountCents: 1000,
+      paidCents: 5000,
+      totalCents: 59000,
+      guest: { fullName: "Changed contact" },
+    });
+    expect(detail.rooms[0].roomId).toBe("room-103");
+    expect(detail.stayingGuests).toEqual(d.stayingGuests);
+    expect(detail.rooms.map((room) => room.nights)).toEqual(d.rooms.map((room) => room.nights));
+    const replayed = await request(`/reservations/${d.id}/commands`, "POST", body);
+    expect(replayed.status).toBe(200);
+    expect(await replayed.json()).toEqual(detail);
+    const reused = await request(`/reservations/${d.id}/commands`, "POST", {
+      ...body,
+      actions: [pay(1)],
+    });
+    expect(reused.status).toBe(409);
+  });
+
+  it("rejects restoration when an assigned room changes type after preflight and keeps proposed issue indices", async () => {
+    let d = await create(2);
+    d = await command(d, [
+      roomEdit(d),
+      roomEdit(d, 1),
+      { type: "set-status", status: "cancelled" },
+    ]);
+    const other = await request("/room-types", "POST", {
+      name: "Twin",
+      maxOccupancy: 2,
+      baseRateCents: 20000,
+    });
+    expect(other.status).toBe(201);
+    const { id: roomTypeId } = (await other.json()) as { id: string };
+    const body = {
+      requestId: crypto.randomUUID(),
+      actions: [
+        { type: "remove-room", lineId: d.rooms[0].id },
+        { type: "set-status", status: "confirmed" },
+      ],
+    };
+    const paused = pauseCommandBatch();
+    const pending = request(`/reservations/${d.id}/commands`, "POST", body);
+    await paused.ready;
+    try {
+      expect((await request("/rooms/room-102", "PATCH", { roomTypeId })).status).toBe(200);
+    } finally {
+      paused.resume();
+    }
+    const failed = await pending;
+    expect(failed.status).toBe(409);
+    expect(await failed.json()).toEqual({ error: "room is a different type" });
+    const unchanged = (await (await request(`/reservations/${d.id}`)).json()) as Detail;
+    expect(unchanged.status).toBe("cancelled");
+    expect(unchanged.rooms.map((room) => room.id)).toEqual(d.rooms.map((room) => room.id));
+    const preview = await request(`/reservations/${d.id}/preview`, "POST", body);
+    expect(preview.status).toBe(200);
+    expect(await preview.json()).toMatchObject({
+      billing: { totalCents: 30000 },
+      validation: { issues: [{ code: "room is a different type", roomIndex: 0, field: "roomId" }] },
+    });
+  });
+
+  it("allows unchanged-room saves when capacity changes between preflight and commit", async () => {
+    let d = await create();
+    d = await command(d, [roomEdit(d, 0, { adults: 2 })]);
+    const paused = pauseCommandBatch();
+    const pending = command(d, [pay(5000), setDiscount(1000), { type: "notes", notes: "Paid" }]);
+    await paused.ready;
+    try {
+      expect((await request("/room-types/type", "PATCH", { maxOccupancy: 1 })).status).toBe(200);
+    } finally {
+      paused.resume();
+    }
+    d = await pending;
+    expect(d).toMatchObject({
+      paidCents: 5000,
+      savedDiscountCents: 1000,
+      notes: "Paid",
+      status: "confirmed",
+    });
+    expect(d.rooms[0].adults).toBe(2);
+    const saved = await command(d, [{ type: "set-status", status: "cancelled" }]);
+    expect(saved.creditCents).toBe(5000);
+  });
+
+  it("preserves a concurrent discount when an older notes plan commits later", async () => {
+    const d = await create();
+    const paused = pauseCommandBatch();
+    const pending = command(d, [{ type: "notes", notes: "Arriving after 10 pm" }]);
+    await paused.ready;
+    await command(d, [setDiscount(5000)]);
+    paused.resume();
+    const saved = await pending;
+    expect(saved).toMatchObject({
+      notes: "Arriving after 10 pm",
+      savedDiscountCents: 5000,
+      totalCents: 25000,
+    });
+  });
+
+  it("keeps extended dates and charged nights together after a concurrent notes save", async () => {
+    const d = await create();
+    const paused = pauseCommandBatch();
+    const pending = command(d, [{ type: "notes", notes: "Late arrival" }]);
+    await paused.ready;
+    await command(d, [{ type: "dates", checkIn: d.checkIn, checkOut: "2026-10-14" }]);
+    paused.resume();
+    const saved = await pending;
+    expect(saved).toMatchObject({
+      checkOut: "2026-10-14",
+      nights: 4,
+      totalCents: 40000,
+      notes: "Late arrival",
+    });
+    expect(saved.rooms[0].nights.map((night) => night.date)).toEqual([
+      "2026-10-10",
+      "2026-10-11",
+      "2026-10-12",
+      "2026-10-13",
+    ]);
+  });
+
+  it("preserves newly saved staying guests when a concurrent payment retries", async () => {
+    const d = await create();
+    const person = guest(d.rooms[0].id);
+    const paused = pauseCommandBatch();
+    const pending = command(d, [pay(1000)]);
+    await paused.ready;
+    await command(d, [{ type: "set-guests", guests: [person] }]);
+    paused.resume();
+    const saved = await pending;
+    expect(saved.stayingGuests).toMatchObject([person]);
+    expect(saved.paidCents).toBe(1000);
+    expect(saved.payments).toHaveLength(1);
+  });
+
+  it("keeps both distinct payments when a stale command retries", async () => {
+    const d = await create();
+    const paused = pauseCommandBatch();
+    const pending = command(d, [pay(1000)]);
+    await paused.ready;
+    await command(d, [pay(2000)]);
+    paused.resume();
+    const saved = await pending;
+    expect(saved.paidCents).toBe(3000);
+    expect(saved.payments).toHaveLength(2);
+  });
+
+  it("lets the later successful notes edit win after retrying", async () => {
+    const d = await create();
+    const paused = pauseCommandBatch();
+    const pending = command(d, [{ type: "notes", notes: "Arriving at 10 pm" }]);
+    await paused.ready;
+    await command(d, [{ type: "notes", notes: "Arriving at 8 pm" }]);
+    paused.resume();
+    expect((await pending).notes).toBe("Arriving at 10 pm");
+  });
+
+  it("replays a request another attempt committed without duplicating its payment", async () => {
+    const d = await create();
+    const body = { requestId: crypto.randomUUID(), actions: [pay(1000)] };
+    const paused = pauseCommandBatch();
+    const pending = request(`/reservations/${d.id}/commands`, "POST", body);
+    await paused.ready;
+    expect((await request(`/reservations/${d.id}/commands`, "POST", body)).status).toBe(200);
+    paused.resume();
+    const response = await pending;
+    expect(response.status).toBe(200);
+    const saved = (await response.json()) as Detail;
+    expect(saved.payments).toHaveLength(1);
+    expect(saved.paidCents).toBe(1000);
+  });
+
+  it("preserves guest-editor notes when a contact command retries", async () => {
+    const d = await create();
+    const paused = pauseCommandBatch();
+    const pending = command(d, [
+      pay(1000),
+      {
+        type: "contact",
+        contact: { fullName: "Updated contact", email: null, phone: null },
+      },
+    ]);
+    await paused.ready;
+    expect(
+      (await request(`/guests/${d.guestId}`, "PATCH", { notes: "Guest preference" })).status,
+    ).toBe(200);
+    paused.resume();
+    const saved = await pending;
+    expect(saved.guest).toMatchObject({ fullName: "Updated contact", notes: "Guest preference" });
+    expect(saved.payments).toHaveLength(1);
+    expect(saved.paidCents).toBe(1000);
+  });
+
+  it("reapplies an intentional contact edit even when it matched the original values", async () => {
+    const d = await create();
+    const paused = pauseCommandBatch();
+    const pending = command(d, [
+      {
+        type: "contact",
+        contact: { fullName: d.guest.fullName, email: null, phone: null },
+      },
+    ]);
+    await paused.ready;
+    expect(
+      (await request(`/guests/${d.guestId}`, "PATCH", { fullName: "Other edit" })).status,
+    ).toBe(200);
+    paused.resume();
+    expect((await pending).guest.fullName).toBe(d.guest.fullName);
+  });
+
+  it("rejects a changed payload when the same request ID commits while an attempt waits", async () => {
+    const d = await create();
+    const body = { requestId: crypto.randomUUID(), actions: [pay(1000)] };
+    const paused = pauseCommandBatch();
+    const pending = request(`/reservations/${d.id}/commands`, "POST", body);
+    await paused.ready;
+    expect(
+      (await request(`/reservations/${d.id}/commands`, "POST", { ...body, actions: [pay(2000)] }))
+        .status,
+    ).toBe(200);
+    paused.resume();
+    const response = await pending;
+    expect(response.status).toBe(409);
+    expect(await response.json()).toEqual({ error: "request ID reused with a different payload" });
+    const saved = (await (await request(`/reservations/${d.id}`)).json()) as Detail;
+    expect(saved.payments).toHaveLength(1);
+    expect(saved.paidCents).toBe(2000);
+  });
+
+  it("revalidates the original actions when a concurrent save removes their payment", async () => {
+    const d = await command(await create(), [pay(1000)]);
+    const paused = pauseCommandBatch();
+    const body = {
+      requestId: crypto.randomUUID(),
+      actions: [
+        { type: "notes", notes: "Must not save" },
+        {
+          type: "edit-payment",
+          paymentId: d.payments[0].id,
+          payment: {
+            amountCents: 2000,
+            method: "cash",
+            paymentDate: "2026-10-10",
+          },
+        },
+      ],
+    };
+    const pending = request(`/reservations/${d.id}/commands`, "POST", body);
+    await paused.ready;
+    await command(d, [{ type: "delete-payment", paymentId: d.payments[0].id }]);
+    paused.resume();
+    const response = await pending;
+    expect(response.status).toBe(400);
+    expect(await response.json()).toEqual({ error: "payment not found" });
+    const saved = (await (await request(`/reservations/${d.id}`)).json()) as Detail;
+    expect(saved.payments).toEqual([]);
+    expect(saved.notes).toBeNull();
+    expect(
+      sqlite.prepare("SELECT id FROM reservation_requests WHERE id=?").get(body.requestId),
+    ).toBeUndefined();
+  });
+
+  it("guards a shared contact when another reservation edits it concurrently", async () => {
+    const first = await create();
+    const second = await create();
+    sqlite.prepare("UPDATE reservations SET guest_id=? WHERE id=?").run(first.guestId, second.id);
+    const paused = pauseCommandBatch();
+    const pending = command(first, [
+      {
+        type: "contact",
+        contact: { fullName: "Later contact", email: null, phone: null },
+      },
+    ]);
+    await paused.ready;
+    await command(second, [
+      {
+        type: "contact",
+        contact: {
+          fullName: "Other contact",
+          email: null,
+          phone: null,
+          documentType: "DNI",
+          documentNumber: "87654321",
+        },
+      },
+    ]);
+    paused.resume();
+    const saved = await pending;
+    expect(saved.guest).toMatchObject({
+      fullName: "Later contact",
+      documentType: "DNI",
+      documentNumber: "87654321",
+    });
+    expect(saved.guest).not.toHaveProperty("revision");
+    expect(saved).not.toHaveProperty("revision");
+  });
+
+  it("bounds retries, rolls back exhausted attempts, and keeps the request ID usable", async () => {
+    const d = await create();
+    const body = { requestId: crypto.randomUUID(), actions: [pay(1000)] };
+    const batch = binding.batch.bind(binding);
+    // A second binding represents another Worker, outside the pending request's
+    // interception. Each contender is a real command with its own receipt.
+    const otherBinding = Object.create(binding) as D1Database;
+    otherBinding.batch = batch;
+    let contenders = 0;
+    const spy = vi
+      .spyOn(binding, "batch")
+      .mockImplementation(async <T>(queries: D1PreparedStatement[]) => {
+        if (isCommandBatch(queries)) {
+          contenders++;
+          const response = await request(
+            `/reservations/${d.id}/commands`,
+            "POST",
+            {
+              requestId: crypto.randomUUID(),
+              actions: [{ type: "notes", notes: `Other save ${contenders}` }],
+            },
+            otherBinding,
+          );
+          expect(response.status).toBe(200);
+        }
+        return batch<T>(queries);
+      });
+    const response = await request(`/reservations/${d.id}/commands`, "POST", body);
+    expect(response.status).toBe(409);
+    expect(await response.json()).toEqual({
+      error: "reservation changed while saving; please try again",
+    });
+    expect(contenders).toBe(3);
+    let saved = (await (await request(`/reservations/${d.id}`)).json()) as Detail;
+    expect(saved).toMatchObject({ notes: "Other save 3", status: "confirmed", paidCents: 0 });
+    expect(saved.payments).toEqual([]);
+    expect(
+      sqlite.prepare("SELECT id FROM reservation_requests WHERE id=?").get(body.requestId),
+    ).toBeUndefined();
+    spy.mockRestore();
+    expect((await request(`/reservations/${d.id}/commands`, "POST", body)).status).toBe(200);
+    expect((await request(`/reservations/${d.id}/commands`, "POST", body)).status).toBe(200);
+    saved = (await (await request(`/reservations/${d.id}`)).json()) as Detail;
+    expect(saved.payments).toHaveLength(1);
+    expect(saved.paidCents).toBe(1000);
+  });
 });
 
 describe("reservation workflow", () => {

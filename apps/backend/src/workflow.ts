@@ -1,5 +1,5 @@
 import type { WorkflowAction, WorkflowCommand, WorkflowCreate } from "@pms/shared";
-import { eq, inArray } from "drizzle-orm";
+import { eq, inArray, sql } from "drizzle-orm";
 import { runBatch, type Db } from "./db";
 import {
   payments,
@@ -20,6 +20,7 @@ import { quoteNights, overridesFor } from "./lib/quote";
 import { requireStay } from "./rules";
 import { confirmationCode } from "./lib/codes";
 import { chunks } from "./lib/chunks";
+import { claimRevision, isStaleWrite } from "./db/revisions";
 
 type Night = { date: string; priceCents: number };
 export type Stay = typeof reservationRooms.$inferSelect & { nights: Night[] };
@@ -50,29 +51,29 @@ export const totals = (state: State) =>
   });
 
 export async function loadState(db: Db, id: string): Promise<State> {
-  const [reservation] = await db.select().from(reservations).where(eq(reservations.id, id));
+  // All rows and their revisions belong to one snapshot. Separate reads can
+  // mix the old reservation dates with another command's new room nights.
+  const [parents, contacts, stayingGuests, lines, nightRows, paymentRows] = await db.batch([
+    db.select().from(reservations).where(eq(reservations.id, id)),
+    db
+      .select({ contact: guests })
+      .from(guests)
+      .innerJoin(reservations, eq(reservations.guestId, guests.id))
+      .where(eq(reservations.id, id)),
+    db.select().from(reservationGuests).where(eq(reservationGuests.reservationId, id)),
+    db.select().from(reservationRooms).where(eq(reservationRooms.reservationId, id)),
+    db
+      .select({ night: reservationRoomNights })
+      .from(reservationRoomNights)
+      .innerJoin(reservationRooms, eq(reservationRooms.id, reservationRoomNights.reservationRoomId))
+      .where(eq(reservationRooms.reservationId, id)),
+    db.select().from(payments).where(eq(payments.reservationId, id)),
+  ]);
+  const reservation = parents[0];
   if (!reservation) throw new HttpError(404, "reservation not found");
-  const [contact] = await db.select().from(guests).where(eq(guests.id, reservation.guestId));
-  const stayingGuests = await db
-    .select()
-    .from(reservationGuests)
-    .where(eq(reservationGuests.reservationId, id));
-  const lines = await db
-    .select()
-    .from(reservationRooms)
-    .where(eq(reservationRooms.reservationId, id));
-  const nights = lines.length
-    ? await db
-        .select()
-        .from(reservationRoomNights)
-        .where(
-          inArray(
-            reservationRoomNights.reservationRoomId,
-            lines.map((l) => l.id),
-          ),
-        )
-    : [];
-  const paymentRows = await db.select().from(payments).where(eq(payments.reservationId, id));
+  const contact = contacts[0]?.contact;
+  if (!contact) throw new HttpError(404, "guest not found");
+  const nights = nightRows.map(({ night }) => night);
   return {
     reservation,
     contact,
@@ -264,6 +265,17 @@ function lineWrites(db: Db, line: Stay, existing: boolean) {
   ];
 }
 export async function execute(db: Db, id: string, command: WorkflowCommand, preview: boolean) {
+  for (let attempt = 0; attempt < 3; attempt++) {
+    try {
+      return await executeAttempt(db, id, command, preview);
+    } catch (error) {
+      if (!isStaleWrite(error)) throw error;
+    }
+  }
+  throw new HttpError(409, "reservation changed while saving; please try again");
+}
+
+async function executeAttempt(db: Db, id: string, command: WorkflowCommand, preview: boolean) {
   const payload = JSON.stringify(command);
   const [seen] = await db
     .select()
@@ -299,7 +311,13 @@ export async function execute(db: Db, id: string, command: WorkflowCommand, prev
         createdAt: now,
       }),
       // Release the reservation inside the transaction so room swaps are atomic.
-      db.update(reservations).set({ status: "cancelled" }).where(eq(reservations.id, id)),
+      db
+        .update(reservations)
+        .set({
+          status: "cancelled",
+          revision: claimRevision(reservations.revision, original.reservation.revision),
+        })
+        .where(eq(reservations.id, id)),
       db.delete(reservationGuests).where(eq(reservationGuests.reservationId, id)),
       ...original.lines
         .filter((line) => !state.lines.some((saved) => saved.id === line.id))
@@ -328,6 +346,18 @@ export async function execute(db: Db, id: string, command: WorkflowCommand, prev
             ? db.update(payments).set(e).where(eq(payments.id, e.id))
             : db.insert(payments).values(e),
         ),
+      // Restoration and changed dates must pass the room-validity triggers
+      // against current room types, even when every saved room is unchanged.
+      // Decide this from the original state, not the temporary cancelled status:
+      // ordinary saves must still allow grandfathered unchanged occupancy.
+      ...(revalidateAllRooms
+        ? [
+            db
+              .update(reservationRooms)
+              .set({ roomTypeId: sql`${reservationRooms.roomTypeId}` })
+              .where(eq(reservationRooms.reservationId, id)),
+          ]
+        : []),
       db
         .update(reservations)
         .set({
@@ -340,8 +370,16 @@ export async function execute(db: Db, id: string, command: WorkflowCommand, prev
           discountCents: state.reservation.discountCents,
         })
         .where(eq(reservations.id, id)),
-      ...(JSON.stringify(state.contact) !== JSON.stringify(original.contact)
-        ? [db.update(guests).set(state.contact).where(eq(guests.id, state.contact.id))]
+      ...(command.actions.some((action) => action.type === "contact")
+        ? [
+            db
+              .update(guests)
+              .set({
+                ...state.contact,
+                revision: claimRevision(guests.revision, original.contact.revision),
+              })
+              .where(eq(guests.id, state.contact.id)),
+          ]
         : []),
       ...chunks(state.stayingGuests, 8).map((rows) => db.insert(reservationGuests).values(rows)),
     ]);

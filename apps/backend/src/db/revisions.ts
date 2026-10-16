@@ -1,0 +1,17 @@
+import { sql } from "drizzle-orm";
+import type { AnySQLiteColumn } from "drizzle-orm/sqlite-core";
+
+// A stale plan must abort the entire D1 batch. A conditional UPDATE affecting
+// zero rows would still run later statements. NULL violates the revision's
+// NOT NULL constraint, so D1 rolls back every statement, including the receipt.
+export function claimRevision(column: AnySQLiteColumn, expected: number) {
+  return sql<number>`CASE WHEN ${column} = ${expected} THEN ${column} + 1 ELSE NULL END`;
+}
+
+export function isStaleWrite(error: unknown): boolean {
+  if (!(error instanceof Error)) return false;
+  return (
+    /NOT NULL constraint failed: (reservations|guests)\.revision/.test(error.message) ||
+    isStaleWrite(error.cause)
+  );
+}
