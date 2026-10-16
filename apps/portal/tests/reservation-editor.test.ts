@@ -182,7 +182,7 @@ describe("billing changes versus validation", () => {
   });
 
   it("validates ordinary status edits and marks cancellation or restoration as billing changes", () => {
-    for (const status of ["confirmed", "checked_in", "checked_out", "no_show"] as const) {
+    for (const status of ["confirmed", "checked_in", "checked_out"] as const) {
       const action: WorkflowAction = { type: "set-status", status };
       assert.equal(hasBillingChanges(saved, [action]), false);
       assert.deepEqual(validationPreviewActions([action]), [action]);
@@ -303,13 +303,7 @@ describe("reservation edit drafts", () => {
       [
         ...unavailableRoomIds(
           dates,
-          [
-            res("101"),
-            res("102"),
-            res("103", "cancelled"),
-            res("104", "confirmed", dates.checkIn),
-            res("105", "no_show"),
-          ],
+          [res("101"), res("102"), res("103", "cancelled"), res("104", "confirmed", dates.checkIn)],
           closures,
           "101",
         ),

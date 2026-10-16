@@ -134,7 +134,7 @@ describe("local dummy data reset", () => {
         .prepare("SELECT DISTINCT status FROM reservations ORDER BY status")
         .all()
         .map((row) => row.status),
-    ).toEqual(["cancelled", "checked_in", "checked_out", "confirmed", "no_show"]);
+    ).toEqual(["cancelled", "checked_in", "checked_out", "confirmed"]);
     expect(
       db
         .prepare(

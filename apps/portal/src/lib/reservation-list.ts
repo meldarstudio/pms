@@ -10,7 +10,6 @@ export const reservationStatusOptions: {
   { value: "confirmed", label: "Confirmada" },
   { value: "checked_in", label: "Check-in" },
   { value: "checked_out", label: "Check-out" },
-  { value: "no_show", label: "No se presentó" },
   { value: "cancelled", label: "Cancelada" },
 ];
 

@@ -1050,6 +1050,22 @@ it("keeps pricing an added room when its occupancy is invalid and blocks saving"
   assert.equal(container.textContent.includes("La habitación no tiene capacidad"), false);
 });
 
+it("offers stay statuses and staff cancellation without a no-show option", async () => {
+  mockApi(async () => previewResponse(detail()));
+  await render(
+    React.createElement(dialogs.BookingEditor, {
+      detail: detail(),
+      onRefresh: () => {},
+    }),
+  );
+  await React.act(async () => fieldTrigger("Estado de la reserva").click());
+  const options = Array.from(window.document.querySelectorAll('[role="option"]')).map((option) =>
+    option.textContent.trim(),
+  );
+  assert.deepEqual(options, ["Confirmada", "Check-in", "Check-out"]);
+  assert.equal(button("Cancelar reserva").disabled, false);
+});
+
 it("allows choosing and saving check-in with an unassigned room", async () => {
   const initial = detail();
   initial.rooms[0].roomId = null;

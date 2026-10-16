@@ -201,18 +201,16 @@ function pauseCommandBatch() {
 
 describe("concurrent reservation commands", () => {
   it.each(
-    (["cancelled", "no_show"] as const).flatMap((from) =>
-      (["confirmed", "checked_in", "checked_out"] as const).map((to) => ({ from, to })),
+    ([null, "room-101"] as const).flatMap((roomId) =>
+      (["confirmed", "checked_in", "checked_out"] as const).map((to) => ({ roomId, to })),
     ),
   )(
-    "rejects restoration from $from to $to when capacity changes after preflight",
-    async ({ from, to }) => {
+    "rejects restoration from cancelled to $to with room $roomId when capacity changes after preflight",
+    async ({ roomId, to }) => {
       let d = await create();
       // Cover both assigned and unassigned saved rooms.
-      d = await command(d, [
-        roomEdit(d, 0, { adults: 2, roomId: from === "no_show" ? null : "room-101" }),
-      ]);
-      d = await command(d, [{ type: "set-status", status: from }]);
+      d = await command(d, [roomEdit(d, 0, { adults: 2, roomId })]);
+      d = await command(d, [{ type: "set-status", status: "cancelled" }]);
       const body = {
         requestId: crypto.randomUUID(),
         actions: [{ type: "set-status", status: to }],
@@ -255,9 +253,9 @@ describe("concurrent reservation commands", () => {
   it.each([
     { status: "confirmed", checkIn: "2026-10-10", checkOut: "2026-10-12" },
     { status: "cancelled", checkIn: "2026-10-10", checkOut: "2026-10-14" },
-    { status: "no_show", checkIn: "2026-10-11", checkOut: "2026-10-14" },
+    { status: "cancelled", checkIn: "2026-10-11", checkOut: "2026-10-14" },
   ] as const)(
-    "rejects changed dates for $status when capacity changes after preflight",
+    "rejects changed dates for $status ($checkIn to $checkOut) when capacity changes after preflight",
     async ({ status, checkIn, checkOut }) => {
       let d = await create();
       d = await command(d, [roomEdit(d, 0, { adults: 2 }), { type: "set-status", status }]);
@@ -1327,16 +1325,27 @@ describe("reservation workflow", () => {
     expect(updated.guest.fullName).toBe(fullName);
     expect(updated.stayingGuests[0].fullName).toBe("李");
   });
-  it("keeps no-shows billable while releasing availability and checks restoration conflicts", async () => {
-    let d = await arrive(await create());
-    d = await command(d, [pay(10000), { type: "set-status", status: "no_show" }]);
+  it("allows staff cancellation, retains payments as credit, and checks restoration conflicts", async () => {
+    let d = await create();
+    d = await command(d, [
+      roomEdit(d),
+      pay(10000),
+      { type: "set-status", status: "cancelled", reason: "Nobody arrived" },
+    ]);
     expect(d).toMatchObject({
-      totalCents: 30000,
+      status: "cancelled",
+      cancellationReason: "Nobody arrived",
+      subtotalCents: 0,
+      totalCents: 0,
       paidCents: 10000,
-      balanceCents: 20000,
-      creditCents: 0,
+      balanceCents: -10000,
+      creditCents: 10000,
     });
     expect(d.payments[0].amountCents).toBe(10000);
+    expect(d.rooms[0].nights).toHaveLength(3);
+    expect(
+      await (await request("/availability?checkIn=2026-10-10&checkOut=2026-10-13")).json(),
+    ).toMatchObject({ roomTypes: [{ free: 3 }] });
     const next = await create();
     await command(next, [roomEdit(next)]);
     const actions: WorkflowAction[] = [{ type: "set-status", status: "confirmed" }];
@@ -1402,6 +1411,19 @@ describe("reservation workflow", () => {
   });
 });
 describe("reservation dates and lifecycle", () => {
+  it("rejects no-show status in commands, previews, and list filters without changing the reservation", async () => {
+    const d = await command(await create(), [pay(10000)]);
+    for (const endpoint of ["preview", "commands"]) {
+      const response = await request(`/reservations/${d.id}/${endpoint}`, "POST", {
+        requestId: crypto.randomUUID(),
+        actions: [pay(5000), { type: "set-status", status: "no_show" }],
+      });
+      expect(response.status).toBe(400);
+      expect(await (await request(`/reservations/${d.id}`)).json()).toEqual(d);
+    }
+    expect((await request("/reservations?status=no_show")).status).toBe(400);
+  });
+
   it("has one status and date range, with no actual timestamps, per-room lifecycle or versions", async () => {
     const d = await create(2);
     expect(d.status).toBe("confirmed");
@@ -1537,19 +1559,34 @@ describe("reservation dates and lifecycle", () => {
       ),
     ).toBe(true);
   });
-  it("removes a room, its charges and guest assignment, while retaining a reservation discount", async () => {
-    let d = await create(2);
+  it("removes a checked-in room and its charges while retaining the stay, payments, and discount", async () => {
+    let d = await arrive(await create(2));
     const removed = d.rooms[0].id;
-    d = await command(d, [{ type: "set-guests", guests: [guest(removed)] }, setDiscount(5000)]);
+    const retained = d.rooms[1];
+    d = await command(d, [
+      { type: "set-guests", guests: [guest(removed)] },
+      setDiscount(5000),
+      pay(35000),
+    ]);
     d = await command(d, [{ type: "remove-room", lineId: removed }]);
-    expect(d.rooms).toHaveLength(1);
-    expect(d.totalCents).toBe(25000);
+    expect(d.rooms).toEqual([retained]);
+    expect(d).toMatchObject({
+      status: "checked_in",
+      checkIn: "2026-10-10",
+      checkOut: "2026-10-13",
+      subtotalCents: 30000,
+      totalCents: 25000,
+      paidCents: 35000,
+      balanceCents: -10000,
+      creditCents: 10000,
+    });
+    expect(d.payments[0].amountCents).toBe(35000);
     expect(d.stayingGuests[0].reservationRoomId).toBeNull();
     expect(
-      sqlite
-        .prepare("SELECT id FROM reservation_room_nights WHERE reservation_room_id=?")
-        .all(removed),
-    ).toEqual([]);
+      await (await request("/availability?checkIn=2026-10-10&checkOut=2026-10-13")).json(),
+    ).toMatchObject({ roomTypes: [{ free: 2 }] });
+    const next = await create();
+    await command(next, [roomEdit(next, 0, { roomId: "room-101" })]);
     await command(d, [{ type: "remove-room", lineId: d.rooms[0].id }], 400);
   });
   it("swaps assigned rooms atomically and rejects duplicate final assignments", async () => {
@@ -1616,8 +1653,8 @@ describe("reservation dates and lifecycle", () => {
     await command(d, [{ type: "dates", checkIn: d.checkIn, checkOut: "2026-12-10" }], 400);
   });
   it("filters reservation lists by the parent status", async () => {
-    const d = await command(await create(2), [{ type: "set-status", status: "no_show" }]);
-    const rows = (await (await request("/reservations?status=no_show")).json()) as Detail[];
+    const d = await command(await create(2), [{ type: "set-status", status: "cancelled" }]);
+    const rows = (await (await request("/reservations?status=cancelled")).json()) as Detail[];
     expect(rows.map((row) => row.id)).toEqual([d.id]);
     expect(await (await request("/reservations?status=confirmed")).json()).toEqual([]);
   });

@@ -94,11 +94,11 @@ const examples = [
     rooms: [{ type: "deluxe", adults: 2, discountCents: 4000 }],
   },
   {
-    id: "no-show",
+    id: "staff-cancelled",
     name: ["Sebastián", "Castro"],
     arrival: -1,
     nights: 2,
-    status: "no_show",
+    status: "cancelled",
     rooms: [{ type: "standard", adults: 1 }],
   },
   {

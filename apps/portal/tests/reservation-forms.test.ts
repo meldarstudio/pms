@@ -41,6 +41,12 @@ const details = (): DetailsValues => ({
 });
 
 describe("reservation form schemas", () => {
+  it("rejects no-show status in reservation details", () => {
+    const result = detailsSchema(types).safeParse({ ...details(), status: "no_show" });
+    assert.equal(result.success, false);
+    assert.ok(schemaErrors(result).status);
+  });
+
   it("allows quoting operationally invalid drafts but still rejects unpriceable inputs", () => {
     const pricing = detailsSchema(types, { validateOperations: false });
     const values = details();

@@ -72,17 +72,9 @@ describe("room assignment", () => {
     );
   });
 
-  it("does not let cancelled or no-show bookings block a room", () => {
+  it("does not let cancelled reservations block a room", () => {
     assert.equal(
-      roomAssignmentIssue(
-        room,
-        target,
-        [
-          occupied("2026-10-05", "2026-10-06", "cancelled"),
-          occupied("2026-10-05", "2026-10-06", "no_show"),
-        ],
-        [],
-      ),
+      roomAssignmentIssue(room, target, [occupied("2026-10-05", "2026-10-06", "cancelled")], []),
       null,
     );
   });

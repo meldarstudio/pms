@@ -1,7 +1,6 @@
 import type { Reservation, Room, RoomClosure } from "./api";
 
 const openStatuses = new Set(["confirmed", "checked_in"]);
-const inactiveStatuses = new Set(["cancelled", "no_show"]);
 
 export type ReservationStay = {
   id: string;
@@ -85,7 +84,7 @@ export function roomAssignmentIssue(
         reservation.checkOut > target.checkIn &&
         line.id !== target.id &&
         line.roomId === room.id &&
-        !inactiveStatuses.has(reservation.status),
+        reservation.status !== "cancelled",
     ),
   );
   if (occupied) return "Occupied during this stay";

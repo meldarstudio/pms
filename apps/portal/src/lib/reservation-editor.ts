@@ -101,8 +101,7 @@ export function unavailableRoomIds(
   for (const reservation of reservations) {
     if (reservation.id === reservationId) continue;
     for (const line of reservation.rooms) {
-      if (!line.roomId || reservation.status === "cancelled" || reservation.status === "no_show")
-        continue;
+      if (!line.roomId || reservation.status === "cancelled") continue;
       const start = reservation.checkIn;
       if (overlaps(start, reservation.checkOut)) ids.add(line.roomId);
     }

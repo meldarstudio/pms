@@ -97,7 +97,7 @@ export const reservationListQuerySchema = listQuerySchema.extend({
   from: dateSchema.optional(),
   to: dateSchema.optional(),
   checkIn: dateSchema.optional(),
-  status: z.enum(["confirmed", "checked_in", "checked_out", "cancelled", "no_show"]).optional(),
+  status: z.enum(["confirmed", "checked_in", "checked_out", "cancelled"]).optional(),
   guestId: z.string().min(1).optional(),
 });
 
@@ -167,7 +167,7 @@ export const workflowActionSchema = z.discriminatedUnion("type", [
   z
     .object({
       type: z.literal("set-status"),
-      status: z.enum(["confirmed", "checked_in", "checked_out", "cancelled", "no_show"]),
+      status: z.enum(["confirmed", "checked_in", "checked_out", "cancelled"]),
       reason: z.string().trim().max(2000).optional(),
     })
     .strict(),

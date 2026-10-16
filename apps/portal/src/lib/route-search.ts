@@ -7,7 +7,6 @@ export const reservationStatusValues = [
   "confirmed",
   "checked_in",
   "checked_out",
-  "no_show",
   "cancelled",
 ] as const;
 export type ReservationStatus = (typeof reservationStatusValues)[number];

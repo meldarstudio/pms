@@ -183,10 +183,7 @@ export async function plan(
       Object.assign(state.reservation, {
         status: action.status,
         cancelledAt: action.status === "cancelled" ? (state.reservation.cancelledAt ?? now) : null,
-        cancellationReason:
-          action.status === "cancelled" || action.status === "no_show"
-            ? action.reason || null
-            : null,
+        cancellationReason: action.status === "cancelled" ? action.reason || null : null,
       });
     }
     if (action.type === "dates") {

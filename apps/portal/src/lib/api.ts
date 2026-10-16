@@ -330,7 +330,7 @@ export type WorkflowAction =
   | {
       type: "set-status";
       reason?: string;
-      status: "confirmed" | "checked_in" | "checked_out" | "cancelled" | "no_show";
+      status: "confirmed" | "checked_in" | "checked_out" | "cancelled";
     }
   | { type: "edit-payment"; paymentId: string; payment: PaymentInput }
   | { type: "delete-payment"; paymentId: string }

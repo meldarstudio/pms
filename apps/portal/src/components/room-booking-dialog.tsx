@@ -732,7 +732,6 @@ export function BookingEditor({
                         label: "Check-in",
                       },
                       { value: "checked_out", label: "Check-out" },
-                      { value: "no_show", label: "No se presentó" },
                       ...(reservationState === "cancelled"
                         ? [
                             {

@@ -6,7 +6,7 @@ import type { RoomDraft } from "./reservation-editor.ts";
 export const utcToday = () => new Date().toISOString().slice(0, 10);
 const optionalText = (max: number) => z.string().trim().max(max, `Máximo ${max} caracteres.`);
 const date = z.iso.date({ error: "Indica una fecha válida." });
-const status = z.enum(["confirmed", "checked_in", "checked_out", "cancelled", "no_show"]);
+const status = z.enum(["confirmed", "checked_in", "checked_out", "cancelled"]);
 const count = (min: number, message: string) =>
   z
     .string()

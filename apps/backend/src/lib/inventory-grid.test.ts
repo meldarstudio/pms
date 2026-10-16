@@ -38,7 +38,7 @@ describe("inventoryGrid", () => {
     expect(type?.nights.map((night) => night.free)).toEqual([1, 1, 2]);
   });
 
-  it("ignores cancelled and no-show lines but counts the final checked-out dates", () => {
+  it("ignores cancelled rooms but counts the final checked-out dates", () => {
     const [type] = inventoryGrid(
       ["2026-12-24"],
       [deluxe],
@@ -50,7 +50,6 @@ describe("inventoryGrid", () => {
           checkIn: "2026-12-24",
           checkOut: "2026-12-25",
         },
-        { roomTypeId: "deluxe", status: "no_show", checkIn: "2026-12-24", checkOut: "2026-12-25" },
         {
           roomTypeId: "deluxe",
           status: "checked_out",

@@ -17,6 +17,11 @@ One room included in a reservation, with a room type, declared occupancy, nightl
 optional physical room assignment.
 _Avoid_: Room line, physical room
 
+**Room removal**:
+The withdrawal of one reserved room from a reservation, removing its room charges and releasing its
+room inventory. The remaining reserved rooms keep the reservation's status and stay dates.
+_Avoid_: Reservation cancellation
+
 **Booking contact**:
 The primary contact for a reservation, who may be different from the people staying at the property.
 _Avoid_: Guest when only the contact is meant, payer
@@ -71,9 +76,9 @@ nights in room inventory.
 _Avoid_: Paid, cancelled
 
 **Cancellation**:
-The withdrawal of a reservation at the request of the person who reserved, releasing its room inventory
-and reducing its bill to zero. The reservation and its payments remain on record, with payments retained
-as credit for reference.
+The withdrawal of a reservation at the request of the person who reserved or by a staff decision,
+releasing its room inventory and reducing its bill to zero. The reservation and its payments remain on
+record, with payments retained as credit for reference.
 _Avoid_: Deletion, refund
 
 ### Rooms and availability

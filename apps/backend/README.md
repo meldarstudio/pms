@@ -34,6 +34,12 @@ Check-in and checkout actions change the reservation status. They do not record
 separate arrival or departure timestamps or change the dates. For an early
 departure, save the shorter date range together with the checkout status.
 
+Staff may cancel a whole reservation, releasing its rooms and reducing its bill
+to zero. The reservation and its payments remain recorded, with payments retained
+as credit for reference. Removing an individual reserved room drops its charges
+and releases its inventory while the remaining rooms keep the reservation's
+status and stay dates. To release the last room, cancel the reservation.
+
 ## Concurrent reservation saves
 
 The reservation workflow loads the reservation, booking contact, room lines,
@@ -66,7 +72,7 @@ atomic room swaps remains inside the write transaction.
 
 The workflow decides which rooms need current-rule validation from the original
 and proposed reservation states. Added or changed rooms, changed stay dates, and
-restoration from `cancelled` or `no_show` to an inventory-holding status require
+restoration from `cancelled` to an inventory-holding status require
 validation. Unchanged saved rooms can still accept payments, notes, discounts,
 status corrections within inventory-holding statuses, and cancellation after a
 room type's occupancy limit is reduced.
@@ -113,7 +119,7 @@ It preserves unrelated tables and Cloudflare metadata. The rebuild also supports
 The dataset contains three room types, 60 rooms, 21 guests and reservations,
 nightly prices and payments, rate overrides, and three room closures.
 Bookings include past stays, current stays, arrivals and departures today,
-upcoming stays, cancelled and no-show bookings, and multi-room bookings. Alex,
+upcoming stays, cancelled reservations, and multi-room reservations. Alex,
 Sam, and Jamie Demo have confirmed unassigned rooms for testing manual assignment.
 Room 101 has consecutive bookings that share a checkout/check-in date.
 
