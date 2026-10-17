@@ -57,7 +57,7 @@ the local Worker variables:
 
 ```sh
 cp apps/backend/.dev.vars.example apps/backend/.dev.vars
-pnpm auth:hash                  # prompts for a password, prints ADMIN_PASSWORD_HASH
+pnpm auth:hash                  # prompts for a password, prints STAFF_PASSWORD_HASH
 pnpm auth:hash --session-secret # prints a SESSION_SECRET
 ```
 

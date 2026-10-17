@@ -47,6 +47,20 @@ describe("staff login", () => {
     expect(await session.json()).toEqual({ username: STAFF_USERNAME });
   });
 
+  it("marks the cookie Secure when served over HTTPS", async () => {
+    const response = await app.request(
+      "https://api.hotelmanantialchurin.com/login",
+      {
+        method: "POST",
+        headers: { "content-type": "application/json", origin: PORTAL_ORIGIN },
+        body: JSON.stringify(loginBody()),
+      },
+      env,
+    );
+    expect(response.status).toBe(200);
+    expect(response.headers.getSetCookie()[0]).toMatch(/Secure/i);
+  });
+
   it.each([
     ["wrong password", { password: "not the password" }],
     ["wrong username", { username: "someone-else" }],
@@ -152,7 +166,7 @@ describe("session guard", () => {
 
   it.each([
     ["session secret", { SESSION_SECRET: "" }],
-    ["password hash", { ADMIN_PASSWORD_HASH: "" }],
+    ["password hash", { STAFF_PASSWORD_HASH: "" }],
   ])("fails closed and logs when the %s is not configured", async (_name, override) => {
     const error = vi.spyOn(console, "error").mockImplementation(() => {});
     const signedIn = await signIn(env);

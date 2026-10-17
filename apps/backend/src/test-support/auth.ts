@@ -14,7 +14,7 @@ export async function authEnv(overrides: Partial<Env["Bindings"]> = {}): Promise
     DB: {} as D1Database,
     CURRENCY: "PEN",
     AUTH_USERNAME: STAFF_USERNAME,
-    ADMIN_PASSWORD_HASH: await passwordHash,
+    STAFF_PASSWORD_HASH: await passwordHash,
     SESSION_SECRET: "test-session-secret",
     ALLOWED_ORIGINS: PORTAL_ORIGIN,
     LOGIN_LIMITER: { limit: async () => ({ success: true }) },

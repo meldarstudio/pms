@@ -17,7 +17,7 @@ authRoutes.post("/login", validate("json", loginSchema), async (c) => {
   const { username, password } = c.req.valid("json");
   const [usernameMatches, passwordMatches] = await Promise.all([
     matchesText(username.toLowerCase(), c.env.AUTH_USERNAME.toLowerCase()),
-    verifyPassword(password, c.env.ADMIN_PASSWORD_HASH),
+    verifyPassword(password, c.env.STAFF_PASSWORD_HASH),
   ]);
   if (!usernameMatches || !passwordMatches) throw new HttpError(401, "invalid credentials");
 

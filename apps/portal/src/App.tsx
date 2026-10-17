@@ -4,6 +4,7 @@ import { LogOutIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useLogout } from "@/lib/queries";
+import { toastError } from "@/lib/toast";
 import { lastCalendarSearch, lastReservationsSearch, reservationsSearch } from "@/lib/route-search";
 
 export function App() {
@@ -55,7 +56,11 @@ export function App() {
           size="sm"
           className="ml-auto"
           disabled={logout.isPending}
-          onClick={() => logout.mutate()}
+          onClick={() =>
+            logout.mutate(undefined, {
+              onError: (cause) => toastError("No se pudo cerrar la sesión", cause),
+            })
+          }
         >
           <LogOutIcon data-icon="inline-start" />
           Salir

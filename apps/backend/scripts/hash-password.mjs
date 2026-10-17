@@ -35,7 +35,7 @@ async function main() {
   const args = process.argv.slice(2);
   if (args.includes("--help")) {
     console.log("Usage: pnpm auth:hash [--session-secret]");
-    console.log("Prompts for the staff password and prints its ADMIN_PASSWORD_HASH.");
+    console.log("Prompts for the staff password and prints its STAFF_PASSWORD_HASH.");
     console.log("--session-secret prints a new random SESSION_SECRET instead.");
     return;
   }

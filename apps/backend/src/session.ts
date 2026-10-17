@@ -9,10 +9,10 @@ const MAX_AGE_SECONDS = 30 * 24 * 60 * 60;
 const PUBLIC_ROUTES = new Set(["GET /", "POST /login"]);
 
 export function authConfigured(c: Context<Env>): boolean {
-  const { AUTH_USERNAME, ADMIN_PASSWORD_HASH, SESSION_SECRET } = c.env;
-  if (AUTH_USERNAME && ADMIN_PASSWORD_HASH && SESSION_SECRET) return true;
+  const { AUTH_USERNAME, STAFF_PASSWORD_HASH, SESSION_SECRET } = c.env;
+  if (AUTH_USERNAME && STAFF_PASSWORD_HASH && SESSION_SECRET) return true;
   console.error(
-    "Staff login is not configured: set AUTH_USERNAME, ADMIN_PASSWORD_HASH and SESSION_SECRET",
+    "Staff login is not configured: set AUTH_USERNAME, STAFF_PASSWORD_HASH and SESSION_SECRET",
   );
   return false;
 }

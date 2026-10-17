@@ -1,6 +1,6 @@
 # Copy to .dev.vars. Wrangler reads it for `wrangler dev`; it is git-ignored.
 # Generate the hash with: pnpm auth:hash
-ADMIN_PASSWORD_HASH=
+STAFF_PASSWORD_HASH=
 # Generate with: pnpm auth:hash --session-secret
 SESSION_SECRET=
 # The portal's dev origin. It must be localhost, not 127.0.0.1, so the session cookie is same-site.
