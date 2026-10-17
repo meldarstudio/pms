@@ -17,13 +17,15 @@ const copy = {
     title: "Configura tu alojamiento",
     description:
       "Agrega tus tipos de habitación y habitaciones en Configuración para empezar a recibir reservas.",
+    action: "Configurar alojamiento",
   },
   rooms: {
     title: "Aún no hay habitaciones",
     description:
       "Agrega habitaciones a tus tipos en Configuración para empezar a recibir reservas.",
+    action: "Agregar habitaciones",
   },
-} satisfies Record<MissingSetup, { title: string; description: string }>;
+} satisfies Record<MissingSetup, { title: string; description: string; action: string }>;
 
 export function SetupRequired({ missing }: { missing: MissingSetup }) {
   return (
@@ -36,8 +38,8 @@ export function SetupRequired({ missing }: { missing: MissingSetup }) {
         <EmptyDescription>{copy[missing].description}</EmptyDescription>
       </EmptyHeader>
       <EmptyContent>
-        <Link to="/setup" className={buttonVariants({ variant: "outline" })}>
-          Ir a Configuración
+        <Link to="/setup" className={buttonVariants()}>
+          {copy[missing].action}
         </Link>
       </EmptyContent>
     </Empty>

@@ -198,14 +198,29 @@ async function click(label: string) {
 }
 
 it.each([
-  ["/calendar?from=2026-10-14&span=14", [], "Configura tu alojamiento"],
-  ["/calendar?from=2026-10-14&span=14", [double], "Aún no hay habitaciones"],
-  ["/reservations?q=Ana&status=confirmed", [], "Configura tu alojamiento"],
-  ["/reservations?q=Ana&status=confirmed", [double], "Aún no hay habitaciones"],
-  ["/inventory?from=2026-10-14&span=7", [], "Configura tu alojamiento"],
+  ["/calendar?from=2026-10-14&span=14", [], "Configura tu alojamiento", "Configurar alojamiento"],
+  [
+    "/calendar?from=2026-10-14&span=14",
+    [double],
+    "Aún no hay habitaciones",
+    "Agregar habitaciones",
+  ],
+  [
+    "/reservations?q=Ana&status=confirmed",
+    [],
+    "Configura tu alojamiento",
+    "Configurar alojamiento",
+  ],
+  [
+    "/reservations?q=Ana&status=confirmed",
+    [double],
+    "Aún no hay habitaciones",
+    "Agregar habitaciones",
+  ],
+  ["/inventory?from=2026-10-14&span=7", [], "Configura tu alojamiento", "Configurar alojamiento"],
 ] as const)(
   "keeps %s accessible with its setup CTA (room types: %j)",
-  async (path, roomTypes, title) => {
+  async (path, roomTypes, title, action) => {
     mockApi();
     types = [...roomTypes];
     rooms = [];
@@ -215,7 +230,7 @@ it.each([
     const originalLocation = router.state.location.href;
     const link = container.querySelector('a[href="/setup"]');
     assert.ok(link);
-    assert.equal(link.textContent.trim(), "Ir a Configuración");
+    assert.equal(link.textContent.trim(), action);
     await React.act(async () =>
       link.dispatchEvent(
         new window.MouseEvent("click", { bubbles: true, cancelable: true, button: 0 }),
