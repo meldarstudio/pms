@@ -284,22 +284,79 @@ new policy may need staff attention before changing their rooms. Do not drop
 the child column or restore the old triggers underneath the new Worker.
 No remote migration or deployment is part of local validation.
 
+### Safe production migrations
+
+Run from the repository root in an interactive terminal, with Cloudflare access
+already configured:
+
+```sh
+pnpm --filter @pms/backend run db:migrate:remote
+```
+
+This production-only command never deploys code. It:
+
+1. Reads the target binding from `wrangler.jsonc` and queries the existing migration
+   ledger without creating or repairing it. Missing, empty, unknown, or
+   nonsequential history stops the run. SQL files must match the Drizzle journal.
+2. Shows pending SQL, its checksums, the database name and ID, and the downtime
+   warning. Review compatibility with the currently deployed Worker and all
+   existing records. Type `pms-production` to approve the displayed work. There is
+   no `--yes` bypass; CI and noninteractive execution are refused. With no pending
+   migrations, it exits without prompting or exporting.
+3. Exports SQL to a unique directory under `~/.pms-production-backups/`. The
+   directory is private and files are owner-only from creation. Exporting
+   interrupts database access; applying migrations may also interrupt requests.
+   Choose an appropriate window before approving. Failed or empty exports block
+   migration. A completed export receives a SHA-256 checksum in `report.json`;
+   this is **not a restore-tested backup**.
+4. Applies one approved migration at a time from private copies, checking the
+   local files and remote history before each apply. A file or history change
+   stops the run. Each migration must exit successfully and appear in a fresh
+   ledger query before the next begins.
+5. Reports the observed result and retains a private `report.json` with the target,
+   migration and backup checksums, and sanitized diagnostics. Wrangler disk logs
+   are disabled and child-output URLs are redacted so signed export links are not
+   retained. Backups and reports remain until you explicitly delete them.
+
+The command holds `~/.pms-production-backups/migration.lock` during the run. This
+only excludes cooperating runs under the same home directory. Coordinate **one
+operator at a time**, including other machines and direct Wrangler commands;
+the lock is not distributed. If a crash leaves a lock, inspect its PID, host, and
+start time and confirm no migration is running before removing that specific file.
+Existing backup directories must be owned by the operator with mode `0700`.
+
+On failure, stop and inspect the report. Earlier migrations may have committed.
+The report lists newly observed ledger entries when postflight succeeds; an
+`unknown` outcome means the command could not establish the final state. An
+interrupted report still marked `applying` also needs investigation. Do not rerun
+blindly: reconcile the live ledger first. There is no automatic migration retry,
+restore, history repair, or database reset. Destructive changes need explicit
+approval for their specific data loss and a separate recovery plan. A restore can
+overwrite reservations or payments saved since the export and requires its own
+authorization. Keep schema and applied history when rolling back application
+builds where compatible; prepare a reviewed forward repair when needed.
+
+Local validation does not prove remote locking, outage duration, restoration, or
+application correctness. Perform the release's application smoke checks separately.
+
 ### Commands and build setup
 
 ```sh
+pnpm --filter @pms/backend run db:migrate:remote
 pnpm --filter @pms/backend run deploy
 pnpm --filter @pms/backend cf-typegen
 ```
 
-The deploy command applies pending migrations to `pms-production` before
-deploying the `pms-api` Worker. Production starts with schema only.
+**Both `deploy` and `deploy:ci` now deploy code only.** They do not apply
+migrations. For a schema release, run the safe migration command above before
+deploying `pms-api` or merging schema-dependent code to `main`.
 
 `main` is the only deployed branch. Feature branches merge to `main`.
 Day-to-day development uses the local D1 database and `pnpm db:reset:local`.
 
-A consolidated baseline requires rebuilding or replacing `pms-production`
-before deploying. The deploy script applies pending migrations and does not
-rebuild an existing database.
+Preserve the existing production baseline, records, and migration ledger. A
+history mismatch needs investigation and a data-preserving upgrade plan, not a
+production rebuild. New-database bootstrap is outside the safe wrapper's scope.
 
 For Workers Builds, use `pnpm check` as the build
 command and `pnpm --filter @pms/backend run deploy:ci` as the deploy command.
