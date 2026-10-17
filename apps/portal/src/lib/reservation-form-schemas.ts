@@ -214,7 +214,7 @@ const money = (positive: boolean) =>
   );
 export const paymentSchema = z.object({
   amount: money(true),
-  method: z.enum(["cash", "card", "transfer", "yape", "other"], {
+  method: z.enum(["cash", "card", "transfer", "yape", "plin", "other"], {
     error: "Selecciona un método de pago válido.",
   }),
   date: date.refine((value) => value <= utcToday(), "La fecha del pago no puede ser futura."),

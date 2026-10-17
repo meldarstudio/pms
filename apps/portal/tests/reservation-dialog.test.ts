@@ -327,6 +327,37 @@ it("clears each successful payment without restoring the original suggested bala
   assert.deepEqual(amounts, [10000, 5000]);
 });
 
+for (const [method, label] of [
+  ["yape", "Yape"],
+  ["plin", "Plin"],
+] as const) {
+  it(`records a ${label} payment through the real form without requiring a reference`, async () => {
+    const writes: WorkflowCommand["actions"][] = [];
+    const paymentDate = new Date().toISOString().slice(0, 10);
+    await render(
+      React.createElement(forms.PaymentForm, {
+        detail: detail(),
+        disabled: false,
+        onDirtyChange: () => {},
+        onReady: async (_title, actions) => {
+          writes.push(actions);
+        },
+      }),
+    );
+    await fill("amount", "100.25");
+    await choose("Método", label);
+    await submit();
+    assert.deepEqual(writes, [
+      [
+        {
+          type: "add-payment",
+          payment: { amountCents: 10025, method, paymentDate },
+        },
+      ],
+    ]);
+  });
+}
+
 it("refreshes an untouched payment suggestion and preserves a manually entered amount", async () => {
   const props = {
     disabled: false,

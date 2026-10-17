@@ -25,6 +25,7 @@ export const paymentMethods = [
   { value: "card", label: "Tarjeta" },
   { value: "transfer", label: "Transferencia" },
   { value: "yape", label: "Yape" },
+  { value: "plin", label: "Plin" },
   { value: "other", label: "Otro" },
 ];
 

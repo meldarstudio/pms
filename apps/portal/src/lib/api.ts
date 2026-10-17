@@ -117,7 +117,7 @@ export type StayingGuest = BookingContact & {
   reservationRoomId: string | null;
 };
 
-export type PaymentMethod = "cash" | "card" | "transfer" | "yape" | "other";
+export type PaymentMethod = "cash" | "card" | "transfer" | "yape" | "plin" | "other";
 
 export type PaymentInput = {
   amountCents: number;

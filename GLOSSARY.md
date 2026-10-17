@@ -188,6 +188,10 @@ _Avoid_: Balance, amount paid
 An amount of money received toward a reservation's bill, with a payment method and payment date.
 _Avoid_: Discount, room charge
 
+**Payment method**:
+The way money was received for a payment, such as cash, card, bank transfer, Yape, or Plin.
+_Avoid_: Payment reference, payment processing
+
 **Payment date**:
 The calendar date on which a payment was received.
 _Avoid_: Date entered

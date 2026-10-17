@@ -134,7 +134,7 @@ const cents = z.number().int().min(1).max(1000000000);
 export const paymentInputSchema = z
   .object({
     amountCents: cents,
-    method: z.enum(["cash", "card", "transfer", "yape", "other"]),
+    method: z.enum(["cash", "card", "transfer", "yape", "plin", "other"]),
     paymentDate: z.iso.date(),
     reference: text(200).toUpperCase().optional(),
     notes: text(2000).optional(),

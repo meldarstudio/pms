@@ -738,6 +738,53 @@ describe("reservation workflow", () => {
     );
     await command(d, [roomEdit(d, 0, { roomId: "room-102" })], 409);
   });
+  it.each(["yape", "plin"])(
+    "records and corrects %s payments with an optional reference",
+    async (method) => {
+      const d = await create();
+      const added = await request(`/reservations/${d.id}/commands`, "POST", {
+        requestId: crypto.randomUUID(),
+        actions: [
+          {
+            type: "add-payment",
+            payment: { amountCents: 10000, method, paymentDate: "2026-10-10" },
+          },
+        ],
+      });
+      expect(added.status).toBe(200);
+      const saved = (await added.json()) as Detail;
+      expect(saved.payments).toHaveLength(1);
+      expect(saved.payments[0]).toMatchObject({ method, amountCents: 10000, reference: null });
+      expect(saved.balanceCents).toBe(20000);
+
+      const edited = await request(`/reservations/${d.id}/commands`, "POST", {
+        requestId: crypto.randomUUID(),
+        actions: [
+          {
+            type: "edit-payment",
+            paymentId: saved.payments[0].id,
+            payment: {
+              amountCents: 15000,
+              method,
+              paymentDate: "2026-10-09",
+              reference: " op-123 ",
+            },
+          },
+        ],
+      });
+      expect(edited.status).toBe(200);
+      const retrieved = (await (await request(`/reservations/${d.id}`)).json()) as Detail;
+      expect(retrieved.payments).toHaveLength(1);
+      expect(retrieved.payments[0]).toMatchObject({
+        id: saved.payments[0].id,
+        method,
+        amountCents: 15000,
+        paymentDate: "2026-10-09",
+        reference: "OP-123",
+      });
+      expect(retrieved.balanceCents).toBe(15000);
+    },
+  );
   it("edits a mistaken cash payment in place after checkout without reopening the stay", async () => {
     let d = await arrive(await create());
     d = await command(d, [pay(11000), all(d, "check-out")]);
