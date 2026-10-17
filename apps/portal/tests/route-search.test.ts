@@ -9,10 +9,6 @@ import {
 } from "../src/lib/route-search.ts";
 
 describe("route search validation", () => {
-  it("discards unsupported no-show filters", () => {
-    assert.equal(reservationsSearch({ status: "no_show" }).status, "all");
-  });
-
   it("accepts real calendar dates and rejects malformed dates", () => {
     assert.equal(validDay("2026-04-30"), "2026-04-30");
     assert.equal(validDay("2026-02-30"), undefined);

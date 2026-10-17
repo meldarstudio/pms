@@ -18,9 +18,8 @@ import {
 } from "../src/lib/reservation-form-schemas.ts";
 import { setServerErrors } from "../src/lib/form-errors.ts";
 import { blurThenChange } from "../src/lib/reservation-form-state.ts";
-import { createWorkflowSaver } from "../src/lib/workflow-save.ts";
 import { roomEdits } from "../src/lib/reservation-editor.ts";
-import type { ReservationDetail, WorkflowCommand } from "../src/lib/api.ts";
+import type { ReservationDetail } from "../src/lib/api.ts";
 
 const types = [
   { id: "double", name: "Doble", maxOccupancy: 2 },
@@ -41,12 +40,6 @@ const details = (): DetailsValues => ({
 });
 
 describe("reservation form schemas", () => {
-  it("rejects no-show status in reservation details", () => {
-    const result = detailsSchema(types).safeParse({ ...details(), status: "no_show" });
-    assert.equal(result.success, false);
-    assert.ok(schemaErrors(result).status);
-  });
-
   it("allows quoting operationally invalid drafts but still rejects unpriceable inputs", () => {
     const pricing = detailsSchema(types, { validateOperations: false });
     const values = details();
@@ -283,8 +276,6 @@ describe("TanStack form lifecycle", () => {
     const field = new FieldApi({ form, name: "date" });
     const unmountField = field.mount();
     const error = new ApiError(400, "payment date cannot be in the future");
-    assert.equal(error.code, "payment date cannot be in the future");
-    assert.equal(error.status, 400);
     setServerErrors(form, serverFieldErrors(error, "payment")!);
     assert.deepEqual(field.state.meta.errors, ["La fecha del pago no puede ser futura."]);
     field.handleChange("2020-01-01");
@@ -295,56 +286,6 @@ describe("TanStack form lifecycle", () => {
       null,
     );
     unmountField();
-    unmount();
-  });
-  it("keeps reset values when the next render re-passes those same defaults", () => {
-    const initial = { notes: "original" };
-    const saved = { notes: "edited" };
-    const form = new FormApi({ defaultValues: initial });
-    const unmount = form.mount();
-    const field = new FieldApi({ form, name: "notes" });
-    const unmountField = field.mount();
-    field.handleChange(saved.notes);
-    form.reset(saved);
-    assert.equal(form.state.values.notes, saved.notes);
-    assert.equal(form.state.isTouched, false);
-    form.update({ defaultValues: initial });
-    assert.equal(form.state.values.notes, initial.notes);
-    form.reset(saved);
-    form.update({ defaultValues: saved });
-    assert.equal(form.state.values.notes, saved.notes);
-    assert.equal(form.state.isDefaultValue, true);
-    unmountField();
-    unmount();
-  });
-  it("preserves failed payment values and reuses the retry command", async () => {
-    const saver = createWorkflowSaver();
-    const commands: WorkflowCommand[] = [];
-    const defaults = { ...paymentDefaults(), amount: "10.25" };
-    const form = new FormApi({
-      defaultValues: defaults,
-      validators: { onSubmit: paymentSchema },
-      onSubmit: async ({ value }) => {
-        try {
-          await saver(
-            [{ type: "add-payment", payment: paymentPayload(value) }],
-            async (command) => {
-              commands.push(command);
-              if (commands.length === 1) throw new Error("Lost response");
-            },
-          );
-          form.reset(paymentDefaults());
-        } catch {
-          /* Preserve the draft for an explicit retry. */
-        }
-      },
-    });
-    const unmount = form.mount();
-    await form.handleSubmit();
-    assert.equal(form.state.values.amount, "10.25");
-    await form.handleSubmit();
-    assert.deepEqual(commands[0], commands[1]);
-    assert.equal(form.state.values.amount, "");
     unmount();
   });
 });

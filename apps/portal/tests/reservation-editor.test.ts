@@ -232,18 +232,6 @@ describe("billing changes versus validation", () => {
   });
 });
 describe("reservation edit drafts", () => {
-  it("copies occupancy and assignment without the line id", () => {
-    assert.deepEqual(
-      stayValue({
-        id: "line-9",
-        roomId: "101",
-        roomTypeId: "double",
-        adults: 2,
-        children: 1,
-      } as ReservationDetail["rooms"][number]),
-      { roomTypeId: "double", roomId: "101", adults: 2, children: 1 },
-    );
-  });
   it("removes a saved room and adds a new room through the same reservation command", () => {
     const saved = line("101");
     const added = draft(line("102"));

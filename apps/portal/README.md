@@ -29,8 +29,8 @@ error toasts. Query failures stay beside the content they block.
 Run `pnpm exec vp test` from the repository root for both test projects,
 `pnpm test` to run backend then portal, or `pnpm --filter @pms/portal test`
 for the portal alone. Tests use `vite-plus/test` and do not need a browser.
-The dialog suite uses happy-dom and a Vite SSR server to render the actual
-components.
+The dialog suite in `tests/reservation-dialog.test.ts` uses happy-dom and a Vite
+SSR server with an explicit portal root to render the actual components.
 
 Run `pnpm check` for Oxfmt, Oxlint, and native type checks across the portal,
 backend, and shared schemas. `pnpm --filter @pms/portal typecheck` runs only native type

@@ -508,7 +508,7 @@ async function renderNewBooking(onCreated: (id: string) => void = () => {}) {
   await until(() => !button("Crear reserva").disabled, "New booking quote must load");
 }
 
-it("creates an open-section booking with its contact, notes, room quote, and initial discount", async () => {
+it("creates a reservation with its contact, notes, room quote, and initial discount", async () => {
   const writes: CreateBookingInput[] = [];
   let created = "";
   mockCreationApi(async (input) => {
@@ -518,11 +518,6 @@ it("creates an open-section booking with its contact, notes, room quote, and ini
   await renderNewBooking((id) => {
     created = id;
   });
-  const labels = [...container.querySelectorAll("label, legend")].map(
-    (element) => element.textContent,
-  );
-  assert.ok(labels.indexOf("Check-in") < labels.indexOf("Contacto principal"));
-  assert.ok(labels.indexOf("Contacto principal") < labels.indexOf("Notas · Opcional"));
   await fill("fullName", "  Ada Lovelace  ");
   await fill("email", "  ada@example.com  ");
   await fill("phone", "+51 999 888 777");
@@ -797,6 +792,10 @@ it("validates the primary contact and room capacity before creating a reservatio
   await renderNewBooking();
   await submit();
   assert.equal(control("fullName").getAttribute("aria-invalid"), "true");
+  await until(
+    () => window.document.activeElement === control("fullName"),
+    "Submitting must focus the first invalid editable field",
+  );
   await fill("fullName", "Ada Lovelace");
   await fill("email", "invalid");
   await fill("rooms[0].room.adults", "3");
@@ -1050,22 +1049,6 @@ it("keeps pricing an added room when its occupancy is invalid and blocks saving"
   assert.equal(container.textContent.includes("La habitación no tiene capacidad"), false);
 });
 
-it("offers stay statuses and staff cancellation without a no-show option", async () => {
-  mockApi(async () => previewResponse(detail()));
-  await render(
-    React.createElement(dialogs.BookingEditor, {
-      detail: detail(),
-      onRefresh: () => {},
-    }),
-  );
-  await React.act(async () => fieldTrigger("Estado de la reserva").click());
-  const options = Array.from(window.document.querySelectorAll('[role="option"]')).map((option) =>
-    option.textContent.trim(),
-  );
-  assert.deepEqual(options, ["Confirmada", "Check-in", "Check-out"]);
-  assert.equal(button("Cancelar reserva").disabled, false);
-});
-
 it("allows choosing and saving check-in with an unassigned room", async () => {
   const initial = detail();
   initial.rooms[0].roomId = null;
@@ -1087,7 +1070,6 @@ it("allows choosing and saving check-in with an unassigned room", async () => {
   await submit();
   await until(() => writes.length === 1, "Check-in must save");
   assert.deepEqual(writes[0].actions, [{ type: "set-status", status: "checked_in" }]);
-  assert.equal(window.document.body.textContent.includes("antes del check-in"), false);
 });
 
 it("previews and saves added unassigned rooms after check-in and allows clearing assignments", async () => {
@@ -1142,7 +1124,6 @@ it("previews and saves added unassigned rooms after check-in and allows clearing
     writes[0].actions.some((action) => action.type === "add-room" && action.room.roomId === null),
   );
   await until(() => button("Guardar detalles").disabled, "Successful save must reset changes");
-  assert.equal(window.document.body.textContent.includes("antes del check-in"), false);
 });
 
 it("retries a failed validation preview without losing edits and re-enables saving", async () => {

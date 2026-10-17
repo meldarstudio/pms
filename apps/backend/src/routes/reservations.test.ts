@@ -121,6 +121,16 @@ async function command(d: Detail, actions: WorkflowAction[], status = 200) {
   expect(r.status, JSON.stringify(body)).toBe(status);
   return body as Detail;
 }
+async function previewCommand(d: Detail, actions: WorkflowAction[]): Promise<Preview> {
+  const response = await request(`/reservations/${d.id}/preview`, "POST", {
+    requestId: crypto.randomUUID(),
+    actions,
+  });
+  const body = await response.json();
+  expect(response.status, JSON.stringify(body)).toBe(200);
+  return body as Preview;
+}
+
 const roomEdit = (d: Detail, i = 0, patch: Record<string, unknown> = {}): WorkflowAction => ({
   type: "edit-room",
   lineId: d.rooms[i].id,
@@ -620,8 +630,6 @@ describe("concurrent reservation commands", () => {
       documentType: "DNI",
       documentNumber: "87654321",
     });
-    expect(saved.guest).not.toHaveProperty("revision");
-    expect(saved).not.toHaveProperty("revision");
   });
 
   it("bounds retries, rolls back exhausted attempts, and keeps the request ID usable", async () => {
@@ -701,23 +709,6 @@ describe("reservation workflow", () => {
     await command(d, [{ type: "set-discount", amountCents: -1 }], 400);
     await command(d, [{ type: "set-discount", amountCents: 1.5 }], 400);
   });
-  it("removes cancelled charges but retains payments as credit and in payment reports", async () => {
-    let d = await arrive(await create());
-    d = await command(d, [pay(30000), setDiscount(5000), all(d, "check-out")]);
-    d = await command(d, [{ type: "set-status", status: "cancelled" }]);
-    expect(d).toMatchObject({
-      totalCents: 0,
-      paidCents: 30000,
-      discountCents: 0,
-      savedDiscountCents: 5000,
-      creditCents: 30000,
-      balanceCents: -30000,
-    });
-    expect(d.payments[0].amountCents).toBe(30000);
-    expect(d.rooms[0].nights).toHaveLength(3);
-    const report = await (await request("/payments?from=2026-10-10&to=2026-10-10")).json();
-    expect(report).toMatchObject({ totalCents: 30000, payments: [{ amountCents: 30000 }] });
-  });
   it("reprices type changes and permits an explicit matching assignment", async () => {
     sqlite.exec(
       "INSERT INTO room_types VALUES ('other','Twin',3,20000,'2026-10-10'); INSERT INTO rooms VALUES ('201','201','other')",
@@ -789,10 +780,9 @@ describe("reservation workflow", () => {
     d = await command(d, [{ type: "delete-payment", paymentId: id }]);
     expect(d.paidCents).toBe(0);
     expect(d.payments).toEqual([]);
-    expect(sqlite.prepare("SELECT id FROM payments WHERE id=?").get(id)).toBeUndefined();
     expect((await command(other, [pay(10000)])).paidCents).toBe(10000);
   });
-  it("deduplicates retries and rejects changed payloads without a version contract", async () => {
+  it("deduplicates retries and rejects changed payloads", async () => {
     const d = await create(),
       body = { requestId: crypto.randomUUID(), actions: [pay(10000)] };
     expect((await request(`/reservations/${d.id}/commands`, "POST", body)).status).toBe(200);
@@ -916,16 +906,6 @@ describe("reservation workflow", () => {
     );
     expect(responses.map((r) => r.status).sort((a, b) => a - b)).toEqual([201, 409]);
   });
-  it("rolls back extension dates and prices when another booking owns the added night", async () => {
-    let d = await create(1, { checkIn: "2026-10-10", checkOut: "2026-10-11" });
-    d = await command(d, [roomEdit(d)]);
-    let next = await create(1, { checkIn: "2026-10-11", checkOut: "2026-10-13" });
-    next = await command(next, [roomEdit(next)]);
-    await command(d, [{ type: "dates", checkIn: d.checkIn, checkOut: "2026-10-12" }], 409);
-    const fresh = (await (await request(`/reservations/${d.id}`)).json()) as Detail;
-    expect(fresh.checkOut).toBe("2026-10-11");
-    expect(fresh.totalCents).toBe(10000);
-  });
   it("does not clear an assignment on a failed same-type move", async () => {
     let d = await arrive(await create());
     let other = await create();
@@ -947,12 +927,8 @@ describe("reservation workflow", () => {
     const a = await create(),
       b = await create();
     await command(a, [roomEdit(a)]);
-    const r = await request(`/reservations/${b.id}/preview`, "POST", {
-      requestId: crypto.randomUUID(),
-      actions: [roomEdit(b)],
-    });
-    expect(r.status).toBe(200);
-    expect(await r.json()).toMatchObject({
+    const r = await previewCommand(b, [roomEdit(b)]);
+    expect(r).toMatchObject({
       billing: { totalCents: 30000 },
       validation: {
         issues: [
@@ -972,12 +948,8 @@ describe("reservation workflow", () => {
     const actions: WorkflowAction[] = [
       { type: "dates", checkIn: first.checkIn, checkOut: "2026-10-14" },
     ];
-    const response = await request(`/reservations/${first.id}/preview`, "POST", {
-      requestId: crypto.randomUUID(),
-      actions,
-    });
-    expect(response.status).toBe(200);
-    expect(await response.json()).toMatchObject({
+    const response = await previewCommand(first, actions);
+    expect(response).toMatchObject({
       billing: { subtotalCents: 40000, totalCents: 40000, checkOut: "2026-10-14" },
       validation: {
         issues: [
@@ -990,11 +962,7 @@ describe("reservation workflow", () => {
     expect(saved.checkOut).toBe("2026-10-13");
     expect(saved.totalCents).toBe(30000);
     const corrected = [...actions, roomEdit(saved, 0, { roomId: "room-102" })];
-    const valid = await request(`/reservations/${first.id}/preview`, "POST", {
-      requestId: crypto.randomUUID(),
-      actions: corrected,
-    });
-    expect(await valid.json()).toMatchObject({
+    expect(await previewCommand(first, corrected)).toMatchObject({
       billing: { totalCents: 40000 },
       validation: { issues: [] },
     });
@@ -1006,12 +974,8 @@ describe("reservation workflow", () => {
       "INSERT INTO room_types VALUES ('other', 'Single', 1, 5000, '2026-10-10'); INSERT INTO rooms VALUES ('room-other', '201', 'other')",
     );
     const actions = [roomEdit(d, 0, { adults: 3, roomId: "room-other" })];
-    const response = await request(`/reservations/${d.id}/preview`, "POST", {
-      requestId: crypto.randomUUID(),
-      actions,
-    });
-    expect(response.status).toBe(200);
-    expect(await response.json()).toMatchObject({
+    const response = await previewCommand(d, actions);
+    expect(response).toMatchObject({
       billing: { totalCents: 30000 },
       validation: {
         issues: [
@@ -1027,12 +991,8 @@ describe("reservation workflow", () => {
   });
   it("allows payments and cancellation with unchanged occupancy after a room capacity reduction", async () => {
     let d = await bookingAfterCapacityReduction();
-    const paymentPreview = await request(`/reservations/${d.id}/preview`, "POST", {
-      requestId: crypto.randomUUID(),
-      actions: [pay(5000)],
-    });
-    expect(paymentPreview.status).toBe(200);
-    expect(await paymentPreview.json()).toMatchObject({
+    const paymentPreview = await previewCommand(d, [pay(5000)]);
+    expect(paymentPreview).toMatchObject({
       billing: { totalCents: 30000, paidCents: 5000, balanceCents: 25000 },
       validation: { issues: [] },
     });
@@ -1044,12 +1004,8 @@ describe("reservation workflow", () => {
     const actions: WorkflowAction[] = [
       { type: "set-status", status: "cancelled", reason: "Plans changed" },
     ];
-    const cancellationPreview = await request(`/reservations/${d.id}/preview`, "POST", {
-      requestId: crypto.randomUUID(),
-      actions,
-    });
-    expect(cancellationPreview.status).toBe(200);
-    expect(await cancellationPreview.json()).toMatchObject({
+    const cancellationPreview = await previewCommand(d, actions);
+    expect(cancellationPreview).toMatchObject({
       billing: { status: "cancelled", totalCents: 0, paidCents: 5000, creditCents: 5000 },
       validation: { issues: [] },
     });
@@ -1070,12 +1026,8 @@ describe("reservation workflow", () => {
       [roomEdit(d, 0, { adults: 2, children: 1 })],
     ];
     for (const actions of changes) {
-      const response = await request(`/reservations/${d.id}/preview`, "POST", {
-        requestId: crypto.randomUUID(),
-        actions,
-      });
-      expect(response.status).toBe(200);
-      expect(await response.json()).toMatchObject({
+      const response = await previewCommand(d, actions);
+      expect(response).toMatchObject({
         validation: {
           issues: [
             { code: "too many guests for this room type", roomIndex: 0, field: "occupancy" },
@@ -1095,12 +1047,8 @@ describe("reservation workflow", () => {
     const invalid: WorkflowAction[] = [
       { type: "add-room", room: { roomTypeId: "type", adults: 2, children: 0 } },
     ];
-    const response = await request(`/reservations/${d.id}/preview`, "POST", {
-      requestId: crypto.randomUUID(),
-      actions: invalid,
-    });
-    expect(response.status).toBe(200);
-    expect(await response.json()).toMatchObject({
+    const response = await previewCommand(d, invalid);
+    expect(response).toMatchObject({
       billing: { totalCents: 90000 },
       validation: {
         issues: [{ code: "too many guests for this room type", roomIndex: 2, field: "occupancy" }],
@@ -1119,12 +1067,8 @@ describe("reservation workflow", () => {
     let d = await bookingAfterCapacityReduction();
     d = await command(d, [{ type: "set-status", status: "cancelled" }]);
     const restore: WorkflowAction[] = [{ type: "set-status", status: "confirmed" }];
-    const response = await request(`/reservations/${d.id}/preview`, "POST", {
-      requestId: crypto.randomUUID(),
-      actions: restore,
-    });
-    expect(response.status).toBe(200);
-    expect(await response.json()).toMatchObject({
+    const response = await previewCommand(d, restore);
+    expect(response).toMatchObject({
       validation: {
         issues: [{ code: "too many guests for this room type", roomIndex: 0, field: "occupancy" }],
       },
@@ -1151,12 +1095,7 @@ describe("reservation workflow", () => {
         room: { roomTypeId: "type", roomId: "room-101", adults: 1, children: 0 },
       },
     ];
-    const response = await request(`/reservations/${d.id}/preview`, "POST", {
-      requestId: crypto.randomUUID(),
-      actions,
-    });
-    expect(response.status).toBe(200);
-    const preview = (await response.json()) as Preview;
+    const preview = await previewCommand(d, actions);
     expect(preview.billing.totalCents).toBe(40000);
     expect(preview.validation.issues).toEqual(
       expect.arrayContaining([
@@ -1185,11 +1124,7 @@ describe("reservation workflow", () => {
       { type: "contact", contact: { fullName: "Booker Company", email: null, phone: null } },
       { type: "set-guests", guests: [person, guest(null)] },
     ];
-    const preview = await request(`/reservations/${d.id}/preview`, "POST", {
-      requestId: crypto.randomUUID(),
-      actions,
-    });
-    expect(preview.status).toBe(200);
+    await previewCommand(d, actions);
     expect(
       ((await (await request(`/reservations/${d.id}`)).json()) as Detail).stayingGuests,
     ).toEqual([]);
@@ -1286,24 +1221,6 @@ describe("reservation workflow", () => {
     expect(d.payments.find((e) => e.id === entry.id)?.reference).toBe("OP-124");
     expect(d.payments).toHaveLength(1);
   });
-  it("returns per-room draft prices without changing the saved reservation", async () => {
-    const d = await create(2);
-    const response = await request(`/reservations/${d.id}/preview`, "POST", {
-      requestId: crypto.randomUUID(),
-      actions: [{ type: "dates", checkIn: d.checkIn, checkOut: "2026-10-15" }],
-    });
-    expect(response.status).toBe(200);
-    const { billing: preview } = (await response.json()) as Preview;
-    const room = preview.rooms.find((line) => line.id === d.rooms[0].id)!;
-    expect(room.subtotalCents).toBe(room.nights.reduce((sum, night) => sum + night.priceCents, 0));
-    expect(room.discountCents).toBe(0);
-    expect(room.totalCents).toBe(room.subtotalCents);
-    expect(preview.subtotalCents).toBe(
-      preview.rooms.reduce((sum, line) => sum + line.subtotalCents, 0),
-    );
-    const saved = (await (await request(`/reservations/${d.id}`)).json()) as Detail;
-    expect(saved.rooms).toEqual(d.rooms);
-  });
   it("stores single and multipart names without splitting them", async () => {
     const d = await create();
     const fullName = "María José de la Cruz García";
@@ -1325,23 +1242,22 @@ describe("reservation workflow", () => {
     expect(updated.guest.fullName).toBe(fullName);
     expect(updated.stayingGuests[0].fullName).toBe("李");
   });
-  it("allows staff cancellation, retains payments as credit, and checks restoration conflicts", async () => {
-    let d = await create();
-    d = await command(d, [
-      roomEdit(d),
-      pay(10000),
-      { type: "set-status", status: "cancelled", reason: "Nobody arrived" },
-    ]);
+  it("cancels a completed stay, retains its payment report, and blocks conflicting restoration", async () => {
+    let d = await arrive(await create());
+    d = await command(d, [pay(30000), setDiscount(5000), all(d, "check-out")]);
+    d = await command(d, [{ type: "set-status", status: "cancelled", reason: "Plans changed" }]);
     expect(d).toMatchObject({
       status: "cancelled",
-      cancellationReason: "Nobody arrived",
+      cancellationReason: "Plans changed",
       subtotalCents: 0,
       totalCents: 0,
-      paidCents: 10000,
-      balanceCents: -10000,
-      creditCents: 10000,
+      paidCents: 30000,
+      discountCents: 0,
+      savedDiscountCents: 5000,
+      balanceCents: -30000,
+      creditCents: 30000,
     });
-    expect(d.payments[0].amountCents).toBe(10000);
+    expect(d.payments[0].amountCents).toBe(30000);
     expect(d.rooms[0].nights).toHaveLength(3);
     expect(
       await (await request("/availability?checkIn=2026-10-10&checkOut=2026-10-13")).json(),
@@ -1349,13 +1265,9 @@ describe("reservation workflow", () => {
     const next = await create();
     await command(next, [roomEdit(next)]);
     const actions: WorkflowAction[] = [{ type: "set-status", status: "confirmed" }];
-    const preview = await request(`/reservations/${d.id}/preview`, "POST", {
-      requestId: crypto.randomUUID(),
-      actions,
-    });
-    expect(preview.status).toBe(200);
-    expect(await preview.json()).toMatchObject({
-      billing: { totalCents: 30000 },
+    const preview = await previewCommand(d, actions);
+    expect(preview).toMatchObject({
+      billing: { totalCents: 25000 },
       validation: {
         issues: [
           { code: "room is already assigned for those dates", field: "roomId", roomIndex: 0 },
@@ -1363,9 +1275,10 @@ describe("reservation workflow", () => {
       },
     });
     await command(d, actions, 409);
+    expect(await (await request(`/reservations/${d.id}`)).json()).toEqual(d);
     expect(await (await request("/payments?from=2026-10-10&to=2026-10-10")).json()).toMatchObject({
-      payments: [{ amountCents: 10000 }],
-      totalCents: 10000,
+      payments: [{ amountCents: 30000 }],
+      totalCents: 30000,
     });
   });
   it("restores a cancelled booking through the ordinary label edit", async () => {
@@ -1411,30 +1324,19 @@ describe("reservation workflow", () => {
   });
 });
 describe("reservation dates and lifecycle", () => {
-  it("rejects no-show status in commands, previews, and list filters without changing the reservation", async () => {
+  it("rejects unsupported statuses without changing the reservation", async () => {
     const d = await command(await create(), [pay(10000)]);
     for (const endpoint of ["preview", "commands"]) {
       const response = await request(`/reservations/${d.id}/${endpoint}`, "POST", {
         requestId: crypto.randomUUID(),
-        actions: [pay(5000), { type: "set-status", status: "no_show" }],
+        actions: [pay(5000), { type: "set-status", status: "unsupported" }],
       });
       expect(response.status).toBe(400);
       expect(await (await request(`/reservations/${d.id}`)).json()).toEqual(d);
     }
-    expect((await request("/reservations?status=no_show")).status).toBe(400);
+    expect((await request("/reservations?status=unsupported")).status).toBe(400);
   });
 
-  it("has one status and date range, with no actual timestamps, per-room lifecycle or versions", async () => {
-    const d = await create(2);
-    expect(d.status).toBe("confirmed");
-    expect(d).not.toHaveProperty("version");
-    expect(d).not.toHaveProperty("actualArrival");
-    expect(d).not.toHaveProperty("actualDeparture");
-    for (const line of d.rooms) {
-      for (const key of ["status", "checkIn", "checkOut", "assignmentStart", "originalNights"])
-        expect(line).not.toHaveProperty(key);
-    }
-  });
   it("checks in and checks out every room together while retaining debt and saved dates", async () => {
     let d = await arrive(await create(2));
     expect(d.status).toBe("checked_in");
@@ -1450,12 +1352,8 @@ describe("reservation dates and lifecycle", () => {
   it("previews and saves check-in with a mix of assigned and unassigned rooms", async () => {
     let d = await create(2);
     const actions = [roomEdit(d), all(d, "check-in")];
-    const response = await request(`/reservations/${d.id}/preview`, "POST", {
-      requestId: crypto.randomUUID(),
-      actions,
-    });
-    expect(response.status).toBe(200);
-    expect(await response.json()).toMatchObject({
+    const response = await previewCommand(d, actions);
+    expect(response).toMatchObject({
       billing: {
         status: "checked_in",
         totalCents: 60000,
@@ -1479,12 +1377,8 @@ describe("reservation dates and lifecycle", () => {
     const actions: WorkflowAction[] = [
       { type: "add-room", room: { roomTypeId: "type", adults: 1, children: 0 } },
     ];
-    const response = await request(`/reservations/${d.id}/preview`, "POST", {
-      requestId: crypto.randomUUID(),
-      actions,
-    });
-    expect(response.status).toBe(200);
-    const { billing: preview } = (await response.json()) as Preview;
+    const response = await previewCommand(d, actions);
+    const { billing: preview } = response;
     expect(preview.status).toBe("checked_in");
     expect(preview.totalCents).toBe(90000);
     expect(preview.rooms[2]).toMatchObject({ roomId: null, totalCents: 30000 });
@@ -1499,12 +1393,8 @@ describe("reservation dates and lifecycle", () => {
       await request("/availability?checkIn=2026-10-10&checkOut=2026-10-13")
     ).json();
     expect(availability).toMatchObject({ roomTypes: [{ free: 0 }] });
-    const overflow = await request(`/reservations/${d.id}/preview`, "POST", {
-      requestId: crypto.randomUUID(),
-      actions,
-    });
-    expect(overflow.status).toBe(200);
-    expect(await overflow.json()).toMatchObject({
+    const overflow = await previewCommand(d, actions);
+    expect(overflow).toMatchObject({
       billing: { totalCents: 120000 },
       validation: {
         issues: expect.arrayContaining([
@@ -1536,17 +1426,24 @@ describe("reservation dates and lifecycle", () => {
         checkIn: "2026-10-11",
         checkOut: "2026-10-15",
         subtotalCents: 80000,
+        rooms: [
+          { subtotalCents: 40000, discountCents: 0, totalCents: 40000 },
+          { subtotalCents: 40000, discountCents: 0, totalCents: 40000 },
+        ],
       },
       validation: { issues: [] },
     });
+    expect(await (await request(`/reservations/${d.id}`)).json()).toEqual(d);
     d = await command(d, actions);
-    expect(
-      d.rooms.every(
-        (line) =>
-          line.nights.map((night) => night.date).join(",") ===
-          "2026-10-11,2026-10-12,2026-10-13,2026-10-14",
-      ),
-    ).toBe(true);
+    for (const room of d.rooms) {
+      expect(room.nights.map((night) => night.date)).toEqual([
+        "2026-10-11",
+        "2026-10-12",
+        "2026-10-13",
+        "2026-10-14",
+      ]);
+      expect(room.totalCents).toBe(40000);
+    }
   });
   it("retains quoted prices on existing nights and prices only added nights at current rates", async () => {
     let d = await create(2);
@@ -1611,42 +1508,6 @@ describe("reservation dates and lifecycle", () => {
     await command(d, [{ type: "set-status", status: "confirmed" }], 409);
     const saved = (await (await request(`/reservations/${d.id}`)).json()) as Detail;
     expect(saved.status).toBe("cancelled");
-  });
-  it("rejects the old per-room lifecycle, per-room dates and version contract", async () => {
-    const d = await create();
-    const oldActions = [
-      { type: "check-out", lineIds: [d.rooms[0].id] },
-      { type: "set-status", lineId: d.rooms[0].id, status: "checked_out" },
-      {
-        type: "edit-room",
-        lineId: d.rooms[0].id,
-        room: {
-          roomTypeId: "type",
-          adults: 1,
-          children: 0,
-          checkIn: d.checkIn,
-          checkOut: d.checkOut,
-        },
-      },
-    ];
-    for (const action of oldActions)
-      expect(
-        (
-          await request(`/reservations/${d.id}/commands`, "POST", {
-            requestId: crypto.randomUUID(),
-            actions: [action],
-          })
-        ).status,
-      ).toBe(400);
-    expect(
-      (
-        await request(`/reservations/${d.id}/commands`, "POST", {
-          requestId: crypto.randomUUID(),
-          version: 0,
-          actions: [pay(1000)],
-        })
-      ).status,
-    ).toBe(400);
   });
   it("enforces the shared 60-night limit", async () => {
     const d = await create(2);

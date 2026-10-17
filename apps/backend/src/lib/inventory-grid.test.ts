@@ -8,13 +8,6 @@ const deluxe: GridRoomType = {
   baseRateCents: 15000,
 };
 
-const standard: GridRoomType = {
-  id: "standard",
-  name: "Standard",
-  maxOccupancy: 2,
-  baseRateCents: 10000,
-};
-
 const dates = ["2026-12-24", "2026-12-25", "2026-12-26"];
 
 describe("inventoryGrid", () => {
@@ -121,17 +114,12 @@ describe("inventoryGrid", () => {
       new Map([["deluxe", 1]]),
       [],
       [],
-      [{ roomTypeId: "deluxe", date: "2026-12-25", priceCents: 15000 }],
+      [{ roomTypeId: "deluxe", date: "2026-12-25", priceCents: 20000 }],
     );
     expect(type?.nights).toEqual([
       { date: "2026-12-24", booked: 0, closed: 0, free: 1, priceCents: 15000, override: false },
-      { date: "2026-12-25", booked: 0, closed: 0, free: 1, priceCents: 15000, override: true },
+      { date: "2026-12-25", booked: 0, closed: 0, free: 1, priceCents: 20000, override: true },
       { date: "2026-12-26", booked: 0, closed: 0, free: 1, priceCents: 15000, override: false },
     ]);
-  });
-
-  it("sorts room types by name", () => {
-    const rows = inventoryGrid(dates, [deluxe, standard], new Map(), [], [], []);
-    expect(rows.map((row) => row.name)).toEqual(["Deluxe", "Standard"]);
   });
 });

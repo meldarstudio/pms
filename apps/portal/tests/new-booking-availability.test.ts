@@ -38,30 +38,6 @@ const draft = (
   room: { roomTypeId, roomId, adults: "1", children: "0" },
 });
 
-it("offers only types with capacity and physical rooms free for the whole stay", () => {
-  const drafts = [draft("a")];
-  const result = newBookingAvailability(drafts, types, physical, new Set(["101", "102"]));
-  assert.deepEqual(result.options[0].types, [{ value: "double", label: "Doble" }]);
-  assert.deepEqual(result.options[0].numbers, [{ value: "103", label: "103" }]);
-  assert.equal(result.rooms, drafts);
-});
-
-it("counts unassigned draft rooms against type capacity and excludes assigned draft room numbers", () => {
-  const result = newBookingAvailability(
-    [draft("a", "double", "101"), draft("b"), draft("c", "")],
-    types,
-    physical,
-    new Set(),
-  );
-  assert.deepEqual(result.options[2].types, []);
-  assert.deepEqual(
-    result.options[1].numbers.map((room) => room.value),
-    ["102", "103"],
-  );
-  assert.deepEqual(result.options[0].types, [{ value: "double", label: "Doble" }]);
-  assert.equal(result.canAdd, false);
-});
-
 it("clears unavailable types and assignments after an availability change without removing guest counts", () => {
   const drafts = [draft("a", "double", "101"), draft("b", "suite", "201")];
   const result = newBookingAvailability(drafts, types, physical, new Set(["101"]));

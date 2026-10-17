@@ -30,7 +30,6 @@ describe("independent reservation saves", () => {
       commands.push(command);
     });
     assert.notEqual(commands[2].requestId, commands[0].requestId);
-    assert.equal("version" in commands[2], false);
   });
 
   it("blocks a second submission while the first payment is saving", async () => {

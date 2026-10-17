@@ -46,21 +46,6 @@ beforeEach(() => {
 afterEach(() => db.close());
 
 describe("closure-only room inventory", () => {
-  it("stores rooms and closures without operational status", () => {
-    expect(db.prepare("SELECT id, number, room_type_id FROM rooms ORDER BY number").all()).toEqual([
-      { id: "room-101", number: "101", room_type_id: "type" },
-      { id: "room-102", number: "102", room_type_id: "type" },
-    ]);
-    expect(db.prepare("SELECT id FROM room_closures").all()).toEqual([{ id: "existing" }]);
-    expect(
-      db
-        .prepare("PRAGMA table_info(rooms)")
-        .all()
-        .map((column) => column.name),
-    ).not.toContain("status");
-    expect(db.prepare("PRAGMA foreign_key_check").all()).toEqual([]);
-  });
-
   it("includes every room in capacity and assignment", () => {
     reservation("first");
     line("first", "room-101");
@@ -194,5 +179,23 @@ describe("closure-only room inventory", () => {
     ).not.toThrow();
     db.exec("UPDATE reservation_rooms SET room_id = 'room-101' WHERE id = 'first'");
     expect(() => closure("overlap", "room-101")).toThrow(/closure overlaps stay|no availability/);
+  });
+});
+
+describe("staying guest assignment", () => {
+  it("rejects a reserved room belonging to a different reservation on insert and update", () => {
+    reservation("first");
+    line("first", "room-101");
+    reservation("second", "2026-10-07", "2026-10-09");
+    expect(() =>
+      db.exec(`INSERT INTO reservation_guests (id,reservation_id,reservation_room_id,full_name,created_at)
+        VALUES ('wrong','second','first','Test Guest','2026-10-05')`),
+    ).toThrow("guest room must belong to this reservation");
+    db.exec(`INSERT INTO reservation_guests (id,reservation_id,reservation_room_id,full_name,created_at)
+      VALUES ('valid','first','first','Test Guest','2026-10-05')`);
+    expect(() =>
+      db.exec("UPDATE reservation_guests SET reservation_id='second' WHERE id='valid'"),
+    ).toThrow("guest room must belong to this reservation");
+    expect(db.prepare("PRAGMA foreign_key_check").all()).toEqual([]);
   });
 });

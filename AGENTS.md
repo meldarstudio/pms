@@ -25,17 +25,16 @@ All current application data is local sample data. There is no real customer or 
 
 ## Commands
 
-Run these from the repo root.
+Run commands from the repo root using the Node version in `.node-version` and the pnpm version in `package.json`.
+Before running development, test, build, or check commands, read [README.md](README.md#commands).
+For test setup and compiler details, read the relevant [portal](apps/portal/README.md#reservation-forms) or [backend](apps/backend/README.md) documentation.
 
-- Use Node 22.22.1 from `.node-version` and pnpm 11.22.0. Vite+ is installed locally; run it with `pnpm exec vp`. `pnpm dev` starts portal and backend. `pnpm dev:portal` and `pnpm dev:backend` start one. `pnpm exec vp dev` starts only the portal; `pnpm exec vp run dev` runs the root script for both services.
-- `pnpm test` runs backend then portal Vite+ tests. `pnpm exec vp test` runs both named test projects from the root. Backend tests are colocated under `apps/backend/src`, including `.test.mjs`. They apply `apps/backend/drizzle` SQL to `node:sqlite`. They do not need a running Worker. One backend file: `pnpm --filter @pms/backend test -- src/routes/reservations.test.ts`.
-- Portal tests use Vitest through `vite-plus/test`. `pnpm --filter @pms/portal test` runs `apps/portal/tests` alone. One file: `pnpm --filter @pms/portal test -- tests/form-validation.test.ts`, or `pnpm exec vp test --project portal tests/form-validation.test.ts`. Those tests import `../src/**/*.ts`. The dialog suite creates its own happy-dom window and Vite SSR server with an explicit portal root. `tests/tsconfig.json` extends the strict app options and adds Node types. The solution references app, Node configuration, and test projects; `tsconfig.app.json` includes only `src`.
-- `pnpm lint` runs Oxlint and native type checking across portal TS/TSX files, backend TypeScript and JavaScript files, and shared schemas, including tests and package configuration. Use `pnpm --filter @pms/portal lint` or `pnpm --filter @pms/backend lint` for one app. Root `vite.config.ts` applies correctness and TypeScript rules to all packages, React rules only to the portal, browser globals to portal source and tests, service-worker globals to backend source, and Node globals to tests, scripts, and tooling. Generated Worker types, migrations, build output, coverage, and package stores are excluded from linting.
-- `pnpm format` formats maintained source, configuration, and documentation across the repo. Format only the portal with `pnpm --filter @pms/portal format`. Root `vite.config.ts` owns Oxfmt defaults and the portal Tailwind override. Generated Worker types, Drizzle metadata, lockfiles, installed agent skills, coverage, and package stores are excluded from formatting; Git-ignored files are skipped too. `pnpm check` checks repo formatting, lint, and native types. Both `typeAware` and `typeCheck` are enabled.
-- `pnpm typecheck` runs `vp check --no-fmt --no-lint .`. Put Vite+ check flags before paths. Native checks use Vite+'s bundled TypeScript 7 checker and cover portal source, Vite configuration, tests, backend source and configuration, colocated TypeScript tests, and shared schemas. Both portal and backend use the same TypeScript 7 catalog dependency; update its version in `pnpm-workspace.yaml`. Run `pnpm --filter @pms/portal exec tsc -b` or `pnpm --filter @pms/backend typecheck` for standalone compiler checks. The backend retains `tsc --noEmit` for Workers Builds. Root check and typecheck commands use native checking without a duplicate compiler pass. Backend `.mjs` scripts and tests receive syntax linting but no static type checking. Shared has no separate typecheck script.
 - After a schema edit in `apps/backend/src/db/schema.ts`, regenerate the baseline as described above, then run `pnpm db:reset:local --rebuild-schema`.
 - Refresh Worker types with `pnpm --filter @pms/backend cf-typegen`. Do not edit `apps/backend/worker-configuration.d.ts`.
-- `pnpm --filter @pms/backend deploy` migrates `pms-production`, then deploys `pms-api`. `deploy:ci` deploys code and does not change the database. `db:migrate:remote` targets `pms-production`.
+
+## Testing and review
+
+For test changes and code reviews, read [CODING_STANDARDS.md](CODING_STANDARDS.md).
 
 ## Branch and deployment workflow
 
@@ -59,7 +58,7 @@ The portal reads its API origin from `VITE_API_BASE_URL`, inlined at build time.
 
 ## Code style
 
-- Formatting uses Oxfmt defaults from the root `vite.config.ts` across the repo: double quotes, semicolons, print width 100, and trailing commas wherever supported. The portal TS/TSX override enables Tailwind sorting with `apps/portal/src/index.css` and functions `cn` and `cva`.
+- Before changing formatting, lint rules, or compiler configuration, read [README.md](README.md#tool-configuration). Root `vite.config.ts` owns formatting and lint rules.
 - Portal and backend use TypeScript 7 through the shared `typescript` catalog entry. Keep their dependency declarations as `"typescript": "catalog:"`.
 - Portal `tsconfig.app.json` enables `verbatimModuleSyntax`, `erasableSyntaxOnly`, and `noUnusedLocals`. Use `import type` or inline `type` imports.
 - shadcn is already set up in `apps/portal`. `components.json` style is `base-lyra`. Primitives come from `@base-ui/react`, not Radix. Icons are `lucide-react`. Aliases use `@/`. UI files import `cn` from `"cn"`, not from `@/lib/utils`. Add a component from `apps/portal` with `pnpm exec shadcn add <name>`. Do not use `npx shadcn`.

@@ -22,12 +22,12 @@ Run these from the repository root.
 | Command                                  | Behavior                                                                   |
 | ---------------------------------------- | -------------------------------------------------------------------------- |
 | `pnpm dev` or `pnpm exec vp run dev`     | Start the portal and local backend                                         |
-| `pnpm exec vp dev`                       | Start the portal at `http://localhost:5173`                                |
+| `pnpm dev:portal` or `pnpm exec vp dev`  | Start the portal at `http://localhost:5173`                                |
 | `pnpm dev:backend`                       | Start the local API at `http://127.0.0.1:8788`                             |
 | `pnpm lint`                              | Lint and natively type-check the portal, backend, and shared schemas       |
 | `pnpm check` or `pnpm exec vp check .`   | Check repo formatting, lint, and native types                              |
 | `pnpm typecheck`                         | Check native types without formatting or lint rules                        |
-| `pnpm exec vp test`                      | Run all 203 tests across the backend and portal projects                   |
+| `pnpm exec vp test`                      | Run the backend and portal test projects                                   |
 | `pnpm exec vp test --project portal`     | Run the portal tests only                                                  |
 | `pnpm exec vp test --project backend`    | Run the backend tests only                                                 |
 | `pnpm test` or `pnpm exec vp run test`   | Run the backend, then portal package test scripts                          |
@@ -49,6 +49,22 @@ VITE_API_BASE_URL=http://127.0.0.1:8788 pnpm build
 The portal's development environment already points to the local backend.
 Configure the production API origin as a Workers Builds build variable.
 
+## Testing
+
+For test changes and code reviews, follow [the testing policy](CODING_STANDARDS.md#tests).
+Run one backend file with:
+
+```sh
+pnpm --filter @pms/backend test -- src/routes/reservations.test.ts
+```
+
+Run one portal file with either command:
+
+```sh
+pnpm --filter @pms/portal test -- tests/reservation-forms.test.ts
+pnpm exec vp test --project portal tests/reservation-forms.test.ts
+```
+
 ## Tool configuration
 
 The root `vite.config.ts` owns lint rules, formatting, and test project
@@ -68,6 +84,7 @@ one app. The root `pnpm lint` covers all three packages.
 
 The root format and check scripts pass `.` explicitly to cover the repository.
 Use `pnpm --filter @pms/portal format` to format only the portal.
+Place Vite+ check flags before paths, as in `pnpm exec vp check --no-fmt --no-lint .`.
 
 `pnpm check` enables Vite+'s native type checker with `typeAware: true` and
 `typeCheck: true`. The portal's solution tsconfig references separate app,

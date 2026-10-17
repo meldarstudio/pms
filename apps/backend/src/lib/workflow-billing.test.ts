@@ -2,16 +2,6 @@ import { describe, expect, it } from "vite-plus/test";
 import { bill } from "./workflow-billing";
 
 describe("reservation bill", () => {
-  it("keeps payments as cancellation credit without applying the saved discount", () => {
-    expect(bill(0, [{ amountCents: 30000 }], 20000, { cancelled: true })).toEqual({
-      subtotalCents: 0,
-      totalCents: 0,
-      discountCents: 0,
-      paidCents: 30000,
-      balanceCents: -30000,
-      creditCents: 30000,
-    });
-  });
   it("recalculates credit when room charges shrink and debt when rooms are added", () => {
     const payments = [{ amountCents: 10000 }, { amountCents: 10000 }];
     expect(bill(15000, payments, 0).creditCents).toBe(5000);

@@ -30,18 +30,23 @@ describe("quote", () => {
     ]);
   });
 
-  it("replaces the new range when a flat rate is sent", () => {
+  it("uses a flat rate instead of saved prices, overrides, or the base rate", () => {
+    const quoted = quoteNights(dates, 10000, new Map([["2026-12-25", 14000]]), 8000);
+    expect(quoted).toEqual([
+      { date: "2026-12-24", priceCents: 8000 },
+      { date: "2026-12-25", priceCents: 8000 },
+      { date: "2026-12-26", priceCents: 8000 },
+    ]);
     const merged = mergeStayNights(
       [{ date: "2026-12-24", priceCents: 9000 }],
       dates,
-      quoteNights(dates, 10000, new Map()),
+      quoteNights(dates, 10000, new Map([["2026-12-25", 14000]])),
       8000,
     );
-    expect(merged.every((night) => night.priceCents === 8000)).toBe(true);
-  });
-
-  it("replaces every night when a line has a flat rate", () => {
-    const nights = quoteNights(dates, 10000, new Map([["2026-12-25", 14000]]), 8000);
-    expect(nights.every((night) => night.priceCents === 8000)).toBe(true);
+    expect(merged).toEqual([
+      { date: "2026-12-24", priceCents: 8000 },
+      { date: "2026-12-25", priceCents: 8000 },
+      { date: "2026-12-26", priceCents: 8000 },
+    ]);
   });
 });

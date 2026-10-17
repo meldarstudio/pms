@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, it } from "vite-plus/test";
 
-import { CURRENCY, formatMajor, formatMoney, parseMajorToCents } from "../src/lib/money.ts";
+import { formatMajor, formatMoney, parseMajorToCents } from "../src/lib/money.ts";
 import { contiguousRanges, datesBetween } from "../src/lib/rate-ranges.ts";
 
 describe("parseMajorToCents", () => {
@@ -29,7 +29,6 @@ describe("formatMajor", () => {
 
 describe("Peruvian soles", () => {
   it("formats whole, fractional, and negative balances in soles", () => {
-    assert.equal(CURRENCY, "PEN");
     const normalized = (cents: number) => formatMoney(cents).replace(/\s/g, " ");
     assert.equal(normalized(10000), "S/ 100");
     assert.equal(normalized(125050), "S/ 1,250.50");

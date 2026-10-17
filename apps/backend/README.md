@@ -10,8 +10,10 @@ pnpm dev
 ```
 
 Run `pnpm exec vp test --project backend` or `pnpm --filter @pms/backend test`
-for the backend suite. Tests use `vite-plus/test` and in-memory SQLite; they
-do not require a running Worker. Run `pnpm format` to format maintained repo files,
+for the backend suite. Tests are colocated under `src` as `.test.ts` and `.test.mjs`
+files. They use `vite-plus/test` and apply the migrations in `drizzle` to in-memory
+`node:sqlite` databases, so they do not require a running Worker.
+Run `pnpm format` to format maintained repo files,
 including the backend, with Oxfmt defaults. Generated Worker types and Drizzle
 metadata are excluded. `pnpm check` checks formatting, lint rules, and native
 types across the portal, backend, and shared schemas. `pnpm lint` covers all
