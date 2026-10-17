@@ -1,88 +1,35 @@
 # AGENTS.md
 
-pnpm workspace. `packageManager` is `pnpm@11.22.0`. Do not use npm or npx for project commands. `zod` is a catalog dependency, `"zod": "catalog:"`, and the catalog is Zod 4. Do not write Zod 3 APIs.
+## Safety
 
-## Local data and schema changes
+- Production is live. Preserve production data and applied migration history. Local sample data is disposable; production is not.
+- Run deployments, remote migrations, and production secret changes only for an explicitly requested production operation. A schema change in a development task is not deployment authorization.
+- Feature branches merge to `main`, which deploys production. Prepare required production migrations before the code that needs them is deployed.
+- Keep credentials in local ignored environment files or Cloudflare secrets, not committed files.
 
-All current application data is local sample data. There is no real customer or business data to preserve.
+## Toolchain and validation
 
-- Prefer deleting and rebuilding the local schema, then reseeding, over writing data-preserving upgrade migrations. Do not retain legacy tables, columns, compatibility code, or backfills just to preserve sample data.
-- Agents are authorized to drop and recreate local application tables or the local database as part of development, without asking for confirmation or making backups.
-- Generated migration SQL, snapshots, and the Drizzle journal are disposable build artifacts. Delete and regenerate them instead of reading or manually editing their history. Use `schema.ts`, application code, and tests to understand the current model. Inspect generated artifacts only to diagnose a specific generation or database error.
-- Keep a runnable fresh baseline. Set aside `apps/backend/drizzle/0001_overlap_triggers.sql`, delete `apps/backend/drizzle/`, run `pnpm db:generate`, then restore the trigger file and register it in `drizzle/meta/_journal.json`. Do not read or hand-edit snapshot JSON. Separate statements in the trigger file with `--> statement-breakpoint`, or Wrangler will not apply them as separate statements.
-- Preserve the current business-rule triggers when rebuilding the schema. Update seeds, tests, and documentation to match the resulting schema.
-- `pnpm db:reset:local` applies local migrations, deletes local application data, and reloads sample data. It leaves the schema, triggers, and migration history in place. `pnpm db:reset:local --rebuild-schema` also drops PMS tables, triggers, and the D1 migration ledger, then applies the current baseline. `--date=YYYY-MM-DD` pins sample dates. The default anchor is today in UTC. `--persist-to` must be the same directory passed to Wrangler, or the backend reads a different database.
-- `pnpm db:migrate:local` applies the current migration files without resetting data. `pnpm db:seed:local` only adds missing room types and rooms. `apps/backend/seed.sql` uses `INSERT OR IGNORE`.
-- This policy is local only. Do not run `pnpm --filter @pms/backend deploy` unless the task is a production release. `deploy` applies migrations to `pms-production` before `wrangler deploy`.
+- Use pnpm, not npm or npx. Run project commands from the repo root unless a task-specific instruction says otherwise. Use the Node version in `.node-version` and pnpm version in `package.json`.
+- Before development, test, build, or check commands, read [README.md](README.md#commands). It owns command usage and environment setup.
+- Before changing tests or reviewing code, read [CODING_STANDARDS.md](CODING_STANDARDS.md). Run affected tests and `pnpm check` for code changes; checks do not run tests.
+- Before changing formatting, lint, or compiler configuration, read [README.md](README.md#tool-configuration). Root `vite.config.ts` owns formatting and lint rules.
+- Keep TypeScript and Zod dependencies as `"catalog:"`; use the APIs of the versions in `pnpm-workspace.yaml`.
 
-## Packages
+## Task-specific context
 
-- `@pms/portal` in `apps/portal` is the Vite React SPA using code-based TanStack Router routes in `src/router.tsx`. Tabs live in `src/App.tsx`. A calendar booking opens `RoomBookingDialog`. The Reservations list opens `ReservationPage`. Fetch helpers and response types are hand-written in `src/lib/api.ts`. TanStack Query hooks are in `src/lib/queries.ts`. The portal does not depend on `@pms/shared`.
-- `@pms/backend` in `apps/backend` is the Hono Worker. Entry is `src/index.ts`. D1 binding is `DB`. `pnpm dev:backend` is `wrangler dev --port 8788` and uses the local D1 database, the same one as `pnpm db:reset:local`. Remote production is `pms-production`. Request schemas come from `@pms/shared`. Routes call `validate` and throw `HttpError` with status 400, 401, 404, 409, or 429. Error JSON is `{ error: string }`. The app uses `Env` from `src/env.ts`.
-- Reservation creates and edits are workflow commands, not field patches. `POST /reservations` uses `workflowCreateSchema`. `POST /reservations/:id/commands` writes, and `POST /reservations/:id/preview` calculates the same actions and returns `{ billing, validation: { issues } }`. Priceable drafts return 200 even when operational issues prevent saving. Issues identify the affected field and its index in the proposed rooms, excluding removed rooms. Invalid pricing inputs still return an HTTP error. `requestId` deduplicates retries. Reusing an ID with a different payload returns 409. The write batch sets the reservation to `cancelled` inside the transaction so a room swap does not trip overlap triggers, then writes the final status. Do not remove that release step.
-- Backend error strings stay English. Add the same string to `apps/portal/src/lib/errors.ts`, or the portal shows the raw message. `rethrowConflict` maps trigger abort text to those strings.
-- Every route except `GET /` and `POST /login` needs the Staff account session cookie. There is one shared account and no roles or per-user attribution. `src/session.ts` is the guard and `src/routes/auth.ts` holds login, logout and session. Local dev needs `apps/backend/.dev.vars` from `.dev.vars.example`; see [README.md](README.md#signing-in). Backend tests sign in through `src/test-support/auth.ts`. Do not add a guard bypass. Staff login errors need a Spanish string in `apps/portal/src/lib/errors.ts` like any other backend error.
-- `@pms/shared` in `packages/shared` is Zod schemas only. It exports `./src/index.ts` and has no build or typecheck script.
+Read the applicable instructions before changing the package or contract, including callers in other packages:
 
-## Commands
+- **Backend/API:** [apps/backend/AGENTS.md](apps/backend/AGENTS.md) for Hono routes, authentication, reservation workflows, and database-backed behavior.
+- **Portal/UI:** [apps/portal/AGENTS.md](apps/portal/AGENTS.md) for routing, forms, queries, API clients, and UI components.
+- **Database:** [docs/agents/database.md](docs/agents/database.md) before changing schemas, migrations, triggers, seeds, or deploying schema-dependent code.
+- **Shared schemas:** `packages/shared` (`@pms/shared`) supplies backend request schemas. The portal maintains its own schemas and API types; check both sides when changing a contract.
+- **Domain/architecture:** [docs/agents/domain.md](docs/agents/domain.md) before exploring domain concepts or architectural decisions; it points to the shared glossary and ADRs.
+- **Issues/specs:** [docs/agents/issue-tracker.md](docs/agents/issue-tracker.md) before tracker operations. Use GitHub Issues in `meldarstudio/pms`.
+- **Triage:** [docs/agents/triage-labels.md](docs/agents/triage-labels.md) before triaging incoming issues.
 
-Run commands from the repo root using the Node version in `.node-version` and the pnpm version in `package.json`.
-Before running development, test, build, or check commands, read [README.md](README.md#commands).
-For test setup and compiler details, read the relevant [portal](apps/portal/README.md#reservation-forms) or [backend](apps/backend/README.md) documentation.
+## Cross-package contracts
 
-- After a schema edit in `apps/backend/src/db/schema.ts`, regenerate the baseline as described above, then run `pnpm db:reset:local --rebuild-schema`.
-- Refresh Worker types with `pnpm --filter @pms/backend cf-typegen`. Do not edit `apps/backend/worker-configuration.d.ts`.
-
-## Testing and review
-
-For test changes and code reviews, read [CODING_STANDARDS.md](CODING_STANDARDS.md).
-
-## Branch and deployment workflow
-
-- Feature branches merge to `main`. `main` deploys `pms-api` against `pms-production`.
-- Production portal builds use `https://api.hotelmanantialchurin.com`. The portal is served at `https://app.hotelmanantialchurin.com`. `VITE_API_BASE_URL` is a Workers Builds build variable, inlined at build time.
-- Prepare `pms-production` before deploying code that requires a schema change. Rebuild and seed local databases. A consolidated baseline requires rebuilding or replacing the production database, not applying it over existing tables. `deploy` applies pending migrations and does not rebuild an existing database.
-
-## Local API
-
-The portal reads its API origin from `VITE_API_BASE_URL`, inlined at build time. `apps/portal/.env.development` sets it to `http://localhost:8788`, which matches `wrangler dev --port 8788`. Keep it `localhost`: `127.0.0.1` is a different site from `localhost:5173`, so the browser would not send the session cookie. Override it in `.env.local`. `vp build` and `src/lib/api.ts` fail if it is unset. On Cloudflare, set it as a Workers Builds build variable, not a runtime variable. There is no Vite proxy. CORS allows credentials from the exact origins in the `ALLOWED_ORIGINS` var: `https://app.hotelmanantialchurin.com` in `wrangler.jsonc`, `http://localhost:5173` from `.dev.vars`.
-
-## Domain
-
-- Dates are `YYYY-MM-DD` UTC calendar dates. A reservation has one `checkIn` and one `checkOut` for every room. Stay nights and room closures are `[start, end)`. A checkout morning is free for the next arrival. Rate ranges include both ends. A stay cannot exceed 60 nights.
-- Check-in and checkout change status only. There are no arrival or departure timestamp columns. For an early departure, save the shorter date range together with `checked_out`.
-- Guests use `fullName`, not separate first and last names.
-- `confirmed`, `checked_in`, and `checked_out` hold inventory. `cancelled` releases inventory and drops room charges from the bill, retaining payments as credit for reference. Staff may cancel a whole reservation or remove individual reserved rooms. Check-in and saving allow unassigned rooms, which still consume room-type inventory.
-- Money is integer cents. Currency is `PEN` from the Worker `CURRENCY` var. A night price is the flat rate, else that date's override, else `baseRateCents`. Retained nights keep their saved prices. Added nights use current rates. Changing room type reprices that room.
-- Rooms have no operational status. Dated room closures are the only way to block a room and reduce room-type availability. Closures cannot overlap assigned stays or other closures.
-- Capacity, overlap, assignment, and staying-guest conflicts are SQLite triggers in `apps/backend/drizzle/0001_overlap_triggers.sql`. That file is hand-written and listed in `drizzle/meta/_journal.json`. `rethrowConflict` maps the trigger abort text to 409. Drizzle does not generate these guards. `0000_schema.sql` is the current drizzle-kit baseline. Tests execute every journal entry, so an unregistered trigger file does not run in tests.
-
-## Code style
-
-- Before changing formatting, lint rules, or compiler configuration, read [README.md](README.md#tool-configuration). Root `vite.config.ts` owns formatting and lint rules.
-- Portal and backend use TypeScript 7 through the shared `typescript` catalog entry. Keep their dependency declarations as `"typescript": "catalog:"`.
-- Portal `tsconfig.app.json` enables `verbatimModuleSyntax`, `erasableSyntaxOnly`, and `noUnusedLocals`. Use `import type` or inline `type` imports.
-- shadcn is already set up in `apps/portal`. `components.json` style is `base-lyra`. Primitives come from `@base-ui/react`, not Radix. Icons are `lucide-react`. Aliases use `@/`. UI files import `cn` from `"cn"`, not from `@/lib/utils`. Add a component from `apps/portal` with `pnpm exec shadcn add <name>`. Do not use `npx shadcn`.
-
-## Cursor Cloud specific instructions
-
-- `pnpm dev` serves the API at `http://localhost:8788` and the portal at `http://localhost:5173`. The Vite dev server binds IPv6 localhost only, so `http://127.0.0.1:5173` is refused.
-- `pnpm db:reset:local` reloads sample data around today UTC and does not need Cloudflare credentials. Wrangler asks before applying migrations when stdin is a terminal. Prefix that command with `CI=true` so a non-interactive shell accepts the fallback and continues.
-- `pnpm build` needs `VITE_API_BASE_URL` in the environment. Dev mode reads `apps/portal/.env.development`.
-
-## Agent skills
-
-### Issue tracker
-
-Track issues and specs in GitHub Issues for `meldarstudio/pms`.
-Before issue tracker operations, read `docs/agents/issue-tracker.md`.
-
-### Triage labels
-
-Use the five default triage labels.
-Before triage, read `docs/agents/triage-labels.md`.
-
-### Domain docs
-
-Use a single-context layout shared across all packages.
-Before exploring domain concepts or architecture, read `docs/agents/domain.md`.
+- Dates are `YYYY-MM-DD` UTC calendar dates. Stay nights and room closures use `[start, end)`; rate ranges include both ends. A stay cannot exceed 60 nights.
+- Money is integer cents. Currency comes from the Worker's `CURRENCY` var (`PEN`).
+- Backend error messages stay English. Add each new message's Spanish translation to `apps/portal/src/lib/errors.ts`, including authentication and database-conflict errors.
+- API request or response changes must update the portal's hand-written types and fetch helpers in `apps/portal/src/lib/api.ts` and affected query hooks in `apps/portal/src/lib/queries.ts`.
