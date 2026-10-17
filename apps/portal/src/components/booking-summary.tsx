@@ -1,10 +1,11 @@
-import { useEffect, useId, useMemo, useRef } from "react";
+import { useEffect, useId, useMemo, useRef, type ReactNode } from "react";
 import { useSelector } from "@tanstack/react-form";
 import { cn } from "cn";
 import { useReservationForm, blurThenChange } from "@/lib/reservation-form";
 import { errorMessage } from "@/lib/form-errors";
 import { discountSchema } from "@/lib/reservation-form-schemas";
 
+import { BalanceLabel, balanceStatus } from "@/components/balance-status";
 import { Badge } from "@/components/ui/badge";
 import {
   Card,
@@ -72,7 +73,7 @@ export function BookingSummary({
   provisional?: boolean;
 }) {
   const titleId = useId();
-  const credit = summary !== null && summary.balanceCents < 0;
+  const balance = showPayments && summary ? summary.balanceCents : null;
 
   return (
     <section aria-labelledby={titleId} className="min-w-0">
@@ -128,11 +129,22 @@ export function BookingSummary({
             </p>
           ) : null}
         </CardContent>
-        <CardFooter className="flex-col items-stretch gap-3">
+        <CardFooter
+          className={cn(
+            "flex-col items-stretch gap-3",
+            balance !== null && balanceStatus(balance).tone,
+          )}
+        >
           <dl className="w-full text-sm font-semibold">
             <SummaryRow
               label={
-                showPayments ? (credit ? "Saldo a favor" : "Saldo pendiente") : "Total de reserva"
+                balance !== null ? (
+                  <BalanceLabel balanceCents={balance} />
+                ) : showPayments ? (
+                  "Saldo pendiente"
+                ) : (
+                  "Total de reserva"
+                )
               }
               cents={
                 summary
@@ -295,7 +307,7 @@ function SummaryRow({
   cents,
   currency,
 }: {
-  label: string;
+  label: ReactNode;
   cents: number | null;
   currency: string;
 }) {
