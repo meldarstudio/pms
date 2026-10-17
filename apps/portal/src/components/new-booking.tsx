@@ -1,10 +1,17 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useSelector } from "@tanstack/react-form";
 import { useQueryClient } from "@tanstack/react-query";
-import { PlusIcon, XIcon } from "lucide-react";
+import { BedDoubleIcon, PlusIcon, XIcon } from "lucide-react";
 import { BookingSummary } from "@/components/booking-summary";
 import type { BookingTarget } from "@/components/room-booking-dialog";
 import { Button } from "@/components/ui/button";
+import {
+  Empty,
+  EmptyDescription,
+  EmptyHeader,
+  EmptyMedia,
+  EmptyTitle,
+} from "@/components/ui/empty";
 import { FieldError, FieldGroup, FieldLegend, FieldSet } from "@/components/ui/field";
 import { Separator } from "@/components/ui/separator";
 import { createWorkflowBooking } from "@/lib/api";
@@ -162,6 +169,11 @@ export function NewBooking({
       : roomTypes.isSuccess && rooms.isSuccess && rooms.data.length === 0
         ? "Aún no hay habitaciones. Agrégalas en Configuración."
         : null;
+  const noAvailability =
+    !setupMessage &&
+    availabilityReady &&
+    availability.data.roomTypes.length > 0 &&
+    availability.data.roomTypes.every((type) => type.free === 0);
   const errors = schemaErrors(schema.safeParse(values));
   const summaryRooms = values.rooms.map((draft) => {
     const type = availability.data?.roomTypes.find((type) => type.id === draft.room.roomTypeId);
@@ -231,144 +243,152 @@ export function NewBooking({
           </FieldGroup>
           <section className="flex flex-col gap-3" aria-label="Habitaciones">
             <h3 className="font-medium">Habitaciones</h3>
-            <form.Field name="rooms" mode="array">
-              {() =>
-                values.rooms.map((draft, index) => {
-                  const options = selection.options[index];
-                  const capacity = errors[`rooms[${index}].room`];
-                  return (
-                    <FieldGroup
-                      key={draft.id}
-                      className="grid grid-cols-2 gap-3 sm:grid-cols-[minmax(0,1fr)_88px_56px_56px_28px]"
-                    >
-                      <form.AppField name={`rooms[${index}].room.roomTypeId`}>
-                        {(field) => (
-                          <field.Choice
-                            label="Tipo"
-                            placeholder="Selecciona un tipo"
-                            disabled={!availabilityReady}
-                            options={
-                              availabilityReady
-                                ? options.types
-                                : (roomTypes.data ?? []).map((type) => ({
-                                    value: type.id,
-                                    label: type.name,
-                                  }))
-                            }
-                            onValueChange={() =>
-                              form.setFieldValue(`rooms[${index}].room.roomId`, null)
-                            }
-                          />
-                        )}
-                      </form.AppField>
-                      <form.AppField name={`rooms[${index}].room.roomId`}>
-                        {(field) => (
-                          <field.Choice
-                            label="Hab."
-                            nullable
-                            disabled={!availabilityReady || !draft.room.roomTypeId}
-                            options={[
-                              { value: "none", label: "Sin asignar" },
-                              ...(availabilityReady
-                                ? options.numbers
-                                : (rooms.data ?? [])
-                                    .filter((room) => room.roomTypeId === draft.room.roomTypeId)
-                                    .map((room) => ({
-                                      value: room.id,
-                                      label: room.number,
-                                    }))),
-                            ]}
-                          />
-                        )}
-                      </form.AppField>
-                      <form.AppField name={`rooms[${index}].room.adults`}>
-                        {(field) => (
-                          <field.Text
-                            label="Adultos"
-                            type="number"
-                            min={1}
-                            max={100}
-                            required
-                            live
-                            groupErrorId={capacity ? `${draft.id}-capacity` : undefined}
-                          />
-                        )}
-                      </form.AppField>
-                      <form.AppField name={`rooms[${index}].room.children`}>
-                        {(field) => (
-                          <field.Text
-                            label="Niños"
-                            type="number"
-                            min={0}
-                            max={100}
-                            required
-                            live
-                            groupErrorId={capacity ? `${draft.id}-capacity` : undefined}
-                          />
-                        )}
-                      </form.AppField>
-                      <div className="col-start-2 self-end justify-self-end sm:col-start-auto">
-                        <Button
-                          type="button"
-                          variant="destructive"
-                          size="icon"
-                          aria-label={`Quitar habitación ${index + 1}`}
-                          disabled={values.rooms.length === 1}
-                          onClick={() => form.removeFieldValue("rooms", index)}
-                        >
-                          <XIcon />
-                        </Button>
-                      </div>
-                      {capacity && (
-                        <FieldError id={`${draft.id}-capacity`} className="col-span-full">
-                          {capacity}
-                        </FieldError>
-                      )}
-                    </FieldGroup>
-                  );
-                })
-              }
-            </form.Field>
-            <Button
-              type="button"
-              variant="outline"
-              className="w-fit"
-              disabled={!availabilityReady || !selection.canAdd}
-              onClick={() => {
-                const lastRoom = values.rooms[values.rooms.length - 1].room;
-                const type = availability.data?.roomTypes.find(
-                  (type) => type.id === lastRoom.roomTypeId,
-                );
-                const used = values.rooms.filter(
-                  (draft) => draft.room.roomTypeId === lastRoom.roomTypeId,
-                ).length;
-                form.pushFieldValue("rooms", {
-                  id: crypto.randomUUID(),
-                  removed: false,
-                  room: {
-                    ...lastRoom,
-                    roomTypeId: type && type.free > used ? lastRoom.roomTypeId : "",
-                    roomId: null,
-                  },
-                });
-              }}
-            >
-              <PlusIcon data-icon="inline-start" />
-              Agregar habitación
-            </Button>
-            {errors.rooms && <FieldError>{errors.rooms}</FieldError>}
-            {setupMessage ? (
-              <p role="status" className="text-muted-foreground">
-                {setupMessage}
-              </p>
+            {noAvailability ? (
+              <Empty variant="input" role="status">
+                <EmptyHeader>
+                  <EmptyMedia variant="icon">
+                    <BedDoubleIcon />
+                  </EmptyMedia>
+                  <EmptyTitle>Sin habitaciones disponibles</EmptyTitle>
+                  <EmptyDescription>
+                    Prueba con otras fechas para encontrar disponibilidad.
+                  </EmptyDescription>
+                </EmptyHeader>
+              </Empty>
             ) : (
-              availabilityReady &&
-              availability.data.roomTypes.length > 0 &&
-              availability.data.roomTypes.every((type) => type.free === 0) && (
-                <p role="status" className="text-muted-foreground">
-                  No hay habitaciones disponibles para esas fechas.
-                </p>
-              )
+              <>
+                <form.Field name="rooms" mode="array">
+                  {() =>
+                    values.rooms.map((draft, index) => {
+                      const options = selection.options[index];
+                      const capacity = errors[`rooms[${index}].room`];
+                      return (
+                        <FieldGroup
+                          key={draft.id}
+                          className="grid grid-cols-2 gap-3 sm:grid-cols-[minmax(0,1fr)_88px_56px_56px_28px]"
+                        >
+                          <form.AppField name={`rooms[${index}].room.roomTypeId`}>
+                            {(field) => (
+                              <field.Choice
+                                label="Tipo"
+                                placeholder="Selecciona un tipo"
+                                disabled={!availabilityReady}
+                                options={
+                                  availabilityReady
+                                    ? options.types
+                                    : (roomTypes.data ?? []).map((type) => ({
+                                        value: type.id,
+                                        label: type.name,
+                                      }))
+                                }
+                                onValueChange={() =>
+                                  form.setFieldValue(`rooms[${index}].room.roomId`, null)
+                                }
+                              />
+                            )}
+                          </form.AppField>
+                          <form.AppField name={`rooms[${index}].room.roomId`}>
+                            {(field) => (
+                              <field.Choice
+                                label="Hab."
+                                nullable
+                                disabled={!availabilityReady || !draft.room.roomTypeId}
+                                options={[
+                                  { value: "none", label: "Sin asignar" },
+                                  ...(availabilityReady
+                                    ? options.numbers
+                                    : (rooms.data ?? [])
+                                        .filter((room) => room.roomTypeId === draft.room.roomTypeId)
+                                        .map((room) => ({
+                                          value: room.id,
+                                          label: room.number,
+                                        }))),
+                                ]}
+                              />
+                            )}
+                          </form.AppField>
+                          <form.AppField name={`rooms[${index}].room.adults`}>
+                            {(field) => (
+                              <field.Text
+                                label="Adultos"
+                                type="number"
+                                min={1}
+                                max={100}
+                                required
+                                live
+                                groupErrorId={capacity ? `${draft.id}-capacity` : undefined}
+                              />
+                            )}
+                          </form.AppField>
+                          <form.AppField name={`rooms[${index}].room.children`}>
+                            {(field) => (
+                              <field.Text
+                                label="Niños"
+                                type="number"
+                                min={0}
+                                max={100}
+                                required
+                                live
+                                groupErrorId={capacity ? `${draft.id}-capacity` : undefined}
+                              />
+                            )}
+                          </form.AppField>
+                          <div className="col-start-2 self-end justify-self-end sm:col-start-auto">
+                            <Button
+                              type="button"
+                              variant="destructive"
+                              size="icon"
+                              aria-label={`Quitar habitación ${index + 1}`}
+                              disabled={values.rooms.length === 1}
+                              onClick={() => form.removeFieldValue("rooms", index)}
+                            >
+                              <XIcon />
+                            </Button>
+                          </div>
+                          {capacity && (
+                            <FieldError id={`${draft.id}-capacity`} className="col-span-full">
+                              {capacity}
+                            </FieldError>
+                          )}
+                        </FieldGroup>
+                      );
+                    })
+                  }
+                </form.Field>
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="w-fit"
+                  disabled={!availabilityReady || !selection.canAdd}
+                  onClick={() => {
+                    const lastRoom = values.rooms[values.rooms.length - 1].room;
+                    const type = availability.data?.roomTypes.find(
+                      (type) => type.id === lastRoom.roomTypeId,
+                    );
+                    const used = values.rooms.filter(
+                      (draft) => draft.room.roomTypeId === lastRoom.roomTypeId,
+                    ).length;
+                    form.pushFieldValue("rooms", {
+                      id: crypto.randomUUID(),
+                      removed: false,
+                      room: {
+                        ...lastRoom,
+                        roomTypeId: type && type.free > used ? lastRoom.roomTypeId : "",
+                        roomId: null,
+                      },
+                    });
+                  }}
+                >
+                  <PlusIcon data-icon="inline-start" />
+                  Agregar habitación
+                </Button>
+                {errors.rooms && <FieldError>{errors.rooms}</FieldError>}
+                {setupMessage && (
+                  <p role="status" className="text-muted-foreground">
+                    {setupMessage}
+                  </p>
+                )}
+              </>
             )}
           </section>
           <FieldSet>

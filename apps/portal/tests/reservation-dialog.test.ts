@@ -819,7 +819,7 @@ it("filters sold-out types, occupied and closed room numbers, and inventory alre
   assert.equal(button("Agregar habitación").disabled, false);
 });
 
-it("waits for current date availability and clears room selections that are no longer available", async () => {
+it("replaces sold-out room controls with an empty state and restores them when dates are available", async () => {
   mockCreationApi(async () => Response.json(detail()));
   const fetchApi = globalThis.fetch;
   let finish!: (response: Response) => void;
@@ -832,6 +832,10 @@ it("waits for current date availability and clears room selections that are no l
     return fetchApi(input, init);
   };
   await renderNewBooking();
+  await fill("fullName", "Ada Lovelace");
+  await fill("notes", "Llegada por la tarde");
+  await fill("rooms[0].room.adults", "2");
+  await fill("rooms[0].room.children", "1");
   assert.match(fieldTrigger("Hab.").textContent, /101/);
   await React.act(async () => fieldTrigger("Check-out").click());
   const day = [...window.document.querySelectorAll<HTMLButtonElement>("button[data-day]")].find(
@@ -842,6 +846,7 @@ it("waits for current date availability and clears room selections that are no l
   assert.equal(fieldTrigger("Tipo").disabled, true);
   assert.equal(fieldTrigger("Hab.").disabled, true);
   assert.equal(button("Crear reserva").disabled, true);
+  assert.ok(!container.textContent.includes("Sin habitaciones disponibles"));
   await React.act(async () =>
     finish(
       Response.json({
@@ -864,12 +869,37 @@ it("waits for current date availability and clears room selections that are no l
     ),
   );
   await until(
-    () => fieldTrigger("Tipo").textContent.includes("Selecciona un tipo"),
-    "Unavailable type must clear after date change",
+    () => container.textContent.includes("Sin habitaciones disponibles"),
+    "Sold-out dates must show an empty state",
   );
-  assert.match(fieldTrigger("Hab.").textContent, /Sin asignar/);
+  const roomSection = container.querySelector('section[aria-label="Habitaciones"]')!;
+  assert.ok(roomSection.querySelector("h3"));
+  assert.ok(roomSection.querySelector('[role="status"]'));
+  assert.ok(
+    roomSection.textContent.includes("Prueba con otras fechas para encontrar disponibilidad."),
+  );
+  assert.equal(roomSection.querySelectorAll("input, button").length, 0);
+  assert.equal(control("fullName").value, "Ada Lovelace");
+  assert.equal(control("notes").value, "Llegada por la tarde");
+  assert.ok(container.querySelector("aside"));
   assert.equal(button("Crear reserva").disabled, true);
-  assert.ok(container.textContent.includes("No hay habitaciones disponibles para esas fechas."));
+
+  await React.act(async () => fieldTrigger("Check-out").click());
+  const availableDay = [
+    ...window.document.querySelectorAll<HTMLButtonElement>("button[data-day]"),
+  ].find((button) => button.textContent.trim() === "17")!;
+  await React.act(async () => availableDay.click());
+  await until(
+    () => client.isFetching() === 0 && !button("Agregar habitación").disabled,
+    "Available dates must restore the room controls",
+  );
+  assert.ok(!container.textContent.includes("Sin habitaciones disponibles"));
+  assert.match(fieldTrigger("Tipo").textContent, /Selecciona un tipo/);
+  assert.match(fieldTrigger("Hab.").textContent, /Sin asignar/);
+  assert.equal(control("rooms[0].room.adults").value, "2");
+  assert.equal(control("rooms[0].room.children").value, "1");
+  assert.equal(control("fullName").value, "Ada Lovelace");
+  assert.equal(control("notes").value, "Llegada por la tarde");
 });
 
 const doubleType = { id: "double", name: "Doble", maxAdults: 2, maxChildren: 2 };
@@ -989,7 +1019,7 @@ it.each([
       }),
     );
     await until(() => container.textContent.includes(message), "Setup guidance must appear");
-    assert.ok(!container.textContent.includes("No hay habitaciones disponibles para esas fechas."));
+    assert.ok(!container.textContent.includes("Sin habitaciones disponibles"));
   },
 );
 
