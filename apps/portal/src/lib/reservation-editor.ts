@@ -2,6 +2,7 @@ import type {
   BookingContact,
   ReservationDetail,
   Reservation,
+  Room,
   RoomClosure,
   StayingGuest,
   WorkflowAction,
@@ -110,6 +111,54 @@ export function unavailableRoomIds(
     if (overlaps(closure.starts, closure.ends)) ids.add(closure.roomId);
   }
   return ids;
+}
+
+// Replace the saved reservation with its draft, including unassigned rooms.
+export function availableRoomTypeIds(
+  stay: { checkIn: string; checkOut: string },
+  rooms: Room[],
+  reservations: Reservation[],
+  closures: RoomClosure[],
+  drafts: RoomDraft[],
+  reservationId: string,
+): Set<string> {
+  const nights =
+    (Date.parse(`${stay.checkOut}T00:00:00Z`) - Date.parse(`${stay.checkIn}T00:00:00Z`)) / 86400000;
+  if (!(nights >= 1 && nights <= 60)) return new Set();
+  const dates = Array.from({ length: nights }, (_, index) =>
+    new Date(Date.parse(`${stay.checkIn}T00:00:00Z`) + index * 86400000).toISOString().slice(0, 10),
+  );
+  const others = reservations.filter(
+    (reservation) => reservation.id !== reservationId && reservation.status !== "cancelled",
+  );
+  return new Set(
+    [...new Set(rooms.map((room) => room.roomTypeId))].filter((typeId) => {
+      const physicalRooms = rooms.filter((room) => room.roomTypeId === typeId);
+      const used = drafts.filter(
+        (draft) => !draft.removed && draft.room.roomTypeId === typeId,
+      ).length;
+      return dates.every((date) => {
+        const booked = others
+          .filter((reservation) => reservation.checkIn <= date && date < reservation.checkOut)
+          .reduce(
+            (count, reservation) =>
+              count + reservation.rooms.filter((room) => room.roomTypeId === typeId).length,
+            0,
+          );
+        const closed = new Set(
+          closures
+            .filter(
+              (closure) =>
+                closure.starts <= date &&
+                date < closure.ends &&
+                physicalRooms.some((room) => room.id === closure.roomId),
+            )
+            .map((closure) => closure.roomId),
+        ).size;
+        return physicalRooms.length > booked + closed + used;
+      });
+    }),
+  );
 }
 
 // Notes and guest/contact text do not change charges or dated inventory.

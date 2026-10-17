@@ -13,6 +13,7 @@ import {
   guestValues,
   overlappingRoomIds,
   unavailableRoomIds,
+  availableRoomTypeIds,
   roomEdits,
   previewFieldErrors,
 } from "@/lib/reservation-editor";
@@ -297,6 +298,22 @@ export function BookingEditor({
   const unchanged = useSelector(form.store, (state) => state.isDefaultValue);
   const drafts = workflowDrafts(values);
   const common = { checkIn: values.checkIn, checkOut: values.checkOut };
+  const rooms = useRooms();
+  const availability = useRoomAssignmentOptions(common, detail.id);
+  const availableTypes = availableRoomTypeIds(
+    common,
+    rooms.data ?? [],
+    availability.reservations ?? [],
+    availability.closures ?? [],
+    drafts,
+    detail.id,
+  );
+  const previousRoom = values.rooms.find((room) => !room.removed)?.room;
+  const nextRoomType =
+    roomTypes.data?.find(
+      (type) => type.id === previousRoom?.roomTypeId && availableTypes.has(type.id),
+    ) ?? roomTypes.data?.find((type) => availableTypes.has(type.id));
+  const canAddRoom = roomTypes.isSuccess && rooms.isSuccess && availability.ready && !!nextRoomType;
   const reservationState = values.status;
   const notes = values.notes;
   const [intent, setIntent] = useState<Intent | null>(null);
@@ -598,17 +615,27 @@ export function BookingEditor({
                             type="button"
                             variant="outline"
                             className="w-fit"
-                            disabled={drafts.length >= 60}
-                            onClick={() =>
+                            disabled={drafts.length >= 60 || !canAddRoom}
+                            onClick={() => {
+                              if (!canAddRoom || !nextRoomType || !previousRoom) return;
                               form.pushFieldValue("rooms", {
                                 id: crypto.randomUUID(),
                                 room: {
-                                  ...values.rooms.find((room) => !room.removed)!.room,
+                                  roomTypeId: nextRoomType.id,
                                   roomId: null,
+                                  adults: String(
+                                    Math.min(Number(previousRoom.adults), nextRoomType.maxAdults),
+                                  ),
+                                  children: String(
+                                    Math.min(
+                                      Number(previousRoom.children),
+                                      nextRoomType.maxChildren,
+                                    ),
+                                  ),
                                 },
                                 removed: false,
-                              })
-                            }
+                              });
+                            }}
                           >
                             <PlusIcon data-icon="inline-start" />
                             Agregar habitación
@@ -815,6 +842,8 @@ function useRoomAssignmentOptions(
   const reservations = useReservations(room.checkIn, room.checkOut, enabled);
   const closures = useRoomClosures(room.checkIn, room.checkOut, enabled);
   return {
+    reservations: reservations.data,
+    closures: closures.data,
     blocked: unavailableRoomIds(room, reservations.data ?? [], closures.data ?? [], reservationId),
     ready:
       enabled &&

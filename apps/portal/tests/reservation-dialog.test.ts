@@ -405,7 +405,10 @@ function requestUrl(input: Parameters<typeof fetch>[0]) {
   return new URL(typeof input === "string" ? input : "url" in input ? input.url : input.href);
 }
 
-function mockApi(handler: (path: string, command: WorkflowCommand) => Promise<Response>) {
+function mockApi(
+  handler: (path: string, command: WorkflowCommand) => Promise<Response>,
+  { roomCount = 1 } = {},
+) {
   globalThis.fetch = async (input, init) => {
     const url = requestUrl(input);
     if (init?.method === "POST") {
@@ -415,7 +418,13 @@ function mockApi(handler: (path: string, command: WorkflowCommand) => Promise<Re
     if (url.pathname === "/room-types")
       return Response.json([{ id: "double", name: "Doble", maxAdults: 2, maxChildren: 2 }]);
     if (url.pathname === "/rooms")
-      return Response.json([{ id: "room-1", number: "101", roomTypeId: "double" }]);
+      return Response.json(
+        Array.from({ length: roomCount }, (_, index) => ({
+          id: `room-${index + 1}`,
+          number: `${101 + index}`,
+          roomTypeId: "double",
+        })),
+      );
     if (url.pathname === "/reservations/reservation-1") return Response.json(detail());
     if (url.pathname === "/reservations" || url.pathname === "/room-closures")
       return Response.json([]);
@@ -1258,39 +1267,218 @@ it("keeps an extension price visible and identifies the conflicting room without
   assert.equal(previews.length, 2);
 });
 
+it.each(["saved assigned room", "saved unassigned room", "unassigned reservation", "room closure"])(
+  "disables adding a room in the edit dialog when availability is exhausted by a %s",
+  async (scenario) => {
+    const initial = detail();
+    if (scenario === "saved unassigned room") {
+      initial.rooms[0].roomId = null;
+      initial.rooms[0].roomNumber = null;
+    }
+    mockApi(
+      async () => {
+        throw new Error("An unchanged reservation must not write or preview");
+      },
+      { roomCount: scenario === "unassigned reservation" || scenario === "room closure" ? 2 : 1 },
+    );
+    const fetchApi = globalThis.fetch;
+    globalThis.fetch = async (input, init) => {
+      const path = requestUrl(input).pathname;
+      if (path === "/reservations/reservation-1") return Response.json(initial);
+      if (path === "/reservations")
+        return Response.json([
+          initial,
+          ...(scenario === "unassigned reservation"
+            ? [
+                {
+                  ...detail(),
+                  id: "other-reservation",
+                  rooms: [{ ...detail().rooms[0], id: "other-line", roomId: null }],
+                },
+              ]
+            : []),
+        ]);
+      if (path === "/room-closures" && scenario === "room closure")
+        return Response.json([
+          {
+            id: "closure",
+            roomId: "room-2",
+            starts: "2026-10-15",
+            ends: "2026-10-16",
+            reason: null,
+          },
+        ]);
+      return fetchApi(input, init);
+    };
+    await render(
+      React.createElement(dialogs.RoomBookingDialog, {
+        target: {
+          mode: "edit",
+          reservationId: "reservation-1",
+          roomId: "room-1",
+          number: "101",
+          typeName: "Doble",
+        },
+        timeZone: "UTC",
+        onClose: () => {},
+        onViewReservation: () => {},
+      }),
+    );
+    await until(
+      () => window.document.querySelector('[name="notes"]') !== null && client.isFetching() === 0,
+      "The reservation and inventory must finish loading",
+    );
+    await flush();
+    assert.equal(button("Agregar habitación").disabled, true);
+  },
+);
+
+it("adds the available type instead of a sold-out type and releases draft inventory on removal", async () => {
+  const initial = detail();
+  initial.rooms[0].adults = 2;
+  initial.rooms[0].children = 1;
+  mockApi(async () => previewResponse(initial));
+  const fetchApi = globalThis.fetch;
+  globalThis.fetch = async (input, init) => {
+    const path = requestUrl(input).pathname;
+    if (path === "/room-types")
+      return Response.json([
+        doubleType,
+        { id: "single", name: "Simple", maxAdults: 1, maxChildren: 0 },
+      ]);
+    if (path === "/rooms")
+      return Response.json([
+        { id: "room-1", number: "101", roomTypeId: "double" },
+        { id: "room-2", number: "102", roomTypeId: "single" },
+      ]);
+    if (path === "/reservations") return Response.json([initial]);
+    return fetchApi(input, init);
+  };
+  await render(
+    React.createElement(dialogs.BookingEditor, { detail: initial, onRefresh: () => {} }),
+  );
+  await until(
+    () => !button("Agregar habitación").disabled,
+    "Available room type must allow adding",
+  );
+  await React.act(async () => button("Agregar habitación").click());
+  assert.match(fieldTrigger("Tipo", 1).textContent, /Simple/);
+  assert.match(fieldTrigger("Hab.", 1).textContent, /Sin asignar/);
+  assert.equal(control("rooms[1].room.adults").value, "1");
+  assert.equal(control("rooms[1].room.children").value, "0");
+  assert.equal(button("Agregar habitación").disabled, true);
+  await React.act(async () => button("Agregar habitación").click());
+  assert.equal(container.querySelectorAll('[name$=".room.adults"]').length, 2);
+  await React.act(async () =>
+    container.querySelector<HTMLButtonElement>('[aria-label="Quitar habitación 2"]')!.click(),
+  );
+  assert.equal(button("Agregar habitación").disabled, false);
+});
+
+it("counts availability per night and waits for current dates before allowing another room", async () => {
+  mockApi(async () => previewResponse(detail()), { roomCount: 3 });
+  const fetchApi = globalThis.fetch;
+  let finish!: (response: Response) => void;
+  globalThis.fetch = async (input, init) => {
+    const url = requestUrl(input);
+    if (url.pathname === "/reservations") {
+      if (url.searchParams.get("to") === "2026-10-17")
+        return new Promise<Response>((resolve) => {
+          finish = resolve;
+        });
+      // These unassigned rooms occupy successive nights, not two rooms at once.
+      return Response.json([
+        {
+          ...detail(),
+          id: "first-night",
+          checkOut: "2026-10-15",
+          rooms: [{ roomTypeId: "double", roomId: null }],
+        },
+        {
+          ...detail(),
+          id: "second-night",
+          checkIn: "2026-10-15",
+          rooms: [{ roomTypeId: "double", roomId: null }],
+        },
+      ]);
+    }
+    if (url.pathname === "/room-closures")
+      return Response.json([
+        {
+          id: "closure-1",
+          roomId: "room-2",
+          starts: "2026-10-16",
+          ends: "2026-10-17",
+          reason: null,
+        },
+        {
+          id: "closure-2",
+          roomId: "room-3",
+          starts: "2026-10-16",
+          ends: "2026-10-17",
+          reason: null,
+        },
+      ]);
+    return fetchApi(input, init);
+  };
+  await render(
+    React.createElement(dialogs.BookingEditor, { detail: detail(), onRefresh: () => {} }),
+  );
+  await until(
+    () => !button("Agregar habitación").disabled,
+    "Successive stays must leave one room available",
+  );
+  await React.act(async () => fieldTrigger("Check-out").click());
+  const day = [...window.document.querySelectorAll<HTMLButtonElement>("button[data-day]")].find(
+    (button) => button.textContent.trim() === "17",
+  )!;
+  assert.ok(day);
+  await React.act(async () => day.click());
+  await until(() => !!finish, "Changed dates must request current reservations");
+  assert.equal(button("Agregar habitación").disabled, true);
+  await React.act(async () => finish(Response.json([])));
+  await until(() => client.isFetching() === 0, "Current availability must finish loading");
+  await flush();
+  assert.equal(button("Agregar habitación").disabled, true, "Closures exhaust the added night");
+});
+
 it("keeps pricing an added room when its occupancy is invalid and blocks saving", async () => {
   const previews: WorkflowCommand[] = [];
-  mockApi(async (path, command) => {
-    assert.ok(path.endsWith("/preview"));
-    previews.push(command);
-    const added = command.actions.find((action) => action.type === "add-room")!;
-    assert.equal(added.type, "add-room");
-    if (added.type !== "add-room") throw new Error("Expected added room");
-    return previewResponse(
-      {
-        ...detail(),
-        subtotalCents: 60000,
-        totalCents: 60000,
-        balanceCents: 60000,
-        rooms: [...detail().rooms, { ...detail().rooms[0], id: "new-line", ...added.room }],
-      },
-      added.room.adults > 2
-        ? [
-            {
-              code: "too many guests for this room type",
-              roomIndex: 1,
-              field: "occupancy",
-            },
-          ]
-        : [],
-    );
-  });
+  mockApi(
+    async (path, command) => {
+      assert.ok(path.endsWith("/preview"));
+      previews.push(command);
+      const added = command.actions.find((action) => action.type === "add-room")!;
+      assert.equal(added.type, "add-room");
+      if (added.type !== "add-room") throw new Error("Expected added room");
+      return previewResponse(
+        {
+          ...detail(),
+          subtotalCents: 60000,
+          totalCents: 60000,
+          balanceCents: 60000,
+          rooms: [...detail().rooms, { ...detail().rooms[0], id: "new-line", ...added.room }],
+        },
+        added.room.adults > 2
+          ? [
+              {
+                code: "too many guests for this room type",
+                roomIndex: 1,
+                field: "occupancy",
+              },
+            ]
+          : [],
+      );
+    },
+    { roomCount: 2 },
+  );
   await render(
     React.createElement(dialogs.BookingEditor, {
       detail: detail(),
       onRefresh: () => {},
     }),
   );
+  await until(() => !button("Agregar habitación").disabled, "Room inventory must load");
   await React.act(async () => button("Agregar habitación").click());
   await until(() => !button("Guardar detalles").disabled, "Added room must be priced");
   await fill("rooms[1].room.adults", "3");
@@ -1420,20 +1608,23 @@ it("previews and saves added unassigned rooms after check-in and allows clearing
   const initial = { ...detail(), status: "checked_in" };
   const writes: WorkflowCommand[] = [];
   const previews: WorkflowCommand[] = [];
-  mockApi(async (path, command) => {
-    if (path.endsWith("/commands")) writes.push(command);
-    else previews.push(command);
-    const hasAdded = command.actions.some((action) => action.type === "add-room");
-    const unassigned = { ...initial.rooms[0], roomId: null, roomNumber: null };
-    const saved = {
-      ...initial,
-      rooms: hasAdded ? [unassigned, { ...unassigned, id: "line-2" }] : [unassigned],
-      subtotalCents: hasAdded ? 60000 : 30000,
-      totalCents: hasAdded ? 60000 : 30000,
-      balanceCents: hasAdded ? 60000 : 30000,
-    };
-    return path.endsWith("/preview") ? previewResponse(saved) : Response.json(saved);
-  });
+  mockApi(
+    async (path, command) => {
+      if (path.endsWith("/commands")) writes.push(command);
+      else previews.push(command);
+      const hasAdded = command.actions.some((action) => action.type === "add-room");
+      const unassigned = { ...initial.rooms[0], roomId: null, roomNumber: null };
+      const saved = {
+        ...initial,
+        rooms: hasAdded ? [unassigned, { ...unassigned, id: "line-2" }] : [unassigned],
+        subtotalCents: hasAdded ? 60000 : 30000,
+        totalCents: hasAdded ? 60000 : 30000,
+        balanceCents: hasAdded ? 60000 : 30000,
+      };
+      return path.endsWith("/preview") ? previewResponse(saved) : Response.json(saved);
+    },
+    { roomCount: 2 },
+  );
   // Match the dialog's subscription to the saved reservation cache.
   client.setQueryData(["reservation", initial.id], initial);
   function Editor() {
