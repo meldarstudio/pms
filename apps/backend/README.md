@@ -28,6 +28,55 @@ formatting or lint rules. `pnpm --filter @pms/backend typecheck` retains
 `tsc --noEmit` for standalone checks and Workers Builds; root commands do not
 repeat that compiler pass.
 
+## Staff login
+
+Every route except `GET /` and `POST /login` requires a session cookie. There is one
+shared Staff account. Its username is the `AUTH_USERNAME` var in `wrangler.jsonc`
+(`hotelmanantial`, matched without regard to letter case).
+
+- `POST /login` takes `{ username, password }`, checks the password against the
+  `ADMIN_PASSWORD_HASH` secret (PBKDF2-SHA256), and sets a signed `HttpOnly`,
+  `SameSite=Lax` cookie that lasts 30 days and does not renew. The cookie is host-only on
+  the API hostname, which is same-site with the portal. `Secure` is set on HTTPS.
+- `GET /session` returns the signed-in username. `POST /logout` clears the cookie.
+- Logins are limited to 5 per minute per IP by the `LOGIN_LIMITER` rate limit binding.
+- `ALLOWED_ORIGINS` is a comma-separated list of exact origins allowed to send
+  credentialed requests. Production sets it in `wrangler.jsonc`. Local dev overrides it
+  in `.dev.vars`.
+- If `AUTH_USERNAME`, `ADMIN_PASSWORD_HASH` or `SESSION_SECRET` is missing, the Worker
+  fails closed: guarded routes and login return 401 and the Worker logs the cause.
+- Sessions are stateless, so one cannot be revoked alone. Rotating `SESSION_SECRET`
+  signs everyone out.
+
+Backend tests sign in through the real login route (`src/test-support/auth.ts`) and send
+the resulting cookie. They do not bypass the guard.
+
+### Changing the password or removing someone's access
+
+```sh
+pnpm auth:hash                  # prompts twice, prints the new hash
+pnpm auth:hash --session-secret # prints a new session secret
+pnpm --filter @pms/backend exec wrangler secret put ADMIN_PASSWORD_HASH
+pnpm --filter @pms/backend exec wrangler secret put SESSION_SECRET
+```
+
+When someone leaves, change both secrets. The new password is at least 12 characters.
+Tell the remaining staff the new password. Everyone signs in again.
+
+### First deployment checklist
+
+`main` deploys automatically, so finish these before merging the login change:
+
+1. Set `ADMIN_PASSWORD_HASH` and `SESSION_SECRET` with `wrangler secret put` as above.
+2. Make sure the `hotelmanantialchurin.com` zone is on this Cloudflare account. The
+   `routes` entries in each `wrangler.jsonc` attach `api.hotelmanantialchurin.com` and
+   `app.hotelmanantialchurin.com` as custom domains on deploy.
+3. Change the portal's Workers Builds variable `VITE_API_BASE_URL` to
+   `https://api.hotelmanantialchurin.com`.
+4. Merge. Check that signing in works at `https://app.hotelmanantialchurin.com`.
+
+The API no longer has a `workers.dev` or preview URL.
+
 ## Reservation dates
 
 Each reservation has one `checkIn` and `checkOut` date shared by all its rooms.
@@ -152,7 +201,7 @@ and rooms; use `pnpm db:reset:local` to undo edits and reload all sample data.
 
 ## Deployment and Worker types
 
-Production API: `https://pms-api.meldar.workers.dev`
+Production API: `https://api.hotelmanantialchurin.com`
 
 ```sh
 pnpm --filter @pms/backend run deploy

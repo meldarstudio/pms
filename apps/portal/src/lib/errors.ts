@@ -1,4 +1,7 @@
 const messages: Record<string, string> = {
+  "invalid credentials": "Usuario o contraseña incorrectos.",
+  "too many login attempts": "Demasiados intentos. Espera un minuto e inténtalo de nuevo.",
+  unauthorized: "Tu sesión terminó. Inicia sesión de nuevo.",
   "reservation requires at least one room": "La reserva debe tener al menos una habitación.",
   "payment date is required": "Indica la fecha del pago.",
   "guest room must belong to this reservation":

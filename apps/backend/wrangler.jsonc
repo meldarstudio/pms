@@ -3,11 +3,21 @@
   "name": "pms-api",
   "main": "src/index.ts",
   "compatibility_date": "2026-10-08",
-  "workers_dev": true,
-  "preview_urls": true,
+  "workers_dev": false,
+  "preview_urls": false,
+  "routes": [{ "pattern": "api.hotelmanantialchurin.com", "custom_domain": true }],
   "vars": {
     "CURRENCY": "PEN",
+    "AUTH_USERNAME": "hotelmanantial",
+    "ALLOWED_ORIGINS": "https://app.hotelmanantialchurin.com",
   },
+  "ratelimits": [
+    {
+      "name": "LOGIN_LIMITER",
+      "namespace_id": "1001",
+      "simple": { "limit": 5, "period": 60 },
+    },
+  ],
   "d1_databases": [
     {
       "binding": "DB",

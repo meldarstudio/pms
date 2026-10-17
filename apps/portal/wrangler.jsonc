@@ -3,6 +3,7 @@
   "name": "pms-portal",
   "compatibility_date": "2026-10-08",
   "workers_dev": true,
+  "routes": [{ "pattern": "app.hotelmanantialchurin.com", "custom_domain": true }],
   "preview_urls": true,
   "assets": {
     "directory": "dist",

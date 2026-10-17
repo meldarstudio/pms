@@ -1,7 +1,8 @@
-import { Hono } from "hono";
+import { Hono, type Context } from "hono";
 import { cors } from "hono/cors";
 import type { Env } from "./env";
 import { HttpError } from "./http";
+import { authRoutes } from "./routes/auth";
 import { availabilityRoutes } from "./routes/availability";
 import { inventoryRoutes } from "./routes/inventory";
 import { guestRoutes } from "./routes/guests";
@@ -10,19 +11,25 @@ import { reservationRoutes } from "./routes/reservations";
 import { roomTypeRoutes } from "./routes/room-types";
 import { roomClosureRoutes } from "./routes/room-closures";
 import { roomRoutes } from "./routes/rooms";
+import { requireSession } from "./session";
 
 const app = new Hono<Env>();
 
 app.use(
   "*",
   cors({
-    origin: (origin) =>
-      /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/.test(origin) ||
-      /^https:\/\/(?:[a-z0-9-]+-)?pms-portal\.meldar\.workers\.dev$/.test(origin)
+    origin: (origin, c: Context<Env>) =>
+      (c.env.ALLOWED_ORIGINS ?? "")
+        .split(",")
+        .map((allowed) => allowed.trim())
+        .includes(origin)
         ? origin
         : null,
+    credentials: true,
   }),
 );
+
+app.use("*", requireSession);
 
 app.onError((err, c) => {
   if (err instanceof HttpError) return c.json({ error: err.message }, err.status);
@@ -33,6 +40,7 @@ app.onError((err, c) => {
 app.notFound((c) => c.json({ error: "not found" }, 404));
 
 app.get("/", (c) => c.json({ name: "pms" }));
+app.route("/", authRoutes);
 app.route("/room-types", roomTypeRoutes);
 app.route("/rooms", roomRoutes);
 app.route("/room-closures", roomClosureRoutes);

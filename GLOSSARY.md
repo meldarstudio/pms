@@ -5,6 +5,13 @@ reservation bills at the property.
 
 ## Language
 
+### Access
+
+**Staff account**:
+The single shared login that everyone who operates the portal uses, identified by one fixed username.
+Changes made under it are not attributed to individual people.
+_Avoid_: Admin account, user, manager login
+
 ### Reservations and dates
 
 **Reservation**:

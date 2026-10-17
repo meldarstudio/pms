@@ -10,8 +10,9 @@ pnpm dev:portal
 ```
 
 The portal reads its API URL from `VITE_API_BASE_URL`, which Vite inlines at
-build time. `.env.development` sets it to `http://127.0.0.1:8788`, the port the
-backend dev script uses. Override it in `.env.local`. A build fails if the
+build time. `.env.development` sets it to `http://localhost:8788`, the port the
+backend dev script uses. It must be `localhost`, not `127.0.0.1`, so the browser
+treats the portal and API as the same site and sends the session cookie. Override it in `.env.local`. A build fails if the
 variable is missing.
 
 ## Reservation forms
@@ -52,6 +53,14 @@ excluded. `pnpm lint` covers all three packages. Use
 `pnpm --filter @pms/portal lint` for portal TS/TSX files only. React Hooks rules
 remain portal-only, and browser globals apply to portal source and tests.
 
+## Signing in
+
+`AuthGate` in `src/components/auth-gate.tsx` wraps the router. It asks the API for
+the session and shows the login form when there is none. Every request sends
+`credentials: "include"`. A 401 from any API call clears cached data and shows the
+login form again, keeping the current URL, so signing in returns to the same page.
+Backend login errors are translated in `src/lib/errors.ts`.
+
 ## Deployment
 
-Production portal: `https://pms-portal.meldar.workers.dev`
+Production portal: `https://app.hotelmanantialchurin.com`

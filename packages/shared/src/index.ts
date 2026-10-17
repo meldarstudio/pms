@@ -48,6 +48,13 @@ export const rateWriteSchema = z.object({
   weekdays: z.array(z.number().int().min(0).max(6)).min(1).optional(),
 });
 
+export const loginSchema = z
+  .object({
+    username: z.string().min(1).max(100),
+    password: z.string().min(1).max(500),
+  })
+  .strict();
+
 export const listQuerySchema = z.object({
   limit: z.coerce.number().int().min(1).max(200).optional(),
   offset: z.coerce.number().int().min(0).optional(),

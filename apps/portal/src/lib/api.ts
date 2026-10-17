@@ -186,9 +186,22 @@ async function responseError(response: Response) {
   }
 }
 
+let unauthorizedHandler: (() => void) | undefined;
+
+export function onUnauthorized(handler: () => void) {
+  unauthorizedHandler = handler;
+  return () => {
+    if (unauthorizedHandler === handler) unauthorizedHandler = undefined;
+  };
+}
+
 async function request(path: string, init: RequestInit) {
   try {
-    return await fetch(`${API_BASE}${path}`, init);
+    const response = await fetch(`${API_BASE}${path}`, { ...init, credentials: "include" });
+    if (response.status === 401 && path !== "/login" && path !== "/session") {
+      unauthorizedHandler?.();
+    }
+    return response;
   } catch (error) {
     if (error instanceof DOMException && error.name === "AbortError") throw error;
     throw new Error("No se pudo conectar con el servidor. Inténtalo de nuevo.", { cause: error });
@@ -199,6 +212,23 @@ async function getJson<T>(path: string, signal?: AbortSignal): Promise<T> {
   const response = await request(path, { signal });
   if (!response.ok) throw await responseError(response);
   return (await response.json()) as T;
+}
+
+export type Session = { username: string };
+
+export async function getSession(signal?: AbortSignal): Promise<Session | null> {
+  const response = await request("/session", { signal });
+  if (response.status === 401) return null;
+  if (!response.ok) throw await responseError(response);
+  return (await response.json()) as Session;
+}
+
+export function login(input: { username: string; password: string }) {
+  return writeJson<Session>("/login", "POST", input);
+}
+
+export function logout() {
+  return writeJson<{ ok: true }>("/logout", "POST");
 }
 
 export function listRooms(signal?: AbortSignal) {

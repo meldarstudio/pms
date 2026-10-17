@@ -1,10 +1,14 @@
 import { Outlet, useNavigate, useRouterState } from "@tanstack/react-router";
 import { format, startOfToday } from "date-fns";
+import { LogOutIcon } from "lucide-react";
+import { Button } from "@/components/ui/button";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { useLogout } from "@/lib/queries";
 import { lastCalendarSearch, lastReservationsSearch, reservationsSearch } from "@/lib/route-search";
 
 export function App() {
   const navigate = useNavigate();
+  const logout = useLogout();
   const pathname = useRouterState({
     select: (state) => state.location.pathname,
   });
@@ -46,6 +50,16 @@ export function App() {
           <TabsTrigger value="calendar">Calendario</TabsTrigger>
           <TabsTrigger value="inventory">Inventario y tarifas</TabsTrigger>
         </TabsList>
+        <Button
+          variant="ghost"
+          size="sm"
+          className="ml-auto"
+          disabled={logout.isPending}
+          onClick={() => logout.mutate()}
+        >
+          <LogOutIcon data-icon="inline-start" />
+          Salir
+        </Button>
       </header>
       <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
         <Outlet />

@@ -14,6 +14,7 @@
     "db:migrate:local": "pnpm --filter @pms/backend db:migrate:local",
     "db:seed:local": "pnpm --filter @pms/backend db:seed:local",
     "db:reset:local": "pnpm --filter @pms/backend db:reset:local",
+    "auth:hash": "pnpm --filter @pms/backend auth:hash",
     "check": "vp check .",
     "format": "vp fmt ."
   },

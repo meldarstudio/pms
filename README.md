@@ -23,7 +23,7 @@ Run these from the repository root.
 | ---------------------------------------- | -------------------------------------------------------------------------- |
 | `pnpm dev` or `pnpm exec vp run dev`     | Start the portal and local backend                                         |
 | `pnpm dev:portal` or `pnpm exec vp dev`  | Start the portal at `http://localhost:5173`                                |
-| `pnpm dev:backend`                       | Start the local API at `http://127.0.0.1:8788`                             |
+| `pnpm dev:backend`                       | Start the local API at `http://localhost:8788`                             |
 | `pnpm lint`                              | Lint and natively type-check the portal, backend, and shared schemas       |
 | `pnpm check` or `pnpm exec vp check .`   | Check repo formatting, lint, and native types                              |
 | `pnpm typecheck`                         | Check native types without formatting or lint rules                        |
@@ -43,11 +43,29 @@ the native type-check step in the package's build script; use `pnpm build` for b
 Production builds require `VITE_API_BASE_URL`:
 
 ```sh
-VITE_API_BASE_URL=http://127.0.0.1:8788 pnpm build
+VITE_API_BASE_URL=http://localhost:8788 pnpm build
 ```
 
 The portal's development environment already points to the local backend.
-Configure the production API origin as a Workers Builds build variable.
+Configure the production API origin as a Workers Builds build variable. Its value
+is `https://api.hotelmanantialchurin.com`.
+
+## Signing in
+
+The portal and API require the staff login. Before the first `pnpm dev`, create
+the local Worker variables:
+
+```sh
+cp apps/backend/.dev.vars.example apps/backend/.dev.vars
+pnpm auth:hash                  # prompts for a password, prints ADMIN_PASSWORD_HASH
+pnpm auth:hash --session-secret # prints a SESSION_SECRET
+```
+
+Paste both values into `apps/backend/.dev.vars`, then sign in at
+`http://localhost:5173` with username `hotelmanantial` and that password. Restart
+`pnpm dev:backend` after editing `.dev.vars`; Wrangler does not always reload it.
+Use `localhost` for both the portal and the API. `127.0.0.1` is a different site, so
+the browser will not send the session cookie.
 
 ## Testing
 

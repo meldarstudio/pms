@@ -18,9 +18,10 @@ All current application data is local sample data. There is no real customer or 
 ## Packages
 
 - `@pms/portal` in `apps/portal` is the Vite React SPA using code-based TanStack Router routes in `src/router.tsx`. Tabs live in `src/App.tsx`. A calendar booking opens `RoomBookingDialog`. The Reservations list opens `ReservationPage`. Fetch helpers and response types are hand-written in `src/lib/api.ts`. TanStack Query hooks are in `src/lib/queries.ts`. The portal does not depend on `@pms/shared`.
-- `@pms/backend` in `apps/backend` is the Hono Worker. Entry is `src/index.ts`. D1 binding is `DB`. `pnpm dev:backend` is `wrangler dev --port 8788` and uses the local D1 database, the same one as `pnpm db:reset:local`. Remote production is `pms-production`. Request schemas come from `@pms/shared`. Routes call `validate` and throw `HttpError` with status 400, 404, or 409. Error JSON is `{ error: string }`. The app uses `Env` from `src/env.ts`.
+- `@pms/backend` in `apps/backend` is the Hono Worker. Entry is `src/index.ts`. D1 binding is `DB`. `pnpm dev:backend` is `wrangler dev --port 8788` and uses the local D1 database, the same one as `pnpm db:reset:local`. Remote production is `pms-production`. Request schemas come from `@pms/shared`. Routes call `validate` and throw `HttpError` with status 400, 401, 404, 409, or 429. Error JSON is `{ error: string }`. The app uses `Env` from `src/env.ts`.
 - Reservation creates and edits are workflow commands, not field patches. `POST /reservations` uses `workflowCreateSchema`. `POST /reservations/:id/commands` writes, and `POST /reservations/:id/preview` calculates the same actions and returns `{ billing, validation: { issues } }`. Priceable drafts return 200 even when operational issues prevent saving. Issues identify the affected field and its index in the proposed rooms, excluding removed rooms. Invalid pricing inputs still return an HTTP error. `requestId` deduplicates retries. Reusing an ID with a different payload returns 409. The write batch sets the reservation to `cancelled` inside the transaction so a room swap does not trip overlap triggers, then writes the final status. Do not remove that release step.
 - Backend error strings stay English. Add the same string to `apps/portal/src/lib/errors.ts`, or the portal shows the raw message. `rethrowConflict` maps trigger abort text to those strings.
+- Every route except `GET /` and `POST /login` needs the Staff account session cookie. There is one shared account and no roles or per-user attribution. `src/session.ts` is the guard and `src/routes/auth.ts` holds login, logout and session. Local dev needs `apps/backend/.dev.vars` from `.dev.vars.example`; see [README.md](README.md#signing-in). Backend tests sign in through `src/test-support/auth.ts`. Do not add a guard bypass. Staff login errors need a Spanish string in `apps/portal/src/lib/errors.ts` like any other backend error.
 - `@pms/shared` in `packages/shared` is Zod schemas only. It exports `./src/index.ts` and has no build or typecheck script.
 
 ## Commands
@@ -39,12 +40,12 @@ For test changes and code reviews, read [CODING_STANDARDS.md](CODING_STANDARDS.m
 ## Branch and deployment workflow
 
 - Feature branches merge to `main`. `main` deploys `pms-api` against `pms-production`.
-- Production portal builds use `https://pms-api.meldar.workers.dev`. `VITE_API_BASE_URL` is a Workers Builds build variable, inlined at build time.
+- Production portal builds use `https://api.hotelmanantialchurin.com`. The portal is served at `https://app.hotelmanantialchurin.com`. `VITE_API_BASE_URL` is a Workers Builds build variable, inlined at build time.
 - Prepare `pms-production` before deploying code that requires a schema change. Rebuild and seed local databases. A consolidated baseline requires rebuilding or replacing the production database, not applying it over existing tables. `deploy` applies pending migrations and does not rebuild an existing database.
 
 ## Local API
 
-The portal reads its API origin from `VITE_API_BASE_URL`, inlined at build time. `apps/portal/.env.development` sets it to `http://127.0.0.1:8788`, which matches `wrangler dev --port 8788`. Override it in `.env.local`. `vp build` and `src/lib/api.ts` fail if it is unset. On Cloudflare, set it as a Workers Builds build variable, not a runtime variable. There is no Vite proxy. CORS allows local origins and `pms-portal` production or Preview Workers under the `meldar` workers.dev account.
+The portal reads its API origin from `VITE_API_BASE_URL`, inlined at build time. `apps/portal/.env.development` sets it to `http://localhost:8788`, which matches `wrangler dev --port 8788`. Keep it `localhost`: `127.0.0.1` is a different site from `localhost:5173`, so the browser would not send the session cookie. Override it in `.env.local`. `vp build` and `src/lib/api.ts` fail if it is unset. On Cloudflare, set it as a Workers Builds build variable, not a runtime variable. There is no Vite proxy. CORS allows credentials from the exact origins in the `ALLOWED_ORIGINS` var: `https://app.hotelmanantialchurin.com` in `wrangler.jsonc`, `http://localhost:5173` from `.dev.vars`.
 
 ## Domain
 
@@ -65,7 +66,7 @@ The portal reads its API origin from `VITE_API_BASE_URL`, inlined at build time.
 
 ## Cursor Cloud specific instructions
 
-- `pnpm dev` serves the API at `http://127.0.0.1:8788` and the portal at `http://localhost:5173`. The Vite dev server binds IPv6 localhost only, so `http://127.0.0.1:5173` is refused.
+- `pnpm dev` serves the API at `http://localhost:8788` and the portal at `http://localhost:5173`. The Vite dev server binds IPv6 localhost only, so `http://127.0.0.1:5173` is refused.
 - `pnpm db:reset:local` reloads sample data around today UTC and does not need Cloudflare credentials. Wrangler asks before applying migrations when stdin is a terminal. Prefix that command with `CI=true` so a non-interactive shell accepts the fallback and continues.
 - `pnpm build` needs `VITE_API_BASE_URL` in the environment. Dev mode reads `apps/portal/.env.development`.
 

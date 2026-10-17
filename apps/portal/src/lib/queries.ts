@@ -1,9 +1,11 @@
+import { useEffect } from "react";
 import {
   keepPreviousData,
   useMutation,
   useIsMutating,
   useQuery,
   useQueryClient,
+  type QueryClient,
 } from "@tanstack/react-query";
 import { refreshWorkflowQueries, workflowMutationKey } from "./workflow-query-cache";
 
@@ -17,16 +19,57 @@ import {
   getAvailability,
   getInventory,
   getReservation,
+  getSession,
   listReservations,
   listRoomClosures,
   listRoomTypes,
   listRooms,
+  login,
+  logout,
   patchGuest,
   patchRoom,
+  onUnauthorized,
   patchRoomClosure,
   putRoomTypeRates,
   type PatchGuestInput,
 } from "@/lib/api";
+
+export const sessionQueryKey = ["session"] as const;
+
+export function useSession() {
+  return useQuery({
+    queryKey: sessionQueryKey,
+    queryFn: ({ signal }) => getSession(signal),
+    retry: false,
+    staleTime: Infinity,
+  });
+}
+
+function setSignedOut(queryClient: QueryClient) {
+  queryClient.removeQueries({ predicate: (query) => query.queryKey[0] !== sessionQueryKey[0] });
+  queryClient.setQueryData(sessionQueryKey, null);
+}
+
+export function useSignedOutOnUnauthorized() {
+  const queryClient = useQueryClient();
+  useEffect(() => onUnauthorized(() => setSignedOut(queryClient)), [queryClient]);
+}
+
+export function useLogin() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: login,
+    onSuccess: (session) => queryClient.setQueryData(sessionQueryKey, session),
+  });
+}
+
+export function useLogout() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: logout,
+    onSuccess: () => setSignedOut(queryClient),
+  });
+}
 
 export function useRooms() {
   return useQuery({

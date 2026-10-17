@@ -5,7 +5,9 @@ import { DatabaseSync, type SQLInputValue } from "node:sqlite";
 import { URL } from "node:url";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import app from "../index";
+import type { Env } from "../env";
 import type { presentReservation } from "../present";
+import { authEnv, signIn } from "../test-support/auth";
 
 type Detail = ReturnType<typeof presentReservation>;
 type Preview = {
@@ -16,6 +18,8 @@ type Preview = {
 let sqlite: DatabaseSync;
 let binding: D1Database;
 let batchTail: Promise<unknown> = Promise.resolve();
+let bindings: Env["Bindings"];
+let sessionCookie: string;
 
 // Run the actual Hono routes and Drizzle SQL against SQLite with D1-style batches.
 function statement(sql: string, params: SQLInputValue[] = []) {
@@ -42,7 +46,7 @@ function statement(sql: string, params: SQLInputValue[] = []) {
   };
 }
 
-beforeEach(() => {
+beforeEach(async () => {
   vi.useFakeTimers();
   vi.setSystemTime(new Date("2026-10-10T15:00:00Z"));
   sqlite = new DatabaseSync(":memory:");
@@ -76,6 +80,8 @@ beforeEach(() => {
       return result;
     },
   } as unknown as D1Database;
+  bindings = await authEnv({ DB: binding });
+  sessionCookie = await signIn(bindings);
 });
 
 afterEach(() => {
@@ -89,11 +95,13 @@ function request(path: string, method = "GET", body?: unknown, database = bindin
     path,
     {
       method,
-      ...(body === undefined
-        ? {}
-        : { headers: { "content-type": "application/json" }, body: JSON.stringify(body) }),
+      headers: {
+        cookie: sessionCookie,
+        ...(body === undefined ? {} : { "content-type": "application/json" }),
+      },
+      ...(body === undefined ? {} : { body: JSON.stringify(body) }),
     },
-    { DB: database, CURRENCY: "PEN" },
+    { ...bindings, DB: database },
   );
 }
 

@@ -1,0 +1,92 @@
+import { useState, type FormEvent, type ReactNode } from "react";
+
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Field, FieldError, FieldGroup, FieldLabel } from "@/components/ui/field";
+import { Input } from "@/components/ui/input";
+import { Spinner } from "@/components/ui/spinner";
+import { useLogin, useSession, useSignedOutOnUnauthorized } from "@/lib/queries";
+
+export function AuthGate({ children }: { children: ReactNode }) {
+  const session = useSession();
+  useSignedOutOnUnauthorized();
+
+  if (session.isPending) {
+    return (
+      <main className="flex h-svh items-center justify-center">
+        <Spinner className="size-6" />
+      </main>
+    );
+  }
+  if (session.isError) {
+    return (
+      <main className="flex h-svh flex-col items-center justify-center gap-3 p-8 text-center">
+        <p className="text-sm">{session.error.message}</p>
+        <Button variant="outline" onClick={() => void session.refetch()}>
+          Reintentar
+        </Button>
+      </main>
+    );
+  }
+  if (!session.data) return <LoginPage />;
+  return children;
+}
+
+function LoginPage() {
+  const login = useLogin();
+  const [username, setUsername] = useState("");
+  const [password, setPassword] = useState("");
+
+  function submit(event: FormEvent) {
+    event.preventDefault();
+    if (login.isPending) return;
+    login.mutate({ username: username.trim(), password });
+  }
+
+  return (
+    <main className="flex h-svh items-center justify-center p-4">
+      <Card className="w-full max-w-sm">
+        <CardHeader>
+          <CardTitle>PMS Recepción</CardTitle>
+          <CardDescription>Inicia sesión para continuar.</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <form onSubmit={submit} noValidate>
+            <FieldGroup>
+              <Field>
+                <FieldLabel htmlFor="username">Usuario</FieldLabel>
+                <Input
+                  id="username"
+                  name="username"
+                  autoComplete="username"
+                  autoCapitalize="none"
+                  autoFocus
+                  required
+                  value={username}
+                  onChange={(event) => setUsername(event.target.value)}
+                />
+              </Field>
+              <Field>
+                <FieldLabel htmlFor="password">Contraseña</FieldLabel>
+                <Input
+                  id="password"
+                  name="password"
+                  type="password"
+                  autoComplete="current-password"
+                  required
+                  value={password}
+                  onChange={(event) => setPassword(event.target.value)}
+                />
+              </Field>
+              {login.isError ? <FieldError>{login.error.message}</FieldError> : null}
+              <Button type="submit" disabled={login.isPending || !username.trim() || !password}>
+                {login.isPending ? <Spinner /> : null}
+                Iniciar sesión
+              </Button>
+            </FieldGroup>
+          </form>
+        </CardContent>
+      </Card>
+    </main>
+  );
+}
