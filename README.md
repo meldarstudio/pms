@@ -5,20 +5,20 @@ schemas. The web toolchain uses Vite+ 1.3.0.
 
 ## Setup
 
-Use Node 22.22.1, pinned in `.node-version`, and pnpm 11.22.0. With nvm:
+Use Node 22.22.1, pinned in `.node-version`, and pnpm 11.22.0. With Vite+:
 
 ```sh
-nvm install 22.22.1
-nvm use 22.22.1
+vp env install
 pnpm install
 ```
 
 pnpm checks the exact Node version before running scripts or `pnpm exec` commands.
-If it reports a mismatch, run `nvm use 22.22.1` (or select that version with your
+If it reports a mismatch, run `vp env use 22.22.1` (or select that version with your
 Node manager), then retry. It does not download Node automatically. When upgrading
 Node, update both `.node-version` and `devEngines.runtime.version` in `package.json`.
 
-Vite+ is a local dependency. A global `vp` installation is optional.
+Vite+ is a local dependency. A global `vp` installation is needed only for managing
+Node and pnpm with `vp env`; project commands use the local dependency.
 
 ## Commands
 

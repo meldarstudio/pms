@@ -12,8 +12,7 @@ pnpm dev:portal
 The portal reads its API URL from `VITE_API_BASE_URL`, which Vite inlines at
 build time. `.env.development` sets it to `http://localhost:8788`, the port the
 backend dev script uses. It must be `localhost`, not `127.0.0.1`, so the browser
-treats the portal and API as the same site and sends the session cookie. Override it in `.env.local`. A build fails if the
-variable is missing.
+treats the portal and API as the same site and sends the session cookie. Override it in `.env.local`. A build fails if the variable is missing.
 
 ## Property setup
 
