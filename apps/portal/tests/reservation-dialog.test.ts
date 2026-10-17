@@ -28,6 +28,7 @@ let query: typeof import("@tanstack/react-query");
 let forms: typeof import("../src/components/reservation-entry-forms.tsx");
 let dialogs: typeof import("../src/components/room-booking-dialog.tsx");
 let newBookings: typeof import("../src/components/new-booking.tsx");
+let summaries: typeof import("../src/components/booking-summary.tsx");
 let queries: typeof import("../src/lib/queries.ts");
 type CreateBookingInput = Parameters<typeof import("../src/lib/api.ts").createWorkflowBooking>[0];
 let root: Root;
@@ -89,6 +90,9 @@ beforeAll(async () => {
   newBookings = (await server.ssrLoadModule(
     "/src/components/new-booking.tsx",
   )) as typeof newBookings;
+  summaries = (await server.ssrLoadModule(
+    "/src/components/booking-summary.tsx",
+  )) as typeof summaries;
   queries = (await server.ssrLoadModule("/src/lib/queries.ts")) as typeof queries;
 });
 
@@ -258,6 +262,31 @@ it("adds consecutive guests with distinct IDs and resets the real form across re
   );
   assert.notEqual(saved.stayingGuests[0].id, saved.stayingGuests[1].id);
 });
+
+for (const [balanceCents, label, tone] of [
+  [30000, "Saldo pendiente", "text-destructive"],
+  [-5000, "Saldo a favor", "text-credit-foreground"],
+  [0, "Cuenta saldada", "text-muted-foreground"],
+] as const) {
+  it(`flags a ${balanceCents} balance as "${label}" in the booking summary footer`, async () => {
+    await render(
+      React.createElement(summaries.BookingSummary, {
+        rooms: [],
+        cancelled: false,
+        summary: { subtotalCents: 30000, discountCents: 0, totalCents: 30000, balanceCents },
+        paidCents: 30000 - balanceCents,
+        currency: "PEN",
+        stayLabel: null,
+        showPayments: true,
+        message: null,
+      }),
+    );
+    const footer = window.document.querySelector('[data-slot="card-footer"]');
+    assert.ok(footer, "Missing summary footer");
+    assert.match(footer.textContent ?? "", new RegExp(label));
+    assert.ok(footer.classList.contains(tone), `Footer should use ${tone}`);
+  });
+}
 
 it("clears each successful payment without restoring the original suggested balance", async () => {
   let saved = detail();

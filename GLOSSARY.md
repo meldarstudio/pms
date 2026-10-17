@@ -189,3 +189,11 @@ The amount by which a reservation's payments exceed its total, represented by th
 negative balance. Credit remains on the reservation for reference, including after cancellation, and
 does not imply a refund or a redeemable coupon.
 _Avoid_: Refund, coupon
+
+**Outstanding balance**:
+The amount a reservation still owes, represented by a positive balance.
+_Avoid_: Debt, unpaid charges without accounting for payments
+
+**Settled**:
+The state of a reservation whose balance is zero, with nothing owed and no credit held.
+_Avoid_: Paid, closed

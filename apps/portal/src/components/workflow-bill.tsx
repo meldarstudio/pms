@@ -1,3 +1,5 @@
+import { cn } from "cn";
+import { BalanceLabel, balanceStatus } from "@/components/balance-status";
 import { Separator } from "@/components/ui/separator";
 import { formatMoney } from "@/lib/money";
 import type { WorkflowBilling } from "@/lib/api";
@@ -29,13 +31,14 @@ export function WorkflowBill({
           </div>
         ))}
       <Separator />
-      <div className="flex justify-between gap-4 text-sm font-semibold">
+      <div
+        className={cn(
+          "flex justify-between gap-4 px-2 py-1.5 text-sm font-semibold",
+          balanceStatus(bill.balanceCents).tone,
+        )}
+      >
         <dt>
-          {bill.balanceCents < 0
-            ? "Saldo a favor"
-            : bill.balanceCents > 0
-              ? "Saldo pendiente"
-              : "Cuenta saldada"}
+          <BalanceLabel balanceCents={bill.balanceCents} />
         </dt>
         <dd>{formatMoney(Math.abs(bill.balanceCents))}</dd>
       </div>
