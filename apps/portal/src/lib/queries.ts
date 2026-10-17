@@ -85,6 +85,14 @@ export function useRoomTypes() {
   });
 }
 
+export function useMissingSetup(): "types" | "rooms" | null {
+  const roomTypes = useRoomTypes();
+  const rooms = useRooms();
+  if (!roomTypes.isSuccess || !rooms.isSuccess) return null;
+  if (roomTypes.data.length === 0) return "types";
+  return rooms.data.length === 0 ? "rooms" : null;
+}
+
 export function usePatchRoom() {
   const queryClient = useQueryClient();
   return useMutation({

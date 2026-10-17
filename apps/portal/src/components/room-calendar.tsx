@@ -42,12 +42,19 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { SetupRequired } from "@/components/setup-required";
 import { Skeleton } from "@/components/ui/skeleton";
 import { type RoomClosure } from "@/lib/api";
 import { reservationStays, unassignedStays, type ReservationStay } from "@/lib/room-assignment";
 import { useRoomAssignment } from "@/lib/use-room-assignment";
 import { format } from "@/lib/dates";
-import { useReservations, useRoomClosures, useRoomTypes, useRooms } from "@/lib/queries";
+import {
+  useMissingSetup,
+  useReservations,
+  useRoomClosures,
+  useRoomTypes,
+  useRooms,
+} from "@/lib/queries";
 
 const spans = [
   { label: "7 días", value: "7" },
@@ -347,6 +354,7 @@ export function RoomCalendar({
   const rangeTo = format(addDays(start, span - 1), "yyyy-MM-dd");
   const roomsQuery = useRooms();
   const typesQuery = useRoomTypes();
+  const missingSetup = useMissingSetup();
   const reservationsQuery = useReservations(rangeFrom, rangeTo);
   const closuresQuery = useRoomClosures(rangeFrom, rangeTo);
 
@@ -459,6 +467,8 @@ export function RoomCalendar({
       onRetry={refresh}
     />
   );
+
+  if (missingSetup) return <SetupRequired missing={missingSetup} />;
 
   return (
     <div className="flex min-h-0 min-w-0 flex-1 flex-col">
@@ -768,11 +778,6 @@ export function RoomCalendar({
                 }
               />
             ))}
-            {rooms !== null && rooms.length === 0 && !error ? (
-              <div className="col-span-full px-2.5 py-4 text-xs text-muted-foreground">
-                Aún no hay habitaciones.
-              </div>
-            ) : null}
           </div>
         </div>
         <aside

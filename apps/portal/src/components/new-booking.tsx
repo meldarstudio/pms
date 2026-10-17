@@ -156,6 +156,12 @@ export function NewBooking({
     if (availabilityReady && !busy && selection.rooms !== values.rooms)
       form.setFieldValue("rooms", selection.rooms);
   }, [availabilityReady, busy, selection.rooms, values.rooms, form]);
+  const setupMessage =
+    roomTypes.isSuccess && roomTypes.data.length === 0
+      ? "Aún no hay tipos de habitación. Agrégalos en Configuración."
+      : roomTypes.isSuccess && rooms.isSuccess && rooms.data.length === 0
+        ? "Aún no hay habitaciones. Agrégalas en Configuración."
+        : null;
   const errors = schemaErrors(schema.safeParse(values));
   const summaryRooms = values.rooms.map((draft) => {
     const type = availability.data?.roomTypes.find((type) => type.id === draft.room.roomTypeId);
@@ -351,10 +357,18 @@ export function NewBooking({
               Agregar habitación
             </Button>
             {errors.rooms && <FieldError>{errors.rooms}</FieldError>}
-            {availabilityReady && availability.data.roomTypes.every((type) => type.free === 0) && (
+            {setupMessage ? (
               <p role="status" className="text-muted-foreground">
-                No hay habitaciones disponibles para esas fechas.
+                {setupMessage}
               </p>
+            ) : (
+              availabilityReady &&
+              availability.data.roomTypes.length > 0 &&
+              availability.data.roomTypes.every((type) => type.free === 0) && (
+                <p role="status" className="text-muted-foreground">
+                  No hay habitaciones disponibles para esas fechas.
+                </p>
+              )
             )}
           </section>
           <FieldSet>

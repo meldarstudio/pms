@@ -21,7 +21,9 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { ChoiceField } from "@/components/workflow-fields";
+import { SetupRequired } from "@/components/setup-required";
 import { searchReservations } from "@/lib/api";
+import { useMissingSetup } from "@/lib/queries";
 import { formatMoney } from "@/lib/money";
 import {
   occupantsLabel,
@@ -64,6 +66,9 @@ export function Reservations({
   });
   const rows = query.data ?? [];
   const busy = query.isFetching || search.q !== q;
+  const missingSetup = useMissingSetup();
+
+  if (missingSetup) return <SetupRequired missing={missingSetup} />;
 
   function open(id: string) {
     setTarget(null);

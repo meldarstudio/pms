@@ -16,8 +16,8 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { ButtonGroup } from "@/components/ui/button-group";
 import { Calendar } from "@/components/ui/calendar";
-import { Empty, EmptyDescription, EmptyHeader, EmptyTitle } from "@/components/ui/empty";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { SetupRequired } from "@/components/setup-required";
 import {
   Select,
   SelectContent,
@@ -153,6 +153,8 @@ export function Inventory({
   }
 
   const rateTarget = editor ? rateTargetFor(grid?.roomTypes ?? [], editor) : null;
+
+  if (grid?.roomTypes.length === 0) return <SetupRequired missing="types" />;
 
   return (
     <div className="flex min-h-0 min-w-0 flex-1 flex-col">
@@ -326,18 +328,6 @@ export function Inventory({
                 </div>
               ))
             : null}
-          {grid?.roomTypes.length === 0 ? (
-            <div style={{ gridColumn: "1 / -1" }}>
-              <Empty>
-                <EmptyHeader>
-                  <EmptyTitle>No hay tipos de habitación</EmptyTitle>
-                  <EmptyDescription>
-                    Este alojamiento no tiene tipos de habitación registrados.
-                  </EmptyDescription>
-                </EmptyHeader>
-              </Empty>
-            </div>
-          ) : null}
           {grid?.roomTypes.map((type) => (
             <TypeRow
               key={type.id}

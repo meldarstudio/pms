@@ -30,6 +30,9 @@ let dialogs: typeof import("../src/components/room-booking-dialog.tsx");
 let newBookings: typeof import("../src/components/new-booking.tsx");
 let summaries: typeof import("../src/components/booking-summary.tsx");
 let queries: typeof import("../src/lib/queries.ts");
+let calendars: typeof import("../src/components/room-calendar.tsx");
+let inventories: typeof import("../src/components/inventory.tsx");
+let reservationLists: typeof import("../src/components/reservations.tsx");
 type CreateBookingInput = Parameters<typeof import("../src/lib/api.ts").createWorkflowBooking>[0];
 let root: Root;
 let container: HTMLDivElement;
@@ -94,6 +97,11 @@ beforeAll(async () => {
     "/src/components/booking-summary.tsx",
   )) as typeof summaries;
   queries = (await server.ssrLoadModule("/src/lib/queries.ts")) as typeof queries;
+  calendars = (await server.ssrLoadModule("/src/components/room-calendar.tsx")) as typeof calendars;
+  inventories = (await server.ssrLoadModule("/src/components/inventory.tsx")) as typeof inventories;
+  reservationLists = (await server.ssrLoadModule(
+    "/src/components/reservations.tsx",
+  )) as typeof reservationLists;
 });
 
 afterAll(async () => {
@@ -811,6 +819,127 @@ it("waits for current date availability and clears room selections that are no l
   assert.equal(button("Crear reserva").disabled, true);
   assert.ok(container.textContent.includes("No hay habitaciones disponibles para esas fechas."));
 });
+
+const doubleType = { id: "double", name: "Doble", maxOccupancy: 2 };
+const noTypesTitle = "Configura tu alojamiento";
+const noRoomsTitle = "Aún no hay habitaciones";
+
+// A null room-type list makes /room-types fail.
+function mockSetupApi(
+  roomTypes: unknown[] | null,
+  rooms: unknown[],
+  inventoryTypes: unknown[] = [],
+) {
+  globalThis.fetch = async (input) => {
+    const url = requestUrl(input);
+    if (url.pathname === "/room-types")
+      return roomTypes ? Response.json(roomTypes) : Response.json({ error: "x" }, { status: 500 });
+    if (url.pathname === "/rooms") return Response.json(rooms);
+    if (url.pathname === "/reservations" || url.pathname === "/room-closures")
+      return Response.json([]);
+    if (url.pathname === "/inventory")
+      return Response.json({
+        from: url.searchParams.get("from"),
+        to: url.searchParams.get("to"),
+        currency: "PEN",
+        roomTypes: inventoryTypes,
+      });
+    if (url.pathname === "/availability")
+      return Response.json({
+        checkIn: url.searchParams.get("checkIn"),
+        checkOut: url.searchParams.get("checkOut"),
+        nights: 2,
+        currency: "PEN",
+        roomTypes: [],
+      });
+    throw new Error(`Unexpected request ${url.pathname}`);
+  };
+}
+
+const renderCalendar = () =>
+  React.createElement(calendars.RoomCalendar, {
+    start: new Date(2026, 9, 14),
+    span: 7,
+    onStartChange: () => {},
+    onSpanChange: () => {},
+    onOpenReservation: () => {},
+  });
+const renderReservations = () =>
+  React.createElement(reservationLists.Reservations, {
+    search: { q: "", status: "all", checkIn: "2026-10-14", page: 0 },
+    onSearchChange: () => {},
+    onOpenReservation: () => {},
+  });
+const renderInventory = () =>
+  React.createElement(inventories.Inventory, {
+    start: new Date(2026, 9, 14),
+    span: 14,
+    onStartChange: () => {},
+    onSpanChange: () => {},
+  });
+
+it.each([
+  ["calendar", renderCalendar, [], noTypesTitle],
+  ["calendar", renderCalendar, [doubleType], noRoomsTitle],
+  ["reservations list", renderReservations, [], noTypesTitle],
+  ["reservations list", renderReservations, [doubleType], noRoomsTitle],
+])(
+  "replaces the %s with a setup prompt without its controls (room types: %j)",
+  async (_screen, element, roomTypes, title) => {
+    mockSetupApi(roomTypes, []);
+    await render(element());
+    await until(() => container.textContent.includes(title), "Setup prompt must appear");
+    assert.equal(container.querySelectorAll("button, input, h1").length, 0);
+  },
+);
+
+it("replaces the inventory grid with a setup prompt when there are no room types", async () => {
+  mockSetupApi([], []);
+  await render(renderInventory());
+  await until(() => container.textContent.includes(noTypesTitle), "Setup prompt must appear");
+  assert.equal(container.querySelectorAll("button").length, 0);
+});
+
+it("keeps the inventory grid so rates can be set when room types exist without rooms", async () => {
+  mockSetupApi(
+    [doubleType],
+    [],
+    [{ ...doubleType, baseRateCents: 15000, capacity: 0, nights: [] }],
+  );
+  await render(renderInventory());
+  await until(() => container.textContent.includes("Doble"), "Room type row must render");
+  assert.ok(!container.textContent.includes(noTypesTitle));
+  assert.ok(!container.textContent.includes(noRoomsTitle));
+});
+
+it("does not call a property unconfigured when room types fail to load", async () => {
+  mockSetupApi(null, []);
+  await render(renderCalendar());
+  await until(() => container.textContent.includes("Reintentar"), "Load failure must stay visible");
+  assert.ok(!container.textContent.includes(noTypesTitle));
+  assert.ok(!container.textContent.includes(noRoomsTitle));
+});
+
+it.each([
+  ["room types", [], [], "Aún no hay tipos de habitación. Agrégalos en Configuración."],
+  ["rooms", [doubleType], [], "Aún no hay habitaciones. Agrégalas en Configuración."],
+])(
+  "points a new booking to setup, not to dates, when there are no %s",
+  async (_missing, roomTypes, rooms, message) => {
+    mockSetupApi(roomTypes, rooms);
+    await render(
+      React.createElement(newBookings.NewBooking, {
+        target: { mode: "new" },
+        onCreated: () => {},
+        onCancel: () => {},
+        onDirtyChange: () => {},
+        onSavingChange: () => {},
+      }),
+    );
+    await until(() => container.textContent.includes(message), "Setup guidance must appear");
+    assert.ok(!container.textContent.includes("No hay habitaciones disponibles para esas fechas."));
+  },
+);
 
 it("validates the primary contact and room capacity before creating a reservation", async () => {
   let writes = 0;

@@ -122,6 +122,10 @@ Whether a specific physical room matches the reserved room's type and is free of
 reservations and closures for the entire stay.
 _Avoid_: Room-type availability
 
+**Property setup**:
+The room types and rooms that must exist before a reservation can be taken.
+_Avoid_: Inventory, admin
+
 **Occupancy**:
 The declared number of adults and children for a reserved room, independent of how many staying guests
 appear in the guest list.
