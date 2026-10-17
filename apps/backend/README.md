@@ -16,17 +16,16 @@ files. They use `vite-plus/test` and apply the migrations in `drizzle` to in-mem
 Run `pnpm format` to format maintained repo files,
 including the backend, with Oxfmt defaults. Generated Worker types and Drizzle
 metadata are excluded. `pnpm check` checks formatting, lint rules, and native
-types across the portal, backend, and shared schemas. `pnpm lint` covers all
-three packages; `pnpm --filter @pms/backend lint` targets the backend. Backend
+types across the portal, backend, and shared schemas. For targeted diagnostics,
+run `pnpm exec vp check apps/backend` from the repository root. Backend
 source uses Worker globals, while tests, seed scripts, and configuration use
 Node globals. React and browser rules apply only to the portal.
 
 Native type checking covers backend source, configuration, TypeScript tests,
 and shared schemas. Backend `.mjs` scripts and tests receive syntax linting
-without static type checking. `pnpm typecheck` runs native type checks without
-formatting or lint rules. `pnpm --filter @pms/backend typecheck` retains
-`tsc --noEmit` for standalone checks and Workers Builds; root commands do not
-repeat that compiler pass.
+without static type checking. `pnpm check` is the shared validation command
+for local development and Workers Builds; it does not run a duplicate
+`tsc --noEmit` pass. Tests remain separate.
 
 ## Staff login
 
@@ -257,7 +256,7 @@ A consolidated baseline requires rebuilding or replacing `pms-production`
 before deploying. The deploy script applies pending migrations and does not
 rebuild an existing database.
 
-For Workers Builds, use `pnpm --filter @pms/backend typecheck` as the build
+For Workers Builds, use `pnpm check` as the build
 command and `pnpm --filter @pms/backend run deploy:ci` as the deploy command.
 `deploy:ci` deploys code without changing the database. Apply migrations
 explicitly before deploying a schema change.

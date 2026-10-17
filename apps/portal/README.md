@@ -65,9 +65,9 @@ The dialog suite in `tests/reservation-dialog.test.ts` uses happy-dom and a Vite
 SSR server with an explicit portal root to render the actual components.
 
 Run `pnpm check` for Oxfmt, Oxlint, and native type checks across the portal,
-backend, and shared schemas. `pnpm --filter @pms/portal typecheck` runs only native type
-checks for portal source, Vite configuration, and tests. The solution tsconfig
-references `tsconfig.app.json`, `tsconfig.node.json`, and `tests/tsconfig.json`.
+backend, and shared schemas. Native checking covers portal source, Vite
+configuration, and tests. The solution tsconfig references `tsconfig.app.json`,
+`tsconfig.node.json`, and `tests/tsconfig.json`.
 The test config inherits the app's strict options and adds Node types. The
 dialog harness uses happy-dom types, with a DOM type conversion at React's
 `createRoot` boundary and module assertions for Vite's dynamic SSR loader.
@@ -75,14 +75,14 @@ dialog harness uses happy-dom types, with a DOM type conversion at React's
 The portal and backend use the same TypeScript 7 catalog dependency from
 `pnpm-workspace.yaml`. Vite+'s checker also uses TypeScript 7. For a standalone
 compiler check, run `pnpm --filter @pms/portal exec tsc -b`. `pnpm build` runs
-native checking before bundling without a duplicate compiler check.
+the full workspace check before bundling without a duplicate compiler check.
 
 The root `vite.config.ts` uses Oxfmt defaults across maintained repo files, with Tailwind
 class sorting for portal TS/TSX files. Run `pnpm format` for the whole repo or
-`pnpm --filter @pms/portal format` for only the portal. Generated files are
-excluded. `pnpm lint` covers all three packages. Use
-`pnpm --filter @pms/portal lint` for portal TS/TSX files only. React Hooks rules
-remain portal-only, and browser globals apply to portal source and tests.
+`pnpm exec vp fmt apps/portal` for only the portal. Generated files are
+excluded. For targeted diagnostics, run `pnpm exec vp check apps/portal`
+from the repository root. React Hooks rules remain portal-only, and browser
+globals apply to portal source and tests.
 
 ## Signing in
 

@@ -7,8 +7,6 @@
     "deploy": "pnpm db:migrate:remote && wrangler deploy --minify",
     "deploy:ci": "wrangler deploy --minify",
     "test": "vp test run",
-    "lint": "vp lint .",
-    "typecheck": "tsc --noEmit",
     "cf-typegen": "wrangler types --env-interface CloudflareBindings",
     "db:generate": "drizzle-kit generate",
     "db:migrate:local": "wrangler d1 migrations apply DB --local",

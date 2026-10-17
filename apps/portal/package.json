@@ -5,12 +5,9 @@
   "type": "module",
   "scripts": {
     "dev": "vp dev",
-    "build": "pnpm typecheck && vp build",
+    "build": "pnpm -w check && vp build",
     "deploy": "wrangler deploy",
-    "lint": "vp lint .",
     "test": "vp test",
-    "format": "vp fmt .",
-    "typecheck": "vp check --no-fmt --no-lint .",
     "preview": "vp preview"
   },
   "dependencies": {

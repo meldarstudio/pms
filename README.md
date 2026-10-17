@@ -29,21 +29,23 @@ Run these from the repository root.
 | `pnpm dev` or `pnpm exec vp run dev`     | Start the portal and local backend                                         |
 | `pnpm dev:portal` or `pnpm exec vp dev`  | Start the portal at `http://localhost:5173`                                |
 | `pnpm dev:backend`                       | Start the local API at `http://localhost:8788`                             |
-| `pnpm lint`                              | Lint and natively type-check the portal, backend, and shared schemas       |
 | `pnpm check` or `pnpm exec vp check .`   | Check repo formatting, lint, and native types                              |
-| `pnpm typecheck`                         | Check native types without formatting or lint rules                        |
 | `pnpm exec vp test`                      | Run the backend and portal test projects                                   |
 | `pnpm exec vp test --project portal`     | Run the portal tests only                                                  |
 | `pnpm exec vp test --project backend`    | Run the backend tests only                                                 |
 | `pnpm test` or `pnpm exec vp run test`   | Run the backend, then portal package test scripts                          |
 | `pnpm format`                            | Format maintained source, configuration, and documentation across the repo |
-| `pnpm build` or `pnpm exec vp run build` | Typecheck and build the portal                                             |
+| `pnpm build` or `pnpm exec vp run build` | Check the repo, then build the portal                                      |
 | `pnpm exec vp -C apps/portal preview`    | Preview the portal production build                                        |
 
 `vp dev`, `vp test`, and `vp build` are built-in tools. `vp run <task>` runs
 the corresponding package script or configured task. The root configuration
 selects the portal for application commands. Direct `vp build` does not run
-the native type-check step in the package's build script; use `pnpm build` for both.
+the repository checks in the package's build script; use `pnpm build` for both.
+
+Use `pnpm check` to validate and `pnpm format` to rewrite formatting. Separate
+lint and typecheck scripts are intentionally omitted. Tests run separately;
+`pnpm check` does not run tests or build the portal.
 
 Production builds require `VITE_API_BASE_URL`:
 
@@ -105,12 +107,10 @@ portal. Browser globals are limited to portal source and tests; Worker source
 uses service-worker globals, and tests, scripts, and tooling use Node globals.
 Generated Worker types, migrations, build output, and coverage are excluded.
 
-Use `pnpm --filter @pms/portal lint` or `pnpm --filter @pms/backend lint` for
-one app. The root `pnpm lint` covers all three packages.
-
 The root format and check scripts pass `.` explicitly to cover the repository.
-Use `pnpm --filter @pms/portal format` to format only the portal.
-Place Vite+ check flags before paths, as in `pnpm exec vp check --no-fmt --no-lint .`.
+For occasional targeted work, run `pnpm exec vp check apps/portal` or
+`pnpm exec vp fmt apps/portal`. Place Vite+ check flags before paths, as in
+`pnpm exec vp check --no-fmt --no-lint .` for type-only diagnostics.
 
 `pnpm check` enables Vite+'s native type checker with `typeAware: true` and
 `typeCheck: true`. The portal's solution tsconfig references separate app,
@@ -125,10 +125,9 @@ installed compiler with `pnpm --filter @pms/portal exec tsc -b`; normal check
 and build commands do not run that duplicate compiler pass.
 
 Native checking also covers backend source, configuration, colocated TypeScript
-tests, and shared schemas. Root check and typecheck commands do not repeat the
-backend compiler pass. `pnpm --filter @pms/backend typecheck` remains available
-for standalone backend checks and Workers Builds. Backend `.mjs` scripts and
-tests receive syntax linting but are not type-checked.
+tests, and shared schemas. `pnpm check` does not repeat the backend compiler
+pass. Use `pnpm check` as the backend Workers Builds build command as well.
+Backend `.mjs` scripts and tests receive syntax linting but are not type-checked.
 
 The shared package exports TypeScript source directly and needs no `vp pack`
 step. Wrangler still handles backend development and deployment.
