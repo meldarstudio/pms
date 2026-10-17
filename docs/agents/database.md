@@ -1,0 +1,30 @@
+# Database changes and production safety
+
+Production data and applied migrations are durable. Local sample data can be replaced without confirmation or backups; that permission never extends to production.
+
+## Schema and migration changes
+
+1. Use `apps/backend/src/db/schema.ts`, application code, and tests to understand the current model. Read existing migration SQL only when needed for migration compatibility or diagnosis; keep snapshot JSON generated.
+2. After editing the schema, run `pnpm db:generate` to append a migration. Preserve existing SQL, snapshots, and journal entries; do not consolidate or regenerate the deployed baseline. Review the new SQL for data loss and compatibility with existing rows.
+3. For hand-written trigger changes, add a new migration rather than editing an applied file. Register it in `apps/backend/drizzle/meta/_journal.json`, preserving existing entries. Separate SQL statements with `--> statement-breakpoint` for Wrangler.
+4. Run affected backend route and direct database-trigger tests and `pnpm check`. Tests execute journal entries, so an unregistered migration is not tested. For changes to an existing database, also verify the upgrade against a local database containing the previous schema and representative data; fresh-database tests alone do not prove upgrade safety.
+5. Run `pnpm db:reset:local --rebuild-schema` to verify a fresh local install and sample data. Update seeds, tests, and documentation for the resulting schema. Rebuilding the local database applies existing migration files; it does not authorize rewriting those files.
+
+Drizzle does not generate the business-rule triggers. Their original definitions are in `apps/backend/drizzle/0001_overlap_triggers.sql`; subsequent migrations must preserve or deliberately replace their capacity, overlap, assignment, closure, and staying-guest guards. Keep `rethrowConflict` and portal error translations aligned with trigger abort messages.
+
+## Local data
+
+- `pnpm db:reset:local` applies migrations, deletes application data, and reloads samples, leaving the schema, triggers, and migration history in place. `--rebuild-schema` also drops PMS tables, triggers, and the local D1 migration ledger before reapplying migrations.
+- `--date=YYYY-MM-DD` pins sample dates; the default is today UTC. `--persist-to` must match Wrangler's persistence directory or the backend reads a different database.
+- In non-interactive environments, prefix resets with `CI=true` so Wrangler can accept its migration confirmation fallback. Local resets need no Cloudflare credentials.
+- `pnpm db:migrate:local` applies migrations without resetting data. `pnpm db:seed:local` only adds missing room types and rooms via `apps/backend/seed.sql` (`INSERT OR IGNORE`). Sample data stays local; production property setup happens through the application.
+
+## Production release
+
+Read [backend deployment](../../apps/backend/README.md#deployment-and-worker-types) and the current package scripts before a release. Deployment, remote migration, and secret changes require an explicitly requested production operation.
+
+- The API Worker is `pms-api`, bound to D1 `pms-production`; the portal Worker is `pms-portal`. Their production origins are `https://api.hotelmanantialchurin.com` and `https://app.hotelmanantialchurin.com`.
+- Backend `deploy` applies remote migrations before deploying code. `deploy:ci` deploys code only; Workers Builds therefore needs migrations applied explicitly before schema-dependent code deploys. Merging to `main` can trigger deployment.
+- Plan for the currently deployed Worker to run during migration and for portal/API builds to arrive separately. Prefer additive, compatible changes; identify any coordinated cutover before merging.
+- Preserve production records. Destructive migrations, resets, baseline replacement, or database replacement require explicit approval for the specific data loss and a recovery plan; routine release authorization is not enough.
+- For a schema release, report the migration order, compatibility impact, validation performed, and recovery approach. Do not run remote commands merely to validate a local change.
