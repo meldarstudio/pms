@@ -11,6 +11,7 @@ import { reservationRoutes } from "./routes/reservations";
 import { roomTypeRoutes } from "./routes/room-types";
 import { roomClosureRoutes } from "./routes/room-closures";
 import { roomRoutes } from "./routes/rooms";
+import { setupRoutes } from "./routes/setup";
 import { requireSession } from "./session";
 
 const app = new Hono<Env>();
@@ -43,6 +44,7 @@ app.get("/", (c) => c.json({ name: "pms" }));
 app.route("/", authRoutes);
 app.route("/room-types", roomTypeRoutes);
 app.route("/rooms", roomRoutes);
+app.route("/setup", setupRoutes);
 app.route("/room-closures", roomClosureRoutes);
 app.route("/availability", availabilityRoutes);
 app.route("/inventory", inventoryRoutes);

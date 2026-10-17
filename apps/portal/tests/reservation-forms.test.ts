@@ -22,8 +22,8 @@ import { roomEdits } from "../src/lib/reservation-editor.ts";
 import type { ReservationDetail } from "../src/lib/api.ts";
 
 const types = [
-  { id: "double", name: "Doble", maxOccupancy: 2 },
-  { id: "family", name: "Familiar", maxOccupancy: 4 },
+  { id: "double", name: "Doble", maxOccupancy: 2, baseRateCents: 15000 },
+  { id: "family", name: "Familiar", maxOccupancy: 4, baseRateCents: 25000 },
 ];
 const details = (): DetailsValues => ({
   checkIn: "2026-01-01",

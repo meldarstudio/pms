@@ -1,15 +1,17 @@
 import { Outlet, useNavigate, useRouterState } from "@tanstack/react-router";
 import { format, startOfToday } from "date-fns";
+import { useEffect } from "react";
 import { LogOutIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { useLogout } from "@/lib/queries";
+import { useLogout, useMissingSetup } from "@/lib/queries";
 import { toastError } from "@/lib/toast";
 import { lastCalendarSearch, lastReservationsSearch, reservationsSearch } from "@/lib/route-search";
 
 export function App() {
   const navigate = useNavigate();
   const logout = useLogout();
+  const missingSetup = useMissingSetup();
   const pathname = useRouterState({
     select: (state) => state.location.pathname,
   });
@@ -17,7 +19,13 @@ export function App() {
     ? "reservations"
     : pathname === "/inventory"
       ? "inventory"
-      : "calendar";
+      : pathname === "/setup"
+        ? "setup"
+        : "calendar";
+
+  useEffect(() => {
+    if (missingSetup && pathname !== "/setup") void navigate({ to: "/setup", replace: true });
+  }, [missingSetup, pathname, navigate]);
 
   function changeTab(value: string) {
     if (value === "reservations") {
@@ -37,6 +45,7 @@ export function App() {
       const today = format(startOfToday(), "yyyy-MM-dd");
       void navigate({ to: "/inventory", search: { from: today, span: 14 } });
     }
+    if (value === "setup") void navigate({ to: "/setup" });
   }
 
   return (
@@ -50,6 +59,7 @@ export function App() {
           <TabsTrigger value="reservations">Reservas</TabsTrigger>
           <TabsTrigger value="calendar">Calendario</TabsTrigger>
           <TabsTrigger value="inventory">Inventario y tarifas</TabsTrigger>
+          <TabsTrigger value="setup">Configuración</TabsTrigger>
         </TabsList>
         <Button
           variant="ghost"

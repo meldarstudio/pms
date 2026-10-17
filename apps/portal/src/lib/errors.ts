@@ -25,6 +25,7 @@ const messages: Record<string, string> = {
   "room has an assigned stay":
     "Desasigna la estancia o muévela a otra habitación antes de cambiar el tipo.",
   "room number already exists": "Este número de habitación ya está en uso.",
+  "room appears more than once": "Una habitación está repetida en la tabla.",
   "room type already exists": "Este tipo de habitación ya existe.",
   "room type not found": "Este tipo de habitación ya no existe.",
   "room not found": "Esta habitación ya no existe.",

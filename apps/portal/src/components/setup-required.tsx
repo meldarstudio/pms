@@ -1,7 +1,9 @@
 import { BedDoubleIcon } from "lucide-react";
+import { buttonVariants } from "@/components/ui/button";
 import {
   Empty,
   EmptyDescription,
+  EmptyContent,
   EmptyHeader,
   EmptyMedia,
   EmptyTitle,
@@ -32,6 +34,11 @@ export function SetupRequired({ missing }: { missing: MissingSetup }) {
         <EmptyTitle>{copy[missing].title}</EmptyTitle>
         <EmptyDescription>{copy[missing].description}</EmptyDescription>
       </EmptyHeader>
+      <EmptyContent>
+        <a href="/setup" className={buttonVariants({ variant: "outline" })}>
+          Ir a Configuración
+        </a>
+      </EmptyContent>
     </Empty>
   );
 }

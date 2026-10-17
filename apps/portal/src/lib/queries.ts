@@ -31,7 +31,10 @@ import {
   onUnauthorized,
   patchRoomClosure,
   putRoomTypeRates,
+  savePropertySetup,
   type PatchGuestInput,
+  type Room,
+  type RoomType,
 } from "@/lib/api";
 
 export const sessionQueryKey = ["session"] as const;
@@ -82,6 +85,30 @@ export function useRoomTypes() {
   return useQuery({
     queryKey: ["room-types"],
     queryFn: ({ signal }) => listRoomTypes(signal),
+  });
+}
+
+export function useSavePropertySetup() {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: savePropertySetup,
+    onSuccess: async (result) => {
+      client.setQueryData<RoomType[]>(["room-types"], (previous = []) => {
+        const exists = previous.some((type) => type.id === result.roomType.id);
+        return exists
+          ? previous.map((type) => (type.id === result.roomType.id ? result.roomType : type))
+          : [...previous, result.roomType];
+      });
+      client.setQueryData<Room[]>(["rooms"], (previous = []) => [
+        ...previous.filter((room) => room.roomTypeId !== result.roomType.id),
+        ...result.rooms,
+      ]);
+      await Promise.all(
+        ["rooms", "room-types", "inventory", "availability", "reservations", "reservation"].map(
+          (key) => client.invalidateQueries({ queryKey: [key] }),
+        ),
+      );
+    },
   });
 }
 

@@ -15,6 +15,36 @@ backend dev script uses. It must be `localhost`, not `127.0.0.1`, so the browser
 treats the portal and API as the same site and sends the session cookie. Override it in `.env.local`. A build fails if the
 variable is missing.
 
+## Property setup
+
+After signing in, a hotel without rooms is directed to `/setup`. The
+**Configuración** tab keeps the page accessible afterward. Each deployment manages
+one property; there is no hotel profile or account-creation step.
+
+The room-type list opens an editor for the type's name, base nightly rate in PEN,
+maximum occupancy, and a table of its physical room numbers. **Agregar habitación**
+adds a blank row. Unsaved rows can be removed; saved rooms and types cannot be
+deleted here. Room numbers are unique across the entire property.
+
+**Guardar cambios** saves the selected type and all proposed room additions and
+number edits atomically. New types can be saved with no rooms. Setup is ready for
+reservations when at least one saved room exists, at which point **Ir al calendario**
+is available. There is no separate setup-completion flag or final wizard submission.
+
+Switching types with a draft prompts to save, discard, or keep editing. Leaving
+the page also protects unsaved changes; navigation is blocked while saving.
+Validation and save failures retain the draft, with known conflicts shown beside
+the affected fields. A failed background refresh does not replace an open editor.
+Configuration saves use last-write-wins rather than concurrent-edit detection.
+
+Base-rate changes leave saved reservation prices intact. Lower occupancy limits
+retain unchanged reservations; subsequent changes use the current validation rules.
+Room reassignment and dated rate overrides stay in their existing screens.
+
+`tests/setup.test.ts` exercises the real page and router through happy-dom with
+HTTP responses substituted at the fetch boundary. The backend setup tests cover
+the actual API and transactional database behavior.
+
 ## Reservation forms
 
 The reservation editor uses TanStack Form with portal-local Zod 4 schemas in

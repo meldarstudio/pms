@@ -14,6 +14,7 @@ import { ReservationPage } from "@/components/reservation-page";
 import { Reservations } from "@/components/reservations";
 import { RoomCalendar } from "@/components/room-calendar";
 import { Inventory } from "@/components/inventory";
+import { PropertySetup } from "@/components/property-setup";
 import {
   calendarSearch,
   inventorySearch,
@@ -178,12 +179,19 @@ const inventoryRoute = createRoute({
   component: InventoryRoute,
 });
 
+const setupRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/setup",
+  component: PropertySetup,
+});
+
 const routeTree = rootRoute.addChildren([
   indexRoute,
   calendarRoute,
   reservationsRoute,
   reservationRoute,
   inventoryRoute,
+  setupRoute,
 ]);
 
 export const router = createRouter({ routeTree });

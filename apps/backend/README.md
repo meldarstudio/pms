@@ -91,6 +91,37 @@ as credit for reference. Removing an individual reserved room drops its charges
 and releases its inventory while the remaining rooms keep the reservation's
 status and stay dates. To release the last room, cancel the reservation.
 
+## Property setup
+
+`POST /setup` requires the Staff account session and saves one room type with its
+room-table changes in one D1 batch. It accepts:
+
+```json
+{
+  "roomTypeId": "existing-type-id",
+  "name": "Doble",
+  "maxOccupancy": 2,
+  "baseRateCents": 15000,
+  "rooms": [{ "id": "existing-room-id", "number": "101" }, { "number": "102" }]
+}
+```
+
+Omit `roomTypeId` to create a type; omit a room's `id` to add it. Existing room IDs
+must belong to the selected type and cannot be repeated. Omitted rooms are left
+unchanged, not deleted. Empty room arrays are valid. Names, occupancy, rates, and
+room numbers follow the existing room/type validation rules.
+
+The response is `{ roomType, rooms }`, including the saved type and all its rooms,
+with status 201 for a new type or 200 for an edit. A conflict rolls back the entire
+batch, including type edits, room-number edits, and new rooms. The existing English
+error strings and `{ error: string }` responses are reused. Uniqueness remains
+database-enforced across the property. Saves have no revision check or retry
+receipt; overlapping edits use last-write-wins.
+
+Setup does not change reservation prices, assignments, or occupancy validation
+policy. No schema migration or production sample seeding is needed. Existing
+individual room and room-type endpoints remain available.
+
 ## Concurrent reservation saves
 
 The reservation workflow loads the reservation, booking contact, room lines,

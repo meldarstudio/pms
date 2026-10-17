@@ -5,6 +5,12 @@ reservation bills at the property.
 
 ## Language
 
+### Property
+
+**Property**:
+The hotel whose rooms, rates, and reservations are managed together.
+_Avoid_: Tenant, hotel account
+
 ### Access
 
 **Staff account**:

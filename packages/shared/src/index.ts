@@ -34,6 +34,19 @@ export const roomSchema = z.object({
   roomTypeId: z.string().min(1),
 });
 
+export const propertySetupSchema = roomTypeSchema
+  .extend({
+    roomTypeId: z.string().min(1).optional(),
+    rooms: z.array(z.object({ id: z.string().min(1).optional(), number: text(20) })),
+  })
+  .refine(
+    (value) => {
+      const ids = value.rooms.flatMap((room) => (room.id ? [room.id] : []));
+      return new Set(ids).size === ids.length;
+    },
+    { message: "room appears more than once" },
+  );
+
 export const patchRoomSchema = z
   .object({
     number: text(20).optional(),

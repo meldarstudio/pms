@@ -10,7 +10,22 @@ export type RoomType = {
   id: string;
   name: string;
   maxOccupancy: number;
+  baseRateCents: number;
 };
+
+export type PropertySetupInput = {
+  roomTypeId?: string;
+  name: string;
+  maxOccupancy: number;
+  baseRateCents: number;
+  rooms: { id?: string; number: string }[];
+};
+
+export type PropertySetupResult = { roomType: RoomType; rooms: Room[] };
+
+export function savePropertySetup(input: PropertySetupInput) {
+  return writeJson<PropertySetupResult>("/setup", "POST", input);
+}
 
 export type InventoryNight = {
   date: string;
