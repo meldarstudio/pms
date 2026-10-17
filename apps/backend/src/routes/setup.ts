@@ -82,8 +82,11 @@ setupRoutes.post("/", validate("json", propertySetupSchema), async (c) => {
       if (!(conflict instanceof HttpError) || conflict.message !== "room number already exists")
         throw conflict;
       const current = await db.select().from(rooms);
+      const releasedIds = new Set(editedRooms.map((room) => room.id));
       const index = body.rooms.findIndex((room) =>
-        current.some((existing) => existing.number === room.number && existing.id !== room.id),
+        current.some(
+          (existing) => existing.number === room.number && !releasedIds.has(existing.id),
+        ),
       );
       if (index < 0) throw conflict;
       throw new HttpError(409, conflict.message, `rooms[${index}].number`);

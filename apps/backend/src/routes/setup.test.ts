@@ -326,3 +326,31 @@ it("identifies duplicate numbers within a submitted table without creating the t
   expect(await (await request("/room-types")).json()).toEqual([]);
   expect(await (await request("/rooms")).json()).toEqual([]);
 });
+
+it.each([
+  { numbers: ["102", "301"], field: "rooms[1].number" },
+  { numbers: ["102", "103", "301"], field: "rooms[2].number" },
+])(
+  "identifies $field when a valid renaming chain accompanies an external conflict",
+  async ({ numbers, field }) => {
+    const created = (await (
+      await request("/setup", {
+        ...typeDetails,
+        rooms: [{ number: "101" }, { number: "102" }],
+      })
+    ).json()) as Saved;
+    await request("/setup", { ...typeDetails, name: "Suite", rooms: [{ number: "301" }] });
+    const response = await request("/setup", {
+      ...typeDetails,
+      roomTypeId: created.roomType.id,
+      rooms: numbers.map((number, index) => ({
+        ...(created.rooms[index] ? { id: created.rooms[index].id } : {}),
+        number,
+      })),
+    });
+    expect(response.status).toBe(409);
+    expect(response.headers.get("X-Error-Field")).toBe(field);
+    const allRooms = (await (await request("/rooms")).json()) as Saved["rooms"];
+    expect(allRooms.map((room) => room.number).sort()).toEqual(["101", "102", "301"]);
+  },
+);
