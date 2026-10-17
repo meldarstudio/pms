@@ -1,6 +1,5 @@
 import { useEffect, useRef, useState } from "react";
 import { useForm, useSelector } from "@tanstack/react-form";
-import { useQueryClient } from "@tanstack/react-query";
 import { Link, useBlocker } from "@tanstack/react-router";
 import { BedDoubleIcon, PlusIcon, XIcon } from "lucide-react";
 import { Button, buttonVariants } from "@/components/ui/button";
@@ -32,13 +31,14 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { listRooms, type Room, type RoomType } from "@/lib/api";
+import type { Room, RoomType } from "@/lib/api";
 import { ApiError } from "@/lib/api-error";
 import { fieldErrors, setServerErrors } from "@/lib/form-errors";
 import { parseMajorToCents } from "@/lib/money";
 import { useRooms, useRoomTypes, useSavePropertySetup } from "@/lib/queries";
+import { blurThenChange } from "@/lib/reservation-form-state";
 import { calendarSearch, lastCalendarSearch } from "@/lib/route-search";
-import { savedSetupDefaults, setupDefaults, setupFormSchema } from "@/lib/setup-form";
+import { setupDefaults, setupFormSchema } from "@/lib/setup-form";
 import { toast, toastError } from "@/lib/toast";
 
 export function PropertySetup() {
@@ -213,11 +213,11 @@ function SetupEditor({
   onSubmitFinished: () => void;
 }) {
   const save = useSavePropertySetup();
-  const client = useQueryClient();
   const [saveError, setSaveError] = useState<string>();
   const form = useForm({
     defaultValues: setupDefaults(type, rooms),
-    validators: { onSubmit: setupFormSchema },
+    validationLogic: blurThenChange(),
+    validators: { onDynamic: setupFormSchema },
     onSubmit: async ({ value }) => {
       setSaveError(undefined);
       form.setErrorMap({ onServer: undefined });
@@ -232,33 +232,15 @@ function SetupEditor({
             number: room.number.trim(),
           })),
         });
-        form.reset(savedSetupDefaults(result));
+        form.reset(setupDefaults(result.roomType, result.rooms));
         onSaved(result.roomType.id);
         toast.add({ title: "Configuración guardada", type: "success" });
       } catch (error) {
         if (error instanceof ApiError && error.code === "room type already exists") {
           setServerErrors(form, { name: error.message });
         } else if (error instanceof ApiError && error.code === "room number already exists") {
-          let current: Room[] = [];
-          try {
-            current = await client.fetchQuery({
-              queryKey: ["rooms"],
-              queryFn: ({ signal }) => listRooms(signal),
-              staleTime: 0,
-            });
-          } catch {
-            /* The draft remains available even if refreshing the conflict fails. */
-          }
-          const conflicts: Record<string, string> = {};
-          value.rooms.forEach((room, index) => {
-            if (
-              current.some(
-                (existing) => existing.number === room.number.trim() && existing.id !== room.id,
-              )
-            )
-              conflicts[`rooms[${index}].number`] = error.message;
-          });
-          if (Object.keys(conflicts).length) setServerErrors(form, conflicts);
+          if (error.field && /^rooms\[\d+\]\.number$/.test(error.field))
+            setServerErrors(form, { [error.field]: error.message });
           else setSaveError(error.message);
         } else {
           setSaveError(
@@ -288,7 +270,11 @@ function SetupEditor({
       onSubmit={(event) => {
         event.preventDefault();
         onSubmitStart();
-        void form.handleSubmit().finally(onSubmitFinished);
+        // Existing blur errors can short-circuit handleSubmit before other
+        // fields validate. Show every current issue on each save attempt.
+        void Promise.resolve(form.validate("submit"))
+          .then(() => form.handleSubmit())
+          .finally(onSubmitFinished);
       }}
     >
       <header>
@@ -306,7 +292,10 @@ function SetupEditor({
           <FieldGroup>
             <form.Field name="name">
               {(field) => (
-                <Field data-invalid={!field.state.meta.isValid || undefined}>
+                <Field
+                  data-invalid={!field.state.meta.isValid || undefined}
+                  data-disabled={submitting || undefined}
+                >
                   <FieldLabel htmlFor="setup-name">Nombre</FieldLabel>
                   <Input
                     id="setup-name"
@@ -327,7 +316,10 @@ function SetupEditor({
             </form.Field>
             <form.Field name="baseRate">
               {(field) => (
-                <Field data-invalid={!field.state.meta.isValid || undefined}>
+                <Field
+                  data-invalid={!field.state.meta.isValid || undefined}
+                  data-disabled={submitting || undefined}
+                >
                   <FieldLabel htmlFor="setup-rate">Tarifa base (S/)</FieldLabel>
                   <Input
                     id="setup-rate"
@@ -352,7 +344,10 @@ function SetupEditor({
             </form.Field>
             <form.Field name="maxOccupancy">
               {(field) => (
-                <Field data-invalid={!field.state.meta.isValid || undefined}>
+                <Field
+                  data-invalid={!field.state.meta.isValid || undefined}
+                  data-disabled={submitting || undefined}
+                >
                   <FieldLabel htmlFor="setup-occupancy">Capacidad máxima</FieldLabel>
                   <Input
                     id="setup-occupancy"
@@ -401,7 +396,10 @@ function SetupEditor({
                   <TableCell>
                     <form.Field name={`rooms[${index}].number`}>
                       {(field) => (
-                        <Field data-invalid={!field.state.meta.isValid || undefined}>
+                        <Field
+                          data-invalid={!field.state.meta.isValid || undefined}
+                          data-disabled={submitting || undefined}
+                        >
                           <FieldLabel className="sr-only" htmlFor={`setup-room-${room.key}`}>
                             Número de habitación {index + 1}
                           </FieldLabel>

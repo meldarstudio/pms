@@ -3,12 +3,14 @@ import { translateError } from "./errors.ts";
 export class ApiError extends Error {
   readonly status: number;
   readonly code: string;
+  readonly field?: string;
 
-  constructor(status: number, code: string) {
+  constructor(status: number, code: string, field?: string) {
     super(translateError(code));
     this.name = "ApiError";
     this.status = status;
     this.code = code;
+    this.field = field;
   }
 }
 

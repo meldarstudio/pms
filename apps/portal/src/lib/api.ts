@@ -194,7 +194,11 @@ async function responseError(response: Response) {
   try {
     const body = (await response.json()) as { error?: unknown };
     return typeof body.error === "string" && body.error
-      ? new ApiError(response.status, body.error)
+      ? new ApiError(
+          response.status,
+          body.error,
+          response.headers.get("X-Error-Field") ?? undefined,
+        )
       : new ApiError(response.status, fallback);
   } catch {
     return new ApiError(response.status, fallback);

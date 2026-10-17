@@ -1,5 +1,5 @@
 import { propertySetupSchema } from "@pms/shared";
-import { and, eq } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 import { Hono } from "hono";
 import { getDb, runBatch } from "../db";
 import { roomTypes, rooms } from "../db/schema";
@@ -11,6 +11,12 @@ export const setupRoutes = new Hono<Env>();
 
 setupRoutes.post("/", validate("json", propertySetupSchema), async (c) => {
   const body = c.req.valid("json");
+  const numbers = new Set<string>();
+  for (const [index, room] of body.rooms.entries()) {
+    if (numbers.has(room.number))
+      throw new HttpError(409, "room number already exists", `rooms[${index}].number`);
+    numbers.add(room.number);
+  }
   const db = getDb(c.env.DB);
   const [existing] = body.roomTypeId
     ? await db.select().from(roomTypes).where(eq(roomTypes.id, body.roomTypeId))
@@ -35,6 +41,7 @@ setupRoutes.post("/", validate("json", propertySetupSchema), async (c) => {
     number: room.number,
     roomTypeId: roomType.id,
   }));
+  const editedRooms = savedRooms.filter((room) => ownedIds.has(room.id));
   try {
     await runBatch(db, [
       existing
@@ -47,21 +54,40 @@ setupRoutes.post("/", validate("json", propertySetupSchema), async (c) => {
             })
             .where(eq(roomTypes.id, existing.id))
         : db.insert(roomTypes).values(roomType),
-      ...savedRooms
-        .filter((room) => ownedIds.has(room.id))
-        .map((room) =>
-          db
-            .update(rooms)
-            .set({ number: room.number })
-            .where(and(eq(rooms.id, room.id), eq(rooms.roomTypeId, roomType.id))),
-        ),
+      // Release existing numbers inside the transaction so valid final numbers,
+      // including swaps, do not collide with another room's previous number.
+      // These temporary values exceed the public room-number length limit.
+      ...editedRooms.map((room) =>
+        db
+          .update(rooms)
+          .set({
+            // A moved room must abort the batch, not silently skip its edit.
+            // As with reservation revision guards, NULL fails a NOT NULL column.
+            number: sql`CASE WHEN ${rooms.roomTypeId} = ${roomType.id} THEN ${`__setup_${crypto.randomUUID()}`} ELSE NULL END`,
+          })
+          .where(eq(rooms.id, room.id)),
+      ),
+      ...editedRooms.map((room) =>
+        db.update(rooms).set({ number: room.number }).where(eq(rooms.id, room.id)),
+      ),
       ...chunks(
         savedRooms.filter((room) => !ownedIds.has(room.id)),
         20,
       ).map((rows) => db.insert(rooms).values(rows)),
     ]);
   } catch (error) {
-    rethrowConflict(error);
+    try {
+      rethrowConflict(error);
+    } catch (conflict) {
+      if (!(conflict instanceof HttpError) || conflict.message !== "room number already exists")
+        throw conflict;
+      const current = await db.select().from(rooms);
+      const index = body.rooms.findIndex((room) =>
+        current.some((existing) => existing.number === room.number && existing.id !== room.id),
+      );
+      if (index < 0) throw conflict;
+      throw new HttpError(409, conflict.message, `rooms[${index}].number`);
+    }
   }
   const updatedRooms = await db.select().from(rooms).where(eq(rooms.roomTypeId, roomType.id));
   return c.json({ roomType, rooms: updatedRooms }, existing ? 200 : 201);

@@ -27,13 +27,17 @@ app.use(
         ? origin
         : null,
     credentials: true,
+    exposeHeaders: ["X-Error-Field"],
   }),
 );
 
 app.use("*", requireSession);
 
 app.onError((err, c) => {
-  if (err instanceof HttpError) return c.json({ error: err.message }, err.status);
+  if (err instanceof HttpError) {
+    if (err.field) c.header("X-Error-Field", err.field);
+    return c.json({ error: err.message }, err.status);
+  }
   console.error(err);
   return c.json({ error: "internal error" }, 500);
 });

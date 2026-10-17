@@ -7,6 +7,7 @@ export class HttpError extends Error {
   constructor(
     readonly status: 400 | 401 | 404 | 409 | 429,
     message: string,
+    readonly field?: string,
   ) {
     super(message);
   }
@@ -32,6 +33,8 @@ function errorText(err: unknown): string {
 
 export function rethrowConflict(err: unknown): never {
   const text = errorText(err);
+  if (text.includes("NOT NULL constraint failed: rooms.number"))
+    throw new HttpError(404, "room not found");
   if (text.includes("reservation_requests.id"))
     throw new HttpError(409, "request ID reused with a different payload");
   if (text.includes("invalid room assignment"))

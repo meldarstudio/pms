@@ -221,7 +221,10 @@ it("keeps the draft and identifies a room-number conflict reported during saving
   mockApi(() => {
     if (writes.length === 1) {
       rooms.push({ id: "other-room", number: "202", roomTypeId: "suite" });
-      return Response.json({ error: "room number already exists" }, { status: 409 });
+      return Response.json(
+        { error: "room number already exists" },
+        { status: 409, headers: { "X-Error-Field": "rooms[1].number" } },
+      );
     }
   });
   await render();
@@ -401,16 +404,22 @@ it("creates a new type with its room table and can remove an extra unsaved row",
   );
 });
 
-it("preserves the editor when refreshing a server-side room conflict also fails", async () => {
+it("identifies a server-side room conflict without requiring a follow-up list request", async () => {
   let failRefresh = false;
+  let refreshRequests = 0;
   mockApi(() => {
     failRefresh = true;
-    return Response.json({ error: "room number already exists" }, { status: 409 });
+    return Response.json(
+      { error: "room number already exists" },
+      { status: 409, headers: { "X-Error-Field": "rooms[1].number" } },
+    );
   });
   const fetchApi = globalThis.fetch;
   globalThis.fetch = async (input, init) => {
-    if (failRefresh && requestUrl(input).pathname === "/rooms")
+    if (failRefresh && requestUrl(input).pathname === "/rooms") {
+      refreshRequests++;
       return Response.json({ error: "Refresh failed" }, { status: 500 });
+    }
     return fetchApi(input, init);
   };
   await render();
@@ -425,6 +434,8 @@ it("preserves the editor when refreshing a server-side room conflict also fails"
   );
   assert.equal(input("name").value, "Keep my draft");
   assert.equal(input("rooms[1].number").value, "202");
+  assert.equal(input("rooms[1].number").getAttribute("aria-invalid"), "true");
+  assert.equal(refreshRequests, 0);
 });
 
 it("validates name, money, and occupancy before writing and clears errors as fields are corrected", async () => {
@@ -433,6 +444,14 @@ it("validates name, money, and occupancy before writing and clears errors as fie
   await until(() => !!container.querySelector('input[name="name"]'), "Selected type must load");
   await fill("name", " ");
   await fill("baseRate", "85.555");
+  await React.act(async () =>
+    input("baseRate").dispatchEvent(new window.FocusEvent("focusout", { bubbles: true })),
+  );
+  assert.equal(
+    input("baseRate").getAttribute("aria-invalid"),
+    "true",
+    "Invalid fields validate on blur",
+  );
   await fill("maxOccupancy", "0");
   await click("Guardar cambios");
   assert.equal(writes.length, 0);

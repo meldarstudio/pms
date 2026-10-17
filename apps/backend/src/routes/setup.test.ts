@@ -6,11 +6,12 @@ import { URL } from "node:url";
 import { afterEach, beforeEach, expect, it } from "vite-plus/test";
 import app from "../index";
 import type { Env } from "../env";
-import { authEnv, signIn } from "../test-support/auth";
+import { authEnv, PORTAL_ORIGIN, signIn } from "../test-support/auth";
 
 let sqlite: DatabaseSync;
 let bindings: Env["Bindings"];
 let cookie: string;
+let beforeBatch: (() => Promise<void>) | undefined;
 
 function statement(sql: string, params: SQLInputValue[] = []) {
   const execute = () => {
@@ -35,6 +36,7 @@ function statement(sql: string, params: SQLInputValue[] = []) {
 }
 
 beforeEach(async () => {
+  beforeBatch = undefined;
   sqlite = new DatabaseSync(":memory:");
   sqlite.exec("PRAGMA foreign_keys = ON");
   const dir = new URL("../../drizzle/", import.meta.url);
@@ -46,6 +48,11 @@ beforeEach(async () => {
   const DB = {
     prepare: (sql: string) => statement(sql),
     batch: async (queries: ReturnType<typeof statement>[]) => {
+      if (beforeBatch) {
+        const callback = beforeBatch;
+        beforeBatch = undefined;
+        await callback();
+      }
       sqlite.exec("BEGIN");
       try {
         const results = queries.map((query) => query.execute());
@@ -69,6 +76,7 @@ function request(path: string, body?: unknown, authenticated = true) {
     {
       method: body === undefined ? "GET" : "POST",
       headers: {
+        origin: PORTAL_ORIGIN,
         ...(authenticated ? { cookie } : {}),
         ...(body === undefined ? {} : { "content-type": "application/json" }),
       },
@@ -144,6 +152,8 @@ it("rolls back type edits, room renames, and earlier inserts when a later room c
   });
   expect(response.status).toBe(409);
   expect(await response.json()).toEqual({ error: "room number already exists" });
+  expect(response.headers.get("X-Error-Field")).toBe("rooms[2].number");
+  expect(response.headers.get("Access-Control-Expose-Headers")).toContain("X-Error-Field");
   expect(await (await request(`/room-types/${created.roomType.id}`)).json()).toMatchObject(
     typeDetails,
   );
@@ -242,4 +252,77 @@ it("rejects editing rooms owned by another type and nonexistent type IDs", async
     number: "101",
     roomTypeId: created.roomType.id,
   });
+});
+
+it.each([
+  ["102", "103"],
+  ["102", "101"],
+])(
+  "saves valid final room numbers %j without conflicting with intermediate renames",
+  async (first, second) => {
+    const created = (await (
+      await request("/setup", { ...typeDetails, rooms: [{ number: "101" }, { number: "102" }] })
+    ).json()) as Saved;
+    const response = await request("/setup", {
+      ...typeDetails,
+      roomTypeId: created.roomType.id,
+      rooms: [
+        { id: created.rooms[0].id, number: first },
+        { id: created.rooms[1].id, number: second },
+      ],
+    });
+    expect(response.status).toBe(200);
+    expect(await (await request(`/rooms/${created.rooms[0].id}`)).json()).toMatchObject({
+      number: first,
+    });
+    expect(await (await request(`/rooms/${created.rooms[1].id}`)).json()).toMatchObject({
+      number: second,
+    });
+  },
+);
+
+it("rolls back the whole save if a room changes type between loading and writing", async () => {
+  const created = (await (
+    await request("/setup", { ...typeDetails, rooms: [{ number: "101" }] })
+  ).json()) as Saved;
+  const other = (await (
+    await request("/setup", { ...typeDetails, name: "Suite", rooms: [] })
+  ).json()) as Saved;
+  beforeBatch = async () => {
+    const moved = await app.request(
+      `/rooms/${created.rooms[0].id}`,
+      {
+        method: "PATCH",
+        headers: { cookie, "content-type": "application/json" },
+        body: JSON.stringify({ roomTypeId: other.roomType.id }),
+      },
+      bindings,
+    );
+    expect(moved.status).toBe(200);
+  };
+  const response = await request("/setup", {
+    ...typeDetails,
+    name: "Changed",
+    roomTypeId: created.roomType.id,
+    rooms: [{ id: created.rooms[0].id, number: "201" }, { number: "202" }],
+  });
+  expect(response.status).toBe(404);
+  expect(await response.json()).toEqual({ error: "room not found" });
+  expect(await (await request(`/room-types/${created.roomType.id}`)).json()).toMatchObject(
+    typeDetails,
+  );
+  expect(await (await request("/rooms")).json()).toEqual([
+    { id: created.rooms[0].id, number: "101", roomTypeId: other.roomType.id },
+  ]);
+});
+
+it("identifies duplicate numbers within a submitted table without creating the type", async () => {
+  const response = await request("/setup", {
+    ...typeDetails,
+    rooms: [{ number: "101" }, { number: " 101 " }],
+  });
+  expect(response.status).toBe(409);
+  expect(response.headers.get("X-Error-Field")).toBe("rooms[1].number");
+  expect(await (await request("/room-types")).json()).toEqual([]);
+  expect(await (await request("/rooms")).json()).toEqual([]);
 });

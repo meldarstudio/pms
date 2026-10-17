@@ -1,5 +1,5 @@
 import { z } from "zod";
-import type { PropertySetupResult, Room, RoomType } from "./api";
+import type { Room, RoomType } from "./api";
 import { formatMajor, parseMajorToCents } from "./money";
 
 export const setupFormSchema = z
@@ -51,8 +51,4 @@ export function setupDefaults(type?: RoomType, rooms: Room[] = []): SetupValues 
     maxOccupancy: String(type?.maxOccupancy ?? 1),
     rooms: rooms.map((room) => ({ key: room.id, id: room.id, number: room.number })),
   };
-}
-
-export function savedSetupDefaults(result: PropertySetupResult) {
-  return setupDefaults(result.roomType, result.rooms);
 }

@@ -114,9 +114,17 @@ room numbers follow the existing room/type validation rules.
 The response is `{ roomType, rooms }`, including the saved type and all its rooms,
 with status 201 for a new type or 200 for an edit. A conflict rolls back the entire
 batch, including type edits, room-number edits, and new rooms. The existing English
-error strings and `{ error: string }` responses are reused. Uniqueness remains
+error strings and `{ error: string }` responses are reused. Room-number conflicts
+identify the affected submitted field in the CORS-exposed `X-Error-Field` response
+header (for example, `rooms[2].number`), so the portal does not need a second
+request to highlight the row. Uniqueness remains
 database-enforced across the property. Saves have no revision check or retry
 receipt; overlapping edits use last-write-wins.
+
+Existing numbers are temporarily released inside the batch before applying final
+numbers, allowing renumbering chains and swaps. An ownership guard aborts the
+batch if a submitted room has changed type since it was loaded. This is an
+integrity check, not revision-based concurrent-edit detection.
 
 Setup does not change reservation prices, assignments, or occupancy validation
 policy. No schema migration or production sample seeding is needed. Existing

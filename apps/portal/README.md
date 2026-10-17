@@ -31,8 +31,9 @@ number edits atomically. New types can be saved with no rooms. Setup is ready fo
 reservations when at least one saved room exists, at which point **Ir al calendario**
 is available. There is no separate setup-completion flag or final wizard submission.
 
-Switching types with a draft prompts to save, discard, or keep editing. Leaving
-the page also protects unsaved changes; navigation is blocked while saving.
+Switching types with a draft prompts to save, discard, or keep editing. Router
+navigation and browser unload also protect unsaved changes; router navigation is
+blocked while saving. Explicit sign-out keeps the app's existing behavior.
 Validation and save failures retain the draft, with known conflicts shown beside
 the affected fields. A failed background refresh does not replace an open editor.
 Configuration saves use last-write-wins rather than concurrent-edit detection.
