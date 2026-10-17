@@ -13,7 +13,7 @@
 - Before development, test, build, or check commands, read [README.md](README.md#commands). It owns command usage and environment setup.
 - Before changing tests or reviewing code, read [CODING_STANDARDS.md](CODING_STANDARDS.md). Run affected tests and `pnpm check` for code changes; checks do not run tests.
 - Before changing formatting, lint, or compiler configuration, read [README.md](README.md#tool-configuration). Root `vite.config.ts` owns formatting and lint rules.
-- Keep TypeScript and Zod dependencies as `"catalog:"`. The workspace uses TypeScript 7 and Zod 4; use Zod 4 APIs.
+- Keep TypeScript and Zod dependencies as `"catalog:"`; use the APIs of the versions in `pnpm-workspace.yaml`.
 
 ## Task-specific context
 
@@ -22,7 +22,7 @@ Read the applicable instructions before changing the package or contract, includ
 - **Backend/API:** [apps/backend/AGENTS.md](apps/backend/AGENTS.md) for Hono routes, authentication, reservation workflows, and database-backed behavior.
 - **Portal/UI:** [apps/portal/AGENTS.md](apps/portal/AGENTS.md) for routing, forms, queries, API clients, and UI components.
 - **Database:** [docs/agents/database.md](docs/agents/database.md) before changing schemas, migrations, triggers, seeds, or deploying schema-dependent code.
-- **Shared schemas:** `packages/shared` (`@pms/shared`) exports Zod schemas directly from `src/index.ts`; it has no build or typecheck script. The backend consumes them; the portal maintains its own schemas and API types.
+- **Shared schemas:** `packages/shared` (`@pms/shared`) supplies backend request schemas. The portal maintains its own schemas and API types; check both sides when changing a contract.
 - **Domain/architecture:** [docs/agents/domain.md](docs/agents/domain.md) before exploring domain concepts or architectural decisions; it points to the shared glossary and ADRs.
 - **Issues/specs:** [docs/agents/issue-tracker.md](docs/agents/issue-tracker.md) before tracker operations. Use GitHub Issues in `meldarstudio/pms`.
 - **Triage:** [docs/agents/triage-labels.md](docs/agents/triage-labels.md) before triaging incoming issues.

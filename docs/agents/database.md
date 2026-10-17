@@ -1,6 +1,6 @@
 # Database changes and production safety
 
-Production data and applied migrations are durable. Local sample data can be replaced without confirmation or backups; that permission never extends to production.
+Follow the [root production safety policy](../../AGENTS.md#safety). Local sample data can be replaced without confirmation or backups; that permission never extends to production.
 
 ## Schema and migration changes
 
@@ -14,17 +14,15 @@ Drizzle does not generate the business-rule triggers. Their original definitions
 
 ## Local data
 
-- `pnpm db:reset:local` applies migrations, deletes application data, and reloads samples, leaving the schema, triggers, and migration history in place. `--rebuild-schema` also drops PMS tables, triggers, and the local D1 migration ledger before reapplying migrations.
-- `--date=YYYY-MM-DD` pins sample dates; the default is today UTC. `--persist-to` must match Wrangler's persistence directory or the backend reads a different database.
+Before resetting or seeding local data, read [Reset local dummy data](../../apps/backend/README.md#reset-local-dummy-data) for reset/rebuild behavior, date pinning, persistence directories, and seed contents.
+
 - In non-interactive environments, prefix resets with `CI=true` so Wrangler can accept its migration confirmation fallback. Local resets need no Cloudflare credentials.
-- `pnpm db:migrate:local` applies migrations without resetting data. `pnpm db:seed:local` only adds missing room types and rooms via `apps/backend/seed.sql` (`INSERT OR IGNORE`). Sample data stays local; production property setup happens through the application.
+- `pnpm db:migrate:local` applies migrations without resetting data. Sample data stays local; production property setup happens through the application.
 
 ## Production release
 
-Read [backend deployment](../../apps/backend/README.md#deployment-and-worker-types) and the current package scripts before a release. Deployment, remote migration, and secret changes require an explicitly requested production operation.
+Before a release, read [backend deployment](../../apps/backend/README.md#deployment-and-worker-types) and the current package scripts for migration/deploy ordering, the `deploy` versus `deploy:ci` distinction, and Workers Builds configuration. Get current Worker identities, database bindings, and origins from the package Wrangler configs.
 
-- The API Worker is `pms-api`, bound to D1 `pms-production`; the portal Worker is `pms-portal`. Their production origins are `https://api.hotelmanantialchurin.com` and `https://app.hotelmanantialchurin.com`.
-- Backend `deploy` applies remote migrations before deploying code. `deploy:ci` deploys code only; Workers Builds therefore needs migrations applied explicitly before schema-dependent code deploys. Merging to `main` can trigger deployment.
 - Plan for the currently deployed Worker to run during migration and for portal/API builds to arrive separately. Prefer additive, compatible changes; identify any coordinated cutover before merging.
 - Preserve production records. Destructive migrations, resets, baseline replacement, or database replacement require explicit approval for the specific data loss and a recovery plan; routine release authorization is not enough.
 - For a schema release, report the migration order, compatibility impact, validation performed, and recovery approach. Do not run remote commands merely to validate a local change.
