@@ -13,6 +13,11 @@ nvm use 22.22.1
 pnpm install
 ```
 
+pnpm checks the exact Node version before running scripts or `pnpm exec` commands.
+If it reports a mismatch, run `nvm use 22.22.1` (or select that version with your
+Node manager), then retry. It does not download Node automatically. When upgrading
+Node, update both `.node-version` and `devEngines.runtime.version` in `package.json`.
+
 Vite+ is a local dependency. A global `vp` installation is optional.
 
 ## Commands
@@ -70,18 +75,21 @@ the browser will not send the session cookie.
 ## Testing
 
 For test changes and code reviews, follow [the testing policy](CODING_STANDARDS.md#tests).
-Run one backend file with:
+Run one backend file once with:
 
 ```sh
-pnpm --filter @pms/backend test -- src/routes/reservations.test.ts
+pnpm exec vp test run --project backend apps/backend/src/routes/reservations.test.ts
 ```
 
-Run one portal file with either command:
+Run one portal file once with:
 
 ```sh
-pnpm --filter @pms/portal test -- tests/reservation-forms.test.ts
-pnpm exec vp test --project portal tests/reservation-forms.test.ts
+pnpm exec vp test run --project portal apps/portal/tests/reservation-forms.test.ts
 ```
+
+These commands run from the repository root. Pass the file path directly, without
+an extra `--` separator; that separator can cause the runner to ignore the file
+filter and run the whole suite. Existing full-suite commands remain unchanged.
 
 ## Tool configuration
 

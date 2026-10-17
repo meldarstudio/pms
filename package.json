@@ -21,5 +21,12 @@
   "devDependencies": {
     "vite-plus": "catalog:"
   },
+  "devEngines": {
+    "runtime": {
+      "name": "node",
+      "version": "22.22.1",
+      "onFail": "error"
+    }
+  },
   "packageManager": "pnpm@11.22.0"
 }
