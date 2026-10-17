@@ -5,7 +5,7 @@ import { Window, type HTMLDivElement, type HTMLInputElement } from "happy-dom";
 import { createServer, type ViteDevServer } from "vite";
 import type { Root } from "react-dom/client";
 import type { QueryClient } from "@tanstack/react-query";
-import type { PropertySetupInput, Room, RoomType } from "../src/lib/api.ts";
+import type { PropertySetupInput, ReservationDetail, Room, RoomType } from "../src/lib/api.ts";
 
 let window: Window;
 let server: ViteDevServer;
@@ -112,6 +112,13 @@ function mockApi(
     const url = requestUrl(input);
     if (url.pathname === "/room-types") return Response.json(types);
     if (url.pathname === "/rooms") return Response.json(rooms);
+    if (url.pathname === "/inventory")
+      return Response.json({
+        from: url.searchParams.get("from"),
+        to: url.searchParams.get("to"),
+        currency: "PEN",
+        roomTypes: [],
+      });
     if (url.pathname === "/setup" && init?.method === "POST") {
       assert.ok(typeof init.body === "string");
       const body = JSON.parse(init.body) as PropertySetupInput;
@@ -189,6 +196,101 @@ function button(label: string) {
 async function click(label: string) {
   await React.act(async () => button(label).click());
 }
+
+it.each([
+  ["/calendar?from=2026-10-14&span=14", [], "Configura tu alojamiento"],
+  ["/calendar?from=2026-10-14&span=14", [double], "Aún no hay habitaciones"],
+  ["/reservations?q=Ana&status=confirmed", [], "Configura tu alojamiento"],
+  ["/reservations?q=Ana&status=confirmed", [double], "Aún no hay habitaciones"],
+  ["/inventory?from=2026-10-14&span=7", [], "Configura tu alojamiento"],
+] as const)(
+  "keeps %s accessible with its setup CTA (room types: %j)",
+  async (path, roomTypes, title) => {
+    mockApi();
+    types = [...roomTypes];
+    rooms = [];
+    await render(path);
+    await until(() => container.textContent.includes(title), "Setup guidance must appear");
+    assert.equal(router.state.location.pathname, path.split("?")[0]);
+    const originalLocation = router.state.location.href;
+    const link = container.querySelector('a[href="/setup"]');
+    assert.ok(link);
+    assert.equal(link.textContent.trim(), "Ir a Configuración");
+    await React.act(async () =>
+      link.dispatchEvent(
+        new window.MouseEvent("click", { bubbles: true, cancelable: true, button: 0 }),
+      ),
+    );
+    await until(
+      () =>
+        router.state.location.pathname === "/setup" &&
+        !!container.querySelector('input[name="name"]'),
+      "Setup CTA must open configuration through the app router",
+    );
+    await React.act(async () => router.history.back());
+    await until(
+      () =>
+        router.state.location.href === originalLocation && container.textContent.includes(title),
+      "Back must restore the original page and its search without forcing setup",
+    );
+  },
+);
+
+it("keeps a direct reservation detail link accessible when no physical rooms exist", async () => {
+  mockApi();
+  rooms = [];
+  const reservation: ReservationDetail = {
+    id: "reservation-1",
+    code: "TEST0001",
+    status: "confirmed",
+    notes: null,
+    cancellationReason: null,
+    cancelledAt: null,
+    savedDiscountCents: 0,
+    creditCents: 0,
+    guestId: "contact-1",
+    guest: { id: "contact-1", fullName: "Ana Pérez", phone: null, email: null, notes: null },
+    stayingGuests: [],
+    checkIn: "2026-10-14",
+    checkOut: "2026-10-16",
+    source: "direct",
+    currency: "PEN",
+    totalCents: 30000,
+    subtotalCents: 30000,
+    discountCents: 0,
+    paidCents: 0,
+    balanceCents: 30000,
+    payments: [],
+    rooms: [
+      {
+        id: "line-1",
+        roomTypeId: "double",
+        roomTypeName: "Doble",
+        roomId: null,
+        roomNumber: null,
+        adults: 1,
+        children: 0,
+        subtotalCents: 30000,
+        discountCents: 0,
+        totalCents: 30000,
+        nights: [],
+      },
+    ],
+  };
+  const fetchApi = globalThis.fetch;
+  globalThis.fetch = async (input, init) =>
+    requestUrl(input).pathname === "/reservations/reservation-1"
+      ? Response.json(reservation)
+      : fetchApi(input, init);
+  await render("/reservations/reservation-1");
+  await until(
+    () =>
+      container.textContent.includes("Reserva TEST0001") &&
+      container.textContent.includes("Ana Pérez"),
+    "Reservation details must render without forcing setup",
+  );
+  assert.equal(router.state.location.pathname, "/reservations/reservation-1");
+});
 
 it("edits a room type and adds several room numbers in the real table with one save", async () => {
   mockApi();
@@ -295,16 +397,23 @@ it("saves before switching and prevents switching away while that save is pendin
   assert.equal(writes[0].baseRateCents, 18000);
 });
 
-it("lands an empty hotel on setup and unlocks the calendar only after saving its first room", async () => {
+it("lets an empty property open its calendar and choose setup before saving its first room", async () => {
   mockApi();
   types = [];
   rooms = [];
   await render("/");
   await until(
     () =>
+      router.state.location.pathname === "/calendar" &&
+      container.textContent.includes("Configura tu alojamiento"),
+    "Empty property must stay on the calendar with setup guidance",
+  );
+  await click("Configuración");
+  await until(
+    () =>
       router.state.location.pathname === "/setup" &&
       !!container.querySelector('input[name="name"]'),
-    "Empty hotel must land on setup",
+    "Configuration tab must open setup",
   );
   await fill("name", "Individual");
   await fill("baseRate", "85");

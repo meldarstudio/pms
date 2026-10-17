@@ -16,9 +16,11 @@ treats the portal and API as the same site and sends the session cookie. Overrid
 
 ## Property setup
 
-After signing in, a hotel without rooms is directed to `/setup`. The
-**Configuración** tab keeps the page accessible afterward. Each deployment manages
-one property; there is no hotel profile or account-creation step.
+After signing in, calendar, reservations, and inventory stay accessible even when
+property setup is incomplete. Their setup empty states link to `/setup`, and the
+**Configuración** tab keeps it accessible at any time. Inventory remains editable
+when room types exist without rooms, so rates can be configured first. Each
+deployment manages one property; there is no hotel profile or account-creation step.
 
 The room-type list opens an editor for the type's name, base nightly rate in PEN,
 maximum occupancy, and a table of its physical room numbers. **Agregar habitación**

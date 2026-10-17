@@ -1,3 +1,4 @@
+import { Link } from "@tanstack/react-router";
 import { BedDoubleIcon } from "lucide-react";
 import { buttonVariants } from "@/components/ui/button";
 import {
@@ -35,9 +36,9 @@ export function SetupRequired({ missing }: { missing: MissingSetup }) {
         <EmptyDescription>{copy[missing].description}</EmptyDescription>
       </EmptyHeader>
       <EmptyContent>
-        <a href="/setup" className={buttonVariants({ variant: "outline" })}>
+        <Link to="/setup" className={buttonVariants({ variant: "outline" })}>
           Ir a Configuración
-        </a>
+        </Link>
       </EmptyContent>
     </Empty>
   );

@@ -25,6 +25,7 @@ let server: ViteDevServer;
 let React: typeof import("react");
 let createRoot: (typeof import("react-dom/client"))["createRoot"];
 let query: typeof import("@tanstack/react-query");
+let routing: typeof import("@tanstack/react-router");
 let forms: typeof import("../src/components/reservation-entry-forms.tsx");
 let dialogs: typeof import("../src/components/room-booking-dialog.tsx");
 let newBookings: typeof import("../src/components/new-booking.tsx");
@@ -43,6 +44,7 @@ beforeAll(async () => {
   window = new Window({ url: "http://localhost:5173" });
   for (const name of [
     "window",
+    "self",
     "document",
     "navigator",
     "HTMLElement",
@@ -76,6 +78,7 @@ beforeAll(async () => {
   React = await import("react");
   ({ createRoot } = await import("react-dom/client"));
   query = await import("@tanstack/react-query");
+  routing = await import("@tanstack/react-router");
   // Compile the actual TSX components with the project's aliases and env.
   // Middleware mode with HMR disabled needs no listening HTTP server.
   server = await createServer({
@@ -180,6 +183,22 @@ function detail(): ReservationDetail {
 async function render(element: React.ReactNode) {
   await React.act(async () => {
     root.render(withClient(element));
+  });
+}
+
+async function renderWithRouter(element: React.ReactNode) {
+  const rootRoute = routing.createRootRoute({ component: () => element });
+  const setupRoute = routing.createRoute({
+    getParentRoute: () => rootRoute,
+    path: "/setup",
+  });
+  const router = routing.createRouter({
+    routeTree: rootRoute.addChildren([setupRoute]),
+    history: routing.createMemoryHistory({ initialEntries: ["/"] }),
+  });
+  await React.act(async () => {
+    await router.load();
+    root.render(withClient(React.createElement(routing.RouterProvider, { router })));
   });
 }
 
@@ -918,7 +937,7 @@ it.each([
   "replaces the %s with a setup prompt without its controls (room types: %j)",
   async (_screen, element, roomTypes, title) => {
     mockSetupApi(roomTypes, []);
-    await render(element());
+    await renderWithRouter(element());
     await until(() => container.textContent.includes(title), "Setup prompt must appear");
     assert.equal(container.querySelectorAll("button, input, h1").length, 0);
   },
@@ -926,7 +945,7 @@ it.each([
 
 it("replaces the inventory grid with a setup prompt when there are no room types", async () => {
   mockSetupApi([], []);
-  await render(renderInventory());
+  await renderWithRouter(renderInventory());
   await until(() => container.textContent.includes(noTypesTitle), "Setup prompt must appear");
   assert.equal(container.querySelectorAll("button").length, 0);
 });
