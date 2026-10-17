@@ -19,7 +19,8 @@ export const guestFields = z.object({
 
 export const roomTypeSchema = z.object({
   name: text(80),
-  maxOccupancy: z.number().int().min(1),
+  maxAdults: z.number().int().min(1),
+  maxChildren: z.number().int().min(0),
   baseRateCents: z.number().int().min(0),
 });
 
@@ -78,6 +79,8 @@ export const availabilityQuerySchema = z.object({
   checkIn: dateSchema,
   checkOut: dateSchema.optional(),
   roomTypeId: z.string().min(1).optional(),
+  adults: z.coerce.number().int().min(1).max(100).optional(),
+  children: z.coerce.number().int().min(0).max(100).optional(),
 });
 
 export const paymentListQuerySchema = z.object({

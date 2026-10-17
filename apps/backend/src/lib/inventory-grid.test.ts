@@ -4,7 +4,8 @@ import { inventoryGrid, peakOccupied, type GridRoomType } from "./inventory-grid
 const deluxe: GridRoomType = {
   id: "deluxe",
   name: "Deluxe",
-  maxOccupancy: 3,
+  maxAdults: 3,
+  maxChildren: 2,
   baseRateCents: 15000,
 };
 

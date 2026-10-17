@@ -86,7 +86,7 @@ function request(path: string, body?: unknown, authenticated = true) {
   );
 }
 
-const typeDetails = { name: "Doble", maxOccupancy: 2, baseRateCents: 15000 };
+const typeDetails = { name: "Doble", maxAdults: 2, maxChildren: 2, baseRateCents: 15000 };
 type Saved = {
   roomType: typeof typeDetails & { id: string };
   rooms: { id: string; number: string; roomTypeId: string }[];
@@ -121,14 +121,16 @@ it("saves type details, renames existing rooms, and adds rooms without deleting 
     roomTypeId: created.roomType.id,
     name: "Doble superior",
     baseRateCents: 17550,
-    maxOccupancy: 3,
+    maxAdults: 3,
+    maxChildren: 0,
     rooms: [{ id: created.rooms[0].id, number: "201" }, { number: "203" }],
   });
   expect(response.status).toBe(200);
   expect(await (await request(`/room-types/${created.roomType.id}`)).json()).toMatchObject({
     name: "Doble superior",
     baseRateCents: 17550,
-    maxOccupancy: 3,
+    maxAdults: 3,
+    maxChildren: 0,
   });
   const allRooms = (await (await request("/rooms")).json()) as Saved["rooms"];
   expect(allRooms.map((room) => room.number).sort()).toEqual(["102", "201", "203"]);
@@ -204,13 +206,17 @@ it("allows an empty type and rejects unauthenticated writes", async () => {
 });
 
 it.each([
-  { name: "", maxOccupancy: 2, baseRateCents: 100 },
-  { name: "Doble", maxOccupancy: 0, baseRateCents: 100 },
-  { name: "Doble", maxOccupancy: 1.5, baseRateCents: 100 },
-  { name: "Doble", maxOccupancy: 2, baseRateCents: -1 },
-  { name: "Doble", maxOccupancy: 2, baseRateCents: 1.5 },
+  { name: "" },
+  { maxAdults: 0 },
+  { maxAdults: 1.5 },
+  { maxChildren: -1 },
+  { maxChildren: 1.5 },
+  { baseRateCents: -1 },
+  { baseRateCents: 1.5 },
 ])("rejects invalid type details without writing: %j", async (details) => {
-  expect((await request("/setup", { ...details, rooms: [{ number: "101" }] })).status).toBe(400);
+  expect(
+    (await request("/setup", { ...typeDetails, ...details, rooms: [{ number: "101" }] })).status,
+  ).toBe(400);
   expect(await (await request("/room-types")).json()).toEqual([]);
   expect(await (await request("/rooms")).json()).toEqual([]);
 });

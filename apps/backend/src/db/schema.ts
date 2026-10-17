@@ -3,7 +3,8 @@ import { index, integer, sqliteTable, text, uniqueIndex } from "drizzle-orm/sqli
 export const roomTypes = sqliteTable("room_types", {
   id: text("id").primaryKey(),
   name: text("name").notNull().unique(),
-  maxOccupancy: integer("max_occupancy").notNull(),
+  maxAdults: integer("max_occupancy").notNull(),
+  maxChildren: integer("max_children").notNull().default(2),
   baseRateCents: integer("base_rate_cents").notNull(),
   createdAt: text("created_at").notNull(),
 });

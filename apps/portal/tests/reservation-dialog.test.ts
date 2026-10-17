@@ -413,7 +413,7 @@ function mockApi(handler: (path: string, command: WorkflowCommand) => Promise<Re
       return handler(url.pathname, JSON.parse(init.body));
     }
     if (url.pathname === "/room-types")
-      return Response.json([{ id: "double", name: "Doble", maxOccupancy: 2 }]);
+      return Response.json([{ id: "double", name: "Doble", maxAdults: 2, maxChildren: 2 }]);
     if (url.pathname === "/rooms")
       return Response.json([{ id: "room-1", number: "101", roomTypeId: "double" }]);
     if (url.pathname === "/reservations/reservation-1") return Response.json(detail());
@@ -570,7 +570,8 @@ function mockCreationApi(handler: (input: CreateBookingInput) => Promise<Respons
           {
             id: "double",
             name: "Doble",
-            maxOccupancy: 2,
+            maxAdults: 2,
+            maxChildren: 2,
             free: 5,
             totalCents: nights * 15000,
             nights: [],
@@ -713,9 +714,9 @@ it("filters sold-out types, occupied and closed room numbers, and inventory alre
   mockCreationApi(async () => Response.json(detail()));
   const fetchApi = globalThis.fetch;
   const types = [
-    { id: "double", name: "Doble", maxOccupancy: 2, free: 2 },
-    { id: "suite", name: "Suite", maxOccupancy: 4, free: 0 },
-    { id: "family", name: "Familiar", maxOccupancy: 4, free: 1 },
+    { id: "double", name: "Doble", maxAdults: 2, maxChildren: 2, free: 2 },
+    { id: "suite", name: "Suite", maxAdults: 4, maxChildren: 2, free: 0 },
+    { id: "family", name: "Familiar", maxAdults: 4, maxChildren: 2, free: 1 },
   ];
   globalThis.fetch = async (input, init) => {
     const url = requestUrl(input);
@@ -852,7 +853,8 @@ it("waits for current date availability and clears room selections that are no l
           {
             id: "double",
             name: "Doble",
-            maxOccupancy: 2,
+            maxAdults: 2,
+            maxChildren: 2,
             free: 0,
             totalCents: 30000,
             nights: [],
@@ -870,7 +872,7 @@ it("waits for current date availability and clears room selections that are no l
   assert.ok(container.textContent.includes("No hay habitaciones disponibles para esas fechas."));
 });
 
-const doubleType = { id: "double", name: "Doble", maxOccupancy: 2 };
+const doubleType = { id: "double", name: "Doble", maxAdults: 2, maxChildren: 2 };
 const noTypesTitle = "Configura tu alojamiento";
 const noRoomsTitle = "Aún no hay habitaciones";
 
@@ -1015,6 +1017,26 @@ it("validates the primary contact and room capacity before creating a reservatio
   await fill("rooms[0].room.adults", "2");
   await submit();
   await until(() => writes === 1, "Optional contact details may be empty");
+});
+
+it("blocks excess children but accepts two adults plus two children in the real booking form", async () => {
+  const writes: CreateBookingInput[] = [];
+  mockCreationApi(async (input) => {
+    writes.push(input);
+    return Response.json(detail());
+  });
+  await renderNewBooking();
+  await fill("fullName", "Family Guest");
+  await fill("rooms[0].room.adults", "2");
+  await fill("rooms[0].room.children", "3");
+  await submit();
+  assert.equal(writes.length, 0);
+  assert.ok(container.textContent.includes("no tiene capacidad"));
+  await fill("rooms[0].room.children", "2");
+  await submit();
+  await until(() => writes.length === 1, "The permitted family arrangement must save");
+  assert.equal(writes[0].rooms[0].adults, 2);
+  assert.equal(writes[0].rooms[0].children, 2);
 });
 
 it("preserves a failed creation draft and safely retries until its payload changes", async () => {
@@ -1279,6 +1301,90 @@ it("allows choosing and saving check-in with an unassigned room", async () => {
   await until(() => writes.length === 1, "Check-in must save");
   assert.deepEqual(writes[0].actions, [{ type: "set-status", status: "checked_in" }]);
 });
+
+it.each(["notes", "status"] as const)(
+  "allows %s corrections without changing a saved room above its current child limit",
+  async (correction) => {
+    const initial = detail();
+    initial.rooms[0].adults = 2;
+    initial.rooms[0].children = 3;
+    const actions: WorkflowCommand["actions"] =
+      correction === "notes"
+        ? [{ type: "notes", notes: "Late arrival" }]
+        : [{ type: "set-status", status: "checked_in" }];
+    const writes: WorkflowCommand[] = [];
+    mockApi(async (path, command) => {
+      const saved = {
+        ...initial,
+        notes: correction === "notes" ? "Late arrival" : null,
+        status: correction === "status" ? "checked_in" : "confirmed",
+      };
+      if (path.endsWith("/preview")) return previewResponse(saved);
+      writes.push(command);
+      return Response.json(saved);
+    });
+    await render(
+      React.createElement(dialogs.BookingEditor, {
+        detail: initial,
+        onRefresh: () => {},
+      }),
+    );
+    if (correction === "notes") await fill("notes", "Late arrival");
+    else await choose("Estado de la reserva", "Check-in");
+    await until(
+      () => !button("Guardar detalles").disabled,
+      "Unchanged occupancy must not block corrections",
+    );
+    assert.equal(container.textContent.includes("no tiene capacidad"), false);
+    await submit();
+    await until(() => writes.length === 1, "The correction must save");
+    assert.deepEqual(writes[0].actions, actions);
+  },
+);
+
+it.each(["occupancy", "assignment", "dates", "restoration"] as const)(
+  "revalidates a grandfathered room when changing %s",
+  async (change) => {
+    const initial = detail();
+    initial.rooms[0].adults = 2;
+    initial.rooms[0].children = 3;
+    if (change === "restoration") initial.status = "cancelled";
+    let writes = 0;
+    mockApi(async (path) => {
+      if (path.endsWith("/preview"))
+        return previewResponse(initial, [
+          { code: "too many guests for this room type", roomIndex: 0, field: "occupancy" },
+        ]);
+      writes++;
+      return Response.json(initial);
+    });
+    await render(
+      React.createElement(dialogs.BookingEditor, {
+        detail: initial,
+        onRefresh: () => {},
+      }),
+    );
+    await flush();
+    assert.equal(container.textContent.includes("no tiene capacidad"), false);
+    if (change === "occupancy") await fill("rooms[0].room.children", "4");
+    else if (change === "assignment") await choose("Hab.", "Sin asignar");
+    else if (change === "restoration") await choose("Estado de la reserva", "Confirmada");
+    else {
+      await React.act(async () => fieldTrigger("Check-out").click());
+      const day = Array.from(
+        window.document.querySelectorAll<HTMLButtonElement>("button[data-day]"),
+      ).find((button) => button.textContent.trim() === "17");
+      assert.ok(day);
+      await React.act(async () => day.click());
+    }
+    await until(
+      () => container.textContent.includes("no tiene capacidad"),
+      "Changed rooms must use current limits",
+    );
+    await submit();
+    assert.equal(writes, 0);
+  },
+);
 
 it("previews and saves added unassigned rooms after check-in and allows clearing assignments", async () => {
   const initial = { ...detail(), status: "checked_in" };

@@ -474,7 +474,7 @@ async function validateRooms(
   const issues: WorkflowIssue[] = [];
   affected.forEach(({ line, roomIndex }) => {
     const type = types.find((type) => type.id === line.roomTypeId);
-    if (type && line.adults + line.children > type.maxOccupancy)
+    if (type && (line.adults > type.maxAdults || line.children > type.maxChildren))
       issues.push({ code: "too many guests for this room type", roomIndex, field: "occupancy" });
     if (!line.roomId) return;
     const room = physical.find((room) => room.id === line.roomId);

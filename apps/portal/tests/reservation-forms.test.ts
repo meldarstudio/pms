@@ -22,8 +22,8 @@ import { roomEdits } from "../src/lib/reservation-editor.ts";
 import type { ReservationDetail } from "../src/lib/api.ts";
 
 const types = [
-  { id: "double", name: "Doble", maxOccupancy: 2, baseRateCents: 15000 },
-  { id: "family", name: "Familiar", maxOccupancy: 4, baseRateCents: 25000 },
+  { id: "double", name: "Doble", maxAdults: 2, maxChildren: 2, baseRateCents: 15000 },
+  { id: "family", name: "Familiar", maxAdults: 4, maxChildren: 3, baseRateCents: 25000 },
 ];
 const details = (): DetailsValues => ({
   checkIn: "2026-01-01",
@@ -57,7 +57,7 @@ describe("reservation form schemas", () => {
     values.rooms.push({
       id: "line-2",
       removed: false,
-      room: { roomTypeId: "double", roomId: null, adults: "2", children: "1" },
+      room: { roomTypeId: "double", roomId: null, adults: "2", children: "3" },
     });
     assert.deepEqual(schemaErrors(detailsSchema(types).safeParse(values)), {
       "rooms[1].room": capacityMessage,

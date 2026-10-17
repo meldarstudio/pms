@@ -58,7 +58,8 @@ beforeEach(async () => {
   for (const { tag } of journal.entries)
     sqlite.exec(readFileSync(new URL(`${tag}.sql`, dir), "utf8"));
   sqlite.exec(`
-    INSERT INTO room_types VALUES ('type', 'King', 2, 10000, '2026-10-10');
+    INSERT INTO room_types (id, name, max_occupancy, base_rate_cents, created_at)
+      VALUES ('type', 'King', 2, 10000, '2026-10-10');
     INSERT INTO rooms VALUES ('room-101', '101', 'type'), ('room-102', '102', 'type'), ('room-103', '103', 'type');
   `);
   binding = {
@@ -169,7 +170,7 @@ async function arrive(d: Detail) {
 async function bookingAfterCapacityReduction(roomCount = 1) {
   const d = await create(roomCount);
   const saved = await command(d, [roomEdit(d, 0, { adults: 2 })]);
-  const response = await request("/room-types/type", "PATCH", { maxOccupancy: 1 });
+  const response = await request("/room-types/type", "PATCH", { maxAdults: 1 });
   expect(response.status).toBe(200);
   return saved;
 }
@@ -183,6 +184,103 @@ const guest = (reservationRoomId: string | null) => ({
   documentType: "DNI",
   documentNumber: "12345678",
 });
+
+it("reserves a king room for two adults and two children at the room's unchanged price", async () => {
+  const response = await request("/reservations", "POST", {
+    requestId: crypto.randomUUID(),
+    checkIn: "2026-10-10",
+    checkOut: "2026-10-13",
+    guest: { fullName: "Family Guest" },
+    rooms: [{ roomTypeId: "type", adults: 2, children: 2 }],
+  });
+  expect(response.status).toBe(201);
+  const saved = (await response.json()) as Detail;
+  const detail = (await (await request(`/reservations/${saved.id}`)).json()) as Detail;
+  expect(detail.rooms[0]).toMatchObject({ adults: 2, children: 2 });
+  expect(detail.totalCents).toBe(30000);
+});
+
+it("filters availability by both adult and child limits without changing room prices", async () => {
+  const created = await request("/setup", "POST", {
+    name: "Double",
+    maxAdults: 4,
+    maxChildren: 2,
+    baseRateCents: 20000,
+    rooms: [{ number: "201" }],
+  });
+  expect(created.status).toBe(201);
+  const dates = "checkIn=2026-10-10&checkOut=2026-10-13";
+  const adults = (await (await request(`/availability?${dates}&adults=3&children=0`)).json()) as {
+    roomTypes: unknown[];
+  };
+  expect(adults.roomTypes).toEqual([
+    expect.objectContaining({ name: "Double", maxAdults: 4, maxChildren: 2, totalCents: 60000 }),
+  ]);
+  const family = (await (await request(`/availability?${dates}&adults=2&children=2`)).json()) as {
+    roomTypes: unknown[];
+  };
+  expect(family.roomTypes).toEqual(
+    expect.arrayContaining([
+      expect.objectContaining({ name: "King", maxAdults: 2, maxChildren: 2, totalCents: 30000 }),
+    ]),
+  );
+  const tooManyChildren = (await (
+    await request(`/availability?${dates}&adults=2&children=3`)
+  ).json()) as { roomTypes: unknown[] };
+  expect(tooManyChildren.roomTypes).toEqual([]);
+});
+
+it.each([
+  { adults: 3, children: 0 },
+  { adults: 2, children: 3 },
+])("rejects a new reservation exceeding an independent limit: %j", async (occupancy) => {
+  const response = await request("/reservations", "POST", {
+    requestId: crypto.randomUUID(),
+    checkIn: "2026-10-10",
+    checkOut: "2026-10-13",
+    guest: { fullName: "Family Guest" },
+    rooms: [{ roomTypeId: "type", ...occupancy }],
+  });
+  expect(response.status).toBe(400);
+  expect(await response.json()).toEqual({ error: "too many guests for this room type" });
+  expect(await (await request("/reservations")).json()).toEqual([]);
+});
+
+it("reports excess children on the proposed room in preview and refuses to save the edit", async () => {
+  const d = await create();
+  const action = roomEdit(d, 0, { adults: 2, children: 3 });
+  const preview = await previewCommand(d, [action]);
+  expect(preview.validation.issues).toEqual([
+    { code: "too many guests for this room type", roomIndex: 0, field: "occupancy" },
+  ]);
+  expect(preview.billing.totalCents).toBe(30000);
+  expect(await command(d, [action], 400)).toEqual({ error: "too many guests for this room type" });
+  expect(await (await request(`/reservations/${d.id}`)).json()).toEqual(d);
+});
+
+it("allows zero children in a room type but excludes it for a child in availability and reservation edits", async () => {
+  const response = await request("/room-types/type", "PATCH", { maxChildren: 0 });
+  expect(response.status).toBe(200);
+  expect(await response.json()).toMatchObject({ maxAdults: 2, maxChildren: 0 });
+  const d = await create();
+  const adults = await command(d, [roomEdit(d, 0, { adults: 2 })]);
+  expect(adults.totalCents).toBe(30000);
+  expect(await command(adults, [roomEdit(adults, 0, { adults: 2, children: 1 })], 400)).toEqual({
+    error: "too many guests for this room type",
+  });
+  const availability = (await (
+    await request("/availability?checkIn=2026-10-10&checkOut=2026-10-13&children=1")
+  ).json()) as { roomTypes: unknown[] };
+  expect(availability.roomTypes).toEqual([]);
+});
+
+it.each(["adults=0", "adults=1.5", "adults=101", "children=-1", "children=1.5", "children=101"])(
+  "rejects an invalid availability occupancy filter: %s",
+  async (query) => {
+    const response = await request(`/availability?checkIn=2026-10-10&${query}`);
+    expect(response.status).toBe(400);
+  },
+);
 
 function isCommandBatch(queries: D1PreparedStatement[]) {
   return queries.some((query) =>
@@ -220,14 +318,16 @@ function pauseCommandBatch() {
 describe("concurrent reservation commands", () => {
   it.each(
     ([null, "room-101"] as const).flatMap((roomId) =>
-      (["confirmed", "checked_in", "checked_out"] as const).map((to) => ({ roomId, to })),
+      (["confirmed", "checked_in", "checked_out"] as const).flatMap((to) =>
+        [{ maxAdults: 1 }, { maxChildren: 1 }].map((limit) => ({ roomId, to, limit })),
+      ),
     ),
   )(
-    "rejects restoration from cancelled to $to with room $roomId when capacity changes after preflight",
-    async ({ roomId, to }) => {
+    "rejects restoration from cancelled to $to with room $roomId when $limit changes after preflight",
+    async ({ roomId, to, limit }) => {
       let d = await create();
       // Cover both assigned and unassigned saved rooms.
-      d = await command(d, [roomEdit(d, 0, { adults: 2, roomId })]);
+      d = await command(d, [roomEdit(d, 0, { adults: 2, children: 2, roomId })]);
       d = await command(d, [{ type: "set-status", status: "cancelled" }]);
       const body = {
         requestId: crypto.randomUUID(),
@@ -243,7 +343,7 @@ describe("concurrent reservation commands", () => {
       const pending = request(`/reservations/${d.id}/commands`, "POST", body);
       await paused.ready;
       try {
-        const response = await request("/room-types/type", "PATCH", { maxOccupancy: 1 });
+        const response = await request("/room-types/type", "PATCH", limit);
         expect(response.status).toBe(200);
       } finally {
         paused.resume();
@@ -282,7 +382,7 @@ describe("concurrent reservation commands", () => {
       const pending = command(d, [{ type: "dates", checkIn, checkOut }, pay(5000)], 409);
       await paused.ready;
       try {
-        expect((await request("/room-types/type", "PATCH", { maxOccupancy: 1 })).status).toBe(200);
+        expect((await request("/room-types/type", "PATCH", { maxAdults: 1 })).status).toBe(200);
       } finally {
         paused.resume();
       }
@@ -327,7 +427,7 @@ describe("concurrent reservation commands", () => {
     const pending = request(`/reservations/${d.id}/commands`, "POST", body);
     await paused.ready;
     try {
-      expect((await request("/room-types/type", "PATCH", { maxOccupancy: 1 })).status).toBe(200);
+      expect((await request("/room-types/type", "PATCH", { maxAdults: 1 })).status).toBe(200);
     } finally {
       paused.resume();
     }
@@ -336,9 +436,9 @@ describe("concurrent reservation commands", () => {
     expect(await failed.json()).toEqual({ error: "too many guests for this room type" });
     expect(snapshot()).toEqual(before);
     expect((await request("/room-types/type")).status).toBe(200);
-    expect(await (await request("/room-types/type")).json()).toMatchObject({ maxOccupancy: 1 });
+    expect(await (await request("/room-types/type")).json()).toMatchObject({ maxAdults: 1 });
 
-    expect((await request("/room-types/type", "PATCH", { maxOccupancy: 2 })).status).toBe(200);
+    expect((await request("/room-types/type", "PATCH", { maxAdults: 2 })).status).toBe(200);
     const saved = await request(`/reservations/${d.id}/commands`, "POST", body);
     expect(saved.status).toBe(200);
     const detail = (await saved.json()) as Detail;
@@ -372,7 +472,8 @@ describe("concurrent reservation commands", () => {
     ]);
     const other = await request("/room-types", "POST", {
       name: "Twin",
-      maxOccupancy: 2,
+      maxAdults: 2,
+      maxChildren: 2,
       baseRateCents: 20000,
     });
     expect(other.status).toBe(201);
@@ -406,28 +507,32 @@ describe("concurrent reservation commands", () => {
     });
   });
 
-  it("allows unchanged-room saves when capacity changes between preflight and commit", async () => {
-    let d = await create();
-    d = await command(d, [roomEdit(d, 0, { adults: 2 })]);
-    const paused = pauseCommandBatch();
-    const pending = command(d, [pay(5000), setDiscount(1000), { type: "notes", notes: "Paid" }]);
-    await paused.ready;
-    try {
-      expect((await request("/room-types/type", "PATCH", { maxOccupancy: 1 })).status).toBe(200);
-    } finally {
-      paused.resume();
-    }
-    d = await pending;
-    expect(d).toMatchObject({
-      paidCents: 5000,
-      savedDiscountCents: 1000,
-      notes: "Paid",
-      status: "confirmed",
-    });
-    expect(d.rooms[0].adults).toBe(2);
-    const saved = await command(d, [{ type: "set-status", status: "cancelled" }]);
-    expect(saved.creditCents).toBe(5000);
-  });
+  it.each([{ maxAdults: 1 }, { maxChildren: 1 }])(
+    "allows unchanged-room saves when %j changes between preflight and commit",
+    async (limit) => {
+      let d = await create();
+      d = await command(d, [roomEdit(d, 0, { adults: 2, children: 2 })]);
+      const paused = pauseCommandBatch();
+      const pending = command(d, [pay(5000), setDiscount(1000), { type: "notes", notes: "Paid" }]);
+      await paused.ready;
+      try {
+        expect((await request("/room-types/type", "PATCH", limit)).status).toBe(200);
+      } finally {
+        paused.resume();
+      }
+      d = await pending;
+      expect(d).toMatchObject({
+        paidCents: 5000,
+        savedDiscountCents: 1000,
+        notes: "Paid",
+        status: "confirmed",
+      });
+      expect(d.rooms[0].adults).toBe(2);
+      expect(d.rooms[0].children).toBe(2);
+      const saved = await command(d, [{ type: "set-status", status: "cancelled" }]);
+      expect(saved.creditCents).toBe(5000);
+    },
+  );
 
   it("preserves a concurrent discount when an older notes plan commits later", async () => {
     const d = await create();
@@ -719,7 +824,7 @@ describe("reservation workflow", () => {
   });
   it("reprices type changes and permits an explicit matching assignment", async () => {
     sqlite.exec(
-      "INSERT INTO room_types VALUES ('other','Twin',3,20000,'2026-10-10'); INSERT INTO rooms VALUES ('201','201','other')",
+      "INSERT INTO room_types (id,name,max_occupancy,base_rate_cents,created_at) VALUES ('other','Twin',3,20000,'2026-10-10'); INSERT INTO rooms VALUES ('201','201','other')",
     );
     let d = await create();
     d = await command(d, [roomEdit(d)]);
@@ -1026,7 +1131,7 @@ describe("reservation workflow", () => {
   it("quotes rooms with occupancy or assignment issues and still rejects those writes", async () => {
     const d = await create();
     sqlite.exec(
-      "INSERT INTO room_types VALUES ('other', 'Single', 1, 5000, '2026-10-10'); INSERT INTO rooms VALUES ('room-other', '201', 'other')",
+      "INSERT INTO room_types (id,name,max_occupancy,base_rate_cents,created_at) VALUES ('other', 'Single', 1, 5000, '2026-10-10'); INSERT INTO rooms VALUES ('room-other', '201', 'other')",
     );
     const actions = [roomEdit(d, 0, { adults: 3, roomId: "room-other" })];
     const response = await previewCommand(d, actions);

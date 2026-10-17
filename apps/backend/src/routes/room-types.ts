@@ -28,7 +28,8 @@ roomTypeRoutes.post("/", validate("json", roomTypeSchema), async (c) => {
   const row = {
     id: crypto.randomUUID(),
     name: body.name,
-    maxOccupancy: body.maxOccupancy,
+    maxAdults: body.maxAdults,
+    maxChildren: body.maxChildren,
     baseRateCents: body.baseRateCents,
     createdAt: new Date().toISOString(),
   };

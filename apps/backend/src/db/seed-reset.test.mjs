@@ -98,7 +98,8 @@ describe("local dummy data reset", () => {
       DELETE FROM reservation_rooms WHERE id = 'line-sam-1';
       DELETE FROM reservations WHERE id = 'reservation-sam';
       DELETE FROM guests WHERE id = 'guest-sam';
-      INSERT INTO room_types VALUES ('custom', 'Custom', 2, 5000, '2026-10-06');
+      INSERT INTO room_types (id, name, max_occupancy, base_rate_cents, created_at)
+        VALUES ('custom', 'Custom', 2, 5000, '2026-10-06');
       INSERT INTO rooms VALUES ('custom', '999', 'custom');
       INSERT INTO guests (id, full_name, created_at) VALUES ('custom', 'New Guest', '2026-10-06');
       INSERT INTO reservations (id, code, guest_id, check_in, check_out, created_at)
@@ -146,7 +147,8 @@ describe("local dummy data reset", () => {
       db
         .prepare(
           `SELECT rr.id FROM reservation_rooms rr
-      JOIN room_types t ON t.id = rr.room_type_id WHERE rr.adults + rr.children > t.max_occupancy`,
+      JOIN room_types t ON t.id = rr.room_type_id
+      WHERE rr.adults > t.max_occupancy OR rr.children > t.max_children`,
         )
         .all(),
     ).toEqual([]);

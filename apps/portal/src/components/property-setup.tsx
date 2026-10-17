@@ -225,7 +225,8 @@ function SetupEditor({
         const result = await save.mutateAsync({
           ...(type ? { roomTypeId: type.id } : {}),
           name: value.name.trim(),
-          maxOccupancy: Number(value.maxOccupancy),
+          maxAdults: Number(value.maxAdults),
+          maxChildren: Number(value.maxChildren),
           baseRateCents: parseMajorToCents(value.baseRate)!,
           rooms: value.rooms.map((room) => ({
             ...(room.id ? { id: room.id } : {}),
@@ -342,15 +343,15 @@ function SetupEditor({
                 </Field>
               )}
             </form.Field>
-            <form.Field name="maxOccupancy">
+            <form.Field name="maxAdults">
               {(field) => (
                 <Field
                   data-invalid={!field.state.meta.isValid || undefined}
                   data-disabled={submitting || undefined}
                 >
-                  <FieldLabel htmlFor="setup-occupancy">Capacidad máxima</FieldLabel>
+                  <FieldLabel htmlFor="setup-adults">Máximo de adultos</FieldLabel>
                   <Input
-                    id="setup-occupancy"
+                    id="setup-adults"
                     name={field.name}
                     type="number"
                     min={1}
@@ -365,8 +366,38 @@ function SetupEditor({
                     }}
                   />
                   <FieldDescription>
-                    Adultos y niños en total. Reducirla no invalida reservas sin cambios; los
-                    cambios posteriores se validan con el nuevo límite.
+                    Los niños tienen un límite separado. Reducir los límites no invalida reservas
+                    sin cambios; los cambios posteriores se validan con los nuevos límites.
+                  </FieldDescription>
+                  <FieldError errors={fieldErrors(field.state.meta.errors)} />
+                </Field>
+              )}
+            </form.Field>
+            <form.Field name="maxChildren">
+              {(field) => (
+                <Field
+                  data-invalid={!field.state.meta.isValid || undefined}
+                  data-disabled={submitting || undefined}
+                >
+                  <FieldLabel htmlFor="setup-children">Máximo de niños</FieldLabel>
+                  <Input
+                    id="setup-children"
+                    name={field.name}
+                    type="number"
+                    min={0}
+                    step={1}
+                    value={field.state.value}
+                    disabled={submitting}
+                    aria-invalid={!field.state.meta.isValid}
+                    onBlur={field.handleBlur}
+                    onChange={(event) => {
+                      clearServerErrors();
+                      field.handleChange(event.target.value);
+                    }}
+                  />
+                  <FieldDescription>
+                    Adicionales a los adultos. La tarifa es por habitación, no por huésped. Usa 0 si
+                    este tipo no admite niños.
                   </FieldDescription>
                   <FieldError errors={fieldErrors(field.state.meta.errors)} />
                 </Field>

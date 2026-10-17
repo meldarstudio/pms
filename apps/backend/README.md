@@ -99,7 +99,8 @@ room-table changes in one D1 batch. It accepts:
 {
   "roomTypeId": "existing-type-id",
   "name": "Doble",
-  "maxOccupancy": 2,
+  "maxAdults": 2,
+  "maxChildren": 2,
   "baseRateCents": 15000,
   "rooms": [{ "id": "existing-room-id", "number": "101" }, { "number": "102" }]
 }
@@ -107,8 +108,10 @@ room-table changes in one D1 batch. It accepts:
 
 Omit `roomTypeId` to create a type; omit a room's `id` to add it. Existing room IDs
 must belong to the selected type and cannot be repeated. Omitted rooms are left
-unchanged, not deleted. Empty room arrays are valid. Names, occupancy, rates, and
-room numbers follow the existing room/type validation rules.
+unchanged, not deleted. Empty room arrays are valid. Adult and child limits are
+independent integers: `maxAdults` is at least 1 and `maxChildren` can be 0. Both
+are hard limits for new or changed reserved rooms; there is no staff override.
+Rates remain per room-night regardless of occupant counts.
 
 The response is `{ roomType, rooms }`, including the saved type and all its rooms,
 with status 201 for a new type or 200 for an edit. A conflict rolls back the entire
@@ -125,9 +128,25 @@ numbers, allowing renumbering chains and swaps. An ownership guard aborts the
 batch if a submitted room has changed type since it was loaded. This is an
 integrity check, not revision-based concurrent-edit detection.
 
-Setup does not change reservation prices, assignments, or occupancy validation
-policy. No schema migration or production sample seeding is needed. Existing
+Setup does not change saved reservation prices or assignments. Existing
 individual room and room-type endpoints remain available.
+
+### Occupancy and availability
+
+Room types, availability, and inventory responses expose `maxAdults` and
+`maxChildren`, replacing the former combined `maxOccupancy` field. The limits
+are checked separately: a type with limits of 2 adults and 2 children permits
+that family arrangement, but not 3 adults or 3 children. Children remain part of
+the reserved room's declared occupancy. No age collection or automatic age
+classification is introduced.
+
+`GET /availability?checkIn=2026-10-10&checkOut=2026-10-13&adults=3&children=0`
+only returns types that can accommodate those counts **in one room**. Both count
+filters are optional; without them, availability returns all requested room
+types for the staff's multi-room editor. Adult filters accept integers from 1
+to 100 and child filters from 0 to 100. Pricing and free-room counts are
+unchanged. The endpoint still requires the Staff account session; this change
+does not introduce a public guest-booking site or anonymous API.
 
 ## Concurrent reservation saves
 
@@ -164,7 +183,7 @@ and proposed reservation states. Added or changed rooms, changed stay dates, and
 restoration from `cancelled` to an inventory-holding status require
 validation. Unchanged saved rooms can still accept payments, notes, discounts,
 status corrections within inventory-holding statuses, and cancellation after a
-room type's occupancy limit is reduced.
+room type's adult or child limit is reduced.
 
 TypeScript preflight provides preview pricing and per-room issues. Database
 triggers own the authoritative occupancy, room-type agreement, inventory, closure,
@@ -240,6 +259,32 @@ and rooms; use `pnpm db:reset:local` to undo edits and reload all sample data.
 ## Deployment and Worker types
 
 Production API: `https://api.hotelmanantialchurin.com`
+
+### Separate occupancy limits release
+
+Apply `0002_room_occupancy.sql` before deploying the backend that reads
+`max_children`. It adds that column with a default of 2 and replaces only the
+two room-validity triggers. Existing capacity values become adult limits;
+the SQL column remains named `max_occupancy` to avoid a destructive rename.
+Existing room types, reservations, payments, and saved nightly prices are
+preserved. Both limits can then be changed per type in Setup.
+
+The API contract changes from `maxOccupancy` to `maxAdults` and `maxChildren`.
+Coordinate the backend and portal release: apply the migration, deploy the
+backend, then deploy the portal and reload open staff sessions. Old portals
+cannot edit Setup against the new API. Before the backend update, the previous
+Worker can run against the additive schema but retains its combined-count
+preflight, and the new database child limit can reject children above 2.
+An old Worker is therefore not a fully compatible client of the new policy.
+
+For recovery, retain the additive column and applied migration history; roll
+back application builds together if necessary. A previous build uses the old,
+more restrictive combined-count behavior, so reservations created under the
+new policy may need staff attention before changing their rooms. Do not drop
+the child column or restore the old triggers underneath the new Worker.
+No remote migration or deployment is part of local validation.
+
+### Commands and build setup
 
 ```sh
 pnpm --filter @pms/backend run deploy

@@ -102,7 +102,7 @@ type.
 _Avoid_: Reservation, room type
 
 **Room type**:
-A category of rooms with a shared maximum occupancy and base rate.
+A category of rooms with shared adult and child limits and a base rate.
 _Avoid_: Room number
 
 **Room assignment**:
@@ -137,9 +137,13 @@ The declared number of adults and children for a reserved room, independent of h
 appear in the guest list.
 _Avoid_: Booked room count, registered guest count
 
-**Maximum occupancy**:
-The greatest combined number of adults and children permitted in one room of a room type.
-_Avoid_: Room inventory, room capacity without specifying people
+**Maximum adults**:
+The greatest number of adults permitted in one room of a room type, counted separately from children.
+_Avoid_: Recommended occupancy, combined maximum occupancy
+
+**Maximum children**:
+The greatest number of children permitted in one room of a room type, counted separately from adults.
+_Avoid_: Child price allowance, combined maximum occupancy
 
 ### Rates and charges
 

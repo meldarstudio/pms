@@ -24,13 +24,19 @@ availabilityRoutes.get("/", validate("query", availabilityQuerySchema), async (c
     ratesBetween(db, typeIds, query.checkIn, checkOut),
   ]);
   const roomTypesOut = types
+    .filter(
+      (type) =>
+        (query.adults === undefined || query.adults <= type.maxAdults) &&
+        (query.children === undefined || query.children <= type.maxChildren),
+    )
     .sort((a, b) => a.name.localeCompare(b.name))
     .map((type) => {
       const quoted = quoteNights(nights, type.baseRateCents, overridesFor(rates, type.id));
       return {
         id: type.id,
         name: type.name,
-        maxOccupancy: type.maxOccupancy,
+        maxAdults: type.maxAdults,
+        maxChildren: type.maxChildren,
         free: Math.max(0, (capacity.get(type.id) ?? 0) - (occupied.get(type.id) ?? 0)),
         totalCents: totalCents(quoted),
         nights: quoted,

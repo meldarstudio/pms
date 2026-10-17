@@ -25,7 +25,8 @@ setupRoutes.post("/", validate("json", propertySetupSchema), async (c) => {
   const roomType = {
     id: existing?.id ?? crypto.randomUUID(),
     name: body.name,
-    maxOccupancy: body.maxOccupancy,
+    maxAdults: body.maxAdults,
+    maxChildren: body.maxChildren,
     baseRateCents: body.baseRateCents,
     createdAt: existing?.createdAt ?? new Date().toISOString(),
   };
@@ -49,7 +50,8 @@ setupRoutes.post("/", validate("json", propertySetupSchema), async (c) => {
             .update(roomTypes)
             .set({
               name: body.name,
-              maxOccupancy: body.maxOccupancy,
+              maxAdults: body.maxAdults,
+              maxChildren: body.maxChildren,
               baseRateCents: body.baseRateCents,
             })
             .where(eq(roomTypes.id, existing.id))

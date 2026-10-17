@@ -36,7 +36,8 @@ beforeEach(() => {
     db.exec(readFileSync(new URL(`${entry.tag}.sql`, migrationsDir), "utf8"));
   }
   db.exec(`
-    INSERT INTO room_types VALUES ('type', 'Standard', 2, 10000, '2026-10-05');
+    INSERT INTO room_types (id, name, max_occupancy, base_rate_cents, created_at)
+      VALUES ('type', 'Standard', 2, 10000, '2026-10-05');
     INSERT INTO rooms VALUES ('room-101', '101', 'type'), ('room-102', '102', 'type');
     INSERT INTO guests (id, full_name, created_at) VALUES ('guest', 'Ada Lovelace', '2026-10-05');
   `);
@@ -44,6 +45,103 @@ beforeEach(() => {
 });
 
 afterEach(() => db.close());
+
+describe("separate adult and child limits", () => {
+  it("accepts both limits together and rejects excess adults or children on insert and update", () => {
+    reservation("family");
+    db.exec(`INSERT INTO reservation_rooms
+      (id, reservation_id, room_type_id, adults, children, created_at)
+      VALUES ('family', 'family', 'type', 2, 2, '2026-10-05')`);
+    for (const [adults, children] of [
+      [3, 0],
+      [1, 3],
+      [0, 1],
+      [1, -1],
+    ]) {
+      expect(() =>
+        db
+          .prepare("UPDATE reservation_rooms SET adults = ?, children = ? WHERE id = 'family'")
+          .run(adults, children),
+      ).toThrow("invalid occupancy");
+      reservation("invalid");
+      expect(() =>
+        db
+          .prepare(`INSERT INTO reservation_rooms
+          (id, reservation_id, room_type_id, adults, children, created_at)
+          VALUES ('invalid', 'invalid', 'type', ?, ?, '2026-10-05')`)
+          .run(adults, children),
+      ).toThrow("invalid occupancy");
+      db.exec("DELETE FROM reservations WHERE id = 'invalid'");
+    }
+    expect(
+      db.prepare("SELECT adults, children FROM reservation_rooms WHERE id = 'family'").get(),
+    ).toEqual({ adults: 2, children: 2 });
+    db.exec("UPDATE reservation_rooms SET adults = 1, children = 1 WHERE id = 'family'");
+  });
+
+  it("enforces a zero-child limit without reducing the adult allowance", () => {
+    db.exec("UPDATE room_types SET max_children = 0 WHERE id = 'type'");
+    reservation("adults");
+    db.exec(`INSERT INTO reservation_rooms
+      (id, reservation_id, room_type_id, adults, children, created_at)
+      VALUES ('adults', 'adults', 'type', 2, 0, '2026-10-05')`);
+    expect(() => db.exec("UPDATE reservation_rooms SET children = 1 WHERE id = 'adults'")).toThrow(
+      "invalid occupancy",
+    );
+  });
+
+  it("upgrades a populated previous schema without changing reservations, prices, or payments", () => {
+    const previous = new DatabaseSync(":memory:");
+    try {
+      previous.exec("PRAGMA foreign_keys = ON");
+      const split = journal.entries.findIndex((entry) => entry.tag === "0002_room_occupancy");
+      expect(split).toBeGreaterThan(0);
+      for (const entry of journal.entries.slice(0, split))
+        previous.exec(readFileSync(new URL(`${entry.tag}.sql`, migrationsDir), "utf8"));
+      previous.exec(`
+        INSERT INTO room_types VALUES ('legacy', 'Family', 4, 10000, '2026-10-05');
+        INSERT INTO rooms VALUES ('legacy-room', '201', 'legacy');
+        INSERT INTO guests (id, full_name, created_at) VALUES ('legacy-guest', 'Family Guest', '2026-10-05');
+        INSERT INTO reservations (id, code, guest_id, check_in, check_out, created_at)
+          VALUES ('legacy-stay', 'LEGACY', 'legacy-guest', '2026-10-05', '2026-10-06', '2026-10-05');
+        INSERT INTO reservation_rooms (id, reservation_id, room_type_id, room_id, adults, children, created_at)
+          VALUES ('legacy-line', 'legacy-stay', 'legacy', 'legacy-room', 1, 3, '2026-10-05');
+        INSERT INTO reservation_room_nights VALUES ('legacy-night', 'legacy-line', '2026-10-05', 9000);
+        INSERT INTO payments (id, reservation_id, amount_cents, method, payment_date, created_at)
+          VALUES ('legacy-payment', 'legacy-stay', 4000, 'cash', '2026-10-05', '2026-10-05');
+      `);
+      const tables = [
+        "rooms",
+        "guests",
+        "reservations",
+        "reservation_rooms",
+        "reservation_room_nights",
+        "payments",
+      ];
+      const snapshot = () =>
+        tables.map((table) => previous.prepare(`SELECT * FROM ${table} ORDER BY id`).all());
+      const before = snapshot();
+      for (const entry of journal.entries.slice(split))
+        previous.exec(readFileSync(new URL(`${entry.tag}.sql`, migrationsDir), "utf8"));
+      expect(snapshot()).toEqual(before);
+      expect(previous.prepare("SELECT max_occupancy, max_children FROM room_types").all()).toEqual([
+        { max_occupancy: 4, max_children: 2 },
+      ]);
+      previous.exec("UPDATE reservations SET notes = 'Preserved' WHERE id = 'legacy-stay'");
+      expect(() =>
+        previous.exec(
+          "UPDATE reservation_rooms SET room_type_id = room_type_id WHERE id = 'legacy-line'",
+        ),
+      ).toThrow("invalid occupancy");
+      previous.exec(
+        "UPDATE reservation_rooms SET adults = 4, children = 2 WHERE id = 'legacy-line'",
+      );
+      expect(previous.prepare("PRAGMA foreign_key_check").all()).toEqual([]);
+    } finally {
+      previous.close();
+    }
+  });
+});
 
 describe("closure-only room inventory", () => {
   it("includes every room in capacity and assignment", () => {
@@ -140,7 +238,8 @@ describe("closure-only room inventory", () => {
   });
 
   it("rejects a room type change that would overbook a future night", () => {
-    db.exec(`INSERT INTO room_types VALUES ('deluxe', 'Deluxe', 2, 20000, '2026-10-05')`);
+    db.exec(`INSERT INTO room_types (id, name, max_occupancy, base_rate_cents, created_at)
+      VALUES ('deluxe', 'Deluxe', 2, 20000, '2026-10-05')`);
     reservation("early", "2099-01-01", "2099-01-03");
     line("early");
     reservation("late", "2099-01-05", "2099-01-07");
@@ -157,7 +256,8 @@ describe("closure-only room inventory", () => {
   });
 
   it("rejects a room type change while a future stay is assigned to that room", () => {
-    db.exec(`INSERT INTO room_types VALUES ('deluxe', 'Deluxe', 2, 20000, '2026-10-05')`);
+    db.exec(`INSERT INTO room_types (id, name, max_occupancy, base_rate_cents, created_at)
+      VALUES ('deluxe', 'Deluxe', 2, 20000, '2026-10-05')`);
     reservation("assigned", "2099-01-01", "2099-01-03");
     line("assigned", "room-101");
     expect(() => db.exec(`UPDATE rooms SET room_type_id = 'deluxe' WHERE id = 'room-101'`)).toThrow(

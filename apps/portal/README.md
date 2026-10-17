@@ -23,7 +23,7 @@ when room types exist without rooms, so rates can be configured first. Each
 deployment manages one property; there is no hotel profile or account-creation step.
 
 The room-type list opens an editor for the type's name, base nightly rate in PEN,
-maximum occupancy, and a table of its physical room numbers. **Agregar habitación**
+separate maximum adults and maximum children, and a table of its physical room numbers. **Agregar habitación**
 adds a blank row. Unsaved rows can be removed; saved rooms and types cannot be
 deleted here. Room numbers are unique across the entire property.
 
@@ -39,7 +39,13 @@ Validation and save failures retain the draft, with known conflicts shown beside
 the affected fields. A failed background refresh does not replace an open editor.
 Configuration saves use last-write-wins rather than concurrent-edit detection.
 
-Base-rate changes leave saved reservation prices intact. Lower occupancy limits
+Limits are per room and enforced separately: a king with limits of 2 adults and
+2 children accepts that family arrangement but rejects 3 adults or 3 children.
+The child limit can be 0. These are hard limits, not recommendations or staff
+warnings. Rates are per room-night and do not depend on occupant counts.
+No child ages or automatic age classification are introduced.
+
+Base-rate changes leave saved reservation prices intact. Lower adult or child limits
 retain unchanged reservations; subsequent changes use the current validation rules.
 Room reassignment and dated rate overrides stay in their existing screens.
 

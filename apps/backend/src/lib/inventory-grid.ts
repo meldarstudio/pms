@@ -21,7 +21,8 @@ export type GridRate = {
 export type GridRoomType = {
   id: string;
   name: string;
-  maxOccupancy: number;
+  maxAdults: number;
+  maxChildren: number;
   baseRateCents: number;
 };
 
@@ -86,7 +87,8 @@ export function inventoryGrid(
       return {
         id: type.id,
         name: type.name,
-        maxOccupancy: type.maxOccupancy,
+        maxAdults: type.maxAdults,
+        maxChildren: type.maxChildren,
         baseRateCents: type.baseRateCents,
         capacity: rooms,
         nights: dates.map((date) => {

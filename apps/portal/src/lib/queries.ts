@@ -33,6 +33,7 @@ import {
   putRoomTypeRates,
   savePropertySetup,
   type PatchGuestInput,
+  type AvailabilityOccupancy,
   type Room,
   type RoomType,
 } from "@/lib/api";
@@ -134,10 +135,15 @@ export function usePatchRoom() {
   });
 }
 
-export function useAvailability(checkIn: string, checkOut: string, enabled = true) {
+export function useAvailability(
+  checkIn: string,
+  checkOut: string,
+  enabled = true,
+  occupancy?: AvailabilityOccupancy,
+) {
   return useQuery({
-    queryKey: ["availability", checkIn, checkOut],
-    queryFn: ({ signal }) => getAvailability(checkIn, checkOut, signal),
+    queryKey: ["availability", checkIn, checkOut, occupancy],
+    queryFn: ({ signal }) => getAvailability(checkIn, checkOut, signal, occupancy),
     enabled,
   });
 }

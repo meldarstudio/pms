@@ -29,7 +29,16 @@ const room = z.object({
   }),
 });
 export const capacityMessage = "La habitación no tiene capacidad para todos los huéspedes.";
-export const detailsSchema = (types: RoomType[], { validateOperations = true } = {}) =>
+export const detailsSchema = (
+  types: RoomType[],
+  {
+    validateOperations = true,
+    saved,
+  }: {
+    validateOperations?: boolean;
+    saved?: Pick<ReservationDetail, "checkIn" | "checkOut" | "status" | "rooms">;
+  } = {},
+) =>
   z
     .object({
       checkIn: date,
@@ -59,6 +68,11 @@ export const detailsSchema = (types: RoomType[], { validateOperations = true } =
           message: "La reserva debe tener entre 1 y 60 habitaciones.",
         });
       const assignments = new Set<string>();
+      const revalidateAll =
+        !saved ||
+        value.checkIn !== saved.checkIn ||
+        value.checkOut !== saved.checkOut ||
+        (saved.status === "cancelled" && value.status !== "cancelled");
       value.rooms.forEach((draft, index) => {
         if (draft.removed) return;
         const path = ["rooms", index, "room"];
@@ -83,12 +97,21 @@ export const detailsSchema = (types: RoomType[], { validateOperations = true } =
             path: [...path, "children"],
             message: children.error.issues[0].message,
           });
+        const previous = saved?.rooms.find((room) => room.id === draft.id);
+        const changed =
+          !previous ||
+          draft.room.roomTypeId !== previous.roomTypeId ||
+          draft.room.roomId !== previous.roomId ||
+          Number(draft.room.adults) !== previous.adults ||
+          Number(draft.room.children) !== previous.children;
         if (
           validateOperations &&
+          (revalidateAll || changed) &&
           adults.success &&
           children.success &&
           type &&
-          Number(draft.room.adults) + Number(draft.room.children) > type.maxOccupancy
+          (Number(draft.room.adults) > type.maxAdults ||
+            Number(draft.room.children) > type.maxChildren)
         )
           ctx.addIssue({ code: "custom", path, message: capacityMessage });
         if (draft.room.roomId) {

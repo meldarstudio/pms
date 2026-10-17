@@ -277,7 +277,10 @@ export function BookingEditor({
   const [guestDirty, setGuestDirty] = useState(false);
   const roomTypes = useRoomTypes();
   const [defaults, setDefaults] = useState(() => detailsDefaults(detail));
-  const schema = useMemo(() => detailsSchema(roomTypes.data ?? []), [roomTypes.data]);
+  const schema = useMemo(
+    () => detailsSchema(roomTypes.data ?? [], { saved: detail }),
+    [roomTypes.data, detail],
+  );
   const pricingSchema = useMemo(
     () => detailsSchema(roomTypes.data ?? [], { validateOperations: false }),
     [roomTypes.data],

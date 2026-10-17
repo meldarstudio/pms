@@ -11,11 +11,17 @@ export const setupFormSchema = z
         (value) => parseMajorToCents(value) !== null,
         "Ingresa una tarifa válida con hasta dos decimales.",
       ),
-    maxOccupancy: z
+    maxAdults: z
       .string()
       .refine(
         (value) => value.trim() !== "" && Number.isSafeInteger(Number(value)) && Number(value) >= 1,
-        "Ingresa una capacidad entera de al menos 1 persona.",
+        "Ingresa un límite entero de al menos 1 adulto.",
+      ),
+    maxChildren: z
+      .string()
+      .refine(
+        (value) => value.trim() !== "" && Number.isSafeInteger(Number(value)) && Number(value) >= 0,
+        "Ingresa un límite entero de al menos 0 niños.",
       ),
     rooms: z.array(
       z.object({
@@ -48,7 +54,8 @@ export function setupDefaults(type?: RoomType, rooms: Room[] = []): SetupValues 
   return {
     name: type?.name ?? "",
     baseRate: type ? formatMajor(type.baseRateCents) : "",
-    maxOccupancy: String(type?.maxOccupancy ?? 1),
+    maxAdults: String(type?.maxAdults ?? 1),
+    maxChildren: String(type?.maxChildren ?? 2),
     rooms: rooms.map((room) => ({ key: room.id, id: room.id, number: room.number })),
   };
 }

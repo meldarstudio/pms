@@ -20,8 +20,3 @@ export function requireInclusiveRange(from: string, to: string, maxDays: number)
     throw new HttpError(400, `range cannot be longer than ${maxDays} days`);
   return dates;
 }
-
-export function assertOccupancy(adults: number, children: number, maxOccupancy: number) {
-  if (adults + children > maxOccupancy)
-    throw new HttpError(400, "too many guests for this room type");
-}

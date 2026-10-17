@@ -9,14 +9,16 @@ export type Room = {
 export type RoomType = {
   id: string;
   name: string;
-  maxOccupancy: number;
+  maxAdults: number;
+  maxChildren: number;
   baseRateCents: number;
 };
 
 export type PropertySetupInput = {
   roomTypeId?: string;
   name: string;
-  maxOccupancy: number;
+  maxAdults: number;
+  maxChildren: number;
   baseRateCents: number;
   rooms: { id?: string; number: string }[];
 };
@@ -39,7 +41,8 @@ export type InventoryNight = {
 export type InventoryRoomType = {
   id: string;
   name: string;
-  maxOccupancy: number;
+  maxAdults: number;
+  maxChildren: number;
   baseRateCents: number;
   capacity: number;
   nights: InventoryNight[];
@@ -86,7 +89,8 @@ export type Availability = {
   roomTypes: {
     id: string;
     name: string;
-    maxOccupancy: number;
+    maxAdults: number;
+    maxChildren: number;
     free: number;
     totalCents: number;
     nights: { date: string; priceCents: number }[];
@@ -287,8 +291,18 @@ export function deleteRoomTypeRates(id: string, from: string, to: string) {
   return writeJson<{ deleted: number }>(`/room-types/${id}/rates?from=${from}&to=${to}`, "DELETE");
 }
 
-export function getAvailability(checkIn: string, checkOut: string, signal?: AbortSignal) {
-  return getJson<Availability>(`/availability?checkIn=${checkIn}&checkOut=${checkOut}`, signal);
+export type AvailabilityOccupancy = { adults?: number; children?: number };
+
+export function getAvailability(
+  checkIn: string,
+  checkOut: string,
+  signal?: AbortSignal,
+  occupancy?: AvailabilityOccupancy,
+) {
+  const query = new URLSearchParams({ checkIn, checkOut });
+  if (occupancy?.adults !== undefined) query.set("adults", String(occupancy.adults));
+  if (occupancy?.children !== undefined) query.set("children", String(occupancy.children));
+  return getJson<Availability>(`/availability?${query}`, signal);
 }
 
 export function getReservation(id: string, signal?: AbortSignal) {

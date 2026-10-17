@@ -92,8 +92,8 @@ afterAll(async () => {
   await window?.happyDOM.close();
 });
 
-const double = { id: "double", name: "Doble", maxOccupancy: 2, baseRateCents: 15000 };
-const suite = { id: "suite", name: "Suite", maxOccupancy: 4, baseRateCents: 25000 };
+const double = { id: "double", name: "Doble", maxAdults: 2, maxChildren: 2, baseRateCents: 15000 };
+const suite = { id: "suite", name: "Suite", maxAdults: 4, maxChildren: 2, baseRateCents: 25000 };
 let types: RoomType[];
 let rooms: Room[];
 let writes: PropertySetupInput[];
@@ -327,11 +327,30 @@ it("edits a room type and adds several room numbers in the real table with one s
   assert.deepEqual(writes[0], {
     roomTypeId: "double",
     name: "Doble superior",
-    maxOccupancy: 2,
+    maxAdults: 2,
+    maxChildren: 2,
     baseRateCents: 17550,
     rooms: [{ id: "room-101", number: "201" }, { number: "202" }, { number: "203" }],
   });
   assert.equal(container.querySelectorAll("tbody tr").length, 3);
+});
+
+it("edits adult and child limits independently and allows a room type with no children", async () => {
+  mockApi();
+  await render();
+  await until(() => !!container.querySelector('input[name="name"]'), "Selected type must load");
+  await fill("maxAdults", "4");
+  await fill("maxChildren", "0");
+  await click("Guardar cambios");
+  await until(
+    () => writes.length === 1 && button("Guardar cambios").disabled,
+    "Separate occupancy limits must save",
+  );
+  assert.equal(writes[0].maxAdults, 4);
+  assert.equal(writes[0].maxChildren, 0);
+  assert.equal(writes[0].baseRateCents, 15000);
+  assert.equal(input("maxAdults").value, "4");
+  assert.equal(input("maxChildren").value, "0");
 });
 
 it("keeps the draft and identifies a room-number conflict reported during saving, then allows correction", async () => {
@@ -518,7 +537,8 @@ it("creates a new type with its room table and can remove an extra unsaved row",
   assert.deepEqual(writes[0], {
     name: "Individual",
     baseRateCents: 8550,
-    maxOccupancy: 1,
+    maxAdults: 1,
+    maxChildren: 2,
     rooms: [{ number: "301" }, { number: "302" }],
   });
   assert.equal(
@@ -576,15 +596,17 @@ it("validates name, money, and occupancy before writing and clears errors as fie
     "true",
     "Invalid fields validate on blur",
   );
-  await fill("maxOccupancy", "0");
+  await fill("maxAdults", "0");
+  await fill("maxChildren", "-1");
   await click("Guardar cambios");
   assert.equal(writes.length, 0);
-  for (const field of ["name", "baseRate", "maxOccupancy"])
+  for (const field of ["name", "baseRate", "maxAdults", "maxChildren"])
     assert.equal(input(field).getAttribute("aria-invalid"), "true");
   await fill("name", "Individual");
   await fill("baseRate", "85.55");
-  await fill("maxOccupancy", "1");
-  for (const field of ["name", "baseRate", "maxOccupancy"])
+  await fill("maxAdults", "1");
+  await fill("maxChildren", "0");
+  for (const field of ["name", "baseRate", "maxAdults", "maxChildren"])
     assert.equal(input(field).getAttribute("aria-invalid"), "false");
   await click("Guardar cambios");
   await until(() => writes.length === 1, "Corrected fields must save");
@@ -600,7 +622,7 @@ it("keeps a successfully created type visible even when the follow-up list refre
         id: "new-type",
         name: "Individual",
         baseRateCents: 8500,
-        maxOccupancy: 1,
+        maxAdults: 1,
       },
       rooms: [],
     });
