@@ -33,10 +33,10 @@ import { blurThenChange, submitForm, useReservationForm } from "@/lib/reservatio
 import {
   newBookingSchema,
   schemaErrors,
-  utcToday,
   workflowDrafts,
   type NewBookingValues,
 } from "@/lib/reservation-form-schemas";
+import { propertyToday } from "@/lib/property-calendar";
 
 export function NewBooking({
   target,
@@ -56,7 +56,7 @@ export function NewBooking({
   const rooms = useRooms();
   const schema = useMemo(() => newBookingSchema(roomTypes.data ?? []), [roomTypes.data]);
   const [defaults] = useState<NewBookingValues>(() => {
-    const checkIn = target.mode === "create" ? target.checkIn : utcToday();
+    const checkIn = target.mode === "create" ? target.checkIn : propertyToday();
     return {
       checkIn,
       checkOut: minimumCheckOut(checkIn),

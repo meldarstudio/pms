@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { fileURLToPath } from "node:url";
-import { afterAll, afterEach, beforeAll, beforeEach, it } from "vite-plus/test";
+import { afterAll, afterEach, beforeAll, beforeEach, it, vi } from "vite-plus/test";
 import {
   Window,
   type HTMLDivElement,
@@ -34,6 +34,7 @@ let queries: typeof import("../src/lib/queries.ts");
 let calendars: typeof import("../src/components/room-calendar.tsx");
 let inventories: typeof import("../src/components/inventory.tsx");
 let reservationLists: typeof import("../src/components/reservations.tsx");
+let closures: typeof import("../src/components/room-closure-dialog.tsx");
 type CreateBookingInput = Parameters<typeof import("../src/lib/api.ts").createWorkflowBooking>[0];
 let root: Root;
 let container: HTMLDivElement;
@@ -101,10 +102,17 @@ beforeAll(async () => {
   )) as typeof summaries;
   queries = (await server.ssrLoadModule("/src/lib/queries.ts")) as typeof queries;
   calendars = (await server.ssrLoadModule("/src/components/room-calendar.tsx")) as typeof calendars;
+  closures = (await server.ssrLoadModule(
+    "/src/components/room-closure-dialog.tsx",
+  )) as typeof closures;
   inventories = (await server.ssrLoadModule("/src/components/inventory.tsx")) as typeof inventories;
   reservationLists = (await server.ssrLoadModule(
     "/src/components/reservations.tsx",
   )) as typeof reservationLists;
+  const calendar = (await server.ssrLoadModule(
+    "/src/lib/property-calendar.ts",
+  )) as typeof import("../src/lib/property-calendar.ts");
+  calendar.configurePropertyCalendar("America/Lima");
 });
 
 afterAll(async () => {
@@ -114,6 +122,8 @@ afterAll(async () => {
 });
 
 beforeEach(() => {
+  vi.useFakeTimers({ toFake: ["Date"] });
+  vi.setSystemTime(new Date("2026-11-01T01:00:00Z"));
   container = window.document.createElement("div");
   window.document.body.append(container);
   // React expects lib.dom nodes; the test DOM implements them through happy-dom.
@@ -131,6 +141,7 @@ afterEach(async () => {
   client.clear();
   container.remove();
   globalThis.fetch = originalFetch;
+  vi.useRealTimers();
 });
 
 function detail(): ReservationDetail {
@@ -352,7 +363,7 @@ for (const [method, label] of [
 ] as const) {
   it(`records a ${label} payment through the real form without requiring a reference`, async () => {
     const writes: WorkflowCommand["actions"][] = [];
-    const paymentDate = new Date().toISOString().slice(0, 10);
+    const paymentDate = "2026-10-31";
     await render(
       React.createElement(forms.PaymentForm, {
         detail: detail(),
@@ -400,6 +411,119 @@ it("refreshes an untouched payment suggestion and preserves a manually entered a
   );
   assert.equal(control("amount").value, "75");
 });
+
+it("defaults payments to October 31 in Lima rather than UTC November 1", async () => {
+  await render(
+    React.createElement(forms.PaymentForm, {
+      detail: detail(),
+      disabled: false,
+      onDirtyChange: () => {},
+      onReady: async () => {},
+    }),
+  );
+  assert.ok(button("31 oct 2026"));
+});
+
+it("preserves a backdated payment and refreshes future-date limits on resume without losing the draft", async () => {
+  const writes: WorkflowCommand["actions"][] = [];
+  await render(
+    React.createElement(forms.PaymentForm, {
+      detail: detail(),
+      disabled: false,
+      onDirtyChange: () => {},
+      onReady: async (_title, actions) => {
+        writes.push(actions);
+      },
+    }),
+  );
+  await fill("amount", "25");
+  await React.act(async () => button("31 oct 2026").click());
+  const day = (label: string) => {
+    const element = window.document.querySelector<HTMLButtonElement>(`button[data-day="${label}"]`);
+    assert.ok(element, `Missing picker day ${label}`);
+    return element;
+  };
+  assert.equal(day("1/11/2026").disabled, true);
+  await React.act(async () => day("30/10/2026").click());
+  assert.ok(button("30 oct 2026"));
+  vi.setSystemTime(new Date("2026-11-01T05:00:00Z"));
+  await React.act(async () => window.dispatchEvent(new window.Event("focus")));
+  assert.equal(control("amount").value, "25");
+  assert.ok(button("30 oct 2026"));
+  await React.act(async () => button("30 oct 2026").click());
+  assert.equal(day("1/11/2026").disabled, false);
+  await React.act(async () => day("30/10/2026").click());
+  await submit();
+  assert.deepEqual(writes, [
+    [
+      {
+        type: "add-payment",
+        payment: {
+          amountCents: 2500,
+          method: "cash",
+          paymentDate: "2026-10-30",
+        },
+      },
+    ],
+  ]);
+});
+
+it.each(["submit", "blur"] as const)(
+  "revalidates an edited payment's %s error at the new property day without rewriting its saved date or draft",
+  async (validation) => {
+    const payment = {
+      id: crypto.randomUUID(),
+      amountCents: 1000,
+      method: "cash" as const,
+      paymentDate: "2026-11-01",
+      reference: null,
+      notes: null,
+      reservationId: "reservation-1",
+      createdAt: "2026-11-01T01:00:00Z",
+    };
+    const saved = { ...detail(), payments: [payment] };
+    mockApi(async () => Response.json(saved));
+    await render(
+      React.createElement(dialogs.BookingEditor, { detail: saved, onRefresh: () => {} }),
+    );
+    await React.act(async () => button("Pagos").click());
+    const actions = window.document.querySelector<HTMLButtonElement>(
+      'button[aria-label^="Acciones del pago"]',
+    );
+    assert.ok(actions);
+    await React.act(async () => actions.click());
+    const edit = Array.from(
+      window.document.querySelectorAll<HTMLElement>('[role="menuitem"]'),
+    ).find((item) => item.textContent.trim() === "Editar");
+    assert.ok(edit);
+    await React.act(async () => edit.click());
+    const editor = () => window.document.querySelector('[role="dialog"]')!;
+    const amount = editor().querySelector<HTMLInputElement>('[name="amount"]')!;
+    await fillControl(amount, "25");
+    if (validation === "submit") {
+      await React.act(async () => button("Guardar").click());
+    } else {
+      await React.act(async () => button("1 nov 2026").click());
+      await React.act(async () => button("1 nov 2026").click());
+    }
+    await until(
+      () => editor().textContent.includes("La fecha del pago no puede ser futura."),
+      "Editing uses the same future-date rule",
+    );
+    vi.setSystemTime(new Date("2026-11-01T05:00:00Z"));
+    await React.act(async () => window.dispatchEvent(new window.Event("focus")));
+    await until(
+      () => !editor().textContent.includes("La fecha del pago no puede ser futura."),
+      "Validation refreshes at the new property day",
+    );
+    assert.equal(amount.value, "25");
+    assert.ok(
+      Array.from(editor().querySelectorAll("button")).some(
+        (element) => element.textContent.trim() === "1 nov 2026",
+      ),
+    );
+  },
+);
 
 function requestUrl(input: Parameters<typeof fetch>[0]) {
   return new URL(typeof input === "string" ? input : "url" in input ? input.url : input.href);
@@ -521,7 +645,6 @@ it("reopens a cached reservation with the room saved by the assignment panel", a
               typeName: "Doble",
             }
           : null,
-        timeZone: "UTC",
         onClose: () => setOpen(false),
         onViewReservation: () => {},
       }),
@@ -676,6 +799,7 @@ it("opens a blank room-type menu without a validation error and prices the selec
       onSavingChange: () => {},
     }),
   );
+  assert.ok(button("31 oct 2026"));
   const type = fieldTrigger("Tipo");
   await until(() => !type.disabled, "Room types must load");
   assert.equal(
@@ -717,6 +841,8 @@ it("opens a blank room-type menu without a validation error and prices the selec
   await until(() => writes.length === 1, "A booking started without a room type must save");
   assert.equal(writes[0].rooms[0].roomTypeId, "double");
   assert.equal(writes[0].rooms[0].roomId, null);
+  assert.equal(writes[0].checkIn, "2026-10-31");
+  assert.equal(writes[0].checkOut, "2026-11-01");
 });
 
 it("filters sold-out types, occupied and closed room numbers, and inventory already used by this draft", async () => {
@@ -969,6 +1095,185 @@ const renderInventory = () =>
     onSpanChange: () => {},
   });
 
+it("updates calendar past-day restrictions at property midnight without changing its explicit range", async () => {
+  vi.setSystemTime(new Date("2026-11-01T04:59:59.990Z"));
+  mockSetupApi([doubleType], [{ id: "room-1", number: "101", roomTypeId: "double" }]);
+  const changes: string[] = [];
+  await render(
+    React.createElement(calendars.RoomCalendar, {
+      start: new Date(2026, 9, 30),
+      span: 7,
+      onStartChange: (date) => {
+        changes.push(`${date.getFullYear()}-${date.getMonth() + 1}-${date.getDate()}`);
+      },
+      onSpanChange: () => {},
+      onOpenReservation: () => {},
+    }),
+  );
+  const slot = (day: string) => {
+    const element = window.document.querySelector<HTMLButtonElement>(
+      `button[aria-label="Nueva reserva para habitación 101 el ${day}"]`,
+    );
+    assert.ok(element, `Missing booking day ${day}`);
+    return element;
+  };
+  await until(
+    () => !!container.querySelector('button[aria-label*="habitación 101 el"]'),
+    "Calendar loads",
+  );
+  assert.equal(slot("30 oct 2026").disabled, true);
+  assert.equal(slot("31 oct 2026").disabled, false);
+  vi.setSystemTime(new Date("2026-11-01T05:00:00Z"));
+  await until(
+    () => slot("31 oct 2026").disabled,
+    "Property midnight disables yesterday without focus or sign-in",
+  );
+  assert.ok(button("30 oct 2026"));
+  assert.deepEqual(changes, []);
+  await React.act(async () => button("Hoy").click());
+  assert.deepEqual(changes, ["2026-11-1"]);
+});
+
+it("round-trips saved closure dates through the picker and submitted request", async () => {
+  const writes: unknown[] = [];
+  const closure = {
+    id: "closure",
+    roomId: "room-1",
+    starts: "2026-10-31",
+    ends: "2026-11-02",
+    reason: "Repairs",
+  };
+  globalThis.fetch = async (_input, init) => {
+    if (init?.method === "PATCH") {
+      assert.ok(typeof init.body === "string");
+      writes.push(JSON.parse(init.body));
+      return Response.json({ ...closure, starts: "2026-10-30" });
+    }
+    throw new Error("Unexpected closure request");
+  };
+  await render(
+    React.createElement(closures.RoomClosureDialog, {
+      target: { mode: "edit", closure, number: "101", typeName: "Doble" },
+      onClose: () => {},
+    }),
+  );
+  assert.ok(button("31 oct 2026"));
+  assert.ok(button("2 nov 2026"));
+  await React.act(async () => button("31 oct 2026").click());
+  const selected = window.document.querySelector<HTMLButtonElement>(
+    'button[data-day="30/10/2026"]',
+  );
+  assert.ok(selected);
+  await React.act(async () => selected.click());
+  assert.ok(button("30 oct 2026"));
+  await React.act(async () => button("Guardar").click());
+  await until(() => writes.length === 1, "Closure saves");
+  assert.deepEqual(writes, [{ starts: "2026-10-30", ends: "2026-11-02", reason: "Repairs" }]);
+});
+
+it("opens an unselected picker in the property month and marks the property date as today", async () => {
+  await render(
+    React.createElement(closures.RoomClosureDialog, {
+      target: { mode: "create", roomId: "room-1", number: "101", typeName: "Doble" },
+      onClose: () => {},
+    }),
+  );
+  await React.act(async () => button("Seleccionar fecha").click());
+  assert.match(
+    window.document.querySelector('[data-slot="calendar"]')!.textContent,
+    /octubre 2026/,
+  );
+  const today = window.document.querySelector<HTMLButtonElement>('button[data-day="31/10/2026"]');
+  assert.ok(today);
+  assert.match(today.getAttribute("aria-label") ?? "", /hoy|today/i);
+});
+
+it("uses the property date for arrival badges and refreshes them on resume", async () => {
+  const saved = {
+    ...detail(),
+    checkIn: "2026-10-31",
+    checkOut: "2026-11-02",
+    guestName: "Ada Lovelace",
+    rooms: detail().rooms.map((room) => ({ ...room, roomId: null })),
+  };
+  mockSetupApi([doubleType], [{ id: "room-1", number: "101", roomTypeId: "double" }]);
+  const fetchApi = globalThis.fetch;
+  globalThis.fetch = async (input, init) =>
+    requestUrl(input).pathname === "/reservations" ? Response.json([saved]) : fetchApi(input, init);
+  await render(
+    React.createElement(calendars.RoomCalendar, {
+      start: new Date(2026, 9, 31),
+      span: 7,
+      onStartChange: () => {},
+      onSpanChange: () => {},
+      onOpenReservation: () => {},
+    }),
+  );
+  await until(
+    () => !!container.querySelector('button[aria-label="Mostrar reservas sin asignar, 1"]'),
+    "Unassigned arrival loads",
+  );
+  await React.act(async () =>
+    container
+      .querySelector<HTMLButtonElement>('button[aria-label="Mostrar reservas sin asignar, 1"]')!
+      .click(),
+  );
+  assert.match(container.textContent, /Llega hoy/);
+  vi.setSystemTime(new Date("2026-11-01T05:00:00Z"));
+  await React.act(async () => window.document.dispatchEvent(new window.Event("visibilitychange")));
+  assert.equal(container.textContent.includes("Llega hoy"), false);
+});
+
+it("keeps inventory rate labels and submitted date ranges unchanged", async () => {
+  const writes: unknown[] = [];
+  mockSetupApi(
+    [doubleType],
+    [],
+    [
+      {
+        ...doubleType,
+        baseRateCents: 15000,
+        capacity: 1,
+        nights: [
+          { date: "2026-10-31", priceCents: 18000, override: true, free: 1, booked: 0, closed: 0 },
+        ],
+      },
+    ],
+  );
+  const fetchApi = globalThis.fetch;
+  globalThis.fetch = async (input, init) => {
+    if (init?.method === "PUT") {
+      assert.equal(requestUrl(input).pathname, "/room-types/double/rates");
+      assert.ok(typeof init.body === "string");
+      writes.push(JSON.parse(init.body));
+      return Response.json({ updated: 1 });
+    }
+    return fetchApi(input, init);
+  };
+  await render(
+    React.createElement(inventories.Inventory, {
+      start: new Date(2026, 9, 31),
+      span: 7,
+      onStartChange: () => {},
+      onSpanChange: () => {},
+    }),
+  );
+  await until(
+    () => !!container.querySelector('button[aria-label^="Doble, 31 oct 2026"]'),
+    "Saved rate loads",
+  );
+  await React.act(async () =>
+    container.querySelector<HTMLButtonElement>('button[aria-label^="Doble, 31 oct 2026"]')!.click(),
+  );
+  await until(() => !!window.document.querySelector('[name="price"]'), "Rate editor opens");
+  assert.equal(control("price").value, "180.00");
+  assert.match(window.document.querySelector('[role="dialog"]')!.textContent, /31 oct 2026/);
+  await fill("price", "200");
+  await React.act(async () => button("Guardar").click());
+  await until(() => writes.length === 1, "Rate saves");
+  assert.deepEqual(writes, [{ from: "2026-10-31", to: "2026-10-31", priceCents: 20000 }]);
+});
+
 it.each([
   ["calendar", renderCalendar, [], noTypesTitle],
   ["calendar", renderCalendar, [doubleType], noRoomsTitle],
@@ -1118,7 +1423,6 @@ it("protects a new reservation draft, blocks closing during creation, and closes
     const [open, setOpen] = React.useState(true);
     return React.createElement(dialogs.RoomBookingDialog, {
       target: open ? createTarget : null,
-      timeZone: "UTC",
       onClose: () => {
         closed++;
         setOpen(false);
@@ -1319,7 +1623,6 @@ it.each(["saved assigned room", "saved unassigned room", "unassigned reservation
           number: "101",
           typeName: "Doble",
         },
-        timeZone: "UTC",
         onClose: () => {},
         onViewReservation: () => {},
       }),
@@ -1713,7 +2016,6 @@ for (const succeeds of [true, false]) {
             number: "101",
             typeName: "Doble",
           },
-          timeZone: "UTC",
           onClose: () => {
             closed++;
           },

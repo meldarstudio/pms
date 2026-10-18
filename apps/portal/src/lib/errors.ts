@@ -1,4 +1,8 @@
 const messages: Record<string, string> = {
+  "PROPERTY_TIME_ZONE must be a supported IANA timezone":
+    "La zona horaria de la propiedad no está configurada correctamente. Configura PROPERTY_TIME_ZONE en el servidor con una zona IANA válida.",
+  "property date context required":
+    "El servidor necesita el contexto de fecha de la propiedad. Actualiza el backend antes de cambiar el tipo de habitación.",
   "invalid credentials": "Usuario o contraseña incorrectos.",
   "too many login attempts": "Demasiados intentos. Espera un minuto e inténtalo de nuevo.",
   unauthorized: "Tu sesión terminó. Inicia sesión de nuevo.",

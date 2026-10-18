@@ -20,6 +20,9 @@ import { setServerErrors } from "../src/lib/form-errors.ts";
 import { blurThenChange } from "../src/lib/reservation-form-state.ts";
 import { roomEdits } from "../src/lib/reservation-editor.ts";
 import type { ReservationDetail } from "../src/lib/api.ts";
+import { configurePropertyCalendar } from "../src/lib/property-calendar.ts";
+
+configurePropertyCalendar("America/Lima");
 
 const types = [
   { id: "double", name: "Doble", maxAdults: 2, maxChildren: 2, baseRateCents: 15000 },

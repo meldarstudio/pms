@@ -104,9 +104,10 @@ import {
   paymentDefaults,
   paymentPayload,
   cancellationSchema,
-  utcToday,
   type PaymentValues,
 } from "@/lib/reservation-form-schemas";
+import { propertyToday } from "@/lib/property-calendar";
+import { usePropertyCalendar } from "@/lib/use-property-calendar";
 
 export type BookingTarget =
   | {
@@ -129,7 +130,6 @@ const stayDate = (value: string, pattern: string) => {
   const date = parseISO(value);
   return isValid(date) ? format(date, pattern) : "—";
 };
-const paymentToday = utcToday;
 function useDraftCommand(actionsKey: string) {
   return useMemo<WorkflowCommand>(
     () => ({
@@ -153,7 +153,6 @@ export function RoomBookingDialog({
   onViewReservation,
 }: {
   target: BookingTarget | null;
-  timeZone: string;
   onClose: () => void;
   onViewReservation: (id: string) => void;
 }) {
@@ -1238,6 +1237,7 @@ function ActionForm({
   onSaved: (detail: ReservationDetail) => void;
   onDirtyChange: (dirty: boolean) => void;
 }) {
+  const { today } = usePropertyCalendar();
   const entry = "entry" in intent ? intent.entry : null;
   const [leaving, setLeaving] = useState(false);
   const isCancellation = intent.type === "cancel";
@@ -1246,7 +1246,7 @@ function ActionForm({
   const [defaults] = useState<PaymentValues>(() => ({
     ...paymentDefaults(entry?.amountCents),
     method: entry?.method ?? "cash",
-    date: entry?.paymentDate ?? paymentToday(),
+    date: entry?.paymentDate ?? propertyToday(),
     reference: entry?.reference ?? "",
     reason: entry?.notes ?? "",
   }));
@@ -1275,6 +1275,9 @@ function ActionForm({
   );
   const saving = useSelector(form.store, (state) => state.isSubmitting);
   const changed = !useSelector(form.store, (state) => state.isDefaultValue);
+  useEffect(() => {
+    if (!confirmation && form.state.fieldMeta.date?.errors.length) void form.validate("submit");
+  }, [confirmation, form, today]);
   useEffect(() => onDirtyChange(changed), [changed, onDirtyChange]);
   const formId = useId();
   // The reason is saved on confirmation; it does not change cancellation totals.
@@ -1392,12 +1395,7 @@ function ActionForm({
                       </form.AppField>
                       <form.AppField name="date">
                         {(field) => (
-                          <field.Text
-                            label="Fecha del pago"
-                            type="date"
-                            required
-                            max={paymentToday()}
-                          />
+                          <field.Text label="Fecha del pago" type="date" required max={today} />
                         )}
                       </form.AppField>
                       <form.AppField name="reference">

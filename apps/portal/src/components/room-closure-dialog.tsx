@@ -90,11 +90,9 @@ export function RoomActionsMenu({
 
 export function RoomClosureDialog({
   target,
-  timeZone,
   onClose,
 }: {
   target: ClosureTarget | null;
-  timeZone: string;
   onClose: () => void;
 }) {
   const save = useSaveRoomClosure();
@@ -120,7 +118,6 @@ export function RoomClosureDialog({
           <ClosureForm
             key={formKey(target)}
             target={target}
-            timeZone={timeZone}
             removePending={remove.isPending}
             onSave={async (input) => {
               await save.mutateAsync(input);
@@ -148,13 +145,11 @@ export function RoomClosureDialog({
 
 function ClosureForm({
   target,
-  timeZone,
   removePending,
   onSave,
   onRemove,
 }: {
   target: ClosureTarget;
-  timeZone: string;
   removePending: boolean;
   onSave: (input: {
     id?: string;
@@ -237,7 +232,6 @@ function ClosureForm({
                       : undefined
                   }
                   onBlur={field.handleBlur}
-                  timeZone={timeZone}
                   disabled={endDate ? { after: addDays(endDate, -1) } : undefined}
                   onChange={(date) => {
                     clearRangeError();
@@ -259,7 +253,6 @@ function ClosureForm({
                       : undefined
                   }
                   onBlur={field.handleBlur}
-                  timeZone={timeZone}
                   disabled={
                     startDate
                       ? [{ before: addDays(startDate, 1) }, { after: addDays(startDate, 60) }]

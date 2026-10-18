@@ -158,7 +158,9 @@ function button(label: string) {
 }
 
 it("reveals and hides the password without submitting or changing the credentials", async () => {
-  const logins = mockApi(Response.json({ username: "hotelmanantial" }));
+  const logins = mockApi(
+    Response.json({ username: "hotelmanantial", propertyTimeZone: "America/Lima" }),
+  );
   await render();
   assert.equal(button("Iniciar sesión").disabled, true);
   assert.equal(input("password").type, "password");
@@ -202,4 +204,28 @@ it("keeps entered credentials and translates a failed login while allowing passw
   assert.equal(input("password").type, "text");
   assert.equal(input("password").value, "incorrect password");
   assert.equal(logins.length, 1);
+});
+
+it("does not initialize the app before valid property configuration is loaded", async () => {
+  let complete!: (response: Response) => void;
+  globalThis.fetch = () =>
+    new Promise<Response>((resolve) => {
+      complete = resolve;
+    });
+  await React.act(async () => {
+    root.render(
+      React.createElement(
+        query.QueryClientProvider,
+        { client },
+        React.createElement(auth.AuthGate, null, "Signed-in app"),
+      ),
+    );
+  });
+  assert.equal(container.textContent.includes("Signed-in app"), false);
+  await React.act(async () => complete(Response.json({ username: "hotelmanantial" })));
+  await until(
+    () => container.textContent.includes("zona horaria"),
+    "Missing timezone is actionable",
+  );
+  assert.equal(container.textContent.includes("Signed-in app"), false);
 });

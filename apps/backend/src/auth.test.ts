@@ -35,7 +35,10 @@ describe("staff login", () => {
   it("signs in and then reaches guarded routes", async () => {
     const response = await login(env);
     expect(response.status).toBe(200);
-    expect(await response.json()).toEqual({ username: STAFF_USERNAME });
+    expect(await response.json()).toEqual({
+      username: STAFF_USERNAME,
+      propertyTimeZone: "America/Lima",
+    });
     const setCookie = response.headers.getSetCookie()[0]!;
     expect(setCookie).toMatch(/HttpOnly/i);
     expect(setCookie).toMatch(/SameSite=Lax/i);
@@ -44,7 +47,10 @@ describe("staff login", () => {
 
     const session = await get("/session", setCookie.split(";")[0]);
     expect(session.status).toBe(200);
-    expect(await session.json()).toEqual({ username: STAFF_USERNAME });
+    expect(await session.json()).toEqual({
+      username: STAFF_USERNAME,
+      propertyTimeZone: "America/Lima",
+    });
   });
 
   it("marks the cookie Secure when served over HTTPS", async () => {

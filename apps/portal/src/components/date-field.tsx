@@ -4,7 +4,7 @@ import { format } from "@/lib/dates";
 import { CalendarIcon } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
-import { Calendar } from "@/components/ui/calendar";
+import { PropertyDatePicker } from "@/components/property-date-picker";
 import { Field, FieldError, FieldLabel } from "@/components/ui/field";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 
@@ -12,7 +12,6 @@ export function DateField({
   id,
   label,
   value,
-  timeZone,
   disabled,
   locked,
   error,
@@ -22,8 +21,7 @@ export function DateField({
   id: string;
   label: string;
   value: Date | null;
-  timeZone: string;
-  disabled?: ComponentProps<typeof Calendar>["disabled"];
+  disabled?: ComponentProps<typeof PropertyDatePicker>["disabled"];
   locked?: boolean;
   error?: string | null;
   onBlur?: () => void;
@@ -61,10 +59,9 @@ export function DateField({
           <CalendarIcon data-icon="inline-end" />
         </PopoverTrigger>
         <PopoverContent className="w-auto p-0" align="start">
-          <Calendar
+          <PropertyDatePicker
             mode="single"
             selected={value ?? undefined}
-            timeZone={timeZone}
             defaultMonth={value ?? undefined}
             disabled={disabled}
             onSelect={(date) => {

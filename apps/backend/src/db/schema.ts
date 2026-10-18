@@ -1,4 +1,15 @@
-import { index, integer, sqliteTable, text, uniqueIndex } from "drizzle-orm/sqlite-core";
+import { sql } from "drizzle-orm";
+import { check, index, integer, sqliteTable, text, uniqueIndex } from "drizzle-orm/sqlite-core";
+
+// Empty outside a protected write batch, never a cached deployment-wide clock.
+export const propertyWriteContext = sqliteTable(
+  "property_write_context",
+  {
+    id: integer("id").primaryKey(),
+    propertyDate: text("property_date").notNull(),
+  },
+  (table) => [check("property_write_singleton", sql`${table.id} = 1`)],
+);
 
 export const roomTypes = sqliteTable("room_types", {
   id: text("id").primaryKey(),

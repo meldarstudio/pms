@@ -2,8 +2,8 @@ import { z } from "zod";
 import type { PaymentInput, ReservationDetail, RoomType, StayingGuest } from "./api.ts";
 import { formatMajor, parseMajorToCents } from "./money.ts";
 import type { RoomDraft } from "./reservation-editor.ts";
+import { propertyToday } from "./property-calendar.ts";
 
-export const utcToday = () => new Date().toISOString().slice(0, 10);
 const optionalText = (max: number) => z.string().trim().max(max, `Máximo ${max} caracteres.`);
 const date = z.iso.date({ error: "Indica una fecha válida." });
 const status = z.enum(["confirmed", "checked_in", "checked_out", "cancelled"]);
@@ -240,7 +240,7 @@ export const paymentSchema = z.object({
   method: z.enum(["cash", "card", "transfer", "yape", "plin", "other"], {
     error: "Selecciona un método de pago válido.",
   }),
-  date: date.refine((value) => value <= utcToday(), "La fecha del pago no puede ser futura."),
+  date: date.refine((value) => value <= propertyToday(), "La fecha del pago no puede ser futura."),
   reference: optionalText(200),
   reason: optionalText(2000),
 });
@@ -249,7 +249,7 @@ export function paymentDefaults(amountCents = 0): PaymentValues {
   return {
     amount: amountCents > 0 ? formatMajor(amountCents) : "",
     method: "cash",
-    date: utcToday(),
+    date: propertyToday(),
     reference: "",
     reason: "",
   };

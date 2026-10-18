@@ -13,6 +13,7 @@ import { roomClosureRoutes } from "./routes/room-closures";
 import { roomRoutes } from "./routes/rooms";
 import { setupRoutes } from "./routes/setup";
 import { requireSession } from "./session";
+import { propertyCalendar } from "./property-calendar";
 
 const app = new Hono<Env>();
 
@@ -32,6 +33,11 @@ app.use(
 );
 
 app.use("*", requireSession);
+app.use("*", async (c, next) => {
+  if (c.req.path !== "/" && c.req.path !== "/logout")
+    c.set("propertyCalendar", propertyCalendar(c.env.PROPERTY_TIME_ZONE));
+  await next();
+});
 
 app.onError((err, c) => {
   if (err instanceof HttpError) {

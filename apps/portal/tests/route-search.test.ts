@@ -1,12 +1,19 @@
 import assert from "node:assert/strict";
-import { describe, it } from "vite-plus/test";
-import { utcToday } from "../src/lib/reservation-form-schemas.ts";
+import { afterEach, beforeEach, describe, it, vi } from "vite-plus/test";
+import { configurePropertyCalendar } from "../src/lib/property-calendar.ts";
 import {
   calendarSearch,
   inventorySearch,
   reservationsSearch,
   validDay,
 } from "../src/lib/route-search.ts";
+
+beforeEach(() => {
+  configurePropertyCalendar("America/Lima");
+  vi.useFakeTimers();
+  vi.setSystemTime(new Date("2026-11-01T01:00:00Z"));
+});
+afterEach(() => vi.useRealTimers());
 
 describe("route search validation", () => {
   it("accepts real calendar dates and rejects malformed dates", () => {
@@ -29,7 +36,7 @@ describe("route search validation", () => {
   });
 
   it("normalizes reservation filters and pagination", () => {
-    const today = utcToday();
+    const today = "2026-10-31";
     assert.deepEqual(reservationsSearch({ q: "ana", status: "checked_in", page: 3 }), {
       q: "ana",
       status: "checked_in",
@@ -56,13 +63,42 @@ describe("route search validation", () => {
     });
   });
 
-  it("defaults a missing, empty, invalid, or all check-in to UTC today", () => {
-    const today = utcToday();
+  it("defaults a missing, empty, invalid, or all check-in to the property date", () => {
+    const today = "2026-10-31";
     assert.equal(reservationsSearch({}).checkIn, today);
     assert.equal(reservationsSearch({ checkIn: "all" }).checkIn, today);
     assert.equal(reservationsSearch({ checkIn: "" }).checkIn, today);
     assert.equal(reservationsSearch({ checkIn: "2026-04-30" }).checkIn, "2026-04-30");
     assert.equal(reservationsSearch({ checkIn: "2026-02-30" }).checkIn, today);
     assert.equal(reservationsSearch({ checkIn: "nope" }).checkIn, today);
+  });
+
+  it("uses current property defaults at midnight without changing explicit URL dates", () => {
+    for (const search of [calendarSearch, inventorySearch]) {
+      assert.equal(search({}).from, "2026-10-31");
+      assert.equal(search({ from: "2026-12-31" }).from, "2026-12-31");
+    }
+    vi.setSystemTime(new Date("2026-11-01T04:59:59.999Z"));
+    assert.equal(reservationsSearch({}).checkIn, "2026-10-31");
+    vi.setSystemTime(new Date("2026-11-01T05:00:00Z"));
+    assert.equal(calendarSearch({}).from, "2026-11-01");
+    assert.equal(inventorySearch({}).from, "2026-11-01");
+    assert.equal(reservationsSearch({}).checkIn, "2026-11-01");
+    assert.equal(reservationsSearch({ checkIn: "2026-10-31" }).checkIn, "2026-10-31");
+  });
+
+  it.each([
+    ["America/Lima", "2027-01-01T01:00:00Z", "2026-12-31"],
+    ["America/New_York", "2026-03-08T04:59:59Z", "2026-03-07"],
+    ["America/New_York", "2026-03-08T05:00:00Z", "2026-03-08"],
+    ["America/New_York", "2026-03-09T03:59:59Z", "2026-03-08"],
+    ["America/New_York", "2026-03-09T04:00:00Z", "2026-03-09"],
+  ])("normalizes operational dates in %s at %s", (timeZone, instant, today) => {
+    configurePropertyCalendar(timeZone);
+    vi.setSystemTime(new Date(instant));
+    assert.equal(calendarSearch({}).from, today);
+    assert.equal(inventorySearch({}).from, today);
+    assert.equal(reservationsSearch({}).checkIn, today);
+    assert.equal(calendarSearch({ from: "2026-10-31" }).from, "2026-10-31");
   });
 });

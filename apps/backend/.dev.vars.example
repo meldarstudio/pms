@@ -3,5 +3,6 @@
 STAFF_PASSWORD_HASH=
 # Generate with: pnpm auth:hash --session-secret
 SESSION_SECRET=
+PROPERTY_TIME_ZONE=America/Lima
 # The portal's dev origin. It must be localhost, not 127.0.0.1, so the session cookie is same-site.
 ALLOWED_ORIGINS=http://localhost:5173

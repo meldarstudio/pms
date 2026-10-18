@@ -11,6 +11,15 @@ reservation bills at the property.
 The hotel whose rooms, rates, and reservations are managed together.
 _Avoid_: Tenant, hotel account
 
+**Property timezone**:
+The local timezone of the property, which determines its calendar date regardless of where staff are
+working.
+_Avoid_: Staff timezone, browser timezone
+
+**Property date**:
+The current calendar date at the property, used when referring to today in property operations.
+_Avoid_: Staff's local date, UTC today
+
 ### Access
 
 **Staff account**:
@@ -53,7 +62,8 @@ The reference used to identify a reservation when communicating about it.
 _Avoid_: Room number
 
 **Stay dates**:
-The check-in and checkout dates shared by every room in a reservation.
+The calendar check-in and checkout dates at the property, shared by every room in a reservation and
+unchanged by the viewer's timezone.
 _Avoid_: Arrival timestamp, departure timestamp
 
 **Stay night**:
@@ -197,7 +207,7 @@ The way money was received for a payment, such as cash, card, bank transfer, Yap
 _Avoid_: Payment reference, payment processing
 
 **Payment date**:
-The calendar date on which a payment was received.
+The calendar date at the property on which a payment was received, unchanged by the viewer's timezone.
 _Avoid_: Date entered
 
 **Amount paid**:

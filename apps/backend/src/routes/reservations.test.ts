@@ -155,6 +155,95 @@ const pay = (amountCents: number): WorkflowAction => ({
   type: "add-payment",
   payment: { amountCents, method: "cash", paymentDate: "2026-10-10" },
 });
+
+it("uses the property day for payment commands and previews, including edits across midnight", async () => {
+  vi.setSystemTime(new Date("2026-11-01T01:00:00Z"));
+  const d = await create();
+  const payment = { amountCents: 1000, method: "cash" as const, paymentDate: "2026-10-31" };
+  const saved = await command(d, [{ type: "add-payment", payment }]);
+  expect(saved.payments[0].paymentDate).toBe("2026-10-31");
+  const tomorrow = { ...payment, paymentDate: "2026-11-01" };
+  for (const action of [
+    { type: "add-payment", payment: tomorrow },
+    { type: "edit-payment", paymentId: saved.payments[0].id, payment: tomorrow },
+  ] as WorkflowAction[]) {
+    for (const endpoint of ["commands", "preview"]) {
+      const response = await request(`/reservations/${d.id}/${endpoint}`, "POST", {
+        requestId: crypto.randomUUID(),
+        actions: [action],
+      });
+      expect(response.status).toBe(400);
+      expect(await response.json()).toEqual({ error: "payment date cannot be in the future" });
+    }
+  }
+  vi.setSystemTime(new Date("2026-11-01T04:59:59.999Z"));
+  expect(await command(d, [{ type: "add-payment", payment: tomorrow }], 400)).toEqual({
+    error: "payment date cannot be in the future",
+  });
+  vi.setSystemTime(new Date("2026-11-01T05:00:00Z"));
+  const after = await command(d, [{ type: "add-payment", payment: tomorrow }]);
+  expect(after.payments.map((p) => p.paymentDate).sort()).toEqual(["2026-10-31", "2026-11-01"]);
+});
+
+it.each(["assigned stay", "closure-reduced capacity"])(
+  "protects the current property night against room type changes: %s",
+  async (scenario) => {
+    vi.setSystemTime(new Date("2026-11-01T01:00:00Z"));
+    const d = await create(1, { checkIn: "2026-10-31", checkOut: "2026-11-01" });
+    const typeResponse = await request("/room-types", "POST", {
+      name: "Other",
+      maxAdults: 2,
+      maxChildren: 2,
+      baseRateCents: 20000,
+    });
+    expect(typeResponse.status).toBe(201);
+    const type = (await typeResponse.json()) as { id: string };
+    if (scenario === "assigned stay") {
+      await command(d, [roomEdit(d)]);
+    } else {
+      for (const roomId of ["room-102", "room-103"]) {
+        const response = await request("/room-closures", "POST", {
+          roomId,
+          starts: "2026-10-31",
+          ends: "2026-11-01",
+        });
+        expect(response.status).toBe(201);
+      }
+    }
+    const body = { roomTypeId: type.id, number: "renumbered" };
+    const blocked = await request("/rooms/room-101", "PATCH", body);
+    expect(blocked.status).toBe(409);
+    expect(await blocked.json()).toEqual({
+      error: scenario === "assigned stay" ? "room has an assigned stay" : "no availability",
+    });
+    const unchanged = await request("/rooms/room-101");
+    expect(await unchanged.json()).toEqual({ id: "room-101", number: "101", roomTypeId: "type" });
+    vi.setSystemTime(new Date("2026-11-01T05:00:00Z"));
+    expect((await request("/rooms/room-101", "PATCH", body)).status).toBe(200);
+    expect((await request(`/reservations/${d.id}`)).status).toBe(200);
+  },
+);
+
+it.each([
+  ["America/Lima", "2027-01-01T01:00:00Z", "2026-12-31", "2027-01-01"],
+  ["America/New_York", "2026-03-08T04:59:59Z", "2026-03-07", "2026-03-08"],
+  ["America/New_York", "2026-03-09T03:59:59Z", "2026-03-08", "2026-03-09"],
+])("validates payments against %s at %s", async (timeZone, instant, today, tomorrow) => {
+  bindings.PROPERTY_TIME_ZONE = timeZone;
+  vi.setSystemTime(new Date(instant));
+  sessionCookie = await signIn(bindings);
+  const d = await create();
+  const payment = { amountCents: 500, method: "cash" as const, paymentDate: today };
+  const saved = await command(d, [{ type: "add-payment", payment }]);
+  expect(saved.payments[0].paymentDate).toBe(today);
+  expect(
+    await command(
+      d,
+      [{ type: "add-payment", payment: { ...payment, paymentDate: tomorrow } }],
+      400,
+    ),
+  ).toEqual({ error: "payment date cannot be in the future" });
+});
 const setDiscount = (amountCents: number): WorkflowAction => ({
   type: "set-discount",
   amountCents,

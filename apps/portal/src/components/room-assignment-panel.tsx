@@ -1,4 +1,5 @@
-import { differenceInCalendarDays, parseISO, startOfToday } from "date-fns";
+import { differenceInCalendarDays, parseISO } from "date-fns";
+import { usePropertyCalendar } from "@/lib/use-property-calendar";
 import { CheckIcon, XIcon } from "lucide-react";
 import { cn } from "cn";
 
@@ -47,7 +48,7 @@ export function RoomAssignmentPanel({
   onClose,
   onRetry,
 }: RoomAssignmentPanelProps) {
-  const today = format(startOfToday(), "yyyy-MM-dd");
+  const { today } = usePropertyCalendar();
 
   return (
     <section

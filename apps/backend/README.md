@@ -37,7 +37,8 @@ shared Staff account. Its username is the `AUTH_USERNAME` var in `wrangler.jsonc
   `STAFF_PASSWORD_HASH` secret (PBKDF2-SHA256), and sets a signed `HttpOnly`,
   `SameSite=Lax` cookie that lasts 30 days and does not renew. The cookie is host-only on
   the API hostname, which is same-site with the portal. `Secure` is set on HTTPS.
-- `GET /session` returns the signed-in username. `POST /logout` clears the cookie.
+- Successful login and `GET /session` return `{ username, propertyTimeZone }`.
+  `POST /logout` clears the cookie.
 - Logins are limited to 5 per minute per IP by the `LOGIN_LIMITER` rate limit binding.
 - `ALLOWED_ORIGINS` is a comma-separated list of exact origins allowed to send
   credentialed requests. Production sets it in `wrangler.jsonc`. Local dev overrides it
@@ -77,6 +78,35 @@ Tell the remaining staff the new password. Everyone signs in again.
 The API no longer has a `workers.dev` or preview URL.
 
 ## Reservation dates
+
+### Property calendar
+
+`PROPERTY_TIME_ZONE` is a required deployment-level IANA timezone, configured as
+`America/Lima` in `wrangler.jsonc` and the local variables example. Login, session,
+and operational routes report 503 with an actionable configuration error if it
+is missing or unsupported. There is no browser/UTC fallback or staff preference.
+The portal loads this metadata before mounting date-dependent screens.
+
+The property date defines defaults, payment future-date validation (including
+edits and previews), and room-type-change cutoffs. Each request captures one
+property date, including workflow retries and the corresponding database write.
+For example, `2026-11-01T01:00:00Z` is property date `2026-10-31` in Lima;
+November 1 begins at `2026-11-01T05:00:00Z`.
+
+Business dates remain timezone-free `YYYY-MM-DD` labels. UTC calendar arithmetic
+is only a technique for retaining labels and counting nights, not operational
+today. Event timestamps remain UTC instants. Changing the deployment timezone
+does not convert any reservation, closure, rate, saved nightly price, payment,
+or timestamp. Historical payments that used UTC defaults retain their saved dates.
+
+The `rooms_type_change` trigger requires `property_write_context`. The Worker
+inserts its server-derived date, updates the room, and deletes the context in one
+D1 batch. D1 serializes these transactions; failed writes roll back the context
+along with the room. The table is empty between operations, not a periodically
+refreshed clock. All privileged SQL writers changing a physical room's type must
+provide and remove context in that same transaction. SQL checks assignment and
+capacity itself; preflight is not authoritative. Setup only renumbers owned rooms
+and inserts new rooms; its ownership guard prevents moving rooms through Setup.
 
 Each reservation has one `checkIn` and `checkOut` date shared by all its rooms.
 These dates determine the booked nights, availability, and nightly charges.
@@ -259,6 +289,35 @@ and rooms; use `pnpm db:reset:local` to undo edits and reload all sample data.
 ## Deployment and Worker types
 
 Production API: `https://api.hotelmanantialchurin.com`
+
+### Property timezone release (#23)
+
+No production operation is authorized by implementing this change. Before merging
+schema-dependent code to `main`, arrange this release explicitly:
+
+1. Apply registered migration `0003_property_calendar.sql` using the safe production
+   migration process below. It adds an empty context table and replaces only the
+   room-type-change trigger; all application records and applied history remain.
+2. Deploy the backend with `PROPERTY_TIME_ZONE=America/Lima`. The new Worker needs
+   the migration before changing rooms. The previous Worker can serve other routes
+   against the new schema, but **physical room-type changes fail closed** without
+   context (the old Worker may return a generic 500). Pause those changes during
+   the migration/backend handoff; do not weaken the trigger for compatibility.
+3. Deliver the portal after the backend. Old portals ignore the additive session
+   field, but retain incorrect browser/UTC defaults, so reload open staff tabs and
+   avoid date entry in the delivery gap. The new portal deliberately blocks on
+   old backend metadata without a timezone. Existing session cookies remain valid.
+4. Smoke-check login/session metadata, October/November date labels, backdated
+   payments, future-date rejection, room-type assignment/capacity conflicts, and
+   date pickers from a remote browser. Local validation includes fresh and populated
+   upgrades, transactional rollback, DST cases, and opposite-side browser zones;
+   it does not prove production rollout behavior.
+
+For recovery, retain the additive table, new guard, and migration history. Prefer
+a forward Worker repair. Rolling back the Worker alone makes physical room-type
+changes unavailable but keeps the guard fail-closed. An old portal may be served
+temporarily with a warning that its operational defaults remain wrong; never
+rewrite saved dates or restore an old database to reverse this correction.
 
 ### Separate occupancy limits release
 

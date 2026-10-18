@@ -1,4 +1,5 @@
 import { ApiError } from "./api-error";
+import { configurePropertyCalendar } from "./property-calendar";
 
 export type Room = {
   id: string;
@@ -237,17 +238,22 @@ async function getJson<T>(path: string, signal?: AbortSignal): Promise<T> {
   return (await response.json()) as T;
 }
 
-export type Session = { username: string };
+export type Session = { username: string; propertyTimeZone: string };
+
+function calendarSession(session: Session): Session {
+  configurePropertyCalendar(session.propertyTimeZone);
+  return session;
+}
 
 export async function getSession(signal?: AbortSignal): Promise<Session | null> {
   const response = await request("/session", { signal });
   if (response.status === 401) return null;
   if (!response.ok) throw await responseError(response);
-  return (await response.json()) as Session;
+  return calendarSession((await response.json()) as Session);
 }
 
-export function login(input: { username: string; password: string }) {
-  return writeJson<Session>("/login", "POST", input);
+export async function login(input: { username: string; password: string }) {
+  return calendarSession(await writeJson<Session>("/login", "POST", input));
 }
 
 export function logout() {

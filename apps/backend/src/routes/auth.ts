@@ -22,7 +22,10 @@ authRoutes.post("/login", validate("json", loginSchema), async (c) => {
   if (!usernameMatches || !passwordMatches) throw new HttpError(401, "invalid credentials");
 
   await startSession(c);
-  return c.json({ username: c.env.AUTH_USERNAME });
+  return c.json({
+    username: c.env.AUTH_USERNAME,
+    propertyTimeZone: c.get("propertyCalendar").timeZone,
+  });
 });
 
 authRoutes.post("/logout", (c) => {
@@ -30,4 +33,6 @@ authRoutes.post("/logout", (c) => {
   return c.json({ ok: true });
 });
 
-authRoutes.get("/session", (c) => c.json({ username: c.env.AUTH_USERNAME }));
+authRoutes.get("/session", (c) =>
+  c.json({ username: c.env.AUTH_USERNAME, propertyTimeZone: c.get("propertyCalendar").timeZone }),
+);

@@ -46,6 +46,105 @@ beforeEach(() => {
 
 afterEach(() => db.close());
 
+// Like a D1 batch, the trusted context and the protected write are one
+// transaction. Neither a successful write nor an abort can leave a stale day.
+function changeType(roomId: string, typeId: string, today = "2026-10-31") {
+  db.exec("BEGIN");
+  try {
+    db.prepare("INSERT INTO property_write_context (id, property_date) VALUES (1, ?)").run(today);
+    db.prepare("UPDATE rooms SET room_type_id = ? WHERE id = ?").run(typeId, roomId);
+    db.exec("DELETE FROM property_write_context; COMMIT");
+  } catch (error) {
+    db.exec("ROLLBACK");
+    throw error;
+  }
+}
+
+describe("property-date room type guards", () => {
+  beforeEach(() => {
+    db.exec(`INSERT INTO room_types (id, name, max_occupancy, base_rate_cents, created_at)
+      VALUES ('other', 'Other', 2, 10000, '2026-10-31')`);
+  });
+
+  it("requires a write-local date rather than implicitly using SQLite UTC now", () => {
+    expect(() => db.exec("UPDATE rooms SET room_type_id = 'other' WHERE id = 'room-101'")).toThrow(
+      "property date context required",
+    );
+  });
+
+  it("protects assigned stays through October 31 and releases them on their checkout date", () => {
+    reservation("assigned", "2026-10-31", "2026-11-01");
+    line("assigned", "room-101");
+    expect(() => changeType("room-101", "other")).toThrow("room has an assigned stay");
+    expect(() => changeType("room-101", "other", "2026-11-01")).not.toThrow();
+    expect(db.prepare("SELECT * FROM property_write_context").all()).toEqual([]);
+  });
+
+  it("protects unassigned inventory reduced by closures through the property night", () => {
+    closure("local-night", "room-102", "2026-10-31", "2026-11-01");
+    reservation("unassigned", "2026-10-31", "2026-11-01");
+    line("unassigned");
+    expect(() => changeType("room-101", "other")).toThrow("no availability");
+    expect(db.prepare("SELECT room_type_id FROM rooms WHERE id = 'room-101'").get()).toEqual({
+      room_type_id: "type",
+    });
+    expect(db.prepare("SELECT * FROM property_write_context").all()).toEqual([]);
+    changeType("room-101", "other", "2026-11-01");
+  });
+
+  it("upgrades the populated previous schema without changing saved date labels or timestamps", () => {
+    const previous = new DatabaseSync(":memory:");
+    try {
+      previous.exec("PRAGMA foreign_keys = ON");
+      const split = journal.entries.findIndex((entry) => entry.tag === "0003_property_calendar");
+      expect(split).toBeGreaterThan(0);
+      for (const entry of journal.entries.slice(0, split))
+        previous.exec(readFileSync(new URL(`${entry.tag}.sql`, migrationsDir), "utf8"));
+      previous.exec(`
+        INSERT INTO room_types (id, name, max_occupancy, base_rate_cents, created_at)
+          VALUES ('type', 'Standard', 2, 10000, '2026-11-01T01:00:00Z'), ('other', 'Other', 2, 20000, '2026-11-01T01:00:00Z');
+        INSERT INTO rooms VALUES ('room', '101', 'type'), ('closed', '102', 'type');
+        INSERT INTO guests (id, full_name, created_at) VALUES ('guest', 'Ada', '2026-11-01T01:00:00Z');
+        INSERT INTO reservations (id, code, guest_id, check_in, check_out, created_at)
+          VALUES ('stay', 'LEGACY', 'guest', '2026-10-31', '2026-11-01', '2026-11-01T01:00:00Z');
+        INSERT INTO reservation_rooms (id, reservation_id, room_type_id, room_id, adults, created_at)
+          VALUES ('line', 'stay', 'type', 'room', 1, '2026-11-01T01:00:00Z');
+        INSERT INTO reservation_room_nights VALUES ('night', 'line', '2026-10-31', 9000);
+        INSERT INTO payments (id, reservation_id, amount_cents, method, payment_date, created_at)
+          VALUES ('payment', 'stay', 4000, 'cash', '2026-11-01', '2026-11-01T01:00:00Z');
+        INSERT INTO room_closures (id, room_id, starts, ends, created_at)
+          VALUES ('closure', 'closed', '2026-10-31', '2026-11-01', '2026-11-01T01:00:00Z');
+        INSERT INTO room_type_rates VALUES ('rate', 'type', '2026-10-31', 12000);
+      `);
+      const tables = [
+        "room_types",
+        "rooms",
+        "guests",
+        "reservations",
+        "reservation_rooms",
+        "reservation_room_nights",
+        "payments",
+        "room_closures",
+        "room_type_rates",
+      ];
+      const snapshot = () =>
+        tables.map((table) => previous.prepare(`SELECT * FROM ${table} ORDER BY id`).all());
+      const before = snapshot();
+      for (const entry of journal.entries.slice(split))
+        previous.exec(readFileSync(new URL(`${entry.tag}.sql`, migrationsDir), "utf8"));
+      expect(snapshot()).toEqual(before);
+      previous.exec("INSERT INTO property_write_context VALUES (1, '2026-10-31')");
+      expect(() =>
+        previous.exec("UPDATE rooms SET room_type_id = 'other' WHERE id = 'room'"),
+      ).toThrow("room has an assigned stay");
+      previous.exec("DELETE FROM property_write_context");
+      expect(previous.prepare("PRAGMA foreign_key_check").all()).toEqual([]);
+    } finally {
+      previous.close();
+    }
+  });
+});
+
 describe("separate adult and child limits", () => {
   it("accepts both limits together and rejects excess adults or children on insert and update", () => {
     reservation("family");
@@ -244,15 +343,11 @@ describe("closure-only room inventory", () => {
     line("early");
     reservation("late", "2099-01-05", "2099-01-07");
     line("late");
-    expect(() =>
-      db.exec(`UPDATE rooms SET room_type_id = 'deluxe' WHERE id = 'room-101'`),
-    ).not.toThrow();
-    db.exec(`UPDATE rooms SET room_type_id = 'type' WHERE id = 'room-101'`);
+    expect(() => changeType("room-101", "deluxe")).not.toThrow();
+    changeType("room-101", "type");
     reservation("overlap", "2099-01-01", "2099-01-03");
     line("overlap");
-    expect(() => db.exec(`UPDATE rooms SET room_type_id = 'deluxe' WHERE id = 'room-101'`)).toThrow(
-      "no availability",
-    );
+    expect(() => changeType("room-101", "deluxe")).toThrow("no availability");
   });
 
   it("rejects a room type change while a future stay is assigned to that room", () => {
@@ -260,9 +355,7 @@ describe("closure-only room inventory", () => {
       VALUES ('deluxe', 'Deluxe', 2, 20000, '2026-10-05')`);
     reservation("assigned", "2099-01-01", "2099-01-03");
     line("assigned", "room-101");
-    expect(() => db.exec(`UPDATE rooms SET room_type_id = 'deluxe' WHERE id = 'room-101'`)).toThrow(
-      "room has an assigned stay",
-    );
+    expect(() => changeType("room-101", "deluxe")).toThrow("room has an assigned stay");
   });
 
   it("keeps assignment and closure overlap protections", () => {

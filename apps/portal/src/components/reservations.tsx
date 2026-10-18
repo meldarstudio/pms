@@ -89,7 +89,6 @@ export function Reservations({
           id={arrivalId}
           label="Check-in"
           value={parseISO(search.checkIn)}
-          timeZone={Intl.DateTimeFormat().resolvedOptions().timeZone}
           onChange={(date) =>
             onSearchChange({
               checkIn: format(date, "yyyy-MM-dd"),
@@ -230,12 +229,7 @@ export function Reservations({
           </Button>
         </div>
       ) : null}
-      <RoomBookingDialog
-        target={target}
-        timeZone="UTC"
-        onClose={() => setTarget(null)}
-        onViewReservation={open}
-      />
+      <RoomBookingDialog target={target} onClose={() => setTarget(null)} onViewReservation={open} />
     </main>
   );
 }

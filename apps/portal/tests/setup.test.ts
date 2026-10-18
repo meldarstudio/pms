@@ -66,6 +66,10 @@ beforeAll(async () => {
     mode: "development",
   });
   routes = (await server.ssrLoadModule("/src/router.tsx")) as typeof routes;
+  const calendar = (await server.ssrLoadModule(
+    "/src/lib/property-calendar.ts",
+  )) as typeof import("../src/lib/property-calendar.ts");
+  calendar.configurePropertyCalendar("America/Lima");
 });
 
 beforeEach(() => {

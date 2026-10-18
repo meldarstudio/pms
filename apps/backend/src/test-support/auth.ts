@@ -13,6 +13,7 @@ export async function authEnv(overrides: Partial<Env["Bindings"]> = {}): Promise
   return {
     DB: {} as D1Database,
     CURRENCY: "PEN",
+    PROPERTY_TIME_ZONE: "America/Lima",
     AUTH_USERNAME: STAFF_USERNAME,
     STAFF_PASSWORD_HASH: await passwordHash,
     SESSION_SECRET: "test-session-secret",

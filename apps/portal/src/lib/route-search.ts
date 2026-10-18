@@ -1,5 +1,5 @@
-import { format, isValid, parse, startOfToday } from "date-fns";
-import { utcToday } from "./reservation-form-schemas.ts";
+import { format, isValid, parse } from "date-fns";
+import { propertyToday } from "./property-calendar.ts";
 
 export type CalendarSearch = { from: string; span: 7 | 14 };
 export type InventorySearch = { from: string; span: 7 | 14 };
@@ -32,14 +32,14 @@ function spanValue(value: unknown, fallback: 7 | 14): 7 | 14 {
 
 export function calendarSearch(search: Record<string, unknown>): CalendarSearch {
   return {
-    from: validDay(search.from) ?? format(startOfToday(), "yyyy-MM-dd"),
+    from: validDay(search.from) ?? propertyToday(),
     span: spanValue(search.span, 7),
   };
 }
 
 export function inventorySearch(search: Record<string, unknown>): InventorySearch {
   return {
-    from: validDay(search.from) ?? format(startOfToday(), "yyyy-MM-dd"),
+    from: validDay(search.from) ?? propertyToday(),
     span: spanValue(search.span, 14),
   };
 }
@@ -52,10 +52,10 @@ function reservationStatus(value: unknown): ReservationsSearch["status"] {
     : "all";
 }
 
-// A missing, empty, invalid, or `all` day is UTC today, read when the URL is
+// A missing, empty, invalid, or `all` day is the property date, read when the URL is
 // parsed so the default is not frozen at module import.
 function reservationCheckIn(value: unknown) {
-  return validDay(value) ?? utcToday();
+  return validDay(value) ?? propertyToday();
 }
 
 export function reservationsSearch(search: Record<string, unknown>): ReservationsSearch {

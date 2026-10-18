@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { usePropertyCalendar } from "@/lib/use-property-calendar";
 import { useSelector } from "@tanstack/react-form";
 import { PlusIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -14,7 +15,6 @@ import {
   paymentSchema,
   paymentDefaults,
   paymentPayload,
-  utcToday,
   type GuestValues,
   type PaymentValues,
 } from "@/lib/reservation-form-schemas";
@@ -171,6 +171,7 @@ export function PaymentForm({
   onReady: (title: string, actions: WorkflowAction[]) => Promise<void>;
   onDirtyChange: (dirty: boolean) => void;
 }) {
+  const { today } = usePropertyCalendar();
   const [savedDefaults, setSavedDefaults] = useState<PaymentValues | null>(null);
   const defaults = useMemo(
     () => savedDefaults ?? paymentDefaults(detail.balanceCents),
@@ -194,6 +195,9 @@ export function PaymentForm({
       }
     },
   });
+  useEffect(() => {
+    if (form.state.fieldMeta.date?.errors.length) void form.validate("submit");
+  }, [form, today]);
   const unchanged = useSelector(form.store, (state) => state.isDefaultValue);
   const submitting = useSelector(form.store, (state) => state.isSubmitting);
   useEffect(() => onDirtyChange(!unchanged), [unchanged, onDirtyChange]);
@@ -212,7 +216,7 @@ export function PaymentForm({
             {(field) => <field.Choice label="Método" options={paymentMethods} />}
           </form.AppField>
           <form.AppField name="date">
-            {(field) => <field.Text label="Fecha del pago" type="date" max={utcToday()} />}
+            {(field) => <field.Text label="Fecha del pago" type="date" max={today} />}
           </form.AppField>
           <form.AppField name="reference">
             {(field) => (

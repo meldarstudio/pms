@@ -1,11 +1,16 @@
 import { patchRoomSchema, roomListQuerySchema, roomSchema } from "@pms/shared";
 import { and, eq, gt, inArray } from "drizzle-orm";
 import { Hono } from "hono";
-import { getDb } from "../db";
-import { reservationRooms, reservations, roomTypes, rooms } from "../db/schema";
+import { getDb, runBatch } from "../db";
+import {
+  propertyWriteContext,
+  reservationRooms,
+  reservations,
+  roomTypes,
+  rooms,
+} from "../db/schema";
 import type { Env } from "../env";
 import { HttpError, rethrowConflict, validate } from "../http";
-import { todayUtc } from "../lib/dates";
 
 const assignedStay = ["confirmed", "checked_in", "checked_out"];
 
@@ -68,14 +73,20 @@ roomRoutes.patch("/:id", validate("json", patchRoomSchema), async (c) => {
         and(
           eq(reservationRooms.roomId, room.id),
           inArray(reservations.status, assignedStay),
-          gt(reservations.checkOut, todayUtc()),
+          gt(reservations.checkOut, c.get("propertyCalendar").today),
         ),
       )
       .limit(1);
     if (stay) throw new HttpError(409, "room has an assigned stay");
   }
   try {
-    await db.update(rooms).set(body).where(eq(rooms.id, room.id));
+    await runBatch(db, [
+      db
+        .insert(propertyWriteContext)
+        .values({ id: 1, propertyDate: c.get("propertyCalendar").today }),
+      db.update(rooms).set(body).where(eq(rooms.id, room.id)),
+      db.delete(propertyWriteContext),
+    ]);
   } catch (err) {
     rethrowConflict(err);
   }

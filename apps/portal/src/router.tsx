@@ -8,6 +8,7 @@ import {
 } from "@tanstack/react-router";
 import { useEffect } from "react";
 import { format, parseISO } from "date-fns";
+import { propertyToday } from "@/lib/property-calendar";
 import { useNavigate } from "@tanstack/react-router";
 import App from "@/App";
 import { ReservationPage } from "@/components/reservation-page";
@@ -30,7 +31,7 @@ const rootRoute = createRootRoute({
       <h1 className="text-xl font-semibold">No se encontró esta página</h1>
       <Link
         to="/calendar"
-        search={{ from: format(new Date(), "yyyy-MM-dd"), span: 7 }}
+        search={{ from: propertyToday(), span: 7 }}
         className="text-primary underline"
       >
         Ir al calendario
@@ -46,7 +47,7 @@ const indexRoute = createRoute({
     throw redirect({
       to: "/calendar",
       search: {
-        from: format(new Date(), "yyyy-MM-dd"),
+        from: propertyToday(),
         span: 7,
       },
       replace: true,

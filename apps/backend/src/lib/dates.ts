@@ -56,7 +56,3 @@ export function filterWeekdays(dates: string[], weekdays?: number[]): string[] {
   const allowed = new Set(weekdays);
   return dates.filter((date) => allowed.has(weekday(date)));
 }
-
-export function todayUtc(): string {
-  return new Date().toISOString().slice(0, 10);
-}

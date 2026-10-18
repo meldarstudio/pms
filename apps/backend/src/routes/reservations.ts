@@ -105,7 +105,13 @@ reservationRoutes.get("/:id", async (c) =>
   c.json(await reservationDetail(getDb(c.env.DB), c.req.param("id"), currency(c))),
 );
 reservationRoutes.post("/:id/preview", validate("json", workflowCommandSchema), async (c) => {
-  const result = await execute(getDb(c.env.DB), c.req.param("id"), c.req.valid("json"), true);
+  const result = await execute(
+    getDb(c.env.DB),
+    c.req.param("id"),
+    c.req.valid("json"),
+    true,
+    c.get("propertyCalendar").today,
+  );
   if (!result.state) return c.json({ replayed: true });
   const bill = totals(result.state);
   return c.json({
@@ -131,6 +137,6 @@ reservationRoutes.post("/:id/preview", validate("json", workflowCommandSchema), 
 });
 reservationRoutes.post("/:id/commands", validate("json", workflowCommandSchema), async (c) => {
   const db = getDb(c.env.DB);
-  await execute(db, c.req.param("id"), c.req.valid("json"), false);
+  await execute(db, c.req.param("id"), c.req.valid("json"), false, c.get("propertyCalendar").today);
   return c.json(await reservationDetail(db, c.req.param("id"), currency(c)));
 });

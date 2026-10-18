@@ -8,6 +8,7 @@
   "routes": [{ "pattern": "api.hotelmanantialchurin.com", "custom_domain": true }],
   "vars": {
     "CURRENCY": "PEN",
+    "PROPERTY_TIME_ZONE": "America/Lima",
     "AUTH_USERNAME": "hotelmanantial",
     "ALLOWED_ORIGINS": "https://app.hotelmanantialchurin.com",
   },

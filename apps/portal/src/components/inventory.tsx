@@ -1,7 +1,7 @@
 import { useQueryClient } from "@tanstack/react-query";
 import { useEffect, useRef, useState, type PointerEvent } from "react";
 import { cn } from "cn";
-import { addDays, eachDayOfInterval, parse, startOfDay, startOfToday } from "date-fns";
+import { addDays, eachDayOfInterval, parse, startOfDay } from "date-fns";
 import {
   CalendarIcon,
   ChevronLeftIcon,
@@ -15,7 +15,9 @@ import { InventoryRateDialog, type RateTarget } from "@/components/inventory-rat
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { ButtonGroup } from "@/components/ui/button-group";
-import { Calendar } from "@/components/ui/calendar";
+import { PropertyDatePicker } from "@/components/property-date-picker";
+import { dateOnlyCarrier } from "@/lib/property-calendar";
+import { usePropertyCalendar } from "@/lib/use-property-calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { SetupRequired } from "@/components/setup-required";
 import {
@@ -74,7 +76,7 @@ export function Inventory({
   onStartChange: (date: Date) => void;
   onSpanChange: (span: 7 | 14) => void;
 }) {
-  const timeZone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+  const { today } = usePropertyCalendar();
   const queryClient = useQueryClient();
   const [pickerOpen, setPickerOpen] = useState(false);
   const [selection, setSelection] = useState<Selection | null>(null);
@@ -89,7 +91,6 @@ export function Inventory({
   const grid = inventory.data?.from === from && inventory.data.to === to ? inventory.data : null;
   const days = eachDayOfInterval({ start, end: addDays(start, span - 1) });
   const dayIds = days.map((day) => format(day, "yyyy-MM-dd"));
-  const today = format(startOfToday(), "yyyy-MM-dd");
   const loading = grid === null && !inventory.isError;
   const error = inventory.error?.message ?? null;
 
@@ -189,7 +190,7 @@ export function Inventory({
               </SelectGroup>
             </SelectContent>
           </Select>
-          <Button variant="outline" onClick={() => changeStart(startOfToday())}>
+          <Button variant="outline" onClick={() => changeStart(dateOnlyCarrier(today))}>
             Hoy
           </Button>
           <Button
@@ -227,10 +228,9 @@ export function Inventory({
               <CalendarIcon data-icon="inline-end" />
             </PopoverTrigger>
             <PopoverContent className="w-auto p-0">
-              <Calendar
+              <PropertyDatePicker
                 mode="single"
                 selected={start}
-                timeZone={timeZone}
                 onSelect={(date) => {
                   if (!date) return;
                   changeStart(date);

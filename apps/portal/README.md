@@ -99,6 +99,24 @@ the session and shows the login form when there is none. Every request sends
 login form again, keeping the current URL, so signing in returns to the same page.
 Backend login errors are translated in `src/lib/errors.ts`.
 
+### Property calendar
+
+The authenticated login/session response supplies `propertyTimeZone`; there is no
+frontend timezone environment variable. Missing or invalid metadata blocks the
+app with an actionable Spanish configuration error rather than briefly using
+browser or UTC dates. Deploy the backend before this portal version.
+
+Operational defaults, arrival badges, booking restrictions, payment validation,
+and picker today/month indicators use that timezone. A shared clock refreshes at
+property midnight and on focus/visibility changes, without signing in again.
+Explicit URL dates and form drafts stay unchanged; new forms use the current day.
+The picker adapter transfers calendar components into and out of zoned picker
+Dates, not instants. Existing date labels remain identical in remote browsers.
+UTC date arithmetic elsewhere counts nights or preserves labels only.
+
+See the [backend release plan](../backend/README.md#property-timezone-release-23)
+for migration ordering and old/new backend/portal compatibility.
+
 ## Deployment
 
 Production portal: `https://app.hotelmanantialchurin.com`

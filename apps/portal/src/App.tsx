@@ -1,5 +1,5 @@
 import { Outlet, useNavigate, useRouterState } from "@tanstack/react-router";
-import { format, startOfToday } from "date-fns";
+import { propertyToday } from "@/lib/property-calendar";
 import { LogOutIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -30,13 +30,13 @@ export function App() {
     }
     if (value === "calendar") {
       const search = lastCalendarSearch.current ?? {
-        from: format(startOfToday(), "yyyy-MM-dd"),
+        from: propertyToday(),
         span: 7 as const,
       };
       void navigate({ to: "/calendar", search });
     }
     if (value === "inventory") {
-      const today = format(startOfToday(), "yyyy-MM-dd");
+      const today = propertyToday();
       void navigate({ to: "/inventory", search: { from: today, span: 14 } });
     }
     if (value === "setup") void navigate({ to: "/setup" });

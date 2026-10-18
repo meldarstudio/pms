@@ -5,7 +5,7 @@ import type { Env } from "./env";
 
 export class HttpError extends Error {
   constructor(
-    readonly status: 400 | 401 | 404 | 409 | 429,
+    readonly status: 400 | 401 | 404 | 409 | 429 | 503,
     message: string,
     readonly field?: string,
   ) {
@@ -33,6 +33,8 @@ function errorText(err: unknown): string {
 
 export function rethrowConflict(err: unknown): never {
   const text = errorText(err);
+  if (text.includes("property date context required"))
+    throw new HttpError(503, "property date context required");
   if (text.includes("NOT NULL constraint failed: rooms.number"))
     throw new HttpError(404, "room not found");
   if (text.includes("reservation_requests.id"))

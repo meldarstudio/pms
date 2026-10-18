@@ -29,7 +29,7 @@ Read the applicable instructions before changing the package or contract, includ
 
 ## Cross-package contracts
 
-- Dates are `YYYY-MM-DD` UTC calendar dates. Stay nights and room closures use `[start, end)`; rate ranges include both ends. A stay cannot exceed 60 nights.
+- Business dates are timezone-free `YYYY-MM-DD` labels; UTC calendar arithmetic preserves those labels. Operational today comes from the backend's `PROPERTY_TIME_ZONE`, supplied to the portal by login/session metadata. Stay nights and room closures use `[start, end)`; rate ranges include both ends. A stay cannot exceed 60 nights.
 - Money is integer cents. Currency comes from the Worker's `CURRENCY` var (`PEN`).
 - Backend error messages stay English. Add each new message's Spanish translation to `apps/portal/src/lib/errors.ts`, including authentication and database-conflict errors.
 - API request or response changes must update the portal's hand-written types and fetch helpers in `apps/portal/src/lib/api.ts` and affected query hooks in `apps/portal/src/lib/queries.ts`.

@@ -52,7 +52,6 @@ export function TextField({
         id={id}
         label={label}
         value={value ? parseISO(String(value)) : null}
-        timeZone={Intl.DateTimeFormat().resolvedOptions().timeZone}
         locked={disabled}
         error={error}
         onBlur={onBlur}

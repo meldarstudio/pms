@@ -1,14 +1,7 @@
 import { useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { cn } from "cn";
-import {
-  addDays,
-  differenceInCalendarDays,
-  eachDayOfInterval,
-  parse,
-  startOfDay,
-  startOfToday,
-} from "date-fns";
+import { addDays, differenceInCalendarDays, eachDayOfInterval, parse, startOfDay } from "date-fns";
 import {
   CircleHelpIcon,
   CalendarIcon,
@@ -32,7 +25,9 @@ import { RoomAssignmentPanel } from "@/components/room-assignment-panel";
 import { Tooltip, TooltipTrigger, TooltipContent } from "@/components/ui/tooltip";
 import { Button } from "@/components/ui/button";
 import { ButtonGroup } from "@/components/ui/button-group";
-import { Calendar } from "@/components/ui/calendar";
+import { PropertyDatePicker } from "@/components/property-date-picker";
+import { dateOnlyCarrier } from "@/lib/property-calendar";
+import { usePropertyCalendar } from "@/lib/use-property-calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import {
   Select,
@@ -253,6 +248,7 @@ function RoomTrack({
   assignmentPreview?: AssignmentPreview;
 }) {
   const lanes = stays.reduce((max, stay) => Math.max(max, stay.lane + 1), 1);
+  const { today } = usePropertyCalendar();
   return (
     <div
       className={cn(
@@ -274,7 +270,7 @@ function RoomTrack({
           // Availability is based on nights, not the bar's half-day drawing.
           const occupied = stays.some((stay) => stay.checkIn <= date && stay.checkOut > date);
           const morningBlocked = stays.some((stay) => stay.checkOut === date);
-          const disabled = !onBookDay || occupied || date < format(startOfToday(), "yyyy-MM-dd");
+          const disabled = !onBookDay || occupied || date < today;
 
           return (
             <div key={date} className={cn("relative", dayIndex < dayCount - 1 && "border-r")}>
@@ -340,9 +336,8 @@ export function RoomCalendar({
   onSpanChange: (span: 7 | 14) => void;
   onOpenReservation: (id: string) => void;
 }) {
-  const timeZone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+  const { today } = usePropertyCalendar();
   const queryClient = useQueryClient();
-  const today = format(startOfToday(), "yyyy-MM-dd");
   const [pickerOpen, setPickerOpen] = useState(false);
   const [closureTarget, setClosureTarget] = useState<ClosureTarget | null>(null);
   const [roomTarget, setRoomTarget] = useState<RoomEditTarget | null>(null);
@@ -472,15 +467,10 @@ export function RoomCalendar({
 
   return (
     <div className="flex min-h-0 min-w-0 flex-1 flex-col">
-      <RoomClosureDialog
-        target={closureTarget}
-        timeZone={timeZone}
-        onClose={() => setClosureTarget(null)}
-      />
+      <RoomClosureDialog target={closureTarget} onClose={() => setClosureTarget(null)} />
       <RoomEditDialog target={roomTarget} onClose={() => setRoomTarget(null)} />
       <RoomBookingDialog
         target={bookingTarget}
-        timeZone={timeZone}
         onClose={() => setBookingTarget(null)}
         onViewReservation={(id) => {
           setBookingTarget(null);
@@ -516,7 +506,7 @@ export function RoomCalendar({
           <Button
             variant="outline"
             disabled={assignment.pending}
-            onClick={() => changeStart(startOfToday())}
+            onClick={() => changeStart(dateOnlyCarrier(today))}
           >
             Hoy
           </Button>
@@ -563,10 +553,9 @@ export function RoomCalendar({
               <CalendarIcon data-icon="inline-end" />
             </PopoverTrigger>
             <PopoverContent className="w-auto p-0">
-              <Calendar
+              <PropertyDatePicker
                 mode="single"
                 selected={start}
-                timeZone={timeZone}
                 onSelect={(date) => {
                   if (!date) return;
                   changeStart(startOfDay(date));

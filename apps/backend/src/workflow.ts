@@ -135,6 +135,7 @@ export async function plan(
   db: Db,
   original: State,
   actions: WorkflowAction[],
+  today: string,
   now = new Date().toISOString(),
 ) {
   const state = structuredClone(original);
@@ -142,7 +143,7 @@ export async function plan(
   const lineFor = (id: string) =>
     state.lines.find((l) => l.id === id) ?? fail("room line not found");
   const newPayment = (input: Extract<WorkflowAction, { type: "add-payment" }>["payment"]) => {
-    if (input.paymentDate > now.slice(0, 10)) fail("payment date cannot be in the future");
+    if (input.paymentDate > today) fail("payment date cannot be in the future");
     return {
       id: crypto.randomUUID(),
       reservationId: state.reservation.id,
@@ -261,10 +262,16 @@ function lineWrites(db: Db, line: Stay, existing: boolean) {
     ...chunks(values, 20).map((v) => db.insert(reservationRoomNights).values(v)),
   ];
 }
-export async function execute(db: Db, id: string, command: WorkflowCommand, preview: boolean) {
+export async function execute(
+  db: Db,
+  id: string,
+  command: WorkflowCommand,
+  preview: boolean,
+  today: string,
+) {
   for (let attempt = 0; attempt < 3; attempt++) {
     try {
-      return await executeAttempt(db, id, command, preview);
+      return await executeAttempt(db, id, command, preview, today);
     } catch (error) {
       if (!isStaleWrite(error)) throw error;
     }
@@ -272,7 +279,13 @@ export async function execute(db: Db, id: string, command: WorkflowCommand, prev
   throw new HttpError(409, "reservation changed while saving; please try again");
 }
 
-async function executeAttempt(db: Db, id: string, command: WorkflowCommand, preview: boolean) {
+async function executeAttempt(
+  db: Db,
+  id: string,
+  command: WorkflowCommand,
+  preview: boolean,
+  today: string,
+) {
   const payload = JSON.stringify(command);
   const [seen] = await db
     .select()
@@ -284,7 +297,7 @@ async function executeAttempt(db: Db, id: string, command: WorkflowCommand, prev
     return { replayed: true };
   }
   const original = await loadState(db, id);
-  const { state } = await plan(db, original, command.actions);
+  const { state } = await plan(db, original, command.actions, today);
   const revalidateAllRooms =
     original.reservation.checkIn !== state.reservation.checkIn ||
     original.reservation.checkOut !== state.reservation.checkOut ||
