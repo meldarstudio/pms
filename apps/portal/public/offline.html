@@ -1,0 +1,45 @@
+<!doctype html>
+<html lang="es-PE">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="theme-color" content="#f27b00" />
+    <title>Sin conexión · Hotel Manantial</title>
+    <style>
+      body {
+        font:
+          16px system-ui,
+          sans-serif;
+        margin: 0;
+        min-height: 100vh;
+        display: grid;
+        place-items: center;
+        color: #262626;
+      }
+      main {
+        max-width: 28rem;
+        padding: 2rem;
+        text-align: center;
+      }
+      button {
+        border: 0;
+        border-radius: 0.5rem;
+        background: #f27b00;
+        color: white;
+        padding: 0.7rem 1.2rem;
+        font: inherit;
+        cursor: pointer;
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <h1>Sin conexión a internet</h1>
+      <p>
+        Para proteger la información del hotel, Reservas y las demás operaciones solo están
+        disponibles con conexión.
+      </p>
+      <button onclick="location.reload()">Reintentar</button>
+    </main>
+  </body>
+</html>

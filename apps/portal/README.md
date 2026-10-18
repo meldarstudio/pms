@@ -120,3 +120,33 @@ for migration ordering and old/new backend/portal compatibility.
 ## Deployment
 
 Production portal: `https://app.hotelmanantialchurin.com`
+
+### Installable app and offline behavior
+
+The portal can be installed through browser-native controls as **Hotel Manantial**
+(**Manantial** on compact launchers). Its standalone launch destination is
+`/reservations`; opening `/` in a normal browser still redirects to Calendario.
+Installation does not add an in-portal install prompt or notification permission.
+
+The service worker caches only the public application shell and static assets.
+It does not cache API responses, session data, or hotel records, and does not
+queue writes. Reservations and other hotel operations require an internet
+connection. When a new version is ready, **Nueva versión disponible** offers a
+manual **Actualizar** action; simply leaving the notice alone does not reload
+the page.
+
+For release smoke tests, build and preview locally using the root build commands
+and a non-production API origin. On Android Chromium, Safari on iOS/iPadOS, and
+desktop Chromium where available, check native installation, app label/icon,
+standalone launch, login and direct links, and ordinary-tab `/` behavior. After
+an online visit, disable networking and launch/navigate: the shell should show
+the Spanish offline message and retry should recover when networking returns.
+Confirm no authenticated API response appears in Cache Storage and no write is
+replayed after reconnecting. To check updates, keep an older preview open with
+an unsaved draft while serving a newer build: defer the notice, verify no window
+reloads, then choose **Actualizar** and verify the existing unload/save guards.
+Also check two open windows and confirm that the unchosen window is not forcibly
+reloaded. Verify `/manifest.webmanifest`, `/sw.js`, and icon requests return their
+actual content (not SPA fallback HTML). Record browser/device versions and
+platforms not tested for each release; this implementation has not been
+validated on physical devices by this change.

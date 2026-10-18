@@ -1,4 +1,4 @@
-import { useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useBlocker } from "@tanstack/react-router";
 import { useQueryClient } from "@tanstack/react-query";
 import { ArrowLeftIcon } from "lucide-react";
@@ -14,11 +14,24 @@ export function ReservationPage({ id, onBack }: { id: string; onBack: () => void
   const query = useReservation(id);
   const saving = useReservationSaving(id);
   const dirty = useRef(false);
+  const shouldProtectUnload = useCallback(
+    () => isReservationSaving(client, id) || dirty.current,
+    [client, id],
+  );
   const blocker = useBlocker({
-    shouldBlockFn: () => isReservationSaving(client, id) || dirty.current,
+    shouldBlockFn: shouldProtectUnload,
     withResolver: true,
   });
   const [tab, setTab] = useState("details");
+  useEffect(() => {
+    const protectUnload = (event: BeforeUnloadEvent) => {
+      if (!shouldProtectUnload()) return;
+      event.preventDefault();
+      event.returnValue = "";
+    };
+    window.addEventListener("beforeunload", protectUnload);
+    return () => window.removeEventListener("beforeunload", protectUnload);
+  }, [shouldProtectUnload]);
   return (
     <main className="mx-auto flex w-full max-w-6xl flex-col gap-6 overflow-y-auto p-4 md:p-8">
       <header className="flex flex-col items-start gap-4">

@@ -5,6 +5,7 @@ import { RouterProvider } from "@tanstack/react-router";
 
 import "./index.css";
 import { AuthGate } from "@/components/auth-gate";
+import { PwaStatus } from "@/components/pwa-status";
 import { ThemeProvider } from "@/components/theme-provider.tsx";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { ToastProvider } from "@/components/ui/toast";
@@ -15,13 +16,15 @@ createRoot(document.getElementById("root")!).render(
   <StrictMode>
     <QueryClientProvider client={queryClient}>
       <ThemeProvider>
-        <ToastProvider>
-          <TooltipProvider>
-            <AuthGate>
-              <RouterProvider router={router} />
-            </AuthGate>
-          </TooltipProvider>
-        </ToastProvider>
+        <PwaStatus>
+          <ToastProvider>
+            <TooltipProvider>
+              <AuthGate>
+                <RouterProvider router={router} />
+              </AuthGate>
+            </TooltipProvider>
+          </ToastProvider>
+        </PwaStatus>
       </ThemeProvider>
     </QueryClientProvider>
   </StrictMode>,

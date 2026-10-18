@@ -11,6 +11,9 @@ export default defineConfig(({ command, mode }) => {
   }
 
   return {
+    define: {
+      "import.meta.env.VITE_PWA_BUILD_ID": JSON.stringify(Date.now().toString()),
+    },
     test: {
       name: "portal",
       environment: "node",

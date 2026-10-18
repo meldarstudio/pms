@@ -162,6 +162,61 @@ async function render(path = "/setup") {
   });
 }
 
+async function renderReservationDetail() {
+  mockApi();
+  rooms = [];
+  const reservation: ReservationDetail = {
+    id: "reservation-1",
+    code: "TEST0001",
+    status: "confirmed",
+    notes: null,
+    cancellationReason: null,
+    cancelledAt: null,
+    savedDiscountCents: 0,
+    creditCents: 0,
+    guestId: "contact-1",
+    guest: { id: "contact-1", fullName: "Ana Pérez", phone: null, email: null, notes: null },
+    stayingGuests: [],
+    checkIn: "2026-10-14",
+    checkOut: "2026-10-16",
+    source: "direct",
+    currency: "PEN",
+    totalCents: 30000,
+    subtotalCents: 30000,
+    discountCents: 0,
+    paidCents: 0,
+    balanceCents: 30000,
+    payments: [],
+    rooms: [
+      {
+        id: "line-1",
+        roomTypeId: "double",
+        roomTypeName: "Doble",
+        roomId: null,
+        roomNumber: null,
+        adults: 1,
+        children: 0,
+        subtotalCents: 30000,
+        discountCents: 0,
+        totalCents: 30000,
+        nights: [],
+      },
+    ],
+  };
+  const fetchApi = globalThis.fetch;
+  globalThis.fetch = async (input, init) =>
+    requestUrl(input).pathname === "/reservations/reservation-1"
+      ? Response.json(reservation)
+      : fetchApi(input, init);
+  await render("/reservations/reservation-1");
+  await until(
+    () =>
+      container.textContent.includes("Reserva TEST0001") &&
+      container.textContent.includes("Ana Pérez"),
+    "Reservation details must render",
+  );
+}
+
 async function until(condition: () => boolean, message: string) {
   for (let i = 0; i < 100; i++) {
     if (condition()) return;
@@ -256,59 +311,26 @@ it.each([
 );
 
 it("keeps a direct reservation detail link accessible when no physical rooms exist", async () => {
-  mockApi();
-  rooms = [];
-  const reservation: ReservationDetail = {
-    id: "reservation-1",
-    code: "TEST0001",
-    status: "confirmed",
-    notes: null,
-    cancellationReason: null,
-    cancelledAt: null,
-    savedDiscountCents: 0,
-    creditCents: 0,
-    guestId: "contact-1",
-    guest: { id: "contact-1", fullName: "Ana Pérez", phone: null, email: null, notes: null },
-    stayingGuests: [],
-    checkIn: "2026-10-14",
-    checkOut: "2026-10-16",
-    source: "direct",
-    currency: "PEN",
-    totalCents: 30000,
-    subtotalCents: 30000,
-    discountCents: 0,
-    paidCents: 0,
-    balanceCents: 30000,
-    payments: [],
-    rooms: [
-      {
-        id: "line-1",
-        roomTypeId: "double",
-        roomTypeName: "Doble",
-        roomId: null,
-        roomNumber: null,
-        adults: 1,
-        children: 0,
-        subtotalCents: 30000,
-        discountCents: 0,
-        totalCents: 30000,
-        nights: [],
-      },
-    ],
-  };
-  const fetchApi = globalThis.fetch;
-  globalThis.fetch = async (input, init) =>
-    requestUrl(input).pathname === "/reservations/reservation-1"
-      ? Response.json(reservation)
-      : fetchApi(input, init);
-  await render("/reservations/reservation-1");
-  await until(
-    () =>
-      container.textContent.includes("Reserva TEST0001") &&
-      container.textContent.includes("Ana Pérez"),
-    "Reservation details must render without forcing setup",
-  );
+  await renderReservationDetail();
   assert.equal(router.state.location.pathname, "/reservations/reservation-1");
+});
+
+it("protects reservation drafts from update-triggered reloads", async () => {
+  await renderReservationDetail();
+  const notes = container.querySelector("textarea");
+  assert.ok(notes, "Reservation notes must be editable");
+  await React.act(async () => {
+    Object.getOwnPropertyDescriptor(window.HTMLTextAreaElement.prototype, "value")!.set!.call(
+      notes,
+      "Draft that must survive an update",
+    );
+    notes.dispatchEvent(new window.Event("input", { bubbles: true }));
+    notes.dispatchEvent(new window.Event("change", { bubbles: true }));
+  });
+  assert.equal(button("Guardar detalles").disabled, false, "Editing notes must create a draft");
+  const unload = new window.Event("beforeunload", { cancelable: true });
+  await React.act(async () => window.dispatchEvent(unload));
+  assert.equal(unload.defaultPrevented, true, "A draft must block an update-triggered reload");
 });
 
 it("edits a room type and adds several room numbers in the real table with one save", async () => {
