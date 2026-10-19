@@ -9,36 +9,37 @@ export type ReservationStatus = (typeof reservationStatusValues)[number];
 declare const serializedStatuses: unique symbol;
 export type SerializedReservationStatuses = string & { readonly [serializedStatuses]: true };
 
-// An empty selection is unrestricted, not an empty result set. CSV belongs only
-// at the URL/API seam; controls operate on typed statuses and share transitions.
+// Controls always have a nonempty selection; all statuses means unrestricted.
+// Legacy empty/all URL values still mean unrestricted at the URL/API seam.
 export class ReservationStatusSelection {
   readonly values: readonly ReservationStatus[];
 
-  constructor(values: readonly ReservationStatus[] = []) {
-    this.values = reservationStatusValues.filter((status) => values.includes(status));
+  constructor(values: readonly ReservationStatus[] = reservationStatusValues) {
+    this.values = reservationStatusValues.filter(
+      (status) => !values.length || values.includes(status),
+    );
   }
 
   static parse(value: unknown, fallback = new ReservationStatusSelection()) {
     if (value === "all" || value === "") return new ReservationStatusSelection();
     if (typeof value !== "string") return fallback;
-    const selected = new ReservationStatusSelection(
-      value
-        .split(",")
-        .filter((status): status is ReservationStatus =>
-          reservationStatusValues.includes(status as ReservationStatus),
-        ),
-    );
-    return selected.unrestricted ? fallback : selected;
+    const selected = value
+      .split(",")
+      .filter((status): status is ReservationStatus =>
+        reservationStatusValues.includes(status as ReservationStatus),
+      );
+    return selected.length ? new ReservationStatusSelection(selected) : fallback;
   }
 
   get unrestricted() {
-    return this.values.length === 0;
+    return this.values.length === reservationStatusValues.length;
   }
 
   withStatus(status: ReservationStatus, checked: boolean) {
-    return new ReservationStatusSelection(
-      checked ? [...this.values, status] : this.values.filter((value) => value !== status),
-    );
+    const next = checked
+      ? [...this.values, status]
+      : this.values.filter((value) => value !== status);
+    return next.length ? new ReservationStatusSelection(next) : this;
   }
 
   toSearch() {

@@ -61,6 +61,11 @@ describe("route search validation", () => {
       "confirmed,checked_in,checked_out",
     );
     assert.equal(reservationsSearch({ statuses: "all" }).statuses, "all");
+    assert.equal(reservationsSearch({ statuses: "" }).statuses, "all");
+    assert.equal(
+      reservationsSearch({ statuses: "confirmed,checked_in,checked_out,cancelled" }).statuses,
+      "all",
+    );
     assert.equal(
       reservationsSearch({ view: "in-house", statuses: "cancelled" }).statuses,
       "checked_in",

@@ -10,6 +10,7 @@ import {
   LogInIcon,
   LogOutIcon,
   PlusIcon,
+  RotateCcwIcon,
   SearchIcon,
   SlidersHorizontalIcon,
   XIcon,
@@ -146,47 +147,10 @@ export function Reservations({
     { value: "assigned", label: "Todas asignadas" },
     { value: "unassigned", label: "Con habitaciones sin asignar" },
   ];
-  const chips: { label: string; remove: () => void }[] = [
-    ...(search.q ? [{ label: `Búsqueda: ${search.q}`, remove: () => refine({ q: "" }) }] : []),
-    ...(search.view !== "in-house"
-      ? selectedStatuses.values.map((status) => ({
-          label: reservationStatusLabel(status),
-          remove: () =>
-            refine({
-              statuses: selectedStatuses.withStatus(status, false).toSearch(),
-            }),
-        }))
-      : []),
-    ...(selectedStatuses.unrestricted && search.view !== "all"
-      ? [
-          {
-            label: "Todos los estados",
-            remove: () => refine({ statuses: viewDefaults(search.view).statuses }),
-          },
-        ]
-      : []),
-    ...(search.balance !== "all"
-      ? [
-          {
-            label: balanceOptions.find((option) => option.value === search.balance)!.label,
-            remove: () => refine({ balance: "all" }),
-          },
-        ]
-      : []),
-    ...(search.assignment !== "all"
-      ? [
-          {
-            label: assignmentOptions.find((option) => option.value === search.assignment)!.label,
-            remove: () => refine({ assignment: "all" }),
-          },
-        ]
-      : []),
-  ];
-
-  const filtersActive =
-    search.balance !== "all" ||
-    search.assignment !== "all" ||
-    search.statuses !== viewDefaults(search.view).statuses;
+  const filterCount =
+    Number(search.balance !== "all") +
+    Number(search.assignment !== "all") +
+    Number(selectedStatuses.toSearch() !== viewDefaults(search.view).statuses);
   const rangeLabel = query.isPending
     ? "Buscando reservas…"
     : query.isError && !query.data
@@ -297,68 +261,100 @@ export function Reservations({
           </p>
         )}
       </div>
-      <div className="flex flex-col gap-2">
-        <div className="flex flex-wrap items-center gap-2">
-          <div className="w-full max-w-sm">
-            <Field>
-              <FieldLabel htmlFor={guestId} className="sr-only">
-                Contacto o código
-              </FieldLabel>
-              <InputGroup>
-                <InputGroupAddon>
-                  <SearchIcon />
+      <div className="flex flex-wrap items-center gap-2">
+        <div className="w-full max-w-sm">
+          <Field>
+            <FieldLabel htmlFor={guestId} className="sr-only">
+              Contacto o código
+            </FieldLabel>
+            <InputGroup>
+              <InputGroupAddon>
+                <SearchIcon />
+              </InputGroupAddon>
+              <InputGroupInput
+                id={guestId}
+                placeholder="Buscar contacto o código…"
+                value={search.q}
+                onChange={(event) => refine({ q: event.target.value })}
+              />
+              {search.q ? (
+                <InputGroupAddon align="inline-end">
+                  <Button
+                    variant="ghost"
+                    size="icon-xs"
+                    aria-label="Borrar búsqueda"
+                    onClick={() => refine({ q: "" })}
+                  >
+                    <XIcon />
+                  </Button>
                 </InputGroupAddon>
-                <InputGroupInput
-                  id={guestId}
-                  placeholder="Buscar contacto o código…"
-                  value={search.q}
-                  onChange={(event) => refine({ q: event.target.value })}
-                />
-                {search.q ? (
-                  <InputGroupAddon align="inline-end">
-                    <Button
-                      variant="ghost"
-                      size="icon-xs"
-                      aria-label="Borrar búsqueda"
-                      onClick={() => refine({ q: "" })}
-                    >
-                      <XIcon />
-                    </Button>
-                  </InputGroupAddon>
-                ) : null}
-              </InputGroup>
-            </Field>
-          </div>
-          <Popover>
-            <PopoverTrigger render={<Button variant="outline" aria-label="Filtros" />}>
-              <SlidersHorizontalIcon data-icon="inline-start" />
-              Filtros{filtersActive ? " · activos" : ""}
-            </PopoverTrigger>
-            <PopoverContent
-              align="start"
-              className="max-h-[min(32rem,var(--available-height))] w-80 max-w-[calc(100vw-2rem)] gap-4 overflow-y-auto p-4"
+              ) : null}
+            </InputGroup>
+          </Field>
+        </div>
+        <Popover>
+          <PopoverTrigger
+            render={
+              <Button
+                variant="outline"
+                aria-label="Filtros"
+                aria-describedby={filterCount ? `${filtersId}-count` : undefined}
+              />
+            }
+          >
+            <SlidersHorizontalIcon data-icon="inline-start" />
+            Filtros
+            {filterCount ? (
+              <Badge variant="secondary" className="min-w-5 rounded-full px-1.5" aria-hidden="true">
+                {filterCount}
+              </Badge>
+            ) : null}
+          </PopoverTrigger>
+          {filterCount ? (
+            <span id={`${filtersId}-count`} className="sr-only">
+              {filterCount}{" "}
+              {filterCount === 1 ? "grupo de filtros modificado" : "grupos de filtros modificados"}
+            </span>
+          ) : null}
+          <PopoverContent
+            align="start"
+            className="max-h-[min(32rem,var(--available-height))] w-80 max-w-[calc(100vw-2rem)] gap-4 overflow-y-auto p-4"
+          >
+            <PopoverTitle className="sr-only">Filtros de reservas</PopoverTitle>
+            <Button
+              variant="ghost"
+              size="sm"
+              className="self-end"
+              disabled={filterCount === 0}
+              onClick={() =>
+                refine({
+                  statuses: viewDefaults(search.view).statuses,
+                  balance: "all",
+                  assignment: "all",
+                })
+              }
             >
-              <PopoverTitle>Filtros de reservas</PopoverTitle>
-              <FieldGroup className="gap-4">
-                {search.view !== "in-house" ? (
-                  <FieldSet>
-                    <FieldLegend>Estados</FieldLegend>
-                    <FieldGroup className="gap-3">
-                      <Field orientation="horizontal">
-                        <Checkbox
-                          id={`${filtersId}-all`}
-                          checked={selectedStatuses.unrestricted}
-                          onCheckedChange={() =>
-                            refine({ statuses: new ReservationStatusSelection().toSearch() })
-                          }
-                        />
-                        <FieldLabel htmlFor={`${filtersId}-all`}>Todos los estados</FieldLabel>
-                      </Field>
-                      {reservationStatusValues.map((status) => (
-                        <Field key={status} orientation="horizontal">
+              <RotateCcwIcon data-icon="inline-start" />
+              Restablecer
+            </Button>
+            <FieldGroup className="gap-4">
+              {search.view !== "in-house" ? (
+                <FieldSet>
+                  <FieldLegend>Estados</FieldLegend>
+                  <FieldGroup className="gap-3">
+                    {reservationStatusValues.map((status) => {
+                      const checked = selectedStatuses.values.includes(status);
+                      const disabled = checked && selectedStatuses.values.length === 1;
+                      return (
+                        <Field
+                          key={status}
+                          orientation="horizontal"
+                          data-disabled={disabled || undefined}
+                        >
                           <Checkbox
                             id={`${filtersId}-${status}`}
-                            checked={selectedStatuses.values.includes(status)}
+                            checked={checked}
+                            disabled={disabled}
                             onCheckedChange={(checked) =>
                               refine({
                                 statuses: selectedStatuses.withStatus(status, checked).toSearch(),
@@ -369,92 +365,61 @@ export function Reservations({
                             {reservationStatusLabel(status)}
                           </FieldLabel>
                         </Field>
-                      ))}
-                    </FieldGroup>
-                  </FieldSet>
-                ) : null}
+                      );
+                    })}
+                  </FieldGroup>
+                </FieldSet>
+              ) : null}
+              <ChoiceField
+                label="Saldo"
+                value={search.balance}
+                options={balanceOptions}
+                onChange={(value) => refine({ balance: value as ReservationsSearch["balance"] })}
+              />
+              <ChoiceField
+                label="Asignación"
+                value={search.assignment}
+                options={assignmentOptions}
+                onChange={(value) =>
+                  refine({ assignment: value as ReservationsSearch["assignment"] })
+                }
+              />
+            </FieldGroup>
+          </PopoverContent>
+        </Popover>
+        <div className="ml-auto">
+          <Popover>
+            <PopoverTrigger
+              render={<Button variant="ghost" size="sm" aria-label="Ordenar reservas" />}
+            >
+              <ArrowUpDownIcon data-icon="inline-start" />
+              {sortOptions.find((option) => option.value === search.sort)!.label} ·{" "}
+              {search.direction === "asc" ? "↑" : "↓"}
+            </PopoverTrigger>
+            <PopoverContent align="end" className="gap-4 p-4">
+              <PopoverTitle>Orden de las reservas</PopoverTitle>
+              <FieldGroup className="gap-3">
                 <ChoiceField
-                  label="Saldo"
-                  value={search.balance}
-                  options={balanceOptions}
-                  onChange={(value) => refine({ balance: value as ReservationsSearch["balance"] })}
+                  label="Ordenar por"
+                  value={search.sort}
+                  options={sortOptions}
+                  onChange={(sort) => refine({ sort: sort as ReservationSort })}
                 />
                 <ChoiceField
-                  label="Asignación"
-                  value={search.assignment}
-                  options={assignmentOptions}
-                  onChange={(value) =>
-                    refine({ assignment: value as ReservationsSearch["assignment"] })
+                  label="Dirección"
+                  value={search.direction}
+                  options={[
+                    { value: "asc", label: "Ascendente" },
+                    { value: "desc", label: "Descendente" },
+                  ]}
+                  onChange={(direction) =>
+                    refine({ direction: direction as ReservationsSearch["direction"] })
                   }
                 />
               </FieldGroup>
             </PopoverContent>
           </Popover>
-          <div className="ml-auto">
-            <Popover>
-              <PopoverTrigger
-                render={<Button variant="ghost" size="sm" aria-label="Ordenar reservas" />}
-              >
-                <ArrowUpDownIcon data-icon="inline-start" />
-                {sortOptions.find((option) => option.value === search.sort)!.label} ·{" "}
-                {search.direction === "asc" ? "↑" : "↓"}
-              </PopoverTrigger>
-              <PopoverContent align="end" className="gap-4 p-4">
-                <PopoverTitle>Orden de las reservas</PopoverTitle>
-                <FieldGroup className="gap-3">
-                  <ChoiceField
-                    label="Ordenar por"
-                    value={search.sort}
-                    options={sortOptions}
-                    onChange={(sort) => refine({ sort: sort as ReservationSort })}
-                  />
-                  <ChoiceField
-                    label="Dirección"
-                    value={search.direction}
-                    options={[
-                      { value: "asc", label: "Ascendente" },
-                      { value: "desc", label: "Descendente" },
-                    ]}
-                    onChange={(direction) =>
-                      refine({ direction: direction as ReservationsSearch["direction"] })
-                    }
-                  />
-                </FieldGroup>
-              </PopoverContent>
-            </Popover>
-          </div>
         </div>
-        {chips.length ? (
-          <div className="flex flex-wrap items-center gap-1.5" aria-label="Filtros activos">
-            {chips.map((chip) => (
-              <Badge key={chip.label} variant="secondary">
-                {chip.label}
-                <Button
-                  variant="ghost"
-                  size="icon-xs"
-                  aria-label={`Quitar filtro: ${chip.label}`}
-                  onClick={chip.remove}
-                >
-                  <XIcon />
-                </Button>
-              </Badge>
-            ))}
-            <Button
-              variant="ghost"
-              size="xs"
-              onClick={() =>
-                refine({
-                  q: "",
-                  balance: "all",
-                  assignment: "all",
-                  statuses: viewDefaults(search.view).statuses,
-                })
-              }
-            >
-              Limpiar filtros
-            </Button>
-          </div>
-        ) : null}
       </div>
       {query.isPending ? (
         <Skeleton className="h-64 w-full" />
@@ -487,10 +452,6 @@ export function Reservations({
               >
                 <TableHeader>
                   <TableRow>
-                    <TableHead scope="col" className="w-10">
-                      <span aria-hidden="true">#</span>
-                      <span className="sr-only">Número de fila</span>
-                    </TableHead>
                     {sortHeader("guestName", "Contacto")}
                     <TableHead scope="col">Estado</TableHead>
                     <TableHead scope="col">Habitaciones</TableHead>
@@ -504,7 +465,7 @@ export function Reservations({
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {rows.map((row, index) => (
+                  {rows.map((row) => (
                     <TableRow
                       key={row.id}
                       className="cursor-pointer focus-visible:outline-2 focus-visible:outline-ring"
@@ -518,12 +479,11 @@ export function Reservations({
                         }
                       }}
                     >
-                      <TableCell className="text-muted-foreground">{offset + index + 1}</TableCell>
                       <TableCell>
                         <div className="flex flex-col gap-0.5">
                           <span className="font-medium">{row.guestName}</span>
-                          <span className="font-mono text-[10px] text-muted-foreground">
-                            {row.code}
+                          <span className="text-xs text-muted-foreground">
+                            {row.guest.phone || "Sin teléfono"}
                           </span>
                         </div>
                       </TableCell>

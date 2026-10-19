@@ -137,6 +137,12 @@ function button(label: string) {
 async function click(label: string) {
   await React.act(async () => button(label).click());
 }
+function assertFilterCount(expected: number) {
+  assert.equal(
+    button("Filtros").querySelector('[data-slot="badge"]')?.textContent.trim() ?? "0",
+    String(expected),
+  );
+}
 function params() {
   assert.ok(requests.length);
   return requests.at(-1)!.searchParams;
@@ -184,6 +190,7 @@ it("opens property-today Arrivals and switches all four server scopes without lo
   assert.equal(params().get("statuses"), "confirmed,checked_in,checked_out");
   assert.equal(params().get("sort"), "guestName");
   assert.equal(params().get("direction"), "asc");
+  assertFilterCount(0);
   await click("Día siguiente");
   await until(() => params().get("checkIn") === "2026-11-01");
   await click("Salidas");
@@ -195,9 +202,11 @@ it("opens property-today Arrivals and switches all four server scopes without lo
   assert.equal(params().has("checkIn"), false);
   assert.equal(params().has("checkOut"), false);
   assert.equal(params().has("statuses"), false);
+  assertFilterCount(0);
   await click("En casa");
   await until(() => params().get("statuses") === "checked_in");
   assert.equal(params().get("sort"), "checkOut");
+  assertFilterCount(0);
   assert.equal(params().has("checkIn"), false);
   await click("Llegadas");
   await until(() => params().get("checkIn") === "2026-11-01");
@@ -205,7 +214,7 @@ it("opens property-today Arrivals and switches all four server scopes without lo
   await until(() => params().get("checkIn") === "2026-10-31");
 });
 
-it("combines search and optional filters, removes chips, and clears restrictions without changing operating context", async () => {
+it("counts changed filter groups instead of chips and restores defaults without clearing search or context", async () => {
   respond = (url) =>
     Response.json({
       rows: [ana],
@@ -220,30 +229,81 @@ it("combines search and optional filters, removes chips, and clears restrictions
   await fill("Contacto o código", "Ana ANA0001");
   await until(() => params().get("q") === "Ana ANA0001");
   assert.equal(params().get("offset"), "0");
+  assertFilterCount(0);
   await click("Filtros");
+  assert.equal(button("Restablecer").hasAttribute("disabled"), true);
   await choose("Saldo", "Con crédito");
   await until(() => params().get("balance") === "credit");
+  assertFilterCount(1);
   await choose("Asignación", "Con habitaciones sin asignar");
   await until(() => params().get("assignment") === "unassigned");
+  assertFilterCount(2);
   await click("Cancelada");
-  await until(() => params().get("statuses") === "confirmed,checked_in,checked_out,cancelled");
+  await until(() => !params().has("statuses"));
+  assertFilterCount(3);
   await click("Check-out");
   await until(() => params().get("statuses") === "confirmed,checked_in,cancelled");
-  await click("Quitar filtro: Confirmada");
+  await click("Confirmada");
   await until(() => params().get("statuses") === "checked_in,cancelled");
-  assert.ok(button("Quitar filtro: Con crédito"));
-  await click("Quitar filtro: Con crédito");
+  assertFilterCount(3);
+  await choose("Saldo", "Cualquier saldo");
   await until(() => !params().has("balance"));
   assert.equal(params().get("assignment"), "unassigned");
-  await click("Limpiar filtros");
-  await until(() => !params().has("q") && !params().has("assignment"));
+  assertFilterCount(2);
+  assert.equal(container.querySelector('[aria-label="Filtros activos"]'), null);
+  await click("Restablecer");
+  await until(() => !params().has("assignment"));
+  assert.equal(params().get("q"), "Ana ANA0001");
+  assertFilterCount(0);
+  assert.equal(button("Restablecer").hasAttribute("disabled"), true);
+  assert.ok(window.document.querySelector('[role="dialog"]'));
   assert.equal(params().get("statuses"), "confirmed,checked_in,checked_out");
   assert.equal(params().get("checkOut"), "2026-12-31");
   assert.equal(params().get("sort"), "balance");
   assert.equal(params().get("direction"), "desc");
   assert.equal(params().get("limit"), "25");
   assert.equal(params().get("offset"), "0");
+  await click("Filtros");
+  await click("Borrar búsqueda");
+  await until(() => !params().has("q"));
 });
+
+it.each([
+  ["arrivals", "confirmed,checked_in,checked_out"],
+  ["departures", "confirmed,checked_in,checked_out"],
+  ["in-house", "checked_in"],
+  ["all", null],
+])(
+  "resets %s filters from a later page while preserving the surrounding context",
+  async (view, statuses) => {
+    respond = (url) =>
+      Response.json({
+        rows: [ana],
+        total: 126,
+        limit: 25,
+        offset: Number(url.searchParams.get("offset")),
+      });
+    await render(
+      `/reservations?view=${view}&day=2026-12-31&q=Ana&statuses=cancelled&balance=credit&assignment=unassigned&sort=balance&direction=asc&size=25&page=2`,
+    );
+    assert.equal(params().get("offset"), "50");
+    assertFilterCount(view === "in-house" ? 2 : 3);
+    await click("Filtros");
+    await click("Restablecer");
+    await until(() => params().get("offset") === "0");
+    assert.equal(params().get("statuses"), statuses);
+    assert.equal(params().has("balance"), false);
+    assert.equal(params().has("assignment"), false);
+    assert.equal(params().get("q"), "Ana");
+    assert.equal(params().get("sort"), "balance");
+    assert.equal(params().get("direction"), "asc");
+    assert.equal(params().get("limit"), "25");
+    assert.equal(router.state.location.search.view, view);
+    assert.equal(router.state.location.search.day, "2026-12-31");
+    assertFilterCount(0);
+    assert.equal(button("Restablecer").hasAttribute("disabled"), true);
+  },
+);
 
 it.each([
   { remaining: 50, range: "1–50 de 50 reservas", offset: "0", page: 0 },
@@ -408,6 +468,7 @@ it("identifies the booking contact, signed balances, and every assigned or unass
       rows: [
         {
           ...ana,
+          guest: { ...ana.guest, phone: "+51 987 654 321" },
           rooms: [
             ana.rooms[0],
             { ...ana.rooms[0], id: "unassigned-1", roomId: null, roomNumber: null },
@@ -443,6 +504,10 @@ it("identifies the booking contact, signed balances, and every assigned or unass
   assert.ok(headers.includes("Saldo"));
   assert.equal(headers.includes("Huésped"), false);
   const rows = Array.from(container.querySelectorAll("tbody tr"));
+  const contact = rows[0]!.querySelector("td:first-child")!;
+  assert.equal(contact.querySelector("span:first-child")!.textContent, "Ana Pérez");
+  assert.equal(contact.querySelector("span:last-child")!.textContent, "+51 987 654 321");
+  assert.equal(rows[1]!.querySelector("td:first-child")!.textContent, "Bea SaldadaSin teléfono");
   assert.match(rows[0]!.textContent, /101 · 2 sin asignar/);
   assert.match(rows[0]!.querySelector("td:last-child")!.textContent, /200Saldo pendiente/);
   assert.match(rows[1]!.textContent, /1 sin asignar/);
@@ -506,7 +571,7 @@ it("restores legacy arrival links and explicitly unrestricted daily statuses acr
   await until(() => params().get("checkIn") === "2026-11-01");
 });
 
-it("includes cancellations after selecting unrestricted daily statuses and restores defaults when its chip is removed", async () => {
+it("includes cancellations with all four statuses checked and restores daily defaults after a shared URL reload", async () => {
   const cancelled = {
     ...ana,
     id: "cancelled",
@@ -520,31 +585,40 @@ it("includes cancellations after selecting unrestricted daily statuses and resto
   await render("/reservations?day=2026-10-30");
   assert.equal(container.querySelector("tbody")!.textContent.includes("Cancelled contact"), false);
   await click("Filtros");
-  await click("Todos los estados");
+  await click("Cancelada");
   await until(() => container.querySelector("tbody")!.textContent.includes("Cancelled contact"));
   assert.equal(params().has("statuses"), false);
   const link = router.state.location.href;
+  await click("Filtros");
   vi.mocked(Date.now).mockReturnValue(new Date("2026-11-01T05:01:00Z").getTime());
   await render(link);
   await until(() => container.querySelector("tbody")!.textContent.includes("Cancelled contact"));
   assert.equal(params().get("checkIn"), "2026-10-30");
-  await click("Quitar filtro: Todos los estados");
+  await click("Filtros");
+  for (const status of ["Confirmada", "Check-in", "Check-out", "Cancelada"]) {
+    assert.equal((button(status) as HTMLInputElement).checked, true);
+  }
+  assertFilterCount(1);
+  await click("Restablecer");
   await until(() => params().get("statuses") === "confirmed,checked_in,checked_out");
   await until(() => !container.querySelector("tbody")!.textContent.includes("Cancelled contact"));
   assert.equal(params().get("checkIn"), "2026-10-30");
 });
 
-it("treats removing the last status as unrestricted and restores selected statuses from a shared URL", async () => {
+it("keeps the last status checked and restores partial and unrestricted selections from shared URLs", async () => {
   await render("/reservations?view=all&statuses=cancelled,confirmed,confirmed,bogus");
   assert.equal(params().get("statuses"), "confirmed,cancelled");
-  await click("Quitar filtro: Confirmada");
-  await until(() => params().get("statuses") === "cancelled");
   await click("Filtros");
+  await click("Confirmada");
+  await until(() => params().get("statuses") === "cancelled");
+  assert.equal(button("Cancelada").hasAttribute("disabled"), true);
   await click("Cancelada");
-  await until(() => !params().has("statuses"));
-  assert.equal((button("Todos los estados") as HTMLInputElement).checked, true);
-  assert.equal(new URLSearchParams(router.state.location.searchStr).get("statuses"), "all");
+  assert.equal(params().get("statuses"), "cancelled");
+  assert.equal((button("Cancelada") as HTMLInputElement).checked, true);
   await click("Check-in");
+  await until(() => params().get("statuses") === "checked_in,cancelled");
+  assert.equal(button("Cancelada").hasAttribute("disabled"), false);
+  await click("Cancelada");
   await until(() => params().get("statuses") === "checked_in");
   await click("Confirmada");
   await until(() => params().get("statuses") === "confirmed,checked_in");
@@ -553,11 +627,17 @@ it("treats removing the last status as unrestricted and restores selected status
     new URLSearchParams(router.state.location.searchStr).get("statuses"),
     "confirmed,checked_in",
   );
+  await click("Filtros");
   await render(link);
   assert.equal(params().get("statuses"), "confirmed,checked_in");
-  await click("Limpiar filtros");
+  await click("Filtros");
+  await click("Restablecer");
   await until(() => !params().has("statuses"));
   assert.equal(router.state.location.search.view, "all");
+  assertFilterCount(0);
+  for (const status of ["Confirmada", "Check-in", "Check-out", "Cancelada"]) {
+    assert.equal((button(status) as HTMLInputElement).checked, true);
+  }
 });
 
 it("keeps overdue checked-in stays in-house and hides the conflicting status selector", async () => {
@@ -778,10 +858,16 @@ it("searches historical cancelled reservations across every date and retains vis
   assert.equal(params().get("q"), "Historic PAST0001");
   assert.equal(params().get("balance"), "outstanding");
   assert.equal(params().get("assignment"), "assigned");
-  assert.ok(button("Quitar filtro: Saldo pendiente"));
-  assert.ok(button("Quitar filtro: Todas asignadas"));
-  await click("Quitar filtro: Búsqueda: Historic PAST0001");
+  assertFilterCount(2);
+  await click("Filtros");
+  await click("Borrar búsqueda");
   await until(() => !params().has("q"));
-  await click("Quitar filtro: Todas asignadas");
+  assertFilterCount(2);
+  await click("Filtros");
+  assert.match(button("Asignación").textContent, /Todas asignadas/);
+  assert.match(button("Saldo").textContent, /Saldo pendiente/);
+  await choose("Asignación", "Cualquier asignación");
   await until(() => !params().has("assignment"));
+  assert.equal(params().get("balance"), "outstanding");
+  assertFilterCount(1);
 });
