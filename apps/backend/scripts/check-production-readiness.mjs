@@ -1,7 +1,7 @@
 import { spawnSync } from "node:child_process";
-import { lstatSync, readdirSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import { productionTarget, readMigrationManifest } from "./production-migrations.mjs";
 
 // This guard deliberately has no migration, bootstrap, or repair path.
 const repo = fileURLToPath(new URL("../../../", import.meta.url));
@@ -9,36 +9,9 @@ try {
   const { unstable_readConfig: readConfig } = await import("wrangler");
   const backend = resolve(repo, "apps/backend");
   const config = readConfig({ config: resolve(backend, "wrangler.jsonc") }, { hideWarnings: true });
-  const database = config.d1_databases.find((item) => item.binding === "DB");
-  if (
-    config.name !== "pms-api" ||
-    database?.database_name !== "pms-production" ||
-    !database.database_id ||
-    (database.migrations_table && database.migrations_table !== "d1_migrations") ||
-    database.migrations_pattern
-  )
-    throw new Error("Unexpected production database configuration");
+  const database = productionTarget(config);
   const migrations = resolve(backend, database.migrations_dir ?? "migrations");
-  const journal = JSON.parse(readFileSync(resolve(migrations, "meta/_journal.json"), "utf8"));
-  const names = journal.entries.map((entry, index) => {
-    if (entry.idx !== index || !/^\d{4}_[a-zA-Z0-9_]+$/.test(entry.tag)) {
-      throw new Error("Invalid registered migration history");
-    }
-    return `${entry.tag}.sql`;
-  });
-  const sqlFiles = readdirSync(migrations).filter((name) => name.endsWith(".sql"));
-  if (
-    !names.length ||
-    names.length !== sqlFiles.length ||
-    names.some(
-      (name, index) =>
-        !sqlFiles.includes(name) ||
-        (index > 0 && name <= names[index - 1]) ||
-        !lstatSync(resolve(migrations, name)).isFile() ||
-        !readFileSync(resolve(migrations, name), "utf8").trim(),
-    )
-  )
-    throw new Error("Migration SQL and registered history disagree");
+  const { names } = readMigrationManifest(migrations);
   if (!process.env.CLOUDFLARE_ACCOUNT_ID || !process.env.CLOUDFLARE_API_TOKEN) {
     throw new Error("Cloudflare readiness credentials are missing");
   }
