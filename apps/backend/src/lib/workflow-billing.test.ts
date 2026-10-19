@@ -7,11 +7,11 @@ describe("reservation bill", () => {
     expect(bill(15000, payments, 0).creditCents).toBe(5000);
     expect(bill(30000, payments, 0).balanceCents).toBe(10000);
   });
-  it("applies the full saved discount even when it exceeds room charges", () => {
+  it("caps the applied discount without erasing payment-derived credit", () => {
     expect(bill(8000, [{ amountCents: 30000 }], 10000)).toMatchObject({
-      totalCents: -2000,
-      discountCents: 10000,
-      creditCents: 32000,
+      totalCents: 0,
+      discountCents: 8000,
+      creditCents: 30000,
     });
   });
 });
