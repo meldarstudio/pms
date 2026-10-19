@@ -1,5 +1,4 @@
 import { useState, type ComponentProps } from "react";
-import { startOfDay } from "date-fns";
 import { format } from "@/lib/dates";
 import { CalendarIcon } from "lucide-react";
 
@@ -66,7 +65,8 @@ export function DateField({
             disabled={disabled}
             onSelect={(date) => {
               if (!date) return;
-              onChange(startOfDay(date));
+              // The adapter already returns midnight; keep its date-only carrier intact.
+              onChange(date);
               setOpen(false);
               onBlur?.();
             }}

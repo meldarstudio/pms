@@ -1,28 +1,22 @@
 import assert from "node:assert/strict";
-import { fileURLToPath } from "node:url";
 import { afterAll, afterEach, beforeAll, beforeEach, it, vi } from "vite-plus/test";
-import { Window, type HTMLDivElement, type HTMLInputElement, type HTMLElement } from "happy-dom";
-import { createServer, type ViteDevServer } from "vite";
-import type { Root } from "react-dom/client";
-import type { QueryClient } from "@tanstack/react-query";
+import type { HTMLInputElement, HTMLElement } from "happy-dom";
 import type { ReservationDetail } from "../src/lib/api.ts";
+import { createBrowserTest, type BrowserTest, type BrowserPage } from "./browser.ts";
 
-let window: Window;
-let server: ViteDevServer;
-let React: typeof import("react");
-let createRoot: (typeof import("react-dom/client"))["createRoot"];
-let query: typeof import("@tanstack/react-query");
-let routing: typeof import("@tanstack/react-router");
+let browser: BrowserTest;
+let page: BrowserPage;
+let window: BrowserTest["window"];
+let React: BrowserTest["React"];
 let routes: typeof import("../src/router.tsx");
 let calendar: typeof import("../src/lib/property-calendar.ts");
 let router: typeof routes.router;
-let root: Root;
-let container: HTMLDivElement;
-let client: QueryClient;
+let container: BrowserPage["container"];
+let client: BrowserPage["client"];
+let until: BrowserPage["until"];
 let requests: URL[];
 let respond: (url: URL) => Response | Promise<Response>;
 let respondToDetail: (url: URL, init?: RequestInit) => Response | Promise<Response>;
-const originalFetch = globalThis.fetch;
 const originalTimeZone = process.env.TZ;
 
 const ana: ReservationDetail & { guestName: string } = {
@@ -67,50 +61,9 @@ const ana: ReservationDetail & { guestName: string } = {
 
 beforeAll(async () => {
   process.env.TZ = "Pacific/Kiritimati";
-  window = new Window({ url: "http://localhost:5173" });
-  for (const name of [
-    "window",
-    "self",
-    "document",
-    "navigator",
-    "HTMLElement",
-    "HTMLInputElement",
-    "Element",
-    "SVGElement",
-    "HTMLButtonElement",
-    "HTMLSelectElement",
-    "Node",
-    "NodeFilter",
-    "Text",
-    "Document",
-    "Event",
-    "KeyboardEvent",
-    "MouseEvent",
-    "PointerEvent",
-    "MutationObserver",
-    "ResizeObserver",
-    "getComputedStyle",
-    "requestAnimationFrame",
-    "cancelAnimationFrame",
-    "scrollTo",
-  ]) {
-    const value = name === "window" ? window : Reflect.get(window, name);
-    Object.defineProperty(globalThis, name, {
-      configurable: true,
-      value: typeof value === "function" && /^[a-z]/.test(name) ? value.bind(window) : value,
-    });
-  }
-  Reflect.set(globalThis, "IS_REACT_ACT_ENVIRONMENT", true);
-  React = await import("react");
-  ({ createRoot } = await import("react-dom/client"));
-  query = await import("@tanstack/react-query");
-  routing = await import("@tanstack/react-router");
-  server = await createServer({
-    root: fileURLToPath(new URL("../", import.meta.url)),
-    configFile: fileURLToPath(new URL("../vite.config.ts", import.meta.url)),
-    server: { middlewareMode: true, hmr: false, ws: false, watch: null },
-    mode: "development",
-  });
+  browser = await createBrowserTest();
+  ({ window, React } = browser);
+  const { server } = browser;
   routes = (await server.ssrLoadModule("/src/router.tsx")) as typeof routes;
   calendar = (await server.ssrLoadModule("/src/lib/property-calendar.ts")) as typeof calendar;
 });
@@ -118,15 +71,8 @@ beforeAll(async () => {
 beforeEach(() => {
   calendar.configurePropertyCalendar("America/Lima");
   vi.spyOn(Date, "now").mockReturnValue(new Date("2026-11-01T01:00:00Z").getTime());
-  container = window.document.createElement("div");
-  window.document.body.append(container);
-  root = createRoot(container as unknown as Parameters<typeof createRoot>[0]);
-  client = new query.QueryClient({
-    defaultOptions: {
-      queries: { retry: false, gcTime: Infinity },
-      mutations: { gcTime: Infinity },
-    },
-  });
+  page = browser.createPage();
+  ({ container, client, until } = page);
   requests = [];
   respondToDetail = () => Response.json(ana);
   respond = (url) =>
@@ -158,43 +104,21 @@ beforeEach(() => {
 });
 
 afterEach(async () => {
-  await React.act(async () => root.unmount());
-  client.clear();
-  container.remove();
-  globalThis.fetch = originalFetch;
+  await page.cleanup();
   vi.restoreAllMocks();
 });
 afterAll(async () => {
-  await server?.close();
-  await window?.happyDOM.close();
+  await browser?.close();
   if (originalTimeZone === undefined) delete process.env.TZ;
   else process.env.TZ = originalTimeZone;
 });
 
-async function until(condition: () => boolean, message = "Expected page state") {
-  for (let i = 0; i < 100; i++) {
-    if (condition()) return;
-    await React.act(async () => {
-      await new Promise((resolve) => setTimeout(resolve, 10));
-    });
-  }
-  assert.ok(condition(), `${message}: ${container.textContent}`);
-}
 async function render(path = "/reservations", waitForRows = true) {
-  router = routing.createRouter({
+  router = browser.routing.createRouter({
     routeTree: routes.router.routeTree,
-    history: routing.createMemoryHistory({ initialEntries: [path] }),
+    history: browser.routing.createMemoryHistory({ initialEntries: [path] }),
   });
-  await React.act(async () => {
-    await router.load();
-    root.render(
-      React.createElement(
-        query.QueryClientProvider,
-        { client },
-        React.createElement(routing.RouterProvider, { router }),
-      ),
-    );
-  });
+  await page.renderRouter(router);
   if (waitForRows) await until(() => container.textContent.includes("Ana Pérez"));
 }
 function button(label: string) {
@@ -573,6 +497,32 @@ it("includes cancellations after selecting unrestricted daily statuses and resto
   assert.equal(params().get("checkIn"), "2026-10-30");
 });
 
+it("treats removing the last status as unrestricted and restores selected statuses from a shared URL", async () => {
+  await render("/reservations?view=all&statuses=cancelled,confirmed,confirmed,bogus");
+  assert.equal(params().get("statuses"), "confirmed,cancelled");
+  await click("Quitar filtro: Confirmada");
+  await until(() => params().get("statuses") === "cancelled");
+  await click("Filtros");
+  await click("Cancelada");
+  await until(() => !params().has("statuses"));
+  assert.equal((button("Todos los estados") as HTMLInputElement).checked, true);
+  assert.equal(new URLSearchParams(router.state.location.searchStr).get("statuses"), "all");
+  await click("Check-in");
+  await until(() => params().get("statuses") === "checked_in");
+  await click("Confirmada");
+  await until(() => params().get("statuses") === "confirmed,checked_in");
+  const link = router.state.location.href;
+  assert.equal(
+    new URLSearchParams(router.state.location.searchStr).get("statuses"),
+    "confirmed,checked_in",
+  );
+  await render(link);
+  assert.equal(params().get("statuses"), "confirmed,checked_in");
+  await click("Limpiar filtros");
+  await until(() => !params().has("statuses"));
+  assert.equal(router.state.location.search.view, "all");
+});
+
 it("keeps overdue checked-in stays in-house and hides the conflicting status selector", async () => {
   respond = (url) =>
     Response.json({
@@ -621,6 +571,43 @@ it("picks a property calendar day, steps backward, and keeps an explicit date wh
   assert.equal(button("Día de operación").textContent.includes("30 oct 2026"), true);
   await click("Día anterior");
   await until(() => params().get("checkIn") === "2026-10-29");
+});
+
+it("preserves every business date when the browser timezone skips December 30, 2011", async () => {
+  process.env.TZ = "Pacific/Apia";
+  try {
+    await render("/reservations?day=2011-12-29");
+    await click("Día siguiente");
+    await until(() => params().get("checkIn") === "2011-12-30");
+    assert.equal(router.state.location.search.day, "2011-12-30");
+    assert.ok(button("Día de operación").textContent.includes("30 dic 2011"));
+    const link = router.state.location.href;
+    await render(link);
+    assert.equal(params().get("checkIn"), "2011-12-30");
+    await click("Día de operación");
+    const selected = window.document.querySelector<HTMLElement>(
+      'button[data-day="30/12/2011"][data-selected-single="true"]',
+    );
+    assert.ok(selected, "The property picker must retain the selected business day");
+    const previous = window.document.querySelector<HTMLElement>('button[data-day="29/12/2011"]');
+    assert.ok(previous);
+    await React.act(async () => previous.click());
+    await until(() => params().get("checkIn") === "2011-12-29");
+    await click("Día de operación");
+    const skipped = window.document.querySelector<HTMLElement>('button[data-day="30/12/2011"]');
+    assert.ok(skipped);
+    await React.act(async () => skipped.click());
+    await until(() => params().get("checkIn") === "2011-12-30");
+    assert.ok(button("Día de operación").textContent.includes("30 dic 2011"));
+    await click("Día siguiente");
+    await until(() => params().get("checkIn") === "2011-12-31");
+    await click("Día anterior");
+    await until(() => params().get("checkIn") === "2011-12-30");
+    await click("Día anterior");
+    await until(() => params().get("checkIn") === "2011-12-29");
+  } finally {
+    process.env.TZ = "Pacific/Kiritimati";
+  }
 });
 
 it("distinguishes loading and request failure from zero results and retries without losing filters", async () => {

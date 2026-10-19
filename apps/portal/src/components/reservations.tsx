@@ -1,5 +1,5 @@
 import { useDeferredValue, useEffect, useId, useState } from "react";
-import { addDays, format, parseISO } from "date-fns";
+import { format } from "date-fns";
 import { PlusIcon, SearchIcon } from "lucide-react";
 import { cn } from "cn";
 import { RoomBookingDialog, type BookingTarget } from "@/components/room-booking-dialog";
@@ -30,17 +30,21 @@ import {
 } from "@/components/ui/table";
 import { ChoiceField } from "@/components/workflow-fields";
 import { SetupRequired } from "@/components/setup-required";
-import { propertyToday } from "@/lib/property-calendar";
+import { dateOnlyCarrier, propertyToday } from "@/lib/property-calendar";
+import { addDateLabelDays } from "@/lib/dates";
 import { useMissingSetup, useReservationList } from "@/lib/queries";
 import { formatMoney } from "@/lib/money";
 import {
   occupantsLabel,
   reservationStatusLabel,
-  reservationStatusOptions,
   roomsLabel,
   stayDateLabel,
 } from "@/lib/reservation-list";
 import { viewDefaults, type ReservationsSearch, type ReservationView } from "@/lib/route-search";
+import {
+  ReservationStatusSelection,
+  reservationStatusValues,
+} from "@/lib/reservation-status-selection";
 
 export function Reservations({
   search,
@@ -57,9 +61,10 @@ export function Reservations({
   const [filtersOpen, setFiltersOpen] = useState(false);
   const [target, setTarget] = useState<BookingTarget | null>(null);
   const q = useDeferredValue(search.q);
+  const selectedStatuses = ReservationStatusSelection.parse(search.statuses);
   const query = useReservationList({
     q: q.trim() || undefined,
-    statuses: search.statuses === "all" ? undefined : search.statuses,
+    statuses: selectedStatuses.toQuery(),
     checkIn: search.view === "arrivals" ? search.day : undefined,
     checkOut: search.view === "departures" ? search.day : undefined,
     balance: search.balance === "all" ? undefined : search.balance,
@@ -99,7 +104,6 @@ export function Reservations({
     onSearchChange({ ...next, page: 0 });
   }
 
-  const selectedStatuses = search.statuses === "all" ? [] : search.statuses.split(",");
   const balanceOptions = [
     { value: "all", label: "Cualquier saldo" },
     { value: "outstanding", label: "Saldo pendiente" },
@@ -114,15 +118,15 @@ export function Reservations({
   const chips: { label: string; remove: () => void }[] = [
     ...(search.q ? [{ label: `Búsqueda: ${search.q}`, remove: () => refine({ q: "" }) }] : []),
     ...(search.view !== "in-house"
-      ? selectedStatuses.map((status) => ({
+      ? selectedStatuses.values.map((status) => ({
           label: reservationStatusLabel(status),
           remove: () =>
             refine({
-              statuses: selectedStatuses.filter((value) => value !== status).join(",") || "all",
+              statuses: selectedStatuses.withStatus(status, false).toSearch(),
             }),
         }))
       : []),
-    ...(search.statuses === "all" && search.view !== "all"
+    ...(selectedStatuses.unrestricted && search.view !== "all"
       ? [
           {
             label: "Todos los estados",
@@ -171,7 +175,7 @@ export function Reservations({
             <DateField
               id={arrivalId}
               label="Día de operación"
-              value={parseISO(search.day)}
+              value={dateOnlyCarrier(search.day, "UTC")}
               onChange={(date) =>
                 onSearchChange({
                   day: format(date, "yyyy-MM-dd"),
@@ -184,7 +188,7 @@ export function Reservations({
                 variant="outline"
                 onClick={() =>
                   onSearchChange({
-                    day: format(addDays(parseISO(search.day), -1), "yyyy-MM-dd"),
+                    day: addDateLabelDays(search.day, -1),
                     page: 0,
                   })
                 }
@@ -201,7 +205,7 @@ export function Reservations({
                 variant="outline"
                 onClick={() =>
                   onSearchChange({
-                    day: format(addDays(parseISO(search.day), 1), "yyyy-MM-dd"),
+                    day: addDateLabelDays(search.day, 1),
                     page: 0,
                   })
                 }
@@ -243,33 +247,29 @@ export function Reservations({
                   <Field orientation="horizontal">
                     <Checkbox
                       id={`${filtersId}-all`}
-                      checked={search.statuses === "all"}
-                      onCheckedChange={() => refine({ statuses: "all" })}
+                      checked={selectedStatuses.unrestricted}
+                      onCheckedChange={() =>
+                        refine({ statuses: new ReservationStatusSelection().toSearch() })
+                      }
                     />
                     <FieldLabel htmlFor={`${filtersId}-all`}>Todos los estados</FieldLabel>
                   </Field>
-                  {reservationStatusOptions
-                    .filter((option) => option.value !== "all")
-                    .map((option) => (
-                      <Field key={option.value} orientation="horizontal">
-                        <Checkbox
-                          id={`${filtersId}-${option.value}`}
-                          checked={selectedStatuses.includes(option.value)}
-                          onCheckedChange={(checked) =>
-                            refine({
-                              statuses:
-                                (checked
-                                  ? [...selectedStatuses, option.value]
-                                  : selectedStatuses.filter((value) => value !== option.value)
-                                ).join(",") || "all",
-                            })
-                          }
-                        />
-                        <FieldLabel htmlFor={`${filtersId}-${option.value}`}>
-                          {option.label}
-                        </FieldLabel>
-                      </Field>
-                    ))}
+                  {reservationStatusValues.map((status) => (
+                    <Field key={status} orientation="horizontal">
+                      <Checkbox
+                        id={`${filtersId}-${status}`}
+                        checked={selectedStatuses.values.includes(status)}
+                        onCheckedChange={(checked) =>
+                          refine({
+                            statuses: selectedStatuses.withStatus(status, checked).toSearch(),
+                          })
+                        }
+                      />
+                      <FieldLabel htmlFor={`${filtersId}-${status}`}>
+                        {reservationStatusLabel(status)}
+                      </FieldLabel>
+                    </Field>
+                  ))}
                 </FieldGroup>
               </FieldSet>
             ) : null}

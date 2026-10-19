@@ -1,15 +1,12 @@
-import { format, isValid, parse } from "date-fns";
 import { propertyToday } from "./property-calendar.ts";
+import {
+  ReservationStatusSelection,
+  type SerializedReservationStatuses,
+} from "./reservation-status-selection.ts";
+export { reservationStatusValues, type ReservationStatus } from "./reservation-status-selection.ts";
 
 export type CalendarSearch = { from: string; span: 7 | 14 };
 export type InventorySearch = { from: string; span: 7 | 14 };
-export const reservationStatusValues = [
-  "confirmed",
-  "checked_in",
-  "checked_out",
-  "cancelled",
-] as const;
-export type ReservationStatus = (typeof reservationStatusValues)[number];
 export const reservationViews = ["all", "arrivals", "departures", "in-house"] as const;
 export type ReservationView = (typeof reservationViews)[number];
 export type ReservationSort = "checkIn" | "checkOut" | "guestName" | "balance";
@@ -17,7 +14,7 @@ export type ReservationsSearch = {
   view: ReservationView;
   day: string;
   q: string;
-  statuses: string;
+  statuses: SerializedReservationStatuses;
   balance: "all" | "outstanding" | "settled" | "credit";
   assignment: "all" | "assigned" | "unassigned";
   sort: ReservationSort;
@@ -27,9 +24,9 @@ export type ReservationsSearch = {
 };
 
 export function validDay(value: unknown): string | undefined {
-  if (typeof value !== "string") return undefined;
-  const date = parse(value, "yyyy-MM-dd", new Date());
-  if (!isValid(date) || format(date, "yyyy-MM-dd") !== value) {
+  if (typeof value !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return undefined;
+  const date = new Date(`${value}T00:00:00Z`);
+  if (Number.isNaN(date.getTime()) || date.toISOString().slice(0, 10) !== value) {
     return undefined;
   }
   return value;
@@ -55,12 +52,13 @@ export function inventorySearch(search: Record<string, unknown>): InventorySearc
 
 export function viewDefaults(view: ReservationView) {
   return {
-    statuses:
+    statuses: new ReservationStatusSelection(
       view === "in-house"
-        ? "checked_in"
+        ? ["checked_in"]
         : view === "all"
-          ? "all"
-          : "confirmed,checked_in,checked_out",
+          ? []
+          : ["confirmed", "checked_in", "checked_out"],
+    ).toSearch(),
     sort: (view === "all"
       ? "checkIn"
       : view === "in-house"
@@ -78,19 +76,16 @@ export function reservationsSearch(search: Record<string, unknown>): Reservation
   const page = Number(search.page);
   const view = choice(search.view, reservationViews, "arrivals");
   const defaults = viewDefaults(view);
-  const rawStatuses = search.statuses ?? search.status;
-  const selected = typeof rawStatuses === "string" ? rawStatuses.split(",") : [];
-  const statuses =
-    rawStatuses === "all" || rawStatuses === ""
-      ? "all"
-      : reservationStatusValues.filter((status) => selected.includes(status)).join(",") ||
-        defaults.statuses;
+  const statuses = ReservationStatusSelection.parse(
+    search.statuses ?? search.status,
+    ReservationStatusSelection.parse(defaults.statuses),
+  );
   const size = Number(search.size);
   return {
     view,
     day: validDay(search.day) ?? validDay(search.checkIn) ?? propertyToday(),
     q: typeof search.q === "string" ? search.q : "",
-    statuses: view === "in-house" ? "checked_in" : statuses,
+    statuses: view === "in-house" ? defaults.statuses : statuses.toSearch(),
     balance: choice(search.balance, ["all", "outstanding", "settled", "credit"], "all"),
     assignment: choice(search.assignment, ["all", "assigned", "unassigned"], "all"),
     sort: choice(search.sort, ["checkIn", "checkOut", "guestName", "balance"], defaults.sort),
