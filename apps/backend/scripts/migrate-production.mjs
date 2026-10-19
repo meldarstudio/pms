@@ -7,7 +7,6 @@ import {
   mkdirSync,
   mkdtempSync,
   openSync,
-  readdirSync,
   readFileSync,
   rmSync,
   unlinkSync,
@@ -17,6 +16,7 @@ import { homedir, hostname, tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { createInterface } from "node:readline/promises";
 import { fileURLToPath } from "node:url";
+import { productionTarget, readMigrationManifest } from "./production-migrations.mjs";
 
 const backendDir = fileURLToPath(new URL("..", import.meta.url));
 const configPath = join(backendDir, "wrangler.jsonc");
@@ -151,32 +151,18 @@ async function readHistory(snapshotConfig) {
 }
 
 function readPlan(migrationsDir) {
-  const journalText = readFileSync(join(migrationsDir, "meta/_journal.json"), "utf8");
-  const journal = JSON.parse(journalText);
-  const names = journal.entries.map((entry, index) => {
-    if (entry.idx !== index || !/^\d{4}_[a-zA-Z0-9_]+$/.test(entry.tag)) {
-      throw new Error("Invalid migration journal; review it before migrating");
-    }
-    return `${entry.tag}.sql`;
-  });
-  const sqlFiles = readdirSync(migrationsDir).filter((name) => name.endsWith(".sql"));
-  if (
-    !names.length ||
-    names.length !== sqlFiles.length ||
-    names.some((name) => !sqlFiles.includes(name))
-  ) {
-    throw new Error("Migration SQL and journal entries disagree");
-  }
-  const files = names.map((name, index) => {
-    const path = join(migrationsDir, name);
-    if (!lstatSync(path).isFile() || (index && name <= names[index - 1])) {
-      throw new Error("Migration files must be regular files in ascending journal order");
-    }
-    const sql = readFileSync(path, "utf8");
-    if (!sql.trim()) throw new Error(`Empty migration: ${name}`);
-    return { name, sql, sha256: createHash("sha256").update(sql).digest("hex") };
-  });
-  return { config: readFileSync(configPath, "utf8"), journalText, files, names };
+  const manifest = readMigrationManifest(migrationsDir);
+  const files = manifest.files.map(({ name, sql }) => ({
+    name,
+    sql,
+    sha256: createHash("sha256").update(sql).digest("hex"),
+  }));
+  return {
+    config: readFileSync(configPath, "utf8"),
+    journalText: manifest.journalText,
+    files,
+    names: manifest.names,
+  };
 }
 
 function validateHistory(history, names) {
@@ -208,20 +194,7 @@ async function main() {
   process.env.WRANGLER_SEND_METRICS = "false";
   const { unstable_readConfig: readConfig } = await import("wrangler");
   const config = readConfig({ config: configPath }, { hideWarnings: true });
-  const databases = config.d1_databases.filter(
-    (database) => database.database_name === productionName,
-  );
-  const database = databases[0];
-  if (
-    config.name !== "pms-api" ||
-    databases.length !== 1 ||
-    database.binding !== "DB" ||
-    !/^[a-f0-9]{8}-(?:[a-f0-9]{4}-){3}[a-f0-9]{12}$/i.test(database.database_id ?? "") ||
-    (database.migrations_table && database.migrations_table !== "d1_migrations") ||
-    database.migrations_pattern
-  ) {
-    throw new Error("Unexpected production configuration; review the target before migrating");
-  }
+  const database = productionTarget(config);
   const migrationsDir = resolve(backendDir, database.migrations_dir ?? "migrations");
   const plan = readPlan(migrationsDir);
   mkdirSync(backupRoot, { recursive: true, mode: 0o700 });
