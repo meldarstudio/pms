@@ -25,7 +25,8 @@ let sessionCookie: string;
 function statement(sql: string, params: SQLInputValue[] = []) {
   const execute = () => {
     if (sqlite.prepare(sql).columns().length) {
-      return { success: true, results: sqlite.prepare(`SELECT * FROM (${sql})`).all(...params) };
+      // D1 batch results use column-name keys; duplicate join columns collapse.
+      return { success: true, results: sqlite.prepare(sql).all(...params) };
     }
     sqlite.prepare(sql).run(...params);
     return { success: true, results: [] };
@@ -1824,5 +1825,491 @@ describe("reservation list search", () => {
     );
     const rows = await listed();
     expect(rows.map((row) => row.id)).toEqual([...sameDay.map((row) => row.id), zoe.id]);
+  });
+});
+
+type ReservationPage = {
+  rows: Array<Detail & { guestName: string }>;
+  total: number;
+  limit: number;
+  offset: number;
+};
+
+async function paged(query = "") {
+  const response = await request(`/reservations?paginated=true${query ? `&${query}` : ""}`);
+  expect(response.status).toBe(200);
+  return response.json() as Promise<ReservationPage>;
+}
+
+async function billExamples() {
+  let complex = await create(2);
+  complex = await command(complex, [
+    roomEdit(complex),
+    { type: "set-discount", amountCents: 5000 },
+    pay(10000),
+    pay(15000),
+  ]);
+  let settled: Detail = await book("Bea Settled", {
+    checkIn: "2026-10-14",
+    checkOut: "2026-10-15",
+  });
+  settled = await command(settled, [
+    roomEdit(settled),
+    pay(10000),
+    { type: "set-status", status: "checked_out" },
+  ]);
+  const credit = await command(
+    await book("Cy Credit", { checkIn: "2026-10-16", checkOut: "2026-10-17" }),
+    [pay(12000)],
+  );
+  let cancelled: Detail = await book("Dee Cancelled", {
+    checkIn: "2026-10-18",
+    checkOut: "2026-10-19",
+  });
+  cancelled = await command(cancelled, [
+    roomEdit(cancelled),
+    pay(3000),
+    pay(2000),
+    { type: "set-discount", amountCents: 1000 },
+    { type: "set-status", status: "cancelled" },
+  ]);
+  let owing: Detail = await book("Zoe Owing", { checkIn: "2026-10-20", checkOut: "2026-10-21" });
+  owing = await command(owing, [roomEdit(owing), { type: "set-status", status: "checked_out" }]);
+  return { complex, settled, credit, cancelled, owing };
+}
+
+describe("paginated reservation operations", () => {
+  it("preserves contact fields, reservation identity, rooms and totals in D1 batch results", async () => {
+    const response = await request("/reservations", "POST", {
+      requestId: crypto.randomUUID(),
+      checkIn: "2026-10-10",
+      checkOut: "2026-10-12",
+      guest: {
+        fullName: "Alejandro Demo",
+        email: "alex@example.com",
+        phone: "+51 900000006",
+        documentType: "DNI",
+        documentNumber: "00000006",
+      },
+      rooms: [{ roomTypeId: "type", adults: 2, children: 1 }],
+    });
+    expect(response.status).toBe(201);
+    const reservation = (await response.json()) as Detail;
+    const result = await paged("sort=guestName");
+    expect(result.total).toBe(1);
+    expect(result.rows[0]).toMatchObject({
+      id: reservation.id,
+      code: reservation.code,
+      guestName: "Alejandro Demo",
+      guestId: reservation.guestId,
+      guest: {
+        id: reservation.guestId,
+        fullName: "Alejandro Demo",
+        email: "alex@example.com",
+        phone: "+51 900000006",
+        documentType: "DNI",
+        documentNumber: "00000006",
+      },
+      totalCents: 20000,
+      balanceCents: 20000,
+      rooms: [{ id: reservation.rooms[0].id, adults: 2, children: 1 }],
+    });
+  });
+
+  it("searches only booking contact and code, not staying guests, rooms, documents or notes", async () => {
+    const reservation = await book("Booking Contact");
+    sqlite.prepare("UPDATE reservations SET code = 'FIXEDCODE' WHERE id = ?").run(reservation.id);
+    await command(reservation, [
+      roomEdit(reservation),
+      { type: "notes", notes: "ReservationNoteOnly" },
+      {
+        type: "set-guests",
+        guests: [{ ...guest(reservation.rooms[0].id), fullName: "StayingOnly" }],
+      },
+    ]);
+    expect(
+      (
+        await request(`/guests/${reservation.guestId}`, "PATCH", {
+          documentNumber: "DocumentOnly",
+          notes: "ContactNoteOnly",
+        })
+      ).status,
+    ).toBe(200);
+    for (const q of [
+      "StayingOnly",
+      "101",
+      "DocumentOnly",
+      "ReservationNoteOnly",
+      "ContactNoteOnly",
+    ]) {
+      const result = await paged(`q=${q}`);
+      expect(result, q).toMatchObject({ rows: [], total: 0 });
+    }
+    const result = await paged("q=Booking%20FIXEDCODE");
+    expect(result.total).toBe(1);
+    expect(result.rows.map((row) => row.id)).toEqual([reservation.id]);
+  });
+
+  it("keeps the metadata endpoint behind the real session guard", async () => {
+    const response = await app.request("/reservations?paginated=true&sort=balance", {}, bindings);
+    expect(response.status).toBe(401);
+    expect(await response.json()).toEqual({ error: "unauthorized" });
+  });
+
+  it("counts a hundred matching reservations, handles a full 50-row last page, and finds balances beyond the legacy cap", async () => {
+    // Seed a known history; observe only authenticated HTTP reads over the migrated database.
+    for (let index = 0; index < 100; index++) {
+      const id = `history-${index}`;
+      const checkIn = new Date(Date.UTC(2026, 9, index + 1)).toISOString().slice(0, 10);
+      const checkOut = new Date(Date.UTC(2026, 9, index + 2)).toISOString().slice(0, 10);
+      sqlite
+        .prepare("INSERT INTO guests (id, full_name, created_at) VALUES (?, ?, ?)")
+        .run(id, index === 99 ? "Latest Target" : "Booking Contact", "2026-10-10");
+      sqlite
+        .prepare(
+          "INSERT INTO reservations (id, code, guest_id, check_in, check_out, created_at) VALUES (?, ?, ?, ?, ?, ?)",
+        )
+        .run(id, `H${index}`, id, checkIn, checkOut, "2026-10-10");
+      sqlite
+        .prepare(
+          "INSERT INTO reservation_rooms (id, reservation_id, room_type_id, adults, created_at) VALUES (?, ?, 'type', 1, ?)",
+        )
+        .run(id, id, "2026-10-10");
+      sqlite
+        .prepare(
+          "INSERT INTO reservation_room_nights (id, reservation_room_id, date, price_cents) VALUES (?, ?, ?, ?)",
+        )
+        .run(id, id, checkIn, index === 99 ? 90000 : 10000);
+    }
+    const first = await paged();
+    expect(first).toMatchObject({ total: 100, limit: 50, offset: 0 });
+    expect(first.rows).toHaveLength(50);
+    expect(first.rows[0].id).toBe("history-0");
+    expect(first.rows[49].id).toBe("history-49");
+    const last = await paged("offset=50");
+    expect(last).toMatchObject({ total: 100, limit: 50, offset: 50 });
+    expect(last.rows).toHaveLength(50);
+    expect(last.rows[0].id).toBe("history-50");
+    expect(last.rows[49].id).toBe("history-99");
+    expect(await paged("offset=100")).toEqual({ rows: [], total: 100, limit: 50, offset: 100 });
+    const all = await paged("limit=100");
+    expect(all.total).toBe(100);
+    expect(all.rows).toHaveLength(100);
+    expect(all.rows[99]).toMatchObject({ id: "history-99", balanceCents: 90000 });
+    const largest = await paged(
+      "balance=outstanding&assignment=unassigned&sort=balance&direction=desc&limit=25",
+    );
+    expect(largest.total).toBe(100);
+    expect(largest.rows).toHaveLength(25);
+    expect(largest.rows[0]).toMatchObject({ id: "history-99", balanceCents: 90000 });
+    const search = await paged("q=Latest%20Target&sort=balance");
+    expect(search.total).toBe(1);
+    expect(search.rows.map((row) => row.id)).toEqual(["history-99"]);
+    expect(await listed("?limit=1&offset=99")).toMatchObject([
+      { id: "history-99", balanceCents: 90000 },
+    ]);
+  });
+
+  it.each([
+    "paginated=1",
+    "paginated=TRUE",
+    "paginated=",
+    "checkOut=10-10-2026",
+    "checkOut=2026-02-30",
+    "paginated=true&checkIn=2026-02-30",
+    "statuses=",
+    "statuses=confirmed,unknown",
+    "statuses=confirmed,",
+    "statuses=confirmed|cancelled",
+    "balance=paid",
+    "assignment=partial",
+    "sort=code",
+    "direction=up",
+    "limit=0",
+    "limit=201",
+    "limit=NaN",
+    "offset=-1",
+    "offset=1.5",
+  ])("rejects malformed list input through the authenticated route: %s", async (query) => {
+    const response = await request(`/reservations?${query}`);
+    expect(response.status).toBe(400);
+    expect(await response.json()).toEqual({ error: expect.any(String) });
+  });
+
+  it.each(["asc", "desc"])(
+    "sorts signed balances %s across the complete history with stable name/code ties",
+    async (direction) => {
+      const { complex, settled, credit, cancelled, owing } = await billExamples();
+      const adaA = await book("Ada Same", { checkIn: "2026-10-22", checkOut: "2026-10-23" });
+      const adaB = await book("Ada Same", { checkIn: "2026-10-24", checkOut: "2026-10-25" });
+      sqlite.prepare("UPDATE reservations SET code = ? WHERE id = ?").run("AAA", adaA.id);
+      sqlite.prepare("UPDATE reservations SET code = ? WHERE id = ?").run("BBB", adaB.id);
+      const pages = await Promise.all(
+        [0, 2, 4, 6].map((offset) =>
+          paged(`sort=balance&direction=${direction}&limit=2&offset=${offset}`),
+        ),
+      );
+      for (const page of pages) expect(page.total).toBe(7);
+      const rows = pages.flatMap((page) => page.rows);
+      expect(rows.map((row) => [row.id, row.balanceCents])).toEqual(
+        direction === "asc"
+          ? [
+              [cancelled.id, -5000],
+              [credit.id, -2000],
+              [settled.id, 0],
+              [adaA.id, 10000],
+              [adaB.id, 10000],
+              [owing.id, 10000],
+              [complex.id, 30000],
+            ]
+          : [
+              [complex.id, 30000],
+              [adaA.id, 10000],
+              [adaB.id, 10000],
+              [owing.id, 10000],
+              [settled.id, 0],
+              [credit.id, -2000],
+              [cancelled.id, -5000],
+            ],
+      );
+      const restricted = await paged(
+        `balance=outstanding&assignment=unassigned&sort=balance&direction=${direction}&limit=1`,
+      );
+      expect(restricted.total).toBe(3);
+      expect(restricted.rows.map((row) => row.id)).toEqual([
+        direction === "asc" ? adaA.id : complex.id,
+      ]);
+      expect(await paged(`sort=balance&direction=${direction}&limit=2&offset=7`)).toEqual({
+        rows: [],
+        total: 7,
+        limit: 2,
+        offset: 7,
+      });
+      const byName = await paged("balance=outstanding&sort=guestName&direction=desc&limit=2");
+      expect(byName.total).toBe(4);
+      expect(byName.rows.map((row) => row.id)).toEqual([owing.id, adaA.id]);
+    },
+  );
+
+  it("classifies every reserved room for assignment and ANDs assignment with all other restrictions before paging", async () => {
+    const { complex, settled, credit, cancelled, owing } = await billExamples();
+    const assigned = await paged("assignment=assigned");
+    expect(assigned.total).toBe(3);
+    expect(assigned.rows.map((row) => row.id)).toEqual([settled.id, cancelled.id, owing.id]);
+    const unassigned = await paged("assignment=unassigned&limit=1&offset=1");
+    expect(unassigned.total).toBe(2);
+    expect(unassigned.rows.map((row) => row.id)).toEqual([credit.id]);
+    const combined = await paged(
+      `assignment=unassigned&balance=outstanding&statuses=confirmed,checked_in&checkIn=2026-10-10&checkOut=2026-10-13&q=${encodeURIComponent(`${complex.code} Ada`)}`,
+    );
+    expect(combined.total).toBe(1);
+    expect(combined.rows.map((row) => row.id)).toEqual([complex.id]);
+    expect(combined.rows[0].rooms.map((room) => room.roomNumber)).toEqual(["101", null]);
+    expect(
+      (await paged("assignment=assigned&balance=credit&statuses=cancelled")).rows.map(
+        (row) => row.id,
+      ),
+    ).toEqual([cancelled.id]);
+    expect(await paged("assignment=unassigned&balance=settled")).toEqual({
+      rows: [],
+      total: 0,
+      limit: 50,
+      offset: 0,
+    });
+    expect(await paged("assignment=assigned&balance=credit&offset=5")).toEqual({
+      rows: [],
+      total: 1,
+      limit: 50,
+      offset: 5,
+    });
+  });
+
+  it("filters canonical signed balances over all matches without multiplying rooms, nights or payments", async () => {
+    const { complex, settled, credit, cancelled, owing } = await billExamples();
+    const outstanding = await paged("balance=outstanding&limit=1&offset=1");
+    expect(outstanding.total).toBe(2);
+    expect(outstanding.rows.map((row) => [row.id, row.balanceCents])).toEqual([[owing.id, 10000]]);
+    const positive = await paged("balance=outstanding");
+    expect(positive.rows.map((row) => [row.id, row.balanceCents])).toEqual([
+      [complex.id, 30000],
+      [owing.id, 10000],
+    ]);
+    const zero = await paged("balance=settled");
+    expect(zero.total).toBe(1);
+    expect(zero.rows.map((row) => row.id)).toEqual([settled.id]);
+    const negative = await paged("balance=credit");
+    expect(negative.total).toBe(2);
+    expect(negative.rows.map((row) => [row.id, row.balanceCents])).toEqual([
+      [credit.id, -2000],
+      [cancelled.id, -5000],
+    ]);
+    expect(positive.rows[0]).toMatchObject({
+      subtotalCents: 60000,
+      discountCents: 5000,
+      paidCents: 25000,
+      totalCents: 55000,
+    });
+    expect(negative.rows[1]).toMatchObject({
+      subtotalCents: 0,
+      discountCents: 0,
+      totalCents: 0,
+      paidCents: 5000,
+      creditCents: 5000,
+    });
+    for (const page of [positive, zero, negative]) {
+      for (const row of page.rows) {
+        const detail = (await (await request(`/reservations/${row.id}`)).json()) as Detail;
+        expect(row.balanceCents).toBe(detail.balanceCents);
+      }
+    }
+    expect(
+      (await paged("balance=outstanding&statuses=checked_out")).rows.map((row) => row.id),
+    ).toEqual([owing.id]);
+    expect((await paged("balance=credit&statuses=cancelled")).rows.map((row) => row.id)).toEqual([
+      cancelled.id,
+    ]);
+    expect(await paged("balance=settled&statuses=cancelled")).toEqual({
+      rows: [],
+      total: 0,
+      limit: 50,
+      offset: 0,
+    });
+  });
+
+  it("uses fresh detail billing policy when a saved discount exceeds the remaining room charges", async () => {
+    const original = await create(2);
+    await command(original, [
+      { type: "set-discount", amountCents: 50000 },
+      { type: "remove-room", lineId: original.rooms[1].id },
+    ]);
+    const detailResponse = await request(`/reservations/${original.id}`);
+    expect(detailResponse.status).toBe(200);
+    const detail = (await detailResponse.json()) as Detail;
+    expect(detail).toMatchObject({ subtotalCents: 30000, savedDiscountCents: 50000 });
+    // Detail is the public billing oracle here: this feature must not introduce its own discount-cap policy.
+    const classification =
+      detail.balanceCents > 0 ? "outstanding" : detail.balanceCents < 0 ? "credit" : "settled";
+    const page = await paged(`balance=${classification}&sort=balance`);
+    expect(page.total).toBe(1);
+    expect(page.rows).toMatchObject([
+      {
+        id: detail.id,
+        totalCents: detail.totalCents,
+        discountCents: detail.discountCents,
+        balanceCents: detail.balanceCents,
+        creditCents: detail.creditCents,
+      },
+    ]);
+  });
+
+  it.each([
+    ["checkIn", "asc", ["zoe", "adaA", "adaB", "bea"]],
+    ["checkIn", "desc", ["bea", "adaA", "adaB", "zoe"]],
+    ["checkOut", "asc", ["adaA", "adaB", "zoe", "bea"]],
+    ["checkOut", "desc", ["bea", "adaA", "adaB", "zoe"]],
+    ["guestName", "asc", ["adaA", "adaB", "bea", "zoe"]],
+    ["guestName", "desc", ["zoe", "bea", "adaA", "adaB"]],
+  ])(
+    "sorts all matches by %s %s with ascending name/code tie-breakers across pages",
+    async (sort, direction, order) => {
+      const zoe = await book("Zoe Cruz", { checkIn: "2026-10-01", checkOut: "2026-10-04" });
+      const adaA = await book("Ada Lovelace", { checkIn: "2026-10-02", checkOut: "2026-10-04" });
+      const adaB = await book("Ada Lovelace", { checkIn: "2026-10-02", checkOut: "2026-10-04" });
+      const bea = await book("Bea Jones", { checkIn: "2026-10-04", checkOut: "2026-10-05" });
+      // Fixed codes make the specified tie-breaker independent of generated codes.
+      sqlite.prepare("UPDATE reservations SET code = ? WHERE id = ?").run("AAA", adaA.id);
+      sqlite.prepare("UPDATE reservations SET code = ? WHERE id = ?").run("BBB", adaB.id);
+      const ids: Record<string, string> = {
+        zoe: zoe.id,
+        adaA: adaA.id,
+        adaB: adaB.id,
+        bea: bea.id,
+      };
+      const first = await paged(`sort=${sort}&direction=${direction}&limit=2`);
+      const last = await paged(`sort=${sort}&direction=${direction}&limit=2&offset=2`);
+      expect(first.total).toBe(4);
+      expect(last.total).toBe(4);
+      expect([...first.rows, ...last.rows].map((row) => row.id)).toEqual(
+        (order as string[]).map((key) => ids[key]),
+      );
+    },
+  );
+
+  it("combines exact departures, OR statuses, contact search and legacy filters without hiding overdue checked-in stays", async () => {
+    const cancelled = await command(
+      await book("Ada Cancelled", { checkIn: "2026-10-09", checkOut: "2026-10-10" }),
+      [{ type: "set-status", status: "cancelled" }],
+    );
+    const arrival = await book("Ada Arrival");
+    const departure = await book("Ada Departure", {
+      checkIn: "2026-10-08",
+      checkOut: "2026-10-10",
+    });
+    const overdue = await command(
+      await book("Ada Overdue", { checkIn: "2026-10-01", checkOut: "2026-10-03" }),
+      [{ type: "set-status", status: "checked_in" }],
+    );
+    const history = await command(
+      await book("Ada History", { checkIn: "2026-10-05", checkOut: "2026-10-07" }),
+      [{ type: "set-status", status: "checked_out" }],
+    );
+
+    const departures = await paged("checkOut=2026-10-10");
+    expect(departures.total).toBe(2);
+    expect(departures.rows.map((row) => row.id)).toEqual([departure.id, cancelled.id]);
+    const activeDeparture = await paged(
+      "checkOut=2026-10-10&statuses=confirmed,checked_in&q=Ada%20Departure",
+    );
+    expect(activeDeparture.total).toBe(1);
+    expect(activeDeparture.rows.map((row) => row.id)).toEqual([departure.id]);
+    expect(
+      (await paged("checkIn=2026-10-10&statuses=confirmed,checked_in")).rows.map((row) => row.id),
+    ).toEqual([arrival.id]);
+    const inHouse = await paged("statuses=checked_in");
+    expect(inHouse.total).toBe(1);
+    expect(inHouse.rows.map((row) => row.id)).toEqual([overdue.id]);
+    expect((await paged("statuses=checked_in,checked_out")).rows.map((row) => row.id)).toEqual([
+      overdue.id,
+      history.id,
+    ]);
+    expect(
+      (await paged(`guestId=${history.guestId}&status=checked_out`)).rows.map((row) => row.id),
+    ).toEqual([history.id]);
+    expect((await listed("?from=2026-10-10&to=2026-10-10")).map((row) => row.id)).toEqual([
+      arrival.id,
+    ]);
+  });
+
+  it("returns exact totals on first, full last, beyond-end and empty pages without changing array callers", async () => {
+    const first = await book("Ada Lovelace", { checkIn: "2026-10-01", checkOut: "2026-10-02" });
+    const second = await book("Grace Hopper", { checkIn: "2026-10-02", checkOut: "2026-10-03" });
+    const third = await book("Katherine Johnson", {
+      checkIn: "2026-10-03",
+      checkOut: "2026-10-04",
+    });
+    const fourth = await book("Zoe Cruz", { checkIn: "2026-10-04", checkOut: "2026-10-05" });
+    const page = await paged("limit=2");
+    expect(page).toMatchObject({ total: 4, limit: 2, offset: 0 });
+    expect(page.rows.map((row) => row.id)).toEqual([first.id, second.id]);
+    const last = await paged("limit=2&offset=2");
+    expect(last).toMatchObject({ total: 4, limit: 2, offset: 2 });
+    expect(last.rows.map((row) => row.id)).toEqual([third.id, fourth.id]);
+    expect(await paged("limit=2&offset=4")).toEqual({ rows: [], total: 4, limit: 2, offset: 4 });
+    expect(await paged("q=missing&offset=100")).toEqual({
+      rows: [],
+      total: 0,
+      limit: 50,
+      offset: 100,
+    });
+    expect((await listed("?paginated=false&limit=2&offset=2")).map((row) => row.id)).toEqual([
+      third.id,
+      fourth.id,
+    ]);
+    expect((await listed()).map((row) => row.id)).toEqual([
+      first.id,
+      second.id,
+      third.id,
+      fourth.id,
+    ]);
   });
 });

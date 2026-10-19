@@ -113,6 +113,11 @@ function ReservationsRoute() {
         void navigate({
           to: "/reservations/$reservationId",
           params: { reservationId: id },
+          search: {
+            returnTo: new URLSearchParams(
+              Object.entries(search).map(([key, value]) => [key, String(value)]),
+            ).toString(),
+          },
         })
       }
     />
@@ -124,7 +129,7 @@ const reservationsRoute = createRoute({
   path: "/reservations",
   validateSearch: reservationsSearch,
   search: {
-    middlewares: [stripSearchParams({ q: "", status: "all", page: 0 })],
+    middlewares: [stripSearchParams({ q: "", balance: "all", assignment: "all", page: 0 })],
   },
   component: ReservationsRoute,
 });
@@ -132,11 +137,15 @@ const reservationsRoute = createRoute({
 const reservationRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/reservations/$reservationId",
+  validateSearch: (search: Record<string, unknown>): { returnTo?: string } => ({
+    returnTo: typeof search.returnTo === "string" ? search.returnTo : undefined,
+  }),
   component: ReservationRoute,
 });
 
 function ReservationRoute() {
   const { reservationId } = reservationRoute.useParams();
+  const { returnTo } = reservationRoute.useSearch();
   const navigate = useNavigate();
   return (
     <ReservationPage
@@ -144,7 +153,10 @@ function ReservationRoute() {
       onBack={() =>
         void navigate({
           to: "/reservations",
-          search: lastReservationsSearch.current ?? reservationsSearch({}),
+          search:
+            returnTo !== undefined
+              ? reservationsSearch(Object.fromEntries(new URLSearchParams(returnTo)))
+              : (lastReservationsSearch.current ?? reservationsSearch({})),
         })
       }
     />

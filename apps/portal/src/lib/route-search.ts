@@ -1,26 +1,32 @@
-import { format, isValid, parse } from "date-fns";
 import { propertyToday } from "./property-calendar.ts";
+import {
+  ReservationStatusSelection,
+  type SerializedReservationStatuses,
+} from "./reservation-status-selection.ts";
+export { reservationStatusValues, type ReservationStatus } from "./reservation-status-selection.ts";
 
 export type CalendarSearch = { from: string; span: 7 | 14 };
 export type InventorySearch = { from: string; span: 7 | 14 };
-export const reservationStatusValues = [
-  "confirmed",
-  "checked_in",
-  "checked_out",
-  "cancelled",
-] as const;
-export type ReservationStatus = (typeof reservationStatusValues)[number];
+export const reservationViews = ["all", "arrivals", "departures", "in-house"] as const;
+export type ReservationView = (typeof reservationViews)[number];
+export type ReservationSort = "checkIn" | "checkOut" | "guestName" | "balance";
 export type ReservationsSearch = {
+  view: ReservationView;
+  day: string;
   q: string;
-  status: "all" | ReservationStatus;
-  checkIn: string;
+  statuses: SerializedReservationStatuses;
+  balance: "all" | "outstanding" | "settled" | "credit";
+  assignment: "all" | "assigned" | "unassigned";
+  sort: ReservationSort;
+  direction: "asc" | "desc";
+  size: 25 | 50 | 100;
   page: number;
 };
 
 export function validDay(value: unknown): string | undefined {
-  if (typeof value !== "string") return undefined;
-  const date = parse(value, "yyyy-MM-dd", new Date());
-  if (!isValid(date) || format(date, "yyyy-MM-dd") !== value) {
+  if (typeof value !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return undefined;
+  const date = new Date(`${value}T00:00:00Z`);
+  if (Number.isNaN(date.getTime()) || date.toISOString().slice(0, 10) !== value) {
     return undefined;
   }
   return value;
@@ -44,27 +50,51 @@ export function inventorySearch(search: Record<string, unknown>): InventorySearc
   };
 }
 
-const reservationFilters = ["all", ...reservationStatusValues] as const;
-
-function reservationStatus(value: unknown): ReservationsSearch["status"] {
-  return typeof value === "string" && (reservationFilters as readonly string[]).includes(value)
-    ? (value as ReservationsSearch["status"])
-    : "all";
+export function viewDefaults(view: ReservationView) {
+  return {
+    statuses: new ReservationStatusSelection(
+      view === "in-house"
+        ? ["checked_in"]
+        : view === "all"
+          ? []
+          : ["confirmed", "checked_in", "checked_out"],
+    ).toSearch(),
+    sort: (view === "all"
+      ? "checkIn"
+      : view === "in-house"
+        ? "checkOut"
+        : "guestName") as ReservationSort,
+    direction: view === "all" ? ("desc" as const) : ("asc" as const),
+  };
 }
 
-// A missing, empty, invalid, or `all` day is the property date, read when the URL is
-// parsed so the default is not frozen at module import.
-function reservationCheckIn(value: unknown) {
-  return validDay(value) ?? propertyToday();
+function choice<T extends string>(value: unknown, options: readonly T[], fallback: T): T {
+  return options.includes(value as T) ? (value as T) : fallback;
 }
 
 export function reservationsSearch(search: Record<string, unknown>): ReservationsSearch {
   const page = Number(search.page);
+  const view = choice(search.view, reservationViews, "arrivals");
+  const defaults = viewDefaults(view);
+  const statuses = ReservationStatusSelection.parse(
+    search.statuses ?? search.status,
+    ReservationStatusSelection.parse(defaults.statuses),
+  );
+  const size = Number(search.size);
   return {
+    view,
+    day: validDay(search.day) ?? validDay(search.checkIn) ?? propertyToday(),
     q: typeof search.q === "string" ? search.q : "",
-    status: reservationStatus(search.status),
-    checkIn: reservationCheckIn(search.checkIn),
-    page: Number.isInteger(page) && page >= 0 ? page : 0,
+    statuses: view === "in-house" ? defaults.statuses : statuses.toSearch(),
+    balance: choice(search.balance, ["all", "outstanding", "settled", "credit"], "all"),
+    assignment: choice(search.assignment, ["all", "assigned", "unassigned"], "all"),
+    sort: choice(search.sort, ["checkIn", "checkOut", "guestName", "balance"], defaults.sort),
+    direction: choice(search.direction, ["asc", "desc"], defaults.direction),
+    size: size === 25 || size === 100 ? size : 50,
+    page:
+      Number.isSafeInteger(page) && page >= 0 && page <= Math.floor(Number.MAX_SAFE_INTEGER / 100)
+        ? page
+        : 0,
   };
 }
 

@@ -1,70 +1,22 @@
 import assert from "node:assert/strict";
-import { fileURLToPath } from "node:url";
 import { afterAll, afterEach, beforeAll, beforeEach, it } from "vite-plus/test";
-import { Window, type HTMLDivElement, type HTMLInputElement } from "happy-dom";
-import { createServer, type ViteDevServer } from "vite";
-import type { Root } from "react-dom/client";
-import type { QueryClient } from "@tanstack/react-query";
+import type { HTMLInputElement } from "happy-dom";
 import type { PropertySetupInput, ReservationDetail, Room, RoomType } from "../src/lib/api.ts";
+import { createBrowserTest, type BrowserTest, type BrowserPage } from "./browser.ts";
 
-let window: Window;
-let server: ViteDevServer;
-let React: typeof import("react");
-let createRoot: (typeof import("react-dom/client"))["createRoot"];
-let query: typeof import("@tanstack/react-query");
-let routing: typeof import("@tanstack/react-router");
+let browser: BrowserTest;
+let page: BrowserPage;
+let window: BrowserTest["window"];
+let React: BrowserTest["React"];
 let routes: typeof import("../src/router.tsx");
 let router: typeof routes.router;
-let root: Root;
-let container: HTMLDivElement;
-let client: QueryClient;
-const originalFetch = globalThis.fetch;
+let container: BrowserPage["container"];
+let until: BrowserPage["until"];
 
 beforeAll(async () => {
-  window = new Window({ url: "http://localhost:5173" });
-  for (const name of [
-    "window",
-    "self",
-    "document",
-    "navigator",
-    "HTMLElement",
-    "HTMLInputElement",
-    "Element",
-    "SVGElement",
-    "HTMLButtonElement",
-    "HTMLSelectElement",
-    "Node",
-    "NodeFilter",
-    "Text",
-    "Document",
-    "Event",
-    "KeyboardEvent",
-    "MouseEvent",
-    "PointerEvent",
-    "MutationObserver",
-    "ResizeObserver",
-    "getComputedStyle",
-    "requestAnimationFrame",
-    "cancelAnimationFrame",
-    "scrollTo",
-  ]) {
-    const value = name === "window" ? window : Reflect.get(window, name);
-    Object.defineProperty(globalThis, name, {
-      configurable: true,
-      value: typeof value === "function" && /^[a-z]/.test(name) ? value.bind(window) : value,
-    });
-  }
-  Reflect.set(globalThis, "IS_REACT_ACT_ENVIRONMENT", true);
-  React = await import("react");
-  ({ createRoot } = await import("react-dom/client"));
-  query = await import("@tanstack/react-query");
-  routing = await import("@tanstack/react-router");
-  server = await createServer({
-    root: fileURLToPath(new URL("../", import.meta.url)),
-    configFile: fileURLToPath(new URL("../vite.config.ts", import.meta.url)),
-    server: { middlewareMode: true, hmr: false, ws: false, watch: null },
-    mode: "development",
-  });
+  browser = await createBrowserTest();
+  ({ window, React } = browser);
+  const { server } = browser;
   routes = (await server.ssrLoadModule("/src/router.tsx")) as typeof routes;
   const calendar = (await server.ssrLoadModule(
     "/src/lib/property-calendar.ts",
@@ -73,27 +25,16 @@ beforeAll(async () => {
 });
 
 beforeEach(() => {
-  container = window.document.createElement("div");
-  window.document.body.append(container);
-  root = createRoot(container as unknown as Parameters<typeof createRoot>[0]);
-  client = new query.QueryClient({
-    defaultOptions: {
-      queries: { retry: false, gcTime: Infinity },
-      mutations: { gcTime: Infinity },
-    },
-  });
+  page = browser.createPage();
+  ({ container, until } = page);
 });
 
 afterEach(async () => {
-  await React.act(async () => root.unmount());
-  client.clear();
-  container.remove();
-  globalThis.fetch = originalFetch;
+  await page.cleanup();
 });
 
 afterAll(async () => {
-  await server?.close();
-  await window?.happyDOM.close();
+  await browser?.close();
 });
 
 const double = { id: "double", name: "Doble", maxAdults: 2, maxChildren: 2, baseRateCents: 15000 };
@@ -146,20 +87,11 @@ function mockApi(
 }
 
 async function render(path = "/setup") {
-  router = routing.createRouter({
+  router = browser.routing.createRouter({
     routeTree: routes.router.routeTree,
-    history: routing.createMemoryHistory({ initialEntries: [path] }),
+    history: browser.routing.createMemoryHistory({ initialEntries: [path] }),
   });
-  await React.act(async () => {
-    await router.load();
-    root.render(
-      React.createElement(
-        query.QueryClientProvider,
-        { client },
-        React.createElement(routing.RouterProvider, { router }),
-      ),
-    );
-  });
+  await page.renderRouter(router);
 }
 
 async function renderReservationDetail() {
@@ -215,16 +147,6 @@ async function renderReservationDetail() {
       container.textContent.includes("Ana Pérez"),
     "Reservation details must render",
   );
-}
-
-async function until(condition: () => boolean, message: string) {
-  for (let i = 0; i < 100; i++) {
-    if (condition()) return;
-    await React.act(async () => {
-      await new Promise((resolve) => setTimeout(resolve, 10));
-    });
-  }
-  assert.ok(condition(), message);
 }
 
 function input(name: string) {

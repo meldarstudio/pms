@@ -86,7 +86,7 @@ describe("local dummy data reset", () => {
       UPDATE rooms SET number = 'edited-101' WHERE id = 'room-101';
       UPDATE guests SET full_name = 'Edited', notes = 'Changed in portal' WHERE id = 'guest-arrival';
       UPDATE reservations SET notes = 'Edited booking' WHERE id = 'reservation-arrival';
-      UPDATE reservation_rooms SET room_id = 'room-104' WHERE id = 'line-alex-1';
+      UPDATE reservation_rooms SET room_id = NULL WHERE id = 'line-arrival-1';
       UPDATE reservations SET status = 'checked_in' WHERE id = 'reservation-alex';
       UPDATE reservation_room_nights SET price_cents = 1 WHERE reservation_room_id = 'line-arrival-1';
       UPDATE reservations SET discount_cents = 1 WHERE id = 'reservation-arrival';
@@ -127,8 +127,10 @@ describe("local dummy data reset", () => {
 
   it("creates valid stays, occupancies, nightly prices, payments, and closures", () => {
     db.exec(buildResetSql("2026-10-06"));
-    expect(db.prepare("SELECT COUNT(*) AS count FROM rooms").get().count).toBe(60);
-    expect(db.prepare("SELECT COUNT(*) AS count FROM reservations").get().count).toBe(21);
+    expect(db.prepare("SELECT COUNT(*) AS count FROM rooms").get().count).toBe(24);
+    expect(db.prepare("SELECT COUNT(*) AS count FROM reservations").get().count).toBeGreaterThan(
+      600,
+    );
     expect(db.prepare("SELECT COUNT(*) AS count FROM room_closures").get().count).toBe(3);
     expect(
       db
@@ -142,7 +144,7 @@ describe("local dummy data reset", () => {
           "SELECT COUNT(*) AS count FROM reservation_rooms rr JOIN reservations r ON r.id=rr.reservation_id WHERE rr.room_id IS NULL AND r.status='confirmed'",
         )
         .get().count,
-    ).toBe(4);
+    ).toBeGreaterThan(4);
     expect(
       db
         .prepare(
@@ -186,6 +188,45 @@ describe("local dummy data reset", () => {
     ).toBe("Camila O'Brien");
     expect(db.prepare("PRAGMA foreign_key_check").all()).toEqual([]);
   });
+
+  it.each(["2026-10-06", "2028-02-28"])(
+    "keeps 90 nights 80–90%% booked without counting cancellations or closures as occupied: %s",
+    (anchor) => {
+      db.exec(buildResetSql(anchor));
+      const days = db
+        .prepare(`
+        WITH RECURSIVE days(day) AS (
+          SELECT date(?, '-45 days')
+          UNION ALL SELECT date(day, '+1 day') FROM days WHERE day < date(?, '+44 days')
+        )
+        SELECT day,
+          (SELECT COUNT(*) FROM reservation_rooms rr JOIN reservations r ON r.id=rr.reservation_id
+            WHERE r.status != 'cancelled' AND r.check_in <= day AND r.check_out > day) AS booked,
+          (SELECT COUNT(*) FROM rooms) -
+          (SELECT COUNT(*) FROM room_closures WHERE starts <= day AND ends > day) AS sellable
+        FROM days
+      `)
+        .all(anchor, anchor);
+      expect(days).toHaveLength(90);
+      for (const { day, booked, sellable } of days) {
+        expect(booked / sellable, day).toBeGreaterThanOrEqual(0.8);
+        expect(booked / sellable, day).toBeLessThanOrEqual(0.9);
+        for (const type of db
+          .prepare(`
+          SELECT t.name,
+            (SELECT COUNT(*) FROM reservation_rooms rr JOIN reservations r ON r.id=rr.reservation_id
+              WHERE rr.room_type_id=t.id AND r.status != 'cancelled' AND r.check_in <= ? AND r.check_out > ?) AS booked,
+            (SELECT COUNT(*) FROM rooms WHERE room_type_id=t.id) -
+            (SELECT COUNT(*) FROM room_closures c JOIN rooms rm ON rm.id=c.room_id
+              WHERE rm.room_type_id=t.id AND c.starts <= ? AND c.ends > ?) AS sellable
+          FROM room_types t
+        `)
+          .all(day, day, day, day)) {
+          expect(type.booked, `${day}: ${type.name}`).toBeLessThanOrEqual(type.sellable);
+        }
+      }
+    },
+  );
 
   it("seeds discounted totals, full discounts, multiple payments, and early-departure credits", () => {
     db.exec(buildResetSql("2026-10-06"));

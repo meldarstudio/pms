@@ -120,6 +120,37 @@ as credit for reference. Removing an individual reserved room drops its charges
 and releases its inventory while the remaining rooms keep the reservation's
 status and stay dates. To release the last room, cancel the reservation.
 
+## Reservation list reads
+
+`GET /reservations` is authenticated and returns a bare reservation array by default.
+`paginated=true` opts into `{ rows, total, limit, offset }`; omitted or
+`paginated=false` preserves the array response. Defaults remain `limit=50`,
+`offset=0`, and check-in ascending, then booking contact name ascending and code
+ascending. Limits from 1 through 200 remain supported for existing callers.
+
+Optional query dimensions combine with AND:
+
+- `checkIn` and `checkOut` match exact business dates. Legacy `from`/`to` retain
+  calendar overlap semantics: checkout is after `from`, check-in is on or before `to`.
+- `status` retains the single-status filter. `statuses` accepts comma-separated
+  `confirmed`, `checked_in`, `checked_out`, and `cancelled` values, combined with OR.
+  Omit both for unrestricted statuses; when both are sent, both restrictions apply.
+- `balance=outstanding|settled|credit` selects positive, zero, or negative signed
+  balances independently of status. Cancellation has a zero bill and retains
+  payments as credit. The list reuses detail/workflow billing policy.
+- `assignment=assigned|unassigned` selects reservations with every physical room
+  assigned or with any unassigned reserved room, including partial assignments.
+- `q` retains per-token booking-contact-name or reservation-code search; `guestId`
+  retains exact booking-contact matching. Staying guests are not searched.
+- `sort=checkIn|checkOut|guestName|balance` and `direction=asc|desc` choose one primary
+  order. Contact name ascending and code ascending are deterministic tie-breakers
+  when they are not already the primary key. Balance sorting uses signed cents.
+
+Filters and ordering cover all matches before pagination. `total` is the exact
+matching count even when the requested offset yields no rows. Charge and payment
+aggregates remain independent; only the selected page's rooms, nights, and payments
+are hydrated into response rows. The calendar can continue using the array shape.
+
 ## Property setup
 
 `POST /setup` requires the Staff account session and saves one room type with its
@@ -254,12 +285,21 @@ current schema, and reloads sample data. Subsequent resets can omit the flag.
 It preserves unrelated tables and Cloudflare metadata. The rebuild also supports
 `--persist-to` for an isolated local database.
 
-The dataset contains three room types, 60 rooms, 21 guests and reservations,
-nightly prices and payments, rate overrides, and three room closures.
-Bookings include past stays, current stays, arrivals and departures today,
-upcoming stays, cancelled reservations, and multi-room reservations. Alex,
-Sam, and Jamie Demo have confirmed unassigned rooms for testing manual assignment.
-Room 101 has consecutive bookings that share a checkout/check-in date.
+The dataset contains three room types and **24 rooms**: 12 Estándar, 8 Superior,
+and 4 Suite familiar. It generates **over 600 reservations across 90 nights**,
+from 45 days before the reference date through 44 days after it. Each night is
+roughly **85% booked** (80–90% after rounding), measured as reserved rooms divided
+by rooms available for sale, excluding closures. Cancelled reservations do not
+count toward occupancy; unassigned reserved rooms do.
+
+The deterministic schedule respects room-type inventory, physical assignments,
+and closures, including room capacity reserved for unassigned stays. It includes
+nightly prices, varied payments and balances, rate overrides, three room closures,
+past and current stays, arrivals and departures today, upcoming stays,
+cancellations, and multi-room reservations. Alex, Sam, and Jamie Demo retain
+confirmed unassigned rooms for testing manual assignment. Room 101 has consecutive
+reservations that share a checkout/check-in date. Resetting with the same reference
+date recreates the same dataset.
 
 Edit bookings and closures in the portal, then run the reset again and refresh
 the portal to restore the sample data. The reset removes records you added and

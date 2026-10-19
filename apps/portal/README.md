@@ -117,6 +117,27 @@ UTC date arithmetic elsewhere counts nights or preserves labels only.
 See the [backend release plan](../backend/README.md#property-timezone-release-23)
 for migration ordering and old/new backend/portal compatibility.
 
+## Reservation list filters
+
+The **Filtros** button counts changed filter groups, not individual selections:
+Estados, Saldo, and Asignación each contribute at most one. Defaults are relative
+to the selected view, and the count is hidden at zero. Text search does not count;
+its own clear button remains available. Applied filters are inspected and edited
+inside the panel rather than in a separate row of chips.
+
+Filters apply immediately and leave the panel open. **Restablecer** restores the
+current view's default statuses, any balance, and any assignment, returning to the
+first page. It preserves text search, view, selected day, sorting, and page size,
+and is disabled when the three filter groups already match their defaults.
+
+At least one status must remain selected; the final checked status is disabled
+until another is selected. All four checked means unrestricted, including
+cancellations. Legacy empty/`all` URLs and explicit four-status URLs restore that
+same selection. Llegadas and Salidas default to Confirmada, Check-in, and
+Check-out; Todas las reservas defaults to all four. En casa remains locked to
+Check-in and hides the status selector. The panel heading is visually hidden but
+retained as its accessible name.
+
 ## Deployment
 
 Production portal: `https://app.hotelmanantialchurin.com`
