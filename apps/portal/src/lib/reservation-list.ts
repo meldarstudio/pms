@@ -27,11 +27,13 @@ export function roomsLabel(
     roomTypeName?: string | null;
   }[],
 ) {
-  const numbers = rooms.map((room) => room.roomNumber);
-  if (numbers.length === 0 || numbers.some((number) => number == null)) {
-    return "Sin asignar";
-  }
-  return numbers.join(", ");
+  const numbers = rooms.flatMap((room) => (room.roomNumber == null ? [] : [room.roomNumber]));
+  const unassigned = rooms.length - numbers.length;
+  return (
+    [numbers.join(", "), unassigned ? `${unassigned} sin asignar` : ""]
+      .filter(Boolean)
+      .join(" · ") || "Sin asignar"
+  );
 }
 
 export function occupantsLabel(rooms: readonly { adults: number; children: number }[]) {

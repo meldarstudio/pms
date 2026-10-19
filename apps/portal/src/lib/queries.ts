@@ -32,6 +32,8 @@ import {
   patchRoomClosure,
   putRoomTypeRates,
   savePropertySetup,
+  searchReservationsPage,
+  type ReservationListParams,
   type PatchGuestInput,
   type AvailabilityOccupancy,
   type Room,
@@ -272,6 +274,14 @@ export function useReservations(from: string, to: string, enabled = true) {
     queryFn: ({ signal }) => listReservations(from, to, signal),
     placeholderData: keepPreviousData,
     enabled,
+  });
+}
+
+export function useReservationList(params: ReservationListParams) {
+  return useQuery({
+    queryKey: ["reservations", "operations", params],
+    queryFn: ({ signal }) => searchReservationsPage(params, signal),
+    placeholderData: keepPreviousData,
   });
 }
 

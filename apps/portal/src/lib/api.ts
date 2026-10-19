@@ -477,3 +477,30 @@ export function searchReservations(
   if (params.checkIn) query.set("checkIn", params.checkIn);
   return getJson<(ReservationDetail & { guestName: string })[]>(`/reservations?${query}`, signal);
 }
+
+export type ReservationListParams = {
+  q?: string;
+  checkIn?: string;
+  checkOut?: string;
+  statuses?: string;
+  balance?: "outstanding" | "settled" | "credit";
+  assignment?: "assigned" | "unassigned";
+  sort: "checkIn" | "checkOut" | "guestName" | "balance";
+  direction: "asc" | "desc";
+  limit: number;
+  offset: number;
+};
+export type ReservationListPage = {
+  rows: (ReservationDetail & { guestName: string })[];
+  total: number;
+  limit: number;
+  offset: number;
+};
+
+export function searchReservationsPage(params: ReservationListParams, signal?: AbortSignal) {
+  const query = new URLSearchParams({ paginated: "true" });
+  for (const [key, value] of Object.entries(params)) {
+    if (value !== undefined) query.set(key, String(value));
+  }
+  return getJson<ReservationListPage>(`/reservations?${query}`, signal);
+}
