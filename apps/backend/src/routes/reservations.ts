@@ -10,6 +10,7 @@ import {
   desc,
   eq,
   exists,
+  getTableColumns,
   gt,
   inArray,
   isNull,
@@ -82,7 +83,15 @@ reservationRoutes.get("/", validate("query", reservationListQuerySchema), async 
   const query = db
     .select({
       reservation: reservations,
-      guest: guests,
+      // D1 batches return objects, so shared column names must be unique before
+      // Drizzle maps values back to the nested reservation/contact fields.
+      guest: {
+        ...getTableColumns(guests),
+        id: sql<string>`${guests.id}`.as("list_guest_id"),
+        revision: sql<number>`${guests.revision}`.as("list_guest_revision"),
+        notes: sql<string | null>`${guests.notes}`.as("list_guest_notes"),
+        createdAt: sql<string>`${guests.createdAt}`.as("list_guest_created_at"),
+      },
       // Aggregate each one-to-many relation independently; joining payments to nights inflates both.
       subtotalCents: (needsBalance
         ? sql<number>`coalesce((

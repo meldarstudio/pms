@@ -25,7 +25,8 @@ let sessionCookie: string;
 function statement(sql: string, params: SQLInputValue[] = []) {
   const execute = () => {
     if (sqlite.prepare(sql).columns().length) {
-      return { success: true, results: sqlite.prepare(`SELECT * FROM (${sql})`).all(...params) };
+      // D1 batch results use column-name keys; duplicate join columns collapse.
+      return { success: true, results: sqlite.prepare(sql).all(...params) };
     }
     sqlite.prepare(sql).run(...params);
     return { success: true, results: [] };
@@ -1878,6 +1879,43 @@ async function billExamples() {
 }
 
 describe("paginated reservation operations", () => {
+  it("preserves contact fields, reservation identity, rooms and totals in D1 batch results", async () => {
+    const response = await request("/reservations", "POST", {
+      requestId: crypto.randomUUID(),
+      checkIn: "2026-10-10",
+      checkOut: "2026-10-12",
+      guest: {
+        fullName: "Alejandro Demo",
+        email: "alex@example.com",
+        phone: "+51 900000006",
+        documentType: "DNI",
+        documentNumber: "00000006",
+      },
+      rooms: [{ roomTypeId: "type", adults: 2, children: 1 }],
+    });
+    expect(response.status).toBe(201);
+    const reservation = (await response.json()) as Detail;
+    const result = await paged("sort=guestName");
+    expect(result.total).toBe(1);
+    expect(result.rows[0]).toMatchObject({
+      id: reservation.id,
+      code: reservation.code,
+      guestName: "Alejandro Demo",
+      guestId: reservation.guestId,
+      guest: {
+        id: reservation.guestId,
+        fullName: "Alejandro Demo",
+        email: "alex@example.com",
+        phone: "+51 900000006",
+        documentType: "DNI",
+        documentNumber: "00000006",
+      },
+      totalCents: 20000,
+      balanceCents: 20000,
+      rooms: [{ id: reservation.rooms[0].id, adults: 2, children: 1 }],
+    });
+  });
+
   it("searches only booking contact and code, not staying guests, rooms, documents or notes", async () => {
     const reservation = await book("Booking Contact");
     sqlite.prepare("UPDATE reservations SET code = 'FIXEDCODE' WHERE id = ?").run(reservation.id);
