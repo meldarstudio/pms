@@ -1,17 +1,13 @@
 import assert from "node:assert/strict";
-import { fileURLToPath } from "node:url";
 import { afterAll, afterEach, beforeAll, beforeEach, it, vi } from "vite-plus/test";
-import {
-  Window,
-  type HTMLDivElement,
-  type HTMLInputElement,
-  type HTMLTextAreaElement,
-  type HTMLButtonElement,
-  type HTMLElement,
+import type {
+  HTMLInputElement,
+  HTMLTextAreaElement,
+  HTMLButtonElement,
+  HTMLElement,
 } from "happy-dom";
-import { createServer, type ViteDevServer } from "vite";
-import type { Root } from "react-dom/client";
-import type { QueryClient as Client } from "@tanstack/react-query";
+import { createBrowserTest, type BrowserTest, type BrowserPage } from "./browser.ts";
+import { ReservationStatusSelection } from "../src/lib/reservation-status-selection.ts";
 import type {
   ReservationDetail,
   StayingGuest,
@@ -20,12 +16,12 @@ import type {
   WorkflowIssue,
 } from "../src/lib/api.ts";
 
-let window: Window;
-let server: ViteDevServer;
-let React: typeof import("react");
-let createRoot: (typeof import("react-dom/client"))["createRoot"];
-let query: typeof import("@tanstack/react-query");
-let routing: typeof import("@tanstack/react-router");
+let browser: BrowserTest;
+let page: BrowserPage;
+let window: BrowserTest["window"];
+let React: BrowserTest["React"];
+let query: BrowserTest["query"];
+let routing: BrowserTest["routing"];
 let forms: typeof import("../src/components/reservation-entry-forms.tsx");
 let dialogs: typeof import("../src/components/room-booking-dialog.tsx");
 let newBookings: typeof import("../src/components/new-booking.tsx");
@@ -36,58 +32,18 @@ let inventories: typeof import("../src/components/inventory.tsx");
 let reservationLists: typeof import("../src/components/reservations.tsx");
 let closures: typeof import("../src/components/room-closure-dialog.tsx");
 type CreateBookingInput = Parameters<typeof import("../src/lib/api.ts").createWorkflowBooking>[0];
-let root: Root;
-let container: HTMLDivElement;
-let client: Client;
-const originalFetch = globalThis.fetch;
+let root: BrowserPage["root"];
+let container: BrowserPage["container"];
+let client: BrowserPage["client"];
+let render: BrowserPage["render"];
+let withClient: BrowserPage["withClient"];
+let flush: BrowserPage["flush"];
+let until: BrowserPage["until"];
 
 beforeAll(async () => {
-  window = new Window({ url: "http://localhost:5173" });
-  for (const name of [
-    "window",
-    "self",
-    "document",
-    "navigator",
-    "HTMLElement",
-    "HTMLInputElement",
-    "HTMLTextAreaElement",
-    "Element",
-    "SVGElement",
-    "HTMLButtonElement",
-    "HTMLSelectElement",
-    "Node",
-    "NodeFilter",
-    "Text",
-    "Document",
-    "Event",
-    "KeyboardEvent",
-    "MouseEvent",
-    "PointerEvent",
-    "MutationObserver",
-    "ResizeObserver",
-    "getComputedStyle",
-    "requestAnimationFrame",
-    "cancelAnimationFrame",
-  ]) {
-    const value = name === "window" ? window : Reflect.get(window, name);
-    Object.defineProperty(globalThis, name, {
-      configurable: true,
-      value: typeof value === "function" && /^[a-z]/.test(name) ? value.bind(window) : value,
-    });
-  }
-  Reflect.set(globalThis, "IS_REACT_ACT_ENVIRONMENT", true);
-  React = await import("react");
-  ({ createRoot } = await import("react-dom/client"));
-  query = await import("@tanstack/react-query");
-  routing = await import("@tanstack/react-router");
-  // Compile the actual TSX components with the project's aliases and env.
-  // Middleware mode with HMR disabled needs no listening HTTP server.
-  server = await createServer({
-    root: fileURLToPath(new URL("../", import.meta.url)),
-    configFile: fileURLToPath(new URL("../vite.config.ts", import.meta.url)),
-    server: { middlewareMode: true, hmr: false, ws: false, watch: null },
-    mode: "development",
-  });
+  browser = await createBrowserTest();
+  ({ window, React, query, routing } = browser);
+  const { server } = browser;
   forms = (await server.ssrLoadModule(
     "/src/components/reservation-entry-forms.tsx",
   )) as typeof forms;
@@ -116,31 +72,18 @@ beforeAll(async () => {
 });
 
 afterAll(async () => {
-  globalThis.fetch = originalFetch;
-  await server?.close();
-  await window?.happyDOM.close();
+  await browser?.close();
 });
 
 beforeEach(() => {
   vi.useFakeTimers({ toFake: ["Date"] });
   vi.setSystemTime(new Date("2026-11-01T01:00:00Z"));
-  container = window.document.createElement("div");
-  window.document.body.append(container);
-  // React expects lib.dom nodes; the test DOM implements them through happy-dom.
-  root = createRoot(container as unknown as Parameters<typeof createRoot>[0]);
-  client = new query.QueryClient({
-    defaultOptions: {
-      queries: { retry: false, gcTime: Infinity },
-      mutations: { gcTime: Infinity },
-    },
-  });
+  page = browser.createPage();
+  ({ root, container, client, render, withClient, flush, until } = page);
 });
 
 afterEach(async () => {
-  await React.act(async () => root.unmount());
-  client.clear();
-  container.remove();
-  globalThis.fetch = originalFetch;
+  await page.cleanup();
   vi.useRealTimers();
 });
 
@@ -191,12 +134,6 @@ function detail(): ReservationDetail {
   };
 }
 
-async function render(element: React.ReactNode) {
-  await React.act(async () => {
-    root.render(withClient(element));
-  });
-}
-
 async function renderWithRouter(element: React.ReactNode) {
   const rootRoute = routing.createRootRoute({ component: () => element });
   const setupRoute = routing.createRoute({
@@ -207,28 +144,7 @@ async function renderWithRouter(element: React.ReactNode) {
     routeTree: rootRoute.addChildren([setupRoute]),
     history: routing.createMemoryHistory({ initialEntries: ["/"] }),
   });
-  await React.act(async () => {
-    await router.load();
-    root.render(withClient(React.createElement(routing.RouterProvider, { router })));
-  });
-}
-
-function withClient(element: React.ReactNode) {
-  return React.createElement(query.QueryClientProvider, { client }, element);
-}
-
-async function flush(ms = 0) {
-  await React.act(async () => {
-    await new Promise((resolve) => setTimeout(resolve, ms));
-  });
-}
-
-async function until(condition: () => boolean, message: string) {
-  for (let attempt = 0; attempt < 100; attempt++) {
-    if (condition()) return;
-    await flush(10);
-  }
-  assert.ok(condition(), message);
+  await page.renderRouter(router);
 }
 
 function control(name: string) {
@@ -1087,7 +1003,7 @@ const renderReservations = () =>
       view: "arrivals",
       day: "2026-10-14",
       q: "",
-      statuses: "all",
+      statuses: new ReservationStatusSelection().toSearch(),
       balance: "all",
       assignment: "all",
       sort: "guestName",

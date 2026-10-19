@@ -1,4 +1,5 @@
 import { translateError } from "./errors";
+import { TZDate } from "react-day-picker";
 
 let formatter: Intl.DateTimeFormat | undefined;
 let timeZone: string | undefined;
@@ -36,9 +37,12 @@ export function propertyToday(instant: Date | number = Date.now()): string {
 
 // Date objects at UI boundaries carry calendar components, never stored instants.
 // UTC arithmetic elsewhere remains safe for date labels and night counts.
-export function dateOnlyCarrier(day: string) {
+// UTC carriers can also represent labels skipped by the browser's local calendar.
+export function dateOnlyCarrier(day: string, carrierTimeZone?: "UTC") {
   const [year, month, date] = day.split("-").map(Number);
-  return new Date(year, month - 1, date);
+  return carrierTimeZone
+    ? new TZDate(`${day}T00:00:00Z`, carrierTimeZone)
+    : new Date(year, month - 1, date);
 }
 
 export function nextPropertyDay(instant = Date.now()) {
