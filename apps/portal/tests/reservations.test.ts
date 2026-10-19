@@ -512,6 +512,16 @@ it("identifies the booking contact, signed balances, and every assigned or unass
   assert.match(rows[0]!.querySelector("td:last-child")!.textContent, /200Saldo pendiente/);
   assert.match(rows[1]!.textContent, /1 sin asignar/);
   assert.match(rows[1]!.querySelector("td:last-child")!.textContent, /0Saldada/);
+  assert.ok(
+    rows[0]!
+      .querySelector("td:last-child span:first-child")!
+      .classList.contains("text-destructive"),
+  );
+  assert.ok(
+    rows[1]!
+      .querySelector("td:last-child span:last-child")!
+      .classList.contains("text-booking-foreground"),
+  );
   assert.match(rows[2]!.querySelector("td:last-child")!.textContent, /150Crédito/);
   assert.equal(rows[2]!.textContent.includes("Saldo pendiente"), false);
 });
@@ -676,6 +686,8 @@ it("keeps overdue checked-in stays in-house and hides the conflicting status sel
 
 it("picks a property calendar day, steps backward, and keeps an explicit date when the property clock advances", async () => {
   await render("/reservations?day=2026-10-31&page=2");
+  const dateLabel = container.querySelector(`label[for="${button("Día de operación").id}"]`);
+  assert.ok(dateLabel?.classList.contains("sr-only"));
   await click("Día de operación");
   const selected = window.document.querySelector<HTMLElement>('button[data-day="30/10/2026"]');
   assert.ok(selected);

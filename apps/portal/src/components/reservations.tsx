@@ -7,12 +7,15 @@ import {
   BedDoubleIcon,
   ChevronLeftIcon,
   ChevronRightIcon,
+  CircleAlertIcon,
+  CircleCheckIcon,
   LogInIcon,
   LogOutIcon,
   PlusIcon,
   RotateCcwIcon,
   SearchIcon,
   SlidersHorizontalIcon,
+  WalletIcon,
   XIcon,
 } from "lucide-react";
 import { cn } from "cn";
@@ -78,6 +81,48 @@ const views = [
   { value: "in-house", label: "En casa", icon: BedDoubleIcon },
   { value: "all", label: "Todas las reservas", icon: SearchIcon },
 ] as const;
+
+function ReservationBalance({
+  balanceCents,
+  currency,
+}: {
+  balanceCents: number;
+  currency: string;
+}) {
+  const { label, Icon, amountColor, labelColor } =
+    balanceCents > 0
+      ? {
+          label: "Saldo pendiente",
+          Icon: CircleAlertIcon,
+          amountColor: "text-destructive",
+          labelColor: "text-destructive",
+        }
+      : balanceCents < 0
+        ? {
+            label: "Crédito",
+            Icon: WalletIcon,
+            amountColor: "text-credit-foreground",
+            labelColor: "text-credit-foreground",
+          }
+        : {
+            label: "Saldada",
+            Icon: CircleCheckIcon,
+            amountColor: undefined,
+            labelColor: "text-booking-foreground",
+          };
+
+  return (
+    <div className="flex flex-col gap-0.5">
+      <span className={cn("font-medium", amountColor)}>
+        {formatMoney(Math.abs(balanceCents), currency)}
+      </span>
+      <span className={cn("inline-flex items-center justify-end gap-1 text-[10px]", labelColor)}>
+        <Icon aria-hidden="true" className="size-3 shrink-0" />
+        {label}
+      </span>
+    </div>
+  );
+}
 
 export function Reservations({
   search,
@@ -167,7 +212,7 @@ export function Reservations({
     return (
       <TableHead
         scope="col"
-        className={sort === "balance" ? "text-right" : undefined}
+        className={cn(sort === "balance" && "text-right")}
         aria-sort={active ? (search.direction === "asc" ? "ascending" : "descending") : undefined}
       >
         <Button
@@ -188,10 +233,7 @@ export function Reservations({
   return (
     <main className="flex min-h-0 w-full flex-col gap-4 overflow-y-auto p-4 lg:p-6">
       <header className="flex items-center justify-between gap-3">
-        <div className="flex flex-wrap items-baseline gap-3">
-          <h1 className="text-xl font-semibold tracking-tight">Reservas</h1>
-          <span className="text-xs text-muted-foreground">Registro operativo</span>
-        </div>
+        <h1 className="text-xl font-semibold tracking-tight">Reservas</h1>
         <Button onClick={() => setTarget({ mode: "new" })}>
           <PlusIcon data-icon="inline-start" />
           Nueva reserva
@@ -207,7 +249,6 @@ export function Reservations({
           }}
         >
           <TabsList
-            variant="line"
             aria-label="Vista de reservas"
             className="h-9 max-w-full justify-start overflow-x-auto"
           >
@@ -227,12 +268,13 @@ export function Reservations({
               aria-label="Día anterior"
               onClick={() => refine({ day: addDateLabelDays(search.day, -1) })}
             >
-              <ChevronLeftIcon />
+              <ChevronLeftIcon data-icon="inline-start" />
             </Button>
             <div className="w-40">
               <DateField
                 id={arrivalId}
                 label="Día de operación"
+                hideLabel
                 value={dateOnlyCarrier(search.day, "UTC")}
                 onChange={(date) =>
                   refine({
@@ -247,7 +289,7 @@ export function Reservations({
               aria-label="Día siguiente"
               onClick={() => refine({ day: addDateLabelDays(search.day, 1) })}
             >
-              <ChevronRightIcon />
+              <ChevronRightIcon data-icon="inline-end" />
             </Button>
             <Button variant="ghost" onClick={() => refine({ day: propertyToday() })}>
               Hoy
@@ -285,7 +327,7 @@ export function Reservations({
                     aria-label="Borrar búsqueda"
                     onClick={() => refine({ q: "" })}
                   >
-                    <XIcon />
+                    <XIcon data-icon="inline-end" />
                   </Button>
                 </InputGroupAddon>
               ) : null}
@@ -517,23 +559,10 @@ export function Reservations({
                         {formatMoney(row.totalCents, row.currency)}
                       </TableCell>
                       <TableCell className="text-right tabular-nums">
-                        <div className="flex flex-col gap-0.5">
-                          <span
-                            className={cn(
-                              "font-medium",
-                              row.balanceCents < 0 && "text-credit-foreground",
-                            )}
-                          >
-                            {formatMoney(Math.abs(row.balanceCents), row.currency)}
-                          </span>
-                          <span className="text-[10px] text-muted-foreground">
-                            {row.balanceCents > 0
-                              ? "Saldo pendiente"
-                              : row.balanceCents < 0
-                                ? "Crédito"
-                                : "Saldada"}
-                          </span>
-                        </div>
+                        <ReservationBalance
+                          balanceCents={row.balanceCents}
+                          currency={row.currency}
+                        />
                       </TableCell>
                     </TableRow>
                   ))}
@@ -571,7 +600,7 @@ export function Reservations({
             disabled={search.page === 0 || query.isFetching}
             onClick={() => onSearchChange({ page: search.page - 1 })}
           >
-            <ChevronLeftIcon />
+            <ChevronLeftIcon data-icon="inline-start" />
           </Button>
           <Button
             variant="outline"
@@ -580,7 +609,7 @@ export function Reservations({
             disabled={!query.data || offset + rows.length >= total || busy || query.isError}
             onClick={() => onSearchChange({ page: search.page + 1 })}
           >
-            <ChevronRightIcon />
+            <ChevronRightIcon data-icon="inline-end" />
           </Button>
         </div>
       </nav>

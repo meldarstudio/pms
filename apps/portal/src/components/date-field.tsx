@@ -1,6 +1,7 @@
 import { useState, type ComponentProps } from "react";
 import { format } from "@/lib/dates";
 import { CalendarIcon } from "lucide-react";
+import { cn } from "cn";
 
 import { Button } from "@/components/ui/button";
 import { PropertyDatePicker } from "@/components/property-date-picker";
@@ -10,6 +11,7 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 export function DateField({
   id,
   label,
+  hideLabel = false,
   value,
   disabled,
   locked,
@@ -19,6 +21,7 @@ export function DateField({
 }: {
   id: string;
   label: string;
+  hideLabel?: boolean;
   value: Date | null;
   disabled?: ComponentProps<typeof PropertyDatePicker>["disabled"];
   locked?: boolean;
@@ -30,7 +33,9 @@ export function DateField({
 
   return (
     <Field data-invalid={Boolean(error) || undefined} data-disabled={locked || undefined}>
-      <FieldLabel htmlFor={id}>{label}</FieldLabel>
+      <FieldLabel htmlFor={id} className={cn(hideLabel && "sr-only")}>
+        {label}
+      </FieldLabel>
       <Popover
         open={open}
         onOpenChange={(next) => {
