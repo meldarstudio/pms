@@ -1083,7 +1083,18 @@ const renderCalendar = () =>
   });
 const renderReservations = () =>
   React.createElement(reservationLists.Reservations, {
-    search: { q: "", status: "all", checkIn: "2026-10-14", page: 0 },
+    search: {
+      q: "",
+      view: "arrivals",
+      status: ["confirmed", "checked_in", "checked_out"],
+      checkIn: "2026-10-14",
+      balance: "all",
+      assignment: "all",
+      sort: "guestName",
+      direction: "asc",
+      pageSize: 50,
+      page: 0,
+    },
     onSearchChange: () => {},
     onOpenReservation: () => {},
   });

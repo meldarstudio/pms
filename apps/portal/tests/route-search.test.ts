@@ -39,26 +39,50 @@ describe("route search validation", () => {
     const today = "2026-10-31";
     assert.deepEqual(reservationsSearch({ q: "ana", status: "checked_in", page: 3 }), {
       q: "ana",
-      status: "checked_in",
+      view: "arrivals",
+      status: ["checked_in"],
       checkIn: today,
+      balance: "all",
+      assignment: "all",
+      sort: "guestName",
+      direction: "asc",
+      pageSize: 50,
       page: 3,
     });
     assert.deepEqual(reservationsSearch({ q: 1, status: "invalid", page: -1 }), {
       q: "",
-      status: "all",
+      view: "arrivals",
+      status: ["confirmed", "checked_in", "checked_out"],
       checkIn: today,
+      balance: "all",
+      assignment: "all",
+      sort: "guestName",
+      direction: "asc",
+      pageSize: 50,
       page: 0,
     });
     assert.deepEqual(reservationsSearch({ page: 1.5 }), {
       q: "",
-      status: "all",
+      view: "arrivals",
+      status: ["confirmed", "checked_in", "checked_out"],
       checkIn: today,
+      balance: "all",
+      assignment: "all",
+      sort: "guestName",
+      direction: "asc",
+      pageSize: 50,
       page: 0,
     });
     assert.deepEqual(reservationsSearch({ page: "2" }), {
       q: "",
-      status: "all",
+      view: "arrivals",
+      status: ["confirmed", "checked_in", "checked_out"],
       checkIn: today,
+      balance: "all",
+      assignment: "all",
+      sort: "guestName",
+      direction: "asc",
+      pageSize: 50,
       page: 2,
     });
   });

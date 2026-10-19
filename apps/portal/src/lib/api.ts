@@ -461,8 +461,13 @@ export function createWorkflowBooking(body: {
 export function searchReservations(
   params: {
     q?: string;
-    status?: string;
+    status?: string[];
     checkIn?: string;
+    checkOut?: string;
+    balance?: string;
+    assignment?: string;
+    sort?: string;
+    direction?: string;
     offset?: number;
     limit?: number;
   } = {},
@@ -473,7 +478,18 @@ export function searchReservations(
     offset: String(params.offset ?? 0),
   });
   if (params.q) query.set("q", params.q);
-  if (params.status) query.set("status", params.status);
+  if (params.status?.length) query.set("statuses", params.status.join(","));
   if (params.checkIn) query.set("checkIn", params.checkIn);
-  return getJson<(ReservationDetail & { guestName: string })[]>(`/reservations?${query}`, signal);
+  if (params.checkOut) query.set("checkOut", params.checkOut);
+  if (params.balance) query.set("balance", params.balance);
+  if (params.assignment) query.set("assignment", params.assignment);
+  if (params.sort) query.set("sort", params.sort);
+  if (params.direction) query.set("direction", params.direction);
+  query.set("paginated", "true");
+  return getJson<{
+    rows: (ReservationDetail & { guestName: string })[];
+    total: number;
+    limit: number;
+    offset: number;
+  }>(`/reservations?${query}`, signal);
 }

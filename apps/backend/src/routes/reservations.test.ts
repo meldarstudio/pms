@@ -1794,6 +1794,21 @@ async function listed(query = "") {
 }
 
 describe("reservation list search", () => {
+  it("returns exact paginated totals after applying the requested date and sort", async () => {
+    const first = await book("Zoe Cruz", { checkIn: "2026-10-10", checkOut: "2026-10-12" });
+    const second = await book("Ada Lovelace", { checkIn: "2026-10-10", checkOut: "2026-10-11" });
+    const response = await request(
+      "/reservations?paginated=true&checkOut=2026-10-11&sort=guestName&direction=asc&limit=1&offset=0",
+    );
+    expect(await response.json()).toMatchObject({
+      total: 1,
+      limit: 1,
+      offset: 0,
+      rows: [{ id: second.id }],
+    });
+    expect(first.id).not.toBe(second.id);
+  });
+
   it("filters by the exact check-in date and still returns overlapping stays for a range", async () => {
     const arrival = await book("Ada Lovelace", { checkIn: "2026-10-10", checkOut: "2026-10-12" });
     const later = await book("Grace Hopper", { checkIn: "2026-10-11", checkOut: "2026-10-13" });

@@ -29,9 +29,12 @@ reservationRoutes.get("/", validate("query", reservationListQuerySchema), async 
   const filters = [];
   if (q.guestId) filters.push(eq(reservations.guestId, q.guestId));
   if (q.checkIn) filters.push(eq(reservations.checkIn, q.checkIn));
+  if (q.checkOut) filters.push(eq(reservations.checkOut, q.checkOut));
   if (q.from) filters.push(gt(reservations.checkOut, q.from));
   if (q.to) filters.push(lte(reservations.checkIn, q.to));
-  if (q.status) filters.push(eq(reservations.status, q.status));
+  const statuses = q.statuses?.split(",").filter(Boolean);
+  if (statuses?.length) filters.push(inArray(reservations.status, statuses as never[]));
+  else if (q.status) filters.push(eq(reservations.status, q.status));
   if (q.q) {
     for (const token of q.q.split(/\s+/)) {
       const needle = token.replace(/[%_]/g, "");
@@ -41,15 +44,19 @@ reservationRoutes.get("/", validate("query", reservationListQuerySchema), async 
       filters.push(or(like(reservations.code, pattern), like(guests.fullName, pattern)));
     }
   }
-  const rows = await db
+  const listQuery = db
     .select({ reservation: reservations, guest: guests })
     .from(reservations)
     .innerJoin(guests, eq(guests.id, reservations.guestId))
     .where(and(...filters))
-    .orderBy(asc(reservations.checkIn), asc(guests.fullName), asc(reservations.code))
-    .limit(q.limit ?? 50)
-    .offset(q.offset ?? 0);
-  if (!rows.length) return c.json([]);
+    .orderBy(asc(reservations.checkIn), asc(guests.fullName), asc(reservations.code));
+  const rows = q.paginated
+    ? await listQuery
+    : await listQuery.limit(q.limit ?? 50).offset(q.offset ?? 0);
+  if (!rows.length)
+    return q.paginated
+      ? c.json({ rows: [], total: 0, limit: q.limit ?? 50, offset: q.offset ?? 0 })
+      : c.json([]);
   const ids = rows.map((r) => r.reservation.id);
   const [lines, paymentRows, types, roomRows] = await Promise.all([
     Promise.all(
@@ -78,23 +85,61 @@ reservationRoutes.get("/", validate("query", reservationListQuerySchema), async 
       ),
     )
   ).flat();
-  return c.json(
-    rows.map(({ reservation, guest }) => {
-      const ownLines = lines.filter((l) => l.reservationId === reservation.id);
-      const ownIds = new Set(ownLines.map((l) => l.id));
-      const detail = presentReservation({
-        reservation,
-        guest,
-        lines: ownLines,
-        nights: nights.filter((n) => ownIds.has(n.reservationRoomId)),
-        payments: paymentRows.filter((payment) => payment.reservationId === reservation.id),
-        types,
-        roomRows,
-        currency: currency(c),
+  let result = rows.map(({ reservation, guest }) => {
+    const ownLines = lines.filter((l) => l.reservationId === reservation.id);
+    const ownIds = new Set(ownLines.map((l) => l.id));
+    const detail = presentReservation({
+      reservation,
+      guest,
+      lines: ownLines,
+      nights: nights.filter((n) => ownIds.has(n.reservationRoomId)),
+      payments: paymentRows.filter((payment) => payment.reservationId === reservation.id),
+      types,
+      roomRows,
+      currency: currency(c),
+    });
+    return { ...detail, guestName: `${guest.fullName}` };
+  });
+  if (q.paginated) {
+    if (q.balance)
+      result = result.filter((row) =>
+        q.balance === "outstanding"
+          ? row.balanceCents > 0
+          : q.balance === "settled"
+            ? row.balanceCents === 0
+            : row.balanceCents < 0,
+      );
+    if (q.assignment)
+      result = result.filter((row) =>
+        q.assignment === "assigned"
+          ? row.rooms.every((room) => room.roomId !== null)
+          : row.rooms.some((room) => room.roomId === null),
+      );
+    const direction = q.direction === "desc" ? -1 : 1;
+    if (q.sort) {
+      const name = (row: (typeof result)[number]) => row.guestName.toLocaleLowerCase();
+      result.sort((a, b) => {
+        let compare =
+          q.sort === "checkIn"
+            ? a.checkIn.localeCompare(b.checkIn)
+            : q.sort === "checkOut"
+              ? a.checkOut.localeCompare(b.checkOut)
+              : q.sort === "guestName"
+                ? name(a).localeCompare(name(b))
+                : a.balanceCents - b.balanceCents;
+        compare *= direction;
+        if (compare) return compare;
+        compare = name(a).localeCompare(name(b));
+        return compare || a.code.localeCompare(b.code);
       });
-      return { ...detail, guestName: `${guest.fullName}` };
-    }),
-  );
+    }
+    const total = result.length,
+      offset = q.offset ?? 0,
+      limit = q.limit ?? 50;
+    result = result.slice(offset, offset + limit);
+    return c.json({ rows: result, total, limit, offset });
+  }
+  return c.json(result);
 });
 reservationRoutes.post("/", validate("json", workflowCreateSchema), async (c) => {
   const db = getDb(c.env.DB),

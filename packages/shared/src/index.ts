@@ -120,8 +120,24 @@ export const reservationListQuerySchema = listQuerySchema.extend({
   from: dateSchema.optional(),
   to: dateSchema.optional(),
   checkIn: dateSchema.optional(),
+  checkOut: dateSchema.optional(),
   status: z.enum(["confirmed", "checked_in", "checked_out", "cancelled"]).optional(),
+  statuses: z
+    .string()
+    .refine((value) =>
+      value
+        .split(",")
+        .every((status) =>
+          ["confirmed", "checked_in", "checked_out", "cancelled"].includes(status),
+        ),
+    )
+    .optional(),
   guestId: z.string().min(1).optional(),
+  balance: z.enum(["outstanding", "settled", "credit"]).optional(),
+  assignment: z.enum(["assigned", "unassigned"]).optional(),
+  sort: z.enum(["checkIn", "checkOut", "guestName", "balance"]).optional(),
+  direction: z.enum(["asc", "desc"]).optional(),
+  paginated: z.enum(["true"]).optional(),
 });
 
 export type GuestInput = z.infer<typeof guestFields>;

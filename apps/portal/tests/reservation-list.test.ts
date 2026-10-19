@@ -3,7 +3,7 @@ import { describe, it } from "vite-plus/test";
 import { occupantsLabel, reservationStatusLabel, roomsLabel } from "../src/lib/reservation-list.ts";
 
 describe("reservation list presentation", () => {
-  it("labels rooms by number, or Sin asignar when any room is missing", () => {
+  it("shows assigned room numbers alongside unassigned room counts", () => {
     assert.equal(
       roomsLabel([
         { roomNumber: "102", roomTypeName: "Estándar" },
@@ -16,14 +16,14 @@ describe("reservation list presentation", () => {
         { roomNumber: "102", roomTypeName: "Estándar" },
         { roomNumber: null, roomTypeName: "Suite familiar" },
       ]),
-      "Sin asignar",
+      "102, 1 sin asignar",
     );
     assert.equal(
       roomsLabel([
         { roomNumber: null, roomTypeName: "Estándar" },
         { roomNumber: null, roomTypeName: null },
       ]),
-      "Sin asignar",
+      "2 sin asignar",
     );
     assert.equal(roomsLabel([]), "Sin asignar");
   });

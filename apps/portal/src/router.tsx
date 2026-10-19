@@ -124,7 +124,17 @@ const reservationsRoute = createRoute({
   path: "/reservations",
   validateSearch: reservationsSearch,
   search: {
-    middlewares: [stripSearchParams({ q: "", status: "all", page: 0 })],
+    middlewares: [
+      stripSearchParams({
+        q: "",
+        status: [],
+        page: 0,
+        balance: "all",
+        assignment: "all",
+        pageSize: 50,
+        direction: "asc",
+      }),
+    ],
   },
   component: ReservationsRoute,
 });
