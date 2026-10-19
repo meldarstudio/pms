@@ -126,10 +126,11 @@ function button(label: string) {
     (element) => element.textContent.trim() === label,
   );
   const element =
+    (labelElement ? window.document.getElementById(labelElement.htmlFor) : null) ??
     Array.from(window.document.querySelectorAll("button")).find(
       (element) =>
         element.textContent.trim() === label || element.getAttribute("aria-label") === label,
-    ) ?? (labelElement ? window.document.getElementById(labelElement.htmlFor) : null);
+    );
   assert.ok(element, `Missing button ${label}`);
   return element as HTMLElement;
 }
@@ -345,6 +346,7 @@ it("sends sorting and page sizes to the full-result endpoint and resets the offs
     });
   await render("/reservations?view=all&page=2");
   assert.equal(params().get("offset"), "100");
+  await click("Ordenar reservas");
   await choose("Ordenar por", "Saldo");
   await until(() => params().get("sort") === "balance");
   assert.equal(params().get("offset"), "0");
@@ -358,12 +360,47 @@ it("sends sorting and page sizes to the full-result endpoint and resets the offs
     await choose("Ordenar por", label!);
     await until(() => params().get("sort") === sort);
   }
-  await choose("Reservas por página", "100");
+  await click("Ordenar reservas");
+  await choose("Reservas por página", "100 / pág.");
   await until(() => params().get("limit") === "100");
-  await choose("Reservas por página", "25");
+  await choose("Reservas por página", "25 / pág.");
   await until(() => params().get("limit") === "25");
   assert.equal(params().get("offset"), "0");
 });
+
+it.each([
+  ["Contacto", "guestName"],
+  ["Check-in", "checkIn"],
+  ["Check-out", "checkOut"],
+  ["Saldo", "balance"],
+])(
+  "sorts the full result set through the %s header without opening a reservation",
+  async (label, sort) => {
+    respond = (url) =>
+      Response.json({
+        rows: [ana],
+        total: 126,
+        limit: 50,
+        offset: Number(url.searchParams.get("offset")),
+      });
+    await render(`/reservations?view=all&page=2&sort=${sort}&direction=asc`);
+    await click(`Ordenar por ${label}`);
+    await until(() => params().get("direction") === "desc");
+    assert.equal(params().get("sort"), sort);
+    assert.equal(params().get("offset"), "0");
+    assert.equal(
+      button(`Ordenar por ${label}`).closest("th")!.getAttribute("aria-sort"),
+      "descending",
+    );
+    assert.equal(router.state.location.pathname, "/reservations");
+    await click(`Ordenar por ${label}`);
+    await until(() => params().get("direction") === "asc");
+    assert.equal(
+      button(`Ordenar por ${label}`).closest("th")!.getAttribute("aria-sort"),
+      "ascending",
+    );
+  },
+);
 
 it("identifies the booking contact, signed balances, and every assigned or unassigned reserved room", async () => {
   respond = () =>
@@ -407,11 +444,11 @@ it("identifies the booking contact, signed balances, and every assigned or unass
   assert.equal(headers.includes("Huésped"), false);
   const rows = Array.from(container.querySelectorAll("tbody tr"));
   assert.match(rows[0]!.textContent, /101 · 2 sin asignar/);
-  assert.match(rows[0]!.textContent, /Pendiente.*200/);
+  assert.match(rows[0]!.querySelector("td:last-child")!.textContent, /200Saldo pendiente/);
   assert.match(rows[1]!.textContent, /1 sin asignar/);
-  assert.match(rows[1]!.textContent, /Saldada.*0/);
-  assert.match(rows[2]!.textContent, /Crédito.*150/);
-  assert.equal(rows[2]!.textContent.includes("Pendiente"), false);
+  assert.match(rows[1]!.querySelector("td:last-child")!.textContent, /0Saldada/);
+  assert.match(rows[2]!.querySelector("td:last-child")!.textContent, /150Crédito/);
+  assert.equal(rows[2]!.textContent.includes("Saldo pendiente"), false);
 });
 
 it.each(["Enter", " ", "click"])(

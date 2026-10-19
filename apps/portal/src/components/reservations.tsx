@@ -1,9 +1,21 @@
 import { useDeferredValue, useEffect, useId, useState } from "react";
 import { format } from "date-fns";
-import { PlusIcon, SearchIcon } from "lucide-react";
+import {
+  ArrowDownIcon,
+  ArrowUpIcon,
+  ArrowUpDownIcon,
+  BedDoubleIcon,
+  ChevronLeftIcon,
+  ChevronRightIcon,
+  LogInIcon,
+  LogOutIcon,
+  PlusIcon,
+  SearchIcon,
+  SlidersHorizontalIcon,
+  XIcon,
+} from "lucide-react";
 import { cn } from "cn";
 import { RoomBookingDialog, type BookingTarget } from "@/components/room-booking-dialog";
-import { stayColors } from "@/components/room-calendar";
 import { DateField } from "@/components/date-field";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -19,6 +31,7 @@ import {
 import { Checkbox } from "@/components/ui/checkbox";
 import { InputGroup, InputGroupAddon, InputGroupInput } from "@/components/ui/input-group";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Popover, PopoverContent, PopoverTitle, PopoverTrigger } from "@/components/ui/popover";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   Table,
@@ -40,11 +53,30 @@ import {
   roomsLabel,
   stayDateLabel,
 } from "@/lib/reservation-list";
-import { viewDefaults, type ReservationsSearch, type ReservationView } from "@/lib/route-search";
+import {
+  viewDefaults,
+  type ReservationsSearch,
+  type ReservationView,
+  type ReservationSort,
+} from "@/lib/route-search";
 import {
   ReservationStatusSelection,
   reservationStatusValues,
 } from "@/lib/reservation-status-selection";
+
+const sortOptions: { value: ReservationSort; label: string }[] = [
+  { value: "checkIn", label: "Check-in" },
+  { value: "checkOut", label: "Check-out" },
+  { value: "guestName", label: "Contacto" },
+  { value: "balance", label: "Saldo" },
+];
+
+const views = [
+  { value: "arrivals", label: "Llegadas", icon: LogInIcon },
+  { value: "departures", label: "Salidas", icon: LogOutIcon },
+  { value: "in-house", label: "En casa", icon: BedDoubleIcon },
+  { value: "all", label: "Todas las reservas", icon: SearchIcon },
+] as const;
 
 export function Reservations({
   search,
@@ -58,7 +90,6 @@ export function Reservations({
   const arrivalId = useId();
   const guestId = useId();
   const filtersId = useId();
-  const [filtersOpen, setFiltersOpen] = useState(false);
   const [target, setTarget] = useState<BookingTarget | null>(null);
   const q = useDeferredValue(search.q);
   const selectedStatuses = ReservationStatusSelection.parse(search.statuses);
@@ -152,220 +183,279 @@ export function Reservations({
       : []),
   ];
 
-  return (
-    <main className="mx-auto flex w-full max-w-7xl flex-col gap-6 overflow-y-auto p-4 md:p-8">
-      <h1 className="text-2xl font-semibold tracking-tight">Reservas</h1>
-      <Tabs
-        value={search.view}
-        onValueChange={(value) => {
-          const view = value as ReservationView;
-          onSearchChange({ view, ...viewDefaults(view), page: 0 });
-        }}
+  const filtersActive =
+    search.balance !== "all" ||
+    search.assignment !== "all" ||
+    search.statuses !== viewDefaults(search.view).statuses;
+  const rangeLabel = query.isPending
+    ? "Buscando reservas…"
+    : query.isError && !query.data
+      ? "No se pudieron cargar las reservas"
+      : `${rows.length ? `${offset + 1}–${offset + rows.length}` : "0"} de ${total} ${total === 1 ? "reserva" : "reservas"}${busy ? " · Actualizando…" : ""}`;
+
+  function sortHeader(sort: ReservationSort, label: string) {
+    const active = search.sort === sort;
+    const Icon = active
+      ? search.direction === "asc"
+        ? ArrowUpIcon
+        : ArrowDownIcon
+      : ArrowUpDownIcon;
+    return (
+      <TableHead
+        scope="col"
+        className={sort === "balance" ? "text-right" : undefined}
+        aria-sort={active ? (search.direction === "asc" ? "ascending" : "descending") : undefined}
       >
-        <TabsList aria-label="Vista de reservas">
-          <TabsTrigger value="all">Todas las reservas</TabsTrigger>
-          <TabsTrigger value="arrivals">Llegadas</TabsTrigger>
-          <TabsTrigger value="departures">Salidas</TabsTrigger>
-          <TabsTrigger value="in-house">En casa</TabsTrigger>
-        </TabsList>
-      </Tabs>
-      <FieldGroup className="grid gap-4 md:grid-cols-[minmax(0,1.15fr)_minmax(0,1.2fr)_220px] md:items-start">
-        {search.view === "arrivals" || search.view === "departures" ? (
-          <div className="flex flex-col gap-2">
-            <DateField
-              id={arrivalId}
-              label="Día de operación"
-              value={dateOnlyCarrier(search.day, "UTC")}
-              onChange={(date) =>
-                onSearchChange({
-                  day: format(date, "yyyy-MM-dd"),
-                  page: 0,
-                })
-              }
-            />
-            <div className="flex gap-2">
-              <Button
-                variant="outline"
-                onClick={() =>
-                  onSearchChange({
-                    day: addDateLabelDays(search.day, -1),
-                    page: 0,
-                  })
-                }
-              >
-                Día anterior
-              </Button>
-              <Button
-                variant="outline"
-                onClick={() => onSearchChange({ day: propertyToday(), page: 0 })}
-              >
-                Hoy
-              </Button>
-              <Button
-                variant="outline"
-                onClick={() =>
-                  onSearchChange({
-                    day: addDateLabelDays(search.day, 1),
-                    page: 0,
-                  })
-                }
-              >
-                Día siguiente
-              </Button>
-            </div>
-          </div>
-        ) : null}
-        <Field>
-          <FieldLabel htmlFor={guestId}>Contacto o código</FieldLabel>
-          <InputGroup>
-            <InputGroupAddon>
-              <SearchIcon />
-            </InputGroupAddon>
-            <InputGroupInput
-              id={guestId}
-              value={search.q}
-              onChange={(event) => onSearchChange({ q: event.target.value, page: 0 })}
-            />
-          </InputGroup>
-        </Field>
-        <Button
-          variant="outline"
-          aria-expanded={filtersOpen}
-          aria-controls={filtersId}
-          onClick={() => setFiltersOpen(!filtersOpen)}
-        >
-          Filtros
-        </Button>
-      </FieldGroup>
-      {filtersOpen ? (
-        <section id={filtersId} aria-label="Filtros de reservas">
-          <FieldGroup className="grid gap-4 md:grid-cols-3">
-            {search.view !== "in-house" ? (
-              <FieldSet>
-                <FieldLegend>Estados</FieldLegend>
-                <FieldGroup>
-                  <Field orientation="horizontal">
-                    <Checkbox
-                      id={`${filtersId}-all`}
-                      checked={selectedStatuses.unrestricted}
-                      onCheckedChange={() =>
-                        refine({ statuses: new ReservationStatusSelection().toSearch() })
-                      }
-                    />
-                    <FieldLabel htmlFor={`${filtersId}-all`}>Todos los estados</FieldLabel>
-                  </Field>
-                  {reservationStatusValues.map((status) => (
-                    <Field key={status} orientation="horizontal">
-                      <Checkbox
-                        id={`${filtersId}-${status}`}
-                        checked={selectedStatuses.values.includes(status)}
-                        onCheckedChange={(checked) =>
-                          refine({
-                            statuses: selectedStatuses.withStatus(status, checked).toSearch(),
-                          })
-                        }
-                      />
-                      <FieldLabel htmlFor={`${filtersId}-${status}`}>
-                        {reservationStatusLabel(status)}
-                      </FieldLabel>
-                    </Field>
-                  ))}
-                </FieldGroup>
-              </FieldSet>
-            ) : null}
-            <ChoiceField
-              label="Saldo"
-              value={search.balance}
-              options={balanceOptions}
-              onChange={(value) => refine({ balance: value as ReservationsSearch["balance"] })}
-            />
-            <ChoiceField
-              label="Asignación"
-              value={search.assignment}
-              options={assignmentOptions}
-              onChange={(value) =>
-                refine({ assignment: value as ReservationsSearch["assignment"] })
-              }
-            />
-          </FieldGroup>
-        </section>
-      ) : null}
-      <div className="flex flex-wrap items-center gap-2" aria-label="Filtros activos">
-        {chips.map((chip) => (
-          <Badge key={chip.label} variant="secondary">
-            {chip.label}
-            <Button
-              variant="ghost"
-              size="icon-xs"
-              aria-label={`Quitar filtro: ${chip.label}`}
-              onClick={chip.remove}
-            >
-              ×
-            </Button>
-          </Badge>
-        ))}
         <Button
           variant="ghost"
-          size="sm"
+          size="xs"
+          aria-label={`Ordenar por ${label}`}
           onClick={() =>
-            refine({
-              q: "",
-              balance: "all",
-              assignment: "all",
-              statuses: viewDefaults(search.view).statuses,
-            })
+            refine({ sort, direction: active && search.direction === "asc" ? "desc" : "asc" })
           }
         >
-          Limpiar filtros
+          {label}
+          <Icon data-icon="inline-end" aria-hidden="true" />
         </Button>
-      </div>
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <p className="text-sm text-muted-foreground" aria-live="polite">
-          {query.isPending
-            ? "Buscando reservas…"
-            : query.isError && !query.data
-              ? "No se pudieron cargar las reservas"
-              : `${rows.length ? `${offset + 1}–${offset + rows.length}` : "0"} de ${total} ${total === 1 ? "reserva" : "reservas"}${busy ? " · Actualizando…" : ""}`}
-        </p>
+      </TableHead>
+    );
+  }
+
+  return (
+    <main className="flex min-h-0 w-full flex-col gap-4 overflow-y-auto p-4 lg:p-6">
+      <header className="flex items-center justify-between gap-3">
+        <div className="flex flex-wrap items-baseline gap-3">
+          <h1 className="text-xl font-semibold tracking-tight">Reservas</h1>
+          <span className="text-xs text-muted-foreground">Registro operativo</span>
+        </div>
         <Button onClick={() => setTarget({ mode: "new" })}>
           <PlusIcon data-icon="inline-start" />
           Nueva reserva
         </Button>
+      </header>
+      <div className="flex flex-wrap items-end justify-between gap-x-4 gap-y-3 border-b pb-2">
+        <Tabs
+          className="max-w-full min-w-0"
+          value={search.view}
+          onValueChange={(value) => {
+            const view = value as ReservationView;
+            onSearchChange({ view, ...viewDefaults(view), page: 0 });
+          }}
+        >
+          <TabsList
+            variant="line"
+            aria-label="Vista de reservas"
+            className="h-9 max-w-full justify-start overflow-x-auto"
+          >
+            {views.map(({ value, label, icon: Icon }) => (
+              <TabsTrigger key={value} value={value} className="gap-2 px-4">
+                <Icon aria-hidden="true" />
+                {label}
+              </TabsTrigger>
+            ))}
+          </TabsList>
+        </Tabs>
+        {search.view === "arrivals" || search.view === "departures" ? (
+          <div className="flex flex-wrap items-end gap-1">
+            <Button
+              variant="outline"
+              size="icon"
+              aria-label="Día anterior"
+              onClick={() => refine({ day: addDateLabelDays(search.day, -1) })}
+            >
+              <ChevronLeftIcon />
+            </Button>
+            <div className="w-40">
+              <DateField
+                id={arrivalId}
+                label="Día de operación"
+                value={dateOnlyCarrier(search.day, "UTC")}
+                onChange={(date) =>
+                  refine({
+                    day: format(date, "yyyy-MM-dd"),
+                  })
+                }
+              />
+            </div>
+            <Button
+              variant="outline"
+              size="icon"
+              aria-label="Día siguiente"
+              onClick={() => refine({ day: addDateLabelDays(search.day, 1) })}
+            >
+              <ChevronRightIcon />
+            </Button>
+            <Button variant="ghost" onClick={() => refine({ day: propertyToday() })}>
+              Hoy
+            </Button>
+          </div>
+        ) : (
+          <p className="py-2 text-xs text-muted-foreground">
+            {search.view === "all"
+              ? "Todas las fechas"
+              : "Según check-in realizado · incluye estancias vencidas"}
+          </p>
+        )}
       </div>
-      <FieldGroup className="grid gap-4 md:grid-cols-3">
-        <ChoiceField
-          label="Ordenar por"
-          value={search.sort}
-          options={[
-            { value: "checkIn", label: "Check-in" },
-            { value: "checkOut", label: "Check-out" },
-            { value: "guestName", label: "Contacto" },
-            { value: "balance", label: "Saldo" },
-          ]}
-          onChange={(sort) => refine({ sort: sort as ReservationsSearch["sort"] })}
-        />
-        <ChoiceField
-          label="Dirección"
-          value={search.direction}
-          options={[
-            { value: "asc", label: "Ascendente" },
-            { value: "desc", label: "Descendente" },
-          ]}
-          onChange={(direction) =>
-            refine({ direction: direction as ReservationsSearch["direction"] })
-          }
-        />
-        <ChoiceField
-          label="Reservas por página"
-          value={String(search.size)}
-          options={[
-            { value: "25", label: "25" },
-            { value: "50", label: "50" },
-            { value: "100", label: "100" },
-          ]}
-          onChange={(size) => refine({ size: Number(size) as ReservationsSearch["size"] })}
-        />
-      </FieldGroup>
+      <div className="flex flex-col gap-2">
+        <div className="flex flex-wrap items-center gap-2">
+          <div className="w-full max-w-sm">
+            <Field>
+              <FieldLabel htmlFor={guestId} className="sr-only">
+                Contacto o código
+              </FieldLabel>
+              <InputGroup>
+                <InputGroupAddon>
+                  <SearchIcon />
+                </InputGroupAddon>
+                <InputGroupInput
+                  id={guestId}
+                  placeholder="Buscar contacto o código…"
+                  value={search.q}
+                  onChange={(event) => refine({ q: event.target.value })}
+                />
+                {search.q ? (
+                  <InputGroupAddon align="inline-end">
+                    <Button
+                      variant="ghost"
+                      size="icon-xs"
+                      aria-label="Borrar búsqueda"
+                      onClick={() => refine({ q: "" })}
+                    >
+                      <XIcon />
+                    </Button>
+                  </InputGroupAddon>
+                ) : null}
+              </InputGroup>
+            </Field>
+          </div>
+          <Popover>
+            <PopoverTrigger render={<Button variant="outline" aria-label="Filtros" />}>
+              <SlidersHorizontalIcon data-icon="inline-start" />
+              Filtros{filtersActive ? " · activos" : ""}
+            </PopoverTrigger>
+            <PopoverContent
+              align="start"
+              className="max-h-[min(32rem,var(--available-height))] w-80 max-w-[calc(100vw-2rem)] gap-4 overflow-y-auto p-4"
+            >
+              <PopoverTitle>Filtros de reservas</PopoverTitle>
+              <FieldGroup className="gap-4">
+                {search.view !== "in-house" ? (
+                  <FieldSet>
+                    <FieldLegend>Estados</FieldLegend>
+                    <FieldGroup className="gap-3">
+                      <Field orientation="horizontal">
+                        <Checkbox
+                          id={`${filtersId}-all`}
+                          checked={selectedStatuses.unrestricted}
+                          onCheckedChange={() =>
+                            refine({ statuses: new ReservationStatusSelection().toSearch() })
+                          }
+                        />
+                        <FieldLabel htmlFor={`${filtersId}-all`}>Todos los estados</FieldLabel>
+                      </Field>
+                      {reservationStatusValues.map((status) => (
+                        <Field key={status} orientation="horizontal">
+                          <Checkbox
+                            id={`${filtersId}-${status}`}
+                            checked={selectedStatuses.values.includes(status)}
+                            onCheckedChange={(checked) =>
+                              refine({
+                                statuses: selectedStatuses.withStatus(status, checked).toSearch(),
+                              })
+                            }
+                          />
+                          <FieldLabel htmlFor={`${filtersId}-${status}`}>
+                            {reservationStatusLabel(status)}
+                          </FieldLabel>
+                        </Field>
+                      ))}
+                    </FieldGroup>
+                  </FieldSet>
+                ) : null}
+                <ChoiceField
+                  label="Saldo"
+                  value={search.balance}
+                  options={balanceOptions}
+                  onChange={(value) => refine({ balance: value as ReservationsSearch["balance"] })}
+                />
+                <ChoiceField
+                  label="Asignación"
+                  value={search.assignment}
+                  options={assignmentOptions}
+                  onChange={(value) =>
+                    refine({ assignment: value as ReservationsSearch["assignment"] })
+                  }
+                />
+              </FieldGroup>
+            </PopoverContent>
+          </Popover>
+          <div className="ml-auto">
+            <Popover>
+              <PopoverTrigger
+                render={<Button variant="ghost" size="sm" aria-label="Ordenar reservas" />}
+              >
+                <ArrowUpDownIcon data-icon="inline-start" />
+                {sortOptions.find((option) => option.value === search.sort)!.label} ·{" "}
+                {search.direction === "asc" ? "↑" : "↓"}
+              </PopoverTrigger>
+              <PopoverContent align="end" className="gap-4 p-4">
+                <PopoverTitle>Orden de las reservas</PopoverTitle>
+                <FieldGroup className="gap-3">
+                  <ChoiceField
+                    label="Ordenar por"
+                    value={search.sort}
+                    options={sortOptions}
+                    onChange={(sort) => refine({ sort: sort as ReservationSort })}
+                  />
+                  <ChoiceField
+                    label="Dirección"
+                    value={search.direction}
+                    options={[
+                      { value: "asc", label: "Ascendente" },
+                      { value: "desc", label: "Descendente" },
+                    ]}
+                    onChange={(direction) =>
+                      refine({ direction: direction as ReservationsSearch["direction"] })
+                    }
+                  />
+                </FieldGroup>
+              </PopoverContent>
+            </Popover>
+          </div>
+        </div>
+        {chips.length ? (
+          <div className="flex flex-wrap items-center gap-1.5" aria-label="Filtros activos">
+            {chips.map((chip) => (
+              <Badge key={chip.label} variant="secondary">
+                {chip.label}
+                <Button
+                  variant="ghost"
+                  size="icon-xs"
+                  aria-label={`Quitar filtro: ${chip.label}`}
+                  onClick={chip.remove}
+                >
+                  <XIcon />
+                </Button>
+              </Badge>
+            ))}
+            <Button
+              variant="ghost"
+              size="xs"
+              onClick={() =>
+                refine({
+                  q: "",
+                  balance: "all",
+                  assignment: "all",
+                  statuses: viewDefaults(search.view).statuses,
+                })
+              }
+            >
+              Limpiar filtros
+            </Button>
+          </div>
+        ) : null}
+      </div>
       {query.isPending ? (
         <Skeleton className="h-64 w-full" />
       ) : (
@@ -389,88 +479,150 @@ export function Reservations({
               </EmptyHeader>
             </Empty>
           ) : rows.length > 0 ? (
-            <Table className={cn(busy && "opacity-60")} aria-busy={busy || undefined}>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Estado</TableHead>
-                  <TableHead>Contacto</TableHead>
-                  <TableHead>Código</TableHead>
-                  <TableHead>Habitaciones</TableHead>
-                  <TableHead>Ocupantes</TableHead>
-                  <TableHead>Check-in</TableHead>
-                  <TableHead>Check-out</TableHead>
-                  <TableHead className="text-right">Total</TableHead>
-                  <TableHead className="text-right">Saldo</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {rows.map((row) => (
-                  <TableRow
-                    key={row.id}
-                    className="cursor-pointer"
-                    tabIndex={0}
-                    aria-label={`Abrir reserva de ${row.guestName}`}
-                    onClick={() => open(row.id)}
-                    onKeyDown={(event) => {
-                      if (event.key === "Enter" || event.key === " ") {
-                        event.preventDefault();
-                        open(row.id);
-                      }
-                    }}
-                  >
-                    <TableCell>
-                      <Badge
-                        variant={row.status === "cancelled" ? "destructive" : "secondary"}
-                        className={cn(
-                          "w-[6.625rem] justify-center",
-                          row.status === "cancelled"
-                            ? "border-destructive/20"
-                            : stayColors[row.status],
-                        )}
-                      >
-                        {reservationStatusLabel(row.status)}
-                      </Badge>
-                    </TableCell>
-                    <TableCell className="font-medium">{row.guestName}</TableCell>
-                    <TableCell className="font-mono text-xs">{row.code}</TableCell>
-                    <TableCell>{roomsLabel(row.rooms)}</TableCell>
-                    <TableCell>{occupantsLabel(row.rooms)}</TableCell>
-                    <TableCell className="tabular-nums">{stayDateLabel(row.checkIn)}</TableCell>
-                    <TableCell className="tabular-nums">{stayDateLabel(row.checkOut)}</TableCell>
-                    <TableCell className="text-right tabular-nums">
-                      {formatMoney(row.totalCents, row.currency)}
-                    </TableCell>
-                    <TableCell className="text-right tabular-nums">
-                      {row.balanceCents > 0
-                        ? "Pendiente"
-                        : row.balanceCents < 0
-                          ? "Crédito"
-                          : "Saldada"}
-                      {" · "}
-                      {formatMoney(Math.abs(row.balanceCents), row.currency)}
-                    </TableCell>
+            <div className="border">
+              <Table
+                className={cn(busy && "opacity-60")}
+                aria-label="Reservas"
+                aria-busy={busy || undefined}
+              >
+                <TableHeader>
+                  <TableRow>
+                    <TableHead scope="col" className="w-10">
+                      <span aria-hidden="true">#</span>
+                      <span className="sr-only">Número de fila</span>
+                    </TableHead>
+                    {sortHeader("guestName", "Contacto")}
+                    <TableHead scope="col">Estado</TableHead>
+                    <TableHead scope="col">Habitaciones</TableHead>
+                    <TableHead scope="col">Ocupantes</TableHead>
+                    {sortHeader("checkIn", "Check-in")}
+                    {sortHeader("checkOut", "Check-out")}
+                    <TableHead scope="col" className="text-right">
+                      Total
+                    </TableHead>
+                    {sortHeader("balance", "Saldo")}
                   </TableRow>
-                ))}
-              </TableBody>
-            </Table>
+                </TableHeader>
+                <TableBody>
+                  {rows.map((row, index) => (
+                    <TableRow
+                      key={row.id}
+                      className="cursor-pointer focus-visible:outline-2 focus-visible:outline-ring"
+                      tabIndex={0}
+                      aria-label={`Abrir reserva de ${row.guestName}`}
+                      onClick={() => open(row.id)}
+                      onKeyDown={(event) => {
+                        if (event.key === "Enter" || event.key === " ") {
+                          event.preventDefault();
+                          open(row.id);
+                        }
+                      }}
+                    >
+                      <TableCell className="text-muted-foreground">{offset + index + 1}</TableCell>
+                      <TableCell>
+                        <div className="flex flex-col gap-0.5">
+                          <span className="font-medium">{row.guestName}</span>
+                          <span className="font-mono text-[10px] text-muted-foreground">
+                            {row.code}
+                          </span>
+                        </div>
+                      </TableCell>
+                      <TableCell>
+                        <Badge
+                          variant={
+                            row.status === "cancelled"
+                              ? "destructive"
+                              : row.status === "confirmed"
+                                ? "outline"
+                                : "secondary"
+                          }
+                        >
+                          {reservationStatusLabel(row.status)}
+                        </Badge>
+                      </TableCell>
+                      <TableCell>
+                        <span
+                          className={cn(
+                            row.rooms.some((room) => room.roomNumber === null) &&
+                              "text-assignment-foreground",
+                          )}
+                        >
+                          {roomsLabel(row.rooms)}
+                        </span>
+                      </TableCell>
+                      <TableCell>{occupantsLabel(row.rooms)}</TableCell>
+                      <TableCell className="tabular-nums">{stayDateLabel(row.checkIn)}</TableCell>
+                      <TableCell className="tabular-nums">{stayDateLabel(row.checkOut)}</TableCell>
+                      <TableCell className="text-right tabular-nums">
+                        {formatMoney(row.totalCents, row.currency)}
+                      </TableCell>
+                      <TableCell className="text-right tabular-nums">
+                        <div className="flex flex-col gap-0.5">
+                          <span
+                            className={cn(
+                              "font-medium",
+                              row.balanceCents < 0 && "text-credit-foreground",
+                            )}
+                          >
+                            {formatMoney(Math.abs(row.balanceCents), row.currency)}
+                          </span>
+                          <span className="text-[10px] text-muted-foreground">
+                            {row.balanceCents > 0
+                              ? "Saldo pendiente"
+                              : row.balanceCents < 0
+                                ? "Crédito"
+                                : "Saldada"}
+                          </span>
+                        </div>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
           ) : null}
         </>
       )}
-      <nav className="flex justify-end gap-2" aria-label="Paginación de reservas">
-        <Button
-          variant="outline"
-          disabled={search.page === 0 || query.isFetching}
-          onClick={() => onSearchChange({ page: search.page - 1 })}
-        >
-          Anterior
-        </Button>
-        <Button
-          variant="outline"
-          disabled={!query.data || offset + rows.length >= total || busy || query.isError}
-          onClick={() => onSearchChange({ page: search.page + 1 })}
-        >
-          Siguiente
-        </Button>
+      <nav
+        className="flex flex-wrap items-center justify-between gap-3"
+        aria-label="Paginación de reservas"
+      >
+        <p className="text-xs text-muted-foreground" aria-live="polite" aria-atomic="true">
+          {rangeLabel}
+        </p>
+        <div className="flex items-center gap-2">
+          <div className="w-24">
+            <ChoiceField
+              label="Reservas por página"
+              hideLabel
+              value={String(search.size)}
+              options={[
+                { value: "25", label: "25 / pág." },
+                { value: "50", label: "50 / pág." },
+                { value: "100", label: "100 / pág." },
+              ]}
+              onChange={(size) => refine({ size: Number(size) as ReservationsSearch["size"] })}
+            />
+          </div>
+          <Button
+            variant="outline"
+            size="icon"
+            aria-label="Anterior"
+            disabled={search.page === 0 || query.isFetching}
+            onClick={() => onSearchChange({ page: search.page - 1 })}
+          >
+            <ChevronLeftIcon />
+          </Button>
+          <Button
+            variant="outline"
+            size="icon"
+            aria-label="Siguiente"
+            disabled={!query.data || offset + rows.length >= total || busy || query.isError}
+            onClick={() => onSearchChange({ page: search.page + 1 })}
+          >
+            <ChevronRightIcon />
+          </Button>
+        </div>
       </nav>
       <RoomBookingDialog target={target} onClose={() => setTarget(null)} onViewReservation={open} />
     </main>
