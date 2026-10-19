@@ -116,11 +116,27 @@ export const roomClosureListQuerySchema = z.object({
   roomId: z.string().min(1).optional(),
 });
 
+const reservationStatusSchema = z.enum(["confirmed", "checked_in", "checked_out", "cancelled"]);
+
 export const reservationListQuerySchema = listQuerySchema.extend({
+  paginated: z
+    .enum(["true", "false"])
+    .transform((value) => value === "true")
+    .optional(),
   from: dateSchema.optional(),
   to: dateSchema.optional(),
   checkIn: dateSchema.optional(),
-  status: z.enum(["confirmed", "checked_in", "checked_out", "cancelled"]).optional(),
+  checkOut: z.iso.date({ error: "Invalid input: expected a valid checkout date" }).optional(),
+  status: reservationStatusSchema.optional(),
+  statuses: z
+    .string()
+    .transform((value) => value.split(","))
+    .pipe(z.array(reservationStatusSchema).min(1))
+    .optional(),
+  balance: z.enum(["outstanding", "settled", "credit"]).optional(),
+  assignment: z.enum(["assigned", "unassigned"]).optional(),
+  sort: z.enum(["checkIn", "checkOut", "guestName", "balance"]).optional(),
+  direction: z.enum(["asc", "desc"]).optional(),
   guestId: z.string().min(1).optional(),
 });
 
