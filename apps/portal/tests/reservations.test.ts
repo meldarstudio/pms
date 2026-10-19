@@ -226,7 +226,7 @@ it("counts changed filter groups instead of chips and restores defaults without 
     "/reservations?view=departures&day=2026-12-31&sort=balance&direction=desc&size=25&page=2",
   );
   assert.equal(container.textContent.includes("Asignación"), false);
-  await fill("Contacto o código", "Ana ANA0001");
+  await fill("Contacto principal o código", "Ana ANA0001");
   await until(() => params().get("q") === "Ana ANA0001");
   assert.equal(params().get("offset"), "0");
   assertFilterCount(0);
@@ -414,7 +414,7 @@ it("sends sorting and page sizes to the full-result endpoint and resets the offs
   await until(() => params().get("direction") === "asc");
   for (const [label, sort] of [
     ["Check-out", "checkOut"],
-    ["Contacto", "guestName"],
+    ["Contacto principal", "guestName"],
     ["Check-in", "checkIn"],
   ]) {
     await choose("Ordenar por", label!);
@@ -429,7 +429,7 @@ it("sends sorting and page sizes to the full-result endpoint and resets the offs
 });
 
 it.each([
-  ["Contacto", "guestName"],
+  ["Contacto principal", "guestName"],
   ["Check-in", "checkIn"],
   ["Check-out", "checkOut"],
   ["Saldo", "balance"],
@@ -500,7 +500,7 @@ it("identifies the booking contact, signed balances, and every assigned or unass
   const headers = Array.from(container.querySelectorAll("th")).map(
     (element) => element.textContent,
   );
-  assert.ok(headers.includes("Contacto"));
+  assert.ok(headers.includes("Contacto principal"));
   assert.ok(headers.includes("Saldo"));
   assert.equal(headers.includes("Huésped"), false);
   const rows = Array.from(container.querySelectorAll("tbody tr"));
@@ -524,6 +524,8 @@ it("identifies the booking contact, signed balances, and every assigned or unass
   );
   assert.match(rows[2]!.querySelector("td:last-child")!.textContent, /150Crédito/);
   assert.equal(rows[2]!.textContent.includes("Saldo pendiente"), false);
+  await fill("Contacto principal o código", "Ana ANA0001");
+  await until(() => params().get("q") === "Ana ANA0001");
 });
 
 it.each(["Enter", " ", "click"])(
@@ -816,7 +818,7 @@ it("treats whitespace-only contact search as unrestricted rather than a failed r
         )
       : Response.json({ rows: [ana], total: 1, limit: 50, offset: 0 });
   await render("/reservations?view=all");
-  await fill("Contacto o código", "   ");
+  await fill("Contacto principal o código", "   ");
   await until(() => !container.querySelector('table[aria-busy="true"]'));
   assert.equal(params().has("q"), false);
   assert.ok(container.querySelector("tbody")!.textContent.includes("Ana Pérez"));
@@ -854,7 +856,7 @@ it("searches historical cancelled reservations across every date and retains vis
       offset: 0,
     });
   await render("/reservations?view=all");
-  await fill("Contacto o código", "Historic PAST0001");
+  await fill("Contacto principal o código", "Historic PAST0001");
   await until(() => container.querySelector("tbody")!.textContent.includes("Historic contact"));
   assert.ok(container.querySelector("tbody")!.textContent.includes("Cancelada"));
   assert.equal(params().has("checkIn"), false);
