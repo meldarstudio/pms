@@ -58,7 +58,7 @@ export function Reservations({
   const [target, setTarget] = useState<BookingTarget | null>(null);
   const q = useDeferredValue(search.q);
   const query = useReservationList({
-    q: q || undefined,
+    q: q.trim() || undefined,
     statuses: search.statuses === "all" ? undefined : search.statuses,
     checkIn: search.view === "arrivals" ? search.day : undefined,
     checkOut: search.view === "departures" ? search.day : undefined,
