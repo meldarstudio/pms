@@ -54,8 +54,15 @@ VITE_API_BASE_URL=http://localhost:8788 pnpm build
 ```
 
 The portal's development environment already points to the local backend.
-Configure the production API origin as a Workers Builds build variable. Its value
-is `https://api.hotelmanantialchurin.com`.
+The manual release workflow supplies the production API origin explicitly.
+
+## Production releases
+
+Follow the [release checklist](docs/releases.md) for one-time Cloudflare cutover,
+exact-commit validation, optional interactive migrations, manual API/portal
+deployment, read-only verification, and version tags. Merging the workflow does
+not disable existing automatic Workers Builds; confirm the documented cutover
+before treating merges to `main` as deployment-free.
 
 ## Signing in
 
@@ -126,7 +133,7 @@ and build commands do not run that duplicate compiler pass.
 
 Native checking also covers backend source, configuration, colocated TypeScript
 tests, and shared schemas. `pnpm check` does not repeat the backend compiler
-pass. Use `pnpm check` as the backend Workers Builds build command as well.
+pass. The release workflow uses the same `pnpm check` command.
 Backend `.mjs` scripts and tests receive syntax linting but are not type-checked.
 
 The shared package exports TypeScript source directly and needs no `vp pack`

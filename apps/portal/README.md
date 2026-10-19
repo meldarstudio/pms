@@ -142,6 +142,13 @@ retained as its accessible name.
 
 Production portal: `https://app.hotelmanantialchurin.com`
 
+Follow [the release checklist](../../docs/releases.md). The manual workflow builds
+with the production API origin, checks migration readiness, then deploys the API
+before this already-built portal from the same SHA. It does not disable existing
+Workers Builds; the separately authorized cutover covers both applications.
+Old tabs and installed-app windows may defer updates, so ordinary releases must
+remain compatible with the previous portal.
+
 ### Installable app and offline behavior
 
 The portal can be installed through browser-native controls as **Hotel Manantial**
