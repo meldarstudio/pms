@@ -285,12 +285,21 @@ current schema, and reloads sample data. Subsequent resets can omit the flag.
 It preserves unrelated tables and Cloudflare metadata. The rebuild also supports
 `--persist-to` for an isolated local database.
 
-The dataset contains three room types, 60 rooms, 21 guests and reservations,
-nightly prices and payments, rate overrides, and three room closures.
-Bookings include past stays, current stays, arrivals and departures today,
-upcoming stays, cancelled reservations, and multi-room reservations. Alex,
-Sam, and Jamie Demo have confirmed unassigned rooms for testing manual assignment.
-Room 101 has consecutive bookings that share a checkout/check-in date.
+The dataset contains three room types and **24 rooms**: 12 Estándar, 8 Superior,
+and 4 Suite familiar. It generates **over 600 reservations across 90 nights**,
+from 45 days before the reference date through 44 days after it. Each night is
+roughly **85% booked** (80–90% after rounding), measured as reserved rooms divided
+by rooms available for sale, excluding closures. Cancelled reservations do not
+count toward occupancy; unassigned reserved rooms do.
+
+The deterministic schedule respects room-type inventory, physical assignments,
+and closures, including room capacity reserved for unassigned stays. It includes
+nightly prices, varied payments and balances, rate overrides, three room closures,
+past and current stays, arrivals and departures today, upcoming stays,
+cancellations, and multi-room reservations. Alex, Sam, and Jamie Demo retain
+confirmed unassigned rooms for testing manual assignment. Room 101 has consecutive
+reservations that share a checkout/check-in date. Resetting with the same reference
+date recreates the same dataset.
 
 Edit bookings and closures in the portal, then run the reset again and refresh
 the portal to restore the sample data. The reset removes records you added and

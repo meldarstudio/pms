@@ -205,6 +205,154 @@ const examples = [
   },
 ];
 
+const closures = [
+  { room: "110", starts: -1, ends: 3, reason: "Reparación del baño" },
+  { room: "208", starts: 4, ends: 7, reason: "Mantenimiento del aire acondicionado" },
+  { room: "304", starts: 1, ends: 4, reason: "Cambio de alfombra" },
+];
+
+// Plan against physical rooms even when the emitted reservation is unassigned.
+// This leaves a feasible assignment without double-counting room-type inventory.
+function busyExamples() {
+  const inventory = Array.from(
+    roomSeed.matchAll(/\('room-([^']+)', '[^']+', 'type-([^']+)'\)/g),
+    ([, number, type]) => ({ number, type, blocked: new Set() }),
+  );
+  const occupied = new Map();
+  const nights = (arrival, length) => Array.from({ length }, (_, index) => arrival + index);
+  const isFree = (room, arrival, length) =>
+    nights(arrival, length).every((day) => !room.blocked.has(day));
+  function reserve(room, arrival, length) {
+    for (const day of nights(arrival, length)) {
+      room.blocked.add(day);
+      occupied.set(day, (occupied.get(day) ?? 0) + 1);
+    }
+  }
+  function target(day) {
+    const closed = closures.filter(({ starts, ends }) => starts <= day && day < ends).length;
+    return Math.round((inventory.length - closed) * 0.85);
+  }
+  for (const closure of closures) {
+    const room = inventory.find(({ number }) => number === closure.room);
+    for (const day of nights(closure.starts, closure.ends - closure.starts)) room.blocked.add(day);
+  }
+  // Fixed assignments must be known before allocating the unassigned examples.
+  for (const assigned of [true, false]) {
+    for (const example of examples.filter(({ status }) => status !== "cancelled")) {
+      for (const room of example.rooms.filter(({ room }) => Boolean(room) === assigned)) {
+        const available = inventory.find(
+          (candidate) =>
+            candidate.type === room.type &&
+            (!assigned || candidate.number === room.room) &&
+            isFree(candidate, example.arrival, example.nights),
+        );
+        if (!available) throw new Error(`No seed inventory for ${example.id}`);
+        reserve(available, example.arrival, example.nights);
+      }
+    }
+  }
+
+  const firstNames = [
+    "Adriana",
+    "Alejandro",
+    "Ana Lucía",
+    "Andrés",
+    "Beatriz",
+    "Camila",
+    "Carlos",
+    "Carmen",
+    "Claudia",
+    "Daniel",
+    "Elena",
+    "Fernando",
+    "Gabriela",
+    "Héctor",
+    "Isabel",
+    "Jorge",
+    "Karina",
+    "Luis",
+    "María José",
+    "Nicolás",
+    "Patricia",
+    "Raúl",
+    "Rosa",
+    "Valentina",
+  ];
+  const lastNames = [
+    "Mendoza",
+    "Quispe",
+    "Torres",
+    "Villanueva",
+    "Salazar",
+    "Huamán",
+    "Paredes",
+    "Rojas",
+    "Gutiérrez",
+    "Flores",
+    "Castillo",
+    "Ramos",
+    "Soto",
+    "Vargas",
+    "Chávez",
+    "Cárdenas",
+    "Díaz",
+    "Espinoza",
+    "García",
+    "López",
+    "Medina",
+    "O'Brien",
+    "Pérez",
+    "Vásquez",
+    "Zúñiga",
+  ];
+  const generated = [];
+  for (let day = -45; day < 45; day++) {
+    while ((occupied.get(day) ?? 0) < target(day)) {
+      const index = generated.length;
+      const start = index % inventory.length;
+      const room = [...inventory.slice(start), ...inventory.slice(0, start)].find((candidate) =>
+        isFree(candidate, day, 1),
+      );
+      if (!room) throw new Error(`No seed inventory on day ${day}`);
+      let length = 1 + (index % 4);
+      while (
+        !isFree(room, day, length) ||
+        nights(day, length).some(
+          (night) => night >= 45 || (occupied.get(night) ?? 0) >= target(night),
+        )
+      )
+        length--;
+      reserve(room, day, length);
+      generated.push({
+        id: `busy-${index + 1}`,
+        name: [
+          firstNames[index % firstNames.length],
+          lastNames[Math.floor(index / firstNames.length) % lastNames.length],
+        ],
+        arrival: day,
+        nights: length,
+        status:
+          day + length <= 0
+            ? "checked_out"
+            : day < 0 || (day === 0 && index % 4 === 0)
+              ? "checked_in"
+              : "confirmed",
+        payment: [undefined, "deposit", "full", "credit", "installments"][index % 5],
+        rooms: [
+          {
+            type: room.type,
+            room: day >= 0 && index % 9 === 0 ? undefined : room.number,
+            adults: 1 + (index % 2),
+            children: index % 5 === 0 ? 1 : 0,
+            discountCents: index % 7 === 0 ? 2500 : 0,
+          },
+        ],
+      });
+    }
+  }
+  return [...examples, ...generated];
+}
+
 function literal(value) {
   if (value === null || value === undefined) return "NULL";
   if (typeof value === "number") return String(value);
@@ -225,7 +373,7 @@ export function buildResetSql(value) {
     return referenceDate(formatted);
   }
 
-  const createdAt = `${date(-14)}T12:00:00.000Z`;
+  const createdAt = `${date(-60)}T12:00:00.000Z`;
   const statements = [
     "DELETE FROM reservation_requests;",
     "DELETE FROM reservation_guests;",
@@ -263,11 +411,7 @@ export function buildResetSql(value) {
     }
   }
 
-  for (const [room, starts, ends, reason] of [
-    ["110", -1, 3, "Reparación del baño"],
-    ["210", 4, 7, "Mantenimiento del aire acondicionado"],
-    ["310", 1, 4, "Cambio de alfombra"],
-  ]) {
+  for (const { room, starts, ends, reason } of closures) {
     statements.push(
       insert("room_closures", {
         id: `closure-${room}`,
@@ -280,7 +424,7 @@ export function buildResetSql(value) {
     );
   }
 
-  for (const [index, example] of examples.entries()) {
+  for (const [index, example] of busyExamples().entries()) {
     const guestId = `guest-${example.id}`;
     const reservationId = `reservation-${example.id}`;
     const checkIn = date(example.arrival);
