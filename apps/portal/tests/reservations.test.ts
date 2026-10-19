@@ -21,7 +21,9 @@ let container: HTMLDivElement;
 let client: QueryClient;
 let requests: URL[];
 let respond: (url: URL) => Response | Promise<Response>;
+let respondToDetail: (url: URL, init?: RequestInit) => Response | Promise<Response>;
 const originalFetch = globalThis.fetch;
+const originalTimeZone = process.env.TZ;
 
 const ana: ReservationDetail & { guestName: string } = {
   id: "ana",
@@ -64,6 +66,7 @@ const ana: ReservationDetail & { guestName: string } = {
 };
 
 beforeAll(async () => {
+  process.env.TZ = "Pacific/Kiritimati";
   window = new Window({ url: "http://localhost:5173" });
   for (const name of [
     "window",
@@ -125,6 +128,7 @@ beforeEach(() => {
     },
   });
   requests = [];
+  respondToDetail = () => Response.json(ana);
   respond = (url) =>
     Response.json({
       rows: [ana],
@@ -143,7 +147,8 @@ beforeEach(() => {
       ]);
     if (url.pathname === "/rooms")
       return Response.json([{ id: "room", number: "101", roomTypeId: "double" }]);
-    if (url.pathname === "/reservations/ana") return Response.json(ana);
+    if (url.pathname.startsWith("/reservations/ana")) return respondToDetail(url, init);
+    if (url.pathname === "/room-closures") return Response.json([]);
     if (url.pathname === "/reservations") {
       requests.push(url);
       return respond(url);
@@ -162,6 +167,8 @@ afterEach(async () => {
 afterAll(async () => {
   await server?.close();
   await window?.happyDOM.close();
+  if (originalTimeZone === undefined) delete process.env.TZ;
+  else process.env.TZ = originalTimeZone;
 });
 
 async function until(condition: () => boolean, message = "Expected page state") {
@@ -245,6 +252,7 @@ async function choose(label: string, option: string) {
 }
 
 it("opens property-today Arrivals and switches all four server scopes without losing the selected day", async () => {
+  assert.equal(new Date(Date.now()).getDate(), 1);
   await render();
   assert.equal(params().get("paginated"), "true");
   assert.equal(params().get("checkIn"), "2026-10-31");
@@ -312,40 +320,95 @@ it("combines search and optional filters, removes chips, and clears restrictions
   assert.equal(params().get("offset"), "0");
 });
 
-it("uses exact totals for first, middle, and full last pages and recovers after matching data shrinks", async () => {
-  let total = 150;
-  respond = (url) => {
-    const offset = Number(url.searchParams.get("offset"));
-    return Response.json({
-      rows:
-        offset < total
-          ? Array.from({ length: 50 }, (_, i) => ({
-              ...ana,
-              id: `reservation-${offset + i}`,
-              code: `CODE${offset + i}`,
-            }))
-          : [],
-      total,
-      limit: 50,
-      offset,
+it.each([
+  { remaining: 50, range: "1–50 de 50 reservas", offset: "0", page: 0 },
+  { remaining: 76, range: "51–76 de 76 reservas", offset: "50", page: 1 },
+  { remaining: 0, range: "0 de 0 reservas", offset: "0", page: 0 },
+])(
+  "uses exact page bounds and recovers when matches shrink to $remaining",
+  async ({ remaining, range, offset: expectedOffset, page }) => {
+    let total = 150;
+    respond = (url) => {
+      const offset = Number(url.searchParams.get("offset"));
+      return Response.json({
+        rows:
+          offset < total
+            ? Array.from({ length: Math.min(50, total - offset) }, (_, i) => ({
+                ...ana,
+                id: `reservation-${offset + i}`,
+                code: `CODE${offset + i}`,
+              }))
+            : [],
+        total,
+        limit: 50,
+        offset,
+      });
+    };
+    await render("/reservations?view=all");
+    assert.ok(container.textContent.includes("1–50 de 150 reservas"));
+    assert.equal(button("Anterior").hasAttribute("disabled"), true);
+    await click("Siguiente");
+    await until(() => container.textContent.includes("51–100 de 150 reservas"));
+    await click("Siguiente");
+    await until(() => container.textContent.includes("101–150 de 150 reservas"));
+    assert.equal(button("Siguiente").hasAttribute("disabled"), true);
+    total = remaining;
+    await React.act(async () => {
+      await client.invalidateQueries({ queryKey: ["reservations"] });
     });
+    await until(() => container.textContent.includes(range));
+    assert.equal(params().get("offset"), expectedOffset);
+    assert.equal(button("Siguiente").hasAttribute("disabled"), true);
+    assert.equal(router.state.location.search.page ?? 0, page);
+  },
+);
+
+it("refreshes cached operations and legacy calendar results after saving in reservation details", async () => {
+  client.setQueryDefaults(["reservations"], { staleTime: Infinity });
+  let saved = false;
+  const checkedIn = { ...ana, status: "checked_in" };
+  respond = (url) => {
+    if (!url.searchParams.has("paginated")) return Response.json([saved ? checkedIn : ana]);
+    return Response.json({ rows: saved ? [] : [ana], total: saved ? 0 : 1, limit: 50, offset: 0 });
   };
-  await render("/reservations?view=all");
-  assert.ok(container.textContent.includes("1–50 de 150 reservas"));
-  assert.equal(button("Anterior").hasAttribute("disabled"), true);
-  await click("Siguiente");
-  await until(() => container.textContent.includes("51–100 de 150 reservas"));
-  await click("Siguiente");
-  await until(() => container.textContent.includes("101–150 de 150 reservas"));
-  assert.equal(button("Siguiente").hasAttribute("disabled"), true);
-  total = 50;
-  await React.act(async () => {
-    await client.invalidateQueries({ queryKey: ["reservations"] });
-  });
-  await until(() => container.textContent.includes("1–50 de 50 reservas"));
-  assert.equal(params().get("offset"), "0");
-  assert.equal(button("Siguiente").hasAttribute("disabled"), true);
-  assert.equal(router.state.location.search.page ?? 0, 0);
+  respondToDetail = (url, init) => {
+    if (url.pathname.endsWith("/preview"))
+      return Response.json({ billing: checkedIn, validation: { issues: [] } });
+    if (url.pathname.endsWith("/commands")) {
+      assert.equal(init?.method, "POST");
+      assert.ok(typeof init?.body === "string");
+      const body = JSON.parse(init.body) as { actions: unknown[] };
+      assert.deepEqual(body.actions, [{ type: "set-status", status: "checked_in" }]);
+      saved = true;
+      return Response.json(checkedIn);
+    }
+    return Response.json(saved ? checkedIn : ana);
+  };
+  await render("/calendar?from=2026-10-31");
+  assert.ok(button("Editar reserva de Ana Pérez · Confirmada"));
+  assert.equal(params().has("paginated"), false);
+  assert.equal(params().get("from"), "2026-10-30");
+  assert.equal(params().get("to"), "2026-11-06");
+  await React.act(async () =>
+    router.navigate({ href: "/reservations?day=2026-10-31&statuses=confirmed" }),
+  );
+  await until(() => container.querySelector("tbody")?.textContent.includes("Ana Pérez") ?? false);
+  const row = container.querySelector<HTMLElement>("tbody tr")!;
+  await React.act(async () => row.click());
+  await until(() => container.textContent.includes("Reserva ANA0001"));
+  await choose("Estado de la reserva", "Check-in");
+  await until(() => !button("Guardar detalles").hasAttribute("disabled"));
+  await click("Guardar detalles");
+  await until(() => saved && button("Guardar detalles").hasAttribute("disabled"));
+  await click("Volver a reservas");
+  await until(() => container.textContent.includes("No se encontraron reservas"));
+  assert.ok(container.textContent.includes("0 de 0 reservas"));
+  assert.equal(params().get("statuses"), "confirmed");
+  await React.act(async () => router.navigate({ href: "/calendar?from=2026-10-31" }));
+  await until(
+    () => container.querySelector('[aria-label="Editar reserva de Ana Pérez · Check-in"]') !== null,
+  );
+  assert.equal(params().has("paginated"), false);
 });
 
 it("sends sorting and page sizes to the full-result endpoint and resets the offset for every change", async () => {
@@ -482,6 +545,34 @@ it("restores legacy arrival links and explicitly unrestricted daily statuses acr
   await until(() => params().get("checkIn") === "2026-11-01");
 });
 
+it("includes cancellations after selecting unrestricted daily statuses and restores defaults when its chip is removed", async () => {
+  const cancelled = {
+    ...ana,
+    id: "cancelled",
+    guestName: "Cancelled contact",
+    status: "cancelled",
+  };
+  respond = (url) => {
+    const rows = url.searchParams.has("statuses") ? [ana] : [ana, cancelled];
+    return Response.json({ rows, total: rows.length, limit: 50, offset: 0 });
+  };
+  await render("/reservations?day=2026-10-30");
+  assert.equal(container.querySelector("tbody")!.textContent.includes("Cancelled contact"), false);
+  await click("Filtros");
+  await click("Todos los estados");
+  await until(() => container.querySelector("tbody")!.textContent.includes("Cancelled contact"));
+  assert.equal(params().has("statuses"), false);
+  const link = router.state.location.href;
+  vi.mocked(Date.now).mockReturnValue(new Date("2026-11-01T05:01:00Z").getTime());
+  await render(link);
+  await until(() => container.querySelector("tbody")!.textContent.includes("Cancelled contact"));
+  assert.equal(params().get("checkIn"), "2026-10-30");
+  await click("Quitar filtro: Todos los estados");
+  await until(() => params().get("statuses") === "confirmed,checked_in,checked_out");
+  await until(() => !container.querySelector("tbody")!.textContent.includes("Cancelled contact"));
+  assert.equal(params().get("checkIn"), "2026-10-30");
+});
+
 it("keeps overdue checked-in stays in-house and hides the conflicting status selector", async () => {
   respond = (url) =>
     Response.json({
@@ -560,6 +651,31 @@ it("distinguishes loading and request failure from zero results and retries with
   );
 });
 
+it("keeps rows and totals visible during a failed background refresh and retries the same context", async () => {
+  await render("/reservations?view=all&q=Ana&sort=balance");
+  let finish!: (response: Response) => void;
+  respond = () =>
+    new Promise((resolve) => {
+      finish = resolve;
+    });
+  await React.act(async () => {
+    void client.invalidateQueries({ queryKey: ["reservations"] });
+  });
+  await until(() => container.textContent.includes("Actualizando…"));
+  assert.ok(container.querySelector("tbody")!.textContent.includes("Ana Pérez"));
+  assert.ok(container.textContent.includes("1–1 de 1 reserva"));
+  await React.act(async () => finish(Response.json({ error: "Request failed" }, { status: 503 })));
+  await until(() => container.textContent.includes("Reintentar"));
+  assert.ok(container.querySelector("tbody")!.textContent.includes("Ana Pérez"));
+  assert.equal(container.textContent.includes("No se encontraron reservas"), false);
+  respond = () =>
+    Response.json({ rows: [{ ...ana, balanceCents: 0 }], total: 1, limit: 50, offset: 0 });
+  await click("Reintentar");
+  await until(() => container.querySelector("tbody")!.textContent.includes("Saldada"));
+  assert.equal(params().get("q"), "Ana");
+  assert.equal(params().get("sort"), "balance");
+});
+
 it("normalizes unsupported direct URL values before sending a request", async () => {
   await render(
     "/reservations?view=bogus&day=2026-02-30&q=123&statuses=nope&balance=bogus&assignment=bogus&sort=bogus&direction=sideways&size=75&page=-1",
@@ -573,6 +689,33 @@ it("normalizes unsupported direct URL values before sending a request", async ()
   assert.equal(params().has("q"), false);
   assert.equal(params().has("balance"), false);
   assert.equal(params().has("assignment"), false);
+});
+
+it("treats whitespace-only contact search as unrestricted rather than a failed request", async () => {
+  respond = (url) =>
+    url.searchParams.has("q")
+      ? Response.json(
+          { error: "Too small: expected string to have >=1 characters" },
+          { status: 400 },
+        )
+      : Response.json({ rows: [ana], total: 1, limit: 50, offset: 0 });
+  await render("/reservations?view=all");
+  await fill("Contacto o código", "   ");
+  await until(() => !container.querySelector('table[aria-busy="true"]'));
+  assert.equal(params().has("q"), false);
+  assert.ok(container.querySelector("tbody")!.textContent.includes("Ana Pérez"));
+  assert.equal(container.textContent.includes("Reintentar"), false);
+});
+
+it.each([
+  ["Invalid input: expected a valid check-in date", "La fecha de llegada no es válida."],
+  ["Invalid input: expected a valid checkout date", "La fecha de salida no es válida."],
+])("shows the list API date error in Spanish: %s", async (message, translation) => {
+  respond = () => Response.json({ error: message }, { status: 400 });
+  await render("/reservations?view=departures&day=2026-12-31", false);
+  await until(() => container.textContent.includes("Reintentar"));
+  assert.ok(container.textContent.includes(translation));
+  assert.equal(container.textContent.includes(message), false);
 });
 
 it("searches historical cancelled reservations across every date and retains visible refinements when changing views", async () => {

@@ -1878,6 +1878,40 @@ async function billExamples() {
 }
 
 describe("paginated reservation operations", () => {
+  it("searches only booking contact and code, not staying guests, rooms, documents or notes", async () => {
+    const reservation = await book("Booking Contact");
+    sqlite.prepare("UPDATE reservations SET code = 'FIXEDCODE' WHERE id = ?").run(reservation.id);
+    await command(reservation, [
+      roomEdit(reservation),
+      { type: "notes", notes: "ReservationNoteOnly" },
+      {
+        type: "set-guests",
+        guests: [{ ...guest(reservation.rooms[0].id), fullName: "StayingOnly" }],
+      },
+    ]);
+    expect(
+      (
+        await request(`/guests/${reservation.guestId}`, "PATCH", {
+          documentNumber: "DocumentOnly",
+          notes: "ContactNoteOnly",
+        })
+      ).status,
+    ).toBe(200);
+    for (const q of [
+      "StayingOnly",
+      "101",
+      "DocumentOnly",
+      "ReservationNoteOnly",
+      "ContactNoteOnly",
+    ]) {
+      const result = await paged(`q=${q}`);
+      expect(result, q).toMatchObject({ rows: [], total: 0 });
+    }
+    const result = await paged("q=Booking%20FIXEDCODE");
+    expect(result.total).toBe(1);
+    expect(result.rows.map((row) => row.id)).toEqual([reservation.id]);
+  });
+
   it("keeps the metadata endpoint behind the real session guard", async () => {
     const response = await app.request("/reservations?paginated=true&sort=balance", {}, bindings);
     expect(response.status).toBe(401);
@@ -1944,6 +1978,7 @@ describe("paginated reservation operations", () => {
     "paginated=",
     "checkOut=10-10-2026",
     "checkOut=2026-02-30",
+    "paginated=true&checkIn=2026-02-30",
     "statuses=",
     "statuses=confirmed,unknown",
     "statuses=confirmed,",

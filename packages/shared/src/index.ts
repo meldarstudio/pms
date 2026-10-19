@@ -125,7 +125,7 @@ export const reservationListQuerySchema = listQuerySchema.extend({
     .optional(),
   from: dateSchema.optional(),
   to: dateSchema.optional(),
-  checkIn: dateSchema.optional(),
+  checkIn: z.iso.date({ error: "Invalid input: expected a valid check-in date" }).optional(),
   checkOut: z.iso.date({ error: "Invalid input: expected a valid checkout date" }).optional(),
   status: reservationStatusSchema.optional(),
   statuses: z

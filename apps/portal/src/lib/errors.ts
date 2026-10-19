@@ -1,4 +1,6 @@
 const messages: Record<string, string> = {
+  "Invalid input: expected a valid check-in date": "La fecha de llegada no es válida.",
+  "Invalid input: expected a valid checkout date": "La fecha de salida no es válida.",
   "PROPERTY_TIME_ZONE must be a supported IANA timezone":
     "La zona horaria de la propiedad no está configurada correctamente. Configura PROPERTY_TIME_ZONE en el servidor con una zona IANA válida.",
   "property date context required":
@@ -55,8 +57,9 @@ const messages: Record<string, string> = {
 };
 
 export function translateError(message: string) {
+  if (messages[message]) return messages[message];
   if (/^(Invalid input|Invalid option|Too small|Too big)/i.test(message)) {
     return "Revisa los datos ingresados.";
   }
-  return messages[message] ?? message;
+  return message;
 }
