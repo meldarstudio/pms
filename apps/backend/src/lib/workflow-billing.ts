@@ -4,7 +4,7 @@ export function bill(
   discountCents: number,
   options: { cancelled?: boolean } = {},
 ) {
-  const appliedDiscount = options.cancelled ? 0 : discountCents;
+  const appliedDiscount = options.cancelled ? 0 : Math.min(discountCents, charges);
   const totalCents = charges - appliedDiscount;
   const paidCents = payments.reduce((sum, payment) => sum + payment.amountCents, 0);
   const balanceCents = totalCents - paidCents;

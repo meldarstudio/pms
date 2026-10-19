@@ -249,6 +249,180 @@ const setDiscount = (amountCents: number): WorkflowAction => ({
   type: "set-discount",
   amountCents,
 });
+
+describe("saved and applied reservation discounts", () => {
+  async function previewAndSave(d: Detail, actions: WorkflowAction[], expected: Partial<Detail>) {
+    const preview = await previewCommand(d, actions);
+    expect(preview).toMatchObject({ billing: expected, validation: { issues: [] } });
+    expect(await (await request(`/reservations/${d.id}`)).json()).toEqual(d);
+    const saved = await command(d, actions);
+    expect(saved).toMatchObject(expected);
+    expect(await (await request(`/reservations/${d.id}`)).json()).toMatchObject(expected);
+    expect(await listed()).toMatchObject([{ id: d.id, ...expected }]);
+    expect((await paged()).rows).toMatchObject([{ id: d.id, ...expected }]);
+    return saved;
+  }
+
+  it.each([
+    { rate: 8000, saved: 3000, applied: 3000, total: 5000 },
+    { rate: 8000, saved: 8000, applied: 8000, total: 0 },
+    { rate: 8000, saved: 10000, applied: 8000, total: 0 },
+    { rate: 0, saved: 10000, applied: 0, total: 0 },
+  ])("creates a bill with $rate charges and a $saved saved discount", async (example) => {
+    const response = await request("/reservations", "POST", {
+      requestId: crypto.randomUUID(),
+      checkIn: "2026-10-10",
+      checkOut: "2026-10-11",
+      guest: { fullName: "Booking Contact" },
+      rooms: [{ roomTypeId: "type", adults: 1, children: 0, nightlyRateCents: example.rate }],
+      discountCents: example.saved,
+    });
+    expect(response.status).toBe(201);
+    const created = (await response.json()) as Detail;
+    const expected = {
+      subtotalCents: example.rate,
+      savedDiscountCents: example.saved,
+      discountCents: example.applied,
+      totalCents: example.total,
+      paidCents: 0,
+      balanceCents: example.total,
+      creditCents: 0,
+    };
+    expect(created).toMatchObject(expected);
+    expect(await (await request(`/reservations/${created.id}`)).json()).toMatchObject(expected);
+    expect(await listed()).toMatchObject([{ id: created.id, ...expected }]);
+    expect((await paged()).rows).toMatchObject([{ id: created.id, ...expected }]);
+  });
+
+  it.each([
+    { saved: 10000, applied: 10000, total: 20000, paid: 0, balance: 20000, credit: 0 },
+    { saved: 30000, applied: 30000, total: 0, paid: 0, balance: 0, credit: 0 },
+    { saved: 50000, applied: 30000, total: 0, paid: 0, balance: 0, credit: 0 },
+    { saved: 50000, applied: 30000, total: 0, paid: 3000, balance: -3000, credit: 3000 },
+    { saved: 10000, applied: 10000, total: 20000, paid: 25000, balance: -5000, credit: 5000 },
+  ])("previews and saves a $saved discount edit with $paid paid", async (example) => {
+    let d = await create();
+    if (example.paid) d = await command(d, [pay(example.paid)]);
+    const saved = await previewAndSave(d, [setDiscount(example.saved)], {
+      subtotalCents: 30000,
+      savedDiscountCents: example.saved,
+      discountCents: example.applied,
+      totalCents: example.total,
+      paidCents: example.paid,
+      balanceCents: example.balance,
+      creditCents: example.credit,
+    });
+    expect(saved.payments).toEqual(d.payments);
+  });
+
+  it.each([
+    {
+      change: "room removal",
+      subtotal: 30000,
+      grownSubtotal: 60000,
+      grownTotal: 10000,
+      balance: 7000,
+    },
+    {
+      change: "shorter stay",
+      subtotal: 40000,
+      grownSubtotal: 80000,
+      grownTotal: 30000,
+      balance: 27000,
+    },
+    {
+      change: "room type repricing",
+      subtotal: 45000,
+      grownSubtotal: 60000,
+      grownTotal: 10000,
+      balance: 7000,
+    },
+  ])(
+    "retains the saved discount through $change and uses it again when charges grow",
+    async (example) => {
+      let cheaperTypeId = "";
+      if (example.change === "room type repricing") {
+        const response = await request("/setup", "POST", {
+          name: "Smaller",
+          maxAdults: 2,
+          maxChildren: 2,
+          baseRateCents: 5000,
+          rooms: [{ number: "201" }],
+        });
+        expect(response.status).toBe(201);
+        cheaperTypeId = ((await response.json()) as { roomType: { id: string } }).roomType.id;
+      }
+      let d = await command(await create(2), [setDiscount(50000), pay(3000)]);
+      const shrink: WorkflowAction =
+        example.change === "room removal"
+          ? { type: "remove-room", lineId: d.rooms[1].id }
+          : example.change === "shorter stay"
+            ? { type: "dates", checkIn: d.checkIn, checkOut: "2026-10-12" }
+            : roomEdit(d, 1, { roomTypeId: cheaperTypeId, roomId: null });
+      d = await previewAndSave(d, [shrink], {
+        subtotalCents: example.subtotal,
+        savedDiscountCents: 50000,
+        discountCents: example.subtotal,
+        totalCents: 0,
+        paidCents: 3000,
+        balanceCents: -3000,
+        creditCents: 3000,
+      });
+      const grow: WorkflowAction =
+        example.change === "room removal"
+          ? { type: "add-room", room: { roomTypeId: "type", adults: 1, children: 0 } }
+          : example.change === "shorter stay"
+            ? { type: "dates", checkIn: d.checkIn, checkOut: "2026-10-14" }
+            : roomEdit(d, 1, { roomId: null });
+      await previewAndSave(d, [grow], {
+        subtotalCents: example.grownSubtotal,
+        savedDiscountCents: 50000,
+        discountCents: 50000,
+        totalCents: example.grownTotal,
+        paidCents: 3000,
+        balanceCents: example.balance,
+        creditCents: 0,
+      });
+    },
+  );
+
+  it.each(["before room changes", "after room changes"])(
+    "bills the final combined state when the discount is set %s",
+    async (order) => {
+      const response = await request("/setup", "POST", {
+        name: "Smaller",
+        maxAdults: 2,
+        maxChildren: 2,
+        baseRateCents: 4000,
+        rooms: [{ number: "201" }],
+      });
+      expect(response.status).toBe(201);
+      const cheaper = (await response.json()) as { roomType: { id: string } };
+      const d = await create(2);
+      const actions: WorkflowAction[] = [
+        { type: "remove-room", lineId: d.rooms[1].id },
+        { type: "dates", checkIn: d.checkIn, checkOut: "2026-10-12" },
+        roomEdit(d, 0, { roomTypeId: cheaper.roomType.id, roomId: null }),
+        pay(3000),
+      ];
+      if (order === "before room changes") actions.unshift(setDiscount(10000));
+      else actions.push(setDiscount(10000));
+      const saved = await previewAndSave(d, actions, {
+        subtotalCents: 8000,
+        savedDiscountCents: 10000,
+        discountCents: 8000,
+        totalCents: 0,
+        paidCents: 3000,
+        balanceCents: -3000,
+        creditCents: 3000,
+      });
+      expect(saved.rooms).toHaveLength(1);
+      expect(saved.rooms[0].nights).toHaveLength(2);
+      expect(saved.payments).toMatchObject([{ amountCents: 3000 }]);
+    },
+  );
+});
+
 const all = (_d: Detail, type: "check-in" | "check-out"): WorkflowAction => ({
   type: "set-status",
   status: type === "check-in" ? "checked_in" : "checked_out",
@@ -1494,19 +1668,40 @@ describe("reservation workflow", () => {
   });
   it("cancels a completed stay, retains its payment report, and blocks conflicting restoration", async () => {
     let d = await arrive(await create());
-    d = await command(d, [pay(30000), setDiscount(5000), all(d, "check-out")]);
-    d = await command(d, [{ type: "set-status", status: "cancelled", reason: "Plans changed" }]);
-    expect(d).toMatchObject({
+    d = await command(d, [pay(30000), setDiscount(50000), all(d, "check-out")]);
+    expect(d).toMatchObject({ subtotalCents: 30000, discountCents: 30000, creditCents: 30000 });
+    const cancellation: WorkflowAction[] = [
+      { type: "set-status", status: "cancelled", reason: "Plans changed" },
+    ];
+    const expectedCancellation = {
       status: "cancelled",
       cancellationReason: "Plans changed",
       subtotalCents: 0,
       totalCents: 0,
       paidCents: 30000,
       discountCents: 0,
-      savedDiscountCents: 5000,
+      savedDiscountCents: 50000,
+      balanceCents: -30000,
+      creditCents: 30000,
+    };
+    expect((await previewCommand(d, cancellation)).billing).toMatchObject({
+      status: "cancelled",
+      subtotalCents: 0,
+      discountCents: 0,
+      savedDiscountCents: 50000,
+      totalCents: 0,
+      paidCents: 30000,
       balanceCents: -30000,
       creditCents: 30000,
     });
+    expect(await (await request(`/reservations/${d.id}`)).json()).toEqual(d);
+    d = await command(d, cancellation);
+    expect(d).toMatchObject(expectedCancellation);
+    expect(await (await request(`/reservations/${d.id}`)).json()).toEqual(d);
+    expect(await listed()).toMatchObject([{ id: d.id, ...expectedCancellation }]);
+    expect((await paged("balance=credit&sort=balance")).rows).toMatchObject([
+      { id: d.id, ...expectedCancellation },
+    ]);
     expect(d.payments[0].amountCents).toBe(30000);
     expect(d.rooms[0].nights).toHaveLength(3);
     expect(
@@ -1517,7 +1712,7 @@ describe("reservation workflow", () => {
     const actions: WorkflowAction[] = [{ type: "set-status", status: "confirmed" }];
     const preview = await previewCommand(d, actions);
     expect(preview).toMatchObject({
-      billing: { totalCents: 25000 },
+      billing: { totalCents: 0, discountCents: 30000, savedDiscountCents: 50000 },
       validation: {
         issues: [
           { code: "room is already assigned for those dates", field: "roomId", roomIndex: 0 },
@@ -2176,30 +2371,61 @@ describe("paginated reservation operations", () => {
     });
   });
 
-  it("uses fresh detail billing policy when a saved discount exceeds the remaining room charges", async () => {
+  it("filters and sorts capped bills by payment-derived balances before pagination", async () => {
     const original = await create(2);
-    await command(original, [
+    const capped = await command(original, [
       { type: "set-discount", amountCents: 50000 },
       { type: "remove-room", lineId: original.rooms[1].id },
     ]);
     const detailResponse = await request(`/reservations/${original.id}`);
     expect(detailResponse.status).toBe(200);
     const detail = (await detailResponse.json()) as Detail;
-    expect(detail).toMatchObject({ subtotalCents: 30000, savedDiscountCents: 50000 });
-    // Detail is the public billing oracle here: this feature must not introduce its own discount-cap policy.
-    const classification =
-      detail.balanceCents > 0 ? "outstanding" : detail.balanceCents < 0 ? "credit" : "settled";
-    const page = await paged(`balance=${classification}&sort=balance`);
-    expect(page.total).toBe(1);
-    expect(page.rows).toMatchObject([
-      {
-        id: detail.id,
-        totalCents: detail.totalCents,
-        discountCents: detail.discountCents,
-        balanceCents: detail.balanceCents,
-        creditCents: detail.creditCents,
-      },
-    ]);
+    const expected = {
+      subtotalCents: 30000,
+      savedDiscountCents: 50000,
+      discountCents: 30000,
+      totalCents: 0,
+      paidCents: 0,
+      balanceCents: 0,
+      creditCents: 0,
+    };
+    expect(capped).toMatchObject(expected);
+    expect(detail).toMatchObject(expected);
+    const paid = await command(
+      await book("Bea Paid", { checkIn: "2026-10-14", checkOut: "2026-10-15" }),
+      [setDiscount(20000), pay(3000)],
+    );
+    const owing = await book("Cy Owing", { checkIn: "2026-10-16", checkOut: "2026-10-17" });
+    for (const [classification, id] of [
+      ["settled", original.id],
+      ["credit", paid.id],
+      ["outstanding", owing.id],
+    ]) {
+      const page = await paged(`balance=${classification}&sort=balance`);
+      expect(page.total).toBe(1);
+      expect(page.rows.map((row) => row.id)).toEqual([id]);
+      expect((await listed(`?balance=${classification}`)).map((row) => row.id)).toEqual([id]);
+    }
+    expect((await paged("balance=settled")).rows).toMatchObject([{ id: original.id, ...expected }]);
+    const ascending = [
+      [paid.id, -3000],
+      [original.id, 0],
+      [owing.id, 10000],
+    ];
+    for (const direction of ["asc", "desc"]) {
+      const order = direction === "asc" ? ascending : [...ascending].reverse();
+      for (const [offset, [id, balanceCents]] of order.entries()) {
+        const page = await paged(`sort=balance&direction=${direction}&limit=1&offset=${offset}`);
+        expect(page.total).toBe(3);
+        expect(page.rows).toMatchObject([{ id, balanceCents }]);
+      }
+      expect(
+        (await listed(`?sort=balance&direction=${direction}`)).map((row) => [
+          row.id,
+          row.balanceCents,
+        ]),
+      ).toEqual(order);
+    }
   });
 
   it.each([
