@@ -4,7 +4,7 @@
 
 - Production is live. Preserve production data and applied migration history. Local sample data is disposable; production is not.
 - Run deployments, remote migrations, and production secret changes only for an explicitly requested production operation. A schema change in a development task is not deployment authorization.
-- Feature branches merge to `main`, which deploys production. Prepare required production migrations before the code that needs them is deployed.
+- Feature branches merge to `main`; production releases follow [the release checklist](docs/releases.md), including the separately authorized automatic-build cutover. Prepare required production migrations before deploying code that needs them.
 - Keep credentials in local ignored environment files or Cloudflare secrets, not committed files.
 
 ## Toolchain and validation

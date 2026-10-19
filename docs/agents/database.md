@@ -21,7 +21,7 @@ Before resetting or seeding local data, read [Reset local dummy data](../../apps
 
 ## Production release
 
-Before a release, read [backend deployment](../../apps/backend/README.md#deployment-and-worker-types) and the current package scripts for migration/deploy ordering, the `deploy` versus `deploy:ci` distinction, and Workers Builds configuration. Get current Worker identities, database bindings, and origins from the package Wrangler configs.
+Before a release, follow [the release checklist](../releases.md) and [safe production migrations](../../apps/backend/README.md#safe-production-migrations). Validate the exact release SHA before approving migrations; the workflow only checks readiness and deploys code. Get current Worker identities, database bindings, and origins from the package Wrangler configs.
 
 - Plan for the currently deployed Worker to run during migration and for portal/API builds to arrive separately. Prefer additive, compatible changes; identify any coordinated cutover before merging.
 - Preserve production records. Destructive migrations, resets, baseline replacement, or database replacement require explicit approval for the specific data loss and a recovery plan; routine release authorization is not enough.

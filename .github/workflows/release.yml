@@ -1,0 +1,108 @@
+name: Release production
+
+on:
+  workflow_dispatch:
+    inputs:
+      commit_sha:
+        description: Full commit SHA on main (validated before deployment)
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: pms-production-release
+  cancel-in-progress: false
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Select exact production revision
+        id: source
+        env:
+          REQUESTED_SHA: ${{ inputs.commit_sha }}
+        run: |
+          test "$GITHUB_REF" = refs/heads/main
+          [[ "$REQUESTED_SHA" =~ ^[0-9a-f]{40}$ ]]
+          git cat-file -e "$REQUESTED_SHA^{commit}"
+          git merge-base --is-ancestor "$REQUESTED_SHA" refs/remotes/origin/main
+          git checkout --detach "$REQUESTED_SHA"
+          test "$(git rev-parse HEAD)" = "$REQUESTED_SHA"
+          printf 'Pinned release SHA: %s\n' "$REQUESTED_SHA"
+
+      - uses: pnpm/action-setup@v4
+        # Reads packageManager from the selected revision; never installs dependencies.
+        with:
+          run_install: false
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .node-version
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      - id: checks
+        run: pnpm check
+
+      - id: tests
+        run: pnpm test
+
+      - id: build
+        env:
+          VITE_API_BASE_URL: https://api.hotelmanantialchurin.com
+        run: pnpm build
+
+      - name: Verify production migration readiness (read only)
+        id: readiness
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_READ_TOKEN }}
+          WRANGLER_SEND_METRICS: "false"
+          WRANGLER_WRITE_LOGS: "false"
+        run: node apps/backend/scripts/check-production-readiness.mjs
+
+      - name: Deploy API code
+        id: api
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_DEPLOY_TOKEN }}
+        run: pnpm --filter @pms/backend run deploy:ci
+
+      - name: Deploy built portal
+        id: portal
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_DEPLOY_TOKEN }}
+        run: pnpm --filter @pms/portal run deploy
+
+      - name: Record attempt (manual verification still required)
+        if: always()
+        env:
+          REQUESTED_SHA: ${{ inputs.commit_sha }}
+          SOURCE: ${{ steps.source.outcome }}
+          CHECKS: ${{ steps.checks.outcome }}
+          TESTS: ${{ steps.tests.outcome }}
+          BUILD: ${{ steps.build.outcome }}
+          READINESS: ${{ steps.readiness.outcome }}
+          API: ${{ steps.api.outcome }}
+          PORTAL: ${{ steps.portal.outcome }}
+        run: |
+          {
+            printf '## Production release attempt — not yet verified\n\n'
+            printf 'Requested SHA: `%s`\n\n' "$REQUESTED_SHA"
+            printf -- '- Source accepted: %s\n- Checks: %s\n- Tests: %s\n- Build: %s\n- Migration readiness: %s\n- API: %s\n- Portal: %s\n\n' "$SOURCE" "$CHECKS" "$TESTS" "$BUILD" "$READINESS" "$API" "$PORTAL"
+            printf 'Failed or interrupted deploys can have uncertain remote outcomes. Inspect both Worker histories before retrying.\n\n'
+            printf 'Follow docs/releases.md for the read-only smoke check and manual version record. No tag or release was published.\n'
+          } >> "$GITHUB_STEP_SUMMARY"
