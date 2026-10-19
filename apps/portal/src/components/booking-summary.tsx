@@ -74,6 +74,10 @@ export function BookingSummary({
 }) {
   const titleId = useId();
   const balance = showPayments && summary ? summary.balanceCents : null;
+  const discountDiffers =
+    summary !== null &&
+    editableDiscountCents !== undefined &&
+    editableDiscountCents !== summary.discountCents;
 
   return (
     <section aria-labelledby={titleId} className="min-w-0">
@@ -99,12 +103,22 @@ export function BookingSummary({
               currency={currency}
             />
             {onDiscountSave ? (
-              <DiscountInput
-                amountCents={editableDiscountCents ?? 0}
-                disabled={discountDisabled}
-                onSave={onDiscountSave}
-                onDirtyChange={onDiscountDirtyChange}
-              />
+              <>
+                <DiscountInput
+                  label={discountDiffers ? "Descuento guardado" : "Descuento"}
+                  amountCents={editableDiscountCents ?? 0}
+                  disabled={discountDisabled}
+                  onSave={onDiscountSave}
+                  onDirtyChange={onDiscountDirtyChange}
+                />
+                {discountDiffers && (
+                  <SummaryRow
+                    label="Descuento aplicado"
+                    cents={-summary.discountCents}
+                    currency={currency}
+                  />
+                )}
+              </>
             ) : !summary || summary.discountCents > 0 ? (
               <SummaryRow
                 label="Descuentos"
@@ -167,11 +181,13 @@ function discountDraft(cents: number) {
 }
 
 function DiscountInput({
+  label,
   amountCents,
   disabled,
   onSave,
   onDirtyChange,
 }: {
+  label: string;
   amountCents: number;
   disabled: boolean;
   onSave: (amountCents: number) => Promise<void>;
@@ -221,7 +237,7 @@ function DiscountInput({
         return (
           <>
             <div className="grid min-w-0 grid-cols-[minmax(0,1fr)_6rem] items-center gap-4">
-              <dt className="min-w-0 wrap-anywhere">Descuento</dt>
+              <dt className="min-w-0 wrap-anywhere">{label}</dt>
               <dd>
                 <Field className="w-24" data-invalid={Boolean(error) || undefined}>
                   <InputGroup>

@@ -476,6 +476,223 @@ function previewResponse(billing: WorkflowBilling, issues: WorkflowIssue[] = [])
   return Response.json({ billing, validation: { issues } });
 }
 
+function summaryAmount(label: string) {
+  const term = Array.from(container.querySelectorAll("dt")).find(
+    (item) => item.textContent === label,
+  );
+  assert.ok(term, `Missing bill label ${label}`);
+  return term.nextElementSibling?.textContent.replace(/\s/g, "");
+}
+
+it.each([
+  {
+    scenario: "unpaid bill",
+    status: "confirmed",
+    paidCents: 0,
+    subtotalCents: 8000,
+    discountCents: 8000,
+    balanceLabel: "Cuenta saldada",
+    applied: "-S/80",
+    balance: "S/0",
+  },
+  {
+    scenario: "paid bill",
+    status: "confirmed",
+    paidCents: 3000,
+    subtotalCents: 8000,
+    discountCents: 8000,
+    balanceLabel: "Saldo a favor",
+    applied: "-S/80",
+    balance: "S/30",
+  },
+  {
+    scenario: "cancelled bill",
+    status: "cancelled",
+    paidCents: 3000,
+    subtotalCents: 0,
+    discountCents: 0,
+    balanceLabel: "Saldo a favor",
+    applied: "S/0",
+    balance: "S/30",
+  },
+])(
+  "distinguishes the saved discount from the server-applied discount on a $scenario",
+  async ({ status, paidCents, subtotalCents, discountCents, balanceLabel, applied, balance }) => {
+    const initial = detail();
+    const saved = {
+      ...initial,
+      status,
+      savedDiscountCents: 10000,
+      subtotalCents,
+      discountCents,
+      totalCents: 0,
+      paidCents,
+      balanceCents: -paidCents,
+      creditCents: paidCents,
+      rooms: [{ ...initial.rooms[0], subtotalCents, totalCents: subtotalCents }],
+    };
+    let writes = 0;
+    mockApi(async () => {
+      writes++;
+      throw new Error("Viewing a saved discount must not write it back");
+    });
+    await render(
+      React.createElement(dialogs.BookingEditor, { detail: saved, onRefresh: () => {} }),
+    );
+    const discount = container.querySelector<HTMLInputElement>(
+      '[aria-label="Descuento en soles"]',
+    )!;
+    assert.equal(discount.value, "100");
+    assert.ok(container.textContent.includes("Descuento guardado"));
+    assert.equal(summaryAmount("Descuento aplicado"), applied);
+    assert.equal(summaryAmount("Total de reserva"), "S/0");
+    assert.equal(summaryAmount(balanceLabel), balance);
+    await React.act(async () => {
+      discount.dispatchEvent(new window.FocusEvent("focusout", { bubbles: true }));
+    });
+    await flush();
+    assert.equal(discount.value, "100");
+    assert.equal(writes, 0);
+  },
+);
+
+it("autosaves an above-subtotal discount without capping the saved input or losing a notes draft", async () => {
+  const initial = detail();
+  let saved = {
+    ...initial,
+    savedDiscountCents: 10000,
+    subtotalCents: 8000,
+    discountCents: 8000,
+    totalCents: 0,
+    balanceCents: 0,
+    rooms: [{ ...initial.rooms[0], subtotalCents: 8000, totalCents: 8000 }],
+  };
+  const writes: WorkflowCommand[] = [];
+  mockApi(async (path, command) => {
+    assert.ok(path.endsWith("/commands"));
+    writes.push(command);
+    assert.deepEqual(command.actions, [{ type: "set-discount", amountCents: 12000 }]);
+    saved = { ...saved, savedDiscountCents: 12000 };
+    return Response.json(saved);
+  });
+  client.setQueryData(["reservation", saved.id], saved);
+  function Editor() {
+    const reservation = query.useQuery<ReservationDetail>({
+      queryKey: ["reservation", saved.id],
+      queryFn: async () => saved,
+      staleTime: Infinity,
+    });
+    return React.createElement(dialogs.BookingEditor, {
+      detail: reservation.data!,
+      onRefresh: () => {},
+    });
+  }
+  await render(React.createElement(Editor));
+  await fill("notes", "Call the booking contact before arrival");
+  const discount = container.querySelector<HTMLInputElement>('[aria-label="Descuento en soles"]')!;
+  await fillControl(discount, "120");
+  await React.act(async () => {
+    discount.dispatchEvent(new window.FocusEvent("focusout", { bubbles: true }));
+  });
+  await until(() => writes.length === 1 && !discount.disabled, "Discount autosave must finish");
+  assert.equal(discount.value, "120");
+  assert.equal(summaryAmount("Descuento aplicado"), "-S/80");
+  assert.equal(summaryAmount("Total de reserva"), "S/0");
+  assert.equal(control("notes").value, "Call the booking contact before arrival");
+  assert.equal(saved.notes, null);
+  assert.ok(container.querySelector('[aria-label="Cambios sin guardar"]'));
+});
+
+it("uses the server-applied discount in a room-removal preview while retaining the saved amount", async () => {
+  const initial = detail();
+  initial.savedDiscountCents = 10000;
+  initial.subtotalCents = 16000;
+  initial.discountCents = 10000;
+  initial.totalCents = 6000;
+  initial.balanceCents = 6000;
+  initial.rooms = [
+    { ...initial.rooms[0], subtotalCents: 8000, totalCents: 8000 },
+    {
+      ...initial.rooms[0],
+      id: "line-2",
+      roomId: "room-2",
+      roomNumber: "102",
+      subtotalCents: 8000,
+      totalCents: 8000,
+    },
+  ];
+  mockApi(
+    async (path, command) => {
+      assert.ok(path.endsWith("/preview"), "A preview must not save the draft");
+      assert.deepEqual(command.actions, [{ type: "remove-room", lineId: "line-2" }]);
+      return previewResponse({
+        ...initial,
+        rooms: [initial.rooms[0]],
+        subtotalCents: 8000,
+        discountCents: 8000,
+        totalCents: 0,
+        balanceCents: 0,
+      });
+    },
+    { roomCount: 2 },
+  );
+  await render(
+    React.createElement(dialogs.BookingEditor, { detail: initial, onRefresh: () => {} }),
+  );
+  await React.act(async () => {
+    container.querySelector<HTMLElement>('[aria-label="Quitar habitación 2"]')!.click();
+  });
+  await until(() => !button("Guardar detalles").disabled, "Room-removal preview must load");
+  assert.ok(container.textContent.includes("Vista previa"));
+  assert.equal(summaryAmount("Importe habitaciones"), "S/80");
+  assert.equal(summaryAmount("Descuento aplicado"), "-S/80");
+  assert.equal(summaryAmount("Total de reserva"), "S/0");
+  assert.equal(summaryAmount("Cuenta saldada"), "S/0");
+  assert.equal(
+    container.querySelector<HTMLInputElement>('[aria-label="Descuento en soles"]')!.value,
+    "100",
+  );
+});
+
+it.each(["confirmed", "checked_in"])(
+  "keeps Huéspedes for the optional staying-guest list on a %s reservation",
+  async (status) => {
+    const initial = { ...detail(), status };
+    initial.guest.fullName = "Booking Contact";
+    if (status === "confirmed")
+      initial.stayingGuests = [
+        {
+          id: "staying-1",
+          fullName: "Staying Guest",
+          phone: null,
+          email: null,
+          reservationRoomId: null,
+        },
+      ];
+    mockApi(async () => {
+      throw new Error("Viewing the guest list must not save changes");
+    });
+    await render(
+      React.createElement(dialogs.BookingEditor, {
+        detail: initial,
+        initialTab: "guests",
+        onRefresh: () => {},
+      }),
+    );
+    const tab = button("Huéspedes");
+    assert.equal(tab.getAttribute("role"), "tab");
+    assert.equal(tab.getAttribute("aria-selected"), "true");
+    if (status === "confirmed") {
+      const list = container.querySelector('ul[aria-label="Huéspedes registrados"]');
+      assert.ok(list);
+      assert.ok(list.textContent.includes("Staying Guest"));
+      assert.equal(list.textContent.includes("Booking Contact"), false);
+    } else {
+      assert.ok(container.textContent.includes("Sin huéspedes registrados"));
+    }
+  },
+);
+
 function fieldTrigger(label: string, index = 0) {
   const fieldLabel = Array.from(window.document.querySelectorAll("label")).filter(
     (item) => item.textContent.trim() === label,
@@ -654,6 +871,10 @@ it("creates a reservation with its contact, notes, room quote, and initial disco
   await renderNewBooking((id) => {
     created = id;
   });
+  assert.equal(
+    control("fullName").closest("fieldset")?.querySelector("legend")?.textContent,
+    "Contacto principal",
+  );
   await fill("fullName", "  Ada Lovelace  ");
   await fill("email", "  ada@example.com  ");
   await fill("phone", "+51 999 888 777");
@@ -698,6 +919,29 @@ it("creates a reservation with its contact, notes, room quote, and initial disco
     writes[0].rooms.map((room) => room.roomId),
     ["room-1", null],
   );
+});
+
+it("caps the creation preview without reducing the entered initial discount", async () => {
+  const writes: CreateBookingInput[] = [];
+  mockCreationApi(async (input) => {
+    writes.push(input);
+    return Response.json(detail(), { status: 201 });
+  });
+  await renderNewBooking();
+  await fill("fullName", "Booking Contact");
+  const discount = container.querySelector<HTMLInputElement>('[aria-label="Descuento en soles"]')!;
+  await fillControl(discount, "200");
+  await React.act(async () => {
+    discount.dispatchEvent(new window.FocusEvent("focusout", { bubbles: true }));
+  });
+  await until(() => !button("Crear reserva").disabled, "Initial discount must finish updating");
+  assert.equal(summaryAmount("Importe habitaciones"), "S/150");
+  assert.equal(summaryAmount("Total de reserva"), "S/0");
+  assert.equal(summaryAmount("Descuento aplicado"), "-S/150");
+  assert.equal(discount.value, "200");
+  await submit();
+  await until(() => writes.length === 1, "Reservation must save");
+  assert.equal(writes[0].discountCents, 20000);
 });
 
 it("opens a blank room-type menu without a validation error and prices the selected type", async () => {

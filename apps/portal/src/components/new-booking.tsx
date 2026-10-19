@@ -200,7 +200,8 @@ export function NewBooking({
   );
   const discountCents = parseMajorToCents(values.discount.trim() || "0") ?? 0;
   const priced = summaryRooms.every((room) => room.charges !== null);
-  const totalCents = subtotalCents - discountCents;
+  const appliedDiscountCents = Math.min(discountCents, subtotalCents);
+  const totalCents = subtotalCents - appliedDiscountCents;
 
   return (
     <form
@@ -438,7 +439,7 @@ export function NewBooking({
               priced
                 ? {
                     subtotalCents,
-                    discountCents,
+                    discountCents: appliedDiscountCents,
                     totalCents,
                     balanceCents: totalCents,
                   }

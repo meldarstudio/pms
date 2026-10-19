@@ -71,7 +71,7 @@ import {
 const sortOptions: { value: ReservationSort; label: string }[] = [
   { value: "checkIn", label: "Check-in" },
   { value: "checkOut", label: "Check-out" },
-  { value: "guestName", label: "Contacto" },
+  { value: "guestName", label: "Contacto principal" },
   { value: "balance", label: "Saldo" },
 ];
 
@@ -307,7 +307,7 @@ export function Reservations({
         <div className="w-full max-w-sm">
           <Field>
             <FieldLabel htmlFor={guestId} className="sr-only">
-              Contacto o código
+              Contacto principal o código
             </FieldLabel>
             <InputGroup>
               <InputGroupAddon>
@@ -315,7 +315,7 @@ export function Reservations({
               </InputGroupAddon>
               <InputGroupInput
                 id={guestId}
-                placeholder="Buscar contacto o código…"
+                placeholder="Buscar contacto principal o código…"
                 value={search.q}
                 onChange={(event) => refine({ q: event.target.value })}
               />
@@ -494,7 +494,7 @@ export function Reservations({
               >
                 <TableHeader>
                   <TableRow>
-                    {sortHeader("guestName", "Contacto")}
+                    {sortHeader("guestName", "Contacto principal")}
                     <TableHead scope="col">Estado</TableHead>
                     <TableHead scope="col">Habitaciones</TableHead>
                     <TableHead scope="col">Ocupantes</TableHead>
