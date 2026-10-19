@@ -24,7 +24,7 @@ Node globals. React and browser rules apply only to the portal.
 Native type checking covers backend source, configuration, TypeScript tests,
 and shared schemas. Backend `.mjs` scripts and tests receive syntax linting
 without static type checking. `pnpm check` is the shared validation command
-for local development and Workers Builds; it does not run a duplicate
+for local development and releases; it does not run a duplicate
 `tsc --noEmit` pass. Tests remain separate.
 
 ## Staff login
@@ -65,15 +65,16 @@ Tell the remaining staff the new password. Everyone signs in again.
 
 ### First deployment checklist
 
-`main` deploys automatically, so finish these before merging the login change:
+For a separately authorized first deployment, follow [the release checklist](../../docs/releases.md)
+and finish these prerequisites before deploying:
 
 1. Set `STAFF_PASSWORD_HASH` and `SESSION_SECRET` with `wrangler secret put` as above.
 2. Make sure the `hotelmanantialchurin.com` zone is on this Cloudflare account. The
    `routes` entries in each `wrangler.jsonc` attach `api.hotelmanantialchurin.com` and
    `app.hotelmanantialchurin.com` as custom domains on deploy.
-3. Change the portal's Workers Builds variable `VITE_API_BASE_URL` to
-   `https://api.hotelmanantialchurin.com`.
-4. Merge. Check that signing in works at `https://app.hotelmanantialchurin.com`.
+3. Build the portal with `VITE_API_BASE_URL=https://api.hotelmanantialchurin.com`
+   (the manual release workflow supplies it).
+4. Release the selected commit. Check signing in at `https://app.hotelmanantialchurin.com`.
 
 The API no longer has a `workers.dev` or preview URL.
 
@@ -330,10 +331,13 @@ and rooms; use `pnpm db:reset:local` to undo edits and reload all sample data.
 
 Production API: `https://api.hotelmanantialchurin.com`
 
+Use [the release checklist](../../docs/releases.md) for the manual workflow,
+automatic-build cutover, compatibility, verification, versions, and recovery.
+
 ### Property timezone release (#23)
 
-No production operation is authorized by implementing this change. Before merging
-schema-dependent code to `main`, arrange this release explicitly:
+No production operation is authorized by implementing this change. Before deploying
+schema-dependent code, arrange this release explicitly:
 
 1. Apply registered migration `0003_property_calendar.sql` using the safe production
    migration process below. It adds an empty context table and replaces only the
@@ -447,33 +451,20 @@ pnpm --filter @pms/backend cf-typegen
 ```
 
 **Both `deploy` and `deploy:ci` now deploy code only.** They do not apply
-migrations. For a schema release, run the safe migration command above before
-deploying `pms-api` or merging schema-dependent code to `main`.
+migrations. For a schema release, validate the exact release SHA, then run the safe
+migration command above from its clean checkout before deploying `pms-api`.
 
-`main` is the only deployed branch. Feature branches merge to `main`.
+Only selected commits belonging to `main` are released. Feature branches merge to `main`.
 Day-to-day development uses the local D1 database and `pnpm db:reset:local`.
 
 Preserve the existing production baseline, records, and migration ledger. A
 history mismatch needs investigation and a data-preserving upgrade plan, not a
 production rebuild. New-database bootstrap is outside the safe wrapper's scope.
 
-For Workers Builds, use `pnpm check` as the build
-command and `pnpm --filter @pms/backend run deploy:ci` as the deploy command.
-`deploy:ci` deploys code without changing the database. Apply migrations
-explicitly before deploying a schema change.
-
-Under **Settings > Build > Build watch paths**, set the API Worker's include
-paths to:
-
-```text
-apps/backend/*
-packages/shared/*
-package.json
-pnpm-lock.yaml
-pnpm-workspace.yaml
-```
-
-Leave exclude paths empty. This prevents portal-only commits from deploying the
-API. Production builds deploy `pms-api` against `pms-production`.
+The release workflow calls `deploy:ci` only after validation, portal build, and a
+read-only exact migration-history check. It never invokes the interactive migration
+tool. Both Workers deploy on every release. Disable Git-triggered Workers Builds
+for both applications during the separately authorized cutover, preserving
+`pms-api` and its `pms-production` binding.
 
 The Hono application uses the `Env` type from `src/env.ts`.
