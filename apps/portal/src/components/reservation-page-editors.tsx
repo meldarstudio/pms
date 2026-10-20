@@ -48,7 +48,7 @@ export type ReservationEditorTarget =
 function editorTitle(target: ReservationEditorTarget, detail: ReservationDetail) {
   switch (target.kind) {
     case "stay":
-      return "Editar estadía";
+      return "Editar reserva";
     case "contact":
       return "Editar contacto de la reserva";
     case "notes":
@@ -121,22 +121,22 @@ export function ReservationPageEditor({
           className={cn(
             "max-h-[90svh] overflow-y-auto sm:max-w-lg",
             target.kind === "stay" &&
-              "top-0 right-0 left-auto h-svh max-h-svh w-full max-w-full translate-x-0 translate-y-0 sm:max-w-2xl",
+              "top-0 left-0 flex h-svh max-h-svh w-full max-w-full translate-x-0 translate-y-0 flex-col overflow-hidden sm:top-1/2 sm:left-1/2 sm:h-auto sm:max-h-[90svh] sm:max-w-2xl sm:-translate-x-1/2 sm:-translate-y-1/2",
           )}
         >
           <DialogHeader>
             <DialogTitle>{editorTitle(target, detail)}</DialogTitle>
             <DialogDescription>
               {target.kind === "stay"
-                ? "Revisa las fechas, habitaciones, ocupación y el importe antes de guardar."
+                ? "Revisa el contacto, las fechas, habitaciones y el importe antes de guardar."
                 : "Los cambios se guardan al confirmar."}
             </DialogDescription>
           </DialogHeader>
           {target.kind === "stay" ? (
             <BookingEditor
               detail={detail}
-              full
-              stayOnly
+              combined
+              onCancel={close}
               onDirtyChange={handleDirty}
               onSaved={onClose}
             />

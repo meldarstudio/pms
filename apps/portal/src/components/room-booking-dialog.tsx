@@ -104,7 +104,11 @@ import {
   paymentDefaults,
   paymentPayload,
   cancellationSchema,
+  contactSchema,
+  contactDefaults,
+  contactPayload,
   type PaymentValues,
+  type DetailsValues,
 } from "@/lib/reservation-form-schemas";
 import { propertyToday } from "@/lib/property-calendar";
 import { usePropertyCalendar } from "@/lib/use-property-calendar";
@@ -262,7 +266,8 @@ export function BookingEditor({
   full = false,
   initialTab = "details",
   onTabChange,
-  stayOnly = false,
+  combined = false,
+  onCancel,
   onSaved,
 }: {
   detail: ReservationDetail;
@@ -273,27 +278,45 @@ export function BookingEditor({
   full?: boolean;
   initialTab?: string;
   onTabChange?: (tab: string) => void;
-  stayOnly?: boolean;
+  combined?: boolean;
+  onCancel?: () => void;
   onSaved?: () => void;
 }) {
   const contact = detail.guest;
   const queryClient = useQueryClient();
   const [guestDirty, setGuestDirty] = useState(false);
   const roomTypes = useRoomTypes();
-  const [defaults, setDefaults] = useState(() => detailsDefaults(detail));
+  const [defaults, setDefaults] = useState(() => detailsDefaults(detail, combined));
   const schema = useMemo(
-    () => detailsSchema(roomTypes.data ?? [], { saved: detail }),
-    [roomTypes.data, detail],
+    () => detailsSchema(roomTypes.data ?? [], { saved: detail, validateContact: combined }),
+    [roomTypes.data, detail, combined],
   );
   const pricingSchema = useMemo(
     () => detailsSchema(roomTypes.data ?? [], { validateOperations: false }),
     [roomTypes.data],
   );
   const formId = useId();
+  const rejectedFields = useRef<{ values: DetailsValues; fields: Record<string, string> } | null>(
+    null,
+  );
   const form = useReservationForm({
     defaultValues: defaults,
     validationLogic: blurThenChange(),
-    validators: { onDynamic: schema },
+    validators: {
+      onDynamic: ({ value }) => {
+        const fields = schemaErrors(schema.safeParse(value));
+        // Focusing the rejected field can blur a date picker. That validation
+        // must not erase server feedback for a value that has not been corrected.
+        for (const name of ["email", "checkOut"] as const) {
+          if (
+            rejectedFields.current?.fields[name] &&
+            value[name] === rejectedFields.current.values[name]
+          )
+            fields[name] = rejectedFields.current.fields[name];
+        }
+        return Object.keys(fields).length ? { fields } : undefined;
+      },
+    },
     onSubmit: async () => saveChanges(),
   });
   const values = useSelector(form.store, (state) => state.values);
@@ -337,6 +360,15 @@ export function BookingEditor({
       status: reservationState as Extract<WorkflowAction, { type: "set-status" }>["status"],
     });
   if (notes !== (detail.notes ?? "")) changes.push({ type: "notes", notes });
+  if (combined) {
+    const contact = contactSchema.safeParse(values);
+    if (
+      contact.success &&
+      JSON.stringify(contactPayload(contact.data)) !==
+        JSON.stringify(contactPayload(contactDefaults(detail)))
+    )
+      changes.push({ type: "contact", contact: contactPayload(contact.data) });
+  }
   const dirty = changes.length > 0 || (!validation.success && !unchanged);
   const previewActions = validationPreviewActions(changes);
   const validationNeeded = previewActions.length > 0;
@@ -422,7 +454,8 @@ export function BookingEditor({
     onDirtyChange?.(dirty || paymentDirty || guestDirty || discountDirty || actionDirty);
   }, [dirty, paymentDirty, guestDirty, discountDirty, actionDirty, onDirtyChange]);
   function resetDetails(saved: ReservationDetail) {
-    const next = detailsDefaults(saved);
+    rejectedFields.current = null;
+    const next = detailsDefaults(saved, combined);
     setDefaults(next);
     form.reset(next);
   }
@@ -468,14 +501,17 @@ export function BookingEditor({
       toast.add({ title: "Detalles guardados", type: "success" });
       onSaved?.();
     } catch (e) {
-      const fields = serverFieldErrors(e, "details");
-      if (fields) setServerErrors(form, fields);
-      else toastError("No se pudo guardar", e);
+      const fields =
+        serverFieldErrors(e, "details") ?? (combined ? serverFieldErrors(e, "guest") : null);
+      if (fields) {
+        rejectedFields.current = { values, fields };
+        form.setErrorMap({ onDynamic: { fields } });
+      } else toastError("No se pudo guardar", e);
     }
   }
   return (
     <div className={cn("flex min-w-0 flex-col gap-4", !full && "min-h-0 flex-1 overflow-hidden")}>
-      {!stayOnly && (
+      {!combined && (
         <div className="flex shrink-0 flex-wrap items-center gap-1 pr-8">
           <span className="text-lg font-semibold">{`${contact.fullName}`.trim()}</span>
           <span className="text-lg text-muted-foreground"> · {detail.code}</span>
@@ -494,7 +530,7 @@ export function BookingEditor({
           )}
         </div>
       )}
-      {!stayOnly && (contact.phone || contact.email) && (
+      {!combined && (contact.phone || contact.email) && (
         <p className="-mt-2 shrink-0 text-sm wrap-anywhere text-muted-foreground">
           {[contact.phone, contact.email].filter(Boolean).join(" · ")}
         </p>
@@ -507,7 +543,7 @@ export function BookingEditor({
         }}
         className={cn("gap-4", !full && "min-h-0 overflow-y-auto")}
       >
-        {!stayOnly && (
+        {!combined && (
           <TabsList variant="line" className="shrink-0">
             <TabsTrigger value="details">
               Detalles
@@ -526,7 +562,7 @@ export function BookingEditor({
         <div
           className={cn(
             "grid min-w-0 shrink-0 gap-6 p-px",
-            !stayOnly && "lg:grid-cols-[minmax(0,1fr)_280px]",
+            !combined && "lg:grid-cols-[minmax(0,1fr)_280px]",
           )}
         >
           <div className="min-w-0">
@@ -537,6 +573,31 @@ export function BookingEditor({
                 onSubmit={(event) => void submitForm(event, () => form.handleSubmit())}
               >
                 <fieldset disabled={saveMutation.isPending} className="flex min-w-0 flex-col gap-5">
+                  {combined && (
+                    <section aria-label="Contacto" className="flex flex-col gap-3">
+                      <h3 className="font-medium">Contacto</h3>
+                      <FieldGroup className="grid gap-3 sm:grid-cols-2">
+                        <form.AppField name="fullName">
+                          {(field) => <field.Text label="Nombre completo" required max={200} />}
+                        </form.AppField>
+                        <form.AppField name="phone">
+                          {(field) => <field.Text label="Teléfono" type="tel" max={40} />}
+                        </form.AppField>
+                        <form.AppField name="email">
+                          {(field) => (
+                            <field.Text label="Correo electrónico" type="email" max={320} />
+                          )}
+                        </form.AppField>
+                        <form.AppField name="documentType">
+                          {(field) => <field.Text label="Tipo de documento" max={40} />}
+                        </form.AppField>
+                        <form.AppField name="documentNumber">
+                          {(field) => <field.Text label="Número de documento" max={60} />}
+                        </form.AppField>
+                      </FieldGroup>
+                    </section>
+                  )}
+                  {combined && <h3 className="font-medium">Estadía</h3>}
                   <FieldGroup className="grid grid-cols-2 gap-3">
                     <form.AppField
                       name="checkIn"
@@ -658,7 +719,7 @@ export function BookingEditor({
                       </section>
                     )}
                   </form.Field>
-                  {!stayOnly && (
+                  {!combined && (
                     <section className="flex flex-col gap-3">
                       <FieldGroup>
                         <form.AppField name="notes">
@@ -670,7 +731,7 @@ export function BookingEditor({
                 </fieldset>
               </form>
             </TabsContent>
-            {!stayOnly && (
+            {!combined && (
               <TabsContent value="guests" keepMounted className="flex flex-col gap-5">
                 <GuestFields
                   detail={detail}
@@ -680,7 +741,7 @@ export function BookingEditor({
                 />
               </TabsContent>
             )}
-            {!stayOnly && (
+            {!combined && (
               <TabsContent value="payments" keepMounted className="flex flex-col gap-5">
                 <PaymentForm
                   detail={detail}
@@ -714,7 +775,7 @@ export function BookingEditor({
               paidCents={billing?.paidCents ?? detail.paidCents}
               editableDiscountCents={detail.savedDiscountCents}
               discountDisabled={busy || discountMutation.isPending}
-              onDiscountSave={stayOnly ? undefined : saveDiscount}
+              onDiscountSave={combined ? undefined : saveDiscount}
               onDiscountDirtyChange={setDiscountDirty}
               currency={detail.currency}
               stayLabel={
@@ -755,7 +816,7 @@ export function BookingEditor({
         </div>
       </Tabs>
       <div className="flex shrink-0 flex-wrap items-end gap-3">
-        {!stayOnly && !detail.cancelledAt && (
+        {!combined && !detail.cancelledAt && (
           <Button
             type="button"
             variant="destructive"
@@ -766,7 +827,7 @@ export function BookingEditor({
           </Button>
         )}
         <div className="ml-auto flex flex-wrap items-end justify-end gap-3">
-          {!stayOnly && tab === "details" && (
+          {!combined && tab === "details" && (
             <FieldGroup className="w-48">
               <form.AppField name="status">
                 {(field) => (
@@ -797,6 +858,11 @@ export function BookingEditor({
             </FieldGroup>
           )}
           <div className="flex flex-wrap gap-2">
+            {combined && (
+              <Button type="button" variant="outline" disabled={busy} onClick={onCancel}>
+                Cancelar
+              </Button>
+            )}
             {tab === "details" && (
               <Button
                 type="submit"
@@ -809,10 +875,14 @@ export function BookingEditor({
                   busy
                 }
               >
-                {saveMutation.isPending ? "Guardando…" : "Guardar detalles"}
+                {saveMutation.isPending
+                  ? "Guardando…"
+                  : combined
+                    ? "Guardar cambios"
+                    : "Guardar detalles"}
               </Button>
             )}
-            {!full && tab === "details" && (
+            {!full && !combined && tab === "details" && (
               <Button
                 type="button"
                 variant="outline"

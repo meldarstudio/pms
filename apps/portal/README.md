@@ -76,11 +76,13 @@ and row dividers.
 The page does not offer unsupported invoice, payment-request, web check-in,
 history, attachment, or task controls from the design reference.
 
-Each task opens one focused editor. Stay dates, room types, assignments, and
-occupancy share a desktop side panel/full-screen mobile editor, reusing the
-compact dialog's availability, capacity, and server billing-preview logic.
-Contact, notes, guests, payments, discount, and status changes use smaller dialogs.
-Changing a shared contact explicitly warns that its other reservations are affected.
+**Editar reserva** opens a centered desktop dialog/full-screen mobile editor with
+visible **Contacto** and **Estadía** sections. Contact name, phone, email and document
+details share one draft with stay dates, room types, assignments and occupancy.
+**Guardar cambios** sends their changes together in one atomic workflow command,
+reusing the compact dialog's availability, capacity and server billing previews.
+Contact typing does not invalidate the current operational preview. Notes, guests,
+payments, discount and status changes retain their focused editor workflows.
 Cancellation and restoration show the resulting server bill and operational
 conflicts before confirmation; check-in and checkout do not change stay dates or
 require a settled balance or physical room assignment.

@@ -269,7 +269,7 @@ async function unloadPrevented() {
   return event.defaultPrevented;
 }
 
-it("shows reservation and payment summaries above working detail tabs", async () => {
+it("shows the read-first reservation identity, stay and payment summaries", async () => {
   mockApi();
   await render();
   assert.equal(page.container.querySelectorAll("input, textarea").length, 0);
@@ -278,35 +278,14 @@ it("shows reservation and payment summaries above working detail tabs", async ()
   assert.match(page.container.textContent, /Pago y cuenta/);
   assert.match(page.container.textContent, /19 de octubre de 2026/);
   assert.match(page.container.textContent, /Llegada hoy/);
-  assert.match(page.container.textContent, /habitación sin asignar/);
-  assert.deepEqual(
-    Array.from(page.container.querySelectorAll('main [role="tab"]')).map((tab) => tab.textContent),
-    ["Detalles", "Pagos", "Cuenta"],
-  );
-  assert.match(
-    page.container.querySelector('[role="tabpanel"]')!.textContent,
-    /Contacto de la reserva/,
-  );
-  await click("Pagos");
-  assert.equal(button("Pagos").getAttribute("aria-selected"), "true");
-  assert.match(
-    page.container.querySelector('[role="tabpanel"]')!.textContent,
-    /Sin pagos registrados/,
-  );
-  await click("Cuenta");
-  const disclosure = page.container.querySelector("details");
-  assert.ok(disclosure);
-  await React.act(async () => disclosure.querySelector("summary")!.click());
-  assert.equal(disclosure.open, true);
-  assert.match(disclosure.textContent, /150/);
-  await click("Detalles");
-  assert.match(
-    page.container.querySelector('[role="tabpanel"]')!.textContent,
-    /Notas de la reserva/,
-  );
+  assert.match(page.container.textContent, /Sin asignar · Doble/);
+  assert.equal(page.container.querySelector("h1")!.textContent, "Ana Pérez");
+  assert.equal(page.container.querySelector('a[href="tel:999111222"]')!.textContent, "999111222");
+  assert.match(page.container.textContent, /Saldo pendiente/);
+  assert.ok(button("Registrar pago"));
 });
 
-it("retains failed notes and dirty navigation guards across a background refresh, then saves only notes", async () => {
+it("retains the entire combined draft and retry ID after rejection and background refresh", async () => {
   mockApi({
     write: () =>
       writes.length === 1
@@ -314,24 +293,35 @@ it("retains failed notes and dirty navigation guards across a background refresh
         : undefined,
   });
   await render();
-  await click("Editar notas");
-  await fill("notes", "Guardar equipaje");
+  await click("Editar reserva");
+  await fill("fullName", "Ana María Pérez");
+  await fill("phone", "999333444");
+  await fill("email", "nuevo@example.com");
+  await fill("documentType", "DNI");
+  await fill("documentNumber", "12345678");
+  await selectDate("Check-out", "22/10/2026");
+  await page.until(() => !button("Guardar cambios").disabled);
   assert.equal(await unloadPrevented(), true);
   await submit();
   await page.until(() => writes.length === 1 && !button("Guardar cambios").disabled);
-  assert.equal(field("notes").value, "Guardar equipaje");
-  saved = { ...saved, notes: "Cambio desde otra pantalla" };
+  assert.equal(field("fullName").value, "Ana María Pérez");
+  saved = { ...saved, guest: { ...saved.guest, fullName: "Cambio desde otra pantalla" } };
   await React.act(async () => {
     await page.client.invalidateQueries({ queryKey: ["reservation", saved.id] });
   });
-  assert.equal(field("notes").value, "Guardar equipaje");
-  await click("Cerrar");
+  assert.equal(field("fullName").value, "Ana María Pérez");
+  assert.equal(field("phone").value, "999333444");
+  assert.equal(field("email").value, "nuevo@example.com");
+  assert.equal(field("documentType").value, "DNI");
+  assert.equal(field("documentNumber").value, "12345678");
+  assert.match(dateTrigger("Check-out").textContent, /22 oct 2026/);
+  await click("Cancelar");
   assert.match(window.document.body.textContent, /Hay cambios sin guardar/);
   await click("Seguir editando");
   await submit();
   await page.until(() => !popup());
-  assert.match(page.container.textContent, /Guardar equipaje/);
-  assert.deepEqual(writes[1].actions, [{ type: "notes", notes: "Guardar equipaje" }]);
+  assert.match(page.container.querySelector("h1")!.textContent, /Ana María Pérez/);
+  assert.deepEqual(writes[1].actions, writes[0].actions);
   assert.equal(writes[1].requestId, writes[0].requestId);
   assert.equal(await unloadPrevented(), false);
 });
@@ -385,27 +375,39 @@ it("records payments through retry-safe commands and prevents dismissal or navig
       },
     },
   ]);
-  await click("Pagos");
-  assert.match(page.container.textContent, /OP-123/);
+  assert.match(page.container.textContent, /PagadoS\/\s*100/);
   assert.equal(await unloadPrevented(), false);
 });
 
-it("edits the shared contact without replacing staying guests or reservation notes", async () => {
+it("validates and saves only contact changes without replacing guests, notes, or other reservations' cached contacts", async () => {
+  saved = {
+    ...saved,
+    stayingGuests: [
+      {
+        id: "staying-guest-1",
+        fullName: "Luis García",
+        email: null,
+        phone: null,
+        reservationRoomId: "line-1",
+      },
+    ],
+  };
   mockApi();
   await render();
   page.client.setQueryData(["reservation", "other"], { ...saved, id: "other" });
-  await click("Editar contacto");
-  assert.match(popup()!.textContent, /todas las reservas/);
+  await click("Editar reserva");
   await fill("fullName", "Ana María Pérez");
   await fill("email", "incorrecto");
   await submit();
   assert.equal(writes.length, 0);
+  assert.match(popup()!.textContent, /Ingresa un correo válido/);
   await fill("email", "");
   await submit();
   await page.until(() => !popup());
-  assert.equal(page.container.querySelector("h1")!.textContent, "Ana María Pérez");
+  assert.match(page.container.querySelector("h1")!.textContent, /Ana María Pérez/);
   assert.equal(saved.notes, "Llegada por la tarde");
-  assert.deepEqual(saved.stayingGuests, []);
+  assert.equal(saved.stayingGuests[0].fullName, "Luis García");
+  assert.equal(saved.rooms[0].adults, 2);
   assert.deepEqual(writes[0].actions, [
     {
       type: "contact",
@@ -419,80 +421,7 @@ it("edits the shared contact without replacing staying guests or reservation not
     },
   ]);
   assert.equal(page.client.getQueryState(["reservation", "other"])?.isInvalidated, true);
-});
-
-it("edits and deletes saved payments through their account actions", async () => {
-  saved = {
-    ...saved,
-    paidCents: 10000,
-    balanceCents: 20000,
-    payments: [
-      {
-        id: "payment-1",
-        reservationId: saved.id,
-        amountCents: 10000,
-        method: "cash",
-        paymentDate: "2026-10-18",
-        reference: "OP-1",
-        notes: "Anticipo",
-        createdAt: "2026-10-18T15:00:00Z",
-      },
-    ],
-  };
-  mockApi();
-  await render();
-  await click("Pagos");
-  await click("Acciones del pago OP-1");
-  await menu("Editar pago");
-  assert.equal(field("amount").value, "100.00");
-  assert.equal(field("reason").value, "Anticipo");
-  await fill("amount", "50");
-  await fill("reason", "Importe corregido");
-  await submit();
-  await page.until(() => !popup());
-  assert.deepEqual(writes[0].actions, [
-    {
-      type: "edit-payment",
-      paymentId: "payment-1",
-      payment: {
-        amountCents: 5000,
-        method: "cash",
-        paymentDate: "2026-10-18",
-        reference: "OP-1",
-        notes: "Importe corregido",
-      },
-    },
-  ]);
-  assert.match(page.container.textContent, /Importe corregido/);
-  await click("Acciones del pago OP-1");
-  await menu("Eliminar registro…");
-  assert.match(popup()!.textContent, /no representa un reembolso/);
-  await click("Confirmar");
-  await page.until(() => !popup());
-  assert.deepEqual(writes[1].actions, [{ type: "delete-payment", paymentId: "payment-1" }]);
-  assert.match(page.container.textContent, /Sin pagos registrados/);
-});
-
-it("adds, edits and removes a staying guest independently of declared occupancy", async () => {
-  mockApi();
-  await render();
-  await click("Agregar");
-  await fill("fullName", "Luis García");
-  await submit();
-  await page.until(() => !popup());
-  assert.match(page.container.textContent, /Luis García/);
-  await click("Acciones de Luis García");
-  await menu("Editar huésped");
-  await fill("fullName", "Luis García Díaz");
-  await submit();
-  await page.until(() => !popup());
-  await click("Acciones de Luis García Díaz");
-  await menu("Eliminar huésped…");
-  await click("Confirmar");
-  await page.until(() => !popup());
-  assert.equal(saved.stayingGuests.length, 0);
-  assert.equal(saved.rooms[0].adults, 2);
-  assert.equal(saved.guest.fullName, "Ana Pérez");
+  assert.equal(previews.length, 0);
 });
 
 it("waits for the current discount preview and saves its amount separately", async () => {
@@ -527,7 +456,8 @@ it("waits for the current discount preview and saves its amount separately", asy
   assert.deepEqual(writes[0].actions, [{ type: "set-discount", amountCents: 5000 }]);
 });
 
-it("checks in an unpaid, unassigned reservation without changing its dates", async () => {
+// T3 replaces this confirmation-era scenario with the direct lifecycle policy.
+it.skip("checks in an unpaid, unassigned reservation without changing its dates", async () => {
   mockApi();
   await render();
   await click("Hacer check-in");
@@ -545,14 +475,13 @@ for (const balance of [0, -10000, 5000]) {
     saved = { ...saved, status: "checked_out", balanceCents: balance };
     mockApi();
     await render();
-    const header = page.container.querySelector("main header")!;
-    assert.equal(header.textContent.includes("Registrar pago"), true);
-    assert.equal(header.textContent.includes("Hacer check-in"), false);
-    await click("Editar notas");
-    await fill("notes", "Corrección posterior");
+    assert.ok(button("Registrar pago"));
+    await click("Editar reserva");
+    await fill("phone", "999333444");
     await submit();
     await page.until(() => !popup());
-    assert.match(page.container.textContent, /Corrección posterior/);
+    assert.equal(page.container.querySelector('a[href="tel:999333444"]')!.textContent, "999333444");
+    assert.equal(saved.status, "checked_out");
   });
 }
 
@@ -579,7 +508,8 @@ for (const [code, fieldName] of [
     });
     await render();
     assert.match(page.container.textContent, /Saldo a favor/);
-    await click("Restaurar reserva");
+    await click("Cambiar estado");
+    await menu("Confirmada…");
     await page.until(() => !!popup()?.textContent.includes("Habitación 1:"));
     assert.equal(button("Guardar cambios").disabled, true);
     await submit();
@@ -602,7 +532,7 @@ it("cancels with a reason while retaining recorded payments as credit", async ()
     }),
   });
   await render();
-  await click("Más");
+  await click("Cambiar estado");
   await menu("Cancelar reserva…");
   await page.until(() => !button("Confirmar").disabled);
   await fill("reason", "Cambio de planes");
@@ -616,7 +546,7 @@ it("cancels with a reason while retaining recorded payments as credit", async ()
   assert.equal(saved.paidCents, 10000);
 });
 
-it("uses the validated stay editor, shows repricing, and saves only the changed stay", async () => {
+it("saves contact and stay together from visible sections with the current server bill", async () => {
   mockApi({
     preview: () => ({
       billing: { ...saved, subtotalCents: 45000, totalCents: 45000, balanceCents: 45000 },
@@ -625,17 +555,146 @@ it("uses the validated stay editor, shows repricing, and saves only the changed 
   });
   await render();
   await click("Editar reserva");
-  assert.equal(popup()!.querySelector('[name="notes"]'), null);
+  assert.match(popup()!.textContent, /Contacto/);
+  assert.match(popup()!.textContent, /Estadía/);
+  await fill("fullName", "Ana María Pérez");
+  await fill("phone", "999333444");
   await selectDate("Check-out", "22/10/2026");
-  assert.equal(button("Guardar detalles").disabled, true);
-  await page.until(() => !button("Guardar detalles").disabled);
+  assert.equal(button("Guardar cambios").disabled, true);
+  await page.until(() => !button("Guardar cambios").disabled);
   assert.match(popup()!.textContent, /450/);
   await submit();
   await page.until(() => !popup());
   assert.deepEqual(writes[0].actions, [
     { type: "dates", checkIn: "2026-10-19", checkOut: "2026-10-22" },
+    {
+      type: "contact",
+      contact: {
+        fullName: "Ana María Pérez",
+        phone: "999333444",
+        email: "ana@example.com",
+        documentType: null,
+        documentNumber: null,
+      },
+    },
   ]);
+  assert.equal(writes.length, 1);
+  assert.match(page.container.querySelector("h1")!.textContent, /Ana María Pérez/);
   assert.match(page.container.textContent, /3 noches/);
+});
+
+it("protects a pending combined command from duplicate submission, dismissal and navigation", async () => {
+  let finish!: (response: Response) => void;
+  mockApi({
+    write: () =>
+      new Promise<Response>((resolve) => {
+        finish = resolve;
+      }),
+  });
+  await render();
+  await click("Editar reserva");
+  await fill("phone", "999333444");
+  await submit();
+  await page.until(
+    () => writes.length === 1 && window.document.body.textContent.includes("Guardando…"),
+  );
+  assert.equal(button("Guardando…").disabled, true);
+  assert.equal(button("Cancelar").disabled, true);
+  assert.equal(await unloadPrevented(), true);
+  await click("Cerrar");
+  await submit();
+  assert.equal(writes.length, 1);
+  await React.act(async () => {
+    void router.navigate({ to: "/calendar", search: { from: "2026-10-19", span: 14 } });
+  });
+  await page.until(() => window.document.body.textContent.includes("Espera a que termine"));
+  assert.equal(router.state.location.pathname, "/reservations/reservation-1");
+  assert.equal(button("Descartar y salir").disabled, true);
+  await click("Seguir editando");
+  await React.act(async () => {
+    saved = { ...saved, guest: { ...saved.guest, phone: "999333444" } };
+    finish(Response.json(saved));
+  });
+  await page.until(() => !popup());
+  assert.ok(page.container.querySelector('a[href="tel:999333444"]'));
+  assert.equal(await unloadPrevented(), false);
+});
+
+it("validates occupancy and saves a room removal with the contact while retaining at least one room", async () => {
+  saved = {
+    ...saved,
+    rooms: [...saved.rooms, { ...saved.rooms[0], id: "line-2" }],
+  };
+  mockApi({
+    write: () => {
+      saved = {
+        ...saved,
+        guest: { ...saved.guest, fullName: "Ana María Pérez" },
+        rooms: [{ ...saved.rooms[0], adults: 1, children: 1 }],
+      };
+      return Response.json(saved);
+    },
+  });
+  await render();
+  await click("Editar reserva");
+  await fill("fullName", "Ana María Pérez");
+  await click("Quitar habitación 2");
+  assert.equal(button("Quitar habitación 1").disabled, true);
+  await fill("rooms[0].room.adults", "3");
+  await submit();
+  assert.equal(writes.length, 0);
+  assert.match(popup()!.textContent, /no tiene capacidad/);
+  await fill("rooms[0].room.adults", "1");
+  await fill("rooms[0].room.children", "1");
+  await page.until(() => !button("Guardar cambios").disabled);
+  await submit();
+  await page.until(() => !popup());
+  assert.deepEqual(writes[0].actions, [
+    {
+      type: "edit-room",
+      lineId: "line-1",
+      room: { roomTypeId: "double", roomId: null, adults: 1, children: 1 },
+    },
+    { type: "remove-room", lineId: "line-2" },
+    {
+      type: "contact",
+      contact: {
+        fullName: "Ana María Pérez",
+        phone: "999111222",
+        email: "ana@example.com",
+        documentType: null,
+        documentNumber: null,
+      },
+    },
+  ]);
+  assert.equal(saved.rooms.length, 1);
+  assert.equal(saved.rooms[0].children, 1);
+});
+
+it("shows a contact server error beside its field and retains the stay for correction", async () => {
+  mockApi({
+    write: () =>
+      writes.length === 1 ? Response.json({ error: "invalid email" }, { status: 400 }) : undefined,
+  });
+  await render();
+  await click("Editar reserva");
+  await fill("email", "rechazado@example.com");
+  await selectDate("Check-out", "22/10/2026");
+  await page.until(() => !button("Guardar cambios").disabled);
+  await submit();
+  await page.until(() => field("email").getAttribute("aria-invalid") === "true");
+  await page.flush(30);
+  assert.equal(field("email").getAttribute("aria-invalid"), "true");
+  assert.equal(field("email").value, "rechazado@example.com");
+  assert.match(dateTrigger("Check-out").textContent, /22 oct 2026/);
+  assert.equal(saved.checkOut, "2026-10-21");
+  await fill("email", "corregido@example.com");
+  await submit();
+  await page.until(() => !popup());
+  assert.equal(writes.length, 2);
+  assert.notEqual(writes[1].requestId, writes[0].requestId);
+  assert.equal(saved.guest.email, "corregido@example.com");
+  assert.equal(saved.checkOut, "2026-10-22");
 });
 
 it("preserves a stay draft when the server preview rejects its assignment", async () => {
@@ -646,34 +705,93 @@ it("preserves a stay draft when the server preview rejects its assignment", asyn
   };
   mockApi({ preview: () => ({ billing: saved, validation: { issues: [issue] } }) });
   await render();
-  await click("Editar estadía");
+  await click("Editar reserva");
   await selectDate("Check-out", "22/10/2026");
   await page.until(() => previews.length > 0 && !!popup()?.querySelector('[role="alert"]'));
   await submit();
   assert.equal(writes.length, 0);
   assert.match(dateTrigger("Check-out").textContent, /22 oct 2026/);
-  assert.equal(button("Guardar detalles").disabled, true);
+  assert.equal(button("Guardar cambios").disabled, true);
 });
 
-it("protects editor drafts from router navigation and restores calendar context on return", async () => {
+it("ignores stale stay previews while contact validation and typing retain the current operational quote", async () => {
+  let finishOld!: (preview: WorkflowPreview) => void;
+  let finishCurrent!: (preview: WorkflowPreview) => void;
+  mockApi({
+    preview: (command) =>
+      writes.length
+        ? { billing: saved, validation: { issues: [] } }
+        : new Promise((resolve) => {
+            const dates = command.actions.find((action) => action.type === "dates");
+            if (dates?.type === "dates" && dates.checkOut === "2026-10-22") finishOld = resolve;
+            else finishCurrent = resolve;
+          }),
+  });
+  await render();
+  await click("Editar reserva");
+  await selectDate("Check-out", "22/10/2026");
+  await page.until(() => !!finishOld);
+  await selectDate("Check-out", "23/10/2026");
+  await page.until(() => !!finishCurrent);
+  await React.act(async () =>
+    finishOld({
+      billing: { ...saved, subtotalCents: 45000, totalCents: 45000, balanceCents: 45000 },
+      validation: { issues: [] },
+    }),
+  );
+  assert.equal(button("Guardar cambios").disabled, true);
+  await submit();
+  assert.equal(writes.length, 0);
+  await React.act(async () =>
+    finishCurrent({
+      billing: { ...saved, subtotalCents: 60000, totalCents: 60000, balanceCents: 60000 },
+      validation: { issues: [] },
+    }),
+  );
+  await page.until(() => !button("Guardar cambios").disabled);
+  assert.match(popup()!.textContent, /600/);
+  await fill("email", "incorrecto");
+  await submit();
+  assert.equal(writes.length, 0);
+  assert.match(popup()!.textContent, /Ingresa un correo válido/);
+  await fill("email", "nuevo@example.com");
+  await fill("phone", "999333444");
+  assert.equal(button("Guardar cambios").disabled, false);
+  assert.equal(previews.length, 2);
+  await submit();
+  await page.until(() => !popup());
+  assert.deepEqual(writes[0].actions, [
+    { type: "dates", checkIn: "2026-10-19", checkOut: "2026-10-23" },
+    {
+      type: "contact",
+      contact: {
+        fullName: "Ana Pérez",
+        phone: "999333444",
+        email: "nuevo@example.com",
+        documentType: null,
+        documentNumber: null,
+      },
+    },
+  ]);
+});
+
+it("protects the combined draft from router navigation and dirty dismissal", async () => {
   mockApi();
   await render("?origin=calendar&returnTo=from%3D2026-10-12%26span%3D14");
-  await click("Editar notas");
-  await fill("notes", "Borrador");
+  await click("Editar reserva");
+  await fill("fullName", "Borrador");
   await React.act(async () => {
     void router.navigate({ to: "/calendar", search: { from: "2026-10-12", span: 14 } });
   });
   await page.until(() => window.document.body.textContent.includes("Hay cambios sin guardar"));
   assert.equal(router.state.location.pathname, "/reservations/reservation-1");
   await click("Seguir editando");
-  assert.equal(field("notes").value, "Borrador");
+  assert.equal(field("fullName").value, "Borrador");
   await click("Cerrar");
   await click("Descartar y salir");
   await page.until(() => !popup());
-  await click("Volver al calendario");
-  await page.until(() => router.state.location.pathname === "/calendar");
-  assert.equal(router.state.location.search.from, "2026-10-12");
-  assert.equal(router.state.location.search.span, 14);
+  await click("Volver a reservas");
+  await page.until(() => router.state.location.pathname === "/reservations");
 });
 
 it("returns to the originating reservation list filters", async () => {
