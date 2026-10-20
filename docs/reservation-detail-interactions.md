@@ -68,6 +68,7 @@ Keep a compact, read-first reservation detail page that ends at its two summary 
 
 ## Testing Decisions
 
+- Use risk-based frontend coverage, not exhaustive UI coverage. The user explicitly requested a lighter approach after an unfinished toast-feedback timing test stalled implementation. Keep data-safety and core interaction tests; avoid provider/timer-specific toast tests, incidental focus/markup assertions, exact presentation snapshots, and redundant permutations. Removing a low-value scenario must identify retained protection or explain why it adds little confidence.
 - User explicitly approved the existing rendered-page/router seam, with actual forms, components, and query behavior running in happy-dom and HTTP responses substituted only at fetch. This is the common seam for page, calendar-dialog, and navigation scenarios; do not introduce component-internal mocks or a new testing framework.
 - The user explicitly resumed testing/TDD after an earlier styling-only pause. Use one failing externally observable test, minimal implementation, and repeat per vertical slice.
 - Prior art is the existing reservation-page, reservation-dialog, reservations-navigation, and setup/direct-detail suites and their shared browser harness.
@@ -76,7 +77,7 @@ Keep a compact, read-first reservation detail page that ends at its two summary 
 - Test the five-value financial breakdown using known cent amounts, zero/nonzero discounts, outstanding/settled/credit balances, discount update refresh, and payment registration access. Do not assert arbitrary CSS class strings or absent retired fields as the principal behavior.
 - Test one-click check-in/check-out, disabled/pending feedback, failed-write recovery/retry without duplicate effects, unchanged stay dates, and allowed unpaid/unassigned transitions. Verify cancellation and restoration still require explicit confirmation and handle distinct capacity and assigned-room conflicts.
 - Test the matching lifecycle policy through the actual compact calendar dialog, including safe handling of dirty details. Remove/replace stale legacy expectations only when their meaningful protections are retained or explicitly deferred.
-- Run affected tests, the full portal suite, pnpm check, and a portal production build with a non-production API origin. Checks do not substitute for tests.
+- During implementation run affected tests, not repeated full-suite/build loops. At final integration run the full portal suite, pnpm check, and a portal production build with a non-production API origin. Checks do not substitute for tests.
 - Manually inspect desktop and narrow-screen dialog layout, body scrolling/footer access, header wrapping, and two-card composition if an interactive browser is available. Report unperformed visual/device checks honestly; happy-dom is not visual validation.
 
 ## Out of Scope
