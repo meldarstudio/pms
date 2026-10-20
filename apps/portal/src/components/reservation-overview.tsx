@@ -263,7 +263,7 @@ function PaymentSummary({ detail, edit }: Model) {
             <Icon aria-hidden="true" className="size-4 shrink-0" />
             {label}
           </p>
-          <p className="ml-auto text-right text-xl font-semibold wrap-anywhere tabular-nums">
+          <p className="ml-auto text-right text-base font-semibold wrap-anywhere tabular-nums">
             {money(detail, Math.abs(detail.balanceCents))}
           </p>
         </div>
