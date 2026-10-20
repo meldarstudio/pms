@@ -22,6 +22,7 @@ import {
   useSidebar,
 } from "@/components/ui/sidebar";
 import { useLogout } from "@/lib/queries";
+import { activeNavigation, appNavigation } from "@/lib/navigation";
 import {
   calendarSearch,
   inventorySearch,
@@ -37,28 +38,26 @@ export function AppSidebar() {
   const { setOpenMobile } = useSidebar();
   const logout = useLogout();
   const { today } = usePropertyCalendar();
+  const activeDestination = activeNavigation(location.pathname);
   const destinations = [
     {
-      to: "/reservations",
-      label: "Reservas",
+      ...appNavigation.reservations,
       icon: ClipboardListIcon,
       search:
-        location.pathname === "/reservations"
+        location.pathname === appNavigation.reservations.to
           ? reservationsSearch(location.search)
           : (lastReservationsSearch.current ?? reservationsSearch({ day: today })),
     },
     {
-      to: "/calendar",
-      label: "Calendario",
+      ...appNavigation.calendar,
       icon: CalendarDaysIcon,
       search:
-        location.pathname === "/calendar"
+        location.pathname === appNavigation.calendar.to
           ? calendarSearch(location.search)
           : (lastCalendarSearch.current ?? calendarSearch({ from: today })),
     },
     {
-      to: "/inventory",
-      label: "Inventario y tarifas",
+      ...appNavigation.inventory,
       icon: BedDoubleIcon,
       search: inventorySearch({ from: today }),
     },
@@ -96,10 +95,7 @@ export function AppSidebar() {
                 {destinations.map(({ to, label, icon: Icon, search }) => (
                   <SidebarMenuItem key={to}>
                     <SidebarMenuButton
-                      isActive={
-                        location.pathname === to ||
-                        (to === "/reservations" && location.pathname.startsWith("/reservations/"))
-                      }
+                      isActive={activeDestination?.to === to}
                       render={
                         <Link
                           to={to}
@@ -122,11 +118,11 @@ export function AppSidebar() {
           <SidebarMenu>
             <SidebarMenuItem>
               <SidebarMenuButton
-                isActive={location.pathname === "/setup"}
-                render={<Link to="/setup" onClick={closeMobileNavigation} />}
+                isActive={activeDestination?.to === appNavigation.setup.to}
+                render={<Link to={appNavigation.setup.to} onClick={closeMobileNavigation} />}
               >
                 <Settings2Icon />
-                <span>Configuración</span>
+                <span>{appNavigation.setup.label}</span>
               </SidebarMenuButton>
             </SidebarMenuItem>
           </SidebarMenu>

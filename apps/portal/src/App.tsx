@@ -4,19 +4,14 @@ import { AppSidebar } from "@/components/app-sidebar";
 import { PageHeaderActionsContext } from "@/components/page-header-actions";
 import { Separator } from "@/components/ui/separator";
 import { SidebarInset, SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
+import { activeNavigation, appNavigation } from "@/lib/navigation";
 
 export function App() {
   const [headerActions, setHeaderActions] = useState<HTMLDivElement | null>(null);
   const pathname = useRouterState({
     select: (state) => state.location.pathname,
   });
-  const title = pathname.startsWith("/reservations")
-    ? "Reservas"
-    : pathname === "/inventory"
-      ? "Inventario y tarifas"
-      : pathname === "/setup"
-        ? "Configuración"
-        : "Calendario";
+  const title = activeNavigation(pathname)?.label ?? appNavigation.calendar.label;
 
   return (
     <SidebarProvider
