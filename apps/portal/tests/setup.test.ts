@@ -139,7 +139,9 @@ async function renderReservationDetail() {
   globalThis.fetch = async (input, init) =>
     requestUrl(input).pathname === "/reservations/reservation-1"
       ? Response.json(reservation)
-      : fetchApi(input, init);
+      : requestUrl(input).pathname === "/reservations/reservation-1/preview"
+        ? Response.json({ billing: reservation, validation: { issues: [] } })
+        : fetchApi(input, init);
   await render("/reservations/reservation-1");
   await until(
     () =>
@@ -238,21 +240,20 @@ it("keeps a direct reservation detail link accessible when no physical rooms exi
 
 it("protects reservation drafts from update-triggered reloads", async () => {
   await renderReservationDetail();
-  await click("Editar notas");
-  const notes = window.document.querySelector("textarea");
-  assert.ok(notes, "Reservation notes must be editable");
+  await click("Editar descuento");
+  const discount = window.document.querySelector<HTMLInputElement>('input[name="amount"]');
+  assert.ok(discount, "The reservation discount must be editable");
   await React.act(async () => {
-    Object.getOwnPropertyDescriptor(window.HTMLTextAreaElement.prototype, "value")!.set!.call(
-      notes,
-      "Draft that must survive an update",
+    Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, "value")!.set!.call(
+      discount,
+      "50",
     );
-    notes.dispatchEvent(new window.Event("input", { bubbles: true }));
-    notes.dispatchEvent(new window.Event("change", { bubbles: true }));
+    discount.dispatchEvent(new window.Event("input", { bubbles: true }));
   });
-  assert.equal(button("Guardar cambios").disabled, false, "Editing notes must create a draft");
   const unload = new window.Event("beforeunload", { cancelable: true });
   await React.act(async () => window.dispatchEvent(unload));
   assert.equal(unload.defaultPrevented, true, "A draft must block an update-triggered reload");
+  assert.equal(discount.value, "50");
 });
 
 it("edits a room type and adds several room numbers in the real table with one save", async () => {

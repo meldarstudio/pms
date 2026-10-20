@@ -160,23 +160,14 @@ function ReservationRoute() {
   return (
     <ReservationPage
       id={reservationId}
-      backLabel={origin === "calendar" ? "Volver al calendario" : "Volver a reservas"}
       onBack={() =>
-        origin === "calendar"
-          ? void navigate({
-              to: "/calendar",
-              search:
-                returnTo !== undefined
-                  ? calendarSearch(Object.fromEntries(new URLSearchParams(returnTo)))
-                  : (lastCalendarSearch.current ?? calendarSearch({})),
-            })
-          : void navigate({
-              to: "/reservations",
-              search:
-                returnTo !== undefined
-                  ? reservationsSearch(Object.fromEntries(new URLSearchParams(returnTo)))
-                  : (lastReservationsSearch.current ?? reservationsSearch({})),
-            })
+        void navigate({
+          to: "/reservations",
+          search:
+            origin !== "calendar" && returnTo !== undefined
+              ? reservationsSearch(Object.fromEntries(new URLSearchParams(returnTo)))
+              : (lastReservationsSearch.current ?? reservationsSearch({})),
+        })
       }
     />
   );

@@ -15,13 +15,13 @@ import {
 } from "@/components/reservation-page-editors";
 import type { ReservationDetail } from "@/lib/api";
 
-type PageProps = { id: string; onBack: () => void; backLabel?: string };
+type PageProps = { id: string; onBack: () => void };
 
 export function ReservationPage(props: PageProps) {
   return <ReservationPageContent key={props.id} {...props} />;
 }
 
-function ReservationPageContent({ id, onBack, backLabel = "Volver a reservas" }: PageProps) {
+function ReservationPageContent({ id, onBack }: PageProps) {
   const client = useQueryClient();
   const query = useReservation(id);
   const saving = useReservationSaving(id);
@@ -61,7 +61,7 @@ function ReservationPageContent({ id, onBack, backLabel = "Volver a reservas" }:
           <div className="flex items-center">
             <Button variant="ghost" size="sm" disabled={saving} onClick={onBack}>
               <ArrowLeftIcon data-icon="inline-start" />
-              {backLabel}
+              Volver a reservas
             </Button>
           </div>
         )}
@@ -79,7 +79,6 @@ function ReservationPageContent({ id, onBack, backLabel = "Volver a reservas" }:
             detail={query.data}
             disabled={saving}
             onBack={onBack}
-            backLabel={backLabel}
             edit={(target) => {
               if (editor || isReservationSaving(client, id)) return;
               setEditor({ target, detail: query.data });
