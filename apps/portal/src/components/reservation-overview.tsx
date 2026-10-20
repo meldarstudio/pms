@@ -16,7 +16,7 @@ import { cn } from "cn";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { ButtonGroup, ButtonGroupSeparator } from "@/components/ui/button-group";
-import { Card, CardHeader, CardTitle, CardContent, CardAction } from "@/components/ui/card";
+import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import {
   DropdownMenu,
   DropdownMenuTrigger,
@@ -42,33 +42,14 @@ const fullDate = (value: string) =>
   }).format(new Date(`${value}T12:00:00Z`));
 type Model = { detail: ReservationDetail; edit: (target: ReservationEditorTarget) => void };
 
-function EditButton({
-  children = "Editar",
-  onClick,
-  label,
-}: {
-  children?: ReactNode;
-  onClick: () => void;
-  label?: string;
-}) {
-  return (
-    <Button variant="ghost" size="sm" aria-label={label} onClick={onClick}>
-      <PencilIcon data-icon="inline-start" />
-      {children}
-    </Button>
-  );
-}
-
 export function ReservationOverview({
   detail,
   edit,
   disabled,
   onBack,
-  backLabel,
 }: Model & {
   disabled: boolean;
   onBack: () => void;
-  backLabel: string;
 }) {
   const { today, timeZone } = usePropertyCalendar();
   const [statusMenuOpen, setStatusMenuOpen] = useState(false);
@@ -80,9 +61,9 @@ export function ReservationOverview({
           aria-label="Ruta de reserva"
           className="flex min-w-0 flex-wrap items-center gap-2 text-sm"
         >
-          <Button variant="ghost" size="sm" aria-label={backLabel} onClick={onBack}>
+          <Button variant="ghost" size="sm" aria-label="Volver a reservas" onClick={onBack}>
             <ArrowLeftIcon data-icon="inline-start" />
-            {backLabel === "Volver al calendario" ? "Calendario" : "Reservas"}
+            Reservas
           </Button>
         </nav>
         <div className="flex min-w-0 flex-wrap items-start justify-between gap-4">
@@ -186,9 +167,6 @@ export function ReservationOverview({
             <CardTitle>
               <h2>Datos de la reserva</h2>
             </CardTitle>
-            <CardAction>
-              <EditButton label="Editar estadía" onClick={() => edit({ kind: "stay" })} />
-            </CardAction>
           </CardHeader>
           <CardContent>
             <dl className="flex flex-col">
@@ -252,14 +230,33 @@ function PaymentSummary({ detail, edit }: Model) {
         <CardTitle>
           <h2>Pago y cuenta</h2>
         </CardTitle>
-        <CardAction>
-          <EditButton label="Editar descuento" onClick={() => edit({ kind: "discount" })} />
-        </CardAction>
       </CardHeader>
       <CardContent className="flex flex-col gap-3">
         <dl className="flex flex-col gap-2">
           <div className="flex flex-wrap justify-between gap-2">
-            <dt className="text-muted-foreground">Total reserva</dt>
+            <dt className="text-muted-foreground">Subtotal</dt>
+            <dd className="ml-auto font-semibold tabular-nums">
+              {money(detail, detail.subtotalCents)}
+            </dd>
+          </div>
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <dt className="flex items-center gap-2 text-muted-foreground">
+              Descuento
+              <Button
+                variant="ghost"
+                size="icon-sm"
+                aria-label="Editar descuento"
+                onClick={() => edit({ kind: "discount" })}
+              >
+                <PencilIcon />
+              </Button>
+            </dt>
+            <dd className="ml-auto font-semibold tabular-nums">
+              {money(detail, detail.discountCents)}
+            </dd>
+          </div>
+          <div className="flex flex-wrap justify-between gap-2">
+            <dt className="text-muted-foreground">Total</dt>
             <dd className="ml-auto font-semibold tabular-nums">
               {money(detail, detail.totalCents)}
             </dd>
