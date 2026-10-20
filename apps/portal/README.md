@@ -68,8 +68,8 @@ The compact calendar dialog uses its original status dropdown and separate
 **Cancelar reserva** button; its status changes save with **Guardar detalles**,
 not immediately as on the page.
 **Registrar pago** remains in the payment
-summary. Contact and stay sections sit beside the payment summary on desktop and
-stack on phones. The summary distinguishes outstanding, settled, and credit
+summary. Contact and payment sections occupy the left column, with the stay
+section on the right on desktop; all three stack on phones. The summary distinguishes outstanding, settled, and credit
 balances; it is a reservation bill, not an invoice.
 The bill shows subtotal, discount (including zero), total, amount paid, and balance.
 The discount row has its own **Editar descuento** action.
@@ -85,8 +85,10 @@ payment-record, and account sections remain deferred; their editor workflows
 remain implemented. Declared occupancy stays
 distinct from the optional guest list and remains editable in the stay editor.
 The stay summary shows one **Ocupantes** total, adding adults and children across
-all reserved rooms—not the optional named guest list. Per-room occupancy remains
-editable in the stay editor, without per-room counts in the overview.
+all reserved rooms—not the optional named guest list. Below it, **Habitaciones
+asignadas** shows the room count and a bordered list: each row has a bed icon,
+room number and type, with adult/child counts underneath. Unassigned rooms show
+**Sin asignar**. Per-room occupancy remains editable in the stay editor.
 The page does not offer unsupported invoice, payment-request, web check-in,
 history, attachment, or task controls from the design reference.
 

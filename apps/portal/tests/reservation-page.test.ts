@@ -275,7 +275,17 @@ async function unloadPrevented() {
 
 it("shows reservation sections with their own editing actions and contact details", async () => {
   saved.guest = { ...saved.guest, documentType: "DNI", documentNumber: "12345678" };
-  saved.rooms = [...saved.rooms, { ...saved.rooms[0], id: "line-2", adults: 1, children: 2 }];
+  saved.rooms = [
+    ...saved.rooms,
+    {
+      ...saved.rooms[0],
+      id: "line-2",
+      roomId: "room-2",
+      roomNumber: "103",
+      adults: 1,
+      children: 1,
+    },
+  ];
   mockApi();
   await render();
   assert.equal(popup() !== null, false);
@@ -292,7 +302,17 @@ it("shows reservation sections with their own editing actions and contact detail
     (term) => term.textContent === "Ocupantes",
   );
   assert.ok(occupants, "The stay summary shows the total declared occupants");
-  assert.equal(occupants.nextElementSibling?.textContent, "5");
+  assert.equal(occupants.nextElementSibling?.textContent, "4");
+  const rooms = page.container.querySelector('[aria-label="Habitaciones asignadas"]');
+  assert.ok(rooms);
+  assert.match(rooms.textContent, /2 habitaciones/);
+  const roomRows = rooms.querySelectorAll('[role="listitem"]');
+  assert.equal(roomRows.length, 2);
+  assert.match(roomRows[0].textContent, /Sin asignar · Doble/);
+  assert.match(roomRows[0].textContent, /2 adultos/);
+  assert.doesNotMatch(roomRows[0].textContent, /niños/);
+  assert.match(roomRows[1].textContent, /103 · Doble/);
+  assert.match(roomRows[1].textContent, /1 adulto · 1 niño/);
   assert.match(page.container.textContent, /Pago y cuenta/);
   assert.match(page.container.textContent, /19 de octubre de 2026/);
   assert.match(page.container.textContent, /Llegada hoy/);

@@ -1,4 +1,4 @@
-import type { ReactNode } from "react";
+import { Fragment, type ReactNode } from "react";
 import {
   ArrowLeftIcon,
   BedDoubleIcon,
@@ -18,11 +18,20 @@ import { cn } from "cn";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardHeader, CardTitle, CardContent, CardAction } from "@/components/ui/card";
+import {
+  Item,
+  ItemContent,
+  ItemDescription,
+  ItemGroup,
+  ItemMedia,
+  ItemSeparator,
+  ItemTitle,
+} from "@/components/ui/item";
 import { ReservationLifecycle } from "@/components/reservation-lifecycle";
 import { balanceStatus } from "@/components/balance-status";
 import type { ReservationEditorTarget } from "@/components/reservation-page-editors";
 import type { ReservationDetail } from "@/lib/api";
-import { reservationStatusLabel } from "@/lib/reservation-list";
+import { occupantsLabel, reservationStatusLabel } from "@/lib/reservation-list";
 import { formatMoney } from "@/lib/money";
 import { usePropertyCalendar } from "@/lib/use-property-calendar";
 
@@ -110,49 +119,63 @@ export function ReservationOverview({
       <div className="grid min-w-0 gap-5 md:grid-cols-2">
         <div className="flex min-w-0 flex-col gap-5">
           <ContactSummary detail={detail} edit={edit} />
-          <Card className="min-w-0">
-            <CardHeader>
-              <CardTitle>
-                <h2>Estadía y habitaciones</h2>
-              </CardTitle>
-              <CardAction>
-                <Button variant="outline" size="sm" onClick={() => edit({ kind: "stay" })}>
-                  <PencilIcon data-icon="inline-start" />
-                  Editar estadía
-                </Button>
-              </CardAction>
-            </CardHeader>
-            <CardContent>
-              <dl className="flex flex-col">
-                <ReservationDatum icon={CalendarDaysIcon} label="Fecha de ingreso">
-                  {fullDate(detail.checkIn)}
-                </ReservationDatum>
-                <ReservationDatum icon={CalendarCheckIcon} label="Fecha de egreso">
-                  {fullDate(detail.checkOut)}
-                </ReservationDatum>
-                <ReservationDatum icon={ClockIcon} label="Duración">
-                  {nights} {nights === 1 ? "noche" : "noches"}
-                </ReservationDatum>
-                <ReservationDatum icon={UsersIcon} label="Ocupantes">
-                  {detail.rooms.reduce((total, room) => total + room.adults + room.children, 0)}
-                </ReservationDatum>
-                <ReservationDatum
-                  icon={BedDoubleIcon}
-                  label={detail.rooms.length === 1 ? "Habitación" : "Habitaciones"}
-                >
-                  <ul className="flex flex-col gap-2">
-                    {detail.rooms.map((room) => (
-                      <li key={room.id}>
-                        {room.roomNumber ?? "Sin asignar"} · {room.roomTypeName || "Habitación"}
-                      </li>
-                    ))}
-                  </ul>
-                </ReservationDatum>
-              </dl>
-            </CardContent>
-          </Card>
+          <PaymentSummary detail={detail} edit={edit} />
         </div>
-        <PaymentSummary detail={detail} edit={edit} />
+        <Card className="min-w-0 self-start">
+          <CardHeader>
+            <CardTitle>
+              <h2>Estadía y habitaciones</h2>
+            </CardTitle>
+            <CardAction>
+              <Button variant="outline" size="sm" onClick={() => edit({ kind: "stay" })}>
+                <PencilIcon data-icon="inline-start" />
+                Editar estadía
+              </Button>
+            </CardAction>
+          </CardHeader>
+          <CardContent className="flex flex-col gap-4">
+            <dl className="flex flex-col">
+              <ReservationDatum icon={CalendarDaysIcon} label="Fecha de ingreso">
+                {fullDate(detail.checkIn)}
+              </ReservationDatum>
+              <ReservationDatum icon={CalendarCheckIcon} label="Fecha de egreso">
+                {fullDate(detail.checkOut)}
+              </ReservationDatum>
+              <ReservationDatum icon={ClockIcon} label="Duración">
+                {nights} {nights === 1 ? "noche" : "noches"}
+              </ReservationDatum>
+              <ReservationDatum icon={UsersIcon} label="Ocupantes">
+                {detail.rooms.reduce((total, room) => total + room.adults + room.children, 0)}
+              </ReservationDatum>
+            </dl>
+            <section aria-label="Habitaciones asignadas" className="flex min-w-0 flex-col gap-3">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <h3 className="text-sm font-medium">Habitaciones asignadas</h3>
+                <p className="text-xs text-muted-foreground">
+                  {detail.rooms.length} {detail.rooms.length === 1 ? "habitación" : "habitaciones"}
+                </p>
+              </div>
+              <ItemGroup className="gap-0 overflow-hidden border">
+                {detail.rooms.map((room, index) => (
+                  <Fragment key={room.id}>
+                    {index > 0 && <ItemSeparator className="my-0" />}
+                    <Item role="listitem">
+                      <ItemMedia variant="icon">
+                        <BedDoubleIcon aria-hidden="true" />
+                      </ItemMedia>
+                      <ItemContent className="min-w-0">
+                        <ItemTitle>
+                          {room.roomNumber ?? "Sin asignar"} · {room.roomTypeName || "Habitación"}
+                        </ItemTitle>
+                        <ItemDescription>{occupantsLabel([room])}</ItemDescription>
+                      </ItemContent>
+                    </Item>
+                  </Fragment>
+                ))}
+              </ItemGroup>
+            </section>
+          </CardContent>
+        </Card>
       </div>
     </fieldset>
   );
@@ -215,7 +238,7 @@ function ReservationDatum({
 function PaymentSummary({ detail, edit }: Model) {
   const { label, Icon, tone } = balanceStatus(detail.balanceCents);
   return (
-    <Card className="min-w-0 self-start">
+    <Card className="min-w-0">
       <CardHeader>
         <CardTitle>
           <h2>Pago y cuenta</h2>

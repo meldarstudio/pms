@@ -1,5 +1,19 @@
 # Reservation detail interactions
 
+## Assigned-room summary layout
+
+On desktop, place **Contacto principal** above **Pago y cuenta** in the left
+column and **Estadía y habitaciones** in the right column. Stack them on phones.
+
+In the reservation page's **Estadía y habitaciones** card, retain the total
+**Ocupantes** and replace the compact room datum with **Habitaciones asignadas**.
+Show the room count beside the heading and a bordered, divided list. Each row
+shows a bed icon, room number and type, then its adult/child counts beneath.
+Use the project's shadcn Lyra Item primitives with their default typography,
+icon sizing, row padding, and square corners.
+Keep **Sin asignar** for rooms without an assignment. This is read-only;
+occupancy editing and save behavior remain unchanged.
+
 ## Reservation-page header status select
 
 Replace the page's one-click check-in/out button with an **Estado de la reserva**
