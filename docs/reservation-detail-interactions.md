@@ -1,5 +1,13 @@
 # Reservation detail interactions
 
+## Follow-up decision
+
+The reservation detail page no longer exposes the **Cambiar estado** dropdown.
+Keep the saved status badge and routine Check-in/Check-out buttons. Placement of
+cancellation, restoration, and other corrections on this page is deferred; the
+compact calendar dialog retains its existing status menu and safeguards. This
+supersedes the page-menu requirements below without changing workflow semantics.
+
 ## Problem Statement
 
 Staff reviewing a reservation see overlapping edit controls with unclear scopes. The header and reservation card open the same stay-only editor, while the financial card's generic edit action changes only the discount. Contact details cannot be edited from the current overview. Status changes have inconsistent interactions between the page and compact calendar dialog, and routine check-in requires unnecessary confirmation. Back navigation depends on the entry point rather than consistently returning to Reservations.

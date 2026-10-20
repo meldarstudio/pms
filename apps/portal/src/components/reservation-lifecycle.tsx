@@ -22,10 +22,12 @@ const statuses = ["confirmed", "checked_in", "checked_out", "cancelled"] as cons
 export function ReservationLifecycle({
   detail,
   blocked = false,
+  showStatusMenu = true,
   onConfirm,
 }: {
   detail: ReservationDetail;
   blocked?: boolean;
+  showStatusMenu?: boolean;
   onConfirm: (status: Status) => void;
 }) {
   const client = useQueryClient();
@@ -59,6 +61,7 @@ export function ReservationLifecycle({
       pending.current = false;
     }
   }
+  if (!routine && !showStatusMenu) return null;
   return (
     <div className="flex flex-col items-end gap-2">
       <div
@@ -76,32 +79,34 @@ export function ReservationLifecycle({
                 : "Hacer check-out"}
           </Button>
         )}
-        <DropdownMenu open={menuOpen} onOpenChange={setMenuOpen}>
-          <DropdownMenuTrigger
-            render={<Button type="button" variant="outline" disabled={blocked || saving} />}
-          >
-            {mutation.isPending && !routine ? "Guardando estado…" : "Cambiar estado"}
-            <ChevronDownIcon data-icon="inline-end" />
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="end">
-            <DropdownMenuGroup>
-              {statuses
-                .filter((status) => status !== detail.status)
-                .map((status) => (
-                  <DropdownMenuItem
-                    key={status}
-                    disabled={blocked || saving}
-                    variant={status === "cancelled" ? "destructive" : "default"}
-                    onClick={() => void change(status)}
-                  >
-                    {status === "cancelled"
-                      ? "Cancelar reserva…"
-                      : `${reservationStatusLabel(status)}${detail.status === "cancelled" ? "…" : ""}`}
-                  </DropdownMenuItem>
-                ))}
-            </DropdownMenuGroup>
-          </DropdownMenuContent>
-        </DropdownMenu>
+        {showStatusMenu && (
+          <DropdownMenu open={menuOpen} onOpenChange={setMenuOpen}>
+            <DropdownMenuTrigger
+              render={<Button type="button" variant="outline" disabled={blocked || saving} />}
+            >
+              {mutation.isPending && !routine ? "Guardando estado…" : "Cambiar estado"}
+              <ChevronDownIcon data-icon="inline-end" />
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              <DropdownMenuGroup>
+                {statuses
+                  .filter((status) => status !== detail.status)
+                  .map((status) => (
+                    <DropdownMenuItem
+                      key={status}
+                      disabled={blocked || saving}
+                      variant={status === "cancelled" ? "destructive" : "default"}
+                      onClick={() => void change(status)}
+                    >
+                      {status === "cancelled"
+                        ? "Cancelar reserva…"
+                        : `${reservationStatusLabel(status)}${detail.status === "cancelled" ? "…" : ""}`}
+                    </DropdownMenuItem>
+                  ))}
+              </DropdownMenuGroup>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        )}
       </div>
       {blocked && (
         <p className="text-sm text-muted-foreground">

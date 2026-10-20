@@ -97,6 +97,7 @@ export function ReservationOverview({
             </Button>
             <ReservationLifecycle
               detail={detail}
+              showStatusMenu={false}
               onConfirm={(status) => edit({ kind: "status", status })}
             />
           </div>

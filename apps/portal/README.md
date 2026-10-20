@@ -60,7 +60,9 @@ name with status/date badges, the reservation code and contact phone beneath it,
 and right-aligned **Editar reserva** and lifecycle actions. Saved status is
 informational: confirmed reservations offer one-click **Hacer check-in**, and
 checked-in reservations offer one-click **Hacer check-out**, without another
-confirmation. **Cambiar estado** contains other direct non-cancellation corrections.
+confirmation. The detail page has no **Cambiar estado** dropdown; cancellation,
+restoration, and other status corrections have no page entry point for now.
+The compact calendar dialog retains its status menu and confirmation workflows.
 **Registrar pago** remains in the payment
 summary. Reservation data and a payment summary sit side by side on desktop and
 stack on phones. The summary distinguishes outstanding, settled, and credit
