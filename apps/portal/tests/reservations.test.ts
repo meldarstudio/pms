@@ -253,6 +253,19 @@ it("restores reservation filters and calendar dates through the sidebar's real l
   assert.equal(navigationLink("Calendario").getAttribute("aria-current"), "page");
 });
 
+it("refreshes the sidebar's today links on resume without changing the selected reservation day", async () => {
+  await render("/reservations?day=2026-10-31");
+  vi.mocked(Date.now).mockReturnValue(new Date("2026-11-01T05:01:00Z").getTime());
+  await React.act(async () => window.dispatchEvent(new window.Event("focus")));
+  const inventoryLink = container.querySelector('nav a[href^="/inventory"]');
+  assert.ok(inventoryLink);
+  assert.equal(
+    new URL(inventoryLink.getAttribute("href")!, "http://localhost").searchParams.get("from"),
+    "2026-11-01",
+  );
+  assert.equal(router.state.location.search.day, "2026-10-31");
+});
+
 it("counts changed filter groups instead of chips and restores defaults without clearing search or context", async () => {
   respond = (url) =>
     Response.json({

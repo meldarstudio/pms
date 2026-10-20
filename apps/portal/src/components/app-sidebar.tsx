@@ -21,20 +21,22 @@ import {
   SidebarMenuItem,
   useSidebar,
 } from "@/components/ui/sidebar";
-import { propertyToday } from "@/lib/property-calendar";
 import { useLogout } from "@/lib/queries";
 import {
   calendarSearch,
+  inventorySearch,
   lastCalendarSearch,
   lastReservationsSearch,
   reservationsSearch,
 } from "@/lib/route-search";
 import { toastError } from "@/lib/toast";
+import { usePropertyCalendar } from "@/lib/use-property-calendar";
 
 export function AppSidebar() {
   const location = useRouterState({ select: (state) => state.location });
   const { setOpenMobile } = useSidebar();
   const logout = useLogout();
+  const { today } = usePropertyCalendar();
   const destinations = [
     {
       to: "/reservations",
@@ -43,7 +45,7 @@ export function AppSidebar() {
       search:
         location.pathname === "/reservations"
           ? reservationsSearch(location.search)
-          : (lastReservationsSearch.current ?? reservationsSearch({})),
+          : (lastReservationsSearch.current ?? reservationsSearch({ day: today })),
     },
     {
       to: "/calendar",
@@ -52,13 +54,13 @@ export function AppSidebar() {
       search:
         location.pathname === "/calendar"
           ? calendarSearch(location.search)
-          : (lastCalendarSearch.current ?? { from: propertyToday(), span: 7 as const }),
+          : (lastCalendarSearch.current ?? calendarSearch({ from: today })),
     },
     {
       to: "/inventory",
       label: "Inventario y tarifas",
       icon: BedDoubleIcon,
-      search: { from: propertyToday(), span: 14 as const },
+      search: inventorySearch({ from: today }),
     },
   ] as const;
 
