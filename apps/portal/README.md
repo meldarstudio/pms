@@ -64,9 +64,9 @@ confirmation; selecting an active status on a cancelled reservation opens a
 restoration confirmation with a fresh server bill and availability validation.
 The select shows the saved status, stays disabled during writes, and retains the
 previous status after a failed save so the same choice can be retried safely.
-The compact calendar dialog uses its original status dropdown and separate
-**Cancelar reserva** button; its status changes save with **Guardar detalles**,
-not immediately as on the page.
+The compact calendar dialog shows the saved status beside the booking-contact
+name and offers the next check-in or checkout action directly. That action saves
+immediately. **Guardar cambios** saves only the details form.
 **Registrar pago** remains in the payment
 summary. Contact and payment sections occupy the left column, with the stay
 section on the right on desktop; all three stack on phones. The summary distinguishes outstanding, settled, and credit
@@ -103,9 +103,10 @@ payments, guest editing, discount editing, or lifecycle controls. Contact saves
 need no operational preview. Notes, guests, payments, discount and status changes
 retain their focused editor workflows.
 Cancellation uses a consequence-aware confirmation with a fresh server bill.
-Compact-calendar restoration is selected in the status dropdown, previewed against
-current availability/assignment/capacity rules, and explicitly saved with
-**Guardar detalles** rather than opening a second restoration dialog. Cancellation releases
+Compact-calendar restoration is selected from **Más acciones de reserva →
+Cambiar estado** and opens the same **Restaurar reserva** confirmation as the page.
+It previews the restored bill and availability before writing. **Guardar cambios**
+does not change status. Cancellation releases
 inventory and zeros charges while retaining payments as credit, not a refund.
 Check-in and checkout do not change stay dates or require a settled balance or
 physical room assignment. Lifecycle writes show pending/success/error feedback,
@@ -118,14 +119,25 @@ router navigation/browser unload are guarded while dirty or saving. Successful
 commands refresh the overview and related reservation/calendar/inventory queries.
 Back always opens Reservations, including calendar-origin and direct detail links.
 Reservation-list filters are preserved when returning from a list-origin detail link.
-The compact calendar dialog remains the utility-focused editor. Its **Estado de
-la reserva** dropdown changes the draft; **Guardar detalles** saves the chosen
-status together with dates, rooms, and notes. **Descartar cambios** resets them.
-Status does not participate in the page's stay-only editor. **Cancelar reserva**
-has its own preview and confirmation; it explicitly discards unsaved details and
-closes the compact dialog only after success. Failed or dismissed cancellation
-preserves the details draft. Dirty guest, payment, discount, or nested-editor
-drafts must be saved/discarded before cancellation or status editing. Pending
+The compact calendar dialog remains the utility-focused editor. Its header shows
+`[booking contact] [status]` and `[phone] [reservation code] [open reservation]`,
+without the booking-contact email. Active check-in and checkout actions save
+immediately and do not alter the details draft. **Guardar cambios** saves dates,
+rooms, and notes only; **Descartar cambios** resets that draft. Status does not
+participate in the page's stay-only editor. The ellipsis menu contains destructive
+**Cancelar reserva** and **Cambiar estado**, whose radio choices show and correct
+the saved reservation status. On an active reservation those choices save
+immediately. On a cancelled reservation they open **Restaurar reserva** for the
+chosen status; dismissing it leaves the reservation cancelled. A successful
+restoration leaves the compact dialog open and refreshes the saved status. Dirty
+details, guest, payment, or discount drafts block restoration. Cancellation has its
+own preview and confirmation; it explicitly discards unsaved details and closes the
+compact dialog only after success. Failed or dismissed cancellation preserves the
+details draft. Dirty details, guest, payment, discount, or nested-editor drafts
+block check-in, checkout, and status correction until saved or discarded. A dirty
+guest, payment, or discount draft also blocks cancellation. A dirty details draft
+does not: cancellation remains available and states that confirming discards those
+details. Pending
 writes, including discount autosaves, block overlapping writes; failed drafts
 remain intact. The page uses its independent auto-saving status select.
 

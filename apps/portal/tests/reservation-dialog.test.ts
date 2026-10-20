@@ -605,7 +605,7 @@ it("uses the server-applied discount in a room-removal preview while retaining t
   await React.act(async () => {
     container.querySelector<HTMLElement>('[aria-label="Quitar habitación 2"]')!.click();
   });
-  await until(() => !button("Guardar detalles").disabled, "Room-removal preview must load");
+  await until(() => !button("Guardar cambios").disabled, "Room-removal preview must load");
   assert.ok(container.textContent.includes("Vista previa"));
   assert.equal(summaryAmount("Importe habitaciones"), "S/80");
   assert.equal(summaryAmount("Descuento aplicado"), "-S/80");
@@ -662,6 +662,44 @@ function fieldTrigger(label: string, index = 0) {
   )[index];
   assert.ok(fieldLabel, `Missing label ${label}`);
   return window.document.getElementById(fieldLabel.htmlFor) as HTMLButtonElement;
+}
+
+async function chooseReservationAction(label: string) {
+  await openReservationActions();
+  const action = Array.from(window.document.querySelectorAll('[role="menuitem"]')).find(
+    (item) => item.textContent.trim() === label,
+  );
+  assert.ok(action, `Missing reservation action ${label}`);
+  await React.act(async () => (action as HTMLElement).click());
+}
+
+async function openReservationActions() {
+  const trigger = button("Más acciones de reserva");
+  await React.act(async () => {
+    trigger.dispatchEvent(new window.PointerEvent("pointerdown", { bubbles: true }));
+    trigger.click();
+  });
+  await until(
+    () =>
+      Array.from(window.document.querySelectorAll('[role="menuitem"]')).some((item) =>
+        ["Cancelar reserva", "Cambiar estado"].includes(item.textContent.trim()),
+      ),
+    "Reservation actions must open",
+  );
+}
+
+async function chooseReservationStatus(option: string) {
+  await openReservationActions();
+  const change = Array.from(window.document.querySelectorAll('[role="menuitem"]')).find(
+    (item) => item.textContent.trim() === "Cambiar estado",
+  );
+  assert.ok(change, "Missing Cambiar estado");
+  await React.act(async () => (change as HTMLElement).click());
+  const status = Array.from(window.document.querySelectorAll('[role="menuitemradio"]')).find(
+    (item) => item.textContent.trim() === option,
+  );
+  assert.ok(status, `Missing reservation status ${option}`);
+  await React.act(async () => (status as HTMLElement).click());
 }
 
 async function choose(label: string, option: string, index = 0) {
@@ -764,7 +802,7 @@ it("reopens a cached reservation with the room saved by the assignment panel", a
   );
   await flush();
   assert.match(fieldTrigger("Hab.").textContent, /^101/);
-  assert.equal(button("Guardar detalles").disabled, true);
+  assert.equal(button("Guardar cambios").disabled, true);
   assert.equal(writes, 1);
 });
 
@@ -1663,7 +1701,7 @@ it("keeps an extension price visible and identifies the conflicting room without
     "Conflict must mark the assigned room",
   );
   assert.equal(room.querySelector('[data-slot="select-value"]')?.textContent.trim(), "101");
-  assert.equal(button("Guardar detalles").disabled, true);
+  assert.equal(button("Guardar cambios").disabled, true);
   const error = window.document.getElementById(room.getAttribute("aria-describedby")!)!;
   assert.ok(error.textContent.includes("ocupada para esas fechas"));
   assert.equal(container.querySelector("aside")!.contains(error), false);
@@ -1688,7 +1726,7 @@ it("keeps an extension price visible and identifies the conflicting room without
   const assertQuoteVisible = () => {
     assert.equal(subtotal.nextElementSibling?.textContent.replace(/\s/g, ""), "S/450");
     assert.equal(container.textContent.includes("Calculando…"), false);
-    assert.equal(button("Guardar detalles").disabled, true);
+    assert.equal(button("Guardar cambios").disabled, true);
   };
   assertQuoteVisible();
   await flush(150);
@@ -1697,7 +1735,7 @@ it("keeps an extension price visible and identifies the conflicting room without
   assertQuoteVisible();
   await React.act(async () => finishPreview());
   await until(
-    () => !button("Guardar detalles").disabled,
+    () => !button("Guardar cambios").disabled,
     "Clearing the assignment must resolve the conflict",
   );
   assert.equal(room.getAttribute("aria-invalid"), "false");
@@ -1918,7 +1956,7 @@ it("keeps pricing an added room when its occupancy is invalid and blocks saving"
   );
   await until(() => !button("Agregar habitación").disabled, "Room inventory must load");
   await React.act(async () => button("Agregar habitación").click());
-  await until(() => !button("Guardar detalles").disabled, "Added room must be priced");
+  await until(() => !button("Guardar cambios").disabled, "Added room must be priced");
   await fill("rooms[1].room.adults", "3");
   await until(
     () => previews.length === 2 && !container.textContent.includes("Calculando…"),
@@ -1929,14 +1967,148 @@ it("keeps pricing an added room when its occupancy is invalid and blocks saving"
   )!;
   assert.equal(subtotal.nextElementSibling?.textContent.replace(/\s/g, ""), "S/600");
   assert.ok(container.textContent.includes("La habitación no tiene capacidad"));
-  assert.equal(button("Guardar detalles").disabled, true);
+  assert.equal(button("Guardar cambios").disabled, true);
   await fill("rooms[1].room.adults", "2");
-  await until(() => !button("Guardar detalles").disabled, "Corrected occupancy must allow saving");
+  await until(() => !button("Guardar cambios").disabled, "Corrected occupancy must allow saving");
   assert.equal(container.textContent.includes("La habitación no tiene capacidad"), false);
 });
 
-it("saves compact status and notes together and never reverts status on a later details save", async () => {
+it("checks in a confirmed reservation immediately without changing the form draft", async () => {
   let saved = detail();
+  const writes: WorkflowCommand[] = [];
+  mockApi(
+    async (path, command) => {
+      if (path.endsWith("/preview")) return previewResponse(saved);
+      assert.ok(path.endsWith("/commands"));
+      writes.push(command);
+      for (const action of command.actions) {
+        if (action.type === "set-status") saved = { ...saved, status: action.status };
+      }
+      return Response.json(saved);
+    },
+    { reservation: () => saved },
+  );
+  await render(
+    React.createElement(dialogs.RoomBookingDialog, {
+      target: {
+        mode: "edit",
+        reservationId: saved.id,
+        roomId: "room-1",
+        number: "101",
+        typeName: "Doble",
+      },
+      onClose: () => {},
+      onViewReservation: () => {},
+    }),
+  );
+  await until(() => window.document.querySelector('[name="notes"]') !== null);
+  await fill("notes", "Borrador sin guardar");
+  assert.equal(button("Hacer check-in").disabled, true);
+  await React.act(async () => button("Hacer check-in").click());
+  assert.equal(writes.length, 0);
+  assert.equal(control("notes").value, "Borrador sin guardar");
+  await React.act(async () => button("Descartar cambios").click());
+  await until(() => !button("Hacer check-in").disabled);
+  await React.act(async () => button("Hacer check-in").click());
+  await until(() => saved.status === "checked_in");
+  assert.deepEqual(writes[0].actions, [{ type: "set-status", status: "checked_in" }]);
+  assert.equal(control("notes").value, "");
+  assert.equal(button("Guardar cambios").disabled, true);
+});
+
+it("restores a cancelled reservation after confirmation and keeps the compact dialog open", async () => {
+  let saved = detail();
+  saved.status = "cancelled";
+  saved.cancelledAt = "2026-10-14T12:00:00Z";
+  saved.subtotalCents = 0;
+  saved.totalCents = 0;
+  saved.balanceCents = 0;
+  const writes: WorkflowCommand[] = [];
+  let closed = 0;
+  mockApi(
+    async (path, command) => {
+      if (path.endsWith("/preview")) return previewResponse({ ...detail(), status: "checked_in" });
+      writes.push(command);
+      saved = { ...saved, status: "checked_in", cancelledAt: null };
+      return Response.json(saved);
+    },
+    { reservation: () => saved },
+  );
+  await render(
+    React.createElement(dialogs.RoomBookingDialog, {
+      target: {
+        mode: "edit",
+        reservationId: saved.id,
+        roomId: "room-1",
+        number: "101",
+        typeName: "Doble",
+      },
+      onClose: () => {
+        closed++;
+      },
+      onViewReservation: () => {},
+    }),
+  );
+  await until(() => window.document.querySelector('[name="notes"]') !== null);
+  await chooseReservationStatus("Check-in");
+  const confirmation = () =>
+    Array.from(window.document.querySelectorAll('[role="dialog"]')).find((dialog) =>
+      dialog.textContent.includes("Restaurar reserva"),
+    );
+  await until(() => confirmation() !== undefined, "Restoration must ask for confirmation");
+  assert.equal(writes.length, 0);
+  assert.equal(control("notes").value, "");
+  await until(() => {
+    const action = Array.from(confirmation()!.querySelectorAll("button")).find((item) =>
+      item.textContent.includes("Guardar cambios"),
+    );
+    return action !== undefined && !action.disabled;
+  });
+  await React.act(async () => {
+    Array.from(confirmation()!.querySelectorAll("button"))
+      .find((item) => item.textContent.includes("Guardar cambios"))!
+      .click();
+  });
+  await until(() => saved.status === "checked_in" && confirmation() === undefined);
+  assert.deepEqual(writes[0].actions, [{ type: "set-status", status: "checked_in" }]);
+  assert.equal(closed, 0);
+  assert.equal(control("notes").value, "");
+  assert.equal(button("Hacer check-out").disabled, false);
+});
+
+it("blocks restoration while the compact details draft is dirty", async () => {
+  const saved = detail();
+  saved.status = "cancelled";
+  const writes: WorkflowCommand[] = [];
+  mockApi(async (path, command) => {
+    if (path.endsWith("/preview")) return previewResponse(detail());
+    writes.push(command);
+    return Response.json(saved);
+  });
+  await render(React.createElement(dialogs.BookingEditor, { detail: saved }));
+  await fill("notes", "Nota sin guardar");
+  await openReservationActions();
+  const changeStatus = Array.from(window.document.querySelectorAll('[role="menuitem"]')).find(
+    (item) => item.textContent.trim() === "Cambiar estado",
+  );
+  assert.ok(changeStatus);
+  assert.equal(
+    changeStatus.getAttribute("aria-disabled") === "true" || changeStatus.hasAttribute("disabled"),
+    true,
+  );
+  await React.act(async () => (changeStatus as HTMLElement).click());
+  assert.equal(
+    window.document.body.textContent.includes("Restaurar reserva"),
+    false,
+    "A dirty details draft must block restoration",
+  );
+  assert.equal(writes.length, 0);
+  assert.equal(control("notes").value, "Nota sin guardar");
+});
+
+it("checks out immediately and preserves that status on a later notes save", async () => {
+  let saved = detail();
+  saved.status = "checked_in";
   saved.rooms[0].roomId = null;
   saved.rooms[0].roomNumber = null;
   const writes: WorkflowCommand[] = [];
@@ -1967,22 +2139,14 @@ it("saves compact status and notes together and never reverts status on a later 
     }),
   );
   await until(() => window.document.querySelector('[name="notes"]') !== null);
-  await choose("Estado de la reserva", "Check-in");
-  assert.equal(writes.length, 0, "Selecting a status must not save immediately");
-  assert.equal(saved.status, "confirmed");
-  await fill("notes", "Llegada sin asignar");
-  await until(() => !button("Guardar detalles").disabled);
-  await React.act(async () => button("Guardar detalles").click());
-  await until(() => writes.length === 1 && button("Descartar cambios").disabled);
-  assert.deepEqual(writes[0].actions, [
-    { type: "set-status", status: "checked_in" },
-    { type: "notes", notes: "Llegada sin asignar" },
-  ]);
+  await React.act(async () => button("Hacer check-out").click());
+  await until(() => saved.status === "checked_out");
+  assert.deepEqual(writes[0].actions, [{ type: "set-status", status: "checked_out" }]);
   await fill("notes", "Llegó sin equipaje");
-  await React.act(async () => button("Guardar detalles").click());
+  await React.act(async () => button("Guardar cambios").click());
   await until(() => writes.length === 2 && button("Descartar cambios").disabled);
   assert.deepEqual(writes[1].actions, [{ type: "notes", notes: "Llegó sin equipaje" }]);
-  assert.equal(saved.status, "checked_in");
+  assert.equal(saved.status, "checked_out");
   assert.equal(saved.checkIn, "2026-10-14");
   assert.equal(saved.checkOut, "2026-10-16");
 });
@@ -2022,17 +2186,14 @@ it("saves compact checkout, blocks duplicate/close attempts and retries the same
       }),
     );
     await until(() => window.document.querySelector('[name="notes"]') !== null);
-    await choose("Estado de la reserva", "Check-out");
-    await until(() => !button("Guardar detalles").disabled);
-    const checkout = button("Guardar detalles");
+    const checkout = button("Hacer check-out");
     await React.act(async () => {
       checkout.click();
       checkout.click();
     });
-    await until(() => button("Cerrar").disabled);
+    await until(() => window.document.body.textContent.includes("Guardando estado…"));
     assert.equal(writes.length, 1);
-    assert.equal(fieldTrigger("Estado de la reserva").disabled, true);
-    assert.equal(button("Guardando…").disabled, true);
+    assert.equal(button("Hacer check-out").disabled, true);
     const unloading = new window.Event("beforeunload", { cancelable: true });
     window.dispatchEvent(unloading);
     assert.equal(
@@ -2049,13 +2210,8 @@ it("saves compact checkout, blocks duplicate/close attempts and retries the same
     await React.act(async () =>
       finish(Response.json({ error: "Temporary save failure" }, { status: 503 })),
     );
-    await until(
-      () =>
-        window.document.body.textContent.includes("Guardar detalles") &&
-        !button("Guardar detalles").disabled,
-    );
-    assert.match(fieldTrigger("Estado de la reserva").textContent, /Check-out/);
-    await React.act(async () => button("Guardar detalles").click());
+    await until(() => !button("Hacer check-out").disabled);
+    await React.act(async () => button("Hacer check-out").click());
     await until(() => saved.status === "checked_out" && !button("Cerrar").disabled);
     assert.deepEqual(writes[0], writes[1]);
     assert.deepEqual(writes[1].actions, [{ type: "set-status", status: "checked_out" }]);
@@ -2070,7 +2226,7 @@ it("saves compact checkout, blocks duplicate/close attempts and retries the same
 });
 
 it.each(["guest", "payment", "discount"] as const)(
-  "preserves a dirty compact %s draft and blocks cancellation until saved or discarded",
+  "preserves a dirty compact %s draft and blocks status changes and cancellation",
   async (draft) => {
     const writes: WorkflowCommand[] = [];
     mockApi(async (path, command) => {
@@ -2079,8 +2235,6 @@ it.each(["guest", "payment", "discount"] as const)(
       return Response.json(detail());
     });
     await render(React.createElement(dialogs.BookingEditor, { detail: detail() }));
-    await choose("Estado de la reserva", "Check-in");
-    await until(() => !button("Guardar detalles").disabled);
     if (draft === "guest") {
       await React.act(async () => button("Huéspedes").click());
       await fill("fullName", "Huésped pendiente");
@@ -2094,17 +2248,14 @@ it.each(["guest", "payment", "discount"] as const)(
       await fillControl(input, "10");
     }
     await until(
-      () => button("Cancelar reserva").disabled,
-      "Independent dirty drafts must block cancellation",
+      () => button("Hacer check-in").disabled && button("Más acciones de reserva").disabled,
+      "Independent dirty drafts must block status actions",
     );
     assert.match(container.textContent, /Guarda o descarta/);
-    await React.act(async () => button("Cancelar reserva").click());
+    await React.act(async () => button("Hacer check-in").click());
     assert.equal(writes.length, 0);
     if (draft !== "discount") await React.act(async () => button("Detalles").click());
-    assert.equal(fieldTrigger("Estado de la reserva").disabled, true);
-    assert.equal(button("Guardar detalles").disabled, true);
-    await submit();
-    assert.equal(writes.length, 0, "A previously selected status must not bypass draft guards");
+    assert.equal(button("Guardar cambios").disabled, true);
     if (draft === "guest") assert.equal(control("fullName").value, "Huésped pendiente");
     if (draft === "payment") assert.equal(control("amount").value, "75");
     if (draft === "discount")
@@ -2165,8 +2316,8 @@ it.each(["guest", "payment"] as const)(
       kind === "guest" ? '[name="fullName"]' : '[name="amount"]',
     )!;
     await fillControl(input, kind === "guest" ? "Luis Corregido" : "80");
-    await until(() => button("Cancelar reserva").disabled);
-    await React.act(async () => button("Cancelar reserva").click());
+    await until(() => button("Más acciones de reserva").disabled);
+    await React.act(async () => button("Más acciones de reserva").click());
     assert.equal(writes, 0);
     assert.equal(input.value, kind === "guest" ? "Luis Corregido" : "80");
     assert.match(container.textContent, /Guarda o descarta los cambios/);
@@ -2198,19 +2349,33 @@ for (const [status, label, code, field] of [
       return Response.json(initial);
     });
     await render(React.createElement(dialogs.BookingEditor, { detail: initial }));
-    await choose("Estado de la reserva", label);
-    await until(
-      () =>
-        fieldTrigger(field === "roomId" ? "Hab." : "Tipo").getAttribute("aria-invalid") === "true",
-    );
+    await chooseReservationStatus(label);
+    const confirmation = () =>
+      Array.from(window.document.querySelectorAll('[role="dialog"]')).find((dialog) =>
+        dialog.textContent.includes("Restaurar reserva"),
+      );
+    const conflict =
+      field === "roomId"
+        ? "Esta habitación está ocupada para esas fechas"
+        : "not enough rooms available for those dates";
+    await until(() => confirmation()?.textContent.includes(conflict) === true);
     assert.equal(writes.length, 0);
     assert.deepEqual(previews[0].actions, [{ type: "set-status", status }]);
-    assert.equal(button("Guardar detalles").disabled, true);
-    await React.act(async () => button("Guardar detalles").click());
+    const confirm = Array.from(confirmation()!.querySelectorAll("button")).find((item) =>
+      item.textContent.includes("Guardar cambios"),
+    );
+    assert.equal(confirm?.disabled, true);
+    await React.act(async () => confirm?.click());
     assert.equal(writes.length, 0);
+    assert.equal(control("notes").value, "");
     if (status === "confirmed") {
-      await React.act(async () => button("Descartar cambios").click());
-      await choose("Estado de la reserva", label);
+      await React.act(async () => {
+        Array.from(confirmation()!.querySelectorAll("button"))
+          .find((item) => item.textContent.trim() === "Cerrar")!
+          .click();
+      });
+      await until(() => confirmation() === undefined);
+      await chooseReservationStatus(label);
       await until(() => previews.length === 2);
       assert.notEqual(previews[0].requestId, previews[1].requestId);
     }
@@ -2245,13 +2410,13 @@ it.each(["notes", "status"] as const)(
       }),
     );
     if (correction === "notes") await fill("notes", "Late arrival");
-    else await choose("Estado de la reserva", "Check-in");
+    else await React.act(async () => button("Hacer check-in").click());
     await until(
-      () => !button("Guardar detalles").disabled,
+      () => (correction === "notes" ? !button("Guardar cambios").disabled : writes.length === 1),
       "Unchanged occupancy must not block corrections",
     );
     assert.equal(container.textContent.includes("no tiene capacidad"), false);
-    await submit();
+    if (correction === "notes") await submit();
     await until(() => writes.length === 1, "The correction must save");
     assert.deepEqual(writes[0].actions, actions);
   },
@@ -2283,7 +2448,7 @@ it.each(["occupancy", "assignment", "dates", "restoration"] as const)(
     assert.equal(container.textContent.includes("no tiene capacidad"), false);
     if (change === "occupancy") await fill("rooms[0].room.children", "4");
     else if (change === "assignment") await choose("Hab.", "Sin asignar");
-    else if (change === "restoration") await choose("Estado de la reserva", "Confirmada");
+    else if (change === "restoration") await chooseReservationStatus("Confirmada");
     else {
       await React.act(async () => fieldTrigger("Check-out").click());
       const day = Array.from(
@@ -2338,7 +2503,7 @@ it("previews and saves added unassigned rooms after check-in and allows clearing
   await render(React.createElement(Editor));
   await choose("Hab.", "Sin asignar");
   await React.act(async () => button("Agregar habitación").click());
-  await until(() => !button("Guardar detalles").disabled, "Added room must have a valid preview");
+  await until(() => !button("Guardar cambios").disabled, "Added room must have a valid preview");
   assert.ok(
     previews.some((command) => command.actions.some((action) => action.type === "add-room")),
   );
@@ -2355,7 +2520,7 @@ it("previews and saves added unassigned rooms after check-in and allows clearing
   assert.ok(
     writes[0].actions.some((action) => action.type === "add-room" && action.room.roomId === null),
   );
-  await until(() => button("Guardar detalles").disabled, "Successful save must reset changes");
+  await until(() => button("Guardar cambios").disabled, "Successful save must reset changes");
 });
 
 it("retries a failed validation preview without losing edits and re-enables saving", async () => {
@@ -2379,9 +2544,9 @@ it("retries a failed validation preview without losing edits and re-enables savi
     () => window.document.body.textContent.includes("Temporary preview failure"),
     "Preview failure must appear",
   );
-  assert.equal(button("Guardar detalles").disabled, true);
+  assert.equal(button("Guardar cambios").disabled, true);
   await React.act(async () => button("Reintentar").click());
-  await until(() => !button("Guardar detalles").disabled, "Successful retry must permit saving");
+  await until(() => !button("Guardar cambios").disabled, "Successful retry must permit saving");
   assert.equal(control("rooms[0].room.adults").value, "2");
   assert.equal(previews.length, 2);
   assert.deepEqual(previews[0], previews[1]);
@@ -2488,7 +2653,7 @@ it("retries a failed cancellation preview without reopening the confirmation", a
       onRefresh: () => {},
     }),
   );
-  await React.act(async () => button("Cancelar reserva").click());
+  await chooseReservationAction("Cancelar reserva");
   await until(
     () => window.document.body.textContent.includes("Temporary cancellation failure"),
     "Cancellation preview error must appear",
@@ -2552,7 +2717,7 @@ it("retains the cancellation reason and retries the same command after a failed 
     }),
   );
   await fill("notes", "No guardar esta nota al cancelar");
-  await React.act(async () => button("Cancelar reserva").click());
+  await chooseReservationAction("Cancelar reserva");
   assert.match(window.document.querySelector('[role="dialog"]')!.textContent, /descarta/);
   await until(() => !button("Confirmar").disabled, "Cancellation preview must finish");
   const reason = "  Cambio de planes  ";
@@ -2659,9 +2824,8 @@ for (const discountSucceeds of [true, false]) {
         );
       });
       await until(() => writes.length === 1, "Discount autosave must start");
-      assert.equal(fieldTrigger("Estado de la reserva").disabled, true);
-      assert.equal(button("Cancelar reserva").disabled, true);
-      await React.act(async () => button("Cancelar reserva").click());
+      assert.equal(button("Más acciones de reserva").disabled, true);
+      await React.act(async () => button("Más acciones de reserva").click());
       await flush(30);
       assert.equal(
         writes.length,
@@ -2673,15 +2837,15 @@ for (const discountSucceeds of [true, false]) {
       await until(() => !discount.disabled, "Autosave must settle");
       if (!discountSucceeds) {
         assert.equal(discount.value, "10");
-        assert.equal(button("Cancelar reserva").disabled, true);
+        assert.equal(button("Más acciones de reserva").disabled, true);
         // Explicitly discard the rejected discount before changing status.
         await fillControl(discount, "0");
       }
       await until(
-        () => !button("Cancelar reserva").disabled,
+        () => !button("Más acciones de reserva").disabled,
         "Clean drafts must unlock cancellation",
       );
-      await React.act(async () => button("Cancelar reserva").click());
+      await chooseReservationAction("Cancelar reserva");
       await until(() => !button("Confirmar").disabled, "Fresh cancellation preview must finish");
       await React.act(async () => button("Confirmar").click());
       await until(

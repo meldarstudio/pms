@@ -104,6 +104,10 @@ releasing its room inventory and reducing its bill to zero. The reservation and 
 record, with payments retained as credit for reference.
 _Avoid_: Deletion, refund
 
+**Restoration**:
+The return of a cancelled reservation to confirmed, checked in, or checked out.
+_Avoid_: Status correction, undelete, check-in
+
 ### Rooms and availability
 
 **Room**:

@@ -1,7 +1,14 @@
 import { useCallback, useEffect, useMemo, useRef, useState, useId, type ReactNode } from "react";
 import { skipToken, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useSelector } from "@tanstack/react-form";
-import { ArrowUpRightIcon, EllipsisIcon, PlusIcon, XIcon } from "lucide-react";
+import {
+  ArrowUpRightIcon,
+  EllipsisIcon,
+  LogInIcon,
+  LogOutIcon,
+  PlusIcon,
+  XIcon,
+} from "lucide-react";
 import { cn } from "cn";
 import { Empty, EmptyHeader, EmptyTitle, EmptyDescription } from "@/components/ui/empty";
 import {
@@ -19,6 +26,7 @@ import {
 } from "@/lib/reservation-editor";
 import { ReservationStatusBadge } from "@/components/reservation-status-badge";
 import { Button } from "@/components/ui/button";
+import { Spinner } from "@/components/ui/spinner";
 import {
   Dialog,
   DialogContent,
@@ -41,6 +49,11 @@ import {
   DropdownMenuContent,
   DropdownMenuGroup,
   DropdownMenuItem,
+  DropdownMenuRadioGroup,
+  DropdownMenuRadioItem,
+  DropdownMenuSub,
+  DropdownMenuSubContent,
+  DropdownMenuSubTrigger,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { FieldError, FieldGroup } from "@/components/ui/field";
@@ -140,10 +153,6 @@ function useDraftCommand(actionsKey: string) {
 }
 type Intent = { type: "edit-payment" | "delete-payment"; entry: ReservationPayment };
 
-export function ReservationStatus({ detail }: { detail: ReservationDetail }) {
-  return <ReservationStatusBadge status={detail.status} />;
-}
-
 export function RoomBookingDialog({
   target,
   onClose,
@@ -198,11 +207,8 @@ export function RoomBookingDialog({
         <DialogHeader className={target?.mode === "edit" ? "sr-only" : undefined}>
           <div className="flex flex-wrap items-center gap-3 pr-8">
             <DialogTitle>
-              {target?.mode === "edit"
-                ? `Editar reserva · ${detail.data?.code ?? ""}`
-                : "Nueva reserva"}
+              {target?.mode === "edit" ? "Editar reserva" : "Nueva reserva"}
             </DialogTitle>
-            {target?.mode === "edit" && detail.data && <ReservationStatus detail={detail.data} />}
           </div>
           <DialogDescription className={target?.mode === "edit" ? "sr-only" : undefined}>
             {target?.mode === "edit"
@@ -355,6 +361,10 @@ export function BookingEditor({
     detail: ReservationDetail;
     discardDraft: boolean;
   } | null>(null);
+  const [restoration, setRestoration] = useState<{
+    detail: ReservationDetail;
+    status: "confirmed" | "checked_in" | "checked_out";
+  } | null>(null);
   const [cancellationDirty, setCancellationDirty] = useState(false);
   const validation = schema.safeParse(values);
   const localErrors = schemaErrors(validation);
@@ -363,10 +373,7 @@ export function BookingEditor({
   const changes = roomEdits(detail, drafts);
   if (common.checkIn !== detail.checkIn || common.checkOut !== detail.checkOut)
     changes.unshift({ type: "dates", ...common });
-  if (!stayOnly && values.status && values.status !== defaults.status)
-    changes.push({ type: "set-status", status: values.status });
   if (notes !== (detail.notes ?? "")) changes.push({ type: "notes", notes });
-  const statusChanged = changes.some((action) => action.type === "set-status");
   const dirty = changes.length > 0 || (!validation.success && !unchanged);
   const draftDirty = dirty || independentDraftDirty;
   const previewActions = validationPreviewActions(changes);
@@ -434,6 +441,8 @@ export function BookingEditor({
   const billing = billingDirty ? (pricingValid ? quote.data : undefined) : detail;
   const billingRooms = detailsSummaryRooms(values, billing?.rooms);
   const saveMutation = useWorkflowCommand(detail.id);
+  const statusMutation = useWorkflowCommand(detail.id);
+  const [statusSaver] = useState(createWorkflowSaver);
   const savingDetails = useRef(false);
   const guestMutation = useWorkflowCommand(detail.id);
   const paymentMutation = useWorkflowCommand(detail.id);
@@ -479,13 +488,31 @@ export function BookingEditor({
   }
 
   const activeDrafts = drafts.filter((draft) => !draft.removed);
+  async function changeStatus(status: "confirmed" | "checked_in" | "checked_out") {
+    if (
+      status === detail.status ||
+      dirty ||
+      independentDraftDirty ||
+      busy ||
+      statusMutation.isPending ||
+      isReservationSaving(queryClient, detail.id)
+    )
+      return;
+    try {
+      await statusSaver([{ type: "set-status", status }], (command) =>
+        statusMutation.mutateAsync({ id: detail.id, command }),
+      );
+      toast.add({ title: "Estado guardado", type: "success" });
+    } catch (cause) {
+      toastError("No se pudo cambiar el estado", cause);
+    }
+  }
   async function saveChanges() {
     if (!countsValid) return;
     if (
       tab !== "details" ||
       !dirty ||
       !previewReady ||
-      (statusChanged && independentDraftDirty) ||
       savingDetails.current ||
       isReservationSaving(queryClient, detail.id) ||
       saveMutation.isPending ||
@@ -516,9 +543,14 @@ export function BookingEditor({
   return (
     <div className={cn("flex min-w-0 flex-col gap-4", !full && "min-h-0 flex-1 overflow-hidden")}>
       {!stayOnly && (
-        <div className="flex shrink-0 flex-wrap items-center gap-1 pr-8">
+        <div className="flex shrink-0 flex-wrap items-center gap-2 pr-8">
           <span className="text-lg font-semibold">{`${contact.fullName}`.trim()}</span>
-          <span className="text-lg text-muted-foreground"> · {detail.code}</span>
+          <ReservationStatusBadge status={detail.status} />
+        </div>
+      )}
+      {!stayOnly && (
+        <p className="-mt-2 flex shrink-0 flex-wrap items-center gap-1 text-sm wrap-anywhere text-muted-foreground">
+          {[contact.phone, detail.code].filter(Boolean).join(" · ")}
           {!full && onViewReservation && (
             <Button
               type="button"
@@ -532,11 +564,6 @@ export function BookingEditor({
               <ArrowUpRightIcon />
             </Button>
           )}
-        </div>
-      )}
-      {!stayOnly && (contact.phone || contact.email) && (
-        <p className="-mt-2 shrink-0 text-sm wrap-anywhere text-muted-foreground">
-          {[contact.phone, contact.email].filter(Boolean).join(" · ")}
         </p>
       )}
       <Tabs
@@ -801,42 +828,101 @@ export function BookingEditor({
           cancelar la reserva.
         </p>
       )}
-      <div className="flex shrink-0 flex-wrap items-end gap-3">
-        {!stayOnly && detail.status !== "cancelled" && (
-          <Button
-            type="button"
-            variant="destructive"
-            disabled={busy || independentDraftDirty}
-            onClick={() => {
-              if (isReservationSaving(queryClient, detail.id)) return;
-              setCancellation({ detail, discardDraft: dirty });
-            }}
-          >
-            Cancelar reserva
-          </Button>
+      <div className="flex shrink-0 flex-wrap items-center justify-between gap-3">
+        {!stayOnly && (
+          <div className="flex flex-wrap items-center gap-2">
+            {(detail.status === "confirmed" || detail.status === "checked_in") && (
+              <Button
+                type="button"
+                variant="outline"
+                disabled={busy || dirty || independentDraftDirty || statusMutation.isPending}
+                onClick={() =>
+                  void changeStatus(detail.status === "confirmed" ? "checked_in" : "checked_out")
+                }
+              >
+                {statusMutation.isPending ? (
+                  <Spinner data-icon="inline-start" />
+                ) : detail.status === "confirmed" ? (
+                  <LogInIcon data-icon="inline-start" />
+                ) : (
+                  <LogOutIcon data-icon="inline-start" />
+                )}
+                {detail.status === "confirmed" ? "Hacer check-in" : "Hacer check-out"}
+              </Button>
+            )}
+            {statusMutation.isPending && (
+              <p role="status" className="text-xs text-muted-foreground">
+                Guardando estado…
+              </p>
+            )}
+            <DropdownMenu>
+              <DropdownMenuTrigger
+                disabled={busy || independentDraftDirty || statusMutation.isPending}
+                render={
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon"
+                    aria-label="Más acciones de reserva"
+                  />
+                }
+              >
+                <span className="sr-only">Más acciones de reserva</span>
+                <EllipsisIcon data-icon="inline-start" />
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" side="top" className="w-52">
+                <DropdownMenuGroup>
+                  {detail.status !== "cancelled" && (
+                    <DropdownMenuItem
+                      variant="destructive"
+                      closeOnClick={false}
+                      onClick={() => {
+                        if (isReservationSaving(queryClient, detail.id)) return;
+                        setCancellation({ detail, discardDraft: dirty });
+                      }}
+                    >
+                      Cancelar reserva
+                    </DropdownMenuItem>
+                  )}
+                  <DropdownMenuSub>
+                    <DropdownMenuSubTrigger disabled={dirty}>Cambiar estado</DropdownMenuSubTrigger>
+                    <DropdownMenuSubContent className="min-w-36">
+                      <DropdownMenuRadioGroup
+                        aria-label="Estado de la reserva"
+                        value={detail.status}
+                        onValueChange={(value) => {
+                          if (
+                            value !== "confirmed" &&
+                            value !== "checked_in" &&
+                            value !== "checked_out"
+                          )
+                            return;
+                          if (detail.status === "cancelled") {
+                            const next = value;
+                            queueMicrotask(() => setRestoration({ detail, status: next }));
+                            return;
+                          }
+                          void changeStatus(value);
+                        }}
+                      >
+                        <DropdownMenuRadioItem value="confirmed" closeOnClick>
+                          Confirmada
+                        </DropdownMenuRadioItem>
+                        <DropdownMenuRadioItem value="checked_in" closeOnClick>
+                          Check-in
+                        </DropdownMenuRadioItem>
+                        <DropdownMenuRadioItem value="checked_out" closeOnClick>
+                          Check-out
+                        </DropdownMenuRadioItem>
+                      </DropdownMenuRadioGroup>
+                    </DropdownMenuSubContent>
+                  </DropdownMenuSub>
+                </DropdownMenuGroup>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          </div>
         )}
         <div className="ml-auto flex flex-wrap items-end justify-end gap-3">
-          {!stayOnly && tab === "details" && (
-            <FieldGroup className="w-48">
-              <form.AppField name="status">
-                {(field) => (
-                  <field.Choice
-                    label="Estado de la reserva"
-                    hideLabel
-                    disabled={busy || independentDraftDirty}
-                    options={[
-                      { value: "confirmed", label: "Confirmada" },
-                      { value: "checked_in", label: "Check-in" },
-                      { value: "checked_out", label: "Check-out" },
-                      ...(detail.status === "cancelled"
-                        ? [{ value: "cancelled", label: "Cancelada", disabled: true }]
-                        : []),
-                    ]}
-                  />
-                )}
-              </form.AppField>
-            </FieldGroup>
-          )}
           <div className="flex flex-wrap gap-2">
             {stayOnly && (
               <Button type="button" variant="outline" disabled={busy} onClick={onCancel}>
@@ -849,18 +935,14 @@ export function BookingEditor({
                 form={formId}
                 disabled={
                   !dirty ||
-                  (statusChanged && independentDraftDirty) ||
                   roomTypes.isPending ||
                   roomTypes.isError ||
                   (pricingValid && !previewReady) ||
                   busy
                 }
               >
-                {saveMutation.isPending
-                  ? "Guardando…"
-                  : stayOnly
-                    ? "Guardar cambios"
-                    : "Guardar detalles"}
+                {saveMutation.isPending && <Spinner data-icon="inline-start" />}
+                {saveMutation.isPending ? "Guardando…" : "Guardar cambios"}
               </Button>
             )}
             {!full && !stayOnly && tab === "details" && (
@@ -876,6 +958,18 @@ export function BookingEditor({
           </div>
         </div>
       </div>
+      {restoration && (
+        <ReservationPageEditor
+          target={{ kind: "status", status: restoration.status }}
+          detail={restoration.detail}
+          onDirtyChange={() => {}}
+          onClose={() => setRestoration(null)}
+          onSaved={(saved) => {
+            resetDetails(saved);
+            setRestoration(null);
+          }}
+        />
+      )}
       {cancellation && (
         <ReservationPageEditor
           target={{ kind: "status", status: "cancelled" }}

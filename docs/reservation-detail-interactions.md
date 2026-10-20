@@ -18,7 +18,7 @@ occupancy editing and save behavior remain unchanged.
 
 Replace the page's one-click check-in/out button with an **Estado de la reserva**
 select showing the saved status. This supersedes the page lifecycle entry-point
-restrictions below; the calendar restoration remains unchanged.
+restrictions below; the compact dialog follows **Calendar dialog status actions**.
 
 - Selecting Confirmada, Check-in, or Check-out on an active reservation saves
   immediately through the existing retry-safe workflow command. Do not require
@@ -31,38 +31,33 @@ restrictions below; the calendar restoration remains unchanged.
   protect navigation/unload, and show save/error feedback. On failure display the
   previous saved status; reselecting the failed target retries the same request ID.
 - Keep section editors, simplified contact fields, occupant total, and the
-  calendar's explicit **Guardar detalles** interaction unchanged. Reuse the
+  calendar dialog's separate **Guardar cambios** interaction unchanged. Reuse the
   existing rendered reservation-page tests.
 - Show the contact phone link only in **Contacto principal**, not in the page
   header, where it duplicates the contact card. Keep the name, code, badges,
   back navigation, and status select in the header.
 
-## Calendar dialog restoration
+## Calendar dialog status actions
 
-Restore the original calendar editing interaction without reverting reservation-page
-improvements. This supersedes the compact-calendar lifecycle policy below:
+This supersedes the compact dropdown that saved status with **Guardar detalles**:
 
-- The compact **Detalles** footer has an **Estado de la reserva** dropdown.
-  Selecting a status only updates its draft; **Guardar detalles** saves status,
-  dates, rooms, and notes together. **Descartar cambios** resets the draft.
-  Remove compact one-click check-in/out buttons and the status-action menu.
-- Restore the separate **Cancelar reserva** button. Cancellation keeps its
-  server-previewed, consequence-aware confirmation and optional reason. Confirming
-  discards unsaved **Detalles** changes, explicitly stated in the confirmation,
-  and closes the compact dialog only after success. Failed/cancelled confirmation
-  preserves the details draft; failed saves retain the reason and retry ID.
-- Pending writes and independent guest, payment, discount, or nested-editor drafts
-  block cancellation. Pending writes block status editing; independent dirty drafts
-  must be saved or discarded before changing status.
-- Restoration is selected in the dropdown and explicitly saved with **Guardar
-  detalles**, not a second restoration dialog. Require the current server preview
-  and capacity/assignment/availability validation before saving. Preserve billing
-  previews, stale-result guards, duplicate-submission protection, and dirty
-  close/unload guards. No backend or domain-rule changes.
-- Keep the reservation page's section editors, occupant total, and contact-field
-  simplification unchanged.
-- Use the existing rendered-dialog seam for risk-focused status saving,
-  cancellation, independent-draft protection, and restoration-conflict coverage.
+- The header shows the booking contact, saved status, phone, and reservation code.
+  It does not show the booking-contact email.
+- A confirmed reservation offers **Hacer check-in**. A checked-in reservation offers
+  **Hacer check-out**. These save immediately and do not change the details draft.
+- **Guardar cambios** saves dates, rooms, and notes only. It never changes status.
+- **Más acciones de reserva** contains **Cancelar reserva** and **Cambiar estado**.
+  On an active reservation, the status radios save immediately. On a cancelled
+  reservation, they open **Restaurar reserva** for the chosen status. That
+  confirmation previews the restored bill and availability. Dismissing it leaves
+  the reservation cancelled and leaves the details draft alone. Success leaves the
+  compact dialog open and refreshes the saved status.
+- Dirty details, guest, payment, or discount drafts block check-in, checkout,
+  status correction, and restoration. Guest, payment, and discount drafts also
+  block cancellation. A dirty details draft does not: confirming cancellation
+  explicitly discards those details and closes the dialog only after success.
+- Keep the reservation page's status select unchanged. No backend or domain-rule
+  changes.
 
 ## Section-specific editing decision
 
