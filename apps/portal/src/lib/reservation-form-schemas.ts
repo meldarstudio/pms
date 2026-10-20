@@ -33,9 +33,11 @@ export const detailsSchema = (
   types: RoomType[],
   {
     validateOperations = true,
+    validateContact = false,
     saved,
   }: {
     validateOperations?: boolean;
+    validateContact?: boolean;
     saved?: Pick<ReservationDetail, "checkIn" | "checkOut" | "status" | "rooms">;
   } = {},
 ) =>
@@ -46,8 +48,19 @@ export const detailsSchema = (
       status,
       notes: z.string().max(2000, "Máximo 2000 caracteres."),
       rooms: z.array(room),
+      fullName: z.string().trim().optional(),
+      phone: z.string().trim().optional(),
+      email: z.string().trim().optional(),
+      documentType: z.string().trim().optional(),
+      documentNumber: z.string().trim().optional(),
     })
     .superRefine((value, ctx) => {
+      if (validateContact) {
+        const contact = contactSchema.safeParse(value);
+        if (!contact.success)
+          for (const issue of contact.error.issues)
+            ctx.addIssue({ code: "custom", path: issue.path, message: issue.message });
+      }
       const nights =
         (Date.parse(`${value.checkOut}T00:00:00Z`) - Date.parse(`${value.checkIn}T00:00:00Z`)) /
         86400000;
@@ -133,8 +146,9 @@ export const emptyDetails: DetailsValues = {
   notes: "",
   rooms: [],
 };
-export function detailsDefaults(detail: ReservationDetail): DetailsValues {
+export function detailsDefaults(detail: ReservationDetail, includeContact = false): DetailsValues {
   return {
+    ...(includeContact ? contactDefaults(detail) : {}),
     checkIn: detail.checkIn,
     checkOut: detail.checkOut,
     status: status.parse(detail.status),
@@ -207,6 +221,25 @@ export const guestSchema = z.object({
 });
 export type GuestValues = z.input<typeof guestSchema>;
 export const contactSchema = guestSchema.omit({ id: true, reservationRoomId: true });
+export function contactDefaults(detail: ReservationDetail) {
+  return {
+    fullName: detail.guest.fullName,
+    phone: detail.guest.phone ?? "",
+    email: detail.guest.email ?? "",
+    documentType: detail.guest.documentType ?? "",
+    documentNumber: detail.guest.documentNumber ?? "",
+  };
+}
+export function contactPayload(values: z.input<typeof contactSchema>) {
+  const parsed = contactSchema.parse(values);
+  return {
+    ...parsed,
+    phone: parsed.phone || null,
+    email: parsed.email || null,
+    documentType: parsed.documentType || null,
+    documentNumber: parsed.documentNumber || null,
+  };
+}
 export const notesSchema = z.object({ notes: z.string().max(2000, "Máximo 2000 caracteres.") });
 export function guestDefaults(guest: StayingGuest): GuestValues {
   return {
