@@ -57,8 +57,10 @@ the actual API and transactional database behavior.
 
 `/reservations/:id` is a read-first overview with back navigation, booking contact
 name with status/date badges, the reservation code and contact phone beneath it,
-and right-aligned **Editar reserva** and a split status button. The button shows
-the current state and opens a dropdown with the other states and cancellation.
+and right-aligned **Editar reserva** and lifecycle actions. Saved status is
+informational: confirmed reservations offer one-click **Hacer check-in**, and
+checked-in reservations offer one-click **Hacer check-out**, without another
+confirmation. **Cambiar estado** contains other direct non-cancellation corrections.
 **Registrar pago** remains in the payment
 summary. Reservation data and a payment summary sit side by side on desktop and
 stack on phones. The summary distinguishes outstanding, settled, and credit
@@ -83,9 +85,14 @@ details share one draft with stay dates, room types, assignments and occupancy.
 reusing the compact dialog's availability, capacity and server billing previews.
 Contact typing does not invalidate the current operational preview. Notes, guests,
 payments, discount and status changes retain their focused editor workflows.
-Cancellation and restoration show the resulting server bill and operational
-conflicts before confirmation; check-in and checkout do not change stay dates or
-require a settled balance or physical room assignment.
+Cancellation and every transition out of a cancelled reservation require the same
+consequence-aware confirmation form on both surfaces, with a fresh server bill
+and current availability/assignment/capacity validation. Cancellation releases
+inventory and zeros charges while retaining payments as credit, not a refund.
+Check-in and checkout do not change stay dates or require a settled balance or
+physical room assignment. Lifecycle writes show pending/success/error feedback,
+block duplicate and overlapping reservation writes, and reuse the request ID when
+retrying an unchanged action after an uncertain response.
 
 Editors capture their opening values so background reads do not replace drafts.
 Failed saves retain drafts, dismissing a dirty editor asks for confirmation, and
@@ -93,7 +100,13 @@ router navigation/browser unload are guarded while dirty or saving. Successful
 commands refresh the overview and related reservation/calendar/inventory queries.
 Back always opens Reservations, including calendar-origin and direct detail links.
 Reservation-list filters are preserved when returning from a list-origin detail link.
-The compact calendar dialog remains the utility-focused editor.
+The compact calendar dialog remains the utility-focused editor. Its saved status
+and dedicated lifecycle actions replace the old draft status selector; status
+never participates in **Guardar detalles** or the combined editor's save. Any
+dirty compact details, guest, payment, discount, or nested editor draft disables
+lifecycle actions with an explicit save/discard instruction. Pending discount
+autosaves also block lifecycle actions; failed drafts remain intact. Successful
+lifecycle changes refresh the saved status without discarding other editor state.
 
 The reservation editor uses TanStack Form with portal-local Zod 4 schemas in
 `src/lib/reservation-form-schemas.ts`. Details, guest add/edit, payment add/edit,

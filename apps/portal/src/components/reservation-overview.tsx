@@ -1,4 +1,4 @@
-import { useState, type ReactNode } from "react";
+import type { ReactNode } from "react";
 import {
   ArrowLeftIcon,
   BedDoubleIcon,
@@ -6,7 +6,6 @@ import {
   CalendarCheckIcon,
   CircleCheckIcon,
   ClockIcon,
-  ChevronDownIcon,
   CreditCardIcon,
   PencilIcon,
   PhoneIcon,
@@ -15,15 +14,8 @@ import {
 import { cn } from "cn";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { ButtonGroup, ButtonGroupSeparator } from "@/components/ui/button-group";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
-import {
-  DropdownMenu,
-  DropdownMenuTrigger,
-  DropdownMenuContent,
-  DropdownMenuGroup,
-  DropdownMenuItem,
-} from "@/components/ui/dropdown-menu";
+import { ReservationLifecycle } from "@/components/reservation-lifecycle";
 import { balanceStatus } from "@/components/balance-status";
 import type { ReservationEditorTarget } from "@/components/reservation-page-editors";
 import type { ReservationDetail } from "@/lib/api";
@@ -31,7 +23,6 @@ import { reservationStatusLabel } from "@/lib/reservation-list";
 import { formatMoney } from "@/lib/money";
 import { usePropertyCalendar } from "@/lib/use-property-calendar";
 
-const statuses = ["confirmed", "checked_in", "checked_out", "cancelled"] as const;
 const money = (detail: ReservationDetail, cents: number) => formatMoney(cents, detail.currency);
 const fullDate = (value: string) =>
   new Intl.DateTimeFormat("es-PE", {
@@ -52,7 +43,6 @@ export function ReservationOverview({
   onBack: () => void;
 }) {
   const { today, timeZone } = usePropertyCalendar();
-  const [statusMenuOpen, setStatusMenuOpen] = useState(false);
   const nights = Math.round((Date.parse(detail.checkOut) - Date.parse(detail.checkIn)) / 86400000);
   return (
     <fieldset disabled={disabled} aria-busy={disabled} className="flex min-w-0 flex-col gap-6">
@@ -105,42 +95,10 @@ export function ReservationOverview({
               <PencilIcon data-icon="inline-start" />
               Editar reserva
             </Button>
-            <ButtonGroup aria-label="Estado de la reserva">
-              <Button
-                aria-haspopup="menu"
-                aria-expanded={statusMenuOpen}
-                onClick={() => setStatusMenuOpen((open) => !open)}
-              >
-                <CircleCheckIcon data-icon="inline-start" />
-                {reservationStatusLabel(detail.status)}
-              </Button>
-              <ButtonGroupSeparator />
-              <DropdownMenu open={statusMenuOpen} onOpenChange={setStatusMenuOpen}>
-                <DropdownMenuTrigger
-                  render={<Button size="icon" aria-label="Cambiar estado" disabled={disabled} />}
-                >
-                  <ChevronDownIcon />
-                </DropdownMenuTrigger>
-                <DropdownMenuContent align="end" className="w-56">
-                  <DropdownMenuGroup>
-                    {statuses
-                      .filter((status) => status !== detail.status)
-                      .map((status) => (
-                        <DropdownMenuItem
-                          key={status}
-                          disabled={disabled}
-                          variant={status === "cancelled" ? "destructive" : "default"}
-                          onClick={() => edit({ kind: "status", status })}
-                        >
-                          {status === "cancelled"
-                            ? "Cancelar reserva…"
-                            : `${reservationStatusLabel(status)}…`}
-                        </DropdownMenuItem>
-                      ))}
-                  </DropdownMenuGroup>
-                </DropdownMenuContent>
-              </DropdownMenu>
-            </ButtonGroup>
+            <ReservationLifecycle
+              detail={detail}
+              onConfirm={(status) => edit({ kind: "status", status })}
+            />
           </div>
         </div>
       </header>

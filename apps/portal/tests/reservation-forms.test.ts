@@ -31,7 +31,6 @@ const types = [
 const details = (): DetailsValues => ({
   checkIn: "2026-01-01",
   checkOut: "2026-01-02",
-  status: "confirmed",
   notes: "",
   rooms: [
     {
@@ -115,9 +114,8 @@ describe("reservation form schemas", () => {
       true,
     );
   });
-  it("allows unassigned rooms on check-in and rejects duplicate assignments", () => {
+  it("allows unassigned rooms and rejects duplicate assignments", () => {
     const values = details();
-    values.status = "checked_in";
     assert.equal(detailsSchema(types).safeParse(values).success, true);
     values.rooms[0].room.roomId = "room-1";
     assert.equal(detailsSchema(types).safeParse(values).success, true);
