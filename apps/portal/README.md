@@ -63,6 +63,9 @@ the current state and opens a dropdown with the other states and cancellation.
 summary. Reservation data and a payment summary sit side by side on desktop and
 stack on phones. The summary distinguishes outstanding, settled, and credit
 balances; it is a reservation bill, not an invoice.
+The bill shows subtotal, discount (including zero), total, amount paid, and balance.
+The discount row has its own **Editar descuento** action; **Editar reserva** appears
+only in the page header.
 
 The overview currently ends at the two summary cards while their design is being
 refined. Lower contact, guest, notes, payment-record, and account sections are
@@ -86,7 +89,8 @@ Editors capture their opening values so background reads do not replace drafts.
 Failed saves retain drafts, dismissing a dirty editor asks for confirmation, and
 router navigation/browser unload are guarded while dirty or saving. Successful
 commands refresh the overview and related reservation/calendar/inventory queries.
-Returning to the calendar or list preserves the originating dates or filters.
+Back always opens Reservations, including calendar-origin and direct detail links.
+Reservation-list filters are preserved when returning from a list-origin detail link.
 The compact calendar dialog remains the utility-focused editor.
 
 The reservation editor uses TanStack Form with portal-local Zod 4 schemas in
