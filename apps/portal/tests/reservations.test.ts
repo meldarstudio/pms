@@ -214,6 +214,45 @@ it("opens property-today Arrivals and switches all four server scopes without lo
   await until(() => params().get("checkIn") === "2026-10-31");
 });
 
+it("restores reservation filters and calendar dates through the sidebar's real links", async () => {
+  const paginatedResponse = respond;
+  respond = (url) =>
+    url.searchParams.get("paginated") === "true" ? paginatedResponse(url) : Response.json([]);
+  await render(
+    "/reservations?view=departures&day=2026-12-31&q=Ana&statuses=all&balance=credit&assignment=unassigned&sort=balance&direction=asc&size=25",
+  );
+  const expected = { ...router.state.location.search };
+  function navigationLink(label: string) {
+    const link = Array.from(
+      container.querySelectorAll('nav[aria-label="Navegación principal"] a'),
+    ).find((element) => element.textContent.trim() === label);
+    assert.ok(link, `Missing navigation link ${label}`);
+    return link;
+  }
+  async function follow(label: string) {
+    await React.act(async () =>
+      navigationLink(label).dispatchEvent(
+        new window.MouseEvent("click", { bubbles: true, cancelable: true, button: 0 }),
+      ),
+    );
+  }
+  assert.equal(navigationLink("Reservas").getAttribute("aria-current"), "page");
+  await follow("Calendario");
+  await until(() => router.state.location.pathname === "/calendar");
+  assert.equal(router.state.location.search.from, "2026-10-31");
+  await React.act(async () =>
+    router.navigate({ to: "/calendar", search: { from: "2026-12-20", span: 14 } }),
+  );
+  await follow("Reservas");
+  await until(() => router.state.location.pathname === "/reservations");
+  assert.deepEqual({ ...router.state.location.search }, expected);
+  await follow("Calendario");
+  await until(() => router.state.location.pathname === "/calendar");
+  assert.equal(router.state.location.search.from, "2026-12-20");
+  assert.equal(router.state.location.search.span, 14);
+  assert.equal(navigationLink("Calendario").getAttribute("aria-current"), "page");
+});
+
 it("counts changed filter groups instead of chips and restores defaults without clearing search or context", async () => {
   respond = (url) =>
     Response.json({

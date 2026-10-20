@@ -229,3 +229,77 @@ it("does not initialize the app before valid property configuration is loaded", 
   );
   assert.equal(container.textContent.includes("Signed-in app"), false);
 });
+
+it("keeps the sidebar usable after failed sign-out and returns to login after a successful retry", async () => {
+  const routing = await import("@tanstack/react-router");
+  const routes = (await server.ssrLoadModule(
+    "/src/router.tsx",
+  )) as typeof import("../src/router.tsx");
+  const { ToastProvider } = (await server.ssrLoadModule(
+    "/src/components/ui/toast.tsx",
+  )) as typeof import("../src/components/ui/toast.tsx");
+  let finishLogout: ((response: Response) => void) | undefined;
+  globalThis.fetch = async (input, init) => {
+    const url = new URL(
+      typeof input === "string" ? input : input instanceof URL ? input.href : input.url,
+    );
+    assert.equal(init?.credentials, "include");
+    if (url.pathname === "/session")
+      return Response.json({ username: "hotelmanantial", propertyTimeZone: "America/Lima" });
+    if (url.pathname === "/room-types" || url.pathname === "/rooms") return Response.json([]);
+    if (url.pathname === "/logout" && init?.method === "POST")
+      return new Promise<Response>((resolve) => {
+        finishLogout = resolve;
+      });
+    throw new Error(`Unexpected request ${url.pathname}`);
+  };
+  const router = routing.createRouter({
+    routeTree: routes.router.routeTree,
+    history: routing.createMemoryHistory({ initialEntries: ["/calendar"] }),
+  });
+  await React.act(async () => {
+    await router.load();
+    root.render(
+      React.createElement(
+        query.QueryClientProvider,
+        { client },
+        React.createElement(
+          ToastProvider,
+          null,
+          React.createElement(
+            auth.AuthGate,
+            null,
+            React.createElement(routing.RouterProvider, { router }),
+          ),
+        ),
+      ),
+    );
+  });
+  await until(
+    () => container.textContent.includes("Configura tu alojamiento"),
+    "Signed-in app must load",
+  );
+  await React.act(async () => button("Salir").click());
+  await until(
+    () => !!finishLogout && button("Salir").disabled,
+    "Sign-out must disable repeat submissions",
+  );
+  await React.act(async () =>
+    finishLogout!(Response.json({ error: "unavailable" }, { status: 503 })),
+  );
+  await until(
+    () => window.document.body.textContent.includes("No se pudo cerrar la sesión"),
+    "Failed sign-out must be visible",
+  );
+  assert.equal(button("Salir").disabled, false);
+  assert.ok(container.querySelector('nav[aria-label="Navegación principal"]'));
+  finishLogout = undefined;
+  await React.act(async () => button("Salir").click());
+  await until(() => !!finishLogout, "Sign-out must be retryable");
+  await React.act(async () => finishLogout!(Response.json({ ok: true })));
+  await until(
+    () => !!container.querySelector('input[name="password"]'),
+    "Sign-out must return to login",
+  );
+  assert.equal(container.querySelector('nav[aria-label="Navegación principal"]'), null);
+});

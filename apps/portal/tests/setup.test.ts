@@ -25,6 +25,7 @@ beforeAll(async () => {
 });
 
 beforeEach(() => {
+  window.happyDOM.setWindowSize({ width: 1024, height: 768 });
   page = browser.createPage();
   ({ container, until } = page);
 });
@@ -176,7 +177,16 @@ function button(label: string) {
 }
 
 async function click(label: string) {
-  await React.act(async () => button(label).click());
+  const link = Array.from(
+    window.document.querySelectorAll('nav[aria-label="Navegación principal"] a'),
+  ).find((element) => element.textContent.trim() === label);
+  await React.act(async () => {
+    if (link) {
+      link.dispatchEvent(
+        new window.MouseEvent("click", { bubbles: true, cancelable: true, button: 0 }),
+      );
+    } else button(label).click();
+  });
 }
 
 it.each([
@@ -210,7 +220,9 @@ it.each([
     await until(() => container.textContent.includes(title), "Setup guidance must appear");
     assert.equal(router.state.location.pathname, path.split("?")[0]);
     const originalLocation = router.state.location.href;
-    const link = container.querySelector('a[href="/setup"]');
+    const link = Array.from(container.querySelectorAll('a[href="/setup"]')).find(
+      (element) => !element.closest("nav"),
+    );
     assert.ok(link);
     assert.equal(link.textContent.trim(), action);
     await React.act(async () =>
@@ -378,7 +390,7 @@ it("lets an empty property open its calendar and choose setup before saving its 
     () =>
       router.state.location.pathname === "/setup" &&
       !!container.querySelector('input[name="name"]'),
-    "Configuration tab must open setup",
+    "Configuration link must open setup",
   );
   await fill("name", "Individual");
   await fill("baseRate", "85");
@@ -390,7 +402,7 @@ it("lets an empty property open its calendar and choose setup before saving its 
   assert.equal(router.state.location.pathname, "/setup");
   assert.deepEqual(writes[0].rooms, []);
   assert.equal(
-    container.querySelector('a[href^="/calendar"]'),
+    container.querySelector('main a[href^="/calendar"]'),
     null,
     "An empty type is not ready for reservations",
   );
@@ -398,12 +410,12 @@ it("lets an empty property open its calendar and choose setup before saving its 
   await fill("rooms[0].number", "101");
   await click("Guardar cambios");
   await until(
-    () => !!container.querySelector('a[href^="/calendar"]'),
+    () => !!container.querySelector('main a[href^="/calendar"]'),
     "First saved room must unlock the calendar",
   );
   await React.act(async () =>
     container
-      .querySelector('a[href^="/calendar"]')!
+      .querySelector('main a[href^="/calendar"]')!
       .dispatchEvent(
         new window.MouseEvent("click", { bubbles: true, cancelable: true, button: 0 }),
       ),
@@ -426,26 +438,38 @@ it("identifies duplicate numbers within the draft before sending any changes", a
   assert.equal(input("rooms[1].number").getAttribute("aria-invalid"), "true");
 });
 
-it("protects a setup draft when leaving through the app navigation", async () => {
-  mockApi();
-  await render();
-  await until(() => !!container.querySelector('input[name="name"]'), "Selected type must load");
-  await fill("name", "Unsaved name");
-  await click("Reservas");
-  await until(
-    () => !!window.document.querySelector('[role="alertdialog"]'),
-    "Navigation must ask before discarding",
-  );
-  assert.equal(router.state.location.pathname, "/setup");
-  await click("Seguir editando");
-  assert.equal(input("name").value, "Unsaved name");
-  await click("Reservas");
-  await click("Descartar cambios");
-  await until(
-    () => router.state.location.pathname === "/reservations",
-    "Explicit discard must allow navigation",
-  );
-});
+it.each(["desktop", "mobile"])(
+  "protects a setup draft through %s sidebar navigation",
+  async (viewport) => {
+    if (viewport === "mobile") window.happyDOM.setWindowSize({ width: 390, height: 844 });
+    mockApi();
+    await render();
+    await until(() => !!container.querySelector('input[name="name"]'), "Selected type must load");
+    await fill("name", "Unsaved name");
+    await click("Alternar navegación");
+    assert.equal(
+      input("name").value,
+      "Unsaved name",
+      "Toggling navigation must not remount the editor",
+    );
+    if (viewport === "desktop") await click("Alternar navegación");
+    await click("Reservas");
+    await until(
+      () => !!window.document.querySelector('[role="alertdialog"]'),
+      "Navigation must ask before discarding",
+    );
+    assert.equal(router.state.location.pathname, "/setup");
+    await click("Seguir editando");
+    assert.equal(input("name").value, "Unsaved name");
+    if (viewport === "mobile") await click("Alternar navegación");
+    await click("Reservas");
+    await click("Descartar cambios");
+    await until(
+      () => router.state.location.pathname === "/reservations",
+      "Explicit discard must allow navigation",
+    );
+  },
+);
 
 it("creates a new type with its room table and can remove an extra unsaved row", async () => {
   mockApi();
@@ -606,7 +630,7 @@ it("does not switch types after a failed save-and-continue or a later ordinary s
   assert.equal(input("name").value, "Doble superior");
 });
 
-it("keeps the normal calendar landing for a configured hotel and makes setup accessible from its tab", async () => {
+it("keeps the normal calendar landing for a configured hotel and makes setup accessible from its sidebar", async () => {
   mockApi();
   await render("/");
   await until(
@@ -618,6 +642,6 @@ it("keeps the normal calendar landing for a configured hotel and makes setup acc
     () =>
       router.state.location.pathname === "/setup" &&
       !!container.querySelector('input[name="name"]'),
-    "Configuration tab must open setup",
+    "Configuration link must open setup",
   );
 });

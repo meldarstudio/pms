@@ -14,11 +14,25 @@ build time. `.env.development` sets it to `http://localhost:8788`, the port the
 backend dev script uses. It must be `localhost`, not `127.0.0.1`, so the browser
 treats the portal and API as the same site and sends the session cookie. Override it in `.env.local`. A build fails if the variable is missing.
 
+## Navigation
+
+The portal uses the selected **A2** design: a narrow, flat sidebar for Reservas,
+Calendario, and Inventario y tarifas, with Configuración and Salir at the bottom.
+The header toggle fully hides the sidebar on desktop, reclaiming its width;
+on phones it opens a dismissible navigation sheet. Open/hidden state stays in
+memory and does not remount the current screen. Navigation retains the last
+reservation filters and calendar dates, and existing unsaved-draft guards still
+apply. Sign-out retains the existing authentication and error handling.
+
+The comparison and design verdict are preserved on `prototype/sidebar-navigation`
+at commit `48460e6`, in `src/components/navigation-prototype.md`. The implementation
+contains only A2, with no variant URL parameter or prototype controls.
+
 ## Property setup
 
 After signing in, calendar, reservations, and inventory stay accessible even when
 property setup is incomplete. Their setup empty states link to `/setup`, and the
-**Configuración** tab keeps it accessible at any time. Inventory remains editable
+**Configuración** sidebar link keeps it accessible at any time. Inventory remains editable
 when room types exist without rooms, so rates can be configured first. Each
 deployment manages one property; there is no hotel profile or account-creation step.
 

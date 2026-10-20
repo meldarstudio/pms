@@ -1,79 +1,38 @@
-import { Outlet, useNavigate, useRouterState } from "@tanstack/react-router";
-import { propertyToday } from "@/lib/property-calendar";
-import { LogOutIcon } from "lucide-react";
-import { Button } from "@/components/ui/button";
-import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { useLogout } from "@/lib/queries";
-import { toastError } from "@/lib/toast";
-import { lastCalendarSearch, lastReservationsSearch, reservationsSearch } from "@/lib/route-search";
+import { Outlet, useRouterState } from "@tanstack/react-router";
+import type { CSSProperties } from "react";
+import { AppSidebar } from "@/components/app-sidebar";
+import { Separator } from "@/components/ui/separator";
+import { SidebarInset, SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
 
 export function App() {
-  const navigate = useNavigate();
-  const logout = useLogout();
   const pathname = useRouterState({
     select: (state) => state.location.pathname,
   });
-  const tab = pathname.startsWith("/reservations")
-    ? "reservations"
+  const title = pathname.startsWith("/reservations")
+    ? "Reservas"
     : pathname === "/inventory"
-      ? "inventory"
+      ? "Inventario y tarifas"
       : pathname === "/setup"
-        ? "setup"
-        : "calendar";
-
-  function changeTab(value: string) {
-    if (value === "reservations") {
-      void navigate({
-        to: "/reservations",
-        search: lastReservationsSearch.current ?? reservationsSearch({}),
-      });
-    }
-    if (value === "calendar") {
-      const search = lastCalendarSearch.current ?? {
-        from: propertyToday(),
-        span: 7 as const,
-      };
-      void navigate({ to: "/calendar", search });
-    }
-    if (value === "inventory") {
-      const today = propertyToday();
-      void navigate({ to: "/inventory", search: { from: today, span: 14 } });
-    }
-    if (value === "setup") void navigate({ to: "/setup" });
-  }
+        ? "Configuración"
+        : "Calendario";
 
   return (
-    <Tabs value={tab} onValueChange={changeTab} className="h-svh gap-0 overflow-hidden">
-      <header className="flex shrink-0 items-center gap-6 overflow-x-auto border-b px-4">
-        <span className="text-sm font-semibold tracking-tight">
-          PMS
-          <span className="ml-2 text-xs font-normal text-muted-foreground">Recepción</span>
-        </span>
-        <TabsList variant="line" className="-mb-px h-12">
-          <TabsTrigger value="reservations">Reservas</TabsTrigger>
-          <TabsTrigger value="calendar">Calendario</TabsTrigger>
-          <TabsTrigger value="inventory">Inventario y tarifas</TabsTrigger>
-          <TabsTrigger value="setup">Configuración</TabsTrigger>
-        </TabsList>
-        <Button
-          variant="ghost"
-          size="sm"
-          className="ml-auto"
-          disabled={logout.isPending}
-          onClick={() =>
-            logout.mutate(undefined, {
-              onError: (cause) => toastError("No se pudo cerrar la sesión", cause),
-            })
-          }
-        >
-          <LogOutIcon data-icon="inline-start" />
-          Salir
-        </Button>
-      </header>
-      <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
-        <Outlet />
-      </div>
-    </Tabs>
+    <SidebarProvider
+      className="h-svh min-h-0 overflow-hidden"
+      style={{ "--sidebar-width": "14rem" } as CSSProperties}
+    >
+      <AppSidebar />
+      <SidebarInset className="min-h-0 min-w-0 overflow-hidden">
+        <header className="flex h-12 shrink-0 items-center gap-3 border-b px-4">
+          <SidebarTrigger />
+          <Separator orientation="vertical" className="data-vertical:h-4 self-center" />
+          <span className="text-xs font-medium">{title}</span>
+        </header>
+        <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
+          <Outlet />
+        </div>
+      </SidebarInset>
+    </SidebarProvider>
   );
 }
 
