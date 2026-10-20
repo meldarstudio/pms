@@ -790,10 +790,8 @@ it("protects the combined draft from router navigation and dirty dismissal", asy
   await click("Cerrar");
   await click("Descartar y salir");
   await page.until(() => !popup());
-  await click("Volver al calendario");
-  await page.until(() => router.state.location.pathname === "/calendar");
-  assert.equal(router.state.location.search.from, "2026-10-12");
-  assert.equal(router.state.location.search.span, 14);
+  await click("Volver a reservas");
+  await page.until(() => router.state.location.pathname === "/reservations");
 });
 
 it("returns to the originating reservation list filters", async () => {
