@@ -56,11 +56,7 @@ import {
 import { Skeleton } from "@/components/ui/skeleton";
 import { Separator } from "@/components/ui/separator";
 import { BookingSummary } from "@/components/booking-summary";
-import { ReservationLifecycle } from "@/components/reservation-lifecycle";
-import {
-  ReservationPageEditor,
-  type ReservationEditorTarget,
-} from "@/components/reservation-page-editors";
+import { ReservationPageEditor } from "@/components/reservation-page-editors";
 import { NewBooking } from "@/components/new-booking";
 import { GuestEntryForm, PaymentForm, paymentMethods } from "@/components/reservation-entry-forms";
 import { format } from "@/lib/dates";
@@ -229,6 +225,7 @@ export function RoomBookingDialog({
                 initialTab={tab}
                 onTabChange={setTab}
                 onDirtyChange={onDirtyChange}
+                onCancelled={close}
                 onViewReservation={(id) => navigate(() => onViewReservation(id))}
               />
             )
@@ -267,6 +264,7 @@ export function RoomBookingDialog({
 
 export function BookingEditor({
   detail,
+  onCancelled,
   onViewReservation,
   onDirtyChange,
   full = false,
@@ -278,6 +276,7 @@ export function BookingEditor({
 }: {
   detail: ReservationDetail;
   onRefresh?: () => void;
+  onCancelled?: () => void;
   onViewReservation?: (id: string) => void;
   onDirtyChange?: (dirty: boolean) => void;
   full?: boolean;
@@ -345,18 +344,19 @@ export function BookingEditor({
       (type) => type.id === previousRoom?.roomTypeId && availableTypes.has(type.id),
     ) ?? roomTypes.data?.find((type) => availableTypes.has(type.id));
   const canAddRoom = roomTypes.isSuccess && rooms.isSuccess && availability.ready && !!nextRoomType;
-  const reservationState = detail.status;
+  const reservationState = stayOnly ? detail.status : (values.status ?? detail.status);
   const notes = values.notes;
   const [intent, setIntent] = useState<Intent | null>(null);
   const [tab, setTab] = useState(initialTab);
   const [paymentDirty, setPaymentDirty] = useState(false);
   const [discountDirty, setDiscountDirty] = useState(false);
   const [actionDirty, setActionDirty] = useState(false);
-  const [lifecycle, setLifecycle] = useState<{
-    target: Extract<ReservationEditorTarget, { kind: "status" }>;
+  const independentDraftDirty = guestDirty || paymentDirty || discountDirty || actionDirty;
+  const [cancellation, setCancellation] = useState<{
     detail: ReservationDetail;
+    discardDraft: boolean;
   } | null>(null);
-  const [lifecycleDirty, setLifecycleDirty] = useState(false);
+  const [cancellationDirty, setCancellationDirty] = useState(false);
   const validation = schema.safeParse(values);
   const localErrors = schemaErrors(validation);
   const countsValid = validation.success && !!roomTypes.data;
@@ -364,9 +364,12 @@ export function BookingEditor({
   const changes = roomEdits(detail, drafts);
   if (common.checkIn !== detail.checkIn || common.checkOut !== detail.checkOut)
     changes.unshift({ type: "dates", ...common });
+  if (!stayOnly && values.status && values.status !== defaults.status)
+    changes.push({ type: "set-status", status: values.status });
   if (notes !== (detail.notes ?? "")) changes.push({ type: "notes", notes });
+  const statusChanged = changes.some((action) => action.type === "set-status");
   const dirty = changes.length > 0 || (!validation.success && !unchanged);
-  const draftDirty = dirty || paymentDirty || guestDirty || discountDirty || actionDirty;
+  const draftDirty = dirty || independentDraftDirty;
   const previewActions = validationPreviewActions(changes);
   const validationNeeded = previewActions.length > 0;
   const billingDirty = hasBillingChanges(detail, changes);
@@ -432,6 +435,7 @@ export function BookingEditor({
   const billing = billingDirty ? (pricingValid ? quote.data : undefined) : detail;
   const billingRooms = detailsSummaryRooms(values, billing?.rooms);
   const saveMutation = useWorkflowCommand(detail.id);
+  const savingDetails = useRef(false);
   const guestMutation = useWorkflowCommand(detail.id);
   const paymentMutation = useWorkflowCommand(detail.id);
   const discountMutation = useWorkflowCommand(detail.id);
@@ -448,8 +452,8 @@ export function BookingEditor({
     );
   }
   useEffect(() => {
-    onDirtyChange?.(draftDirty || lifecycleDirty);
-  }, [draftDirty, lifecycleDirty, onDirtyChange]);
+    onDirtyChange?.(draftDirty || cancellationDirty);
+  }, [draftDirty, cancellationDirty, onDirtyChange]);
   function resetDetails(saved: ReservationDetail) {
     rejectedFields.current = null;
     const next = detailsDefaults(saved);
@@ -482,11 +486,15 @@ export function BookingEditor({
       tab !== "details" ||
       !dirty ||
       !previewReady ||
+      (statusChanged && independentDraftDirty) ||
+      savingDetails.current ||
+      isReservationSaving(queryClient, detail.id) ||
       saveMutation.isPending ||
       guestMutation.isPending ||
       paymentMutation.isPending
     )
       return;
+    savingDetails.current = true;
     try {
       await discountSave.current;
       const saved = await saveMutation.mutateAsync({
@@ -502,6 +510,8 @@ export function BookingEditor({
         rejectedFields.current = { values, fields };
         form.setErrorMap({ onDynamic: { fields } });
       } else toastError("No se pudo guardar", e);
+    } finally {
+      savingDetails.current = false;
     }
   }
   return (
@@ -786,24 +796,47 @@ export function BookingEditor({
           </aside>
         </div>
       </Tabs>
+      {!stayOnly && independentDraftDirty && (
+        <p className="text-xs text-muted-foreground">
+          Guarda o descarta los cambios de huéspedes, pagos o descuento antes de cambiar el estado o
+          cancelar la reserva.
+        </p>
+      )}
       <div className="flex shrink-0 flex-wrap items-end gap-3">
-        {!stayOnly && <ReservationStatus detail={detail} />}
+        {!stayOnly && detail.status !== "cancelled" && (
+          <Button
+            type="button"
+            variant="destructive"
+            disabled={busy || independentDraftDirty}
+            onClick={() => {
+              if (isReservationSaving(queryClient, detail.id)) return;
+              setCancellation({ detail, discardDraft: dirty });
+            }}
+          >
+            Cancelar reserva
+          </Button>
+        )}
         <div className="ml-auto flex flex-wrap items-end justify-end gap-3">
-          {!stayOnly && (
-            <ReservationLifecycle
-              detail={detail}
-              blocked={draftDirty || !!intent || !!lifecycle}
-              onConfirm={(status) => {
-                if (
-                  draftDirty ||
-                  intent ||
-                  lifecycle ||
-                  isReservationSaving(queryClient, detail.id)
-                )
-                  return;
-                setLifecycle({ target: { kind: "status", status }, detail });
-              }}
-            />
+          {!stayOnly && tab === "details" && (
+            <FieldGroup className="w-48">
+              <form.AppField name="status">
+                {(field) => (
+                  <field.Choice
+                    label="Estado de la reserva"
+                    hideLabel
+                    disabled={busy || independentDraftDirty}
+                    options={[
+                      { value: "confirmed", label: "Confirmada" },
+                      { value: "checked_in", label: "Check-in" },
+                      { value: "checked_out", label: "Check-out" },
+                      ...(detail.status === "cancelled"
+                        ? [{ value: "cancelled", label: "Cancelada", disabled: true }]
+                        : []),
+                    ]}
+                  />
+                )}
+              </form.AppField>
+            </FieldGroup>
           )}
           <div className="flex flex-wrap gap-2">
             {stayOnly && (
@@ -817,6 +850,7 @@ export function BookingEditor({
                 form={formId}
                 disabled={
                   !dirty ||
+                  (statusChanged && independentDraftDirty) ||
                   roomTypes.isPending ||
                   roomTypes.isError ||
                   (pricingValid && !previewReady) ||
@@ -843,14 +877,25 @@ export function BookingEditor({
           </div>
         </div>
       </div>
-      {lifecycle && (
+      {cancellation && (
         <ReservationPageEditor
-          target={lifecycle.target}
-          detail={lifecycle.detail}
-          onDirtyChange={setLifecycleDirty}
+          target={{ kind: "status", status: "cancelled" }}
+          detail={cancellation.detail}
+          description={
+            cancellation.discardDraft
+              ? "Confirmar descarta los demás cambios sin guardar de Detalles."
+              : undefined
+          }
+          onDirtyChange={setCancellationDirty}
           onClose={() => {
-            setLifecycle(null);
-            setLifecycleDirty(false);
+            setCancellation(null);
+            setCancellationDirty(false);
+          }}
+          onSaved={(saved) => {
+            resetDetails(saved);
+            setCancellation(null);
+            setCancellationDirty(false);
+            onCancelled?.();
           }}
         />
       )}

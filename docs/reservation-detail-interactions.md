@@ -1,5 +1,32 @@
 # Reservation detail interactions
 
+## Calendar dialog restoration
+
+Restore the original calendar editing interaction without reverting reservation-page
+improvements. This supersedes the compact-calendar lifecycle policy below:
+
+- The compact **Detalles** footer has an **Estado de la reserva** dropdown.
+  Selecting a status only updates its draft; **Guardar detalles** saves status,
+  dates, rooms, and notes together. **Descartar cambios** resets the draft.
+  Remove compact one-click check-in/out buttons and the status-action menu.
+- Restore the separate **Cancelar reserva** button. Cancellation keeps its
+  server-previewed, consequence-aware confirmation and optional reason. Confirming
+  discards unsaved **Detalles** changes, explicitly stated in the confirmation,
+  and closes the compact dialog only after success. Failed/cancelled confirmation
+  preserves the details draft; failed saves retain the reason and retry ID.
+- Pending writes and independent guest, payment, discount, or nested-editor drafts
+  block cancellation. Pending writes block status editing; independent dirty drafts
+  must be saved or discarded before changing status.
+- Restoration is selected in the dropdown and explicitly saved with **Guardar
+  detalles**, not a second restoration dialog. Require the current server preview
+  and capacity/assignment/availability validation before saving. Preserve billing
+  previews, stale-result guards, duplicate-submission protection, and dirty
+  close/unload guards. No backend or domain-rule changes.
+- Keep the reservation page's section editors, occupant total, contact-field
+  simplification, and one-click page check-in/out unchanged.
+- Use the existing rendered-dialog seam for risk-focused status saving,
+  cancellation, independent-draft protection, and restoration-conflict coverage.
+
 ## Section-specific editing decision
 
 The reservation page is the complete reservation-management workspace; the

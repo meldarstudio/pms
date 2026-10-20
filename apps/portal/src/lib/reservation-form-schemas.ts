@@ -6,6 +6,7 @@ import { propertyToday } from "./property-calendar.ts";
 
 const optionalText = (max: number) => z.string().trim().max(max, `Máximo ${max} caracteres.`);
 const date = z.iso.date({ error: "Indica una fecha válida." });
+const status = z.enum(["confirmed", "checked_in", "checked_out", "cancelled"]);
 const count = (min: number, message: string) =>
   z
     .string()
@@ -35,13 +36,14 @@ export const detailsSchema = (
     saved,
   }: {
     validateOperations?: boolean;
-    saved?: Pick<ReservationDetail, "checkIn" | "checkOut" | "rooms">;
+    saved?: Pick<ReservationDetail, "checkIn" | "checkOut" | "status" | "rooms">;
   } = {},
 ) =>
   z
     .object({
       checkIn: date,
       checkOut: date,
+      status: status.optional(),
       notes: z.string().max(2000, "Máximo 2000 caracteres."),
       rooms: z.array(room),
     })
@@ -67,7 +69,10 @@ export const detailsSchema = (
         });
       const assignments = new Set<string>();
       const revalidateAll =
-        !saved || value.checkIn !== saved.checkIn || value.checkOut !== saved.checkOut;
+        !saved ||
+        value.checkIn !== saved.checkIn ||
+        value.checkOut !== saved.checkOut ||
+        (saved.status === "cancelled" && !!value.status && value.status !== "cancelled");
       value.rooms.forEach((draft, index) => {
         if (draft.removed) return;
         const path = ["rooms", index, "room"];
@@ -131,6 +136,7 @@ export function detailsDefaults(detail: ReservationDetail): DetailsValues {
   return {
     checkIn: detail.checkIn,
     checkOut: detail.checkOut,
+    status: status.parse(detail.status),
     notes: detail.notes ?? "",
     rooms: detail.rooms.map((room) => ({
       id: room.id,

@@ -62,7 +62,8 @@ informational: confirmed reservations offer one-click **Hacer check-in**, and
 checked-in reservations offer one-click **Hacer check-out**, without another
 confirmation. The detail page has no **Cambiar estado** dropdown; cancellation,
 restoration, and other status corrections have no page entry point for now.
-The compact calendar dialog retains its status menu and confirmation workflows.
+The compact calendar dialog uses its original status dropdown and separate
+**Cancelar reserva** button, rather than the page's one-click lifecycle controls.
 **Registrar pago** remains in the payment
 summary. Contact and stay sections sit beside the payment summary on desktop and
 stack on phones. The summary distinguishes outstanding, settled, and credit
@@ -95,9 +96,10 @@ billing previews. The focused stay editor does not expose calendar tabs, notes,
 payments, guest editing, discount editing, or lifecycle controls. Contact saves
 need no operational preview. Notes, guests, payments, discount and status changes
 retain their focused editor workflows.
-Cancellation and every transition out of a cancelled reservation require the same
-consequence-aware confirmation form on both surfaces, with a fresh server bill
-and current availability/assignment/capacity validation. Cancellation releases
+Cancellation uses a consequence-aware confirmation with a fresh server bill.
+Compact-calendar restoration is selected in the status dropdown, previewed against
+current availability/assignment/capacity rules, and explicitly saved with
+**Guardar detalles** rather than opening a second restoration dialog. Cancellation releases
 inventory and zeros charges while retaining payments as credit, not a refund.
 Check-in and checkout do not change stay dates or require a settled balance or
 physical room assignment. Lifecycle writes show pending/success/error feedback,
@@ -110,13 +112,16 @@ router navigation/browser unload are guarded while dirty or saving. Successful
 commands refresh the overview and related reservation/calendar/inventory queries.
 Back always opens Reservations, including calendar-origin and direct detail links.
 Reservation-list filters are preserved when returning from a list-origin detail link.
-The compact calendar dialog remains the utility-focused editor. Its saved status
-and dedicated lifecycle actions replace the old draft status selector; status
-never participates in **Guardar detalles** or the stay editor's save. Any
-dirty compact details, guest, payment, discount, or nested editor draft disables
-lifecycle actions with an explicit save/discard instruction. Pending discount
-autosaves also block lifecycle actions; failed drafts remain intact. Successful
-lifecycle changes refresh the saved status without discarding other editor state.
+The compact calendar dialog remains the utility-focused editor. Its **Estado de
+la reserva** dropdown changes the draft; **Guardar detalles** saves the chosen
+status together with dates, rooms, and notes. **Descartar cambios** resets them.
+Status does not participate in the page's stay-only editor. **Cancelar reserva**
+has its own preview and confirmation; it explicitly discards unsaved details and
+closes the compact dialog only after success. Failed or dismissed cancellation
+preserves the details draft. Dirty guest, payment, discount, or nested-editor
+drafts must be saved/discarded before cancellation or status editing. Pending
+writes, including discount autosaves, block overlapping writes; failed drafts
+remain intact. The page retains independent one-click check-in/out actions.
 
 The reservation editor uses TanStack Form with portal-local Zod 4 schemas in
 `src/lib/reservation-form-schemas.ts`. Details, guest add/edit, payment add/edit,

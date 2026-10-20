@@ -81,11 +81,15 @@ export function ReservationPageEditor({
   detail,
   onClose,
   onDirtyChange,
+  onSaved,
+  description,
 }: {
   target: ReservationEditorTarget;
   detail: ReservationDetail;
   onClose: () => void;
   onDirtyChange: (dirty: boolean) => void;
+  onSaved?: (saved: ReservationDetail) => void;
+  description?: string;
 }) {
   const client = useQueryClient();
   const dirty = useRef(false);
@@ -108,7 +112,7 @@ export function ReservationPageEditor({
   async function save(actions: WorkflowAction[]) {
     if (isReservationSaving(client, detail.id))
       throw new Error("Espera a que termine el guardado.");
-    await saveWorkflow(actions, (command) => mutation.mutateAsync({ id: detail.id, command }));
+    return saveWorkflow(actions, (command) => mutation.mutateAsync({ id: detail.id, command }));
   }
   return (
     <>
@@ -130,9 +134,10 @@ export function ReservationPageEditor({
           <DialogHeader className="shrink-0">
             <DialogTitle>{editorTitle(target, detail)}</DialogTitle>
             <DialogDescription>
-              {target.kind === "stay"
-                ? "Revisa las fechas, habitaciones y el importe antes de guardar."
-                : "Los cambios se guardan al confirmar."}
+              {description ??
+                (target.kind === "stay"
+                  ? "Revisa las fechas, habitaciones y el importe antes de guardar."
+                  : "Los cambios se guardan al confirmar.")}
             </DialogDescription>
           </DialogHeader>
           {target.kind === "stay" ? (
@@ -149,7 +154,9 @@ export function ReservationPageEditor({
               guest={detail.stayingGuests.find((guest) => guest.id === target.id)}
               disabled={saving}
               onDirtyChange={handleDirty}
-              onSave={(guests) => save([{ type: "set-guests", guests: guestValues(guests) }])}
+              onSave={async (guests) => {
+                await save([{ type: "set-guests", guests: guestValues(guests) }]);
+              }}
               onDone={onClose}
               onCancel={close}
             />
@@ -160,7 +167,7 @@ export function ReservationPageEditor({
               disabled={saving}
               onDirtyChange={handleDirty}
               onSave={save}
-              onSaved={onClose}
+              onSaved={onSaved ?? onClose}
               onCancel={close}
             />
           )}
@@ -191,8 +198,8 @@ function ReservationActionForm({
   target: Exclude<ReservationEditorTarget, { kind: "guest" | "stay" }>;
   detail: ReservationDetail;
   disabled: boolean;
-  onSave: (actions: WorkflowAction[]) => Promise<void>;
-  onSaved: () => void;
+  onSave: (actions: WorkflowAction[]) => Promise<ReservationDetail>;
+  onSaved: (saved: ReservationDetail) => void;
   onCancel: () => void;
   onDirtyChange: (dirty: boolean) => void;
 }) {
@@ -292,9 +299,9 @@ function ReservationActionForm({
           return;
       }
       try {
-        await onSave(actions);
+        const saved = await onSave(actions);
         toast.add({ title: "Cambios guardados", type: "success" });
-        onSaved();
+        onSaved(saved);
       } catch (cause) {
         const fields = serverFieldErrors(
           cause,
