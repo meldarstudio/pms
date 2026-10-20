@@ -185,9 +185,3 @@
     @apply font-sans;
   }
 }
-
-.login-background {
-  background-color: var(--muted);
-  background-image: radial-gradient(var(--border) 0.75px, transparent 0.75px);
-  background-size: 14px 14px;
-}

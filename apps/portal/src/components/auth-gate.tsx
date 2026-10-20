@@ -53,7 +53,7 @@ function LoginPage() {
   }
 
   return (
-    <main className="login-background flex min-h-svh items-center justify-center p-4">
+    <main className="bg-background flex min-h-svh items-center justify-center p-4">
       <Card className="w-full max-w-sm">
         <CardHeader className="justify-items-center py-2">
           <CardTitle>
@@ -63,7 +63,7 @@ function LoginPage() {
                 alt="Hotel Manantial"
                 width={144}
                 height={36}
-                className="h-9 w-36 dark:brightness-0 dark:invert"
+                className="h-9 w-36 scheme-light dark:scheme-dark"
               />
             </h1>
           </CardTitle>

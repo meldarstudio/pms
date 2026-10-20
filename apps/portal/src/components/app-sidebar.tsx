@@ -80,15 +80,14 @@ export function AppSidebar() {
   return (
     <Sidebar collapsible="offcanvas">
       <nav aria-label="Navegación principal" className="flex min-h-0 flex-1 flex-col">
-        <SidebarHeader className="gap-1 px-5 py-6">
+        <SidebarHeader className="items-center py-6">
           <img
             src={logo}
             alt="Hotel Manantial"
-            width={128}
-            height={32}
-            className="h-8 w-32 dark:brightness-0 dark:invert"
+            width={112}
+            height={28}
+            className="h-7 w-28 scheme-light dark:scheme-dark"
           />
-          <span className="text-xs text-muted-foreground">Recepción</span>
         </SidebarHeader>
         <SidebarContent>
           <SidebarGroup>
@@ -97,7 +96,6 @@ export function AppSidebar() {
                 {destinations.map(({ to, label, icon: Icon, search }) => (
                   <SidebarMenuItem key={to}>
                     <SidebarMenuButton
-                      size="lg"
                       isActive={
                         location.pathname === to ||
                         (to === "/reservations" && location.pathname.startsWith("/reservations/"))
@@ -124,7 +122,6 @@ export function AppSidebar() {
           <SidebarMenu>
             <SidebarMenuItem>
               <SidebarMenuButton
-                size="lg"
                 isActive={location.pathname === "/setup"}
                 render={<Link to="/setup" onClick={closeMobileNavigation} />}
               >
@@ -137,7 +134,6 @@ export function AppSidebar() {
           <SidebarMenu>
             <SidebarMenuItem>
               <SidebarMenuButton
-                size="lg"
                 disabled={logout.isPending}
                 onClick={() =>
                   logout.mutate(undefined, {

@@ -1,4 +1,9 @@
 <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 400 100">
+  <style>
+    @media (prefers-color-scheme: dark) {
+      :root { color: white; }
+    }
+  </style>
   <g clip-path="url(#a)">
     <use href="#reuse-0" />
     <path fill="currentColor"

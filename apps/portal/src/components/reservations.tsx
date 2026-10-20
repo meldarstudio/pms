@@ -20,6 +20,7 @@ import {
 } from "lucide-react";
 import { cn } from "cn";
 import { RoomBookingDialog, type BookingTarget } from "@/components/room-booking-dialog";
+import { PageHeaderActions } from "@/components/page-header-actions";
 import { DateField } from "@/components/date-field";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -233,13 +234,12 @@ export function Reservations({
 
   return (
     <main className="flex min-h-0 w-full flex-col gap-4 overflow-y-auto p-4 lg:p-6">
-      <header className="flex items-center justify-between gap-3">
-        <h1 className="text-xl font-semibold tracking-tight">Reservas</h1>
+      <PageHeaderActions>
         <Button onClick={() => setTarget({ mode: "new" })}>
           <PlusIcon data-icon="inline-start" />
           Nueva reserva
         </Button>
-      </header>
+      </PageHeaderActions>
       <div className="flex flex-wrap items-end justify-between gap-x-4 gap-y-3 pb-2">
         <Tabs
           className="max-w-full min-w-0"
