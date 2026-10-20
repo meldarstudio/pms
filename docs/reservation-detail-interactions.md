@@ -1,5 +1,42 @@
 # Reservation detail interactions
 
+## Section-specific editing decision
+
+The reservation page is the complete reservation-management workspace; the
+calendar dialog remains a compact tool for frequent operational tasks. Reuse
+validation, billing previews, workflow commands, and draft safeguards—not the
+calendar's entire editing surface.
+
+This decision supersedes the combined contact-and-stay editor, single header
+**Editar reserva** action, and two-card limit described below:
+
+- Show a dedicated **Contacto principal** section with name, phone, email, and
+  document details, including explicit empty values. Its **Editar contacto**
+  action corrects the existing contact's fields. Do not introduce contact search,
+  replacement, relinking, or changes to backend contact semantics.
+- Put **Editar estadía** in **Estadía y habitaciones**, replacing the generic
+  header edit action. Keep dates, reserved rooms, room types, physical assignments,
+  and declared occupancy in one stay draft and workflow command.
+- Contact and stay editors save independently. Neither saves changes belonging
+  to the other section. The stay dialog does not expose the compact calendar's
+  tabs, notes, guest/payment workflows, discount editing, or lifecycle controls.
+- Both editors use centered desktop dialogs and full-screen mobile layouts, with
+  reachable save/cancel controls while their form bodies scroll. Contact editing
+  uses a smaller desktop dialog than stay editing.
+- Preserve opening snapshots, failed drafts, field errors, retry-safe IDs,
+  dirty dismissal/navigation/unload guards, pending-write protection, and query
+  refreshes. Stay editing retains current availability/capacity checks, server
+  billing previews, and stale-preview protection. Contact edits need no preview.
+- Keep payment, discount, and lifecycle actions separate and unchanged. Keep the
+  header identity and the calendar's compact workflows unchanged.
+- First pass: only the two section editors and their read-only page sections.
+  Notes, staying guests, payment history, and other page expansion remain deferred.
+- Adapt existing rendered-page/fetch-boundary tests to independent saves and
+  retain consequential failure coverage; do not add a new test harness or an
+  exhaustive matrix. Run affected files serially within the existing resource
+  limits, then the full portal suite once, repository checks, and a build with a
+  non-production API origin.
+
 ## Follow-up decision
 
 The reservation detail page no longer exposes the **Cambiar estado** dropdown.

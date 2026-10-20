@@ -107,9 +107,6 @@ import {
   paymentDefaults,
   paymentPayload,
   cancellationSchema,
-  contactSchema,
-  contactDefaults,
-  contactPayload,
   type PaymentValues,
   type DetailsValues,
 } from "@/lib/reservation-form-schemas";
@@ -275,7 +272,7 @@ export function BookingEditor({
   full = false,
   initialTab = "details",
   onTabChange,
-  combined = false,
+  stayOnly = false,
   onCancel,
   onSaved,
 }: {
@@ -286,7 +283,7 @@ export function BookingEditor({
   full?: boolean;
   initialTab?: string;
   onTabChange?: (tab: string) => void;
-  combined?: boolean;
+  stayOnly?: boolean;
   onCancel?: () => void;
   onSaved?: () => void;
 }) {
@@ -294,10 +291,10 @@ export function BookingEditor({
   const queryClient = useQueryClient();
   const [guestDirty, setGuestDirty] = useState(false);
   const roomTypes = useRoomTypes();
-  const [defaults, setDefaults] = useState(() => detailsDefaults(detail, combined));
+  const [defaults, setDefaults] = useState(() => detailsDefaults(detail));
   const schema = useMemo(
-    () => detailsSchema(roomTypes.data ?? [], { saved: detail, validateContact: combined }),
-    [roomTypes.data, detail, combined],
+    () => detailsSchema(roomTypes.data ?? [], { saved: detail }),
+    [roomTypes.data, detail],
   );
   const pricingSchema = useMemo(
     () => detailsSchema(roomTypes.data ?? [], { validateOperations: false }),
@@ -315,7 +312,7 @@ export function BookingEditor({
         const fields = schemaErrors(schema.safeParse(value));
         // Focusing the rejected field can blur a date picker. That validation
         // must not erase server feedback for a value that has not been corrected.
-        for (const name of ["email", "checkOut"] as const) {
+        for (const name of ["checkOut"] as const) {
           if (
             rejectedFields.current?.fields[name] &&
             value[name] === rejectedFields.current.values[name]
@@ -368,15 +365,6 @@ export function BookingEditor({
   if (common.checkIn !== detail.checkIn || common.checkOut !== detail.checkOut)
     changes.unshift({ type: "dates", ...common });
   if (notes !== (detail.notes ?? "")) changes.push({ type: "notes", notes });
-  if (combined) {
-    const contact = contactSchema.safeParse(values);
-    if (
-      contact.success &&
-      JSON.stringify(contactPayload(contact.data)) !==
-        JSON.stringify(contactPayload(contactDefaults(detail)))
-    )
-      changes.push({ type: "contact", contact: contactPayload(contact.data) });
-  }
   const dirty = changes.length > 0 || (!validation.success && !unchanged);
   const draftDirty = dirty || paymentDirty || guestDirty || discountDirty || actionDirty;
   const previewActions = validationPreviewActions(changes);
@@ -464,7 +452,7 @@ export function BookingEditor({
   }, [draftDirty, lifecycleDirty, onDirtyChange]);
   function resetDetails(saved: ReservationDetail) {
     rejectedFields.current = null;
-    const next = detailsDefaults(saved, combined);
+    const next = detailsDefaults(saved);
     setDefaults(next);
     form.reset(next);
   }
@@ -509,8 +497,7 @@ export function BookingEditor({
       toast.add({ title: "Detalles guardados", type: "success" });
       onSaved?.();
     } catch (e) {
-      const fields =
-        serverFieldErrors(e, "details") ?? (combined ? serverFieldErrors(e, "guest") : null);
+      const fields = serverFieldErrors(e, "details");
       if (fields) {
         rejectedFields.current = { values, fields };
         form.setErrorMap({ onDynamic: { fields } });
@@ -519,7 +506,7 @@ export function BookingEditor({
   }
   return (
     <div className={cn("flex min-w-0 flex-col gap-4", !full && "min-h-0 flex-1 overflow-hidden")}>
-      {!combined && (
+      {!stayOnly && (
         <div className="flex shrink-0 flex-wrap items-center gap-1 pr-8">
           <span className="text-lg font-semibold">{`${contact.fullName}`.trim()}</span>
           <span className="text-lg text-muted-foreground"> · {detail.code}</span>
@@ -538,7 +525,7 @@ export function BookingEditor({
           )}
         </div>
       )}
-      {!combined && (contact.phone || contact.email) && (
+      {!stayOnly && (contact.phone || contact.email) && (
         <p className="-mt-2 shrink-0 text-sm wrap-anywhere text-muted-foreground">
           {[contact.phone, contact.email].filter(Boolean).join(" · ")}
         </p>
@@ -551,7 +538,7 @@ export function BookingEditor({
         }}
         className={cn("gap-4", !full && "min-h-0 overflow-y-auto")}
       >
-        {!combined && (
+        {!stayOnly && (
           <TabsList variant="line" className="shrink-0">
             <TabsTrigger value="details">
               Detalles
@@ -570,7 +557,7 @@ export function BookingEditor({
         <div
           className={cn(
             "grid min-w-0 shrink-0 gap-6 p-px",
-            !combined && "lg:grid-cols-[minmax(0,1fr)_280px]",
+            !stayOnly && "lg:grid-cols-[minmax(0,1fr)_280px]",
           )}
         >
           <div className="min-w-0">
@@ -581,31 +568,7 @@ export function BookingEditor({
                 onSubmit={(event) => void submitForm(event, () => form.handleSubmit())}
               >
                 <fieldset disabled={busy} className="flex min-w-0 flex-col gap-5">
-                  {combined && (
-                    <section aria-label="Contacto" className="flex flex-col gap-3">
-                      <h3 className="font-medium">Contacto</h3>
-                      <FieldGroup className="grid gap-3 sm:grid-cols-2">
-                        <form.AppField name="fullName">
-                          {(field) => <field.Text label="Nombre completo" required max={200} />}
-                        </form.AppField>
-                        <form.AppField name="phone">
-                          {(field) => <field.Text label="Teléfono" type="tel" max={40} />}
-                        </form.AppField>
-                        <form.AppField name="email">
-                          {(field) => (
-                            <field.Text label="Correo electrónico" type="email" max={320} />
-                          )}
-                        </form.AppField>
-                        <form.AppField name="documentType">
-                          {(field) => <field.Text label="Tipo de documento" max={40} />}
-                        </form.AppField>
-                        <form.AppField name="documentNumber">
-                          {(field) => <field.Text label="Número de documento" max={60} />}
-                        </form.AppField>
-                      </FieldGroup>
-                    </section>
-                  )}
-                  {combined && <h3 className="font-medium">Estadía</h3>}
+                  {stayOnly && <h3 className="font-medium">Estadía</h3>}
                   <FieldGroup className="grid grid-cols-2 gap-3">
                     <form.AppField
                       name="checkIn"
@@ -727,7 +690,7 @@ export function BookingEditor({
                       </section>
                     )}
                   </form.Field>
-                  {!combined && (
+                  {!stayOnly && (
                     <section className="flex flex-col gap-3">
                       <FieldGroup>
                         <form.AppField name="notes">
@@ -739,7 +702,7 @@ export function BookingEditor({
                 </fieldset>
               </form>
             </TabsContent>
-            {!combined && (
+            {!stayOnly && (
               <TabsContent value="guests" keepMounted className="flex flex-col gap-5">
                 <GuestFields
                   detail={detail}
@@ -749,7 +712,7 @@ export function BookingEditor({
                 />
               </TabsContent>
             )}
-            {!combined && (
+            {!stayOnly && (
               <TabsContent value="payments" keepMounted className="flex flex-col gap-5">
                 <PaymentForm
                   detail={detail}
@@ -783,7 +746,7 @@ export function BookingEditor({
               paidCents={billing?.paidCents ?? detail.paidCents}
               editableDiscountCents={detail.savedDiscountCents}
               discountDisabled={busy || discountMutation.isPending}
-              onDiscountSave={combined ? undefined : saveDiscount}
+              onDiscountSave={stayOnly ? undefined : saveDiscount}
               onDiscountDirtyChange={setDiscountDirty}
               currency={detail.currency}
               stayLabel={
@@ -824,9 +787,9 @@ export function BookingEditor({
         </div>
       </Tabs>
       <div className="flex shrink-0 flex-wrap items-end gap-3">
-        {!combined && <ReservationStatus detail={detail} />}
+        {!stayOnly && <ReservationStatus detail={detail} />}
         <div className="ml-auto flex flex-wrap items-end justify-end gap-3">
-          {!combined && (
+          {!stayOnly && (
             <ReservationLifecycle
               detail={detail}
               blocked={draftDirty || !!intent || !!lifecycle}
@@ -843,7 +806,7 @@ export function BookingEditor({
             />
           )}
           <div className="flex flex-wrap gap-2">
-            {combined && (
+            {stayOnly && (
               <Button type="button" variant="outline" disabled={busy} onClick={onCancel}>
                 Cancelar
               </Button>
@@ -862,12 +825,12 @@ export function BookingEditor({
               >
                 {saveMutation.isPending
                   ? "Guardando…"
-                  : combined
+                  : stayOnly
                     ? "Guardar cambios"
                     : "Guardar detalles"}
               </Button>
             )}
-            {!full && !combined && tab === "details" && (
+            {!full && !stayOnly && tab === "details" && (
               <Button
                 type="button"
                 variant="outline"

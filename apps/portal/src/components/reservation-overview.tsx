@@ -7,14 +7,17 @@ import {
   CircleCheckIcon,
   ClockIcon,
   CreditCardIcon,
+  IdCardIcon,
+  MailIcon,
   PencilIcon,
   PhoneIcon,
+  UserRoundIcon,
   type LucideIcon,
 } from "lucide-react";
 import { cn } from "cn";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
+import { Card, CardHeader, CardTitle, CardContent, CardAction } from "@/components/ui/card";
 import { ReservationLifecycle } from "@/components/reservation-lifecycle";
 import { balanceStatus } from "@/components/balance-status";
 import type { ReservationEditorTarget } from "@/components/reservation-page-editors";
@@ -91,10 +94,6 @@ export function ReservationOverview({
             </div>
           </div>
           <div className="ml-auto flex flex-wrap items-center justify-end gap-2">
-            <Button variant="outline" onClick={() => edit({ kind: "stay" })}>
-              <PencilIcon data-icon="inline-start" />
-              Editar reserva
-            </Button>
             <ReservationLifecycle
               detail={detail}
               showStatusMenu={false}
@@ -121,41 +120,88 @@ export function ReservationOverview({
         </section>
       ) : null}
       <div className="grid min-w-0 gap-5 md:grid-cols-2">
-        <Card className="min-w-0">
-          <CardHeader>
-            <CardTitle>
-              <h2>Datos de la reserva</h2>
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <dl className="flex flex-col">
-              <ReservationDatum icon={CalendarDaysIcon} label="Fecha de ingreso">
-                {fullDate(detail.checkIn)}
-              </ReservationDatum>
-              <ReservationDatum icon={CalendarCheckIcon} label="Fecha de egreso">
-                {fullDate(detail.checkOut)}
-              </ReservationDatum>
-              <ReservationDatum icon={ClockIcon} label="Duración">
-                {nights} {nights === 1 ? "noche" : "noches"}
-              </ReservationDatum>
-              <ReservationDatum
-                icon={BedDoubleIcon}
-                label={detail.rooms.length === 1 ? "Habitación" : "Habitaciones"}
-              >
-                <ul className="flex flex-col gap-2">
-                  {detail.rooms.map((room) => (
-                    <li key={room.id}>
-                      {room.roomNumber ?? "Sin asignar"} · {room.roomTypeName || "Habitación"}
-                    </li>
-                  ))}
-                </ul>
-              </ReservationDatum>
-            </dl>
-          </CardContent>
-        </Card>
+        <div className="flex min-w-0 flex-col gap-5">
+          <ContactSummary detail={detail} edit={edit} />
+          <Card className="min-w-0">
+            <CardHeader>
+              <CardTitle>
+                <h2>Estadía y habitaciones</h2>
+              </CardTitle>
+              <CardAction>
+                <Button variant="outline" size="sm" onClick={() => edit({ kind: "stay" })}>
+                  <PencilIcon data-icon="inline-start" />
+                  Editar estadía
+                </Button>
+              </CardAction>
+            </CardHeader>
+            <CardContent>
+              <dl className="flex flex-col">
+                <ReservationDatum icon={CalendarDaysIcon} label="Fecha de ingreso">
+                  {fullDate(detail.checkIn)}
+                </ReservationDatum>
+                <ReservationDatum icon={CalendarCheckIcon} label="Fecha de egreso">
+                  {fullDate(detail.checkOut)}
+                </ReservationDatum>
+                <ReservationDatum icon={ClockIcon} label="Duración">
+                  {nights} {nights === 1 ? "noche" : "noches"}
+                </ReservationDatum>
+                <ReservationDatum
+                  icon={BedDoubleIcon}
+                  label={detail.rooms.length === 1 ? "Habitación" : "Habitaciones"}
+                >
+                  <ul className="flex flex-col gap-2">
+                    {detail.rooms.map((room) => (
+                      <li key={room.id}>
+                        {room.roomNumber ?? "Sin asignar"} · {room.roomTypeName || "Habitación"}
+                      </li>
+                    ))}
+                  </ul>
+                </ReservationDatum>
+              </dl>
+            </CardContent>
+          </Card>
+        </div>
         <PaymentSummary detail={detail} edit={edit} />
       </div>
     </fieldset>
+  );
+}
+
+function ContactSummary({ detail, edit }: Model) {
+  const contact = detail.guest;
+  return (
+    <Card className="min-w-0" role="region" aria-label="Contacto principal">
+      <CardHeader>
+        <CardTitle>
+          <h2>Contacto principal</h2>
+        </CardTitle>
+        <CardAction>
+          <Button variant="outline" size="sm" onClick={() => edit({ kind: "contact" })}>
+            <PencilIcon data-icon="inline-start" />
+            Editar contacto
+          </Button>
+        </CardAction>
+      </CardHeader>
+      <CardContent>
+        <dl className="flex flex-col">
+          <ReservationDatum icon={UserRoundIcon} label="Nombre completo">
+            {contact.fullName}
+          </ReservationDatum>
+          <ReservationDatum icon={PhoneIcon} label="Teléfono">
+            {contact.phone ? <a href={`tel:${contact.phone}`}>{contact.phone}</a> : "Sin teléfono"}
+          </ReservationDatum>
+          <ReservationDatum icon={MailIcon} label="Correo electrónico">
+            {contact.email ? <a href={`mailto:${contact.email}`}>{contact.email}</a> : "Sin correo"}
+          </ReservationDatum>
+          <ReservationDatum icon={IdCardIcon} label="Tipo de documento">
+            {contact.documentType || "Sin registrar"}
+          </ReservationDatum>
+          <ReservationDatum icon={IdCardIcon} label="Número de documento">
+            {contact.documentNumber || "Sin registrar"}
+          </ReservationDatum>
+        </dl>
+      </CardContent>
+    </Card>
   );
 }
 

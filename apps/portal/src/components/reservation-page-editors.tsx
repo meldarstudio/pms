@@ -22,6 +22,8 @@ import { guestValues } from "@/lib/reservation-editor";
 import { useReservationForm, blurThenChange, submitForm } from "@/lib/reservation-form";
 import {
   contactSchema,
+  contactDefaults,
+  contactPayload,
   notesSchema,
   discountSchema,
   paymentSchema,
@@ -48,9 +50,9 @@ export type ReservationEditorTarget =
 function editorTitle(target: ReservationEditorTarget, detail: ReservationDetail) {
   switch (target.kind) {
     case "stay":
-      return "Editar reserva";
+      return "Editar estadía";
     case "contact":
-      return "Editar contacto de la reserva";
+      return "Editar contacto";
     case "notes":
       return "Notas de la reserva";
     case "discount":
@@ -120,22 +122,23 @@ export function ReservationPageEditor({
           closeDisabled={saving}
           className={cn(
             "max-h-[90svh] overflow-y-auto sm:max-w-lg",
-            target.kind === "stay" &&
-              "top-0 left-0 flex h-svh max-h-svh w-full max-w-full translate-x-0 translate-y-0 flex-col overflow-hidden sm:top-1/2 sm:left-1/2 sm:h-auto sm:max-h-[90svh] sm:max-w-2xl sm:-translate-x-1/2 sm:-translate-y-1/2",
+            (target.kind === "stay" || target.kind === "contact") &&
+              "top-0 left-0 flex h-svh max-h-svh w-full max-w-full translate-x-0 translate-y-0 flex-col overflow-hidden sm:top-1/2 sm:left-1/2 sm:h-auto sm:max-h-[90svh] sm:-translate-x-1/2 sm:-translate-y-1/2",
+            target.kind === "stay" && "sm:max-w-2xl",
           )}
         >
-          <DialogHeader>
+          <DialogHeader className="shrink-0">
             <DialogTitle>{editorTitle(target, detail)}</DialogTitle>
             <DialogDescription>
               {target.kind === "stay"
-                ? "Revisa el contacto, las fechas, habitaciones y el importe antes de guardar."
+                ? "Revisa las fechas, habitaciones y el importe antes de guardar."
                 : "Los cambios se guardan al confirmar."}
             </DialogDescription>
           </DialogHeader>
           {target.kind === "stay" ? (
             <BookingEditor
               detail={detail}
-              combined
+              stayOnly
               onCancel={close}
               onDirtyChange={handleDirty}
               onSaved={onClose}
@@ -197,11 +200,7 @@ function ReservationActionForm({
   const payment =
     "id" in target ? detail.payments.find((payment) => payment.id === target.id) : undefined;
   const [defaults] = useState(() => ({
-    fullName: detail.guest.fullName,
-    email: detail.guest.email ?? "",
-    phone: detail.guest.phone ?? "",
-    documentType: detail.guest.documentType ?? "",
-    documentNumber: detail.guest.documentNumber ?? "",
+    ...contactDefaults(detail),
     notes: detail.notes ?? "",
     ...paymentDefaults(detail.balanceCents),
     ...(target.kind === "discount" ? { amount: formatMajor(detail.savedDiscountCents) } : {}),
@@ -225,19 +224,23 @@ function ReservationActionForm({
           : target.kind === "payment"
             ? paymentSchema
             : cancellationSchema;
+  const rejectedContact = useRef<{ email: string; fields: Record<string, string> } | null>(null);
   const form = useReservationForm({
     defaultValues: defaults,
     validationLogic: blurThenChange(),
     validators: {
       onDynamic: ({ value }) => {
         const result = schema.safeParse(value);
-        return result.success
-          ? undefined
-          : {
-              fields: Object.fromEntries(
-                result.error.issues.map((issue) => [issue.path.join("."), issue.message]),
-              ),
-            };
+        const fields = result.success
+          ? {}
+          : Object.fromEntries(
+              result.error.issues.map((issue) => [issue.path.join("."), issue.message]),
+            );
+        // submitForm focuses invalid fields; the resulting blur must not erase
+        // a server rejection until the contact value actually changes.
+        if (target.kind === "contact" && rejectedContact.current?.email === value.email)
+          Object.assign(fields, rejectedContact.current.fields);
+        return Object.keys(fields).length ? { fields } : undefined;
       },
     },
     onSubmit: async ({ value }) => {
@@ -245,19 +248,7 @@ function ReservationActionForm({
       let actions: WorkflowAction[];
       switch (target.kind) {
         case "contact": {
-          const contact = contactSchema.parse(value);
-          actions = [
-            {
-              type: "contact",
-              contact: {
-                ...contact,
-                email: contact.email || null,
-                phone: contact.phone || null,
-                documentType: contact.documentType || null,
-                documentNumber: contact.documentNumber || null,
-              },
-            },
-          ];
+          actions = [{ type: "contact", contact: contactPayload(value) }];
           break;
         }
         case "notes":
@@ -309,7 +300,10 @@ function ReservationActionForm({
           cause,
           target.kind === "payment" ? "payment" : target.kind === "contact" ? "guest" : "details",
         );
-        if (fields) setServerErrors(form, fields);
+        if (fields && target.kind === "contact") {
+          rejectedContact.current = { email: value.email, fields };
+          form.setErrorMap({ onDynamic: { fields } });
+        } else if (fields) setServerErrors(form, fields);
         else toastError("No se pudo guardar", cause);
       }
     },
@@ -365,31 +359,36 @@ function ReservationActionForm({
   return (
     <form
       noValidate
-      className="flex flex-col gap-6"
+      className={cn(
+        "flex flex-col gap-6",
+        target.kind === "contact" && "min-h-0 flex-1 overflow-hidden",
+      )}
       onSubmit={(event) => void submitForm(event, () => form.handleSubmit())}
     >
-      <fieldset disabled={saving}>
+      <fieldset
+        disabled={saving}
+        className={cn(target.kind === "contact" && "min-h-0 overflow-y-auto p-px")}
+      >
         <FieldGroup>
           {target.kind === "contact" && (
             <>
               <FieldDescription>
-                Este contacto es compartido. Editarlo actualiza su registro en todas las reservas
-                donde se utiliza; no reemplaza el contacto ni modifica los huéspedes.
+                Corrige los datos del contacto principal. La lista de huéspedes no cambia.
               </FieldDescription>
               <form.AppField name="fullName">
-                {(field) => <field.Text label="Nombre completo" required />}
+                {(field) => <field.Text label="Nombre completo" required max={200} />}
               </form.AppField>
               <form.AppField name="email">
-                {(field) => <field.Text label="Correo electrónico" type="email" />}
+                {(field) => <field.Text label="Correo electrónico" type="email" max={320} />}
               </form.AppField>
               <form.AppField name="phone">
-                {(field) => <field.Text label="Teléfono" type="tel" />}
+                {(field) => <field.Text label="Teléfono" type="tel" max={40} />}
               </form.AppField>
               <form.AppField name="documentType">
-                {(field) => <field.Text label="Tipo de documento" />}
+                {(field) => <field.Text label="Tipo de documento" max={40} />}
               </form.AppField>
               <form.AppField name="documentNumber">
-                {(field) => <field.Text label="Número de documento" />}
+                {(field) => <field.Text label="Número de documento" max={60} />}
               </form.AppField>
             </>
           )}
@@ -501,9 +500,9 @@ function ReservationActionForm({
           )}
         </section>
       )}
-      <div className="flex flex-wrap justify-end gap-2">
+      <div className="flex shrink-0 flex-wrap justify-end gap-2">
         <Button type="button" variant="outline" disabled={saving} onClick={onCancel}>
-          Cerrar
+          {target.kind === "contact" ? "Cancelar" : "Cerrar"}
         </Button>
         <Button
           type="submit"

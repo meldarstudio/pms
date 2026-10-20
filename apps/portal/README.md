@@ -57,36 +57,41 @@ the actual API and transactional database behavior.
 
 `/reservations/:id` is a read-first overview with back navigation, booking contact
 name with status/date badges, the reservation code and contact phone beneath it,
-and right-aligned **Editar reserva** and lifecycle actions. Saved status is
+and right-aligned lifecycle actions. Saved status is
 informational: confirmed reservations offer one-click **Hacer check-in**, and
 checked-in reservations offer one-click **Hacer check-out**, without another
 confirmation. The detail page has no **Cambiar estado** dropdown; cancellation,
 restoration, and other status corrections have no page entry point for now.
 The compact calendar dialog retains its status menu and confirmation workflows.
 **Registrar pago** remains in the payment
-summary. Reservation data and a payment summary sit side by side on desktop and
+summary. Contact and stay sections sit beside the payment summary on desktop and
 stack on phones. The summary distinguishes outstanding, settled, and credit
 balances; it is a reservation bill, not an invoice.
 The bill shows subtotal, discount (including zero), total, amount paid, and balance.
-The discount row has its own **Editar descuento** action; **Editar reserva** appears
-only in the page header.
+The discount row has its own **Editar descuento** action.
 
-The overview currently ends at the two summary cards while their design is being
-refined. Lower contact, guest, notes, payment-record, and account sections are
-deferred; their editor workflows remain implemented. Declared occupancy stays
+The page is the complete reservation-management workspace, expanded incrementally,
+while the calendar dialog stays compact and operations-focused. **Contacto principal**
+shows name, phone, email, and document details with an **Editar contacto** action.
+**Estadía y habitaciones** has its own **Editar estadía** action. Guest, notes,
+payment-record, and account sections remain deferred; their editor workflows
+remain implemented. Declared occupancy stays
 distinct from the optional guest list and remains editable in the stay editor.
 The reservation data card omits occupancy and guest counts, quick-action buttons,
 and row dividers.
 The page does not offer unsupported invoice, payment-request, web check-in,
 history, attachment, or task controls from the design reference.
 
-**Editar reserva** opens a centered desktop dialog/full-screen mobile editor with
-visible **Contacto** and **Estadía** sections. Contact name, phone, email and document
-details share one draft with stay dates, room types, assignments and occupancy.
-**Guardar cambios** sends their changes together in one atomic workflow command,
-reusing the compact dialog's availability, capacity and server billing previews.
-Contact typing does not invalidate the current operational preview. Notes, guests,
-payments, discount and status changes retain their focused editor workflows.
+Contact and stay edits open separate centered desktop dialogs/full-screen mobile
+editors, each with independently saved drafts and reachable save/cancel controls
+while the form body scrolls. Contact editing corrects the existing record's name,
+phone, email, and document fields; it does not search for or replace the contact.
+Stay dates, room types, assignments, and occupancy save together through
+**Guardar cambios**, reusing the compact dialog's availability, capacity and server
+billing previews. The focused stay editor does not expose calendar tabs, notes,
+payments, guest editing, discount editing, or lifecycle controls. Contact saves
+need no operational preview. Notes, guests, payments, discount and status changes
+retain their focused editor workflows.
 Cancellation and every transition out of a cancelled reservation require the same
 consequence-aware confirmation form on both surfaces, with a fresh server bill
 and current availability/assignment/capacity validation. Cancellation releases
@@ -104,7 +109,7 @@ Back always opens Reservations, including calendar-origin and direct detail link
 Reservation-list filters are preserved when returning from a list-origin detail link.
 The compact calendar dialog remains the utility-focused editor. Its saved status
 and dedicated lifecycle actions replace the old draft status selector; status
-never participates in **Guardar detalles** or the combined editor's save. Any
+never participates in **Guardar detalles** or the stay editor's save. Any
 dirty compact details, guest, payment, discount, or nested editor draft disables
 lifecycle actions with an explicit save/discard instruction. Pending discount
 autosaves also block lifecycle actions; failed drafts remain intact. Successful
