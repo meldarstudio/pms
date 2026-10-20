@@ -55,6 +55,80 @@ the actual API and transactional database behavior.
 
 ## Reservation forms
 
+`/reservations/:id` is a read-first overview with back navigation, booking contact
+name with status/date badges, the reservation code beneath it,
+and a right-aligned **Estado de la reserva** select. Selecting Confirmada,
+Check-in, or Check-out on an active reservation saves immediately without another
+confirmation or save button. Selecting Cancelada opens a consequence-aware
+confirmation; selecting an active status on a cancelled reservation opens a
+restoration confirmation with a fresh server bill and availability validation.
+The select shows the saved status, stays disabled during writes, and retains the
+previous status after a failed save so the same choice can be retried safely.
+The compact calendar dialog uses its original status dropdown and separate
+**Cancelar reserva** button; its status changes save with **Guardar detalles**,
+not immediately as on the page.
+**Registrar pago** remains in the payment
+summary. Contact and payment sections occupy the left column, with the stay
+section on the right on desktop; all three stack on phones. The summary distinguishes outstanding, settled, and credit
+balances; it is a reservation bill, not an invoice.
+The bill shows subtotal, discount (including zero), total, amount paid, and balance.
+The discount row has its own **Editar descuento** action.
+
+The page is the complete reservation-management workspace, expanded incrementally,
+while the calendar dialog stays compact and operations-focused. **Contacto principal**
+shows name, phone, and email with an **Editar contacto** action. The phone link
+appears only in this card, not in the page header. Document fields are not
+requested or displayed for booking contacts; contact saves omit them to
+preserve existing stored values. Staying-guest document fields remain unchanged.
+**Estadía y habitaciones** has its own **Editar estadía** action. Guest, notes,
+payment-record, and account sections remain deferred; their editor workflows
+remain implemented. Declared occupancy stays
+distinct from the optional guest list and remains editable in the stay editor.
+The stay summary shows one **Ocupantes** total, adding adults and children across
+all reserved rooms—not the optional named guest list. Below it, **Habitaciones
+asignadas** shows the room count and a bordered list: each row has a bed icon,
+room number and type, with adult/child counts underneath. Unassigned rooms show
+**Sin asignar**. Per-room occupancy remains editable in the stay editor.
+The page does not offer unsupported invoice, payment-request, web check-in,
+history, attachment, or task controls from the design reference.
+
+Contact and stay edits open separate centered desktop dialogs/full-screen mobile
+editors, each with independently saved drafts and reachable save/cancel controls
+while the form body scrolls. Contact editing corrects the existing record's name,
+phone, and email fields; it does not search for or replace the contact.
+Stay dates, room types, assignments, and occupancy save together through
+**Guardar cambios**, reusing the compact dialog's availability, capacity and server
+billing previews. The focused stay editor does not expose calendar tabs, notes,
+payments, guest editing, discount editing, or lifecycle controls. Contact saves
+need no operational preview. Notes, guests, payments, discount and status changes
+retain their focused editor workflows.
+Cancellation uses a consequence-aware confirmation with a fresh server bill.
+Compact-calendar restoration is selected in the status dropdown, previewed against
+current availability/assignment/capacity rules, and explicitly saved with
+**Guardar detalles** rather than opening a second restoration dialog. Cancellation releases
+inventory and zeros charges while retaining payments as credit, not a refund.
+Check-in and checkout do not change stay dates or require a settled balance or
+physical room assignment. Lifecycle writes show pending/success/error feedback,
+block duplicate and overlapping reservation writes, and reuse the request ID when
+retrying an unchanged action after an uncertain response.
+
+Editors capture their opening values so background reads do not replace drafts.
+Failed saves retain drafts, dismissing a dirty editor asks for confirmation, and
+router navigation/browser unload are guarded while dirty or saving. Successful
+commands refresh the overview and related reservation/calendar/inventory queries.
+Back always opens Reservations, including calendar-origin and direct detail links.
+Reservation-list filters are preserved when returning from a list-origin detail link.
+The compact calendar dialog remains the utility-focused editor. Its **Estado de
+la reserva** dropdown changes the draft; **Guardar detalles** saves the chosen
+status together with dates, rooms, and notes. **Descartar cambios** resets them.
+Status does not participate in the page's stay-only editor. **Cancelar reserva**
+has its own preview and confirmation; it explicitly discards unsaved details and
+closes the compact dialog only after success. Failed or dismissed cancellation
+preserves the details draft. Dirty guest, payment, discount, or nested-editor
+drafts must be saved/discarded before cancellation or status editing. Pending
+writes, including discount autosaves, block overlapping writes; failed drafts
+remain intact. The page uses its independent auto-saving status select.
+
 The reservation editor uses TanStack Form with portal-local Zod 4 schemas in
 `src/lib/reservation-form-schemas.ts`. Details, guest add/edit, payment add/edit,
 discount, and cancellation have independent form instances. API writes still use
@@ -68,8 +142,9 @@ error toasts. Query failures stay beside the content they block.
 Run `pnpm exec vp test` from the repository root for both test projects,
 `pnpm test` to run backend then portal, or `pnpm --filter @pms/portal test`
 for the portal alone. Tests use `vite-plus/test` and do not need a browser.
-The dialog suite in `tests/reservation-dialog.test.ts` uses happy-dom and a Vite
-SSR server with an explicit portal root to render the actual components.
+The dialog suite in `tests/reservation-dialog.test.ts` and the full-page suite in
+`tests/reservation-page.test.ts` use happy-dom and a Vite SSR server with an explicit
+portal root to render actual components with HTTP responses substituted at fetch.
 
 Run `pnpm check` for Oxfmt, Oxlint, and native type checks across the portal,
 backend, and shared schemas. Native checking covers portal source, Vite

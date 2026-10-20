@@ -43,7 +43,7 @@ export const detailsSchema = (
     .object({
       checkIn: date,
       checkOut: date,
-      status,
+      status: status.optional(),
       notes: z.string().max(2000, "Máximo 2000 caracteres."),
       rooms: z.array(room),
     })
@@ -72,7 +72,7 @@ export const detailsSchema = (
         !saved ||
         value.checkIn !== saved.checkIn ||
         value.checkOut !== saved.checkOut ||
-        (saved.status === "cancelled" && value.status !== "cancelled");
+        (saved.status === "cancelled" && !!value.status && value.status !== "cancelled");
       value.rooms.forEach((draft, index) => {
         if (draft.removed) return;
         const path = ["rooms", index, "room"];
@@ -129,7 +129,6 @@ export type DetailsValues = z.input<ReturnType<typeof detailsSchema>>;
 export const emptyDetails: DetailsValues = {
   checkIn: "",
   checkOut: "",
-  status: "confirmed",
   notes: "",
   rooms: [],
 };
@@ -206,6 +205,23 @@ export const guestSchema = z.object({
   reservationRoomId: z.string().nullable(),
 });
 export type GuestValues = z.input<typeof guestSchema>;
+export const contactSchema = guestSchema.pick({ fullName: true, phone: true, email: true });
+export function contactDefaults(detail: ReservationDetail) {
+  return {
+    fullName: detail.guest.fullName,
+    phone: detail.guest.phone ?? "",
+    email: detail.guest.email ?? "",
+  };
+}
+export function contactPayload(values: z.input<typeof contactSchema>) {
+  const parsed = contactSchema.parse(values);
+  return {
+    ...parsed,
+    phone: parsed.phone || null,
+    email: parsed.email || null,
+  };
+}
+export const notesSchema = z.object({ notes: z.string().max(2000, "Máximo 2000 caracteres.") });
 export function guestDefaults(guest: StayingGuest): GuestValues {
   return {
     ...guest,

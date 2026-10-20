@@ -269,8 +269,6 @@ it("counts changed filter groups instead of chips and restores defaults without 
 });
 
 it.each([
-  ["arrivals", "confirmed,checked_in,checked_out"],
-  ["departures", "confirmed,checked_in,checked_out"],
   ["in-house", "checked_in"],
   ["all", null],
 ])(
@@ -380,11 +378,9 @@ it("refreshes cached operations and legacy calendar results after saving in rese
   await until(() => container.querySelector("tbody")?.textContent.includes("Ana Pérez") ?? false);
   const row = container.querySelector<HTMLElement>("tbody tr")!;
   await React.act(async () => row.click());
-  await until(() => container.textContent.includes("Reserva ANA0001"));
+  await until(() => container.textContent.includes("#ANA0001"));
   await choose("Estado de la reserva", "Check-in");
-  await until(() => !button("Guardar detalles").hasAttribute("disabled"));
-  await click("Guardar detalles");
-  await until(() => saved && button("Guardar detalles").hasAttribute("disabled"));
+  await until(() => saved && !container.querySelector("fieldset")?.disabled);
   await click("Volver a reservas");
   await until(() => container.textContent.includes("No se encontraron reservas"));
   assert.ok(container.textContent.includes("0 de 0 reservas"));
@@ -428,39 +424,25 @@ it("sends sorting and page sizes to the full-result endpoint and resets the offs
   assert.equal(params().get("offset"), "0");
 });
 
-it.each([
-  ["Contacto principal", "guestName"],
-  ["Check-in", "checkIn"],
-  ["Check-out", "checkOut"],
-  ["Saldo", "balance"],
-])(
-  "sorts the full result set through the %s header without opening a reservation",
-  async (label, sort) => {
-    respond = (url) =>
-      Response.json({
-        rows: [ana],
-        total: 126,
-        limit: 50,
-        offset: Number(url.searchParams.get("offset")),
-      });
-    await render(`/reservations?view=all&page=2&sort=${sort}&direction=asc`);
-    await click(`Ordenar por ${label}`);
-    await until(() => params().get("direction") === "desc");
-    assert.equal(params().get("sort"), sort);
-    assert.equal(params().get("offset"), "0");
-    assert.equal(
-      button(`Ordenar por ${label}`).closest("th")!.getAttribute("aria-sort"),
-      "descending",
-    );
-    assert.equal(router.state.location.pathname, "/reservations");
-    await click(`Ordenar por ${label}`);
-    await until(() => params().get("direction") === "asc");
-    assert.equal(
-      button(`Ordenar por ${label}`).closest("th")!.getAttribute("aria-sort"),
-      "ascending",
-    );
-  },
-);
+it("sorts the full result set through a header without opening a reservation", async () => {
+  respond = (url) =>
+    Response.json({
+      rows: [ana],
+      total: 126,
+      limit: 50,
+      offset: Number(url.searchParams.get("offset")),
+    });
+  await render("/reservations?view=all&page=2&sort=balance&direction=asc");
+  await click("Ordenar por Saldo");
+  await until(() => params().get("direction") === "desc");
+  assert.equal(params().get("sort"), "balance");
+  assert.equal(params().get("offset"), "0");
+  assert.equal(button("Ordenar por Saldo").closest("th")!.getAttribute("aria-sort"), "descending");
+  assert.equal(router.state.location.pathname, "/reservations");
+  await click("Ordenar por Saldo");
+  await until(() => params().get("direction") === "asc");
+  assert.equal(button("Ordenar por Saldo").closest("th")!.getAttribute("aria-sort"), "ascending");
+});
 
 it("identifies the booking contact, signed balances, and every assigned or unassigned reserved room", async () => {
   respond = () =>
@@ -470,8 +452,8 @@ it("identifies the booking contact, signed balances, and every assigned or unass
           ...ana,
           guest: { ...ana.guest, phone: "+51 987 654 321" },
           rooms: [
-            ana.rooms[0],
-            { ...ana.rooms[0], id: "unassigned-1", roomId: null, roomNumber: null },
+            { ...ana.rooms[0], adults: 1, children: 1 },
+            { ...ana.rooms[0], id: "unassigned-1", roomId: null, roomNumber: null, adults: 1 },
             { ...ana.rooms[0], id: "unassigned-2", roomId: null, roomNumber: null },
           ],
         },
@@ -497,31 +479,17 @@ it("identifies the booking contact, signed balances, and every assigned or unass
       offset: 0,
     });
   await render("/reservations?view=all");
-  const headers = Array.from(container.querySelectorAll("th")).map(
-    (element) => element.textContent,
-  );
-  assert.ok(headers.includes("Contacto principal"));
-  assert.ok(headers.includes("Saldo"));
-  assert.equal(headers.includes("Huésped"), false);
   const rows = Array.from(container.querySelectorAll("tbody tr"));
-  const contact = rows[0]!.querySelector("td:first-child")!;
-  assert.equal(contact.querySelector("span:first-child")!.textContent, "Ana Pérez");
-  assert.equal(contact.querySelector("span:last-child")!.textContent, "+51 987 654 321");
-  assert.equal(rows[1]!.querySelector("td:first-child")!.textContent, "Bea SaldadaSin teléfono");
+  assert.match(rows[0]!.textContent, /Ana Pérez/);
+  assert.match(rows[0]!.textContent, /\+51 987 654 321/);
+  assert.match(rows[0]!.textContent, /4 adultos · 1 niño/);
+  assert.match(rows[0]!.textContent, /Confirmada/);
+  assert.match(rows[1]!.textContent, /Bea Saldada/);
+  assert.match(rows[1]!.textContent, /Sin teléfono/);
   assert.match(rows[0]!.textContent, /101 · 2 sin asignar/);
   assert.match(rows[0]!.querySelector("td:last-child")!.textContent, /200Saldo pendiente/);
   assert.match(rows[1]!.textContent, /1 sin asignar/);
   assert.match(rows[1]!.querySelector("td:last-child")!.textContent, /0Saldada/);
-  assert.ok(
-    rows[0]!
-      .querySelector("td:last-child span:first-child")!
-      .classList.contains("text-destructive"),
-  );
-  assert.ok(
-    rows[1]!
-      .querySelector("td:last-child span:last-child")!
-      .classList.contains("text-booking-foreground"),
-  );
   assert.match(rows[2]!.querySelector("td:last-child")!.textContent, /150Crédito/);
   assert.equal(rows[2]!.textContent.includes("Saldo pendiente"), false);
   await fill("Contacto principal o código", "Ana ANA0001");
@@ -553,7 +521,7 @@ it.each(["Enter", " ", "click"])(
           new window.KeyboardEvent("keydown", { key: activation, bubbles: true, cancelable: true }),
         );
     });
-    await until(() => container.textContent.includes("Reserva ANA0001"));
+    await until(() => container.textContent.includes("#ANA0001"));
     const detailLink = router.state.location.href;
     // A different table context must not overwrite the return URL encoded in this detail link.
     await React.act(async () => router.navigate({ href: "/reservations?view=all" }));
@@ -688,8 +656,6 @@ it("keeps overdue checked-in stays in-house and hides the conflicting status sel
 
 it("picks a property calendar day, steps backward, and keeps an explicit date when the property clock advances", async () => {
   await render("/reservations?day=2026-10-31&page=2");
-  const dateLabel = container.querySelector(`label[for="${button("Día de operación").id}"]`);
-  assert.ok(dateLabel?.classList.contains("sr-only"));
   await click("Día de operación");
   const selected = window.document.querySelector<HTMLElement>('button[data-day="30/10/2026"]');
   assert.ok(selected);

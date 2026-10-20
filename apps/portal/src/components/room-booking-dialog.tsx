@@ -55,8 +55,8 @@ import {
 } from "@/components/ui/table";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Separator } from "@/components/ui/separator";
-import { WorkflowBill } from "@/components/workflow-bill";
 import { BookingSummary } from "@/components/booking-summary";
+import { ReservationPageEditor } from "@/components/reservation-page-editors";
 import { NewBooking } from "@/components/new-booking";
 import { GuestEntryForm, PaymentForm, paymentMethods } from "@/components/reservation-entry-forms";
 import { format } from "@/lib/dates";
@@ -91,7 +91,6 @@ import {
   submitForm,
 } from "@/lib/reservation-form";
 import { serverFieldErrors } from "@/lib/api-error";
-import { translateError } from "@/lib/errors";
 import { reservationStatusLabel } from "@/lib/reservation-list";
 import {
   detailsSchema,
@@ -105,6 +104,7 @@ import {
   paymentPayload,
   cancellationSchema,
   type PaymentValues,
+  type DetailsValues,
 } from "@/lib/reservation-form-schemas";
 import { propertyToday } from "@/lib/property-calendar";
 import { usePropertyCalendar } from "@/lib/use-property-calendar";
@@ -139,9 +139,7 @@ function useDraftCommand(actionsKey: string) {
     [actionsKey],
   );
 }
-type Intent =
-  | { type: "edit-payment" | "delete-payment"; entry: ReservationPayment }
-  | { type: "cancel" };
+type Intent = { type: "edit-payment" | "delete-payment"; entry: ReservationPayment };
 
 export function ReservationStatus({ detail }: { detail: ReservationDetail }) {
   return <Badge variant="secondary">{reservationStatusLabel(detail.status)}</Badge>;
@@ -167,6 +165,16 @@ export function RoomBookingDialog({
   const onDirtyChange = useCallback((value: boolean) => {
     dirty.current = value;
   }, []);
+  useEffect(() => {
+    const protectUnload = (event: BeforeUnloadEvent) => {
+      if (!target || (!creating && !dirty.current && !isReservationSaving(client, reservationId)))
+        return;
+      event.preventDefault();
+      event.returnValue = "";
+    };
+    window.addEventListener("beforeunload", protectUnload);
+    return () => window.removeEventListener("beforeunload", protectUnload);
+  }, [client, reservationId, creating, target]);
   function navigate(action: () => void) {
     if (creating || isReservationSaving(client, reservationId)) return;
     if (dirty.current) setLeave(() => action);
@@ -262,15 +270,21 @@ export function BookingEditor({
   full = false,
   initialTab = "details",
   onTabChange,
+  stayOnly = false,
+  onCancel,
+  onSaved,
 }: {
   detail: ReservationDetail;
-  onRefresh: () => void;
+  onRefresh?: () => void;
   onCancelled?: () => void;
   onViewReservation?: (id: string) => void;
   onDirtyChange?: (dirty: boolean) => void;
   full?: boolean;
   initialTab?: string;
   onTabChange?: (tab: string) => void;
+  stayOnly?: boolean;
+  onCancel?: () => void;
+  onSaved?: () => void;
 }) {
   const contact = detail.guest;
   const queryClient = useQueryClient();
@@ -286,10 +300,27 @@ export function BookingEditor({
     [roomTypes.data],
   );
   const formId = useId();
+  const rejectedFields = useRef<{ values: DetailsValues; fields: Record<string, string> } | null>(
+    null,
+  );
   const form = useReservationForm({
     defaultValues: defaults,
     validationLogic: blurThenChange(),
-    validators: { onDynamic: schema },
+    validators: {
+      onDynamic: ({ value }) => {
+        const fields = schemaErrors(schema.safeParse(value));
+        // Focusing the rejected field can blur a date picker. That validation
+        // must not erase server feedback for a value that has not been corrected.
+        for (const name of ["checkOut"] as const) {
+          if (
+            rejectedFields.current?.fields[name] &&
+            value[name] === rejectedFields.current.values[name]
+          )
+            fields[name] = rejectedFields.current.fields[name];
+        }
+        return Object.keys(fields).length ? { fields } : undefined;
+      },
+    },
     onSubmit: async () => saveChanges(),
   });
   const values = useSelector(form.store, (state) => state.values);
@@ -313,13 +344,19 @@ export function BookingEditor({
       (type) => type.id === previousRoom?.roomTypeId && availableTypes.has(type.id),
     ) ?? roomTypes.data?.find((type) => availableTypes.has(type.id));
   const canAddRoom = roomTypes.isSuccess && rooms.isSuccess && availability.ready && !!nextRoomType;
-  const reservationState = values.status;
+  const reservationState = stayOnly ? detail.status : (values.status ?? detail.status);
   const notes = values.notes;
   const [intent, setIntent] = useState<Intent | null>(null);
   const [tab, setTab] = useState(initialTab);
   const [paymentDirty, setPaymentDirty] = useState(false);
   const [discountDirty, setDiscountDirty] = useState(false);
   const [actionDirty, setActionDirty] = useState(false);
+  const independentDraftDirty = guestDirty || paymentDirty || discountDirty || actionDirty;
+  const [cancellation, setCancellation] = useState<{
+    detail: ReservationDetail;
+    discardDraft: boolean;
+  } | null>(null);
+  const [cancellationDirty, setCancellationDirty] = useState(false);
   const validation = schema.safeParse(values);
   const localErrors = schemaErrors(validation);
   const countsValid = validation.success && !!roomTypes.data;
@@ -327,13 +364,12 @@ export function BookingEditor({
   const changes = roomEdits(detail, drafts);
   if (common.checkIn !== detail.checkIn || common.checkOut !== detail.checkOut)
     changes.unshift({ type: "dates", ...common });
-  if (reservationState !== detail.status)
-    changes.push({
-      type: "set-status",
-      status: reservationState as Extract<WorkflowAction, { type: "set-status" }>["status"],
-    });
+  if (!stayOnly && values.status && values.status !== defaults.status)
+    changes.push({ type: "set-status", status: values.status });
   if (notes !== (detail.notes ?? "")) changes.push({ type: "notes", notes });
+  const statusChanged = changes.some((action) => action.type === "set-status");
   const dirty = changes.length > 0 || (!validation.success && !unchanged);
+  const draftDirty = dirty || independentDraftDirty;
   const previewActions = validationPreviewActions(changes);
   const validationNeeded = previewActions.length > 0;
   const billingDirty = hasBillingChanges(detail, changes);
@@ -399,12 +435,13 @@ export function BookingEditor({
   const billing = billingDirty ? (pricingValid ? quote.data : undefined) : detail;
   const billingRooms = detailsSummaryRooms(values, billing?.rooms);
   const saveMutation = useWorkflowCommand(detail.id);
+  const savingDetails = useRef(false);
   const guestMutation = useWorkflowCommand(detail.id);
   const paymentMutation = useWorkflowCommand(detail.id);
   const discountMutation = useWorkflowCommand(detail.id);
   const discountSave = useRef<Promise<ReservationDetail> | null>(null);
-  const busy =
-    submitting || saveMutation.isPending || guestMutation.isPending || paymentMutation.isPending;
+  const reservationSaving = useReservationSaving(detail.id);
+  const busy = submitting || reservationSaving;
   const [guestSaver] = useState(createWorkflowSaver);
   const [paymentSaver] = useState(createWorkflowSaver);
   const [discountSaver] = useState(createWorkflowSaver);
@@ -415,9 +452,10 @@ export function BookingEditor({
     );
   }
   useEffect(() => {
-    onDirtyChange?.(dirty || paymentDirty || guestDirty || discountDirty || actionDirty);
-  }, [dirty, paymentDirty, guestDirty, discountDirty, actionDirty, onDirtyChange]);
+    onDirtyChange?.(draftDirty || cancellationDirty);
+  }, [draftDirty, cancellationDirty, onDirtyChange]);
   function resetDetails(saved: ReservationDetail) {
+    rejectedFields.current = null;
     const next = detailsDefaults(saved);
     setDefaults(next);
     form.reset(next);
@@ -442,18 +480,21 @@ export function BookingEditor({
   }
 
   const activeDrafts = drafts.filter((draft) => !draft.removed);
-  const cancel = () => setIntent({ type: "cancel" });
   async function saveChanges() {
     if (!countsValid) return;
     if (
       tab !== "details" ||
       !dirty ||
       !previewReady ||
+      (statusChanged && independentDraftDirty) ||
+      savingDetails.current ||
+      isReservationSaving(queryClient, detail.id) ||
       saveMutation.isPending ||
       guestMutation.isPending ||
       paymentMutation.isPending
     )
       return;
+    savingDetails.current = true;
     try {
       await discountSave.current;
       const saved = await saveMutation.mutateAsync({
@@ -462,32 +503,39 @@ export function BookingEditor({
       });
       resetDetails(saved);
       toast.add({ title: "Detalles guardados", type: "success" });
+      onSaved?.();
     } catch (e) {
       const fields = serverFieldErrors(e, "details");
-      if (fields) setServerErrors(form, fields);
-      else toastError("No se pudo guardar", e);
+      if (fields) {
+        rejectedFields.current = { values, fields };
+        form.setErrorMap({ onDynamic: { fields } });
+      } else toastError("No se pudo guardar", e);
+    } finally {
+      savingDetails.current = false;
     }
   }
   return (
     <div className={cn("flex min-w-0 flex-col gap-4", !full && "min-h-0 flex-1 overflow-hidden")}>
-      <div className="flex shrink-0 flex-wrap items-center gap-1 pr-8">
-        <span className="text-lg font-semibold">{`${contact.fullName}`.trim()}</span>
-        <span className="text-lg text-muted-foreground"> · {detail.code}</span>
-        {!full && onViewReservation && (
-          <Button
-            type="button"
-            variant="ghost"
-            size="icon-sm"
-            aria-label="Ver reserva completa"
-            title="Ver reserva completa"
-            disabled={busy || discountMutation.isPending}
-            onClick={() => onViewReservation(detail.id)}
-          >
-            <ArrowUpRightIcon />
-          </Button>
-        )}
-      </div>
-      {(contact.phone || contact.email) && (
+      {!stayOnly && (
+        <div className="flex shrink-0 flex-wrap items-center gap-1 pr-8">
+          <span className="text-lg font-semibold">{`${contact.fullName}`.trim()}</span>
+          <span className="text-lg text-muted-foreground"> · {detail.code}</span>
+          {!full && onViewReservation && (
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon-sm"
+              aria-label="Ver reserva completa"
+              title="Ver reserva completa"
+              disabled={busy || discountMutation.isPending}
+              onClick={() => onViewReservation(detail.id)}
+            >
+              <ArrowUpRightIcon />
+            </Button>
+          )}
+        </div>
+      )}
+      {!stayOnly && (contact.phone || contact.email) && (
         <p className="-mt-2 shrink-0 text-sm wrap-anywhere text-muted-foreground">
           {[contact.phone, contact.email].filter(Boolean).join(" · ")}
         </p>
@@ -500,21 +548,28 @@ export function BookingEditor({
         }}
         className={cn("gap-4", !full && "min-h-0 overflow-y-auto")}
       >
-        <TabsList variant="line" className="shrink-0">
-          <TabsTrigger value="details">
-            Detalles
-            {dirty ? (
-              <span
-                className="size-1.5 shrink-0 rounded-full bg-primary"
-                aria-label="Cambios sin guardar"
-                title="Cambios sin guardar"
-              />
-            ) : null}
-          </TabsTrigger>
-          <TabsTrigger value="guests">Huéspedes</TabsTrigger>
-          <TabsTrigger value="payments">Pagos</TabsTrigger>
-        </TabsList>
-        <div className="grid min-w-0 shrink-0 gap-6 p-px lg:grid-cols-[minmax(0,1fr)_280px]">
+        {!stayOnly && (
+          <TabsList variant="line" className="shrink-0">
+            <TabsTrigger value="details">
+              Detalles
+              {dirty ? (
+                <span
+                  className="size-1.5 shrink-0 rounded-full bg-primary"
+                  aria-label="Cambios sin guardar"
+                  title="Cambios sin guardar"
+                />
+              ) : null}
+            </TabsTrigger>
+            <TabsTrigger value="guests">Huéspedes</TabsTrigger>
+            <TabsTrigger value="payments">Pagos</TabsTrigger>
+          </TabsList>
+        )}
+        <div
+          className={cn(
+            "grid min-w-0 shrink-0 gap-6 p-px",
+            !stayOnly && "lg:grid-cols-[minmax(0,1fr)_280px]",
+          )}
+        >
           <div className="min-w-0">
             <TabsContent value="details" keepMounted className="flex flex-col gap-5">
               <form
@@ -522,7 +577,8 @@ export function BookingEditor({
                 noValidate
                 onSubmit={(event) => void submitForm(event, () => form.handleSubmit())}
               >
-                <fieldset disabled={saveMutation.isPending} className="flex min-w-0 flex-col gap-5">
+                <fieldset disabled={busy} className="flex min-w-0 flex-col gap-5">
+                  {stayOnly && <h3 className="font-medium">Estadía</h3>}
                   <FieldGroup className="grid grid-cols-2 gap-3">
                     <form.AppField
                       name="checkIn"
@@ -644,38 +700,44 @@ export function BookingEditor({
                       </section>
                     )}
                   </form.Field>
-                  <section className="flex flex-col gap-3">
-                    <FieldGroup>
-                      <form.AppField name="notes">
-                        {(field) => <field.Text label="Notas" type="textarea" max={2000} />}
-                      </form.AppField>
-                    </FieldGroup>
-                  </section>
+                  {!stayOnly && (
+                    <section className="flex flex-col gap-3">
+                      <FieldGroup>
+                        <form.AppField name="notes">
+                          {(field) => <field.Text label="Notas" type="textarea" max={2000} />}
+                        </form.AppField>
+                      </FieldGroup>
+                    </section>
+                  )}
                 </fieldset>
               </form>
             </TabsContent>
-            <TabsContent value="guests" keepMounted className="flex flex-col gap-5">
-              <GuestFields
-                detail={detail}
-                disabled={busy}
-                onSave={saveGuests}
-                onDirtyChange={setGuestDirty}
-              />
-            </TabsContent>
-            <TabsContent value="payments" keepMounted className="flex flex-col gap-5">
-              <PaymentForm
-                detail={detail}
-                disabled={busy}
-                onDirtyChange={setPaymentDirty}
-                onReady={savePayment}
-              />
-              <PaymentList
-                detail={detail}
-                disabled={busy}
-                onEdit={(entry) => setIntent({ type: "edit-payment", entry })}
-                onDelete={(entry) => setIntent({ type: "delete-payment", entry })}
-              />
-            </TabsContent>
+            {!stayOnly && (
+              <TabsContent value="guests" keepMounted className="flex flex-col gap-5">
+                <GuestFields
+                  detail={detail}
+                  disabled={busy}
+                  onSave={saveGuests}
+                  onDirtyChange={setGuestDirty}
+                />
+              </TabsContent>
+            )}
+            {!stayOnly && (
+              <TabsContent value="payments" keepMounted className="flex flex-col gap-5">
+                <PaymentForm
+                  detail={detail}
+                  disabled={busy}
+                  onDirtyChange={setPaymentDirty}
+                  onReady={savePayment}
+                />
+                <PaymentList
+                  detail={detail}
+                  disabled={busy}
+                  onEdit={(entry) => setIntent({ type: "edit-payment", entry })}
+                  onDelete={(entry) => setIntent({ type: "delete-payment", entry })}
+                />
+              </TabsContent>
+            )}
           </div>
           <aside className="min-w-0 md:self-start">
             <BookingSummary
@@ -694,7 +756,7 @@ export function BookingEditor({
               paidCents={billing?.paidCents ?? detail.paidCents}
               editableDiscountCents={detail.savedDiscountCents}
               discountDisabled={busy || discountMutation.isPending}
-              onDiscountSave={saveDiscount}
+              onDiscountSave={stayOnly ? undefined : saveDiscount}
               onDiscountDirtyChange={setDiscountDirty}
               currency={detail.currency}
               stayLabel={
@@ -734,41 +796,41 @@ export function BookingEditor({
           </aside>
         </div>
       </Tabs>
+      {!stayOnly && independentDraftDirty && (
+        <p className="text-xs text-muted-foreground">
+          Guarda o descarta los cambios de huéspedes, pagos o descuento antes de cambiar el estado o
+          cancelar la reserva.
+        </p>
+      )}
       <div className="flex shrink-0 flex-wrap items-end gap-3">
-        {!detail.cancelledAt && (
+        {!stayOnly && detail.status !== "cancelled" && (
           <Button
             type="button"
             variant="destructive"
-            disabled={busy || (dirty && !billing)}
-            onClick={cancel}
+            disabled={busy || independentDraftDirty}
+            onClick={() => {
+              if (isReservationSaving(queryClient, detail.id)) return;
+              setCancellation({ detail, discardDraft: dirty });
+            }}
           >
             Cancelar reserva
           </Button>
         )}
         <div className="ml-auto flex flex-wrap items-end justify-end gap-3">
-          {tab === "details" && (
+          {!stayOnly && tab === "details" && (
             <FieldGroup className="w-48">
               <form.AppField name="status">
                 {(field) => (
                   <field.Choice
                     label="Estado de la reserva"
                     hideLabel
-                    disabled={busy}
+                    disabled={busy || independentDraftDirty}
                     options={[
                       { value: "confirmed", label: "Confirmada" },
-                      {
-                        value: "checked_in",
-                        label: "Check-in",
-                      },
+                      { value: "checked_in", label: "Check-in" },
                       { value: "checked_out", label: "Check-out" },
-                      ...(reservationState === "cancelled"
-                        ? [
-                            {
-                              value: "cancelled",
-                              label: "Cancelada",
-                              disabled: true,
-                            },
-                          ]
+                      ...(detail.status === "cancelled"
+                        ? [{ value: "cancelled", label: "Cancelada", disabled: true }]
                         : []),
                     ]}
                   />
@@ -777,22 +839,32 @@ export function BookingEditor({
             </FieldGroup>
           )}
           <div className="flex flex-wrap gap-2">
+            {stayOnly && (
+              <Button type="button" variant="outline" disabled={busy} onClick={onCancel}>
+                Cancelar
+              </Button>
+            )}
             {tab === "details" && (
               <Button
                 type="submit"
                 form={formId}
                 disabled={
                   !dirty ||
+                  (statusChanged && independentDraftDirty) ||
                   roomTypes.isPending ||
                   roomTypes.isError ||
                   (pricingValid && !previewReady) ||
                   busy
                 }
               >
-                {saveMutation.isPending ? "Guardando…" : "Guardar detalles"}
+                {saveMutation.isPending
+                  ? "Guardando…"
+                  : stayOnly
+                    ? "Guardar cambios"
+                    : "Guardar detalles"}
               </Button>
             )}
-            {!full && tab === "details" && (
+            {!full && !stayOnly && tab === "details" && (
               <Button
                 type="button"
                 variant="outline"
@@ -805,21 +877,37 @@ export function BookingEditor({
           </div>
         </div>
       </div>
+      {cancellation && (
+        <ReservationPageEditor
+          target={{ kind: "status", status: "cancelled" }}
+          detail={cancellation.detail}
+          description={
+            cancellation.discardDraft
+              ? "Confirmar descarta los demás cambios sin guardar de Detalles."
+              : undefined
+          }
+          onDirtyChange={setCancellationDirty}
+          onClose={() => {
+            setCancellation(null);
+            setCancellationDirty(false);
+          }}
+          onSaved={(saved) => {
+            resetDetails(saved);
+            setCancellation(null);
+            setCancellationDirty(false);
+            onCancelled?.();
+          }}
+        />
+      )}
       {intent && (
         <ActionForm
           key={intent.type + ("entry" in intent ? intent.entry.id : "")}
-          detail={detail}
           intent={intent}
           onClose={() => {
             setIntent(null);
             setActionDirty(false);
           }}
           onDirtyChange={setActionDirty}
-          onSaved={(saved) => {
-            resetDetails(saved);
-            setActionDirty(false);
-            onCancelled?.();
-          }}
           onReady={async (title, actions) => {
             await savePayment(title, actions);
             setIntent(null);
@@ -1223,26 +1311,21 @@ function PaymentList({
 }
 
 function ActionForm({
-  detail,
   intent,
   onClose,
   onReady,
-  onSaved,
   onDirtyChange,
 }: {
-  detail: ReservationDetail;
   intent: Intent;
   onClose: () => void;
   onReady: (title: string, actions: WorkflowAction[]) => Promise<void>;
-  onSaved: (detail: ReservationDetail) => void;
   onDirtyChange: (dirty: boolean) => void;
 }) {
   const { today } = usePropertyCalendar();
-  const entry = "entry" in intent ? intent.entry : null;
+  const entry = intent.entry;
   const [leaving, setLeaving] = useState(false);
-  const isCancellation = intent.type === "cancel";
   const deleting = intent.type === "delete-payment";
-  const confirmation = isCancellation || deleting;
+  const confirmation = deleting;
   const [defaults] = useState<PaymentValues>(() => ({
     ...paymentDefaults(entry?.amountCents),
     method: entry?.method ?? "cash",
@@ -1269,10 +1352,6 @@ function ActionForm({
     },
     onSubmit: async ({ value }) => submit(value),
   });
-  const cancellationValid = useSelector(
-    form.store,
-    (state) => cancellationSchema.safeParse({ reason: state.values.reason }).success,
-  );
   const saving = useSelector(form.store, (state) => state.isSubmitting);
   const changed = !useSelector(form.store, (state) => state.isDefaultValue);
   useEffect(() => {
@@ -1280,64 +1359,13 @@ function ActionForm({
   }, [confirmation, form, today]);
   useEffect(() => onDirtyChange(changed), [changed, onDirtyChange]);
   const formId = useId();
-  // The reason is saved on confirmation; it does not change cancellation totals.
-  const [cancellationPreviewCommand] = useState<WorkflowCommand>(() => ({
-    requestId: crypto.randomUUID(),
-    actions: [
-      {
-        type: "set-status",
-        status: "cancelled",
-      },
-    ],
-  }));
-  const [saveCancellation] = useState(createWorkflowSaver);
-  const cancellationPreview = useQuery({
-    queryKey: ["cancellation-preview", detail.id, cancellationPreviewCommand],
-    queryFn: () => previewWorkflow(detail.id, cancellationPreviewCommand),
-    enabled: isCancellation,
-    retry: false,
-    refetchOnWindowFocus: false,
-  });
-  const cancellation = useWorkflowCommand(detail.id);
-  const title = isCancellation ? "Cancelar reserva" : deleting ? "Eliminar pago" : "Editar pago";
+  const title = deleting ? "Eliminar pago" : "Editar pago";
   function close() {
-    if (cancellation.isPending || saving) return;
+    if (saving) return;
     if (changed && !confirmation) setLeaving(true);
     else onClose();
   }
   async function submit(value: PaymentValues) {
-    if (isCancellation) {
-      if (
-        !cancellationPreview.data ||
-        cancellationPreview.data.validation.issues.length > 0 ||
-        cancellationPreview.isFetching ||
-        cancellationPreview.error ||
-        cancellation.isPending
-      )
-        return;
-      try {
-        const reason = value.reason.trim();
-        const saved = await saveCancellation(
-          [
-            {
-              type: "set-status",
-              status: "cancelled",
-              ...(reason ? { reason } : {}),
-            },
-          ],
-          (command) => cancellation.mutateAsync({ id: detail.id, command }),
-        );
-        onSaved(saved);
-        toast.add({
-          title: "Reserva cancelada",
-          type: "success",
-        });
-        onClose();
-      } catch (cause) {
-        toastError("No se pudo cancelar", cause);
-      }
-      return;
-    }
     if (deleting && entry) {
       await commit([{ type: "delete-payment", paymentId: entry.id }]);
       return;
@@ -1370,11 +1398,9 @@ function ActionForm({
           <Header>
             <Title>{title}</Title>
             <Description>
-              {isCancellation
-                ? "Se liberará la disponibilidad y se quitarán los cargos; los pagos quedan como saldo a favor. Confirmar descarta los demás cambios sin guardar."
-                : deleting
-                  ? `Se eliminará el pago de ${formatMoney(entry?.amountCents ?? 0)} al confirmar.`
-                  : "El cambio se guardará al confirmar. Los cambios de Detalles se guardan por separado."}
+              {deleting
+                ? `Se eliminará el pago de ${formatMoney(entry?.amountCents ?? 0)} al confirmar.`
+                : "El cambio se guardará al confirmar. Los cambios de Detalles se guardan por separado."}
             </Description>
           </Header>
           <form
@@ -1383,96 +1409,40 @@ function ActionForm({
             onSubmit={(event) => void submitForm(event, () => form.handleSubmit())}
           >
             {!deleting && (
-              <fieldset disabled={saving || cancellation.isPending}>
+              <fieldset disabled={saving}>
                 <FieldGroup>
-                  {!isCancellation && (
-                    <>
-                      <form.AppField name="amount">
-                        {(field) => <field.Text label="Importe S/" placeholder="0.00" />}
-                      </form.AppField>
-                      <form.AppField name="method">
-                        {(field) => <field.Choice label="Método" options={paymentMethods} />}
-                      </form.AppField>
-                      <form.AppField name="date">
-                        {(field) => (
-                          <field.Text label="Fecha del pago" type="date" required max={today} />
-                        )}
-                      </form.AppField>
-                      <form.AppField name="reference">
-                        {(field) => <field.Text label="Referencia · Opcional" />}
-                      </form.AppField>
-                    </>
-                  )}
-                  <form.AppField name="reason">
+                  <form.AppField name="amount">
+                    {(field) => <field.Text label="Importe S/" placeholder="0.00" />}
+                  </form.AppField>
+                  <form.AppField name="method">
+                    {(field) => <field.Choice label="Método" options={paymentMethods} />}
+                  </form.AppField>
+                  <form.AppField name="date">
                     {(field) => (
-                      <field.Text
-                        label={isCancellation ? "Motivo · Opcional" : "Nota · Opcional"}
-                        disabled={cancellation.isPending || saving}
-                      />
+                      <field.Text label="Fecha del pago" type="date" required max={today} />
                     )}
+                  </form.AppField>
+                  <form.AppField name="reference">
+                    {(field) => <field.Text label="Referencia · Opcional" />}
+                  </form.AppField>
+                  <form.AppField name="reason">
+                    {(field) => <field.Text label="Nota · Opcional" disabled={saving} />}
                   </form.AppField>
                 </FieldGroup>
               </fieldset>
             )}
           </form>
-          {isCancellation &&
-            (cancellationPreview.error ? (
-              <div className="flex flex-col items-start gap-2">
-                <FieldError>{cancellationPreview.error.message}</FieldError>
-                <Button
-                  type="button"
-                  variant="outline"
-                  disabled={saving || cancellation.isPending || cancellationPreview.isFetching}
-                  onClick={() => void cancellationPreview.refetch()}
-                >
-                  Reintentar
-                </Button>
-              </div>
-            ) : cancellationPreview.data ? (
-              <>
-                <WorkflowBill bill={cancellationPreview.data.billing} />
-                {cancellationPreview.data.validation.issues.map((issue, index) => (
-                  <FieldError key={index}>{translateError(issue.code)}</FieldError>
-                ))}
-              </>
-            ) : cancellationValid ? (
-              <p role="status" className="text-muted-foreground">
-                Calculando…
-              </p>
-            ) : null)}
           <Footer className="flex justify-end gap-2">
-            <CancelButton
-              type="button"
-              variant="outline"
-              disabled={cancellation.isPending || saving}
-              onClick={close}
-            >
+            <CancelButton type="button" variant="outline" disabled={saving} onClick={close}>
               Volver
             </CancelButton>
             <ConfirmButton
               type="submit"
               form={formId}
               variant={confirmation ? "destructive" : "default"}
-              disabled={
-                cancellation.isPending ||
-                saving ||
-                (isCancellation &&
-                  cancellationValid &&
-                  (!cancellationPreview.data ||
-                    cancellationPreview.data.validation.issues.length > 0 ||
-                    cancellationPreview.isFetching ||
-                    !!cancellationPreview.error))
-              }
+              disabled={saving}
             >
-              {saving
-                ? "Guardando…"
-                : cancellation.isPending
-                  ? "Cancelando…"
-                  : deleting
-                    ? "Eliminar"
-                    : isCancellation
-                      ? "Confirmar"
-                      : "Guardar"}
+              {saving ? "Guardando…" : deleting ? "Eliminar" : "Guardar"}
             </ConfirmButton>
           </Footer>
         </Content>

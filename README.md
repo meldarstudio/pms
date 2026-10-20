@@ -100,6 +100,17 @@ These commands run from the repository root. Pass the file path directly, withou
 an extra `--` separator; that separator can cause the runner to ignore the file
 filter and run the whole suite. Existing full-suite commands remain unchanged.
 
+Tests run once by default; use `pnpm exec vp test watch --project portal` only
+when you want a persistent watcher. Run affected files first, and run test commands
+sequentially rather than launching separate test processes in parallel. Use the
+full portal suite for the final validation of a frontend change.
+
+The root runner executes test files serially across projects. Package-local portal
+runs are also serial, and each portal fork has a 1.5 GiB JavaScript heap limit.
+This bounds test concurrency and heap growth, not total system memory: Vite,
+native allocations, and the coordinator use additional memory. Keep isolation
+enabled; the UI harness installs browser globals and loads the real portal.
+
 ## Tool configuration
 
 The root `vite.config.ts` owns lint rules, formatting, and test project

@@ -24,6 +24,22 @@ and coverage percentages are diagnostic information, not targets.
   the absence of retired fields. Keep internal checks only when they protect a
   specific failure that observable checks would miss.
 
+### Frontend scope
+
+Keep the portal suite small and risk-focused: reservation creation and edits,
+money and retry safety, availability conflicts, date boundaries, authentication,
+and protection against lost drafts. Reuse existing screen/form suites and the
+shared browser harness before adding another integration suite.
+
+- Cover a workflow's happy path and consequential failures. Use representative
+  UI cases rather than every combination of equivalent inputs; keep exhaustive
+  cases for substantial money, date, or availability logic in lightweight tests.
+- Test shared behavior once through its real form, with screen-specific checks
+  only for distinct wiring or behavior. A helper or component does not need its
+  own suite when that behavior is already covered.
+- Check visible values, actions, errors, and accessibility behavior. Leave CSS
+  classes, exact nesting, and visual polish to manual review.
+
 ### Consolidating or removing tests
 
 - Merge duplicate scenarios and share repetitive setup when the resulting test

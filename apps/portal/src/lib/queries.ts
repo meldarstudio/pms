@@ -298,6 +298,13 @@ export function useWorkflowCommand(id: string) {
     scope: { id: `reservation-workflow:${id}` },
     mutationFn: ({ id, command }: { id: string; command: WorkflowCommand }) =>
       sendWorkflow(id, command),
-    onSuccess: (data) => refreshWorkflowQueries(client, data),
+    onSuccess: async (data, { command }) => {
+      await refreshWorkflowQueries(client, data);
+      if (command.actions.some((action) => action.type === "contact"))
+        await client.invalidateQueries({
+          queryKey: ["reservation"],
+          predicate: (query) => query.queryKey[1] !== data.id,
+        });
+    },
   });
 }
