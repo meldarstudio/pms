@@ -29,7 +29,7 @@ Run these from the repository root.
 | `pnpm dev` or `pnpm exec vp run dev`     | Start the portal and local backend                                         |
 | `pnpm dev:portal` or `pnpm exec vp dev`  | Start the portal at `http://localhost:5173`                                |
 | `pnpm dev:backend`                       | Start the local API at `http://localhost:8788`                             |
-| `pnpm check` or `pnpm exec vp check .`   | Check repo formatting, lint, and native types                              |
+| `pnpm check`                             | Check repo formatting, then each package's lint and native types           |
 | `pnpm exec vp test`                      | Run the backend and portal test projects                                   |
 | `pnpm exec vp test --project portal`     | Run the portal tests only                                                  |
 | `pnpm exec vp test --project backend`    | Run the backend tests only                                                 |
@@ -113,22 +113,34 @@ enabled; the UI harness installs browser globals and loads the real portal.
 
 ## Tool configuration
 
-The root `vite.config.ts` owns lint rules, formatting, and test project
-selection. Formatting uses Oxfmt defaults across maintained source, configuration,
-and documentation, with Tailwind class sorting enabled for portal TS/TSX files.
+The root `vite.config.ts` owns formatting and test project selection. Each package's
+`vite.config.ts` owns its lint rules, environments, exclusions, and native type
+checks, reusing common lint defaults from `tooling/lint.ts`. The portal enables
+React correctness rules at the package level.
+
+Formatting uses Oxfmt defaults across maintained source, configuration,
+and documentation, without Tailwind class sorting or package-specific styles.
 Generated Worker types, Drizzle metadata, lockfiles, installed agent skills,
 coverage, and package stores are excluded, along with Git-ignored files.
 Linting covers portal TS/TSX files, backend TypeScript and JavaScript files,
 and shared schemas, including tests and package configuration. Correctness
 and TypeScript rules apply to all packages. React rules apply only to the
 portal. Browser globals are limited to portal source and tests; Worker source
-uses service-worker globals, and tests, scripts, and tooling use Node globals.
+uses service-worker globals, and tests, backend scripts, and package configuration
+use Node globals.
 Generated Worker types, migrations, build output, and coverage are excluded.
 
-The root format and check scripts pass `.` explicitly to cover the repository.
-For occasional targeted work, run `pnpm exec vp check apps/portal` or
-`pnpm exec vp fmt apps/portal`. Place Vite+ check flags before paths, as in
-`pnpm exec vp check --no-fmt --no-lint .` for type-only diagnostics.
+`pnpm check` checks repository-wide formatting once, then runs each package's
+`check` script serially. Package checks skip formatting and check only that
+package's lint and native types. For targeted work, run
+`pnpm --filter @pms/portal check` (or `@pms/backend` / `@pms/shared`). Run
+`pnpm exec vp fmt apps/portal` to format only the portal.
+
+Keep lint settings out of the root config: Vite+ gives a root lint block precedence
+over package settings during `vp check`. Root `pnpm exec vp check .` is therefore
+not equivalent to `pnpm check`; use the script for workspace validation. For
+package-local type-only diagnostics, place flags before paths, for example
+`pnpm exec vp -C apps/portal check --no-fmt --no-lint .`.
 
 `pnpm check` enables Vite+'s native type checker with `typeAware: true` and
 `typeCheck: true`. The portal's solution tsconfig references separate app,
@@ -146,6 +158,9 @@ Native checking also covers backend source, configuration, colocated TypeScript
 tests, and shared schemas. `pnpm check` does not repeat the backend compiler
 pass. The release workflow uses the same `pnpm check` command.
 Backend `.mjs` scripts and tests receive syntax linting but are not type-checked.
+
+Root `pnpm build` checks the entire repository before bundling the portal once.
+`pnpm --filter @pms/portal build` checks only the portal before bundling it.
 
 The shared package exports TypeScript source directly and needs no `vp pack`
 step. Wrangler still handles backend development and deployment.

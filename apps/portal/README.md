@@ -168,15 +168,17 @@ dialog harness uses happy-dom types, with a DOM type conversion at React's
 
 The portal and backend use the same TypeScript 7 catalog dependency from
 `pnpm-workspace.yaml`. Vite+'s checker also uses TypeScript 7. For a standalone
-compiler check, run `pnpm --filter @pms/portal exec tsc -b`. `pnpm build` runs
+compiler check, run `pnpm --filter @pms/portal exec tsc -b`. Root `pnpm build` runs
 the full workspace check before bundling without a duplicate compiler check.
 
-The root `vite.config.ts` uses Oxfmt defaults across maintained repo files, with Tailwind
-class sorting for portal TS/TSX files. Run `pnpm format` for the whole repo or
+The root `vite.config.ts` uses Oxfmt defaults across maintained repo files, without
+Tailwind class sorting. Run `pnpm format` for the whole repo or
 `pnpm exec vp fmt apps/portal` for only the portal. Generated files are
-excluded. For targeted diagnostics, run `pnpm exec vp check apps/portal`
-from the repository root. React Hooks rules remain portal-only, and browser
-globals apply to portal source and tests.
+excluded. For targeted lint and native type diagnostics, run
+`pnpm --filter @pms/portal check` from the repository root. The portal's
+`vite.config.ts` owns its React rules and browser/Node environments, reusing
+`tooling/lint.ts` for common defaults. Browser globals apply to portal source and
+tests. `pnpm --filter @pms/portal build` checks only the portal before bundling it.
 
 ## Signing in
 

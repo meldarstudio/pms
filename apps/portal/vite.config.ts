@@ -2,6 +2,7 @@ import { resolve } from "node:path";
 import tailwindcss from "@tailwindcss/vite";
 import react from "@vitejs/plugin-react";
 import { defineConfig, loadEnv, searchForWorkspaceRoot, lazyPlugins } from "vite-plus";
+import { lint } from "../../tooling/lint.ts";
 
 // https://vite.dev/config/
 export default defineConfig(({ command, mode }) => {
@@ -11,6 +12,19 @@ export default defineConfig(({ command, mode }) => {
   }
 
   return {
+    lint: {
+      ...lint,
+      plugins: [...lint.plugins, "react"],
+      rules: {
+        ...lint.rules,
+        "react/exhaustive-deps": "warn",
+      },
+      overrides: [
+        { files: ["src/**/*.{ts,tsx}", "tests/**/*.{ts,tsx}"], env: { browser: true } },
+        { files: ["*.config.ts", "tests/**/*.{ts,tsx}"], env: { node: true } },
+      ],
+      ignorePatterns: ["public/**", "dist/**", "coverage/**", ".wrangler/**", "**/.pnpm-store/**"],
+    },
     define: {
       "import.meta.env.VITE_PWA_BUILD_ID": JSON.stringify(Date.now().toString()),
     },

@@ -91,7 +91,7 @@ if (command.includes('d1 execute')) {
   } else process.exit(91);
 } else if (![
   'install --frozen-lockfile', 'check', 'test', 'build',
-  '--filter @pms/backend run deploy:ci', '--filter @pms/portal run deploy',
+  '--filter @pms/backend run deploy', '--filter @pms/portal run deploy',
 ].includes(command)) process.exit(92);
 `,
     { mode: 0o755 },
@@ -253,7 +253,7 @@ it("validates and builds the selected main revision before read-only readiness, 
     "test",
     "build",
     "--filter @pms/backend exec wrangler d1 execute DB --remote --json --command SELECT id, name FROM d1_migrations ORDER BY id --config wrangler.jsonc",
-    "--filter @pms/backend run deploy:ci",
+    "--filter @pms/backend run deploy",
     "--filter @pms/portal run deploy",
   ]);
   for (const command of result.commands) {
@@ -434,7 +434,7 @@ it.each(["install --frozen-lockfile", "check", "test", "build"])(
 );
 
 it.each([
-  ["API", "--filter @pms/backend run deploy:ci", "failure", "skipped"],
+  ["API", "--filter @pms/backend run deploy", "failure", "skipped"],
   ["portal", "--filter @pms/portal run deploy", "success", "failure"],
 ])(
   "a failed %s records partial outcomes and retry still validates the requested SHA",

@@ -5,15 +5,14 @@
   "scripts": {
     "dev": "wrangler dev --port 8788",
     "deploy": "wrangler deploy --minify",
-    "deploy:ci": "wrangler deploy --minify",
     "test": "vp test run",
+    "check": "vp check --no-fmt .",
     "cf-typegen": "wrangler types --env-interface CloudflareBindings",
     "db:generate": "drizzle-kit generate",
     "db:migrate:local": "wrangler d1 migrations apply DB --local",
     "db:migrate:remote": "node scripts/migrate-production.mjs",
     "db:seed:local": "wrangler d1 execute DB --local --file=./seed.sql",
     "db:reset:local": "node scripts/seed-reset.mjs",
-    "db:seed:unassigned": "node scripts/seed-unassigned.mjs",
     "auth:hash": "node scripts/hash-password.mjs"
   },
   "dependencies": {

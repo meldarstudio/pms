@@ -19,7 +19,9 @@ Run `pnpm format` to format maintained repo files,
 including the backend, with Oxfmt defaults. Generated Worker types and Drizzle
 metadata are excluded. `pnpm check` checks formatting, lint rules, and native
 types across the portal, backend, and shared schemas. For targeted diagnostics,
-run `pnpm exec vp check apps/backend` from the repository root. Backend
+run `pnpm --filter @pms/backend check` from the repository root. The backend's
+`vite.config.ts` owns its lint settings, reusing `tooling/lint.ts` for common
+defaults. Backend
 source uses Worker globals, while tests, seed scripts, and configuration use
 Node globals. React and browser rules apply only to the portal.
 
@@ -452,7 +454,7 @@ pnpm --filter @pms/backend run deploy
 pnpm --filter @pms/backend cf-typegen
 ```
 
-**Both `deploy` and `deploy:ci` now deploy code only.** They do not apply
+**`deploy` deploys code only**, both locally and in CI. It does not apply
 migrations. For a schema release, validate the exact release SHA, then run the safe
 migration command above from its clean checkout before deploying `pms-api`.
 
@@ -463,7 +465,7 @@ Preserve the existing production baseline, records, and migration ledger. A
 history mismatch needs investigation and a data-preserving upgrade plan, not a
 production rebuild. New-database bootstrap is outside the safe wrapper's scope.
 
-The release workflow calls `deploy:ci` only after validation, portal build, and a
+The release workflow calls `deploy` only after validation, portal build, and a
 read-only exact migration-history check. It never invokes the interactive migration
 tool. Both Workers deploy on every release. Disable Git-triggered Workers Builds
 for both applications during the separately authorized cutover, preserving

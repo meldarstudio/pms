@@ -12,7 +12,7 @@
 - Use pnpm, not npm or npx. Run project commands from the repo root unless a task-specific instruction says otherwise. Use the Node version in `.node-version` and pnpm version in `package.json`.
 - Before development, test, build, or check commands, read [README.md](README.md#commands). It owns command usage and environment setup.
 - Before changing tests or reviewing code, read [CODING_STANDARDS.md](CODING_STANDARDS.md). Run affected tests and `pnpm check` for code changes; checks do not run tests.
-- Before changing formatting, lint, or compiler configuration, read [README.md](README.md#tool-configuration). Root `vite.config.ts` owns formatting and lint rules.
+- Before changing formatting, lint, or compiler configuration, read [README.md](README.md#tool-configuration). Root `vite.config.ts` owns formatting; package configs own lint and type checks.
 - Keep TypeScript and Zod dependencies as `"catalog:"`; use the APIs of the versions in `pnpm-workspace.yaml`.
 
 ## Task-specific context
