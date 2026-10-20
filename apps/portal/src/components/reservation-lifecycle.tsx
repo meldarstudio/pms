@@ -1,14 +1,7 @@
 import { useRef, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
-import { ChevronDownIcon } from "lucide-react";
-import { Button } from "@/components/ui/button";
-import {
-  DropdownMenu,
-  DropdownMenuTrigger,
-  DropdownMenuContent,
-  DropdownMenuGroup,
-  DropdownMenuItem,
-} from "@/components/ui/dropdown-menu";
+import { FieldGroup } from "@/components/ui/field";
+import { ChoiceField } from "@/components/workflow-fields";
 import type { ReservationDetail, WorkflowAction } from "@/lib/api";
 import { useReservationSaving, useWorkflowCommand } from "@/lib/queries";
 import { isReservationSaving } from "@/lib/workflow-query-cache";
@@ -18,16 +11,15 @@ import { toast, toastError } from "@/lib/toast";
 
 type Status = Extract<WorkflowAction, { type: "set-status" }>["status"];
 const statuses = ["confirmed", "checked_in", "checked_out", "cancelled"] as const;
+const options = statuses.map((value) => ({ value, label: reservationStatusLabel(value) }));
 
 export function ReservationLifecycle({
   detail,
   blocked = false,
-  showStatusMenu = true,
   onConfirm,
 }: {
   detail: ReservationDetail;
   blocked?: boolean;
-  showStatusMenu?: boolean;
   onConfirm: (status: Status) => void;
 }) {
   const client = useQueryClient();
@@ -35,16 +27,14 @@ export function ReservationLifecycle({
   const saving = useReservationSaving(detail.id);
   const [save] = useState(createWorkflowSaver);
   const pending = useRef(false);
-  const [menuOpen, setMenuOpen] = useState(false);
-  const routine =
-    detail.status === "confirmed"
-      ? "checked_in"
-      : detail.status === "checked_in"
-        ? "checked_out"
-        : null;
   async function change(status: Status) {
-    if (blocked || pending.current || isReservationSaving(client, detail.id)) return;
-    setMenuOpen(false);
+    if (
+      status === detail.status ||
+      blocked ||
+      pending.current ||
+      isReservationSaving(client, detail.id)
+    )
+      return;
     if (status === "cancelled" || detail.status === "cancelled") {
       onConfirm(status);
       return;
@@ -61,53 +51,26 @@ export function ReservationLifecycle({
       pending.current = false;
     }
   }
-  if (!routine && !showStatusMenu) return null;
   return (
     <div className="flex flex-col items-end gap-2">
-      <div
-        role="group"
-        className="flex flex-wrap gap-2"
-        aria-label="Acciones de estado"
-        aria-busy={saving}
-      >
-        {routine && (
-          <Button type="button" disabled={blocked || saving} onClick={() => void change(routine)}>
-            {mutation.isPending
-              ? "Guardando estado…"
-              : routine === "checked_in"
-                ? "Hacer check-in"
-                : "Hacer check-out"}
-          </Button>
-        )}
-        {showStatusMenu && (
-          <DropdownMenu open={menuOpen} onOpenChange={setMenuOpen}>
-            <DropdownMenuTrigger
-              render={<Button type="button" variant="outline" disabled={blocked || saving} />}
-            >
-              {mutation.isPending && !routine ? "Guardando estado…" : "Cambiar estado"}
-              <ChevronDownIcon data-icon="inline-end" />
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end">
-              <DropdownMenuGroup>
-                {statuses
-                  .filter((status) => status !== detail.status)
-                  .map((status) => (
-                    <DropdownMenuItem
-                      key={status}
-                      disabled={blocked || saving}
-                      variant={status === "cancelled" ? "destructive" : "default"}
-                      onClick={() => void change(status)}
-                    >
-                      {status === "cancelled"
-                        ? "Cancelar reserva…"
-                        : `${reservationStatusLabel(status)}${detail.status === "cancelled" ? "…" : ""}`}
-                    </DropdownMenuItem>
-                  ))}
-              </DropdownMenuGroup>
-            </DropdownMenuContent>
-          </DropdownMenu>
-        )}
-      </div>
+      <FieldGroup className="w-44" aria-busy={saving}>
+        <ChoiceField
+          label="Estado de la reserva"
+          hideLabel
+          value={detail.status}
+          options={options}
+          disabled={blocked || saving}
+          onChange={(value) => {
+            const status = statuses.find((status) => status === value);
+            if (status) void change(status);
+          }}
+        />
+      </FieldGroup>
+      {mutation.isPending && (
+        <p role="status" className="text-xs text-muted-foreground">
+          Guardando estado…
+        </p>
+      )}
       {blocked && (
         <p className="text-sm text-muted-foreground">
           Guarda o descarta los cambios antes de cambiar el estado.

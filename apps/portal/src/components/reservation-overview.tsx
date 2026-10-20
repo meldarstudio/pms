@@ -80,23 +80,11 @@ export function ReservationOverview({
                 </Badge>
               )}
             </div>
-            <div className="flex flex-wrap items-center gap-x-4 gap-y-2 text-xs text-muted-foreground">
-              <p className="wrap-anywhere">Reserva #{detail.code}</p>
-              {detail.guest.phone && (
-                <a
-                  href={`tel:${detail.guest.phone}`}
-                  className="flex items-center gap-2 break-all hover:underline"
-                >
-                  <PhoneIcon aria-hidden="true" className="size-3.5 shrink-0" />
-                  {detail.guest.phone}
-                </a>
-              )}
-            </div>
+            <p className="text-xs wrap-anywhere text-muted-foreground">Reserva #{detail.code}</p>
           </div>
           <div className="ml-auto flex flex-wrap items-center justify-end gap-2">
             <ReservationLifecycle
               detail={detail}
-              showStatusMenu={false}
               onConfirm={(status) => edit({ kind: "status", status })}
             />
           </div>

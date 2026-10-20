@@ -56,14 +56,17 @@ the actual API and transactional database behavior.
 ## Reservation forms
 
 `/reservations/:id` is a read-first overview with back navigation, booking contact
-name with status/date badges, the reservation code and contact phone beneath it,
-and right-aligned lifecycle actions. Saved status is
-informational: confirmed reservations offer one-click **Hacer check-in**, and
-checked-in reservations offer one-click **Hacer check-out**, without another
-confirmation. The detail page has no **Cambiar estado** dropdown; cancellation,
-restoration, and other status corrections have no page entry point for now.
+name with status/date badges, the reservation code beneath it,
+and a right-aligned **Estado de la reserva** select. Selecting Confirmada,
+Check-in, or Check-out on an active reservation saves immediately without another
+confirmation or save button. Selecting Cancelada opens a consequence-aware
+confirmation; selecting an active status on a cancelled reservation opens a
+restoration confirmation with a fresh server bill and availability validation.
+The select shows the saved status, stays disabled during writes, and retains the
+previous status after a failed save so the same choice can be retried safely.
 The compact calendar dialog uses its original status dropdown and separate
-**Cancelar reserva** button, rather than the page's one-click lifecycle controls.
+**Cancelar reserva** button; its status changes save with **Guardar detalles**,
+not immediately as on the page.
 **Registrar pago** remains in the payment
 summary. Contact and stay sections sit beside the payment summary on desktop and
 stack on phones. The summary distinguishes outstanding, settled, and credit
@@ -73,8 +76,9 @@ The discount row has its own **Editar descuento** action.
 
 The page is the complete reservation-management workspace, expanded incrementally,
 while the calendar dialog stays compact and operations-focused. **Contacto principal**
-shows name, phone, and email with an **Editar contacto** action. Document fields
-are not requested or displayed for booking contacts; contact saves omit them to
+shows name, phone, and email with an **Editar contacto** action. The phone link
+appears only in this card, not in the page header. Document fields are not
+requested or displayed for booking contacts; contact saves omit them to
 preserve existing stored values. Staying-guest document fields remain unchanged.
 **Estadía y habitaciones** has its own **Editar estadía** action. Guest, notes,
 payment-record, and account sections remain deferred; their editor workflows
@@ -121,7 +125,7 @@ closes the compact dialog only after success. Failed or dismissed cancellation
 preserves the details draft. Dirty guest, payment, discount, or nested-editor
 drafts must be saved/discarded before cancellation or status editing. Pending
 writes, including discount autosaves, block overlapping writes; failed drafts
-remain intact. The page retains independent one-click check-in/out actions.
+remain intact. The page uses its independent auto-saving status select.
 
 The reservation editor uses TanStack Form with portal-local Zod 4 schemas in
 `src/lib/reservation-form-schemas.ts`. Details, guest add/edit, payment add/edit,

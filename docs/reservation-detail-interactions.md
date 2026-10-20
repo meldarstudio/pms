@@ -1,5 +1,28 @@
 # Reservation detail interactions
 
+## Reservation-page header status select
+
+Replace the page's one-click check-in/out button with an **Estado de la reserva**
+select showing the saved status. This supersedes the page lifecycle entry-point
+restrictions below; the calendar restoration remains unchanged.
+
+- Selecting Confirmada, Check-in, or Check-out on an active reservation saves
+  immediately through the existing retry-safe workflow command. Do not require
+  another save or confirmation, or change stay dates, rooms, or payments.
+- Cancellation and restoration retain their existing consequence-aware
+  confirmation, current server bill, and availability/capacity/assignment checks.
+  Selecting them alone does not write. Dismissal or failed validation leaves the
+  saved status and bill unchanged.
+- Disable the select while saving, prevent duplicate and overlapping writes,
+  protect navigation/unload, and show save/error feedback. On failure display the
+  previous saved status; reselecting the failed target retries the same request ID.
+- Keep section editors, simplified contact fields, occupant total, and the
+  calendar's explicit **Guardar detalles** interaction unchanged. Reuse the
+  existing rendered reservation-page tests.
+- Show the contact phone link only in **Contacto principal**, not in the page
+  header, where it duplicates the contact card. Keep the name, code, badges,
+  back navigation, and status select in the header.
+
 ## Calendar dialog restoration
 
 Restore the original calendar editing interaction without reverting reservation-page
@@ -22,8 +45,8 @@ improvements. This supersedes the compact-calendar lifecycle policy below:
   and capacity/assignment/availability validation before saving. Preserve billing
   previews, stale-result guards, duplicate-submission protection, and dirty
   close/unload guards. No backend or domain-rule changes.
-- Keep the reservation page's section editors, occupant total, contact-field
-  simplification, and one-click page check-in/out unchanged.
+- Keep the reservation page's section editors, occupant total, and contact-field
+  simplification unchanged.
 - Use the existing rendered-dialog seam for risk-focused status saving,
   cancellation, independent-draft protection, and restoration-conflict coverage.
 

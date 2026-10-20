@@ -379,8 +379,8 @@ it("refreshes cached operations and legacy calendar results after saving in rese
   const row = container.querySelector<HTMLElement>("tbody tr")!;
   await React.act(async () => row.click());
   await until(() => container.textContent.includes("#ANA0001"));
-  await click("Hacer check-in");
-  await until(() => saved && container.textContent.includes("Hacer check-out"));
+  await choose("Estado de la reserva", "Check-in");
+  await until(() => saved && !container.querySelector("fieldset")?.disabled);
   await click("Volver a reservas");
   await until(() => container.textContent.includes("No se encontraron reservas"));
   assert.ok(container.textContent.includes("0 de 0 reservas"));

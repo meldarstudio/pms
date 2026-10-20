@@ -254,6 +254,17 @@ async function selectDate(label: string, day: string) {
   assert.ok(element, `Missing date ${day}`);
   await React.act(async () => element.click());
 }
+async function selectStatus(label: string) {
+  await React.act(async () => dateTrigger("Estado de la reserva").click());
+  await React.act(async () => statusOption(label).click());
+}
+function statusOption(label: string) {
+  const option = Array.from(window.document.querySelectorAll<HTMLElement>('[role="option"]')).find(
+    (node) => node.textContent.trim() === label,
+  );
+  assert.ok(option, `Missing status option ${label}`);
+  return option;
+}
 async function unloadPrevented() {
   const event = new window.Event("beforeunload", { cancelable: true });
   await React.act(async () => {
@@ -267,7 +278,7 @@ it("shows reservation sections with their own editing actions and contact detail
   saved.rooms = [...saved.rooms, { ...saved.rooms[0], id: "line-2", adults: 1, children: 2 }];
   mockApi();
   await render();
-  assert.equal(page.container.querySelectorAll("input, textarea").length, 0);
+  assert.equal(popup() !== null, false);
   assert.ok(button("Editar contacto"));
   assert.ok(button("Editar estadía"));
   const contact = page.container.querySelector('[aria-label="Contacto principal"]');
@@ -287,7 +298,8 @@ it("shows reservation sections with their own editing actions and contact detail
   assert.match(page.container.textContent, /Llegada hoy/);
   assert.match(page.container.textContent, /Sin asignar · Doble/);
   assert.equal(page.container.querySelector("h1")!.textContent, "Ana Pérez");
-  assert.equal(page.container.querySelector('a[href="tel:999111222"]')!.textContent, "999111222");
+  assert.equal(contact.querySelector('a[href="tel:999111222"]')!.textContent, "999111222");
+  assert.equal(page.container.querySelector('header a[href^="tel:"]') !== null, false);
   assert.match(page.container.textContent, /Saldo pendiente/);
   assert.ok(button("Registrar pago"));
 });
@@ -462,22 +474,24 @@ it("waits for the current discount preview and saves its amount separately", asy
   assert.deepEqual(writes[0].actions, [{ type: "set-discount", amountCents: 5000 }]);
 });
 
-it("checks in an unpaid, unassigned reservation in one click without changing its dates", async () => {
+it("autosaves the selected status of an unpaid, unassigned reservation without changing its dates", async () => {
   mockApi();
   await render();
-  await click("Hacer check-in");
-  await page.until(() => page.container.textContent.includes("Hacer check-out"));
-  assert.equal(popup(), null);
+  assert.match(dateTrigger("Estado de la reserva").textContent, /Confirmada/);
+  await selectStatus("Check-in");
+  await page.until(() => dateTrigger("Estado de la reserva").textContent.includes("Check-in"));
+  assert.equal(popup() !== null, false);
   assert.equal(writes.length, 1);
   assert.deepEqual(writes[0].actions, [{ type: "set-status", status: "checked_in" }]);
   assert.equal(saved.checkIn, "2026-10-19");
   assert.equal(saved.checkOut, "2026-10-21");
   assert.equal(saved.balanceCents, 30000);
-  assert.ok(button("Hacer check-out"));
-  assert.equal(page.container.querySelector('[aria-haspopup="menu"]'), null);
+  await selectStatus("Confirmada");
+  await page.until(() => dateTrigger("Estado de la reserva").textContent.includes("Confirmada"));
+  assert.deepEqual(writes[1].actions, [{ type: "set-status", status: "confirmed" }]);
 });
 
-it("checks out once, protects pending navigation, and retries an uncertain response with the same ID", async () => {
+it("autosaves checkout once, protects pending navigation, and retries an uncertain response with the same ID", async () => {
   saved = { ...saved, status: "checked_in" };
   let finish!: (response: Response) => void;
   mockApi({
@@ -489,14 +503,15 @@ it("checks out once, protects pending navigation, and retries an uncertain respo
         : undefined,
   });
   await render();
-  const checkout = button("Hacer check-out");
+  await React.act(async () => dateTrigger("Estado de la reserva").click());
+  const checkout = statusOption("Check-out");
   await React.act(async () => {
     checkout.click();
     checkout.click();
   });
   await page.until(() => page.container.textContent.includes("Guardando estado…"));
   assert.equal(writes.length, 1);
-  assert.equal(button("Guardando estado…").disabled, true);
+  assert.equal(dateTrigger("Estado de la reserva").disabled, true);
   assert.equal(await unloadPrevented(), true);
   assert.equal(saved.status, "checked_in");
   await React.act(async () => {
@@ -507,8 +522,9 @@ it("checks out once, protects pending navigation, and retries an uncertain respo
   await React.act(async () =>
     finish(Response.json({ error: "Temporary save failure" }, { status: 503 })),
   );
-  await page.until(() => page.container.textContent.includes("Hacer check-out"));
-  await click("Hacer check-out");
+  await page.until(() => !dateTrigger("Estado de la reserva").disabled);
+  assert.match(dateTrigger("Estado de la reserva").textContent, /Check-in/);
+  await selectStatus("Check-out");
   await page.until(
     () =>
       !page.container.textContent.includes("Guardando estado…") && saved.status === "checked_out",
@@ -518,7 +534,7 @@ it("checks out once, protects pending navigation, and retries an uncertain respo
   assert.equal(saved.checkIn, "2026-10-19");
   assert.equal(saved.checkOut, "2026-10-21");
   assert.equal(saved.balanceCents, 30000);
-  assert.equal(popup(), null);
+  assert.equal(popup() !== null, false);
 });
 
 for (const balance of [0, -10000, 5000]) {
@@ -536,27 +552,75 @@ for (const balance of [0, -10000, 5000]) {
   });
 }
 
-it("shows a cancelled reservation and its credit without offering status changes", async () => {
-  saved = {
-    ...saved,
-    status: "cancelled",
-    cancellationReason: "Cambio de planes",
-    cancelledAt: "2026-10-18T15:00:00Z",
-    subtotalCents: 0,
-    totalCents: 0,
-    paidCents: 10000,
-    balanceCents: -10000,
-    creditCents: 10000,
-  };
-  mockApi();
+it("previews cancellation selected in the header before saving and shows the resulting credit", async () => {
+  saved = { ...saved, paidCents: 10000, balanceCents: 20000 };
+  mockApi({
+    preview: () => ({
+      billing: {
+        ...saved,
+        totalCents: 0,
+        subtotalCents: 0,
+        balanceCents: -10000,
+        creditCents: 10000,
+      },
+      validation: { issues: [] },
+    }),
+  });
   await render();
-  assert.match(page.container.textContent, /Reserva cancelada/);
+  await selectStatus("Cancelada");
+  await page.until(() => popup() !== null && !button("Confirmar").disabled);
+  assert.equal(writes.length, 0);
+  assert.match(dateTrigger("Estado de la reserva").textContent, /Confirmada/);
+  assert.match(popup()!.textContent, /sin registrar un reembolso/);
+  await fill("reason", "Cambio de planes");
+  await submit();
+  await page.until(() => !popup());
+  assert.match(dateTrigger("Estado de la reserva").textContent, /Cancelada/);
   assert.match(page.container.textContent, /Cambio de planes/);
   assert.match(page.container.textContent, /Saldo a favor/);
-  assert.equal(page.container.querySelector('[aria-haspopup="menu"]'), null);
-  assert.equal(page.container.querySelector('[aria-label="Acciones de estado"]'), null);
-  assert.equal(writes.length, 0);
+  assert.deepEqual(writes[0].actions, [
+    { type: "set-status", status: "cancelled", reason: "Cambio de planes" },
+  ]);
 });
+
+it.each([
+  ["roomTypeId", "not enough rooms available for those dates"],
+  ["roomId", "room is already assigned for those dates"],
+] as const)(
+  "keeps cancelled credit intact when header restoration conflicts on %s",
+  async (field, code) => {
+    saved = {
+      ...saved,
+      status: "cancelled",
+      cancellationReason: "Cambio de planes",
+      cancelledAt: "2026-10-18T15:00:00Z",
+      subtotalCents: 0,
+      totalCents: 0,
+      paidCents: 10000,
+      balanceCents: -10000,
+      creditCents: 10000,
+    };
+    mockApi({
+      preview: () => ({
+        billing: saved,
+        validation: { issues: [{ roomIndex: 0, field, code }] },
+      }),
+    });
+    await render();
+    assert.match(page.container.textContent, /Reserva cancelada/);
+    assert.match(page.container.textContent, /Cambio de planes/);
+    assert.match(page.container.textContent, /Saldo a favor/);
+    await selectStatus("Confirmada");
+    await page.until(() => popup()?.textContent.includes("Habitación 1:") === true);
+    assert.equal(button("Guardar cambios").disabled, true);
+    assert.match(dateTrigger("Estado de la reserva").textContent, /Cancelada/);
+    await submit();
+    assert.equal(writes.length, 0);
+    await click("Cerrar");
+    assert.equal(saved.status, "cancelled");
+    assert.match(page.container.textContent, /Saldo a favor/);
+  },
+);
 
 it("saves stay changes independently with the current server bill", async () => {
   mockApi({
