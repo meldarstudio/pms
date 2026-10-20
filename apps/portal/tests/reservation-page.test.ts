@@ -456,18 +456,75 @@ it("waits for the current discount preview and saves its amount separately", asy
   assert.deepEqual(writes[0].actions, [{ type: "set-discount", amountCents: 5000 }]);
 });
 
-// T3 replaces this confirmation-era scenario with the direct lifecycle policy.
-it.skip("checks in an unpaid, unassigned reservation without changing its dates", async () => {
+it("checks in an unpaid, unassigned reservation in one click without changing its dates", async () => {
   mockApi();
   await render();
   await click("Hacer check-in");
-  await page.until(() => !button("Guardar cambios").disabled);
-  await submit();
-  await page.until(() => !popup());
+  await page.until(() => page.container.textContent.includes("Hacer check-out"));
+  assert.equal(popup(), null);
+  assert.equal(writes.length, 1);
   assert.deepEqual(writes[0].actions, [{ type: "set-status", status: "checked_in" }]);
   assert.equal(saved.checkIn, "2026-10-19");
+  assert.equal(saved.checkOut, "2026-10-21");
   assert.equal(saved.balanceCents, 30000);
   assert.ok(button("Hacer check-out"));
+});
+
+it("checks out once, protects pending navigation, and retries an uncertain response with the same ID", async () => {
+  saved = { ...saved, status: "checked_in" };
+  let finish!: (response: Response) => void;
+  mockApi({
+    write: () =>
+      writes.length === 1
+        ? new Promise<Response>((resolve) => {
+            finish = resolve;
+          })
+        : undefined,
+  });
+  await render();
+  const checkout = button("Hacer check-out");
+  await React.act(async () => {
+    checkout.click();
+    checkout.click();
+  });
+  await page.until(() => page.container.textContent.includes("Guardando estado…"));
+  assert.equal(writes.length, 1);
+  assert.equal(button("Guardando estado…").disabled, true);
+  assert.equal(button("Cambiar estado").disabled, true);
+  assert.equal(await unloadPrevented(), true);
+  assert.equal(saved.status, "checked_in");
+  await React.act(async () => {
+    void router.navigate({ href: "/reservations" });
+  });
+  await page.until(() => window.document.body.textContent.includes("Guardando cambios"));
+  await click("Seguir editando");
+  await React.act(async () =>
+    finish(Response.json({ error: "Temporary save failure" }, { status: 503 })),
+  );
+  await page.until(() => page.container.textContent.includes("Hacer check-out"));
+  await click("Hacer check-out");
+  await page.until(
+    () =>
+      !page.container.textContent.includes("Guardando estado…") && saved.status === "checked_out",
+  );
+  assert.deepEqual(writes[0], writes[1]);
+  assert.deepEqual(writes[1].actions, [{ type: "set-status", status: "checked_out" }]);
+  assert.equal(saved.checkIn, "2026-10-19");
+  assert.equal(saved.checkOut, "2026-10-21");
+  assert.equal(saved.balanceCents, 30000);
+  assert.equal(popup(), null);
+});
+
+it("saves a non-cancellation correction directly from the menu", async () => {
+  saved = { ...saved, status: "checked_out" };
+  mockApi();
+  await render();
+  await click("Cambiar estado");
+  await menu("Confirmada");
+  await page.until(() => page.container.textContent.includes("Hacer check-in"));
+  assert.equal(popup(), null);
+  assert.deepEqual(writes[0].actions, [{ type: "set-status", status: "confirmed" }]);
+  assert.ok(button("Hacer check-in"));
 });
 
 for (const balance of [0, -10000, 5000]) {
@@ -514,6 +571,7 @@ for (const [code, fieldName] of [
     assert.equal(button("Guardar cambios").disabled, true);
     await submit();
     assert.equal(writes.length, 0);
+    assert.deepEqual(previews[0].actions, [{ type: "set-status", status: "confirmed" }]);
   });
 }
 

@@ -6,7 +6,6 @@ import { propertyToday } from "./property-calendar.ts";
 
 const optionalText = (max: number) => z.string().trim().max(max, `Máximo ${max} caracteres.`);
 const date = z.iso.date({ error: "Indica una fecha válida." });
-const status = z.enum(["confirmed", "checked_in", "checked_out", "cancelled"]);
 const count = (min: number, message: string) =>
   z
     .string()
@@ -38,14 +37,13 @@ export const detailsSchema = (
   }: {
     validateOperations?: boolean;
     validateContact?: boolean;
-    saved?: Pick<ReservationDetail, "checkIn" | "checkOut" | "status" | "rooms">;
+    saved?: Pick<ReservationDetail, "checkIn" | "checkOut" | "rooms">;
   } = {},
 ) =>
   z
     .object({
       checkIn: date,
       checkOut: date,
-      status,
       notes: z.string().max(2000, "Máximo 2000 caracteres."),
       rooms: z.array(room),
       fullName: z.string().trim().optional(),
@@ -82,10 +80,7 @@ export const detailsSchema = (
         });
       const assignments = new Set<string>();
       const revalidateAll =
-        !saved ||
-        value.checkIn !== saved.checkIn ||
-        value.checkOut !== saved.checkOut ||
-        (saved.status === "cancelled" && value.status !== "cancelled");
+        !saved || value.checkIn !== saved.checkIn || value.checkOut !== saved.checkOut;
       value.rooms.forEach((draft, index) => {
         if (draft.removed) return;
         const path = ["rooms", index, "room"];
@@ -142,7 +137,6 @@ export type DetailsValues = z.input<ReturnType<typeof detailsSchema>>;
 export const emptyDetails: DetailsValues = {
   checkIn: "",
   checkOut: "",
-  status: "confirmed",
   notes: "",
   rooms: [],
 };
@@ -151,7 +145,6 @@ export function detailsDefaults(detail: ReservationDetail, includeContact = fals
     ...(includeContact ? contactDefaults(detail) : {}),
     checkIn: detail.checkIn,
     checkOut: detail.checkOut,
-    status: status.parse(detail.status),
     notes: detail.notes ?? "",
     rooms: detail.rooms.map((room) => ({
       id: room.id,
