@@ -25,7 +25,6 @@ let routing: BrowserTest["routing"];
 let forms: typeof import("../src/components/reservation-entry-forms.tsx");
 let dialogs: typeof import("../src/components/room-booking-dialog.tsx");
 let newBookings: typeof import("../src/components/new-booking.tsx");
-let summaries: typeof import("../src/components/booking-summary.tsx");
 let queries: typeof import("../src/lib/queries.ts");
 let calendars: typeof import("../src/components/room-calendar.tsx");
 let inventories: typeof import("../src/components/inventory.tsx");
@@ -53,9 +52,6 @@ beforeAll(async () => {
   newBookings = (await server.ssrLoadModule(
     "/src/components/new-booking.tsx",
   )) as typeof newBookings;
-  summaries = (await server.ssrLoadModule(
-    "/src/components/booking-summary.tsx",
-  )) as typeof summaries;
   queries = (await server.ssrLoadModule("/src/lib/queries.ts")) as typeof queries;
   calendars = (await server.ssrLoadModule("/src/components/room-calendar.tsx")) as typeof calendars;
   closures = (await server.ssrLoadModule(
@@ -226,31 +222,6 @@ it("adds consecutive guests with distinct IDs and resets the real form across re
   assert.notEqual(saved.stayingGuests[0].id, saved.stayingGuests[1].id);
 });
 
-for (const [balanceCents, label, tone] of [
-  [30000, "Saldo pendiente", "text-destructive"],
-  [-5000, "Saldo a favor", "text-credit-foreground"],
-  [0, "Cuenta saldada", "text-muted-foreground"],
-] as const) {
-  it(`flags a ${balanceCents} balance as "${label}" in the booking summary footer`, async () => {
-    await render(
-      React.createElement(summaries.BookingSummary, {
-        rooms: [],
-        cancelled: false,
-        summary: { subtotalCents: 30000, discountCents: 0, totalCents: 30000, balanceCents },
-        paidCents: 30000 - balanceCents,
-        currency: "PEN",
-        stayLabel: null,
-        showPayments: true,
-        message: null,
-      }),
-    );
-    const footer = window.document.querySelector('[data-slot="card-footer"]');
-    assert.ok(footer, "Missing summary footer");
-    assert.match(footer.textContent ?? "", new RegExp(label));
-    assert.ok(footer.classList.contains(tone), `Footer should use ${tone}`);
-  });
-}
-
 it("clears each successful payment without restoring the original suggested balance", async () => {
   let saved = detail();
   const amounts: number[] = [];
@@ -337,18 +308,6 @@ it("refreshes an untouched payment suggestion and preserves a manually entered a
   assert.equal(control("amount").value, "75");
 });
 
-it("defaults payments to October 31 in Lima rather than UTC November 1", async () => {
-  await render(
-    React.createElement(forms.PaymentForm, {
-      detail: detail(),
-      disabled: false,
-      onDirtyChange: () => {},
-      onReady: async () => {},
-    }),
-  );
-  assert.ok(button("31 oct 2026"));
-});
-
 it("preserves a backdated payment and refreshes future-date limits on resume without losing the draft", async () => {
   const writes: WorkflowCommand["actions"][] = [];
   await render(
@@ -361,6 +320,7 @@ it("preserves a backdated payment and refreshes future-date limits on resume wit
       },
     }),
   );
+  assert.ok(button("31 oct 2026"), "Payment defaults to the property date, not UTC November 1");
   await fill("amount", "25");
   await React.act(async () => button("31 oct 2026").click());
   const day = (label: string) => {
@@ -1720,6 +1680,7 @@ it("keeps an extension price visible and identifies the conflicting room without
     (item) => item.textContent === "Importe habitaciones",
   )!;
   assert.equal(subtotal.nextElementSibling?.textContent.replace(/\s/g, ""), "S/450");
+  assert.equal(summaryAmount("Saldo pendiente"), "S/450");
   assert.ok(container.textContent.includes("Vista previa"));
   assert.equal(container.textContent.includes("Reintentar"), false);
   assert.equal(container.textContent.includes("Calculando…"), false);

@@ -18,6 +18,10 @@ export default defineConfig(({ command, mode }) => {
       name: "portal",
       environment: "node",
       include: ["tests/*.test.ts"],
+      // Also bound package-local runs, which do not load the root test config.
+      fileParallelism: false,
+      pool: "forks",
+      execArgv: ["--max-old-space-size=1536"],
     },
     plugins: lazyPlugins(() => [react(), tailwindcss()]),
     resolve: {

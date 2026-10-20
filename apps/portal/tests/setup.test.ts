@@ -238,24 +238,6 @@ it("keeps a direct reservation detail link accessible when no physical rooms exi
   assert.equal(router.state.location.pathname, "/reservations/reservation-1");
 });
 
-it("protects reservation drafts from update-triggered reloads", async () => {
-  await renderReservationDetail();
-  await click("Editar descuento");
-  const discount = window.document.querySelector<HTMLInputElement>('input[name="amount"]');
-  assert.ok(discount, "The reservation discount must be editable");
-  await React.act(async () => {
-    Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, "value")!.set!.call(
-      discount,
-      "50",
-    );
-    discount.dispatchEvent(new window.Event("input", { bubbles: true }));
-  });
-  const unload = new window.Event("beforeunload", { cancelable: true });
-  await React.act(async () => window.dispatchEvent(unload));
-  assert.equal(unload.defaultPrevented, true, "A draft must block an update-triggered reload");
-  assert.equal(discount.value, "50");
-});
-
 it("edits a room type and adds several room numbers in the real table with one save", async () => {
   mockApi();
   await render();

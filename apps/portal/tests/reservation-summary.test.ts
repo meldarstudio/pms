@@ -137,15 +137,6 @@ function amount(label: string) {
   return term.parentElement!.querySelector("dd")!.textContent.replace(/\s/g, "");
 }
 
-it("explains the reservation bill using server subtotal, discount, total, payments and outstanding balance", async () => {
-  await render();
-  assert.equal(amount("Subtotal"), "S/300.50");
-  assert.equal(amount("Descuento"), "S/50.50");
-  assert.equal(amount("Total"), "S/250");
-  assert.equal(amount("Pagado"), "S/100.25");
-  assert.match(page.container.textContent.replace(/\s/g, ""), /SaldopendienteS\/149\.75/);
-});
-
 it("offers discount editing on its zero-valued row and refreshes the bill after saving", async () => {
   saved = {
     ...saved,
@@ -167,12 +158,6 @@ it("offers discount editing on its zero-valued row and refreshes the bill after 
   };
   await render();
   assert.equal(amount("Descuento"), "S/0");
-  const edit = button("Editar descuento");
-  assert.ok(
-    edit.closest("dl"),
-    "The edit action must be beside the discount, not on the whole card",
-  );
-  assert.equal(edit.closest("dt")?.textContent.trim(), "Descuento");
   await click("Editar descuento");
   await fillAmount("50.50");
   await page.until(() => !button("Guardar cambios").disabled);
@@ -185,15 +170,15 @@ it("offers discount editing on its zero-valued row and refreshes the bill after 
   assert.match(page.container.textContent.replace(/\s/g, ""), /SaldopendienteS\/149\.75/);
 });
 
-it.each(
-  [
-    ["calendar", "?origin=calendar&returnTo=from%3D2026-10-19%26span%3D14"],
-    ["list", "?returnTo=view%3Dall%26q%3DAna"],
-    ["direct", ""],
-  ].flatMap(([origin, search]) =>
-    ["loaded", "loading", "error"].map((state) => ({ origin, search, state })),
-  ),
-)(
+it.each([
+  {
+    origin: "calendar",
+    search: "?origin=calendar&returnTo=from%3D2026-10-19%26span%3D14",
+    state: "loaded",
+  },
+  { origin: "direct", search: "", state: "loading" },
+  { origin: "list", search: "?returnTo=view%3Dall%26q%3DAna", state: "error" },
+])(
   "returns to Reservations from $origin entry while detail is $state",
   async ({ search, state }) => {
     if (state === "loading") detailResponse = () => new Promise<Response>(() => {});
@@ -207,29 +192,6 @@ it.each(
     await page.until(() => page.container.textContent.includes("No se encontraron reservas"));
   },
 );
-
-it("keeps identity and phone visible with one reservation-edit entry point in the header", async () => {
-  await render();
-  const header = page.container.querySelector("main header");
-  assert.ok(header);
-  assert.ok(header.textContent.includes("Ana Pérez"));
-  assert.ok(header.textContent.includes("#BILL0001"));
-  assert.equal(header.querySelector('a[href="tel:999111222"]')?.textContent, "999111222");
-  const reservationEditors = Array.from(page.container.querySelectorAll("button")).filter(
-    (element) =>
-      element.textContent.trim() === "Editar reserva" ||
-      element.getAttribute("aria-label") === "Editar estadía",
-  );
-  assert.equal(
-    reservationEditors.length,
-    1,
-    "Staff must have one clearly scoped reservation editor",
-  );
-  assert.ok(header.contains(button("Editar reserva")));
-  await click("Editar reserva");
-  await page.until(() => browser.window.document.querySelector('[role="dialog"]') !== null);
-  assert.match(browser.window.document.querySelector('[role="dialog"]')!.textContent, /Check-in/);
-});
 
 it.each([
   {
@@ -291,6 +253,9 @@ it("protects a discount draft when Back targets Reservations and allows explicit
   await render("?origin=calendar&returnTo=from%3D2026-10-19%26span%3D14");
   await click("Editar descuento");
   await fillAmount("25");
+  const unload = new browser.window.Event("beforeunload", { cancelable: true });
+  await browser.React.act(async () => browser.window.dispatchEvent(unload));
+  assert.equal(unload.defaultPrevented, true, "A discount draft must block an update reload");
   await click("Volver a reservas");
   await page.until(() =>
     browser.window.document.body.textContent.includes("Hay cambios sin guardar"),

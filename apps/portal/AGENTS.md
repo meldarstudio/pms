@@ -2,6 +2,8 @@
 
 Paths below are relative to `apps/portal` unless stated otherwise.
 Before portal tests or compiler changes, read the [reservation-form testing guidance](README.md#reservation-forms).
+Run test commands sequentially, targeting affected files first. Ask before raising
+worker or heap limits; follow the root [frontend testing policy](../../CODING_STANDARDS.md#frontend-scope).
 
 ## Navigation and data
 
