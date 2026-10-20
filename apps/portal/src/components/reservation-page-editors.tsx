@@ -384,12 +384,6 @@ function ReservationActionForm({
               <form.AppField name="phone">
                 {(field) => <field.Text label="Teléfono" type="tel" max={40} />}
               </form.AppField>
-              <form.AppField name="documentType">
-                {(field) => <field.Text label="Tipo de documento" max={40} />}
-              </form.AppField>
-              <form.AppField name="documentNumber">
-                {(field) => <field.Text label="Número de documento" max={60} />}
-              </form.AppField>
             </>
           )}
           {target.kind === "notes" && (

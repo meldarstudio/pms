@@ -264,6 +264,7 @@ async function unloadPrevented() {
 
 it("shows reservation sections with their own editing actions and contact details", async () => {
   saved.guest = { ...saved.guest, documentType: "DNI", documentNumber: "12345678" };
+  saved.rooms = [...saved.rooms, { ...saved.rooms[0], id: "line-2", adults: 1, children: 2 }];
   mockApi();
   await render();
   assert.equal(page.container.querySelectorAll("input, textarea").length, 0);
@@ -274,9 +275,13 @@ it("shows reservation sections with their own editing actions and contact detail
   assert.match(contact.textContent, /Ana Pérez/);
   assert.match(contact.textContent, /999111222/);
   assert.match(contact.textContent, /ana@example.com/);
-  assert.match(contact.textContent, /DNI/);
-  assert.match(contact.textContent, /12345678/);
+  assert.doesNotMatch(contact.textContent, /documento|DNI|12345678/);
   assert.match(page.container.textContent, /Estadía y habitaciones/);
+  const occupants = Array.from(page.container.querySelectorAll("dt")).find(
+    (term) => term.textContent === "Ocupantes",
+  );
+  assert.ok(occupants, "The stay summary shows the total declared occupants");
+  assert.equal(occupants.nextElementSibling?.textContent, "5");
   assert.match(page.container.textContent, /Pago y cuenta/);
   assert.match(page.container.textContent, /19 de octubre de 2026/);
   assert.match(page.container.textContent, /Llegada hoy/);
@@ -299,8 +304,6 @@ it("retains the contact draft and retry ID after rejection and background refres
   await fill("fullName", "Ana María Pérez");
   await fill("phone", "999333444");
   await fill("email", "nuevo@example.com");
-  await fill("documentType", "DNI");
-  await fill("documentNumber", "12345678");
   await page.until(() => !button("Guardar cambios").disabled);
   assert.equal(await unloadPrevented(), true);
   await submit();
@@ -313,8 +316,6 @@ it("retains the contact draft and retry ID after rejection and background refres
   assert.equal(field("fullName").value, "Ana María Pérez");
   assert.equal(field("phone").value, "999333444");
   assert.equal(field("email").value, "nuevo@example.com");
-  assert.equal(field("documentType").value, "DNI");
-  assert.equal(field("documentNumber").value, "12345678");
   await click("Cancelar");
   assert.match(window.document.body.textContent, /Hay cambios sin guardar/);
   await click("Seguir editando");
@@ -384,6 +385,7 @@ it("records payments through retry-safe commands and prevents dismissal or navig
 it("validates and saves only contact changes without replacing guests, notes, or other reservations' cached contacts", async () => {
   saved = {
     ...saved,
+    guest: { ...saved.guest, documentType: "DNI", documentNumber: "12345678" },
     stayingGuests: [
       {
         id: "staying-guest-1",
@@ -398,6 +400,8 @@ it("validates and saves only contact changes without replacing guests, notes, or
   await render();
   page.client.setQueryData(["reservation", "other"], { ...saved, id: "other" });
   await click("Editar contacto");
+  assert.equal(popup()!.querySelector('[name="documentType"]') !== null, false);
+  assert.equal(popup()!.querySelector('[name="documentNumber"]') !== null, false);
   await fill("fullName", "Ana María Pérez");
   await fill("email", "incorrecto");
   await submit();
@@ -410,6 +414,8 @@ it("validates and saves only contact changes without replacing guests, notes, or
   assert.equal(saved.notes, "Llegada por la tarde");
   assert.equal(saved.stayingGuests[0].fullName, "Luis García");
   assert.equal(saved.rooms[0].adults, 2);
+  assert.equal(saved.guest.documentType, "DNI");
+  assert.equal(saved.guest.documentNumber, "12345678");
   assert.deepEqual(writes[0].actions, [
     {
       type: "contact",
@@ -417,8 +423,6 @@ it("validates and saves only contact changes without replacing guests, notes, or
         fullName: "Ana María Pérez",
         email: null,
         phone: "999111222",
-        documentType: null,
-        documentNumber: null,
       },
     },
   ]);

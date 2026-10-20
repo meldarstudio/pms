@@ -10,13 +10,19 @@ calendar's entire editing surface.
 This decision supersedes the combined contact-and-stay editor, single header
 **Editar reserva** action, and two-card limit described below:
 
-- Show a dedicated **Contacto principal** section with name, phone, email, and
-  document details, including explicit empty values. Its **Editar contacto**
+- Show a dedicated **Contacto principal** section with name, phone, and email,
+  including explicit empty values. Its **Editar contacto**
   action corrects the existing contact's fields. Do not introduce contact search,
   replacement, relinking, or changes to backend contact semantics.
+  Document type/number are not requested or displayed for the booking contact;
+  omit them from contact commands so stored values remain unchanged. Staying-guest
+  document fields remain available in their existing workflows.
 - Put **Editar estadía** in **Estadía y habitaciones**, replacing the generic
   header edit action. Keep dates, reserved rooms, room types, physical assignments,
   and declared occupancy in one stay draft and workflow command.
+  Show one **Ocupantes** total in the stay summary: adults plus children across
+  every reserved room, independent of the optional named guest list. Keep per-room
+  occupancy editing and validation in the stay editor, not the overview.
 - Contact and stay editors save independently. Neither saves changes belonging
   to the other section. The stay dialog does not expose the compact calendar's
   tabs, notes, guest/payment workflows, discount editing, or lifecycle controls.

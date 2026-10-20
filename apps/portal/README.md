@@ -72,20 +72,23 @@ The discount row has its own **Editar descuento** action.
 
 The page is the complete reservation-management workspace, expanded incrementally,
 while the calendar dialog stays compact and operations-focused. **Contacto principal**
-shows name, phone, email, and document details with an **Editar contacto** action.
+shows name, phone, and email with an **Editar contacto** action. Document fields
+are not requested or displayed for booking contacts; contact saves omit them to
+preserve existing stored values. Staying-guest document fields remain unchanged.
 **Estadía y habitaciones** has its own **Editar estadía** action. Guest, notes,
 payment-record, and account sections remain deferred; their editor workflows
 remain implemented. Declared occupancy stays
 distinct from the optional guest list and remains editable in the stay editor.
-The reservation data card omits occupancy and guest counts, quick-action buttons,
-and row dividers.
+The stay summary shows one **Ocupantes** total, adding adults and children across
+all reserved rooms—not the optional named guest list. Per-room occupancy remains
+editable in the stay editor, without per-room counts in the overview.
 The page does not offer unsupported invoice, payment-request, web check-in,
 history, attachment, or task controls from the design reference.
 
 Contact and stay edits open separate centered desktop dialogs/full-screen mobile
 editors, each with independently saved drafts and reachable save/cancel controls
 while the form body scrolls. Contact editing corrects the existing record's name,
-phone, email, and document fields; it does not search for or replace the contact.
+phone, and email fields; it does not search for or replace the contact.
 Stay dates, room types, assignments, and occupancy save together through
 **Guardar cambios**, reusing the compact dialog's availability, capacity and server
 billing previews. The focused stay editor does not expose calendar tabs, notes,

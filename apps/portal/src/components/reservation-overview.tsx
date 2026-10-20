@@ -7,11 +7,11 @@ import {
   CircleCheckIcon,
   ClockIcon,
   CreditCardIcon,
-  IdCardIcon,
   MailIcon,
   PencilIcon,
   PhoneIcon,
   UserRoundIcon,
+  UsersIcon,
   type LucideIcon,
 } from "lucide-react";
 import { cn } from "cn";
@@ -145,6 +145,9 @@ export function ReservationOverview({
                 <ReservationDatum icon={ClockIcon} label="Duración">
                   {nights} {nights === 1 ? "noche" : "noches"}
                 </ReservationDatum>
+                <ReservationDatum icon={UsersIcon} label="Ocupantes">
+                  {detail.rooms.reduce((total, room) => total + room.adults + room.children, 0)}
+                </ReservationDatum>
                 <ReservationDatum
                   icon={BedDoubleIcon}
                   label={detail.rooms.length === 1 ? "Habitación" : "Habitaciones"}
@@ -192,12 +195,6 @@ function ContactSummary({ detail, edit }: Model) {
           </ReservationDatum>
           <ReservationDatum icon={MailIcon} label="Correo electrónico">
             {contact.email ? <a href={`mailto:${contact.email}`}>{contact.email}</a> : "Sin correo"}
-          </ReservationDatum>
-          <ReservationDatum icon={IdCardIcon} label="Tipo de documento">
-            {contact.documentType || "Sin registrar"}
-          </ReservationDatum>
-          <ReservationDatum icon={IdCardIcon} label="Número de documento">
-            {contact.documentNumber || "Sin registrar"}
           </ReservationDatum>
         </dl>
       </CardContent>

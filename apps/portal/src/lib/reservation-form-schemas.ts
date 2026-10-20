@@ -199,14 +199,12 @@ export const guestSchema = z.object({
   reservationRoomId: z.string().nullable(),
 });
 export type GuestValues = z.input<typeof guestSchema>;
-export const contactSchema = guestSchema.omit({ id: true, reservationRoomId: true });
+export const contactSchema = guestSchema.pick({ fullName: true, phone: true, email: true });
 export function contactDefaults(detail: ReservationDetail) {
   return {
     fullName: detail.guest.fullName,
     phone: detail.guest.phone ?? "",
     email: detail.guest.email ?? "",
-    documentType: detail.guest.documentType ?? "",
-    documentNumber: detail.guest.documentNumber ?? "",
   };
 }
 export function contactPayload(values: z.input<typeof contactSchema>) {
@@ -215,8 +213,6 @@ export function contactPayload(values: z.input<typeof contactSchema>) {
     ...parsed,
     phone: parsed.phone || null,
     email: parsed.email || null,
-    documentType: parsed.documentType || null,
-    documentNumber: parsed.documentNumber || null,
   };
 }
 export const notesSchema = z.object({ notes: z.string().max(2000, "Máximo 2000 caracteres.") });
