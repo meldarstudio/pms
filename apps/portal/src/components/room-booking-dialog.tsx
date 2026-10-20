@@ -262,15 +262,19 @@ export function BookingEditor({
   full = false,
   initialTab = "details",
   onTabChange,
+  stayOnly = false,
+  onSaved,
 }: {
   detail: ReservationDetail;
-  onRefresh: () => void;
+  onRefresh?: () => void;
   onCancelled?: () => void;
   onViewReservation?: (id: string) => void;
   onDirtyChange?: (dirty: boolean) => void;
   full?: boolean;
   initialTab?: string;
   onTabChange?: (tab: string) => void;
+  stayOnly?: boolean;
+  onSaved?: () => void;
 }) {
   const contact = detail.guest;
   const queryClient = useQueryClient();
@@ -462,6 +466,7 @@ export function BookingEditor({
       });
       resetDetails(saved);
       toast.add({ title: "Detalles guardados", type: "success" });
+      onSaved?.();
     } catch (e) {
       const fields = serverFieldErrors(e, "details");
       if (fields) setServerErrors(form, fields);
@@ -470,24 +475,26 @@ export function BookingEditor({
   }
   return (
     <div className={cn("flex min-w-0 flex-col gap-4", !full && "min-h-0 flex-1 overflow-hidden")}>
-      <div className="flex shrink-0 flex-wrap items-center gap-1 pr-8">
-        <span className="text-lg font-semibold">{`${contact.fullName}`.trim()}</span>
-        <span className="text-lg text-muted-foreground"> · {detail.code}</span>
-        {!full && onViewReservation && (
-          <Button
-            type="button"
-            variant="ghost"
-            size="icon-sm"
-            aria-label="Ver reserva completa"
-            title="Ver reserva completa"
-            disabled={busy || discountMutation.isPending}
-            onClick={() => onViewReservation(detail.id)}
-          >
-            <ArrowUpRightIcon />
-          </Button>
-        )}
-      </div>
-      {(contact.phone || contact.email) && (
+      {!stayOnly && (
+        <div className="flex shrink-0 flex-wrap items-center gap-1 pr-8">
+          <span className="text-lg font-semibold">{`${contact.fullName}`.trim()}</span>
+          <span className="text-lg text-muted-foreground"> · {detail.code}</span>
+          {!full && onViewReservation && (
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon-sm"
+              aria-label="Ver reserva completa"
+              title="Ver reserva completa"
+              disabled={busy || discountMutation.isPending}
+              onClick={() => onViewReservation(detail.id)}
+            >
+              <ArrowUpRightIcon />
+            </Button>
+          )}
+        </div>
+      )}
+      {!stayOnly && (contact.phone || contact.email) && (
         <p className="-mt-2 shrink-0 text-sm wrap-anywhere text-muted-foreground">
           {[contact.phone, contact.email].filter(Boolean).join(" · ")}
         </p>
@@ -500,21 +507,28 @@ export function BookingEditor({
         }}
         className={cn("gap-4", !full && "min-h-0 overflow-y-auto")}
       >
-        <TabsList variant="line" className="shrink-0">
-          <TabsTrigger value="details">
-            Detalles
-            {dirty ? (
-              <span
-                className="size-1.5 shrink-0 rounded-full bg-primary"
-                aria-label="Cambios sin guardar"
-                title="Cambios sin guardar"
-              />
-            ) : null}
-          </TabsTrigger>
-          <TabsTrigger value="guests">Huéspedes</TabsTrigger>
-          <TabsTrigger value="payments">Pagos</TabsTrigger>
-        </TabsList>
-        <div className="grid min-w-0 shrink-0 gap-6 p-px lg:grid-cols-[minmax(0,1fr)_280px]">
+        {!stayOnly && (
+          <TabsList variant="line" className="shrink-0">
+            <TabsTrigger value="details">
+              Detalles
+              {dirty ? (
+                <span
+                  className="size-1.5 shrink-0 rounded-full bg-primary"
+                  aria-label="Cambios sin guardar"
+                  title="Cambios sin guardar"
+                />
+              ) : null}
+            </TabsTrigger>
+            <TabsTrigger value="guests">Huéspedes</TabsTrigger>
+            <TabsTrigger value="payments">Pagos</TabsTrigger>
+          </TabsList>
+        )}
+        <div
+          className={cn(
+            "grid min-w-0 shrink-0 gap-6 p-px",
+            !stayOnly && "lg:grid-cols-[minmax(0,1fr)_280px]",
+          )}
+        >
           <div className="min-w-0">
             <TabsContent value="details" keepMounted className="flex flex-col gap-5">
               <form
@@ -644,38 +658,44 @@ export function BookingEditor({
                       </section>
                     )}
                   </form.Field>
-                  <section className="flex flex-col gap-3">
-                    <FieldGroup>
-                      <form.AppField name="notes">
-                        {(field) => <field.Text label="Notas" type="textarea" max={2000} />}
-                      </form.AppField>
-                    </FieldGroup>
-                  </section>
+                  {!stayOnly && (
+                    <section className="flex flex-col gap-3">
+                      <FieldGroup>
+                        <form.AppField name="notes">
+                          {(field) => <field.Text label="Notas" type="textarea" max={2000} />}
+                        </form.AppField>
+                      </FieldGroup>
+                    </section>
+                  )}
                 </fieldset>
               </form>
             </TabsContent>
-            <TabsContent value="guests" keepMounted className="flex flex-col gap-5">
-              <GuestFields
-                detail={detail}
-                disabled={busy}
-                onSave={saveGuests}
-                onDirtyChange={setGuestDirty}
-              />
-            </TabsContent>
-            <TabsContent value="payments" keepMounted className="flex flex-col gap-5">
-              <PaymentForm
-                detail={detail}
-                disabled={busy}
-                onDirtyChange={setPaymentDirty}
-                onReady={savePayment}
-              />
-              <PaymentList
-                detail={detail}
-                disabled={busy}
-                onEdit={(entry) => setIntent({ type: "edit-payment", entry })}
-                onDelete={(entry) => setIntent({ type: "delete-payment", entry })}
-              />
-            </TabsContent>
+            {!stayOnly && (
+              <TabsContent value="guests" keepMounted className="flex flex-col gap-5">
+                <GuestFields
+                  detail={detail}
+                  disabled={busy}
+                  onSave={saveGuests}
+                  onDirtyChange={setGuestDirty}
+                />
+              </TabsContent>
+            )}
+            {!stayOnly && (
+              <TabsContent value="payments" keepMounted className="flex flex-col gap-5">
+                <PaymentForm
+                  detail={detail}
+                  disabled={busy}
+                  onDirtyChange={setPaymentDirty}
+                  onReady={savePayment}
+                />
+                <PaymentList
+                  detail={detail}
+                  disabled={busy}
+                  onEdit={(entry) => setIntent({ type: "edit-payment", entry })}
+                  onDelete={(entry) => setIntent({ type: "delete-payment", entry })}
+                />
+              </TabsContent>
+            )}
           </div>
           <aside className="min-w-0 md:self-start">
             <BookingSummary
@@ -694,7 +714,7 @@ export function BookingEditor({
               paidCents={billing?.paidCents ?? detail.paidCents}
               editableDiscountCents={detail.savedDiscountCents}
               discountDisabled={busy || discountMutation.isPending}
-              onDiscountSave={saveDiscount}
+              onDiscountSave={stayOnly ? undefined : saveDiscount}
               onDiscountDirtyChange={setDiscountDirty}
               currency={detail.currency}
               stayLabel={
@@ -735,7 +755,7 @@ export function BookingEditor({
         </div>
       </Tabs>
       <div className="flex shrink-0 flex-wrap items-end gap-3">
-        {!detail.cancelledAt && (
+        {!stayOnly && !detail.cancelledAt && (
           <Button
             type="button"
             variant="destructive"
@@ -746,7 +766,7 @@ export function BookingEditor({
           </Button>
         )}
         <div className="ml-auto flex flex-wrap items-end justify-end gap-3">
-          {tab === "details" && (
+          {!stayOnly && tab === "details" && (
             <FieldGroup className="w-48">
               <form.AppField name="status">
                 {(field) => (

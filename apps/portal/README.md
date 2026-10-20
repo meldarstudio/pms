@@ -55,6 +55,40 @@ the actual API and transactional database behavior.
 
 ## Reservation forms
 
+`/reservations/:id` is a read-first overview with back navigation, booking contact
+name with status/date badges, the reservation code and contact phone beneath it,
+and right-aligned **Editar reserva** and a split status button. The button shows
+the current state and opens a dropdown with the other states and cancellation.
+**Registrar pago** remains in the payment
+summary. Reservation data and a payment summary sit side by side on desktop and
+stack on phones. The summary distinguishes outstanding, settled, and credit
+balances; it is a reservation bill, not an invoice.
+
+The overview currently ends at the two summary cards while their design is being
+refined. Lower contact, guest, notes, payment-record, and account sections are
+deferred; their editor workflows remain implemented. Declared occupancy stays
+distinct from the optional guest list and remains editable in the stay editor.
+The reservation data card omits occupancy and guest counts, quick-action buttons,
+and row dividers.
+The page does not offer unsupported invoice, payment-request, web check-in,
+history, attachment, or task controls from the design reference.
+
+Each task opens one focused editor. Stay dates, room types, assignments, and
+occupancy share a desktop side panel/full-screen mobile editor, reusing the
+compact dialog's availability, capacity, and server billing-preview logic.
+Contact, notes, guests, payments, discount, and status changes use smaller dialogs.
+Changing a shared contact explicitly warns that its other reservations are affected.
+Cancellation and restoration show the resulting server bill and operational
+conflicts before confirmation; check-in and checkout do not change stay dates or
+require a settled balance or physical room assignment.
+
+Editors capture their opening values so background reads do not replace drafts.
+Failed saves retain drafts, dismissing a dirty editor asks for confirmation, and
+router navigation/browser unload are guarded while dirty or saving. Successful
+commands refresh the overview and related reservation/calendar/inventory queries.
+Returning to the calendar or list preserves the originating dates or filters.
+The compact calendar dialog remains the utility-focused editor.
+
 The reservation editor uses TanStack Form with portal-local Zod 4 schemas in
 `src/lib/reservation-form-schemas.ts`. Details, guest add/edit, payment add/edit,
 discount, and cancellation have independent form instances. API writes still use
@@ -68,8 +102,9 @@ error toasts. Query failures stay beside the content they block.
 Run `pnpm exec vp test` from the repository root for both test projects,
 `pnpm test` to run backend then portal, or `pnpm --filter @pms/portal test`
 for the portal alone. Tests use `vite-plus/test` and do not need a browser.
-The dialog suite in `tests/reservation-dialog.test.ts` uses happy-dom and a Vite
-SSR server with an explicit portal root to render the actual components.
+The dialog suite in `tests/reservation-dialog.test.ts` and the full-page suite in
+`tests/reservation-page.test.ts` use happy-dom and a Vite SSR server with an explicit
+portal root to render actual components with HTTP responses substituted at fetch.
 
 Run `pnpm check` for Oxfmt, Oxlint, and native type checks across the portal,
 backend, and shared schemas. Native checking covers portal source, Vite

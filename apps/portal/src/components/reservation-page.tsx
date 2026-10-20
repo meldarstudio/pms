@@ -2,14 +2,26 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { useBlocker } from "@tanstack/react-router";
 import { useQueryClient } from "@tanstack/react-query";
 import { ArrowLeftIcon } from "lucide-react";
-import { BookingEditor, DiscardChanges, ReservationStatus } from "@/components/room-booking-dialog";
+import { DiscardChanges } from "@/components/room-booking-dialog";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { FieldError } from "@/components/ui/field";
 import { useReservation, useReservationSaving } from "@/lib/queries";
 import { isReservationSaving } from "@/lib/workflow-query-cache";
+import { ReservationOverview } from "@/components/reservation-overview";
+import {
+  ReservationPageEditor,
+  type ReservationEditorTarget,
+} from "@/components/reservation-page-editors";
+import type { ReservationDetail } from "@/lib/api";
 
-export function ReservationPage({ id, onBack }: { id: string; onBack: () => void }) {
+type PageProps = { id: string; onBack: () => void; backLabel?: string };
+
+export function ReservationPage(props: PageProps) {
+  return <ReservationPageContent key={props.id} {...props} />;
+}
+
+function ReservationPageContent({ id, onBack, backLabel = "Volver a reservas" }: PageProps) {
   const client = useQueryClient();
   const query = useReservation(id);
   const saving = useReservationSaving(id);
@@ -22,7 +34,17 @@ export function ReservationPage({ id, onBack }: { id: string; onBack: () => void
     shouldBlockFn: shouldProtectUnload,
     withResolver: true,
   });
-  const [tab, setTab] = useState("details");
+  const [editor, setEditor] = useState<{
+    target: ReservationEditorTarget;
+    detail: ReservationDetail;
+  } | null>(null);
+  const onDirtyChange = useCallback((value: boolean) => {
+    dirty.current = value;
+  }, []);
+  function closeEditor() {
+    dirty.current = false;
+    setEditor(null);
+  }
   useEffect(() => {
     const protectUnload = (event: BeforeUnloadEvent) => {
       if (!shouldProtectUnload()) return;
@@ -33,47 +55,45 @@ export function ReservationPage({ id, onBack }: { id: string; onBack: () => void
     return () => window.removeEventListener("beforeunload", protectUnload);
   }, [shouldProtectUnload]);
   return (
-    <main className="mx-auto flex w-full max-w-6xl flex-col gap-6 overflow-y-auto p-4 md:p-8">
-      <header className="flex flex-col items-start gap-4">
-        <Button variant="ghost" disabled={saving} onClick={onBack}>
-          <ArrowLeftIcon data-icon="inline-start" />
-          Volver a reservas
-        </Button>
-        <div>
-          <div className="flex flex-wrap items-center gap-3">
-            <h1 className="text-xl font-semibold">Reserva {query.data?.code ?? ""}</h1>
-            {query.data && <ReservationStatus detail={query.data} />}
+    <main className="min-h-0 flex-1 overflow-y-auto">
+      <div className="mx-auto flex max-w-6xl flex-col gap-6 px-4 py-5 md:px-8 md:py-7">
+        {!query.data && (
+          <div className="flex items-center">
+            <Button variant="ghost" size="sm" disabled={saving} onClick={onBack}>
+              <ArrowLeftIcon data-icon="inline-start" />
+              {backLabel}
+            </Button>
           </div>
-          <p className="mt-1 text-muted-foreground">
-            Información completa de la reserva y sus estancias.
-          </p>
-        </div>
-      </header>
-      {query.isPending ? (
-        <Skeleton className="h-80 w-full" />
-      ) : query.error ? (
-        <>
-          <FieldError>{query.error.message}</FieldError>
-          <Button variant="outline" className="w-fit" onClick={() => void query.refetch()}>
-            Reintentar
-          </Button>
-        </>
-      ) : (
-        query.data && (
-          <BookingEditor
-            key={id}
+        )}
+        {query.isPending && <Skeleton className="h-80 w-full" />}
+        {query.error && (
+          <>
+            <FieldError>{query.error.message}</FieldError>
+            <Button variant="outline" className="w-fit" onClick={() => void query.refetch()}>
+              Reintentar
+            </Button>
+          </>
+        )}
+        {query.data && (
+          <ReservationOverview
             detail={query.data}
-            full
-            initialTab={tab}
-            onTabChange={setTab}
-            onDirtyChange={(value) => {
-              dirty.current = value;
-              if (!value && !isReservationSaving(client, id) && blocker.status === "blocked")
-                blocker.reset();
+            disabled={saving}
+            onBack={onBack}
+            backLabel={backLabel}
+            edit={(target) => {
+              if (editor || isReservationSaving(client, id)) return;
+              setEditor({ target, detail: query.data });
             }}
-            onRefresh={() => void query.refetch()}
           />
-        )
+        )}
+      </div>
+      {editor && (
+        <ReservationPageEditor
+          target={editor.target}
+          detail={editor.detail}
+          onClose={closeEditor}
+          onDirtyChange={onDirtyChange}
+        />
       )}
       {blocker.status === "blocked" && (
         <DiscardChanges

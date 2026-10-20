@@ -143,8 +143,7 @@ async function renderReservationDetail() {
   await render("/reservations/reservation-1");
   await until(
     () =>
-      container.textContent.includes("Reserva TEST0001") &&
-      container.textContent.includes("Ana Pérez"),
+      container.textContent.includes("#TEST0001") && container.textContent.includes("Ana Pérez"),
     "Reservation details must render",
   );
 }
@@ -239,7 +238,8 @@ it("keeps a direct reservation detail link accessible when no physical rooms exi
 
 it("protects reservation drafts from update-triggered reloads", async () => {
   await renderReservationDetail();
-  const notes = container.querySelector("textarea");
+  await click("Editar notas");
+  const notes = window.document.querySelector("textarea");
   assert.ok(notes, "Reservation notes must be editable");
   await React.act(async () => {
     Object.getOwnPropertyDescriptor(window.HTMLTextAreaElement.prototype, "value")!.set!.call(
@@ -249,7 +249,7 @@ it("protects reservation drafts from update-triggered reloads", async () => {
     notes.dispatchEvent(new window.Event("input", { bubbles: true }));
     notes.dispatchEvent(new window.Event("change", { bubbles: true }));
   });
-  assert.equal(button("Guardar detalles").disabled, false, "Editing notes must create a draft");
+  assert.equal(button("Guardar cambios").disabled, false, "Editing notes must create a draft");
   const unload = new window.Event("beforeunload", { cancelable: true });
   await React.act(async () => window.dispatchEvent(unload));
   assert.equal(unload.defaultPrevented, true, "A draft must block an update-triggered reload");

@@ -206,6 +206,8 @@ export const guestSchema = z.object({
   reservationRoomId: z.string().nullable(),
 });
 export type GuestValues = z.input<typeof guestSchema>;
+export const contactSchema = guestSchema.omit({ id: true, reservationRoomId: true });
+export const notesSchema = z.object({ notes: z.string().max(2000, "Máximo 2000 caracteres.") });
 export function guestDefaults(guest: StayingGuest): GuestValues {
   return {
     ...guest,

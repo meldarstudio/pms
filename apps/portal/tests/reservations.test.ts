@@ -380,11 +380,11 @@ it("refreshes cached operations and legacy calendar results after saving in rese
   await until(() => container.querySelector("tbody")?.textContent.includes("Ana Pérez") ?? false);
   const row = container.querySelector<HTMLElement>("tbody tr")!;
   await React.act(async () => row.click());
-  await until(() => container.textContent.includes("Reserva ANA0001"));
-  await choose("Estado de la reserva", "Check-in");
-  await until(() => !button("Guardar detalles").hasAttribute("disabled"));
-  await click("Guardar detalles");
-  await until(() => saved && button("Guardar detalles").hasAttribute("disabled"));
+  await until(() => container.textContent.includes("#ANA0001"));
+  await click("Hacer check-in");
+  await until(() => !button("Guardar cambios").hasAttribute("disabled"));
+  await click("Guardar cambios");
+  await until(() => saved && window.document.querySelector('[role="dialog"]') === null);
   await click("Volver a reservas");
   await until(() => container.textContent.includes("No se encontraron reservas"));
   assert.ok(container.textContent.includes("0 de 0 reservas"));
@@ -553,7 +553,7 @@ it.each(["Enter", " ", "click"])(
           new window.KeyboardEvent("keydown", { key: activation, bubbles: true, cancelable: true }),
         );
     });
-    await until(() => container.textContent.includes("Reserva ANA0001"));
+    await until(() => container.textContent.includes("#ANA0001"));
     const detailLink = router.state.location.href;
     // A different table context must not overwrite the return URL encoded in this detail link.
     await React.act(async () => router.navigate({ href: "/reservations?view=all" }));

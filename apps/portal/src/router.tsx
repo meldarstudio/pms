@@ -78,6 +78,13 @@ function CalendarRoute() {
         void navigate({
           to: "/reservations/$reservationId",
           params: { reservationId: id },
+          search: {
+            origin: "calendar",
+            returnTo: new URLSearchParams({
+              from: search.from,
+              span: String(search.span),
+            }).toString(),
+          },
         })
       }
     />
@@ -137,27 +144,39 @@ const reservationsRoute = createRoute({
 const reservationRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/reservations/$reservationId",
-  validateSearch: (search: Record<string, unknown>): { returnTo?: string } => ({
+  validateSearch: (
+    search: Record<string, unknown>,
+  ): { returnTo?: string; origin?: "calendar" } => ({
     returnTo: typeof search.returnTo === "string" ? search.returnTo : undefined,
+    origin: search.origin === "calendar" ? "calendar" : undefined,
   }),
   component: ReservationRoute,
 });
 
 function ReservationRoute() {
   const { reservationId } = reservationRoute.useParams();
-  const { returnTo } = reservationRoute.useSearch();
+  const { returnTo, origin } = reservationRoute.useSearch();
   const navigate = useNavigate();
   return (
     <ReservationPage
       id={reservationId}
+      backLabel={origin === "calendar" ? "Volver al calendario" : "Volver a reservas"}
       onBack={() =>
-        void navigate({
-          to: "/reservations",
-          search:
-            returnTo !== undefined
-              ? reservationsSearch(Object.fromEntries(new URLSearchParams(returnTo)))
-              : (lastReservationsSearch.current ?? reservationsSearch({})),
-        })
+        origin === "calendar"
+          ? void navigate({
+              to: "/calendar",
+              search:
+                returnTo !== undefined
+                  ? calendarSearch(Object.fromEntries(new URLSearchParams(returnTo)))
+                  : (lastCalendarSearch.current ?? calendarSearch({})),
+            })
+          : void navigate({
+              to: "/reservations",
+              search:
+                returnTo !== undefined
+                  ? reservationsSearch(Object.fromEntries(new URLSearchParams(returnTo)))
+                  : (lastReservationsSearch.current ?? reservationsSearch({})),
+            })
       }
     />
   );
