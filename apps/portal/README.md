@@ -235,8 +235,12 @@ The service worker caches only the public application shell and static assets.
 It does not cache API responses, session data, or hotel records, and does not
 queue writes. Reservations and other hotel operations require an internet
 connection. When a new version is ready, **Nueva versión disponible** offers a
-manual **Actualizar** action; simply leaving the notice alone does not reload
-the page.
+floating card with a manual **Actualizar ahora** action; simply leaving the notice
+alone does not reload the page. **Ahora no** and the close button hide that update
+for the current tab session, including page reloads, without activating it. A new
+tab session can show the notice again if the update is still waiting. If session
+storage is unavailable, dismissal lasts only until the page reloads. Offline and
+connection-restored messages keep their existing behavior.
 
 For release smoke tests, build and preview locally using the root build commands
 and a non-production API origin. On Android Chromium, Safari on iOS/iPadOS, and
@@ -247,7 +251,7 @@ the Spanish offline message and retry should recover when networking returns.
 Confirm no authenticated API response appears in Cache Storage and no write is
 replayed after reconnecting. To check updates, keep an older preview open with
 an unsaved draft while serving a newer build: defer the notice, verify no window
-reloads, then choose **Actualizar** and verify the existing unload/save guards.
+reloads, then choose **Actualizar ahora** and verify the existing unload/save guards.
 Also check two open windows and confirm that the unchosen window is not forcibly
 reloaded. Verify `/manifest.webmanifest`, `/sw.js`, and icon requests return their
 actual content (not SPA fallback HTML). Record browser/device versions and

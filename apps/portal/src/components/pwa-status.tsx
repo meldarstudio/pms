@@ -1,10 +1,39 @@
 import { useEffect, useState, type ReactNode } from "react";
+import { RefreshCwIcon, XIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import {
+  Card,
+  CardAction,
+  CardContent,
+  CardFooter,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
+
+const DISMISSED_UPDATE_KEY = "manantial-dismissed-update";
 
 export function PwaStatus({ children }: { children: ReactNode }) {
   const [online, setOnline] = useState(() => navigator.onLine);
   const [reconnected, setReconnected] = useState(false);
   const [waitingWorker, setWaitingWorker] = useState<ServiceWorker | null>(null);
+  const [dismissedUpdate, setDismissedUpdate] = useState(() => {
+    try {
+      return window.sessionStorage.getItem(DISMISSED_UPDATE_KEY);
+    } catch {
+      return null;
+    }
+  });
+  const showUpdate = online && waitingWorker && dismissedUpdate !== waitingWorker.scriptURL;
+
+  function dismissUpdate() {
+    if (!waitingWorker) return;
+    setDismissedUpdate(waitingWorker.scriptURL);
+    try {
+      window.sessionStorage.setItem(DISMISSED_UPDATE_KEY, waitingWorker.scriptURL);
+    } catch {
+      // Storage may be blocked; the notice still stays dismissed until this page closes.
+    }
+  }
 
   useEffect(() => {
     const wentOnline = () => {
@@ -54,7 +83,7 @@ export function PwaStatus({ children }: { children: ReactNode }) {
       <div className={online ? "contents" : undefined} hidden={!online}>
         {children}
       </div>
-      {(!online || reconnected || waitingWorker) && (
+      {(!online || (reconnected && !showUpdate)) && (
         <aside
           role="status"
           className={`fixed inset-x-0 z-[100] flex items-center justify-center gap-3 bg-foreground px-4 py-2 text-sm text-background ${online ? "top-0" : "inset-y-0 flex-col"}`}
@@ -66,19 +95,6 @@ export function PwaStatus({ children }: { children: ReactNode }) {
                 Reintentar
               </Button>
             </>
-          ) : waitingWorker ? (
-            <>
-              <span>Nueva versión disponible</span>
-              <Button
-                size="sm"
-                variant="secondary"
-                onClick={() => {
-                  waitingWorker?.postMessage("ACTIVATE_UPDATE");
-                }}
-              >
-                Actualizar
-              </Button>
-            </>
           ) : (
             <>
               <span>Conexión restablecida.</span>
@@ -88,6 +104,40 @@ export function PwaStatus({ children }: { children: ReactNode }) {
             </>
           )}
         </aside>
+      )}
+      {showUpdate && (
+        <Card
+          role="status"
+          aria-label="Actualización disponible"
+          size="sm"
+          className="fixed right-4 bottom-[max(1rem,env(safe-area-inset-bottom))] left-4 z-[100] shadow-xl sm:left-auto sm:w-80"
+        >
+          <CardHeader>
+            <CardTitle>Nueva versión disponible</CardTitle>
+            <CardAction>
+              <Button
+                variant="ghost"
+                size="icon-sm"
+                aria-label="Cerrar aviso"
+                onClick={dismissUpdate}
+              >
+                <XIcon />
+              </Button>
+            </CardAction>
+          </CardHeader>
+          <CardContent>
+            Guarda tus cambios antes de continuar. Solo se recargará esta ventana.
+          </CardContent>
+          <CardFooter className="flex-col items-stretch gap-2">
+            <Button onClick={() => waitingWorker?.postMessage("ACTIVATE_UPDATE")}>
+              <RefreshCwIcon data-icon="inline-start" />
+              Actualizar ahora
+            </Button>
+            <Button variant="ghost" size="sm" onClick={dismissUpdate}>
+              Ahora no
+            </Button>
+          </CardFooter>
+        </Card>
       )}
     </>
   );
