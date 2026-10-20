@@ -23,6 +23,7 @@ import { RoomBookingDialog, type BookingTarget } from "@/components/room-booking
 import { DateField } from "@/components/date-field";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { ReservationStatusBadge } from "@/components/reservation-status-badge";
 import { Empty, EmptyHeader, EmptyTitle, EmptyDescription } from "@/components/ui/empty";
 import {
   Field,
@@ -239,7 +240,7 @@ export function Reservations({
           Nueva reserva
         </Button>
       </header>
-      <div className="flex flex-wrap items-end justify-between gap-x-4 gap-y-3 border-b pb-2">
+      <div className="flex flex-wrap items-end justify-between gap-x-4 gap-y-3 pb-2">
         <Tabs
           className="max-w-full min-w-0"
           value={search.view}
@@ -295,13 +296,7 @@ export function Reservations({
               Hoy
             </Button>
           </div>
-        ) : (
-          <p className="py-2 text-xs text-muted-foreground">
-            {search.view === "all"
-              ? "Todas las fechas"
-              : "Según check-in realizado · incluye estancias vencidas"}
-          </p>
-        )}
+        ) : null}
       </div>
       <div className="flex flex-wrap items-center gap-2">
         <div className="w-full max-w-sm">
@@ -530,17 +525,7 @@ export function Reservations({
                         </div>
                       </TableCell>
                       <TableCell>
-                        <Badge
-                          variant={
-                            row.status === "cancelled"
-                              ? "destructive"
-                              : row.status === "confirmed"
-                                ? "outline"
-                                : "secondary"
-                          }
-                        >
-                          {reservationStatusLabel(row.status)}
-                        </Badge>
+                        <ReservationStatusBadge status={row.status} />
                       </TableCell>
                       <TableCell>
                         <span

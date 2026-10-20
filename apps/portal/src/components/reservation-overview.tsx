@@ -16,6 +16,7 @@ import {
 } from "lucide-react";
 import { cn } from "cn";
 import { Badge } from "@/components/ui/badge";
+import { ReservationStatusBadge } from "@/components/reservation-status-badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardHeader, CardTitle, CardContent, CardAction } from "@/components/ui/card";
 import {
@@ -31,7 +32,7 @@ import { ReservationLifecycle } from "@/components/reservation-lifecycle";
 import { balanceStatus } from "@/components/balance-status";
 import type { ReservationEditorTarget } from "@/components/reservation-page-editors";
 import type { ReservationDetail } from "@/lib/api";
-import { occupantsLabel, reservationStatusLabel } from "@/lib/reservation-list";
+import { occupantsLabel } from "@/lib/reservation-list";
 import { formatMoney } from "@/lib/money";
 import { usePropertyCalendar } from "@/lib/use-property-calendar";
 
@@ -72,10 +73,9 @@ export function ReservationOverview({
           <div className="flex min-w-0 flex-col gap-2">
             <div className="flex flex-wrap items-center gap-2">
               <h1 className="text-xl font-semibold wrap-anywhere">{detail.guest.fullName}</h1>
-              <Badge variant={detail.status === "cancelled" ? "destructive" : "secondary"}>
+              <ReservationStatusBadge status={detail.status}>
                 <CircleCheckIcon data-icon="inline-start" />
-                {reservationStatusLabel(detail.status)}
-              </Badge>
+              </ReservationStatusBadge>
               {detail.checkIn === today && detail.status === "confirmed" && (
                 <Badge variant="preview">
                   <ClockIcon data-icon="inline-start" />

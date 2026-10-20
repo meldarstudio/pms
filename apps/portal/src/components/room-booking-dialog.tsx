@@ -17,7 +17,7 @@ import {
   roomEdits,
   previewFieldErrors,
 } from "@/lib/reservation-editor";
-import { Badge } from "@/components/ui/badge";
+import { ReservationStatusBadge } from "@/components/reservation-status-badge";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -91,7 +91,6 @@ import {
   submitForm,
 } from "@/lib/reservation-form";
 import { serverFieldErrors } from "@/lib/api-error";
-import { reservationStatusLabel } from "@/lib/reservation-list";
 import {
   detailsSchema,
   detailsDefaults,
@@ -142,7 +141,7 @@ function useDraftCommand(actionsKey: string) {
 type Intent = { type: "edit-payment" | "delete-payment"; entry: ReservationPayment };
 
 export function ReservationStatus({ detail }: { detail: ReservationDetail }) {
-  return <Badge variant="secondary">{reservationStatusLabel(detail.status)}</Badge>;
+  return <ReservationStatusBadge status={detail.status} />;
 }
 
 export function RoomBookingDialog({

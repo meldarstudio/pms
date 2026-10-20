@@ -10,6 +10,13 @@ const badgeVariants = cva(
       variant: {
         default: "bg-primary text-primary-foreground [a]:hover:bg-primary/80",
         secondary: "bg-secondary text-secondary-foreground [a]:hover:bg-secondary/80",
+        confirmed:
+          "border-booking-confirmed-foreground/20 bg-booking-confirmed text-booking-confirmed-foreground",
+        checked_in: "border-booking-foreground/20 bg-booking text-booking-foreground",
+        checked_out:
+          "border-booking-completed-foreground/20 bg-booking-completed text-booking-completed-foreground",
+        cancelled:
+          "border-destructive/20 bg-destructive/10 text-destructive dark:bg-destructive/20",
         preview: "bg-preview text-preview-foreground",
         destructive:
           "bg-destructive/10 text-destructive focus-visible:ring-destructive/20 dark:bg-destructive/20 dark:focus-visible:ring-destructive/40 [a]:hover:bg-destructive/20",

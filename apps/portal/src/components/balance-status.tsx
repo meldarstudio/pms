@@ -18,7 +18,7 @@ export function balanceStatus(balanceCents: number) {
   return {
     label: "Cuenta saldada",
     Icon: CircleCheckIcon,
-    tone: "bg-muted text-muted-foreground",
+    tone: "bg-booking text-booking-foreground",
   };
 }
 
