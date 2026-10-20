@@ -53,7 +53,7 @@ function LoginPage() {
   }
 
   return (
-    <main className="bg-background flex min-h-svh items-center justify-center p-4">
+    <main className="bg-muted/30 flex min-h-svh items-center justify-center p-4">
       <Card className="w-full max-w-sm">
         <CardHeader className="justify-items-center py-2">
           <CardTitle>

@@ -176,6 +176,12 @@ function button(label: string) {
   return element;
 }
 
+function linkByText(label: string) {
+  return Array.from(container.querySelectorAll("a")).find(
+    (element) => element.textContent.trim() === label,
+  );
+}
+
 async function click(label: string) {
   const link = Array.from(
     window.document.querySelectorAll('nav[aria-label="Navegación principal"] a'),
@@ -220,9 +226,7 @@ it.each([
     await until(() => container.textContent.includes(title), "Setup guidance must appear");
     assert.equal(router.state.location.pathname, path.split("?")[0]);
     const originalLocation = router.state.location.href;
-    const link = Array.from(container.querySelectorAll('a[href="/setup"]')).find(
-      (element) => !element.closest("nav"),
-    );
+    const link = linkByText(action);
     assert.ok(link);
     assert.equal(link.textContent.trim(), action);
     await React.act(async () =>
@@ -402,23 +406,18 @@ it("lets an empty property open its calendar and choose setup before saving its 
   assert.equal(router.state.location.pathname, "/setup");
   assert.deepEqual(writes[0].rooms, []);
   assert.equal(
-    container.querySelector('main a[href^="/calendar"]'),
-    null,
+    linkByText("Ir al calendario"),
+    undefined,
     "An empty type is not ready for reservations",
   );
   await click("Agregar habitación");
   await fill("rooms[0].number", "101");
   await click("Guardar cambios");
-  await until(
-    () => !!container.querySelector('main a[href^="/calendar"]'),
-    "First saved room must unlock the calendar",
-  );
+  await until(() => !!linkByText("Ir al calendario"), "First saved room must unlock the calendar");
   await React.act(async () =>
-    container
-      .querySelector('main a[href^="/calendar"]')!
-      .dispatchEvent(
-        new window.MouseEvent("click", { bubbles: true, cancelable: true, button: 0 }),
-      ),
+    linkByText("Ir al calendario")!.dispatchEvent(
+      new window.MouseEvent("click", { bubbles: true, cancelable: true, button: 0 }),
+    ),
   );
   await until(
     () => router.state.location.pathname === "/calendar",
