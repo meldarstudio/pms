@@ -39,8 +39,7 @@ import {
 } from "@/components/ui/select";
 import { SetupRequired } from "@/components/setup-required";
 import { Skeleton } from "@/components/ui/skeleton";
-import { type CalendarStay, type RoomClosure } from "@/lib/api";
-import { type ReservationStay } from "@/lib/room-assignment";
+import { type RoomClosure } from "@/lib/api";
 import { useRoomAssignment } from "@/lib/use-room-assignment";
 import { format } from "@/lib/dates";
 import { useCalendar } from "@/lib/queries";
@@ -119,11 +118,14 @@ function placeStays(stays: TrackItem[], rangeStart: Date, dayCount: number) {
   });
 }
 
-function calendarStay(stay: CalendarStay, roomId: string | null): ReservationStay {
-  return { ...stay, roomId };
-}
-
-function stayTrack(stay: ReservationStay): TrackItem {
+function stayTrack(stay: {
+  id: string;
+  reservationId: string;
+  guestName: string;
+  status?: string;
+  checkIn: string;
+  checkOut: string;
+}): TrackItem {
   return {
     id: stay.id,
     reservationId: stay.reservationId,
@@ -353,10 +355,8 @@ export function RoomCalendar({
     : calendar.rooms.map((room) => ({ ...room, typeName: room.roomTypeName }));
   const bookingDataReady =
     calendarQuery.isSuccess && !calendarQuery.isFetching && !calendarQuery.isPlaceholderData;
-  const stays =
-    rooms?.flatMap((room) => room.stays.map((stay) => calendarStay(stay, room.id))) ?? [];
   const assignment = useRoomAssignment(rooms);
-  const unassigned = (calendar?.unassigned ?? []).map((stay) => calendarStay(stay, null));
+  const unassigned = calendar?.unassigned ?? [];
   const typeNames = new Map((rooms ?? []).map((room) => [room.roomTypeId, room.roomTypeName]));
   const listLoading = !calendar && calendarQuery.isFetching;
   const listError = calendar ? null : error;
@@ -382,14 +382,7 @@ export function RoomCalendar({
     start,
     end: addDays(start, span - 1),
   });
-  const byRoom = new Map<string, ReservationStay[]>();
   const closuresByRoom = new Map<string, RoomClosure[]>();
-  for (const stay of stays) {
-    if (!stay.roomId) continue;
-    const list = byRoom.get(stay.roomId) ?? [];
-    list.push(stay);
-    byRoom.set(stay.roomId, list);
-  }
   for (const room of rooms ?? []) {
     closuresByRoom.set(room.id, room.closures);
   }
@@ -660,7 +653,7 @@ export function RoomCalendar({
                 typeName={room.typeName}
                 stays={placeStays(
                   [
-                    ...(byRoom.get(room.id) ?? []).map(stayTrack),
+                    ...room.stays.map(stayTrack),
                     ...(closuresByRoom.get(room.id) ?? []).map(closureTrack),
                   ],
                   start,

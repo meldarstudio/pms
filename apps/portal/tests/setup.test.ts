@@ -3,6 +3,7 @@ import { afterAll, afterEach, beforeAll, beforeEach, it } from "vite-plus/test";
 import type { HTMLInputElement } from "happy-dom";
 import type { PropertySetupInput, ReservationDetail, Room, RoomType } from "../src/lib/api.ts";
 import { createBrowserTest, type BrowserTest, type BrowserPage } from "./browser.ts";
+import { calendarResponse, catalogCalendarRooms } from "./calendar-window.ts";
 
 let browser: BrowserTest;
 let page: BrowserPage;
@@ -58,17 +59,9 @@ function mockApi(
     const url = requestUrl(input);
     if (url.pathname === "/calendar") {
       const typeNames = new Map(types.map((type) => [type.id, type.name]));
-      return Response.json({
-        from: url.searchParams.get("from"),
-        to: url.searchParams.get("to"),
+      return calendarResponse(url, {
         missingSetup: types.length === 0 ? "types" : rooms.length === 0 ? "rooms" : null,
-        rooms: rooms.map((room) => ({
-          ...room,
-          roomTypeName: typeNames.get(room.roomTypeId) ?? "Room",
-          stays: [],
-          closures: [],
-        })),
-        unassigned: [],
+        rooms: catalogCalendarRooms(rooms, typeNames),
       });
     }
     if (url.pathname === "/room-types") return Response.json(types);

@@ -3,6 +3,7 @@ import { afterAll, afterEach, beforeAll, beforeEach, it, vi } from "vite-plus/te
 import type { HTMLInputElement, HTMLElement } from "happy-dom";
 import type { ReservationDetail } from "../src/lib/api.ts";
 import { createBrowserTest, type BrowserTest, type BrowserPage } from "./browser.ts";
+import { calendarResponse } from "./calendar-window.ts";
 
 let browser: BrowserTest;
 let page: BrowserPage;
@@ -99,10 +100,7 @@ beforeEach(() => {
     if (url.pathname === "/calendar") {
       const reservation = calendarReservation();
       const line = reservation.rooms[0]!;
-      return Response.json({
-        from: url.searchParams.get("from"),
-        to: url.searchParams.get("to"),
-        missingSetup: null,
+      return calendarResponse(url, {
         rooms: [
           {
             id: "room",
@@ -117,15 +115,10 @@ beforeEach(() => {
                 status: reservation.status,
                 checkIn: reservation.checkIn,
                 checkOut: reservation.checkOut,
-                roomTypeId: line.roomTypeId,
-                roomIndex: 1,
-                roomCount: reservation.rooms.length,
               },
             ],
-            closures: [],
           },
         ],
-        unassigned: [],
       });
     }
     if (url.pathname === "/room-closures") return Response.json([]);

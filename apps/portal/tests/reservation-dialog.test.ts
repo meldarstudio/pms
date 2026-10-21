@@ -7,6 +7,7 @@ import type {
   HTMLElement,
 } from "happy-dom";
 import { createBrowserTest, type BrowserTest, type BrowserPage } from "./browser.ts";
+import { calendarResponse, catalogCalendarRooms } from "./calendar-window.ts";
 import { ReservationStatusSelection } from "../src/lib/reservation-status-selection.ts";
 import type {
   ReservationDetail,
@@ -1215,17 +1216,9 @@ function mockSetupApi(
       const types = roomTypes as { id: string; name: string }[];
       const listed = rooms as { id: string; number: string; roomTypeId: string }[];
       const typeNames = new Map(types.map((type) => [type.id, type.name]));
-      return Response.json({
-        from: url.searchParams.get("from"),
-        to: url.searchParams.get("to"),
+      return calendarResponse(url, {
         missingSetup: types.length === 0 ? "types" : listed.length === 0 ? "rooms" : null,
-        rooms: listed.map((room) => ({
-          ...room,
-          roomTypeName: typeNames.get(room.roomTypeId) ?? "Room",
-          stays: [],
-          closures: [],
-        })),
-        unassigned: [],
+        rooms: catalogCalendarRooms(listed, typeNames),
       });
     }
     if (url.pathname === "/room-types")

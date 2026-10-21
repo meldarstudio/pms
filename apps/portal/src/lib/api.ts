@@ -82,16 +82,13 @@ export type RoomClosure = {
   reason: string | null;
 };
 
-export type CalendarStay = {
+export type CalendarAssignedStay = {
   id: string;
   reservationId: string;
   guestName: string;
   status: string;
   checkIn: string;
   checkOut: string;
-  roomTypeId: string;
-  roomIndex: number;
-  roomCount: number;
 };
 
 export type CalendarRoom = {
@@ -99,11 +96,16 @@ export type CalendarRoom = {
   number: string;
   roomTypeId: string;
   roomTypeName: string;
-  stays: CalendarStay[];
+  stays: CalendarAssignedStay[];
   closures: RoomClosure[];
 };
 
-export type CalendarUnassigned = CalendarStay & { roomId: null };
+export type CalendarUnassigned = CalendarAssignedStay & {
+  roomId: null;
+  roomTypeId: string;
+  roomIndex: number;
+  roomCount: number;
+};
 
 export type CalendarWindow = {
   from: string;

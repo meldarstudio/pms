@@ -15,7 +15,7 @@ import { HttpError, validate } from "../http";
 import { inclusiveDates } from "../lib/dates";
 
 const maxCalendarDays = 14 + 7 + 7;
-const barStatuses = ["confirmed", "checked_in", "checked_out"];
+const stayStatuses = ["confirmed", "checked_in", "checked_out"];
 const openStatuses = new Set(["confirmed", "checked_in"]);
 
 export const calendarRoutes = new Hono<Env>();
@@ -26,7 +26,7 @@ calendarRoutes.get("/", validate("query", calendarQuerySchema), async (c) => {
   if (mornings.length < 1) throw new HttpError(400, "calendar window is incomplete");
   if (mornings.length > maxCalendarDays) throw new HttpError(400, "calendar range is too wide");
   const db = getDb(c.env.DB);
-  const [typeRows, rows, lines, closures] = await Promise.all([
+  const [typeRows, listedRooms, reservedRooms, closures] = await Promise.all([
     db.select({ id: roomTypes.id }).from(roomTypes),
     db
       .select({
@@ -54,7 +54,7 @@ calendarRoutes.get("/", validate("query", calendarQuerySchema), async (c) => {
       .innerJoin(guests, eq(guests.id, reservations.guestId))
       .where(
         and(
-          inArray(reservations.status, barStatuses),
+          inArray(reservations.status, stayStatuses),
           lte(reservations.checkIn, to),
           gte(reservations.checkOut, from),
         ),
@@ -70,14 +70,14 @@ calendarRoutes.get("/", validate("query", calendarQuerySchema), async (c) => {
       .from(roomClosures)
       .where(and(lte(roomClosures.starts, to), gte(roomClosures.ends, from))),
   ]);
-  rows.sort((a, b) => a.number.localeCompare(b.number, undefined, { numeric: true }));
-  const byReservation = new Map<string, typeof lines>();
-  for (const line of lines) {
-    const group = byReservation.get(line.reservationId) ?? [];
-    group.push(line);
-    byReservation.set(line.reservationId, group);
+  listedRooms.sort((a, b) => a.number.localeCompare(b.number, undefined, { numeric: true }));
+  const byReservation = new Map<string, typeof reservedRooms>();
+  for (const reservedRoom of reservedRooms) {
+    const group = byReservation.get(reservedRoom.reservationId) ?? [];
+    group.push(reservedRoom);
+    byReservation.set(reservedRoom.reservationId, group);
   }
-  const staysByRoom = new Map<string, typeof lines>();
+  const staysByRoom = new Map<string, typeof reservedRooms>();
   const unassigned: {
     id: string;
     reservationId: string;
@@ -91,25 +91,26 @@ calendarRoutes.get("/", validate("query", calendarQuerySchema), async (c) => {
   }[] = [];
   for (const group of byReservation.values()) {
     group.sort((a, b) => a.rowOrder - b.rowOrder);
-    group.forEach((line, index) => {
+    group.forEach((reservedRoom, index) => {
       const stay = {
-        id: line.id,
-        reservationId: line.reservationId,
-        guestName: line.guestName,
-        status: line.status,
-        checkIn: line.checkIn,
-        checkOut: line.checkOut,
-        roomTypeId: line.roomTypeId,
+        id: reservedRoom.id,
+        reservationId: reservedRoom.reservationId,
+        guestName: reservedRoom.guestName,
+        status: reservedRoom.status,
+        checkIn: reservedRoom.checkIn,
+        checkOut: reservedRoom.checkOut,
+        roomTypeId: reservedRoom.roomTypeId,
         roomIndex: index + 1,
         roomCount: group.length,
       };
-      if (line.roomId) {
-        const stays = staysByRoom.get(line.roomId) ?? [];
-        stays.push(line);
-        staysByRoom.set(line.roomId, stays);
+      if (reservedRoom.roomId) {
+        const stays = staysByRoom.get(reservedRoom.roomId) ?? [];
+        stays.push(reservedRoom);
+        staysByRoom.set(reservedRoom.roomId, stays);
         return;
       }
-      if (openStatuses.has(line.status) && line.checkOut > from) unassigned.push(stay);
+      if (openStatuses.has(reservedRoom.status) && reservedRoom.checkOut > from)
+        unassigned.push(stay);
     });
   }
   unassigned.sort(
@@ -124,12 +125,12 @@ calendarRoutes.get("/", validate("query", calendarQuerySchema), async (c) => {
     list.push(closure);
     closuresByRoom.set(closure.roomId, list);
   }
-  const missingSetup = typeRows.length === 0 ? "types" : rows.length === 0 ? "rooms" : null;
+  const missingSetup = typeRows.length === 0 ? "types" : listedRooms.length === 0 ? "rooms" : null;
   return c.json({
     from,
     to,
     missingSetup,
-    rooms: rows.map((room) => ({
+    rooms: listedRooms.map((room) => ({
       ...room,
       stays: (staysByRoom.get(room.id) ?? []).map((stay) => ({
         id: stay.id,

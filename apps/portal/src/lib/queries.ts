@@ -220,6 +220,7 @@ export function usePatchGuest() {
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: ["reservations"] });
       await queryClient.invalidateQueries({ queryKey: ["reservation"] });
+      await queryClient.invalidateQueries({ queryKey: ["calendar"] });
     },
   });
 }
