@@ -9,9 +9,11 @@ import {
 } from "@tanstack/react-query";
 import { refreshWorkflowQueries, workflowMutationKey } from "./workflow-query-cache";
 
+import { addDateLabelDays } from "@/lib/dates";
 import {
   sendWorkflow,
   type WorkflowCommand,
+  type CalendarWindow,
   assignRoom,
   createRoomClosure,
   deleteRoomClosure,
@@ -78,11 +80,46 @@ export function useLogout() {
   });
 }
 
+const holdDays = 7;
+
+function expandedRange(from: string, to: string) {
+  return {
+    from: addDateLabelDays(from, -holdDays),
+    to: addDateLabelDays(to, holdDays),
+  };
+}
+
+function sliceCalendar(window: CalendarWindow, from: string, to: string): CalendarWindow {
+  return {
+    from,
+    to,
+    missingSetup: window.missingSetup,
+    rooms: window.rooms.map((room) => ({
+      ...room,
+      stays: room.stays.filter((stay) => stay.checkIn <= to && stay.checkOut >= from),
+      closures: room.closures.filter((closure) => closure.starts <= to && closure.ends >= from),
+    })),
+    unassigned: window.unassigned.filter((stay) => stay.checkIn <= to && stay.checkOut > from),
+  };
+}
+
+function coveringHold(client: QueryClient, from: string, to: string) {
+  for (const [key, data] of client.getQueriesData<CalendarWindow>({ queryKey: ["calendar"] })) {
+    const heldFrom = key[1];
+    const heldTo = key[2];
+    if (typeof heldFrom !== "string" || typeof heldTo !== "string" || !data) continue;
+    if (heldFrom <= from && heldTo >= to) return { from: heldFrom, to: heldTo };
+  }
+  return null;
+}
+
 export function useCalendar(from: string, to: string) {
+  const client = useQueryClient();
+  const range = coveringHold(client, from, to) ?? expandedRange(from, to);
   return useQuery({
-    queryKey: ["calendar", from, to],
-    queryFn: ({ signal }) => getCalendar(from, to, signal),
-    placeholderData: keepPreviousData,
+    queryKey: ["calendar", range.from, range.to],
+    queryFn: ({ signal }) => getCalendar(range.from, range.to, signal),
+    select: (window) => sliceCalendar(window, from, to),
   });
 }
 
