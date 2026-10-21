@@ -22,6 +22,7 @@ import {
 import { RoomEditDialog, type RoomEditTarget } from "@/components/room-edit-dialog";
 import { RoomBookingDialog, type BookingTarget } from "@/components/room-booking-dialog";
 import { RoomAssignmentPanel } from "@/components/room-assignment-panel";
+import { PageHeaderActions } from "@/components/page-header-actions";
 import { Tooltip, TooltipTrigger, TooltipContent } from "@/components/ui/tooltip";
 import { Button } from "@/components/ui/button";
 import { ButtonGroup } from "@/components/ui/button-group";
@@ -43,6 +44,7 @@ import { type RoomClosure } from "@/lib/api";
 import { useRoomAssignment } from "@/lib/use-room-assignment";
 import { format } from "@/lib/dates";
 import { useCalendar } from "@/lib/queries";
+import { useIsMobile } from "@/hooks/use-mobile";
 
 const spans = [
   { label: "7 días", value: "7" },
@@ -337,6 +339,7 @@ export function RoomCalendar({
   onOpenReservation: (id: string) => void;
 }) {
   const { today } = usePropertyCalendar();
+  const isMobile = useIsMobile();
   const queryClient = useQueryClient();
   const [pickerOpen, setPickerOpen] = useState(false);
   const [closureTarget, setClosureTarget] = useState<ClosureTarget | null>(null);
@@ -432,8 +435,28 @@ export function RoomCalendar({
 
   if (calendar?.missingSetup) return <SetupRequired missing={calendar.missingSetup} />;
 
+  const newReservationButton = (
+    <Button disabled={assignment.pending} onClick={() => setBookingTarget({ mode: "new" })}>
+      <PlusIcon data-icon="inline-start" />
+      Nueva reserva
+    </Button>
+  );
+  const refreshButton = (
+    <Button
+      variant="outline"
+      size="icon"
+      aria-label={refreshing ? "Actualizando…" : "Actualizar"}
+      aria-busy={refreshing || undefined}
+      disabled={!calendar || assignment.pending || refreshing}
+      onClick={refreshFromButton}
+    >
+      <RefreshCwIcon data-icon="inline-start" className={cn(refreshing && "animate-spin")} />
+    </Button>
+  );
+
   return (
     <div className="flex min-h-0 min-w-0 flex-1 flex-col">
+      {isMobile && <PageHeaderActions>{newReservationButton}</PageHeaderActions>}
       <RoomClosureDialog target={closureTarget} onClose={() => setClosureTarget(null)} />
       <RoomEditDialog target={roomTarget} onClose={() => setRoomTarget(null)} />
       <RoomBookingDialog
@@ -446,30 +469,32 @@ export function RoomCalendar({
       />
       <div className="flex flex-wrap items-center justify-between gap-2 border-b px-2.5 py-2">
         <div className="flex items-center gap-2">
-          <Select
-            items={spans}
-            value={String(span)}
-            disabled={assignment.pending}
-            onValueChange={(value) => {
-              if (value) {
-                assignment.cancel();
-                onSpanChange(Number(value) as 7 | 14);
-              }
-            }}
-          >
-            <SelectTrigger className="w-28">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent alignItemWithTrigger={false} align="start">
-              <SelectGroup>
-                {spans.map((item) => (
-                  <SelectItem key={item.value} value={item.value}>
-                    {item.label}
-                  </SelectItem>
-                ))}
-              </SelectGroup>
-            </SelectContent>
-          </Select>
+          {!isMobile && (
+            <Select
+              items={spans}
+              value={String(span)}
+              disabled={assignment.pending}
+              onValueChange={(value) => {
+                if (value) {
+                  assignment.cancel();
+                  onSpanChange(Number(value) as 7 | 14);
+                }
+              }}
+            >
+              <SelectTrigger className="w-28">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent alignItemWithTrigger={false} align="start">
+                <SelectGroup>
+                  {spans.map((item) => (
+                    <SelectItem key={item.value} value={item.value}>
+                      {item.label}
+                    </SelectItem>
+                  ))}
+                </SelectGroup>
+              </SelectContent>
+            </Select>
+          )}
           <Button
             variant="outline"
             disabled={assignment.pending}
@@ -477,27 +502,20 @@ export function RoomCalendar({
           >
             Hoy
           </Button>
-          <Button
-            variant="outline"
-            size="icon"
-            aria-label={refreshing ? "Actualizando…" : "Actualizar"}
-            aria-busy={refreshing || undefined}
-            disabled={!calendar || assignment.pending || refreshing}
-            onClick={refreshFromButton}
-          >
-            <RefreshCwIcon data-icon="inline-start" className={cn(refreshing && "animate-spin")} />
-          </Button>
+          {!isMobile && refreshButton}
         </div>
         <ButtonGroup>
-          <Button
-            variant="outline"
-            size="icon"
-            aria-label="Período anterior"
-            disabled={assignment.pending}
-            onClick={() => changeStart(addDays(start, -span))}
-          >
-            <ChevronsLeftIcon />
-          </Button>
+          {!isMobile && (
+            <Button
+              variant="outline"
+              size="icon"
+              aria-label="Período anterior"
+              disabled={assignment.pending}
+              onClick={() => changeStart(addDays(start, -span))}
+            >
+              <ChevronsLeftIcon />
+            </Button>
+          )}
           <Button
             variant="outline"
             size="icon"
@@ -512,7 +530,7 @@ export function RoomCalendar({
               render={
                 <Button
                   variant="outline"
-                  className="min-w-36 justify-between"
+                  className="min-w-32 justify-between md:min-w-36"
                   disabled={assignment.pending}
                 />
               }
@@ -541,56 +559,59 @@ export function RoomCalendar({
           >
             <ChevronRightIcon />
           </Button>
-          <Button
-            variant="outline"
-            size="icon"
-            aria-label="Período siguiente"
-            disabled={assignment.pending}
-            onClick={() => changeStart(addDays(start, span))}
-          >
-            <ChevronsRightIcon />
-          </Button>
-        </ButtonGroup>
-        <div className="flex items-center gap-2">
-          <Tooltip>
-            <TooltipTrigger
-              render={
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="icon"
-                  aria-label="Colores de reservas"
-                />
-              }
+          {!isMobile && (
+            <Button
+              variant="outline"
+              size="icon"
+              aria-label="Período siguiente"
+              disabled={assignment.pending}
+              onClick={() => changeStart(addDays(start, span))}
             >
-              <CircleHelpIcon />
-            </TooltipTrigger>
-            <TooltipContent variant="legend" side="bottom" align="end" sideOffset={8}>
-              <div aria-label="Colores de reservas" className="flex min-w-40 flex-col gap-2.5">
-                {Object.entries(stayLabels).map(([status, label]) => (
-                  <span key={status} className="flex items-center gap-2">
+              <ChevronsRightIcon />
+            </Button>
+          )}
+        </ButtonGroup>
+        {isMobile ? (
+          refreshButton
+        ) : (
+          <div className="flex items-center gap-2">
+            <Tooltip>
+              <TooltipTrigger
+                render={
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="icon"
+                    aria-label="Colores de reservas"
+                  />
+                }
+              >
+                <CircleHelpIcon />
+              </TooltipTrigger>
+              <TooltipContent variant="legend" side="bottom" align="end" sideOffset={8}>
+                <div aria-label="Colores de reservas" className="flex min-w-40 flex-col gap-2.5">
+                  {Object.entries(stayLabels).map(([status, label]) => (
+                    <span key={status} className="flex items-center gap-2">
+                      <span
+                        aria-hidden="true"
+                        className={cn("size-3 rounded-none border", stayColors[status])}
+                      />
+                      {label}
+                    </span>
+                  ))}
+                  <span className="flex items-center gap-2">
                     <span
                       aria-hidden="true"
-                      className={cn("size-3 rounded-none border", stayColors[status])}
+                      className="size-3 rounded-none border border-closure-foreground/20 bg-closure"
                     />
-                    {label}
+                    Cerrada
                   </span>
-                ))}
-                <span className="flex items-center gap-2">
-                  <span
-                    aria-hidden="true"
-                    className="size-3 rounded-none border border-closure-foreground/20 bg-closure"
-                  />
-                  Cerrada
-                </span>
-              </div>
-            </TooltipContent>
-          </Tooltip>
-          <Button disabled={assignment.pending} onClick={() => setBookingTarget({ mode: "new" })}>
-            <PlusIcon data-icon="inline-start" />
-            Nueva reserva
-          </Button>
-        </div>
+                </div>
+              </TooltipContent>
+            </Tooltip>
+            {newReservationButton}
+          </div>
+        )}
       </div>
       {error ? (
         <div className="flex items-center justify-between gap-2 border-b px-2.5 py-2">

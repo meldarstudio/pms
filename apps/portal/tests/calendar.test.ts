@@ -27,6 +27,7 @@ beforeAll(async () => {
 });
 
 beforeEach(() => {
+  window.happyDOM.setWindowSize({ width: 1024, height: 768 });
   vi.useFakeTimers({ toFake: ["Date"] });
   vi.setSystemTime(new Date("2026-10-20T15:00:00Z"));
   page = browser.createPage();
@@ -159,6 +160,78 @@ function expectManualRefresh() {
   assert.equal(button.getAttribute("aria-busy"), "true");
   return button;
 }
+
+it("keeps day navigation, Hoy, and the date picker available on mobile", async () => {
+  window.happyDOM.setWindowSize({ width: 390, height: 844 });
+  globalThis.fetch = async (input) => {
+    const url = requestUrl(input);
+    if (url.pathname !== "/calendar") throw new Error(`Unexpected request ${url.pathname}`);
+    return calendarResponse(url);
+  };
+
+  await render(React.createElement(CalendarSession));
+  await until(() => !!adaBar(), "The mobile calendar must load");
+  await click("Día siguiente");
+  assert.ok(buttonByText("21 oct 2026"));
+  await click("Día anterior");
+  assert.ok(buttonByText("20 oct 2026"));
+  await click("Día anterior");
+  assert.ok(buttonByText("19 oct 2026"));
+  await React.act(async () => buttonByText("Hoy").click());
+  assert.ok(buttonByText("20 oct 2026"));
+
+  await React.act(async () => buttonByText("20 oct 2026").click());
+  const date = window.document.querySelector<HTMLElement>('button[data-day="22/10/2026"]');
+  assert.ok(date, "The date picker must remain available on mobile");
+  await React.act(async () => date.click());
+  assert.ok(buttonByText("22 oct 2026"));
+});
+
+it.each(["mobile", "desktop"])(
+  "opens reservation creation from the %s calendar's action location",
+  async (viewport) => {
+    const mobile = viewport === "mobile";
+    if (mobile) window.happyDOM.setWindowSize({ width: 390, height: 844 });
+    globalThis.fetch = async (input) => {
+      const url = requestUrl(input);
+      if (url.pathname === "/calendar") return calendarResponse(url);
+      const response = dialogReads(url);
+      if (response) return response;
+      throw new Error(`Unexpected request ${url.pathname}`);
+    };
+    const routes = (await browser.server.ssrLoadModule(
+      "/src/router.tsx",
+    )) as typeof import("../src/router.tsx");
+    const router = browser.routing.createRouter({
+      routeTree: routes.router.routeTree,
+      history: browser.routing.createMemoryHistory({
+        initialEntries: ["/calendar?from=2026-10-20"],
+      }),
+    });
+
+    await page.renderRouter(router);
+    await until(() => !!adaBar(), "The calendar must load inside the app shell");
+    const create = buttonByText("Nueva reserva");
+    assert.equal(!!create.closest("header"), mobile, "Only mobile creation belongs in the header");
+    assert.equal(
+      [...container.querySelectorAll("button")].filter(
+        (button) => button.textContent?.trim() === "Nueva reserva",
+      ).length,
+      1,
+      "Reservation creation must have a single entry point outside calendar cells",
+    );
+    assert.equal(!!container.querySelector('[role="combobox"]'), !mobile);
+    for (const label of ["Período anterior", "Período siguiente", "Colores de reservas"]) {
+      assert.equal(!!container.querySelector(`[aria-label="${label}"]`), !mobile);
+    }
+
+    await React.act(async () => create.click());
+    await until(
+      () => !!window.document.querySelector('[role="dialog"] [name="fullName"]'),
+      "The calendar action must open the new-reservation form",
+    );
+  },
+);
 
 it("opens a week of 20 Oct from one wider read and draws only 20–26 Oct", async () => {
   const requests: URL[] = [];
@@ -853,7 +926,8 @@ function CalendarWithOtherReads() {
   return React.createElement(CalendarSession);
 }
 
-it("reloads only the calendar from the refresh button and keeps the current bars up", async () => {
+it("reloads only the calendar from mobile refresh and keeps the current bars up", async () => {
+  window.happyDOM.setWindowSize({ width: 390, height: 844 });
   const requests: URL[] = [];
   let releaseRefresh: (response: Response) => void = () => {};
   globalThis.fetch = (input) => {
