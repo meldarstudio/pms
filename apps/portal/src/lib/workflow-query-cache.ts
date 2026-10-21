@@ -10,7 +10,7 @@ export function isReservationSaving(client: QueryClient, id: string | null) {
 export async function refreshWorkflowQueries(client: QueryClient, saved: ReservationDetail) {
   client.setQueryData(["reservation", saved.id], saved);
   await Promise.all([
-    ...["reservations", "availability", "inventory", "payments"].map((key) =>
+    ...["reservations", "availability", "inventory", "payments", "calendar"].map((key) =>
       client.invalidateQueries({ queryKey: [key] }),
     ),
     client.invalidateQueries({

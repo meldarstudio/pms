@@ -112,6 +112,7 @@ export function useRoomAssignment(rooms: Room[] | null) {
         queryClient.invalidateQueries({ queryKey: ["reservations"] }),
         queryClient.invalidateQueries({ queryKey: ["room-closures"] }),
         queryClient.invalidateQueries({ queryKey: ["rooms"] }),
+        queryClient.invalidateQueries({ queryKey: ["calendar"] }),
       ]);
     }
   }

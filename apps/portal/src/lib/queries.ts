@@ -153,9 +153,15 @@ export function useSavePropertySetup() {
         ...result.rooms,
       ]);
       await Promise.all(
-        ["rooms", "room-types", "inventory", "availability", "reservations", "reservation"].map(
-          (key) => client.invalidateQueries({ queryKey: [key] }),
-        ),
+        [
+          "rooms",
+          "room-types",
+          "inventory",
+          "availability",
+          "reservations",
+          "reservation",
+          "calendar",
+        ].map((key) => client.invalidateQueries({ queryKey: [key] })),
       );
     },
   });
@@ -179,6 +185,7 @@ export function usePatchRoom() {
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: ["rooms"] });
       await queryClient.invalidateQueries({ queryKey: ["availability"] });
+      await queryClient.invalidateQueries({ queryKey: ["calendar"] });
     },
   });
 }
@@ -257,7 +264,10 @@ export function useSaveRoomClosure() {
             ends: input.ends,
             ...(input.reason ? { reason: input.reason } : {}),
           }),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["room-closures"] }),
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ["room-closures"] });
+      await queryClient.invalidateQueries({ queryKey: ["calendar"] });
+    },
   });
 }
 
@@ -265,7 +275,10 @@ export function useDeleteRoomClosure() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (id: string) => deleteRoomClosure(id),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["room-closures"] }),
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ["room-closures"] });
+      await queryClient.invalidateQueries({ queryKey: ["calendar"] });
+    },
   });
 }
 

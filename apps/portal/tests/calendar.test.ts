@@ -1136,3 +1136,1045 @@ it("retries a failed first load from the unassigned list without reloading unrel
   );
   assert.equal(container.textContent.includes("101"), false);
 });
+
+function stayOn(roomId: string, guestName: string, id = "line-saved") {
+  return (url: URL) =>
+    Response.json({
+      ...windowPayload,
+      from: url.searchParams.get("from"),
+      to: url.searchParams.get("to"),
+      rooms: windowPayload.rooms.map((room) =>
+        room.id === roomId
+          ? {
+              ...room,
+              stays: [
+                ...room.stays,
+                {
+                  id,
+                  reservationId: "res-new",
+                  guestName,
+                  status: "confirmed",
+                  checkIn: "2026-10-22",
+                  checkOut: "2026-10-24",
+                  roomTypeId: room.roomTypeId,
+                  roomIndex: 1,
+                  roomCount: 1,
+                },
+              ],
+            }
+          : room,
+      ),
+    });
+}
+
+function CalendarWithReservationSave() {
+  const save = queries.useWorkflowCommand("res-new");
+  return React.createElement(
+    React.Fragment,
+    null,
+    React.createElement(CalendarSession),
+    React.createElement(
+      "button",
+      {
+        type: "button",
+        "aria-label": "Guardar reserva",
+        onClick: () => {
+          void save.mutateAsync({
+            id: "res-new",
+            command: {
+              requestId: "save-new-stay",
+              actions: [
+                {
+                  type: "add-room",
+                  room: {
+                    roomTypeId: "double",
+                    roomId: "room-2",
+                    adults: 1,
+                    children: 0,
+                  },
+                },
+              ],
+            },
+          });
+        },
+      },
+      "Guardar reserva",
+    ),
+  );
+}
+
+it("updates the calendar after a reservation save without blanking the grid", async () => {
+  const requests: URL[] = [];
+  let releaseRefresh: (response: Response) => void = () => {};
+  const savedWindow = stayOn("room-2", "Rosalind Franklin");
+  globalThis.fetch = (input) => {
+    const url = requestUrl(input);
+    requests.push(url);
+    if (url.pathname === "/reservations/res-new/commands") {
+      return Promise.resolve(Response.json({ id: "res-new" }));
+    }
+    if (url.pathname !== "/calendar") throw new Error(`Unexpected request ${url.pathname}`);
+    if (requests.filter((item) => item.pathname === "/calendar").length === 1) {
+      return Promise.resolve(calendarResponse(url));
+    }
+    return new Promise((resolve) => {
+      releaseRefresh = resolve;
+    });
+  };
+
+  await render(React.createElement(CalendarWithReservationSave));
+  await until(
+    () => !!container.querySelector('[aria-label="Editar reserva de Ada Lovelace · Confirmada"]'),
+    "Week must paint before the reservation save",
+  );
+  const beforeSave = requests.length;
+
+  await click("Guardar reserva");
+  await page.flush();
+
+  const refreshed = requests.slice(beforeSave).filter((url) => url.pathname === "/calendar");
+  assert.equal(refreshed.length, 1, "The save must drop the held days and read the calendar again");
+  assert.equal(refreshed[0]!.searchParams.get("from"), "2026-10-13");
+  assert.equal(refreshed[0]!.searchParams.get("to"), "2026-11-02");
+  assert.ok(
+    container.querySelector('[aria-label="Editar reserva de Ada Lovelace · Confirmada"]'),
+    "Current bars stay up while the saved window is in flight",
+  );
+  assert.ok(container.querySelector('[aria-label="Editar reserva de Grace Hopper · Check-out"]'));
+  assert.ok(container.textContent.includes("101"));
+  assert.ok(container.textContent.includes("Mantenimiento"));
+  assert.ok(container.querySelector('[aria-label="Mostrar reservas sin asignar, 1"]'));
+  assert.equal(
+    container.querySelector('[aria-label="Editar reserva de Rosalind Franklin · Confirmada"]'),
+    null,
+  );
+  assert.ok(container.textContent.includes("20 oct 2026"));
+
+  releaseRefresh(savedWindow(refreshed[0]!));
+  await until(
+    () =>
+      !!container.querySelector('[aria-label="Editar reserva de Rosalind Franklin · Confirmada"]'),
+    "The saved stay must appear on its room",
+  );
+  assert.ok(container.querySelector('[aria-label="Editar reserva de Ada Lovelace · Confirmada"]'));
+  assert.ok(container.querySelector('[aria-label="Editar reserva de Grace Hopper · Check-out"]'));
+  assert.ok(container.textContent.includes("101"));
+  assert.ok(container.textContent.includes("Doble"));
+  assert.ok(container.textContent.includes("Mantenimiento"));
+  assert.ok(container.querySelector('[aria-label="Mostrar reservas sin asignar, 1"]'));
+  assert.ok(container.textContent.includes("20 oct 2026"));
+  assert.equal(requests.filter((url) => url.pathname === "/calendar").length, 2);
+});
+
+function closureOn(roomId: string, reason: string) {
+  return (url: URL) =>
+    Response.json({
+      ...windowPayload,
+      from: url.searchParams.get("from"),
+      to: url.searchParams.get("to"),
+      rooms: windowPayload.rooms.map((room) =>
+        room.id === roomId
+          ? {
+              ...room,
+              closures: [
+                ...room.closures,
+                {
+                  id: "closure-saved",
+                  roomId,
+                  starts: "2026-10-22",
+                  ends: "2026-10-24",
+                  reason,
+                },
+              ],
+            }
+          : room,
+      ),
+    });
+}
+
+function CalendarWithClosureSave() {
+  const save = queries.useSaveRoomClosure();
+  return React.createElement(
+    React.Fragment,
+    null,
+    React.createElement(CalendarSession),
+    React.createElement(
+      "button",
+      {
+        type: "button",
+        "aria-label": "Guardar cierre",
+        onClick: () => {
+          void save.mutateAsync({
+            roomId: "room-2",
+            starts: "2026-10-22",
+            ends: "2026-10-24",
+            reason: "Pintura",
+          });
+        },
+      },
+      "Guardar cierre",
+    ),
+  );
+}
+
+it("shows a saved room closure without blanking the calendar", async () => {
+  const requests: URL[] = [];
+  let releaseRefresh: (response: Response) => void = () => {};
+  const savedWindow = closureOn("room-2", "Pintura");
+  globalThis.fetch = (input, init) => {
+    const url = requestUrl(input);
+    requests.push(url);
+    if (url.pathname === "/room-closures" && init?.method === "POST") {
+      return Promise.resolve(
+        Response.json({
+          id: "closure-saved",
+          roomId: "room-2",
+          starts: "2026-10-22",
+          ends: "2026-10-24",
+          reason: "Pintura",
+        }),
+      );
+    }
+    if (url.pathname !== "/calendar") throw new Error(`Unexpected request ${url.pathname}`);
+    if (requests.filter((item) => item.pathname === "/calendar").length === 1) {
+      return Promise.resolve(calendarResponse(url));
+    }
+    return new Promise((resolve) => {
+      releaseRefresh = resolve;
+    });
+  };
+
+  await render(React.createElement(CalendarWithClosureSave));
+  await until(
+    () => !!container.querySelector('[aria-label="Editar reserva de Ada Lovelace · Confirmada"]'),
+    "Week must paint before the closure save",
+  );
+  assert.equal(container.textContent.includes("Pintura"), false);
+  const beforeSave = requests.length;
+
+  await click("Guardar cierre");
+  await page.flush();
+
+  const refreshed = requests.slice(beforeSave).filter((url) => url.pathname === "/calendar");
+  assert.equal(refreshed.length, 1, "Saving a closure must drop the held days");
+  assert.ok(container.textContent.includes("Mantenimiento"), "The current closure stays up");
+  assert.ok(container.querySelector('[aria-label="Editar reserva de Ada Lovelace · Confirmada"]'));
+  assert.ok(container.textContent.includes("101"));
+  assert.equal(container.textContent.includes("Pintura"), false);
+
+  releaseRefresh(savedWindow(refreshed[0]!));
+  await until(() => container.textContent.includes("Pintura"), "The saved closure must appear");
+  assert.ok(container.textContent.includes("Mantenimiento"));
+  assert.ok(container.querySelector('[aria-label="Editar reserva de Ada Lovelace · Confirmada"]'));
+  assert.ok(container.textContent.includes("101"));
+  assert.ok(container.querySelector('[aria-label="Mostrar reservas sin asignar, 1"]'));
+  assert.equal(requests.filter((url) => url.pathname === "/calendar").length, 2);
+});
+
+function withoutClosure(url: URL) {
+  return Response.json({
+    ...windowPayload,
+    from: url.searchParams.get("from"),
+    to: url.searchParams.get("to"),
+    rooms: windowPayload.rooms.map((room) =>
+      room.id === "room-10" ? { ...room, closures: [] } : room,
+    ),
+  });
+}
+
+function CalendarWithClosureDelete() {
+  const remove = queries.useDeleteRoomClosure();
+  return React.createElement(
+    React.Fragment,
+    null,
+    React.createElement(CalendarSession),
+    React.createElement(
+      "button",
+      {
+        type: "button",
+        "aria-label": "Eliminar cierre",
+        onClick: () => {
+          void remove.mutateAsync("closure-1");
+        },
+      },
+      "Eliminar cierre",
+    ),
+  );
+}
+
+it("removes a deleted room closure without blanking the calendar", async () => {
+  const requests: URL[] = [];
+  let releaseRefresh: (response: Response) => void = () => {};
+  globalThis.fetch = (input, init) => {
+    const url = requestUrl(input);
+    requests.push(url);
+    if (url.pathname === "/room-closures/closure-1" && init?.method === "DELETE") {
+      return Promise.resolve(Response.json({ ok: true }));
+    }
+    if (url.pathname !== "/calendar") throw new Error(`Unexpected request ${url.pathname}`);
+    if (requests.filter((item) => item.pathname === "/calendar").length === 1) {
+      return Promise.resolve(calendarResponse(url));
+    }
+    return new Promise((resolve) => {
+      releaseRefresh = resolve;
+    });
+  };
+
+  await render(React.createElement(CalendarWithClosureDelete));
+  await until(
+    () => container.textContent.includes("Mantenimiento"),
+    "The closure must paint before it is deleted",
+  );
+  const beforeDelete = requests.length;
+
+  await click("Eliminar cierre");
+  await page.flush();
+
+  const refreshed = requests.slice(beforeDelete).filter((url) => url.pathname === "/calendar");
+  assert.equal(refreshed.length, 1, "Deleting a closure must drop the held days");
+  assert.ok(
+    container.textContent.includes("Mantenimiento"),
+    "The closure stays up until the refresh arrives",
+  );
+  assert.ok(container.querySelector('[aria-label="Editar reserva de Ada Lovelace · Confirmada"]'));
+  assert.ok(container.textContent.includes("101"));
+
+  releaseRefresh(withoutClosure(refreshed[0]!));
+  await until(
+    () => !container.textContent.includes("Mantenimiento"),
+    "The deleted closure must disappear",
+  );
+  assert.ok(container.querySelector('[aria-label="Editar reserva de Ada Lovelace · Confirmada"]'));
+  assert.ok(container.querySelector('[aria-label="Editar reserva de Grace Hopper · Check-out"]'));
+  assert.ok(container.textContent.includes("101"));
+  assert.ok(container.querySelector('[aria-label="Mostrar reservas sin asignar, 1"]'));
+  assert.equal(requests.filter((url) => url.pathname === "/calendar").length, 2);
+});
+
+function renamedRoom(url: URL) {
+  return Response.json({
+    ...windowPayload,
+    from: url.searchParams.get("from"),
+    to: url.searchParams.get("to"),
+    rooms: windowPayload.rooms.map((room) =>
+      room.id === "room-2" ? { ...room, number: "8", roomTypeName: "Familiar" } : room,
+    ),
+  });
+}
+
+function CalendarWithRoomEdit() {
+  const save = queries.usePatchRoom();
+  return React.createElement(
+    React.Fragment,
+    null,
+    React.createElement(CalendarSession),
+    React.createElement(
+      "button",
+      {
+        type: "button",
+        "aria-label": "Guardar habitación",
+        onClick: () => {
+          void save.mutateAsync({ id: "room-2", number: "8", roomTypeId: "family" });
+        },
+      },
+      "Guardar habitación",
+    ),
+  );
+}
+
+it("shows a new room number and room type after a room edit without blanking the calendar", async () => {
+  const requests: URL[] = [];
+  let releaseRefresh: (response: Response) => void = () => {};
+  globalThis.fetch = (input, init) => {
+    const url = requestUrl(input);
+    requests.push(url);
+    if (url.pathname === "/rooms/room-2" && init?.method === "PATCH") {
+      return Promise.resolve(Response.json({ id: "room-2", number: "8", roomTypeId: "family" }));
+    }
+    if (url.pathname !== "/calendar") throw new Error(`Unexpected request ${url.pathname}`);
+    if (requests.filter((item) => item.pathname === "/calendar").length === 1) {
+      return Promise.resolve(calendarResponse(url));
+    }
+    return new Promise((resolve) => {
+      releaseRefresh = resolve;
+    });
+  };
+
+  await render(React.createElement(CalendarWithRoomEdit));
+  await until(
+    () => !!container.querySelector('[aria-label="Acciones de habitación 2"]'),
+    "Room 2 must paint before the edit",
+  );
+  assert.equal(container.textContent.includes("Familiar"), false);
+  const beforeSave = requests.length;
+
+  await click("Guardar habitación");
+  await page.flush();
+
+  const refreshed = requests.slice(beforeSave).filter((url) => url.pathname === "/calendar");
+  assert.equal(refreshed.length, 1, "Editing a room must drop the held days");
+  assert.ok(container.querySelector('[aria-label="Acciones de habitación 2"]'));
+  assert.equal(container.querySelector('[aria-label="Acciones de habitación 8"]'), null);
+  assert.equal(container.textContent.includes("Familiar"), false);
+  assert.ok(container.querySelector('[aria-label="Editar reserva de Ada Lovelace · Confirmada"]'));
+  assert.ok(container.textContent.includes("101"));
+
+  releaseRefresh(renamedRoom(refreshed[0]!));
+  await until(
+    () => !!container.querySelector('[aria-label="Acciones de habitación 8"]'),
+    "The new room number must show up",
+  );
+  assert.ok(container.textContent.includes("Familiar"));
+  assert.equal(container.querySelector('[aria-label="Acciones de habitación 2"]'), null);
+  assert.ok(container.querySelector('[aria-label="Editar reserva de Ada Lovelace · Confirmada"]'));
+  assert.ok(container.querySelector('[aria-label="Acciones de habitación 101"]'));
+  assert.ok(container.textContent.includes("Mantenimiento"));
+  assert.equal(requests.filter((url) => url.pathname === "/calendar").length, 2);
+});
+
+function assignedWindow(url: URL) {
+  return Response.json({
+    ...windowPayload,
+    from: url.searchParams.get("from"),
+    to: url.searchParams.get("to"),
+    rooms: windowPayload.rooms.map((room) =>
+      room.id === "room-2"
+        ? {
+            ...room,
+            stays: [
+              {
+                id: "line-open",
+                reservationId: "res-open",
+                guestName: "Mary Jackson",
+                status: "confirmed",
+                checkIn: "2026-10-22",
+                checkOut: "2026-10-24",
+                roomTypeId: "double",
+                roomIndex: 1,
+                roomCount: 1,
+              },
+            ],
+          }
+        : room,
+    ),
+    unassigned: [],
+  });
+}
+
+function CalendarWithAssignment() {
+  const assign = queries.useAssignRoom();
+  return React.createElement(
+    React.Fragment,
+    null,
+    React.createElement(CalendarSession),
+    React.createElement(
+      "button",
+      {
+        type: "button",
+        "aria-label": "Asignar habitación",
+        onClick: () => {
+          void assign.mutateAsync({
+            reservationId: "res-open",
+            lineId: "line-open",
+            roomId: "room-2",
+          });
+        },
+      },
+      "Asignar habitación",
+    ),
+  );
+}
+
+it("moves a reserved room onto its room after assignment without blanking the calendar", async () => {
+  const requests: URL[] = [];
+  let releaseRefresh: (response: Response) => void = () => {};
+  globalThis.fetch = (input, init) => {
+    const url = requestUrl(input);
+    requests.push(url);
+    if (url.pathname === "/reservations/res-open" && !init?.method) {
+      return Promise.resolve(
+        Response.json({
+          id: "res-open",
+          status: "confirmed",
+          rooms: [{ id: "line-open", roomTypeId: "double", roomId: null, adults: 1, children: 0 }],
+        }),
+      );
+    }
+    if (url.pathname === "/reservations/res-open/commands") {
+      return Promise.resolve(Response.json({ id: "res-open" }));
+    }
+    if (url.pathname !== "/calendar") throw new Error(`Unexpected request ${url.pathname}`);
+    if (requests.filter((item) => item.pathname === "/calendar").length === 1) {
+      return Promise.resolve(calendarResponse(url));
+    }
+    return new Promise((resolve) => {
+      releaseRefresh = resolve;
+    });
+  };
+
+  await render(React.createElement(CalendarWithAssignment));
+  await until(
+    () => !!container.querySelector('[aria-label="Mostrar reservas sin asignar, 1"]'),
+    "The unassigned stay must paint before assignment",
+  );
+  assert.equal(
+    container.querySelector('[aria-label="Editar reserva de Mary Jackson · Confirmada"]'),
+    null,
+  );
+  const beforeAssign = requests.length;
+
+  await click("Asignar habitación");
+  await page.flush();
+
+  const refreshed = requests.slice(beforeAssign).filter((url) => url.pathname === "/calendar");
+  assert.equal(refreshed.length, 1, "Assigning a room must drop the held days");
+  assert.ok(container.querySelector('[aria-label="Mostrar reservas sin asignar, 1"]'));
+  assert.equal(
+    container.querySelector('[aria-label="Editar reserva de Mary Jackson · Confirmada"]'),
+    null,
+  );
+  assert.ok(container.querySelector('[aria-label="Editar reserva de Ada Lovelace · Confirmada"]'));
+  assert.ok(container.textContent.includes("101"));
+
+  releaseRefresh(assignedWindow(refreshed[0]!));
+  await until(
+    () => !!container.querySelector('[aria-label="Editar reserva de Mary Jackson · Confirmada"]'),
+    "The reserved room must move onto its room",
+  );
+  assert.ok(container.querySelector('[aria-label="Mostrar reservas sin asignar, 0"]'));
+  assert.ok(container.querySelector('[aria-label="Editar reserva de Ada Lovelace · Confirmada"]'));
+  assert.ok(container.querySelector('[aria-label="Editar reserva de Grace Hopper · Check-out"]'));
+  assert.ok(container.textContent.includes("101"));
+  assert.ok(container.textContent.includes("Mantenimiento"));
+  assert.equal(requests.filter((url) => url.pathname === "/calendar").length, 2);
+});
+
+function conflictWindow(url: URL) {
+  return Response.json({
+    ...windowPayload,
+    from: url.searchParams.get("from"),
+    to: url.searchParams.get("to"),
+    rooms: windowPayload.rooms.map((room) =>
+      room.id === "room-2"
+        ? {
+            ...room,
+            stays: [
+              {
+                id: "line-conflict",
+                reservationId: "res-conflict",
+                guestName: "Katherine Johnson",
+                status: "confirmed",
+                checkIn: "2026-10-22",
+                checkOut: "2026-10-24",
+                roomTypeId: "double",
+                roomIndex: 1,
+                roomCount: 1,
+              },
+            ],
+          }
+        : room,
+    ),
+  });
+}
+
+it("refreshes the calendar after a failed room assignment without keeping the contradicted bars", async () => {
+  const requests: URL[] = [];
+  let releaseRefresh: (response: Response) => void = () => {};
+  const mary = {
+    id: "res-open",
+    guestName: "Mary Jackson",
+    status: "confirmed",
+    checkIn: "2026-10-22",
+    checkOut: "2026-10-24",
+    rooms: [{ id: "line-open", roomTypeId: "double", roomId: null }],
+  };
+  globalThis.fetch = (input, init) => {
+    const url = requestUrl(input);
+    requests.push(url);
+    if (url.pathname === "/calendar") {
+      if (requests.filter((item) => item.pathname === "/calendar").length === 1) {
+        return Promise.resolve(calendarResponse(url));
+      }
+      return new Promise((resolve) => {
+        releaseRefresh = resolve;
+      });
+    }
+    if (url.pathname === "/reservations") return Promise.resolve(Response.json([mary]));
+    if (url.pathname === "/room-closures") return Promise.resolve(Response.json([]));
+    if (url.pathname === "/reservations/res-open" && !init?.method) {
+      return Promise.resolve(
+        Response.json({
+          id: "res-open",
+          status: "confirmed",
+          rooms: [{ id: "line-open", roomTypeId: "double", roomId: null, adults: 1, children: 0 }],
+        }),
+      );
+    }
+    if (url.pathname === "/reservations/res-open/commands") {
+      return Promise.resolve(
+        Response.json({ error: "room is already assigned for those dates" }, { status: 409 }),
+      );
+    }
+    throw new Error(`Unexpected request ${url.pathname}`);
+  };
+
+  await render(React.createElement(CalendarSession));
+  await until(
+    () => !!container.querySelector('[aria-label="Mostrar reservas sin asignar, 1"]'),
+    "The unassigned stay must paint before assignment",
+  );
+  await click("Mostrar reservas sin asignar, 1");
+  await until(() => container.textContent.includes("Mary Jackson"), "Mary must be listed");
+  const maryButton = [...container.querySelectorAll("button")].find((button) =>
+    button.textContent?.includes("Mary Jackson"),
+  );
+  assert.ok(maryButton, "Missing Mary Jackson");
+  await React.act(async () => maryButton.click());
+  const assignLabel = "Asignar Mary Jackson a habitación 2, 2026-10-22 al 2026-10-24";
+  await until(
+    () => !!container.querySelector(`[aria-label="${assignLabel}"]`),
+    "Room 2 must be offered for the whole stay",
+  );
+  assert.ok(requests.some((url) => url.pathname === "/reservations"));
+  assert.ok(requests.some((url) => url.pathname === "/room-closures"));
+  const beforeFailure = requests.length;
+
+  await click(assignLabel);
+  await page.flush();
+
+  const refreshed = requests.slice(beforeFailure).filter((url) => url.pathname === "/calendar");
+  assert.equal(refreshed.length, 1, "A failed assignment must drop the held days");
+  assert.ok(
+    requests.slice(beforeFailure).some((url) => url.pathname === "/reservations"),
+    "Assignment availability keeps its reservation read",
+  );
+  assert.ok(
+    requests.slice(beforeFailure).some((url) => url.pathname === "/room-closures"),
+    "Assignment availability keeps its room-closure read",
+  );
+  assert.ok(container.textContent.includes("Ada Lovelace"));
+  assert.ok(container.textContent.includes("101"));
+  assert.ok(container.textContent.includes("Mantenimiento"));
+  assert.equal(container.textContent.includes("Katherine Johnson"), false);
+  assert.ok(container.textContent.includes("20 oct 2026"));
+
+  releaseRefresh(conflictWindow(refreshed[0]!));
+  await until(
+    () => container.textContent.includes("Katherine Johnson"),
+    "The conflict must replace the bars the assignment just proved wrong",
+  );
+  assert.ok(container.textContent.includes("Ada Lovelace"));
+  assert.ok(container.textContent.includes("101"));
+  assert.ok(container.textContent.includes("Mantenimiento"));
+  assert.ok(container.textContent.includes("20 oct 2026"));
+  assert.equal(requests.filter((url) => url.pathname === "/calendar").length, 2);
+});
+
+function renamedContact(url: URL) {
+  return Response.json({
+    ...windowPayload,
+    from: url.searchParams.get("from"),
+    to: url.searchParams.get("to"),
+    rooms: windowPayload.rooms.map((room) => ({
+      ...room,
+      stays: room.stays.map((stay) =>
+        stay.reservationId === "res-ada" ? { ...stay, guestName: "Ada Byron" } : stay,
+      ),
+    })),
+  });
+}
+
+function CalendarWithContactRename() {
+  const save = queries.useWorkflowCommand("res-ada");
+  return React.createElement(
+    React.Fragment,
+    null,
+    React.createElement(CalendarSession),
+    React.createElement(
+      "button",
+      {
+        type: "button",
+        "aria-label": "Guardar contacto",
+        onClick: () => {
+          void save.mutateAsync({
+            id: "res-ada",
+            command: {
+              requestId: "rename-contact",
+              actions: [
+                {
+                  type: "contact",
+                  contact: {
+                    fullName: "Ada Byron",
+                    email: null,
+                    phone: null,
+                  },
+                },
+              ],
+            },
+          });
+        },
+      },
+      "Guardar contacto",
+    ),
+  );
+}
+
+it("updates the name on the stay after a booking-contact rename without blanking the calendar", async () => {
+  const requests: URL[] = [];
+  let releaseRefresh: (response: Response) => void = () => {};
+  globalThis.fetch = (input) => {
+    const url = requestUrl(input);
+    requests.push(url);
+    if (url.pathname === "/reservations/res-ada/commands") {
+      return Promise.resolve(Response.json({ id: "res-ada" }));
+    }
+    if (url.pathname !== "/calendar") throw new Error(`Unexpected request ${url.pathname}`);
+    if (requests.filter((item) => item.pathname === "/calendar").length === 1) {
+      return Promise.resolve(calendarResponse(url));
+    }
+    return new Promise((resolve) => {
+      releaseRefresh = resolve;
+    });
+  };
+
+  await render(React.createElement(CalendarWithContactRename));
+  await until(
+    () => !!container.querySelector('[aria-label="Editar reserva de Ada Lovelace · Confirmada"]'),
+    "Ada must paint before the rename",
+  );
+  const beforeRename = requests.length;
+
+  await click("Guardar contacto");
+  await page.flush();
+
+  const refreshed = requests.slice(beforeRename).filter((url) => url.pathname === "/calendar");
+  assert.equal(refreshed.length, 1, "Renaming the booking contact must drop the held days");
+  assert.ok(container.querySelector('[aria-label="Editar reserva de Ada Lovelace · Confirmada"]'));
+  assert.equal(
+    container.querySelector('[aria-label="Editar reserva de Ada Byron · Confirmada"]'),
+    null,
+  );
+  assert.ok(container.textContent.includes("101"));
+  assert.ok(container.textContent.includes("Mantenimiento"));
+
+  releaseRefresh(renamedContact(refreshed[0]!));
+  await until(
+    () => !!container.querySelector('[aria-label="Editar reserva de Ada Byron · Confirmada"]'),
+    "The stay must show the renamed contact",
+  );
+  assert.equal(
+    container.querySelector('[aria-label="Editar reserva de Ada Lovelace · Confirmada"]'),
+    null,
+  );
+  assert.ok(container.querySelector('[aria-label="Editar reserva de Grace Hopper · Check-out"]'));
+  assert.ok(container.textContent.includes("101"));
+  assert.ok(container.textContent.includes("Mantenimiento"));
+  assert.ok(container.querySelector('[aria-label="Mostrar reservas sin asignar, 1"]'));
+  assert.equal(requests.filter((url) => url.pathname === "/calendar").length, 2);
+});
+
+function setupWindow(url: URL) {
+  return Response.json({
+    from: url.searchParams.get("from"),
+    to: url.searchParams.get("to"),
+    missingSetup: null,
+    rooms: [
+      {
+        id: "room-1",
+        number: "1",
+        roomTypeId: "double",
+        roomTypeName: "Doble",
+        stays: [],
+        closures: [],
+      },
+    ],
+    unassigned: [],
+  });
+}
+
+function CalendarWithPropertySetup() {
+  const save = queries.useSavePropertySetup();
+  return React.createElement(
+    React.Fragment,
+    null,
+    React.createElement(CalendarSession),
+    React.createElement(
+      "button",
+      {
+        type: "button",
+        "aria-label": "Guardar configuración",
+        onClick: () => {
+          void save.mutateAsync({
+            name: "Doble",
+            maxAdults: 2,
+            maxChildren: 1,
+            baseRateCents: 15000,
+            rooms: [{ number: "1" }],
+          });
+        },
+      },
+      "Guardar configuración",
+    ),
+  );
+}
+
+it("clears missing setup and shows the new room after property setup without a flash", async () => {
+  const requests: URL[] = [];
+  let releaseRefresh: (response: Response) => void = () => {};
+  globalThis.fetch = (input, init) => {
+    const url = requestUrl(input);
+    requests.push(url);
+    if (url.pathname === "/setup" && init?.method === "POST") {
+      return Promise.resolve(
+        Response.json({
+          roomType: {
+            id: "double",
+            name: "Doble",
+            maxAdults: 2,
+            maxChildren: 1,
+            baseRateCents: 15000,
+          },
+          rooms: [{ id: "room-1", number: "1", roomTypeId: "double" }],
+        }),
+      );
+    }
+    if (url.pathname !== "/calendar") throw new Error(`Unexpected request ${url.pathname}`);
+    if (requests.filter((item) => item.pathname === "/calendar").length === 1) {
+      return Promise.resolve(
+        Response.json({
+          from: url.searchParams.get("from"),
+          to: url.searchParams.get("to"),
+          missingSetup: "rooms",
+          rooms: [],
+          unassigned: [],
+        }),
+      );
+    }
+    return new Promise((resolve) => {
+      releaseRefresh = resolve;
+    });
+  };
+
+  const rootRoute = browser.routing.createRootRoute({
+    component: () => React.createElement(CalendarWithPropertySetup),
+  });
+  const setupRoute = browser.routing.createRoute({
+    getParentRoute: () => rootRoute,
+    path: "/setup",
+  });
+  const router = browser.routing.createRouter({
+    routeTree: rootRoute.addChildren([setupRoute]),
+    history: browser.routing.createMemoryHistory({ initialEntries: ["/"] }),
+  });
+  await page.renderRouter(router);
+  await until(
+    () => container.textContent.includes("Aún no hay habitaciones"),
+    "Missing rooms must be called out before setup is saved",
+  );
+  const beforeSave = requests.length;
+
+  await click("Guardar configuración");
+  await page.flush();
+
+  const refreshed = requests.slice(beforeSave).filter((url) => url.pathname === "/calendar");
+  assert.equal(refreshed.length, 1, "Property setup must drop the held days");
+  assert.ok(container.textContent.includes("Aún no hay habitaciones"));
+  assert.equal(container.querySelector('[aria-label="Acciones de habitación 1"]'), null);
+  assert.equal(container.textContent.includes("101"), false);
+
+  releaseRefresh(setupWindow(refreshed[0]!));
+  await until(
+    () => !!container.querySelector('[aria-label="Acciones de habitación 1"]'),
+    "The new room must appear",
+  );
+  assert.equal(container.textContent.includes("Aún no hay habitaciones"), false);
+  assert.equal(container.textContent.includes("Configura tu alojamiento"), false);
+  assert.ok(container.textContent.includes("Doble"));
+  assert.ok(container.querySelector('[aria-label="Mostrar reservas sin asignar, 0"]'));
+  assert.equal(requests.filter((url) => url.pathname === "/calendar").length, 2);
+});
+
+function CalendarWithRateSave() {
+  queries.useInventory("2026-10-20", "2026-10-26");
+  const save = queries.usePutRoomTypeRates();
+  return React.createElement(
+    React.Fragment,
+    null,
+    React.createElement(CalendarSession),
+    React.createElement(
+      "button",
+      {
+        type: "button",
+        "aria-label": "Guardar tarifa",
+        onClick: () => {
+          void save.mutateAsync({
+            id: "double",
+            from: "2026-10-20",
+            to: "2026-10-26",
+            priceCents: 18000,
+          });
+        },
+      },
+      "Guardar tarifa",
+    ),
+  );
+}
+
+it("does not reload the calendar when a rate changes", async () => {
+  const requests: URL[] = [];
+  globalThis.fetch = (input, init) => {
+    const url = requestUrl(input);
+    requests.push(url);
+    if (url.pathname === "/calendar") return Promise.resolve(calendarResponse(url));
+    if (url.pathname === "/inventory") return Promise.resolve(Response.json({ roomTypes: [] }));
+    if (url.pathname === "/room-types/double/rates" && init?.method === "PUT") {
+      return Promise.resolve(Response.json({ updated: 7 }));
+    }
+    throw new Error(`Unexpected request ${url.pathname}`);
+  };
+
+  await render(React.createElement(CalendarWithRateSave));
+  await until(
+    () => !!container.querySelector('[aria-label="Editar reserva de Ada Lovelace · Confirmada"]'),
+    "Week must paint before the rate change",
+  );
+  await until(
+    () => requests.some((url) => url.pathname === "/inventory"),
+    "Inventory must load on its own read",
+  );
+  const beforeRate = requests.length;
+
+  await click("Guardar tarifa");
+  await page.flush();
+
+  const after = requests.slice(beforeRate);
+  assert.ok(
+    after.some((url) => url.pathname === "/inventory"),
+    "A rate change still reloads inventory",
+  );
+  assert.equal(
+    after.some((url) => url.pathname === "/calendar"),
+    false,
+    "A rate change must not reload the calendar",
+  );
+  assert.ok(container.querySelector('[aria-label="Editar reserva de Ada Lovelace · Confirmada"]'));
+  assert.ok(container.textContent.includes("101"));
+  assert.ok(container.textContent.includes("Mantenimiento"));
+  assert.equal(requests.filter((url) => url.pathname === "/calendar").length, 1);
+});
+
+it("discards a save refresh that finishes after staff have left that day", async () => {
+  const requests: URL[] = [];
+  const pending: Array<(response: Response) => void> = [];
+  globalThis.fetch = (input) => {
+    const url = requestUrl(input);
+    requests.push(url);
+    if (url.pathname === "/reservations/res-new/commands") {
+      return Promise.resolve(Response.json({ id: "res-new" }));
+    }
+    if (url.pathname !== "/calendar") throw new Error(`Unexpected request ${url.pathname}`);
+    if (requests.filter((item) => item.pathname === "/calendar").length === 1) {
+      return Promise.resolve(calendarResponse(url));
+    }
+    return new Promise((resolve) => {
+      pending.push(resolve);
+    });
+  };
+
+  await render(React.createElement(CalendarWithReservationSave));
+  await until(
+    () => !!container.querySelector('[aria-label="Editar reserva de Ada Lovelace · Confirmada"]'),
+    "Week must paint before the reservation save",
+  );
+
+  await click("Guardar reserva");
+  await page.flush();
+  assert.equal(requests.filter((url) => url.pathname === "/calendar").length, 2);
+
+  await click("Período siguiente");
+  await until(
+    () => container.textContent.includes("27 oct 2026"),
+    "First period stays inside the hold",
+  );
+  assert.equal(requests.filter((url) => url.pathname === "/calendar").length, 2);
+  assert.ok(container.textContent.includes("101"));
+
+  await click("Período siguiente");
+  await page.flush();
+  assert.equal(requests.filter((url) => url.pathname === "/calendar").length, 3);
+  assert.ok(container.textContent.includes("3 nov 2026"));
+  assert.equal(container.textContent.includes("101"), false);
+  assert.equal(
+    container.querySelector('[aria-label="Editar reserva de Ada Lovelace · Confirmada"]'),
+    null,
+  );
+
+  const held = requests.filter((url) => url.pathname === "/calendar")[1]!;
+  pending[0]!(stayOn("room-2", "Rosalind Franklin")(held));
+  await page.flush();
+
+  assert.ok(container.textContent.includes("3 nov 2026"));
+  assert.equal(container.textContent.includes("20 oct 2026"), false);
+  assert.equal(container.textContent.includes("101"), false);
+  assert.equal(
+    container.querySelector('[aria-label="Editar reserva de Rosalind Franklin · Confirmada"]'),
+    null,
+  );
+  assert.equal(
+    container.querySelector('[aria-label="Editar reserva de Ada Lovelace · Confirmada"]'),
+    null,
+  );
+});
+
+function CalendarAndReservationList() {
+  queries.useReservationList({
+    sort: "checkIn",
+    direction: "asc",
+    limit: 25,
+    offset: 0,
+  });
+  return React.createElement(CalendarWithReservationSave);
+}
+
+it("keeps the reservation list on its own read when a reservation save refreshes the calendar", async () => {
+  const requests: URL[] = [];
+  globalThis.fetch = (input) => {
+    const url = requestUrl(input);
+    requests.push(url);
+    if (url.pathname === "/calendar") return Promise.resolve(calendarResponse(url));
+    if (url.pathname === "/reservations" && url.searchParams.get("paginated") === "true") {
+      return Promise.resolve(Response.json({ rows: [], total: 0, limit: 25, offset: 0 }));
+    }
+    if (url.pathname === "/reservations/res-new/commands") {
+      return Promise.resolve(Response.json({ id: "res-new" }));
+    }
+    throw new Error(`Unexpected request ${url.pathname}`);
+  };
+
+  await render(React.createElement(CalendarAndReservationList));
+  await until(
+    () => !!container.querySelector('[aria-label="Editar reserva de Ada Lovelace · Confirmada"]'),
+    "Week must paint before the reservation save",
+  );
+  await until(
+    () => requests.some((url) => url.searchParams.get("paginated") === "true"),
+    "The reservation list must load on its own read",
+  );
+  const beforeSave = requests.length;
+
+  await click("Guardar reserva");
+  await page.flush();
+
+  const after = requests.slice(beforeSave);
+  assert.ok(
+    after.some((url) => url.pathname === "/calendar"),
+    "The save still drops the held calendar",
+  );
+  assert.ok(
+    after.some(
+      (url) => url.pathname === "/reservations" && url.searchParams.get("paginated") === "true",
+    ),
+    "The reservation list stays on its current read",
+  );
+  assert.ok(container.querySelector('[aria-label="Editar reserva de Ada Lovelace · Confirmada"]'));
+});
