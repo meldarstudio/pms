@@ -343,6 +343,7 @@ export function RoomCalendar({
   const [roomTarget, setRoomTarget] = useState<RoomEditTarget | null>(null);
   const [bookingTarget, setBookingTarget] = useState<BookingTarget | null>(null);
   const [panelOpen, setPanelOpen] = useState(false);
+  const [manualRefresh, setManualRefresh] = useState<Promise<void> | null>(null);
   const from = format(start, "yyyy-MM-dd");
   const to = format(addDays(start, span - 1), "yyyy-MM-dd");
   const calendarQuery = useCalendar(from, to);
@@ -353,8 +354,9 @@ export function RoomCalendar({
       ? []
       : null
     : calendar.rooms.map((room) => ({ ...room, typeName: room.roomTypeName }));
-  const bookingDataReady =
-    calendarQuery.isSuccess && !calendarQuery.isFetching && !calendarQuery.isPlaceholderData;
+  if (manualRefresh && !calendar) setManualRefresh(null);
+  const refreshing = manualRefresh !== null && !!calendar;
+  const bookingDataReady = !!calendar;
   const assignment = useRoomAssignment(rooms);
   const unassigned = calendar?.unassigned ?? [];
   const typeNames = new Map((rooms ?? []).map((room) => [room.roomTypeId, room.roomTypeName]));
@@ -365,7 +367,15 @@ export function RoomCalendar({
     : undefined;
 
   function refreshCalendar() {
-    void queryClient.invalidateQueries({ queryKey: ["calendar"] });
+    return queryClient.invalidateQueries({ queryKey: ["calendar"] });
+  }
+
+  function refreshFromButton() {
+    const refresh = refreshCalendar();
+    setManualRefresh(refresh);
+    void refresh.finally(() => {
+      setManualRefresh((current) => (current === refresh ? null : current));
+    });
   }
 
   function retryAssignment() {
@@ -415,7 +425,7 @@ export function RoomCalendar({
       onSelect={assignment.selectStay}
       onCancel={assignment.cancel}
       onClose={() => setPanelOpen(false)}
-      onRetry={refreshCalendar}
+      onRetry={() => void refreshCalendar()}
       onRetryAssignment={retryAssignment}
     />
   );
@@ -470,11 +480,12 @@ export function RoomCalendar({
           <Button
             variant="outline"
             size="icon"
-            aria-label="Actualizar"
-            disabled={rooms === null || assignment.pending}
-            onClick={refreshCalendar}
+            aria-label={refreshing ? "Actualizando…" : "Actualizar"}
+            aria-busy={refreshing || undefined}
+            disabled={!calendar || assignment.pending || refreshing}
+            onClick={refreshFromButton}
           >
-            <RefreshCwIcon />
+            <RefreshCwIcon data-icon="inline-start" className={cn(refreshing && "animate-spin")} />
           </Button>
         </div>
         <ButtonGroup>
@@ -584,7 +595,7 @@ export function RoomCalendar({
       {error ? (
         <div className="flex items-center justify-between gap-2 border-b px-2.5 py-2">
           <p className="text-xs text-muted-foreground">{error}</p>
-          <Button variant="outline" size="sm" onClick={refreshCalendar}>
+          <Button variant="outline" size="sm" onClick={() => void refreshCalendar()}>
             Reintentar
           </Button>
         </div>
@@ -592,6 +603,9 @@ export function RoomCalendar({
       <div className="flex min-h-0 min-w-0 flex-1">
         <div className="min-h-0 min-w-0 flex-1 overflow-auto overscroll-none">
           <div
+            role={rooms === null ? "region" : undefined}
+            aria-label={rooms === null ? "Cargando calendario" : undefined}
+            aria-busy={rooms === null ? true : undefined}
             className="grid w-full"
             style={{
               gridTemplateColumns: `10rem repeat(${span}, minmax(6rem, 1fr))`,
@@ -636,7 +650,7 @@ export function RoomCalendar({
                     <div className="sticky left-0 z-20 border-r border-b bg-background px-2.5 py-2">
                       <Skeleton className="h-6 w-16" />
                     </div>
-                    <div
+                    <Skeleton
                       className="border-b"
                       style={{
                         gridColumn: `2 / span ${span}`,

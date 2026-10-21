@@ -145,6 +145,21 @@ async function click(label: string) {
   await React.act(async () => element.click());
 }
 
+function expectIdleRefresh(disabled = false) {
+  const button = container.querySelector<HTMLButtonElement>('[aria-label="Actualizar"]');
+  assert.ok(button, "Refresh must have its idle name");
+  assert.equal(button.disabled, disabled);
+  assert.notEqual(button.getAttribute("aria-busy"), "true");
+}
+
+function expectManualRefresh() {
+  const button = container.querySelector<HTMLButtonElement>('[aria-label="Actualizando…"]');
+  assert.ok(button, "The clicked refresh must announce that it is in flight");
+  assert.equal(button.disabled, true);
+  assert.equal(button.getAttribute("aria-busy"), "true");
+  return button;
+}
+
 it("opens a week of 20 Oct from one wider read and draws only 20–26 Oct", async () => {
   const requests: URL[] = [];
   let release: (response: Response) => void = () => {};
@@ -161,6 +176,27 @@ it("opens a week of 20 Oct from one wider read and draws only 20–26 Oct", asyn
   await render(renderCalendar());
   await page.flush();
 
+  const loading = container.querySelector('[role="region"][aria-label="Cargando calendario"]');
+  assert.ok(loading, "The unloaded calendar must be named for screen readers");
+  assert.equal(loading.getAttribute("aria-busy"), "true");
+  assert.ok(loading.textContent.includes("20"));
+  assert.ok(loading.textContent.includes("26"));
+  assert.ok(loading.textContent.includes("oct"));
+  assert.equal(loading.textContent.includes("Ada Lovelace"), false);
+  assert.equal(loading.textContent.includes("Mantenimiento"), false);
+  assert.equal(container.textContent.includes("Configura tu alojamiento"), false);
+  expectIdleRefresh(true);
+  assert.equal(buttonByText("Nueva reserva").disabled, false);
+  for (const label of ["Día anterior", "Día siguiente", "Período anterior", "Período siguiente"]) {
+    assert.equal(
+      container.querySelector<HTMLButtonElement>(`[aria-label="${label}"]`)?.disabled,
+      false,
+    );
+  }
+  assert.equal(buttonByText("Hoy").disabled, false);
+  assert.equal(buttonByText("20 oct 2026").disabled, false);
+  assert.equal(container.querySelector('[role="combobox"]')?.getAttribute("aria-disabled"), null);
+  assert.ok(container.querySelector('[aria-label="Mostrar reservas sin asignar"]'));
   assert.equal(container.textContent.includes("101"), false);
   assert.equal(requests.length, 1);
   assert.equal(requests[0]!.pathname, "/calendar");
@@ -207,6 +243,7 @@ it("opens a week of 20 Oct from one wider read and draws only 20–26 Oct", asyn
   );
 
   assert.equal(requests.length, 1);
+  assert.equal(container.querySelector('[aria-label="Cargando calendario"]'), null);
   assert.equal(
     container.querySelector('[aria-label="Nueva reserva para habitación 101 el 13 oct 2026"]'),
     null,
@@ -517,6 +554,13 @@ it("shows loading instead of the previous bars when a jump leaves the held days"
     null,
   );
   assert.ok(container.textContent.includes("3 nov 2026"));
+  const loading = container.querySelector('[role="region"][aria-label="Cargando calendario"]');
+  assert.equal(loading?.getAttribute("aria-busy"), "true");
+  assert.ok(loading?.textContent.includes("nov"));
+  assert.ok(loading?.textContent.includes("3"));
+  assert.ok(loading?.textContent.includes("9"));
+  assert.equal(container.textContent.includes("Mantenimiento"), false);
+  expectIdleRefresh(true);
 });
 
 it("shows loading on the eighth day-step instead of a partial edge", async () => {
@@ -581,6 +625,10 @@ it("shows loading on the eighth day-step instead of a partial edge", async () =>
     null,
   );
   assert.ok(container.textContent.includes("28 oct 2026"));
+  const loading = container.querySelector('[role="region"][aria-label="Cargando calendario"]');
+  assert.equal(loading?.getAttribute("aria-busy"), "true");
+  assert.ok(loading?.textContent.includes("28"));
+  expectIdleRefresh(true);
 });
 
 it("draws a checkout on the first morning at the edge of the hold", async () => {
@@ -681,6 +729,8 @@ it("shows an error and no rooms when the first load fails", async () => {
   );
 
   assert.ok(container.textContent.includes("Reintentar"));
+  assert.equal(container.querySelector('[aria-label="Cargando calendario"]'), null);
+  expectIdleRefresh(true);
   assert.equal(container.textContent.includes("101"), false);
   assert.equal(container.textContent.includes("Configura tu alojamiento"), false);
   assert.equal(container.textContent.includes("Aún no hay habitaciones"), false);
@@ -777,6 +827,14 @@ it("refreshes the calendar when staff return to the tab and keeps the current ba
     container.querySelector('[aria-label="Editar reserva de Katherine Johnson · Confirmada"]'),
     null,
   );
+  expectIdleRefresh();
+  assert.equal(container.querySelector('[aria-label="Actualizando…"]'), null);
+  assert.equal(container.querySelector('[aria-label="Cargando calendario"]'), null);
+  const bookNight = container.querySelector<HTMLButtonElement>(
+    '[aria-label="Nueva reserva para habitación 2 el 22 oct 2026"]',
+  );
+  assert.ok(bookNight, "Returning to the tab must keep free nights bookable");
+  assert.equal(bookNight.disabled, false);
 
   releaseReturn(calendarResponse(requests[1]!, "Katherine Johnson"));
   await until(
@@ -845,12 +903,35 @@ it("reloads only the calendar from the refresh button and keeps the current bars
   assert.ok(container.querySelector('[aria-label="Mostrar reservas sin asignar, 1"]'));
   assert.ok(container.textContent.includes("20 oct 2026"));
 
-  releaseRefresh(calendarResponse(refreshed[0]!, "Katherine Johnson"));
-  await until(
-    () =>
-      !!container.querySelector('[aria-label="Editar reserva de Katherine Johnson · Confirmada"]'),
-    "Refresh must show the reservation made elsewhere",
+  const refreshing = expectManualRefresh();
+  assert.equal(container.querySelector('[aria-label="Cargando calendario"]'), null);
+  const bookNight = container.querySelector<HTMLButtonElement>(
+    '[aria-label="Nueva reserva para habitación 2 el 22 oct 2026"]',
   );
+  assert.ok(bookNight, "A free night must stay bookable while refreshing");
+  assert.equal(bookNight.disabled, false);
+  assert.equal(
+    container.querySelector<HTMLButtonElement>(
+      '[aria-label="Editar reserva de Ada Lovelace · Confirmada"]',
+    )?.disabled,
+    false,
+  );
+  assert.equal(buttonByText("Mantenimiento").disabled, false);
+  await React.act(async () => refreshing.click());
+  assert.equal(requests.length, beforeRefresh + 1, "A pending refresh must not stack another read");
+  await click("Mostrar reservas sin asignar, 1");
+  assert.ok(
+    container.textContent.includes("Mary Jackson"),
+    "Unassigned reserved rooms stay available",
+  );
+
+  releaseRefresh(calendarResponse(refreshed[0]!));
+  await until(
+    () => !!container.querySelector('[aria-label="Actualizar"]'),
+    "Refresh must finish even when the calendar has not changed",
+  );
+  expectIdleRefresh();
+  assert.ok(adaBar());
   assert.equal(requests.length, beforeRefresh + 1);
 });
 
@@ -877,29 +958,41 @@ it("ignores a refresh that finishes after staff have left that day", async () =>
   await page.flush();
   assert.equal(requests.length, 2);
 
-  await click("Período siguiente");
+  await click("Día siguiente");
   await until(
-    () => container.textContent.includes("27 oct 2026"),
-    "First period stays inside the hold",
+    () => container.textContent.includes("21 oct 2026"),
+    "A day-step stays inside the hold",
   );
   assert.equal(requests.length, 2);
   assert.ok(container.textContent.includes("101"));
+  assert.ok(container.querySelector('[aria-label="Editar reserva de Grace Hopper · Check-out"]'));
+  expectManualRefresh();
+  assert.equal(container.querySelector('[aria-label="Cargando calendario"]'), null);
 
   await click("Período siguiente");
   await page.flush();
   assert.equal(requests.length, 3);
-  assert.equal(requests[2]!.searchParams.get("from"), "2026-10-27");
-  assert.ok(container.textContent.includes("3 nov 2026"));
+  assert.equal(requests[2]!.searchParams.get("from"), "2026-10-21");
+  assert.ok(container.textContent.includes("28 oct 2026"));
   assert.equal(container.textContent.includes("101"), false);
   assert.equal(
     container.querySelector('[aria-label="Editar reserva de Ada Lovelace · Confirmada"]'),
     null,
   );
+  assert.equal(
+    container.querySelector('[aria-label="Editar reserva de Grace Hopper · Check-out"]'),
+    null,
+  );
+  assert.equal(container.querySelector('[aria-label="Actualizando…"]'), null);
+  expectIdleRefresh(true);
+  const loading = container.querySelector('[role="region"][aria-label="Cargando calendario"]');
+  assert.equal(loading?.getAttribute("aria-busy"), "true");
+  assert.ok(loading?.textContent.includes("28"));
 
   pending[0]!(calendarResponse(requests[1]!, "Katherine Johnson"));
   await page.flush();
 
-  assert.ok(container.textContent.includes("3 nov 2026"));
+  assert.ok(container.textContent.includes("28 oct 2026"));
   assert.equal(container.textContent.includes("20 oct 2026"), false);
   assert.equal(container.textContent.includes("101"), false);
   assert.equal(
@@ -911,6 +1004,8 @@ it("ignores a refresh that finishes after staff have left that day", async () =>
     null,
   );
   assert.equal(requests.length, 3);
+  assert.equal(container.querySelector('[aria-label="Actualizando…"]'), null);
+  assert.ok(container.querySelector('[aria-label="Cargando calendario"]'));
 });
 
 it("keeps the held window and shows one Spanish banner when a refresh fails", async () => {
@@ -945,6 +1040,15 @@ it("keeps the held window and shows one Spanish banner when a refresh fails", as
   assert.equal(container.textContent.includes("Aún no hay habitaciones"), false);
   assert.equal(container.textContent.includes("Configura tu alojamiento"), false);
   assert.equal(requests.length, 2);
+  assert.equal(container.querySelector('[aria-label="Cargando calendario"]'), null);
+  assert.equal(container.querySelector('[aria-label="Actualizando…"]'), null);
+  expectIdleRefresh();
+  assert.equal(
+    container.querySelector<HTMLButtonElement>(
+      '[aria-label="Nueva reserva para habitación 2 el 22 oct 2026"]',
+    )?.disabled,
+    false,
+  );
 });
 
 it("shows an error and no rooms when a step has no complete window and that read fails", async () => {
@@ -992,6 +1096,9 @@ it("shows an error and no rooms when a step has no complete window and that read
   assert.equal(container.textContent.includes("Configura tu alojamiento"), false);
   assert.equal(container.textContent.includes("Aún no hay habitaciones"), false);
   assert.equal(requests.length, 2);
+  assert.equal(container.querySelector('[aria-label="Cargando calendario"]'), null);
+  assert.equal(container.querySelector('[aria-label="Actualizando…"]'), null);
+  expectIdleRefresh(true);
 });
 
 it("keeps an open unassigned list when a refresh fails, with the same banner as the grid", async () => {
@@ -1610,14 +1717,22 @@ async function offerMaryRoom2() {
     () => !!container.querySelector(`[aria-label="${assignLabel}"]`),
     "Room 2 must be offered for the whole stay",
   );
+  assert.equal(
+    container.querySelector('[aria-label^="Nueva reserva para habitación"]'),
+    null,
+    "Night-level reservation controls must stay hidden during room assignment",
+  );
   return assignLabel;
 }
 
 it("moves a reserved room onto its room after assignment without blanking the calendar", async () => {
+  let releaseAssignment: (response: Response) => void = () => {};
   const held = installHeldCalendar({
     respond: (url, init) => {
       if (url.pathname === "/reservations/res-open/commands")
-        return Response.json({ id: "res-open" });
+        return new Promise((resolve) => {
+          releaseAssignment = resolve;
+        });
       return assignmentReads(url, init);
     },
   });
@@ -1632,6 +1747,12 @@ it("moves a reserved room onto its room after assignment without blanking the ca
   const before = held.requests.length;
 
   await click(assignLabel);
+  await until(
+    () => buttonByText("Nueva reserva").disabled,
+    "Reservation creation must be disabled while room assignment is saving",
+  );
+  expectIdleRefresh(true);
+  releaseAssignment(Response.json({ id: "res-open" }));
   await until(
     () => held.requests.slice(before).some((url) => url.pathname === "/calendar"),
     "Assigning a room must drop the held days",
