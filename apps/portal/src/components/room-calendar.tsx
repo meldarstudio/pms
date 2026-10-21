@@ -340,6 +340,7 @@ export function RoomCalendar({
 }) {
   const { today } = usePropertyCalendar();
   const isMobile = useIsMobile();
+  const roomColumnWidth = isMobile ? 6 : 10;
   const queryClient = useQueryClient();
   const [pickerOpen, setPickerOpen] = useState(false);
   const [closureTarget, setClosureTarget] = useState<ClosureTarget | null>(null);
@@ -629,8 +630,8 @@ export function RoomCalendar({
             aria-busy={rooms === null ? true : undefined}
             className="grid w-full"
             style={{
-              gridTemplateColumns: `10rem repeat(${span}, minmax(6rem, 1fr))`,
-              minWidth: `${10 + span * 6}rem`,
+              gridTemplateColumns: `${roomColumnWidth}rem repeat(${span}, minmax(6rem, 1fr))`,
+              minWidth: `${roomColumnWidth + span * 6}rem`,
             }}
           >
             <div className="sticky top-0 left-0 z-40 border-r border-b bg-background" />
