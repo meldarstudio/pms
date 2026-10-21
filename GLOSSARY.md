@@ -142,6 +142,12 @@ Whether a specific physical room matches the reserved room's type and is free of
 reservations and closures for the entire stay.
 _Avoid_: Room-type availability
 
+**Calendar**:
+The staff view of each room over a span of property dates, showing that room's stays and room
+closures, together with the reserved rooms that still have no room assignment. A stay or room closure
+that ends on the first morning of the span is still shown on that room.
+_Avoid_: Room-type availability, inventory
+
 **Property setup**:
 The room types and rooms that must exist before a reservation can be taken.
 _Avoid_: Inventory, admin
