@@ -29,6 +29,7 @@ type RoomAssignmentPanelProps = {
   onCancel: () => void;
   onClose: () => void;
   onRetry: () => void;
+  onRetryAssignment: () => void;
 };
 
 export function RoomAssignmentPanel({
@@ -47,6 +48,7 @@ export function RoomAssignmentPanel({
   onCancel,
   onClose,
   onRetry,
+  onRetryAssignment,
 }: RoomAssignmentPanelProps) {
   const { today } = usePropertyCalendar();
 
@@ -156,7 +158,7 @@ export function RoomAssignmentPanel({
           {error ? (
             <div role="alert" className="space-y-2">
               <p className="text-destructive">{error}</p>
-              <Button variant="outline" size="sm" disabled={pending} onClick={onRetry}>
+              <Button variant="outline" size="sm" disabled={pending} onClick={onRetryAssignment}>
                 Consultar de nuevo
               </Button>
             </div>

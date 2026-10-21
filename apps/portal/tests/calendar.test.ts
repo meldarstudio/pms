@@ -7,6 +7,7 @@ let browser: BrowserTest;
 let page: BrowserPage;
 let React: BrowserTest["React"];
 let calendars: typeof import("../src/components/room-calendar.tsx");
+let queries: typeof import("../src/lib/queries.ts");
 let container: BrowserPage["container"];
 let render: BrowserPage["render"];
 let until: BrowserPage["until"];
@@ -17,6 +18,7 @@ beforeAll(async () => {
   calendars = (await browser.server.ssrLoadModule(
     "/src/components/room-calendar.tsx",
   )) as typeof calendars;
+  queries = (await browser.server.ssrLoadModule("/src/lib/queries.ts")) as typeof queries;
   const calendar = (await browser.server.ssrLoadModule(
     "/src/lib/property-calendar.ts",
   )) as typeof import("../src/lib/property-calendar.ts");
@@ -719,4 +721,418 @@ it("shows an error and no rooms when the read returns an incomplete window", asy
 
   assert.equal(container.textContent.includes("101"), false);
   assert.equal(container.textContent.includes("Configura tu alojamiento"), false);
+});
+
+function calendarResponse(url: URL, guestName?: string) {
+  return Response.json({
+    ...windowPayload,
+    from: url.searchParams.get("from"),
+    to: url.searchParams.get("to"),
+    rooms: guestName
+      ? windowPayload.rooms.map((room) =>
+          room.id === "room-101"
+            ? {
+                ...room,
+                stays: [
+                  ...room.stays,
+                  {
+                    id: "line-elsewhere",
+                    reservationId: "res-elsewhere",
+                    guestName,
+                    status: "confirmed",
+                    checkIn: "2026-10-22",
+                    checkOut: "2026-10-24",
+                    roomTypeId: "double",
+                    roomIndex: 1,
+                    roomCount: 1,
+                  },
+                ],
+              }
+            : room,
+        )
+      : windowPayload.rooms,
+  });
+}
+
+function returnToTab() {
+  Object.defineProperty(document, "visibilityState", {
+    configurable: true,
+    get: () => "visible",
+  });
+  window.dispatchEvent(new window.Event("visibilitychange"));
+}
+
+it("refreshes the calendar when staff return to the tab and keeps the current bars until that window arrives", async () => {
+  const requests: URL[] = [];
+  let releaseReturn: (response: Response) => void = () => {};
+  globalThis.fetch = (input) => {
+    const url = requestUrl(input);
+    requests.push(url);
+    if (url.pathname !== "/calendar") throw new Error(`Unexpected request ${url.pathname}`);
+    if (requests.length === 1) return Promise.resolve(calendarResponse(url));
+    return new Promise((resolve) => {
+      releaseReturn = resolve;
+    });
+  };
+
+  await render(React.createElement(CalendarSession));
+  await until(
+    () => !!container.querySelector('[aria-label="Editar reserva de Ada Lovelace · Confirmada"]'),
+    "Week must paint before leaving the tab",
+  );
+  assert.equal(requests.length, 1);
+  assert.ok(container.querySelector('[aria-label="Mostrar reservas sin asignar, 1"]'));
+
+  await React.act(async () => returnToTab());
+  await page.flush();
+
+  assert.equal(requests.length, 2);
+  assert.equal(requests[1]!.pathname, "/calendar");
+  assert.equal(requests[1]!.searchParams.get("from"), "2026-10-13");
+  assert.equal(requests[1]!.searchParams.get("to"), "2026-11-02");
+  assert.ok(
+    container.querySelector('[aria-label="Editar reserva de Ada Lovelace · Confirmada"]'),
+    "Current bars stay up while the focus refresh is in flight",
+  );
+  assert.ok(container.textContent.includes("101"));
+  assert.ok(container.querySelector('[aria-label="Mostrar reservas sin asignar, 1"]'));
+  assert.equal(
+    container.querySelector('[aria-label="Editar reserva de Katherine Johnson · Confirmada"]'),
+    null,
+  );
+
+  releaseReturn(calendarResponse(requests[1]!, "Katherine Johnson"));
+  await until(
+    () =>
+      !!container.querySelector('[aria-label="Editar reserva de Katherine Johnson · Confirmada"]'),
+    "A reservation made elsewhere must appear after returning to the tab",
+  );
+  assert.equal(requests.length, 2);
+  assert.ok(container.textContent.includes("20 oct 2026"));
+});
+
+function CalendarWithOtherReads() {
+  queries.useSession();
+  queries.useReservations("2026-10-20", "2026-10-27");
+  queries.useInventory("2026-10-20", "2026-10-26");
+  return React.createElement(CalendarSession);
+}
+
+it("reloads only the calendar from the refresh button and keeps the current bars up", async () => {
+  const requests: URL[] = [];
+  let releaseRefresh: (response: Response) => void = () => {};
+  globalThis.fetch = (input) => {
+    const url = requestUrl(input);
+    requests.push(url);
+    if (
+      url.pathname === "/calendar" &&
+      requests.filter((item) => item.pathname === "/calendar").length > 1
+    ) {
+      return new Promise((resolve) => {
+        releaseRefresh = resolve;
+      });
+    }
+    if (url.pathname === "/calendar") return Promise.resolve(calendarResponse(url));
+    if (url.pathname === "/session") {
+      return Promise.resolve(
+        Response.json({ username: "hotelmanantial", propertyTimeZone: "America/Lima" }),
+      );
+    }
+    if (url.pathname === "/reservations") return Promise.resolve(Response.json([]));
+    if (url.pathname === "/inventory") return Promise.resolve(Response.json({ roomTypes: [] }));
+    throw new Error(`Unexpected request ${url.pathname}`);
+  };
+
+  await render(React.createElement(CalendarWithOtherReads));
+  await until(
+    () => !!container.querySelector('[aria-label="Editar reserva de Ada Lovelace · Confirmada"]'),
+    "Week must paint before refreshing",
+  );
+  const beforeRefresh = requests.length;
+  assert.ok(requests.some((url) => url.pathname === "/session"));
+  assert.ok(requests.some((url) => url.pathname === "/reservations"));
+  assert.ok(requests.some((url) => url.pathname === "/inventory"));
+
+  await click("Actualizar");
+  await page.flush();
+
+  const refreshed = requests.slice(beforeRefresh);
+  assert.deepEqual(
+    refreshed.map((url) => url.pathname),
+    ["/calendar"],
+  );
+  assert.ok(
+    container.querySelector('[aria-label="Editar reserva de Ada Lovelace · Confirmada"]'),
+    "Current bars stay up while the calendar reloads",
+  );
+  assert.ok(container.querySelector('[aria-label="Mostrar reservas sin asignar, 1"]'));
+  assert.ok(container.textContent.includes("20 oct 2026"));
+
+  releaseRefresh(calendarResponse(refreshed[0]!, "Katherine Johnson"));
+  await until(
+    () =>
+      !!container.querySelector('[aria-label="Editar reserva de Katherine Johnson · Confirmada"]'),
+    "Refresh must show the reservation made elsewhere",
+  );
+  assert.equal(requests.length, beforeRefresh + 1);
+});
+
+it("ignores a refresh that finishes after staff have left that day", async () => {
+  const requests: URL[] = [];
+  const pending: Array<(response: Response) => void> = [];
+  globalThis.fetch = (input) => {
+    const url = requestUrl(input);
+    requests.push(url);
+    if (url.pathname !== "/calendar") throw new Error(`Unexpected request ${url.pathname}`);
+    if (requests.length === 1) return Promise.resolve(calendarResponse(url));
+    return new Promise((resolve) => {
+      pending.push(resolve);
+    });
+  };
+
+  await render(React.createElement(CalendarSession));
+  await until(
+    () => !!container.querySelector('[aria-label="Editar reserva de Ada Lovelace · Confirmada"]'),
+    "Week must paint before refreshing",
+  );
+
+  await click("Actualizar");
+  await page.flush();
+  assert.equal(requests.length, 2);
+
+  await click("Período siguiente");
+  await until(
+    () => container.textContent.includes("27 oct 2026"),
+    "First period stays inside the hold",
+  );
+  assert.equal(requests.length, 2);
+  assert.ok(container.textContent.includes("101"));
+
+  await click("Período siguiente");
+  await page.flush();
+  assert.equal(requests.length, 3);
+  assert.equal(requests[2]!.searchParams.get("from"), "2026-10-27");
+  assert.ok(container.textContent.includes("3 nov 2026"));
+  assert.equal(container.textContent.includes("101"), false);
+  assert.equal(
+    container.querySelector('[aria-label="Editar reserva de Ada Lovelace · Confirmada"]'),
+    null,
+  );
+
+  pending[0]!(calendarResponse(requests[1]!, "Katherine Johnson"));
+  await page.flush();
+
+  assert.ok(container.textContent.includes("3 nov 2026"));
+  assert.equal(container.textContent.includes("20 oct 2026"), false);
+  assert.equal(container.textContent.includes("101"), false);
+  assert.equal(
+    container.querySelector('[aria-label="Editar reserva de Ada Lovelace · Confirmada"]'),
+    null,
+  );
+  assert.equal(
+    container.querySelector('[aria-label="Editar reserva de Katherine Johnson · Confirmada"]'),
+    null,
+  );
+  assert.equal(requests.length, 3);
+});
+
+it("keeps the held window and shows one Spanish banner when a refresh fails", async () => {
+  const requests: URL[] = [];
+  globalThis.fetch = async (input) => {
+    const url = requestUrl(input);
+    requests.push(url);
+    if (url.pathname !== "/calendar") throw new Error(`Unexpected request ${url.pathname}`);
+    if (requests.length === 1) return calendarResponse(url);
+    return Response.json({ error: "calendar window is incomplete" }, { status: 500 });
+  };
+
+  await render(React.createElement(CalendarSession));
+  await until(
+    () => !!container.querySelector('[aria-label="Editar reserva de Ada Lovelace · Confirmada"]'),
+    "Week must paint before a failed refresh",
+  );
+  assert.ok(container.textContent.includes("Mantenimiento"));
+
+  await click("Actualizar");
+  await until(
+    () => container.textContent.includes("La ventana del calendario está incompleta"),
+    "Failed refresh must show the Spanish banner",
+  );
+
+  assert.equal(container.textContent.includes("calendar window is incomplete"), false);
+  assert.ok(container.textContent.includes("Reintentar"));
+  assert.ok(container.querySelector('[aria-label="Editar reserva de Ada Lovelace · Confirmada"]'));
+  assert.ok(container.textContent.includes("101"));
+  assert.ok(container.textContent.includes("Mantenimiento"));
+  assert.ok(container.querySelector('[aria-label="Mostrar reservas sin asignar, 1"]'));
+  assert.equal(container.textContent.includes("Aún no hay habitaciones"), false);
+  assert.equal(container.textContent.includes("Configura tu alojamiento"), false);
+  assert.equal(requests.length, 2);
+});
+
+it("shows an error and no rooms when a step has no complete window and that read fails", async () => {
+  const requests: URL[] = [];
+  globalThis.fetch = async (input) => {
+    const url = requestUrl(input);
+    requests.push(url);
+    if (url.pathname !== "/calendar") throw new Error(`Unexpected request ${url.pathname}`);
+    if (requests.length === 1) return calendarResponse(url);
+    return Response.json({ error: "calendar range is too wide" }, { status: 400 });
+  };
+
+  await render(React.createElement(CalendarSession));
+  await until(
+    () => !!container.querySelector('[aria-label="Editar reserva de Ada Lovelace · Confirmada"]'),
+    "Week must paint before leaving the hold",
+  );
+
+  await click("Período siguiente");
+  await until(
+    () => !!container.querySelector('[aria-label="Editar reserva de Grace Hopper · Check-out"]'),
+    "First period stays inside the hold",
+  );
+  assert.equal(requests.length, 1);
+  assert.ok(container.textContent.includes("27 oct 2026"));
+
+  await click("Período siguiente");
+  await until(
+    () => container.textContent.includes("El rango del calendario es demasiado amplio"),
+    "A failed step outside the hold must show the Spanish error",
+  );
+
+  assert.equal(container.textContent.includes("calendar range is too wide"), false);
+  assert.ok(container.textContent.includes("3 nov 2026"));
+  assert.equal(container.textContent.includes("101"), false);
+  assert.equal(
+    container.querySelector('[aria-label="Editar reserva de Grace Hopper · Check-out"]'),
+    null,
+  );
+  assert.equal(
+    container.querySelector('[aria-label="Editar reserva de Ada Lovelace · Confirmada"]'),
+    null,
+  );
+  assert.equal(container.querySelector('[aria-label="Mostrar reservas sin asignar, 1"]'), null);
+  assert.equal(container.textContent.includes("Configura tu alojamiento"), false);
+  assert.equal(container.textContent.includes("Aún no hay habitaciones"), false);
+  assert.equal(requests.length, 2);
+});
+
+it("keeps an open unassigned list when a refresh fails, with the same banner as the grid", async () => {
+  const requests: URL[] = [];
+  globalThis.fetch = async (input) => {
+    const url = requestUrl(input);
+    requests.push(url);
+    if (url.pathname !== "/calendar") throw new Error(`Unexpected request ${url.pathname}`);
+    if (requests.length === 1) return calendarResponse(url);
+    return Response.json({ error: "calendar window is incomplete" }, { status: 500 });
+  };
+
+  await render(React.createElement(CalendarSession));
+  await until(
+    () => !!container.querySelector('[aria-label="Mostrar reservas sin asignar, 1"]'),
+    "Unassigned count must paint with the week",
+  );
+  await click("Mostrar reservas sin asignar, 1");
+  await until(
+    () => container.textContent.includes("Mary Jackson"),
+    "Unassigned stay must be listed",
+  );
+
+  await click("Actualizar");
+  await until(
+    () => container.textContent.includes("La ventana del calendario está incompleta"),
+    "Failed refresh must show one Spanish banner",
+  );
+
+  assert.ok(container.textContent.includes("Mary Jackson"));
+  assert.ok(container.querySelector('[aria-label="Editar reserva de Ada Lovelace · Confirmada"]'));
+  assert.ok(container.textContent.includes("Mantenimiento"));
+  assert.equal(container.textContent.includes("calendar window is incomplete"), false);
+  assert.equal(
+    container.querySelectorAll('[role="alert"]').length,
+    0,
+    "The held list must not be replaced by a second error",
+  );
+});
+
+it("retries a failed calendar refresh without reloading the reservation list, inventory, or session", async () => {
+  const requests: URL[] = [];
+  globalThis.fetch = async (input) => {
+    const url = requestUrl(input);
+    requests.push(url);
+    const calendarReads = requests.filter((item) => item.pathname === "/calendar").length;
+    if (url.pathname === "/calendar" && calendarReads === 1) return calendarResponse(url);
+    if (url.pathname === "/calendar") {
+      return Response.json({ error: "calendar window is incomplete" }, { status: 500 });
+    }
+    if (url.pathname === "/session") {
+      return Response.json({ username: "hotelmanantial", propertyTimeZone: "America/Lima" });
+    }
+    if (url.pathname === "/reservations") return Response.json([]);
+    if (url.pathname === "/inventory") return Response.json({ roomTypes: [] });
+    throw new Error(`Unexpected request ${url.pathname}`);
+  };
+
+  await render(React.createElement(CalendarWithOtherReads));
+  await until(
+    () => !!container.querySelector('[aria-label="Editar reserva de Ada Lovelace · Confirmada"]'),
+    "Week must paint before a failed refresh",
+  );
+  await click("Actualizar");
+  await until(
+    () => container.textContent.includes("La ventana del calendario está incompleta"),
+    "Failed refresh must show the banner before retry",
+  );
+  const beforeRetry = requests.length;
+
+  const retry = [...container.querySelectorAll("button")].find((button) =>
+    button.textContent?.includes("Reintentar"),
+  );
+  assert.ok(retry, "Missing Reintentar");
+  await React.act(async () => retry.click());
+  await page.flush();
+
+  assert.deepEqual(
+    requests.slice(beforeRetry).map((url) => url.pathname),
+    ["/calendar"],
+  );
+  assert.ok(container.querySelector('[aria-label="Editar reserva de Ada Lovelace · Confirmada"]'));
+});
+
+it("retries a failed first load from the unassigned list without reloading unrelated reads", async () => {
+  const requests: URL[] = [];
+  globalThis.fetch = async (input) => {
+    const url = requestUrl(input);
+    requests.push(url);
+    if (url.pathname === "/calendar") {
+      return Response.json({ error: "calendar window is incomplete" }, { status: 500 });
+    }
+    if (url.pathname === "/session") {
+      return Response.json({ username: "hotelmanantial", propertyTimeZone: "America/Lima" });
+    }
+    if (url.pathname === "/reservations") return Response.json([]);
+    if (url.pathname === "/inventory") return Response.json({ roomTypes: [] });
+    throw new Error(`Unexpected request ${url.pathname}`);
+  };
+
+  await render(React.createElement(CalendarWithOtherReads));
+  await until(
+    () => container.textContent.includes("La ventana del calendario está incompleta"),
+    "Failed load must show the Spanish error",
+  );
+  await click("Mostrar reservas sin asignar, 0");
+  const panelRetry = container.querySelector<HTMLElement>(
+    '[aria-label="Reservas sin asignar"] [role="alert"] button',
+  );
+  assert.ok(panelRetry, "Missing unassigned retry");
+  const beforeRetry = requests.length;
+
+  await React.act(async () => panelRetry.click());
+  await page.flush();
+
+  assert.deepEqual(
+    requests.slice(beforeRetry).map((url) => url.pathname),
+    ["/calendar"],
+  );
+  assert.equal(container.textContent.includes("101"), false);
 });

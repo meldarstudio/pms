@@ -345,7 +345,6 @@ export function RoomCalendar({
   const to = format(addDays(start, span - 1), "yyyy-MM-dd");
   const calendarQuery = useCalendar(from, to);
   const calendar = calendarQuery.data;
-  const loading = !calendar && calendarQuery.isPending;
   const error = calendarQuery.error?.message ?? null;
   const rooms = !calendar
     ? calendarQuery.isError
@@ -359,13 +358,17 @@ export function RoomCalendar({
   const assignment = useRoomAssignment(rooms);
   const unassigned = (calendar?.unassigned ?? []).map((stay) => calendarStay(stay, null));
   const typeNames = new Map((rooms ?? []).map((room) => [room.roomTypeId, room.roomTypeName]));
-  const listLoading = loading || calendarQuery.isFetching;
-  const listError = error;
+  const listLoading = !calendar && calendarQuery.isFetching;
+  const listError = calendar ? null : error;
   const previewTrack = assignment.target
     ? placeStays([stayTrack(assignment.target)], start, span)[0]
     : undefined;
 
-  function refresh() {
+  function refreshCalendar() {
+    void queryClient.invalidateQueries({ queryKey: ["calendar"] });
+  }
+
+  function retryAssignment() {
     void queryClient.invalidateQueries();
   }
 
@@ -419,7 +422,8 @@ export function RoomCalendar({
       onSelect={assignment.selectStay}
       onCancel={assignment.cancel}
       onClose={() => setPanelOpen(false)}
-      onRetry={refresh}
+      onRetry={refreshCalendar}
+      onRetryAssignment={retryAssignment}
     />
   );
 
@@ -475,7 +479,7 @@ export function RoomCalendar({
             size="icon"
             aria-label="Actualizar"
             disabled={rooms === null || assignment.pending}
-            onClick={refresh}
+            onClick={refreshCalendar}
           >
             <RefreshCwIcon />
           </Button>
@@ -587,7 +591,7 @@ export function RoomCalendar({
       {error ? (
         <div className="flex items-center justify-between gap-2 border-b px-2.5 py-2">
           <p className="text-xs text-muted-foreground">{error}</p>
-          <Button variant="outline" size="sm" onClick={refresh}>
+          <Button variant="outline" size="sm" onClick={refreshCalendar}>
             Reintentar
           </Button>
         </div>
