@@ -240,7 +240,7 @@ export function Reservations({
           Nueva reserva
         </Button>
       </PageHeaderActions>
-      <div className="flex flex-wrap items-end justify-between gap-x-4 gap-y-3 pb-2">
+      <div className="flex flex-wrap items-end justify-between gap-x-4 gap-y-3">
         <Tabs
           className="max-w-full min-w-0"
           value={search.view}
