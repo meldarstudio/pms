@@ -56,6 +56,21 @@ function mockApi(
   writes = [];
   globalThis.fetch = async (input, init) => {
     const url = requestUrl(input);
+    if (url.pathname === "/calendar") {
+      const typeNames = new Map(types.map((type) => [type.id, type.name]));
+      return Response.json({
+        from: url.searchParams.get("from"),
+        to: url.searchParams.get("to"),
+        missingSetup: types.length === 0 ? "types" : rooms.length === 0 ? "rooms" : null,
+        rooms: rooms.map((room) => ({
+          ...room,
+          roomTypeName: typeNames.get(room.roomTypeId) ?? "Room",
+          stays: [],
+          closures: [],
+        })),
+        unassigned: [],
+      });
+    }
     if (url.pathname === "/room-types") return Response.json(types);
     if (url.pathname === "/rooms") return Response.json(rooms);
     if (url.pathname === "/inventory")

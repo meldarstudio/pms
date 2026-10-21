@@ -1202,7 +1202,7 @@ const doubleType = { id: "double", name: "Doble", maxAdults: 2, maxChildren: 2 }
 const noTypesTitle = "Configura tu alojamiento";
 const noRoomsTitle = "Aún no hay habitaciones";
 
-// A null room-type list makes /room-types fail.
+// A null room-type list makes the catalog and calendar reads fail.
 function mockSetupApi(
   roomTypes: unknown[] | null,
   rooms: unknown[],
@@ -1210,6 +1210,24 @@ function mockSetupApi(
 ) {
   globalThis.fetch = async (input) => {
     const url = requestUrl(input);
+    if (url.pathname === "/calendar") {
+      if (!roomTypes) return Response.json({ error: "x" }, { status: 500 });
+      const types = roomTypes as { id: string; name: string }[];
+      const listed = rooms as { id: string; number: string; roomTypeId: string }[];
+      const typeNames = new Map(types.map((type) => [type.id, type.name]));
+      return Response.json({
+        from: url.searchParams.get("from"),
+        to: url.searchParams.get("to"),
+        missingSetup: types.length === 0 ? "types" : listed.length === 0 ? "rooms" : null,
+        rooms: listed.map((room) => ({
+          ...room,
+          roomTypeName: typeNames.get(room.roomTypeId) ?? "Room",
+          stays: [],
+          closures: [],
+        })),
+        unassigned: [],
+      });
+    }
     if (url.pathname === "/room-types")
       return roomTypes ? Response.json(roomTypes) : Response.json({ error: "x" }, { status: 500 });
     if (url.pathname === "/rooms") return Response.json(rooms);
@@ -1370,8 +1388,29 @@ it("uses the property date for arrival badges and refreshes them on resume", asy
   };
   mockSetupApi([doubleType], [{ id: "room-1", number: "101", roomTypeId: "double" }]);
   const fetchApi = globalThis.fetch;
-  globalThis.fetch = async (input, init) =>
-    requestUrl(input).pathname === "/reservations" ? Response.json([saved]) : fetchApi(input, init);
+  const line = saved.rooms[0]!;
+  globalThis.fetch = async (input, init) => {
+    const url = requestUrl(input);
+    if (url.pathname !== "/calendar") return fetchApi(input, init);
+    const response = await fetchApi(input, init);
+    return Response.json({
+      ...(await response.json()),
+      unassigned: [
+        {
+          id: line.id,
+          reservationId: saved.id,
+          guestName: saved.guestName,
+          status: saved.status,
+          checkIn: saved.checkIn,
+          checkOut: saved.checkOut,
+          roomId: null,
+          roomTypeId: line.roomTypeId,
+          roomIndex: 1,
+          roomCount: saved.rooms.length,
+        },
+      ],
+    });
+  };
   await render(
     React.createElement(calendars.RoomCalendar, {
       start: new Date(2026, 9, 31),

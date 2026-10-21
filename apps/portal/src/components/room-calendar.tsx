@@ -39,17 +39,11 @@ import {
 } from "@/components/ui/select";
 import { SetupRequired } from "@/components/setup-required";
 import { Skeleton } from "@/components/ui/skeleton";
-import { type RoomClosure } from "@/lib/api";
-import { reservationStays, unassignedStays, type ReservationStay } from "@/lib/room-assignment";
+import { type CalendarStay, type RoomClosure } from "@/lib/api";
+import { type ReservationStay } from "@/lib/room-assignment";
 import { useRoomAssignment } from "@/lib/use-room-assignment";
 import { format } from "@/lib/dates";
-import {
-  useMissingSetup,
-  useReservations,
-  useRoomClosures,
-  useRoomTypes,
-  useRooms,
-} from "@/lib/queries";
+import { useCalendar } from "@/lib/queries";
 
 const spans = [
   { label: "7 días", value: "7" },
@@ -123,6 +117,10 @@ function placeStays(stays: TrackItem[], rangeStart: Date, dayCount: number) {
     }
     return { ...stay, lane };
   });
+}
+
+function calendarStay(stay: CalendarStay, roomId: string | null): ReservationStay {
+  return { ...stay, roomId };
 }
 
 function stayTrack(stay: ReservationStay): TrackItem {
@@ -343,62 +341,26 @@ export function RoomCalendar({
   const [roomTarget, setRoomTarget] = useState<RoomEditTarget | null>(null);
   const [bookingTarget, setBookingTarget] = useState<BookingTarget | null>(null);
   const [panelOpen, setPanelOpen] = useState(false);
-  // Include bookings and closures ending on the first visible morning.
-  // Both list APIs use an exclusive end boundary for their `from` filter.
-  const rangeFrom = format(addDays(start, -1), "yyyy-MM-dd");
-  const rangeTo = format(addDays(start, span - 1), "yyyy-MM-dd");
-  const roomsQuery = useRooms();
-  const typesQuery = useRoomTypes();
-  const missingSetup = useMissingSetup();
-  const reservationsQuery = useReservations(rangeFrom, rangeTo);
-  const closuresQuery = useRoomClosures(rangeFrom, rangeTo);
-
-  const typeNames = new Map(typesQuery.data?.map((type) => [type.id, type.name]) ?? []);
-  const loading = roomsQuery.isPending || typesQuery.isPending;
-  const rooms = loading
-    ? null
-    : (roomsQuery.data ?? [])
-        .map((room) => ({
-          ...room,
-          typeName: typeNames.get(room.roomTypeId) ?? "Room",
-        }))
-        .sort((a, b) => a.number.localeCompare(b.number, undefined, { numeric: true }));
-  const error =
-    roomsQuery.error?.message ??
-    typesQuery.error?.message ??
-    reservationsQuery.error?.message ??
-    closuresQuery.error?.message ??
-    null;
+  const from = format(start, "yyyy-MM-dd");
+  const to = format(addDays(start, span - 1), "yyyy-MM-dd");
+  const calendarQuery = useCalendar(from, to);
+  const calendar = calendarQuery.data;
+  const loading = !calendar && calendarQuery.isPending;
+  const error = calendarQuery.error?.message ?? null;
+  const rooms = !calendar
+    ? calendarQuery.isError
+      ? []
+      : null
+    : calendar.rooms.map((room) => ({ ...room, typeName: room.roomTypeName }));
   const bookingDataReady =
-    !reservationsQuery.isPending &&
-    !reservationsQuery.isFetching &&
-    !reservationsQuery.isPlaceholderData &&
-    !reservationsQuery.isError &&
-    !closuresQuery.isPending &&
-    !closuresQuery.isFetching &&
-    !closuresQuery.isPlaceholderData &&
-    !closuresQuery.isError;
-  const stays = reservationsQuery.isError
-    ? []
-    : reservationStays(reservationsQuery.data ?? [], true).filter(
-        (stay) => clipStay(stayTrack(stay), start, span) !== null,
-      );
+    calendarQuery.isSuccess && !calendarQuery.isFetching && !calendarQuery.isPlaceholderData;
+  const stays =
+    rooms?.flatMap((room) => room.stays.map((stay) => calendarStay(stay, room.id))) ?? [];
   const assignment = useRoomAssignment(rooms);
-  const unassigned = unassignedStays(
-    reservationsQuery.isError ? [] : (reservationsQuery.data ?? []),
-    format(start, "yyyy-MM-dd"),
-    rangeTo,
-  );
-  const listLoading =
-    loading ||
-    reservationsQuery.isPending ||
-    reservationsQuery.isFetching ||
-    reservationsQuery.isPlaceholderData;
-  const listError =
-    roomsQuery.error?.message ??
-    typesQuery.error?.message ??
-    reservationsQuery.error?.message ??
-    null;
+  const unassigned = (calendar?.unassigned ?? []).map((stay) => calendarStay(stay, null));
+  const typeNames = new Map((rooms ?? []).map((room) => [room.roomTypeId, room.roomTypeName]));
+  const listLoading = loading || calendarQuery.isFetching;
+  const listError = error;
   const previewTrack = assignment.target
     ? placeStays([stayTrack(assignment.target)], start, span)[0]
     : undefined;
@@ -425,14 +387,12 @@ export function RoomCalendar({
     list.push(stay);
     byRoom.set(stay.roomId, list);
   }
-  for (const closure of closuresQuery.data ?? []) {
-    const list = closuresByRoom.get(closure.roomId) ?? [];
-    list.push(closure);
-    closuresByRoom.set(closure.roomId, list);
+  for (const room of rooms ?? []) {
+    closuresByRoom.set(room.id, room.closures);
   }
 
   function openClosure(id: string) {
-    const closure = (closuresQuery.data ?? []).find((item) => item.id === id);
+    const closure = (rooms ?? []).flatMap((room) => room.closures).find((item) => item.id === id);
     const room = rooms?.find((item) => item.id === closure?.roomId);
     if (!closure || !room) return;
     setClosureTarget({
@@ -463,7 +423,7 @@ export function RoomCalendar({
     />
   );
 
-  if (missingSetup) return <SetupRequired missing={missingSetup} />;
+  if (calendar?.missingSetup) return <SetupRequired missing={calendar.missingSetup} />;
 
   return (
     <div className="flex min-h-0 min-w-0 flex-1 flex-col">

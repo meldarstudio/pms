@@ -116,6 +116,11 @@ export const roomClosureListQuerySchema = z.object({
   roomId: z.string().min(1).optional(),
 });
 
+export const calendarQuerySchema = z.object({
+  from: dateSchema,
+  to: dateSchema,
+});
+
 const reservationStatusSchema = z.enum(["confirmed", "checked_in", "checked_out", "cancelled"]);
 
 export const reservationListQuerySchema = listQuerySchema.extend({

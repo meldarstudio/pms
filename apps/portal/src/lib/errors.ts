@@ -42,6 +42,8 @@ const messages: Record<string, string> = {
   "too many guests for this room type":
     "La habitación no tiene capacidad para todos los huéspedes.",
   "stay cannot be longer than 60 nights": "La estancia no puede superar las 60 noches.",
+  "calendar range is too wide": "El rango del calendario es demasiado amplio.",
+  "calendar window is incomplete": "La ventana del calendario está incompleta.",
   "stay must be at least one night": "La estancia debe tener al menos una noche.",
   "invalid email": "Ingresa un correo válido.",
   "amount cannot be zero": "El importe debe ser distinto de cero.",

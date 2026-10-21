@@ -82,6 +82,37 @@ export type RoomClosure = {
   reason: string | null;
 };
 
+export type CalendarStay = {
+  id: string;
+  reservationId: string;
+  guestName: string;
+  status: string;
+  checkIn: string;
+  checkOut: string;
+  roomTypeId: string;
+  roomIndex: number;
+  roomCount: number;
+};
+
+export type CalendarRoom = {
+  id: string;
+  number: string;
+  roomTypeId: string;
+  roomTypeName: string;
+  stays: CalendarStay[];
+  closures: RoomClosure[];
+};
+
+export type CalendarUnassigned = CalendarStay & { roomId: null };
+
+export type CalendarWindow = {
+  from: string;
+  to: string;
+  missingSetup: "types" | "rooms" | null;
+  rooms: CalendarRoom[];
+  unassigned: CalendarUnassigned[];
+};
+
 export type Availability = {
   checkIn: string;
   checkOut: string;
@@ -343,6 +374,16 @@ export async function assignRoom(reservationId: string, lineId: string, roomId: 
 
 export function listRoomClosures(from: string, to: string, signal?: AbortSignal) {
   return getJson<RoomClosure[]>(`/room-closures?from=${from}&to=${to}`, signal);
+}
+
+export async function getCalendar(from: string, to: string, signal?: AbortSignal) {
+  const window = await getJson<CalendarWindow>(
+    `/calendar?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}`,
+    signal,
+  );
+  if (window.from !== from || window.to !== to)
+    throw new ApiError(500, "calendar window is incomplete");
+  return window;
 }
 
 export function createRoomClosure(body: {

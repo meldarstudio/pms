@@ -15,6 +15,7 @@ let container: BrowserPage["container"];
 let client: BrowserPage["client"];
 let until: BrowserPage["until"];
 let requests: URL[];
+let calendarReservation: () => typeof ana;
 let respond: (url: URL) => Response | Promise<Response>;
 let respondToDetail: (url: URL, init?: RequestInit) => Response | Promise<Response>;
 const originalTimeZone = process.env.TZ;
@@ -74,6 +75,7 @@ beforeEach(() => {
   page = browser.createPage();
   ({ container, client, until } = page);
   requests = [];
+  calendarReservation = () => ana;
   respondToDetail = () => Response.json(ana);
   respond = (url) =>
     Response.json({
@@ -94,6 +96,38 @@ beforeEach(() => {
     if (url.pathname === "/rooms")
       return Response.json([{ id: "room", number: "101", roomTypeId: "double" }]);
     if (url.pathname.startsWith("/reservations/ana")) return respondToDetail(url, init);
+    if (url.pathname === "/calendar") {
+      const reservation = calendarReservation();
+      const line = reservation.rooms[0]!;
+      return Response.json({
+        from: url.searchParams.get("from"),
+        to: url.searchParams.get("to"),
+        missingSetup: null,
+        rooms: [
+          {
+            id: "room",
+            number: "101",
+            roomTypeId: "double",
+            roomTypeName: "Doble",
+            stays: [
+              {
+                id: line.id,
+                reservationId: reservation.id,
+                guestName: reservation.guestName,
+                status: reservation.status,
+                checkIn: reservation.checkIn,
+                checkOut: reservation.checkOut,
+                roomTypeId: line.roomTypeId,
+                roomIndex: 1,
+                roomCount: reservation.rooms.length,
+              },
+            ],
+            closures: [],
+          },
+        ],
+        unassigned: [],
+      });
+    }
     if (url.pathname === "/room-closures") return Response.json([]);
     if (url.pathname === "/reservations") {
       requests.push(url);
@@ -401,7 +435,8 @@ it.each([
 it("refreshes cached operations and legacy calendar results after saving in reservation details", async () => {
   client.setQueryDefaults(["reservations"], { staleTime: Infinity });
   let saved = false;
-  const checkedIn = { ...ana, status: "checked_in" };
+  const checkedIn = { ...ana, status: "checked_in" as const };
+  calendarReservation = () => (saved ? checkedIn : ana);
   respond = (url) => {
     if (!url.searchParams.has("paginated")) return Response.json([saved ? checkedIn : ana]);
     return Response.json({ rows: saved ? [] : [ana], total: saved ? 0 : 1, limit: 50, offset: 0 });
@@ -421,9 +456,7 @@ it("refreshes cached operations and legacy calendar results after saving in rese
   };
   await render("/calendar?from=2026-10-31");
   assert.ok(button("Editar reserva de Ana Pérez · Confirmada"));
-  assert.equal(params().has("paginated"), false);
-  assert.equal(params().get("from"), "2026-10-30");
-  assert.equal(params().get("to"), "2026-11-06");
+  assert.equal(requests.length, 0);
   await React.act(async () =>
     router.navigate({ href: "/reservations?day=2026-10-31&statuses=confirmed" }),
   );
@@ -441,7 +474,8 @@ it("refreshes cached operations and legacy calendar results after saving in rese
   await until(
     () => container.querySelector('[aria-label="Editar reserva de Ana Pérez · Check-in"]') !== null,
   );
-  assert.equal(params().has("paginated"), false);
+  assert.equal(params().get("paginated"), "true");
+  assert.equal(params().get("statuses"), "confirmed");
 });
 
 it("sends sorting and page sizes to the full-result endpoint and resets the offset for every change", async () => {

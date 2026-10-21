@@ -246,6 +246,14 @@ it("keeps the sidebar usable after failed sign-out and returns to login after a 
     assert.equal(init?.credentials, "include");
     if (url.pathname === "/session")
       return Response.json({ username: "hotelmanantial", propertyTimeZone: "America/Lima" });
+    if (url.pathname === "/calendar")
+      return Response.json({
+        from: url.searchParams.get("from"),
+        to: url.searchParams.get("to"),
+        missingSetup: "types",
+        rooms: [],
+        unassigned: [],
+      });
     if (url.pathname === "/room-types" || url.pathname === "/rooms") return Response.json([]);
     if (url.pathname === "/logout" && init?.method === "POST")
       return new Promise<Response>((resolve) => {

@@ -17,6 +17,7 @@ import {
   deleteRoomClosure,
   deleteRoomTypeRates,
   getAvailability,
+  getCalendar,
   getInventory,
   getReservation,
   getSession,
@@ -74,6 +75,14 @@ export function useLogout() {
   return useMutation({
     mutationFn: logout,
     onSuccess: () => setSignedOut(queryClient),
+  });
+}
+
+export function useCalendar(from: string, to: string) {
+  return useQuery({
+    queryKey: ["calendar", from, to],
+    queryFn: ({ signal }) => getCalendar(from, to, signal),
+    placeholderData: keepPreviousData,
   });
 }
 
