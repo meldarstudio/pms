@@ -59,8 +59,6 @@ Each smell reads *what it is* → *how to fix*; match it against the diff:
 
 Issue both sub-agent calls together, in the foreground, and aggregate the reports they return.
 
-For both the Standards and Spec sub-agents, explicitly pass `model: "xai/grok-4.7"` when launching each sub-agent. If that model is unavailable, stop and report the blocker rather than falling back to another model.
-
 **Standards sub-agent prompt** should include:
 
 - The full diff command and commit list.
