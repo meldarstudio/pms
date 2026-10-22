@@ -41,7 +41,10 @@ A release is verified only after deployment **and** the checks above succeed.
 Automated smoke checks use no staff credentials: API `GET /` liveness,
 unauthenticated session rejection, and exact built portal file contents (including
 the service worker), with content-type checks for HTML, scripts, styles, and the
-manifest. They retry up to three times, with a five-second request timeout and a
+manifest. Only Cloudflare's expected same-origin `307` from an HTML filename to
+its extensionless URL (such as `/offline.html` → `/offline`) is followed; the
+final response must still match the built file exactly. Other redirects fail.
+Checks retry up to three times, with a five-second request timeout and a
 60-second overall deadline. Liveness is not database readiness or successful
 login, and fresh HTTP requests do not test a staff browser's service-worker cache.
 Active-version checks are control-plane evidence at that moment, not an API

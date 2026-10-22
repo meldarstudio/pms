@@ -74,7 +74,20 @@ try {
     for (const path of files) {
       const name = relative(dist, path).split("/").map(encodeURIComponent).join("/");
       const url = new URL(name === "index.html" ? "/" : `/${name}`, values.portal);
-      const response = await get(url);
+      let response = await get(url);
+      // Cloudflare's default HTML handling redirects /offline.html to /offline.
+      // Permit only that canonical, same-origin URL shape, never arbitrary redirects.
+      if (response.status === 307 && name.endsWith(".html") && name !== "index.html") {
+        const location = response.headers.get("Location");
+        const canonical = new URL(url);
+        canonical.pathname = canonical.pathname.slice(0, -".html".length);
+        const target = location ? new URL(location, url) : null;
+        await response.body?.cancel();
+        if (!target || target.href !== canonical.href) {
+          throw new Error(`Unexpected HTML redirect: ${name}`);
+        }
+        response = await get(target);
+      }
       const body = Buffer.from(await response.arrayBuffer());
       const types = {
         ".html": ["text/html"],
