@@ -11,14 +11,14 @@ function ToastList() {
 
   return (
     <ToastPrimitive.Portal>
-      <ToastPrimitive.Viewport className="fixed right-4 bottom-4 z-60 flex w-80 max-w-[calc(100vw-2rem)] flex-col gap-2 outline-none">
+      <ToastPrimitive.Viewport className="fixed inset-x-4 top-[calc(env(safe-area-inset-top)+1rem)] z-60 mx-auto flex w-80 max-w-[calc(100vw-2rem)] flex-col gap-2 outline-none md:inset-x-auto md:top-auto md:right-4 md:bottom-4">
         {toasts.map((item) => (
           <ToastPrimitive.Root
             key={item.id}
             toast={item}
             data-slot="toast"
             className={cn(
-              "relative flex items-start gap-2.5 border bg-popover p-3 text-xs text-popover-foreground shadow-md transition-[opacity,transform] duration-100 outline-none data-ending-style:translate-y-2 data-ending-style:opacity-0 data-limited:hidden data-starting-style:translate-y-2 data-starting-style:opacity-0",
+              "relative flex items-start gap-2.5 border bg-popover p-3 text-xs text-popover-foreground shadow-md transition-[opacity,transform] duration-100 outline-none data-ending-style:-translate-y-2 data-ending-style:opacity-0 data-limited:hidden data-starting-style:translate-y-2 data-starting-style:opacity-0 md:data-ending-style:translate-y-2",
               item.type === "error" && "border-destructive/40",
             )}
           >

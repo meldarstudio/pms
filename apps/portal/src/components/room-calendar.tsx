@@ -1,8 +1,9 @@
 import { useQueryClient } from "@tanstack/react-query";
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { cn } from "cn";
 import { addDays, differenceInCalendarDays, eachDayOfInterval, parse, startOfDay } from "date-fns";
 import {
+  BedDoubleIcon,
   CircleHelpIcon,
   CalendarIcon,
   ChevronLeftIcon,
@@ -26,7 +27,9 @@ import { RoomAssignmentSheet } from "@/components/room-assignment-sheet";
 import { PageHeaderActions } from "@/components/page-header-actions";
 import { Tooltip, TooltipTrigger, TooltipContent } from "@/components/ui/tooltip";
 import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
 import { ButtonGroup } from "@/components/ui/button-group";
+import { Separator } from "@/components/ui/separator";
 import { PropertyDatePicker } from "@/components/property-date-picker";
 import { dateOnlyCarrier } from "@/lib/property-calendar";
 import { usePropertyCalendar } from "@/lib/use-property-calendar";
@@ -348,6 +351,7 @@ export function RoomCalendar({
   const [roomTarget, setRoomTarget] = useState<RoomEditTarget | null>(null);
   const [bookingTarget, setBookingTarget] = useState<BookingTarget | null>(null);
   const [unassignedOpen, setUnassignedOpen] = useState(false);
+  const assignmentTriggerRef = useRef<HTMLButtonElement>(null);
   const [manualRefresh, setManualRefresh] = useState<Promise<void> | null>(null);
   const from = format(start, "yyyy-MM-dd");
   const to = format(addDays(start, span - 1), "yyyy-MM-dd");
@@ -366,6 +370,9 @@ export function RoomCalendar({
   const unassigned = calendar?.unassigned ?? [];
   const typeNames = new Map((rooms ?? []).map((room) => [room.roomTypeId, room.roomTypeName]));
   const listLoading = !calendar && calendarQuery.isFetching;
+  const unassignedLabel = listLoading
+    ? "Mostrar reservas sin asignar"
+    : `Mostrar reservas sin asignar, ${unassigned.length}`;
   const listError = calendar ? null : error;
   const previewTrack =
     !isMobile && assignment.target
@@ -471,8 +478,10 @@ export function RoomCalendar({
         }}
       />
       <div className="flex flex-wrap items-center justify-between gap-2 border-b px-2.5 py-2">
-        <div className="flex items-center gap-2">
-          {!isMobile && (
+        {isMobile ? (
+          refreshButton
+        ) : (
+          <div className="flex items-center gap-2">
             <Select
               items={spans}
               value={String(span)}
@@ -497,16 +506,16 @@ export function RoomCalendar({
                 </SelectGroup>
               </SelectContent>
             </Select>
-          )}
-          <Button
-            variant="outline"
-            disabled={assignment.pending}
-            onClick={() => changeStart(dateOnlyCarrier(today))}
-          >
-            Hoy
-          </Button>
-          {!isMobile && refreshButton}
-        </div>
+            <Button
+              variant="outline"
+              disabled={assignment.pending}
+              onClick={() => changeStart(dateOnlyCarrier(today))}
+            >
+              Hoy
+            </Button>
+            {refreshButton}
+          </div>
+        )}
         <ButtonGroup>
           {!isMobile && (
             <Button
@@ -541,7 +550,7 @@ export function RoomCalendar({
               {format(start, "d MMM yyyy")}
               <CalendarIcon data-icon="inline-end" />
             </PopoverTrigger>
-            <PopoverContent className="w-auto p-0">
+            <PopoverContent className="w-auto gap-0 p-0">
               <PropertyDatePicker
                 mode="single"
                 selected={start}
@@ -551,6 +560,24 @@ export function RoomCalendar({
                   setPickerOpen(false);
                 }}
               />
+              {isMobile && (
+                <>
+                  <Separator />
+                  <div className="flex p-2">
+                    <Button
+                      variant="outline"
+                      className="w-full"
+                      disabled={assignment.pending}
+                      onClick={() => {
+                        changeStart(dateOnlyCarrier(today));
+                        setPickerOpen(false);
+                      }}
+                    >
+                      Hoy
+                    </Button>
+                  </div>
+                </>
+              )}
             </PopoverContent>
           </Popover>
           <Button
@@ -575,11 +602,33 @@ export function RoomCalendar({
           )}
         </ButtonGroup>
         {isMobile ? (
-          <div className="flex items-center gap-2">
-            {refreshButton}
+          <>
+            <Button
+              ref={assignmentTriggerRef}
+              variant="outline"
+              size="icon"
+              className="relative"
+              aria-label={unassignedLabel}
+              aria-haspopup="dialog"
+              aria-expanded={unassignedOpen}
+              disabled={assignment.pending}
+              onClick={() => setUnassignedOpen(true)}
+            >
+              <BedDoubleIcon />
+              {unassigned.length > 0 && (
+                <Badge
+                  variant="default"
+                  aria-hidden="true"
+                  className="pointer-events-none absolute -top-1.5 -right-1.5 h-4 min-w-4 px-1"
+                >
+                  {unassigned.length}
+                </Badge>
+              )}
+            </Button>
             <RoomAssignmentSheet
               open={unassignedOpen}
               onOpenChange={setUnassignedOpen}
+              returnFocusRef={assignmentTriggerRef}
               stays={unassigned}
               rooms={rooms}
               typeNames={typeNames}
@@ -590,7 +639,7 @@ export function RoomCalendar({
               onRetry={() => void refreshCalendar()}
               onRetryAssignment={retryAssignment}
             />
-          </div>
+          </>
         ) : (
           <div className="flex items-center gap-2">
             <Tooltip>
@@ -796,11 +845,7 @@ export function RoomCalendar({
                 type="button"
                 aria-expanded={false}
                 aria-controls="unassigned-panel"
-                aria-label={
-                  listLoading
-                    ? "Mostrar reservas sin asignar"
-                    : `Mostrar reservas sin asignar, ${unassigned.length}`
-                }
+                aria-label={unassignedLabel}
                 disabled={assignment.pending}
                 onClick={() => setUnassignedOpen(true)}
                 className={cn(

@@ -177,14 +177,69 @@ it("keeps day navigation, Hoy, and the date picker available on mobile", async (
   assert.ok(buttonByText("20 oct 2026"));
   await click("Día anterior");
   assert.ok(buttonByText("19 oct 2026"));
+  assert.equal(
+    [...container.querySelectorAll("button")].some(
+      (button) => button.textContent?.trim() === "Hoy",
+    ),
+    false,
+    "Hoy belongs inside the date picker on mobile",
+  );
+  await React.act(async () => buttonByText("19 oct 2026").click());
+  assert.ok(window.document.querySelector('button[data-day="20/10/2026"]'));
   await React.act(async () => buttonByText("Hoy").click());
   assert.ok(buttonByText("20 oct 2026"));
+  await until(
+    () => !window.document.querySelector('button[data-day="20/10/2026"]'),
+    "Hoy must dismiss the date picker",
+  );
 
   await React.act(async () => buttonByText("20 oct 2026").click());
   const date = window.document.querySelector<HTMLElement>('button[data-day="22/10/2026"]');
   assert.ok(date, "The date picker must remain available on mobile");
   await React.act(async () => date.click());
   assert.ok(buttonByText("22 oct 2026"));
+});
+
+it("shows pending reserved-room counts only within the displayed mobile dates", async () => {
+  window.happyDOM.setWindowSize({ width: 390, height: 844 });
+  let releaseCalendar: (response: Response) => void = () => {};
+  let initialUrl: URL;
+  globalThis.fetch = async (input) => {
+    const url = requestUrl(input);
+    if (url.pathname !== "/calendar") throw new Error(`Unexpected request ${url.pathname}`);
+    initialUrl = url;
+    return new Promise((resolve) => {
+      releaseCalendar = resolve;
+    });
+  };
+
+  await render(React.createElement(CalendarSession));
+  assert.equal(
+    container.querySelector('[aria-label="Mostrar reservas sin asignar"]')?.textContent,
+    "",
+    "No count is shown before the calendar loads",
+  );
+  releaseCalendar(calendarResponse(initialUrl!));
+  await until(() => !!adaBar(), "The mobile calendar must load");
+  assert.equal(
+    container.querySelector('[aria-label="Mostrar reservas sin asignar, 1"]')?.textContent,
+    "1",
+  );
+  await React.act(async () => buttonByText("20 oct 2026").click());
+  const afterStay = window.document.querySelector<HTMLElement>('button[data-day="25/10/2026"]');
+  assert.ok(afterStay);
+  await React.act(async () => afterStay.click());
+  assert.equal(
+    container.querySelector('[aria-label="Mostrar reservas sin asignar, 0"]')?.textContent,
+    "",
+    "The badge disappears when the displayed dates have no unassigned reserved rooms",
+  );
+  await openMobileUnassigned(0);
+  assert.ok(
+    window.document
+      .querySelector('[role="dialog"]')
+      ?.textContent.includes("Todas las habitaciones reservadas en estas fechas están asignadas."),
+  );
 });
 
 it.each(["mobile", "desktop"])(
@@ -993,12 +1048,18 @@ it("reloads only the calendar from mobile refresh and keeps the current bars up"
   assert.equal(buttonByText("Mantenimiento").disabled, false);
   await React.act(async () => refreshing.click());
   assert.equal(requests.length, beforeRefresh + 1, "A pending refresh must not stack another read");
-  await click("Mostrar reservas sin asignar, 1");
+  await openMobileUnassigned(1);
   assert.ok(
     window.document.body.textContent.includes("Mary Jackson"),
     "Unassigned reserved rooms stay available",
   );
 
+  await React.act(async () =>
+    window.document
+      .querySelector<HTMLElement>('[aria-label="Cerrar reservas sin asignar"]')!
+      .click(),
+  );
+  await until(() => !window.document.querySelector('[role="dialog"]'), "The sheet must close");
   releaseRefresh(calendarResponse(refreshed[0]!));
   await until(
     () => !!container.querySelector('[aria-label="Actualizar"]'),
@@ -1281,7 +1342,8 @@ it.each(["mobile", "desktop"])(
       () => container.textContent.includes("La ventana del calendario está incompleta"),
       "Failed load must show the Spanish error",
     );
-    await click("Mostrar reservas sin asignar, 0");
+    if (viewport === "mobile") await openMobileUnassigned(0);
+    else await click("Mostrar reservas sin asignar, 0");
     const panelRetry = window.document.querySelector<HTMLElement>(
       viewport === "mobile"
         ? '[role="dialog"] [role="alert"] button'
@@ -1334,6 +1396,14 @@ async function chooseMenuItem(label: string) {
   );
   assert.ok(item, `Missing menu item ${label}`);
   await React.act(async () => (item as HTMLElement).click());
+}
+
+async function openMobileUnassigned(count: number) {
+  await click(`Mostrar reservas sin asignar, ${count}`);
+  await until(
+    () => !!window.document.querySelector('[role="dialog"]'),
+    "Selecting unassigned must open the sheet",
+  );
 }
 
 async function pickDate(id: string, day: string) {
@@ -1830,11 +1900,7 @@ it("assigns a reserved room from the mobile sheet without selecting a calendar b
   let releaseRequested = false;
   await render(React.createElement(CalendarSession));
   await until(() => !!adaBar(), "The mobile calendar must load");
-  await click("Mostrar reservas sin asignar, 1");
-  await until(
-    () => !!window.document.querySelector('[role="dialog"]'),
-    "Unassigned rooms must open in a modal sheet",
-  );
+  await openMobileUnassigned(1);
   const mary = [...window.document.querySelectorAll<HTMLElement>('[role="dialog"] button')].find(
     (button) => button.textContent.includes("Mary Jackson"),
   );
@@ -1876,6 +1942,12 @@ it("assigns a reserved room from the mobile sheet without selecting a calendar b
     "The sheet must announce the pending write",
   );
   assert.ok(container.querySelector<HTMLButtonElement>('[aria-label="Día siguiente"]')?.disabled);
+  expectIdleRefresh(true);
+  assert.ok(
+    container.querySelector<HTMLButtonElement>('[aria-label="Mostrar reservas sin asignar, 1"]')
+      ?.disabled,
+    "Assignment entry must be disabled during a save",
+  );
   const close = window.document.querySelector<HTMLButtonElement>(
     '[aria-label="Cerrar reservas sin asignar"]',
   );
@@ -1913,18 +1985,20 @@ it("assigns a reserved room from the mobile sheet without selecting a calendar b
       ),
     "The sheet must return to the updated list after success",
   );
+  assert.equal(
+    container.querySelector('[aria-label="Mostrar reservas sin asignar, 0"]')?.textContent,
+    "",
+    "A successful assignment clears the pending-work badge",
+  );
 });
 
 it("keeps the mobile picker open after an assignment conflict and offers another room", async () => {
   window.happyDOM.setWindowSize({ width: 390, height: 844 });
   let conflicted = false;
-  const writes: unknown[] = [];
   globalThis.fetch = async (input, init) => {
     const url = requestUrl(input);
     if (url.pathname === "/calendar") return calendarResponse(url);
     if (url.pathname === "/reservations/res-open/commands") {
-      assert.equal(typeof init?.body, "string");
-      writes.push(JSON.parse(init?.body as string));
       conflicted = true;
       return Response.json({ error: "room is already assigned for those dates" }, { status: 409 });
     }
@@ -1946,7 +2020,7 @@ it("keeps the mobile picker open after an assignment conflict and offers another
   };
   await render(React.createElement(CalendarSession));
   await until(() => !!adaBar(), "Calendar must load");
-  await click("Mostrar reservas sin asignar, 1");
+  await openMobileUnassigned(1);
   const mary = [...window.document.querySelectorAll<HTMLElement>('[role="dialog"] button')].find(
     (button) => button.textContent.includes("Mary Jackson"),
   );
@@ -1968,16 +2042,13 @@ it("keeps the mobile picker open after an assignment conflict and offers another
       ?.textContent.includes("Esta habitación está ocupada para esas fechas"),
   );
   await until(
-    () => !!roomButton("2")?.disabled && !!roomButton("101") && !roomButton("101")!.disabled,
-    "Availability must refresh and offer another matching room",
+    () => !roomButton("2") && !!roomButton("101") && !roomButton("101")!.disabled,
+    "Availability must refresh, hide the occupied room, and offer another matching room",
   );
-  assert.ok(roomButton("2")!.textContent.includes("Ocupada durante la estancia"));
-  await React.act(async () => roomButton("2")!.click());
-  assert.equal(writes.length, 1, "The conflicted room cannot be submitted again");
   assert.ok(window.document.querySelector('[role="dialog"]')?.textContent.includes("Mary Jackson"));
 });
 
-it("checks the entire mobile stay, explains unavailable rooms, and cancels without writing", async () => {
+it("checks the entire mobile stay, hides unavailable rooms, and cancels without writing", async () => {
   window.happyDOM.setWindowSize({ width: 390, height: 844 });
   const unassigned = [1, 2].map((index) => ({
     ...windowPayload.unassigned[0]!,
@@ -2034,7 +2105,12 @@ it("checks the entire mobile stay, explains unavailable rooms, and cancels witho
   };
   await render(React.createElement(CalendarSession));
   await until(() => !!adaBar(), "Calendar must load");
-  await click("Mostrar reservas sin asignar, 2");
+  assert.equal(
+    container.querySelector('[aria-label="Mostrar reservas sin asignar, 2"]')?.textContent,
+    "2",
+    "Two unassigned reserved rooms in one reservation contribute two to the badge",
+  );
+  await openMobileUnassigned(2);
   const selectReservedRoom = async (index: number) => {
     const item = [...window.document.querySelectorAll<HTMLElement>('[role="dialog"] button')].find(
       (button) => button.textContent.includes(`Habitación ${index} de 2`),
@@ -2048,18 +2124,13 @@ it("checks the entire mobile stay, explains unavailable rooms, and cancels witho
     "Conflicts outside the visible calendar must make both matching rooms unavailable",
   );
   const dialog = window.document.querySelector('[role="dialog"]')!;
-  for (const [number, reason] of [
-    ["2", "Cerrada durante la estancia"],
-    ["101", "Ocupada durante la estancia"],
-  ]) {
+  for (const number of ["2", "101"]) {
     const button = dialog.querySelector<HTMLButtonElement>(
       `[aria-label="Asignar Mary Jackson a habitación ${number}, 2026-10-18 al 2026-11-20"]`,
     );
-    assert.ok(button?.disabled, `Room ${number} must not be assignable`);
-    const descriptionId = button.getAttribute("aria-describedby");
-    assert.ok(descriptionId, "Unavailable-room reasons must be accessible descriptions");
-    assert.equal(window.document.getElementById(descriptionId)?.textContent, reason);
+    assert.equal(button, null, `Unavailable room ${number} must not be listed`);
   }
+  assert.equal(dialog.querySelector('[aria-label^="Asignar Mary Jackson"]'), null);
   assert.ok(dialog.textContent.includes("Habitación 1 de 2"));
   const reservationRead = requests.find((url) => url.pathname === "/reservations")!;
   assert.equal(reservationRead.searchParams.get("from"), "2026-10-18");
@@ -2082,7 +2153,13 @@ it("checks the entire mobile stay, explains unavailable rooms, and cancels witho
     () => !window.document.querySelector('[role="dialog"]'),
     "Escape must dismiss and cancel the selection",
   );
-  await click("Mostrar reservas sin asignar, 2");
+  await until(
+    () =>
+      window.document.activeElement ===
+      container.querySelector('[aria-label="Mostrar reservas sin asignar, 2"]'),
+    "Dismissal must return focus to the assignment button",
+  );
+  await openMobileUnassigned(2);
   assert.ok(
     window.document.querySelector('[role="dialog"]')?.textContent.includes("Habitación 1 de 2"),
   );

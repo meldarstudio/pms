@@ -1,4 +1,4 @@
-import { useEffect, useId, useRef } from "react";
+import { useEffect, useRef, type RefObject } from "react";
 import { ArrowLeftIcon, BedDoubleIcon, ChevronRightIcon, XIcon } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
@@ -10,8 +10,8 @@ import {
   SheetDescription,
   SheetHeader,
   SheetTitle,
-  SheetTrigger,
 } from "@/components/ui/sheet";
+import { Separator } from "@/components/ui/separator";
 import { Skeleton } from "@/components/ui/skeleton";
 import { assignmentStayLabel } from "@/components/room-assignment-panel";
 import type { Room } from "@/lib/api";
@@ -22,6 +22,7 @@ import { usePropertyCalendar } from "@/lib/use-property-calendar";
 export function RoomAssignmentSheet({
   open,
   onOpenChange,
+  returnFocusRef,
   stays,
   rooms,
   typeNames,
@@ -34,6 +35,7 @@ export function RoomAssignmentSheet({
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  returnFocusRef: RefObject<HTMLButtonElement | null>;
   stays: ReservationStay[];
   rooms: Room[] | null;
   typeNames: Map<string, string>;
@@ -47,7 +49,12 @@ export function RoomAssignmentSheet({
   const { today } = usePropertyCalendar();
   const { target, checking, ready, pending, eligibleCount } = assignment;
   const error = assignment.error ?? assignment.saveError;
-  const reasonId = useId();
+  const availableRooms = ready
+    ? (rooms ?? []).filter(
+        (room) =>
+          room.roomTypeId === target?.roomTypeId && assignment.roomIssues.get(room.id) === null,
+      )
+    : [];
   const heading = useRef<HTMLHeadingElement>(null);
   // The list and picker share a dialog: announce each step without leaving focus
   // on the list item that was just removed (or on a room after a successful save).
@@ -67,18 +74,11 @@ export function RoomAssignmentSheet({
         onOpenChange(next);
       }}
     >
-      <SheetTrigger
-        render={<Button variant="outline" className="min-h-11" />}
-        aria-label={
-          loading ? "Mostrar reservas sin asignar" : `Mostrar reservas sin asignar, ${stays.length}`
-        }
-      >
-        <BedDoubleIcon data-icon="inline-start" />
-        Sin asignar · {loading ? "…" : stays.length}
-      </SheetTrigger>
       <SheetContent
         side="bottom"
         showCloseButton={false}
+        initialFocus={heading}
+        finalFocus={returnFocusRef}
         className="max-h-[85dvh] overflow-hidden pb-[env(safe-area-inset-bottom)]"
       >
         <SheetHeader className="shrink-0 border-b">
@@ -86,7 +86,7 @@ export function RoomAssignmentSheet({
             {target && (
               <Button
                 variant="ghost"
-                className="size-11"
+                size="icon-sm"
                 aria-label="Volver a reservas sin asignar"
                 disabled={pending}
                 onClick={assignment.cancel}
@@ -94,7 +94,7 @@ export function RoomAssignmentSheet({
                 <ArrowLeftIcon />
               </Button>
             )}
-            <div className="flex min-w-0 flex-1 flex-col gap-1">
+            <div className="flex min-w-0 flex-1 flex-col gap-0.5">
               <SheetTitle ref={heading} tabIndex={-1}>
                 {target ? "Elegir habitación" : `Sin asignar · ${loading ? "…" : stays.length}`}
               </SheetTitle>
@@ -105,7 +105,7 @@ export function RoomAssignmentSheet({
               </SheetDescription>
             </div>
             <SheetClose
-              render={<Button variant="ghost" className="size-11" disabled={pending} />}
+              render={<Button variant="ghost" size="icon-sm" disabled={pending} />}
               aria-label="Cerrar reservas sin asignar"
             >
               <XIcon />
@@ -114,8 +114,8 @@ export function RoomAssignmentSheet({
         </SheetHeader>
         <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain p-4">
           {target ? (
-            <div className="flex flex-col gap-4">
-              <div className="flex flex-col gap-1 border p-3">
+            <div className="flex flex-col gap-3">
+              <div className="flex flex-col gap-0.5 border p-2.5">
                 <p className="font-medium">{target.guestName}</p>
                 <p>
                   {typeNames.get(target.roomTypeId) ?? "Habitación"}
@@ -138,47 +138,33 @@ export function RoomAssignmentSheet({
                 <div role="alert" className="flex flex-col gap-2">
                   <p className="text-destructive">{error}</p>
                   {assignment.error && (
-                    <Button
-                      variant="outline"
-                      className="min-h-11"
-                      disabled={pending}
-                      onClick={onRetryAssignment}
-                    >
+                    <Button variant="outline" disabled={pending} onClick={onRetryAssignment}>
                       Consultar de nuevo
                     </Button>
                   )}
                 </div>
               )}
-              {ready && (
-                <ul className="flex flex-col gap-2">
-                  {(rooms ?? [])
-                    .filter((room) => room.roomTypeId === target.roomTypeId)
-                    .map((room) => {
-                      const issue = assignment.roomIssues.get(room.id);
-                      return (
-                        <li key={room.id}>
-                          <button
-                            type="button"
-                            aria-label={`Asignar ${target.guestName} a habitación ${room.number}, ${target.checkIn} al ${target.checkOut}`}
-                            aria-describedby={`${reasonId}-${room.id}`}
-                            disabled={pending || issue !== null}
-                            onClick={() => void assignment.assignRoom(room.id)}
-                            className="flex min-h-16 w-full cursor-pointer items-center gap-3 border p-3 text-left outline-none hover:bg-accent focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-default disabled:text-muted-foreground"
-                          >
-                            <BedDoubleIcon className="size-5 shrink-0" aria-hidden="true" />
-                            <span className="flex min-w-0 flex-1 flex-col gap-1">
-                              <span className="font-medium">Habitación {room.number}</span>
-                              <span id={`${reasonId}-${room.id}`} className="text-muted-foreground">
-                                {issue ?? "Disponible"}
-                              </span>
-                            </span>
-                            {issue === null && (
-                              <ChevronRightIcon className="size-4 shrink-0" aria-hidden="true" />
-                            )}
-                          </button>
-                        </li>
-                      );
-                    })}
+              {availableRooms.length > 0 && (
+                <ul className="flex flex-col border">
+                  {availableRooms.map((room, index) => (
+                    <li key={room.id}>
+                      {index > 0 && <Separator />}
+                      <button
+                        type="button"
+                        aria-label={`Asignar ${target.guestName} a habitación ${room.number}, ${target.checkIn} al ${target.checkOut}`}
+                        disabled={pending}
+                        onClick={() => void assignment.assignRoom(room.id)}
+                        className="flex w-full cursor-pointer items-center gap-2 p-2.5 text-left outline-none enabled:hover:bg-accent focus-visible:ring-1 focus-visible:ring-ring/50 disabled:cursor-default disabled:text-muted-foreground"
+                      >
+                        <BedDoubleIcon className="size-4 shrink-0" aria-hidden="true" />
+                        <span className="flex min-w-0 flex-1 flex-col gap-0.5">
+                          <span className="font-medium">Habitación {room.number}</span>
+                          <span className="text-muted-foreground">Disponible</span>
+                        </span>
+                        <ChevronRightIcon className="size-4 shrink-0" aria-hidden="true" />
+                      </button>
+                    </li>
+                  ))}
                 </ul>
               )}
               {ready && eligibleCount === 0 && (
@@ -196,14 +182,14 @@ export function RoomAssignmentSheet({
           ) : listError ? (
             <div role="alert" className="flex flex-col gap-2">
               <p className="text-destructive">{listError}</p>
-              <Button variant="outline" className="min-h-11" onClick={onRetry}>
+              <Button variant="outline" onClick={onRetry}>
                 Reintentar
               </Button>
             </div>
           ) : loading ? (
             <div className="flex flex-col gap-2" aria-label="Cargando reservas sin asignar">
               {Array.from({ length: 3 }, (_, index) => (
-                <Skeleton key={index} className="h-24 w-full" />
+                <Skeleton key={index} className="h-16 w-full" />
               ))}
             </div>
           ) : stays.length === 0 ? (
@@ -216,15 +202,16 @@ export function RoomAssignmentSheet({
               </EmptyHeader>
             </Empty>
           ) : (
-            <ul className="flex flex-col gap-2">
-              {stays.map((stay) => (
+            <ul className="flex flex-col border">
+              {stays.map((stay, index) => (
                 <li key={stay.id}>
+                  {index > 0 && <Separator />}
                   <button
                     type="button"
                     onClick={() => assignment.selectStay(stay)}
-                    className="flex min-h-24 w-full cursor-pointer items-center gap-3 border p-3 text-left outline-none hover:bg-accent focus-visible:ring-2 focus-visible:ring-ring"
+                    className="flex w-full cursor-pointer items-center gap-2 p-2.5 text-left outline-none hover:bg-accent focus-visible:ring-1 focus-visible:ring-ring/50"
                   >
-                    <span className="flex min-w-0 flex-1 flex-col gap-1">
+                    <span className="flex min-w-0 flex-1 flex-col gap-0.5">
                       <span className="font-medium">{stay.guestName}</span>
                       <span className="text-muted-foreground">
                         {typeNames.get(stay.roomTypeId) ?? "Habitación"}
