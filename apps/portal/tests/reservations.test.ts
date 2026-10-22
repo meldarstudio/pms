@@ -71,6 +71,8 @@ beforeAll(async () => {
 });
 
 beforeEach(() => {
+  window.localStorage.clear();
+  window.happyDOM.setWindowSize({ width: 1024, height: 768 });
   calendar.configurePropertyCalendar("America/Lima");
   vi.spyOn(Date, "now").mockReturnValue(new Date("2026-11-01T01:00:00Z").getTime());
   page = browser.createPage();
@@ -278,6 +280,49 @@ it("restores reservation filters and calendar dates through the sidebar's real l
   assert.equal(router.state.location.search.from, "2026-12-20");
   assert.equal(router.state.location.search.span, 14);
   assert.equal(navigationLink("Calendario").getAttribute("aria-current"), "page");
+});
+
+it("remembers the desktop navigation choice across app remounts", async () => {
+  await render();
+  assert.equal(button("Alternar navegación").getAttribute("aria-expanded"), "true");
+  await click("Alternar navegación");
+  assert.equal(button("Alternar navegación").getAttribute("aria-expanded"), "false");
+
+  await page.render(null);
+  await render();
+  assert.equal(button("Alternar navegación").getAttribute("aria-expanded"), "false");
+  await click("Alternar navegación");
+
+  await page.render(null);
+  await render();
+  assert.equal(button("Alternar navegación").getAttribute("aria-expanded"), "true");
+});
+
+it("starts mobile navigation closed without changing the saved desktop choice", async () => {
+  await render();
+  await click("Alternar navegación");
+  await React.act(async () => window.happyDOM.setWindowSize({ width: 390, height: 844 }));
+  assert.equal(button("Alternar navegación").getAttribute("aria-expanded"), "false");
+  await click("Alternar navegación");
+  assert.equal(button("Alternar navegación").getAttribute("aria-expanded"), "true");
+
+  await page.render(null);
+  await render();
+  assert.equal(button("Alternar navegación").getAttribute("aria-expanded"), "false");
+  await React.act(async () => window.happyDOM.setWindowSize({ width: 1024, height: 768 }));
+  assert.equal(button("Alternar navegación").getAttribute("aria-expanded"), "false");
+});
+
+it("keeps navigation usable when browser storage is blocked", async () => {
+  vi.spyOn(window, "localStorage", "get").mockImplementation(() => {
+    throw new Error("Storage is blocked");
+  });
+  await render();
+  assert.equal(button("Alternar navegación").getAttribute("aria-expanded"), "true");
+  await click("Alternar navegación");
+  assert.equal(button("Alternar navegación").getAttribute("aria-expanded"), "false");
+  await click("Alternar navegación");
+  assert.equal(button("Alternar navegación").getAttribute("aria-expanded"), "true");
 });
 
 it("refreshes the sidebar's today links on resume without changing the selected reservation day", async () => {

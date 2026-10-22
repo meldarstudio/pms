@@ -19,8 +19,12 @@ treats the portal and API as the same site and sends the session cookie. Overrid
 The portal uses the selected **A2** design: a narrow, flat sidebar for Reservas,
 Calendario, and Inventario y tarifas, with Configuración and Salir at the bottom.
 The header toggle fully hides the sidebar on desktop, reclaiming its width;
-on phones it opens a dismissible navigation sheet. Open/hidden state stays in
-memory and does not remount the current screen. Navigation retains the last
+on phones it opens a dismissible navigation sheet. Desktop open/hidden state is
+saved in this browser's local storage across refreshes and browser restarts,
+defaulting to open without a saved preference. If storage is unavailable, the
+choice lasts only for the current visit. Mobile navigation always starts closed
+and does not change the desktop preference. Toggling does not remount the current
+screen. Navigation retains the last
 reservation filters and calendar dates, and existing unsaved-draft guards still
 apply. Sign-out retains the existing authentication and error handling.
 
