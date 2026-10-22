@@ -230,7 +230,7 @@ export function RoomBookingDialog({
           className={cn(
             target?.mode === "edit"
               ? "sr-only"
-              : "shrink-0 max-md:px-4 max-md:py-4 max-md:pt-[max(1rem,env(safe-area-inset-top))] max-md:pl-[max(1rem,env(safe-area-inset-left))] max-md:pr-[max(1rem,env(safe-area-inset-right))]",
+              : "shrink-0 max-md:py-4 max-md:pt-[max(1rem,env(safe-area-inset-top))] max-md:safe-area-padding-x",
           )}
         >
           <div className="flex flex-wrap items-center gap-3 pr-8">

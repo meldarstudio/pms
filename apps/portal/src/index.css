@@ -73,6 +73,11 @@
   --radius-4xl: calc(var(--radius) * 2.6);
 }
 
+@utility safe-area-padding-x {
+  padding-left: max(1rem, env(safe-area-inset-left));
+  padding-right: max(1rem, env(safe-area-inset-right));
+}
+
 :root {
   --background: oklch(1 0 0);
   --foreground: oklch(0.147 0.004 49.25);

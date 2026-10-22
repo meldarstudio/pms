@@ -210,7 +210,7 @@ export function NewBooking({
       className="flex min-w-0 flex-col gap-5 max-md:min-h-0 max-md:flex-1 max-md:gap-0 max-md:[&_button]:min-h-11 max-md:[&_input]:min-h-11 max-md:[&_[data-slot=input-group]]:min-h-11"
       onSubmit={(event) => void submitForm(event, () => form.handleSubmit())}
     >
-      <div className="flex min-w-0 flex-col gap-5 max-md:min-h-0 max-md:flex-1 max-md:overflow-y-auto max-md:overscroll-contain max-md:scroll-py-4 max-md:px-4 max-md:pb-6 max-md:pl-[max(1rem,env(safe-area-inset-left))] max-md:pr-[max(1rem,env(safe-area-inset-right))]">
+      <div className="flex min-w-0 flex-col gap-5 max-md:min-h-0 max-md:flex-1 max-md:overflow-y-auto max-md:overscroll-contain max-md:scroll-py-4 max-md:pb-6 max-md:safe-area-padding-x">
         <fieldset disabled={busy} className="grid min-w-0 gap-6 lg:grid-cols-[minmax(0,1fr)_280px]">
           <div className="flex min-w-0 flex-col gap-5">
             <FieldSet>
@@ -269,6 +269,10 @@ export function NewBooking({
                         const options = selection.options[index];
                         const capacity = errors[`rooms[${index}].room`];
                         const titleId = `${draft.id}-title`;
+                        const roomRemoval = {
+                          label: `Quitar habitación ${index + 1}`,
+                          onClick: () => form.removeFieldValue("rooms", index),
+                        };
                         return (
                           <section
                             key={draft.id}
@@ -285,8 +289,8 @@ export function NewBooking({
                                 <Button
                                   type="button"
                                   variant="ghost"
-                                  aria-label={`Quitar habitación ${index + 1}`}
-                                  onClick={() => form.removeFieldValue("rooms", index)}
+                                  aria-label={roomRemoval.label}
+                                  onClick={roomRemoval.onClick}
                                 >
                                   <Trash2Icon data-icon="inline-start" />
                                   Quitar
@@ -371,9 +375,9 @@ export function NewBooking({
                                 variant="destructive"
                                 size="icon"
                                 className="hidden self-end justify-self-end md:inline-flex"
-                                aria-label={`Quitar habitación ${index + 1}`}
+                                aria-label={roomRemoval.label}
                                 disabled={values.rooms.length === 1}
-                                onClick={() => form.removeFieldValue("rooms", index)}
+                                onClick={roomRemoval.onClick}
                               >
                                 <XIcon />
                               </Button>
@@ -512,7 +516,7 @@ export function NewBooking({
         <FieldError>{error}</FieldError>
       </div>
       <Separator className="shrink-0" />
-      <div className="flex shrink-0 flex-col gap-3 max-md:p-4 max-md:pb-[max(1rem,env(safe-area-inset-bottom))] max-md:pl-[max(1rem,env(safe-area-inset-left))] max-md:pr-[max(1rem,env(safe-area-inset-right))]">
+      <div className="flex shrink-0 flex-col gap-3 max-md:py-4 max-md:pb-[max(1rem,env(safe-area-inset-bottom))] max-md:safe-area-padding-x">
         <dl
           aria-label="Total de la nueva reserva"
           className="flex items-baseline justify-between gap-3 md:hidden"
