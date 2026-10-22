@@ -863,6 +863,12 @@ async function renderNewBooking(onCreated: (id: string) => void = () => {}) {
   await until(() => !button("Crear reserva").disabled, "New booking quote must load");
 }
 
+function creationTotal() {
+  const total = window.document.querySelector('[aria-label="Total de la nueva reserva"] dd');
+  assert.ok(total, "The mobile actions must include the reservation total");
+  return total.textContent.replace(/\s/g, "");
+}
+
 it("creates a reservation with its contact, notes, room quote, and initial discount", async () => {
   const writes: CreateBookingInput[] = [];
   let created = "";
@@ -873,6 +879,7 @@ it("creates a reservation with its contact, notes, room quote, and initial disco
   await renderNewBooking((id) => {
     created = id;
   });
+  assert.equal(creationTotal(), "S/150");
   assert.equal(
     control("fullName").closest("fieldset")?.querySelector("legend")?.textContent,
     "Contacto principal",
@@ -903,6 +910,7 @@ it("creates a reservation with its contact, notes, room quote, and initial disco
   });
   await until(() => !button("Crear reserva").disabled, "Valid discount must finish updating");
   assert.ok(container.textContent.replace(/\s/g, "").includes("S/570"));
+  assert.equal(creationTotal(), "S/570");
   await submit();
   await until(
     () => created === "reservation-1",
@@ -923,6 +931,51 @@ it("creates a reservation with its contact, notes, room quote, and initial disco
   );
 });
 
+it("labels repeated room groups before their fields and preserves the remaining draft when removing the first room", async () => {
+  const writes: CreateBookingInput[] = [];
+  mockCreationApi(async (input) => {
+    writes.push(input);
+    return Response.json(detail(), { status: 201 });
+  });
+  await renderNewBooking();
+  await fill("fullName", "Ada Lovelace");
+  const rooms = container.querySelector('section[aria-label="Habitaciones"]')!;
+  const removeActions = () =>
+    [...rooms.querySelectorAll<HTMLButtonElement>("button")].filter(
+      (item) => item.textContent.trim() === "Quitar",
+    );
+  assert.equal(rooms.querySelectorAll("h4").length, 0);
+  assert.equal(removeActions().length, 0, "A single room has no mobile removal action");
+  await React.act(async () => button("Agregar habitación").click());
+  assert.equal(removeActions().length, 2, "Any room can be removed when multiple remain");
+  const groups = [...rooms.querySelectorAll("section[aria-labelledby]")];
+  assert.equal(groups.length, 2);
+  for (const [index, room] of groups.entries()) {
+    const heading = window.document.getElementById(room.getAttribute("aria-labelledby")!);
+    assert.ok(heading);
+    assert.equal(heading.textContent.trim(), `Habitación ${index + 1}`);
+    assert.ok(
+      heading.compareDocumentPosition(fieldTrigger("Tipo", index)) &
+        window.Node.DOCUMENT_POSITION_FOLLOWING,
+      "A room's heading must precede its fields for screen readers",
+    );
+  }
+  await fill("rooms[1].room.adults", "2");
+  await fill("rooms[1].room.children", "1");
+  await React.act(async () => removeActions()[0].click());
+  assert.equal(rooms.querySelectorAll("h4").length, 0);
+  assert.equal(removeActions().length, 0);
+  assert.equal(control("rooms[0].room.adults").value, "2");
+  assert.equal(control("rooms[0].room.children").value, "1");
+  assert.equal(control("fullName").value, "Ada Lovelace");
+  assert.equal(creationTotal(), "S/150");
+  await submit();
+  await until(() => writes.length === 1, "The remaining room must save normally");
+  assert.deepEqual(writes[0].rooms, [
+    { roomTypeId: "double", roomId: null, adults: 2, children: 1 },
+  ]);
+});
+
 it("caps the creation preview without reducing the entered initial discount", async () => {
   const writes: CreateBookingInput[] = [];
   mockCreationApi(async (input) => {
@@ -939,6 +992,7 @@ it("caps the creation preview without reducing the entered initial discount", as
   await until(() => !button("Crear reserva").disabled, "Initial discount must finish updating");
   assert.equal(summaryAmount("Importe habitaciones"), "S/150");
   assert.equal(summaryAmount("Total de reserva"), "S/0");
+  assert.equal(creationTotal(), "S/0");
   assert.equal(summaryAmount("Descuento aplicado"), "-S/150");
   assert.equal(discount.value, "200");
   await submit();
@@ -1144,6 +1198,7 @@ it("replaces sold-out room controls with an empty state and restores them when d
   assert.equal(fieldTrigger("Hab.").disabled, true);
   assert.equal(button("Crear reserva").disabled, true);
   assert.ok(!container.textContent.includes("Sin habitaciones disponibles"));
+  assert.equal(creationTotal(), "Calculando…");
   await React.act(async () =>
     finish(
       Response.json({
@@ -1180,6 +1235,7 @@ it("replaces sold-out room controls with an empty state and restores them when d
   assert.equal(control("notes").value, "Llegada por la tarde");
   assert.ok(container.querySelector("aside"));
   assert.equal(button("Crear reserva").disabled, true);
+  assert.equal(creationTotal(), "—");
 
   await React.act(async () => fieldTrigger("Check-out").click());
   const availableDay = [
@@ -1613,6 +1669,63 @@ it("preserves a failed creation draft and safely retries until its payload chang
   assert.notEqual(writes[2].requestId, writes[1].requestId);
 });
 
+it("preserves the reservation and discount drafts when the keyboard viewport or screen size changes", async () => {
+  mockCreationApi(async () => {
+    throw new Error("Resizing must not submit the reservation");
+  });
+  const descriptor = Object.getOwnPropertyDescriptor(window, "visualViewport");
+  const viewport = Object.assign(new window.EventTarget(), { height: 844, offsetTop: 0 });
+  Object.defineProperty(window, "visualViewport", { configurable: true, value: viewport });
+  const originalWidth = window.innerWidth;
+  const originalHeight = window.innerHeight;
+  try {
+    window.happyDOM.setWindowSize({ width: 390, height: 844 });
+    await render(
+      React.createElement(dialogs.RoomBookingDialog, {
+        target: createTarget,
+        onClose: () => {},
+        onViewReservation: () => {},
+      }),
+    );
+    await until(() => !button("Crear reserva").disabled, "New dialog must load");
+    await fill("fullName", "Ada Lovelace");
+    await fill("notes", "Llegada tarde");
+    const name = control("fullName");
+    const discount = window.document.querySelector<HTMLInputElement>(
+      '[aria-label="Descuento en soles"]',
+    )!;
+    await fillControl(discount, "25");
+    assert.equal(button("Crear reserva").disabled, true);
+    assert.ok(window.document.body.textContent.includes("Termina de editar el descuento"));
+    const popup = window.document.querySelector<HTMLElement>('[role="dialog"]')!;
+    await React.act(async () => {
+      viewport.height = 420;
+      viewport.offsetTop = 30;
+      viewport.dispatchEvent(new window.Event("resize"));
+      viewport.dispatchEvent(new window.Event("scroll"));
+    });
+    assert.equal(popup.style.getPropertyValue("--reservation-viewport-height"), "420px");
+    assert.equal(popup.style.getPropertyValue("--reservation-viewport-top"), "30px");
+    await React.act(async () => {
+      window.happyDOM.setWindowSize({ width: 1024, height: 768 });
+      window.dispatchEvent(new window.Event("resize"));
+    });
+    assert.equal(control("fullName"), name, "Responsive changes must not replace the form");
+    assert.equal(name.value, "Ada Lovelace");
+    assert.equal(control("notes").value, "Llegada tarde");
+    assert.equal(discount.value, "25");
+    await React.act(async () => {
+      discount.dispatchEvent(new window.FocusEvent("focusout", { bubbles: true }));
+    });
+    await until(() => !button("Crear reserva").disabled, "The discount draft must still commit");
+    assert.equal(creationTotal(), "S/125");
+  } finally {
+    if (descriptor) Object.defineProperty(window, "visualViewport", descriptor);
+    else Reflect.deleteProperty(window, "visualViewport");
+    window.happyDOM.setWindowSize({ width: originalWidth, height: originalHeight });
+  }
+});
+
 it("protects a new reservation draft, blocks closing during creation, and closes after saving", async () => {
   let finish!: (response: Response) => void;
   let closed = 0;
@@ -1639,16 +1752,16 @@ it("protects a new reservation draft, blocks closing during creation, and closes
   await render(React.createElement(NewDialog));
   await until(() => !button("Crear reserva").disabled, "New dialog must load");
   await fill("fullName", "Ada Lovelace");
-  await React.act(async () => button("Cancelar").click());
+  await React.act(async () => button("Cerrar").click());
   assert.equal(closed, 0);
   assert.ok(window.document.body.textContent.includes("Descartar y salir"));
   await React.act(async () => button("Seguir editando").click());
+  assert.equal(control("fullName").value, "Ada Lovelace");
+  await React.act(async () => button("Cancelar").click());
+  assert.equal(closed, 0);
+  await React.act(async () => button("Seguir editando").click());
   const popup = window.document.querySelector('[role="dialog"]')!;
-  await React.act(async () =>
-    popup
-      .querySelector("form")!
-      .dispatchEvent(new window.Event("submit", { bubbles: true, cancelable: true })),
-  );
+  await React.act(async () => button("Crear reserva").click());
   await until(() => !!finish && button("Cerrar").disabled, "Saving must lock closing");
   await React.act(async () =>
     popup.dispatchEvent(new window.KeyboardEvent("keydown", { key: "Escape", bubbles: true })),

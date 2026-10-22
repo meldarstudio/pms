@@ -73,6 +73,18 @@ the actual API and transactional database behavior.
 
 ## Reservation forms
 
+**Nueva reserva**, from Calendar or Reservations, uses a full-screen editor below
+768px and retains the centered desktop dialog. On mobile, only the form body
+scrolls: the title/close control and the total with **Cancelar / Crear reserva**
+remain reachable. Stay dates, reserved-room groups, booking contact, notes, and bill
+details share one form, with the discount in the bill details. Safe-area spacing
+and visual-viewport resizing accommodate mobile browser chrome and keyboards
+without remounting drafts. Closing a dirty form still requires confirmation;
+closing while saving remains blocked. There is no swipe-to-dismiss gesture.
+Mobile reserved rooms use flat sections: a single room has no extra numbered
+heading or removal action; multiple rooms have separators, numbered headings, and
+quiet **Quitar** actions. Any room can be removed while more than one remains.
+
 `/reservations/:id` is a read-first overview with back navigation, booking contact
 name with status/date badges, the reservation code beneath it,
 and a right-aligned **Estado de la reserva** select. Selecting Confirmada,

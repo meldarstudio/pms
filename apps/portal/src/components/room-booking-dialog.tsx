@@ -29,6 +29,7 @@ import { Button } from "@/components/ui/button";
 import { Spinner } from "@/components/ui/spinner";
 import {
   Dialog,
+  DialogClose,
   DialogContent,
   DialogDescription,
   DialogHeader,
@@ -167,12 +168,31 @@ export function RoomBookingDialog({
   const detail = useReservation(reservationId);
   const saving = useReservationSaving(reservationId);
   const [creating, setCreating] = useState(false);
+  const popup = useRef<HTMLDivElement>(null);
+  const createOpen = target !== null && target.mode !== "edit";
   const dirty = useRef(false);
   const [tab, setTab] = useState("details");
   const [leave, setLeave] = useState<(() => void) | null>(null);
   const onDirtyChange = useCallback((value: boolean) => {
     dirty.current = value;
   }, []);
+  useEffect(() => {
+    const viewport = window.visualViewport;
+    if (!createOpen || !viewport) return;
+    // Mobile keyboards can shrink/pan the visual viewport without changing dvh.
+    // Resize the same popup rather than remounting the form and losing its draft.
+    const resize = () => {
+      popup.current?.style.setProperty("--reservation-viewport-height", `${viewport.height}px`);
+      popup.current?.style.setProperty("--reservation-viewport-top", `${viewport.offsetTop}px`);
+    };
+    resize();
+    viewport.addEventListener("resize", resize);
+    viewport.addEventListener("scroll", resize);
+    return () => {
+      viewport.removeEventListener("resize", resize);
+      viewport.removeEventListener("scroll", resize);
+    };
+  }, [createOpen]);
   useEffect(() => {
     const protectUnload = (event: BeforeUnloadEvent) => {
       if (!target || (!creating && !dirty.current && !isReservationSaving(client, reservationId)))
@@ -196,15 +216,23 @@ export function RoomBookingDialog({
   return (
     <Dialog open={target !== null} onOpenChange={(open) => !open && navigate(close)}>
       <DialogContent
+        ref={popup}
         closeDisabled={saving || creating}
+        showCloseButton={!createOpen}
         className={cn(
           "max-h-[94svh]",
           target?.mode === "edit"
             ? "flex flex-col overflow-hidden sm:max-w-4xl"
-            : "overflow-y-auto sm:max-w-4xl",
+            : "overflow-y-auto sm:max-w-4xl max-md:top-(--reservation-viewport-top,0px) max-md:left-0 max-md:flex max-md:h-(--reservation-viewport-height,100dvh) max-md:max-h-(--reservation-viewport-height,100dvh) max-md:max-w-full max-md:translate-x-0 max-md:translate-y-0 max-md:flex-col max-md:gap-0 max-md:overflow-hidden max-md:p-0 max-md:transition-none",
         )}
       >
-        <DialogHeader className={target?.mode === "edit" ? "sr-only" : undefined}>
+        <DialogHeader
+          className={cn(
+            target?.mode === "edit"
+              ? "sr-only"
+              : "shrink-0 max-md:px-4 max-md:py-4 max-md:pt-[max(1rem,env(safe-area-inset-top))] max-md:pl-[max(1rem,env(safe-area-inset-left))] max-md:pr-[max(1rem,env(safe-area-inset-right))]",
+          )}
+        >
           <div className="flex flex-wrap items-center gap-3 pr-8">
             <DialogTitle>
               {target?.mode === "edit" ? "Editar reserva" : "Nueva reserva"}
@@ -215,6 +243,21 @@ export function RoomBookingDialog({
               ? "Detalles de la reserva, huéspedes y pagos."
               : "Completa la estancia y el contacto principal."}
           </DialogDescription>
+          {createOpen && (
+            <DialogClose
+              disabled={creating}
+              render={
+                <Button
+                  variant="ghost"
+                  size="icon-sm"
+                  className="absolute top-2 right-2 max-md:top-[max(0.5rem,env(safe-area-inset-top))] max-md:right-[max(0.5rem,env(safe-area-inset-right))] max-md:min-h-11 max-md:min-w-11"
+                />
+              }
+            >
+              <XIcon data-icon="inline-start" />
+              <span className="sr-only">Cerrar</span>
+            </DialogClose>
+          )}
         </DialogHeader>
         {target?.mode === "edit" ? (
           detail.isPending ? (
