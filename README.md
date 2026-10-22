@@ -58,9 +58,10 @@ The manual release workflow supplies the production API origin explicitly.
 
 ## Production releases
 
-Follow the [release checklist](docs/releases.md) for one-time Cloudflare cutover,
-exact-commit validation, optional interactive migrations, manual API/portal
-deployment, read-only verification, and version tags. Merging the workflow does
+Follow the [release checklist](docs/releases.md) for exact-commit CI validation,
+optional interactive migrations, deliberate API/portal deployment, automated
+read-only smoke checks, and a short manual browser check. Version tags are optional.
+Merging the workflow does
 not disable existing automatic Workers Builds; confirm the documented cutover
 before treating merges to `main` as deployment-free.
 

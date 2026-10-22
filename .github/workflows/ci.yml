@@ -2,6 +2,8 @@ name: CI
 
 on:
   pull_request:
+  push:
+    branches: [main]
 
 permissions:
   contents: read
@@ -11,10 +13,12 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
 
       - uses: pnpm/action-setup@v4
         with:
-          version: 11.22.0
+          run_install: false
 
       - uses: actions/setup-node@v4
         with:
@@ -26,3 +30,14 @@ jobs:
       - run: pnpm check
 
       - run: pnpm test
+
+      - name: Build production portal
+        env:
+          VITE_API_BASE_URL: https://api.hotelmanantialchurin.com
+        run: pnpm build
+
+      - name: Bundle API without deploying
+        env:
+          WRANGLER_SEND_METRICS: "false"
+          WRANGLER_WRITE_LOGS: "false"
+        run: pnpm --filter @pms/backend exec wrangler deploy --dry-run --minify

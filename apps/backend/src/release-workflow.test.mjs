@@ -16,6 +16,13 @@ import { afterEach, expect, it } from "vite-plus/test";
 
 const repo = fileURLToPath(new URL("../../../", import.meta.url));
 const temporaryDirs = [];
+const validationCommands = [
+  "install --frozen-lockfile",
+  "check",
+  "test",
+  "build",
+  "--filter @pms/backend exec wrangler deploy --dry-run --minify",
+];
 
 afterEach(() => {
   for (const directory of temporaryDirs.splice(0)) rmSync(directory, { recursive: true });
@@ -36,6 +43,15 @@ function fixture(changeSelectedCheckout = () => {}) {
     cpSync(join(repo, "apps/backend", name), join(cwd, "apps/backend", name), {
       recursive: true,
     });
+  }
+  // Keep this existing harness focused on pre-deploy safety and sequencing.
+  // HTTP smoke behavior has its own local-server tests; do not emulate live
+  // Cloudflare deployment status or contact production from this fixture.
+  for (const name of ["smoke-production.mjs", "record-production-release.mjs"]) {
+    writeFileSync(
+      join(cwd, "apps/backend/scripts", name),
+      "// External post-deployment boundary excluded from this harness.\n",
+    );
   }
   cpSync(join(repo, "package.json"), join(cwd, "package.json"));
   cpSync(join(repo, ".node-version"), join(cwd, ".node-version"));
@@ -91,6 +107,7 @@ if (command.includes('d1 execute')) {
   } else process.exit(91);
 } else if (![
   'install --frozen-lockfile', 'check', 'test', 'build',
+  '--filter @pms/backend exec wrangler deploy --dry-run --minify',
   '--filter @pms/backend run deploy', '--filter @pms/portal run deploy',
 ].includes(command)) process.exit(92);
 `,
@@ -169,6 +186,7 @@ function release(f, options = {}) {
     "secrets.CLOUDFLARE_ACCOUNT_ID": options.account ?? "simulated-account",
     "secrets.CLOUDFLARE_READ_TOKEN": options.readToken ?? "simulated-read-token",
     "secrets.CLOUDFLARE_DEPLOY_TOKEN": "simulated-deploy-token",
+    "runner.temp": f.directory,
   };
   const interpolate = (value) =>
     String(value).replace(/\$\{\{\s*(.*?)\s*\}\}/g, (_, key) => {
@@ -248,10 +266,7 @@ it("validates and builds the selected main revision before read-only readiness, 
   expect(result.failed, result.diagnostics).toBe(false);
   expect(git(f.cwd, "rev-parse", "refs/remotes/origin/main")).not.toBe(f.sha);
   expect(result.commands.map((entry) => entry.command)).toEqual([
-    "install --frozen-lockfile",
-    "check",
-    "test",
-    "build",
+    ...validationCommands,
     "--filter @pms/backend exec wrangler d1 execute DB --remote --json --command SELECT id, name FROM d1_migrations ORDER BY id --config wrangler.jsonc",
     "--filter @pms/backend run deploy",
     "--filter @pms/portal run deploy",
@@ -260,11 +275,13 @@ it("validates and builds the selected main revision before read-only readiness, 
     expect(command.sha).toBe(f.sha);
     expect(command.source).toBe("selected release");
   }
-  expect(result.commands.slice(0, 4).map(({ token, account }) => ({ token, account }))).toEqual(
-    Array(4).fill({ token: null, account: null }),
-  );
+  expect(
+    result.commands
+      .slice(0, validationCommands.length)
+      .map(({ token, account }) => ({ token, account })),
+  ).toEqual(validationCommands.map(() => ({ token: null, account: null })));
   expect(result.commands[3].origin).toBe("https://api.hotelmanantialchurin.com");
-  expect(result.commands.slice(4).map(({ token }) => token)).toEqual([
+  expect(result.commands.slice(validationCommands.length).map(({ token }) => token)).toEqual([
     "simulated-read-token",
     "simulated-deploy-token",
     "simulated-deploy-token",
@@ -419,7 +436,7 @@ it.each([
   expect(result.summary).toContain("Portal: skipped");
 });
 
-it.each(["install --frozen-lockfile", "check", "test", "build"])(
+it.each(validationCommands)(
   "a failed %s prevents production queries and both deployments",
   (fail) => {
     const result = release(fixture(), { fail });
@@ -449,12 +466,9 @@ it.each([
     writeFileSync(f.log, "");
     const retry = release(f);
     expect(retry.failed, retry.diagnostics).toBe(false);
-    expect(retry.commands.map(({ command }) => command).slice(0, 4)).toEqual([
-      "install --frozen-lockfile",
-      "check",
-      "test",
-      "build",
-    ]);
+    expect(
+      retry.commands.map(({ command }) => command).slice(0, validationCommands.length),
+    ).toEqual(validationCommands);
     expect(retry.commands.every(({ sha }) => sha === f.sha)).toBe(true);
   },
 );
@@ -476,7 +490,7 @@ it.each([
       ledger: [{ success: true, results: transform(f.ledger[0].results) }],
     });
     expect(result.failed, result.diagnostics).toBe(true);
-    expect(result.commands.slice(4).map(({ command }) => command)).toEqual([
+    expect(result.commands.slice(validationCommands.length).map(({ command }) => command)).toEqual([
       "--filter @pms/backend exec wrangler d1 execute DB --remote --json --command SELECT id, name FROM d1_migrations ORDER BY id --config wrangler.jsonc",
     ]);
     expect(result.summary).toContain("Migration readiness: failure");
@@ -502,7 +516,7 @@ it.each([
 ])("fails closed for %s without attempting recovery", (_, ledger, fail) => {
   const result = release(fixture(), { ledger, fail });
   expect(result.failed, result.diagnostics).toBe(true);
-  expect(result.commands).toHaveLength(5);
+  expect(result.commands).toHaveLength(validationCommands.length + 1);
   expect(result.summary).toContain("API: skipped");
   expect(result.summary).toContain("Portal: skipped");
 });
@@ -513,7 +527,7 @@ it("rejects an unregistered SQL file even when production matches the journal", 
   });
   const result = release(f);
   expect(result.failed, result.diagnostics).toBe(true);
-  expect(result.commands).toHaveLength(4);
+  expect(result.commands).toHaveLength(validationCommands.length);
   expect(result.summary).toContain("API: skipped");
 });
 
@@ -545,7 +559,7 @@ it.each([
   });
   const result = release(f);
   expect(result.failed, result.diagnostics).toBe(true);
-  expect(result.commands).toHaveLength(4);
+  expect(result.commands).toHaveLength(validationCommands.length);
   expect(result.summary).toContain("Migration readiness: failure");
   expect(result.summary).toContain("API: skipped");
 });
@@ -571,7 +585,7 @@ it.each(["invalid journal", "missing SQL", "empty SQL", "nonregular SQL", "out-o
     });
     const result = release(f);
     expect(result.failed, result.diagnostics).toBe(true);
-    expect(result.commands).toHaveLength(4);
+    expect(result.commands).toHaveLength(validationCommands.length);
     expect(result.summary).toContain("Migration readiness: failure");
   },
 );
@@ -606,7 +620,7 @@ it.each([
 ])("missing %s blocks production access and deployment", (_, credentials) => {
   const result = release(fixture(), credentials);
   expect(result.failed, result.diagnostics).toBe(true);
-  expect(result.commands).toHaveLength(4);
+  expect(result.commands).toHaveLength(validationCommands.length);
   expect(result.summary).toContain("Migration readiness: failure");
   expect(result.summary).toContain("API: skipped");
 });
