@@ -22,6 +22,7 @@ import {
 import { RoomEditDialog, type RoomEditTarget } from "@/components/room-edit-dialog";
 import { RoomBookingDialog, type BookingTarget } from "@/components/room-booking-dialog";
 import { RoomAssignmentPanel } from "@/components/room-assignment-panel";
+import { RoomAssignmentSheet } from "@/components/room-assignment-sheet";
 import { PageHeaderActions } from "@/components/page-header-actions";
 import { Tooltip, TooltipTrigger, TooltipContent } from "@/components/ui/tooltip";
 import { Button } from "@/components/ui/button";
@@ -346,7 +347,7 @@ export function RoomCalendar({
   const [closureTarget, setClosureTarget] = useState<ClosureTarget | null>(null);
   const [roomTarget, setRoomTarget] = useState<RoomEditTarget | null>(null);
   const [bookingTarget, setBookingTarget] = useState<BookingTarget | null>(null);
-  const [panelOpen, setPanelOpen] = useState(false);
+  const [unassignedOpen, setUnassignedOpen] = useState(false);
   const [manualRefresh, setManualRefresh] = useState<Promise<void> | null>(null);
   const from = format(start, "yyyy-MM-dd");
   const to = format(addDays(start, span - 1), "yyyy-MM-dd");
@@ -366,9 +367,10 @@ export function RoomCalendar({
   const typeNames = new Map((rooms ?? []).map((room) => [room.roomTypeId, room.roomTypeName]));
   const listLoading = !calendar && calendarQuery.isFetching;
   const listError = calendar ? null : error;
-  const previewTrack = assignment.target
-    ? placeStays([stayTrack(assignment.target)], start, span)[0]
-    : undefined;
+  const previewTrack =
+    !isMobile && assignment.target
+      ? placeStays([stayTrack(assignment.target)], start, span)[0]
+      : undefined;
 
   function refreshCalendar() {
     return queryClient.invalidateQueries({ queryKey: ["calendar"] });
@@ -428,7 +430,7 @@ export function RoomCalendar({
       error={assignment.error}
       onSelect={assignment.selectStay}
       onCancel={assignment.cancel}
-      onClose={() => setPanelOpen(false)}
+      onClose={() => setUnassignedOpen(false)}
       onRetry={() => void refreshCalendar()}
       onRetryAssignment={retryAssignment}
     />
@@ -573,7 +575,22 @@ export function RoomCalendar({
           )}
         </ButtonGroup>
         {isMobile ? (
-          refreshButton
+          <div className="flex items-center gap-2">
+            {refreshButton}
+            <RoomAssignmentSheet
+              open={unassignedOpen}
+              onOpenChange={setUnassignedOpen}
+              stays={unassigned}
+              rooms={rooms}
+              typeNames={typeNames}
+              loading={listLoading}
+              listError={listError}
+              rangeLabel={`${format(start, "d MMM")} al ${format(addDays(start, span - 1), "d MMM yyyy")}`}
+              assignment={assignment}
+              onRetry={() => void refreshCalendar()}
+              onRetryAssignment={retryAssignment}
+            />
+          </div>
         ) : (
           <div className="flex items-center gap-2">
             <Tooltip>
@@ -762,49 +779,51 @@ export function RoomCalendar({
             ))}
           </div>
         </div>
-        <aside
-          aria-label="Reservas sin asignar"
-          className={cn(
-            // border-l is the fixed scroll-edge separator; last grid columns
-            // omit border-r so it does not double-stack when flush.
-            "flex min-h-0 shrink-0 flex-col border-l bg-background",
-            panelOpen ? "w-80" : "w-10",
-          )}
-        >
-          {panelOpen ? (
-            panel
-          ) : (
-            <button
-              type="button"
-              aria-expanded={false}
-              aria-controls="unassigned-panel"
-              aria-label={
-                listLoading
-                  ? "Mostrar reservas sin asignar"
-                  : `Mostrar reservas sin asignar, ${unassigned.length}`
-              }
-              disabled={assignment.pending}
-              onClick={() => setPanelOpen(true)}
-              className={cn(
-                "flex min-h-0 flex-1 flex-col items-center gap-1.5 py-3 text-muted-foreground outline-none hover:bg-muted focus-visible:ring-1 focus-visible:ring-ring/50 disabled:pointer-events-none disabled:opacity-50",
-                unassigned.length > 0 && !listLoading && "text-foreground",
-              )}
-            >
-              <PanelRightIcon className="size-4" aria-hidden="true" />
-              <span
-                aria-hidden="true"
+        {!isMobile && (
+          <aside
+            aria-label="Reservas sin asignar"
+            className={cn(
+              // border-l is the fixed scroll-edge separator; last grid columns
+              // omit border-r so it does not double-stack when flush.
+              "flex min-h-0 shrink-0 flex-col border-l bg-background",
+              unassignedOpen ? "w-80" : "w-10",
+            )}
+          >
+            {unassignedOpen ? (
+              panel
+            ) : (
+              <button
+                type="button"
+                aria-expanded={false}
+                aria-controls="unassigned-panel"
+                aria-label={
+                  listLoading
+                    ? "Mostrar reservas sin asignar"
+                    : `Mostrar reservas sin asignar, ${unassigned.length}`
+                }
+                disabled={assignment.pending}
+                onClick={() => setUnassignedOpen(true)}
                 className={cn(
-                  "text-center text-xs tabular-nums",
-                  unassigned.length > 0 && !listLoading
-                    ? "bg-primary px-1 font-medium text-primary-foreground"
-                    : "text-muted-foreground",
+                  "flex min-h-0 flex-1 flex-col items-center gap-1.5 py-3 text-muted-foreground outline-none hover:bg-muted focus-visible:ring-1 focus-visible:ring-ring/50 disabled:pointer-events-none disabled:opacity-50",
+                  unassigned.length > 0 && !listLoading && "text-foreground",
                 )}
               >
-                {listLoading ? "…" : unassigned.length}
-              </span>
-            </button>
-          )}
-        </aside>
+                <PanelRightIcon className="size-4" aria-hidden="true" />
+                <span
+                  aria-hidden="true"
+                  className={cn(
+                    "text-center text-xs tabular-nums",
+                    unassigned.length > 0 && !listLoading
+                      ? "bg-primary px-1 font-medium text-primary-foreground"
+                      : "text-muted-foreground",
+                  )}
+                >
+                  {listLoading ? "…" : unassigned.length}
+                </span>
+              </button>
+            )}
+          </aside>
+        )}
       </div>
     </div>
   );

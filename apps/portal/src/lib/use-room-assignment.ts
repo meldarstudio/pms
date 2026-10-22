@@ -125,6 +125,7 @@ export function useRoomAssignment(rooms: Room[] | null) {
     roomIssues,
     pending: assign.isPending,
     error: translateNullableIssue(queryError ?? targetIssue),
+    saveError: translateNullableIssue(assign.error?.message ?? null),
     selectStay,
     assignRoom,
     cancel,
