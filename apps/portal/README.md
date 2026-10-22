@@ -176,6 +176,14 @@ The reservation editor uses TanStack Form with portal-local Zod 4 schemas in
 discount, and cancellation have independent form instances. API writes still use
 TanStack Query and workflow commands with retry-safe request IDs.
 
+`src/lib/use-stay-draft.ts` owns the shared stay draft, validation feedback,
+preview timing, reusable prices, and draft reset for compact-calendar and page
+stay editing. It also retains the compact editor's notes. Rendering uses its
+summary and submission state rather than coordinating preview queries. Submission
+can reveal invalid fields even when a write is not allowed; write guards,
+workflow commands, and independent guest/payment/discount/status drafts remain
+with their existing editors.
+
 Validation runs on blur and on submit, then on change after a submission attempt.
 Room counts and capacity validate on change because they control billing previews.
 Known server validation errors appear beside fields; other write failures use

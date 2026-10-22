@@ -66,6 +66,11 @@ The calendar check-in and checkout dates at the property, shared by every room i
 unchanged by the viewer's timezone.
 _Avoid_: Arrival timestamp, departure timestamp
 
+**Stay draft**:
+Proposed changes to a reservation's stay dates, reserved rooms, room assignments, and occupancy that
+have not yet been saved. The saved reservation remains unchanged until those changes are accepted.
+_Avoid_: Saved reservation, preview reservation
+
 **Stay night**:
 One night beginning on a date within the stay, including the check-in date and excluding the checkout
 date.

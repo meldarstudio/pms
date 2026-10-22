@@ -1,5 +1,5 @@
-import { useCallback, useEffect, useMemo, useRef, useState, useId, type ReactNode } from "react";
-import { skipToken, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useCallback, useEffect, useRef, useState, useId, type ReactNode } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import { useSelector } from "@tanstack/react-form";
 import {
   ArrowUpRightIcon,
@@ -12,18 +12,12 @@ import {
 import { cn } from "cn";
 import { Empty, EmptyHeader, EmptyTitle, EmptyDescription } from "@/components/ui/empty";
 import {
-  validationPreviewActions,
-  hasBillingChanges,
-  billingPreviewKey,
-  changeCheckIn,
-  minimumCheckOut,
   guestValues,
   overlappingRoomIds,
   unavailableRoomIds,
   availableRoomTypeIds,
-  roomEdits,
-  previewFieldErrors,
 } from "@/lib/reservation-editor";
+import { useStayDraft } from "@/lib/use-stay-draft";
 import { ReservationStatusBadge } from "@/components/reservation-status-badge";
 import { Button } from "@/components/ui/button";
 import { Spinner } from "@/components/ui/spinner";
@@ -76,13 +70,10 @@ import { GuestEntryForm, PaymentForm, paymentMethods } from "@/components/reserv
 import { format } from "@/lib/dates";
 import { isValid, parseISO } from "date-fns";
 import {
-  previewWorkflow,
   type StayingGuest,
   type ReservationPayment,
   type ReservationDetail,
   type WorkflowAction,
-  type WorkflowCommand,
-  type WorkflowBilling,
 } from "@/lib/api";
 import {
   useReservation,
@@ -106,18 +97,12 @@ import {
 } from "@/lib/reservation-form";
 import { serverFieldErrors } from "@/lib/api-error";
 import {
-  detailsSchema,
-  detailsDefaults,
-  detailsSummaryRooms,
   emptyDetails,
-  workflowDrafts,
-  schemaErrors,
   paymentSchema,
   paymentDefaults,
   paymentPayload,
   cancellationSchema,
   type PaymentValues,
-  type DetailsValues,
 } from "@/lib/reservation-form-schemas";
 import { propertyToday } from "@/lib/property-calendar";
 import { usePropertyCalendar } from "@/lib/use-property-calendar";
@@ -143,15 +128,6 @@ const stayDate = (value: string, pattern: string) => {
   const date = parseISO(value);
   return isValid(date) ? format(date, pattern) : "—";
 };
-function useDraftCommand(actionsKey: string) {
-  return useMemo<WorkflowCommand>(
-    () => ({
-      requestId: crypto.randomUUID(),
-      actions: JSON.parse(actionsKey) as WorkflowAction[],
-    }),
-    [actionsKey],
-  );
-}
 type Intent = { type: "edit-payment" | "delete-payment"; entry: ReservationPayment };
 
 export function RoomBookingDialog({
@@ -337,45 +313,20 @@ export function BookingEditor({
   const contact = detail.guest;
   const queryClient = useQueryClient();
   const [guestDirty, setGuestDirty] = useState(false);
-  const roomTypes = useRoomTypes();
-  const [defaults, setDefaults] = useState(() => detailsDefaults(detail));
-  const schema = useMemo(
-    () => detailsSchema(roomTypes.data ?? [], { saved: detail }),
-    [roomTypes.data, detail],
-  );
-  const pricingSchema = useMemo(
-    () => detailsSchema(roomTypes.data ?? [], { validateOperations: false }),
-    [roomTypes.data],
-  );
   const formId = useId();
-  const rejectedFields = useRef<{ values: DetailsValues; fields: Record<string, string> } | null>(
-    null,
-  );
-  const form = useReservationForm({
-    defaultValues: defaults,
-    validationLogic: blurThenChange(),
-    validators: {
-      onDynamic: ({ value }) => {
-        const fields = schemaErrors(schema.safeParse(value));
-        // Focusing the rejected field can blur a date picker. That validation
-        // must not erase server feedback for a value that has not been corrected.
-        for (const name of ["checkOut"] as const) {
-          if (
-            rejectedFields.current?.fields[name] &&
-            value[name] === rejectedFields.current.values[name]
-          )
-            fields[name] = rejectedFields.current.fields[name];
-        }
-        return Object.keys(fields).length ? { fields } : undefined;
-      },
-    },
-    onSubmit: async () => saveChanges(),
-  });
-  const values = useSelector(form.store, (state) => state.values);
-  const submitting = useSelector(form.store, (state) => state.isSubmitting);
-  const unchanged = useSelector(form.store, (state) => state.isDefaultValue);
-  const drafts = workflowDrafts(values);
-  const common = { checkIn: values.checkIn, checkOut: values.checkOut };
+  const stayDraft = useStayDraft({ detail, onSubmit: saveChanges });
+  const {
+    form,
+    values,
+    drafts,
+    stay: common,
+    roomTypes,
+    dirty,
+    submitting,
+    errors,
+    summary,
+    reset: resetDetails,
+  } = stayDraft;
   const rooms = useRooms();
   const availability = useRoomAssignmentOptions(common, detail.id);
   const availableTypes = availableRoomTypeIds(
@@ -393,7 +344,6 @@ export function BookingEditor({
     ) ?? roomTypes.data?.find((type) => availableTypes.has(type.id));
   const canAddRoom = roomTypes.isSuccess && rooms.isSuccess && availability.ready && !!nextRoomType;
   const reservationState = stayOnly ? detail.status : (values.status ?? detail.status);
-  const notes = values.notes;
   const [intent, setIntent] = useState<Intent | null>(null);
   const [tab, setTab] = useState(initialTab);
   const [paymentDirty, setPaymentDirty] = useState(false);
@@ -409,80 +359,8 @@ export function BookingEditor({
     status: "confirmed" | "checked_in" | "checked_out";
   } | null>(null);
   const [cancellationDirty, setCancellationDirty] = useState(false);
-  const validation = schema.safeParse(values);
-  const localErrors = schemaErrors(validation);
-  const countsValid = validation.success && !!roomTypes.data;
-  const pricingValid = pricingSchema.safeParse(values).success && !!roomTypes.data;
-  const changes = roomEdits(detail, drafts);
-  if (common.checkIn !== detail.checkIn || common.checkOut !== detail.checkOut)
-    changes.unshift({ type: "dates", ...common });
-  if (notes !== (detail.notes ?? "")) changes.push({ type: "notes", notes });
-  const dirty = changes.length > 0 || (!validation.success && !unchanged);
   const draftDirty = dirty || independentDraftDirty;
-  const previewActions = validationPreviewActions(changes);
-  const validationNeeded = previewActions.length > 0;
-  const billingDirty = hasBillingChanges(detail, changes);
-  const previewActionsKey = JSON.stringify(previewActions);
-  const changesKey = JSON.stringify(changes);
-  const editCommand = useDraftCommand(changesKey);
-  const validationCommand = useDraftCommand(previewActionsKey);
-  const [previewCommand, setPreviewCommand] = useState(validationCommand);
-  const pricingKey = billingPreviewKey(detail, previewActions);
-  const requestPricingKey = billingPreviewKey(detail, previewCommand.actions);
-  // This query only subscribes to quotes returned by the workflow request.
-  const quote = useQuery<WorkflowBilling>({
-    queryKey: ["workflow-billing-preview", detail.id, pricingKey],
-    queryFn: skipToken,
-  });
-  useEffect(() => {
-    const timer = setTimeout(() => setPreviewCommand(validationCommand), 300);
-    return () => clearTimeout(timer);
-  }, [validationCommand]);
-  const editPreview = useQuery({
-    queryKey: ["workflow-edit-preview", detail.id, previewCommand, requestPricingKey],
-    queryFn: async () => {
-      const result = await previewWorkflow(detail.id, previewCommand);
-      queryClient.setQueryData(
-        ["workflow-billing-preview", detail.id, requestPricingKey],
-        result.billing,
-      );
-      return result;
-    },
-    enabled:
-      validationNeeded &&
-      previewCommand.actions.length > 0 &&
-      previewCommand === validationCommand &&
-      pricingValid,
-    retry: false,
-    refetchOnWindowFocus: false,
-  });
-  const previewCurrent = previewCommand === validationCommand;
-  const previewLoaded = previewCurrent && editPreview.isSuccess && !editPreview.isFetching;
-  const previewReady =
-    !validationNeeded || (previewLoaded && editPreview.data.validation.issues.length === 0);
-  const previewFields = useMemo(
-    () =>
-      validationNeeded && previewCurrent && !editPreview.isFetching
-        ? editPreview.data && editPreview.isSuccess
-          ? previewFieldErrors(editPreview.data.validation.issues, values.rooms)
-          : serverFieldErrors(editPreview.error, "details")
-        : null,
-    [
-      editPreview.error,
-      editPreview.data,
-      editPreview.isSuccess,
-      editPreview.isFetching,
-      validationNeeded,
-      previewCurrent,
-      values.rooms,
-    ],
-  );
-  useEffect(() => {
-    if (previewFields) setServerErrors(form, previewFields);
-    else form.setErrorMap({ onServer: undefined });
-  }, [form, previewFields]);
-  const billing = billingDirty ? (pricingValid ? quote.data : undefined) : detail;
-  const billingRooms = detailsSummaryRooms(values, billing?.rooms);
+  const billing = summary.billing;
   const saveMutation = useWorkflowCommand(detail.id);
   const statusMutation = useWorkflowCommand(detail.id);
   const [statusSaver] = useState(createWorkflowSaver);
@@ -505,12 +383,6 @@ export function BookingEditor({
   useEffect(() => {
     onDirtyChange?.(draftDirty || cancellationDirty);
   }, [draftDirty, cancellationDirty, onDirtyChange]);
-  function resetDetails(saved: ReservationDetail) {
-    rejectedFields.current = null;
-    const next = detailsDefaults(saved);
-    setDefaults(next);
-    form.reset(next);
-  }
   async function savePayment(title: string, actions: WorkflowAction[]) {
     await discountSave.current;
     await paymentSaver(actions, (command) =>
@@ -551,11 +423,9 @@ export function BookingEditor({
     }
   }
   async function saveChanges() {
-    if (!countsValid) return;
     if (
       tab !== "details" ||
-      !dirty ||
-      !previewReady ||
+      !stayDraft.submission.allowed ||
       savingDetails.current ||
       isReservationSaving(queryClient, detail.id) ||
       saveMutation.isPending ||
@@ -568,17 +438,13 @@ export function BookingEditor({
       await discountSave.current;
       const saved = await saveMutation.mutateAsync({
         id: detail.id,
-        command: editCommand,
+        command: stayDraft.submission.command,
       });
       resetDetails(saved);
       toast.add({ title: "Detalles guardados", type: "success" });
       onSaved?.();
     } catch (e) {
-      const fields = serverFieldErrors(e, "details");
-      if (fields) {
-        rejectedFields.current = { values, fields };
-        form.setErrorMap({ onDynamic: { fields } });
-      } else toastError("No se pudo guardar", e);
+      if (!stayDraft.rejectSave(e)) toastError("No se pudo guardar", e);
     } finally {
       savingDetails.current = false;
     }
@@ -653,14 +519,7 @@ export function BookingEditor({
                       name="checkIn"
                       listeners={{
                         onChange: ({ value }) => {
-                          const next = changeCheckIn(
-                            {
-                              checkIn: value,
-                              checkOut: form.getFieldValue("checkOut"),
-                            },
-                            value,
-                          );
-                          form.setFieldValue("checkOut", next.checkOut);
+                          stayDraft.changeCheckIn(value);
                         },
                       }}
                     >
@@ -672,7 +531,7 @@ export function BookingEditor({
                           label="Check-out"
                           type="date"
                           required
-                          min={minimumCheckOut(common.checkIn)}
+                          min={stayDraft.minimumCheckOut}
                         />
                       )}
                     </form.AppField>
@@ -705,7 +564,7 @@ export function BookingEditor({
                                 <CompactRoomFields
                                   form={form}
                                   roomIndex={values.rooms.findIndex((room) => room.id === draft.id)}
-                                  errors={{ ...localErrors, ...previewFields }}
+                                  errors={errors}
                                   reservationId={detail.id}
                                   blockedRoomIds={overlappingRoomIds(
                                     activeDrafts
@@ -765,7 +624,7 @@ export function BookingEditor({
                             Agregar habitación
                           </Button>
                         )}
-                        {localErrors.rooms && <FieldError>{localErrors.rooms}</FieldError>}
+                        {errors.rooms && <FieldError>{errors.rooms}</FieldError>}
                       </section>
                     )}
                   </form.Field>
@@ -811,7 +670,7 @@ export function BookingEditor({
           <aside className="min-w-0 md:self-start">
             <BookingSummary
               cancelled={reservationState === "cancelled"}
-              rooms={billingRooms.map((room) => ({
+              rooms={summary.rooms.map((room) => ({
                 key: room.key,
                 typeName:
                   roomTypes.data?.find((type) => type.id === room.roomTypeId)?.name ??
@@ -834,34 +693,22 @@ export function BookingEditor({
                   : null
               }
               showPayments
-              message={
-                billingDirty &&
-                pricingValid &&
-                !billing &&
-                (!editPreview.error || !previewCurrent || editPreview.isFetching)
-                  ? "Calculando…"
-                  : null
-              }
-              provisional={billingDirty}
+              message={summary.calculating ? "Calculando…" : null}
+              provisional={summary.provisional}
             />
-            {validationNeeded &&
-              pricingValid &&
-              previewCurrent &&
-              !editPreview.isFetching &&
-              !previewFields &&
-              editPreview.error && (
-                <div className="flex flex-col items-start gap-2">
-                  <FieldError>{editPreview.error.message}</FieldError>
-                  <Button
-                    type="button"
-                    variant="outline"
-                    disabled={busy || discountMutation.isPending}
-                    onClick={() => void editPreview.refetch()}
-                  >
-                    Reintentar
-                  </Button>
-                </div>
-              )}
+            {summary.error && (
+              <div className="flex flex-col items-start gap-2">
+                <FieldError>{summary.error.message}</FieldError>
+                <Button
+                  type="button"
+                  variant="outline"
+                  disabled={busy || discountMutation.isPending}
+                  onClick={() => void summary.retry()}
+                >
+                  Reintentar
+                </Button>
+              </div>
+            )}
           </aside>
         </div>
       </Tabs>
@@ -973,17 +820,7 @@ export function BookingEditor({
               </Button>
             )}
             {tab === "details" && (
-              <Button
-                type="submit"
-                form={formId}
-                disabled={
-                  !dirty ||
-                  roomTypes.isPending ||
-                  roomTypes.isError ||
-                  (pricingValid && !previewReady) ||
-                  busy
-                }
-              >
+              <Button type="submit" form={formId} disabled={stayDraft.submission.disabled || busy}>
                 {saveMutation.isPending && <Spinner data-icon="inline-start" />}
                 {saveMutation.isPending ? "Guardando…" : "Guardar cambios"}
               </Button>
@@ -993,7 +830,7 @@ export function BookingEditor({
                 type="button"
                 variant="outline"
                 disabled={!dirty || busy || discountMutation.isPending}
-                onClick={() => form.reset(defaults)}
+                onClick={stayDraft.discard}
               >
                 Descartar cambios
               </Button>
