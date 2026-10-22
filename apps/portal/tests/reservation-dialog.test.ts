@@ -816,6 +816,149 @@ const createTarget = {
   checkIn: "2026-10-14",
 };
 
+it("prioritizes the mobile details draft and saves it after visiting another tab", async () => {
+  const originalWidth = window.innerWidth;
+  const originalHeight = window.innerHeight;
+  let saved = detail();
+  const writes: WorkflowCommand[] = [];
+  mockApi(
+    async (_path, command) => {
+      writes.push(command);
+      saved = { ...saved, notes: "Llegada tarde" };
+      return Response.json(saved);
+    },
+    { reservation: () => saved },
+  );
+  const hasButton = (label: string) =>
+    [...window.document.querySelectorAll("button")].some(
+      (item) => item.textContent.trim() === label,
+    );
+  try {
+    window.happyDOM.setWindowSize({ width: 390, height: 844 });
+    await render(
+      React.createElement(dialogs.RoomBookingDialog, {
+        target: {
+          mode: "edit",
+          reservationId: saved.id,
+          roomId: "room-1",
+          number: "101",
+          typeName: "Doble",
+        },
+        onClose: () => {},
+        onViewReservation: () => {},
+      }),
+    );
+    await until(() => hasButton("Hacer check-in"), "The saved reservation actions must load");
+    assert.equal(hasButton("Guardar cambios"), false);
+    assert.equal(hasButton("Descartar cambios"), false);
+    await fill("notes", "Llegada tarde");
+    assert.equal(hasButton("Hacer check-in"), false);
+    assert.equal(button("Guardar cambios").disabled, false);
+    await React.act(async () => button("Huéspedes").click());
+    assert.ok(button("Volver a Detalles"));
+    assert.equal(control("notes").value, "Llegada tarde");
+    await React.act(async () => button("Volver a Detalles").click());
+    await React.act(async () => button("Guardar cambios").click());
+    await until(
+      () => hasButton("Hacer check-in"),
+      "Saving restores the saved-state action priority",
+    );
+    assert.equal(writes.length, 1);
+    assert.deepEqual(writes[0].actions, [{ type: "notes", notes: "Llegada tarde" }]);
+    assert.equal(control("notes").value, "Llegada tarde");
+    await fill("notes", "Cambio descartable");
+    await React.act(async () => button("Descartar cambios").click());
+    assert.equal(control("notes").value, "Llegada tarde");
+    assert.ok(button("Hacer check-in"));
+    assert.equal(writes.length, 1);
+  } finally {
+    window.happyDOM.setWindowSize({ width: originalWidth, height: originalHeight });
+  }
+});
+
+it("expands the mobile reservation bill without losing details or discount drafts", async () => {
+  const originalWidth = window.innerWidth;
+  const originalHeight = window.innerHeight;
+  const writes: WorkflowCommand[] = [];
+  mockApi(async (_path, command) => {
+    writes.push(command);
+    return Response.json(detail());
+  });
+  try {
+    window.happyDOM.setWindowSize({ width: 390, height: 844 });
+    await render(React.createElement(dialogs.BookingEditor, { detail: detail() }));
+    const expand = button("Ver desglose");
+    assert.equal(expand.getAttribute("aria-expanded"), "false");
+    const bill = window.document.getElementById(expand.getAttribute("aria-controls")!)!;
+    assert.ok(bill);
+    assert.equal(bill.hasAttribute("hidden"), true);
+    const financials = window.document.querySelector('[aria-label="Importes de la reserva"]')!;
+    assert.ok(financials.textContent.replace(/\s/g, "").includes("S/300"));
+    await fill("notes", "Llegada tarde");
+    await React.act(async () => expand.click());
+    assert.equal(bill.hasAttribute("hidden"), false);
+    const discount = bill.querySelector<HTMLInputElement>('[aria-label="Descuento en soles"]')!;
+    await fillControl(discount, "25");
+    await React.act(async () => button("Ocultar desglose").click());
+    assert.equal(bill.hasAttribute("hidden"), true);
+    await React.act(async () => button("Ver desglose").click());
+    assert.equal(bill.querySelector('[aria-label="Descuento en soles"]'), discount);
+    assert.equal(discount.value, "25");
+    assert.equal(control("notes").value, "Llegada tarde");
+    assert.equal(writes.length, 0, "Expanding and collapsing must not submit either draft");
+  } finally {
+    window.happyDOM.setWindowSize({ width: originalWidth, height: originalHeight });
+  }
+});
+
+it("announces the mobile bill preview without showing stale totals and labels credit correctly", async () => {
+  const originalWidth = window.innerWidth;
+  const originalHeight = window.innerHeight;
+  const saved = { ...detail(), paidCents: 50000, balanceCents: -20000 };
+  let finishPreview!: () => void;
+  mockApi(async (path) => {
+    assert.ok(path.endsWith("/preview"), "Editing dates must only request a preview");
+    return new Promise<Response>((resolve) => {
+      finishPreview = () =>
+        resolve(
+          previewResponse({
+            ...saved,
+            checkOut: "2026-10-17",
+            subtotalCents: 45000,
+            totalCents: 45000,
+            balanceCents: -5000,
+            rooms: [{ ...saved.rooms[0], subtotalCents: 45000, totalCents: 45000 }],
+          }),
+        );
+    });
+  });
+  try {
+    window.happyDOM.setWindowSize({ width: 390, height: 844 });
+    await render(React.createElement(dialogs.BookingEditor, { detail: saved }));
+    const financials = window.document.querySelector('[aria-label="Importes de la reserva"]')!;
+    assert.equal(financials.getAttribute("aria-live"), "polite");
+    const text = () => financials.textContent.replace(/\s/g, "");
+    assert.ok(text().includes("SaldoafavorS/200"));
+    await React.act(async () => fieldTrigger("Check-out").click());
+    const day = [...window.document.querySelectorAll<HTMLButtonElement>("button[data-day]")].find(
+      (item) => item.textContent.trim() === "17",
+    )!;
+    assert.ok(day);
+    await React.act(async () => day.click());
+    assert.ok(text().includes("Vistaprevia·Singuardar"));
+    assert.ok(text().includes("Calculando…"));
+    assert.equal(text().includes("S/300"), false, "Do not show the saved total as the new quote");
+    assert.equal(text().includes("S/200"), false, "Do not show stale credit while repricing");
+    await until(() => !!finishPreview, "The updated stay must request its price");
+    await React.act(async () => finishPreview());
+    await until(() => text().includes("S/450"), "The persistent total must use the server preview");
+    assert.ok(text().includes("SaldoafavorS/50"));
+    assert.equal(button("Guardar cambios").disabled, false);
+  } finally {
+    window.happyDOM.setWindowSize({ width: originalWidth, height: originalHeight });
+  }
+});
+
 function mockCreationApi(handler: (input: CreateBookingInput) => Promise<Response>) {
   mockApi(async (path, input) => {
     assert.equal(path, "/reservations");
@@ -1667,6 +1810,70 @@ it("preserves a failed creation draft and safely retries until its payload chang
   await submit();
   await until(() => writes.length === 3, "Updated draft must save");
   assert.notEqual(writes[2].requestId, writes[1].requestId);
+});
+
+it("keeps mobile edit drafts mounted as the keyboard viewport and screen size change", async () => {
+  mockApi(async () => {
+    throw new Error("Resizing must not save the reservation");
+  });
+  const descriptor = Object.getOwnPropertyDescriptor(window, "visualViewport");
+  const viewport = Object.assign(new window.EventTarget(), { height: 844, offsetTop: 0 });
+  Object.defineProperty(window, "visualViewport", { configurable: true, value: viewport });
+  const originalWidth = window.innerWidth;
+  const originalHeight = window.innerHeight;
+  try {
+    window.happyDOM.setWindowSize({ width: 390, height: 844 });
+    await render(
+      React.createElement(dialogs.RoomBookingDialog, {
+        target: {
+          mode: "edit",
+          reservationId: "reservation-1",
+          roomId: "room-1",
+          number: "101",
+          typeName: "Doble",
+        },
+        onClose: () => {},
+        onViewReservation: () => {},
+      }),
+    );
+    await until(
+      () => !!window.document.querySelector('[name="notes"]'),
+      "The edit dialog must load",
+    );
+    await fill("notes", "Llegada tarde");
+    const notes = control("notes");
+    await React.act(async () => button("Ver desglose").click());
+    const discount = window.document.querySelector<HTMLInputElement>(
+      '[aria-label="Descuento en soles"]',
+    )!;
+    await fillControl(discount, "25");
+    const popup = window.document.querySelector<HTMLElement>('[role="dialog"]')!;
+    await React.act(async () => {
+      viewport.height = 420;
+      viewport.offsetTop = 30;
+      viewport.dispatchEvent(new window.Event("resize"));
+      viewport.dispatchEvent(new window.Event("scroll"));
+    });
+    assert.equal(popup.style.getPropertyValue("--reservation-viewport-height"), "420px");
+    assert.equal(popup.style.getPropertyValue("--reservation-viewport-top"), "30px");
+    await React.act(async () => window.happyDOM.setWindowSize({ width: 1024, height: 768 }));
+    assert.ok(control("notes") === notes, "Resizing must retain the details input");
+    assert.ok(
+      window.document.querySelector('[aria-label="Descuento en soles"]') === discount,
+      "Resizing must retain the discount input",
+    );
+    assert.equal(notes.value, "Llegada tarde");
+    assert.equal(discount.value, "25");
+    await React.act(async () => button("Cerrar").click());
+    assert.ok(button("Seguir editando"));
+    await React.act(async () => button("Seguir editando").click());
+    assert.equal(notes.value, "Llegada tarde");
+    assert.equal(discount.value, "25");
+  } finally {
+    if (descriptor) Object.defineProperty(window, "visualViewport", descriptor);
+    else Reflect.deleteProperty(window, "visualViewport");
+    window.happyDOM.setWindowSize({ width: originalWidth, height: originalHeight });
+  }
 });
 
 it("preserves the reservation and discount drafts when the keyboard viewport or screen size changes", async () => {

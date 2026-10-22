@@ -85,6 +85,24 @@ Mobile reserved rooms use flat sections: a single room has no extra numbered
 heading or removal action; multiple rooms have separators, numbered headings, and
 quiet **Quitar** actions. Any room can be removed while more than one remains.
 
+Editing an existing reservation from a calendar bar also uses a full-screen editor
+below 768px. The compact contact/status header, **Detalles / Huéspedes / Pagos**
+tabs, and bottom controls remain visible while only the content scrolls. Stay
+fields stack vertically; reserved rooms use flat sections with numbered headings
+and quiet **Quitar** actions only when multiple rooms remain. Dates still apply to
+the whole reservation. The persistent financial strip shows total and balance,
+including settled and credit balances, and labels unsaved pricing previews.
+Unavailable prices are not replaced with stale saved amounts. **Ver desglose**
+expands the complete bill inside the scrolling content without replacing its
+discount draft or changing discount autosaving. While details are dirty, the
+mobile footer prioritizes **Guardar cambios / Descartar cambios**; other tabs
+offer **Volver a Detalles** before saving that draft. Otherwise, it prioritizes
+the applicable check-in/checkout action. **Más acciones de reserva** retains
+cancellation and status corrections with their existing safeguards. Keyboard
+viewport resizing, safe-area spacing, and dirty-close protection follow creation;
+there is no swipe-to-dismiss. Closing leaves the calendar and its scroll position
+in place. Desktop editing and the full reservation page retain their layouts.
+
 `/reservations/:id` is a read-first overview with back navigation, booking contact
 name with status/date badges, the reservation code beneath it,
 and a right-aligned **Estado de la reserva** select. Selecting Confirmada,
