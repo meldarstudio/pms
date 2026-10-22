@@ -344,7 +344,7 @@ export function RoomCalendar({
 }) {
   const { today } = usePropertyCalendar();
   const isMobile = useIsMobile();
-  const roomColumnWidth = isMobile ? 6 : 10;
+  const roomColumnWidth = isMobile ? 8 : 10;
   const queryClient = useQueryClient();
   const [pickerOpen, setPickerOpen] = useState(false);
   const [closureTarget, setClosureTarget] = useState<ClosureTarget | null>(null);
