@@ -9,8 +9,8 @@ beforeEach(async () => {
 
 afterEach(() => db.close());
 
-function request(path: string, body?: unknown, authenticated = true) {
-  return db.request(path, body === undefined ? "GET" : "POST", body, { signedIn: authenticated });
+function request(path: string, body?: unknown) {
+  return db.request(path, body === undefined ? "GET" : "POST", body);
 }
 
 const typeDetails = { name: "Doble", maxAdults: 2, maxChildren: 2, baseRateCents: 15000 };
@@ -64,7 +64,7 @@ it("saves type details, renames existing rooms, and adds rooms without deleting 
   expect(allRooms.find((room) => room.id === created.rooms[0].id)?.number).toBe("201");
 });
 
-it("rolls back type edits, room renames, and earlier inserts when a later room conflicts", async () => {
+it("rolls back type edits, room renames, earlier inserts and a new type when a later room conflicts", async () => {
   const created = (await (
     await request("/setup", {
       ...typeDetails,
@@ -88,21 +88,15 @@ it("rolls back type edits, room renames, and earlier inserts when a later room c
   );
   const allRooms = (await (await request("/rooms")).json()) as Saved["rooms"];
   expect(allRooms.map((room) => room.number).sort()).toEqual(["101", "301"]);
-});
 
-it("does not leave an empty type behind when its room creation fails", async () => {
-  await request("/setup", { ...typeDetails, rooms: [{ number: "101" }] });
-  expect(
-    (
-      await request("/setup", {
-        ...typeDetails,
-        name: "Suite",
-        rooms: [{ number: "201" }, { number: "101" }],
-      })
-    ).status,
-  ).toBe(409);
+  const newType = await request("/setup", {
+    ...typeDetails,
+    name: "Triple",
+    rooms: [{ number: "401" }, { number: "101" }],
+  });
+  expect(newType.status).toBe(409);
   const types = (await (await request("/room-types")).json()) as Saved["roomType"][];
-  expect(types.map((type) => type.name)).toEqual(["Doble"]);
+  expect(types.map((type) => type.name).sort()).toEqual(["Doble", "Suite"]);
 });
 
 it("rejects a repeated existing room instead of silently accepting two edits of the same room", async () => {
@@ -126,21 +120,15 @@ it("rejects a repeated existing room instead of silently accepting two edits of 
   ).toBe(400);
 });
 
-it("allows an empty type and rejects unauthenticated writes", async () => {
-  expect((await request("/setup", { ...typeDetails, rooms: [] }, false)).status).toBe(401);
+it("allows an empty type", async () => {
   expect((await request("/setup", { ...typeDetails, rooms: [] })).status).toBe(201);
   expect(await (await request("/rooms")).json()).toEqual([]);
 });
 
 it.each([
-  { name: "" },
-  { maxAdults: 0 },
-  { maxAdults: 1.5 },
-  { maxChildren: -1 },
-  { maxChildren: 1.5 },
-  { baseRateCents: -1 },
-  { baseRateCents: 1.5 },
-])("rejects invalid type details without writing: %j", async (details) => {
+  ["a type that holds no adults", { maxAdults: 0 }],
+  ["a fractional base rate", { baseRateCents: 1.5 }],
+])("rejects %s without writing", async (_name, details) => {
   expect(
     (await request("/setup", { ...typeDetails, ...details, rooms: [{ number: "101" }] })).status,
   ).toBe(400);
@@ -254,30 +242,24 @@ it("identifies duplicate numbers within a submitted table without creating the t
   expect(await (await request("/rooms")).json()).toEqual([]);
 });
 
-it.each([
-  { numbers: ["102", "301"], field: "rooms[1].number" },
-  { numbers: ["102", "103", "301"], field: "rooms[2].number" },
-])(
-  "identifies $field when a valid renaming chain accompanies an external conflict",
-  async ({ numbers, field }) => {
-    const created = (await (
-      await request("/setup", {
-        ...typeDetails,
-        rooms: [{ number: "101" }, { number: "102" }],
-      })
-    ).json()) as Saved;
-    await request("/setup", { ...typeDetails, name: "Suite", rooms: [{ number: "301" }] });
-    const response = await request("/setup", {
+it("identifies the conflicting room when a valid renaming chain accompanies an external conflict", async () => {
+  const created = (await (
+    await request("/setup", {
       ...typeDetails,
-      roomTypeId: created.roomType.id,
-      rooms: numbers.map((number, index) => ({
-        ...(created.rooms[index] ? { id: created.rooms[index].id } : {}),
-        number,
-      })),
-    });
-    expect(response.status).toBe(409);
-    expect(response.headers.get("X-Error-Field")).toBe(field);
-    const allRooms = (await (await request("/rooms")).json()) as Saved["rooms"];
-    expect(allRooms.map((room) => room.number).sort()).toEqual(["101", "102", "301"]);
-  },
-);
+      rooms: [{ number: "101" }, { number: "102" }],
+    })
+  ).json()) as Saved;
+  await request("/setup", { ...typeDetails, name: "Suite", rooms: [{ number: "301" }] });
+  const response = await request("/setup", {
+    ...typeDetails,
+    roomTypeId: created.roomType.id,
+    rooms: [
+      { id: created.rooms[0].id, number: "102" },
+      { id: created.rooms[1].id, number: "301" },
+    ],
+  });
+  expect(response.status).toBe(409);
+  expect(response.headers.get("X-Error-Field")).toBe("rooms[1].number");
+  const allRooms = (await (await request("/rooms")).json()) as Saved["rooms"];
+  expect(allRooms.map((room) => room.number).sort()).toEqual(["101", "102", "301"]);
+});

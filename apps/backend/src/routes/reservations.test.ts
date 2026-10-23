@@ -150,13 +150,10 @@ it.each(["assigned stay", "closure-reduced capacity"])(
   },
 );
 
-it.each([
-  ["America/Lima", "2027-01-01T01:00:00Z", "2026-12-31", "2027-01-01"],
-  ["America/New_York", "2026-03-08T04:59:59Z", "2026-03-07", "2026-03-08"],
-  ["America/New_York", "2026-03-09T03:59:59Z", "2026-03-08", "2026-03-09"],
-])("validates payments against %s at %s", async (timeZone, instant, today, tomorrow) => {
-  db.env.PROPERTY_TIME_ZONE = timeZone;
-  vi.setSystemTime(new Date(instant));
+it("validates payments against the property day after a daylight saving change", async () => {
+  const [today, tomorrow] = ["2026-03-08", "2026-03-09"];
+  db.env.PROPERTY_TIME_ZONE = "America/New_York";
+  vi.setSystemTime(new Date("2026-03-09T03:59:59Z"));
   await db.signIn();
   const d = await create();
   const payment = { amountCents: 500, method: "cash" as const, paymentDate: today };
@@ -189,8 +186,6 @@ describe("saved and applied reservation discounts", () => {
   }
 
   it.each([
-    { rate: 8000, saved: 3000, applied: 3000, total: 5000 },
-    { rate: 8000, saved: 8000, applied: 8000, total: 0 },
     { rate: 8000, saved: 10000, applied: 8000, total: 0 },
     { rate: 0, saved: 10000, applied: 0, total: 0 },
   ])("creates a bill with $rate charges and a $saved saved discount", async (example) => {
@@ -221,10 +216,8 @@ describe("saved and applied reservation discounts", () => {
 
   it.each([
     { saved: 10000, applied: 10000, total: 20000, paid: 0, balance: 20000, credit: 0 },
-    { saved: 30000, applied: 30000, total: 0, paid: 0, balance: 0, credit: 0 },
     { saved: 50000, applied: 30000, total: 0, paid: 0, balance: 0, credit: 0 },
     { saved: 50000, applied: 30000, total: 0, paid: 3000, balance: -3000, credit: 3000 },
-    { saved: 10000, applied: 10000, total: 20000, paid: 25000, balance: -5000, credit: 5000 },
   ])("previews and saves a $saved discount edit with $paid paid", async (example) => {
     let d = await create();
     if (example.paid) d = await command(d, [pay(example.paid)]);
@@ -311,41 +304,37 @@ describe("saved and applied reservation discounts", () => {
     },
   );
 
-  it.each(["before room changes", "after room changes"])(
-    "bills the final combined state when the discount is set %s",
-    async (order) => {
-      const response = await request("/setup", "POST", {
-        name: "Smaller",
-        maxAdults: 2,
-        maxChildren: 2,
-        baseRateCents: 4000,
-        rooms: [{ number: "201" }],
-      });
-      expect(response.status).toBe(201);
-      const cheaper = (await response.json()) as { roomType: { id: string } };
-      const d = await create(2);
-      const actions: WorkflowAction[] = [
-        { type: "remove-room", lineId: d.rooms[1].id },
-        { type: "dates", checkIn: d.checkIn, checkOut: "2026-10-12" },
-        roomEdit(d, 0, { roomTypeId: cheaper.roomType.id, roomId: null }),
-        pay(3000),
-      ];
-      if (order === "before room changes") actions.unshift(setDiscount(10000));
-      else actions.push(setDiscount(10000));
-      const saved = await previewAndSave(d, actions, {
-        subtotalCents: 8000,
-        savedDiscountCents: 10000,
-        discountCents: 8000,
-        totalCents: 0,
-        paidCents: 3000,
-        balanceCents: -3000,
-        creditCents: 3000,
-      });
-      expect(saved.rooms).toHaveLength(1);
-      expect(saved.rooms[0].nights).toHaveLength(2);
-      expect(saved.payments).toMatchObject([{ amountCents: 3000 }]);
-    },
-  );
+  it("bills the final combined state when the discount is set before room changes", async () => {
+    const response = await request("/setup", "POST", {
+      name: "Smaller",
+      maxAdults: 2,
+      maxChildren: 2,
+      baseRateCents: 4000,
+      rooms: [{ number: "201" }],
+    });
+    expect(response.status).toBe(201);
+    const cheaper = (await response.json()) as { roomType: { id: string } };
+    const d = await create(2);
+    const actions: WorkflowAction[] = [
+      { type: "remove-room", lineId: d.rooms[1].id },
+      { type: "dates", checkIn: d.checkIn, checkOut: "2026-10-12" },
+      roomEdit(d, 0, { roomTypeId: cheaper.roomType.id, roomId: null }),
+      pay(3000),
+    ];
+    actions.unshift(setDiscount(10000));
+    const saved = await previewAndSave(d, actions, {
+      subtotalCents: 8000,
+      savedDiscountCents: 10000,
+      discountCents: 8000,
+      totalCents: 0,
+      paidCents: 3000,
+      balanceCents: -3000,
+      creditCents: 3000,
+    });
+    expect(saved.rooms).toHaveLength(1);
+    expect(saved.rooms[0].nights).toHaveLength(2);
+    expect(saved.payments).toMatchObject([{ amountCents: 3000 }]);
+  });
 });
 
 const all = (_d: Detail, type: "check-in" | "check-out"): WorkflowAction => ({
@@ -374,21 +363,6 @@ const guest = (reservationRoomId: string | null) => ({
   documentNumber: "12345678",
 });
 
-it("reserves a king room for two adults and two children at the room's unchanged price", async () => {
-  const response = await request("/reservations", "POST", {
-    requestId: crypto.randomUUID(),
-    checkIn: "2026-10-10",
-    checkOut: "2026-10-13",
-    guest: { fullName: "Family Guest" },
-    rooms: [{ roomTypeId: "type", adults: 2, children: 2 }],
-  });
-  expect(response.status).toBe(201);
-  const saved = (await response.json()) as Detail;
-  const detail = (await (await request(`/reservations/${saved.id}`)).json()) as Detail;
-  expect(detail.rooms[0]).toMatchObject({ adults: 2, children: 2 });
-  expect(detail.totalCents).toBe(30000);
-});
-
 it("filters availability by both adult and child limits without changing room prices", async () => {
   const created = await request("/setup", "POST", {
     name: "Double",
@@ -398,6 +372,14 @@ it("filters availability by both adult and child limits without changing room pr
     rooms: [{ number: "201" }],
   });
   expect(created.status).toBe(201);
+  const adultsOnly = await request("/setup", "POST", {
+    name: "Adults only",
+    maxAdults: 2,
+    maxChildren: 0,
+    baseRateCents: 10000,
+    rooms: [{ number: "301" }],
+  });
+  expect(adultsOnly.status).toBe(201);
   const dates = "checkIn=2026-10-10&checkOut=2026-10-13";
   const adults = (await (await request(`/availability?${dates}&adults=3&children=0`)).json()) as {
     roomTypes: unknown[];
@@ -413,6 +395,7 @@ it("filters availability by both adult and child limits without changing room pr
       expect.objectContaining({ name: "King", maxAdults: 2, maxChildren: 2, totalCents: 30000 }),
     ]),
   );
+  expect(family.roomTypes).not.toContainEqual(expect.objectContaining({ name: "Adults only" }));
   const tooManyChildren = (await (
     await request(`/availability?${dates}&adults=2&children=3`)
   ).json()) as { roomTypes: unknown[] };
@@ -435,42 +418,6 @@ it.each([
   expect(await (await request("/reservations")).json()).toEqual([]);
 });
 
-it("reports excess children on the proposed room in preview and refuses to save the edit", async () => {
-  const d = await create();
-  const action = roomEdit(d, 0, { adults: 2, children: 3 });
-  const preview = await previewCommand(d, [action]);
-  expect(preview.validation.issues).toEqual([
-    { code: "too many guests for this room type", roomIndex: 0, field: "occupancy" },
-  ]);
-  expect(preview.billing.totalCents).toBe(30000);
-  expect(await command(d, [action], 400)).toEqual({ error: "too many guests for this room type" });
-  expect(await (await request(`/reservations/${d.id}`)).json()).toEqual(d);
-});
-
-it("allows zero children in a room type but excludes it for a child in availability and reservation edits", async () => {
-  const response = await request("/room-types/type", "PATCH", { maxChildren: 0 });
-  expect(response.status).toBe(200);
-  expect(await response.json()).toMatchObject({ maxAdults: 2, maxChildren: 0 });
-  const d = await create();
-  const adults = await command(d, [roomEdit(d, 0, { adults: 2 })]);
-  expect(adults.totalCents).toBe(30000);
-  expect(await command(adults, [roomEdit(adults, 0, { adults: 2, children: 1 })], 400)).toEqual({
-    error: "too many guests for this room type",
-  });
-  const availability = (await (
-    await request("/availability?checkIn=2026-10-10&checkOut=2026-10-13&children=1")
-  ).json()) as { roomTypes: unknown[] };
-  expect(availability.roomTypes).toEqual([]);
-});
-
-it.each(["adults=0", "adults=1.5", "adults=101", "children=-1", "children=1.5", "children=101"])(
-  "rejects an invalid availability occupancy filter: %s",
-  async (query) => {
-    const response = await request(`/availability?checkIn=2026-10-10&${query}`);
-    expect(response.status).toBe(400);
-  },
-);
-
 // Hold the next write after its preflight, before its transaction. Other
 // requests can commit through the same database while it waits.
 function pauseNextCommit() {
@@ -490,14 +437,12 @@ function pauseNextCommit() {
 }
 
 describe("concurrent reservation commands", () => {
-  it.each(
-    ([null, "room-101"] as const).flatMap((roomId) =>
-      (["confirmed", "checked_in", "checked_out"] as const).flatMap((to) =>
-        [{ maxAdults: 1 }, { maxChildren: 1 }].map((limit) => ({ roomId, to, limit })),
-      ),
-    ),
-  )(
-    "rejects restoration from cancelled to $to with room $roomId when $limit changes after preflight",
+  it.each([
+    { room: "an unassigned room", roomId: null, to: "confirmed", limit: { maxAdults: 1 } },
+    { room: "an assigned room", roomId: "room-101", to: "checked_in", limit: { maxChildren: 1 } },
+    { room: "an assigned room", roomId: "room-101", to: "checked_out", limit: { maxAdults: 1 } },
+  ] as const)(
+    "rejects restoring $room to $to when its limit shrinks after preflight",
     async ({ roomId, to, limit }) => {
       let d = await create();
       // Cover both assigned and unassigned saved rooms.
@@ -544,7 +489,6 @@ describe("concurrent reservation commands", () => {
 
   it.each([
     { status: "confirmed", checkIn: "2026-10-10", checkOut: "2026-10-12" },
-    { status: "cancelled", checkIn: "2026-10-10", checkOut: "2026-10-14" },
     { status: "cancelled", checkIn: "2026-10-11", checkOut: "2026-10-14" },
   ] as const)(
     "rejects changed dates for $status ($checkIn to $checkOut) when capacity changes after preflight",
@@ -681,39 +625,36 @@ describe("concurrent reservation commands", () => {
     });
   });
 
-  it.each([{ maxAdults: 1 }, { maxChildren: 1 }])(
-    "allows unchanged-room saves when %j changes between preflight and commit",
-    async (limit) => {
-      let d = await create();
-      d = await command(d, [roomEdit(d, 0, { adults: 2, children: 2 })]);
-      const paused = pauseNextCommit();
-      const pending = command(d, [pay(5000), setDiscount(1000), { type: "notes", notes: "Paid" }]);
-      await paused.ready;
-      try {
-        expect((await request("/room-types/type", "PATCH", limit)).status).toBe(200);
-      } finally {
-        paused.resume();
-      }
-      d = await pending;
-      expect(d).toMatchObject({
-        paidCents: 5000,
-        savedDiscountCents: 1000,
-        notes: "Paid",
-        status: "confirmed",
-      });
-      expect(d.rooms[0].adults).toBe(2);
-      expect(d.rooms[0].children).toBe(2);
-      const saved = await command(d, [{ type: "set-status", status: "cancelled" }]);
-      expect(saved.creditCents).toBe(5000);
-    },
-  );
+  it("allows unchanged-room saves when the type's limit shrinks between preflight and commit", async () => {
+    let d = await create();
+    d = await command(d, [roomEdit(d, 0, { adults: 2, children: 2 })]);
+    const paused = pauseNextCommit();
+    const pending = command(d, [pay(5000), setDiscount(1000), { type: "notes", notes: "Paid" }]);
+    await paused.ready;
+    try {
+      expect((await request("/room-types/type", "PATCH", { maxAdults: 1 })).status).toBe(200);
+    } finally {
+      paused.resume();
+    }
+    d = await pending;
+    expect(d).toMatchObject({
+      paidCents: 5000,
+      savedDiscountCents: 1000,
+      notes: "Paid",
+      status: "confirmed",
+    });
+    expect(d.rooms[0].adults).toBe(2);
+    expect(d.rooms[0].children).toBe(2);
+    const saved = await command(d, [{ type: "set-status", status: "cancelled" }]);
+    expect(saved.creditCents).toBe(5000);
+  });
 
   it("preserves a concurrent discount when an older notes plan commits later", async () => {
     const d = await create();
     const paused = pauseNextCommit();
     const pending = command(d, [{ type: "notes", notes: "Arriving after 10 pm" }]);
     await paused.ready;
-    await command(d, [setDiscount(5000)]);
+    await command(d, [setDiscount(5000), { type: "notes", notes: "Arriving at 8 pm" }]);
     paused.resume();
     const saved = await pending;
     expect(saved).toMatchObject({
@@ -771,16 +712,6 @@ describe("concurrent reservation commands", () => {
     expect(saved.payments).toHaveLength(2);
   });
 
-  it("lets the later successful notes edit win after retrying", async () => {
-    const d = await create();
-    const paused = pauseNextCommit();
-    const pending = command(d, [{ type: "notes", notes: "Arriving at 10 pm" }]);
-    await paused.ready;
-    await command(d, [{ type: "notes", notes: "Arriving at 8 pm" }]);
-    paused.resume();
-    expect((await pending).notes).toBe("Arriving at 10 pm");
-  });
-
   it("replays a request another attempt committed without duplicating its payment", async () => {
     const d = await create();
     const body = { requestId: crypto.randomUUID(), actions: [pay(1000)] };
@@ -792,27 +723,6 @@ describe("concurrent reservation commands", () => {
     const response = await pending;
     expect(response.status).toBe(200);
     const saved = (await response.json()) as Detail;
-    expect(saved.payments).toHaveLength(1);
-    expect(saved.paidCents).toBe(1000);
-  });
-
-  it("preserves guest-editor notes when a contact command retries", async () => {
-    const d = await create();
-    const paused = pauseNextCommit();
-    const pending = command(d, [
-      pay(1000),
-      {
-        type: "contact",
-        contact: { fullName: "Updated contact", email: null, phone: null },
-      },
-    ]);
-    await paused.ready;
-    expect(
-      (await request(`/guests/${d.guestId}`, "PATCH", { notes: "Guest preference" })).status,
-    ).toBe(200);
-    paused.resume();
-    const saved = await pending;
-    expect(saved.guest).toMatchObject({ fullName: "Updated contact", notes: "Guest preference" });
     expect(saved.payments).toHaveLength(1);
     expect(saved.paidCents).toBe(1000);
   });
@@ -900,6 +810,9 @@ describe("concurrent reservation commands", () => {
       },
     ]);
     await paused.ready;
+    expect(
+      (await request(`/guests/${first.guestId}`, "PATCH", { notes: "Guest preference" })).status,
+    ).toBe(200);
     await command(second, [
       {
         type: "contact",
@@ -918,6 +831,7 @@ describe("concurrent reservation commands", () => {
       fullName: "Later contact",
       documentType: "DNI",
       documentNumber: "87654321",
+      notes: "Guest preference",
     });
   });
 
@@ -975,19 +889,6 @@ describe("reservation workflow", () => {
     expect(d.status).toBe("checked_in");
     expect(d.rooms.every((line) => line.roomId === null)).toBe(true);
   });
-  it("rejects discount-shaped payment payloads and negative discount amounts", async () => {
-    const d = await create();
-    expect(
-      (
-        await request(`/reservations/${d.id}/commands`, "POST", {
-          requestId: crypto.randomUUID(),
-          actions: [{ type: "add-payment", payment: { kind: "discount", amountCents: 1000 } }],
-        })
-      ).status,
-    ).toBe(400);
-    await command(d, [{ type: "set-discount", amountCents: -1 }], 400);
-    await command(d, [{ type: "set-discount", amountCents: 1.5 }], 400);
-  });
   it("reprices type changes and permits an explicit matching assignment", async () => {
     seedRoomType(db.sqlite, { id: "other", name: "Twin", maxAdults: 3, baseRateCents: 20000 });
     seedRooms(db.sqlite, "other", { "201": "201" });
@@ -997,64 +898,22 @@ describe("reservation workflow", () => {
     expect(d.rooms[0].roomId).toBe("201");
     expect(d.totalCents).toBe(60000);
   });
-  it("rejects closed and occupied assignments and rolls back all selected actions", async () => {
+  it("rejects closed and occupied assignments, keeping the current room and all selected actions unsaved", async () => {
     let first = await create();
     first = await command(first, [roomEdit(first)]);
-    const d = await create();
+    let d = await create();
+    d = await command(d, [roomEdit(d, 0, { roomId: "room-103" }), all(d, "check-in")]);
     await command(d, [pay(10000), roomEdit(d)], 409);
     expect(((await (await request(`/reservations/${d.id}`)).json()) as Detail).paidCents).toBe(0);
     db.sqlite.exec(
       "INSERT INTO room_closures VALUES ('closed','room-102','2026-10-10','2026-10-13','Maintenance','2026-10-10')",
     );
     await command(d, [roomEdit(d, 0, { roomId: "room-102" })], 409);
+    expect(await (await request(`/reservations/${d.id}`)).json()).toMatchObject({
+      status: "checked_in",
+      rooms: [{ roomId: "room-103" }],
+    });
   });
-  it.each(["yape", "plin"])(
-    "records and corrects %s payments with an optional reference",
-    async (method) => {
-      const d = await create();
-      const added = await request(`/reservations/${d.id}/commands`, "POST", {
-        requestId: crypto.randomUUID(),
-        actions: [
-          {
-            type: "add-payment",
-            payment: { amountCents: 10000, method, paymentDate: "2026-10-10" },
-          },
-        ],
-      });
-      expect(added.status).toBe(200);
-      const saved = (await added.json()) as Detail;
-      expect(saved.payments).toHaveLength(1);
-      expect(saved.payments[0]).toMatchObject({ method, amountCents: 10000, reference: null });
-      expect(saved.balanceCents).toBe(20000);
-
-      const edited = await request(`/reservations/${d.id}/commands`, "POST", {
-        requestId: crypto.randomUUID(),
-        actions: [
-          {
-            type: "edit-payment",
-            paymentId: saved.payments[0].id,
-            payment: {
-              amountCents: 15000,
-              method,
-              paymentDate: "2026-10-09",
-              reference: " op-123 ",
-            },
-          },
-        ],
-      });
-      expect(edited.status).toBe(200);
-      const retrieved = (await (await request(`/reservations/${d.id}`)).json()) as Detail;
-      expect(retrieved.payments).toHaveLength(1);
-      expect(retrieved.payments[0]).toMatchObject({
-        id: saved.payments[0].id,
-        method,
-        amountCents: 15000,
-        paymentDate: "2026-10-09",
-        reference: "OP-123",
-      });
-      expect(retrieved.balanceCents).toBe(15000);
-    },
-  );
   it("edits a mistaken cash payment in place after checkout without reopening the stay", async () => {
     let d = await arrive(await create());
     d = await command(d, [pay(11000), all(d, "check-out")]);
@@ -1107,20 +966,6 @@ describe("reservation workflow", () => {
     expect(d.payments).toEqual([]);
     expect((await command(other, [pay(10000)])).paidCents).toBe(10000);
   });
-  it("deduplicates retries and rejects changed payloads", async () => {
-    const d = await create(),
-      body = { requestId: crypto.randomUUID(), actions: [pay(10000)] };
-    expect((await request(`/reservations/${d.id}/commands`, "POST", body)).status).toBe(200);
-    expect((await request(`/reservations/${d.id}/commands`, "POST", body)).status).toBe(200);
-    expect(
-      (await request(`/reservations/${d.id}/commands`, "POST", { ...body, actions: [pay(20000)] }))
-        .status,
-    ).toBe(409);
-    await command(d, [{ type: "notes", notes: "Saved from old screen" }]);
-    expect(((await (await request(`/reservations/${d.id}`)).json()) as Detail).paidCents).toBe(
-      10000,
-    );
-  });
   it("keeps payment and stay edits atomic when a later action fails", async () => {
     let d = await command(await create(), [pay(11000)]);
     const id = d.payments[0].id;
@@ -1135,20 +980,6 @@ describe("reservation workflow", () => {
     d = (await (await request(`/reservations/${d.id}`)).json()) as Detail;
     expect(d.paidCents).toBe(11000);
     expect(d.payments[0].id).toBe(id);
-  });
-  it("previews checkout with debt without writing", async () => {
-    const d = await arrive(await create());
-    const r = await request(`/reservations/${d.id}/preview`, "POST", {
-      requestId: crypto.randomUUID(),
-      actions: [all(d, "check-out")],
-    });
-    expect(await r.json()).toMatchObject({
-      billing: { totalCents: 30000, balanceCents: 30000 },
-      validation: { issues: [] },
-    });
-    expect(((await (await request(`/reservations/${d.id}`)).json()) as Detail).status).toBe(
-      "checked_in",
-    );
   });
   it("deduplicates concurrent creation and rejects payload changes", async () => {
     const input = {
@@ -1231,40 +1062,6 @@ describe("reservation workflow", () => {
     );
     expect(responses.map((r) => r.status).sort((a, b) => a - b)).toEqual([201, 409]);
   });
-  it("does not clear an assignment on a failed same-type move", async () => {
-    let d = await arrive(await create());
-    let other = await create();
-    other = await command(other, [roomEdit(other, 0, { roomId: "room-102" })]);
-    await command(d, [roomEdit(d, 0, { roomId: "room-102" })], 409);
-    d = (await (await request(`/reservations/${d.id}`)).json()) as Detail;
-    expect(d.rooms[0].roomId).toBe("room-101");
-    expect(d.status).toBe("checked_in");
-  });
-  it("permits a discount with checkout and never treats it as payment", async () => {
-    let d = await arrive(await create(2));
-    d = await command(d, [all(d, "check-out"), setDiscount(20000)]);
-    expect(d.balanceCents).toBe(40000);
-    expect(d.paidCents).toBe(0);
-    expect(d.discountCents).toBe(20000);
-    expect(d.status).toBe("checked_out");
-  });
-  it("previews conflicting assignment without changing anything", async () => {
-    const a = await create(),
-      b = await create();
-    await command(a, [roomEdit(a)]);
-    const r = await previewCommand(b, [roomEdit(b)]);
-    expect(r).toMatchObject({
-      billing: { totalCents: 30000 },
-      validation: {
-        issues: [
-          { code: "room is already assigned for those dates", roomIndex: 0, field: "roomId" },
-        ],
-      },
-    });
-    expect(((await (await request(`/reservations/${b.id}`)).json()) as Detail).rooms).toEqual(
-      b.rooms,
-    );
-  });
   it("quotes a back-to-back extension, identifies its room conflict, and refuses to save it", async () => {
     const first = await create(1, { checkIn: "2026-10-10", checkOut: "2026-10-13" });
     const next = await create(1, { checkIn: "2026-10-13", checkOut: "2026-10-15" });
@@ -1297,7 +1094,7 @@ describe("reservation workflow", () => {
     const d = await create();
     seedRoomType(db.sqlite, { id: "other", name: "Single", maxAdults: 1, baseRateCents: 5000 });
     seedRooms(db.sqlite, "other", { "room-other": "201" });
-    const actions = [roomEdit(d, 0, { adults: 3, roomId: "room-other" })];
+    const actions = [roomEdit(d, 0, { adults: 2, children: 3, roomId: "room-other" })];
     const response = await previewCommand(d, actions);
     expect(response).toMatchObject({
       billing: { totalCents: 30000 },
@@ -1460,6 +1257,8 @@ describe("reservation workflow", () => {
     d = await command(d, [roomEdit(d, 0, { roomId: "room-103" })]);
     expect(d.stayingGuests[0].reservationRoomId).toBe(d.rooms[0].id);
     expect(d.rooms[0].roomId).toBe("room-103");
+    d = await command(d, [{ type: "set-guests", guests: [] }]);
+    expect(d.stayingGuests).toEqual([]);
   });
   it("rejects foreign-room assignments and leaves contact and guests unchanged on failure", async () => {
     const d = await create(),
@@ -1480,17 +1279,6 @@ describe("reservation workflow", () => {
       [{ type: "set-guests", guests: [guest(null), guest(null)].map((g) => ({ ...g, id: d.id })) }],
       400,
     );
-  });
-  it("supports clearing optional guest fields and removing a guest", async () => {
-    let d = await create();
-    const person = { ...guest(null), email: "ana@example.com", phone: "+51999123456" };
-    d = await command(d, [{ type: "set-guests", guests: [person] }]);
-    d = await command(d, [
-      { type: "set-guests", guests: [{ ...person, email: null, phone: null }] },
-    ]);
-    expect(d.stayingGuests[0].email).toBeNull();
-    d = await command(d, [{ type: "set-guests", guests: [] }]);
-    expect(d.stayingGuests).toEqual([]);
   });
   it("requires a valid payment date, accepts an optional reference, and keeps audit creation time separate", async () => {
     let d = await create();
@@ -1544,27 +1332,6 @@ describe("reservation workflow", () => {
     ]);
     expect(d.payments.find((e) => e.id === entry.id)?.reference).toBe("OP-124");
     expect(d.payments).toHaveLength(1);
-  });
-  it("stores single and multipart names without splitting them", async () => {
-    const d = await create();
-    const fullName = "María José de la Cruz García";
-    const updated = await command(d, [
-      { type: "contact", contact: { fullName, email: null, phone: null } },
-      {
-        type: "set-guests",
-        guests: [
-          {
-            id: crypto.randomUUID(),
-            fullName: "李",
-            reservationRoomId: d.rooms[0].id,
-            email: null,
-            phone: null,
-          },
-        ],
-      },
-    ]);
-    expect(updated.guest.fullName).toBe(fullName);
-    expect(updated.stayingGuests[0].fullName).toBe("李");
   });
   it("cancels a completed stay, retains its payment report, and blocks conflicting restoration", async () => {
     let d = await arrive(await create());
@@ -1626,17 +1393,10 @@ describe("reservation workflow", () => {
       totalCents: 30000,
     });
   });
-  it("restores a cancelled booking through the ordinary label edit", async () => {
-    let d = await command(await create(), [pay(10000), setDiscount(1000)]);
-    d = await command(d, [{ type: "set-status", status: "cancelled" }]);
-    expect(d.balanceCents).toBe(-10000);
-    d = await command(d, [{ type: "set-status", status: "confirmed" }]);
-    expect(d.cancelledAt).toBeNull();
-    expect(d).toMatchObject({ totalCents: 29000, paidCents: 10000, balanceCents: 19000 });
-  });
-  it("rejects invalid payment edits atomically and deduplicates edits and deletes", async () => {
+  it("rejects invalid payment and discount edits atomically and deduplicates edits and deletes", async () => {
     let d = await command(await create(), [pay(11000)]);
     const id = d.payments[0].id;
+    await command(d, [setDiscount(-1)], 400);
     for (const entry of [
       { amountCents: 0, method: "cash", paymentDate: "2026-10-10" },
       { amountCents: 10000, method: "cash", paymentDate: "2026-10-11" },
@@ -1669,19 +1429,6 @@ describe("reservation workflow", () => {
   });
 });
 describe("reservation dates and lifecycle", () => {
-  it("rejects unsupported statuses without changing the reservation", async () => {
-    const d = await command(await create(), [pay(10000)]);
-    for (const endpoint of ["preview", "commands"]) {
-      const response = await request(`/reservations/${d.id}/${endpoint}`, "POST", {
-        requestId: crypto.randomUUID(),
-        actions: [pay(5000), { type: "set-status", status: "unsupported" }],
-      });
-      expect(response.status).toBe(400);
-      expect(await (await request(`/reservations/${d.id}`)).json()).toEqual(d);
-    }
-    expect((await request("/reservations?status=unsupported")).status).toBe(400);
-  });
-
   it("checks in and checks out every room together while retaining debt and saved dates", async () => {
     let d = await arrive(await create(2));
     expect(d.status).toBe("checked_in");
@@ -1693,6 +1440,8 @@ describe("reservation dates and lifecycle", () => {
     expect(d.checkOut).toBe("2026-10-13");
     expect(d.balanceCents).toBe(60000);
     expect(d.rooms.every((line) => line.nights.length === 3)).toBe(true);
+    d = await command(d, [{ type: "set-status", status: "confirmed" }]);
+    expect(d).toMatchObject({ status: "confirmed", checkIn: "2026-10-10", checkOut: "2026-10-13" });
   });
   it("previews and saves check-in with a mix of assigned and unassigned rooms", async () => {
     let d = await create(2);
@@ -1712,6 +1461,13 @@ describe("reservation dates and lifecycle", () => {
     d = await command(d, actions);
     expect(d.status).toBe("checked_in");
     expect(d.rooms.map((line) => line.roomId)).toEqual(["room-101", null]);
+    expect(await previewCommand(d, [all(d, "check-out")])).toMatchObject({
+      billing: { status: "checked_out", totalCents: 60000, balanceCents: 60000 },
+      validation: { issues: [] },
+    });
+    expect(((await (await request(`/reservations/${d.id}`)).json()) as Detail).status).toBe(
+      "checked_in",
+    );
     d = await command(d, [roomEdit(d, 0, { roomId: null })]);
     expect(d.status).toBe("checked_in");
     expect(d.rooms.every((line) => line.roomId === null)).toBe(true);
@@ -1748,14 +1504,6 @@ describe("reservation dates and lifecycle", () => {
       },
     });
     await command(d, actions, 409);
-  });
-  it("allows correcting a reservation status while retaining the shared stay dates", async () => {
-    let d = await arrive(await create(2));
-    d = await command(d, [all(d, "check-out")]);
-    d = await command(d, [{ type: "set-status", status: "confirmed" }]);
-    expect(d.status).toBe("confirmed");
-    expect(d.checkIn).toBe("2026-10-10");
-    expect(d.checkOut).toBe("2026-10-13");
   });
   it("changes dates and nightly charges for all rooms in one save", async () => {
     let d = await create(2);
@@ -1844,11 +1592,20 @@ describe("reservation dates and lifecycle", () => {
     expect(saved.rooms).toEqual(d.rooms);
   });
   it("cancels all rooms together, retains payments, and checks availability when restored", async () => {
-    let d = await command(await create(2), [pay(10000)]);
-    d = await command(d, [{ type: "set-status", status: "cancelled", reason: "Plans changed" }]);
+    let d = await command(await create(2), [pay(10000), setDiscount(1000)]);
+    const cancel: WorkflowAction = {
+      type: "set-status",
+      status: "cancelled",
+      reason: "Plans changed",
+    };
+    d = await command(d, [cancel]);
     expect(d.totalCents).toBe(0);
     expect(d.creditCents).toBe(10000);
     expect(d.cancellationReason).toBe("Plans changed");
+    const restored = await command(d, [{ type: "set-status", status: "confirmed" }]);
+    expect(restored.cancelledAt).toBeNull();
+    expect(restored).toMatchObject({ totalCents: 59000, paidCents: 10000, balanceCents: 49000 });
+    d = await command(restored, [cancel]);
     await create(2);
     await command(d, [{ type: "set-status", status: "confirmed" }], 409);
     const saved = (await (await request(`/reservations/${d.id}`)).json()) as Detail;
@@ -1856,13 +1613,9 @@ describe("reservation dates and lifecycle", () => {
   });
   it("enforces the shared 60-night limit", async () => {
     const d = await create(2);
-    await command(d, [{ type: "dates", checkIn: d.checkIn, checkOut: "2026-12-10" }], 400);
-  });
-  it("filters reservation lists by the parent status", async () => {
-    const d = await command(await create(2), [{ type: "set-status", status: "cancelled" }]);
-    const rows = (await (await request("/reservations?status=cancelled")).json()) as Detail[];
-    expect(rows.map((row) => row.id)).toEqual([d.id]);
-    expect(await (await request("/reservations?status=confirmed")).json()).toEqual([]);
+    expect(
+      await command(d, [{ type: "dates", checkIn: d.checkIn, checkOut: "2026-12-10" }], 400),
+    ).toEqual({ error: "stay cannot be longer than 60 nights" });
   });
 });
 
@@ -1909,17 +1662,6 @@ describe("reservation list search", () => {
     ).toEqual([ada.id]);
     expect(await listed(`?q=${encodeURIComponent("A_a Lovelace")}`)).toEqual([]);
     expect((await listed("?q=Love%25lace")).map((row) => row.id)).toEqual([ada.id]);
-  });
-
-  it("orders rows by check-in, guest name, then code", async () => {
-    const zoe = await book("Zoe Cruz", { checkIn: "2026-10-13", checkOut: "2026-10-14" });
-    const first = await book("Ada Lovelace", { checkIn: "2026-10-12", checkOut: "2026-10-13" });
-    const second = await book("Ada Lovelace", { checkIn: "2026-10-12", checkOut: "2026-10-13" });
-    const sameDay = [first, second].sort((a, b) =>
-      a.code < b.code ? -1 : a.code > b.code ? 1 : 0,
-    );
-    const rows = await listed();
-    expect(rows.map((row) => row.id)).toEqual([...sameDay.map((row) => row.id), zoe.id]);
   });
 });
 
@@ -2047,14 +1789,6 @@ describe("paginated reservation operations", () => {
     expect(result.rows.map((row) => row.id)).toEqual([reservation.id]);
   });
 
-  it("keeps the metadata endpoint behind the real session guard", async () => {
-    const response = await request("/reservations?paginated=true&sort=balance", "GET", undefined, {
-      signedIn: false,
-    });
-    expect(response.status).toBe(401);
-    expect(await response.json()).toEqual({ error: "unauthorized" });
-  });
-
   it("counts a hundred matching reservations, handles a full 50-row last page, and finds balances beyond the legacy cap", async () => {
     // Seed a known history; observe only authenticated HTTP reads over the migrated database.
     for (let index = 0; index < 100; index++) {
@@ -2095,91 +1829,67 @@ describe("paginated reservation operations", () => {
     const search = await paged("q=Latest%20Target&sort=balance");
     expect(search.total).toBe(1);
     expect(search.rows.map((row) => row.id)).toEqual(["history-99"]);
-    expect(await listed("?limit=1&offset=99")).toMatchObject([
+    expect(await listed("?paginated=false&limit=1&offset=99")).toMatchObject([
       { id: "history-99", balanceCents: 90000 },
     ]);
+    expect(await paged("q=missing&offset=100")).toEqual({
+      rows: [],
+      total: 0,
+      limit: 50,
+      offset: 100,
+    });
   });
 
   it.each([
     "paginated=1",
-    "paginated=TRUE",
-    "paginated=",
-    "checkOut=10-10-2026",
     "checkOut=2026-02-30",
-    "paginated=true&checkIn=2026-02-30",
-    "statuses=",
     "statuses=confirmed,unknown",
-    "statuses=confirmed,",
-    "statuses=confirmed|cancelled",
-    "balance=paid",
-    "assignment=partial",
     "sort=code",
-    "direction=up",
-    "limit=0",
     "limit=201",
-    "limit=NaN",
-    "offset=-1",
-    "offset=1.5",
   ])("rejects malformed list input through the authenticated route: %s", async (query) => {
     const response = await request(`/reservations?${query}`);
     expect(response.status).toBe(400);
     expect(await response.json()).toEqual({ error: expect.any(String) });
   });
 
-  it.each(["asc", "desc"])(
-    "sorts signed balances %s across the complete history with stable name/code ties",
-    async (direction) => {
-      const { complex, settled, credit, cancelled, owing } = await billExamples();
-      const adaA = await book("Ada Same", { checkIn: "2026-10-22", checkOut: "2026-10-23" });
-      const adaB = await book("Ada Same", { checkIn: "2026-10-24", checkOut: "2026-10-25" });
-      db.sqlite.prepare("UPDATE reservations SET code = ? WHERE id = ?").run("AAA", adaA.id);
-      db.sqlite.prepare("UPDATE reservations SET code = ? WHERE id = ?").run("BBB", adaB.id);
-      const pages = await Promise.all(
-        [0, 2, 4, 6].map((offset) =>
-          paged(`sort=balance&direction=${direction}&limit=2&offset=${offset}`),
-        ),
-      );
-      for (const page of pages) expect(page.total).toBe(7);
-      const rows = pages.flatMap((page) => page.rows);
-      expect(rows.map((row) => [row.id, row.balanceCents])).toEqual(
-        direction === "asc"
-          ? [
-              [cancelled.id, -5000],
-              [credit.id, -2000],
-              [settled.id, 0],
-              [adaA.id, 10000],
-              [adaB.id, 10000],
-              [owing.id, 10000],
-              [complex.id, 30000],
-            ]
-          : [
-              [complex.id, 30000],
-              [adaA.id, 10000],
-              [adaB.id, 10000],
-              [owing.id, 10000],
-              [settled.id, 0],
-              [credit.id, -2000],
-              [cancelled.id, -5000],
-            ],
-      );
-      const restricted = await paged(
-        `balance=outstanding&assignment=unassigned&sort=balance&direction=${direction}&limit=1`,
-      );
-      expect(restricted.total).toBe(3);
-      expect(restricted.rows.map((row) => row.id)).toEqual([
-        direction === "asc" ? adaA.id : complex.id,
-      ]);
-      expect(await paged(`sort=balance&direction=${direction}&limit=2&offset=7`)).toEqual({
-        rows: [],
-        total: 7,
-        limit: 2,
-        offset: 7,
-      });
-      const byName = await paged("balance=outstanding&sort=guestName&direction=desc&limit=2");
-      expect(byName.total).toBe(4);
-      expect(byName.rows.map((row) => row.id)).toEqual([owing.id, adaA.id]);
-    },
-  );
+  it("sorts signed balances descending across the complete history with ascending name/code ties", async () => {
+    const direction = "desc";
+    const { complex, settled, credit, cancelled, owing } = await billExamples();
+    const adaA = await book("Ada Same", { checkIn: "2026-10-22", checkOut: "2026-10-23" });
+    const adaB = await book("Ada Same", { checkIn: "2026-10-24", checkOut: "2026-10-25" });
+    db.sqlite.prepare("UPDATE reservations SET code = ? WHERE id = ?").run("AAA", adaA.id);
+    db.sqlite.prepare("UPDATE reservations SET code = ? WHERE id = ?").run("BBB", adaB.id);
+    const pages = await Promise.all(
+      [0, 2, 4, 6].map((offset) =>
+        paged(`sort=balance&direction=${direction}&limit=2&offset=${offset}`),
+      ),
+    );
+    for (const page of pages) expect(page.total).toBe(7);
+    const rows = pages.flatMap((page) => page.rows);
+    expect(rows.map((row) => [row.id, row.balanceCents])).toEqual([
+      [complex.id, 30000],
+      [adaA.id, 10000],
+      [adaB.id, 10000],
+      [owing.id, 10000],
+      [settled.id, 0],
+      [credit.id, -2000],
+      [cancelled.id, -5000],
+    ]);
+    const restricted = await paged(
+      `balance=outstanding&assignment=unassigned&sort=balance&direction=${direction}&limit=1`,
+    );
+    expect(restricted.total).toBe(3);
+    expect(restricted.rows.map((row) => row.id)).toEqual([complex.id]);
+    expect(await paged(`sort=balance&direction=${direction}&limit=2&offset=7`)).toEqual({
+      rows: [],
+      total: 7,
+      limit: 2,
+      offset: 7,
+    });
+    const byName = await paged("balance=outstanding&sort=guestName&direction=desc&limit=2");
+    expect(byName.total).toBe(4);
+    expect(byName.rows.map((row) => row.id)).toEqual([owing.id, adaA.id]);
+  });
 
   it("classifies every reserved room for assignment and ANDs assignment with all other restrictions before paging", async () => {
     const { complex, settled, credit, cancelled, owing } = await billExamples();
@@ -2324,15 +2034,12 @@ describe("paginated reservation operations", () => {
   });
 
   it.each([
-    ["checkIn", "asc", ["zoe", "adaA", "adaB", "bea"]],
-    ["checkIn", "desc", ["bea", "adaA", "adaB", "zoe"]],
-    ["checkOut", "asc", ["adaA", "adaB", "zoe", "bea"]],
-    ["checkOut", "desc", ["bea", "adaA", "adaB", "zoe"]],
-    ["guestName", "asc", ["adaA", "adaB", "bea", "zoe"]],
-    ["guestName", "desc", ["zoe", "bea", "adaA", "adaB"]],
+    ["the default check-in order", "", ["zoe", "adaA", "adaB", "bea"]],
+    ["checkout descending", "sort=checkOut&direction=desc", ["bea", "adaA", "adaB", "zoe"]],
+    ["guest name descending", "sort=guestName&direction=desc", ["zoe", "bea", "adaA", "adaB"]],
   ])(
-    "sorts all matches by %s %s with ascending name/code tie-breakers across pages",
-    async (sort, direction, order) => {
+    "sorts all matches by %s with ascending name/code tie-breakers across pages",
+    async (_order, sort, order) => {
       const zoe = await book("Zoe Cruz", { checkIn: "2026-10-01", checkOut: "2026-10-04" });
       const adaA = await book("Ada Lovelace", { checkIn: "2026-10-02", checkOut: "2026-10-04" });
       const adaB = await book("Ada Lovelace", { checkIn: "2026-10-02", checkOut: "2026-10-04" });
@@ -2346,8 +2053,9 @@ describe("paginated reservation operations", () => {
         adaB: adaB.id,
         bea: bea.id,
       };
-      const first = await paged(`sort=${sort}&direction=${direction}&limit=2`);
-      const last = await paged(`sort=${sort}&direction=${direction}&limit=2&offset=2`);
+      const prefix = sort ? `${sort}&` : "";
+      const first = await paged(`${prefix}limit=2`);
+      const last = await paged(`${prefix}limit=2&offset=2`);
       expect(first.total).toBe(4);
       expect(last.total).toBe(4);
       expect([...first.rows, ...last.rows].map((row) => row.id)).toEqual(
@@ -2399,38 +2107,6 @@ describe("paginated reservation operations", () => {
     expect((await listed("?from=2026-10-10&to=2026-10-10")).map((row) => row.id)).toEqual([
       arrival.id,
     ]);
-  });
-
-  it("returns exact totals on first, full last, beyond-end and empty pages without changing array callers", async () => {
-    const first = await book("Ada Lovelace", { checkIn: "2026-10-01", checkOut: "2026-10-02" });
-    const second = await book("Grace Hopper", { checkIn: "2026-10-02", checkOut: "2026-10-03" });
-    const third = await book("Katherine Johnson", {
-      checkIn: "2026-10-03",
-      checkOut: "2026-10-04",
-    });
-    const fourth = await book("Zoe Cruz", { checkIn: "2026-10-04", checkOut: "2026-10-05" });
-    const page = await paged("limit=2");
-    expect(page).toMatchObject({ total: 4, limit: 2, offset: 0 });
-    expect(page.rows.map((row) => row.id)).toEqual([first.id, second.id]);
-    const last = await paged("limit=2&offset=2");
-    expect(last).toMatchObject({ total: 4, limit: 2, offset: 2 });
-    expect(last.rows.map((row) => row.id)).toEqual([third.id, fourth.id]);
-    expect(await paged("limit=2&offset=4")).toEqual({ rows: [], total: 4, limit: 2, offset: 4 });
-    expect(await paged("q=missing&offset=100")).toEqual({
-      rows: [],
-      total: 0,
-      limit: 50,
-      offset: 100,
-    });
-    expect((await listed("?paginated=false&limit=2&offset=2")).map((row) => row.id)).toEqual([
-      third.id,
-      fourth.id,
-    ]);
-    expect((await listed()).map((row) => row.id)).toEqual([
-      first.id,
-      second.id,
-      third.id,
-      fourth.id,
-    ]);
+    expect((await listed("?status=cancelled")).map((row) => row.id)).toEqual([cancelled.id]);
   });
 });

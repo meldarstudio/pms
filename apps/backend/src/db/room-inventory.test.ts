@@ -72,7 +72,10 @@ describe("property-date room type guards", () => {
     );
   });
 
-  it("protects assigned stays through October 31 and releases them on their checkout date", () => {
+  it("protects current and future assigned stays and releases them on their checkout date", () => {
+    reservation("future", "2099-01-01", "2099-01-03");
+    line("future", "room-102");
+    expect(() => changeType("room-102", "other")).toThrow("room has an assigned stay");
     reservation("assigned", "2026-10-31", "2026-11-01");
     line("assigned", "room-101");
     expect(() => changeType("room-101", "other")).toThrow("room has an assigned stay");
@@ -146,7 +149,7 @@ describe("property-date room type guards", () => {
 });
 
 describe("separate adult and child limits", () => {
-  it("accepts both limits together and rejects excess adults or children on insert and update", () => {
+  it("accepts both limits together and rejects excess adults or children on insert and update, including a zero-child limit", () => {
     reservation("family");
     db.exec(`INSERT INTO reservation_rooms
       (id, reservation_id, room_type_id, adults, children, created_at)
@@ -176,15 +179,9 @@ describe("separate adult and child limits", () => {
       db.prepare("SELECT adults, children FROM reservation_rooms WHERE id = 'family'").get(),
     ).toEqual({ adults: 2, children: 2 });
     db.exec("UPDATE reservation_rooms SET adults = 1, children = 1 WHERE id = 'family'");
-  });
-
-  it("enforces a zero-child limit without reducing the adult allowance", () => {
+    db.exec("UPDATE reservation_rooms SET adults = 2, children = 0 WHERE id = 'family'");
     db.exec("UPDATE room_types SET max_children = 0 WHERE id = 'type'");
-    reservation("adults");
-    db.exec(`INSERT INTO reservation_rooms
-      (id, reservation_id, room_type_id, adults, children, created_at)
-      VALUES ('adults', 'adults', 'type', 2, 0, '2026-10-05')`);
-    expect(() => db.exec("UPDATE reservation_rooms SET children = 1 WHERE id = 'adults'")).toThrow(
+    expect(() => db.exec("UPDATE reservation_rooms SET children = 1 WHERE id = 'family'")).toThrow(
       "invalid occupancy",
     );
   });
@@ -327,7 +324,7 @@ describe("closure-only room inventory", () => {
     reservation("stay", "2026-10-05", "2026-10-07");
     line("stay", "room-102");
     reservation("another", "2026-10-05", "2026-10-07");
-    expect(() => line("another", "room-101")).toThrow();
+    expect(() => line("another", "room-101")).toThrow("no availability");
   });
 
   it("rejects a closure overlapping the final dates of a checked-out stay", () => {
@@ -350,14 +347,6 @@ describe("closure-only room inventory", () => {
     expect(() => changeType("room-101", "deluxe")).toThrow("no availability");
   });
 
-  it("rejects a room type change while a future stay is assigned to that room", () => {
-    db.exec(`INSERT INTO room_types (id, name, max_occupancy, base_rate_cents, created_at)
-      VALUES ('deluxe', 'Deluxe', 2, 20000, '2026-10-05')`);
-    reservation("assigned", "2099-01-01", "2099-01-03");
-    line("assigned", "room-101");
-    expect(() => changeType("room-101", "deluxe")).toThrow("room has an assigned stay");
-  });
-
   it("keeps assignment and closure overlap protections", () => {
     closure("closed", "room-101");
     reservation("first");
@@ -371,7 +360,7 @@ describe("closure-only room inventory", () => {
       ),
     ).not.toThrow();
     db.exec("UPDATE reservation_rooms SET room_id = 'room-101' WHERE id = 'first'");
-    expect(() => closure("overlap", "room-101")).toThrow(/closure overlaps stay|no availability/);
+    expect(() => closure("overlap", "room-101")).toThrow("closure overlaps stay");
   });
 });
 
