@@ -13,7 +13,7 @@ pnpm install
 ```
 
 pnpm checks the exact Node version before running scripts or `pnpm exec` commands.
-If it reports a mismatch, run `vp env use 22.22.1` (or select that version with your
+If it reports a mismatch, run `vp env use 22.23.4` (or select that version with your
 Node manager), then retry. It does not download Node automatically. When upgrading
 Node, update both `.node-version` and `devEngines.runtime.version` in `package.json`.
 

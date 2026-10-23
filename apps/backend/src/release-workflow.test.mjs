@@ -213,7 +213,7 @@ function release(f, options = {}) {
     }
     if (step.uses === "actions/setup-node@v4") {
       const version = readFileSync(join(f.cwd, step.with["node-version-file"]), "utf8").trim();
-      if (version !== "22.22.1" || process.versions.node !== version)
+      if (version !== "22.23.4" || process.versions.node !== version)
         throw new Error("Unsupported Node runtime at selected checkout");
       continue;
     }

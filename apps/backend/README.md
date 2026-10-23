@@ -1,6 +1,6 @@
 # Backend
 
-Run commands from the repository root using Node 22.22.1 and pnpm 11.22.0.
+Run commands from the repository root using Node 22.23.4 and pnpm 11.22.0.
 Vite+ is installed locally for tests and task commands. Wrangler still runs
 the Worker and handles deployment.
 
