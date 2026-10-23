@@ -87,17 +87,25 @@ quiet **Quitar** actions. Any room can be removed while more than one remains.
 
 Editing an existing reservation from a calendar bar also uses a full-screen editor
 below 768px. The compact contact/status header, **Detalles / Huéspedes / Pagos**
-tabs, and bottom controls remain visible while only the content scrolls. Stay
+tabs, and bottom controls remain visible while only the content scrolls. The mobile
+header keeps the contact name and saved status beside **Más acciones de reserva**
+and Close, with phone and reservation code underneath. **Ver reserva completa**
+moves into that menu on mobile; desktop keeps its inline link and footer menu. Stay
 fields stack vertically; reserved rooms use flat sections with numbered headings
 and quiet **Quitar** actions only when multiple rooms remain. Dates still apply to
-the whole reservation. The persistent financial strip shows total and balance,
-including settled and credit balances, and labels unsaved pricing previews.
+the whole reservation. The persistent financial strip shows only the balance,
+using the bill's existing red outstanding, green settled, and blue credit colors
+with text labels, and labels unsaved pricing previews. Total remains in the bill.
 Unavailable prices are not replaced with stale saved amounts. **Ver desglose**
 expands the complete bill inside the scrolling content without replacing its
 discount draft or changing discount autosaving. While details are dirty, the
-mobile footer prioritizes **Guardar cambios / Descartar cambios**; other tabs
+mobile footer shows quiet **Descartar** followed by primary **Guardar cambios**; other tabs
 offer **Volver a Detalles** before saving that draft. Otherwise, it prioritizes
-the applicable check-in/checkout action. **Más acciones de reserva** retains
+the applicable check-in/checkout action. Without a draft or applicable lifecycle
+action, only the financial row remains. Header/footer controls retain Lyra's
+spacing and visual sizing, with 44px touch targets; the footer expands hit areas
+without stretching every button or making Save and Discard equal-width controls.
+**Más acciones de reserva** retains
 cancellation and status corrections with their existing safeguards. Keyboard
 viewport resizing, safe-area spacing, and dirty-close protection follow creation;
 there is no swipe-to-dismiss. Closing leaves the calendar and its scroll position
@@ -168,10 +176,11 @@ commands refresh the overview and related reservation/calendar/inventory queries
 Back always opens Reservations, including calendar-origin and direct detail links.
 Reservation-list filters are preserved when returning from a list-origin detail link.
 The compact calendar dialog remains the utility-focused editor. Its header shows
-`[booking contact] [status]` and `[phone] [reservation code] [open reservation]`,
-without the booking-contact email. Active check-in and checkout actions save
+`[booking contact] [status]` and `[phone] [reservation code]`, without the
+booking-contact email. Desktop keeps the inline open-reservation action; mobile
+places it in the header's overflow menu. Active check-in and checkout actions save
 immediately and do not alter the details draft. **Guardar cambios** saves dates,
-rooms, and notes only; **Descartar cambios** resets that draft. Status does not
+rooms, and notes only; **Descartar cambios** (**Descartar** on mobile) resets that draft. Status does not
 participate in the page's stay-only editor. The ellipsis menu contains destructive
 **Cancelar reserva** and **Cambiar estado**, whose radio choices show and correct
 the saved reservation status. On an active reservation those choices save

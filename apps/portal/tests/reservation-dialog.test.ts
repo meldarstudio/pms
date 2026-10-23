@@ -850,7 +850,7 @@ it("prioritizes the mobile details draft and saves it after visiting another tab
     );
     await until(() => hasButton("Hacer check-in"), "The saved reservation actions must load");
     assert.equal(hasButton("Guardar cambios"), false);
-    assert.equal(hasButton("Descartar cambios"), false);
+    assert.equal(hasButton("Descartar"), false);
     await fill("notes", "Llegada tarde");
     assert.equal(hasButton("Hacer check-in"), false);
     assert.equal(button("Guardar cambios").disabled, false);
@@ -867,7 +867,7 @@ it("prioritizes the mobile details draft and saves it after visiting another tab
     assert.deepEqual(writes[0].actions, [{ type: "notes", notes: "Llegada tarde" }]);
     assert.equal(control("notes").value, "Llegada tarde");
     await fill("notes", "Cambio descartable");
-    await React.act(async () => button("Descartar cambios").click());
+    await React.act(async () => button("Descartar").click());
     assert.equal(control("notes").value, "Llegada tarde");
     assert.ok(button("Hacer check-in"));
     assert.equal(writes.length, 1);
@@ -879,24 +879,26 @@ it("prioritizes the mobile details draft and saves it after visiting another tab
 it("expands the mobile reservation bill without losing details or discount drafts", async () => {
   const originalWidth = window.innerWidth;
   const originalHeight = window.innerHeight;
+  const saved = { ...detail(), paidCents: 10000, balanceCents: 20000 };
   const writes: WorkflowCommand[] = [];
   mockApi(async (_path, command) => {
     writes.push(command);
-    return Response.json(detail());
+    return Response.json(saved);
   });
   try {
     window.happyDOM.setWindowSize({ width: 390, height: 844 });
-    await render(React.createElement(dialogs.BookingEditor, { detail: detail() }));
+    await render(React.createElement(dialogs.BookingEditor, { detail: saved }));
     const expand = button("Ver desglose");
     assert.equal(expand.getAttribute("aria-expanded"), "false");
     const bill = window.document.getElementById(expand.getAttribute("aria-controls")!)!;
     assert.ok(bill);
     assert.equal(bill.hasAttribute("hidden"), true);
     const financials = window.document.querySelector('[aria-label="Importes de la reserva"]')!;
-    assert.ok(financials.textContent.replace(/\s/g, "").includes("S/300"));
+    assert.ok(financials.textContent.replace(/\s/g, "").includes("SaldopendienteS/200"));
     await fill("notes", "Llegada tarde");
     await React.act(async () => expand.click());
     assert.equal(bill.hasAttribute("hidden"), false);
+    assert.ok(bill.textContent.replace(/\s/g, "").includes("TotaldereservaS/300"));
     const discount = bill.querySelector<HTMLInputElement>('[aria-label="Descuento en soles"]')!;
     await fillControl(discount, "25");
     await React.act(async () => button("Ocultar desglose").click());
@@ -911,7 +913,62 @@ it("expands the mobile reservation bill without losing details or discount draft
   }
 });
 
-it("announces the mobile bill preview without showing stale totals and labels credit correctly", async () => {
+it("protects mobile payment drafts when navigating through the header actions", async () => {
+  const originalWidth = window.innerWidth;
+  const originalHeight = window.innerHeight;
+  const saved = detail();
+  const navigations: string[] = [];
+  let writes = 0;
+  mockApi(async () => {
+    writes++;
+    return Response.json(saved);
+  });
+  try {
+    window.happyDOM.setWindowSize({ width: 390, height: 844 });
+    await render(
+      React.createElement(dialogs.RoomBookingDialog, {
+        target: {
+          mode: "edit",
+          reservationId: saved.id,
+          roomId: "room-1",
+          number: "101",
+          typeName: "Doble",
+        },
+        onClose: () => {},
+        onViewReservation: (id: string) => navigations.push(id),
+      }),
+    );
+    await until(() => window.document.querySelector('[name="notes"]') !== null);
+    await React.act(async () => button("Pagos").click());
+    await fill("amount", "75");
+    assert.equal(button("Hacer check-in").disabled, true);
+    await openReservationActions();
+    const item = (label: string) => {
+      const action = [...window.document.querySelectorAll<HTMLElement>('[role="menuitem"]')].find(
+        (entry) => entry.textContent.trim() === label,
+      );
+      assert.ok(action, `Missing reservation action ${label}`);
+      return action;
+    };
+    assert.equal(item("Cancelar reserva").getAttribute("aria-disabled"), "true");
+    assert.equal(item("Cambiar estado").getAttribute("aria-disabled"), "true");
+    await React.act(async () => item("Cancelar reserva").click());
+    assert.equal(writes, 0);
+    await React.act(async () => item("Ver reserva completa").click());
+    await until(() => window.document.body.textContent.includes("Hay cambios sin guardar"));
+    assert.equal(navigations.length, 0);
+    await React.act(async () => button("Seguir editando").click());
+    assert.equal(control("amount").value, "75");
+    await chooseReservationAction("Ver reserva completa");
+    await React.act(async () => button("Descartar y salir").click());
+    assert.deepEqual(navigations, [saved.id]);
+    assert.equal(writes, 0);
+  } finally {
+    window.happyDOM.setWindowSize({ width: originalWidth, height: originalHeight });
+  }
+});
+
+it("announces the mobile balance preview without showing stale credit", async () => {
   const originalWidth = window.innerWidth;
   const originalHeight = window.innerHeight;
   const saved = { ...detail(), paidCents: 50000, balanceCents: -20000 };
@@ -947,11 +1004,13 @@ it("announces the mobile bill preview without showing stale totals and labels cr
     await React.act(async () => day.click());
     assert.ok(text().includes("Vistaprevia·Singuardar"));
     assert.ok(text().includes("Calculando…"));
-    assert.equal(text().includes("S/300"), false, "Do not show the saved total as the new quote");
     assert.equal(text().includes("S/200"), false, "Do not show stale credit while repricing");
     await until(() => !!finishPreview, "The updated stay must request its price");
     await React.act(async () => finishPreview());
-    await until(() => text().includes("S/450"), "The persistent total must use the server preview");
+    await until(
+      () => text().includes("SaldoafavorS/50"),
+      "The persistent balance must use the server preview",
+    );
     assert.ok(text().includes("SaldoafavorS/50"));
     assert.equal(button("Guardar cambios").disabled, false);
   } finally {

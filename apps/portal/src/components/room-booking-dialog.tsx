@@ -64,7 +64,7 @@ import {
 import { Skeleton } from "@/components/ui/skeleton";
 import { Separator } from "@/components/ui/separator";
 import { BookingSummary } from "@/components/booking-summary";
-import { balanceStatus } from "@/components/balance-status";
+import { BalanceLabel, balanceStatus } from "@/components/balance-status";
 import { Badge } from "@/components/ui/badge";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { ReservationPageEditor } from "@/components/reservation-page-editors";
@@ -132,6 +132,11 @@ const stayDate = (value: string, pattern: string) => {
   return isValid(date) ? format(date, pattern) : "—";
 };
 type Intent = { type: "edit-payment" | "delete-payment"; entry: ReservationPayment };
+
+// Keep Lyra's visual height with a 44px touch target. Footer rows are 12px apart
+// so these expanded targets do not overlap the controls in the adjacent row.
+const mobileFooterTarget =
+  "relative after:absolute after:inset-x-0 after:top-1/2 after:h-11 after:-translate-y-1/2";
 
 export function RoomBookingDialog({
   target,
@@ -280,7 +285,7 @@ export function RoomBookingDialog({
               <Button
                 variant="ghost"
                 size="icon-sm"
-                className="absolute top-2 right-2 max-md:top-[max(0.5rem,env(safe-area-inset-top))] max-md:right-[max(0.5rem,env(safe-area-inset-right))] max-md:min-h-11 max-md:min-w-11"
+                className="absolute top-2 right-2 max-md:top-[max(1rem,env(safe-area-inset-top))] max-md:right-[max(1rem,env(safe-area-inset-right))] max-md:min-h-11 max-md:min-w-11"
               />
             }
           >
@@ -485,13 +490,96 @@ export function BookingEditor({
       savingDetails.current = false;
     }
   }
+  const reservationActions = (
+    <DropdownMenu>
+      <DropdownMenuTrigger
+        disabled={busy || (!mobileEditor && independentDraftDirty) || statusMutation.isPending}
+        render={
+          <Button
+            type="button"
+            variant="ghost"
+            size={mobileEditor ? "icon-sm" : "icon"}
+            className={mobileEditor ? "min-h-11 min-w-11" : undefined}
+            aria-label="Más acciones de reserva"
+          />
+        }
+      >
+        <span className="sr-only">Más acciones de reserva</span>
+        <EllipsisIcon data-icon="inline-start" />
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end" side={mobileEditor ? "bottom" : "top"} className="w-52">
+        <DropdownMenuGroup>
+          {mobileEditor && onViewReservation && (
+            <DropdownMenuItem onClick={() => onViewReservation(detail.id)}>
+              <ArrowUpRightIcon />
+              Ver reserva completa
+            </DropdownMenuItem>
+          )}
+          {detail.status !== "cancelled" && (
+            <DropdownMenuItem
+              variant="destructive"
+              disabled={independentDraftDirty}
+              closeOnClick={false}
+              onClick={() => {
+                if (isReservationSaving(queryClient, detail.id)) return;
+                setCancellation({ detail, discardDraft: dirty });
+              }}
+            >
+              Cancelar reserva
+            </DropdownMenuItem>
+          )}
+          <DropdownMenuSub>
+            <DropdownMenuSubTrigger disabled={dirty || independentDraftDirty}>
+              Cambiar estado
+            </DropdownMenuSubTrigger>
+            <DropdownMenuSubContent className="min-w-36">
+              <DropdownMenuRadioGroup
+                aria-label="Estado de la reserva"
+                value={detail.status}
+                onValueChange={(value) => {
+                  if (value !== "confirmed" && value !== "checked_in" && value !== "checked_out")
+                    return;
+                  if (detail.status === "cancelled") {
+                    const next = value;
+                    queueMicrotask(() => setRestoration({ detail, status: next }));
+                    return;
+                  }
+                  void changeStatus(value);
+                }}
+              >
+                <DropdownMenuRadioItem value="confirmed" closeOnClick>
+                  Confirmada
+                </DropdownMenuRadioItem>
+                <DropdownMenuRadioItem value="checked_in" closeOnClick>
+                  Check-in
+                </DropdownMenuRadioItem>
+                <DropdownMenuRadioItem value="checked_out" closeOnClick>
+                  Check-out
+                </DropdownMenuRadioItem>
+              </DropdownMenuRadioGroup>
+            </DropdownMenuSubContent>
+          </DropdownMenuSub>
+        </DropdownMenuGroup>
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
+  const discardDetails = !full && !stayOnly && (mobileEditor ? dirty : tab === "details") && (
+    <Button
+      type="button"
+      variant={mobileEditor ? "ghost" : "outline"}
+      className={mobileEditor ? mobileFooterTarget : undefined}
+      disabled={!dirty || busy || discountMutation.isPending}
+      onClick={stayDraft.discard}
+    >
+      {mobileEditor ? "Descartar" : "Descartar cambios"}
+    </Button>
+  );
   return (
     <div
       className={cn(
         "flex min-w-0 flex-col gap-4",
         !full && "min-h-0 flex-1 overflow-hidden",
-        compactEditor &&
-          "max-md:gap-0 max-md:[&_button]:min-h-11 max-md:[&_button]:min-w-11 max-md:[&_input]:min-h-11 max-md:[&_[data-slot=input-group]]:min-h-11",
+        compactEditor && "max-md:gap-0",
       )}
     >
       {!stayOnly && (
@@ -499,11 +587,22 @@ export function BookingEditor({
           className={cn(
             "flex shrink-0 flex-wrap items-center gap-2 pr-8",
             compactEditor &&
-              "max-md:pt-[max(1rem,env(safe-area-inset-top))] max-md:pr-[max(4rem,env(safe-area-inset-right))] max-md:pl-[max(1rem,env(safe-area-inset-left))]",
+              "max-md:min-h-[calc(2.75rem+max(1rem,env(safe-area-inset-top)))] max-md:flex-nowrap max-md:items-start max-md:pt-[max(1rem,env(safe-area-inset-top))] max-md:pr-[calc(3.25rem+max(1rem,env(safe-area-inset-right)))] max-md:pl-[max(1rem,env(safe-area-inset-left))]",
           )}
         >
-          <span className="text-lg font-semibold">{`${contact.fullName}`.trim()}</span>
-          <ReservationStatusBadge status={detail.status} />
+          <div
+            className={
+              mobileEditor
+                ? "flex min-h-11 min-w-0 flex-1 flex-wrap items-center gap-2"
+                : "contents"
+            }
+          >
+            <span className={cn("text-lg font-semibold", mobileEditor && "wrap-anywhere")}>
+              {`${contact.fullName}`.trim()}
+            </span>
+            <ReservationStatusBadge status={detail.status} />
+          </div>
+          {mobileEditor && reservationActions}
         </div>
       )}
       {!stayOnly && (
@@ -514,7 +613,7 @@ export function BookingEditor({
           )}
         >
           {[contact.phone, detail.code].filter(Boolean).join(" · ")}
-          {!full && onViewReservation && (
+          {!full && !mobileEditor && onViewReservation && (
             <Button
               type="button"
               variant="ghost"
@@ -547,7 +646,7 @@ export function BookingEditor({
             className={cn(
               "shrink-0",
               compactEditor &&
-                "max-md:min-h-11 max-md:w-full max-md:border-b max-md:safe-area-padding-x",
+                "max-md:min-h-11 max-md:w-full max-md:border-b max-md:safe-area-padding-x max-md:[&_button]:min-h-11 max-md:[&_button]:min-w-11",
             )}
           >
             <TabsTrigger value="details">
@@ -570,7 +669,7 @@ export function BookingEditor({
             "grid min-w-0 shrink-0 gap-6 p-px",
             !stayOnly && "lg:grid-cols-[minmax(0,1fr)_280px]",
             compactEditor &&
-              "max-md:min-h-0 max-md:flex-1 max-md:shrink max-md:content-start max-md:overflow-y-auto max-md:overscroll-contain max-md:scroll-py-4 max-md:py-4 max-md:safe-area-padding-x",
+              "max-md:min-h-0 max-md:flex-1 max-md:shrink max-md:content-start max-md:overflow-y-auto max-md:overscroll-contain max-md:scroll-py-4 max-md:py-4 max-md:safe-area-padding-x max-md:[&_button]:min-h-11 max-md:[&_button]:min-w-11 max-md:[&_input]:min-h-11 max-md:[&_[data-slot=input-group]]:min-h-11",
           )}
         >
           <div className="min-w-0">
@@ -829,7 +928,7 @@ export function BookingEditor({
         className={cn(
           "contents",
           compactEditor &&
-            "max-md:flex max-md:shrink-0 max-md:flex-col max-md:gap-2 max-md:border-t max-md:py-3 max-md:pb-[max(0.75rem,env(safe-area-inset-bottom))] max-md:safe-area-padding-x",
+            "max-md:flex max-md:shrink-0 max-md:flex-col max-md:gap-3 max-md:border-t max-md:py-3 max-md:pb-[max(0.75rem,env(safe-area-inset-bottom))] max-md:safe-area-padding-x",
         )}
       >
         {mobileEditor && (
@@ -845,19 +944,16 @@ export function BookingEditor({
                   Vista previa · Sin guardar
                 </Badge>
               )}
-              <dl className="flex flex-col gap-1">
-                <div className="flex flex-wrap justify-between gap-x-3">
-                  <dt>Total de reserva</dt>
-                  <dd className="tabular-nums">
-                    {billing ? formatMoney(billing.totalCents, detail.currency) : "—"}
-                  </dd>
-                </div>
-                <div className="flex flex-wrap justify-between gap-x-3">
-                  <dt>{billing ? balanceStatus(billing.balanceCents).label : "Saldo pendiente"}</dt>
-                  <dd className="tabular-nums">
-                    {billing ? formatMoney(Math.abs(billing.balanceCents), detail.currency) : "—"}
-                  </dd>
-                </div>
+              <dl
+                className={cn(
+                  "flex flex-wrap items-center justify-between gap-x-2 px-2 py-1",
+                  billing && balanceStatus(billing.balanceCents).tone,
+                )}
+              >
+                <dt>{billing ? <BalanceLabel balanceCents={billing.balanceCents} /> : "Saldo"}</dt>
+                <dd className="tabular-nums">
+                  {billing ? formatMoney(Math.abs(billing.balanceCents), detail.currency) : "—"}
+                </dd>
               </dl>
               {!billing && (
                 <p role="status">
@@ -868,6 +964,7 @@ export function BookingEditor({
             <Button
               type="button"
               variant="ghost"
+              className={mobileFooterTarget}
               aria-expanded={billOpen}
               aria-controls={billId}
               onClick={() => setBillOpen((open) => !open)}
@@ -882,164 +979,98 @@ export function BookingEditor({
             o cancelar la reserva.
           </p>
         )}
-        <div
-          className={cn(
-            "flex shrink-0 flex-wrap items-center justify-between gap-3",
-            compactEditor && "max-md:flex-nowrap max-md:gap-2",
-          )}
-        >
-          {!stayOnly && (
-            <div className="flex flex-wrap items-center gap-2">
-              {(!mobileEditor || !dirty) &&
-                (detail.status === "confirmed" || detail.status === "checked_in") && (
-                  <Button
-                    type="button"
-                    variant={mobileEditor ? "default" : "outline"}
-                    disabled={busy || dirty || independentDraftDirty || statusMutation.isPending}
-                    onClick={() =>
-                      void changeStatus(
-                        detail.status === "confirmed" ? "checked_in" : "checked_out",
-                      )
-                    }
-                  >
-                    {statusMutation.isPending ? (
-                      <Spinner data-icon="inline-start" />
-                    ) : detail.status === "confirmed" ? (
-                      <LogInIcon data-icon="inline-start" />
-                    ) : (
-                      <LogOutIcon data-icon="inline-start" />
-                    )}
-                    {detail.status === "confirmed" ? "Hacer check-in" : "Hacer check-out"}
-                  </Button>
-                )}
-              {statusMutation.isPending && (
-                <p role="status" className="text-xs text-muted-foreground">
-                  Guardando estado…
-                </p>
-              )}
-              <DropdownMenu>
-                <DropdownMenuTrigger
-                  disabled={busy || independentDraftDirty || statusMutation.isPending}
-                  render={
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="icon"
-                      aria-label="Más acciones de reserva"
-                    />
-                  }
-                >
-                  <span className="sr-only">Más acciones de reserva</span>
-                  <EllipsisIcon data-icon="inline-start" />
-                </DropdownMenuTrigger>
-                <DropdownMenuContent align="end" side="top" className="w-52">
-                  <DropdownMenuGroup>
-                    {detail.status !== "cancelled" && (
-                      <DropdownMenuItem
-                        variant="destructive"
-                        closeOnClick={false}
-                        onClick={() => {
-                          if (isReservationSaving(queryClient, detail.id)) return;
-                          setCancellation({ detail, discardDraft: dirty });
-                        }}
-                      >
-                        Cancelar reserva
-                      </DropdownMenuItem>
-                    )}
-                    <DropdownMenuSub>
-                      <DropdownMenuSubTrigger disabled={dirty}>
-                        Cambiar estado
-                      </DropdownMenuSubTrigger>
-                      <DropdownMenuSubContent className="min-w-36">
-                        <DropdownMenuRadioGroup
-                          aria-label="Estado de la reserva"
-                          value={detail.status}
-                          onValueChange={(value) => {
-                            if (
-                              value !== "confirmed" &&
-                              value !== "checked_in" &&
-                              value !== "checked_out"
-                            )
-                              return;
-                            if (detail.status === "cancelled") {
-                              const next = value;
-                              queueMicrotask(() => setRestoration({ detail, status: next }));
-                              return;
-                            }
-                            void changeStatus(value);
-                          }}
-                        >
-                          <DropdownMenuRadioItem value="confirmed" closeOnClick>
-                            Confirmada
-                          </DropdownMenuRadioItem>
-                          <DropdownMenuRadioItem value="checked_in" closeOnClick>
-                            Check-in
-                          </DropdownMenuRadioItem>
-                          <DropdownMenuRadioItem value="checked_out" closeOnClick>
-                            Check-out
-                          </DropdownMenuRadioItem>
-                        </DropdownMenuRadioGroup>
-                      </DropdownMenuSubContent>
-                    </DropdownMenuSub>
-                  </DropdownMenuGroup>
-                </DropdownMenuContent>
-              </DropdownMenu>
-            </div>
-          )}
+        {(!mobileEditor ||
+          dirty ||
+          detail.status === "confirmed" ||
+          detail.status === "checked_in") && (
           <div
             className={cn(
-              "ml-auto flex flex-wrap items-end justify-end gap-3",
-              mobileEditor && dirty && "min-w-0 flex-1",
+              "flex shrink-0 flex-wrap items-center justify-between gap-3",
+              compactEditor && "max-md:flex-nowrap max-md:gap-2",
             )}
           >
-            <div
-              className={cn(
-                "flex flex-wrap gap-2",
-                mobileEditor &&
-                  dirty &&
-                  "w-full flex-nowrap [&>button]:min-w-0 [&>button]:flex-1 [&>button]:whitespace-normal",
-              )}
-            >
-              {stayOnly && (
-                <Button type="button" variant="outline" disabled={busy} onClick={onCancel}>
-                  Cancelar
-                </Button>
-              )}
-              {tab === "details" && (!mobileEditor || dirty) && (
-                <Button
-                  type="submit"
-                  form={formId}
-                  disabled={stayDraft.submission.disabled || busy}
+            {!stayOnly && (!mobileEditor || !dirty) && (
+              <div className="flex flex-wrap items-center gap-2">
+                {(!mobileEditor || !dirty) &&
+                  (detail.status === "confirmed" || detail.status === "checked_in") && (
+                    <Button
+                      type="button"
+                      variant={mobileEditor ? "default" : "outline"}
+                      className={mobileEditor ? mobileFooterTarget : undefined}
+                      disabled={busy || dirty || independentDraftDirty || statusMutation.isPending}
+                      onClick={() =>
+                        void changeStatus(
+                          detail.status === "confirmed" ? "checked_in" : "checked_out",
+                        )
+                      }
+                    >
+                      {statusMutation.isPending ? (
+                        <Spinner data-icon="inline-start" />
+                      ) : detail.status === "confirmed" ? (
+                        <LogInIcon data-icon="inline-start" />
+                      ) : (
+                        <LogOutIcon data-icon="inline-start" />
+                      )}
+                      {detail.status === "confirmed" ? "Hacer check-in" : "Hacer check-out"}
+                    </Button>
+                  )}
+                {statusMutation.isPending && (
+                  <p role="status" className="text-xs text-muted-foreground">
+                    Guardando estado…
+                  </p>
+                )}
+                {!mobileEditor && reservationActions}
+              </div>
+            )}
+            {(!mobileEditor || dirty) && (
+              <div
+                className={cn(
+                  "ml-auto flex flex-wrap items-end justify-end gap-3",
+                  mobileEditor && dirty && "min-w-0 flex-1",
+                )}
+              >
+                <div
+                  className={cn(
+                    "flex flex-wrap gap-2",
+                    mobileEditor && dirty && "w-full flex-nowrap justify-end",
+                  )}
                 >
-                  {saveMutation.isPending && <Spinner data-icon="inline-start" />}
-                  {saveMutation.isPending ? "Guardando…" : "Guardar cambios"}
-                </Button>
-              )}
-              {mobileEditor && dirty && tab !== "details" && (
-                <Button
-                  type="button"
-                  disabled={busy}
-                  onClick={() => {
-                    setTab("details");
-                    onTabChange?.("details");
-                  }}
-                >
-                  Volver a Detalles
-                </Button>
-              )}
-              {!full && !stayOnly && (mobileEditor ? dirty : tab === "details") && (
-                <Button
-                  type="button"
-                  variant={mobileEditor ? "ghost" : "outline"}
-                  disabled={!dirty || busy || discountMutation.isPending}
-                  onClick={stayDraft.discard}
-                >
-                  Descartar cambios
-                </Button>
-              )}
-            </div>
+                  {stayOnly && (
+                    <Button type="button" variant="outline" disabled={busy} onClick={onCancel}>
+                      Cancelar
+                    </Button>
+                  )}
+                  {mobileEditor && discardDetails}
+                  {tab === "details" && (!mobileEditor || dirty) && (
+                    <Button
+                      type="submit"
+                      form={formId}
+                      className={mobileEditor ? mobileFooterTarget : undefined}
+                      disabled={stayDraft.submission.disabled || busy}
+                    >
+                      {saveMutation.isPending && <Spinner data-icon="inline-start" />}
+                      {saveMutation.isPending ? "Guardando…" : "Guardar cambios"}
+                    </Button>
+                  )}
+                  {mobileEditor && dirty && tab !== "details" && (
+                    <Button
+                      type="button"
+                      disabled={busy}
+                      className={mobileFooterTarget}
+                      onClick={() => {
+                        setTab("details");
+                        onTabChange?.("details");
+                      }}
+                    >
+                      Volver a Detalles
+                    </Button>
+                  )}
+                  {!mobileEditor && discardDetails}
+                </div>
+              </div>
+            )}
           </div>
-        </div>
+        )}
       </div>
       {restoration && (
         <ReservationPageEditor

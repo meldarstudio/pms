@@ -59,6 +59,29 @@ This supersedes the compact dropdown that saved status with **Guardar detalles**
 - Keep the reservation page's status select unchanged. No backend or domain-rule
   changes.
 
+### Mobile header and footer hierarchy
+
+- Keep the contact name and saved status in the first header row, with the overflow
+  menu and Close on the right. Phone and reservation code occupy the second row.
+  Move **Ver reserva completa** into the overflow menu on mobile only.
+- The persistent footer shows balance and **Ver desglose**, not total. Reuse the
+  bill's red outstanding, green settled, and blue credit treatments with their text
+  labels. Keep unsaved-preview labeling and never substitute stale saved amounts
+  for unavailable draft pricing. Total remains available in the expanded bill.
+- Put the applicable check-in/checkout action below the financial row when Details
+  is clean. While Details is dirty, replace it with quiet **Descartar** followed by
+  primary **Guardar cambios**, or **Volver a Detalles** on another tab. Discard
+  resets only Details. With no draft or applicable action, omit the action row.
+- Preserve Lyra's compact visual sizing, ordinary spacing, safe areas, and usable
+  touch targets. Footer controls keep 44px hit areas without equal-width stretching
+  or enlarged visual button heights. Header icon controls retain 44px targets.
+- Keep the breakdown mounted in the scrolling body, independent guest/payment
+  saves, and all existing pending-write, cancellation, restoration, and dirty-exit
+  safeguards. A mobile menu with an independent dirty draft can still offer guarded
+  navigation; cancellation and status correction remain disabled individually.
+- Desktop, creation, and the full reservation page retain their layouts and
+  workflows. These are presentation changes, not new domain rules.
+
 ## Section-specific editing decision
 
 The reservation page is the complete reservation-management workspace; the
