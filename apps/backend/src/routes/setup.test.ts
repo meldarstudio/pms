@@ -1,89 +1,16 @@
-/// <reference types="node" />
-
-import { readFileSync } from "node:fs";
-import { DatabaseSync, type SQLInputValue } from "node:sqlite";
-import { URL } from "node:url";
 import { afterEach, beforeEach, expect, it } from "vite-plus/test";
-import app from "../index";
-import type { Env } from "../env";
-import { authEnv, PORTAL_ORIGIN, signIn } from "../test-support/auth";
+import { createTestDb, type TestDb } from "../test-support/d1";
 
-let sqlite: DatabaseSync;
-let bindings: Env["Bindings"];
-let cookie: string;
-let beforeBatch: (() => Promise<void>) | undefined;
-
-function statement(sql: string, params: SQLInputValue[] = []) {
-  const execute = () => {
-    const prepared = sqlite.prepare(sql);
-    return {
-      success: true,
-      results: prepared.columns().length ? prepared.all(...params) : (prepared.run(...params), []),
-    };
-  };
-  return {
-    bind: (...values: SQLInputValue[]) => statement(sql, values),
-    raw: async () => {
-      return sqlite
-        .prepare(sql)
-        .all(...params)
-        .map((row) => Object.values(row));
-    },
-    run: async () => execute(),
-    all: async () => execute(),
-    execute,
-  };
-}
+let db: TestDb;
 
 beforeEach(async () => {
-  beforeBatch = undefined;
-  sqlite = new DatabaseSync(":memory:");
-  sqlite.exec("PRAGMA foreign_keys = ON");
-  const dir = new URL("../../drizzle/", import.meta.url);
-  const journal = JSON.parse(readFileSync(new URL("meta/_journal.json", dir), "utf8")) as {
-    entries: { tag: string }[];
-  };
-  for (const { tag } of journal.entries)
-    sqlite.exec(readFileSync(new URL(`${tag}.sql`, dir), "utf8"));
-  const DB = {
-    prepare: (sql: string) => statement(sql),
-    batch: async (queries: ReturnType<typeof statement>[]) => {
-      if (beforeBatch) {
-        const callback = beforeBatch;
-        beforeBatch = undefined;
-        await callback();
-      }
-      sqlite.exec("BEGIN");
-      try {
-        const results = queries.map((query) => query.execute());
-        sqlite.exec("COMMIT");
-        return results;
-      } catch (error) {
-        sqlite.exec("ROLLBACK");
-        throw error;
-      }
-    },
-  } as unknown as D1Database;
-  bindings = await authEnv({ DB });
-  cookie = await signIn(bindings);
+  db = await createTestDb();
 });
 
-afterEach(() => sqlite.close());
+afterEach(() => db.close());
 
 function request(path: string, body?: unknown, authenticated = true) {
-  return app.request(
-    path,
-    {
-      method: body === undefined ? "GET" : "POST",
-      headers: {
-        origin: PORTAL_ORIGIN,
-        ...(authenticated ? { cookie } : {}),
-        ...(body === undefined ? {} : { "content-type": "application/json" }),
-      },
-      ...(body === undefined ? {} : { body: JSON.stringify(body) }),
-    },
-    bindings,
-  );
+  return db.request(path, body === undefined ? "GET" : "POST", body, { signedIn: authenticated });
 }
 
 const typeDetails = { name: "Doble", maxAdults: 2, maxChildren: 2, baseRateCents: 15000 };
@@ -294,18 +221,12 @@ it("rolls back the whole save if a room changes type between loading and writing
   const other = (await (
     await request("/setup", { ...typeDetails, name: "Suite", rooms: [] })
   ).json()) as Saved;
-  beforeBatch = async () => {
-    const moved = await app.request(
-      `/rooms/${created.rooms[0].id}`,
-      {
-        method: "PATCH",
-        headers: { cookie, "content-type": "application/json" },
-        body: JSON.stringify({ roomTypeId: other.roomType.id }),
-      },
-      bindings,
-    );
+  db.beforeCommit(async () => {
+    const moved = await db.request(`/rooms/${created.rooms[0].id}`, "PATCH", {
+      roomTypeId: other.roomType.id,
+    });
     expect(moved.status).toBe(200);
-  };
+  });
   const response = await request("/setup", {
     ...typeDetails,
     name: "Changed",

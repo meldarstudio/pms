@@ -1,13 +1,12 @@
-/// <reference types="node" />
-
-import { readFileSync } from "node:fs";
-import { DatabaseSync, type SQLInputValue } from "node:sqlite";
-import { URL } from "node:url";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
-import app from "../index";
-import type { Env } from "../env";
 import type { presentReservation } from "../present";
-import { authEnv, signIn } from "../test-support/auth";
+import {
+  createTestDb,
+  seedReservation,
+  seedRooms,
+  seedRoomType,
+  type TestDb,
+} from "../test-support/d1";
 
 type Detail = ReturnType<typeof presentReservation>;
 type Preview = {
@@ -15,97 +14,23 @@ type Preview = {
   validation: { issues: { code: string; roomIndex: number; field: string }[] };
 };
 
-let sqlite: DatabaseSync;
-let binding: D1Database;
-let batchTail: Promise<unknown> = Promise.resolve();
-let bindings: Env["Bindings"];
-let sessionCookie: string;
-
-// Run the actual Hono routes and Drizzle SQL against SQLite with D1-style batches.
-function statement(sql: string, params: SQLInputValue[] = []) {
-  const execute = () => {
-    if (sqlite.prepare(sql).columns().length) {
-      // D1 batch results use column-name keys; duplicate join columns collapse.
-      return { success: true, results: sqlite.prepare(sql).all(...params) };
-    }
-    sqlite.prepare(sql).run(...params);
-    return { success: true, results: [] };
-  };
-  return {
-    sql,
-    execute,
-    bind: (...values: SQLInputValue[]) => statement(sql, values),
-    raw: async () => {
-      // The subquery gives duplicate join columns distinct names on Node 22.
-      return sqlite
-        .prepare(`SELECT * FROM (${sql})`)
-        .all(...params)
-        .map((row) => Object.values(row));
-    },
-    run: async () => execute(),
-    all: async () => ({ success: true, results: sqlite.prepare(sql).all(...params) }),
-  };
-}
+let db: TestDb;
 
 beforeEach(async () => {
   vi.useFakeTimers();
   vi.setSystemTime(new Date("2026-10-10T15:00:00Z"));
-  sqlite = new DatabaseSync(":memory:");
-  sqlite.exec("PRAGMA foreign_keys = ON");
-  const dir = new URL("../../drizzle/", import.meta.url);
-  const journal = JSON.parse(readFileSync(new URL("meta/_journal.json", dir), "utf8")) as {
-    entries: { tag: string }[];
-  };
-  for (const { tag } of journal.entries)
-    sqlite.exec(readFileSync(new URL(`${tag}.sql`, dir), "utf8"));
-  sqlite.exec(`
-    INSERT INTO room_types (id, name, max_occupancy, base_rate_cents, created_at)
-      VALUES ('type', 'King', 2, 10000, '2026-10-10');
-    INSERT INTO rooms VALUES ('room-101', '101', 'type'), ('room-102', '102', 'type'), ('room-103', '103', 'type');
-  `);
-  binding = {
-    prepare: (sql: string) => statement(sql),
-    batch: (queries: ReturnType<typeof statement>[]) => {
-      const result = batchTail.then(() => {
-        sqlite.exec("BEGIN");
-        try {
-          const results = [];
-          for (const query of queries) results.push(query.execute());
-          sqlite.exec("COMMIT");
-          return results;
-        } catch (error) {
-          sqlite.exec("ROLLBACK");
-          throw error;
-        }
-      });
-      batchTail = result.catch(() => {});
-      return result;
-    },
-  } as unknown as D1Database;
-  bindings = await authEnv({ DB: binding });
-  sessionCookie = await signIn(bindings);
+  db = await createTestDb();
+  seedRoomType(db.sqlite, { id: "type", name: "King", maxAdults: 2, baseRateCents: 10000 });
+  seedRooms(db.sqlite, "type", { "room-101": "101", "room-102": "102", "room-103": "103" });
 });
 
 afterEach(() => {
-  sqlite.close();
+  db.close();
   vi.useRealTimers();
   vi.restoreAllMocks();
 });
 
-function request(path: string, method = "GET", body?: unknown, database = binding) {
-  return app.request(
-    path,
-    {
-      method,
-      headers: {
-        cookie: sessionCookie,
-        ...(body === undefined ? {} : { "content-type": "application/json" }),
-      },
-      ...(body === undefined ? {} : { body: JSON.stringify(body) }),
-    },
-    { ...bindings, DB: database },
-  );
-}
+const request: TestDb["request"] = (...args) => db.request(...args);
 
 async function create(count = 1, dates = { checkIn: "2026-10-10", checkOut: "2026-10-13" }) {
   const response = await request("/reservations", "POST", {
@@ -230,9 +155,9 @@ it.each([
   ["America/New_York", "2026-03-08T04:59:59Z", "2026-03-07", "2026-03-08"],
   ["America/New_York", "2026-03-09T03:59:59Z", "2026-03-08", "2026-03-09"],
 ])("validates payments against %s at %s", async (timeZone, instant, today, tomorrow) => {
-  bindings.PROPERTY_TIME_ZONE = timeZone;
+  db.env.PROPERTY_TIME_ZONE = timeZone;
   vi.setSystemTime(new Date(instant));
-  sessionCookie = await signIn(bindings);
+  await db.signIn();
   const d = await create();
   const payment = { amountCents: 500, method: "cash" as const, paymentDate: today };
   const saved = await command(d, [{ type: "add-payment", payment }]);
@@ -546,18 +471,9 @@ it.each(["adults=0", "adults=1.5", "adults=101", "children=-1", "children=1.5", 
   },
 );
 
-function isCommandBatch(queries: D1PreparedStatement[]) {
-  return queries.some((query) =>
-    (query as unknown as ReturnType<typeof statement>).sql.startsWith(
-      'insert into "reservation_requests"',
-    ),
-  );
-}
-
-// Hold one planned command before its transaction. Other requests can commit
-// through the same database while it waits, without timers or application hooks.
-function pauseCommandBatch() {
-  const batch = binding.batch.bind(binding);
+// Hold the next write after its preflight, before its transaction. Other
+// requests can commit through the same database while it waits.
+function pauseNextCommit() {
   let resume = () => {};
   let reached = () => {};
   const blocked = new Promise<void>((resolve) => {
@@ -566,16 +482,10 @@ function pauseCommandBatch() {
   const ready = new Promise<void>((resolve) => {
     reached = resolve;
   });
-  const spy = vi
-    .spyOn(binding, "batch")
-    .mockImplementation(async <T>(queries: D1PreparedStatement[]) => {
-      if (isCommandBatch(queries)) {
-        spy.mockRestore();
-        reached();
-        await blocked;
-      }
-      return batch<T>(queries);
-    });
+  db.beforeCommit(() => {
+    reached();
+    return blocked;
+  });
   return { ready, resume };
 }
 
@@ -603,7 +513,7 @@ describe("concurrent reservation commands", () => {
         billing: { status: to, totalCents: 30000 },
         validation: { issues: [] },
       });
-      const paused = pauseCommandBatch();
+      const paused = pauseNextCommit();
       const pending = request(`/reservations/${d.id}/commands`, "POST", body);
       await paused.ready;
       try {
@@ -617,7 +527,7 @@ describe("concurrent reservation commands", () => {
       expect(await response.json()).toEqual({ error: "too many guests for this room type" });
       expect(await (await request(`/reservations/${d.id}`)).json()).toEqual(d);
       expect(
-        sqlite.prepare("SELECT id FROM reservation_requests WHERE id = ?").get(body.requestId),
+        db.sqlite.prepare("SELECT id FROM reservation_requests WHERE id = ?").get(body.requestId),
       ).toBeUndefined();
       const invalidPreview = await request(`/reservations/${d.id}/preview`, "POST", body);
       expect(invalidPreview.status).toBe(200);
@@ -641,8 +551,8 @@ describe("concurrent reservation commands", () => {
     async ({ status, checkIn, checkOut }) => {
       let d = await create();
       d = await command(d, [roomEdit(d, 0, { adults: 2 }), { type: "set-status", status }]);
-      const nights = sqlite.prepare("SELECT * FROM reservation_room_nights ORDER BY id").all();
-      const paused = pauseCommandBatch();
+      const nights = db.sqlite.prepare("SELECT * FROM reservation_room_nights ORDER BY id").all();
+      const paused = pauseNextCommit();
       const pending = command(d, [{ type: "dates", checkIn, checkOut }, pay(5000)], 409);
       await paused.ready;
       try {
@@ -652,7 +562,7 @@ describe("concurrent reservation commands", () => {
       }
       expect(await pending).toEqual({ error: "too many guests for this room type" });
       expect(await (await request(`/reservations/${d.id}`)).json()).toEqual(d);
-      expect(sqlite.prepare("SELECT * FROM reservation_room_nights ORDER BY id").all()).toEqual(
+      expect(db.sqlite.prepare("SELECT * FROM reservation_room_nights ORDER BY id").all()).toEqual(
         nights,
       );
     },
@@ -674,7 +584,7 @@ describe("concurrent reservation commands", () => {
         "reservation_guests",
         "payments",
         "reservation_requests",
-      ].map((table) => sqlite.prepare(`SELECT * FROM ${table} ORDER BY id`).all());
+      ].map((table) => db.sqlite.prepare(`SELECT * FROM ${table} ORDER BY id`).all());
     const before = snapshot();
     const body = {
       requestId: crypto.randomUUID(),
@@ -687,7 +597,7 @@ describe("concurrent reservation commands", () => {
         pay(5000),
       ],
     };
-    const paused = pauseCommandBatch();
+    const paused = pauseNextCommit();
     const pending = request(`/reservations/${d.id}/commands`, "POST", body);
     await paused.ready;
     try {
@@ -749,7 +659,7 @@ describe("concurrent reservation commands", () => {
         { type: "set-status", status: "confirmed" },
       ],
     };
-    const paused = pauseCommandBatch();
+    const paused = pauseNextCommit();
     const pending = request(`/reservations/${d.id}/commands`, "POST", body);
     await paused.ready;
     try {
@@ -776,7 +686,7 @@ describe("concurrent reservation commands", () => {
     async (limit) => {
       let d = await create();
       d = await command(d, [roomEdit(d, 0, { adults: 2, children: 2 })]);
-      const paused = pauseCommandBatch();
+      const paused = pauseNextCommit();
       const pending = command(d, [pay(5000), setDiscount(1000), { type: "notes", notes: "Paid" }]);
       await paused.ready;
       try {
@@ -800,7 +710,7 @@ describe("concurrent reservation commands", () => {
 
   it("preserves a concurrent discount when an older notes plan commits later", async () => {
     const d = await create();
-    const paused = pauseCommandBatch();
+    const paused = pauseNextCommit();
     const pending = command(d, [{ type: "notes", notes: "Arriving after 10 pm" }]);
     await paused.ready;
     await command(d, [setDiscount(5000)]);
@@ -815,7 +725,7 @@ describe("concurrent reservation commands", () => {
 
   it("keeps extended dates and charged nights together after a concurrent notes save", async () => {
     const d = await create();
-    const paused = pauseCommandBatch();
+    const paused = pauseNextCommit();
     const pending = command(d, [{ type: "notes", notes: "Late arrival" }]);
     await paused.ready;
     await command(d, [{ type: "dates", checkIn: d.checkIn, checkOut: "2026-10-14" }]);
@@ -838,7 +748,7 @@ describe("concurrent reservation commands", () => {
   it("preserves newly saved staying guests when a concurrent payment retries", async () => {
     const d = await create();
     const person = guest(d.rooms[0].id);
-    const paused = pauseCommandBatch();
+    const paused = pauseNextCommit();
     const pending = command(d, [pay(1000)]);
     await paused.ready;
     await command(d, [{ type: "set-guests", guests: [person] }]);
@@ -851,7 +761,7 @@ describe("concurrent reservation commands", () => {
 
   it("keeps both distinct payments when a stale command retries", async () => {
     const d = await create();
-    const paused = pauseCommandBatch();
+    const paused = pauseNextCommit();
     const pending = command(d, [pay(1000)]);
     await paused.ready;
     await command(d, [pay(2000)]);
@@ -863,7 +773,7 @@ describe("concurrent reservation commands", () => {
 
   it("lets the later successful notes edit win after retrying", async () => {
     const d = await create();
-    const paused = pauseCommandBatch();
+    const paused = pauseNextCommit();
     const pending = command(d, [{ type: "notes", notes: "Arriving at 10 pm" }]);
     await paused.ready;
     await command(d, [{ type: "notes", notes: "Arriving at 8 pm" }]);
@@ -874,7 +784,7 @@ describe("concurrent reservation commands", () => {
   it("replays a request another attempt committed without duplicating its payment", async () => {
     const d = await create();
     const body = { requestId: crypto.randomUUID(), actions: [pay(1000)] };
-    const paused = pauseCommandBatch();
+    const paused = pauseNextCommit();
     const pending = request(`/reservations/${d.id}/commands`, "POST", body);
     await paused.ready;
     expect((await request(`/reservations/${d.id}/commands`, "POST", body)).status).toBe(200);
@@ -888,7 +798,7 @@ describe("concurrent reservation commands", () => {
 
   it("preserves guest-editor notes when a contact command retries", async () => {
     const d = await create();
-    const paused = pauseCommandBatch();
+    const paused = pauseNextCommit();
     const pending = command(d, [
       pay(1000),
       {
@@ -909,7 +819,7 @@ describe("concurrent reservation commands", () => {
 
   it("reapplies an intentional contact edit even when it matched the original values", async () => {
     const d = await create();
-    const paused = pauseCommandBatch();
+    const paused = pauseNextCommit();
     const pending = command(d, [
       {
         type: "contact",
@@ -927,7 +837,7 @@ describe("concurrent reservation commands", () => {
   it("rejects a changed payload when the same request ID commits while an attempt waits", async () => {
     const d = await create();
     const body = { requestId: crypto.randomUUID(), actions: [pay(1000)] };
-    const paused = pauseCommandBatch();
+    const paused = pauseNextCommit();
     const pending = request(`/reservations/${d.id}/commands`, "POST", body);
     await paused.ready;
     expect(
@@ -945,7 +855,7 @@ describe("concurrent reservation commands", () => {
 
   it("revalidates the original actions when a concurrent save removes their payment", async () => {
     const d = await command(await create(), [pay(1000)]);
-    const paused = pauseCommandBatch();
+    const paused = pauseNextCommit();
     const body = {
       requestId: crypto.randomUUID(),
       actions: [
@@ -972,15 +882,17 @@ describe("concurrent reservation commands", () => {
     expect(saved.payments).toEqual([]);
     expect(saved.notes).toBeNull();
     expect(
-      sqlite.prepare("SELECT id FROM reservation_requests WHERE id=?").get(body.requestId),
+      db.sqlite.prepare("SELECT id FROM reservation_requests WHERE id=?").get(body.requestId),
     ).toBeUndefined();
   });
 
   it("guards a shared contact when another reservation edits it concurrently", async () => {
     const first = await create();
     const second = await create();
-    sqlite.prepare("UPDATE reservations SET guest_id=? WHERE id=?").run(first.guestId, second.id);
-    const paused = pauseCommandBatch();
+    db.sqlite
+      .prepare("UPDATE reservations SET guest_id=? WHERE id=?")
+      .run(first.guestId, second.id);
+    const paused = pauseNextCommit();
     const pending = command(first, [
       {
         type: "contact",
@@ -1012,30 +924,20 @@ describe("concurrent reservation commands", () => {
   it("bounds retries, rolls back exhausted attempts, and keeps the request ID usable", async () => {
     const d = await create();
     const body = { requestId: crypto.randomUUID(), actions: [pay(1000)] };
-    const batch = binding.batch.bind(binding);
-    // A second binding represents another Worker, outside the pending request's
-    // interception. Each contender is a real command with its own receipt.
-    const otherBinding = Object.create(binding) as D1Database;
-    otherBinding.batch = batch;
+    // Before each attempt commits, another Worker commits a real command with
+    // its own receipt. Commits made inside the hook are not intercepted.
     let contenders = 0;
-    const spy = vi
-      .spyOn(binding, "batch")
-      .mockImplementation(async <T>(queries: D1PreparedStatement[]) => {
-        if (isCommandBatch(queries)) {
-          contenders++;
-          const response = await request(
-            `/reservations/${d.id}/commands`,
-            "POST",
-            {
-              requestId: crypto.randomUUID(),
-              actions: [{ type: "notes", notes: `Other save ${contenders}` }],
-            },
-            otherBinding,
-          );
-          expect(response.status).toBe(200);
-        }
-        return batch<T>(queries);
-      });
+    const stop = db.beforeCommit(
+      async () => {
+        contenders++;
+        const response = await request(`/reservations/${d.id}/commands`, "POST", {
+          requestId: crypto.randomUUID(),
+          actions: [{ type: "notes", notes: `Other save ${contenders}` }],
+        });
+        expect(response.status).toBe(200);
+      },
+      { times: Infinity },
+    );
     const response = await request(`/reservations/${d.id}/commands`, "POST", body);
     expect(response.status).toBe(409);
     expect(await response.json()).toEqual({
@@ -1046,9 +948,9 @@ describe("concurrent reservation commands", () => {
     expect(saved).toMatchObject({ notes: "Other save 3", status: "confirmed", paidCents: 0 });
     expect(saved.payments).toEqual([]);
     expect(
-      sqlite.prepare("SELECT id FROM reservation_requests WHERE id=?").get(body.requestId),
+      db.sqlite.prepare("SELECT id FROM reservation_requests WHERE id=?").get(body.requestId),
     ).toBeUndefined();
-    spy.mockRestore();
+    stop();
     expect((await request(`/reservations/${d.id}/commands`, "POST", body)).status).toBe(200);
     expect((await request(`/reservations/${d.id}/commands`, "POST", body)).status).toBe(200);
     saved = (await (await request(`/reservations/${d.id}`)).json()) as Detail;
@@ -1087,9 +989,8 @@ describe("reservation workflow", () => {
     await command(d, [{ type: "set-discount", amountCents: 1.5 }], 400);
   });
   it("reprices type changes and permits an explicit matching assignment", async () => {
-    sqlite.exec(
-      "INSERT INTO room_types (id,name,max_occupancy,base_rate_cents,created_at) VALUES ('other','Twin',3,20000,'2026-10-10'); INSERT INTO rooms VALUES ('201','201','other')",
-    );
+    seedRoomType(db.sqlite, { id: "other", name: "Twin", maxAdults: 3, baseRateCents: 20000 });
+    seedRooms(db.sqlite, "other", { "201": "201" });
     let d = await create();
     d = await command(d, [roomEdit(d)]);
     d = await command(d, [roomEdit(d, 0, { roomTypeId: "other", roomId: "201" })]);
@@ -1102,7 +1003,7 @@ describe("reservation workflow", () => {
     const d = await create();
     await command(d, [pay(10000), roomEdit(d)], 409);
     expect(((await (await request(`/reservations/${d.id}`)).json()) as Detail).paidCents).toBe(0);
-    sqlite.exec(
+    db.sqlite.exec(
       "INSERT INTO room_closures VALUES ('closed','room-102','2026-10-10','2026-10-13','Maintenance','2026-10-10')",
     );
     await command(d, [roomEdit(d, 0, { roomId: "room-102" })], 409);
@@ -1270,7 +1171,7 @@ describe("reservation workflow", () => {
     expect(responses.map((r) => r.status)).toEqual([201, 201]);
     const details = (await Promise.all(responses.map((r) => r.json()))) as Detail[];
     expect(details[0].id).toBe(details[1].id);
-    expect(sqlite.prepare("SELECT count(*) AS n FROM reservations").get()?.n).toBe(1);
+    expect(db.sqlite.prepare("SELECT count(*) AS n FROM reservations").get()?.n).toBe(1);
     expect((await request("/reservations", "POST", { ...input, notes: "changed" })).status).toBe(
       409,
     );
@@ -1394,9 +1295,8 @@ describe("reservation workflow", () => {
   });
   it("quotes rooms with occupancy or assignment issues and still rejects those writes", async () => {
     const d = await create();
-    sqlite.exec(
-      "INSERT INTO room_types (id,name,max_occupancy,base_rate_cents,created_at) VALUES ('other', 'Single', 1, 5000, '2026-10-10'); INSERT INTO rooms VALUES ('room-other', '201', 'other')",
-    );
+    seedRoomType(db.sqlite, { id: "other", name: "Single", maxAdults: 1, baseRateCents: 5000 });
+    seedRooms(db.sqlite, "other", { "room-other": "201" });
     const actions = [roomEdit(d, 0, { adults: 3, roomId: "room-other" })];
     const response = await previewCommand(d, actions);
     expect(response).toMatchObject({
@@ -1507,7 +1407,7 @@ describe("reservation workflow", () => {
   });
   it("returns closure issues for every affected proposed room, including an added room after a removal", async () => {
     const d = await create(2);
-    sqlite.exec(
+    db.sqlite.exec(
       "INSERT INTO room_closures (id, room_id, starts, ends, reason, created_at) VALUES ('closed-1', 'room-101', '2026-10-13', '2026-10-15', NULL, '2026-10-10'), ('closed-2', 'room-102', '2026-10-13', '2026-10-15', NULL, '2026-10-10')",
     );
     const actions: WorkflowAction[] = [
@@ -1892,7 +1792,7 @@ describe("reservation dates and lifecycle", () => {
   });
   it("retains quoted prices on existing nights and prices only added nights at current rates", async () => {
     let d = await create(2);
-    sqlite.exec("UPDATE room_types SET base_rate_cents=15000 WHERE id='type'");
+    db.sqlite.exec("UPDATE room_types SET base_rate_cents=15000 WHERE id='type'");
     d = await command(d, [{ type: "dates", checkIn: d.checkIn, checkOut: "2026-10-14" }]);
     expect(
       d.rooms.every(
@@ -2113,7 +2013,9 @@ describe("paginated reservation operations", () => {
 
   it("searches only booking contact and code, not staying guests, rooms, documents or notes", async () => {
     const reservation = await book("Booking Contact");
-    sqlite.prepare("UPDATE reservations SET code = 'FIXEDCODE' WHERE id = ?").run(reservation.id);
+    db.sqlite
+      .prepare("UPDATE reservations SET code = 'FIXEDCODE' WHERE id = ?")
+      .run(reservation.id);
     await command(reservation, [
       roomEdit(reservation),
       { type: "notes", notes: "ReservationNoteOnly" },
@@ -2146,7 +2048,9 @@ describe("paginated reservation operations", () => {
   });
 
   it("keeps the metadata endpoint behind the real session guard", async () => {
-    const response = await app.request("/reservations?paginated=true&sort=balance", {}, bindings);
+    const response = await request("/reservations?paginated=true&sort=balance", "GET", undefined, {
+      signedIn: false,
+    });
     expect(response.status).toBe(401);
     expect(await response.json()).toEqual({ error: "unauthorized" });
   });
@@ -2157,24 +2061,15 @@ describe("paginated reservation operations", () => {
       const id = `history-${index}`;
       const checkIn = new Date(Date.UTC(2026, 9, index + 1)).toISOString().slice(0, 10);
       const checkOut = new Date(Date.UTC(2026, 9, index + 2)).toISOString().slice(0, 10);
-      sqlite
-        .prepare("INSERT INTO guests (id, full_name, created_at) VALUES (?, ?, ?)")
-        .run(id, index === 99 ? "Latest Target" : "Booking Contact", "2026-10-10");
-      sqlite
-        .prepare(
-          "INSERT INTO reservations (id, code, guest_id, check_in, check_out, created_at) VALUES (?, ?, ?, ?, ?, ?)",
-        )
-        .run(id, `H${index}`, id, checkIn, checkOut, "2026-10-10");
-      sqlite
-        .prepare(
-          "INSERT INTO reservation_rooms (id, reservation_id, room_type_id, adults, created_at) VALUES (?, ?, 'type', 1, ?)",
-        )
-        .run(id, id, "2026-10-10");
-      sqlite
-        .prepare(
-          "INSERT INTO reservation_room_nights (id, reservation_room_id, date, price_cents) VALUES (?, ?, ?, ?)",
-        )
-        .run(id, id, checkIn, index === 99 ? 90000 : 10000);
+      seedReservation(db.sqlite, {
+        id,
+        code: `H${index}`,
+        guestName: index === 99 ? "Latest Target" : "Booking Contact",
+        checkIn,
+        checkOut,
+        createdAt: "2026-10-10",
+        nightCents: index === 99 ? 90000 : 10000,
+      });
     }
     const first = await paged();
     expect(first).toMatchObject({ total: 100, limit: 50, offset: 0 });
@@ -2237,8 +2132,8 @@ describe("paginated reservation operations", () => {
       const { complex, settled, credit, cancelled, owing } = await billExamples();
       const adaA = await book("Ada Same", { checkIn: "2026-10-22", checkOut: "2026-10-23" });
       const adaB = await book("Ada Same", { checkIn: "2026-10-24", checkOut: "2026-10-25" });
-      sqlite.prepare("UPDATE reservations SET code = ? WHERE id = ?").run("AAA", adaA.id);
-      sqlite.prepare("UPDATE reservations SET code = ? WHERE id = ?").run("BBB", adaB.id);
+      db.sqlite.prepare("UPDATE reservations SET code = ? WHERE id = ?").run("AAA", adaA.id);
+      db.sqlite.prepare("UPDATE reservations SET code = ? WHERE id = ?").run("BBB", adaB.id);
       const pages = await Promise.all(
         [0, 2, 4, 6].map((offset) =>
           paged(`sort=balance&direction=${direction}&limit=2&offset=${offset}`),
@@ -2443,8 +2338,8 @@ describe("paginated reservation operations", () => {
       const adaB = await book("Ada Lovelace", { checkIn: "2026-10-02", checkOut: "2026-10-04" });
       const bea = await book("Bea Jones", { checkIn: "2026-10-04", checkOut: "2026-10-05" });
       // Fixed codes make the specified tie-breaker independent of generated codes.
-      sqlite.prepare("UPDATE reservations SET code = ? WHERE id = ?").run("AAA", adaA.id);
-      sqlite.prepare("UPDATE reservations SET code = ? WHERE id = ?").run("BBB", adaB.id);
+      db.sqlite.prepare("UPDATE reservations SET code = ? WHERE id = ?").run("AAA", adaA.id);
+      db.sqlite.prepare("UPDATE reservations SET code = ? WHERE id = ?").run("BBB", adaB.id);
       const ids: Record<string, string> = {
         zoe: zoe.id,
         adaA: adaA.id,

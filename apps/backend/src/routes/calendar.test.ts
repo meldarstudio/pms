@@ -1,102 +1,29 @@
-/// <reference types="node" />
-
-import { readFileSync } from "node:fs";
-import { DatabaseSync, type SQLInputValue } from "node:sqlite";
-import { URL } from "node:url";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
-import app from "../index";
-import type { Env } from "../env";
-import { authEnv, signIn } from "../test-support/auth";
+import {
+  createTestDb,
+  seedReservation,
+  seedRooms,
+  seedRoomType,
+  type TestDb,
+} from "../test-support/d1";
 
-let sqlite: DatabaseSync;
-let binding: D1Database;
-let batchTail: Promise<unknown> = Promise.resolve();
-let bindings: Env["Bindings"];
-let sessionCookie: string;
-
-// Same D1-style stand-in the reservation list uses. Duplicate join columns collapse.
-function statement(sql: string, params: SQLInputValue[] = []) {
-  const execute = () => {
-    if (sqlite.prepare(sql).columns().length) {
-      return { success: true, results: sqlite.prepare(sql).all(...params) };
-    }
-    sqlite.prepare(sql).run(...params);
-    return { success: true, results: [] };
-  };
-  return {
-    sql,
-    execute,
-    bind: (...values: SQLInputValue[]) => statement(sql, values),
-    raw: async () => {
-      return sqlite
-        .prepare(`SELECT * FROM (${sql})`)
-        .all(...params)
-        .map((row) => Object.values(row));
-    },
-    run: async () => execute(),
-    all: async () => ({ success: true, results: sqlite.prepare(sql).all(...params) }),
-  };
-}
+let db: TestDb;
 
 beforeEach(async () => {
   vi.useFakeTimers();
   vi.setSystemTime(new Date("2026-10-10T15:00:00Z"));
-  sqlite = new DatabaseSync(":memory:");
-  sqlite.exec("PRAGMA foreign_keys = ON");
-  const dir = new URL("../../drizzle/", import.meta.url);
-  const journal = JSON.parse(readFileSync(new URL("meta/_journal.json", dir), "utf8")) as {
-    entries: { tag: string }[];
-  };
-  for (const { tag } of journal.entries)
-    sqlite.exec(readFileSync(new URL(`${tag}.sql`, dir), "utf8"));
-  sqlite.exec(`
-    INSERT INTO room_types (id, name, max_occupancy, base_rate_cents, created_at)
-      VALUES ('type', 'King', 2, 10000, '2026-10-10');
-    INSERT INTO rooms VALUES ('room-101', '101', 'type'), ('room-102', '102', 'type'), ('room-103', '103', 'type');
-  `);
-  binding = {
-    prepare: (sql: string) => statement(sql),
-    batch: (queries: ReturnType<typeof statement>[]) => {
-      const result = batchTail.then(() => {
-        sqlite.exec("BEGIN");
-        try {
-          const results = [];
-          for (const query of queries) results.push(query.execute());
-          sqlite.exec("COMMIT");
-          return results;
-        } catch (error) {
-          sqlite.exec("ROLLBACK");
-          throw error;
-        }
-      });
-      batchTail = result.catch(() => {});
-      return result;
-    },
-  } as unknown as D1Database;
-  bindings = await authEnv({ DB: binding });
-  sessionCookie = await signIn(bindings);
+  db = await createTestDb();
+  seedRoomType(db.sqlite, { id: "type", name: "King", maxAdults: 2, baseRateCents: 10000 });
+  seedRooms(db.sqlite, "type", { "room-101": "101", "room-102": "102", "room-103": "103" });
 });
 
 afterEach(() => {
-  sqlite.close();
+  db.close();
   vi.useRealTimers();
   vi.restoreAllMocks();
 });
 
-function request(path: string, method = "GET", body?: unknown) {
-  return app.request(
-    path,
-    {
-      method,
-      headers: {
-        cookie: sessionCookie,
-        ...(body === undefined ? {} : { "content-type": "application/json" }),
-      },
-      ...(body === undefined ? {} : { body: JSON.stringify(body) }),
-    },
-    bindings,
-  );
-}
+const request: TestDb["request"] = (...args) => db.request(...args);
 
 type Created = {
   id: string;
@@ -162,9 +89,7 @@ type CalendarBody = {
 
 describe("calendar read", () => {
   it("shows every room in numeric room-number order, including a room with no stay, labeled with its room type", async () => {
-    sqlite.exec(`
-      INSERT INTO rooms VALUES ('room-2', '2', 'type'), ('room-10', '10', 'type');
-    `);
+    seedRooms(db.sqlite, "type", { "room-2": "2", "room-10": "10" });
 
     const response = await request("/calendar?from=2026-10-20&to=2026-10-26");
 
@@ -331,9 +256,7 @@ describe("calendar read", () => {
   });
 
   it("lists confirmed and checked-in reserved rooms with no assignment that still occupy a visible night", async () => {
-    sqlite.exec(`
-      INSERT INTO rooms VALUES ('room-104', '104', 'type'), ('room-105', '105', 'type');
-    `);
+    seedRooms(db.sqlite, "type", { "room-104": "104", "room-105": "105" });
     const waiting = await create("Ada Lovelace", { checkIn: "2026-10-21", checkOut: "2026-10-23" });
     const inHouse = await create("Grace Hopper", { checkIn: "2026-10-20", checkOut: "2026-10-22" });
     await command(inHouse, [{ type: "set-status", status: "checked_in" }]);
@@ -447,7 +370,7 @@ describe("calendar read", () => {
     expect(ready.status).toBe(200);
     expect((await ready.json()) as { missingSetup: unknown }).toMatchObject({ missingSetup: null });
 
-    sqlite.exec("DELETE FROM rooms");
+    db.sqlite.exec("DELETE FROM rooms");
     const noRooms = await request("/calendar?from=2026-10-20&to=2026-10-26");
     expect(noRooms.status).toBe(200);
     expect(await noRooms.json()).toMatchObject({
@@ -456,7 +379,7 @@ describe("calendar read", () => {
       unassigned: [],
     });
 
-    sqlite.exec("DELETE FROM room_types");
+    db.sqlite.exec("DELETE FROM room_types");
     const noTypes = await request("/calendar?from=2026-10-20&to=2026-10-26");
     expect(noTypes.status).toBe(200);
     expect(await noTypes.json()).toMatchObject({
@@ -487,13 +410,17 @@ describe("calendar read", () => {
   });
 
   it("returns a stay longer than 60 nights without re-checking the write limit", async () => {
-    sqlite.exec(`
-      INSERT INTO guests (id, full_name, created_at) VALUES ('guest-long', 'Long Stay', '2026-08-01');
-      INSERT INTO reservations (id, code, status, guest_id, check_in, check_out, created_at)
-        VALUES ('res-long', 'LONG0001', 'confirmed', 'guest-long', '2026-08-22', '2026-10-22', '2026-08-01');
-      INSERT INTO reservation_rooms (id, reservation_id, room_type_id, room_id, adults, children, created_at)
-        VALUES ('line-long', 'res-long', 'type', 'room-101', 1, 0, '2026-08-01');
-    `);
+    seedReservation(db.sqlite, {
+      id: "res-long",
+      guestId: "guest-long",
+      lineId: "line-long",
+      code: "LONG0001",
+      guestName: "Long Stay",
+      checkIn: "2026-08-22",
+      checkOut: "2026-10-22",
+      roomId: "room-101",
+      createdAt: "2026-08-01",
+    });
 
     const response = await request("/calendar?from=2026-10-20&to=2026-10-26");
 
@@ -512,27 +439,21 @@ describe("calendar read", () => {
   });
 
   it("returns every overlapping stay in the window, with no page and no silent stop", async () => {
-    const guests = [];
-    const reservations = [];
-    const lines = [];
-    const extraRooms = [];
     for (let index = 1; index <= 51; index++) {
       const id = String(index).padStart(2, "0");
-      extraRooms.push(`('room-extra-${id}', '${200 + index}', 'type')`);
-      guests.push(`('guest-${id}', 'Guest ${id}', '2026-10-01')`);
-      reservations.push(
-        `('res-${id}', 'CODE${id}', 'confirmed', 'guest-${id}', '2026-10-20', '2026-10-22', '2026-10-01')`,
-      );
-      lines.push(`('line-${id}', 'res-${id}', 'type', 'room-extra-${id}', 1, 0, '2026-10-01')`);
+      seedRooms(db.sqlite, "type", { [`room-extra-${id}`]: String(200 + index) });
+      seedReservation(db.sqlite, {
+        id: `res-${id}`,
+        guestId: `guest-${id}`,
+        lineId: `line-${id}`,
+        code: `CODE${id}`,
+        guestName: `Guest ${id}`,
+        checkIn: "2026-10-20",
+        checkOut: "2026-10-22",
+        roomId: `room-extra-${id}`,
+        createdAt: "2026-10-01",
+      });
     }
-    sqlite.exec(`
-      INSERT INTO rooms VALUES ${extraRooms.join(", ")};
-      INSERT INTO guests (id, full_name, created_at) VALUES ${guests.join(", ")};
-      INSERT INTO reservations (id, code, status, guest_id, check_in, check_out, created_at)
-        VALUES ${reservations.join(", ")};
-      INSERT INTO reservation_rooms (id, reservation_id, room_type_id, room_id, adults, children, created_at)
-        VALUES ${lines.join(", ")};
-    `);
 
     const response = await request("/calendar?from=2026-10-20&to=2026-10-26");
 
