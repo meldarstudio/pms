@@ -149,9 +149,14 @@ _Avoid_: Room-type availability
 
 **Calendar**:
 The staff view of each room over a span of property dates, showing that room's stays and room
-closures, together with the reserved rooms that still have no room assignment. A stay or room closure
+closures, together with the assignment backlog. A stay or room closure
 that ends on the first morning of the span is still shown on that room.
 _Avoid_: Room-type availability, inventory
+
+**Assignment backlog**:
+The unassigned reserved rooms in confirmed or checked-in reservations whose stays overlap the displayed
+nights. Reservations that are checked out, cancelled, or departing on the first displayed morning are excluded.
+_Avoid_: Room inventory, all unassigned reservations
 
 **Property setup**:
 The room types and rooms that must exist before a reservation can be taken.

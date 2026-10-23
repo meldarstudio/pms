@@ -1,19 +1,17 @@
-# Room assignment
+# Calendar and room assignment
 
 Desktop and mobile share one flow: a list of unassigned reserved rooms, then a
 picker of physical rooms for the selected one. `RoomAssignmentSteps` renders both
 steps; desktop shows them in an inline panel beside the calendar, and mobile (below
-768px) in a bottom sheet. Mobile came first, from prototype **C** on the local
-throwaway branch `prototype/mobile-room-assignment`, commit `1581cf4`. Desktop
-adopted it because staff choose rooms carefully: they keep a group's rooms together
-and read floors from room numbers, so the calendar stays visible as context instead
-of being the only place to click.
+768px) in a bottom sheet. Staff keep a group's rooms together and use room numbers to identify floors,
+so the desktop calendar remains visible beside the picker.
 
 ## Entry
 
 Both sizes open the flow from a **Sin asignar** toolbar button with a small
-primary-colored badge. It counts unassigned reserved rooms overlapping the displayed
-dates, not reservations, available physical rooms, or a property-wide backlog; one
+primary-colored badge. It counts unassigned reserved rooms from confirmed and
+checked-in reservations overlapping the displayed dates, excluding checkout on
+the first displayed morning; one
 reservation with three unassigned reserved rooms contributes three. The badge is
 hidden at zero and when no calendar data is available; cached counts remain during
 refreshes. The button stays available at zero, and its accessible name
@@ -40,8 +38,9 @@ none remain it returns to the refreshed list.
 
 ## Desktop calendar
 
-Selecting a stay moves the calendar's dates when needed so the whole stay, checkout
-morning included, is visible. While a stay is selected, a banner names it with
+Selecting a stay moves the calendar's start when needed. The span stays at 7 or
+14 days, so long stays and their checkout morning may extend beyond the grid.
+Assignment availability is still checked for the entire stay. While a stay is selected, a banner names it with
 **Esc para cancelar** and a cancel button; calendar bars and night cells do not open
 editors. Eligible rooms show a dashed bar that assigns like the list. Rooms of the
 same type that cannot take the stay show **Ocupada** or **Cerrada** in the room
@@ -53,8 +52,32 @@ content-driven rows in a single bordered list with separators, compact spacing, 
 the one-pixel focus treatment. Mobile toasts appear top-center with safe-area
 spacing, away from the sheet controls; desktop toasts stay bottom-right.
 
-`tests/calendar.test.ts` covers both sizes at the real calendar screen with HTTP
+The [calendar tests](../apps/portal/tests/calendar.test.ts) cover both sizes at the real calendar screen with HTTP
 fixtures, including availability outside the visible calendar, groups, conflicts,
-pending-write dismissal, cancellation, and moving to a stay past the window. Phone
-layout, scrolling, safe-area spacing, touch behavior, and desktop row scrolling still
-need authenticated visual validation.
+pending-write dismissal, cancellation, and moving to a stay past the window. Visual validation requirements and prior limitations are recorded in
+[operational status](operations-status.md).
+
+## Calendar read
+
+The calendar reads rooms, stays, closures, and the assignment backlog together
+through `GET /calendar` for its visible window, with no reservation bill. The
+client holds seven days before and after the visible window; focus, refresh, and
+a relevant save refresh data. A jump outside the held window shows loading rather
+than old bars under new dates. Assignment availability and the reservation list
+have separate reads. See [ADR 0001](adr/0001-calendar-is-one-read.md) for the
+trade-offs.
+
+Assigned stays and closures ending on the first displayed morning remain visible.
+The assignment backlog excludes checked-out and cancelled reservations and stays
+ending that morning. This differs from room inventory: checked-out reservations
+retain their booked nights. Operational **Hoy** comes from
+[the property calendar](property-calendar.md).
+
+## Known assignment limitation
+
+The backlog and picker admit checked-in reservations, but
+[assignRoom](../apps/portal/src/lib/api.ts) currently requires `confirmed` and
+rejects them with "La habitación cambió. Actualiza la reserva." This is an
+application mismatch, not a domain rule prohibiting assignment after check-in.
+A follow-up should align the save helper with the intended confirmed/checked-in
+flow and cover a checked-in assignment through the calendar.

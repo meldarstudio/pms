@@ -55,3 +55,37 @@ shared browser harness before adding another integration suite.
 - A passing reduced suite alone does not prove that a deletion is safe. Review
   the removed assertions against the remaining tests and relevant application
   code, then run the affected tests and repository checks.
+
+## Documentation
+
+Agents are the primary audience. `AGENTS.md` files route tasks to context; the root
+README owns setup, command usage, and tool configuration. Package READMEs index
+focused guides for behavior and operations. The glossary owns business terms;
+ADRs preserve consequential architectural trade-offs.
+
+Update affected documentation in the same change as behavior, contracts,
+configuration, or operational procedures. During review:
+
+- Check the relevant guide against the final code, tests, scripts, and config.
+  State actual behavior and known limitations precisely. Do not describe a bug as
+  an intended business rule or promise guarantees the implementation lacks.
+- Keep each detailed rule in one authoritative topic. Replace repeated explanations
+  with links, and update inbound links and heading anchors when moving a section.
+  Verify repository links and code paths manually as part of review.
+- Prefer pointers to versions and other simple config facts over copied values.
+  Include exact commands where they make a procedure executable, with working
+  directory, prerequisites, effects, and a checkable completion condition.
+- Rewrite current guidance when a decision changes. Remove superseded instructions
+  and task-specific branch, approval, publication, or testing history. Git retains
+  old drafts; preserve useful compatibility reasoning in clearly historical notes.
+  Create ADRs only for durable architectural trade-offs.
+- Read the relevant package guidance for cross-package changes. Verify both backend
+  schemas and portal types/callers for API changes; keep business vocabulary aligned
+  with the glossary.
+- Record dated operational reports in [operational status](docs/operations-status.md),
+  with provenance and verification limits. Keep private evidence outside Git.
+  A source review does not establish deployed versions, applied migrations, token
+  permissions, or recoverability.
+
+A documentation-only change needs reference review and formatting validation.
+Run the affected tests and `pnpm check` for code changes under the existing policy.

@@ -1,0 +1,64 @@
+# Historical schema rollout constraints
+
+These notes preserve compatibility and recovery reasoning for the original
+transitions. They do not establish which migrations or builds are live. See
+[operational status](../operations-status.md) for recorded evidence and
+[releases](../releases.md) for the current procedure.
+
+The safe migration command applies every pending migration in the selected
+checkout. Starting before `0002` with a checkout containing `0003` requires
+reviewing both sets of constraints together. Do not treat either section as a
+command to apply only one migration.
+
+## Property timezone, migration 0003
+
+For the original transition from a schema already containing `0002`, the
+compatibility requirements were:
+
+1. Apply registered migration `0003_property_calendar.sql` using the [safe production
+   migration process](../releases.md#safe-production-migrations). It adds an empty context table and replaces only the
+   room-type-change trigger; all application records and applied history remain.
+2. Deploy the backend with `PROPERTY_TIME_ZONE=America/Lima`. The new Worker needs
+   the migration before changing rooms. The previous Worker can serve other routes
+   against the new schema, but **physical room-type changes fail closed** without
+   context (the old Worker may return a generic 500). Pause those changes during
+   the migration/backend handoff; do not weaken the trigger for compatibility.
+3. Deliver the portal after the backend. Old portals ignore the additive session
+   field, but retain incorrect browser/UTC defaults, so reload open staff tabs and
+   avoid date entry in the delivery gap. The new portal deliberately blocks on
+   old backend metadata without a timezone. Existing session cookies remain valid.
+4. Smoke-check login/session metadata, October/November date labels, backdated
+   payments, future-date rejection, room-type assignment/capacity conflicts, and
+   date pickers from a remote browser. Local validation includes fresh and populated
+   upgrades, transactional rollback, DST cases, and opposite-side browser zones;
+   it does not prove production rollout behavior.
+
+For recovery, retain the additive table, new guard, and migration history. Prefer
+a forward Worker repair. Rolling back the Worker alone makes physical room-type
+changes unavailable but keeps the guard fail-closed. An old portal may be served
+temporarily with a warning that its operational defaults remain wrong; never
+rewrite saved dates or restore an old database to reverse this correction.
+
+## Separate occupancy limits, migration 0002
+
+For the original transition from `0001`, apply `0002_room_occupancy.sql` before deploying the backend that reads
+`max_children`. It adds that column with a default of 2 and replaces only the
+two room-validity triggers. Existing capacity values become adult limits;
+the SQL column remains named `max_occupancy` to avoid a destructive rename.
+Existing room types, reservations, payments, and saved nightly prices are
+preserved. Both limits can then be changed per type in Setup.
+
+The API contract changes from `maxOccupancy` to `maxAdults` and `maxChildren`.
+Coordinate the backend and portal release: apply the migration, deploy the
+backend, then deploy the portal and reload open staff sessions. Old portals
+cannot edit Setup against the new API. Before the backend update, the previous
+Worker can run against the additive schema but retains its combined-count
+preflight, and the new database child limit can reject children above 2.
+An old Worker is therefore not a fully compatible client of the new policy.
+
+For recovery, retain the additive column and applied migration history; roll
+back application builds together if necessary. A previous build uses the old,
+more restrictive combined-count behavior, so reservations created under the
+new policy may need staff attention before changing their rooms. Do not drop
+the child column or restore the old triggers underneath the new Worker.
+No remote migration or deployment is part of local validation.

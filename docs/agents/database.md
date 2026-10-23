@@ -14,14 +14,13 @@ Drizzle does not generate the business-rule triggers. Their original definitions
 
 ## Local data
 
-Before resetting or seeding local data, read [Reset local dummy data](../../apps/backend/README.md#reset-local-dummy-data) for reset/rebuild behavior, date pinning, persistence directories, and seed contents.
+Before resetting or seeding local data, read [Local sample data](../local-data.md) for reset/rebuild behavior, date pinning, persistence directories, and seed contents.
 
-- In non-interactive environments, prefix resets with `CI=true` so Wrangler can accept its migration confirmation fallback. Local resets need no Cloudflare credentials.
-- `pnpm db:migrate:local` applies migrations without resetting data. Sample data stays local; production property setup happens through the application.
+Sample data stays local; production property setup happens through the application.
 
 ## Production release
 
-Before a release, follow [the release checklist](../releases.md) and [safe production migrations](../../apps/backend/README.md#safe-production-migrations). Validate the exact release SHA before approving migrations; the workflow only checks readiness and deploys code. Get current Worker identities, database bindings, and origins from the package Wrangler configs.
+Before a release, follow [the release checklist](../releases.md) and [safe production migrations](../releases.md#safe-production-migrations). Validate the exact release SHA before approving migrations; the workflow only checks readiness and deploys code. Get current Worker identities, database bindings, and origins from the package Wrangler configs.
 
 - Plan for the currently deployed Worker to run during migration and for portal/API builds to arrive separately. Prefer additive, compatible changes; identify any coordinated cutover before merging.
 - Preserve production records. Destructive migrations, resets, baseline replacement, or database replacement require explicit approval for the specific data loss and a recovery plan; routine release authorization is not enough.

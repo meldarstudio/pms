@@ -3,7 +3,8 @@
 Practice recovering an existing export into a **new local database**, never
 production. This checks whether the SQL can be imported and the expected records
 recovered. It does not prove remote D1 restoration, outage duration, or application
-compatibility. No actual-backup rehearsal is recorded yet.
+compatibility. See [operational status](operations-status.md) for recorded
+rehearsal evidence and unresolved limits.
 
 This is occasional recovery preparation, not a per-release step. Repeat after
 significant changes to the schema or backup procedure. Remote rehearsals, new
@@ -24,6 +25,11 @@ pre-migration export contains the **old** schema, not necessarily current `main`
 For meaningful verification, have independent expected counts and representative
 reservation/payment details from that backup's point in time; current production
 can legitimately differ. A checksum proves file identity, not record completeness.
+The migration report records target, history, diagnostics, and a checksum; it does
+not capture application counts or representative record expectations. Obtain
+those independently within the scope of an authorized operation and keep them
+private. If they are unavailable, import/integrity checks alone leave record
+completeness unverified.
 
 ## 2. Import into isolated local state
 
@@ -78,12 +84,12 @@ stay dates, saved nightly prices, room assignments, and payment amounts/dates.
 Adapt read-only queries to the backup's schema; do not modify history to make the
 checks pass. If expectations are unavailable, mark completeness **unverified**.
 
-Save a private note with the checksum, selected source/schema, tool versions,
+Save a [private rehearsal note](operations-status.md#private-evidence) with the checksum, selected source/schema, tool versions,
 elapsed import/check times, expected versus observed results, and failures or
 limitations. Only mark the rehearsal successful for the scope actually verified.
 Record that it was **local**, not a tested remote production-recovery procedure.
 Retain or explicitly remove that specific rehearsal directory according to your
-private-data retention policy; do not casually delete the source backup.
+retention decision recorded by the operator; do not casually delete the source backup.
 
 Production recovery is a separate incident decision: preserve newer legitimate
 writes and applied migration history, assess code/schema compatibility, and obtain
