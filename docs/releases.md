@@ -34,7 +34,8 @@ package-version update is needed. **This document is not production authorizatio
    reload/update the portal, including installed-app windows. Verify login,
    calendar/availability, and an existing reservation **without changing production
    records**. Keep a short verification note with the SHA/run link, browser-check
-   results, and applied migration names (or “none”). If anything
+   results, and applied migration names (or "none"). Save it in the
+   [private release record](operations-status.md#private-evidence). If anything
    fails, stop and follow [recovery](#failure-and-recovery).
 
 A release is verified only after deployment **and** the checks above succeed.
@@ -82,11 +83,13 @@ WRANGLER_SEND_METRICS=false WRANGLER_WRITE_LOGS=false pnpm --filter @pms/backend
 ```
 
 Then review and run the existing [safe production migration
-procedure](../apps/backend/README.md#safe-production-migrations) from that checkout
+procedure](#safe-production-migrations) from that checkout
 in an interactive terminal. It applies **all pending migrations in its checkout**.
 Keep its SQL review, explicit confirmation, export, history checks, private
 reports, and downtime warnings. Coordinate one operator across machines; never
-overlap migration and release runs. If history is current, skip this operation.
+overlap migration and release runs. If history is current, skip this operation. Review applicable
+[historical rollout constraints](history/schema-rollouts.md) when upgrading an
+older schema; a checkout can have several pending migrations.
 
 Exports interrupt database access and are **not restore-tested backups**.
 Destructive changes require separate authorization and a recovery plan; this
@@ -94,6 +97,66 @@ process does not authorize production data loss or rewriting applied migrations.
 The release's ledger check requires exactly the selected commit's registered
 migration history. Investigate any mismatch; never bypass the guard, bootstrap,
 or repair history to make deployment pass.
+
+## Safe production migrations
+
+Run from the repository root in an interactive terminal, with Cloudflare access
+already configured:
+
+```sh
+pnpm --filter @pms/backend run db:migrate:remote
+```
+
+This production-only command never deploys code. It:
+
+1. Reads the target binding from [the backend config](../apps/backend/wrangler.jsonc) and queries the existing migration
+   ledger without creating or repairing it. Missing or empty history, unknown names, or names out of journal order stop
+   the run. SQL files must match the Drizzle journal.
+2. Shows pending SQL, its checksums, the database name and ID, and the downtime
+   warning. Review compatibility with the currently deployed Worker and all
+   existing records. Type `pms-production` to approve the displayed work. There is
+   no `--yes` bypass; CI and noninteractive execution are refused. With no pending
+   migrations, it exits without prompting or exporting.
+3. Exports SQL to a unique directory under `~/.pms-production-backups/`. The
+   directory is private and files are owner-only from creation. Exporting
+   interrupts database access; applying migrations may also interrupt requests.
+   Choose an appropriate window before approving. Failed or empty exports block
+   migration. A completed export receives a SHA-256 checksum in `report.json`;
+   this is **not a restore-tested backup**.
+4. Applies one approved migration at a time from private copies, checking the
+   local files and remote history before each apply. A file or history change
+   stops the run. Each migration must exit successfully and appear in a fresh
+   ledger query before the next begins.
+5. Reports the observed result and retains a private `report.json` with the target,
+   migration and backup checksums, and sanitized diagnostics. Wrangler disk logs
+   are disabled and child-output URLs are redacted so signed export links are not
+   retained. Backups and reports remain until you explicitly delete them.
+
+The command holds `~/.pms-production-backups/migration.lock` during the run. This
+only excludes cooperating runs under the same home directory. Coordinate **one
+operator at a time**, including other machines and direct Wrangler commands;
+the lock is not distributed. If a crash leaves a lock, inspect its PID, host, and
+start time and confirm no migration is running before removing that specific file.
+Existing backup directories must be owned by the operator with mode `0700`.
+
+On failure, stop and inspect the report. Earlier migrations may have committed.
+The report lists newly observed ledger entries when postflight succeeds; an
+`unknown` outcome means the command could not establish the final state. An
+interrupted report still marked `applying` also needs investigation. Do not rerun
+blindly: reconcile the live ledger first. There is no automatic migration retry,
+restore, history repair, or database reset. Destructive changes need explicit
+approval for their specific data loss and a separate recovery plan. A restore can
+overwrite reservations or payments saved since the export and requires its own
+authorization. Keep schema and applied history when rolling back application
+builds where compatible; prepare a reviewed forward repair when needed.
+
+Local validation does not prove remote locking, outage duration, restoration, or
+application correctness. Perform the release's application smoke checks separately.
+
+The wrapper compares ordered migration names; release readiness also requires
+numeric ledger IDs exactly `1...N`. Passing migration validation alone does not
+prove release readiness. Investigate mismatches without repairing history merely
+to pass deployment. The wrapper cannot bootstrap a new database.
 
 ## Failure and recovery
 
@@ -121,11 +184,21 @@ This is recovery preparation, not a step required before every ordinary release.
 
 ## Setup and deployment ownership
 
-The operator reported Cloudflare Git-triggered builds disconnected on 2026-10-22;
-this is operator confirmation, not independent verification. Keep Git-triggered
-Workers Builds disabled for **both `pms-api` and `pms-portal`**, with no queued or
+This procedure assumes an existing production database with valid migration
+history. Database creation and initial ledger bootstrap need a separately reviewed
+and authorized plan; neither the release guard nor migration wrapper initializes
+a new database. Existing authentication secrets and custom domains must be ready.
+See [authentication](authentication.md) for separately authorized credential changes.
+The configured custom domains require the `hotelmanantialchurin.com` zone on the
+Cloudflare account. The package Wrangler route entries attach those domains on
+deployment; preserve the existing zone, Workers, and bindings during release setup.
+
+Keep Git-triggered Workers Builds disabled for **both `pms-api` and `pms-portal`**, with no queued or
 active automatic deployments. GitHub's release lock cannot serialize external
 deployments. Preserve existing Workers, domains, bindings, variables, and secrets.
+
+Check [dated operational reports](operations-status.md) for prior confirmations.
+A report does not establish the current live configuration.
 
 The existing workflow uses these repository Actions secrets:
 
@@ -143,18 +216,7 @@ that need them, not installation, tests, checks, or builds. Existing Worker
 them for release setup. Migration authorization remains separate. Token permissions
 require authorized operational verification; local simulations do not prove them.
 
-## Implementation status
-
-- [x] Complete CI validation on pull requests and exact `main` commits, available
-      before separate migration approval. The release revalidates its selected SHA.
-- [x] Bounded read-only smoke checks, with login/calendar/PWA checks left manual.
-- [x] Uploaded version/active deployment ID recording, active-version verification,
-      and explicit partial outcomes. Unknown identities stay unknown; failed commands
-      can still have changed a Worker. No automatic rollback or restoration.
-- [x] Document a private, isolated local backup restore rehearsal.
-- [ ] Perform and record a rehearsal with an actual backup; documentation alone
-      does not establish recoverability. Remote rehearsal requires separate
-      authorization. Defer permanent staging and elaborate recovery automation.
+## Workflow compatibility
 
 Use this workflow with commits that contain its verification scripts; older
 commits without them are rejected before deployment. If CI or deployment tooling

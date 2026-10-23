@@ -1,11 +1,13 @@
 # PMS
 
-A pnpm workspace with a React portal, a Hono Cloudflare Worker, and shared Zod
-schemas. The web toolchain uses Vite+ 1.3.0.
+A property-management system with a React portal, a Hono Cloudflare Worker, and
+shared Zod schemas in a pnpm workspace. Agents start with [AGENTS.md](AGENTS.md),
+then read only the topic guides relevant to the task.
 
 ## Setup
 
-Use Node 22.23.4, pinned in `.node-version`, and pnpm 12.15.0. With Vite+:
+Use the Node version pinned in [.node-version](.node-version) and the pnpm
+version in `package.json`'s `packageManager`. With a global Vite+ installation:
 
 ```sh
 vp env install
@@ -13,8 +15,8 @@ pnpm install
 ```
 
 pnpm checks the exact Node version before running scripts or `pnpm exec` commands.
-If it reports a mismatch, run `vp env use 22.23.4` (or select that version with your
-Node manager), then retry. It does not download Node automatically. When upgrading
+If it reports a mismatch, select the version in `.node-version` with `vp env use` or your
+Node manager, then retry. It does not download Node automatically. When upgrading
 Node, update both `.node-version` and `devEngines.runtime.version` in `package.json`.
 
 Vite+ is a local dependency. A global `vp` installation is needed only for managing
@@ -61,9 +63,8 @@ The manual release workflow supplies the production API origin explicitly.
 Follow the [release checklist](docs/releases.md) for exact-commit CI validation,
 optional interactive migrations, deliberate API/portal deployment, automated
 read-only smoke checks, and a short manual browser check. Version tags are optional.
-Merging the workflow does
-not disable existing automatic Workers Builds; confirm the documented cutover
-before treating merges to `main` as deployment-free.
+Keep automatic Workers Builds disabled for both Workers as required by that
+procedure. Dated confirmations live in [operational status](docs/operations-status.md).
 
 ## Signing in
 
@@ -79,8 +80,12 @@ pnpm auth:hash --session-secret # prints a SESSION_SECRET
 Paste both values into `apps/backend/.dev.vars`, then sign in at
 `http://localhost:5173` with username `hotelmanantial` and that password. Restart
 `pnpm dev:backend` after editing `.dev.vars`; Wrangler does not always reload it.
-Use `localhost` for both the portal and the API. `127.0.0.1` is a different site, so
-the browser will not send the session cookie.
+Use `localhost` for both the portal and the API. Mixing `localhost` and `127.0.0.1`
+prevents the browser sending the session cookie because they are different sites.
+
+For a fresh local database, load [sample data](docs/local-data.md) before starting
+the app. For an empty property, apply `pnpm db:migrate:local`, then configure room
+types and rooms through [Property setup](docs/property-setup.md).
 
 ## Testing
 
@@ -166,5 +171,22 @@ Root `pnpm build` checks the entire repository before bundling the portal once.
 The shared package exports TypeScript source directly and needs no `vp pack`
 step. Wrangler still handles backend development and deployment.
 
-See [portal documentation](apps/portal/README.md) and
-[backend documentation](apps/backend/README.md).
+## Topic guides
+
+Package entry points are [backend](apps/backend/README.md) and [portal](apps/portal/README.md).
+Maintained behavior and operations have one home per topic:
+
+- [Authentication](docs/authentication.md) for sessions and credential changes.
+- [Property calendar](docs/property-calendar.md) for operational dates and timezone metadata.
+- [Reservations](docs/reservations.md) for workflow commands, validation, editors, and list filters.
+- [Calendar and assignment](docs/calendar.md) for calendar reads and physical room assignment.
+- [Property setup](docs/property-setup.md) for room types, room numbering, and occupancy.
+- [Portal shell and installed app](docs/portal.md) for navigation, API environment, and offline/update behavior.
+- [Local sample data](docs/local-data.md) for resets, fixed dates, and isolated state.
+- [Production releases](docs/releases.md) and [backup restore rehearsal](docs/backup-restore-rehearsal.md) for operations.
+- [Operational status and evidence](docs/operations-status.md) for dated reports and private record locations.
+
+Use [GLOSSARY.md](GLOSSARY.md) for domain terms and [the domain guide](docs/agents/domain.md)
+for architectural decisions. Historical [schema rollout notes](docs/history/schema-rollouts.md)
+preserve compatibility constraints without claiming current production status.
+Follow [documentation maintenance](CODING_STANDARDS.md#documentation) when changing behavior or moving a guide.

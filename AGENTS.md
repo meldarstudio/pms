@@ -4,7 +4,7 @@
 
 - Production is live. Preserve production data and applied migration history. Local sample data is disposable; production is not.
 - Run deployments, remote migrations, and production secret changes only for an explicitly requested production operation. A schema change in a development task is not deployment authorization.
-- Feature branches merge to `main`; production releases follow [the release checklist](docs/releases.md), including the separately authorized automatic-build cutover. Prepare required production migrations before deploying code that needs them.
+- Feature branches merge to `main`; production releases follow [the release checklist](docs/releases.md), including deployment ownership and separately authorized automatic-build changes. Prepare required production migrations before deploying code that needs them.
 - Keep credentials in local ignored environment files or Cloudflare secrets, not committed files.
 
 ## Toolchain and validation
@@ -26,6 +26,10 @@ Read the applicable instructions before changing the package or contract, includ
 - **Domain/architecture:** [docs/agents/domain.md](docs/agents/domain.md) before exploring domain concepts or architectural decisions; it points to the shared glossary and ADRs.
 - **Issues/specs:** [docs/agents/issue-tracker.md](docs/agents/issue-tracker.md) before tracker operations. Use GitHub Issues in `meldarstudio/pms`.
 - **Triage:** [docs/agents/triage-labels.md](docs/agents/triage-labels.md) before triaging incoming issues.
+
+## Documentation
+
+Before changing maintained docs or reviewing a behavior/configuration change, read [documentation maintenance](CODING_STANDARDS.md#documentation). Update the authoritative topic guide in the same change, including affected pointers. Package READMEs index those guides; [operational status](docs/operations-status.md) holds dated reports, not current procedures.
 
 ## Cross-package contracts
 
