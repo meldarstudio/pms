@@ -5,7 +5,7 @@ schemas. The web toolchain uses Vite+ 1.3.0.
 
 ## Setup
 
-Use Node 22.22.1, pinned in `.node-version`, and pnpm 11.22.0. With Vite+:
+Use Node 22.23.4, pinned in `.node-version`, and pnpm 11.22.0. With Vite+:
 
 ```sh
 vp env install
