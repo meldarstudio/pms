@@ -1,5 +1,5 @@
 import { useQueryClient } from "@tanstack/react-query";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 import type { Room } from "@/lib/api";
 import { useAssignRoom, useReservations, useRoomClosures } from "@/lib/queries";
@@ -11,11 +11,18 @@ import {
 import { toast } from "@/lib/toast";
 import { translateError } from "@/lib/errors";
 
-export function useRoomAssignment(rooms: Room[] | null) {
+export function useRoomAssignment(rooms: Room[] | null, unassigned: ReservationStay[]) {
   const queryClient = useQueryClient();
   const assign = useAssignRoom();
   const { isPending: pending, reset: resetAssignment } = assign;
   const [target, setTarget] = useState<ReservationStay | null>(null);
+  // A save resolves after the calendar refetch, so read the latest list then,
+  // skipping lines this group run assigned in case that render has not landed.
+  const latestUnassigned = useRef(unassigned);
+  const assignedLines = useRef(new Set<string>());
+  useEffect(() => {
+    latestUnassigned.current = unassigned;
+  }, [unassigned]);
   const reservations = useReservations(
     target?.checkIn ?? "",
     target?.checkOut ?? "",
@@ -41,27 +48,44 @@ export function useRoomAssignment(rooms: Room[] | null) {
       : null;
   const ready = Boolean(target && !checking && !queryError && !targetIssue);
   const roomIssues = new Map<string, string | null>();
+  const roomIssueCodes = new Map<string, string | null>();
   if (target && ready) {
     for (const room of rooms ?? []) {
-      roomIssues.set(
-        room.id,
-        translateNullableIssue(
-          roomAssignmentIssue(room, target, reservations.data ?? [], closures.data ?? []),
-        ),
-      );
+      const issue = roomAssignmentIssue(room, target, reservations.data ?? [], closures.data ?? []);
+      roomIssueCodes.set(room.id, issue);
+      roomIssues.set(room.id, translateNullableIssue(issue));
     }
   }
+  // Kept while the next room's availability is re-checked, so the reference stays
+  // on screen when staff need it.
+  const groupAssignments =
+    target && !queryError
+      ? (reservations.data
+          ?.find((reservation) => reservation.id === target.reservationId)
+          ?.rooms.flatMap((line, index) =>
+            line.id !== target.id && line.roomId !== null
+              ? [
+                  {
+                    roomIndex: index + 1,
+                    number: rooms?.find((room) => room.id === line.roomId)?.number ?? "—",
+                  },
+                ]
+              : [],
+          ) ?? [])
+      : [];
   const eligibleCount = [...roomIssues.values()].filter((issue) => issue === null).length;
 
   function selectStay(stay: ReservationStay) {
     if (assign.isPending) return;
     assign.reset();
+    assignedLines.current.clear();
     setTarget(stay);
   }
 
   const cancel = useCallback(() => {
     if (pending) return;
     resetAssignment();
+    assignedLines.current.clear();
     setTarget(null);
   }, [pending, resetAssignment]);
 
@@ -93,7 +117,13 @@ export function useRoomAssignment(rooms: Room[] | null) {
         type: "success",
         timeout: 5000,
       });
-      setTarget(null);
+      assignedLines.current.add(target.id);
+      // Keep a group together: continue with the reservation's next reserved room.
+      const next = latestUnassigned.current.find(
+        (stay) =>
+          stay.reservationId === target.reservationId && !assignedLines.current.has(stay.id),
+      );
+      setTarget(next ?? null);
     } catch (cause) {
       const message = cause instanceof Error ? cause.message : "No se pudo asignar la habitación.";
       toast.add({
@@ -123,6 +153,8 @@ export function useRoomAssignment(rooms: Room[] | null) {
     ready,
     eligibleCount,
     roomIssues,
+    roomIssueCodes,
+    groupAssignments,
     pending: assign.isPending,
     error: translateNullableIssue(queryError ?? targetIssue),
     saveError: translateNullableIssue(assign.error?.message ?? null),

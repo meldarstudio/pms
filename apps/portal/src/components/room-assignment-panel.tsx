@@ -1,56 +1,25 @@
-import { differenceInCalendarDays, parseISO } from "date-fns";
-import { usePropertyCalendar } from "@/lib/use-property-calendar";
-import { CheckIcon, XIcon } from "lucide-react";
-import { cn } from "cn";
+import { useEffect, useRef } from "react";
+import { ArrowLeftIcon, XIcon } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
-import { Skeleton } from "@/components/ui/skeleton";
-import type { ReservationStay } from "@/lib/room-assignment";
-import { format } from "@/lib/dates";
-
-export function assignmentStayLabel(stay: ReservationStay) {
-  const nights = differenceInCalendarDays(parseISO(stay.checkOut), parseISO(stay.checkIn));
-  return `${format(parseISO(stay.checkIn), "d MMM")} al ${format(parseISO(stay.checkOut), "d MMM yyyy")} · ${nights} ${nights === 1 ? "noche" : "noches"}`;
-}
-
-type RoomAssignmentPanelProps = {
-  stays: ReservationStay[];
-  typeNames: Map<string, string>;
-  loading: boolean;
-  listError: string | null;
-  rangeLabel: string;
-  target: ReservationStay | null;
-  checking: boolean;
-  ready: boolean;
-  eligibleCount: number;
-  pending: boolean;
-  error: string | null;
-  onSelect: (stay: ReservationStay) => void;
-  onCancel: () => void;
-  onClose: () => void;
-  onRetry: () => void;
-  onRetryAssignment: () => void;
-};
+import {
+  assignmentTitle,
+  RoomAssignmentSteps,
+  type RoomAssignmentStepsProps,
+} from "@/components/room-assignment-flow";
 
 export function RoomAssignmentPanel({
-  stays,
-  typeNames,
-  loading,
-  listError,
   rangeLabel,
-  target,
-  checking,
-  ready,
-  eligibleCount,
-  pending,
-  error,
-  onSelect,
-  onCancel,
   onClose,
-  onRetry,
-  onRetryAssignment,
-}: RoomAssignmentPanelProps) {
-  const { today } = usePropertyCalendar();
+  ...steps
+}: RoomAssignmentStepsProps & { rangeLabel: string; onClose: () => void }) {
+  const { target, pending } = steps.assignment;
+  const heading = useRef<HTMLHeadingElement>(null);
+  // Each step replaces the control that was just used (the list item, or a room
+  // after a save), so announce the new step instead of dropping focus.
+  useEffect(() => {
+    heading.current?.focus();
+  }, [target?.id]);
 
   return (
     <section
@@ -58,121 +27,46 @@ export function RoomAssignmentPanel({
       aria-labelledby="unassigned-heading"
       className="flex h-full min-h-0 flex-col bg-muted text-xs"
     >
-      <div className="flex items-start justify-between gap-2 border-b p-3">
-        <div>
-          <h2 id="unassigned-heading" className="font-medium">
-            Sin asignar · {loading ? "…" : stays.length}
+      <div className="flex items-start gap-2 border-b p-3">
+        {target && (
+          <Button
+            variant="ghost"
+            size="icon-sm"
+            aria-label="Volver a habitaciones reservadas sin asignar"
+            disabled={pending}
+            onClick={steps.assignment.cancel}
+          >
+            <ArrowLeftIcon />
+          </Button>
+        )}
+        <div className="flex min-w-0 flex-1 flex-col gap-1">
+          <h2
+            id="unassigned-heading"
+            ref={heading}
+            tabIndex={-1}
+            className="font-medium outline-none"
+          >
+            {assignmentTitle(target, steps.loading, steps.stays.length)}
           </h2>
-          <p className="mt-1 text-muted-foreground">Estancias entre {rangeLabel}</p>
+          <p className="text-muted-foreground">
+            {target
+              ? "Elige una habitación de la lista o su barra punteada en el calendario."
+              : `Estancias entre ${rangeLabel}`}
+          </p>
         </div>
         <Button
           variant="ghost"
           size="icon-sm"
-          aria-label="Cerrar reservas sin asignar"
+          aria-label="Cerrar habitaciones reservadas sin asignar"
           disabled={pending}
           onClick={onClose}
         >
           <XIcon />
         </Button>
       </div>
-
       <div className="min-h-0 flex-1 overflow-y-auto p-3">
-        {listError ? (
-          <div role="alert" className="space-y-2">
-            <p className="text-destructive">{listError}</p>
-            <Button variant="outline" size="sm" onClick={onRetry}>
-              Reintentar
-            </Button>
-          </div>
-        ) : loading ? (
-          <div className="space-y-2" aria-label="Cargando reservas sin asignar">
-            {Array.from({ length: 3 }, (_, index) => (
-              <Skeleton key={index} className="h-24 w-full" />
-            ))}
-          </div>
-        ) : stays.length === 0 ? (
-          <p className="py-4 text-muted-foreground">
-            Todas las habitaciones reservadas en estas fechas están asignadas.
-          </p>
-        ) : (
-          <ul className="space-y-2">
-            {stays.map((stay) => {
-              const selected = target?.id === stay.id;
-              return (
-                <li key={stay.id}>
-                  <button
-                    type="button"
-                    aria-pressed={selected}
-                    disabled={pending}
-                    onClick={() => onSelect(stay)}
-                    className={cn(
-                      "flex w-full cursor-pointer flex-col gap-1 border p-2.5 text-left outline-none hover:bg-accent/50 focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-default disabled:opacity-50",
-                      selected && "border-assignment-foreground/40 bg-assignment/40",
-                    )}
-                  >
-                    <span className="flex w-full min-w-0 items-center gap-2">
-                      <span className="min-w-0 flex-1 truncate font-medium" title={stay.guestName}>
-                        {stay.guestName}
-                      </span>
-                      {selected ? <CheckIcon className="size-3.5 shrink-0" /> : null}
-                    </span>
-                    <span className="text-muted-foreground">
-                      {typeNames.get(stay.roomTypeId) ?? "Habitación"}
-                      {stay.roomCount > 1
-                        ? ` · Habitación ${stay.roomIndex} de ${stay.roomCount}`
-                        : ""}
-                    </span>
-                    <span className="text-muted-foreground">{assignmentStayLabel(stay)}</span>
-                    {stay.checkIn === today ? <span className="font-medium">Llega hoy</span> : null}
-                  </button>
-                </li>
-              );
-            })}
-          </ul>
-        )}
+        <RoomAssignmentSteps {...steps} />
       </div>
-
-      {target ? (
-        <div className="space-y-3 border-t p-3">
-          <div className="space-y-1">
-            <p className="font-medium">Asignar habitación a {target.guestName}</p>
-            <p className="text-muted-foreground">
-              {typeNames.get(target.roomTypeId) ?? "Habitación"}
-              {target.roomCount > 1
-                ? ` · Habitación ${target.roomIndex} de ${target.roomCount}`
-                : ""}
-            </p>
-            <p className="text-muted-foreground">{assignmentStayLabel(target)}</p>
-          </div>
-          <p role="status" className="text-muted-foreground">
-            {pending
-              ? "Asignando habitación…"
-              : checking
-                ? "Consultando habitaciones para toda la estancia…"
-                : ready && eligibleCount === 0
-                  ? "No hay habitaciones de este tipo disponibles para toda la estancia."
-                  : ready
-                    ? `${eligibleCount} ${eligibleCount === 1 ? "habitación disponible" : "habitaciones disponibles"}. Haz clic en la barra punteada para asignarla.`
-                    : "No se pudo confirmar la disponibilidad."}
-          </p>
-          {error ? (
-            <div role="alert" className="space-y-2">
-              <p className="text-destructive">{error}</p>
-              <Button variant="outline" size="sm" disabled={pending} onClick={onRetryAssignment}>
-                Consultar de nuevo
-              </Button>
-            </div>
-          ) : null}
-          <Button
-            variant="outline"
-            disabled={pending}
-            onClick={onCancel}
-            aria-keyshortcuts="Escape"
-          >
-            Cancelar asignación (Esc)
-          </Button>
-        </div>
-      ) : null}
     </section>
   );
 }

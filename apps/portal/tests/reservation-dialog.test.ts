@@ -1687,12 +1687,17 @@ it("uses the property date for arrival badges and refreshes them on resume", asy
     }),
   );
   await until(
-    () => !!container.querySelector('button[aria-label="Mostrar reservas sin asignar, 1"]'),
+    () =>
+      !!container.querySelector(
+        'button[aria-label="Mostrar habitaciones reservadas sin asignar, 1"]',
+      ),
     "Unassigned arrival loads",
   );
   await React.act(async () =>
     container
-      .querySelector<HTMLButtonElement>('button[aria-label="Mostrar reservas sin asignar, 1"]')!
+      .querySelector<HTMLButtonElement>(
+        'button[aria-label="Mostrar habitaciones reservadas sin asignar, 1"]',
+      )!
       .click(),
   );
   assert.match(container.textContent, /Llega hoy/);

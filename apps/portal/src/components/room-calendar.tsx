@@ -1,5 +1,5 @@
 import { useQueryClient } from "@tanstack/react-query";
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { cn } from "cn";
 import { addDays, differenceInCalendarDays, eachDayOfInterval, parse, startOfDay } from "date-fns";
 import {
@@ -10,7 +10,6 @@ import {
   ChevronRightIcon,
   ChevronsLeftIcon,
   ChevronsRightIcon,
-  PanelRightIcon,
   PlusIcon,
   RefreshCwIcon,
 } from "lucide-react";
@@ -22,6 +21,7 @@ import {
 } from "@/components/room-closure-dialog";
 import { RoomEditDialog, type RoomEditTarget } from "@/components/room-edit-dialog";
 import { RoomBookingDialog, type BookingTarget } from "@/components/room-booking-dialog";
+import { groupRoomLabel } from "@/components/room-assignment-flow";
 import { RoomAssignmentPanel } from "@/components/room-assignment-panel";
 import { RoomAssignmentSheet } from "@/components/room-assignment-sheet";
 import { PageHeaderActions } from "@/components/page-header-actions";
@@ -45,6 +45,7 @@ import {
 import { SetupRequired } from "@/components/setup-required";
 import { Skeleton } from "@/components/ui/skeleton";
 import { type RoomClosure } from "@/lib/api";
+import type { ReservationStay } from "@/lib/room-assignment";
 import { useRoomAssignment } from "@/lib/use-room-assignment";
 import { format } from "@/lib/dates";
 import { useCalendar } from "@/lib/queries";
@@ -85,6 +86,12 @@ type AssignmentPreview = {
   stay: PlacedTrack;
   disabled: boolean;
   onSelect: () => void;
+};
+
+// Short reasons fit the room column; the full sentence stays in the row title.
+const assignmentNotes: Record<string, string> = {
+  "Occupied during this stay": "Ocupada",
+  "Closed during this stay": "Cerrada",
 };
 
 function clipStay(stay: TrackItem, rangeStart: Date, dayCount: number) {
@@ -241,6 +248,7 @@ function RoomTrack({
   assignmentActive = false,
   assignmentReason,
   assignmentPreview,
+  highlighted = false,
 }: {
   stays: PlacedTrack[];
   dayCount: number;
@@ -252,6 +260,7 @@ function RoomTrack({
   assignmentActive?: boolean;
   assignmentReason?: string;
   assignmentPreview?: AssignmentPreview;
+  highlighted?: boolean;
 }) {
   const lanes = stays.reduce((max, stay) => Math.max(max, stay.lane + 1), 1);
   const { today } = usePropertyCalendar();
@@ -260,6 +269,7 @@ function RoomTrack({
       className={cn(
         "relative isolate min-w-0 border-b",
         assignmentActive && !assignmentPreview && "bg-muted/30 opacity-50",
+        highlighted && "bg-assignment/30",
       )}
       title={assignmentReason}
       style={{
@@ -319,7 +329,10 @@ function RoomTrack({
           aria-label={`Asignar ${assignmentPreview.stay.label} a habitación ${roomNumber}, ${assignmentPreview.stay.checkIn} al ${assignmentPreview.stay.checkOut}`}
           disabled={assignmentPreview.disabled}
           onClick={assignmentPreview.onSelect}
-          className="absolute z-20 flex cursor-pointer items-center overflow-hidden rounded-none border border-dashed border-assignment-foreground/50 bg-assignment/40 px-2.5 text-left text-xs text-assignment-foreground outline-none hover:bg-assignment/70 focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-default"
+          className={cn(
+            "absolute z-20 flex cursor-pointer items-center overflow-hidden rounded-none border border-dashed border-assignment-foreground/50 bg-assignment/40 px-2.5 text-left text-xs text-assignment-foreground outline-none hover:bg-assignment/70 focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-default",
+            highlighted && "bg-assignment/70",
+          )}
           style={barStyle(assignmentPreview.stay, dayCount, 1)}
         >
           <span className="truncate">{assignmentPreview.stay.label}</span>
@@ -352,6 +365,11 @@ export function RoomCalendar({
   const [bookingTarget, setBookingTarget] = useState<BookingTarget | null>(null);
   const [unassignedOpen, setUnassignedOpen] = useState(false);
   const assignmentTriggerRef = useRef<HTMLButtonElement>(null);
+  const gridScroller = useRef<HTMLDivElement>(null);
+  const gridCorner = useRef<HTMLDivElement>(null);
+  // Tied to the stay it was made for: the hovered room's button unmounts when it is
+  // assigned, so no blur clears it before the next stay opens.
+  const [highlight, setHighlight] = useState<{ stayId: string; roomId: string } | null>(null);
   const [manualRefresh, setManualRefresh] = useState<Promise<void> | null>(null);
   const from = format(start, "yyyy-MM-dd");
   const to = format(addDays(start, span - 1), "yyyy-MM-dd");
@@ -366,13 +384,15 @@ export function RoomCalendar({
   if (manualRefresh && !calendar) setManualRefresh(null);
   const refreshing = manualRefresh !== null && !!calendar;
   const bookingDataReady = !!calendar;
-  const assignment = useRoomAssignment(rooms);
   const unassigned = calendar?.unassigned ?? [];
+  const assignment = useRoomAssignment(rooms, unassigned);
+  const highlightedRoomId =
+    highlight && highlight.stayId === assignment.target?.id ? highlight.roomId : null;
   const typeNames = new Map((rooms ?? []).map((room) => [room.roomTypeId, room.roomTypeName]));
   const listLoading = !calendar && calendarQuery.isFetching;
   const unassignedLabel = listLoading
-    ? "Mostrar reservas sin asignar"
-    : `Mostrar reservas sin asignar, ${unassigned.length}`;
+    ? "Mostrar habitaciones reservadas sin asignar"
+    : `Mostrar habitaciones reservadas sin asignar, ${unassigned.length}`;
   const listError = calendar ? null : error;
   const previewTrack =
     !isMobile && assignment.target
@@ -401,6 +421,46 @@ export function RoomCalendar({
     onStartChange(date);
   }
 
+  function selectStay(stay: ReservationStay) {
+    if (assignment.pending) return;
+    assignment.selectStay(stay);
+    setHighlight(null);
+    if (isMobile) return;
+    // Gaps can only be judged with the whole stay on screen, checkout morning
+    // included. The list only holds stays that overlap the window.
+    const checkIn = parse(stay.checkIn, "yyyy-MM-dd", start);
+    const checkOut = parse(stay.checkOut, "yyyy-MM-dd", start);
+    const lastDay = addDays(start, span - 1);
+    if (checkIn < start) onStartChange(checkIn);
+    else if (checkOut > lastDay)
+      onStartChange(
+        differenceInCalendarDays(checkOut, checkIn) < span ? addDays(checkOut, 1 - span) : checkIn,
+      );
+  }
+
+  function closeUnassigned() {
+    if (assignment.pending) return;
+    assignment.cancel();
+    setUnassignedOpen(false);
+    setHighlight(null);
+    assignmentTriggerRef.current?.focus();
+  }
+
+  useEffect(() => {
+    const scroller = gridScroller.current;
+    const row = highlightedRoomId
+      ? scroller?.querySelector<HTMLElement>(`[data-room-id="${highlightedRoomId}"]`)
+      : null;
+    if (!scroller || !row) return;
+    // Scroll only the grid: scrollIntoView would also move the app shell.
+    const view = scroller.getBoundingClientRect();
+    const box = row.getBoundingClientRect();
+    const top = view.top + (gridCorner.current?.offsetHeight ?? 0);
+    if (box.top < top) scroller.scrollBy?.({ top: box.top - top, behavior: "smooth" });
+    else if (box.bottom > view.bottom)
+      scroller.scrollBy?.({ top: box.bottom - view.bottom, behavior: "smooth" });
+  }, [highlightedRoomId]);
+
   const days = eachDayOfInterval({
     start,
     end: addDays(start, span - 1),
@@ -422,26 +482,18 @@ export function RoomCalendar({
     });
   }
 
-  const panel = (
-    <RoomAssignmentPanel
-      stays={unassigned}
-      typeNames={typeNames}
-      loading={listLoading}
-      listError={listError}
-      rangeLabel={`${format(start, "d MMM")} al ${format(addDays(start, span - 1), "d MMM yyyy")}`}
-      target={assignment.target}
-      checking={assignment.checking}
-      ready={assignment.ready}
-      eligibleCount={assignment.eligibleCount}
-      pending={assignment.pending}
-      error={assignment.error}
-      onSelect={assignment.selectStay}
-      onCancel={assignment.cancel}
-      onClose={() => setUnassignedOpen(false)}
-      onRetry={() => void refreshCalendar()}
-      onRetryAssignment={retryAssignment}
-    />
-  );
+  const rangeLabel = `${format(start, "d MMM")} al ${format(addDays(start, span - 1), "d MMM yyyy")}`;
+  const assignmentSteps = {
+    stays: unassigned,
+    rooms,
+    typeNames,
+    loading: listLoading,
+    listError,
+    assignment,
+    onSelectStay: selectStay,
+    onRetry: () => void refreshCalendar(),
+    onRetryAssignment: retryAssignment,
+  };
 
   if (calendar?.missingSetup) return <SetupRequired missing={calendar.missingSetup} />;
 
@@ -461,6 +513,32 @@ export function RoomCalendar({
       onClick={refreshFromButton}
     >
       <RefreshCwIcon data-icon="inline-start" className={cn(refreshing && "animate-spin")} />
+    </Button>
+  );
+
+  const assignmentTrigger = (
+    <Button
+      ref={assignmentTriggerRef}
+      variant="outline"
+      size="icon"
+      className="relative"
+      aria-label={unassignedLabel}
+      aria-haspopup={isMobile ? "dialog" : undefined}
+      aria-controls={!isMobile && unassignedOpen ? "unassigned-panel" : undefined}
+      aria-expanded={unassignedOpen}
+      disabled={assignment.pending}
+      onClick={() => (!isMobile && unassignedOpen ? closeUnassigned() : setUnassignedOpen(true))}
+    >
+      <BedDoubleIcon />
+      {unassigned.length > 0 && (
+        <Badge
+          variant="default"
+          aria-hidden="true"
+          className="pointer-events-none absolute -top-1.5 -right-1.5 h-4 min-w-4 px-1"
+        >
+          {unassigned.length}
+        </Badge>
+      )}
     </Button>
   );
 
@@ -603,41 +681,13 @@ export function RoomCalendar({
         </ButtonGroup>
         {isMobile ? (
           <>
-            <Button
-              ref={assignmentTriggerRef}
-              variant="outline"
-              size="icon"
-              className="relative"
-              aria-label={unassignedLabel}
-              aria-haspopup="dialog"
-              aria-expanded={unassignedOpen}
-              disabled={assignment.pending}
-              onClick={() => setUnassignedOpen(true)}
-            >
-              <BedDoubleIcon />
-              {unassigned.length > 0 && (
-                <Badge
-                  variant="default"
-                  aria-hidden="true"
-                  className="pointer-events-none absolute -top-1.5 -right-1.5 h-4 min-w-4 px-1"
-                >
-                  {unassigned.length}
-                </Badge>
-              )}
-            </Button>
+            {assignmentTrigger}
             <RoomAssignmentSheet
               open={unassignedOpen}
               onOpenChange={setUnassignedOpen}
               returnFocusRef={assignmentTriggerRef}
-              stays={unassigned}
-              rooms={rooms}
-              typeNames={typeNames}
-              loading={listLoading}
-              listError={listError}
-              rangeLabel={`${format(start, "d MMM")} al ${format(addDays(start, span - 1), "d MMM yyyy")}`}
-              assignment={assignment}
-              onRetry={() => void refreshCalendar()}
-              onRetryAssignment={retryAssignment}
+              rangeLabel={rangeLabel}
+              {...assignmentSteps}
             />
           </>
         ) : (
@@ -676,6 +726,7 @@ export function RoomCalendar({
                 </div>
               </TooltipContent>
             </Tooltip>
+            {assignmentTrigger}
             {newReservationButton}
           </div>
         )}
@@ -688,8 +739,27 @@ export function RoomCalendar({
           </Button>
         </div>
       ) : null}
+      {!isMobile && assignment.target ? (
+        <div className="flex items-center justify-between gap-2 border-b bg-assignment/40 px-2.5 py-1.5 text-xs text-assignment-foreground">
+          <p className="min-w-0 truncate">
+            Asignando habitación a{" "}
+            <span className="font-medium">{assignment.target.guestName}</span>
+            {assignment.target.roomCount > 1 ? ` · ${groupRoomLabel(assignment.target)}` : ""} · Esc
+            para cancelar
+          </p>
+          <Button
+            variant="ghost"
+            size="sm"
+            disabled={assignment.pending}
+            onClick={assignment.cancel}
+            aria-keyshortcuts="Escape"
+          >
+            Cancelar asignación
+          </Button>
+        </div>
+      ) : null}
       <div className="flex min-h-0 min-w-0 flex-1">
-        <div className="min-h-0 min-w-0 flex-1 overflow-auto overscroll-none">
+        <div ref={gridScroller} className="min-h-0 min-w-0 flex-1 overflow-auto overscroll-none">
           <div
             role={rooms === null ? "region" : undefined}
             aria-label={rooms === null ? "Cargando calendario" : undefined}
@@ -700,7 +770,10 @@ export function RoomCalendar({
               minWidth: `${roomColumnWidth + span * 6}rem`,
             }}
           >
-            <div className="sticky top-0 left-0 z-40 border-r border-b bg-background" />
+            <div
+              ref={gridCorner}
+              className="sticky top-0 left-0 z-40 border-r border-b bg-background"
+            />
             {days.map((day, dayIndex) => (
               <div
                 key={format(day, "yyyy-MM-dd")}
@@ -751,6 +824,7 @@ export function RoomCalendar({
             {rooms?.map((room) => (
               <RoomRowView
                 key={room.id}
+                roomId={room.id}
                 number={room.number}
                 typeName={room.typeName}
                 stays={placeStays(
@@ -813,6 +887,12 @@ export function RoomCalendar({
                       : (assignment.error ?? assignment.roomIssues.get(room.id) ?? undefined)
                     : undefined
                 }
+                assignmentNote={
+                  assignment.target?.roomTypeId === room.roomTypeId
+                    ? assignmentNotes[assignment.roomIssueCodes.get(room.id) ?? ""]
+                    : undefined
+                }
+                highlighted={highlightedRoomId === room.id}
                 assignmentPreview={
                   assignment.ready && previewTrack && assignment.roomIssues.get(room.id) === null
                     ? {
@@ -828,45 +908,23 @@ export function RoomCalendar({
             ))}
           </div>
         </div>
-        {!isMobile && (
+        {!isMobile && unassignedOpen && (
           <aside
-            aria-label="Reservas sin asignar"
-            className={cn(
-              // border-l is the fixed scroll-edge separator; last grid columns
-              // omit border-r so it does not double-stack when flush.
-              "flex min-h-0 shrink-0 flex-col border-l bg-background",
-              unassignedOpen ? "w-80" : "w-10",
-            )}
+            aria-label="Habitaciones reservadas sin asignar"
+            // border-l is the fixed scroll-edge separator; last grid columns
+            // omit border-r so it does not double-stack when flush.
+            className="flex min-h-0 w-80 shrink-0 flex-col border-l bg-background"
           >
-            {unassignedOpen ? (
-              panel
-            ) : (
-              <button
-                type="button"
-                aria-expanded={false}
-                aria-controls="unassigned-panel"
-                aria-label={unassignedLabel}
-                disabled={assignment.pending}
-                onClick={() => setUnassignedOpen(true)}
-                className={cn(
-                  "flex min-h-0 flex-1 flex-col items-center gap-1.5 py-3 text-muted-foreground outline-none hover:bg-muted focus-visible:ring-1 focus-visible:ring-ring/50 disabled:pointer-events-none disabled:opacity-50",
-                  unassigned.length > 0 && !listLoading && "text-foreground",
-                )}
-              >
-                <PanelRightIcon className="size-4" aria-hidden="true" />
-                <span
-                  aria-hidden="true"
-                  className={cn(
-                    "text-center text-xs tabular-nums",
-                    unassigned.length > 0 && !listLoading
-                      ? "bg-primary px-1 font-medium text-primary-foreground"
-                      : "text-muted-foreground",
-                  )}
-                >
-                  {listLoading ? "…" : unassigned.length}
-                </span>
-              </button>
-            )}
+            <RoomAssignmentPanel
+              rangeLabel={rangeLabel}
+              onClose={closeUnassigned}
+              onHighlightRoom={(roomId) =>
+                setHighlight(
+                  roomId && assignment.target ? { stayId: assignment.target.id, roomId } : null,
+                )
+              }
+              {...assignmentSteps}
+            />
           </aside>
         )}
       </div>
@@ -885,10 +943,14 @@ function RoomRowView({
   onBookDay,
   onOpenStay,
   onOpenClosure,
+  roomId,
   assignmentActive = false,
   assignmentReason,
+  assignmentNote,
   assignmentPreview,
+  highlighted = false,
 }: {
+  roomId: string;
   number: string;
   typeName: string;
   stays: PlacedTrack[];
@@ -901,16 +963,20 @@ function RoomRowView({
   onOpenClosure?: (id: string) => void;
   assignmentActive?: boolean;
   assignmentReason?: string;
+  assignmentNote?: string;
   assignmentPreview?: AssignmentPreview;
+  highlighted?: boolean;
 }) {
   return (
     <>
       <div
+        data-room-id={roomId}
         className={cn(
           "group/room sticky left-0 z-20 flex min-w-0 items-center gap-1 border-r border-b bg-background px-2.5",
           "can-hover:has-data-popup-open:[&_[data-slot=room-label]]:pr-7",
           assignmentActive && !assignmentPreview && "text-muted-foreground",
           assignmentPreview && "bg-assignment",
+          highlighted && "ring-1 ring-assignment-foreground/50 ring-inset",
         )}
         title={assignmentReason}
       >
@@ -921,9 +987,13 @@ function RoomRowView({
           <span className="truncate text-xs font-medium" title={number}>
             {number}
           </span>
-          <span className="truncate text-xs text-muted-foreground" title={typeName}>
-            {typeName}
-          </span>
+          {assignmentNote ? (
+            <span className="truncate text-xs font-medium">{assignmentNote}</span>
+          ) : (
+            <span className="truncate text-xs text-muted-foreground" title={typeName}>
+              {typeName}
+            </span>
+          )}
         </div>
         {onEditRoom && onCloseRoom ? (
           <div
@@ -950,6 +1020,7 @@ function RoomRowView({
         assignmentActive={assignmentActive}
         assignmentReason={assignmentReason}
         assignmentPreview={assignmentPreview}
+        highlighted={highlighted}
       />
     </>
   );
