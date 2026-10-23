@@ -22,7 +22,7 @@ jobs:
       run:
         shell: bash
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           ref: main
           fetch-depth: 0
@@ -43,12 +43,12 @@ jobs:
           test -f apps/backend/scripts/record-production-release.mjs
           printf 'Pinned release SHA: %s\n' "$REQUESTED_SHA"
 
-      - uses: pnpm/action-setup@v4
+      - uses: pnpm/action-setup@v6
         # Reads packageManager from the selected revision; never installs dependencies.
         with:
           run_install: false
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version-file: .node-version
           cache: pnpm
