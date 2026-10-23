@@ -1,9 +1,8 @@
 import assert from "node:assert/strict";
 import { afterAll, afterEach, beforeAll, beforeEach, it } from "vite-plus/test";
-import type { HTMLInputElement } from "happy-dom";
-import type { PropertySetupInput, ReservationDetail, Room, RoomType } from "../src/lib/api.ts";
+import type { PropertySetupInput, ReservationDetail } from "../src/lib/api.ts";
 import { createBrowserTest, type BrowserTest, type BrowserPage } from "./browser.ts";
-import { calendarResponse, catalogCalendarRooms } from "./calendar-window.ts";
+import type { FakeBackend } from "./fake-backend.ts";
 
 let browser: BrowserTest;
 let page: BrowserPage;
@@ -13,6 +12,12 @@ let routes: typeof import("../src/router.tsx");
 let router: typeof routes.router;
 let container: BrowserPage["container"];
 let until: BrowserPage["until"];
+let api: FakeBackend;
+let catalog: FakeBackend["catalog"];
+let writes: PropertySetupInput[];
+let input: BrowserPage["field"];
+let fill: BrowserPage["fill"];
+let button: BrowserPage["button"];
 
 beforeAll(async () => {
   browser = await createBrowserTest();
@@ -25,10 +30,31 @@ beforeAll(async () => {
   calendar.configurePropertyCalendar("America/Lima");
 });
 
+const double = { id: "double", name: "Doble", maxAdults: 2, maxChildren: 2, baseRateCents: 15000 };
+const suite = { id: "suite", name: "Suite", maxAdults: 4, maxChildren: 2, baseRateCents: 25000 };
+
 beforeEach(() => {
-  window.happyDOM.setWindowSize({ width: 1024, height: 768 });
   page = browser.createPage();
-  ({ container, until } = page);
+  ({ api, container, until, field: input, fill, button } = page);
+  ({ catalog } = api);
+  catalog.roomTypes = [double, suite];
+  catalog.rooms = [{ id: "room-101", number: "101", roomTypeId: "double" }];
+  writes = api.bodies<PropertySetupInput>("POST", "/setup");
+  // Saved setup replaces the type's rooms in the catalog that later reads return.
+  api.on<PropertySetupInput>("POST", "/setup", ({ body }) => {
+    const roomType = { ...double, ...body, id: body.roomTypeId ?? "new-type" };
+    const savedRooms = body.rooms.map((room, i) => ({
+      ...room,
+      id: room.id ?? `new-${i}`,
+      roomTypeId: roomType.id,
+    }));
+    catalog.roomTypes = [...catalog.roomTypes.filter((type) => type.id !== roomType.id), roomType];
+    catalog.rooms = [
+      ...catalog.rooms.filter((room) => room.roomTypeId !== roomType.id),
+      ...savedRooms,
+    ];
+    return { roomType, rooms: savedRooms };
+  });
 });
 
 afterEach(async () => {
@@ -39,62 +65,6 @@ afterAll(async () => {
   await browser?.close();
 });
 
-const double = { id: "double", name: "Doble", maxAdults: 2, maxChildren: 2, baseRateCents: 15000 };
-const suite = { id: "suite", name: "Suite", maxAdults: 4, maxChildren: 2, baseRateCents: 25000 };
-let types: RoomType[];
-let rooms: Room[];
-let writes: PropertySetupInput[];
-
-function requestUrl(input: Parameters<typeof fetch>[0]) {
-  return new URL(typeof input === "string" ? input : input instanceof URL ? input.href : input.url);
-}
-
-function mockApi(
-  save?: (body: PropertySetupInput) => Response | undefined | Promise<Response | undefined>,
-) {
-  types = [double, suite];
-  rooms = [{ id: "room-101", number: "101", roomTypeId: "double" }];
-  writes = [];
-  globalThis.fetch = async (input, init) => {
-    const url = requestUrl(input);
-    if (url.pathname === "/calendar") {
-      const typeNames = new Map(types.map((type) => [type.id, type.name]));
-      return calendarResponse(url, {
-        missingSetup: types.length === 0 ? "types" : rooms.length === 0 ? "rooms" : null,
-        rooms: catalogCalendarRooms(rooms, typeNames),
-      });
-    }
-    if (url.pathname === "/room-types") return Response.json(types);
-    if (url.pathname === "/rooms") return Response.json(rooms);
-    if (url.pathname === "/inventory")
-      return Response.json({
-        from: url.searchParams.get("from"),
-        to: url.searchParams.get("to"),
-        currency: "PEN",
-        roomTypes: [],
-      });
-    if (url.pathname === "/setup" && init?.method === "POST") {
-      assert.ok(typeof init.body === "string");
-      const body = JSON.parse(init.body) as PropertySetupInput;
-      writes.push(body);
-      const response = await save?.(body);
-      if (response) return response;
-      const roomType = { ...double, ...body, id: body.roomTypeId ?? "new-type" };
-      const savedRooms = body.rooms.map((room, i) => ({
-        ...room,
-        id: room.id ?? `new-${i}`,
-        roomTypeId: roomType.id,
-      }));
-      types = [...types.filter((type) => type.id !== roomType.id), roomType];
-      rooms = [...rooms.filter((room) => room.roomTypeId !== roomType.id), ...savedRooms];
-      return Response.json({ roomType, rooms: savedRooms });
-    }
-    if (url.pathname === "/reservations" || url.pathname === "/room-closures")
-      return Response.json([]);
-    throw new Error(`Unexpected request ${url.pathname}`);
-  };
-}
-
 async function render(path = "/setup") {
   router = browser.routing.createRouter({
     routeTree: routes.router.routeTree,
@@ -104,8 +74,7 @@ async function render(path = "/setup") {
 }
 
 async function renderReservationDetail() {
-  mockApi();
-  rooms = [];
+  catalog.rooms = [];
   const reservation: ReservationDetail = {
     id: "reservation-1",
     code: "TEST0001",
@@ -144,44 +113,17 @@ async function renderReservationDetail() {
       },
     ],
   };
-  const fetchApi = globalThis.fetch;
-  globalThis.fetch = async (input, init) =>
-    requestUrl(input).pathname === "/reservations/reservation-1"
-      ? Response.json(reservation)
-      : requestUrl(input).pathname === "/reservations/reservation-1/preview"
-        ? Response.json({ billing: reservation, validation: { issues: [] } })
-        : fetchApi(input, init);
+  api.on("GET", "/reservations/reservation-1", () => reservation);
+  api.on("POST", "/reservations/reservation-1/preview", () => ({
+    billing: reservation,
+    validation: { issues: [] },
+  }));
   await render("/reservations/reservation-1");
   await until(
     () =>
       container.textContent.includes("#TEST0001") && container.textContent.includes("Ana Pérez"),
     "Reservation details must render",
   );
-}
-
-function input(name: string) {
-  const element = container.querySelector<HTMLInputElement>(`input[name="${name}"]`);
-  assert.ok(element, `Missing input ${name}`);
-  return element;
-}
-
-async function fill(name: string, value: string) {
-  await React.act(async () => {
-    const element = input(name);
-    Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, "value")!.set!.call(
-      element,
-      value,
-    );
-    element.dispatchEvent(new window.Event("input", { bubbles: true }));
-  });
-}
-
-function button(label: string) {
-  const element = Array.from(window.document.querySelectorAll("button")).find(
-    (button) => button.textContent.trim() === label || button.getAttribute("aria-label") === label,
-  );
-  assert.ok(element, `Missing button ${label}`);
-  return element;
 }
 
 function linkByText(label: string) {
@@ -227,9 +169,8 @@ it.each([
 ] as const)(
   "keeps %s accessible with its setup CTA (room types: %j)",
   async (path, roomTypes, title, action) => {
-    mockApi();
-    types = [...roomTypes];
-    rooms = [];
+    catalog.roomTypes = [...roomTypes];
+    catalog.rooms = [];
     await render(path);
     await until(() => container.textContent.includes(title), "Setup guidance must appear");
     assert.equal(router.state.location.pathname, path.split("?")[0]);
@@ -263,7 +204,6 @@ it("keeps a direct reservation detail link accessible when no physical rooms exi
 });
 
 it("edits a room type and adds several room numbers in the real table with one save", async () => {
-  mockApi();
   await render();
   await until(() => !!container.querySelector('input[name="name"]'), "Selected type must load");
   assert.equal(input("name").value, "Doble");
@@ -291,7 +231,6 @@ it("edits a room type and adds several room numbers in the real table with one s
 });
 
 it("edits adult and child limits independently and allows a room type with no children", async () => {
-  mockApi();
   await render();
   await until(() => !!container.querySelector('input[name="name"]'), "Selected type must load");
   await fill("maxAdults", "4");
@@ -309,9 +248,9 @@ it("edits adult and child limits independently and allows a room type with no ch
 });
 
 it("keeps the draft and identifies a room-number conflict reported during saving, then allows correction", async () => {
-  mockApi(() => {
+  api.on("POST", "/setup", () => {
     if (writes.length === 1) {
-      rooms.push({ id: "other-room", number: "202", roomTypeId: "suite" });
+      catalog.rooms.push({ id: "other-room", number: "202", roomTypeId: "suite" });
       return Response.json(
         { error: "room number already exists" },
         { status: 409, headers: { "X-Error-Field": "rooms[1].number" } },
@@ -341,7 +280,6 @@ it("keeps the draft and identifies a room-number conflict reported during saving
 });
 
 it("protects unsaved edits when switching types and supports staying or explicitly discarding", async () => {
-  mockApi();
   await render();
   await until(() => !!container.querySelector('input[name="name"]'), "Selected type must load");
   await fill("name", "My unsaved type");
@@ -357,19 +295,13 @@ it("protects unsaved edits when switching types and supports staying or explicit
 });
 
 it("saves before switching and prevents switching away while that save is pending", async () => {
-  let finish!: (response: Response) => void;
-  mockApi(
-    () =>
-      new Promise<Response>((resolve) => {
-        finish = resolve;
-      }),
-  );
+  const save = api.hold("POST", "/setup");
   await render();
   await until(() => !!container.querySelector('input[name="name"]'), "Selected type must load");
   await fill("baseRate", "180");
   await click("Suite");
   await click("Guardar y continuar");
-  await until(() => !!finish, "Save must start");
+  await until(() => !!save.request, "Save must start");
   assert.equal(input("name").value, "Doble");
   assert.equal(button("Suite").disabled, true);
   await click("Reservas");
@@ -380,16 +312,17 @@ it("saves before switching and prevents switching away while that save is pendin
   assert.equal(button("Descartar cambios").disabled, true);
   await click("Seguir editando");
   await React.act(async () =>
-    finish(Response.json({ roomType: { ...double, baseRateCents: 18000 }, rooms })),
+    save.release(
+      Response.json({ roomType: { ...double, baseRateCents: 18000 }, rooms: catalog.rooms }),
+    ),
   );
   await until(() => input("name").value === "Suite", "Switch must happen after saving");
   assert.equal(writes[0].baseRateCents, 18000);
 });
 
 it("lets an empty property open its calendar and choose setup before saving its first room", async () => {
-  mockApi();
-  types = [];
-  rooms = [];
+  catalog.roomTypes = [];
+  catalog.rooms = [];
   await render("/");
   await until(
     () =>
@@ -434,7 +367,6 @@ it("lets an empty property open its calendar and choose setup before saving its 
 });
 
 it("identifies duplicate numbers within the draft before sending any changes", async () => {
-  mockApi();
   await render();
   await until(() => !!container.querySelector('input[name="name"]'), "Selected type must load");
   await click("Agregar habitación");
@@ -448,8 +380,7 @@ it("identifies duplicate numbers within the draft before sending any changes", a
 it.each(["desktop", "mobile"])(
   "protects a setup draft through %s sidebar navigation",
   async (viewport) => {
-    if (viewport === "mobile") window.happyDOM.setWindowSize({ width: 390, height: 844 });
-    mockApi();
+    if (viewport === "mobile") page.mobile();
     await render();
     await until(() => !!container.querySelector('input[name="name"]'), "Selected type must load");
     await fill("name", "Unsaved name");
@@ -479,7 +410,6 @@ it.each(["desktop", "mobile"])(
 );
 
 it("creates a new type with its room table and can remove an extra unsaved row", async () => {
-  mockApi();
   await render();
   await until(() => !!container.querySelector('input[name="name"]'), "Selected type must load");
   await click("Agregar tipo de habitación");
@@ -513,21 +443,18 @@ it("creates a new type with its room table and can remove an extra unsaved row",
 it("identifies a server-side room conflict without requiring a follow-up list request", async () => {
   let failRefresh = false;
   let refreshRequests = 0;
-  mockApi(() => {
+  api.on("POST", "/setup", () => {
     failRefresh = true;
     return Response.json(
       { error: "room number already exists" },
       { status: 409, headers: { "X-Error-Field": "rooms[1].number" } },
     );
   });
-  const fetchApi = globalThis.fetch;
-  globalThis.fetch = async (input, init) => {
-    if (failRefresh && requestUrl(input).pathname === "/rooms") {
-      refreshRequests++;
-      return Response.json({ error: "Refresh failed" }, { status: 500 });
-    }
-    return fetchApi(input, init);
-  };
+  api.on("GET", "/rooms", () => {
+    if (!failRefresh) return undefined;
+    refreshRequests++;
+    return Response.json({ error: "Refresh failed" }, { status: 500 });
+  });
   await render();
   await until(() => !!container.querySelector('input[name="name"]'), "Selected type must load");
   await fill("name", "Keep my draft");
@@ -545,7 +472,6 @@ it("identifies a server-side room conflict without requiring a follow-up list re
 });
 
 it("validates name, money, and occupancy before writing and clears errors as fields are corrected", async () => {
-  mockApi();
   await render();
   await until(() => !!container.querySelector('input[name="name"]'), "Selected type must load");
   await fill("name", " ");
@@ -576,7 +502,7 @@ it("validates name, money, and occupancy before writing and clears errors as fie
 
 it("keeps a successfully created type visible even when the follow-up list refresh fails", async () => {
   let failRefresh = false;
-  mockApi(() => {
+  api.on("POST", "/setup", () => {
     failRefresh = true;
     return Response.json({
       roomType: {
@@ -589,12 +515,9 @@ it("keeps a successfully created type visible even when the follow-up list refre
       rooms: [],
     });
   });
-  const fetchApi = globalThis.fetch;
-  globalThis.fetch = async (input, init) => {
-    if (failRefresh && ["/rooms", "/room-types"].includes(requestUrl(input).pathname))
-      return Response.json({ error: "Refresh failed" }, { status: 500 });
-    return fetchApi(input, init);
-  };
+  api.on("GET", /^\/(rooms|room-types)$/, () =>
+    failRefresh ? Response.json({ error: "Refresh failed" }, { status: 500 }) : undefined,
+  );
   await render();
   await until(() => !!container.querySelector('input[name="name"]'), "Selected type must load");
   await click("Agregar tipo de habitación");
@@ -608,7 +531,7 @@ it("keeps a successfully created type visible even when the follow-up list refre
 });
 
 it("does not switch types after a failed save-and-continue or a later ordinary save", async () => {
-  mockApi(() =>
+  api.on("POST", "/setup", () =>
     writes.length === 1
       ? Response.json({ error: "room type already exists" }, { status: 409 })
       : undefined,
@@ -638,7 +561,6 @@ it("does not switch types after a failed save-and-continue or a later ordinary s
 });
 
 it("keeps the normal calendar landing for a configured hotel and makes setup accessible from its sidebar", async () => {
-  mockApi();
   await render("/");
   await until(
     () => router.state.location.pathname === "/calendar" && container.textContent.includes("101"),

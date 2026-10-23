@@ -2,6 +2,14 @@ import assert from "node:assert/strict";
 import { afterAll, afterEach, beforeAll, beforeEach, it, vi } from "vite-plus/test";
 import type { HTMLButtonElement, HTMLElement, HTMLInputElement } from "happy-dom";
 import { createBrowserTest, type BrowserTest, type BrowserPage } from "./browser.ts";
+import {
+  calendarResponse,
+  calendarWindow,
+  sampleWeek,
+  sampleWeekWith,
+  type CalendarFixtureStay,
+} from "./calendar-window.ts";
+import type { FakeRequest, HeldRequest } from "./fake-backend.ts";
 
 let browser: BrowserTest;
 let page: BrowserPage;
@@ -12,6 +20,9 @@ let queries: typeof import("../src/lib/queries.ts");
 let container: BrowserPage["container"];
 let render: BrowserPage["render"];
 let until: BrowserPage["until"];
+let click: BrowserPage["click"];
+/** Every request the page sent, in order. */
+let requests: FakeRequest[];
 
 beforeAll(async () => {
   browser = await createBrowserTest();
@@ -27,11 +38,21 @@ beforeAll(async () => {
 });
 
 beforeEach(() => {
-  window.happyDOM.setWindowSize({ width: 1024, height: 768 });
   vi.useFakeTimers({ toFake: ["Date"] });
   vi.setSystemTime(new Date("2026-10-20T15:00:00Z"));
   page = browser.createPage();
-  ({ container, render, until } = page);
+  ({ container, render, until, click } = page);
+  page.api.catalog.roomTypes = [
+    { id: "double", name: "Doble", maxAdults: 2, maxChildren: 1, baseRateCents: 15000 },
+    { id: "suite", name: "Suite", maxAdults: 4, maxChildren: 2, baseRateCents: 25000 },
+  ];
+  page.api.catalog.rooms = [
+    { id: "room-2", number: "2", roomTypeId: "double" },
+    { id: "room-10", number: "10", roomTypeId: "suite" },
+    { id: "room-101", number: "101", roomTypeId: "double" },
+  ];
+  page.api.on("GET", "/calendar", ({ url }) => calendarWindow(url, sampleWeek));
+  requests = page.api.requests();
 });
 
 afterEach(async () => {
@@ -43,80 +64,27 @@ afterAll(async () => {
   await browser?.close();
 });
 
-function requestUrl(input: Parameters<typeof fetch>[0]) {
-  return new URL(typeof input === "string" ? input : input instanceof URL ? input.href : input.url);
+function failCalendar(status: number, error: string) {
+  return page.api.on("GET", "/calendar", () => Response.json({ error }, { status }));
 }
 
-const windowPayload = {
-  from: "2026-10-20",
-  to: "2026-10-26",
-  missingSetup: null,
-  rooms: [
-    {
-      id: "room-2",
-      number: "2",
-      roomTypeId: "double",
-      roomTypeName: "Doble",
-      stays: [],
-      closures: [],
-    },
-    {
-      id: "room-10",
-      number: "10",
-      roomTypeId: "suite",
-      roomTypeName: "Suite",
-      stays: [],
-      closures: [
-        {
-          id: "closure-1",
-          roomId: "room-10",
-          starts: "2026-10-18",
-          ends: "2026-10-20",
-          reason: "Mantenimiento",
-        },
-      ],
-    },
-    {
-      id: "room-101",
-      number: "101",
-      roomTypeId: "double",
-      roomTypeName: "Doble",
-      stays: [
-        {
-          id: "line-ada",
-          reservationId: "res-ada",
-          guestName: "Ada Lovelace",
-          status: "confirmed",
-          checkIn: "2026-10-18",
-          checkOut: "2026-10-20",
-        },
-        {
-          id: "line-long",
-          reservationId: "res-long",
-          guestName: "Grace Hopper",
-          status: "checked_out",
-          checkIn: "2026-10-21",
-          checkOut: "2026-11-04",
-        },
-      ],
-      closures: [],
-    },
-  ],
-  unassigned: [
-    {
-      id: "line-open",
-      reservationId: "res-open",
-      guestName: "Mary Jackson",
-      status: "confirmed",
-      checkIn: "2026-10-22",
-      checkOut: "2026-10-24",
-      roomId: null,
-      roomTypeId: "double",
-      roomIndex: 1,
-      roomCount: 1,
-    },
-  ],
-};
+/** The sample week with one more stay on a room, from 22 to 24 Oct unless given. */
+function stayIn(roomId: string, stay: Partial<CalendarFixtureStay> & { guestName: string }) {
+  return sampleWeekWith(roomId, (room) => ({
+    ...room,
+    stays: [
+      ...room.stays,
+      {
+        id: "line-saved",
+        reservationId: "res-new",
+        status: "confirmed",
+        checkIn: "2026-10-22",
+        checkOut: "2026-10-24",
+        ...stay,
+      },
+    ],
+  }));
+}
 
 function renderCalendar(span: 7 | 14 = 7) {
   return React.createElement(calendars.RoomCalendar, {
@@ -140,12 +108,6 @@ function CalendarSession() {
   });
 }
 
-async function click(label: string) {
-  const element = container.querySelector<HTMLElement>(`[aria-label="${label}"]`);
-  assert.ok(element, `Missing ${label}`);
-  await React.act(async () => element.click());
-}
-
 function expectIdleRefresh(disabled = false) {
   const button = container.querySelector<HTMLButtonElement>('[aria-label="Actualizar"]');
   assert.ok(button, "Refresh must have its idle name");
@@ -162,21 +124,16 @@ function expectManualRefresh() {
 }
 
 it("keeps day navigation, Hoy, and the date picker available on mobile", async () => {
-  window.happyDOM.setWindowSize({ width: 390, height: 844 });
-  globalThis.fetch = async (input) => {
-    const url = requestUrl(input);
-    if (url.pathname !== "/calendar") throw new Error(`Unexpected request ${url.pathname}`);
-    return calendarResponse(url);
-  };
+  page.mobile();
 
   await render(React.createElement(CalendarSession));
   await until(() => !!adaBar(), "The mobile calendar must load");
   await click("Día siguiente");
-  assert.ok(buttonByText("21 oct 2026"));
+  assert.ok(page.button("21 oct 2026"));
   await click("Día anterior");
-  assert.ok(buttonByText("20 oct 2026"));
+  assert.ok(page.button("20 oct 2026"));
   await click("Día anterior");
-  assert.ok(buttonByText("19 oct 2026"));
+  assert.ok(page.button("19 oct 2026"));
   assert.equal(
     [...container.querySelectorAll("button")].some(
       (button) => button.textContent?.trim() === "Hoy",
@@ -184,34 +141,25 @@ it("keeps day navigation, Hoy, and the date picker available on mobile", async (
     false,
     "Hoy belongs inside the date picker on mobile",
   );
-  await React.act(async () => buttonByText("19 oct 2026").click());
+  await React.act(async () => page.button("19 oct 2026").click());
   assert.ok(window.document.querySelector('button[data-day="20/10/2026"]'));
-  await React.act(async () => buttonByText("Hoy").click());
-  assert.ok(buttonByText("20 oct 2026"));
+  await React.act(async () => page.button("Hoy").click());
+  assert.ok(page.button("20 oct 2026"));
   await until(
     () => !window.document.querySelector('button[data-day="20/10/2026"]'),
     "Hoy must dismiss the date picker",
   );
 
-  await React.act(async () => buttonByText("20 oct 2026").click());
+  await React.act(async () => page.button("20 oct 2026").click());
   const date = window.document.querySelector<HTMLElement>('button[data-day="22/10/2026"]');
   assert.ok(date, "The date picker must remain available on mobile");
   await React.act(async () => date.click());
-  assert.ok(buttonByText("22 oct 2026"));
+  assert.ok(page.button("22 oct 2026"));
 });
 
 it("shows pending reserved-room counts only within the displayed mobile dates", async () => {
-  window.happyDOM.setWindowSize({ width: 390, height: 844 });
-  let releaseCalendar: (response: Response) => void = () => {};
-  let initialUrl: URL;
-  globalThis.fetch = async (input) => {
-    const url = requestUrl(input);
-    if (url.pathname !== "/calendar") throw new Error(`Unexpected request ${url.pathname}`);
-    initialUrl = url;
-    return new Promise((resolve) => {
-      releaseCalendar = resolve;
-    });
-  };
+  page.mobile();
+  const initial = page.api.hold("GET", "/calendar");
 
   await render(React.createElement(CalendarSession));
   assert.equal(
@@ -220,14 +168,14 @@ it("shows pending reserved-room counts only within the displayed mobile dates", 
     "",
     "No count is shown before the calendar loads",
   );
-  releaseCalendar(calendarResponse(initialUrl!));
+  initial.release(calendarResponse(initial.request!.url, sampleWeek));
   await until(() => !!adaBar(), "The mobile calendar must load");
   assert.equal(
     container.querySelector('[aria-label="Mostrar habitaciones reservadas sin asignar, 1"]')
       ?.textContent,
     "1",
   );
-  await React.act(async () => buttonByText("20 oct 2026").click());
+  await React.act(async () => page.button("20 oct 2026").click());
   const afterStay = window.document.querySelector<HTMLElement>('button[data-day="25/10/2026"]');
   assert.ok(afterStay);
   await React.act(async () => afterStay.click());
@@ -249,14 +197,8 @@ it.each(["mobile", "desktop"])(
   "opens reservation creation from the %s calendar's action location",
   async (viewport) => {
     const mobile = viewport === "mobile";
-    if (mobile) window.happyDOM.setWindowSize({ width: 390, height: 844 });
-    globalThis.fetch = async (input) => {
-      const url = requestUrl(input);
-      if (url.pathname === "/calendar") return calendarResponse(url);
-      const response = dialogReads(url);
-      if (response) return response;
-      throw new Error(`Unexpected request ${url.pathname}`);
-    };
+    if (mobile) page.mobile();
+    answerAvailability();
     const routes = (await browser.server.ssrLoadModule(
       "/src/router.tsx",
     )) as typeof import("../src/router.tsx");
@@ -269,7 +211,7 @@ it.each(["mobile", "desktop"])(
 
     await page.renderRouter(router);
     await until(() => !!adaBar(), "The calendar must load inside the app shell");
-    const create = buttonByText("Nueva reserva");
+    const create = page.button("Nueva reserva");
     assert.equal(!!create.closest("header"), mobile, "Only mobile creation belongs in the header");
     assert.equal(
       [...container.querySelectorAll("button")].filter(
@@ -292,17 +234,7 @@ it.each(["mobile", "desktop"])(
 );
 
 it("opens a week of 20 Oct from one wider read and draws only 20–26 Oct", async () => {
-  const requests: URL[] = [];
-  let release: (response: Response) => void = () => {};
-  const pending = new Promise<Response>((resolve) => {
-    release = resolve;
-  });
-  globalThis.fetch = (input) => {
-    const url = requestUrl(input);
-    requests.push(url);
-    if (url.pathname !== "/calendar") throw new Error(`Unexpected request ${url.pathname}`);
-    return pending;
-  };
+  const initial = page.api.hold("GET", "/calendar");
 
   await render(renderCalendar());
   await page.flush();
@@ -317,30 +249,28 @@ it("opens a week of 20 Oct from one wider read and draws only 20–26 Oct", asyn
   assert.equal(loading.textContent.includes("Mantenimiento"), false);
   assert.equal(container.textContent.includes("Configura tu alojamiento"), false);
   expectIdleRefresh(true);
-  assert.equal(buttonByText("Nueva reserva").disabled, false);
+  assert.equal(page.button("Nueva reserva").disabled, false);
   for (const label of ["Día anterior", "Día siguiente", "Período anterior", "Período siguiente"]) {
     assert.equal(
       container.querySelector<HTMLButtonElement>(`[aria-label="${label}"]`)?.disabled,
       false,
     );
   }
-  assert.equal(buttonByText("Hoy").disabled, false);
-  assert.equal(buttonByText("20 oct 2026").disabled, false);
+  assert.equal(page.button("Hoy").disabled, false);
+  assert.equal(page.button("20 oct 2026").disabled, false);
   assert.equal(container.querySelector('[role="combobox"]')?.getAttribute("aria-disabled"), null);
   assert.ok(container.querySelector('[aria-label="Mostrar habitaciones reservadas sin asignar"]'));
   assert.equal(container.textContent.includes("101"), false);
   assert.equal(requests.length, 1);
-  assert.equal(requests[0]!.pathname, "/calendar");
-  assert.equal(requests[0]!.searchParams.get("from"), "2026-10-13");
-  assert.equal(requests[0]!.searchParams.get("to"), "2026-11-02");
+  assert.equal(requests[0]!.path, "/calendar");
+  assert.equal(requests[0]!.url.searchParams.get("from"), "2026-10-13");
+  assert.equal(requests[0]!.url.searchParams.get("to"), "2026-11-02");
 
-  release(
-    Response.json({
-      ...windowPayload,
-      from: "2026-10-13",
-      to: "2026-11-02",
+  initial.release(
+    calendarResponse(requests[0]!.url, {
+      ...sampleWeek,
       unassigned: [
-        ...windowPayload.unassigned,
+        ...sampleWeek.unassigned,
         {
           id: "line-margin",
           reservationId: "res-margin",
@@ -423,23 +353,11 @@ it("opens a week of 20 Oct from one wider read and draws only 20–26 Oct", asyn
   assert.ok(
     container.querySelector('[aria-label="Mostrar habitaciones reservadas sin asignar, 1"]'),
   );
-  assert.equal(requests[0]!.searchParams.has("today"), false);
+  assert.equal(requests[0]!.url.searchParams.has("today"), false);
   assert.ok(container.textContent.includes("Hoy"));
 });
 
 it("opens a 14-day calendar from one wider read and draws only that span", async () => {
-  const requests: URL[] = [];
-  globalThis.fetch = async (input) => {
-    const url = requestUrl(input);
-    requests.push(url);
-    if (url.pathname !== "/calendar") throw new Error(`Unexpected request ${url.pathname}`);
-    return Response.json({
-      ...windowPayload,
-      from: url.searchParams.get("from"),
-      to: url.searchParams.get("to"),
-    });
-  };
-
   await render(renderCalendar(14));
   await until(
     () =>
@@ -448,8 +366,8 @@ it("opens a 14-day calendar from one wider read and draws only that span", async
   );
 
   assert.equal(requests.length, 1);
-  assert.equal(requests[0]!.searchParams.get("from"), "2026-10-13");
-  assert.equal(requests[0]!.searchParams.get("to"), "2026-11-09");
+  assert.equal(requests[0]!.url.searchParams.get("from"), "2026-10-13");
+  assert.equal(requests[0]!.url.searchParams.get("to"), "2026-11-09");
   assert.equal(
     container.querySelector('[aria-label="Nueva reserva para habitación 101 el 13 oct 2026"]'),
     null,
@@ -457,35 +375,19 @@ it("opens a 14-day calendar from one wider read and draws only that span", async
 });
 
 it("shows the next day without another read", async () => {
-  const requests: URL[] = [];
-  globalThis.fetch = async (input) => {
-    const url = requestUrl(input);
-    requests.push(url);
-    if (url.pathname !== "/calendar") throw new Error(`Unexpected request ${url.pathname}`);
-    return Response.json({
-      ...windowPayload,
-      from: url.searchParams.get("from"),
-      to: url.searchParams.get("to"),
-      rooms: windowPayload.rooms.map((room) =>
-        room.id === "room-101"
-          ? {
-              ...room,
-              stays: [
-                ...room.stays,
-                {
-                  id: "line-next",
-                  reservationId: "res-next",
-                  guestName: "Next Day",
-                  status: "confirmed",
-                  checkIn: "2026-10-27",
-                  checkOut: "2026-10-28",
-                },
-              ],
-            }
-          : room,
-      ),
-    });
-  };
+  page.api.on("GET", "/calendar", ({ url }) =>
+    calendarWindow(
+      url,
+      stayIn("room-101", {
+        id: "line-next",
+        reservationId: "res-next",
+        guestName: "Next Day",
+        status: "confirmed",
+        checkIn: "2026-10-27",
+        checkOut: "2026-10-28",
+      }),
+    ),
+  );
 
   await render(React.createElement(CalendarSession));
   await until(
@@ -513,35 +415,19 @@ it("shows the next day without another read", async () => {
 });
 
 it("shows the previous day without another read", async () => {
-  const requests: URL[] = [];
-  globalThis.fetch = async (input) => {
-    const url = requestUrl(input);
-    requests.push(url);
-    if (url.pathname !== "/calendar") throw new Error(`Unexpected request ${url.pathname}`);
-    return Response.json({
-      ...windowPayload,
-      from: url.searchParams.get("from"),
-      to: url.searchParams.get("to"),
-      rooms: windowPayload.rooms.map((room) =>
-        room.id === "room-101"
-          ? {
-              ...room,
-              stays: [
-                ...room.stays,
-                {
-                  id: "line-prev",
-                  reservationId: "res-prev",
-                  guestName: "Previous Day",
-                  status: "checked_out",
-                  checkIn: "2026-10-18",
-                  checkOut: "2026-10-19",
-                },
-              ],
-            }
-          : room,
-      ),
-    });
-  };
+  page.api.on("GET", "/calendar", ({ url }) =>
+    calendarWindow(
+      url,
+      stayIn("room-101", {
+        id: "line-prev",
+        reservationId: "res-prev",
+        guestName: "Previous Day",
+        status: "checked_out",
+        checkIn: "2026-10-18",
+        checkOut: "2026-10-19",
+      }),
+    ),
+  );
 
   await render(React.createElement(CalendarSession));
   await until(
@@ -572,35 +458,19 @@ it("shows the previous day without another read", async () => {
 });
 
 it("switches from 7 days to 14 without another read", async () => {
-  const requests: URL[] = [];
-  globalThis.fetch = async (input) => {
-    const url = requestUrl(input);
-    requests.push(url);
-    if (url.pathname !== "/calendar") throw new Error(`Unexpected request ${url.pathname}`);
-    return Response.json({
-      ...windowPayload,
-      from: url.searchParams.get("from"),
-      to: url.searchParams.get("to"),
-      rooms: windowPayload.rooms.map((room) =>
-        room.id === "room-101"
-          ? {
-              ...room,
-              stays: [
-                ...room.stays,
-                {
-                  id: "line-fortnight",
-                  reservationId: "res-fortnight",
-                  guestName: "Fortnight",
-                  status: "confirmed",
-                  checkIn: "2026-11-01",
-                  checkOut: "2026-11-02",
-                },
-              ],
-            }
-          : room,
-      ),
-    });
-  };
+  page.api.on("GET", "/calendar", ({ url }) =>
+    calendarWindow(
+      url,
+      stayIn("room-101", {
+        id: "line-fortnight",
+        reservationId: "res-fortnight",
+        guestName: "Fortnight",
+        status: "confirmed",
+        checkIn: "2026-11-01",
+        checkOut: "2026-11-02",
+      }),
+    ),
+  );
 
   await render(React.createElement(CalendarSession));
   await until(
@@ -644,21 +514,6 @@ it("switches from 7 days to 14 without another read", async () => {
 });
 
 it("shows loading instead of the previous bars when a jump leaves the held days", async () => {
-  const requests: URL[] = [];
-  globalThis.fetch = (input) => {
-    const url = requestUrl(input);
-    requests.push(url);
-    if (url.pathname !== "/calendar") throw new Error(`Unexpected request ${url.pathname}`);
-    if (requests.length > 1) return new Promise<Response>(() => {});
-    return Promise.resolve(
-      Response.json({
-        ...windowPayload,
-        from: url.searchParams.get("from"),
-        to: url.searchParams.get("to"),
-      }),
-    );
-  };
-
   await render(React.createElement(CalendarSession));
   await until(
     () => !!container.querySelector('[aria-label="Editar reserva de Ada Lovelace · Confirmada"]'),
@@ -673,12 +528,13 @@ it("shows loading instead of the previous bars when a jump leaves the held days"
   assert.equal(requests.length, 1);
   assert.ok(container.textContent.includes("101"));
 
+  page.api.hold("GET", "/calendar");
   await click("Período siguiente");
   await page.flush();
 
   assert.equal(requests.length, 2);
-  assert.equal(requests[1]!.searchParams.get("from"), "2026-10-27");
-  assert.equal(requests[1]!.searchParams.get("to"), "2026-11-16");
+  assert.equal(requests[1]!.url.searchParams.get("from"), "2026-10-27");
+  assert.equal(requests[1]!.url.searchParams.get("to"), "2026-11-16");
   assert.equal(container.textContent.includes("101"), false);
   assert.equal(
     container.querySelector('[aria-label="Editar reserva de Ada Lovelace · Confirmada"]'),
@@ -699,38 +555,19 @@ it("shows loading instead of the previous bars when a jump leaves the held days"
 });
 
 it("shows loading on the eighth day-step instead of a partial edge", async () => {
-  const requests: URL[] = [];
-  globalThis.fetch = (input) => {
-    const url = requestUrl(input);
-    requests.push(url);
-    if (url.pathname !== "/calendar") throw new Error(`Unexpected request ${url.pathname}`);
-    if (requests.length > 1) return new Promise<Response>(() => {});
-    return Promise.resolve(
-      Response.json({
-        ...windowPayload,
-        from: url.searchParams.get("from"),
-        to: url.searchParams.get("to"),
-        rooms: windowPayload.rooms.map((room) =>
-          room.id === "room-101"
-            ? {
-                ...room,
-                stays: [
-                  ...room.stays,
-                  {
-                    id: "line-edge",
-                    reservationId: "res-edge",
-                    guestName: "Edge Night",
-                    status: "confirmed",
-                    checkIn: "2026-10-28",
-                    checkOut: "2026-10-29",
-                  },
-                ],
-              }
-            : room,
-        ),
+  page.api.on("GET", "/calendar", ({ url }) =>
+    calendarWindow(
+      url,
+      stayIn("room-101", {
+        id: "line-edge",
+        reservationId: "res-edge",
+        guestName: "Edge Night",
+        status: "confirmed",
+        checkIn: "2026-10-28",
+        checkOut: "2026-10-29",
       }),
-    );
-  };
+    ),
+  );
 
   await render(React.createElement(CalendarSession));
   await until(
@@ -750,6 +587,7 @@ it("shows loading on the eighth day-step instead of a partial edge", async () =>
   assert.equal(requests.length, 1);
   assert.ok(container.textContent.includes("27 oct 2026"));
 
+  page.api.hold("GET", "/calendar");
   await click("Día siguiente");
   await page.flush();
 
@@ -767,35 +605,19 @@ it("shows loading on the eighth day-step instead of a partial edge", async () =>
 });
 
 it("draws a checkout on the first morning at the edge of the hold", async () => {
-  const requests: URL[] = [];
-  globalThis.fetch = async (input) => {
-    const url = requestUrl(input);
-    requests.push(url);
-    if (url.pathname !== "/calendar") throw new Error(`Unexpected request ${url.pathname}`);
-    return Response.json({
-      ...windowPayload,
-      from: url.searchParams.get("from"),
-      to: url.searchParams.get("to"),
-      rooms: windowPayload.rooms.map((room) =>
-        room.id === "room-101"
-          ? {
-              ...room,
-              stays: [
-                ...room.stays,
-                {
-                  id: "line-edge-out",
-                  reservationId: "res-edge-out",
-                  guestName: "Hold Edge",
-                  status: "checked_out",
-                  checkIn: "2026-10-12",
-                  checkOut: "2026-10-13",
-                },
-              ],
-            }
-          : room,
-      ),
-    });
-  };
+  page.api.on("GET", "/calendar", ({ url }) =>
+    calendarWindow(
+      url,
+      stayIn("room-101", {
+        id: "line-edge-out",
+        reservationId: "res-edge-out",
+        guestName: "Hold Edge",
+        status: "checked_out",
+        checkIn: "2026-10-12",
+        checkOut: "2026-10-13",
+      }),
+    ),
+  );
 
   await render(React.createElement(CalendarSession));
   await until(
@@ -825,18 +647,6 @@ it("draws a checkout on the first morning at the edge of the hold", async () => 
 });
 
 it("does not read again on a timer while the tab stays open and staff only step", async () => {
-  const requests: URL[] = [];
-  globalThis.fetch = async (input) => {
-    const url = requestUrl(input);
-    requests.push(url);
-    if (url.pathname !== "/calendar") throw new Error(`Unexpected request ${url.pathname}`);
-    return Response.json({
-      ...windowPayload,
-      from: url.searchParams.get("from"),
-      to: url.searchParams.get("to"),
-    });
-  };
-
   await render(React.createElement(CalendarSession));
   await until(
     () => !!container.querySelector('[aria-label="Editar reserva de Ada Lovelace · Confirmada"]'),
@@ -851,11 +661,7 @@ it("does not read again on a timer while the tab stays open and staff only step"
 });
 
 it("shows an error and no rooms when the first load fails", async () => {
-  globalThis.fetch = async (input) => {
-    if (requestUrl(input).pathname !== "/calendar")
-      throw new Error(`Unexpected request ${requestUrl(input).pathname}`);
-    return Response.json({ error: "calendar window is incomplete" }, { status: 500 });
-  };
+  failCalendar(500, "calendar window is incomplete");
 
   await render(renderCalendar());
   await until(
@@ -872,11 +678,11 @@ it("shows an error and no rooms when the first load fails", async () => {
 });
 
 it("shows an error and no rooms when the read returns an incomplete window", async () => {
-  globalThis.fetch = async (input) => {
-    if (requestUrl(input).pathname !== "/calendar")
-      throw new Error(`Unexpected request ${requestUrl(input).pathname}`);
-    return Response.json({ ...windowPayload, from: "2026-10-21", to: "2026-10-26" });
-  };
+  page.api.on("GET", "/calendar", ({ url }) => ({
+    ...calendarWindow(url, sampleWeek),
+    from: "2026-10-21",
+    to: "2026-10-26",
+  }));
 
   await render(renderCalendar());
   await until(
@@ -888,32 +694,9 @@ it("shows an error and no rooms when the read returns an incomplete window", asy
   assert.equal(container.textContent.includes("Configura tu alojamiento"), false);
 });
 
-function calendarResponse(url: URL, guestName?: string) {
-  return Response.json({
-    ...windowPayload,
-    from: url.searchParams.get("from"),
-    to: url.searchParams.get("to"),
-    rooms: guestName
-      ? windowPayload.rooms.map((room) =>
-          room.id === "room-101"
-            ? {
-                ...room,
-                stays: [
-                  ...room.stays,
-                  {
-                    id: "line-elsewhere",
-                    reservationId: "res-elsewhere",
-                    guestName,
-                    status: "confirmed",
-                    checkIn: "2026-10-22",
-                    checkOut: "2026-10-24",
-                  },
-                ],
-              }
-            : room,
-        )
-      : windowPayload.rooms,
-  });
+/** The sample week after someone else books room 101 for 22–24 Oct. */
+function bookedElsewhere(guestName: string) {
+  return stayIn("room-101", { id: "line-elsewhere", reservationId: "res-elsewhere", guestName });
 }
 
 function returnToTab() {
@@ -925,23 +708,12 @@ function returnToTab() {
 }
 
 it("refreshes the calendar when staff return to the tab and keeps the current bars until that window arrives", async () => {
-  const requests: URL[] = [];
-  let releaseReturn: (response: Response) => void = () => {};
-  globalThis.fetch = (input) => {
-    const url = requestUrl(input);
-    requests.push(url);
-    if (url.pathname !== "/calendar") throw new Error(`Unexpected request ${url.pathname}`);
-    if (requests.length === 1) return Promise.resolve(calendarResponse(url));
-    return new Promise((resolve) => {
-      releaseReturn = resolve;
-    });
-  };
-
   await render(React.createElement(CalendarSession));
   await until(
     () => !!container.querySelector('[aria-label="Editar reserva de Ada Lovelace · Confirmada"]'),
     "Week must paint before leaving the tab",
   );
+  const focusRead = page.api.hold("GET", "/calendar");
   assert.equal(requests.length, 1);
   assert.ok(
     container.querySelector('[aria-label="Mostrar habitaciones reservadas sin asignar, 1"]'),
@@ -951,9 +723,9 @@ it("refreshes the calendar when staff return to the tab and keeps the current ba
   await page.flush();
 
   assert.equal(requests.length, 2);
-  assert.equal(requests[1]!.pathname, "/calendar");
-  assert.equal(requests[1]!.searchParams.get("from"), "2026-10-13");
-  assert.equal(requests[1]!.searchParams.get("to"), "2026-11-02");
+  assert.equal(requests[1]!.path, "/calendar");
+  assert.equal(requests[1]!.url.searchParams.get("from"), "2026-10-13");
+  assert.equal(requests[1]!.url.searchParams.get("to"), "2026-11-02");
   assert.ok(
     container.querySelector('[aria-label="Editar reserva de Ada Lovelace · Confirmada"]'),
     "Current bars stay up while the focus refresh is in flight",
@@ -975,7 +747,7 @@ it("refreshes the calendar when staff return to the tab and keeps the current ba
   assert.ok(bookNight, "Returning to the tab must keep free nights bookable");
   assert.equal(bookNight.disabled, false);
 
-  releaseReturn(calendarResponse(requests[1]!, "Katherine Johnson"));
+  focusRead.release(calendarResponse(requests[1]!.url, bookedElsewhere("Katherine Johnson")));
   await until(
     () =>
       !!container.querySelector('[aria-label="Editar reserva de Katherine Johnson · Confirmada"]'),
@@ -993,30 +765,7 @@ function CalendarWithOtherReads() {
 }
 
 it("reloads only the calendar from mobile refresh and keeps the current bars up", async () => {
-  window.happyDOM.setWindowSize({ width: 390, height: 844 });
-  const requests: URL[] = [];
-  let releaseRefresh: (response: Response) => void = () => {};
-  globalThis.fetch = (input) => {
-    const url = requestUrl(input);
-    requests.push(url);
-    if (
-      url.pathname === "/calendar" &&
-      requests.filter((item) => item.pathname === "/calendar").length > 1
-    ) {
-      return new Promise((resolve) => {
-        releaseRefresh = resolve;
-      });
-    }
-    if (url.pathname === "/calendar") return Promise.resolve(calendarResponse(url));
-    if (url.pathname === "/session") {
-      return Promise.resolve(
-        Response.json({ username: "hotelmanantial", propertyTimeZone: "America/Lima" }),
-      );
-    }
-    if (url.pathname === "/reservations") return Promise.resolve(Response.json([]));
-    if (url.pathname === "/inventory") return Promise.resolve(Response.json({ roomTypes: [] }));
-    throw new Error(`Unexpected request ${url.pathname}`);
-  };
+  page.mobile();
 
   await render(React.createElement(CalendarWithOtherReads));
   await until(
@@ -1024,16 +773,17 @@ it("reloads only the calendar from mobile refresh and keeps the current bars up"
     "Week must paint before refreshing",
   );
   const beforeRefresh = requests.length;
-  assert.ok(requests.some((url) => url.pathname === "/session"));
-  assert.ok(requests.some((url) => url.pathname === "/reservations"));
-  assert.ok(requests.some((url) => url.pathname === "/inventory"));
+  assert.ok(requests.some((request) => request.path === "/session"));
+  assert.ok(requests.some((request) => request.path === "/reservations"));
+  assert.ok(requests.some((request) => request.path === "/inventory"));
 
+  const refresh = page.api.hold("GET", "/calendar");
   await click("Actualizar");
   await page.flush();
 
   const refreshed = requests.slice(beforeRefresh);
   assert.deepEqual(
-    refreshed.map((url) => url.pathname),
+    refreshed.map((request) => request.path),
     ["/calendar"],
   );
   assert.ok(
@@ -1058,7 +808,7 @@ it("reloads only the calendar from mobile refresh and keeps the current bars up"
     )?.disabled,
     false,
   );
-  assert.equal(buttonByText("Mantenimiento").disabled, false);
+  assert.equal(page.button("Mantenimiento").disabled, false);
   await React.act(async () => refreshing.click());
   assert.equal(requests.length, beforeRefresh + 1, "A pending refresh must not stack another read");
   await openMobileUnassigned(1);
@@ -1073,7 +823,7 @@ it("reloads only the calendar from mobile refresh and keeps the current bars up"
       .click(),
   );
   await until(() => !window.document.querySelector('[role="dialog"]'), "The sheet must close");
-  releaseRefresh(calendarResponse(refreshed[0]!));
+  refresh.release(calendarResponse(refreshed[0]!.url, sampleWeek));
   await until(
     () => !!container.querySelector('[aria-label="Actualizar"]'),
     "Refresh must finish even when the calendar has not changed",
@@ -1084,24 +834,13 @@ it("reloads only the calendar from mobile refresh and keeps the current bars up"
 });
 
 it("ignores a refresh that finishes after staff have left that day", async () => {
-  const requests: URL[] = [];
-  const pending: Array<(response: Response) => void> = [];
-  globalThis.fetch = (input) => {
-    const url = requestUrl(input);
-    requests.push(url);
-    if (url.pathname !== "/calendar") throw new Error(`Unexpected request ${url.pathname}`);
-    if (requests.length === 1) return Promise.resolve(calendarResponse(url));
-    return new Promise((resolve) => {
-      pending.push(resolve);
-    });
-  };
-
   await render(React.createElement(CalendarSession));
   await until(
     () => !!container.querySelector('[aria-label="Editar reserva de Ada Lovelace · Confirmada"]'),
     "Week must paint before refreshing",
   );
 
+  const refresh = page.api.hold("GET", "/calendar");
   await click("Actualizar");
   await page.flush();
   assert.equal(requests.length, 2);
@@ -1117,10 +856,11 @@ it("ignores a refresh that finishes after staff have left that day", async () =>
   expectManualRefresh();
   assert.equal(container.querySelector('[aria-label="Cargando calendario"]'), null);
 
+  page.api.hold("GET", "/calendar");
   await click("Período siguiente");
   await page.flush();
   assert.equal(requests.length, 3);
-  assert.equal(requests[2]!.searchParams.get("from"), "2026-10-21");
+  assert.equal(requests[2]!.url.searchParams.get("from"), "2026-10-21");
   assert.ok(container.textContent.includes("28 oct 2026"));
   assert.equal(container.textContent.includes("101"), false);
   assert.equal(
@@ -1137,7 +877,7 @@ it("ignores a refresh that finishes after staff have left that day", async () =>
   assert.equal(loading?.getAttribute("aria-busy"), "true");
   assert.ok(loading?.textContent.includes("28"));
 
-  pending[0]!(calendarResponse(requests[1]!, "Katherine Johnson"));
+  refresh.release(calendarResponse(requests[1]!.url, bookedElsewhere("Katherine Johnson")));
   await page.flush();
 
   assert.ok(container.textContent.includes("28 oct 2026"));
@@ -1157,15 +897,6 @@ it("ignores a refresh that finishes after staff have left that day", async () =>
 });
 
 it("keeps the held window and shows one Spanish banner when a refresh fails", async () => {
-  const requests: URL[] = [];
-  globalThis.fetch = async (input) => {
-    const url = requestUrl(input);
-    requests.push(url);
-    if (url.pathname !== "/calendar") throw new Error(`Unexpected request ${url.pathname}`);
-    if (requests.length === 1) return calendarResponse(url);
-    return Response.json({ error: "calendar window is incomplete" }, { status: 500 });
-  };
-
   await render(React.createElement(CalendarSession));
   await until(
     () => !!container.querySelector('[aria-label="Editar reserva de Ada Lovelace · Confirmada"]'),
@@ -1173,6 +904,7 @@ it("keeps the held window and shows one Spanish banner when a refresh fails", as
   );
   assert.ok(container.textContent.includes("Mantenimiento"));
 
+  failCalendar(500, "calendar window is incomplete");
   await click("Actualizar");
   await until(
     () => container.textContent.includes("La ventana del calendario está incompleta"),
@@ -1202,15 +934,6 @@ it("keeps the held window and shows one Spanish banner when a refresh fails", as
 });
 
 it("shows an error and no rooms when a step has no complete window and that read fails", async () => {
-  const requests: URL[] = [];
-  globalThis.fetch = async (input) => {
-    const url = requestUrl(input);
-    requests.push(url);
-    if (url.pathname !== "/calendar") throw new Error(`Unexpected request ${url.pathname}`);
-    if (requests.length === 1) return calendarResponse(url);
-    return Response.json({ error: "calendar range is too wide" }, { status: 400 });
-  };
-
   await render(React.createElement(CalendarSession));
   await until(
     () => !!container.querySelector('[aria-label="Editar reserva de Ada Lovelace · Confirmada"]'),
@@ -1225,6 +948,7 @@ it("shows an error and no rooms when a step has no complete window and that read
   assert.equal(requests.length, 1);
   assert.ok(container.textContent.includes("27 oct 2026"));
 
+  failCalendar(400, "calendar range is too wide");
   await click("Período siguiente");
   await until(
     () => container.textContent.includes("El rango del calendario es demasiado amplio"),
@@ -1255,15 +979,6 @@ it("shows an error and no rooms when a step has no complete window and that read
 });
 
 it("keeps an open unassigned list when a refresh fails, with the same banner as the grid", async () => {
-  const requests: URL[] = [];
-  globalThis.fetch = async (input) => {
-    const url = requestUrl(input);
-    requests.push(url);
-    if (url.pathname !== "/calendar") throw new Error(`Unexpected request ${url.pathname}`);
-    if (requests.length === 1) return calendarResponse(url);
-    return Response.json({ error: "calendar window is incomplete" }, { status: 500 });
-  };
-
   await render(React.createElement(CalendarSession));
   await until(
     () =>
@@ -1276,6 +991,7 @@ it("keeps an open unassigned list when a refresh fails, with the same banner as 
     "Unassigned stay must be listed",
   );
 
+  failCalendar(500, "calendar window is incomplete");
   await click("Actualizar");
   await until(
     () => container.textContent.includes("La ventana del calendario está incompleta"),
@@ -1294,28 +1010,12 @@ it("keeps an open unassigned list when a refresh fails, with the same banner as 
 });
 
 it("retries a failed calendar refresh without reloading the reservation list, inventory, or session", async () => {
-  const requests: URL[] = [];
-  globalThis.fetch = async (input) => {
-    const url = requestUrl(input);
-    requests.push(url);
-    const calendarReads = requests.filter((item) => item.pathname === "/calendar").length;
-    if (url.pathname === "/calendar" && calendarReads === 1) return calendarResponse(url);
-    if (url.pathname === "/calendar") {
-      return Response.json({ error: "calendar window is incomplete" }, { status: 500 });
-    }
-    if (url.pathname === "/session") {
-      return Response.json({ username: "hotelmanantial", propertyTimeZone: "America/Lima" });
-    }
-    if (url.pathname === "/reservations") return Response.json([]);
-    if (url.pathname === "/inventory") return Response.json({ roomTypes: [] });
-    throw new Error(`Unexpected request ${url.pathname}`);
-  };
-
   await render(React.createElement(CalendarWithOtherReads));
   await until(
     () => !!container.querySelector('[aria-label="Editar reserva de Ada Lovelace · Confirmada"]'),
     "Week must paint before a failed refresh",
   );
+  failCalendar(500, "calendar window is incomplete");
   await click("Actualizar");
   await until(
     () => container.textContent.includes("La ventana del calendario está incompleta"),
@@ -1331,7 +1031,7 @@ it("retries a failed calendar refresh without reloading the reservation list, in
   await page.flush();
 
   assert.deepEqual(
-    requests.slice(beforeRetry).map((url) => url.pathname),
+    requests.slice(beforeRetry).map((request) => request.path),
     ["/calendar"],
   );
   assert.ok(container.querySelector('[aria-label="Editar reserva de Ada Lovelace · Confirmada"]'));
@@ -1340,21 +1040,8 @@ it("retries a failed calendar refresh without reloading the reservation list, in
 it.each(["mobile", "desktop"])(
   "retries a failed first load from the %s unassigned list without reloading unrelated reads",
   async (viewport) => {
-    if (viewport === "mobile") window.happyDOM.setWindowSize({ width: 390, height: 844 });
-    const requests: URL[] = [];
-    globalThis.fetch = async (input) => {
-      const url = requestUrl(input);
-      requests.push(url);
-      if (url.pathname === "/calendar") {
-        return Response.json({ error: "calendar window is incomplete" }, { status: 500 });
-      }
-      if (url.pathname === "/session") {
-        return Response.json({ username: "hotelmanantial", propertyTimeZone: "America/Lima" });
-      }
-      if (url.pathname === "/reservations") return Response.json([]);
-      if (url.pathname === "/inventory") return Response.json({ roomTypes: [] });
-      throw new Error(`Unexpected request ${url.pathname}`);
-    };
+    if (viewport === "mobile") page.mobile();
+    failCalendar(500, "calendar window is incomplete");
 
     await render(React.createElement(CalendarWithOtherReads));
     await until(
@@ -1375,7 +1062,7 @@ it.each(["mobile", "desktop"])(
     await page.flush();
 
     assert.deepEqual(
-      requests.slice(beforeRetry).map((url) => url.pathname),
+      requests.slice(beforeRetry).map((request) => request.path),
       ["/calendar"],
     );
     assert.equal(container.textContent.includes("101"), false);
@@ -1384,14 +1071,6 @@ it.each(["mobile", "desktop"])(
 
 function adaBar() {
   return container.querySelector('[aria-label="Editar reserva de Ada Lovelace · Confirmada"]');
-}
-
-function buttonByText(label: string) {
-  const element = [...window.document.querySelectorAll("button")].find(
-    (button) => button.textContent?.trim() === label,
-  );
-  assert.ok(element, `Missing button ${label}`);
-  return element as HTMLButtonElement;
 }
 
 async function openRoomActions(number: string) {
@@ -1436,168 +1115,78 @@ async function pickDate(id: string, day: string) {
   await React.act(async () => (selected as HTMLElement).click());
 }
 
-async function fillNamed(name: string, value: string) {
-  const input = window.document.querySelector(`[name="${name}"]`);
-  assert.ok(input, `Missing ${name}`);
-  const prototype = window.HTMLInputElement.prototype;
-  await React.act(async () => {
-    Object.getOwnPropertyDescriptor(prototype, "value")!.set!.call(input, value);
-    input.dispatchEvent(new window.Event("input", { bubbles: true }));
-  });
-}
-
-function dialogReads(url: URL) {
-  if (url.pathname === "/room-types") {
-    return Response.json([
-      { id: "double", name: "Doble", maxAdults: 2, maxChildren: 1, baseRateCents: 15000 },
-      { id: "suite", name: "Suite", maxAdults: 4, maxChildren: 2, baseRateCents: 25000 },
-    ]);
-  }
-  if (url.pathname === "/rooms") {
-    return Response.json([
-      { id: "room-2", number: "2", roomTypeId: "double" },
-      { id: "room-10", number: "10", roomTypeId: "suite" },
-      { id: "room-101", number: "101", roomTypeId: "double" },
-    ]);
-  }
-  if (url.pathname === "/availability") {
-    return Response.json({
-      checkIn: url.searchParams.get("checkIn"),
-      checkOut: url.searchParams.get("checkOut"),
-      nights: 1,
-      currency: "PEN",
-      roomTypes: [
-        {
-          id: "double",
-          name: "Doble",
-          maxAdults: 2,
-          maxChildren: 1,
-          free: 2,
-          totalCents: 15000,
-          nights: [],
-        },
-      ],
-    });
-  }
-  if (url.pathname === "/reservations") return Response.json([]);
-  if (url.pathname === "/room-closures") return Response.json([]);
-  return undefined;
-}
-
-type HeldCalendar = {
-  requests: URL[];
-  release: (response: Response) => void;
-};
-
-function installHeldCalendar(
-  options: {
-    initial?: (url: URL) => Response;
-    respond?: (url: URL, init?: RequestInit) => Response | Promise<Response> | undefined;
-  } = {},
-): HeldCalendar {
-  const requests: URL[] = [];
-  let releaseRefresh: (response: Response) => void = () => {};
-  globalThis.fetch = (input, init) => {
-    const url = requestUrl(input);
-    requests.push(url);
-    if (url.pathname === "/calendar") {
-      if (requests.filter((item) => item.pathname === "/calendar").length === 1) {
-        return Promise.resolve((options.initial ?? calendarResponse)(url));
-      }
-      return new Promise((resolve) => {
-        releaseRefresh = resolve;
-      });
-    }
-    const response = options.respond?.(url, init);
-    if (response) return Promise.resolve(response);
-    throw new Error(`Unexpected request ${url.pathname}${init?.method ? ` ${init.method}` : ""}`);
-  };
-  return {
-    requests,
-    release: (response) => releaseRefresh(response),
-  };
+function answerAvailability() {
+  page.api.on("GET", "/availability", ({ url }) => ({
+    checkIn: url.searchParams.get("checkIn"),
+    checkOut: url.searchParams.get("checkOut"),
+    nights: 1,
+    currency: "PEN",
+    roomTypes: [
+      {
+        id: "double",
+        name: "Doble",
+        maxAdults: 2,
+        maxChildren: 1,
+        free: 2,
+        totalCents: 15000,
+        nights: [],
+      },
+    ],
+  }));
 }
 
 async function expectHeldRefresh(options: {
-  held: HeldCalendar;
+  refresh: HeldRequest;
   before: number;
   whileHeld: () => boolean;
   next: (url: URL) => Response;
   arrived: () => boolean;
   after?: () => void;
 }) {
-  const refreshed = options.held.requests
+  const refreshed = requests
     .slice(options.before)
-    .filter((url) => url.pathname === "/calendar");
+    .filter((request) => request.path === "/calendar");
   assert.equal(refreshed.length, 1, "The save must drop the held days");
-  assert.equal(refreshed[0]!.searchParams.get("from"), "2026-10-13");
-  assert.equal(refreshed[0]!.searchParams.get("to"), "2026-11-02");
+  assert.equal(refreshed[0]!.url.searchParams.get("from"), "2026-10-13");
+  assert.equal(refreshed[0]!.url.searchParams.get("to"), "2026-11-02");
   assert.ok(options.whileHeld(), "The grid must stay up while the refresh is in flight");
-  options.held.release(options.next(refreshed[0]!));
+  options.refresh.release(options.next(refreshed[0]!.url));
   await until(options.arrived, "The saved change must appear");
   options.after?.();
-  assert.equal(options.held.requests.filter((url) => url.pathname === "/calendar").length, 2);
+  assert.equal(requests.filter((request) => request.path === "/calendar").length, 2);
 }
 
-function stayOn(roomId: string, guestName: string, id = "line-saved", reservationId = "res-new") {
-  return (url: URL) =>
-    Response.json({
-      ...windowPayload,
-      from: url.searchParams.get("from"),
-      to: url.searchParams.get("to"),
-      rooms: windowPayload.rooms.map((room) =>
-        room.id === roomId
-          ? {
-              ...room,
-              stays: [
-                ...room.stays,
-                {
-                  id,
-                  reservationId,
-                  guestName,
-                  status: "confirmed",
-                  checkIn: "2026-10-22",
-                  checkOut: "2026-10-24",
-                },
-              ],
-            }
-          : room,
-      ),
-    });
+function stayOn(roomId: string, guestName: string) {
+  return (url: URL) => calendarResponse(url, stayIn(roomId, { guestName }));
 }
 
 it("shows a new reservation on its room without blanking the calendar", async () => {
-  const held = installHeldCalendar({
-    respond: (url, init) => {
-      if (url.pathname === "/reservations" && init?.method === "POST") {
-        return Response.json({ id: "res-new" });
-      }
-      return dialogReads(url);
-    },
-  });
+  answerAvailability();
+  page.api.on("POST", "/reservations", () => ({ id: "res-new" }));
   await render(React.createElement(CalendarSession));
   await until(() => !!adaBar(), "Week must paint before the new reservation");
+  const refresh = page.api.hold("GET", "/calendar");
   await click("Nueva reserva para habitación 2 el 22 oct 2026");
   await until(
     () => window.document.querySelector('[name="fullName"]') !== null,
     "New reservation dialog must open",
   );
-  await fillNamed("fullName", "Rosalind Franklin");
-  await until(() => !buttonByText("Crear reserva").disabled, "The quote must load");
+  await page.fill("fullName", "Rosalind Franklin");
+  await until(() => !page.button("Crear reserva").disabled, "The quote must load");
   assert.ok(
-    held.requests.some((url) => url.pathname === "/availability"),
+    requests.some((request) => request.path === "/availability"),
     "The new-reservation dialog keeps its availability read",
   );
-  const before = held.requests.length;
+  const before = requests.length;
 
-  await React.act(async () => buttonByText("Crear reserva").click());
+  await React.act(async () => page.button("Crear reserva").click());
   await until(
-    () => held.requests.slice(before).some((url) => url.pathname === "/calendar"),
+    () => requests.slice(before).some((request) => request.path === "/calendar"),
     "Creating a reservation must drop the held days",
   );
 
   await expectHeldRefresh({
-    held,
+    refresh,
     before,
     whileHeld: () =>
       !!adaBar() &&
@@ -1618,47 +1207,29 @@ it("shows a new reservation on its room without blanking the calendar", async ()
 
 function closureOn(roomId: string, reason: string) {
   return (url: URL) =>
-    Response.json({
-      ...windowPayload,
-      from: url.searchParams.get("from"),
-      to: url.searchParams.get("to"),
-      rooms: windowPayload.rooms.map((room) =>
-        room.id === roomId
-          ? {
-              ...room,
-              closures: [
-                ...room.closures,
-                {
-                  id: "closure-saved",
-                  roomId,
-                  starts: "2026-10-22",
-                  ends: "2026-10-24",
-                  reason,
-                },
-              ],
-            }
-          : room,
-      ),
-    });
+    calendarResponse(
+      url,
+      sampleWeekWith(roomId, (room) => ({
+        ...room,
+        closures: [
+          ...room.closures,
+          { id: "closure-saved", roomId, starts: "2026-10-22", ends: "2026-10-24", reason },
+        ],
+      })),
+    );
 }
 
 it("shows a saved room closure without blanking the calendar", async () => {
-  const held = installHeldCalendar({
-    respond: (url, init) => {
-      if (url.pathname === "/room-closures" && init?.method === "POST") {
-        return Response.json({
-          id: "closure-saved",
-          roomId: "room-2",
-          starts: "2026-10-22",
-          ends: "2026-10-24",
-          reason: "Pintura",
-        });
-      }
-      return undefined;
-    },
-  });
+  page.api.on("POST", "/room-closures", () => ({
+    id: "closure-saved",
+    roomId: "room-2",
+    starts: "2026-10-22",
+    ends: "2026-10-24",
+    reason: "Pintura",
+  }));
   await render(React.createElement(CalendarSession));
   await until(() => !!adaBar(), "Week must paint before the closure save");
+  const refresh = page.api.hold("GET", "/calendar");
   assert.equal(container.textContent.includes("Pintura"), false);
   await openRoomActions("2");
   await chooseMenuItem("Cerrar habitación");
@@ -1668,22 +1239,22 @@ it("shows a saved room closure without blanking the calendar", async () => {
   );
   await pickDate("closure-start", "22/10/2026");
   await pickDate("closure-end", "24/10/2026");
-  await fillNamed("reason", "Pintura");
+  await page.fill("reason", "Pintura");
   const submit = window.document.querySelector<HTMLButtonElement>(
     "#room-closure-form button[type='submit']",
   );
   assert.ok(submit, "Missing closure save");
   await until(() => !submit.disabled, "Closure save must be ready");
-  const before = held.requests.length;
+  const before = requests.length;
 
   await React.act(async () => submit.click());
   await until(
-    () => held.requests.slice(before).some((url) => url.pathname === "/calendar"),
+    () => requests.slice(before).some((request) => request.path === "/calendar"),
     "Saving a closure must drop the held days",
   );
 
   await expectHeldRefresh({
-    held,
+    refresh,
     before,
     whileHeld: () => !!adaBar() && container.textContent.includes("Mantenimiento"),
     next: closureOn("room-2", "Pintura"),
@@ -1697,30 +1268,20 @@ it("shows a saved room closure without blanking the calendar", async () => {
 });
 
 function withoutClosure(url: URL) {
-  return Response.json({
-    ...windowPayload,
-    from: url.searchParams.get("from"),
-    to: url.searchParams.get("to"),
-    rooms: windowPayload.rooms.map((room) =>
-      room.id === "room-10" ? { ...room, closures: [] } : room,
-    ),
-  });
+  return calendarResponse(
+    url,
+    sampleWeekWith("room-10", (room) => ({ ...room, closures: [] })),
+  );
 }
 
 it("removes a deleted room closure without blanking the calendar", async () => {
-  const held = installHeldCalendar({
-    respond: (url, init) => {
-      if (url.pathname === "/room-closures/closure-1" && init?.method === "DELETE") {
-        return Response.json({ ok: true });
-      }
-      return undefined;
-    },
-  });
+  page.api.on("DELETE", "/room-closures/closure-1", () => ({ ok: true }));
   await render(React.createElement(CalendarSession));
   await until(
     () => container.textContent.includes("Mantenimiento"),
     "The closure must paint before it is deleted",
   );
+  const refresh = page.api.hold("GET", "/calendar");
   const closure = [...container.querySelectorAll("button")].find((button) =>
     button.getAttribute("title")?.startsWith("Mantenimiento"),
   );
@@ -1730,16 +1291,16 @@ it("removes a deleted room closure without blanking the calendar", async () => {
     () => window.document.body.textContent?.includes("Editar cierre") ?? false,
     "Closure editor must open",
   );
-  const before = held.requests.length;
+  const before = requests.length;
 
-  await React.act(async () => buttonByText("Eliminar").click());
+  await React.act(async () => page.button("Eliminar").click());
   await until(
-    () => held.requests.slice(before).some((url) => url.pathname === "/calendar"),
+    () => requests.slice(before).some((request) => request.path === "/calendar"),
     "Deleting a closure must drop the held days",
   );
 
   await expectHeldRefresh({
-    held,
+    refresh,
     before,
     whileHeld: () => container.textContent.includes("Mantenimiento") && !!adaBar(),
     next: withoutClosure,
@@ -1755,58 +1316,50 @@ it("removes a deleted room closure without blanking the calendar", async () => {
 });
 
 function renamedRoom(url: URL) {
-  return Response.json({
-    ...windowPayload,
-    from: url.searchParams.get("from"),
-    to: url.searchParams.get("to"),
-    rooms: windowPayload.rooms.map((room) =>
-      room.id === "room-2" ? { ...room, number: "8", roomTypeName: "Familiar" } : room,
-    ),
-  });
+  return calendarResponse(
+    url,
+    sampleWeekWith("room-2", (room) => ({ ...room, number: "8", roomTypeName: "Familiar" })),
+  );
 }
 
 it("shows a new room number after a room edit without blanking the calendar", async () => {
-  const held = installHeldCalendar({
-    respond: (url, init) => {
-      if (url.pathname === "/room-types") {
-        return Response.json([
-          { id: "double", name: "Doble", maxAdults: 2, maxChildren: 1, baseRateCents: 15000 },
-          { id: "family", name: "Familiar", maxAdults: 4, maxChildren: 2, baseRateCents: 20000 },
-        ]);
-      }
-      if (url.pathname === "/rooms/room-2" && init?.method === "PATCH") {
-        return Response.json({ id: "room-2", number: "8", roomTypeId: "double" });
-      }
-      return undefined;
-    },
-  });
+  page.api.catalog.roomTypes = [
+    { id: "double", name: "Doble", maxAdults: 2, maxChildren: 1, baseRateCents: 15000 },
+    { id: "family", name: "Familiar", maxAdults: 4, maxChildren: 2, baseRateCents: 20000 },
+  ];
+  page.api.on("PATCH", "/rooms/room-2", () => ({
+    id: "room-2",
+    number: "8",
+    roomTypeId: "double",
+  }));
   await render(React.createElement(CalendarSession));
   await until(
     () => !!container.querySelector('[aria-label="Acciones de habitación 2"]'),
     "Room 2 must paint before the edit",
   );
+  const refresh = page.api.hold("GET", "/calendar");
   await openRoomActions("2");
   await chooseMenuItem("Editar habitación");
   await until(() => {
     const input = window.document.querySelector<HTMLInputElement>('[name="number"]');
     return !!input && !input.disabled;
   }, "Room edit form must load");
-  await fillNamed("number", "8");
+  await page.fill("number", "8");
   const save = window.document.querySelector<HTMLButtonElement>(
     "#room-edit-form button[type='submit']",
   );
   assert.ok(save, "Missing room save");
   await until(() => !save.disabled, "Room save must be ready");
-  const before = held.requests.length;
+  const before = requests.length;
 
   await React.act(async () => save.click());
   await until(
-    () => held.requests.slice(before).some((url) => url.pathname === "/calendar"),
+    () => requests.slice(before).some((request) => request.path === "/calendar"),
     "Editing a room must drop the held days",
   );
 
   await expectHeldRefresh({
-    held,
+    refresh,
     before,
     whileHeld: () =>
       !!container.querySelector('[aria-label="Acciones de habitación 2"]') &&
@@ -1824,27 +1377,12 @@ it("shows a new room number after a room edit without blanking the calendar", as
 });
 
 function assignedWindow(url: URL) {
-  return Response.json({
-    ...windowPayload,
-    from: url.searchParams.get("from"),
-    to: url.searchParams.get("to"),
-    rooms: windowPayload.rooms.map((room) =>
-      room.id === "room-2"
-        ? {
-            ...room,
-            stays: [
-              {
-                id: "line-open",
-                reservationId: "res-open",
-                guestName: "Mary Jackson",
-                status: "confirmed",
-                checkIn: "2026-10-22",
-                checkOut: "2026-10-24",
-              },
-            ],
-          }
-        : room,
-    ),
+  return calendarResponse(url, {
+    ...stayIn("room-2", {
+      id: "line-open",
+      reservationId: "res-open",
+      guestName: "Mary Jackson",
+    }),
     unassigned: [],
   });
 }
@@ -1859,18 +1397,16 @@ const maryList = {
 };
 
 function assignmentDetail() {
-  return Response.json({
+  return {
     id: "res-open",
     status: "confirmed",
     rooms: [{ id: "line-open", roomTypeId: "double", roomId: null, adults: 1, children: 0 }],
-  });
+  };
 }
 
-function assignmentReads(url: URL, init?: RequestInit) {
-  if (url.pathname === "/reservations") return Response.json([maryList]);
-  if (url.pathname === "/room-closures") return Response.json([]);
-  if (url.pathname === "/reservations/res-open" && !init?.method) return assignmentDetail();
-  return undefined;
+function answerAssignmentReads() {
+  page.api.on("GET", "/reservations", () => [maryList]);
+  page.api.on("GET", "/reservations/res-open", assignmentDetail);
 }
 
 async function offerMaryRoom2() {
@@ -1895,30 +1431,13 @@ async function offerMaryRoom2() {
 }
 
 it("assigns a reserved room from the mobile sheet without selecting a calendar bar", async () => {
-  window.happyDOM.setWindowSize({ width: 390, height: 844 });
-  let releaseAvailability: (response: Response) => void = () => {};
-  let releaseAssignment: (response: Response) => void = () => {};
-  let command: unknown;
-  const held = installHeldCalendar({
-    respond: (url, init) => {
-      if (url.pathname === "/reservations" && !releaseRequested) {
-        return new Promise((resolve) => {
-          releaseAvailability = resolve;
-        });
-      }
-      if (url.pathname === "/reservations/res-open/commands") {
-        assert.equal(typeof init?.body, "string");
-        command = JSON.parse(init?.body as string);
-        return new Promise((resolve) => {
-          releaseAssignment = resolve;
-        });
-      }
-      return assignmentReads(url, init);
-    },
-  });
-  let releaseRequested = false;
+  page.mobile();
+  answerAssignmentReads();
+  const availability = page.api.hold("GET", "/reservations");
+  const assignment = page.api.hold("POST", "/reservations/res-open/commands");
   await render(React.createElement(CalendarSession));
   await until(() => !!adaBar(), "The mobile calendar must load");
+  const refresh = page.api.hold("GET", "/calendar");
   await openMobileUnassigned(1);
   const mary = [...window.document.querySelectorAll<HTMLElement>('[role="dialog"] button')].find(
     (button) => button.textContent.includes("Mary Jackson"),
@@ -1934,8 +1453,7 @@ it("assigns a reserved room from the mobile sheet without selecting a calendar b
     window.document.querySelector('[role="dialog"] [aria-label^="Asignar Mary Jackson"]'),
     null,
   );
-  releaseRequested = true;
-  releaseAvailability(Response.json([maryList]));
+  availability.release(Response.json([maryList]));
   const label = "Asignar Mary Jackson a habitación 2, 2026-10-22 al 2026-10-24";
   await until(
     () => !!window.document.querySelector(`[role="dialog"] [aria-label="${label}"]`),
@@ -1951,7 +1469,7 @@ it("assigns a reserved room from the mobile sheet without selecting a calendar b
     null,
     "A different room type must not be offered",
   );
-  const before = held.requests.length;
+  const before = requests.length;
   const assign = window.document.querySelector<HTMLButtonElement>(
     `[role="dialog"] [aria-label="${label}"]`,
   )!;
@@ -1981,19 +1499,20 @@ it("assigns a reserved room from the mobile sheet without selecting a calendar b
     window.document.querySelector('[role="dialog"]'),
     "Escape must not dismiss a pending assignment",
   );
-  assert.deepEqual((command as { actions: unknown[] }).actions, [
+  assert.equal(typeof assignment.request?.init?.body, "string");
+  assert.deepEqual((assignment.request!.body as { actions: unknown[] }).actions, [
     {
       type: "edit-room",
       lineId: "line-open",
       room: { roomTypeId: "double", roomId: "room-2", adults: 1, children: 0 },
     },
   ]);
-  releaseAssignment(Response.json({ id: "res-open" }));
+  assignment.release(Response.json({ id: "res-open" }));
   await until(
-    () => held.requests.slice(before).some((url) => url.pathname === "/calendar"),
+    () => requests.slice(before).some((request) => request.path === "/calendar"),
     "Assignment must refresh the calendar",
   );
-  held.release(assignedWindow(held.requests.findLast((url) => url.pathname === "/calendar")!));
+  refresh.release(assignedWindow(refresh.request!.url));
   await until(
     () => !!container.querySelector('[aria-label="Editar reserva de Mary Jackson · Confirmada"]'),
     "The assigned room must appear in the calendar",
@@ -2014,31 +1533,28 @@ it("assigns a reserved room from the mobile sheet without selecting a calendar b
 });
 
 it("keeps the mobile picker open after an assignment conflict and offers another room", async () => {
-  window.happyDOM.setWindowSize({ width: 390, height: 844 });
+  page.mobile();
   let conflicted = false;
-  globalThis.fetch = async (input, init) => {
-    const url = requestUrl(input);
-    if (url.pathname === "/calendar") return calendarResponse(url);
-    if (url.pathname === "/reservations/res-open/commands") {
-      conflicted = true;
-      return Response.json({ error: "room is already assigned for those dates" }, { status: 409 });
-    }
-    if (url.pathname === "/reservations" && conflicted)
-      return Response.json([
-        maryList,
-        {
-          id: "res-other",
-          guestName: "Another contact",
-          status: "confirmed",
-          checkIn: "2026-10-22",
-          checkOut: "2026-10-24",
-          rooms: [{ id: "other-line", roomId: "room-2", roomTypeId: "double" }],
-        },
-      ]);
-    const response = assignmentReads(url, init);
-    if (response) return response;
-    throw new Error(`Unexpected request ${url.pathname}`);
-  };
+  answerAssignmentReads();
+  page.api.on("POST", "/reservations/res-open/commands", () => {
+    conflicted = true;
+    return Response.json({ error: "room is already assigned for those dates" }, { status: 409 });
+  });
+  page.api.on("GET", "/reservations", () =>
+    conflicted
+      ? [
+          maryList,
+          {
+            id: "res-other",
+            guestName: "Another contact",
+            status: "confirmed",
+            checkIn: "2026-10-22",
+            checkOut: "2026-10-24",
+            rooms: [{ id: "other-line", roomId: "room-2", roomTypeId: "double" }],
+          },
+        ]
+      : undefined,
+  );
   await render(React.createElement(CalendarSession));
   await until(() => !!adaBar(), "Calendar must load");
   await openMobileUnassigned(1);
@@ -2070,60 +1586,47 @@ it("keeps the mobile picker open after an assignment conflict and offers another
 });
 
 it("checks the entire mobile stay, hides unavailable rooms, and cancels without writing", async () => {
-  window.happyDOM.setWindowSize({ width: 390, height: 844 });
+  page.mobile();
   const unassigned = [1, 2].map((index) => ({
-    ...windowPayload.unassigned[0]!,
+    ...sampleWeek.unassigned[0]!,
     id: `line-open-${index}`,
     checkIn: "2026-10-18",
     checkOut: "2026-11-20",
     roomIndex: index,
     roomCount: 2,
   }));
-  const requests: URL[] = [];
   let writes = 0;
-  globalThis.fetch = async (input, init) => {
-    const url = requestUrl(input);
-    requests.push(url);
-    if (init?.method) {
-      writes++;
-      throw new Error("Cancellation must not write");
-    }
-    if (url.pathname === "/calendar")
-      return Response.json({
-        ...windowPayload,
-        from: url.searchParams.get("from"),
-        to: url.searchParams.get("to"),
-        unassigned,
-      });
-    if (url.pathname === "/reservations")
-      return Response.json([
-        {
-          ...maryList,
-          checkIn: "2026-10-18",
-          checkOut: "2026-11-20",
-          rooms: unassigned.map((stay) => ({ id: stay.id, roomTypeId: "double", roomId: null })),
-        },
-        {
-          id: "res-later",
-          guestName: "Later stay",
-          status: "checked_out",
-          checkIn: "2026-11-15",
-          checkOut: "2026-11-18",
-          rooms: [{ id: "line-later", roomId: "room-101", roomTypeId: "double" }],
-        },
-      ]);
-    if (url.pathname === "/room-closures")
-      return Response.json([
-        {
-          id: "closure-later",
-          roomId: "room-2",
-          starts: "2026-11-16",
-          ends: "2026-11-17",
-          reason: "Maintenance",
-        },
-      ]);
-    throw new Error(`Unexpected request ${url.pathname}`);
-  };
+  page.api.on("GET", "/calendar", ({ url }) => calendarWindow(url, { ...sampleWeek, unassigned }));
+  page.api.on("GET", "/reservations", () => [
+    {
+      ...maryList,
+      checkIn: "2026-10-18",
+      checkOut: "2026-11-20",
+      rooms: unassigned.map((stay) => ({ id: stay.id, roomTypeId: "double", roomId: null })),
+    },
+    {
+      id: "res-later",
+      guestName: "Later stay",
+      status: "checked_out",
+      checkIn: "2026-11-15",
+      checkOut: "2026-11-18",
+      rooms: [{ id: "line-later", roomId: "room-101", roomTypeId: "double" }],
+    },
+  ]);
+  page.api.on("GET", "/room-closures", () => [
+    {
+      id: "closure-later",
+      roomId: "room-2",
+      starts: "2026-11-16",
+      ends: "2026-11-17",
+      reason: "Maintenance",
+    },
+  ]);
+  page.api.on("*", "*", ({ method }) => {
+    if (method === "GET") return undefined;
+    writes++;
+    throw new Error("Cancellation must not write");
+  });
   await render(React.createElement(CalendarSession));
   await until(() => !!adaBar(), "Calendar must load");
   assert.equal(
@@ -2154,10 +1657,10 @@ it("checks the entire mobile stay, hides unavailable rooms, and cancels without 
   }
   assert.equal(dialog.querySelector('[aria-label^="Asignar Mary Jackson"]'), null);
   assert.ok(dialog.textContent.includes("Habitación 1 de 2"));
-  const reservationRead = requests.find((url) => url.pathname === "/reservations")!;
+  const reservationRead = requests.find((request) => request.path === "/reservations")!.url;
   assert.equal(reservationRead.searchParams.get("from"), "2026-10-18");
   assert.equal(reservationRead.searchParams.get("to"), "2026-11-20");
-  const closureRead = requests.find((url) => url.pathname === "/room-closures")!;
+  const closureRead = requests.find((request) => request.path === "/room-closures")!.url;
   assert.equal(closureRead.searchParams.get("from"), "2026-10-18");
   assert.equal(closureRead.searchParams.get("to"), "2026-11-20");
   await React.act(async () =>
@@ -2206,53 +1709,41 @@ it("checks the entire mobile stay, hides unavailable rooms, and cancels without 
 
 it("assigns a group from the desktop list and continues with its next reserved room", async () => {
   const lines = [1, 2].map((index) => ({
-    ...windowPayload.unassigned[0]!,
+    ...sampleWeek.unassigned[0]!,
     id: `line-group-${index}`,
     roomIndex: index,
     roomCount: 2,
   }));
   let assigned = false;
-  const commands: unknown[] = [];
-  globalThis.fetch = async (input, init) => {
-    const url = requestUrl(input);
-    if (url.pathname === "/calendar")
-      return Response.json({
-        ...windowPayload,
-        from: url.searchParams.get("from"),
-        to: url.searchParams.get("to"),
-        unassigned: assigned ? lines.slice(1) : lines,
-      });
-    if (url.pathname === "/reservations")
-      return Response.json([
-        {
-          ...maryList,
-          rooms: lines.map((line, index) => ({
-            id: line.id,
-            roomTypeId: "double",
-            roomId: assigned && index === 0 ? "room-2" : null,
-          })),
-        },
-      ]);
-    if (url.pathname === "/room-closures") return Response.json([]);
-    if (url.pathname === "/reservations/res-open" && !init?.method)
-      return Response.json({
-        id: "res-open",
-        status: "confirmed",
-        rooms: lines.map((line) => ({
-          id: line.id,
-          roomTypeId: "double",
-          roomId: null,
-          adults: 1,
-          children: 0,
-        })),
-      });
-    if (url.pathname === "/reservations/res-open/commands") {
-      commands.push(JSON.parse(init?.body as string));
-      assigned = true;
-      return Response.json({ id: "res-open" });
-    }
-    throw new Error(`Unexpected request ${url.pathname}`);
-  };
+  const commands = page.api.bodies("POST", "/reservations/res-open/commands");
+  page.api.on("GET", "/calendar", ({ url }) =>
+    calendarWindow(url, { ...sampleWeek, unassigned: assigned ? lines.slice(1) : lines }),
+  );
+  page.api.on("GET", "/reservations", () => [
+    {
+      ...maryList,
+      rooms: lines.map((line, index) => ({
+        id: line.id,
+        roomTypeId: "double",
+        roomId: assigned && index === 0 ? "room-2" : null,
+      })),
+    },
+  ]);
+  page.api.on("GET", "/reservations/res-open", () => ({
+    id: "res-open",
+    status: "confirmed",
+    rooms: lines.map((line) => ({
+      id: line.id,
+      roomTypeId: "double",
+      roomId: null,
+      adults: 1,
+      children: 0,
+    })),
+  }));
+  page.api.on("POST", "/reservations/res-open/commands", () => {
+    assigned = true;
+    return { id: "res-open" };
+  });
   await render(React.createElement(CalendarSession));
   await until(() => !!adaBar(), "Calendar must load");
   assert.equal(
@@ -2324,23 +1815,16 @@ it("assigns a group from the desktop list and continues with its next reserved r
 });
 
 it("moves the desktop calendar to show a selected stay that runs past the window", async () => {
-  globalThis.fetch = async (input, init) => {
-    const url = requestUrl(input);
-    if (url.pathname === "/calendar")
-      return Response.json({
-        ...windowPayload,
-        from: url.searchParams.get("from"),
-        to: url.searchParams.get("to"),
-        unassigned: [
-          { ...windowPayload.unassigned[0]!, checkIn: "2026-10-25", checkOut: "2026-10-29" },
-        ],
-      });
-    if (url.pathname === "/reservations")
-      return Response.json([{ ...maryList, checkIn: "2026-10-25", checkOut: "2026-10-29" }]);
-    const response = assignmentReads(url, init);
-    if (response) return response;
-    throw new Error(`Unexpected request ${url.pathname}`);
-  };
+  answerAssignmentReads();
+  page.api.on("GET", "/calendar", ({ url }) =>
+    calendarWindow(url, {
+      ...sampleWeek,
+      unassigned: [{ ...sampleWeek.unassigned[0]!, checkIn: "2026-10-25", checkOut: "2026-10-29" }],
+    }),
+  );
+  page.api.on("GET", "/reservations", () => [
+    { ...maryList, checkIn: "2026-10-25", checkOut: "2026-10-29" },
+  ]);
   await render(React.createElement(CalendarSession));
   await until(() => !!adaBar(), "Calendar must load");
   await click("Mostrar habitaciones reservadas sin asignar, 1");
@@ -2366,16 +1850,8 @@ it("moves the desktop calendar to show a selected stay that runs past the window
 });
 
 it("moves a reserved room onto its room after assignment without blanking the calendar", async () => {
-  let releaseAssignment: (response: Response) => void = () => {};
-  const held = installHeldCalendar({
-    respond: (url, init) => {
-      if (url.pathname === "/reservations/res-open/commands")
-        return new Promise((resolve) => {
-          releaseAssignment = resolve;
-        });
-      return assignmentReads(url, init);
-    },
-  });
+  answerAssignmentReads();
+  const assignment = page.api.hold("POST", "/reservations/res-open/commands");
   await render(React.createElement(CalendarSession));
   await until(
     () =>
@@ -2383,24 +1859,25 @@ it("moves a reserved room onto its room after assignment without blanking the ca
     "The unassigned stay must paint before assignment",
   );
   const assignLabel = await offerMaryRoom2();
-  assert.ok(held.requests.some((url) => url.pathname === "/reservations"));
-  assert.ok(held.requests.some((url) => url.pathname === "/room-closures"));
-  const before = held.requests.length;
+  assert.ok(requests.some((request) => request.path === "/reservations"));
+  assert.ok(requests.some((request) => request.path === "/room-closures"));
+  const before = requests.length;
+  const refresh = page.api.hold("GET", "/calendar");
 
   await click(assignLabel);
   await until(
-    () => buttonByText("Nueva reserva").disabled,
+    () => page.button("Nueva reserva").disabled,
     "Reservation creation must be disabled while room assignment is saving",
   );
   expectIdleRefresh(true);
-  releaseAssignment(Response.json({ id: "res-open" }));
+  assignment.release(Response.json({ id: "res-open" }));
   await until(
-    () => held.requests.slice(before).some((url) => url.pathname === "/calendar"),
+    () => requests.slice(before).some((request) => request.path === "/calendar"),
     "Assigning a room must drop the held days",
   );
 
   await expectHeldRefresh({
-    held,
+    refresh,
     before,
     whileHeld: () =>
       container.textContent.includes("Ada Lovelace") &&
@@ -2421,42 +1898,21 @@ it("moves a reserved room onto its room after assignment without blanking the ca
 });
 
 function conflictWindow(url: URL) {
-  return Response.json({
-    ...windowPayload,
-    from: url.searchParams.get("from"),
-    to: url.searchParams.get("to"),
-    rooms: windowPayload.rooms.map((room) =>
-      room.id === "room-2"
-        ? {
-            ...room,
-            stays: [
-              {
-                id: "line-conflict",
-                reservationId: "res-conflict",
-                guestName: "Katherine Johnson",
-                status: "confirmed",
-                checkIn: "2026-10-22",
-                checkOut: "2026-10-24",
-              },
-            ],
-          }
-        : room,
-    ),
-  });
+  return calendarResponse(
+    url,
+    stayIn("room-2", {
+      id: "line-conflict",
+      reservationId: "res-conflict",
+      guestName: "Katherine Johnson",
+    }),
+  );
 }
 
 it("refreshes the calendar after a failed room assignment without keeping the contradicted bars", async () => {
-  const held = installHeldCalendar({
-    respond: (url, init) => {
-      if (url.pathname === "/reservations/res-open/commands") {
-        return Response.json(
-          { error: "room is already assigned for those dates" },
-          { status: 409 },
-        );
-      }
-      return assignmentReads(url, init);
-    },
-  });
+  answerAssignmentReads();
+  page.api.on("POST", "/reservations/res-open/commands", () =>
+    Response.json({ error: "room is already assigned for those dates" }, { status: 409 }),
+  );
   await render(React.createElement(CalendarSession));
   await until(
     () =>
@@ -2464,24 +1920,25 @@ it("refreshes the calendar after a failed room assignment without keeping the co
     "The unassigned stay must paint before assignment",
   );
   const assignLabel = await offerMaryRoom2();
-  const before = held.requests.length;
+  const before = requests.length;
+  const refresh = page.api.hold("GET", "/calendar");
 
   await click(assignLabel);
   await until(
-    () => held.requests.slice(before).some((url) => url.pathname === "/calendar"),
+    () => requests.slice(before).some((request) => request.path === "/calendar"),
     "A failed assignment must drop the held days",
   );
 
   assert.ok(
-    held.requests.slice(before).some((url) => url.pathname === "/reservations"),
+    requests.slice(before).some((request) => request.path === "/reservations"),
     "Assignment availability keeps its reservation read",
   );
   assert.ok(
-    held.requests.slice(before).some((url) => url.pathname === "/room-closures"),
+    requests.slice(before).some((request) => request.path === "/room-closures"),
     "Assignment availability keeps its room-closure read",
   );
   await expectHeldRefresh({
-    held,
+    refresh,
     before,
     whileHeld: () =>
       container.textContent.includes("Ada Lovelace") &&
@@ -2516,23 +1973,9 @@ async function expectOffCalendarWriter(options: {
   initial?: (url: URL) => Response;
   withRouter?: boolean;
 }) {
-  const requests: URL[] = [];
-  let releaseRefresh: (response: Response) => void = () => {};
-  globalThis.fetch = (input, init) => {
-    const url = requestUrl(input);
-    requests.push(url);
-    if (url.pathname === "/calendar") {
-      const count = requests.filter((item) => item.pathname === "/calendar").length;
-      if (count === 1) return Promise.resolve((options.initial ?? calendarResponse)(url));
-      if (!options.dropsHold) return Promise.resolve(calendarResponse(url));
-      return new Promise((resolve) => {
-        releaseRefresh = resolve;
-      });
-    }
-    const response = options.respond(url, init);
-    if (response) return Promise.resolve(response);
-    throw new Error(`Unexpected request ${url.pathname}${init?.method ? ` ${init.method}` : ""}`);
-  };
+  const { initial } = options;
+  if (initial) page.api.once("GET", "/calendar", ({ url }) => initial(url));
+  page.api.on("*", "*", ({ url, init }) => options.respond(url, init));
   let save: (() => Promise<unknown>) | null = null;
   function Probe() {
     const writer = options.useWriter();
@@ -2555,38 +1998,38 @@ async function expectOffCalendarWriter(options: {
   }
   await until(options.ready ?? (() => !!adaBar()), "Calendar must paint before the save");
   const before = requests.length;
+  const refresh = options.dropsHold ? page.api.hold("GET", "/calendar") : undefined;
   void mountedWriter(save)();
   if (options.dropsHold) {
     await until(
-      () => requests.filter((url) => url.pathname === "/calendar").length >= 2,
+      () => requests.filter((request) => request.path === "/calendar").length >= 2,
       "The save must drop the held days",
     );
-    const refreshed = requests.slice(before).filter((url) => url.pathname === "/calendar");
+    const refreshed = requests.slice(before).filter((request) => request.path === "/calendar");
     assert.equal(refreshed.length, 1);
-    assert.equal(refreshed[0]!.searchParams.get("from"), "2026-10-13");
-    assert.equal(refreshed[0]!.searchParams.get("to"), "2026-11-02");
+    assert.equal(refreshed[0]!.url.searchParams.get("from"), "2026-10-13");
+    assert.equal(refreshed[0]!.url.searchParams.get("to"), "2026-11-02");
     assert.ok(
       options.whileHeld?.() ?? !!adaBar(),
       "The grid must stay up while the refresh is in flight",
     );
-    releaseRefresh(options.next!(refreshed[0]!));
+    refresh!.release(options.next!(refreshed[0]!.url));
     if (options.arrived) await until(options.arrived, "The saved change must appear");
     options.after?.();
-    assert.equal(requests.filter((url) => url.pathname === "/calendar").length, 2);
+    assert.equal(requests.filter((request) => request.path === "/calendar").length, 2);
   } else {
     await page.flush();
     assert.equal(
-      requests.slice(before).some((url) => url.pathname === "/calendar"),
+      requests.slice(before).some((request) => request.path === "/calendar"),
       false,
       "This save must not reload the calendar",
     );
     assert.ok(adaBar(), "The grid must stay up");
   }
-  return { requests, before };
 }
 
 it("updates the calendar after a reservation save without blanking the grid", async () => {
-  const { requests } = await expectOffCalendarWriter({
+  await expectOffCalendarWriter({
     useWriter: () => {
       queries.useReservationList({
         sort: "checkIn",
@@ -2639,18 +2082,17 @@ it("updates the calendar after a reservation save without blanking the grid", as
   });
   assert.ok(
     requests.filter(
-      (url) => url.pathname === "/reservations" && url.searchParams.get("paginated") === "true",
+      (request) =>
+        request.path === "/reservations" && request.url.searchParams.get("paginated") === "true",
     ).length >= 2,
     "The reservation list stays on its current read",
   );
 });
 
 function renamedContact(url: URL, guestName: string) {
-  return Response.json({
-    ...windowPayload,
-    from: url.searchParams.get("from"),
-    to: url.searchParams.get("to"),
-    rooms: windowPayload.rooms.map((room) => ({
+  return calendarResponse(url, {
+    ...sampleWeek,
+    rooms: sampleWeek.rooms.map((room) => ({
       ...room,
       stays: room.stays.map((stay) =>
         stay.reservationId === "res-ada" ? { ...stay, guestName } : stay,
@@ -2733,34 +2175,14 @@ it("clears missing setup and shows the new room after property setup without a f
       return undefined;
     },
     dropsHold: true,
-    initial: (url) =>
-      Response.json({
-        from: url.searchParams.get("from"),
-        to: url.searchParams.get("to"),
-        missingSetup: "rooms",
-        rooms: [],
-        unassigned: [],
-      }),
+    initial: (url) => calendarResponse(url, { missingSetup: "rooms" }),
     ready: () => container.textContent.includes("Aún no hay habitaciones"),
     whileHeld: () =>
       container.textContent.includes("Aún no hay habitaciones") &&
       !container.querySelector('[aria-label="Acciones de habitación 1"]'),
     next: (url) =>
-      Response.json({
-        from: url.searchParams.get("from"),
-        to: url.searchParams.get("to"),
-        missingSetup: null,
-        rooms: [
-          {
-            id: "room-1",
-            number: "1",
-            roomTypeId: "double",
-            roomTypeName: "Doble",
-            stays: [],
-            closures: [],
-          },
-        ],
-        unassigned: [],
+      calendarResponse(url, {
+        rooms: [{ id: "room-1", number: "1", roomTypeId: "double", roomTypeName: "Doble" }],
       }),
     arrived: () => !!container.querySelector('[aria-label="Acciones de habitación 1"]'),
     after: () => {
@@ -2772,7 +2194,7 @@ it("clears missing setup and shows the new room after property setup without a f
 });
 
 it("does not reload the calendar when a rate changes", async () => {
-  const { requests } = await expectOffCalendarWriter({
+  await expectOffCalendarWriter({
     dropsHold: false,
     useWriter: () => {
       queries.useInventory("2026-10-20", "2026-10-26");
@@ -2796,10 +2218,10 @@ it("does not reload the calendar when a rate changes", async () => {
     },
   });
   assert.ok(
-    requests.filter((url) => url.pathname === "/inventory").length >= 2,
+    requests.filter((request) => request.path === "/inventory").length >= 2,
     "A rate change still reloads inventory",
   );
-  assert.equal(requests.filter((url) => url.pathname === "/calendar").length, 1);
+  assert.equal(requests.filter((request) => request.path === "/calendar").length, 1);
 });
 
 it("drops the held calendar after a guest edit without blanking the grid", async () => {

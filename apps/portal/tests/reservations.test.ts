@@ -4,6 +4,7 @@ import type { HTMLInputElement, HTMLElement } from "happy-dom";
 import type { ReservationDetail } from "../src/lib/api.ts";
 import { createBrowserTest, type BrowserTest, type BrowserPage } from "./browser.ts";
 import { calendarResponse } from "./calendar-window.ts";
+import type { FakeRequest } from "./fake-backend.ts";
 
 let browser: BrowserTest;
 let page: BrowserPage;
@@ -15,7 +16,7 @@ let router: typeof routes.router;
 let container: BrowserPage["container"];
 let client: BrowserPage["client"];
 let until: BrowserPage["until"];
-let requests: URL[];
+let requests: FakeRequest[];
 let calendarReservation: () => typeof ana;
 let respond: (url: URL) => Response | Promise<Response>;
 let respondToDetail: (url: URL, init?: RequestInit) => Response | Promise<Response>;
@@ -77,7 +78,6 @@ beforeEach(() => {
   vi.spyOn(Date, "now").mockReturnValue(new Date("2026-11-01T01:00:00Z").getTime());
   page = browser.createPage();
   ({ container, client, until } = page);
-  requests = [];
   calendarReservation = () => ana;
   respondToDetail = () => Response.json(ana);
   respond = (url) =>
@@ -87,49 +87,38 @@ beforeEach(() => {
       limit: Number(url.searchParams.get("limit")),
       offset: Number(url.searchParams.get("offset")),
     });
-  globalThis.fetch = async (input, init) => {
-    assert.equal(init?.credentials, "include");
-    const url = new URL(
-      typeof input === "string" ? input : input instanceof URL ? input.href : input.url,
-    );
-    if (url.pathname === "/room-types")
-      return Response.json([
-        { id: "double", name: "Doble", maxAdults: 2, maxChildren: 2, baseRateCents: 15000 },
-      ]);
-    if (url.pathname === "/rooms")
-      return Response.json([{ id: "room", number: "101", roomTypeId: "double" }]);
-    if (url.pathname.startsWith("/reservations/ana")) return respondToDetail(url, init);
-    if (url.pathname === "/calendar") {
-      const reservation = calendarReservation();
-      const line = reservation.rooms[0]!;
-      return calendarResponse(url, {
-        rooms: [
-          {
-            id: "room",
-            number: "101",
-            roomTypeId: "double",
-            roomTypeName: "Doble",
-            stays: [
-              {
-                id: line.id,
-                reservationId: reservation.id,
-                guestName: reservation.guestName,
-                status: reservation.status,
-                checkIn: reservation.checkIn,
-                checkOut: reservation.checkOut,
-              },
-            ],
-          },
-        ],
-      });
-    }
-    if (url.pathname === "/room-closures") return Response.json([]);
-    if (url.pathname === "/reservations") {
-      requests.push(url);
-      return respond(url);
-    }
-    throw new Error(`Unexpected request ${url}`);
-  };
+  // The fake backend also asserts that every request sends credentials.
+  page.api.catalog.roomTypes = [
+    { id: "double", name: "Doble", maxAdults: 2, maxChildren: 2, baseRateCents: 15000 },
+  ];
+  page.api.catalog.rooms = [{ id: "room", number: "101", roomTypeId: "double" }];
+  page.api.on("*", /^\/reservations\/ana/, ({ url, init }) => respondToDetail(url, init));
+  page.api.on("GET", "/calendar", ({ url }) => {
+    const reservation = calendarReservation();
+    const line = reservation.rooms[0]!;
+    return calendarResponse(url, {
+      rooms: [
+        {
+          id: "room",
+          number: "101",
+          roomTypeId: "double",
+          roomTypeName: "Doble",
+          stays: [
+            {
+              id: line.id,
+              reservationId: reservation.id,
+              guestName: reservation.guestName,
+              status: reservation.status,
+              checkIn: reservation.checkIn,
+              checkOut: reservation.checkOut,
+            },
+          ],
+        },
+      ],
+    });
+  });
+  page.api.on("*", "/reservations", ({ url }) => respond(url));
+  requests = page.api.requests("*", "/reservations");
 });
 
 afterEach(async () => {
@@ -174,7 +163,7 @@ function assertFilterCount(expected: number) {
 }
 function params() {
   assert.ok(requests.length);
-  return requests.at(-1)!.searchParams;
+  return requests.at(-1)!.url.searchParams;
 }
 
 async function fill(label: string, value: string) {

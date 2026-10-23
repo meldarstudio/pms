@@ -64,31 +64,18 @@ beforeEach(() => {
   writeResponse = () => {
     throw new Error("Unexpected write");
   };
-  globalThis.fetch = async (input, init) => {
-    const url = new URL(
-      typeof input === "string" ? input : input instanceof URL ? input.href : input.url,
-    );
-    if (url.pathname === "/room-types")
-      return Response.json([
-        { id: "double", name: "Doble", maxAdults: 2, maxChildren: 2, baseRateCents: 15025 },
-      ]);
-    if (url.pathname === "/rooms")
-      return Response.json([{ id: "room", number: "101", roomTypeId: "double" }]);
-    if (url.pathname === "/reservations/summary") return detailResponse();
-    if (url.pathname.endsWith("/preview"))
-      return Response.json({ billing: saved, validation: { issues: [] } });
-    if (url.pathname.endsWith("/commands")) {
-      assert.equal(init?.method, "POST");
-      assert.equal(typeof init.body, "string");
-      return writeResponse(JSON.parse(init.body as string) as WorkflowCommand);
-    }
-    if (url.pathname === "/reservations")
-      return Response.json(
-        url.searchParams.has("paginated") ? { rows: [], total: 0, limit: 50, offset: 0 } : [],
-      );
-    if (url.pathname === "/room-closures") return Response.json([]);
-    throw new Error(`Unexpected request ${url}`);
-  };
+  page.api.catalog.roomTypes = [
+    { id: "double", name: "Doble", maxAdults: 2, maxChildren: 2, baseRateCents: 15025 },
+  ];
+  page.api.catalog.rooms = [{ id: "room", number: "101", roomTypeId: "double" }];
+  page.api.on("GET", "/reservations/summary", () => detailResponse());
+  page.api.on("POST", "/reservations/:id/preview", () => ({
+    billing: saved,
+    validation: { issues: [] },
+  }));
+  page.api.on<WorkflowCommand>("POST", "/reservations/:id/commands", ({ body }) =>
+    writeResponse(body),
+  );
 });
 afterEach(async () => {
   await page.cleanup();
@@ -107,28 +94,9 @@ async function render(search = "", waitForDetail = true) {
   await page.renderRouter(router);
   if (waitForDetail) await page.until(() => page.container.textContent.includes("#BILL0001"));
 }
-function button(label: string) {
-  const element = Array.from(browser.window.document.querySelectorAll("button")).find(
-    (element) =>
-      element.textContent.trim() === label || element.getAttribute("aria-label") === label,
-  );
-  assert.ok(element, `Missing button ${label}`);
-  return element;
-}
-async function click(label: string) {
-  await browser.React.act(async () => button(label).click());
-}
-async function fillAmount(value: string) {
-  const input = browser.window.document.querySelector<HTMLInputElement>('input[name="amount"]');
-  assert.ok(input);
-  await browser.React.act(async () => {
-    Object.getOwnPropertyDescriptor(browser.window.HTMLInputElement.prototype, "value")!.set!.call(
-      input,
-      value,
-    );
-    input.dispatchEvent(new browser.window.Event("input", { bubbles: true }));
-  });
-}
+const button = (label: string) => page.button(label);
+const click = (label: string) => page.click(label);
+const fillAmount = (value: string) => page.fill("amount", value);
 function amount(label: string) {
   const term = Array.from(page.container.querySelectorAll("dt")).find(
     (element) => element.textContent.trim() === label,

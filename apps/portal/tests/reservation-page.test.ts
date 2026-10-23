@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { afterAll, afterEach, beforeAll, beforeEach, it, vi } from "vite-plus/test";
-import type { HTMLInputElement, HTMLTextAreaElement, HTMLElement } from "happy-dom";
+import type { HTMLElement } from "happy-dom";
 import type {
   ReservationDetail,
   WorkflowCommand,
@@ -32,8 +32,13 @@ beforeEach(() => {
   vi.useFakeTimers({ toFake: ["Date"] });
   vi.setSystemTime(new Date("2026-10-19T15:00:00Z"));
   page = browser.createPage();
-  writes = [];
-  previews = [];
+  page.api.catalog.roomTypes = [
+    { id: "double", name: "Doble", maxAdults: 2, maxChildren: 2, baseRateCents: 15000 },
+  ];
+  page.api.catalog.rooms = [{ id: "room-1", number: "101", roomTypeId: "double" }];
+  page.api.on("GET", "/reservations/reservation-1", () => saved);
+  writes = page.api.bodies<WorkflowCommand>("POST", "/reservations/:id/commands");
+  previews = page.api.bodies<WorkflowCommand>("POST", "/reservations/:id/preview");
   saved = {
     id: "reservation-1",
     code: "TEST0001",
@@ -95,103 +100,79 @@ type ApiOptions = {
   preview?: (command: WorkflowCommand) => WorkflowPreview | Promise<WorkflowPreview>;
 };
 function mockApi(options: ApiOptions = {}) {
-  globalThis.fetch = async (input, init) => {
-    const url = new URL(
-      typeof input === "string" ? input : input instanceof URL ? input.href : input.url,
-    );
-    const path = url.pathname;
-    if (path === "/rooms")
-      return Response.json([{ id: "room-1", number: "101", roomTypeId: "double" }]);
-    if (path === "/room-types")
-      return Response.json([
-        { id: "double", name: "Doble", maxAdults: 2, maxChildren: 2, baseRateCents: 15000 },
-      ]);
-    if (path === "/reservations/reservation-1") return Response.json(saved);
-    if (path === "/reservations")
-      return Response.json(
-        url.searchParams.get("paginated") === "true"
-          ? { rows: [], total: 0, limit: 50, offset: 0 }
-          : [],
-      );
-    if (path === "/room-closures") return Response.json([]);
-    if (path.endsWith("/preview") || path.endsWith("/commands")) {
-      assert.equal(typeof init?.body, "string");
-      const command = JSON.parse(init!.body as string) as WorkflowCommand;
-      if (path.endsWith("/preview")) {
-        previews.push(command);
-        return Response.json(
-          (await options.preview?.(command)) ?? { billing: saved, validation: { issues: [] } },
-        );
-      }
-      writes.push(command);
-      const response = await options.write?.(command);
-      if (response) return response;
-      for (const action of command.actions) {
-        if (action.type === "notes") saved = { ...saved, notes: action.notes };
-        if (action.type === "contact")
-          saved = { ...saved, guest: { ...saved.guest, ...action.contact } };
-        if (action.type === "set-guests") saved = { ...saved, stayingGuests: action.guests };
-        if (action.type === "add-payment")
-          saved = {
-            ...saved,
-            paidCents: 10000,
-            balanceCents: 20000,
-            payments: [
-              {
-                ...action.payment,
-                reference: action.payment.reference ?? null,
-                notes: action.payment.notes ?? null,
-                id: "payment-1",
-                reservationId: saved.id,
-                createdAt: "2026-10-19T15:00:00Z",
-              },
-            ],
-          };
-        if (action.type === "edit-payment")
-          saved = {
-            ...saved,
-            payments: saved.payments.map((payment) =>
-              payment.id === action.paymentId ? { ...payment, ...action.payment } : payment,
-            ),
-          };
-        if (action.type === "delete-payment") saved = { ...saved, payments: [] };
-        if (action.type === "set-discount")
-          saved = {
-            ...saved,
-            savedDiscountCents: action.amountCents,
-            discountCents: 5000,
-            totalCents: 25000,
-            balanceCents: 25000,
-          };
-        if (action.type === "set-status")
-          saved = {
-            ...saved,
-            status: action.status,
-            ...(action.status === "cancelled"
-              ? {
-                  totalCents: 0,
-                  subtotalCents: 0,
-                  balanceCents: -saved.paidCents,
-                  creditCents: saved.paidCents,
-                  cancelledAt: "2026-10-19T15:00:00Z",
-                  cancellationReason: action.reason ?? null,
-                }
-              : {}),
-          };
-        if (action.type === "dates")
-          saved = {
-            ...saved,
-            checkIn: action.checkIn,
-            checkOut: action.checkOut,
-            totalCents: 45000,
-            subtotalCents: 45000,
-            balanceCents: 45000,
-          };
-      }
-      return Response.json(saved);
+  page.api.on<WorkflowCommand>(
+    "POST",
+    "/reservations/:id/preview",
+    async ({ body }) =>
+      (await options.preview?.(body)) ?? { billing: saved, validation: { issues: [] } },
+  );
+  page.api.on<WorkflowCommand>("POST", "/reservations/:id/commands", async ({ body: command }) => {
+    const response = await options.write?.(command);
+    if (response) return response;
+    for (const action of command.actions) {
+      if (action.type === "notes") saved = { ...saved, notes: action.notes };
+      if (action.type === "contact")
+        saved = { ...saved, guest: { ...saved.guest, ...action.contact } };
+      if (action.type === "set-guests") saved = { ...saved, stayingGuests: action.guests };
+      if (action.type === "add-payment")
+        saved = {
+          ...saved,
+          paidCents: 10000,
+          balanceCents: 20000,
+          payments: [
+            {
+              ...action.payment,
+              reference: action.payment.reference ?? null,
+              notes: action.payment.notes ?? null,
+              id: "payment-1",
+              reservationId: saved.id,
+              createdAt: "2026-10-19T15:00:00Z",
+            },
+          ],
+        };
+      if (action.type === "edit-payment")
+        saved = {
+          ...saved,
+          payments: saved.payments.map((payment) =>
+            payment.id === action.paymentId ? { ...payment, ...action.payment } : payment,
+          ),
+        };
+      if (action.type === "delete-payment") saved = { ...saved, payments: [] };
+      if (action.type === "set-discount")
+        saved = {
+          ...saved,
+          savedDiscountCents: action.amountCents,
+          discountCents: 5000,
+          totalCents: 25000,
+          balanceCents: 25000,
+        };
+      if (action.type === "set-status")
+        saved = {
+          ...saved,
+          status: action.status,
+          ...(action.status === "cancelled"
+            ? {
+                totalCents: 0,
+                subtotalCents: 0,
+                balanceCents: -saved.paidCents,
+                creditCents: saved.paidCents,
+                cancelledAt: "2026-10-19T15:00:00Z",
+                cancellationReason: action.reason ?? null,
+              }
+            : {}),
+        };
+      if (action.type === "dates")
+        saved = {
+          ...saved,
+          checkIn: action.checkIn,
+          checkOut: action.checkOut,
+          totalCents: 45000,
+          subtotalCents: 45000,
+          balanceCents: 45000,
+        };
     }
-    throw new Error(`Unexpected request ${path}`);
-  };
+    return saved;
+  });
 }
 async function render(search = "") {
   router = browser.routing.createRouter({
@@ -203,34 +184,10 @@ async function render(search = "") {
   await page.renderRouter(router);
   await page.until(() => page.container.textContent.includes("#TEST0001"));
 }
-function button(label: string) {
-  const element = Array.from(window.document.querySelectorAll("button")).find(
-    (button) => button.textContent.trim() === label || button.getAttribute("aria-label") === label,
-  );
-  assert.ok(element, `Missing button ${label}`);
-  return element;
-}
-async function click(label: string) {
-  await React.act(async () => button(label).click());
-}
-function field(name: string) {
-  const element = window.document.querySelector<HTMLInputElement | HTMLTextAreaElement>(
-    `[name="${name}"]`,
-  );
-  assert.ok(element, `Missing field ${name}`);
-  return element;
-}
-async function fill(name: string, value: string) {
-  await React.act(async () => {
-    const element = field(name);
-    const prototype =
-      element.tagName === "TEXTAREA"
-        ? window.HTMLTextAreaElement.prototype
-        : window.HTMLInputElement.prototype;
-    Object.getOwnPropertyDescriptor(prototype, "value")!.set!.call(element, value);
-    element.dispatchEvent(new window.Event("input", { bubbles: true }));
-  });
-}
+const button = (label: string) => page.button(label);
+const click = (label: string) => page.click(label);
+const field = (name: string) => page.field(name);
+const fill = (name: string, value: string) => page.fill(name, value);
 async function submit() {
   const form = window.document.querySelector('[role="dialog"] form');
   assert.ok(form);
