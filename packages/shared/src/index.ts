@@ -55,6 +55,10 @@ export const patchRoomSchema = z
   })
   .refine((value) => Object.keys(value).length > 0, { message: "send a field to update" });
 
+export const housekeepingWriteSchema = z.object({
+  status: z.enum(["dirty", "clean"]),
+});
+
 export const rateWriteSchema = z.object({
   from: dateSchema,
   to: dateSchema,

@@ -827,6 +827,7 @@ export function RoomCalendar({
                 roomId={room.id}
                 number={room.number}
                 typeName={room.typeName}
+                dirty={room.housekeepingStatus === "dirty"}
                 stays={placeStays(
                   [
                     ...room.stays.map(stayTrack),
@@ -935,6 +936,7 @@ export function RoomCalendar({
 function RoomRowView({
   number,
   typeName,
+  dirty = false,
   stays,
   days,
   dayCount,
@@ -953,6 +955,7 @@ function RoomRowView({
   roomId: string;
   number: string;
   typeName: string;
+  dirty?: boolean;
   stays: PlacedTrack[];
   days: Date[];
   dayCount: number;
@@ -984,8 +987,19 @@ function RoomRowView({
           data-slot="room-label"
           className="flex min-w-0 flex-1 flex-col justify-center gap-0.5 can-hover:group-focus-within/room:pr-7 can-hover:group-hover/room:pr-7"
         >
-          <span className="truncate text-xs font-medium" title={number}>
-            {number}
+          <span className="flex min-w-0 items-center gap-1">
+            <span className="truncate text-xs font-medium" title={number}>
+              {number}
+            </span>
+            {dirty ? (
+              <span
+                className="flex shrink-0 items-center gap-0.5 text-[0.625rem] font-medium text-destructive"
+                title="Habitación sucia"
+              >
+                <span aria-hidden className="size-1.5 rounded-full bg-destructive" />
+                Sucia
+              </span>
+            ) : null}
           </span>
           {assignmentNote ? (
             <span className="truncate text-xs font-medium">{assignmentNote}</span>

@@ -91,11 +91,32 @@ export type CalendarAssignedStay = {
   checkOut: string;
 };
 
+export type HousekeepingStatus = "dirty" | "clean";
+
+export type HousekeepingRoom = {
+  id: string;
+  number: string;
+  roomTypeId: string;
+  roomTypeName: string;
+  housekeepingStatus: HousekeepingStatus;
+  housekeepingChangedAt: string | null;
+  closed: boolean;
+  inHouse: boolean;
+  departure: "expected" | "checked_out" | null;
+  arriving: boolean;
+};
+
+export type HousekeepingBoard = {
+  date: string;
+  rooms: HousekeepingRoom[];
+};
+
 export type CalendarRoom = {
   id: string;
   number: string;
   roomTypeId: string;
   roomTypeName: string;
+  housekeepingStatus: HousekeepingStatus;
   stays: CalendarAssignedStay[];
   closures: RoomClosure[];
 };
@@ -212,6 +233,7 @@ export type ReservationDetail = {
     roomTypeName: string | null;
     roomId: string | null;
     roomNumber: string | null;
+    housekeepingStatus: HousekeepingStatus | null;
     adults: number;
     children: number;
     subtotalCents: number;
@@ -386,6 +408,18 @@ export async function getCalendar(from: string, to: string, signal?: AbortSignal
   if (window.from !== from || window.to !== to)
     throw new ApiError(500, "calendar window is incomplete");
   return window;
+}
+
+export function getHousekeeping(signal?: AbortSignal) {
+  return getJson<HousekeepingBoard>("/housekeeping", signal);
+}
+
+export function setHousekeepingStatus(roomId: string, status: HousekeepingStatus) {
+  return writeJson<Room & Pick<HousekeepingRoom, "housekeepingStatus" | "housekeepingChangedAt">>(
+    `/housekeeping/${roomId}`,
+    "PUT",
+    { status },
+  );
 }
 
 export function createRoomClosure(body: {

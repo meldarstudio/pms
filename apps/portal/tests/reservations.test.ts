@@ -52,6 +52,7 @@ const ana: ReservationDetail & { guestName: string } = {
       roomTypeName: "Doble",
       roomId: "room",
       roomNumber: "101",
+      housekeepingStatus: "clean",
       adults: 2,
       children: 0,
       subtotalCents: 30000,

@@ -12,6 +12,7 @@ before changes.
 - [Reservations](../../docs/reservations.md) for commands, previews, reads, concurrency, and save-time validation.
 - [Property setup](../../docs/property-setup.md) for atomic room numbering, ownership, and occupancy limits.
 - [Calendar and assignment](../../docs/calendar.md) for the calendar read and assignment backlog.
+- [Housekeeping](../../docs/housekeeping.md) for room statuses and the property-date room list.
 - [Local sample data](../../docs/local-data.md) before resets or seeding.
 - [Database changes](../../docs/agents/database.md) before schema, trigger, or migration changes.
 - [Production releases](../../docs/releases.md) for deployment, migrations, and recovery.

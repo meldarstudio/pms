@@ -121,6 +121,7 @@ function detail(): ReservationDetail {
         roomTypeName: "Doble",
         roomId: "room-1",
         roomNumber: "101",
+        housekeepingStatus: "clean",
         adults: 1,
         children: 0,
         subtotalCents: 30000,
@@ -1730,6 +1731,46 @@ it("checks in a confirmed reservation immediately without changing the form draf
   assert.deepEqual(writes[0].actions, [{ type: "set-status", status: "checked_in" }]);
   assert.equal(control("notes").value, "");
   assert.equal(button("Guardar cambios").disabled, true);
+});
+
+it("warns before checking into a room housekeeping marked dirty since the reservation loaded, then allows it", async () => {
+  let saved = detail();
+  const writes: WorkflowCommand[] = [];
+  mockApi(
+    async (path, command) => {
+      if (path.endsWith("/preview")) return previewResponse(saved);
+      writes.push(command);
+      saved = { ...saved, status: "checked_in" };
+      return Response.json(saved);
+    },
+    { reservation: () => saved },
+  );
+  page.api.on("GET", "/housekeeping", () => ({
+    date: "2026-10-14",
+    rooms: [{ id: "room-1", number: "101", housekeepingStatus: "dirty" }],
+  }));
+  await openEditDialog();
+  await until(() => window.document.querySelector('[name="notes"]') !== null);
+  const warning = () =>
+    Array.from(window.document.querySelectorAll('[role="alertdialog"]')).find((dialog) =>
+      dialog.textContent.includes("La habitación 101 está sucia"),
+    );
+  const warningButton = (label: string) =>
+    Array.from(warning()!.querySelectorAll("button")).find(
+      (item) => item.textContent.trim() === label,
+    )!;
+
+  await React.act(async () => button("Hacer check-in").click());
+  await until(() => warning() !== undefined, "Check-in must warn about the dirty room");
+  await React.act(async () => warningButton("Volver").click());
+  await until(() => warning() === undefined);
+  assert.equal(writes.length, 0);
+
+  await React.act(async () => button("Hacer check-in").click());
+  await until(() => warning() !== undefined);
+  await React.act(async () => warningButton("Hacer check-in").click());
+  await until(() => saved.status === "checked_in");
+  assert.deepEqual(writes[0].actions, [{ type: "set-status", status: "checked_in" }]);
 });
 
 it("restores a cancelled reservation after confirmation and keeps the compact dialog open", async () => {

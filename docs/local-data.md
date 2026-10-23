@@ -33,7 +33,9 @@ nightly prices, varied payments and balances, rate overrides, three room closure
 past and current stays, arrivals and departures today, upcoming stays,
 cancellations, and multi-room reservations. Alejandro, Sofía, and Javier Demo retain
 confirmed unassigned rooms for testing manual assignment. Room 101 has consecutive
-reservations that share a checkout/check-in date. Resetting with the same reference
+reservations that share a checkout/check-in date. Rooms vacated on the reference date
+are [dirty](housekeeping.md) unless their next guest has already checked in; all
+other rooms are clean. Resetting with the same reference
 date recreates the same dataset.
 
 Edit bookings and closures in the portal, then run the reset again and refresh

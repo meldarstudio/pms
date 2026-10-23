@@ -29,6 +29,13 @@
       "when": 1792283309802,
       "tag": "0003_property_calendar",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "6",
+      "when": 1792793853955,
+      "tag": "0004_housekeeping_status",
+      "breakpoints": true
     }
   ]
 }

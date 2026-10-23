@@ -38,7 +38,7 @@ beforeEach(() => {
   db.exec(`
     INSERT INTO room_types (id, name, max_occupancy, base_rate_cents, created_at)
       VALUES ('type', 'Standard', 2, 10000, '2026-10-05');
-    INSERT INTO rooms VALUES ('room-101', '101', 'type'), ('room-102', '102', 'type');
+    INSERT INTO rooms (id, number, room_type_id) VALUES ('room-101', '101', 'type'), ('room-102', '102', 'type');
     INSERT INTO guests (id, full_name, created_at) VALUES ('guest', 'Ada Lovelace', '2026-10-05');
   `);
   closure("existing", "room-102", "2026-11-01", "2026-11-02");
@@ -135,13 +135,42 @@ describe("property-date room type guards", () => {
       const before = snapshot();
       for (const entry of journal.entries.slice(split))
         previous.exec(readFileSync(new URL(`${entry.tag}.sql`, migrationsDir), "utf8"));
-      expect(snapshot()).toEqual(before);
+      // Later migrations may add columns; saved values must stay unchanged.
+      expect(snapshot()).toMatchObject(before);
       previous.exec("INSERT INTO property_write_context VALUES (1, '2026-10-31')");
       expect(() =>
         previous.exec("UPDATE rooms SET room_type_id = 'other' WHERE id = 'room'"),
       ).toThrow("room has an assigned stay");
       previous.exec("DELETE FROM property_write_context");
       expect(previous.prepare("PRAGMA foreign_key_check").all()).toEqual([]);
+    } finally {
+      previous.close();
+    }
+  });
+
+  it("upgrades existing rooms to clean with no recorded change", () => {
+    const previous = new DatabaseSync(":memory:");
+    try {
+      const split = journal.entries.findIndex((entry) => entry.tag === "0004_housekeeping_status");
+      expect(split).toBeGreaterThan(0);
+      for (const entry of journal.entries.slice(0, split))
+        previous.exec(readFileSync(new URL(`${entry.tag}.sql`, migrationsDir), "utf8"));
+      previous.exec(`
+        INSERT INTO room_types (id, name, max_occupancy, base_rate_cents, created_at)
+          VALUES ('type', 'Standard', 2, 10000, '2026-11-01T01:00:00Z');
+        INSERT INTO rooms VALUES ('room', '101', 'type');
+      `);
+      for (const entry of journal.entries.slice(split))
+        previous.exec(readFileSync(new URL(`${entry.tag}.sql`, migrationsDir), "utf8"));
+      expect(previous.prepare("SELECT * FROM rooms").all()).toEqual([
+        {
+          id: "room",
+          number: "101",
+          room_type_id: "type",
+          housekeeping_status: "clean",
+          housekeeping_changed_at: null,
+        },
+      ]);
     } finally {
       previous.close();
     }
@@ -219,7 +248,8 @@ describe("separate adult and child limits", () => {
       const before = snapshot();
       for (const entry of journal.entries.slice(split))
         previous.exec(readFileSync(new URL(`${entry.tag}.sql`, migrationsDir), "utf8"));
-      expect(snapshot()).toEqual(before);
+      // Later migrations may add columns; saved values must stay unchanged.
+      expect(snapshot()).toMatchObject(before);
       expect(previous.prepare("SELECT max_occupancy, max_children FROM room_types").all()).toEqual([
         { max_occupancy: 4, max_children: 2 },
       ]);

@@ -5,6 +5,7 @@ import {
   CalendarDaysIcon,
   ClipboardListIcon,
   LogOutIcon,
+  SparklesIcon,
   Settings2Icon,
 } from "lucide-react";
 import logo from "@/assets/logo.svg";
@@ -56,6 +57,7 @@ export function AppSidebar() {
           ? calendarSearch(location.search)
           : (lastCalendarSearch.current ?? calendarSearch({ from: today })),
     },
+    { ...appNavigation.housekeeping, icon: SparklesIcon, search: {} },
     {
       ...appNavigation.inventory,
       icon: BedDoubleIcon,

@@ -66,6 +66,9 @@ export function presentReservation(input: {
       roomTypeName: typeById.get(line.roomTypeId)?.name ?? null,
       roomId: line.roomId,
       roomNumber: line.roomId ? (roomById.get(line.roomId)?.number ?? null) : null,
+      housekeepingStatus: line.roomId
+        ? (roomById.get(line.roomId)?.housekeepingStatus ?? null)
+        : null,
       adults: line.adults,
       children: line.children,
       subtotalCents: lineTotal,

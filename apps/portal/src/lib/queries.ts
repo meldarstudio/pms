@@ -20,6 +20,7 @@ import {
   deleteRoomTypeRates,
   getAvailability,
   getCalendar,
+  getHousekeeping,
   getInventory,
   getReservation,
   getSession,
@@ -36,6 +37,9 @@ import {
   putRoomTypeRates,
   savePropertySetup,
   searchReservationsPage,
+  setHousekeepingStatus,
+  type HousekeepingBoard,
+  type HousekeepingStatus,
   type ReservationListParams,
   type PatchGuestInput,
   type AvailabilityOccupancy,
@@ -186,6 +190,57 @@ export function usePatchRoom() {
       await queryClient.invalidateQueries({ queryKey: ["rooms"] });
       await queryClient.invalidateQueries({ queryKey: ["availability"] });
       await queryClient.invalidateQueries({ queryKey: ["calendar"] });
+    },
+  });
+}
+
+export const housekeepingQueryKey = ["housekeeping"] as const;
+
+export function useHousekeeping() {
+  return useQuery({
+    queryKey: housekeepingQueryKey,
+    queryFn: ({ signal }) => getHousekeeping(signal),
+  });
+}
+
+export function useSetHousekeepingStatus() {
+  const client = useQueryClient();
+  const setRoom = (roomId: string, fields: Partial<HousekeepingBoard["rooms"][number]>) =>
+    client.setQueryData<HousekeepingBoard>(housekeepingQueryKey, (board) =>
+      board
+        ? {
+            ...board,
+            rooms: board.rooms.map((room) => (room.id === roomId ? { ...room, ...fields } : room)),
+          }
+        : board,
+    );
+  return useMutation({
+    mutationFn: (input: { roomId: string; status: HousekeepingStatus }) =>
+      setHousekeepingStatus(input.roomId, input.status),
+    // Rows change in place and keep their order until the next read, so a
+    // housekeeper's next tap never lands on a row that just moved.
+    onMutate: async ({ roomId, status }) => {
+      await client.cancelQueries({ queryKey: housekeepingQueryKey });
+      const previous = client
+        .getQueryData<HousekeepingBoard>(housekeepingQueryKey)
+        ?.rooms.find((room) => room.id === roomId);
+      setRoom(roomId, { housekeepingStatus: status });
+      return { previous };
+    },
+    onError: (_error, { roomId }, context) => {
+      if (context?.previous)
+        setRoom(roomId, {
+          housekeepingStatus: context.previous.housekeepingStatus,
+          housekeepingChangedAt: context.previous.housekeepingChangedAt,
+        });
+    },
+    onSuccess: async (room) => {
+      setRoom(room.id, {
+        housekeepingStatus: room.housekeepingStatus,
+        housekeepingChangedAt: room.housekeepingChangedAt,
+      });
+      await client.invalidateQueries({ queryKey: ["calendar"] });
+      await client.invalidateQueries({ queryKey: ["reservation"] });
     },
   });
 }

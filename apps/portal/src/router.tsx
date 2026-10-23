@@ -14,6 +14,7 @@ import App from "@/App";
 import { ReservationPage } from "@/components/reservation-page";
 import { Reservations } from "@/components/reservations";
 import { RoomCalendar } from "@/components/room-calendar";
+import { Housekeeping } from "@/components/housekeeping";
 import { Inventory } from "@/components/inventory";
 import { PropertySetup } from "@/components/property-setup";
 import {
@@ -202,6 +203,12 @@ const inventoryRoute = createRoute({
   component: InventoryRoute,
 });
 
+const housekeepingRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/housekeeping",
+  component: Housekeeping,
+});
+
 const setupRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/setup",
@@ -213,6 +220,7 @@ const routeTree = rootRoute.addChildren([
   calendarRoute,
   reservationsRoute,
   reservationRoute,
+  housekeepingRoute,
   inventoryRoute,
   setupRoute,
 ]);

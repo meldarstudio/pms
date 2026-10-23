@@ -13,6 +13,7 @@ before changes.
 - [Reservations](../../docs/reservations.md#portal-editors) for creation, compact/full-page editing, drafts, lifecycle actions, and list filters.
 - [Calendar and assignment](../../docs/calendar.md) for backlog boundaries, assignment flow, and its known checked-in limitation.
 - [Property setup](../../docs/property-setup.md#portal-setup) for readiness, drafts, and room editors.
+- [Housekeeping](../../docs/housekeeping.md) for the Limpieza page, the calendar marker, and the dirty-room check-in warning.
 - [Production releases](../../docs/releases.md) for delivering compatible API and portal versions.
 
 ## Implementation and tests
