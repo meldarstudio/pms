@@ -182,13 +182,22 @@ without contact email. On mobile, **Ver reserva completa** moves into
 **Más acciones de reserva**. The full-screen form body scrolls while header and
 footer remain reachable; closing preserves the calendar and its scroll position.
 
-The mobile footer's balance bar toggles the full bill above it without replacing
-the discount draft. It retains **Ver desglose / Ocultar desglose** accessibility
-names, expanded state, and the controlled-panel relationship. An upward chevron
-means collapsed and downward means expanded. Balance uses the bill's red
-outstanding, green settled, and blue credit treatments with text labels. Draft
-pricing shows **Vista previa** beside the label; unavailable pricing never falls
-back to stale saved amounts. Total remains in the bill, not the footer.
+The mobile footer has one bill accordion, with the colored balance bar at the
+bottom and the full breakdown expanding upward above it. The breakdown includes
+room charges, the editable discount, total, and amount paid; there is no separate
+bill card in the scrolling form body or repeated balance inside the breakdown.
+It starts collapsed when a reservation opens and preserves its expanded state
+across tabs. The breakdown scrolls within a bounded height so the balance and
+action buttons remain reachable, including when the keyboard resizes the editor.
+Collapsing or resizing keeps the discount draft mounted. Desktop keeps its full
+summary with the balance at the bottom.
+
+The balance toggle retains **Ver desglose / Ocultar desglose** accessibility names,
+expanded state, and the controlled-panel relationship. An upward chevron means
+collapsed and downward means expanded. Balance uses red outstanding, green
+settled, and blue credit treatments with text labels. Draft pricing shows
+**Vista previa** beside the label; unavailable pricing never falls back to stale
+saved amounts. Total remains in the breakdown.
 
 With dirty details, mobile shows **Descartar** and **Guardar cambios**; another
 tab offers **Volver a Detalles** before saving. With clean details, the applicable
