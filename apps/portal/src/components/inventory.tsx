@@ -29,6 +29,8 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Separator } from "@/components/ui/separator";
+import { useIsMobile } from "@/hooks/use-mobile";
 import type { InventoryNight, InventoryRoomType } from "@/lib/api";
 import { CURRENCY, formatMoney } from "@/lib/money";
 import { format } from "@/lib/dates";
@@ -77,6 +79,7 @@ export function Inventory({
   onSpanChange: (span: 7 | 14) => void;
 }) {
   const { today } = usePropertyCalendar();
+  const isMobile = useIsMobile();
   const queryClient = useQueryClient();
   const [pickerOpen, setPickerOpen] = useState(false);
   const [selection, setSelection] = useState<Selection | null>(null);
@@ -166,33 +169,37 @@ export function Inventory({
       />
       <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-2 border-b px-2.5 py-2">
         <div className="flex items-center gap-2">
-          <Select
-            items={spans}
-            value={String(span)}
-            onValueChange={(value) => {
-              if (!value) return;
-              dragging.current = false;
-              choose(null);
-              setEditor(null);
-              onSpanChange(Number(value) as 7 | 14);
-            }}
-          >
-            <SelectTrigger className="w-28">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent alignItemWithTrigger={false} align="start">
-              <SelectGroup>
-                {spans.map((item) => (
-                  <SelectItem key={item.value} value={item.value}>
-                    {item.label}
-                  </SelectItem>
-                ))}
-              </SelectGroup>
-            </SelectContent>
-          </Select>
-          <Button variant="outline" onClick={() => changeStart(dateOnlyCarrier(today))}>
-            Hoy
-          </Button>
+          {!isMobile && (
+            <>
+              <Select
+                items={spans}
+                value={String(span)}
+                onValueChange={(value) => {
+                  if (!value) return;
+                  dragging.current = false;
+                  choose(null);
+                  setEditor(null);
+                  onSpanChange(Number(value) as 7 | 14);
+                }}
+              >
+                <SelectTrigger className="w-28">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent alignItemWithTrigger={false} align="start">
+                  <SelectGroup>
+                    {spans.map((item) => (
+                      <SelectItem key={item.value} value={item.value}>
+                        {item.label}
+                      </SelectItem>
+                    ))}
+                  </SelectGroup>
+                </SelectContent>
+              </Select>
+              <Button variant="outline" onClick={() => changeStart(dateOnlyCarrier(today))}>
+                Hoy
+              </Button>
+            </>
+          )}
           <Button
             variant="outline"
             size="icon"
@@ -204,14 +211,16 @@ export function Inventory({
           </Button>
         </div>
         <ButtonGroup>
-          <Button
-            variant="outline"
-            size="icon"
-            aria-label="Período anterior"
-            onClick={() => changeStart(addDays(start, -span))}
-          >
-            <ChevronsLeftIcon />
-          </Button>
+          {!isMobile && (
+            <Button
+              variant="outline"
+              size="icon"
+              aria-label="Período anterior"
+              onClick={() => changeStart(addDays(start, -span))}
+            >
+              <ChevronsLeftIcon />
+            </Button>
+          )}
           <Button
             variant="outline"
             size="icon"
@@ -222,12 +231,12 @@ export function Inventory({
           </Button>
           <Popover open={pickerOpen} onOpenChange={setPickerOpen}>
             <PopoverTrigger
-              render={<Button variant="outline" className="min-w-36 justify-between" />}
+              render={<Button variant="outline" className="min-w-32 justify-between md:min-w-36" />}
             >
               {format(start, "d MMM yyyy")}
               <CalendarIcon data-icon="inline-end" />
             </PopoverTrigger>
-            <PopoverContent className="w-auto p-0">
+            <PopoverContent className="w-auto gap-0 p-0">
               <PropertyDatePicker
                 mode="single"
                 selected={start}
@@ -237,6 +246,23 @@ export function Inventory({
                   setPickerOpen(false);
                 }}
               />
+              {isMobile && (
+                <>
+                  <Separator />
+                  <div className="flex p-2">
+                    <Button
+                      variant="outline"
+                      className="w-full"
+                      onClick={() => {
+                        changeStart(dateOnlyCarrier(today));
+                        setPickerOpen(false);
+                      }}
+                    >
+                      Hoy
+                    </Button>
+                  </div>
+                </>
+              )}
             </PopoverContent>
           </Popover>
           <Button
@@ -247,14 +273,16 @@ export function Inventory({
           >
             <ChevronRightIcon />
           </Button>
-          <Button
-            variant="outline"
-            size="icon"
-            aria-label="Período siguiente"
-            onClick={() => changeStart(addDays(start, span))}
-          >
-            <ChevronsRightIcon />
-          </Button>
+          {!isMobile && (
+            <Button
+              variant="outline"
+              size="icon"
+              aria-label="Período siguiente"
+              onClick={() => changeStart(addDays(start, span))}
+            >
+              <ChevronsRightIcon />
+            </Button>
+          )}
         </ButtonGroup>
         <div />
       </div>
