@@ -207,7 +207,7 @@ function release(f, options = {}) {
     }
     if (step.uses === "pnpm/action-setup@v4") {
       const { packageManager } = JSON.parse(readFileSync(join(f.cwd, "package.json"), "utf8"));
-      if (packageManager !== "pnpm@11.22.0")
+      if (packageManager !== "pnpm@12.15.0")
         throw new Error("Unsupported pnpm runtime at selected checkout");
       continue;
     }
