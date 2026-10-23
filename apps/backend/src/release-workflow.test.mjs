@@ -143,7 +143,7 @@ function supportedWorkflow(workflow) {
   onlyKeys(workflow.jobs, ["release"]);
   const job = workflow.jobs.release;
   onlyKeys(job, ["runs-on", "env", "defaults", "steps"]);
-  if (job["runs-on"] !== "ubuntu-latest") throw new Error("Unsupported runner");
+  if (job["runs-on"] !== "ubuntu-24.04") throw new Error("Unsupported runner");
   defaults(workflow.defaults);
   defaults(job.defaults);
   const pnpm = job.steps.findIndex((step) => step.uses === actions.pnpm);
