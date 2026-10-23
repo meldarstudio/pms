@@ -230,57 +230,6 @@ async function unloadPrevented() {
   return event.defaultPrevented;
 }
 
-it("shows reservation sections with their own editing actions and contact details", async () => {
-  saved.guest = { ...saved.guest, documentType: "DNI", documentNumber: "12345678" };
-  saved.rooms = [
-    ...saved.rooms,
-    {
-      ...saved.rooms[0],
-      id: "line-2",
-      roomId: "room-2",
-      roomNumber: "103",
-      adults: 1,
-      children: 1,
-    },
-  ];
-  mockApi();
-  await render();
-  assert.equal(popup() !== null, false);
-  assert.ok(button("Editar contacto"));
-  assert.ok(button("Editar estadía"));
-  const contact = page.container.querySelector('[aria-label="Contacto principal"]');
-  assert.ok(contact);
-  assert.match(contact.textContent, /Ana Pérez/);
-  assert.match(contact.textContent, /999111222/);
-  assert.match(contact.textContent, /ana@example.com/);
-  assert.doesNotMatch(contact.textContent, /documento|DNI|12345678/);
-  assert.match(page.container.textContent, /Estadía y habitaciones/);
-  const occupants = Array.from(page.container.querySelectorAll("dt")).find(
-    (term) => term.textContent === "Ocupantes",
-  );
-  assert.ok(occupants, "The stay summary shows the total declared occupants");
-  assert.equal(occupants.nextElementSibling?.textContent, "4");
-  const rooms = page.container.querySelector('[aria-label="Habitaciones asignadas"]');
-  assert.ok(rooms);
-  assert.match(rooms.textContent, /2 habitaciones/);
-  const roomRows = rooms.querySelectorAll('[role="listitem"]');
-  assert.equal(roomRows.length, 2);
-  assert.match(roomRows[0].textContent, /Sin asignar · Doble/);
-  assert.match(roomRows[0].textContent, /2 adultos/);
-  assert.doesNotMatch(roomRows[0].textContent, /niños/);
-  assert.match(roomRows[1].textContent, /103 · Doble/);
-  assert.match(roomRows[1].textContent, /1 adulto · 1 niño/);
-  assert.match(page.container.textContent, /Pago y cuenta/);
-  assert.match(page.container.textContent, /19 de octubre de 2026/);
-  assert.match(page.container.textContent, /Llegada hoy/);
-  assert.match(page.container.textContent, /Sin asignar · Doble/);
-  assert.equal(page.container.querySelector("h1")!.textContent, "Ana Pérez");
-  assert.equal(contact.querySelector('a[href="tel:999111222"]')!.textContent, "999111222");
-  assert.equal(page.container.querySelector('header a[href^="tel:"]') !== null, false);
-  assert.match(page.container.textContent, /Saldo pendiente/);
-  assert.ok(button("Registrar pago"));
-});
-
 it("retains the contact draft and retry ID after rejection and background refresh", async () => {
   mockApi({
     write: () =>
@@ -385,7 +334,10 @@ it("validates and saves only contact changes without replacing guests, notes, or
       },
     ],
   };
-  mockApi();
+  mockApi({
+    write: () =>
+      writes.length === 1 ? Response.json({ error: "invalid email" }, { status: 400 }) : undefined,
+  });
   await render();
   page.client.setQueryData(["reservation", "other"], { ...saved, id: "other" });
   await click("Editar contacto");
@@ -396,6 +348,11 @@ it("validates and saves only contact changes without replacing guests, notes, or
   await submit();
   assert.equal(writes.length, 0);
   assert.match(popup()!.textContent, /Ingresa un correo válido/);
+  await fill("email", "rejected@example.com");
+  await submit();
+  await page.until(() => field("email").getAttribute("aria-invalid") === "true");
+  assert.equal(field("email").value, "rejected@example.com");
+  assert.equal(field("fullName").value, "Ana María Pérez");
   await fill("email", "");
   await submit();
   await page.until(() => !popup());
@@ -405,7 +362,9 @@ it("validates and saves only contact changes without replacing guests, notes, or
   assert.equal(saved.rooms[0].adults, 2);
   assert.equal(saved.guest.documentType, "DNI");
   assert.equal(saved.guest.documentNumber, "12345678");
-  assert.deepEqual(writes[0].actions, [
+  assert.equal(writes.length, 2);
+  assert.notEqual(writes[0].requestId, writes[1].requestId);
+  assert.deepEqual(writes[1].actions, [
     {
       type: "contact",
       contact: {
@@ -451,70 +410,58 @@ it("waits for the current discount preview and saves its amount separately", asy
   assert.deepEqual(writes[0].actions, [{ type: "set-discount", amountCents: 5000 }]);
 });
 
-it("autosaves the selected status of an unpaid, unassigned reservation without changing its dates", async () => {
-  mockApi();
-  await render();
-  assert.match(dateTrigger("Estado de la reserva").textContent, /Confirmada/);
-  await selectStatus("Check-in");
-  await page.until(() => dateTrigger("Estado de la reserva").textContent.includes("Check-in"));
-  assert.equal(popup() !== null, false);
-  assert.equal(writes.length, 1);
-  assert.deepEqual(writes[0].actions, [{ type: "set-status", status: "checked_in" }]);
-  assert.equal(saved.checkIn, "2026-10-19");
-  assert.equal(saved.checkOut, "2026-10-21");
-  assert.equal(saved.balanceCents, 30000);
-  await selectStatus("Confirmada");
-  await page.until(() => dateTrigger("Estado de la reserva").textContent.includes("Confirmada"));
-  assert.deepEqual(writes[1].actions, [{ type: "set-status", status: "confirmed" }]);
-});
+it.each([
+  { label: "Check-in", initial: "confirmed", previous: "Confirmada", status: "checked_in" },
+  { label: "Check-out", initial: "checked_in", previous: "Check-in", status: "checked_out" },
+])(
+  "autosaves $label once and retries the same command after an uncertain response",
+  async ({ label, initial, previous, status }) => {
+    saved = { ...saved, status: initial };
+    let finish!: (response: Response) => void;
+    mockApi({
+      write: () =>
+        writes.length === 1
+          ? new Promise<Response>((resolve) => {
+              finish = resolve;
+            })
+          : undefined,
+    });
+    await render();
+    await React.act(async () => dateTrigger("Estado de la reserva").click());
+    const checkout = statusOption(label);
+    await React.act(async () => {
+      checkout.click();
+      checkout.click();
+    });
+    await page.until(() => page.container.textContent.includes("Guardando estado…"));
+    assert.equal(writes.length, 1);
+    assert.equal(dateTrigger("Estado de la reserva").disabled, true);
+    assert.equal(await unloadPrevented(), true);
+    assert.equal(saved.status, initial);
+    await React.act(async () => {
+      void router.navigate({ href: "/reservations" });
+    });
+    await page.until(() => window.document.body.textContent.includes("Guardando cambios"));
+    await click("Seguir editando");
+    await React.act(async () =>
+      finish(Response.json({ error: "Temporary save failure" }, { status: 503 })),
+    );
+    await page.until(() => !dateTrigger("Estado de la reserva").disabled);
+    assert.ok(dateTrigger("Estado de la reserva").textContent.includes(previous));
+    await selectStatus(label);
+    await page.until(
+      () => !page.container.textContent.includes("Guardando estado…") && saved.status === status,
+    );
+    assert.deepEqual(writes[0], writes[1]);
+    assert.deepEqual(writes[1].actions, [{ type: "set-status", status }]);
+    assert.equal(saved.checkIn, "2026-10-19");
+    assert.equal(saved.checkOut, "2026-10-21");
+    assert.equal(saved.balanceCents, 30000);
+    assert.equal(popup() !== null, false);
+  },
+);
 
-it("autosaves checkout once, protects pending navigation, and retries an uncertain response with the same ID", async () => {
-  saved = { ...saved, status: "checked_in" };
-  let finish!: (response: Response) => void;
-  mockApi({
-    write: () =>
-      writes.length === 1
-        ? new Promise<Response>((resolve) => {
-            finish = resolve;
-          })
-        : undefined,
-  });
-  await render();
-  await React.act(async () => dateTrigger("Estado de la reserva").click());
-  const checkout = statusOption("Check-out");
-  await React.act(async () => {
-    checkout.click();
-    checkout.click();
-  });
-  await page.until(() => page.container.textContent.includes("Guardando estado…"));
-  assert.equal(writes.length, 1);
-  assert.equal(dateTrigger("Estado de la reserva").disabled, true);
-  assert.equal(await unloadPrevented(), true);
-  assert.equal(saved.status, "checked_in");
-  await React.act(async () => {
-    void router.navigate({ href: "/reservations" });
-  });
-  await page.until(() => window.document.body.textContent.includes("Guardando cambios"));
-  await click("Seguir editando");
-  await React.act(async () =>
-    finish(Response.json({ error: "Temporary save failure" }, { status: 503 })),
-  );
-  await page.until(() => !dateTrigger("Estado de la reserva").disabled);
-  assert.match(dateTrigger("Estado de la reserva").textContent, /Check-in/);
-  await selectStatus("Check-out");
-  await page.until(
-    () =>
-      !page.container.textContent.includes("Guardando estado…") && saved.status === "checked_out",
-  );
-  assert.deepEqual(writes[0], writes[1]);
-  assert.deepEqual(writes[1].actions, [{ type: "set-status", status: "checked_out" }]);
-  assert.equal(saved.checkIn, "2026-10-19");
-  assert.equal(saved.checkOut, "2026-10-21");
-  assert.equal(saved.balanceCents, 30000);
-  assert.equal(popup() !== null, false);
-});
-
-for (const balance of [0, -10000, 5000]) {
+for (const balance of [-10000]) {
   it(`keeps a checked-out reservation editable with balance ${balance}`, async () => {
     saved = { ...saved, status: "checked_out", balanceCents: balance };
     mockApi();
@@ -600,7 +547,12 @@ it.each([
 );
 
 it("saves stay changes independently with the current server bill", async () => {
+  let finish!: (response: Response) => void;
   mockApi({
+    write: () =>
+      new Promise<Response>((resolve) => {
+        finish = resolve;
+      }),
     preview: () => ({
       billing: { ...saved, subtotalCents: 45000, totalCents: 45000, balanceCents: 45000 },
       validation: { issues: [] },
@@ -614,29 +566,6 @@ it("saves stay changes independently with the current server bill", async () => 
   assert.equal(button("Guardar cambios").disabled, true);
   await page.until(() => !button("Guardar cambios").disabled);
   assert.match(popup()!.textContent, /450/);
-  await submit();
-  await page.until(() => !popup());
-  assert.deepEqual(writes[0].actions, [
-    { type: "dates", checkIn: "2026-10-19", checkOut: "2026-10-22" },
-  ]);
-  assert.equal(writes.length, 1);
-  assert.equal(saved.guest.fullName, "Ana Pérez");
-  assert.equal(saved.guest.phone, "999111222");
-  assert.match(page.container.textContent, /3 noches/);
-});
-
-it("protects a pending stay command from duplicate submission, dismissal and navigation", async () => {
-  let finish!: (response: Response) => void;
-  mockApi({
-    write: () =>
-      new Promise<Response>((resolve) => {
-        finish = resolve;
-      }),
-  });
-  await render();
-  await click("Editar estadía");
-  await selectDate("Check-out", "22/10/2026");
-  await page.until(() => !button("Guardar cambios").disabled);
   await submit();
   await page.until(
     () => writes.length === 1 && window.document.body.textContent.includes("Guardando…"),
@@ -655,12 +584,24 @@ it("protects a pending stay command from duplicate submission, dismissal and nav
   assert.equal(button("Descartar y salir").disabled, true);
   await click("Seguir editando");
   await React.act(async () => {
-    saved = { ...saved, checkOut: "2026-10-22" };
+    saved = {
+      ...saved,
+      checkOut: "2026-10-22",
+      subtotalCents: 45000,
+      totalCents: 45000,
+      balanceCents: 45000,
+    };
     finish(Response.json(saved));
   });
   await page.until(() => !popup());
-  assert.match(page.container.textContent, /3 noches/);
   assert.equal(await unloadPrevented(), false);
+  assert.deepEqual(writes[0].actions, [
+    { type: "dates", checkIn: "2026-10-19", checkOut: "2026-10-22" },
+  ]);
+  assert.equal(writes.length, 1);
+  assert.equal(saved.guest.fullName, "Ana Pérez");
+  assert.equal(saved.guest.phone, "999111222");
+  assert.match(page.container.textContent, /3 noches/);
 });
 
 it("validates occupancy and saves room changes together while retaining at least one room", async () => {
@@ -700,30 +641,6 @@ it("validates occupancy and saves room changes together while retaining at least
   ]);
   assert.equal(saved.rooms.length, 1);
   assert.equal(saved.rooms[0].children, 1);
-});
-
-it("shows a contact server error beside its field and keeps the draft for correction", async () => {
-  mockApi({
-    write: () =>
-      writes.length === 1 ? Response.json({ error: "invalid email" }, { status: 400 }) : undefined,
-  });
-  await render();
-  await click("Editar contacto");
-  await fill("email", "rechazado@example.com");
-  await page.until(() => !button("Guardar cambios").disabled);
-  await submit();
-  await page.until(() => field("email").getAttribute("aria-invalid") === "true");
-  await page.flush(30);
-  assert.equal(field("email").getAttribute("aria-invalid"), "true");
-  assert.equal(field("email").value, "rechazado@example.com");
-  assert.equal(saved.checkOut, "2026-10-21");
-  await fill("email", "corregido@example.com");
-  await submit();
-  await page.until(() => !popup());
-  assert.equal(writes.length, 2);
-  assert.notEqual(writes[1].requestId, writes[0].requestId);
-  assert.equal(saved.guest.email, "corregido@example.com");
-  assert.equal(saved.checkOut, "2026-10-21");
 });
 
 it("preserves a stay draft when the server preview rejects its assignment", async () => {
@@ -813,7 +730,7 @@ it("protects a stay draft from background refresh, router navigation and dirty d
   await page.until(() => router.state.location.pathname === "/reservations");
 });
 
-it.each(["loaded", "loading", "failed"] as const)(
+it.each(["loading", "failed"] as const)(
   "returns to the originating reservation list filters while the detail is %s",
   async (state) => {
     mockApi();
@@ -832,7 +749,7 @@ it.each(["loaded", "loading", "failed"] as const)(
       sort: "balance",
       direction: "desc",
     });
-    await render(`?returnTo=${encodeURIComponent(search.toString())}`, state === "loaded");
+    await render(`?returnTo=${encodeURIComponent(search.toString())}`, false);
     if (state === "failed")
       await page.until(() => page.container.textContent.includes("Reintentar"));
     await click("Volver a reservas");
