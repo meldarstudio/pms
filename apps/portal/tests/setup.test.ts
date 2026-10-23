@@ -574,3 +574,18 @@ it("keeps the normal calendar landing for a configured hotel and makes setup acc
     "Configuration link must open setup",
   );
 });
+
+it("keeps inventory editable when room types exist without rooms", async () => {
+  catalog.roomTypes = [double];
+  catalog.rooms = [];
+  api.on("GET", "/inventory", ({ url }) => ({
+    from: url.searchParams.get("from"),
+    to: url.searchParams.get("to"),
+    currency: "PEN",
+    roomTypes: [{ ...double, capacity: 0, nights: [] }],
+  }));
+  await render("/inventory?from=2026-10-14&span=7");
+  await until(() => container.textContent.includes("Doble"));
+  assert.equal(container.textContent.includes("Configura tu alojamiento"), false);
+  assert.equal(container.textContent.includes("Aún no hay habitaciones"), false);
+});

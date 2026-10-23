@@ -2261,3 +2261,127 @@ it("drops the held calendar after a guest edit without blanking the grid", async
     },
   });
 });
+
+it("updates calendar past-day restrictions at property midnight without changing its explicit range", async () => {
+  vi.setSystemTime(new Date("2026-11-01T04:59:59.990Z"));
+  page.api.catalog.rooms = [{ id: "room-1", number: "101", roomTypeId: "double" }];
+  page.api.on("GET", "/calendar", ({ url }) =>
+    calendarWindow(url, {
+      rooms: [
+        {
+          id: "room-1",
+          number: "101",
+          roomTypeId: "double",
+          roomTypeName: "Doble",
+          stays: [],
+          closures: [],
+        },
+      ],
+      unassigned: [],
+    }),
+  );
+  const changes: string[] = [];
+  await render(
+    React.createElement(calendars.RoomCalendar, {
+      start: new Date(2026, 9, 30),
+      span: 7,
+      onStartChange: (date) => {
+        changes.push(`${date.getFullYear()}-${date.getMonth() + 1}-${date.getDate()}`);
+      },
+      onSpanChange: () => {},
+      onOpenReservation: () => {},
+    }),
+  );
+  const slot = (day: string) => {
+    const element = window.document.querySelector<HTMLButtonElement>(
+      `button[aria-label="Nueva reserva para habitación 101 el ${day}"]`,
+    );
+    assert.ok(element, `Missing booking day ${day}`);
+    return element;
+  };
+  await until(
+    () => !!container.querySelector('button[aria-label*="habitación 101 el"]'),
+    "Calendar loads",
+  );
+  assert.equal(slot("30 oct 2026").disabled, true);
+  assert.equal(slot("31 oct 2026").disabled, false);
+  vi.setSystemTime(new Date("2026-11-01T05:00:00Z"));
+  await until(
+    () => slot("31 oct 2026").disabled,
+    "Property midnight disables yesterday without focus or sign-in",
+  );
+  assert.ok(page.button("30 oct 2026"));
+  assert.deepEqual(changes, []);
+  await React.act(async () => page.button("Hoy").click());
+  assert.deepEqual(changes, ["2026-11-1"]);
+});
+
+it("uses the property date for arrival badges and refreshes them on resume", async () => {
+  vi.setSystemTime(new Date("2026-11-01T01:00:00Z"));
+  const saved = {
+    id: "reservation-1",
+    status: "confirmed",
+    checkIn: "2026-10-31",
+    checkOut: "2026-11-02",
+    guestName: "Ada Lovelace",
+    rooms: [{ id: "line-1", roomTypeId: "double" }],
+  };
+
+  const line = saved.rooms[0]!;
+  page.api.on("GET", "/calendar", ({ url }) => ({
+    from: url.searchParams.get("from"),
+    to: url.searchParams.get("to"),
+    missingSetup: null,
+    rooms: [
+      {
+        id: "room-1",
+        number: "101",
+        roomTypeId: "double",
+        roomTypeName: "Doble",
+        stays: [],
+        closures: [],
+      },
+    ],
+    unassigned: [
+      {
+        id: line.id,
+        reservationId: saved.id,
+        guestName: saved.guestName,
+        status: saved.status,
+        checkIn: saved.checkIn,
+        checkOut: saved.checkOut,
+        roomId: null,
+        roomTypeId: line.roomTypeId,
+        roomIndex: 1,
+        roomCount: saved.rooms.length,
+      },
+    ],
+  }));
+  await render(
+    React.createElement(calendars.RoomCalendar, {
+      start: new Date(2026, 9, 31),
+      span: 7,
+      onStartChange: () => {},
+      onSpanChange: () => {},
+      onOpenReservation: () => {},
+    }),
+  );
+  await until(
+    () =>
+      !!container.querySelector(
+        'button[aria-label="Mostrar habitaciones reservadas sin asignar, 1"]',
+      ),
+    "Unassigned arrival loads",
+  );
+  await React.act(async () =>
+    container
+      .querySelector<HTMLButtonElement>(
+        'button[aria-label="Mostrar habitaciones reservadas sin asignar, 1"]',
+      )!
+      .click(),
+  );
+  assert.match(container.textContent, /Llega hoy/);
+  vi.setSystemTime(new Date("2026-11-01T05:00:00Z"));
+  await React.act(async () => window.document.dispatchEvent(new window.Event("visibilitychange")));
+  assert.equal(container.textContent.includes("Llega hoy"), false);
+});

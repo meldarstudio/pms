@@ -174,7 +174,7 @@ function mockApi(options: ApiOptions = {}) {
     return saved;
   });
 }
-async function render(search = "") {
+async function render(search = "", waitForDetail = true) {
   router = browser.routing.createRouter({
     routeTree: routes.router.routeTree,
     history: browser.routing.createMemoryHistory({
@@ -182,7 +182,7 @@ async function render(search = "") {
     }),
   });
   await page.renderRouter(router);
-  await page.until(() => page.container.textContent.includes("#TEST0001"));
+  if (waitForDetail) await page.until(() => page.container.textContent.includes("#TEST0001"));
 }
 const button = (label: string) => page.button(label);
 const click = (label: string) => page.click(label);
@@ -813,22 +813,33 @@ it("protects a stay draft from background refresh, router navigation and dirty d
   await page.until(() => router.state.location.pathname === "/reservations");
 });
 
-it("returns to the originating reservation list filters", async () => {
-  mockApi();
-  const search = new URLSearchParams({
-    view: "all",
-    day: "2026-10-12",
-    q: "Ana",
-    balance: "credit",
-    assignment: "unassigned",
-    sort: "balance",
-    direction: "desc",
-  });
-  await render(`?returnTo=${encodeURIComponent(search.toString())}`);
-  await click("Volver a reservas");
-  await page.until(() => router.state.location.pathname === "/reservations");
-  assert.deepEqual(
-    { ...router.state.location.search },
-    { ...Object.fromEntries(search), statuses: "all", size: 50 },
-  );
-});
+it.each(["loaded", "loading", "failed"] as const)(
+  "returns to the originating reservation list filters while the detail is %s",
+  async (state) => {
+    mockApi();
+    if (state === "loading")
+      page.api.on("GET", "/reservations/reservation-1", () => new Promise<Response>(() => {}));
+    if (state === "failed")
+      page.api.on("GET", "/reservations/reservation-1", () =>
+        Response.json({ error: "Request failed" }, { status: 503 }),
+      );
+    const search = new URLSearchParams({
+      view: "all",
+      day: "2026-10-12",
+      q: "Ana",
+      balance: "credit",
+      assignment: "unassigned",
+      sort: "balance",
+      direction: "desc",
+    });
+    await render(`?returnTo=${encodeURIComponent(search.toString())}`, state === "loaded");
+    if (state === "failed")
+      await page.until(() => page.container.textContent.includes("Reintentar"));
+    await click("Volver a reservas");
+    await page.until(() => router.state.location.pathname === "/reservations");
+    assert.deepEqual(
+      { ...router.state.location.search },
+      { ...Object.fromEntries(search), statuses: "all", size: 50 },
+    );
+  },
+);

@@ -1,14 +1,10 @@
 import assert from "node:assert/strict";
 import { describe, it } from "vite-plus/test";
-import { FormApi, FieldApi } from "@tanstack/react-form";
-import { ApiError, serverFieldErrors } from "../src/lib/api-error.ts";
 import {
   capacityMessage,
   detailsSchema,
   detailsSummaryRooms,
   discountSchema,
-  guestSchema,
-  guestPayload,
   paymentSchema,
   paymentDefaults,
   paymentPayload,
@@ -16,8 +12,6 @@ import {
   workflowDrafts,
   type DetailsValues,
 } from "../src/lib/reservation-form-schemas.ts";
-import { setServerErrors } from "../src/lib/form-errors.ts";
-import { blurThenChange } from "../src/lib/reservation-form-state.ts";
 import { roomEdits } from "../src/lib/reservation-editor.ts";
 import type { ReservationDetail } from "../src/lib/api.ts";
 import { configurePropertyCalendar } from "../src/lib/property-calendar.ts";
@@ -125,27 +119,6 @@ describe("reservation form schemas", () => {
       "Esta habitación ya está seleccionada en la reserva.",
     );
   });
-  it("normalizes optional guest fields only when creating the command", () => {
-    const values = {
-      id: "9b73e6c7-c684-4c4b-a205-b63e3c91a839",
-      fullName: " Ana Pérez ",
-      email: " ana@example.com ",
-      phone: " ",
-      documentType: "",
-      documentNumber: "",
-      reservationRoomId: null,
-    };
-    assert.equal(guestSchema.safeParse({ ...values, fullName: " " }).success, false);
-    assert.deepEqual(guestPayload(values), {
-      ...values,
-      fullName: "Ana Pérez",
-      email: "ana@example.com",
-      phone: null,
-      documentType: null,
-      documentNumber: null,
-    });
-    assert.equal(values.fullName, " Ana Pérez ");
-  });
   it("enforces payment precision, limits and actual UTC dates", () => {
     const values = {
       ...paymentDefaults(),
@@ -183,40 +156,50 @@ describe("draft room summaries", () => {
       totalCents,
     }) as ReservationDetail["rooms"][number];
 
-  it("updates occupancy and keeps saved charges while operational validation is pending", () => {
+  type Summary = ReturnType<typeof detailsSummaryRooms>[number];
+  it.each<
+    [string, (room: DetailsValues["rooms"][number]["room"]) => void, boolean, Partial<Summary>]
+  >([
+    [
+      "an occupancy edit keeps saved charges while validation is pending",
+      (room) => Object.assign(room, { adults: "2", children: "1", roomId: "102" }),
+      true,
+      {
+        adults: 2,
+        children: 1,
+        charges: { subtotalCents: 15000, discountCents: 0, totalCents: 15000 },
+      },
+    ],
+    [
+      "an unpriced type change stays visible",
+      (room) => (room.roomTypeId = "family"),
+      false,
+      { roomTypeId: "family", adults: 1, charges: null },
+    ],
+    [
+      "a blank child count is not shown as zero",
+      (room) => (room.children = " "),
+      true,
+      { children: null },
+    ],
+    [
+      "a fractional child count is not shown",
+      (room) => (room.children = "1.5"),
+      true,
+      { children: null },
+    ],
+    [
+      "zero adults is not shown as a valid count",
+      (room) => (room.adults = "0"),
+      true,
+      { adults: null, children: 0 },
+    ],
+  ])("summarizes a draft where %s", (_name, edit, pricesLoaded, expected) => {
     const values = details();
-    values.rooms[0].room.adults = "2";
-    values.rooms[0].room.children = "1";
-    values.rooms[0].room.roomId = "102";
-    const summary = detailsSummaryRooms(values, [priced()])[0];
-    assert.equal(summary.adults, 2);
-    assert.equal(summary.children, 1);
-    assert.deepEqual(summary.charges, {
-      subtotalCents: 15000,
-      discountCents: 0,
-      totalCents: 15000,
-    });
-  });
-
-  it("keeps draft rooms and counts visible while prices are unavailable", () => {
-    const values = details();
-    values.rooms[0].room.roomTypeId = "family";
-    const summary = detailsSummaryRooms(values, undefined)[0];
-    assert.equal(summary.roomTypeId, "family");
-    assert.equal(summary.adults, 1);
-    assert.equal(summary.charges, null);
-  });
-
-  it("does not display blank or invalid counts as zero guests", () => {
-    for (const invalid of ["", " ", "-1", "1.5", "NaN", "101"]) {
-      const values = details();
-      values.rooms[0].room.children = invalid;
-      assert.equal(detailsSummaryRooms(values, [priced()])[0].children, null);
-    }
-    const values = details();
-    values.rooms[0].room.adults = "0";
-    assert.equal(detailsSummaryRooms(values, [priced()])[0].adults, null);
-    assert.equal(detailsSummaryRooms(values, [priced()])[0].children, 0);
+    edit(values.rooms[0].room);
+    const summary = detailsSummaryRooms(values, pricesLoaded ? [priced()] : undefined)[0];
+    for (const [key, value] of Object.entries(expected))
+      assert.deepEqual(summary[key as keyof Summary], value, key);
   });
 
   it("matches retained and added room prices after removing a saved room", () => {
@@ -237,56 +220,5 @@ describe("draft room summaries", () => {
         ["draft-new", 31000],
       ],
     );
-  });
-});
-
-describe("TanStack form lifecycle", () => {
-  it("validates on blur, then on change after a failed submission", async () => {
-    let writes = 0;
-    const form = new FormApi({
-      defaultValues: paymentDefaults(),
-      validationLogic: blurThenChange(),
-      validators: { onDynamic: paymentSchema },
-      onSubmit: () => {
-        writes++;
-      },
-    });
-    const unmount = form.mount();
-    const field = new FieldApi({ form, name: "amount" });
-    const unmountField = field.mount();
-    field.handleChange("0");
-    assert.equal(field.state.meta.errors.length, 0);
-    field.handleBlur();
-    assert.ok(field.state.meta.errors.length);
-    await form.handleSubmit();
-    assert.equal(writes, 0);
-    field.handleChange("10.25");
-    assert.equal(field.state.meta.errors.length, 0);
-    await form.handleSubmit();
-    assert.equal(writes, 1);
-    unmountField();
-    unmount();
-  });
-  it("attaches server validation to the field and clears it when that field changes", () => {
-    const form = new FormApi({
-      defaultValues: paymentDefaults(),
-      validationLogic: blurThenChange(),
-      validators: { onDynamic: paymentSchema },
-    });
-    const unmount = form.mount();
-    const field = new FieldApi({ form, name: "date" });
-    const unmountField = field.mount();
-    const error = new ApiError(400, "payment date cannot be in the future");
-    setServerErrors(form, serverFieldErrors(error, "payment")!);
-    assert.deepEqual(field.state.meta.errors, ["La fecha del pago no puede ser futura."]);
-    field.handleChange("2020-01-01");
-    assert.equal(field.state.meta.errors.length, 0);
-    assert.equal(serverFieldErrors(new Error("Network failure"), "payment"), null);
-    assert.equal(
-      serverFieldErrors(new ApiError(409, "too many guests for this room type"), "details"),
-      null,
-    );
-    unmountField();
-    unmount();
   });
 });

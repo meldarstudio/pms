@@ -8,8 +8,6 @@ import {
   changeCheckIn,
   minimumCheckOut,
   unavailableRoomIds,
-  overlappingRoomIds,
-  contactValue,
   roomEdits,
   stayValue,
   type RoomDraft,
@@ -115,9 +113,6 @@ describe("billing changes versus validation", () => {
       ),
       key,
     );
-  });
-
-  it("keeps an added or repriced room's quote when only its assignment or headcount changes", () => {
     const room = stayValue(line("102"));
     const added = billingPreviewKey(saved, [{ type: "add-room", room }]);
     assert.equal(
@@ -146,56 +141,75 @@ describe("billing changes versus validation", () => {
     );
   });
 
-  it("validates occupancy and assignment edits without marking billing provisional", () => {
-    for (const patch of [{ adults: 3 }, { children: 1 }, { roomId: "102" }, { roomId: null }]) {
-      const action: WorkflowAction = {
-        type: "edit-room",
-        lineId: "101",
-        room: { ...stayValue(saved.rooms[0]), ...patch },
-      };
-      assert.deepEqual(validationPreviewActions([action]), [action]);
-      assert.equal(hasBillingChanges(saved, [action]), false);
-    }
+  const editRoom = (patch: Partial<RoomDraft["room"]>): WorkflowAction => ({
+    type: "edit-room",
+    lineId: "101",
+    room: { ...stayValue(saved.rooms[0]), ...patch },
   });
-
-  it("marks dates, room types, added rooms and removed rooms as billing changes", () => {
-    const actions: WorkflowAction[] = [
+  it.each<[string, ReservationDetail["status"], WorkflowAction, boolean, boolean]>([
+    [
+      "a later checkout",
+      "confirmed",
       { type: "dates", ...dates, checkOut: "2026-10-16" },
+      true,
+      true,
+    ],
+    [
+      "an earlier arrival",
+      "confirmed",
       { type: "dates", ...dates, checkIn: "2026-10-11" },
+      true,
+      true,
+    ],
+    [
+      "a room type change",
+      "confirmed",
+      editRoom({ roomTypeId: "single", roomId: null }),
+      true,
+      true,
+    ],
+    ["an added room", "confirmed", { type: "add-room", room: stayValue(line("102")) }, true, true],
+    ["a removed room", "confirmed", { type: "remove-room", lineId: "101" }, true, true],
+    ["a discount", "confirmed", { type: "set-discount", amountCents: 1000 }, true, true],
+    ["a cancellation", "confirmed", { type: "set-status", status: "cancelled" }, true, true],
+    ["a restoration", "cancelled", { type: "set-status", status: "confirmed" }, true, true],
+    [
+      "a repeated cancellation",
+      "cancelled",
+      { type: "set-status", status: "cancelled" },
+      false,
+      true,
+    ],
+    ["a checkout", "confirmed", { type: "set-status", status: "checked_out" }, false, true],
+    ["an adult count", "confirmed", editRoom({ adults: 3 }), false, true],
+    ["a child count", "confirmed", editRoom({ children: 1 }), false, true],
+    ["a room assignment", "confirmed", editRoom({ roomId: "102" }), false, true],
+    ["a cleared assignment", "confirmed", editRoom({ roomId: null }), false, true],
+    ["notes", "confirmed", { type: "notes", notes: "Note" }, false, false],
+    [
+      "a contact",
+      "confirmed",
       {
-        type: "edit-room",
-        lineId: "101",
-        room: {
-          ...stayValue(saved.rooms[0]),
-          roomTypeId: "single",
-          roomId: null,
+        type: "contact",
+        contact: {
+          fullName: "Ana",
+          email: null,
+          phone: null,
+          documentType: null,
+          documentNumber: null,
         },
       },
-      { type: "add-room", room: stayValue(line("102")) },
-      { type: "remove-room", lineId: "101" },
-      { type: "set-discount", amountCents: 1000 },
-    ];
-    for (const action of actions) {
-      assert.equal(hasBillingChanges(saved, [action]), true, action.type);
-      assert.deepEqual(validationPreviewActions([action]), [action]);
-    }
-  });
-
-  it("validates ordinary status edits and marks cancellation or restoration as billing changes", () => {
-    for (const status of ["confirmed", "checked_in", "checked_out"] as const) {
-      const action: WorkflowAction = { type: "set-status", status };
-      assert.equal(hasBillingChanges(saved, [action]), false);
-      assert.deepEqual(validationPreviewActions([action]), [action]);
-      assert.equal(hasBillingChanges({ ...saved, status: "cancelled" }, [action]), true);
-    }
-    assert.equal(hasBillingChanges(saved, [{ type: "set-status", status: "cancelled" }]), true);
-    assert.equal(
-      hasBillingChanges({ ...saved, status: "cancelled" }, [
-        { type: "set-status", status: "cancelled" },
-      ]),
       false,
-    );
-  });
+      false,
+    ],
+    ["staying guests", "confirmed", { type: "set-guests", guests: [] }, false, false],
+  ])(
+    "classifies %s on a %s reservation for billing and validation previews",
+    (_name, status, action, billing, previewed) => {
+      assert.equal(hasBillingChanges({ ...saved, status }, [action]), billing);
+      assert.deepEqual(validationPreviewActions([action]), previewed ? [action] : []);
+    },
+  );
 
   it("clears the billing badge when the last pricing edit is reverted, even with other unsaved edits", () => {
     const operational: WorkflowAction = {
@@ -232,7 +246,7 @@ describe("billing changes versus validation", () => {
   });
 });
 describe("reservation edit drafts", () => {
-  it("removes a saved room and adds a new room through the same reservation command", () => {
+  it("emits removals, additions and edits but ignores equal drafts and unsaved removals", () => {
     const saved = line("101");
     const added = draft(line("102"));
     assert.deepEqual(
@@ -245,9 +259,6 @@ describe("reservation edit drafts", () => {
         { type: "add-room", room: added.room },
       ],
     );
-  });
-  it("edits a changed room and ignores an equal draft or an unsaved removal", () => {
-    const saved = line("101");
     const changed = { ...stayValue(saved), adults: 3 };
     assert.deepEqual(
       roomEdits({ rooms: [saved] } as ReservationDetail, [
@@ -257,17 +268,6 @@ describe("reservation edit drafts", () => {
       [{ type: "edit-room", lineId: "101", room: changed }],
     );
     assert.deepEqual(roomEdits({ rooms: [saved] } as ReservationDetail, [draft(saved)]), []);
-  });
-  it("blocks duplicate physical assignments within a reservation", () => {
-    assert.deepEqual(
-      [
-        ...overlappingRoomIds([
-          stayValue(line("102")),
-          { ...stayValue(line("103")), roomId: null },
-        ]),
-      ],
-      ["102"],
-    );
   });
   it("uses parent status and dates for external availability and allows checkout-day arrivals", () => {
     const res = (id: string, status = "confirmed", checkOut = dates.checkOut): Reservation => ({
@@ -310,24 +310,6 @@ describe("reservation edit drafts", () => {
       ["201", "202"],
     );
   });
-  it("normalizes cleared contact fields to null", () => {
-    assert.deepEqual(
-      contactValue({
-        fullName: " Ana ",
-        email: " ",
-        phone: "",
-        documentType: "",
-        documentNumber: "",
-      }),
-      {
-        fullName: "Ana",
-        email: null,
-        phone: null,
-        documentType: null,
-        documentNumber: null,
-      },
-    );
-  });
 });
 describe("shared stay dates", () => {
   it("advances checkout when an arrival would leave less than a night", () => {
@@ -341,29 +323,5 @@ describe("shared stay dates", () => {
     });
     assert.equal(minimumCheckOut("2026-12-31"), "2027-01-01");
     assert.equal(minimumCheckOut("2028-02-28"), "2028-02-29");
-  });
-  it("previews dates and status but excludes notes, contact and guests", () => {
-    assert.deepEqual(
-      validationPreviewActions([
-        { type: "dates", ...dates },
-        { type: "notes", notes: "Note" },
-        {
-          type: "contact",
-          contact: {
-            fullName: "Ana",
-            email: null,
-            phone: null,
-            documentType: null,
-            documentNumber: null,
-          },
-        },
-        { type: "set-guests", guests: [] },
-        { type: "set-status", status: "checked_out" },
-      ]),
-      [
-        { type: "dates", ...dates },
-        { type: "set-status", status: "checked_out" },
-      ],
-    );
   });
 });

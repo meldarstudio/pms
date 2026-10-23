@@ -41,7 +41,7 @@ function closure(starts: string, ends: string): RoomClosure {
 }
 
 describe("room assignment", () => {
-  it("allows a one-night stay between same-day checkout and arrival", () => {
+  it("allows a one-night stay between same-day checkout and arrival but not on an occupied night", () => {
     assert.equal(
       roomAssignmentIssue(
         room,
@@ -51,9 +51,6 @@ describe("room assignment", () => {
       ),
       null,
     );
-  });
-
-  it("rejects an occupied night regardless of the half-day bar endpoints", () => {
     assert.equal(
       roomAssignmentIssue(room, target, [occupied("2026-10-05", "2026-10-06")], []),
       "Occupied during this stay",
@@ -69,20 +66,6 @@ describe("room assignment", () => {
     assert.equal(
       roomAssignmentIssue(room, longStay, [], [closure("2026-10-13", "2026-10-14")]),
       "Closed during this stay",
-    );
-  });
-
-  it("does not let cancelled reservations block a room", () => {
-    assert.equal(
-      roomAssignmentIssue(room, target, [occupied("2026-10-05", "2026-10-06", "cancelled")], []),
-      null,
-    );
-  });
-
-  it("checks the saved dates of a checked-out stay", () => {
-    assert.equal(
-      roomAssignmentIssue(room, target, [occupied("2026-10-05", "2026-10-06", "checked_out")], []),
-      "Occupied during this stay",
     );
   });
 
@@ -211,41 +194,32 @@ describe("room assignment", () => {
   });
 });
 
-describe("checked-in stays", () => {
-  it("keeps a checked-in stay on the calendar and treats it as occupying the room", () => {
-    const staying = reservation({ status: "checked_in" });
-    const [stay] = reservationStays([staying]);
-    assert.equal(stay.status, "checked_in");
-    assert.equal(stay.roomId, null);
-    assert.equal(
-      roomAssignmentIssue(room, target, [occupied("2026-10-05", "2026-10-06", "checked_in")], []),
-      "Occupied during this stay",
-    );
-  });
+describe("stay statuses", () => {
+  it.each([
+    ["confirmed", "Occupied during this stay", 1, 1],
+    ["checked_in", "Occupied during this stay", 1, 1],
+    ["checked_out", "Occupied during this stay", 0, 1],
+    ["cancelled", null, 0, 0],
+  ] as const)(
+    "applies %s status rules to saved-night conflicts, open stays and calendar bars",
+    (status, issue, open, bars) => {
+      const stay = reservation({ status });
+      assert.equal(reservationStays([stay]).length, open);
+      const calendar = reservationStays([stay], true);
+      assert.equal(calendar.length, bars);
+      if (bars)
+        assert.deepEqual([calendar[0].status, calendar[0].checkOut], [status, "2026-10-06"]);
+      assert.equal(
+        roomAssignmentIssue(room, target, [occupied("2026-10-05", "2026-10-06", status)], []),
+        issue,
+      );
+    },
+  );
 
   it("does not treat a stay as occupying its own assigned room", () => {
     const self = reservation({
       rooms: [{ id: target.id, roomTypeId: "deluxe", roomId: room.id }],
     });
     assert.equal(roomAssignmentIssue(room, target, [self], []), null);
-  });
-});
-
-describe("completed calendar stays", () => {
-  it("uses final saved dates for completed calendar bars without adding them to assignment lists", () => {
-    const completed = reservation({
-      status: "checked_out",
-      rooms: [
-        {
-          id: "completed",
-          roomId: room.id,
-          roomTypeId: room.roomTypeId,
-        },
-      ],
-    });
-    assert.equal(reservationStays([completed]).length, 0);
-    const [stay] = reservationStays([completed], true);
-    assert.equal(stay.status, "checked_out");
-    assert.equal(stay.checkOut, "2026-10-06");
   });
 });

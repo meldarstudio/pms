@@ -105,7 +105,7 @@ function amount(label: string) {
   return term.parentElement!.querySelector("dd")!.textContent.replace(/\s/g, "");
 }
 
-it("offers discount editing on its zero-valued row and refreshes the bill after saving", async () => {
+it("saves a discount from its zero-valued row and then a payment without changing the discount", async () => {
   saved = {
     ...saved,
     discountCents: 0,
@@ -114,6 +114,13 @@ it("offers discount editing on its zero-valued row and refreshes the bill after 
     balanceCents: 20025,
   };
   writeResponse = (command) => {
+    const [action] = command.actions;
+    if (action?.type === "add-payment") {
+      assert.equal(command.actions.length, 1);
+      assert.equal(action.payment.amountCents, 4975);
+      saved = { ...saved, paidCents: 15000, balanceCents: 10000 };
+      return Response.json(saved);
+    }
     assert.deepEqual(command.actions, [{ type: "set-discount", amountCents: 5050 }]);
     saved = {
       ...saved,
@@ -136,30 +143,16 @@ it("offers discount editing on its zero-valued row and refreshes the bill after 
   assert.equal(amount("Total"), "S/250");
   assert.equal(amount("Pagado"), "S/100.25");
   assert.match(page.container.textContent.replace(/\s/g, ""), /SaldopendienteS\/149\.75/);
-});
 
-it.each([
-  {
-    origin: "calendar",
-    search: "?origin=calendar&returnTo=from%3D2026-10-19%26span%3D14",
-    state: "loaded",
-  },
-  { origin: "direct", search: "", state: "loading" },
-  { origin: "list", search: "?returnTo=view%3Dall%26q%3DAna", state: "error" },
-])(
-  "returns to Reservations from $origin entry while detail is $state",
-  async ({ search, state }) => {
-    if (state === "loading") detailResponse = () => new Promise<Response>(() => {});
-    if (state === "error")
-      detailResponse = () => Response.json({ error: "Request failed" }, { status: 503 });
-    await render(search, state === "loaded");
-    if (state === "error")
-      await page.until(() => page.container.textContent.includes("Reintentar"));
-    await click("Volver a reservas");
-    await page.until(() => router.state.location.pathname === "/reservations");
-    await page.until(() => page.container.textContent.includes("No se encontraron reservas"));
-  },
-);
+  await click("Registrar pago");
+  await fillAmount("49.75");
+  await click("Guardar cambios");
+  await page.until(() => browser.window.document.querySelector('[role="dialog"]') === null);
+  assert.equal(amount("Descuento"), "S/50.50");
+  assert.equal(amount("Total"), "S/250");
+  assert.equal(amount("Pagado"), "S/150");
+  assert.match(page.container.textContent.replace(/\s/g, ""), /SaldopendienteS\/100/);
+});
 
 it.each([
   {
@@ -196,26 +189,6 @@ it.each([
       assert.ok(page.container.textContent.includes("no representa un reembolso"));
   },
 );
-
-it("registers a received payment independently of the discount and refreshes the amount paid and balance", async () => {
-  writeResponse = (command) => {
-    assert.equal(command.actions.length, 1);
-    const action = command.actions[0]!;
-    assert.equal(action.type, "add-payment");
-    if (action.type === "add-payment") assert.equal(action.payment.amountCents, 4975);
-    saved = { ...saved, paidCents: 15000, balanceCents: 10000 };
-    return Response.json(saved);
-  };
-  await render();
-  await click("Registrar pago");
-  await fillAmount("49.75");
-  await click("Guardar cambios");
-  await page.until(() => browser.window.document.querySelector('[role="dialog"]') === null);
-  assert.equal(amount("Descuento"), "S/50.50");
-  assert.equal(amount("Total"), "S/250");
-  assert.equal(amount("Pagado"), "S/150");
-  assert.match(page.container.textContent.replace(/\s/g, ""), /SaldopendienteS\/100/);
-});
 
 it("protects a discount draft when Back targets Reservations and allows explicit discard", async () => {
   await render("?origin=calendar&returnTo=from%3D2026-10-19%26span%3D14");
