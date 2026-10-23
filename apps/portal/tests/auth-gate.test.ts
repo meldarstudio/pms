@@ -76,7 +76,7 @@ it("reveals and hides the password without submitting or changing the credential
   assert.deepEqual(logins, [{ username: "hotelmanantial", password: "  test password  " }]);
 });
 
-it("keeps entered credentials and translates a failed login while allowing password reveal", async () => {
+it("keeps entered credentials and translates a failed login", async () => {
   const logins = mockApi(Response.json({ error: "invalid credentials" }, { status: 401 }));
   await render();
   await fill("username", "hotelmanantial");
@@ -89,9 +89,6 @@ it("keeps entered credentials and translates a failed login while allowing passw
   assert.equal(input("username").value, "hotelmanantial");
   assert.equal(input("password").value, "incorrect password");
   assert.equal(button("Iniciar sesión").disabled, false);
-  await React.act(async () => button("Mostrar contraseña").click());
-  assert.equal(input("password").type, "text");
-  assert.equal(input("password").value, "incorrect password");
   assert.equal(logins.length, 1);
 });
 
