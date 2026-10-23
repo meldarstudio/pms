@@ -15,6 +15,11 @@ import { load } from "js-yaml";
 import { afterEach, expect, it } from "vite-plus/test";
 
 const repo = fileURLToPath(new URL("../../../", import.meta.url));
+const actions = {
+  checkout: "actions/checkout@v7",
+  pnpm: "pnpm/action-setup@v6",
+  node: "actions/setup-node@v7",
+};
 const temporaryDirs = [];
 const validationCommands = [
   "install --frozen-lockfile",
@@ -141,8 +146,8 @@ function supportedWorkflow(workflow) {
   if (job["runs-on"] !== "ubuntu-latest") throw new Error("Unsupported runner");
   defaults(workflow.defaults);
   defaults(job.defaults);
-  const pnpm = job.steps.findIndex((step) => step.uses === "pnpm/action-setup@v4");
-  const node = job.steps.findIndex((step) => step.uses === "actions/setup-node@v4");
+  const pnpm = job.steps.findIndex((step) => step.uses === actions.pnpm);
+  const node = job.steps.findIndex((step) => step.uses === actions.node);
   const install = job.steps.findIndex((step) => step.run === "pnpm install --frozen-lockfile");
   if (pnpm < 0 || node <= pnpm || install <= node)
     throw new Error("Unsupported runtime setup order before frozen installation");
@@ -156,18 +161,18 @@ function supportedWorkflow(workflow) {
       if (step.with) throw new Error("Unsupported run step inputs");
     } else if (step.uses && !step.run && step.shell === undefined && step.env === undefined) {
       const inputs = {
-        "actions/checkout@v4": ["ref", "fetch-depth", "persist-credentials"],
-        "pnpm/action-setup@v4": ["run_install"],
-        "actions/setup-node@v4": ["node-version-file", "cache"],
+        [actions.checkout]: ["ref", "fetch-depth", "persist-credentials"],
+        [actions.pnpm]: ["run_install"],
+        [actions.node]: ["node-version-file", "cache"],
       }[step.uses];
       if (!inputs) throw new Error(`Unsupported action: ${step.uses}`);
       onlyKeys(step.with, inputs);
-      if (step.uses === "pnpm/action-setup@v4" && step.with?.run_install !== false)
+      if (step.uses === actions.pnpm && step.with?.run_install !== false)
         throw new Error(
           "Unsupported pnpm runtime setup: dependency installation must remain separate",
         );
       if (
-        step.uses === "actions/setup-node@v4" &&
+        step.uses === actions.node &&
         (step.with?.["node-version-file"] !== ".node-version" || step.with?.cache !== "pnpm")
       )
         throw new Error("Unsupported Node runtime setup");
@@ -201,17 +206,17 @@ function release(f, options = {}) {
     const id = step.id ?? `step${index}`;
     context[`steps.${id}.outcome`] = "skipped";
     if (failed && step.if !== "always()") continue;
-    if (step.uses === "actions/checkout@v4") {
+    if (step.uses === actions.checkout) {
       git(f.cwd, "checkout", "--detach", interpolate(step.with?.ref ?? "main"));
       continue;
     }
-    if (step.uses === "pnpm/action-setup@v4") {
+    if (step.uses === actions.pnpm) {
       const { packageManager } = JSON.parse(readFileSync(join(f.cwd, "package.json"), "utf8"));
       if (packageManager !== "pnpm@12.15.0")
         throw new Error("Unsupported pnpm runtime at selected checkout");
       continue;
     }
-    if (step.uses === "actions/setup-node@v4") {
+    if (step.uses === actions.node) {
       const version = readFileSync(join(f.cwd, step.with["node-version-file"]), "utf8").trim();
       if (version !== "22.23.4" || process.versions.node !== version)
         throw new Error("Unsupported Node runtime at selected checkout");
@@ -375,12 +380,12 @@ it.each([
 );
 
 it.each([
-  ["missing pnpm setup", (steps) => steps.filter((s) => s.uses !== "pnpm/action-setup@v4")],
-  ["missing Node setup", (steps) => steps.filter((s) => s.uses !== "actions/setup-node@v4")],
+  ["missing pnpm setup", (steps) => steps.filter((s) => s.uses !== actions.pnpm)],
+  ["missing Node setup", (steps) => steps.filter((s) => s.uses !== actions.node)],
   [
     "setup after installation",
     (steps) => {
-      const index = steps.findIndex((s) => s.uses === "actions/setup-node@v4");
+      const index = steps.findIndex((s) => s.uses === actions.node);
       steps.push(...steps.splice(index, 1));
       return steps;
     },
@@ -396,15 +401,14 @@ it.each([
   [
     "wrong Node version file",
     (steps) => {
-      steps.find((s) => s.uses === "actions/setup-node@v4").with["node-version-file"] =
-        "other-version";
+      steps.find((s) => s.uses === actions.node).with["node-version-file"] = "other-version";
       return steps;
     },
   ],
   [
     "pnpm installing dependencies in setup",
     (steps) => {
-      steps.find((s) => s.uses === "pnpm/action-setup@v4").with.run_install = true;
+      steps.find((s) => s.uses === actions.pnpm).with.run_install = true;
       return steps;
     },
   ],
