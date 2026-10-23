@@ -41,7 +41,7 @@ export function App() {
       <AppSidebar />
       <SidebarInset className="min-h-0 min-w-0 overflow-hidden">
         <header className="flex h-12 shrink-0 items-center gap-3 border-b px-2.5">
-          <SidebarTrigger />
+          <SidebarTrigger className="min-h-11 min-w-11 md:min-h-0 md:min-w-0" />
           <Separator
             orientation="vertical"
             className="data-vertical:h-4 data-vertical:self-center"

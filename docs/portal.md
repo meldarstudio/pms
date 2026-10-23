@@ -20,7 +20,8 @@ status, balance, assignment, sorting, page size, and page encoded in the URL.
 Defaults use the property date. Legacy `checkIn` and `status` URLs remain accepted.
 The in-house view locks status to checked in. See
 [route-search.ts](../apps/portal/src/lib/route-search.ts) for parsing and
-[reservation filters](reservations.md#portal-list-filters) for interaction rules.
+[reservation list](reservations.md#portal-list) for responsive layout and filter
+interaction rules.
 
 Code-based TanStack Router routes live in
 [router.tsx](../apps/portal/src/router.tsx);

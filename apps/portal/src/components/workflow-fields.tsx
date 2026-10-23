@@ -1,4 +1,5 @@
 import { useId, useRef } from "react";
+import { cn } from "cn";
 import { format, parseISO } from "date-fns";
 import { DateField } from "@/components/date-field";
 import { Field, FieldError, FieldLabel } from "@/components/ui/field";
@@ -118,6 +119,7 @@ export function ChoiceField({
   onBlur,
   groupErrorId,
   placeholder,
+  touchTargets = false,
 }: {
   label: string;
   value: string;
@@ -131,6 +133,7 @@ export function ChoiceField({
   onBlur?: () => void;
   groupErrorId?: string;
   placeholder?: string;
+  touchTargets?: boolean;
 }) {
   const generatedId = useId();
   const id = providedId ?? generatedId;
@@ -153,7 +156,7 @@ export function ChoiceField({
       >
         <SelectTrigger
           id={id}
-          className="w-full"
+          className={cn("w-full", touchTargets && "min-h-11")}
           onBlur={() => {
             if (!menuOpen.current) onBlur?.();
           }}
@@ -165,7 +168,12 @@ export function ChoiceField({
         <SelectContent>
           <SelectGroup>
             {options.map((o) => (
-              <SelectItem key={o.value} value={o.value} disabled={o.disabled}>
+              <SelectItem
+                key={o.value}
+                value={o.value}
+                disabled={o.disabled}
+                className={cn(touchTargets && "min-h-11")}
+              >
                 {o.label}
               </SelectItem>
             ))}
