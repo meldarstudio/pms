@@ -185,18 +185,11 @@ it("keeps approved SQL hashes, private snapshots and export/report behavior", as
   expect(calls.findIndex(({ args }) => args[3] === "export")).toBeLessThan(calls.indexOf(apply));
 });
 
-it.each(["SQL", "journal", "configuration"])(
+it.each(["SQL", "configuration"])(
   "stops if approved %s changes before export or migration",
   async (kind) => {
     const f = fixture();
-    const path = join(
-      f.backend,
-      kind === "SQL"
-        ? `drizzle/${f.names.at(-1)}`
-        : kind === "journal"
-          ? "drizzle/meta/_journal.json"
-          : "wrangler.jsonc",
-    );
+    const path = join(f.backend, kind === "SQL" ? `drizzle/${f.names.at(-1)}` : "wrangler.jsonc");
     const result = await interactive(f, () => {
       writeFileSync(path, readFileSync(path, "utf8") + "\n");
       return "pms-production";

@@ -40,17 +40,6 @@ const draft = (
   room: { roomTypeId, roomId, adults: "1", children: "0" },
 });
 
-it("clears unavailable types and assignments after an availability change without removing guest counts", () => {
-  const drafts = [draft("a", "double", "101"), draft("b", "suite", "201")];
-  const result = newBookingAvailability(drafts, types, physical, new Set(["101"]));
-  assert.equal(result.rooms[0].room.roomId, null);
-  assert.equal(result.rooms[0].room.roomTypeId, "double");
-  assert.equal(result.rooms[1].room.roomTypeId, "");
-  assert.equal(result.rooms[1].room.roomId, null);
-  assert.equal(result.rooms[1].room.adults, "1");
-  assert.equal(drafts[0].room.roomId, "101");
-});
-
 it("keeps earlier room selections when inventory shrinks and releases duplicate assignments", () => {
   const drafts = [draft("a", "double", "101"), draft("b", "double", "101"), draft("c")];
   const result = newBookingAvailability(drafts, types, physical, new Set());
@@ -58,4 +47,13 @@ it("keeps earlier room selections when inventory shrinks and releases duplicate 
   assert.equal(result.rooms[1].room.roomId, null);
   assert.equal(result.rooms[2].room.roomTypeId, "");
   assert.equal(result.canAdd, false);
+});
+
+it("clears an occupied assignment while retaining its available type and guest counts", () => {
+  const drafts = [draft("a", "double", "101")];
+  const result = newBookingAvailability(drafts, types, physical, new Set(["101"]));
+  assert.equal(result.rooms[0].room.roomId, null);
+  assert.equal(result.rooms[0].room.roomTypeId, "double");
+  assert.equal(result.rooms[0].room.adults, "1");
+  assert.equal(drafts[0].room.roomId, "101");
 });

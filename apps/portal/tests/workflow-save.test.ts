@@ -13,15 +13,25 @@ const payment: WorkflowAction = {
 };
 
 describe("independent reservation saves", () => {
-  it("retries an uncertain payment with the same command, then permits a new intentional payment", async () => {
+  it("blocks a duplicate during an uncertain payment, retries the same command, then permits a new payment", async () => {
     const save = createWorkflowSaver();
     const commands: WorkflowCommand[] = [];
+    let fail!: () => void;
+    const first = save([payment], (command) => {
+      commands.push(command);
+      return new Promise<void>((_, reject) => {
+        fail = () => reject(new Error("Connection lost after commit"));
+      });
+    });
     await assert.rejects(
       save([payment], async (command) => {
         commands.push(command);
-        throw new Error("Connection lost after commit");
       }),
+      /termine/,
     );
+    assert.equal(commands.length, 1);
+    fail();
+    await assert.rejects(first);
     await save([payment], async (command) => {
       commands.push(command);
     });
@@ -30,28 +40,6 @@ describe("independent reservation saves", () => {
       commands.push(command);
     });
     assert.notEqual(commands[2].requestId, commands[0].requestId);
-  });
-
-  it("blocks a second submission while the first payment is saving", async () => {
-    const save = createWorkflowSaver();
-    let finish!: () => void;
-    const first = save(
-      [payment],
-      () =>
-        new Promise<void>((resolve) => {
-          finish = resolve;
-        }),
-    );
-    let duplicates = 0;
-    await assert.rejects(
-      save([payment], async () => {
-        duplicates++;
-      }),
-      /termine/,
-    );
-    assert.equal(duplicates, 0);
-    finish();
-    await first;
   });
 
   it("keeps guest and payment commands independent and snapshots guest text during a save", async () => {

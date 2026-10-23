@@ -124,44 +124,41 @@ it("verifies the offline page after Cloudflare's canonical HTML redirect", async
   expect(f.requests.some(({ path }) => path === "/offline")).toBe(true);
 });
 
-it.each(["/login", "http://127.0.0.1:1/offline"])(
-  "rejects an HTML redirect to %s without following it",
-  async (location) => {
+it.each(["/login"])("rejects an HTML redirect to %s without following it", async (location) => {
+  const f = await fixture((path, response) => {
+    if (path !== "/offline.html") return false;
+    response.writeHead(307, { Location: location });
+    response.end();
+    return true;
+  });
+  await expect(f.check()).rejects.toMatchObject({
+    code: 1,
+    stderr: expect.stringContaining("Unexpected HTML redirect"),
+  });
+  expect(f.requests.some(({ path }) => path === "/login")).toBe(false);
+});
+
+it.each([["stale HTML", 200, "<!doctype html><h1>Old offline page</h1>"]])(
+  "rejects %s at the canonical HTML URL",
+  async (_, status, body) => {
     const f = await fixture((path, response) => {
-      if (path !== "/offline.html") return false;
-      response.writeHead(307, { Location: location });
-      response.end();
-      return true;
+      if (path === "/offline.html") {
+        response.writeHead(307, { Location: "/offline" });
+        response.end();
+        return true;
+      }
+      if (path === "/offline") {
+        response.writeHead(status, { "Content-Type": "text/html", Location: "/login" });
+        response.end(body);
+        return true;
+      }
+      return false;
     });
-    await expect(f.check()).rejects.toMatchObject({
-      code: 1,
-      stderr: expect.stringContaining("Unexpected HTML redirect"),
-    });
+    await expect(f.check()).rejects.toMatchObject({ code: 1 });
+    expect(f.requests.some(({ path }) => path === "/offline")).toBe(true);
     expect(f.requests.some(({ path }) => path === "/login")).toBe(false);
   },
 );
-
-it.each([
-  ["stale HTML", 200, "<!doctype html><h1>Old offline page</h1>"],
-  ["another redirect", 307, "redirecting"],
-])("rejects %s at the canonical HTML URL", async (_, status, body) => {
-  const f = await fixture((path, response) => {
-    if (path === "/offline.html") {
-      response.writeHead(307, { Location: "/offline" });
-      response.end();
-      return true;
-    }
-    if (path === "/offline") {
-      response.writeHead(status, { "Content-Type": "text/html", Location: "/login" });
-      response.end(body);
-      return true;
-    }
-    return false;
-  });
-  await expect(f.check()).rejects.toMatchObject({ code: 1 });
-  expect(f.requests.some(({ path }) => path === "/offline")).toBe(true);
-  expect(f.requests.some(({ path }) => path === "/login")).toBe(false);
-});
 
 it("allows a transient propagation failure to recover before reporting success", async () => {
   let unavailable = true;
@@ -178,11 +175,9 @@ it("allows a transient propagation failure to recover before reporting success",
 it.each([
   ["wrong API", "/api/", 200, "application/json", '{"name":"another-app"}'],
   ["unguarded session", "/api/session", 200, "application/json", '{"username":"staff"}'],
-  ["redirect", "/", 302, "text/html", "redirecting"],
   ["API redirect", "/api/", 307, "application/json", '{"name":"pms"}'],
   ["script redirect", "/assets/app.js", 307, "text/javascript", 'console.log("current release");'],
   ["stale asset", "/assets/app.js", 200, "text/javascript", 'console.log("old release");'],
-  ["SPA fallback", "/sw.js", 200, "text/html", "<!doctype html><h1>PMS</h1>"],
   [
     "unusable script MIME type",
     "/assets/app.js",

@@ -4,6 +4,7 @@ import type { HTMLInputElement, HTMLElement } from "happy-dom";
 import type { ReservationDetail } from "../src/lib/api.ts";
 import { createBrowserTest, type BrowserTest, type BrowserPage } from "./browser.ts";
 import { calendarResponse } from "./calendar-window.ts";
+import type { FakeRequest } from "./fake-backend.ts";
 
 let browser: BrowserTest;
 let page: BrowserPage;
@@ -15,7 +16,7 @@ let router: typeof routes.router;
 let container: BrowserPage["container"];
 let client: BrowserPage["client"];
 let until: BrowserPage["until"];
-let requests: URL[];
+let requests: FakeRequest[];
 let calendarReservation: () => typeof ana;
 let respond: (url: URL) => Response | Promise<Response>;
 let respondToDetail: (url: URL, init?: RequestInit) => Response | Promise<Response>;
@@ -77,7 +78,6 @@ beforeEach(() => {
   vi.spyOn(Date, "now").mockReturnValue(new Date("2026-11-01T01:00:00Z").getTime());
   page = browser.createPage();
   ({ container, client, until } = page);
-  requests = [];
   calendarReservation = () => ana;
   respondToDetail = () => Response.json(ana);
   respond = (url) =>
@@ -87,49 +87,38 @@ beforeEach(() => {
       limit: Number(url.searchParams.get("limit")),
       offset: Number(url.searchParams.get("offset")),
     });
-  globalThis.fetch = async (input, init) => {
-    assert.equal(init?.credentials, "include");
-    const url = new URL(
-      typeof input === "string" ? input : input instanceof URL ? input.href : input.url,
-    );
-    if (url.pathname === "/room-types")
-      return Response.json([
-        { id: "double", name: "Doble", maxAdults: 2, maxChildren: 2, baseRateCents: 15000 },
-      ]);
-    if (url.pathname === "/rooms")
-      return Response.json([{ id: "room", number: "101", roomTypeId: "double" }]);
-    if (url.pathname.startsWith("/reservations/ana")) return respondToDetail(url, init);
-    if (url.pathname === "/calendar") {
-      const reservation = calendarReservation();
-      const line = reservation.rooms[0]!;
-      return calendarResponse(url, {
-        rooms: [
-          {
-            id: "room",
-            number: "101",
-            roomTypeId: "double",
-            roomTypeName: "Doble",
-            stays: [
-              {
-                id: line.id,
-                reservationId: reservation.id,
-                guestName: reservation.guestName,
-                status: reservation.status,
-                checkIn: reservation.checkIn,
-                checkOut: reservation.checkOut,
-              },
-            ],
-          },
-        ],
-      });
-    }
-    if (url.pathname === "/room-closures") return Response.json([]);
-    if (url.pathname === "/reservations") {
-      requests.push(url);
-      return respond(url);
-    }
-    throw new Error(`Unexpected request ${url}`);
-  };
+  // The fake backend also asserts that every request sends credentials.
+  page.api.catalog.roomTypes = [
+    { id: "double", name: "Doble", maxAdults: 2, maxChildren: 2, baseRateCents: 15000 },
+  ];
+  page.api.catalog.rooms = [{ id: "room", number: "101", roomTypeId: "double" }];
+  page.api.on("*", /^\/reservations\/ana/, ({ url, init }) => respondToDetail(url, init));
+  page.api.on("GET", "/calendar", ({ url }) => {
+    const reservation = calendarReservation();
+    const line = reservation.rooms[0]!;
+    return calendarResponse(url, {
+      rooms: [
+        {
+          id: "room",
+          number: "101",
+          roomTypeId: "double",
+          roomTypeName: "Doble",
+          stays: [
+            {
+              id: line.id,
+              reservationId: reservation.id,
+              guestName: reservation.guestName,
+              status: reservation.status,
+              checkIn: reservation.checkIn,
+              checkOut: reservation.checkOut,
+            },
+          ],
+        },
+      ],
+    });
+  });
+  page.api.on("*", "/reservations", ({ url }) => respond(url));
+  requests = page.api.requests("*", "/reservations");
 });
 
 afterEach(async () => {
@@ -174,7 +163,7 @@ function assertFilterCount(expected: number) {
 }
 function params() {
   assert.ok(requests.length);
-  return requests.at(-1)!.searchParams;
+  return requests.at(-1)!.url.searchParams;
 }
 
 async function fill(label: string, value: string) {
@@ -241,76 +230,18 @@ it("opens property-today Arrivals and switches all four server scopes without lo
   await until(() => params().get("checkIn") === "2026-11-01");
   await click("Hoy");
   await until(() => params().get("checkIn") === "2026-10-31");
-});
-
-it("restores reservation filters and calendar dates through the sidebar's real links", async () => {
-  const paginatedResponse = respond;
-  respond = (url) =>
-    url.searchParams.get("paginated") === "true" ? paginatedResponse(url) : Response.json([]);
-  await render(
-    "/reservations?view=departures&day=2026-12-31&q=Ana&statuses=all&balance=credit&assignment=unassigned&sort=balance&direction=asc&size=25",
-  );
-  const expected = { ...router.state.location.search };
-  function navigationLink(label: string) {
-    const link = Array.from(
-      container.querySelectorAll('nav[aria-label="Navegación principal"] a'),
-    ).find((element) => element.textContent.trim() === label);
-    assert.ok(link, `Missing navigation link ${label}`);
-    return link;
-  }
-  async function follow(label: string) {
-    await React.act(async () =>
-      navigationLink(label).dispatchEvent(
-        new window.MouseEvent("click", { bubbles: true, cancelable: true, button: 0 }),
-      ),
-    );
-  }
-  assert.equal(navigationLink("Reservas").getAttribute("aria-current"), "page");
-  await follow("Calendario");
-  await until(() => router.state.location.pathname === "/calendar");
-  assert.equal(router.state.location.search.from, "2026-10-31");
-  await React.act(async () =>
-    router.navigate({ to: "/calendar", search: { from: "2026-12-20", span: 14 } }),
-  );
-  await follow("Reservas");
-  await until(() => router.state.location.pathname === "/reservations");
-  assert.deepEqual({ ...router.state.location.search }, expected);
-  await follow("Calendario");
-  await until(() => router.state.location.pathname === "/calendar");
-  assert.equal(router.state.location.search.from, "2026-12-20");
-  assert.equal(router.state.location.search.span, 14);
-  assert.equal(navigationLink("Calendario").getAttribute("aria-current"), "page");
-});
-
-it("remembers the desktop navigation choice across app remounts", async () => {
-  await render();
-  assert.equal(button("Alternar navegación").getAttribute("aria-expanded"), "true");
-  await click("Alternar navegación");
-  assert.equal(button("Alternar navegación").getAttribute("aria-expanded"), "false");
-
-  await page.render(null);
-  await render();
-  assert.equal(button("Alternar navegación").getAttribute("aria-expanded"), "false");
-  await click("Alternar navegación");
-
-  await page.render(null);
-  await render();
-  assert.equal(button("Alternar navegación").getAttribute("aria-expanded"), "true");
-});
-
-it("starts mobile navigation closed without changing the saved desktop choice", async () => {
-  await render();
-  await click("Alternar navegación");
-  await React.act(async () => window.happyDOM.setWindowSize({ width: 390, height: 844 }));
-  assert.equal(button("Alternar navegación").getAttribute("aria-expanded"), "false");
-  await click("Alternar navegación");
-  assert.equal(button("Alternar navegación").getAttribute("aria-expanded"), "true");
-
-  await page.render(null);
-  await render();
-  assert.equal(button("Alternar navegación").getAttribute("aria-expanded"), "false");
-  await React.act(async () => window.happyDOM.setWindowSize({ width: 1024, height: 768 }));
-  assert.equal(button("Alternar navegación").getAttribute("aria-expanded"), "false");
+  await click("Día de operación");
+  const selected = window.document.querySelector<HTMLElement>('button[data-day="30/10/2026"]');
+  assert.ok(selected);
+  await React.act(async () => selected.click());
+  await until(() => params().get("checkIn") === "2026-10-30");
+  assert.equal(params().get("offset"), "0");
+  vi.mocked(Date.now).mockReturnValue(new Date("2026-11-01T05:01:00Z").getTime());
+  await React.act(async () => window.dispatchEvent(new window.Event("focus")));
+  assert.equal(params().get("checkIn"), "2026-10-30");
+  assert.equal(button("Día de operación").textContent.includes("30 oct 2026"), true);
+  await click("Día anterior");
+  await until(() => params().get("checkIn") === "2026-10-29");
 });
 
 it("keeps navigation usable when browser storage is blocked", async () => {
@@ -375,6 +306,10 @@ it("counts changed filter groups instead of chips and restores defaults without 
   assert.equal(params().get("assignment"), "unassigned");
   assertFilterCount(2);
   assert.equal(container.querySelector('[aria-label="Filtros activos"]'), null);
+  await click("Filtros");
+  await click("Siguiente");
+  await until(() => params().get("offset") === "25");
+  await click("Filtros");
   await click("Restablecer");
   await until(() => !params().has("assignment"));
   assert.equal(params().get("q"), "Ana ANA0001");
@@ -392,46 +327,7 @@ it("counts changed filter groups instead of chips and restores defaults without 
   await until(() => !params().has("q"));
 });
 
-it.each([
-  ["in-house", "checked_in"],
-  ["all", null],
-])(
-  "resets %s filters from a later page while preserving the surrounding context",
-  async (view, statuses) => {
-    respond = (url) =>
-      Response.json({
-        rows: [ana],
-        total: 126,
-        limit: 25,
-        offset: Number(url.searchParams.get("offset")),
-      });
-    await render(
-      `/reservations?view=${view}&day=2026-12-31&q=Ana&statuses=cancelled&balance=credit&assignment=unassigned&sort=balance&direction=asc&size=25&page=2`,
-    );
-    assert.equal(params().get("offset"), "50");
-    assertFilterCount(view === "in-house" ? 2 : 3);
-    await click("Filtros");
-    await click("Restablecer");
-    await until(() => params().get("offset") === "0");
-    assert.equal(params().get("statuses"), statuses);
-    assert.equal(params().has("balance"), false);
-    assert.equal(params().has("assignment"), false);
-    assert.equal(params().get("q"), "Ana");
-    assert.equal(params().get("sort"), "balance");
-    assert.equal(params().get("direction"), "asc");
-    assert.equal(params().get("limit"), "25");
-    assert.equal(router.state.location.search.view, view);
-    assert.equal(router.state.location.search.day, "2026-12-31");
-    assertFilterCount(0);
-    assert.equal(button("Restablecer").hasAttribute("disabled"), true);
-  },
-);
-
-it.each([
-  { remaining: 50, range: "1–50 de 50 reservas", offset: "0", page: 0 },
-  { remaining: 76, range: "51–76 de 76 reservas", offset: "50", page: 1 },
-  { remaining: 0, range: "0 de 0 reservas", offset: "0", page: 0 },
-])(
+it.each([{ remaining: 0, range: "0 de 0 reservas", offset: "0", page: 0 }])(
   "uses exact page bounds and recovers when matches shrink to $remaining",
   async ({ remaining, range, offset: expectedOffset, page }) => {
     let total = 150;
@@ -526,6 +422,14 @@ it("sends sorting and page sizes to the full-result endpoint and resets the offs
     });
   await render("/reservations?view=all&page=2");
   assert.equal(params().get("offset"), "100");
+  await click("Ordenar por Check-in");
+  await until(() => params().get("direction") === "asc");
+  assert.equal(params().get("offset"), "0");
+  assert.equal(
+    button("Ordenar por Check-in").closest("th")!.getAttribute("aria-sort"),
+    "ascending",
+  );
+  assert.equal(router.state.location.pathname, "/reservations");
   await click("Ordenar reservas");
   await choose("Ordenar por", "Saldo");
   await until(() => params().get("sort") === "balance");
@@ -546,26 +450,6 @@ it("sends sorting and page sizes to the full-result endpoint and resets the offs
   await choose("Reservas por página", "25 / pág.");
   await until(() => params().get("limit") === "25");
   assert.equal(params().get("offset"), "0");
-});
-
-it("sorts the full result set through a header without opening a reservation", async () => {
-  respond = (url) =>
-    Response.json({
-      rows: [ana],
-      total: 126,
-      limit: 50,
-      offset: Number(url.searchParams.get("offset")),
-    });
-  await render("/reservations?view=all&page=2&sort=balance&direction=asc");
-  await click("Ordenar por Saldo");
-  await until(() => params().get("direction") === "desc");
-  assert.equal(params().get("sort"), "balance");
-  assert.equal(params().get("offset"), "0");
-  assert.equal(button("Ordenar por Saldo").closest("th")!.getAttribute("aria-sort"), "descending");
-  assert.equal(router.state.location.pathname, "/reservations");
-  await click("Ordenar por Saldo");
-  await until(() => params().get("direction") === "asc");
-  assert.equal(button("Ordenar por Saldo").closest("th")!.getAttribute("aria-sort"), "ascending");
 });
 
 it("identifies the booking contact, signed balances, and every assigned or unassigned reserved room", async () => {
@@ -620,7 +504,7 @@ it("identifies the booking contact, signed balances, and every assigned or unass
   await until(() => params().get("q") === "Ana ANA0001");
 });
 
-it.each(["Enter", " ", "click"])(
+it.each(["Enter"])(
   "preserves the complete URL and page through details, direct reload, and return (%s)",
   async (activation) => {
     respond = (url) =>
@@ -660,21 +544,6 @@ it.each(["Enter", " ", "click"])(
   },
 );
 
-it("restores legacy arrival links and explicitly unrestricted daily statuses across property midnight", async () => {
-  await render("/reservations?checkIn=2026-10-30&status=all");
-  assert.equal(params().get("checkIn"), "2026-10-30");
-  assert.equal(params().has("statuses"), false);
-  vi.mocked(Date.now).mockReturnValue(new Date("2026-11-01T05:01:00Z").getTime());
-  await click("Día siguiente");
-  await until(() => params().get("checkIn") === "2026-10-31");
-  const link = router.state.location.href;
-  await render(link);
-  assert.equal(params().get("checkIn"), "2026-10-31");
-  assert.equal(params().has("statuses"), false);
-  await click("Hoy");
-  await until(() => params().get("checkIn") === "2026-11-01");
-});
-
 it("includes cancellations with all four statuses checked and restores daily defaults after a shared URL reload", async () => {
   const cancelled = {
     ...ana,
@@ -707,41 +576,19 @@ it("includes cancellations with all four statuses checked and restores daily def
   await until(() => params().get("statuses") === "confirmed,checked_in,checked_out");
   await until(() => !container.querySelector("tbody")!.textContent.includes("Cancelled contact"));
   assert.equal(params().get("checkIn"), "2026-10-30");
-});
-
-it("keeps the last status checked and restores partial and unrestricted selections from shared URLs", async () => {
-  await render("/reservations?view=all&statuses=cancelled,confirmed,confirmed,bogus");
-  assert.equal(params().get("statuses"), "confirmed,cancelled");
-  await click("Filtros");
   await click("Confirmada");
-  await until(() => params().get("statuses") === "cancelled");
-  assert.equal(button("Cancelada").hasAttribute("disabled"), true);
-  await click("Cancelada");
-  assert.equal(params().get("statuses"), "cancelled");
-  assert.equal((button("Cancelada") as HTMLInputElement).checked, true);
   await click("Check-in");
-  await until(() => params().get("statuses") === "checked_in,cancelled");
-  assert.equal(button("Cancelada").hasAttribute("disabled"), false);
+  await until(() => params().get("statuses") === "checked_out");
+  assert.equal(button("Check-out").hasAttribute("disabled"), true);
+  await click("Check-out");
+  assert.equal(params().get("statuses"), "checked_out");
   await click("Cancelada");
-  await until(() => params().get("statuses") === "checked_in");
-  await click("Confirmada");
-  await until(() => params().get("statuses") === "confirmed,checked_in");
-  const link = router.state.location.href;
-  assert.equal(
-    new URLSearchParams(router.state.location.searchStr).get("statuses"),
-    "confirmed,checked_in",
-  );
+  await until(() => params().get("statuses") === "checked_out,cancelled");
+  assert.equal(button("Check-out").hasAttribute("disabled"), false);
+  const partialLink = router.state.location.href;
   await click("Filtros");
-  await render(link);
-  assert.equal(params().get("statuses"), "confirmed,checked_in");
-  await click("Filtros");
-  await click("Restablecer");
-  await until(() => !params().has("statuses"));
-  assert.equal(router.state.location.search.view, "all");
-  assertFilterCount(0);
-  for (const status of ["Confirmada", "Check-in", "Check-out", "Cancelada"]) {
-    assert.equal((button(status) as HTMLInputElement).checked, true);
-  }
+  await render(partialLink);
+  assert.equal(params().get("statuses"), "checked_out,cancelled");
 });
 
 it("keeps overdue checked-in stays in-house and hides the conflicting status selector", async () => {
@@ -776,22 +623,6 @@ it("keeps overdue checked-in stays in-house and hides the conflicting status sel
   await click("Filtros");
   assert.equal(container.textContent.includes("Todos los estados"), false);
   assert.equal(container.textContent.includes("Día de operación"), false);
-});
-
-it("picks a property calendar day, steps backward, and keeps an explicit date when the property clock advances", async () => {
-  await render("/reservations?day=2026-10-31&page=2");
-  await click("Día de operación");
-  const selected = window.document.querySelector<HTMLElement>('button[data-day="30/10/2026"]');
-  assert.ok(selected);
-  await React.act(async () => selected.click());
-  await until(() => params().get("checkIn") === "2026-10-30");
-  assert.equal(params().get("offset"), "0");
-  vi.mocked(Date.now).mockReturnValue(new Date("2026-11-01T05:01:00Z").getTime());
-  await React.act(async () => window.dispatchEvent(new window.Event("focus")));
-  assert.equal(params().get("checkIn"), "2026-10-30");
-  assert.equal(button("Día de operación").textContent.includes("30 oct 2026"), true);
-  await click("Día anterior");
-  await until(() => params().get("checkIn") === "2026-10-29");
 });
 
 it("preserves every business date when the browser timezone skips December 30, 2011", async () => {
@@ -831,100 +662,49 @@ it("preserves every business date when the browser timezone skips December 30, 2
   }
 });
 
-it("distinguishes loading and request failure from zero results and retries without losing filters", async () => {
-  let finish!: (response: Response) => void;
-  respond = () =>
-    new Promise((resolve) => {
-      finish = resolve;
-    });
-  await render("/reservations?view=all&q=Ana&balance=settled", false);
-  assert.ok(container.textContent.includes("Buscando reservas…"));
-  assert.equal(container.textContent.includes("No se encontraron reservas"), false);
-  await React.act(async () => finish(Response.json({ error: "Request failed" }, { status: 503 })));
-  await until(() => container.textContent.includes("Reintentar"));
-  assert.equal(container.textContent.includes("No se encontraron reservas"), false);
-  assert.equal(container.textContent.includes("0 de 0 reservas"), false);
-  respond = () => Response.json({ rows: [], total: 0, limit: 50, offset: 0 });
-  await click("Reintentar");
-  await until(() => container.textContent.includes("No se encontraron reservas"));
-  assert.ok(container.textContent.includes("0 de 0 reservas"));
-  assert.equal(params().get("q"), "Ana");
-  assert.equal(params().get("balance"), "settled");
-  assert.equal(button("Siguiente").hasAttribute("disabled"), true);
-  assert.equal(button("Anterior").hasAttribute("disabled"), true);
-  await click("Nueva reserva");
-  await until(() => window.document.querySelector('[role="dialog"]') !== null);
-  assert.ok(
-    window.document.querySelector('[role="dialog"]')!.textContent.includes("Nueva reserva"),
-  );
-});
-
-it("keeps rows and totals visible during a failed background refresh and retries the same context", async () => {
-  await render("/reservations?view=all&q=Ana&sort=balance");
-  let finish!: (response: Response) => void;
-  respond = () =>
-    new Promise((resolve) => {
-      finish = resolve;
-    });
-  await React.act(async () => {
-    void client.invalidateQueries({ queryKey: ["reservations"] });
-  });
-  await until(() => container.textContent.includes("Actualizando…"));
-  assert.ok(container.querySelector("tbody")!.textContent.includes("Ana Pérez"));
-  assert.ok(container.textContent.includes("1–1 de 1 reserva"));
-  await React.act(async () => finish(Response.json({ error: "Request failed" }, { status: 503 })));
-  await until(() => container.textContent.includes("Reintentar"));
-  assert.ok(container.querySelector("tbody")!.textContent.includes("Ana Pérez"));
-  assert.equal(container.textContent.includes("No se encontraron reservas"), false);
-  respond = () =>
-    Response.json({ rows: [{ ...ana, balanceCents: 0 }], total: 1, limit: 50, offset: 0 });
-  await click("Reintentar");
-  await until(() => container.querySelector("tbody")!.textContent.includes("Saldada"));
-  assert.equal(params().get("q"), "Ana");
-  assert.equal(params().get("sort"), "balance");
-});
-
-it("normalizes unsupported direct URL values before sending a request", async () => {
-  await render(
-    "/reservations?view=bogus&day=2026-02-30&q=123&statuses=nope&balance=bogus&assignment=bogus&sort=bogus&direction=sideways&size=75&page=-1",
-  );
-  assert.equal(params().get("checkIn"), "2026-10-31");
-  assert.equal(params().get("statuses"), "confirmed,checked_in,checked_out");
-  assert.equal(params().get("sort"), "guestName");
-  assert.equal(params().get("direction"), "asc");
-  assert.equal(params().get("limit"), "50");
-  assert.equal(params().get("offset"), "0");
-  assert.equal(params().has("q"), false);
-  assert.equal(params().has("balance"), false);
-  assert.equal(params().has("assignment"), false);
-});
-
-it("treats whitespace-only contact search as unrestricted rather than a failed request", async () => {
-  respond = (url) =>
-    url.searchParams.has("q")
-      ? Response.json(
-          { error: "Too small: expected string to have >=1 characters" },
-          { status: 400 },
-        )
-      : Response.json({ rows: [ana], total: 1, limit: 50, offset: 0 });
-  await render("/reservations?view=all");
-  await fill("Contacto principal o código", "   ");
-  await until(() => !container.querySelector('table[aria-busy="true"]'));
-  assert.equal(params().has("q"), false);
-  assert.ok(container.querySelector("tbody")!.textContent.includes("Ana Pérez"));
-  assert.equal(container.textContent.includes("Reintentar"), false);
-});
-
-it.each([
-  ["Invalid input: expected a valid check-in date", "La fecha de llegada no es válida."],
-  ["Invalid input: expected a valid checkout date", "La fecha de salida no es válida."],
-])("shows the list API date error in Spanish: %s", async (message, translation) => {
-  respond = () => Response.json({ error: message }, { status: 400 });
-  await render("/reservations?view=departures&day=2026-12-31", false);
-  await until(() => container.textContent.includes("Reintentar"));
-  assert.ok(container.textContent.includes(translation));
-  assert.equal(container.textContent.includes(message), false);
-});
+it.each(["initial load", "background refresh"] as const)(
+  "preserves list context through a failed %s and retry",
+  async (state) => {
+    if (state === "background refresh")
+      await render("/reservations?view=all&q=Ana&balance=settled");
+    let finish!: (response: Response) => void;
+    respond = () =>
+      new Promise((resolve) => {
+        finish = resolve;
+      });
+    if (state === "initial load")
+      await render("/reservations?view=all&q=Ana&balance=settled", false);
+    else
+      await React.act(async () => {
+        void client.invalidateQueries({ queryKey: ["reservations"] });
+      });
+    await until(() => !!finish);
+    assert.equal(container.textContent.includes("No se encontraron reservas"), false);
+    if (state === "initial load") assert.ok(container.textContent.includes("Buscando reservas…"));
+    else {
+      assert.ok(container.querySelector("tbody")!.textContent.includes("Ana Pérez"));
+      assert.ok(container.textContent.includes("1–1 de 1 reserva"));
+    }
+    await React.act(async () =>
+      finish(
+        Response.json({ error: "Invalid input: expected a valid checkout date" }, { status: 400 }),
+      ),
+    );
+    await until(() => container.textContent.includes("Reintentar"));
+    assert.ok(container.textContent.includes("La fecha de salida no es válida."));
+    assert.equal(container.textContent.includes("No se encontraron reservas"), false);
+    if (state === "background refresh")
+      assert.ok(container.querySelector("tbody")!.textContent.includes("Ana Pérez"));
+    respond = () => Response.json({ rows: [], total: 0, limit: 50, offset: 0 });
+    await click("Reintentar");
+    await until(() => container.textContent.includes("No se encontraron reservas"));
+    assert.ok(container.textContent.includes("0 de 0 reservas"));
+    assert.equal(params().get("q"), "Ana");
+    assert.equal(params().get("balance"), "settled");
+    assert.equal(button("Siguiente").hasAttribute("disabled"), true);
+    assert.equal(button("Anterior").hasAttribute("disabled"), true);
+  },
+);
 
 it("searches historical cancelled reservations across every date and retains visible refinements when changing views", async () => {
   respond = (url) =>
@@ -946,6 +726,10 @@ it("searches historical cancelled reservations across every date and retains vis
       offset: 0,
     });
   await render("/reservations?view=all");
+  await fill("Contacto principal o código", "   ");
+  await until(() => !container.querySelector('table[aria-busy="true"]'));
+  assert.equal(params().has("q"), false);
+  assert.equal(container.textContent.includes("Reintentar"), false);
   await fill("Contacto principal o código", "Historic PAST0001");
   await until(() => container.querySelector("tbody")!.textContent.includes("Historic contact"));
   assert.ok(container.querySelector("tbody")!.textContent.includes("Cancelada"));

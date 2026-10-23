@@ -4,12 +4,14 @@ import { QueryClient, QueryObserver } from "@tanstack/react-query";
 import type { ReservationDetail } from "../src/lib/api.ts";
 import { refreshWorkflowQueries } from "../src/lib/workflow-query-cache.ts";
 
-it("refreshes active pricing previews after independently saving a discount or payment", async () => {
+it("refreshes active and invalidates inactive pricing previews after saving a discount or payment", async () => {
   const client = new QueryClient({
     defaultOptions: { queries: { retry: false } },
   });
   const key = ["workflow-edit-preview", "reservation-1", { actions: ["dates"] }];
+  const inactiveKey = ["workflow-edit-preview", "reservation-1", { actions: ["status"] }];
   const otherKey = ["workflow-edit-preview", "reservation-2"];
+  client.setQueryData(inactiveKey, { balanceCents: 30000 });
   client.setQueryData(otherKey, { balanceCents: 9000 });
   client.setQueryData(["reservation", "reservation-1"], {
     id: "reservation-1",
@@ -34,6 +36,7 @@ it("refreshes active pricing previews after independently saving a discount or p
       paidCents: 0,
     } as ReservationDetail);
     assert.equal(observer.getCurrentResult().data?.balanceCents, 28000);
+    assert.equal(client.getQueryState(inactiveKey)?.isInvalidated, true);
     await refreshWorkflowQueries(client, {
       id: "reservation-1",
       discountCents: 2000,
@@ -43,28 +46,6 @@ it("refreshes active pricing previews after independently saving a discount or p
     assert.equal(client.getQueryState(otherKey)?.isInvalidated, false);
   } finally {
     unsubscribe();
-    client.clear();
-  }
-});
-
-it("invalidates cached inactive previews so reopening a draft does not reuse an old discount", async () => {
-  const client = new QueryClient();
-  const key = ["workflow-edit-preview", "reservation-1", { actions: ["dates"] }];
-  client.setQueryData(key, { balanceCents: 30000 });
-  try {
-    await refreshWorkflowQueries(client, {
-      id: "reservation-1",
-      discountCents: 2000,
-      paidCents: 0,
-    } as ReservationDetail);
-    assert.equal(client.getQueryState(key)?.isInvalidated, true);
-    const preview = await client.fetchQuery({
-      queryKey: key,
-      staleTime: Infinity,
-      queryFn: async () => ({ balanceCents: 28000 }),
-    });
-    assert.equal(preview.balanceCents, 28000);
-  } finally {
     client.clear();
   }
 });

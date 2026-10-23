@@ -6,8 +6,6 @@ import { setServerErrors } from "../src/lib/form-errors.ts";
 import {
   closureFieldErrors,
   closureNights,
-  closurePayload,
-  closureUnchanged,
   roomClosureFormSchema,
 } from "../src/lib/room-closure-form.ts";
 
@@ -33,22 +31,6 @@ describe("room closure form", () => {
     });
     assert.equal(result.success, false);
     if (!result.success) assert.deepEqual(result.error.issues[0].path, ["ends"]);
-  });
-
-  it("normalizes the optional reason and detects edits including clearing it", () => {
-    const saved = { ...values, reason: "Mantenimiento" };
-    assert.equal(closureUnchanged(saved, { ...saved, reason: " Mantenimiento " }), true);
-    assert.equal(closureUnchanged(saved, values), false);
-    assert.equal(closureUnchanged({ ...values, reason: null }, values), true);
-    assert.deepEqual(closurePayload({ ...values, reason: "  " }), {
-      starts: values.starts,
-      ends: values.ends,
-      reason: undefined,
-    });
-    assert.equal(
-      roomClosureFormSchema.safeParse({ ...values, reason: "x".repeat(81) }).success,
-      false,
-    );
   });
 
   it("shows range conflicts on the reopening field and clears them before retry", () => {

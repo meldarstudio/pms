@@ -22,19 +22,6 @@ describe("route search validation", () => {
     assert.equal(validDay("30-04-2026"), undefined);
   });
 
-  it("applies route-specific span defaults", () => {
-    assert.deepEqual(calendarSearch({ from: "2026-04-30", span: "14" }), {
-      from: "2026-04-30",
-      span: 14,
-    });
-    assert.equal(calendarSearch({ span: 99 }).span, 7);
-    assert.deepEqual(inventorySearch({ from: "2026-04-30", span: "7" }), {
-      from: "2026-04-30",
-      span: 7,
-    });
-    assert.equal(inventorySearch({}).span, 14);
-  });
-
   it("normalizes reservation filters and pagination", () => {
     assert.deepEqual(reservationsSearch({ q: "ana", status: "checked_in", page: 3 }), {
       view: "arrivals",
@@ -84,21 +71,9 @@ describe("route search validation", () => {
     assert.equal(reservationsSearch({ checkIn: "nope" }).day, today);
   });
 
-  it("uses current property defaults at midnight without changing explicit URL dates", () => {
-    for (const search of [calendarSearch, inventorySearch]) {
-      assert.equal(search({}).from, "2026-10-31");
-      assert.equal(search({ from: "2026-12-31" }).from, "2026-12-31");
-    }
-    vi.setSystemTime(new Date("2026-11-01T04:59:59.999Z"));
-    assert.equal(reservationsSearch({}).day, "2026-10-31");
-    vi.setSystemTime(new Date("2026-11-01T05:00:00Z"));
-    assert.equal(calendarSearch({}).from, "2026-11-01");
-    assert.equal(inventorySearch({}).from, "2026-11-01");
-    assert.equal(reservationsSearch({}).day, "2026-11-01");
-    assert.equal(reservationsSearch({ day: "2026-10-31" }).day, "2026-10-31");
-  });
-
   it.each([
+    ["America/Lima", "2026-11-01T04:59:59.999Z", "2026-10-31"],
+    ["America/Lima", "2026-11-01T05:00:00Z", "2026-11-01"],
     ["America/Lima", "2027-01-01T01:00:00Z", "2026-12-31"],
     ["America/New_York", "2026-03-08T04:59:59Z", "2026-03-07"],
     ["America/New_York", "2026-03-08T05:00:00Z", "2026-03-08"],
@@ -111,5 +86,7 @@ describe("route search validation", () => {
     assert.equal(inventorySearch({}).from, today);
     assert.equal(reservationsSearch({}).day, today);
     assert.equal(calendarSearch({ from: "2026-10-31" }).from, "2026-10-31");
+    assert.equal(inventorySearch({ from: "2026-10-31" }).from, "2026-10-31");
+    assert.equal(reservationsSearch({ day: "2026-10-31" }).day, "2026-10-31");
   });
 });

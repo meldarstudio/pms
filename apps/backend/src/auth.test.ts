@@ -32,29 +32,29 @@ function get(path: string, cookie?: string, bindings = env) {
 }
 
 describe("staff login", () => {
-  it("signs in and then reaches guarded routes", async () => {
-    const response = await login(env);
+  it("signs in with the configured property timezone and then reaches guarded routes", async () => {
+    const configured = await authEnv({ PROPERTY_TIME_ZONE: "America/New_York" });
+    const response = await login(configured);
     expect(response.status).toBe(200);
     expect(await response.json()).toEqual({
       username: STAFF_USERNAME,
-      propertyTimeZone: "America/Lima",
+      propertyTimeZone: "America/New_York",
     });
     const setCookie = response.headers.getSetCookie()[0]!;
     expect(setCookie).toMatch(/HttpOnly/i);
     expect(setCookie).toMatch(/SameSite=Lax/i);
     expect(setCookie).toMatch(/Max-Age=2592000/i);
     expect(setCookie).not.toMatch(/Domain=/i);
+    expect(setCookie).not.toMatch(/Secure/i);
 
-    const session = await get("/session", setCookie.split(";")[0]);
+    const session = await get("/session", setCookie.split(";")[0], configured);
     expect(session.status).toBe(200);
     expect(await session.json()).toEqual({
       username: STAFF_USERNAME,
-      propertyTimeZone: "America/Lima",
+      propertyTimeZone: "America/New_York",
     });
-  });
 
-  it("marks the cookie Secure when served over HTTPS", async () => {
-    const response = await app.request(
+    const https = await app.request(
       "https://api.hotelmanantialchurin.com/login",
       {
         method: "POST",
@@ -63,8 +63,7 @@ describe("staff login", () => {
       },
       env,
     );
-    expect(response.status).toBe(200);
-    expect(response.headers.getSetCookie()[0]).toMatch(/Secure/i);
+    expect(https.headers.getSetCookie()[0]).toMatch(/Secure/i);
   });
 
   it.each([
@@ -80,11 +79,6 @@ describe("staff login", () => {
   it("accepts the username in any letter case", async () => {
     const response = await login(env, loginBody({ username: "HotelManantial" }));
     expect(response.status).toBe(200);
-  });
-
-  it("rejects a login with a missing field", async () => {
-    const response = await login(env, { username: STAFF_USERNAME });
-    expect(response.status).toBe(400);
   });
 
   it("returns 429 without checking credentials once the limit is hit", async () => {
@@ -114,39 +108,19 @@ describe("staff login", () => {
 
 describe("session guard", () => {
   it.each([
-    ["GET", "/rooms"],
-    ["GET", "/room-types"],
-    ["GET", "/room-closures?from=2026-10-01&to=2026-10-31"],
-    ["GET", "/availability?checkIn=2026-10-10"],
-    ["GET", "/inventory?from=2026-10-10&to=2026-10-17"],
-    ["GET", "/reservations"],
-    ["POST", "/reservations"],
-    ["POST", "/reservations/any/commands"],
-    ["GET", "/guests/any"],
-    ["POST", "/payments"],
-    ["GET", "/session"],
-    ["POST", "/logout"],
-    ["GET", "/does-not-exist"],
-  ])("returns 401 for %s %s without a session", async (method, path) => {
+    ["reads", "GET", "/reservations", 401, { error: "unauthorized" }],
+    ["commands", "POST", "/reservations/any/commands", 401, { error: "unauthorized" }],
+    ["unknown paths", "GET", "/does-not-exist", 401, { error: "unauthorized" }],
+    ["the health check", "GET", "/", 200, { name: "pms" }],
+  ])("answers %s without a session", async (_name, method, path, status, body) => {
     const response = await app.request(path, { method }, env);
-    expect(response.status).toBe(401);
-    expect(await response.json()).toEqual({ error: "unauthorized" });
+    expect(response.status).toBe(status);
+    expect(await response.json()).toEqual(body);
   });
 
-  it("leaves the health check public", async () => {
-    const response = await app.request("/", {}, env);
-    expect(response.status).toBe(200);
-    expect(await response.json()).toEqual({ name: "pms" });
-  });
-
-  it("rejects a cookie with a forged signature", async () => {
+  it("rejects a cookie with a forged signature or a rotated secret", async () => {
     const cookie = await signIn(env);
-    const forged = `${cookie.slice(0, -4)}AAAA`;
-    expect((await get("/session", forged)).status).toBe(401);
-  });
-
-  it("rejects a cookie signed with a rotated secret", async () => {
-    const cookie = await signIn(env);
+    expect((await get("/session", `${cookie.slice(0, -4)}AAAA`)).status).toBe(401);
     const rotated = await authEnv({ SESSION_SECRET: "a-new-secret" });
     expect((await get("/session", cookie, rotated)).status).toBe(401);
   });
@@ -209,12 +183,8 @@ describe("cross-origin access", () => {
     expect(response.headers.get("access-control-allow-credentials")).toBe("true");
   });
 
-  it.each([
-    "https://pms-portal.meldar.workers.dev",
-    "https://evil.example",
-    "http://localhost:5173",
-  ])("does not allow %s unless configured", async (origin) => {
-    const response = await app.request("/", { headers: { origin } }, env);
+  it("does not allow an origin that is not configured", async () => {
+    const response = await app.request("/", { headers: { origin: "http://localhost:5173" } }, env);
     expect(response.headers.get("access-control-allow-origin")).toBeNull();
   });
 

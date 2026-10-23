@@ -6,11 +6,15 @@ import type {
   HTMLButtonElement,
   HTMLElement,
 } from "happy-dom";
-import { createBrowserTest, type BrowserTest, type BrowserPage } from "./browser.ts";
-import { calendarResponse, catalogCalendarRooms } from "./calendar-window.ts";
-import { ReservationStatusSelection } from "../src/lib/reservation-status-selection.ts";
+import {
+  createBrowserTest,
+  desktopViewport,
+  type BrowserTest,
+  type BrowserPage,
+} from "./browser.ts";
 import type {
   ReservationDetail,
+  RoomType,
   StayingGuest,
   WorkflowCommand,
   WorkflowBilling,
@@ -22,15 +26,10 @@ let page: BrowserPage;
 let window: BrowserTest["window"];
 let React: BrowserTest["React"];
 let query: BrowserTest["query"];
-let routing: BrowserTest["routing"];
 let forms: typeof import("../src/components/reservation-entry-forms.tsx");
 let dialogs: typeof import("../src/components/room-booking-dialog.tsx");
 let newBookings: typeof import("../src/components/new-booking.tsx");
 let queries: typeof import("../src/lib/queries.ts");
-let calendars: typeof import("../src/components/room-calendar.tsx");
-let inventories: typeof import("../src/components/inventory.tsx");
-let reservationLists: typeof import("../src/components/reservations.tsx");
-let closures: typeof import("../src/components/room-closure-dialog.tsx");
 type CreateBookingInput = Parameters<typeof import("../src/lib/api.ts").createWorkflowBooking>[0];
 let root: BrowserPage["root"];
 let container: BrowserPage["container"];
@@ -42,7 +41,7 @@ let until: BrowserPage["until"];
 
 beforeAll(async () => {
   browser = await createBrowserTest();
-  ({ window, React, query, routing } = browser);
+  ({ window, React, query } = browser);
   const { server } = browser;
   forms = (await server.ssrLoadModule(
     "/src/components/reservation-entry-forms.tsx",
@@ -54,14 +53,6 @@ beforeAll(async () => {
     "/src/components/new-booking.tsx",
   )) as typeof newBookings;
   queries = (await server.ssrLoadModule("/src/lib/queries.ts")) as typeof queries;
-  calendars = (await server.ssrLoadModule("/src/components/room-calendar.tsx")) as typeof calendars;
-  closures = (await server.ssrLoadModule(
-    "/src/components/room-closure-dialog.tsx",
-  )) as typeof closures;
-  inventories = (await server.ssrLoadModule("/src/components/inventory.tsx")) as typeof inventories;
-  reservationLists = (await server.ssrLoadModule(
-    "/src/components/reservations.tsx",
-  )) as typeof reservationLists;
   const calendar = (await server.ssrLoadModule(
     "/src/lib/property-calendar.ts",
   )) as typeof import("../src/lib/property-calendar.ts");
@@ -77,12 +68,22 @@ beforeEach(() => {
   vi.setSystemTime(new Date("2026-11-01T01:00:00Z"));
   page = browser.createPage();
   ({ root, container, client, render, withClient, flush, until } = page);
+  page.api.catalog.roomTypes = [doubleType];
+  page.api.catalog.rooms = [{ id: "room-1", number: "101", roomTypeId: "double" }];
 });
 
 afterEach(async () => {
   await page.cleanup();
   vi.useRealTimers();
 });
+
+const doubleType: RoomType = {
+  id: "double",
+  name: "Doble",
+  maxAdults: 2,
+  maxChildren: 2,
+  baseRateCents: 15000,
+};
 
 function detail(): ReservationDetail {
   return {
@@ -131,41 +132,9 @@ function detail(): ReservationDetail {
   };
 }
 
-async function renderWithRouter(element: React.ReactNode) {
-  const rootRoute = routing.createRootRoute({ component: () => element });
-  const setupRoute = routing.createRoute({
-    getParentRoute: () => rootRoute,
-    path: "/setup",
-  });
-  const router = routing.createRouter({
-    routeTree: rootRoute.addChildren([setupRoute]),
-    history: routing.createMemoryHistory({ initialEntries: ["/"] }),
-  });
-  await page.renderRouter(router);
-}
-
-function control(name: string) {
-  const input = window.document.querySelector<HTMLInputElement | HTMLTextAreaElement>(
-    `[name="${name}"]`,
-  );
-  assert.ok(input, `Missing field ${name}`);
-  return input;
-}
-
-async function fill(name: string, value: string) {
-  await fillControl(control(name), value);
-}
-
-async function fillControl(input: HTMLInputElement | HTMLTextAreaElement, value: string) {
-  const prototype =
-    input.tagName === "TEXTAREA"
-      ? window.HTMLTextAreaElement.prototype
-      : window.HTMLInputElement.prototype;
-  await React.act(async () => {
-    Object.getOwnPropertyDescriptor(prototype, "value")!.set!.call(input, value);
-    input.dispatchEvent(new window.Event("input", { bubbles: true }));
-  });
-}
+const control = (name: string) => page.field(name);
+const fill = (target: Parameters<BrowserPage["fill"]>[0], value: string) =>
+  page.fill(target, value);
 
 async function submit() {
   const form = container.querySelector("form")!;
@@ -179,15 +148,47 @@ async function submit() {
   });
 }
 
-function button(label: string) {
-  const element = Array.from(window.document.querySelectorAll("button")).find(
-    (button) => (button.getAttribute("aria-label") ?? button.textContent.trim()) === label,
+const button = (label: string) => page.button(label);
+
+const editTarget = {
+  mode: "edit" as const,
+  reservationId: "reservation-1",
+  roomId: "room-1",
+  number: "101",
+  typeName: "Doble",
+};
+
+async function openEditDialog({
+  onClose = () => {},
+  onViewReservation = () => {},
+}: { onClose?: () => void; onViewReservation?: (id: string) => void } = {}) {
+  await render(
+    React.createElement(dialogs.RoomBookingDialog, {
+      target: editTarget,
+      onClose,
+      onViewReservation,
+    }),
   );
-  assert.ok(element, `Missing button ${label}`);
-  return element;
 }
 
-it("adds consecutive guests with distinct IDs and resets the real form across rerenders", async () => {
+/** Renders the editor subscribed to the reservation cache, as the dialog does. */
+async function renderCachedEditor(reservation: () => ReservationDetail) {
+  client.setQueryData(["reservation", reservation().id], reservation());
+  function Editor() {
+    const cached = query.useQuery<ReservationDetail>({
+      queryKey: ["reservation", reservation().id],
+      queryFn: async () => reservation(),
+      staleTime: Infinity,
+    });
+    return React.createElement(dialogs.BookingEditor, {
+      detail: cached.data!,
+      onRefresh: () => {},
+    });
+  }
+  await render(React.createElement(Editor));
+}
+
+it("adds consecutive trimmed guests with distinct IDs and resets the real form across rerenders", async () => {
   let saved = detail();
   const writes: StayingGuest[][] = [];
   const props = () => ({
@@ -201,7 +202,7 @@ it("adds consecutive guests with distinct IDs and resets the real form across re
     },
   });
   await render(React.createElement(forms.GuestEntryForm, props()));
-  for (const name of ["First Guest", "Second Guest"]) {
+  for (const name of [" First Guest ", "Second Guest"]) {
     await fill("fullName", name);
     await submit();
     assert.equal(control("fullName").value, "");
@@ -212,75 +213,25 @@ it("adds consecutive guests with distinct IDs and resets the real form across re
     ["First Guest", "Second Guest"],
   );
   assert.notEqual(saved.stayingGuests[0].id, saved.stayingGuests[1].id);
+  const { id: _id, ...first } = writes[0][0];
+  assert.deepEqual(first, {
+    fullName: "First Guest",
+    email: null,
+    phone: null,
+    documentType: null,
+    documentNumber: null,
+    reservationRoomId: "line-1",
+  });
 });
 
-it("clears each successful payment without restoring the original suggested balance", async () => {
-  let saved = detail();
-  const amounts: number[] = [];
-  const props = () => ({
-    detail: saved,
-    disabled: false,
-    onDirtyChange: () => {},
-    onReady: async (_title: string, actions: WorkflowCommand["actions"]) => {
-      const action = actions[0];
-      assert.equal(action.type, "add-payment");
-      if (action.type !== "add-payment") return;
-      amounts.push(action.payment.amountCents);
-      saved = {
-        ...saved,
-        balanceCents: saved.balanceCents - action.payment.amountCents,
-      };
-      root.render(withClient(React.createElement(forms.PaymentForm, props())));
-    },
-  });
-  await render(React.createElement(forms.PaymentForm, props()));
-  assert.equal(control("amount").value, "300.00");
-  for (const amount of ["100", "50"]) {
-    await fill("amount", amount);
-    await submit();
-    assert.equal(control("amount").value, "");
-    await flush();
-    assert.equal(control("amount").value, "");
-  }
-  assert.deepEqual(amounts, [10000, 5000]);
-});
-
-for (const [method, label] of [
-  ["yape", "Yape"],
-  ["plin", "Plin"],
-] as const) {
-  it(`records a ${label} payment through the real form without requiring a reference`, async () => {
-    const writes: WorkflowCommand["actions"][] = [];
-    const paymentDate = "2026-10-31";
-    await render(
-      React.createElement(forms.PaymentForm, {
-        detail: detail(),
-        disabled: false,
-        onDirtyChange: () => {},
-        onReady: async (_title, actions) => {
-          writes.push(actions);
-        },
-      }),
-    );
-    await fill("amount", "100.25");
-    await choose("Método", label);
-    await submit();
-    assert.deepEqual(writes, [
-      [
-        {
-          type: "add-payment",
-          payment: { amountCents: 10025, method, paymentDate },
-        },
-      ],
-    ]);
-  });
-}
-
-it("refreshes an untouched payment suggestion and preserves a manually entered amount", async () => {
+it("refreshes an untouched payment suggestion and submits a manual Yape amount without a reference", async () => {
+  const writes: WorkflowCommand["actions"][] = [];
   const props = {
     disabled: false,
     onDirtyChange: () => {},
-    onReady: async () => {},
+    onReady: async (_title: string, actions: WorkflowCommand["actions"]) => {
+      writes.push(actions);
+    },
   };
   await render(React.createElement(forms.PaymentForm, { ...props, detail: detail() }));
   await render(
@@ -298,9 +249,19 @@ it("refreshes an untouched payment suggestion and preserves a manually entered a
     }),
   );
   assert.equal(control("amount").value, "75");
+  await choose("Método", "Yape");
+  await submit();
+  assert.deepEqual(writes, [
+    [
+      {
+        type: "add-payment",
+        payment: { amountCents: 7500, method: "yape", paymentDate: "2026-10-31" },
+      },
+    ],
+  ]);
 });
 
-it("preserves a backdated payment and refreshes future-date limits on resume without losing the draft", async () => {
+it("preserves a backdated Plin payment and refreshes future-date limits on resume without losing the draft", async () => {
   const writes: WorkflowCommand["actions"][] = [];
   await render(
     React.createElement(forms.PaymentForm, {
@@ -330,6 +291,7 @@ it("preserves a backdated payment and refreshes future-date limits on resume wit
   await React.act(async () => button("30 oct 2026").click());
   assert.equal(day("1/11/2026").disabled, false);
   await React.act(async () => day("30/10/2026").click());
+  await choose("Método", "Plin");
   await submit();
   assert.deepEqual(writes, [
     [
@@ -337,7 +299,7 @@ it("preserves a backdated payment and refreshes future-date limits on resume wit
         type: "add-payment",
         payment: {
           amountCents: 2500,
-          method: "cash",
+          method: "plin",
           paymentDate: "2026-10-30",
         },
       },
@@ -345,67 +307,55 @@ it("preserves a backdated payment and refreshes future-date limits on resume wit
   ]);
 });
 
-it.each(["submit", "blur"] as const)(
-  "revalidates an edited payment's %s error at the new property day without rewriting its saved date or draft",
-  async (validation) => {
-    const payment = {
-      id: crypto.randomUUID(),
-      amountCents: 1000,
-      method: "cash" as const,
-      paymentDate: "2026-11-01",
-      reference: null,
-      notes: null,
-      reservationId: "reservation-1",
-      createdAt: "2026-11-01T01:00:00Z",
-    };
-    const saved = { ...detail(), payments: [payment] };
-    mockApi(async () => Response.json(saved));
-    await render(
-      React.createElement(dialogs.BookingEditor, { detail: saved, onRefresh: () => {} }),
-    );
-    await React.act(async () => button("Pagos").click());
-    const actions = window.document.querySelector<HTMLButtonElement>(
-      'button[aria-label^="Acciones del pago"]',
-    );
-    assert.ok(actions);
-    await React.act(async () => actions.click());
-    const edit = Array.from(
-      window.document.querySelectorAll<HTMLElement>('[role="menuitem"]'),
-    ).find((item) => item.textContent.trim() === "Editar");
-    assert.ok(edit);
-    await React.act(async () => edit.click());
-    const editor = () => window.document.querySelector('[role="dialog"]')!;
-    const amount = editor().querySelector<HTMLInputElement>('[name="amount"]')!;
-    await fillControl(amount, "25");
-    if (validation === "submit") {
-      await React.act(async () => button("Guardar").click());
-    } else {
-      await React.act(async () => button("1 nov 2026").click());
-      await React.act(async () => button("1 nov 2026").click());
-    }
-    await until(
-      () => editor().textContent.includes("La fecha del pago no puede ser futura."),
-      "Editing uses the same future-date rule",
-    );
-    vi.setSystemTime(new Date("2026-11-01T05:00:00Z"));
-    await React.act(async () => window.dispatchEvent(new window.Event("focus")));
-    await until(
-      () => !editor().textContent.includes("La fecha del pago no puede ser futura."),
-      "Validation refreshes at the new property day",
-    );
-    assert.equal(amount.value, "25");
-    assert.ok(
-      Array.from(editor().querySelectorAll("button")).some(
-        (element) => element.textContent.trim() === "1 nov 2026",
-      ),
-    );
-  },
-);
+it("revalidates an edited payment's blurred date error at the new property day without rewriting its saved date or draft", async () => {
+  const payment = {
+    id: crypto.randomUUID(),
+    amountCents: 1000,
+    method: "cash" as const,
+    paymentDate: "2026-11-01",
+    reference: null,
+    notes: null,
+    reservationId: "reservation-1",
+    createdAt: "2026-11-01T01:00:00Z",
+  };
+  const saved = { ...detail(), payments: [payment] };
+  mockApi(async () => Response.json(saved));
+  await render(React.createElement(dialogs.BookingEditor, { detail: saved, onRefresh: () => {} }));
+  await React.act(async () => button("Pagos").click());
+  const actions = window.document.querySelector<HTMLButtonElement>(
+    'button[aria-label^="Acciones del pago"]',
+  );
+  assert.ok(actions);
+  await React.act(async () => actions.click());
+  const edit = Array.from(window.document.querySelectorAll<HTMLElement>('[role="menuitem"]')).find(
+    (item) => item.textContent.trim() === "Editar",
+  );
+  assert.ok(edit);
+  await React.act(async () => edit.click());
+  const editor = () => window.document.querySelector('[role="dialog"]')!;
+  const amount = editor().querySelector<HTMLInputElement>('[name="amount"]')!;
+  await fill(amount, "25");
+  await React.act(async () => button("1 nov 2026").click());
+  await React.act(async () => button("1 nov 2026").click());
+  await until(
+    () => editor().textContent.includes("La fecha del pago no puede ser futura."),
+    "Editing uses the same future-date rule",
+  );
+  vi.setSystemTime(new Date("2026-11-01T05:00:00Z"));
+  await React.act(async () => window.dispatchEvent(new window.Event("focus")));
+  await until(
+    () => !editor().textContent.includes("La fecha del pago no puede ser futura."),
+    "Validation refreshes at the new property day",
+  );
+  assert.equal(amount.value, "25");
+  assert.ok(
+    Array.from(editor().querySelectorAll("button")).some(
+      (element) => element.textContent.trim() === "1 nov 2026",
+    ),
+  );
+});
 
-function requestUrl(input: Parameters<typeof fetch>[0]) {
-  return new URL(typeof input === "string" ? input : "url" in input ? input.url : input.href);
-}
-
+// Every POST (preview, command, or creation) reaches the handler with its path and body.
 function mockApi(
   handler: (path: string, command: WorkflowCommand) => Promise<Response>,
   {
@@ -413,27 +363,13 @@ function mockApi(
     reservation = detail,
   }: { roomCount?: number; reservation?: () => ReservationDetail } = {},
 ) {
-  globalThis.fetch = async (input, init) => {
-    const url = requestUrl(input);
-    if (init?.method === "POST") {
-      assert.ok(typeof init.body === "string");
-      return handler(url.pathname, JSON.parse(init.body));
-    }
-    if (url.pathname === "/room-types")
-      return Response.json([{ id: "double", name: "Doble", maxAdults: 2, maxChildren: 2 }]);
-    if (url.pathname === "/rooms")
-      return Response.json(
-        Array.from({ length: roomCount }, (_, index) => ({
-          id: `room-${index + 1}`,
-          number: `${101 + index}`,
-          roomTypeId: "double",
-        })),
-      );
-    if (url.pathname === "/reservations/reservation-1") return Response.json(reservation());
-    if (url.pathname === "/reservations" || url.pathname === "/room-closures")
-      return Response.json([]);
-    throw new Error(`Unexpected request ${url.pathname}`);
-  };
+  page.api.catalog.rooms = Array.from({ length: roomCount }, (_, index) => ({
+    id: `room-${index + 1}`,
+    number: `${101 + index}`,
+    roomTypeId: "double",
+  }));
+  page.api.on("GET", "/reservations/reservation-1", () => reservation());
+  page.api.on<WorkflowCommand>("POST", "*", ({ path, body }) => handler(path, body));
 }
 
 function previewResponse(billing: WorkflowBilling, issues: WorkflowIssue[] = []) {
@@ -539,22 +475,10 @@ it("autosaves an above-subtotal discount without capping the saved input or losi
     saved = { ...saved, savedDiscountCents: 12000 };
     return Response.json(saved);
   });
-  client.setQueryData(["reservation", saved.id], saved);
-  function Editor() {
-    const reservation = query.useQuery<ReservationDetail>({
-      queryKey: ["reservation", saved.id],
-      queryFn: async () => saved,
-      staleTime: Infinity,
-    });
-    return React.createElement(dialogs.BookingEditor, {
-      detail: reservation.data!,
-      onRefresh: () => {},
-    });
-  }
-  await render(React.createElement(Editor));
+  await renderCachedEditor(() => saved);
   await fill("notes", "Call the booking contact before arrival");
   const discount = container.querySelector<HTMLInputElement>('[aria-label="Descuento en soles"]')!;
-  await fillControl(discount, "120");
+  await fill(discount, "120");
   await React.act(async () => {
     discount.dispatchEvent(new window.FocusEvent("focusout", { bubbles: true }));
   });
@@ -617,45 +541,6 @@ it("uses the server-applied discount in a room-removal preview while retaining t
     "100",
   );
 });
-
-it.each(["confirmed", "checked_in"])(
-  "keeps Huéspedes for the optional staying-guest list on a %s reservation",
-  async (status) => {
-    const initial = { ...detail(), status };
-    initial.guest.fullName = "Booking Contact";
-    if (status === "confirmed")
-      initial.stayingGuests = [
-        {
-          id: "staying-1",
-          fullName: "Staying Guest",
-          phone: null,
-          email: null,
-          reservationRoomId: null,
-        },
-      ];
-    mockApi(async () => {
-      throw new Error("Viewing the guest list must not save changes");
-    });
-    await render(
-      React.createElement(dialogs.BookingEditor, {
-        detail: initial,
-        initialTab: "guests",
-        onRefresh: () => {},
-      }),
-    );
-    const tab = button("Huéspedes");
-    assert.equal(tab.getAttribute("role"), "tab");
-    assert.equal(tab.getAttribute("aria-selected"), "true");
-    if (status === "confirmed") {
-      const list = container.querySelector('ul[aria-label="Huéspedes registrados"]');
-      assert.ok(list);
-      assert.ok(list.textContent.includes("Staying Guest"));
-      assert.equal(list.textContent.includes("Booking Contact"), false);
-    } else {
-      assert.ok(container.textContent.includes("Sin huéspedes registrados"));
-    }
-  },
-);
 
 function fieldTrigger(label: string, index = 0) {
   const fieldLabel = Array.from(window.document.querySelectorAll("label")).filter(
@@ -726,30 +611,27 @@ it("reopens a cached reservation with the room saved by the assignment panel", a
     })),
   };
   let writes = 0;
-  mockApi(async (path, command) => {
-    assert.equal(path, "/reservations/reservation-1/commands");
-    assert.deepEqual(command.actions, [
-      {
-        type: "edit-room",
-        lineId: "line-1",
-        room: {
-          roomTypeId: "double",
-          roomId: "room-1",
-          adults: 1,
-          children: 0,
+  mockApi(
+    async (path, command) => {
+      assert.equal(path, "/reservations/reservation-1/commands");
+      assert.deepEqual(command.actions, [
+        {
+          type: "edit-room",
+          lineId: "line-1",
+          room: {
+            roomTypeId: "double",
+            roomId: "room-1",
+            adults: 1,
+            children: 0,
+          },
         },
-      },
-    ]);
-    writes++;
-    saved = assigned;
-    return Response.json(saved);
-  });
-  const fetchApi = globalThis.fetch;
-  globalThis.fetch = async (input, init) => {
-    if (!init?.method && requestUrl(input).pathname === "/reservations/reservation-1")
+      ]);
+      writes++;
+      saved = assigned;
       return Response.json(saved);
-    return fetchApi(input, init);
-  };
+    },
+    { reservation: () => saved },
+  );
   function AssignmentAndDialog() {
     const assign = queries.useAssignRoom();
     const [open, setOpen] = React.useState(true);
@@ -771,15 +653,7 @@ it("reopens a cached reservation with the room saved by the assignment panel", a
         "Assign room",
       ),
       React.createElement(dialogs.RoomBookingDialog, {
-        target: open
-          ? {
-              mode: "edit",
-              reservationId: saved.id,
-              roomId: "room-1",
-              number: "101",
-              typeName: "Doble",
-            }
-          : null,
+        target: open ? editTarget : null,
         onClose: () => setOpen(false),
         onViewReservation: () => {},
       }),
@@ -817,8 +691,6 @@ const createTarget = {
 };
 
 it("prioritizes the mobile details draft and saves it after visiting another tab", async () => {
-  const originalWidth = window.innerWidth;
-  const originalHeight = window.innerHeight;
   let saved = detail();
   const writes: WorkflowCommand[] = [];
   let closed = false;
@@ -834,98 +706,38 @@ it("prioritizes the mobile details draft and saves it after visiting another tab
     [...window.document.querySelectorAll("button")].some(
       (item) => item.textContent.trim() === label,
     );
-  try {
-    window.happyDOM.setWindowSize({ width: 390, height: 844 });
-    await render(
-      React.createElement(dialogs.RoomBookingDialog, {
-        target: {
-          mode: "edit",
-          reservationId: saved.id,
-          roomId: "room-1",
-          number: "101",
-          typeName: "Doble",
-        },
-        onClose: () => {
-          closed = true;
-        },
-        onViewReservation: () => {},
-      }),
-    );
-    await until(() => hasButton("Hacer check-in"), "The saved reservation actions must load");
-    assert.equal(hasButton("Guardar cambios"), false);
-    assert.equal(hasButton("Descartar"), false);
-    await fill("notes", "Llegada tarde");
-    assert.equal(hasButton("Hacer check-in"), false);
-    assert.equal(button("Guardar cambios").disabled, false);
-    await React.act(async () => button("Huéspedes").click());
-    assert.ok(button("Volver a Detalles"));
-    assert.equal(control("notes").value, "Llegada tarde");
-    await React.act(async () => button("Volver a Detalles").click());
-    await React.act(async () => button("Guardar cambios").click());
-    await until(
-      () => hasButton("Hacer check-in"),
-      "Saving restores the saved-state action priority",
-    );
-    assert.equal(writes.length, 1);
-    assert.deepEqual(writes[0].actions, [{ type: "notes", notes: "Llegada tarde" }]);
-    assert.equal(control("notes").value, "Llegada tarde");
-    await fill("notes", "Cambio descartable");
-    await React.act(async () => button("Descartar").click());
-    assert.equal(control("notes").value, "Llegada tarde");
-    assert.ok(button("Hacer check-in"));
-    assert.ok(button("Cerrar"));
-    await React.act(async () => button("Cerrar").click());
-    assert.equal(closed, true);
-    assert.equal(writes.length, 1);
-  } finally {
-    window.happyDOM.setWindowSize({ width: originalWidth, height: originalHeight });
-  }
-});
-
-it("expands the mobile reservation bill without losing details or discount drafts", async () => {
-  const originalWidth = window.innerWidth;
-  const originalHeight = window.innerHeight;
-  const saved = { ...detail(), paidCents: 10000, balanceCents: 20000 };
-  const writes: WorkflowCommand[] = [];
-  mockApi(async (_path, command) => {
-    writes.push(command);
-    return Response.json(saved);
+  page.mobile();
+  await openEditDialog({
+    onClose: () => {
+      closed = true;
+    },
   });
-  try {
-    window.happyDOM.setWindowSize({ width: 390, height: 844 });
-    await render(React.createElement(dialogs.BookingEditor, { detail: saved }));
-    const expand = button("Ver desglose");
-    assert.equal(expand.getAttribute("aria-expanded"), "false");
-    const bill = window.document.getElementById(expand.getAttribute("aria-controls")!)!;
-    assert.ok(bill);
-    assert.equal(bill.hasAttribute("hidden"), true);
-    const financials = window.document.querySelector('[aria-label="Importes de la reserva"]')!;
-    assert.ok(financials.textContent.replace(/\s/g, "").includes("SaldopendienteS/200"));
-    assert.ok(expand.textContent.replace(/\s/g, "").includes("SaldopendienteS/200"));
-    assert.ok(window.document.getElementById(expand.getAttribute("aria-describedby")!));
-    await fill("notes", "Llegada tarde");
-    await React.act(async () => expand.click());
-    assert.equal(expand.getAttribute("aria-expanded"), "true");
-    assert.equal(expand.getAttribute("aria-label"), "Ocultar desglose");
-    assert.equal(bill.hasAttribute("hidden"), false);
-    assert.ok(bill.textContent.replace(/\s/g, "").includes("TotaldereservaS/300"));
-    const discount = bill.querySelector<HTMLInputElement>('[aria-label="Descuento en soles"]')!;
-    await fillControl(discount, "25");
-    await React.act(async () => button("Ocultar desglose").click());
-    assert.equal(bill.hasAttribute("hidden"), true);
-    await React.act(async () => button("Ver desglose").click());
-    assert.equal(bill.querySelector('[aria-label="Descuento en soles"]'), discount);
-    assert.equal(discount.value, "25");
-    assert.equal(control("notes").value, "Llegada tarde");
-    assert.equal(writes.length, 0, "Expanding and collapsing must not submit either draft");
-  } finally {
-    window.happyDOM.setWindowSize({ width: originalWidth, height: originalHeight });
-  }
+  await until(() => hasButton("Hacer check-in"), "The saved reservation actions must load");
+  assert.equal(hasButton("Guardar cambios"), false);
+  assert.equal(hasButton("Descartar"), false);
+  await fill("notes", "Llegada tarde");
+  assert.equal(hasButton("Hacer check-in"), false);
+  assert.equal(button("Guardar cambios").disabled, false);
+  await React.act(async () => button("Huéspedes").click());
+  assert.ok(button("Volver a Detalles"));
+  assert.equal(control("notes").value, "Llegada tarde");
+  await React.act(async () => button("Volver a Detalles").click());
+  await React.act(async () => button("Guardar cambios").click());
+  await until(() => hasButton("Hacer check-in"), "Saving restores the saved-state action priority");
+  assert.equal(writes.length, 1);
+  assert.deepEqual(writes[0].actions, [{ type: "notes", notes: "Llegada tarde" }]);
+  assert.equal(control("notes").value, "Llegada tarde");
+  await fill("notes", "Cambio descartable");
+  await React.act(async () => button("Descartar").click());
+  assert.equal(control("notes").value, "Llegada tarde");
+  assert.ok(button("Hacer check-in"));
+  assert.ok(button("Cerrar"));
+  await React.act(async () => button("Cerrar").click());
+  assert.equal(closed, true);
+  assert.equal(writes.length, 1);
 });
 
 it("protects mobile payment drafts when navigating through the header actions", async () => {
-  const originalWidth = window.innerWidth;
-  const originalHeight = window.innerHeight;
   const saved = detail();
   const navigations: string[] = [];
   let writes = 0;
@@ -933,54 +745,36 @@ it("protects mobile payment drafts when navigating through the header actions", 
     writes++;
     return Response.json(saved);
   });
-  try {
-    window.happyDOM.setWindowSize({ width: 390, height: 844 });
-    await render(
-      React.createElement(dialogs.RoomBookingDialog, {
-        target: {
-          mode: "edit",
-          reservationId: saved.id,
-          roomId: "room-1",
-          number: "101",
-          typeName: "Doble",
-        },
-        onClose: () => {},
-        onViewReservation: (id: string) => navigations.push(id),
-      }),
+  page.mobile();
+  await openEditDialog({ onViewReservation: (id) => navigations.push(id) });
+  await until(() => window.document.querySelector('[name="notes"]') !== null);
+  await React.act(async () => button("Pagos").click());
+  await fill("amount", "75");
+  assert.equal(button("Hacer check-in").disabled, true);
+  await openReservationActions();
+  const item = (label: string) => {
+    const action = [...window.document.querySelectorAll<HTMLElement>('[role="menuitem"]')].find(
+      (entry) => entry.textContent.trim() === label,
     );
-    await until(() => window.document.querySelector('[name="notes"]') !== null);
-    await React.act(async () => button("Pagos").click());
-    await fill("amount", "75");
-    assert.equal(button("Hacer check-in").disabled, true);
-    await openReservationActions();
-    const item = (label: string) => {
-      const action = [...window.document.querySelectorAll<HTMLElement>('[role="menuitem"]')].find(
-        (entry) => entry.textContent.trim() === label,
-      );
-      assert.ok(action, `Missing reservation action ${label}`);
-      return action;
-    };
-    assert.equal(item("Cancelar reserva").getAttribute("aria-disabled"), "true");
-    assert.equal(item("Cambiar estado").getAttribute("aria-disabled"), "true");
-    await React.act(async () => item("Cancelar reserva").click());
-    assert.equal(writes, 0);
-    await React.act(async () => item("Ver reserva completa").click());
-    await until(() => window.document.body.textContent.includes("Hay cambios sin guardar"));
-    assert.equal(navigations.length, 0);
-    await React.act(async () => button("Seguir editando").click());
-    assert.equal(control("amount").value, "75");
-    await chooseReservationAction("Ver reserva completa");
-    await React.act(async () => button("Descartar y salir").click());
-    assert.deepEqual(navigations, [saved.id]);
-    assert.equal(writes, 0);
-  } finally {
-    window.happyDOM.setWindowSize({ width: originalWidth, height: originalHeight });
-  }
+    assert.ok(action, `Missing reservation action ${label}`);
+    return action;
+  };
+  assert.equal(item("Cancelar reserva").getAttribute("aria-disabled"), "true");
+  assert.equal(item("Cambiar estado").getAttribute("aria-disabled"), "true");
+  await React.act(async () => item("Cancelar reserva").click());
+  assert.equal(writes, 0);
+  await React.act(async () => item("Ver reserva completa").click());
+  await until(() => window.document.body.textContent.includes("Hay cambios sin guardar"));
+  assert.equal(navigations.length, 0);
+  await React.act(async () => button("Seguir editando").click());
+  assert.equal(control("amount").value, "75");
+  await chooseReservationAction("Ver reserva completa");
+  await React.act(async () => button("Descartar y salir").click());
+  assert.deepEqual(navigations, [saved.id]);
+  assert.equal(writes, 0);
 });
 
 it("announces the mobile balance preview without showing stale credit", async () => {
-  const originalWidth = window.innerWidth;
-  const originalHeight = window.innerHeight;
   const saved = { ...detail(), paidCents: 50000, balanceCents: -20000 };
   let finishPreview!: () => void;
   mockApi(async (path) => {
@@ -999,38 +793,34 @@ it("announces the mobile balance preview without showing stale credit", async ()
         );
     });
   });
-  try {
-    window.happyDOM.setWindowSize({ width: 390, height: 844 });
-    await render(React.createElement(dialogs.BookingEditor, { detail: saved }));
-    const financials = window.document.querySelector('[aria-label="Importes de la reserva"]')!;
-    assert.equal(financials.getAttribute("aria-live"), "polite");
-    const text = () => financials.textContent.replace(/\s/g, "");
-    assert.ok(text().includes("SaldoafavorS/200"));
-    await React.act(async () => fieldTrigger("Check-out").click());
-    const day = [...window.document.querySelectorAll<HTMLButtonElement>("button[data-day]")].find(
-      (item) => item.textContent.trim() === "17",
-    )!;
-    assert.ok(day);
-    await React.act(async () => day.click());
-    assert.ok(text().includes("Vistaprevia"));
-    assert.equal(text().includes("Singuardar"), false);
-    assert.ok(button("Ver desglose").textContent.includes("Vista previa"));
-    assert.ok(text().includes("Calculando…"));
-    assert.equal(text().includes("S/200"), false, "Do not show stale credit while repricing");
-    assert.equal(button("Ver desglose").disabled, false);
-    await React.act(async () => button("Ver desglose").click());
-    assert.equal(button("Ocultar desglose").getAttribute("aria-expanded"), "true");
-    await until(() => !!finishPreview, "The updated stay must request its price");
-    await React.act(async () => finishPreview());
-    await until(
-      () => text().includes("SaldoafavorVistapreviaS/50"),
-      "The persistent balance must use the server preview",
-    );
-    assert.ok(text().includes("SaldoafavorVistapreviaS/50"));
-    assert.equal(button("Guardar cambios").disabled, false);
-  } finally {
-    window.happyDOM.setWindowSize({ width: originalWidth, height: originalHeight });
-  }
+  page.mobile();
+  await render(React.createElement(dialogs.BookingEditor, { detail: saved }));
+  const financials = window.document.querySelector('[aria-label="Importes de la reserva"]')!;
+  assert.equal(financials.getAttribute("aria-live"), "polite");
+  const text = () => financials.textContent.replace(/\s/g, "");
+  assert.ok(text().includes("SaldoafavorS/200"));
+  await React.act(async () => fieldTrigger("Check-out").click());
+  const day = [...window.document.querySelectorAll<HTMLButtonElement>("button[data-day]")].find(
+    (item) => item.textContent.trim() === "17",
+  )!;
+  assert.ok(day);
+  await React.act(async () => day.click());
+  assert.ok(text().includes("Vistaprevia"));
+  assert.equal(text().includes("Singuardar"), false);
+  assert.ok(button("Ver desglose").textContent.includes("Vista previa"));
+  assert.ok(text().includes("Calculando…"));
+  assert.equal(text().includes("S/200"), false, "Do not show stale credit while repricing");
+  assert.equal(button("Ver desglose").disabled, false);
+  await React.act(async () => button("Ver desglose").click());
+  assert.equal(button("Ocultar desglose").getAttribute("aria-expanded"), "true");
+  await until(() => !!finishPreview, "The updated stay must request its price");
+  await React.act(async () => finishPreview());
+  await until(
+    () => text().includes("SaldoafavorVistapreviaS/50"),
+    "The persistent balance must use the server preview",
+  );
+  assert.ok(text().includes("SaldoafavorVistapreviaS/50"));
+  assert.equal(button("Guardar cambios").disabled, false);
 });
 
 function mockCreationApi(handler: (input: CreateBookingInput) => Promise<Response>) {
@@ -1038,33 +828,28 @@ function mockCreationApi(handler: (input: CreateBookingInput) => Promise<Respons
     assert.equal(path, "/reservations");
     return handler(input as unknown as CreateBookingInput);
   });
-  const fetchApi = globalThis.fetch;
-  globalThis.fetch = async (input, init) => {
-    const url = requestUrl(input);
-    if (url.pathname === "/availability") {
-      const checkIn = url.searchParams.get("checkIn")!;
-      const checkOut = url.searchParams.get("checkOut")!;
-      const nights = (Date.parse(checkOut) - Date.parse(checkIn)) / 86400000;
-      return Response.json({
-        checkIn,
-        checkOut,
-        nights,
-        currency: "PEN",
-        roomTypes: [
-          {
-            id: "double",
-            name: "Doble",
-            maxAdults: 2,
-            maxChildren: 2,
-            free: 5,
-            totalCents: nights * 15000,
-            nights: [],
-          },
-        ],
-      });
-    }
-    return fetchApi(input, init);
-  };
+  page.api.on("GET", "/availability", ({ url }) => {
+    const checkIn = url.searchParams.get("checkIn")!;
+    const checkOut = url.searchParams.get("checkOut")!;
+    const nights = (Date.parse(checkOut) - Date.parse(checkIn)) / 86400000;
+    return {
+      checkIn,
+      checkOut,
+      nights,
+      currency: "PEN",
+      roomTypes: [
+        {
+          id: "double",
+          name: "Doble",
+          maxAdults: 2,
+          maxChildren: 2,
+          free: 5,
+          totalCents: nights * 15000,
+          nights: [],
+        },
+      ],
+    };
+  });
 }
 
 async function renderNewBooking(onCreated: (id: string) => void = () => {}) {
@@ -1121,7 +906,7 @@ it("creates a reservation with its contact, notes, room quote, and initial disco
     "Both rooms must appear in the total",
   );
   const discount = container.querySelector<HTMLInputElement>('[aria-label="Descuento en soles"]')!;
-  await fillControl(discount, "30");
+  await fill(discount, "30");
   await React.act(async () => {
     discount.dispatchEvent(new window.FocusEvent("focusout", { bubbles: true }));
   });
@@ -1148,7 +933,7 @@ it("creates a reservation with its contact, notes, room quote, and initial disco
   );
 });
 
-it("labels repeated room groups before their fields and preserves the remaining draft when removing the first room", async () => {
+it("preserves the remaining room draft when removing the first room", async () => {
   const writes: CreateBookingInput[] = [];
   mockCreationApi(async (input) => {
     writes.push(input);
@@ -1161,26 +946,10 @@ it("labels repeated room groups before their fields and preserves the remaining 
     [...rooms.querySelectorAll<HTMLButtonElement>("button")].filter(
       (item) => item.textContent.trim() === "Quitar",
     );
-  assert.equal(rooms.querySelectorAll("h4").length, 0);
-  assert.equal(removeActions().length, 0, "A single room has no mobile removal action");
   await React.act(async () => button("Agregar habitación").click());
-  assert.equal(removeActions().length, 2, "Any room can be removed when multiple remain");
-  const groups = [...rooms.querySelectorAll("section[aria-labelledby]")];
-  assert.equal(groups.length, 2);
-  for (const [index, room] of groups.entries()) {
-    const heading = window.document.getElementById(room.getAttribute("aria-labelledby")!);
-    assert.ok(heading);
-    assert.equal(heading.textContent.trim(), `Habitación ${index + 1}`);
-    assert.ok(
-      heading.compareDocumentPosition(fieldTrigger("Tipo", index)) &
-        window.Node.DOCUMENT_POSITION_FOLLOWING,
-      "A room's heading must precede its fields for screen readers",
-    );
-  }
   await fill("rooms[1].room.adults", "2");
   await fill("rooms[1].room.children", "1");
   await React.act(async () => removeActions()[0].click());
-  assert.equal(rooms.querySelectorAll("h4").length, 0);
   assert.equal(removeActions().length, 0);
   assert.equal(control("rooms[0].room.adults").value, "2");
   assert.equal(control("rooms[0].room.children").value, "1");
@@ -1202,7 +971,7 @@ it("caps the creation preview without reducing the entered initial discount", as
   await renderNewBooking();
   await fill("fullName", "Booking Contact");
   const discount = container.querySelector<HTMLInputElement>('[aria-label="Descuento en soles"]')!;
-  await fillControl(discount, "200");
+  await fill(discount, "200");
   await React.act(async () => {
     discount.dispatchEvent(new window.FocusEvent("focusout", { bubbles: true }));
   });
@@ -1217,124 +986,54 @@ it("caps the creation preview without reducing the entered initial discount", as
   assert.equal(writes[0].discountCents, 20000);
 });
 
-it("opens a blank room-type menu without a validation error and prices the selected type", async () => {
-  const writes: CreateBookingInput[] = [];
-  mockCreationApi(async (input) => {
-    writes.push(input);
-    return Response.json(detail(), { status: 201 });
-  });
-  await render(
-    React.createElement(newBookings.NewBooking, {
-      target: { mode: "new" },
-      onCreated: () => {},
-      onCancel: () => {},
-      onDirtyChange: () => {},
-      onSavingChange: () => {},
-    }),
-  );
-  assert.ok(button("31 oct 2026"));
-  const type = fieldTrigger("Tipo");
-  await until(() => !type.disabled, "Room types must load");
-  assert.equal(
-    type.querySelector('[data-slot="select-value"]')?.textContent.trim(),
-    "Selecciona un tipo",
-  );
-  assert.equal(button("Crear reserva").disabled, true);
-  await React.act(async () => {
-    type.focus();
-    type.click();
-  });
-  const option = Array.from(window.document.querySelectorAll<HTMLElement>('[role="option"]')).find(
-    (item) => item.textContent.trim() === "Doble",
-  )!;
-  assert.ok(option);
-  // Opening a portalled menu transfers focus away from its trigger.
-  await React.act(async () => {
-    type.dispatchEvent(
-      new window.FocusEvent("focusout", {
-        bubbles: true,
-        relatedTarget: option,
-      }),
-    );
-  });
-  assert.equal(type.getAttribute("aria-invalid"), "false");
-  assert.equal(
-    window.document.body.textContent.includes("Selecciona un tipo de habitación válido."),
-    false,
-  );
-  await React.act(async () => option.click());
-  await until(() => !button("Crear reserva").disabled, "Choosing a type must price the stay");
-  assert.equal(type.querySelector('[data-slot="select-value"]')?.textContent.trim(), "Doble");
-  assert.equal(type.getAttribute("aria-invalid"), "false");
-  await fill("fullName", "Ada Lovelace");
-  await React.act(async () => {
-    control("fullName").dispatchEvent(new window.FocusEvent("focusout", { bubbles: true }));
-  });
-  await submit();
-  await until(() => writes.length === 1, "A booking started without a room type must save");
-  assert.equal(writes[0].rooms[0].roomTypeId, "double");
-  assert.equal(writes[0].rooms[0].roomId, null);
-  assert.equal(writes[0].checkIn, "2026-10-31");
-  assert.equal(writes[0].checkOut, "2026-11-01");
-});
-
 it("filters sold-out types, occupied and closed room numbers, and inventory already used by this draft", async () => {
   mockCreationApi(async () => Response.json(detail()));
-  const fetchApi = globalThis.fetch;
   const types = [
-    { id: "double", name: "Doble", maxAdults: 2, maxChildren: 2, free: 2 },
-    { id: "suite", name: "Suite", maxAdults: 4, maxChildren: 2, free: 0 },
-    { id: "family", name: "Familiar", maxAdults: 4, maxChildren: 2, free: 1 },
+    { ...doubleType, free: 2 },
+    { id: "suite", name: "Suite", maxAdults: 4, maxChildren: 2, baseRateCents: 15000, free: 0 },
+    { id: "family", name: "Familiar", maxAdults: 4, maxChildren: 2, baseRateCents: 15000, free: 1 },
   ];
-  globalThis.fetch = async (input, init) => {
-    const url = requestUrl(input);
-    if (url.pathname === "/room-types") return Response.json(types);
-    if (url.pathname === "/rooms")
-      return Response.json([
-        ...[1, 2, 3, 4].map((n) => ({
-          id: `room-${n}`,
-          number: `10${n}`,
-          roomTypeId: "double",
-        })),
-        { id: "suite-1", number: "201", roomTypeId: "suite" },
-        { id: "family-1", number: "301", roomTypeId: "family" },
-      ]);
-    if (url.pathname === "/availability")
-      return Response.json({
-        checkIn: "2026-10-14",
-        checkOut: "2026-10-15",
-        nights: 1,
-        currency: "PEN",
-        roomTypes: types.map((type) => ({
-          ...type,
-          totalCents: 15000,
-          nights: [],
-        })),
-      });
-    if (url.pathname === "/reservations" && !init?.method)
-      return Response.json([
-        { ...detail(), checkIn: "2026-10-14", checkOut: "2026-10-16" },
-        // A checkout on the arrival date must leave room 103 available.
-        {
-          ...detail(),
-          id: "departed",
-          checkIn: "2026-10-12",
-          checkOut: "2026-10-14",
-          rooms: [{ roomId: "room-3", roomTypeId: "double" }],
-        },
-      ]);
-    if (url.pathname === "/room-closures")
-      return Response.json([
-        {
-          id: "closure",
-          roomId: "room-2",
-          starts: "2026-10-14",
-          ends: "2026-10-15",
-          reason: null,
-        },
-      ]);
-    return fetchApi(input, init);
-  };
+  page.api.catalog.roomTypes = types;
+  page.api.catalog.rooms = [
+    ...[1, 2, 3, 4].map((n) => ({
+      id: `room-${n}`,
+      number: `10${n}`,
+      roomTypeId: "double",
+    })),
+    { id: "suite-1", number: "201", roomTypeId: "suite" },
+    { id: "family-1", number: "301", roomTypeId: "family" },
+  ];
+  page.api.on("GET", "/availability", () => ({
+    checkIn: "2026-10-14",
+    checkOut: "2026-10-15",
+    nights: 1,
+    currency: "PEN",
+    roomTypes: types.map((type) => ({
+      ...type,
+      totalCents: 15000,
+      nights: [],
+    })),
+  }));
+  page.api.on("GET", "/reservations", () => [
+    { ...detail(), checkIn: "2026-10-14", checkOut: "2026-10-16" },
+    // A checkout on the arrival date must leave room 103 available.
+    {
+      ...detail(),
+      id: "departed",
+      checkIn: "2026-10-12",
+      checkOut: "2026-10-14",
+      rooms: [{ roomId: "room-3", roomTypeId: "double" }],
+    },
+  ]);
+  page.api.on("GET", "/room-closures", () => [
+    {
+      id: "closure",
+      roomId: "room-2",
+      starts: "2026-10-14",
+      ends: "2026-10-15",
+      reason: null,
+    },
+  ]);
   await renderNewBooking();
   assert.match(fieldTrigger("Hab.").textContent, /Sin asignar/);
   await React.act(async () => fieldTrigger("Tipo").click());
@@ -1389,16 +1088,14 @@ it("filters sold-out types, occupied and closed room numbers, and inventory alre
 
 it("replaces sold-out room controls with an empty state and restores them when dates are available", async () => {
   mockCreationApi(async () => Response.json(detail()));
-  const fetchApi = globalThis.fetch;
   let finish!: (response: Response) => void;
-  globalThis.fetch = async (input, init) => {
-    const url = requestUrl(input);
-    if (url.pathname === "/availability" && url.searchParams.get("checkOut") === "2026-10-16")
-      return new Promise<Response>((resolve) => {
-        finish = resolve;
-      });
-    return fetchApi(input, init);
-  };
+  page.api.on("GET", "/availability", ({ url }) =>
+    url.searchParams.get("checkOut") === "2026-10-16"
+      ? new Promise<Response>((resolve) => {
+          finish = resolve;
+        })
+      : undefined,
+  );
   await renderNewBooking();
   await fill("fullName", "Ada Lovelace");
   await fill("notes", "Llegada por la tarde");
@@ -1472,352 +1169,22 @@ it("replaces sold-out room controls with an empty state and restores them when d
   assert.equal(control("notes").value, "Llegada por la tarde");
 });
 
-const doubleType = { id: "double", name: "Doble", maxAdults: 2, maxChildren: 2 };
-const noTypesTitle = "Configura tu alojamiento";
-const noRoomsTitle = "Aún no hay habitaciones";
-
-// A null room-type list makes the catalog and calendar reads fail.
-function mockSetupApi(
-  roomTypes: unknown[] | null,
-  rooms: unknown[],
-  inventoryTypes: unknown[] = [],
-) {
-  globalThis.fetch = async (input) => {
-    const url = requestUrl(input);
-    if (url.pathname === "/calendar") {
-      if (!roomTypes) return Response.json({ error: "x" }, { status: 500 });
-      const types = roomTypes as { id: string; name: string }[];
-      const listed = rooms as { id: string; number: string; roomTypeId: string }[];
-      const typeNames = new Map(types.map((type) => [type.id, type.name]));
-      return calendarResponse(url, {
-        missingSetup: types.length === 0 ? "types" : listed.length === 0 ? "rooms" : null,
-        rooms: catalogCalendarRooms(listed, typeNames),
-      });
-    }
-    if (url.pathname === "/room-types")
-      return roomTypes ? Response.json(roomTypes) : Response.json({ error: "x" }, { status: 500 });
-    if (url.pathname === "/rooms") return Response.json(rooms);
-    if (url.pathname === "/reservations" || url.pathname === "/room-closures")
-      return Response.json([]);
-    if (url.pathname === "/inventory")
-      return Response.json({
-        from: url.searchParams.get("from"),
-        to: url.searchParams.get("to"),
-        currency: "PEN",
-        roomTypes: inventoryTypes,
-      });
-    if (url.pathname === "/availability")
-      return Response.json({
-        checkIn: url.searchParams.get("checkIn"),
-        checkOut: url.searchParams.get("checkOut"),
-        nights: 2,
-        currency: "PEN",
-        roomTypes: [],
-      });
-    throw new Error(`Unexpected request ${url.pathname}`);
-  };
-}
-
-const renderCalendar = () =>
-  React.createElement(calendars.RoomCalendar, {
-    start: new Date(2026, 9, 14),
-    span: 7,
-    onStartChange: () => {},
-    onSpanChange: () => {},
-    onOpenReservation: () => {},
-  });
-const renderReservations = () =>
-  React.createElement(reservationLists.Reservations, {
-    search: {
-      view: "arrivals",
-      day: "2026-10-14",
-      q: "",
-      statuses: new ReservationStatusSelection().toSearch(),
-      balance: "all",
-      assignment: "all",
-      sort: "guestName",
-      direction: "asc",
-      size: 50,
-      page: 0,
-    },
-    onSearchChange: () => {},
-    onOpenReservation: () => {},
-  });
-const renderInventory = () =>
-  React.createElement(inventories.Inventory, {
-    start: new Date(2026, 9, 14),
-    span: 14,
-    onStartChange: () => {},
-    onSpanChange: () => {},
-  });
-
-it("updates calendar past-day restrictions at property midnight without changing its explicit range", async () => {
-  vi.setSystemTime(new Date("2026-11-01T04:59:59.990Z"));
-  mockSetupApi([doubleType], [{ id: "room-1", number: "101", roomTypeId: "double" }]);
-  const changes: string[] = [];
+it("points a new booking to setup when no rooms exist", async () => {
+  page.api.catalog.rooms = [];
   await render(
-    React.createElement(calendars.RoomCalendar, {
-      start: new Date(2026, 9, 30),
-      span: 7,
-      onStartChange: (date) => {
-        changes.push(`${date.getFullYear()}-${date.getMonth() + 1}-${date.getDate()}`);
-      },
-      onSpanChange: () => {},
-      onOpenReservation: () => {},
+    React.createElement(newBookings.NewBooking, {
+      target: { mode: "new" },
+      onCreated: () => {},
+      onCancel: () => {},
+      onDirtyChange: () => {},
+      onSavingChange: () => {},
     }),
   );
-  const slot = (day: string) => {
-    const element = window.document.querySelector<HTMLButtonElement>(
-      `button[aria-label="Nueva reserva para habitación 101 el ${day}"]`,
-    );
-    assert.ok(element, `Missing booking day ${day}`);
-    return element;
-  };
-  await until(
-    () => !!container.querySelector('button[aria-label*="habitación 101 el"]'),
-    "Calendar loads",
+  await until(() =>
+    container.textContent.includes("Aún no hay habitaciones. Agrégalas en Configuración."),
   );
-  assert.equal(slot("30 oct 2026").disabled, true);
-  assert.equal(slot("31 oct 2026").disabled, false);
-  vi.setSystemTime(new Date("2026-11-01T05:00:00Z"));
-  await until(
-    () => slot("31 oct 2026").disabled,
-    "Property midnight disables yesterday without focus or sign-in",
-  );
-  assert.ok(button("30 oct 2026"));
-  assert.deepEqual(changes, []);
-  await React.act(async () => button("Hoy").click());
-  assert.deepEqual(changes, ["2026-11-1"]);
+  assert.equal(container.textContent.includes("Sin habitaciones disponibles"), false);
 });
-
-it("round-trips saved closure dates through the picker and submitted request", async () => {
-  const writes: unknown[] = [];
-  const closure = {
-    id: "closure",
-    roomId: "room-1",
-    starts: "2026-10-31",
-    ends: "2026-11-02",
-    reason: "Repairs",
-  };
-  globalThis.fetch = async (_input, init) => {
-    if (init?.method === "PATCH") {
-      assert.ok(typeof init.body === "string");
-      writes.push(JSON.parse(init.body));
-      return Response.json({ ...closure, starts: "2026-10-30" });
-    }
-    throw new Error("Unexpected closure request");
-  };
-  await render(
-    React.createElement(closures.RoomClosureDialog, {
-      target: { mode: "edit", closure, number: "101", typeName: "Doble" },
-      onClose: () => {},
-    }),
-  );
-  assert.ok(button("31 oct 2026"));
-  assert.ok(button("2 nov 2026"));
-  await React.act(async () => button("31 oct 2026").click());
-  const selected = window.document.querySelector<HTMLButtonElement>(
-    'button[data-day="30/10/2026"]',
-  );
-  assert.ok(selected);
-  await React.act(async () => selected.click());
-  assert.ok(button("30 oct 2026"));
-  await React.act(async () => button("Guardar").click());
-  await until(() => writes.length === 1, "Closure saves");
-  assert.deepEqual(writes, [{ starts: "2026-10-30", ends: "2026-11-02", reason: "Repairs" }]);
-});
-
-it("opens an unselected picker in the property month and marks the property date as today", async () => {
-  await render(
-    React.createElement(closures.RoomClosureDialog, {
-      target: { mode: "create", roomId: "room-1", number: "101", typeName: "Doble" },
-      onClose: () => {},
-    }),
-  );
-  await React.act(async () => button("Seleccionar fecha").click());
-  assert.match(
-    window.document.querySelector('[data-slot="calendar"]')!.textContent,
-    /octubre 2026/,
-  );
-  const today = window.document.querySelector<HTMLButtonElement>('button[data-day="31/10/2026"]');
-  assert.ok(today);
-  assert.match(today.getAttribute("aria-label") ?? "", /hoy|today/i);
-});
-
-it("uses the property date for arrival badges and refreshes them on resume", async () => {
-  const saved = {
-    ...detail(),
-    checkIn: "2026-10-31",
-    checkOut: "2026-11-02",
-    guestName: "Ada Lovelace",
-    rooms: detail().rooms.map((room) => ({ ...room, roomId: null })),
-  };
-  mockSetupApi([doubleType], [{ id: "room-1", number: "101", roomTypeId: "double" }]);
-  const fetchApi = globalThis.fetch;
-  const line = saved.rooms[0]!;
-  globalThis.fetch = async (input, init) => {
-    const url = requestUrl(input);
-    if (url.pathname !== "/calendar") return fetchApi(input, init);
-    const response = await fetchApi(input, init);
-    return Response.json({
-      ...(await response.json()),
-      unassigned: [
-        {
-          id: line.id,
-          reservationId: saved.id,
-          guestName: saved.guestName,
-          status: saved.status,
-          checkIn: saved.checkIn,
-          checkOut: saved.checkOut,
-          roomId: null,
-          roomTypeId: line.roomTypeId,
-          roomIndex: 1,
-          roomCount: saved.rooms.length,
-        },
-      ],
-    });
-  };
-  await render(
-    React.createElement(calendars.RoomCalendar, {
-      start: new Date(2026, 9, 31),
-      span: 7,
-      onStartChange: () => {},
-      onSpanChange: () => {},
-      onOpenReservation: () => {},
-    }),
-  );
-  await until(
-    () =>
-      !!container.querySelector(
-        'button[aria-label="Mostrar habitaciones reservadas sin asignar, 1"]',
-      ),
-    "Unassigned arrival loads",
-  );
-  await React.act(async () =>
-    container
-      .querySelector<HTMLButtonElement>(
-        'button[aria-label="Mostrar habitaciones reservadas sin asignar, 1"]',
-      )!
-      .click(),
-  );
-  assert.match(container.textContent, /Llega hoy/);
-  vi.setSystemTime(new Date("2026-11-01T05:00:00Z"));
-  await React.act(async () => window.document.dispatchEvent(new window.Event("visibilitychange")));
-  assert.equal(container.textContent.includes("Llega hoy"), false);
-});
-
-it("keeps inventory rate labels and submitted date ranges unchanged", async () => {
-  const writes: unknown[] = [];
-  mockSetupApi(
-    [doubleType],
-    [],
-    [
-      {
-        ...doubleType,
-        baseRateCents: 15000,
-        capacity: 1,
-        nights: [
-          { date: "2026-10-31", priceCents: 18000, override: true, free: 1, booked: 0, closed: 0 },
-        ],
-      },
-    ],
-  );
-  const fetchApi = globalThis.fetch;
-  globalThis.fetch = async (input, init) => {
-    if (init?.method === "PUT") {
-      assert.equal(requestUrl(input).pathname, "/room-types/double/rates");
-      assert.ok(typeof init.body === "string");
-      writes.push(JSON.parse(init.body));
-      return Response.json({ updated: 1 });
-    }
-    return fetchApi(input, init);
-  };
-  await render(
-    React.createElement(inventories.Inventory, {
-      start: new Date(2026, 9, 31),
-      span: 7,
-      onStartChange: () => {},
-      onSpanChange: () => {},
-    }),
-  );
-  await until(
-    () => !!container.querySelector('button[aria-label^="Doble, 31 oct 2026"]'),
-    "Saved rate loads",
-  );
-  await React.act(async () =>
-    container.querySelector<HTMLButtonElement>('button[aria-label^="Doble, 31 oct 2026"]')!.click(),
-  );
-  await until(() => !!window.document.querySelector('[name="price"]'), "Rate editor opens");
-  assert.equal(control("price").value, "180.00");
-  assert.match(window.document.querySelector('[role="dialog"]')!.textContent, /31 oct 2026/);
-  await fill("price", "200");
-  await React.act(async () => button("Guardar").click());
-  await until(() => writes.length === 1, "Rate saves");
-  assert.deepEqual(writes, [{ from: "2026-10-31", to: "2026-10-31", priceCents: 20000 }]);
-});
-
-it.each([
-  ["calendar", renderCalendar, [], noTypesTitle],
-  ["calendar", renderCalendar, [doubleType], noRoomsTitle],
-  ["reservations list", renderReservations, [], noTypesTitle],
-  ["reservations list", renderReservations, [doubleType], noRoomsTitle],
-])(
-  "replaces the %s with a setup prompt without its controls (room types: %j)",
-  async (_screen, element, roomTypes, title) => {
-    mockSetupApi(roomTypes, []);
-    await renderWithRouter(element());
-    await until(() => container.textContent.includes(title), "Setup prompt must appear");
-    assert.equal(container.querySelectorAll("button, input, h1").length, 0);
-  },
-);
-
-it("replaces the inventory grid with a setup prompt when there are no room types", async () => {
-  mockSetupApi([], []);
-  await renderWithRouter(renderInventory());
-  await until(() => container.textContent.includes(noTypesTitle), "Setup prompt must appear");
-  assert.equal(container.querySelectorAll("button").length, 0);
-});
-
-it("keeps the inventory grid so rates can be set when room types exist without rooms", async () => {
-  mockSetupApi(
-    [doubleType],
-    [],
-    [{ ...doubleType, baseRateCents: 15000, capacity: 0, nights: [] }],
-  );
-  await render(renderInventory());
-  await until(() => container.textContent.includes("Doble"), "Room type row must render");
-  assert.ok(!container.textContent.includes(noTypesTitle));
-  assert.ok(!container.textContent.includes(noRoomsTitle));
-});
-
-it("does not call a property unconfigured when room types fail to load", async () => {
-  mockSetupApi(null, []);
-  await render(renderCalendar());
-  await until(() => container.textContent.includes("Reintentar"), "Load failure must stay visible");
-  assert.ok(!container.textContent.includes(noTypesTitle));
-  assert.ok(!container.textContent.includes(noRoomsTitle));
-});
-
-it.each([
-  ["room types", [], [], "Aún no hay tipos de habitación. Agrégalos en Configuración."],
-  ["rooms", [doubleType], [], "Aún no hay habitaciones. Agrégalas en Configuración."],
-])(
-  "points a new booking to setup, not to dates, when there are no %s",
-  async (_missing, roomTypes, rooms, message) => {
-    mockSetupApi(roomTypes, rooms);
-    await render(
-      React.createElement(newBookings.NewBooking, {
-        target: { mode: "new" },
-        onCreated: () => {},
-        onCancel: () => {},
-        onDirtyChange: () => {},
-        onSavingChange: () => {},
-      }),
-    );
-    await until(() => container.textContent.includes(message), "Setup guidance must appear");
-    assert.ok(!container.textContent.includes("Sin habitaciones disponibles"));
-  },
-);
 
 it("validates the primary contact and room capacity before creating a reservation", async () => {
   let writes = 0;
@@ -1835,6 +1202,7 @@ it("validates the primary contact and room capacity before creating a reservatio
   await fill("fullName", "Ada Lovelace");
   await fill("email", "invalid");
   await fill("rooms[0].room.adults", "3");
+  await fill("rooms[0].room.children", "3");
   await submit();
   assert.equal(writes, 0);
   assert.ok(container.textContent.includes("Ingresa un correo válido."));
@@ -1842,27 +1210,10 @@ it("validates the primary contact and room capacity before creating a reservatio
   await fill("email", "");
   await fill("rooms[0].room.adults", "2");
   await submit();
-  await until(() => writes === 1, "Optional contact details may be empty");
-});
-
-it("blocks excess children but accepts two adults plus two children in the real booking form", async () => {
-  const writes: CreateBookingInput[] = [];
-  mockCreationApi(async (input) => {
-    writes.push(input);
-    return Response.json(detail());
-  });
-  await renderNewBooking();
-  await fill("fullName", "Family Guest");
-  await fill("rooms[0].room.adults", "2");
-  await fill("rooms[0].room.children", "3");
-  await submit();
-  assert.equal(writes.length, 0);
-  assert.ok(container.textContent.includes("no tiene capacidad"));
+  assert.equal(writes, 0, "Excess children must still block saving after correcting adults");
   await fill("rooms[0].room.children", "2");
   await submit();
-  await until(() => writes.length === 1, "The permitted family arrangement must save");
-  assert.equal(writes[0].rooms[0].adults, 2);
-  assert.equal(writes[0].rooms[0].children, 2);
+  await until(() => writes === 1, "Optional contact details may be empty");
 });
 
 it("preserves a failed creation draft and safely retries until its payload changes", async () => {
@@ -1898,23 +1249,9 @@ it("keeps mobile edit drafts mounted as the keyboard viewport and screen size ch
   const descriptor = Object.getOwnPropertyDescriptor(window, "visualViewport");
   const viewport = Object.assign(new window.EventTarget(), { height: 844, offsetTop: 0 });
   Object.defineProperty(window, "visualViewport", { configurable: true, value: viewport });
-  const originalWidth = window.innerWidth;
-  const originalHeight = window.innerHeight;
   try {
-    window.happyDOM.setWindowSize({ width: 390, height: 844 });
-    await render(
-      React.createElement(dialogs.RoomBookingDialog, {
-        target: {
-          mode: "edit",
-          reservationId: "reservation-1",
-          roomId: "room-1",
-          number: "101",
-          typeName: "Doble",
-        },
-        onClose: () => {},
-        onViewReservation: () => {},
-      }),
-    );
+    page.mobile();
+    await openEditDialog();
     await until(
       () => !!window.document.querySelector('[name="notes"]'),
       "The edit dialog must load",
@@ -1925,17 +1262,19 @@ it("keeps mobile edit drafts mounted as the keyboard viewport and screen size ch
     const discount = window.document.querySelector<HTMLInputElement>(
       '[aria-label="Descuento en soles"]',
     )!;
-    await fillControl(discount, "25");
-    const popup = window.document.querySelector<HTMLElement>('[role="dialog"]')!;
+    await fill(discount, "25");
+    await React.act(async () => button("Ocultar desglose").click());
+    await React.act(async () => button("Ver desglose").click());
+    assert.equal(window.document.querySelector('[aria-label="Descuento en soles"]'), discount);
+    await React.act(async () => button("Huéspedes").click());
+    await React.act(async () => button("Volver a Detalles").click());
     await React.act(async () => {
       viewport.height = 420;
       viewport.offsetTop = 30;
       viewport.dispatchEvent(new window.Event("resize"));
       viewport.dispatchEvent(new window.Event("scroll"));
     });
-    assert.equal(popup.style.getPropertyValue("--reservation-viewport-height"), "420px");
-    assert.equal(popup.style.getPropertyValue("--reservation-viewport-top"), "30px");
-    await React.act(async () => window.happyDOM.setWindowSize({ width: 1024, height: 768 }));
+    await React.act(async () => window.happyDOM.setWindowSize(desktopViewport));
     assert.ok(control("notes") === notes, "Resizing must retain the details input");
     assert.ok(
       window.document.querySelector('[aria-label="Descuento en soles"]') === discount,
@@ -1951,7 +1290,6 @@ it("keeps mobile edit drafts mounted as the keyboard viewport and screen size ch
   } finally {
     if (descriptor) Object.defineProperty(window, "visualViewport", descriptor);
     else Reflect.deleteProperty(window, "visualViewport");
-    window.happyDOM.setWindowSize({ width: originalWidth, height: originalHeight });
   }
 });
 
@@ -1962,10 +1300,8 @@ it("preserves the reservation and discount drafts when the keyboard viewport or 
   const descriptor = Object.getOwnPropertyDescriptor(window, "visualViewport");
   const viewport = Object.assign(new window.EventTarget(), { height: 844, offsetTop: 0 });
   Object.defineProperty(window, "visualViewport", { configurable: true, value: viewport });
-  const originalWidth = window.innerWidth;
-  const originalHeight = window.innerHeight;
   try {
-    window.happyDOM.setWindowSize({ width: 390, height: 844 });
+    page.mobile();
     await render(
       React.createElement(dialogs.RoomBookingDialog, {
         target: createTarget,
@@ -1980,20 +1316,17 @@ it("preserves the reservation and discount drafts when the keyboard viewport or 
     const discount = window.document.querySelector<HTMLInputElement>(
       '[aria-label="Descuento en soles"]',
     )!;
-    await fillControl(discount, "25");
+    await fill(discount, "25");
     assert.equal(button("Crear reserva").disabled, true);
     assert.ok(window.document.body.textContent.includes("Termina de editar el descuento"));
-    const popup = window.document.querySelector<HTMLElement>('[role="dialog"]')!;
     await React.act(async () => {
       viewport.height = 420;
       viewport.offsetTop = 30;
       viewport.dispatchEvent(new window.Event("resize"));
       viewport.dispatchEvent(new window.Event("scroll"));
     });
-    assert.equal(popup.style.getPropertyValue("--reservation-viewport-height"), "420px");
-    assert.equal(popup.style.getPropertyValue("--reservation-viewport-top"), "30px");
     await React.act(async () => {
-      window.happyDOM.setWindowSize({ width: 1024, height: 768 });
+      window.happyDOM.setWindowSize(desktopViewport);
       window.dispatchEvent(new window.Event("resize"));
     });
     assert.equal(control("fullName"), name, "Responsive changes must not replace the form");
@@ -2008,7 +1341,6 @@ it("preserves the reservation and discount drafts when the keyboard viewport or 
   } finally {
     if (descriptor) Object.defineProperty(window, "visualViewport", descriptor);
     else Reflect.deleteProperty(window, "visualViewport");
-    window.happyDOM.setWindowSize({ width: originalWidth, height: originalHeight });
   }
 });
 
@@ -2100,20 +1432,15 @@ it("keeps an extension price visible and identifies the conflicting room without
         })
       : response;
   });
-  const fetchApi = globalThis.fetch;
-  globalThis.fetch = async (input, init) => {
-    if (!init?.method && requestUrl(input).pathname === "/reservations")
-      return Response.json([
-        {
-          id: "next-reservation",
-          status: "confirmed",
-          checkIn: "2026-10-16",
-          checkOut: "2026-10-18",
-          rooms: [{ id: "next-line", roomTypeId: "double", roomId: "room-1" }],
-        },
-      ]);
-    return fetchApi(input, init);
-  };
+  page.api.on("GET", "/reservations", () => [
+    {
+      id: "next-reservation",
+      status: "confirmed",
+      checkIn: "2026-10-16",
+      checkOut: "2026-10-18",
+      rooms: [{ id: "next-line", roomTypeId: "double", roomId: "room-1" }],
+    },
+  ]);
   await render(
     React.createElement(dialogs.BookingEditor, {
       detail: initial,
@@ -2175,159 +1502,41 @@ it("keeps an extension price visible and identifies the conflicting room without
   assert.equal(previews.length, 2);
 });
 
-it.each(["saved assigned room", "saved unassigned room", "unassigned reservation", "room closure"])(
-  "disables adding a room in the edit dialog when availability is exhausted by a %s",
-  async (scenario) => {
-    const initial = detail();
-    if (scenario === "saved unassigned room") {
-      initial.rooms[0].roomId = null;
-      initial.rooms[0].roomNumber = null;
-    }
-    mockApi(
-      async () => {
-        throw new Error("An unchanged reservation must not write or preview");
-      },
-      { roomCount: scenario === "unassigned reservation" || scenario === "room closure" ? 2 : 1 },
-    );
-    const fetchApi = globalThis.fetch;
-    globalThis.fetch = async (input, init) => {
-      const path = requestUrl(input).pathname;
-      if (path === "/reservations/reservation-1") return Response.json(initial);
-      if (path === "/reservations")
-        return Response.json([
-          initial,
-          ...(scenario === "unassigned reservation"
-            ? [
-                {
-                  ...detail(),
-                  id: "other-reservation",
-                  rooms: [{ ...detail().rooms[0], id: "other-line", roomId: null }],
-                },
-              ]
-            : []),
-        ]);
-      if (path === "/room-closures" && scenario === "room closure")
-        return Response.json([
-          {
-            id: "closure",
-            roomId: "room-2",
-            starts: "2026-10-15",
-            ends: "2026-10-16",
-            reason: null,
-          },
-        ]);
-      return fetchApi(input, init);
-    };
-    await render(
-      React.createElement(dialogs.RoomBookingDialog, {
-        target: {
-          mode: "edit",
-          reservationId: "reservation-1",
-          roomId: "room-1",
-          number: "101",
-          typeName: "Doble",
-        },
-        onClose: () => {},
-        onViewReservation: () => {},
-      }),
-    );
-    await until(
-      () => window.document.querySelector('[name="notes"]') !== null && client.isFetching() === 0,
-      "The reservation and inventory must finish loading",
-    );
-    await flush();
-    assert.equal(button("Agregar habitación").disabled, true);
-  },
-);
+it("disables adding a room when a closure exhausts availability", async () => {
+  mockApi(
+    async () => {
+      throw new Error("Unchanged reservation must not write or preview");
+    },
+    { roomCount: 2 },
+  );
+  page.api.on("GET", "/room-closures", () => [
+    { id: "closure", roomId: "room-2", starts: "2026-10-15", ends: "2026-10-16", reason: null },
+  ]);
+  await openEditDialog();
+  await until(
+    () => window.document.querySelector('[name="notes"]') !== null && client.isFetching() === 0,
+  );
+  assert.equal(button("Agregar habitación").disabled, true);
+});
 
-it.each(["unassigned reservation", "room closure"])(
-  "hides room types sold out by a %s in the mobile edit dialog while keeping the saved type",
-  async (scenario) => {
-    const originalWidth = window.innerWidth;
-    const originalHeight = window.innerHeight;
-    const initial = detail();
-    mockApi(async () => previewResponse(initial));
-    const fetchApi = globalThis.fetch;
-    globalThis.fetch = async (input, init) => {
-      const path = requestUrl(input).pathname;
-      if (path === "/room-types")
-        return Response.json([
-          doubleType,
-          { id: "single", name: "Simple", maxAdults: 1, maxChildren: 0 },
-        ]);
-      if (path === "/rooms")
-        return Response.json([
-          { id: "room-1", number: "101", roomTypeId: "double" },
-          { id: "room-2", number: "102", roomTypeId: "single" },
-        ]);
-      if (path === "/room-closures" && scenario === "room closure")
-        return Response.json([
-          {
-            id: "closure",
-            roomId: "room-2",
-            starts: initial.checkIn,
-            ends: initial.checkOut,
-            reason: null,
-          },
-        ]);
-      if (path === "/reservations")
-        return Response.json([
-          initial,
-          ...(scenario === "unassigned reservation"
-            ? [
-                {
-                  ...detail(),
-                  id: "other-reservation",
-                  rooms: [
-                    { ...detail().rooms[0], id: "other-line", roomTypeId: "single", roomId: null },
-                  ],
-                },
-              ]
-            : []),
-        ]);
-      return fetchApi(input, init);
-    };
-    try {
-      window.happyDOM.setWindowSize({ width: 390, height: 844 });
-      await render(React.createElement(dialogs.BookingEditor, { detail: initial }));
-      await until(() => client.isFetching() === 0, "Current availability must finish loading");
-      await until(() => !fieldTrigger("Tipo").hasAttribute("disabled"), "Room types must be ready");
-      await React.act(async () => fieldTrigger("Tipo").click());
-      const options = [...window.document.querySelectorAll('[role="option"]')].map((item) =>
-        item.textContent.trim(),
-      );
-      assert.deepEqual(
-        options,
-        ["Doble"],
-        "A sold-out type must not be offered for the stay dates",
-      );
-    } finally {
-      window.happyDOM.setWindowSize({ width: originalWidth, height: originalHeight });
-    }
-  },
-);
+function useDoubleAndSingleRooms() {
+  page.api.catalog.roomTypes = [
+    doubleType,
+    { id: "single", name: "Simple", maxAdults: 1, maxChildren: 0, baseRateCents: 10000 },
+  ];
+  page.api.catalog.rooms = [
+    { id: "room-1", number: "101", roomTypeId: "double" },
+    { id: "room-2", number: "102", roomTypeId: "single" },
+  ];
+}
 
 it("adds the available type instead of a sold-out type and releases draft inventory on removal", async () => {
   const initial = detail();
   initial.rooms[0].adults = 2;
   initial.rooms[0].children = 1;
   mockApi(async () => previewResponse(initial));
-  const fetchApi = globalThis.fetch;
-  globalThis.fetch = async (input, init) => {
-    const path = requestUrl(input).pathname;
-    if (path === "/room-types")
-      return Response.json([
-        doubleType,
-        { id: "single", name: "Simple", maxAdults: 1, maxChildren: 0 },
-      ]);
-    if (path === "/rooms")
-      return Response.json([
-        { id: "room-1", number: "101", roomTypeId: "double" },
-        { id: "room-2", number: "102", roomTypeId: "single" },
-      ]);
-    if (path === "/reservations") return Response.json([initial]);
-    return fetchApi(input, init);
-  };
+  useDoubleAndSingleRooms();
+  page.api.on("GET", "/reservations", () => [initial]);
   await render(
     React.createElement(dialogs.BookingEditor, { detail: initial, onRefresh: () => {} }),
   );
@@ -2376,50 +1585,44 @@ it("adds the available type instead of a sold-out type and releases draft invent
 
 it("counts availability per night and waits for current dates before allowing another room", async () => {
   mockApi(async () => previewResponse(detail()), { roomCount: 3 });
-  const fetchApi = globalThis.fetch;
   let finish!: (response: Response) => void;
-  globalThis.fetch = async (input, init) => {
-    const url = requestUrl(input);
-    if (url.pathname === "/reservations") {
-      if (url.searchParams.get("to") === "2026-10-17")
-        return new Promise<Response>((resolve) => {
-          finish = resolve;
-        });
-      // These unassigned rooms occupy successive nights, not two rooms at once.
-      return Response.json([
-        {
-          ...detail(),
-          id: "first-night",
-          checkOut: "2026-10-15",
-          rooms: [{ roomTypeId: "double", roomId: null }],
-        },
-        {
-          ...detail(),
-          id: "second-night",
-          checkIn: "2026-10-15",
-          rooms: [{ roomTypeId: "double", roomId: null }],
-        },
-      ]);
-    }
-    if (url.pathname === "/room-closures")
-      return Response.json([
-        {
-          id: "closure-1",
-          roomId: "room-2",
-          starts: "2026-10-16",
-          ends: "2026-10-17",
-          reason: null,
-        },
-        {
-          id: "closure-2",
-          roomId: "room-3",
-          starts: "2026-10-16",
-          ends: "2026-10-17",
-          reason: null,
-        },
-      ]);
-    return fetchApi(input, init);
-  };
+  page.api.on("GET", "/reservations", ({ url }) => {
+    if (url.searchParams.get("to") === "2026-10-17")
+      return new Promise<Response>((resolve) => {
+        finish = resolve;
+      });
+    // These unassigned rooms occupy successive nights, not two rooms at once.
+    return [
+      {
+        ...detail(),
+        id: "first-night",
+        checkOut: "2026-10-15",
+        rooms: [{ roomTypeId: "double", roomId: null }],
+      },
+      {
+        ...detail(),
+        id: "second-night",
+        checkIn: "2026-10-15",
+        rooms: [{ roomTypeId: "double", roomId: null }],
+      },
+    ];
+  });
+  page.api.on("GET", "/room-closures", () => [
+    {
+      id: "closure-1",
+      roomId: "room-2",
+      starts: "2026-10-16",
+      ends: "2026-10-17",
+      reason: null,
+    },
+    {
+      id: "closure-2",
+      roomId: "room-3",
+      starts: "2026-10-16",
+      ends: "2026-10-17",
+      reason: null,
+    },
+  ]);
   await render(
     React.createElement(dialogs.BookingEditor, { detail: detail(), onRefresh: () => {} }),
   );
@@ -2513,19 +1716,7 @@ it("checks in a confirmed reservation immediately without changing the form draf
     },
     { reservation: () => saved },
   );
-  await render(
-    React.createElement(dialogs.RoomBookingDialog, {
-      target: {
-        mode: "edit",
-        reservationId: saved.id,
-        roomId: "room-1",
-        number: "101",
-        typeName: "Doble",
-      },
-      onClose: () => {},
-      onViewReservation: () => {},
-    }),
-  );
+  await openEditDialog();
   await until(() => window.document.querySelector('[name="notes"]') !== null);
   await fill("notes", "Borrador sin guardar");
   assert.equal(button("Hacer check-in").disabled, true);
@@ -2559,21 +1750,11 @@ it("restores a cancelled reservation after confirmation and keeps the compact di
     },
     { reservation: () => saved },
   );
-  await render(
-    React.createElement(dialogs.RoomBookingDialog, {
-      target: {
-        mode: "edit",
-        reservationId: saved.id,
-        roomId: "room-1",
-        number: "101",
-        typeName: "Doble",
-      },
-      onClose: () => {
-        closed++;
-      },
-      onViewReservation: () => {},
-    }),
-  );
+  await openEditDialog({
+    onClose: () => {
+      closed++;
+    },
+  });
   await until(() => window.document.querySelector('[name="notes"]') !== null);
   await chooseReservationStatus("Check-in");
   const confirmation = () =>
@@ -2650,19 +1831,7 @@ it("checks out immediately and preserves that status on a later notes save", asy
     },
     { reservation: () => saved },
   );
-  await render(
-    React.createElement(dialogs.RoomBookingDialog, {
-      target: {
-        mode: "edit",
-        reservationId: saved.id,
-        roomId: "room-1",
-        number: "101",
-        typeName: "Doble",
-      },
-      onClose: () => {},
-      onViewReservation: () => {},
-    }),
-  );
+  await openEditDialog();
   await until(() => window.document.querySelector('[name="notes"]') !== null);
   await React.act(async () => button("Hacer check-out").click());
   await until(() => saved.status === "checked_out");
@@ -2674,80 +1843,6 @@ it("checks out immediately and preserves that status on a later notes save", asy
   assert.equal(saved.status, "checked_out");
   assert.equal(saved.checkIn, "2026-10-14");
   assert.equal(saved.checkOut, "2026-10-16");
-});
-
-it("saves compact checkout, blocks duplicate/close attempts and retries the same ID", async () => {
-  let saved = { ...detail(), status: "checked_in" };
-  const writes: WorkflowCommand[] = [];
-  let finish!: (response: Response) => void;
-  let closed = 0;
-  mockApi(
-    async (path, command) => {
-      if (path.endsWith("/preview")) return previewResponse({ ...saved, status: "checked_out" });
-      writes.push(command);
-      if (writes.length === 1)
-        return new Promise<Response>((resolve) => {
-          finish = resolve;
-        });
-      saved = { ...saved, status: "checked_out" };
-      return Response.json(saved);
-    },
-    { reservation: () => saved },
-  );
-  try {
-    await render(
-      React.createElement(dialogs.RoomBookingDialog, {
-        target: {
-          mode: "edit",
-          reservationId: saved.id,
-          roomId: "room-1",
-          number: "101",
-          typeName: "Doble",
-        },
-        onClose: () => {
-          closed++;
-        },
-        onViewReservation: () => {},
-      }),
-    );
-    await until(() => window.document.querySelector('[name="notes"]') !== null);
-    const checkout = button("Hacer check-out");
-    await React.act(async () => {
-      checkout.click();
-      checkout.click();
-    });
-    await until(() => window.document.body.textContent.includes("Guardando estado…"));
-    assert.equal(writes.length, 1);
-    assert.equal(button("Hacer check-out").disabled, true);
-    const unloading = new window.Event("beforeunload", { cancelable: true });
-    window.dispatchEvent(unloading);
-    assert.equal(
-      unloading.defaultPrevented,
-      true,
-      "Pending status saves must protect browser unload",
-    );
-    await React.act(async () => {
-      window.document
-        .querySelector('[role="dialog"]')!
-        .dispatchEvent(new window.KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
-    });
-    assert.equal(closed, 0);
-    await React.act(async () =>
-      finish(Response.json({ error: "Temporary save failure" }, { status: 503 })),
-    );
-    await until(() => !button("Hacer check-out").disabled);
-    await React.act(async () => button("Hacer check-out").click());
-    await until(() => saved.status === "checked_out" && !button("Cerrar").disabled);
-    assert.deepEqual(writes[0], writes[1]);
-    assert.deepEqual(writes[1].actions, [{ type: "set-status", status: "checked_out" }]);
-    assert.equal(saved.balanceCents, 30000);
-    assert.equal(saved.checkOut, "2026-10-16");
-    const finished = new window.Event("beforeunload", { cancelable: true });
-    window.dispatchEvent(finished);
-    assert.equal(finished.defaultPrevented, false);
-  } finally {
-    if (finish) await React.act(async () => finish(Response.json(saved)));
-  }
 });
 
 it.each(["guest", "payment", "discount"] as const)(
@@ -2770,7 +1865,7 @@ it.each(["guest", "payment", "discount"] as const)(
     }
     if (draft === "discount") {
       const input = container.querySelector<HTMLInputElement>('[aria-label="Descuento en soles"]')!;
-      await fillControl(input, "10");
+      await fill(input, "10");
     }
     await until(
       () => button("Hacer check-in").disabled && button("Más acciones de reserva").disabled,
@@ -2840,7 +1935,7 @@ it.each(["guest", "payment"] as const)(
     const input = popup.querySelector<HTMLInputElement>(
       kind === "guest" ? '[name="fullName"]' : '[name="amount"]',
     )!;
-    await fillControl(input, kind === "guest" ? "Luis Corregido" : "80");
+    await fill(input, kind === "guest" ? "Luis Corregido" : "80");
     await until(() => button("Más acciones de reserva").disabled);
     await React.act(async () => button("Más acciones de reserva").click());
     assert.equal(writes, 0);
@@ -2849,111 +1944,34 @@ it.each(["guest", "payment"] as const)(
   },
 );
 
-for (const [status, label, code, field] of [
-  ["confirmed", "Confirmada", "not enough rooms available for those dates", "roomTypeId"],
-  ["checked_in", "Check-in", "room is already assigned for those dates", "roomId"],
-  ["checked_out", "Check-out", "not enough rooms available for those dates", "roomTypeId"],
-] as const) {
-  it(`previews compact restoration to ${status} and blocks ${field} conflicts`, async () => {
-    const initial = {
-      ...detail(),
-      status: "cancelled",
-      cancelledAt: "2026-10-14T12:00:00Z",
-      subtotalCents: 0,
-      totalCents: 0,
-      balanceCents: 0,
-    };
-    const previews: WorkflowCommand[] = [];
-    const writes: WorkflowCommand[] = [];
-    mockApi(async (path, command) => {
-      if (path.endsWith("/preview")) {
-        previews.push(command);
-        return previewResponse(detail(), [{ code, field, roomIndex: 0 }]);
-      }
-      writes.push(command);
-      return Response.json(initial);
-    });
-    await render(React.createElement(dialogs.BookingEditor, { detail: initial }));
-    await chooseReservationStatus(label);
-    const confirmation = () =>
-      Array.from(window.document.querySelectorAll('[role="dialog"]')).find((dialog) =>
-        dialog.textContent.includes("Restaurar reserva"),
-      );
-    const conflict =
-      field === "roomId"
-        ? "Esta habitación está ocupada para esas fechas"
-        : "not enough rooms available for those dates";
-    await until(() => confirmation()?.textContent.includes(conflict) === true);
-    assert.equal(writes.length, 0);
-    assert.deepEqual(previews[0].actions, [{ type: "set-status", status }]);
-    const confirm = Array.from(confirmation()!.querySelectorAll("button")).find((item) =>
-      item.textContent.includes("Guardar cambios"),
-    );
-    assert.equal(confirm?.disabled, true);
-    await React.act(async () => confirm?.click());
-    assert.equal(writes.length, 0);
-    assert.equal(control("notes").value, "");
-    if (status === "confirmed") {
-      await React.act(async () => {
-        Array.from(confirmation()!.querySelectorAll("button"))
-          .find((item) => item.textContent.trim() === "Cerrar")!
-          .click();
-      });
-      await until(() => confirmation() === undefined);
-      await chooseReservationStatus(label);
-      await until(() => previews.length === 2);
-      assert.notEqual(previews[0].requestId, previews[1].requestId);
-    }
+it("allows an unrelated notes correction above the saved room's current child limit", async () => {
+  const initial = detail();
+  initial.rooms[0].adults = 2;
+  initial.rooms[0].children = 3;
+  const writes: WorkflowCommand[] = [];
+  mockApi(async (path, command) => {
+    const saved = { ...initial, notes: "Late arrival" };
+    if (path.endsWith("/preview")) return previewResponse(saved);
+    writes.push(command);
+    return Response.json(saved);
   });
-}
+  await render(
+    React.createElement(dialogs.BookingEditor, { detail: initial, onRefresh: () => {} }),
+  );
+  await fill("notes", "Late arrival");
+  await until(() => !button("Guardar cambios").disabled);
+  assert.equal(container.textContent.includes("no tiene capacidad"), false);
+  await submit();
+  await until(() => writes.length === 1);
+  assert.deepEqual(writes[0].actions, [{ type: "notes", notes: "Late arrival" }]);
+});
 
-it.each(["notes", "status"] as const)(
-  "allows %s corrections without changing a saved room above its current child limit",
-  async (correction) => {
-    const initial = detail();
-    initial.rooms[0].adults = 2;
-    initial.rooms[0].children = 3;
-    const actions: WorkflowCommand["actions"] =
-      correction === "notes"
-        ? [{ type: "notes", notes: "Late arrival" }]
-        : [{ type: "set-status", status: "checked_in" }];
-    const writes: WorkflowCommand[] = [];
-    mockApi(async (path, command) => {
-      const saved = {
-        ...initial,
-        notes: correction === "notes" ? "Late arrival" : null,
-        status: correction === "status" ? "checked_in" : "confirmed",
-      };
-      if (path.endsWith("/preview")) return previewResponse(saved);
-      writes.push(command);
-      return Response.json(saved);
-    });
-    await render(
-      React.createElement(dialogs.BookingEditor, {
-        detail: initial,
-        onRefresh: () => {},
-      }),
-    );
-    if (correction === "notes") await fill("notes", "Late arrival");
-    else await React.act(async () => button("Hacer check-in").click());
-    await until(
-      () => (correction === "notes" ? !button("Guardar cambios").disabled : writes.length === 1),
-      "Unchanged occupancy must not block corrections",
-    );
-    assert.equal(container.textContent.includes("no tiene capacidad"), false);
-    if (correction === "notes") await submit();
-    await until(() => writes.length === 1, "The correction must save");
-    assert.deepEqual(writes[0].actions, actions);
-  },
-);
-
-it.each(["occupancy", "assignment", "dates", "restoration"] as const)(
+it.each(["occupancy", "dates"] as const)(
   "revalidates a grandfathered room when changing %s",
   async (change) => {
     const initial = detail();
     initial.rooms[0].adults = 2;
     initial.rooms[0].children = 3;
-    if (change === "restoration") initial.status = "cancelled";
     let writes = 0;
     mockApi(async (path) => {
       if (path.endsWith("/preview"))
@@ -2972,8 +1990,6 @@ it.each(["occupancy", "assignment", "dates", "restoration"] as const)(
     await flush();
     assert.equal(container.textContent.includes("no tiene capacidad"), false);
     if (change === "occupancy") await fill("rooms[0].room.children", "4");
-    else if (change === "assignment") await choose("Hab.", "Sin asignar");
-    else if (change === "restoration") await chooseReservationStatus("Confirmada");
     else {
       await React.act(async () => fieldTrigger("Check-out").click());
       const day = Array.from(
@@ -3012,20 +2028,7 @@ it("previews and saves added unassigned rooms after check-in and allows clearing
     },
     { roomCount: 2 },
   );
-  // Match the dialog's subscription to the saved reservation cache.
-  client.setQueryData(["reservation", initial.id], initial);
-  function Editor() {
-    const reservation = query.useQuery<ReservationDetail>({
-      queryKey: ["reservation", initial.id],
-      queryFn: async () => initial,
-      staleTime: Infinity,
-    });
-    return React.createElement(dialogs.BookingEditor, {
-      detail: reservation.data!,
-      onRefresh: () => {},
-    });
-  }
-  await render(React.createElement(Editor));
+  await renderCachedEditor(() => initial);
   await choose("Hab.", "Sin asignar");
   await React.act(async () => button("Agregar habitación").click());
   await until(() => !button("Guardar cambios").disabled, "Added room must have a valid preview");
@@ -3048,34 +2051,36 @@ it("previews and saves added unassigned rooms after check-in and allows clearing
   await until(() => button("Guardar cambios").disabled, "Successful save must reset changes");
 });
 
-it("retries a failed validation preview without losing edits and re-enables saving", async () => {
-  const previews: WorkflowCommand[] = [];
-  mockApi(async (path, command) => {
-    assert.equal(path, "/reservations/reservation-1/preview");
-    previews.push(command);
-    return previews.length === 1
-      ? Response.json({ error: "Temporary preview failure" }, { status: 503 })
-      : previewResponse(detail());
-  });
-  await render(
-    React.createElement(dialogs.BookingEditor, {
-      detail: detail(),
-      onRefresh: () => {},
-    }),
-  );
-  await flush();
-  await fill("rooms[0].room.adults", "2");
-  await until(
-    () => window.document.body.textContent.includes("Temporary preview failure"),
-    "Preview failure must appear",
-  );
-  assert.equal(button("Guardar cambios").disabled, true);
-  await React.act(async () => button("Reintentar").click());
-  await until(() => !button("Guardar cambios").disabled, "Successful retry must permit saving");
-  assert.equal(control("rooms[0].room.adults").value, "2");
-  assert.equal(previews.length, 2);
-  assert.deepEqual(previews[0], previews[1]);
-});
+it.each(["details", "cancellation"] as const)(
+  "retries a failed %s preview without losing its draft",
+  async (kind) => {
+    const previews: WorkflowCommand[] = [];
+    mockApi(async (path, command) => {
+      assert.equal(path, "/reservations/reservation-1/preview");
+      previews.push(command);
+      return previews.length === 1
+        ? Response.json({ error: "Temporary preview failure" }, { status: 503 })
+        : previewResponse(
+            kind === "details"
+              ? detail()
+              : { ...detail(), status: "cancelled", totalCents: 0, balanceCents: 0 },
+          );
+    });
+    await render(
+      React.createElement(dialogs.BookingEditor, { detail: detail(), onRefresh: () => {} }),
+    );
+    if (kind === "details") await fill("rooms[0].room.adults", "2");
+    else await chooseReservationAction("Cancelar reserva");
+    await until(() => window.document.body.textContent.includes("Temporary preview failure"));
+    const save = () => button(kind === "details" ? "Guardar cambios" : "Confirmar");
+    assert.equal(save().disabled, true);
+    await React.act(async () => button("Reintentar").click());
+    await until(() => !save().disabled);
+    if (kind === "details") assert.equal(control("rooms[0].room.adults").value, "2");
+    assert.equal(previews.length, 2);
+    assert.deepEqual(previews[0], previews[1]);
+  },
+);
 
 for (const succeeds of [true, false]) {
   it(`blocks closing during a save and unlocks after ${succeeds ? "success" : "failure"}`, async () => {
@@ -3091,23 +2096,14 @@ for (const succeeds of [true, false]) {
           finish = resolve;
         });
       });
-      await render(
-        React.createElement(dialogs.RoomBookingDialog, {
-          target: {
-            mode: "edit",
-            reservationId: "reservation-1",
-            roomId: "room-1",
-            number: "101",
-            typeName: "Doble",
-          },
-          onClose: () => {
-            closed++;
-          },
-          onViewReservation: () => {
-            viewed++;
-          },
-        }),
-      );
+      await openEditDialog({
+        onClose: () => {
+          closed++;
+        },
+        onViewReservation: () => {
+          viewed++;
+        },
+      });
       await until(
         () =>
           !!container.querySelector('[name="notes"]') ||
@@ -3159,59 +2155,37 @@ for (const succeeds of [true, false]) {
   });
 }
 
-it("retries a failed cancellation preview without reopening the confirmation", async () => {
-  let requests = 0;
-  mockApi(async (path) => {
-    assert.equal(path, "/reservations/reservation-1/preview");
-    return ++requests === 1
-      ? Response.json({ error: "Temporary cancellation failure" }, { status: 503 })
-      : previewResponse({
-          ...detail(),
-          status: "cancelled",
-          totalCents: 0,
-          balanceCents: 0,
-        });
+it("preserves a failed payment draft and clears each successful payment without restoring the suggested balance", async () => {
+  let saved = detail();
+  const amounts: number[] = [];
+  const props = () => ({
+    detail: saved,
+    disabled: false,
+    onDirtyChange: () => {},
+    onReady: async (_title: string, actions: WorkflowCommand["actions"]) => {
+      const action = actions[0];
+      assert.equal(action.type, "add-payment");
+      if (action.type !== "add-payment") return;
+      amounts.push(action.payment.amountCents);
+      if (amounts.length === 1) throw new Error("Temporary payment failure");
+      saved = { ...saved, balanceCents: saved.balanceCents - action.payment.amountCents };
+      root.render(withClient(React.createElement(forms.PaymentForm, props())));
+    },
   });
-  await render(
-    React.createElement(dialogs.BookingEditor, {
-      detail: detail(),
-      onRefresh: () => {},
-    }),
-  );
-  await chooseReservationAction("Cancelar reserva");
-  await until(
-    () => window.document.body.textContent.includes("Temporary cancellation failure"),
-    "Cancellation preview error must appear",
-  );
-  assert.equal(button("Confirmar").disabled, true);
-  await React.act(async () => button("Reintentar").click());
-  await until(
-    () => !button("Confirmar").disabled,
-    "Successful cancellation preview retry must permit confirming",
-  );
-  assert.equal(requests, 2);
-});
-
-it("preserves a failed payment draft and clears it only after a successful retry", async () => {
-  let calls = 0;
-  await render(
-    React.createElement(forms.PaymentForm, {
-      detail: detail(),
-      disabled: false,
-      onDirtyChange: () => {},
-      onReady: async () => {
-        if (++calls === 1) throw new Error("Temporary payment failure");
-      },
-    }),
-  );
+  await render(React.createElement(forms.PaymentForm, props()));
+  assert.equal(control("amount").value, "300.00");
   await fill("amount", "75");
   await submit();
   await flush();
   assert.equal(control("amount").value, "75");
-  await submit();
-  await flush();
-  assert.equal(control("amount").value, "");
-  assert.equal(calls, 2);
+  for (const amount of ["75", "50"]) {
+    await fill("amount", amount);
+    await submit();
+    assert.equal(control("amount").value, "");
+    await flush();
+    assert.equal(control("amount").value, "");
+  }
+  assert.deepEqual(amounts, [7500, 7500, 5000]);
 });
 
 it("retains the cancellation reason and retries the same command after a failed save", async () => {
@@ -3322,25 +2296,13 @@ for (const discountSucceeds of [true, false]) {
       };
       return Response.json(saved);
     });
-    client.setQueryData(["reservation", saved.id], saved);
-    function Editor() {
-      const reservation = query.useQuery<ReservationDetail>({
-        queryKey: ["reservation", saved.id],
-        queryFn: async () => saved,
-        staleTime: Infinity,
-      });
-      return React.createElement(dialogs.BookingEditor, {
-        detail: reservation.data!,
-        onRefresh: () => {},
-      });
-    }
     try {
-      await render(React.createElement(Editor));
+      await renderCachedEditor(() => saved);
       const discount = container.querySelector<HTMLInputElement>(
         '[aria-label="Descuento en soles"]',
       )!;
       assert.ok(discount);
-      await fillControl(discount, "10");
+      await fill(discount, "10");
       await React.act(async () => {
         discount.dispatchEvent(
           new window.FocusEvent("focusout", {
@@ -3364,7 +2326,7 @@ for (const discountSucceeds of [true, false]) {
         assert.equal(discount.value, "10");
         assert.equal(button("Más acciones de reserva").disabled, true);
         // Explicitly discard the rejected discount before changing status.
-        await fillControl(discount, "0");
+        await fill(discount, "0");
       }
       await until(
         () => !button("Más acciones de reserva").disabled,

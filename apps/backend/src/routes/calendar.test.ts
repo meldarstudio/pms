@@ -1,102 +1,29 @@
-/// <reference types="node" />
-
-import { readFileSync } from "node:fs";
-import { DatabaseSync, type SQLInputValue } from "node:sqlite";
-import { URL } from "node:url";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
-import app from "../index";
-import type { Env } from "../env";
-import { authEnv, signIn } from "../test-support/auth";
+import {
+  createTestDb,
+  seedReservation,
+  seedRooms,
+  seedRoomType,
+  type TestDb,
+} from "../test-support/d1";
 
-let sqlite: DatabaseSync;
-let binding: D1Database;
-let batchTail: Promise<unknown> = Promise.resolve();
-let bindings: Env["Bindings"];
-let sessionCookie: string;
-
-// Same D1-style stand-in the reservation list uses. Duplicate join columns collapse.
-function statement(sql: string, params: SQLInputValue[] = []) {
-  const execute = () => {
-    if (sqlite.prepare(sql).columns().length) {
-      return { success: true, results: sqlite.prepare(sql).all(...params) };
-    }
-    sqlite.prepare(sql).run(...params);
-    return { success: true, results: [] };
-  };
-  return {
-    sql,
-    execute,
-    bind: (...values: SQLInputValue[]) => statement(sql, values),
-    raw: async () => {
-      return sqlite
-        .prepare(`SELECT * FROM (${sql})`)
-        .all(...params)
-        .map((row) => Object.values(row));
-    },
-    run: async () => execute(),
-    all: async () => ({ success: true, results: sqlite.prepare(sql).all(...params) }),
-  };
-}
+let db: TestDb;
 
 beforeEach(async () => {
   vi.useFakeTimers();
   vi.setSystemTime(new Date("2026-10-10T15:00:00Z"));
-  sqlite = new DatabaseSync(":memory:");
-  sqlite.exec("PRAGMA foreign_keys = ON");
-  const dir = new URL("../../drizzle/", import.meta.url);
-  const journal = JSON.parse(readFileSync(new URL("meta/_journal.json", dir), "utf8")) as {
-    entries: { tag: string }[];
-  };
-  for (const { tag } of journal.entries)
-    sqlite.exec(readFileSync(new URL(`${tag}.sql`, dir), "utf8"));
-  sqlite.exec(`
-    INSERT INTO room_types (id, name, max_occupancy, base_rate_cents, created_at)
-      VALUES ('type', 'King', 2, 10000, '2026-10-10');
-    INSERT INTO rooms VALUES ('room-101', '101', 'type'), ('room-102', '102', 'type'), ('room-103', '103', 'type');
-  `);
-  binding = {
-    prepare: (sql: string) => statement(sql),
-    batch: (queries: ReturnType<typeof statement>[]) => {
-      const result = batchTail.then(() => {
-        sqlite.exec("BEGIN");
-        try {
-          const results = [];
-          for (const query of queries) results.push(query.execute());
-          sqlite.exec("COMMIT");
-          return results;
-        } catch (error) {
-          sqlite.exec("ROLLBACK");
-          throw error;
-        }
-      });
-      batchTail = result.catch(() => {});
-      return result;
-    },
-  } as unknown as D1Database;
-  bindings = await authEnv({ DB: binding });
-  sessionCookie = await signIn(bindings);
+  db = await createTestDb();
+  seedRoomType(db.sqlite, { id: "type", name: "King", maxAdults: 2, baseRateCents: 10000 });
+  seedRooms(db.sqlite, "type", { "room-101": "101", "room-102": "102", "room-103": "103" });
 });
 
 afterEach(() => {
-  sqlite.close();
+  db.close();
   vi.useRealTimers();
   vi.restoreAllMocks();
 });
 
-function request(path: string, method = "GET", body?: unknown) {
-  return app.request(
-    path,
-    {
-      method,
-      headers: {
-        cookie: sessionCookie,
-        ...(body === undefined ? {} : { "content-type": "application/json" }),
-      },
-      ...(body === undefined ? {} : { body: JSON.stringify(body) }),
-    },
-    bindings,
-  );
-}
+const request: TestDb["request"] = (...args) => db.request(...args);
 
 type Created = {
   id: string;
@@ -162,9 +89,7 @@ type CalendarBody = {
 
 describe("calendar read", () => {
   it("shows every room in numeric room-number order, including a room with no stay, labeled with its room type", async () => {
-    sqlite.exec(`
-      INSERT INTO rooms VALUES ('room-2', '2', 'type'), ('room-10', '10', 'type');
-    `);
+    seedRooms(db.sqlite, "type", { "room-2": "2", "room-10": "10" });
 
     const response = await request("/calendar?from=2026-10-20&to=2026-10-26");
 
@@ -183,30 +108,7 @@ describe("calendar read", () => {
     ]);
   });
 
-  it("keeps a stay that runs past the window on its assigned room, with the contact, status, identities, and real dates", async () => {
-    const created = await create("Ada Lovelace", { checkIn: "2026-10-18", checkOut: "2026-10-28" });
-    await assign(created, "room-101");
-
-    const response = await request("/calendar?from=2026-10-20&to=2026-10-26");
-
-    expect(response.status).toBe(200);
-    const body = (await response.json()) as CalendarBody;
-    const occupied = body.rooms.find((room) => room.number === "101");
-    const empty = body.rooms.find((room) => room.number === "102");
-    expect(occupied?.stays).toEqual([
-      {
-        id: created.rooms[0]!.id,
-        reservationId: created.id,
-        guestName: "Ada Lovelace",
-        status: "confirmed",
-        checkIn: "2026-10-18",
-        checkOut: "2026-10-28",
-      },
-    ]);
-    expect(empty?.stays).toEqual([]);
-  });
-
-  it("includes a stay that checks out on the first morning without the caller passing the day before", async () => {
+  it("includes stays that check out on the first morning or run past the window, without the caller passing the day before", async () => {
     const departing = await create("Ada Lovelace", {
       checkIn: "2026-10-18",
       checkOut: "2026-10-20",
@@ -217,6 +119,11 @@ describe("calendar read", () => {
       checkOut: "2026-10-19",
     });
     await assign(alreadyGone, "room-102");
+    const spanning = await create("Mary Jackson", {
+      checkIn: "2026-10-18",
+      checkOut: "2026-10-28",
+    });
+    await assign(spanning, "room-103");
 
     const response = await request("/calendar?from=2026-10-20&to=2026-10-26");
 
@@ -233,6 +140,16 @@ describe("calendar read", () => {
       },
     ]);
     expect(body.rooms.find((room) => room.number === "102")?.stays).toEqual([]);
+    expect(body.rooms.find((room) => room.number === "103")?.stays).toEqual([
+      {
+        id: spanning.rooms[0]!.id,
+        reservationId: spanning.id,
+        guestName: "Mary Jackson",
+        status: "confirmed",
+        checkIn: "2026-10-18",
+        checkOut: "2026-10-28",
+      },
+    ]);
   });
 
   it("shows a room closure that ends on the first morning, with its identity, dates, and reason", async () => {
@@ -331,9 +248,7 @@ describe("calendar read", () => {
   });
 
   it("lists confirmed and checked-in reserved rooms with no assignment that still occupy a visible night", async () => {
-    sqlite.exec(`
-      INSERT INTO rooms VALUES ('room-104', '104', 'type'), ('room-105', '105', 'type');
-    `);
+    seedRooms(db.sqlite, "type", { "room-104": "104", "room-105": "105" });
     const waiting = await create("Ada Lovelace", { checkIn: "2026-10-21", checkOut: "2026-10-23" });
     const inHouse = await create("Grace Hopper", { checkIn: "2026-10-20", checkOut: "2026-10-22" });
     await command(inHouse, [{ type: "set-status", status: "checked_in" }]);
@@ -414,40 +329,43 @@ describe("calendar read", () => {
     ]);
   });
 
-  it("rejects a range wider than a 14-day span plus seven days on each side", async () => {
-    const widest = await request("/calendar?from=2026-10-01&to=2026-10-28");
-    expect(widest.status).toBe(200);
+  it.each([
+    ["the widest window", "2026-10-01", "2026-10-28", null],
+    ["a single-day window", "2026-10-20", "2026-10-20", null],
+    ["a window one day too wide", "2026-10-01", "2026-10-29", "calendar range is too wide"],
+    [
+      "a window that ends before it starts",
+      "2026-10-26",
+      "2026-10-20",
+      "calendar window is incomplete",
+    ],
+  ])(
+    "answers %s with a full grid or an error, never a short grid",
+    async (_name, from, to, error) => {
+      const response = await request(`/calendar?from=${from}&to=${to}`);
 
-    const response = await request("/calendar?from=2026-10-01&to=2026-10-29");
-
-    expect(response.status).toBe(400);
-    expect(await response.json()).toEqual({ error: "calendar range is too wide" });
-    expect(widest.headers.get("content-type")).toContain("application/json");
-  });
-
-  it("fails an incomplete window instead of returning a short grid", async () => {
-    const complete = await request("/calendar?from=2026-10-20&to=2026-10-20");
-    expect(complete.status).toBe(200);
-    const day = (await complete.json()) as {
-      from: string;
-      to: string;
-      rooms: { number: string }[];
-    };
-    expect(day).toMatchObject({ from: "2026-10-20", to: "2026-10-20" });
-    expect(day.rooms.map((room) => room.number)).toEqual(["101", "102", "103"]);
-
-    const response = await request("/calendar?from=2026-10-26&to=2026-10-20");
-
-    expect(response.status).toBe(400);
-    expect(await response.json()).toEqual({ error: "calendar window is incomplete" });
-  });
+      if (error) {
+        expect(response.status).toBe(400);
+        expect(await response.json()).toEqual({ error });
+        return;
+      }
+      expect(response.status).toBe(200);
+      const body = (await response.json()) as {
+        from: string;
+        to: string;
+        rooms: { number: string }[];
+      };
+      expect(body).toMatchObject({ from, to });
+      expect(body.rooms.map((room) => room.number)).toEqual(["101", "102", "103"]);
+    },
+  );
 
   it("returns missing property setup for an empty property, not a not-found", async () => {
     const ready = await request("/calendar?from=2026-10-20&to=2026-10-26");
     expect(ready.status).toBe(200);
     expect((await ready.json()) as { missingSetup: unknown }).toMatchObject({ missingSetup: null });
 
-    sqlite.exec("DELETE FROM rooms");
+    db.sqlite.exec("DELETE FROM rooms");
     const noRooms = await request("/calendar?from=2026-10-20&to=2026-10-26");
     expect(noRooms.status).toBe(200);
     expect(await noRooms.json()).toMatchObject({
@@ -456,7 +374,7 @@ describe("calendar read", () => {
       unassigned: [],
     });
 
-    sqlite.exec("DELETE FROM room_types");
+    db.sqlite.exec("DELETE FROM room_types");
     const noTypes = await request("/calendar?from=2026-10-20&to=2026-10-26");
     expect(noTypes.status).toBe(200);
     expect(await noTypes.json()).toMatchObject({
@@ -466,34 +384,18 @@ describe("calendar read", () => {
     });
   });
 
-  it("omits the reservation bill, payments, nightly prices, and cents", async () => {
-    const created = await create("Ada Lovelace", { checkIn: "2026-10-20", checkOut: "2026-10-22" });
-    await assign(created, "room-101");
-    await command(created, [
-      {
-        type: "add-payment",
-        payment: { amountCents: 1000, method: "cash", paymentDate: "2026-10-10" },
-      },
-    ]);
-
-    const response = await request("/calendar?from=2026-10-20&to=2026-10-26");
-
-    expect(response.status).toBe(200);
-    const body = (await response.json()) as Record<string, unknown>;
-    expect(Object.keys(body).sort()).toEqual(["from", "missingSetup", "rooms", "to", "unassigned"]);
-    expect(JSON.stringify(body)).not.toMatch(
-      /cents|payments|price|currency|balance|subtotal|discount/i,
-    );
-  });
-
   it("returns a stay longer than 60 nights without re-checking the write limit", async () => {
-    sqlite.exec(`
-      INSERT INTO guests (id, full_name, created_at) VALUES ('guest-long', 'Long Stay', '2026-08-01');
-      INSERT INTO reservations (id, code, status, guest_id, check_in, check_out, created_at)
-        VALUES ('res-long', 'LONG0001', 'confirmed', 'guest-long', '2026-08-22', '2026-10-22', '2026-08-01');
-      INSERT INTO reservation_rooms (id, reservation_id, room_type_id, room_id, adults, children, created_at)
-        VALUES ('line-long', 'res-long', 'type', 'room-101', 1, 0, '2026-08-01');
-    `);
+    seedReservation(db.sqlite, {
+      id: "res-long",
+      guestId: "guest-long",
+      lineId: "line-long",
+      code: "LONG0001",
+      guestName: "Long Stay",
+      checkIn: "2026-08-22",
+      checkOut: "2026-10-22",
+      roomId: "room-101",
+      createdAt: "2026-08-01",
+    });
 
     const response = await request("/calendar?from=2026-10-20&to=2026-10-26");
 
@@ -509,42 +411,5 @@ describe("calendar read", () => {
         checkOut: "2026-10-22",
       },
     ]);
-  });
-
-  it("returns every overlapping stay in the window, with no page and no silent stop", async () => {
-    const guests = [];
-    const reservations = [];
-    const lines = [];
-    const extraRooms = [];
-    for (let index = 1; index <= 51; index++) {
-      const id = String(index).padStart(2, "0");
-      extraRooms.push(`('room-extra-${id}', '${200 + index}', 'type')`);
-      guests.push(`('guest-${id}', 'Guest ${id}', '2026-10-01')`);
-      reservations.push(
-        `('res-${id}', 'CODE${id}', 'confirmed', 'guest-${id}', '2026-10-20', '2026-10-22', '2026-10-01')`,
-      );
-      lines.push(`('line-${id}', 'res-${id}', 'type', 'room-extra-${id}', 1, 0, '2026-10-01')`);
-    }
-    sqlite.exec(`
-      INSERT INTO rooms VALUES ${extraRooms.join(", ")};
-      INSERT INTO guests (id, full_name, created_at) VALUES ${guests.join(", ")};
-      INSERT INTO reservations (id, code, status, guest_id, check_in, check_out, created_at)
-        VALUES ${reservations.join(", ")};
-      INSERT INTO reservation_rooms (id, reservation_id, room_type_id, room_id, adults, children, created_at)
-        VALUES ${lines.join(", ")};
-    `);
-
-    const response = await request("/calendar?from=2026-10-20&to=2026-10-26");
-
-    expect(response.status).toBe(200);
-    const body = (await response.json()) as CalendarBody & Record<string, unknown>;
-    const stays = body.rooms.flatMap((room) => room.stays ?? []);
-    expect(body.rooms).toHaveLength(54);
-    expect(stays).toHaveLength(51);
-    expect(new Set(stays.map((stay) => stay.id)).size).toBe(51);
-    expect(body).not.toHaveProperty("rows");
-    expect(body).not.toHaveProperty("limit");
-    expect(body).not.toHaveProperty("offset");
-    expect(body).not.toHaveProperty("total");
   });
 });

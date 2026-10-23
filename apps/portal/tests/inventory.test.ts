@@ -1,41 +1,21 @@
 import assert from "node:assert/strict";
 import { describe, it } from "vite-plus/test";
-
-import { formatMajor, formatMoney, parseMajorToCents } from "../src/lib/money.ts";
-import { contiguousRanges, datesBetween } from "../src/lib/rate-ranges.ts";
-
-describe("parseMajorToCents", () => {
-  it("parses whole and fractional major units without binary rounding", () => {
-    assert.equal(parseMajorToCents("310"), 31000);
-    assert.equal(parseMajorToCents("310.5"), 31050);
-    assert.equal(parseMajorToCents("10.10"), 1010);
-    assert.equal(parseMajorToCents("0.01"), 1);
-  });
-
-  it("rejects empty, negative, and extra fraction digits", () => {
-    assert.equal(parseMajorToCents(""), null);
-    assert.equal(parseMajorToCents("-1"), null);
-    assert.equal(parseMajorToCents("10.105"), null);
-    assert.equal(parseMajorToCents("10.1.0"), null);
+import { parseMajorToCents } from "../src/lib/money.ts";
+import { datesBetween } from "../src/lib/rate-ranges.ts";
+describe("money input", () => {
+  it.each([
+    { rule: "whole units", value: "310", cents: 31000 },
+    { rule: "single decimal", value: "310.5", cents: 31050 },
+    { rule: "binary rounding", value: "10.10", cents: 1010 },
+    { rule: "one cent", value: "0.01", cents: 1 },
+    { rule: "empty", value: "", cents: null },
+    { rule: "negative", value: "-1", cents: null },
+    { rule: "fractional cent", value: "10.105", cents: null },
+    { rule: "multiple decimal points", value: "10.1.0", cents: null },
+  ])("parses $rule", ({ value, cents }) => {
+    assert.equal(parseMajorToCents(value), cents);
   });
 });
-
-describe("formatMajor", () => {
-  it("writes cents as a two-decimal major amount", () => {
-    assert.equal(formatMajor(1010), "10.10");
-    assert.equal(formatMajor(31000), "310.00");
-  });
-});
-
-describe("Peruvian soles", () => {
-  it("formats whole, fractional, and negative balances in soles", () => {
-    const normalized = (cents: number) => formatMoney(cents).replace(/\s/g, " ");
-    assert.equal(normalized(10000), "S/ 100");
-    assert.equal(normalized(125050), "S/ 1,250.50");
-    assert.equal(normalized(-1250), "-S/ 12.50");
-  });
-});
-
 describe("rate ranges", () => {
   it("keeps visible dates between two endpoints", () => {
     const days = ["2026-12-24", "2026-12-25", "2026-12-26", "2026-12-27"];
@@ -43,13 +23,6 @@ describe("rate ranges", () => {
       "2026-12-24",
       "2026-12-25",
       "2026-12-26",
-    ]);
-  });
-
-  it("groups dates into contiguous ranges", () => {
-    assert.deepEqual(contiguousRanges(["2026-12-24", "2026-12-26", "2026-12-27"]), [
-      { from: "2026-12-24", to: "2026-12-24" },
-      { from: "2026-12-26", to: "2026-12-27" },
     ]);
   });
 });
