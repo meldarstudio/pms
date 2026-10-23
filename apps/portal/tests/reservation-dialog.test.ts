@@ -181,7 +181,7 @@ async function submit() {
 
 function button(label: string) {
   const element = Array.from(window.document.querySelectorAll("button")).find(
-    (button) => button.textContent.trim() === label,
+    (button) => (button.getAttribute("aria-label") ?? button.textContent.trim()) === label,
   );
   assert.ok(element, `Missing button ${label}`);
   return element;
@@ -821,6 +821,7 @@ it("prioritizes the mobile details draft and saves it after visiting another tab
   const originalHeight = window.innerHeight;
   let saved = detail();
   const writes: WorkflowCommand[] = [];
+  let closed = false;
   mockApi(
     async (_path, command) => {
       writes.push(command);
@@ -844,7 +845,9 @@ it("prioritizes the mobile details draft and saves it after visiting another tab
           number: "101",
           typeName: "Doble",
         },
-        onClose: () => {},
+        onClose: () => {
+          closed = true;
+        },
         onViewReservation: () => {},
       }),
     );
@@ -870,6 +873,9 @@ it("prioritizes the mobile details draft and saves it after visiting another tab
     await React.act(async () => button("Descartar").click());
     assert.equal(control("notes").value, "Llegada tarde");
     assert.ok(button("Hacer check-in"));
+    assert.ok(button("Cerrar"));
+    await React.act(async () => button("Cerrar").click());
+    assert.equal(closed, true);
     assert.equal(writes.length, 1);
   } finally {
     window.happyDOM.setWindowSize({ width: originalWidth, height: originalHeight });
@@ -895,8 +901,12 @@ it("expands the mobile reservation bill without losing details or discount draft
     assert.equal(bill.hasAttribute("hidden"), true);
     const financials = window.document.querySelector('[aria-label="Importes de la reserva"]')!;
     assert.ok(financials.textContent.replace(/\s/g, "").includes("SaldopendienteS/200"));
+    assert.ok(expand.textContent.replace(/\s/g, "").includes("SaldopendienteS/200"));
+    assert.ok(window.document.getElementById(expand.getAttribute("aria-describedby")!));
     await fill("notes", "Llegada tarde");
     await React.act(async () => expand.click());
+    assert.equal(expand.getAttribute("aria-expanded"), "true");
+    assert.equal(expand.getAttribute("aria-label"), "Ocultar desglose");
     assert.equal(bill.hasAttribute("hidden"), false);
     assert.ok(bill.textContent.replace(/\s/g, "").includes("TotaldereservaS/300"));
     const discount = bill.querySelector<HTMLInputElement>('[aria-label="Descuento en soles"]')!;
@@ -1002,16 +1012,21 @@ it("announces the mobile balance preview without showing stale credit", async ()
     )!;
     assert.ok(day);
     await React.act(async () => day.click());
-    assert.ok(text().includes("Vistaprevia·Singuardar"));
+    assert.ok(text().includes("Vistaprevia"));
+    assert.equal(text().includes("Singuardar"), false);
+    assert.ok(button("Ver desglose").textContent.includes("Vista previa"));
     assert.ok(text().includes("Calculando…"));
     assert.equal(text().includes("S/200"), false, "Do not show stale credit while repricing");
+    assert.equal(button("Ver desglose").disabled, false);
+    await React.act(async () => button("Ver desglose").click());
+    assert.equal(button("Ocultar desglose").getAttribute("aria-expanded"), "true");
     await until(() => !!finishPreview, "The updated stay must request its price");
     await React.act(async () => finishPreview());
     await until(
-      () => text().includes("SaldoafavorS/50"),
+      () => text().includes("SaldoafavorVistapreviaS/50"),
       "The persistent balance must use the server preview",
     );
-    assert.ok(text().includes("SaldoafavorS/50"));
+    assert.ok(text().includes("SaldoafavorVistapreviaS/50"));
     assert.equal(button("Guardar cambios").disabled, false);
   } finally {
     window.happyDOM.setWindowSize({ width: originalWidth, height: originalHeight });
@@ -2220,6 +2235,73 @@ it.each(["saved assigned room", "saved unassigned room", "unassigned reservation
   },
 );
 
+it.each(["unassigned reservation", "room closure"])(
+  "hides room types sold out by a %s in the mobile edit dialog while keeping the saved type",
+  async (scenario) => {
+    const originalWidth = window.innerWidth;
+    const originalHeight = window.innerHeight;
+    const initial = detail();
+    mockApi(async () => previewResponse(initial));
+    const fetchApi = globalThis.fetch;
+    globalThis.fetch = async (input, init) => {
+      const path = requestUrl(input).pathname;
+      if (path === "/room-types")
+        return Response.json([
+          doubleType,
+          { id: "single", name: "Simple", maxAdults: 1, maxChildren: 0 },
+        ]);
+      if (path === "/rooms")
+        return Response.json([
+          { id: "room-1", number: "101", roomTypeId: "double" },
+          { id: "room-2", number: "102", roomTypeId: "single" },
+        ]);
+      if (path === "/room-closures" && scenario === "room closure")
+        return Response.json([
+          {
+            id: "closure",
+            roomId: "room-2",
+            starts: initial.checkIn,
+            ends: initial.checkOut,
+            reason: null,
+          },
+        ]);
+      if (path === "/reservations")
+        return Response.json([
+          initial,
+          ...(scenario === "unassigned reservation"
+            ? [
+                {
+                  ...detail(),
+                  id: "other-reservation",
+                  rooms: [
+                    { ...detail().rooms[0], id: "other-line", roomTypeId: "single", roomId: null },
+                  ],
+                },
+              ]
+            : []),
+        ]);
+      return fetchApi(input, init);
+    };
+    try {
+      window.happyDOM.setWindowSize({ width: 390, height: 844 });
+      await render(React.createElement(dialogs.BookingEditor, { detail: initial }));
+      await until(() => client.isFetching() === 0, "Current availability must finish loading");
+      await until(() => !fieldTrigger("Tipo").hasAttribute("disabled"), "Room types must be ready");
+      await React.act(async () => fieldTrigger("Tipo").click());
+      const options = [...window.document.querySelectorAll('[role="option"]')].map((item) =>
+        item.textContent.trim(),
+      );
+      assert.deepEqual(
+        options,
+        ["Doble"],
+        "A sold-out type must not be offered for the stay dates",
+      );
+    } finally {
+      window.happyDOM.setWindowSize({ width: originalWidth, height: originalHeight });
+    }
+  },
+);
+
 it("adds the available type instead of a sold-out type and releases draft inventory on removal", async () => {
   const initial = detail();
   initial.rooms[0].adults = 2;
@@ -2256,10 +2338,35 @@ it("adds the available type instead of a sold-out type and releases draft invent
   assert.equal(button("Agregar habitación").disabled, true);
   await React.act(async () => button("Agregar habitación").click());
   assert.equal(container.querySelectorAll('[name$=".room.adults"]').length, 2);
+  const openTypeOptions = async (index: number) => {
+    await React.act(async () => fieldTrigger("Tipo", index).click());
+    return [
+      ...window.document.querySelectorAll<HTMLElement>(
+        '[data-slot="select-content"][data-open] [role="option"]',
+      ),
+    ];
+  };
+  const firstOptions = await openTypeOptions(0);
+  assert.deepEqual(
+    firstOptions.map((item) => item.textContent.trim()),
+    ["Doble"],
+  );
+  await React.act(async () => firstOptions[0].click());
+  const secondOptions = await openTypeOptions(1);
+  assert.deepEqual(
+    secondOptions.map((item) => item.textContent.trim()),
+    ["Simple"],
+  );
+  await React.act(async () => secondOptions[0].click());
   await React.act(async () =>
     container.querySelector<HTMLButtonElement>('[aria-label="Quitar habitación 2"]')!.click(),
   );
   assert.equal(button("Agregar habitación").disabled, false);
+  const releasedOptions = await openTypeOptions(0);
+  assert.deepEqual(
+    releasedOptions.map((item) => item.textContent.trim()),
+    ["Doble", "Simple"],
+  );
 });
 
 it("counts availability per night and waits for current dates before allowing another room", async () => {
@@ -2323,10 +2430,12 @@ it("counts availability per night and waits for current dates before allowing an
   await React.act(async () => day.click());
   await until(() => !!finish, "Changed dates must request current reservations");
   assert.equal(button("Agregar habitación").disabled, true);
+  assert.equal(fieldTrigger("Tipo").hasAttribute("disabled"), true);
   await React.act(async () => finish(Response.json([])));
   await until(() => client.isFetching() === 0, "Current availability must finish loading");
   await flush();
   assert.equal(button("Agregar habitación").disabled, true, "Closures exhaust the added night");
+  assert.equal(fieldTrigger("Tipo").hasAttribute("disabled"), false);
 });
 
 it("keeps pricing an added room when its occupancy is invalid and blocks saving", async () => {

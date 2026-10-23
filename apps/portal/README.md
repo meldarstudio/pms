@@ -93,18 +93,24 @@ and Close, with phone and reservation code underneath. **Ver reserva completa**
 moves into that menu on mobile; desktop keeps its inline link and footer menu. Stay
 fields stack vertically; reserved rooms use flat sections with numbered headings
 and quiet **Quitar** actions only when multiple rooms remain. Dates still apply to
-the whole reservation. The persistent financial strip shows only the balance,
+the whole reservation. The persistent financial strip spans the footer width and shows only the balance,
 using the bill's existing red outstanding, green settled, and blue credit colors
-with text labels, and labels unsaved pricing previews. Total remains in the bill.
-Unavailable prices are not replaced with stale saved amounts. **Ver desglose**
-expands the complete bill inside the scrolling content without replacing its
-discount draft or changing discount autosaving. While details are dirty, the
+with text labels and a **Vista previa** badge beside the balance label for unsaved
+pricing previews. Total remains in the bill.
+Unavailable prices are not replaced with stale saved amounts. The entire balance
+bar toggles the complete bill inside the scrolling content without replacing its
+discount draft or changing discount autosaving. An upward chevron indicates the
+collapsed bill above the footer; a downward chevron indicates the expanded bill.
+There is no separate visible **Ver desglose** link. The button retains an accessible
+**Ver desglose / Ocultar desglose** name, balance description, and expanded state,
+and remains usable while prices are calculating or unavailable. While details are dirty, the
 mobile footer shows quiet **Descartar** followed by primary **Guardar cambios**; other tabs
-offer **Volver a Detalles** before saving that draft. Otherwise, it prioritizes
-the applicable check-in/checkout action. Without a draft or applicable lifecycle
-action, only the financial row remains. Header/footer controls retain Lyra's
-spacing and visual sizing, with 44px touch targets; the footer expands hit areas
-without stretching every button or making Save and Discard equal-width controls.
+offer **Volver a Detalles** before saving that draft. When Details is clean, the
+applicable check-in/checkout action and **Cerrar** share the action row equally.
+Without an applicable lifecycle action, **Cerrar** remains available on its own.
+Header/footer controls retain Lyra's spacing and safe areas. Mobile footer buttons
+have a 44px minimum visual height in both creation and editing; draft action pairs
+also share their row equally.
 **Más acciones de reserva** retains
 cancellation and status corrections with their existing safeguards. Keyboard
 viewport resizing, safe-area spacing, and dirty-close protection follow creation;
@@ -170,6 +176,10 @@ block duplicate and overlapping reservation writes, and reuse the request ID whe
 retrying an unchanged action after an uncertain response.
 
 Editors capture their opening values so background reads do not replace drafts.
+Room-type menus offer only types with capacity for the stay dates, accounting for
+other reservations, room closures, and the other draft rooms. The current selection
+remains visible to preserve drafts, and type changes wait for current availability
+to load. Server previews still validate availability before saving.
 Failed saves retain drafts, dismissing a dirty editor asks for confirmation, and
 router navigation/browser unload are guarded while dirty or saving. Successful
 commands refresh the overview and related reservation/calendar/inventory queries.

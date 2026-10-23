@@ -3,6 +3,8 @@ import { useQueryClient } from "@tanstack/react-query";
 import { useSelector } from "@tanstack/react-form";
 import {
   ArrowUpRightIcon,
+  ChevronDownIcon,
+  ChevronUpIcon,
   EllipsisIcon,
   LogInIcon,
   LogOutIcon,
@@ -136,7 +138,7 @@ type Intent = { type: "edit-payment" | "delete-payment"; entry: ReservationPayme
 // Keep Lyra's visual height with a 44px touch target. Footer rows are 12px apart
 // so these expanded targets do not overlap the controls in the adjacent row.
 const mobileFooterTarget =
-  "relative after:absolute after:inset-x-0 after:top-1/2 after:h-11 after:-translate-y-1/2";
+  "min-h-11 relative after:absolute after:inset-x-0 after:top-1/2 after:h-11 after:-translate-y-1/2";
 
 export function RoomBookingDialog({
   target,
@@ -260,6 +262,7 @@ export function RoomBookingDialog({
                 onDirtyChange={onDirtyChange}
                 onCancelled={close}
                 onViewReservation={(id) => navigate(() => onViewReservation(id))}
+                onCancel={() => navigate(close)}
               />
             )
           )
@@ -375,6 +378,7 @@ export function BookingEditor({
   const mobileEditor = isMobile && compactEditor;
   const [billOpen, setBillOpen] = useState(false);
   const billId = useId();
+  const balanceId = useId();
   const billPanel = useRef<HTMLElement>(null);
   const editorBody = useRef<HTMLDivElement>(null);
   useEffect(() => {
@@ -511,7 +515,6 @@ export function BookingEditor({
         <DropdownMenuGroup>
           {mobileEditor && onViewReservation && (
             <DropdownMenuItem onClick={() => onViewReservation(detail.id)}>
-              <ArrowUpRightIcon />
               Ver reserva completa
             </DropdownMenuItem>
           )}
@@ -770,6 +773,17 @@ export function BookingEditor({
                                   roomIndex={values.rooms.findIndex((room) => room.id === draft.id)}
                                   errors={errors}
                                   reservationId={detail.id}
+                                  availableTypeIds={availableRoomTypeIds(
+                                    common,
+                                    rooms.data ?? [],
+                                    availability.reservations ?? [],
+                                    availability.closures ?? [],
+                                    drafts.filter((other) => other.id !== draft.id),
+                                    detail.id,
+                                  )}
+                                  typesReady={
+                                    roomTypes.isSuccess && rooms.isSuccess && availability.ready
+                                  }
                                   mobileLayout={compactEditor}
                                   blockedRoomIds={overlappingRoomIds(
                                     activeDrafts
@@ -932,45 +946,50 @@ export function BookingEditor({
         )}
       >
         {mobileEditor && (
-          <div className="flex shrink-0 items-center justify-between gap-3">
-            <div
-              aria-label="Importes de la reserva"
-              aria-live="polite"
-              aria-atomic="true"
-              className="flex min-w-0 flex-1 flex-col gap-1"
-            >
-              {summary.provisional && (
-                <Badge variant="preview" className="w-fit">
-                  Vista previa · Sin guardar
-                </Badge>
-              )}
-              <dl
-                className={cn(
-                  "flex flex-wrap items-center justify-between gap-x-2 px-2 py-1",
-                  billing && balanceStatus(billing.balanceCents).tone,
-                )}
-              >
-                <dt>{billing ? <BalanceLabel balanceCents={billing.balanceCents} /> : "Saldo"}</dt>
-                <dd className="tabular-nums">
-                  {billing ? formatMoney(Math.abs(billing.balanceCents), detail.currency) : "—"}
-                </dd>
-              </dl>
-              {!billing && (
-                <p role="status">
-                  {summary.calculating ? "Calculando…" : "Importes no disponibles"}
-                </p>
-              )}
-            </div>
+          <div
+            aria-label="Importes de la reserva"
+            aria-live="polite"
+            aria-atomic="true"
+            className="flex w-full shrink-0 flex-col gap-1"
+          >
             <Button
               type="button"
               variant="ghost"
-              className={mobileFooterTarget}
+              className="h-auto min-h-11 w-full p-0 text-left whitespace-normal has-data-[icon=inline-end]:pr-0"
+              aria-label={billOpen ? "Ocultar desglose" : "Ver desglose"}
+              aria-describedby={balanceId}
               aria-expanded={billOpen}
               aria-controls={billId}
               onClick={() => setBillOpen((open) => !open)}
             >
-              {billOpen ? "Ocultar desglose" : "Ver desglose"}
+              <span
+                className={cn(
+                  "flex min-h-11 w-full items-center gap-3 px-2 py-2",
+                  billing && balanceStatus(billing.balanceCents).tone,
+                )}
+              >
+                <span
+                  id={balanceId}
+                  className="flex min-w-0 flex-1 flex-wrap items-center justify-between gap-x-2"
+                >
+                  <span className="flex min-w-0 flex-wrap items-center gap-2">
+                    {billing ? <BalanceLabel balanceCents={billing.balanceCents} /> : "Saldo"}
+                    {summary.provisional && <Badge variant="preview">Vista previa</Badge>}
+                  </span>
+                  <span className="tabular-nums">
+                    {billing ? formatMoney(Math.abs(billing.balanceCents), detail.currency) : "—"}
+                  </span>
+                </span>
+                {billOpen ? (
+                  <ChevronDownIcon aria-hidden data-icon="inline-end" />
+                ) : (
+                  <ChevronUpIcon aria-hidden data-icon="inline-end" />
+                )}
+              </span>
             </Button>
+            {!billing && (
+              <p role="status">{summary.calculating ? "Calculando…" : "Importes no disponibles"}</p>
+            )}
           </div>
         )}
         {!stayOnly && independentDraftDirty && (
@@ -981,6 +1000,7 @@ export function BookingEditor({
         )}
         {(!mobileEditor ||
           dirty ||
+          (mobileEditor && !dirty) ||
           detail.status === "confirmed" ||
           detail.status === "checked_in") && (
           <div
@@ -990,13 +1010,19 @@ export function BookingEditor({
             )}
           >
             {!stayOnly && (!mobileEditor || !dirty) && (
-              <div className="flex flex-wrap items-center gap-2">
+              <div
+                className={cn("flex flex-wrap items-center gap-2", mobileEditor && "max-md:flex-1")}
+              >
                 {(!mobileEditor || !dirty) &&
                   (detail.status === "confirmed" || detail.status === "checked_in") && (
                     <Button
                       type="button"
                       variant={mobileEditor ? "default" : "outline"}
-                      className={mobileEditor ? mobileFooterTarget : undefined}
+                      className={
+                        mobileEditor
+                          ? cn("max-md:min-w-0 max-md:flex-1", mobileFooterTarget)
+                          : undefined
+                      }
                       disabled={busy || dirty || independentDraftDirty || statusMutation.isPending}
                       onClick={() =>
                         void changeStatus(
@@ -1020,6 +1046,17 @@ export function BookingEditor({
                   </p>
                 )}
                 {!mobileEditor && reservationActions}
+                {mobileEditor && !dirty && (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    className="max-md:min-h-11 max-md:min-w-0 max-md:flex-1"
+                    disabled={busy}
+                    onClick={onCancel}
+                  >
+                    Cerrar
+                  </Button>
+                )}
               </div>
             )}
             {(!mobileEditor || dirty) && (
@@ -1032,7 +1069,9 @@ export function BookingEditor({
                 <div
                   className={cn(
                     "flex flex-wrap gap-2",
-                    mobileEditor && dirty && "w-full flex-nowrap justify-end",
+                    mobileEditor &&
+                      dirty &&
+                      "w-full flex-nowrap justify-end [&>button]:min-w-0 [&>button]:flex-1",
                   )}
                 >
                   {stayOnly && (
@@ -1156,6 +1195,8 @@ const CompactRoomFields = withReservationForm({
   props: {
     roomIndex: 0,
     reservationId: "",
+    availableTypeIds: new Set<string>(),
+    typesReady: false,
     blockedRoomIds: new Set<string>(),
     actions: null as ReactNode,
     errors: {} as Record<string, string>,
@@ -1165,6 +1206,8 @@ const CompactRoomFields = withReservationForm({
     form,
     roomIndex,
     reservationId,
+    availableTypeIds,
+    typesReady,
     blockedRoomIds,
     actions,
     errors,
@@ -1209,11 +1252,11 @@ const CompactRoomFields = withReservationForm({
           {(field) => (
             <field.Choice
               label="Tipo"
+              disabled={!typesReady}
               groupErrorId={typeError ? typeErrorId : undefined}
-              options={(types.data ?? []).map((t) => ({
-                value: t.id,
-                label: t.name,
-              }))}
+              options={(types.data ?? [])
+                .filter((type) => type.id === room.roomTypeId || availableTypeIds.has(type.id))
+                .map((type) => ({ value: type.id, label: type.name }))}
             />
           )}
         </form.AppField>

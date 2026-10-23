@@ -536,11 +536,18 @@ export function NewBooking({
           </p>
         )}
         <div className="flex flex-wrap justify-end gap-2 max-md:[&>button]:flex-1">
-          <Button type="button" variant="outline" disabled={busy} onClick={onCancel}>
+          <Button
+            type="button"
+            variant="outline"
+            className="relative after:absolute after:inset-x-0 after:top-1/2 after:h-11 after:-translate-y-1/2"
+            disabled={busy}
+            onClick={onCancel}
+          >
             Cancelar
           </Button>
           <Button
             type="submit"
+            className="relative after:absolute after:inset-x-0 after:top-1/2 after:h-11 after:-translate-y-1/2"
             disabled={
               busy ||
               !priced ||
