@@ -5,7 +5,6 @@ import {
   inclusiveDates,
   isValidDate,
   nightsBetween,
-  rangesOverlap,
   weekday,
 } from "./dates";
 
@@ -19,11 +18,6 @@ describe("dates", () => {
     expect(nightsBetween("2026-10-12", "2026-10-13")).toEqual(["2026-10-12"]);
     expect(nightsBetween("2026-10-12", "2026-10-14")).toEqual(["2026-10-12", "2026-10-13"]);
     expect(nightsBetween("2026-10-12", "2026-10-12")).toEqual([]);
-  });
-
-  it("treats a checkout morning as free for the next arrival", () => {
-    expect(rangesOverlap("2026-10-12", "2026-10-14", "2026-10-14", "2026-10-16")).toBe(false);
-    expect(rangesOverlap("2026-10-12", "2026-10-15", "2026-10-14", "2026-10-16")).toBe(true);
   });
 
   it("includes both ends of a rate range", () => {

@@ -42,15 +42,6 @@ export function inclusiveDates(from: string, to: string): string[] {
   return nightsBetween(from, addDays(to, 1));
 }
 
-export function rangesOverlap(
-  checkIn: string,
-  checkOut: string,
-  otherIn: string,
-  otherOut: string,
-): boolean {
-  return checkIn < otherOut && checkOut > otherIn;
-}
-
 export function filterWeekdays(dates: string[], weekdays?: number[]): string[] {
   if (!weekdays) return dates;
   const allowed = new Set(weekdays);
