@@ -3,8 +3,6 @@ import { useQueryClient } from "@tanstack/react-query";
 import { useSelector } from "@tanstack/react-form";
 import {
   ArrowUpRightIcon,
-  ChevronDownIcon,
-  ChevronUpIcon,
   EllipsisIcon,
   LogInIcon,
   LogOutIcon,
@@ -67,8 +65,6 @@ import {
 import { Skeleton } from "@/components/ui/skeleton";
 import { Separator } from "@/components/ui/separator";
 import { BookingSummary } from "@/components/booking-summary";
-import { BalanceLabel, balanceStatus } from "@/components/balance-status";
-import { Badge } from "@/components/ui/badge";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { ReservationPageEditor } from "@/components/reservation-page-editors";
 import { NewBooking } from "@/components/new-booking";
@@ -378,20 +374,6 @@ export function BookingEditor({
   const compactEditor = !stayOnly && !full;
   const mobileEditor = isMobile && compactEditor;
   const [billOpen, setBillOpen] = useState(false);
-  const billId = useId();
-  const balanceId = useId();
-  const billPanel = useRef<HTMLElement>(null);
-  const editorBody = useRef<HTMLDivElement>(null);
-  useEffect(() => {
-    const body = editorBody.current;
-    const panel = billPanel.current;
-    if (!mobileEditor || !billOpen || !body || !panel) return;
-    // Scroll only the form body: scrollIntoView also scrolls overflow-hidden
-    // dialog ancestors, moving the pinned header and controls out of view.
-    body.scrollTo({
-      top: body.scrollTop + panel.getBoundingClientRect().top - body.getBoundingClientRect().top,
-    });
-  }, [mobileEditor, billOpen]);
   const [paymentDirty, setPaymentDirty] = useState(false);
   const [discountDirty, setDiscountDirty] = useState(false);
   const [actionDirty, setActionDirty] = useState(false);
@@ -603,11 +585,11 @@ export function BookingEditor({
           <div
             className={
               mobileEditor
-                ? "flex min-h-11 min-w-0 flex-1 flex-wrap items-center gap-2"
+                ? "flex min-h-11 min-w-0 flex-1 flex-nowrap items-center gap-2"
                 : "contents"
             }
           >
-            <span className={cn("text-lg font-semibold", mobileEditor && "wrap-anywhere")}>
+            <span className={cn("text-lg font-semibold", mobileEditor && "min-w-0 truncate")}>
               {`${contact.fullName}`.trim()}
             </span>
             <ReservationStatusBadge status={detail.status} />
@@ -674,15 +656,19 @@ export function BookingEditor({
           </TabsList>
         )}
         <div
-          ref={editorBody}
           className={cn(
             "grid min-w-0 shrink-0 gap-6 p-px",
             !stayOnly && "lg:grid-cols-[minmax(0,1fr)_280px]",
-            compactEditor &&
-              "max-md:min-h-0 max-md:flex-1 max-md:shrink max-md:content-start max-md:overflow-y-auto max-md:overscroll-contain max-md:scroll-py-4 max-md:py-4 max-md:safe-area-padding-x max-md:[&_button]:min-h-11 max-md:[&_button]:min-w-11 max-md:[&_input]:min-h-11 max-md:[&_[data-slot=input-group]]:min-h-11",
+            compactEditor && "max-md:contents",
           )}
         >
-          <div className="min-w-0">
+          <div
+            className={cn(
+              "min-w-0",
+              compactEditor &&
+                "max-md:min-h-0 max-md:flex-1 max-md:overflow-y-auto max-md:overscroll-contain max-md:scroll-py-4 max-md:py-4 max-md:safe-area-padding-x max-md:[&_button]:min-h-11 max-md:[&_button]:min-w-11 max-md:[&_input]:min-h-11 max-md:[&_[data-slot=input-group]]:min-h-11",
+            )}
+          >
             <TabsContent value="details" keepMounted className="flex flex-col gap-5">
               <form
                 id={formId}
@@ -896,10 +882,11 @@ export function BookingEditor({
             )}
           </div>
           <aside
-            ref={billPanel}
-            id={billId}
-            hidden={mobileEditor && !billOpen}
-            className="min-w-0 md:self-start"
+            className={cn(
+              "min-w-0 md:self-start",
+              compactEditor &&
+                "max-md:flex max-md:min-h-0 max-md:flex-col max-md:pt-3 max-md:pb-px max-md:safe-area-padding-x max-md:[&_input]:min-h-11 max-md:[&_[data-slot=input-group]]:min-h-11",
+            )}
           >
             <BookingSummary
               cancelled={reservationState === "cancelled"}
@@ -926,22 +913,33 @@ export function BookingEditor({
                   : null
               }
               showPayments
-              message={summary.calculating ? "Calculando…" : null}
+              message={
+                summary.calculating
+                  ? "Calculando…"
+                  : mobileEditor && !billing
+                    ? "Importes no disponibles"
+                    : null
+              }
+              error={
+                summary.error && (
+                  <div className="flex flex-col items-start gap-2">
+                    <FieldError>{summary.error.message}</FieldError>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      disabled={busy || discountMutation.isPending}
+                      onClick={() => void summary.retry()}
+                    >
+                      Reintentar
+                    </Button>
+                  </div>
+                )
+              }
               provisional={summary.provisional}
+              collapsible={mobileEditor}
+              expanded={billOpen}
+              onExpandedChange={setBillOpen}
             />
-            {summary.error && (
-              <div className="flex flex-col items-start gap-2">
-                <FieldError>{summary.error.message}</FieldError>
-                <Button
-                  type="button"
-                  variant="outline"
-                  disabled={busy || discountMutation.isPending}
-                  onClick={() => void summary.retry()}
-                >
-                  Reintentar
-                </Button>
-              </div>
-            )}
           </aside>
         </div>
       </Tabs>
@@ -949,56 +947,9 @@ export function BookingEditor({
         className={cn(
           "contents",
           compactEditor &&
-            "max-md:flex max-md:shrink-0 max-md:flex-col max-md:gap-3 max-md:border-t max-md:py-3 max-md:pb-[max(0.75rem,env(safe-area-inset-bottom))] max-md:safe-area-padding-x",
+            "max-md:flex max-md:shrink-0 max-md:flex-col max-md:gap-3 max-md:py-3 max-md:pb-[max(0.75rem,env(safe-area-inset-bottom))] max-md:safe-area-padding-x",
         )}
       >
-        {mobileEditor && (
-          <div
-            aria-label="Importes de la reserva"
-            aria-live="polite"
-            aria-atomic="true"
-            className="flex w-full shrink-0 flex-col gap-1"
-          >
-            <Button
-              type="button"
-              variant="ghost"
-              className="h-auto min-h-11 w-full p-0 text-left whitespace-normal has-data-[icon=inline-end]:pr-0"
-              aria-label={billOpen ? "Ocultar desglose" : "Ver desglose"}
-              aria-describedby={balanceId}
-              aria-expanded={billOpen}
-              aria-controls={billId}
-              onClick={() => setBillOpen((open) => !open)}
-            >
-              <span
-                className={cn(
-                  "flex min-h-11 w-full items-center gap-3 px-2 py-2",
-                  billing && balanceStatus(billing.balanceCents).tone,
-                )}
-              >
-                <span
-                  id={balanceId}
-                  className="flex min-w-0 flex-1 flex-wrap items-center justify-between gap-x-2"
-                >
-                  <span className="flex min-w-0 flex-wrap items-center gap-2">
-                    {billing ? <BalanceLabel balanceCents={billing.balanceCents} /> : "Saldo"}
-                    {summary.provisional && <Badge variant="preview">Vista previa</Badge>}
-                  </span>
-                  <span className="tabular-nums">
-                    {billing ? formatMoney(Math.abs(billing.balanceCents), detail.currency) : "—"}
-                  </span>
-                </span>
-                {billOpen ? (
-                  <ChevronDownIcon aria-hidden data-icon="inline-end" />
-                ) : (
-                  <ChevronUpIcon aria-hidden data-icon="inline-end" />
-                )}
-              </span>
-            </Button>
-            {!billing && (
-              <p role="status">{summary.calculating ? "Calculando…" : "Importes no disponibles"}</p>
-            )}
-          </div>
-        )}
         {!stayOnly && independentDraftDirty && (
           <p className="text-xs text-muted-foreground">
             Guarda o descarta los cambios de huéspedes, pagos o descuento antes de cambiar el estado

@@ -1,12 +1,15 @@
 import { useEffect, useId, useMemo, useRef, type ReactNode } from "react";
 import { useSelector } from "@tanstack/react-form";
 import { cn } from "cn";
+import { ChevronDownIcon, ChevronUpIcon } from "lucide-react";
 import { useReservationForm, blurThenChange } from "@/lib/reservation-form";
 import { errorMessage } from "@/lib/form-errors";
 import { discountSchema } from "@/lib/reservation-form-schemas";
 
 import { BalanceLabel, balanceStatus } from "@/components/balance-status";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import {
   Card,
   CardContent,
@@ -49,11 +52,15 @@ export function BookingSummary({
   stayLabel,
   showPayments,
   message,
+  error,
   editableDiscountCents,
   discountDisabled = false,
   onDiscountSave,
   onDiscountDirtyChange,
   provisional = false,
+  collapsible = false,
+  expanded = false,
+  onExpandedChange,
 }: {
   rooms: BookingSummaryRoom[];
   cancelled: boolean;
@@ -66,112 +73,187 @@ export function BookingSummary({
   stayLabel: string | null;
   showPayments: boolean;
   message: string | null;
+  error?: ReactNode;
   editableDiscountCents?: number;
   discountDisabled?: boolean;
   onDiscountSave?: (amountCents: number) => Promise<void>;
   onDiscountDirtyChange?: (dirty: boolean) => void;
   provisional?: boolean;
+  collapsible?: boolean;
+  expanded?: boolean;
+  onExpandedChange?: (expanded: boolean) => void;
 }) {
   const titleId = useId();
+  const panelId = useId();
+  const balanceId = useId();
   const balance = showPayments && summary ? summary.balanceCents : null;
+  const feedback = error || (!summary ? message : null);
   const discountDiffers =
     summary !== null &&
     editableDiscountCents !== undefined &&
     editableDiscountCents !== summary.discountCents;
 
   return (
-    <section aria-labelledby={titleId} className="min-w-0">
-      <Card size="sm">
-        <CardHeader>
-          <CardTitle className={cn(provisional && "flex items-center gap-2")}>
-            <h3 id={titleId}>Resumen de reserva</h3>
-            {provisional && <Badge variant="preview">Vista previa</Badge>}
-          </CardTitle>
-          {stayLabel && <CardDescription>{stayLabel}</CardDescription>}
-        </CardHeader>
-        <CardContent className="flex flex-col gap-3">
-          <div className="flex flex-col gap-4">
-            {(cancelled ? [] : rooms).map((room, index) => (
-              <RoomSummary key={room.key} room={room} index={index} currency={currency} />
-            ))}
-          </div>
-          <Separator />
-          <dl className="flex flex-col gap-2">
-            <SummaryRow
-              label="Importe habitaciones"
-              cents={summary?.subtotalCents ?? null}
-              currency={currency}
-            />
-            {onDiscountSave ? (
-              <>
-                <DiscountInput
-                  label={discountDiffers ? "Descuento guardado" : "Descuento"}
-                  amountCents={editableDiscountCents ?? 0}
-                  disabled={discountDisabled}
-                  onSave={onDiscountSave}
-                  onDirtyChange={onDiscountDirtyChange}
-                />
-                {discountDiffers && (
-                  <SummaryRow
-                    label="Descuento aplicado"
-                    cents={-summary.discountCents}
-                    currency={currency}
-                  />
-                )}
-              </>
-            ) : !summary || summary.discountCents > 0 ? (
-              <SummaryRow
-                label="Descuentos"
-                cents={summary ? -summary.discountCents : null}
-                currency={currency}
-              />
-            ) : null}
-          </dl>
-          {showPayments ? (
-            <dl className="flex flex-col gap-2">
-              <SummaryRow
-                label="Total de reserva"
-                cents={summary?.totalCents ?? null}
-                currency={currency}
-              />
-              <SummaryRow label="Pagado" cents={paidCents} currency={currency} />
-            </dl>
-          ) : null}
-          {!summary && message ? (
-            <p role="status" className="text-muted-foreground">
-              {message}
-            </p>
-          ) : null}
-        </CardContent>
-        <CardFooter
+    <section
+      aria-labelledby={titleId}
+      className={cn("min-w-0", collapsible && "flex min-h-0 flex-col")}
+    >
+      <Collapsible
+        open={!collapsible || expanded}
+        onOpenChange={onExpandedChange}
+        render={<Card size="sm" className={cn(collapsible && "min-h-0 gap-0 py-0")} />}
+      >
+        <CollapsibleContent
+          id={panelId}
+          keepMounted
           className={cn(
-            "flex-col items-stretch gap-3",
-            balance !== null && balanceStatus(balance).tone,
+            "flex min-h-0 flex-col gap-(--card-spacing) [&[hidden]]:hidden",
+            collapsible &&
+              "max-h-[min(22rem,calc(var(--reservation-viewport-height,100dvh)*0.45))] overflow-y-auto overscroll-contain py-3",
           )}
         >
-          <dl className="w-full text-sm font-semibold">
-            <SummaryRow
-              label={
-                balance !== null ? (
-                  <BalanceLabel balanceCents={balance} />
-                ) : showPayments ? (
-                  "Saldo pendiente"
-                ) : (
-                  "Total de reserva"
-                )
-              }
-              cents={
-                summary
-                  ? showPayments
-                    ? Math.abs(summary.balanceCents)
-                    : summary.totalCents
-                  : null
-              }
-              currency={currency}
-            />
-          </dl>
+          <CardHeader>
+            <CardTitle className={cn(provisional && "flex items-center gap-2")}>
+              <h3 id={titleId}>Resumen de reserva</h3>
+              {provisional && !collapsible && <Badge variant="preview">Vista previa</Badge>}
+            </CardTitle>
+            {stayLabel && <CardDescription>{stayLabel}</CardDescription>}
+          </CardHeader>
+          <CardContent className="flex flex-col gap-3">
+            <div className="flex flex-col gap-4">
+              {(cancelled ? [] : rooms).map((room, index) => (
+                <RoomSummary key={room.key} room={room} index={index} currency={currency} />
+              ))}
+            </div>
+            <Separator />
+            <dl className="flex flex-col gap-2">
+              <SummaryRow
+                label="Importe habitaciones"
+                cents={summary?.subtotalCents ?? null}
+                currency={currency}
+              />
+              {onDiscountSave ? (
+                <>
+                  <DiscountInput
+                    label={discountDiffers ? "Descuento guardado" : "Descuento"}
+                    amountCents={editableDiscountCents ?? 0}
+                    disabled={discountDisabled}
+                    onSave={onDiscountSave}
+                    onDirtyChange={onDiscountDirtyChange}
+                  />
+                  {discountDiffers && (
+                    <SummaryRow
+                      label="Descuento aplicado"
+                      cents={-summary.discountCents}
+                      currency={currency}
+                    />
+                  )}
+                </>
+              ) : !summary || summary.discountCents > 0 ? (
+                <SummaryRow
+                  label="Descuentos"
+                  cents={summary ? -summary.discountCents : null}
+                  currency={currency}
+                />
+              ) : null}
+            </dl>
+            {showPayments ? (
+              <dl className="flex flex-col gap-2">
+                <SummaryRow
+                  label="Total de reserva"
+                  cents={summary?.totalCents ?? null}
+                  currency={currency}
+                />
+                <SummaryRow label="Pagado" cents={paidCents} currency={currency} />
+              </dl>
+            ) : null}
+            {feedback && !collapsible ? (
+              <div role="status" className="text-muted-foreground">
+                {feedback}
+              </div>
+            ) : null}
+          </CardContent>
+        </CollapsibleContent>
+        <CardFooter
+          aria-label={collapsible ? "Importes de la reserva" : undefined}
+          aria-live={collapsible ? "polite" : undefined}
+          aria-atomic={collapsible || undefined}
+          className={cn(
+            "shrink-0 flex-col items-stretch gap-3",
+            collapsible ? "p-0" : balance !== null && balanceStatus(balance).tone,
+            collapsible && !expanded && "border-t-0",
+          )}
+        >
+          {collapsible ? (
+            <>
+              {feedback && (
+                <div role="status" className="p-3">
+                  {feedback}
+                </div>
+              )}
+              <CollapsibleTrigger
+                aria-label={expanded ? "Ocultar desglose" : "Ver desglose"}
+                aria-describedby={balanceId}
+                aria-controls={panelId}
+                render={
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    className="h-auto min-h-11 w-full border-0 p-0 text-left whitespace-normal focus-visible:ring-2 focus-visible:ring-inset has-data-[icon=inline-end]:pr-0"
+                  />
+                }
+              >
+                <span
+                  className={cn(
+                    "flex min-h-11 w-full items-center gap-3 px-3 py-2",
+                    balance !== null && balanceStatus(balance).tone,
+                  )}
+                >
+                  <span
+                    id={balanceId}
+                    className="flex min-w-0 flex-1 flex-wrap items-center justify-between gap-x-2"
+                  >
+                    <span className="flex min-w-0 flex-wrap items-center gap-2">
+                      {balance !== null ? <BalanceLabel balanceCents={balance} /> : "Saldo"}
+                      {provisional && <Badge variant="preview">Vista previa</Badge>}
+                    </span>
+                    <span className="tabular-nums">
+                      {balance !== null ? formatMoney(Math.abs(balance), currency) : "—"}
+                    </span>
+                  </span>
+                  {expanded ? (
+                    <ChevronDownIcon aria-hidden data-icon="inline-end" />
+                  ) : (
+                    <ChevronUpIcon aria-hidden data-icon="inline-end" />
+                  )}
+                </span>
+              </CollapsibleTrigger>
+            </>
+          ) : (
+            <dl className="w-full text-sm font-semibold">
+              <SummaryRow
+                label={
+                  balance !== null ? (
+                    <BalanceLabel balanceCents={balance} />
+                  ) : showPayments ? (
+                    "Saldo pendiente"
+                  ) : (
+                    "Total de reserva"
+                  )
+                }
+                cents={
+                  summary
+                    ? showPayments
+                      ? Math.abs(summary.balanceCents)
+                      : summary.totalCents
+                    : null
+                }
+                currency={currency}
+              />
+            </dl>
+          )}
         </CardFooter>
-      </Card>
+      </Collapsible>
     </section>
   );
 }

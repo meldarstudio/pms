@@ -10,7 +10,6 @@ import {
   ChevronRightIcon,
   ChevronsLeftIcon,
   ChevronsRightIcon,
-  PlusIcon,
   RefreshCwIcon,
 } from "lucide-react";
 
@@ -24,7 +23,8 @@ import { RoomBookingDialog, type BookingTarget } from "@/components/room-booking
 import { groupRoomLabel } from "@/components/room-assignment-flow";
 import { RoomAssignmentPanel } from "@/components/room-assignment-panel";
 import { RoomAssignmentSheet } from "@/components/room-assignment-sheet";
-import { PageHeaderActions } from "@/components/page-header-actions";
+import { NewReservationButton } from "@/components/new-reservation-button";
+import { primaryActionClearance } from "@/components/page-primary-action";
 import { Tooltip, TooltipTrigger, TooltipContent } from "@/components/ui/tooltip";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -498,10 +498,11 @@ export function RoomCalendar({
   if (calendar?.missingSetup) return <SetupRequired missing={calendar.missingSetup} />;
 
   const newReservationButton = (
-    <Button disabled={assignment.pending} onClick={() => setBookingTarget({ mode: "new" })}>
-      <PlusIcon data-icon="inline-start" />
-      Nueva reserva
-    </Button>
+    <NewReservationButton
+      scrollRef={gridScroller}
+      disabled={assignment.pending}
+      onClick={() => setBookingTarget({ mode: "new" })}
+    />
   );
   const refreshButton = (
     <Button
@@ -544,7 +545,7 @@ export function RoomCalendar({
 
   return (
     <div className="flex min-h-0 min-w-0 flex-1 flex-col">
-      {isMobile && <PageHeaderActions>{newReservationButton}</PageHeaderActions>}
+      {isMobile && newReservationButton}
       <RoomClosureDialog target={closureTarget} onClose={() => setClosureTarget(null)} />
       <RoomEditDialog target={roomTarget} onClose={() => setRoomTarget(null)} />
       <RoomBookingDialog
@@ -759,7 +760,13 @@ export function RoomCalendar({
         </div>
       ) : null}
       <div className="flex min-h-0 min-w-0 flex-1">
-        <div ref={gridScroller} className="min-h-0 min-w-0 flex-1 overflow-auto overscroll-none">
+        <div
+          ref={gridScroller}
+          className={cn(
+            "min-h-0 min-w-0 flex-1 overflow-auto overscroll-none",
+            primaryActionClearance,
+          )}
+        >
           <div
             role={rooms === null ? "region" : undefined}
             aria-label={rooms === null ? "Cargando calendario" : undefined}
