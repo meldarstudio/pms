@@ -21,8 +21,6 @@ import { useHousekeeping, useMissingSetup, useSetHousekeepingStatus } from "@/li
 import type { HousekeepingView } from "@/lib/route-search";
 import { toast, toastError } from "@/lib/toast";
 
-const statusLabel = { dirty: "Sucia", clean: "Limpia" } as const;
-
 type MarkRoom = (room: HousekeepingRoom, status: HousekeepingStatus) => Promise<void>;
 
 /** Marks a room, then offers to undo it by setting the previous status again. */
@@ -138,10 +136,17 @@ function ToCleanCard({ room, mark }: { room: HousekeepingRoom; mark: MarkRoom })
   );
 }
 
-const statusToggle = {
-  dirty:
-    "aria-pressed:bg-destructive/10 aria-pressed:text-destructive dark:aria-pressed:bg-destructive/20",
-  clean: "aria-pressed:bg-booking aria-pressed:text-booking-foreground",
+/** Each side of the Sucia | Limpia toggle: its label and its tint when pressed. */
+const statusDisplay = {
+  dirty: {
+    label: "Sucia",
+    className:
+      "aria-pressed:bg-destructive/10 aria-pressed:text-destructive dark:aria-pressed:bg-destructive/20",
+  },
+  clean: {
+    label: "Limpia",
+    className: "aria-pressed:bg-booking aria-pressed:text-booking-foreground",
+  },
 } as const;
 
 function HousekeepingRow({ room, mark }: { room: HousekeepingRoom; mark: MarkRoom }) {
@@ -168,11 +173,11 @@ function HousekeepingRow({ room, mark }: { room: HousekeepingRoom; mark: MarkRoo
           <ToggleGroupItem
             key={status}
             value={status}
-            className={cn("min-h-11 px-3 text-sm", statusToggle[status])}
-            aria-label={`Marcar habitación ${room.number} como ${statusLabel[status].toLowerCase()}`}
+            className={cn("min-h-11 px-3 text-sm", statusDisplay[status].className)}
+            aria-label={`Marcar habitación ${room.number} como ${statusDisplay[status].label.toLowerCase()}`}
           >
             {pending === status && <Spinner data-icon="inline-start" />}
-            {statusLabel[status]}
+            {statusDisplay[status].label}
           </ToggleGroupItem>
         ))}
       </ToggleGroup>
