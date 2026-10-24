@@ -21,7 +21,8 @@ panel; the calendar has its full width while the panel is closed.
 
 On mobile the toolbar has **Actualizar** on the left, date navigation in the middle,
 and **Sin asignar** on the right. **Hoy** lives inside the date picker and closes it
-after returning to the property's current day.
+after returning to the property's current day. **Nueva reserva** floats at the
+bottom right; see [navigation](portal.md#navigation).
 
 ## Picker
 

@@ -248,7 +248,8 @@ opens the full reservation page, which contains the phone, declared occupant
 counts, total, and workflow actions. Returning retains the URL-backed list
 context. At 768px and wider, the list keeps its table and horizontal view tabs.
 
-The app header and Nueva reserva stay reachable while the list scrolls. View,
+The app header and Nueva reserva stay reachable while the list scrolls; see
+[navigation](portal.md#navigation) for the mobile floating placement. View,
 date, search, filter, and sorting controls scroll with the results. Mobile list
 controls have touch targets of at least 44px. Llegadas and Salidas retain their
 previous-day, date-picker, next-day, and Hoy controls. Search still matches the

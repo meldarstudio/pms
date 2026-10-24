@@ -702,6 +702,33 @@ it("waits for the requested mobile page before moving focus to its first reserva
   await until(() => window.document.activeElement === button("Abrir reserva de Ana Pérez"));
 });
 
+it("floats Nueva reserva on mobile, collapses it after scrolling without losing its name, and keeps it in the desktop header", async () => {
+  await render();
+  const header = container.querySelector("header")!;
+  assert.match(header.textContent, /Nueva reserva/);
+  await React.act(async () => window.happyDOM.setWindowSize({ width: 375, height: 844 }));
+  await until(
+    () => !header.textContent.includes("Nueva reserva"),
+    "Mobile must move Nueva reserva out of the header",
+  );
+  const action = button("Nueva reserva");
+  assert.equal(action.hasAttribute("data-collapsed"), false);
+  const main = container.querySelector("main")!;
+  await React.act(async () => {
+    main.scrollTop = 200;
+    main.dispatchEvent(new window.Event("scroll"));
+  });
+  await until(
+    () => button("Nueva reserva").hasAttribute("data-collapsed"),
+    "Scrolling away from the top must collapse the action",
+  );
+  await click("Nueva reserva");
+  await until(
+    () => !!window.document.querySelector('[role="dialog"]')?.textContent.includes("Nueva reserva"),
+    "The floating action must open the new reservation dialog",
+  );
+});
+
 it("keeps overdue checked-in stays in-house and hides the conflicting status selector", async () => {
   respond = (url) =>
     Response.json({
