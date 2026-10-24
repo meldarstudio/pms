@@ -1,12 +1,5 @@
 import { useState } from "react";
-import {
-  DoorClosedIcon,
-  DoorOpenIcon,
-  LuggageIcon,
-  RefreshCwIcon,
-  SparklesIcon,
-  TriangleAlertIcon,
-} from "lucide-react";
+import { RefreshCwIcon, SparklesIcon } from "lucide-react";
 import { cn } from "cn";
 import { PageHeaderActions } from "@/components/page-header-actions";
 import { SetupRequired } from "@/components/setup-required";
@@ -22,31 +15,13 @@ import {
 import { FieldError } from "@/components/ui/field";
 import { Spinner } from "@/components/ui/spinner";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import type { HousekeepingRoom, HousekeepingStatus } from "@/lib/api";
-import { propertyToday } from "@/lib/property-calendar";
 import { useHousekeeping, useMissingSetup, useSetHousekeepingStatus } from "@/lib/queries";
 import type { HousekeepingView } from "@/lib/route-search";
 import { toast, toastError } from "@/lib/toast";
-import { usePropertyCalendar } from "@/lib/use-property-calendar";
 
-const statusDisplay = {
-  dirty: {
-    label: "Sucia",
-    badge: "destructive",
-    next: "clean",
-    action: "Marcar limpia",
-    button: "default",
-    Icon: SparklesIcon,
-  },
-  clean: {
-    label: "Limpia",
-    badge: "checked_in",
-    next: "dirty",
-    action: "Marcar sucia",
-    button: "outline",
-    Icon: TriangleAlertIcon,
-  },
-} as const;
+const statusLabel = { dirty: "Sucia", clean: "Limpia" } as const;
 
 type MarkRoom = (room: HousekeepingRoom, status: HousekeepingStatus) => Promise<void>;
 
@@ -91,31 +66,51 @@ function cleaningOrder(room: HousekeepingRoom) {
   return (room.arriving ? 0 : 2) + (room.departing ? 1 : 0);
 }
 
-function stayLabels(room: HousekeepingRoom) {
-  const labels: string[] = [];
-  if (room.departing) labels.push("Sale hoy");
-  if (room.inHouse) labels.push("En casa");
-  if (room.arriving) labels.push("Llega hoy");
-  return labels.length ? labels : ["Libre"];
+/** Today's stays and a closure tonight, the same in both tabs. Libre: no guest is in the room now. */
+function StayBadges({ room }: { room: HousekeepingRoom }) {
+  const free = !room.departing && !room.inHouse;
+  return (
+    <div className="flex flex-wrap items-center gap-1">
+      {room.arriving && (
+        <Badge variant="destructive" className="border-destructive/20">
+          Llega hoy
+        </Badge>
+      )}
+      {room.departing && (
+        <Badge className="border-amber-500/30 bg-amber-500/15 text-amber-800 dark:text-amber-200">
+          Sale hoy
+        </Badge>
+      )}
+      {room.inHouse && (
+        <Badge variant="secondary" className="border-border">
+          En casa
+        </Badge>
+      )}
+      {free && <Badge variant="checked_in">Libre</Badge>}
+      {room.closed && (
+        <Badge variant="secondary" className="border-border">
+          Cerrada
+        </Badge>
+      )}
+    </div>
+  );
 }
 
-function changedLabel(changedAt: string | null, today: string, timeZone: string) {
-  if (!changedAt) return null;
-  const instant = new Date(changedAt);
-  const sameDay = propertyToday(instant) === today;
-  const formatted = new Intl.DateTimeFormat(
-    "es-PE",
-    sameDay ? { timeStyle: "short", timeZone } : { day: "numeric", month: "short", timeZone },
-  ).format(instant);
-  return `Marcada ${sameDay ? "a las" : "el"} ${formatted}`;
+function RoomHeading({ room }: { room: HousekeepingRoom }) {
+  return (
+    <div className="flex min-w-0 items-baseline gap-2">
+      <span className="text-xl leading-none font-semibold tabular-nums">{room.number}</span>
+      <span className="truncate text-sm text-muted-foreground">{room.roomTypeName}</span>
+    </div>
+  );
 }
 
-/** Keeps a row's button disabled while its own mark saves. */
+/** Keeps a row's control disabled while its own mark saves, remembering the status it sets. */
 function usePendingMark(mark: MarkRoom) {
-  const [pending, setPending] = useState(false);
+  const [pending, setPending] = useState<HousekeepingStatus | null>(null);
   const run = (room: HousekeepingRoom, status: HousekeepingStatus) => {
-    setPending(true);
-    void mark(room, status).finally(() => setPending(false));
+    setPending(status);
+    void mark(room, status).finally(() => setPending(null));
   };
   return [pending, run] as const;
 }
@@ -125,33 +120,15 @@ function ToCleanCard({ room, mark }: { room: HousekeepingRoom; mark: MarkRoom })
   return (
     <li className="flex items-center gap-3 border-b p-4 last:border-b-0">
       <div className="flex min-w-0 flex-1 flex-col gap-2">
-        <span className="text-3xl leading-none font-semibold tabular-nums">{room.number}</span>
-        <div className="flex flex-wrap items-center gap-2">
-          {room.arriving && (
-            <Badge variant="destructive" className="h-6 text-sm">
-              <LuggageIcon data-icon="inline-start" />
-              Llega hoy
-            </Badge>
-          )}
-          {room.departing ? (
-            <Badge className="h-6 border-amber-500/30 bg-amber-500/15 text-sm text-amber-800 dark:text-amber-200">
-              <DoorClosedIcon data-icon="inline-start" />
-              Sale hoy
-            </Badge>
-          ) : (
-            <Badge variant="checked_in" className="h-6 text-sm">
-              <DoorOpenIcon data-icon="inline-start" />
-              Libre
-            </Badge>
-          )}
-        </div>
+        <RoomHeading room={room} />
+        <StayBadges room={room} />
       </div>
       <Button
         size="lg"
         variant="outline"
         className="min-h-12 shrink-0 px-5 text-base"
         aria-label={`Marcar habitación ${room.number} como limpia`}
-        disabled={pending}
+        disabled={!!pending}
         onClick={() => run(room, "clean")}
       >
         {pending && <Spinner data-icon="inline-start" />}
@@ -161,39 +138,44 @@ function ToCleanCard({ room, mark }: { room: HousekeepingRoom; mark: MarkRoom })
   );
 }
 
+const statusToggle = {
+  dirty:
+    "aria-pressed:bg-destructive/10 aria-pressed:text-destructive dark:aria-pressed:bg-destructive/20",
+  clean: "aria-pressed:bg-booking aria-pressed:text-booking-foreground",
+} as const;
+
 function HousekeepingRow({ room, mark }: { room: HousekeepingRoom; mark: MarkRoom }) {
-  const { today, timeZone } = usePropertyCalendar();
   const [pending, run] = usePendingMark(mark);
-  const display = statusDisplay[room.housekeepingStatus];
-  const changed = changedLabel(room.housekeepingChangedAt, today, timeZone);
   return (
     <li className="flex items-center gap-3 border-b px-4 py-3 last:border-b-0">
-      <div className="flex min-w-0 flex-1 flex-col gap-1">
-        <div className="flex min-w-0 items-baseline gap-2">
-          <span className="text-base font-semibold tabular-nums">{room.number}</span>
-          <span className="truncate text-xs text-muted-foreground">{room.roomTypeName}</span>
-        </div>
-        <div className="flex flex-wrap items-center gap-1">
-          <Badge variant={display.badge}>{display.label}</Badge>
-          {stayLabels(room).map((label) => (
-            <Badge key={label} variant="outline">
-              {label}
-            </Badge>
-          ))}
-          {room.closed && <Badge variant="secondary">Cerrada</Badge>}
-        </div>
-        {changed && <span className="text-xs text-muted-foreground">{changed}</span>}
+      <div className="flex min-w-0 flex-1 flex-col gap-2">
+        <RoomHeading room={room} />
+        <StayBadges room={room} />
       </div>
-      <Button
-        className="min-h-11 shrink-0"
-        variant={display.button}
-        aria-label={`Marcar habitación ${room.number} como ${statusDisplay[display.next].label.toLowerCase()}`}
-        disabled={pending}
-        onClick={() => run(room, display.next)}
+      <ToggleGroup
+        variant="outline"
+        spacing={0}
+        className="shrink-0"
+        aria-label={`Limpieza de la habitación ${room.number}`}
+        value={[room.housekeepingStatus]}
+        disabled={!!pending}
+        onValueChange={([status]) => {
+          // Tapping the pressed side unpresses it; that sets nothing.
+          if (status) run(room, status as HousekeepingStatus);
+        }}
       >
-        {pending ? <Spinner data-icon="inline-start" /> : <display.Icon data-icon="inline-start" />}
-        {display.action}
-      </Button>
+        {(["dirty", "clean"] as const).map((status) => (
+          <ToggleGroupItem
+            key={status}
+            value={status}
+            className={cn("min-h-11 px-3 text-sm", statusToggle[status])}
+            aria-label={`Marcar habitación ${room.number} como ${statusLabel[status].toLowerCase()}`}
+          >
+            {pending === status && <Spinner data-icon="inline-start" />}
+            {statusLabel[status]}
+          </ToggleGroupItem>
+        ))}
+      </ToggleGroup>
     </li>
   );
 }
@@ -222,23 +204,12 @@ function ToCleanList({ rooms, mark }: { rooms: HousekeepingRoom[]; mark: MarkRoo
 }
 
 function AllRoomsList({ rooms, mark }: { rooms: HousekeepingRoom[]; mark: MarkRoom }) {
-  const dirty = rooms.filter((room) => room.housekeepingStatus === "dirty");
-  const urgent = dirty.filter((room) => room.arriving).length;
   return (
-    <>
-      <p role="status" className="text-sm text-muted-foreground">
-        {dirty.length === 0
-          ? "Todas las habitaciones están limpias."
-          : `${dirty.length} ${dirty.length === 1 ? "habitación sucia" : "habitaciones sucias"}${
-              urgent ? `, ${urgent} con llegada hoy` : ""
-            }.`}
-      </p>
-      <ul aria-label="Habitaciones" className="max-w-2xl border">
-        {rooms.map((room) => (
-          <HousekeepingRow key={room.id} room={room} mark={mark} />
-        ))}
-      </ul>
-    </>
+    <ul aria-label="Habitaciones" className="max-w-2xl border">
+      {rooms.map((room) => (
+        <HousekeepingRow key={room.id} room={room} mark={mark} />
+      ))}
+    </ul>
   );
 }
 

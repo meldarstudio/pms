@@ -1879,7 +1879,9 @@ async function renderLimpieza(initial: "to-clean" | "all") {
 const limpiezaRows = () =>
   Array.from(container.querySelectorAll("li")).map(
     (row) =>
-      `${row.textContent.slice(0, 3)}:${row.textContent.includes("Sucia") ? "dirty" : "clean"}`,
+      `${row.textContent.slice(0, 3)}:${
+        row.querySelector('[aria-pressed="true"]')?.textContent === "Sucia" ? "dirty" : "clean"
+      }`,
   );
 
 it("keeps Todas in room order after a mark and restores a status the server rejects", async () => {
@@ -1912,6 +1914,8 @@ it("keeps Todas in room order after a mark and restores a status the server reje
   await until(() => limpiezaRows().length === 2, "The list must load");
   assert.deepEqual(limpiezaRows(), ["101:clean", "102:dirty"]);
 
+  // Tapping the pressed side saves nothing; only 102's mark below may write.
+  await click("Marcar habitación 101 como limpia");
   await click("Marcar habitación 102 como limpia");
   await until(
     () => container.textContent.includes("Llega hoy"),
@@ -1919,6 +1923,7 @@ it("keeps Todas in room order after a mark and restores a status the server reje
   );
   assert.deepEqual(writes, [["room-102", { status: "clean" }]]);
   assert.deepEqual(limpiezaRows(), ["101:clean", "102:clean"]);
+  assert.equal(window.document.body.textContent.includes("Habitación 101"), false);
 
   const rejected = page.api.hold("PUT", "/housekeeping/:id");
   await click("Marcar habitación 102 como sucia");
@@ -1982,10 +1987,10 @@ it("lists today's work in Por limpiar, arrivals first and free rooms before depa
   // A room in use tonight is left out, and so is one closed tonight unless a guest
   // arrives today.
   assert.deepEqual(porLimpiarCards(), [
-    "106Llega hoyLibreLista",
-    "105Llega hoySale hoyLista",
-    "102LibreLista",
-    "101Sale hoyLista",
+    "106DobleLlega hoyLibreCerradaLista",
+    "105DobleLlega hoySale hoyLista",
+    "102DobleLibreLista",
+    "101DobleSale hoyLista",
   ]);
   assert.equal(page.button("Por limpiar4").getAttribute("aria-selected"), "true");
 });

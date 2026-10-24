@@ -18,28 +18,29 @@ highlighted while rooms remain. It lists dirty rooms that will be free tonight. 
 leaves out a room whose checked-in guest stays tonight, because the guest is using it,
 and a room closed tonight unless a guest arrives today; each returns on its own once
 the guest leaves or the closure ends.
-Each card shows the room number, **Llega hoy** when a guest arrives today, and whether
-someone can go in: **Sale hoy** while the departing guest has not been checked out,
-otherwise **Libre**. Cards run in four groups, each by room number: arrivals to a free
-room, arrivals to a room whose guest leaves today, other free rooms, then other rooms
-whose guest leaves today. The order follows each re-read, so a card moves when a guest
+Each card shows the room number, its type, and today's stays as listed below. Cards
+run in four groups, each by room number: arrivals to a free room, arrivals to a room
+whose guest leaves today, other free rooms, then other rooms whose guest leaves today. The order follows each re-read, so a card moves when a guest
 checks out. Its one button, **Lista**, marks the room clean and removes it from the
 tab. When none are left, the tab shows **Todo limpio**.
 
-**Todas** is the whole hotel by room number: every room with its number and type, a
-**Sucia** or **Limpia** badge, today's stays, a **Cerrada** badge when a closure covers
-tonight, and when the status was last marked, in the property time zone. One button
-marks the room clean or dirty; rooms are marked dirty only here.
+**Todas** is the whole hotel by room number: every room with its number, type, and
+today's stays, and a **Sucia | Limpia** control whose pressed side is the current
+status. Tapping the other side marks the room; tapping the pressed side does nothing.
+While a mark saves, that row's control is disabled. Rooms are marked dirty only here.
 
-Today's stays come from assigned confirmed and checked-in stays on the property date:
+Both tabs show today's stays the same way, from assigned confirmed and checked-in stays
+on the property date, plus **Cerrada** when a closure covers tonight:
 
 - **Sale hoy**: a checked-in stay checks out today.
 - **En casa**: a checked-in stay continues tonight.
 - **Llega hoy**: a confirmed stay checks in today. A same-day turnover shows both
   the departure and the arrival.
-- **Libre**: none of the above, including a room whose guest has already checked
-  out today. A confirmed stay that was never checked in counts as none of these,
-  even on its last day.
+- **Libre**: no guest is in the room now, so someone can go in. It appears beside
+  **Llega hoy** or **Cerrada** and includes a room whose guest has already checked
+  out today. A
+  confirmed stay that was never checked in counts as none of these, even on its
+  last day.
 
 Marking a room updates it at once and needs no confirmation; when the save succeeds, a
 toast offers **Deshacer**, which sets the previous status again, and the page re-reads
