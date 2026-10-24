@@ -300,10 +300,9 @@ export function Inventory({
       ) : null}
       <div className="min-h-0 min-w-0 flex-1 overflow-auto overscroll-contain">
         <div
-          className="grid w-full"
+          className="grid w-max min-w-full"
           style={{
-            gridTemplateColumns: `13rem repeat(${span}, minmax(5rem, 1fr))`,
-            minWidth: `${13 + span * 5}rem`,
+            gridTemplateColumns: `fit-content(${isMobile ? 10 : 13}rem) repeat(${span}, minmax(5rem, 1fr))`,
           }}
         >
           <div className="sticky top-0 left-0 z-40 border-r border-b bg-background" />
@@ -343,7 +342,7 @@ export function Inventory({
           {loading
             ? Array.from({ length: 4 }, (_, index) => (
                 <div key={index} className="contents">
-                  <div className="sticky left-0 z-20 border-r border-b bg-background px-2.5 py-2">
+                  <div className="sticky left-0 z-20 min-w-0 border-r border-b bg-background px-2.5 py-2">
                     <Skeleton className="h-8 w-24" />
                   </div>
                   <div
@@ -423,8 +422,10 @@ function TypeRow({
 
   return (
     <div className="contents">
-      <div className="sticky left-0 z-20 flex flex-col justify-center gap-1 border-r border-b bg-background px-2.5 py-2">
-        <span className="truncate text-xs font-medium">{type.name}</span>
+      <div className="sticky left-0 z-20 flex min-w-0 flex-col justify-center gap-1 border-r border-b bg-background px-2.5 py-2">
+        <span className="truncate text-xs font-medium" title={type.name}>
+          {type.name}
+        </span>
         <span className="text-xs text-muted-foreground">
           {type.capacity} {type.capacity === 1 ? "habitación" : "habitaciones"}
         </span>
