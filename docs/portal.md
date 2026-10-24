@@ -14,13 +14,26 @@ screen. Navigation retains the last
 reservation filters and calendar dates, and existing unsaved-draft guards still
 apply. Sign-out retains the existing authentication and error handling.
 
+Below 768px, a page's main task floats at the bottom right as one 48px button
+for one-handed reach: **Nueva reserva** on Reservas and Calendario. It shows its
+label while the page's scroll area is at the top and collapses to its icon once
+that area scrolls more than 8px, including after automatic scrolls such as
+pagination; its accessible name stays the label. It follows the header in focus
+order, keeps safe-area spacing, and sits beneath dialogs, sheets, and the PWA
+update card. Those scroll areas reserve bottom padding so their last content can
+scroll clear of it. Wider screens keep each page's own placement: the header on
+Reservas and the toolbar on Calendario.
+[page-primary-action.tsx](../apps/portal/src/components/page-primary-action.tsx)
+owns the slot that `App.tsx` provides.
+
 The calendar and inventory URLs hold `from` and `span` values. Reservation list
 views are arrivals, departures, in-house, and all reservations, with day, search,
 status, balance, assignment, sorting, page size, and page encoded in the URL.
 Defaults use the property date. Legacy `checkIn` and `status` URLs remain accepted.
 The in-house view locks status to checked in. See
 [route-search.ts](../apps/portal/src/lib/route-search.ts) for parsing and
-[reservation filters](reservations.md#portal-list-filters) for interaction rules.
+[reservation list](reservations.md#portal-list) for responsive layout and filter
+interaction rules.
 
 Code-based TanStack Router routes live in
 [router.tsx](../apps/portal/src/router.tsx);

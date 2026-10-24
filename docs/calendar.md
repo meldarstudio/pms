@@ -20,7 +20,8 @@ any selection and returns focus to that button. On desktop the button toggles th
 panel; the calendar has its full width while the panel is closed.
 
 On mobile the toolbar follows the shared [date navigation](portal.md#date-navigation)
-layout, with **Sin asignar** on the right.
+layout, with **Sin asignar** on the right. **Nueva reserva** floats at the bottom
+right; see [navigation](portal.md#navigation).
 
 ## Picker
 
