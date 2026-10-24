@@ -145,7 +145,7 @@ function button(label: string) {
   );
   const element =
     (labelElement ? window.document.getElementById(labelElement.htmlFor) : null) ??
-    Array.from(window.document.querySelectorAll("button")).find(
+    Array.from(window.document.querySelectorAll('button, [role="button"]')).find(
       (element) =>
         element.textContent.trim() === label || element.getAttribute("aria-label") === label,
     );
@@ -452,61 +452,86 @@ it("sends sorting and page sizes to the full-result endpoint and resets the offs
   assert.equal(params().get("offset"), "0");
 });
 
-it("identifies the booking contact, signed balances, and every assigned or unassigned reserved room", async () => {
-  respond = () =>
-    Response.json({
-      rows: [
-        {
-          ...ana,
-          guest: { ...ana.guest, phone: "+51 987 654 321" },
-          rooms: [
-            { ...ana.rooms[0], adults: 1, children: 1 },
-            { ...ana.rooms[0], id: "unassigned-1", roomId: null, roomNumber: null, adults: 1 },
-            { ...ana.rooms[0], id: "unassigned-2", roomId: null, roomNumber: null },
-          ],
-        },
-        {
-          ...ana,
-          id: "settled",
-          guestName: "Bea Saldada",
-          balanceCents: 0,
-          rooms: [{ ...ana.rooms[0], roomId: null, roomNumber: null }],
-        },
-        {
-          ...ana,
-          id: "credit",
-          guestName: "Celia Crédito",
-          status: "cancelled",
-          totalCents: 0,
-          balanceCents: -15000,
-          creditCents: 15000,
-        },
-      ],
-      total: 3,
-      limit: 50,
-      offset: 0,
-    });
-  await render("/reservations?view=all");
-  const rows = Array.from(container.querySelectorAll("tbody tr"));
-  assert.match(rows[0]!.textContent, /Ana Pérez/);
-  assert.match(rows[0]!.textContent, /\+51 987 654 321/);
-  assert.match(rows[0]!.textContent, /4 adultos · 1 niño/);
-  assert.match(rows[0]!.textContent, /Confirmada/);
-  assert.match(rows[1]!.textContent, /Bea Saldada/);
-  assert.match(rows[1]!.textContent, /Sin teléfono/);
-  assert.match(rows[0]!.textContent, /101 · 2 sin asignar/);
-  assert.match(rows[0]!.querySelector("td:last-child")!.textContent, /200Saldo pendiente/);
-  assert.match(rows[1]!.textContent, /1 sin asignar/);
-  assert.match(rows[1]!.querySelector("td:last-child")!.textContent, /0Saldada/);
-  assert.match(rows[2]!.querySelector("td:last-child")!.textContent, /150Crédito/);
-  assert.equal(rows[2]!.textContent.includes("Saldo pendiente"), false);
-  await fill("Contacto principal o código", "Ana ANA0001");
-  await until(() => params().get("q") === "Ana ANA0001");
-});
+it.each(["desktop", "mobile"])(
+  "identifies the booking contact, balances, and room assignments on %s",
+  async (viewport) => {
+    if (viewport === "mobile") page.mobile();
+    respond = () =>
+      Response.json({
+        rows: [
+          {
+            ...ana,
+            guest: { ...ana.guest, phone: "+51 987 654 321" },
+            rooms: [
+              { ...ana.rooms[0], adults: 1, children: 1 },
+              { ...ana.rooms[0], id: "unassigned-1", roomId: null, roomNumber: null, adults: 1 },
+              { ...ana.rooms[0], id: "unassigned-2", roomId: null, roomNumber: null },
+            ],
+          },
+          {
+            ...ana,
+            id: "settled",
+            guestName: "Bea Saldada",
+            balanceCents: 0,
+            rooms: [{ ...ana.rooms[0], roomId: null, roomNumber: null }],
+          },
+          {
+            ...ana,
+            id: "credit",
+            guestName: "Celia Crédito",
+            status: "cancelled",
+            totalCents: 0,
+            balanceCents: -15000,
+            creditCents: 15000,
+          },
+        ],
+        total: 3,
+        limit: 50,
+        offset: 0,
+      });
+    await render("/reservations?view=all");
+    const rows = Array.from(
+      container.querySelectorAll(
+        viewport === "mobile" ? 'ul[aria-label="Reservas"] > li' : "tbody tr",
+      ),
+    );
+    assert.match(rows[0]!.textContent, /Ana Pérez/);
+    if (viewport === "desktop") {
+      assert.match(rows[0]!.textContent, /\+51 987 654 321/);
+      assert.match(rows[0]!.textContent, /4 adultos · 1 niño/);
+      assert.match(rows[1]!.textContent, /Sin teléfono/);
+    }
+    assert.match(rows[0]!.textContent, /31 oct 2026/);
+    assert.match(rows[0]!.textContent, /2 nov 2026/);
+    assert.match(rows[0]!.textContent, /Confirmada/);
+    assert.match(rows[1]!.textContent, /Bea Saldada/);
+    assert.match(rows[0]!.textContent, /101 · 2 sin asignar/);
+    assert.match(
+      rows[0]!.querySelector(viewport === "mobile" ? '[data-slot="card-footer"]' : "td:last-child")!
+        .textContent,
+      /200Saldo pendiente/,
+    );
+    assert.match(rows[1]!.textContent, /1 sin asignar/);
+    assert.match(
+      rows[1]!.querySelector(viewport === "mobile" ? '[data-slot="card-footer"]' : "td:last-child")!
+        .textContent,
+      /0Saldada/,
+    );
+    assert.match(
+      rows[2]!.querySelector(viewport === "mobile" ? '[data-slot="card-footer"]' : "td:last-child")!
+        .textContent,
+      /150Crédito/,
+    );
+    assert.equal(rows[2]!.textContent.includes("Saldo pendiente"), false);
+    await fill("Contacto principal o código", "Ana ANA0001");
+    await until(() => params().get("q") === "Ana ANA0001");
+  },
+);
 
-it.each(["Enter"])(
-  "preserves the complete URL and page through details, direct reload, and return (%s)",
-  async (activation) => {
+it.each(["desktop", "mobile"])(
+  "preserves the complete URL and page through details, direct reload, and return on %s",
+  async (viewport) => {
+    if (viewport === "mobile") page.mobile();
     respond = (url) =>
       Response.json({
         rows: [ana],
@@ -518,15 +543,15 @@ it.each(["Enter"])(
       "/reservations?view=departures&day=2026-12-31&q=Ana&statuses=all&balance=credit&assignment=unassigned&sort=balance&direction=asc&size=25&page=2",
     );
     const expected = { ...router.state.location.search };
-    const row = container.querySelector("tbody tr");
+    const row = container.querySelector('[aria-label="Abrir reserva de Ana Pérez"]');
     assert.ok(row);
-    assert.equal(row.getAttribute("tabindex"), "0");
+    if (viewport === "desktop") assert.equal(row.getAttribute("tabindex"), "0");
     assert.equal(row.getAttribute("aria-label"), "Abrir reserva de Ana Pérez");
     await React.act(async () => {
-      if (activation === "click") (row as HTMLElement).click();
+      if (viewport === "mobile") (row as HTMLElement).click();
       else
         row.dispatchEvent(
-          new window.KeyboardEvent("keydown", { key: activation, bubbles: true, cancelable: true }),
+          new window.KeyboardEvent("keydown", { key: "Enter", bubbles: true, cancelable: true }),
         );
     });
     await until(() => container.textContent.includes("#ANA0001"));
@@ -589,6 +614,119 @@ it("includes cancellations with all four statuses checked and restores daily def
   await click("Filtros");
   await render(partialLink);
   assert.equal(params().get("statuses"), "checked_out,cancelled");
+});
+
+it("applies mobile sheet filters immediately, closes with focus restored, and keeps state across the breakpoint", async () => {
+  window.happyDOM.setWindowSize({ width: 767, height: 844 });
+  await render("/reservations?view=departures&day=2026-12-31&q=Ana&sort=balance&size=25");
+  // happy-dom initializes media-query listeners to false, even when mounted on a phone.
+  await React.act(async () => window.dispatchEvent(new window.Event("resize")));
+  assert.ok(container.querySelector('ul[aria-label="Reservas"]'));
+  await click("Filtros");
+  await until(() => !!window.document.querySelector('[data-slot="sheet-content"]'));
+  const sheet = window.document.querySelector('[role="dialog"]')!;
+  assert.equal(
+    window.document.getElementById(sheet.getAttribute("aria-labelledby")!)!.textContent,
+    "Filtros de reservas",
+  );
+  await choose("Saldo", "Con crédito");
+  await until(() => params().get("balance") === "credit");
+  assertFilterCount(1);
+  assert.ok(window.document.querySelector('[data-slot="sheet-content"]'));
+  await click("Listo");
+  await until(() => !window.document.querySelector('[data-slot="sheet-content"]'));
+  await until(() => window.document.activeElement === button("Filtros"));
+  await click("Filtros");
+  assert.match(button("Saldo").textContent, /Con crédito/);
+  await click("Restablecer");
+  await until(() => !params().has("balance"));
+  assert.equal(params().get("q"), "Ana");
+  assert.equal(params().get("checkOut"), "2026-12-31");
+  assert.equal(params().get("sort"), "balance");
+  assert.equal(params().get("limit"), "25");
+  await click("Listo");
+  await until(() => !window.document.querySelector('[data-slot="sheet-content"]'));
+  const expected = { ...router.state.location.search };
+  await React.act(async () => window.happyDOM.setWindowSize({ width: 768, height: 844 }));
+  await until(() => !!container.querySelector("tbody"));
+  assert.deepEqual({ ...router.state.location.search }, expected);
+  await click("Filtros");
+  assert.ok(window.document.querySelector('[data-slot="popover-content"]'));
+  await click("Filtros");
+  await React.act(async () => window.happyDOM.setWindowSize({ width: 375, height: 844 }));
+  await until(() => !!container.querySelector('ul[aria-label="Reservas"]'));
+  await click("En casa");
+  await until(() => params().get("statuses") === "checked_in");
+  await click("Filtros");
+  await until(() => !!window.document.querySelector('[data-slot="sheet-content"]'));
+  assert.equal(
+    window.document.querySelector('[data-slot="sheet-content"]')!.textContent.includes("Estados"),
+    false,
+  );
+});
+
+it("waits for the requested mobile page before moving focus to its first reservation", async () => {
+  page.mobile();
+  respond = (url) =>
+    Response.json({
+      rows: [ana],
+      total: 126,
+      limit: Number(url.searchParams.get("limit")),
+      offset: Number(url.searchParams.get("offset")),
+    });
+  await render("/reservations?view=all");
+  const nextPage = page.api.hold("GET", "/reservations");
+  await React.act(async () => button("Siguiente").focus());
+  await click("Siguiente");
+  await until(() => !!nextPage.request);
+  assert.equal(nextPage.request!.url.searchParams.get("offset"), "50");
+  assert.equal(button("Siguiente").hasAttribute("disabled"), true);
+  assert.equal(
+    container.querySelector('ul[aria-label="Reservas"]')!.getAttribute("aria-busy"),
+    "true",
+  );
+  nextPage.release(
+    Response.json({
+      rows: [{ ...ana, id: "bruno", guestName: "Bruno Díaz" }],
+      total: 126,
+      limit: 50,
+      offset: 50,
+    }),
+  );
+  await until(() => container.textContent.includes("Bruno Díaz"));
+  await until(() => window.document.activeElement === button("Abrir reserva de Bruno Díaz"));
+  assert.match(container.textContent, /51–51 de 126 reservas/);
+  await choose("Reservas por página", "25 / pág.");
+  await until(() => params().get("limit") === "25");
+  assert.equal(params().get("offset"), "0");
+  await until(() => window.document.activeElement === button("Abrir reserva de Ana Pérez"));
+});
+
+it("floats Nueva reserva on mobile, collapses it after scrolling without losing its name, and keeps it in the desktop header", async () => {
+  await render();
+  const header = container.querySelector("header")!;
+  assert.match(header.textContent, /Nueva reserva/);
+  await React.act(async () => window.happyDOM.setWindowSize({ width: 375, height: 844 }));
+  await until(
+    () => !header.textContent.includes("Nueva reserva"),
+    "Mobile must move Nueva reserva out of the header",
+  );
+  const action = button("Nueva reserva");
+  assert.equal(action.hasAttribute("data-collapsed"), false);
+  const main = container.querySelector("main")!;
+  await React.act(async () => {
+    main.scrollTop = 200;
+    main.dispatchEvent(new window.Event("scroll"));
+  });
+  await until(
+    () => button("Nueva reserva").hasAttribute("data-collapsed"),
+    "Scrolling away from the top must collapse the action",
+  );
+  await click("Nueva reserva");
+  await until(
+    () => !!window.document.querySelector('[role="dialog"]')?.textContent.includes("Nueva reserva"),
+    "The floating action must open the new reservation dialog",
+  );
 });
 
 it("keeps overdue checked-in stays in-house and hides the conflicting status selector", async () => {

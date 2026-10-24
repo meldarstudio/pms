@@ -247,6 +247,31 @@ validation feedback, preview timing, reusable prices, and reset for the compact
 and page stay editors. It also retains compact-editor notes. Write guards and
 independent workflows remain with their editors.
 
+## Portal list
+
+Below 768px, Reservas shows Llegadas, Salidas, En casa, and Todas las reservas in
+a two-by-two grid. Results are tappable cards showing the booking contact,
+reservation status, assigned rooms and missing assignments, stay dates, and
+balance. Outstanding, settled, and credit balances retain explicit labels. A card
+opens the full reservation page, which contains the phone, declared occupant
+counts, total, and workflow actions. Returning retains the URL-backed list
+context. At 768px and wider, the list keeps its table and horizontal view tabs.
+
+The app header and Nueva reserva stay reachable while the list scrolls; see
+[navigation](portal.md#navigation) for the mobile floating placement. View,
+date, search, filter, and sorting controls scroll with the results. Mobile list
+controls have touch targets of at least 44px. Llegadas and Salidas retain their
+previous-day, date-picker, next-day, and Hoy controls. Search still matches the
+booking contact or reservation code; En casa and Todas las reservas have no date
+restriction.
+
+Pagination shows the result range and total, 25/50/100 reservations per page with
+50 as the default, and previous/next controls. On mobile, these buttons are
+labeled Anterior and Siguiente. Changing pages or page size brings the start of
+the mobile results into view after the requested results arrive, focusing the
+first card when there is one. Existing
+loading, updating, empty, and error/retry feedback remains available.
+
 ## Portal list filters
 
 The **Filtros** button counts changed filter groups, not individual selections:
@@ -265,8 +290,14 @@ until another is selected. All four checked means unrestricted, including
 cancellations. Legacy empty/`all` URLs and explicit four-status URLs restore that
 same selection. Llegadas and Salidas default to Confirmada, Check-in, and
 Check-out; Todas las reservas defaults to all four. En casa remains locked to
-Check-in and hides the status selector. The panel heading is visually hidden but
-retained as its accessible name.
+Check-in and hides the status selector. The desktop panel heading is visually
+hidden but retained as its accessible name.
+
+On mobile, Filtros opens a bottom sheet with a visible Filtros de reservas heading
+and a Listo button. Its controls scroll within the available height; the heading
+and Listo remain reachable. Listo closes the sheet and returns focus to Filtros.
+There is no separate apply step. Desktop retains the filter popover. Search and
+sorting stay directly accessible from the list in both layouts.
 
 See [backend list reads](#reservation-list-reads) for API filtering and pagination,
 [portal routing](portal.md#navigation) for view defaults, and

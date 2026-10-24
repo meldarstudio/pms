@@ -578,11 +578,11 @@ export function BookingEditor({
           <div
             className={
               mobileEditor
-                ? "flex min-h-11 min-w-0 flex-1 flex-wrap items-center gap-2"
+                ? "flex min-h-11 min-w-0 flex-1 flex-nowrap items-center gap-2"
                 : "contents"
             }
           >
-            <span className={cn("text-lg font-semibold", mobileEditor && "wrap-anywhere")}>
+            <span className={cn("text-lg font-semibold", mobileEditor && "min-w-0 truncate")}>
               {`${contact.fullName}`.trim()}
             </span>
             <ReservationStatusBadge status={detail.status} />

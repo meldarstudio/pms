@@ -14,13 +14,26 @@ screen. Navigation retains the last
 reservation filters and calendar dates, and existing unsaved-draft guards still
 apply. Sign-out retains the existing authentication and error handling.
 
+Below 768px, a page's main task floats at the bottom right as one 48px button
+for one-handed reach: **Nueva reserva** on Reservas and Calendario. It shows its
+label while the page's scroll area is at the top and collapses to its icon once
+that area scrolls more than 8px, including after automatic scrolls such as
+pagination; its accessible name stays the label. It follows the header in focus
+order, keeps safe-area spacing, and sits beneath dialogs, sheets, and the PWA
+update card. Those scroll areas reserve bottom padding so their last content can
+scroll clear of it. Wider screens keep each page's own placement: the header on
+Reservas and the toolbar on Calendario.
+[page-primary-action.tsx](../apps/portal/src/components/page-primary-action.tsx)
+owns the slot that `App.tsx` provides.
+
 The calendar and inventory URLs hold `from` and `span` values. Reservation list
 views are arrivals, departures, in-house, and all reservations, with day, search,
 status, balance, assignment, sorting, page size, and page encoded in the URL.
 Defaults use the property date. Legacy `checkIn` and `status` URLs remain accepted.
 The in-house view locks status to checked in. See
 [route-search.ts](../apps/portal/src/lib/route-search.ts) for parsing and
-[reservation filters](reservations.md#portal-list-filters) for interaction rules.
+[reservation list](reservations.md#portal-list) for responsive layout and filter
+interaction rules.
 
 Code-based TanStack Router routes live in
 [router.tsx](../apps/portal/src/router.tsx);
@@ -28,6 +41,26 @@ Code-based TanStack Router routes live in
 [app-sidebar.tsx](../apps/portal/src/components/app-sidebar.tsx) owns navigation.
 Calendar bars open the compact editor; the list and **Ver reserva completa** open
 the full page. See [reservation editors](reservations.md#portal-editors).
+
+### Date navigation
+
+Below 768px, Calendario and Inventario y tarifas use a single compact toolbar
+row with **Actualizar** on the left and the previous-day button, start-date
+picker, and next-day button in the middle. They use the same button sizes and
+picker styling. **Hoy** lives in the picker's footer; choosing it returns to the
+property date and closes the picker. The span selector and period-jump buttons
+are omitted on mobile. Calendario also has its
+[assignment button](calendar.md#entry) on the right.
+
+Inventario y tarifas keeps its 14-day default and honors an existing 7/14-day
+URL span on mobile. Its rates remain editable through grid cells. Desktop
+retains the span selector, standalone **Hoy**, refresh, day navigation, and
+period-jump controls.
+
+The inventory grid's sticky room-type column fits its names and room counts,
+with a 7rem minimum and a maximum of 10rem on mobile or 13rem on desktop. Longer names truncate with an
+ellipsis and retain the full name in their title. Date columns remain at least
+5rem wide and scroll horizontally.
 
 ## API environment
 

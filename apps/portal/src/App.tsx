@@ -2,6 +2,7 @@ import { Outlet, useRouterState } from "@tanstack/react-router";
 import { useState, type CSSProperties } from "react";
 import { AppSidebar } from "@/components/app-sidebar";
 import { PageHeaderActionsContext } from "@/components/page-header-actions";
+import { PagePrimaryActionContext } from "@/components/page-primary-action";
 import { Separator } from "@/components/ui/separator";
 import { SidebarInset, SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
 import { activeNavigation, appNavigation } from "@/lib/navigation";
@@ -17,6 +18,7 @@ export function App() {
     }
   });
   const [headerActions, setHeaderActions] = useState<HTMLDivElement | null>(null);
+  const [primaryAction, setPrimaryAction] = useState<HTMLDivElement | null>(null);
   const pathname = useRouterState({
     select: (state) => state.location.pathname,
   });
@@ -41,7 +43,7 @@ export function App() {
       <AppSidebar />
       <SidebarInset className="min-h-0 min-w-0 overflow-hidden">
         <header className="flex h-12 shrink-0 items-center gap-3 border-b px-2.5">
-          <SidebarTrigger />
+          <SidebarTrigger className="min-h-11 min-w-11 md:min-h-0 md:min-w-0" />
           <Separator
             orientation="vertical"
             className="data-vertical:h-4 data-vertical:self-center"
@@ -49,9 +51,21 @@ export function App() {
           <span className="text-xs font-medium">{title}</span>
           <div ref={setHeaderActions} className="ml-auto flex items-center gap-2" />
         </header>
-        <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
+        {/* Follows the header in focus order although the action floats at the bottom. */}
+        <div ref={setPrimaryAction} />
+        <div
+          className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden"
+          // The 3rem action plus 1rem above and below it.
+          style={
+            {
+              "--primary-action-clearance": "calc(5rem + env(safe-area-inset-bottom))",
+            } as CSSProperties
+          }
+        >
           <PageHeaderActionsContext value={headerActions}>
-            <Outlet />
+            <PagePrimaryActionContext value={primaryAction}>
+              <Outlet />
+            </PagePrimaryActionContext>
           </PageHeaderActionsContext>
         </div>
       </SidebarInset>
