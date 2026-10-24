@@ -29,6 +29,26 @@ Code-based TanStack Router routes live in
 Calendar bars open the compact editor; the list and **Ver reserva completa** open
 the full page. See [reservation editors](reservations.md#portal-editors).
 
+### Date navigation
+
+Below 768px, Calendario and Inventario y tarifas use a single compact toolbar
+row with **Actualizar** on the left and the previous-day button, start-date
+picker, and next-day button in the middle. They use the same button sizes and
+picker styling. **Hoy** lives in the picker's footer; choosing it returns to the
+property date and closes the picker. The span selector and period-jump buttons
+are omitted on mobile. Calendario also has its
+[assignment button](calendar.md#entry) on the right.
+
+Inventario y tarifas keeps its 14-day default and honors an existing 7/14-day
+URL span on mobile. Its rates remain editable through grid cells. Desktop
+retains the span selector, standalone **Hoy**, refresh, day navigation, and
+period-jump controls.
+
+The inventory grid's sticky room-type column fits its names and room counts,
+with a 7rem minimum and a maximum of 10rem on mobile or 13rem on desktop. Longer names truncate with an
+ellipsis and retain the full name in their title. Date columns remain at least
+5rem wide and scroll horizontally.
+
 ## API environment
 
 Vite inlines `VITE_API_BASE_URL` at build time; a missing value fails the build.

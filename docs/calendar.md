@@ -19,9 +19,8 @@ refreshes. The button stays available at zero, and its accessible name
 any selection and returns focus to that button. On desktop the button toggles the
 panel; the calendar has its full width while the panel is closed.
 
-On mobile the toolbar has **Actualizar** on the left, date navigation in the middle,
-and **Sin asignar** on the right. **Hoy** lives inside the date picker and closes it
-after returning to the property's current day.
+On mobile the toolbar follows the shared [date navigation](portal.md#date-navigation)
+layout, with **Sin asignar** on the right.
 
 ## Picker
 
