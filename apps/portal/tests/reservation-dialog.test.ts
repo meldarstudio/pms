@@ -1256,17 +1256,39 @@ it("keeps mobile edit drafts mounted as the keyboard viewport and screen size ch
       () => !!window.document.querySelector('[name="notes"]'),
       "The edit dialog must load",
     );
+    const toggle = button("Ver desglose");
+    assert.equal(toggle.getAttribute("aria-expanded"), "false");
+    const breakdown = window.document.getElementById(toggle.getAttribute("aria-controls")!)!;
+    assert.ok(breakdown instanceof window.HTMLElement);
+    assert.ok(breakdown.hidden, "The bill starts collapsed");
     await fill("notes", "Llegada tarde");
     const notes = control("notes");
     await React.act(async () => button("Ver desglose").click());
+    assert.equal(breakdown.hidden, false);
+    assert.ok(breakdown.textContent.includes("Importe habitaciones"));
+    assert.ok(breakdown.textContent.includes("Total de reserva"));
+    assert.ok(breakdown.textContent.includes("Pagado"));
+    assert.ok(
+      breakdown.compareDocumentPosition(toggle) & window.Node.DOCUMENT_POSITION_FOLLOWING,
+      "The breakdown reads before the balance toggle",
+    );
+    const bill = breakdown.closest("section")!;
+    assert.equal(
+      bill.textContent.match(/Saldo pendiente/g)?.length,
+      1,
+      "Expanding the bill must not repeat its balance",
+    );
     const discount = window.document.querySelector<HTMLInputElement>(
       '[aria-label="Descuento en soles"]',
     )!;
     await fill(discount, "25");
     await React.act(async () => button("Ocultar desglose").click());
+    assert.ok(breakdown.hidden);
     await React.act(async () => button("Ver desglose").click());
     assert.equal(window.document.querySelector('[aria-label="Descuento en soles"]'), discount);
     await React.act(async () => button("Huéspedes").click());
+    assert.equal(button("Ocultar desglose").getAttribute("aria-expanded"), "true");
+    assert.equal(breakdown.hidden, false, "Changing tabs keeps the bill expanded");
     await React.act(async () => button("Volver a Detalles").click());
     await React.act(async () => {
       viewport.height = 420;
