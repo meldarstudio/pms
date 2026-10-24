@@ -45,7 +45,7 @@ retains the span selector, standalone **Hoy**, refresh, day navigation, and
 period-jump controls.
 
 The inventory grid's sticky room-type column fits its names and room counts,
-up to 10rem on mobile and 13rem on desktop. Longer names truncate with an
+with a 7rem minimum and a maximum of 10rem on mobile or 13rem on desktop. Longer names truncate with an
 ellipsis and retain the full name in their title. Date columns remain at least
 5rem wide and scroll horizontally.
 

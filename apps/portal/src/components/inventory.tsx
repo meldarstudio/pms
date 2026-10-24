@@ -305,7 +305,7 @@ export function Inventory({
             gridTemplateColumns: `fit-content(${isMobile ? 10 : 13}rem) repeat(${span}, minmax(5rem, 1fr))`,
           }}
         >
-          <div className="sticky top-0 left-0 z-40 border-r border-b bg-background" />
+          <div className="sticky top-0 left-0 z-40 min-w-28 border-r border-b bg-background" />
           {days.map((day) => {
             const date = format(day, "yyyy-MM-dd");
             const weekend = day.getDay() === 0 || day.getDay() === 6;
