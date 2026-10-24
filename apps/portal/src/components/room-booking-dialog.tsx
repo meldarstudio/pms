@@ -878,7 +878,7 @@ export function BookingEditor({
             className={cn(
               "min-w-0 md:self-start",
               compactEditor &&
-                "max-md:flex max-md:min-h-0 max-md:flex-col max-md:border-t max-md:pt-3 max-md:safe-area-padding-x max-md:[&_input]:min-h-11 max-md:[&_[data-slot=input-group]]:min-h-11",
+                "max-md:flex max-md:min-h-0 max-md:flex-col max-md:pt-3 max-md:pb-px max-md:safe-area-padding-x max-md:[&_input]:min-h-11 max-md:[&_[data-slot=input-group]]:min-h-11",
             )}
           >
             <BookingSummary

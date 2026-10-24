@@ -181,6 +181,7 @@ export function BookingSummary({
           className={cn(
             "shrink-0 flex-col items-stretch gap-3",
             collapsible ? "p-0" : balance !== null && balanceStatus(balance).tone,
+            collapsible && !expanded && "border-t-0",
           )}
         >
           {collapsible ? (
@@ -198,7 +199,7 @@ export function BookingSummary({
                   <Button
                     type="button"
                     variant="ghost"
-                    className="h-auto min-h-11 w-full p-0 text-left whitespace-normal has-data-[icon=inline-end]:pr-0"
+                    className="h-auto min-h-11 w-full border-0 p-0 text-left whitespace-normal focus-visible:ring-2 focus-visible:ring-inset has-data-[icon=inline-end]:pr-0"
                   />
                 }
               >
