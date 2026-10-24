@@ -16,6 +16,7 @@ let page: BrowserPage;
 let window: BrowserTest["window"];
 let React: BrowserTest["React"];
 let calendars: typeof import("../src/components/room-calendar.tsx");
+let housekeeping: typeof import("../src/components/housekeeping.tsx");
 let queries: typeof import("../src/lib/queries.ts");
 let container: BrowserPage["container"];
 let render: BrowserPage["render"];
@@ -30,6 +31,9 @@ beforeAll(async () => {
   calendars = (await browser.server.ssrLoadModule(
     "/src/components/room-calendar.tsx",
   )) as typeof calendars;
+  housekeeping = (await browser.server.ssrLoadModule(
+    "/src/components/housekeeping.tsx",
+  )) as typeof housekeeping;
   queries = (await browser.server.ssrLoadModule("/src/lib/queries.ts")) as typeof queries;
   const calendar = (await browser.server.ssrLoadModule(
     "/src/lib/property-calendar.ts",
@@ -1843,4 +1847,179 @@ it("uses the property date for arrival badges and refreshes them on resume", asy
   vi.setSystemTime(new Date("2026-11-01T05:00:00Z"));
   await React.act(async () => window.document.dispatchEvent(new window.Event("visibilitychange")));
   assert.equal(container.textContent.includes("Llega hoy"), false);
+});
+
+function limpiezaRoom(id: string, number: string, housekeepingStatus: "dirty" | "clean") {
+  return {
+    id,
+    number,
+    roomTypeId: "double",
+    roomTypeName: "Doble",
+    housekeepingStatus,
+    housekeepingChangedAt: null,
+    closed: false,
+    inHouse: false,
+    departing: false,
+    arriving: false,
+  };
+}
+
+/** The Limpieza page on a view, switching tabs like its route and showing toasts. */
+async function renderLimpieza(initial: "to-clean" | "all") {
+  const { ToastProvider } = (await browser.server.ssrLoadModule(
+    "/src/components/ui/toast.tsx",
+  )) as typeof import("../src/components/ui/toast.tsx");
+  function Limpieza() {
+    const [view, setView] = React.useState(initial);
+    return React.createElement(housekeeping.Housekeeping, { view, onViewChange: setView });
+  }
+  await render(React.createElement(ToastProvider, null, React.createElement(Limpieza)));
+}
+
+const limpiezaRows = () =>
+  Array.from(container.querySelectorAll("li")).map(
+    (row) =>
+      `${row.textContent.slice(0, 3)}:${row.textContent.includes("Sucia") ? "dirty" : "clean"}`,
+  );
+
+it("keeps Todas in room order after a mark and restores a status the server rejects", async () => {
+  const statuses: Record<string, "dirty" | "clean"> = { "101": "clean", "102": "dirty" };
+  let arriving = false;
+  // Like the backend: by room number.
+  page.api.on("GET", "/housekeeping", () => ({
+    date: "2026-10-20",
+    rooms: Object.entries(statuses).map(([number, status]) => ({
+      ...limpiezaRoom(`room-${number}`, number, status),
+      arriving: number === "102" && arriving,
+    })),
+  }));
+  const writes: unknown[] = [];
+  page.api.on<{ status: "dirty" | "clean" }>("PUT", "/housekeeping/:id", ({ params, body }) => {
+    writes.push([params.id, body]);
+    const number = params.id.replace("room-", "");
+    statuses[number] = body.status;
+    // The front desk assigns an arrival meanwhile; only a re-read can show it.
+    arriving = true;
+    return {
+      id: params.id,
+      number,
+      roomTypeId: "double",
+      housekeepingStatus: body.status,
+      housekeepingChangedAt: "2026-10-20T15:00:00.000Z",
+    };
+  });
+  await renderLimpieza("all");
+  await until(() => limpiezaRows().length === 2, "The list must load");
+  assert.deepEqual(limpiezaRows(), ["101:clean", "102:dirty"]);
+
+  await click("Marcar habitación 102 como limpia");
+  await until(
+    () => container.textContent.includes("Llega hoy"),
+    "A saved mark must re-read the list",
+  );
+  assert.deepEqual(writes, [["room-102", { status: "clean" }]]);
+  assert.deepEqual(limpiezaRows(), ["101:clean", "102:clean"]);
+
+  const rejected = page.api.hold("PUT", "/housekeeping/:id");
+  await click("Marcar habitación 102 como sucia");
+  await until(() => rejected.request !== undefined && limpiezaRows()[1] === "102:dirty");
+  await React.act(async () =>
+    rejected.release(Response.json({ error: "room not found" }, { status: 404 })),
+  );
+  await until(() => limpiezaRows()[1] === "102:clean", "A rejected mark must restore the status");
+});
+
+it("re-reads Limpieza at property midnight so yesterday's arrivals stop showing", async () => {
+  vi.setSystemTime(new Date("2026-10-21T04:59:59.990Z"));
+  page.api.on("GET", "/housekeeping", () => {
+    const tomorrow = Date.now() >= Date.parse("2026-10-21T05:00:00Z");
+    return {
+      date: tomorrow ? "2026-10-21" : "2026-10-20",
+      rooms: [{ ...limpiezaRoom("room-101", "101", "dirty"), arriving: !tomorrow }],
+    };
+  });
+  await renderLimpieza("to-clean");
+  await until(() => container.textContent.includes("Llega hoy"), "The list must load");
+
+  vi.setSystemTime(new Date("2026-10-21T05:00:00Z"));
+  await until(
+    () => !container.textContent.includes("Llega hoy"),
+    "Property midnight must re-read the list without focus",
+  );
+});
+
+/** Por limpiar over a hotel with each of today's cases, recording every mark. */
+async function renderPorLimpiar() {
+  const rooms = [
+    { ...limpiezaRoom("room-101", "101", "dirty"), departing: true },
+    limpiezaRoom("room-102", "102", "dirty"),
+    { ...limpiezaRoom("room-103", "103", "dirty"), inHouse: true },
+    { ...limpiezaRoom("room-104", "104", "dirty"), closed: true },
+    // A same-day turnover whose guest has not checked out yet.
+    { ...limpiezaRoom("room-105", "105", "dirty"), departing: true, arriving: true },
+    { ...limpiezaRoom("room-106", "106", "dirty"), closed: true, arriving: true },
+    limpiezaRoom("room-107", "107", "clean"),
+  ];
+  page.api.on("GET", "/housekeeping", () => ({ date: "2026-10-20", rooms }));
+  const writes: unknown[] = [];
+  page.api.on<{ status: "dirty" | "clean" }>("PUT", "/housekeeping/:id", ({ params, body }) => {
+    writes.push([params.id, body.status]);
+    const room = rooms.find((room) => room.id === params.id)!;
+    room.housekeepingStatus = body.status;
+    return { ...room, housekeepingChangedAt: "2026-10-20T15:00:00.000Z" };
+  });
+  await renderLimpieza("to-clean");
+  await until(() => porLimpiarCards().length > 0, "Por limpiar must load");
+  return { writes };
+}
+
+const porLimpiarCards = () =>
+  Array.from(container.querySelectorAll("li")).map((card) => card.textContent.trim());
+
+it("lists today's work in Por limpiar, arrivals first and free rooms before departures", async () => {
+  await renderPorLimpiar();
+
+  // A room in use tonight is left out, and so is one closed tonight unless a guest
+  // arrives today.
+  assert.deepEqual(porLimpiarCards(), [
+    "106Llega hoyLibreLista",
+    "105Llega hoySale hoyLista",
+    "102LibreLista",
+    "101Sale hoyLista",
+  ]);
+  assert.equal(page.button("Por limpiar4").getAttribute("aria-selected"), "true");
+});
+
+it("takes a room marked Lista off Por limpiar and puts it back from the toast", async () => {
+  const { writes } = await renderPorLimpiar();
+
+  await click("Marcar habitación 102 como limpia");
+  await until(
+    () => writes.length === 1 && !porLimpiarCards().some((card) => card.startsWith("102")),
+    "A room marked clean must leave Por limpiar",
+  );
+  await until(() => window.document.body.textContent.includes("Habitación 102 lista"));
+
+  await click("Deshacer");
+  await until(
+    () => writes.length === 2 && porLimpiarCards().some((card) => card.startsWith("102")),
+    "Undo must set the previous status again",
+  );
+  assert.deepEqual(writes, [
+    ["room-102", "clean"],
+    ["room-102", "dirty"],
+  ]);
+});
+
+it("shows Todo limpio when Por limpiar empties while Todas still lists every room", async () => {
+  await renderPorLimpiar();
+
+  for (const number of ["101", "102", "105", "106"]) {
+    await click(`Marcar habitación ${number} como limpia`);
+  }
+  await until(() => container.textContent.includes("Todo limpio"), "An empty Por limpiar is done");
+
+  await click("Todas");
+  await until(() => limpiezaRows().length === 7, "Todas must list every room");
+  assert.match(container.textContent, /Cerrada/);
 });

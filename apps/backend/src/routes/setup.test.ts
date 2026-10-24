@@ -27,15 +27,14 @@ it("creates a room type and its room table in one save", async () => {
   expect(response.status).toBe(201);
   const saved = (await response.json()) as Saved;
   expect(saved.roomType).toMatchObject(typeDetails);
-  expect(await (await request("/rooms")).json()).toEqual(
-    ["101", "102"].map((number, index) => ({
-      id: saved.rooms[index].id,
-      number,
-      roomTypeId: saved.roomType.id,
-      housekeepingStatus: "clean",
-      housekeepingChangedAt: null,
-    })),
-  );
+  expect(await (await request("/rooms")).json()).toMatchObject([
+    { id: saved.rooms[0].id, number: "101", roomTypeId: saved.roomType.id },
+    { id: saved.rooms[1].id, number: "102", roomTypeId: saved.roomType.id },
+  ]);
+  // Setup creates rooms clean, like the rooms API.
+  expect(await (await request("/housekeeping")).json()).toMatchObject({
+    rooms: [{ housekeepingStatus: "clean" }, { housekeepingStatus: "clean" }],
+  });
   expect(await (await request("/room-types")).json()).toEqual([
     expect.objectContaining({ ...typeDetails, id: saved.roomType.id }),
   ]);

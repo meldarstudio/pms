@@ -544,14 +544,5 @@ export function buildResetSql(value) {
       );
     }
   }
-  // Rooms vacated today await cleaning unless the next guest has already checked in.
-  const stayRooms = (statuses, column) =>
-    `SELECT rr.room_id FROM reservation_rooms rr JOIN reservations r ON r.id = rr.reservation_id
-        WHERE r.${column} = ${literal(date(0))} AND r.status IN (${statuses})`;
-  statements.push(
-    `UPDATE rooms SET housekeeping_status = 'dirty', housekeeping_changed_at = ${literal(`${date(0)}T13:00:00.000Z`)}
-      WHERE id IN (${stayRooms("'checked_in', 'checked_out'", "check_out")})
-        AND id NOT IN (${stayRooms("'checked_in'", "check_in")});`,
-  );
   return statements.join("\n");
 }

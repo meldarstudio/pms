@@ -37,13 +37,13 @@ export function ReservationLifecycle({
       isReservationSaving(client, detail.id)
     )
       return;
-    if (status === "cancelled" || detail.status === "cancelled") {
-      onConfirm(status);
-      return;
-    }
     pending.current = true;
     try {
       if (!(await confirmCheckIn(detail, status))) return;
+      if (status === "cancelled" || detail.status === "cancelled") {
+        onConfirm(status);
+        return;
+      }
       await save([{ type: "set-status", status }], (command) =>
         mutation.mutateAsync({ id: detail.id, command }),
       );

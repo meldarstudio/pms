@@ -547,7 +547,10 @@ export function BookingEditor({
                     return;
                   if (detail.status === "cancelled") {
                     const next = value;
-                    queueMicrotask(() => setRestoration({ detail, status: next }));
+                    queueMicrotask(async () => {
+                      if (await confirmCheckIn(detail, next))
+                        setRestoration({ detail, status: next });
+                    });
                     return;
                   }
                   void changeStatus(value);

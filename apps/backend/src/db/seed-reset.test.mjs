@@ -55,7 +55,7 @@ describe("local dummy data reset", () => {
     db.exec(`
       UPDATE room_types SET name = 'Edited Standard', base_rate_cents = 12345 WHERE id = 'type-standard';
       UPDATE rooms SET number = 'edited-101' WHERE id = 'room-101';
-      UPDATE rooms SET housekeeping_status = 'clean', housekeeping_changed_at = NULL;
+      UPDATE rooms SET housekeeping_status = 'dirty', housekeeping_changed_at = '2026-10-06T12:00:00.000Z';
       UPDATE guests SET full_name = 'Edited', notes = 'Changed in portal' WHERE id = 'guest-arrival';
       UPDATE reservations SET notes = 'Edited booking' WHERE id = 'reservation-arrival';
       UPDATE reservation_rooms SET room_id = NULL WHERE id = 'line-arrival-1';
@@ -164,13 +164,6 @@ describe("local dummy data reset", () => {
         expect(type.booked, `${day}: ${type.name}`).toBeLessThanOrEqual(type.sellable);
       }
     }
-    // Vacated today and not yet re-occupied; 106 and 204 already have their next guest.
-    expect(
-      db
-        .prepare("SELECT number FROM rooms WHERE housekeeping_status = 'dirty' ORDER BY number")
-        .all()
-        .map(({ number }) => number),
-    ).toEqual(["102", "103", "107", "111", "203", "206", "303", "304"]);
   });
 
   it.each([["--remote"]])("refuses remote reset before running Wrangler: %j", (...args) => {

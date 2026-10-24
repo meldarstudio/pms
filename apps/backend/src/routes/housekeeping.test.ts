@@ -32,7 +32,7 @@ afterEach(() => {
 
 const request: TestDb["request"] = (...args) => db.request(...args);
 
-type Board = {
+type HousekeepingList = {
   date: string;
   rooms: {
     id: string;
@@ -42,15 +42,15 @@ type Board = {
     housekeepingChangedAt: string | null;
     closed: boolean;
     inHouse: boolean;
-    departure: "expected" | "checked_out" | null;
+    departing: boolean;
     arriving: boolean;
   }[];
 };
 
-async function board() {
+async function housekeepingList() {
   const response = await request("/housekeeping");
   expect(response.status).toBe(200);
-  return (await response.json()) as Board;
+  return (await response.json()) as HousekeepingList;
 }
 
 async function mark(roomId: string, status: string) {
@@ -84,8 +84,8 @@ function closure(id: string, roomId: string, starts: string, ends: string) {
     .run(id, roomId, starts, ends);
 }
 
-describe("housekeeping board", () => {
-  it("derives today's occupancy for each room from reservations on the property date", async () => {
+describe("housekeeping list", () => {
+  it("derives today's stays for each room from reservations on the property date", async () => {
     stay("in-house", "room-101", "checked_in", "2026-10-08", "2026-10-12");
     stay("leaving", "room-102", "checked_in", "2026-10-07", "2026-10-10");
     stay("turnover", "room-102", "confirmed", "2026-10-10", "2026-10-12");
@@ -93,25 +93,40 @@ describe("housekeeping board", () => {
     stay("unassigned-arrival", null, "confirmed", "2026-10-10", "2026-10-11");
     stay("cancelled", "room-104", "cancelled", "2026-10-09", "2026-10-11");
     stay("not-arrived", "room-110", "confirmed", "2026-10-09", "2026-10-11");
+    stay("no-show", "room-104", "confirmed", "2026-10-08", "2026-10-10");
 
-    const { date, rooms } = await board();
+    const { date, rooms } = await housekeepingList();
 
     expect(date).toBe("2026-10-10");
     expect(
-      rooms.map(({ number, inHouse, departure, arriving }) => ({
+      rooms.map(({ number, inHouse, departing, arriving }) => ({
         number,
         inHouse,
-        departure,
+        departing,
         arriving,
       })),
     ).toEqual([
-      { number: "101", inHouse: true, departure: null, arriving: false },
-      { number: "102", inHouse: false, departure: "expected", arriving: true },
-      { number: "103", inHouse: false, departure: "checked_out", arriving: false },
-      { number: "104", inHouse: false, departure: null, arriving: false },
+      { number: "101", inHouse: true, departing: false, arriving: false },
+      { number: "102", inHouse: false, departing: true, arriving: true },
+      // A stay already checked out is no longer departing.
+      { number: "103", inHouse: false, departing: false, arriving: false },
+      // A stay that ends today without being checked in has no guest to depart.
+      { number: "104", inHouse: false, departing: false, arriving: false },
       // A confirmed stay that has begun but is not checked in is neither in-house nor arriving.
-      { number: "110", inHouse: false, departure: null, arriving: false },
+      { number: "110", inHouse: false, departing: false, arriving: false },
     ]);
+  });
+
+  it("uses the property date when it differs from the UTC date", async () => {
+    // 22:00 on 10 October in Lima, already 11 October in UTC.
+    vi.setSystemTime(new Date("2026-10-11T03:00:00Z"));
+    stay("arriving-tonight", "room-101", "confirmed", "2026-10-10", "2026-10-12");
+    stay("arriving-tomorrow", "room-102", "confirmed", "2026-10-11", "2026-10-12");
+
+    const { date, rooms } = await housekeepingList();
+
+    expect(date).toBe("2026-10-10");
+    expect(rooms.filter((room) => room.arriving).map((room) => room.number)).toEqual(["101"]);
   });
 
   it("flags only rooms closed for the property date's night", async () => {
@@ -119,25 +134,21 @@ describe("housekeeping board", () => {
     closure("ended-this-morning", "room-102", "2026-10-08", "2026-10-10");
     closure("starts-today", "room-103", "2026-10-10", "2026-10-11");
 
-    const closed = Object.fromEntries((await board()).rooms.map((r) => [r.number, r.closed]));
+    const closed = Object.fromEntries(
+      (await housekeepingList()).rooms.map((r) => [r.number, r.closed]),
+    );
 
     expect(closed).toEqual({ "101": true, "102": false, "103": true, "104": false, "110": false });
   });
 
-  it("lists dirty rooms with an arrival first, then other dirty rooms, then clean rooms, each by room number", async () => {
+  it("lists rooms by room number whatever their status or stays", async () => {
     stay("arrival-110", "room-110", "confirmed", "2026-10-10", "2026-10-11");
-    stay("arrival-102", "room-102", "confirmed", "2026-10-10", "2026-10-11");
-    stay("arrival-104", "room-104", "confirmed", "2026-10-10", "2026-10-11");
-    for (const roomId of ["room-110", "room-103", "room-104", "room-101"])
+    for (const roomId of ["room-110", "room-103"])
       expect((await mark(roomId, "dirty")).status).toBe(200);
 
-    expect((await board()).rooms.map((r) => `${r.number}:${r.housekeepingStatus}`)).toEqual([
-      "104:dirty",
-      "110:dirty",
-      "101:dirty",
-      "103:dirty",
-      "102:clean",
-    ]);
+    expect(
+      (await housekeepingList()).rooms.map((r) => `${r.number}:${r.housekeepingStatus}`),
+    ).toEqual(["101:clean", "102:clean", "103:dirty", "104:clean", "110:dirty"]);
   });
 });
 
@@ -232,17 +243,44 @@ describe("housekeeping status elsewhere", () => {
     ]);
   });
 
-  it("leaves the status as staff marked it through check-in, checkout, and cancellation", async () => {
+  it("leaves the status as staff marked it through check-in, checkout, corrections, and cancellation", async () => {
     const { id } = await reservation();
-    const status = async () => (await board()).rooms.find((r) => r.number === "101")!;
+    const status = async () =>
+      (await housekeepingList()).rooms.find((r) => r.number === "101")!.housekeepingStatus;
 
     await command(id, [{ type: "set-status", status: "checked_in" }]);
-    expect((await status()).housekeepingStatus).toBe("clean");
+    expect(await status()).toBe("clean");
     await command(id, [{ type: "set-status", status: "checked_out" }]);
-    expect((await status()).housekeepingStatus).toBe("clean");
+    expect(await status()).toBe("clean");
 
     await mark("room-101", "dirty");
+    await command(id, [{ type: "set-status", status: "checked_in" }]);
+    expect(await status()).toBe("dirty");
     await command(id, [{ type: "set-status", status: "cancelled" }]);
-    expect(await status()).toMatchObject({ housekeepingStatus: "dirty", departure: null });
+    expect(await status()).toBe("dirty");
+  });
+
+  it("leaves the status as staff marked it through room removal and closures", async () => {
+    const { id } = await reservation();
+    await mark("room-101", "dirty");
+    await mark("room-102", "dirty");
+    const statuses = async () =>
+      (await housekeepingList()).rooms.map((r) => `${r.number}:${r.housekeepingStatus}`).sort();
+    const before = await statuses();
+
+    const detail = (await (await request(`/reservations/${id}`)).json()) as {
+      rooms: { id: string }[];
+    };
+    await command(id, [{ type: "remove-room", lineId: detail.rooms[0].id }]);
+    const created = await request("/room-closures", "POST", {
+      roomId: "room-102",
+      starts: "2026-10-10",
+      ends: "2026-10-12",
+    });
+    expect(created.status).toBe(201);
+    const closure = (await created.json()) as { id: string };
+    expect((await request(`/room-closures/${closure.id}`, "DELETE")).status).toBeLessThan(300);
+
+    expect(await statuses()).toEqual(before);
   });
 });

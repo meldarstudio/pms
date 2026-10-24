@@ -102,11 +102,17 @@ export type HousekeepingRoom = {
   housekeepingChangedAt: string | null;
   closed: boolean;
   inHouse: boolean;
-  departure: "expected" | "checked_out" | null;
+  departing: boolean;
   arriving: boolean;
 };
 
-export type HousekeepingBoard = {
+/** What staff last marked on a room. */
+export type HousekeepingMark = Pick<
+  HousekeepingRoom,
+  "housekeepingStatus" | "housekeepingChangedAt"
+>;
+
+export type HousekeepingList = {
   date: string;
   rooms: HousekeepingRoom[];
 };
@@ -411,15 +417,11 @@ export async function getCalendar(from: string, to: string, signal?: AbortSignal
 }
 
 export function getHousekeeping(signal?: AbortSignal) {
-  return getJson<HousekeepingBoard>("/housekeeping", signal);
+  return getJson<HousekeepingList>("/housekeeping", signal);
 }
 
 export function setHousekeepingStatus(roomId: string, status: HousekeepingStatus) {
-  return writeJson<Room & Pick<HousekeepingRoom, "housekeepingStatus" | "housekeepingChangedAt">>(
-    `/housekeeping/${roomId}`,
-    "PUT",
-    { status },
-  );
+  return writeJson<Room & HousekeepingMark>(`/housekeeping/${roomId}`, "PUT", { status });
 }
 
 export function createRoomClosure(body: {

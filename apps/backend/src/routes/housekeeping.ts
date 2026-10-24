@@ -6,16 +6,14 @@ import { reservationRooms, reservations, roomClosures, roomTypes, rooms } from "
 import type { Env } from "../env";
 import { HttpError, validate } from "../http";
 
-const stayStatuses = ["confirmed", "checked_in", "checked_out"];
-
 export const housekeepingRoutes = new Hono<Env>();
 
-// One read of every room for the property date. Occupancy comes from
+// One read of every room for the property date. Today's stays come from
 // reservations; the housekeeping status is only what staff last marked.
 housekeepingRoutes.get("/", async (c) => {
   const today = c.get("propertyCalendar").today;
   const db = getDb(c.env.DB);
-  const [listedRooms, stays, closures] = await Promise.all([
+  const [roomRows, stays, closures] = await Promise.all([
     db
       .select({
         id: rooms.id,
@@ -39,7 +37,7 @@ housekeepingRoutes.get("/", async (c) => {
       .where(
         and(
           isNotNull(reservationRooms.roomId),
-          inArray(reservations.status, stayStatuses),
+          inArray(reservations.status, ["confirmed", "checked_in"]),
           lte(reservations.checkIn, today),
           gte(reservations.checkOut, today),
         ),
@@ -56,26 +54,20 @@ housekeepingRoutes.get("/", async (c) => {
     list.push(stay);
     staysByRoom.set(stay.roomId!, list);
   }
-  const listed = listedRooms.map((room) => {
-    const own = staysByRoom.get(room.id) ?? [];
-    const leaving = own.find((stay) => stay.checkOut === today);
+  const housekeepingRooms = roomRows.map((room) => {
+    const roomStays = staysByRoom.get(room.id) ?? [];
     return {
       ...room,
       closed: closed.has(room.id),
-      inHouse: own.some(
+      inHouse: roomStays.some(
         (stay) => stay.status === "checked_in" && stay.checkIn <= today && stay.checkOut > today,
       ),
-      departure: leaving ? (leaving.status === "checked_out" ? "checked_out" : "expected") : null,
-      arriving: own.some((stay) => stay.status === "confirmed" && stay.checkIn === today),
+      departing: roomStays.some((stay) => stay.status === "checked_in" && stay.checkOut === today),
+      arriving: roomStays.some((stay) => stay.status === "confirmed" && stay.checkIn === today),
     };
   });
-  const urgency = (room: (typeof listed)[number]) =>
-    room.housekeepingStatus !== "dirty" ? 2 : room.arriving ? 0 : 1;
-  listed.sort(
-    (a, b) =>
-      urgency(a) - urgency(b) || a.number.localeCompare(b.number, undefined, { numeric: true }),
-  );
-  return c.json({ date: today, rooms: listed });
+  housekeepingRooms.sort((a, b) => a.number.localeCompare(b.number, undefined, { numeric: true }));
+  return c.json({ date: today, rooms: housekeepingRooms });
 });
 
 housekeepingRoutes.put("/:roomId", validate("json", housekeepingWriteSchema), async (c) => {

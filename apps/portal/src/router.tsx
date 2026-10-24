@@ -19,6 +19,7 @@ import { Inventory } from "@/components/inventory";
 import { PropertySetup } from "@/components/property-setup";
 import {
   calendarSearch,
+  housekeepingSearch,
   inventorySearch,
   lastCalendarSearch,
   lastReservationsSearch,
@@ -203,10 +204,25 @@ const inventoryRoute = createRoute({
   component: InventoryRoute,
 });
 
+function HousekeepingRoute() {
+  const search = housekeepingRoute.useSearch();
+  const navigate = useNavigate({ from: "/housekeeping" });
+  return (
+    <Housekeeping
+      view={search.view}
+      onViewChange={(view) => void navigate({ search: { view }, replace: true })}
+    />
+  );
+}
+
 const housekeepingRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/housekeeping",
-  component: Housekeeping,
+  validateSearch: housekeepingSearch,
+  search: {
+    middlewares: [stripSearchParams({ view: "to-clean" })],
+  },
+  component: HousekeepingRoute,
 });
 
 const setupRoute = createRoute({

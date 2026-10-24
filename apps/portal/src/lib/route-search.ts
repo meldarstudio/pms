@@ -7,6 +7,9 @@ export { reservationStatusValues, type ReservationStatus } from "./reservation-s
 
 export type CalendarSearch = { from: string; span: 7 | 14 };
 export type InventorySearch = { from: string; span: 7 | 14 };
+export const housekeepingViews = ["to-clean", "all"] as const;
+export type HousekeepingView = (typeof housekeepingViews)[number];
+export type HousekeepingSearch = { view: HousekeepingView };
 export const reservationViews = ["all", "arrivals", "departures", "in-house"] as const;
 export type ReservationView = (typeof reservationViews)[number];
 export type ReservationSort = "checkIn" | "checkOut" | "guestName" | "balance";
@@ -48,6 +51,10 @@ export function inventorySearch(search: Record<string, unknown>): InventorySearc
     from: validDay(search.from) ?? propertyToday(),
     span: spanValue(search.span, 14),
   };
+}
+
+export function housekeepingSearch(search: Record<string, unknown>): HousekeepingSearch {
+  return { view: search.view === "all" ? "all" : "to-clean" };
 }
 
 export function viewDefaults(view: ReservationView) {

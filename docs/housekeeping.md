@@ -9,42 +9,60 @@ of who marked it. Housekeepers use the shared staff login.
 
 ## Limpieza page
 
-`/housekeeping` (**Limpieza** in the sidebar) is a phone-first list of every room for
-the property date. Each row shows the room number and type, a **Sucia** or **Limpia**
-badge, today's occupancy, a **Cerrada** badge when a closure covers tonight, and when
-the status was last marked, in the property time zone. One button marks the room
-clean or dirty.
+`/housekeeping` (**Limpieza** in the sidebar) is a phone-first page with two tabs for
+the property date. The tab is kept in the URL; **Por limpiar** opens by default and
+`?view=all` opens **Todas**.
 
-Occupancy comes from assigned, non-cancelled stays on the property date:
+**Por limpiar** is the housekeeper's work for today, with its count in the tab,
+highlighted while rooms remain. It lists dirty rooms that will be free tonight. It
+leaves out a room whose checked-in guest stays tonight, because the guest is using it,
+and a room closed tonight unless a guest arrives today; each returns on its own once
+the guest leaves or the closure ends.
+Each card shows the room number, **Llega hoy** when a guest arrives today, and whether
+someone can go in: **Sale hoy** while the departing guest has not been checked out,
+otherwise **Libre**. Cards run in four groups, each by room number: arrivals to a free
+room, arrivals to a room whose guest leaves today, other free rooms, then other rooms
+whose guest leaves today. The order follows each re-read, so a card moves when a guest
+checks out. Its one button, **Lista**, marks the room clean and removes it from the
+tab. When none are left, the tab shows **Todo limpio**.
 
-- **Sale hoy**: a stay checks out today but has not been checked out.
-- **Salió hoy**: a stay checked out today was checked out.
+**Todas** is the whole hotel by room number: every room with its number and type, a
+**Sucia** or **Limpia** badge, today's stays, a **Cerrada** badge when a closure covers
+tonight, and when the status was last marked, in the property time zone. One button
+marks the room clean or dirty; rooms are marked dirty only here.
+
+Today's stays come from assigned confirmed and checked-in stays on the property date:
+
+- **Sale hoy**: a checked-in stay checks out today.
 - **En casa**: a checked-in stay continues tonight.
 - **Llega hoy**: a confirmed stay checks in today. A same-day turnover shows both
   the departure and the arrival.
-- **Libre**: none of the above. A confirmed stay that began earlier but was never
-  checked in counts as none of these.
+- **Libre**: none of the above, including a room whose guest has already checked
+  out today. A confirmed stay that was never checked in counts as none of these,
+  even on its last day.
 
-The backend sorts dirty rooms with an arrival today first, then other dirty rooms,
-then clean rooms, each by room number. Marking a room updates its row in place without
-re-sorting, so the next tap never lands on a row that just moved; the order refreshes
-on the next read (refresh button, window focus, or reopening the page). A rejected mark
-restores the previous status and shows an error toast.
+Marking a room updates it at once and needs no confirmation; when the save succeeds, a
+toast offers **Deshacer**, which sets the previous status again, and the page re-reads
+the list. A rejected mark restores the previous status and shows an error toast. An
+open page re-reads the list at property midnight; until that read returns, or if it
+fails, it keeps showing the previous list.
 
 `PUT /housekeeping/:roomId` sets, rather than flips, the status, so repeated or
 simultaneous taps agree; the last write wins. It records the time of every mark,
-including a repeat of the current status. `GET /housekeeping` returns the list
-and its property date.
+including a repeat of the current status. `GET /housekeeping` returns every room by
+room number with today's stays, and its property date; the portal filters and orders
+Por limpiar.
 
 ## Elsewhere in the portal
 
 - **Calendar:** a dirty room shows a small **Sucia** marker beside its number in the
   room column. The marker is display-only; mark rooms from Limpieza.
-- **Check-in:** checking in a confirmed reservation from the reservation status
-  select or **Hacer check-in** first reads the current statuses. If an assigned room
-  is dirty, a dialog names it and offers **Volver** or **Hacer check-in**. It never
-  blocks check-in; unassigned reserved rooms are not checked. If the read fails, the
-  warning uses the statuses loaded with the reservation.
+- **Check-in:** moving a reservation to checked-in from any other status (confirmed,
+  a checkout correction, or restoring a cancellation) first checks its assigned
+  rooms. If one is dirty, a dialog names it and offers **Volver** or **Hacer
+  check-in**. It uses the statuses loaded with the reservation, never blocks
+  check-in, and skips unassigned reserved rooms. Restoring a cancellation still asks
+  for its own confirmation afterwards.
 
 Reservation reads include each assigned room's `housekeepingStatus` (`null` while
 unassigned), and calendar rooms include it as well. Marking a room refreshes cached

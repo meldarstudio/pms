@@ -175,7 +175,7 @@ export function createFakeBackend() {
       housekeepingChangedAt: null,
       closed: false,
       inHouse: false,
-      departure: null,
+      departing: false,
       arriving: false,
     })),
   }));

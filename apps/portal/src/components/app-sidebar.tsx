@@ -2,10 +2,10 @@ import { Link, useRouterState } from "@tanstack/react-router";
 import type { MouseEvent } from "react";
 import {
   BedDoubleIcon,
+  BroomIcon,
   CalendarDaysIcon,
   ClipboardListIcon,
   LogOutIcon,
-  SparklesIcon,
   Settings2Icon,
 } from "lucide-react";
 import logo from "@/assets/logo.svg";
@@ -26,6 +26,7 @@ import { useLogout } from "@/lib/queries";
 import { activeNavigation, appNavigation } from "@/lib/navigation";
 import {
   calendarSearch,
+  housekeepingSearch,
   inventorySearch,
   lastCalendarSearch,
   lastReservationsSearch,
@@ -57,7 +58,7 @@ export function AppSidebar() {
           ? calendarSearch(location.search)
           : (lastCalendarSearch.current ?? calendarSearch({ from: today })),
     },
-    { ...appNavigation.housekeeping, icon: SparklesIcon, search: {} },
+    { ...appNavigation.housekeeping, icon: BroomIcon, search: housekeepingSearch({}) },
     {
       ...appNavigation.inventory,
       icon: BedDoubleIcon,
