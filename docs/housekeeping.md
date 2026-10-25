@@ -48,11 +48,25 @@ the list. A rejected mark restores the previous status and shows an error toast.
 open page re-reads the list at property midnight; until that read returns, or if it
 fails, it keeps showing the previous list.
 
-`PUT /housekeeping/:roomId` sets, rather than flips, the status, so repeated or
-simultaneous taps agree; the last write wins. It records the time of every mark,
-including a repeat of the current status. `GET /housekeeping` returns every room by
-room number with today's stays, and its property date; the portal filters and orders
-Por limpiar.
+## API
+
+`PUT /housekeeping` marks rooms with `{ marks: [{ roomId, status }] }`; the phone's
+**Lista**, **Sucia | Limpia**, and **Deshacer** each send one mark. It sets, rather than
+flips, each status, so repeated or simultaneous marks agree; the last write wins. It
+saves every mark or none, with one mark time shared by the whole request, recorded
+even when a mark repeats the room's current status. It returns `{ rooms: [{ id,
+housekeepingStatus, housekeepingChangedAt }] }` for the marked rooms. It rejects the
+whole request, saving nothing, when:
+
+- `marks` is empty or has more than 500 entries, or a status is not `dirty` or
+  `clean` (400);
+- the same room appears twice (400 `duplicate room in housekeeping marks`);
+- any room does not exist (404 `room not found`).
+
+The request schema is `housekeepingMarksSchema` in `@pms/shared`.
+
+`GET /housekeeping` returns every room by room number with today's stays, and its
+property date; the portal filters and orders Por limpiar.
 
 ## Elsewhere in the portal
 

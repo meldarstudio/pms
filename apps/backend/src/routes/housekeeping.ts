@@ -1,10 +1,11 @@
-import { housekeepingWriteSchema } from "@pms/shared";
+import { housekeepingMarksSchema } from "@pms/shared";
 import { and, eq, gt, gte, inArray, isNotNull, lte } from "drizzle-orm";
 import { Hono } from "hono";
-import { getDb } from "../db";
+import { getDb, runBatch } from "../db";
 import { reservationRooms, reservations, roomClosures, roomTypes, rooms } from "../db/schema";
 import type { Env } from "../env";
 import { HttpError, validate } from "../http";
+import { chunks } from "../lib/chunks";
 
 export const housekeepingRoutes = new Hono<Env>();
 
@@ -70,17 +71,37 @@ housekeepingRoutes.get("/", async (c) => {
   return c.json({ date: today, rooms: housekeepingRooms });
 });
 
-housekeepingRoutes.put("/:roomId", validate("json", housekeepingWriteSchema), async (c) => {
-  const { status } = c.req.valid("json");
+// D1 binds at most 100 parameters per statement.
+const ROOM_IDS_PER_STATEMENT = 90;
+
+housekeepingRoutes.put("/", validate("json", housekeepingMarksSchema), async (c) => {
+  const { marks } = c.req.valid("json");
   const db = getDb(c.env.DB);
-  const id = c.req.param("roomId");
-  const [room] = await db.select({ id: rooms.id }).from(rooms).where(eq(rooms.id, id));
-  if (!room) throw new HttpError(404, "room not found");
-  // Sets, rather than flips, the status so repeated or simultaneous taps agree.
-  await db
-    .update(rooms)
-    .set({ housekeepingStatus: status, housekeepingChangedAt: new Date().toISOString() })
-    .where(eq(rooms.id, id));
-  const [updated] = await db.select().from(rooms).where(eq(rooms.id, id));
-  return c.json(updated);
+  const existing = new Set((await db.select({ id: rooms.id }).from(rooms)).map((room) => room.id));
+  if (marks.some((mark) => !existing.has(mark.roomId))) throw new HttpError(404, "room not found");
+  // Sets, rather than flips, each status so repeated or simultaneous marks agree.
+  const changedAt = new Date().toISOString();
+  await runBatch(
+    db,
+    (["dirty", "clean"] as const).flatMap((status) =>
+      chunks(
+        marks.filter((mark) => mark.status === status).map((mark) => mark.roomId),
+        ROOM_IDS_PER_STATEMENT,
+      ).map((ids) =>
+        db
+          .update(rooms)
+          .set({ housekeepingStatus: status, housekeepingChangedAt: changedAt })
+          .where(inArray(rooms.id, ids)),
+      ),
+    ),
+  );
+  const marked = new Set(marks.map((mark) => mark.roomId));
+  const updated = await db
+    .select({
+      id: rooms.id,
+      housekeepingStatus: rooms.housekeepingStatus,
+      housekeepingChangedAt: rooms.housekeepingChangedAt,
+    })
+    .from(rooms);
+  return c.json({ rooms: updated.filter((room) => marked.has(room.id)) });
 });
