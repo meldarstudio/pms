@@ -5,6 +5,7 @@ import { PageHeaderActions } from "@/components/page-header-actions";
 import { SetupRequired } from "@/components/setup-required";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
 import {
   Empty,
   EmptyDescription,
@@ -25,40 +26,115 @@ import {
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { useIsMobile } from "@/hooks/use-mobile";
-import type { HousekeepingRoom, HousekeepingStatus } from "@/lib/api";
+import type { HousekeepingMarkInput, HousekeepingRoom, HousekeepingStatus } from "@/lib/api";
 import { propertyTimeZone, propertyToday } from "@/lib/property-calendar";
 import { useHousekeeping, useMissingSetup, useSetHousekeepingStatus } from "@/lib/queries";
 import type { HousekeepingView } from "@/lib/route-search";
 import { toast, toastError } from "@/lib/toast";
 
-type MarkRoom = (room: HousekeepingRoom, status: HousekeepingStatus) => Promise<void>;
+type MarkRooms = (rooms: HousekeepingRoom[], status: HousekeepingStatus) => Promise<boolean>;
 
-/** Marks a room, then offers to undo it by setting the previous status again. */
-function useMarkRoom(): MarkRoom {
+function markedTitle(rooms: HousekeepingRoom[], status: HousekeepingStatus) {
+  const clean = status === "clean";
+  if (rooms.length === 1) {
+    return `Habitación ${rooms[0]!.number} ${clean ? "lista" : "marcada sucia"}`;
+  }
+  return `${rooms.length} habitaciones ${clean ? "listas" : "marcadas sucias"}`;
+}
+
+/**
+ * Marks rooms in one request, then offers to undo it by setting each room's own previous
+ * status again in one request. Resolves whether the mark saved.
+ */
+function useMarkRooms(): MarkRooms {
   const mutation = useSetHousekeepingStatus();
-  const save = (room: HousekeepingRoom, status: HousekeepingStatus) =>
-    mutation.mutateAsync([{ roomId: room.id, status }]).then(
+  const save = (marks: HousekeepingMarkInput[]) =>
+    mutation.mutateAsync(marks).then(
       () => true,
       (cause: unknown) => {
         toastError("No se pudo guardar la limpieza", cause);
         return false;
       },
     );
-  return async (room, status) => {
-    const previous = room.housekeepingStatus;
-    if (!(await save(room, status))) return;
+  return async (rooms, status) => {
+    const previous = rooms.map((room) => ({ roomId: room.id, status: room.housekeepingStatus }));
+    if (!(await save(rooms.map((room) => ({ roomId: room.id, status }))))) return false;
     const id = toast.add({
-      title: `Habitación ${room.number} ${status === "clean" ? "lista" : "marcada sucia"}`,
+      title: markedTitle(rooms, status),
       actionProps: {
         children: "Deshacer",
         onClick: () => {
           toast.close(id);
-          void save(room, previous);
+          void save(previous);
         },
       },
     });
+    return true;
   };
 }
+
+type SelectionState = {
+  view: HousekeepingView;
+  ids: ReadonlySet<string>;
+  /** Where a shift-click range starts: the room clicked last. */
+  anchor: string | null;
+};
+
+const noSelection = (view: HousekeepingView): SelectionState => ({
+  view,
+  ids: new Set(),
+  anchor: null,
+});
+
+/**
+ * The desktop table's selected rooms, among `rooms` in the order on screen. Switching tabs
+ * clears it, and each re-read keeps only rooms still visible in the tab, except while
+ * `holding` (a bulk mark saving), so a failed mark leaves the selection for a retry.
+ */
+function useRoomSelection(
+  view: HousekeepingView,
+  rooms: HousekeepingRoom[] | undefined,
+  holding: boolean,
+) {
+  const [state, setState] = useState(() => noSelection(view));
+  let current = state;
+  if (state.view !== view) current = noSelection(view);
+  else if (rooms && !holding) {
+    const visible = new Set(rooms.map((room) => room.id));
+    const anchor = state.anchor && visible.has(state.anchor) ? state.anchor : null;
+    const ids = new Set([...state.ids].filter((id) => visible.has(id)));
+    if (ids.size !== state.ids.size || anchor !== state.anchor) current = { view, ids, anchor };
+  }
+  if (current !== state) setState(current);
+
+  const order = rooms?.map((room) => room.id) ?? [];
+  const selectedCount = order.filter((id) => current.ids.has(id)).length;
+  const allSelected = order.length > 0 && selectedCount === order.length;
+  return {
+    ids: current.ids,
+    allSelected,
+    someSelected: selectedCount > 0,
+    /** Toggles a room; with `range`, every room on screen from the room clicked last to it. */
+    toggle: (roomId: string, range: boolean) => {
+      const checked = !current.ids.has(roomId);
+      const from = range && current.anchor ? order.indexOf(current.anchor) : -1;
+      const to = order.indexOf(roomId);
+      const affected =
+        from >= 0 ? order.slice(Math.min(from, to), Math.max(from, to) + 1) : [roomId];
+      const ids = new Set(current.ids);
+      for (const id of affected) {
+        if (checked) ids.add(id);
+        else ids.delete(id);
+      }
+      setState({ view, ids, anchor: roomId });
+    },
+    /** Selects every visible room, or clears the selection when all are selected. */
+    toggleAll: () => setState({ view, ids: new Set(allSelected ? [] : order), anchor: null }),
+    clear: () => setState(noSelection(view)),
+  };
+}
+
+type RoomSelection = ReturnType<typeof useRoomSelection>;
 
 /**
  * The housekeeper's work for today: dirty rooms that will be free for a guest tonight.
@@ -114,11 +190,11 @@ function RoomHeading({ room }: { room: HousekeepingRoom }) {
 }
 
 /** Keeps a row's control disabled while its own mark saves, remembering the status it sets. */
-function usePendingMark(mark: MarkRoom) {
+function usePendingMark(mark: MarkRooms) {
   const [pending, setPending] = useState<HousekeepingStatus | null>(null);
   const run = (room: HousekeepingRoom, status: HousekeepingStatus) => {
     setPending(status);
-    void mark(room, status).finally(() => setPending(null));
+    void mark([room], status).finally(() => setPending(null));
   };
   return [pending, run] as const;
 }
@@ -201,7 +277,7 @@ function StatusToggle({
   );
 }
 
-type RoomRowProps = { view: HousekeepingView; room: HousekeepingRoom; mark: MarkRoom };
+type RoomRowProps = { view: HousekeepingView; room: HousekeepingRoom; mark: MarkRooms };
 
 /** The tab's action for a room: Lista on Por limpiar, Sucia | Limpia on Todas. */
 function RoomAction({
@@ -262,10 +338,25 @@ function markedLabel(changedAt: string | null, today: string) {
     .replace(".", "");
 }
 
-function DesktopRow({ view, room, mark, today }: RoomRowProps & { today: string }) {
+function DesktopRow({
+  view,
+  room,
+  mark,
+  today,
+  selection,
+}: RoomRowProps & { today: string; selection: RoomSelection }) {
   const [pending, run] = usePendingMark(mark);
+  const selected = selection.ids.has(room.id);
   return (
-    <TableRow>
+    <TableRow data-state={selected ? "selected" : undefined}>
+      <TableCell className="w-10">
+        <Checkbox
+          aria-label={`Seleccionar habitación ${room.number}`}
+          checked={selected}
+          // Click rather than change, to read shift for a range.
+          onClick={(event) => selection.toggle(room.id, event.shiftKey)}
+        />
+      </TableCell>
       <TableCell className="w-28 text-base font-semibold tabular-nums">{room.number}</TableCell>
       <TableCell className="text-muted-foreground">{room.roomTypeName}</TableCell>
       <TableCell>
@@ -285,17 +376,66 @@ function DesktopRow({ view, room, mark, today }: RoomRowProps & { today: string 
 
 const listLabel = { "to-clean": "Habitaciones por limpiar", all: "Habitaciones" } as const;
 
-/** A tab's rooms: phone cards, or the front desk's table with when each was last marked. */
+/** The desktop table's actions for the selected rooms, shown while any are selected. */
+function SelectionBar({
+  view,
+  count,
+  pending,
+  onMark,
+  onClear,
+}: {
+  view: HousekeepingView;
+  count: number;
+  pending: HousekeepingStatus | null;
+  onMark: (status: HousekeepingStatus) => void;
+  onClear: () => void;
+}) {
+  return (
+    <div
+      role="group"
+      aria-label="Selección"
+      className="flex max-w-5xl flex-wrap items-center gap-2 border bg-muted/50 px-3 py-2"
+    >
+      <span className="mr-auto text-sm font-medium tabular-nums" aria-live="polite">
+        {count} {count === 1 ? "seleccionada" : "seleccionadas"}
+      </span>
+      <Button size="sm" variant="outline" disabled={!!pending} onClick={() => onMark("clean")}>
+        {pending === "clean" && <Spinner data-icon="inline-start" />}
+        Marcar limpias
+      </Button>
+      {view === "all" && (
+        <Button size="sm" variant="outline" disabled={!!pending} onClick={() => onMark("dirty")}>
+          {pending === "dirty" && <Spinner data-icon="inline-start" />}
+          Marcar sucias
+        </Button>
+      )}
+      <Button size="sm" variant="ghost" disabled={!!pending} onClick={onClear}>
+        Quitar selección
+      </Button>
+    </div>
+  );
+}
+
+/**
+ * A tab's rooms: phone cards, or the front desk's table with when each was last marked and
+ * a selection to mark several rooms at once.
+ */
 function RoomList({
   view,
   rooms,
   mark,
   today,
+  selection,
+  bulkPending,
+  onMarkSelected,
 }: {
   view: HousekeepingView;
   rooms: HousekeepingRoom[];
-  mark: MarkRoom;
+  mark: MarkRooms;
   today: string;
+  selection: RoomSelection;
+  bulkPending: HousekeepingStatus | null;
+  onMarkSelected: (status: HousekeepingStatus) => void;
 }) {
   const phone = useIsMobile();
   if (phone) {
@@ -308,26 +448,52 @@ function RoomList({
     );
   }
   return (
-    <div className="max-w-5xl border">
-      <Table aria-label={listLabel[view]} className="text-sm">
-        <TableHeader>
-          <TableRow>
-            <TableHead scope="col">Habitación</TableHead>
-            <TableHead scope="col">Tipo</TableHead>
-            <TableHead scope="col">Hoy</TableHead>
-            <TableHead scope="col">Marcada</TableHead>
-            <TableHead scope="col" className="text-right">
-              {view === "to-clean" ? <span className="sr-only">Acción</span> : "Estado"}
-            </TableHead>
-          </TableRow>
-        </TableHeader>
-        <TableBody>
-          {rooms.map((room) => (
-            <DesktopRow key={room.id} view={view} room={room} mark={mark} today={today} />
-          ))}
-        </TableBody>
-      </Table>
-    </div>
+    <>
+      {selection.ids.size > 0 && (
+        <SelectionBar
+          view={view}
+          count={selection.ids.size}
+          pending={bulkPending}
+          onMark={onMarkSelected}
+          onClear={selection.clear}
+        />
+      )}
+      <div className="max-w-5xl border">
+        <Table aria-label={listLabel[view]} className="text-sm">
+          <TableHeader>
+            <TableRow>
+              <TableHead scope="col" className="w-10">
+                <Checkbox
+                  aria-label="Seleccionar todas"
+                  checked={selection.allSelected}
+                  indeterminate={selection.someSelected && !selection.allSelected}
+                  onCheckedChange={selection.toggleAll}
+                />
+              </TableHead>
+              <TableHead scope="col">Habitación</TableHead>
+              <TableHead scope="col">Tipo</TableHead>
+              <TableHead scope="col">Hoy</TableHead>
+              <TableHead scope="col">Marcada</TableHead>
+              <TableHead scope="col" className="text-right">
+                {view === "to-clean" ? <span className="sr-only">Acción</span> : "Estado"}
+              </TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {rooms.map((room) => (
+              <DesktopRow
+                key={room.id}
+                view={view}
+                room={room}
+                mark={mark}
+                today={today}
+                selection={selection}
+              />
+            ))}
+          </TableBody>
+        </Table>
+      </div>
+    </>
   );
 }
 
@@ -354,15 +520,28 @@ export function Housekeeping({
 }) {
   const query = useHousekeeping();
   const missingSetup = useMissingSetup();
-  const mark = useMarkRoom();
+  const mark = useMarkRooms();
   const list = query.data;
   const refreshing = query.isFetching && !!list;
-
-  if (list && list.rooms.length === 0) return <SetupRequired missing={missingSetup ?? "rooms"} />;
 
   const toClean = (list?.rooms.filter(needsCleaning) ?? []).sort(
     (a, b) => cleaningOrder(a) - cleaningOrder(b),
   );
+  const visible = list && (view === "to-clean" ? toClean : list.rooms);
+  const [bulkPending, setBulkPending] = useState<HousekeepingStatus | null>(null);
+  const selection = useRoomSelection(view, visible, !!bulkPending);
+
+  const markSelected = (status: HousekeepingStatus) => {
+    const rooms = visible?.filter((room) => selection.ids.has(room.id)) ?? [];
+    setBulkPending(status);
+    void mark(rooms, status)
+      .then((saved) => {
+        if (saved) selection.clear();
+      })
+      .finally(() => setBulkPending(null));
+  };
+
+  if (list && list.rooms.length === 0) return <SetupRequired missing={missingSetup ?? "rooms"} />;
 
   return (
     <main className="flex min-h-0 w-full flex-col gap-4 overflow-y-auto p-4 lg:p-6">
@@ -412,9 +591,12 @@ export function Housekeeping({
       ) : (
         <RoomList
           view={view}
-          rooms={view === "to-clean" ? toClean : list.rooms}
+          rooms={visible ?? []}
           mark={mark}
           today={list.date}
+          selection={selection}
+          bulkPending={bulkPending}
+          onMarkSelected={markSelected}
         />
       )}
     </main>
