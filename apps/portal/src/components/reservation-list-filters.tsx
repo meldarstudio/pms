@@ -6,7 +6,13 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Field, FieldGroup, FieldLabel, FieldLegend, FieldSet } from "@/components/ui/field";
-import { Popover, PopoverContent, PopoverTitle, PopoverTrigger } from "@/components/ui/popover";
+import {
+  Popover,
+  PopoverContent,
+  PopoverHeader,
+  PopoverTitle,
+  PopoverTrigger,
+} from "@/components/ui/popover";
 import {
   Sheet,
   SheetClose,
@@ -57,87 +63,83 @@ export function ReservationListFilters({
       ) : null}
     </>
   );
+  const reset = (
+    <Button
+      variant="ghost"
+      size="sm"
+      className={cn("shrink-0", mobile && "min-h-11")}
+      disabled={filterCount === 0}
+      onClick={() =>
+        onChange({
+          statuses: viewDefaults(search.view).statuses,
+          balance: "all",
+          assignment: "all",
+        })
+      }
+    >
+      <RotateCcwIcon data-icon="inline-start" />
+      Restablecer
+    </Button>
+  );
   const controls = (
-    <>
-      <Button
-        variant="ghost"
-        size="sm"
-        className={cn("self-end", mobile && "min-h-11")}
-        disabled={filterCount === 0}
-        onClick={() =>
-          onChange({
-            statuses: viewDefaults(search.view).statuses,
-            balance: "all",
-            assignment: "all",
-          })
-        }
-      >
-        <RotateCcwIcon data-icon="inline-start" />
-        Restablecer
-      </Button>
-      <FieldGroup className="gap-4">
-        {search.view !== "in-house" ? (
-          <FieldSet>
-            <FieldLegend>Estados</FieldLegend>
-            <FieldGroup className={cn("gap-3", mobile && "gap-0")}>
-              {reservationStatusValues.map((status) => {
-                const checked = selectedStatuses.values.includes(status);
-                const disabled = checked && selectedStatuses.values.length === 1;
-                return (
-                  <Field
-                    key={status}
-                    orientation="horizontal"
-                    data-disabled={disabled || undefined}
+    <FieldGroup className="gap-4">
+      {search.view !== "in-house" ? (
+        <FieldSet>
+          <FieldLegend>Estados</FieldLegend>
+          <FieldGroup className={cn("gap-3", mobile && "gap-0")}>
+            {reservationStatusValues.map((status) => {
+              const checked = selectedStatuses.values.includes(status);
+              const disabled = checked && selectedStatuses.values.length === 1;
+              return (
+                <Field key={status} orientation="horizontal" data-disabled={disabled || undefined}>
+                  <Checkbox
+                    id={`${id}-${status}`}
+                    checked={checked}
+                    disabled={disabled}
+                    onCheckedChange={(checked) =>
+                      onChange({
+                        statuses: selectedStatuses.withStatus(status, checked).toSearch(),
+                      })
+                    }
+                  />
+                  <FieldLabel
+                    htmlFor={`${id}-${status}`}
+                    className={cn(mobile && "min-h-11 items-center")}
                   >
-                    <Checkbox
-                      id={`${id}-${status}`}
-                      checked={checked}
-                      disabled={disabled}
-                      onCheckedChange={(checked) =>
-                        onChange({
-                          statuses: selectedStatuses.withStatus(status, checked).toSearch(),
-                        })
-                      }
-                    />
-                    <FieldLabel
-                      htmlFor={`${id}-${status}`}
-                      className={cn(mobile && "min-h-11 items-center")}
-                    >
-                      {reservationStatusLabel(status)}
-                    </FieldLabel>
-                  </Field>
-                );
-              })}
-            </FieldGroup>
-          </FieldSet>
-        ) : null}
-        <ChoiceField
-          label="Saldo"
-          value={search.balance}
-          touchTargets={mobile}
-          options={[
-            { value: "all", label: "Cualquier saldo" },
-            { value: "outstanding", label: "Saldo pendiente" },
-            { value: "settled", label: "Saldada" },
-            { value: "credit", label: "Con crédito" },
-          ]}
-          onChange={(balance) => onChange({ balance: balance as ReservationsSearch["balance"] })}
-        />
-        <ChoiceField
-          label="Asignación"
-          value={search.assignment}
-          touchTargets={mobile}
-          options={[
-            { value: "all", label: "Cualquier asignación" },
-            { value: "assigned", label: "Todas asignadas" },
-            { value: "unassigned", label: "Con habitaciones sin asignar" },
-          ]}
-          onChange={(assignment) =>
-            onChange({ assignment: assignment as ReservationsSearch["assignment"] })
-          }
-        />
-      </FieldGroup>
-    </>
+                    {reservationStatusLabel(status)}
+                  </FieldLabel>
+                </Field>
+              );
+            })}
+          </FieldGroup>
+        </FieldSet>
+      ) : null}
+      <ChoiceField
+        label="Saldo"
+        value={search.balance}
+        touchTargets={mobile}
+        options={[
+          { value: "all", label: "Cualquier saldo" },
+          { value: "outstanding", label: "Saldo pendiente" },
+          { value: "settled", label: "Saldada" },
+          { value: "credit", label: "Con crédito" },
+        ]}
+        onChange={(balance) => onChange({ balance: balance as ReservationsSearch["balance"] })}
+      />
+      <ChoiceField
+        label="Asignación"
+        value={search.assignment}
+        touchTargets={mobile}
+        options={[
+          { value: "all", label: "Cualquier asignación" },
+          { value: "assigned", label: "Todas asignadas" },
+          { value: "unassigned", label: "Con habitaciones sin asignar" },
+        ]}
+        onChange={(assignment) =>
+          onChange({ assignment: assignment as ReservationsSearch["assignment"] })
+        }
+      />
+    </FieldGroup>
   );
 
   return (
@@ -151,8 +153,9 @@ export function ReservationListFilters({
             aria-describedby={undefined}
             className="max-h-[calc(100dvh-1rem)]"
           >
-            <SheetHeader className="shrink-0">
+            <SheetHeader className="shrink-0 flex-row items-center justify-between gap-2">
               <SheetTitle>Filtros de reservas</SheetTitle>
+              {reset}
             </SheetHeader>
             <div className="flex min-h-0 flex-col gap-4 overflow-y-auto px-4 pb-4">{controls}</div>
             <SheetFooter className="shrink-0 pb-[max(1rem,env(safe-area-inset-bottom))]">
@@ -167,7 +170,10 @@ export function ReservationListFilters({
             align="start"
             className="max-h-[min(32rem,var(--available-height))] w-80 max-w-[calc(100vw-2rem)] gap-4 overflow-y-auto p-4"
           >
-            <PopoverTitle className="sr-only">Filtros de reservas</PopoverTitle>
+            <PopoverHeader className="flex-row items-center justify-between gap-2">
+              <PopoverTitle>Filtros de reservas</PopoverTitle>
+              {reset}
+            </PopoverHeader>
             {controls}
           </PopoverContent>
         </Popover>
