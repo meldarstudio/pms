@@ -61,7 +61,8 @@ control while it saves, the **Deshacer** toast, and the restore on failure.
 
 **Marcada** is when the housekeeping status was last marked, from
 `housekeepingChangedAt`, in the property time zone: the time (`10:42`) when it falls
-on the list's property date, otherwise a short date (`23 oct`), and `—` for a room
+on the list's property date, otherwise a short date (`23 oct`, `5 sep`) with the
+portal's own Spanish month abbreviations rather than the browser's, and `—` for a room
 never marked. It never shows who marked it.
 
 ### Bulk marking
@@ -85,7 +86,8 @@ is shown, and the selection stays for a retry.
 The selection belongs to the tab: switching tabs clears it. After every re-read,
 including the one at property midnight and one that shows marks from another device,
 it keeps only rooms still visible in the tab, and the count follows. While a bulk mark
-saves, rooms it takes off Por limpiar stay selected until it succeeds or fails.
+saves, the row and header checkboxes are disabled, and rooms it takes off Por limpiar
+stay selected until it succeeds or fails.
 
 ## API
 
@@ -102,7 +104,8 @@ whole request, saving nothing, when:
 - `marks` is empty or has more than 500 entries, or a status is not `dirty` or
   `clean` (400);
 - the same room appears twice (400 `duplicate room in housekeeping marks`);
-- any room does not exist (404 `room not found`).
+- any room does not exist (404 `room not found`). Rooms are never deleted and their ids
+  never change, so the existence check before the write cannot go stale.
 
 The request schema is `housekeepingMarksSchema` in `@pms/shared`.
 

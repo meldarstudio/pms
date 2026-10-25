@@ -41,7 +41,6 @@ import {
   markHousekeeping,
   type HousekeepingList,
   type HousekeepingMark,
-  type HousekeepingMarkInput,
   type ReservationListParams,
   type PatchGuestInput,
   type AvailabilityOccupancy,
@@ -214,7 +213,7 @@ export function useHousekeeping() {
 }
 
 /** Marks one or more rooms in one all-or-nothing request. */
-export function useSetHousekeepingStatus() {
+export function useMarkHousekeeping() {
   const client = useQueryClient();
   const setRooms = (marks: Map<string, Partial<HousekeepingMark>>) =>
     client.setQueryData<HousekeepingList>(housekeepingQueryKey, (list) =>
@@ -229,7 +228,7 @@ export function useSetHousekeepingStatus() {
         : list,
     );
   return useMutation({
-    mutationFn: (marks: HousekeepingMarkInput[]) => markHousekeeping(marks),
+    mutationFn: markHousekeeping,
     // The rows change at once; the re-read after a save re-sorts the list.
     onMutate: async (marks) => {
       await client.cancelQueries({ queryKey: housekeepingQueryKey });

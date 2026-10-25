@@ -1,4 +1,4 @@
-import { useState, type ComponentProps } from "react";
+import { useState, type ComponentProps, type ReactNode } from "react";
 import { RefreshCwIcon, SparklesIcon } from "lucide-react";
 import { cn } from "cn";
 import { PageHeaderActions } from "@/components/page-header-actions";
@@ -28,7 +28,7 @@ import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { useIsMobile } from "@/hooks/use-mobile";
 import type { HousekeepingMarkInput, HousekeepingRoom, HousekeepingStatus } from "@/lib/api";
 import { propertyTimeZone, propertyToday } from "@/lib/property-calendar";
-import { useHousekeeping, useMissingSetup, useSetHousekeepingStatus } from "@/lib/queries";
+import { useHousekeeping, useMissingSetup, useMarkHousekeeping } from "@/lib/queries";
 import type { HousekeepingView } from "@/lib/route-search";
 import { toast, toastError } from "@/lib/toast";
 
@@ -47,7 +47,7 @@ function markedTitle(rooms: HousekeepingRoom[], status: HousekeepingStatus) {
  * status again in one request. Resolves whether the mark saved.
  */
 function useMarkRooms(): MarkRooms {
-  const mutation = useSetHousekeepingStatus();
+  const mutation = useMarkHousekeeping();
   const save = (marks: HousekeepingMarkInput[]) =>
     mutation.mutateAsync(marks).then(
       () => true,
@@ -299,13 +299,39 @@ function RoomAction({
   );
 }
 
+/** What differs between the tabs' lists, besides each row's action. */
+const views = {
+  "to-clean": {
+    listLabel: "Habitaciones por limpiar",
+    actionHeading: <span className="sr-only">Acción</span>,
+    phoneRowClassName: "p-4",
+    bulkStatuses: ["clean"],
+  },
+  all: {
+    listLabel: "Habitaciones",
+    actionHeading: "Estado",
+    phoneRowClassName: "px-4 py-3",
+    bulkStatuses: ["clean", "dirty"],
+  },
+} satisfies Record<
+  HousekeepingView,
+  {
+    listLabel: string;
+    actionHeading: ReactNode;
+    phoneRowClassName: string;
+    bulkStatuses: HousekeepingStatus[];
+  }
+>;
+
+const bulkLabel = { clean: "Marcar limpias", dirty: "Marcar sucias" } as const;
+
 function PhoneRow({ view, room, mark }: RoomRowProps) {
   const [pending, run] = usePendingMark(mark);
   return (
     <li
       className={cn(
         "flex items-center gap-3 border-b last:border-b-0",
-        view === "to-clean" ? "p-4" : "px-4 py-3",
+        views[view].phoneRowClassName,
       )}
     >
       <div className="flex min-w-0 flex-1 flex-col gap-2">
@@ -324,27 +350,42 @@ function PhoneRow({ view, room, mark }: RoomRowProps) {
 function markedLabel(changedAt: string | null, today: string) {
   if (!changedAt) return "—";
   const instant = new Date(changedAt);
-  const timeZone = propertyTimeZone();
-  if (propertyToday(instant) === today) {
+  const date = propertyToday(instant);
+  if (date === today) {
     return new Intl.DateTimeFormat("es-PE", {
-      timeZone,
+      timeZone: propertyTimeZone(),
       hour: "2-digit",
       minute: "2-digit",
       hourCycle: "h23",
     }).format(instant);
   }
-  return new Intl.DateTimeFormat("es-PE", { timeZone, day: "numeric", month: "short" })
-    .format(instant)
-    .replace(".", "");
+  // Our own month names: ICU versions shorten September as "sep", "sept", or "set".
+  const [, month, day] = date.split("-").map(Number);
+  return `${day} ${shortMonths[month! - 1]}`;
 }
+
+const shortMonths = [
+  "ene",
+  "feb",
+  "mar",
+  "abr",
+  "may",
+  "jun",
+  "jul",
+  "ago",
+  "sep",
+  "oct",
+  "nov",
+  "dic",
+] as const;
 
 function DesktopRow({
   view,
   room,
   mark,
   today,
-  selection,
-}: RoomRowProps & { today: string; selection: RoomSelection }) {
+  bulk: { selection, pending: bulkPending },
+}: RoomRowProps & { today: string; bulk: BulkMark }) {
   const [pending, run] = usePendingMark(mark);
   const selected = selection.ids.has(room.id);
   return (
@@ -353,6 +394,7 @@ function DesktopRow({
         <Checkbox
           aria-label={`Seleccionar habitación ${room.number}`}
           checked={selected}
+          disabled={!!bulkPending}
           // Click rather than change, to read shift for a range.
           onClick={(event) => selection.toggle(room.id, event.shiftKey)}
         />
@@ -374,22 +416,25 @@ function DesktopRow({
   );
 }
 
-const listLabel = { "to-clean": "Habitaciones por limpiar", all: "Habitaciones" } as const;
+/**
+ * The desktop table's selection and the bulk mark of it: the status it sets while
+ * saving, else null.
+ */
+type BulkMark = {
+  selection: RoomSelection;
+  pending: HousekeepingStatus | null;
+  markSelected: (status: HousekeepingStatus) => void;
+};
 
 /** The desktop table's actions for the selected rooms, shown while any are selected. */
 function SelectionBar({
   view,
-  count,
-  pending,
-  onMark,
-  onClear,
+  bulk: { selection, pending, markSelected },
 }: {
   view: HousekeepingView;
-  count: number;
-  pending: HousekeepingStatus | null;
-  onMark: (status: HousekeepingStatus) => void;
-  onClear: () => void;
+  bulk: BulkMark;
 }) {
+  const count = selection.ids.size;
   return (
     <div
       role="group"
@@ -399,17 +444,19 @@ function SelectionBar({
       <span className="mr-auto text-sm font-medium tabular-nums" aria-live="polite">
         {count} {count === 1 ? "seleccionada" : "seleccionadas"}
       </span>
-      <Button size="sm" variant="outline" disabled={!!pending} onClick={() => onMark("clean")}>
-        {pending === "clean" && <Spinner data-icon="inline-start" />}
-        Marcar limpias
-      </Button>
-      {view === "all" && (
-        <Button size="sm" variant="outline" disabled={!!pending} onClick={() => onMark("dirty")}>
-          {pending === "dirty" && <Spinner data-icon="inline-start" />}
-          Marcar sucias
+      {views[view].bulkStatuses.map((status) => (
+        <Button
+          key={status}
+          size="sm"
+          variant="outline"
+          disabled={!!pending}
+          onClick={() => markSelected(status)}
+        >
+          {pending === status && <Spinner data-icon="inline-start" />}
+          {bulkLabel[status]}
         </Button>
-      )}
-      <Button size="sm" variant="ghost" disabled={!!pending} onClick={onClear}>
+      ))}
+      <Button size="sm" variant="ghost" disabled={!!pending} onClick={selection.clear}>
         Quitar selección
       </Button>
     </div>
@@ -425,22 +472,19 @@ function RoomList({
   rooms,
   mark,
   today,
-  selection,
-  bulkPending,
-  onMarkSelected,
+  bulk,
 }: {
   view: HousekeepingView;
   rooms: HousekeepingRoom[];
   mark: MarkRooms;
   today: string;
-  selection: RoomSelection;
-  bulkPending: HousekeepingStatus | null;
-  onMarkSelected: (status: HousekeepingStatus) => void;
+  bulk: BulkMark;
 }) {
   const phone = useIsMobile();
+  const { selection } = bulk;
   if (phone) {
     return (
-      <ul aria-label={listLabel[view]} className="max-w-2xl border">
+      <ul aria-label={views[view].listLabel} className="max-w-2xl border">
         {rooms.map((room) => (
           <PhoneRow key={room.id} view={view} room={room} mark={mark} />
         ))}
@@ -449,17 +493,9 @@ function RoomList({
   }
   return (
     <>
-      {selection.ids.size > 0 && (
-        <SelectionBar
-          view={view}
-          count={selection.ids.size}
-          pending={bulkPending}
-          onMark={onMarkSelected}
-          onClear={selection.clear}
-        />
-      )}
+      {selection.ids.size > 0 && <SelectionBar view={view} bulk={bulk} />}
       <div className="max-w-5xl border">
-        <Table aria-label={listLabel[view]} className="text-sm">
+        <Table aria-label={views[view].listLabel} className="text-sm">
           <TableHeader>
             <TableRow>
               <TableHead scope="col" className="w-10">
@@ -467,6 +503,7 @@ function RoomList({
                   aria-label="Seleccionar todas"
                   checked={selection.allSelected}
                   indeterminate={selection.someSelected && !selection.allSelected}
+                  disabled={!!bulk.pending}
                   onCheckedChange={selection.toggleAll}
                 />
               </TableHead>
@@ -475,7 +512,7 @@ function RoomList({
               <TableHead scope="col">Hoy</TableHead>
               <TableHead scope="col">Marcada</TableHead>
               <TableHead scope="col" className="text-right">
-                {view === "to-clean" ? <span className="sr-only">Acción</span> : "Estado"}
+                {views[view].actionHeading}
               </TableHead>
             </TableRow>
           </TableHeader>
@@ -487,7 +524,7 @@ function RoomList({
                 room={room}
                 mark={mark}
                 today={today}
-                selection={selection}
+                bulk={bulk}
               />
             ))}
           </TableBody>
@@ -586,17 +623,16 @@ export function Housekeeping({
           <Spinner />
           Cargando habitaciones…
         </p>
-      ) : view === "to-clean" && toClean.length === 0 ? (
+      ) : !visible?.length ? (
+        // Todas always lists a room; an empty property shows setup instead.
         <AllClean />
       ) : (
         <RoomList
           view={view}
-          rooms={visible ?? []}
+          rooms={visible}
           mark={mark}
           today={list.date}
-          selection={selection}
-          bulkPending={bulkPending}
-          onMarkSelected={markSelected}
+          bulk={{ selection, pending: bulkPending, markSelected }}
         />
       )}
     </main>
