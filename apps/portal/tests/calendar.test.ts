@@ -1849,6 +1849,8 @@ it("uses the property date for arrival badges and refreshes them on resume", asy
   assert.equal(container.textContent.includes("Llega hoy"), false);
 });
 
+type HousekeepingMarks = { marks: { roomId: string; status: "dirty" | "clean" }[] };
+
 function limpiezaRoom(id: string, number: string, housekeepingStatus: "dirty" | "clean") {
   return {
     id,
@@ -1856,7 +1858,7 @@ function limpiezaRoom(id: string, number: string, housekeepingStatus: "dirty" | 
     roomTypeId: "double",
     roomTypeName: "Doble",
     housekeepingStatus,
-    housekeepingChangedAt: null,
+    housekeepingChangedAt: null as string | null,
     closed: false,
     inHouse: false,
     departing: false,
@@ -1864,8 +1866,12 @@ function limpiezaRoom(id: string, number: string, housekeepingStatus: "dirty" | 
   };
 }
 
-/** The Limpieza page on a view, switching tabs like its route and showing toasts. */
-async function renderLimpieza(initial: "to-clean" | "all") {
+/**
+ * The Limpieza page on a view, switching tabs like its route and showing toasts. It
+ * opens on a phone unless asked for the front desk's desktop table.
+ */
+async function renderLimpieza(initial: "to-clean" | "all", { desktop = false } = {}) {
+  if (!desktop) page.mobile();
   const { ToastProvider } = (await browser.server.ssrLoadModule(
     "/src/components/ui/toast.tsx",
   )) as typeof import("../src/components/ui/toast.tsx");
@@ -1896,18 +1902,17 @@ it("keeps Todas in room order after a mark and restores a status the server reje
     })),
   }));
   const writes: unknown[] = [];
-  page.api.on<{ status: "dirty" | "clean" }>("PUT", "/housekeeping/:id", ({ params, body }) => {
-    writes.push([params.id, body]);
-    const number = params.id.replace("room-", "");
-    statuses[number] = body.status;
+  page.api.on<HousekeepingMarks>("PUT", "/housekeeping", ({ body }) => {
+    writes.push(body);
+    for (const { roomId, status } of body.marks) statuses[roomId.replace("room-", "")] = status;
     // The front desk assigns an arrival meanwhile; only a re-read can show it.
     arriving = true;
     return {
-      id: params.id,
-      number,
-      roomTypeId: "double",
-      housekeepingStatus: body.status,
-      housekeepingChangedAt: "2026-10-20T15:00:00.000Z",
+      rooms: body.marks.map(({ roomId, status }) => ({
+        id: roomId,
+        housekeepingStatus: status,
+        housekeepingChangedAt: "2026-10-20T15:00:00.000Z",
+      })),
     };
   });
   await renderLimpieza("all");
@@ -1921,11 +1926,11 @@ it("keeps Todas in room order after a mark and restores a status the server reje
     () => container.textContent.includes("Llega hoy"),
     "A saved mark must re-read the list",
   );
-  assert.deepEqual(writes, [["room-102", { status: "clean" }]]);
+  assert.deepEqual(writes, [{ marks: [{ roomId: "room-102", status: "clean" }] }]);
   assert.deepEqual(limpiezaRows(), ["101:clean", "102:clean"]);
   assert.equal(window.document.body.textContent.includes("Habitación 101"), false);
 
-  const rejected = page.api.hold("PUT", "/housekeeping/:id");
+  const rejected = page.api.hold("PUT", "/housekeeping");
   await click("Marcar habitación 102 como sucia");
   await until(() => rejected.request !== undefined && limpiezaRows()[1] === "102:dirty");
   await React.act(async () =>
@@ -1954,7 +1959,7 @@ it("re-reads Limpieza at property midnight so yesterday's arrivals stop showing"
 });
 
 /** Por limpiar over a hotel with each of today's cases, recording every mark. */
-async function renderPorLimpiar() {
+async function renderPorLimpiar({ desktop = false } = {}) {
   const rooms = [
     { ...limpiezaRoom("room-101", "101", "dirty"), departing: true },
     limpiezaRoom("room-102", "102", "dirty"),
@@ -1967,14 +1972,21 @@ async function renderPorLimpiar() {
   ];
   page.api.on("GET", "/housekeeping", () => ({ date: "2026-10-20", rooms }));
   const writes: unknown[] = [];
-  page.api.on<{ status: "dirty" | "clean" }>("PUT", "/housekeeping/:id", ({ params, body }) => {
-    writes.push([params.id, body.status]);
-    const room = rooms.find((room) => room.id === params.id)!;
-    room.housekeepingStatus = body.status;
-    return { ...room, housekeepingChangedAt: "2026-10-20T15:00:00.000Z" };
+  page.api.on<HousekeepingMarks>("PUT", "/housekeeping", ({ body }) => {
+    const marked = body.marks.map(({ roomId, status }) => {
+      writes.push([roomId, status]);
+      const room = rooms.find((room) => room.id === roomId)!;
+      room.housekeepingStatus = status;
+      return {
+        id: roomId,
+        housekeepingStatus: status,
+        housekeepingChangedAt: "2026-10-20T15:00:00.000Z",
+      };
+    });
+    return { rooms: marked };
   });
-  await renderLimpieza("to-clean");
-  await until(() => porLimpiarCards().length > 0, "Por limpiar must load");
+  await renderLimpieza("to-clean", { desktop });
+  await until(() => container.querySelector("li, tbody tr") !== null, "Por limpiar must load");
   return { writes };
 }
 
@@ -2027,4 +2039,353 @@ it("shows Todo limpio when Por limpiar empties while Todas still lists every roo
   await click("Todas");
   await until(() => limpiezaRows().length === 7, "Todas must list every room");
   assert.match(container.textContent, /Cerrada/);
+});
+
+/** The desktop table's body rows as their cells' text, leaving out the selection checkbox. */
+const limpiezaTableRows = () =>
+  Array.from(container.querySelectorAll("tbody tr")).map((row) =>
+    Array.from(row.querySelectorAll("td"))
+      .filter((cell) => !cell.querySelector('[role="checkbox"]'))
+      .map((cell) => cell.textContent.trim()),
+  );
+
+it("shows the front desk a Todas table with when each room was last marked", async () => {
+  // Now is 10:00 in Lima.
+  const rooms = [
+    { ...limpiezaRoom("room-101", "101", "dirty"), inHouse: true },
+    // 09:42 in Lima today.
+    { ...limpiezaRoom("room-102", "102", "clean"), housekeepingChangedAt: "2026-10-20T14:42:00Z" },
+    // Still the 19th in Lima, though the 20th in UTC.
+    { ...limpiezaRoom("room-103", "103", "dirty"), housekeepingChangedAt: "2026-10-20T04:30:00Z" },
+    // Some ICU versions shorten September to "sept" or "set".
+    { ...limpiezaRoom("room-104", "104", "clean"), housekeepingChangedAt: "2026-09-05T15:00:00Z" },
+  ];
+  page.api.on("GET", "/housekeeping", () => ({ date: "2026-10-20", rooms }));
+  const writes: unknown[] = [];
+  page.api.on<HousekeepingMarks>("PUT", "/housekeeping", ({ body }) => ({
+    rooms: body.marks.map(({ roomId, status }) => {
+      writes.push([roomId, status]);
+      const room = rooms.find((room) => room.id === roomId)!;
+      room.housekeepingStatus = status;
+      room.housekeepingChangedAt = "2026-10-20T15:00:00.000Z";
+      return room;
+    }),
+  }));
+  await renderLimpieza("all", { desktop: true });
+  await until(() => limpiezaTableRows().length === 4, "Todas must load as a table");
+
+  assert.equal(container.querySelector("ul"), null);
+  assert.deepEqual(
+    Array.from(container.querySelectorAll("thead th")).map((cell) => cell.textContent.trim()),
+    ["", "Habitación", "Tipo", "Hoy", "Marcada", "Estado"],
+  );
+  assert.deepEqual(limpiezaTableRows(), [
+    ["101", "Doble", "En casa", "—", "SuciaLimpia"],
+    ["102", "Doble", "Libre", "09:42", "SuciaLimpia"],
+    ["103", "Doble", "Libre", "19 oct", "SuciaLimpia"],
+    ["104", "Doble", "Libre", "5 sep", "SuciaLimpia"],
+  ]);
+
+  const saving = page.api.hold("PUT", "/housekeeping");
+  await click("Marcar habitación 103 como limpia");
+  await until(() => saving.request !== undefined, "The mark must be sent");
+  assert.equal(page.button("Marcar habitación 103 como sucia").disabled, true);
+  assert.equal(page.button("Marcar habitación 102 como sucia").disabled, false);
+  rooms[2].housekeepingStatus = "clean";
+  rooms[2].housekeepingChangedAt = "2026-10-20T15:00:00.000Z";
+  await React.act(async () => saving.release(Response.json({ rooms: [rooms[2]] })));
+  await until(
+    () => limpiezaTableRows()[2]?.[3] === "10:00",
+    "A saved mark must re-read when the room was marked",
+  );
+
+  await until(() => window.document.body.textContent.includes("Habitación 103 lista"));
+  await click("Deshacer");
+  await until(
+    () =>
+      writes.length === 1 &&
+      page.button("Marcar habitación 103 como sucia").getAttribute("aria-pressed") === "true",
+    "Undo must set the previous status again",
+  );
+  assert.deepEqual(writes, [["room-103", "dirty"]]);
+});
+
+it("keeps Por limpiar's order and Lista in the desktop table, and phone cards below 768px", async () => {
+  const { writes } = await renderPorLimpiar({ desktop: true });
+
+  assert.deepEqual(
+    limpiezaTableRows().map(([number, , today, marked, action]) => [number, today, marked, action]),
+    [
+      ["106", "Llega hoyLibreCerrada", "—", "Lista"],
+      ["105", "Llega hoySale hoy", "—", "Lista"],
+      ["102", "Libre", "—", "Lista"],
+      ["101", "Sale hoy", "—", "Lista"],
+    ],
+  );
+  assert.equal(page.button("Por limpiar4").getAttribute("aria-selected"), "true");
+
+  await click("Marcar habitación 102 como limpia");
+  await until(
+    () => writes.length === 1 && limpiezaTableRows().length === 3,
+    "A room marked Lista must leave the table",
+  );
+  assert.ok(page.button("Por limpiar3"));
+
+  await React.act(async () => page.mobile());
+  await until(() => container.querySelector("table") === null, "A phone must not get the table");
+  assert.equal(container.querySelector('[role="checkbox"]'), null, "A phone has no selection");
+  assert.deepEqual(porLimpiarCards(), [
+    "106DobleLlega hoyLibreCerradaLista",
+    "105DobleLlega hoySale hoyLista",
+    "101DobleSale hoyLista",
+  ]);
+  await React.act(async () => window.happyDOM.setWindowSize({ width: 768, height: 844 }));
+  await until(() => limpiezaTableRows().length === 3, "768px and wider is the desktop table");
+
+  for (const number of ["101", "105", "106"]) {
+    await click(`Marcar habitación ${number} como limpia`);
+  }
+  await until(() => container.textContent.includes("Todo limpio"), "An empty Por limpiar is done");
+});
+
+/** A desktop Limpieza row's checkbox, or the header's with `"todas"`. */
+function selectBox(number: string) {
+  const label = number === "todas" ? "Seleccionar todas" : `Seleccionar habitación ${number}`;
+  const box = container.querySelector<HTMLElement>(`[role="checkbox"][aria-label="${label}"]`);
+  assert.ok(box, `Missing checkbox ${label}`);
+  return box;
+}
+
+async function select(number: string, { shift = false } = {}) {
+  await React.act(async () =>
+    selectBox(number).dispatchEvent(
+      new window.MouseEvent("click", { bubbles: true, cancelable: true, shiftKey: shift }),
+    ),
+  );
+}
+
+/** The rooms whose row checkbox is checked, in the order on screen. */
+const selectedRooms = () =>
+  Array.from(container.querySelectorAll('tbody [role="checkbox"][aria-checked="true"]')).map(
+    (box) => box.getAttribute("aria-label")!.replace("Seleccionar habitación ", ""),
+  );
+
+/** The selection bar's text, or null while nothing is selected. */
+const selectionBar = () =>
+  container.querySelector('[role="group"][aria-label="Selección"]')?.textContent ?? null;
+
+/** Bulk marks the selection from Todas' Marcar como menu. */
+async function markSelectedAs(label: "Limpias" | "Sucias") {
+  const trigger = page.button("Marcar como");
+  await React.act(async () => {
+    trigger.dispatchEvent(new window.PointerEvent("pointerdown", { bubbles: true }));
+    trigger.click();
+  });
+  await until(
+    () => window.document.querySelector('[role="menuitem"]') !== null,
+    "Marcar como must open",
+  );
+  await chooseMenuItem(label);
+}
+
+/** Todas over five rooms with mixed statuses, recording each request's marks. */
+async function renderTodasTable() {
+  const rooms = ["101", "102", "103", "104", "105"].map((number) =>
+    limpiezaRoom(`room-${number}`, number, number === "102" ? "clean" : "dirty"),
+  );
+  page.api.on("GET", "/housekeeping", () => ({ date: "2026-10-20", rooms }));
+  const writes: string[][] = [];
+  page.api.on<HousekeepingMarks>("PUT", "/housekeeping", ({ body }) => {
+    writes.push(body.marks.map(({ roomId, status }) => `${roomId.replace("room-", "")}:${status}`));
+    return {
+      rooms: body.marks.map(({ roomId, status }) => {
+        const room = rooms.find((room) => room.id === roomId)!;
+        room.housekeepingStatus = status;
+        room.housekeepingChangedAt = "2026-10-20T15:00:00.000Z";
+        return room;
+      }),
+    };
+  });
+  await renderLimpieza("all", { desktop: true });
+  await until(() => limpiezaTableRows().length === 5, "Todas must load as a table");
+  return { rooms, writes };
+}
+
+it("bulk marks a shift-clicked range of Todas in one request and undoes each room's own status", async () => {
+  const { writes } = await renderTodasTable();
+  assert.equal(selectionBar(), null);
+
+  await select("101");
+  await select("104", { shift: true });
+  assert.deepEqual(selectedRooms(), ["101", "102", "103", "104"]);
+  assert.equal(selectionBar(), "4 seleccionadasMarcar como");
+
+  // 102 is already clean; it is marked again, so its Marcada time updates.
+  await markSelectedAs("Limpias");
+  await until(() => window.document.body.textContent.includes("4 habitaciones listas"));
+  assert.deepEqual(writes, [["101:clean", "102:clean", "103:clean", "104:clean"]]);
+  assert.equal(selectionBar(), null);
+  assert.deepEqual(selectedRooms(), []);
+  await until(() => limpiezaTableRows()[1]?.[3] === "10:00", "The re-read shows the new mark");
+
+  await click("Deshacer");
+  await until(() => writes.length === 2, "Undo must send one request");
+  assert.deepEqual(writes[1], ["101:dirty", "102:clean", "103:dirty", "104:dirty"]);
+  await until(
+    () =>
+      page.button("Marcar habitación 103 como sucia").getAttribute("aria-pressed") === "true" &&
+      page.button("Marcar habitación 102 como limpia").getAttribute("aria-pressed") === "true",
+    "Undo must restore each room's own status",
+  );
+});
+
+it("bulk marks the selected Todas rooms dirty in one request, holding the selection while it saves", async () => {
+  const { rooms, writes } = await renderTodasTable();
+
+  await select("101");
+  await select("102");
+  const saving = page.api.hold("PUT", "/housekeeping");
+  await markSelectedAs("Sucias");
+  await until(() => saving.request !== undefined, "The bulk mark must be sent");
+  assert.deepEqual(saving.request!.body, {
+    marks: [
+      { roomId: "room-101", status: "dirty" },
+      { roomId: "room-102", status: "dirty" },
+    ],
+  });
+  for (const number of ["todas", "101", "103"]) {
+    assert.equal(selectBox(number).getAttribute("aria-disabled"), "true");
+  }
+  for (const number of ["101", "102", "103"]) {
+    assert.equal(page.button(`Marcar habitación ${number} como limpia`).disabled, true);
+    assert.equal(page.button(`Marcar habitación ${number} como sucia`).disabled, true);
+  }
+  await select("103");
+  await select("todas");
+  assert.deepEqual(selectedRooms(), ["101", "102"]);
+
+  const marked = rooms.slice(0, 2);
+  for (const room of marked) {
+    room.housekeepingStatus = "dirty";
+    room.housekeepingChangedAt = "2026-10-20T15:00:00.000Z";
+  }
+  await React.act(async () => saving.release(Response.json({ rooms: marked })));
+  await until(() => window.document.body.textContent.includes("2 habitaciones marcadas sucias"));
+  assert.equal(selectionBar(), null);
+  assert.equal(page.button("Marcar habitación 102 como limpia").disabled, false);
+  await until(
+    () => page.button("Marcar habitación 102 como sucia").getAttribute("aria-pressed") === "true",
+    "The marked rooms must show Sucia",
+  );
+
+  await click("Deshacer");
+  await until(() => writes.length === 1, "Undo must send one request");
+  assert.deepEqual(writes, [["101:dirty", "102:clean"]]);
+  await until(
+    () => page.button("Marcar habitación 102 como limpia").getAttribute("aria-pressed") === "true",
+    "Undo must restore 102's own status",
+  );
+});
+
+it("blocks overlapping row marks during a bulk save and enables them again after failure", async () => {
+  const { writes } = await renderTodasTable();
+  await select("101");
+  await select("102");
+  const rejected = page.api.hold("PUT", "/housekeeping");
+  await markSelectedAs("Limpias");
+  await until(() => rejected.request !== undefined, "The bulk mark must be sent");
+
+  // 102 was already clean. A row mark here could succeed, then be overwritten in
+  // the cache by the failed bulk request's rollback to that original clean status.
+  assert.equal(page.button("Marcar habitación 102 como sucia").disabled, true);
+  await click("Marcar habitación 102 como sucia");
+  assert.deepEqual(writes, [], "The disabled row action must not send another mark");
+
+  await React.act(async () =>
+    rejected.release(Response.json({ error: "room not found" }, { status: 404 })),
+  );
+  await until(
+    () => !page.button("Marcar habitación 102 como sucia").disabled,
+    "A rejected bulk mark must enable the row actions again",
+  );
+  assert.deepEqual(selectedRooms(), ["101", "102"]);
+  assert.equal(
+    page.button("Marcar habitación 101 como sucia").getAttribute("aria-pressed"),
+    "true",
+  );
+  assert.equal(
+    page.button("Marcar habitación 102 como limpia").getAttribute("aria-pressed"),
+    "true",
+  );
+
+  await click("Marcar habitación 102 como sucia");
+  await until(() => writes.length === 1, "The row action must work after the failed bulk mark");
+  assert.deepEqual(writes, [["102:dirty"]]);
+});
+
+it("selects Por limpiar ranges in cleaning order and keeps the selection when a bulk mark fails", async () => {
+  const { writes } = await renderPorLimpiar({ desktop: true });
+
+  // On screen: 106, 105, 102, 101.
+  await select("106");
+  await select("102", { shift: true });
+  assert.deepEqual(selectedRooms(), ["106", "105", "102"]);
+  assert.equal(selectionBar(), "3 seleccionadasMarcar limpias");
+
+  // The header checkbox clears a partial selection, then selects every row.
+  await select("todas");
+  assert.deepEqual(selectedRooms(), []);
+  assert.equal(selectionBar(), null);
+  await select("todas");
+  assert.deepEqual(selectedRooms(), ["106", "105", "102", "101"]);
+  assert.equal(selectBox("todas").getAttribute("aria-checked"), "true");
+
+  const rejected = page.api.hold("PUT", "/housekeeping");
+  await click("Marcar limpias");
+  await until(() => rejected.request !== undefined, "The bulk mark must be sent");
+  await React.act(async () =>
+    rejected.release(Response.json({ error: "room not found" }, { status: 404 })),
+  );
+  await until(
+    () => window.document.body.textContent.includes("No se pudo guardar la limpieza"),
+    "A failed bulk mark must show an error toast",
+  );
+  await until(() => limpiezaTableRows().length === 4, "A failed bulk mark changes nothing");
+  assert.deepEqual(writes, []);
+  assert.deepEqual(selectedRooms(), ["106", "105", "102", "101"]);
+  assert.equal(selectionBar(), "4 seleccionadasMarcar limpias");
+
+  await click("Marcar limpias");
+  await until(() => container.textContent.includes("Todo limpio"), "The retry marks every room");
+  assert.deepEqual(writes, [
+    ["room-106", "clean"],
+    ["room-105", "clean"],
+    ["room-102", "clean"],
+    ["room-101", "clean"],
+  ]);
+  await until(() => window.document.body.textContent.includes("4 habitaciones listas"));
+});
+
+it("drops rooms a re-read takes off the tab from the selection, and clears it on a tab switch", async () => {
+  const rooms = ["101", "102", "103"].map((number) =>
+    limpiezaRoom(`room-${number}`, number, "dirty"),
+  );
+  page.api.on("GET", "/housekeeping", () => ({ date: "2026-10-20", rooms }));
+  await renderLimpieza("to-clean", { desktop: true });
+  await until(() => limpiezaTableRows().length === 3, "Por limpiar must load");
+
+  await select("todas");
+  assert.equal(selectionBar(), "3 seleccionadasMarcar limpias");
+
+  // Another device marks 102 clean; the next read takes it off Por limpiar.
+  rooms[1]!.housekeepingStatus = "clean";
+  await React.act(() => page.client.invalidateQueries({ queryKey: queries.housekeepingQueryKey }));
+  await until(() => limpiezaTableRows().length === 2, "The re-read must drop 102");
+  assert.deepEqual(selectedRooms(), ["101", "103"]);
+  assert.equal(selectionBar(), "2 seleccionadasMarcar limpias");
+
+  await click("Todas");
+  await until(() => limpiezaTableRows().length === 3, "Todas must list every room");
+  assert.deepEqual(selectedRooms(), []);
+  assert.equal(selectionBar(), null);
 });

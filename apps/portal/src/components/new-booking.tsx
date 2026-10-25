@@ -207,7 +207,7 @@ export function NewBooking({
   return (
     <form
       noValidate
-      className="flex min-w-0 flex-col gap-5 max-md:min-h-0 max-md:flex-1 max-md:gap-0 max-md:[&_button]:min-h-11 max-md:[&_input]:min-h-11 max-md:[&_[data-slot=input-group]]:min-h-11"
+      className="flex min-w-0 flex-col gap-5 max-md:min-h-0 max-md:flex-1 max-md:gap-0"
       onSubmit={(event) => void submitForm(event, () => form.handleSubmit())}
     >
       <div className="flex min-w-0 flex-col gap-5 max-md:min-h-0 max-md:flex-1 max-md:overflow-y-auto max-md:overscroll-contain max-md:scroll-py-4 max-md:pb-6 max-md:safe-area-padding-x">
@@ -536,18 +536,11 @@ export function NewBooking({
           </p>
         )}
         <div className="flex flex-wrap justify-end gap-2 max-md:[&>button]:flex-1">
-          <Button
-            type="button"
-            variant="outline"
-            className="relative after:absolute after:inset-x-0 after:top-1/2 after:h-11 after:-translate-y-1/2"
-            disabled={busy}
-            onClick={onCancel}
-          >
+          <Button type="button" variant="outline" disabled={busy} onClick={onCancel}>
             Cancelar
           </Button>
           <Button
             type="submit"
-            className="relative after:absolute after:inset-x-0 after:top-1/2 after:h-11 after:-translate-y-1/2"
             disabled={
               busy ||
               !priced ||

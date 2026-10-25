@@ -53,9 +53,17 @@ async function housekeepingList() {
   return (await response.json()) as HousekeepingList;
 }
 
-async function mark(roomId: string, status: string) {
-  return request(`/housekeeping/${roomId}`, "PUT", { status });
+function markAll(marks: unknown) {
+  return request("/housekeeping", "PUT", { marks });
 }
+
+async function mark(roomId: string, status: string) {
+  return markAll([{ roomId, status }]);
+}
+
+type MarkedRooms = {
+  rooms: { id: string; housekeepingStatus: string; housekeepingChangedAt: string | null }[];
+};
 
 function stay(
   id: string,
@@ -168,8 +176,9 @@ describe("marking housekeeping status", () => {
     });
 
     expect(await (await mark(id, "dirty")).json()).toMatchObject({
-      housekeepingStatus: "dirty",
-      housekeepingChangedAt: "2026-10-10T15:00:00.000Z",
+      rooms: [
+        { id, housekeepingStatus: "dirty", housekeepingChangedAt: "2026-10-10T15:00:00.000Z" },
+      ],
     });
     vi.setSystemTime(new Date("2026-10-10T15:05:00Z"));
     expect((await mark(id, "dirty")).status).toBe(200);
@@ -183,12 +192,101 @@ describe("marking housekeeping status", () => {
     expect((await room()).housekeepingStatus).toBe("clean");
   });
 
-  it("rejects an unknown status and an unknown room", async () => {
-    const invalid = await mark("room-101", "inspected");
-    expect(invalid.status).toBe(400);
-    const missing = await mark("no-such-room", "dirty");
-    expect(missing.status).toBe(404);
-    expect(await missing.json()).toEqual({ error: "room not found" });
+  it("marks several rooms with their own statuses in one request", async () => {
+    expect((await mark("room-103", "dirty")).status).toBe(200);
+    vi.setSystemTime(new Date("2026-10-10T15:30:00Z"));
+
+    const response = await markAll([
+      { roomId: "room-102", status: "dirty" },
+      { roomId: "room-101", status: "clean" },
+      { roomId: "room-103", status: "dirty" },
+    ]);
+
+    expect(response.status).toBe(200);
+    const { rooms } = (await response.json()) as MarkedRooms;
+    // A repeat of the current status still records the mark.
+    expect(
+      rooms.map((r) => `${r.id}:${r.housekeepingStatus}:${r.housekeepingChangedAt}`).sort(),
+    ).toEqual([
+      "room-101:clean:2026-10-10T15:30:00.000Z",
+      "room-102:dirty:2026-10-10T15:30:00.000Z",
+      "room-103:dirty:2026-10-10T15:30:00.000Z",
+    ]);
+    expect(
+      (await housekeepingList()).rooms.map(
+        (r) => `${r.number}:${r.housekeepingStatus}:${r.housekeepingChangedAt}`,
+      ),
+    ).toEqual([
+      "101:clean:2026-10-10T15:30:00.000Z",
+      "102:dirty:2026-10-10T15:30:00.000Z",
+      "103:dirty:2026-10-10T15:30:00.000Z",
+      "104:clean:null",
+      "110:clean:null",
+    ]);
+  });
+
+  it.each([
+    ["an empty list", [], 400, undefined],
+    [
+      "the same room twice",
+      [
+        { roomId: "room-101", status: "dirty" },
+        { roomId: "room-101", status: "clean" },
+      ],
+      400,
+      "duplicate room in housekeeping marks",
+    ],
+    [
+      "an unknown room",
+      [
+        { roomId: "room-101", status: "dirty" },
+        { roomId: "no-such-room", status: "dirty" },
+      ],
+      404,
+      "room not found",
+    ],
+    ["an unknown status", [{ roomId: "room-101", status: "inspected" }], 400, undefined],
+    [
+      "more than 500 marks",
+      Array.from({ length: 501 }, (_, index) => ({
+        roomId: index === 0 ? "room-101" : `room-${1000 + index}`,
+        status: "dirty",
+      })),
+      400,
+      undefined,
+    ],
+  ])("rejects %s and saves nothing", async (_case, marks, status, error) => {
+    const response = await markAll(marks);
+
+    expect(response.status).toBe(status);
+    if (error) expect(await response.json()).toEqual({ error });
+    expect(
+      (await housekeepingList()).rooms.map((r) => `${r.number}:${r.housekeepingStatus}`),
+    ).toEqual(["101:clean", "102:clean", "103:clean", "104:clean", "110:clean"]);
+  });
+
+  it("accepts 500 marks", async () => {
+    const roomIds = Object.fromEntries(
+      Array.from({ length: 495 }, (_, index) => [`extra-${index}`, `${300 + index}`]),
+    );
+    seedRooms(db.sqlite, "type", roomIds);
+    const marks = [
+      "room-101",
+      "room-102",
+      "room-103",
+      "room-104",
+      "room-110",
+      ...Object.keys(roomIds),
+    ].map((roomId) => ({ roomId, status: "dirty" }));
+
+    const response = await markAll(marks);
+
+    expect(response.status).toBe(200);
+    const { rooms } = (await response.json()) as MarkedRooms;
+    expect(rooms).toHaveLength(500);
+    expect(
+      (await housekeepingList()).rooms.every((room) => room.housekeepingStatus === "dirty"),
+    ).toBe(true);
   });
 });
 

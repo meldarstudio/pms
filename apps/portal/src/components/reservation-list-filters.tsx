@@ -1,6 +1,5 @@
 import { useId } from "react";
 import { RotateCcwIcon, SlidersHorizontalIcon } from "lucide-react";
-import { cn } from "cn";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -47,7 +46,6 @@ export function ReservationListFilters({
   const trigger = (
     <Button
       variant="outline"
-      className="min-h-11 md:min-h-0"
       aria-label="Filtros"
       aria-describedby={filterCount ? `${id}-count` : undefined}
     />
@@ -67,7 +65,7 @@ export function ReservationListFilters({
     <Button
       variant="ghost"
       size="sm"
-      className={cn("shrink-0", mobile && "min-h-11")}
+      className="shrink-0"
       disabled={filterCount === 0}
       onClick={() =>
         onChange({
@@ -86,7 +84,7 @@ export function ReservationListFilters({
       {search.view !== "in-house" ? (
         <FieldSet>
           <FieldLegend>Estados</FieldLegend>
-          <FieldGroup className={cn("gap-3", mobile && "gap-0")}>
+          <FieldGroup className="gap-3">
             {reservationStatusValues.map((status) => {
               const checked = selectedStatuses.values.includes(status);
               const disabled = checked && selectedStatuses.values.length === 1;
@@ -102,10 +100,7 @@ export function ReservationListFilters({
                       })
                     }
                   />
-                  <FieldLabel
-                    htmlFor={`${id}-${status}`}
-                    className={cn(mobile && "min-h-11 items-center")}
-                  >
+                  <FieldLabel htmlFor={`${id}-${status}`}>
                     {reservationStatusLabel(status)}
                   </FieldLabel>
                 </Field>
@@ -117,7 +112,6 @@ export function ReservationListFilters({
       <ChoiceField
         label="Saldo"
         value={search.balance}
-        touchTargets={mobile}
         options={[
           { value: "all", label: "Cualquier saldo" },
           { value: "outstanding", label: "Saldo pendiente" },
@@ -129,7 +123,6 @@ export function ReservationListFilters({
       <ChoiceField
         label="Asignación"
         value={search.assignment}
-        touchTargets={mobile}
         options={[
           { value: "all", label: "Cualquier asignación" },
           { value: "assigned", label: "Todas asignadas" },
@@ -159,7 +152,7 @@ export function ReservationListFilters({
             </SheetHeader>
             <div className="flex min-h-0 flex-col gap-4 overflow-y-auto px-4 pb-4">{controls}</div>
             <SheetFooter className="shrink-0 pb-[max(1rem,env(safe-area-inset-bottom))]">
-              <SheetClose render={<Button className="min-h-11" />}>Listo</SheetClose>
+              <SheetClose render={<Button />}>Listo</SheetClose>
             </SheetFooter>
           </SheetContent>
         </Sheet>

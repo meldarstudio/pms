@@ -269,13 +269,13 @@ export function Reservations({
         >
           <TabsList
             aria-label="Vista de reservas"
-            className="grid w-full max-w-full grid-cols-2 justify-start gap-1 group-data-horizontal/tabs:h-auto md:inline-flex md:w-fit md:gap-0 md:group-data-horizontal/tabs:h-9 md:overflow-x-auto"
+            className="grid w-full max-w-full auto-rows-7 grid-cols-2 justify-start gap-1 group-data-horizontal/tabs:h-auto md:inline-flex md:w-fit md:gap-0 md:group-data-horizontal/tabs:h-8 md:overflow-x-auto"
           >
             {views.map(({ value, label, icon: Icon }) => (
               <TabsTrigger
                 key={value}
                 value={value}
-                className="h-auto min-h-11 min-w-0 gap-2 px-2 whitespace-normal md:h-[calc(100%-1px)] md:min-h-0 md:min-w-auto md:px-4 md:whitespace-nowrap"
+                className="min-w-0 whitespace-normal md:min-w-auto md:whitespace-nowrap"
               >
                 <Icon aria-hidden="true" className="hidden md:block" />
                 {label}
@@ -288,13 +288,12 @@ export function Reservations({
             <Button
               variant="outline"
               size="icon"
-              className="min-h-11 min-w-11 md:min-h-0 md:min-w-0"
               aria-label="Día anterior"
               onClick={() => refine({ day: addDateLabelDays(search.day, -1) })}
             >
               <ChevronLeftIcon data-icon="inline-start" />
             </Button>
-            <div className="min-w-0 flex-1 [&_button]:min-h-11 md:w-40 md:flex-none md:[&_button]:min-h-0">
+            <div className="min-w-0 flex-1 md:w-40 md:flex-none">
               <DateField
                 id={arrivalId}
                 label="Día de operación"
@@ -310,17 +309,12 @@ export function Reservations({
             <Button
               variant="outline"
               size="icon"
-              className="min-h-11 min-w-11 md:min-h-0 md:min-w-0"
               aria-label="Día siguiente"
               onClick={() => refine({ day: addDateLabelDays(search.day, 1) })}
             >
               <ChevronRightIcon data-icon="inline-end" />
             </Button>
-            <Button
-              variant="ghost"
-              className="min-h-11 min-w-11 md:min-h-0 md:min-w-0"
-              onClick={() => refine({ day: propertyToday() })}
-            >
+            <Button variant="ghost" onClick={() => refine({ day: propertyToday() })}>
               Hoy
             </Button>
           </div>
@@ -332,12 +326,11 @@ export function Reservations({
             <FieldLabel htmlFor={guestId} className="sr-only">
               Contacto principal o código
             </FieldLabel>
-            <InputGroup className="min-h-11 md:min-h-0">
+            <InputGroup>
               <InputGroupAddon>
                 <SearchIcon />
               </InputGroupAddon>
               <InputGroupInput
-                className="min-h-11 md:min-h-0"
                 id={guestId}
                 placeholder="Buscar contacto principal o código…"
                 value={search.q}
@@ -348,7 +341,6 @@ export function Reservations({
                   <Button
                     variant="ghost"
                     size="icon-xs"
-                    className="min-h-11 min-w-11 md:min-h-0 md:min-w-0"
                     aria-label="Borrar búsqueda"
                     onClick={() => refine({ q: "" })}
                   >
@@ -367,7 +359,7 @@ export function Reservations({
                 <Button
                   variant="ghost"
                   size="sm"
-                  className="min-h-11 max-w-full whitespace-normal md:min-h-0 md:whitespace-nowrap"
+                  className="max-w-full whitespace-normal md:whitespace-nowrap"
                   aria-label="Ordenar reservas"
                 />
               }
@@ -384,14 +376,12 @@ export function Reservations({
               <PopoverTitle>Orden de las reservas</PopoverTitle>
               <FieldGroup className="gap-3">
                 <ChoiceField
-                  touchTargets={mobile}
                   label="Ordenar por"
                   value={search.sort}
                   options={sortOptions}
                   onChange={(sort) => refine({ sort: sort as ReservationSort })}
                 />
                 <ChoiceField
-                  touchTargets={mobile}
                   label="Dirección"
                   value={search.direction}
                   options={[
@@ -415,11 +405,7 @@ export function Reservations({
             {query.isError ? (
               <div className="flex flex-col items-start gap-3">
                 <FieldError>{query.error.message}</FieldError>
-                <Button
-                  variant="outline"
-                  className="min-h-11 md:min-h-0"
-                  onClick={() => void query.refetch()}
-                >
+                <Button variant="outline" onClick={() => void query.refetch()}>
                   Reintentar
                 </Button>
               </div>
@@ -593,7 +579,6 @@ export function Reservations({
         <div className="flex w-full flex-wrap items-center gap-2 md:w-auto">
           <div className="w-24">
             <ChoiceField
-              touchTargets={mobile}
               label="Reservas por página"
               hideLabel
               value={String(search.size)}
@@ -611,7 +596,7 @@ export function Reservations({
           <Button
             variant="outline"
             size="icon"
-            className="min-h-11 w-auto flex-1 px-2.5 md:min-h-0 md:w-8 md:flex-none md:px-0"
+            className="w-auto flex-1 px-2.5 md:w-8 md:flex-none md:px-0"
             aria-label="Anterior"
             disabled={search.page === 0 || query.isFetching}
             onClick={() => changePage(search.page - 1)}
@@ -622,7 +607,7 @@ export function Reservations({
           <Button
             variant="outline"
             size="icon"
-            className="min-h-11 w-auto flex-1 px-2.5 md:min-h-0 md:w-8 md:flex-none md:px-0"
+            className="w-auto flex-1 px-2.5 md:w-8 md:flex-none md:px-0"
             aria-label="Siguiente"
             disabled={!query.data || offset + rows.length >= total || busy || query.isError}
             onClick={() => changePage(search.page + 1)}

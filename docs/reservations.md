@@ -137,7 +137,7 @@ one form. At least one room remains; every room shares the stay dates. Below
 title, close control, total, and **Cancelar / Crear reserva** controls. Mobile
 room sections have numbered headings and **Quitar** only when multiple rooms remain.
 Safe areas and keyboard viewport resizing preserve the draft; there is no swipe
-dismissal. Mobile footer actions have a minimum visual height of 44px.
+dismissal. Controls follow the shared [Lyra styling](portal.md#control-styling).
 
 ### Full reservation page
 
@@ -202,8 +202,8 @@ saved amounts. Total remains in the breakdown.
 With dirty details, mobile shows **Descartar** and **Guardar cambios**; another
 tab offers **Volver a Detalles** before saving. With clean details, the applicable
 check-in/checkout action and **Cerrar** share the action row; without a lifecycle
-action, **Cerrar** remains alone. Controls keep safe-area spacing and a 44px mobile
-minimum height. Desktop retains its inline full-page link and footer action menu.
+action, **Cerrar** remains alone. Controls keep safe-area spacing and the shared
+Lyra sizing. Desktop retains its inline full-page link and footer action menu.
 
 **Guardar cambios** saves dates, rooms, and notes only. **Descartar cambios**, or
 **Descartar** on mobile, resets that draft. Routine check-in/checkout saves
@@ -260,7 +260,7 @@ context. At 768px and wider, the list keeps its table and horizontal view tabs.
 The app header and Nueva reserva stay reachable while the list scrolls; see
 [navigation](portal.md#navigation) for the mobile floating placement. View,
 date, search, filter, and sorting controls scroll with the results. Mobile list
-controls have touch targets of at least 44px. Llegadas and Salidas retain their
+controls use the shared Lyra sizing. Llegadas and Salidas retain their
 previous-day, date-picker, next-day, and Hoy controls. Search still matches the
 booking contact or reservation code; En casa and Todas las reservas have no date
 restriction.

@@ -112,6 +112,11 @@ export type HousekeepingMark = Pick<
   "housekeepingStatus" | "housekeepingChangedAt"
 >;
 
+/** A status to set on one room in a `PUT /housekeeping` request. */
+export type HousekeepingMarkInput = { roomId: string; status: HousekeepingStatus };
+
+export type MarkedRoom = { id: string } & HousekeepingMark;
+
 export type HousekeepingList = {
   date: string;
   rooms: HousekeepingRoom[];
@@ -420,8 +425,9 @@ export function getHousekeeping(signal?: AbortSignal) {
   return getJson<HousekeepingList>("/housekeeping", signal);
 }
 
-export function setHousekeepingStatus(roomId: string, status: HousekeepingStatus) {
-  return writeJson<Room & HousekeepingMark>(`/housekeeping/${roomId}`, "PUT", { status });
+/** Saves every mark or none; the response holds each marked room. */
+export function markHousekeeping(marks: HousekeepingMarkInput[]) {
+  return writeJson<{ rooms: MarkedRoom[] }>("/housekeeping", "PUT", { marks });
 }
 
 export function createRoomClosure(body: {

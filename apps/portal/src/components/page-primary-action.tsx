@@ -51,15 +51,16 @@ export function PagePrimaryAction({
   return createPortal(
     <Button
       data-collapsed={collapsed || undefined}
+      size="icon"
       className={cn(
-        "fixed right-[max(1rem,env(safe-area-inset-right))] bottom-[max(1rem,env(safe-area-inset-bottom))] z-40 h-12 gap-0 px-3.5 text-sm shadow-lg [&_svg:not([class*='size-'])]:size-5",
+        "fixed right-[max(1rem,env(safe-area-inset-right))] bottom-[max(1rem,env(safe-area-inset-bottom))] z-40 w-auto gap-0 shadow-lg",
         className,
       )}
       {...props}
     >
-      {icon}
-      {/* Animating 0fr ↔ 1fr eases the label in at its natural width; it stays readable to
-          assistive technology while collapsed. */}
+      <span className="flex h-full aspect-square shrink-0 items-center justify-center">{icon}</span>
+      {/* Keep the button content-sized in both states so the label's 0fr ↔ 1fr
+          animation drives its width. The label stays accessible while collapsed. */}
       <span
         className={cn(
           "grid transition-[grid-template-columns,opacity] duration-300 ease-out motion-reduce:transition-none",
@@ -67,7 +68,7 @@ export function PagePrimaryAction({
         )}
       >
         <span className="min-w-0 overflow-hidden">
-          <span className="block pr-0.5 pl-2">{label}</span>
+          <span className="block pr-2.5">{label}</span>
         </span>
       </span>
     </Button>,
