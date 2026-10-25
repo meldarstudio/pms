@@ -109,31 +109,34 @@ export function RoomAssignmentSteps({
         )}
         {availableRooms.length > 0 && (
           <ul className="flex flex-col border" onMouseLeave={() => onHighlightRoom?.(null)}>
-            {availableRooms.map((room, index) => (
-              <li key={room.id}>
-                {index > 0 && <Separator />}
-                <button
-                  type="button"
-                  aria-label={`Asignar ${target.guestName} a habitación ${room.number}, ${target.checkIn} al ${target.checkOut}${showDirty && room.housekeepingStatus === "dirty" ? ", sucia" : ""}`}
-                  disabled={pending}
-                  onClick={() => void assignment.assignRoom(room.id)}
-                  onMouseEnter={() => onHighlightRoom?.(room.id)}
-                  onFocus={() => onHighlightRoom?.(room.id)}
-                  onBlur={() => onHighlightRoom?.(null)}
-                  className="flex w-full cursor-pointer items-center gap-2 p-2.5 text-left outline-none enabled:hover:bg-accent focus-visible:ring-1 focus-visible:ring-ring/50 disabled:cursor-default disabled:text-muted-foreground"
-                >
-                  <BedDoubleIcon className="size-4 shrink-0" aria-hidden="true" />
-                  <span className="flex min-w-0 flex-1 flex-col gap-0.5">
-                    <span className="flex items-center gap-1.5">
-                      <span className="font-medium">Habitación {room.number}</span>
-                      {showDirty && room.housekeepingStatus === "dirty" ? <DirtyRoomBadge /> : null}
+            {availableRooms.map((room, index) => {
+              const showDirtyRoom = showDirty && room.housekeepingStatus === "dirty";
+              return (
+                <li key={room.id}>
+                  {index > 0 && <Separator />}
+                  <button
+                    type="button"
+                    aria-label={`Asignar ${target.guestName} a habitación ${room.number}, ${target.checkIn} al ${target.checkOut}${showDirtyRoom ? ", sucia" : ""}`}
+                    disabled={pending}
+                    onClick={() => void assignment.assignRoom(room.id)}
+                    onMouseEnter={() => onHighlightRoom?.(room.id)}
+                    onFocus={() => onHighlightRoom?.(room.id)}
+                    onBlur={() => onHighlightRoom?.(null)}
+                    className="flex w-full cursor-pointer items-center gap-2 p-2.5 text-left outline-none enabled:hover:bg-accent focus-visible:ring-1 focus-visible:ring-ring/50 disabled:cursor-default disabled:text-muted-foreground"
+                  >
+                    <BedDoubleIcon className="size-4 shrink-0" aria-hidden="true" />
+                    <span className="flex min-w-0 flex-1 flex-col gap-0.5">
+                      <span className="flex items-center gap-1.5">
+                        <span className="font-medium">Habitación {room.number}</span>
+                        {showDirtyRoom ? <DirtyRoomBadge /> : null}
+                      </span>
+                      <span className="text-muted-foreground">Disponible</span>
                     </span>
-                    <span className="text-muted-foreground">Disponible</span>
-                  </span>
-                  <ChevronRightIcon className="size-4 shrink-0" aria-hidden="true" />
-                </button>
-              </li>
-            ))}
+                    <ChevronRightIcon className="size-4 shrink-0" aria-hidden="true" />
+                  </button>
+                </li>
+              );
+            })}
           </ul>
         )}
         {ready && eligibleCount === 0 && (
