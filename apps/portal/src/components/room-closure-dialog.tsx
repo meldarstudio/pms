@@ -24,7 +24,7 @@ import {
 import { Field, FieldDescription, FieldError, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { Spinner } from "@/components/ui/spinner";
-import { type RoomClosure } from "@/lib/api";
+import { type HousekeepingStatus, type RoomClosure } from "@/lib/api";
 import { useDeleteRoomClosure, useSaveRoomClosure } from "@/lib/queries";
 import { format } from "@/lib/dates";
 import { errorMessage, setServerErrors } from "@/lib/form-errors";
@@ -57,11 +57,16 @@ function formKey(target: ClosureTarget) {
 
 export function RoomActionsMenu({
   number,
+  housekeepingStatus,
   onEditRoom,
+  onMarkRoom,
   onCloseRoom,
 }: {
   number: string;
+  housekeepingStatus: HousekeepingStatus;
   onEditRoom: () => void;
+  /** Sets the other housekeeping status. */
+  onMarkRoom: () => void;
   onCloseRoom: () => void;
 }) {
   return (
@@ -76,6 +81,9 @@ export function RoomActionsMenu({
       <DropdownMenuContent align="start">
         <DropdownMenuGroup>
           <DropdownMenuItem onClick={onEditRoom}>Editar habitación</DropdownMenuItem>
+          <DropdownMenuItem onClick={onMarkRoom}>
+            {housekeepingStatus === "dirty" ? "Marcar limpia" : "Marcar sucia"}
+          </DropdownMenuItem>
         </DropdownMenuGroup>
         <DropdownMenuSeparator />
         <DropdownMenuGroup>

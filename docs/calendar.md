@@ -74,7 +74,9 @@ retain their booked nights. Operational **Hoy** comes from
 [the property calendar](property-calendar.md).
 
 Each room includes its current [housekeeping status](housekeeping.md); dirty rooms
-show a display-only **Sucia** marker in the room column.
+show a **Sucia** badge in the room column, and the room's actions menu marks it clean or
+dirty. The picker shows the badge only for a stay that has begun; see
+[elsewhere in the portal](housekeeping.md#elsewhere-in-the-portal).
 
 ## Known assignment limitation
 

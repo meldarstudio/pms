@@ -32,7 +32,8 @@ tab. When none are left, the tab shows **Todo limpio**.
 **Todas** is the whole hotel by room number: every room with its number, type, and
 today's stays, and a **Sucia | Limpia** control whose pressed side is the current
 status. Tapping the other side marks the room; tapping the pressed side does nothing.
-While a mark saves, that row's control is disabled. Rooms are marked dirty only here.
+While a mark saves, that row's control is disabled. Rooms can also be marked dirty from
+the [calendar](#elsewhere-in-the-portal).
 
 Both tabs show today's stays the same way, from assigned confirmed and checked-in stays
 on the property date, plus **Cerrada** when a closure covers tonight:
@@ -102,8 +103,8 @@ succeeds or fails. Controls become available again after either outcome.
 ## API
 
 `PUT /housekeeping` marks rooms with `{ marks: [{ roomId, status }] }`; each row's
-**Lista** and **Sucia | Limpia**, on the phone or the desktop table, and its
-**Deshacer** each send one mark, and a [bulk mark](#bulk-marking) and its **Deshacer**
+**Lista** and **Sucia | Limpia**, on the phone or the desktop table, the calendar's
+**Marcar limpia** and **Marcar sucia**, and each one's **Deshacer** each send one mark, and a [bulk mark](#bulk-marking) and its **Deshacer**
 send one mark per selected room. It sets, rather than
 flips, each status, so repeated or simultaneous marks agree; the last write wins. It
 saves every mark or none, with one mark time shared by the whole request, recorded
@@ -124,8 +125,16 @@ property date; the portal filters and orders Por limpiar.
 
 ## Elsewhere in the portal
 
-- **Calendar:** a dirty room shows a small **Sucia** marker beside its number in the
-  room column. The marker is display-only; mark rooms from Limpieza.
+- **Calendar:** a dirty room shows an outline **Sucia** badge beside its number in the
+  room column; a clean room shows nothing. Each room's actions menu offers **Marcar
+  limpia** on a dirty room and **Marcar sucia** on a clean one, on phones and desktop and
+  during room assignment. It marks the room exactly as a single Limpieza mark does: the
+  badge changes at once, a toast (**Habitación 101 lista** or **Habitación 101 marcada
+  sucia**) offers **Deshacer**, and a rejected mark restores the badge with an error toast.
+- **Room assignment:** the picker shows the same badge on a dirty room only when the
+  selected stay's check-in date is the property date or earlier. The status is what staff
+  marked now, so it says nothing about a room's state on a later arrival. The grid keeps
+  its badge in assignment mode regardless.
 - **Check-in:** moving a reservation to checked-in from any other status (confirmed,
   a checkout correction, or restoring a cancellation) first checks its assigned
   rooms. If one is dirty, a dialog names it and offers **Volver** or **Hacer
@@ -134,9 +143,11 @@ property date; the portal filters and orders Por limpiar.
   for its own confirmation afterwards.
 
 Reservation reads include each assigned room's `housekeepingStatus` (`null` while
-unassigned), and calendar rooms include it as well. Marking a room refreshes cached
-calendar and reservation reads in that browser.
+unassigned), and calendar rooms include it as well. Marking a room updates cached calendar windows at
+once, restores them if the mark is rejected, and refreshes cached calendar and
+reservation reads in that browser.
 
 Implementation: [housekeeping routes](../apps/backend/src/routes/housekeeping.ts),
-[Limpieza page](../apps/portal/src/components/housekeeping.tsx), and the
+[Limpieza page](../apps/portal/src/components/housekeeping.tsx), the
+[shared mark and undo](../apps/portal/src/lib/use-mark-rooms.ts), and the
 [check-in warning](../apps/portal/src/components/dirty-room-check-in.tsx).
