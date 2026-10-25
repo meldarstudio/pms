@@ -28,8 +28,8 @@ package-version update is needed. **This document is not production authorizatio
    Later merges do not change the selected commit. Releases are serialized without
    cancelling an active run; this does not lock a separate migration terminal.
 
-4. **Check and record.** Wait for active-version verification and automated smoke
-   checks to pass. The run summary records the SHA, run link, both Workers'
+4. **Check and record.** Wait for active-version verification to pass. The
+   run summary records the SHA, run link, both Workers'
    uploaded version/active deployment IDs, and step outcomes. Save drafts, then
    reload/update the portal, including installed-app windows. Verify login,
    calendar/availability, and an existing reservation **without changing production
@@ -39,15 +39,11 @@ package-version update is needed. **This document is not production authorizatio
    fails, stop and follow [recovery](#failure-and-recovery).
 
 A release is verified only after deployment **and** the checks above succeed.
-Automated smoke checks use no staff credentials: API `GET /` liveness,
-unauthenticated session rejection, and exact built portal file contents (including
-the service worker), with content-type checks for HTML, scripts, styles, and the
-manifest. Only Cloudflare's expected same-origin `307` from an HTML filename to
-its extensionless URL (such as `/offline.html` → `/offline`) is followed; the
-final response must still match the built file exactly. Other redirects fail.
-Checks retry up to three times, with a five-second request timeout and a
-60-second overall deadline. Liveness is not database readiness or successful
-login, and fresh HTTP requests do not test a staff browser's service-worker cache.
+The workflow does not perform automated HTTP smoke checks: API liveness,
+unauthenticated session rejection, and deployed portal file contents or content
+types are not checked automatically. A successful workflow is not application
+verification; complete and record the manual browser checks before calling the
+release verified, including installed-app/update behavior where applicable.
 Active-version checks are control-plane evidence at that moment, not an API
 response identifying the serving code. Keep the manual browser check.
 
@@ -151,7 +147,7 @@ authorization. Keep schema and applied history when rolling back application
 builds where compatible; prepare a reviewed forward repair when needed.
 
 Local validation does not prove remote locking, outage duration, restoration, or
-application correctness. Perform the release's application smoke checks separately.
+application correctness. Perform the release's manual browser checks separately.
 
 The wrapper compares ordered migration names; release readiness also requires
 numeric ledger IDs exactly `1...N`. Passing migration validation alone does not

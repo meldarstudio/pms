@@ -39,7 +39,6 @@ jobs:
           git merge-base --is-ancestor "$REQUESTED_SHA" refs/remotes/origin/main
           git checkout --detach "$REQUESTED_SHA"
           test "$(git rev-parse HEAD)" = "$REQUESTED_SHA"
-          test -f apps/backend/scripts/smoke-production.mjs
           test -f apps/backend/scripts/record-production-release.mjs
           printf 'Pinned release SHA: %s\n' "$REQUESTED_SHA"
 
@@ -108,14 +107,6 @@ jobs:
           WRANGLER_WRITE_LOGS: "false"
         run: node apps/backend/scripts/record-production-release.mjs --verify
 
-      - name: Smoke check deployed API and portal (read only)
-        id: smoke
-        run: >-
-          node apps/backend/scripts/smoke-production.mjs
-          --api https://api.hotelmanantialchurin.com/
-          --portal https://app.hotelmanantialchurin.com
-          --dist apps/portal/dist
-
       - name: Record attempt (manual verification still required)
         if: always()
         env:
@@ -129,16 +120,15 @@ jobs:
           API: ${{ steps.api.outcome }}
           PORTAL: ${{ steps.portal.outcome }}
           VERSIONS: ${{ steps.versions.outcome }}
-          SMOKE: ${{ steps.smoke.outcome }}
           RELEASE_EVIDENCE_DIR: ${{ runner.temp }}/pms-release
         run: |
           {
             printf '## Production release attempt — not yet verified\n\n'
             printf 'Requested SHA: `%s`\n\n' "$REQUESTED_SHA"
             printf 'Run: %s/%s/actions/runs/%s\n\n' "$GITHUB_SERVER_URL" "$GITHUB_REPOSITORY" "$GITHUB_RUN_ID"
-            printf -- '- Source accepted: %s\n- Checks: %s\n- Tests: %s\n- Build: %s\n- API bundle: %s\n- Migration readiness: %s\n- API: %s\n- Portal: %s\n- Active versions: %s\n- Smoke: %s\n\n' "$SOURCE" "$CHECKS" "$TESTS" "$BUILD" "$API_BUILD" "$READINESS" "$API" "$PORTAL" "$VERSIONS" "$SMOKE"
+            printf -- '- Source accepted: %s\n- Checks: %s\n- Tests: %s\n- Build: %s\n- API bundle: %s\n- Migration readiness: %s\n- API: %s\n- Portal: %s\n- Active versions: %s\n\n' "$SOURCE" "$CHECKS" "$TESTS" "$BUILD" "$API_BUILD" "$READINESS" "$API" "$PORTAL" "$VERSIONS"
             printf 'Failed or interrupted deploys can have uncertain remote outcomes. Inspect both Worker histories before retrying.\n\n'
-            printf 'Manual login/calendar/PWA verification is still required, even after smoke success. Follow docs/releases.md. No tag or release was published.\n\n'
+            printf 'No automated HTTP smoke checks are performed. Manual login/calendar/PWA verification is still required. Follow docs/releases.md. No tag or release was published.\n\n'
             if test -f apps/backend/scripts/record-production-release.mjs; then
               node apps/backend/scripts/record-production-release.mjs
             else

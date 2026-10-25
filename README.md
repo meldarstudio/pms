@@ -61,8 +61,9 @@ The manual release workflow supplies the production API origin explicitly.
 ## Production releases
 
 Follow the [release checklist](docs/releases.md) for exact-commit CI validation,
-optional interactive migrations, deliberate API/portal deployment, automated
-read-only smoke checks, and a short manual browser check. Version tags are optional.
+optional interactive migrations, deliberate API/portal deployment, read-only
+active-version verification, and a required manual browser check. The workflow does
+not perform automated HTTP smoke checks. Version tags are optional.
 Keep automatic Workers Builds disabled for both Workers as required by that
 procedure. Dated confirmations live in [operational status](docs/operations-status.md).
 
