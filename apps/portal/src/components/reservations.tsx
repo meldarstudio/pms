@@ -33,6 +33,7 @@ import { InputGroup, InputGroupAddon, InputGroupInput } from "@/components/ui/in
 import { Skeleton } from "@/components/ui/skeleton";
 import { Popover, PopoverContent, PopoverTitle, PopoverTrigger } from "@/components/ui/popover";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import {
   Table,
   TableBody,
@@ -47,7 +48,7 @@ import { dateOnlyCarrier, propertyToday } from "@/lib/property-calendar";
 import { addDateLabelDays } from "@/lib/dates";
 import { useMissingSetup, useReservationList } from "@/lib/queries";
 import { formatMoney } from "@/lib/money";
-import { occupantsLabel, roomsLabel, stayDateLabel } from "@/lib/reservation-list";
+import { occupantsLabel, roomsLabel, roomsSummary, stayDateLabel } from "@/lib/reservation-list";
 import {
   viewDefaults,
   type ReservationsSearch,
@@ -69,6 +70,37 @@ const views = [
   { value: "in-house", label: "En casa", icon: BedDoubleIcon },
   { value: "all", label: "Todas las reservas", icon: SearchIcon },
 ] as const;
+
+function ReservationRooms({
+  rooms,
+  tooltip = false,
+}: {
+  rooms: readonly { roomNumber: string | null }[];
+  tooltip?: boolean;
+}) {
+  const { numbers, listed, unlisted, unassignedLabel } = roomsSummary(rooms);
+  if (!unlisted) return roomsLabel(rooms);
+  const unlistedLabel = `+${unlisted}`;
+  return (
+    <>
+      <span aria-hidden="true">
+        {listed.join(", ")}{" "}
+        {tooltip ? (
+          <Tooltip>
+            <TooltipTrigger render={<span className="underline decoration-dotted" />}>
+              {unlistedLabel}
+            </TooltipTrigger>
+            <TooltipContent>{numbers.join(", ")}</TooltipContent>
+          </Tooltip>
+        ) : (
+          unlistedLabel
+        )}
+        {unassignedLabel ? ` · ${unassignedLabel}` : null}
+      </span>
+      <span className="sr-only">{roomsLabel(rooms)}</span>
+    </>
+  );
+}
 
 function ReservationBalance({
   balanceCents,
@@ -462,7 +494,7 @@ export function Reservations({
                                 "text-assignment-foreground",
                             )}
                           >
-                            Habitaciones: {roomsLabel(row.rooms)}
+                            Habitaciones: <ReservationRooms rooms={row.rooms} />
                           </p>
                           <dl className="grid grid-cols-2 gap-3">
                             <div>
@@ -540,7 +572,7 @@ export function Reservations({
                                   "text-assignment-foreground",
                               )}
                             >
-                              {roomsLabel(row.rooms)}
+                              <ReservationRooms rooms={row.rooms} tooltip />
                             </span>
                           </TableCell>
                           <TableCell>{occupantsLabel(row.rooms)}</TableCell>
