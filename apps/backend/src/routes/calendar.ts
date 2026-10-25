@@ -34,6 +34,7 @@ calendarRoutes.get("/", validate("query", calendarQuerySchema), async (c) => {
         number: rooms.number,
         roomTypeId: rooms.roomTypeId,
         roomTypeName: roomTypes.name,
+        housekeepingStatus: rooms.housekeepingStatus,
       })
       .from(rooms)
       .innerJoin(roomTypes, eq(roomTypes.id, rooms.roomTypeId)),

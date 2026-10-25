@@ -133,6 +133,19 @@ A dated period when a physical room is unavailable for stays, including the star
 excluding the end date's night.
 _Avoid_: Room status, maintenance status
 
+**Housekeeping status**:
+Whether a physical room is ready for its next guest, either dirty or clean, as last marked by staff. It
+is independent of room closures and of whether the room is occupied.
+_Avoid_: Room status, cleaning state, occupancy
+
+**Dirty**:
+A housekeeping status for a room that must be cleaned before a guest is given it.
+_Avoid_: Occupied, closed
+
+**Clean**:
+A housekeeping status for a room that is ready to be given to a guest.
+_Avoid_: Vacant, available
+
 **Room inventory**:
 The supply of physical rooms in each room type, measured in rooms rather than people.
 _Avoid_: Guest capacity

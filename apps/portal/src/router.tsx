@@ -14,10 +14,12 @@ import App from "@/App";
 import { ReservationPage } from "@/components/reservation-page";
 import { Reservations } from "@/components/reservations";
 import { RoomCalendar } from "@/components/room-calendar";
+import { Housekeeping } from "@/components/housekeeping";
 import { Inventory } from "@/components/inventory";
 import { PropertySetup } from "@/components/property-setup";
 import {
   calendarSearch,
+  housekeepingSearch,
   inventorySearch,
   lastCalendarSearch,
   lastReservationsSearch,
@@ -202,6 +204,27 @@ const inventoryRoute = createRoute({
   component: InventoryRoute,
 });
 
+function HousekeepingRoute() {
+  const search = housekeepingRoute.useSearch();
+  const navigate = useNavigate({ from: "/housekeeping" });
+  return (
+    <Housekeeping
+      view={search.view}
+      onViewChange={(view) => void navigate({ search: { view }, replace: true })}
+    />
+  );
+}
+
+const housekeepingRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/housekeeping",
+  validateSearch: housekeepingSearch,
+  search: {
+    middlewares: [stripSearchParams({ view: "to-clean" })],
+  },
+  component: HousekeepingRoute,
+});
+
 const setupRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/setup",
@@ -213,6 +236,7 @@ const routeTree = rootRoute.addChildren([
   calendarRoute,
   reservationsRoute,
   reservationRoute,
+  housekeepingRoute,
   inventoryRoute,
   setupRoute,
 ]);

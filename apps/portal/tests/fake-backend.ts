@@ -166,6 +166,19 @@ export function createFakeBackend() {
         }
       : [],
   );
+  on("GET", "/housekeeping", () => ({
+    date: "2026-10-20",
+    rooms: catalog.rooms.map((room) => ({
+      ...room,
+      roomTypeName: catalog.roomTypes.find((type) => type.id === room.roomTypeId)?.name ?? "Room",
+      housekeepingStatus: "clean",
+      housekeepingChangedAt: null,
+      closed: false,
+      inHouse: false,
+      departing: false,
+      arriving: false,
+    })),
+  }));
   on("GET", "/room-closures", () => []);
   on("GET", "/inventory", ({ url }) => ({
     from: url.searchParams.get("from"),

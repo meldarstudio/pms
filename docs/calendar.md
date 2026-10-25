@@ -73,6 +73,9 @@ ending that morning. This differs from room inventory: checked-out reservations
 retain their booked nights. Operational **Hoy** comes from
 [the property calendar](property-calendar.md).
 
+Each room includes its current [housekeeping status](housekeeping.md); dirty rooms
+show a display-only **Sucia** marker in the room column.
+
 ## Known assignment limitation
 
 The backlog and picker admit checked-in reservations, but

@@ -10,6 +10,7 @@ import {
 import { refreshWorkflowQueries, workflowMutationKey } from "./workflow-query-cache";
 
 import { addDateLabelDays } from "@/lib/dates";
+import { usePropertyCalendar } from "@/lib/use-property-calendar";
 import {
   sendWorkflow,
   type WorkflowCommand,
@@ -20,6 +21,7 @@ import {
   deleteRoomTypeRates,
   getAvailability,
   getCalendar,
+  getHousekeeping,
   getInventory,
   getReservation,
   getSession,
@@ -36,6 +38,10 @@ import {
   putRoomTypeRates,
   savePropertySetup,
   searchReservationsPage,
+  setHousekeepingStatus,
+  type HousekeepingList,
+  type HousekeepingMark,
+  type HousekeepingStatus,
   type ReservationListParams,
   type PatchGuestInput,
   type AvailabilityOccupancy,
@@ -186,6 +192,62 @@ export function usePatchRoom() {
       await queryClient.invalidateQueries({ queryKey: ["rooms"] });
       await queryClient.invalidateQueries({ queryKey: ["availability"] });
       await queryClient.invalidateQueries({ queryKey: ["calendar"] });
+    },
+  });
+}
+
+export const housekeepingQueryKey = ["housekeeping"] as const;
+
+export function useHousekeeping() {
+  const { today } = usePropertyCalendar();
+  const query = useQuery({
+    queryKey: housekeepingQueryKey,
+    queryFn: ({ signal }) => getHousekeeping(signal),
+  });
+  const listDate = query.data?.date;
+  const { refetch } = query;
+  // Today's stays and the order belong to one property date; re-read when it passes.
+  useEffect(() => {
+    if (listDate && listDate !== today) void refetch();
+  }, [listDate, today, refetch]);
+  return query;
+}
+
+export function useSetHousekeepingStatus() {
+  const client = useQueryClient();
+  const setRoom = (roomId: string, mark: Partial<HousekeepingMark>) =>
+    client.setQueryData<HousekeepingList>(housekeepingQueryKey, (list) =>
+      list
+        ? {
+            ...list,
+            rooms: list.rooms.map((room) => (room.id === roomId ? { ...room, ...mark } : room)),
+          }
+        : list,
+    );
+  return useMutation({
+    mutationFn: (input: { roomId: string; status: HousekeepingStatus }) =>
+      setHousekeepingStatus(input.roomId, input.status),
+    // The row changes at once; the re-read after a save re-sorts the list.
+    onMutate: async ({ roomId, status }) => {
+      await client.cancelQueries({ queryKey: housekeepingQueryKey });
+      const room = client
+        .getQueryData<HousekeepingList>(housekeepingQueryKey)
+        ?.rooms.find((room) => room.id === roomId);
+      const previous: HousekeepingMark | undefined = room && {
+        housekeepingStatus: room.housekeepingStatus,
+        housekeepingChangedAt: room.housekeepingChangedAt,
+      };
+      setRoom(roomId, { housekeepingStatus: status });
+      return { previous };
+    },
+    onError: (_error, { roomId }, context) => {
+      if (context?.previous) setRoom(roomId, context.previous);
+    },
+    onSuccess: async ({ id, housekeepingStatus, housekeepingChangedAt }) => {
+      setRoom(id, { housekeepingStatus, housekeepingChangedAt });
+      await client.invalidateQueries({ queryKey: housekeepingQueryKey });
+      await client.invalidateQueries({ queryKey: ["calendar"] });
+      await client.invalidateQueries({ queryKey: ["reservation"] });
     },
   });
 }

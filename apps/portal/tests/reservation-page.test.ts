@@ -74,6 +74,7 @@ beforeEach(() => {
         roomTypeName: "Doble",
         roomId: null,
         roomNumber: null,
+        housekeepingStatus: null,
         adults: 2,
         children: 0,
         subtotalCents: 30000,

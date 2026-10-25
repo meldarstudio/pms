@@ -19,6 +19,7 @@ import {
 } from "@/lib/reservation-editor";
 import { useStayDraft } from "@/lib/use-stay-draft";
 import { ReservationStatusBadge } from "@/components/reservation-status-badge";
+import { useDirtyRoomCheckIn } from "@/components/dirty-room-check-in";
 import { Button } from "@/components/ui/button";
 import { Spinner } from "@/components/ui/spinner";
 import {
@@ -430,6 +431,7 @@ export function BookingEditor({
   }
 
   const activeDrafts = drafts.filter((draft) => !draft.removed);
+  const [confirmCheckIn, checkInDialog] = useDirtyRoomCheckIn();
   async function changeStatus(status: "confirmed" | "checked_in" | "checked_out") {
     if (
       status === detail.status ||
@@ -440,6 +442,7 @@ export function BookingEditor({
       isReservationSaving(queryClient, detail.id)
     )
       return;
+    if (!(await confirmCheckIn(detail, status))) return;
     try {
       await statusSaver([{ type: "set-status", status }], (command) =>
         statusMutation.mutateAsync({ id: detail.id, command }),
@@ -526,7 +529,10 @@ export function BookingEditor({
                     return;
                   if (detail.status === "cancelled") {
                     const next = value;
-                    queueMicrotask(() => setRestoration({ detail, status: next }));
+                    queueMicrotask(async () => {
+                      if (await confirmCheckIn(detail, next))
+                        setRestoration({ detail, status: next });
+                    });
                     return;
                   }
                   void changeStatus(value);
@@ -567,6 +573,7 @@ export function BookingEditor({
         compactEditor && "max-md:gap-0",
       )}
     >
+      {checkInDialog}
       {!stayOnly && (
         <div
           className={cn(

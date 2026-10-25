@@ -143,7 +143,7 @@ it.each(["assigned stay", "closure-reduced capacity"])(
       error: scenario === "assigned stay" ? "room has an assigned stay" : "no availability",
     });
     const unchanged = await request("/rooms/room-101");
-    expect(await unchanged.json()).toEqual({ id: "room-101", number: "101", roomTypeId: "type" });
+    expect(await unchanged.json()).toMatchObject({ number: "101", roomTypeId: "type" });
     vi.setSystemTime(new Date("2026-11-01T05:00:00Z"));
     expect((await request("/rooms/room-101", "PATCH", body)).status).toBe(200);
     expect((await request(`/reservations/${d.id}`)).status).toBe(200);

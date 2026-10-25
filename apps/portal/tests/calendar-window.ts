@@ -12,6 +12,7 @@ export type CalendarFixtureRoom = {
   number: string;
   roomTypeId: string;
   roomTypeName: string;
+  housekeepingStatus?: "dirty" | "clean";
   stays?: CalendarFixtureStay[];
   closures?: CalendarFixtureClosure[];
 };
@@ -31,8 +32,10 @@ export type CalendarFixtureUnassigned = CalendarFixtureStay & {
   roomCount: number;
 };
 
+type SampleRoom = Required<Omit<CalendarFixtureRoom, "housekeepingStatus">> & CalendarFixtureRoom;
+
 export type CalendarFixture = {
-  rooms: Required<CalendarFixtureRoom>[];
+  rooms: SampleRoom[];
   unassigned: CalendarFixtureUnassigned[];
 };
 
@@ -112,7 +115,7 @@ export const sampleWeek: CalendarFixture = {
 /** The sample week with one room replaced by `change(room)`. */
 export function sampleWeekWith(
   roomId: string,
-  change: (room: Required<CalendarFixtureRoom>) => Required<CalendarFixtureRoom>,
+  change: (room: SampleRoom) => SampleRoom,
 ): CalendarFixture {
   return {
     ...sampleWeek,
@@ -133,6 +136,7 @@ export function calendarWindow(
     to: url.searchParams.get("to"),
     missingSetup: body.missingSetup ?? null,
     rooms: (body.rooms ?? []).map((room) => ({
+      housekeepingStatus: "clean",
       stays: [],
       closures: [],
       ...room,

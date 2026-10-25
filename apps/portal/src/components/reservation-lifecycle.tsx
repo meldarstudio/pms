@@ -1,5 +1,6 @@
 import { useRef, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
+import { useDirtyRoomCheckIn } from "@/components/dirty-room-check-in";
 import { FieldGroup } from "@/components/ui/field";
 import { ChoiceField } from "@/components/workflow-fields";
 import type { ReservationDetail, WorkflowAction } from "@/lib/api";
@@ -27,6 +28,7 @@ export function ReservationLifecycle({
   const saving = useReservationSaving(detail.id);
   const [save] = useState(createWorkflowSaver);
   const pending = useRef(false);
+  const [confirmCheckIn, checkInDialog] = useDirtyRoomCheckIn();
   async function change(status: Status) {
     if (
       status === detail.status ||
@@ -35,12 +37,13 @@ export function ReservationLifecycle({
       isReservationSaving(client, detail.id)
     )
       return;
-    if (status === "cancelled" || detail.status === "cancelled") {
-      onConfirm(status);
-      return;
-    }
     pending.current = true;
     try {
+      if (!(await confirmCheckIn(detail, status))) return;
+      if (status === "cancelled" || detail.status === "cancelled") {
+        onConfirm(status);
+        return;
+      }
       await save([{ type: "set-status", status }], (command) =>
         mutation.mutateAsync({ id: detail.id, command }),
       );
@@ -53,6 +56,7 @@ export function ReservationLifecycle({
   }
   return (
     <div className="flex flex-col items-end gap-2">
+      {checkInDialog}
       <FieldGroup className="w-44" aria-busy={saving}>
         <ChoiceField
           label="Estado de la reserva"

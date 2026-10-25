@@ -23,7 +23,7 @@ Before schema, migration, trigger, or seed changes, read [the database guide](..
 - Before changing stay dates, check-in/checkout, cancellation, or room removal, read [reservation dates](../../docs/reservations.md#stay-dates-and-lifecycle) and [the property calendar](../../docs/property-calendar.md). Use the [shared glossary](../../GLOSSARY.md) for statuses, billing, and room-inventory semantics.
 - Saving and check-in allow unassigned reserved rooms; these still consume room-type inventory.
 - Retained nights keep saved prices. Added nights use current rates; changing room type reprices that reserved room. Initial pricing uses a flat nightly rate when supplied, otherwise the date's override, otherwise the base rate.
-- Guests use `fullName`. Rooms have no operational status; dated closures block rooms and reduce room-type availability.
+- Guests use `fullName`. Dated closures block rooms and reduce room-type availability. A room's [housekeeping status](../../docs/housekeeping.md) is set only by staff; it never blocks check-in, availability, or assignment, and reservation workflows must not change it.
 
 ## Property setup
 
