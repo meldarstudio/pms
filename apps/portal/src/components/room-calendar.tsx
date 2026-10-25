@@ -42,14 +42,16 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { DirtyRoomBadge } from "@/components/dirty-room-badge";
 import { SetupRequired } from "@/components/setup-required";
 import { Skeleton } from "@/components/ui/skeleton";
 import { PageError, StaleDataNotice } from "@/components/page-error";
-import { type RoomClosure } from "@/lib/api";
+import { type HousekeepingStatus, type RoomClosure } from "@/lib/api";
 import type { ReservationStay } from "@/lib/room-assignment";
 import { useRoomAssignment } from "@/lib/use-room-assignment";
+import { useMarkRooms } from "@/lib/use-mark-rooms";
 import { format } from "@/lib/dates";
-import { useCalendar } from "@/lib/queries";
+import { useCalendar, usePendingHousekeepingRoomIds } from "@/lib/queries";
 import { useIsMobile } from "@/hooks/use-mobile";
 
 const spans = [
@@ -387,6 +389,8 @@ export function RoomCalendar({
   const bookingDataReady = !!calendar;
   const unassigned = calendar?.unassigned ?? [];
   const assignment = useRoomAssignment(rooms, unassigned);
+  const markRooms = useMarkRooms();
+  const pendingHousekeepingRoomIds = usePendingHousekeepingRoomIds();
   const highlightedRoomId =
     highlight && highlight.stayId === assignment.target?.id ? highlight.roomId : null;
   const typeNames = new Map((rooms ?? []).map((room) => [room.roomTypeId, room.roomTypeName]));
@@ -840,7 +844,7 @@ export function RoomCalendar({
                   roomId={room.id}
                   number={room.number}
                   typeName={room.typeName}
-                  dirty={room.housekeepingStatus === "dirty"}
+                  housekeepingStatus={room.housekeepingStatus}
                   stays={placeStays(
                     [
                       ...room.stays.map(stayTrack),
@@ -859,6 +863,10 @@ export function RoomCalendar({
                       typeName: room.typeName,
                     })
                   }
+                  onMarkRoom={() =>
+                    void markRooms([room], room.housekeepingStatus === "dirty" ? "clean" : "dirty")
+                  }
+                  markingRoom={pendingHousekeepingRoomIds.has(room.id)}
                   onCloseRoom={() =>
                     setClosureTarget({
                       mode: "create",
@@ -950,11 +958,13 @@ export function RoomCalendar({
 function RoomRowView({
   number,
   typeName,
-  dirty = false,
+  housekeepingStatus,
   stays,
   days,
   dayCount,
   onEditRoom,
+  onMarkRoom,
+  markingRoom,
   onCloseRoom,
   onBookDay,
   onOpenStay,
@@ -969,11 +979,13 @@ function RoomRowView({
   roomId: string;
   number: string;
   typeName: string;
-  dirty?: boolean;
+  housekeepingStatus: HousekeepingStatus;
   stays: PlacedTrack[];
   days: Date[];
   dayCount: number;
   onEditRoom?: () => void;
+  onMarkRoom?: () => void;
+  markingRoom: boolean;
   onCloseRoom?: () => void;
   onBookDay?: (day: Date) => void;
   onOpenStay?: (reservationId: string) => void;
@@ -1005,15 +1017,7 @@ function RoomRowView({
             <span className="truncate text-xs font-medium" title={number}>
               {number}
             </span>
-            {dirty ? (
-              <span
-                className="flex shrink-0 items-center gap-0.5 text-[0.625rem] font-medium text-destructive"
-                title="Habitación sucia"
-              >
-                <span aria-hidden className="size-1.5 rounded-full bg-destructive" />
-                Sucia
-              </span>
-            ) : null}
+            {housekeepingStatus === "dirty" ? <DirtyRoomBadge /> : null}
           </span>
           {assignmentNote ? (
             <span className="truncate text-xs font-medium">{assignmentNote}</span>
@@ -1023,7 +1027,7 @@ function RoomRowView({
             </span>
           )}
         </div>
-        {onEditRoom && onCloseRoom ? (
+        {onEditRoom && onMarkRoom && onCloseRoom ? (
           <div
             className={cn(
               "shrink-0",
@@ -1033,7 +1037,14 @@ function RoomRowView({
               "can-hover:has-data-popup-open:pointer-events-auto can-hover:has-data-popup-open:opacity-100",
             )}
           >
-            <RoomActionsMenu number={number} onEditRoom={onEditRoom} onCloseRoom={onCloseRoom} />
+            <RoomActionsMenu
+              number={number}
+              housekeepingStatus={housekeepingStatus}
+              onEditRoom={onEditRoom}
+              onMarkRoom={onMarkRoom}
+              markingRoom={markingRoom}
+              onCloseRoom={onCloseRoom}
+            />
           </div>
         ) : null}
       </div>

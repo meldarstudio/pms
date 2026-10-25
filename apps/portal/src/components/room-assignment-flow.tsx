@@ -5,7 +5,8 @@ import { Button } from "@/components/ui/button";
 import { Empty, EmptyDescription, EmptyHeader, EmptyTitle } from "@/components/ui/empty";
 import { Separator } from "@/components/ui/separator";
 import { Skeleton } from "@/components/ui/skeleton";
-import type { Room } from "@/lib/api";
+import { DirtyRoomBadge } from "@/components/dirty-room-badge";
+import type { HousekeepingStatus, Room } from "@/lib/api";
 import { format } from "@/lib/dates";
 import type { ReservationStay } from "@/lib/room-assignment";
 import type { useRoomAssignment } from "@/lib/use-room-assignment";
@@ -31,7 +32,7 @@ function reservedRoomLabel(stay: ReservationStay, typeNames: Map<string, string>
 
 export type RoomAssignmentStepsProps = {
   stays: ReservationStay[];
-  rooms: Room[] | null;
+  rooms: (Room & { housekeepingStatus: HousekeepingStatus })[] | null;
   typeNames: Map<string, string>;
   loading: boolean;
   listError: string | null;
@@ -67,6 +68,8 @@ export function RoomAssignmentSteps({
         )
         .sort((a, b) => a.number.localeCompare(b.number, undefined, { numeric: true }))
     : [];
+  // The status is what staff marked now; it only matters for a stay that has begun.
+  const showDirty = !!target && target.checkIn <= today;
 
   if (target) {
     return (
@@ -106,28 +109,34 @@ export function RoomAssignmentSteps({
         )}
         {availableRooms.length > 0 && (
           <ul className="flex flex-col border" onMouseLeave={() => onHighlightRoom?.(null)}>
-            {availableRooms.map((room, index) => (
-              <li key={room.id}>
-                {index > 0 && <Separator />}
-                <button
-                  type="button"
-                  aria-label={`Asignar ${target.guestName} a habitación ${room.number}, ${target.checkIn} al ${target.checkOut}`}
-                  disabled={pending}
-                  onClick={() => void assignment.assignRoom(room.id)}
-                  onMouseEnter={() => onHighlightRoom?.(room.id)}
-                  onFocus={() => onHighlightRoom?.(room.id)}
-                  onBlur={() => onHighlightRoom?.(null)}
-                  className="flex w-full cursor-pointer items-center gap-2 p-2.5 text-left outline-none enabled:hover:bg-accent focus-visible:ring-1 focus-visible:ring-ring/50 disabled:cursor-default disabled:text-muted-foreground"
-                >
-                  <BedDoubleIcon className="size-4 shrink-0" aria-hidden="true" />
-                  <span className="flex min-w-0 flex-1 flex-col gap-0.5">
-                    <span className="font-medium">Habitación {room.number}</span>
-                    <span className="text-muted-foreground">Disponible</span>
-                  </span>
-                  <ChevronRightIcon className="size-4 shrink-0" aria-hidden="true" />
-                </button>
-              </li>
-            ))}
+            {availableRooms.map((room, index) => {
+              const showDirtyRoom = showDirty && room.housekeepingStatus === "dirty";
+              return (
+                <li key={room.id}>
+                  {index > 0 && <Separator />}
+                  <button
+                    type="button"
+                    aria-label={`Asignar ${target.guestName} a habitación ${room.number}, ${target.checkIn} al ${target.checkOut}${showDirtyRoom ? ", sucia" : ""}`}
+                    disabled={pending}
+                    onClick={() => void assignment.assignRoom(room.id)}
+                    onMouseEnter={() => onHighlightRoom?.(room.id)}
+                    onFocus={() => onHighlightRoom?.(room.id)}
+                    onBlur={() => onHighlightRoom?.(null)}
+                    className="flex w-full cursor-pointer items-center gap-2 p-2.5 text-left outline-none enabled:hover:bg-accent focus-visible:ring-1 focus-visible:ring-ring/50 disabled:cursor-default disabled:text-muted-foreground"
+                  >
+                    <BedDoubleIcon className="size-4 shrink-0" aria-hidden="true" />
+                    <span className="flex min-w-0 flex-1 flex-col gap-0.5">
+                      <span className="flex items-center gap-1.5">
+                        <span className="font-medium">Habitación {room.number}</span>
+                        {showDirtyRoom ? <DirtyRoomBadge /> : null}
+                      </span>
+                      <span className="text-muted-foreground">Disponible</span>
+                    </span>
+                    <ChevronRightIcon className="size-4 shrink-0" aria-hidden="true" />
+                  </button>
+                </li>
+              );
+            })}
           </ul>
         )}
         {ready && eligibleCount === 0 && (
