@@ -1,5 +1,5 @@
 import { useEffect, useState, type ReactNode } from "react";
-import { RefreshCwIcon, XIcon } from "lucide-react";
+import { RefreshCwIcon, WifiOffIcon, XIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -9,12 +9,22 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import {
+  Empty,
+  EmptyContent,
+  EmptyDescription,
+  EmptyHeader,
+  EmptyMedia,
+  EmptyTitle,
+} from "@/components/ui/empty";
 
 const DISMISSED_UPDATE_KEY = "manantial-dismissed-update";
+// Above the floating page action and clear of the header, whose sidebar toggle stays reachable.
+const floatingNotice =
+  "fixed right-4 bottom-[max(1rem,env(safe-area-inset-bottom))] left-4 z-[100] shadow-xl sm:left-auto sm:w-80";
 
 export function PwaStatus({ children }: { children: ReactNode }) {
   const [online, setOnline] = useState(() => navigator.onLine);
-  const [reconnected, setReconnected] = useState(false);
   const [waitingWorker, setWaitingWorker] = useState<ServiceWorker | null>(null);
   const [dismissedUpdate, setDismissedUpdate] = useState(() => {
     try {
@@ -36,14 +46,8 @@ export function PwaStatus({ children }: { children: ReactNode }) {
   }
 
   useEffect(() => {
-    const wentOnline = () => {
-      setOnline(true);
-      setReconnected(true);
-    };
-    const wentOffline = () => {
-      setOnline(false);
-      setReconnected(false);
-    };
+    const wentOnline = () => setOnline(true);
+    const wentOffline = () => setOnline(false);
     const updateActivated = (event: MessageEvent) => {
       if (event.data === "UPDATE_ACTIVATED") window.location.reload();
     };
@@ -83,34 +87,30 @@ export function PwaStatus({ children }: { children: ReactNode }) {
       <div className={online ? "contents" : undefined} hidden={!online}>
         {children}
       </div>
-      {(!online || (reconnected && !showUpdate)) && (
-        <aside
-          role="status"
-          className={`fixed inset-x-0 z-[100] flex items-center justify-center gap-3 bg-foreground px-4 py-2 text-sm text-background ${online ? "top-0" : "inset-y-0 flex-col"}`}
-        >
-          {!online ? (
-            <>
-              <span>Sin conexión a internet. Las operaciones requieren conexión.</span>
-              <Button size="sm" variant="secondary" onClick={() => window.location.reload()}>
+      {!online && (
+        <div role="status" className="fixed inset-0 z-[100] flex bg-background p-6">
+          <Empty className="m-auto max-w-md border">
+            <EmptyHeader>
+              <EmptyMedia variant="icon">
+                <WifiOffIcon />
+              </EmptyMedia>
+              <EmptyTitle>Sin conexión a internet</EmptyTitle>
+              <EmptyDescription>Las operaciones requieren conexión.</EmptyDescription>
+            </EmptyHeader>
+            <EmptyContent>
+              <Button variant="outline" onClick={() => window.location.reload()}>
                 Reintentar
               </Button>
-            </>
-          ) : (
-            <>
-              <span>Conexión restablecida.</span>
-              <Button size="sm" variant="secondary" onClick={() => window.location.reload()}>
-                Reintentar
-              </Button>
-            </>
-          )}
-        </aside>
+            </EmptyContent>
+          </Empty>
+        </div>
       )}
       {showUpdate && (
         <Card
           role="status"
           aria-label="Actualización disponible"
           size="sm"
-          className="fixed right-4 bottom-[max(1rem,env(safe-area-inset-bottom))] left-4 z-[100] shadow-xl sm:left-auto sm:w-80"
+          className={floatingNotice}
         >
           <CardHeader>
             <CardTitle>Nueva versión disponible</CardTitle>

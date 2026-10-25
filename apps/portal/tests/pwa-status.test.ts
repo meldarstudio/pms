@@ -41,12 +41,12 @@ it("shows an actionable offline message when connectivity is lost and clears it 
 
   await act(async () => browser.dispatchEvent(new browser.Event("offline")));
   assert.match(container.textContent ?? "", /Sin conexión a internet/);
+  assert.match(container.textContent ?? "", /Las operaciones requieren conexión/);
   assert.match(container.textContent ?? "", /Reintentar/);
   assert.equal(container.querySelector("[hidden]")?.textContent, "Reservation details");
 
   await act(async () => browser.dispatchEvent(new browser.Event("online")));
   assert.match(container.textContent ?? "", /Reservation details/);
   assert.equal(container.querySelector("[hidden]"), null);
-  assert.match(container.textContent ?? "", /Conexión restablecida/);
-  assert.match(container.textContent ?? "", /Reintentar/);
+  assert.equal(container.querySelector('[role="status"]'), null);
 });

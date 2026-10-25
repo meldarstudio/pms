@@ -19,7 +19,7 @@ import {
   EmptyMedia,
   EmptyTitle,
 } from "@/components/ui/empty";
-import { FieldError } from "@/components/ui/field";
+import { PageError, StaleDataNotice } from "@/components/page-error";
 import { Spinner } from "@/components/ui/spinner";
 import {
   Table,
@@ -610,13 +610,11 @@ export function Housekeeping({
           <TabsTrigger value="all">Todas</TabsTrigger>
         </TabsList>
       </Tabs>
+      {query.isError && list ? (
+        <StaleDataNotice error={query.error} onRetry={() => void query.refetch()} />
+      ) : null}
       {query.isError && !list ? (
-        <div className="flex flex-col items-start gap-2">
-          <FieldError>{query.error.message}</FieldError>
-          <Button variant="outline" size="sm" onClick={() => void query.refetch()}>
-            Reintentar
-          </Button>
-        </div>
+        <PageError error={query.error} onRetry={() => void query.refetch()} />
       ) : !list ? (
         <p role="status" className="flex items-center gap-2 text-sm text-muted-foreground">
           <Spinner />

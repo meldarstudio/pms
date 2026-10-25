@@ -27,7 +27,8 @@ import { ReservationListFilters } from "@/components/reservation-list-filters";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { ReservationStatusBadge } from "@/components/reservation-status-badge";
 import { Empty, EmptyHeader, EmptyTitle, EmptyDescription } from "@/components/ui/empty";
-import { Field, FieldError, FieldGroup, FieldLabel } from "@/components/ui/field";
+import { Field, FieldGroup, FieldLabel } from "@/components/ui/field";
+import { PageError, StaleDataNotice } from "@/components/page-error";
 import { InputGroup, InputGroupAddon, InputGroupInput } from "@/components/ui/input-group";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Popover, PopoverContent, PopoverTitle, PopoverTrigger } from "@/components/ui/popover";
@@ -397,20 +398,19 @@ export function Reservations({
           </Popover>
         </div>
       </div>
-      <div ref={resultsRef} className="shrink-0">
+      <div ref={resultsRef} className="flex shrink-0 flex-col gap-4">
         {query.isPending ? (
           <Skeleton className="h-64 w-full" />
         ) : (
           <>
             {query.isError ? (
-              <div className="flex flex-col items-start gap-3">
-                <FieldError>{query.error.message}</FieldError>
-                <Button variant="outline" onClick={() => void query.refetch()}>
-                  Reintentar
-                </Button>
-              </div>
+              query.data ? (
+                <StaleDataNotice error={query.error} onRetry={() => void query.refetch()} />
+              ) : (
+                <PageError error={query.error} onRetry={() => void query.refetch()} />
+              )
             ) : null}
-            {!query.isError && rows.length === 0 ? (
+            {query.data && rows.length === 0 ? (
               <Empty className="border">
                 <EmptyHeader>
                   <SearchIcon />

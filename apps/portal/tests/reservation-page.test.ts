@@ -90,6 +90,7 @@ beforeEach(() => {
 });
 afterEach(async () => {
   await page.cleanup();
+  vi.restoreAllMocks();
   vi.useRealTimers();
 });
 afterAll(async () => {
@@ -231,7 +232,7 @@ async function unloadPrevented() {
   return event.defaultPrevented;
 }
 
-it("retains the contact draft and retry ID after rejection and background refresh", async () => {
+it("retains the contact draft and retry ID after rejection and reconnect refresh", async () => {
   mockApi({
     write: () =>
       writes.length === 1
@@ -248,10 +249,13 @@ it("retains the contact draft and retry ID after rejection and background refres
   await submit();
   await page.until(() => writes.length === 1 && !button("Guardar cambios").disabled);
   assert.equal(field("fullName").value, "Ana María Pérez");
+  await React.act(async () => window.dispatchEvent(new window.Event("offline")));
   saved = { ...saved, guest: { ...saved.guest, fullName: "Cambio desde otra pantalla" } };
-  await React.act(async () => {
-    await page.client.invalidateQueries({ queryKey: ["reservation", saved.id] });
-  });
+  await React.act(async () => window.dispatchEvent(new window.Event("online")));
+  await page.until(
+    () => page.container.querySelector("h1")?.textContent === "Cambio desde otra pantalla",
+    "Reconnecting must refresh the saved reservation overview",
+  );
   assert.equal(field("fullName").value, "Ana María Pérez");
   assert.equal(field("phone").value, "999333444");
   assert.equal(field("email").value, "nuevo@example.com");
@@ -727,6 +731,21 @@ it("protects a stay draft from background refresh, router navigation and dirty d
   await click("Cerrar");
   await click("Descartar y salir");
   await page.until(() => !popup());
+  await click("Volver a reservas");
+  await page.until(() => router.state.location.pathname === "/reservations");
+});
+
+it("explains a missing reservation instead of offering a retry", async () => {
+  const logged = vi.spyOn(console, "error").mockImplementation(() => {});
+  mockApi();
+  page.api.on("GET", "/reservations/reservation-1", () =>
+    Response.json({ error: "unrecognized missing reservation message" }, { status: 404 }),
+  );
+  await render("", false);
+  await page.until(() => page.container.textContent.includes("No se encontró la reserva"));
+  assert.ok(page.container.textContent.includes("Esta reserva no existe o fue eliminada."));
+  assert.equal(page.container.textContent.includes("Reintentar"), false);
+  assert.equal(logged.mock.calls.length, 0, "The intentional not-found state needs no diagnostic");
   await click("Volver a reservas");
   await page.until(() => router.state.location.pathname === "/reservations");
 });

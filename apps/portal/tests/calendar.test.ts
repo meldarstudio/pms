@@ -61,6 +61,7 @@ beforeEach(() => {
 
 afterEach(async () => {
   await page.cleanup();
+  vi.restoreAllMocks();
   vi.useRealTimers();
 });
 
@@ -591,6 +592,61 @@ it("keeps the held window and shows one Spanish banner when a refresh fails", as
     )?.disabled,
     false,
   );
+});
+
+it.each(["initial read", "background refresh"] as const)(
+  "logs an untranslated 404 during a calendar %s without exposing it to staff",
+  async (read) => {
+    const logged = vi.spyOn(console, "error").mockImplementation(() => {});
+    const cause = "calendar source unavailable";
+    if (read === "background refresh") {
+      await render(React.createElement(CalendarSession));
+      await until(() => !!adaBar());
+    }
+    failCalendar(404, cause);
+    if (read === "initial read") await render(React.createElement(CalendarSession));
+    else await click("Actualizar");
+
+    const role = read === "initial read" ? "alert" : "status";
+    await until(() => !!container.querySelector(`[role="${role}"]`));
+    const notice = container.querySelector(`[role="${role}"]`)!;
+    assert.ok(
+      notice.textContent.includes(
+        read === "initial read" ? "No se pudieron cargar los datos" : "No se pudo actualizar.",
+      ),
+    );
+    assert.ok(notice.textContent.includes("Reintentar"));
+    assert.equal(container.textContent.includes(cause), false);
+    if (read === "background refresh") assert.ok(adaBar());
+    assert.equal(
+      logged.mock.calls.filter(([error]) => error instanceof Error && error.message === cause)
+        .length,
+      1,
+      "The untranslated cause must be logged once",
+    );
+  },
+);
+
+it("replaces the grid with an error when a new window fails, keeping date navigation", async () => {
+  await render(React.createElement(CalendarSession));
+  await until(() => !!adaBar(), "Week must paint before moving past the held window");
+  failCalendar(500, "calendar window is incomplete");
+  await click("Período siguiente");
+  await click("Período siguiente");
+  await until(
+    () => !!container.querySelector('[role="alert"]'),
+    "A window outside the held range must show the page error",
+  );
+
+  const alert = container.querySelector('[role="alert"]')!;
+  assert.ok(alert.textContent.includes("La ventana del calendario está incompleta"));
+  assert.ok(alert.textContent.includes("Reintentar"));
+  assert.equal(container.textContent.includes("Los datos pueden estar desactualizados"), false);
+  assert.equal(container.textContent.includes("Mantenimiento"), false);
+  await click("Período anterior");
+  await click("Período anterior");
+  await until(() => !!adaBar(), "The held week must return from cache");
+  assert.equal(container.querySelector('[role="alert"]'), null);
 });
 
 it.each(["held grid", "empty unassigned panel"] as const)(

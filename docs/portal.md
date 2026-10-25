@@ -75,6 +75,46 @@ with a 7rem minimum and a maximum of 10rem on mobile or 13rem on desktop. Longer
 ellipsis and retain the full name in their title. Date columns remain at least
 5rem wide and scroll horizontally.
 
+## Error states
+
+These rules cover failed page reads. Save errors keep their toasts and field
+errors, and a 401 returns to the login form (see
+[portal sessions](authentication.md#portal-sessions)).
+[page-error.tsx](../apps/portal/src/components/page-error.tsx) owns the shared
+components; [api-error.ts](../apps/portal/src/lib/api-error.ts) classifies errors.
+
+- **Nothing on screen yet:** `PageError` replaces only the page content. Date
+  navigation, tabs, filters, and header actions stay usable. It explains one of
+  three kinds:
+  - **Not found** (404): only the reservation page has this state, offering
+    **Volver a reservas** without a retry. Elsewhere a 404 is unexpected.
+  - **No connection:** the request never reached the API. Offers **Reintentar**.
+    A browser that reports itself offline already shows the full-screen notice
+    from [installable app and offline behavior](#installable-app-and-offline-behavior).
+  - **Unexpected:** everything else. Offers **Reintentar**.
+- **Data already on screen:** a failed refresh keeps the data and shows
+  `StaleDataNotice`: a `warning` variant of the shadcn `Alert` (the amber `warning`
+  theme token) giving the reason, a warning that the data may be out of date, and
+  **Reintentar**. Every page separates it from the content below with a gap.
+  This applies only when the data on screen matches the requested range or list
+  page; a failed new calendar or inventory window shows `PageError` instead of the
+  previous window's data.
+- **Copy:** pages show the Spanish translation from
+  [errors.ts](../apps/portal/src/lib/errors.ts) when one exists. Errors without one
+  get generic Spanish copy and are logged to the console, including unexpected
+  404s and failed refreshes. Network failures and the reservation page's intentional
+  not-found state already have an explanation and are not logged.
+- **Retries:** reads are not retried after a 4xx response and are retried twice
+  after connection or server failures ([query-client.ts](../apps/portal/src/lib/query-client.ts)).
+  React Query refetches page reads when the browser reconnects. The full reservation
+  page refreshes its saved overview without replacing open editor drafts. The
+  compact calendar editor's reservation detail is an exception: it does not
+  automatically refetch on reconnect. Both reservation editors keep window-focus
+  refetch disabled ([queries.ts](../apps/portal/src/lib/queries.ts)).
+- **Render crashes:** the router's default error component shows **Algo salió mal**
+  with **Recargar** and **Ir al calendario**, inside the shell when only the page
+  failed. It shows no technical details and logs the error to the console.
+
 ## API environment
 
 Vite inlines `VITE_API_BASE_URL` at build time; a missing value fails the build.
@@ -104,8 +144,10 @@ floating card with a manual **Actualizar ahora** action; simply leaving the noti
 alone does not reload the page. **Ahora no** and the close button hide that update
 for the current tab session, including page reloads, without activating it. A new
 tab session can show the notice again if the update is still waiting. If session
-storage is unavailable, dismissal lasts only until the page reloads. Offline and
-connection-restored messages keep their existing behavior.
+storage is unavailable, dismissal lasts only until the page reloads. While the browser reports itself offline, a full-screen **Sin conexión a internet**
+notice in the shared page-error style hides the portal and offers **Reintentar**
+(reload). After reconnecting, the portal reappears without a notice; page reads
+follow the [reconnect rules and compact-editor exception](#error-states).
 
 For release smoke tests, build and preview locally using the root build commands
 and a non-production API origin. On Android Chromium, Safari on iOS/iPadOS, and
