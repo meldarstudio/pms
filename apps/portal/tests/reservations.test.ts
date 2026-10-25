@@ -485,8 +485,21 @@ it.each(["desktop", "mobile"])(
             balanceCents: -15000,
             creditCents: 15000,
           },
+          {
+            ...ana,
+            id: "group",
+            guestName: "Ester Aguilar",
+            rooms: [
+              // Unsorted, and 1001 sorts first as text but last as a number.
+              ...["407", "1001", "108", "213", "201", "404", "204", "205", "207"]
+                .concat(["208", "301", "304", "305", "307", "308", "405"])
+                .map((number) => ({ ...ana.rooms[0], id: number, roomNumber: number })),
+              { ...ana.rooms[0], id: "unassigned-1", roomId: null, roomNumber: null },
+              { ...ana.rooms[0], id: "unassigned-2", roomId: null, roomNumber: null },
+            ],
+          },
         ],
-        total: 3,
+        total: 4,
         limit: 50,
         offset: 0,
       });
@@ -524,6 +537,13 @@ it.each(["desktop", "mobile"])(
       /150Crédito/,
     );
     assert.equal(rows[2]!.textContent.includes("Saldo pendiente"), false);
+    // Long room lists stay short on screen; assistive technology still gets every room.
+    assert.match(rows[3]!.textContent, /108, 201, 204 \+13 · 2 sin asignar/);
+    const allRooms = rows[3]!.querySelector(".sr-only");
+    assert.equal(
+      allRooms?.textContent,
+      "108, 201, 204, 205, 207, 208, 213, 301, 304, 305, 307, 308, 404, 405, 407, 1001 · 2 sin asignar",
+    );
     await fill("Contacto principal o código", "Ana ANA0001");
     await until(() => params().get("q") === "Ana ANA0001");
   },
