@@ -157,6 +157,80 @@ function ReservationBalance({
   );
 }
 
+/** Placeholder cards sized like the loaded ones; three fill a phone screen. */
+function ReservationCardsSkeleton() {
+  return (
+    <ul aria-label="Cargando reservas" aria-busy className="flex flex-col gap-3">
+      {Array.from({ length: 3 }, (_, index) => (
+        <li key={index}>
+          <Card>
+            <CardHeader className="flex items-start justify-between gap-2">
+              <Skeleton className="h-5 w-36" />
+              <Skeleton className="h-5 w-24" />
+            </CardHeader>
+            <CardContent className="flex flex-col gap-3">
+              <Skeleton className="h-5 w-32" />
+              <div className="grid grid-cols-2 gap-3">
+                {[0, 1].map((column) => (
+                  <div key={column} className="flex flex-col gap-px">
+                    <Skeleton className="h-5 w-14" />
+                    <Skeleton className="h-4.5 w-20" />
+                  </div>
+                ))}
+              </div>
+            </CardContent>
+            <CardFooter>
+              <Skeleton className="h-5 w-full" />
+            </CardFooter>
+          </Card>
+        </li>
+      ))}
+    </ul>
+  );
+}
+
+/** Placeholder table rows sized like the loaded ones, under the real column headings. */
+function ReservationRowsSkeleton() {
+  return (
+    <TableBody>
+      {Array.from({ length: 8 }, (_, index) => (
+        <TableRow key={index}>
+          <TableCell>
+            <div className="flex flex-col gap-0.5">
+              <Skeleton className="h-4 w-28" />
+              <Skeleton className="h-4 w-24" />
+            </div>
+          </TableCell>
+          <TableCell>
+            <Skeleton className="h-5 w-24" />
+          </TableCell>
+          <TableCell>
+            <Skeleton className="h-4 w-10" />
+          </TableCell>
+          <TableCell>
+            <Skeleton className="h-4 w-24" />
+          </TableCell>
+          <TableCell>
+            <Skeleton className="h-4 w-20" />
+          </TableCell>
+          <TableCell>
+            <Skeleton className="h-4 w-20" />
+          </TableCell>
+          <TableCell>
+            <Skeleton className="ml-auto h-4 w-12" />
+          </TableCell>
+          <TableCell>
+            <div className="flex flex-col items-end gap-0.5">
+              <Skeleton className="h-4 w-14" />
+              <Skeleton className="h-3 w-24" />
+            </div>
+          </TableCell>
+        </TableRow>
+      ))}
+    </TableBody>
+  );
+}
+
 export function Reservations({
   search,
   onSearchChange,
@@ -243,6 +317,23 @@ export function Reservations({
     scrollToPage.current = null;
     onSearchChange({ ...next, page: 0 });
   }
+
+  const tableHeader = (
+    <TableHeader>
+      <TableRow>
+        {sortHeader("guestName", "Contacto principal")}
+        <TableHead scope="col">Estado</TableHead>
+        <TableHead scope="col">Habitaciones</TableHead>
+        <TableHead scope="col">Ocupantes</TableHead>
+        {sortHeader("checkIn", "Check-in")}
+        {sortHeader("checkOut", "Check-out")}
+        <TableHead scope="col" className="text-right">
+          Total
+        </TableHead>
+        {sortHeader("balance", "Saldo")}
+      </TableRow>
+    </TableHeader>
+  );
 
   const rangeLabel = query.isPending
     ? "Buscando reservas…"
@@ -432,7 +523,16 @@ export function Reservations({
       </div>
       <div ref={resultsRef} className="flex shrink-0 flex-col gap-4">
         {query.isPending ? (
-          <Skeleton className="h-64 w-full" />
+          mobile ? (
+            <ReservationCardsSkeleton />
+          ) : (
+            <div className="border">
+              <Table aria-label="Cargando reservas" aria-busy>
+                {tableHeader}
+                <ReservationRowsSkeleton />
+              </Table>
+            </div>
+          )
         ) : (
           <>
             {query.isError ? (
@@ -525,20 +625,7 @@ export function Reservations({
                     aria-label="Reservas"
                     aria-busy={busy || undefined}
                   >
-                    <TableHeader>
-                      <TableRow>
-                        {sortHeader("guestName", "Contacto principal")}
-                        <TableHead scope="col">Estado</TableHead>
-                        <TableHead scope="col">Habitaciones</TableHead>
-                        <TableHead scope="col">Ocupantes</TableHead>
-                        {sortHeader("checkIn", "Check-in")}
-                        {sortHeader("checkOut", "Check-out")}
-                        <TableHead scope="col" className="text-right">
-                          Total
-                        </TableHead>
-                        {sortHeader("balance", "Saldo")}
-                      </TableRow>
-                    </TableHeader>
+                    {tableHeader}
                     <TableBody>
                       {rows.map((row) => (
                         <TableRow
