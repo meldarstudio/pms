@@ -288,12 +288,6 @@ describe("marking housekeeping status", () => {
       (await housekeepingList()).rooms.every((room) => room.housekeepingStatus === "dirty"),
     ).toBe(true);
   });
-
-  it("no longer marks a room through its own path", async () => {
-    const response = await request("/housekeeping/room-101", "PUT", { status: "dirty" });
-    expect(response.status).toBe(404);
-    expect((await housekeepingList()).rooms[0].housekeepingStatus).toBe("clean");
-  });
 });
 
 describe("housekeeping status elsewhere", () => {

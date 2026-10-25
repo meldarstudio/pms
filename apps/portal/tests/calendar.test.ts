@@ -2057,6 +2057,8 @@ it("shows the front desk a Todas table with when each room was last marked", asy
     { ...limpiezaRoom("room-102", "102", "clean"), housekeepingChangedAt: "2026-10-20T14:42:00Z" },
     // Still the 19th in Lima, though the 20th in UTC.
     { ...limpiezaRoom("room-103", "103", "dirty"), housekeepingChangedAt: "2026-10-20T04:30:00Z" },
+    // Some ICU versions shorten September to "sept" or "set".
+    { ...limpiezaRoom("room-104", "104", "clean"), housekeepingChangedAt: "2026-09-05T15:00:00Z" },
   ];
   page.api.on("GET", "/housekeeping", () => ({ date: "2026-10-20", rooms }));
   const writes: unknown[] = [];
@@ -2070,7 +2072,7 @@ it("shows the front desk a Todas table with when each room was last marked", asy
     }),
   }));
   await renderLimpieza("all", { desktop: true });
-  await until(() => limpiezaTableRows().length === 3, "Todas must load as a table");
+  await until(() => limpiezaTableRows().length === 4, "Todas must load as a table");
 
   assert.equal(container.querySelector("ul"), null);
   assert.deepEqual(
@@ -2081,6 +2083,7 @@ it("shows the front desk a Todas table with when each room was last marked", asy
     ["101", "Doble", "En casa", "—", "SuciaLimpia"],
     ["102", "Doble", "Libre", "09:42", "SuciaLimpia"],
     ["103", "Doble", "Libre", "19 oct", "SuciaLimpia"],
+    ["104", "Doble", "Libre", "5 sep", "SuciaLimpia"],
   ]);
 
   const saving = page.api.hold("PUT", "/housekeeping");
@@ -2219,6 +2222,49 @@ it("bulk marks a shift-clicked range of Todas in one request and undoes each roo
       page.button("Marcar habitación 103 como sucia").getAttribute("aria-pressed") === "true" &&
       page.button("Marcar habitación 102 como limpia").getAttribute("aria-pressed") === "true",
     "Undo must restore each room's own status",
+  );
+});
+
+it("bulk marks the selected Todas rooms dirty in one request, holding the selection while it saves", async () => {
+  const { rooms, writes } = await renderTodasTable();
+
+  await select("101");
+  await select("102");
+  const saving = page.api.hold("PUT", "/housekeeping");
+  await click("Marcar sucias");
+  await until(() => saving.request !== undefined, "The bulk mark must be sent");
+  assert.deepEqual(saving.request!.body, {
+    marks: [
+      { roomId: "room-101", status: "dirty" },
+      { roomId: "room-102", status: "dirty" },
+    ],
+  });
+  for (const number of ["todas", "101", "103"]) {
+    assert.equal(selectBox(number).getAttribute("aria-disabled"), "true");
+  }
+  await select("103");
+  await select("todas");
+  assert.deepEqual(selectedRooms(), ["101", "102"]);
+
+  const marked = rooms.slice(0, 2);
+  for (const room of marked) {
+    room.housekeepingStatus = "dirty";
+    room.housekeepingChangedAt = "2026-10-20T15:00:00.000Z";
+  }
+  await React.act(async () => saving.release(Response.json({ rooms: marked })));
+  await until(() => window.document.body.textContent.includes("2 habitaciones marcadas sucias"));
+  assert.equal(selectionBar(), null);
+  await until(
+    () => page.button("Marcar habitación 102 como sucia").getAttribute("aria-pressed") === "true",
+    "The marked rooms must show Sucia",
+  );
+
+  await click("Deshacer");
+  await until(() => writes.length === 1, "Undo must send one request");
+  assert.deepEqual(writes, [["101:dirty", "102:clean"]]);
+  await until(
+    () => page.button("Marcar habitación 102 como limpia").getAttribute("aria-pressed") === "true",
+    "Undo must restore 102's own status",
   );
 });
 

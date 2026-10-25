@@ -74,11 +74,30 @@ housekeepingRoutes.get("/", async (c) => {
 // D1 binds at most 100 parameters per statement.
 const ROOM_IDS_PER_STATEMENT = 90;
 
+// Rooms are never deleted and their ids never change, so a room that exists
+// here still exists when the batch runs.
+async function readMarkedRooms(db: ReturnType<typeof getDb>, roomIds: string[]) {
+  const reads = await Promise.all(
+    chunks(roomIds, ROOM_IDS_PER_STATEMENT).map((ids) =>
+      db
+        .select({
+          id: rooms.id,
+          housekeepingStatus: rooms.housekeepingStatus,
+          housekeepingChangedAt: rooms.housekeepingChangedAt,
+        })
+        .from(rooms)
+        .where(inArray(rooms.id, ids)),
+    ),
+  );
+  return reads.flat();
+}
+
 housekeepingRoutes.put("/", validate("json", housekeepingMarksSchema), async (c) => {
   const { marks } = c.req.valid("json");
   const db = getDb(c.env.DB);
-  const existing = new Set((await db.select({ id: rooms.id }).from(rooms)).map((room) => room.id));
-  if (marks.some((mark) => !existing.has(mark.roomId))) throw new HttpError(404, "room not found");
+  const roomIds = marks.map((mark) => mark.roomId);
+  if ((await readMarkedRooms(db, roomIds)).length !== roomIds.length)
+    throw new HttpError(404, "room not found");
   // Sets, rather than flips, each status so repeated or simultaneous marks agree.
   const changedAt = new Date().toISOString();
   await runBatch(
@@ -95,13 +114,5 @@ housekeepingRoutes.put("/", validate("json", housekeepingMarksSchema), async (c)
       ),
     ),
   );
-  const marked = new Set(marks.map((mark) => mark.roomId));
-  const updated = await db
-    .select({
-      id: rooms.id,
-      housekeepingStatus: rooms.housekeepingStatus,
-      housekeepingChangedAt: rooms.housekeepingChangedAt,
-    })
-    .from(rooms);
-  return c.json({ rooms: updated.filter((room) => marked.has(room.id)) });
+  return c.json({ rooms: await readMarkedRooms(db, roomIds) });
 });
