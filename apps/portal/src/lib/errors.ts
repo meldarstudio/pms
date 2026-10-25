@@ -59,10 +59,15 @@ const messages: Record<string, string> = {
     "Esta reserva cambió. Selecciónala de nuevo para consultar la estancia actualizada.",
 };
 
-export function translateError(message: string) {
+/** The Spanish message for a known backend error, or null when it has no translation. */
+export function knownErrorMessage(message: string): string | null {
   if (messages[message]) return messages[message];
   if (/^(Invalid input|Invalid option|Too small|Too big)/i.test(message)) {
     return "Revisa los datos ingresados.";
   }
-  return message;
+  return null;
+}
+
+export function translateError(message: string) {
+  return knownErrorMessage(message) ?? message;
 }

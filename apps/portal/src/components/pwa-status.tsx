@@ -1,5 +1,5 @@
 import { useEffect, useState, type ReactNode } from "react";
-import { RefreshCwIcon, XIcon } from "lucide-react";
+import { CheckIcon, RefreshCwIcon, WifiOffIcon, XIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -9,8 +9,19 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import {
+  Empty,
+  EmptyContent,
+  EmptyDescription,
+  EmptyHeader,
+  EmptyMedia,
+  EmptyTitle,
+} from "@/components/ui/empty";
 
 const DISMISSED_UPDATE_KEY = "manantial-dismissed-update";
+// Above the floating page action and clear of the header, whose sidebar toggle stays reachable.
+const floatingNotice =
+  "fixed right-4 bottom-[max(1rem,env(safe-area-inset-bottom))] left-4 z-[100] shadow-xl sm:left-auto sm:w-80";
 
 export function PwaStatus({ children }: { children: ReactNode }) {
   const [online, setOnline] = useState(() => navigator.onLine);
@@ -83,34 +94,61 @@ export function PwaStatus({ children }: { children: ReactNode }) {
       <div className={online ? "contents" : undefined} hidden={!online}>
         {children}
       </div>
-      {(!online || (reconnected && !showUpdate)) && (
-        <aside
+      {!online && (
+        <div role="status" className="fixed inset-0 z-[100] flex bg-background p-6">
+          <Empty className="m-auto max-w-md border">
+            <EmptyHeader>
+              <EmptyMedia variant="icon">
+                <WifiOffIcon />
+              </EmptyMedia>
+              <EmptyTitle>Sin conexión a internet</EmptyTitle>
+              <EmptyDescription>Las operaciones requieren conexión.</EmptyDescription>
+            </EmptyHeader>
+            <EmptyContent>
+              <Button variant="outline" onClick={() => window.location.reload()}>
+                Reintentar
+              </Button>
+            </EmptyContent>
+          </Empty>
+        </div>
+      )}
+      {online && reconnected && !showUpdate && (
+        <Card
           role="status"
-          className={`fixed inset-x-0 z-[100] flex items-center justify-center gap-3 bg-foreground px-4 py-2 text-sm text-background ${online ? "top-0" : "inset-y-0 flex-col"}`}
+          aria-label="Conexión restablecida"
+          size="sm"
+          className={`${floatingNotice} bg-success text-success-foreground ring-success-foreground/20`}
         >
-          {!online ? (
-            <>
-              <span>Sin conexión a internet. Las operaciones requieren conexión.</span>
-              <Button size="sm" variant="secondary" onClick={() => window.location.reload()}>
-                Reintentar
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <CheckIcon className="size-4" />
+              Conexión restablecida.
+            </CardTitle>
+            <CardAction>
+              <Button
+                variant="ghost"
+                size="icon-sm"
+                aria-label="Cerrar aviso"
+                onClick={() => setReconnected(false)}
+              >
+                <XIcon />
               </Button>
-            </>
-          ) : (
-            <>
-              <span>Conexión restablecida.</span>
-              <Button size="sm" variant="secondary" onClick={() => window.location.reload()}>
-                Reintentar
-              </Button>
-            </>
-          )}
-        </aside>
+            </CardAction>
+          </CardHeader>
+          <CardFooter className="flex-col items-stretch">
+            <Button variant="outline" onClick={() => window.location.reload()}>
+              <RefreshCwIcon data-icon="inline-start" />
+              Reintentar
+            </Button>
+          </CardFooter>
+        </Card>
       )}
       {showUpdate && (
         <Card
           role="status"
           aria-label="Actualización disponible"
           size="sm"
-          className="fixed right-4 bottom-[max(1rem,env(safe-area-inset-bottom))] left-4 z-[100] shadow-xl sm:left-auto sm:w-80"
+          className={floatingNotice}
         >
           <CardHeader>
             <CardTitle>Nueva versión disponible</CardTitle>

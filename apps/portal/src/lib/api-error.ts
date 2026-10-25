@@ -1,4 +1,4 @@
-import { translateError } from "./errors.ts";
+import { knownErrorMessage, translateError } from "./errors.ts";
 
 export class ApiError extends Error {
   readonly status: number;
@@ -12,6 +12,29 @@ export class ApiError extends Error {
     this.code = code;
     this.field = field;
   }
+}
+
+/** A request that never reached the API, such as a dropped connection. */
+export class NetworkError extends Error {
+  constructor(options?: ErrorOptions) {
+    super("No se pudo conectar con el servidor. Inténtalo de nuevo.", options);
+    this.name = "NetworkError";
+  }
+}
+
+/** How a page explains a failed read. 401 never gets here: it returns to the login form. */
+export type ReadErrorKind = "not-found" | "offline" | "unexpected";
+
+export function readErrorKind(error: unknown): ReadErrorKind {
+  if (error instanceof NetworkError) return "offline";
+  if (error instanceof ApiError && error.status === 404) return "not-found";
+  return "unexpected";
+}
+
+/** The Spanish explanation for a failed read, or null when only generic copy fits. */
+export function readErrorMessage(error: unknown): string | null {
+  if (error instanceof ApiError) return knownErrorMessage(error.code);
+  return null;
 }
 
 export function serverFieldErrors(

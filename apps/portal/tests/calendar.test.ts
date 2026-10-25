@@ -593,6 +593,28 @@ it("keeps the held window and shows one Spanish banner when a refresh fails", as
   );
 });
 
+it("replaces the grid with an error when a new window fails, keeping date navigation", async () => {
+  await render(React.createElement(CalendarSession));
+  await until(() => !!adaBar(), "Week must paint before moving past the held window");
+  failCalendar(500, "calendar window is incomplete");
+  await click("Período siguiente");
+  await click("Período siguiente");
+  await until(
+    () => !!container.querySelector('[role="alert"]'),
+    "A window outside the held range must show the page error",
+  );
+
+  const alert = container.querySelector('[role="alert"]')!;
+  assert.ok(alert.textContent.includes("La ventana del calendario está incompleta"));
+  assert.ok(alert.textContent.includes("Reintentar"));
+  assert.equal(container.textContent.includes("Los datos pueden estar desactualizados"), false);
+  assert.equal(container.textContent.includes("Mantenimiento"), false);
+  await click("Período anterior");
+  await click("Período anterior");
+  await until(() => !!adaBar(), "The held week must return from cache");
+  assert.equal(container.querySelector('[role="alert"]'), null);
+});
+
 it.each(["held grid", "empty unassigned panel"] as const)(
   "retries only calendar from the %s",
   async (origin) => {

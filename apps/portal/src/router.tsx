@@ -11,6 +11,7 @@ import { format, parseISO } from "date-fns";
 import { propertyToday } from "@/lib/property-calendar";
 import { useNavigate } from "@tanstack/react-router";
 import App from "@/App";
+import { RouteCrash } from "@/components/page-error";
 import { ReservationPage } from "@/components/reservation-page";
 import { Reservations } from "@/components/reservations";
 import { RoomCalendar } from "@/components/room-calendar";
@@ -241,7 +242,7 @@ const routeTree = rootRoute.addChildren([
   setupRoute,
 ]);
 
-export const router = createRouter({ routeTree });
+export const router = createRouter({ routeTree, defaultErrorComponent: RouteCrash });
 
 declare module "@tanstack/react-router" {
   interface Register {

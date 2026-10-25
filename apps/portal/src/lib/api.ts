@@ -1,4 +1,4 @@
-import { ApiError } from "./api-error";
+import { ApiError, NetworkError } from "./api-error";
 import { configurePropertyCalendar } from "./property-calendar";
 
 export type Room = {
@@ -294,7 +294,7 @@ async function request(path: string, init: RequestInit) {
     return response;
   } catch (error) {
     if (error instanceof DOMException && error.name === "AbortError") throw error;
-    throw new Error("No se pudo conectar con el servidor. Inténtalo de nuevo.", { cause: error });
+    throw new NetworkError({ cause: error });
   }
 }
 

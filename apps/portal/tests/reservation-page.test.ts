@@ -731,6 +731,19 @@ it("protects a stay draft from background refresh, router navigation and dirty d
   await page.until(() => router.state.location.pathname === "/reservations");
 });
 
+it("explains a missing reservation instead of offering a retry", async () => {
+  mockApi();
+  page.api.on("GET", "/reservations/reservation-1", () =>
+    Response.json({ error: "reservation not found" }, { status: 404 }),
+  );
+  await render("", false);
+  await page.until(() => page.container.textContent.includes("No se encontró la reserva"));
+  assert.ok(page.container.textContent.includes("Esta reserva no existe o fue eliminada."));
+  assert.equal(page.container.textContent.includes("Reintentar"), false);
+  await click("Volver a reservas");
+  await page.until(() => router.state.location.pathname === "/reservations");
+});
+
 it.each(["loading", "failed"] as const)(
   "returns to the originating reservation list filters while the detail is %s",
   async (state) => {

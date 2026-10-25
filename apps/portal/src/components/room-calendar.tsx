@@ -44,6 +44,7 @@ import {
 } from "@/components/ui/select";
 import { SetupRequired } from "@/components/setup-required";
 import { Skeleton } from "@/components/ui/skeleton";
+import { PageError, StaleDataNotice } from "@/components/page-error";
 import { type RoomClosure } from "@/lib/api";
 import type { ReservationStay } from "@/lib/room-assignment";
 import { useRoomAssignment } from "@/lib/use-room-assignment";
@@ -394,6 +395,8 @@ export function RoomCalendar({
     ? "Mostrar habitaciones reservadas sin asignar"
     : `Mostrar habitaciones reservadas sin asignar, ${unassigned.length}`;
   const listError = calendar ? null : error;
+  // A failed new window must not leave the previous week's stays on screen.
+  const loadError = calendar ? null : calendarQuery.error;
   const previewTrack =
     !isMobile && assignment.target
       ? placeStays([stayTrack(assignment.target)], start, span)[0]
@@ -732,13 +735,8 @@ export function RoomCalendar({
           </div>
         )}
       </div>
-      {error ? (
-        <div className="flex items-center justify-between gap-2 border-b px-2.5 py-2">
-          <p className="text-xs text-muted-foreground">{error}</p>
-          <Button variant="outline" size="sm" onClick={() => void refreshCalendar()}>
-            Reintentar
-          </Button>
-        </div>
+      {calendar && calendarQuery.error ? (
+        <StaleDataNotice error={calendarQuery.error} onRetry={() => void refreshCalendar()} />
       ) : null}
       {!isMobile && assignment.target ? (
         <div className="flex items-center justify-between gap-2 border-b bg-assignment/40 px-2.5 py-1.5 text-xs text-assignment-foreground">
@@ -767,154 +765,160 @@ export function RoomCalendar({
             primaryActionClearance,
           )}
         >
-          <div
-            role={rooms === null ? "region" : undefined}
-            aria-label={rooms === null ? "Cargando calendario" : undefined}
-            aria-busy={rooms === null ? true : undefined}
-            className="grid w-full"
-            style={{
-              gridTemplateColumns: `${roomColumnWidth}rem repeat(${span}, minmax(6rem, 1fr))`,
-              minWidth: `${roomColumnWidth + span * 6}rem`,
-            }}
-          >
+          {loadError ? (
+            <div className="p-4">
+              <PageError error={loadError} onRetry={() => void refreshCalendar()} />
+            </div>
+          ) : (
             <div
-              ref={gridCorner}
-              className="sticky top-0 left-0 z-40 border-r border-b bg-background"
-            />
-            {days.map((day, dayIndex) => (
+              role={rooms === null ? "region" : undefined}
+              aria-label={rooms === null ? "Cargando calendario" : undefined}
+              aria-busy={rooms === null ? true : undefined}
+              className="grid w-full"
+              style={{
+                gridTemplateColumns: `${roomColumnWidth}rem repeat(${span}, minmax(6rem, 1fr))`,
+                minWidth: `${roomColumnWidth + span * 6}rem`,
+              }}
+            >
               <div
-                key={format(day, "yyyy-MM-dd")}
-                className={cn(
-                  "sticky top-0 z-30 flex min-w-0 flex-col items-center gap-0.5 border-b bg-background px-2.5 py-1.5",
-                  dayIndex < span - 1 && "border-r",
-                )}
-              >
-                <span
-                  className={cn(
-                    "text-xs tracking-wide uppercase",
-                    format(day, "yyyy-MM-dd") === today
-                      ? "font-medium text-primary"
-                      : "text-muted-foreground",
-                  )}
-                >
-                  {format(day, "yyyy-MM-dd") === today ? "Hoy" : format(day, "EEE")}
-                </span>
-                <span
-                  className={cn(
-                    "flex h-5 min-w-5 items-center justify-center px-1 text-xs",
-                    format(day, "yyyy-MM-dd") === today
-                      ? "bg-primary font-medium text-primary-foreground"
-                      : "text-muted-foreground",
-                  )}
-                >
-                  {format(day, "d")}
-                </span>
-                <span className="text-xs text-muted-foreground">{format(day, "MMM")}</span>
-              </div>
-            ))}
-            {rooms === null
-              ? Array.from({ length: 8 }, (_, index) => (
-                  <div key={index} className="contents">
-                    <div className="sticky left-0 z-20 border-r border-b bg-background px-2.5 py-2">
-                      <Skeleton className="h-6 w-16" />
-                    </div>
-                    <Skeleton
-                      className="border-b"
-                      style={{
-                        gridColumn: `2 / span ${span}`,
-                        minHeight: "2.5rem",
-                      }}
-                    />
-                  </div>
-                ))
-              : null}
-            {rooms?.map((room) => (
-              <RoomRowView
-                key={room.id}
-                roomId={room.id}
-                number={room.number}
-                typeName={room.typeName}
-                dirty={room.housekeepingStatus === "dirty"}
-                stays={placeStays(
-                  [
-                    ...room.stays.map(stayTrack),
-                    ...(closuresByRoom.get(room.id) ?? []).map(closureTrack),
-                  ],
-                  start,
-                  span,
-                )}
-                days={days}
-                dayCount={span}
-                onEditRoom={() =>
-                  setRoomTarget({
-                    roomId: room.id,
-                    number: room.number,
-                    roomTypeId: room.roomTypeId,
-                    typeName: room.typeName,
-                  })
-                }
-                onCloseRoom={() =>
-                  setClosureTarget({
-                    mode: "create",
-                    roomId: room.id,
-                    number: room.number,
-                    typeName: room.typeName,
-                  })
-                }
-                onBookDay={
-                  bookingDataReady && !assignment.target
-                    ? (day) =>
-                        setBookingTarget({
-                          mode: "create",
-                          roomId: room.id,
-                          roomTypeId: room.roomTypeId,
-                          number: room.number,
-                          typeName: room.typeName,
-                          checkIn: format(day, "yyyy-MM-dd"),
-                        })
-                    : undefined
-                }
-                onOpenStay={
-                  assignment.target
-                    ? undefined
-                    : (reservationId) =>
-                        setBookingTarget({
-                          mode: "edit",
-                          reservationId,
-                          roomId: room.id,
-                          number: room.number,
-                          typeName: room.typeName,
-                        })
-                }
-                onOpenClosure={openClosure}
-                assignmentActive={assignment.target !== null}
-                assignmentReason={
-                  assignment.target
-                    ? assignment.checking
-                      ? "Consultando disponibilidad para toda la estancia"
-                      : (assignment.error ?? assignment.roomIssues.get(room.id) ?? undefined)
-                    : undefined
-                }
-                assignmentNote={
-                  assignment.target?.roomTypeId === room.roomTypeId
-                    ? assignmentNotes[assignment.roomIssueCodes.get(room.id) ?? ""]
-                    : undefined
-                }
-                highlighted={highlightedRoomId === room.id}
-                assignmentPreview={
-                  assignment.ready && previewTrack && assignment.roomIssues.get(room.id) === null
-                    ? {
-                        stay: previewTrack,
-                        disabled: assignment.pending,
-                        onSelect: () => {
-                          void assignment.assignRoom(room.id);
-                        },
-                      }
-                    : undefined
-                }
+                ref={gridCorner}
+                className="sticky top-0 left-0 z-40 border-r border-b bg-background"
               />
-            ))}
-          </div>
+              {days.map((day, dayIndex) => (
+                <div
+                  key={format(day, "yyyy-MM-dd")}
+                  className={cn(
+                    "sticky top-0 z-30 flex min-w-0 flex-col items-center gap-0.5 border-b bg-background px-2.5 py-1.5",
+                    dayIndex < span - 1 && "border-r",
+                  )}
+                >
+                  <span
+                    className={cn(
+                      "text-xs tracking-wide uppercase",
+                      format(day, "yyyy-MM-dd") === today
+                        ? "font-medium text-primary"
+                        : "text-muted-foreground",
+                    )}
+                  >
+                    {format(day, "yyyy-MM-dd") === today ? "Hoy" : format(day, "EEE")}
+                  </span>
+                  <span
+                    className={cn(
+                      "flex h-5 min-w-5 items-center justify-center px-1 text-xs",
+                      format(day, "yyyy-MM-dd") === today
+                        ? "bg-primary font-medium text-primary-foreground"
+                        : "text-muted-foreground",
+                    )}
+                  >
+                    {format(day, "d")}
+                  </span>
+                  <span className="text-xs text-muted-foreground">{format(day, "MMM")}</span>
+                </div>
+              ))}
+              {rooms === null
+                ? Array.from({ length: 8 }, (_, index) => (
+                    <div key={index} className="contents">
+                      <div className="sticky left-0 z-20 border-r border-b bg-background px-2.5 py-2">
+                        <Skeleton className="h-6 w-16" />
+                      </div>
+                      <Skeleton
+                        className="border-b"
+                        style={{
+                          gridColumn: `2 / span ${span}`,
+                          minHeight: "2.5rem",
+                        }}
+                      />
+                    </div>
+                  ))
+                : null}
+              {rooms?.map((room) => (
+                <RoomRowView
+                  key={room.id}
+                  roomId={room.id}
+                  number={room.number}
+                  typeName={room.typeName}
+                  dirty={room.housekeepingStatus === "dirty"}
+                  stays={placeStays(
+                    [
+                      ...room.stays.map(stayTrack),
+                      ...(closuresByRoom.get(room.id) ?? []).map(closureTrack),
+                    ],
+                    start,
+                    span,
+                  )}
+                  days={days}
+                  dayCount={span}
+                  onEditRoom={() =>
+                    setRoomTarget({
+                      roomId: room.id,
+                      number: room.number,
+                      roomTypeId: room.roomTypeId,
+                      typeName: room.typeName,
+                    })
+                  }
+                  onCloseRoom={() =>
+                    setClosureTarget({
+                      mode: "create",
+                      roomId: room.id,
+                      number: room.number,
+                      typeName: room.typeName,
+                    })
+                  }
+                  onBookDay={
+                    bookingDataReady && !assignment.target
+                      ? (day) =>
+                          setBookingTarget({
+                            mode: "create",
+                            roomId: room.id,
+                            roomTypeId: room.roomTypeId,
+                            number: room.number,
+                            typeName: room.typeName,
+                            checkIn: format(day, "yyyy-MM-dd"),
+                          })
+                      : undefined
+                  }
+                  onOpenStay={
+                    assignment.target
+                      ? undefined
+                      : (reservationId) =>
+                          setBookingTarget({
+                            mode: "edit",
+                            reservationId,
+                            roomId: room.id,
+                            number: room.number,
+                            typeName: room.typeName,
+                          })
+                  }
+                  onOpenClosure={openClosure}
+                  assignmentActive={assignment.target !== null}
+                  assignmentReason={
+                    assignment.target
+                      ? assignment.checking
+                        ? "Consultando disponibilidad para toda la estancia"
+                        : (assignment.error ?? assignment.roomIssues.get(room.id) ?? undefined)
+                      : undefined
+                  }
+                  assignmentNote={
+                    assignment.target?.roomTypeId === room.roomTypeId
+                      ? assignmentNotes[assignment.roomIssueCodes.get(room.id) ?? ""]
+                      : undefined
+                  }
+                  highlighted={highlightedRoomId === room.id}
+                  assignmentPreview={
+                    assignment.ready && previewTrack && assignment.roomIssues.get(room.id) === null
+                      ? {
+                          stay: previewTrack,
+                          disabled: assignment.pending,
+                          onSelect: () => {
+                            void assignment.assignRoom(room.id);
+                          },
+                        }
+                      : undefined
+                  }
+                />
+              ))}
+            </div>
+          )}
         </div>
         {!isMobile && unassignedOpen && (
           <aside

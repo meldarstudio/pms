@@ -29,6 +29,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
+import { PageError, StaleDataNotice } from "@/components/page-error";
 import { Separator } from "@/components/ui/separator";
 import { useIsMobile } from "@/hooks/use-mobile";
 import type { InventoryNight, InventoryRoomType } from "@/lib/api";
@@ -95,7 +96,9 @@ export function Inventory({
   const days = eachDayOfInterval({ start, end: addDays(start, span - 1) });
   const dayIds = days.map((day) => format(day, "yyyy-MM-dd"));
   const loading = grid === null && !inventory.isError;
-  const error = inventory.error?.message ?? null;
+  // Placeholder data from another window is never shown in place of a failed one.
+  const loadError = grid ? null : inventory.error;
+  const retry = () => void queryClient.invalidateQueries({ queryKey: ["inventory"] });
 
   useEffect(() => {
     function onUp(event: Event) {
@@ -286,101 +289,96 @@ export function Inventory({
         </ButtonGroup>
         <div />
       </div>
-      {error ? (
-        <div className="flex items-center justify-between gap-2 border-b px-2.5 py-2">
-          <p className="text-xs text-muted-foreground">{error}</p>
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => void queryClient.invalidateQueries({ queryKey: ["inventory"] })}
+      {grid && inventory.error ? <StaleDataNotice error={inventory.error} onRetry={retry} /> : null}
+      {loadError ? (
+        <div className="p-4">
+          <PageError error={loadError} onRetry={retry} />
+        </div>
+      ) : (
+        <div className="min-h-0 min-w-0 flex-1 overflow-auto overscroll-contain">
+          <div
+            className="grid w-max min-w-full"
+            style={{
+              gridTemplateColumns: `fit-content(${isMobile ? 10 : 13}rem) repeat(${span}, minmax(5rem, 1fr))`,
+            }}
           >
-            Reintentar
-          </Button>
-        </div>
-      ) : null}
-      <div className="min-h-0 min-w-0 flex-1 overflow-auto overscroll-contain">
-        <div
-          className="grid w-max min-w-full"
-          style={{
-            gridTemplateColumns: `fit-content(${isMobile ? 10 : 13}rem) repeat(${span}, minmax(5rem, 1fr))`,
-          }}
-        >
-          <div className="sticky top-0 left-0 z-40 min-w-28 border-r border-b bg-background" />
-          {days.map((day) => {
-            const date = format(day, "yyyy-MM-dd");
-            const weekend = day.getDay() === 0 || day.getDay() === 6;
-            return (
-              <div
-                key={date}
-                className={cn(
-                  "sticky top-0 z-30 flex min-w-0 flex-col items-center gap-0.5 border-r border-b bg-background px-1 py-1.5",
-                  weekend && "bg-muted",
-                )}
-              >
-                <span
+            <div className="sticky top-0 left-0 z-40 min-w-28 border-r border-b bg-background" />
+            {days.map((day) => {
+              const date = format(day, "yyyy-MM-dd");
+              const weekend = day.getDay() === 0 || day.getDay() === 6;
+              return (
+                <div
+                  key={date}
                   className={cn(
-                    "text-xs tracking-wide uppercase",
-                    date === today ? "font-medium text-primary" : "text-muted-foreground",
+                    "sticky top-0 z-30 flex min-w-0 flex-col items-center gap-0.5 border-r border-b bg-background px-1 py-1.5",
+                    weekend && "bg-muted",
                   )}
                 >
-                  {date === today ? "Hoy" : format(day, "EEE")}
-                </span>
-                <span
-                  className={cn(
-                    "flex h-5 min-w-5 items-center justify-center px-1 text-xs",
-                    date === today
-                      ? "bg-primary font-medium text-primary-foreground"
-                      : "text-muted-foreground",
-                  )}
-                >
-                  {format(day, "d")}
-                </span>
-                <span className="text-xs text-muted-foreground">{format(day, "MMM")}</span>
-              </div>
-            );
-          })}
-          {loading
-            ? Array.from({ length: 4 }, (_, index) => (
-                <div key={index} className="contents">
-                  <div className="sticky left-0 z-20 min-w-0 border-r border-b bg-background px-2.5 py-2">
-                    <Skeleton className="h-8 w-24" />
-                  </div>
-                  <div
-                    className="border-b"
-                    style={{
-                      gridColumn: `2 / span ${span}`,
-                      minHeight: "4rem",
-                    }}
-                  />
+                  <span
+                    className={cn(
+                      "text-xs tracking-wide uppercase",
+                      date === today ? "font-medium text-primary" : "text-muted-foreground",
+                    )}
+                  >
+                    {date === today ? "Hoy" : format(day, "EEE")}
+                  </span>
+                  <span
+                    className={cn(
+                      "flex h-5 min-w-5 items-center justify-center px-1 text-xs",
+                      date === today
+                        ? "bg-primary font-medium text-primary-foreground"
+                        : "text-muted-foreground",
+                    )}
+                  >
+                    {format(day, "d")}
+                  </span>
+                  <span className="text-xs text-muted-foreground">{format(day, "MMM")}</span>
                 </div>
-              ))
-            : null}
-          {grid?.roomTypes.map((type) => (
-            <TypeRow
-              key={type.id}
-              type={type}
-              currency={CURRENCY}
-              days={days}
-              selected={selection?.roomTypeId === type.id ? selection.dates : []}
-              onPointerDown={onCellPointerDown}
-              onPointerEnter={onCellPointerEnter}
-              onOpen={(date, keyboard) => {
-                if (keyboard) {
-                  const next = { roomTypeId: type.id, dates: [date] };
-                  anchor.current = next;
-                  choose(next);
-                  setEditor(next);
-                  return;
-                }
-                const current = selectionRef.current;
-                if (current?.roomTypeId === type.id && current.dates.includes(date)) {
-                  setEditor(current);
-                }
-              }}
-            />
-          ))}
+              );
+            })}
+            {loading
+              ? Array.from({ length: 4 }, (_, index) => (
+                  <div key={index} className="contents">
+                    <div className="sticky left-0 z-20 min-w-0 border-r border-b bg-background px-2.5 py-2">
+                      <Skeleton className="h-8 w-24" />
+                    </div>
+                    <div
+                      className="border-b"
+                      style={{
+                        gridColumn: `2 / span ${span}`,
+                        minHeight: "4rem",
+                      }}
+                    />
+                  </div>
+                ))
+              : null}
+            {grid?.roomTypes.map((type) => (
+              <TypeRow
+                key={type.id}
+                type={type}
+                currency={CURRENCY}
+                days={days}
+                selected={selection?.roomTypeId === type.id ? selection.dates : []}
+                onPointerDown={onCellPointerDown}
+                onPointerEnter={onCellPointerEnter}
+                onOpen={(date, keyboard) => {
+                  if (keyboard) {
+                    const next = { roomTypeId: type.id, dates: [date] };
+                    anchor.current = next;
+                    choose(next);
+                    setEditor(next);
+                    return;
+                  }
+                  const current = selectionRef.current;
+                  if (current?.roomTypeId === type.id && current.dates.includes(date)) {
+                    setEditor(current);
+                  }
+                }}
+              />
+            ))}
+          </div>
         </div>
-      </div>
+      )}
     </div>
   );
 }

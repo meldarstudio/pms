@@ -19,6 +19,7 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import { PageError, StaleDataNotice } from "@/components/page-error";
 import { Field, FieldDescription, FieldError, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -44,28 +45,25 @@ import { toast, toastError } from "@/lib/toast";
 export function PropertySetup() {
   const types = useRoomTypes();
   const rooms = useRooms();
+  function retry() {
+    if (types.error) void types.refetch();
+    if (rooms.error) void rooms.refetch();
+  }
   if (types.isPending || rooms.isPending) return <Skeleton className="m-6 h-80" />;
   if (!types.data || !rooms.data)
     return (
-      <main className="flex flex-col items-start gap-4 p-6">
-        <FieldError>{(types.error ?? rooms.error)?.message}</FieldError>
-        <Button
-          variant="outline"
-          onClick={() => {
-            void types.refetch();
-            void rooms.refetch();
-          }}
-        >
-          Reintentar
-        </Button>
+      <main className="flex flex-col p-6">
+        <PageError error={types.error ?? rooms.error} onRetry={retry} />
       </main>
     );
   return (
     <>
       {(types.error || rooms.error) && (
-        <FieldError>
-          No se pudo actualizar la configuración. Tus cambios sin guardar se conservan.
-        </FieldError>
+        <StaleDataNotice
+          error={types.error ?? rooms.error}
+          onRetry={retry}
+          detail="Tus cambios sin guardar se conservan."
+        />
       )}
       <SetupWorkspace types={types.data} rooms={rooms.data} />
     </>
