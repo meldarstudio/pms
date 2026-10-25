@@ -194,10 +194,11 @@ function fixture() {
   for (const name of ["scripts", "drizzle", "wrangler.jsonc"]) {
     cpSync(join(repo, "apps/backend", name), join(cwd, "apps/backend", name), { recursive: true });
   }
-  // Post-deployment checks have their own tests; never contact production here.
-  for (const name of ["smoke-production.mjs", "record-production-release.mjs"]) {
-    writeFileSync(join(cwd, "apps/backend/scripts", name), "// Excluded from this harness.\n");
-  }
+  // This harness excludes live active-version verification; never contact production here.
+  writeFileSync(
+    join(cwd, "apps/backend/scripts/record-production-release.mjs"),
+    "// Excluded from this harness.\n",
+  );
   cpSync(join(repo, "package.json"), join(cwd, "package.json"));
   cpSync(join(repo, ".node-version"), join(cwd, ".node-version"));
   const packageJson = JSON.parse(readFileSync(join(cwd, "package.json"), "utf8"));
@@ -382,6 +383,8 @@ it("validates and builds the selected main revision before read-only readiness, 
   expect(result.summary).toContain("API: success");
   expect(result.summary).toContain("Portal: success");
   expect(result.summary).toContain("not yet verified");
+  expect(result.summary).toContain("No automated HTTP smoke checks are performed");
+  expect(result.summary).toContain("Manual login/calendar/PWA verification is still required");
 });
 
 it("detects runtime setup that would read advancing main instead of the selected commit", () => {
