@@ -2256,6 +2256,10 @@ it("bulk marks the selected Todas rooms dirty in one request, holding the select
   for (const number of ["todas", "101", "103"]) {
     assert.equal(selectBox(number).getAttribute("aria-disabled"), "true");
   }
+  for (const number of ["101", "102", "103"]) {
+    assert.equal(page.button(`Marcar habitación ${number} como limpia`).disabled, true);
+    assert.equal(page.button(`Marcar habitación ${number} como sucia`).disabled, true);
+  }
   await select("103");
   await select("todas");
   assert.deepEqual(selectedRooms(), ["101", "102"]);
@@ -2268,6 +2272,7 @@ it("bulk marks the selected Todas rooms dirty in one request, holding the select
   await React.act(async () => saving.release(Response.json({ rooms: marked })));
   await until(() => window.document.body.textContent.includes("2 habitaciones marcadas sucias"));
   assert.equal(selectionBar(), null);
+  assert.equal(page.button("Marcar habitación 102 como limpia").disabled, false);
   await until(
     () => page.button("Marcar habitación 102 como sucia").getAttribute("aria-pressed") === "true",
     "The marked rooms must show Sucia",
@@ -2280,6 +2285,42 @@ it("bulk marks the selected Todas rooms dirty in one request, holding the select
     () => page.button("Marcar habitación 102 como limpia").getAttribute("aria-pressed") === "true",
     "Undo must restore 102's own status",
   );
+});
+
+it("blocks overlapping row marks during a bulk save and enables them again after failure", async () => {
+  const { writes } = await renderTodasTable();
+  await select("101");
+  await select("102");
+  const rejected = page.api.hold("PUT", "/housekeeping");
+  await markSelectedAs("Limpias");
+  await until(() => rejected.request !== undefined, "The bulk mark must be sent");
+
+  // 102 was already clean. A row mark here could succeed, then be overwritten in
+  // the cache by the failed bulk request's rollback to that original clean status.
+  assert.equal(page.button("Marcar habitación 102 como sucia").disabled, true);
+  await click("Marcar habitación 102 como sucia");
+  assert.deepEqual(writes, [], "The disabled row action must not send another mark");
+
+  await React.act(async () =>
+    rejected.release(Response.json({ error: "room not found" }, { status: 404 })),
+  );
+  await until(
+    () => !page.button("Marcar habitación 102 como sucia").disabled,
+    "A rejected bulk mark must enable the row actions again",
+  );
+  assert.deepEqual(selectedRooms(), ["101", "102"]);
+  assert.equal(
+    page.button("Marcar habitación 101 como sucia").getAttribute("aria-pressed"),
+    "true",
+  );
+  assert.equal(
+    page.button("Marcar habitación 102 como limpia").getAttribute("aria-pressed"),
+    "true",
+  );
+
+  await click("Marcar habitación 102 como sucia");
+  await until(() => writes.length === 1, "The row action must work after the failed bulk mark");
+  assert.deepEqual(writes, [["102:dirty"]]);
 });
 
 it("selects Por limpiar ranges in cleaning order and keeps the selection when a bulk mark fails", async () => {

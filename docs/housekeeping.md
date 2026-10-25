@@ -15,6 +15,9 @@ the property date. The tab is kept in the URL; **Por limpiar** opens by default 
 housekeeper; from 768px the same tabs show a [desktop table](#desktop-table) for the
 front desk or supervisor.
 
+On phones, each tab has the same minimum 44px touch target as the
+[Reservas view tabs](reservations.md#portal-list). Desktop tabs stay compact.
+
 **Por limpiar** is the housekeeper's work for today, with its count in the tab,
 highlighted while rooms remain. It lists dirty rooms that will be free tonight. It
 leaves out a room whose checked-in guest stays tonight, because the guest is using it,
@@ -88,8 +91,9 @@ is shown, and the selection stays for a retry.
 The selection belongs to the tab: switching tabs clears it. After every re-read,
 including the one at property midnight and one that shows marks from another device,
 it keeps only rooms still visible in the tab, and the count follows. While a bulk mark
-saves, the row and header checkboxes are disabled, and rooms it takes off Por limpiar
-stay selected until it succeeds or fails.
+saves, the row and header checkboxes and all desktop row actions are disabled to
+prevent overlapping marks. Rooms it takes off Por limpiar stay selected until it
+succeeds or fails. Controls become available again after either outcome.
 
 ## API
 

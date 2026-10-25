@@ -205,10 +205,11 @@ function usePendingMark(mark: MarkRooms) {
   return [pending, run] as const;
 }
 
-/** One room's control, disabled while its own mark saves. */
+/** One room's control, disabled while its own mark or a bulk mark saves. */
 type RowControl = {
   room: HousekeepingRoom;
   pending: HousekeepingStatus | null;
+  disabled?: boolean;
   run: (room: HousekeepingRoom, status: HousekeepingStatus) => void;
 };
 
@@ -216,6 +217,7 @@ type RowControl = {
 function ListaButton({
   room,
   pending,
+  disabled = false,
   run,
   size,
   className,
@@ -226,7 +228,7 @@ function ListaButton({
       variant="outline"
       className={className}
       aria-label={`Marcar habitación ${room.number} como limpia`}
-      disabled={!!pending}
+      disabled={disabled || !!pending}
       onClick={() => run(room, "clean")}
     >
       {pending && <Spinner data-icon="inline-start" />}
@@ -252,6 +254,7 @@ const statusDisplay = {
 function StatusToggle({
   room,
   pending,
+  disabled = false,
   run,
   size,
   itemClassName,
@@ -264,7 +267,7 @@ function StatusToggle({
       className="shrink-0"
       aria-label={`Limpieza de la habitación ${room.number}`}
       value={[room.housekeepingStatus]}
-      disabled={!!pending}
+      disabled={disabled || !!pending}
       onValueChange={([status]) => {
         // Tapping the pressed side unpresses it; that sets nothing.
         if (status) run(room, status as HousekeepingStatus);
@@ -419,7 +422,14 @@ function DesktopRow({
       </TableCell>
       <TableCell>
         <div className="flex justify-end">
-          <RoomAction view={view} phone={false} room={room} pending={pending} run={run} />
+          <RoomAction
+            view={view}
+            phone={false}
+            room={room}
+            pending={pending}
+            disabled={!!bulkPending}
+            run={run}
+          />
         </div>
       </TableCell>
     </TableRow>
@@ -627,9 +637,12 @@ export function Housekeeping({
       >
         <TabsList
           aria-label="Vista de limpieza"
-          className="h-11 w-full md:h-9 md:w-fit md:group-data-horizontal/tabs:h-9"
+          className="w-full group-data-horizontal/tabs:h-auto md:w-fit md:group-data-horizontal/tabs:h-9"
         >
-          <TabsTrigger value="to-clean" className="gap-2 text-sm md:px-4 md:text-xs">
+          <TabsTrigger
+            value="to-clean"
+            className="h-auto min-h-11 gap-2 text-sm md:h-[calc(100%-1px)] md:min-h-0 md:px-4 md:text-xs"
+          >
             Por limpiar
             {list && (
               <Badge
@@ -640,7 +653,10 @@ export function Housekeeping({
               </Badge>
             )}
           </TabsTrigger>
-          <TabsTrigger value="all" className="text-sm md:px-4 md:text-xs">
+          <TabsTrigger
+            value="all"
+            className="h-auto min-h-11 text-sm md:h-[calc(100%-1px)] md:min-h-0 md:px-4 md:text-xs"
+          >
             Todas
           </TabsTrigger>
         </TabsList>
