@@ -38,10 +38,10 @@ import {
   putRoomTypeRates,
   savePropertySetup,
   searchReservationsPage,
-  setHousekeepingStatus,
+  markHousekeeping,
   type HousekeepingList,
   type HousekeepingMark,
-  type HousekeepingStatus,
+  type HousekeepingMarkInput,
   type ReservationListParams,
   type PatchGuestInput,
   type AvailabilityOccupancy,
@@ -213,38 +213,42 @@ export function useHousekeeping() {
   return query;
 }
 
+/** Marks one or more rooms in one all-or-nothing request. */
 export function useSetHousekeepingStatus() {
   const client = useQueryClient();
-  const setRoom = (roomId: string, mark: Partial<HousekeepingMark>) =>
+  const setRooms = (marks: Map<string, Partial<HousekeepingMark>>) =>
     client.setQueryData<HousekeepingList>(housekeepingQueryKey, (list) =>
       list
         ? {
             ...list,
-            rooms: list.rooms.map((room) => (room.id === roomId ? { ...room, ...mark } : room)),
+            rooms: list.rooms.map((room) => {
+              const mark = marks.get(room.id);
+              return mark ? { ...room, ...mark } : room;
+            }),
           }
         : list,
     );
   return useMutation({
-    mutationFn: (input: { roomId: string; status: HousekeepingStatus }) =>
-      setHousekeepingStatus(input.roomId, input.status),
-    // The row changes at once; the re-read after a save re-sorts the list.
-    onMutate: async ({ roomId, status }) => {
+    mutationFn: (marks: HousekeepingMarkInput[]) => markHousekeeping(marks),
+    // The rows change at once; the re-read after a save re-sorts the list.
+    onMutate: async (marks) => {
       await client.cancelQueries({ queryKey: housekeepingQueryKey });
-      const room = client
-        .getQueryData<HousekeepingList>(housekeepingQueryKey)
-        ?.rooms.find((room) => room.id === roomId);
-      const previous: HousekeepingMark | undefined = room && {
-        housekeepingStatus: room.housekeepingStatus,
-        housekeepingChangedAt: room.housekeepingChangedAt,
-      };
-      setRoom(roomId, { housekeepingStatus: status });
+      const marked = new Set(marks.map((mark) => mark.roomId));
+      const previous = new Map<string, HousekeepingMark>();
+      for (const room of client.getQueryData<HousekeepingList>(housekeepingQueryKey)?.rooms ?? [])
+        if (marked.has(room.id))
+          previous.set(room.id, {
+            housekeepingStatus: room.housekeepingStatus,
+            housekeepingChangedAt: room.housekeepingChangedAt,
+          });
+      setRooms(new Map(marks.map((mark) => [mark.roomId, { housekeepingStatus: mark.status }])));
       return { previous };
     },
-    onError: (_error, { roomId }, context) => {
-      if (context?.previous) setRoom(roomId, context.previous);
+    onError: (_error, _marks, context) => {
+      if (context) setRooms(context.previous);
     },
-    onSuccess: async ({ id, housekeepingStatus, housekeepingChangedAt }) => {
-      setRoom(id, { housekeepingStatus, housekeepingChangedAt });
+    onSuccess: async ({ rooms }) => {
+      setRooms(new Map(rooms.map(({ id, ...mark }) => [id, mark])));
       await client.invalidateQueries({ queryKey: housekeepingQueryKey });
       await client.invalidateQueries({ queryKey: ["calendar"] });
       await client.invalidateQueries({ queryKey: ["reservation"] });

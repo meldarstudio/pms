@@ -1849,6 +1849,8 @@ it("uses the property date for arrival badges and refreshes them on resume", asy
   assert.equal(container.textContent.includes("Llega hoy"), false);
 });
 
+type HousekeepingMarks = { marks: { roomId: string; status: "dirty" | "clean" }[] };
+
 function limpiezaRoom(id: string, number: string, housekeepingStatus: "dirty" | "clean") {
   return {
     id,
@@ -1896,18 +1898,17 @@ it("keeps Todas in room order after a mark and restores a status the server reje
     })),
   }));
   const writes: unknown[] = [];
-  page.api.on<{ status: "dirty" | "clean" }>("PUT", "/housekeeping/:id", ({ params, body }) => {
-    writes.push([params.id, body]);
-    const number = params.id.replace("room-", "");
-    statuses[number] = body.status;
+  page.api.on<HousekeepingMarks>("PUT", "/housekeeping", ({ body }) => {
+    writes.push(body);
+    for (const { roomId, status } of body.marks) statuses[roomId.replace("room-", "")] = status;
     // The front desk assigns an arrival meanwhile; only a re-read can show it.
     arriving = true;
     return {
-      id: params.id,
-      number,
-      roomTypeId: "double",
-      housekeepingStatus: body.status,
-      housekeepingChangedAt: "2026-10-20T15:00:00.000Z",
+      rooms: body.marks.map(({ roomId, status }) => ({
+        id: roomId,
+        housekeepingStatus: status,
+        housekeepingChangedAt: "2026-10-20T15:00:00.000Z",
+      })),
     };
   });
   await renderLimpieza("all");
@@ -1921,11 +1922,11 @@ it("keeps Todas in room order after a mark and restores a status the server reje
     () => container.textContent.includes("Llega hoy"),
     "A saved mark must re-read the list",
   );
-  assert.deepEqual(writes, [["room-102", { status: "clean" }]]);
+  assert.deepEqual(writes, [{ marks: [{ roomId: "room-102", status: "clean" }] }]);
   assert.deepEqual(limpiezaRows(), ["101:clean", "102:clean"]);
   assert.equal(window.document.body.textContent.includes("Habitación 101"), false);
 
-  const rejected = page.api.hold("PUT", "/housekeeping/:id");
+  const rejected = page.api.hold("PUT", "/housekeeping");
   await click("Marcar habitación 102 como sucia");
   await until(() => rejected.request !== undefined && limpiezaRows()[1] === "102:dirty");
   await React.act(async () =>
@@ -1967,11 +1968,18 @@ async function renderPorLimpiar() {
   ];
   page.api.on("GET", "/housekeeping", () => ({ date: "2026-10-20", rooms }));
   const writes: unknown[] = [];
-  page.api.on<{ status: "dirty" | "clean" }>("PUT", "/housekeeping/:id", ({ params, body }) => {
-    writes.push([params.id, body.status]);
-    const room = rooms.find((room) => room.id === params.id)!;
-    room.housekeepingStatus = body.status;
-    return { ...room, housekeepingChangedAt: "2026-10-20T15:00:00.000Z" };
+  page.api.on<HousekeepingMarks>("PUT", "/housekeeping", ({ body }) => {
+    const marked = body.marks.map(({ roomId, status }) => {
+      writes.push([roomId, status]);
+      const room = rooms.find((room) => room.id === roomId)!;
+      room.housekeepingStatus = status;
+      return {
+        id: roomId,
+        housekeepingStatus: status,
+        housekeepingChangedAt: "2026-10-20T15:00:00.000Z",
+      };
+    });
+    return { rooms: marked };
   });
   await renderLimpieza("to-clean");
   await until(() => porLimpiarCards().length > 0, "Por limpiar must load");

@@ -27,7 +27,7 @@ type MarkRoom = (room: HousekeepingRoom, status: HousekeepingStatus) => Promise<
 function useMarkRoom(): MarkRoom {
   const mutation = useSetHousekeepingStatus();
   const save = (room: HousekeepingRoom, status: HousekeepingStatus) =>
-    mutation.mutateAsync({ roomId: room.id, status }).then(
+    mutation.mutateAsync([{ roomId: room.id, status }]).then(
       () => true,
       (cause: unknown) => {
         toastError("No se pudo guardar la limpieza", cause);
