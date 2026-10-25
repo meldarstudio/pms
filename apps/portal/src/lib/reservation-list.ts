@@ -21,19 +21,27 @@ export function stayDateLabel(value: string) {
   return format(parseISO(value), "d MMM yyyy");
 }
 
-export function roomsLabel(
-  rooms: readonly {
-    roomNumber: string | null;
-    roomTypeName?: string | null;
-  }[],
-) {
-  const numbers = rooms.flatMap((room) => (room.roomNumber == null ? [] : [room.roomNumber]));
+const roomNumberOrder = new Intl.Collator("es", { numeric: true });
+
+// List rows name this many rooms and count the rest.
+const listedRoomLimit = 3;
+
+export function roomsSummary(rooms: readonly { roomNumber: string | null }[]) {
+  const numbers = rooms
+    .flatMap((room) => (room.roomNumber == null ? [] : [room.roomNumber]))
+    .sort(roomNumberOrder.compare);
   const unassigned = rooms.length - numbers.length;
-  return (
-    [numbers.join(", "), unassigned ? `${unassigned} sin asignar` : ""]
-      .filter(Boolean)
-      .join(" · ") || "Sin asignar"
-  );
+  return {
+    numbers,
+    listed: numbers.slice(0, listedRoomLimit),
+    unlisted: Math.max(0, numbers.length - listedRoomLimit),
+    unassignedLabel: unassigned ? `${unassigned} sin asignar` : "",
+  };
+}
+
+export function roomsLabel(rooms: readonly { roomNumber: string | null }[]) {
+  const { numbers, unassignedLabel } = roomsSummary(rooms);
+  return [numbers.join(", "), unassignedLabel].filter(Boolean).join(" · ") || "Sin asignar";
 }
 
 export function occupantsLabel(rooms: readonly { adults: number; children: number }[]) {

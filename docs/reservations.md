@@ -257,6 +257,13 @@ opens the full reservation page, which contains the phone, declared occupant
 counts, total, and workflow actions. Returning retains the URL-backed list
 context. At 768px and wider, the list keeps its table and horizontal view tabs.
 
+Cards and table rows list assigned room numbers in numeric order. With more than
+three, they show the first three and a count of the rest, such as
+`108, 201, 204 +12`; the unassigned count always stays visible. Screen readers
+receive every room number. On desktop the room cell stays on one line, and hovering
+the count shows the full list. To open a reservation from a room number, use the
+calendar: list search does not match room numbers.
+
 The app header and Nueva reserva stay reachable while the list scrolls; see
 [navigation](portal.md#navigation) for the mobile floating placement. View,
 date, search, filter, and sorting controls scroll with the results. Mobile list
