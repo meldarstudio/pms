@@ -132,11 +132,6 @@ const stayDate = (value: string, pattern: string) => {
 };
 type Intent = { type: "edit-payment" | "delete-payment"; entry: ReservationPayment };
 
-// Keep Lyra's visual height with a 44px touch target. Footer rows are 12px apart
-// so these expanded targets do not overlap the controls in the adjacent row.
-const mobileFooterTarget =
-  "min-h-11 relative after:absolute after:inset-x-0 after:top-1/2 after:h-11 after:-translate-y-1/2";
-
 export function RoomBookingDialog({
   target,
   onClose,
@@ -234,7 +229,7 @@ export function RoomBookingDialog({
                 <Button
                   variant="ghost"
                   size="icon-sm"
-                  className="absolute top-2 right-2 max-md:top-[max(0.5rem,env(safe-area-inset-top))] max-md:right-[max(0.5rem,env(safe-area-inset-right))] max-md:min-h-11 max-md:min-w-11"
+                  className="absolute top-2 right-2 max-md:top-[max(0.5rem,env(safe-area-inset-top))] max-md:right-[max(0.5rem,env(safe-area-inset-right))]"
                 />
               }
             >
@@ -285,7 +280,7 @@ export function RoomBookingDialog({
               <Button
                 variant="ghost"
                 size="icon-sm"
-                className="absolute top-2 right-2 max-md:top-[max(1rem,env(safe-area-inset-top))] max-md:right-[max(1rem,env(safe-area-inset-right))] max-md:min-h-11 max-md:min-w-11"
+                className="absolute top-2 right-2 max-md:top-[max(1rem,env(safe-area-inset-top))] max-md:right-[max(1rem,env(safe-area-inset-right))]"
               />
             }
           >
@@ -484,13 +479,7 @@ export function BookingEditor({
       <DropdownMenuTrigger
         disabled={busy || (!mobileEditor && independentDraftDirty) || statusMutation.isPending}
         render={
-          <Button
-            type="button"
-            variant="ghost"
-            size={mobileEditor ? "icon-sm" : "icon"}
-            className={mobileEditor ? "min-h-11 min-w-11" : undefined}
-            aria-label="Más acciones de reserva"
-          />
+          <Button type="button" variant="ghost" size="icon" aria-label="Más acciones de reserva" />
         }
       >
         <span className="sr-only">Más acciones de reserva</span>
@@ -558,7 +547,6 @@ export function BookingEditor({
     <Button
       type="button"
       variant={mobileEditor ? "ghost" : "outline"}
-      className={mobileEditor ? mobileFooterTarget : undefined}
       disabled={!dirty || busy || discountMutation.isPending}
       onClick={stayDraft.discard}
     >
@@ -579,13 +567,13 @@ export function BookingEditor({
           className={cn(
             "flex shrink-0 flex-wrap items-center gap-2 pr-8",
             compactEditor &&
-              "max-md:min-h-[calc(2.75rem+max(1rem,env(safe-area-inset-top)))] max-md:flex-nowrap max-md:items-start max-md:pt-[max(1rem,env(safe-area-inset-top))] max-md:pr-[calc(3.25rem+max(1rem,env(safe-area-inset-right)))] max-md:pl-[max(1rem,env(safe-area-inset-left))]",
+              "max-md:min-h-[calc(2rem+max(1rem,env(safe-area-inset-top)))] max-md:flex-nowrap max-md:items-start max-md:pt-[max(1rem,env(safe-area-inset-top))] max-md:pr-[calc(2.25rem+max(1rem,env(safe-area-inset-right)))] max-md:pl-[max(1rem,env(safe-area-inset-left))]",
           )}
         >
           <div
             className={
               mobileEditor
-                ? "flex min-h-11 min-w-0 flex-1 flex-nowrap items-center gap-2"
+                ? "flex min-h-7 min-w-0 flex-1 flex-nowrap items-center gap-2"
                 : "contents"
             }
           >
@@ -637,8 +625,7 @@ export function BookingEditor({
             variant="line"
             className={cn(
               "shrink-0",
-              compactEditor &&
-                "max-md:min-h-11 max-md:w-full max-md:border-b max-md:safe-area-padding-x max-md:[&_button]:min-h-11 max-md:[&_button]:min-w-11",
+              compactEditor && "max-md:w-full max-md:border-b max-md:safe-area-padding-x",
             )}
           >
             <TabsTrigger value="details">
@@ -666,7 +653,7 @@ export function BookingEditor({
             className={cn(
               "min-w-0",
               compactEditor &&
-                "max-md:min-h-0 max-md:flex-1 max-md:overflow-y-auto max-md:overscroll-contain max-md:scroll-py-4 max-md:py-4 max-md:safe-area-padding-x max-md:[&_button]:min-h-11 max-md:[&_button]:min-w-11 max-md:[&_input]:min-h-11 max-md:[&_[data-slot=input-group]]:min-h-11",
+                "max-md:min-h-0 max-md:flex-1 max-md:overflow-y-auto max-md:overscroll-contain max-md:scroll-py-4 max-md:py-4 max-md:safe-area-padding-x",
             )}
           >
             <TabsContent value="details" keepMounted className="flex flex-col gap-5">
@@ -885,7 +872,7 @@ export function BookingEditor({
             className={cn(
               "min-w-0 md:self-start",
               compactEditor &&
-                "max-md:flex max-md:min-h-0 max-md:flex-col max-md:pt-3 max-md:pb-px max-md:safe-area-padding-x max-md:[&_input]:min-h-11 max-md:[&_[data-slot=input-group]]:min-h-11",
+                "max-md:flex max-md:min-h-0 max-md:flex-col max-md:pt-3 max-md:pb-px max-md:safe-area-padding-x",
             )}
           >
             <BookingSummary
@@ -976,11 +963,7 @@ export function BookingEditor({
                     <Button
                       type="button"
                       variant={mobileEditor ? "default" : "outline"}
-                      className={
-                        mobileEditor
-                          ? cn("max-md:min-w-0 max-md:flex-1", mobileFooterTarget)
-                          : undefined
-                      }
+                      className={cn(mobileEditor && "max-md:min-w-0 max-md:flex-1")}
                       disabled={busy || dirty || independentDraftDirty || statusMutation.isPending}
                       onClick={() =>
                         void changeStatus(
@@ -1008,7 +991,7 @@ export function BookingEditor({
                   <Button
                     type="button"
                     variant="outline"
-                    className="max-md:min-h-11 max-md:min-w-0 max-md:flex-1"
+                    className="max-md:min-w-0 max-md:flex-1"
                     disabled={busy}
                     onClick={onCancel}
                   >
@@ -1042,7 +1025,6 @@ export function BookingEditor({
                     <Button
                       type="submit"
                       form={formId}
-                      className={mobileEditor ? mobileFooterTarget : undefined}
                       disabled={stayDraft.submission.disabled || busy}
                     >
                       {saveMutation.isPending && <Spinner data-icon="inline-start" />}
@@ -1053,7 +1035,6 @@ export function BookingEditor({
                     <Button
                       type="button"
                       disabled={busy}
-                      className={mobileFooterTarget}
                       onClick={() => {
                         setTab("details");
                         onTabChange?.("details");

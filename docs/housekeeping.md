@@ -15,8 +15,8 @@ the property date. The tab is kept in the URL; **Por limpiar** opens by default 
 housekeeper; from 768px the same tabs show a [desktop table](#desktop-table) for the
 front desk or supervisor.
 
-On phones, each tab has the same minimum 44px touch target as the
-[Reservas view tabs](reservations.md#portal-list). Desktop tabs stay compact.
+Tabs and room actions use the same compact [Lyra styling](portal.md#control-styling)
+on phones and desktop. Phone rows share the same padding in both tabs.
 
 **Por limpiar** is the housekeeper's work for today, with its count in the tab,
 highlighted while rooms remain. It lists dirty rooms that will be free tonight. It
@@ -61,6 +61,10 @@ of cards, in the same order and with the same Por limpiar filter, tab count, and
 above), **Marcada**, and the tab's action: **Lista** on Por limpiar, **Sucia | Limpia**
 on Todas. Each action marks its row exactly as on the phone, including the disabled
 control while it saves, the **Deshacer** toast, and the restore on failure.
+
+The **Hoy** badges stay on one line in the desktop table so switching between
+the two action controls does not wrap badges and change row heights. Narrow
+tables scroll horizontally; phone cards still allow badges to wrap.
 
 **Marcada** is when the housekeeping status was last marked, from
 `housekeepingChangedAt`, in the property time zone: the time (`10:42`) when it falls

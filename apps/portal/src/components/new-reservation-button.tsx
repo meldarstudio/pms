@@ -18,7 +18,7 @@ export function NewReservationButton({
   if (mobile)
     return (
       <PagePrimaryAction
-        icon={<PlusIcon />}
+        icon={<PlusIcon data-icon="inline-start" />}
         label="Nueva reserva"
         scrollRef={scrollRef}
         disabled={disabled}

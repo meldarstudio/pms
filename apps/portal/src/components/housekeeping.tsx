@@ -1,4 +1,4 @@
-import { useState, type ComponentProps, type ReactNode } from "react";
+import { useState, type ReactNode } from "react";
 import { ChevronDownIcon, RefreshCwIcon, SparklesIcon } from "lucide-react";
 import { cn } from "cn";
 import { PageHeaderActions } from "@/components/page-header-actions";
@@ -160,7 +160,7 @@ function cleaningOrder(room: HousekeepingRoom) {
 function StayBadges({ room }: { room: HousekeepingRoom }) {
   const free = !room.departing && !room.inHouse;
   return (
-    <div className="flex flex-wrap items-center gap-1">
+    <div className="flex flex-wrap items-center gap-1 md:flex-nowrap">
       {room.arriving && (
         <Badge variant="destructive" className="border-destructive/20">
           Llega hoy
@@ -214,19 +214,11 @@ type RowControl = {
 };
 
 /** Por limpiar's one action: mark the room clean. */
-function ListaButton({
-  room,
-  pending,
-  disabled = false,
-  run,
-  size,
-  className,
-}: RowControl & Pick<ComponentProps<typeof Button>, "size" | "className">) {
+function ListaButton({ room, pending, disabled = false, run }: RowControl) {
   return (
     <Button
-      size={size}
+      size="sm"
       variant="outline"
-      className={className}
       aria-label={`Marcar habitación ${room.number} como limpia`}
       disabled={disabled || !!pending}
       onClick={() => run(room, "clean")}
@@ -251,18 +243,11 @@ const statusDisplay = {
 } as const;
 
 /** Todas' Sucia | Limpia control, pressed on the current status. */
-function StatusToggle({
-  room,
-  pending,
-  disabled = false,
-  run,
-  size,
-  itemClassName,
-}: RowControl & Pick<ComponentProps<typeof ToggleGroup>, "size"> & { itemClassName?: string }) {
+function StatusToggle({ room, pending, disabled = false, run }: RowControl) {
   return (
     <ToggleGroup
       variant="outline"
-      size={size}
+      size="sm"
       spacing={0}
       className="shrink-0"
       aria-label={`Limpieza de la habitación ${room.number}`}
@@ -277,7 +262,7 @@ function StatusToggle({
         <ToggleGroupItem
           key={status}
           value={status}
-          className={cn(itemClassName, statusDisplay[status].className)}
+          className={statusDisplay[status].className}
           aria-label={`Marcar habitación ${room.number} como ${statusDisplay[status].label.toLowerCase()}`}
         >
           {pending === status && <Spinner data-icon="inline-start" />}
@@ -291,24 +276,8 @@ function StatusToggle({
 type RoomRowProps = { view: HousekeepingView; room: HousekeepingRoom; mark: MarkRooms };
 
 /** The tab's action for a room: Lista on Por limpiar, Sucia | Limpia on Todas. */
-function RoomAction({
-  view,
-  phone,
-  ...control
-}: RowControl & { view: HousekeepingView; phone: boolean }) {
-  return view === "to-clean" ? (
-    <ListaButton
-      {...control}
-      size={phone ? "lg" : "sm"}
-      className={cn(phone && "min-h-12 shrink-0 px-5 text-base")}
-    />
-  ) : (
-    <StatusToggle
-      {...control}
-      size={phone ? "default" : "sm"}
-      itemClassName={cn(phone && "min-h-11 px-3 text-sm")}
-    />
-  );
+function RoomAction({ view, ...control }: RowControl & { view: HousekeepingView }) {
+  return view === "to-clean" ? <ListaButton {...control} /> : <StatusToggle {...control} />;
 }
 
 /** What differs between the tabs' lists, besides each row's action. */
@@ -316,13 +285,11 @@ const views = {
   "to-clean": {
     listLabel: "Habitaciones por limpiar",
     actionHeading: <span className="sr-only">Acción</span>,
-    phoneRowClassName: "p-4",
     bulkStatuses: ["clean"],
   },
   all: {
     listLabel: "Habitaciones",
     actionHeading: "Estado",
-    phoneRowClassName: "px-4 py-3",
     bulkStatuses: ["clean", "dirty"],
   },
 } satisfies Record<
@@ -330,7 +297,6 @@ const views = {
   {
     listLabel: string;
     actionHeading: ReactNode;
-    phoneRowClassName: string;
     bulkStatuses: HousekeepingStatus[];
   }
 >;
@@ -341,17 +307,12 @@ const bulkMenuLabel = { clean: "Limpias", dirty: "Sucias" } as const;
 function PhoneRow({ view, room, mark }: RoomRowProps) {
   const [pending, run] = usePendingMark(mark);
   return (
-    <li
-      className={cn(
-        "flex items-center gap-3 border-b last:border-b-0",
-        views[view].phoneRowClassName,
-      )}
-    >
+    <li className="flex items-center gap-3 border-b p-4 last:border-b-0">
       <div className="flex min-w-0 flex-1 flex-col gap-2">
         <RoomHeading room={room} />
         <StayBadges room={room} />
       </div>
-      <RoomAction view={view} phone room={room} pending={pending} run={run} />
+      <RoomAction view={view} room={room} pending={pending} run={run} />
     </li>
   );
 }
@@ -424,7 +385,6 @@ function DesktopRow({
         <div className="flex justify-end">
           <RoomAction
             view={view}
-            phone={false}
             room={room}
             pending={pending}
             disabled={!!bulkPending}
@@ -635,14 +595,8 @@ export function Housekeeping({
         value={view}
         onValueChange={(value) => onViewChange(value as HousekeepingView)}
       >
-        <TabsList
-          aria-label="Vista de limpieza"
-          className="w-full group-data-horizontal/tabs:h-auto md:w-fit md:group-data-horizontal/tabs:h-9"
-        >
-          <TabsTrigger
-            value="to-clean"
-            className="h-auto min-h-11 gap-2 text-sm md:h-[calc(100%-1px)] md:min-h-0 md:px-4 md:text-xs"
-          >
+        <TabsList aria-label="Vista de limpieza" className="w-full md:w-fit">
+          <TabsTrigger value="to-clean">
             Por limpiar
             {list && (
               <Badge
@@ -653,12 +607,7 @@ export function Housekeeping({
               </Badge>
             )}
           </TabsTrigger>
-          <TabsTrigger
-            value="all"
-            className="h-auto min-h-11 text-sm md:h-[calc(100%-1px)] md:min-h-0 md:px-4 md:text-xs"
-          >
-            Todas
-          </TabsTrigger>
+          <TabsTrigger value="all">Todas</TabsTrigger>
         </TabsList>
       </Tabs>
       {query.isError && !list ? (

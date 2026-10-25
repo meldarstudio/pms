@@ -199,13 +199,13 @@ export function BookingSummary({
                   <Button
                     type="button"
                     variant="ghost"
-                    className="h-auto min-h-11 w-full border-0 p-0 text-left whitespace-normal focus-visible:ring-2 focus-visible:ring-inset has-data-[icon=inline-end]:pr-0"
+                    className="h-auto w-full border-0 p-0 text-left whitespace-normal focus-visible:ring-2 focus-visible:ring-inset has-data-[icon=inline-end]:pr-0"
                   />
                 }
               >
                 <span
                   className={cn(
-                    "flex min-h-11 w-full items-center gap-3 px-3 py-2",
+                    "flex w-full items-center gap-3 px-2.5 py-1.5",
                     balance !== null && balanceStatus(balance).tone,
                   )}
                 >

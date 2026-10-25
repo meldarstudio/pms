@@ -1,5 +1,15 @@
 # Portal shell and installed app
 
+## Control styling
+
+Desktop and mobile use the same compact Lyra control sizes and typography from
+[the shared UI primitives](../apps/portal/src/components/ui), configured by
+[components.json](../apps/portal/components.json). Use the primitives' size variants
+by control role rather than adding mobile-only size or touch-target overrides.
+Responsive cards, toolbars, full-screen editors, navigation sheets, and safe-area
+spacing remain independent of control sizing. This baseline does not establish
+WCAG conformance; target sizing and spacing require review in the rendered UI.
+
 ## Navigation
 
 The portal uses a narrow, flat sidebar for Reservas, Calendario,
@@ -14,13 +24,16 @@ screen. Navigation retains the last
 reservation filters and calendar dates, and existing unsaved-draft guards still
 apply. Sign-out retains the existing authentication and error handling.
 
-Below 768px, a page's main task floats at the bottom right as one 48px button
+Below 768px, a page's main task floats at the bottom right as one standard Lyra button
 for one-handed reach: **Nueva reserva** on Reservas and Calendario. It shows its
 label while the page's scroll area is at the top and collapses to its icon once
 that area scrolls more than 8px, including after automatic scrolls such as
-pagination; its accessible name stays the label. It follows the header in focus
-order, keeps safe-area spacing, and sits beneath dialogs, sheets, and the PWA
-update card. Those scroll areas reserve bottom padding so their last content can
+pagination; its accessible name stays the label. A centered square icon area keeps
+the collapsed button at Lyra's standard icon size. The label animates beside it
+with content-driven button width, without switching size variants. Reduced-motion
+preferences disable the label animation. It follows the header in focus order,
+keeps safe-area spacing, and sits beneath dialogs, sheets, and the PWA update card.
+Those scroll areas reserve bottom padding so their last content can
 scroll clear of it. Wider screens keep each page's own placement: the header on
 Reservas and the toolbar on Calendario.
 [page-primary-action.tsx](../apps/portal/src/components/page-primary-action.tsx)

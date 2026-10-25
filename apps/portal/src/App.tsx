@@ -43,7 +43,7 @@ export function App() {
       <AppSidebar />
       <SidebarInset className="min-h-0 min-w-0 overflow-hidden">
         <header className="flex h-12 shrink-0 items-center gap-3 border-b px-2.5">
-          <SidebarTrigger className="min-h-11 min-w-11 md:min-h-0 md:min-w-0" />
+          <SidebarTrigger />
           <Separator
             orientation="vertical"
             className="data-vertical:h-4 data-vertical:self-center"
@@ -55,10 +55,10 @@ export function App() {
         <div ref={setPrimaryAction} />
         <div
           className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden"
-          // The 3rem action plus 1rem above and below it.
+          // The 2rem Lyra action plus 1rem above and below it.
           style={
             {
-              "--primary-action-clearance": "calc(5rem + env(safe-area-inset-bottom))",
+              "--primary-action-clearance": "calc(4rem + env(safe-area-inset-bottom))",
             } as CSSProperties
           }
         >
