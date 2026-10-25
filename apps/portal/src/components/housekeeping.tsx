@@ -223,7 +223,6 @@ function ListaButton({ room, pending, disabled = false, run }: RowControl) {
       disabled={disabled || !!pending}
       onClick={() => run(room, "clean")}
     >
-      {pending && <Spinner data-icon="inline-start" />}
       Lista
     </Button>
   );
@@ -265,7 +264,6 @@ function StatusToggle({ room, pending, disabled = false, run }: RowControl) {
           className={statusDisplay[status].className}
           aria-label={`Marcar habitación ${room.number} como ${statusDisplay[status].label.toLowerCase()}`}
         >
-          {pending === status && <Spinner data-icon="inline-start" />}
           {statusDisplay[status].label}
         </ToggleGroupItem>
       ))}
@@ -475,7 +473,7 @@ function RoomList({
   const { selection } = bulk;
   if (phone) {
     return (
-      <ul aria-label={views[view].listLabel} className="max-w-2xl border">
+      <ul aria-label={views[view].listLabel} className="border">
         {rooms.map((room) => (
           <PhoneRow key={room.id} view={view} room={room} mark={mark} />
         ))}
@@ -483,7 +481,7 @@ function RoomList({
     );
   }
   return (
-    <div className="max-w-5xl border">
+    <div className="border">
       <Table aria-label={views[view].listLabel}>
         <TableHeader>
           <TableRow>
@@ -532,7 +530,7 @@ function RoomList({
 
 function AllClean() {
   return (
-    <Empty className="max-w-2xl border">
+    <Empty className="border">
       <EmptyHeader>
         <EmptyMedia variant="icon">
           <SparklesIcon />
@@ -591,7 +589,7 @@ export function Housekeeping({
         </Button>
       </PageHeaderActions>
       <Tabs
-        className="w-full max-w-2xl md:w-auto"
+        className="w-full md:w-auto"
         value={view}
         onValueChange={(value) => onViewChange(value as HousekeepingView)}
       >
