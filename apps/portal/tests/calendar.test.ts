@@ -2042,7 +2042,10 @@ async function renderPorLimpiar({ desktop = false } = {}) {
     return { rooms: marked };
   });
   await renderLimpieza("to-clean", { desktop });
-  await until(() => container.querySelector("li, tbody tr") !== null, "Por limpiar must load");
+  await until(
+    () => !container.querySelector('[aria-label="Cargando habitaciones"]'),
+    "Por limpiar must load",
+  );
   return { writes };
 }
 

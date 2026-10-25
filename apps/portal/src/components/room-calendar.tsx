@@ -820,8 +820,9 @@ export function RoomCalendar({
               {rooms === null
                 ? Array.from({ length: 8 }, (_, index) => (
                     <div key={index} className="contents">
-                      <div className="sticky left-0 z-20 border-r border-b bg-background px-2.5 py-2">
-                        <Skeleton className="h-6 w-16" />
+                      <div className="sticky left-0 z-20 flex flex-col justify-center gap-0.5 border-r border-b bg-background px-2.5">
+                        <Skeleton className="h-4 w-8" />
+                        <Skeleton className="h-4 w-16" />
                       </div>
                       <Skeleton
                         className="border-b"

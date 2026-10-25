@@ -115,6 +115,41 @@ components; [api-error.ts](../apps/portal/src/lib/api-error.ts) classifies error
   with **Recargar** and **Ir al calendario**, inside the shell when only the page
   failed. It shows no technical details and logs the error to the console.
 
+## Loading states
+
+These rules cover a page's first read, before any data is on screen. Saves keep
+their button spinners, and the session check keeps its full-screen spinner.
+
+- **Placeholders, not spinners:** the content area shows `Skeleton` placeholders
+  laid out like the loaded content: the same rows, cards, and columns, with grey
+  bars where the data goes. Static column headings and card titles render as
+  text. Date navigation, tabs, filters, and header actions stay usable. Spinners
+  are only for an action in progress.
+- **No layout shift:** placeholder rows, cards, and the booking dialog have the
+  loaded content's heights, so nothing moves when the data arrives. Lists show a
+  fixed number of placeholder rows (8 table rows, 3 Reservas phone cards); a
+  shorter list moves up, but content above stays put. Values that appear with the
+  data, such as the **Por limpiar** count badge, get a placeholder of the same size.
+- **Typical data:** a placeholder matches the common case. The booking dialog
+  matches a confirmed reservation with one room; a reservation with more rooms
+  grows the form below the dates when it loads.
+- **Known gaps:** the reservation page and Configuración still show a single grey
+  block while loading.
+- **Busy markup:** a placeholder region has `aria-busy` and a **Cargando …** label
+  (for example **Cargando habitaciones**), which tests use to wait for the data.
+
+To size a placeholder, measure the loaded page in a browser. With `pnpm dev`
+running and the local sample data, sign in with Playwright (from a scratch
+directory outside the repo; it is not a project dependency), then for each layout
+at 1280px and 390px wide:
+
+1. Load the page and record the `getBoundingClientRect()` of its rows, cells, and
+   cards.
+2. Reload while `page.route()` holds the page's API read unanswered, and record the
+   placeholder's boxes.
+3. Adjust the placeholder until heights and column positions match; widths of
+   individual text bars only need to be close.
+
 ## API environment
 
 Vite inlines `VITE_API_BASE_URL` at build time; a missing value fails the build.

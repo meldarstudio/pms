@@ -240,7 +240,7 @@ export function RoomBookingDialog({
         </DialogHeader>
         {target?.mode === "edit" ? (
           detail.isPending ? (
-            <Skeleton className="h-80 w-full" />
+            <BookingEditorSkeleton />
           ) : detail.error ? (
             <FieldError>{detail.error.message}</FieldError>
           ) : (
@@ -302,6 +302,95 @@ export function RoomBookingDialog({
         />
       )}
     </Dialog>
+  );
+}
+
+/**
+ * The editor's Detalles layout with placeholders, sized like a confirmed reservation with one
+ * room so the dialog keeps its size and position when the reservation loads.
+ */
+function BookingEditorSkeleton() {
+  const isMobile = useIsMobile();
+  if (isMobile) {
+    // The full-screen phone editor: fixed header, tabs, and footer around a scrolling form.
+    return (
+      <div
+        role="region"
+        aria-label="Cargando reserva"
+        aria-busy
+        className="flex min-h-0 flex-1 flex-col"
+      >
+        <div className="flex h-12 shrink-0 items-start gap-2 pt-[max(1rem,env(safe-area-inset-top))] pl-[max(1rem,env(safe-area-inset-left))]">
+          <Skeleton className="h-7 w-36" />
+          <Skeleton className="mt-1 h-5 w-24" />
+        </div>
+        <div className="h-5 shrink-0 safe-area-padding-x">
+          <Skeleton className="h-5 w-52" />
+        </div>
+        <div className="flex h-8 shrink-0 items-center justify-around border-b">
+          {[0, 1, 2].map((tab) => (
+            <Skeleton key={tab} className="h-4 w-16" />
+          ))}
+        </div>
+        <div className="flex min-h-0 flex-1 flex-col gap-5 overflow-hidden py-4 safe-area-padding-x">
+          <div className="flex flex-col gap-3">
+            <Skeleton className="h-14" />
+            <Skeleton className="h-14" />
+          </div>
+          <div className="flex flex-col gap-3">
+            <Skeleton className="h-5 w-28" />
+            {[0, 1, 2, 3].map((field) => (
+              <Skeleton key={field} className="h-14" />
+            ))}
+            <Skeleton className="h-8 w-38" />
+          </div>
+          <Skeleton className="h-22.25 shrink-0" />
+        </div>
+        <div className="shrink-0 pt-3 pb-px safe-area-padding-x">
+          <Skeleton className="h-7" />
+        </div>
+        <div className="flex shrink-0 gap-2 py-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] safe-area-padding-x">
+          <Skeleton className="h-8 flex-1" />
+          <Skeleton className="h-8 flex-1" />
+        </div>
+      </div>
+    );
+  }
+  return (
+    <div
+      role="region"
+      aria-label="Cargando reserva"
+      aria-busy
+      className="flex min-w-0 flex-col gap-4"
+    >
+      <div className="flex items-center gap-2 pr-8">
+        <Skeleton className="h-7 w-40" />
+        <Skeleton className="h-5 w-24" />
+      </div>
+      <Skeleton className="-mt-2 h-7 w-52" />
+      <div className="flex flex-col gap-4">
+        <Skeleton className="h-8 w-52" />
+        <div className="grid min-w-0 gap-6 p-px lg:grid-cols-[minmax(0,1fr)_280px]">
+          <div className="flex min-w-0 flex-col gap-5">
+            <div className="grid grid-cols-2 gap-3">
+              <Skeleton className="h-14" />
+              <Skeleton className="h-14" />
+            </div>
+            <div className="flex flex-col gap-3">
+              <Skeleton className="h-5 w-28" />
+              <Skeleton className="h-14" />
+              <Skeleton className="h-8 w-38" />
+            </div>
+            <Skeleton className="h-22.25" />
+          </div>
+          <Skeleton className="h-77.75" />
+        </div>
+      </div>
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <Skeleton className="h-8 w-40" />
+        <Skeleton className="h-8 w-64" />
+      </div>
+    </div>
   );
 }
 

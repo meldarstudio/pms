@@ -7,7 +7,7 @@ before changes.
 
 ## Guides
 
-- [Portal shell and installed app](../../docs/portal.md) for shared Lyra control styling, navigation, API environment, offline behavior, and update checks.
+- [Portal shell and installed app](../../docs/portal.md) for shared Lyra control styling, navigation, error and loading states, API environment, offline behavior, and update checks.
 - [Authentication](../../docs/authentication.md#portal-sessions) for AuthGate, credentialed requests, and cache clearing.
 - [Property calendar](../../docs/property-calendar.md) for operational today, date pickers, and session metadata.
 - [Reservations](../../docs/reservations.md#portal-editors) for creation, compact/full-page editing, drafts, lifecycle actions, and list filters.

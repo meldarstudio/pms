@@ -20,6 +20,7 @@ import {
   EmptyTitle,
 } from "@/components/ui/empty";
 import { PageError, StaleDataNotice } from "@/components/page-error";
+import { Skeleton } from "@/components/ui/skeleton";
 import { Spinner } from "@/components/ui/spinner";
 import {
   Table,
@@ -499,15 +500,7 @@ function RoomList({
                 <SelectionActions view={view} bulk={bulk} />
               </TableHead>
             ) : (
-              <>
-                <TableHead scope="col">Habitación</TableHead>
-                <TableHead scope="col">Tipo</TableHead>
-                <TableHead scope="col">Hoy</TableHead>
-                <TableHead scope="col">Marcada</TableHead>
-                <TableHead scope="col" className="text-right">
-                  {views[view].actionHeading}
-                </TableHead>
-              </>
+              <ColumnHeadings view={view} />
             )}
           </TableRow>
         </TableHeader>
@@ -521,6 +514,81 @@ function RoomList({
               today={today}
               bulk={bulk}
             />
+          ))}
+        </TableBody>
+      </Table>
+    </div>
+  );
+}
+
+function ColumnHeadings({ view }: { view: HousekeepingView }) {
+  return (
+    <>
+      <TableHead scope="col">Habitación</TableHead>
+      <TableHead scope="col">Tipo</TableHead>
+      <TableHead scope="col">Hoy</TableHead>
+      <TableHead scope="col">Marcada</TableHead>
+      <TableHead scope="col" className="text-right">
+        {views[view].actionHeading}
+      </TableHead>
+    </>
+  );
+}
+
+/** Placeholder rows sized like the loaded ones, so nothing moves when the rooms arrive. */
+function RoomListSkeleton({ view }: { view: HousekeepingView }) {
+  const phone = useIsMobile();
+  const rows = Array.from({ length: 8 }, (_, index) => index);
+  const action =
+    view === "to-clean" ? <Skeleton className="h-7 w-12" /> : <Skeleton className="h-7 w-26" />;
+  if (phone) {
+    return (
+      <ul aria-label="Cargando habitaciones" aria-busy className="border">
+        {rows.map((index) => (
+          <li key={index} className="flex items-center gap-3 border-b p-4 last:border-b-0">
+            <div className="flex min-w-0 flex-1 flex-col gap-2">
+              <Skeleton className="h-5.5 w-24" />
+              <Skeleton className="h-5 w-20" />
+            </div>
+            {action}
+          </li>
+        ))}
+      </ul>
+    );
+  }
+  return (
+    <div className="border">
+      <Table aria-label="Cargando habitaciones" aria-busy>
+        <TableHeader>
+          <TableRow>
+            <TableHead className="w-10">
+              <Skeleton className="size-4" />
+            </TableHead>
+            <ColumnHeadings view={view} />
+          </TableRow>
+        </TableHeader>
+        <TableBody>
+          {rows.map((index) => (
+            <TableRow key={index}>
+              <TableCell className="w-10">
+                <Skeleton className="size-4" />
+              </TableCell>
+              <TableCell className="w-28">
+                <Skeleton className="h-4 w-8" />
+              </TableCell>
+              <TableCell>
+                <Skeleton className="h-4 w-18" />
+              </TableCell>
+              <TableCell>
+                <Skeleton className="h-5 w-36" />
+              </TableCell>
+              <TableCell>
+                <Skeleton className="h-4 w-10" />
+              </TableCell>
+              <TableCell>
+                <div className="flex justify-end">{action}</div>
+              </TableCell>
+            </TableRow>
           ))}
         </TableBody>
       </Table>
@@ -596,13 +664,15 @@ export function Housekeeping({
         <TabsList aria-label="Vista de limpieza" className="w-full md:w-fit">
           <TabsTrigger value="to-clean">
             Por limpiar
-            {list && (
+            {list ? (
               <Badge
                 variant={toClean.length ? "default" : "secondary"}
                 className="h-5 min-w-5 border-0 px-1 tabular-nums"
               >
                 {toClean.length}
               </Badge>
+            ) : (
+              <Skeleton className="size-5" />
             )}
           </TabsTrigger>
           <TabsTrigger value="all">Todas</TabsTrigger>
@@ -614,10 +684,7 @@ export function Housekeeping({
       {query.isError && !list ? (
         <PageError error={query.error} onRetry={() => void query.refetch()} />
       ) : !list ? (
-        <p role="status" className="flex items-center gap-2 text-sm text-muted-foreground">
-          <Spinner />
-          Cargando habitaciones…
-        </p>
+        <RoomListSkeleton view={view} />
       ) : !visible?.length ? (
         // Todas always lists a room; an empty property shows setup instead.
         <AllClean />

@@ -343,8 +343,9 @@ export function Inventory({
             {loading
               ? Array.from({ length: 4 }, (_, index) => (
                   <div key={index} className="contents">
-                    <div className="sticky left-0 z-20 min-w-0 border-r border-b bg-background px-2.5 py-2">
-                      <Skeleton className="h-8 w-24" />
+                    <div className="sticky left-0 z-20 flex min-w-0 flex-col justify-center gap-1 border-r border-b bg-background px-2.5">
+                      <Skeleton className="h-4 w-16" />
+                      <Skeleton className="h-4 w-22.75" />
                     </div>
                     <div
                       className="border-b"

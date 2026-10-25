@@ -13,6 +13,7 @@ worker or heap limits; follow the root [frontend testing policy](../../CODING_ST
 - Before changing setup routing or editors, read [property setup](../../docs/property-setup.md#portal-setup), including readiness, draft preservation, and navigation guards.
 - Before changing `AuthGate`, session queries, or fetch error handling, read [portal sessions](../../docs/authentication.md#portal-sessions), including credentialed requests and cache clearing on 401.
 - Before changing how a page shows load failures, stale data, retries, or render crashes, read [error states](../../docs/portal.md#error-states).
+- Before changing what a page shows while its data loads, read [loading states](../../docs/portal.md#loading-states).
 
 ## API environment
 
