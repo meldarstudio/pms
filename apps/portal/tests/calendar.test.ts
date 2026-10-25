@@ -1856,7 +1856,7 @@ function limpiezaRoom(id: string, number: string, housekeepingStatus: "dirty" | 
     roomTypeId: "double",
     roomTypeName: "Doble",
     housekeepingStatus,
-    housekeepingChangedAt: null,
+    housekeepingChangedAt: null as string | null,
     closed: false,
     inHouse: false,
     departing: false,
@@ -1864,8 +1864,12 @@ function limpiezaRoom(id: string, number: string, housekeepingStatus: "dirty" | 
   };
 }
 
-/** The Limpieza page on a view, switching tabs like its route and showing toasts. */
-async function renderLimpieza(initial: "to-clean" | "all") {
+/**
+ * The Limpieza page on a view, switching tabs like its route and showing toasts. It
+ * opens on a phone unless asked for the front desk's desktop table.
+ */
+async function renderLimpieza(initial: "to-clean" | "all", { desktop = false } = {}) {
+  if (!desktop) page.mobile();
   const { ToastProvider } = (await browser.server.ssrLoadModule(
     "/src/components/ui/toast.tsx",
   )) as typeof import("../src/components/ui/toast.tsx");
@@ -1954,7 +1958,7 @@ it("re-reads Limpieza at property midnight so yesterday's arrivals stop showing"
 });
 
 /** Por limpiar over a hotel with each of today's cases, recording every mark. */
-async function renderPorLimpiar() {
+async function renderPorLimpiar({ desktop = false } = {}) {
   const rooms = [
     { ...limpiezaRoom("room-101", "101", "dirty"), departing: true },
     limpiezaRoom("room-102", "102", "dirty"),
@@ -1973,8 +1977,8 @@ async function renderPorLimpiar() {
     room.housekeepingStatus = body.status;
     return { ...room, housekeepingChangedAt: "2026-10-20T15:00:00.000Z" };
   });
-  await renderLimpieza("to-clean");
-  await until(() => porLimpiarCards().length > 0, "Por limpiar must load");
+  await renderLimpieza("to-clean", { desktop });
+  await until(() => container.querySelector("li, tbody tr") !== null, "Por limpiar must load");
   return { writes };
 }
 
@@ -2027,4 +2031,103 @@ it("shows Todo limpio when Por limpiar empties while Todas still lists every roo
   await click("Todas");
   await until(() => limpiezaRows().length === 7, "Todas must list every room");
   assert.match(container.textContent, /Cerrada/);
+});
+
+/** The desktop table's body rows as their cells' text. */
+const limpiezaTableRows = () =>
+  Array.from(container.querySelectorAll("tbody tr")).map((row) =>
+    Array.from(row.querySelectorAll("td")).map((cell) => cell.textContent.trim()),
+  );
+
+it("shows the front desk a Todas table with when each room was last marked", async () => {
+  // Now is 10:00 in Lima.
+  const rooms = [
+    { ...limpiezaRoom("room-101", "101", "dirty"), inHouse: true },
+    // 09:42 in Lima today.
+    { ...limpiezaRoom("room-102", "102", "clean"), housekeepingChangedAt: "2026-10-20T14:42:00Z" },
+    // Still the 19th in Lima, though the 20th in UTC.
+    { ...limpiezaRoom("room-103", "103", "dirty"), housekeepingChangedAt: "2026-10-20T04:30:00Z" },
+  ];
+  page.api.on("GET", "/housekeeping", () => ({ date: "2026-10-20", rooms }));
+  const writes: unknown[] = [];
+  page.api.on<{ status: "dirty" | "clean" }>("PUT", "/housekeeping/:id", ({ params, body }) => {
+    writes.push([params.id, body.status]);
+    const room = rooms.find((room) => room.id === params.id)!;
+    room.housekeepingStatus = body.status;
+    room.housekeepingChangedAt = "2026-10-20T15:00:00.000Z";
+    return room;
+  });
+  await renderLimpieza("all", { desktop: true });
+  await until(() => limpiezaTableRows().length === 3, "Todas must load as a table");
+
+  assert.equal(container.querySelector("ul"), null);
+  assert.deepEqual(
+    Array.from(container.querySelectorAll("thead th")).map((cell) => cell.textContent.trim()),
+    ["Habitación", "Tipo", "Hoy", "Marcada", "Estado"],
+  );
+  assert.deepEqual(limpiezaTableRows(), [
+    ["101", "Doble", "En casa", "—", "SuciaLimpia"],
+    ["102", "Doble", "Libre", "09:42", "SuciaLimpia"],
+    ["103", "Doble", "Libre", "19 oct", "SuciaLimpia"],
+  ]);
+
+  const saving = page.api.hold("PUT", "/housekeeping/:id");
+  await click("Marcar habitación 103 como limpia");
+  await until(() => saving.request !== undefined, "The mark must be sent");
+  assert.equal(page.button("Marcar habitación 103 como sucia").disabled, true);
+  assert.equal(page.button("Marcar habitación 102 como sucia").disabled, false);
+  rooms[2].housekeepingStatus = "clean";
+  rooms[2].housekeepingChangedAt = "2026-10-20T15:00:00.000Z";
+  await React.act(async () => saving.release(Response.json(rooms[2])));
+  await until(
+    () => limpiezaTableRows()[2]?.[3] === "10:00",
+    "A saved mark must re-read when the room was marked",
+  );
+
+  await until(() => window.document.body.textContent.includes("Habitación 103 lista"));
+  await click("Deshacer");
+  await until(
+    () =>
+      writes.length === 1 &&
+      page.button("Marcar habitación 103 como sucia").getAttribute("aria-pressed") === "true",
+    "Undo must set the previous status again",
+  );
+  assert.deepEqual(writes, [["room-103", "dirty"]]);
+});
+
+it("keeps Por limpiar's order and Lista in the desktop table, and phone cards below 768px", async () => {
+  const { writes } = await renderPorLimpiar({ desktop: true });
+
+  assert.deepEqual(
+    limpiezaTableRows().map(([number, , today, marked, action]) => [number, today, marked, action]),
+    [
+      ["106", "Llega hoyLibreCerrada", "—", "Lista"],
+      ["105", "Llega hoySale hoy", "—", "Lista"],
+      ["102", "Libre", "—", "Lista"],
+      ["101", "Sale hoy", "—", "Lista"],
+    ],
+  );
+  assert.equal(page.button("Por limpiar4").getAttribute("aria-selected"), "true");
+
+  await click("Marcar habitación 102 como limpia");
+  await until(
+    () => writes.length === 1 && limpiezaTableRows().length === 3,
+    "A room marked Lista must leave the table",
+  );
+  assert.ok(page.button("Por limpiar3"));
+
+  await React.act(async () => page.mobile());
+  await until(() => container.querySelector("table") === null, "A phone must not get the table");
+  assert.deepEqual(porLimpiarCards(), [
+    "106DobleLlega hoyLibreCerradaLista",
+    "105DobleLlega hoySale hoyLista",
+    "101DobleSale hoyLista",
+  ]);
+  await React.act(async () => window.happyDOM.setWindowSize({ width: 768, height: 844 }));
+  await until(() => limpiezaTableRows().length === 3, "768px and wider is the desktop table");
+
+  for (const number of ["101", "105", "106"]) {
+    await click(`Marcar habitación ${number} como limpia`);
+  }
+  await until(() => container.textContent.includes("Todo limpio"), "An empty Por limpiar is done");
 });
