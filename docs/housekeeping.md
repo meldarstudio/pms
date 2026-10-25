@@ -69,15 +69,17 @@ never marked. It never shows who marked it.
 
 The desktop table can mark several rooms in one action; the phone cards have no
 selection. Each row has a checkbox, and the header's checkbox selects every visible row,
-or clears them all when all are selected. Shift-clicking a row selects (or clears) every
-row from the row clicked last to it, in the order on screen: room number order on
-Todas, so 101 then shift-click 110 selects 101–110, and cleaning order on Por limpiar.
+or clears the selection when any row is selected. Shift-clicking a row selects (or
+clears) every row from the row clicked last to it, in the order on screen: room number
+order on Todas, so 101 then shift-click 110 selects 101–110, and cleaning order on Por
+limpiar.
 
-While rooms are selected, a bar above the table shows **N seleccionadas**, **Marcar
-limpias**, **Marcar sucias** (Todas only), and **Quitar selección**. A bulk mark needs
-no confirmation and sends every selected room in one request, in the order on screen,
-including rooms already in that status, whose Marcada time updates. The rows change at
-once, as single marks do. On success the selection clears and one toast (**N
+While rooms are selected, the table header shows **N seleccionadas** and the bulk
+action in place of the column headings, beside the header checkbox: **Marcar limpias**
+on Por limpiar, and a **Marcar como** menu with **Limpias** and **Sucias** on Todas. A
+bulk mark needs no confirmation and sends every selected room in one request, in the
+order on screen, including rooms already in that status, whose Marcada time updates.
+The rows change at once, as single marks do. On success the selection clears and one toast (**N
 habitaciones listas** or **N habitaciones marcadas sucias**) offers **Deshacer**, which
 sets each room back to its own previous status in one request; it does not restore the
 old Marcada time. On failure every room returns to its previous status, an error toast

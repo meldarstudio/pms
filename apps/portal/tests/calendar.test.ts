@@ -2174,6 +2174,20 @@ const selectedRooms = () =>
 const selectionBar = () =>
   container.querySelector('[role="group"][aria-label="Selección"]')?.textContent ?? null;
 
+/** Bulk marks the selection from Todas' Marcar como menu. */
+async function markSelectedAs(label: "Limpias" | "Sucias") {
+  const trigger = page.button("Marcar como");
+  await React.act(async () => {
+    trigger.dispatchEvent(new window.PointerEvent("pointerdown", { bubbles: true }));
+    trigger.click();
+  });
+  await until(
+    () => window.document.querySelector('[role="menuitem"]') !== null,
+    "Marcar como must open",
+  );
+  await chooseMenuItem(label);
+}
+
 /** Todas over five rooms with mixed statuses, recording each request's marks. */
 async function renderTodasTable() {
   const rooms = ["101", "102", "103", "104", "105"].map((number) =>
@@ -2204,10 +2218,10 @@ it("bulk marks a shift-clicked range of Todas in one request and undoes each roo
   await select("101");
   await select("104", { shift: true });
   assert.deepEqual(selectedRooms(), ["101", "102", "103", "104"]);
-  assert.equal(selectionBar(), "4 seleccionadasMarcar limpiasMarcar suciasQuitar selección");
+  assert.equal(selectionBar(), "4 seleccionadasMarcar como");
 
   // 102 is already clean; it is marked again, so its Marcada time updates.
-  await click("Marcar limpias");
+  await markSelectedAs("Limpias");
   await until(() => window.document.body.textContent.includes("4 habitaciones listas"));
   assert.deepEqual(writes, [["101:clean", "102:clean", "103:clean", "104:clean"]]);
   assert.equal(selectionBar(), null);
@@ -2231,7 +2245,7 @@ it("bulk marks the selected Todas rooms dirty in one request, holding the select
   await select("101");
   await select("102");
   const saving = page.api.hold("PUT", "/housekeeping");
-  await click("Marcar sucias");
+  await markSelectedAs("Sucias");
   await until(() => saving.request !== undefined, "The bulk mark must be sent");
   assert.deepEqual(saving.request!.body, {
     marks: [
@@ -2275,8 +2289,12 @@ it("selects Por limpiar ranges in cleaning order and keeps the selection when a 
   await select("106");
   await select("102", { shift: true });
   assert.deepEqual(selectedRooms(), ["106", "105", "102"]);
-  assert.equal(selectionBar(), "3 seleccionadasMarcar limpiasQuitar selección");
+  assert.equal(selectionBar(), "3 seleccionadasMarcar limpias");
 
+  // The header checkbox clears a partial selection, then selects every row.
+  await select("todas");
+  assert.deepEqual(selectedRooms(), []);
+  assert.equal(selectionBar(), null);
   await select("todas");
   assert.deepEqual(selectedRooms(), ["106", "105", "102", "101"]);
   assert.equal(selectBox("todas").getAttribute("aria-checked"), "true");
@@ -2294,7 +2312,7 @@ it("selects Por limpiar ranges in cleaning order and keeps the selection when a 
   await until(() => limpiezaTableRows().length === 4, "A failed bulk mark changes nothing");
   assert.deepEqual(writes, []);
   assert.deepEqual(selectedRooms(), ["106", "105", "102", "101"]);
-  assert.equal(selectionBar(), "4 seleccionadasMarcar limpiasQuitar selección");
+  assert.equal(selectionBar(), "4 seleccionadasMarcar limpias");
 
   await click("Marcar limpias");
   await until(() => container.textContent.includes("Todo limpio"), "The retry marks every room");
@@ -2316,14 +2334,14 @@ it("drops rooms a re-read takes off the tab from the selection, and clears it on
   await until(() => limpiezaTableRows().length === 3, "Por limpiar must load");
 
   await select("todas");
-  assert.equal(selectionBar(), "3 seleccionadasMarcar limpiasQuitar selección");
+  assert.equal(selectionBar(), "3 seleccionadasMarcar limpias");
 
   // Another device marks 102 clean; the next read takes it off Por limpiar.
   rooms[1]!.housekeepingStatus = "clean";
   await React.act(() => page.client.invalidateQueries({ queryKey: queries.housekeepingQueryKey }));
   await until(() => limpiezaTableRows().length === 2, "The re-read must drop 102");
   assert.deepEqual(selectedRooms(), ["101", "103"]);
-  assert.equal(selectionBar(), "2 seleccionadasMarcar limpiasQuitar selección");
+  assert.equal(selectionBar(), "2 seleccionadasMarcar limpias");
 
   await click("Todas");
   await until(() => limpiezaTableRows().length === 3, "Todas must list every room");

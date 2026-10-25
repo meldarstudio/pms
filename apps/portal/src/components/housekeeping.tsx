@@ -1,11 +1,17 @@
 import { useState, type ComponentProps, type ReactNode } from "react";
-import { RefreshCwIcon, SparklesIcon } from "lucide-react";
+import { ChevronDownIcon, RefreshCwIcon, SparklesIcon } from "lucide-react";
 import { cn } from "cn";
 import { PageHeaderActions } from "@/components/page-header-actions";
 import { SetupRequired } from "@/components/setup-required";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import {
   Empty,
   EmptyDescription,
@@ -128,8 +134,8 @@ function useRoomSelection(
       }
       setState({ view, ids, anchor: roomId });
     },
-    /** Selects every visible room, or clears the selection when all are selected. */
-    toggleAll: () => setState({ view, ids: new Set(allSelected ? [] : order), anchor: null }),
+    /** Clears the selection, or selects every visible room when none are selected. */
+    toggleAll: () => setState({ view, ids: new Set(selectedCount ? [] : order), anchor: null }),
     clear: () => setState(noSelection(view)),
   };
 }
@@ -247,11 +253,13 @@ function StatusToggle({
   room,
   pending,
   run,
+  size,
   itemClassName,
-}: RowControl & { itemClassName: string }) {
+}: RowControl & Pick<ComponentProps<typeof ToggleGroup>, "size"> & { itemClassName?: string }) {
   return (
     <ToggleGroup
       variant="outline"
+      size={size}
       spacing={0}
       className="shrink-0"
       aria-label={`Limpieza de la habitación ${room.number}`}
@@ -294,7 +302,8 @@ function RoomAction({
   ) : (
     <StatusToggle
       {...control}
-      itemClassName={phone ? "min-h-11 px-3 text-sm" : "h-8 px-3 text-sm"}
+      size={phone ? "default" : "sm"}
+      itemClassName={cn(phone && "min-h-11 px-3 text-sm")}
     />
   );
 }
@@ -323,7 +332,8 @@ const views = {
   }
 >;
 
-const bulkLabel = { clean: "Marcar limpias", dirty: "Marcar sucias" } as const;
+/** Marcar como's choices on Todas. */
+const bulkMenuLabel = { clean: "Limpias", dirty: "Sucias" } as const;
 
 function PhoneRow({ view, room, mark }: RoomRowProps) {
   const [pending, run] = usePendingMark(mark);
@@ -399,7 +409,7 @@ function DesktopRow({
           onClick={(event) => selection.toggle(room.id, event.shiftKey)}
         />
       </TableCell>
-      <TableCell className="w-28 text-base font-semibold tabular-nums">{room.number}</TableCell>
+      <TableCell className="w-28 font-medium tabular-nums">{room.number}</TableCell>
       <TableCell className="text-muted-foreground">{room.roomTypeName}</TableCell>
       <TableCell>
         <StayBadges room={room} />
@@ -426,8 +436,11 @@ type BulkMark = {
   markSelected: (status: HousekeepingStatus) => void;
 };
 
-/** The desktop table's actions for the selected rooms, shown while any are selected. */
-function SelectionBar({
+/**
+ * The desktop table's actions for the selected rooms, in place of the column headings while
+ * any are selected.
+ */
+function SelectionActions({
   view,
   bulk: { selection, pending, markSelected },
 }: {
@@ -435,30 +448,38 @@ function SelectionBar({
   bulk: BulkMark;
 }) {
   const count = selection.ids.size;
+  const statuses = views[view].bulkStatuses;
   return (
-    <div
-      role="group"
-      aria-label="Selección"
-      className="flex max-w-5xl flex-wrap items-center gap-2 border bg-muted/50 px-3 py-2"
-    >
-      <span className="mr-auto text-sm font-medium tabular-nums" aria-live="polite">
+    <div role="group" aria-label="Selección" className="flex items-center gap-2">
+      <span className="mr-auto text-xs font-medium tabular-nums" aria-live="polite">
         {count} {count === 1 ? "seleccionada" : "seleccionadas"}
       </span>
-      {views[view].bulkStatuses.map((status) => (
+      {statuses.length === 1 ? (
         <Button
-          key={status}
           size="sm"
           variant="outline"
           disabled={!!pending}
-          onClick={() => markSelected(status)}
+          onClick={() => markSelected(statuses[0]!)}
         >
-          {pending === status && <Spinner data-icon="inline-start" />}
-          {bulkLabel[status]}
+          {pending && <Spinner data-icon="inline-start" />}
+          Marcar limpias
         </Button>
-      ))}
-      <Button size="sm" variant="ghost" disabled={!!pending} onClick={selection.clear}>
-        Quitar selección
-      </Button>
+      ) : (
+        <DropdownMenu>
+          <DropdownMenuTrigger disabled={!!pending} render={<Button size="sm" variant="outline" />}>
+            {pending && <Spinner data-icon="inline-start" />}
+            Marcar como
+            <ChevronDownIcon data-icon="inline-end" />
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end" className="min-w-32">
+            {statuses.map((status) => (
+              <DropdownMenuItem key={status} onClick={() => markSelected(status)}>
+                {bulkMenuLabel[status]}
+              </DropdownMenuItem>
+            ))}
+          </DropdownMenuContent>
+        </DropdownMenu>
+      )}
     </div>
   );
 }
@@ -492,45 +513,50 @@ function RoomList({
     );
   }
   return (
-    <>
-      {selection.ids.size > 0 && <SelectionBar view={view} bulk={bulk} />}
-      <div className="max-w-5xl border">
-        <Table aria-label={views[view].listLabel} className="text-sm">
-          <TableHeader>
-            <TableRow>
-              <TableHead scope="col" className="w-10">
-                <Checkbox
-                  aria-label="Seleccionar todas"
-                  checked={selection.allSelected}
-                  indeterminate={selection.someSelected && !selection.allSelected}
-                  disabled={!!bulk.pending}
-                  onCheckedChange={selection.toggleAll}
-                />
-              </TableHead>
-              <TableHead scope="col">Habitación</TableHead>
-              <TableHead scope="col">Tipo</TableHead>
-              <TableHead scope="col">Hoy</TableHead>
-              <TableHead scope="col">Marcada</TableHead>
-              <TableHead scope="col" className="text-right">
-                {views[view].actionHeading}
-              </TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {rooms.map((room) => (
-              <DesktopRow
-                key={room.id}
-                view={view}
-                room={room}
-                mark={mark}
-                today={today}
-                bulk={bulk}
+    <div className="max-w-5xl border">
+      <Table aria-label={views[view].listLabel}>
+        <TableHeader>
+          <TableRow>
+            <TableHead scope="col" className="w-10">
+              <Checkbox
+                aria-label="Seleccionar todas"
+                checked={selection.allSelected}
+                indeterminate={selection.someSelected && !selection.allSelected}
+                disabled={!!bulk.pending}
+                onCheckedChange={selection.toggleAll}
               />
-            ))}
-          </TableBody>
-        </Table>
-      </div>
-    </>
+            </TableHead>
+            {selection.ids.size > 0 ? (
+              <TableHead colSpan={5}>
+                <SelectionActions view={view} bulk={bulk} />
+              </TableHead>
+            ) : (
+              <>
+                <TableHead scope="col">Habitación</TableHead>
+                <TableHead scope="col">Tipo</TableHead>
+                <TableHead scope="col">Hoy</TableHead>
+                <TableHead scope="col">Marcada</TableHead>
+                <TableHead scope="col" className="text-right">
+                  {views[view].actionHeading}
+                </TableHead>
+              </>
+            )}
+          </TableRow>
+        </TableHeader>
+        <TableBody>
+          {rooms.map((room) => (
+            <DesktopRow
+              key={room.id}
+              view={view}
+              room={room}
+              mark={mark}
+              today={today}
+              bulk={bulk}
+            />
+          ))}
+        </TableBody>
+      </Table>
+    </div>
   );
 }
 
@@ -595,18 +621,26 @@ export function Housekeeping({
         </Button>
       </PageHeaderActions>
       <Tabs
-        className="w-full max-w-2xl"
+        className="w-full max-w-2xl md:w-auto"
         value={view}
         onValueChange={(value) => onViewChange(value as HousekeepingView)}
       >
-        <TabsList aria-label="Vista de limpieza" className="h-11 w-full">
-          <TabsTrigger value="to-clean" className="gap-2 text-sm">
+        <TabsList
+          aria-label="Vista de limpieza"
+          className="h-11 w-full md:h-9 md:w-fit md:group-data-horizontal/tabs:h-9"
+        >
+          <TabsTrigger value="to-clean" className="gap-2 text-sm md:px-4 md:text-xs">
             Por limpiar
             {list && (
-              <Badge variant={toClean.length ? "default" : "secondary"}>{toClean.length}</Badge>
+              <Badge
+                variant={toClean.length ? "default" : "secondary"}
+                className="h-5 min-w-5 border-0 px-1 tabular-nums"
+              >
+                {toClean.length}
+              </Badge>
             )}
           </TabsTrigger>
-          <TabsTrigger value="all" className="text-sm">
+          <TabsTrigger value="all" className="text-sm md:px-4 md:text-xs">
             Todas
           </TabsTrigger>
         </TabsList>
