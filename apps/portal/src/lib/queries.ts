@@ -2,10 +2,12 @@ import { useEffect } from "react";
 import {
   keepPreviousData,
   useMutation,
+  useMutationState,
   useIsMutating,
   useQuery,
   useQueryClient,
   type QueryClient,
+  type QueryKey,
 } from "@tanstack/react-query";
 import { refreshWorkflowQueries, workflowMutationKey } from "./workflow-query-cache";
 
@@ -41,6 +43,7 @@ import {
   markHousekeeping,
   type HousekeepingList,
   type HousekeepingMark,
+  type HousekeepingMarkInput,
   type HousekeepingStatus,
   type ReservationListParams,
   type PatchGuestInput,
@@ -197,6 +200,17 @@ export function usePatchRoom() {
 }
 
 export const housekeepingQueryKey = ["housekeeping"] as const;
+const housekeepingMarkMutationKey = ["housekeeping", "mark"] as const;
+
+/** Includes marks and undo requests, even when different rooms save concurrently. */
+export function usePendingHousekeepingRoomIds() {
+  const pending = useMutationState({
+    filters: { mutationKey: housekeepingMarkMutationKey, status: "pending" },
+    select: (mutation) =>
+      (mutation.state.variables as HousekeepingMarkInput[]).map((mark) => mark.roomId),
+  });
+  return new Set(pending.flat());
+}
 
 export function useHousekeeping() {
   const { today } = usePropertyCalendar();
@@ -229,20 +243,23 @@ export function useMarkHousekeeping() {
         : list,
     );
   // Calendar rooms carry only the status, so their windows are patched separately.
-  const setCalendarRooms = (statuses: Map<string, HousekeepingStatus>) =>
-    client.setQueriesData<CalendarWindow>({ queryKey: ["calendar"] }, (window) =>
-      window
-        ? {
-            ...window,
-            rooms: window.rooms.map((room) => {
-              const status = statuses.get(room.id);
-              return status ? { ...room, housekeepingStatus: status } : room;
-            }),
-          }
-        : window,
+  const setCalendarRooms = (statuses: Map<string, HousekeepingStatus>, queryKey?: QueryKey) =>
+    client.setQueriesData<CalendarWindow>(
+      { queryKey: queryKey ?? ["calendar"], exact: !!queryKey },
+      (window) =>
+        window
+          ? {
+              ...window,
+              rooms: window.rooms.map((room) => {
+                const status = statuses.get(room.id);
+                return status ? { ...room, housekeepingStatus: status } : room;
+              }),
+            }
+          : window,
     );
   return useMutation({
     mutationFn: markHousekeeping,
+    mutationKey: housekeepingMarkMutationKey,
     // The rows change at once; the re-read after a save re-sorts the list.
     onMutate: async (marks) => {
       await client.cancelQueries({ queryKey: housekeepingQueryKey });
@@ -255,10 +272,14 @@ export function useMarkHousekeeping() {
             housekeepingStatus: room.housekeepingStatus,
             housekeepingChangedAt: room.housekeepingChangedAt,
           });
-      const previousCalendar = new Map<string, HousekeepingStatus>();
-      for (const [, window] of client.getQueriesData<CalendarWindow>({ queryKey: ["calendar"] }))
-        for (const room of window?.rooms ?? [])
-          if (marked.has(room.id)) previousCalendar.set(room.id, room.housekeepingStatus);
+      const previousCalendar = client
+        .getQueriesData<CalendarWindow>({ queryKey: ["calendar"] })
+        .map(([queryKey, window]) => {
+          const statuses = new Map<string, HousekeepingStatus>();
+          for (const room of window?.rooms ?? [])
+            if (marked.has(room.id)) statuses.set(room.id, room.housekeepingStatus);
+          return { queryKey, statuses };
+        });
       setRooms(new Map(marks.map((mark) => [mark.roomId, { housekeepingStatus: mark.status }])));
       setCalendarRooms(new Map(marks.map((mark) => [mark.roomId, mark.status])));
       return { previous, previousCalendar };
@@ -266,7 +287,8 @@ export function useMarkHousekeeping() {
     onError: (_error, _marks, context) => {
       if (!context) return;
       setRooms(context.previous);
-      setCalendarRooms(context.previousCalendar);
+      for (const { queryKey, statuses } of context.previousCalendar)
+        setCalendarRooms(statuses, queryKey);
     },
     onSuccess: async ({ rooms }) => {
       setRooms(new Map(rooms.map(({ id, ...mark }) => [id, mark])));

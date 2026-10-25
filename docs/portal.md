@@ -6,6 +6,8 @@ Desktop and mobile use the same compact Lyra control sizes and typography from
 [the shared UI primitives](../apps/portal/src/components/ui), configured by
 [components.json](../apps/portal/components.json). Use the primitives' size variants
 by control role rather than adding mobile-only size or touch-target overrides.
+Badges default to the standard size; use `size="sm"` for compact inline labels such
+as the calendar's **Sucia** marker, on both desktop and mobile.
 Responsive cards, toolbars, full-screen editors, navigation sheets, and safe-area
 spacing remain independent of control sizing. This baseline does not establish
 WCAG conformance; target sizing and spacing require review in the rendered UI.

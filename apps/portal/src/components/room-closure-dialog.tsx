@@ -60,6 +60,7 @@ export function RoomActionsMenu({
   housekeepingStatus,
   onEditRoom,
   onMarkRoom,
+  markingRoom,
   onCloseRoom,
 }: {
   number: string;
@@ -67,6 +68,7 @@ export function RoomActionsMenu({
   onEditRoom: () => void;
   /** Sets the other housekeeping status. */
   onMarkRoom: () => void;
+  markingRoom: boolean;
   onCloseRoom: () => void;
 }) {
   return (
@@ -81,7 +83,7 @@ export function RoomActionsMenu({
       <DropdownMenuContent align="start">
         <DropdownMenuGroup>
           <DropdownMenuItem onClick={onEditRoom}>Editar habitación</DropdownMenuItem>
-          <DropdownMenuItem onClick={onMarkRoom}>
+          <DropdownMenuItem onClick={onMarkRoom} disabled={markingRoom}>
             {housekeepingStatus === "dirty" ? "Marcar limpia" : "Marcar sucia"}
           </DropdownMenuItem>
         </DropdownMenuGroup>

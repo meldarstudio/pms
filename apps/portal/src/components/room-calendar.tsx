@@ -51,7 +51,7 @@ import type { ReservationStay } from "@/lib/room-assignment";
 import { useRoomAssignment } from "@/lib/use-room-assignment";
 import { useMarkRooms } from "@/lib/use-mark-rooms";
 import { format } from "@/lib/dates";
-import { useCalendar } from "@/lib/queries";
+import { useCalendar, usePendingHousekeepingRoomIds } from "@/lib/queries";
 import { useIsMobile } from "@/hooks/use-mobile";
 
 const spans = [
@@ -390,6 +390,7 @@ export function RoomCalendar({
   const unassigned = calendar?.unassigned ?? [];
   const assignment = useRoomAssignment(rooms, unassigned);
   const markRooms = useMarkRooms();
+  const pendingHousekeepingRoomIds = usePendingHousekeepingRoomIds();
   const highlightedRoomId =
     highlight && highlight.stayId === assignment.target?.id ? highlight.roomId : null;
   const typeNames = new Map((rooms ?? []).map((room) => [room.roomTypeId, room.roomTypeName]));
@@ -865,6 +866,7 @@ export function RoomCalendar({
                   onMarkRoom={() =>
                     void markRooms([room], room.housekeepingStatus === "dirty" ? "clean" : "dirty")
                   }
+                  markingRoom={pendingHousekeepingRoomIds.has(room.id)}
                   onCloseRoom={() =>
                     setClosureTarget({
                       mode: "create",
@@ -962,6 +964,7 @@ function RoomRowView({
   dayCount,
   onEditRoom,
   onMarkRoom,
+  markingRoom,
   onCloseRoom,
   onBookDay,
   onOpenStay,
@@ -982,6 +985,7 @@ function RoomRowView({
   dayCount: number;
   onEditRoom?: () => void;
   onMarkRoom?: () => void;
+  markingRoom: boolean;
   onCloseRoom?: () => void;
   onBookDay?: (day: Date) => void;
   onOpenStay?: (reservationId: string) => void;
@@ -1038,6 +1042,7 @@ function RoomRowView({
               housekeepingStatus={housekeepingStatus}
               onEditRoom={onEditRoom}
               onMarkRoom={onMarkRoom}
+              markingRoom={markingRoom}
               onCloseRoom={onCloseRoom}
             />
           </div>

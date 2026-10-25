@@ -1034,10 +1034,86 @@ it("marks a room from its calendar actions at once, undoes it, and restores a re
   await openRoomActions("2");
   await chooseMenuItem("Marcar limpia");
   await until(() => rejected.request !== undefined && !room2Cell().includes("Sucia"));
+  await openRoomActions("2");
+  const pendingMark = [...window.document.querySelectorAll<HTMLElement>('[role="menuitem"]')].find(
+    (item) => item.textContent?.trim() === "Marcar sucia",
+  )!;
+  assert.equal(
+    pendingMark.getAttribute("aria-disabled"),
+    "true",
+    "A room must not accept another mark while its previous status is unsaved",
+  );
+  await React.act(async () => pendingMark.click());
+  assert.equal(writes.length, 1, "A disabled mark must not send another write");
+  await React.act(async () => {
+    pendingMark.dispatchEvent(
+      new window.KeyboardEvent("keydown", { key: "Escape", bubbles: true }),
+    );
+  });
+  await until(() => !window.document.querySelector('[role="menuitem"]'));
+  await openRoomActions("101");
+  const otherMark = [...window.document.querySelectorAll<HTMLElement>('[role="menuitem"]')].find(
+    (item) => item.textContent?.trim().startsWith("Marcar "),
+  )!;
+  assert.notEqual(otherMark.getAttribute("aria-disabled"), "true", "Other rooms stay available");
+  await React.act(async () => {
+    otherMark.dispatchEvent(new window.KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
+  });
   await React.act(async () =>
     rejected.release(Response.json({ error: "room not found" }, { status: 404 })),
   );
   await until(() => room2Cell().includes("Sucia"), "A rejected mark must restore the badge");
+  await openRoomActions("2");
+  const retry = [...window.document.querySelectorAll<HTMLElement>('[role="menuitem"]')].find(
+    (item) => item.textContent?.trim() === "Marcar limpia",
+  )!;
+  assert.notEqual(retry.getAttribute("aria-disabled"), "true", "A failed mark can be retried");
+});
+
+it("restores each held calendar's own room status after a rejected mark", async () => {
+  page.api.on("GET", "/calendar", ({ url }) =>
+    calendarWindow(
+      url,
+      sampleWeekWith("room-2", (room) => ({
+        ...room,
+        housekeepingStatus: url.searchParams.get("from") === "2026-10-13" ? "dirty" : "clean",
+      })),
+    ),
+  );
+  await render(React.createElement(CalendarSession));
+  await until(() => !!adaBar());
+  assert.ok(room2Cell().includes("Sucia"));
+
+  await click("Período siguiente");
+  await click("Período siguiente");
+  await until(
+    () => !!container.querySelector('[data-room-id="room-2"]') && !room2Cell().includes("Sucia"),
+  );
+  await click("Período anterior");
+  await click("Período anterior");
+  await until(() => room2Cell().includes("Sucia"));
+
+  const rejected = page.api.hold("PUT", "/housekeeping");
+  await openRoomActions("2");
+  await chooseMenuItem("Marcar limpia");
+  await until(() => rejected.request !== undefined && !room2Cell().includes("Sucia"));
+  await React.act(async () =>
+    rejected.release(Response.json({ error: "room not found" }, { status: 404 })),
+  );
+  await until(
+    () => room2Cell().includes("Sucia"),
+    "The current calendar must restore its dirty status, not the other window's clean status",
+  );
+
+  const refresh = page.api.hold("GET", "/calendar");
+  await click("Período siguiente");
+  await click("Período siguiente");
+  await until(() => refresh.request !== undefined);
+  assert.equal(
+    room2Cell().includes("Sucia"),
+    false,
+    "The other held calendar must retain its own clean status before its refresh returns",
+  );
 });
 
 it.each([

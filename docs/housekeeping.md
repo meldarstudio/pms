@@ -131,6 +131,8 @@ property date; the portal filters and orders Por limpiar.
   during room assignment. It marks the room exactly as a single Limpieza mark does: the
   badge changes at once, a toast (**Habitación 101 lista** or **Habitación 101 marcada
   sucia**) offers **Deshacer**, and a rejected mark restores the badge with an error toast.
+  While a mark or its undo saves, that room's marking item is disabled; other rooms
+  remain available.
 - **Room assignment:** the picker shows the same badge on a dirty room only when the
   selected stay's check-in date is the property date or earlier. The status is what staff
   marked now, so it says nothing about a room's state on a later arrival. The grid keeps
@@ -144,8 +146,9 @@ property date; the portal filters and orders Por limpiar.
 
 Reservation reads include each assigned room's `housekeepingStatus` (`null` while
 unassigned), and calendar rooms include it as well. Marking a room updates cached calendar windows at
-once, restores them if the mark is rejected, and refreshes cached calendar and
-reservation reads in that browser.
+once. If the mark is rejected, each window restores its own previous statuses for the
+marked rooms without reverting unrelated rooms. A successful mark refreshes cached
+calendar and reservation reads in that browser.
 
 Implementation: [housekeeping routes](../apps/backend/src/routes/housekeeping.ts),
 [Limpieza page](../apps/portal/src/components/housekeeping.tsx), the
