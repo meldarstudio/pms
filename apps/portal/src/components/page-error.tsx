@@ -11,7 +11,7 @@ import {
   EmptyMedia,
   EmptyTitle,
 } from "@/components/ui/empty";
-import { readErrorKind, readErrorMessage, type ReadErrorKind } from "@/lib/api-error";
+import { readErrorKind, readErrorMessage } from "@/lib/api-error";
 import { propertyToday } from "@/lib/property-calendar";
 
 /** Copy and action for a page whose record can be missing, such as one reservation. */
@@ -32,7 +32,10 @@ export function PageError({
 }) {
   const kind = readErrorKind(error);
   const message = readErrorMessage(error);
-  useLogUnexplained(error, kind, message);
+  useLogUnexplained(
+    error,
+    kind === "offline" || message !== null || (kind === "not-found" && !!notFound),
+  );
 
   if (kind === "not-found" && notFound) {
     return (
@@ -83,7 +86,7 @@ export function StaleDataNotice({
 }) {
   const kind = readErrorKind(error);
   const message = readErrorMessage(error);
-  useLogUnexplained(error, kind, message);
+  useLogUnexplained(error, kind === "offline" || message !== null);
   const offline = kind === "offline";
   const reason = offline ? "Sin conexión con el servidor." : (message ?? "No se pudo actualizar.");
   return (
@@ -103,10 +106,10 @@ export function StaleDataNotice({
 }
 
 /** Staff see generic copy for errors without a translation; the console keeps the cause. */
-function useLogUnexplained(error: unknown, kind: ReadErrorKind, message: string | null) {
+function useLogUnexplained(error: unknown, explained: boolean) {
   useEffect(() => {
-    if (kind === "unexpected" && message === null) console.error(error);
-  }, [error, kind, message]);
+    if (!explained) console.error(error);
+  }, [error, explained]);
 }
 
 /** The router's fallback when a page throws while rendering. */

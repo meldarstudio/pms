@@ -101,10 +101,16 @@ components; [api-error.ts](../apps/portal/src/lib/api-error.ts) classifies error
   previous window's data.
 - **Copy:** pages show the Spanish translation from
   [errors.ts](../apps/portal/src/lib/errors.ts) when one exists. Errors without one
-  get generic Spanish copy and are logged to the console.
+  get generic Spanish copy and are logged to the console, including unexpected
+  404s and failed refreshes. Network failures and the reservation page's intentional
+  not-found state already have an explanation and are not logged.
 - **Retries:** reads are not retried after a 4xx response and are retried twice
   after connection or server failures ([query-client.ts](../apps/portal/src/lib/query-client.ts)).
-  React Query refetches when the browser reconnects.
+  React Query refetches page reads when the browser reconnects. The full reservation
+  page refreshes its saved overview without replacing open editor drafts. The
+  compact calendar editor's reservation detail is an exception: it does not
+  automatically refetch on reconnect. Both reservation editors keep window-focus
+  refetch disabled ([queries.ts](../apps/portal/src/lib/queries.ts)).
 - **Render crashes:** the router's default error component shows **Algo salió mal**
   with **Recargar** and **Ir al calendario**, inside the shell when only the page
   failed. It shows no technical details and logs the error to the console.
@@ -140,8 +146,8 @@ for the current tab session, including page reloads, without activating it. A ne
 tab session can show the notice again if the update is still waiting. If session
 storage is unavailable, dismissal lasts only until the page reloads. While the browser reports itself offline, a full-screen **Sin conexión a internet**
 notice in the shared page-error style hides the portal and offers **Reintentar**
-(reload). After reconnecting, the portal reappears without a notice and React Query
-refetches page data.
+(reload). After reconnecting, the portal reappears without a notice; page reads
+follow the [reconnect rules and compact-editor exception](#error-states).
 
 For release smoke tests, build and preview locally using the root build commands
 and a non-production API origin. On Android Chromium, Safari on iOS/iPadOS, and

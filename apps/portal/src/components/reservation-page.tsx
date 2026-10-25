@@ -24,7 +24,7 @@ export function ReservationPage(props: PageProps) {
 
 function ReservationPageContent({ id, onBack }: PageProps) {
   const client = useQueryClient();
-  const query = useReservation(id);
+  const query = useReservation(id, { refetchOnReconnect: true });
   const missing = !query.data && query.error && readErrorKind(query.error) === "not-found";
   const saving = useReservationSaving(id);
   const dirty = useRef(false);

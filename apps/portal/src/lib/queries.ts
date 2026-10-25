@@ -268,13 +268,16 @@ export function useAvailability(
   });
 }
 
-export function useReservation(id: string | null) {
+export function useReservation(
+  id: string | null,
+  { refetchOnReconnect = false }: { refetchOnReconnect?: boolean } = {},
+) {
   return useQuery({
     queryKey: ["reservation", id],
     queryFn: ({ signal }) => getReservation(id!, signal),
     enabled: id !== null,
     refetchOnWindowFocus: false,
-    refetchOnReconnect: false,
+    refetchOnReconnect,
   });
 }
 
