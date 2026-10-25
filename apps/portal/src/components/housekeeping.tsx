@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, type ComponentProps } from "react";
 import { RefreshCwIcon, SparklesIcon } from "lucide-react";
 import { cn } from "cn";
 import { PageHeaderActions } from "@/components/page-header-actions";
@@ -14,9 +14,19 @@ import {
 } from "@/components/ui/empty";
 import { FieldError } from "@/components/ui/field";
 import { Spinner } from "@/components/ui/spinner";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
+import { useIsMobile } from "@/hooks/use-mobile";
 import type { HousekeepingRoom, HousekeepingStatus } from "@/lib/api";
+import { propertyTimeZone, propertyToday } from "@/lib/property-calendar";
 import { useHousekeeping, useMissingSetup, useSetHousekeepingStatus } from "@/lib/queries";
 import type { HousekeepingView } from "@/lib/route-search";
 import { toast, toastError } from "@/lib/toast";
@@ -113,26 +123,33 @@ function usePendingMark(mark: MarkRoom) {
   return [pending, run] as const;
 }
 
-function ToCleanCard({ room, mark }: { room: HousekeepingRoom; mark: MarkRoom }) {
-  const [pending, run] = usePendingMark(mark);
+/** One room's control, disabled while its own mark saves. */
+type RowControl = {
+  room: HousekeepingRoom;
+  pending: HousekeepingStatus | null;
+  run: (room: HousekeepingRoom, status: HousekeepingStatus) => void;
+};
+
+/** Por limpiar's one action: mark the room clean. */
+function ListaButton({
+  room,
+  pending,
+  run,
+  size,
+  className,
+}: RowControl & Pick<ComponentProps<typeof Button>, "size" | "className">) {
   return (
-    <li className="flex items-center gap-3 border-b p-4 last:border-b-0">
-      <div className="flex min-w-0 flex-1 flex-col gap-2">
-        <RoomHeading room={room} />
-        <StayBadges room={room} />
-      </div>
-      <Button
-        size="lg"
-        variant="outline"
-        className="min-h-12 shrink-0 px-5 text-base"
-        aria-label={`Marcar habitación ${room.number} como limpia`}
-        disabled={!!pending}
-        onClick={() => run(room, "clean")}
-      >
-        {pending && <Spinner data-icon="inline-start" />}
-        Lista
-      </Button>
-    </li>
+    <Button
+      size={size}
+      variant="outline"
+      className={className}
+      aria-label={`Marcar habitación ${room.number} como limpia`}
+      disabled={!!pending}
+      onClick={() => run(room, "clean")}
+    >
+      {pending && <Spinner data-icon="inline-start" />}
+      Lista
+    </Button>
   );
 }
 
@@ -149,72 +166,182 @@ const statusDisplay = {
   },
 } as const;
 
-function HousekeepingRow({ room, mark }: { room: HousekeepingRoom; mark: MarkRoom }) {
+/** Todas' Sucia | Limpia control, pressed on the current status. */
+function StatusToggle({
+  room,
+  pending,
+  run,
+  itemClassName,
+}: RowControl & { itemClassName: string }) {
+  return (
+    <ToggleGroup
+      variant="outline"
+      spacing={0}
+      className="shrink-0"
+      aria-label={`Limpieza de la habitación ${room.number}`}
+      value={[room.housekeepingStatus]}
+      disabled={!!pending}
+      onValueChange={([status]) => {
+        // Tapping the pressed side unpresses it; that sets nothing.
+        if (status) run(room, status as HousekeepingStatus);
+      }}
+    >
+      {(["dirty", "clean"] as const).map((status) => (
+        <ToggleGroupItem
+          key={status}
+          value={status}
+          className={cn(itemClassName, statusDisplay[status].className)}
+          aria-label={`Marcar habitación ${room.number} como ${statusDisplay[status].label.toLowerCase()}`}
+        >
+          {pending === status && <Spinner data-icon="inline-start" />}
+          {statusDisplay[status].label}
+        </ToggleGroupItem>
+      ))}
+    </ToggleGroup>
+  );
+}
+
+type RoomRowProps = { view: HousekeepingView; room: HousekeepingRoom; mark: MarkRoom };
+
+/** The tab's action for a room: Lista on Por limpiar, Sucia | Limpia on Todas. */
+function RoomAction({
+  view,
+  phone,
+  ...control
+}: RowControl & { view: HousekeepingView; phone: boolean }) {
+  return view === "to-clean" ? (
+    <ListaButton
+      {...control}
+      size={phone ? "lg" : "sm"}
+      className={cn(phone && "min-h-12 shrink-0 px-5 text-base")}
+    />
+  ) : (
+    <StatusToggle
+      {...control}
+      itemClassName={phone ? "min-h-11 px-3 text-sm" : "h-8 px-3 text-sm"}
+    />
+  );
+}
+
+function PhoneRow({ view, room, mark }: RoomRowProps) {
   const [pending, run] = usePendingMark(mark);
   return (
-    <li className="flex items-center gap-3 border-b px-4 py-3 last:border-b-0">
+    <li
+      className={cn(
+        "flex items-center gap-3 border-b last:border-b-0",
+        view === "to-clean" ? "p-4" : "px-4 py-3",
+      )}
+    >
       <div className="flex min-w-0 flex-1 flex-col gap-2">
         <RoomHeading room={room} />
         <StayBadges room={room} />
       </div>
-      <ToggleGroup
-        variant="outline"
-        spacing={0}
-        className="shrink-0"
-        aria-label={`Limpieza de la habitación ${room.number}`}
-        value={[room.housekeepingStatus]}
-        disabled={!!pending}
-        onValueChange={([status]) => {
-          // Tapping the pressed side unpresses it; that sets nothing.
-          if (status) run(room, status as HousekeepingStatus);
-        }}
-      >
-        {(["dirty", "clean"] as const).map((status) => (
-          <ToggleGroupItem
-            key={status}
-            value={status}
-            className={cn("min-h-11 px-3 text-sm", statusDisplay[status].className)}
-            aria-label={`Marcar habitación ${room.number} como ${statusDisplay[status].label.toLowerCase()}`}
-          >
-            {pending === status && <Spinner data-icon="inline-start" />}
-            {statusDisplay[status].label}
-          </ToggleGroupItem>
-        ))}
-      </ToggleGroup>
+      <RoomAction view={view} phone room={room} pending={pending} run={run} />
     </li>
   );
 }
 
-function ToCleanList({ rooms, mark }: { rooms: HousekeepingRoom[]; mark: MarkRoom }) {
-  if (rooms.length === 0) {
-    return (
-      <Empty className="max-w-2xl border">
-        <EmptyHeader>
-          <EmptyMedia variant="icon">
-            <SparklesIcon />
-          </EmptyMedia>
-          <EmptyTitle>Todo limpio</EmptyTitle>
-          <EmptyDescription>No quedan habitaciones por limpiar hoy.</EmptyDescription>
-        </EmptyHeader>
-      </Empty>
-    );
+/**
+ * When the status was last marked, in the property time zone: the time if on the
+ * property date `today`, otherwise a short date.
+ */
+function markedLabel(changedAt: string | null, today: string) {
+  if (!changedAt) return "—";
+  const instant = new Date(changedAt);
+  const timeZone = propertyTimeZone();
+  if (propertyToday(instant) === today) {
+    return new Intl.DateTimeFormat("es-PE", {
+      timeZone,
+      hour: "2-digit",
+      minute: "2-digit",
+      hourCycle: "h23",
+    }).format(instant);
   }
+  return new Intl.DateTimeFormat("es-PE", { timeZone, day: "numeric", month: "short" })
+    .format(instant)
+    .replace(".", "");
+}
+
+function DesktopRow({ view, room, mark, today }: RoomRowProps & { today: string }) {
+  const [pending, run] = usePendingMark(mark);
   return (
-    <ul aria-label="Habitaciones por limpiar" className="max-w-2xl border">
-      {rooms.map((room) => (
-        <ToCleanCard key={room.id} room={room} mark={mark} />
-      ))}
-    </ul>
+    <TableRow>
+      <TableCell className="w-28 text-base font-semibold tabular-nums">{room.number}</TableCell>
+      <TableCell className="text-muted-foreground">{room.roomTypeName}</TableCell>
+      <TableCell>
+        <StayBadges room={room} />
+      </TableCell>
+      <TableCell className="text-muted-foreground tabular-nums">
+        {markedLabel(room.housekeepingChangedAt, today)}
+      </TableCell>
+      <TableCell>
+        <div className="flex justify-end">
+          <RoomAction view={view} phone={false} room={room} pending={pending} run={run} />
+        </div>
+      </TableCell>
+    </TableRow>
   );
 }
 
-function AllRoomsList({ rooms, mark }: { rooms: HousekeepingRoom[]; mark: MarkRoom }) {
+const listLabel = { "to-clean": "Habitaciones por limpiar", all: "Habitaciones" } as const;
+
+/** A tab's rooms: phone cards, or the front desk's table with when each was last marked. */
+function RoomList({
+  view,
+  rooms,
+  mark,
+  today,
+}: {
+  view: HousekeepingView;
+  rooms: HousekeepingRoom[];
+  mark: MarkRoom;
+  today: string;
+}) {
+  const phone = useIsMobile();
+  if (phone) {
+    return (
+      <ul aria-label={listLabel[view]} className="max-w-2xl border">
+        {rooms.map((room) => (
+          <PhoneRow key={room.id} view={view} room={room} mark={mark} />
+        ))}
+      </ul>
+    );
+  }
   return (
-    <ul aria-label="Habitaciones" className="max-w-2xl border">
-      {rooms.map((room) => (
-        <HousekeepingRow key={room.id} room={room} mark={mark} />
-      ))}
-    </ul>
+    <div className="max-w-5xl border">
+      <Table aria-label={listLabel[view]} className="text-sm">
+        <TableHeader>
+          <TableRow>
+            <TableHead scope="col">Habitación</TableHead>
+            <TableHead scope="col">Tipo</TableHead>
+            <TableHead scope="col">Hoy</TableHead>
+            <TableHead scope="col">Marcada</TableHead>
+            <TableHead scope="col" className="text-right">
+              {view === "to-clean" ? <span className="sr-only">Acción</span> : "Estado"}
+            </TableHead>
+          </TableRow>
+        </TableHeader>
+        <TableBody>
+          {rooms.map((room) => (
+            <DesktopRow key={room.id} view={view} room={room} mark={mark} today={today} />
+          ))}
+        </TableBody>
+      </Table>
+    </div>
+  );
+}
+
+function AllClean() {
+  return (
+    <Empty className="max-w-2xl border">
+      <EmptyHeader>
+        <EmptyMedia variant="icon">
+          <SparklesIcon />
+        </EmptyMedia>
+        <EmptyTitle>Todo limpio</EmptyTitle>
+        <EmptyDescription>No quedan habitaciones por limpiar hoy.</EmptyDescription>
+      </EmptyHeader>
+    </Empty>
   );
 }
 
@@ -280,10 +407,15 @@ export function Housekeeping({
           <Spinner />
           Cargando habitaciones…
         </p>
-      ) : view === "to-clean" ? (
-        <ToCleanList rooms={toClean} mark={mark} />
+      ) : view === "to-clean" && toClean.length === 0 ? (
+        <AllClean />
       ) : (
-        <AllRoomsList rooms={list.rooms} mark={mark} />
+        <RoomList
+          view={view}
+          rooms={view === "to-clean" ? toClean : list.rooms}
+          mark={mark}
+          today={list.date}
+        />
       )}
     </main>
   );

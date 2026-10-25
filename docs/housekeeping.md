@@ -11,7 +11,9 @@ of who marked it. Housekeepers use the shared staff login.
 
 `/housekeeping` (**Limpieza** in the sidebar) is a phone-first page with two tabs for
 the property date. The tab is kept in the URL; **Por limpiar** opens by default and
-`?view=all` opens **Todas**.
+`?view=all` opens **Todas**. Below 768px each tab is a column of cards for the
+housekeeper; from 768px the same tabs show a [desktop table](#desktop-table) for the
+front desk or supervisor.
 
 **Por limpiar** is the housekeeper's work for today, with its count in the tab,
 highlighted while rooms remain. It lists dirty rooms that will be free tonight. It
@@ -48,10 +50,25 @@ the list. A rejected mark restores the previous status and shows an error toast.
 open page re-reads the list at property midnight; until that read returns, or if it
 fails, it keeps showing the previous list.
 
+### Desktop table
+
+At 768px and wider, the breakpoint Reservas uses, each tab's rooms are a table instead
+of cards, in the same order and with the same Por limpiar filter, tab count, and
+**Todo limpio**. Its columns are **Habitación**, **Tipo**, **Hoy** (today's stays as
+above), **Marcada**, and the tab's action: **Lista** on Por limpiar, **Sucia | Limpia**
+on Todas. Each action marks its row exactly as on the phone, including the disabled
+control while it saves, the **Deshacer** toast, and the restore on failure.
+
+**Marcada** is when the housekeeping status was last marked, from
+`housekeepingChangedAt`, in the property time zone: the time (`10:42`) when it falls
+on the list's property date, otherwise a short date (`23 oct`), and `—` for a room
+never marked. It never shows who marked it.
+
 ## API
 
-`PUT /housekeeping` marks rooms with `{ marks: [{ roomId, status }] }`; the phone's
-**Lista**, **Sucia | Limpia**, and **Deshacer** each send one mark. It sets, rather than
+`PUT /housekeeping` marks rooms with `{ marks: [{ roomId, status }] }`; each row's
+**Lista** and **Sucia | Limpia**, on the phone or the desktop table, and **Deshacer**
+each send one mark. It sets, rather than
 flips, each status, so repeated or simultaneous marks agree; the last write wins. It
 saves every mark or none, with one mark time shared by the whole request, recorded
 even when a mark repeats the room's current status. It returns `{ rooms: [{ id,
