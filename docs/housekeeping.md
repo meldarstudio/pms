@@ -64,11 +64,35 @@ control while it saves, the **Deshacer** toast, and the restore on failure.
 on the list's property date, otherwise a short date (`23 oct`), and `—` for a room
 never marked. It never shows who marked it.
 
+### Bulk marking
+
+The desktop table can mark several rooms in one action; the phone cards have no
+selection. Each row has a checkbox, and the header's checkbox selects every visible row,
+or clears them all when all are selected. Shift-clicking a row selects (or clears) every
+row from the row clicked last to it, in the order on screen: room number order on
+Todas, so 101 then shift-click 110 selects 101–110, and cleaning order on Por limpiar.
+
+While rooms are selected, a bar above the table shows **N seleccionadas**, **Marcar
+limpias**, **Marcar sucias** (Todas only), and **Quitar selección**. A bulk mark needs
+no confirmation and sends every selected room in one request, in the order on screen,
+including rooms already in that status, whose Marcada time updates. The rows change at
+once, as single marks do. On success the selection clears and one toast (**N
+habitaciones listas** or **N habitaciones marcadas sucias**) offers **Deshacer**, which
+sets each room back to its own previous status in one request; it does not restore the
+old Marcada time. On failure every room returns to its previous status, an error toast
+is shown, and the selection stays for a retry.
+
+The selection belongs to the tab: switching tabs clears it. After every re-read,
+including the one at property midnight and one that shows marks from another device,
+it keeps only rooms still visible in the tab, and the count follows. While a bulk mark
+saves, rooms it takes off Por limpiar stay selected until it succeeds or fails.
+
 ## API
 
 `PUT /housekeeping` marks rooms with `{ marks: [{ roomId, status }] }`; each row's
-**Lista** and **Sucia | Limpia**, on the phone or the desktop table, and **Deshacer**
-each send one mark. It sets, rather than
+**Lista** and **Sucia | Limpia**, on the phone or the desktop table, and its
+**Deshacer** each send one mark, and a [bulk mark](#bulk-marking) and its **Deshacer**
+send one mark per selected room. It sets, rather than
 flips, each status, so repeated or simultaneous marks agree; the last write wins. It
 saves every mark or none, with one mark time shared by the whole request, recorded
 even when a mark repeats the room's current status. It returns `{ rooms: [{ id,
