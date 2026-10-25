@@ -93,8 +93,9 @@ components; [api-error.ts](../apps/portal/src/lib/api-error.ts) classifies error
     from [installable app and offline behavior](#installable-app-and-offline-behavior).
   - **Unexpected:** everything else. Offers **Reintentar**.
 - **Data already on screen:** a failed refresh keeps the data and shows
-  `StaleDataNotice`: an amber bar (the `warning` theme token) giving the reason, a
-  warning that the data may be out of date, and **Reintentar**.
+  `StaleDataNotice`: a `warning` variant of the shadcn `Alert` (the amber `warning`
+  theme token) giving the reason, a warning that the data may be out of date, and
+  **Reintentar**. Every page separates it from the content below with a gap.
   This applies only when the data on screen matches the requested range or list
   page; a failed new calendar or inventory window shows `PageError` instead of the
   previous window's data.
@@ -139,10 +140,8 @@ for the current tab session, including page reloads, without activating it. A ne
 tab session can show the notice again if the update is still waiting. If session
 storage is unavailable, dismissal lasts only until the page reloads. While the browser reports itself offline, a full-screen **Sin conexión a internet**
 notice in the shared page-error style hides the portal and offers **Reintentar**
-(reload). After reconnecting, a green **Conexión restablecida** card takes the update
-notice's bottom slot, so it never covers the header or sidebar toggle. It keeps
-**Reintentar** until the page reloads or staff close it; it has no timer. The two cards
-never show together.
+(reload). After reconnecting, the portal reappears without a notice and React Query
+refetches page data.
 
 For release smoke tests, build and preview locally using the root build commands
 and a non-production API origin. On Android Chromium, Safari on iOS/iPadOS, and

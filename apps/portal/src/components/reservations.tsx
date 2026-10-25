@@ -398,7 +398,7 @@ export function Reservations({
           </Popover>
         </div>
       </div>
-      <div ref={resultsRef} className="shrink-0">
+      <div ref={resultsRef} className="flex shrink-0 flex-col gap-4">
         {query.isPending ? (
           <Skeleton className="h-64 w-full" />
         ) : (

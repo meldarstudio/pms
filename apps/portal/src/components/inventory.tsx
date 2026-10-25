@@ -289,7 +289,11 @@ export function Inventory({
         </ButtonGroup>
         <div />
       </div>
-      {grid && inventory.error ? <StaleDataNotice error={inventory.error} onRetry={retry} /> : null}
+      {grid && inventory.error ? (
+        <div className="border-b p-4">
+          <StaleDataNotice error={inventory.error} onRetry={retry} />
+        </div>
+      ) : null}
       {loadError ? (
         <div className="p-4">
           <PageError error={loadError} onRetry={retry} />

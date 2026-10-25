@@ -1,6 +1,7 @@
 import { useEffect, type ReactNode } from "react";
 import { Link, type ErrorComponentProps } from "@tanstack/react-router";
 import { CircleAlertIcon, SearchXIcon, TriangleAlertIcon, WifiOffIcon } from "lucide-react";
+import { Alert, AlertAction, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import {
   Empty,
@@ -86,22 +87,18 @@ export function StaleDataNotice({
   const offline = kind === "offline";
   const reason = offline ? "Sin conexión con el servidor." : (message ?? "No se pudo actualizar.");
   return (
-    <div
-      role="status"
-      className="flex items-center gap-2 border border-warning-foreground/20 bg-warning px-3 py-2 text-sm text-warning-foreground"
-    >
-      {offline ? (
-        <WifiOffIcon className="size-4 shrink-0" />
-      ) : (
-        <TriangleAlertIcon className="size-4 shrink-0" />
-      )}
-      <p className="min-w-0 flex-1">
-        {reason} Los datos pueden estar desactualizados.{detail ? ` ${detail}` : null}
-      </p>
-      <Button variant="outline" size="sm" className="shrink-0" onClick={onRetry}>
-        Reintentar
-      </Button>
-    </div>
+    <Alert variant="warning" role="status" className="shrink-0">
+      {offline ? <WifiOffIcon /> : <TriangleAlertIcon />}
+      <AlertTitle>{reason}</AlertTitle>
+      <AlertDescription>
+        Los datos pueden estar desactualizados.{detail ? ` ${detail}` : null}
+      </AlertDescription>
+      <AlertAction className="top-1/2 -translate-y-1/2">
+        <Button variant="outline" size="xs" onClick={onRetry}>
+          Reintentar
+        </Button>
+      </AlertAction>
+    </Alert>
   );
 }
 

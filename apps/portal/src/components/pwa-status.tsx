@@ -1,5 +1,5 @@
 import { useEffect, useState, type ReactNode } from "react";
-import { CheckIcon, RefreshCwIcon, WifiOffIcon, XIcon } from "lucide-react";
+import { RefreshCwIcon, WifiOffIcon, XIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -25,7 +25,6 @@ const floatingNotice =
 
 export function PwaStatus({ children }: { children: ReactNode }) {
   const [online, setOnline] = useState(() => navigator.onLine);
-  const [reconnected, setReconnected] = useState(false);
   const [waitingWorker, setWaitingWorker] = useState<ServiceWorker | null>(null);
   const [dismissedUpdate, setDismissedUpdate] = useState(() => {
     try {
@@ -47,14 +46,8 @@ export function PwaStatus({ children }: { children: ReactNode }) {
   }
 
   useEffect(() => {
-    const wentOnline = () => {
-      setOnline(true);
-      setReconnected(true);
-    };
-    const wentOffline = () => {
-      setOnline(false);
-      setReconnected(false);
-    };
+    const wentOnline = () => setOnline(true);
+    const wentOffline = () => setOnline(false);
     const updateActivated = (event: MessageEvent) => {
       if (event.data === "UPDATE_ACTIVATED") window.location.reload();
     };
@@ -111,37 +104,6 @@ export function PwaStatus({ children }: { children: ReactNode }) {
             </EmptyContent>
           </Empty>
         </div>
-      )}
-      {online && reconnected && !showUpdate && (
-        <Card
-          role="status"
-          aria-label="Conexión restablecida"
-          size="sm"
-          className={`${floatingNotice} bg-success text-success-foreground ring-success-foreground/20`}
-        >
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <CheckIcon className="size-4" />
-              Conexión restablecida.
-            </CardTitle>
-            <CardAction>
-              <Button
-                variant="ghost"
-                size="icon-sm"
-                aria-label="Cerrar aviso"
-                onClick={() => setReconnected(false)}
-              >
-                <XIcon />
-              </Button>
-            </CardAction>
-          </CardHeader>
-          <CardFooter className="flex-col items-stretch">
-            <Button variant="outline" onClick={() => window.location.reload()}>
-              <RefreshCwIcon data-icon="inline-start" />
-              Reintentar
-            </Button>
-          </CardFooter>
-        </Card>
       )}
       {showUpdate && (
         <Card

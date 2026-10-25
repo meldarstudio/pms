@@ -59,11 +59,13 @@ export function PropertySetup() {
   return (
     <>
       {(types.error || rooms.error) && (
-        <StaleDataNotice
-          error={types.error ?? rooms.error}
-          onRetry={retry}
-          detail="Tus cambios sin guardar se conservan."
-        />
+        <div className="px-4 pt-4">
+          <StaleDataNotice
+            error={types.error ?? rooms.error}
+            onRetry={retry}
+            detail="Tus cambios sin guardar se conservan."
+          />
+        </div>
       )}
       <SetupWorkspace types={types.data} rooms={rooms.data} />
     </>
