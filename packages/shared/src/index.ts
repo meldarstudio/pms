@@ -55,8 +55,14 @@ export const patchRoomSchema = z
   })
   .refine((value) => Object.keys(value).length > 0, { message: "send a field to update" });
 
-export const housekeepingWriteSchema = z.object({
-  status: z.enum(["dirty", "clean"]),
+export const housekeepingMarksSchema = z.object({
+  marks: z
+    .array(z.object({ roomId: z.string().min(1), status: z.enum(["dirty", "clean"]) }))
+    .min(1)
+    .max(500)
+    .refine((marks) => new Set(marks.map((mark) => mark.roomId)).size === marks.length, {
+      message: "duplicate room in housekeeping marks",
+    }),
 });
 
 export const rateWriteSchema = z.object({
