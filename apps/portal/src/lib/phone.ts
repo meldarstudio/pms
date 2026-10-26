@@ -1,4 +1,5 @@
 import {
+  AsYouType,
   getCountries,
   getCountryCallingCode,
   parsePhoneNumberFromString,
@@ -9,9 +10,9 @@ import {
 export type { CountryCode };
 
 /**
- * A contact phone being edited: the selected country, the text staff typed, and the value saved
- * when the editor opened. Until the country or text changes, the portal resubmits `saved`
- * exactly; API parsing and validation still apply.
+ * A contact phone being edited: the selected country, unformatted digits (or unsupported text),
+ * and the value saved when the editor opened. Until the country or text changes, the portal
+ * resubmits `saved` exactly; API parsing and validation still apply.
  */
 export type PhoneValue = { country: CountryCode; text: string; saved: string | null };
 
@@ -46,7 +47,11 @@ function international(phone: string) {
 export function phoneDraft(saved: string | null | undefined): PhoneValue {
   const parsed = saved ? international(saved) : undefined;
   return parsed?.country
-    ? { country: parsed.country, text: parsed.formatNational(), saved: saved ?? null }
+    ? {
+        country: parsed.country,
+        text: phoneCharacters(parsed.formatNational()),
+        saved: saved ?? null,
+      }
     : { country: "PE", text: saved ?? "", saved: saved ?? null };
 }
 
@@ -58,7 +63,64 @@ function unchanged(value: PhoneValue) {
 /** Typing an explicit international number selects its country. */
 export function typePhone(value: PhoneValue, text: string): PhoneValue {
   const country = text.trim().startsWith("+") ? parsePhoneNumberFromString(text)?.country : null;
-  return { ...value, text, country: country ?? value.country };
+  const parsed = international(text);
+  return {
+    ...value,
+    text: parsed?.country
+      ? phoneCharacters(parsed.formatNational())
+      : phoneSyntax.test(text.trim())
+        ? phoneCharacters(text)
+        : text,
+    country: country ?? value.country,
+  };
+}
+
+/** Dialable characters, without presentation separators. Only use for supported phone syntax. */
+function phoneCharacters(text: string) {
+  return text.replace(/[^\d+]/g, "");
+}
+
+/** Country-aware visual grouping, independent of the draft's digits. Legacy text stays visible. */
+export function phoneInputText(value: PhoneValue): string {
+  if (value.saved && unchanged(value) && !international(value.saved)?.country) return value.text;
+  if (!phoneSyntax.test(value.text.trim())) return value.text;
+  return new AsYouType(value.country)
+    .input(value.text)
+    .replace(/[^\d+]+/g, " ")
+    .trim();
+}
+
+/** Keep the caret attached to digits, including when deleting only a visual separator. */
+export function editPhone(value: PhoneValue, text: string, caret: number, inputType?: string) {
+  const previous = phoneInputText(value);
+  if (
+    (inputType === "deleteContentBackward" || inputType === "deleteContentForward") &&
+    phoneSyntax.test(previous) &&
+    phoneCharacters(previous) === phoneCharacters(text) &&
+    previous !== text
+  ) {
+    const before = phoneCharacters(text.slice(0, caret)).length;
+    const index = inputType === "deleteContentBackward" ? before - 1 : before;
+    const characters = phoneCharacters(text);
+    if (index >= 0 && index < characters.length) {
+      text = characters.slice(0, index) + characters.slice(index + 1);
+      caret = inputType === "deleteContentBackward" ? index : before;
+    }
+  }
+  const next = typePhone(value, text);
+  const formatted = phoneInputText(next);
+  if (formatted === text) return { value: next, text: formatted, caret };
+
+  // Count from the right so removing an international prefix doesn't move a mid-number caret.
+  const remaining = phoneCharacters(text.slice(caret)).length;
+  const before = Math.max(0, phoneCharacters(formatted).length - remaining);
+  let position = 0;
+  let characters = 0;
+  while (position < formatted.length && characters < before) {
+    if (/[\d+]/.test(formatted[position])) characters++;
+    position++;
+  }
+  return { value: next, text: formatted, caret: position };
 }
 
 /** Choosing a country keeps the national digits staff entered and reads them in that country. */

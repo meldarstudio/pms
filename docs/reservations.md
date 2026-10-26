@@ -152,13 +152,21 @@ The portal mirrors these rules in `apps/portal/src/lib/phone.ts`, since it does
 not import `@pms/shared`. **Teléfono · Opcional** (`PhoneField`) is used in
 creation, **Editar contacto**, and staying-guest add/edit. It pairs a searchable
 country selector, defaulting to Peru and showing calling codes, with a `tel`
-input. Pasting a `+` number selects its country. Choosing a country keeps the
+input. Country-specific grouping is visual: supported input keeps unformatted
+digits in the draft, while `AsYouType` supplies spacing during typing and when an
+editor reopens. The custom input keeps the caret attached to digits across edits,
+including deletion beside a separator and selection replacement. Copying or cutting
+a selection produces digits without visual separators. National leading zeros are
+retained, not converted to a numeric value. Pasting a valid supported `+` number
+selects its country and puts its national digits in the input; incomplete
+international input retains its `+` prefix until it can be interpreted.
+Choosing a country keeps the
 national digits and revalidates them; input containing extensions or unsupported
 text stays intact so country changes cannot silently discard it. Errors follow
 the editor reveal rules in
 [Drafts, validation, and retries](#drafts-validation-and-retries), and a blank
 phone is valid with no missing-phone warning. Editors open valid, explicitly
-international phones in national format under their recognized country, including
+international phones with national grouping under their recognized country, including
 numbers with accepted presentation separators, not just canonical E.164 strings.
 Other values appear as stored, including annotations. Until staff change the text
 or country, the portal resubmits the stored value; API parsing and validation still
