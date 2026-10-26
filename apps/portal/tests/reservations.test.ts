@@ -245,6 +245,23 @@ it("opens property-today Arrivals and switches all four server scopes without lo
   await until(() => params().get("checkIn") === "2026-10-29");
 });
 
+it("returns to property today from the day picker on mobile", async () => {
+  page.mobile();
+  await render("/reservations?day=2026-10-28");
+  assert.equal(params().get("checkIn"), "2026-10-28");
+  assert.equal(
+    Array.from(container.querySelectorAll("button")).some(
+      (element) => element.textContent.trim() === "Hoy",
+    ),
+    false,
+  );
+  await click("Día de operación");
+  await click("Hoy");
+  await until(() => params().get("checkIn") === "2026-10-31");
+  assert.equal(window.document.querySelector('button[data-day="31/10/2026"]'), null);
+  assert.ok(button("Día de operación").textContent.includes("31 oct 2026"));
+});
+
 it("keeps navigation usable when browser storage is blocked", async () => {
   vi.spyOn(window, "localStorage", "get").mockImplementation(() => {
     throw new Error("Storage is blocked");
@@ -366,6 +383,25 @@ it.each([{ remaining: 0, range: "0 de 0 reservas", offset: "0", page: 0 }])(
     assert.equal(router.state.location.search.page ?? 0, page);
   },
 );
+
+it("refreshes the same view on demand for changes made on other devices", async () => {
+  page.mobile();
+  let guestName = "Ana Pérez";
+  respond = (url) =>
+    Response.json({
+      rows: [{ ...ana, guestName }],
+      total: 126,
+      limit: 50,
+      offset: Number(url.searchParams.get("offset")),
+    });
+  await render("/reservations?view=all&q=Ana&balance=due&page=1");
+  const before = params().toString();
+  guestName = "Bruno Díaz";
+  await click("Actualizar");
+  await until(() => container.textContent.includes("Bruno Díaz"));
+  assert.equal(params().toString(), before);
+  assert.equal(router.state.location.search.page, 1);
+});
 
 it("refreshes cached operations and legacy calendar results after saving in reservation details", async () => {
   client.setQueryDefaults(["reservations"], { staleTime: Infinity });

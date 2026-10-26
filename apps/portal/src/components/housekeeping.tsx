@@ -1,10 +1,10 @@
 import { useState, type ReactNode } from "react";
-import { ChevronDownIcon, RefreshCwIcon, SparklesIcon } from "lucide-react";
-import { cn } from "cn";
+import { ChevronDownIcon, SparklesIcon } from "lucide-react";
 import { PageHeaderActions } from "@/components/page-header-actions";
 import { SetupRequired } from "@/components/setup-required";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { RefreshButton } from "@/components/refresh-button";
 import { Checkbox } from "@/components/ui/checkbox";
 import {
   DropdownMenu,
@@ -604,16 +604,11 @@ export function Housekeeping({
   return (
     <main className="flex min-h-0 w-full flex-col gap-4 overflow-y-auto p-4 lg:p-6">
       <PageHeaderActions>
-        <Button
-          variant="outline"
-          size="icon-sm"
-          aria-label={refreshing ? "Actualizando…" : "Actualizar"}
-          aria-busy={refreshing || undefined}
-          disabled={!list || refreshing}
-          onClick={() => void query.refetch()}
-        >
-          <RefreshCwIcon className={cn(refreshing && "animate-spin")} />
-        </Button>
+        <RefreshButton
+          refreshing={refreshing}
+          disabled={!list}
+          onRefresh={() => void query.refetch()}
+        />
       </PageHeaderActions>
       <Tabs
         className="w-full md:w-auto"

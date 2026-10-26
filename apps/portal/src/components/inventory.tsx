@@ -8,7 +8,6 @@ import {
   ChevronRightIcon,
   ChevronsLeftIcon,
   ChevronsRightIcon,
-  RefreshCwIcon,
 } from "lucide-react";
 
 import { InventoryRateDialog, type RateTarget } from "@/components/inventory-rate-dialog";
@@ -30,7 +29,8 @@ import {
 } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
 import { PageError, StaleDataNotice } from "@/components/page-error";
-import { Separator } from "@/components/ui/separator";
+import { PickerTodayFooter } from "@/components/picker-today-footer";
+import { RefreshButton } from "@/components/refresh-button";
 import { useIsMobile } from "@/hooks/use-mobile";
 import type { InventoryNight, InventoryRoomType } from "@/lib/api";
 import { CURRENCY, formatMoney } from "@/lib/money";
@@ -99,6 +99,13 @@ export function Inventory({
   // Placeholder data from another window is never shown in place of a failed one.
   const loadError = grid ? null : inventory.error;
   const retry = () => void queryClient.invalidateQueries({ queryKey: ["inventory"] });
+  const [refreshing, setRefreshing] = useState(false);
+  function refresh() {
+    setRefreshing(true);
+    void queryClient
+      .invalidateQueries({ queryKey: ["inventory"] })
+      .finally(() => setRefreshing(false));
+  }
 
   useEffect(() => {
     function onUp(event: Event) {
@@ -203,15 +210,12 @@ export function Inventory({
               </Button>
             </>
           )}
-          <Button
-            variant="outline"
-            size="icon"
-            aria-label="Actualizar"
+          <RefreshButton
+            refreshing={refreshing}
             disabled={loading}
-            onClick={() => void queryClient.invalidateQueries({ queryKey: ["inventory"] })}
-          >
-            <RefreshCwIcon />
-          </Button>
+            size="icon"
+            onRefresh={refresh}
+          />
         </div>
         <ButtonGroup>
           {!isMobile && (
@@ -250,21 +254,12 @@ export function Inventory({
                 }}
               />
               {isMobile && (
-                <>
-                  <Separator />
-                  <div className="flex p-2">
-                    <Button
-                      variant="outline"
-                      className="w-full"
-                      onClick={() => {
-                        changeStart(dateOnlyCarrier(today));
-                        setPickerOpen(false);
-                      }}
-                    >
-                      Hoy
-                    </Button>
-                  </div>
-                </>
+                <PickerTodayFooter
+                  onToday={() => {
+                    changeStart(dateOnlyCarrier(today));
+                    setPickerOpen(false);
+                  }}
+                />
               )}
             </PopoverContent>
           </Popover>

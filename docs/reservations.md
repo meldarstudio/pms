@@ -268,9 +268,20 @@ The app header and Nueva reserva stay reachable while the list scrolls; see
 [navigation](portal.md#navigation) for the mobile floating placement. View,
 date, search, filter, and sorting controls scroll with the results. Mobile list
 controls use the shared Lyra sizing. Llegadas and Salidas retain their
-previous-day, date-picker, next-day, and Hoy controls. Search still matches the
+previous-day, date-picker, and next-day controls; desktop follows them with a
+standalone Hoy, while mobile puts **Hoy** in the date picker's footer, which returns to
+the property date and closes the picker. Search still matches the
 booking contact or reservation code; En casa and Todas las reservas have no date
 restriction.
+
+The list re-reads on focus, reconnect, and after saves in this browser. Changes made on
+another device while the list stays open and focused appear only after **Actualizar**.
+On desktop it ends the view-tab row, after the date controls on Llegadas and Salidas;
+on mobile it sits in the app header on every view, since Nueva reserva floats. It
+re-reads the current view, keeping its search, filters, sorting, and page, and keeps
+the results visible while they update. It spins only while a requested re-read runs.
+It is disabled during any read and until the first results arrive; if that first read
+fails, the page's own retry replaces the list.
 
 Pagination shows the result range and total, 25/50/100 reservations per page with
 50 as the default, and previous/next controls. On mobile, these buttons are

@@ -66,6 +66,8 @@ picker styling. **Hoy** lives in the picker's footer; choosing it returns to the
 property date and closes the picker. The span selector and period-jump buttons
 are omitted on mobile. Calendario also has its
 [assignment button](calendar.md#entry) on the right.
+Reservas places **Actualizar** and **Hoy** differently; see the
+[reservation list](reservations.md#portal-list).
 
 Inventario y tarifas keeps its 14-day default and honors an existing 7/14-day
 URL span on mobile. Its rates remain editable through grid cells. Desktop

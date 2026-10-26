@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { PropertyDatePicker } from "@/components/property-date-picker";
 import { Field, FieldError, FieldLabel } from "@/components/ui/field";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { PickerTodayFooter } from "@/components/picker-today-footer";
 
 export function DateField({
   id,
@@ -18,6 +19,7 @@ export function DateField({
   error,
   onBlur,
   onChange,
+  onToday,
 }: {
   id: string;
   label: string;
@@ -28,6 +30,8 @@ export function DateField({
   error?: string | null;
   onBlur?: () => void;
   onChange: (date: Date) => void;
+  /** Adds a Hoy footer to the picker, for pages without a standalone Hoy button. */
+  onToday?: () => void;
 }) {
   const [open, setOpen] = useState(false);
 
@@ -62,7 +66,7 @@ export function DateField({
           {value ? format(value, "d MMM yyyy") : "Seleccionar fecha"}
           <CalendarIcon data-icon="inline-end" />
         </PopoverTrigger>
-        <PopoverContent className="w-auto p-0" align="start">
+        <PopoverContent className="w-auto gap-0 p-0" align="start">
           <PropertyDatePicker
             mode="single"
             selected={value ?? undefined}
@@ -76,6 +80,15 @@ export function DateField({
               onBlur?.();
             }}
           />
+          {onToday ? (
+            <PickerTodayFooter
+              onToday={() => {
+                onToday();
+                setOpen(false);
+                onBlur?.();
+              }}
+            />
+          ) : null}
         </PopoverContent>
       </Popover>
       {error ? <FieldError id={`${id}-error`}>{error}</FieldError> : null}
