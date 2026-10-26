@@ -4,6 +4,7 @@ export const appNavigation = {
   housekeeping: { to: "/housekeeping", label: "Limpieza" },
   inventory: { to: "/inventory", label: "Inventario y tarifas" },
   setup: { to: "/setup", label: "Configuración" },
+  accounts: { to: "/accounts", label: "Cuentas" },
 } as const;
 
 export function activeNavigation(pathname: string) {

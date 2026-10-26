@@ -79,6 +79,20 @@ export const loginSchema = z
   })
   .strict();
 
+const newPasswordSchema = z
+  .string()
+  .min(12, "password must be at least 12 characters")
+  .max(128, "password must be at most 128 characters");
+
+export const accountPasswordSchema = z.object({ password: newPasswordSchema }).strict();
+
+export const ownPasswordSchema = z
+  .object({
+    currentPassword: z.string().min(1, "current password is required").max(500),
+    newPassword: newPasswordSchema,
+  })
+  .strict();
+
 export const listQuerySchema = z.object({
   limit: z.coerce.number().int().min(1).max(200).optional(),
   offset: z.coerce.number().int().min(0).optional(),

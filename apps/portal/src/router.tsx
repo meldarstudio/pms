@@ -18,6 +18,7 @@ import { RoomCalendar } from "@/components/room-calendar";
 import { Housekeeping } from "@/components/housekeeping";
 import { Inventory } from "@/components/inventory";
 import { PropertySetup } from "@/components/property-setup";
+import { Accounts } from "@/components/accounts";
 import {
   calendarSearch,
   housekeepingSearch,
@@ -232,6 +233,12 @@ const setupRoute = createRoute({
   component: PropertySetup,
 });
 
+const accountsRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/accounts",
+  component: Accounts,
+});
+
 const routeTree = rootRoute.addChildren([
   indexRoute,
   calendarRoute,
@@ -240,6 +247,7 @@ const routeTree = rootRoute.addChildren([
   housekeepingRoute,
   inventoryRoute,
   setupRoute,
+  accountsRoute,
 ]);
 
 export const router = createRouter({ routeTree, defaultErrorComponent: RouteCrash });

@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vite-plus/test";
 import app from "./index";
-import { authEnv, login, signIn } from "./test-support/auth";
+import { login, signIn } from "./test-support/auth";
+import { createTestDb } from "./test-support/d1";
 
 describe("authenticated property calendar configuration", () => {
   it.each([
@@ -10,7 +11,8 @@ describe("authenticated property calendar configuration", () => {
   ])(
     "reports %s deployment timezone without issuing a session",
     async (_name, PROPERTY_TIME_ZONE) => {
-      const valid = await authEnv();
+      const db = await createTestDb();
+      const valid = db.env;
       const cookie = await signIn(valid);
       const env = { ...valid, PROPERTY_TIME_ZONE: PROPERTY_TIME_ZONE! };
       for (const response of [
@@ -23,6 +25,7 @@ describe("authenticated property calendar configuration", () => {
         });
         expect(response.headers.get("set-cookie")).toBeNull();
       }
+      db.close();
     },
   );
 });

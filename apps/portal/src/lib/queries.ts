@@ -32,7 +32,10 @@ import {
   listRoomClosures,
   listRoomTypes,
   listRooms,
+  listAccounts,
   login,
+  setAccountPassword,
+  changeOwnPassword,
   logout,
   patchGuest,
   patchRoom,
@@ -88,6 +91,26 @@ export function useLogout() {
     mutationFn: logout,
     onSuccess: () => setSignedOut(queryClient),
   });
+}
+
+/** Owner only: the backend answers 403 for the staff account. */
+export function useAccounts(enabled: boolean) {
+  return useQuery({
+    queryKey: ["accounts"],
+    queryFn: ({ signal }) => listAccounts(signal),
+    enabled,
+  });
+}
+
+export function useSetAccountPassword() {
+  return useMutation({
+    mutationFn: ({ id, password }: { id: string; password: string }) =>
+      setAccountPassword(id, password),
+  });
+}
+
+export function useChangeOwnPassword() {
+  return useMutation({ mutationFn: changeOwnPassword });
 }
 
 const holdDays = 7;

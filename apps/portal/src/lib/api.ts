@@ -305,7 +305,9 @@ async function getJson<T>(path: string, signal?: AbortSignal): Promise<T> {
   return (await response.json()) as T;
 }
 
-export type Session = { username: string; propertyTimeZone: string };
+export type AccountRole = "staff" | "owner";
+export type Session = { username: string; role: AccountRole; propertyTimeZone: string };
+export type Account = { id: string; username: string; role: AccountRole };
 
 function calendarSession(session: Session): Session {
   configurePropertyCalendar(session.propertyTimeZone);
@@ -325,6 +327,20 @@ export async function login(input: { username: string; password: string }) {
 
 export function logout() {
   return writeJson<{ ok: true }>("/logout", "POST");
+}
+
+export function listAccounts(signal?: AbortSignal) {
+  return getJson<Account[]>("/accounts", signal);
+}
+
+/** Owner only. Signs the account out everywhere. */
+export function setAccountPassword(id: string, password: string) {
+  return writeJson<{ ok: true }>(`/accounts/${id}/password`, "PUT", { password });
+}
+
+/** Signs the current account out of its other sessions. */
+export function changeOwnPassword(input: { currentPassword: string; newPassword: string }) {
+  return writeJson<{ ok: true }>("/account/password", "PUT", input);
 }
 
 export function listRooms(signal?: AbortSignal) {

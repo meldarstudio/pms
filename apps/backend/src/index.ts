@@ -2,6 +2,7 @@ import { Hono, type Context } from "hono";
 import { cors } from "hono/cors";
 import type { Env } from "./env";
 import { HttpError } from "./http";
+import { accountRoutes } from "./routes/accounts";
 import { authRoutes } from "./routes/auth";
 import { calendarRoutes } from "./routes/calendar";
 import { availabilityRoutes } from "./routes/availability";
@@ -54,6 +55,7 @@ app.notFound((c) => c.json({ error: "not found" }, 404));
 
 app.get("/", (c) => c.json({ name: "pms" }));
 app.route("/", authRoutes);
+app.route("/", accountRoutes);
 app.route("/room-types", roomTypeRoutes);
 app.route("/rooms", roomRoutes);
 app.route("/calendar", calendarRoutes);
