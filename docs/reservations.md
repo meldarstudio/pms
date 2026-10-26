@@ -135,9 +135,12 @@ in `libphonenumber-js`. It does not show the line exists or supports WhatsApp.
 
 `normalizePhone` in `@pms/shared` applies the API rule, and `acceptPhone` in
 `apps/backend/src/rules.ts` applies it to reservation creation, `contact` and
-`set-guests` actions, and guest `POST`/`PATCH`. A submitted phone that equals
-the stored value is kept exactly, so legacy or now-invalid phones never block an
-unrelated save. Any other nonempty phone must be a valid number for its country.
+`set-guests` actions, and guest `POST`/`PATCH`. After request-schema parsing, a
+submitted phone that equals the stored value is kept; any other nonempty phone
+must be a valid number for its country. Request schemas trim surrounding
+whitespace before this comparison. Arbitrary invalid legacy strings have no
+byte-for-byte preservation or unrelated-save compatibility guarantee; submitted
+values that differ after parsing must pass current validation.
 Input without a leading `+` is read as Peruvian. Spaces, parentheses, dots, and
 hyphens are accepted; landlines need their area code; extensions are rejected,
 not dropped. Accepted numbers are stored in E.164 form, such as `+51987654321`.
@@ -154,11 +157,15 @@ national digits and revalidates them; input containing extensions or unsupported
 text stays intact so country changes cannot silently discard it. Errors follow
 the editor reveal rules in
 [Drafts, validation, and retries](#drafts-validation-and-retries), and a blank
-phone is valid with no missing-phone warning. Editors open saved E.164 phones in
-national format under their country and other values exactly as stored, including
-annotations. Until staff change the text or country, saves resubmit the stored
-value. Displays use international spacing and canonical `tel:` links for valid
-E.164 phones; other values are shown and linked as stored. Phone search is unchanged.
+phone is valid with no missing-phone warning. Editors open valid, explicitly
+international phones in national format under their recognized country, including
+numbers with accepted presentation separators, not just canonical E.164 strings.
+Other values appear as stored, including annotations. Until staff change the text
+or country, the portal resubmits the stored value; API parsing and validation still
+apply. Displays use international spacing and canonical `tel:` links for valid,
+explicitly international phones without extensions or unsupported text; other
+values are shown and linked as stored. Loading or displaying a phone does not write
+to storage. Phone search is unchanged.
 
 ## Portal editors
 

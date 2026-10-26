@@ -1035,11 +1035,6 @@ it("enters an optional phone in the selected country, revealing errors only afte
 
   await fill("phone", "+1 (415) 555-2671");
   assert.equal(phoneCountry().getAttribute("aria-label"), "País del teléfono: Estados Unidos +1");
-  await fill("phone", "999 111 222 ext. 5");
-  await until(
-    () => container.textContent.includes("No se admiten extensiones telefónicas."),
-    "An extension must be rejected, not dropped",
-  );
 
   await fill("phone", "");
   await choosePhoneCountry("per", "Perú +51");

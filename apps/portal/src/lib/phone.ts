@@ -10,8 +10,8 @@ export type { CountryCode };
 
 /**
  * A contact phone being edited: the selected country, the text staff typed, and the value saved
- * when the editor opened. Until the country or text changes, saving resubmits `saved` exactly,
- * even a legacy value the current rules would reject.
+ * when the editor opened. Until the country or text changes, the portal resubmits `saved`
+ * exactly; API parsing and validation still apply.
  */
 export type PhoneValue = { country: CountryCode; text: string; saved: string | null };
 
@@ -83,7 +83,7 @@ function normalize(value: PhoneValue): { phone: string } | { error: string } {
   return invalid;
 }
 
-/** Why a new or changed phone cannot be saved. Blank and unchanged phones are always valid. */
+/** Portal validation for a new or changed phone. Blank and unchanged phones pass locally. */
 export function phoneError(value: PhoneValue): string | undefined {
   if (unchanged(value) || !value.text.trim()) return undefined;
   const result = normalize(value);
@@ -99,7 +99,7 @@ export function phonePayload(value: PhoneValue): string | null {
   return result.phone;
 }
 
-/** Readable text and call link for a stored phone; legacy values are shown as stored. */
+/** Format valid international phones; show unsupported or unparseable values as stored. */
 export function phoneDisplay(phone: string) {
   const parsed = international(phone);
   return parsed
