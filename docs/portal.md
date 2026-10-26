@@ -25,7 +25,9 @@ and does not change the desktop preference. Toggling does not remount the curren
 screen. Beside the toggle, the header shows the current section's name; a page can
 replace it through `PageTitle` in
 [page-title.tsx](../apps/portal/src/components/page-title.tsx), as the reservation
-page does with its breadcrumb. Navigation retains the last
+page does with its breadcrumb. Page bodies such as Reservas, Limpieza, and the
+reservation page fill the content width with 16px padding, 24px from 1024px up,
+so their content lines up across pages. Navigation retains the last
 reservation filters and calendar dates, and existing unsaved-draft guards still
 apply. Sign-out retains the existing authentication and error handling.
 
