@@ -22,7 +22,7 @@ worker or heap limits; follow the root [frontend testing policy](../../CODING_ST
 
 ## Calendar and assignment
 
-Before changing calendar reads, caching, or assignment, read [the calendar guide](../../docs/calendar.md), including the known checked-in assignment limitation, and [ADR 0001](../../docs/adr/0001-calendar-is-one-read.md).
+Before changing calendar reads, caching, or assignment, read [the calendar guide](../../docs/calendar.md), including its [assignment availability rules](../../docs/calendar.md#assignment-availability-rules), and [ADR 0001](../../docs/adr/0001-calendar-is-one-read.md).
 
 ## UI conventions
 

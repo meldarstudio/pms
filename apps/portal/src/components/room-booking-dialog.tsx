@@ -11,12 +11,8 @@ import {
 } from "lucide-react";
 import { cn } from "cn";
 import { Empty, EmptyHeader, EmptyTitle, EmptyDescription } from "@/components/ui/empty";
-import {
-  guestValues,
-  overlappingRoomIds,
-  unavailableRoomIds,
-  availableRoomTypeIds,
-} from "@/lib/reservation-editor";
+import { guestValues, overlappingRoomIds, availableRoomTypeIds } from "@/lib/reservation-editor";
+import { unavailableRoomIds } from "@/lib/assignment-availability";
 import { useStayDraft } from "@/lib/use-stay-draft";
 import { ReservationStatusBadge } from "@/components/reservation-status-badge";
 import { useDirtyRoomCheckIn } from "@/components/dirty-room-check-in";

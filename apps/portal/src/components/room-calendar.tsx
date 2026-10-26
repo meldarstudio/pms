@@ -47,7 +47,11 @@ import { SetupRequired } from "@/components/setup-required";
 import { Skeleton } from "@/components/ui/skeleton";
 import { PageError, StaleDataNotice } from "@/components/page-error";
 import { type HousekeepingStatus, type RoomClosure } from "@/lib/api";
-import type { ReservationStay } from "@/lib/room-assignment";
+import {
+  assignmentProblemLabels,
+  type ReservationStay,
+  type RoomProblem,
+} from "@/lib/assignment-availability";
 import { useRoomAssignment } from "@/lib/use-room-assignment";
 import { useMarkRooms } from "@/lib/use-mark-rooms";
 import { format } from "@/lib/dates";
@@ -91,11 +95,19 @@ type AssignmentPreview = {
   onSelect: () => void;
 };
 
-// Short reasons fit the room column; the full sentence stays in the row title.
-const assignmentNotes: Record<string, string> = {
-  "Occupied during this stay": "Ocupada",
-  "Closed during this stay": "Cerrada",
+// Short reasons fit the room column; the full label stays in the row title.
+const assignmentNotes: Partial<Record<RoomProblem, string>> = {
+  occupied: "Ocupada",
+  closed: "Cerrada",
 };
+
+function roomProblemLabel(problem: RoomProblem | null | undefined) {
+  return problem ? assignmentProblemLabels[problem] : undefined;
+}
+
+function assignmentNote(problem: RoomProblem | null | undefined) {
+  return problem ? assignmentNotes[problem] : undefined;
+}
 
 function clipStay(stay: TrackItem, rangeStart: Date, dayCount: number) {
   // Both bookings and closures block nights, with half-day endpoints.
@@ -893,17 +905,20 @@ export function RoomCalendar({
                     assignment.target
                       ? assignment.checking
                         ? "Consultando disponibilidad para toda la estancia"
-                        : (assignment.error ?? assignment.roomIssues.get(room.id) ?? undefined)
+                        : (assignment.error ??
+                          roomProblemLabel(assignment.roomProblems.get(room.id)))
                       : undefined
                   }
                   assignmentNote={
                     assignment.target?.roomTypeId === room.roomTypeId
-                      ? assignmentNotes[assignment.roomIssueCodes.get(room.id) ?? ""]
+                      ? assignmentNote(assignment.roomProblems.get(room.id))
                       : undefined
                   }
                   highlighted={highlightedRoomId === room.id}
                   assignmentPreview={
-                    assignment.ready && previewTrack && assignment.roomIssues.get(room.id) === null
+                    assignment.ready &&
+                    previewTrack &&
+                    assignment.roomProblems.get(room.id) === null
                       ? {
                           stay: previewTrack,
                           disabled: assignment.pending,

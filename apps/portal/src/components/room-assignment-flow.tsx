@@ -8,7 +8,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { DirtyRoomBadge } from "@/components/dirty-room-badge";
 import type { HousekeepingStatus, Room } from "@/lib/api";
 import { format } from "@/lib/dates";
-import type { ReservationStay } from "@/lib/room-assignment";
+import type { ReservationStay } from "@/lib/assignment-availability";
 import type { useRoomAssignment } from "@/lib/use-room-assignment";
 import { usePropertyCalendar } from "@/lib/use-property-calendar";
 
@@ -64,7 +64,7 @@ export function RoomAssignmentSteps({
     ? (rooms ?? [])
         .filter(
           (room) =>
-            room.roomTypeId === target?.roomTypeId && assignment.roomIssues.get(room.id) === null,
+            room.roomTypeId === target?.roomTypeId && assignment.roomProblems.get(room.id) === null,
         )
         .sort((a, b) => a.number.localeCompare(b.number, undefined, { numeric: true }))
     : [];

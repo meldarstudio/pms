@@ -644,8 +644,17 @@ it("reopens a cached reservation with the room saved by the assignment panel", a
         {
           onClick: async () => {
             await assign.mutateAsync({
-              reservationId: saved.id,
-              lineId: "line-1",
+              target: {
+                id: "line-1",
+                reservationId: saved.id,
+                guestName: saved.guest.fullName,
+                checkIn: saved.checkIn,
+                checkOut: saved.checkOut,
+                roomId: null,
+                roomTypeId: "double",
+                roomIndex: 1,
+                roomCount: 1,
+              },
               roomId: "room-1",
             });
             setOpen(true);

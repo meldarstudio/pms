@@ -4,10 +4,12 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import type { Room } from "@/lib/api";
 import { useAssignRoom, useReservations, useRoomClosures } from "@/lib/queries";
 import {
-  assignmentTargetIssue,
-  roomAssignmentIssue,
+  assignmentProblemLabels,
+  roomProblem,
+  targetProblem,
   type ReservationStay,
-} from "@/lib/room-assignment";
+  type RoomProblem,
+} from "@/lib/assignment-availability";
 import { toast } from "@/lib/toast";
 import { translateError } from "@/lib/errors";
 
@@ -44,17 +46,19 @@ export function useRoomAssignment(rooms: Room[] | null, unassigned: ReservationS
     : null;
   const targetIssue =
     target && !checking && !queryError && reservations.data
-      ? assignmentTargetIssue(target, reservations.data)
+      ? targetProblem(target, reservations.data)
       : null;
   const ready = Boolean(target && !checking && !queryError && !targetIssue);
-  const roomIssues = new Map<string, string | null>();
-  const roomIssueCodes = new Map<string, string | null>();
+  const roomProblems = new Map<string, RoomProblem | null>();
   if (target && ready) {
-    for (const room of rooms ?? []) {
-      const issue = roomAssignmentIssue(room, target, reservations.data ?? [], closures.data ?? []);
-      roomIssueCodes.set(room.id, issue);
-      roomIssues.set(room.id, translateNullableIssue(issue));
-    }
+    // Only the reserved room being assigned is ignored, so the group's other saved
+    // reserved rooms still hold their rooms.
+    const context = {
+      reservations: reservations.data ?? [],
+      closures: closures.data ?? [],
+      ignoredReservedRoomIds: new Set([target.id]),
+    };
+    for (const room of rooms ?? []) roomProblems.set(room.id, roomProblem(room, target, context));
   }
   // Kept while the next room's availability is re-checked, so the reference stays
   // on screen when staff need it.
@@ -73,7 +77,7 @@ export function useRoomAssignment(rooms: Room[] | null, unassigned: ReservationS
               : [],
           ) ?? [])
       : [];
-  const eligibleCount = [...roomIssues.values()].filter((issue) => issue === null).length;
+  const eligibleCount = [...roomProblems.values()].filter((problem) => problem === null).length;
 
   function selectStay(stay: ReservationStay) {
     if (assign.isPending) return;
@@ -104,13 +108,10 @@ export function useRoomAssignment(rooms: Room[] | null, unassigned: ReservationS
 
   async function assignRoom(id: string) {
     const room = rooms?.find((item) => item.id === id);
-    if (!target || !room || !ready || assign.isPending || roomIssues.get(room.id) !== null) return;
+    if (!target || !room || !ready || assign.isPending || roomProblems.get(room.id) !== null)
+      return;
     try {
-      await assign.mutateAsync({
-        reservationId: target.reservationId,
-        lineId: target.id,
-        roomId: room.id,
-      });
+      await assign.mutateAsync({ target, roomId: room.id });
       toast.add({
         title: "Habitación asignada",
         description: `${target.guestName} tiene asignada la habitación ${room.number}.`,
@@ -152,18 +153,17 @@ export function useRoomAssignment(rooms: Room[] | null, unassigned: ReservationS
     checking,
     ready,
     eligibleCount,
-    roomIssues,
-    roomIssueCodes,
+    roomProblems,
     groupAssignments,
     pending: assign.isPending,
-    error: translateNullableIssue(queryError ?? targetIssue),
-    saveError: translateNullableIssue(assign.error?.message ?? null),
+    error: queryError
+      ? translateError(queryError)
+      : targetIssue
+        ? assignmentProblemLabels[targetIssue]
+        : null,
+    saveError: assign.error ? translateError(assign.error.message) : null,
     selectStay,
     assignRoom,
     cancel,
   };
-}
-
-function translateNullableIssue(issue: string | null) {
-  return issue === null ? null : translateError(issue);
 }

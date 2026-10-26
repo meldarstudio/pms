@@ -9,6 +9,7 @@ import {
   type QueryClient,
   type QueryKey,
 } from "@tanstack/react-query";
+import type { ReservationStay } from "./assignment-availability";
 import { refreshWorkflowQueries, workflowMutationKey } from "./workflow-query-cache";
 
 import { addDateLabelDays } from "@/lib/dates";
@@ -340,8 +341,8 @@ export function usePatchGuest() {
 export function useAssignRoom() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: (input: { reservationId: string; lineId: string; roomId: string }) =>
-      assignRoom(input.reservationId, input.lineId, input.roomId),
+    mutationFn: (input: { target: ReservationStay; roomId: string }) =>
+      assignRoom(input.target, input.roomId),
     onSuccess: (data) => refreshWorkflowQueries(queryClient, data),
   });
 }
