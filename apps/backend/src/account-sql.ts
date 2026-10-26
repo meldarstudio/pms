@@ -4,6 +4,7 @@
 export type AccountRole = "staff" | "owner";
 
 export const MIN_PASSWORD_LENGTH = 12;
+export const MAX_PASSWORD_LENGTH = 128;
 
 export const USERNAME_PATTERN = /^[a-z0-9_.]{3,30}$/;
 

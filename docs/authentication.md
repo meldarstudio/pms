@@ -14,8 +14,9 @@ against an account.
 - The app keeps its own routes and calls Better Auth on the server. Better Auth's
   HTTP handler is not mounted, so there is no sign-up or other built-in endpoint.
 - `POST /login` takes `{ username, password }` and sets the `pms.session_token`
-  cookie: `HttpOnly`, `SameSite=Lax`, host-only on the API hostname (same-site with
-  the portal), and `Secure` on HTTPS. Sessions last 30 days and extend while in use.
+  cookie on local HTTP, or `__Secure-pms.session_token` on HTTPS. The cookie is
+  `HttpOnly`, `SameSite=Lax`, host-only on the API hostname (same-site with the
+  portal), and `Secure` on HTTPS. Sessions last 30 days and extend while in use.
 - Successful login and `GET /session` return `{ username, role, propertyTimeZone }`.
   `POST /logout` ends the session in the database.
 - Logins are limited to 5 per minute per IP by the `LOGIN_LIMITER` rate limit binding.
@@ -46,7 +47,8 @@ the guard.
 ## Creating accounts and resetting passwords
 
 The account script creates an account, or replaces an existing account's password
-and role and signs it out everywhere. It prompts for the password twice.
+and role and signs it out everywhere. It prompts for the password twice and rejects
+passwords outside the 12–128-character range before changing credentials or sessions.
 
 ```sh
 pnpm auth:secret                                     # prints a new SESSION_SECRET
@@ -88,6 +90,9 @@ Backend login and account errors are translated in `apps/portal/src/lib/errors.t
 The Owner account sees **Cuentas** in the sidebar (`apps/portal/src/components/accounts.tsx`):
 it sets the staff password and changes its own password. The Staff account does not see
 the link, and the page tells it the page is owner-only.
+The first account read keeps the page and card headings visible with accessible
+loading placeholders. Failed refreshes keep the forms and their drafts on screen
+with a stale-data warning and retry action; see [portal error states](portal.md#error-states).
 
 See [local credential setup](../README.md#signing-in) before development,
 [the property calendar](property-calendar.md) before changing session metadata,

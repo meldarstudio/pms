@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { afterAll, afterEach, beforeAll, beforeEach, it } from "vite-plus/test";
+import { afterAll, afterEach, beforeAll, beforeEach, it, vi } from "vite-plus/test";
 import { createBrowserTest, type BrowserPage, type BrowserTest } from "./browser.ts";
 
 let browser: BrowserTest;
@@ -27,6 +27,7 @@ beforeEach(() => {
 
 afterEach(async () => {
   await page.cleanup();
+  vi.restoreAllMocks();
 });
 
 afterAll(async () => {
@@ -71,6 +72,7 @@ it("lets the owner set the staff password after confirming it", async () => {
     "A mismatched confirmation is caught before sending",
   );
   assert.deepEqual(writes, []);
+  assert.equal(page.field("staffPassword").getAttribute("aria-invalid"), "true");
 
   await page.fill("staffPasswordConfirm", "new staff password");
   await page.click("Cambiar contraseña del personal");
@@ -81,6 +83,61 @@ it("lets the owner set the staff password after confirming it", async () => {
     "The owner is told staff must sign in again",
   );
   assert.equal(page.field("staffPassword").value, "");
+});
+
+it("keeps page and card headings available while the first account read loads", async () => {
+  signedInAs("owner");
+  const read = page.api.hold("GET", "/accounts");
+  await render("/accounts");
+  await page.until(() => !!read.request);
+  const loading = page.container.querySelector('[aria-label="Cargando cuentas"]');
+  assert.equal(loading?.getAttribute("aria-busy"), "true");
+  assert.equal(page.container.querySelector("main h1")?.textContent, "Cuentas");
+  assert.deepEqual(
+    Array.from(loading!.querySelectorAll("h2"), (heading) => heading.textContent),
+    ["Personal", "Tu contraseña"],
+  );
+  read.release(Response.json(accounts));
+  await page.until(() => !!page.container.querySelector('[name="staffPassword"]'));
+  assert.equal(page.container.querySelector('[aria-label="Cargando cuentas"]'), null);
+});
+
+it("warns when refreshing accounts fails and retries without losing password drafts", async () => {
+  signedInAs("owner");
+  const logged = vi.spyOn(console, "error").mockImplementation(() => {});
+  await render("/accounts");
+  await page.until(() => !!page.container.querySelector('[name="staffPassword"]'));
+  await page.fill("staffPassword", "unfinished staff password");
+  await page.fill("newPassword", "unfinished owner password");
+  page.api.failOnce("GET", "/accounts", 500);
+  await browser.React.act(async () => {
+    await page.client.invalidateQueries({ queryKey: ["accounts"] });
+  });
+  await page.until(() =>
+    page.container.textContent.includes("Los datos pueden estar desactualizados."),
+  );
+  assert.ok(logged.mock.calls.length > 0, "An unexplained refresh failure is logged");
+  assert.equal(page.field("staffPassword").value, "unfinished staff password");
+  assert.equal(page.field("newPassword").value, "unfinished owner password");
+  await page.click("Reintentar");
+  await page.until(
+    () => !page.container.textContent.includes("Los datos pueden estar desactualizados."),
+  );
+  assert.equal(page.field("staffPassword").value, "unfinished staff password");
+  assert.equal(page.field("newPassword").value, "unfinished owner password");
+});
+
+it("rejects overlong new passwords before sending a staff reset", async () => {
+  signedInAs("owner");
+  const writes = page.api.bodies("PUT", "/accounts/staff-id/password");
+  await render("/accounts");
+  await page.until(() => !!page.container.querySelector('[name="staffPassword"]'));
+  await page.fill("staffPassword", "a".repeat(129));
+  await page.fill("staffPasswordConfirm", "a".repeat(129));
+  await page.click("Cambiar contraseña del personal");
+  await page.until(() => page.container.textContent.includes("como máximo 128 caracteres"));
+  assert.deepEqual(writes, []);
+  assert.equal(page.field("staffPassword").value.length, 129);
 });
 
 it("translates a wrong current password when the owner changes their own", async () => {

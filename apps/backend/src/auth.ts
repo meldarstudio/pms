@@ -5,7 +5,7 @@ import type { Context } from "hono";
 import { getDb } from "./db";
 import { account, session, user, verification } from "./db/schema";
 import type { Env } from "./env";
-import { MIN_PASSWORD_LENGTH, type AccountRole } from "./account-sql";
+import { MAX_PASSWORD_LENGTH, MIN_PASSWORD_LENGTH, type AccountRole } from "./account-sql";
 
 const SESSION_SECONDS = 30 * 24 * 60 * 60;
 
@@ -24,6 +24,7 @@ export function createAuth(c: Context<Env>) {
       enabled: true,
       disableSignUp: true,
       minPasswordLength: MIN_PASSWORD_LENGTH,
+      maxPasswordLength: MAX_PASSWORD_LENGTH,
     },
     user: {
       additionalFields: {

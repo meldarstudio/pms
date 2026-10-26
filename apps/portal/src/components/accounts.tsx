@@ -1,5 +1,5 @@
 import { useState, type FormEvent } from "react";
-import { PageError } from "@/components/page-error";
+import { PageError, StaleDataNotice } from "@/components/page-error";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Field, FieldError, FieldGroup, FieldLabel } from "@/components/ui/field";
@@ -16,11 +16,14 @@ import {
 } from "@/lib/queries";
 
 const MIN_PASSWORD_LENGTH = 12;
+const MAX_PASSWORD_LENGTH = 128;
 const mismatch = "Las contraseñas no coinciden.";
 const tooShort = `La contraseña debe tener al menos ${MIN_PASSWORD_LENGTH} caracteres.`;
 
 function newPasswordError(password: string, confirmation: string) {
   if (password.length < MIN_PASSWORD_LENGTH) return tooShort;
+  if (password.length > MAX_PASSWORD_LENGTH)
+    return `La contraseña debe tener como máximo ${MAX_PASSWORD_LENGTH} caracteres.`;
   if (password !== confirmation) return mismatch;
   return null;
 }
@@ -38,24 +41,122 @@ export function Accounts() {
         </p>
       </main>
     );
-  if (accounts.isPending) return <Skeleton className="m-6 h-80" />;
-  if (!accounts.data)
-    return (
-      <main className="flex flex-col p-6">
-        <PageError error={accounts.error} onRetry={() => void accounts.refetch()} />
-      </main>
-    );
-  const staff = accounts.data.filter((account) => account.role === "staff");
   return (
     <main className="flex min-h-0 flex-1 flex-col gap-6 overflow-y-auto p-4 md:p-6">
       <h1 className="text-lg font-semibold">Cuentas</h1>
-      <div className="grid max-w-3xl gap-6 md:grid-cols-2">
-        {staff.map((account) => (
-          <StaffPasswordForm key={account.id} account={account} />
-        ))}
-        <OwnPasswordForm />
-      </div>
+      {accounts.isPending ? (
+        <AccountsLoading />
+      ) : !accounts.data ? (
+        <PageError error={accounts.error} onRetry={() => void accounts.refetch()} />
+      ) : (
+        <>
+          {accounts.isError ? (
+            <StaleDataNotice error={accounts.error} onRetry={() => void accounts.refetch()} />
+          ) : null}
+          <div className="grid max-w-3xl gap-6 md:grid-cols-2">
+            {accounts.data
+              .filter((account) => account.role === "staff")
+              .map((account) => (
+                <StaffPasswordForm key={account.id} account={account} />
+              ))}
+            <OwnPasswordForm />
+          </div>
+        </>
+      )}
     </main>
+  );
+}
+
+function AccountsLoading() {
+  return (
+    <div
+      className="grid max-w-3xl gap-6 md:grid-cols-2"
+      aria-busy="true"
+      aria-label="Cargando cuentas"
+    >
+      {[
+        { title: "Personal", labels: ["Nueva contraseña", "Repite la nueva contraseña"] },
+        {
+          title: "Tu contraseña",
+          labels: ["Contraseña actual", "Nueva contraseña", "Repite la nueva contraseña"],
+        },
+      ].map(({ title, labels }) => (
+        <Card key={title}>
+          <CardHeader>
+            <CardTitle>
+              <h2>{title}</h2>
+            </CardTitle>
+            <CardDescription>
+              {title === "Personal" ? (
+                <>
+                  Cuenta compartida <Skeleton className="inline-block h-4 w-28 align-middle" />. Al
+                  cambiar la contraseña se cierra la sesión del personal en todos los dispositivos.
+                </>
+              ) : (
+                "Se cerrarán tus otras sesiones; esta sesión sigue abierta."
+              )}
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <FieldGroup>
+              {labels.map((label) => (
+                <Field key={label}>
+                  <FieldLabel>{label}</FieldLabel>
+                  <Skeleton className="h-8 w-full" />
+                </Field>
+              ))}
+              <Skeleton className="h-8 w-full" />
+            </FieldGroup>
+          </CardContent>
+        </Card>
+      ))}
+    </div>
+  );
+}
+
+function NewPasswordFields({
+  id,
+  password,
+  confirmation,
+  onPasswordChange,
+  onConfirmationChange,
+  error,
+}: {
+  id: string;
+  password: string;
+  confirmation: string;
+  onPasswordChange: (value: string) => void;
+  onConfirmationChange: (value: string) => void;
+  error: string | null | undefined;
+}) {
+  return (
+    <>
+      <Field data-invalid={error ? true : undefined}>
+        <FieldLabel htmlFor={id}>Nueva contraseña</FieldLabel>
+        <Input
+          id={id}
+          name={id}
+          type="password"
+          autoComplete="new-password"
+          aria-invalid={error ? true : undefined}
+          aria-describedby={error ? `${id}Error` : undefined}
+          value={password}
+          onChange={(event) => onPasswordChange(event.target.value)}
+        />
+        {error ? <FieldError id={`${id}Error`}>{error}</FieldError> : null}
+      </Field>
+      <Field>
+        <FieldLabel htmlFor={`${id}Confirm`}>Repite la nueva contraseña</FieldLabel>
+        <Input
+          id={`${id}Confirm`}
+          name={`${id}Confirm`}
+          type="password"
+          autoComplete="new-password"
+          value={confirmation}
+          onChange={(event) => onConfirmationChange(event.target.value)}
+        />
+      </Field>
+    </>
   );
 }
 
@@ -100,29 +201,14 @@ function StaffPasswordForm({ account }: { account: Account }) {
       <CardContent>
         <form onSubmit={submit} noValidate>
           <FieldGroup>
-            <Field>
-              <FieldLabel htmlFor="staffPassword">Nueva contraseña</FieldLabel>
-              <Input
-                id="staffPassword"
-                name="staffPassword"
-                type="password"
-                autoComplete="new-password"
-                value={password}
-                onChange={(event) => setPassword(event.target.value)}
-              />
-            </Field>
-            <Field>
-              <FieldLabel htmlFor="staffPasswordConfirm">Repite la contraseña</FieldLabel>
-              <Input
-                id="staffPasswordConfirm"
-                name="staffPasswordConfirm"
-                type="password"
-                autoComplete="new-password"
-                value={confirmation}
-                onChange={(event) => setConfirmation(event.target.value)}
-              />
-            </Field>
-            {error ? <FieldError>{error}</FieldError> : null}
+            <NewPasswordFields
+              id="staffPassword"
+              password={password}
+              confirmation={confirmation}
+              onPasswordChange={setPassword}
+              onConfirmationChange={setConfirmation}
+              error={error}
+            />
             {saved ? (
               <p role="status" className="text-sm">
                 Contraseña cambiada. Se cerró la sesión del personal; deben iniciar sesión con la
@@ -200,29 +286,14 @@ function OwnPasswordForm() {
               />
               {errors.currentPassword ? <FieldError>{errors.currentPassword}</FieldError> : null}
             </Field>
-            <Field>
-              <FieldLabel htmlFor="newPassword">Nueva contraseña</FieldLabel>
-              <Input
-                id="newPassword"
-                name="newPassword"
-                type="password"
-                autoComplete="new-password"
-                value={newPassword}
-                onChange={(event) => setNewPassword(event.target.value)}
-              />
-            </Field>
-            <Field>
-              <FieldLabel htmlFor="newPasswordConfirm">Repite la nueva contraseña</FieldLabel>
-              <Input
-                id="newPasswordConfirm"
-                name="newPasswordConfirm"
-                type="password"
-                autoComplete="new-password"
-                value={confirmation}
-                onChange={(event) => setConfirmation(event.target.value)}
-              />
-            </Field>
-            {errors.newPassword ? <FieldError>{errors.newPassword}</FieldError> : null}
+            <NewPasswordFields
+              id="newPassword"
+              password={newPassword}
+              confirmation={confirmation}
+              onPasswordChange={setNewPassword}
+              onConfirmationChange={setConfirmation}
+              error={errors.newPassword}
+            />
             {saved ? (
               <p role="status" className="text-sm">
                 Contraseña cambiada.

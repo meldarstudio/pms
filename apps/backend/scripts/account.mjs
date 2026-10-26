@@ -7,7 +7,12 @@ import { createInterface } from "node:readline";
 import { Writable } from "node:stream";
 import { fileURLToPath } from "node:url";
 import { hashPassword } from "better-auth/crypto";
-import { accountSql, MIN_PASSWORD_LENGTH, USERNAME_PATTERN } from "../src/account-sql.ts";
+import {
+  accountSql,
+  MAX_PASSWORD_LENGTH,
+  MIN_PASSWORD_LENGTH,
+  USERNAME_PATTERN,
+} from "../src/account-sql.ts";
 
 const backendDir = fileURLToPath(new URL("..", import.meta.url));
 const USAGE =
@@ -97,6 +102,8 @@ async function main() {
     password = await prompt.ask(`Password for ${username}: `);
     if (password.length < MIN_PASSWORD_LENGTH)
       throw new Error(`Use at least ${MIN_PASSWORD_LENGTH} characters.`);
+    if (password.length > MAX_PASSWORD_LENGTH)
+      throw new Error(`Use at most ${MAX_PASSWORD_LENGTH} characters.`);
     if ((await prompt.ask("Repeat password: ")) !== password)
       throw new Error("Passwords do not match.");
   } finally {

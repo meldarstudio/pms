@@ -37,6 +37,7 @@ describe("sign-in", () => {
       propertyTimeZone: "America/New_York",
     });
     const setCookie = response.headers.getSetCookie().join("\n");
+    expect(setCookie).toMatch(/^pms\.session_token=/);
     expect(setCookie).toMatch(/HttpOnly/i);
     expect(setCookie).toMatch(/SameSite=Lax/i);
     expect(setCookie).toMatch(/Max-Age=2592000/i);
@@ -132,7 +133,7 @@ describe("session guard", () => {
     expect(await response.json()).toEqual(body);
   });
 
-  it("marks the cookie Secure over HTTPS", async () => {
+  it("uses the Secure-prefixed session cookie over HTTPS", async () => {
     const response = await app.request(
       "https://api.hotelmanantialchurin.com/login",
       {
@@ -143,7 +144,9 @@ describe("session guard", () => {
       env,
     );
     expect(response.status).toBe(200);
-    expect(response.headers.getSetCookie().join("\n")).toMatch(/Secure/i);
+    const cookie = response.headers.getSetCookie().join("\n");
+    expect(cookie).toMatch(/^__Secure-pms\.session_token=/);
+    expect(cookie).toMatch(/; Secure(?:;|$)/i);
   });
 
   it("rejects a cookie with a forged signature or a rotated secret", async () => {
