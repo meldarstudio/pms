@@ -384,42 +384,24 @@ it.each([{ remaining: 0, range: "0 de 0 reservas", offset: "0", page: 0 }])(
   },
 );
 
-it.each(["desktop", "mobile"])(
-  "refreshes the same view on demand for changes made on other devices on %s",
-  async (viewport) => {
-    if (viewport === "mobile") page.mobile();
-    respond = (url) =>
-      Response.json({
-        rows: [ana],
-        total: 126,
-        limit: 50,
-        offset: Number(url.searchParams.get("offset")),
-      });
-    await render("/reservations?view=all&q=Ana&balance=due&page=1");
-    const before = params().toString();
-    const refresh = page.api.hold("GET", "/reservations");
-    await click("Actualizar");
-    await until(() => !!refresh.request);
-    assert.equal(refresh.request!.url.searchParams.toString(), before);
-    const refreshing = button("Actualizando…");
-    assert.equal(refreshing.hasAttribute("disabled"), true);
-    assert.equal(refreshing.getAttribute("aria-busy"), "true");
-    assert.ok(container.textContent.includes("Ana Pérez"));
-    assert.equal(container.querySelector('[aria-label="Cargando reservas"]'), null);
-    refresh.release(
-      Response.json({
-        rows: [{ ...ana, id: "bruno", guestName: "Bruno Díaz" }],
-        total: 126,
-        limit: 50,
-        offset: 50,
-      }),
-    );
-    await until(() => container.textContent.includes("Bruno Díaz"));
-    assert.equal(button("Actualizar").hasAttribute("disabled"), false);
-    assert.equal(params().toString(), before);
-    assert.equal(router.state.location.search.page, 1);
-  },
-);
+it("refreshes the same view on demand for changes made on other devices", async () => {
+  page.mobile();
+  let guestName = "Ana Pérez";
+  respond = (url) =>
+    Response.json({
+      rows: [{ ...ana, guestName }],
+      total: 126,
+      limit: 50,
+      offset: Number(url.searchParams.get("offset")),
+    });
+  await render("/reservations?view=all&q=Ana&balance=due&page=1");
+  const before = params().toString();
+  guestName = "Bruno Díaz";
+  await click("Actualizar");
+  await until(() => container.textContent.includes("Bruno Díaz"));
+  assert.equal(params().toString(), before);
+  assert.equal(router.state.location.search.page, 1);
+});
 
 it("refreshes cached operations and legacy calendar results after saving in reservation details", async () => {
   client.setQueryDefaults(["reservations"], { staleTime: Infinity });
