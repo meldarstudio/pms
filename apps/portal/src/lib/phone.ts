@@ -1,17 +1,19 @@
 import {
+  AsYouType,
   getCountries,
   getCountryCallingCode,
   parsePhoneNumberFromString,
   validatePhoneNumberLength,
   type CountryCode,
+  type PhoneNumber,
 } from "libphonenumber-js/max";
 
 export type { CountryCode };
 
 /**
- * A contact phone being edited: the selected country, the text staff typed, and the value saved
- * when the editor opened. Until the country or text changes, the portal resubmits `saved`
- * exactly; API parsing and validation still apply.
+ * A contact phone being edited: the selected country, unformatted digits (or unsupported text),
+ * and the value saved when the editor opened. Until the country or the text apart from separators
+ * changes, the portal resubmits `saved` exactly; API parsing and validation still apply.
  */
 export type PhoneValue = { country: CountryCode; text: string; saved: string | null };
 
@@ -46,19 +48,57 @@ function international(phone: string) {
 export function phoneDraft(saved: string | null | undefined): PhoneValue {
   const parsed = saved ? international(saved) : undefined;
   return parsed?.country
-    ? { country: parsed.country, text: parsed.formatNational(), saved: saved ?? null }
+    ? { country: parsed.country, text: nationalCharacters(parsed), saved: saved ?? null }
     : { country: "PE", text: saved ?? "", saved: saved ?? null };
 }
 
 function unchanged(value: PhoneValue) {
   const initial = phoneDraft(value.saved);
-  return value.text === initial.text && value.country === initial.country;
+  return value.country === initial.country && comparable(value.text) === comparable(initial.text);
+}
+
+/** Separators are presentation in supported phone syntax; other text must match exactly. */
+function comparable(text: string) {
+  return isPhoneSyntax(text) ? phoneCharacters(text) : text;
 }
 
 /** Typing an explicit international number selects its country. */
 export function typePhone(value: PhoneValue, text: string): PhoneValue {
   const country = text.trim().startsWith("+") ? parsePhoneNumberFromString(text)?.country : null;
-  return { ...value, text, country: country ?? value.country };
+  const parsed = international(text);
+  return {
+    ...value,
+    text: parsed?.country
+      ? nationalCharacters(parsed)
+      : isPhoneSyntax(text)
+        ? phoneCharacters(text)
+        : text,
+    country: country ?? value.country,
+  };
+}
+
+/** Whether text uses supported phone syntax: digits, an optional `+`, and separators. */
+export function isPhoneSyntax(text: string) {
+  return phoneSyntax.test(text.trim());
+}
+
+/** Dialable characters, without presentation separators. Only use for supported phone syntax. */
+export function phoneCharacters(text: string) {
+  return text.replace(/[^\d+]/g, "");
+}
+
+function nationalCharacters(phone: PhoneNumber) {
+  return phoneCharacters(phone.formatNational());
+}
+
+/** Country-aware visual grouping, independent of the draft's digits. Legacy text stays visible. */
+export function phoneInputText(value: PhoneValue): string {
+  if (value.saved && unchanged(value) && !international(value.saved)?.country) return value.saved;
+  if (!isPhoneSyntax(value.text)) return value.text;
+  return new AsYouType(value.country)
+    .input(value.text)
+    .replace(/[^\d+]+/g, " ")
+    .trim();
 }
 
 /** Choosing a country keeps the national digits staff entered and reads them in that country. */
@@ -71,7 +111,7 @@ function normalize(value: PhoneValue): { phone: string } | { error: string } {
   const parsed = parsePhoneNumberFromString(value.text, value.country);
   if (parsed?.ext) return { error: "No se admiten extensiones telefónicas." };
   const invalid = { error: "Ingresa un teléfono válido para el país seleccionado." };
-  if (!phoneSyntax.test(value.text.trim())) return invalid;
+  if (!isPhoneSyntax(value.text)) return invalid;
   if (parsed?.isValid()) return { phone: parsed.number };
   const length = validatePhoneNumberLength(value.text, value.country);
   if (length === "TOO_SHORT")

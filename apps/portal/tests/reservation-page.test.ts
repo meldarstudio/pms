@@ -257,7 +257,7 @@ it("retains the contact draft and retry ID after rejection and reconnect refresh
     "Reconnecting must refresh the saved reservation overview",
   );
   assert.equal(field("fullName").value, "Ana María Pérez");
-  assert.equal(field("phone").value, "999333444");
+  assert.equal(field("phone").value, "999 333 444");
   assert.equal(field("email").value, "nuevo@example.com");
   await click("Cancelar");
   assert.match(window.document.body.textContent, /Hay cambios sin guardar/);

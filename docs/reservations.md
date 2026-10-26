@@ -152,16 +152,30 @@ The portal mirrors these rules in `apps/portal/src/lib/phone.ts`, since it does
 not import `@pms/shared`. **Teléfono · Opcional** (`PhoneField`) is used in
 creation, **Editar contacto**, and staying-guest add/edit. It pairs a searchable
 country selector, defaulting to Peru and showing calling codes, with a `tel`
-input. Pasting a `+` number selects its country. Choosing a country keeps the
-national digits and revalidates them; input containing extensions or unsupported
-text stays intact so country changes cannot silently discard it. Errors follow
-the editor reveal rules in
+input. Country-specific grouping is visual: supported input keeps unformatted
+digits in the draft, while `AsYouType` supplies spacing during typing and when an
+editor reopens. `PhoneInput` applies the editing rules in
+`apps/portal/src/lib/phone-mask.ts`: the caret stays attached to digits across
+edits, including selection replacement. Backspace or Delete beside a separator
+removes the adjacent digit; deleting a selected separator alone changes nothing.
+IME composition text stays unformatted until the composition ends. For supported
+phone syntax, copying or cutting a selection produces its digits and any `+`
+without visual separators; the browser copies extensions and other unsupported
+text as shown. National leading zeros are retained, not converted to a numeric
+value. Typing or pasting a `+` number selects the country its calling code
+identifies, even before the number is complete. A valid supported number then
+shows only its national digits; incomplete international input keeps its `+`
+prefix until it can be interpreted. Choosing a country keeps the national digits
+and revalidates them; input containing extensions or unsupported text stays
+intact so country changes cannot silently discard it. Errors follow the editor
+reveal rules in
 [Drafts, validation, and retries](#drafts-validation-and-retries), and a blank
 phone is valid with no missing-phone warning. Editors open valid, explicitly
-international phones in national format under their recognized country, including
+international phones with national grouping under their recognized country, including
 numbers with accepted presentation separators, not just canonical E.164 strings.
-Other values appear as stored, including annotations. Until staff change the text
-or country, the portal resubmits the stored value; API parsing and validation still
+Other values appear as stored, including annotations. Until staff change the
+country or the text apart from separators, the portal resubmits the stored value,
+and undoing an edit restores the stored text; API parsing and validation still
 apply. Displays use international spacing and canonical `tel:` links for valid,
 explicitly international phones without extensions or unsupported text; other
 values are shown and linked as stored. Loading or displaying a phone does not write

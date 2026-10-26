@@ -3,6 +3,7 @@ import { format, parseISO } from "date-fns";
 import { DateField } from "@/components/date-field";
 import { Field, FieldError, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
+import { PhoneInput } from "@/components/phone-input";
 import { Button } from "@/components/ui/button";
 import { ButtonGroup } from "@/components/ui/button-group";
 import {
@@ -14,13 +15,7 @@ import {
   ComboboxList,
   ComboboxTrigger,
 } from "@/components/ui/combobox";
-import {
-  choosePhoneCountry,
-  phoneCountries,
-  phoneCountry,
-  typePhone,
-  type PhoneValue,
-} from "@/lib/phone";
+import { choosePhoneCountry, phoneCountries, phoneCountry, type PhoneValue } from "@/lib/phone";
 import { Textarea } from "@/components/ui/textarea";
 import {
   Select,
@@ -258,18 +253,15 @@ export function PhoneField({
             </ComboboxList>
           </ComboboxContent>
         </Combobox>
-        <Input
+        <PhoneInput
           id={id}
           name={name}
-          type="tel"
-          inputMode="tel"
-          autoComplete="tel"
-          value={value.text}
+          value={value}
           disabled={disabled}
           onBlur={onBlur}
           aria-invalid={!!error}
           aria-describedby={error ? `${id}-error` : undefined}
-          onChange={(event) => onChange(typePhone(value, event.target.value))}
+          onChange={onChange}
         />
       </ButtonGroup>
       {error && <FieldError id={`${id}-error`}>{error}</FieldError>}

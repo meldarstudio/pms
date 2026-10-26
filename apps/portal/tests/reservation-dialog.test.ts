@@ -1018,7 +1018,7 @@ it("enters an optional phone in the selected country, revealing errors only afte
   await submit();
   await flush();
   assert.equal(writes.length, 0, "An invalid phone must not save");
-  assert.equal(control("phone").value, "234 5678");
+  assert.equal(control("phone").value, "2345678");
 
   await fill("phone", "2 2345 6789");
   await until(
@@ -1068,7 +1068,7 @@ it("preserves unsupported extensions when changing country until the phone is co
 
   await fill("phone", "+51 987654321");
   await choosePhoneCountry("chile", "Chile +56");
-  assert.equal(control("phone").value, "987654321");
+  assert.equal(control("phone").value, "9 8765 4321");
   await submit();
   await until(() => writes.length === 1, "Correcting the phone must allow saving in Chile");
   assert.equal(writes[0].guest.phone, "+56987654321");
@@ -1086,6 +1086,201 @@ it("creates a reservation without a phone or any missing-phone warning", async (
   await until(() => writes.length === 1, "A blank phone must not block saving");
   assert.equal("phone" in writes[0].guest, false);
   assert.ok(!/sin teléfono|teléfono requerido/i.test(container.textContent));
+});
+
+/**
+ * A browser edit to the phone: `beforeinput` sees the current selection, then the input holds the
+ * text the browser left, with the caret after the edit.
+ */
+async function editPhone(
+  text: string,
+  caret: number,
+  inputType = "insertText",
+  isComposing = false,
+) {
+  const phone = control("phone");
+  await React.act(async () => {
+    phone.dispatchEvent(new window.InputEvent("beforeinput", { bubbles: true, inputType }));
+    Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, "value")!.set!.call(
+      phone,
+      text,
+    );
+    phone.setSelectionRange(caret, caret);
+    phone.dispatchEvent(new window.InputEvent("input", { bubbles: true, inputType, isComposing }));
+  });
+}
+
+async function typePhone(text: string) {
+  const phone = control("phone");
+  for (const character of text) {
+    await editPhone(phone.value + character, phone.value.length + 1);
+    assert.equal(phone.selectionStart, phone.value.length, "Typing must keep the caret at the end");
+  }
+}
+
+/** Dispatches copy or cut on the given selection, returning the event and its clipboard. */
+async function clipboardEvent(type: "copy" | "cut", start: number, end: number) {
+  const phone = control("phone");
+  phone.setSelectionRange(start, end);
+  const clipboardData = new window.DataTransfer();
+  const event = new window.ClipboardEvent(type, { bubbles: true, cancelable: true, clipboardData });
+  await React.act(async () => phone.dispatchEvent(event));
+  return { prevented: event.defaultPrevented, text: clipboardData.getData("text/plain") };
+}
+
+it("groups phone digits while typing and saves the canonical phone", async () => {
+  const writes: CreateBookingInput[] = [];
+  mockCreationApi(async (input) => {
+    writes.push(input);
+    return Response.json(detail(), { status: 201 });
+  });
+  await renderNewBooking();
+  await fill("fullName", "Ada Lovelace");
+  await typePhone("991039021");
+  assert.equal(control("phone").value, "991 039 021");
+  await submit();
+  await until(() => writes.length === 1, "The masked phone must save");
+  assert.equal(writes[0].guest.phone, "+51991039021");
+});
+
+it("edits phone digits beside separators without moving the caret off them", async () => {
+  mockCreationApi(async () => Response.json(detail(), { status: 201 }));
+  await renderNewBooking();
+  const phone = control("phone");
+
+  // Each edit starts from `991 039 021`; the browser has already removed the separator.
+  for (const { name, selection, inputType, expected, caret } of [
+    {
+      name: "Backspace after a separator removes the preceding digit",
+      selection: [4, 4],
+      inputType: "deleteContentBackward",
+      expected: "990 390 21",
+      caret: 2,
+    },
+    {
+      name: "Delete before a separator removes the following digit",
+      selection: [3, 3],
+      inputType: "deleteContentForward",
+      expected: "991 390 21",
+      caret: 3,
+    },
+    {
+      name: "Deleting a selected separator alone keeps every digit",
+      selection: [3, 4],
+      inputType: "deleteContentBackward",
+      expected: "991 039 021",
+      caret: 3,
+    },
+  ]) {
+    await fill(phone, "991039021");
+    phone.setSelectionRange(selection[0], selection[1]);
+    await editPhone("991039 021", 3, inputType);
+    assert.equal(phone.value, expected, name);
+    assert.equal(phone.selectionStart, caret, name);
+  }
+
+  await fill(phone, "991039021");
+  phone.setSelectionRange(4, 7);
+  await editPhone("991 777 021", 7, "insertReplacementText");
+  assert.equal(phone.value, "991 777 021");
+  assert.equal(phone.selectionStart, 7, "Replacing selected digits must not jump to the end");
+});
+
+it("copies and cuts phone digits without separators, leaving unsupported text to the browser", async () => {
+  mockCreationApi(async () => Response.json(detail(), { status: 201 }));
+  await renderNewBooking();
+  const phone = control("phone");
+  await fill(phone, "991039021");
+  assert.deepEqual(await clipboardEvent("copy", 0, phone.value.length), {
+    prevented: true,
+    text: "991039021",
+  });
+
+  assert.deepEqual(await clipboardEvent("cut", 4, 7), { prevented: true, text: "039" });
+  assert.equal(phone.value, "991 021");
+  assert.equal(phone.selectionStart, 3);
+
+  await fill(phone, "");
+  await typePhone("+5199");
+  assert.equal(phone.value, "+51 99");
+  assert.deepEqual(
+    await clipboardEvent("copy", 0, "+51 99".length),
+    { prevented: true, text: "+5199" },
+    "Incomplete international input must keep its + on the clipboard",
+  );
+
+  await fill(phone, "+51 987654321 ext. 5");
+  const annotated = await clipboardEvent("copy", 0, "+51 987654321 ext. 5".length);
+  assert.equal(annotated.prevented, false, "Unsupported text must be copied as shown");
+});
+
+it("selects the country of a pasted international phone and shows its national digits", async () => {
+  const writes: CreateBookingInput[] = [];
+  mockCreationApi(async (input) => {
+    writes.push(input);
+    return Response.json(detail(), { status: 201 });
+  });
+  await renderNewBooking();
+  await fill("fullName", "Ada Lovelace");
+  const phone = control("phone");
+  const paste = new window.ClipboardEvent("paste", { bubbles: true, cancelable: true });
+  await React.act(async () => phone.dispatchEvent(paste));
+  assert.equal(paste.defaultPrevented, false, "The browser must insert pasted text");
+  await editPhone("+56 9 8765 4321", 15, "insertFromPaste");
+  assert.equal(phone.value, "9 8765 4321");
+  assert.equal(phone.selectionStart, phone.value.length);
+  assert.equal(phoneCountry().getAttribute("aria-label"), "País del teléfono: Chile +56");
+  await submit();
+  await until(() => writes.length === 1, "The pasted phone must save");
+  assert.equal(writes[0].guest.phone, "+56987654321");
+});
+
+it("leaves IME composition text unformatted until the composition ends", async () => {
+  mockCreationApi(async () => Response.json(detail(), { status: 201 }));
+  await renderNewBooking();
+  const phone = control("phone");
+  const composition = (type: string) =>
+    phone.dispatchEvent(new window.CompositionEvent(type, { bubbles: true }));
+  await React.act(async () => composition("compositionstart"));
+  await editPhone("9910", 4, "insertCompositionText", true);
+  assert.equal(phone.value, "9910");
+  await React.act(async () => composition("compositionend"));
+  assert.equal(phone.value, "991 0");
+});
+
+it("resubmits an unformatted legacy phone exactly once an edit is undone", async () => {
+  const saved = detail();
+  const legacy: StayingGuest = {
+    id: "9b73e6c7-c684-4c4b-a205-b63e3c91a839",
+    fullName: "Luis Pérez",
+    email: null,
+    phone: "991 039 021",
+    documentType: null,
+    documentNumber: null,
+    reservationRoomId: null,
+  };
+  saved.stayingGuests = [legacy];
+  const writes: StayingGuest[][] = [];
+  await render(
+    React.createElement(forms.GuestEntryForm, {
+      detail: saved,
+      guest: legacy,
+      disabled: false,
+      onDirtyChange: () => {},
+      onSave: async (guests: StayingGuest[]) => {
+        writes.push(guests);
+      },
+    }),
+  );
+  const phone = control("phone");
+  await editPhone("991 039 0215", 12);
+  assert.equal(phone.value, "9910390215");
+  await editPhone("991039021", 9, "deleteContentBackward");
+  assert.equal(phone.value, "991 039 021", "Undoing the edit must restore the stored text");
+  await fill("fullName", "Luis Corregido");
+  await submit();
+  await until(() => writes.length === 1, "The guest must save");
+  assert.equal(writes[0][0].phone, "991 039 021");
 });
 
 it("saves staying-guest phones on their own, keeping an unchanged legacy phone", async () => {
