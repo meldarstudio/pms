@@ -54,7 +54,6 @@ export function serverFieldErrors(
   }
   if (scope === "guest") {
     if (cause.code === "invalid email") fields.email = cause.message;
-    if (cause.field === "phone") fields.phone = cause.message;
     if (cause.code === "guest room must belong to this reservation")
       fields.reservationRoomId = cause.message;
   }

@@ -6,7 +6,6 @@ import { guests, reservations } from "../db/schema";
 import type { Env } from "../env";
 import { HttpError, validate } from "../http";
 import { presentGuest } from "../present";
-import { acceptPhone } from "../rules";
 
 function searchPattern(q: string) {
   return `%${q.replace(/[%_]/g, "")}%`;
@@ -44,7 +43,7 @@ guestRoutes.post("/", validate("json", guestFields), async (c) => {
     id: crypto.randomUUID(),
     fullName: body.fullName,
     email: body.email ?? null,
-    phone: acceptPhone(body.phone) ?? null,
+    phone: body.phone ?? null,
     documentType: body.documentType ?? null,
     documentNumber: body.documentNumber ?? null,
     notes: body.notes ?? null,
@@ -85,11 +84,7 @@ guestRoutes.patch("/:id", validate("json", guestFields.partial()), async (c) => 
   if (Object.keys(body).length === 0) throw new HttpError(400, "send a field to update");
   await db
     .update(guests)
-    .set({
-      ...body,
-      phone: acceptPhone(body.phone, guest.phone),
-      revision: sql`${guests.revision} + 1`,
-    })
+    .set({ ...body, revision: sql`${guests.revision} + 1` })
     .where(eq(guests.id, guest.id));
   const [updated] = await db.select().from(guests).where(eq(guests.id, guest.id));
   return c.json(presentGuest(updated));

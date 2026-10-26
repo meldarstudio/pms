@@ -61,11 +61,6 @@ _Avoid_: Guest when only the contact is meant, payer
 A named person staying under a reservation, optionally associated with one of its reserved rooms.
 _Avoid_: Booking contact, occupant count
 
-**Contact phone**:
-A phone number provided to reach a booking contact or staying guest, which may be shared with other
-people. It does not establish the person's identity or ownership of the number.
-_Avoid_: Verified phone when only its format has been checked
-
 **Guest list**:
 The optional list of named staying guests for a reservation, which may remain empty or incomplete even
 after check-in.

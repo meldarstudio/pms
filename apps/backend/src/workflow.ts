@@ -17,7 +17,7 @@ import { HttpError, rethrowConflict } from "./http";
 import { ratesBetween } from "./inventory";
 import { bill } from "./lib/workflow-billing";
 import { quoteNights, overridesFor } from "./lib/quote";
-import { acceptPhone, requireStay } from "./rules";
+import { requireStay } from "./rules";
 import { confirmationCode } from "./lib/codes";
 import { chunks } from "./lib/chunks";
 import { claimRevision, isStaleWrite } from "./db/revisions";
@@ -156,11 +156,7 @@ export async function plan(
     };
   };
   for (const action of actions) {
-    if (action.type === "contact")
-      Object.assign(state.contact, {
-        ...action.contact,
-        phone: acceptPhone(action.contact.phone, original.contact.phone),
-      });
+    if (action.type === "contact") Object.assign(state.contact, action.contact);
     if (action.type === "set-guests") {
       if (new Set(action.guests.map((g) => g.id)).size !== action.guests.length)
         fail("duplicate staying guest");
@@ -175,14 +171,12 @@ export async function plan(
       state.stayingGuests = action.guests.map((guest) => {
         if (guest.reservationRoomId && !state.lines.some((l) => l.id === guest.reservationRoomId))
           fail("guest room must belong to this reservation");
-        const saved = original.stayingGuests.find((g) => g.id === guest.id);
         return {
           ...guest,
-          phone: acceptPhone(guest.phone, saved?.phone),
           documentType: guest.documentType ?? null,
           documentNumber: guest.documentNumber ?? null,
           reservationId: state.reservation.id,
-          createdAt: saved?.createdAt ?? now,
+          createdAt: original.stayingGuests.find((g) => g.id === guest.id)?.createdAt ?? now,
         };
       });
     }
@@ -425,13 +419,12 @@ export async function createWorkflow(db: Db, input: WorkflowCreate) {
   const now = new Date().toISOString(),
     id = crypto.randomUUID(),
     guestId = crypto.randomUUID();
-  const phone = acceptPhone(input.guest.phone);
   const lines: Stay[] = [];
   for (const room of input.rooms) lines.push(await newLine(db, id, room, now, input));
   rejectRoomIssues(await validateRooms(db, lines));
   try {
     await runBatch(db, [
-      db.insert(guests).values({ id: guestId, ...input.guest, phone, createdAt: now }),
+      db.insert(guests).values({ id: guestId, ...input.guest, createdAt: now }),
       db.insert(reservations).values({
         id,
         code: confirmationCode(),

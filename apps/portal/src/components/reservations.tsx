@@ -57,7 +57,6 @@ import {
   type ReservationSort,
 } from "@/lib/route-search";
 import { ReservationStatusSelection } from "@/lib/reservation-status-selection";
-import { phoneDisplay } from "@/lib/phone";
 
 const sortOptions: { value: ReservationSort; label: string }[] = [
   { value: "checkIn", label: "Check-in" },
@@ -679,9 +678,7 @@ export function Reservations({
                             <div className="flex flex-col gap-0.5">
                               <span className="font-medium">{row.guestName}</span>
                               <span className="text-xs text-muted-foreground">
-                                {row.guest.phone
-                                  ? phoneDisplay(row.guest.phone).text
-                                  : "Sin teléfono"}
+                                {row.guest.phone || "Sin teléfono"}
                               </span>
                             </div>
                           </TableCell>

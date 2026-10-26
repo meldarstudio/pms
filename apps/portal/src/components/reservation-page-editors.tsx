@@ -231,7 +231,7 @@ function ReservationActionForm({
           : target.kind === "payment"
             ? paymentSchema
             : cancellationSchema;
-  const rejectedContact = useRef<{ key: string; fields: Record<string, string> } | null>(null);
+  const rejectedContact = useRef<{ email: string; fields: Record<string, string> } | null>(null);
   const form = useReservationForm({
     defaultValues: defaults,
     validationLogic: blurThenChange(),
@@ -245,10 +245,7 @@ function ReservationActionForm({
             );
         // submitForm focuses invalid fields; the resulting blur must not erase
         // a server rejection until the contact value actually changes.
-        if (
-          target.kind === "contact" &&
-          rejectedContact.current?.key === JSON.stringify([value.email, value.phone])
-        )
+        if (target.kind === "contact" && rejectedContact.current?.email === value.email)
           Object.assign(fields, rejectedContact.current.fields);
         return Object.keys(fields).length ? { fields } : undefined;
       },
@@ -311,7 +308,7 @@ function ReservationActionForm({
           target.kind === "payment" ? "payment" : target.kind === "contact" ? "guest" : "details",
         );
         if (fields && target.kind === "contact") {
-          rejectedContact.current = { key: JSON.stringify([value.email, value.phone]), fields };
+          rejectedContact.current = { email: value.email, fields };
           form.setErrorMap({ onDynamic: { fields } });
         } else if (fields) setServerErrors(form, fields);
         else toastError("No se pudo guardar", cause);
@@ -391,7 +388,9 @@ function ReservationActionForm({
               <form.AppField name="email">
                 {(field) => <field.Text label="Correo electrónico" type="email" max={320} />}
               </form.AppField>
-              <form.AppField name="phone">{(field) => <field.Phone />}</form.AppField>
+              <form.AppField name="phone">
+                {(field) => <field.Text label="Teléfono" type="tel" max={40} />}
+              </form.AppField>
             </>
           )}
           {target.kind === "notes" && (

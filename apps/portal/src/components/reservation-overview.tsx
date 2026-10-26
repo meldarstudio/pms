@@ -35,7 +35,6 @@ import type { ReservationDetail } from "@/lib/api";
 import { occupantsLabel } from "@/lib/reservation-list";
 import { formatMoney } from "@/lib/money";
 import { usePropertyCalendar } from "@/lib/use-property-calendar";
-import { phoneDisplay } from "@/lib/phone";
 
 const money = (detail: ReservationDetail, cents: number) => formatMoney(cents, detail.currency);
 const fullDate = (value: string) =>
@@ -203,7 +202,7 @@ function ContactSummary({ detail, edit }: Model) {
             {contact.fullName}
           </ReservationDatum>
           <ReservationDatum icon={PhoneIcon} label="Teléfono">
-            <ContactPhone phone={contact.phone} />
+            {contact.phone ? <a href={`tel:${contact.phone}`}>{contact.phone}</a> : "Sin teléfono"}
           </ReservationDatum>
           <ReservationDatum icon={MailIcon} label="Correo electrónico">
             {contact.email ? <a href={`mailto:${contact.email}`}>{contact.email}</a> : "Sin correo"}
@@ -303,10 +302,4 @@ function PaymentSummary({ detail, edit }: Model) {
       </CardContent>
     </Card>
   );
-}
-
-function ContactPhone({ phone }: { phone: string | null }) {
-  if (!phone) return "Sin teléfono";
-  const display = phoneDisplay(phone);
-  return <a href={display.href}>{display.text}</a>;
 }
