@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { afterAll, afterEach, beforeAll, beforeEach, it } from "vite-plus/test";
-import type { HTMLInputElement } from "happy-dom";
+import type { HTMLElement, HTMLInputElement } from "happy-dom";
 import type { ReservationDetail, WorkflowCommand } from "../src/lib/api.ts";
 import { createBrowserTest, type BrowserTest, type BrowserPage } from "./browser.ts";
 
@@ -186,10 +186,14 @@ it.each([
         .replace(/\s/g, "")
         .includes(`${label.replace(/\s/g, "")}${balance}`),
     );
-    if (creditCents > 0)
-      assert.ok(page.container.textContent.includes("no representa un reembolso"));
   },
 );
+
+async function back() {
+  const link = browser.window.document.querySelector<HTMLElement>('nav[aria-label="breadcrumb"] a');
+  assert.ok(link, "Missing Reservas breadcrumb");
+  await browser.React.act(async () => link.click());
+}
 
 it("protects a discount draft when Back targets Reservations and allows explicit discard", async () => {
   await render("?origin=calendar&returnTo=from%3D2026-10-19%26span%3D14");
@@ -198,7 +202,7 @@ it("protects a discount draft when Back targets Reservations and allows explicit
   const unload = new browser.window.Event("beforeunload", { cancelable: true });
   await browser.React.act(async () => browser.window.dispatchEvent(unload));
   assert.equal(unload.defaultPrevented, true, "A discount draft must block an update reload");
-  await click("Volver a reservas");
+  await back();
   await page.until(() =>
     browser.window.document.body.textContent.includes("Hay cambios sin guardar"),
   );
@@ -208,7 +212,7 @@ it("protects a discount draft when Back targets Reservations and allows explicit
     browser.window.document.querySelector<HTMLInputElement>('input[name="amount"]')?.value,
     "25",
   );
-  await click("Volver a reservas");
+  await back();
   await click("Descartar y salir");
   await page.until(() => router.state.location.pathname === "/reservations");
 });

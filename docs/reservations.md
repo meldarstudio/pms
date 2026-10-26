@@ -197,11 +197,15 @@ dismissal. Controls follow the shared [Lyra styling](portal.md#control-styling).
 
 ### Full reservation page
 
-`/reservations/:id` is a read-first overview. **Contacto principal** and
-**Pago y cuenta** occupy the left desktop column, with **Estadía y habitaciones**
-on the right; the sections stack on phones. The header shows contact name, code,
-status/date badges, and **Estado de la reserva**. The phone link appears only in
-the contact card. Back opens Reservations; list-origin links retain list filters.
+`/reservations/:id` is a read-first overview. **Contacto principal**, **Pago y
+cuenta**, and **Notas** occupy the left desktop column, with **Estadía y
+habitaciones** on the right, matching the left column's height and scrolling its
+room list when it would be taller; **Huéspedes** and **Pagos** cards follow side by
+side. The sections stack on phones at their natural height. The shell header shows a
+**Reservas › Detalle** breadcrumb; its **Reservas** link opens Reservations, and
+list-origin links retain list filters. The page header shows the reservation code as
+a small uppercase monospace label above the contact name, then status/date badges
+and **Estado de la reserva**. The phone link appears only in the contact card.
 
 **Editar contacto** corrects the existing name, phone, and email. It does not
 search for or replace the contact. Document fields are omitted from contact saves
@@ -214,14 +218,29 @@ on mobile, with reachable controls while the body scrolls.
 
 The stay summary's **Ocupantes** adds declared adults and children across all
 reserved rooms, independently of the named guest list. **Habitaciones asignadas**
-shows the room count and a divided list of room number/type and adult/child counts.
-Unassigned rooms show **Sin asignar**. Occupancy editing stays in the stay editor.
+shows the room count and a divided list with one line per room: room number/type,
+then adult/child counts. Rooms sort by number, with unassigned rooms last as **Sin
+asignar**. Occupancy editing stays in the stay editor.
 
 The bill shows subtotal, discount including zero, total, amount paid, and signed
 balance. **Editar descuento** belongs to the discount row; **Registrar pago** is
 separate. Outstanding, settled, and credit balances remain distinct. This is a
-reservation bill. Notes, staying-guest, payment-record, and account sections are
-not exposed on the page; their existing compact-editor workflows remain available.
+reservation bill.
+
+**Notas** shows reservation notes with line breaks, or **Sin notas**, and opens the
+notes editor through **Editar notas** or **Agregar notas**. Contact notes are not
+shown.
+
+**Huéspedes** and **Pagos** are cards like the ones above, each with an outline
+header action: **Agregar huésped** or **Registrar pago**, beside the bill's own
+**Registrar pago**. Both reuse the compact dialog's lists from
+[reservation-records.tsx](../apps/portal/src/components/reservation-records.tsx) in
+their framed form, bordered like **Habitaciones asignadas**: guests show an icon,
+name, room, and document; payments show date, method, reference, and amount, newest
+first, hiding the reference on phones. Empty cards show an icon with **Sin huéspedes
+registrados** or **Sin pagos registrados**. Each row's **Editar** and **Eliminar**
+open page editors; deletion asks for confirmation. Records stay editable on
+cancelled reservations.
 
 Selecting Confirmada, Check-in, or Check-out on an active reservation saves
 immediately through the header status select. Cancellation and restoration open

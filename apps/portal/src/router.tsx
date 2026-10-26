@@ -161,18 +161,15 @@ function ReservationRoute() {
   const { reservationId } = reservationRoute.useParams();
   const { returnTo, origin } = reservationRoute.useSearch();
   const navigate = useNavigate();
+  const backSearch =
+    origin !== "calendar" && returnTo !== undefined
+      ? reservationsSearch(Object.fromEntries(new URLSearchParams(returnTo)))
+      : (lastReservationsSearch.current ?? reservationsSearch({}));
   return (
     <ReservationPage
       id={reservationId}
-      onBack={() =>
-        void navigate({
-          to: "/reservations",
-          search:
-            origin !== "calendar" && returnTo !== undefined
-              ? reservationsSearch(Object.fromEntries(new URLSearchParams(returnTo)))
-              : (lastReservationsSearch.current ?? reservationsSearch({})),
-        })
-      }
+      backSearch={backSearch}
+      onBack={() => void navigate({ to: "/reservations", search: backSearch })}
     />
   );
 }

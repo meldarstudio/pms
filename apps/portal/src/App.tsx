@@ -3,6 +3,7 @@ import { useState, type CSSProperties } from "react";
 import { AppSidebar } from "@/components/app-sidebar";
 import { PageHeaderActionsContext } from "@/components/page-header-actions";
 import { PagePrimaryActionContext } from "@/components/page-primary-action";
+import { PageTitleContext } from "@/components/page-title";
 import { Separator } from "@/components/ui/separator";
 import { SidebarInset, SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
 import { activeNavigation, appNavigation } from "@/lib/navigation";
@@ -19,6 +20,7 @@ export function App() {
   });
   const [headerActions, setHeaderActions] = useState<HTMLDivElement | null>(null);
   const [primaryAction, setPrimaryAction] = useState<HTMLDivElement | null>(null);
+  const [pageTitle, setPageTitle] = useState<HTMLDivElement | null>(null);
   const pathname = useRouterState({
     select: (state) => state.location.pathname,
   });
@@ -48,7 +50,8 @@ export function App() {
             orientation="vertical"
             className="data-vertical:h-4 data-vertical:self-center"
           />
-          <span className="text-xs font-medium">{title}</span>
+          <div ref={setPageTitle} className="peer flex min-w-0 empty:hidden" />
+          <span className="text-xs font-medium peer-[:not(:empty)]:hidden">{title}</span>
           <div ref={setHeaderActions} className="ml-auto flex items-center gap-2" />
         </header>
         {/* Follows the header in focus order although the action floats at the bottom. */}
@@ -62,11 +65,13 @@ export function App() {
             } as CSSProperties
           }
         >
-          <PageHeaderActionsContext value={headerActions}>
-            <PagePrimaryActionContext value={primaryAction}>
-              <Outlet />
-            </PagePrimaryActionContext>
-          </PageHeaderActionsContext>
+          <PageTitleContext value={pageTitle}>
+            <PageHeaderActionsContext value={headerActions}>
+              <PagePrimaryActionContext value={primaryAction}>
+                <Outlet />
+              </PagePrimaryActionContext>
+            </PageHeaderActionsContext>
+          </PageTitleContext>
         </div>
       </SidebarInset>
     </SidebarProvider>

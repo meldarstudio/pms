@@ -156,6 +156,11 @@ function button(label: string) {
 async function click(label: string) {
   await React.act(async () => button(label).click());
 }
+async function back() {
+  const link = window.document.querySelector<HTMLElement>('nav[aria-label="breadcrumb"] a');
+  assert.ok(link, "Missing Reservas breadcrumb");
+  await React.act(async () => link.click());
+}
 function assertFilterCount(expected: number) {
   assert.equal(
     button("Filtros").querySelector('[data-slot="badge"]')?.textContent.trim() ?? "0",
@@ -437,7 +442,7 @@ it("refreshes cached operations and legacy calendar results after saving in rese
   await until(() => container.textContent.includes("#ANA0001"));
   await choose("Estado de la reserva", "Check-in");
   await until(() => saved && !container.querySelector("fieldset")?.disabled);
-  await click("Volver a reservas");
+  await back();
   await until(() => container.textContent.includes("No se encontraron reservas"));
   assert.ok(container.textContent.includes("0 de 0 reservas"));
   assert.equal(params().get("statuses"), "confirmed");
@@ -617,7 +622,7 @@ it.each(["desktop", "mobile"])(
     await React.act(async () => router.navigate({ href: "/reservations?view=all" }));
     await until(() => container.textContent.includes("Todas las reservas"));
     await render(detailLink);
-    await click("Volver a reservas");
+    await back();
     await until(() => container.textContent.includes("51–51 de 126 reservas"));
     assert.deepEqual({ ...router.state.location.search }, expected);
     assert.equal(params().get("offset"), "50");
