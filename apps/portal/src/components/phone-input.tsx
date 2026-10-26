@@ -1,6 +1,19 @@
-import { useLayoutEffect, useRef, useState, type ComponentProps } from "react";
+import {
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+  type ClipboardEvent,
+  type ComponentProps,
+} from "react";
 import { Input } from "@/components/ui/input";
-import { editPhone, phoneInputText, type PhoneValue } from "@/lib/phone";
+import { phoneInputText, type PhoneValue } from "@/lib/phone";
+import { editPhone, phoneClipboardText, type PhoneEdit } from "@/lib/phone-mask";
+
+const deletions: Partial<Record<string, PhoneEdit["deletion"]>> = {
+  deleteContentBackward: "backward",
+  deleteContentForward: "forward",
+};
 
 /** A phone mask with digit-anchored editing and an unformatted clipboard. */
 export function PhoneInput({
@@ -13,6 +26,9 @@ export function PhoneInput({
 }) {
   const input = useRef<HTMLInputElement>(null);
   const selection = useRef<number | null>(null);
+  // Refs rather than state: an input event can arrive before React renders the previous one.
+  const composing = useRef(false);
+  const selectedBeforeInput = useRef(false);
   const [composition, setComposition] = useState<string | null>(null);
 
   useLayoutEffect(() => {
@@ -22,13 +38,38 @@ export function PhoneInput({
     }
   });
 
-  function edit(element: HTMLInputElement, text: string, caret: number, inputType?: string) {
-    const next = editPhone(value, text, caret, inputType);
+  // React's onBeforeInput omits deletions, so read the selection from the native event.
+  useEffect(() => {
+    const element = input.current;
+    if (!element) return;
+    const recordSelection = () => {
+      selectedBeforeInput.current = element.selectionStart !== element.selectionEnd;
+    };
+    element.addEventListener("beforeinput", recordSelection);
+    return () => element.removeEventListener("beforeinput", recordSelection);
+  }, []);
+
+  function edit(element: HTMLInputElement, change: PhoneEdit) {
+    const next = editPhone(value, change);
     selection.current = next.caret;
     onChange(next.value);
     // Separator-only edits may leave the form value unchanged and cause no render.
     element.value = next.text;
     element.setSelectionRange(next.caret, next.caret);
+  }
+
+  /** Puts the selection's digits on the clipboard; false leaves the browser's own copy. */
+  function copyDigits(event: ClipboardEvent<HTMLInputElement>) {
+    const element = event.currentTarget;
+    const text = phoneClipboardText(
+      element.value,
+      element.selectionStart ?? 0,
+      element.selectionEnd ?? 0,
+    );
+    if (text === undefined) return false;
+    event.clipboardData.setData("text/plain", text);
+    event.preventDefault();
+    return true;
   }
 
   return (
@@ -39,57 +80,44 @@ export function PhoneInput({
       inputMode="tel"
       autoComplete="tel"
       value={composition ?? phoneInputText(value)}
-      onCompositionStart={(event) => setComposition(event.currentTarget.value)}
+      onCompositionStart={(event) => {
+        composing.current = true;
+        setComposition(event.currentTarget.value);
+      }}
       onCompositionEnd={(event) => {
+        composing.current = false;
         setComposition(null);
-        edit(
-          event.currentTarget,
-          event.currentTarget.value,
-          event.currentTarget.selectionStart ?? event.currentTarget.value.length,
-        );
+        const element = event.currentTarget;
+        edit(element, {
+          text: element.value,
+          caret: element.selectionStart ?? element.value.length,
+        });
       }}
       onChange={(event) => {
         const element = event.currentTarget;
         const native = event.nativeEvent as InputEvent;
-        if (native.isComposing || composition !== null) {
+        const selected = selectedBeforeInput.current;
+        selectedBeforeInput.current = false;
+        if (native.isComposing || composing.current) {
           setComposition(element.value);
           return;
         }
-        edit(
-          element,
-          element.value,
-          element.selectionStart ?? element.value.length,
-          native.inputType,
-        );
+        edit(element, {
+          text: element.value,
+          caret: element.selectionStart ?? element.value.length,
+          deletion: selected ? undefined : deletions[native.inputType],
+        });
       }}
-      onCopy={(event) => {
-        const element = event.currentTarget;
-        if (!/^\+?[\d\s().-]+$/.test(element.value)) return;
-        const selected = element.value.slice(
-          element.selectionStart ?? 0,
-          element.selectionEnd ?? 0,
-        );
-        if (!selected) return;
-        event.clipboardData.setData("text/plain", selected.replace(/\D/g, ""));
-        event.preventDefault();
-      }}
+      onCopy={copyDigits}
       onCut={(event) => {
         const element = event.currentTarget;
-        if (props.disabled || props.readOnly || !/^\+?[\d\s().-]+$/.test(element.value)) return;
         const start = element.selectionStart ?? 0;
         const end = element.selectionEnd ?? start;
-        if (start === end) return;
-        event.clipboardData.setData(
-          "text/plain",
-          element.value.slice(start, end).replace(/\D/g, ""),
-        );
-        event.preventDefault();
-        edit(
-          element,
-          element.value.slice(0, start) + element.value.slice(end),
-          start,
-          "deleteByCut",
-        );
+        if (props.disabled || props.readOnly || !copyDigits(event)) return;
+        edit(element, {
+          text: element.value.slice(0, start) + element.value.slice(end),
+          caret: start,
+        });
       }}
     />
   );
