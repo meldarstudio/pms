@@ -210,8 +210,9 @@ Keep tokens in secrets, never committed files. Expose them only to the operation
 that need them, not installation, tests, checks, or builds. The existing Worker
 `SESSION_SECRET` stays in Cloudflare; do not copy or rotate it for release setup.
 The one-time move to accounts follows the
-[authentication cutover](authentication.md#cutover-from-the-shared-password). Migration authorization remains separate. Token permissions
-require authorized operational verification; local simulations do not prove them.
+[authentication cutover](authentication.md#cutover-from-the-shared-password).
+Migration authorization remains separate. Token permissions require authorized
+operational verification; local simulations do not prove them.
 
 ## Workflow compatibility
 

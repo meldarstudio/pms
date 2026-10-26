@@ -1,7 +1,7 @@
 # Property setup
 
-`POST /setup` requires the Staff account session and saves one room type with its
-room-table changes in one D1 batch. It accepts:
+`POST /setup` requires a signed-in session (Staff or Owner account) and saves one
+room type with its room-table changes in one D1 batch. It accepts:
 
 ```json
 {
@@ -53,7 +53,7 @@ only returns types that can accommodate those counts **in one room**. Both count
 filters are optional; without them, availability returns all requested room
 types for the staff's multi-room editor. Adult filters accept integers from 1
 to 100 and child filters from 0 to 100. Pricing and free-room counts are
-unchanged. The endpoint requires the Staff account session.
+unchanged. The endpoint requires a signed-in session.
 
 ## Portal setup
 
