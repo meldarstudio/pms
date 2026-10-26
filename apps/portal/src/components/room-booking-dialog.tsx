@@ -10,7 +10,6 @@ import {
   XIcon,
 } from "lucide-react";
 import { cn } from "cn";
-import { Empty, EmptyHeader, EmptyTitle, EmptyDescription } from "@/components/ui/empty";
 import { guestValues, overlappingRoomIds, availableRoomTypeIds } from "@/lib/reservation-editor";
 import { unavailableRoomIds } from "@/lib/assignment-availability";
 import { useStayDraft } from "@/lib/use-stay-draft";
@@ -50,20 +49,13 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { FieldError, FieldGroup } from "@/components/ui/field";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Separator } from "@/components/ui/separator";
 import { BookingSummary } from "@/components/booking-summary";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { ReservationPageEditor } from "@/components/reservation-page-editors";
 import { NewBooking } from "@/components/new-booking";
+import { PaymentList, StayingGuestList } from "@/components/reservation-records";
 import { GuestEntryForm, PaymentForm, paymentMethods } from "@/components/reservation-entry-forms";
 import { format } from "@/lib/dates";
 import { isValid, parseISO } from "date-fns";
@@ -1399,8 +1391,6 @@ function GuestFields({
       toastError("No se pudo eliminar el huésped", cause);
     }
   }
-  const roomLabel = (id: string | null) =>
-    detail.rooms.find((room) => room.id === id)?.roomNumber ?? "Sin indicar";
   const closeEdit = () => {
     if (disabled) return;
     if (editDirty) setLeaving(true);
@@ -1440,161 +1430,13 @@ function GuestFields({
       </Dialog>
       {leaving && <DiscardChanges onStay={() => setLeaving(false)} onLeave={reset} />}
 
-      {detail.stayingGuests.length ? (
-        <section className="flex flex-col gap-3">
-          <h3 className="font-medium">Huéspedes registrados</h3>
-          <ul aria-label="Huéspedes registrados" className="flex flex-col">
-            {detail.stayingGuests.map((guest, index) => (
-              <li key={guest.id}>
-                {index > 0 && <Separator />}
-                <div className="flex items-center justify-between gap-3 py-3">
-                  <div className="flex min-w-0 flex-col gap-1">
-                    <p className="font-medium wrap-anywhere">{guest.fullName}</p>
-                    <p className="text-xs wrap-anywhere text-muted-foreground">
-                      {[
-                        guest.reservationRoomId
-                          ? `Hab. ${roomLabel(guest.reservationRoomId)}`
-                          : "Sin habitación indicada",
-                        [guest.documentType, guest.documentNumber].filter(Boolean).join(" "),
-                      ]
-                        .filter(Boolean)
-                        .join(" · ")}
-                    </p>
-                  </div>
-                  <DropdownMenu>
-                    <DropdownMenuTrigger
-                      render={
-                        <Button
-                          type="button"
-                          size="icon-sm"
-                          variant="ghost"
-                          disabled={disabled || dirty}
-                          aria-label={`Acciones de ${guest.fullName}`}
-                        />
-                      }
-                    >
-                      <EllipsisIcon />
-                    </DropdownMenuTrigger>
-                    <DropdownMenuContent>
-                      <DropdownMenuGroup>
-                        <DropdownMenuItem
-                          onClick={() => {
-                            setEditing(guest);
-                          }}
-                        >
-                          Editar
-                        </DropdownMenuItem>
-                        <DropdownMenuItem
-                          variant="destructive"
-                          onClick={() => void remove(guest.id)}
-                        >
-                          Eliminar
-                        </DropdownMenuItem>
-                      </DropdownMenuGroup>
-                    </DropdownMenuContent>
-                  </DropdownMenu>
-                </div>
-              </li>
-            ))}
-          </ul>
-        </section>
-      ) : (
-        <Empty>
-          <EmptyHeader>
-            <EmptyTitle>Sin huéspedes registrados</EmptyTitle>
-            <EmptyDescription>
-              Agrega a las personas que se alojan. Pueden ser distintas del contacto principal.
-            </EmptyDescription>
-          </EmptyHeader>
-        </Empty>
-      )}
+      <StayingGuestList
+        detail={detail}
+        disabled={disabled || dirty}
+        onEdit={setEditing}
+        onDelete={(guest) => void remove(guest.id)}
+      />
     </>
-  );
-}
-
-function PaymentList({
-  detail,
-  disabled,
-  onEdit,
-  onDelete,
-}: {
-  detail: ReservationDetail;
-  disabled: boolean;
-  onEdit: (entry: ReservationPayment) => void;
-  onDelete: (entry: ReservationPayment) => void;
-}) {
-  const entries = detail.payments;
-  if (!entries.length)
-    return (
-      <Empty>
-        <EmptyHeader>
-          <EmptyTitle>Sin pagos registrados</EmptyTitle>
-          <EmptyDescription>Los pagos registrados aparecerán aquí.</EmptyDescription>
-        </EmptyHeader>
-      </Empty>
-    );
-  return (
-    <section className="flex flex-col gap-3">
-      <h3 className="font-medium">Pagos registrados</h3>
-      <Table aria-label="Pagos registrados">
-        <TableHeader>
-          <TableRow>
-            <TableHead>Fecha</TableHead>
-            <TableHead>Método</TableHead>
-            <TableHead>Referencia</TableHead>
-            <TableHead className="text-right">Importe</TableHead>
-            <TableHead className="w-10">
-              <span className="sr-only">Acciones</span>
-            </TableHead>
-          </TableRow>
-        </TableHeader>
-        <TableBody>
-          {[...entries]
-            .sort((a, b) => b.createdAt.localeCompare(a.createdAt))
-            .map((e) => (
-              <TableRow key={e.id}>
-                <TableCell>{stayDate(e.paymentDate, "d MMM yyyy")}</TableCell>
-                <TableCell>
-                  {paymentMethods.find((method) => method.value === e.method)?.label ??
-                    e.method ??
-                    "—"}
-                </TableCell>
-                <TableCell className="max-w-40 break-words whitespace-normal">
-                  {e.reference?.toUpperCase() || "—"}
-                </TableCell>
-                <TableCell className="text-right tabular-nums">
-                  {formatMoney(e.amountCents, detail.currency)}
-                </TableCell>
-                <TableCell className="text-right">
-                  <DropdownMenu>
-                    <DropdownMenuTrigger
-                      render={
-                        <Button
-                          type="button"
-                          size="icon-sm"
-                          variant="ghost"
-                          disabled={disabled}
-                          aria-label={`Acciones del pago de ${formatMoney(e.amountCents, detail.currency)} del ${e.paymentDate}`}
-                        />
-                      }
-                    >
-                      <EllipsisIcon />
-                    </DropdownMenuTrigger>
-                    <DropdownMenuContent>
-                      <DropdownMenuGroup>
-                        <DropdownMenuItem onClick={() => onEdit(e)}>Editar</DropdownMenuItem>
-                        <DropdownMenuItem variant="destructive" onClick={() => onDelete(e)}>
-                          Eliminar
-                        </DropdownMenuItem>
-                      </DropdownMenuGroup>
-                    </DropdownMenuContent>
-                  </DropdownMenu>
-                </TableCell>
-              </TableRow>
-            ))}
-        </TableBody>
-      </Table>
-    </section>
   );
 }
 

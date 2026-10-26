@@ -22,7 +22,10 @@ saved in this browser's local storage across refreshes and browser restarts,
 defaulting to open without a saved preference. If storage is unavailable, the
 choice lasts only for the current visit. Mobile navigation always starts closed
 and does not change the desktop preference. Toggling does not remount the current
-screen. Navigation retains the last
+screen. Beside the toggle, the header shows the current section's name; a page can
+replace it through `PageTitle` in
+[page-title.tsx](../apps/portal/src/components/page-title.tsx), as the reservation
+page does with its breadcrumb. Navigation retains the last
 reservation filters and calendar dates, and existing unsaved-draft guards still
 apply. Sign-out retains the existing authentication and error handling.
 

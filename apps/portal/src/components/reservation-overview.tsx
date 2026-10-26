@@ -1,15 +1,14 @@
 import { Fragment, type ReactNode } from "react";
 import {
-  ArrowLeftIcon,
   BedDoubleIcon,
   CalendarDaysIcon,
   CalendarCheckIcon,
-  CircleCheckIcon,
   ClockIcon,
   CreditCardIcon,
   MailIcon,
   PencilIcon,
   PhoneIcon,
+  PlusIcon,
   UserRoundIcon,
   UsersIcon,
   type LucideIcon,
@@ -22,12 +21,12 @@ import { Card, CardHeader, CardTitle, CardContent, CardAction } from "@/componen
 import {
   Item,
   ItemContent,
-  ItemDescription,
   ItemGroup,
   ItemMedia,
   ItemSeparator,
   ItemTitle,
 } from "@/components/ui/item";
+import { PaymentList, StayingGuestList } from "@/components/reservation-records";
 import { ReservationLifecycle } from "@/components/reservation-lifecycle";
 import { balanceStatus } from "@/components/balance-status";
 import type { ReservationEditorTarget } from "@/components/reservation-page-editors";
@@ -51,32 +50,24 @@ export function ReservationOverview({
   detail,
   edit,
   disabled,
-  onBack,
 }: Model & {
   disabled: boolean;
-  onBack: () => void;
 }) {
   const { today, timeZone } = usePropertyCalendar();
   const nights = Math.round((Date.parse(detail.checkOut) - Date.parse(detail.checkIn)) / 86400000);
   return (
     <fieldset disabled={disabled} aria-busy={disabled} className="flex min-w-0 flex-col gap-6">
       <header className="flex min-w-0 flex-col gap-5">
-        <nav
-          aria-label="Ruta de reserva"
-          className="flex min-w-0 flex-wrap items-center gap-2 text-sm"
-        >
-          <Button variant="ghost" size="sm" aria-label="Volver a reservas" onClick={onBack}>
-            <ArrowLeftIcon data-icon="inline-start" />
-            Reservas
-          </Button>
-        </nav>
         <div className="flex min-w-0 flex-wrap items-start justify-between gap-4">
-          <div className="flex min-w-0 flex-col gap-2">
-            <div className="flex flex-wrap items-center gap-2">
-              <h1 className="text-xl font-semibold wrap-anywhere">{detail.guest.fullName}</h1>
-              <ReservationStatusBadge status={detail.status}>
-                <CircleCheckIcon data-icon="inline-start" />
-              </ReservationStatusBadge>
+          <div className="flex min-w-0 flex-col gap-1.5">
+            <p className="font-mono text-xs tracking-widest wrap-anywhere text-muted-foreground uppercase">
+              Reserva #{detail.code}
+            </p>
+            <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
+              <h1 className="text-2xl font-semibold tracking-tight wrap-anywhere">
+                {detail.guest.fullName}
+              </h1>
+              <ReservationStatusBadge status={detail.status} />
               {detail.checkIn === today && detail.status === "confirmed" && (
                 <Badge variant="preview">
                   <ClockIcon data-icon="inline-start" />
@@ -90,7 +81,6 @@ export function ReservationOverview({
                 </Badge>
               )}
             </div>
-            <p className="text-xs wrap-anywhere text-muted-foreground">Reserva #{detail.code}</p>
           </div>
           <div className="ml-auto flex flex-wrap items-center justify-end gap-2">
             <ReservationLifecycle
@@ -121,64 +111,165 @@ export function ReservationOverview({
         <div className="flex min-w-0 flex-col gap-5">
           <ContactSummary detail={detail} edit={edit} />
           <PaymentSummary detail={detail} edit={edit} />
+          <NotesSummary detail={detail} edit={edit} />
         </div>
-        <Card className="min-w-0 self-start">
-          <CardHeader>
-            <CardTitle>
-              <h2>Estadía y habitaciones</h2>
-            </CardTitle>
-            <CardAction>
-              <Button variant="outline" size="sm" onClick={() => edit({ kind: "stay" })}>
-                <PencilIcon data-icon="inline-start" />
-                Editar estadía
-              </Button>
-            </CardAction>
-          </CardHeader>
-          <CardContent className="flex flex-col gap-4">
-            <dl className="flex flex-col">
-              <ReservationDatum icon={CalendarDaysIcon} label="Fecha de ingreso">
-                {fullDate(detail.checkIn)}
-              </ReservationDatum>
-              <ReservationDatum icon={CalendarCheckIcon} label="Fecha de egreso">
-                {fullDate(detail.checkOut)}
-              </ReservationDatum>
-              <ReservationDatum icon={ClockIcon} label="Duración">
-                {nights} {nights === 1 ? "noche" : "noches"}
-              </ReservationDatum>
-              <ReservationDatum icon={UsersIcon} label="Ocupantes">
-                {detail.rooms.reduce((total, room) => total + room.adults + room.children, 0)}
-              </ReservationDatum>
-            </dl>
-            <section aria-label="Habitaciones asignadas" className="flex min-w-0 flex-col gap-3">
-              <div className="flex flex-wrap items-center justify-between gap-2">
-                <h3 className="text-sm font-medium">Habitaciones asignadas</h3>
-                <p className="text-xs text-muted-foreground">
-                  {detail.rooms.length} {detail.rooms.length === 1 ? "habitación" : "habitaciones"}
-                </p>
-              </div>
-              <ItemGroup className="gap-0 overflow-hidden border">
-                {detail.rooms.map((room, index) => (
-                  <Fragment key={room.id}>
-                    {index > 0 && <ItemSeparator className="my-0" />}
-                    <Item role="listitem">
-                      <ItemMedia variant="icon">
-                        <BedDoubleIcon aria-hidden="true" />
-                      </ItemMedia>
-                      <ItemContent className="min-w-0">
-                        <ItemTitle>
-                          {room.roomNumber ?? "Sin asignar"} · {room.roomTypeName || "Habitación"}
-                        </ItemTitle>
-                        <ItemDescription>{occupantsLabel([room])}</ItemDescription>
-                      </ItemContent>
-                    </Item>
-                  </Fragment>
-                ))}
-              </ItemGroup>
-            </section>
-          </CardContent>
-        </Card>
+        {/* On desktop the left column sets the row height; this card fills it and
+            scrolls its room list instead of growing past it. */}
+        <div className="relative min-w-0">
+          <Card className="min-w-0 md:absolute md:inset-0">
+            <CardHeader>
+              <CardTitle>
+                <h2>Estadía y habitaciones</h2>
+              </CardTitle>
+              <CardAction>
+                <Button variant="outline" size="sm" onClick={() => edit({ kind: "stay" })}>
+                  <PencilIcon data-icon="inline-start" />
+                  Editar estadía
+                </Button>
+              </CardAction>
+            </CardHeader>
+            <CardContent className="flex min-h-0 flex-1 flex-col gap-4">
+              <dl className="flex flex-col">
+                <ReservationDatum icon={CalendarDaysIcon} label="Fecha de ingreso">
+                  {fullDate(detail.checkIn)}
+                </ReservationDatum>
+                <ReservationDatum icon={CalendarCheckIcon} label="Fecha de egreso">
+                  {fullDate(detail.checkOut)}
+                </ReservationDatum>
+                <ReservationDatum icon={ClockIcon} label="Duración">
+                  {nights} {nights === 1 ? "noche" : "noches"}
+                </ReservationDatum>
+                <ReservationDatum icon={UsersIcon} label="Ocupantes">
+                  {detail.rooms.reduce((total, room) => total + room.adults + room.children, 0)}
+                </ReservationDatum>
+              </dl>
+              <AssignedRooms detail={detail} />
+            </CardContent>
+          </Card>
+        </div>
       </div>
+      <ReservationRecords detail={detail} edit={edit} />
     </fieldset>
+  );
+}
+
+function AssignedRooms({ detail }: { detail: ReservationDetail }) {
+  const rooms = detail.rooms.toSorted((a, b) =>
+    a.roomNumber === null || b.roomNumber === null
+      ? Number(a.roomNumber === null) - Number(b.roomNumber === null)
+      : a.roomNumber.localeCompare(b.roomNumber, "es", { numeric: true }),
+  );
+  return (
+    <section
+      aria-label="Habitaciones asignadas"
+      className="flex min-h-0 min-w-0 flex-1 flex-col gap-3"
+    >
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <h3 className="text-sm font-medium">Habitaciones asignadas</h3>
+        <p className="text-xs text-muted-foreground">
+          {rooms.length} {rooms.length === 1 ? "habitación" : "habitaciones"}
+        </p>
+      </div>
+      <div className="min-h-0 overflow-y-auto border">
+        <ItemGroup className="gap-0 has-data-[size=xs]:gap-0">
+          {rooms.map((room, index) => (
+            <Fragment key={room.id}>
+              {index > 0 && <ItemSeparator className="my-0" />}
+              <Item role="listitem" size="xs" className="flex-nowrap">
+                <ItemMedia variant="icon">
+                  <BedDoubleIcon aria-hidden="true" />
+                </ItemMedia>
+                <ItemContent className="min-w-0">
+                  <ItemTitle className="wrap-anywhere">
+                    {room.roomNumber ?? "Sin asignar"} · {room.roomTypeName || "Habitación"}
+                  </ItemTitle>
+                </ItemContent>
+                <p className="shrink-0 text-muted-foreground">{occupantsLabel([room])}</p>
+              </Item>
+            </Fragment>
+          ))}
+        </ItemGroup>
+      </div>
+    </section>
+  );
+}
+
+function ReservationRecords({ detail, edit }: Model) {
+  return (
+    <div className="grid min-w-0 gap-5 md:grid-cols-2">
+      <Card className="min-w-0" role="region" aria-label="Huéspedes">
+        <CardHeader>
+          <CardTitle>
+            <h2>Huéspedes</h2>
+          </CardTitle>
+          <CardAction>
+            <Button variant="outline" size="sm" onClick={() => edit({ kind: "guest" })}>
+              <PlusIcon data-icon="inline-start" />
+              Agregar huésped
+            </Button>
+          </CardAction>
+        </CardHeader>
+        <CardContent className="flex flex-1 flex-col">
+          <StayingGuestList
+            detail={detail}
+            disabled={false}
+            framed
+            onEdit={(guest) => edit({ kind: "guest", id: guest.id })}
+            onDelete={(guest) => edit({ kind: "delete-guest", id: guest.id })}
+          />
+        </CardContent>
+      </Card>
+      <Card className="min-w-0" role="region" aria-label="Pagos">
+        <CardHeader>
+          <CardTitle>
+            <h2>Pagos</h2>
+          </CardTitle>
+          <CardAction>
+            <Button variant="outline" size="sm" onClick={() => edit({ kind: "payment" })}>
+              <CreditCardIcon data-icon="inline-start" />
+              Registrar pago
+            </Button>
+          </CardAction>
+        </CardHeader>
+        <CardContent className="flex flex-1 flex-col">
+          <PaymentList
+            detail={detail}
+            disabled={false}
+            framed
+            hideReferenceOnPhones
+            onEdit={(entry) => edit({ kind: "payment", id: entry.id })}
+            onDelete={(entry) => edit({ kind: "delete-payment", id: entry.id })}
+          />
+        </CardContent>
+      </Card>
+    </div>
+  );
+}
+
+function NotesSummary({ detail, edit }: Model) {
+  return (
+    <Card className="min-w-0" role="region" aria-label="Notas de la reserva">
+      <CardHeader>
+        <CardTitle>
+          <h2>Notas</h2>
+        </CardTitle>
+        <CardAction>
+          <Button variant="outline" size="sm" onClick={() => edit({ kind: "notes" })}>
+            <PencilIcon data-icon="inline-start" />
+            {detail.notes ? "Editar notas" : "Agregar notas"}
+          </Button>
+        </CardAction>
+      </CardHeader>
+      <CardContent>
+        {detail.notes ? (
+          <p className="whitespace-pre-wrap wrap-anywhere">{detail.notes}</p>
+        ) : (
+          <p className="text-muted-foreground">
+            Sin notas. Anota lo que el equipo debe saber sobre esta reserva.
+          </p>
+        )}
+      </CardContent>
+    </Card>
   );
 }
 
@@ -282,12 +373,12 @@ function PaymentSummary({ detail, edit }: Model) {
             </dd>
           </div>
         </dl>
-        <div className={cn("flex flex-wrap items-center justify-between gap-2 p-3", tone)}>
+        <div className={cn("flex flex-wrap items-center justify-between gap-2 p-3 text-sm", tone)}>
           <p className="flex items-center gap-2 font-medium">
             <Icon aria-hidden="true" className="size-4 shrink-0" />
             {label}
           </p>
-          <p className="ml-auto text-right text-base font-semibold wrap-anywhere tabular-nums">
+          <p className="ml-auto text-right font-semibold wrap-anywhere tabular-nums">
             {money(detail, Math.abs(detail.balanceCents))}
           </p>
         </div>
@@ -295,11 +386,6 @@ function PaymentSummary({ detail, edit }: Model) {
           <CreditCardIcon data-icon="inline-start" />
           Registrar pago
         </Button>
-        {detail.balanceCents < 0 && (
-          <p className="text-xs text-muted-foreground">
-            Crédito conservado en esta reserva; no representa un reembolso.
-          </p>
-        )}
       </CardContent>
     </Card>
   );

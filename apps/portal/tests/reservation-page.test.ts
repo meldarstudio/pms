@@ -325,6 +325,99 @@ it("records payments through retry-safe commands and prevents dismissal or navig
   assert.equal(await unloadPrevented(), false);
 });
 
+it("shows notes, staying guests, and payments in their own cards and edits records from them", async () => {
+  saved = {
+    ...saved,
+    stayingGuests: [
+      {
+        id: "guest-1",
+        reservationRoomId: "line-1",
+        fullName: "Luis Gómez",
+        email: null,
+        phone: null,
+        documentType: "DNI",
+        documentNumber: "12345678",
+      },
+    ],
+    paidCents: 10000,
+    balanceCents: 20000,
+    payments: [
+      {
+        id: "payment-1",
+        reservationId: "reservation-1",
+        amountCents: 10000,
+        method: "cash",
+        paymentDate: "2026-10-19",
+        reference: null,
+        notes: null,
+        createdAt: "2026-10-19T15:00:00Z",
+      },
+    ],
+  };
+  mockApi();
+  await render();
+  const region = (label: string) =>
+    page.container.querySelector(`[role="region"][aria-label="${label}"]`)!;
+  assert.match(region("Notas de la reserva").textContent, /Llegada por la tarde/);
+  assert.ok(button("Editar notas"));
+  assert.equal(page.container.querySelector('[role="tab"]'), null);
+  assert.equal(
+    page.container.ownerDocument.querySelector('nav[aria-label="breadcrumb"]')!.textContent,
+    "ReservasDetalle",
+  );
+  assert.match(region("Huéspedes").textContent, /Luis Gómez.*Hab\. Sin indicar · DNI 12345678/);
+  await chooseRowAction('[aria-label="Acciones de Luis Gómez"]', "Eliminar");
+  assert.match(popup()!.textContent, /Se eliminará a Luis Gómez/);
+  await submit();
+  await page.until(() => !popup());
+  assert.deepEqual(writes[0].actions, [{ type: "set-guests", guests: [] }]);
+  assert.match(region("Huéspedes").textContent, /Sin huéspedes registrados/);
+  await chooseRowAction('[aria-label^="Acciones del pago"]', "Editar");
+  assert.match(popup()!.textContent, /Editar pago/);
+  assert.equal(field("amount").value, "100.00");
+});
+
+it("lists assigned rooms by number with unassigned rooms last", async () => {
+  const room = saved.rooms[0];
+  saved = {
+    ...saved,
+    rooms: [null, "206", "104", "302", "101", "1001", "203", "108"].map((roomNumber, index) => ({
+      ...room,
+      id: `line-${index}`,
+      roomId: roomNumber && `room-${roomNumber}`,
+      roomNumber,
+    })),
+  };
+  mockApi();
+  await render();
+  const rooms = () =>
+    Array.from(
+      page.container.querySelectorAll<HTMLElement>(
+        '[aria-label="Habitaciones asignadas"] [role="listitem"]',
+      ),
+      (element) => element.textContent.split(" · ")[0],
+    );
+  assert.deepEqual(rooms(), ["101", "104", "108", "203", "206", "302", "1001", "Sin asignar"]);
+  assert.match(page.container.textContent, /206 · Doble2 adultos/);
+});
+
+async function back() {
+  const link = window.document.querySelector<HTMLElement>('nav[aria-label="breadcrumb"] a');
+  assert.ok(link, "Missing Reservas breadcrumb");
+  await React.act(async () => link.click());
+}
+
+async function chooseRowAction(selector: string, label: string) {
+  const trigger = page.container.querySelector<HTMLElement>(selector);
+  assert.ok(trigger, `Missing row actions ${selector}`);
+  await React.act(async () => trigger.click());
+  const item = Array.from(window.document.querySelectorAll<HTMLElement>('[role="menuitem"]')).find(
+    (element) => element.textContent.trim() === label,
+  );
+  assert.ok(item, `Missing menu item ${label}`);
+  await React.act(async () => item.click());
+}
+
 it("validates and saves only contact changes without replacing guests, notes, or other reservations' cached contacts", async () => {
   saved = {
     ...saved,
@@ -786,7 +879,7 @@ it("protects a stay draft from background refresh, router navigation and dirty d
   await click("Cerrar");
   await click("Descartar y salir");
   await page.until(() => !popup());
-  await click("Volver a reservas");
+  await back();
   await page.until(() => router.state.location.pathname === "/reservations");
 });
 
@@ -827,7 +920,7 @@ it.each(["loading", "failed"] as const)(
     await render(`?returnTo=${encodeURIComponent(search.toString())}`, false);
     if (state === "failed")
       await page.until(() => page.container.textContent.includes("Reintentar"));
-    await click("Volver a reservas");
+    await back();
     await page.until(() => router.state.location.pathname === "/reservations");
     assert.deepEqual(
       { ...router.state.location.search },

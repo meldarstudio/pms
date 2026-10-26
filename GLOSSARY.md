@@ -71,6 +71,14 @@ The optional list of named staying guests for a reservation, which may remain em
 after check-in.
 _Avoid_: Occupancy, booking contact
 
+**Reservation notes**:
+Staff remarks about one reservation, kept with that reservation only.
+_Avoid_: Contact notes, guest notes
+
+**Contact notes**:
+Staff remarks about a booking contact as a person, carried across every reservation they make.
+_Avoid_: Reservation notes
+
 **Reservation code**:
 The reference used to identify a reservation when communicating about it.
 _Avoid_: Room number
