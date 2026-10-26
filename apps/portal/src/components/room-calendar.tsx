@@ -10,7 +10,6 @@ import {
   ChevronRightIcon,
   ChevronsLeftIcon,
   ChevronsRightIcon,
-  RefreshCwIcon,
 } from "lucide-react";
 
 import {
@@ -29,7 +28,8 @@ import { Tooltip, TooltipTrigger, TooltipContent } from "@/components/ui/tooltip
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { ButtonGroup } from "@/components/ui/button-group";
-import { Separator } from "@/components/ui/separator";
+import { PickerTodayFooter } from "@/components/picker-today-footer";
+import { RefreshButton } from "@/components/refresh-button";
 import { PropertyDatePicker } from "@/components/property-date-picker";
 import { dateOnlyCarrier } from "@/lib/property-calendar";
 import { usePropertyCalendar } from "@/lib/use-property-calendar";
@@ -512,16 +512,12 @@ export function RoomCalendar({
     />
   );
   const refreshButton = (
-    <Button
-      variant="outline"
+    <RefreshButton
+      refreshing={refreshing}
+      disabled={!calendar || assignment.pending}
       size="icon"
-      aria-label={refreshing ? "Actualizando…" : "Actualizar"}
-      aria-busy={refreshing || undefined}
-      disabled={!calendar || assignment.pending || refreshing}
-      onClick={refreshFromButton}
-    >
-      <RefreshCwIcon data-icon="inline-start" className={cn(refreshing && "animate-spin")} />
-    </Button>
+      onRefresh={refreshFromButton}
+    />
   );
 
   const assignmentTrigger = (
@@ -647,22 +643,13 @@ export function RoomCalendar({
                 }}
               />
               {isMobile && (
-                <>
-                  <Separator />
-                  <div className="flex p-2">
-                    <Button
-                      variant="outline"
-                      className="w-full"
-                      disabled={assignment.pending}
-                      onClick={() => {
-                        changeStart(dateOnlyCarrier(today));
-                        setPickerOpen(false);
-                      }}
-                    >
-                      Hoy
-                    </Button>
-                  </div>
-                </>
+                <PickerTodayFooter
+                  disabled={assignment.pending}
+                  onToday={() => {
+                    changeStart(dateOnlyCarrier(today));
+                    setPickerOpen(false);
+                  }}
+                />
               )}
             </PopoverContent>
           </Popover>

@@ -279,8 +279,9 @@ another device while the list stays open and focused appear only after **Actuali
 On desktop it ends the view-tab row, after the date controls on Llegadas and Salidas;
 on mobile it sits in the app header on every view, since Nueva reserva floats. It
 re-reads the current view, keeping its search, filters, sorting, and page, and keeps
-the results visible while they update. It spins and is disabled only while a requested
-re-read runs; it is also disabled while any other read is in flight.
+the results visible while they update. It spins only while a requested re-read runs.
+It is disabled during any read and until the first results arrive; if that first read
+fails, the page's own retry replaces the list.
 
 Pagination shows the result range and total, 25/50/100 reservations per page with
 50 as the default, and previous/next controls. On mobile, these buttons are

@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button";
 import { PropertyDatePicker } from "@/components/property-date-picker";
 import { Field, FieldError, FieldLabel } from "@/components/ui/field";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { Separator } from "@/components/ui/separator";
+import { PickerTodayFooter } from "@/components/picker-today-footer";
 
 export function DateField({
   id,
@@ -81,23 +81,13 @@ export function DateField({
             }}
           />
           {onToday ? (
-            <>
-              <Separator />
-              <div className="flex p-2">
-                <Button
-                  type="button"
-                  variant="outline"
-                  className="w-full"
-                  onClick={() => {
-                    onToday();
-                    setOpen(false);
-                    onBlur?.();
-                  }}
-                >
-                  Hoy
-                </Button>
-              </div>
-            </>
+            <PickerTodayFooter
+              onToday={() => {
+                onToday();
+                setOpen(false);
+                onBlur?.();
+              }}
+            />
           ) : null}
         </PopoverContent>
       </Popover>

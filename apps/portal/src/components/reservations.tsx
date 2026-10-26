@@ -310,8 +310,8 @@ export function Reservations({
 
   if (missingSetup) return <SetupRequired missing={missingSetup} />;
 
-  const dated = search.view === "arrivals" || search.view === "departures";
-  // Phones keep it in the header so every view has it; desktop puts it with the view controls.
+  const isDayView = search.view === "arrivals" || search.view === "departures";
+  const goToToday = () => refine({ day: propertyToday() });
   const refreshButton = (
     <RefreshButton
       refreshing={refreshing}
@@ -319,6 +319,16 @@ export function Reservations({
       size={mobile ? "icon-sm" : "icon"}
       onRefresh={refresh}
     />
+  );
+  // Phones keep Actualizar in the header so every view has it and fold Hoy into the
+  // day picker; desktop lines both up after the view tabs.
+  const headerRefresh = mobile ? refreshButton : null;
+  const toolbarRefresh = mobile ? null : refreshButton;
+  const pickerToday = mobile ? goToToday : undefined;
+  const standaloneToday = mobile ? null : (
+    <Button variant="ghost" onClick={goToToday}>
+      Hoy
+    </Button>
   );
 
   function open(id: string) {
@@ -397,7 +407,7 @@ export function Reservations({
     >
       {/* On mobile Nueva reserva floats through the shell slot instead of the header. */}
       <PageHeaderActions>
-        {mobile ? refreshButton : null}
+        {headerRefresh}
         <NewReservationButton scrollRef={mainRef} onClick={() => setTarget({ mode: "new" })} />
       </PageHeaderActions>
       <div className="flex flex-wrap items-end justify-between gap-x-4 gap-y-3">
@@ -426,9 +436,9 @@ export function Reservations({
             ))}
           </TabsList>
         </Tabs>
-        {dated || !mobile ? (
+        {isDayView || toolbarRefresh ? (
           <div className="flex w-full flex-wrap items-end gap-1 md:w-auto">
-            {dated ? (
+            {isDayView ? (
               <>
                 <Button
                   variant="outline"
@@ -449,7 +459,7 @@ export function Reservations({
                         day: format(date, "yyyy-MM-dd"),
                       })
                     }
-                    onToday={mobile ? () => refine({ day: propertyToday() }) : undefined}
+                    onToday={pickerToday}
                   />
                 </div>
                 <Button
@@ -460,14 +470,10 @@ export function Reservations({
                 >
                   <ChevronRightIcon data-icon="inline-end" />
                 </Button>
-                {mobile ? null : (
-                  <Button variant="ghost" onClick={() => refine({ day: propertyToday() })}>
-                    Hoy
-                  </Button>
-                )}
+                {standaloneToday}
               </>
             ) : null}
-            {mobile ? null : refreshButton}
+            {toolbarRefresh}
           </div>
         ) : null}
       </div>
