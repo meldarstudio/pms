@@ -1,22 +1,42 @@
+import type { DatabaseSync } from "node:sqlite";
+import { hashPassword } from "better-auth/crypto";
 import app from "../index";
 import type { Env } from "../env";
-import { hashPassword } from "../password";
+import { accountSql, type AccountRole } from "../account-sql";
 
-export const STAFF_USERNAME = "hotelmanantial";
-export const STAFF_PASSWORD = "correct horse battery staple";
 export const PORTAL_ORIGIN = "https://app.hotelmanantialchurin.com";
 
-let passwordHash: Promise<string> | undefined;
+export const ACCOUNTS = {
+  staff: { username: "hotelmanantial", password: "correct horse battery staple" },
+  owner: { username: "duena", password: "owner horse battery staple" },
+} satisfies Record<AccountRole, { username: string; password: string }>;
 
-export async function authEnv(overrides: Partial<Env["Bindings"]> = {}): Promise<Env["Bindings"]> {
-  passwordHash ??= hashPassword(STAFF_PASSWORD);
+export const STAFF_USERNAME = ACCOUNTS.staff.username;
+
+const hashes = new Map<string, Promise<string>>();
+
+/** Create the staff and owner accounts the way the account script does. */
+export async function seedAccounts(sqlite: DatabaseSync) {
+  for (const [role, { username, password }] of Object.entries(ACCOUNTS)) {
+    if (!hashes.has(password)) hashes.set(password, hashPassword(password));
+    sqlite.exec(
+      accountSql({
+        username,
+        role: role as AccountRole,
+        passwordHash: await hashes.get(password)!,
+        id: `${role}-account`,
+        now: Date.now(),
+      }),
+    );
+  }
+}
+
+export function authEnv(DB: D1Database, overrides: Partial<Env["Bindings"]> = {}): Env["Bindings"] {
   return {
-    DB: {} as D1Database,
+    DB,
     CURRENCY: "PEN",
     PROPERTY_TIME_ZONE: "America/Lima",
-    AUTH_USERNAME: STAFF_USERNAME,
-    STAFF_PASSWORD_HASH: await passwordHash,
-    SESSION_SECRET: "test-session-secret",
+    SESSION_SECRET: "test-session-secret-that-is-long-enough",
     ALLOWED_ORIGINS: PORTAL_ORIGIN,
     LOGIN_LIMITER: { limit: async () => ({ success: true }) },
     ...overrides,
@@ -35,12 +55,20 @@ export function login(env: Env["Bindings"], body: unknown = loginBody()) {
   );
 }
 
-export function loginBody(overrides: Record<string, string> = {}) {
-  return { username: STAFF_USERNAME, password: STAFF_PASSWORD, ...overrides };
+export function loginBody(overrides: Record<string, string> = {}, role: AccountRole = "staff") {
+  return { ...ACCOUNTS[role], ...overrides };
 }
 
-export async function signIn(env: Env["Bindings"]): Promise<string> {
-  const response = await login(env);
+/** Sign in through the real login route and return the session cookie pair. */
+export async function signIn(env: Env["Bindings"], role: AccountRole = "staff"): Promise<string> {
+  const response = await login(env, loginBody({}, role));
   if (response.status !== 200) throw new Error(`sign-in failed with ${response.status}`);
-  return response.headers.getSetCookie()[0]!.split(";")[0]!;
+  return sessionCookie(response);
+}
+
+export function sessionCookie(response: Response): string {
+  return response.headers
+    .getSetCookie()
+    .map((cookie) => cookie.split(";")[0]!)
+    .join("; ");
 }

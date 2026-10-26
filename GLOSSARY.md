@@ -23,9 +23,18 @@ _Avoid_: Staff's local date, UTC today
 ### Access
 
 **Staff account**:
-The single shared login that everyone who operates the portal uses, identified by one fixed username.
-Changes made under it are not attributed to individual people.
-_Avoid_: Admin account, user, manager login
+The shared login that the people who operate the portal use day to day, with the staff role. Changes
+made under it are not attributed to individual people.
+_Avoid_: User, manager login
+
+**Owner account**:
+The property owner's personal login, with the owner role.
+_Avoid_: Admin account, superuser
+
+**Role**:
+The level of access an account holds, either staff or owner. The owner role can do everything the staff
+role can, and also manage accounts.
+_Avoid_: Permission level, admin
 
 ### Reservations and dates
 

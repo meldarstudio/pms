@@ -1,51 +1,49 @@
 import type { Context } from "hono";
 import { createMiddleware } from "hono/factory";
-import { deleteCookie, getSignedCookie, setSignedCookie } from "hono/cookie";
+import { createAuth, type SignedInAccount } from "./auth";
 import type { Env } from "./env";
 import { HttpError } from "./http";
 
-const COOKIE = "pms_session";
-const MAX_AGE_SECONDS = 30 * 24 * 60 * 60;
 const PUBLIC_ROUTES = new Set(["GET /", "POST /login"]);
 
 export function authConfigured(c: Context<Env>): boolean {
-  const { AUTH_USERNAME, STAFF_PASSWORD_HASH, SESSION_SECRET } = c.env;
-  if (AUTH_USERNAME && STAFF_PASSWORD_HASH && SESSION_SECRET) return true;
-  console.error(
-    "Staff login is not configured: set AUTH_USERNAME, STAFF_PASSWORD_HASH and SESSION_SECRET",
-  );
+  if (c.env.SESSION_SECRET) return true;
+  console.error("Sign-in is not configured: set SESSION_SECRET");
   return false;
 }
 
-function isHttps(c: Context<Env>): boolean {
-  return new URL(c.req.url).protocol === "https:";
+/** Copy Better Auth's Set-Cookie headers onto the response. */
+export function forwardCookies(c: Context<Env>, headers: Headers | null | undefined) {
+  for (const cookie of headers?.getSetCookie() ?? [])
+    c.header("set-cookie", cookie, { append: true });
 }
 
-async function hasSession(c: Context<Env>): Promise<boolean> {
-  if (!authConfigured(c)) return false;
-  const value = await getSignedCookie(c, c.env.SESSION_SECRET, COOKIE);
-  if (!value) return false;
-  const age = Date.now() - Number(value);
-  return Number.isFinite(age) && age >= 0 && age < MAX_AGE_SECONDS * 1000;
-}
-
-export async function startSession(c: Context<Env>) {
-  await setSignedCookie(c, COOKIE, String(Date.now()), c.env.SESSION_SECRET, {
-    httpOnly: true,
-    secure: isHttps(c),
-    sameSite: "Lax",
-    path: "/",
-    maxAge: MAX_AGE_SECONDS,
-  });
-}
-
-export function endSession(c: Context<Env>) {
-  deleteCookie(c, COOKIE, { path: "/", secure: isHttps(c) });
+export function toAccount(user: { id: string; username?: string | null; role?: unknown }) {
+  return {
+    id: user.id,
+    username: user.username ?? "",
+    role: user.role === "owner" ? "owner" : "staff",
+  } satisfies SignedInAccount;
 }
 
 export const requireSession = createMiddleware<Env>(async (c, next) => {
-  if (PUBLIC_ROUTES.has(`${c.req.method} ${c.req.path}`) || (await hasSession(c))) {
-    return next();
-  }
-  throw new HttpError(401, "unauthorized");
+  const isPublic = PUBLIC_ROUTES.has(`${c.req.method} ${c.req.path}`);
+  const configured = authConfigured(c);
+  if (!isPublic && !configured) throw new HttpError(401, "unauthorized");
+  if (configured) c.set("auth", createAuth(c));
+  if (isPublic) return next();
+
+  const { headers, response } = await c.var.auth.api.getSession({
+    headers: c.req.raw.headers,
+    returnHeaders: true,
+  });
+  if (!response) throw new HttpError(401, "unauthorized");
+  forwardCookies(c, headers);
+  c.set("account", toAccount(response.user));
+  return next();
+});
+
+export const requireOwner = createMiddleware<Env>(async (c, next) => {
+  if (c.var.account.role !== "owner") throw new HttpError(403, "owner account required");
+  return next();
 });

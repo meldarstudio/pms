@@ -178,3 +178,75 @@ export const reservationRequests = sqliteTable("reservation_requests", {
   payload: text("payload").notNull(),
   createdAt: text("created_at").notNull(),
 });
+
+// Better Auth tables. Field names are Better Auth's; times are epoch milliseconds.
+const authTime = (name: string) => integer(name, { mode: "timestamp_ms" });
+
+export const user = sqliteTable(
+  "user",
+  {
+    id: text("id").primaryKey(),
+    name: text("name").notNull(),
+    email: text("email").notNull().unique(),
+    emailVerified: integer("email_verified", { mode: "boolean" }).notNull().default(false),
+    image: text("image"),
+    username: text("username").unique(),
+    displayUsername: text("display_username"),
+    role: text("role").notNull().default("staff"),
+    createdAt: authTime("created_at").notNull(),
+    updatedAt: authTime("updated_at").notNull(),
+  },
+  (table) => [check("user_role", sql`${table.role} IN ('staff', 'owner')`)],
+);
+
+export const session = sqliteTable(
+  "session",
+  {
+    id: text("id").primaryKey(),
+    token: text("token").notNull().unique(),
+    userId: text("user_id")
+      .notNull()
+      .references(() => user.id, { onDelete: "cascade" }),
+    expiresAt: authTime("expires_at").notNull(),
+    ipAddress: text("ip_address"),
+    userAgent: text("user_agent"),
+    createdAt: authTime("created_at").notNull(),
+    updatedAt: authTime("updated_at").notNull(),
+  },
+  (table) => [index("session_user").on(table.userId)],
+);
+
+export const account = sqliteTable(
+  "account",
+  {
+    id: text("id").primaryKey(),
+    accountId: text("account_id").notNull(),
+    providerId: text("provider_id").notNull(),
+    userId: text("user_id")
+      .notNull()
+      .references(() => user.id, { onDelete: "cascade" }),
+    accessToken: text("access_token"),
+    refreshToken: text("refresh_token"),
+    idToken: text("id_token"),
+    accessTokenExpiresAt: authTime("access_token_expires_at"),
+    refreshTokenExpiresAt: authTime("refresh_token_expires_at"),
+    scope: text("scope"),
+    password: text("password"),
+    createdAt: authTime("created_at").notNull(),
+    updatedAt: authTime("updated_at").notNull(),
+  },
+  (table) => [index("account_user").on(table.userId)],
+);
+
+export const verification = sqliteTable(
+  "verification",
+  {
+    id: text("id").primaryKey(),
+    identifier: text("identifier").notNull(),
+    value: text("value").notNull(),
+    expiresAt: authTime("expires_at").notNull(),
+    createdAt: authTime("created_at").notNull(),
+    updatedAt: authTime("updated_at").notNull(),
+  },
+  (table) => [index("verification_identifier").on(table.identifier)],
+);

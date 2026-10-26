@@ -18,7 +18,8 @@ pnpm db:reset:local --rebuild-schema
 This removes PMS tables, their triggers, and the D1 migration ledger, applies the
 current schema, and reloads sample data. Subsequent resets can omit the flag.
 It preserves unrelated tables and Cloudflare metadata. The rebuild also supports
-`--persist-to` for an isolated local database.
+`--persist-to` for an isolated local database. It drops local accounts; create them
+again with [`pnpm auth:account`](../README.md#signing-in). A plain reset keeps them.
 
 The dataset contains three room types and **24 rooms**: 12 Estándar, 8 Superior,
 and 4 Suite familiar. It generates **over 600 reservations across 90 nights**,

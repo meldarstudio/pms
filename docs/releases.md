@@ -207,10 +207,12 @@ The existing workflow uses these repository Actions secrets:
   administration.
 
 Keep tokens in secrets, never committed files. Expose them only to the operations
-that need them, not installation, tests, checks, or builds. Existing Worker
-`STAFF_PASSWORD_HASH` and `SESSION_SECRET` stay in Cloudflare; do not copy or rotate
-them for release setup. Migration authorization remains separate. Token permissions
-require authorized operational verification; local simulations do not prove them.
+that need them, not installation, tests, checks, or builds. The existing Worker
+`SESSION_SECRET` stays in Cloudflare; do not copy or rotate it for release setup.
+The one-time move to accounts follows the
+[authentication cutover](authentication.md#cutover-from-the-shared-password).
+Migration authorization remains separate. Token permissions require authorized
+operational verification; local simulations do not prove them.
 
 ## Workflow compatibility
 

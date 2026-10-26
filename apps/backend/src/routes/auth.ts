@@ -1,9 +1,10 @@
 import { loginSchema } from "@pms/shared";
-import { Hono } from "hono";
+import { APIError } from "better-auth/api";
+import { Hono, type Context } from "hono";
+import type { SignedInAccount } from "../auth";
 import type { Env } from "../env";
 import { HttpError, validate } from "../http";
-import { matchesText, verifyPassword } from "../password";
-import { authConfigured, endSession, startSession } from "../session";
+import { authConfigured, forwardCookies, toAccount } from "../session";
 
 export const authRoutes = new Hono<Env>();
 
@@ -15,24 +16,34 @@ authRoutes.post("/login", validate("json", loginSchema), async (c) => {
   if (!authConfigured(c)) throw new HttpError(401, "invalid credentials");
 
   const { username, password } = c.req.valid("json");
-  const [usernameMatches, passwordMatches] = await Promise.all([
-    matchesText(username.toLowerCase(), c.env.AUTH_USERNAME.toLowerCase()),
-    verifyPassword(password, c.env.STAFF_PASSWORD_HASH),
-  ]);
-  if (!usernameMatches || !passwordMatches) throw new HttpError(401, "invalid credentials");
-
-  await startSession(c);
-  return c.json({
-    username: c.env.AUTH_USERNAME,
-    propertyTimeZone: c.get("propertyCalendar").timeZone,
-  });
+  try {
+    const { headers, response } = await c.var.auth.api.signInUsername({
+      body: { username, password },
+      headers: c.req.raw.headers,
+      returnHeaders: true,
+    });
+    if (!response) throw new HttpError(401, "invalid credentials");
+    forwardCookies(c, headers);
+    return c.json(sessionBody(c, toAccount(response.user)));
+  } catch (error) {
+    if (error instanceof APIError) throw new HttpError(401, "invalid credentials");
+    throw error;
+  }
 });
 
-authRoutes.post("/logout", (c) => {
-  endSession(c);
+authRoutes.post("/logout", async (c) => {
+  const { headers } = await c.var.auth.api.signOut({
+    headers: c.req.raw.headers,
+    returnHeaders: true,
+  });
+  forwardCookies(c, headers);
   return c.json({ ok: true });
 });
 
-authRoutes.get("/session", (c) =>
-  c.json({ username: c.env.AUTH_USERNAME, propertyTimeZone: c.get("propertyCalendar").timeZone }),
-);
+authRoutes.get("/session", (c) => {
+  return c.json(sessionBody(c, c.var.account));
+});
+
+function sessionBody(c: Context<Env>, { username, role }: SignedInAccount) {
+  return { username, role, propertyTimeZone: c.get("propertyCalendar").timeZone };
+}

@@ -15,7 +15,7 @@ WCAG conformance; target sizing and spacing require review in the rendered UI.
 ## Navigation
 
 The portal uses a narrow, flat sidebar for Reservas, Calendario,
-[Limpieza](housekeeping.md), and Inventario y tarifas, with Configuración and Salir at the bottom.
+[Limpieza](housekeeping.md), and Inventario y tarifas, with Configuración, Cuentas (Owner account only) and Salir at the bottom.
 The header toggle fully hides the sidebar on desktop, reclaiming its width;
 on phones it opens a dismissible navigation sheet. Desktop open/hidden state is
 saved in this browser's local storage across refreshes and browser restarts,

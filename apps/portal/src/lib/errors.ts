@@ -8,6 +8,14 @@ const messages: Record<string, string> = {
   "invalid credentials": "Usuario o contraseña incorrectos.",
   "too many login attempts": "Demasiados intentos. Espera un minuto e inténtalo de nuevo.",
   unauthorized: "Tu sesión terminó. Inicia sesión de nuevo.",
+  "owner account required": "Solo la cuenta del propietario puede hacer esto.",
+  "account not found": "No se encontró la cuenta. Recarga la página.",
+  "password must be at least 12 characters": "La contraseña debe tener al menos 12 caracteres.",
+  "password must be at most 128 characters": "La contraseña debe tener como máximo 128 caracteres.",
+  "change your own password with your current password":
+    "Cambia tu propia contraseña con tu contraseña actual.",
+  "current password is incorrect": "La contraseña actual no es correcta.",
+  "current password is required": "Escribe tu contraseña actual.",
   "reservation requires at least one room": "La reserva debe tener al menos una habitación.",
   "payment date is required": "Indica la fecha del pago.",
   "guest room must belong to this reservation":

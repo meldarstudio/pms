@@ -14,6 +14,10 @@ const tables = [
   "guests",
   "rooms",
   "room_types",
+  "session",
+  "account",
+  "verification",
+  "user",
   "d1_migrations",
 ];
 

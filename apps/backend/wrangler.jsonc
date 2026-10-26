@@ -3,13 +3,14 @@
   "name": "pms-api",
   "main": "src/index.ts",
   "compatibility_date": "2026-10-08",
+  // Better Auth needs AsyncLocalStorage and native scrypt from node:crypto.
+  "compatibility_flags": ["nodejs_compat"],
   "workers_dev": false,
   "preview_urls": false,
   "routes": [{ "pattern": "api.hotelmanantialchurin.com", "custom_domain": true }],
   "vars": {
     "CURRENCY": "PEN",
     "PROPERTY_TIME_ZONE": "America/Lima",
-    "AUTH_USERNAME": "hotelmanantial",
     "ALLOWED_ORIGINS": "https://app.hotelmanantialchurin.com",
   },
   "ratelimits": [

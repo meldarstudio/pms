@@ -12,7 +12,8 @@
     "db:migrate:local": "pnpm --filter @pms/backend db:migrate:local",
     "db:seed:local": "pnpm --filter @pms/backend db:seed:local",
     "db:reset:local": "pnpm --filter @pms/backend db:reset:local",
-    "auth:hash": "pnpm --filter @pms/backend auth:hash",
+    "auth:account": "pnpm --filter @pms/backend auth:account",
+    "auth:secret": "pnpm --filter @pms/backend auth:secret",
     "check": "vp fmt --check . && pnpm -r --workspace-concurrency=1 check",
     "format": "vp fmt ."
   },

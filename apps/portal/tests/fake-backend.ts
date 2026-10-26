@@ -143,7 +143,11 @@ export function createFakeBackend() {
   }
 
   // Defaults answer the reads every screen makes from the seeded catalog.
-  on("GET", "/session", () => ({ username: "hotelmanantial", propertyTimeZone: "America/Lima" }));
+  on("GET", "/session", () => ({
+    username: "hotelmanantial",
+    role: "staff",
+    propertyTimeZone: "America/Lima",
+  }));
   on("GET", "/room-types", () => catalog.roomTypes);
   on("GET", "/rooms", () => catalog.rooms);
   on("GET", "/calendar", ({ url }) =>

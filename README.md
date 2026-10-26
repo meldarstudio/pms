@@ -69,17 +69,20 @@ procedure. Dated confirmations live in [operational status](docs/operations-stat
 
 ## Signing in
 
-The portal and API require the staff login. Before the first `pnpm dev`, create
-the local Worker variables:
+The portal and API require a signed-in account. Before the first `pnpm dev`, create
+the local Worker variables and accounts:
 
 ```sh
 cp apps/backend/.dev.vars.example apps/backend/.dev.vars
-pnpm auth:hash                  # prompts for a password, prints STAFF_PASSWORD_HASH
-pnpm auth:hash --session-secret # prints a SESSION_SECRET
+pnpm auth:secret                                     # prints a SESSION_SECRET
+pnpm db:migrate:local
+pnpm auth:account hotelmanantial --role=staff --local
+pnpm auth:account <owner-username> --role=owner --local
 ```
 
-Paste both values into `apps/backend/.dev.vars`, then sign in at
-`http://localhost:5173` with username `hotelmanantial` and that password. Restart
+Paste the secret into `apps/backend/.dev.vars`, then sign in at
+`http://localhost:5173` as `hotelmanantial` or the owner with the password you
+typed. See [authentication](docs/authentication.md) for accounts and roles. Restart
 `pnpm dev:backend` after editing `.dev.vars`; Wrangler does not always reload it.
 Use `localhost` for both the portal and the API. Mixing `localhost` and `127.0.0.1`
 prevents the browser sending the session cookie because they are different sites.

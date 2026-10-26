@@ -13,11 +13,13 @@
     "db:migrate:remote": "node scripts/migrate-production.mjs",
     "db:seed:local": "wrangler d1 execute DB --local --file=./seed.sql",
     "db:reset:local": "node scripts/seed-reset.mjs",
-    "auth:hash": "node scripts/hash-password.mjs"
+    "auth:account": "node scripts/account.mjs",
+    "auth:secret": "node scripts/session-secret.mjs"
   },
   "dependencies": {
     "@hono/zod-validator": "^0.9.1",
     "@pms/shared": "workspace:*",
+    "better-auth": "1.7.13",
     "drizzle-orm": "^0.45.3",
     "hono": "^4.13.13",
     "zod": "catalog:"

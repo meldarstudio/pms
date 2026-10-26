@@ -5,22 +5,23 @@ import { DatabaseSync, type SQLInputValue } from "node:sqlite";
 import { URL } from "node:url";
 import app from "../index";
 import type { Env } from "../env";
-import { authEnv, PORTAL_ORIGIN, signIn } from "./auth";
+import type { AccountRole } from "../account-sql";
+import { authEnv, PORTAL_ORIGIN, seedAccounts, signIn } from "./auth";
 
 export type TestDb = {
   /** The migrated database, for seeding and for rows the API does not expose. */
   sqlite: DatabaseSync;
   /** Worker bindings for every request. Tests may change vars, then call signIn(). */
   env: Env["Bindings"];
-  /** Call the real Hono app as the portal, with the staff session unless signedIn is false. */
+  /** Call the real Hono app as the portal, with the current session unless signedIn is false. */
   request(
     path: string,
     method?: string,
     body?: unknown,
     options?: { signedIn?: boolean },
   ): Promise<Response>;
-  /** Replace the staff session, for example after moving the clock or the time zone. */
-  signIn(): Promise<void>;
+  /** Replace the session, for example after moving the clock or to act as the owner. */
+  signIn(role?: AccountRole): Promise<void>;
   /**
    * Run `hook` before each of the next `times` (default 1) write batches, any
    * batch with a statement that returns no rows, enters its transaction: after
@@ -52,8 +53,9 @@ function statement(sqlite: DatabaseSync, sql: string, params: SQLInputValue[] = 
     bind: (...values: SQLInputValue[]) => statement(sqlite, sql, values),
     raw: async () => {
       // The subquery gives duplicate join columns distinct names on Node 22.
+      // Writes with RETURNING cannot be a subquery and have no joins.
       return sqlite
-        .prepare(`SELECT * FROM (${sql})`)
+        .prepare(/^\s*(select|with)\b/i.test(sql) ? `SELECT * FROM (${sql})` : sql)
         .all(...params)
         .map((row) => Object.values(row));
     },
@@ -62,7 +64,7 @@ function statement(sqlite: DatabaseSync, sql: string, params: SQLInputValue[] = 
   };
 }
 
-/** A fresh database with every journal migration applied, and a signed-in staff session. */
+/** A fresh database with every journal migration applied, staff and owner accounts, and a signed-in staff session. */
 export async function createTestDb(): Promise<TestDb> {
   const sqlite = new DatabaseSync(":memory:");
   sqlite.exec("PRAGMA foreign_keys = ON");
@@ -109,7 +111,8 @@ export async function createTestDb(): Promise<TestDb> {
     },
   } as unknown as D1Database;
 
-  const env = await authEnv({ DB });
+  await seedAccounts(sqlite);
+  const env = authEnv(DB);
   let cookie = await signIn(env);
   return {
     sqlite,
@@ -128,8 +131,8 @@ export async function createTestDb(): Promise<TestDb> {
         },
         env,
       ),
-    signIn: async () => {
-      cookie = await signIn(env);
+    signIn: async (role) => {
+      cookie = await signIn(env, role);
     },
     beforeCommit: (run, { times = 1 } = {}) => {
       const hook = { run, times };
