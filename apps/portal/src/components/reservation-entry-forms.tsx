@@ -19,6 +19,7 @@ import {
   type PaymentValues,
 } from "@/lib/reservation-form-schemas";
 import { toast, toastError } from "@/lib/toast";
+import { phoneDraft } from "@/lib/phone";
 
 export const paymentMethods = [
   { value: "cash", label: "Efectivo" },
@@ -53,7 +54,7 @@ export function GuestEntryForm({
           id: crypto.randomUUID(),
           fullName: "",
           email: "",
-          phone: "",
+          phone: phoneDraft(null),
           documentType: "",
           documentNumber: "",
           reservationRoomId: detail.rooms.length === 1 ? detail.rooms[0].id : null,
@@ -137,9 +138,7 @@ export function GuestEntryForm({
           <form.AppField name="email">
             {(field) => <field.Text label="Email del huésped" type="email" />}
           </form.AppField>
-          <form.AppField name="phone">
-            {(field) => <field.Text label="Teléfono del huésped" type="tel" placeholder="+51…" />}
-          </form.AppField>
+          <form.AppField name="phone">{(field) => <field.Phone />}</form.AppField>
         </FieldGroup>
         <div className="flex items-center gap-2">
           <Button

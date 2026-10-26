@@ -466,6 +466,58 @@ it.each([
   },
 );
 
+it.each([
+  { scenario: "local number", phone: "999111222" },
+  { scenario: "annotated international number", phone: "+51 987654321 llamar por la tarde" },
+])("shows a legacy $scenario as stored and clears it on request", async ({ phone }) => {
+  saved = { ...saved, guest: { ...saved.guest, phone } };
+  mockApi();
+  await render();
+  assert.equal(page.container.querySelector(`a[href="tel:${phone}"]`)?.textContent, phone);
+  await click("Editar contacto");
+  assert.equal(field("phone").value, phone);
+  await fill("phone", "");
+  await submit();
+  await page.until(() => !popup());
+  assert.deepEqual(writes[0].actions, [
+    {
+      type: "contact",
+      contact: { fullName: "Ana Pérez", email: "ana@example.com", phone: null },
+    },
+  ]);
+  assert.match(page.container.textContent, /Sin teléfono/);
+  assert.doesNotMatch(page.container.textContent, /Falta|sin teléfono registrado/i);
+});
+
+it("keeps a server phone rejection on the contact field until the phone changes", async () => {
+  mockApi({
+    write: () =>
+      writes.length === 1
+        ? Response.json(
+            { error: "phone number is too long" },
+            { status: 400, headers: { "X-Error-Field": "phone" } },
+          )
+        : undefined,
+  });
+  await render();
+  await click("Editar contacto");
+  await fill("phone", "987 654 321");
+  await submit();
+  await page.until(() => field("phone").getAttribute("aria-invalid") === "true");
+  assert.match(
+    popup()!.textContent,
+    /El número tiene demasiados dígitos para el país seleccionado/,
+  );
+  await fill("fullName", "Ana María Pérez");
+  assert.equal(field("phone").getAttribute("aria-invalid"), "true");
+  await fill("phone", "987 654 322");
+  await page.until(() => field("phone").getAttribute("aria-invalid") !== "true");
+  await submit();
+  await page.until(() => !popup());
+  assert.equal(writes.length, 2);
+  assert.equal(saved.guest.phone, "+51987654322");
+});
+
 for (const balance of [-10000]) {
   it(`keeps a checked-out reservation editable with balance ${balance}`, async () => {
     saved = { ...saved, status: "checked_out", balanceCents: balance };
@@ -476,7 +528,10 @@ for (const balance of [-10000]) {
     await fill("phone", "999333444");
     await submit();
     await page.until(() => !popup());
-    assert.equal(page.container.querySelector('a[href="tel:999333444"]')!.textContent, "999333444");
+    assert.equal(
+      page.container.querySelector('a[href="tel:+51999333444"]')!.textContent,
+      "+51 999 333 444",
+    );
     assert.equal(saved.status, "checked_out");
   });
 }

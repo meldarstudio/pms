@@ -22,6 +22,31 @@ Use [the release procedure](releases.md) for operational steps.
   permissions, and current automatic-build settings were not inspected. The
   [historical rollout notes](history/schema-rollouts.md) do not establish whether
   those transitions have been completed in production.
+- 2026-10-26 read-only production contact-phone audit: An agent-run remote D1
+  `SELECT` inspected 35 booking-contact records and 10 staying-guest records in
+  `pms-production`. With `libphonenumber-js` 1.13.15 and Peru as the default for
+  numbers without `+`, 38 phones were structurally valid and could be normalized,
+  6 were null, and 1 eight-digit value required manual review. No extensions or
+  annotated values were found. D1 reported `rows_written: 0` and
+  `changed_db: false`. No data corrections, migrations, exports, or deployments
+  were performed. This does not verify reachability, intended country, deployed
+  application behavior, or recoverability. Phone-only evidence and the query were
+  retained privately under `~/.pms-operations/audits/`; they are not a database backup.
+- 2026-10-26 authorized production contact-phone cleanup: Following that audit and
+  explicit operator approval, an agent-run D1 query batch normalized 38 phones to
+  E.164 and cleared the single invalid eight-digit phone to null. The 6 existing
+  nulls were left unchanged; no people or reservations were deleted. Original
+  phones and revisions were checked before applying compare-and-swap updates;
+  contact revisions and the 5 affected staying-guest reservation revisions were
+  incremented. Postflight reads matched the exact phone/revision plan: 38 valid
+  canonical phones and 7 nulls, with unchanged record counts, schema, and migration
+  history. No application deployment or schema migration was performed. Original
+  values, checksummed SQL, results, and guarded recovery SQL remain private under
+  `~/.pms-operations/phone-cleanups/`. Forward updates, phone restoration, and 4
+  stale/deleted-record abort cases passed in local SQLite; remote restoration and
+  application behavior were not tested. These targeted records are not a full
+  database backup; any recovery requires separate approval and reconciliation of
+  newer writes.
 
 After an authorized operation, append a dated, non-sensitive result identifying
 the operator or evidence source and exactly what was verified. Distinguish an

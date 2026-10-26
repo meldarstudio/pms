@@ -125,6 +125,48 @@ write then returns the existing 409 error and rolls back the entire command,
 including its request receipt. Preview remains advisory and does not reserve
 inventory or freeze room rules.
 
+## Contact phones
+
+A [contact phone](../GLOSSARY.md#reservations-and-dates) is optional on booking
+contacts and staying guests. Each record keeps one nullable phone; records may
+share a number, and nothing copies phones between a booking contact and its
+staying guests. Validation is structural, using the maintained country metadata
+in `libphonenumber-js`. It does not show the line exists or supports WhatsApp.
+
+`normalizePhone` in `@pms/shared` applies the API rule, and `acceptPhone` in
+`apps/backend/src/rules.ts` applies it to reservation creation, `contact` and
+`set-guests` actions, and guest `POST`/`PATCH`. After request-schema parsing, a
+submitted phone that equals the stored value is kept; any other nonempty phone
+must be a valid number for its country. Request schemas trim surrounding
+whitespace before this comparison. Arbitrary invalid legacy strings have no
+byte-for-byte preservation or unrelated-save compatibility guarantee; submitted
+values that differ after parsing must pass current validation.
+Input without a leading `+` is read as Peruvian. Spaces, parentheses, dots, and
+hyphens are accepted; landlines need their area code; extensions are rejected,
+not dropped. Accepted numbers are stored in E.164 form, such as `+51987654321`.
+Rejections return 400 with `X-Error-Field: phone`, roll back the whole command,
+and use one of the English messages in `phoneErrors`. `null` clears a workflow
+phone; guest `PATCH` cannot clear one.
+
+The portal mirrors these rules in `apps/portal/src/lib/phone.ts`, since it does
+not import `@pms/shared`. **Teléfono · Opcional** (`PhoneField`) is used in
+creation, **Editar contacto**, and staying-guest add/edit. It pairs a searchable
+country selector, defaulting to Peru and showing calling codes, with a `tel`
+input. Pasting a `+` number selects its country. Choosing a country keeps the
+national digits and revalidates them; input containing extensions or unsupported
+text stays intact so country changes cannot silently discard it. Errors follow
+the editor reveal rules in
+[Drafts, validation, and retries](#drafts-validation-and-retries), and a blank
+phone is valid with no missing-phone warning. Editors open valid, explicitly
+international phones in national format under their recognized country, including
+numbers with accepted presentation separators, not just canonical E.164 strings.
+Other values appear as stored, including annotations. Until staff change the text
+or country, the portal resubmits the stored value; API parsing and validation still
+apply. Displays use international spacing and canonical `tel:` links for valid,
+explicitly international phones without extensions or unsupported text; other
+values are shown and linked as stored. Loading or displaying a phone does not write
+to storage. Phone search is unchanged.
+
 ## Portal editors
 
 Calendar bars open the compact `RoomBookingDialog` in edit mode. Its separate

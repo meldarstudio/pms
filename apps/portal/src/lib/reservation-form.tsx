@@ -1,10 +1,36 @@
 import { useId, type ComponentProps, type FormEvent } from "react";
 import { createFormHook, createFormHookContexts } from "@tanstack/react-form";
-import { TextField, ChoiceField } from "@/components/workflow-fields";
+import { TextField, ChoiceField, PhoneField } from "@/components/workflow-fields";
+import type { PhoneValue } from "./phone";
 import { errorMessage } from "./form-errors";
 export { blurThenChange } from "./reservation-form-state";
 
 const { fieldContext, formContext, useFieldContext } = createFormHookContexts();
+
+function useFormControl<T>(live = false) {
+  const field = useFieldContext<T>();
+  const id = useId();
+  const reveal =
+    live ||
+    field.state.meta.isBlurred ||
+    field.form.state.submissionAttempts > 0 ||
+    !!field.state.meta.errorMap.onServer;
+  return {
+    id,
+    name: field.name,
+    value: field.state.value,
+    error: reveal ? errorMessage(field.state.meta.errors) : undefined,
+    onBlur: field.handleBlur,
+    onChange: (value: T) => {
+      if (field.state.meta.errorMap.onServer)
+        field.setMeta((meta) => ({
+          ...meta,
+          errorMap: { ...meta.errorMap, onServer: undefined },
+        }));
+      field.handleChange(value);
+    },
+  };
+}
 
 function FormText({
   live = false,
@@ -12,31 +38,8 @@ function FormText({
 }: Omit<ComponentProps<typeof TextField>, "value" | "onChange" | "error"> & {
   live?: boolean;
 }) {
-  const field = useFieldContext<string>();
-  const id = useId();
-  const reveal =
-    live ||
-    field.state.meta.isBlurred ||
-    field.form.state.submissionAttempts > 0 ||
-    !!field.state.meta.errorMap.onServer;
-  return (
-    <TextField
-      {...props}
-      id={id}
-      name={field.name}
-      value={field.state.value}
-      error={reveal ? errorMessage(field.state.meta.errors) : undefined}
-      onBlur={field.handleBlur}
-      onChange={(value) => {
-        if (field.state.meta.errorMap.onServer)
-          field.setMeta((meta) => ({
-            ...meta,
-            errorMap: { ...meta.errorMap, onServer: undefined },
-          }));
-        field.handleChange(value);
-      }}
-    />
-  );
+  const control = useFormControl<string>(live);
+  return <TextField {...props} {...control} />;
 }
 
 function FormChoice(
@@ -46,40 +49,32 @@ function FormChoice(
     blank?: boolean;
   },
 ) {
-  const field = useFieldContext<string | null>();
-  const id = useId();
+  const { value, onChange, ...control } = useFormControl<string | null>();
   const { onValueChange, nullable, blank, ...rest } = props;
-  const reveal =
-    field.state.meta.isBlurred ||
-    field.form.state.submissionAttempts > 0 ||
-    !!field.state.meta.errorMap.onServer;
   return (
     <ChoiceField
       {...rest}
-      id={id}
-      name={field.name}
-      value={(blank ? field.state.value || "none" : field.state.value) ?? "none"}
-      error={reveal ? errorMessage(field.state.meta.errors) : undefined}
-      onBlur={field.handleBlur}
+      {...control}
+      value={(blank ? value || "none" : value) ?? "none"}
       onChange={(value) => {
-        if (field.state.meta.errorMap.onServer)
-          field.setMeta((meta) => ({
-            ...meta,
-            errorMap: { ...meta.errorMap, onServer: undefined },
-          }));
-        field.handleChange(
-          nullable && value === "none" ? null : blank && value === "none" ? "" : value,
-        );
+        onChange(nullable && value === "none" ? null : blank && value === "none" ? "" : value);
         onValueChange?.(value);
       }}
     />
   );
 }
 
+function FormPhone(
+  props: Omit<ComponentProps<typeof PhoneField>, "value" | "onChange" | "error" | "label">,
+) {
+  const control = useFormControl<PhoneValue>();
+  return <PhoneField {...props} {...control} label="Teléfono · Opcional" />;
+}
+
 export const { useAppForm: useReservationForm, withForm: withReservationForm } = createFormHook({
   fieldContext,
   formContext,
-  fieldComponents: { Text: FormText, Choice: FormChoice },
+  fieldComponents: { Text: FormText, Choice: FormChoice, Phone: FormPhone },
   formComponents: {},
 });
 export async function submitForm(event: FormEvent<HTMLFormElement>, submit: () => Promise<void>) {
