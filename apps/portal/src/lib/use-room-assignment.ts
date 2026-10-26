@@ -44,11 +44,11 @@ export function useRoomAssignment(rooms: Room[] | null, unassigned: ReservationS
   const queryError = target
     ? (reservations.error?.message ?? closures.error?.message ?? null)
     : null;
-  const targetIssue =
+  const staleTarget =
     target && !checking && !queryError && reservations.data
       ? targetProblem(target, reservations.data)
       : null;
-  const ready = Boolean(target && !checking && !queryError && !targetIssue);
+  const ready = Boolean(target && !checking && !queryError && !staleTarget);
   const roomProblems = new Map<string, RoomProblem | null>();
   if (target && ready) {
     // Only the reserved room being assigned is ignored, so the group's other saved
@@ -158,8 +158,8 @@ export function useRoomAssignment(rooms: Room[] | null, unassigned: ReservationS
     pending: assign.isPending,
     error: queryError
       ? translateError(queryError)
-      : targetIssue
-        ? assignmentProblemLabels[targetIssue]
+      : staleTarget
+        ? assignmentProblemLabels[staleTarget]
         : null,
     saveError: assign.error ? translateError(assign.error.message) : null,
     selectStay,

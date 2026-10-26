@@ -194,6 +194,18 @@ describe("unavailable rooms for a stay draft", () => {
     );
   });
 
+  it("ignores every reserved room of the saved reservation, whose stay draft replaces it", () => {
+    const saved = reservation({
+      id: "saved",
+      ...stay,
+      rooms: [
+        { id: "line-a", roomTypeId: "double", roomId: "101" },
+        { id: "line-b", roomTypeId: "double", roomId: "102" },
+      ],
+    });
+    assert.deepEqual([...unavailableRoomIds(stay, [saved, held("103")], [], "saved")], ["103"]);
+  });
+
   it("excludes every reservation's rooms for a new booking", () => {
     assert.deepEqual([...unavailableRoomIds(stay, [held("101")], [])], ["101"]);
   });
