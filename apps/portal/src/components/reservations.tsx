@@ -19,6 +19,7 @@ import { cn } from "cn";
 import { RoomBookingDialog, type BookingTarget } from "@/components/room-booking-dialog";
 import { PageHeaderActions } from "@/components/page-header-actions";
 import { NewReservationButton } from "@/components/new-reservation-button";
+import { RefreshButton } from "@/components/refresh-button";
 import { primaryActionClearance } from "@/components/page-primary-action";
 import { DateField } from "@/components/date-field";
 import { Button } from "@/components/ui/button";
@@ -264,6 +265,12 @@ export function Reservations({
   });
   const rows = query.data?.rows ?? [];
   const busy = query.isFetching || search.q !== q;
+  // Only a requested re-read spins; filter changes already dim the results.
+  const [refreshing, setRefreshing] = useState(false);
+  function refresh() {
+    setRefreshing(true);
+    void query.refetch().finally(() => setRefreshing(false));
+  }
   const missingSetup = useMissingSetup();
   const total = query.data?.total ?? 0;
   const offset = query.data?.offset ?? 0;
@@ -302,6 +309,17 @@ export function Reservations({
   }, [search.page, query.isFetching, query.isPlaceholderData, query.data]);
 
   if (missingSetup) return <SetupRequired missing={missingSetup} />;
+
+  const dated = search.view === "arrivals" || search.view === "departures";
+  // Phones keep it in the header so every view has it; desktop puts it with the view controls.
+  const refreshButton = (
+    <RefreshButton
+      refreshing={refreshing}
+      disabled={!query.data || query.isFetching}
+      size={mobile ? "icon-sm" : "icon"}
+      onRefresh={refresh}
+    />
+  );
 
   function open(id: string) {
     setTarget(null);
@@ -377,8 +395,9 @@ export function Reservations({
         primaryActionClearance,
       )}
     >
-      {/* On mobile the button floats through the shell slot instead of the header. */}
+      {/* On mobile Nueva reserva floats through the shell slot instead of the header. */}
       <PageHeaderActions>
+        {mobile ? refreshButton : null}
         <NewReservationButton scrollRef={mainRef} onClick={() => setTarget({ mode: "new" })} />
       </PageHeaderActions>
       <div className="flex flex-wrap items-end justify-between gap-x-4 gap-y-3">
@@ -407,40 +426,48 @@ export function Reservations({
             ))}
           </TabsList>
         </Tabs>
-        {search.view === "arrivals" || search.view === "departures" ? (
+        {dated || !mobile ? (
           <div className="flex w-full flex-wrap items-end gap-1 md:w-auto">
-            <Button
-              variant="outline"
-              size="icon"
-              aria-label="Día anterior"
-              onClick={() => refine({ day: addDateLabelDays(search.day, -1) })}
-            >
-              <ChevronLeftIcon data-icon="inline-start" />
-            </Button>
-            <div className="min-w-0 flex-1 md:w-40 md:flex-none">
-              <DateField
-                id={arrivalId}
-                label="Día de operación"
-                hideLabel
-                value={dateOnlyCarrier(search.day, "UTC")}
-                onChange={(date) =>
-                  refine({
-                    day: format(date, "yyyy-MM-dd"),
-                  })
-                }
-              />
-            </div>
-            <Button
-              variant="outline"
-              size="icon"
-              aria-label="Día siguiente"
-              onClick={() => refine({ day: addDateLabelDays(search.day, 1) })}
-            >
-              <ChevronRightIcon data-icon="inline-end" />
-            </Button>
-            <Button variant="ghost" onClick={() => refine({ day: propertyToday() })}>
-              Hoy
-            </Button>
+            {dated ? (
+              <>
+                <Button
+                  variant="outline"
+                  size="icon"
+                  aria-label="Día anterior"
+                  onClick={() => refine({ day: addDateLabelDays(search.day, -1) })}
+                >
+                  <ChevronLeftIcon data-icon="inline-start" />
+                </Button>
+                <div className="min-w-0 flex-1 md:w-40 md:flex-none">
+                  <DateField
+                    id={arrivalId}
+                    label="Día de operación"
+                    hideLabel
+                    value={dateOnlyCarrier(search.day, "UTC")}
+                    onChange={(date) =>
+                      refine({
+                        day: format(date, "yyyy-MM-dd"),
+                      })
+                    }
+                    onToday={mobile ? () => refine({ day: propertyToday() }) : undefined}
+                  />
+                </div>
+                <Button
+                  variant="outline"
+                  size="icon"
+                  aria-label="Día siguiente"
+                  onClick={() => refine({ day: addDateLabelDays(search.day, 1) })}
+                >
+                  <ChevronRightIcon data-icon="inline-end" />
+                </Button>
+                {mobile ? null : (
+                  <Button variant="ghost" onClick={() => refine({ day: propertyToday() })}>
+                    Hoy
+                  </Button>
+                )}
+              </>
+            ) : null}
+            {mobile ? null : refreshButton}
           </div>
         ) : null}
       </div>
