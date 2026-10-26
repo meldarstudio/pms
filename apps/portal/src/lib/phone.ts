@@ -16,6 +16,7 @@ export type { CountryCode };
 export type PhoneValue = { country: CountryCode; text: string; saved: string | null };
 
 const regionNames = new Intl.DisplayNames(["es"], { type: "region" });
+const phoneSyntax = /^\+?[\d\s().-]+$/;
 
 export const phoneCountries = getCountries()
   .map((code) => ({
@@ -29,8 +30,15 @@ export function phoneCountry(code: CountryCode) {
   return phoneCountries.find((country) => country.code === code) ?? phoneCountries[0];
 }
 
+function parseInternational(phone: string) {
+  const text = phone.trim();
+  return text.startsWith("+") && phoneSyntax.test(text)
+    ? parsePhoneNumberFromString(text, { extract: false })
+    : undefined;
+}
+
 function international(phone: string) {
-  const parsed = phone.trim().startsWith("+") ? parsePhoneNumberFromString(phone) : undefined;
+  const parsed = parseInternational(phone);
   return parsed?.isValid() && !parsed.ext ? parsed : undefined;
 }
 
@@ -55,9 +63,7 @@ export function typePhone(value: PhoneValue, text: string): PhoneValue {
 
 /** Choosing a country keeps the national digits staff entered and reads them in that country. */
 export function choosePhoneCountry(value: PhoneValue, country: CountryCode): PhoneValue {
-  const parsed = value.text.trim().startsWith("+")
-    ? parsePhoneNumberFromString(value.text)
-    : undefined;
+  const parsed = parseInternational(value.text);
   return { ...value, country, text: parsed?.nationalNumber ?? value.text };
 }
 
@@ -65,7 +71,7 @@ function normalize(value: PhoneValue): { phone: string } | { error: string } {
   const parsed = parsePhoneNumberFromString(value.text, value.country);
   if (parsed?.ext) return { error: "No se admiten extensiones telefónicas." };
   const invalid = { error: "Ingresa un teléfono válido para el país seleccionado." };
-  if (!/^\+?[\d\s().-]+$/.test(value.text.trim())) return invalid;
+  if (!phoneSyntax.test(value.text.trim())) return invalid;
   if (parsed?.isValid()) return { phone: parsed.number };
   const length = validatePhoneNumberLength(value.text, value.country);
   if (length === "TOO_SHORT")

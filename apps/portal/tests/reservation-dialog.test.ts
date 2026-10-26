@@ -1049,6 +1049,36 @@ it("enters an optional phone in the selected country, revealing errors only afte
   assert.equal(writes[0].guest.phone, "+5112345678");
 });
 
+it("preserves unsupported extensions when changing country until the phone is corrected", async () => {
+  const writes: CreateBookingInput[] = [];
+  mockCreationApi(async (input) => {
+    writes.push(input);
+    return Response.json(detail(), { status: 201 });
+  });
+  await renderNewBooking();
+  await fill("fullName", "Ada Lovelace");
+  await fill("notes", "Llegada por la tarde");
+  await fill("phone", "+51 987654321 ext. 5");
+  await blur(control("phone"));
+  await until(() => container.textContent.includes("No se admiten extensiones telefónicas."));
+
+  await choosePhoneCountry("chile", "Chile +56");
+  assert.equal(phoneCountry().getAttribute("aria-label"), "País del teléfono: Chile +56");
+  assert.equal(control("phone").value, "+51 987654321 ext. 5");
+  await submit();
+  assert.equal(writes.length, 0, "Changing country must not silently remove an extension and save");
+  assert.ok(container.textContent.includes("No se admiten extensiones telefónicas."));
+  assert.equal(control("fullName").value, "Ada Lovelace");
+  assert.equal(control("notes").value, "Llegada por la tarde");
+
+  await fill("phone", "+51 987654321");
+  await choosePhoneCountry("chile", "Chile +56");
+  assert.equal(control("phone").value, "987654321");
+  await submit();
+  await until(() => writes.length === 1, "Correcting the phone must allow saving in Chile");
+  assert.equal(writes[0].guest.phone, "+56987654321");
+});
+
 it("creates a reservation without a phone or any missing-phone warning", async () => {
   const writes: CreateBookingInput[] = [];
   mockCreationApi(async (input) => {

@@ -466,12 +466,16 @@ it.each([
   },
 );
 
-it("shows a legacy contact phone as stored and clears it on request", async () => {
+it.each([
+  { scenario: "local number", phone: "999111222" },
+  { scenario: "annotated international number", phone: "+51 987654321 llamar por la tarde" },
+])("shows a legacy $scenario as stored and clears it on request", async ({ phone }) => {
+  saved = { ...saved, guest: { ...saved.guest, phone } };
   mockApi();
   await render();
-  assert.equal(page.container.querySelector('a[href="tel:999111222"]')!.textContent, "999111222");
+  assert.equal(page.container.querySelector(`a[href="tel:${phone}"]`)?.textContent, phone);
   await click("Editar contacto");
-  assert.equal(field("phone").value, "999111222");
+  assert.equal(field("phone").value, phone);
   await fill("phone", "");
   await submit();
   await page.until(() => !popup());

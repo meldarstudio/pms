@@ -150,13 +150,15 @@ not import `@pms/shared`. **Teléfono · Opcional** (`PhoneField`) is used in
 creation, **Editar contacto**, and staying-guest add/edit. It pairs a searchable
 country selector, defaulting to Peru and showing calling codes, with a `tel`
 input. Pasting a `+` number selects its country. Choosing a country keeps the
-national digits and revalidates them. Errors follow the editor reveal rules in
+national digits and revalidates them; input containing extensions or unsupported
+text stays intact so country changes cannot silently discard it. Errors follow
+the editor reveal rules in
 [Drafts, validation, and retries](#drafts-validation-and-retries), and a blank
 phone is valid with no missing-phone warning. Editors open saved E.164 phones in
-national format under their country and other values exactly as stored. Until
-staff change the text or country, saves resubmit the stored value. Displays use
-international spacing and canonical `tel:` links for valid E.164 phones; other
-values are shown and linked as stored. Phone search is unchanged.
+national format under their country and other values exactly as stored, including
+annotations. Until staff change the text or country, saves resubmit the stored
+value. Displays use international spacing and canonical `tel:` links for valid
+E.164 phones; other values are shown and linked as stored. Phone search is unchanged.
 
 ## Portal editors
 
