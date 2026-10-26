@@ -961,6 +961,8 @@ function assignmentDetail() {
   return {
     id: "res-open",
     status: "confirmed",
+    checkIn: "2026-10-22",
+    checkOut: "2026-10-24",
     rooms: [{ id: "line-open", roomTypeId: "double", roomId: null, adults: 1, children: 0 }],
   };
 }
@@ -1475,6 +1477,8 @@ it("assigns a group from the desktop list and continues with its next reserved r
   page.api.on("GET", "/reservations/res-open", () => ({
     id: "res-open",
     status: "confirmed",
+    checkIn: "2026-10-22",
+    checkOut: "2026-10-24",
     rooms: lines.map((line) => ({
       id: line.id,
       roomTypeId: "double",
@@ -1592,6 +1596,51 @@ it("moves a reserved room onto its room after assignment without blanking the ca
       assert.ok(container.textContent.includes("Mantenimiento"));
     },
   });
+});
+
+it("assigns a room to a checked-in reservation from the assignment backlog", async () => {
+  const checkedIn = { status: "checked_in" };
+  page.api.on("GET", "/calendar", ({ url }) =>
+    calendarWindow(url, {
+      ...sampleWeek,
+      unassigned: sampleWeek.unassigned.map((stay) => ({ ...stay, ...checkedIn })),
+    }),
+  );
+  page.api.on("GET", "/reservations", () => [{ ...maryList, ...checkedIn }]);
+  page.api.on("GET", "/reservations/res-open", () => ({ ...assignmentDetail(), ...checkedIn }));
+  const assignment = page.api.hold("POST", "/reservations/res-open/commands");
+  await render(React.createElement(CalendarSession));
+  await until(() => !!adaBar(), "The calendar must load");
+  const assignLabel = await offerMaryRoom2();
+  const refresh = page.api.hold("GET", "/calendar");
+
+  await click(assignLabel);
+  await until(() => !!assignment.request, "The checked-in assignment must be saved");
+  assert.deepEqual((assignment.request!.body as { actions: unknown[] }).actions, [
+    {
+      type: "edit-room",
+      lineId: "line-open",
+      room: { roomTypeId: "double", roomId: "room-2", adults: 1, children: 0 },
+    },
+  ]);
+  assignment.release(Response.json({ id: "res-open" }));
+  await until(() => !!refresh.request, "Assignment must refresh the calendar");
+  refresh.release(
+    calendarResponse(refresh.request!.url, {
+      ...stayIn("room-2", {
+        id: "line-open",
+        reservationId: "res-open",
+        guestName: "Mary Jackson",
+        ...checkedIn,
+      }),
+      unassigned: [],
+    }),
+  );
+  await until(
+    () => !!container.querySelector('[aria-label="Editar reserva de Mary Jackson · Check-in"]'),
+    "The checked-in stay must move onto room 2",
+  );
+  assert.ok(container.textContent.includes("Sin asignar · 0"));
 });
 
 function conflictWindow(url: URL) {

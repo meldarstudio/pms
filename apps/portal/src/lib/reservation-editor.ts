@@ -91,28 +91,6 @@ export function overlappingRoomIds(others: WorkflowRoom[]): Set<string> {
   return new Set(others.flatMap((room) => (room.roomId ? [room.roomId] : [])));
 }
 
-export function unavailableRoomIds(
-  room: { checkIn: string; checkOut: string },
-  reservations: Reservation[],
-  closures: RoomClosure[],
-  reservationId?: string,
-): Set<string> {
-  const overlaps = (start: string, end: string) => room.checkIn < end && start < room.checkOut;
-  const ids = new Set<string>();
-  for (const reservation of reservations) {
-    if (reservation.id === reservationId) continue;
-    for (const line of reservation.rooms) {
-      if (!line.roomId || reservation.status === "cancelled") continue;
-      const start = reservation.checkIn;
-      if (overlaps(start, reservation.checkOut)) ids.add(line.roomId);
-    }
-  }
-  for (const closure of closures) {
-    if (overlaps(closure.starts, closure.ends)) ids.add(closure.roomId);
-  }
-  return ids;
-}
-
 // Replace the saved reservation with its draft, including unassigned rooms.
 export function availableRoomTypeIds(
   stay: { checkIn: string; checkOut: string },

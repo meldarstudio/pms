@@ -48,15 +48,6 @@ const messages: Record<string, string> = {
   "stay must be at least one night": "La estancia debe tener al menos una noche.",
   "invalid email": "Ingresa un correo válido.",
   "amount cannot be zero": "El importe debe ser distinto de cero.",
-  "Different room type": "Tipo de habitación diferente",
-  "Occupied during this stay": "Ocupada durante la estancia",
-  "Closed during this stay": "Cerrada durante la estancia",
-  "This reserved room is no longer awaiting assignment. Select another reservation.":
-    "Esta habitación ya no está pendiente de asignación. Selecciona otra reserva.",
-  "This reserved room has already been assigned. Select another reservation.":
-    "Esta habitación ya fue asignada. Selecciona otra reserva.",
-  "This reservation has changed. Select it again to check the updated stay.":
-    "Esta reserva cambió. Selecciónala de nuevo para consultar la estancia actualizada.",
 };
 
 /** The Spanish message for a known backend error, or null when it has no translation. */

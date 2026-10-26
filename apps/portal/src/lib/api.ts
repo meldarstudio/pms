@@ -1,4 +1,5 @@
 import { ApiError, NetworkError } from "./api-error";
+import { targetProblem, type ReservationStay } from "./assignment-availability";
 import { configurePropertyCalendar } from "./property-calendar";
 
 export type Room = {
@@ -385,17 +386,19 @@ export function patchGuest(id: string, body: PatchGuestInput) {
   return writeJson<ReservationGuest>(`/guests/${id}`, "PATCH", body);
 }
 
-export async function assignRoom(reservationId: string, lineId: string, roomId: string) {
-  const detail = await getReservation(reservationId);
-  const line = detail.rooms.find((l) => l.id === lineId);
-  if (!line || detail.status !== "confirmed" || line.roomId)
+// Re-read just before saving: the server accepts reassignment, so this stops staff
+// overwriting a colleague's concurrent room assignment.
+export async function assignRoom(target: ReservationStay, roomId: string) {
+  const detail = await getReservation(target.reservationId);
+  const line = detail.rooms.find((l) => l.id === target.id);
+  if (!line || targetProblem(target, [detail]))
     throw new Error("La habitación cambió. Actualiza la reserva.");
-  return sendWorkflow(reservationId, {
+  return sendWorkflow(target.reservationId, {
     requestId: crypto.randomUUID(),
     actions: [
       {
         type: "edit-room",
-        lineId,
+        lineId: line.id,
         room: {
           roomTypeId: line.roomTypeId,
           roomId,

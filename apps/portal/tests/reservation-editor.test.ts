@@ -1,13 +1,12 @@
 import assert from "node:assert/strict";
 import { describe, it } from "vite-plus/test";
-import type { Reservation, ReservationDetail, WorkflowAction } from "../src/lib/api.ts";
+import type { ReservationDetail, WorkflowAction } from "../src/lib/api.ts";
 import {
   validationPreviewActions,
   hasBillingChanges,
   billingPreviewKey,
   changeCheckIn,
   minimumCheckOut,
-  unavailableRoomIds,
   roomEdits,
   stayValue,
   type RoomDraft,
@@ -268,47 +267,6 @@ describe("reservation edit drafts", () => {
       [{ type: "edit-room", lineId: "101", room: changed }],
     );
     assert.deepEqual(roomEdits({ rooms: [saved] } as ReservationDetail, [draft(saved)]), []);
-  });
-  it("uses parent status and dates for external availability and allows checkout-day arrivals", () => {
-    const res = (id: string, status = "confirmed", checkOut = dates.checkOut): Reservation => ({
-      id,
-      status,
-      guestName: "Guest",
-      ...dates,
-      checkOut,
-      rooms: [line(id)],
-    });
-    const closures = [
-      {
-        id: "closure",
-        roomId: "106",
-        starts: dates.checkIn,
-        ends: dates.checkOut,
-        reason: "Repair",
-      },
-    ];
-    assert.deepEqual(
-      [
-        ...unavailableRoomIds(
-          dates,
-          [res("101"), res("102"), res("103", "cancelled"), res("104", "confirmed", dates.checkIn)],
-          closures,
-          "101",
-        ),
-      ],
-      ["102", "106"],
-    );
-    assert.deepEqual(
-      [
-        ...unavailableRoomIds(
-          dates,
-          [res("201", "checked_in"), res("202", "checked_out")],
-          [],
-          "101",
-        ),
-      ],
-      ["201", "202"],
-    );
   });
 });
 describe("shared stay dates", () => {

@@ -28,7 +28,8 @@ import {
   useRooms,
   useRoomTypes,
 } from "@/lib/queries";
-import { changeCheckIn, minimumCheckOut, unavailableRoomIds } from "@/lib/reservation-editor";
+import { unavailableRoomIds } from "@/lib/assignment-availability";
+import { changeCheckIn, minimumCheckOut } from "@/lib/reservation-editor";
 import { blurThenChange, submitForm, useReservationForm } from "@/lib/reservation-form";
 import {
   newBookingSchema,

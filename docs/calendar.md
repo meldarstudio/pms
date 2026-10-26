@@ -78,11 +78,25 @@ show a **Sucia** badge in the room column, and the room's actions menu marks it 
 dirty. The picker shows the badge only for a stay that has begun; see
 [elsewhere in the portal](housekeeping.md#elsewhere-in-the-portal).
 
-## Known assignment limitation
+## Assignment availability rules
 
-The backlog and picker admit checked-in reservations, but
-[assignRoom](../apps/portal/src/lib/api.ts) currently requires `confirmed` and
-rejects them with "La habitación cambió. Actualiza la reserva." This is an
-application mismatch, not a domain rule prohibiting assignment after check-in.
-A follow-up should align the save helper with the intended confirmed/checked-in
-flow and cover a checked-in assignment through the calendar.
+[`assignment-availability.ts`](../apps/portal/src/lib/assignment-availability.ts) is the
+portal's only source of [assignment availability](../GLOSSARY.md#rooms-and-availability) rules. The calendar
+picker, the room assignment save, the reservation editor, and new booking all use it.
+Callers pass in the reservations and room closures they have already loaded.
+
+- Confirmed and checked-in reservations can receive a room assignment. Checked-out
+  and cancelled ones cannot.
+- Every reservation except a cancelled one holds its assigned rooms for its stay
+  nights, including checked-out reservations.
+- Stay nights and room closures use `[start, end)`, so a checkout or closure ending on
+  the arrival morning does not block the room.
+- The calendar ignores only the reserved room being assigned, so the group's other
+  reserved rooms keep their rooms. The reservation editor ignores the whole saved
+  reservation, because its stay draft replaces it.
+
+Problems come back as typed codes with one Spanish label each. They are local portal
+text, not backend errors. The save reads the reservation again just before writing
+and rejects a stale target with "La habitación cambió. Actualiza la reserva.", because
+the server would accept a reassignment. The backend keeps its own copy of the
+confirmed/checked-in rule for the assignment backlog and its own overlap validation.
