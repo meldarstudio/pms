@@ -3,6 +3,24 @@ import { format, parseISO } from "date-fns";
 import { DateField } from "@/components/date-field";
 import { Field, FieldError, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
+import { Button } from "@/components/ui/button";
+import { ButtonGroup } from "@/components/ui/button-group";
+import {
+  Combobox,
+  ComboboxContent,
+  ComboboxEmpty,
+  ComboboxInput,
+  ComboboxItem,
+  ComboboxList,
+  ComboboxTrigger,
+} from "@/components/ui/combobox";
+import {
+  choosePhoneCountry,
+  phoneCountries,
+  phoneCountry,
+  typePhone,
+  type PhoneValue,
+} from "@/lib/phone";
 import { Textarea } from "@/components/ui/textarea";
 import {
   Select,
@@ -173,6 +191,88 @@ export function ChoiceField({
         </SelectContent>
       </Select>
       {error && !groupErrorId && <FieldError id={`${id}-error`}>{error}</FieldError>}
+    </Field>
+  );
+}
+
+type PhoneCountry = (typeof phoneCountries)[number];
+
+/**
+ * A contact phone with a searchable country selector. National numbers are read in the selected
+ * country; typing or pasting an explicit international number selects its country.
+ */
+export function PhoneField({
+  label,
+  value,
+  onChange,
+  disabled = false,
+  error,
+  id: providedId,
+  name,
+  onBlur,
+}: {
+  label: string;
+  value: PhoneValue;
+  onChange: (value: PhoneValue) => void;
+  disabled?: boolean;
+  error?: string;
+  id?: string;
+  name?: string;
+  onBlur?: () => void;
+}) {
+  const generatedId = useId();
+  const id = providedId ?? generatedId;
+  const country = phoneCountry(value.country);
+  return (
+    <Field data-disabled={disabled} data-invalid={!!error}>
+      <FieldLabel htmlFor={id}>{label}</FieldLabel>
+      <ButtonGroup className="w-full">
+        <Combobox<PhoneCountry>
+          items={phoneCountries}
+          value={country}
+          onValueChange={(next) => {
+            if (next) onChange(choosePhoneCountry(value, next.code));
+          }}
+          onOpenChange={(open) => {
+            if (!open) onBlur?.();
+          }}
+          itemToStringLabel={(item) => `${item.name} ${item.callingCode}`}
+          isItemEqualToValue={(item, selected) => item.code === selected.code}
+          disabled={disabled}
+        >
+          <ComboboxTrigger
+            render={<Button type="button" variant="outline" />}
+            aria-label={`País del teléfono: ${country.name} ${country.callingCode}`}
+          >
+            {country.code} {country.callingCode}
+          </ComboboxTrigger>
+          <ComboboxContent className="w-64">
+            <ComboboxInput showTrigger={false} placeholder="Buscar país" aria-label="Buscar país" />
+            <ComboboxEmpty>No se encontró el país.</ComboboxEmpty>
+            <ComboboxList>
+              {(item: PhoneCountry) => (
+                <ComboboxItem key={item.code} value={item}>
+                  {item.name} {item.callingCode}
+                </ComboboxItem>
+              )}
+            </ComboboxList>
+          </ComboboxContent>
+        </Combobox>
+        <Input
+          id={id}
+          name={name}
+          type="tel"
+          inputMode="tel"
+          autoComplete="tel"
+          value={value.text}
+          disabled={disabled}
+          onBlur={onBlur}
+          aria-invalid={!!error}
+          aria-describedby={error ? `${id}-error` : undefined}
+          onChange={(event) => onChange(typePhone(value, event.target.value))}
+        />
+      </ButtonGroup>
+      {error && <FieldError id={`${id}-error`}>{error}</FieldError>}
     </Field>
   );
 }

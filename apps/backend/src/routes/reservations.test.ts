@@ -1020,7 +1020,7 @@ describe("reservation workflow", () => {
     const response = await request("/reservations", "POST", input);
     expect(response.status).toBe(201);
     const saved = (await response.json()) as Detail;
-    expect(saved.guest).toMatchObject(input.guest);
+    expect(saved.guest).toMatchObject({ ...input.guest, phone: "+51999888777" });
     expect(saved.notes).toBe(input.notes);
     expect(saved.savedDiscountCents).toBe(3000);
     expect(saved.totalCents).toBe(27000);
@@ -1428,6 +1428,115 @@ describe("reservation workflow", () => {
     expect(d.balanceCents).toBe(30000);
   });
 });
+describe("contact phones", () => {
+  const book = (phone: string) =>
+    request("/reservations", "POST", {
+      requestId: crypto.randomUUID(),
+      guest: { fullName: "Ada Lovelace", phone },
+      checkIn: "2026-10-10",
+      checkOut: "2026-10-11",
+      rooms: [{ roomTypeId: "type", adults: 1, children: 0 }],
+    });
+
+  it.each([
+    ["a local Peruvian mobile", "987 654 321", "+51987654321"],
+    ["a Lima landline with its area code", "(01) 234-5678", "+5112345678"],
+    ["a formatted international mobile", "+1 (415) 555-2671", "+14155552671"],
+  ])("stores %s in international form", async (_case, phone, stored) => {
+    const response = await book(phone);
+    expect(response.status).toBe(201);
+    expect(((await response.json()) as Detail).guest.phone).toBe(stored);
+  });
+
+  it.each([
+    ["a landline without its area code", "234 5678", "phone number is too short"],
+    ["too many digits", "9876543210", "phone number is too long"],
+    ["letters", "99911122a", "invalid phone number"],
+    ["an extension", "999 111 222 ext. 5", "phone extensions are not supported"],
+  ])("rejects %s without creating the booking", async (_case, phone, error) => {
+    const response = await book(phone);
+    expect(response.status).toBe(400);
+    expect(response.headers.get("X-Error-Field")).toBe("phone");
+    expect(await response.json()).toEqual({ error });
+    expect(db.sqlite.prepare("SELECT count(*) AS n FROM reservations").get()?.n).toBe(0);
+  });
+
+  it("keeps an unchanged legacy contact phone, validates a changed one, and allows clearing", async () => {
+    let d = await create();
+    db.sqlite.prepare("UPDATE guests SET phone = '99-11 old' WHERE id = ?").run(d.guestId);
+    const contact = (phone: string | null): WorkflowAction => ({
+      type: "contact",
+      contact: { fullName: "Renamed Contact", email: null, phone },
+    });
+    d = await command(d, [contact("99-11 old"), pay(1000)]);
+    expect(d.guest).toMatchObject({ fullName: "Renamed Contact", phone: "99-11 old" });
+    expect(d.paidCents).toBe(1000);
+
+    const rejected = await request(`/reservations/${d.id}/commands`, "POST", {
+      requestId: crypto.randomUUID(),
+      actions: [contact("99-12 old"), pay(1000)],
+    });
+    expect(rejected.status).toBe(400);
+    expect(rejected.headers.get("X-Error-Field")).toBe("phone");
+    d = (await (await request(`/reservations/${d.id}`)).json()) as Detail;
+    expect(d.guest.phone).toBe("99-11 old");
+    expect(d.paidCents).toBe(1000);
+
+    d = await command(d, [contact("987 654 321")]);
+    expect(d.guest.phone).toBe("+51987654321");
+    d = await command(d, [contact(null)]);
+    expect(d.guest.phone).toBeNull();
+  });
+
+  it("applies the same rules to staying guests, who may share the booking contact's number", async () => {
+    let d = await create();
+    d = await command(d, [
+      { type: "contact", contact: { fullName: "Ada", email: null, phone: "987654321" } },
+    ]);
+    const person = { ...guest(null), phone: "987 654 321" };
+    d = await command(d, [{ type: "set-guests", guests: [person] }]);
+    expect(d.stayingGuests[0].phone).toBe("+51987654321");
+    expect(d.guest.phone).toBe("+51987654321");
+
+    db.sqlite
+      .prepare("UPDATE reservation_guests SET phone = 'ask at desk' WHERE id = ?")
+      .run(person.id);
+    d = await command(d, [
+      { type: "set-guests", guests: [{ ...person, fullName: "Ana Ruiz", phone: "ask at desk" }] },
+    ]);
+    expect(d.stayingGuests[0]).toMatchObject({ fullName: "Ana Ruiz", phone: "ask at desk" });
+    await command(d, [{ type: "set-guests", guests: [{ ...person, phone: "234 5678" }] }], 400);
+    await command(
+      d,
+      [{ type: "set-guests", guests: [{ ...guest(null), phone: "ask at desk" }] }],
+      400,
+    );
+    d = await command(d, [{ type: "set-guests", guests: [{ ...person, phone: null }] }]);
+    expect(d.stayingGuests[0].phone).toBeNull();
+    expect(d.guest.phone).toBe("+51987654321");
+  });
+
+  it("validates guest record writes but keeps an unchanged legacy phone", async () => {
+    const created = await request("/guests", "POST", {
+      fullName: "Ana",
+      phone: "+44 20 7946 0958",
+    });
+    expect(created.status).toBe(201);
+    const saved = (await created.json()) as { id: string; phone: string };
+    expect(saved.phone).toBe("+442079460958");
+    expect((await request("/guests", "POST", { fullName: "Bea", phone: "12" })).status).toBe(400);
+
+    db.sqlite.prepare("UPDATE guests SET phone = '99-11 old' WHERE id = ?").run(saved.id);
+    const renamed = await request(`/guests/${saved.id}`, "PATCH", {
+      fullName: "Ana Ruiz",
+      phone: "99-11 old",
+    });
+    expect(((await renamed.json()) as { phone: string }).phone).toBe("99-11 old");
+    const changed = await request(`/guests/${saved.id}`, "PATCH", { phone: "99-12 old" });
+    expect(changed.status).toBe(400);
+    expect(changed.headers.get("X-Error-Field")).toBe("phone");
+  });
+});
 describe("reservation dates and lifecycle", () => {
   it("checks in and checks out every room together while retaining debt and saved dates", async () => {
     let d = await arrive(await create(2));
@@ -1743,7 +1852,7 @@ describe("paginated reservation operations", () => {
         id: reservation.guestId,
         fullName: "Alejandro Demo",
         email: "alex@example.com",
-        phone: "+51 900000006",
+        phone: "+51900000006",
         documentType: "DNI",
         documentNumber: "00000006",
       },

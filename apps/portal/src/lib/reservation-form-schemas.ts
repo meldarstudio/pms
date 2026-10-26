@@ -3,8 +3,13 @@ import type { PaymentInput, ReservationDetail, RoomType, StayingGuest } from "./
 import { formatMajor, parseMajorToCents } from "./money.ts";
 import type { RoomDraft } from "./reservation-editor.ts";
 import { propertyToday } from "./property-calendar.ts";
+import { phoneDraft, phoneError, phonePayload, type PhoneValue } from "./phone.ts";
 
 const optionalText = (max: number) => z.string().trim().max(max, `Máximo ${max} caracteres.`);
+const phone = z.custom<PhoneValue>().superRefine((value, ctx) => {
+  const message = phoneError(value);
+  if (message) ctx.addIssue({ code: "custom", message });
+});
 const date = z.iso.date({ error: "Indica una fecha válida." });
 const status = z.enum(["confirmed", "checked_in", "checked_out", "cancelled"]);
 const count = (min: number, message: string) =>
@@ -199,7 +204,7 @@ export const guestSchema = z.object({
     (value) => !value || /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value),
     "Ingresa un correo válido.",
   ),
-  phone: optionalText(40),
+  phone,
   documentType: optionalText(40),
   documentNumber: optionalText(60),
   reservationRoomId: z.string().nullable(),
@@ -209,7 +214,7 @@ export const contactSchema = guestSchema.pick({ fullName: true, phone: true, ema
 export function contactDefaults(detail: ReservationDetail) {
   return {
     fullName: detail.guest.fullName,
-    phone: detail.guest.phone ?? "",
+    phone: phoneDraft(detail.guest.phone),
     email: detail.guest.email ?? "",
   };
 }
@@ -217,7 +222,7 @@ export function contactPayload(values: z.input<typeof contactSchema>) {
   const parsed = contactSchema.parse(values);
   return {
     ...parsed,
-    phone: parsed.phone || null,
+    phone: phonePayload(parsed.phone),
     email: parsed.email || null,
   };
 }
@@ -226,7 +231,7 @@ export function guestDefaults(guest: StayingGuest): GuestValues {
   return {
     ...guest,
     email: guest.email ?? "",
-    phone: guest.phone ?? "",
+    phone: phoneDraft(guest.phone),
     documentType: guest.documentType ?? "",
     documentNumber: guest.documentNumber ?? "",
   };
@@ -236,7 +241,7 @@ export function guestPayload(values: GuestValues): StayingGuest {
   return {
     ...parsed,
     email: parsed.email || null,
-    phone: parsed.phone || null,
+    phone: phonePayload(parsed.phone),
     documentType: parsed.documentType || null,
     documentNumber: parsed.documentNumber || null,
   };

@@ -1,3 +1,4 @@
+import { normalizePhone } from "@pms/shared";
 import { inclusiveDates, isValidDate, nightsBetween } from "./lib/dates";
 import { HttpError } from "./http";
 
@@ -19,4 +20,18 @@ export function requireInclusiveRange(from: string, to: string, maxDays: number)
   if (dates.length > maxDays)
     throw new HttpError(400, `range cannot be longer than ${maxDays} days`);
   return dates;
+}
+
+/**
+ * The contact phone to store. Resubmitting the stored value keeps it exactly, even a legacy
+ * value the current rules would reject; any other phone must be valid and is normalized.
+ */
+export function acceptPhone<T extends string | null | undefined>(
+  submitted: T,
+  stored?: string | null,
+): T | string {
+  if (submitted == null || submitted === stored) return submitted;
+  const result = normalizePhone(submitted);
+  if ("error" in result) throw new HttpError(400, result.error, "phone");
+  return result.phone;
 }

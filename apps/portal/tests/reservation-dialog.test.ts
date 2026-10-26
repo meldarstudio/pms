@@ -30,6 +30,7 @@ let forms: typeof import("../src/components/reservation-entry-forms.tsx");
 let dialogs: typeof import("../src/components/room-booking-dialog.tsx");
 let newBookings: typeof import("../src/components/new-booking.tsx");
 let queries: typeof import("../src/lib/queries.ts");
+let apiErrors: typeof import("../src/lib/api-error.ts");
 type CreateBookingInput = Parameters<typeof import("../src/lib/api.ts").createWorkflowBooking>[0];
 let root: BrowserPage["root"];
 let container: BrowserPage["container"];
@@ -53,6 +54,7 @@ beforeAll(async () => {
     "/src/components/new-booking.tsx",
   )) as typeof newBookings;
   queries = (await server.ssrLoadModule("/src/lib/queries.ts")) as typeof queries;
+  apiErrors = (await server.ssrLoadModule("/src/lib/api-error.ts")) as typeof apiErrors;
   const calendar = (await server.ssrLoadModule(
     "/src/lib/property-calendar.ts",
   )) as typeof import("../src/lib/property-calendar.ts");
@@ -932,7 +934,7 @@ it("creates a reservation with its contact, notes, room quote, and initial disco
   assert.deepEqual(writes[0].guest, {
     fullName: "Ada Lovelace",
     email: "ada@example.com",
-    phone: "+51 999 888 777",
+    phone: "+51999888777",
   });
   assert.equal(writes[0].notes, "Llegada después de las 22:00");
   assert.equal(writes[0].discountCents, 3000);
@@ -941,6 +943,189 @@ it("creates a reservation with its contact, notes, room quote, and initial disco
     writes[0].rooms.map((room) => room.roomId),
     ["room-1", null],
   );
+});
+
+function phoneCountry() {
+  const trigger = window.document.querySelector<HTMLButtonElement>(
+    '[aria-label^="País del teléfono"]',
+  );
+  assert.ok(trigger, "The phone input must have a country selector");
+  return trigger;
+}
+
+async function blur(target: Exclude<Parameters<BrowserPage["fill"]>[0], string>) {
+  await React.act(async () => {
+    target.dispatchEvent(new window.FocusEvent("focusout", { bubbles: true }));
+  });
+}
+
+async function choosePhoneCountry(search: string, option: string) {
+  await React.act(async () => phoneCountry().click());
+  const input = await (async () => {
+    await until(
+      () => !!window.document.querySelector('input[placeholder="Buscar país"]'),
+      "The country search must open",
+    );
+    return window.document.querySelector<HTMLInputElement>('input[placeholder="Buscar país"]')!;
+  })();
+  await fill(input, search);
+  let item: HTMLElement | undefined;
+  await until(() => {
+    item = Array.from(window.document.querySelectorAll<HTMLElement>('[role="option"]')).find(
+      (element) => element.textContent.trim() === option,
+    );
+    return !!item;
+  }, `The country search must offer ${option}`);
+  await React.act(async () => item!.click());
+}
+
+const incompletePhone =
+  "El número está incompleto. Si es un teléfono fijo, incluye el código de área.";
+
+it("enters an optional phone in the selected country, revealing errors only after blur or save", async () => {
+  const writes: CreateBookingInput[] = [];
+  mockCreationApi(async (input) => {
+    writes.push(input);
+    return Response.json(detail(), { status: 201 });
+  });
+  await renderNewBooking();
+  const phone = control("phone");
+  assert.equal(
+    window.document.querySelector(`label[for="${phone.id}"]`)?.textContent,
+    "Teléfono · Opcional",
+  );
+  assert.equal(phone.getAttribute("type"), "tel");
+  assert.equal(phoneCountry().getAttribute("aria-label"), "País del teléfono: Perú +51");
+  await fill("fullName", "Ada Lovelace");
+
+  await choosePhoneCountry("chile", "Chile +56");
+  await fill(phone, "2 2345");
+  await flush();
+  assert.notEqual(
+    phone.getAttribute("aria-invalid"),
+    "true",
+    "Choosing a country first must not reveal errors during the first entry",
+  );
+  await fill(phone, "");
+  await choosePhoneCountry("per", "Perú +51");
+  await fill(phone, "234 5678");
+  assert.ok(!container.textContent.includes(incompletePhone), "Typing must not show the error yet");
+  await blur(phone);
+  await until(
+    () => container.textContent.includes(incompletePhone),
+    "Blur must explain the missing area code",
+  );
+  await submit();
+  await flush();
+  assert.equal(writes.length, 0, "An invalid phone must not save");
+  assert.equal(control("phone").value, "234 5678");
+
+  await fill("phone", "2 2345 6789");
+  await until(
+    () => container.textContent.includes("Ingresa un teléfono válido para el país seleccionado."),
+    "A Santiago landline is not a valid Peruvian number",
+  );
+  await choosePhoneCountry("chile", "Chile +56");
+  assert.equal(phoneCountry().getAttribute("aria-label"), "País del teléfono: Chile +56");
+  assert.equal(control("phone").value, "2 2345 6789", "Changing country must keep the digits");
+  await until(
+    () => !container.textContent.includes("Ingresa un teléfono válido"),
+    "The digits must be revalidated for Chile",
+  );
+
+  await fill("phone", "+1 (415) 555-2671");
+  assert.equal(phoneCountry().getAttribute("aria-label"), "País del teléfono: Estados Unidos +1");
+  await fill("phone", "999 111 222 ext. 5");
+  await until(
+    () => container.textContent.includes("No se admiten extensiones telefónicas."),
+    "An extension must be rejected, not dropped",
+  );
+
+  await fill("phone", "");
+  await choosePhoneCountry("per", "Perú +51");
+  await fill("phone", "(01) 234-5678");
+  await submit();
+  await until(() => writes.length === 1, "A corrected landline must save");
+  assert.equal(writes[0].guest.phone, "+5112345678");
+});
+
+it("creates a reservation without a phone or any missing-phone warning", async () => {
+  const writes: CreateBookingInput[] = [];
+  mockCreationApi(async (input) => {
+    writes.push(input);
+    return Response.json(detail(), { status: 201 });
+  });
+  await renderNewBooking();
+  await fill("fullName", "Ada Lovelace");
+  await submit();
+  await until(() => writes.length === 1, "A blank phone must not block saving");
+  assert.equal("phone" in writes[0].guest, false);
+  assert.ok(!/sin teléfono|teléfono requerido/i.test(container.textContent));
+});
+
+it("saves staying-guest phones on their own, keeping an unchanged legacy phone", async () => {
+  let saved = detail();
+  saved.guest.phone = "+51987654321";
+  const legacy: StayingGuest = {
+    id: "9b73e6c7-c684-4c4b-a205-b63e3c91a839",
+    fullName: "Luis Pérez",
+    email: null,
+    phone: "pedir en recepción",
+    documentType: null,
+    documentNumber: null,
+    reservationRoomId: null,
+  };
+  saved.stayingGuests = [legacy];
+  const writes: StayingGuest[][] = [];
+  const editor = (guest?: StayingGuest) =>
+    React.createElement(forms.GuestEntryForm, {
+      key: guest?.id ?? "new",
+      detail: saved,
+      guest,
+      disabled: false,
+      onDirtyChange: () => {},
+      onSave: async (guests: StayingGuest[]) => {
+        if (guests.some((entry) => entry.phone === "+51999111222"))
+          throw new apiErrors.ApiError(400, "phone number is too long", "phone");
+        writes.push(guests);
+        saved = { ...saved, stayingGuests: guests };
+      },
+    });
+
+  await render(editor(legacy));
+  assert.equal(control("phone").value, "pedir en recepción");
+  await fill("fullName", "Luis Corregido");
+  await submit();
+  await until(() => writes.length === 1, "An unchanged legacy phone must not block a name edit");
+  assert.equal(writes[0][0].phone, "pedir en recepción");
+
+  await render(editor());
+  await fill("fullName", "Ana Pérez");
+  await fill("phone", "987 654 321");
+  await submit();
+  await until(() => writes.length === 2, "Guests may share the booking contact phone");
+  assert.deepEqual(
+    writes[1].map((entry) => entry.phone),
+    ["pedir en recepción", "+51987654321"],
+  );
+  assert.equal(saved.guest.phone, "+51987654321");
+
+  await render(editor(saved.stayingGuests[1]));
+  assert.equal(control("phone").value, "987 654 321");
+  await fill("phone", "999 111 222");
+  await submit();
+  await until(
+    () =>
+      container.textContent.includes(
+        "El número tiene demasiados dígitos para el país seleccionado.",
+      ),
+    "A server phone rejection must appear on the field",
+  );
+  assert.equal(control("phone").value, "999 111 222");
+  await fill("phone", "");
+  await submit();
+  await until(() => writes.length === 3, "Clearing a phone must save");
+  assert.equal(writes[2][1].phone, null);
 });
 
 it("preserves the remaining room draft when removing the first room", async () => {

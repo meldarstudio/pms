@@ -104,6 +104,7 @@ import {
 } from "@/lib/reservation-form-schemas";
 import { propertyToday } from "@/lib/property-calendar";
 import { usePropertyCalendar } from "@/lib/use-property-calendar";
+import { phoneDisplay } from "@/lib/phone";
 
 export type BookingTarget =
   | {
@@ -677,7 +678,9 @@ export function BookingEditor({
             compactEditor && "max-md:mt-0 max-md:safe-area-padding-x",
           )}
         >
-          {[contact.phone, detail.code].filter(Boolean).join(" · ")}
+          {[contact.phone && phoneDisplay(contact.phone).text, detail.code]
+            .filter(Boolean)
+            .join(" · ")}
           {!full && !mobileEditor && onViewReservation && (
             <Button
               type="button"

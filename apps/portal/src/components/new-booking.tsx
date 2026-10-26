@@ -38,6 +38,7 @@ import {
   type NewBookingValues,
 } from "@/lib/reservation-form-schemas";
 import { propertyToday } from "@/lib/property-calendar";
+import { phoneDraft, phonePayload } from "@/lib/phone";
 
 export function NewBooking({
   target,
@@ -64,7 +65,7 @@ export function NewBooking({
       status: "confirmed",
       fullName: "",
       email: "",
-      phone: "",
+      phone: phoneDraft(null),
       notes: "",
       discount: "0",
       rooms: [
@@ -92,10 +93,11 @@ export function NewBooking({
       if (!availabilityReady || selection.rooms !== values.rooms) return;
       setError("");
       const parsed = schema.parse(value);
+      const phone = phonePayload(parsed.phone);
       const data = {
         guest: {
           fullName: parsed.fullName,
-          ...(parsed.phone ? { phone: parsed.phone } : {}),
+          ...(phone ? { phone } : {}),
           ...(parsed.email ? { email: parsed.email } : {}),
         },
         checkIn: parsed.checkIn,
@@ -447,11 +449,7 @@ export function NewBooking({
                       />
                     )}
                   </form.AppField>
-                  <form.AppField name="phone">
-                    {(field) => (
-                      <field.Text label="Teléfono · Opcional" type="tel" placeholder="+51" />
-                    )}
-                  </form.AppField>
+                  <form.AppField name="phone">{(field) => <field.Phone />}</form.AppField>
                 </FieldGroup>
               </FieldGroup>
             </FieldSet>

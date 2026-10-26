@@ -1,6 +1,7 @@
 import { useId, type ComponentProps, type FormEvent } from "react";
 import { createFormHook, createFormHookContexts } from "@tanstack/react-form";
-import { TextField, ChoiceField } from "@/components/workflow-fields";
+import { TextField, ChoiceField, PhoneField } from "@/components/workflow-fields";
+import type { PhoneValue } from "./phone";
 import { errorMessage } from "./form-errors";
 export { blurThenChange } from "./reservation-form-state";
 
@@ -76,10 +77,40 @@ function FormChoice(
   );
 }
 
+function FormPhone(
+  props: Omit<ComponentProps<typeof PhoneField>, "value" | "onChange" | "error" | "label">,
+) {
+  const field = useFieldContext<PhoneValue>();
+  const id = useId();
+  const reveal =
+    field.state.meta.isBlurred ||
+    field.form.state.submissionAttempts > 0 ||
+    !!field.state.meta.errorMap.onServer;
+  return (
+    <PhoneField
+      {...props}
+      label="Teléfono · Opcional"
+      id={id}
+      name={field.name}
+      value={field.state.value}
+      error={reveal ? errorMessage(field.state.meta.errors) : undefined}
+      onBlur={field.handleBlur}
+      onChange={(value) => {
+        if (field.state.meta.errorMap.onServer)
+          field.setMeta((meta) => ({
+            ...meta,
+            errorMap: { ...meta.errorMap, onServer: undefined },
+          }));
+        field.handleChange(value);
+      }}
+    />
+  );
+}
+
 export const { useAppForm: useReservationForm, withForm: withReservationForm } = createFormHook({
   fieldContext,
   formContext,
-  fieldComponents: { Text: FormText, Choice: FormChoice },
+  fieldComponents: { Text: FormText, Choice: FormChoice, Phone: FormPhone },
   formComponents: {},
 });
 export async function submitForm(event: FormEvent<HTMLFormElement>, submit: () => Promise<void>) {
