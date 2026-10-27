@@ -9,7 +9,6 @@ import {
 } from "@tanstack/react-router";
 import { useEffect } from "react";
 import { format, parseISO } from "date-fns";
-import { propertyToday } from "@/lib/property-calendar";
 import { useNavigate } from "@tanstack/react-router";
 import App from "@/App";
 import { RouteCrash } from "@/components/page-error";
@@ -38,11 +37,7 @@ const rootRoute = createRootRoute({
   notFoundComponent: () => (
     <main className="m-auto flex flex-col items-center gap-3 p-8">
       <h1 className="text-xl font-semibold">No se encontró esta página</h1>
-      <Link
-        to="/calendar"
-        search={{ from: propertyToday(), span: 7 }}
-        className="text-primary underline"
-      >
+      <Link to="/calendar" search={calendarSearch({})} className="text-primary underline">
         Ir al calendario
       </Link>
     </main>
@@ -55,10 +50,7 @@ const indexRoute = createRoute({
   beforeLoad: () => {
     throw redirect({
       to: "/calendar",
-      search: {
-        from: propertyToday(),
-        span: 7,
-      },
+      search: calendarSearch({}),
       replace: true,
     });
   },

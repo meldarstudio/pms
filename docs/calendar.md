@@ -58,6 +58,16 @@ fixtures, including availability outside the visible calendar, groups, conflicts
 pending-write dismissal, cancellation, and moving to a stay past the window. Visual validation requirements and prior limitations are recorded in
 [operational status](operations-status.md).
 
+## Opening day
+
+The calendar opens on the day before the property date, so a stay checking out today
+shows a full night and its checkout morning, and a checked-in stay past its checkout
+stays in view. The sidebar link, the `/` redirect, links from error pages, and **Hoy**
+all start there; a `from` in the URL or a date chosen in the picker becomes the
+first column unchanged. [`calendarStart`](../apps/portal/src/lib/route-search.ts)
+owns the rule. Today's column, from its header down, has a light primary tint behind
+the bars and primary side grid lines, so it stands out from the first column.
+
 ## Calendar read
 
 The calendar reads rooms, stays, closures, and the assignment backlog together

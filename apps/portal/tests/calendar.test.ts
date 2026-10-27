@@ -2019,7 +2019,7 @@ it("updates calendar past-day restrictions at property midnight without changing
   assert.ok(page.button("30 oct 2026"));
   assert.deepEqual(changes, []);
   await React.act(async () => page.button("Hoy").click());
-  assert.deepEqual(changes, ["2026-11-1"]);
+  assert.deepEqual(changes, ["2026-10-31"], "Hoy opens on yesterday so today's departures show");
 });
 
 it("uses the property date for arrival badges and refreshes them on resume", async () => {

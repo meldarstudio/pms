@@ -33,6 +33,7 @@ import { RefreshButton } from "@/components/refresh-button";
 import { PropertyDatePicker } from "@/components/property-date-picker";
 import { dateOnlyCarrier } from "@/lib/property-calendar";
 import { usePropertyCalendar } from "@/lib/use-property-calendar";
+import { calendarStart } from "@/lib/route-search";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import {
   Select,
@@ -164,6 +165,19 @@ function stayTrack(stay: {
     checkIn: stay.checkIn,
     checkOut: stay.checkOut,
   };
+}
+
+/**
+ * Marks today's column behind the bars, since the calendar opens on yesterday.
+ * It reaches 1px past each side to redraw the column's grid lines in the primary color.
+ */
+function TodayColumn() {
+  return (
+    <div
+      aria-hidden="true"
+      className="pointer-events-none absolute inset-y-0 -right-px -left-px -z-10 border-x border-primary/20 bg-primary/10"
+    />
+  );
 }
 
 function closureTrack(closure: RoomClosure): TrackItem {
@@ -304,7 +318,11 @@ function RoomTrack({
           const disabled = !onBookDay || occupied || date < today;
 
           return (
-            <div key={date} className={cn("relative", dayIndex < dayCount - 1 && "border-r")}>
+            <div
+              key={date}
+              className={cn("relative isolate", dayIndex < dayCount - 1 && "border-r")}
+            >
+              {date === today && <TodayColumn />}
               {onBookDay ? (
                 <button
                   type="button"
@@ -603,7 +621,7 @@ export function RoomCalendar({
             <Button
               variant="outline"
               disabled={assignment.pending}
-              onClick={() => changeStart(dateOnlyCarrier(today))}
+              onClick={() => changeStart(dateOnlyCarrier(calendarStart(today)))}
             >
               Hoy
             </Button>
@@ -658,7 +676,7 @@ export function RoomCalendar({
                 <PickerTodayFooter
                   disabled={assignment.pending}
                   onToday={() => {
-                    changeStart(dateOnlyCarrier(today));
+                    changeStart(dateOnlyCarrier(calendarStart(today)));
                     setPickerOpen(false);
                   }}
                 />
@@ -797,6 +815,7 @@ export function RoomCalendar({
                     dayIndex < span - 1 && "border-r",
                   )}
                 >
+                  {format(day, "yyyy-MM-dd") === today && <TodayColumn />}
                   <span
                     className={cn(
                       "text-xs tracking-wide uppercase",

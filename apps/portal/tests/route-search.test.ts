@@ -82,11 +82,19 @@ describe("route search validation", () => {
   ])("normalizes operational dates in %s at %s", (timeZone, instant, today) => {
     configurePropertyCalendar(timeZone);
     vi.setSystemTime(new Date(instant));
-    assert.equal(calendarSearch({}).from, today);
     assert.equal(inventorySearch({}).from, today);
     assert.equal(reservationsSearch({}).day, today);
     assert.equal(calendarSearch({ from: "2026-10-31" }).from, "2026-10-31");
     assert.equal(inventorySearch({ from: "2026-10-31" }).from, "2026-10-31");
     assert.equal(reservationsSearch({ day: "2026-10-31" }).day, "2026-10-31");
+  });
+
+  it.each([
+    ["at the start of a property day", "2026-11-01T05:00:00Z", "2026-10-31"],
+    ["at the end of a property day", "2026-11-01T04:59:59.999Z", "2026-10-30"],
+    ["across a year boundary", "2027-01-01T05:00:00Z", "2026-12-31"],
+  ])("opens the calendar on the day before the property date %s", (_case, instant, from) => {
+    vi.setSystemTime(new Date(instant));
+    assert.equal(calendarSearch({}).from, from);
   });
 });

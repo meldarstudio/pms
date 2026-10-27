@@ -26,6 +26,7 @@ import { useLogout } from "@/lib/queries";
 import { activeNavigation, appNavigation } from "@/lib/navigation";
 import {
   calendarSearch,
+  calendarStart,
   housekeepingSearch,
   inventorySearch,
   lastCalendarSearch,
@@ -56,7 +57,7 @@ export function AppSidebar() {
       search:
         location.pathname === appNavigation.calendar.to
           ? calendarSearch(location.search)
-          : (lastCalendarSearch.current ?? calendarSearch({ from: today })),
+          : (lastCalendarSearch.current ?? calendarSearch({ from: calendarStart(today) })),
     },
     { ...appNavigation.housekeeping, icon: BroomIcon, search: housekeepingSearch({}) },
     {

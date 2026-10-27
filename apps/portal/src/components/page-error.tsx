@@ -12,7 +12,7 @@ import {
   EmptyTitle,
 } from "@/components/ui/empty";
 import { readErrorKind, readErrorMessage } from "@/lib/api-error";
-import { propertyToday } from "@/lib/property-calendar";
+import { calendarSearch } from "@/lib/route-search";
 
 /** Copy and action for a page whose record can be missing, such as one reservation. */
 export type NotFoundState = { title: string; description: string; action: ReactNode };
@@ -134,7 +134,7 @@ export function RouteCrash({ error }: ErrorComponentProps) {
           <Button
             variant="outline"
             nativeButton={false}
-            render={<Link to="/calendar" search={{ from: propertyToday(), span: 7 }} />}
+            render={<Link to="/calendar" search={calendarSearch({})} />}
           >
             Ir al calendario
           </Button>
