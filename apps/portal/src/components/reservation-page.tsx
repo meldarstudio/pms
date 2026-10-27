@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Link, useBlocker } from "@tanstack/react-router";
-import { useQueryClient } from "@tanstack/react-query";
 import { ArrowLeftIcon } from "lucide-react";
 import { DiscardChanges } from "@/components/room-booking-dialog";
 import { Button } from "@/components/ui/button";
@@ -15,8 +14,8 @@ import {
 import { PageTitle } from "@/components/page-title";
 import { Skeleton } from "@/components/ui/skeleton";
 import { PageError, StaleDataNotice } from "@/components/page-error";
-import { useReservation, useReservationSaving } from "@/lib/queries";
-import { isReservationSaving } from "@/lib/workflow-query-cache";
+import { useReservation } from "@/lib/queries";
+import { useReservationCommands } from "@/lib/reservation-commands";
 import { ReservationOverview } from "@/components/reservation-overview";
 import {
   ReservationPageEditor,
@@ -32,14 +31,10 @@ export function ReservationPage(props: PageProps) {
 }
 
 function ReservationPageContent({ id, backSearch, onBack }: PageProps) {
-  const client = useQueryClient();
   const query = useReservation(id, { refetchOnReconnect: true });
-  const saving = useReservationSaving(id);
+  const { saving } = useReservationCommands(id);
   const dirty = useRef(false);
-  const shouldProtectUnload = useCallback(
-    () => isReservationSaving(client, id) || dirty.current,
-    [client, id],
-  );
+  const shouldProtectUnload = useCallback(() => saving || dirty.current, [saving]);
   const blocker = useBlocker({
     shouldBlockFn: shouldProtectUnload,
     withResolver: true,
@@ -107,7 +102,7 @@ function ReservationPageContent({ id, backSearch, onBack }: PageProps) {
             detail={query.data}
             disabled={saving}
             edit={(target) => {
-              if (editor || isReservationSaving(client, id)) return;
+              if (editor || saving) return;
               setEditor({ target, detail: query.data });
             }}
           />
@@ -126,7 +121,7 @@ function ReservationPageContent({ id, backSearch, onBack }: PageProps) {
           saving={saving}
           onStay={blocker.reset}
           onLeave={() => {
-            if (!isReservationSaving(client, id)) blocker.proceed();
+            if (!saving) blocker.proceed();
           }}
         />
       )}

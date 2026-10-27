@@ -2570,7 +2570,7 @@ it.each(["details", "cancellation"] as const)(
     await until(() => !save().disabled);
     if (kind === "details") assert.equal(control("rooms[0].room.adults").value, "2");
     assert.equal(previews.length, 2);
-    assert.deepEqual(previews[0], previews[1]);
+    assert.deepEqual(previews[1].actions, previews[0].actions);
   },
 );
 

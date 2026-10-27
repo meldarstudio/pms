@@ -1,5 +1,4 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useSelector } from "@tanstack/react-form";
 import { cn } from "cn";
 import { BookingEditor, DiscardChanges } from "@/components/room-booking-dialog";
@@ -14,10 +13,12 @@ import {
   DialogDescription,
 } from "@/components/ui/dialog";
 import { FieldGroup, FieldDescription, FieldError } from "@/components/ui/field";
-import { previewWorkflow, type ReservationDetail, type WorkflowAction } from "@/lib/api";
-import { useReservationSaving, useWorkflowCommand } from "@/lib/queries";
-import { createWorkflowSaver } from "@/lib/workflow-save";
-import { isReservationSaving } from "@/lib/workflow-query-cache";
+import type { ReservationDetail, WorkflowAction } from "@/lib/api";
+import {
+  useReservationCommands,
+  useReservationPreview,
+  type ReservationCommandResult,
+} from "@/lib/reservation-commands";
 import { guestValues } from "@/lib/reservation-editor";
 import { useReservationForm, blurThenChange, submitForm } from "@/lib/reservation-form";
 import {
@@ -31,7 +32,6 @@ import {
   paymentDefaults,
   paymentPayload,
 } from "@/lib/reservation-form-schemas";
-import { serverFieldErrors } from "@/lib/api-error";
 import { setServerErrors } from "@/lib/form-errors";
 import { formatMajor, formatMoney, parseMajorToCents } from "@/lib/money";
 import { reservationStatusLabel } from "@/lib/reservation-list";
@@ -91,12 +91,9 @@ export function ReservationPageEditor({
   onSaved?: (saved: ReservationDetail) => void;
   description?: string;
 }) {
-  const client = useQueryClient();
   const dirty = useRef(false);
   const [leaving, setLeaving] = useState(false);
-  const saving = useReservationSaving(detail.id);
-  const mutation = useWorkflowCommand(detail.id);
-  const [saveWorkflow] = useState(createWorkflowSaver);
+  const { send, saving } = useReservationCommands(detail.id);
   const handleDirty = useCallback(
     (value: boolean) => {
       dirty.current = value;
@@ -105,14 +102,9 @@ export function ReservationPageEditor({
     [onDirtyChange],
   );
   function close() {
-    if (isReservationSaving(client, detail.id)) return;
+    if (saving) return;
     if (dirty.current) setLeaving(true);
     else onClose();
-  }
-  async function save(actions: WorkflowAction[]) {
-    if (isReservationSaving(client, detail.id))
-      throw new Error("Espera a que termine el guardado.");
-    return saveWorkflow(actions, (command) => mutation.mutateAsync({ id: detail.id, command }));
   }
   return (
     <>
@@ -154,9 +146,7 @@ export function ReservationPageEditor({
               guest={detail.stayingGuests.find((guest) => guest.id === target.id)}
               disabled={saving}
               onDirtyChange={handleDirty}
-              onSave={async (guests) => {
-                await save([{ type: "set-guests", guests: guestValues(guests) }]);
-              }}
+              onSave={(guests) => send([{ type: "set-guests", guests: guestValues(guests) }])}
               onDone={onClose}
               onCancel={close}
             />
@@ -166,7 +156,7 @@ export function ReservationPageEditor({
               detail={detail}
               disabled={saving}
               onDirtyChange={handleDirty}
-              onSave={save}
+              onSave={send}
               onSaved={onSaved ?? onClose}
               onCancel={close}
             />
@@ -178,7 +168,7 @@ export function ReservationPageEditor({
           saving={saving}
           onStay={() => setLeaving(false)}
           onLeave={() => {
-            if (!isReservationSaving(client, detail.id)) onClose();
+            if (!saving) onClose();
           }}
         />
       )}
@@ -198,7 +188,7 @@ function ReservationActionForm({
   target: Exclude<ReservationEditorTarget, { kind: "guest" | "stay" }>;
   detail: ReservationDetail;
   disabled: boolean;
-  onSave: (actions: WorkflowAction[]) => Promise<ReservationDetail>;
+  onSave: (actions: WorkflowAction[]) => Promise<ReservationCommandResult>;
   onSaved: (saved: ReservationDetail) => void;
   onCancel: () => void;
   onDirtyChange: (dirty: boolean) => void;
@@ -301,21 +291,16 @@ function ReservationActionForm({
         default:
           return;
       }
-      try {
-        const saved = await onSave(actions);
+      const result = await onSave(actions);
+      if (result.status === "saved") {
         toast.add({ title: "Cambios guardados", type: "success" });
-        onSaved(saved);
-      } catch (cause) {
-        const fields = serverFieldErrors(
-          cause,
-          target.kind === "payment" ? "payment" : target.kind === "contact" ? "guest" : "details",
-        );
-        if (fields && target.kind === "contact") {
-          rejectedContact.current = { key: JSON.stringify([value.email, value.phone]), fields };
-          form.setErrorMap({ onDynamic: { fields } });
-        } else if (fields) setServerErrors(form, fields);
-        else toastError("No se pudo guardar", cause);
-      }
+        onSaved(result.reservation);
+      } else if (result.status === "failed") toastError("No se pudo guardar", result.message);
+      else if (target.kind === "contact") {
+        const { fields } = result;
+        rejectedContact.current = { key: JSON.stringify([value.email, value.phone]), fields };
+        form.setErrorMap({ onDynamic: { fields } });
+      } else setServerErrors(form, result.fields);
     },
   });
   const values = useSelector(form.store, (state) => state.values);
@@ -335,27 +320,20 @@ function ReservationActionForm({
         ? [{ type: "set-discount", amountCents: parseMajorToCents(values.amount.trim() || "0") }]
         : [],
   );
-  const command = useMemo(
-    () => ({ requestId: crypto.randomUUID(), actions: JSON.parse(actionsKey) as WorkflowAction[] }),
-    [actionsKey],
-  );
-  const [previewCommand, setPreviewCommand] = useState(command);
+  // The Discount amount is typed, so its preview waits for a pause; status previews do not.
+  const [previewKey, setPreviewKey] = useState(actionsKey);
   useEffect(() => {
-    const timer = setTimeout(
-      () => setPreviewCommand(command),
-      target.kind === "discount" ? 300 : 0,
-    );
+    const timer = setTimeout(() => setPreviewKey(actionsKey), target.kind === "discount" ? 300 : 0);
     return () => clearTimeout(timer);
-  }, [command, target.kind]);
+  }, [actionsKey, target.kind]);
+  const previewActions = useMemo(() => JSON.parse(previewKey) as WorkflowAction[], [previewKey]);
   const valid = schema.safeParse(values).success;
-  const current = previewCommand === command;
-  const preview = useQuery({
-    queryKey: ["reservation-action-preview", detail.id, previewCommand],
-    queryFn: () => previewWorkflow(detail.id, previewCommand),
-    enabled: needsPreview && current && valid,
-    retry: false,
-    refetchOnWindowFocus: false,
-  });
+  const current = previewKey === actionsKey;
+  const preview = useReservationPreview(
+    detail.id,
+    previewActions,
+    needsPreview && current && valid,
+  );
   const previewReady =
     current &&
     valid &&

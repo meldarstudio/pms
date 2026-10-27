@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { FieldGroup } from "@/components/ui/field";
 import type { ReservationDetail, StayingGuest, WorkflowAction } from "@/lib/api";
 import { serverFieldErrors } from "@/lib/api-error";
+import type { ReservationCommandResult } from "@/lib/reservation-commands";
 import { setServerErrors } from "@/lib/form-errors";
 import { useReservationForm, blurThenChange, submitForm } from "@/lib/reservation-form";
 import {
@@ -42,7 +43,8 @@ export function GuestEntryForm({
   detail: ReservationDetail;
   guest?: StayingGuest;
   disabled: boolean;
-  onSave: (guests: StayingGuest[]) => Promise<void>;
+  // Callers still saving through workflow-save throw instead of returning a result.
+  onSave: (guests: StayingGuest[]) => Promise<ReservationCommandResult | void>;
   onDirtyChange: (dirty: boolean) => void;
   onDone?: () => void;
   onCancel?: () => void;
@@ -68,11 +70,19 @@ export function GuestEntryForm({
       if (disabled) return;
       try {
         const payload = guestPayload(value);
-        await onSave(
+        const result = await onSave(
           guest
             ? detail.stayingGuests.map((entry) => (entry.id === guest.id ? payload : entry))
             : [...detail.stayingGuests, payload],
         );
+        if (result?.status === "rejected") {
+          setServerErrors(form, result.fields);
+          return;
+        }
+        if (result?.status === "failed") {
+          toastError("No se pudo guardar el huésped", result.message);
+          return;
+        }
         const next = guest ? guestDefaults(payload) : { ...defaults, id: crypto.randomUUID() };
         setDefaults(next);
         form.reset(next);
