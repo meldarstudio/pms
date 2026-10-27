@@ -14,14 +14,14 @@ import {
 import { toast } from "@/lib/toast";
 import { translateError } from "@/lib/errors";
 
-// Assignment failures arrive translated; these conflicts get copy that names the next step.
+// These conflicts get copy that names the next step.
 const conflictCopy = new Map([
   [
-    translateError("room is already assigned for those dates"),
+    "room is already assigned for those dates",
     "Esta habitación acaba de asignarse a otra reserva. Elige otra habitación.",
   ],
   [
-    translateError("room is closed for those dates"),
+    "room is closed for those dates",
     "Esta habitación está cerrada durante la estancia. Elige otra habitación.",
   ],
 ]);
@@ -143,10 +143,11 @@ export function useRoomAssignment(rooms: Room[] | null, unassigned: ReservationS
     // Assignment changes no form field, so any rejection is one message.
     const message =
       result.status === "failed" ? result.message : "No se pudo asignar la habitación.";
+    const code = result.status === "failed" ? result.code : undefined;
     setSaveError(message);
     toast.add({
       title: "No se pudo asignar la habitación",
-      description: conflictCopy.get(message) ?? message,
+      description: (code && conflictCopy.get(code)) ?? message,
       type: "error",
       priority: "high",
       timeout: 7000,

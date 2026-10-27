@@ -3,7 +3,7 @@ import { useDirtyRoomCheckIn } from "@/components/dirty-room-check-in";
 import { FieldGroup } from "@/components/ui/field";
 import { ChoiceField } from "@/components/workflow-fields";
 import type { ReservationDetail, WorkflowAction } from "@/lib/api";
-import { useReservationCommands } from "@/lib/reservation-commands";
+import { unsavedMessage, useReservationCommands } from "@/lib/reservation-commands";
 import { reservationStatusLabel } from "@/lib/reservation-list";
 import { toast, toastError } from "@/lib/toast";
 
@@ -21,7 +21,7 @@ export function ReservationLifecycle({
   onConfirm: (status: Status) => void;
 }) {
   const { send, saving } = useReservationCommands(detail.id);
-  const [changing, setChanging] = useState(false);
+  const [statusSaving, setStatusSaving] = useState(false);
   const [confirmCheckIn, checkInDialog] = useDirtyRoomCheckIn();
   async function change(status: Status) {
     if (status === detail.status || blocked || saving) return;
@@ -30,12 +30,11 @@ export function ReservationLifecycle({
       onConfirm(status);
       return;
     }
-    setChanging(true);
+    setStatusSaving(true);
     const result = await send([{ type: "set-status", status }]);
-    setChanging(false);
+    setStatusSaving(false);
     if (result.status === "saved") toast.add({ title: "Estado guardado", type: "success" });
-    // A status change maps no rejection to a field, so failures carry one message.
-    else toastError("No se pudo cambiar el estado", result.status === "failed" && result.message);
+    else toastError("No se pudo cambiar el estado", unsavedMessage(result));
   }
   return (
     <div className="flex flex-col items-end gap-2">
@@ -53,7 +52,7 @@ export function ReservationLifecycle({
           }}
         />
       </FieldGroup>
-      {changing && (
+      {statusSaving && (
         <p role="status" className="text-xs text-muted-foreground">
           Guardando estado…
         </p>

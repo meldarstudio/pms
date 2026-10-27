@@ -310,8 +310,11 @@ Creation uses its own endpoint and does not.
 - `useReservationCommands(id)` returns `send(actions)` and `saving`. `send` takes
   the workflow action list and never throws. It resolves to `saved` with the
   reservation detail, `rejected` with Spanish field errors keyed by form field
-  name, or `failed` with one Spanish message. `saving` is true while any save to
-  that reservation is queued or running, whichever editor sent it.
+  name, or `failed` with one Spanish message and, when the server sent one, its
+  English error `code` for callers that react to a specific error. Editors with
+  no field to show a rejection use `unsavedMessage(result)`. `saving` is true
+  while any save to that reservation is queued or running, whichever editor
+  sent it.
 - **Duplicate-safe retries.** A failed save keeps its request ID, keyed by
   reservation and the exact actions. Sending identical actions again reuses that
   ID, even from a reopened editor, so a retry after a lost response cannot record
@@ -321,7 +324,12 @@ Creation uses its own endpoint and does not.
 - **Ordering.** Saves to one reservation run one at a time in send order. Sending
   actions identical to a queued or running save joins it: no second request, and
   both callers receive the same result. Different reservations save independently.
-- **Field errors.** The sent action types choose the mapping: payment actions map
+  Clearing the cache (sign-out) drops saves still queued, which resolve as
+  `failed`; a later send never joins a save started before the clear, and a save
+  running across the clear does not write its result back into the cache.
+- **Field errors.** The sent action types choose the mapping, from the same table
+  as `serverFieldErrors` in [api-error.ts](../apps/portal/src/lib/api-error.ts),
+  which creation and the stay draft preview use: payment actions map
   date, amount, and method; contact actions map email and phone; staying-guest
   actions map email, phone, and reserved room; stay-changing actions map the
   stay-length errors to checkout. Anything else, including unmatched codes, is a
@@ -329,7 +337,9 @@ Creation uses its own endpoint and does not.
 - **Refresh.** `send` resolves after the refresh. Success writes the saved detail
   to the reservation cache and refreshes reservation lists, availability,
   inventory, payments, the calendar, and every open bill preview for that
-  reservation. A contact change also refreshes the contact's other reservations.
+  reservation. A preview still loading is cancelled first, so its older bill
+  never replaces the refreshed one. A contact change also refreshes the
+  contact's other reservations.
 - **Bill previews.** `useReservationPreview(id, actions, enabled)` returns the bill
   and validation issues for the discount and status editors; callers debounce.
   The stay draft keeps its own quote reuse but keys its queries with

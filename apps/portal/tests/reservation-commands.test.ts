@@ -215,6 +215,31 @@ describe("ordering", () => {
     assert.equal(firstResult.status === "saved" && firstResult.reservation.paidCents, 10000);
   });
 
+  it("drops queued saves and starts a fresh one when the query client is cleared, as on sign-out", async () => {
+    const held = page.api.hold("POST", "/reservations/:id/commands");
+    const editor = await mountEditor();
+    const running = await start(editor, [payment]);
+    const queued = await start(editor, [stayingGuests]);
+    await page.until(() => held.request !== undefined, "Expected the first save to be sent");
+
+    page.client.clear();
+    const afterClear = await start(editor, [payment]);
+    held.release(Response.json(reservation("res-1", { paidCents: 10000 })));
+
+    assert.equal((await settle(running)).status, "saved");
+    assert.deepEqual(await settle(queued), {
+      status: "failed",
+      message: "No se pudieron guardar los cambios.",
+    });
+    assert.equal((await settle(afterClear)).status, "saved");
+    assert.deepEqual(
+      sent.map((command) => command.actions[0].type),
+      ["add-payment", "add-payment"],
+    );
+    assert.notEqual(sent[1].requestId, sent[0].requestId);
+    assert.equal(page.container.textContent, "idle");
+  });
+
   it("does not delay saves to a different Reservation", async () => {
     page.api.hold("POST", "/reservations/res-1/commands");
     const first = await mountEditor("res-1");
@@ -306,6 +331,7 @@ describe("server rejections", () => {
           error: "reservation changed while saving; please try again",
         }),
       message: "La reserva cambió mientras se guardaba. Intenta guardar de nuevo.",
+      code: "reservation changed while saving; please try again",
     },
     {
       name: "a field rejection the sent actions do not edit",
@@ -315,6 +341,7 @@ describe("server rejections", () => {
           error: "payment date cannot be in the future",
         }),
       message: "La fecha del pago no puede ser futura.",
+      code: "payment date cannot be in the future",
     },
     {
       name: "a lost connection",
@@ -322,11 +349,15 @@ describe("server rejections", () => {
       fail: dropNextCommand,
       message: "No se pudo conectar con el servidor. Inténtalo de nuevo.",
     },
-  ])("reports $name as one Spanish message", async ({ actions, fail, message }) => {
+  ])("reports $name as one Spanish message", async ({ actions, fail, message, code }) => {
     fail();
     const editor = await mountEditor();
 
-    assert.deepEqual(await send(editor, actions), { status: "failed", message });
+    // The server's error code, when there is one, lets callers react without matching copy.
+    assert.deepEqual(
+      await send(editor, actions),
+      code ? { status: "failed", message, code } : { status: "failed", message },
+    );
   });
 });
 
@@ -378,6 +409,37 @@ describe("bill preview", () => {
     );
     assert.deepEqual(preview.current?.data?.validation.issues, []);
     assert.equal(previews.length, 2);
+  });
+
+  it("ignores an older in-flight preview when a separately saved Payment refreshes it", async () => {
+    previewAfterPayments();
+    const older = page.api.hold("POST", "/reservations/:id/preview");
+    const preview: { current?: ReturnType<typeof commands.useReservationPreview> } = {};
+    const editor: { current: Commands } = { current: undefined as never };
+    function DiscountEditor() {
+      preview.current = commands.useReservationPreview("res-1", [discount], true);
+      editor.current = commands.useReservationCommands("res-1");
+      return null;
+    }
+    await page.render(React.createElement(DiscountEditor));
+    await page.until(() => older.request !== undefined, "Expected the first preview request");
+
+    assert.equal((await send(editor, [payment])).status, "saved");
+    await page.until(
+      () => preview.current?.data?.billing.balanceCents === 18000,
+      "Expected the preview after the Payment",
+    );
+    // The bill from before the Payment arrives last and must not replace the newer one.
+    older.release(
+      Response.json({
+        billing: { ...reservation("res-1"), balanceCents: 28000 },
+        validation: { issues: [] },
+      }),
+    );
+    await page.flush(20);
+
+    assert.equal(preview.current?.data?.billing.balanceCents, 18000);
+    assert.equal(preview.current?.isFetching, false);
   });
 
   it("does not ask the server while disabled", async () => {

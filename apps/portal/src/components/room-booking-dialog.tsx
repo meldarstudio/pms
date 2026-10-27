@@ -71,7 +71,11 @@ import {
   useRooms,
   useRoomTypes,
 } from "@/lib/queries";
-import { useReservationCommands, type ReservationCommandResult } from "@/lib/reservation-commands";
+import {
+  unsavedMessage,
+  useReservationCommands,
+  type ReservationCommandResult,
+} from "@/lib/reservation-commands";
 import { toast, toastError } from "@/lib/toast";
 import { formatMoney } from "@/lib/money";
 import { setServerErrors } from "@/lib/form-errors";
@@ -115,11 +119,6 @@ const stayDate = (value: string, pattern: string) => {
   return isValid(date) ? format(date, pattern) : "—";
 };
 type Intent = { type: "edit-payment" | "delete-payment"; entry: ReservationPayment };
-
-/** One message for a save that did not happen, where no form field can show it. */
-function unsavedMessage(result: Exclude<ReservationCommandResult, { status: "saved" }>) {
-  return result.status === "failed" ? result.message : Object.values(result.fields).join(" ");
-}
 
 export function RoomBookingDialog({
   target,
@@ -464,8 +463,6 @@ export function BookingEditor({
   const { send, saving: reservationSaving } = useReservationCommands(detail.id);
   const [statusSaving, setStatusSaving] = useState(false);
   const busy = submitting || reservationSaving;
-  const saveGuests = (guests: StayingGuest[]) =>
-    send([{ type: "set-guests", guests: guestValues(guests) }]);
   useEffect(() => {
     onDirtyChange?.(draftDirty || cancellationDirty);
   }, [draftDirty, cancellationDirty, onDirtyChange]);
@@ -473,11 +470,6 @@ export function BookingEditor({
     const result = await send(actions);
     if (result.status === "saved") toast.add({ title, type: "success" });
     return result;
-  }
-  async function saveDiscount(amountCents: number) {
-    const result = await send([{ type: "set-discount", amountCents }]);
-    // The discount input shows the failure and keeps its draft.
-    if (result.status !== "saved") throw new Error(unsavedMessage(result));
   }
 
   const activeDrafts = drafts.filter((draft) => !draft.removed);
@@ -875,7 +867,7 @@ export function BookingEditor({
                 <GuestFields
                   detail={detail}
                   disabled={busy}
-                  onSave={saveGuests}
+                  onSave={(guests) => send([{ type: "set-guests", guests: guestValues(guests) }])}
                   onDirtyChange={setGuestDirty}
                 />
               </TabsContent>
@@ -920,7 +912,11 @@ export function BookingEditor({
               paidCents={billing?.paidCents ?? detail.paidCents}
               editableDiscountCents={detail.savedDiscountCents}
               discountDisabled={busy}
-              onDiscountSave={stayOnly ? undefined : saveDiscount}
+              onDiscountSave={
+                stayOnly
+                  ? undefined
+                  : (amountCents) => send([{ type: "set-discount", amountCents }])
+              }
               onDiscountDirtyChange={setDiscountDirty}
               currency={detail.currency}
               stayLabel={

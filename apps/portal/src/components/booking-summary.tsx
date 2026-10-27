@@ -20,6 +20,7 @@ import {
 } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
 import { Field, FieldError } from "@/components/ui/field";
+import { unsavedMessage, type ReservationCommandResult } from "@/lib/reservation-commands";
 import { toastError } from "@/lib/toast";
 import {
   InputGroup,
@@ -76,7 +77,7 @@ export function BookingSummary({
   error?: ReactNode;
   editableDiscountCents?: number;
   discountDisabled?: boolean;
-  onDiscountSave?: (amountCents: number) => Promise<void>;
+  onDiscountSave?: (amountCents: number) => Promise<DiscountSaveResult>;
   onDiscountDirtyChange?: (dirty: boolean) => void;
   provisional?: boolean;
   collapsible?: boolean;
@@ -258,6 +259,11 @@ export function BookingSummary({
   );
 }
 
+/** A Reservation save's result, or `{ status: "saved" }` from a draft that keeps the value. */
+type DiscountSaveResult =
+  | { status: "saved" }
+  | Exclude<ReservationCommandResult, { status: "saved" }>;
+
 function discountDraft(cents: number) {
   return cents % 100 === 0 ? String(cents / 100) : formatMajor(cents);
 }
@@ -272,7 +278,7 @@ function DiscountInput({
   label: string;
   amountCents: number;
   disabled: boolean;
-  onSave: (amountCents: number) => Promise<void>;
+  onSave: (amountCents: number) => Promise<DiscountSaveResult>;
   onDirtyChange?: (dirty: boolean) => void;
 }) {
   const defaults = useMemo(() => ({ amount: discountDraft(amountCents) }), [amountCents]);
@@ -290,12 +296,10 @@ function DiscountInput({
         form.reset(next);
         return;
       }
-      try {
-        await onSave(cents);
-        form.reset(next);
-      } catch (cause) {
-        toastError("No se pudo guardar el descuento", cause);
-      }
+      const result = await onSave(cents);
+      // A failed save keeps the draft so staff can retry it.
+      if (result.status === "saved") form.reset(next);
+      else toastError("No se pudo guardar el descuento", unsavedMessage(result));
     },
   });
   const value = useSelector(form.store, (state) => state.values.amount);

@@ -484,7 +484,10 @@ export function NewBooking({
               currency={currency}
               editableDiscountCents={discountCents}
               discountDisabled={busy}
-              onDiscountSave={async (cents) => form.setFieldValue("discount", formatMajor(cents))}
+              onDiscountSave={async (cents) => {
+                form.setFieldValue("discount", formatMajor(cents));
+                return { status: "saved" };
+              }}
               onDiscountDirtyChange={setDiscountDirty}
               stayLabel={
                 validStay

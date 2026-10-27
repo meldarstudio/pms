@@ -754,6 +754,9 @@ it("saves stay changes independently with the current server bill", async () => 
   assert.equal(button("Cancelar").disabled, true);
   assert.equal(await unloadPrevented(), true);
   await click("Cerrar");
+  // A second submit while the save runs (Enter in a field) sends nothing more.
+  await submit();
+  assert.equal(writes.length, 1);
   await React.act(async () => {
     void router.navigate({ to: "/calendar", search: { from: "2026-10-19", span: 14 } });
   });

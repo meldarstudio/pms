@@ -8,133 +8,116 @@ import {
   type WorkflowAction,
   type WorkflowCommand,
 } from "./api.ts";
-import { ApiError } from "./api-error.ts";
+import { ApiError, serverFieldErrors, type FieldScope } from "./api-error.ts";
 import type { ReservationStay } from "./assignment-availability.ts";
 
 export type ReservationCommandResult =
   | { status: "saved"; reservation: ReservationDetail }
   | { status: "rejected"; fields: Record<string, string> }
-  | { status: "failed"; message: string };
+  /** `message` is Spanish; `code` is the server's English error code, when it sent one. */
+  | { status: "failed"; message: string; code?: string };
 
 const fallbackMessage = "No se pudieron guardar los cambios.";
 
 // Unsettled commands live in the query cache, so removing queries on sign-out or
 // clearing the client forgets them. Nothing observes this entry; it never refetches.
+// Clearing the cache replaces the map, so its identity also marks the signed-in session.
 const unsettledKey = ["reservation-commands", "unsettled"] as const;
 
+type UnsettledCommands = Map<string, WorkflowCommand>;
+
 function unsettledCommands(client: QueryClient) {
-  const held = client.getQueryData<Map<string, WorkflowCommand>>(unsettledKey);
-  if (held) return held;
-  const created = new Map<string, WorkflowCommand>();
+  const existing = client.getQueryData<UnsettledCommands>(unsettledKey);
+  if (existing) return existing;
+  const created: UnsettledCommands = new Map();
   client.setQueryDefaults(unsettledKey, { gcTime: Infinity, staleTime: Infinity });
   client.setQueryData(unsettledKey, created);
   return created;
 }
 
-type Runtime = {
-  /** The last queued save per Reservation; the next one starts after it settles. */
-  tails: Map<string, Promise<unknown>>;
+/** The saves to each Reservation queued or running on one QueryClient. */
+type SaveQueue = {
+  /** The last save queued per Reservation; the next one starts after it settles. */
+  lastSave: Map<string, Promise<unknown>>;
   /** Queued or running saves by Reservation and exact actions, for joining. */
-  running: Map<string, Promise<ReservationCommandResult>>;
+  joinable: Map<string, { session: UnsettledCommands; result: Promise<ReservationCommandResult> }>;
   saving: Map<string, number>;
   listeners: Set<() => void>;
 };
 
-const runtimes = new WeakMap<QueryClient, Runtime>();
+const saveQueues = new WeakMap<QueryClient, SaveQueue>();
 
-function runtime(client: QueryClient) {
-  let found = runtimes.get(client);
-  if (!found) {
-    found = { tails: new Map(), running: new Map(), saving: new Map(), listeners: new Set() };
-    runtimes.set(client, found);
+function saveQueue(client: QueryClient) {
+  let queue = saveQueues.get(client);
+  if (!queue) {
+    queue = { lastSave: new Map(), joinable: new Map(), saving: new Map(), listeners: new Set() };
+    saveQueues.set(client, queue);
   }
-  return found;
+  return queue;
 }
 
-function changeSaving(state: Runtime, id: string, delta: number) {
-  const count = (state.saving.get(id) ?? 0) + delta;
-  if (count > 0) state.saving.set(id, count);
-  else state.saving.delete(id);
-  for (const listener of state.listeners) listener();
+function changeSaving(queue: SaveQueue, id: string, delta: number) {
+  const count = (queue.saving.get(id) ?? 0) + delta;
+  if (count > 0) queue.saving.set(id, count);
+  else queue.saving.delete(id);
+  for (const listener of queue.listeners) listener();
 }
-
-/** The form field a rejection belongs to, or null when it is not this rule's. */
-type FieldRule = (error: ApiError) => string | null;
-
-const paymentFields: FieldRule[] = [
-  ({ code }) =>
-    code === "payment date cannot be in the future" || code === "payment date is required"
-      ? "date"
-      : null,
-  ({ code }) => (code === "amount cannot be zero" ? "amount" : null),
-  ({ code }) => (code === "method is required" ? "method" : null),
-];
-
-// Staying guests share the Booking contact's email and phone field names in their form.
-const personFields: FieldRule[] = [
-  ({ code }) => (code === "invalid email" ? "email" : null),
-  ({ field }) => (field === "phone" ? "phone" : null),
-];
-
-const stayFields: FieldRule[] = [
-  ({ code }) =>
-    code === "stay cannot be longer than 60 nights" || code === "stay must be at least one night"
-      ? "checkOut"
-      : null,
-];
 
 // The fields a rejection may name depend on what the command changed.
-const fieldsByAction: Partial<Record<WorkflowAction["type"], FieldRule[]>> = {
-  "add-payment": paymentFields,
-  "edit-payment": paymentFields,
-  contact: personFields,
-  "set-guests": [
-    ...personFields,
-    ({ code }) =>
-      code === "guest room must belong to this reservation" ? "reservationRoomId" : null,
-  ],
-  dates: stayFields,
-  "add-room": stayFields,
-  "edit-room": stayFields,
-  "remove-room": stayFields,
+const scopeByAction: Partial<Record<WorkflowAction["type"], FieldScope>> = {
+  "add-payment": "payment",
+  "edit-payment": "payment",
+  contact: "contact",
+  "set-guests": "guest",
+  dates: "details",
+  "add-room": "details",
+  "edit-room": "details",
+  "remove-room": "details",
 };
 
-function rejectedFields(cause: unknown, actions: WorkflowAction[]) {
-  if (!(cause instanceof ApiError)) return null;
-  const fields: Record<string, string> = {};
-  for (const action of actions)
-    for (const rule of fieldsByAction[action.type] ?? []) {
-      const name = rule(cause);
-      if (name) fields[name] = cause.message;
-    }
-  return Object.keys(fields).length ? fields : null;
-}
-
 function rejection(cause: unknown, actions: WorkflowAction[]): ReservationCommandResult {
-  const fields = rejectedFields(cause, actions);
+  const scopes = actions.flatMap((action) => scopeByAction[action.type] ?? []);
+  const fields = serverFieldErrors(cause, ...scopes);
   return fields ? { status: "rejected", fields } : failure(cause);
 }
 
 function failure(cause: unknown): ReservationCommandResult {
-  return {
-    status: "failed",
-    message: cause instanceof Error && cause.message ? cause.message : fallbackMessage,
-  };
+  const message = cause instanceof Error && cause.message ? cause.message : fallbackMessage;
+  return cause instanceof ApiError
+    ? { status: "failed", message, code: cause.code }
+    : { status: "failed", message };
+}
+
+/** One message for a save that did not happen, for editors with no form field to show it. */
+export function unsavedMessage(result: Exclude<ReservationCommandResult, { status: "saved" }>) {
+  return result.status === "failed" ? result.message : Object.values(result.fields).join(" ");
 }
 
 const previewScope = "reservation-preview";
 
+/** What distinguishes the previews of one Reservation. */
+type PreviewParts =
+  /** A Discount or status editor's bill after `actions`. */
+  | [kind: "bill", actions: WorkflowAction[]]
+  /** The Stay draft's reusable price quote for a pricing key. */
+  | [kind: "billing", pricingKey: string]
+  /** The Stay draft's validation and bill for its debounced command. */
+  | [kind: "edit", command: WorkflowCommand, pricingKey: string];
+
 /**
  * A cache key for a bill preview of one Reservation. Saves to that Reservation
- * refresh every preview under it; `parts` distinguish the previews.
+ * refresh every preview under it.
  */
-export function reservationPreviewKey(id: string, ...parts: unknown[]) {
+export function reservationPreviewKey(id: string, ...parts: PreviewParts) {
   return [previewScope, id, ...parts] as const;
 }
 
 // ADR 0001: a save that changes the calendar refreshes it.
 async function refresh(client: QueryClient, saved: ReservationDetail, actions: WorkflowAction[]) {
   client.setQueryData(["reservation", saved.id], saved);
+  // A preview still loading read the Reservation before this save; without cancelling,
+  // the refresh would wait for it and show its stale bill.
+  await client.cancelQueries({ queryKey: [previewScope, saved.id] });
   await Promise.all([
     ...["reservations", "availability", "inventory", "payments", "calendar"].map((key) =>
       client.invalidateQueries({ queryKey: [key] }),
@@ -154,20 +137,22 @@ async function refresh(client: QueryClient, saved: ReservationDetail, actions: W
 
 // Each command reads a Reservation snapshot. Running saves to one Reservation in send
 // order stops a Discount autosave undoing a Cancellation saved just before it.
+// A save still queued when the cache is cleared (sign-out) does not run.
 function enqueue(
   client: QueryClient,
   id: string,
-  task: () => Promise<ReservationCommandResult>,
+  task: (session: UnsettledCommands) => Promise<ReservationCommandResult>,
 ): Promise<ReservationCommandResult> {
-  const state = runtime(client);
-  changeSaving(state, id, 1);
-  const result = (state.tails.get(id) ?? Promise.resolve())
-    .then(task)
+  const queue = saveQueue(client);
+  const session = unsettledCommands(client);
+  changeSaving(queue, id, 1);
+  const result = (queue.lastSave.get(id) ?? Promise.resolve())
+    .then(() => (unsettledCommands(client) === session ? task(session) : failure(null)))
     .catch(failure)
-    .finally(() => changeSaving(state, id, -1));
-  state.tails.set(id, result);
+    .finally(() => changeSaving(queue, id, -1));
+  queue.lastSave.set(id, result);
   void result.then(() => {
-    if (state.tails.get(id) === result) state.tails.delete(id);
+    if (queue.lastSave.get(id) === result) queue.lastSave.delete(id);
   });
   return result;
 }
@@ -180,12 +165,11 @@ function save(
   // Snapshot now: the editor may keep changing its values while this save waits.
   const snapshot = JSON.stringify(actions);
   const key = `${id}\n${snapshot}`;
-  const state = runtime(client);
-  const joined = state.running.get(key);
-  if (joined) return joined;
-  const result = enqueue(client, id, async () => {
-    // Read when the save starts, so a cache cleared meanwhile is not written back into.
-    const unsettled = unsettledCommands(client);
+  const queue = saveQueue(client);
+  const joined = queue.joinable.get(key);
+  // A save from before the cache was cleared belongs to the previous session.
+  if (joined?.session === unsettledCommands(client)) return joined.result;
+  const result = enqueue(client, id, async (unsettled) => {
     const command = unsettled.get(key) ?? {
       requestId: crypto.randomUUID(),
       actions: JSON.parse(snapshot) as WorkflowAction[],
@@ -198,12 +182,13 @@ function save(
       unsettled.set(key, command);
       return rejection(cause, command.actions);
     }
-    await refresh(client, saved, command.actions);
+    // A cache cleared while this save ran is not written back into.
+    if (unsettledCommands(client) === unsettled) await refresh(client, saved, command.actions);
     return { status: "saved", reservation: saved };
   });
-  state.running.set(key, result);
+  queue.joinable.set(key, { session: unsettledCommands(client), result });
   void result.then(() => {
-    if (state.running.get(key) === result) state.running.delete(key);
+    if (queue.joinable.get(key)?.result === result) queue.joinable.delete(key);
   });
   return result;
 }
@@ -214,16 +199,16 @@ function save(
  */
 export function useReservationCommands(id: string | null) {
   const client = useQueryClient();
-  const state = runtime(client);
+  const queue = saveQueue(client);
   const saving = useSyncExternalStore(
     useCallback(
       (listener: () => void) => {
-        state.listeners.add(listener);
-        return () => state.listeners.delete(listener);
+        queue.listeners.add(listener);
+        return () => queue.listeners.delete(listener);
       },
-      [state],
+      [queue],
     ),
-    () => id !== null && state.saving.has(id),
+    () => id !== null && queue.saving.has(id),
   );
   const send = useCallback(
     (actions: WorkflowAction[]): Promise<ReservationCommandResult> =>
@@ -245,14 +230,14 @@ export function useRoomAssignmentCommand() {
   const assign = useCallback(
     (target: ReservationStay, roomId: string): Promise<ReservationCommandResult> => {
       setRunning((count) => count + 1);
-      return enqueue(client, target.reservationId, async () => {
+      return enqueue(client, target.reservationId, async (session) => {
         let saved: ReservationDetail;
         try {
           saved = await assignRoom(target, roomId);
         } catch (cause) {
           return failure(cause);
         }
-        await refresh(client, saved, []);
+        if (unsettledCommands(client) === session) await refresh(client, saved, []);
         return { status: "saved", reservation: saved };
       }).finally(() => setRunning((count) => count - 1));
     },
