@@ -66,8 +66,8 @@ stays in view. The sidebar link, the `/` redirect, links from error pages, and *
 all start there; a `from` in the URL or a date chosen in the picker becomes the
 first column unchanged. [`calendarStart`](../apps/portal/src/lib/route-search.ts)
 owns the rule. Today's column, from its header down, has a light primary tint behind
-the bars and primary side grid lines, and its header cell is outlined in primary on
-all four sides, so it stands out from the first column.
+the bars and a primary outline on its outside edges: both sides from the header to the
+last room, and the header's top. It stands out from the first column.
 
 ## Calendar read
 

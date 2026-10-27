@@ -169,16 +169,16 @@ function stayTrack(stay: {
 
 /**
  * Marks today's column behind the bars, since the calendar opens on yesterday.
- * It reaches 1px past each side to redraw the column's grid lines in the primary
- * color; the header cell also redraws its bottom line and adds a top one.
+ * It reaches 1px past each side and the bottom (and the header's top) to cover the
+ * gray grid lines, so its opaque outline runs unbroken from the header to the last room.
  */
 function TodayColumn({ header = false }: { header?: boolean }) {
   return (
     <div
       aria-hidden="true"
       className={cn(
-        "pointer-events-none absolute -right-px -left-px -z-10 border-x border-primary/20 bg-primary/10",
-        header ? "top-0 -bottom-px border-y" : "inset-y-0",
+        "pointer-events-none absolute -right-px -bottom-px -left-px -z-10 border-x border-[color-mix(in_oklab,var(--color-primary)_30%,var(--color-background))] bg-primary/10",
+        header ? "-top-px border-t" : "top-0",
       )}
     />
   );
@@ -788,7 +788,9 @@ export function RoomCalendar({
         <div
           ref={gridScroller}
           className={cn(
-            "min-h-0 min-w-0 flex-1 overflow-auto overscroll-none",
+            // -mt-px puts the header's top border over the line above the grid,
+            // so today's header can redraw that line in its own color.
+            "-mt-px min-h-0 min-w-0 flex-1 overflow-auto overscroll-none",
             primaryActionClearance,
           )}
         >
@@ -809,13 +811,13 @@ export function RoomCalendar({
             >
               <div
                 ref={gridCorner}
-                className="sticky top-0 left-0 z-40 border-r border-b bg-background"
+                className="sticky top-0 left-0 z-40 border-y border-r bg-background"
               />
               {days.map((day, dayIndex) => (
                 <div
                   key={format(day, "yyyy-MM-dd")}
                   className={cn(
-                    "sticky top-0 z-30 flex min-w-0 flex-col items-center gap-0.5 border-b bg-background px-2.5 py-1.5",
+                    "sticky top-0 z-30 flex min-w-0 flex-col items-center gap-0.5 border-y bg-background px-2.5 py-1.5",
                     dayIndex < span - 1 && "border-r",
                   )}
                 >
