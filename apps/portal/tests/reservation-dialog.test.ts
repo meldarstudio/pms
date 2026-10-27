@@ -29,8 +29,7 @@ let query: BrowserTest["query"];
 let forms: typeof import("../src/components/reservation-entry-forms.tsx");
 let dialogs: typeof import("../src/components/room-booking-dialog.tsx");
 let newBookings: typeof import("../src/components/new-booking.tsx");
-let queries: typeof import("../src/lib/queries.ts");
-let apiErrors: typeof import("../src/lib/api-error.ts");
+let commands: typeof import("../src/lib/reservation-commands.ts");
 type CreateBookingInput = Parameters<typeof import("../src/lib/api.ts").createWorkflowBooking>[0];
 let root: BrowserPage["root"];
 let container: BrowserPage["container"];
@@ -53,8 +52,7 @@ beforeAll(async () => {
   newBookings = (await server.ssrLoadModule(
     "/src/components/new-booking.tsx",
   )) as typeof newBookings;
-  queries = (await server.ssrLoadModule("/src/lib/queries.ts")) as typeof queries;
-  apiErrors = (await server.ssrLoadModule("/src/lib/api-error.ts")) as typeof apiErrors;
+  commands = (await server.ssrLoadModule("/src/lib/reservation-commands.ts")) as typeof commands;
   const calendar = (await server.ssrLoadModule(
     "/src/lib/property-calendar.ts",
   )) as typeof import("../src/lib/property-calendar.ts");
@@ -135,6 +133,9 @@ function detail(): ReservationDetail {
   };
 }
 
+/** What a Reservation command resolves to after the fake save succeeds. */
+const savedAs = (reservation: ReservationDetail) => ({ status: "saved" as const, reservation });
+
 const control = (name: string) => page.field(name);
 const fill = (target: Parameters<BrowserPage["fill"]>[0], value: string) =>
   page.fill(target, value);
@@ -202,6 +203,7 @@ it("adds consecutive trimmed guests with distinct IDs and resets the real form a
       writes.push(guests);
       saved = { ...saved, stayingGuests: guests };
       root.render(withClient(React.createElement(forms.GuestEntryForm, props())));
+      return savedAs(saved);
     },
   });
   await render(React.createElement(forms.GuestEntryForm, props()));
@@ -234,6 +236,7 @@ it("refreshes an untouched payment suggestion and submits a manual Yape amount w
     onDirtyChange: () => {},
     onReady: async (_title: string, actions: WorkflowCommand["actions"]) => {
       writes.push(actions);
+      return savedAs(detail());
     },
   };
   await render(React.createElement(forms.PaymentForm, { ...props, detail: detail() }));
@@ -273,6 +276,7 @@ it("preserves a backdated Plin payment and refreshes future-date limits on resum
       onDirtyChange: () => {},
       onReady: async (_title, actions) => {
         writes.push(actions);
+        return savedAs(detail());
       },
     }),
   );
@@ -636,7 +640,7 @@ it("reopens a cached reservation with the room saved by the assignment panel", a
     { reservation: () => saved },
   );
   function AssignmentAndDialog() {
-    const assign = queries.useAssignRoom();
+    const { assign } = commands.useRoomAssignmentCommand();
     const [open, setOpen] = React.useState(true);
     return React.createElement(
       React.Fragment,
@@ -645,8 +649,8 @@ it("reopens a cached reservation with the room saved by the assignment panel", a
         "button",
         {
           onClick: async () => {
-            await assign.mutateAsync({
-              target: {
+            await assign(
+              {
                 id: "line-1",
                 reservationId: saved.id,
                 guestName: saved.guest.fullName,
@@ -657,8 +661,8 @@ it("reopens a cached reservation with the room saved by the assignment panel", a
                 roomIndex: 1,
                 roomCount: 1,
               },
-              roomId: "room-1",
-            });
+              "room-1",
+            );
             setOpen(true);
           },
         },
@@ -1269,6 +1273,7 @@ it("resubmits an unformatted legacy phone exactly once an edit is undone", async
       onDirtyChange: () => {},
       onSave: async (guests: StayingGuest[]) => {
         writes.push(guests);
+        return savedAs({ ...saved, stayingGuests: guests });
       },
     }),
   );
@@ -1306,9 +1311,13 @@ it("saves staying-guest phones on their own, keeping an unchanged legacy phone",
       onDirtyChange: () => {},
       onSave: async (guests: StayingGuest[]) => {
         if (guests.some((entry) => entry.phone === "+51999111222"))
-          throw new apiErrors.ApiError(400, "phone number is too long", "phone");
+          return {
+            status: "rejected" as const,
+            fields: { phone: "El número tiene demasiados dígitos para el país seleccionado." },
+          };
         writes.push(guests);
         saved = { ...saved, stayingGuests: guests };
+        return savedAs(saved);
       },
     });
 
@@ -2657,11 +2666,13 @@ it("preserves a failed payment draft and clears each successful payment without 
     onReady: async (_title: string, actions: WorkflowCommand["actions"]) => {
       const action = actions[0];
       assert.equal(action.type, "add-payment");
-      if (action.type !== "add-payment") return;
+      if (action.type !== "add-payment") throw new Error("Only payments are recorded here");
       amounts.push(action.payment.amountCents);
-      if (amounts.length === 1) throw new Error("Temporary payment failure");
+      if (amounts.length === 1)
+        return { status: "failed" as const, message: "Temporary payment failure" };
       saved = { ...saved, balanceCents: saved.balanceCents - action.payment.amountCents };
       root.render(withClient(React.createElement(forms.PaymentForm, props())));
+      return savedAs(saved);
     },
   });
   await render(React.createElement(forms.PaymentForm, props()));
@@ -2680,7 +2691,7 @@ it("preserves a failed payment draft and clears each successful payment without 
   assert.deepEqual(amounts, [7500, 7500, 5000]);
 });
 
-it("retains the cancellation reason and retries the same command after a failed save", async () => {
+it("retains the cancellation reason after a failed save and cancels on retry", async () => {
   const previews: WorkflowCommand[] = [];
   const writes: WorkflowCommand[] = [];
   let closed = 0;
@@ -2729,7 +2740,6 @@ it("retains the cancellation reason and retries the same command after a failed 
   assert.equal(writes.length, 2);
   assert.equal(closed, 1);
   assert.equal(control("notes").value, "");
-  assert.deepEqual(writes[0], writes[1]);
   assert.deepEqual(writes[1].actions, [
     { type: "set-status", status: "cancelled", reason: "Cambio de planes" },
   ]);

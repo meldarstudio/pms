@@ -168,12 +168,10 @@ export function useStayDraft({
     form.reset(next);
   }
 
-  function rejectSave(cause: unknown) {
-    const fields = serverFieldErrors(cause, "details");
-    if (!fields) return false;
+  /** Shows a save's field rejections until the rejected values change. */
+  function rejectSave(fields: Record<string, string>) {
     rejectedFields.current = { values, fields };
     form.setErrorMap({ onDynamic: { fields } });
-    return true;
   }
 
   return {
