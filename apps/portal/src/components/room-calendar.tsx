@@ -169,13 +169,17 @@ function stayTrack(stay: {
 
 /**
  * Marks today's column behind the bars, since the calendar opens on yesterday.
- * It reaches 1px past each side to redraw the column's grid lines in the primary color.
+ * It reaches 1px past each side to redraw the column's grid lines in the primary
+ * color; the header cell also redraws its bottom line and adds a top one.
  */
-function TodayColumn() {
+function TodayColumn({ header = false }: { header?: boolean }) {
   return (
     <div
       aria-hidden="true"
-      className="pointer-events-none absolute inset-y-0 -right-px -left-px -z-10 border-x border-primary/20 bg-primary/10"
+      className={cn(
+        "pointer-events-none absolute -right-px -left-px -z-10 border-x border-primary/20 bg-primary/10",
+        header ? "top-0 -bottom-px border-y" : "inset-y-0",
+      )}
     />
   );
 }
@@ -815,7 +819,7 @@ export function RoomCalendar({
                     dayIndex < span - 1 && "border-r",
                   )}
                 >
-                  {format(day, "yyyy-MM-dd") === today && <TodayColumn />}
+                  {format(day, "yyyy-MM-dd") === today && <TodayColumn header />}
                   <span
                     className={cn(
                       "text-xs tracking-wide uppercase",
