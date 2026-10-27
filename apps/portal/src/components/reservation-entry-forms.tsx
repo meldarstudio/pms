@@ -5,8 +5,8 @@ import { PlusIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { FieldGroup } from "@/components/ui/field";
 import type { ReservationDetail, StayingGuest, WorkflowAction } from "@/lib/api";
-import { serverFieldErrors } from "@/lib/api-error";
 import { setServerErrors } from "@/lib/form-errors";
+import type { ReservationCommandResult } from "@/lib/reservation-commands";
 import { useReservationForm, blurThenChange, submitForm } from "@/lib/reservation-form";
 import {
   guestSchema,
@@ -42,7 +42,7 @@ export function GuestEntryForm({
   detail: ReservationDetail;
   guest?: StayingGuest;
   disabled: boolean;
-  onSave: (guests: StayingGuest[]) => Promise<void>;
+  onSave: (guests: StayingGuest[]) => Promise<ReservationCommandResult>;
   onDirtyChange: (dirty: boolean) => void;
   onDone?: () => void;
   onCancel?: () => void;
@@ -66,26 +66,23 @@ export function GuestEntryForm({
     validators: { onDynamic: guestSchema },
     onSubmit: async ({ value }) => {
       if (disabled) return;
-      try {
-        const payload = guestPayload(value);
-        await onSave(
-          guest
-            ? detail.stayingGuests.map((entry) => (entry.id === guest.id ? payload : entry))
-            : [...detail.stayingGuests, payload],
-        );
-        const next = guest ? guestDefaults(payload) : { ...defaults, id: crypto.randomUUID() };
-        setDefaults(next);
-        form.reset(next);
-        toast.add({
-          title: guest ? "Huésped actualizado" : "Huésped agregado",
-          type: "success",
-        });
-        onDone?.();
-      } catch (cause) {
-        const fields = serverFieldErrors(cause, "guest");
-        if (fields) setServerErrors(form, fields);
-        else toastError("No se pudo guardar el huésped", cause);
-      }
+      const payload = guestPayload(value);
+      const result = await onSave(
+        guest
+          ? detail.stayingGuests.map((entry) => (entry.id === guest.id ? payload : entry))
+          : [...detail.stayingGuests, payload],
+      );
+      if (result.status === "rejected") return setServerErrors(form, result.fields);
+      if (result.status === "failed")
+        return toastError("No se pudo guardar el huésped", result.message);
+      const next = guest ? guestDefaults(payload) : { ...defaults, id: crypto.randomUUID() };
+      setDefaults(next);
+      form.reset(next);
+      toast.add({
+        title: guest ? "Huésped actualizado" : "Huésped agregado",
+        type: "success",
+      });
+      onDone?.();
     },
   });
   const unchanged = useSelector(form.store, (state) => state.isDefaultValue);
@@ -167,7 +164,7 @@ export function PaymentForm({
 }: {
   detail: ReservationDetail;
   disabled: boolean;
-  onReady: (title: string, actions: WorkflowAction[]) => Promise<void>;
+  onReady: (title: string, actions: WorkflowAction[]) => Promise<ReservationCommandResult>;
   onDirtyChange: (dirty: boolean) => void;
 }) {
   const { today } = usePropertyCalendar();
@@ -182,16 +179,15 @@ export function PaymentForm({
     validators: { onDynamic: paymentSchema },
     onSubmit: async ({ value }) => {
       if (disabled) return;
-      try {
-        await onReady("Pago registrado", [{ type: "add-payment", payment: paymentPayload(value) }]);
-        const next = { ...paymentDefaults(), date: value.date };
-        setSavedDefaults(next);
-        form.reset(next);
-      } catch (cause) {
-        const fields = serverFieldErrors(cause, "payment");
-        if (fields) setServerErrors(form, fields);
-        else toastError("No se pudo guardar el pago", cause);
-      }
+      const result = await onReady("Pago registrado", [
+        { type: "add-payment", payment: paymentPayload(value) },
+      ]);
+      if (result.status === "rejected") return setServerErrors(form, result.fields);
+      if (result.status === "failed")
+        return toastError("No se pudo guardar el pago", result.message);
+      const next = { ...paymentDefaults(), date: value.date };
+      setSavedDefaults(next);
+      form.reset(next);
     },
   });
   useEffect(() => {

@@ -37,33 +37,52 @@ export function readErrorMessage(error: unknown): string | null {
   return null;
 }
 
+/** The form field a rejection belongs to, or null when it is not this rule's. */
+type FieldRule = (error: ApiError) => string | null;
+
+const contactRules: FieldRule[] = [
+  ({ code }) => (code === "invalid email" ? "email" : null),
+  ({ field }) => (field === "phone" ? "phone" : null),
+];
+
+/** The one table of which form field shows a server rejection, by what the form edits. */
+const fieldRules = {
+  payment: [
+    ({ code }) =>
+      code === "payment date cannot be in the future" || code === "payment date is required"
+        ? "date"
+        : null,
+    ({ code }) => (code === "amount cannot be zero" ? "amount" : null),
+    ({ code }) => (code === "method is required" ? "method" : null),
+  ],
+  contact: contactRules,
+  // Staying guests share the Booking contact's email and phone field names in their form.
+  guest: [
+    ...contactRules,
+    ({ code }) =>
+      code === "guest room must belong to this reservation" ? "reservationRoomId" : null,
+  ],
+  details: [
+    ({ code }) =>
+      code === "stay cannot be longer than 60 nights" || code === "stay must be at least one night"
+        ? "checkOut"
+        : null,
+  ],
+} satisfies Record<string, FieldRule[]>;
+
+export type FieldScope = keyof typeof fieldRules;
+
+/** Rejection messages keyed by the form fields they belong to, or null when none does. */
 export function serverFieldErrors(
   cause: unknown,
-  scope: "details" | "guest" | "payment",
+  ...scopes: FieldScope[]
 ): Record<string, string> | null {
   if (!(cause instanceof ApiError)) return null;
   const fields: Record<string, string> = {};
-  if (scope === "payment") {
-    if (
-      cause.code === "payment date cannot be in the future" ||
-      cause.code === "payment date is required"
-    )
-      fields.date = cause.message;
-    if (cause.code === "amount cannot be zero") fields.amount = cause.message;
-    if (cause.code === "method is required") fields.method = cause.message;
-  }
-  if (scope === "guest") {
-    if (cause.code === "invalid email") fields.email = cause.message;
-    if (cause.field === "phone") fields.phone = cause.message;
-    if (cause.code === "guest room must belong to this reservation")
-      fields.reservationRoomId = cause.message;
-  }
-  if (scope === "details") {
-    if (
-      cause.code === "stay cannot be longer than 60 nights" ||
-      cause.code === "stay must be at least one night"
-    )
-      fields.checkOut = cause.message;
-  }
+  for (const scope of scopes)
+    for (const rule of fieldRules[scope]) {
+      const name = rule(cause);
+      if (name) fields[name] = cause.message;
+    }
   return Object.keys(fields).length ? fields : null;
 }

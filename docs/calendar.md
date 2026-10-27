@@ -29,8 +29,9 @@ The picker uses the existing whole-stay assignment queries, not the calendar win
 and lists only matching physical rooms available for the entire stay, sorted by room
 number so neighbours sit together. Occupied and closed rooms are hidden; if none
 qualify, the picker shows **Sin habitaciones disponibles**. Back or Escape returns to the list.
-Dismissal and duplicate assignment are blocked while saving. A conflict retains the
-selection, shows its error in the picker, and refreshes availability.
+Dismissal and duplicate assignment are blocked while saving. Assignments save through
+the [Reservation command module](reservations.md#reservation-command-module). A conflict
+retains the selection, shows its error in the picker, and refreshes availability.
 
 After a save, the flow continues with the same reservation's next unassigned reserved
 room, listing the group's assigned rooms ("Habitación 1 → 204") for reference. When

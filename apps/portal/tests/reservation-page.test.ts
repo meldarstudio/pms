@@ -232,7 +232,7 @@ async function unloadPrevented() {
   return event.defaultPrevented;
 }
 
-it("retains the contact draft and retry ID after rejection and reconnect refresh", async () => {
+it("retains the contact draft after a failed save and a reconnect refresh", async () => {
   mockApi({
     write: () =>
       writes.length === 1
@@ -266,13 +266,12 @@ it("retains the contact draft and retry ID after rejection and reconnect refresh
   await page.until(() => !popup());
   assert.match(page.container.querySelector("h1")!.textContent, /Ana María Pérez/);
   assert.deepEqual(writes[1].actions, writes[0].actions);
-  assert.equal(writes[1].requestId, writes[0].requestId);
   assert.equal(saved.checkOut, "2026-10-21");
   assert.equal(previews.length, 0);
   assert.equal(await unloadPrevented(), false);
 });
 
-it("records payments through retry-safe commands and prevents dismissal or navigation during a save", async () => {
+it("records payments after a failed save and prevents dismissal or navigation during a save", async () => {
   let finish!: (response: Response) => void;
   mockApi({
     write: () =>
@@ -309,7 +308,6 @@ it("records payments through retry-safe commands and prevents dismissal or navig
   assert.equal(field("amount").value, "100");
   await submit();
   await page.until(() => !popup());
-  assert.equal(writes[0].requestId, writes[1].requestId);
   assert.deepEqual(writes[1].actions, [
     {
       type: "add-payment",
@@ -418,7 +416,7 @@ async function chooseRowAction(selector: string, label: string) {
   await React.act(async () => item.click());
 }
 
-it("validates and saves only contact changes without replacing guests, notes, or other reservations' cached contacts", async () => {
+it("validates and saves only contact changes without replacing guests or notes", async () => {
   saved = {
     ...saved,
     guest: { ...saved.guest, documentType: "DNI", documentNumber: "12345678" },
@@ -437,7 +435,6 @@ it("validates and saves only contact changes without replacing guests, notes, or
       writes.length === 1 ? Response.json({ error: "invalid email" }, { status: 400 }) : undefined,
   });
   await render();
-  page.client.setQueryData(["reservation", "other"], { ...saved, id: "other" });
   await click("Editar contacto");
   assert.equal(popup()!.querySelector('[name="documentType"]') !== null, false);
   assert.equal(popup()!.querySelector('[name="documentNumber"]') !== null, false);
@@ -461,7 +458,6 @@ it("validates and saves only contact changes without replacing guests, notes, or
   assert.equal(saved.guest.documentType, "DNI");
   assert.equal(saved.guest.documentNumber, "12345678");
   assert.equal(writes.length, 2);
-  assert.notEqual(writes[0].requestId, writes[1].requestId);
   assert.deepEqual(writes[1].actions, [
     {
       type: "contact",
@@ -472,7 +468,6 @@ it("validates and saves only contact changes without replacing guests, notes, or
       },
     },
   ]);
-  assert.equal(page.client.getQueryState(["reservation", "other"])?.isInvalidated, true);
   assert.equal(previews.length, 0);
 });
 
@@ -480,6 +475,7 @@ it("waits for the current discount preview and saves its amount separately", asy
   let finish!: (preview: WorkflowPreview) => void;
   mockApi({
     preview: (command) =>
+      !finish &&
       command.actions.some(
         (action) => action.type === "set-discount" && action.amountCents === 5000,
       )
@@ -508,11 +504,43 @@ it("waits for the current discount preview and saves its amount separately", asy
   assert.deepEqual(writes[0].actions, [{ type: "set-discount", amountCents: 5000 }]);
 });
 
+it("refreshes the discount editor's resulting bill after another save to the reservation", async () => {
+  mockApi();
+  await render();
+  await click("Editar descuento");
+  await page.until(() => !button("Guardar cambios").disabled);
+  assert.match(popup()!.textContent, /Pagos recibidosS\/\s*0Saldo pendienteS\/\s*300/);
+  // Another screen in this session records a Payment while the editor stays open.
+  const commands = (await browser.server.ssrLoadModule(
+    "/src/lib/reservation-commands.ts",
+  )) as typeof import("../src/lib/reservation-commands.ts");
+  let send!: ReturnType<typeof commands.useReservationCommands>["send"];
+  function OtherScreen() {
+    ({ send } = commands.useReservationCommands("reservation-1"));
+    return null;
+  }
+  const { createRoot } = await import("react-dom/client");
+  const other = createRoot(window.document.createElement("div") as never);
+  await React.act(async () => other.render(page.withClient(React.createElement(OtherScreen))));
+  await React.act(async () => {
+    await send([
+      {
+        type: "add-payment",
+        payment: { amountCents: 10000, method: "cash", paymentDate: "2026-10-19" },
+      },
+    ]);
+  });
+  await page.until(() =>
+    /Pagos recibidos-S\/\s*100Saldo pendienteS\/\s*200/.test(popup()!.textContent),
+  );
+  await React.act(async () => other.unmount());
+});
+
 it.each([
   { label: "Check-in", initial: "confirmed", previous: "Confirmada", status: "checked_in" },
   { label: "Check-out", initial: "checked_in", previous: "Check-in", status: "checked_out" },
 ])(
-  "autosaves $label once and retries the same command after an uncertain response",
+  "autosaves $label once and saves it again after a failed response",
   async ({ label, initial, previous, status }) => {
     saved = { ...saved, status: initial };
     let finish!: (response: Response) => void;
@@ -550,7 +578,6 @@ it.each([
     await page.until(
       () => !page.container.textContent.includes("Guardando estado…") && saved.status === status,
     );
-    assert.deepEqual(writes[0], writes[1]);
     assert.deepEqual(writes[1].actions, [{ type: "set-status", status }]);
     assert.equal(saved.checkIn, "2026-10-19");
     assert.equal(saved.checkOut, "2026-10-21");
@@ -727,6 +754,7 @@ it("saves stay changes independently with the current server bill", async () => 
   assert.equal(button("Cancelar").disabled, true);
   assert.equal(await unloadPrevented(), true);
   await click("Cerrar");
+  // A second submit while the save runs (Enter in a field) sends nothing more.
   await submit();
   assert.equal(writes.length, 1);
   await React.act(async () => {

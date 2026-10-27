@@ -11,6 +11,7 @@ import {
 import { serverFieldErrors } from "./api-error.ts";
 import { setServerErrors } from "./form-errors.ts";
 import { useRoomTypes } from "./queries.ts";
+import { reservationPreviewKey } from "./reservation-commands.ts";
 import {
   billingPreviewKey,
   changeCheckIn,
@@ -108,7 +109,7 @@ export function useStayDraft({
   // Assignment/occupancy validation can change while its price remains reusable.
   // Only workflow responses publish quotes; this query just subscribes to them.
   const quote = useQuery<WorkflowBilling>({
-    queryKey: ["workflow-billing-preview", detail.id, pricingKey],
+    queryKey: reservationPreviewKey(detail.id, "billing", pricingKey),
     queryFn: skipToken,
   });
   useEffect(() => {
@@ -116,11 +117,11 @@ export function useStayDraft({
     return () => clearTimeout(timer);
   }, [validationCommand]);
   const editPreview = useQuery({
-    queryKey: ["workflow-edit-preview", detail.id, previewCommand, requestPricingKey],
+    queryKey: reservationPreviewKey(detail.id, "edit", previewCommand, requestPricingKey),
     queryFn: async () => {
       const result = await previewWorkflow(detail.id, previewCommand);
       queryClient.setQueryData(
-        ["workflow-billing-preview", detail.id, requestPricingKey],
+        reservationPreviewKey(detail.id, "billing", requestPricingKey),
         result.billing,
       );
       return result;
@@ -167,12 +168,10 @@ export function useStayDraft({
     form.reset(next);
   }
 
-  function rejectSave(cause: unknown) {
-    const fields = serverFieldErrors(cause, "details");
-    if (!fields) return false;
+  /** Shows a save's field rejections until the rejected values change. */
+  function rejectSave(fields: Record<string, string>) {
     rejectedFields.current = { values, fields };
     form.setErrorMap({ onDynamic: { fields } });
-    return true;
   }
 
   return {

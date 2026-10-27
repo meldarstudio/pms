@@ -2,7 +2,8 @@ import { useQueryClient } from "@tanstack/react-query";
 import { useCallback, useEffect, useRef, useState } from "react";
 
 import type { Room } from "@/lib/api";
-import { useAssignRoom, useReservations, useRoomClosures } from "@/lib/queries";
+import { useReservations, useRoomClosures } from "@/lib/queries";
+import { useRoomAssignmentCommand } from "@/lib/reservation-commands";
 import {
   assignmentProblemLabels,
   roomProblem,
@@ -13,10 +14,22 @@ import {
 import { toast } from "@/lib/toast";
 import { translateError } from "@/lib/errors";
 
+// These conflicts get copy that names the next step.
+const conflictCopy = new Map([
+  [
+    "room is already assigned for those dates",
+    "Esta habitación acaba de asignarse a otra reserva. Elige otra habitación.",
+  ],
+  [
+    "room is closed for those dates",
+    "Esta habitación está cerrada durante la estancia. Elige otra habitación.",
+  ],
+]);
+
 export function useRoomAssignment(rooms: Room[] | null, unassigned: ReservationStay[]) {
   const queryClient = useQueryClient();
-  const assign = useAssignRoom();
-  const { isPending: pending, reset: resetAssignment } = assign;
+  const { assign, saving: pending } = useRoomAssignmentCommand();
+  const [saveError, setSaveError] = useState<string | null>(null);
   const [target, setTarget] = useState<ReservationStay | null>(null);
   // A save resolves after the calendar refetch, so read the latest list then,
   // skipping lines this group run assigned in case that render has not landed.
@@ -80,18 +93,18 @@ export function useRoomAssignment(rooms: Room[] | null, unassigned: ReservationS
   const eligibleCount = [...roomProblems.values()].filter((problem) => problem === null).length;
 
   function selectStay(stay: ReservationStay) {
-    if (assign.isPending) return;
-    assign.reset();
+    if (pending) return;
+    setSaveError(null);
     assignedLines.current.clear();
     setTarget(stay);
   }
 
   const cancel = useCallback(() => {
     if (pending) return;
-    resetAssignment();
+    setSaveError(null);
     assignedLines.current.clear();
     setTarget(null);
-  }, [pending, resetAssignment]);
+  }, [pending]);
 
   useEffect(() => {
     if (!target || pending) return;
@@ -108,10 +121,10 @@ export function useRoomAssignment(rooms: Room[] | null, unassigned: ReservationS
 
   async function assignRoom(id: string) {
     const room = rooms?.find((item) => item.id === id);
-    if (!target || !room || !ready || assign.isPending || roomProblems.get(room.id) !== null)
-      return;
-    try {
-      await assign.mutateAsync({ target, roomId: room.id });
+    if (!target || !room || !ready || pending || roomProblems.get(room.id) !== null) return;
+    setSaveError(null);
+    const result = await assign(target, room.id);
+    if (result.status === "saved") {
       toast.add({
         title: "Habitación asignada",
         description: `${target.guestName} tiene asignada la habitación ${room.number}.`,
@@ -125,27 +138,27 @@ export function useRoomAssignment(rooms: Room[] | null, unassigned: ReservationS
           stay.reservationId === target.reservationId && !assignedLines.current.has(stay.id),
       );
       setTarget(next ?? null);
-    } catch (cause) {
-      const message = cause instanceof Error ? cause.message : "No se pudo asignar la habitación.";
-      toast.add({
-        title: "No se pudo asignar la habitación",
-        description:
-          message === "room is already assigned for those dates"
-            ? "Esta habitación acaba de asignarse a otra reserva. Elige otra habitación."
-            : message === "room is closed for those dates"
-              ? "Esta habitación está cerrada durante la estancia. Elige otra habitación."
-              : message,
-        type: "error",
-        priority: "high",
-        timeout: 7000,
-      });
-      await Promise.all([
-        queryClient.invalidateQueries({ queryKey: ["reservations"] }),
-        queryClient.invalidateQueries({ queryKey: ["room-closures"] }),
-        queryClient.invalidateQueries({ queryKey: ["rooms"] }),
-        queryClient.invalidateQueries({ queryKey: ["calendar"] }),
-      ]);
+      return;
     }
+    // Assignment changes no form field, so any rejection is one message.
+    const message =
+      result.status === "failed" ? result.message : "No se pudo asignar la habitación.";
+    const code = result.status === "failed" ? result.code : undefined;
+    setSaveError(message);
+    toast.add({
+      title: "No se pudo asignar la habitación",
+      description: (code && conflictCopy.get(code)) ?? message,
+      type: "error",
+      priority: "high",
+      timeout: 7000,
+    });
+    // A conflict means the screen is out of date; re-read what decides availability.
+    await Promise.all([
+      queryClient.invalidateQueries({ queryKey: ["reservations"] }),
+      queryClient.invalidateQueries({ queryKey: ["room-closures"] }),
+      queryClient.invalidateQueries({ queryKey: ["rooms"] }),
+      queryClient.invalidateQueries({ queryKey: ["calendar"] }),
+    ]);
   }
 
   return {
@@ -155,13 +168,13 @@ export function useRoomAssignment(rooms: Room[] | null, unassigned: ReservationS
     eligibleCount,
     roomProblems,
     groupAssignments,
-    pending: assign.isPending,
+    pending,
     error: queryError
       ? translateError(queryError)
       : staleTarget
         ? assignmentProblemLabels[staleTarget]
         : null,
-    saveError: assign.error ? translateError(assign.error.message) : null,
+    saveError,
     selectStay,
     assignRoom,
     cancel,

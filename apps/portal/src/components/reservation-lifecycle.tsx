@@ -1,12 +1,9 @@
-import { useRef, useState } from "react";
-import { useQueryClient } from "@tanstack/react-query";
+import { useState } from "react";
 import { useDirtyRoomCheckIn } from "@/components/dirty-room-check-in";
 import { FieldGroup } from "@/components/ui/field";
 import { ChoiceField } from "@/components/workflow-fields";
 import type { ReservationDetail, WorkflowAction } from "@/lib/api";
-import { useReservationSaving, useWorkflowCommand } from "@/lib/queries";
-import { isReservationSaving } from "@/lib/workflow-query-cache";
-import { createWorkflowSaver } from "@/lib/workflow-save";
+import { unsavedMessage, useReservationCommands } from "@/lib/reservation-commands";
 import { reservationStatusLabel } from "@/lib/reservation-list";
 import { toast, toastError } from "@/lib/toast";
 
@@ -23,36 +20,21 @@ export function ReservationLifecycle({
   blocked?: boolean;
   onConfirm: (status: Status) => void;
 }) {
-  const client = useQueryClient();
-  const mutation = useWorkflowCommand(detail.id);
-  const saving = useReservationSaving(detail.id);
-  const [save] = useState(createWorkflowSaver);
-  const pending = useRef(false);
+  const { send, saving } = useReservationCommands(detail.id);
+  const [statusSaving, setStatusSaving] = useState(false);
   const [confirmCheckIn, checkInDialog] = useDirtyRoomCheckIn();
   async function change(status: Status) {
-    if (
-      status === detail.status ||
-      blocked ||
-      pending.current ||
-      isReservationSaving(client, detail.id)
-    )
+    if (status === detail.status || blocked || saving) return;
+    if (!(await confirmCheckIn(detail, status))) return;
+    if (status === "cancelled" || detail.status === "cancelled") {
+      onConfirm(status);
       return;
-    pending.current = true;
-    try {
-      if (!(await confirmCheckIn(detail, status))) return;
-      if (status === "cancelled" || detail.status === "cancelled") {
-        onConfirm(status);
-        return;
-      }
-      await save([{ type: "set-status", status }], (command) =>
-        mutation.mutateAsync({ id: detail.id, command }),
-      );
-      toast.add({ title: "Estado guardado", type: "success" });
-    } catch (cause) {
-      toastError("No se pudo cambiar el estado", cause);
-    } finally {
-      pending.current = false;
     }
+    setStatusSaving(true);
+    const result = await send([{ type: "set-status", status }]);
+    setStatusSaving(false);
+    if (result.status === "saved") toast.add({ title: "Estado guardado", type: "success" });
+    else toastError("No se pudo cambiar el estado", unsavedMessage(result));
   }
   return (
     <div className="flex flex-col items-end gap-2">
@@ -70,7 +52,7 @@ export function ReservationLifecycle({
           }}
         />
       </FieldGroup>
-      {mutation.isPending && (
+      {statusSaving && (
         <p role="status" className="text-xs text-muted-foreground">
           Guardando estado…
         </p>

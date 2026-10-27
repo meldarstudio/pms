@@ -18,6 +18,7 @@ let React: BrowserTest["React"];
 let calendars: typeof import("../src/components/room-calendar.tsx");
 let housekeeping: typeof import("../src/components/housekeeping.tsx");
 let queries: typeof import("../src/lib/queries.ts");
+let commands: typeof import("../src/lib/reservation-commands.ts");
 let container: BrowserPage["container"];
 let render: BrowserPage["render"];
 let until: BrowserPage["until"];
@@ -35,6 +36,9 @@ beforeAll(async () => {
     "/src/components/housekeeping.tsx",
   )) as typeof housekeeping;
   queries = (await browser.server.ssrLoadModule("/src/lib/queries.ts")) as typeof queries;
+  commands = (await browser.server.ssrLoadModule(
+    "/src/lib/reservation-commands.ts",
+  )) as typeof commands;
   const calendar = (await browser.server.ssrLoadModule(
     "/src/lib/property-calendar.ts",
   )) as typeof import("../src/lib/property-calendar.ts");
@@ -1300,7 +1304,10 @@ it("keeps the mobile picker open after an assignment conflict and offers another
         ]
       : undefined,
   );
-  await render(React.createElement(CalendarSession));
+  const { ToastProvider } = (await browser.server.ssrLoadModule(
+    "/src/components/ui/toast.tsx",
+  )) as typeof import("../src/components/ui/toast.tsx");
+  await render(React.createElement(ToastProvider, null, React.createElement(CalendarSession)));
   await until(() => !!adaBar(), "Calendar must load");
   await openMobileUnassigned(1);
   const mary = [...window.document.querySelectorAll<HTMLElement>('[role="dialog"] button')].find(
@@ -1322,6 +1329,13 @@ it("keeps the mobile picker open after an assignment conflict and offers another
     window.document
       .querySelector('[role="dialog"] [role="alert"]')
       ?.textContent.includes("Esta habitación está ocupada para esas fechas"),
+  );
+  await until(
+    () =>
+      window.document.body.textContent.includes(
+        "Esta habitación acaba de asignarse a otra reserva. Elige otra habitación.",
+      ),
+    "The toast must explain that a colleague just took the room",
   );
   await until(
     () => !roomButton("2") && !!roomButton("101") && !roomButton("101")!.disabled,
@@ -1800,26 +1814,15 @@ it.each([
           limit: 25,
           offset: 0,
         });
-        const save = queries.useWorkflowCommand("res-new");
+        const { send } = commands.useReservationCommands("res-new");
         return {
           save: () =>
-            save.mutateAsync({
-              id: "res-new",
-              command: {
-                requestId: "save-new-stay",
-                actions: [
-                  {
-                    type: "add-room",
-                    room: {
-                      roomTypeId: "double",
-                      roomId: "room-2",
-                      adults: 1,
-                      children: 0,
-                    },
-                  },
-                ],
+            send([
+              {
+                type: "add-room",
+                room: { roomTypeId: "double", roomId: "room-2", adults: 1, children: 0 },
               },
-            }),
+            ]),
         };
       },
       respond: (url) => {
@@ -1850,21 +1853,12 @@ it.each([
     name: "updates the name on the stay after a booking-contact rename without blanking the calendar",
     options: (): Parameters<typeof expectOffCalendarWriter>[0] => ({
       useWriter: () => {
-        const save = queries.useWorkflowCommand("res-ada");
+        const { send } = commands.useReservationCommands("res-ada");
         return {
           save: () =>
-            save.mutateAsync({
-              id: "res-ada",
-              command: {
-                requestId: "rename-contact",
-                actions: [
-                  {
-                    type: "contact",
-                    contact: { fullName: "Ada Byron", email: null, phone: null },
-                  },
-                ],
-              },
-            }),
+            send([
+              { type: "contact", contact: { fullName: "Ada Byron", email: null, phone: null } },
+            ]),
         };
       },
       respond: (url) =>
@@ -1967,44 +1961,6 @@ it.each([
           return Response.json({ updated: 7 });
         }
         return undefined;
-      },
-    }),
-  },
-  {
-    name: "drops the held calendar after a guest edit without blanking the grid",
-    options: (): Parameters<typeof expectOffCalendarWriter>[0] => ({
-      useWriter: () => {
-        const patch = queries.usePatchGuest();
-        return {
-          save: () => patch.mutateAsync({ id: "guest-ada", body: { fullName: "Augusta Ada" } }),
-        };
-      },
-      respond: (url, init) => {
-        if (url.pathname === "/guests/guest-ada" && init?.method === "PATCH") {
-          return Response.json({
-            id: "guest-ada",
-            fullName: "Augusta Ada",
-            email: null,
-            phone: null,
-            notes: null,
-          });
-        }
-        return undefined;
-      },
-      dropsHold: true,
-      whileHeld: () =>
-        !!adaBar() &&
-        !container.querySelector('[aria-label="Editar reserva de Augusta Ada · Confirmada"]'),
-      next: (url) => renamedContact(url, "Augusta Ada"),
-      arrived: () =>
-        !!container.querySelector('[aria-label="Editar reserva de Augusta Ada · Confirmada"]'),
-      after: () => {
-        assert.equal(adaBar(), null);
-        assert.ok(
-          container.querySelector('[aria-label="Editar reserva de Grace Hopper · Check-out"]'),
-        );
-        assert.ok(container.textContent.includes("101"));
-        assert.ok(container.textContent.includes("Mantenimiento"));
       },
     }),
   },

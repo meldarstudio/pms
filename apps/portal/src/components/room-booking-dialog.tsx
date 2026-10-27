@@ -1,5 +1,4 @@
 import { useCallback, useEffect, useRef, useState, useId, type ReactNode } from "react";
-import { useQueryClient } from "@tanstack/react-query";
 import { useSelector } from "@tanstack/react-form";
 import {
   ArrowUpRightIcon,
@@ -67,16 +66,17 @@ import {
 } from "@/lib/api";
 import {
   useReservation,
-  useReservationSaving,
   useReservations,
   useRoomClosures,
   useRooms,
   useRoomTypes,
-  useWorkflowCommand,
 } from "@/lib/queries";
+import {
+  unsavedMessage,
+  useReservationCommands,
+  type ReservationCommandResult,
+} from "@/lib/reservation-commands";
 import { toast, toastError } from "@/lib/toast";
-import { createWorkflowSaver } from "@/lib/workflow-save";
-import { isReservationSaving } from "@/lib/workflow-query-cache";
 import { formatMoney } from "@/lib/money";
 import { setServerErrors } from "@/lib/form-errors";
 import {
@@ -85,7 +85,6 @@ import {
   blurThenChange,
   submitForm,
 } from "@/lib/reservation-form";
-import { serverFieldErrors } from "@/lib/api-error";
 import {
   emptyDetails,
   paymentSchema,
@@ -130,10 +129,9 @@ export function RoomBookingDialog({
   onClose: () => void;
   onViewReservation: (id: string) => void;
 }) {
-  const client = useQueryClient();
   const reservationId = target?.mode === "edit" ? target.reservationId : null;
   const detail = useReservation(reservationId);
-  const saving = useReservationSaving(reservationId);
+  const { saving } = useReservationCommands(reservationId);
   const [creating, setCreating] = useState(false);
   const popup = useRef<HTMLDivElement>(null);
   const open = target !== null;
@@ -163,16 +161,15 @@ export function RoomBookingDialog({
   }, [open]);
   useEffect(() => {
     const protectUnload = (event: BeforeUnloadEvent) => {
-      if (!target || (!creating && !dirty.current && !isReservationSaving(client, reservationId)))
-        return;
+      if (!target || (!creating && !dirty.current && !saving)) return;
       event.preventDefault();
       event.returnValue = "";
     };
     window.addEventListener("beforeunload", protectUnload);
     return () => window.removeEventListener("beforeunload", protectUnload);
-  }, [client, reservationId, creating, target]);
+  }, [saving, creating, target]);
   function navigate(action: () => void) {
-    if (creating || isReservationSaving(client, reservationId)) return;
+    if (creating || saving) return;
     if (dirty.current) setLeave(() => action);
     else action();
   }
@@ -283,7 +280,7 @@ export function RoomBookingDialog({
           saving={saving}
           onStay={() => setLeave(null)}
           onLeave={() => {
-            if (creating || isReservationSaving(client, reservationId)) return;
+            if (creating || saving) return;
             dirty.current = false;
             setLeave(null);
             leave();
@@ -408,7 +405,6 @@ export function BookingEditor({
   onSaved?: () => void;
 }) {
   const contact = detail.guest;
-  const queryClient = useQueryClient();
   const [guestDirty, setGuestDirty] = useState(false);
   const formId = useId();
   const stayDraft = useStayDraft({ detail, onSubmit: saveChanges });
@@ -462,100 +458,45 @@ export function BookingEditor({
   const [cancellationDirty, setCancellationDirty] = useState(false);
   const draftDirty = dirty || independentDraftDirty;
   const billing = summary.billing;
-  const saveMutation = useWorkflowCommand(detail.id);
-  const statusMutation = useWorkflowCommand(detail.id);
-  const [statusSaver] = useState(createWorkflowSaver);
-  const savingDetails = useRef(false);
-  const guestMutation = useWorkflowCommand(detail.id);
-  const paymentMutation = useWorkflowCommand(detail.id);
-  const discountMutation = useWorkflowCommand(detail.id);
-  const discountSave = useRef<Promise<ReservationDetail> | null>(null);
-  const reservationSaving = useReservationSaving(detail.id);
+  // Saves to one Reservation run in send order, so a Discount autosave finishes before a
+  // later Staying guest, Payment, status or details save reads the Reservation.
+  const { send, saving: reservationSaving } = useReservationCommands(detail.id);
+  const [statusSaving, setStatusSaving] = useState(false);
   const busy = submitting || reservationSaving;
-  const [guestSaver] = useState(createWorkflowSaver);
-  const [paymentSaver] = useState(createWorkflowSaver);
-  const [discountSaver] = useState(createWorkflowSaver);
-  async function saveGuests(guests: StayingGuest[]) {
-    await discountSave.current;
-    await guestSaver([{ type: "set-guests", guests: guestValues(guests) }], (command) =>
-      guestMutation.mutateAsync({ id: detail.id, command }),
-    );
-  }
   useEffect(() => {
     onDirtyChange?.(draftDirty || cancellationDirty);
   }, [draftDirty, cancellationDirty, onDirtyChange]);
   async function savePayment(title: string, actions: WorkflowAction[]) {
-    await discountSave.current;
-    await paymentSaver(actions, (command) =>
-      paymentMutation.mutateAsync({ id: detail.id, command }),
-    );
-    toast.add({ title, type: "success" });
-  }
-  async function saveDiscount(amountCents: number) {
-    const pending = discountSaver([{ type: "set-discount", amountCents }], (command) =>
-      discountMutation.mutateAsync({ id: detail.id, command }),
-    );
-    discountSave.current = pending;
-    try {
-      await pending;
-    } finally {
-      if (discountSave.current === pending) discountSave.current = null;
-    }
+    const result = await send(actions);
+    if (result.status === "saved") toast.add({ title, type: "success" });
+    return result;
   }
 
   const activeDrafts = drafts.filter((draft) => !draft.removed);
   const [confirmCheckIn, checkInDialog] = useDirtyRoomCheckIn();
   async function changeStatus(status: "confirmed" | "checked_in" | "checked_out") {
-    if (
-      status === detail.status ||
-      dirty ||
-      independentDraftDirty ||
-      busy ||
-      statusMutation.isPending ||
-      isReservationSaving(queryClient, detail.id)
-    )
-      return;
+    if (status === detail.status || dirty || independentDraftDirty || busy) return;
     if (!(await confirmCheckIn(detail, status))) return;
-    try {
-      await statusSaver([{ type: "set-status", status }], (command) =>
-        statusMutation.mutateAsync({ id: detail.id, command }),
-      );
-      toast.add({ title: "Estado guardado", type: "success" });
-    } catch (cause) {
-      toastError("No se pudo cambiar el estado", cause);
-    }
+    setStatusSaving(true);
+    const result = await send([{ type: "set-status", status }]);
+    setStatusSaving(false);
+    if (result.status === "saved") toast.add({ title: "Estado guardado", type: "success" });
+    else toastError("No se pudo cambiar el estado", unsavedMessage(result));
   }
   async function saveChanges() {
-    if (
-      tab !== "details" ||
-      !stayDraft.submission.allowed ||
-      savingDetails.current ||
-      isReservationSaving(queryClient, detail.id) ||
-      saveMutation.isPending ||
-      guestMutation.isPending ||
-      paymentMutation.isPending
-    )
-      return;
-    savingDetails.current = true;
-    try {
-      await discountSave.current;
-      const saved = await saveMutation.mutateAsync({
-        id: detail.id,
-        command: stayDraft.submission.command,
-      });
-      resetDetails(saved);
+    if (tab !== "details" || !stayDraft.submission.allowed) return;
+    const result = await send(stayDraft.submission.command.actions);
+    if (result.status === "saved") {
+      resetDetails(result.reservation);
       toast.add({ title: "Detalles guardados", type: "success" });
       onSaved?.();
-    } catch (e) {
-      if (!stayDraft.rejectSave(e)) toastError("No se pudo guardar", e);
-    } finally {
-      savingDetails.current = false;
-    }
+    } else if (result.status === "rejected") stayDraft.rejectSave(result.fields);
+    else toastError("No se pudo guardar", result.message);
   }
   const reservationActions = (
     <DropdownMenu>
       <DropdownMenuTrigger
-        disabled={busy || (!mobileEditor && independentDraftDirty) || statusMutation.isPending}
+        disabled={busy || (!mobileEditor && independentDraftDirty)}
         render={
           <Button type="button" variant="ghost" size="icon" aria-label="Más acciones de reserva" />
         }
@@ -576,7 +517,7 @@ export function BookingEditor({
               disabled={independentDraftDirty}
               closeOnClick={false}
               onClick={() => {
-                if (isReservationSaving(queryClient, detail.id)) return;
+                if (reservationSaving) return;
                 setCancellation({ detail, discardDraft: dirty });
               }}
             >
@@ -625,7 +566,7 @@ export function BookingEditor({
     <Button
       type="button"
       variant={mobileEditor ? "ghost" : "outline"}
-      disabled={!dirty || busy || discountMutation.isPending}
+      disabled={!dirty || busy}
       onClick={stayDraft.discard}
     >
       {mobileEditor ? "Descartar" : "Descartar cambios"}
@@ -680,7 +621,7 @@ export function BookingEditor({
               size="icon-sm"
               aria-label="Ver reserva completa"
               title="Ver reserva completa"
-              disabled={busy || discountMutation.isPending}
+              disabled={busy}
               onClick={() => onViewReservation(detail.id)}
             >
               <ArrowUpRightIcon />
@@ -926,7 +867,7 @@ export function BookingEditor({
                 <GuestFields
                   detail={detail}
                   disabled={busy}
-                  onSave={saveGuests}
+                  onSave={(guests) => send([{ type: "set-guests", guests: guestValues(guests) }])}
                   onDirtyChange={setGuestDirty}
                 />
               </TabsContent>
@@ -970,8 +911,12 @@ export function BookingEditor({
               summary={billing ?? null}
               paidCents={billing?.paidCents ?? detail.paidCents}
               editableDiscountCents={detail.savedDiscountCents}
-              discountDisabled={busy || discountMutation.isPending}
-              onDiscountSave={stayOnly ? undefined : saveDiscount}
+              discountDisabled={busy}
+              onDiscountSave={
+                stayOnly
+                  ? undefined
+                  : (amountCents) => send([{ type: "set-discount", amountCents }])
+              }
               onDiscountDirtyChange={setDiscountDirty}
               currency={detail.currency}
               stayLabel={
@@ -994,7 +939,7 @@ export function BookingEditor({
                     <Button
                       type="button"
                       variant="outline"
-                      disabled={busy || discountMutation.isPending}
+                      disabled={busy}
                       onClick={() => void summary.retry()}
                     >
                       Reintentar
@@ -1044,14 +989,14 @@ export function BookingEditor({
                       type="button"
                       variant={mobileEditor ? "default" : "outline"}
                       className={cn(mobileEditor && "max-md:min-w-0 max-md:flex-1")}
-                      disabled={busy || dirty || independentDraftDirty || statusMutation.isPending}
+                      disabled={busy || dirty || independentDraftDirty}
                       onClick={() =>
                         void changeStatus(
                           detail.status === "confirmed" ? "checked_in" : "checked_out",
                         )
                       }
                     >
-                      {statusMutation.isPending ? (
+                      {statusSaving ? (
                         <Spinner data-icon="inline-start" />
                       ) : detail.status === "confirmed" ? (
                         <LogInIcon data-icon="inline-start" />
@@ -1061,7 +1006,7 @@ export function BookingEditor({
                       {detail.status === "confirmed" ? "Hacer check-in" : "Hacer check-out"}
                     </Button>
                   )}
-                {statusMutation.isPending && (
+                {statusSaving && (
                   <p role="status" className="text-xs text-muted-foreground">
                     Guardando estado…
                   </p>
@@ -1107,8 +1052,8 @@ export function BookingEditor({
                       form={formId}
                       disabled={stayDraft.submission.disabled || busy}
                     >
-                      {saveMutation.isPending && <Spinner data-icon="inline-start" />}
-                      {saveMutation.isPending ? "Guardando…" : "Guardar cambios"}
+                      {submitting && <Spinner data-icon="inline-start" />}
+                      {submitting ? "Guardando…" : "Guardar cambios"}
                     </Button>
                   )}
                   {mobileEditor && dirty && tab !== "details" && (
@@ -1174,9 +1119,12 @@ export function BookingEditor({
           }}
           onDirtyChange={setActionDirty}
           onReady={async (title, actions) => {
-            await savePayment(title, actions);
-            setIntent(null);
-            setActionDirty(false);
+            const result = await savePayment(title, actions);
+            if (result.status === "saved") {
+              setIntent(null);
+              setActionDirty(false);
+            }
+            return result;
           }}
         />
       )}
@@ -1368,7 +1316,7 @@ function GuestFields({
 }: {
   detail: ReservationDetail;
   disabled: boolean;
-  onSave: (guests: StayingGuest[]) => Promise<void>;
+  onSave: (guests: StayingGuest[]) => Promise<ReservationCommandResult>;
   onDirtyChange: (dirty: boolean) => void;
 }) {
   const [editing, setEditing] = useState<StayingGuest | null>(null);
@@ -1383,13 +1331,11 @@ function GuestFields({
     setLeaving(false);
   };
   async function remove(id: string) {
-    try {
-      await onSave(detail.stayingGuests.filter((guest) => guest.id !== id));
-      if (editing?.id === id) reset();
-      toast.add({ title: "Huésped eliminado", type: "success" });
-    } catch (cause) {
-      toastError("No se pudo eliminar el huésped", cause);
-    }
+    const result = await onSave(detail.stayingGuests.filter((guest) => guest.id !== id));
+    if (result.status !== "saved")
+      return toastError("No se pudo eliminar el huésped", unsavedMessage(result));
+    if (editing?.id === id) reset();
+    toast.add({ title: "Huésped eliminado", type: "success" });
   }
   const closeEdit = () => {
     if (disabled) return;
@@ -1448,7 +1394,7 @@ function ActionForm({
 }: {
   intent: Intent;
   onClose: () => void;
-  onReady: (title: string, actions: WorkflowAction[]) => Promise<void>;
+  onReady: (title: string, actions: WorkflowAction[]) => Promise<ReservationCommandResult>;
   onDirtyChange: (dirty: boolean) => void;
 }) {
   const { today } = usePropertyCalendar();
@@ -1504,14 +1450,13 @@ function ActionForm({
     if (entry) await commit([{ type: "edit-payment", paymentId: entry.id, payment: input }]);
   }
   async function commit(actions: WorkflowAction[]) {
-    try {
-      await onReady(title, actions);
-    } catch (cause) {
-      const fields = deleting ? null : serverFieldErrors(cause, "payment");
-      if (fields) setServerErrors(form, fields);
-      else
-        toastError(deleting ? "No se pudo eliminar el pago" : "No se pudo guardar el pago", cause);
-    }
+    const result = await onReady(title, actions);
+    if (result.status === "rejected") setServerErrors(form, result.fields);
+    else if (result.status === "failed")
+      toastError(
+        deleting ? "No se pudo eliminar el pago" : "No se pudo guardar el pago",
+        result.message,
+      );
   }
   const Root = confirmation ? AlertDialog : Dialog;
   const Content = confirmation ? AlertDialogContent : DialogContent;
