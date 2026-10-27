@@ -7,7 +7,6 @@ import {
   ClipboardListIcon,
   LogOutIcon,
   Settings2Icon,
-  UsersIcon,
 } from "lucide-react";
 import logo from "@/assets/logo.svg";
 import { Separator } from "@/components/ui/separator";
@@ -23,7 +22,7 @@ import {
   SidebarMenuItem,
   useSidebar,
 } from "@/components/ui/sidebar";
-import { useLogout, useSession } from "@/lib/queries";
+import { useLogout } from "@/lib/queries";
 import { activeNavigation, appNavigation } from "@/lib/navigation";
 import {
   calendarSearch,
@@ -40,7 +39,6 @@ export function AppSidebar() {
   const location = useRouterState({ select: (state) => state.location });
   const { setOpenMobile } = useSidebar();
   const logout = useLogout();
-  const isOwner = useSession().data?.role === "owner";
   const { today } = usePropertyCalendar();
   const activeDestination = activeNavigation(location.pathname);
   const destinations = [
@@ -130,17 +128,6 @@ export function AppSidebar() {
                 <span>{appNavigation.setup.label}</span>
               </SidebarMenuButton>
             </SidebarMenuItem>
-            {isOwner ? (
-              <SidebarMenuItem>
-                <SidebarMenuButton
-                  isActive={activeDestination?.to === appNavigation.accounts.to}
-                  render={<Link to={appNavigation.accounts.to} onClick={closeMobileNavigation} />}
-                >
-                  <UsersIcon />
-                  <span>{appNavigation.accounts.label}</span>
-                </SidebarMenuButton>
-              </SidebarMenuItem>
-            ) : null}
           </SidebarMenu>
           <Separator />
           <SidebarMenu>

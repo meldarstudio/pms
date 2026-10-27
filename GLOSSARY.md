@@ -146,6 +146,11 @@ _Avoid_: Reservation, room type
 A category of rooms with shared adult and child limits and a base rate.
 _Avoid_: Room number
 
+**Room-type draft**:
+Proposed changes to one room type's name, occupancy limits, base rate, and room numbers, including new
+rooms, that have not yet been saved. The saved room type and rooms remain unchanged until accepted.
+_Avoid_: Saved room type, inventory draft
+
 **Room assignment**:
 The selection of a specific physical room for a reserved room over the reservation's stay dates.
 _Avoid_: Guest room allocation when referring to the physical room selection

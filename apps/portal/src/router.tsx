@@ -3,6 +3,7 @@ import {
   createRoute,
   createRouter,
   Link,
+  Navigate,
   redirect,
   stripSearchParams,
 } from "@tanstack/react-router";
@@ -17,8 +18,12 @@ import { Reservations } from "@/components/reservations";
 import { RoomCalendar } from "@/components/room-calendar";
 import { Housekeeping } from "@/components/housekeeping";
 import { Inventory } from "@/components/inventory";
-import { PropertySetup } from "@/components/property-setup";
-import { Accounts } from "@/components/accounts";
+import {
+  Configuration,
+  configurationSearch,
+  parseConfigurationSearch,
+} from "@/components/configuration";
+import { useSession } from "@/lib/queries";
 import {
   calendarSearch,
   housekeepingSearch,
@@ -227,13 +232,24 @@ const housekeepingRoute = createRoute({
 const setupRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/setup",
-  component: PropertySetup,
+  validateSearch: parseConfigurationSearch,
+  component: SetupRoute,
 });
+
+function SetupRoute() {
+  const { section = "rooms" } = setupRoute.useSearch();
+  const role = useSession().data?.role;
+  if (section === "accounts" && role !== "owner")
+    return role ? <Navigate to="/setup" search={configurationSearch("rooms")} replace /> : null;
+  return <Configuration key={section} section={section} />;
+}
 
 const accountsRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/accounts",
-  component: Accounts,
+  beforeLoad: () => {
+    throw redirect({ to: "/setup", search: configurationSearch("accounts"), replace: true });
+  },
 });
 
 const routeTree = rootRoute.addChildren([

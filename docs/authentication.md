@@ -60,7 +60,7 @@ pnpm auth:account <owner-username> --role=owner --local
 state directory). `--remote` writes to production and asks you to type the username
 to confirm: run it only for an explicitly authorized production credential change.
 
-When someone leaves, the owner sets a new staff password on the Cuentas page (or
+When someone leaves, the owner sets a new staff password in Configuración → Cuentas (or
 with the script) and tells the remaining staff. If the owner password is lost, reset
 it with the script.
 
@@ -87,12 +87,16 @@ the session and shows the login form when there is none. Every request sends
 login form again, keeping the current URL, so signing in returns to the same page.
 Backend login and account errors are translated in `apps/portal/src/lib/errors.ts`.
 
-The Owner account sees **Cuentas** in the sidebar (`apps/portal/src/components/accounts.tsx`):
-it sets the staff password and changes its own password. The Staff account does not see
-the link, and the page tells it the page is owner-only.
-The first account read keeps the page and card headings visible with accessible
-loading placeholders. Failed refreshes keep the forms and their drafts on screen
-with a stale-data warning and retry action; see [portal error states](portal.md#error-states).
+The Owner account sees **Cuentas** inside Configuración
+(`apps/portal/src/components/accounts.tsx`), listing real usernames and opening a
+focused form to set the staff password or change its own password. The Staff
+account cannot open the section; see [Configuración routing](property-setup.md#portal-setup).
+The first read keeps section headings visible with accessible loading placeholders.
+Failed refreshes keep an open password draft on screen with a stale-data warning
+and retry action; see [portal error states](portal.md#error-states). Local navigation,
+router navigation, and unload protect password drafts. Password controls are disabled
+during writes; failed changes retain the draft and successful changes clear it.
+No password draft is stored in browser storage.
 
 See [local credential setup](../README.md#signing-in) before development,
 [the property calendar](property-calendar.md) before changing session metadata,

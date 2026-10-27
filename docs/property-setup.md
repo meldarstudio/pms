@@ -63,22 +63,51 @@ property setup is incomplete. Their setup empty states link to `/setup`, and the
 when room types exist without rooms, so rates can be configured first. Each
 deployment manages one property; there is no hotel profile or account-creation step.
 
+`/setup` opens the room-type list in **Habitaciones**. Configuración also contains
+**Apariencia** (`/setup?section=appearance`) and owner-only **Cuentas**
+(`/setup?section=accounts`); old `/accounts` links redirect to that section. The
+Staff account does not see Cuentas, and a direct visit opens Habitaciones without
+reading accounts. Below 768px, a section select sits to the right of the title and
+description; desktop uses a left-hand section menu. Navigation, setting rows, and
+focused editors use the shared [Lyra controls](portal.md#control-styling).
+Shell-header breadcrumbs close an editor or return to Configuración; focused
+mobile breadcrumbs omit the Configuración
+ancestor. Reloading or returning to a section opens its list, not an old draft.
+
 The room-type list opens an editor for the type's name, base nightly rate in PEN,
-separate maximum adults and maximum children, and a table of its physical room numbers. **Agregar habitación**
-adds a blank row. Unsaved rows can be removed; saved rooms and types cannot be
-deleted here. Room numbers are unique across the entire property.
+separate maximum adults and maximum children, and a compact editable grid of its
+physical room numbers. Enter a number and use **Agregar** or Enter to stage it;
+focus stays in the add field for the next number. New rooms appear first, with a
+small **Nueva** badge and a remove action. Only unsaved rooms can be removed;
+saved rooms and types cannot be deleted here. Numbers are unique across the
+property, and within-type number swaps save together.
 
 **Guardar cambios** saves the selected type and all proposed room additions and
-number edits atomically. New types can be saved with no rooms. Setup is ready for
-reservations when at least one saved room exists, at which point **Ir al calendario**
-is available. There is no separate setup-completion flag or final wizard submission.
+number edits atomically through `POST /setup`, never independent room PATCH calls.
+There is no autosave. Saving also includes a valid number still in the add field;
+invalid or duplicate pending input blocks the entire request without staging it
+or losing other edits. **Descartar** resets both grid edits and pending input.
+New types can be saved with no rooms. Setup is ready for reservations when at least
+one saved room exists; there is no separate setup-completion flag or final wizard
+submission.
 
-Switching types with a draft prompts to save, discard, or keep editing. Router
-navigation and browser unload also protect unsaved changes; router navigation is
-blocked while saving. Explicit sign-out keeps the app's existing behavior.
+Closing an editor, navigating breadcrumbs, or switching sections through either
+the desktop menu or mobile select with a draft prompts to save, discard, or keep
+editing. Pending add-field text is part of this
+guard even before Add/Enter. Router navigation and browser unload also protect
+unsaved changes; editing, discard, and navigation are blocked while saving. A
+navigation attempted during an ordinary save is cancelled, not replayed, when the
+save finishes, so its result stays on screen. A failed save-and-continue stays in the editor and does not queue a later navigation.
+Explicit sign-out keeps the app's existing behavior.
 Validation and save failures retain the draft, with known conflicts shown beside
 the affected fields. A failed background refresh does not replace an open editor.
 Configuration saves use last-write-wins rather than concurrent-edit detection.
+
+Apariencia applies the system/light/dark theme from the existing
+[theme provider](portal.md#installable-app-and-offline-behavior) immediately, with no
+preview or Save step. The preference belongs to this browser, not the property or
+team; if local storage is unavailable it lasts for the visit only. Cuentas uses the
+existing [password workflows](authentication.md#portal-sessions).
 
 Base-rate changes leave saved reservation prices intact. Lower adult or child limits
 retain unchanged reservations; subsequent changes use the current validation rules.

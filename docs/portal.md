@@ -15,7 +15,9 @@ WCAG conformance; target sizing and spacing require review in the rendered UI.
 ## Navigation
 
 The portal uses a narrow, flat sidebar for Reservas, Calendario,
-[Limpieza](housekeeping.md), and Inventario y tarifas, with Configuración, Cuentas (Owner account only) and Salir at the bottom.
+[Limpieza](housekeeping.md), and Inventario y tarifas, with Configuración and Salir at the bottom.
+Configuración contains Habitaciones, Apariencia, and owner-only Cuentas; see
+[property setup](property-setup.md#portal-setup).
 The header toggle fully hides the sidebar on desktop, reclaiming its width;
 on phones it opens a dismissible navigation sheet. Desktop open/hidden state is
 saved in this browser's local storage across refreshes and browser restarts,
@@ -142,7 +144,7 @@ their button spinners, and the session check keeps its full-screen spinner.
 - **Typical data:** a placeholder matches the common case. The booking dialog
   matches a confirmed reservation with one room; a reservation with more rooms
   grows the form below the dates when it loads.
-- **Known gaps:** the reservation page and Configuración still show a single grey
+- **Known gaps:** the reservation page still shows a single grey
   block while loading.
 - **Busy markup:** a placeholder region has `aria-busy` and a **Cargando …** label
   (for example **Cargando habitaciones**), which tests use to wait for the data.
