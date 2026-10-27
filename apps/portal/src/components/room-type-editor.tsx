@@ -94,6 +94,7 @@ export function RoomTypeEditor({
 } & ConfigurationEditorEvents) {
   const save = useSavePropertySetup();
   const input = useRef<HTMLInputElement>(null);
+  const nextRoomKey = useRef(0);
   const [saveError, setSaveError] = useState<string>();
   const otherNumbers = new Set(
     allRooms.filter((room) => room.roomTypeId !== type?.id).map((room) => room.number),
@@ -179,7 +180,11 @@ export function RoomTypeEditor({
   function add() {
     if (submitting || !number || numberError) return;
     clearServerErrors();
-    form.setFieldValue("rooms", [{ key: crypto.randomUUID(), number }, ...values.rooms]);
+    // Draft-only keys need uniqueness in this editor, not a secure browser context.
+    form.setFieldValue("rooms", [
+      { key: `new-room-${nextRoomKey.current++}`, number },
+      ...values.rooms,
+    ]);
     form.setFieldValue("roomNumber", "");
     input.current?.focus();
   }

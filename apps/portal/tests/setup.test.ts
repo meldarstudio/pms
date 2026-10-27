@@ -179,6 +179,9 @@ it("edits a room type and adds staged and pending room numbers with one save", a
   await fill("maxAdults", "4");
   await fill("maxChildren", "0");
   await fill("rooms[0].number", "201");
+  vi.spyOn(globalThis.crypto, "randomUUID").mockImplementation(() => {
+    throw new Error("Secure-context UUID API unavailable on HTTP LAN origins");
+  });
   await fill("roomNumber", "202");
   await React.act(async () =>
     input("roomNumber").dispatchEvent(
