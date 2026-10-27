@@ -3,22 +3,16 @@ import {
   keepPreviousData,
   useMutation,
   useMutationState,
-  useIsMutating,
   useQuery,
   useQueryClient,
   type QueryClient,
   type QueryKey,
 } from "@tanstack/react-query";
-import type { ReservationStay } from "./assignment-availability";
-import { refreshWorkflowQueries, workflowMutationKey } from "./workflow-query-cache";
 
 import { addDateLabelDays } from "@/lib/dates";
 import { usePropertyCalendar } from "@/lib/use-property-calendar";
 import {
-  sendWorkflow,
-  type WorkflowCommand,
   type CalendarWindow,
-  assignRoom,
   createRoomClosure,
   deleteRoomClosure,
   deleteRoomTypeRates,
@@ -37,7 +31,6 @@ import {
   setAccountPassword,
   changeOwnPassword,
   logout,
-  patchGuest,
   patchRoom,
   onUnauthorized,
   patchRoomClosure,
@@ -50,7 +43,6 @@ import {
   type HousekeepingMarkInput,
   type HousekeepingStatus,
   type ReservationListParams,
-  type PatchGuestInput,
   type AvailabilityOccupancy,
   type Room,
   type RoomType,
@@ -349,27 +341,6 @@ export function useReservation(
   });
 }
 
-export function usePatchGuest() {
-  const queryClient = useQueryClient();
-  return useMutation({
-    mutationFn: (input: { id: string; body: PatchGuestInput }) => patchGuest(input.id, input.body),
-    onSuccess: async () => {
-      await queryClient.invalidateQueries({ queryKey: ["reservations"] });
-      await queryClient.invalidateQueries({ queryKey: ["reservation"] });
-      await queryClient.invalidateQueries({ queryKey: ["calendar"] });
-    },
-  });
-}
-
-export function useAssignRoom() {
-  const queryClient = useQueryClient();
-  return useMutation({
-    mutationFn: (input: { target: ReservationStay; roomId: string }) =>
-      assignRoom(input.target, input.roomId),
-    onSuccess: (data) => refreshWorkflowQueries(queryClient, data),
-  });
-}
-
 export function useRoomClosures(from: string, to: string, enabled = true) {
   return useQuery({
     queryKey: ["room-closures", from, to],
@@ -478,29 +449,5 @@ export function useReservationList(params: ReservationListParams) {
     queryKey: ["reservations", "operations", params],
     queryFn: ({ signal }) => searchReservationsPage(params, signal),
     placeholderData: keepPreviousData,
-  });
-}
-
-export function useReservationSaving(id: string | null) {
-  return useIsMutating({ mutationKey: workflowMutationKey(id) }) > 0;
-}
-
-export function useWorkflowCommand(id: string) {
-  const client = useQueryClient();
-  return useMutation({
-    mutationKey: workflowMutationKey(id),
-    // Each command reads a reservation snapshot. Finish the previous save before
-    // starting the next so a discount autosave cannot undo a cancellation.
-    scope: { id: `reservation-workflow:${id}` },
-    mutationFn: ({ id, command }: { id: string; command: WorkflowCommand }) =>
-      sendWorkflow(id, command),
-    onSuccess: async (data, { command }) => {
-      await refreshWorkflowQueries(client, data);
-      if (command.actions.some((action) => action.type === "contact"))
-        await client.invalidateQueries({
-          queryKey: ["reservation"],
-          predicate: (query) => query.queryKey[1] !== data.id,
-        });
-    },
   });
 }

@@ -225,7 +225,9 @@ asignar**. Occupancy editing stays in the stay editor.
 The bill shows subtotal, discount including zero, total, amount paid, and signed
 balance. **Editar descuento** belongs to the discount row; **Registrar pago** is
 separate. Outstanding, settled, and credit balances remain distinct. This is a
-reservation bill.
+reservation bill. The discount editor previews the resulting bill 300 ms after
+typing stops and enables saving only for a current preview without validation
+issues.
 
 **Notas** shows reservation notes with line breaks, or **Sin notas**, and opens the
 notes editor through **Editar notas** or **Agregar notas**. Contact notes are not
@@ -244,10 +246,10 @@ cancelled reservations.
 
 Selecting Confirmada, Check-in, or Check-out on an active reservation saves
 immediately through the header status select. Cancellation and restoration open
-consequence-aware confirmations with a current server bill and validation. The
-select shows the saved status, is disabled during writes, and returns to the
-previous status after failure. Retrying the same failed choice reuses its request
-ID. It is independent of the stay editor.
+consequence-aware confirmations with a current server bill and validation,
+previewed immediately. The select shows the saved status, is disabled while any
+save to the reservation is queued or running, and returns to the previous status
+after failure. It is independent of the stay editor.
 
 ### Compact calendar dialog
 
@@ -293,18 +295,59 @@ checkout, and status correction until saved or discarded. Dirty details, guest,
 payment, and discount drafts also block restoration. Dirty guest, payment, or
 discount drafts block cancellation. A dirty details draft permits cancellation:
 the confirmation explicitly discards it, and closes the dialog only after
-success. Dismissed or failed cancellation preserves it. Pending writes, including
-discount autosaves, block overlapping writes.
+success. Dismissed or failed cancellation preserves it. The dialog's write
+controls are disabled while any save to the reservation is queued or running,
+including a discount autosave. A discount autosave sent after cancellation waits
+for the cancellation to finish, so it reads the cancelled reservation.
+
+### Reservation command module
+
+Every editor on the full page, the page's status select, the compact dialog, and
+calendar room assignment save an existing reservation through
+[reservation-commands.ts](../apps/portal/src/lib/reservation-commands.ts).
+Creation uses its own endpoint and does not.
+
+- `useReservationCommands(id)` returns `send(actions)` and `saving`. `send` takes
+  the workflow action list and never throws. It resolves to `saved` with the
+  reservation detail, `rejected` with Spanish field errors keyed by form field
+  name, or `failed` with one Spanish message. `saving` is true while any save to
+  that reservation is queued or running, whichever editor sent it.
+- **Duplicate-safe retries.** A failed save keeps its request ID, keyed by
+  reservation and the exact actions. Sending identical actions again reuses that
+  ID, even from a reopened editor, so a retry after a lost response cannot record
+  a payment twice. Success forgets the ID; a later identical save gets a new one.
+  The memory lives in the query client, so clearing the cache, including sign-out
+  after a 401, forgets it.
+- **Ordering.** Saves to one reservation run one at a time in send order. Sending
+  actions identical to a queued or running save joins it: no second request, and
+  both callers receive the same result. Different reservations save independently.
+- **Field errors.** The sent action types choose the mapping: payment actions map
+  date, amount, and method; contact actions map email and phone; staying-guest
+  actions map email, phone, and reserved room; stay-changing actions map the
+  stay-length errors to checkout. Anything else, including unmatched codes, is a
+  single message.
+- **Refresh.** `send` resolves after the refresh. Success writes the saved detail
+  to the reservation cache and refreshes reservation lists, availability,
+  inventory, payments, the calendar, and every open bill preview for that
+  reservation. A contact change also refreshes the contact's other reservations.
+- **Bill previews.** `useReservationPreview(id, actions, enabled)` returns the bill
+  and validation issues for the discount and status editors; callers debounce.
+  The stay draft keeps its own quote reuse but keys its queries with
+  `reservationPreviewKey`, so saves refresh it too.
+- **Room assignment.** `useRoomAssignmentCommand()` re-reads the reservation
+  before saving, uses a new request ID on every attempt, and keeps no retry
+  memory. It waits behind other saves to that reservation and uses the same
+  refresh. See [calendar assignment](calendar.md#picker).
 
 ### Drafts, validation, and retries
 
 Editors capture opening values so background reads cannot replace a draft. Failed
 saves retain drafts; dirty dismissal asks for confirmation, and router navigation
-and browser unload are guarded while dirty or saving. Successful commands refresh
-reservation, calendar, and inventory queries. Lifecycle writes show pending,
-success, and failure feedback, block duplicates, and reuse request IDs for retries
-of unchanged actions after uncertain responses. Check-in/checkout do not change
-stay dates or require payment or physical assignment.
+and browser unload are guarded while dirty or saving. Lifecycle writes show
+pending, success, and failure feedback. Retrying unchanged actions after an
+uncertain response is duplicate-safe through the
+[Reservation command module](#reservation-command-module). Check-in/checkout do
+not change stay dates or require payment or physical assignment.
 
 Room-type menus account for other reservations, closures, and other draft rooms.
 The current choice remains visible, and changes wait for current availability.
@@ -316,11 +359,11 @@ other write errors use toasts. Query errors stay beside the content they block.
 Portal forms use TanStack Form and local Zod schemas in
 [reservation-form-schemas.ts](../apps/portal/src/lib/reservation-form-schemas.ts).
 Details, staying guests, payments, discount, and cancellation have independent
-forms; writes use TanStack Query and workflow commands. The shared
+forms; writes go through the Reservation command module. The shared
 [use-stay-draft.ts](../apps/portal/src/lib/use-stay-draft.ts) owns stay draft values,
 validation feedback, preview timing, reusable prices, and reset for the compact
-and page stay editors. It also retains compact-editor notes. Write guards and
-independent workflows remain with their editors.
+and page stay editors. It also retains compact-editor notes. Leave and discard
+guards, dirty tracking, and toast wording remain with their editors.
 
 ## Portal list
 

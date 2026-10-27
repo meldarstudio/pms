@@ -8,7 +8,7 @@ worker or heap limits; follow the root [frontend testing policy](../../CODING_ST
 ## Navigation and data
 
 - Code-based TanStack Router routes live in `src/router.tsx`; `src/App.tsx` owns the shell and `src/components/app-sidebar.tsx` owns navigation. Read [navigation](../../docs/portal.md#navigation) before changing the shell or sidebar. Calendar bars open `RoomBookingDialog` in edit mode; the Reservations list and the dialog's **Ver reserva completa** action open `ReservationPage`. `RoomBookingDialog` also handles creation.
-- Fetch helpers and response types are hand-written in `src/lib/api.ts`; query hooks live in `src/lib/queries.ts`. The portal does not depend on `@pms/shared`.
+- Fetch helpers and response types are hand-written in `src/lib/api.ts`; query hooks live in `src/lib/queries.ts`. Saves and bill previews for an existing reservation go through `src/lib/reservation-commands.ts`. The portal does not depend on `@pms/shared`.
 - Before changing reservation forms, validation, billing previews, or save/error behavior, read [reservation editors](../../docs/reservations.md#portal-editors). Portal-local schemas live in `src/lib/reservation-form-schemas.ts`.
 - Before changing setup routing or editors, read [property setup](../../docs/property-setup.md#portal-setup), including readiness, draft preservation, and navigation guards.
 - Before changing `AuthGate`, session queries, or fetch error handling, read [portal sessions](../../docs/authentication.md#portal-sessions), including credentialed requests and cache clearing on 401.

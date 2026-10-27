@@ -19,7 +19,9 @@ before changes.
 ## Implementation and tests
 
 `src/lib/api.ts` owns hand-written API types and fetch helpers; query hooks live in
-`src/lib/queries.ts`. The portal maintains local schemas and does not import
+`src/lib/queries.ts`. Edits to an existing reservation, including room assignment and
+bill previews, go through `src/lib/reservation-commands.ts`; see
+[the Reservation command module](../../docs/reservations.md#reservation-command-module). The portal maintains local schemas and does not import
 `@pms/shared`. UI primitives follow `components.json`; import `cn` from `"cn"`.
 
 The shared happy-dom/Vite SSR harness renders real screens and forms with HTTP

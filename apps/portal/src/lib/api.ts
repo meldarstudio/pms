@@ -209,14 +209,6 @@ export type ReservationPayment = {
   createdAt: string;
 };
 
-export type PatchGuestInput = {
-  fullName?: string;
-
-  email?: string;
-  phone?: string;
-  notes?: string;
-};
-
 export type ReservationDetail = {
   status: string;
   cancellationReason: string | null;
@@ -396,10 +388,6 @@ export function getAvailability(
 
 export function getReservation(id: string, signal?: AbortSignal) {
   return getJson<ReservationDetail>(`/reservations/${id}`, signal);
-}
-
-export function patchGuest(id: string, body: PatchGuestInput) {
-  return writeJson<ReservationGuest>(`/guests/${id}`, "PATCH", body);
 }
 
 // Re-read just before saving: the server accepts reassignment, so this stops staff

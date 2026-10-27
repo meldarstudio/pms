@@ -39,19 +39,10 @@ export function readErrorMessage(error: unknown): string | null {
 
 export function serverFieldErrors(
   cause: unknown,
-  scope: "details" | "guest" | "payment",
+  scope: "details" | "guest",
 ): Record<string, string> | null {
   if (!(cause instanceof ApiError)) return null;
   const fields: Record<string, string> = {};
-  if (scope === "payment") {
-    if (
-      cause.code === "payment date cannot be in the future" ||
-      cause.code === "payment date is required"
-    )
-      fields.date = cause.message;
-    if (cause.code === "amount cannot be zero") fields.amount = cause.message;
-    if (cause.code === "method is required") fields.method = cause.message;
-  }
   if (scope === "guest") {
     if (cause.code === "invalid email") fields.email = cause.message;
     if (cause.field === "phone") fields.phone = cause.message;
