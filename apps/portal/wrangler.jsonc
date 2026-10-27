@@ -2,12 +2,11 @@
   "$schema": "node_modules/wrangler/config-schema.json",
   "name": "pms-portal",
   "compatibility_date": "2026-10-08",
-  "workers_dev": true,
+  "workers_dev": false,
   "routes": [{ "pattern": "app.hotelmanantialchurin.com", "custom_domain": true }],
-  "preview_urls": true,
+  "preview_urls": false,
   "assets": {
     "directory": "dist",
     "not_found_handling": "single-page-application",
   },
-  "previews": {},
 }
