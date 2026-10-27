@@ -19,6 +19,7 @@ export async function createBrowserTest() {
     "self",
     "document",
     "navigator",
+    "localStorage",
     "HTMLElement",
     "HTMLInputElement",
     "HTMLTextAreaElement",

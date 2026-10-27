@@ -105,6 +105,12 @@ export function ThemeProvider({
       root.classList.remove("light", "dark");
       root.classList.add(resolvedTheme);
 
+      const themeColor = document.querySelector<HTMLMetaElement>('meta[name="theme-color"]');
+      const background = window.getComputedStyle(root).getPropertyValue("--background").trim();
+      if (themeColor && background) {
+        themeColor.content = background;
+      }
+
       if (restoreTransitions) {
         restoreTransitions();
       }

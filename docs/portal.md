@@ -180,6 +180,17 @@ The portal can be installed through browser-native controls as **Hotel Manantial
 `/reservations`; opening `/` in a normal browser still redirects to Calendario.
 Installation does not add an in-portal install prompt or notification permission.
 
+The browser title-bar color follows the portal's resolved light/dark background,
+including the saved preference, the **D** shortcut, system appearance changes in
+system mode, and theme changes from another window. [ThemeProvider](../apps/portal/src/components/theme-provider.tsx)
+updates the document's `theme-color` from the `--background` token in
+[index.css](../apps/portal/src/index.css); keep that token a concrete sRGB color
+usable by browser chrome. The initial HTML, manifest, and standalone offline
+fallback use white until the portal theme is applied. The standalone offline
+fallback does not run the portal's theme provider and remains light. Browser/OS
+chrome may adjust the requested color; the native title bar and window controls
+remain browser-managed, without a window-controls overlay.
+
 The service worker caches only the public application shell and static assets.
 It does not cache API responses, session data, or hotel records, and does not
 queue writes. Reservations and other hotel operations require an internet
@@ -197,6 +208,10 @@ For release smoke tests, build and preview locally using the root build commands
 and a non-production API origin. On Android Chromium, Safari on iOS/iPadOS, and
 desktop Chromium where available, check native installation, app label/icon,
 standalone launch, login and direct links, and ordinary-tab `/` behavior. After
+switching light/dark with **D**, confirm the installed title bar follows the page
+background; also check a saved theme after relaunch, system appearance changes in
+system mode, and synchronization between two windows. On desktop, check both
+active and inactive title bars. After
 an online visit, disable networking and launch/navigate: the shell should show
 the Spanish offline message and retry should recover when networking returns.
 Confirm no authenticated API response appears in Cache Storage and no write is
