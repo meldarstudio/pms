@@ -1,3 +1,4 @@
+import { addDateLabelDays } from "./dates.ts";
 import { propertyToday } from "./property-calendar.ts";
 import {
   ReservationStatusSelection,
@@ -39,9 +40,17 @@ function spanValue(value: unknown, fallback: 7 | 14): 7 | 14 {
   return value === 7 || value === "7" ? 7 : value === 14 || value === "14" ? 14 : fallback;
 }
 
+/**
+ * The calendar opens on the day before the property date, so today's departures
+ * show a full bar and a checked-in stay due out yesterday still shows.
+ */
+export function calendarStart(today = propertyToday()) {
+  return addDateLabelDays(today, -1);
+}
+
 export function calendarSearch(search: Record<string, unknown>): CalendarSearch {
   return {
-    from: validDay(search.from) ?? propertyToday(),
+    from: validDay(search.from) ?? calendarStart(),
     span: spanValue(search.span, 7),
   };
 }

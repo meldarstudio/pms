@@ -70,7 +70,8 @@ Below 768px, Calendario and Inventario y tarifas use a single compact toolbar
 row with **Actualizar** on the left and the previous-day button, start-date
 picker, and next-day button in the middle. They use the same button sizes and
 picker styling. **Hoy** lives in the picker's footer; choosing it returns to the
-property date and closes the picker. The span selector and period-jump buttons
+property date (Calendario starts on the day before; see
+[opening day](calendar.md#opening-day)) and closes the picker. The span selector and period-jump buttons
 are omitted on mobile. Calendario also has its
 [assignment button](calendar.md#entry) on the right.
 Reservas places **Actualizar** and **Hoy** differently; see the
