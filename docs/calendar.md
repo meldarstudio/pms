@@ -61,13 +61,17 @@ pending-write dismissal, cancellation, and moving to a stay past the window. Vis
 ## Opening day
 
 The calendar opens on the day before the property date, so a stay checking out today
-shows a full night and its checkout morning, and a checked-in stay past its checkout
-stays in view. The sidebar link, the `/` redirect, links from error pages, and **Hoy**
-all start there; a `from` in the URL or a date chosen in the picker becomes the
-first column unchanged. [`calendarStart`](../apps/portal/src/lib/route-search.ts)
-owns the rule. Today's column, from its header down, has a light primary tint behind
-the bars and a primary outline on its outside edges: both sides from the header to the
-last room, and the header's top. It stands out from the first column.
+shows its last night and checkout morning. A checked-in stay due out yesterday still
+shows its checkout morning; stays overdue by more days fall before the first column.
+**Hoy**, the `/` redirect, and the not-found and crash pages' calendar links start
+there. The sidebar link does too until the calendar is first opened; after that it
+returns to the last calendar view. A `from` in the URL or a date chosen in the picker
+becomes the first column unchanged. [`calendarStart`](../apps/portal/src/lib/route-search.ts)
+owns the rule.
+
+Because today is no longer the first column, today's column has a light primary tint
+behind the bars and a primary outline: its header's top edge and both sides from the
+header down to the last room.
 
 ## Calendar read
 

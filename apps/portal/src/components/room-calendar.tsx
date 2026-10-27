@@ -171,14 +171,16 @@ function stayTrack(stay: {
  * Marks today's column behind the bars, since the calendar opens on yesterday.
  * It reaches 1px past each side and the bottom (and the header's top) to cover the
  * gray grid lines, so its opaque outline runs unbroken from the header to the last room.
+ * The last column has no grid line on its right, so it stays inside to avoid overflow.
  */
-function TodayColumn({ header = false }: { header?: boolean }) {
+function TodayColumn({ header = false, last = false }: { header?: boolean; last?: boolean }) {
   return (
     <div
       aria-hidden="true"
       className={cn(
-        "pointer-events-none absolute -right-px -bottom-px -left-px -z-10 border-x border-[color-mix(in_oklab,var(--color-primary)_30%,var(--color-background))] bg-primary/10",
+        "pointer-events-none absolute -bottom-px -left-px -z-10 border-x border-[color-mix(in_oklab,var(--color-primary)_30%,var(--color-background))] bg-primary/10",
         header ? "-top-px border-t" : "top-0",
+        last ? "right-0" : "-right-px",
       )}
     />
   );
@@ -324,9 +326,13 @@ function RoomTrack({
           return (
             <div
               key={date}
-              className={cn("relative isolate", dayIndex < dayCount - 1 && "border-r")}
+              className={cn(
+                "relative",
+                dayIndex < dayCount - 1 && "border-r",
+                date === today && "isolate",
+              )}
             >
-              {date === today && <TodayColumn />}
+              {date === today && <TodayColumn last={dayIndex === dayCount - 1} />}
               {onBookDay ? (
                 <button
                   type="button"
@@ -821,7 +827,9 @@ export function RoomCalendar({
                     dayIndex < span - 1 && "border-r",
                   )}
                 >
-                  {format(day, "yyyy-MM-dd") === today && <TodayColumn header />}
+                  {format(day, "yyyy-MM-dd") === today && (
+                    <TodayColumn header last={dayIndex === span - 1} />
+                  )}
                   <span
                     className={cn(
                       "text-xs tracking-wide uppercase",

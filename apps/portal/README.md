@@ -11,7 +11,7 @@ before changes.
 - [Authentication](../../docs/authentication.md#portal-sessions) for AuthGate, credentialed requests, and cache clearing.
 - [Property calendar](../../docs/property-calendar.md) for operational today, date pickers, and session metadata.
 - [Reservations](../../docs/reservations.md#portal-editors) for creation, compact/full-page editing, drafts, lifecycle actions, and list filters.
-- [Calendar and assignment](../../docs/calendar.md) for backlog boundaries, assignment flow, and assignment availability rules.
+- [Calendar and assignment](../../docs/calendar.md) for the opening day, backlog boundaries, assignment flow, and assignment availability rules.
 - [Property setup and configuration](../../docs/property-setup.md#portal-setup) for readiness, room-type drafts, appearance, and account navigation.
 - [Housekeeping](../../docs/housekeeping.md) for the Limpieza page, the calendar marker, and the dirty-room check-in warning.
 - [Production releases](../../docs/releases.md) for delivering compatible API and portal versions.

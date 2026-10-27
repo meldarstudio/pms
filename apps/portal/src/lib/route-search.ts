@@ -42,7 +42,7 @@ function spanValue(value: unknown, fallback: 7 | 14): 7 | 14 {
 
 /**
  * The calendar opens on the day before the property date, so today's departures
- * show a full bar and overdue checked-in stays stay in view.
+ * show a full bar and a checked-in stay due out yesterday still shows.
  */
 export function calendarStart(today = propertyToday()) {
   return addDateLabelDays(today, -1);
