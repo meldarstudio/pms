@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
-import { afterAll, afterEach, beforeAll, beforeEach, it } from "vite-plus/test";
+import type { HTMLElement } from "happy-dom";
+import { afterAll, afterEach, beforeAll, beforeEach, it, vi } from "vite-plus/test";
 import type { PropertySetupInput } from "../src/lib/api.ts";
 import { createBrowserTest, type BrowserTest, type BrowserPage } from "./browser.ts";
 import type { FakeBackend } from "./fake-backend.ts";
@@ -18,12 +19,14 @@ let writes: PropertySetupInput[];
 let input: BrowserPage["field"];
 let fill: BrowserPage["fill"];
 let button: BrowserPage["button"];
+let ThemeProvider: (typeof import("../src/components/theme-provider.tsx"))["ThemeProvider"];
 
 beforeAll(async () => {
   browser = await createBrowserTest();
   ({ window, React } = browser);
   const { server } = browser;
   routes = (await server.ssrLoadModule("/src/router.tsx")) as typeof routes;
+  ({ ThemeProvider } = await server.ssrLoadModule("/src/components/theme-provider.tsx"));
   const calendar = (await server.ssrLoadModule(
     "/src/lib/property-calendar.ts",
   )) as typeof import("../src/lib/property-calendar.ts");
@@ -59,6 +62,9 @@ beforeEach(() => {
 
 afterEach(async () => {
   await page.cleanup();
+  vi.restoreAllMocks();
+  window.localStorage.clear();
+  window.document.documentElement.classList.remove("light", "dark");
 });
 
 afterAll(async () => {
@@ -70,7 +76,14 @@ async function render(path = "/setup") {
     routeTree: routes.router.routeTree,
     history: browser.routing.createMemoryHistory({ initialEntries: [path] }),
   });
-  await page.renderRouter(router);
+  await router.load();
+  await page.render(
+    React.createElement(
+      ThemeProvider,
+      null,
+      React.createElement(browser.routing.RouterProvider, { router }),
+    ),
+  );
 }
 
 function linkByText(label: string) {
@@ -80,9 +93,9 @@ function linkByText(label: string) {
 }
 
 async function click(label: string) {
-  const link = Array.from(
-    window.document.querySelectorAll('nav[aria-label="Navegación principal"] a'),
-  ).find((element) => element.textContent.trim() === label);
+  const link = Array.from(window.document.querySelectorAll("nav a")).find(
+    (element) => element.textContent.trim() === label,
+  );
   await React.act(async () => {
     if (link) {
       link.dispatchEvent(
@@ -133,7 +146,7 @@ it.each([
     await until(
       () =>
         router.state.location.pathname === "/setup" &&
-        !!container.querySelector('input[name="name"]'),
+        container.textContent.includes("Habitaciones"),
       "Setup CTA must open configuration through the app router",
     );
     await React.act(async () => router.history.back());
@@ -145,22 +158,39 @@ it.each([
   },
 );
 
-it("edits a room type and adds several room numbers in the real table with one save", async () => {
+async function openType(name = "Doble") {
+  await until(
+    () =>
+      !!Array.from(container.querySelectorAll("button")).find(
+        (element) => element.getAttribute("aria-label") === `Editar ${name}`,
+      ),
+    "Room-type list must load",
+  );
+  await click(`Editar ${name}`);
+  await until(() => !!container.querySelector('input[name="name"]'), "Editor must open");
+}
+
+it("edits a room type and adds staged and pending room numbers with one save", async () => {
   await render();
-  await until(() => !!container.querySelector('input[name="name"]'), "Selected type must load");
+  await openType();
   assert.equal(input("name").value, "Doble");
   await fill("name", "Doble superior");
   await fill("baseRate", "175.50");
   await fill("maxAdults", "4");
   await fill("maxChildren", "0");
   await fill("rooms[0].number", "201");
-  await click("Agregar habitación");
-  await fill("rooms[1].number", "202");
-  await click("Agregar habitación");
-  await fill("rooms[2].number", "203");
+  await fill("roomNumber", "202");
+  await React.act(async () =>
+    input("roomNumber").dispatchEvent(
+      new window.KeyboardEvent("keydown", { key: "Enter", bubbles: true, cancelable: true }),
+    ),
+  );
+  assert.equal(input("roomNumber").value, "");
+  assert.equal(window.document.activeElement, input("roomNumber"));
+  await fill("roomNumber", " 203 ");
   await click("Guardar cambios");
   await until(
-    () => writes.length === 1 && button("Guardar cambios").disabled,
+    () => writes.length === 1 && button("Guardar cambios").disabled && !input("name").disabled,
     "Successful save must reset the draft",
   );
   assert.deepEqual(writes[0], {
@@ -169,9 +199,11 @@ it("edits a room type and adds several room numbers in the real table with one s
     maxAdults: 4,
     maxChildren: 0,
     baseRateCents: 17550,
-    rooms: [{ id: "room-101", number: "201" }, { number: "202" }, { number: "203" }],
+    rooms: [{ number: "203" }, { number: "202" }, { id: "room-101", number: "201" }],
   });
-  assert.equal(container.querySelectorAll("tbody tr").length, 3);
+  assert.equal(input("roomNumber").value, "");
+  assert.equal(input("rooms[2].number").value, "201");
+  assert.equal(container.textContent.includes("Nueva"), false);
 });
 
 it("keeps the draft and identifies a room-number conflict reported during saving, then allows correction", async () => {
@@ -180,84 +212,86 @@ it("keeps the draft and identifies a room-number conflict reported during saving
       catalog.rooms.push({ id: "other-room", number: "202", roomTypeId: "suite" });
       return Response.json(
         { error: "room number already exists" },
-        { status: 409, headers: { "X-Error-Field": "rooms[1].number" } },
+        { status: 409, headers: { "X-Error-Field": "rooms[0].number" } },
       );
     }
   });
   await render();
-  await until(() => !!container.querySelector('input[name="name"]'), "Selected type must load");
+  await openType();
   await fill("name", "Doble superior");
-  await click("Agregar habitación");
-  await fill("rooms[1].number", "202");
+  await fill("roomNumber", "202");
   await click("Guardar cambios");
   await until(
-    () => input("rooms[1].number").getAttribute("aria-invalid") === "true",
+    () => input("roomNumber").getAttribute("aria-invalid") === "true",
     "Conflicting room must be identified",
   );
   assert.equal(input("name").value, "Doble superior");
   assert.equal(input("rooms[0].number").value, "101");
-  assert.equal(input("rooms[1].number").value, "202");
+  assert.equal(input("roomNumber").value, "202");
   assert.ok(container.textContent.includes("Este número de habitación ya está en uso."));
-  await fill("rooms[1].number", "203");
+  await fill("roomNumber", "203");
   await click("Guardar cambios");
   await until(
-    () => writes.length === 2 && button("Guardar cambios").disabled,
+    () => writes.length === 2 && button("Guardar cambios").disabled && !input("name").disabled,
     "Corrected draft must save",
   );
 });
 
-it("protects unsaved edits when switching types and supports staying or explicitly discarding", async () => {
+it("protects unsaved edits when closing the editor and supports staying or explicitly discarding", async () => {
   await render();
-  await until(() => !!container.querySelector('input[name="name"]'), "Selected type must load");
+  await openType();
   await fill("name", "My unsaved type");
-  await click("Suite");
+  await click("Habitaciones");
   assert.equal(input("name").value, "My unsaved type");
   assert.ok(window.document.querySelector('[role="alertdialog"]'));
   await click("Seguir editando");
   assert.equal(input("name").value, "My unsaved type");
-  await click("Suite");
+  await click("Habitaciones");
   await click("Descartar cambios");
-  await until(() => input("name").value === "Suite", "Discard must open the selected type");
+  await openType("Suite");
+  assert.equal(input("name").value, "Suite");
   assert.equal(writes.length, 0);
 });
 
-it("saves before switching and prevents switching away while that save is pending", async () => {
+it("saves before closing and prevents discarding or editing while that save is pending", async () => {
   const save = api.hold("POST", "/setup");
   await render();
-  await until(() => !!container.querySelector('input[name="name"]'), "Selected type must load");
+  await openType();
   await fill("baseRate", "180");
-  await click("Suite");
+  await click("Habitaciones");
   await click("Guardar y continuar");
   await until(() => !!save.request, "Save must start");
   assert.equal(input("name").value, "Doble");
-  assert.equal(button("Suite").disabled, true);
+  assert.equal(input("name").disabled, true);
+  assert.equal(button("Agregar habitación").disabled, true);
   await click("Reservas");
   await until(
     () => window.document.body.textContent.includes("Guardando cambios"),
     "Navigation must remain blocked during the save",
   );
   assert.equal(button("Descartar cambios").disabled, true);
-  await click("Seguir editando");
+  assert.equal(button("Seguir editando").disabled, true);
   await React.act(async () =>
     save.release(
       Response.json({ roomType: { ...double, baseRateCents: 18000 }, rooms: catalog.rooms }),
     ),
   );
-  await until(() => input("name").value === "Suite", "Switch must happen after saving");
+  await until(
+    () => !container.querySelector('input[name="name"]'),
+    "Editor must close after saving",
+  );
+  await openType();
+  assert.equal(button("Guardar cambios").disabled, true);
   assert.equal(writes[0].baseRateCents, 18000);
 });
 
 it.each(["mobile"])("protects a setup draft through %s sidebar navigation", async (viewport) => {
   if (viewport === "mobile") page.mobile();
   await render();
-  await until(() => !!container.querySelector('input[name="name"]'), "Selected type must load");
-  await fill("name", "Unsaved name");
+  await openType();
+  await fill("roomNumber", "909");
   await click("Alternar navegación");
-  assert.equal(
-    input("name").value,
-    "Unsaved name",
-    "Toggling navigation must not remount the editor",
-  );
+  assert.equal(input("roomNumber").value, "909", "Toggling navigation must not remount the editor");
   if (viewport === "desktop") await click("Alternar navegación");
   await click("Reservas");
   await until(
@@ -266,7 +300,7 @@ it.each(["mobile"])("protects a setup draft through %s sidebar navigation", asyn
   );
   assert.equal(router.state.location.pathname, "/setup");
   await click("Seguir editando");
-  assert.equal(input("name").value, "Unsaved name");
+  assert.equal(input("roomNumber").value, "909");
   if (viewport === "mobile") await click("Alternar navegación");
   await click("Reservas");
   await click("Descartar cambios");
@@ -295,12 +329,11 @@ it("keeps a successfully created type visible even when the follow-up list refre
     failRefresh ? Response.json({ error: "Refresh failed" }, { status: 500 }) : undefined,
   );
   await render();
-  await until(() => !!container.querySelector('input[name="name"]'), "Selected type must load");
-  await click("Agregar tipo de habitación");
+  await until(() => container.textContent.includes("Agregar tipo"));
+  await click("Agregar");
   await fill("name", "Individual");
   await fill("baseRate", "85.50");
-  await click("Agregar habitación");
-  await fill("rooms[0].number", "301");
+  await fill("roomNumber", "301");
   await click("Guardar cambios");
   await until(() => writes.length === 1 && !input("name").disabled, "Save must finish");
   assert.deepEqual(writes[0], {
@@ -311,20 +344,20 @@ it("keeps a successfully created type visible even when the follow-up list refre
     rooms: [{ number: "301" }],
   });
   assert.equal(input("name").value, "Individual");
-  assert.ok(button("Individual"));
+  assert.ok(container.textContent.includes("Individual"));
   assert.equal(button("Guardar cambios").disabled, true);
 });
 
-it("does not switch types after a failed save-and-continue or a later ordinary save", async () => {
+it("does not close after a failed save-and-continue or a later ordinary save", async () => {
   api.on("POST", "/setup", () =>
     writes.length === 1
       ? Response.json({ error: "room type already exists" }, { status: 409 })
       : undefined,
   );
   await render();
-  await until(() => !!container.querySelector('input[name="name"]'), "Selected type must load");
+  await openType();
   await fill("name", "Suite");
-  await click("Suite");
+  await click("Habitaciones");
   await click("Guardar y continuar");
   await until(
     () => input("name").getAttribute("aria-invalid") === "true",
@@ -339,7 +372,7 @@ it("does not switch types after a failed save-and-continue or a later ordinary s
   await fill("name", "Doble superior");
   await click("Guardar cambios");
   await until(
-    () => writes.length === 2 && button("Guardar cambios").disabled,
+    () => writes.length === 2 && button("Guardar cambios").disabled && !input("name").disabled,
     "Corrected ordinary save must finish",
   );
   assert.equal(input("name").value, "Doble superior");
@@ -359,3 +392,153 @@ it("keeps inventory editable when room types exist without rooms", async () => {
   assert.equal(container.textContent.includes("Configura tu alojamiento"), false);
   assert.equal(container.textContent.includes("Aún no hay habitaciones"), false);
 });
+
+it("blocks an invalid whole draft without staging pending text, then clears all edits on discard", async () => {
+  await render();
+  await openType();
+  await fill("baseRate", "invalid");
+  await fill("roomNumber", "202");
+  await click("Guardar cambios");
+  await until(() => input("baseRate").getAttribute("aria-invalid") === "true");
+  assert.equal(writes.length, 0);
+  assert.equal(input("roomNumber").value, "202");
+  assert.equal(container.querySelector('[name="rooms[1].number"]'), null);
+  await fill("baseRate", "180");
+  await fill("roomNumber", "101");
+  await click("Guardar cambios");
+  assert.equal(writes.length, 0, "A duplicate pending number blocks the entire request");
+  await fill("roomNumber", "202");
+  await click("Agregar habitación");
+  await fill("roomNumber", "203");
+  await click("Descartar");
+  assert.equal(input("roomNumber").value, "");
+  assert.equal(input("rooms[0].number").value, "101");
+  assert.equal(input("baseRate").value, "150.00");
+  assert.equal(container.querySelector('[name="rooms[1].number"]'), null);
+  assert.equal(button("Guardar cambios").disabled, true);
+});
+
+it("saves room-number swaps atomically and keeps opening values across successful background refreshes", async () => {
+  catalog.rooms.push({ id: "room-102", number: "102", roomTypeId: "double" });
+  await render();
+  await openType();
+  await fill("rooms[0].number", "102");
+  catalog.roomTypes = [{ ...double, name: "Remote edit" }, suite];
+  await React.act(async () => {
+    await page.client.invalidateQueries({ queryKey: ["room-types"] });
+  });
+  assert.equal(input("name").value, "Doble");
+  assert.equal(input("rooms[0].number").value, "102");
+  await fill("rooms[1].number", "101");
+  await click("Guardar cambios");
+  await until(
+    () => writes.length === 1 && button("Guardar cambios").disabled && !input("name").disabled,
+  );
+  assert.deepEqual(writes[0].rooms, [
+    { id: "room-101", number: "102" },
+    { id: "room-102", number: "101" },
+  ]);
+});
+
+it("saves a pending number before router navigation and permits a new type without rooms", async () => {
+  await render();
+  await openType();
+  await fill("roomNumber", "202");
+  await click("Reservas");
+  await until(() => !!window.document.querySelector('[role="alertdialog"]'));
+  await click("Guardar y continuar");
+  await until(() => router.state.location.pathname === "/reservations");
+  assert.deepEqual(writes[0].rooms, [{ number: "202" }, { id: "room-101", number: "101" }]);
+  await React.act(async () => router.navigate({ to: "/setup" }));
+  await until(() => container.textContent.includes("Agregar tipo"));
+  await click("Agregar");
+  await fill("name", "Individual");
+  await fill("baseRate", "80");
+  await click("Guardar cambios");
+  await until(
+    () => writes.length === 2 && button("Guardar cambios").disabled && !input("name").disabled,
+  );
+  assert.deepEqual(writes[1].rooms, []);
+});
+
+it("maps a staged room conflict correctly when a pending number precedes it in the request", async () => {
+  api.on("POST", "/setup", () =>
+    Response.json(
+      { error: "room number already exists" },
+      {
+        status: 409,
+        headers: { "X-Error-Field": "rooms[1].number" },
+      },
+    ),
+  );
+  await render();
+  await openType();
+  await fill("roomNumber", "202");
+  await click("Agregar habitación");
+  await fill("roomNumber", "203");
+  await click("Guardar cambios");
+  await until(() => input("rooms[0].number").getAttribute("aria-invalid") === "true");
+  assert.equal(input("rooms[0].number").value, "202");
+  assert.equal(input("roomNumber").value, "203");
+  assert.equal(input("roomNumber").getAttribute("aria-invalid"), "false");
+});
+
+it("retains pending text on failed router save-and-continue and protects same-route section changes", async () => {
+  api.failOnce("POST", "/setup", 409, { error: "room type already exists" });
+  await render();
+  await openType();
+  await fill("roomNumber", "202");
+  await click("Reservas");
+  await until(() => !!window.document.querySelector('[role="alertdialog"]'));
+  await click("Guardar y continuar");
+  await until(() => input("name").getAttribute("aria-invalid") === "true");
+  assert.equal(router.state.location.pathname, "/setup");
+  assert.equal(input("roomNumber").value, "202");
+  await fill("name", "Doble renovada");
+  await click("Guardar cambios");
+  await until(
+    () => writes.length === 2 && !input("name").disabled && button("Guardar cambios").disabled,
+  );
+  assert.equal(router.state.location.pathname, "/setup");
+  await fill("roomNumber", "204");
+  await click("Apariencia");
+  await until(() => !!window.document.querySelector('[role="alertdialog"]'));
+  await click("Descartar cambios");
+  await until(() => !!container.querySelector("#configuration-theme"));
+  assert.equal(router.state.location.search.section, "appearance");
+  await click("Habitaciones");
+  await openType("Doble renovada");
+  assert.equal(input("roomNumber").value, "");
+});
+
+it.each([false, true])(
+  "applies appearance through the real selector (storage unavailable: %s)",
+  async (unavailable) => {
+    if (unavailable) {
+      vi.spyOn(window.localStorage, "getItem").mockImplementation(() => {
+        throw new Error("Storage denied");
+      });
+      vi.spyOn(window.localStorage, "setItem").mockImplementation(() => {
+        throw new Error("Storage denied");
+      });
+    } else window.localStorage.setItem("theme", "light");
+    await render("/setup?section=appearance");
+    await until(() => !!container.querySelector("#configuration-theme"));
+    await React.act(async () =>
+      (container.querySelector("#configuration-theme") as HTMLElement).click(),
+    );
+    await until(() =>
+      Array.from(window.document.querySelectorAll('[role="option"]')).some(
+        (element) => element.textContent.trim() === "Oscuro",
+      ),
+    );
+    const option = Array.from(window.document.querySelectorAll('[role="option"]')).find(
+      (element) => element.textContent.trim() === "Oscuro",
+    )!;
+    await React.act(async () => (option as HTMLElement).click());
+    await until(() => window.document.documentElement.classList.contains("dark"));
+    assert.ok(container.querySelector("#configuration-theme")?.textContent.includes("Oscuro"));
+    if (!unavailable) assert.equal(window.localStorage.getItem("theme"), "dark");
+    assert.equal(writes.length, 0, "Appearance must not write property settings");
+  },
+);

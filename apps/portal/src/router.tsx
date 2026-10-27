@@ -18,7 +18,6 @@ import { RoomCalendar } from "@/components/room-calendar";
 import { Housekeeping } from "@/components/housekeeping";
 import { Inventory } from "@/components/inventory";
 import { PropertySetup } from "@/components/property-setup";
-import { Accounts } from "@/components/accounts";
 import {
   calendarSearch,
   housekeepingSearch,
@@ -227,13 +226,24 @@ const housekeepingRoute = createRoute({
 const setupRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/setup",
-  component: PropertySetup,
+  validateSearch: (search: Record<string, unknown>): { section?: "appearance" | "accounts" } => ({
+    section:
+      search.section === "appearance" || search.section === "accounts" ? search.section : undefined,
+  }),
+  component: SetupRoute,
 });
+
+function SetupRoute() {
+  const { section = "rooms" } = setupRoute.useSearch();
+  return <PropertySetup key={section} section={section} />;
+}
 
 const accountsRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/accounts",
-  component: Accounts,
+  beforeLoad: () => {
+    throw redirect({ to: "/setup", search: { section: "accounts" }, replace: true });
+  },
 });
 
 const routeTree = rootRoute.addChildren([

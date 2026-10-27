@@ -80,9 +80,11 @@ export function ThemeProvider({
   ...props
 }: ThemeProviderProps) {
   const [theme, setThemeState] = React.useState<Theme>(() => {
-    const storedTheme = localStorage.getItem(storageKey);
-    if (isTheme(storedTheme)) {
-      return storedTheme;
+    try {
+      const storedTheme = localStorage.getItem(storageKey);
+      if (isTheme(storedTheme)) return storedTheme;
+    } catch {
+      /* Storage can be unavailable in private or restricted browsers. */
     }
 
     return defaultTheme;
@@ -90,7 +92,11 @@ export function ThemeProvider({
 
   const setTheme = React.useCallback(
     (nextTheme: Theme) => {
-      localStorage.setItem(storageKey, nextTheme);
+      try {
+        localStorage.setItem(storageKey, nextTheme);
+      } catch {
+        /* Keep the visit-only choice. */
+      }
       setThemeState(nextTheme);
     },
     [storageKey],
@@ -165,7 +171,11 @@ export function ThemeProvider({
                 ? "light"
                 : "dark";
 
-        localStorage.setItem(storageKey, nextTheme);
+        try {
+          localStorage.setItem(storageKey, nextTheme);
+        } catch {
+          /* Keep the visit-only choice. */
+        }
         return nextTheme;
       });
     };
