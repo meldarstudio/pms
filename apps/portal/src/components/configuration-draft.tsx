@@ -17,6 +17,16 @@ export type ConfigurationEditorEvents = {
   onSubmitFinished: () => void;
 };
 
+/** Reports an editor's draft and write state to its `useConfigurationDraft` guard. */
+export function useReportEditorState(
+  { onDirtyChange, onSavingChange }: ConfigurationEditorEvents,
+  dirty: boolean,
+  saving: boolean,
+) {
+  useEffect(() => onDirtyChange(dirty), [dirty, onDirtyChange]);
+  useEffect(() => onSavingChange(saving), [saving, onSavingChange]);
+}
+
 /** One guard for local editor navigation, router navigation, and browser unload. */
 export function useConfigurationDraft(formId: string | undefined, onDiscard: () => void) {
   const [dirty, setDirty] = useState(false);

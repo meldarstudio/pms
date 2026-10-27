@@ -16,11 +16,8 @@ WCAG conformance; target sizing and spacing require review in the rendered UI.
 
 The portal uses a narrow, flat sidebar for Reservas, Calendario,
 [Limpieza](housekeeping.md), and Inventario y tarifas, with Configuración and Salir at the bottom.
-Configuración contains Habitaciones, browser-scoped Apariencia, and owner-only
-Cuentas; see [property setup](property-setup.md#portal-setup). Legacy `/accounts`
-links redirect into Configuración. The theme selector uses the existing theme
-provider, including system appearance, the `d` shortcut, and cross-window changes;
-storage failures leave the choice usable for the current visit.
+Configuración contains Habitaciones, Apariencia, and owner-only Cuentas; see
+[property setup](property-setup.md#portal-setup).
 The header toggle fully hides the sidebar on desktop, reclaiming its width;
 on phones it opens a dismissible navigation sheet. Desktop open/hidden state is
 saved in this browser's local storage across refreshes and browser restarts,

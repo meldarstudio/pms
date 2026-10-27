@@ -1,6 +1,9 @@
-import { Fragment, useEffect, useState, type FormEvent } from "react";
+import { Fragment, useState, type ChangeEvent, type FormEvent } from "react";
 import { ChevronRightIcon } from "lucide-react";
-import type { ConfigurationEditorEvents } from "@/components/configuration-draft";
+import {
+  useReportEditorState,
+  type ConfigurationEditorEvents,
+} from "@/components/configuration-draft";
 import { PageError, StaleDataNotice } from "@/components/page-error";
 import { SettingRow } from "@/components/setting-row";
 import { Button } from "@/components/ui/button";
@@ -10,23 +13,75 @@ import { Input } from "@/components/ui/input";
 import { Separator } from "@/components/ui/separator";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Spinner } from "@/components/ui/spinner";
-import type { Account } from "@/lib/api";
+import type { Account, AccountRole } from "@/lib/api";
 import { ApiError } from "@/lib/api-error";
-import {
-  useAccounts,
-  useChangeOwnPassword,
-  useSession,
-  useSetAccountPassword,
-} from "@/lib/queries";
+import { useAccounts, useChangeOwnPassword, useSetAccountPassword } from "@/lib/queries";
+
+const MIN_PASSWORD_LENGTH = 12;
+const MAX_PASSWORD_LENGTH = 128;
+
+const roleCopy: Record<
+  AccountRole,
+  {
+    title: string;
+    description: string;
+    label: string;
+    heading: string;
+    notice: string;
+    submit: string;
+    saved: string;
+  }
+> = {
+  owner: {
+    title: "Propietario",
+    description: "Operación y administración de cuentas",
+    label: "propietario",
+    heading: "Tu contraseña",
+    notice: "Se cerrarán tus otras sesiones; esta sesión sigue abierta.",
+    submit: "Cambiar mi contraseña",
+    saved: "Contraseña cambiada.",
+  },
+  staff: {
+    title: "Personal",
+    description: "Acceso compartido para la operación",
+    label: "personal",
+    heading: "Cuenta del personal",
+    notice:
+      "Acceso compartido. Al cambiar la contraseña, se cierra la sesión del personal en todos los dispositivos.",
+    submit: "Cambiar contraseña del personal",
+    saved:
+      "Contraseña cambiada. Se cerró la sesión del personal; deben iniciar sesión con la nueva contraseña.",
+  },
+};
 
 /** Mounted only in the owner-only configuration section. */
-export function AccountSettings({ onSelect }: { onSelect: (account: Account) => void }) {
-  const isOwner = useSession().data?.role === "owner";
-  const accounts = useAccounts(isOwner);
+export function AccountsSection({
+  account,
+  onSelect,
+  ...events
+}: {
+  account: Account | null;
+  onSelect: (account: Account) => void;
+} & ConfigurationEditorEvents) {
+  const accounts = useAccounts(true);
+  const retry = () => void accounts.refetch();
+  if (account)
+    return (
+      <>
+        {accounts.data && accounts.isError && (
+          <StaleDataNotice
+            error={accounts.error}
+            onRetry={retry}
+            detail="Tus cambios sin guardar se conservan."
+          />
+        )}
+        <AccountPasswordEditor key={account.id} account={account} {...events} />
+      </>
+    );
   return (
     <>
       {accounts.data && accounts.isError && (
-        <StaleDataNotice error={accounts.error} onRetry={() => void accounts.refetch()} />
+        <StaleDataNotice error={accounts.error} onRetry={retry} />
       )}
       {accounts.isPending ? (
         <div
@@ -34,13 +89,13 @@ export function AccountSettings({ onSelect }: { onSelect: (account: Account) => 
           aria-label="Cargando cuentas"
           className="flex flex-col gap-4 border p-6"
         >
-          <h2 className="text-sm font-medium">Personal</h2>
+          <h2 className="text-sm font-medium">{roleCopy.staff.title}</h2>
           <Skeleton className="h-12" />
-          <h2 className="text-sm font-medium">Propietario</h2>
+          <h2 className="text-sm font-medium">{roleCopy.owner.title}</h2>
           <Skeleton className="h-12" />
         </div>
       ) : !accounts.data ? (
-        <PageError error={accounts.error} onRetry={() => void accounts.refetch()} />
+        <PageError error={accounts.error} onRetry={retry} />
       ) : (
         <div className="border bg-muted/15">
           {accounts.data.length === 0 ? (
@@ -51,24 +106,27 @@ export function AccountSettings({ onSelect }: { onSelect: (account: Account) => 
               </EmptyHeader>
             </Empty>
           ) : (
-            accounts.data.map((account, index) => (
-              <Fragment key={account.id}>
-                {index > 0 && <Separator />}
-                <SettingRow
-                  title={account.role === "owner" ? "Propietario" : "Personal"}
-                  description={`@${account.username} · ${account.role === "owner" ? "Operación y administración de cuentas" : "Acceso compartido para la operación"}`}
-                >
-                  <Button
-                    variant="ghost"
-                    onClick={() => onSelect(account)}
-                    aria-label={`Cambiar contraseña de ${account.role === "owner" ? "propietario" : "personal"}`}
+            accounts.data.map((account, index) => {
+              const copy = roleCopy[account.role];
+              return (
+                <Fragment key={account.id}>
+                  {index > 0 && <Separator />}
+                  <SettingRow
+                    title={copy.title}
+                    description={`@${account.username} · ${copy.description}`}
                   >
-                    Cambiar contraseña
-                    <ChevronRightIcon data-icon="inline-end" />
-                  </Button>
-                </SettingRow>
-              </Fragment>
-            ))
+                    <Button
+                      variant="ghost"
+                      onClick={() => onSelect(account)}
+                      aria-label={`Cambiar contraseña de ${copy.label}`}
+                    >
+                      Cambiar contraseña
+                      <ChevronRightIcon data-icon="inline-end" />
+                    </Button>
+                  </SettingRow>
+                </Fragment>
+              );
+            })
           )}
         </div>
       )}
@@ -76,16 +134,14 @@ export function AccountSettings({ onSelect }: { onSelect: (account: Account) => 
   );
 }
 
-export function AccountPasswordEditor({
+function AccountPasswordEditor({
   account,
-  onDirtyChange,
-  onSavingChange,
-  onSaved,
-  onSubmitFinished,
+  ...events
 }: { account: Account } & ConfigurationEditorEvents) {
   const own = useChangeOwnPassword();
   const staff = useSetAccountPassword();
   const owner = account.role === "owner";
+  const copy = roleCopy[account.role];
   const [currentPassword, setCurrentPassword] = useState("");
   const [password, setPassword] = useState("");
   const [confirmation, setConfirmation] = useState("");
@@ -93,16 +149,22 @@ export function AccountPasswordEditor({
   const [saved, setSaved] = useState(false);
   const saving = own.isPending || staff.isPending;
   const dirty = !!(currentPassword || password || confirmation);
-  useEffect(() => onDirtyChange(dirty), [dirty, onDirtyChange]);
-  useEffect(() => onSavingChange(saving), [saving, onSavingChange]);
+  useReportEditorState(events, dirty, saving);
+  function edit(set: (value: string) => void) {
+    return (event: ChangeEvent<HTMLInputElement>) => {
+      setErrors({});
+      setSaved(false);
+      set(event.target.value);
+    };
+  }
   async function submit(event: FormEvent) {
     event.preventDefault();
     if (saving) return;
     const invalid =
-      password.length < 12
-        ? "La contraseña debe tener al menos 12 caracteres."
-        : password.length > 128
-          ? "La contraseña debe tener como máximo 128 caracteres."
+      password.length < MIN_PASSWORD_LENGTH
+        ? `La contraseña debe tener al menos ${MIN_PASSWORD_LENGTH} caracteres.`
+        : password.length > MAX_PASSWORD_LENGTH
+          ? `La contraseña debe tener como máximo ${MAX_PASSWORD_LENGTH} caracteres.`
           : password !== confirmation
             ? "Las contraseñas no coinciden."
             : undefined;
@@ -113,7 +175,7 @@ export function AccountPasswordEditor({
     setErrors(next);
     setSaved(false);
     if (Object.keys(next).length) {
-      onSubmitFinished();
+      events.onSubmitFinished();
       return;
     }
     try {
@@ -123,7 +185,7 @@ export function AccountPasswordEditor({
       setPassword("");
       setConfirmation("");
       setSaved(true);
-      onSaved();
+      events.onSaved();
     } catch (cause) {
       const message = cause instanceof Error ? cause.message : "No se pudo cambiar la contraseña.";
       setErrors(
@@ -132,19 +194,15 @@ export function AccountPasswordEditor({
           : { password: message },
       );
     } finally {
-      onSubmitFinished();
+      events.onSubmitFinished();
     }
   }
   const passwordId = owner ? "newPassword" : "staffPassword";
   return (
     <div className="flex max-w-md flex-col gap-6">
       <header className="flex flex-col gap-2">
-        <h2 className="text-sm font-medium">{owner ? "Tu contraseña" : "Cuenta del personal"}</h2>
-        <p className="text-xs text-muted-foreground">
-          {owner
-            ? "Se cerrarán tus otras sesiones; esta sesión sigue abierta."
-            : "Acceso compartido. Al cambiar la contraseña, se cierra la sesión del personal en todos los dispositivos."}
-        </p>
+        <h2 className="text-sm font-medium">{copy.heading}</h2>
+        <p className="text-xs text-muted-foreground">{copy.notice}</p>
       </header>
       <form
         id="account-password-form"
@@ -165,11 +223,7 @@ export function AccountPasswordEditor({
                 disabled={saving}
                 aria-invalid={!!errors.currentPassword}
                 aria-describedby={errors.currentPassword ? "currentPasswordError" : undefined}
-                onChange={(event) => {
-                  setErrors({});
-                  setSaved(false);
-                  setCurrentPassword(event.target.value);
-                }}
+                onChange={edit(setCurrentPassword)}
               />
               {errors.currentPassword && (
                 <FieldError id="currentPasswordError">{errors.currentPassword}</FieldError>
@@ -187,11 +241,7 @@ export function AccountPasswordEditor({
               disabled={saving}
               aria-invalid={!!errors.password}
               aria-describedby={errors.password ? "passwordError" : undefined}
-              onChange={(event) => {
-                setErrors({});
-                setSaved(false);
-                setPassword(event.target.value);
-              }}
+              onChange={edit(setPassword)}
             />
             {errors.password && <FieldError id="passwordError">{errors.password}</FieldError>}
           </Field>
@@ -206,26 +256,20 @@ export function AccountPasswordEditor({
               disabled={saving}
               aria-invalid={!!errors.password}
               aria-describedby={errors.password ? "passwordError" : undefined}
-              onChange={(event) => {
-                setErrors({});
-                setSaved(false);
-                setConfirmation(event.target.value);
-              }}
+              onChange={edit(setConfirmation)}
             />
           </Field>
         </FieldGroup>
         {saved && (
           <p role="status" className="text-xs">
-            {owner
-              ? "Contraseña cambiada."
-              : "Contraseña cambiada. Se cerró la sesión del personal; deben iniciar sesión con la nueva contraseña."}
+            {copy.saved}
           </p>
         )}
         <Separator />
         <footer className="flex justify-end">
           <Button type="submit" disabled={saving || !dirty}>
             {saving && <Spinner data-icon="inline-start" />}
-            {owner ? "Cambiar mi contraseña" : "Cambiar contraseña del personal"}
+            {copy.submit}
           </Button>
         </footer>
       </form>

@@ -1,7 +1,10 @@
-import { Fragment, useEffect, useRef, useState } from "react";
+import { Fragment, useRef, useState } from "react";
 import { useForm, useSelector } from "@tanstack/react-form";
 import { PlusIcon, XIcon } from "lucide-react";
-import type { ConfigurationEditorEvents } from "@/components/configuration-draft";
+import {
+  useReportEditorState,
+  type ConfigurationEditorEvents,
+} from "@/components/configuration-draft";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Empty, EmptyDescription, EmptyHeader, EmptyTitle } from "@/components/ui/empty";
@@ -31,9 +34,10 @@ import { blurThenChange } from "@/lib/reservation-form-state";
 import { setupDefaults, setupFormSchema, type SetupValues } from "@/lib/setup-form";
 import { toast, toastError } from "@/lib/toast";
 
-type SetupDraft = SetupValues & { roomNumber: string };
+type RoomTypeDraft = SetupValues & { roomNumber: string };
 
-function candidate(value: SetupDraft): SetupValues {
+/** The values to save: a number still in the add field goes first. */
+function withPendingRoom(value: RoomTypeDraft): SetupValues {
   const number = value.roomNumber.trim();
   return {
     ...value,
@@ -81,11 +85,8 @@ export function RoomTypeEditor({
   type,
   rooms,
   allRooms,
-  onDirtyChange,
-  onSavingChange,
-  onSaved,
-  onSubmitFinished,
   onTypeSaved,
+  ...events
 }: {
   type?: RoomType;
   rooms: Room[];
@@ -104,7 +105,7 @@ export function RoomTypeEditor({
     validationLogic: blurThenChange(),
     validators: {
       onDynamic: ({ value }) => {
-        const proposed = candidate(value);
+        const proposed = withPendingRoom(value);
         const parsed = setupFormSchema.safeParse(proposed);
         const errors: Record<string, string> = {};
         for (const issue of parsed.error?.issues ?? []) {
@@ -124,7 +125,7 @@ export function RoomTypeEditor({
     },
     onSubmit: async ({ value }) => {
       clearServerErrors();
-      const proposed = candidate(value);
+      const proposed = withPendingRoom(value);
       try {
         const result = await save.mutateAsync({
           ...(type ? { roomTypeId: type.id } : {}),
@@ -139,7 +140,7 @@ export function RoomTypeEditor({
         });
         form.reset({ ...setupDefaults(result.roomType, result.rooms), roomNumber: "" });
         onTypeSaved(result.roomType, result.rooms);
-        onSaved();
+        events.onSaved();
         toast.add({ title: "Configuración guardada", type: "success" });
       } catch (error) {
         if (error instanceof ApiError && error.code === "room type already exists")
@@ -163,8 +164,7 @@ export function RoomTypeEditor({
   const values = useSelector(form.store, (state) => state.values);
   const dirty = useSelector(form.store, (state) => !state.isDefaultValue);
   const submitting = useSelector(form.store, (state) => state.isSubmitting);
-  useEffect(() => onDirtyChange(dirty), [dirty, onDirtyChange]);
-  useEffect(() => onSavingChange(submitting), [submitting, onSavingChange]);
+  useReportEditorState(events, dirty, submitting);
   function clearServerErrors() {
     form.setErrorMap({ onServer: undefined });
     setSaveError(undefined);
@@ -188,7 +188,6 @@ export function RoomTypeEditor({
     form.setFieldValue("roomNumber", "");
     input.current?.focus();
   }
-  const newCount = values.rooms.filter((room) => !room.id).length;
   return (
     <form
       id="property-setup-form"
@@ -199,7 +198,7 @@ export function RoomTypeEditor({
         if (submitting) return;
         void Promise.resolve(form.validate("submit"))
           .then(() => form.handleSubmit())
-          .finally(onSubmitFinished);
+          .finally(events.onSubmitFinished);
       }}
     >
       <div className="border bg-muted/15 px-4 sm:px-6">
@@ -313,14 +312,9 @@ export function RoomTypeEditor({
             }}
           </form.Field>
         </FieldGroup>
-        <div className="flex flex-wrap items-center justify-between gap-2" aria-live="polite">
-          <h3 className="text-xs font-medium">Habitaciones de este tipo ({values.rooms.length})</h3>
-          {newCount > 0 && (
-            <Badge variant="secondary" size="sm">
-              {newCount} sin guardar
-            </Badge>
-          )}
-        </div>
+        <h3 className="text-xs font-medium" aria-live="polite">
+          Habitaciones de este tipo ({values.rooms.length})
+        </h3>
         {values.rooms.length === 0 ? (
           <Empty className="border">
             <EmptyHeader>

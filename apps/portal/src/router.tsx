@@ -3,6 +3,7 @@ import {
   createRoute,
   createRouter,
   Link,
+  Navigate,
   redirect,
   stripSearchParams,
 } from "@tanstack/react-router";
@@ -17,7 +18,12 @@ import { Reservations } from "@/components/reservations";
 import { RoomCalendar } from "@/components/room-calendar";
 import { Housekeeping } from "@/components/housekeeping";
 import { Inventory } from "@/components/inventory";
-import { PropertySetup } from "@/components/property-setup";
+import {
+  Configuration,
+  configurationSearch,
+  parseConfigurationSearch,
+} from "@/components/configuration";
+import { useSession } from "@/lib/queries";
 import {
   calendarSearch,
   housekeepingSearch,
@@ -226,23 +232,23 @@ const housekeepingRoute = createRoute({
 const setupRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/setup",
-  validateSearch: (search: Record<string, unknown>): { section?: "appearance" | "accounts" } => ({
-    section:
-      search.section === "appearance" || search.section === "accounts" ? search.section : undefined,
-  }),
+  validateSearch: parseConfigurationSearch,
   component: SetupRoute,
 });
 
 function SetupRoute() {
   const { section = "rooms" } = setupRoute.useSearch();
-  return <PropertySetup key={section} section={section} />;
+  const role = useSession().data?.role;
+  if (section === "accounts" && role !== "owner")
+    return role ? <Navigate to="/setup" search={configurationSearch("rooms")} replace /> : null;
+  return <Configuration key={section} section={section} />;
 }
 
 const accountsRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/accounts",
   beforeLoad: () => {
-    throw redirect({ to: "/setup", search: { section: "accounts" }, replace: true });
+    throw redirect({ to: "/setup", search: configurationSearch("accounts"), replace: true });
   },
 });
 

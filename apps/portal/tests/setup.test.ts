@@ -463,7 +463,7 @@ it("saves room-number swaps atomically and keeps opening values across successfu
   ]);
 });
 
-it("saves a pending number before router navigation and permits a new type without rooms", async () => {
+it("saves a pending number before continuing a router navigation", async () => {
   await render();
   await openType();
   await fill("roomNumber", "202");
@@ -472,16 +472,19 @@ it("saves a pending number before router navigation and permits a new type witho
   await click("Guardar y continuar");
   await until(() => router.state.location.pathname === "/reservations");
   assert.deepEqual(writes[0].rooms, [{ number: "202" }, { id: "room-101", number: "101" }]);
-  await React.act(async () => router.navigate({ to: "/setup" }));
+});
+
+it("saves a new room type without rooms", async () => {
+  await render();
   await until(() => container.textContent.includes("Agregar tipo"));
   await click("Agregar");
   await fill("name", "Individual");
   await fill("baseRate", "80");
   await click("Guardar cambios");
   await until(
-    () => writes.length === 2 && button("Guardar cambios").disabled && !input("name").disabled,
+    () => writes.length === 1 && button("Guardar cambios").disabled && !input("name").disabled,
   );
-  assert.deepEqual(writes[1].rooms, []);
+  assert.deepEqual(writes[0].rooms, []);
 });
 
 it("maps a staged room conflict correctly when a pending number precedes it in the request", async () => {
@@ -506,7 +509,7 @@ it("maps a staged room conflict correctly when a pending number precedes it in t
   assert.equal(input("roomNumber").getAttribute("aria-invalid"), "false");
 });
 
-it("retains pending text on failed router save-and-continue and protects same-route section changes", async () => {
+it("retains pending text after a failed router save-and-continue and stays on a later save", async () => {
   api.failOnce("POST", "/setup", 409, { error: "room type already exists" });
   await render();
   await openType();
@@ -523,8 +526,13 @@ it("retains pending text on failed router save-and-continue and protects same-ro
     () => writes.length === 2 && !input("name").disabled && button("Guardar cambios").disabled,
   );
   assert.equal(router.state.location.pathname, "/setup");
+});
+
+it("protects a draft when the mobile section select changes sections", async () => {
+  page.mobile();
+  await render();
+  await openType();
   await fill("roomNumber", "204");
-  await React.act(async () => page.mobile());
   await selectSection("Apariencia");
   await until(() => !!window.document.querySelector('[role="alertdialog"]'));
   assert.equal(router.state.location.search.section, undefined);
@@ -542,7 +550,7 @@ it("retains pending text on failed router save-and-continue and protects same-ro
   await until(() => !!container.querySelector("#configuration-theme"));
   assert.equal(router.state.location.search.section, "appearance");
   await selectSection("Habitaciones");
-  await openType("Doble renovada");
+  await openType();
   assert.equal(input("roomNumber").value, "");
 });
 

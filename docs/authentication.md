@@ -89,9 +89,8 @@ Backend login and account errors are translated in `apps/portal/src/lib/errors.t
 
 The Owner account sees **Cuentas** inside Configuración
 (`apps/portal/src/components/accounts.tsx`), listing real usernames and opening a
-focused form to set the staff password or change its own password. Old `/accounts`
-links redirect to `/setup?section=accounts`. The Staff account does not see the
-section link, and a direct visit explains that it is owner-only without reading accounts.
+focused form to set the staff password or change its own password. The Staff
+account cannot open the section; see [Configuración routing](property-setup.md#portal-setup).
 The first read keeps section headings visible with accessible loading placeholders.
 Failed refreshes keep an open password draft on screen with a stale-data warning
 and retry action; see [portal error states](portal.md#error-states). Local navigation,

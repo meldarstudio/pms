@@ -67,16 +67,11 @@ async function sectionOptions() {
   return Array.from(browser.window.document.querySelectorAll('[role="option"]'));
 }
 
-it("lets the owner set the staff password after confirming it", async () => {
+it("redirects old account links to Configuración instead of a sidebar destination", async () => {
   signedInAs("owner");
-  const writes = page.api.bodies<{ password: string }>("PUT", "/accounts/staff-id/password");
-  page.api.on("PUT", "/accounts/staff-id/password", () => ({ ok: true }));
-  const router = await renderPassword();
-  assert.equal(
-    router.state.location.pathname,
-    "/setup",
-    "Old account links redirect to configuration",
-  );
+  const router = await render("/accounts");
+  await page.until(() => page.container.textContent.includes("hotelmanantial"));
+  assert.equal(router.state.location.pathname, "/setup");
   assert.equal(router.state.location.search.section, "accounts");
   assert.equal(
     page.container
@@ -84,6 +79,13 @@ it("lets the owner set the staff password after confirming it", async () => {
       ?.textContent.includes("Cuentas"),
     false,
   );
+});
+
+it("lets the owner set the staff password after confirming it", async () => {
+  signedInAs("owner");
+  const writes = page.api.bodies<{ password: string }>("PUT", "/accounts/staff-id/password");
+  page.api.on("PUT", "/accounts/staff-id/password", () => ({ ok: true }));
+  await renderPassword();
 
   await page.fill("staffPassword", "new staff password");
   await page.fill("staffPasswordConfirm", "a different password");
@@ -106,7 +108,7 @@ it("lets the owner set the staff password after confirming it", async () => {
   assert.equal(page.field("staffPassword").value, "");
 });
 
-it("keeps page and card headings available while the first account read loads", async () => {
+it("keeps the section and role headings available while the first account read loads", async () => {
   page.mobile();
   signedInAs("owner");
   const read = page.api.hold("GET", "/accounts");
@@ -122,6 +124,13 @@ it("keeps page and card headings available while the first account read loads", 
   read.release(Response.json(accounts));
   await page.until(() => page.container.textContent.includes("hotelmanantial"));
   assert.equal(page.container.querySelector('[aria-label="Cargando cuentas"]'), null);
+});
+
+it("lets the owner leave and return to Cuentas through the mobile section select", async () => {
+  page.mobile();
+  signedInAs("owner");
+  await render("/accounts");
+  await page.until(() => page.container.textContent.includes("hotelmanantial"));
   const rooms = (await sectionOptions()).find(
     (option) => option.textContent.trim() === "Habitaciones",
   );
@@ -189,14 +198,15 @@ it("translates a wrong current password when the owner changes their own", async
   assert.equal(page.field("newPassword").value, "a new owner password");
 });
 
-it("hides account management from the staff account", async () => {
+it("sends the staff account from account management to Habitaciones", async () => {
   page.mobile();
   signedInAs("staff");
-  await render("/accounts");
+  const router = await render("/accounts");
   await page.until(
-    () => page.container.textContent.includes("Solo la cuenta del propietario"),
-    "Staff are told the page is owner-only",
+    () => page.container.querySelector("main h1")?.textContent === "Habitaciones",
+    "Staff land on a section they can use",
   );
+  assert.equal(router.state.location.search.section, undefined);
   const options = await sectionOptions();
   assert.deepEqual(
     options.map((option) => option.textContent.trim()),
