@@ -105,6 +105,20 @@ async function click(label: string) {
   });
 }
 
+async function selectSection(label: string) {
+  const trigger = container.querySelector(
+    '[role="combobox"][aria-label="Secciones de configuración"]',
+  );
+  assert.ok(trigger);
+  await React.act(async () => (trigger as HTMLElement).click());
+  await until(() => !!window.document.querySelector('[role="option"]'));
+  const option = Array.from(window.document.querySelectorAll('[role="option"]')).find(
+    (element) => element.textContent.trim() === label,
+  );
+  assert.ok(option, `Section ${label} must be available`);
+  await React.act(async () => (option as HTMLElement).click());
+}
+
 it.each([
   ["/calendar?from=2026-10-14&span=14", [], "Configura tu alojamiento", "Configurar alojamiento"],
   [
@@ -267,6 +281,12 @@ it("saves before closing and prevents discarding or editing while that save is p
   assert.equal(input("name").value, "Doble");
   assert.equal(input("name").disabled, true);
   assert.equal(button("Agregar habitación").disabled, true);
+  assert.equal(
+    container
+      .querySelector('[role="combobox"][aria-label="Secciones de configuración"]')
+      ?.hasAttribute("disabled"),
+    true,
+  );
   await click("Reservas");
   await until(
     () => window.document.body.textContent.includes("Guardando cambios"),
@@ -504,12 +524,24 @@ it("retains pending text on failed router save-and-continue and protects same-ro
   );
   assert.equal(router.state.location.pathname, "/setup");
   await fill("roomNumber", "204");
-  await click("Apariencia");
+  await React.act(async () => page.mobile());
+  await selectSection("Apariencia");
+  await until(() => !!window.document.querySelector('[role="alertdialog"]'));
+  assert.equal(router.state.location.search.section, undefined);
+  assert.equal(input("roomNumber").value, "204");
+  assert.ok(
+    container
+      .querySelector('[role="combobox"][aria-label="Secciones de configuración"]')
+      ?.textContent.includes("Habitaciones"),
+  );
+  await click("Seguir editando");
+  assert.equal(input("roomNumber").value, "204");
+  await selectSection("Apariencia");
   await until(() => !!window.document.querySelector('[role="alertdialog"]'));
   await click("Descartar cambios");
   await until(() => !!container.querySelector("#configuration-theme"));
   assert.equal(router.state.location.search.section, "appearance");
-  await click("Habitaciones");
+  await selectSection("Habitaciones");
   await openType("Doble renovada");
   assert.equal(input("roomNumber").value, "");
 });

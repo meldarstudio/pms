@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import type { HTMLElement } from "happy-dom";
 import { afterAll, afterEach, beforeAll, beforeEach, it, vi } from "vite-plus/test";
 import { createBrowserTest, type BrowserPage, type BrowserTest } from "./browser.ts";
 import { reservationsSearch } from "../src/lib/route-search.ts";
@@ -56,10 +57,14 @@ async function renderPassword(kind: "personal" | "propietario" = "personal") {
   return router;
 }
 
-function link(label: string) {
-  return Array.from(page.container.querySelectorAll("a")).find(
-    (element) => element.textContent.trim() === label,
+async function sectionOptions() {
+  const trigger = page.container.querySelector(
+    '[role="combobox"][aria-label="Secciones de configuración"]',
   );
+  assert.ok(trigger);
+  await browser.React.act(async () => (trigger as HTMLElement).click());
+  await page.until(() => !!browser.window.document.querySelector('[role="option"]'));
+  return Array.from(browser.window.document.querySelectorAll('[role="option"]'));
 }
 
 it("lets the owner set the staff password after confirming it", async () => {
@@ -102,6 +107,7 @@ it("lets the owner set the staff password after confirming it", async () => {
 });
 
 it("keeps page and card headings available while the first account read loads", async () => {
+  page.mobile();
   signedInAs("owner");
   const read = page.api.hold("GET", "/accounts");
   await render("/accounts");
@@ -116,6 +122,18 @@ it("keeps page and card headings available while the first account read loads", 
   read.release(Response.json(accounts));
   await page.until(() => page.container.textContent.includes("hotelmanantial"));
   assert.equal(page.container.querySelector('[aria-label="Cargando cuentas"]'), null);
+  const rooms = (await sectionOptions()).find(
+    (option) => option.textContent.trim() === "Habitaciones",
+  );
+  assert.ok(rooms);
+  await browser.React.act(async () => (rooms as HTMLElement).click());
+  await page.until(() => page.container.querySelector("main h1")?.textContent === "Habitaciones");
+  const accountSection = (await sectionOptions()).find(
+    (option) => option.textContent.trim() === "Cuentas",
+  );
+  assert.ok(accountSection, "Owner can return to accounts through the section select");
+  await browser.React.act(async () => (accountSection as HTMLElement).click());
+  await page.until(() => page.container.textContent.includes("hotelmanantial"));
 });
 
 it("warns when refreshing accounts fails and retries without losing password drafts", async () => {
@@ -172,13 +190,18 @@ it("translates a wrong current password when the owner changes their own", async
 });
 
 it("hides account management from the staff account", async () => {
+  page.mobile();
   signedInAs("staff");
   await render("/accounts");
   await page.until(
     () => page.container.textContent.includes("Solo la cuenta del propietario"),
     "Staff are told the page is owner-only",
   );
-  assert.equal(link("Cuentas"), undefined);
+  const options = await sectionOptions();
+  assert.deepEqual(
+    options.map((option) => option.textContent.trim()),
+    ["Habitaciones", "Apariencia"],
+  );
   assert.equal(page.api.requests("GET", "/accounts").length, 0);
 });
 

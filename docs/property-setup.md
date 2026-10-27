@@ -66,9 +66,13 @@ deployment manages one property; there is no hotel profile or account-creation s
 `/setup` opens the room-type list in **Habitaciones**. Configuración also contains
 **Apariencia** (`/setup?section=appearance`) and owner-only **Cuentas**
 (`/setup?section=accounts`); old `/accounts` links redirect to that section.
-The quiet section menu, divided setting rows, and focused editors use the shared
-[Lyra controls](portal.md#control-styling). Shell-header breadcrumbs close an editor
-or return to Configuración; focused mobile breadcrumbs omit the Configuración
+Below 768px, a section select sits to the right of the title and description;
+desktop uses a left-hand section menu. Room-type and account lists use full-width
+separators, with padding on each row's content. Configuration sections have no
+trailing explanatory notes or calendar shortcut. Navigation, setting rows, and
+focused editors use the shared [Lyra controls](portal.md#control-styling).
+Shell-header breadcrumbs close an editor or return to Configuración; focused
+mobile breadcrumbs omit the Configuración
 ancestor. Reloading or returning to a section opens its list, not an old draft.
 
 The room-type list opens an editor for the type's name, base nightly rate in PEN,
@@ -85,11 +89,12 @@ There is no autosave. Saving also includes a valid number still in the add field
 invalid or duplicate pending input blocks the entire request without staging it
 or losing other edits. **Descartar** resets both grid edits and pending input.
 New types can be saved with no rooms. Setup is ready for
-reservations when at least one saved room exists, at which point **Ir al calendario**
-is available. There is no separate setup-completion flag or final wizard submission.
+reservations when at least one saved room exists. Use the sidebar to open the
+calendar; there is no separate setup-completion flag or final wizard submission.
 
-Closing an editor, navigating breadcrumbs, or leaving a section with a draft
-prompts to save, discard, or keep editing. Pending add-field text is part of this
+Closing an editor, navigating breadcrumbs, or switching sections through either
+the desktop menu or mobile select with a draft prompts to save, discard, or keep
+editing. Pending add-field text is part of this
 guard even before Add/Enter. Router navigation and browser unload also protect
 unsaved changes; editing, discard, and navigation are blocked while saving. A
 failed save-and-continue stays in the editor and does not queue a later navigation.

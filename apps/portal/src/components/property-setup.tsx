@@ -1,5 +1,5 @@
 import { Fragment, useState } from "react";
-import { Link } from "@tanstack/react-router";
+import { Link, useNavigate } from "@tanstack/react-router";
 import {
   BedDoubleIcon,
   ChevronRightIcon,
@@ -51,7 +51,6 @@ import { Skeleton } from "@/components/ui/skeleton";
 import type { Account, Room, RoomType } from "@/lib/api";
 import { formatMoney } from "@/lib/money";
 import { useAccounts, useRooms, useRoomTypes, useSession } from "@/lib/queries";
-import { calendarSearch, lastCalendarSearch } from "@/lib/route-search";
 
 const sections = [
   {
@@ -76,6 +75,7 @@ const sections = [
 export type ConfigurationSection = (typeof sections)[number]["id"];
 
 export function PropertySetup({ section = "rooms" }: { section?: ConfigurationSection }) {
+  const navigate = useNavigate();
   const types = useRoomTypes();
   const rooms = useRooms();
   const isOwner = useSession().data?.role === "owner";
@@ -90,6 +90,9 @@ export function PropertySetup({ section = "rooms" }: { section?: ConfigurationSe
     setAccount(null);
   });
   const active = sections.find((item) => item.id === section)!;
+  const sectionOptions = sections
+    .filter((item) => item.id !== "accounts" || isOwner)
+    .map((item) => ({ value: item.id, label: item.title }));
   const title = roomEditor
     ? (roomEditor.type?.name ?? "Nuevo tipo")
     : account
@@ -155,10 +158,10 @@ export function PropertySetup({ section = "rooms" }: { section?: ConfigurationSe
           </BreadcrumbList>
         </Breadcrumb>
       </PageTitle>
-      <div className="mx-auto grid w-full max-w-6xl min-w-0 gap-8 pt-2 md:grid-cols-[11rem_minmax(0,1fr)] md:gap-12 md:pt-6 xl:gap-20">
-        <aside className="flex flex-col gap-5">
-          <p className="hidden text-sm font-medium md:block">Configuración</p>
-          <nav aria-label="Secciones de configuración" className="flex flex-wrap gap-1 md:flex-col">
+      <div className="mx-auto grid w-full max-w-6xl min-w-0 gap-8 pt-2 md:grid-cols-[13rem_minmax(0,1fr)] md:gap-12 md:pt-6 xl:gap-20">
+        <aside className="hidden flex-col gap-5 md:flex">
+          <p className="text-sm font-medium">Configuración</p>
+          <nav aria-label="Secciones de configuración" className="flex flex-col gap-1">
             {sections
               .filter((item) => item.id !== "accounts" || isOwner)
               .map(({ id, title, icon: Icon }) => (
@@ -192,17 +195,51 @@ export function PropertySetup({ section = "rooms" }: { section?: ConfigurationSe
           </nav>
         </aside>
         <section className="flex min-w-0 flex-col gap-8" aria-labelledby="configuration-title">
-          <header className="flex flex-col gap-2">
-            <h1 id="configuration-title" className="text-lg font-semibold">
-              {title}
-            </h1>
-            <p className="text-xs text-muted-foreground">
-              {roomEditor
-                ? "Guarda el tipo completo cuando termines de editar."
-                : account
-                  ? `Cuenta @${account.username}`
-                  : active.description}
-            </p>
+          <header className="flex items-center justify-between gap-4">
+            <div className="flex min-w-0 flex-col gap-2">
+              <h1 id="configuration-title" className="break-words text-lg font-semibold">
+                {title}
+              </h1>
+              <p className="text-xs text-muted-foreground">
+                {roomEditor
+                  ? "Guarda el tipo completo cuando termines de editar."
+                  : account
+                    ? `Cuenta @${account.username}`
+                    : active.description}
+              </p>
+            </div>
+            <Select
+              items={sectionOptions}
+              value={section}
+              disabled={draft.saving}
+              onValueChange={(value) => {
+                if (
+                  value === "rooms" ||
+                  value === "appearance" ||
+                  (value === "accounts" && isOwner)
+                )
+                  void navigate({
+                    to: "/setup",
+                    search: value === "rooms" ? {} : { section: value },
+                  });
+              }}
+            >
+              <SelectTrigger
+                aria-label="Secciones de configuración"
+                className="w-36 shrink-0 md:hidden"
+              >
+                <SelectValue>{active.title}</SelectValue>
+              </SelectTrigger>
+              <SelectContent>
+                <SelectGroup>
+                  {sectionOptions.map((item) => (
+                    <SelectItem key={item.value} value={item.value}>
+                      {item.label}
+                    </SelectItem>
+                  ))}
+                </SelectGroup>
+              </SelectContent>
+            </Select>
           </header>
           {section === "rooms" && (
             <>
@@ -237,7 +274,7 @@ export function PropertySetup({ section = "rooms" }: { section?: ConfigurationSe
                 <PageError error={types.error ?? rooms.error} onRetry={retry} />
               ) : (
                 <>
-                  <div className="min-w-0 border bg-muted/15 px-4 sm:px-6">
+                  <div className="min-w-0 border bg-muted/15">
                     {types.data.map((type, index) => (
                       <Fragment key={type.id}>
                         {index > 0 && <Separator />}
@@ -290,19 +327,6 @@ export function PropertySetup({ section = "rooms" }: { section?: ConfigurationSe
                       </>
                     )}
                   </div>
-                  <p className="text-xs leading-relaxed text-muted-foreground">
-                    Las tarifas por fecha se gestionan en Inventario y tarifas. Los cambios aquí no
-                    reescriben precios guardados en reservas.
-                  </p>
-                  {rooms.data.length > 0 && (
-                    <Link
-                      to="/calendar"
-                      search={lastCalendarSearch.current ?? calendarSearch({})}
-                      className="text-xs underline underline-offset-4"
-                    >
-                      Ir al calendario
-                    </Link>
-                  )}
                 </>
               )}
             </>
@@ -342,40 +366,35 @@ function AppearanceSettings() {
     { value: "dark", label: "Oscuro" },
   ];
   return (
-    <>
-      <div className="border bg-muted/15 px-4 sm:px-6">
-        <FieldGroup className="gap-0">
-          <Field orientation="responsive" className="py-5">
-            <FieldContent>
-              <FieldLabel htmlFor="configuration-theme">Esquema de color</FieldLabel>
-              <FieldDescription>Sigue el sistema o elige un tema claro u oscuro.</FieldDescription>
-            </FieldContent>
-            <Select
-              items={themes}
-              value={theme}
-              onValueChange={(value) => {
-                if (value === "light" || value === "dark" || value === "system") setTheme(value);
-              }}
-            >
-              <SelectTrigger id="configuration-theme" className="w-36">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectGroup>
-                  {themes.map((item) => (
-                    <SelectItem key={item.value} value={item.value}>
-                      {item.label}
-                    </SelectItem>
-                  ))}
-                </SelectGroup>
-              </SelectContent>
-            </Select>
-          </Field>
-        </FieldGroup>
-      </div>
-      <p className="text-xs leading-relaxed text-muted-foreground">
-        Solo en este navegador, no para todo el equipo.
-      </p>
-    </>
+    <div className="border bg-muted/15 px-4 sm:px-6">
+      <FieldGroup className="gap-0">
+        <Field orientation="responsive" className="py-5">
+          <FieldContent>
+            <FieldLabel htmlFor="configuration-theme">Esquema de color</FieldLabel>
+            <FieldDescription>Sigue el sistema o elige un tema claro u oscuro.</FieldDescription>
+          </FieldContent>
+          <Select
+            items={themes}
+            value={theme}
+            onValueChange={(value) => {
+              if (value === "light" || value === "dark" || value === "system") setTheme(value);
+            }}
+          >
+            <SelectTrigger id="configuration-theme" className="w-36">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectGroup>
+                {themes.map((item) => (
+                  <SelectItem key={item.value} value={item.value}>
+                    {item.label}
+                  </SelectItem>
+                ))}
+              </SelectGroup>
+            </SelectContent>
+          </Select>
+        </Field>
+      </FieldGroup>
+    </div>
   );
 }

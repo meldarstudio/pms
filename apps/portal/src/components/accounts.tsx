@@ -42,7 +42,7 @@ export function AccountSettings({ onSelect }: { onSelect: (account: Account) => 
       ) : !accounts.data ? (
         <PageError error={accounts.error} onRetry={() => void accounts.refetch()} />
       ) : (
-        <div className="border bg-muted/15 px-4 sm:px-6">
+        <div className="border bg-muted/15">
           {accounts.data.length === 0 ? (
             <Empty>
               <EmptyHeader>
@@ -72,10 +72,6 @@ export function AccountSettings({ onSelect }: { onSelect: (account: Account) => 
           )}
         </div>
       )}
-      <p className="text-xs leading-relaxed text-muted-foreground">
-        Solo el propietario puede cambiar contraseñas. No se crean cuentas ni se editan roles desde
-        el portal.
-      </p>
     </>
   );
 }

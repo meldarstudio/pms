@@ -393,9 +393,6 @@ export function RoomTypeEditor({
             ))}
           </FieldGroup>
         )}
-        <p className="text-xs text-muted-foreground">
-          Números únicos en todo el alojamiento. Las habitaciones guardadas no se eliminan aquí.
-        </p>
       </section>
       {saveError && <FieldError role="alert">{saveError}</FieldError>}
       <Separator />
