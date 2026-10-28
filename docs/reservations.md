@@ -149,8 +149,12 @@ calling Culqi, a missing quote (`quote not found`), an expired one
 reconciliation), a phone the reservation could not be saved with, a quote already paid (`quote is already paid`), and a quote with an Unknown attempt
 (`a payment for this quote is still being confirmed`). A new card replaces an attempt
 waiting for 3DS. Each attempt is a `payment_attempts` row saved as `unknown` before
-its single charge call, which always sends `capture: true` and the attempt ID as
-`metadata.attempt_id`; a partial unique index lets one quote have only one open or
+its single charge call, which always sends `capture: true`, the attempt ID as
+`metadata.attempt_id` and the `x-api-version: 2` header. For Culqi's fraud checks it
+also sends `antifraud_details`: the contact's first word as `first_name`, the rest as
+`last_name`, the phone's digits as `phone_number` and the fingerprint, leaving out a
+value outside Culqi's limits (names 2–50 characters, phone 5–15 digits) rather than
+risk a refusal. A partial unique index lets one quote have only one open or
 paid attempt, so concurrent starts cannot both charge.
 
 Culqi's reply decides the attempt's `status`, and success is only a `201` charge with
@@ -159,7 +163,7 @@ ignored, as is any meaning of a `401`.
 
 - `review`: a `200` `REVIEW` asks for 3DS. `authenticatePaymentAttempt` takes the
   Culqi3DS result (`paymentAuthenticationSchema`) and calls Culqi again for the same
-  attempt with the same token and fingerprint, refusing an expired quote and an
+  attempt with the same token and antifraud details, refusing an expired quote and an
   attempt not waiting for authentication
   (`payment is not waiting for authentication`).
 - `failed`: a `400` Culqi error is a clear decline, with its code and Culqi's
@@ -189,8 +193,8 @@ ignored, as is any meaning of a `401`.
 its `* * * * *` cron trigger in `wrangler.jsonc` takes effect only with a separately
 authorized deployment.
 
-`pnpm culqi:sandbox` runs the same flows against the Culqi sandbox: a captured charge,
-the attempt-ID lookup, token reuse, an optional decline (`CULQI_DECLINE_CARD`) and a
+`pnpm culqi:sandbox` runs the same flows against the Culqi sandbox: a captured charge
+that keeps its antifraud details, the attempt-ID lookup, token reuse, an optional decline (`CULQI_DECLINE_CARD`) and a
 S/1.00 refund read back from the charge. It reads `CULQI_SECRET_KEY` and
 `CULQI_PUBLIC_KEY` from the environment or `.dev.vars` and refuses anything but
 `sk_test_`/`pk_test_` keys. 3DS needs a browser, so it reports a `REVIEW` and stops.

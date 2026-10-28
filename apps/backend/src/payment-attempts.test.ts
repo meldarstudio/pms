@@ -162,6 +162,30 @@ describe("payment attempts", () => {
     ]);
   });
 
+  it("sends the guest's name and phone to Culqi's fraud checks", async () => {
+    await pay(await quote(), {
+      guest: { ...guest, fullName: "Ana María Torres", phone: "999 777 666" },
+      deviceFingerprint: "device-1",
+    });
+
+    expect(culqi.requests[0]!.headers.get("x-api-version")).toBe("2");
+    expect(culqi.requests[0]!.body?.antifraud_details).toEqual({
+      first_name: "Ana",
+      last_name: "María Torres",
+      phone_number: "51999777666",
+      device_finger_print_id: "device-1",
+    });
+  });
+
+  it("leaves out guest details outside Culqi's limits instead of risking a refusal", async () => {
+    const attempt = await pay(await quote(), {
+      guest: { ...guest, fullName: `A ${"Torres".repeat(9)}` },
+    });
+
+    expect(attempt).toMatchObject({ status: "saved" });
+    expect(culqi.requests[0]!.body).not.toHaveProperty("antifraud_details");
+  });
+
   it("refuses an expired quote before calling Culqi", async () => {
     const quoteId = await quote();
     vi.advanceTimersByTime(10 * 60_000);

@@ -28,6 +28,10 @@ export type ChargeRequest = {
   currency: string;
   email: string;
   sourceId: string;
+  /** The booking contact, for Culqi's fraud checks. */
+  fullName: string;
+  /** E.164, as saved on the reservation. */
+  phone?: string | null;
   deviceFingerprint?: string | null;
   authentication3DS?: Record<string, string | undefined>;
 };
@@ -59,6 +63,24 @@ export const isSuccessfulCharge = (charge: CulqiCharge) => charge.outcome?.code 
 
 type Response = { status: number; body: Record<string, unknown> | null };
 
+const within = (value: string | undefined, min: number, max: number) =>
+  value && value.length >= min && value.length <= max ? value : undefined;
+
+/**
+ * The guest details Culqi's fraud checks read. A value outside Culqi's documented
+ * limits is left out, so a long name never gets the charge refused.
+ */
+function antifraudDetails(request: ChargeRequest) {
+  const [first, ...rest] = request.fullName.trim().split(/\s+/);
+  const details = Object.entries({
+    first_name: within(first, 2, 50),
+    last_name: within(rest.join(" "), 2, 50),
+    phone_number: within(request.phone?.replace(/\D/g, ""), 5, 15),
+    device_finger_print_id: request.deviceFingerprint ?? undefined,
+  }).filter(([, value]) => value);
+  return details.length ? Object.fromEntries(details) : undefined;
+}
+
 export function culqiClient(options: {
   secretKey: string | undefined;
   fetch?: typeof globalThis.fetch;
@@ -71,6 +93,8 @@ export function culqiClient(options: {
       method,
       headers: {
         authorization: `Bearer ${options.secretKey}`,
+        // Culqi's SDKs pin the version; the recorded behaviour is version 2.
+        "x-api-version": "2",
         ...(body === undefined ? {} : { "content-type": "application/json" }),
       },
       body: body === undefined ? undefined : JSON.stringify(body),
@@ -94,6 +118,7 @@ export function culqiClient(options: {
   return {
     configured: Boolean(options.secretKey),
     async createCharge(request) {
+      const antifraud = antifraudDetails(request);
       let response: Response;
       try {
         response = await call("POST", "/charges", {
@@ -104,9 +129,7 @@ export function culqiClient(options: {
           // An omitted capture is captured only at midnight.
           capture: true,
           metadata: { attempt_id: request.attemptId },
-          ...(request.deviceFingerprint
-            ? { antifraud_details: { device_finger_print_id: request.deviceFingerprint } }
-            : {}),
+          ...(antifraud ? { antifraud_details: antifraud } : {}),
           ...(request.authentication3DS ? { authentication_3DS: request.authentication3DS } : {}),
         });
       } catch (error) {

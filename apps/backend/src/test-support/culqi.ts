@@ -15,7 +15,12 @@ type FakeRefund = { id: string; charge_id: string; amount: number; status: strin
 export function fakeCulqi() {
   const charges: (CulqiCharge & { source_id: string })[] = [];
   const refunds: FakeRefund[] = [];
-  const requests: { method: string; path: string; body: Record<string, unknown> | null }[] = [];
+  const requests: {
+    method: string;
+    path: string;
+    headers: Headers;
+    body: Record<string, unknown> | null;
+  }[] = [];
   const usedTokens = new Set<string>();
   const scripts = new Map<string, Scripted[]>();
   let sequence = 0;
@@ -116,10 +121,11 @@ export function fakeCulqi() {
       const method = init?.method ?? "GET";
       const body =
         typeof init?.body === "string" ? (JSON.parse(init.body) as Record<string, unknown>) : null;
-      const authorization = new Headers(init?.headers).get("authorization");
+      const headers = new Headers(init?.headers);
+      const authorization = headers.get("authorization");
       if (url.origin !== "https://api.culqi.com" || !authorization?.startsWith("Bearer sk_test_"))
         throw new Error(`unexpected request to ${url.href}`);
-      requests.push({ method, path: url.pathname, body });
+      requests.push({ method, path: url.pathname, headers, body });
       const key = `${method} ${url.pathname.replace(/^\/v2/, "")}`;
       const scripted = scripts.get(key)?.shift();
       if (scripted === 500 || scripted === 429 || scripted === 401)

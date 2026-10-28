@@ -53,7 +53,7 @@ export async function startPaymentAttempt(
   requireValid(quote, now);
   requireCulqi(context);
   // Checked before charging, because saving the reservation would refuse it after.
-  acceptPhone(input.guest.phone);
+  const phone = acceptPhone(input.guest.phone);
   const previous = await db
     .select()
     .from(paymentAttempts)
@@ -74,7 +74,7 @@ export async function startPaymentAttempt(
     amountCents: initialPaymentCents(quote),
     currency: context.currency,
     email: input.guest.email,
-    guest: input.guest,
+    guest: { ...input.guest, phone },
     sourceId: input.sourceId,
     deviceFingerprint: input.deviceFingerprint ?? null,
     status: "unknown",
@@ -287,6 +287,8 @@ const chargeRequest = (attempt: Attempt) => ({
   currency: attempt.currency,
   email: attempt.email,
   sourceId: attempt.sourceId,
+  fullName: attempt.guest.fullName,
+  phone: attempt.guest.phone,
   deviceFingerprint: attempt.deviceFingerprint,
 });
 

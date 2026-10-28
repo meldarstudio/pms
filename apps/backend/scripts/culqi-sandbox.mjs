@@ -1,9 +1,10 @@
 import { readFileSync } from "node:fs";
 
 // Runs the API's Culqi flows against the Culqi sandbox: a captured charge with the
-// attempt ID in metadata, the lookup that resolves a lost response, token reuse, a
-// decline, and a refund resolved from the charge's refunded amount. It refuses any
-// key that is not a test key. Keys come from the environment or the ignored .dev.vars:
+// attempt ID in metadata and the guest's antifraud details, the lookup that resolves
+// a lost response, token reuse, a decline, and a refund resolved from the charge's
+// refunded amount. It refuses any key that is not a test key. Keys come from the
+// environment or the ignored .dev.vars:
 // CULQI_SECRET_KEY (sk_test_) and CULQI_PUBLIC_KEY (pk_test_). Cards default to
 // Culqi's published test Visa; set CULQI_TEST_CARD and CULQI_DECLINE_CARD to others.
 // 3DS needs a browser (Culqi3DS), so a REVIEW response is reported, not continued.
@@ -39,7 +40,11 @@ const amount = 1000 + Math.floor(Math.random() * 9000);
 async function call(base, path, key, method = "GET", body) {
   const response = await fetch(`${base}${path}`, {
     method,
-    headers: { authorization: `Bearer ${key}`, "content-type": "application/json" },
+    headers: {
+      authorization: `Bearer ${key}`,
+      "content-type": "application/json",
+      "x-api-version": "2",
+    },
     ...(body ? { body: JSON.stringify(body) } : {}),
     signal: AbortSignal.timeout(20_000),
   });
@@ -74,6 +79,7 @@ const charge = (sourceId, attemptId) =>
     source_id: sourceId,
     capture: true,
     metadata: { attempt_id: attemptId },
+    antifraud_details: { first_name: "Ana", last_name: "Torres", phone_number: "51999777666" },
   });
 
 function report(name, ok, detail) {
@@ -109,6 +115,11 @@ for (let tries = 0; tries < 8 && !found; tries++) {
   if (!found) await new Promise((done) => setTimeout(done, 2_000));
 }
 report("lookup finds the charge by attempt ID", found?.id === chargeId);
+report(
+  "the charge keeps the guest's antifraud details",
+  found?.antifraud_details?.first_name === "Ana",
+  JSON.stringify(found?.antifraud_details ?? null),
+);
 
 const reused = await charge(sourceId, crypto.randomUUID());
 report(

@@ -75,7 +75,10 @@ const culqiRefund = (paymentId: string, amountCents = 10000): WorkflowAction => 
   amountCents,
   reason: "Overpaid",
 });
-const refundCalls = () => culqi.requests.filter((r) => r.path === "/v2/refunds");
+const refundCalls = () =>
+  culqi.requests
+    .filter((r) => r.path === "/v2/refunds")
+    .map((r) => ({ method: r.method, path: r.path, body: r.body }));
 
 describe("staff Culqi refunds", () => {
   it("refunds S/100 through Culqi and records it completed with Culqi's refund ID", async () => {
