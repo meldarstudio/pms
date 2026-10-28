@@ -441,9 +441,9 @@ describe("cancellation charges", () => {
       const snapshot = () =>
         tables.map((table) => previous.prepare(`SELECT * FROM ${table} ORDER BY id`).all());
       const before = snapshot();
-      for (const entry of journal.entries.slice(split))
-        previous.exec(readFileSync(new URL(`${entry.tag}.sql`, migrationsDir), "utf8"));
-      // Later migrations may add columns; saved values must stay unchanged.
+      previous.exec(
+        readFileSync(new URL(`${journal.entries[split].tag}.sql`, migrationsDir), "utf8"),
+      );
       expect(snapshot()).toMatchObject(before);
       // No charge is computed retroactively.
       expect(previous.prepare("SELECT * FROM reservation_cancellations").all()).toEqual([]);
@@ -494,8 +494,9 @@ describe("cancellation charges", () => {
         previous.prepare("SELECT * FROM reservation_cancellations ORDER BY id").all();
       const before = rows();
       const waivers = previous.prepare("SELECT * FROM cancellation_waivers").all();
-      for (const entry of journal.entries.slice(split))
-        previous.exec(readFileSync(new URL(`${entry.tag}.sql`, migrationsDir), "utf8"));
+      previous.exec(
+        readFileSync(new URL(`${journal.entries[split].tag}.sql`, migrationsDir), "utf8"),
+      );
       expect(rows()).toEqual(before.map((row) => ({ ...row, outcome: "cancelled" })));
       expect(previous.prepare("SELECT * FROM cancellation_waivers").all()).toEqual(waivers);
       expect(previous.prepare("PRAGMA foreign_key_check").all()).toEqual([]);
@@ -540,9 +541,9 @@ describe("refunds", () => {
       const snapshot = () =>
         tables.map((table) => previous.prepare(`SELECT * FROM ${table} ORDER BY id`).all());
       const before = snapshot();
-      for (const entry of journal.entries.slice(split))
-        previous.exec(readFileSync(new URL(`${entry.tag}.sql`, migrationsDir), "utf8"));
-      // Later migrations may add columns; saved values must stay unchanged.
+      previous.exec(
+        readFileSync(new URL(`${journal.entries[split].tag}.sql`, migrationsDir), "utf8"),
+      );
       expect(snapshot()).toMatchObject(before);
       expect(previous.prepare("SELECT * FROM refunds").all()).toEqual([]);
 
@@ -582,6 +583,60 @@ describe("refunds", () => {
       expect(() => previous.exec("DELETE FROM payments WHERE id = 'payment'")).toThrow(
         "FOREIGN KEY",
       );
+      expect(previous.prepare("PRAGMA foreign_key_check").all()).toEqual([]);
+    } finally {
+      previous.close();
+    }
+  });
+});
+
+describe("free-cancellation days", () => {
+  it("adds free-cancellation days from accepted hours and converts recorded deadlines to dates", () => {
+    const previous = new DatabaseSync(":memory:");
+    try {
+      previous.exec("PRAGMA foreign_keys = ON");
+      const split = journal.entries.findIndex(
+        (entry) => entry.tag === "0011_free_cancellation_days",
+      );
+      expect(split).toBeGreaterThan(0);
+      for (const entry of journal.entries.slice(0, split))
+        previous.exec(readFileSync(new URL(`${entry.tag}.sql`, migrationsDir), "utf8"));
+      previous.exec(`
+        INSERT INTO guests (id, full_name, created_at) VALUES ('guest', 'Ada Lovelace', '2026-10-05');
+        INSERT INTO reservations (id, code, guest_id, status, cancelled_at, check_in, check_out, created_at)
+          VALUES ('flexible', 'OLD1', 'guest', 'cancelled', '2026-10-06T12:00:00.000Z', '2026-10-08', '2026-10-10', '2026-10-05');
+        INSERT INTO reservations (id, code, guest_id, check_in, check_out, created_at, rate_plan,
+            cancellation_charge_basis, free_cancellation_hours, payment_schedule, price_adjustment_percent)
+          VALUES ('non-refundable', 'OLD2', 'guest', '2026-10-08', '2026-10-10', '2026-10-05', 'non_refundable',
+            'final_total', NULL, 'full_upfront', -10);
+        INSERT INTO "user" (id, name, email, username, role, created_at, updated_at)
+          VALUES ('staff', 'Staff', 'staff@example.test', 'staff', 'staff', 0, 0);
+        INSERT INTO reservation_cancellations (id, reservation_id, outcome, recorded_at, free_until, policy_charge_cents, account_id, restored_at)
+          VALUES ('restored', 'flexible', 'cancelled', '2026-10-06T11:00:00.000Z', '2026-10-06T20:00:00.000Z', 0, 'staff', '2026-10-06T11:30:00.000Z'),
+                 ('no-show', 'flexible', 'no_show', '2026-10-09T12:00:00.000Z', NULL, 9000, 'staff', NULL);
+      `);
+      const reservations = () =>
+        previous.prepare("SELECT * FROM reservations ORDER BY id").all() as Record<
+          string,
+          unknown
+        >[];
+      const cancellations = () =>
+        previous.prepare("SELECT * FROM reservation_cancellations ORDER BY id").all();
+      const before = reservations();
+      const recorded = cancellations();
+      previous.exec(
+        readFileSync(new URL(`${journal.entries[split].tag}.sql`, migrationsDir), "utf8"),
+      );
+      expect(reservations()).toEqual(
+        before.map((row) => ({
+          ...row,
+          free_cancellation_days: row.free_cancellation_hours === null ? null : 2,
+        })),
+      );
+      expect(cancellations()).toEqual([
+        recorded[0],
+        { ...(recorded[1] as object), free_until: "2026-10-06" },
+      ]);
       expect(previous.prepare("PRAGMA foreign_key_check").all()).toEqual([]);
     } finally {
       previous.close();

@@ -9,10 +9,11 @@ export type RatePlanCode = "flexible" | "non_refundable";
 
 export type CancellationPolicy = {
   chargeBasis: CancellationChargeBasis;
-  /** Hours before the scheduled check-in until which cancellation is free; null when never free. */
-  freeUntilHoursBeforeCheckIn: number | null;
-  /** Scheduled check-in time on the check-in date, in the property timezone. */
-  checkInTime: string;
+  /**
+   * Days before the check-in date through whose end cancellation is free, in the
+   * property calendar; null when never free. 2 frees a 10 Nov stay through 8 Nov.
+   */
+  freeUntilDaysBeforeCheckIn: number | null;
 };
 
 export type RatePlanTerms = {
@@ -24,22 +25,20 @@ export type RatePlanTerms = {
 };
 
 const cancellationPolicies = {
-  freeUntil48Hours: {
+  freeUntil2DaysBefore: {
     chargeBasis: "first_night",
-    freeUntilHoursBeforeCheckIn: 48,
-    checkInTime: "15:00",
+    freeUntilDaysBeforeCheckIn: 2,
   },
   nonRefundable: {
     chargeBasis: "final_total",
-    freeUntilHoursBeforeCheckIn: null,
-    checkInTime: "15:00",
+    freeUntilDaysBeforeCheckIn: null,
   },
 } satisfies Record<string, CancellationPolicy>;
 
 export const ratePlans = {
   flexible: {
     plan: "flexible",
-    cancellationPolicy: cancellationPolicies.freeUntil48Hours,
+    cancellationPolicy: cancellationPolicies.freeUntil2DaysBefore,
     paymentSchedule: "first_night_deposit",
     priceAdjustmentPercent: 0,
   },
@@ -56,8 +55,8 @@ type TermColumns = Pick<
   Reservation,
   | "ratePlan"
   | "cancellationChargeBasis"
+  | "freeCancellationDays"
   | "freeCancellationHours"
-  | "checkInTime"
   | "paymentSchedule"
   | "priceAdjustmentPercent"
 >;
@@ -67,12 +66,15 @@ export function termColumns(terms: RatePlanTerms): TermColumns {
   return {
     ratePlan: terms.plan,
     cancellationChargeBasis: terms.cancellationPolicy.chargeBasis,
-    freeCancellationHours: terms.cancellationPolicy.freeUntilHoursBeforeCheckIn,
-    checkInTime: terms.cancellationPolicy.checkInTime,
+    freeCancellationDays: terms.cancellationPolicy.freeUntilDaysBeforeCheckIn,
+    freeCancellationHours: hoursFromDays(terms.cancellationPolicy.freeUntilDaysBeforeCheckIn),
     paymentSchedule: terms.paymentSchedule,
     priceAdjustmentPercent: terms.priceAdjustmentPercent,
   };
 }
+
+// The pre-0011 column a Worker from before that migration still reads.
+const hoursFromDays = (days: number | null) => (days === null ? null : days * 24);
 
 /** The terms a reservation was accepted under, read from its stored snapshot. */
 export function acceptedTerms(reservation: TermColumns): RatePlanTerms {
@@ -80,8 +82,7 @@ export function acceptedTerms(reservation: TermColumns): RatePlanTerms {
     plan: reservation.ratePlan as RatePlanCode,
     cancellationPolicy: {
       chargeBasis: reservation.cancellationChargeBasis as CancellationChargeBasis,
-      freeUntilHoursBeforeCheckIn: reservation.freeCancellationHours,
-      checkInTime: reservation.checkInTime,
+      freeUntilDaysBeforeCheckIn: reservation.freeCancellationDays,
     },
     paymentSchedule: reservation.paymentSchedule as PaymentSchedule,
     priceAdjustmentPercent: reservation.priceAdjustmentPercent,

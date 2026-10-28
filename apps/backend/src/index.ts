@@ -10,6 +10,7 @@ import { inventoryRoutes } from "./routes/inventory";
 import { guestRoutes } from "./routes/guests";
 import { housekeepingRoutes } from "./routes/housekeeping";
 import { paymentRoutes } from "./routes/payments";
+import { ratePlanRoutes } from "./routes/rate-plans";
 import { reservationRoutes } from "./routes/reservations";
 import { roomTypeRoutes } from "./routes/room-types";
 import { roomClosureRoutes } from "./routes/room-closures";
@@ -67,5 +68,6 @@ app.route("/inventory", inventoryRoutes);
 app.route("/guests", guestRoutes);
 app.route("/reservations", reservationRoutes);
 app.route("/payments", paymentRoutes);
+app.route("/rate-plans", ratePlanRoutes);
 
 export default app;

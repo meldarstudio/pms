@@ -295,6 +295,9 @@ export const workflowCommandSchema = z
     actions: z.array(workflowActionSchema).min(1).max(60),
   })
   .strict();
+export const ratePlanCodeSchema = z.enum(["flexible", "non_refundable"], {
+  error: "unknown rate plan",
+});
 export const workflowCreateSchema = z
   .object({
     requestId: z.uuid(),
@@ -304,8 +307,21 @@ export const workflowCreateSchema = z
     rooms: z.array(workflowRoom).min(1).max(60),
     notes: z.string().max(2000).optional(),
     discountCents: z.number().int().min(0).max(1000000000).optional(),
+    // Omitted means Flexible. Edits keep the accepted plan; no command changes it.
+    ratePlan: ratePlanCodeSchema.optional(),
+  })
+  .strict();
+/** Prices a new reservation's rooms under a plan without validating or saving it. */
+export const workflowCreatePreviewSchema = workflowCreateSchema
+  .pick({ checkIn: true, checkOut: true, discountCents: true, ratePlan: true })
+  .extend({
+    rooms: z
+      .array(workflowRoom.pick({ roomTypeId: true, nightlyRateCents: true }))
+      .min(1)
+      .max(60),
   })
   .strict();
 export type WorkflowAction = z.infer<typeof workflowActionSchema>;
 export type WorkflowCommand = z.infer<typeof workflowCommandSchema>;
 export type WorkflowCreate = z.infer<typeof workflowCreateSchema>;
+export type WorkflowCreatePreview = z.infer<typeof workflowCreatePreviewSchema>;

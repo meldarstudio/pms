@@ -78,6 +78,9 @@ export const reservations = sqliteTable(
     // Accepted rate-plan terms. Defaults give legacy rows and older Workers Flexible terms.
     ratePlan: text("rate_plan").notNull().default("flexible"),
     cancellationChargeBasis: text("cancellation_charge_basis").notNull().default("first_night"),
+    freeCancellationDays: integer("free_cancellation_days").default(2),
+    // Superseded by free_cancellation_days. Still written so a Worker from before
+    // migration 0011 reads the same terms; a later release drops both.
     freeCancellationHours: integer("free_cancellation_hours").default(48),
     checkInTime: text("check_in_time").notNull().default("15:00"),
     paymentSchedule: text("payment_schedule").notNull().default("first_night_deposit"),
@@ -205,7 +208,7 @@ export const reservationCancellations = sqliteTable(
     /** The status it was recorded for: `cancelled` or `no_show`. */
     outcome: text("outcome").notNull().default("cancelled"),
     recordedAt: text("recorded_at").notNull(),
-    /** The free-cancellation deadline in UTC; null for a no-show or terms never free. */
+    /** The last free-cancellation date in the property calendar; null for a no-show or terms never free. */
     freeUntil: text("free_until"),
     policyChargeCents: integer("policy_charge_cents").notNull(),
     accountId: text("account_id")

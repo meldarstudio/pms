@@ -1,6 +1,7 @@
 import {
   reservationListQuerySchema,
   workflowCommandSchema,
+  workflowCreatePreviewSchema,
   workflowCreateSchema,
 } from "@pms/shared";
 import {
@@ -42,6 +43,7 @@ import {
   cancellationsFor,
   createWorkflow,
   execute,
+  previewCreate,
   refundsFor,
   totals,
   type CommandContext,
@@ -50,7 +52,7 @@ import { cancellationFields } from "../lib/cancellation";
 import { presentRefunds } from "../lib/refunds";
 import { chunks } from "../lib/chunks";
 import { presentNight, presentReservation } from "../present";
-import { bill, roomCharges } from "../lib/workflow-billing";
+import { bill, reservationBill, roomCharges } from "../lib/workflow-billing";
 import { acceptedTerms } from "../lib/rate-plans";
 
 export const reservationRoutes = new Hono<Env>();
@@ -267,6 +269,26 @@ reservationRoutes.post("/", validate("json", workflowCreateSchema), async (c) =>
   const db = getDb(c.env.DB),
     id = await createWorkflow(db, c.req.valid("json"));
   return c.json(await reservationDetail(db, id, currency(c)), 201);
+});
+// Prices a new reservation under its plan; it neither validates availability nor saves.
+reservationRoutes.post("/preview", validate("json", workflowCreatePreviewSchema), async (c) => {
+  const input = c.req.valid("json");
+  const { terms, rooms } = await previewCreate(getDb(c.env.DB), input);
+  return c.json({
+    billing: {
+      ...reservationBill(rooms, [], input.discountCents ?? 0, {
+        released: false,
+        paymentSchedule: terms.paymentSchedule,
+      }),
+      ratePlan: terms,
+      currency: currency(c),
+      rooms: rooms.map((room) => ({
+        roomTypeId: room.roomTypeId,
+        ...roomCharges(room, false),
+        nights: room.nights.map(presentNight),
+      })),
+    },
+  });
 });
 reservationRoutes.get("/:id", async (c) =>
   c.json(await reservationDetail(getDb(c.env.DB), c.req.param("id"), currency(c))),

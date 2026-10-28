@@ -1,4 +1,6 @@
 import type { cancellationWaivers, reservationCancellations } from "../db/schema";
+import { propertyCalendar } from "../property-calendar";
+import { addDays } from "./dates";
 import type { RatePlanTerms } from "./rate-plans";
 import { reservationBill } from "./workflow-billing";
 
@@ -49,43 +51,11 @@ export function cancellationFields(cancellations: Cancellation[]) {
 
 type BillableRoom = Parameters<typeof reservationBill>[0][number];
 
-/** The UTC instant of a wall-clock time on a calendar date in `timeZone`. */
-export function zonedInstant(date: string, time: string, timeZone: string) {
-  const wall = Date.parse(`${date}T${time}:00Z`);
-  const format = new Intl.DateTimeFormat("en-US", {
-    timeZone,
-    hourCycle: "h23",
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-    hour: "2-digit",
-    minute: "2-digit",
-    second: "2-digit",
-  });
-  const offset = (instant: number) => {
-    const parts = Object.fromEntries(
-      format.formatToParts(instant).map((part) => [part.type, Number(part.value)]),
-    );
-    const local = Date.UTC(
-      parts.year,
-      parts.month - 1,
-      parts.day,
-      parts.hour,
-      parts.minute,
-      parts.second,
-    );
-    return local - instant;
-  };
-  // The second pass corrects a guess that crossed an offset change.
-  let instant = wall - offset(wall);
-  instant = wall - offset(instant);
-  return new Date(instant);
-}
-
 /**
  * The charge the accepted terms impose when the outcome is recorded at `now`.
- * Cancellation is free at or before the deadline; otherwise, and always for a
- * no-show, the basis applies to the stay bill after the reservation discount.
+ * Cancellation is free through the end of the deadline date in the property
+ * calendar; otherwise, and always for a no-show, the basis applies to the stay
+ * bill after the reservation discount.
  */
 export function policyCharge(input: {
   outcome: string;
@@ -98,13 +68,13 @@ export function policyCharge(input: {
 }) {
   const { cancellationPolicy: policy } = input.terms;
   const freeUntil =
-    input.outcome === "no_show" || policy.freeUntilHoursBeforeCheckIn === null
+    input.outcome === "no_show" || policy.freeUntilDaysBeforeCheckIn === null
       ? null
-      : new Date(
-          zonedInstant(input.checkIn, policy.checkInTime, input.timeZone).getTime() -
-            policy.freeUntilHoursBeforeCheckIn * 3_600_000,
-        ).toISOString();
-  if (freeUntil !== null && Date.parse(input.now) <= Date.parse(freeUntil))
+      : addDays(input.checkIn, -policy.freeUntilDaysBeforeCheckIn);
+  if (
+    freeUntil !== null &&
+    propertyCalendar(input.timeZone, new Date(input.now)).today <= freeUntil
+  )
     return { freeUntil, policyChargeCents: 0 };
   const stay = reservationBill(input.rooms, [], input.discountCents, {
     released: false,
