@@ -29,8 +29,8 @@ import {
   presentCancellation,
   type Cancellation,
 } from "./lib/cancellation";
-import { acceptedTerms, ratePlans, termColumns } from "./lib/rate-plans";
-import { quoteNights, overridesFor } from "./lib/quote";
+import { acceptedTerms, ratePlans, termColumns, type RatePlanTerms } from "./lib/rate-plans";
+import { overridesFor, priceNights } from "./lib/pricing";
 import { acceptPhone, requireStay } from "./rules";
 import { confirmationCode } from "./lib/codes";
 import { chunks } from "./lib/chunks";
@@ -208,18 +208,19 @@ async function price(
     children: number;
     nightlyRateCents?: number;
   },
+  terms: RatePlanTerms,
 ): Promise<Night[]> {
   const dates = requireStay(room.checkIn, room.checkOut);
   const [type] = await db.select().from(roomTypes).where(eq(roomTypes.id, room.roomTypeId));
   if (!type) throw new HttpError(404, "room type not found");
   const rates = await ratesBetween(db, [type.id], room.checkIn, room.checkOut);
-  // No plan adjustment or night discount is applied yet; the price is the ordinary rate.
-  return quoteNights(
+  return priceNights({
     dates,
-    type.baseRateCents,
-    overridesFor(rates, type.id),
-    room.nightlyRateCents,
-  ).map((night) => ({ ...night, adjustmentCents: 0, discountCents: 0 }));
+    baseRateCents: type.baseRateCents,
+    overrides: overridesFor(rates, type.id),
+    terms,
+    flatRateCents: room.nightlyRateCents,
+  });
 }
 async function newLine(
   db: Db,
@@ -227,8 +228,9 @@ async function newLine(
   room: Extract<WorkflowAction, { type: "add-room" }>["room"],
   now: string,
   dates: { checkIn: string; checkOut: string },
+  terms: RatePlanTerms,
 ): Promise<Stay> {
-  const nights = await price(db, { ...room, ...dates });
+  const nights = await price(db, { ...room, ...dates }, terms);
   const line: Stay = {
     id: crypto.randomUUID(),
     reservationId: id,
@@ -346,9 +348,9 @@ export async function plan(
       Object.assign(state.reservation, { checkIn: action.checkIn, checkOut: action.checkOut });
       for (const line of state.lines) {
         const saved = new Map(line.nights.map((n) => [n.date, n]));
-        line.nights = (await price(db, { ...line, ...state.reservation })).map(
-          (n) => saved.get(n.date) ?? n,
-        );
+        line.nights = (
+          await price(db, { ...line, ...state.reservation }, acceptedTerms(state.reservation))
+        ).map((n) => saved.get(n.date) ?? n);
       }
     }
     if (action.type === "remove-room") {
@@ -379,13 +381,24 @@ export async function plan(
     if (action.type === "add-room") {
       if (state.lines.length >= 60) fail("reservation cannot exceed 60 rooms");
       state.lines.push(
-        await newLine(db, state.reservation.id, action.room, now, state.reservation),
+        await newLine(
+          db,
+          state.reservation.id,
+          action.room,
+          now,
+          state.reservation,
+          acceptedTerms(state.reservation),
+        ),
       );
     }
     if (action.type === "edit-room") {
       const line = lineFor(action.lineId),
         room = action.room;
-      const nights = await price(db, { ...room, ...state.reservation });
+      const nights = await price(
+        db,
+        { ...room, ...state.reservation },
+        acceptedTerms(state.reservation),
+      );
       const typeChanged = room.roomTypeId !== line.roomTypeId;
       const saved = new Map(line.nights.map((n) => [n.date, n]));
       line.nights = nights.map((n) => (typeChanged ? n : (saved.get(n.date) ?? n)));
@@ -715,8 +728,10 @@ export async function createWorkflow(db: Db, input: WorkflowCreate) {
     id = crypto.randomUUID(),
     guestId = crypto.randomUUID();
   const phone = acceptPhone(input.guest.phone);
+  // Staff creation offers only Flexible until plan selection exists.
+  const terms = ratePlans.flexible;
   const lines: Stay[] = [];
-  for (const room of input.rooms) lines.push(await newLine(db, id, room, now, input));
+  for (const room of input.rooms) lines.push(await newLine(db, id, room, now, input, terms));
   rejectRoomIssues(await validateRooms(db, lines));
   try {
     await runBatch(db, [
@@ -730,8 +745,7 @@ export async function createWorkflow(db: Db, input: WorkflowCreate) {
         notes: input.notes,
         discountCents: input.discountCents ?? 0,
         createdAt: now,
-        // Staff creation offers only Flexible until plan selection exists.
-        ...termColumns(ratePlans.flexible),
+        ...termColumns(terms),
       }),
       db.insert(reservationRequests).values({
         id: input.requestId,

@@ -20,15 +20,20 @@ return an HTTP error. A preview never reserves inventory.
 
 Retained nights keep saved prices. Added nights use current rates; changing room
 type reprices that reserved room. Initial pricing uses a supplied flat nightly
-rate, then the date's rate override, then the base rate.
+rate, then the date's rate override, then the base rate. `priceNights` in
+[pricing.ts](../apps/backend/src/lib/pricing.ts) owns these rules. It applies the
+reservation's accepted price adjustment to the override or base rate, rounding each
+night to the nearest cent with exact half-cent ties upward in integer arithmetic.
+A flat nightly rate is the final price and gets no adjustment. Totals sum the
+rounded nights. Availability shows ordinary prices with no adjustment.
 
 Each saved night (`reservation_room_nights`) stores its final price in `price_cents`,
 which every total sums, and how that price was reached: `adjustment_cents`, the
 accepted plan's [price adjustment](../GLOSSARY.md#rates-and-charges) (negative for a
 reduction), and `discount_cents`, a staff discount on that night. The ordinary rate
 is `price_cents - adjustment_cents + discount_cents`; it is not stored. A retained
-night keeps all three values, and a repriced night is recomputed. Workflows currently
-save both as zero, and the zero defaults describe nights from before migration `0010`
+night keeps all three values, and a repriced night is recomputed. Workflows save the
+plan adjustment, which is zero under Flexible, and no night discount yet. The zero defaults describe nights from before migration `0010`
 and inserts by an older Worker exactly. Responses expose only `priceCents`. Database
 triggers reject a negative price or discount on insert or update, as
 `night price cannot be negative`; saved rows are not revalidated.
@@ -57,9 +62,10 @@ plan and always stores Flexible terms. Column defaults give Flexible terms to ro
 written without them: reservations from before migration `0006` and inserts by an
 older Worker.
 
-The payment schedule and cancellation policy affect current behavior. Pricing is
-unchanged: Non-refundable cannot yet be selected and its price adjustment is not
-applied.
+The payment schedule, cancellation policy, and price adjustment affect current
+behavior: added and repriced nights use the stored adjustment. Non-refundable
+cannot yet be selected, so only reservations given its terms outside the API have a
+non-zero adjustment.
 
 Detail, list, and preview reads share `reservationBill` in
 [workflow-billing.ts](../apps/backend/src/lib/workflow-billing.ts) and return

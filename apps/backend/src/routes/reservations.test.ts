@@ -2620,6 +2620,43 @@ describe("reservation dates and lifecycle", () => {
       ["2026-10-13", 20000, 0, 0],
     ]);
   });
+  it("prices added and repriced nights under the reservation's accepted adjustment", async () => {
+    seedRoomType(db.sqlite, { id: "other", name: "Twin", maxAdults: 3, baseRateCents: 20000 });
+    seedRooms(db.sqlite, "other", { "201": "201" });
+    let d = await create(1, { checkIn: "2026-10-10", checkOut: "2026-10-11" });
+    const lineId = d.rooms[0].id;
+    // Plan selection does not exist yet; seed what a Non-refundable reservation saves.
+    db.sqlite.exec(`
+      UPDATE reservations SET rate_plan = 'non_refundable', cancellation_charge_basis = 'final_total',
+        free_cancellation_hours = NULL, payment_schedule = 'full_upfront', price_adjustment_percent = -10
+        WHERE id = '${d.id}';
+      UPDATE reservation_room_nights SET price_cents = 9000, adjustment_cents = -1000
+        WHERE reservation_room_id = '${lineId}';
+      UPDATE room_types SET base_rate_cents = 12000 WHERE id = 'type';
+    `);
+    const nights = () =>
+      db.sqlite
+        .prepare(
+          "SELECT date, price_cents, adjustment_cents FROM reservation_room_nights WHERE reservation_room_id = ? ORDER BY date",
+        )
+        .all(lineId)
+        .map((row) => Object.values(row));
+    const extend: WorkflowAction[] = [
+      { type: "dates", checkIn: d.checkIn, checkOut: "2026-10-12" },
+    ];
+    expect(await previewCommand(d, extend)).toMatchObject({ billing: { totalCents: 19800 } });
+    d = await command(d, extend);
+    expect(nights()).toEqual([
+      ["2026-10-10", 9000, -1000],
+      ["2026-10-11", 10800, -1200],
+    ]);
+    expect(d).toMatchObject({ totalCents: 19800, ratePlan: { plan: "non_refundable" } });
+    d = await command(d, [roomEdit(d, 0, { roomTypeId: "other", roomId: null })]);
+    expect(nights()).toEqual([
+      ["2026-10-10", 18000, -2000],
+      ["2026-10-11", 18000, -2000],
+    ]);
+  });
   it("removes a checked-in room and its charges while retaining the stay, payments, and discount", async () => {
     let d = await arrive(await create(2));
     const removed = d.rooms[0].id;
