@@ -5,7 +5,7 @@ import { join } from "node:path";
 import { fileURLToPath, URL } from "node:url";
 import { hashPassword } from "better-auth/crypto";
 import { afterEach, beforeEach, describe, expect, it } from "vite-plus/test";
-import app from "./index";
+import { app } from "./index";
 import { accountSql } from "./account-sql";
 import { PORTAL_ORIGIN, login, loginBody } from "./test-support/auth";
 import { createTestDb, type TestDb } from "./test-support/d1";

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vite-plus/test";
-import app from "./index";
+import { app } from "./index";
 import { login, signIn } from "./test-support/auth";
 import { createTestDb } from "./test-support/d1";
 

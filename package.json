@@ -14,6 +14,7 @@
     "db:reset:local": "pnpm --filter @pms/backend db:reset:local",
     "auth:account": "pnpm --filter @pms/backend auth:account",
     "auth:secret": "pnpm --filter @pms/backend auth:secret",
+    "culqi:sandbox": "pnpm --filter @pms/backend culqi:sandbox",
     "check": "vp fmt --check . && pnpm -r --workspace-concurrency=1 check",
     "format": "vp fmt ."
   },
