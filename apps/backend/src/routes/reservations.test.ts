@@ -435,8 +435,7 @@ describe("accepted rate-plan terms", () => {
     plan: "flexible",
     cancellationPolicy: {
       chargeBasis: "first_night",
-      freeUntilHoursBeforeCheckIn: 48,
-      checkInTime: "15:00",
+      freeUntilDaysBeforeCheckIn: 2,
     },
     paymentSchedule: "first_night_deposit",
     priceAdjustmentPercent: 0,
@@ -545,6 +544,133 @@ describe("accepted rate-plan terms", () => {
   });
 });
 
+describe("Non-refundable reservations", () => {
+  const nonRefundable = {
+    plan: "non_refundable",
+    cancellationPolicy: {
+      chargeBasis: "final_total",
+      freeUntilDaysBeforeCheckIn: null,
+    },
+    paymentSchedule: "full_upfront",
+    priceAdjustmentPercent: -10,
+  };
+  const twoNights = { checkIn: "2026-10-10", checkOut: "2026-10-12" };
+  const body = (room: Record<string, unknown> = {}, extra: Record<string, unknown> = {}) => ({
+    requestId: crypto.randomUUID(),
+    ...twoNights,
+    guest: { fullName: "Ada Lovelace" },
+    rooms: [{ roomTypeId: "type", adults: 1, children: 0, ...room }],
+    ratePlan: "non_refundable",
+    ...extra,
+  });
+  async function previewNew(input: ReturnType<typeof body>) {
+    const { requestId: _, guest: __, ...priced } = input;
+    const rooms = priced.rooms.map(({ adults: _a, children: _c, ...room }) => room);
+    const response = await request("/reservations/preview", "POST", { ...priced, rooms });
+    const preview = (await response.json()) as { billing: Detail };
+    expect(response.status, JSON.stringify(preview)).toBe(200);
+    return preview.billing;
+  }
+  async function save(input: ReturnType<typeof body>, status = 201) {
+    const response = await request("/reservations", "POST", input);
+    const saved = (await response.json()) as Detail;
+    expect(response.status, JSON.stringify(saved)).toBe(status);
+    return saved;
+  }
+
+  it.each([
+    {
+      name: "reduces each night by 10%, rounding half-cent ties up before summing",
+      baseRateCents: 10005,
+      input: body(),
+      nights: [9005, 9005],
+      totalCents: 18010,
+    },
+    {
+      name: "requires the discounted total upfront",
+      baseRateCents: 10000,
+      input: body({}, { discountCents: 3000 }),
+      nights: [9000, 9000],
+      totalCents: 15000,
+    },
+    {
+      name: "keeps a flat nightly rate as the final price",
+      baseRateCents: 10000,
+      input: body({ nightlyRateCents: 15000 }),
+      nights: [15000, 15000],
+      totalCents: 30000,
+    },
+  ])("$name in the preview and the saved reservation", async (example) => {
+    db.sqlite.exec(`UPDATE room_types SET base_rate_cents = ${example.baseRateCents}`);
+    const expected = {
+      ratePlan: nonRefundable,
+      totalCents: example.totalCents,
+      requiredInitialPaymentCents: example.totalCents,
+      remainingScheduledCents: 0,
+      rooms: [
+        {
+          nights: [
+            { date: "2026-10-10", priceCents: example.nights[0] },
+            { date: "2026-10-11", priceCents: example.nights[1] },
+          ],
+        },
+      ],
+    };
+    expect(await previewNew(example.input)).toMatchObject(expected);
+    const saved = await save(example.input);
+    expect(saved).toMatchObject(expected);
+    expect(await (await request(`/reservations/${saved.id}`)).json()).toMatchObject(expected);
+  });
+
+  it("previews Flexible when no plan is chosen, without reserving inventory", async () => {
+    expect(await previewNew(body({}, { ratePlan: undefined }))).toMatchObject({
+      ratePlan: { plan: "flexible" },
+      totalCents: 20000,
+      requiredInitialPaymentCents: 10000,
+      remainingScheduledCents: 10000,
+    });
+    expect(await listed()).toEqual([]);
+  });
+
+  it("still stores free-cancellation hours for Workers from before days", async () => {
+    const flexible = await save(body({}, { ratePlan: undefined }));
+    const later = { checkIn: "2026-10-12", checkOut: "2026-10-14" };
+    const nonRefundableStay = await save(body({}, later));
+    const columns = db.sqlite.prepare(
+      "SELECT free_cancellation_days, free_cancellation_hours, check_in_time FROM reservations WHERE id = ?",
+    );
+    expect(columns.get(flexible.id)).toEqual({
+      free_cancellation_days: 2,
+      free_cancellation_hours: 48,
+      check_in_time: "15:00",
+    });
+    expect(columns.get(nonRefundableStay.id)).toEqual({
+      free_cancellation_days: null,
+      free_cancellation_hours: null,
+      check_in_time: "15:00",
+    });
+  });
+
+  it("applies the reduction once when a create request is retried", async () => {
+    const input = body();
+    const first = await save(input);
+    const retried = await save(input);
+    expect(retried).toMatchObject({ id: first.id, totalCents: 18000 });
+    expect(await listed()).toMatchObject([{ id: first.id, totalCents: 18000 }]);
+  });
+
+  it("rejects an unknown plan", async () => {
+    const response = await request("/reservations", "POST", body({}, { ratePlan: "prepaid" }));
+    expect(response.status).toBe(400);
+    expect(await response.json()).toEqual({ error: "unknown rate plan" });
+  });
+
+  it("lists the plans staff can offer, Flexible first", async () => {
+    const plans = (await (await request("/rate-plans")).json()) as { plan: string }[];
+    expect(plans).toMatchObject([{ plan: "flexible" }, nonRefundable]);
+  });
+});
+
 describe("cancellation charges and waivers", () => {
   const cancel: WorkflowAction = { type: "set-status", status: "cancelled" };
 
@@ -559,7 +685,7 @@ describe("cancellation charges and waivers", () => {
       refundDueCents: 20000,
       cancellation: {
         recordedAt: "2026-10-10T15:00:00.000Z",
-        freeUntil: "2026-10-18T20:00:00.000Z",
+        freeUntil: "2026-10-18",
         policyChargeCents: 0,
         waivedCents: 0,
         finalChargeCents: 0,
@@ -585,7 +711,7 @@ describe("cancellation charges and waivers", () => {
       balanceCents: 10000,
       refundDueCents: 0,
       cancellation: {
-        freeUntil: "2026-10-09T20:00:00.000Z",
+        freeUntil: "2026-10-09",
         policyChargeCents: 20000,
         waivedCents: 0,
         finalChargeCents: 20000,
@@ -666,20 +792,21 @@ describe("cancellation charges and waivers", () => {
     expect((await paged("balance=credit")).rows).toMatchObject([waived]);
   });
 
-  it("is free at exactly 48 hours before the 15:00 property check-in and charges one second later", async () => {
+  it("is free through the end of the day 2 days before check-in in the property calendar and charges from the next day", async () => {
     const d = await stay("2026-10-12", "2026-10-14", 20000);
-    vi.setSystemTime(new Date("2026-10-10T20:00:00Z"));
+    // 23:59:59 on 10 Oct in Lima (UTC-5) is already 11 Oct in UTC.
+    vi.setSystemTime(new Date("2026-10-11T04:59:59Z"));
     expect((await previewCommand(d, [cancel])).billing.cancellation).toMatchObject({
-      freeUntil: "2026-10-10T20:00:00.000Z",
+      freeUntil: "2026-10-10",
       policyChargeCents: 0,
     });
-    vi.setSystemTime(new Date("2026-10-10T20:00:01Z"));
+    vi.setSystemTime(new Date("2026-10-11T05:00:00Z"));
     expect((await previewCommand(d, [cancel])).billing.cancellation).toMatchObject({
       policyChargeCents: 20000,
     });
     expect(await command(d, [cancel])).toMatchObject({
       totalCents: 20000,
-      cancellation: { recordedAt: "2026-10-10T20:00:01.000Z", policyChargeCents: 20000 },
+      cancellation: { recordedAt: "2026-10-11T05:00:00.000Z", policyChargeCents: 20000 },
     });
   });
 
@@ -688,7 +815,7 @@ describe("cancellation charges and waivers", () => {
     db.sqlite
       .prepare(
         `UPDATE reservations SET rate_plan = 'non_refundable', cancellation_charge_basis = 'final_total',
-          free_cancellation_hours = NULL, payment_schedule = 'full_upfront', price_adjustment_percent = -10
+          free_cancellation_days = NULL, payment_schedule = 'full_upfront', price_adjustment_percent = -10
           WHERE id = ?`,
       )
       .run(d.id);
@@ -877,7 +1004,7 @@ describe("no-show outcomes", () => {
     db.sqlite
       .prepare(
         `UPDATE reservations SET rate_plan = 'non_refundable', cancellation_charge_basis = 'final_total',
-          free_cancellation_hours = NULL, payment_schedule = 'full_upfront', price_adjustment_percent = -10
+          free_cancellation_days = NULL, payment_schedule = 'full_upfront', price_adjustment_percent = -10
           WHERE id = ?`,
       )
       .run(d.id);
@@ -2663,17 +2790,17 @@ describe("reservation dates and lifecycle", () => {
   it("prices added and repriced nights under the reservation's accepted adjustment", async () => {
     seedRoomType(db.sqlite, { id: "other", name: "Twin", maxAdults: 3, baseRateCents: 20000 });
     seedRooms(db.sqlite, "other", { "201": "201" });
-    let d = await create(1, { checkIn: "2026-10-10", checkOut: "2026-10-11" });
+    const response = await request("/reservations", "POST", {
+      requestId: crypto.randomUUID(),
+      checkIn: "2026-10-10",
+      checkOut: "2026-10-11",
+      guest: { fullName: "Ada Lovelace" },
+      rooms: [{ roomTypeId: "type", adults: 1, children: 0 }],
+      ratePlan: "non_refundable",
+    });
+    let d = (await response.json()) as Detail;
     const lineId = d.rooms[0].id;
-    // Plan selection does not exist yet; seed what a Non-refundable reservation saves.
-    db.sqlite.exec(`
-      UPDATE reservations SET rate_plan = 'non_refundable', cancellation_charge_basis = 'final_total',
-        free_cancellation_hours = NULL, payment_schedule = 'full_upfront', price_adjustment_percent = -10
-        WHERE id = '${d.id}';
-      UPDATE reservation_room_nights SET price_cents = 9000, adjustment_cents = -1000
-        WHERE reservation_room_id = '${lineId}';
-      UPDATE room_types SET base_rate_cents = 12000 WHERE id = 'type';
-    `);
+    db.sqlite.exec(`UPDATE room_types SET base_rate_cents = 12000 WHERE id = 'type'`);
     const nights = () =>
       db.sqlite
         .prepare(

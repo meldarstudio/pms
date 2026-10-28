@@ -13,7 +13,15 @@ than arbitrary field patches. Request schemas live in
 [the shared package](../packages/shared/src/index.ts); portal types and fetch
 helpers live in [api.ts](../apps/portal/src/lib/api.ts).
 
-Preview returns `{ billing, validation: { issues } }`. A priceable draft returns
+`POST /reservations/preview` prices a new reservation before it exists, using the
+shared `workflowCreatePreviewSchema`: stay dates, each room's type and optional flat
+nightly rate, the discount, and the rate plan. It returns `{ billing }` with each
+room's nights and charges, subtotal, applied discount, total, `ratePlan`,
+`requiredInitialPaymentCents`, and `remainingScheduledCents`, computed as creation
+would save them. It does not check occupancy, room assignment, or availability, and
+reserves nothing.
+
+An existing reservation's preview returns `{ billing, validation: { issues } }`. A priceable draft returns
 200 even when operational issues block saving. Issues identify fields and room
 indices in the proposed rooms, excluding removed rooms. Invalid pricing inputs
 return an HTTP error. A preview never reserves inventory.
@@ -42,30 +50,32 @@ triggers reject a negative price or discount on insert or update, as
 
 The [rate plans](../GLOSSARY.md#rates-and-charges) are code-defined in
 [rate-plans.ts](../apps/backend/src/lib/rate-plans.ts); there is no plan editor.
+`GET /rate-plans` lists their terms, Flexible first.
 Each plan composes a cancellation policy, a payment schedule, and a price
 adjustment:
 
-- **Flexible**: no price adjustment; a first-night deposit; free cancellation until
-  48 hours before the 15:00 check-in, then a first-night charge.
+- **Flexible**: no price adjustment; a first-night deposit; free cancellation through
+  the day 2 days before check-in, then a first-night charge.
 - **Non-refundable**: a 10% price reduction; the full total upfront; a cancellation
   or no-show charge equal to the final total.
 
 Each reservation stores a snapshot of the terms it was accepted under: plan,
-cancellation-charge basis, free-cancellation hours, check-in time, payment
-schedule, and price adjustment. The basis (`cancellation_charge_basis` in the
+cancellation-charge basis, free-cancellation days, payment schedule, and price
+adjustment. The basis (`cancellation_charge_basis` in the
 database, `cancellationPolicy.chargeBasis` in responses) is `first_night` or
 `final_total`. It says what a [cancellation charge](../GLOSSARY.md#rates-and-charges) is
 computed from; see [cancellation charges](#cancellation-charges). Changing a definition never
 alters an existing reservation, and workflow commands do not change the stored
-terms. `POST /reservations` takes no
-plan and always stores Flexible terms. Column defaults give Flexible terms to rows
+terms. `POST /reservations` takes an optional `ratePlan` (`flexible` or
+`non_refundable`) and stores Flexible terms when it is omitted; an unknown plan is
+rejected as `unknown rate plan`. No workflow command changes a reservation's plan.
+A retried create request replays the saved reservation, so its adjustment applies
+once. Column defaults give Flexible terms to rows
 written without them: reservations from before migration `0006` and inserts by an
 older Worker.
 
 The payment schedule, cancellation policy, and price adjustment affect current
-behavior: added and repriced nights use the stored adjustment. Non-refundable
-cannot yet be selected, so only reservations given its terms outside the API have a
-non-zero adjustment.
+behavior: added and repriced nights use the stored adjustment.
 
 Detail, list, and preview reads share `reservationBill` in
 [workflow-billing.ts](../apps/backend/src/lib/workflow-billing.ts) and return
@@ -82,10 +92,10 @@ scheduled amount is the total less the required initial payment. Both are zero f
 a cancelled or No-show reservation, whose total is its final charge. Neither
 depends on payments received; the balance still does.
 
-Creation shows no plan or scheduled amounts before saving. Its total is a portal
-estimate: each room type's availability stay total, less the capped discount.
-Showing the scheduled amounts before saving needs a server preview for new
-reservations, not a portal copy of `reservationBill`.
+The portal's creation form does not yet offer a plan or call the new-reservation
+preview: it creates Flexible reservations and shows no scheduled amounts before
+saving. Its total is a portal estimate: each room type's availability stay total,
+less the capped discount.
 
 ## Stay dates and lifecycle
 
@@ -118,10 +128,10 @@ recorded, the authenticated account, the free-cancellation deadline, and the
 policy charge. The charge comes from the stored terms at server time, never from
 the request:
 
-- The deadline is `freeUntilHoursBeforeCheckIn` hours before the terms' check-in
-  time on the check-in date in `PROPERTY_TIME_ZONE`. A cancellation recorded at or
-  before it costs nothing; exactly 48 hours before a Flexible check-in is free.
-  Terms without free cancellation have no deadline (`freeUntil: null`). A No-show
+- The deadline (`freeUntil`) is the date `freeUntilDaysBeforeCheckIn` days before the
+  check-in date. A cancellation recorded on or before that date in `PROPERTY_TIME_ZONE`
+  costs nothing: a Flexible stay checking in on 10 Nov cancels free until the end
+  of 8 Nov. Terms without free cancellation have no deadline (`freeUntil: null`). A No-show
   has no deadline either: it always charges the basis below.
 - After the deadline, `first_night` charges the first-night requirement (each
   reserved room's first saved nightly price, capped at the total after discount)
@@ -146,7 +156,10 @@ Reads return `cancellation`, the active cancellation with `policyChargeCents`,
 `waivers`, and `outcome`, or `null`; and `cancellations`, every cancellation and
 No-show including restored ones. Reservations cancelled before migration `0007`
 have no cancellation record and keep a zero charge; records from before `0008` read
-`outcome: "cancelled"`. `cancelledAt` and `cancellationReason` remain
+`outcome: "cancelled"`. Migration `0011` converted accepted 48-hour terms to 2 days and
+recorded deadlines, previously 15:00 instants, to their dates. Reservations still store the
+old `free_cancellation_hours` and `check_in_time` for Workers from before `0011`;
+nothing reads them. `cancelledAt` and `cancellationReason` remain
 cancellation-only and are null for a No-show.
 
 The cancellation, its waivers, and the status change are written in the command's

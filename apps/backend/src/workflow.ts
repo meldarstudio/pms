@@ -1,4 +1,4 @@
-import type { WorkflowCommand, WorkflowCreate } from "@pms/shared";
+import type { WorkflowCommand, WorkflowCreate, WorkflowCreatePreview } from "@pms/shared";
 import { and, eq, inArray, isNull, sql } from "drizzle-orm";
 import { alias } from "drizzle-orm/sqlite-core";
 import { runBatch, type Db } from "./db";
@@ -27,7 +27,7 @@ import { acceptPhone, requireStay } from "./rules";
 import { confirmationCode } from "./lib/codes";
 import { chunks } from "./lib/chunks";
 import { claimRevision, isStaleWrite } from "./db/revisions";
-import { newLine, plan } from "./workflow-plan";
+import { newLine, plan, price } from "./workflow-plan";
 
 export { totals } from "./workflow-plan";
 
@@ -388,8 +388,7 @@ export async function createWorkflow(db: Db, input: WorkflowCreate) {
     id = crypto.randomUUID(),
     guestId = crypto.randomUUID();
   const phone = acceptPhone(input.guest.phone);
-  // Staff creation offers only Flexible until plan selection exists.
-  const terms = ratePlans.flexible;
+  const terms = ratePlans[input.ratePlan ?? "flexible"];
   const lines: Stay[] = [];
   for (const room of input.rooms) lines.push(await newLine(db, id, room, now, input, terms));
   rejectRoomIssues(await validateRooms(db, lines));
@@ -425,6 +424,18 @@ export async function createWorkflow(db: Db, input: WorkflowCreate) {
     rethrowConflict(error);
   }
   return id;
+}
+
+/** Prices a new reservation's rooms as creation would save them, without validating or writing. */
+export async function previewCreate(db: Db, input: WorkflowCreatePreview) {
+  const terms = ratePlans[input.ratePlan ?? "flexible"];
+  const rooms = [];
+  for (const room of input.rooms)
+    rooms.push({
+      roomTypeId: room.roomTypeId,
+      nights: await price(db, { ...room, checkIn: input.checkIn, checkOut: input.checkOut }, terms),
+    });
+  return { terms, rooms };
 }
 
 function rejectRoomIssues(issues: WorkflowIssue[]) {

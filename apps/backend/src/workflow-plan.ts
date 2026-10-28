@@ -48,16 +48,9 @@ export const totals = (state: State) => {
   });
 };
 
-async function price(
+export async function price(
   db: Db,
-  room: {
-    roomTypeId: string;
-    checkIn: string;
-    checkOut: string;
-    adults: number;
-    children: number;
-    nightlyRateCents?: number;
-  },
+  room: { roomTypeId: string; checkIn: string; checkOut: string; nightlyRateCents?: number },
   terms: RatePlanTerms,
 ): Promise<Night[]> {
   const dates = requireStay(room.checkIn, room.checkOut);
