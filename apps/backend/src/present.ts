@@ -13,7 +13,7 @@ import { nightsBetween } from "./lib/dates";
 import { acceptedTerms } from "./lib/rate-plans";
 import { presentRefunds, type Refund } from "./lib/refunds";
 import { holdsInventory } from "./lib/statuses";
-import { reservationBill } from "./lib/workflow-billing";
+import { reservationBill, roomCharges } from "./lib/workflow-billing";
 
 type Guest = typeof guests.$inferSelect;
 type Reservation = typeof reservations.$inferSelect;
@@ -26,6 +26,12 @@ type RoomType = typeof roomTypes.$inferSelect;
 type Room = typeof rooms.$inferSelect;
 
 const released = (reservation: Reservation) => !holdsInventory(reservation.status);
+
+/** Responses expose a night's final price, not how it was reached. */
+export const presentNight = (night: { date: string; priceCents: number }) => ({
+  date: night.date,
+  priceCents: night.priceCents,
+});
 
 export function presentGuest(guest: Omit<Guest, "revision">) {
   return {
@@ -64,7 +70,6 @@ export function presentReservation(input: {
 
   const roomsOut = input.lines.map((line) => {
     const nights = (nightsByLine.get(line.id) ?? []).sort((a, b) => a.date.localeCompare(b.date));
-    const lineTotal = nights.reduce((sum, night) => sum + night.priceCents, 0);
     return {
       ...line,
       id: line.id,
@@ -77,10 +82,8 @@ export function presentReservation(input: {
         : null,
       adults: line.adults,
       children: line.children,
-      subtotalCents: lineTotal,
-      discountCents: 0,
-      totalCents: released(input.reservation) ? 0 : lineTotal,
-      nights: nights.map((night) => ({ date: night.date, priceCents: night.priceCents })),
+      ...roomCharges({ nights }, released(input.reservation)),
+      nights: nights.map(presentNight),
     };
   });
 

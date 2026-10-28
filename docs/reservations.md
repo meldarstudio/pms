@@ -20,7 +20,23 @@ return an HTTP error. A preview never reserves inventory.
 
 Retained nights keep saved prices. Added nights use current rates; changing room
 type reprices that reserved room. Initial pricing uses a supplied flat nightly
-rate, then the date's rate override, then the base rate.
+rate, then the date's rate override, then the base rate. `priceNights` in
+[pricing.ts](../apps/backend/src/lib/pricing.ts) owns these rules. It applies the
+reservation's accepted price adjustment to the override or base rate, rounding each
+night to the nearest cent with exact half-cent ties upward in integer arithmetic.
+A flat nightly rate is the final price and gets no adjustment. Totals sum the
+rounded nights. Availability shows ordinary prices with no adjustment.
+
+Each saved night (`reservation_room_nights`) stores its final price in `price_cents`,
+which every total sums, and how that price was reached: `adjustment_cents`, the
+accepted plan's [price adjustment](../GLOSSARY.md#rates-and-charges) (negative for a
+reduction), and `discount_cents`, a staff discount on that night. The ordinary rate
+is `price_cents - adjustment_cents + discount_cents`; it is not stored. A retained
+night keeps all three values, and a repriced night is recomputed. Workflows save the
+plan adjustment, which is zero under Flexible, and no night discount yet. The zero defaults describe nights from before migration `0010`
+and inserts by an older Worker exactly. Responses expose only `priceCents`. Database
+triggers reject a negative price or discount on insert or update, as
+`night price cannot be negative`; saved rows are not revalidated.
 
 ## Rate-plan terms
 
@@ -46,16 +62,19 @@ plan and always stores Flexible terms. Column defaults give Flexible terms to ro
 written without them: reservations from before migration `0006` and inserts by an
 older Worker.
 
-The payment schedule and cancellation policy affect current behavior. Pricing is
-unchanged: Non-refundable cannot yet be selected and its price adjustment is not
-applied.
+The payment schedule, cancellation policy, and price adjustment affect current
+behavior: added and repriced nights use the stored adjustment. Non-refundable
+cannot yet be selected, so only reservations given its terms outside the API have a
+non-zero adjustment.
 
 Detail, list, and preview reads share `reservationBill` in
 [workflow-billing.ts](../apps/backend/src/lib/workflow-billing.ts) and return
 `ratePlan` (the stored terms), `requiredInitialPaymentCents`, and
 `remainingScheduledCents`. A new read or preview that returns a bill uses
 `reservationBill`; plain `bill()` serves only the list's balance filter, which has
-SQL aggregates rather than nights. The
+SQL aggregates rather than nights. Detail and preview rooms take their
+`subtotalCents`, `discountCents`, and `totalCents` from `roomCharges` in the same
+module, and their nights expose only `date` and `priceCents`. The
 [required initial payment](../GLOSSARY.md#rates-and-charges) for Flexible is the
 sum of each reserved room's first saved nightly price, capped at the total after the
 reservation discount. Full upfront requires the whole total. The remaining
@@ -183,7 +202,7 @@ refunds and an idempotent retry replays its receipt; neither can exceed the limi
 Restoring and requesting a refund in one command is refused like any restoration
 with refunds.
 A payment with any refund cannot be edited or deleted (`payment with refunds cannot
-be changed`).
+be changed`), including a refund requested earlier in the same command.
 
 Reads and previews return `refunds`, every request oldest first, with `status`
 (`requested`, `completed`, or `failed`), `requestedAt`, `requestedBy`,

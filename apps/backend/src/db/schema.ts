@@ -119,7 +119,14 @@ export const reservationRoomNights = sqliteTable(
       .notNull()
       .references(() => reservationRooms.id),
     date: text("date").notNull(),
+    /** The final price charged for the night, after the adjustment and discount below. */
     priceCents: integer("price_cents").notNull(),
+    // The ordinary rate is price - adjustment + discount. Zero defaults describe
+    // rows from before migration 0010 and inserts by an older Worker exactly.
+    /** The accepted rate plan's price adjustment, in cents; negative for a reduction. */
+    adjustmentCents: integer("adjustment_cents").notNull().default(0),
+    /** A staff discount on this night, in cents. */
+    discountCents: integer("discount_cents").notNull().default(0),
   },
   (table) => [
     uniqueIndex("reservation_room_nights_unique").on(table.reservationRoomId, table.date),

@@ -812,6 +812,29 @@ describe("cancellation charges and waivers", () => {
     expect(again.cancellations).toHaveLength(2);
   });
 
+  it("charges a cancellation from the stay left by the rest of its command", async () => {
+    const d = await stay("2026-10-11", "2026-10-13", 20000);
+    const addRoom: WorkflowAction = {
+      type: "add-room",
+      room: { roomTypeId: "type", adults: 1, children: 0, nightlyRateCents: 15000 },
+    };
+    expect(await command(d, [cancel, addRoom])).toMatchObject({
+      totalCents: 35000,
+      cancellation: { policyChargeCents: 35000, finalChargeCents: 35000 },
+    });
+  });
+
+  it("leaves no cancellation record when one command cancels and restores", async () => {
+    const d = await stay("2026-10-11", "2026-10-13", 20000);
+    const saved = await command(d, [cancel, { type: "set-status", status: "confirmed" }]);
+    expect(saved).toMatchObject({
+      status: "confirmed",
+      totalCents: 40000,
+      cancellation: null,
+      cancellations: [],
+    });
+  });
+
   it("keeps a zero charge for a reservation cancelled before charges existed and refuses to waive it", async () => {
     seedReservation(db.sqlite, {
       id: "legacy-cancelled",
@@ -1254,6 +1277,23 @@ describe("refunds", () => {
     });
     expect(await (await request(`/reservations/${cancelled.id}`)).json()).toEqual(next);
     expect(next.payments).toEqual(cancelled.payments);
+  });
+
+  it("refuses to change a payment after a refund request for it in the same command", async () => {
+    const cancelled = await lateCancellation(30000);
+    const [payment] = cancelled.payments;
+    for (const change of [
+      {
+        type: "edit-payment",
+        paymentId: payment.id,
+        payment: { amountCents: 40000, method: "card", paymentDate: "2026-10-10" },
+      },
+      { type: "delete-payment", paymentId: payment.id },
+    ] as WorkflowAction[])
+      expect(await command(cancelled, [requestRefund(cancelled, 10000), change], 400)).toEqual({
+        error: "payment with refunds cannot be changed",
+      });
+    expect(await (await request(`/reservations/${cancelled.id}`)).json()).toEqual(cancelled);
   });
 
   it("refuses to restore a cancellation or no-show with any refund activity", async () => {
@@ -2583,6 +2623,92 @@ describe("reservation dates and lifecycle", () => {
           line.nights.map((night) => night.priceCents).join(",") === "10000,10000,10000,15000",
       ),
     ).toBe(true);
+  });
+  it("keeps a retained night's adjustment and discount through edits and clears them when the type changes", async () => {
+    seedRoomType(db.sqlite, { id: "other", name: "Twin", maxAdults: 3, baseRateCents: 20000 });
+    seedRooms(db.sqlite, "other", { "201": "201" });
+    let d = await create();
+    const lineId = d.rooms[0].id;
+    // The API cannot record a breakdown yet; seed what a Non-refundable night and a discounted night save.
+    db.sqlite.exec(`
+      UPDATE reservation_room_nights SET price_cents = 9000, adjustment_cents = -1000
+        WHERE reservation_room_id = '${lineId}' AND date = '2026-10-10';
+      UPDATE reservation_room_nights SET price_cents = 8000, discount_cents = 2000
+        WHERE reservation_room_id = '${lineId}' AND date = '2026-10-11';
+    `);
+    const nights = () =>
+      db.sqlite
+        .prepare(
+          "SELECT date, price_cents, adjustment_cents, discount_cents FROM reservation_room_nights WHERE reservation_room_id = ? ORDER BY date",
+        )
+        .all(lineId)
+        .map((row) => Object.values(row));
+    d = await command(d, [{ type: "dates", checkIn: d.checkIn, checkOut: "2026-10-14" }]);
+    d = await command(d, [roomEdit(d)]);
+    expect(nights()).toEqual([
+      ["2026-10-10", 9000, -1000, 0],
+      ["2026-10-11", 8000, 0, 2000],
+      ["2026-10-12", 10000, 0, 0],
+      ["2026-10-13", 10000, 0, 0],
+    ]);
+    expect(d.totalCents).toBe(37000);
+    d = await command(d, [roomEdit(d, 0, { roomTypeId: "other", roomId: null })]);
+    expect(nights()).toEqual([
+      ["2026-10-10", 20000, 0, 0],
+      ["2026-10-11", 20000, 0, 0],
+      ["2026-10-12", 20000, 0, 0],
+      ["2026-10-13", 20000, 0, 0],
+    ]);
+  });
+  it("prices added and repriced nights under the reservation's accepted adjustment", async () => {
+    seedRoomType(db.sqlite, { id: "other", name: "Twin", maxAdults: 3, baseRateCents: 20000 });
+    seedRooms(db.sqlite, "other", { "201": "201" });
+    let d = await create(1, { checkIn: "2026-10-10", checkOut: "2026-10-11" });
+    const lineId = d.rooms[0].id;
+    // Plan selection does not exist yet; seed what a Non-refundable reservation saves.
+    db.sqlite.exec(`
+      UPDATE reservations SET rate_plan = 'non_refundable', cancellation_charge_basis = 'final_total',
+        free_cancellation_hours = NULL, payment_schedule = 'full_upfront', price_adjustment_percent = -10
+        WHERE id = '${d.id}';
+      UPDATE reservation_room_nights SET price_cents = 9000, adjustment_cents = -1000
+        WHERE reservation_room_id = '${lineId}';
+      UPDATE room_types SET base_rate_cents = 12000 WHERE id = 'type';
+    `);
+    const nights = () =>
+      db.sqlite
+        .prepare(
+          "SELECT date, price_cents, adjustment_cents FROM reservation_room_nights WHERE reservation_room_id = ? ORDER BY date",
+        )
+        .all(lineId)
+        .map((row) => Object.values(row));
+    const extend: WorkflowAction[] = [
+      { type: "dates", checkIn: d.checkIn, checkOut: "2026-10-12" },
+    ];
+    const { billing } = await previewCommand(d, extend);
+    expect(billing.totalCents).toBe(19800);
+    d = await command(d, extend);
+    // Preview rooms price like the saved detail and expose only each night's final price.
+    const charges = ({
+      subtotalCents,
+      discountCents,
+      totalCents,
+      nights,
+    }: Detail["rooms"][number]) => ({ subtotalCents, discountCents, totalCents, nights });
+    expect(billing.rooms.map(charges)).toEqual(d.rooms.map(charges));
+    expect(billing.rooms[0].nights).toEqual([
+      { date: "2026-10-10", priceCents: 9000 },
+      { date: "2026-10-11", priceCents: 10800 },
+    ]);
+    expect(nights()).toEqual([
+      ["2026-10-10", 9000, -1000],
+      ["2026-10-11", 10800, -1200],
+    ]);
+    expect(d).toMatchObject({ totalCents: 19800, ratePlan: { plan: "non_refundable" } });
+    d = await command(d, [roomEdit(d, 0, { roomTypeId: "other", roomId: null })]);
+    expect(nights()).toEqual([
+      ["2026-10-10", 18000, -2000],
+      ["2026-10-11", 18000, -2000],
+    ]);
   });
   it("removes a checked-in room and its charges while retaining the stay, payments, and discount", async () => {
     let d = await arrive(await create(2));

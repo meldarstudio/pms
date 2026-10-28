@@ -4,7 +4,8 @@ import { getDb } from "../db";
 import type { Env } from "../env";
 import { currency, HttpError, validate } from "../http";
 import { addDays } from "../lib/dates";
-import { overridesFor, quoteNights, totalCents } from "../lib/quote";
+import { overridesFor, priceNights, totalCents } from "../lib/pricing";
+import { ratePlans } from "../lib/rate-plans";
 import { roomCounts, loadRoomTypes, occupiedCounts, ratesBetween } from "../inventory";
 import { requireStay } from "../rules";
 
@@ -31,15 +32,21 @@ availabilityRoutes.get("/", validate("query", availabilityQuerySchema), async (c
     )
     .sort((a, b) => a.name.localeCompare(b.name))
     .map((type) => {
-      const quoted = quoteNights(nights, type.baseRateCents, overridesFor(rates, type.id));
+      // Availability shows ordinary prices; plan prices come with plan selection.
+      const priced = priceNights({
+        dates: nights,
+        baseRateCents: type.baseRateCents,
+        overrides: overridesFor(rates, type.id),
+        terms: ratePlans.flexible,
+      });
       return {
         id: type.id,
         name: type.name,
         maxAdults: type.maxAdults,
         maxChildren: type.maxChildren,
         free: Math.max(0, (capacity.get(type.id) ?? 0) - (occupied.get(type.id) ?? 0)),
-        totalCents: totalCents(quoted),
-        nights: quoted,
+        totalCents: totalCents(priced),
+        nights: priced.map(({ date, priceCents }) => ({ date, priceCents })),
       };
     });
   return c.json({
