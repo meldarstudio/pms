@@ -46,6 +46,18 @@ async function create(count = 1, dates = { checkIn: "2026-10-10", checkOut: "202
   expect(response.status).toBe(201);
   return response.json() as Promise<Detail>;
 }
+/** One unassigned room quoted at a fixed nightly price. */
+async function stay(checkIn: string, checkOut: string, nightlyRateCents: number) {
+  const response = await request("/reservations", "POST", {
+    requestId: crypto.randomUUID(),
+    checkIn,
+    checkOut,
+    guest: { fullName: "Ada Lovelace" },
+    rooms: [{ roomTypeId: "type", adults: 1, children: 0, nightlyRateCents }],
+  });
+  expect(response.status).toBe(201);
+  return response.json() as Promise<Detail>;
+}
 import type { WorkflowAction } from "@pms/shared";
 async function command(d: Detail, actions: WorkflowAction[], status = 200) {
   const r = await request(`/reservations/${d.id}/commands`, "POST", {
@@ -533,6 +545,308 @@ describe("accepted rate-plan terms", () => {
   });
 });
 
+describe("cancellation charges and waivers", () => {
+  const cancel: WorkflowAction = { type: "set-status", status: "cancelled" };
+
+  it("cancels a Flexible stay for free before the deadline and owes back every payment received", async () => {
+    let d = await create(1, { checkIn: "2026-10-20", checkOut: "2026-10-22" });
+    d = await command(d, [pay(20000)]);
+    const expected = {
+      status: "cancelled",
+      totalCents: 0,
+      paidCents: 20000,
+      balanceCents: -20000,
+      refundDueCents: 20000,
+      cancellation: {
+        recordedAt: "2026-10-10T15:00:00.000Z",
+        freeUntil: "2026-10-18T20:00:00.000Z",
+        policyChargeCents: 0,
+        waivedCents: 0,
+        finalChargeCents: 0,
+        recordedBy: "hotelmanantial",
+        waivers: [],
+      },
+    };
+    expect((await previewCommand(d, [cancel])).billing).toMatchObject(expected);
+    const saved = await command(d, [cancel]);
+    expect(saved).toMatchObject(expected);
+    expect(saved.payments).toHaveLength(1);
+    expect(saved.rooms[0].nights).toHaveLength(2);
+    expect(await (await request(`/reservations/${d.id}`)).json()).toEqual(saved);
+  });
+
+  it("charges a late Flexible cancellation its first night and lets staff waive part of it later with a reason", async () => {
+    let d = await stay("2026-10-11", "2026-10-13", 20000);
+    d = await command(d, [pay(10000)]);
+    const late = await command(d, [cancel]);
+    expect(late).toMatchObject({
+      totalCents: 20000,
+      paidCents: 10000,
+      balanceCents: 10000,
+      refundDueCents: 0,
+      cancellation: {
+        freeUntil: "2026-10-09T20:00:00.000Z",
+        policyChargeCents: 20000,
+        waivedCents: 0,
+        finalChargeCents: 20000,
+      },
+    });
+    expect(await paged("balance=outstanding")).toMatchObject({ rows: [{ id: d.id }] });
+
+    vi.setSystemTime(new Date("2026-10-12T16:30:00Z"));
+    await db.signIn("owner");
+    const waiver: WorkflowAction = {
+      type: "waive-cancellation-charge",
+      amountCents: 10000,
+      reason: "Family emergency",
+    };
+    const waived = await command(late, [waiver]);
+    const expected = {
+      totalCents: 10000,
+      paidCents: 10000,
+      balanceCents: 0,
+      refundDueCents: 0,
+      cancellation: {
+        recordedAt: "2026-10-10T15:00:00.000Z",
+        recordedBy: "hotelmanantial",
+        policyChargeCents: 20000,
+        waivedCents: 10000,
+        finalChargeCents: 10000,
+        waivers: [
+          {
+            amountCents: 10000,
+            reason: "Family emergency",
+            recordedAt: "2026-10-12T16:30:00.000Z",
+            recordedBy: "duena",
+          },
+        ],
+      },
+    };
+    expect(waived).toMatchObject(expected);
+    expect(waived.payments).toEqual(late.payments);
+    expect(await paged("balance=settled")).toMatchObject({ rows: [{ id: d.id, ...expected }] });
+  });
+
+  it("waives a whole charge while cancelling and owes back every payment received", async () => {
+    let d = await stay("2026-10-11", "2026-10-13", 20000);
+    d = await command(d, [pay(20000)]);
+    const actions: WorkflowAction[] = [
+      cancel,
+      { type: "waive-cancellation-charge", amountCents: 20000, reason: "Hospitalised" },
+    ];
+    const expected = {
+      totalCents: 0,
+      balanceCents: -20000,
+      refundDueCents: 20000,
+      cancellation: { policyChargeCents: 20000, waivedCents: 20000, finalChargeCents: 0 },
+    };
+    expect((await previewCommand(d, actions)).billing).toMatchObject(expected);
+    expect(await command(d, actions)).toMatchObject(expected);
+    expect(await paged("balance=credit")).toMatchObject({ rows: [{ id: d.id, ...expected }] });
+  });
+
+  it("moves a late cancellation from outstanding to credit when a partial waiver drops the charge below payments", async () => {
+    let d = await stay("2026-10-11", "2026-10-13", 20000);
+    d = await command(d, [pay(15000)]);
+    d = await command(d, [cancel]);
+    expect(await paged("balance=outstanding")).toMatchObject({
+      rows: [{ id: d.id, balanceCents: 5000 }],
+    });
+    const waived = await command(d, [
+      { type: "waive-cancellation-charge", amountCents: 10000, reason: "Goodwill" },
+    ]);
+    expect(waived).toMatchObject({
+      totalCents: 10000,
+      paidCents: 15000,
+      balanceCents: -5000,
+      refundDueCents: 5000,
+      cancellation: { policyChargeCents: 20000, waivedCents: 10000, finalChargeCents: 10000 },
+    });
+    expect((await paged("balance=outstanding")).rows).toEqual([]);
+    expect((await paged("balance=credit")).rows).toMatchObject([waived]);
+  });
+
+  it("is free at exactly 48 hours before the 15:00 property check-in and charges one second later", async () => {
+    const d = await stay("2026-10-12", "2026-10-14", 20000);
+    vi.setSystemTime(new Date("2026-10-10T20:00:00Z"));
+    expect((await previewCommand(d, [cancel])).billing.cancellation).toMatchObject({
+      freeUntil: "2026-10-10T20:00:00.000Z",
+      policyChargeCents: 0,
+    });
+    vi.setSystemTime(new Date("2026-10-10T20:00:01Z"));
+    expect((await previewCommand(d, [cancel])).billing.cancellation).toMatchObject({
+      policyChargeCents: 20000,
+    });
+    expect(await command(d, [cancel])).toMatchObject({
+      totalCents: 20000,
+      cancellation: { recordedAt: "2026-10-10T20:00:01.000Z", policyChargeCents: 20000 },
+    });
+  });
+
+  it("charges a Non-refundable cancellation its discounted total at any time, with no extra penalty", async () => {
+    let d = await stay("2026-11-20", "2026-11-22", 18000);
+    db.sqlite
+      .prepare(
+        `UPDATE reservations SET rate_plan = 'non_refundable', cancellation_charge_basis = 'final_total',
+          free_cancellation_hours = NULL, payment_schedule = 'full_upfront', price_adjustment_percent = -10
+          WHERE id = ?`,
+      )
+      .run(d.id);
+    d = await command(d, [setDiscount(6000), pay(10000)]);
+    expect(await command(d, [cancel])).toMatchObject({
+      totalCents: 30000,
+      balanceCents: 20000,
+      refundDueCents: 0,
+      cancellation: { freeUntil: null, policyChargeCents: 30000, finalChargeCents: 30000 },
+    });
+  });
+
+  it("rejects waivers beyond the remaining charge, without a reason, or without an active cancellation", async () => {
+    const d = await stay("2026-10-11", "2026-10-13", 20000);
+    const waive = (amountCents: number, reason = "Goodwill"): WorkflowAction => ({
+      type: "waive-cancellation-charge",
+      amountCents,
+      reason,
+    });
+    expect(await command(d, [waive(1000)], 400)).toEqual({
+      error: "reservation has no active cancellation",
+    });
+    const cancelled = await command(d, [cancel, waive(15000)]);
+    expect(await command(cancelled, [waive(5001)], 400)).toEqual({
+      error: "waiver cannot exceed the cancellation charge",
+    });
+    expect(await command(cancelled, [waive(5000, "   ")], 400)).toEqual({
+      error: expect.any(String),
+    });
+    expect(await (await request(`/reservations/${d.id}`)).json()).toEqual(cancelled);
+    const free = await command(await stay("2026-10-20", "2026-10-22", 20000), [cancel]);
+    expect(await command(free, [waive(1)], 400)).toEqual({
+      error: "waiver cannot exceed the cancellation charge",
+    });
+  });
+
+  it("applies a retried cancel and waiver once, and a repeated cancel keeps the recorded charge", async () => {
+    let d = await stay("2026-10-11", "2026-10-13", 20000);
+    d = await command(d, [pay(5000)]);
+    const body = {
+      requestId: crypto.randomUUID(),
+      actions: [
+        cancel,
+        { type: "waive-cancellation-charge", amountCents: 5000, reason: "Goodwill" },
+      ],
+    };
+    const paused = pauseNextCommit();
+    const first = request(`/reservations/${d.id}/commands`, "POST", body);
+    await paused.ready;
+    const concurrent = request(`/reservations/${d.id}/commands`, "POST", body);
+    paused.resume();
+    const responses = await Promise.all([first, concurrent]);
+    expect(responses.map((response) => response.status)).toEqual([200, 200]);
+    const saved = (await responses[0].json()) as Detail;
+    expect(await responses[1].json()).toEqual(saved);
+    const retried = await request(`/reservations/${d.id}/commands`, "POST", body);
+    expect(await retried.json()).toEqual(saved);
+    expect(saved).toMatchObject({
+      totalCents: 15000,
+      paidCents: 5000,
+      cancellation: { policyChargeCents: 20000, waivedCents: 5000 },
+    });
+    expect(saved.cancellations).toHaveLength(1);
+    expect(saved.cancellation?.waivers).toHaveLength(1);
+    expect(saved.payments).toEqual(d.payments);
+
+    vi.setSystemTime(new Date("2026-10-11T12:00:00Z"));
+    expect(await command(saved, [{ ...cancel, reason: "Asked again" }])).toMatchObject({
+      totalCents: 15000,
+      cancellation: saved.cancellation,
+      cancellations: saved.cancellations,
+    });
+  });
+
+  it("restores the stay bill under the same plan and keeps the charge and waiver as inactive history", async () => {
+    let d = await stay("2026-10-11", "2026-10-13", 20000);
+    d = await command(d, [roomEdit(d), pay(5000)]);
+    const cancelled = await command(d, [
+      cancel,
+      { type: "waive-cancellation-charge", amountCents: 5000, reason: "Goodwill" },
+    ]);
+
+    const other = await stay("2026-10-12", "2026-10-13", 10000);
+    await command(other, [roomEdit(other)]);
+    const restore: WorkflowAction = { type: "set-status", status: "confirmed" };
+    expect((await previewCommand(cancelled, [restore])).validation.issues).toEqual([
+      { code: "room is already assigned for those dates", roomIndex: 0, field: "roomId" },
+    ]);
+    expect(await command(cancelled, [restore], 409)).toEqual({
+      error: "room is already assigned for those dates",
+    });
+    expect(await (await request(`/reservations/${d.id}`)).json()).toEqual(cancelled);
+
+    await command(other, [{ type: "set-status", status: "cancelled" }]);
+    vi.setSystemTime(new Date("2026-10-10T18:00:00Z"));
+    const restored = await command(cancelled, [restore]);
+    expect(restored).toMatchObject({
+      status: "confirmed",
+      ratePlan: d.ratePlan,
+      totalCents: 40000,
+      paidCents: 5000,
+      balanceCents: 35000,
+      refundDueCents: 0,
+      cancellation: null,
+      cancellations: [
+        {
+          ...cancelled.cancellation,
+          restoredAt: "2026-10-10T18:00:00.000Z",
+        },
+      ],
+    });
+    expect(await paged("balance=outstanding")).toMatchObject({
+      rows: [{ id: d.id, balanceCents: 35000 }],
+    });
+
+    const again = await command(restored, [cancel]);
+    expect(again).toMatchObject({
+      totalCents: 20000,
+      cancellation: { recordedAt: "2026-10-10T18:00:00.000Z", waivedCents: 0 },
+    });
+    expect(again.cancellations).toHaveLength(2);
+  });
+
+  it("keeps a zero charge for a reservation cancelled before charges existed and refuses to waive it", async () => {
+    seedReservation(db.sqlite, {
+      id: "legacy-cancelled",
+      code: "OLD2",
+      guestName: "Cancelled Guest",
+      checkIn: "2026-10-11",
+      checkOut: "2026-10-13",
+      createdAt: "2026-09-01",
+      status: "cancelled",
+      nightCents: 10000,
+    });
+    db.sqlite
+      .exec(`INSERT INTO payments (id, reservation_id, amount_cents, method, payment_date, created_at)
+      VALUES ('legacy-payment', 'legacy-cancelled', 4000, 'cash', '2026-09-01', '2026-09-01')`);
+    const legacy = (await (await request("/reservations/legacy-cancelled")).json()) as Detail;
+    const expected = {
+      totalCents: 0,
+      balanceCents: -4000,
+      refundDueCents: 4000,
+      cancellation: null,
+      cancellations: [],
+    };
+    expect(legacy).toMatchObject(expected);
+    expect(await command(legacy, [cancel])).toMatchObject(expected);
+    expect(await paged("balance=credit")).toMatchObject({ rows: [{ id: legacy.id, ...expected }] });
+    expect(
+      await command(
+        legacy,
+        [{ type: "waive-cancellation-charge", amountCents: 1, reason: "Goodwill" }],
+        400,
+      ),
+    ).toEqual({ error: "reservation has no active cancellation" });
+  });
+});
+
 // Hold the next write after its preflight, before its transaction. Other
 // requests can commit through the same database while it waits.
 function pauseNextCommit() {
@@ -760,8 +1074,9 @@ describe("concurrent reservation commands", () => {
     });
     expect(d.rooms[0].adults).toBe(2);
     expect(d.rooms[0].children).toBe(2);
+    // A late Flexible cancellation is charged the first night.
     const saved = await command(d, [{ type: "set-status", status: "cancelled" }]);
-    expect(saved.creditCents).toBe(5000);
+    expect(saved).toMatchObject({ totalCents: 10000, balanceCents: 5000, refundDueCents: 0 });
   });
 
   it("preserves a concurrent discount when an older notes plan commits later", async () => {
@@ -1242,12 +1557,12 @@ describe("reservation workflow", () => {
     ];
     const cancellationPreview = await previewCommand(d, actions);
     expect(cancellationPreview).toMatchObject({
-      billing: { status: "cancelled", totalCents: 0, paidCents: 5000, creditCents: 5000 },
+      billing: { status: "cancelled", totalCents: 10000, paidCents: 5000, balanceCents: 5000 },
       validation: { issues: [] },
     });
     d = await command(d, actions);
     expect(d.status).toBe("cancelled");
-    expect(d.creditCents).toBe(5000);
+    expect(d.balanceCents).toBe(5000);
     expect(d.rooms[0]).toMatchObject({ adults: 2, roomId: "room-101" });
     const available = await (
       await request("/availability?checkIn=2026-10-10&checkOut=2026-10-13")
@@ -1823,8 +2138,8 @@ describe("reservation dates and lifecycle", () => {
       reason: "Plans changed",
     };
     d = await command(d, [cancel]);
-    expect(d.totalCents).toBe(0);
-    expect(d.creditCents).toBe(10000);
+    // Late: each room's first night, not the discounted stay.
+    expect(d).toMatchObject({ totalCents: 20000, paidCents: 10000, balanceCents: 10000 });
     expect(d.cancellationReason).toBe("Plans changed");
     const restored = await command(d, [{ type: "set-status", status: "confirmed" }]);
     expect(restored.cancelledAt).toBeNull();

@@ -1,10 +1,12 @@
 import type { WorkflowAction, WorkflowCommand, WorkflowCreate } from "@pms/shared";
-import { eq, inArray, sql } from "drizzle-orm";
+import { and, eq, inArray, isNull, sql } from "drizzle-orm";
 import { runBatch, type Db } from "./db";
 import {
+  cancellationWaivers,
   payments,
   guests,
   reservationGuests,
+  reservationCancellations,
   reservationRequests,
   reservationRoomNights,
   reservationRooms,
@@ -12,10 +14,17 @@ import {
   roomClosures,
   rooms,
   roomTypes,
+  user,
 } from "./db/schema";
 import { HttpError, rethrowConflict } from "./http";
 import { ratesBetween } from "./inventory";
 import { reservationBill } from "./lib/workflow-billing";
+import {
+  activeCancellation,
+  policyCharge,
+  presentCancellation,
+  type Cancellation,
+} from "./lib/cancellation";
 import { acceptedTerms, ratePlans, termColumns } from "./lib/rate-plans";
 import { quoteNights, overridesFor } from "./lib/quote";
 import { acceptPhone, requireStay } from "./rules";
@@ -31,6 +40,13 @@ export type State = {
   stayingGuests: (typeof reservationGuests.$inferSelect)[];
   lines: Stay[];
   payments: (typeof payments.$inferSelect)[];
+  cancellations: Cancellation[];
+};
+/** Who records a command and when, from the server, never the client. */
+export type CommandContext = {
+  today: string;
+  timeZone: string;
+  account: { id: string; username: string };
 };
 export type WorkflowIssue = {
   code: string;
@@ -41,16 +57,29 @@ const active = (s: string) => ["confirmed", "checked_in", "checked_out"].include
 const fail = (message: string): never => {
   throw new HttpError(400, message);
 };
-export const totals = (state: State) =>
-  reservationBill(state.lines, state.payments, state.reservation.discountCents, {
+export const totals = (state: State) => {
+  const cancellation = activeCancellation(state.cancellations);
+  return reservationBill(state.lines, state.payments, state.reservation.discountCents, {
     cancelled: state.reservation.status === "cancelled",
     paymentSchedule: acceptedTerms(state.reservation).paymentSchedule,
+    // Reservations cancelled before charges existed have no row and keep a zero charge.
+    cancellationChargeCents: cancellation ? presentCancellation(cancellation).finalChargeCents : 0,
   });
+};
 
 export async function loadState(db: Db, id: string): Promise<State> {
   // All rows and their revisions belong to one snapshot. Separate reads can
   // mix the old reservation dates with another command's new room nights.
-  const [parents, contacts, stayingGuests, lines, nightRows, paymentRows] = await db.batch([
+  const [
+    parents,
+    contacts,
+    stayingGuests,
+    lines,
+    nightRows,
+    paymentRows,
+    cancellationRows,
+    waiverRows,
+  ] = await db.batch([
     db.select().from(reservations).where(eq(reservations.id, id)),
     db
       .select({ contact: guests })
@@ -65,6 +94,8 @@ export async function loadState(db: Db, id: string): Promise<State> {
       .innerJoin(reservationRooms, eq(reservationRooms.id, reservationRoomNights.reservationRoomId))
       .where(eq(reservationRooms.reservationId, id)),
     db.select().from(payments).where(eq(payments.reservationId, id)),
+    cancellationQuery(db).where(eq(reservationCancellations.reservationId, id)),
+    waiverQuery(db).where(eq(reservationCancellations.reservationId, id)),
   ]);
   const reservation = parents[0];
   if (!reservation) throw new HttpError(404, "reservation not found");
@@ -82,7 +113,44 @@ export async function loadState(db: Db, id: string): Promise<State> {
         .map((n) => ({ date: n.date, priceCents: n.priceCents })),
     })),
     payments: paymentRows,
+    cancellations: withWaivers(cancellationRows, waiverRows),
   };
+}
+
+const cancellationQuery = (db: Db) =>
+  db
+    .select({ cancellation: reservationCancellations, recordedBy: user.username })
+    .from(reservationCancellations)
+    .leftJoin(user, eq(user.id, reservationCancellations.accountId));
+const waiverQuery = (db: Db) =>
+  db
+    .select({ waiver: cancellationWaivers, recordedBy: user.username })
+    .from(cancellationWaivers)
+    .innerJoin(
+      reservationCancellations,
+      eq(reservationCancellations.id, cancellationWaivers.cancellationId),
+    )
+    .leftJoin(user, eq(user.id, cancellationWaivers.accountId));
+type CancellationRow = Awaited<ReturnType<typeof cancellationQuery>>[number];
+type WaiverRow = Awaited<ReturnType<typeof waiverQuery>>[number];
+
+function withWaivers(cancellations: CancellationRow[], waivers: WaiverRow[]): Cancellation[] {
+  return cancellations.map(({ cancellation, recordedBy }) => ({
+    ...cancellation,
+    recordedBy,
+    waivers: waivers
+      .filter(({ waiver }) => waiver.cancellationId === cancellation.id)
+      .map(({ waiver, recordedBy }) => ({ ...waiver, recordedBy })),
+  }));
+}
+
+/** Every cancellation of the given reservations, with its waivers, for list reads. */
+export async function cancellationsFor(db: Db, reservationIds: string[]) {
+  const [cancellations, waivers] = await db.batch([
+    cancellationQuery(db).where(inArray(reservationCancellations.reservationId, reservationIds)),
+    waiverQuery(db).where(inArray(reservationCancellations.reservationId, reservationIds)),
+  ]);
+  return withWaivers(cancellations, waivers);
 }
 
 async function price(
@@ -132,10 +200,13 @@ export async function plan(
   db: Db,
   original: State,
   actions: WorkflowAction[],
-  today: string,
+  { today, timeZone, account }: CommandContext,
   now = new Date().toISOString(),
 ) {
   const state = structuredClone(original);
+  // Cancellations opened by this command are charged once its stay changes apply.
+  const opened = new Set<string>();
+  const waivers: Extract<WorkflowAction, { type: "waive-cancellation-charge" }>[] = [];
 
   const lineFor = (id: string) =>
     state.lines.find((l) => l.id === id) ?? fail("room line not found");
@@ -184,6 +255,29 @@ export async function plan(
       });
     }
     if (action.type === "set-status") {
+      const wasCancelled = state.reservation.status === "cancelled";
+      if (action.status === "cancelled" && !wasCancelled) {
+        const id = crypto.randomUUID();
+        opened.add(id);
+        state.cancellations.push({
+          id,
+          reservationId: state.reservation.id,
+          recordedAt: now,
+          freeUntil: null,
+          policyChargeCents: 0,
+          accountId: account.id,
+          recordedBy: account.username,
+          restoredAt: null,
+          waivers: [],
+        });
+      }
+      if (action.status !== "cancelled" && wasCancelled) {
+        // Restoration keeps the charge and its waivers as inactive history.
+        const cancellation = activeCancellation(state.cancellations);
+        if (cancellation && opened.has(cancellation.id))
+          state.cancellations = state.cancellations.filter((c) => c !== cancellation);
+        else if (cancellation) cancellation.restoredAt = now;
+      }
       Object.assign(state.reservation, {
         status: action.status,
         cancelledAt: action.status === "cancelled" ? (state.reservation.cancelledAt ?? now) : null,
@@ -243,8 +337,38 @@ export async function plan(
       Object.assign(line, room, { roomId: room.roomId ?? null });
     }
     if (action.type === "add-payment") state.payments.push(newPayment(action.payment));
+    if (action.type === "waive-cancellation-charge") waivers.push(action);
   }
   if (!state.lines.length) fail("reservation requires at least one room");
+  const cancellation = activeCancellation(state.cancellations);
+  if (cancellation && opened.has(cancellation.id))
+    Object.assign(
+      cancellation,
+      policyCharge({
+        rooms: state.lines,
+        discountCents: state.reservation.discountCents,
+        terms: acceptedTerms(state.reservation),
+        checkIn: state.reservation.checkIn,
+        now,
+        timeZone,
+      }),
+    );
+  if (waivers.length) {
+    if (!cancellation || state.reservation.status !== "cancelled")
+      fail("reservation has no active cancellation");
+    for (const waiver of waivers)
+      cancellation!.waivers.push({
+        id: crypto.randomUUID(),
+        cancellationId: cancellation!.id,
+        amountCents: waiver.amountCents,
+        reason: waiver.reason,
+        recordedAt: now,
+        accountId: account.id,
+        recordedBy: account.username,
+      });
+    if (presentCancellation(cancellation!).finalChargeCents < 0)
+      fail("waiver cannot exceed the cancellation charge");
+  }
   return { state };
 }
 
@@ -270,11 +394,11 @@ export async function execute(
   id: string,
   command: WorkflowCommand,
   preview: boolean,
-  today: string,
+  context: CommandContext,
 ) {
   for (let attempt = 0; attempt < 3; attempt++) {
     try {
-      return await executeAttempt(db, id, command, preview, today);
+      return await executeAttempt(db, id, command, preview, context);
     } catch (error) {
       if (!isStaleWrite(error)) throw error;
     }
@@ -287,7 +411,7 @@ async function executeAttempt(
   id: string,
   command: WorkflowCommand,
   preview: boolean,
-  today: string,
+  context: CommandContext,
 ) {
   const payload = JSON.stringify(command);
   const [seen] = await db
@@ -300,7 +424,8 @@ async function executeAttempt(
     return { replayed: true };
   }
   const original = await loadState(db, id);
-  const { state } = await plan(db, original, command.actions, today);
+  const now = new Date().toISOString();
+  const { state } = await plan(db, original, command.actions, context, now);
   const revalidateAllRooms =
     original.reservation.checkIn !== state.reservation.checkIn ||
     original.reservation.checkOut !== state.reservation.checkOut ||
@@ -311,7 +436,6 @@ async function executeAttempt(
     return { state, issues, replayed: false };
   }
   rejectRoomIssues(roomIssues);
-  const now = new Date().toISOString();
   const changed = state.lines.filter(
     (l) => JSON.stringify(l) !== JSON.stringify(original.lines.find((o) => o.id === l.id)),
   );
@@ -359,6 +483,30 @@ async function executeAttempt(
             ? db.update(payments).set(e).where(eq(payments.id, e.id))
             : db.insert(payments).values(e),
         ),
+      // Restore before opening a cancellation: one reservation has one active cancellation.
+      ...state.cancellations
+        .filter((c) =>
+          original.cancellations.some((o) => o.id === c.id && o.restoredAt !== c.restoredAt),
+        )
+        .map((c) =>
+          db
+            .update(reservationCancellations)
+            .set({ restoredAt: c.restoredAt })
+            .where(
+              and(
+                eq(reservationCancellations.id, c.id),
+                isNull(reservationCancellations.restoredAt),
+              ),
+            ),
+        ),
+      ...state.cancellations
+        .filter((c) => !original.cancellations.some((o) => o.id === c.id))
+        // Inserts write only table columns, not the presented account or waivers.
+        .map((c) => db.insert(reservationCancellations).values(c)),
+      ...state.cancellations
+        .flatMap((c) => c.waivers)
+        .filter((w) => !original.cancellations.some((o) => o.waivers.some((ow) => ow.id === w.id)))
+        .map((w) => db.insert(cancellationWaivers).values(w)),
       // Restoration and changed dates must pass the room-validity triggers
       // against current room types, even when every saved room is unchanged.
       // Decide this from the original state, not the temporary cancelled status:

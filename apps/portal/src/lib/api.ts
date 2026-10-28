@@ -223,12 +223,41 @@ export type RatePlanTerms = {
   priceAdjustmentPercent: number;
 };
 
+export type CancellationWaiver = {
+  id: string;
+  amountCents: number;
+  reason: string;
+  recordedAt: string;
+  recordedBy: string | null;
+};
+
+/** A recorded cancellation; its charge was computed once, when it was recorded. */
+export type ReservationCancellation = {
+  id: string;
+  recordedAt: string;
+  recordedBy: string | null;
+  /** The free-cancellation deadline; null when the accepted terms are never free. */
+  freeUntil: string | null;
+  policyChargeCents: number;
+  waivedCents: number;
+  finalChargeCents: number;
+  /** Set when the reservation was restored; the cancellation is then history. */
+  restoredAt: string | null;
+  waivers: CancellationWaiver[];
+};
+
 export type ReservationDetail = {
   status: string;
   cancellationReason: string | null;
   cancelledAt: string | null;
   notes: string | null;
   creditCents: number;
+  /** Money retained beyond a cancellation's final charge; zero while not cancelled. */
+  refundDueCents: number;
+  /** The active cancellation; null when not cancelled or cancelled before charges existed. */
+  cancellation: ReservationCancellation | null;
+  /** Every recorded cancellation, oldest first, including restored ones. */
+  cancellations: ReservationCancellation[];
   savedDiscountCents: number;
   id: string;
   code: string;
@@ -512,6 +541,7 @@ export type WorkflowAction =
     }
   | { type: "edit-payment"; paymentId: string; payment: PaymentInput }
   | { type: "delete-payment"; paymentId: string }
+  | { type: "waive-cancellation-charge"; amountCents: number; reason: string }
   | { type: "notes"; notes: string };
 export type WorkflowCommand = {
   requestId: string;
@@ -528,6 +558,9 @@ export type WorkflowBilling = Pick<
   | "paidCents"
   | "balanceCents"
   | "creditCents"
+  | "refundDueCents"
+  | "cancellation"
+  | "cancellations"
   | "savedDiscountCents"
   | "ratePlan"
   | "requiredInitialPaymentCents"

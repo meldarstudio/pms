@@ -5,7 +5,14 @@ import { presentReservation } from "./present";
 import { loadState } from "./workflow";
 
 export async function reservationDetail(db: Db, id: string, currency: string) {
-  const { reservation, contact: guest, lines, stayingGuests, payments } = await loadState(db, id);
+  const {
+    reservation,
+    contact: guest,
+    lines,
+    stayingGuests,
+    payments,
+    cancellations,
+  } = await loadState(db, id);
   const nights = lines.flatMap((line) =>
     line.nights.map((night) => ({ ...night, reservationRoomId: line.id })),
   );
@@ -20,6 +27,7 @@ export async function reservationDetail(db: Db, id: string, currency: string) {
   return presentReservation({
     stayingGuests,
     payments,
+    cancellations,
     reservation,
     guest,
     lines,

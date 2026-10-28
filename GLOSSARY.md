@@ -292,6 +292,7 @@ _Avoid_: Refund, received payment, reservation discount
 
 **Reservation bill**:
 The account of a reservation's room charges, discount, received payments, and resulting balance.
+Cancellation replaces the room charges and discount with the final cancellation charge.
 _Avoid_: Invoice, payment receipt
 
 **Subtotal**:
@@ -304,7 +305,8 @@ discount alone cannot create credit.
 _Avoid_: Payment, refund, rate override
 
 **Total**:
-The reservation's subtotal less its applied discount, before deducting payments.
+The reservation's subtotal less its applied discount, before deducting payments. A cancelled
+reservation's total is its cancellation charge after waivers.
 _Avoid_: Balance, amount paid
 
 **Payment**:
@@ -350,8 +352,8 @@ _Avoid_: Total, unpaid charges without accounting for payments
 
 **Credit**:
 The amount by which a reservation's payments exceed its total, represented by the magnitude of a
-negative balance. Credit remains on the reservation for reference, including after cancellation, and
-does not imply a refund or a redeemable coupon.
+negative balance. Credit remains on the reservation for reference and does not imply a refund or a
+redeemable coupon. After cancellation, credit is the refund due.
 _Avoid_: Refund, coupon
 
 **Future-stay coupon**:

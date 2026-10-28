@@ -186,6 +186,53 @@ export const reservationRequests = sqliteTable("reservation_requests", {
   createdAt: text("created_at").notNull(),
 });
 
+// One row per cancellation. The charge is computed from the accepted terms when
+// cancellation is recorded and never recomputed; restoration marks it inactive.
+export const reservationCancellations = sqliteTable(
+  "reservation_cancellations",
+  {
+    id: text("id").primaryKey(),
+    reservationId: text("reservation_id")
+      .notNull()
+      .references(() => reservations.id),
+    recordedAt: text("recorded_at").notNull(),
+    /** The free-cancellation deadline in UTC; null when the terms are never free. */
+    freeUntil: text("free_until"),
+    policyChargeCents: integer("policy_charge_cents").notNull(),
+    accountId: text("account_id")
+      .notNull()
+      .references(() => user.id),
+    restoredAt: text("restored_at"),
+  },
+  (table) => [
+    uniqueIndex("reservation_cancellations_active")
+      .on(table.reservationId)
+      .where(sql`${table.restoredAt} IS NULL`),
+    check("reservation_cancellations_charge", sql`${table.policyChargeCents} >= 0`),
+  ],
+);
+
+// Staff reductions of a cancellation charge. A waiver is neither a payment nor a refund.
+export const cancellationWaivers = sqliteTable(
+  "cancellation_waivers",
+  {
+    id: text("id").primaryKey(),
+    cancellationId: text("cancellation_id")
+      .notNull()
+      .references(() => reservationCancellations.id),
+    amountCents: integer("amount_cents").notNull(),
+    reason: text("reason").notNull(),
+    recordedAt: text("recorded_at").notNull(),
+    accountId: text("account_id")
+      .notNull()
+      .references(() => user.id),
+  },
+  (table) => [
+    index("cancellation_waivers_cancellation").on(table.cancellationId),
+    check("cancellation_waivers_amount", sql`${table.amountCents} > 0`),
+  ],
+);
+
 // Better Auth tables. Field names are Better Auth's; times are epoch milliseconds.
 const authTime = (name: string) => integer(name, { mode: "timestamp_ms" });
 

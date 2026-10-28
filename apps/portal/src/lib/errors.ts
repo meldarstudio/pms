@@ -48,6 +48,9 @@ const messages: Record<string, string> = {
   "reservation not found": "La reserva ya no existe.",
   "guest not found": "El huésped ya no existe.",
   "payment not found": "El pago ya no existe.",
+  "reservation has no active cancellation": "La reserva no tiene una cancelación activa.",
+  "waiver cannot exceed the cancellation charge":
+    "La exoneración no puede superar el cargo de cancelación pendiente.",
   "too many guests for this room type":
     "La habitación no tiene capacidad para todos los huéspedes.",
   "stay cannot be longer than 60 nights": "La estancia no puede superar las 60 noches.",

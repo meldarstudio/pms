@@ -25,28 +25,36 @@ export function bill(
 /**
  * The reservation bill with its payment schedule's required initial payment and
  * the remaining scheduled amount. Detail, list, and preview reads share this.
+ * Cancellation replaces the stay charges with the final cancellation charge, and
+ * any money retained beyond it is a refund due.
  */
 export function reservationBill(
   rooms: BillableRoom[],
   payments: { amountCents: number }[],
   discountCents: number,
-  terms: { cancelled: boolean; paymentSchedule: PaymentSchedule },
+  terms: { cancelled: boolean; paymentSchedule: PaymentSchedule; cancellationChargeCents?: number },
 ) {
   const billable = terms.cancelled ? [] : rooms;
-  const charges = billable.reduce(
-    (sum, room) => sum + room.nights.reduce((s, night) => s + night.priceCents, 0),
-    0,
-  );
+  const charges = terms.cancelled
+    ? (terms.cancellationChargeCents ?? 0)
+    : billable.reduce(
+        (sum, room) => sum + room.nights.reduce((s, night) => s + night.priceCents, 0),
+        0,
+      );
   const totals = bill(charges, payments, discountCents, { cancelled: terms.cancelled });
   // A deposit never exceeds the final total after the reservation discount.
-  const requiredInitialPaymentCents =
-    terms.paymentSchedule === "full_upfront"
+  const requiredInitialPaymentCents = terms.cancelled
+    ? 0
+    : terms.paymentSchedule === "full_upfront"
       ? totals.totalCents
       : Math.min(firstNightCents(billable), totals.totalCents);
   return {
     ...totals,
+    // Completed refunds count as zero until refunds are recorded.
+    refundDueCents: terms.cancelled ? totals.creditCents : 0,
     requiredInitialPaymentCents,
-    remainingScheduledCents: totals.totalCents - requiredInitialPaymentCents,
+    // The payment schedule covers a stay; a cancelled reservation has none left.
+    remainingScheduledCents: terms.cancelled ? 0 : totals.totalCents - requiredInitialPaymentCents,
   };
 }
 

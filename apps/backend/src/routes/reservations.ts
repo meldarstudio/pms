@@ -20,11 +20,13 @@ import {
   or,
   sql,
 } from "drizzle-orm";
-import { Hono } from "hono";
+import { Hono, type Context } from "hono";
 import { getDb } from "../db";
 import {
+  cancellationWaivers,
   payments,
   guests,
+  reservationCancellations,
   reservationRoomNights,
   reservationRooms,
   reservations,
@@ -34,7 +36,14 @@ import {
 import type { Env } from "../env";
 import { currency, validate } from "../http";
 import { reservationDetail } from "../load";
-import { createWorkflow, execute, totals } from "../workflow";
+import {
+  cancellationsFor,
+  createWorkflow,
+  execute,
+  totals,
+  type CommandContext,
+} from "../workflow";
+import { cancellationFields } from "../lib/cancellation";
 import { chunks } from "../lib/chunks";
 import { presentReservation } from "../present";
 import { bill } from "../lib/workflow-billing";
@@ -109,6 +118,18 @@ reservationRoutes.get("/", validate("query", reservationListQuerySchema), async 
       ), 0)`
         : sql<number>`0`
       ).as("list_paid_cents"),
+      // The active cancellation's final charge; restored and legacy cancellations charge nothing.
+      cancellationChargeCents: (needsBalance
+        ? sql<number>`coalesce((
+        select ${reservationCancellations.policyChargeCents} - coalesce((
+          select sum(${cancellationWaivers.amountCents}) from ${cancellationWaivers}
+          where ${cancellationWaivers.cancellationId} = ${reservationCancellations.id}
+        ), 0) from ${reservationCancellations}
+        where ${reservationCancellations.reservationId} = ${reservations.id}
+          and ${reservationCancellations.restoredAt} is null
+      ), 0)`
+        : sql<number>`0`
+      ).as("list_cancellation_charge_cents"),
     })
     .from(reservations)
     .innerJoin(guests, eq(guests.id, reservations.guestId))
@@ -137,10 +158,10 @@ reservationRoutes.get("/", validate("query", reservationListQuerySchema), async 
     // Keep the authoritative billing policy in bill(), which reservationBill applies to every read.
     const balanced = matches
       .map((row) => {
-        const { reservation, subtotalCents, paidCents } = row;
+        const { reservation, subtotalCents, paidCents, cancellationChargeCents } = row;
         const cancelled = reservation.status === "cancelled";
         const { balanceCents } = bill(
-          cancelled ? 0 : subtotalCents,
+          cancelled ? cancellationChargeCents : subtotalCents,
           [{ amountCents: paidCents }],
           reservation.discountCents,
           { cancelled },
@@ -168,7 +189,7 @@ reservationRoutes.get("/", validate("query", reservationListQuerySchema), async 
     q.paginated ? { rows, total, limit: q.limit ?? 50, offset: q.offset ?? 0 } : rows;
   if (!rows.length) return c.json(response([]));
   const ids = rows.map((r) => r.reservation.id);
-  const [lines, paymentRows, types, roomRows] = await Promise.all([
+  const [lines, paymentRows, types, roomRows, cancellationRows] = await Promise.all([
     Promise.all(
       chunks(ids, 80).map((ids) =>
         db.select().from(reservationRooms).where(inArray(reservationRooms.reservationId, ids)),
@@ -181,6 +202,7 @@ reservationRoutes.get("/", validate("query", reservationListQuerySchema), async 
     ).then((r) => r.flat()),
     db.select().from(roomTypes),
     db.select().from(rooms),
+    Promise.all(chunks(ids, 80).map((ids) => cancellationsFor(db, ids))).then((r) => r.flat()),
   ]);
   const nights = (
     await Promise.all(
@@ -206,6 +228,7 @@ reservationRoutes.get("/", validate("query", reservationListQuerySchema), async 
           lines: ownLines,
           nights: nights.filter((n) => ownIds.has(n.reservationRoomId)),
           payments: paymentRows.filter((payment) => payment.reservationId === reservation.id),
+          cancellations: cancellationRows.filter((row) => row.reservationId === reservation.id),
           types,
           roomRows,
           currency: currency(c),
@@ -223,13 +246,17 @@ reservationRoutes.post("/", validate("json", workflowCreateSchema), async (c) =>
 reservationRoutes.get("/:id", async (c) =>
   c.json(await reservationDetail(getDb(c.env.DB), c.req.param("id"), currency(c))),
 );
+const commandContext = (c: Context<Env>): CommandContext => {
+  const { today, timeZone } = c.get("propertyCalendar");
+  return { today, timeZone, account: c.var.account };
+};
 reservationRoutes.post("/:id/preview", validate("json", workflowCommandSchema), async (c) => {
   const result = await execute(
     getDb(c.env.DB),
     c.req.param("id"),
     c.req.valid("json"),
     true,
-    c.get("propertyCalendar").today,
+    commandContext(c),
   );
   if (!result.state) return c.json({ replayed: true });
   const bill = totals(result.state);
@@ -237,6 +264,7 @@ reservationRoutes.post("/:id/preview", validate("json", workflowCommandSchema), 
     validation: { issues: result.issues },
     billing: {
       ...bill,
+      ...cancellationFields(result.state.cancellations),
       ratePlan: acceptedTerms(result.state.reservation),
       status: result.state.reservation.status,
       checkIn: result.state.reservation.checkIn,
@@ -257,6 +285,6 @@ reservationRoutes.post("/:id/preview", validate("json", workflowCommandSchema), 
 });
 reservationRoutes.post("/:id/commands", validate("json", workflowCommandSchema), async (c) => {
   const db = getDb(c.env.DB);
-  await execute(db, c.req.param("id"), c.req.valid("json"), false, c.get("propertyCalendar").today);
+  await execute(db, c.req.param("id"), c.req.valid("json"), false, commandContext(c));
   return c.json(await reservationDetail(db, c.req.param("id"), currency(c)));
 });

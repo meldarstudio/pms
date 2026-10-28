@@ -40,6 +40,9 @@ beforeEach(() => {
     paidCents: 10025,
     balanceCents: 14975,
     creditCents: 0,
+    refundDueCents: 0,
+    cancellation: null,
+    cancellations: [],
     ratePlan: {
       plan: "flexible",
       cancellationPolicy: {

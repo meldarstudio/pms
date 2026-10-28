@@ -8,6 +8,7 @@ import type {
   roomTypes,
   rooms,
 } from "./db/schema";
+import { cancellationFields, type Cancellation } from "./lib/cancellation";
 import { nightsBetween } from "./lib/dates";
 import { acceptedTerms } from "./lib/rate-plans";
 import { reservationBill } from "./lib/workflow-billing";
@@ -47,6 +48,7 @@ export function presentReservation(input: {
   payments: (typeof payments.$inferSelect)[];
   currency: string;
   stayingGuests?: (typeof reservationGuests.$inferSelect)[];
+  cancellations: Cancellation[];
 }) {
   const typeById = new Map(input.types.map((type) => [type.id, type]));
   const roomById = new Map(input.roomRows.map((room) => [room.id, room]));
@@ -80,9 +82,12 @@ export function presentReservation(input: {
   });
 
   const ratePlan = acceptedTerms(input.reservation);
+  const cancellation = cancellationFields(input.cancellations);
   const totals = reservationBill(roomsOut, input.payments, input.reservation.discountCents, {
     cancelled: cancelled(input.reservation),
     paymentSchedule: ratePlan.paymentSchedule,
+    // Reservations cancelled before charges existed have no row and keep a zero charge.
+    cancellationChargeCents: cancellation.cancellation?.finalChargeCents ?? 0,
   });
 
   return {
@@ -103,6 +108,7 @@ export function presentReservation(input: {
     nights: nightsBetween(input.reservation.checkIn, input.reservation.checkOut).length,
     ratePlan,
     ...totals,
+    ...cancellation,
     savedDiscountCents: input.reservation.discountCents,
     rooms: roomsOut,
     payments: input.payments,

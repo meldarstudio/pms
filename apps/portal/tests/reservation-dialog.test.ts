@@ -95,6 +95,9 @@ function detail(): ReservationDetail {
     cancelledAt: null,
     savedDiscountCents: 0,
     creditCents: 0,
+    refundDueCents: 0,
+    cancellation: null,
+    cancellations: [],
     ratePlan: {
       plan: "flexible",
       cancellationPolicy: {

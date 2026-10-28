@@ -248,6 +248,14 @@ export const workflowActionSchema = z.discriminatedUnion("type", [
     })
     .strict(),
   z.object({ type: z.literal("delete-payment"), paymentId: z.string().min(1) }).strict(),
+  // Reduces the active cancellation charge; it is neither a payment nor a refund.
+  z
+    .object({
+      type: z.literal("waive-cancellation-charge"),
+      amountCents: cents,
+      reason: text(2000),
+    })
+    .strict(),
   z.object({ type: z.literal("notes"), notes: z.string().max(2000) }).strict(),
 ]);
 export const workflowCommandSchema = z

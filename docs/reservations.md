@@ -38,18 +38,17 @@ Each reservation stores a snapshot of the terms it was accepted under: plan,
 cancellation-charge basis, free-cancellation hours, check-in time, payment
 schedule, and price adjustment. The basis (`cancellation_charge_basis` in the
 database, `cancellationPolicy.chargeBasis` in responses) is `first_night` or
-`final_total`. It says what a [cancellation charge](../GLOSSARY.md#rates-and-charges) would be
-computed from; no charge amount is computed or stored. Changing a definition never
+`final_total`. It says what a [cancellation charge](../GLOSSARY.md#rates-and-charges) is
+computed from; see [cancellation charges](#cancellation-charges). Changing a definition never
 alters an existing reservation, and workflow commands do not change the stored
 terms. `POST /reservations` takes no
 plan and always stores Flexible terms. Column defaults give Flexible terms to rows
 written without them: reservations from before migration `0006` and inserts by an
 older Worker.
 
-Only the payment schedule affects current behavior. Pricing and cancellation are
-unchanged: Non-refundable cannot yet be selected, its price adjustment is not
-applied, the free-cancellation deadline is stored but not enforced, and
-cancellation still zeroes the bill.
+The payment schedule and cancellation policy affect current behavior. Pricing is
+unchanged: Non-refundable cannot yet be selected and its price adjustment is not
+applied.
 
 Detail, list, and preview reads share `reservationBill` in
 [workflow-billing.ts](../apps/backend/src/lib/workflow-billing.ts) and return
@@ -61,8 +60,8 @@ SQL aggregates rather than nights. The
 sum of each reserved room's first saved nightly price, capped at the total after the
 reservation discount. Full upfront requires the whole total. The remaining
 scheduled amount is the total less the required initial payment. Both are zero for
-a cancelled reservation, whose total is zero. Neither depends on payments received;
-the balance still does.
+a cancelled reservation, whose total is its final cancellation charge. Neither
+depends on payments received; the balance still does.
 
 Creation shows no plan or scheduled amounts before saving. Its total is a portal
 estimate: each room type's availability stay total, less the capped discount.
@@ -77,11 +76,56 @@ Check-in and checkout actions change the reservation status. They do not record
 separate arrival or departure timestamps or change the dates. For an early
 departure, save the shorter date range together with the checkout status.
 
-Staff may cancel a whole reservation, releasing its rooms and reducing its bill
-to zero. The reservation and its payments remain recorded, with payments retained
-as credit for reference. Removing an individual reserved room drops its charges
+Staff may cancel a whole reservation, releasing its rooms and replacing its stay
+charges with a [cancellation charge](#cancellation-charges). The reservation, its
+nights, and its payments remain recorded. Removing an individual reserved room drops its charges
 and releases its inventory while the remaining rooms keep the reservation's
 status and stay dates. To release the last room, cancel the reservation.
+
+## Cancellation charges
+
+Cancelling from an inventory-holding status records a cancellation with the time
+it was recorded, the authenticated account, the free-cancellation deadline, and
+the policy charge. The charge comes from the stored terms at server time, never
+from the request:
+
+- The deadline is `freeUntilHoursBeforeCheckIn` hours before the terms' check-in
+  time on the check-in date in `PROPERTY_TIME_ZONE`. A cancellation recorded at or
+  before it costs nothing; exactly 48 hours before a Flexible check-in is free.
+  Terms without free cancellation have no deadline (`freeUntil: null`).
+- After the deadline, `first_night` charges the first-night requirement (each
+  reserved room's first saved nightly price, capped at the total after discount)
+  and `final_total` charges the total after discount.
+
+The cancellation charge replaces the stay charges in the bill. The balance is the
+final charge less payments received; `refundDueCents` is its positive excess and is
+zero for reservations that are not cancelled. Refunds are not recorded yet, so
+completed refunds count as zero. Detail, list, preview, and the list's balance
+filter use the same final charge, so a cancelled reservation's credit is its
+refund due.
+
+A `waive-cancellation-charge` action (`amountCents`, `reason`) reduces the active
+cancellation's charge, in the same command as the cancellation or later. Each
+waiver records the amount, reason, time, and authenticated account; the original
+policy charge is kept. Waivers together cannot exceed the policy charge, and a
+reservation without an active cancellation rejects them. A waiver is neither a
+payment nor a refund.
+
+Reads return `cancellation`, the active cancellation with `policyChargeCents`,
+`waivedCents`, `finalChargeCents`, `freeUntil`, `recordedAt`, `recordedBy`, and its
+`waivers`, or `null`; and `cancellations`, every cancellation including restored
+ones. Reservations cancelled before migration `0007` have no cancellation record
+and keep a zero charge.
+
+The cancellation, its waivers, and the status change are written in the command's
+single batch under the revision guard. An idempotent retry replays the stored
+receipt, and a concurrent retry loses the revision race, so neither duplicates a
+charge or waiver. Cancelling an already cancelled reservation records nothing new.
+
+Restoring to an inventory-holding status revalidates inventory like any
+restoration, marks the active cancellation restored, and bills the stay again
+under the unchanged plan. The restored cancellation and its waivers remain in
+`cancellations` as inactive history; a later cancellation computes a new charge.
 
 ## Reservation list reads
 
@@ -99,9 +143,9 @@ Optional query dimensions combine with AND:
   `confirmed`, `checked_in`, `checked_out`, and `cancelled` values, combined with OR.
   Omit both for unrestricted statuses; when both are sent, both restrictions apply.
 - `balance=outstanding|settled|credit` selects positive, zero, or negative signed
-  balances independently of status. Cancellation has a zero bill and retains
-  payments as credit. The filter applies `bill()`, the billing policy that
-  `reservationBill` uses for detail, list, and workflow reads.
+  balances independently of status. A cancelled reservation's charges are its final
+  cancellation charge, so payments beyond it are credit. The filter applies `bill()`,
+  the billing policy that `reservationBill` uses for detail, list, and workflow reads.
 - `assignment=assigned|unassigned` selects reservations with every physical room
   assigned or with any unassigned reserved room, including partial assignments.
 - `q` retains per-token booking-contact-name or reservation-code search; `guestId`

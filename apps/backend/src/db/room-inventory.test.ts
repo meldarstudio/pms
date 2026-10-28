@@ -411,3 +411,61 @@ describe("staying guest assignment", () => {
     expect(db.prepare("PRAGMA foreign_key_check").all()).toEqual([]);
   });
 });
+
+describe("cancellation charges", () => {
+  it("adds cancellation charges without changing existing data and allows one active cancellation", () => {
+    const previous = new DatabaseSync(":memory:");
+    try {
+      previous.exec("PRAGMA foreign_keys = ON");
+      const split = journal.entries.findIndex((entry) => entry.tag === "0007_cancellation_charges");
+      expect(split).toBeGreaterThan(0);
+      for (const entry of journal.entries.slice(0, split))
+        previous.exec(readFileSync(new URL(`${entry.tag}.sql`, migrationsDir), "utf8"));
+      previous.exec(`
+        INSERT INTO room_types (id, name, max_occupancy, base_rate_cents, created_at)
+          VALUES ('legacy', 'Double', 2, 10000, '2026-10-05');
+        INSERT INTO rooms (id, number, room_type_id) VALUES ('legacy-room', '201', 'legacy');
+        INSERT INTO guests (id, full_name, created_at) VALUES ('legacy-guest', 'Ada Lovelace', '2026-10-05');
+        INSERT INTO reservations (id, code, guest_id, status, cancelled_at, cancellation_reason, check_in, check_out, created_at)
+          VALUES ('cancelled', 'OLD1', 'legacy-guest', 'cancelled', '2026-10-06T12:00:00.000Z', 'Plans changed', '2026-10-08', '2026-10-10', '2026-10-05'),
+                 ('active', 'OLD2', 'legacy-guest', 'confirmed', NULL, NULL, '2026-10-08', '2026-10-10', '2026-10-05');
+        INSERT INTO reservation_rooms (id, reservation_id, room_type_id, adults, created_at)
+          VALUES ('cancelled-line', 'cancelled', 'legacy', 1, '2026-10-05'), ('active-line', 'active', 'legacy', 1, '2026-10-05');
+        INSERT INTO reservation_room_nights VALUES ('cancelled-night', 'cancelled-line', '2026-10-08', 9000);
+        INSERT INTO payments (id, reservation_id, amount_cents, method, payment_date, created_at)
+          VALUES ('cancelled-payment', 'cancelled', 4000, 'cash', '2026-10-05', '2026-10-05');
+        INSERT INTO "user" (id, name, email, username, role, created_at, updated_at)
+          VALUES ('staff', 'Staff', 'staff@example.test', 'staff', 'staff', 0, 0);
+      `);
+      const tables = ["reservations", "reservation_rooms", "reservation_room_nights", "payments"];
+      const snapshot = () =>
+        tables.map((table) => previous.prepare(`SELECT * FROM ${table} ORDER BY id`).all());
+      const before = snapshot();
+      for (const entry of journal.entries.slice(split))
+        previous.exec(readFileSync(new URL(`${entry.tag}.sql`, migrationsDir), "utf8"));
+      expect(snapshot()).toEqual(before);
+      // No charge is computed retroactively.
+      expect(previous.prepare("SELECT * FROM reservation_cancellations").all()).toEqual([]);
+      expect(previous.prepare("SELECT * FROM cancellation_waivers").all()).toEqual([]);
+
+      const cancellation = previous.prepare(`INSERT INTO reservation_cancellations
+        (id, reservation_id, recorded_at, policy_charge_cents, account_id, restored_at)
+        VALUES (?, 'active', '2026-10-07T12:00:00.000Z', ?, 'staff', ?)`);
+      cancellation.run("restored", 9000, "2026-10-07T13:00:00.000Z");
+      cancellation.run("current", 9000, null);
+      expect(() => cancellation.run("duplicate", 9000, null)).toThrow("UNIQUE");
+      expect(() => cancellation.run("negative", -1, "2026-10-07T13:00:00.000Z")).toThrow(
+        "reservation_cancellations_charge",
+      );
+      const waiver = previous.prepare(`INSERT INTO cancellation_waivers
+        (id, cancellation_id, amount_cents, reason, recorded_at, account_id)
+        VALUES (?, 'current', ?, 'Goodwill', '2026-10-07T14:00:00.000Z', ?)`);
+      waiver.run("waiver", 3000, "staff");
+      expect(() => waiver.run("zero", 0, "staff")).toThrow("cancellation_waivers_amount");
+      expect(() => waiver.run("unknown", 1, "nobody")).toThrow("FOREIGN KEY");
+      expect(previous.prepare("PRAGMA foreign_key_check").all()).toEqual([]);
+    } finally {
+      previous.close();
+    }
+  });
+});
