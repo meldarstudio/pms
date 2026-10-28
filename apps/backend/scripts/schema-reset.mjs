@@ -7,6 +7,8 @@ const tables = [
   "reservation_guests",
   "reservation_room_nights",
   "payments",
+  "cancellation_waivers",
+  "reservation_cancellations",
   "reservation_rooms",
   "reservations",
   "room_closures",

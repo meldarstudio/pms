@@ -186,8 +186,8 @@ export const reservationRequests = sqliteTable("reservation_requests", {
   createdAt: text("created_at").notNull(),
 });
 
-// One row per cancellation. The charge is computed from the accepted terms when
-// cancellation is recorded and never recomputed; restoration marks it inactive.
+// One row per cancellation or no-show. The charge is computed from the accepted
+// terms when the outcome is recorded and never recomputed; restoration marks it inactive.
 export const reservationCancellations = sqliteTable(
   "reservation_cancellations",
   {
@@ -195,8 +195,10 @@ export const reservationCancellations = sqliteTable(
     reservationId: text("reservation_id")
       .notNull()
       .references(() => reservations.id),
+    /** The status it was recorded for: `cancelled` or `no_show`. */
+    outcome: text("outcome").notNull().default("cancelled"),
     recordedAt: text("recorded_at").notNull(),
-    /** The free-cancellation deadline in UTC; null when the terms are never free. */
+    /** The free-cancellation deadline in UTC; null for a no-show or terms never free. */
     freeUntil: text("free_until"),
     policyChargeCents: integer("policy_charge_cents").notNull(),
     accountId: text("account_id")

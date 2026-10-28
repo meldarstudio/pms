@@ -49,6 +49,10 @@ const messages: Record<string, string> = {
   "guest not found": "El huésped ya no existe.",
   "payment not found": "El pago ya no existe.",
   "reservation has no active cancellation": "La reserva no tiene una cancelación activa.",
+  "only a confirmed reservation can be marked no-show":
+    "Solo una reserva confirmada puede marcarse como No-show.",
+  "restore the no-show reservation before cancelling it":
+    "Restaura la reserva No-show antes de cancelarla.",
   "waiver cannot exceed the cancellation charge":
     "La exoneración no puede superar el cargo de cancelación pendiente.",
   "too many guests for this room type":

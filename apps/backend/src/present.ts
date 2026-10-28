@@ -11,6 +11,7 @@ import type {
 import { cancellationFields, type Cancellation } from "./lib/cancellation";
 import { nightsBetween } from "./lib/dates";
 import { acceptedTerms } from "./lib/rate-plans";
+import { holdsInventory } from "./lib/statuses";
 import { reservationBill } from "./lib/workflow-billing";
 
 type Guest = typeof guests.$inferSelect;
@@ -23,7 +24,7 @@ type Night = Pick<
 type RoomType = typeof roomTypes.$inferSelect;
 type Room = typeof rooms.$inferSelect;
 
-const cancelled = (reservation: Reservation) => reservation.status === "cancelled";
+const released = (reservation: Reservation) => !holdsInventory(reservation.status);
 
 export function presentGuest(guest: Omit<Guest, "revision">) {
   return {
@@ -76,7 +77,7 @@ export function presentReservation(input: {
       children: line.children,
       subtotalCents: lineTotal,
       discountCents: 0,
-      totalCents: cancelled(input.reservation) ? 0 : lineTotal,
+      totalCents: released(input.reservation) ? 0 : lineTotal,
       nights: nights.map((night) => ({ date: night.date, priceCents: night.priceCents })),
     };
   });
@@ -84,7 +85,7 @@ export function presentReservation(input: {
   const ratePlan = acceptedTerms(input.reservation);
   const cancellation = cancellationFields(input.cancellations);
   const totals = reservationBill(roomsOut, input.payments, input.reservation.discountCents, {
-    cancelled: cancelled(input.reservation),
+    released: released(input.reservation),
     paymentSchedule: ratePlan.paymentSchedule,
     // Reservations cancelled before charges existed have no row and keep a zero charge.
     cancellationChargeCents: cancellation.cancellation?.finalChargeCents ?? 0,

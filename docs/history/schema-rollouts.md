@@ -10,6 +10,22 @@ checkout. Starting before `0002` with a checkout containing `0003` requires
 reviewing both sets of constraints together. Do not treat either section as a
 command to apply only one migration.
 
+## No-show outcome, migration 0008
+
+`0008_no_show_outcome.sql` adds `outcome` to `reservation_cancellations` with
+default `cancelled`, so every existing record reads as a cancellation with its
+charge, waivers, and restoration unchanged. It alters no other table, row, or
+trigger; the triggers already release inventory for any status outside confirmed,
+checked in, and checked out. Apply it before deploying the backend that reads the
+column: the new Worker's reservation reads fail without it. The previous Worker
+runs against the additive schema, and its inserts receive the default.
+
+The portal has no No-show control yet, so no reservation becomes `no_show` until a
+caller sends that status. Deliver the portal after the backend. For recovery, keep
+the column and applied history and roll application builds back together; a
+previous Worker treats a `no_show` reservation as releasing inventory but bills it
+as an active stay.
+
 ## Cancellation charges, migration 0007
 
 `0007_cancellation_charges.sql` creates `reservation_cancellations` and

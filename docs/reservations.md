@@ -60,7 +60,7 @@ SQL aggregates rather than nights. The
 sum of each reserved room's first saved nightly price, capped at the total after the
 reservation discount. Full upfront requires the whole total. The remaining
 scheduled amount is the total less the required initial payment. Both are zero for
-a cancelled reservation, whose total is its final cancellation charge. Neither
+a cancelled or No-show reservation, whose total is its final charge. Neither
 depends on payments received; the balance still does.
 
 Creation shows no plan or scheduled amounts before saving. Its total is a portal
@@ -82,30 +82,42 @@ nights, and its payments remain recorded. Removing an individual reserved room d
 and releases its inventory while the remaining rooms keep the reservation's
 status and stay dates. To release the last room, cancel the reservation.
 
+Staff may instead mark a confirmed reservation `no_show` when the guest never
+arrived. It is manual only: no arrival cutoff or automatic conversion exists. A
+checked-in, checked-out, or cancelled reservation cannot be marked No-show, and a
+No-show must be restored before it is cancelled. Like cancellation, No-show
+releases the rooms, keeps the nights and payments, and replaces the stay charges
+with a [policy charge](#cancellation-charges). The status, `statuses` filter,
+and the charge record's `outcome` distinguish them; see the
+[calendar](calendar.md) for which stays it shows.
+
 ## Cancellation charges
 
-Cancelling from an inventory-holding status records a cancellation with the time
-it was recorded, the authenticated account, the free-cancellation deadline, and
-the policy charge. The charge comes from the stored terms at server time, never
-from the request:
+Cancelling or marking No-show from an inventory-holding status records a
+cancellation with its `outcome` (`cancelled` or `no_show`), the time it was
+recorded, the authenticated account, the free-cancellation deadline, and the
+policy charge. The charge comes from the stored terms at server time, never from
+the request:
 
 - The deadline is `freeUntilHoursBeforeCheckIn` hours before the terms' check-in
   time on the check-in date in `PROPERTY_TIME_ZONE`. A cancellation recorded at or
   before it costs nothing; exactly 48 hours before a Flexible check-in is free.
-  Terms without free cancellation have no deadline (`freeUntil: null`).
+  Terms without free cancellation have no deadline (`freeUntil: null`). A No-show
+  has no deadline either: it always charges the basis below.
 - After the deadline, `first_night` charges the first-night requirement (each
   reserved room's first saved nightly price, capped at the total after discount)
   and `final_total` charges the total after discount.
 
 The cancellation charge replaces the stay charges in the bill. The balance is the
 final charge less payments received; `refundDueCents` is its positive excess and is
-zero for reservations that are not cancelled. Refunds are not recorded yet, so
+zero for reservations that hold inventory. Refunds are not recorded yet, so
 completed refunds count as zero. Detail, list, preview, and the list's balance
-filter use the same final charge, so a cancelled reservation's credit is its
-refund due.
+filter use the same final charge, so a cancelled or No-show reservation's credit
+is its refund due. Neither records a payment or charges a card; a paid
+Non-refundable No-show retains its payment with no refund due.
 
 A `waive-cancellation-charge` action (`amountCents`, `reason`) reduces the active
-cancellation's charge, in the same command as the cancellation or later. Each
+cancellation or No-show charge, in the same command or later. Each
 waiver records the amount, reason, time, and authenticated account; the original
 policy charge is kept. Waivers together cannot exceed the policy charge, and a
 reservation without an active cancellation rejects them. A waiver is neither a
@@ -113,19 +125,25 @@ payment nor a refund.
 
 Reads return `cancellation`, the active cancellation with `policyChargeCents`,
 `waivedCents`, `finalChargeCents`, `freeUntil`, `recordedAt`, `recordedBy`, and its
-`waivers`, or `null`; and `cancellations`, every cancellation including restored
-ones. Reservations cancelled before migration `0007` have no cancellation record
-and keep a zero charge.
+`waivers`, and `outcome`, or `null`; and `cancellations`, every cancellation and
+No-show including restored ones. Reservations cancelled before migration `0007`
+have no cancellation record and keep a zero charge; records from before `0008` read
+`outcome: "cancelled"`. `cancelledAt` and `cancellationReason` remain
+cancellation-only and are null for a No-show.
 
 The cancellation, its waivers, and the status change are written in the command's
 single batch under the revision guard. An idempotent retry replays the stored
 receipt, and a concurrent retry loses the revision race, so neither duplicates a
-charge or waiver. Cancelling an already cancelled reservation records nothing new.
+charge or waiver. Cancelling an already cancelled reservation, or marking a No-show
+again, records nothing new.
 
-Restoring to an inventory-holding status revalidates inventory like any
-restoration, marks the active cancellation restored, and bills the stay again
-under the unchanged plan. The restored cancellation and its waivers remain in
-`cancellations` as inactive history; a later cancellation computes a new charge.
+Restoring a cancelled or No-show reservation to an inventory-holding status
+revalidates inventory like any restoration, marks the active record restored, and
+bills the stay again under the unchanged plan. A rebooked room fails with
+`room is already assigned for those dates`. The restored record and its waivers
+remain in `cancellations` as inactive history; a later cancellation or No-show
+computes a new charge. Refunds and coupons are not recorded yet, so no refund or
+coupon activity blocks a restoration.
 
 ## Reservation list reads
 
@@ -140,11 +158,12 @@ Optional query dimensions combine with AND:
 - `checkIn` and `checkOut` match exact business dates. Legacy `from`/`to` retain
   calendar overlap semantics: checkout is after `from`, check-in is on or before `to`.
 - `status` retains the single-status filter. `statuses` accepts comma-separated
-  `confirmed`, `checked_in`, `checked_out`, and `cancelled` values, combined with OR.
+  `confirmed`, `checked_in`, `checked_out`, `cancelled`, and `no_show` values,
+  combined with OR.
   Omit both for unrestricted statuses; when both are sent, both restrictions apply.
 - `balance=outstanding|settled|credit` selects positive, zero, or negative signed
-  balances independently of status. A cancelled reservation's charges are its final
-  cancellation charge, so payments beyond it are credit. The filter applies `bill()`,
+  balances independently of status. A cancelled or No-show reservation's charges are
+  its final charge, so payments beyond it are credit. The filter applies `bill()`,
   the billing policy that `reservationBill` uses for detail, list, and workflow reads.
 - `assignment=assigned|unassigned` selects reservations with every physical room
   assigned or with any unassigned reserved room, including partial assignments.
@@ -196,7 +215,7 @@ atomic room swaps remains inside the write transaction.
 
 The workflow decides which rooms need current-rule validation from the original
 and proposed reservation states. Added or changed rooms, changed stay dates, and
-restoration from `cancelled` to an inventory-holding status require
+restoration from `cancelled` or `no_show` to an inventory-holding status require
 validation. Unchanged saved rooms can still accept payments, notes, discounts,
 status corrections within inventory-holding statuses, and cancellation after a
 room type's adult or child limit is reduced.

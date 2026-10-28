@@ -36,6 +36,7 @@ import {
 import type { Env } from "../env";
 import { currency, validate } from "../http";
 import { reservationDetail } from "../load";
+import { holdsInventory } from "../lib/statuses";
 import {
   cancellationsFor,
   createWorkflow,
@@ -118,7 +119,7 @@ reservationRoutes.get("/", validate("query", reservationListQuerySchema), async 
       ), 0)`
         : sql<number>`0`
       ).as("list_paid_cents"),
-      // The active cancellation's final charge; restored and legacy cancellations charge nothing.
+      // The active cancellation or no-show's final charge; restored and legacy cancellations charge nothing.
       cancellationChargeCents: (needsBalance
         ? sql<number>`coalesce((
         select ${reservationCancellations.policyChargeCents} - coalesce((
@@ -159,12 +160,12 @@ reservationRoutes.get("/", validate("query", reservationListQuerySchema), async 
     const balanced = matches
       .map((row) => {
         const { reservation, subtotalCents, paidCents, cancellationChargeCents } = row;
-        const cancelled = reservation.status === "cancelled";
+        const released = !holdsInventory(reservation.status);
         const { balanceCents } = bill(
-          cancelled ? cancellationChargeCents : subtotalCents,
+          released ? cancellationChargeCents : subtotalCents,
           [{ amountCents: paidCents }],
           reservation.discountCents,
-          { cancelled },
+          { released },
         );
         return { ...row, balanceCents };
       })
@@ -276,7 +277,7 @@ reservationRoutes.post("/:id/preview", validate("json", workflowCommandSchema), 
           ...line,
           subtotalCents,
           discountCents: 0,
-          totalCents: result.state!.reservation.status === "cancelled" ? 0 : subtotalCents,
+          totalCents: holdsInventory(result.state!.reservation.status) ? subtotalCents : 0,
         };
       }),
       payments: result.state.payments,

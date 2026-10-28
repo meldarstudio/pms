@@ -468,4 +468,38 @@ describe("cancellation charges", () => {
       previous.close();
     }
   });
+
+  it("reads every cancellation recorded before no-show outcomes as a cancellation, keeping its charge", () => {
+    const previous = new DatabaseSync(":memory:");
+    try {
+      previous.exec("PRAGMA foreign_keys = ON");
+      const split = journal.entries.findIndex((entry) => entry.tag === "0008_no_show_outcome");
+      expect(split).toBeGreaterThan(0);
+      for (const entry of journal.entries.slice(0, split))
+        previous.exec(readFileSync(new URL(`${entry.tag}.sql`, migrationsDir), "utf8"));
+      previous.exec(`
+        INSERT INTO guests (id, full_name, created_at) VALUES ('guest', 'Ada Lovelace', '2026-10-05');
+        INSERT INTO reservations (id, code, guest_id, status, cancelled_at, check_in, check_out, created_at)
+          VALUES ('cancelled', 'OLD1', 'guest', 'cancelled', '2026-10-06T12:00:00.000Z', '2026-10-08', '2026-10-10', '2026-10-05');
+        INSERT INTO "user" (id, name, email, username, role, created_at, updated_at)
+          VALUES ('staff', 'Staff', 'staff@example.test', 'staff', 'staff', 0, 0);
+        INSERT INTO reservation_cancellations (id, reservation_id, recorded_at, free_until, policy_charge_cents, account_id, restored_at)
+          VALUES ('restored', 'cancelled', '2026-10-06T11:00:00.000Z', '2026-10-06T20:00:00.000Z', 0, 'staff', '2026-10-06T11:30:00.000Z'),
+                 ('current', 'cancelled', '2026-10-06T12:00:00.000Z', '2026-10-06T20:00:00.000Z', 9000, 'staff', NULL);
+        INSERT INTO cancellation_waivers (id, cancellation_id, amount_cents, reason, recorded_at, account_id)
+          VALUES ('waiver', 'current', 3000, 'Goodwill', '2026-10-06T13:00:00.000Z', 'staff');
+      `);
+      const rows = () =>
+        previous.prepare("SELECT * FROM reservation_cancellations ORDER BY id").all();
+      const before = rows();
+      const waivers = previous.prepare("SELECT * FROM cancellation_waivers").all();
+      for (const entry of journal.entries.slice(split))
+        previous.exec(readFileSync(new URL(`${entry.tag}.sql`, migrationsDir), "utf8"));
+      expect(rows()).toEqual(before.map((row) => ({ ...row, outcome: "cancelled" })));
+      expect(previous.prepare("SELECT * FROM cancellation_waivers").all()).toEqual(waivers);
+      expect(previous.prepare("PRAGMA foreign_key_check").all()).toEqual([]);
+    } finally {
+      previous.close();
+    }
+  });
 });

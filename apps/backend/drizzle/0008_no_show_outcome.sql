@@ -1,0 +1,1 @@
+ALTER TABLE `reservation_cancellations` ADD `outcome` text DEFAULT 'cancelled' NOT NULL;

@@ -8,7 +8,7 @@ export type Cancellation = typeof reservationCancellations.$inferSelect & {
   waivers: Waiver[];
 };
 
-/** The cancellation whose charge replaces the stay bill; restored ones are history. */
+/** The cancellation or no-show whose charge replaces the stay bill; restored ones are history. */
 export const activeCancellation = (cancellations: Cancellation[]) =>
   cancellations.find((cancellation) => cancellation.restoredAt === null);
 
@@ -16,6 +16,7 @@ export function presentCancellation(cancellation: Cancellation) {
   const waivedCents = cancellation.waivers.reduce((sum, waiver) => sum + waiver.amountCents, 0);
   return {
     id: cancellation.id,
+    outcome: cancellation.outcome,
     recordedAt: cancellation.recordedAt,
     recordedBy: cancellation.recordedBy,
     freeUntil: cancellation.freeUntil,
@@ -82,11 +83,12 @@ export function zonedInstant(date: string, time: string, timeZone: string) {
 }
 
 /**
- * The charge the accepted terms impose when cancellation is recorded at `now`.
- * Cancellation is free at or before the deadline; otherwise the basis applies to
- * the stay bill after the reservation discount.
+ * The charge the accepted terms impose when the outcome is recorded at `now`.
+ * Cancellation is free at or before the deadline; otherwise, and always for a
+ * no-show, the basis applies to the stay bill after the reservation discount.
  */
 export function policyCharge(input: {
+  outcome: string;
   rooms: BillableRoom[];
   discountCents: number;
   terms: RatePlanTerms;
@@ -96,7 +98,7 @@ export function policyCharge(input: {
 }) {
   const { cancellationPolicy: policy } = input.terms;
   const freeUntil =
-    policy.freeUntilHoursBeforeCheckIn === null
+    input.outcome === "no_show" || policy.freeUntilHoursBeforeCheckIn === null
       ? null
       : new Date(
           zonedInstant(input.checkIn, policy.checkInTime, input.timeZone).getTime() -
@@ -105,7 +107,7 @@ export function policyCharge(input: {
   if (freeUntil !== null && Date.parse(input.now) <= Date.parse(freeUntil))
     return { freeUntil, policyChargeCents: 0 };
   const stay = reservationBill(input.rooms, [], input.discountCents, {
-    cancelled: false,
+    released: false,
     paymentSchedule: "first_night_deposit",
   });
   return {

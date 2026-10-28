@@ -231,12 +231,14 @@ export type CancellationWaiver = {
   recordedBy: string | null;
 };
 
-/** A recorded cancellation; its charge was computed once, when it was recorded. */
+/** A recorded cancellation or no-show; its charge was computed once, when it was recorded. */
 export type ReservationCancellation = {
   id: string;
+  /** The status it was recorded for. */
+  outcome: "cancelled" | "no_show";
   recordedAt: string;
   recordedBy: string | null;
-  /** The free-cancellation deadline; null when the accepted terms are never free. */
+  /** The free-cancellation deadline; null for a no-show or terms never free. */
   freeUntil: string | null;
   policyChargeCents: number;
   waivedCents: number;
@@ -252,11 +254,11 @@ export type ReservationDetail = {
   cancelledAt: string | null;
   notes: string | null;
   creditCents: number;
-  /** Money retained beyond a cancellation's final charge; zero while not cancelled. */
+  /** Money retained beyond a cancellation or no-show's final charge; zero while active. */
   refundDueCents: number;
-  /** The active cancellation; null when not cancelled or cancelled before charges existed. */
+  /** The active cancellation or no-show; null while active or cancelled before charges existed. */
   cancellation: ReservationCancellation | null;
-  /** Every recorded cancellation, oldest first, including restored ones. */
+  /** Every recorded cancellation and no-show, oldest first, including restored ones. */
   cancellations: ReservationCancellation[];
   savedDiscountCents: number;
   id: string;
@@ -537,7 +539,7 @@ export type WorkflowAction =
   | {
       type: "set-status";
       reason?: string;
-      status: "confirmed" | "checked_in" | "checked_out" | "cancelled";
+      status: "confirmed" | "checked_in" | "checked_out" | "cancelled" | "no_show";
     }
   | { type: "edit-payment"; paymentId: string; payment: PaymentInput }
   | { type: "delete-payment"; paymentId: string }

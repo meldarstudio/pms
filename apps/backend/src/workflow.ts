@@ -19,6 +19,7 @@ import {
 import { HttpError, rethrowConflict } from "./http";
 import { ratesBetween } from "./inventory";
 import { reservationBill } from "./lib/workflow-billing";
+import { holdsInventory } from "./lib/statuses";
 import {
   activeCancellation,
   policyCharge,
@@ -53,14 +54,13 @@ export type WorkflowIssue = {
   roomIndex: number;
   field: "roomId" | "roomTypeId" | "occupancy";
 };
-const active = (s: string) => ["confirmed", "checked_in", "checked_out"].includes(s);
 const fail = (message: string): never => {
   throw new HttpError(400, message);
 };
 export const totals = (state: State) => {
   const cancellation = activeCancellation(state.cancellations);
   return reservationBill(state.lines, state.payments, state.reservation.discountCents, {
-    cancelled: state.reservation.status === "cancelled",
+    released: !holdsInventory(state.reservation.status),
     paymentSchedule: acceptedTerms(state.reservation).paymentSchedule,
     // Reservations cancelled before charges existed have no row and keep a zero charge.
     cancellationChargeCents: cancellation ? presentCancellation(cancellation).finalChargeCents : 0,
@@ -204,7 +204,7 @@ export async function plan(
   now = new Date().toISOString(),
 ) {
   const state = structuredClone(original);
-  // Cancellations opened by this command are charged once its stay changes apply.
+  // Cancellations and no-shows opened by this command are charged once its stay changes apply.
   const opened = new Set<string>();
   const waivers: Extract<WorkflowAction, { type: "waive-cancellation-charge" }>[] = [];
 
@@ -255,13 +255,19 @@ export async function plan(
       });
     }
     if (action.type === "set-status") {
-      const wasCancelled = state.reservation.status === "cancelled";
-      if (action.status === "cancelled" && !wasCancelled) {
+      const from = state.reservation.status;
+      // A guest who arrived is not a no-show; a no-show is restored before it is cancelled.
+      if (action.status === "no_show" && from !== "confirmed" && from !== "no_show")
+        fail("only a confirmed reservation can be marked no-show");
+      if (action.status === "cancelled" && from === "no_show")
+        fail("restore the no-show reservation before cancelling it");
+      if (!holdsInventory(action.status) && holdsInventory(from)) {
         const id = crypto.randomUUID();
         opened.add(id);
         state.cancellations.push({
           id,
           reservationId: state.reservation.id,
+          outcome: action.status,
           recordedAt: now,
           freeUntil: null,
           policyChargeCents: 0,
@@ -271,7 +277,7 @@ export async function plan(
           waivers: [],
         });
       }
-      if (action.status !== "cancelled" && wasCancelled) {
+      if (holdsInventory(action.status) && !holdsInventory(from)) {
         // Restoration keeps the charge and its waivers as inactive history.
         const cancellation = activeCancellation(state.cancellations);
         if (cancellation && opened.has(cancellation.id))
@@ -345,6 +351,7 @@ export async function plan(
     Object.assign(
       cancellation,
       policyCharge({
+        outcome: cancellation.outcome,
         rooms: state.lines,
         discountCents: state.reservation.discountCents,
         terms: acceptedTerms(state.reservation),
@@ -354,7 +361,7 @@ export async function plan(
       }),
     );
   if (waivers.length) {
-    if (!cancellation || state.reservation.status !== "cancelled")
+    if (!cancellation || holdsInventory(state.reservation.status))
       fail("reservation has no active cancellation");
     for (const waiver of waivers)
       cancellation!.waivers.push({
@@ -429,7 +436,7 @@ async function executeAttempt(
   const revalidateAllRooms =
     original.reservation.checkIn !== state.reservation.checkIn ||
     original.reservation.checkOut !== state.reservation.checkOut ||
-    (!active(original.reservation.status) && active(state.reservation.status));
+    (!holdsInventory(original.reservation.status) && holdsInventory(state.reservation.status));
   const roomIssues = await validateRooms(db, state.lines, revalidateAllRooms ? [] : original.lines);
   if (preview) {
     const issues = [...roomIssues, ...(await validateAvailability(db, state))];
@@ -679,10 +686,10 @@ async function validateAvailability(db: Db, state: State) {
       checkOut: state.reservation.checkOut,
       status: state.reservation.status,
     })),
-  ].filter((l) => active(l.status));
+  ].filter((l) => holdsInventory(l.status));
   const overlap = (a: string, b: string, c: string, d: string) => a < d && b > c;
   for (const [roomIndex, line] of state.lines.entries()) {
-    if (!active(state.reservation.status)) break;
+    if (!holdsInventory(state.reservation.status)) break;
     const checkIn = state.reservation.checkIn;
     const checkOut = state.reservation.checkOut;
     for (const date of requireStay(checkIn, checkOut)) {

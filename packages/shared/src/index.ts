@@ -146,7 +146,14 @@ export const calendarQuerySchema = z.object({
   to: dateSchema,
 });
 
-const reservationStatusSchema = z.enum(["confirmed", "checked_in", "checked_out", "cancelled"]);
+// Cancelled and No-show release inventory; the others hold it.
+const reservationStatusSchema = z.enum([
+  "confirmed",
+  "checked_in",
+  "checked_out",
+  "cancelled",
+  "no_show",
+]);
 
 export const reservationListQuerySchema = listQuerySchema.extend({
   paginated: z
@@ -236,7 +243,7 @@ export const workflowActionSchema = z.discriminatedUnion("type", [
   z
     .object({
       type: z.literal("set-status"),
-      status: z.enum(["confirmed", "checked_in", "checked_out", "cancelled"]),
+      status: reservationStatusSchema,
       reason: z.string().trim().max(2000).optional(),
     })
     .strict(),

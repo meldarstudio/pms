@@ -847,6 +847,207 @@ describe("cancellation charges and waivers", () => {
   });
 });
 
+describe("no-show outcomes", () => {
+  const noShow: WorkflowAction = { type: "set-status", status: "no_show" };
+  async function nonRefundable(checkIn: string, checkOut: string, nightlyRateCents: number) {
+    const d = await stay(checkIn, checkOut, nightlyRateCents);
+    db.sqlite
+      .prepare(
+        `UPDATE reservations SET rate_plan = 'non_refundable', cancellation_charge_basis = 'final_total',
+          free_cancellation_hours = NULL, payment_schedule = 'full_upfront', price_adjustment_percent = -10
+          WHERE id = ?`,
+      )
+      .run(d.id);
+    return d;
+  }
+
+  it("owes an unpaid Non-refundable no-show its whole S/900 total without recording it as received", async () => {
+    const d = await nonRefundable("2026-10-10", "2026-10-12", 45000);
+    const expected = {
+      status: "no_show",
+      totalCents: 90000,
+      paidCents: 0,
+      balanceCents: 90000,
+      refundDueCents: 0,
+      cancellation: {
+        outcome: "no_show",
+        recordedAt: "2026-10-10T15:00:00.000Z",
+        recordedBy: "hotelmanantial",
+        freeUntil: null,
+        policyChargeCents: 90000,
+        finalChargeCents: 90000,
+      },
+    };
+    expect((await previewCommand(d, [noShow])).billing).toMatchObject(expected);
+    const saved = await command(d, [noShow]);
+    expect(saved).toMatchObject({ ...expected, payments: [] });
+    expect(saved.rooms[0].nights).toHaveLength(2);
+    expect((await paged("statuses=no_show&balance=outstanding")).rows).toMatchObject([
+      { id: d.id, ...expected },
+    ]);
+    expect((await paged("statuses=cancelled")).rows).toEqual([]);
+  });
+
+  it("retains a fully paid Non-refundable no-show's S/900 with nothing owed either way", async () => {
+    let d = await nonRefundable("2026-10-10", "2026-10-12", 45000);
+    d = await command(d, [pay(90000)]);
+    const saved = await command(d, [noShow]);
+    expect(saved).toMatchObject({
+      status: "no_show",
+      totalCents: 90000,
+      paidCents: 90000,
+      balanceCents: 0,
+      refundDueCents: 0,
+      cancellation: { outcome: "no_show", policyChargeCents: 90000, finalChargeCents: 90000 },
+    });
+    expect(saved.payments).toEqual(d.payments);
+    expect((await paged("balance=settled")).rows).toMatchObject([{ id: d.id }]);
+  });
+
+  it("charges a Flexible no-show its first night even before the free deadline, reduced by a reasoned waiver", async () => {
+    // Free cancellation would last until 2026-10-18; a no-show has no deadline.
+    let d = await stay("2026-10-20", "2026-10-23", 20000);
+    d = await command(d, [pay(5000)]);
+    const marked = await command(d, [noShow]);
+    expect(marked).toMatchObject({
+      totalCents: 20000,
+      paidCents: 5000,
+      balanceCents: 15000,
+      refundDueCents: 0,
+      cancellation: { outcome: "no_show", freeUntil: null, policyChargeCents: 20000 },
+    });
+    const waived = await command(marked, [
+      { type: "waive-cancellation-charge", amountCents: 15000, reason: "Flight cancelled" },
+    ]);
+    expect(waived).toMatchObject({
+      status: "no_show",
+      totalCents: 5000,
+      paidCents: 5000,
+      balanceCents: 0,
+      refundDueCents: 0,
+      cancellation: {
+        policyChargeCents: 20000,
+        waivedCents: 15000,
+        finalChargeCents: 5000,
+        waivers: [{ amountCents: 15000, reason: "Flight cancelled", recordedBy: "hotelmanantial" }],
+      },
+    });
+    expect(waived.payments).toEqual(d.payments);
+  });
+
+  it("marks only a guest who has not checked in, and is never converted to or from a cancellation", async () => {
+    const d = await stay("2026-10-10", "2026-10-12", 20000);
+    const arrived = await command(d, [{ type: "set-status", status: "checked_in" }]);
+    const rejected = { error: "only a confirmed reservation can be marked no-show" };
+    expect(await command(arrived, [noShow], 400)).toEqual(rejected);
+    const departed = await command(arrived, [{ type: "set-status", status: "checked_out" }]);
+    expect(await command(departed, [noShow], 400)).toEqual(rejected);
+
+    const cancelled = await command(await stay("2026-10-10", "2026-10-12", 20000), [
+      { type: "set-status", status: "cancelled" },
+    ]);
+    expect(await command(cancelled, [noShow], 400)).toEqual(rejected);
+
+    const missed = await command(await stay("2026-10-10", "2026-10-12", 20000), [noShow]);
+    expect(await command(missed, [{ type: "set-status", status: "cancelled" }], 400)).toEqual({
+      error: "restore the no-show reservation before cancelling it",
+    });
+    expect(await (await request(`/reservations/${missed.id}`)).json()).toEqual(missed);
+  });
+
+  it("releases inventory so the room can be booked again", async () => {
+    const created = await create(3);
+    const missed = await command(created, [roomEdit(created), noShow]);
+    expect(missed.rooms[0].roomId).toBe("room-101");
+    const rebooked = await create();
+    expect(await command(rebooked, [roomEdit(rebooked)])).toMatchObject({
+      status: "confirmed",
+      rooms: [{ roomId: "room-101" }],
+    });
+  });
+
+  it("refuses to restore a no-show whose room was rebooked, then restores the stay bill and keeps the charge as history", async () => {
+    let d = await stay("2026-10-10", "2026-10-12", 20000);
+    d = await command(d, [roomEdit(d), pay(5000)]);
+    const missed = await command(d, [
+      noShow,
+      { type: "waive-cancellation-charge", amountCents: 5000, reason: "Goodwill" },
+    ]);
+    const other = await stay("2026-10-11", "2026-10-12", 10000);
+    await command(other, [roomEdit(other)]);
+
+    const restore: WorkflowAction = { type: "set-status", status: "confirmed" };
+    expect((await previewCommand(missed, [restore])).validation.issues).toEqual([
+      { code: "room is already assigned for those dates", roomIndex: 0, field: "roomId" },
+    ]);
+    expect(await command(missed, [restore], 409)).toEqual({
+      error: "room is already assigned for those dates",
+    });
+    expect(await (await request(`/reservations/${d.id}`)).json()).toEqual(missed);
+
+    await command(other, [{ type: "set-status", status: "cancelled" }]);
+    vi.setSystemTime(new Date("2026-10-10T18:00:00Z"));
+    const restored = await command(missed, [restore]);
+    expect(restored).toMatchObject({
+      status: "confirmed",
+      totalCents: 40000,
+      paidCents: 5000,
+      balanceCents: 35000,
+      refundDueCents: 0,
+      cancellation: null,
+      cancellations: [
+        { ...missed.cancellation, outcome: "no_show", restoredAt: "2026-10-10T18:00:00.000Z" },
+      ],
+    });
+    expect(restored.payments).toEqual(d.payments);
+
+    const again = await command(restored, [noShow]);
+    expect(again).toMatchObject({
+      totalCents: 20000,
+      cancellation: { outcome: "no_show", waivedCents: 0 },
+    });
+    expect(again.cancellations).toHaveLength(2);
+  });
+
+  it("applies a retried no-show and waiver once, and a repeated no-show keeps the recorded charge", async () => {
+    let d = await stay("2026-10-10", "2026-10-12", 20000);
+    d = await command(d, [pay(5000)]);
+    const body = {
+      requestId: crypto.randomUUID(),
+      actions: [
+        noShow,
+        { type: "waive-cancellation-charge", amountCents: 5000, reason: "Goodwill" },
+      ],
+    };
+    const paused = pauseNextCommit();
+    const first = request(`/reservations/${d.id}/commands`, "POST", body);
+    await paused.ready;
+    const concurrent = request(`/reservations/${d.id}/commands`, "POST", body);
+    paused.resume();
+    const responses = await Promise.all([first, concurrent]);
+    expect(responses.map((response) => response.status)).toEqual([200, 200]);
+    const saved = (await responses[0].json()) as Detail;
+    expect(await responses[1].json()).toEqual(saved);
+    expect(await (await request(`/reservations/${d.id}/commands`, "POST", body)).json()).toEqual(
+      saved,
+    );
+    expect(saved).toMatchObject({
+      totalCents: 15000,
+      paidCents: 5000,
+      cancellation: { outcome: "no_show", policyChargeCents: 20000, waivedCents: 5000 },
+    });
+    expect(saved.cancellations).toHaveLength(1);
+    expect(saved.payments).toEqual(d.payments);
+
+    vi.setSystemTime(new Date("2026-10-11T12:00:00Z"));
+    expect(await command(saved, [noShow])).toMatchObject({
+      totalCents: 15000,
+      cancellation: saved.cancellation,
+      cancellations: saved.cancellations,
+    });
+  });
+});
+
 // Hold the next write after its preflight, before its transaction. Other
 // requests can commit through the same database while it waits.
 function pauseNextCommit() {

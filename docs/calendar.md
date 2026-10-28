@@ -84,8 +84,8 @@ have separate reads. See [ADR 0001](adr/0001-calendar-is-one-read.md) for the
 trade-offs.
 
 Assigned stays and closures ending on the first displayed morning remain visible.
-The assignment backlog excludes checked-out and cancelled reservations and stays
-ending that morning. This differs from room inventory: checked-out reservations
+The assignment backlog excludes checked-out, cancelled, and No-show reservations and
+stays ending that morning. Calendar reads omit cancelled and No-show stays. This differs from room inventory: checked-out reservations
 retain their booked nights. Operational **Hoy** comes from
 [the property calendar](property-calendar.md).
 

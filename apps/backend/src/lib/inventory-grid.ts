@@ -1,3 +1,5 @@
+import { holdsInventory } from "./statuses";
+
 export type GridStay = {
   roomTypeId: string;
   status: string;
@@ -41,7 +43,7 @@ function nightLoad(date: string, stays: GridStay[], closures: GridClosure[]) {
 }
 
 export function peakOccupied(dates: string[], stays: GridStay[], closures: GridClosure[]) {
-  const active = stays.filter((stay) => stay.status !== "cancelled");
+  const active = stays.filter((stay) => holdsInventory(stay.status));
   const peaks = new Map<string, number>();
   const typeIds = new Set([
     ...active.map((stay) => stay.roomTypeId),
@@ -68,7 +70,7 @@ export function inventoryGrid(
   closures: GridClosure[],
   rates: GridRate[],
 ) {
-  const active = stays.filter((stay) => stay.status !== "cancelled");
+  const active = stays.filter((stay) => holdsInventory(stay.status));
   const priceByType = new Map<string, Map<string, number>>();
   for (const rate of rates) {
     const byDate = priceByType.get(rate.roomTypeId) ?? new Map<string, number>();
