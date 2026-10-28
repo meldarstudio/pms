@@ -202,7 +202,7 @@ refunds and an idempotent retry replays its receipt; neither can exceed the limi
 Restoring and requesting a refund in one command is refused like any restoration
 with refunds.
 A payment with any refund cannot be edited or deleted (`payment with refunds cannot
-be changed`).
+be changed`), including a refund requested earlier in the same command.
 
 Reads and previews return `refunds`, every request oldest first, with `status`
 (`requested`, `completed`, or `failed`), `requestedAt`, `requestedBy`,

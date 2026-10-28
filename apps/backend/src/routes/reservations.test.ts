@@ -812,6 +812,29 @@ describe("cancellation charges and waivers", () => {
     expect(again.cancellations).toHaveLength(2);
   });
 
+  it("charges a cancellation from the stay left by the rest of its command", async () => {
+    const d = await stay("2026-10-11", "2026-10-13", 20000);
+    const addRoom: WorkflowAction = {
+      type: "add-room",
+      room: { roomTypeId: "type", adults: 1, children: 0, nightlyRateCents: 15000 },
+    };
+    expect(await command(d, [cancel, addRoom])).toMatchObject({
+      totalCents: 35000,
+      cancellation: { policyChargeCents: 35000, finalChargeCents: 35000 },
+    });
+  });
+
+  it("leaves no cancellation record when one command cancels and restores", async () => {
+    const d = await stay("2026-10-11", "2026-10-13", 20000);
+    const saved = await command(d, [cancel, { type: "set-status", status: "confirmed" }]);
+    expect(saved).toMatchObject({
+      status: "confirmed",
+      totalCents: 40000,
+      cancellation: null,
+      cancellations: [],
+    });
+  });
+
   it("keeps a zero charge for a reservation cancelled before charges existed and refuses to waive it", async () => {
     seedReservation(db.sqlite, {
       id: "legacy-cancelled",
@@ -1254,6 +1277,23 @@ describe("refunds", () => {
     });
     expect(await (await request(`/reservations/${cancelled.id}`)).json()).toEqual(next);
     expect(next.payments).toEqual(cancelled.payments);
+  });
+
+  it("refuses to change a payment after a refund request for it in the same command", async () => {
+    const cancelled = await lateCancellation(30000);
+    const [payment] = cancelled.payments;
+    for (const change of [
+      {
+        type: "edit-payment",
+        paymentId: payment.id,
+        payment: { amountCents: 40000, method: "card", paymentDate: "2026-10-10" },
+      },
+      { type: "delete-payment", paymentId: payment.id },
+    ] as WorkflowAction[])
+      expect(await command(cancelled, [requestRefund(cancelled, 10000), change], 400)).toEqual({
+        error: "payment with refunds cannot be changed",
+      });
+    expect(await (await request(`/reservations/${cancelled.id}`)).json()).toEqual(cancelled);
   });
 
   it("refuses to restore a cancellation or no-show with any refund activity", async () => {
