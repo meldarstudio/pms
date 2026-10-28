@@ -443,7 +443,8 @@ describe("cancellation charges", () => {
       const before = snapshot();
       for (const entry of journal.entries.slice(split))
         previous.exec(readFileSync(new URL(`${entry.tag}.sql`, migrationsDir), "utf8"));
-      expect(snapshot()).toEqual(before);
+      // Later migrations may add columns; saved values must stay unchanged.
+      expect(snapshot()).toMatchObject(before);
       // No charge is computed retroactively.
       expect(previous.prepare("SELECT * FROM reservation_cancellations").all()).toEqual([]);
       expect(previous.prepare("SELECT * FROM cancellation_waivers").all()).toEqual([]);
@@ -541,7 +542,8 @@ describe("refunds", () => {
       const before = snapshot();
       for (const entry of journal.entries.slice(split))
         previous.exec(readFileSync(new URL(`${entry.tag}.sql`, migrationsDir), "utf8"));
-      expect(snapshot()).toEqual(before);
+      // Later migrations may add columns; saved values must stay unchanged.
+      expect(snapshot()).toMatchObject(before);
       expect(previous.prepare("SELECT * FROM refunds").all()).toEqual([]);
 
       const refund = previous.prepare(`INSERT INTO refunds
@@ -584,5 +586,67 @@ describe("refunds", () => {
     } finally {
       previous.close();
     }
+  });
+});
+
+describe("night price breakdown", () => {
+  it("upgrades saved nights to no adjustment or discount without changing their prices", () => {
+    const previous = new DatabaseSync(":memory:");
+    try {
+      previous.exec("PRAGMA foreign_keys = ON");
+      const split = journal.entries.findIndex(
+        (entry) => entry.tag === "0010_night_price_breakdown",
+      );
+      expect(split).toBeGreaterThan(0);
+      for (const entry of journal.entries.slice(0, split))
+        previous.exec(readFileSync(new URL(`${entry.tag}.sql`, migrationsDir), "utf8"));
+      previous.exec(`
+        INSERT INTO room_types (id, name, max_occupancy, base_rate_cents, created_at)
+          VALUES ('legacy', 'Double', 2, 10000, '2026-10-05');
+        INSERT INTO rooms (id, number, room_type_id) VALUES ('legacy-room', '201', 'legacy');
+        INSERT INTO guests (id, full_name, created_at) VALUES ('guest', 'Ada Lovelace', '2026-10-05');
+        INSERT INTO reservations (id, code, guest_id, check_in, check_out, created_at)
+          VALUES ('stay', 'OLD1', 'guest', '2026-10-08', '2026-10-10', '2026-10-05');
+        INSERT INTO reservation_rooms (id, reservation_id, room_type_id, adults, created_at)
+          VALUES ('line', 'stay', 'legacy', 1, '2026-10-05');
+        INSERT INTO reservation_room_nights VALUES ('first', 'line', '2026-10-08', 9000), ('second', 'line', '2026-10-09', 12000);
+      `);
+      for (const entry of journal.entries.slice(split))
+        previous.exec(readFileSync(new URL(`${entry.tag}.sql`, migrationsDir), "utf8"));
+      expect(
+        previous
+          .prepare(
+            "SELECT id, price_cents, adjustment_cents, discount_cents FROM reservation_room_nights ORDER BY id",
+          )
+          .all(),
+      ).toEqual([
+        { id: "first", price_cents: 9000, adjustment_cents: 0, discount_cents: 0 },
+        { id: "second", price_cents: 12000, adjustment_cents: 0, discount_cents: 0 },
+      ]);
+    } finally {
+      previous.close();
+    }
+  });
+
+  it("rejects a negative night price or discount on insert and update", () => {
+    reservation("stay");
+    line("stay");
+    const insert = db.prepare(`INSERT INTO reservation_room_nights
+      (id, reservation_room_id, date, price_cents, adjustment_cents, discount_cents)
+      VALUES (?, 'stay', ?, ?, ?, ?)`);
+    expect(() => insert.run("negative", "2026-10-05", -1, 0, 0)).toThrow("invalid night price");
+    expect(() => insert.run("over", "2026-10-05", -1000, 0, 11000)).toThrow("invalid night price");
+    expect(() => insert.run("negative-discount", "2026-10-05", 10000, 0, -1)).toThrow(
+      "invalid night price",
+    );
+    // A full discount and a plan reduction are valid.
+    insert.run("free", "2026-10-05", 0, 0, 10000);
+    insert.run("reduced", "2026-10-06", 9000, -1000, 0);
+    expect(() =>
+      db.exec("UPDATE reservation_room_nights SET price_cents = -1 WHERE id = 'free'"),
+    ).toThrow("invalid night price");
+    expect(() =>
+      db.exec("UPDATE reservation_room_nights SET discount_cents = -1 WHERE id = 'reduced'"),
+    ).toThrow("invalid night price");
   });
 });

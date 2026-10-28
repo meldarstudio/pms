@@ -36,7 +36,10 @@ import { confirmationCode } from "./lib/codes";
 import { chunks } from "./lib/chunks";
 import { claimRevision, isStaleWrite } from "./db/revisions";
 
-type Night = { date: string; priceCents: number };
+type Night = Pick<
+  typeof reservationRoomNights.$inferSelect,
+  "date" | "priceCents" | "adjustmentCents" | "discountCents"
+>;
 export type Stay = typeof reservationRooms.$inferSelect & { nights: Night[] };
 export type State = {
   reservation: typeof reservations.$inferSelect;
@@ -117,7 +120,12 @@ export async function loadState(db: Db, id: string): Promise<State> {
       ...l,
       nights: nights
         .filter((n) => n.reservationRoomId === l.id)
-        .map((n) => ({ date: n.date, priceCents: n.priceCents })),
+        .map(({ date, priceCents, adjustmentCents, discountCents }) => ({
+          date,
+          priceCents,
+          adjustmentCents,
+          discountCents,
+        })),
     })),
     payments: paymentRows,
     cancellations: withWaivers(cancellationRows, waiverRows),
@@ -200,17 +208,18 @@ async function price(
     children: number;
     nightlyRateCents?: number;
   },
-) {
+): Promise<Night[]> {
   const dates = requireStay(room.checkIn, room.checkOut);
   const [type] = await db.select().from(roomTypes).where(eq(roomTypes.id, room.roomTypeId));
   if (!type) throw new HttpError(404, "room type not found");
   const rates = await ratesBetween(db, [type.id], room.checkIn, room.checkOut);
+  // No plan adjustment or night discount is applied yet; the price is the ordinary rate.
   return quoteNights(
     dates,
     type.baseRateCents,
     overridesFor(rates, type.id),
     room.nightlyRateCents,
-  );
+  ).map((night) => ({ ...night, adjustmentCents: 0, discountCents: 0 }));
 }
 async function newLine(
   db: Db,
@@ -336,11 +345,10 @@ export async function plan(
       requireStay(action.checkIn, action.checkOut);
       Object.assign(state.reservation, { checkIn: action.checkIn, checkOut: action.checkOut });
       for (const line of state.lines) {
-        const saved = new Map(line.nights.map((n) => [n.date, n.priceCents]));
-        line.nights = (await price(db, { ...line, ...state.reservation })).map((n) => ({
-          ...n,
-          priceCents: saved.get(n.date) ?? n.priceCents,
-        }));
+        const saved = new Map(line.nights.map((n) => [n.date, n]));
+        line.nights = (await price(db, { ...line, ...state.reservation })).map(
+          (n) => saved.get(n.date) ?? n,
+        );
       }
     }
     if (action.type === "remove-room") {
@@ -379,11 +387,8 @@ export async function plan(
         room = action.room;
       const nights = await price(db, { ...room, ...state.reservation });
       const typeChanged = room.roomTypeId !== line.roomTypeId;
-      const saved = new Map(line.nights.map((n) => [n.date, n.priceCents]));
-      line.nights = nights.map((n) => ({
-        ...n,
-        priceCents: !typeChanged && saved.has(n.date) ? saved.get(n.date)! : n.priceCents,
-      }));
+      const saved = new Map(line.nights.map((n) => [n.date, n]));
+      line.nights = nights.map((n) => (typeChanged ? n : (saved.get(n.date) ?? n)));
       Object.assign(line, room, { roomId: room.roomId ?? null });
     }
     if (action.type === "add-payment") state.payments.push(newPayment(action.payment));

@@ -43,6 +43,8 @@ export function rethrowConflict(err: unknown): never {
     throw new HttpError(409, "room is a different type");
   if (text.includes("invalid occupancy"))
     throw new HttpError(409, "too many guests for this room type");
+  if (text.includes("invalid night price"))
+    throw new HttpError(409, "night price cannot be negative");
   if (text.includes("no availability")) throw new HttpError(409, "no availability");
   if (text.includes("room taken"))
     throw new HttpError(409, "room is already assigned for those dates");

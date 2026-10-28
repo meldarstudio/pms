@@ -30,6 +30,7 @@ const messages: Record<string, string> = {
   "method is required": "Selecciona un método de pago.",
   "payment date cannot be in the future": "La fecha del pago no puede ser futura.",
   "room is a different type": "La habitación debe ser del mismo tipo reservado.",
+  "night price cannot be negative": "El precio de una noche no puede ser negativo.",
   "no availability": "No hay disponibilidad para esas fechas.",
   "room is already assigned for those dates":
     "Esta habitación está ocupada para esas fechas. Cambia la habitación o las fechas.",

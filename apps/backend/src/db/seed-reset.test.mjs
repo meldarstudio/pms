@@ -78,7 +78,8 @@ describe("local dummy data reset", () => {
         VALUES ('custom', 'CUSTOM', 'custom', '2026-10-06', '2026-10-07', '2026-10-06');
       INSERT INTO reservation_rooms (id, reservation_id, room_type_id, room_id, adults, created_at)
         VALUES ('custom', 'custom', 'custom', 'custom', 1, '2026-10-06');
-      INSERT INTO reservation_room_nights VALUES ('custom', 'custom', '2026-10-06', 5000);
+      INSERT INTO reservation_room_nights (id, reservation_room_id, date, price_cents)
+        VALUES ('custom', 'custom', '2026-10-06', 5000);
       INSERT INTO payments (id, reservation_id, amount_cents, method, payment_date, created_at)
         VALUES ('custom', 'custom', 5000, 'cash', '2026-10-06', '2026-10-06T12:00:00.000Z');
       INSERT INTO room_type_rates VALUES ('custom', 'custom', '2026-10-07', 6000);

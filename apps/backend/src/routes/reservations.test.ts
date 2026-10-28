@@ -2584,6 +2584,42 @@ describe("reservation dates and lifecycle", () => {
       ),
     ).toBe(true);
   });
+  it("keeps a retained night's adjustment and discount through edits and clears them when the type changes", async () => {
+    seedRoomType(db.sqlite, { id: "other", name: "Twin", maxAdults: 3, baseRateCents: 20000 });
+    seedRooms(db.sqlite, "other", { "201": "201" });
+    let d = await create();
+    const lineId = d.rooms[0].id;
+    // The API cannot record a breakdown yet; seed what a Non-refundable night and a discounted night save.
+    db.sqlite.exec(`
+      UPDATE reservation_room_nights SET price_cents = 9000, adjustment_cents = -1000
+        WHERE reservation_room_id = '${lineId}' AND date = '2026-10-10';
+      UPDATE reservation_room_nights SET price_cents = 8000, discount_cents = 2000
+        WHERE reservation_room_id = '${lineId}' AND date = '2026-10-11';
+    `);
+    const nights = () =>
+      db.sqlite
+        .prepare(
+          "SELECT date, price_cents, adjustment_cents, discount_cents FROM reservation_room_nights WHERE reservation_room_id = ? ORDER BY date",
+        )
+        .all(lineId)
+        .map((row) => Object.values(row));
+    d = await command(d, [{ type: "dates", checkIn: d.checkIn, checkOut: "2026-10-14" }]);
+    d = await command(d, [roomEdit(d)]);
+    expect(nights()).toEqual([
+      ["2026-10-10", 9000, -1000, 0],
+      ["2026-10-11", 8000, 0, 2000],
+      ["2026-10-12", 10000, 0, 0],
+      ["2026-10-13", 10000, 0, 0],
+    ]);
+    expect(d.totalCents).toBe(37000);
+    d = await command(d, [roomEdit(d, 0, { roomTypeId: "other", roomId: null })]);
+    expect(nights()).toEqual([
+      ["2026-10-10", 20000, 0, 0],
+      ["2026-10-11", 20000, 0, 0],
+      ["2026-10-12", 20000, 0, 0],
+      ["2026-10-13", 20000, 0, 0],
+    ]);
+  });
   it("removes a checked-in room and its charges while retaining the stay, payments, and discount", async () => {
     let d = await arrive(await create(2));
     const removed = d.rooms[0].id;

@@ -71,6 +71,13 @@
       "when": 1793197802608,
       "tag": "0009_refunds",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "6",
+      "when": 1793201041932,
+      "tag": "0010_night_price_breakdown",
+      "breakpoints": true
     }
   ]
 }

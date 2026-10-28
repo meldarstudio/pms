@@ -22,6 +22,17 @@ Retained nights keep saved prices. Added nights use current rates; changing room
 type reprices that reserved room. Initial pricing uses a supplied flat nightly
 rate, then the date's rate override, then the base rate.
 
+Each saved night (`reservation_room_nights`) stores its final price in `price_cents`,
+which every total sums, and how that price was reached: `adjustment_cents`, the
+accepted plan's [price adjustment](../GLOSSARY.md#rates-and-charges) (negative for a
+reduction), and `discount_cents`, a staff discount on that night. The ordinary rate
+is `price_cents - adjustment_cents + discount_cents`; it is not stored. A retained
+night keeps all three values, and a repriced night is recomputed. Workflows currently
+save both as zero, and the zero defaults describe nights from before migration `0010`
+and inserts by an older Worker exactly. Responses expose only `priceCents`. Database
+triggers reject a negative price or discount on insert or update, as
+`night price cannot be negative`; saved rows are not revalidated.
+
 ## Rate-plan terms
 
 The [rate plans](../GLOSSARY.md#rates-and-charges) are code-defined in
