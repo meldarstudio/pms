@@ -9,7 +9,8 @@ import type {
   rooms,
 } from "./db/schema";
 import { nightsBetween } from "./lib/dates";
-import { bill } from "./lib/workflow-billing";
+import { acceptedTerms } from "./lib/rate-plans";
+import { reservationBill } from "./lib/workflow-billing";
 
 type Guest = typeof guests.$inferSelect;
 type Reservation = typeof reservations.$inferSelect;
@@ -78,10 +79,10 @@ export function presentReservation(input: {
     };
   });
 
-  const billable = cancelled(input.reservation) ? [] : roomsOut;
-  const subtotalCents = billable.reduce((sum, line) => sum + line.subtotalCents, 0);
-  const totals = bill(subtotalCents, input.payments, input.reservation.discountCents, {
+  const ratePlan = acceptedTerms(input.reservation);
+  const totals = reservationBill(roomsOut, input.payments, input.reservation.discountCents, {
     cancelled: cancelled(input.reservation),
+    paymentSchedule: ratePlan.paymentSchedule,
   });
 
   return {
@@ -100,6 +101,7 @@ export function presentReservation(input: {
     createdAt: input.reservation.createdAt,
     currency: input.currency,
     nights: nightsBetween(input.reservation.checkIn, input.reservation.checkOut).length,
+    ratePlan,
     ...totals,
     savedDiscountCents: input.reservation.discountCents,
     rooms: roomsOut,

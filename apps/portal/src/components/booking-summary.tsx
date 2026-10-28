@@ -28,8 +28,9 @@ import {
   InputGroupInput,
   InputGroupText,
 } from "@/components/ui/input-group";
-import type { ReservationDetail } from "@/lib/api";
+import type { RatePlanCode, ReservationDetail } from "@/lib/api";
 import { formatMajor, formatMoney, parseMajorToCents } from "@/lib/money";
+import { ratePlanLabels } from "@/lib/rate-plans";
 
 const amountColumn = "w-24 shrink-0 text-right tabular-nums";
 
@@ -49,6 +50,7 @@ export function BookingSummary({
   cancelled,
   summary,
   paidCents,
+  schedule,
   currency,
   stayLabel,
   showPayments,
@@ -70,6 +72,14 @@ export function BookingSummary({
     "subtotalCents" | "discountCents" | "totalCents" | "balanceCents"
   > | null;
   paidCents: number;
+  /** The accepted rate plan and, when priced, its scheduled payments. */
+  schedule?: {
+    plan: RatePlanCode;
+    amounts: Pick<
+      ReservationDetail,
+      "requiredInitialPaymentCents" | "remainingScheduledCents"
+    > | null;
+  };
   currency: string;
   stayLabel: string | null;
   showPayments: boolean;
@@ -165,6 +175,24 @@ export function BookingSummary({
                   cents={summary?.totalCents ?? null}
                   currency={currency}
                 />
+                {schedule && (
+                  <>
+                    <div className="grid min-w-0 grid-cols-[minmax(0,1fr)_auto] items-baseline gap-4">
+                      <dt className="min-w-0 wrap-anywhere">Plan tarifario</dt>
+                      <dd className="text-right">{ratePlanLabels[schedule.plan]}</dd>
+                    </div>
+                    <SummaryRow
+                      label="Pago inicial requerido"
+                      cents={schedule.amounts?.requiredInitialPaymentCents ?? null}
+                      currency={currency}
+                    />
+                    <SummaryRow
+                      label="Pago restante programado"
+                      cents={schedule.amounts?.remainingScheduledCents ?? null}
+                      currency={currency}
+                    />
+                  </>
+                )}
                 <SummaryRow label="Pagado" cents={paidCents} currency={currency} />
               </dl>
             ) : null}

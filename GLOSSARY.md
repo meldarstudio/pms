@@ -227,8 +227,12 @@ _Avoid_: Child price allowance, combined maximum occupancy
 ### Rates and charges
 
 **Rate plan**:
-A reservation offer combining a price rule, a cancellation policy, and a payment schedule.
-_Avoid_: Room type, cancellation policy when referring to the whole offer
+A reservation offer combining a price adjustment, a cancellation policy, and a payment schedule.
+_Avoid_: Room type, price rule, cancellation policy when referring to the whole offer
+
+**Price adjustment**:
+A rate plan's percentage change to the ordinary nightly prices of a reservation that accepts it.
+_Avoid_: Discount, rate override, price rule
 
 **Cancellation policy**:
 The agreed conditions that determine a reservation's charge when it is cancelled or the guest does
@@ -242,6 +246,16 @@ _Avoid_: Payment method, cancellation policy
 **Deposit**:
 An advance payment toward a reservation's total, whose required amount follows its payment schedule.
 _Avoid_: Additional charge, automatically refundable payment
+
+**Required initial payment**:
+The first amount a reservation's payment schedule requires: a deposit, or the whole total when the
+schedule requires full payment upfront.
+_Avoid_: Amount paid, balance
+
+**Remaining scheduled amount**:
+The part of a reservation's total that its payment schedule leaves after the required initial payment,
+regardless of payments received.
+_Avoid_: Balance, amount owed
 
 **Base rate**:
 A room type's default price for one room for one night.

@@ -33,6 +33,7 @@ import type { ReservationEditorTarget } from "@/components/reservation-page-edit
 import type { ReservationDetail } from "@/lib/api";
 import { occupantsLabel } from "@/lib/reservation-list";
 import { formatMoney } from "@/lib/money";
+import { ratePlanLabels } from "@/lib/rate-plans";
 import { usePropertyCalendar } from "@/lib/use-property-calendar";
 import { phoneDisplay } from "@/lib/phone";
 
@@ -339,6 +340,10 @@ function PaymentSummary({ detail, edit }: Model) {
       <CardContent className="flex flex-col gap-3">
         <dl className="flex flex-col gap-2">
           <div className="flex flex-wrap justify-between gap-2">
+            <dt className="text-muted-foreground">Plan tarifario</dt>
+            <dd className="ml-auto font-semibold">{ratePlanLabels[detail.ratePlan.plan]}</dd>
+          </div>
+          <div className="flex flex-wrap justify-between gap-2">
             <dt className="text-muted-foreground">Subtotal</dt>
             <dd className="ml-auto font-semibold tabular-nums">
               {money(detail, detail.subtotalCents)}
@@ -364,6 +369,18 @@ function PaymentSummary({ detail, edit }: Model) {
             <dt className="text-muted-foreground">Total</dt>
             <dd className="ml-auto font-semibold tabular-nums">
               {money(detail, detail.totalCents)}
+            </dd>
+          </div>
+          <div className="flex flex-wrap justify-between gap-2">
+            <dt className="text-muted-foreground">Pago inicial requerido</dt>
+            <dd className="ml-auto font-semibold tabular-nums">
+              {money(detail, detail.requiredInitialPaymentCents)}
+            </dd>
+          </div>
+          <div className="flex flex-wrap justify-between gap-2">
+            <dt className="text-muted-foreground">Pago restante programado</dt>
+            <dd className="ml-auto font-semibold tabular-nums">
+              {money(detail, detail.remainingScheduledCents)}
             </dd>
           </div>
           <div className="flex flex-wrap justify-between gap-2">

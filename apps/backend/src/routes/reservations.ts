@@ -38,6 +38,7 @@ import { createWorkflow, execute, totals } from "../workflow";
 import { chunks } from "../lib/chunks";
 import { presentReservation } from "../present";
 import { bill } from "../lib/workflow-billing";
+import { acceptedTerms } from "../lib/rate-plans";
 
 export const reservationRoutes = new Hono<Env>();
 reservationRoutes.get("/", validate("query", reservationListQuerySchema), async (c) => {
@@ -133,7 +134,7 @@ reservationRoutes.get("/", validate("query", reservationListQuerySchema), async 
   let rows = matches;
   let total = counts[0].total;
   if (needsBalance) {
-    // Keep the authoritative billing policy in bill(), shared with detail and workflow reads.
+    // Keep the authoritative billing policy in bill(), which reservationBill applies to every read.
     const balanced = matches
       .map((row) => {
         const { reservation, subtotalCents, paidCents } = row;
@@ -236,6 +237,7 @@ reservationRoutes.post("/:id/preview", validate("json", workflowCommandSchema), 
     validation: { issues: result.issues },
     billing: {
       ...bill,
+      ratePlan: acceptedTerms(result.state.reservation),
       status: result.state.reservation.status,
       checkIn: result.state.reservation.checkIn,
       checkOut: result.state.reservation.checkOut,

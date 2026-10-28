@@ -95,6 +95,18 @@ function detail(): ReservationDetail {
     cancelledAt: null,
     savedDiscountCents: 0,
     creditCents: 0,
+    ratePlan: {
+      plan: "flexible",
+      cancellationPolicy: {
+        chargeBasis: "first_night",
+        freeUntilHoursBeforeCheckIn: 48,
+        checkInTime: "15:00",
+      },
+      paymentSchedule: "first_night_deposit",
+      priceAdjustmentPercent: 0,
+    },
+    requiredInitialPaymentCents: 15000,
+    remainingScheduledCents: 15000,
     guestId: "contact-1",
     guest: {
       id: "contact-1",
