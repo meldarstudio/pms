@@ -179,7 +179,7 @@ export async function cancellationsFor(db: Db, reservationIds: string[]) {
   return withWaivers(cancellations, waivers);
 }
 
-function lineWrites(db: Db, line: Stay, existing: boolean) {
+export function lineWrites(db: Db, line: Stay, existing: boolean) {
   const { nights, ...row } = line;
   const values = nights.map((n) => ({ id: crypto.randomUUID(), reservationRoomId: line.id, ...n }));
   return [

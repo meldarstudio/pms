@@ -1,5 +1,7 @@
 import { sql } from "drizzle-orm";
 import { check, index, integer, sqliteTable, text, uniqueIndex } from "drizzle-orm/sqlite-core";
+import type { PricedNight } from "../lib/pricing";
+import type { RatePlanTerms } from "../lib/rate-plans";
 
 // Empty outside a protected write batch, never a cached deployment-wide clock.
 export const propertyWriteContext = sqliteTable(
@@ -57,6 +59,23 @@ export const guests = sqliteTable("guests", {
   createdAt: text("created_at").notNull(),
 });
 
+// A price offered to an online guest for 10 minutes. It reserves no room inventory and
+// references no setup rows, so staff bookings, closures and setup are never blocked by one.
+export const quotes = sqliteTable("quotes", {
+  id: text("id").primaryKey(),
+  roomTypeId: text("room_type_id").notNull(),
+  checkIn: text("check_in").notNull(),
+  checkOut: text("check_out").notNull(),
+  adults: integer("adults").notNull(),
+  children: integer("children").notNull(),
+  /** The quoted nights, saved unchanged on the reservation made from the quote. */
+  nights: text("nights", { mode: "json" }).$type<PricedNight[]>().notNull(),
+  /** The offered rate-plan terms, stored as the reservation's accepted terms. */
+  terms: text("terms", { mode: "json" }).$type<RatePlanTerms>().notNull(),
+  createdAt: text("created_at").notNull(),
+  expiresAt: text("expires_at").notNull(),
+});
+
 export const reservations = sqliteTable(
   "reservations",
   {
@@ -85,10 +104,13 @@ export const reservations = sqliteTable(
     checkInTime: text("check_in_time").notNull().default("15:00"),
     paymentSchedule: text("payment_schedule").notNull().default("first_night_deposit"),
     priceAdjustmentPercent: integer("price_adjustment_percent").notNull().default(0),
+    /** The quote an online reservation was saved from; one quote saves at most one. */
+    quoteId: text("quote_id").references(() => quotes.id),
   },
   (table) => [
     index("reservations_dates").on(table.checkIn, table.checkOut),
     index("reservations_guest").on(table.guestId),
+    uniqueIndex("reservations_quote").on(table.quoteId),
   ],
 );
 

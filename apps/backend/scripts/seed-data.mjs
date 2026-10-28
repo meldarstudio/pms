@@ -384,6 +384,7 @@ export function buildResetSql(value) {
     "DELETE FROM payments;",
     "DELETE FROM reservation_rooms;",
     "DELETE FROM reservations;",
+    "DELETE FROM quotes;",
     "DELETE FROM room_closures;",
     "DELETE FROM room_type_rates;",
     "DELETE FROM guests;",

@@ -321,7 +321,13 @@ export const workflowCreatePreviewSchema = workflowCreateSchema
       .max(60),
   })
   .strict();
+/** An online guest's request for a quote: one room, with no prices or staff terms. */
+export const quoteCreateSchema = workflowRoom
+  .pick({ roomTypeId: true, adults: true, children: true })
+  .extend({ checkIn: dateSchema, checkOut: dateSchema, ratePlan: ratePlanCodeSchema })
+  .strict();
 export type WorkflowAction = z.infer<typeof workflowActionSchema>;
 export type WorkflowCommand = z.infer<typeof workflowCommandSchema>;
 export type WorkflowCreate = z.infer<typeof workflowCreateSchema>;
 export type WorkflowCreatePreview = z.infer<typeof workflowCreatePreviewSchema>;
+export type QuoteCreate = z.infer<typeof quoteCreateSchema>;
