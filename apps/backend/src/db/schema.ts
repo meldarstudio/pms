@@ -1,5 +1,6 @@
 import { sql } from "drizzle-orm";
 import { check, index, integer, sqliteTable, text, uniqueIndex } from "drizzle-orm/sqlite-core";
+import type { GuestInput } from "@pms/shared";
 import type { PricedNight } from "../lib/pricing";
 import type { RatePlanTerms } from "../lib/rate-plans";
 
@@ -189,10 +190,52 @@ export const payments = sqliteTable(
     paymentDate: text("payment_date").notNull(),
     createdAt: text("created_at").notNull(),
     notes: text("notes"),
+    /** The Culqi charge that collected this payment; such a payment is never edited or deleted. */
+    culqiChargeId: text("culqi_charge_id"),
   },
   (table) => [
     index("payments_reservation").on(table.reservationId),
     index("payments_date").on(table.paymentDate),
+    uniqueIndex("payments_culqi_charge").on(table.culqiChargeId),
+  ],
+);
+
+// One request to charge an online guest for a quote, saved before each Culqi call.
+// `unknown` means a call is in flight or its response was lost: it is resolved by
+// looking the charge up, never by charging again.
+export const paymentAttempts = sqliteTable(
+  "payment_attempts",
+  {
+    /** Sent to Culqi as `metadata.attempt_id`. */
+    id: text("id").primaryKey(),
+    quoteId: text("quote_id")
+      .notNull()
+      .references(() => quotes.id),
+    amountCents: integer("amount_cents").notNull(),
+    currency: text("currency").notNull(),
+    email: text("email").notNull(),
+    /** The booking contact the reservation is saved with. */
+    guest: text("guest", { mode: "json" }).$type<GuestInput>().notNull(),
+    /** The Culqi token, reused only for this attempt's 3DS continuation. */
+    sourceId: text("source_id").notNull(),
+    deviceFingerprint: text("device_fingerprint"),
+    /** `unknown`, `review`, `failed`, `succeeded` (charged, reservation not saved yet) or `saved`. */
+    status: text("status").notNull(),
+    createdAt: text("created_at").notNull(),
+    /** When the latest Culqi charge call started. */
+    calledAt: text("called_at").notNull(),
+    failureCode: text("failure_code"),
+    failureMessage: text("failure_message"),
+    culqiChargeId: text("culqi_charge_id"),
+    reservationId: text("reservation_id").references(() => reservations.id),
+  },
+  (table) => [
+    index("payment_attempts_status").on(table.status, table.calledAt),
+    // At most one attempt per quote is open or paid, so concurrent starts cannot both charge.
+    uniqueIndex("payment_attempts_open")
+      .on(table.quoteId)
+      .where(sql`${table.status} IN ('unknown', 'review', 'succeeded', 'saved')`),
+    uniqueIndex("payment_attempts_charge").on(table.culqiChargeId),
   ],
 );
 
@@ -296,6 +339,10 @@ export const refunds = sqliteTable(
     refundDate: text("refund_date"),
     completionReference: text("completion_reference"),
     failureReason: text("failure_reason"),
+    /** Set when staff refund through the Culqi API against this charge. */
+    culqiChargeId: text("culqi_charge_id"),
+    /** Culqi's refund ID, when its response returned one. */
+    culqiRefundId: text("culqi_refund_id"),
   },
   (table) => [
     index("refunds_reservation").on(table.reservationId),

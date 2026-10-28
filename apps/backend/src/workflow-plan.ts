@@ -103,6 +103,7 @@ const newPayment = (
     reference: input.reference?.trim().toUpperCase() || null,
     notes: input.notes ?? null,
     createdAt: now,
+    culqiChargeId: null,
   };
 };
 
@@ -111,6 +112,8 @@ function changePayment(action: Action<"edit-payment" | "delete-payment">, ctx: P
   const index = state.payments.findIndex((payment) => payment.id === action.paymentId);
   if (index === -1) fail("payment not found");
   const payment = state.payments[index];
+  // Culqi already holds the charge; staff refund it instead.
+  if (payment.culqiChargeId) fail("Culqi payment cannot be changed");
   // Refund requests apply after the loop, so check the ones queued earlier in this command too.
   if (
     state.refunds.some((refund) => refund.paymentId === payment.id) ||
@@ -166,6 +169,8 @@ const handlers: Handlers = {
   },
   "set-status"(action, { state, opened, account, now }) {
     const from = state.reservation.status;
+    // An Unfulfilled reservation never had a room; staff refund it instead.
+    if (from === "unfulfilled") fail("an unfulfilled reservation cannot change status");
     // A guest who arrived is not a no-show; a no-show is restored before it is cancelled.
     if (action.status === "no_show" && from !== "confirmed" && from !== "no_show")
       fail("only a confirmed reservation can be marked no-show");
@@ -332,6 +337,8 @@ function applyRefunds({ state, refundActions, account, today, now }: PlanContext
         refundDate: null,
         completionReference: null,
         failureReason: null,
+        culqiChargeId: null,
+        culqiRefundId: null,
       });
       continue;
     }

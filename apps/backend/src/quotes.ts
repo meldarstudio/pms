@@ -1,7 +1,7 @@
 import type { GuestInput, QuoteCreate } from "@pms/shared";
 import { eq } from "drizzle-orm";
 import { runBatch, type Db } from "./db";
-import { guests, quotes, reservations, roomTypes } from "./db/schema";
+import { guests, payments, quotes, reservations, roomTypes } from "./db/schema";
 import { HttpError, rethrowConflict } from "./http";
 import { occupiedCounts, roomCounts } from "./inventory";
 import { confirmationCode } from "./lib/codes";
@@ -72,13 +72,24 @@ function presentQuote(quote: Quote, available: boolean) {
   };
 }
 
+type QuotePayment = Pick<
+  typeof payments.$inferInsert,
+  "amountCents" | "method" | "reference" | "paymentDate" | "culqiChargeId"
+>;
+
 /**
  * Saves the online reservation for a quote with its quoted nights and terms, even if
- * rates changed since. The capacity triggers decide availability. Expiry is the
- * caller's decision, because a charge may already have succeeded. One quote saves at
- * most one reservation: a repeated or concurrent save returns the same ID.
+ * rates changed since, and with the payment that paid for it. The capacity triggers
+ * decide availability for a confirmed save; an Unfulfilled one holds no inventory.
+ * Expiry is the caller's decision, because a charge may already have succeeded. One
+ * quote saves at most one reservation: a repeated or concurrent save returns the same ID.
  */
-export async function saveQuote(db: Db, quoteId: string, guest: GuestInput): Promise<string> {
+export async function saveQuote(
+  db: Db,
+  quoteId: string,
+  guest: GuestInput,
+  options: { status?: "confirmed" | "unfulfilled"; payment?: QuotePayment } = {},
+): Promise<string> {
   const [quote] = await db.select().from(quotes).where(eq(quotes.id, quoteId));
   if (!quote) throw new HttpError(404, "quote not found");
   const saved = await savedReservation(db, quoteId);
@@ -98,9 +109,20 @@ export async function saveQuote(db: Db, quoteId: string, guest: GuestInput): Pro
         checkOut: quote.checkOut,
         source: "online",
         quoteId,
+        status: options.status ?? "confirmed",
         createdAt: now,
         ...termColumns(quote.terms),
       }),
+      ...(options.payment
+        ? [
+            db.insert(payments).values({
+              id: crypto.randomUUID(),
+              reservationId: id,
+              ...options.payment,
+              createdAt: now,
+            }),
+          ]
+        : []),
       ...lineWrites(
         db,
         {

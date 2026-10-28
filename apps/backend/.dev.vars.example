@@ -4,3 +4,5 @@ SESSION_SECRET=
 PROPERTY_TIME_ZONE=America/Lima
 # The portal's dev origin. It must be localhost, not 127.0.0.1, so the session cookie is same-site.
 ALLOWED_ORIGINS=http://localhost:5173
+# Culqi sandbox secret key (sk_test_...) from the Culqi panel. Never use a live key locally.
+CULQI_SECRET_KEY=
