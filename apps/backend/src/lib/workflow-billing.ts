@@ -26,6 +26,15 @@ export function bill(
   };
 }
 
+/**
+ * One reserved room's charges as every read presents them. Room charges carry no
+ * share of the reservation discount, and a released reservation charges no room.
+ */
+export function roomCharges(room: BillableRoom, released: boolean) {
+  const subtotalCents = room.nights.reduce((sum, night) => sum + night.priceCents, 0);
+  return { subtotalCents, discountCents: 0, totalCents: released ? 0 : subtotalCents };
+}
+
 /** The sum of refunds in one status. */
 export const refundCents = (refunds: RefundMoney[], status: "requested" | "completed") =>
   refunds.reduce((sum, refund) => sum + (refund.status === status ? refund.amountCents : 0), 0);
@@ -51,10 +60,7 @@ export function reservationBill(
   const billable = terms.released ? [] : rooms;
   const charges = terms.released
     ? (terms.cancellationChargeCents ?? 0)
-    : billable.reduce(
-        (sum, room) => sum + room.nights.reduce((s, night) => s + night.priceCents, 0),
-        0,
-      );
+    : billable.reduce((sum, room) => sum + roomCharges(room, false).subtotalCents, 0);
   const refunds = terms.refunds ?? [];
   const totals = bill(charges, payments, discountCents, {
     released: terms.released,

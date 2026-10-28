@@ -2644,8 +2644,21 @@ describe("reservation dates and lifecycle", () => {
     const extend: WorkflowAction[] = [
       { type: "dates", checkIn: d.checkIn, checkOut: "2026-10-12" },
     ];
-    expect(await previewCommand(d, extend)).toMatchObject({ billing: { totalCents: 19800 } });
+    const { billing } = await previewCommand(d, extend);
+    expect(billing.totalCents).toBe(19800);
     d = await command(d, extend);
+    // Preview rooms price like the saved detail and expose only each night's final price.
+    const charges = ({
+      subtotalCents,
+      discountCents,
+      totalCents,
+      nights,
+    }: Detail["rooms"][number]) => ({ subtotalCents, discountCents, totalCents, nights });
+    expect(billing.rooms.map(charges)).toEqual(d.rooms.map(charges));
+    expect(billing.rooms[0].nights).toEqual([
+      { date: "2026-10-10", priceCents: 9000 },
+      { date: "2026-10-11", priceCents: 10800 },
+    ]);
     expect(nights()).toEqual([
       ["2026-10-10", 9000, -1000],
       ["2026-10-11", 10800, -1200],

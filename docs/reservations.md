@@ -72,7 +72,9 @@ Detail, list, and preview reads share `reservationBill` in
 `ratePlan` (the stored terms), `requiredInitialPaymentCents`, and
 `remainingScheduledCents`. A new read or preview that returns a bill uses
 `reservationBill`; plain `bill()` serves only the list's balance filter, which has
-SQL aggregates rather than nights. The
+SQL aggregates rather than nights. Detail and preview rooms take their
+`subtotalCents`, `discountCents`, and `totalCents` from `roomCharges` in the same
+module, and their nights expose only `date` and `priceCents`. The
 [required initial payment](../GLOSSARY.md#rates-and-charges) for Flexible is the
 sum of each reserved room's first saved nightly price, capped at the total after the
 reservation discount. Full upfront requires the whole total. The remaining

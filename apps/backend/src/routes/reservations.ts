@@ -49,8 +49,8 @@ import {
 import { cancellationFields } from "../lib/cancellation";
 import { presentRefunds } from "../lib/refunds";
 import { chunks } from "../lib/chunks";
-import { presentReservation } from "../present";
-import { bill } from "../lib/workflow-billing";
+import { presentNight, presentReservation } from "../present";
+import { bill, roomCharges } from "../lib/workflow-billing";
 import { acceptedTerms } from "../lib/rate-plans";
 
 export const reservationRoutes = new Hono<Env>();
@@ -295,15 +295,11 @@ reservationRoutes.post("/:id/preview", validate("json", workflowCommandSchema), 
       checkIn: result.state.reservation.checkIn,
       checkOut: result.state.reservation.checkOut,
       savedDiscountCents: result.state.reservation.discountCents,
-      rooms: result.state.lines.map((line) => {
-        const subtotalCents = line.nights.reduce((sum, night) => sum + night.priceCents, 0);
-        return {
-          ...line,
-          subtotalCents,
-          discountCents: 0,
-          totalCents: holdsInventory(result.state!.reservation.status) ? subtotalCents : 0,
-        };
-      }),
+      rooms: result.state.lines.map((line) => ({
+        ...line,
+        ...roomCharges(line, !holdsInventory(result.state!.reservation.status)),
+        nights: line.nights.map(presentNight),
+      })),
       payments: result.state.payments,
       refunds: presentRefunds(result.state.refunds),
     },
