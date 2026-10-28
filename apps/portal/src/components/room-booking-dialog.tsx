@@ -910,6 +910,7 @@ export function BookingEditor({
               }))}
               summary={billing ?? null}
               paidCents={billing?.paidCents ?? detail.paidCents}
+              schedule={{ plan: detail.ratePlan.plan, amounts: billing ?? null }}
               editableDiscountCents={detail.savedDiscountCents}
               discountDisabled={busy}
               onDiscountSave={

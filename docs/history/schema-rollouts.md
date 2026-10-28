@@ -10,6 +10,19 @@ checkout. Starting before `0002` with a checkout containing `0003` requires
 reviewing both sets of constraints together. Do not treat either section as a
 command to apply only one migration.
 
+## Rate-plan terms, migration 0006
+
+`0006_rate_plan_terms.sql` adds six columns with defaults to `reservations`, so
+every existing reservation reads as Flexible. It changes no dates, rooms, nights,
+saved prices, discounts, payments, statuses, or cancellation records, and leaves
+the triggers unchanged. Apply it before deploying the backend that reads those
+columns: the new Worker's reservation reads fail without them. The previous Worker
+runs against the additive schema, and its inserts receive Flexible defaults.
+
+Deliver the portal after the backend. Old portals ignore the added response fields;
+the new portal expects `ratePlan` and the scheduled amounts. For recovery, keep the
+columns and applied history and roll application builds back together.
+
 ## Property timezone, migration 0003
 
 For the original transition from a schema already containing `0002`, the

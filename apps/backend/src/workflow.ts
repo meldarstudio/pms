@@ -15,7 +15,8 @@ import {
 } from "./db/schema";
 import { HttpError, rethrowConflict } from "./http";
 import { ratesBetween } from "./inventory";
-import { bill } from "./lib/workflow-billing";
+import { reservationBill } from "./lib/workflow-billing";
+import { acceptedTerms, ratePlans, termColumns } from "./lib/rate-plans";
 import { quoteNights, overridesFor } from "./lib/quote";
 import { acceptPhone, requireStay } from "./rules";
 import { confirmationCode } from "./lib/codes";
@@ -40,14 +41,10 @@ const active = (s: string) => ["confirmed", "checked_in", "checked_out"].include
 const fail = (message: string): never => {
   throw new HttpError(400, message);
 };
-export const charges = (state: State) =>
-  (state.reservation.status === "cancelled" ? [] : state.lines).reduce(
-    (sum, l) => sum + l.nights.reduce((s, n) => s + n.priceCents, 0),
-    0,
-  );
 export const totals = (state: State) =>
-  bill(charges(state), state.payments, state.reservation.discountCents, {
+  reservationBill(state.lines, state.payments, state.reservation.discountCents, {
     cancelled: state.reservation.status === "cancelled",
+    paymentSchedule: acceptedTerms(state.reservation).paymentSchedule,
   });
 
 export async function loadState(db: Db, id: string): Promise<State> {
@@ -441,6 +438,8 @@ export async function createWorkflow(db: Db, input: WorkflowCreate) {
         notes: input.notes,
         discountCents: input.discountCents ?? 0,
         createdAt: now,
+        // Staff creation offers only Flexible until plan selection exists.
+        ...termColumns(ratePlans.flexible),
       }),
       db.insert(reservationRequests).values({
         id: input.requestId,

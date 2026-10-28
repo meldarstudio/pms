@@ -127,13 +127,22 @@ _Avoid_: Paid, cancelled
 
 **Cancellation**:
 The withdrawal of a reservation at the request of the person who reserved or by a staff decision,
-releasing its room inventory and reducing its bill to zero. The reservation and its payments remain on
-record, with payments retained as credit for reference.
+releasing its room inventory. The reservation and its payment history remain on record.
 _Avoid_: Deletion, refund
 
+**No-show**:
+A reservation outcome recorded by staff when they determine that the expected guest will not arrive,
+releasing its room inventory while retaining the reservation and its financial history.
+_Avoid_: Guest-requested cancellation, automatic checkout
+
 **Restoration**:
-The return of a cancelled reservation to confirmed, checked in, or checked out.
+The return of a cancelled or no-show reservation to confirmed, checked in, or checked out.
 _Avoid_: Status correction, undelete, check-in
+
+**Unfulfilled**:
+A reservation status for an online reservation whose payment succeeded after its room type was no
+longer available. It holds no room inventory and keeps its payment until staff settle the refund due.
+_Avoid_: Cancelled, held, expired
 
 ### Rooms and availability
 
@@ -217,6 +226,37 @@ _Avoid_: Child price allowance, combined maximum occupancy
 
 ### Rates and charges
 
+**Rate plan**:
+A reservation offer combining a price adjustment, a cancellation policy, and a payment schedule.
+_Avoid_: Room type, price rule, cancellation policy when referring to the whole offer
+
+**Price adjustment**:
+A rate plan's percentage change to the ordinary nightly prices of a reservation that accepts it.
+_Avoid_: Discount, rate override, price rule
+
+**Cancellation policy**:
+The agreed conditions that determine a reservation's charge when it is cancelled or the guest does
+not arrive.
+_Avoid_: Refund, payment schedule
+
+**Payment schedule**:
+The agreed amounts payable toward a reservation and when they are due.
+_Avoid_: Payment method, cancellation policy
+
+**Deposit**:
+An advance payment toward a reservation's total, whose required amount follows its payment schedule.
+_Avoid_: Additional charge, automatically refundable payment
+
+**Required initial payment**:
+The first amount a reservation's payment schedule requires: a deposit, or the whole total when the
+schedule requires full payment upfront.
+_Avoid_: Amount paid, balance
+
+**Remaining scheduled amount**:
+The part of a reservation's total that its payment schedule leaves after the required initial payment,
+regardless of payments received.
+_Avoid_: Balance, amount owed
+
 **Base rate**:
 A room type's default price for one room for one night.
 _Avoid_: Total price, per-person rate
@@ -238,6 +278,15 @@ _Avoid_: Current rate
 **Room charge**:
 The amount billed for a reserved room's stay nights, calculated from its saved nightly prices.
 _Avoid_: Payment
+
+**Cancellation charge**:
+The amount owed under a reservation's agreed policy when it is cancelled or recorded as a no-show,
+before any staff waiver.
+_Avoid_: Deposit received, refund
+
+**Charge waiver**:
+A reasoned staff decision to reduce or remove a cancellation charge.
+_Avoid_: Refund, received payment, reservation discount
 
 ### Reservation bill
 
@@ -270,6 +319,26 @@ _Avoid_: Payment reference, payment processing
 The calendar date at the property on which a payment was received, unchanged by the viewer's timezone.
 _Avoid_: Date entered
 
+**Quote**:
+The prices, rate plan, and amount to pay offered to an online guest, valid for 10 minutes. A quote
+does not hold room inventory.
+_Avoid_: Hold, preview, reservation
+
+**Payment attempt**:
+One request to charge an online guest for a quote, recorded before the payment provider is called.
+An attempt whose result is unknown is resolved by looking up the provider, never by charging again.
+_Avoid_: Payment, charge, retry
+
+**Refund**:
+Money returned against a payment previously received for a reservation.
+_Avoid_: Cancellation, charge waiver, future-stay coupon
+
+**Refund due**:
+Money still owed back to the guest after accounting for final charges, completed refunds, and any
+agreed conversion to a future-stay coupon. A pending or failed refund attempt does not settle this
+obligation.
+_Avoid_: Completed refund, redeemable coupon
+
 **Amount paid**:
 The sum of the payments recorded against a reservation.
 _Avoid_: Revenue, total
@@ -284,6 +353,16 @@ The amount by which a reservation's payments exceed its total, represented by th
 negative balance. Credit remains on the reservation for reference, including after cancellation, and
 does not imply a refund or a redeemable coupon.
 _Avoid_: Refund, coupon
+
+**Future-stay coupon**:
+A transferable fixed monetary value, represented by a code, issued for redemption toward a later
+reservation at the property.
+_Avoid_: Promotional discount, reservation credit, refund
+
+**Coupon redemption**:
+The application of a future-stay coupon's value toward a reservation, reducing its remaining coupon
+balance and the amount owed for that reservation without receiving new money.
+_Avoid_: Cash payment, promotional discount, refund
 
 **Outstanding balance**:
 The amount a reservation still owes, represented by a positive balance.

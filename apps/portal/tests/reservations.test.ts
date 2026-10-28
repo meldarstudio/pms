@@ -41,6 +41,18 @@ const ana: ReservationDetail & { guestName: string } = {
   paidCents: 10000,
   balanceCents: 20000,
   creditCents: 0,
+  ratePlan: {
+    plan: "flexible",
+    cancellationPolicy: {
+      chargeBasis: "first_night",
+      freeUntilHoursBeforeCheckIn: 48,
+      checkInTime: "15:00",
+    },
+    paymentSchedule: "first_night_deposit",
+    priceAdjustmentPercent: 0,
+  },
+  requiredInitialPaymentCents: 15000,
+  remainingScheduledCents: 15000,
   payments: [],
   notes: null,
   cancellationReason: null,

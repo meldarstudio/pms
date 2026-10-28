@@ -40,6 +40,18 @@ beforeEach(() => {
     paidCents: 10025,
     balanceCents: 14975,
     creditCents: 0,
+    ratePlan: {
+      plan: "flexible",
+      cancellationPolicy: {
+        chargeBasis: "first_night",
+        freeUntilHoursBeforeCheckIn: 48,
+        checkInTime: "15:00",
+      },
+      paymentSchedule: "first_night_deposit",
+      priceAdjustmentPercent: 0,
+    },
+    requiredInitialPaymentCents: 15025,
+    remainingScheduledCents: 9975,
     payments: [],
     notes: null,
     cancellationReason: null,

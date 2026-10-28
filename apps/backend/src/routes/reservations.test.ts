@@ -418,6 +418,121 @@ it.each([
   expect(await (await request("/reservations")).json()).toEqual([]);
 });
 
+describe("accepted rate-plan terms", () => {
+  const flexible = {
+    plan: "flexible",
+    cancellationPolicy: {
+      chargeBasis: "first_night",
+      freeUntilHoursBeforeCheckIn: 48,
+      checkInTime: "15:00",
+    },
+    paymentSchedule: "first_night_deposit",
+    priceAdjustmentPercent: 0,
+  };
+
+  it("creates a Flexible reservation whose deposit is its first night", async () => {
+    const d = await create(1, { checkIn: "2026-10-10", checkOut: "2026-10-12" });
+    const expected = {
+      ratePlan: flexible,
+      totalCents: 20000,
+      requiredInitialPaymentCents: 10000,
+      remainingScheduledCents: 10000,
+    };
+    expect(d).toMatchObject(expected);
+    expect(await (await request(`/reservations/${d.id}`)).json()).toMatchObject(expected);
+  });
+
+  it("sums every room's first night and caps the deposit at a discounted total in every read", async () => {
+    seedRoomType(db.sqlite, { id: "suite", name: "Suite", maxAdults: 2, baseRateCents: 15000 });
+    seedRooms(db.sqlite, "suite", { "room-201": "201" });
+    const response = await request("/reservations", "POST", {
+      requestId: crypto.randomUUID(),
+      checkIn: "2026-10-10",
+      checkOut: "2026-10-12",
+      guest: { fullName: "Ada Lovelace" },
+      rooms: [
+        { roomTypeId: "type", adults: 1, children: 0 },
+        { roomTypeId: "suite", adults: 1, children: 0 },
+      ],
+    });
+    expect(response.status).toBe(201);
+    const d = (await response.json()) as Detail;
+    const undiscounted = {
+      ratePlan: flexible,
+      totalCents: 50000,
+      requiredInitialPaymentCents: 25000,
+      remainingScheduledCents: 25000,
+    };
+    expect(d).toMatchObject(undiscounted);
+    expect(await listed()).toMatchObject([{ id: d.id, ...undiscounted }]);
+
+    const discount: WorkflowAction[] = [{ type: "set-discount", amountCents: 40000 }];
+    const discounted = {
+      ratePlan: flexible,
+      totalCents: 10000,
+      requiredInitialPaymentCents: 10000,
+      remainingScheduledCents: 0,
+    };
+    expect((await previewCommand(d, discount)).billing).toMatchObject(discounted);
+    expect(await command(d, discount)).toMatchObject(discounted);
+    expect(await (await request(`/reservations/${d.id}`)).json()).toMatchObject(discounted);
+    expect(await listed()).toMatchObject([{ id: d.id, ...discounted }]);
+    expect((await paged("balance=outstanding")).rows).toMatchObject([{ id: d.id, ...discounted }]);
+  });
+
+  it("reads rows written without plan columns as Flexible without changing their saved money", async () => {
+    // Legacy rows and the previous Worker's inserts name no plan columns.
+    seedReservation(db.sqlite, {
+      id: "legacy",
+      code: "OLD1",
+      guestName: "Legacy Guest",
+      checkIn: "2026-10-10",
+      checkOut: "2026-10-12",
+      createdAt: "2026-09-01",
+      nightCents: 12345,
+    });
+    seedReservation(db.sqlite, {
+      id: "legacy-cancelled",
+      code: "OLD2",
+      guestName: "Cancelled Guest",
+      checkIn: "2026-10-10",
+      checkOut: "2026-10-12",
+      createdAt: "2026-09-01",
+      status: "cancelled",
+      nightCents: 10000,
+    });
+    db.sqlite.exec(`
+      UPDATE reservations SET discount_cents = 5000 WHERE id = 'legacy';
+      INSERT INTO payments (id, reservation_id, amount_cents, method, payment_date, created_at)
+        VALUES ('legacy-payment', 'legacy', 3000, 'cash', '2026-09-01', '2026-09-01'),
+               ('cancelled-payment', 'legacy-cancelled', 4000, 'cash', '2026-09-01', '2026-09-01');
+    `);
+    const legacy = {
+      ratePlan: flexible,
+      subtotalCents: 24690,
+      discountCents: 5000,
+      totalCents: 19690,
+      paidCents: 3000,
+      balanceCents: 16690,
+      requiredInitialPaymentCents: 12345,
+      remainingScheduledCents: 7345,
+    };
+    const cancelled = {
+      ratePlan: flexible,
+      totalCents: 0,
+      balanceCents: -4000,
+      requiredInitialPaymentCents: 0,
+      remainingScheduledCents: 0,
+    };
+    expect(await (await request("/reservations/legacy")).json()).toMatchObject(legacy);
+    expect(await (await request("/reservations/legacy-cancelled")).json()).toMatchObject(cancelled);
+    expect(await listed("?sort=guestName")).toMatchObject([
+      { id: "legacy-cancelled", ...cancelled },
+      { id: "legacy", ...legacy },
+    ]);
+  });
+});
+
 // Hold the next write after its preflight, before its transaction. Other
 // requests can commit through the same database while it waits.
 function pauseNextCommit() {

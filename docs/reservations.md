@@ -22,6 +22,53 @@ Retained nights keep saved prices. Added nights use current rates; changing room
 type reprices that reserved room. Initial pricing uses a supplied flat nightly
 rate, then the date's rate override, then the base rate.
 
+## Rate-plan terms
+
+The [rate plans](../GLOSSARY.md#rates-and-charges) are code-defined in
+[rate-plans.ts](../apps/backend/src/lib/rate-plans.ts); there is no plan editor.
+Each plan composes a cancellation policy, a payment schedule, and a price
+adjustment:
+
+- **Flexible**: no price adjustment; a first-night deposit; free cancellation until
+  48 hours before the 15:00 check-in, then a first-night charge.
+- **Non-refundable**: a 10% price reduction; the full total upfront; a cancellation
+  or no-show charge equal to the final total.
+
+Each reservation stores a snapshot of the terms it was accepted under: plan,
+cancellation-charge basis, free-cancellation hours, check-in time, payment
+schedule, and price adjustment. The basis (`cancellation_charge_basis` in the
+database, `cancellationPolicy.chargeBasis` in responses) is `first_night` or
+`final_total`. It says what a [cancellation charge](../GLOSSARY.md#rates-and-charges) would be
+computed from; no charge amount is computed or stored. Changing a definition never
+alters an existing reservation, and workflow commands do not change the stored
+terms. `POST /reservations` takes no
+plan and always stores Flexible terms. Column defaults give Flexible terms to rows
+written without them: reservations from before migration `0006` and inserts by an
+older Worker.
+
+Only the payment schedule affects current behavior. Pricing and cancellation are
+unchanged: Non-refundable cannot yet be selected, its price adjustment is not
+applied, the free-cancellation deadline is stored but not enforced, and
+cancellation still zeroes the bill.
+
+Detail, list, and preview reads share `reservationBill` in
+[workflow-billing.ts](../apps/backend/src/lib/workflow-billing.ts) and return
+`ratePlan` (the stored terms), `requiredInitialPaymentCents`, and
+`remainingScheduledCents`. A new read or preview that returns a bill uses
+`reservationBill`; plain `bill()` serves only the list's balance filter, which has
+SQL aggregates rather than nights. The
+[required initial payment](../GLOSSARY.md#rates-and-charges) for Flexible is the
+sum of each reserved room's first saved nightly price, capped at the total after the
+reservation discount. Full upfront requires the whole total. The remaining
+scheduled amount is the total less the required initial payment. Both are zero for
+a cancelled reservation, whose total is zero. Neither depends on payments received;
+the balance still does.
+
+Creation shows no plan or scheduled amounts before saving. Its total is a portal
+estimate: each room type's availability stay total, less the capped discount.
+Showing the scheduled amounts before saving needs a server preview for new
+reservations, not a portal copy of `reservationBill`.
+
 ## Stay dates and lifecycle
 
 Each reservation has one `checkIn` and `checkOut` date shared by all its rooms.
@@ -53,7 +100,8 @@ Optional query dimensions combine with AND:
   Omit both for unrestricted statuses; when both are sent, both restrictions apply.
 - `balance=outstanding|settled|credit` selects positive, zero, or negative signed
   balances independently of status. Cancellation has a zero bill and retains
-  payments as credit. The list reuses detail/workflow billing policy.
+  payments as credit. The filter applies `bill()`, the billing policy that
+  `reservationBill` uses for detail, list, and workflow reads.
 - `assignment=assigned|unassigned` selects reservations with every physical room
   assigned or with any unassigned reserved room, including partial assignments.
 - `q` retains per-token booking-contact-name or reservation-code search; `guestId`
@@ -222,7 +270,8 @@ shows the room count and a divided list with one line per room: room number/type
 then adult/child counts. Rooms sort by number, with unassigned rooms last as **Sin
 asignar**. Occupancy editing stays in the stay editor.
 
-The bill shows subtotal, discount including zero, total, amount paid, and signed
+The bill shows **Plan tarifario**, subtotal, discount including zero, total,
+**Pago inicial requerido**, **Pago restante programado**, amount paid, and signed
 balance. **Editar descuento** belongs to the discount row; **Registrar pago** is
 separate. Outstanding, settled, and credit balances remain distinct. This is a
 reservation bill. The discount editor previews the resulting bill 300 ms after
@@ -261,7 +310,9 @@ footer remain reachable; closing preserves the calendar and its scroll position.
 
 The mobile footer has one bill accordion, with the colored balance bar at the
 bottom and the full breakdown expanding upward above it. The breakdown includes
-room charges, the editable discount, total, and amount paid; there is no separate
+room charges, the editable discount, total, **Plan tarifario**, **Pago inicial
+requerido**, **Pago restante programado**, and amount paid. Draft pricing previews
+the scheduled amounts with the bill; there is no separate
 bill card in the scrolling form body or repeated balance inside the breakdown.
 It starts collapsed when a reservation opens and preserves its expanded state
 across tabs. The breakdown scrolls within a bounded height so the balance and

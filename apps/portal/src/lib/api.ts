@@ -209,6 +209,20 @@ export type ReservationPayment = {
   createdAt: string;
 };
 
+export type RatePlanCode = "flexible" | "non_refundable";
+
+/** The rate-plan terms a reservation was accepted under. */
+export type RatePlanTerms = {
+  plan: RatePlanCode;
+  cancellationPolicy: {
+    chargeBasis: "first_night" | "final_total";
+    freeUntilHoursBeforeCheckIn: number | null;
+    checkInTime: string;
+  };
+  paymentSchedule: "first_night_deposit" | "full_upfront";
+  priceAdjustmentPercent: number;
+};
+
 export type ReservationDetail = {
   status: string;
   cancellationReason: string | null;
@@ -230,6 +244,9 @@ export type ReservationDetail = {
   discountCents: number;
   paidCents: number;
   balanceCents: number;
+  ratePlan: RatePlanTerms;
+  requiredInitialPaymentCents: number;
+  remainingScheduledCents: number;
   payments: ReservationPayment[];
   rooms: {
     id: string;
@@ -512,6 +529,9 @@ export type WorkflowBilling = Pick<
   | "balanceCents"
   | "creditCents"
   | "savedDiscountCents"
+  | "ratePlan"
+  | "requiredInitialPaymentCents"
+  | "remainingScheduledCents"
 > & {
   rooms: ReservationDetail["rooms"];
   payments: ReservationDetail["payments"];

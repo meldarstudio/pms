@@ -75,6 +75,13 @@ export const reservations = sqliteTable(
     source: text("source").notNull().default("desk"),
     notes: text("notes"),
     createdAt: text("created_at").notNull(),
+    // Accepted rate-plan terms. Defaults give legacy rows and older Workers Flexible terms.
+    ratePlan: text("rate_plan").notNull().default("flexible"),
+    cancellationChargeBasis: text("cancellation_charge_basis").notNull().default("first_night"),
+    freeCancellationHours: integer("free_cancellation_hours").default(48),
+    checkInTime: text("check_in_time").notNull().default("15:00"),
+    paymentSchedule: text("payment_schedule").notNull().default("first_night_deposit"),
+    priceAdjustmentPercent: integer("price_adjustment_percent").notNull().default(0),
   },
   (table) => [
     index("reservations_dates").on(table.checkIn, table.checkOut),
