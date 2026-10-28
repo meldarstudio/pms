@@ -1048,6 +1048,301 @@ describe("no-show outcomes", () => {
   });
 });
 
+describe("refunds", () => {
+  const cancel: WorkflowAction = { type: "set-status", status: "cancelled" };
+  const requestRefund = (
+    d: Detail,
+    amountCents: number,
+    payment = d.payments[0],
+  ): WorkflowAction => ({
+    type: "request-refund",
+    paymentId: payment.id,
+    amountCents,
+    method: "transfer",
+    reason: "Cancelled stay",
+  });
+  const complete = (refundId: string, refundDate = "2026-10-10", reference = "op-778") =>
+    ({ type: "complete-refund", refundId, refundDate, reference }) satisfies WorkflowAction;
+  const fail = (refundId: string): WorkflowAction => ({
+    type: "fail-refund",
+    refundId,
+    reason: "Wrong account",
+  });
+  /** A late Flexible cancellation whose final charge is its S/200 first night. */
+  async function lateCancellation(paidCents: number) {
+    const d = await stay("2026-10-11", "2026-10-13", 20000);
+    return command(d, [pay(paidCents), cancel]);
+  }
+
+  it("keeps S/100 due while a refund is requested or failed and retains S/200 once it completes", async () => {
+    const cancelled = await lateCancellation(30000);
+    expect(cancelled).toMatchObject({ totalCents: 20000, paidCents: 30000, refundDueCents: 10000 });
+
+    const requested = await command(cancelled, [requestRefund(cancelled, 10000)]);
+    const pending = {
+      totalCents: 20000,
+      paidCents: 30000,
+      refundedCents: 0,
+      pendingRefundCents: 10000,
+      balanceCents: -10000,
+      refundDueCents: 10000,
+    };
+    expect(requested).toMatchObject(pending);
+    expect(requested.refunds).toMatchObject([
+      {
+        paymentId: cancelled.payments[0].id,
+        amountCents: 10000,
+        method: "transfer",
+        reason: "Cancelled stay",
+        status: "requested",
+        requestedAt: "2026-10-10T15:00:00.000Z",
+        requestedBy: "hotelmanantial",
+        resolvedAt: null,
+      },
+    ]);
+    expect(await paged("refund=requested")).toMatchObject({ rows: [{ id: cancelled.id }] });
+
+    const failed = await command(requested, [fail(requested.refunds[0].id)]);
+    expect(failed).toMatchObject({ ...pending, pendingRefundCents: 0 });
+    expect(failed.refunds).toMatchObject([{ status: "failed", failureReason: "Wrong account" }]);
+    expect((await paged("refund=requested")).rows).toEqual([]);
+    expect(await paged("refund=due")).toMatchObject({ rows: [{ id: cancelled.id }] });
+
+    const retried = await command(failed, [requestRefund(failed, 10000)]);
+    vi.setSystemTime(new Date("2026-10-10T18:00:00Z"));
+    await db.signIn("owner");
+    const retry = retried.refunds.find((refund) => refund.status === "requested")!;
+    const completed = await command(retried, [complete(retry.id)]);
+    expect(completed).toMatchObject({
+      totalCents: 20000,
+      paidCents: 30000,
+      refundedCents: 10000,
+      pendingRefundCents: 0,
+      balanceCents: 0,
+      refundDueCents: 0,
+    });
+    expect(completed.refunds.find((refund) => refund.id === retry.id)).toMatchObject({
+      status: "completed",
+      resolvedAt: "2026-10-10T18:00:00.000Z",
+      resolvedBy: "duena",
+      refundDate: "2026-10-10",
+      completionReference: "OP-778",
+    });
+    expect(completed.payments).toEqual(cancelled.payments);
+    expect((await paged("refund=due")).rows).toEqual([]);
+    expect(await paged("balance=settled")).toMatchObject({ rows: [{ id: cancelled.id }] });
+    expect(await (await request(`/reservations/${cancelled.id}`)).json()).toEqual(completed);
+  });
+
+  it("returns all S/200 of an eligible Flexible cancellation in one request and completion", async () => {
+    let d = await stay("2026-10-20", "2026-10-22", 10000);
+    d = await command(d, [pay(20000), cancel]);
+    expect(d).toMatchObject({ totalCents: 0, refundDueCents: 20000 });
+    const actions = [requestRefund(d, 20000)];
+    expect((await previewCommand(d, actions)).billing).toMatchObject({
+      pendingRefundCents: 20000,
+      refundDueCents: 20000,
+      refunds: [{ amountCents: 20000, status: "requested" }],
+    });
+    d = await command(d, actions);
+    expect(await command(d, [complete(d.refunds[0].id)])).toMatchObject({
+      paidCents: 20000,
+      refundedCents: 20000,
+      balanceCents: 0,
+      refundDueCents: 0,
+    });
+  });
+
+  it("owes back S/100 when a S/500 stay paid in full is amended to S/400", async () => {
+    let d = await stay("2026-10-20", "2026-10-25", 10000);
+    d = await command(d, [pay(50000)]);
+    const shortened = await command(d, [
+      { type: "dates", checkIn: "2026-10-20", checkOut: "2026-10-24" },
+    ]);
+    expect(shortened).toMatchObject({
+      status: "confirmed",
+      totalCents: 40000,
+      paidCents: 50000,
+      refundDueCents: 10000,
+    });
+    expect(await paged("refund=due")).toMatchObject({ rows: [{ id: d.id }] });
+    const requested = await command(shortened, [requestRefund(shortened, 10000)]);
+    expect(requested).toMatchObject({ pendingRefundCents: 10000, refundDueCents: 10000 });
+    const extend: WorkflowAction = { type: "dates", checkIn: "2026-10-20", checkOut: "2026-10-25" };
+    expect(await command(requested, [extend], 400)).toEqual({
+      error: "change leaves requested refunds above the refund due",
+    });
+    expect(await command(requested, [complete(requested.refunds[0].id)])).toMatchObject({
+      totalCents: 40000,
+      refundedCents: 10000,
+      pendingRefundCents: 0,
+      balanceCents: 0,
+    });
+  });
+
+  it("rejects a second request beyond the remaining refund due or what its payment has left", async () => {
+    const cancelled = await lateCancellation(30000);
+    const first = await command(cancelled, [requestRefund(cancelled, 6000)]);
+    expect(await command(first, [requestRefund(first, 4001)], 400)).toEqual({
+      error: "refund exceeds the refund due",
+    });
+    const second = await command(first, [requestRefund(first, 4000)]);
+    expect(second.pendingRefundCents).toBe(10000);
+
+    let free = await stay("2026-10-20", "2026-10-22", 10000);
+    free = await command(free, [pay(10000), pay(10000), cancel]);
+    expect(free.refundDueCents).toBe(20000);
+    const [payment] = free.payments;
+    const partly = await command(free, [requestRefund(free, 6000, payment)]);
+    const done = await command(partly, [complete(partly.refunds[0].id)]);
+    expect(await command(done, [requestRefund(done, 4001, payment)], 400)).toEqual({
+      error: "refund exceeds the payment's remaining amount",
+    });
+    expect(await command(done, [requestRefund(done, 4000, payment)])).toMatchObject({
+      refundedCents: 6000,
+      pendingRefundCents: 4000,
+      refundDueCents: 14000,
+    });
+  });
+
+  it("lets only one of two concurrent requests for the whole refund due succeed", async () => {
+    const cancelled = await lateCancellation(30000);
+    const body = () => ({
+      requestId: crypto.randomUUID(),
+      actions: [requestRefund(cancelled, 10000)],
+    });
+    const paused = pauseNextCommit();
+    const first = request(`/reservations/${cancelled.id}/commands`, "POST", body());
+    await paused.ready;
+    const concurrent = await request(`/reservations/${cancelled.id}/commands`, "POST", body());
+    expect(concurrent.status).toBe(200);
+    paused.resume();
+    const stale = await first;
+    expect(stale.status).toBe(400);
+    expect(await stale.json()).toEqual({ error: "refund exceeds the refund due" });
+    const saved = (await (await request(`/reservations/${cancelled.id}`)).json()) as Detail;
+    expect(saved.refunds).toHaveLength(1);
+    expect(saved.pendingRefundCents).toBe(10000);
+  });
+
+  it("locks a payment once it has a refund and keeps a mistaken request as failed history", async () => {
+    const cancelled = await lateCancellation(30000);
+    const [payment] = cancelled.payments;
+    const requested = await command(cancelled, [requestRefund(cancelled, 5000)]);
+    const [refund] = requested.refunds;
+    const failed = await command(requested, [fail(refund.id)]);
+    for (const action of [
+      { type: "delete-payment", paymentId: payment.id },
+      {
+        type: "edit-payment",
+        paymentId: payment.id,
+        payment: { amountCents: 40000, method: "cash", paymentDate: "2026-10-10" },
+      },
+    ] as WorkflowAction[])
+      expect(await command(failed, [action], 400)).toEqual({
+        error: "payment with refunds cannot be changed",
+      });
+    for (const action of [fail(refund.id), complete(refund.id)])
+      expect(await command(failed, [action], 400)).toEqual({
+        error: "refund is already resolved",
+      });
+    expect(await command(failed, [fail("missing")], 400)).toEqual({ error: "refund not found" });
+    const next = await command(failed, [requestRefund(failed, 5000)]);
+    const pending = next.refunds.find((r) => r.status === "requested")!;
+    expect(await command(next, [complete(pending.id, "2026-10-11")], 400)).toEqual({
+      error: "refund date cannot be in the future",
+    });
+    expect(await (await request(`/reservations/${cancelled.id}`)).json()).toEqual(next);
+    expect(next.payments).toEqual(cancelled.payments);
+  });
+
+  it("refuses to restore a cancellation or no-show with any refund activity", async () => {
+    const cancelled = await lateCancellation(30000);
+    const requested = await command(cancelled, [requestRefund(cancelled, 5000)]);
+    const failed = await command(requested, [fail(requested.refunds[0].id)]);
+    const restore: WorkflowAction = { type: "set-status", status: "confirmed" };
+    for (const endpoint of ["preview", "commands"]) {
+      const response = await request(`/reservations/${failed.id}/${endpoint}`, "POST", {
+        requestId: crypto.randomUUID(),
+        actions: [restore],
+      });
+      expect(response.status).toBe(400);
+      expect(await response.json()).toEqual({
+        error: "reservation with refunds cannot be restored",
+      });
+    }
+    let noShow = await stay("2026-10-10", "2026-10-12", 10000);
+    noShow = await command(noShow, [pay(20000), { type: "set-status", status: "no_show" }]);
+    const owed = await command(noShow, [requestRefund(noShow, 10000)]);
+    expect(await command(owed, [restore], 400)).toEqual({
+      error: "reservation with refunds cannot be restored",
+    });
+    expect(await (await request(`/reservations/${noShow.id}`)).json()).toEqual(owed);
+    const untouched = await lateCancellation(30000);
+    expect(await command(untouched, [restore, requestRefund(untouched, 5000)], 400)).toEqual({
+      error: "reservation with refunds cannot be restored",
+    });
+  });
+
+  it("keeps the payment report's received total and lists only completed refunds by refund date", async () => {
+    const cancelled = await lateCancellation(30000);
+    let d = await command(cancelled, [requestRefund(cancelled, 6000)]);
+    const [first] = d.refunds;
+    d = await command(d, [complete(first.id), requestRefund(d, 4000)]);
+    vi.setSystemTime(new Date("2026-10-11T15:00:00Z"));
+    const pending = d.refunds.find((refund) => refund.status === "requested")!;
+    await command(d, [complete(pending.id, "2026-10-11", "op-9")]);
+    const report = async (date: string) =>
+      (await request(`/payments?from=${date}&to=${date}`)).json();
+    expect(await report("2026-10-10")).toEqual({
+      from: "2026-10-10",
+      to: "2026-10-10",
+      currency: "PEN",
+      totalCents: 30000,
+      payments: [expect.objectContaining({ amountCents: 30000, code: d.code })],
+      refundedCents: 6000,
+      refunds: [
+        {
+          id: first.id,
+          paymentId: d.payments[0].id,
+          reservationId: d.id,
+          code: d.code,
+          guestName: "Ada Lovelace",
+          amountCents: 6000,
+          method: "transfer",
+          reference: "OP-778",
+          refundDate: "2026-10-10",
+          reason: "Cancelled stay",
+        },
+      ],
+    });
+    expect(await report("2026-10-11")).toMatchObject({
+      totalCents: 0,
+      payments: [],
+      refundedCents: 4000,
+      refunds: [{ amountCents: 4000, reference: "OP-9", refundDate: "2026-10-11" }],
+    });
+  });
+
+  it("applies a retried request once, including a copy sent while the first waits", async () => {
+    const cancelled = await lateCancellation(30000);
+    const body = { requestId: crypto.randomUUID(), actions: [requestRefund(cancelled, 10000)] };
+    const paused = pauseNextCommit();
+    const first = request(`/reservations/${cancelled.id}/commands`, "POST", body);
+    await paused.ready;
+    const concurrent = request(`/reservations/${cancelled.id}/commands`, "POST", body);
+    paused.resume();
+    const responses = await Promise.all([first, concurrent]);
+    expect(responses.map((response) => response.status)).toEqual([200, 200]);
+    const saved = (await responses[0].json()) as Detail;
+    expect(await responses[1].json()).toEqual(saved);
+    const retried = await request(`/reservations/${cancelled.id}/commands`, "POST", body);
+    expect(await retried.json()).toEqual(saved);
+    expect(saved.refunds).toHaveLength(1);
+    expect(saved.pendingRefundCents).toBe(10000);
+  });
+});
+
 // Hold the next write after its preflight, before its transaction. Other
 // requests can commit through the same database while it waits.
 function pauseNextCommit() {

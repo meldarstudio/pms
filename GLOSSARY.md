@@ -332,7 +332,9 @@ An attempt whose result is unknown is resolved by looking up the provider, never
 _Avoid_: Payment, charge, retry
 
 **Refund**:
-Money returned against a payment previously received for a reservation.
+Money returned against a payment previously received for a reservation. Staff request it, return
+the money through the actual channel, then record it completed with a reference; a mistaken request
+is recorded failed with a reason. Only a completed refund has returned money.
 _Avoid_: Cancellation, charge waiver, future-stay coupon
 
 **Refund due**:
@@ -345,15 +347,19 @@ _Avoid_: Completed refund, redeemable coupon
 The sum of the payments recorded against a reservation.
 _Avoid_: Revenue, total
 
+**Net retained**:
+The amount paid less completed refunds.
+_Avoid_: Amount paid, revenue
+
 **Balance**:
-The reservation's total less its amount paid, with a positive balance indicating money owed and a
+The reservation's total less its net retained, with a positive balance indicating money owed and a
 negative balance indicating credit.
 _Avoid_: Total, unpaid charges without accounting for payments
 
 **Credit**:
-The amount by which a reservation's payments exceed its total, represented by the magnitude of a
-negative balance. Credit remains on the reservation for reference and does not imply a refund or a
-redeemable coupon. After cancellation, credit is the refund due.
+The amount by which a reservation's net retained exceeds its total, represented by the magnitude of
+a negative balance. Credit is the refund due on any reservation, whether cancelled, No-show, waived,
+or amended to a lower total; it does not imply a refund was requested or a redeemable coupon.
 _Avoid_: Refund, coupon
 
 **Future-stay coupon**:

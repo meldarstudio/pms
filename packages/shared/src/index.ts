@@ -171,6 +171,8 @@ export const reservationListQuerySchema = listQuerySchema.extend({
     .pipe(z.array(reservationStatusSchema).min(1))
     .optional(),
   balance: z.enum(["outstanding", "settled", "credit"]).optional(),
+  /** `due`: money is owed back; `requested`: a refund request is unresolved. */
+  refund: z.enum(["due", "requested"]).optional(),
   assignment: z.enum(["assigned", "unassigned"]).optional(),
   sort: z.enum(["checkIn", "checkOut", "guestName", "balance"]).optional(),
   direction: z.enum(["asc", "desc"]).optional(),
@@ -262,6 +264,28 @@ export const workflowActionSchema = z.discriminatedUnion("type", [
       amountCents: cents,
       reason: text(2000),
     })
+    .strict(),
+  // Refunds return received money manually through the channel staff choose.
+  z
+    .object({
+      type: z.literal("request-refund"),
+      paymentId: z.string().min(1),
+      amountCents: cents,
+      method: paymentInputSchema.shape.method,
+      reference: text(200).toUpperCase().optional(),
+      reason: text(2000),
+    })
+    .strict(),
+  z
+    .object({
+      type: z.literal("complete-refund"),
+      refundId: z.string().min(1),
+      refundDate: z.iso.date(),
+      reference: text(200).toUpperCase(),
+    })
+    .strict(),
+  z
+    .object({ type: z.literal("fail-refund"), refundId: z.string().min(1), reason: text(2000) })
     .strict(),
   z.object({ type: z.literal("notes"), notes: z.string().max(2000) }).strict(),
 ]);

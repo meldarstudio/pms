@@ -55,6 +55,19 @@ const messages: Record<string, string> = {
     "Restaura la reserva No-show antes de cancelarla.",
   "waiver cannot exceed the cancellation charge":
     "La exoneración no puede superar el cargo de cancelación pendiente.",
+  "refund not found": "El reembolso ya no existe.",
+  "refund is already resolved": "Este reembolso ya fue completado o marcado como fallido.",
+  "refund date cannot be in the future": "La fecha del reembolso no puede ser futura.",
+  "refund exceeds the refund due":
+    "El reembolso supera el monto por devolver, descontando las solicitudes pendientes.",
+  "refund exceeds the payment's remaining amount":
+    "El reembolso supera lo que queda de este pago tras sus otros reembolsos.",
+  "change leaves requested refunds above the refund due":
+    "El cambio deja reembolsos solicitados por encima del monto por devolver. Márcalos como fallidos primero.",
+  "payment with refunds cannot be changed":
+    "Este pago tiene reembolsos y no se puede editar ni eliminar.",
+  "reservation with refunds cannot be restored":
+    "La reserva tiene reembolsos y no se puede restaurar. Crea una nueva reserva.",
   "too many guests for this room type":
     "La habitación no tiene capacidad para todos los huéspedes.",
   "stay cannot be longer than 60 nights": "La estancia no puede superar las 60 noches.",

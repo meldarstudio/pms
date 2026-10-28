@@ -11,6 +11,7 @@ import type {
 import { cancellationFields, type Cancellation } from "./lib/cancellation";
 import { nightsBetween } from "./lib/dates";
 import { acceptedTerms } from "./lib/rate-plans";
+import { presentRefunds, type Refund } from "./lib/refunds";
 import { holdsInventory } from "./lib/statuses";
 import { reservationBill } from "./lib/workflow-billing";
 
@@ -50,6 +51,7 @@ export function presentReservation(input: {
   currency: string;
   stayingGuests?: (typeof reservationGuests.$inferSelect)[];
   cancellations: Cancellation[];
+  refunds: Refund[];
 }) {
   const typeById = new Map(input.types.map((type) => [type.id, type]));
   const roomById = new Map(input.roomRows.map((room) => [room.id, room]));
@@ -89,6 +91,7 @@ export function presentReservation(input: {
     paymentSchedule: ratePlan.paymentSchedule,
     // Reservations cancelled before charges existed have no row and keep a zero charge.
     cancellationChargeCents: cancellation.cancellation?.finalChargeCents ?? 0,
+    refunds: input.refunds,
   });
 
   return {
@@ -113,5 +116,6 @@ export function presentReservation(input: {
     savedDiscountCents: input.reservation.discountCents,
     rooms: roomsOut,
     payments: input.payments,
+    refunds: presentRefunds(input.refunds),
   };
 }

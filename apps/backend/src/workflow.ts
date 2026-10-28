@@ -1,10 +1,12 @@
 import type { WorkflowAction, WorkflowCommand, WorkflowCreate } from "@pms/shared";
 import { and, eq, inArray, isNull, sql } from "drizzle-orm";
+import { alias } from "drizzle-orm/sqlite-core";
 import { runBatch, type Db } from "./db";
 import {
   cancellationWaivers,
   payments,
   guests,
+  refunds,
   reservationGuests,
   reservationCancellations,
   reservationRequests,
@@ -18,7 +20,8 @@ import {
 } from "./db/schema";
 import { HttpError, rethrowConflict } from "./http";
 import { ratesBetween } from "./inventory";
-import { reservationBill } from "./lib/workflow-billing";
+import { refundCents, reservationBill } from "./lib/workflow-billing";
+import type { Refund } from "./lib/refunds";
 import { holdsInventory } from "./lib/statuses";
 import {
   activeCancellation,
@@ -42,6 +45,7 @@ export type State = {
   lines: Stay[];
   payments: (typeof payments.$inferSelect)[];
   cancellations: Cancellation[];
+  refunds: Refund[];
 };
 /** Who records a command and when, from the server, never the client. */
 export type CommandContext = {
@@ -64,6 +68,7 @@ export const totals = (state: State) => {
     paymentSchedule: acceptedTerms(state.reservation).paymentSchedule,
     // Reservations cancelled before charges existed have no row and keep a zero charge.
     cancellationChargeCents: cancellation ? presentCancellation(cancellation).finalChargeCents : 0,
+    refunds: state.refunds,
   });
 };
 
@@ -79,6 +84,7 @@ export async function loadState(db: Db, id: string): Promise<State> {
     paymentRows,
     cancellationRows,
     waiverRows,
+    refundRows,
   ] = await db.batch([
     db.select().from(reservations).where(eq(reservations.id, id)),
     db
@@ -96,6 +102,7 @@ export async function loadState(db: Db, id: string): Promise<State> {
     db.select().from(payments).where(eq(payments.reservationId, id)),
     cancellationQuery(db).where(eq(reservationCancellations.reservationId, id)),
     waiverQuery(db).where(eq(reservationCancellations.reservationId, id)),
+    refundQuery(db).where(eq(refunds.reservationId, id)),
   ]);
   const reservation = parents[0];
   if (!reservation) throw new HttpError(404, "reservation not found");
@@ -114,6 +121,7 @@ export async function loadState(db: Db, id: string): Promise<State> {
     })),
     payments: paymentRows,
     cancellations: withWaivers(cancellationRows, waiverRows),
+    refunds: refundRows.map(withAccounts),
   };
 }
 
@@ -131,6 +139,35 @@ const waiverQuery = (db: Db) =>
       eq(reservationCancellations.id, cancellationWaivers.cancellationId),
     )
     .leftJoin(user, eq(user.id, cancellationWaivers.accountId));
+const requester = alias(user, "refund_requester");
+const resolver = alias(user, "refund_resolver");
+const refundQuery = (db: Db) =>
+  db
+    // D1 batches return objects keyed by column name, so both usernames need their own.
+    .select({
+      refund: refunds,
+      requestedBy: sql<string | null>`${requester.username}`.as("refund_requested_by"),
+      resolvedBy: sql<string | null>`${resolver.username}`.as("refund_resolved_by"),
+    })
+    .from(refunds)
+    .leftJoin(requester, eq(requester.id, refunds.requestedAccountId))
+    .leftJoin(resolver, eq(resolver.id, refunds.resolvedAccountId));
+const withAccounts = ({
+  refund,
+  requestedBy,
+  resolvedBy,
+}: Awaited<ReturnType<typeof refundQuery>>[number]): Refund => ({
+  ...refund,
+  requestedBy,
+  resolvedBy,
+});
+
+/** Every refund of the given reservations, for list reads. */
+export async function refundsFor(db: Db, reservationIds: string[]) {
+  return (await refundQuery(db).where(inArray(refunds.reservationId, reservationIds))).map(
+    withAccounts,
+  );
+}
 type CancellationRow = Awaited<ReturnType<typeof cancellationQuery>>[number];
 type WaiverRow = Awaited<ReturnType<typeof waiverQuery>>[number];
 
@@ -207,6 +244,11 @@ export async function plan(
   // Cancellations and no-shows opened by this command are charged once its stay changes apply.
   const opened = new Set<string>();
   const waivers: Extract<WorkflowAction, { type: "waive-cancellation-charge" }>[] = [];
+  // Refunds are checked against the command's final bill, after its charges apply.
+  const refundActions: Extract<
+    WorkflowAction,
+    { type: "request-refund" | "complete-refund" | "fail-refund" }
+  >[] = [];
 
   const lineFor = (id: string) =>
     state.lines.find((l) => l.id === id) ?? fail("room line not found");
@@ -312,6 +354,8 @@ export async function plan(
       const index = state.payments.findIndex((payment) => payment.id === action.paymentId);
       if (index === -1) fail("payment not found");
       const payment = state.payments[index];
+      if (state.refunds.some((refund) => refund.paymentId === payment.id))
+        fail("payment with refunds cannot be changed");
       if (action.type === "delete-payment") {
         state.payments.splice(index, 1);
       } else {
@@ -344,6 +388,12 @@ export async function plan(
     }
     if (action.type === "add-payment") state.payments.push(newPayment(action.payment));
     if (action.type === "waive-cancellation-charge") waivers.push(action);
+    if (
+      action.type === "request-refund" ||
+      action.type === "complete-refund" ||
+      action.type === "fail-refund"
+    )
+      refundActions.push(action);
   }
   if (!state.lines.length) fail("reservation requires at least one room");
   const cancellation = activeCancellation(state.cancellations);
@@ -376,6 +426,78 @@ export async function plan(
     if (presentCancellation(cancellation!).finalChargeCents < 0)
       fail("waiver cannot exceed the cancellation charge");
   }
+  for (const action of refundActions) {
+    if (action.type === "request-refund") {
+      if (!state.payments.some((payment) => payment.id === action.paymentId))
+        fail("payment not found");
+      state.refunds.push({
+        id: crypto.randomUUID(),
+        reservationId: state.reservation.id,
+        paymentId: action.paymentId,
+        amountCents: action.amountCents,
+        method: action.method,
+        reference: action.reference ?? null,
+        reason: action.reason,
+        status: "requested",
+        requestedAt: now,
+        requestedAccountId: account.id,
+        requestedBy: account.username,
+        resolvedAt: null,
+        resolvedAccountId: null,
+        resolvedBy: null,
+        refundDate: null,
+        completionReference: null,
+        failureReason: null,
+      });
+      continue;
+    }
+    const refund =
+      state.refunds.find((refund) => refund.id === action.refundId) ?? fail("refund not found");
+    if (refund.status !== "requested") fail("refund is already resolved");
+    if (action.type === "complete-refund" && action.refundDate > today)
+      fail("refund date cannot be in the future");
+    Object.assign(refund, {
+      status: action.type === "complete-refund" ? "completed" : "failed",
+      resolvedAt: now,
+      resolvedAccountId: account.id,
+      resolvedBy: account.username,
+      ...(action.type === "complete-refund"
+        ? {
+            refundDate: action.refundDate,
+            completionReference: action.reference,
+          }
+        : { failureReason: action.reason }),
+    });
+  }
+  // A restoration cannot undo any refund activity, failed or requested in this
+  // command included; staff use a new reservation.
+  if (
+    !holdsInventory(original.reservation.status) &&
+    holdsInventory(state.reservation.status) &&
+    state.refunds.length
+  )
+    fail("reservation with refunds cannot be restored");
+  for (const payment of state.payments) {
+    const paymentRefunds = state.refunds.filter((refund) => refund.paymentId === payment.id);
+    if (
+      refundCents(paymentRefunds, "completed") + refundCents(paymentRefunds, "requested") >
+      payment.amountCents
+    )
+      fail("refund exceeds the payment's remaining amount");
+  }
+  // Requested refunds never exceed the refund due. Completing or failing a request
+  // keeps that true, so recording money already returned is never refused; any
+  // other change must leave room for the requests still open.
+  const resolvesOnly = actions.every(
+    (action) => action.type === "complete-refund" || action.type === "fail-refund",
+  );
+  const requestedCents = refundCents(state.refunds, "requested");
+  if (!resolvesOnly && requestedCents > 0 && -totals(state).balanceCents < requestedCents)
+    fail(
+      refundActions.some((action) => action.type === "request-refund")
+        ? "refund exceeds the refund due"
+        : "change leaves requested refunds above the refund due",
+    );
   return { state };
 }
 
@@ -514,6 +636,16 @@ async function executeAttempt(
         .flatMap((c) => c.waivers)
         .filter((w) => !original.cancellations.some((o) => o.waivers.some((ow) => ow.id === w.id)))
         .map((w) => db.insert(cancellationWaivers).values(w)),
+      // Inserts and updates write only table columns, not the presented accounts.
+      ...state.refunds
+        .filter(
+          (r) => JSON.stringify(r) !== JSON.stringify(original.refunds.find((o) => o.id === r.id)),
+        )
+        .map((r) =>
+          original.refunds.some((o) => o.id === r.id)
+            ? db.update(refunds).set(r).where(eq(refunds.id, r.id))
+            : db.insert(refunds).values(r),
+        ),
       // Restoration and changed dates must pass the room-validity triggers
       // against current room types, even when every saved room is unchanged.
       // Decide this from the original state, not the temporary cancelled status:

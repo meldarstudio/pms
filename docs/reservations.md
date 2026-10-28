@@ -109,11 +109,10 @@ the request:
   and `final_total` charges the total after discount.
 
 The cancellation charge replaces the stay charges in the bill. The balance is the
-final charge less payments received; `refundDueCents` is its positive excess and is
-zero for reservations that hold inventory. Refunds are not recorded yet, so
-completed refunds count as zero. Detail, list, preview, and the list's balance
-filter use the same final charge, so a cancelled or No-show reservation's credit
-is its refund due. Neither records a payment or charges a card; a paid
+final charge less net money retained (see [refunds](#refunds)), and
+`refundDueCents` is its positive excess. Detail, list, preview, and the list's
+balance filter use the same final charge, so credit is refund due on cancelled
+and No-show reservations as on any other. Neither records a payment or charges a card; a paid
 Non-refundable No-show retains its payment with no refund due.
 
 A `waive-cancellation-charge` action (`amountCents`, `reason`) reduces the active
@@ -142,8 +141,60 @@ revalidates inventory like any restoration, marks the active record restored, an
 bills the stay again under the unchanged plan. A rebooked room fails with
 `room is already assigned for those dates`. The restored record and its waivers
 remain in `cancellations` as inactive history; a later cancellation or No-show
-computes a new charge. Refunds and coupons are not recorded yet, so no refund or
-coupon activity blocks a restoration.
+computes a new charge. A reservation with any refund, requested, completed, or
+failed, is refused with `reservation with refunds cannot be restored`; staff create
+a new reservation instead. Coupons are not recorded yet, so no coupon activity
+blocks a restoration.
+
+## Refunds
+
+Net money retained is the payments received less completed refunds. Refund due
+(`refundDueCents`) is the positive excess of net retained over the final charge on
+any reservation: cancelled, No-show, waived, or amended to a lower total. Reads
+return `paidCents` (gross received), `refundedCents` (completed), and
+`pendingRefundCents` (requested), and `balanceCents` is the total less
+`paidCents - refundedCents`. Requested and failed refunds change neither the
+balance nor refund due.
+
+Staff return money manually through the actual channel; the API never calls Culqi
+or refunds automatically. Three workflow actions record it:
+
+- `request-refund` (`paymentId`, `amountCents`, `method`, optional `reference`,
+  `reason`) records a requested refund against a received payment with the request
+  time and authenticated account.
+- `complete-refund` (`refundId`, `refundDate`, `reference`) records that the money
+  was returned on a property date no later than today, with the channel's
+  reference.
+- `fail-refund` (`refundId`, `reason`) marks a mistaken or failed request. Requests
+  are never deleted.
+
+Only a requested refund can be completed or failed; otherwise the command fails with
+`refund is already resolved`. A request cannot exceed the refund due less amounts
+in other requested refunds (`refund exceeds the refund due`), nor its payment's
+amount less its completed and requested refunds (`refund exceeds the payment's
+remaining amount`). Requested refunds never exceed the refund due: any other
+change that would lower refund due below them, such as longer dates, an added
+room, a smaller discount, or an edited payment, fails with `change leaves requested
+refunds above the refund due` until staff fail the requests. Completing or failing a
+request preserves the limit, so a command that only resolves refunds is never
+refused for it. The checks run on the proposed state in the command's single batch
+under the revision guard, so a concurrent request re-plans against the saved
+refunds and an idempotent retry replays its receipt; neither can exceed the limit.
+Restoring and requesting a refund in one command is refused like any restoration
+with refunds.
+A payment with any refund cannot be edited or deleted (`payment with refunds cannot
+be changed`).
+
+Reads and previews return `refunds`, every request oldest first, with `status`
+(`requested`, `completed`, or `failed`), `requestedAt`, `requestedBy`,
+`resolvedAt`, `resolvedBy`, `refundDate`, `completionReference`, and
+`failureReason`.
+
+`GET /payments?from&to` keeps `totalCents` and `payments` as the gross payments
+received by payment date. It adds `refundedCents` and `refunds`, the completed
+refunds whose `refundDate` is in the range, each with its `paymentId`,
+`reservationId`, `code`, `guestName`, `amountCents`, `method`, completion
+`reference`, `refundDate`, and `reason`.
 
 ## Reservation list reads
 
@@ -165,6 +216,9 @@ Optional query dimensions combine with AND:
   balances independently of status. A cancelled or No-show reservation's charges are
   its final charge, so payments beyond it are credit. The filter applies `bill()`,
   the billing policy that `reservationBill` uses for detail, list, and workflow reads.
+  Completed refunds reduce the money counted against charges.
+- `refund=due` selects reservations with refund due; `refund=requested` selects
+  reservations with an unresolved refund request.
 - `assignment=assigned|unassigned` selects reservations with every physical room
   assigned or with any unassigned reserved room, including partial assignments.
 - `q` retains per-token booking-contact-name or reservation-code search; `guestId`

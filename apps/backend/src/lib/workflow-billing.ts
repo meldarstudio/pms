@@ -1,38 +1,52 @@
 import type { PaymentSchedule } from "./rate-plans";
 
 type BillableRoom = { nights: { date: string; priceCents: number }[] };
+type RefundMoney = { amountCents: number; status: string };
 
 export function bill(
   charges: number,
   payments: { amountCents: number }[],
   discountCents: number,
-  options: { released?: boolean } = {},
+  options: { released?: boolean; refundedCents?: number } = {},
 ) {
   const appliedDiscount = options.released ? 0 : Math.min(discountCents, charges);
   const totalCents = charges - appliedDiscount;
   const paidCents = payments.reduce((sum, payment) => sum + payment.amountCents, 0);
-  const balanceCents = totalCents - paidCents;
+  const refundedCents = options.refundedCents ?? 0;
+  // Only completed refunds return money; the balance is against the net retained.
+  const balanceCents = totalCents - (paidCents - refundedCents);
   return {
     subtotalCents: charges,
     discountCents: appliedDiscount,
     totalCents,
     paidCents,
+    refundedCents,
     balanceCents,
     creditCents: Math.max(0, -balanceCents),
   };
 }
 
+/** The sum of refunds in one status. */
+export const refundCents = (refunds: RefundMoney[], status: "requested" | "completed") =>
+  refunds.reduce((sum, refund) => sum + (refund.status === status ? refund.amountCents : 0), 0);
+
 /**
  * The reservation bill with its payment schedule's required initial payment and
  * the remaining scheduled amount. Detail, list, and preview reads share this.
  * Cancellation or No-show (`released`) replaces the stay charges with the final
- * cancellation charge, and any money retained beyond it is a refund due.
+ * cancellation charge. Net money retained beyond the total is a refund due on
+ * any reservation; requested refunds do not reduce it until they complete.
  */
 export function reservationBill(
   rooms: BillableRoom[],
   payments: { amountCents: number }[],
   discountCents: number,
-  terms: { released: boolean; paymentSchedule: PaymentSchedule; cancellationChargeCents?: number },
+  terms: {
+    released: boolean;
+    paymentSchedule: PaymentSchedule;
+    cancellationChargeCents?: number;
+    refunds?: RefundMoney[];
+  },
 ) {
   const billable = terms.released ? [] : rooms;
   const charges = terms.released
@@ -41,7 +55,11 @@ export function reservationBill(
         (sum, room) => sum + room.nights.reduce((s, night) => s + night.priceCents, 0),
         0,
       );
-  const totals = bill(charges, payments, discountCents, { released: terms.released });
+  const refunds = terms.refunds ?? [];
+  const totals = bill(charges, payments, discountCents, {
+    released: terms.released,
+    refundedCents: refundCents(refunds, "completed"),
+  });
   // A deposit never exceeds the final total after the reservation discount.
   const requiredInitialPaymentCents = terms.released
     ? 0
@@ -50,8 +68,8 @@ export function reservationBill(
       : Math.min(firstNightCents(billable), totals.totalCents);
   return {
     ...totals,
-    // Completed refunds count as zero until refunds are recorded.
-    refundDueCents: terms.released ? totals.creditCents : 0,
+    pendingRefundCents: refundCents(refunds, "requested"),
+    refundDueCents: totals.creditCents,
     requiredInitialPaymentCents,
     // The payment schedule covers a stay; a released reservation has none left.
     remainingScheduledCents: terms.released ? 0 : totals.totalCents - requiredInitialPaymentCents,

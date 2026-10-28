@@ -12,6 +12,7 @@ export async function reservationDetail(db: Db, id: string, currency: string) {
     stayingGuests,
     payments,
     cancellations,
+    refunds,
   } = await loadState(db, id);
   const nights = lines.flatMap((line) =>
     line.nights.map((night) => ({ ...night, reservationRoomId: line.id })),
@@ -28,6 +29,7 @@ export async function reservationDetail(db: Db, id: string, currency: string) {
     stayingGuests,
     payments,
     cancellations,
+    refunds,
     reservation,
     guest,
     lines,

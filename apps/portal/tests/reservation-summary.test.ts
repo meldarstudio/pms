@@ -41,6 +41,9 @@ beforeEach(() => {
     balanceCents: 14975,
     creditCents: 0,
     refundDueCents: 0,
+    refundedCents: 0,
+    pendingRefundCents: 0,
+    refunds: [],
     cancellation: null,
     cancellations: [],
     ratePlan: {

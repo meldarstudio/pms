@@ -42,6 +42,9 @@ const ana: ReservationDetail & { guestName: string } = {
   balanceCents: 20000,
   creditCents: 0,
   refundDueCents: 0,
+  refundedCents: 0,
+  pendingRefundCents: 0,
+  refunds: [],
   cancellation: null,
   cancellations: [],
   ratePlan: {

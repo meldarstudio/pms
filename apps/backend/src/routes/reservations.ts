@@ -26,6 +26,7 @@ import {
   cancellationWaivers,
   payments,
   guests,
+  refunds,
   reservationCancellations,
   reservationRoomNights,
   reservationRooms,
@@ -41,10 +42,12 @@ import {
   cancellationsFor,
   createWorkflow,
   execute,
+  refundsFor,
   totals,
   type CommandContext,
 } from "../workflow";
 import { cancellationFields } from "../lib/cancellation";
+import { presentRefunds } from "../lib/refunds";
 import { chunks } from "../lib/chunks";
 import { presentReservation } from "../present";
 import { bill } from "../lib/workflow-billing";
@@ -73,6 +76,15 @@ reservationRoutes.get("/", validate("query", reservationListQuerySchema), async 
     );
     filters.push(q.assignment === "unassigned" ? unassigned : not(unassigned));
   }
+  if (q.refund === "requested")
+    filters.push(
+      exists(
+        db
+          .select({ id: refunds.id })
+          .from(refunds)
+          .where(and(eq(refunds.reservationId, reservations.id), eq(refunds.status, "requested"))),
+      ),
+    );
   if (q.q) {
     for (const token of q.q.split(/\s+/)) {
       const needle = token.replace(/[%_]/g, "");
@@ -90,7 +102,7 @@ reservationRoutes.get("/", validate("query", reservationListQuerySchema), async 
         : reservations.checkIn;
   const primaryOrder =
     q.direction === "desc" && q.sort !== "balance" ? desc(sortColumn) : asc(sortColumn);
-  const needsBalance = q.balance !== undefined || q.sort === "balance";
+  const needsBalance = q.balance !== undefined || q.sort === "balance" || q.refund === "due";
   const query = db
     .select({
       reservation: reservations,
@@ -119,6 +131,13 @@ reservationRoutes.get("/", validate("query", reservationListQuerySchema), async 
       ), 0)`
         : sql<number>`0`
       ).as("list_paid_cents"),
+      refundedCents: (needsBalance
+        ? sql<number>`coalesce((
+        select sum(${refunds.amountCents}) from ${refunds}
+        where ${refunds.reservationId} = ${reservations.id} and ${refunds.status} = 'completed'
+      ), 0)`
+        : sql<number>`0`
+      ).as("list_refunded_cents"),
       // The active cancellation or no-show's final charge; restored and legacy cancellations charge nothing.
       cancellationChargeCents: (needsBalance
         ? sql<number>`coalesce((
@@ -159,16 +178,19 @@ reservationRoutes.get("/", validate("query", reservationListQuerySchema), async 
     // Keep the authoritative billing policy in bill(), which reservationBill applies to every read.
     const balanced = matches
       .map((row) => {
-        const { reservation, subtotalCents, paidCents, cancellationChargeCents } = row;
+        const { reservation, subtotalCents, paidCents, refundedCents, cancellationChargeCents } =
+          row;
         const released = !holdsInventory(reservation.status);
         const { balanceCents } = bill(
           released ? cancellationChargeCents : subtotalCents,
           [{ amountCents: paidCents }],
           reservation.discountCents,
-          { released },
+          { released, refundedCents },
         );
         return { ...row, balanceCents };
       })
+      // Refund due is the credit: net money retained beyond the final charge.
+      .filter(({ balanceCents }) => q.refund !== "due" || balanceCents < 0)
       .filter(({ balanceCents }) => {
         return q.balance === "outstanding"
           ? balanceCents > 0
@@ -190,7 +212,7 @@ reservationRoutes.get("/", validate("query", reservationListQuerySchema), async 
     q.paginated ? { rows, total, limit: q.limit ?? 50, offset: q.offset ?? 0 } : rows;
   if (!rows.length) return c.json(response([]));
   const ids = rows.map((r) => r.reservation.id);
-  const [lines, paymentRows, types, roomRows, cancellationRows] = await Promise.all([
+  const [lines, paymentRows, types, roomRows, cancellationRows, refundRows] = await Promise.all([
     Promise.all(
       chunks(ids, 80).map((ids) =>
         db.select().from(reservationRooms).where(inArray(reservationRooms.reservationId, ids)),
@@ -204,6 +226,7 @@ reservationRoutes.get("/", validate("query", reservationListQuerySchema), async 
     db.select().from(roomTypes),
     db.select().from(rooms),
     Promise.all(chunks(ids, 80).map((ids) => cancellationsFor(db, ids))).then((r) => r.flat()),
+    Promise.all(chunks(ids, 80).map((ids) => refundsFor(db, ids))).then((r) => r.flat()),
   ]);
   const nights = (
     await Promise.all(
@@ -230,6 +253,7 @@ reservationRoutes.get("/", validate("query", reservationListQuerySchema), async 
           nights: nights.filter((n) => ownIds.has(n.reservationRoomId)),
           payments: paymentRows.filter((payment) => payment.reservationId === reservation.id),
           cancellations: cancellationRows.filter((row) => row.reservationId === reservation.id),
+          refunds: refundRows.filter((row) => row.reservationId === reservation.id),
           types,
           roomRows,
           currency: currency(c),
@@ -281,6 +305,7 @@ reservationRoutes.post("/:id/preview", validate("json", workflowCommandSchema), 
         };
       }),
       payments: result.state.payments,
+      refunds: presentRefunds(result.state.refunds),
     },
   });
 });

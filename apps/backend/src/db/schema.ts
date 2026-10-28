@@ -235,6 +235,53 @@ export const cancellationWaivers = sqliteTable(
   ],
 );
 
+// Money returned against a received payment. Only a completed refund counts as
+// returned money; a failed request stays as history and is never deleted.
+export const refunds = sqliteTable(
+  "refunds",
+  {
+    id: text("id").primaryKey(),
+    reservationId: text("reservation_id")
+      .notNull()
+      .references(() => reservations.id),
+    paymentId: text("payment_id")
+      .notNull()
+      .references(() => payments.id),
+    amountCents: integer("amount_cents").notNull(),
+    /** The channel the money is returned through, using payment methods. */
+    method: text("method").notNull(),
+    reference: text("reference"),
+    reason: text("reason").notNull(),
+    /** `requested`, then `completed` or `failed`. */
+    status: text("status").notNull().default("requested"),
+    requestedAt: text("requested_at").notNull(),
+    requestedAccountId: text("requested_account_id")
+      .notNull()
+      .references(() => user.id),
+    resolvedAt: text("resolved_at"),
+    resolvedAccountId: text("resolved_account_id").references(() => user.id),
+    /** The property date the money was returned; set on completion. */
+    refundDate: text("refund_date"),
+    completionReference: text("completion_reference"),
+    failureReason: text("failure_reason"),
+  },
+  (table) => [
+    index("refunds_reservation").on(table.reservationId),
+    index("refunds_payment").on(table.paymentId),
+    index("refunds_date").on(table.refundDate),
+    check("refunds_amount", sql`${table.amountCents} > 0`),
+    check(
+      "refunds_outcome",
+      sql`(${table.status} = 'requested' AND ${table.resolvedAt} IS NULL AND ${table.resolvedAccountId} IS NULL
+          AND ${table.refundDate} IS NULL AND ${table.completionReference} IS NULL AND ${table.failureReason} IS NULL)
+        OR (${table.status} = 'completed' AND ${table.resolvedAt} IS NOT NULL AND ${table.resolvedAccountId} IS NOT NULL
+          AND ${table.refundDate} IS NOT NULL AND ${table.completionReference} IS NOT NULL AND ${table.failureReason} IS NULL)
+        OR (${table.status} = 'failed' AND ${table.resolvedAt} IS NOT NULL AND ${table.resolvedAccountId} IS NOT NULL
+          AND ${table.refundDate} IS NULL AND ${table.completionReference} IS NULL AND ${table.failureReason} IS NOT NULL)`,
+    ),
+  ],
+);
+
 // Better Auth tables. Field names are Better Auth's; times are epoch milliseconds.
 const authTime = (name: string) => integer(name, { mode: "timestamp_ms" });
 

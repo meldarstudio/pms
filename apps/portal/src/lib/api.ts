@@ -248,14 +248,40 @@ export type ReservationCancellation = {
   waivers: CancellationWaiver[];
 };
 
+/** Money returned manually against one received payment; only completed refunds count. */
+export type ReservationRefund = {
+  id: string;
+  paymentId: string;
+  amountCents: number;
+  /** The channel the money is returned through. */
+  method: PaymentMethod;
+  reference: string | null;
+  reason: string;
+  status: "requested" | "completed" | "failed";
+  requestedAt: string;
+  requestedBy: string | null;
+  resolvedAt: string | null;
+  resolvedBy: string | null;
+  /** The property date the money was returned; set only when completed. */
+  refundDate: string | null;
+  completionReference: string | null;
+  failureReason: string | null;
+};
+
 export type ReservationDetail = {
   status: string;
   cancellationReason: string | null;
   cancelledAt: string | null;
   notes: string | null;
   creditCents: number;
-  /** Money retained beyond a cancellation or no-show's final charge; zero while active. */
+  /** Net money retained beyond the final charge, on any status; requests do not reduce it. */
   refundDueCents: number;
+  /** Completed refunds; paid minus refunded is the net money retained. */
+  refundedCents: number;
+  /** Refunds requested but not yet completed or failed. */
+  pendingRefundCents: number;
+  /** Every refund request, oldest first, including failed ones. */
+  refunds: ReservationRefund[];
   /** The active cancellation or no-show; null while active or cancelled before charges existed. */
   cancellation: ReservationCancellation | null;
   /** Every recorded cancellation and no-show, oldest first, including restored ones. */
@@ -544,6 +570,16 @@ export type WorkflowAction =
   | { type: "edit-payment"; paymentId: string; payment: PaymentInput }
   | { type: "delete-payment"; paymentId: string }
   | { type: "waive-cancellation-charge"; amountCents: number; reason: string }
+  | {
+      type: "request-refund";
+      paymentId: string;
+      amountCents: number;
+      method: PaymentMethod;
+      reference?: string;
+      reason: string;
+    }
+  | { type: "complete-refund"; refundId: string; refundDate: string; reference: string }
+  | { type: "fail-refund"; refundId: string; reason: string }
   | { type: "notes"; notes: string };
 export type WorkflowCommand = {
   requestId: string;
@@ -561,6 +597,9 @@ export type WorkflowBilling = Pick<
   | "balanceCents"
   | "creditCents"
   | "refundDueCents"
+  | "refundedCents"
+  | "pendingRefundCents"
+  | "refunds"
   | "cancellation"
   | "cancellations"
   | "savedDiscountCents"
@@ -631,6 +670,8 @@ export type ReservationListParams = {
   checkOut?: string;
   statuses?: string;
   balance?: "outstanding" | "settled" | "credit";
+  /** `due`: money is owed back; `requested`: a refund request is unresolved. */
+  refund?: "due" | "requested";
   assignment?: "assigned" | "unassigned";
   sort: "checkIn" | "checkOut" | "guestName" | "balance";
   direction: "asc" | "desc";

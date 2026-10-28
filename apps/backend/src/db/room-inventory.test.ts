@@ -503,3 +503,86 @@ describe("cancellation charges", () => {
     }
   });
 });
+
+describe("refunds", () => {
+  it("adds refunds without changing existing money and keeps each outcome's record complete", () => {
+    const previous = new DatabaseSync(":memory:");
+    try {
+      previous.exec("PRAGMA foreign_keys = ON");
+      const split = journal.entries.findIndex((entry) => entry.tag === "0009_refunds");
+      expect(split).toBeGreaterThan(0);
+      for (const entry of journal.entries.slice(0, split))
+        previous.exec(readFileSync(new URL(`${entry.tag}.sql`, migrationsDir), "utf8"));
+      previous.exec(`
+        INSERT INTO room_types (id, name, max_occupancy, base_rate_cents, created_at)
+          VALUES ('legacy', 'Double', 2, 10000, '2026-10-05');
+        INSERT INTO guests (id, full_name, created_at) VALUES ('guest', 'Ada Lovelace', '2026-10-05');
+        INSERT INTO reservations (id, code, guest_id, status, cancelled_at, check_in, check_out, created_at)
+          VALUES ('cancelled', 'OLD1', 'guest', 'cancelled', '2026-10-06T12:00:00.000Z', '2026-10-08', '2026-10-10', '2026-10-05');
+        INSERT INTO reservation_rooms (id, reservation_id, room_type_id, adults, created_at)
+          VALUES ('line', 'cancelled', 'legacy', 1, '2026-10-05');
+        INSERT INTO reservation_room_nights VALUES ('night', 'line', '2026-10-08', 9000);
+        INSERT INTO payments (id, reservation_id, amount_cents, method, payment_date, created_at)
+          VALUES ('payment', 'cancelled', 30000, 'cash', '2026-10-05', '2026-10-05');
+        INSERT INTO "user" (id, name, email, username, role, created_at, updated_at)
+          VALUES ('staff', 'Staff', 'staff@example.test', 'staff', 'staff', 0, 0);
+        INSERT INTO reservation_cancellations (id, reservation_id, outcome, recorded_at, policy_charge_cents, account_id)
+          VALUES ('current', 'cancelled', 'cancelled', '2026-10-06T12:00:00.000Z', 9000, 'staff');
+      `);
+      const tables = [
+        "reservations",
+        "reservation_rooms",
+        "reservation_room_nights",
+        "payments",
+        "reservation_cancellations",
+      ];
+      const snapshot = () =>
+        tables.map((table) => previous.prepare(`SELECT * FROM ${table} ORDER BY id`).all());
+      const before = snapshot();
+      for (const entry of journal.entries.slice(split))
+        previous.exec(readFileSync(new URL(`${entry.tag}.sql`, migrationsDir), "utf8"));
+      expect(snapshot()).toEqual(before);
+      expect(previous.prepare("SELECT * FROM refunds").all()).toEqual([]);
+
+      const refund = previous.prepare(`INSERT INTO refunds
+        (id, reservation_id, payment_id, amount_cents, method, reason, status, requested_at,
+          requested_account_id, resolved_at, resolved_account_id, refund_date, completion_reference, failure_reason)
+        VALUES (?, 'cancelled', ?, ?, 'cash', 'Cancelled stay', ?, '2026-10-07T12:00:00.000Z', 'staff', ?, ?, ?, ?, ?)`);
+      const resolved = ["2026-10-07T13:00:00.000Z", "staff"] as const;
+      refund.run("requested", "payment", 1000, "requested", null, null, null, null, null);
+      refund.run(
+        "completed",
+        "payment",
+        1000,
+        "completed",
+        ...resolved,
+        "2026-10-07",
+        "OP-1",
+        null,
+      );
+      refund.run("failed", "payment", 1000, "failed", ...resolved, null, null, "Wrong account");
+      for (const [id, status, date, reference, reason] of [
+        ["no-reference", "completed", "2026-10-07", null, null],
+        ["no-reason", "failed", null, null, null],
+        ["unresolved", "requested", "2026-10-07", null, null],
+        ["unknown", "pending", null, null, null],
+      ] as const)
+        expect(() =>
+          refund.run(id, "payment", 1000, status, ...resolved, date, reference, reason),
+        ).toThrow("refunds_outcome");
+      expect(() =>
+        refund.run("zero", "payment", 0, "requested", null, null, null, null, null),
+      ).toThrow("refunds_amount");
+      expect(() =>
+        refund.run("orphan", "missing", 1000, "requested", null, null, null, null, null),
+      ).toThrow("FOREIGN KEY");
+      // A payment with refunds cannot be deleted from under its history.
+      expect(() => previous.exec("DELETE FROM payments WHERE id = 'payment'")).toThrow(
+        "FOREIGN KEY",
+      );
+      expect(previous.prepare("PRAGMA foreign_key_check").all()).toEqual([]);
+    } finally {
+      previous.close();
+    }
+  });
+});

@@ -10,6 +10,21 @@ checkout. Starting before `0002` with a checkout containing `0003` requires
 reviewing both sets of constraints together. Do not treat either section as a
 command to apply only one migration.
 
+## Refunds, migration 0009
+
+`0009_refunds.sql` creates `refunds` with checks that keep each requested,
+completed, or failed record complete. It alters no existing table, row, or
+trigger, so existing payments, charges, and balances read unchanged. Apply it
+before deploying the backend that reads the table: the new Worker's reservation
+reads fail without it. The previous Worker runs against the additive schema but
+does not see refunds: it lets staff edit a payment with refunds (the foreign key
+still blocks deleting it), restores a reservation with refunds, and bills
+completed refunds as money still retained.
+
+Deliver the portal after the backend. Old portals ignore the added response
+fields. For recovery, keep the table and applied history and roll application
+builds back together; refunds recorded by the new Worker remain for its return.
+
 ## No-show outcome, migration 0008
 
 `0008_no_show_outcome.sql` adds `outcome` to `reservation_cancellations` with
