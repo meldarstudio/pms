@@ -209,6 +209,10 @@ The existing workflow uses these repository Actions secrets:
 Keep tokens in secrets, never committed files. Expose them only to the operations
 that need them, not installation, tests, checks, or builds. The existing Worker
 `SESSION_SECRET` stays in Cloudflare; do not copy or rotate it for release setup.
+The first release with [online card payments](reservations.md#online-card-payments)
+needs migration `0013_culqi_payments` applied first and a separately authorized
+`CULQI_SECRET_KEY` Worker secret; without the secret Culqi calls fail with
+`Culqi is not configured`. Its deployment also starts the per-minute cron trigger.
 The one-time move to accounts follows the
 [authentication cutover](authentication.md#cutover-from-the-shared-password).
 Migration authorization remains separate. Token permissions require authorized

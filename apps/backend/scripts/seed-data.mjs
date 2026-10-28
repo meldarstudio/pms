@@ -381,6 +381,7 @@ export function buildResetSql(value) {
     "DELETE FROM refunds;",
     "DELETE FROM cancellation_waivers;",
     "DELETE FROM reservation_cancellations;",
+    "DELETE FROM payment_attempts;",
     "DELETE FROM payments;",
     "DELETE FROM reservation_rooms;",
     "DELETE FROM reservations;",
