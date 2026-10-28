@@ -278,6 +278,15 @@ export const workflowActionSchema = z.discriminatedUnion("type", [
       reason: text(2000),
     })
     .strict(),
+  // "Reembolsar por Culqi": refunds a Culqi card payment through the Culqi API.
+  z
+    .object({
+      type: z.literal("request-culqi-refund"),
+      paymentId: z.string().min(1),
+      amountCents: cents,
+      reason: text(2000),
+    })
+    .strict(),
   z
     .object({
       type: z.literal("complete-refund"),

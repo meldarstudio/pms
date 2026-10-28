@@ -22,6 +22,8 @@ import {
   sql,
 } from "drizzle-orm";
 import { Hono, type Context } from "hono";
+import { culqiClient } from "../culqi";
+import { sendCulqiRefunds } from "../culqi-refunds";
 import { getDb } from "../db";
 import {
   cancellationWaivers,
@@ -36,7 +38,7 @@ import {
   rooms,
 } from "../db/schema";
 import type { Env } from "../env";
-import { currency, validate } from "../http";
+import { currency, HttpError, validate } from "../http";
 import { reservationDetail } from "../load";
 import { holdsInventory } from "../lib/statuses";
 import {
@@ -329,6 +331,22 @@ reservationRoutes.post("/:id/preview", validate("json", workflowCommandSchema), 
 });
 reservationRoutes.post("/:id/commands", validate("json", workflowCommandSchema), async (c) => {
   const db = getDb(c.env.DB);
-  await execute(db, c.req.param("id"), c.req.valid("json"), false, commandContext(c));
+  const command = c.req.valid("json");
+  const context = commandContext(c);
+  // Refuse before saving a request that could never reach Culqi.
+  if (
+    !c.env.CULQI_SECRET_KEY &&
+    command.actions.some((action) => action.type === "request-culqi-refund")
+  )
+    throw new HttpError(503, "Culqi is not configured");
+  const result = await execute(db, c.req.param("id"), command, false, context);
+  // A replayed command sent its refunds when it first committed.
+  if (result.culqiRefunds?.length)
+    await sendCulqiRefunds(
+      db,
+      culqiClient({ secretKey: c.env.CULQI_SECRET_KEY }),
+      result.culqiRefunds,
+      context,
+    );
   return c.json(await reservationDetail(db, c.req.param("id"), currency(c)));
 });

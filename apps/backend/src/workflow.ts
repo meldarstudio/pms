@@ -370,7 +370,11 @@ async function executeAttempt(
     if (retry && retry.reservationId === id && retry.payload === payload) return { replayed: true };
     rethrowConflict(error);
   }
-  return { replayed: false };
+  // The caller sends these to Culqi now that their requests are saved.
+  const culqiRefunds = state.refunds.filter(
+    (refund) => refund.culqiChargeId && !original.refunds.some((o) => o.id === refund.id),
+  );
+  return { replayed: false, culqiRefunds };
 }
 
 export async function createWorkflow(db: Db, input: WorkflowCreate) {

@@ -217,12 +217,15 @@ return `paidCents` (gross received), `refundedCents` (completed), and
 `paidCents - refundedCents`. Requested and failed refunds change neither the
 balance nor refund due.
 
-Staff return money manually through the actual channel; the API never calls Culqi
-or refunds automatically. Three workflow actions record it:
+Nothing refunds automatically. Staff return money manually through the actual
+channel, or through Culqi for a Culqi card payment. Four workflow actions record it:
 
 - `request-refund` (`paymentId`, `amountCents`, `method`, optional `reference`,
   `reason`) records a requested refund against a received payment with the request
   time and authenticated account.
+- `request-culqi-refund` (`paymentId`, `amountCents`, `reason`) is "Reembolsar por
+  Culqi": a `card` refund requested against a payment with a Culqi charge, sent to
+  Culqi as described below.
 - `complete-refund` (`refundId`, `refundDate`, `reference`) records that the money
   was returned on a property date no later than today, with the channel's
   reference.
@@ -244,12 +247,39 @@ refunds and an idempotent retry replays its receipt; neither can exceed the limi
 Restoring and requesting a refund in one command is refused like any restoration
 with refunds.
 A payment with any refund cannot be edited or deleted (`payment with refunds cannot
-be changed`), including a refund requested earlier in the same command.
+be changed`), including a refund requested earlier in the same command. A payment
+with a Culqi charge ID is never edited or deleted (`Culqi payment cannot be
+changed`).
+
+### Culqi refunds
+
+`request-culqi-refund` applies the limits above plus Culqi's: the payment must have a
+Culqi charge (`payment is not a Culqi payment`), the amount must be at least 100
+cents (`Culqi refund must be at least 100 cents`), and the payment may have no other
+requested Culqi refund, including one earlier in the same command (`a Culqi refund
+for this payment is pending`). Culqi has no refund idempotency, so this guards double
+clicks. Without `CULQI_SECRET_KEY` the command fails with `Culqi is not configured`
+before anything is saved.
+
+The refund is saved as requested, with the payment's `culqiChargeId`, in the
+command's batch. After that batch commits, `POST /reservations/:id/commands` makes a
+single Culqi refund call for it; previews and replayed receipts make none. A `201`
+with status `completa` completes the refund with Culqi's refund ID as
+`completionReference` and `culqiRefundId`, the property's today as `refundDate`, and
+the requesting account as resolver. Any other result, including a lost response, reads
+the charge: if its `amount_refunded` equals the charge's other completed refunds
+plus this one, the refund completes with the charge ID as `completionReference`.
+Otherwise it stays requested, shown as "Reembolso pendiente", and staff check
+CulqiPanel and record the outcome with `complete-refund` or `fail-refund`. The API
+never retries a Culqi refund. Completing bumps the reservation revision, so a
+command planned against the requested refund re-plans. The command response is the
+reservation after the Culqi call.
 
 Reads and previews return `refunds`, every request oldest first, with `status`
 (`requested`, `completed`, or `failed`), `requestedAt`, `requestedBy`,
-`resolvedAt`, `resolvedBy`, `refundDate`, `completionReference`, and
-`failureReason`.
+`resolvedAt`, `resolvedBy`, `refundDate`, `completionReference`, `failureReason`,
+`culqiChargeId` (set for Culqi refunds), and `culqiRefundId` (Culqi's ID, when its
+response returned one).
 
 `GET /payments?from&to` keeps `totalCents` and `payments` as the gross payments
 received by payment date. It adds `refundedCents` and `refunds`, the completed
