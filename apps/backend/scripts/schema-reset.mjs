@@ -12,6 +12,7 @@ const tables = [
   "reservation_cancellations",
   "reservation_rooms",
   "reservations",
+  "quotes",
   "room_closures",
   "room_type_rates",
   "guests",

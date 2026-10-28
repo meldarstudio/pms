@@ -97,6 +97,35 @@ preview: it creates Flexible reservations and shows no scheduled amounts before
 saving. Its total is a portal estimate: each room type's availability stay total,
 less the capped discount.
 
+## Online quotes
+
+A [quote](../GLOSSARY.md#reservation-bill) fixes an online guest's price for 10
+minutes without holding room inventory; availability is decided when a reservation
+is saved from it. [quotes.ts](../apps/backend/src/quotes.ts) owns the behavior. No
+route exposes it yet: the public checkout route and the card charge build on it.
+
+`createQuote` takes the shared `quoteCreateSchema`: one room type, adults, children,
+stay dates and a required rate plan. Clients cannot send prices, flat nightly rates,
+discounts or terms. It requires a check-in after today in `PROPERTY_TIME_ZONE`
+(`online check-in must be after today`), 1 to 60 nights, and occupancy within the
+room type's maximums. Staff same-day and multi-room reservations are unaffected. The
+quote prices nights with `price`, as staff creation does, and stores the nights and
+the plan's terms in the `quotes` table with a random UUID and an `expiresAt` 10
+minutes after server time. It returns the nights, `totalCents`,
+`requiredInitialPaymentCents` (the amount to pay), `remainingScheduledCents`,
+`ratePlan`, `expiresAt`, and `available`. `available` is advice from
+`occupiedCounts`: an unavailable stay is still quoted, and a quote never blocks staff
+reservations, closures or setup changes. Quotes reference no setup rows.
+
+`saveQuote` saves a confirmed reservation with source `online`, the guest as booking
+contact, one unassigned room, and the quoted nights and terms, even if rates or plan
+definitions changed since. It goes through the existing room-type capacity
+triggers, so a full room type fails with `no availability`. It does not check
+expiry: the caller decides whether an expired quote may still be saved, because a
+charge may already have succeeded. `reservations.quote_id` is unique, so one quote
+saves at most one reservation; a repeated or concurrent save returns the first
+reservation's ID, even with different guest details.
+
 ## Stay dates and lifecycle
 
 Each reservation has one `checkIn` and `checkOut` date shared by all its rooms.
