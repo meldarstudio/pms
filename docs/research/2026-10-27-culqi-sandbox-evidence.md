@@ -59,7 +59,7 @@ No live payment, production configuration, secret change, migration, deployment 
 
 ## Implications for the recovery decision
 
-These are evidence for [Decide inventory-hold, payment-recovery, and refund-escalation behavior](https://github.com/meldarstudio/pms/issues/113), not decisions:
+These informed [Decide inventory-hold, payment-recovery, and refund-escalation behavior](https://github.com/meldarstudio/pms/issues/113). Its [resolution](https://github.com/meldarstudio/pms/issues/113#issuecomment-6459797049) designs for this worst case: no inventory holds, one charge per recorded payment attempt, lookup-based reconciliation, cards only, no webhooks in v1 and only staff-started refunds.
 
 - Never charge a new token automatically after an unknown result; reconcile by amount, email and time, then match metadata and source, allowing for list lag.
 - The PMS must own charge-attempt and refund idempotency, cumulative refund caps and the expected amount.
@@ -74,7 +74,7 @@ These are evidence for [Decide inventory-hold, payment-recovery, and refund-esca
 
 ## Questions for Culqi
 
-Sent by the owner; record answers on #114.
+Sent by the owner; record answers on #114. The #113 design does not wait for them. Answers on Yape refunds (9) and webhook guarantees (11 to 13) could add Yape or webhooks later; an idempotency mechanism (2) could simplify reconciliation.
 
 1. Account activation for production, and whether the published card and Yape limits, fees and 90-day refund window apply to this merchant.
 2. Any charge idempotency mechanism, or a guaranteed lookup for a charge whose response was lost.
