@@ -317,4 +317,37 @@ describe("payment attempts", () => {
     expect(await list.json()).toMatchObject([{ status: "confirmed", source: "online" }]);
     expect(lost.status).toBe("unknown");
   });
+
+  it("refuses an invalid phone before charging, since the reservation could not be saved", async () => {
+    await expect(pay(await quote(), { guest: { ...guest, phone: "12" } })).rejects.toMatchObject({
+      status: 400,
+    });
+    expect(culqi.requests).toEqual([]);
+  });
+
+  it("refuses to start without a Culqi key and leaves the quote payable", async () => {
+    const quoteId = await quote();
+    const unconfigured = { ...context(), culqi: culqiClient({ secretKey: undefined }) };
+
+    await expect(
+      startPaymentAttempt(
+        getDb(db.env.DB),
+        { quoteId, sourceId: "tkn_test_card", guest },
+        unconfigured,
+      ),
+    ).rejects.toMatchObject({ status: 503, message: "Culqi is not configured" });
+    expect(await pay(quoteId)).toMatchObject({ status: "saved" });
+  });
+
+  it("dates the payment by the charge call when it is found on a later day", async () => {
+    culqi.next("POST /charges", "lose");
+    const lost = await pay(await quote());
+    // 00:30 on 11 Oct in Lima.
+    vi.setSystemTime(new Date("2026-10-11T05:30:00Z"));
+
+    const found = await poll(lost.id);
+
+    const detail = await reservation(found.reservation!.id);
+    expect(detail.payments).toMatchObject([{ paymentDate: "2026-10-10" }]);
+  });
 });

@@ -200,6 +200,12 @@ export const payments = sqliteTable(
   ],
 );
 
+/**
+ * `unknown` before and after a call until resolved, `review` waiting for 3DS, `failed`,
+ * `succeeded` (charged, reservation not saved yet) or `saved`.
+ */
+export type AttemptStatus = "unknown" | "review" | "failed" | "succeeded" | "saved";
+
 // One request to charge an online guest for a quote, saved before each Culqi call.
 // `unknown` means a call is in flight or its response was lost: it is resolved by
 // looking the charge up, never by charging again.
@@ -219,8 +225,7 @@ export const paymentAttempts = sqliteTable(
     /** The Culqi token, reused only for this attempt's 3DS continuation. */
     sourceId: text("source_id").notNull(),
     deviceFingerprint: text("device_fingerprint"),
-    /** `unknown`, `review`, `failed`, `succeeded` (charged, reservation not saved yet) or `saved`. */
-    status: text("status").notNull(),
+    status: text("status").$type<AttemptStatus>().notNull(),
     createdAt: text("created_at").notNull(),
     /** When the latest Culqi charge call started. */
     calledAt: text("called_at").notNull(),

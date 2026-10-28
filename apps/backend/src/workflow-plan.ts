@@ -325,7 +325,7 @@ function applyWaivers({ state, waivers, account, now }: PlanContext) {
 
 function applyRefunds({ state, refundActions, account, today, now }: PlanContext) {
   for (const action of refundActions) {
-    if (action.type === "request-refund" || action.type === "request-culqi-refund") {
+    if (requestsRefund(action)) {
       const payment =
         state.payments.find((payment) => payment.id === action.paymentId) ??
         fail("payment not found");

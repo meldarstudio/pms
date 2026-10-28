@@ -8,12 +8,13 @@ import {
   type CulqiCharge,
 } from "./culqi";
 import type { Db } from "./db";
-import { guests, paymentAttempts, quotes, reservations } from "./db/schema";
+import { guests, paymentAttempts, quotes, reservations, type AttemptStatus } from "./db/schema";
 import type { Env } from "./env";
-import { HttpError } from "./http";
+import { HttpError, PAYMENT_PENDING, rethrowConflict } from "./http";
 import { reservationBill } from "./lib/workflow-billing";
 import { propertyCalendar } from "./property-calendar";
 import { saveQuote } from "./quotes";
+import { acceptPhone } from "./rules";
 
 type Attempt = typeof paymentAttempts.$inferSelect;
 type Quote = typeof quotes.$inferSelect;
@@ -35,7 +36,7 @@ const LOOKUP_FOR = 48 * 60 * MINUTE;
 const LOOKUP_SLACK = MINUTE;
 export const LOOKUP_DELAY_MS = 10_000;
 
-const PAID = ["succeeded", "saved"];
+const PAID: AttemptStatus[] = ["succeeded", "saved"];
 
 /**
  * Charges an online guest's card for a quote's required initial payment. The attempt
@@ -47,10 +48,12 @@ export async function startPaymentAttempt(
   input: PaymentAttemptCreate,
   context: PaymentContext,
 ) {
-  const [quote] = await db.select().from(quotes).where(eq(quotes.id, input.quoteId));
-  if (!quote) throw new HttpError(404, "quote not found");
+  const quote = await findQuote(db, input.quoteId);
   const now = new Date();
   requireValid(quote, now);
+  requireCulqi(context);
+  // Checked before charging, because saving the reservation would refuse it after.
+  acceptPhone(input.guest.phone);
   const previous = await db
     .select()
     .from(paymentAttempts)
@@ -58,7 +61,7 @@ export async function startPaymentAttempt(
   if (previous.some((attempt) => PAID.includes(attempt.status)))
     throw new HttpError(409, "quote is already paid");
   if (previous.some((attempt) => attempt.status === "unknown"))
-    throw new HttpError(409, "a payment for this quote is still being confirmed");
+    throw new HttpError(409, PAYMENT_PENDING);
   // A new card replaces one the guest did not authenticate.
   await db
     .update(paymentAttempts)
@@ -86,12 +89,9 @@ export async function startPaymentAttempt(
     await db.insert(paymentAttempts).values(attempt);
   } catch (error) {
     // A concurrent start on the same quote holds the only open slot.
-    if (String(error).includes("payment_attempts")) {
-      throw new HttpError(409, "a payment for this quote is still being confirmed");
-    }
-    throw error;
+    rethrowConflict(error);
   }
-  return charge(db, attempt, await context.culqi.createCharge(chargeRequest(attempt)), context);
+  return record(db, attempt, await context.culqi.createCharge(chargeRequest(attempt)), context);
 }
 
 /** Continues an attempt Culqi sent to 3DS review, with the same token. */
@@ -104,9 +104,10 @@ export async function authenticatePaymentAttempt(
   const attempt = await findAttempt(db, attemptId);
   if (attempt.status !== "review")
     throw new HttpError(409, "payment is not waiting for authentication");
-  const [quote] = await db.select().from(quotes).where(eq(quotes.id, attempt.quoteId));
+  const quote = await findQuote(db, attempt.quoteId);
   const now = new Date();
-  requireValid(quote!, now);
+  requireValid(quote, now);
+  requireCulqi(context);
   const [claimed] = await db
     .update(paymentAttempts)
     .set({ status: "unknown", calledAt: now.toISOString() })
@@ -117,7 +118,7 @@ export async function authenticatePaymentAttempt(
     ...chargeRequest(claimed),
     authentication3DS: authentication,
   });
-  return charge(db, claimed, result, context);
+  return record(db, claimed, result, context);
 }
 
 /**
@@ -140,6 +141,7 @@ export async function paymentAttemptStatus(db: Db, attemptId: string, context: P
  * and retries each paid quote whose reservation is not saved yet.
  */
 export async function reconcilePaymentAttempts(db: Db, context: PaymentContext) {
+  if (!context.culqi.configured) return;
   const since = new Date(Date.now() - LOOKUP_FOR).toISOString();
   const pending = await db
     .select()
@@ -150,6 +152,7 @@ export async function reconcilePaymentAttempts(db: Db, context: PaymentContext) 
         eq(paymentAttempts.status, "succeeded"),
       ),
     )
+    .orderBy(paymentAttempts.calledAt)
     .limit(50);
   for (const attempt of pending) {
     try {
@@ -178,7 +181,8 @@ async function resolve(db: Db, attempt: Attempt, context: PaymentContext): Promi
   return found ? succeed(db, attempt, found, context) : attempt;
 }
 
-async function charge(db: Db, attempt: Attempt, result: ChargeResult, context: PaymentContext) {
+/** Records a charge call's result on its Unknown attempt. */
+async function record(db: Db, attempt: Attempt, result: ChargeResult, context: PaymentContext) {
   if (result.kind === "succeeded" && matches(attempt, result.charge))
     return present(db, await succeed(db, attempt, result.charge, context));
   if (result.kind === "review" || result.kind === "declined") {
@@ -220,25 +224,26 @@ async function succeed(db: Db, attempt: Attempt, paid: CulqiCharge, context: Pay
  * longer happen it is saved as Unfulfilled instead, keeping the payment as a refund due.
  */
 async function fulfill(db: Db, attempt: Attempt, context: PaymentContext): Promise<Attempt> {
-  const [quote] = await db.select().from(quotes).where(eq(quotes.id, attempt.quoteId));
+  const quote = await findQuote(db, attempt.quoteId);
   const { today } = propertyCalendar(context.timeZone);
   const payment = {
     amountCents: attempt.amountCents,
     method: "card",
     reference: attempt.culqiChargeId,
-    paymentDate: today,
+    // The charge was made by the latest call, even when it is found days later.
+    paymentDate: propertyCalendar(context.timeZone, new Date(attempt.calledAt)).today,
     culqiChargeId: attempt.culqiChargeId,
   };
-  const unfulfilled = quote!.checkIn < today || (await rebooked(db, quote!, attempt.email));
+  const unfulfilled = quote.checkIn < today || (await rebooked(db, quote, attempt.email));
   let reservationId: string;
   try {
-    reservationId = await saveQuote(db, quote!.id, attempt.guest, {
+    reservationId = await saveQuote(db, quote.id, attempt.guest, {
       status: unfulfilled ? "unfulfilled" : "confirmed",
       payment,
     });
   } catch (error) {
     if (!(error instanceof HttpError && error.message === "no availability")) throw error;
-    reservationId = await saveQuote(db, quote!.id, attempt.guest, {
+    reservationId = await saveQuote(db, quote.id, attempt.guest, {
       status: "unfulfilled",
       payment,
     });
@@ -285,6 +290,10 @@ const chargeRequest = (attempt: Attempt) => ({
   deviceFingerprint: attempt.deviceFingerprint,
 });
 
+function requireCulqi(context: PaymentContext) {
+  if (!context.culqi.configured) throw new HttpError(503, "Culqi is not configured");
+}
+
 function requireValid(quote: Quote, now: Date) {
   if (Date.parse(quote.expiresAt) <= now.getTime()) throw new HttpError(400, "quote has expired");
 }
@@ -294,6 +303,12 @@ function initialPaymentCents(quote: Quote) {
     released: false,
     paymentSchedule: quote.terms.paymentSchedule,
   }).requiredInitialPaymentCents;
+}
+
+async function findQuote(db: Db, id: string) {
+  const [quote] = await db.select().from(quotes).where(eq(quotes.id, id));
+  if (!quote) throw new HttpError(404, "quote not found");
+  return quote;
 }
 
 async function findAttempt(db: Db, id: string) {

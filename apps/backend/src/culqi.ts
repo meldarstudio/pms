@@ -1,8 +1,8 @@
 import { HttpError } from "./http";
 
-// Culqi API v2 as observed in the sandbox: docs/research/2026-10-27-culqi-sandbox-evidence.md
-// on the t3/verify-culqi-payment-contracts branch. `paid` and `capture` are not success
-// evidence, and a 401 is not always a credential error, so neither is read here.
+// Culqi API v2 as observed in the sandbox (meldarstudio/pms#114). `paid` and `capture`
+// are not success evidence, and a 401 is not always a credential error, so neither is
+// read here.
 const API = "https://api.culqi.com/v2";
 const TIMEOUT_MS = 20_000;
 const SUCCESS_CODE = "AUT0000";
@@ -45,6 +45,8 @@ export type RefundResult =
   | { kind: "unclear"; refundId: string | null; reason: string };
 
 export type Culqi = {
+  /** Whether a secret key is set; every call fails with 503 without one. */
+  configured: boolean;
   createCharge(request: ChargeRequest): Promise<ChargeResult>;
   /** Charges for an amount and email created since `from`; Culqi ignores metadata filters. */
   listCharges(filter: { amountCents: number; email: string; from: Date }): Promise<CulqiCharge[]>;
@@ -74,10 +76,10 @@ export function culqiClient(options: {
       body: body === undefined ? undefined : JSON.stringify(body),
       signal: AbortSignal.timeout(TIMEOUT_MS),
     });
-    const text = await response.text();
+    const raw = await response.text();
     let parsed: Record<string, unknown> | null = null;
     try {
-      parsed = JSON.parse(text) as Record<string, unknown>;
+      parsed = JSON.parse(raw) as Record<string, unknown>;
     } catch {
       // An unparseable body is judged by its status alone.
     }
@@ -90,6 +92,7 @@ export function culqiClient(options: {
     return response.body;
   }
   return {
+    configured: Boolean(options.secretKey),
     async createCharge(request) {
       let response: Response;
       try {

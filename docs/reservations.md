@@ -143,9 +143,10 @@ logged.
 `startPaymentAttempt` takes the shared `paymentAttemptCreateSchema`: the quote ID, a
 Culqi card token (`sourceId`), an optional Culqi3DS `deviceFingerprint`, and the
 booking contact with a required email. The client never sends an amount: the server
-charges the quote's `requiredInitialPaymentCents` in `CURRENCY`. It refuses a missing
-quote (`quote not found`), an expired one (`quote has expired`) before calling Culqi,
-a quote already paid (`quote is already paid`), and a quote with an Unknown attempt
+charges the quote's `requiredInitialPaymentCents` in `CURRENCY`. It refuses, before
+calling Culqi, a missing quote (`quote not found`), an expired one
+(`quote has expired`), a missing key (`Culqi is not configured`, which also pauses
+reconciliation), a phone the reservation could not be saved with, a quote already paid (`quote is already paid`), and a quote with an Unknown attempt
 (`a payment for this quote is still being confirmed`). A new card replaces an attempt
 waiting for 3DS. Each attempt is a `payment_attempts` row saved as `unknown` before
 its single charge call, which always sends `capture: true` and the attempt ID as
@@ -175,7 +176,7 @@ ignored, as is any meaning of a `401`.
   staff to check in CulqiPanel.
 - `succeeded`, then `saved`: the charge is recorded on the attempt, then
   `saveQuote` saves the reservation and a `card` payment with the Culqi charge ID as
-  `culqiChargeId` and `reference`, dated the property's today. The reservation is
+  `culqiChargeId` and `reference`, dated the property's day of the charge call. The reservation is
   saved as Unfulfilled instead when check-in is before today, the same email (any
   case) already has an overlapping inventory-holding online reservation, or the
   room type has `no availability`. A failed save leaves the attempt `succeeded`;

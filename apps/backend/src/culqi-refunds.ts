@@ -3,6 +3,9 @@ import type { Culqi } from "./culqi";
 import { runBatch, type Db } from "./db";
 import { refunds, reservations } from "./db/schema";
 import type { Refund } from "./lib/refunds";
+import type { CommandContext } from "./workflow";
+
+type RefundContext = Pick<CommandContext, "today" | "account">;
 
 /**
  * Sends each newly requested Culqi refund once, after its request is saved. Culqi has
@@ -14,7 +17,7 @@ export async function sendCulqiRefunds(
   db: Db,
   culqi: Culqi,
   requested: Refund[],
-  context: { today: string; account: { id: string } },
+  context: RefundContext,
 ) {
   for (const refund of requested) {
     const chargeId = refund.culqiChargeId!;
@@ -53,7 +56,7 @@ export async function sendCulqiRefunds(
 function complete(
   db: Db,
   refund: Refund,
-  context: { today: string; account: { id: string } },
+  context: RefundContext,
   outcome: { reference: string; refundId: string | null },
 ) {
   return runBatch(db, [

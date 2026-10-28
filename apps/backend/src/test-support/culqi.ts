@@ -2,7 +2,7 @@ import type { CulqiCharge } from "../culqi";
 
 /**
  * A fake Culqi API v2 at the HTTP level, shaped like the recorded sandbox responses
- * (docs/research/2026-10-27-culqi-sandbox-evidence.md). The token picks the card:
+ * (meldarstudio/pms#114). The token picks the card:
  * `tkn_test_decline` is declined, `tkn_test_3ds` needs 3DS authentication and any
  * other token succeeds. `next` scripts the following call to a path.
  */
