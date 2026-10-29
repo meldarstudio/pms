@@ -210,9 +210,11 @@ Keep tokens in secrets, never committed files. Expose them only to the operation
 that need them, not installation, tests, checks, or builds. The existing Worker
 `SESSION_SECRET` stays in Cloudflare; do not copy or rotate it for release setup.
 The first release with [online card payments](reservations.md#online-card-payments)
-needs migration `0013_culqi_payments` applied first and a separately authorized
-`CULQI_SECRET_KEY` Worker secret; without the secret Culqi calls fail with
-`Culqi is not configured`. Its deployment also starts the per-minute cron trigger.
+needs migration `0013_culqi_payments` applied first. Its deployment also starts the
+per-minute cron trigger. Taking Culqi payments or refunds additionally needs a
+separately authorized `CULQI_SECRET_KEY` Worker secret; without it, Culqi calls
+fail with `Culqi is not configured`, and the cron does no Culqi work. See
+[the 0013 rollout notes](history/schema-rollouts.md#culqi-payments-migration-0013).
 The one-time move to accounts follows the
 [authentication cutover](authentication.md#cutover-from-the-shared-password).
 Migration authorization remains separate. Token permissions require authorized
