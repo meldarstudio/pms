@@ -162,6 +162,85 @@ describe("payment attempts", () => {
     ]);
   });
 
+  it.each(["poll", "scheduled Worker", "scheduled Worker without a Culqi key"])(
+    "expires an abandoned 3DS review at the quote deadline through the %s",
+    async (via) => {
+      const attempt = await pay(await quote(), { sourceId: "tkn_test_3ds" });
+      vi.advanceTimersByTime(10 * 60_000 - 1);
+      expect(await poll(attempt.id)).toMatchObject({ status: "review" });
+      vi.advanceTimersByTime(1);
+
+      if (via !== "poll") {
+        vi.stubGlobal("fetch", culqi.fetch);
+        const tasks: Promise<unknown>[] = [];
+        worker.scheduled(
+          {} as ScheduledController,
+          {
+            ...db.env,
+            CULQI_SECRET_KEY: via === "scheduled Worker" ? CULQI_TEST_KEY : undefined,
+          },
+          {
+            waitUntil: (task: Promise<unknown>) => tasks.push(task),
+          } as unknown as ExecutionContext,
+        );
+        await Promise.all(tasks);
+        // Read before polling, so the poll cannot hide a scheduler that missed expiry.
+        expect(
+          db.sqlite.prepare("SELECT status FROM payment_attempts WHERE id = ?").get(attempt.id),
+        ).toMatchObject({ status: "failed" });
+      }
+
+      expect(await poll(attempt.id)).toMatchObject({
+        status: "failed",
+        failure: { code: "authentication_expired", message: "quote has expired" },
+        reservation: null,
+      });
+      expect(culqi.requests.filter((request) => request.method === "POST")).toHaveLength(1);
+    },
+  );
+
+  it("expires a late 3DS continuation before calling Culqi", async () => {
+    const attempt = await pay(await quote(), { sourceId: "tkn_test_3ds" });
+    vi.advanceTimersByTime(10 * 60_000);
+
+    await expect(
+      authenticatePaymentAttempt(
+        getDb(db.env.DB),
+        attempt.id,
+        {
+          eci: "05",
+          cavv: "cavv-1",
+          protocolVersion: "2.1.0",
+          directoryServerTransactionId: "ds-1",
+        },
+        context(),
+      ),
+    ).rejects.toMatchObject({ status: 409, message: "payment is not waiting for authentication" });
+    expect(await poll(attempt.id)).toMatchObject({
+      status: "failed",
+      failure: { code: "authentication_expired" },
+    });
+    expect(culqi.requests.filter((request) => request.method === "POST")).toHaveLength(1);
+  });
+
+  it("does not expire a 3DS continuation whose charge result is Unknown", async () => {
+    const attempt = await pay(await quote(), { sourceId: "tkn_test_3ds" });
+    culqi.next("POST /charges", 500);
+    const continued = await authenticatePaymentAttempt(
+      getDb(db.env.DB),
+      attempt.id,
+      { eci: "05", cavv: "cavv-1", protocolVersion: "2.1.0", directoryServerTransactionId: "ds-1" },
+      context(),
+    );
+    expect(continued.status).toBe("unknown");
+    vi.advanceTimersByTime(10 * 60_000);
+
+    await reconcile();
+
+    expect(await poll(attempt.id)).toMatchObject({ status: "unknown", delayed: true });
+    expect(culqi.requests.filter((request) => request.method === "POST")).toHaveLength(2);
+  });
+
   it("sends the guest's name and phone to Culqi's fraud checks", async () => {
     await pay(await quote(), {
       guest: { ...guest, fullName: "Ana María Torres", phone: "999 777 666" },

@@ -1,5 +1,5 @@
 import type { PaymentAttemptCreate, PaymentAuthentication } from "@pms/shared";
-import { and, eq, gt, inArray, lt, ne, or, sql } from "drizzle-orm";
+import { and, eq, gt, inArray, lt, lte, ne, or, sql } from "drizzle-orm";
 import {
   culqiClient,
   isSuccessfulCharge,
@@ -101,6 +101,7 @@ export async function authenticatePaymentAttempt(
   authentication: PaymentAuthentication,
   context: PaymentContext,
 ) {
+  await expireReviews(db, attemptId);
   const attempt = await findAttempt(db, attemptId);
   if (attempt.status !== "review")
     throw new HttpError(409, "payment is not waiting for authentication");
@@ -123,9 +124,10 @@ export async function authenticatePaymentAttempt(
 
 /**
  * The attempt's current outcome for the guest's waiting page. Each poll looks an
- * Unknown charge up and retries saving a paid reservation.
+ * Unknown charge up, expires abandoned 3DS reviews and retries saving a paid reservation.
  */
 export async function paymentAttemptStatus(db: Db, attemptId: string, context: PaymentContext) {
+  await expireReviews(db, attemptId);
   const attempt = await findAttempt(db, attemptId);
   try {
     return await present(db, await resolve(db, attempt, context));
@@ -137,10 +139,11 @@ export async function paymentAttemptStatus(db: Db, attemptId: string, context: P
 }
 
 /**
- * The scheduled Worker's pass: looks up each Unknown attempt younger than 48 hours
- * and retries each paid quote whose reservation is not saved yet.
+ * The scheduled Worker's pass: expires abandoned 3DS reviews, looks up each Unknown
+ * attempt younger than 48 hours and retries each paid quote not saved yet.
  */
 export async function reconcilePaymentAttempts(db: Db, context: PaymentContext) {
+  await expireReviews(db);
   if (!context.culqi.configured) return;
   const since = new Date(Date.now() - LOOKUP_FOR).toISOString();
   const pending = await db
@@ -161,6 +164,30 @@ export async function reconcilePaymentAttempts(db: Db, context: PaymentContext) 
       console.error("payment attempt", attempt.id, error);
     }
   }
+}
+
+/** A review cannot continue after its quote expires; an in-flight charge stays Unknown. */
+async function expireReviews(db: Db, attemptId?: string) {
+  await db
+    .update(paymentAttempts)
+    .set({
+      status: "failed",
+      failureCode: "authentication_expired",
+      failureMessage: "quote has expired",
+    })
+    .where(
+      and(
+        eq(paymentAttempts.status, "review"),
+        attemptId ? eq(paymentAttempts.id, attemptId) : undefined,
+        inArray(
+          paymentAttempts.quoteId,
+          db
+            .select({ id: quotes.id })
+            .from(quotes)
+            .where(lte(quotes.expiresAt, new Date().toISOString())),
+        ),
+      ),
+    );
 }
 
 async function resolve(db: Db, attempt: Attempt, context: PaymentContext): Promise<Attempt> {

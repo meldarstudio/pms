@@ -146,7 +146,7 @@ booking contact with a required email. The client never sends an amount: the ser
 charges the quote's `requiredInitialPaymentCents` in `CURRENCY`. It refuses, before
 calling Culqi, a missing quote (`quote not found`), an expired one
 (`quote has expired`), a missing key (`Culqi is not configured`, which also pauses
-reconciliation), a phone the reservation could not be saved with, a quote already paid (`quote is already paid`), and a quote with an Unknown attempt
+provider lookups and paid reservation saves), a phone the reservation could not be saved with, a quote already paid (`quote is already paid`), and a quote with an Unknown attempt
 (`a payment for this quote is still being confirmed`). A new card replaces an attempt
 waiting for 3DS. Each attempt is a `payment_attempts` row saved as `unknown` before
 its single charge call, which always sends `capture: true`, the attempt ID as
@@ -165,9 +165,14 @@ ignored, as is any meaning of a `401`.
   Culqi3DS result (`paymentAuthenticationSchema`) and calls Culqi again for the same
   attempt with the same token and antifraud details, refusing an expired quote and an
   attempt not waiting for authentication
-  (`payment is not waiting for authentication`).
+  (`payment is not waiting for authentication`). When the quote expires, polling,
+  an authentication request or the scheduled Worker marks a remaining review
+  `failed` with failure code `authentication_expired` and message `quote has expired`.
+  This also runs without a Culqi key and makes no provider call. A continuation
+  already sent to Culqi is `unknown`, not `review`, and remains eligible for charge lookup.
 - `failed`: a `400` Culqi error is a clear decline, with its code and Culqi's
-  `user_message` as `failure`. The guest may try another card while the quote is valid.
+  `user_message` as `failure`. An expired 3DS review also fails as described above.
+  The guest may try another card while the quote is valid; an expired quote requires a new quote.
 - `unknown`: a timeout, network error, `5xx`, `429` or any other reply may still have
   charged. The API never charges a new token automatically. It looks the charge up by
   listing charges for the amount and email since the call (less a minute), matching
