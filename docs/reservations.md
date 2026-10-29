@@ -404,8 +404,11 @@ are ignored. The server rejects:
 - more than the coupon's balance (`coupon redemption exceeds its balance`);
 - more than the reservation still owes after the command's other changes (`coupon
   redemption exceeds the balance owed`);
+- a coupon whose `expiresOn` is before the property's today (`coupon has
+  expired`), so value returned after expiry cannot be spent;
 - a stay whose check-in is after `expiresOn` (`stay starts after the coupon
-  expires`), checked again whenever later edits move the dates;
+  expires`), checked again whenever later edits move the dates while coupon value
+  is applied;
 - a second, different coupon on the same reservation (`reservation already uses
   another coupon`); the same coupon may be redeemed again up to its balance;
 - the reservation that issued it (`coupon cannot be redeemed on the reservation that

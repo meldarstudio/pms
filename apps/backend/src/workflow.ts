@@ -22,7 +22,13 @@ import {
 } from "./db/schema";
 import { HttpError, rethrowConflict } from "./http";
 import type { Refund } from "./lib/refunds";
-import { couponMovementQuery, couponQuery, type Coupon, type CouponMovement } from "./lib/coupons";
+import {
+  couponMovementQuery,
+  couponQuery,
+  withIssuer,
+  type Coupon,
+  type CouponMovement,
+} from "./lib/coupons";
 import { holdsInventory } from "./lib/statuses";
 import type { Cancellation } from "./lib/cancellation";
 import { ratePlans, termColumns } from "./lib/rate-plans";
@@ -128,7 +134,7 @@ export async function loadState(db: Db, id: string): Promise<State> {
     payments: paymentRows,
     cancellations: withWaivers(cancellationRows, waiverRows),
     refunds: refundRows.map(withAccounts),
-    coupons: couponRows.map(({ coupon, issuedBy }) => ({ ...coupon, issuedBy })),
+    coupons: couponRows.map(withIssuer),
     couponMovements: movementRows.map(({ movement, recordedBy }) => ({ ...movement, recordedBy })),
   };
 }
@@ -191,7 +197,7 @@ export async function couponsFor(db: Db, reservationIds: string[]) {
     couponMovementQuery(db).where(inArray(couponMovements.reservationId, reservationIds)),
   ]);
   return {
-    coupons: couponRows.map(({ coupon, issuedBy }): Coupon => ({ ...coupon, issuedBy })),
+    coupons: couponRows.map(withIssuer),
     movements: movementRows.map(({ movement, recordedBy }): CouponMovement => ({
       ...movement,
       recordedBy,

@@ -75,6 +75,7 @@ const messages: Record<string, string> = {
   "coupon exceeds the refund due":
     "El cupón supera el monto por devolver, descontando reembolsos solicitados y cupones ya emitidos.",
   "coupon not found": "No existe un cupón con ese código.",
+  "coupon has expired": "El cupón venció y ya no se puede usar.",
   "coupon redemption exceeds its balance": "El monto supera el saldo disponible del cupón.",
   "coupon redemption exceeds the balance owed":
     "El monto del cupón supera el saldo pendiente de la reserva.",

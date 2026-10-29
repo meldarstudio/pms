@@ -1,9 +1,8 @@
-import { couponAppliedCents, couponIssuedCents } from "./coupons";
+import { couponAppliedCents, couponIssuedCents, type CouponMoney } from "./coupons";
 import type { PaymentSchedule } from "./rate-plans";
 
 type BillableRoom = { nights: { date: string; priceCents: number }[] };
 type RefundMoney = { amountCents: number; status: string };
-type CouponMoney = Parameters<typeof couponIssuedCents>[0][number];
 
 export function bill(
   charges: number,

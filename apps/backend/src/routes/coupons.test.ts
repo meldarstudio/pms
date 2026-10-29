@@ -253,9 +253,8 @@ describe("redeeming future-stay coupons", () => {
     ).toEqual({ error: "stay starts after the coupon expires" });
   });
 
-  it("rejects a missing code, an overdrawn balance, more than is owed, a second coupon, the issuing stay, and a cancelled stay", async () => {
+  it("rejects an unknown code and more than the coupon's balance", async () => {
     const coupon = await couponWorth(20000);
-    const other = await couponWorth(5000);
     const later = await stay("2026-11-01", "2026-11-04");
     expect(await command(later, [redeem("NOPE", 100)], 404)).toEqual({
       error: "coupon not found",
@@ -263,30 +262,51 @@ describe("redeeming future-stay coupons", () => {
     expect(await command(later, [redeem(coupon.code, 20001)], 400)).toEqual({
       error: "coupon redemption exceeds its balance",
     });
-    const paidPart = await command(later, [pay(15000)]);
+  });
+
+  it("rejects more than the stay still owes", async () => {
+    const coupon = await couponWorth(20000);
+    const paidPart = await command(await stay("2026-11-01", "2026-11-04"), [pay(15000)]);
     expect(await command(paidPart, [redeem(coupon.code, 15001)], 400)).toEqual({
       error: "coupon redemption exceeds the balance owed",
     });
-    const used = await command(paidPart, [redeem(coupon.code, 10000)]);
+    expect((await lookup(coupon.code)).body).toMatchObject({ balanceCents: 20000 });
+  });
+
+  it("allows one coupon per stay, redeemed again up to its balance", async () => {
+    const coupon = await couponWorth(20000);
+    const other = await couponWorth(5000);
+    const used = await command(await stay("2026-11-01", "2026-11-04"), [
+      redeem(coupon.code, 10000),
+    ]);
     expect(await command(used, [redeem(other.code, 1000)], 400)).toEqual({
       error: "reservation already uses another coupon",
     });
     expect(await command(used, [redeem(coupon.code, 5000)])).toMatchObject({
       couponAppliedCents: 15000,
-      balanceCents: 0,
-    });
-    const source = (await lookup(coupon.code)).body as { sourceReservationId: string };
-    expect(
-      await command({ id: source.sourceReservationId }, [redeem(coupon.code, 100)], 400),
-    ).toEqual({
-      error: "coupon cannot be redeemed on the reservation that issued it",
-    });
-    const cancelled = await command(await stay("2026-11-10", "2026-11-12"), [cancel]);
-    expect(await command(cancelled, [redeem(other.code, 1000)], 400)).toEqual({
-      error: "coupon requires an active reservation",
+      balanceCents: 15000,
     });
     expect((await lookup(coupon.code)).body).toMatchObject({ balanceCents: 5000 });
     expect((await lookup(other.code)).body).toMatchObject({ balanceCents: 5000 });
+  });
+
+  it.each([
+    {
+      stay: "the reservation that issued it",
+      target: async (sourceReservationId: string) => ({ id: sourceReservationId }),
+      error: "coupon cannot be redeemed on the reservation that issued it",
+    },
+    {
+      stay: "a cancelled reservation",
+      target: async () => command(await stay("2026-11-10", "2026-11-12"), [cancel]),
+      error: "coupon requires an active reservation",
+    },
+  ])("rejects redemption on $stay", async ({ target, error }) => {
+    const coupon = await couponWorth(5000);
+    const source = (await lookup(coupon.code)).body as { sourceReservationId: string };
+    expect(
+      await command(await target(source.sourceReservationId), [redeem(coupon.code, 1000)], 400),
+    ).toEqual({ error });
   });
 
   it("never overspends when two stays redeem the same coupon at once", async () => {
@@ -386,6 +406,7 @@ describe("charging a coupon-funded stay that is cancelled or not shown", () => {
     const funded = await command(await stay("2027-10-10", "2027-10-13"), [
       redeem(coupon.code, 20000),
     ]);
+    const inHouse = await stay("2027-10-10", "2027-10-14");
     vi.setSystemTime(new Date("2027-10-11T15:00:00Z"));
     await db.signIn();
 
@@ -398,7 +419,10 @@ describe("charging a coupon-funded stay that is cancelled or not shown", () => {
     });
     expect(
       await command(await stay("2027-10-12", "2027-10-13"), [redeem(coupon.code, 100)], 400),
-    ).toEqual({ error: "stay starts after the coupon expires" });
+    ).toEqual({ error: "coupon has expired" });
+    expect(await command(inHouse, [redeem(coupon.code, 100)], 400)).toEqual({
+      error: "coupon has expired",
+    });
   });
 });
 

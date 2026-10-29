@@ -15,6 +15,7 @@ import {
   couponIssuedCents,
   couponExpiry,
   couponQuery,
+  withIssuer,
   type CouponMovement,
 } from "./lib/coupons";
 import { acceptPhone, requireStay } from "./rules";
@@ -416,15 +417,14 @@ async function redeemCoupon(action: Action<"redeem-coupon">, ctx: PlanContext) {
   const { db, state } = ctx;
   const coupon =
     state.coupons.find((coupon) => coupon.code === action.code) ??
-    (await couponQuery(db).where(eq(coupons.code, action.code)))
-      .map(({ coupon, issuedBy }) => ({ ...coupon, issuedBy }))
-      .at(0);
+    (await couponQuery(db).where(eq(coupons.code, action.code))).map(withIssuer).at(0);
   if (!coupon) throw new HttpError(404, "coupon not found");
   if (coupon.sourceReservationId === state.reservation.id)
     fail("coupon cannot be redeemed on the reservation that issued it");
   if (!holdsInventory(state.reservation.status)) fail("coupon requires an active reservation");
   if (state.couponMovements.some((m) => m.kind === "redeem" && m.couponId !== coupon.id))
     fail("reservation already uses another coupon");
+  if (ctx.today > coupon.expiresOn) fail("coupon has expired");
   if (action.amountCents > coupon.balanceCents) fail("coupon redemption exceeds its balance");
   if (!state.coupons.includes(coupon)) state.coupons.push(coupon);
   coupon.balanceCents -= action.amountCents;
@@ -473,10 +473,13 @@ async function applyCoupons(ctx: PlanContext) {
     });
     state.couponMovements.push(movement(ctx, id, "issue", action.amountCents));
   }
-  const redeemed = new Set(
-    state.couponMovements.flatMap((m) => (m.kind === "redeem" ? [m.couponId] : [])),
-  );
-  if (state.coupons.some((c) => redeemed.has(c.id) && state.reservation.checkIn > c.expiresOn))
+  if (
+    state.coupons.some(
+      (c) =>
+        state.reservation.checkIn > c.expiresOn &&
+        couponAppliedCents(state.couponMovements.filter((m) => m.couponId === c.id)) > 0,
+    )
+  )
     fail("stay starts after the coupon expires");
 }
 

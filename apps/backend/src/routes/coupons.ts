@@ -5,7 +5,7 @@ import { getDb } from "../db";
 import { couponMovements, coupons, reservations, user } from "../db/schema";
 import type { Env } from "../env";
 import { HttpError } from "../http";
-import { couponMovementQuery, presentCoupon } from "../lib/coupons";
+import { byTime, couponMovementQuery, presentCoupon, withIssuer } from "../lib/coupons";
 
 export const couponRoutes = new Hono<Env>();
 
@@ -24,7 +24,7 @@ couponRoutes.get("/:code", async (c) => {
     .innerJoin(reservations, eq(reservations.id, couponMovements.reservationId))
     .where(eq(couponMovements.couponId, found.coupon.id));
   return c.json({
-    ...presentCoupon({ ...found.coupon, issuedBy: found.issuedBy }),
+    ...presentCoupon(withIssuer(found)),
     sourceReservationId: found.coupon.sourceReservationId,
     sourceReservationCode: found.sourceReservationCode,
     movements: movements
@@ -37,6 +37,6 @@ couponRoutes.get("/:code", async (c) => {
         recordedOn: movement.recordedOn,
         recordedBy,
       }))
-      .sort((a, b) => a.recordedAt.localeCompare(b.recordedAt) || a.id.localeCompare(b.id)),
+      .sort(byTime((m) => m.recordedAt)),
   });
 });

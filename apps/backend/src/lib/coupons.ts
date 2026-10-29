@@ -5,7 +5,7 @@ import { addMonths } from "./dates";
 
 export type Coupon = typeof coupons.$inferSelect & { issuedBy: string | null };
 export type CouponMovement = typeof couponMovements.$inferSelect & { recordedBy: string | null };
-type CouponMoney = Pick<CouponMovement, "kind" | "amountCents">;
+export type CouponMoney = Pick<CouponMovement, "kind" | "amountCents">;
 
 export const couponQuery = (db: Db) =>
   db
@@ -17,6 +17,14 @@ export const couponMovementQuery = (db: Db) =>
     .select({ movement: couponMovements, recordedBy: user.username })
     .from(couponMovements)
     .leftJoin(user, eq(user.id, couponMovements.accountId));
+
+export const withIssuer = ({
+  coupon,
+  issuedBy,
+}: {
+  coupon: typeof coupons.$inferSelect;
+  issuedBy: string | null;
+}): Coupon => ({ ...coupon, issuedBy });
 
 const alphabet = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
 
@@ -35,7 +43,7 @@ export const couponIssuedCents = (movements: CouponMoney[]) => sum(movements, "i
 export const couponAppliedCents = (movements: CouponMoney[]) =>
   sum(movements, "redeem") - sum(movements, "return");
 
-const byTime =
+export const byTime =
   <T extends { id: string }>(time: (row: T) => string) =>
   (a: T, b: T) =>
     time(a).localeCompare(time(b)) || a.id.localeCompare(b.id);
@@ -63,15 +71,21 @@ export function couponFields(
       .filter((coupon) => coupon.sourceReservationId === reservationId)
       .toSorted(byTime((coupon) => coupon.issuedAt))
       .map(presentCoupon),
-    couponMovements: movements.toSorted(byTime((m) => m.recordedAt)).map((movement) => ({
-      id: movement.id,
-      couponId: movement.couponId,
-      code: codes.get(movement.couponId)?.code ?? null,
-      kind: movement.kind,
-      amountCents: movement.amountCents,
-      recordedAt: movement.recordedAt,
-      recordedOn: movement.recordedOn,
-      recordedBy: movement.recordedBy,
-    })),
+    couponMovements: movements.toSorted(byTime((m) => m.recordedAt)).flatMap((movement) => {
+      const coupon = codes.get(movement.couponId);
+      if (!coupon) return [];
+      return [
+        {
+          id: movement.id,
+          couponId: movement.couponId,
+          code: coupon.code,
+          kind: movement.kind,
+          amountCents: movement.amountCents,
+          recordedAt: movement.recordedAt,
+          recordedOn: movement.recordedOn,
+          recordedBy: movement.recordedBy,
+        },
+      ];
+    }),
   };
 }
