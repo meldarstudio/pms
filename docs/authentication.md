@@ -8,8 +8,8 @@ Every route except `GET /` and `POST /login` requires a session. Sign-in uses
 - the **Owner account** (role `owner`).
 
 Both roles can do everything in the portal. Only the owner can manage accounts.
-Usernames are matched without regard to letter case. Changes are not recorded
-against an account.
+Usernames are matched without regard to letter case. There is no general change
+audit trail; cancellation, waiver, and refund records do identify the acting account.
 
 - The app keeps its own routes and calls Better Auth on the server. Better Auth's
   HTTP handler is not mounted, so there is no sign-up or other built-in endpoint.
@@ -99,5 +99,5 @@ during writes; failed changes retain the draft and successful changes clear it.
 No password draft is stored in browser storage.
 
 See [local credential setup](../README.md#signing-in) before development,
-[the property calendar](property-calendar.md) before changing session metadata,
+[property dates](calendar.md#property-dates) before changing session metadata,
 and [release prerequisites](releases.md#setup-and-deployment-ownership) before production setup.

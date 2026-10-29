@@ -1,118 +1,106 @@
-# Calendar and room assignment
+# Calendar, property dates, and room assignment
 
-Desktop and mobile share one flow: a list of unassigned reserved rooms, then a
-picker of physical rooms for the selected one. `RoomAssignmentSteps` renders both
-steps; desktop shows them in an inline panel beside the calendar, and mobile (below
-768px) in a bottom sheet. Staff keep a group's rooms together and use room numbers to identify floors,
-so the desktop calendar remains visible beside the picker.
+## Property dates
+
+`PROPERTY_TIME_ZONE` is a required IANA deployment timezone; see
+[backend config](../apps/backend/wrangler.jsonc) and `.dev.vars.example`. Missing/
+unsupported values return 503 from login/session/operational routes with actionable
+configuration errors. There is no browser/UTC fallback or staff preference.
+
+Business dates are timezone-free `YYYY-MM-DD` labels. UTC calendar arithmetic keeps
+labels/counts nights; it does not define operational today. Event timestamps remain
+UTC instants. Changing timezone converts no saved date or timestamp; historical
+payment dates retain their saved labels. For example, `2026-11-01T01:00:00Z` is
+October 31 in Lima; November 1 starts at `05:00:00Z`.
+
+Each request captures one property date through retries and database writes, governing
+defaults, payment future-date checks, and physical room-type-change cutoffs.
+The `rooms_type_change` trigger requires server-derived `property_write_context`:
+insert date, change room, remove context in **one D1 batch**, including privileged
+SQL writers. D1 serializes transactions and rolls back context on failure; it is
+empty between operations, not a refreshed clock. SQL owns assignment/capacity
+checks. Setup renumbers owned rooms/inserts new ones, not type transfers.
+
+### Portal dates
+
+Login/session supplies `propertyTimeZone` before date-dependent screens mount.
+Missing/invalid metadata blocks the app with a Spanish configuration error; there
+is no frontend timezone variable or temporary browser-date fallback.
+
+Defaults, badges, restrictions, payment validation, and picker today/month indicators
+use this zone. The shared clock refreshes at property midnight and on focus/visibility
+changes without re-sign-in. Explicit URL dates/drafts remain unchanged; new forms use
+the current day. Picker adapters transfer calendar components, not instants, so
+remote browsers preserve saved date labels. See [rollout compatibility](history/schema-rollouts.md).
 
 ## Entry
 
-Both sizes open the flow from a **Sin asignar** toolbar button with a small
-primary-colored badge. It counts unassigned reserved rooms from confirmed and
-checked-in reservations overlapping the displayed dates, excluding checkout on
-the first displayed morning; one
-reservation with three unassigned reserved rooms contributes three. The badge is
-hidden at zero and when no calendar data is available; cached counts remain during
-refreshes. The button stays available at zero, and its accessible name
-("habitaciones reservadas sin asignar") includes the count. Closing the flow cancels
-any selection and returns focus to that button. On desktop the button toggles the
-panel; the calendar has its full width while the panel is closed.
+Desktop/mobile share an unassigned-room list followed by a whole-stay physical-room
+picker (`RoomAssignmentSteps`). Desktop uses an inline panel beside the calendar;
+mobile uses a sheet. Keeping the grid visible helps staff group rooms by number/floor.
 
-On mobile the toolbar follows the shared [date navigation](portal.md#date-navigation)
-layout, with **Sin asignar** on the right. **Nueva reserva** floats at the bottom
-right; see [navigation](portal.md#navigation).
+The Sin asignar count measures reserved rooms, not reservations, in confirmed/
+checked-in stays overlapping displayed nights. Exclude departure on the first
+morning. Keep cached counts during refresh, hide without data/at zero, but leave
+the action available. Dismissal clears selection and returns focus. Mobile follows
+shared [date navigation](portal.md#date-navigation).
 
 ## Picker
 
-The picker uses the existing whole-stay assignment queries, not the calendar window,
-and lists only matching physical rooms available for the entire stay, sorted by room
-number so neighbours sit together. Occupied and closed rooms are hidden; if none
-qualify, the picker shows **Sin habitaciones disponibles**. Back or Escape returns to the list.
-Dismissal and duplicate assignment are blocked while saving. Assignments save through
-the [Reservation command module](reservations.md#reservation-command-module). A conflict
-retains the selection, shows its error in the picker, and refreshes availability.
-
-After a save, the flow continues with the same reservation's next unassigned reserved
-room, listing the group's assigned rooms ("Habitación 1 → 204") for reference. When
-none remain it returns to the refreshed list.
+Query assignment availability for the **entire stay**, not the visible calendar.
+List matching unoccupied/unclosed rooms by number; show an empty state if none.
+Back/Escape returns to the list. Block dismissal/duplicate assignment while saving.
+Save through the [command module](reservations.md#reservation-command-module);
+conflicts retain selection and refresh availability. After success, continue with
+the reservation's next unassigned room and show its assigned rooms for reference;
+when complete, return to the refreshed backlog.
 
 ## Desktop calendar
 
-Selecting a stay moves the calendar's start when needed. The span stays at 7 or
-14 days, so long stays and their checkout morning may extend beyond the grid.
-Assignment availability is still checked for the entire stay. While a stay is selected, a banner names it with
-**Esc para cancelar** and a cancel button; calendar bars and night cells do not open
-editors. Eligible rooms show a dashed bar that assigns like the list. Rooms of the
-same type that cannot take the stay show **Ocupada** or **Cerrada** in the room
-column; other room types are dimmed. Hovering or focusing a room in the picker
-highlights its row and scrolls the grid to it.
+Selecting a stay moves the start as needed but retains the 7/14-day span; the stay
+may extend beyond it. While selected, normal bars/cells cannot open editors.
+Eligible rows can assign directly; other same-type rows explain occupied/closed,
+and other types are dimmed. Picker focus highlights/scrolls to its room.
 
-The mobile sheet follows the existing Lyra density: standard button sizes,
-content-driven rows in a single bordered list with separators, compact spacing, and
-the one-pixel focus treatment. Mobile toasts appear top-center with safe-area
-spacing, away from the sheet controls; desktop toasts stay bottom-right.
-
-The [calendar tests](../apps/portal/tests/calendar.test.ts) cover both sizes at the real calendar screen with HTTP
-fixtures, including availability outside the visible calendar, groups, conflicts,
-pending-write dismissal, cancellation, and moving to a stay past the window. Visual validation requirements and prior limitations are recorded in
-[operational status](operations-status.md).
+[Calendar tests](../apps/portal/tests/calendar.test.ts) cover screen interactions,
+not device/layout correctness. Perform authenticated visual checks for phone touch,
+scrolling/safe areas, and desktop scrolling; record actual coverage privately.
 
 ## Opening day
 
-The calendar opens on the day before the property date, so a stay checking out today
-shows its last night and checkout morning. A checked-in stay due out yesterday still
-shows its checkout morning; stays overdue by more days fall before the first column.
-**Hoy**, the `/` redirect, and the not-found and crash pages' calendar links start
-there. The sidebar link does too until the calendar is first opened; after that it
-returns to the last calendar view. A `from` in the URL or a date chosen in the picker
-becomes the first column unchanged. [`calendarStart`](../apps/portal/src/lib/route-search.ts)
-owns the rule.
-
-Because today is no longer the first column, today's column has a light primary tint
-behind the bars and a primary outline: its header's top edge and both sides from the
-header down to the last room.
+Default start is the day before property today so today's departures show their last
+night/checkout morning. A stay due out yesterday still shows checkout; older overdue
+stays fall before the grid. `calendarStart` in
+[route-search.ts](../apps/portal/src/lib/route-search.ts) owns this rule for Hoy,
+`/`, and fallback calendar links. Sidebar starts there until a view is remembered.
+Explicit URL/picker dates become the first column unchanged. Today's column remains
+visually distinguished even when it is not first.
 
 ## Calendar read
 
-The calendar reads rooms, stays, closures, and the assignment backlog together
-through `GET /calendar` for its visible window, with no reservation bill. The
-client holds seven days before and after the visible window; focus, refresh, and
-a relevant save refresh data. A jump outside the held window shows loading rather
-than old bars under new dates. Assignment availability and the reservation list
-have separate reads. See [ADR 0001](adr/0001-calendar-is-one-read.md) for the
-trade-offs.
+`GET /calendar` reads rooms, stays, closures, and assignment backlog together, without
+bills. The client holds seven days before/after the visible window; focus, refresh,
+and relevant writes refresh it. Jumping outside held dates shows loading, not old
+bars under new dates. Assignment availability and reservation list reads stay
+separate; [ADR 0001](adr/0001-calendar-is-one-read.md) records the trade-offs.
 
-Assigned stays and closures ending on the first displayed morning remain visible.
-The assignment backlog excludes checked-out, cancelled, and No-show reservations and
-stays ending that morning. Calendar reads omit cancelled and No-show stays. This differs from room inventory: checked-out reservations
-retain their booked nights. Operational **Hoy** comes from
-[the property calendar](property-calendar.md).
-
-Each room includes its current [housekeeping status](housekeeping.md); dirty rooms
-show a **Sucia** badge in the room column, and the room's actions menu marks it clean or
-dirty. The picker shows the badge only for a stay that has begun; see
-[elsewhere in the portal](housekeeping.md#elsewhere-in-the-portal).
+Assigned stays/closures ending on the first morning remain visible. Calendar stays
+omit cancelled/no-show; backlog also excludes checked-out stays and first-morning
+departures. Checked-out reservations nevertheless retain booked inventory nights.
+Rooms include current [housekeeping status](housekeeping.md#elsewhere-in-the-portal).
 
 ## Assignment availability rules
 
-[`assignment-availability.ts`](../apps/portal/src/lib/assignment-availability.ts) is the
-portal's only source of [assignment availability](../GLOSSARY.md#rooms-and-availability) rules. The calendar
-picker, the room assignment save, the reservation editor, and new booking all use it.
-Callers pass in the reservations and room closures they have already loaded.
+[assignment-availability.ts](../apps/portal/src/lib/assignment-availability.ts) owns
+portal assignment checks for picker, saves, and reservation editors/creation.
+Callers supply loaded stays/closures. Only confirmed/checked-in reservations receive
+assignments. Stay/closure nights use `[start, end)`, allowing same-day turnover.
+The helper's current conflict predicate excludes cancelled status only; do not
+treat that as a business rule for No-show/Unfulfilled, which release inventory.
 
-- Confirmed and checked-in reservations can receive a room assignment. Checked-out
-  and cancelled ones cannot.
-- Every reservation except a cancelled one holds its assigned rooms for its stay
-  nights, including checked-out reservations.
-- Stay nights and room closures use `[start, end)`, so a checkout or closure ending on
-  the arrival morning does not block the room.
-- The calendar ignores only the reserved room being assigned, so the group's other
-  reserved rooms keep their rooms. The reservation editor ignores the whole saved
-  reservation, because its stay draft replaces it.
-
-Problems come back as typed codes with one Spanish label each. They are local portal
-text, not backend errors. The save reads the reservation again just before writing
-and rejects a stale target with "La habitación cambió. Actualiza la reserva.", because
-the server would accept a reassignment. The backend keeps its own copy of the
-confirmed/checked-in rule for the assignment backlog and its own overlap validation.
+Calendar assignment ignores just the selected reserved room so the group's other
+assignments still conflict. Stay editors ignore the whole saved reservation because
+the draft replaces it. Problems have local typed codes/Spanish labels, separate from
+backend errors. Re-read before assignment and reject a stale target—the server could
+otherwise accept a reassignment. Backend backlog and database overlap checks remain
+independent and authoritative at save time.

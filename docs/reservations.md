@@ -1,795 +1,404 @@
 # Reservations
 
-Read the [glossary](../GLOSSARY.md) for business language and
-[the property calendar](property-calendar.md) before changing dates or defaults.
-This guide owns the current API workflow and portal editing behavior.
+This guide owns workflow invariants and editor behavior. Use the [glossary](../GLOSSARY.md)
+for terms and [property dates](calendar.md#property-dates) for calendar semantics.
+Request shapes live in [shared schemas](../packages/shared/src/index.ts); portal
+types/fetch helpers live in [api.ts](../apps/portal/src/lib/api.ts).
 
 ## Commands and previews
 
-Creation uses `POST /reservations` and the shared `workflowCreateSchema`.
-Edits use `POST /reservations/:id/commands`; `POST /reservations/:id/preview`
-evaluates the same actions without writing. These are workflow commands rather
-than arbitrary field patches. Request schemas live in
-[the shared package](../packages/shared/src/index.ts); portal types and fetch
-helpers live in [api.ts](../apps/portal/src/lib/api.ts).
+Creation uses `POST /reservations` (`workflowCreateSchema`); edits use
+`POST /reservations/:id/commands`. These are workflow actions, not arbitrary field
+patches. `POST /reservations/:id/preview` evaluates actions without writing or
+reserving inventory: priceable drafts return 200 with billing and per-room
+validation issues even when saving is blocked. Room indices refer to proposed,
+nonremoved rooms. Invalid pricing inputs return an HTTP error.
 
-`POST /reservations/preview` prices a new reservation before it exists, using the
-shared `workflowCreatePreviewSchema`: stay dates, each room's type and optional flat
-nightly rate, the discount, and the rate plan. It returns `{ billing }` with each
-room's nights and charges, subtotal, applied discount, total, `ratePlan`,
-`requiredInitialPaymentCents`, and `remainingScheduledCents`, computed as creation
-would save them. It does not check occupancy, room assignment, or availability, and
-reserves nothing.
+`POST /reservations/preview` prices a new reservation using
+`workflowCreatePreviewSchema`, as creation would save it. It checks neither
+occupancy nor assignment/availability and reserves nothing.
 
-An existing reservation's preview returns `{ billing, validation: { issues } }`. A priceable draft returns
-200 even when operational issues block saving. Issues identify fields and room
-indices in the proposed rooms, excluding removed rooms. Invalid pricing inputs
-return an HTTP error. A preview never reserves inventory.
+[pricing.ts](../apps/backend/src/lib/pricing.ts) owns pricing:
 
-Retained nights keep saved prices. Added nights use current rates; changing room
-type reprices that reserved room. Initial pricing uses a supplied flat nightly
-rate, then the date's rate override, then the base rate. `priceNights` in
-[pricing.ts](../apps/backend/src/lib/pricing.ts) owns these rules. It applies the
-reservation's accepted price adjustment to the override or base rate, rounding each
-night to the nearest cent with exact half-cent ties upward in integer arithmetic.
-A flat nightly rate is the final price and gets no adjustment. Totals sum the
-rounded nights. Availability shows ordinary prices with no adjustment.
-
-Each saved night (`reservation_room_nights`) stores its final price in `price_cents`,
-which every total sums, and how that price was reached: `adjustment_cents`, the
-accepted plan's [price adjustment](../GLOSSARY.md#rates-and-charges) (negative for a
-reduction), and `discount_cents`, a staff discount on that night. The ordinary rate
-is `price_cents - adjustment_cents + discount_cents`; it is not stored. A retained
-night keeps all three values, and a repriced night is recomputed. Workflows save the
-plan adjustment, which is zero under Flexible, and no night discount yet. The zero defaults describe nights from before migration `0010`
-and inserts by an older Worker exactly. Responses expose only `priceCents`. Database
-triggers reject a negative price or discount on insert or update, as
-`night price cannot be negative`; saved rows are not revalidated.
+- Retained nights keep saved prices; added nights use current rates. Changing type
+  reprices that reserved room.
+- Initial nights use a supplied flat nightly rate, otherwise the date's override,
+  otherwise the base rate. A flat rate is final and gets no plan adjustment.
+- Other nights receive the accepted plan adjustment, rounded per night to cents
+  with exact half-cent ties upward using integer arithmetic; totals sum rounded nights.
+  Availability shows ordinary prices without the adjustment.
+- Saved nights keep final `price_cents`, `adjustment_cents` (negative for a reduction),
+  and staff `discount_cents`. Ordinary rate is final minus adjustment plus discount.
+  Retained nights keep all three; repriced nights recompute them. Workflows currently
+  save no per-night staff discount. Responses expose only the final price.
+- Insert/update triggers reject negative final prices or discounts; they do not
+  revalidate saved rows. Older nights/inserts receive zero breakdown defaults.
 
 ## Rate-plan terms
 
-The [rate plans](../GLOSSARY.md#rates-and-charges) are code-defined in
-[rate-plans.ts](../apps/backend/src/lib/rate-plans.ts); there is no plan editor.
-`GET /rate-plans` lists their terms, Flexible first.
-Each plan composes a cancellation policy, a payment schedule, and a price
-adjustment:
+Definitions live in [rate-plans.ts](../apps/backend/src/lib/rate-plans.ts), listed by
+`GET /rate-plans`; there is no editor. Flexible has no adjustment, a first-night
+deposit, and free cancellation through two days before check-in, then a first-night
+charge. Non-refundable reduces prices 10%, requires full upfront payment, and
+charges the final total for cancellation/no-show.
 
-- **Flexible**: no price adjustment; a first-night deposit; free cancellation through
-  the day 2 days before check-in, then a first-night charge.
-- **Non-refundable**: a 10% price reduction; the full total upfront; a cancellation
-  or no-show charge equal to the final total.
+Creation snapshots the plan's cancellation basis, free-cancellation days, payment
+schedule, and adjustment. Omitted plans default to Flexible; unknown plans fail.
+Later definition changes and workflow commands do not change accepted terms.
+Retried creation replays the saved reservation rather than applying adjustment twice.
 
-Each reservation stores a snapshot of the terms it was accepted under: plan,
-cancellation-charge basis, free-cancellation days, payment schedule, and price
-adjustment. The basis (`cancellation_charge_basis` in the
-database, `cancellationPolicy.chargeBasis` in responses) is `first_night` or
-`final_total`. It says what a [cancellation charge](../GLOSSARY.md#rates-and-charges) is
-computed from; see [cancellation charges](#cancellation-charges). Changing a definition never
-alters an existing reservation, and workflow commands do not change the stored
-terms. `POST /reservations` takes an optional `ratePlan` (`flexible` or
-`non_refundable`) and stores Flexible terms when it is omitted; an unknown plan is
-rejected as `unknown rate plan`. No workflow command changes a reservation's plan.
-A retried create request replays the saved reservation, so its adjustment applies
-once. Column defaults give Flexible terms to rows
-written without them: reservations from before migration `0006` and inserts by an
-older Worker.
+[workflow-billing.ts](../apps/backend/src/lib/workflow-billing.ts) owns
+`reservationBill` for detail, list, and previews, and `roomCharges` for detail/preview
+rooms. New bill-producing reads must use it. Plain `bill()` serves the list balance
+filter's SQL aggregates. Flexible's required initial payment sums each room's first
+saved nightly price, capped at total after discount; full upfront requires total.
+Remaining scheduled amount is total minus that requirement. Both are zero for
+cancelled/no-show reservations and do not depend on payments received.
 
-The payment schedule, cancellation policy, and price adjustment affect current
-behavior: added and repriced nights use the stored adjustment.
-
-Detail, list, and preview reads share `reservationBill` in
-[workflow-billing.ts](../apps/backend/src/lib/workflow-billing.ts) and return
-`ratePlan` (the stored terms), `requiredInitialPaymentCents`, and
-`remainingScheduledCents`. A new read or preview that returns a bill uses
-`reservationBill`; plain `bill()` serves only the list's balance filter, which has
-SQL aggregates rather than nights. Detail and preview rooms take their
-`subtotalCents`, `discountCents`, and `totalCents` from `roomCharges` in the same
-module, and their nights expose only `date` and `priceCents`. The
-[required initial payment](../GLOSSARY.md#rates-and-charges) for Flexible is the
-sum of each reserved room's first saved nightly price, capped at the total after the
-reservation discount. Full upfront requires the whole total. The remaining
-scheduled amount is the total less the required initial payment. Both are zero for
-a cancelled or No-show reservation, whose total is its final charge. Neither
-depends on payments received; the balance still does.
-
-The portal's creation form does not yet offer a plan or call the new-reservation
-preview: it creates Flexible reservations and shows no scheduled amounts before
-saving. Its total is a portal estimate: each room type's availability stay total,
-less the capped discount.
+Portal creation currently offers no plan selector or server creation preview: it
+creates Flexible stays and estimates total from availability prices less capped discount.
 
 ## Online quotes
 
-A [quote](../GLOSSARY.md#reservation-bill) fixes an online guest's price for 10
-minutes without holding room inventory; availability is decided when a reservation
-is saved from it. [quotes.ts](../apps/backend/src/quotes.ts) owns the behavior. No
-route exposes it yet: the public checkout route (#105) builds on it and on
-[online card payments](#online-card-payments).
+[quotes.ts](../apps/backend/src/quotes.ts) creates ten-minute offers without holding
+inventory. It has no public route yet. `createQuote` accepts `quoteCreateSchema`:
+one type, occupancy, stay dates, and required plan—not client prices, discounts,
+flat rates, or terms. Check-in must be after the property date; stays are 1–60 nights
+and occupancy must fit the type. Staff same-day/multi-room behavior is unchanged.
 
-`createQuote` takes the shared `quoteCreateSchema`: one room type, adults, children,
-stay dates and a required rate plan. Clients cannot send prices, flat nightly rates,
-discounts or terms. It requires a check-in after today in `PROPERTY_TIME_ZONE`
-(`online check-in must be after today`), 1 to 60 nights, and occupancy within the
-room type's maximums. Staff same-day and multi-room reservations are unaffected. The
-quote prices nights with `price`, as staff creation does, and stores the nights and
-the plan's terms in the `quotes` table with a random UUID and an `expiresAt` 10
-minutes after server time. It returns the nights, `totalCents`,
-`requiredInitialPaymentCents` (the amount to pay), `remainingScheduledCents`,
-`ratePlan`, `expiresAt`, and `available`. `available` is advice from
-`occupiedCounts`: an unavailable stay is still quoted, and a quote never blocks staff
-reservations, closures or setup changes. Quotes reference no setup rows.
+The quote stores priced nights and accepted terms. Availability is advisory from
+`occupiedCounts`: unavailable stays are still quoted. Quotes reference no setup
+rows and block neither reservations, closures, nor setup changes.
 
-`saveQuote` saves a confirmed reservation with source `online`, the guest as booking
-contact, one unassigned room, and the quoted nights and terms, even if rates or plan
-definitions changed since, plus the payment that paid for it when one is given, in
-the same batch. It goes through the existing room-type capacity triggers, so a full
-room type fails with `no availability`; a save as `unfulfilled` holds no inventory
-and so never does. It does not check
-expiry: the caller decides whether an expired quote may still be saved, because a
-charge may already have succeeded. `reservations.quote_id` is unique, so one quote
-saves at most one reservation; a repeated or concurrent save returns the first
-reservation's ID, even with different guest details.
+`saveQuote` atomically saves an online reservation, booking contact, one unassigned
+room, quoted prices/terms, and any supplied payment. Current rate/plan changes do
+not alter it. Capacity triggers may reject a confirmed save; `unfulfilled` holds no
+inventory and avoids that rejection. Expiry is the caller's decision because money
+may already have been charged. Unique `quote_id` ensures repeated/concurrent saves
+return the first reservation ID, even with different contact details.
 
 ## Online card payments
 
-[payment-attempts.ts](../apps/backend/src/payment-attempts.ts) charges an online
-guest's card for a quote through Culqi with 3DS, following the
-[#113 resolution](https://github.com/meldarstudio/pms/issues/113) and the sandbox
-evidence in #114. Cards only: no Yape and no webhooks. No route exposes it yet; the
-public checkout route and waiting page are #105 and #106, and emails are #107. The
-Culqi API v2 client is [culqi.ts](../apps/backend/src/culqi.ts); the key is the
-`CULQI_SECRET_KEY` secret (`sk_test_` in the ignored `.dev.vars` locally) and is never
-logged.
+[payment-attempts.ts](../apps/backend/src/payment-attempts.ts) and
+[culqi.ts](../apps/backend/src/culqi.ts) implement Culqi API v2 cards with 3DS, not
+Yape or webhooks. No route exposes them yet. The provider contract follows
+[#113](https://github.com/meldarstudio/pms/issues/113) and sandbox evidence in
+[#114](https://github.com/meldarstudio/pms/issues/114).
 
-`startPaymentAttempt` takes the shared `paymentAttemptCreateSchema`: the quote ID, a
-Culqi card token (`sourceId`), an optional Culqi3DS `deviceFingerprint`, and the
-booking contact with a required email. The client never sends an amount: the server
-charges the quote's `requiredInitialPaymentCents` in `CURRENCY`. It refuses, before
-calling Culqi, a missing quote (`quote not found`), an expired one
-(`quote has expired`), a missing key (`Culqi is not configured`, which also pauses
-provider lookups and paid reservation saves), a phone the reservation could not be saved with, a quote already paid (`quote is already paid`), and a quote with an Unknown attempt
-(`a payment for this quote is still being confirmed`). A new card replaces an attempt
-waiting for 3DS. Each attempt is a `payment_attempts` row saved as `unknown` before
-its single charge call, which always sends `capture: true`, the attempt ID as
-`metadata.attempt_id` and the `x-api-version: 2` header. For Culqi's fraud checks it
-also sends `antifraud_details`: the contact's first word as `first_name`, the rest as
-`last_name`, the phone's digits as `phone_number` and the fingerprint, leaving out a
-value outside Culqi's limits (names 2–50 characters, phone 5–15 digits) rather than
-risk a refusal. A partial unique index lets one quote have only one open or
-paid attempt, so concurrent starts cannot both charge.
+`startPaymentAttempt` accepts `paymentAttemptCreateSchema`. The server charges the
+quote's required initial payment in `CURRENCY`, never a client amount. Before any
+charge it rejects missing/expired quotes, missing `CULQI_SECRET_KEY`, unsavable
+phones, paid quotes, and quotes with an Unknown attempt. Missing configuration also
+pauses lookups and paid reservation saves. Keys stay in secrets/ignored `.dev.vars`
+and are never logged.
 
-Culqi's reply decides the attempt's `status`, and success is only a `201` charge with
-outcome code `AUT0000` for the attempt's amount and currency; `paid` and `capture` are
-ignored, as is any meaning of a `401`.
+Each attempt is saved as `unknown` before its single charge call. The call sends
+`capture: true`, `metadata.attempt_id`, and `x-api-version: 2`. Antifraud details use
+the contact's first word/rest as first/last names, phone digits, and device fingerprint;
+omit values outside Culqi's limits (names 2–50 characters, phone 5–15 digits).
+A partial unique index permits only one open or paid attempt per quote. A new card
+can replace a review waiting for 3DS.
 
-- `review`: a `200` `REVIEW` asks for 3DS. `authenticatePaymentAttempt` takes the
-  Culqi3DS result (`paymentAuthenticationSchema`) and calls Culqi again for the same
-  attempt with the same token and antifraud details, refusing an expired quote and an
-  attempt not waiting for authentication
-  (`payment is not waiting for authentication`). When the quote expires, polling,
-  an authentication request or the scheduled Worker marks a remaining review
-  `failed` with failure code `authentication_expired` and message `quote has expired`.
-  This also runs without a Culqi key and makes no provider call. A continuation
-  already sent to Culqi is `unknown`, not `review`, and remains eligible for charge lookup.
-- `failed`: a `400` Culqi error is a clear decline, with its code and Culqi's
-  `user_message` as `failure`. An expired 3DS review also fails as described above.
-  The guest may try another card while the quote is valid; an expired quote requires a new quote.
-- `unknown`: a timeout, network error, `5xx`, `429` or any other reply may still have
-  charged. The API never charges a new token automatically. It looks the charge up by
-  listing charges for the amount and email since the call (less a minute), matching
-  `metadata.attempt_id` itself because Culqi ignores metadata filters: about 10
-  seconds after the lost response (`lookUpLater` with `waitUntil`), on each
-  `paymentAttemptStatus` poll, and from the scheduled Worker every minute, for 48
-  hours after the call. A denied listing does not resolve it, because a sale shown as
-  rejected can still have charged. After 2 minutes `delayed` tells the waiting page
-  to say the outcome arrives by email. After 48 hours the attempt stays Unknown for
-  staff to check in CulqiPanel.
-- `succeeded`, then `saved`: the charge is recorded on the attempt, then
-  `saveQuote` saves the reservation and a `card` payment with the Culqi charge ID as
-  `culqiChargeId` and `reference`, dated the property's day of the charge call. The reservation is
-  saved as Unfulfilled instead when check-in is before today, the same email (any
-  case) already has an overlapping inventory-holding online reservation, or the
-  room type has `no availability`. A failed save leaves the attempt `succeeded`;
-  polls and the scheduled Worker retry it, and the unique quote and charge IDs keep
-  it to one reservation and one payment.
+Only a `201` charge with outcome `AUT0000` and matching amount/currency is success;
+ignore `paid`, `capture`, and any supposed success meaning of `401`.
 
-`paymentAttemptStatus` returns the attempt's `id`, `quoteId`, `amountCents`,
-`currency`, `status`, `delayed`, `failure`, and the saved `reservation` (`id`, `code`,
-`status`) or null. The Worker's `scheduled` handler runs `reconcilePaymentAttempts`;
-its `* * * * *` cron trigger in `wrangler.jsonc` takes effect only with a separately
-authorized deployment.
+- **Review:** `200 REVIEW` requests 3DS. `authenticatePaymentAttempt` accepts
+  `paymentAuthenticationSchema` and continues the same attempt/token/antifraud details.
+  It refuses expired quotes or an attempt not waiting for authentication. Polls,
+  authentication requests, and cron fail an expired review as `authentication_expired`,
+  even without a key and without provider calls. A sent continuation is Unknown,
+  not Review, and remains eligible for lookup.
+- **Failed:** a `400` is a clear decline, carrying Culqi's code and `user_message`.
+  Another card can be tried while the quote is valid; expiry requires a new quote.
+- **Unknown:** timeouts, network errors, `5xx`, `429`, and other replies may have
+  charged. Never charge again automatically. List charges by amount/email since
+  one minute before the call, matching `metadata.attempt_id` locally because Culqi
+  ignores metadata filters. Lookup runs after about ten seconds (`lookUpLater` with
+  `waitUntil`), on status polls, and each minute from cron, for 48 hours. Denied
+  listings do not resolve it: a sale displayed as rejected can still have charged.
+  After two minutes `delayed` signals that the guest should await email; after
+  48 hours it remains Unknown for staff to inspect in CulqiPanel.
+- **Succeeded → saved:** persist the charge, then atomically save the reservation
+  and card payment, using the charge ID as provider ID/reference and the property's
+  day of the charge call as payment date. Save as Unfulfilled if check-in is before
+  today, the same case-insensitive email has an overlapping inventory-holding online
+  reservation, or capacity is gone. Failed saves remain Succeeded for polling/cron
+  retries. Unique quote/charge IDs prevent duplicate reservations/payments.
 
-`pnpm culqi:sandbox` runs the same flows against the Culqi sandbox: a captured charge
-that keeps its antifraud details, the attempt-ID lookup, token reuse, an optional decline (`CULQI_DECLINE_CARD`) and a
-S/1.00 refund read back from the charge. It reads `CULQI_SECRET_KEY` and
-`CULQI_PUBLIC_KEY` from the environment or `.dev.vars` and refuses anything but
-`sk_test_`/`pk_test_` keys. 3DS needs a browser, so it reports a `REVIEW` and stops.
+`paymentAttemptStatus` reports attempt state, delay/failure, and any saved reservation.
+The scheduled handler calls `reconcilePaymentAttempts` each minute; its configured
+cron takes effect only with a separately authorized deployment.
+
+`pnpm culqi:sandbox` requires `sk_test_`/`pk_test_` keys from the environment or
+`.dev.vars`. It exercises capture/antifraud details, attempt lookup, token reuse,
+an optional `CULQI_DECLINE_CARD`, and an S/1.00 refund read back from the charge.
+3DS requires a browser, so the script reports Review and stops.
 
 ## Stay dates and lifecycle
 
-Each reservation has one `checkIn` and `checkOut` date shared by all its rooms.
-These dates determine the booked nights, availability, and nightly charges.
-Check-in and checkout actions change the reservation status. They do not record
-separate arrival or departure timestamps or change the dates. For an early
-departure, save the shorter date range together with the checkout status.
+One check-in/checkout range determines every room's nights, availability, and prices.
+Check-in/checkout actions change status, not dates or arrival/departure timestamps.
+For early departure, shorten dates and check out together. Neither action requires
+payment or physical assignment; unassigned reserved rooms still consume type inventory.
 
-Staff may cancel a whole reservation, releasing its rooms and replacing its stay
-charges with a [cancellation charge](#cancellation-charges). The reservation, its
-nights, and its payments remain recorded. Removing an individual reserved room drops its charges
-and releases its inventory while the remaining rooms keep the reservation's
-status and stay dates. To release the last room, cancel the reservation.
+Cancellation releases inventory and replaces stay charges with a policy charge,
+keeping nights and payments. Removing one reserved room drops its charges/inventory
+but leaves the other rooms' status/dates unchanged. Cancel to release the last room.
 
-Staff may instead mark a confirmed reservation `no_show` when the guest never
-arrived. It is manual only: no arrival cutoff or automatic conversion exists. A
-checked-in, checked-out, or cancelled reservation cannot be marked No-show, and a
-No-show must be restored before it is cancelled. Like cancellation, No-show
-releases the rooms, keeps the nights and payments, and replaces the stay charges
-with a [policy charge](#cancellation-charges). The status, `statuses` filter,
-and the charge record's `outcome` distinguish them; see the
-[calendar](calendar.md) for which stays it shows.
+No-show is manual, only from confirmed—not checked in/out or cancelled. Restore it
+before cancelling. It keeps nights/payments and applies the policy charge, like
+cancellation; outcome/status distinguish them. Calendar visibility is [separate](calendar.md#calendar-read).
 
-`unfulfilled` ("Sin disponibilidad") is set only by an
-[online card payment](#online-card-payments) whose stay can no longer happen. It
-holds no inventory and has no cancellation charge, so its total is zero, the payment
-is kept, and the whole payment is refund due, listed by `refund=due`. Staff cannot
-set or leave it (`an unfulfilled reservation cannot change status`); they refund it.
+Unfulfilled is set only by online payment completion when the stay cannot happen.
+It holds no inventory, charges zero, and keeps its payment as refund due. Staff
+cannot set or leave that status; they refund it.
 
 ## Cancellation charges
 
-Cancelling or marking No-show from an inventory-holding status records a
-cancellation with its `outcome` (`cancelled` or `no_show`), the time it was
-recorded, the authenticated account, the free-cancellation deadline, and the
-policy charge. The charge comes from the stored terms at server time, never from
-the request:
+Cancelling/marking No-show records the outcome, authenticated account, timestamp,
+deadline, and policy charge under the command's revision guard:
 
-- The deadline (`freeUntil`) is the date `freeUntilDaysBeforeCheckIn` days before the
-  check-in date. A cancellation recorded on or before that date in `PROPERTY_TIME_ZONE`
-  costs nothing: a Flexible stay checking in on 10 Nov cancels free until the end
-  of 8 Nov. Terms without free cancellation have no deadline (`freeUntil: null`). A No-show
-  has no deadline either: it always charges the basis below.
-- After the deadline, `first_night` charges the first-night requirement (each
-  reserved room's first saved nightly price, capped at the total after discount)
-  and `final_total` charges the total after discount.
+- Free cancellation includes the property date `freeUntilDaysBeforeCheckIn` days
+  before check-in: a Flexible arrival on 10 Nov cancels free through 8 Nov.
+  No-show and terms without free cancellation have no deadline.
+- After the deadline, `first_night` charges each room's first saved night, capped
+  at total after discount; `final_total` charges that total. No-show always charges
+  the basis. Neither action records payment or charges a card.
+- `waive-cancellation-charge` reduces an active policy charge with a reason, in
+  the same command or later. Keep original charge and waiver/account history;
+  combined waivers cannot exceed it. A waiver is neither payment nor refund.
 
-The cancellation charge replaces the stay charges in the bill. The balance is the
-final charge less net money retained (see [refunds](#refunds)), and
-`refundDueCents` is its positive excess. Detail, list, preview, and the list's
-balance filter use the same final charge, so credit is refund due on cancelled
-and No-show reservations as on any other. Neither records a payment or charges a card; a paid
-Non-refundable No-show retains its payment with no refund due.
+The final cancellation charge replaces stay charges/discount in all bills and
+balance filters. Excess net retained is refund due, just as on an active stay.
+Reads include active cancellation and all cancellation/waiver history. Pre-`0007`
+cancellations keep zero charge; pre-`0008` outcomes read as cancelled. Legacy
+hours/time columns remain written for older Workers but are not read; see
+[rollout constraints](history/schema-rollouts.md).
 
-A `waive-cancellation-charge` action (`amountCents`, `reason`) reduces the active
-cancellation or No-show charge, in the same command or later. Each
-waiver records the amount, reason, time, and authenticated account; the original
-policy charge is kept. Waivers together cannot exceed the policy charge, and a
-reservation without an active cancellation rejects them. A waiver is neither a
-payment nor a refund.
-
-Reads return `cancellation`, the active cancellation with `policyChargeCents`,
-`waivedCents`, `finalChargeCents`, `freeUntil`, `recordedAt`, `recordedBy`, and its
-`waivers`, and `outcome`, or `null`; and `cancellations`, every cancellation and
-No-show including restored ones. Reservations cancelled before migration `0007`
-have no cancellation record and keep a zero charge; records from before `0008` read
-`outcome: "cancelled"`. Migration `0011` converted accepted 48-hour terms to 2 days and
-recorded deadlines, previously 15:00 instants, to their dates. Reservations still store the
-old `free_cancellation_hours` and `check_in_time` for Workers from before `0011`;
-nothing reads them. `cancelledAt` and `cancellationReason` remain
-cancellation-only and are null for a No-show.
-
-The cancellation, its waivers, and the status change are written in the command's
-single batch under the revision guard. An idempotent retry replays the stored
-receipt, and a concurrent retry loses the revision race, so neither duplicates a
-charge or waiver. Cancelling an already cancelled reservation, or marking a No-show
-again, records nothing new.
-
-Restoring a cancelled or No-show reservation to an inventory-holding status
-revalidates inventory like any restoration, marks the active record restored, and
-bills the stay again under the unchanged plan. A rebooked room fails with
-`room is already assigned for those dates`. The restored record and its waivers
-remain in `cancellations` as inactive history; a later cancellation or No-show
-computes a new charge. A reservation with any refund, requested, completed, or
-failed, is refused with `reservation with refunds cannot be restored`; staff create
-a new reservation instead. Coupons are not recorded yet, so no coupon activity
-blocks a restoration.
+Idempotent receipts and revision races prevent duplicate charges/waivers. Repeating
+the current cancellation/no-show status records nothing new. Restoration revalidates
+inventory, marks the charge record restored, and bills the stay under unchanged
+terms. History remains, and a later cancellation computes a new charge. Any refund
+record, even failed/requested, blocks restoration; create a new reservation instead.
+Coupon activity is not recorded yet and does not block it.
 
 ## Refunds
 
-Net money retained is the payments received less completed refunds. Refund due
-(`refundDueCents`) is the positive excess of net retained over the final charge on
-any reservation: cancelled, No-show, waived, or amended to a lower total. Reads
-return `paidCents` (gross received), `refundedCents` (completed), and
-`pendingRefundCents` (requested), and `balanceCents` is the total less
-`paidCents - refundedCents`. Requested and failed refunds change neither the
-balance nor refund due.
+Net retained is payments less completed refunds. Balance is total minus net retained;
+refund due is its positive excess over total, on any reservation. Requested/failed
+refunds change neither. Gross paid, completed refunds, and requested amounts remain
+distinct in reads.
 
-Nothing refunds automatically. Staff return money manually through the actual
-channel, or through Culqi for a Culqi card payment. Four workflow actions record it:
+Nothing refunds automatically. Workflow actions record manual returns or a Culqi call:
 
-- `request-refund` (`paymentId`, `amountCents`, `method`, optional `reference`,
-  `reason`) records a requested refund against a received payment with the request
-  time and authenticated account.
-- `request-culqi-refund` (`paymentId`, `amountCents`, `reason`) is "Reembolsar por
-  Culqi": a `card` refund requested against a payment with a Culqi charge, sent to
-  Culqi as described below.
-- `complete-refund` (`refundId`, `refundDate`, `reference`) records that the money
-  was returned on a property date no later than today, with the channel's
-  reference.
-- `fail-refund` (`refundId`, `reason`) marks a mistaken or failed request. Requests
-  are never deleted.
+- `request-refund`: request an amount against a payment, with method, reason, and
+  optional reference, recording time/account.
+- `request-culqi-refund`: request a card refund against a Culqi payment.
+- `complete-refund`: record returned money with a reference and property date no
+  later than today.
+- `fail-refund`: resolve a mistaken/failed request with a reason; never delete it.
 
-Only a requested refund can be completed or failed; otherwise the command fails with
-`refund is already resolved`. A request cannot exceed the refund due less amounts
-in other requested refunds (`refund exceeds the refund due`), nor its payment's
-amount less its completed and requested refunds (`refund exceeds the payment's
-remaining amount`). Requested refunds never exceed the refund due: any other
-change that would lower refund due below them, such as longer dates, an added
-room, a smaller discount, or an edited payment, fails with `change leaves requested
-refunds above the refund due` until staff fail the requests. Completing or failing a
-request preserves the limit, so a command that only resolves refunds is never
-refused for it. The checks run on the proposed state in the command's single batch
-under the revision guard, so a concurrent request re-plans against the saved
-refunds and an idempotent retry replays its receipt; neither can exceed the limit.
-Restoring and requesting a refund in one command is refused like any restoration
-with refunds.
-A payment with any refund cannot be edited or deleted (`payment with refunds cannot
-be changed`), including a refund requested earlier in the same command. A payment
-with a Culqi charge ID is never edited or deleted (`Culqi payment cannot be
-changed`).
+Only requested refunds can resolve. Requests cannot exceed refund due less other
+requests, or the payment less its completed/requested refunds. Changes that would
+leave requests above refund due fail until staff fail the requests. Commands only
+resolving refunds are not refused for this limit. Check the proposed state in the
+same revision-guarded batch; concurrent/idempotent retries cannot exceed it.
+Restoration plus a refund request is refused. Payments with any refund cannot be
+edited/deleted, including a request in the same command; Culqi payments are immutable.
 
 ### Culqi refunds
 
-`request-culqi-refund` applies the limits above plus Culqi's: the payment must have a
-Culqi charge (`payment is not a Culqi payment`), the amount must be at least 100
-cents (`Culqi refund must be at least 100 cents`), and the payment may have no other
-requested Culqi refund, including one earlier in the same command (`a Culqi refund
-for this payment is pending`). Culqi has no refund idempotency, so this guards double
-clicks. Without `CULQI_SECRET_KEY` the command fails with `Culqi is not configured`
-before anything is saved.
+Require a Culqi charge, at least 100 cents, no other requested Culqi refund for that
+payment (including in the same command), and `CULQI_SECRET_KEY` before saving.
+Culqi has no refund idempotency; this pending-request guard protects double clicks.
 
-The refund is saved as requested, with the payment's `culqiChargeId`, in the
-command's batch. After that batch commits, `POST /reservations/:id/commands` makes a
-single Culqi refund call for it; previews and replayed receipts make none. A `201`
-with status `completa` completes the refund with Culqi's refund ID as
-`completionReference` and `culqiRefundId`, the property's today as `refundDate`, and
-the requesting account as resolver. Any other result, including a lost response, reads
-the charge: if its `amount_refunded` equals the charge's other completed refunds
-plus this one, the refund completes with the charge ID as `completionReference`.
-Otherwise it stays requested, shown as "Reembolso pendiente", and staff check
-CulqiPanel and record the outcome with `complete-refund` or `fail-refund`. The API
-never retries a Culqi refund. Completing bumps the reservation revision, so a
-command planned against the requested refund re-plans. The command response is the
-reservation after the Culqi call.
+After the command batch commits, the route makes **one** refund call; previews and
+receipt replays make none. A `201 completa` completes with Culqi refund ID as
+completion reference and provider ID, property today as refund date, and requester
+as resolver. Any other reply/lost response reads the charge: if `amount_refunded`
+equals other completed charge refunds plus this request, complete with the charge
+ID as reference. Otherwise retain Requested for staff to inspect in CulqiPanel and
+complete/fail manually. **Never retry a Culqi refund automatically.** Completion
+bumps the reservation revision; the response returns the post-call reservation.
 
-Reads and previews return `refunds`, every request oldest first, with `status`
-(`requested`, `completed`, or `failed`), `requestedAt`, `requestedBy`,
-`resolvedAt`, `resolvedBy`, `refundDate`, `completionReference`, `failureReason`,
-`culqiChargeId` (set for Culqi refunds), and `culqiRefundId` (Culqi's ID, when its
-response returned one).
-
-`GET /payments?from&to` keeps `totalCents` and `payments` as the gross payments
-received by payment date. It adds `refundedCents` and `refunds`, the completed
-refunds whose `refundDate` is in the range, each with its `paymentId`,
-`reservationId`, `code`, `guestName`, `amountCents`, `method`, completion
-`reference`, `refundDate`, and `reason`.
+Reads/previews retain request and resolution history and provider IDs. `GET /payments`
+keeps gross payments by payment date separate from completed refunds by refund date.
 
 ## Reservation list reads
 
-`GET /reservations` is authenticated and returns a bare reservation array by default.
-`paginated=true` opts into `{ rows, total, limit, offset }`; omitted or
-`paginated=false` preserves the array response. Defaults remain `limit=50`,
-`offset=0`, and check-in ascending, then booking contact name ascending and code
-ascending. Limits from 1 through 200 remain supported for existing callers.
+`GET /reservations` defaults to a bare array; `paginated=true` opts into rows/count/
+limit/offset. Check [the route](../apps/backend/src/routes/reservations.ts) and schemas
+for parameter values/defaults. Filters combine with AND; `statuses` internally uses
+OR, and sending it with `status` applies both restrictions.
 
-Optional query dimensions combine with AND:
-
-- `checkIn` and `checkOut` match exact business dates. Legacy `from`/`to` retain
-  calendar overlap semantics: checkout is after `from`, check-in is on or before `to`.
-- `status` retains the single-status filter. `statuses` accepts comma-separated
-  `confirmed`, `checked_in`, `checked_out`, `cancelled`, `no_show`, and `unfulfilled`
-  values,
-  combined with OR.
-  Omit both for unrestricted statuses; when both are sent, both restrictions apply.
-- `balance=outstanding|settled|credit` selects positive, zero, or negative signed
-  balances independently of status. A cancelled or No-show reservation's charges are
-  its final charge, and an Unfulfilled one charges nothing, so payments beyond it are
-  credit. The filter applies `bill()`,
-  the billing policy that `reservationBill` uses for detail, list, and workflow reads.
-  Completed refunds reduce the money counted against charges.
-- `refund=due` selects reservations with refund due; `refund=requested` selects
-  reservations with an unresolved refund request.
-- `assignment=assigned|unassigned` selects reservations with every physical room
-  assigned or with any unassigned reserved room, including partial assignments.
-- `q` retains per-token booking-contact-name or reservation-code search; `guestId`
-  retains exact booking-contact matching. Staying guests are not searched.
-- `sort=checkIn|checkOut|guestName|balance` and `direction=asc|desc` choose one primary
-  order. Contact name ascending and code ascending are deterministic tie-breakers
-  when they are not already the primary key. Balance sorting uses signed cents.
-
-Filters and ordering cover all matches before pagination. `total` is the exact
-matching count even when the requested offset yields no rows. Charge and payment
-aggregates remain independent; only the selected page's rooms, nights, and payments
-are hydrated into response rows. The calendar uses its own dedicated read; see [calendar](calendar.md).
+- Exact check-in/checkout filters differ from legacy `from`/`to` overlap semantics:
+  checkout after `from`, check-in on/before `to`.
+- Balance filters use signed cents and final charges/net retained independently of
+  status. Refund filters distinguish money due from unresolved requests.
+- Assigned means every reserved room has an assignment; unassigned includes partial
+  assignments. Search matches booking-contact-name tokens/code, not staying guests
+  or physical room numbers; `guestId` matches the booking contact.
+- Sorting uses contact name/code as deterministic tie-breakers. Filters/sort cover
+  all matches before pagination; count remains exact even beyond the last page.
+  Charge/payment aggregates are independent; hydrate rooms/nights/payments only for
+  the selected page. Calendar uses its own read.
 
 ## Concurrent reservation saves
 
-The reservation workflow loads the reservation, booking contact, room lines,
-nightly prices, staying guests, and payments in one D1 batch. Commands commit
-against internal reservation and contact revisions. Revisions are database
-details and do not appear in request or response payloads.
-
-If another command commits first, the stale attempt rolls back its entire batch,
-including its request receipt and any payment or contact writes. The workflow
-reloads the current state and reapplies the original actions, with at most three
-attempts. Reapplication replaces the fields carried by each action; it is not
-field-level merging. A contact action carries name, phone, and email, so saving
-a name from an older draft can overwrite a concurrent phone edit carried in that
-draft. Room-edit actions similarly carry type, assignment, and occupancy. Changes
-outside the submitted action fields remain, such as contact notes omitted by the
-contact action.
-Actions that are no longer valid, such as editing a deleted payment, return their
-ordinary validation error. Persistent contention returns 409 with
+Load reservation/contact/rooms/nights/guests/payments in one D1 batch. Commit against
+internal reservation/contact revisions, absent from the API. A stale revision aborts
+the whole batch, including receipts, contact changes, and payments; reload and reapply
+the original actions, at most three attempts. Persistent contention returns 409
 `reservation changed while saving; please try again`.
 
-Booking contact edits also check the guest revision. The guest editor increments
-that revision with its partial updates, so a reservation command cannot replace
-concurrent guest notes with an older copy. Retrying a committed request ID still
-replays the existing save without adding duplicate payments. Reusing that ID with
-a different payload still returns 409.
+Reapplication replaces each action's fields, not field-level merging. An old contact
+action can overwrite a newer phone because it carries name/phone/email, but preserves
+omitted notes. The guest editor increments contact revision, protecting concurrent
+notes. Invalidated actions return normal validation errors. A committed request ID
+replays its save; reuse with a different payload returns 409.
 
-The revision check deliberately fails the revision column's NOT NULL constraint
-on a mismatch. A conditional update affecting zero rows would not abort the
-remaining statements in a D1 batch. The workflow recognizes only these revision
-constraint failures as retryable. Inventory conflicts retain their existing
-trigger checks and error responses. The temporary `cancelled` status that permits
-atomic room swaps remains inside the write transaction.
+Revision mismatch deliberately violates NOT NULL: a conditional update of zero rows
+would not stop later D1 batch statements. Only revision-constraint failures retry;
+inventory conflicts retain their trigger errors. Temporarily cancelling to release
+inventory for atomic room swaps stays inside the transaction.
 
 ## Room validation at save time
 
-The workflow decides which rooms need current-rule validation from the original
-and proposed reservation states. Added or changed rooms, changed stay dates, and
-restoration from `cancelled` or `no_show` to an inventory-holding status require
-validation. Unchanged saved rooms can still accept payments, notes, discounts,
-status corrections within inventory-holding statuses, and cancellation after a
-room type's adult or child limit is reduced.
+Validate added/changed rooms, changed dates, and restoration from cancelled/no-show
+against current rules. Unchanged rooms may still accept payments, notes, discounts,
+status corrections within inventory-holding statuses, or cancellation after limits
+are lowered.
 
-TypeScript preflight provides preview pricing and per-room issues. Database
-triggers own the authoritative occupancy, room-type agreement, inventory, closure,
-and overlap checks during writes. For restoration and changed dates, the workflow
-updates each proposed room's type column to itself inside the write batch. This
-runs the existing room-validity triggers even for unchanged room rows, without
-rewriting their saved nightly prices. The final reservation update checks
-inventory against the proposed dates and status.
+Preflight produces advisory prices/issues; database triggers authoritatively enforce
+occupancy, type agreement, inventory, closures, and overlap. Restoration/date edits
+update each proposed room's type to itself to fire validity triggers without rewriting
+prices. Final reservation update validates proposed dates/status.
 
-The workflow bases that extra validation on the original state, before the
-transaction's temporary `cancelled` release. Checking occupancy on every final
-status update would reject ordinary saves of unchanged rooms. A concurrent room
-type or assignment change can invalidate a successful preview or preflight; the
-write then returns the existing 409 error and rolls back the entire command,
-including its request receipt. Preview remains advisory and does not reserve
-inventory or freeze room rules.
+Decide extra validation from the original state, before temporary cancellation.
+Validating occupancy on every final update would reject unrelated saves. A race
+after successful preview/preflight returns the existing 409 and rolls back everything,
+including the receipt. Preview neither reserves inventory nor freezes rules.
 
 ## Contact phones
 
-A [contact phone](../GLOSSARY.md#reservations-and-dates) is optional on booking
-contacts and staying guests. Each record keeps one nullable phone; records may
-share a number, and nothing copies phones between a booking contact and its
-staying guests. Validation is structural, using the maintained country metadata
-in `libphonenumber-js`. It does not show the line exists or supports WhatsApp.
+Phones are optional, nullable, and may be shared; booking contacts and staying guests
+do not copy them to one another. `normalizePhone` in `@pms/shared` and `acceptPhone`
+in [rules.ts](../apps/backend/src/rules.ts) enforce structural `libphonenumber-js`
+validation on creation, contact/guest actions, and guest writes—not reachability.
 
-`normalizePhone` in `@pms/shared` applies the API rule, and `acceptPhone` in
-`apps/backend/src/rules.ts` applies it to reservation creation, `contact` and
-`set-guests` actions, and guest `POST`/`PATCH`. After request-schema parsing, a
-submitted phone that equals the stored value is kept; any other nonempty phone
-must be a valid number for its country. Request schemas trim surrounding
-whitespace before this comparison. Arbitrary invalid legacy strings have no
-byte-for-byte preservation or unrelated-save compatibility guarantee; submitted
-values that differ after parsing must pass current validation.
-Input without a leading `+` is read as Peruvian. Spaces, parentheses, dots, and
-hyphens are accepted; landlines need their area code; extensions are rejected,
-not dropped. Accepted numbers are stored in E.164 form, such as `+51987654321`.
-Rejections return 400 with `X-Error-Field: phone`, roll back the whole command,
-and use one of the English messages in `phoneErrors`. `null` clears a workflow
-phone; guest `PATCH` cannot clear one.
+Schemas trim before comparing with stored values. Equal submitted values are kept;
+other nonempty values must be valid for their country. No byte-for-byte compatibility
+is promised for arbitrary invalid legacy strings. Without `+`, assume Peru; allow
+presentation separators, require landline area codes, reject extensions, and store
+E.164. Invalid input returns a phone field error and rolls back the command.
+Workflow `null` clears a phone; guest PATCH cannot clear it.
 
-The portal mirrors these rules in `apps/portal/src/lib/phone.ts`, since it does
-not import `@pms/shared`. **Teléfono · Opcional** (`PhoneField`) is used in
-creation, **Editar contacto**, and staying-guest add/edit. It pairs a searchable
-country selector, defaulting to Peru and showing calling codes, with a `tel`
-input. Country-specific grouping is visual: supported input keeps unformatted
-digits in the draft, while `AsYouType` supplies spacing during typing and when an
-editor reopens. `PhoneInput` applies the editing rules in
-`apps/portal/src/lib/phone-mask.ts`: the caret stays attached to digits across
-edits, including selection replacement. Backspace or Delete beside a separator
-removes the adjacent digit; deleting a selected separator alone changes nothing.
-IME composition text stays unformatted until the composition ends. For supported
-phone syntax, copying or cutting a selection produces its digits and any `+`
-without visual separators; the browser copies extensions and other unsupported
-text as shown. National leading zeros are retained, not converted to a numeric
-value. Typing or pasting a `+` number selects the country its calling code
-identifies, even before the number is complete. A valid supported number then
-shows only its national digits; incomplete international input keeps its `+`
-prefix until it can be interpreted. Choosing a country keeps the national digits
-and revalidates them; input containing extensions or unsupported text stays
-intact so country changes cannot silently discard it. Errors follow the editor
-reveal rules in
-[Drafts, validation, and retries](#drafts-validation-and-retries), and a blank
-phone is valid with no missing-phone warning. Editors open valid, explicitly
-international phones with national grouping under their recognized country, including
-numbers with accepted presentation separators, not just canonical E.164 strings.
-Other values appear as stored, including annotations. Until staff change the
-country or the text apart from separators, the portal resubmits the stored value,
-and undoing an edit restores the stored text; API parsing and validation still
-apply. Displays use international spacing and canonical `tel:` links for valid,
-explicitly international phones without extensions or unsupported text; other
-values are shown and linked as stored. Loading or displaying a phone does not write
-to storage. Phone search is unchanged.
+The portal mirrors rules locally in `phone.ts`. `phone-mask.ts` owns caret-aware
+editing, composition, selection/copy behavior, and leading-zero preservation.
+Country changes must not silently discard unsupported text. Valid international
+values display with national grouping in editors and international spacing/`tel:`
+links elsewhere. Unsupported/annotated values display as stored. Loading/display
+never writes; until a meaningful edit, resubmit the stored text (undo restores it),
+still subject to API parsing. Blank is valid; errors follow editor reveal rules.
 
 ## Portal editors
 
-Calendar bars open the compact `RoomBookingDialog` in edit mode. Its separate
-**Ver reserva completa** action opens `ReservationPage`. The Reservations list
-opens the full page directly. Both screens can create through **Nueva reserva**.
-
-Creation keeps stay dates, reserved rooms, booking contact, notes, and discount in
-one form. At least one room remains; every room shares the stay dates. Below
-768px, creation uses a full-screen editor with a scrolling form body and reachable
-title, close control, total, and **Cancelar / Crear reserva** controls. Mobile
-room sections have numbered headings and **Quitar** only when multiple rooms remain.
-Safe areas and keyboard viewport resizing preserve the draft; there is no swipe
-dismissal. Controls follow the shared [Lyra styling](portal.md#control-styling).
+Calendar bars open compact `RoomBookingDialog`; the list and **Ver reserva completa**
+open read-first `ReservationPage`. Creation is one form for dates, rooms, contact,
+notes, and discount; at least one room remains, with shared dates. Mobile editors
+keep controls reachable while the body scrolls and protect drafts through keyboard/
+safe-area changes; no swipe dismissal. Use [shared controls](portal.md#control-styling).
 
 ### Full reservation page
 
-`/reservations/:id` is a read-first overview. **Contacto principal**, **Pago y
-cuenta**, and **Notas** occupy the left desktop column, with **Estadía y
-habitaciones** on the right, matching the left column's height and scrolling its
-room list when it would be taller; **Huéspedes** and **Pagos** cards follow side by
-side. The sections stack on phones at their natural height. The shell header shows a
-**Reservas › Detalle** breadcrumb; its **Reservas** link opens Reservations, and
-list-origin links retain list filters. The page header shows the reservation code as
-a small uppercase monospace label above the contact name, then status/date badges
-and **Estado de la reserva**. The phone link appears only in the contact card.
+Independent editors save contact, stay, notes, discount, guests, and payments.
+Contact editing changes the existing contact, not its identity, and omits document
+fields. Stay editing saves dates/type/assignment/occupancy together, excluding notes,
+guests, payments, discount, and status. Declared occupant totals are independent of
+named guests. Reservation notes are distinct from contact notes.
 
-**Editar contacto** corrects the existing name, phone, and email. It does not
-search for or replace the contact. Document fields are omitted from contact saves
-so existing stored values remain unchanged. Staying-guest documents are separate.
-**Editar estadía** saves dates, room types, assignments, and occupancy together,
-with availability checks and server billing previews. It excludes notes, guests,
-payments, discount, and status. Contact editing needs no operational preview.
-Each editor has an independent draft and save, centered on desktop and full-screen
-on mobile, with reachable controls while the body scrolls.
-
-The stay summary's **Ocupantes** adds declared adults and children across all
-reserved rooms, independently of the named guest list. **Habitaciones asignadas**
-shows the room count and a divided list with one line per room: room number/type,
-then adult/child counts. Rooms sort by number, with unassigned rooms last as **Sin
-asignar**. Occupancy editing stays in the stay editor.
-
-The bill shows **Plan tarifario**, subtotal, discount including zero, total,
-**Pago inicial requerido**, **Pago restante programado**, amount paid, and signed
-balance. **Editar descuento** belongs to the discount row; **Registrar pago** is
-separate. Outstanding, settled, and credit balances remain distinct. This is a
-reservation bill. The discount editor previews the resulting bill 300 ms after
-typing stops and enables saving only for a current preview without validation
-issues.
-
-**Notas** shows reservation notes with line breaks, or **Sin notas**, and opens the
-notes editor through **Editar notas** or **Agregar notas**. Contact notes are not
-shown.
-
-**Huéspedes** and **Pagos** are cards like the ones above, each with an outline
-header action: **Agregar huésped** or **Registrar pago**, beside the bill's own
-**Registrar pago**. Both reuse the compact dialog's lists from
-[reservation-records.tsx](../apps/portal/src/components/reservation-records.tsx) in
-their framed form, bordered like **Habitaciones asignadas**: guests show an icon,
-name, room, and document; payments show date, method, reference, and amount, newest
-first, hiding the reference on phones. Empty cards show an icon with **Sin huéspedes
-registrados** or **Sin pagos registrados**. Each row's **Editar** and **Eliminar**
-open page editors; deletion asks for confirmation. Records stay editable on
-cancelled reservations.
-
-Selecting Confirmada, Check-in, or Check-out on an active reservation saves
-immediately through the header status select. Cancellation and restoration open
-consequence-aware confirmations with a current server bill and validation,
-previewed immediately. The select shows the saved status, is disabled while any
-save to the reservation is queued or running, and returns to the previous status
-after failure. It is independent of the stay editor.
+Active status changes save immediately and revert on failure; cancellation and
+restoration require current server bill/validation plus confirmation. Disable status
+writes while any reservation save is queued/running. Discount previews debounce
+300 ms and require a current issue-free preview before saving. Guest/payment deletion
+requires confirmation; records remain editable on cancelled reservations.
 
 ### Compact calendar dialog
 
-The compact dialog keeps **Detalles / Huéspedes / Pagos**, a contact/status header,
-and footer controls. Its header shows contact name, saved status, phone, and code,
-without contact email. On mobile, **Ver reserva completa** moves into
-**Más acciones de reserva**. The full-screen form body scrolls while header and
-footer remain reachable; closing preserves the calendar and its scroll position.
+Details save dates, rooms, and notes only; discard resets that draft. Routine
+check-in/checkout/status corrections save independently. Restoration previews the
+chosen status and availability before confirmation and keeps the dialog open after
+success. Closing preserves calendar position.
 
-The mobile footer has one bill accordion, with the colored balance bar at the
-bottom and the full breakdown expanding upward above it. The breakdown includes
-room charges, the editable discount, total, **Plan tarifario**, **Pago inicial
-requerido**, **Pago restante programado**, and amount paid. Draft pricing previews
-the scheduled amounts with the bill; there is no separate
-bill card in the scrolling form body or repeated balance inside the breakdown.
-It starts collapsed when a reservation opens and preserves its expanded state
-across tabs. The breakdown scrolls within a bounded height so the balance and
-action buttons remain reachable, including when the keyboard resizes the editor.
-Collapsing or resizing keeps the discount draft mounted. Desktop keeps its full
-summary with the balance at the bottom.
+Dirty drafts block check-in/checkout/status correction. Dirty details, guest,
+payment, and discount drafts block restoration; guest/payment/discount drafts block
+cancellation. Dirty details alone permit cancellation, explicitly discarded only
+on success, which closes the dialog. Dismissal/failure retains them. Disable writes
+while any save is queued/running, including discount autosave. Autosave queued after
+cancellation waits and reads the cancelled reservation.
 
-The balance toggle retains **Ver desglose / Ocultar desglose** accessibility names,
-expanded state, and the controlled-panel relationship. An upward chevron means
-collapsed and downward means expanded. Balance uses red outstanding, green
-settled, and blue credit treatments with text labels. Draft pricing shows
-**Vista previa** beside the label; unavailable pricing never falls back to stale
-saved amounts. Total remains in the breakdown.
-
-With dirty details, mobile shows **Descartar** and **Guardar cambios**; another
-tab offers **Volver a Detalles** before saving. With clean details, the applicable
-check-in/checkout action and **Cerrar** share the action row; without a lifecycle
-action, **Cerrar** remains alone. Controls keep safe-area spacing and the shared
-Lyra sizing. Desktop retains its inline full-page link and footer action menu.
-
-**Guardar cambios** saves dates, rooms, and notes only. **Descartar cambios**, or
-**Descartar** on mobile, resets that draft. Routine check-in/checkout saves
-immediately and leaves details unchanged. **Más acciones de reserva** contains
-**Cancelar reserva** and **Cambiar estado**. Active status corrections save
-immediately; choosing an active status on a cancelled reservation opens **Restaurar reserva** for the chosen
-status, previews the bill and availability, and writes only after confirmation.
-Restoration success keeps the compact dialog open.
-
-Dirty details, guest, payment, discount, or nested-editor drafts block check-in,
-checkout, and status correction until saved or discarded. Dirty details, guest,
-payment, and discount drafts also block restoration. Dirty guest, payment, or
-discount drafts block cancellation. A dirty details draft permits cancellation:
-the confirmation explicitly discards it, and closes the dialog only after
-success. Dismissed or failed cancellation preserves it. The dialog's write
-controls are disabled while any save to the reservation is queued or running,
-including a discount autosave. A discount autosave sent after cancellation waits
-for the cancellation to finish, so it reads the cancelled reservation.
+The mobile bill accordion keeps the discount draft mounted through collapse/resize.
+Draft bills show preview state and never substitute stale saved amounts when unavailable.
 
 ### Reservation command module
 
-Every editor on the full page, the page's status select, the compact dialog, and
-calendar room assignment save an existing reservation through
-[reservation-commands.ts](../apps/portal/src/lib/reservation-commands.ts).
-Creation uses its own endpoint and does not.
+[reservation-commands.ts](../apps/portal/src/lib/reservation-commands.ts) owns all
+existing-reservation writes, including calendar assignment; creation is separate.
 
-- `useReservationCommands(id)` returns `send(actions)` and `saving`. `send` takes
-  the workflow action list and never throws. It resolves to `saved` with the
-  reservation detail, `rejected` with Spanish field errors keyed by form field
-  name, or `failed` with one Spanish message and, when the server sent one, its
-  English error `code` for callers that react to a specific error. Editors with
-  no field to show a rejection use `unsavedMessage(result)`. `saving` is true
-  while any save to that reservation is queued or running, whichever editor
-  sent it.
-- **Duplicate-safe retries.** A failed save keeps its request ID, keyed by
-  reservation and the exact actions. Sending identical actions again reuses that
-  ID, even from a reopened editor, so a retry after a lost response cannot record
-  a payment twice. Success forgets the ID; a later identical save gets a new one.
-  The memory lives in the query client, so clearing the cache, including sign-out
-  after a 401, forgets it.
-- **Ordering.** Saves to one reservation run one at a time in send order. Sending
-  actions identical to a queued or running save joins it: no second request, and
-  both callers receive the same result. Different reservations save independently.
-  Clearing the cache (sign-out) drops saves still queued, which resolve as
-  `failed`; a later send never joins a save started before the clear, and a save
-  running across the clear does not write its result back into the cache.
-- **Field errors.** The sent action types choose the mapping, from the same table
-  as `serverFieldErrors` in [api-error.ts](../apps/portal/src/lib/api-error.ts),
-  which creation and the stay draft preview use: payment actions map
-  date, amount, and method; contact actions map email and phone; staying-guest
-  actions map email, phone, and reserved room; stay-changing actions map the
-  stay-length errors to checkout. Anything else, including unmatched codes, is a
-  single message.
-- **Refresh.** `send` resolves after the refresh. Success writes the saved detail
-  to the reservation cache and refreshes reservation lists, availability,
-  inventory, payments, the calendar, and every open bill preview for that
-  reservation. A preview still loading is cancelled first, so its older bill
-  never replaces the refreshed one. A contact change also refreshes the
-  contact's other reservations.
-- **Bill previews.** `useReservationPreview(id, actions, enabled)` returns the bill
-  and validation issues for the discount and status editors; callers debounce.
-  The stay draft keeps its own quote reuse but keys its queries with
-  `reservationPreviewKey`, so saves refresh it too.
-- **Room assignment.** `useRoomAssignmentCommand()` re-reads the reservation
-  before saving, uses a new request ID on every attempt, and keeps no retry
-  memory. It waits behind other saves to that reservation and uses the same
-  refresh. See [calendar assignment](calendar.md#picker).
+- `useReservationCommands(id)` exposes `send(actions)` and shared queued/running
+  `saving`. Results never throw: `saved`, `rejected` Spanish field errors, or
+  `failed` Spanish message plus any server code. Editors without fields use
+  `unsavedMessage`.
+- Failed saves retain request IDs by reservation/exact actions, even across reopened
+  editors, so lost-response retries cannot duplicate payments. Success forgets the
+  ID; a later identical write is new. Memory belongs to the query client.
+- Saves serialize per reservation; identical queued/running actions join one request.
+  Different reservations are independent. Clearing cache drops queued saves as failed,
+  prevents new callers joining pre-clear saves, and prevents running results repopulating cache.
+- Action-specific field mapping shares `serverFieldErrors` in `api-error.ts` with
+  creation/stay previews. Unmatched errors become one message.
+- Resolve only after refresh. Success updates detail and refreshes lists, availability,
+  inventory, payments, calendar, and open bill previews; cancel loading previews first
+  so an old bill cannot replace refreshed data. Contact edits refresh other reservations
+  for that contact.
+- `useReservationPreview` serves discount/status editors; callers debounce. Stay drafts
+  reuse quotes but share `reservationPreviewKey`, so writes refresh them too.
+- `useRoomAssignmentCommand` re-reads the reservation, uses a fresh ID per attempt
+  without retry memory, and shares save ordering/refresh. See [assignment](calendar.md#picker).
 
 ### Drafts, validation, and retries
 
-Editors capture opening values so background reads cannot replace a draft. Failed
-saves retain drafts; dirty dismissal asks for confirmation, and router navigation
-and browser unload are guarded while dirty or saving. Lifecycle writes show
-pending, success, and failure feedback. Retrying unchanged actions after an
-uncertain response is duplicate-safe through the
-[Reservation command module](#reservation-command-module). Check-in/checkout do
-not change stay dates or require payment or physical assignment.
+Opening values isolate drafts from background reads. Failed saves retain drafts;
+dirty dismissal, router navigation, and browser unload are guarded. Lifecycle writes
+show pending/success/failure. Identical uncertain writes retry through the command module.
 
-Room-type menus account for other reservations, closures, and other draft rooms.
-The current choice remains visible, and changes wait for current availability.
-Server previews still validate before saving. Validation runs on blur and submit,
-then on change after a submission attempt. Room count and capacity validate on
-change because they control previews. Known server errors appear beside fields;
-other write errors use toasts. Query errors stay beside the content they block.
+Room-type menus consider other stays, closures, and draft rooms; keep the current
+choice visible and wait for current availability before changes. Server previews
+validate before saving. Validate on blur/submit, then change after attempted submit;
+room count/capacity validate on change to control previews. Field errors stay inline,
+other write errors use toasts, and query errors stay beside blocked content.
 
-Portal forms use TanStack Form and local Zod schemas in
-[reservation-form-schemas.ts](../apps/portal/src/lib/reservation-form-schemas.ts).
-Details, staying guests, payments, discount, and cancellation have independent
-forms; writes go through the Reservation command module. The shared
-[use-stay-draft.ts](../apps/portal/src/lib/use-stay-draft.ts) owns stay draft values,
-validation feedback, preview timing, reusable prices, and reset for the compact
-and page stay editors. It also retains compact-editor notes. Leave and discard
-guards, dirty tracking, and toast wording remain with their editors.
+Forms use TanStack Form/local Zod in `reservation-form-schemas.ts`. Independent
+forms share `use-stay-draft.ts` for stay values, feedback, preview timing, price reuse,
+and reset (plus compact notes); leave guards, dirty tracking, and toasts with editors.
 
 ## Portal list
 
-Below 768px, Reservas shows Llegadas, Salidas, En casa, and Todas las reservas in
-a two-by-two grid. Results are tappable cards showing the booking contact,
-reservation status, assigned rooms and missing assignments, stay dates, and
-balance. Outstanding, settled, and credit balances retain explicit labels. A card
-opens the full reservation page, which contains the phone, declared occupant
-counts, total, and workflow actions. Returning retains the URL-backed list
-context. At 768px and wider, the list keeps its table and horizontal view tabs.
+List context lives in the URL and survives opening/returning from detail. Search
+matches contacts/code, not room numbers; use calendar for room-number lookup. List
+room numbers sort numerically, truncate visually after three, and retain the full
+accessible list plus unassigned count. Mobile uses cards; desktop uses a table.
 
-Cards and table rows list assigned room numbers in numeric order. With more than
-three, they show the first three and a count of the rest, such as
-`108, 201, 204 +12`; the unassigned count always stays visible. Screen readers
-receive every room number. On desktop the room cell stays on one line, and hovering
-the count shows the full list. To open a reservation from a room number, use the
-calendar: list search does not match room numbers.
-
-The app header and Nueva reserva stay reachable while the list scrolls; see
-[navigation](portal.md#navigation) for the mobile floating placement. View,
-date, search, filter, and sorting controls scroll with the results. Mobile list
-controls use the shared Lyra sizing. Llegadas and Salidas retain their
-previous-day, date-picker, and next-day controls; desktop follows them with a
-standalone Hoy, while mobile puts **Hoy** in the date picker's footer, which returns to
-the property date and closes the picker. Search still matches the
-booking contact or reservation code; En casa and Todas las reservas have no date
-restriction.
-
-The list re-reads on focus, reconnect, and after saves in this browser. Changes made on
-another device while the list stays open and focused appear only after **Actualizar**.
-On desktop it ends the view-tab row, after the date controls on Llegadas and Salidas;
-on mobile it sits in the app header on every view, since Nueva reserva floats. It
-re-reads the current view, keeping its search, filters, sorting, and page, and keeps
-the results visible while they update. It spins only while a requested re-read runs.
-It is disabled during any read and until the first results arrive; if that first read
-fails, the page's own retry replaces the list.
-
-Pagination shows the result range and total, 25/50/100 reservations per page with
-50 as the default, and previous/next controls. On mobile, these buttons are
-labeled Anterior and Siguiente. Changing pages or page size brings the start of
-the mobile results into view after the requested results arrive, focusing the
-first card when there is one. Existing
-loading, updating, empty, and error/retry feedback remains available.
+Focus, reconnect, and this browser's saves refresh the list. A continuously focused
+view needs **Actualizar** for another device's changes. Refresh preserves data and
+current filters/page; new-view failures use the shared error state, not unrelated
+old rows. Pagination scrolls/focuses mobile results after the requested page arrives.
 
 ## Portal list filters
 
-The **Filtros** button counts changed filter groups, not individual selections:
-Estados, Saldo, and Asignación each contribute at most one. Defaults are relative
-to the selected view, and the count is hidden at zero. Text search does not count;
-its own clear button remains available. Applied filters are inspected and edited
-inside the panel rather than in a separate row of chips.
-
-Filters apply immediately and leave the panel open. **Restablecer** restores the
-current view's default statuses, any balance, and any assignment, returning to the
-first page. It preserves text search, view, selected day, sorting, and page size,
-and is disabled when the three filter groups already match their defaults.
-
-At least one status must remain selected; the final checked status is disabled
-until another is selected. All four checked means unrestricted, including
-cancellations. Legacy empty/`all` URLs and explicit four-status URLs restore that
-same selection. Llegadas and Salidas default to Confirmada, Check-in, and
-Check-out; Todas las reservas defaults to all four. En casa remains locked to
-Check-in and hides the status selector. The desktop panel heading is visually
-hidden but retained as its accessible name.
-
-On mobile, Filtros opens a bottom sheet with a visible Filtros de reservas heading
-and a Listo button. Its controls scroll within the available height; the heading
-and Listo remain reachable. Listo closes the sheet and returns focus to Filtros.
-There is no separate apply step. Desktop retains the filter popover. Search and
-sorting stay directly accessible from the list in both layouts.
-
-See [backend list reads](#reservation-list-reads) for API filtering and pagination,
-[portal routing](portal.md#navigation) for view defaults, and
-[the frontend testing policy](../CODING_STANDARDS.md#frontend-scope) before tests.
+Filters apply immediately. The badge counts changed groups (status/balance/assignment),
+not individual selections or search. Reset restores view-relative defaults and first
+page, preserving search/view/day/sort/page size. Keep at least one status selected;
+all selected means unrestricted. In-house locks checked-in and hides status selection.
+Defaults/legacy URL parsing live in [route-search.ts](../apps/portal/src/lib/route-search.ts)
+and `reservation-status-selection.ts`. Mobile sheets close without a separate apply step.
