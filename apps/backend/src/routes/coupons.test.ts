@@ -1,7 +1,13 @@
 import type { WorkflowAction } from "@pms/shared";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import type { presentReservation } from "../present";
-import { createTestDb, seedRooms, seedRoomType, type TestDb } from "../test-support/d1";
+import {
+  createTestDb,
+  seedReservation,
+  seedRooms,
+  seedRoomType,
+  type TestDb,
+} from "../test-support/d1";
 
 type Detail = ReturnType<typeof presentReservation>;
 
@@ -427,6 +433,44 @@ describe("charging a coupon-funded stay that is cancelled or not shown", () => {
 });
 
 describe("coupon records", () => {
+  it("lists an issued coupon once when its redemption is on a later list chunk", async () => {
+    const issued = await command(await freeCancellationOwing(20000), [issue(20000)]);
+    const coupon = issued.coupons[0];
+    for (let i = 0; i < 48; i++)
+      seedReservation(db.sqlite, {
+        id: `filler-${i}`,
+        code: `F${String(i).padStart(5, "0")}`,
+        guestName: `List filler ${i}`,
+        checkIn: "2026-10-25",
+        checkOut: "2026-10-26",
+        createdAt: "2026-10-10",
+        status: "cancelled",
+      });
+    const redeemed = await command(await stay("2026-11-01", "2026-11-03"), [
+      redeem(coupon.code, 15000),
+    ]);
+
+    const response = await db.request("/reservations?paginated=true&limit=50");
+    expect(response.status).toBe(200);
+    const list = (await response.json()) as { rows: Detail[]; total: number };
+
+    expect(list.total).toBe(50);
+    expect(list.rows[0]).toMatchObject({
+      id: issued.id,
+      couponIssuedCents: 20000,
+      refundDueCents: 0,
+    });
+    expect(list.rows[0].coupons).toEqual([{ ...coupon, balanceCents: 5000 }]);
+    expect(list.rows[0].couponMovements).toEqual(issued.couponMovements);
+    expect(list.rows[49]).toMatchObject({
+      id: redeemed.id,
+      couponAppliedCents: 15000,
+      balanceCents: 5000,
+      coupons: [],
+      couponMovements: redeemed.couponMovements,
+    });
+  });
+
   it("refuses to restore a reservation that issued or redeemed a coupon", async () => {
     const owed = await freeCancellationOwing(20000);
     const issued = await command(owed, [issue(5000)]);

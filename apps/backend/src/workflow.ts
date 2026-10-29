@@ -97,18 +97,7 @@ export async function loadState(db: Db, id: string): Promise<State> {
     cancellationQuery(db).where(eq(reservationCancellations.reservationId, id)),
     waiverQuery(db).where(eq(reservationCancellations.reservationId, id)),
     refundQuery(db).where(eq(refunds.reservationId, id)),
-    couponQuery(db).where(
-      or(
-        eq(coupons.sourceReservationId, id),
-        inArray(
-          coupons.id,
-          db
-            .select({ id: couponMovements.couponId })
-            .from(couponMovements)
-            .where(eq(couponMovements.reservationId, id)),
-        ),
-      ),
-    ),
+    reservationCouponQuery(db, [id]),
     couponMovementQuery(db).where(eq(couponMovements.reservationId, id)),
   ]);
   const reservation = parents[0];
@@ -135,7 +124,7 @@ export async function loadState(db: Db, id: string): Promise<State> {
     cancellations: withWaivers(cancellationRows, waiverRows),
     refunds: refundRows.map(withAccounts),
     coupons: couponRows.map(withIssuer),
-    couponMovements: movementRows.map(({ movement, recordedBy }) => ({ ...movement, recordedBy })),
+    couponMovements: movementRows.map(withRecorder),
   };
 }
 
@@ -180,28 +169,35 @@ export async function refundsFor(db: Db, reservationIds: string[]) {
     withAccounts,
   );
 }
-export async function couponsFor(db: Db, reservationIds: string[]) {
-  const [couponRows, movementRows] = await db.batch([
-    couponQuery(db).where(
-      or(
-        inArray(coupons.sourceReservationId, reservationIds),
-        inArray(
-          coupons.id,
-          db
-            .select({ id: couponMovements.couponId })
-            .from(couponMovements)
-            .where(inArray(couponMovements.reservationId, reservationIds)),
-        ),
+const reservationCouponQuery = (db: Db, reservationIds: string[]) =>
+  couponQuery(db).where(
+    or(
+      inArray(coupons.sourceReservationId, reservationIds),
+      inArray(
+        coupons.id,
+        db
+          .select({ id: couponMovements.couponId })
+          .from(couponMovements)
+          .where(inArray(couponMovements.reservationId, reservationIds)),
       ),
     ),
+  );
+const withRecorder = ({
+  movement,
+  recordedBy,
+}: Awaited<ReturnType<typeof couponMovementQuery>>[number]): CouponMovement => ({
+  ...movement,
+  recordedBy,
+});
+
+export async function couponsFor(db: Db, reservationIds: string[]) {
+  const [couponRows, movementRows] = await db.batch([
+    reservationCouponQuery(db, reservationIds),
     couponMovementQuery(db).where(inArray(couponMovements.reservationId, reservationIds)),
   ]);
   return {
     coupons: couponRows.map(withIssuer),
-    movements: movementRows.map(({ movement, recordedBy }): CouponMovement => ({
-      ...movement,
-      recordedBy,
-    })),
+    movements: movementRows.map(withRecorder),
   };
 }
 type CancellationRow = Awaited<ReturnType<typeof cancellationQuery>>[number];

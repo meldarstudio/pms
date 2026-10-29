@@ -247,7 +247,9 @@ reservationRoutes.get("/", validate("query", reservationListQuerySchema), async 
       Promise.all(chunks(ids, 80).map((ids) => cancellationsFor(db, ids))).then((r) => r.flat()),
       Promise.all(chunks(ids, 80).map((ids) => refundsFor(db, ids))).then((r) => r.flat()),
       Promise.all(chunks(ids, 40).map((ids) => couponsFor(db, ids))).then((r) => ({
-        coupons: r.flatMap((chunk) => chunk.coupons),
+        coupons: [
+          ...new Map(r.flatMap((chunk) => chunk.coupons.map((c) => [c.id, c] as const))).values(),
+        ],
         movements: r.flatMap((chunk) => chunk.movements),
       })),
     ]);

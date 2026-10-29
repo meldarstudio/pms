@@ -294,8 +294,9 @@ or returned, is likewise refused with `reservation with coupons cannot be restor
 ## Refunds
 
 Net money retained is the payments received less completed refunds. Refund due
-(`refundDueCents`) is the positive excess of net retained over the final charge on
-any reservation: cancelled, No-show, waived, or amended to a lower total. Reads
+(`refundDueCents`) is the amount still owed back after final charges, completed
+refunds, coupon settlement, and agreed conversion to issued coupons on any
+reservation: cancelled, No-show, waived, or amended to a lower total. Reads
 return `paidCents` (gross received), `refundedCents` (completed), and
 `pendingRefundCents` (requested), and `balanceCents` is the total less
 `couponAppliedCents` less `paidCents - refundedCents - couponIssuedCents` (see
@@ -388,10 +389,10 @@ fails with `guest acceptance is required`. The amount cannot exceed the refund d
 less requested refunds (`coupon exceeds the refund due`); value already converted no
 longer counts as refund due, so repeated issuances cannot exceed it. No bonus value
 is added. Issuing is neither a completed refund nor money received: payments stay in
-history, and `couponIssuedCents` counts as money no longer retained, so refund due
-falls by the coupon's value. A coupon has an unpredictable 10-character `code`, its
-fixed `valueCents`, a `balanceCents`, the issuing reservation, `issuedAt`,
-`issuedBy`, and `expiresOn`, 12 months after the property date of issuance (clamped
+history, and `couponIssuedCents` removes the converted value from that reservation's
+cash-refund obligation, so refund due falls by the coupon's value. A coupon has an
+unpredictable 10-character `code`, its fixed `valueCents`, a `balanceCents`, the issuing
+reservation, `issuedAt`, `issuedBy`, and `expiresOn`, 12 months after the property date of issuance (clamped
 to the month's last day). After a reservation issues a coupon, its payments cannot be
 edited or deleted (`payment cannot be changed after issuing a coupon`), including in
 the same command.
@@ -419,7 +420,8 @@ are ignored. The server rejects:
 The new stay is priced under its own plan first. Redeemed value is a settlement
 source, not a discount or money received: `couponAppliedCents` lowers
 `balanceCents`, and `initialPaymentDueCents` is `requiredInitialPaymentCents` less
-the settled amount (coupon applied plus net money retained), floored at zero.
+the settled amount (coupon applied plus net money retained not converted into issued
+coupons), floored at zero.
 `requiredInitialPaymentCents` stays the plan's requirement. A partial redemption
 leaves the remainder on the coupon with its original expiry.
 

@@ -291,7 +291,8 @@ _Avoid_: Refund, received payment, reservation discount
 ### Reservation bill
 
 **Reservation bill**:
-The account of a reservation's room charges, discount, received payments, and resulting balance.
+The account of a reservation's room charges, discount, received payments, refunds, coupon movements,
+and resulting balance.
 Cancellation replaces the room charges and discount with the final cancellation charge.
 _Avoid_: Invoice, payment receipt
 
@@ -305,8 +306,8 @@ discount alone cannot create credit.
 _Avoid_: Payment, refund, rate override
 
 **Total**:
-The reservation's subtotal less its applied discount, before deducting payments. A cancelled
-reservation's total is its cancellation charge after waivers.
+The reservation's subtotal less its applied discount, before deducting payments or coupon settlement.
+A cancelled reservation's total is its cancellation charge after waivers.
 _Avoid_: Balance, amount paid
 
 **Payment**:
@@ -348,18 +349,19 @@ The sum of the payments recorded against a reservation.
 _Avoid_: Revenue, total
 
 **Net retained**:
-The amount paid less completed refunds.
+The amount paid less completed refunds. Coupon issuance and redemption do not change this cash-history
+amount.
 _Avoid_: Amount paid, revenue
 
 **Balance**:
-The reservation's total less its net retained, with a positive balance indicating money owed and a
-negative balance indicating credit.
+The reservation's total less applied coupon value and net retained, adding back any value converted
+into issued coupons. A positive balance indicates money owed and a negative balance indicates credit.
 _Avoid_: Total, unpaid charges without accounting for payments
 
 **Credit**:
-The amount by which a reservation's net retained exceeds its total, represented by the magnitude of
-a negative balance. Credit is the refund due on any reservation, whether cancelled, No-show, waived,
-or amended to a lower total; it does not imply a refund was requested or a redeemable coupon.
+The amount still owed back after final charges, completed refunds, coupon settlement, and agreed
+conversion to issued coupons, represented by the magnitude of a negative balance. Credit is the
+refund due; it does not imply a refund was requested or a redeemable coupon.
 _Avoid_: Refund, coupon
 
 **Future-stay coupon**:
