@@ -1,7 +1,7 @@
 import type { WorkflowAction } from "@pms/shared";
 import { eq, inArray } from "drizzle-orm";
 import type { Db } from "./db";
-import { reservationGuests, roomTypes } from "./db/schema";
+import { coupons, reservationGuests, roomTypes } from "./db/schema";
 import { HttpError } from "./http";
 import { ratesBetween } from "./inventory";
 import { refundCents, reservationBill } from "./lib/workflow-billing";
@@ -9,6 +9,14 @@ import { holdsInventory } from "./lib/statuses";
 import { activeCancellation, policyCharge, presentCancellation } from "./lib/cancellation";
 import { acceptedTerms, type RatePlanTerms } from "./lib/rate-plans";
 import { overridesFor, priceNights } from "./lib/pricing";
+import {
+  couponAppliedCents,
+  couponCode,
+  couponIssuedCents,
+  couponExpiry,
+  couponQuery,
+  type CouponMovement,
+} from "./lib/coupons";
 import { acceptPhone, requireStay } from "./rules";
 import type { CommandContext, State, Stay } from "./workflow";
 
@@ -31,6 +39,7 @@ type PlanContext = CommandContext & {
   opened: Set<string>;
   waivers: Action<"waive-cancellation-charge">[];
   refundActions: RefundAction[];
+  couponActions: Action<"issue-coupon" | "redeem-coupon">[];
 };
 
 type Handlers = {
@@ -48,6 +57,7 @@ export const totals = (state: State) => {
     paymentSchedule: acceptedTerms(state.reservation).paymentSchedule,
     cancellationChargeCents: cancellation ? presentCancellation(cancellation).finalChargeCents : 0,
     refunds: state.refunds,
+    couponMovements: state.couponMovements,
   });
 };
 
@@ -134,6 +144,13 @@ function changePayment(action: Action<"edit-payment" | "delete-payment">, ctx: P
 
 const queueRefund = (action: RefundAction, { refundActions }: PlanContext) => {
   refundActions.push(action);
+};
+
+const queueCoupon = (
+  action: Action<"issue-coupon" | "redeem-coupon">,
+  { couponActions }: PlanContext,
+) => {
+  couponActions.push(action);
 };
 
 const handlers: Handlers = {
@@ -266,6 +283,8 @@ const handlers: Handlers = {
   "request-culqi-refund": queueRefund,
   "complete-refund": queueRefund,
   "fail-refund": queueRefund,
+  "issue-coupon": queueCoupon,
+  "redeem-coupon": queueCoupon,
 };
 
 function dispatch(action: WorkflowAction, ctx: PlanContext) {
@@ -376,6 +395,109 @@ function applyRefunds({ state, refundActions, account, today, now }: PlanContext
   }
 }
 
+const movement = (
+  { state, account, today, now }: PlanContext,
+  couponId: string,
+  kind: CouponMovement["kind"],
+  amountCents: number,
+): CouponMovement => ({
+  id: crypto.randomUUID(),
+  couponId,
+  reservationId: state.reservation.id,
+  kind,
+  amountCents,
+  recordedAt: now,
+  recordedOn: today,
+  accountId: account.id,
+  recordedBy: account.username,
+});
+
+async function redeemCoupon(action: Action<"redeem-coupon">, ctx: PlanContext) {
+  const { db, state } = ctx;
+  const coupon =
+    state.coupons.find((coupon) => coupon.code === action.code) ??
+    (await couponQuery(db).where(eq(coupons.code, action.code)))
+      .map(({ coupon, issuedBy }) => ({ ...coupon, issuedBy }))
+      .at(0);
+  if (!coupon) throw new HttpError(404, "coupon not found");
+  if (coupon.sourceReservationId === state.reservation.id)
+    fail("coupon cannot be redeemed on the reservation that issued it");
+  if (!holdsInventory(state.reservation.status)) fail("coupon requires an active reservation");
+  if (state.couponMovements.some((m) => m.kind === "redeem" && m.couponId !== coupon.id))
+    fail("reservation already uses another coupon");
+  if (action.amountCents > coupon.balanceCents) fail("coupon redemption exceeds its balance");
+  if (!state.coupons.includes(coupon)) state.coupons.push(coupon);
+  coupon.balanceCents -= action.amountCents;
+  state.couponMovements.push(movement(ctx, coupon.id, "redeem", action.amountCents));
+  if (totals(state).balanceCents < 0) fail("coupon redemption exceeds the balance owed");
+}
+
+function returnCoupons(ctx: PlanContext) {
+  const { state } = ctx;
+  let excess = totals(state).couponAppliedCents - totals(state).totalCents;
+  for (const coupon of state.coupons) {
+    if (excess <= 0) return;
+    const applied = couponAppliedCents(
+      state.couponMovements.filter((m) => m.couponId === coupon.id),
+    );
+    const amountCents = Math.min(applied, excess);
+    if (amountCents <= 0) continue;
+    coupon.balanceCents += amountCents;
+    state.couponMovements.push(movement(ctx, coupon.id, "return", amountCents));
+    excess -= amountCents;
+  }
+}
+
+async function applyCoupons(ctx: PlanContext) {
+  const { state, couponActions, account, today, now } = ctx;
+  for (const action of couponActions) {
+    if (action.type === "redeem-coupon") {
+      await redeemCoupon(action, ctx);
+      continue;
+    }
+    const bill = totals(state);
+    if (action.amountCents > bill.refundDueCents - bill.pendingRefundCents)
+      fail("coupon exceeds the refund due");
+    const id = crypto.randomUUID();
+    state.coupons.push({
+      id,
+      revision: 0,
+      code: couponCode(),
+      sourceReservationId: state.reservation.id,
+      valueCents: action.amountCents,
+      balanceCents: action.amountCents,
+      issuedAt: now,
+      expiresOn: couponExpiry(today),
+      accountId: account.id,
+      issuedBy: account.username,
+    });
+    state.couponMovements.push(movement(ctx, id, "issue", action.amountCents));
+  }
+  const redeemed = new Set(
+    state.couponMovements.flatMap((m) => (m.kind === "redeem" ? [m.couponId] : [])),
+  );
+  if (state.coupons.some((c) => redeemed.has(c.id) && state.reservation.checkIn > c.expiresOn))
+    fail("stay starts after the coupon expires");
+}
+
+function checkCouponLocks({ original, state, couponActions }: PlanContext) {
+  if (
+    !holdsInventory(original.reservation.status) &&
+    holdsInventory(state.reservation.status) &&
+    state.couponMovements.length
+  )
+    fail("reservation with coupons cannot be restored");
+  if (
+    (couponIssuedCents(state.couponMovements) > 0 ||
+      couponActions.some((action) => action.type === "issue-coupon")) &&
+    original.payments.some(
+      (payment) =>
+        JSON.stringify(payment) !== JSON.stringify(state.payments.find((p) => p.id === payment.id)),
+    )
+  )
+    fail("payment cannot be changed after issuing a coupon");
+}
+
 function checkRefundLimits(
   { original, state, refundActions }: PlanContext,
   actions: WorkflowAction[],
@@ -422,12 +544,16 @@ export async function plan(
     opened: new Set(),
     waivers: [],
     refundActions: [],
+    couponActions: [],
   };
   for (const action of actions) await dispatch(action, ctx);
   if (!ctx.state.lines.length) fail("reservation requires at least one room");
   chargeOpenedCancellation(ctx);
   applyWaivers(ctx);
+  returnCoupons(ctx);
   applyRefunds(ctx);
+  checkCouponLocks(ctx);
+  await applyCoupons(ctx);
   checkRefundLimits(ctx, actions);
   return { state: ctx.state };
 }

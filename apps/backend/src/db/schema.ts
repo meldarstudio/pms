@@ -327,6 +327,62 @@ export const refunds = sqliteTable(
   ],
 );
 
+export const coupons = sqliteTable(
+  "coupons",
+  {
+    id: text("id").primaryKey(),
+    revision: integer("revision").notNull().default(0),
+    code: text("code").notNull().unique(),
+    sourceReservationId: text("source_reservation_id")
+      .notNull()
+      .references(() => reservations.id),
+    valueCents: integer("value_cents").notNull(),
+    balanceCents: integer("balance_cents").notNull(),
+    issuedAt: text("issued_at").notNull(),
+    expiresOn: text("expires_on").notNull(),
+    accountId: text("account_id")
+      .notNull()
+      .references(() => user.id),
+  },
+  (table) => [
+    index("coupons_source").on(table.sourceReservationId),
+    check("coupons_value", sql`${table.valueCents} > 0`),
+    check(
+      "coupons_balance",
+      sql`${table.balanceCents} >= 0 AND ${table.balanceCents} <= ${table.valueCents}`,
+    ),
+  ],
+);
+
+export type CouponMovementKind = "issue" | "redeem" | "return";
+
+export const couponMovements = sqliteTable(
+  "coupon_movements",
+  {
+    id: text("id").primaryKey(),
+    couponId: text("coupon_id")
+      .notNull()
+      .references(() => coupons.id),
+    reservationId: text("reservation_id")
+      .notNull()
+      .references(() => reservations.id),
+    kind: text("kind").$type<CouponMovementKind>().notNull(),
+    amountCents: integer("amount_cents").notNull(),
+    recordedAt: text("recorded_at").notNull(),
+    recordedOn: text("recorded_on").notNull(),
+    accountId: text("account_id")
+      .notNull()
+      .references(() => user.id),
+  },
+  (table) => [
+    index("coupon_movements_coupon").on(table.couponId),
+    index("coupon_movements_reservation").on(table.reservationId),
+    index("coupon_movements_date").on(table.recordedOn),
+    check("coupon_movements_amount", sql`${table.amountCents} > 0`),
+    check("coupon_movements_kind", sql`${table.kind} IN ('issue', 'redeem', 'return')`),
+  ],
+);
+
 const authTime = (name: string) => integer(name, { mode: "timestamp_ms" });
 
 export const user = sqliteTable(

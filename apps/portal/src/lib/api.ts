@@ -258,6 +258,41 @@ export type ReservationRefund = {
   failureReason: string | null;
 };
 
+export type ReservationCoupon = {
+  id: string;
+  code: string;
+  valueCents: number;
+  balanceCents: number;
+  issuedAt: string;
+  issuedBy: string | null;
+  expiresOn: string;
+};
+
+export type CouponMovementKind = "issue" | "redeem" | "return";
+
+export type ReservationCouponMovement = {
+  id: string;
+  couponId: string;
+  code: string;
+  kind: CouponMovementKind;
+  amountCents: number;
+  recordedAt: string;
+  recordedOn: string;
+  recordedBy: string | null;
+};
+
+export type CouponLookup = ReservationCoupon & {
+  sourceReservationId: string;
+  sourceReservationCode: string;
+  movements: (Omit<ReservationCouponMovement, "couponId" | "code"> & {
+    reservationId: string;
+  })[];
+};
+
+export function getCoupon(code: string, signal?: AbortSignal) {
+  return getJson<CouponLookup>(`/coupons/${encodeURIComponent(code)}`, signal);
+}
+
 export type ReservationDetail = {
   status: string;
   cancellationReason: string | null;
@@ -268,6 +303,11 @@ export type ReservationDetail = {
   refundedCents: number;
   pendingRefundCents: number;
   refunds: ReservationRefund[];
+  couponIssuedCents: number;
+  couponAppliedCents: number;
+  initialPaymentDueCents: number;
+  coupons: ReservationCoupon[];
+  couponMovements: ReservationCouponMovement[];
   cancellation: ReservationCancellation | null;
   cancellations: ReservationCancellation[];
   savedDiscountCents: number;
@@ -559,6 +599,8 @@ export type WorkflowAction =
     }
   | { type: "complete-refund"; refundId: string; refundDate: string; reference: string }
   | { type: "fail-refund"; refundId: string; reason: string }
+  | { type: "issue-coupon"; amountCents: number; guestAccepted: true }
+  | { type: "redeem-coupon"; code: string; amountCents: number }
   | { type: "notes"; notes: string };
 export type WorkflowCommand = {
   requestId: string;
@@ -579,6 +621,11 @@ export type WorkflowBilling = Pick<
   | "refundedCents"
   | "pendingRefundCents"
   | "refunds"
+  | "couponIssuedCents"
+  | "couponAppliedCents"
+  | "initialPaymentDueCents"
+  | "coupons"
+  | "couponMovements"
   | "cancellation"
   | "cancellations"
   | "savedDiscountCents"

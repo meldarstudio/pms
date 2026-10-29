@@ -20,6 +20,8 @@ const tables = [
   "payments",
   "room_type_rates",
   "room_closures",
+  "coupons",
+  "coupon_movements",
 ];
 let db;
 
@@ -85,6 +87,12 @@ describe("local dummy data reset", () => {
       INSERT INTO room_type_rates VALUES ('custom', 'custom', '2026-10-07', 6000);
       INSERT INTO room_closures (id, room_id, starts, ends, created_at)
         VALUES ('custom', 'custom', '2026-10-07', '2026-10-08', '2026-10-06');
+      INSERT INTO user (id, name, email, created_at, updated_at)
+        VALUES ('custom', 'Staff', 'staff@example.com', 0, 0);
+      INSERT INTO coupons (id, code, source_reservation_id, value_cents, balance_cents, issued_at, expires_on, account_id)
+        VALUES ('custom', 'CUSTOMCODE', 'reservation-arrival', 5000, 2000, '2026-10-06', '2027-10-06', 'custom');
+      INSERT INTO coupon_movements (id, coupon_id, reservation_id, kind, amount_cents, recorded_at, recorded_on, account_id)
+        VALUES ('custom', 'custom', 'custom', 'redeem', 3000, '2026-10-06', '2026-10-06', 'custom');
     `);
     expect(snapshot()).not.toEqual(baseline);
     db.exec(sql);

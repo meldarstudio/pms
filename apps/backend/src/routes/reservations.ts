@@ -27,6 +27,7 @@ import { sendCulqiRefunds } from "../culqi-refunds";
 import { getDb } from "../db";
 import {
   cancellationWaivers,
+  couponMovements,
   payments,
   guests,
   refunds,
@@ -43,6 +44,7 @@ import { reservationDetail } from "../load";
 import { holdsInventory } from "../lib/statuses";
 import {
   cancellationsFor,
+  couponsFor,
   createWorkflow,
   execute,
   previewCreate,
@@ -52,6 +54,7 @@ import {
 } from "../workflow";
 import { cancellationFields } from "../lib/cancellation";
 import { presentRefunds } from "../lib/refunds";
+import { couponFields } from "../lib/coupons";
 import { chunks } from "../lib/chunks";
 import { presentNight, presentReservation } from "../present";
 import { bill, reservationBill, roomCharges } from "../lib/workflow-billing";
@@ -138,6 +141,21 @@ reservationRoutes.get("/", validate("query", reservationListQuerySchema), async 
       ), 0)`
         : sql<number>`0`
       ).as("list_refunded_cents"),
+      couponIssuedCents: (needsBalance
+        ? sql<number>`coalesce((
+        select sum(${couponMovements.amountCents}) from ${couponMovements}
+        where ${couponMovements.reservationId} = ${reservations.id} and ${couponMovements.kind} = 'issue'
+      ), 0)`
+        : sql<number>`0`
+      ).as("list_coupon_issued_cents"),
+      couponAppliedCents: (needsBalance
+        ? sql<number>`coalesce((
+        select sum(case ${couponMovements.kind} when 'redeem' then ${couponMovements.amountCents}
+          when 'return' then -${couponMovements.amountCents} else 0 end) from ${couponMovements}
+        where ${couponMovements.reservationId} = ${reservations.id}
+      ), 0)`
+        : sql<number>`0`
+      ).as("list_coupon_applied_cents"),
       cancellationChargeCents: (needsBalance
         ? sql<number>`coalesce((
         select ${reservationCancellations.policyChargeCents} - coalesce((
@@ -176,14 +194,18 @@ reservationRoutes.get("/", validate("query", reservationListQuerySchema), async 
   if (needsBalance) {
     const balanced = matches
       .map((row) => {
-        const { reservation, subtotalCents, paidCents, refundedCents, cancellationChargeCents } =
-          row;
+        const { reservation, subtotalCents, paidCents, cancellationChargeCents, ...money } = row;
         const released = !holdsInventory(reservation.status);
         const { balanceCents } = bill(
           released ? cancellationChargeCents : subtotalCents,
           [{ amountCents: paidCents }],
           reservation.discountCents,
-          { released, refundedCents },
+          {
+            released,
+            refundedCents: money.refundedCents,
+            couponIssuedCents: money.couponIssuedCents,
+            couponAppliedCents: money.couponAppliedCents,
+          },
         );
         return { ...row, balanceCents };
       })
@@ -208,22 +230,27 @@ reservationRoutes.get("/", validate("query", reservationListQuerySchema), async 
     q.paginated ? { rows, total, limit: q.limit ?? 50, offset: q.offset ?? 0 } : rows;
   if (!rows.length) return c.json(response([]));
   const ids = rows.map((r) => r.reservation.id);
-  const [lines, paymentRows, types, roomRows, cancellationRows, refundRows] = await Promise.all([
-    Promise.all(
-      chunks(ids, 80).map((ids) =>
-        db.select().from(reservationRooms).where(inArray(reservationRooms.reservationId, ids)),
-      ),
-    ).then((r) => r.flat()),
-    Promise.all(
-      chunks(ids, 80).map((ids) =>
-        db.select().from(payments).where(inArray(payments.reservationId, ids)),
-      ),
-    ).then((r) => r.flat()),
-    db.select().from(roomTypes),
-    db.select().from(rooms),
-    Promise.all(chunks(ids, 80).map((ids) => cancellationsFor(db, ids))).then((r) => r.flat()),
-    Promise.all(chunks(ids, 80).map((ids) => refundsFor(db, ids))).then((r) => r.flat()),
-  ]);
+  const [lines, paymentRows, types, roomRows, cancellationRows, refundRows, couponRows] =
+    await Promise.all([
+      Promise.all(
+        chunks(ids, 80).map((ids) =>
+          db.select().from(reservationRooms).where(inArray(reservationRooms.reservationId, ids)),
+        ),
+      ).then((r) => r.flat()),
+      Promise.all(
+        chunks(ids, 80).map((ids) =>
+          db.select().from(payments).where(inArray(payments.reservationId, ids)),
+        ),
+      ).then((r) => r.flat()),
+      db.select().from(roomTypes),
+      db.select().from(rooms),
+      Promise.all(chunks(ids, 80).map((ids) => cancellationsFor(db, ids))).then((r) => r.flat()),
+      Promise.all(chunks(ids, 80).map((ids) => refundsFor(db, ids))).then((r) => r.flat()),
+      Promise.all(chunks(ids, 40).map((ids) => couponsFor(db, ids))).then((r) => ({
+        coupons: r.flatMap((chunk) => chunk.coupons),
+        movements: r.flatMap((chunk) => chunk.movements),
+      })),
+    ]);
   const nights = (
     await Promise.all(
       chunks(
@@ -250,6 +277,10 @@ reservationRoutes.get("/", validate("query", reservationListQuerySchema), async 
           payments: paymentRows.filter((payment) => payment.reservationId === reservation.id),
           cancellations: cancellationRows.filter((row) => row.reservationId === reservation.id),
           refunds: refundRows.filter((row) => row.reservationId === reservation.id),
+          coupons: couponRows.coupons,
+          couponMovements: couponRows.movements.filter(
+            (row) => row.reservationId === reservation.id,
+          ),
           types,
           roomRows,
           currency: currency(c),
@@ -317,6 +348,11 @@ reservationRoutes.post("/:id/preview", validate("json", workflowCommandSchema), 
       })),
       payments: result.state.payments,
       refunds: presentRefunds(result.state.refunds),
+      ...couponFields(
+        result.state.reservation.id,
+        result.state.coupons,
+        result.state.couponMovements,
+      ),
     },
   });
 });

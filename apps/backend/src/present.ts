@@ -12,6 +12,7 @@ import { cancellationFields, type Cancellation } from "./lib/cancellation";
 import { nightsBetween } from "./lib/dates";
 import { acceptedTerms } from "./lib/rate-plans";
 import { presentRefunds, type Refund } from "./lib/refunds";
+import { couponFields, type Coupon, type CouponMovement } from "./lib/coupons";
 import { holdsInventory } from "./lib/statuses";
 import { reservationBill, roomCharges } from "./lib/workflow-billing";
 
@@ -57,6 +58,8 @@ export function presentReservation(input: {
   stayingGuests?: (typeof reservationGuests.$inferSelect)[];
   cancellations: Cancellation[];
   refunds: Refund[];
+  coupons: Coupon[];
+  couponMovements: CouponMovement[];
 }) {
   const typeById = new Map(input.types.map((type) => [type.id, type]));
   const roomById = new Map(input.roomRows.map((room) => [room.id, room]));
@@ -93,6 +96,7 @@ export function presentReservation(input: {
     paymentSchedule: ratePlan.paymentSchedule,
     cancellationChargeCents: cancellation.cancellation?.finalChargeCents ?? 0,
     refunds: input.refunds,
+    couponMovements: input.couponMovements,
   });
 
   return {
@@ -118,5 +122,6 @@ export function presentReservation(input: {
     rooms: roomsOut,
     payments: input.payments,
     refunds: presentRefunds(input.refunds),
+    ...couponFields(input.reservation.id, input.coupons, input.couponMovements),
   };
 }

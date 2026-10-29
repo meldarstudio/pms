@@ -9,7 +9,7 @@ before changes.
 
 - [Authentication](../../docs/authentication.md) for sessions, CORS, and authorized credential changes.
 - [Property calendar](../../docs/property-calendar.md) for dates, timezone metadata, and transactional room-type guards.
-- [Reservations](../../docs/reservations.md) for commands, previews, online quotes, Culqi card payments and refunds, reads, concurrency, and save-time validation.
+- [Reservations](../../docs/reservations.md) for commands, previews, online quotes, Culqi card payments and refunds, future-stay coupons, reads, concurrency, and save-time validation.
 - [Property setup](../../docs/property-setup.md) for atomic room numbering, ownership, and occupancy limits.
 - [Calendar and assignment](../../docs/calendar.md) for the calendar read and assignment backlog.
 - [Housekeeping](../../docs/housekeeping.md) for room statuses and the property-date room list.

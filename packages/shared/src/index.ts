@@ -219,6 +219,10 @@ export const stayingGuestSchema = contactSchema.extend({
   id: z.uuid(),
   reservationRoomId: z.string().min(1).nullable(),
 });
+export const couponCodeSchema = z
+  .string()
+  .transform((code) => code.replace(/[\s-]/g, "").toUpperCase())
+  .pipe(z.string().min(1, "coupon not found").max(40, "coupon not found"));
 export const workflowActionSchema = z.discriminatedUnion("type", [
   z.object({ type: z.literal("contact"), contact: contactSchema }).strict(),
   z
@@ -291,6 +295,16 @@ export const workflowActionSchema = z.discriminatedUnion("type", [
     .strict(),
   z
     .object({ type: z.literal("fail-refund"), refundId: z.string().min(1), reason: text(2000) })
+    .strict(),
+  z
+    .object({
+      type: z.literal("issue-coupon"),
+      amountCents: cents,
+      guestAccepted: z.literal(true, { error: "guest acceptance is required" }),
+    })
+    .strict(),
+  z
+    .object({ type: z.literal("redeem-coupon"), code: couponCodeSchema, amountCents: cents })
     .strict(),
   z.object({ type: z.literal("notes"), notes: z.string().max(2000) }).strict(),
 ]);

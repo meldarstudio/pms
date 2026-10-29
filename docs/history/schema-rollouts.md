@@ -10,6 +10,18 @@ checkout. Starting before `0002` with a checkout containing `0003` requires
 reviewing both sets of constraints together. Do not treat either section as a
 command to apply only one migration.
 
+## Future-stay coupons, migration 0014
+
+`0014_coupons.sql` creates `coupons` and `coupon_movements`. It alters no existing
+row or trigger, and existing reservations have no coupon activity. Apply it before
+deploying the backend that reads those tables: the new Worker's reservation reads,
+commands, and `GET /payments` fail without them. The previous Worker runs against
+the additive schema and ignores the tables. The portal only gains types, so its
+order does not matter. For recovery, keep the tables and applied history. Once a
+coupon is issued or redeemed, do not roll the backend back: the previous Worker
+ignores coupon movements, so value converted to a coupon would read as refund due
+again and redeemed value as owed.
+
 ## Culqi payments, migration 0013
 
 `0013_culqi_payments.sql` creates `payment_attempts` and adds nullable

@@ -5,6 +5,8 @@ const tables = [
   "financial_entries",
   "reservation_guests",
   "reservation_room_nights",
+  "coupon_movements",
+  "coupons",
   "refunds",
   "payment_attempts",
   "payments",

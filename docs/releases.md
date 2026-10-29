@@ -215,6 +215,9 @@ per-minute cron trigger. Taking Culqi payments or refunds additionally needs a
 separately authorized `CULQI_SECRET_KEY` Worker secret; without it, Culqi calls
 fail with `Culqi is not configured`, and the cron does no Culqi work. See
 [the 0013 rollout notes](history/schema-rollouts.md#culqi-payments-migration-0013).
+The first release with [future-stay coupons](reservations.md#future-stay-coupons)
+needs migration `0014_coupons` applied first; see
+[the 0014 rollout notes](history/schema-rollouts.md#future-stay-coupons-migration-0014).
 The one-time move to accounts follows the
 [authentication cutover](authentication.md#cutover-from-the-shared-password).
 Migration authorization remains separate. Token permissions require authorized
