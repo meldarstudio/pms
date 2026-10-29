@@ -10,6 +10,64 @@ checkout. Starting before `0002` with a checkout containing `0003` requires
 reviewing both sets of constraints together. Do not treat either section as a
 command to apply only one migration.
 
+## Culqi payments, migration 0013
+
+`0013_culqi_payments.sql` creates `payment_attempts` and adds nullable
+`culqi_charge_id` to `payments` and `refunds` and `culqi_refund_id` to `refunds`.
+Existing payments and refunds read as manual records. It alters no existing row or
+trigger. Apply it before deploying the backend that reads those columns: the new
+Worker's reservation reads and its per-minute cron fail without them. The previous
+Worker runs against the additive schema, and its inserts leave the Culqi columns null.
+
+No route creates payment attempts, and the portal sends no `request-culqi-refund`,
+so the release needs no `CULQI_SECRET_KEY` while Culqi stays unused. Without the
+secret the cron only expires stale reviews, a no-op with no attempts. Deliver the
+portal after the backend. For recovery, keep the table, columns, and applied
+history and roll application builds back together; rolling back also stops the cron.
+
+## Online quotes, migration 0012
+
+`0012_quotes.sql` creates `quotes` and adds a nullable, uniquely indexed
+`reservations.quote_id` referencing it. Existing reservations have no quote. It
+alters no existing row or trigger. Apply it before deploying the backend that reads
+the column: the new Worker's reservation reads fail without it. The previous Worker
+runs against the additive schema, and its inserts leave `quote_id` null. No route
+creates quotes yet. For recovery, keep the table, column, and applied history.
+
+## Free-cancellation days, migration 0011
+
+`0011_free_cancellation_days.sql` adds `reservations.free_cancellation_days` with
+default 2, then rewrites existing rows: `free_cancellation_days` becomes
+`free_cancellation_hours / 24`, and each recorded `reservation_cancellations.free_until`
+instant is cut to its date. Before `0011` the only accepted terms were 48 hours
+(Flexible) or null, so every converted value is exact; deadlines were 15:00 in the
+property timezone, so their UTC date is the property date. When `0006` through
+`0011` apply together, no cancellation records exist yet and the second update
+changes nothing. It changes no trigger and keeps `free_cancellation_hours` and
+`check_in_time`. The new Worker still writes them, so a previous Worker reads its
+reservations correctly.
+
+Apply it before deploying the backend that reads the column: the new Worker's
+reservation reads fail without it. The previous Worker runs against the schema, and
+its inserts receive 48 hours and 2 days. For recovery, keep the column, converted
+values, and applied history and roll application builds back together.
+
+## Night price breakdown, migration 0010
+
+`0010_night_price_breakdown.sql` adds `adjustment_cents` and `discount_cents`
+(default 0) to `reservation_room_nights`, so every existing night reads as its
+ordinary rate with no adjustment or discount. It adds insert and update triggers
+rejecting a negative `price_cents` or `discount_cents` as `invalid night price`,
+and changes no existing row or business-rule trigger. Saved rows are not
+revalidated. Apply it before deploying the backend that reads those columns: the
+new Worker's reservation reads fail without them. The previous Worker runs against
+the schema. Its request schemas already reject negative prices, and its night inserts
+receive zero defaults.
+
+For recovery, keep the columns, triggers, and applied history and roll application
+builds back together. A previous Worker that reprices a Non-refundable night
+rewrites `price_cents` without its adjustment and leaves the stored adjustment stale.
+
 ## Refunds, migration 0009
 
 `0009_refunds.sql` creates `refunds` with checks that keep each requested,
