@@ -14,7 +14,15 @@ import type { CommandContext, State, Stay } from "./workflow";
 
 type Night = Stay["nights"][number];
 type Action<K extends WorkflowAction["type"]> = Extract<WorkflowAction, { type: K }>;
-type RefundAction = Action<"request-refund" | "complete-refund" | "fail-refund">;
+type RefundAction = Action<
+  "request-refund" | "request-culqi-refund" | "complete-refund" | "fail-refund"
+>;
+const requestsRefund = (
+  action: RefundAction,
+): action is Action<"request-refund" | "request-culqi-refund"> =>
+  action.type === "request-refund" || action.type === "request-culqi-refund";
+/** Culqi refuses refunds under S/1.00. */
+const CULQI_MIN_REFUND_CENTS = 100;
 
 /** Everything one `plan` call shares between its handlers and finalization steps. */
 type PlanContext = CommandContext & {
@@ -103,6 +111,7 @@ const newPayment = (
     reference: input.reference?.trim().toUpperCase() || null,
     notes: input.notes ?? null,
     createdAt: now,
+    culqiChargeId: null,
   };
 };
 
@@ -111,10 +120,12 @@ function changePayment(action: Action<"edit-payment" | "delete-payment">, ctx: P
   const index = state.payments.findIndex((payment) => payment.id === action.paymentId);
   if (index === -1) fail("payment not found");
   const payment = state.payments[index];
+  // Culqi already holds the charge; staff refund it instead.
+  if (payment.culqiChargeId) fail("Culqi payment cannot be changed");
   // Refund requests apply after the loop, so check the ones queued earlier in this command too.
   if (
     state.refunds.some((refund) => refund.paymentId === payment.id) ||
-    refundActions.some((a) => a.type === "request-refund" && a.paymentId === payment.id)
+    refundActions.some((a) => requestsRefund(a) && a.paymentId === payment.id)
   )
     fail("payment with refunds cannot be changed");
   if (action.type === "delete-payment") {
@@ -166,6 +177,8 @@ const handlers: Handlers = {
   },
   "set-status"(action, { state, opened, account, now }) {
     const from = state.reservation.status;
+    // An Unfulfilled reservation never had a room; staff refund it instead.
+    if (from === "unfulfilled") fail("an unfulfilled reservation cannot change status");
     // A guest who arrived is not a no-show; a no-show is restored before it is cancelled.
     if (action.status === "no_show" && from !== "confirmed" && from !== "no_show")
       fail("only a confirmed reservation can be marked no-show");
@@ -260,6 +273,7 @@ const handlers: Handlers = {
     waivers.push(action);
   },
   "request-refund": queueRefund,
+  "request-culqi-refund": queueRefund,
   "complete-refund": queueRefund,
   "fail-refund": queueRefund,
 };
@@ -311,16 +325,33 @@ function applyWaivers({ state, waivers, account, now }: PlanContext) {
 
 function applyRefunds({ state, refundActions, account, today, now }: PlanContext) {
   for (const action of refundActions) {
-    if (action.type === "request-refund") {
-      if (!state.payments.some((payment) => payment.id === action.paymentId))
+    if (requestsRefund(action)) {
+      const payment =
+        state.payments.find((payment) => payment.id === action.paymentId) ??
         fail("payment not found");
+      const culqi = action.type === "request-culqi-refund";
+      if (culqi) {
+        if (!payment.culqiChargeId) fail("payment is not a Culqi payment");
+        if (action.amountCents < CULQI_MIN_REFUND_CENTS)
+          fail("Culqi refund must be at least 100 cents");
+        // Culqi has no refund idempotency: one open request per charge guards double clicks.
+        if (
+          state.refunds.some(
+            (refund) =>
+              refund.paymentId === payment.id &&
+              refund.culqiChargeId &&
+              refund.status === "requested",
+          )
+        )
+          fail("a Culqi refund for this payment is pending");
+      }
       state.refunds.push({
         id: crypto.randomUUID(),
         reservationId: state.reservation.id,
         paymentId: action.paymentId,
         amountCents: action.amountCents,
-        method: action.method,
-        reference: action.reference ?? null,
+        method: culqi ? "card" : action.method,
+        reference: culqi ? null : (action.reference ?? null),
         reason: action.reason,
         status: "requested",
         requestedAt: now,
@@ -332,6 +363,8 @@ function applyRefunds({ state, refundActions, account, today, now }: PlanContext
         refundDate: null,
         completionReference: null,
         failureReason: null,
+        culqiChargeId: culqi ? payment.culqiChargeId : null,
+        culqiRefundId: null,
       });
       continue;
     }
@@ -384,7 +417,7 @@ function checkRefundLimits(
   const requestedCents = refundCents(state.refunds, "requested");
   if (!resolvesOnly && requestedCents > 0 && -totals(state).balanceCents < requestedCents)
     fail(
-      refundActions.some((action) => action.type === "request-refund")
+      refundActions.some(requestsRefund)
         ? "refund exceeds the refund due"
         : "change leaves requested refunds above the refund due",
     );

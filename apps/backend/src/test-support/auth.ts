@@ -1,6 +1,6 @@
 import type { DatabaseSync } from "node:sqlite";
 import { hashPassword } from "better-auth/crypto";
-import app from "../index";
+import { app } from "../index";
 import type { Env } from "../env";
 import { accountSql, type AccountRole } from "../account-sql";
 

@@ -25,5 +25,7 @@ export function presentRefunds(rows: Refund[]) {
     refundDate: refund.refundDate,
     completionReference: refund.completionReference,
     failureReason: refund.failureReason,
+    culqiChargeId: refund.culqiChargeId,
+    culqiRefundId: refund.culqiRefundId,
   }));
 }

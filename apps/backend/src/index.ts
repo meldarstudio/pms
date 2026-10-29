@@ -16,10 +16,12 @@ import { roomTypeRoutes } from "./routes/room-types";
 import { roomClosureRoutes } from "./routes/room-closures";
 import { roomRoutes } from "./routes/rooms";
 import { setupRoutes } from "./routes/setup";
+import { getDb } from "./db";
+import { paymentContext, reconcilePaymentAttempts } from "./payment-attempts";
 import { requireSession } from "./session";
 import { propertyCalendar } from "./property-calendar";
 
-const app = new Hono<Env>();
+export const app = new Hono<Env>();
 
 app.use(
   "*",
@@ -70,4 +72,10 @@ app.route("/reservations", reservationRoutes);
 app.route("/payments", paymentRoutes);
 app.route("/rate-plans", ratePlanRoutes);
 
-export default app;
+export default {
+  fetch: app.fetch,
+  // Every minute: resolve Unknown Culqi charges and retry unsaved paid quotes.
+  scheduled(_controller, env, ctx) {
+    ctx.waitUntil(reconcilePaymentAttempts(getDb(env.DB), paymentContext(env)));
+  },
+} satisfies ExportedHandler<Env["Bindings"]>;

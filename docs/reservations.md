@@ -102,7 +102,8 @@ less the capped discount.
 A [quote](../GLOSSARY.md#reservation-bill) fixes an online guest's price for 10
 minutes without holding room inventory; availability is decided when a reservation
 is saved from it. [quotes.ts](../apps/backend/src/quotes.ts) owns the behavior. No
-route exposes it yet: the public checkout route and the card charge build on it.
+route exposes it yet: the public checkout route (#105) builds on it and on
+[online card payments](#online-card-payments).
 
 `createQuote` takes the shared `quoteCreateSchema`: one room type, adults, children,
 stay dates and a required rate plan. Clients cannot send prices, flat nightly rates,
@@ -119,12 +120,89 @@ reservations, closures or setup changes. Quotes reference no setup rows.
 
 `saveQuote` saves a confirmed reservation with source `online`, the guest as booking
 contact, one unassigned room, and the quoted nights and terms, even if rates or plan
-definitions changed since. It goes through the existing room-type capacity
-triggers, so a full room type fails with `no availability`. It does not check
+definitions changed since, plus the payment that paid for it when one is given, in
+the same batch. It goes through the existing room-type capacity triggers, so a full
+room type fails with `no availability`; a save as `unfulfilled` holds no inventory
+and so never does. It does not check
 expiry: the caller decides whether an expired quote may still be saved, because a
 charge may already have succeeded. `reservations.quote_id` is unique, so one quote
 saves at most one reservation; a repeated or concurrent save returns the first
 reservation's ID, even with different guest details.
+
+## Online card payments
+
+[payment-attempts.ts](../apps/backend/src/payment-attempts.ts) charges an online
+guest's card for a quote through Culqi with 3DS, following the
+[#113 resolution](https://github.com/meldarstudio/pms/issues/113) and the sandbox
+evidence in #114. Cards only: no Yape and no webhooks. No route exposes it yet; the
+public checkout route and waiting page are #105 and #106, and emails are #107. The
+Culqi API v2 client is [culqi.ts](../apps/backend/src/culqi.ts); the key is the
+`CULQI_SECRET_KEY` secret (`sk_test_` in the ignored `.dev.vars` locally) and is never
+logged.
+
+`startPaymentAttempt` takes the shared `paymentAttemptCreateSchema`: the quote ID, a
+Culqi card token (`sourceId`), an optional Culqi3DS `deviceFingerprint`, and the
+booking contact with a required email. The client never sends an amount: the server
+charges the quote's `requiredInitialPaymentCents` in `CURRENCY`. It refuses, before
+calling Culqi, a missing quote (`quote not found`), an expired one
+(`quote has expired`), a missing key (`Culqi is not configured`, which also pauses
+provider lookups and paid reservation saves), a phone the reservation could not be saved with, a quote already paid (`quote is already paid`), and a quote with an Unknown attempt
+(`a payment for this quote is still being confirmed`). A new card replaces an attempt
+waiting for 3DS. Each attempt is a `payment_attempts` row saved as `unknown` before
+its single charge call, which always sends `capture: true`, the attempt ID as
+`metadata.attempt_id` and the `x-api-version: 2` header. For Culqi's fraud checks it
+also sends `antifraud_details`: the contact's first word as `first_name`, the rest as
+`last_name`, the phone's digits as `phone_number` and the fingerprint, leaving out a
+value outside Culqi's limits (names 2–50 characters, phone 5–15 digits) rather than
+risk a refusal. A partial unique index lets one quote have only one open or
+paid attempt, so concurrent starts cannot both charge.
+
+Culqi's reply decides the attempt's `status`, and success is only a `201` charge with
+outcome code `AUT0000` for the attempt's amount and currency; `paid` and `capture` are
+ignored, as is any meaning of a `401`.
+
+- `review`: a `200` `REVIEW` asks for 3DS. `authenticatePaymentAttempt` takes the
+  Culqi3DS result (`paymentAuthenticationSchema`) and calls Culqi again for the same
+  attempt with the same token and antifraud details, refusing an expired quote and an
+  attempt not waiting for authentication
+  (`payment is not waiting for authentication`). When the quote expires, polling,
+  an authentication request or the scheduled Worker marks a remaining review
+  `failed` with failure code `authentication_expired` and message `quote has expired`.
+  This also runs without a Culqi key and makes no provider call. A continuation
+  already sent to Culqi is `unknown`, not `review`, and remains eligible for charge lookup.
+- `failed`: a `400` Culqi error is a clear decline, with its code and Culqi's
+  `user_message` as `failure`. An expired 3DS review also fails as described above.
+  The guest may try another card while the quote is valid; an expired quote requires a new quote.
+- `unknown`: a timeout, network error, `5xx`, `429` or any other reply may still have
+  charged. The API never charges a new token automatically. It looks the charge up by
+  listing charges for the amount and email since the call (less a minute), matching
+  `metadata.attempt_id` itself because Culqi ignores metadata filters: about 10
+  seconds after the lost response (`lookUpLater` with `waitUntil`), on each
+  `paymentAttemptStatus` poll, and from the scheduled Worker every minute, for 48
+  hours after the call. A denied listing does not resolve it, because a sale shown as
+  rejected can still have charged. After 2 minutes `delayed` tells the waiting page
+  to say the outcome arrives by email. After 48 hours the attempt stays Unknown for
+  staff to check in CulqiPanel.
+- `succeeded`, then `saved`: the charge is recorded on the attempt, then
+  `saveQuote` saves the reservation and a `card` payment with the Culqi charge ID as
+  `culqiChargeId` and `reference`, dated the property's day of the charge call. The reservation is
+  saved as Unfulfilled instead when check-in is before today, the same email (any
+  case) already has an overlapping inventory-holding online reservation, or the
+  room type has `no availability`. A failed save leaves the attempt `succeeded`;
+  polls and the scheduled Worker retry it, and the unique quote and charge IDs keep
+  it to one reservation and one payment.
+
+`paymentAttemptStatus` returns the attempt's `id`, `quoteId`, `amountCents`,
+`currency`, `status`, `delayed`, `failure`, and the saved `reservation` (`id`, `code`,
+`status`) or null. The Worker's `scheduled` handler runs `reconcilePaymentAttempts`;
+its `* * * * *` cron trigger in `wrangler.jsonc` takes effect only with a separately
+authorized deployment.
+
+`pnpm culqi:sandbox` runs the same flows against the Culqi sandbox: a captured charge
+that keeps its antifraud details, the attempt-ID lookup, token reuse, an optional decline (`CULQI_DECLINE_CARD`) and a
+S/1.00 refund read back from the charge. It reads `CULQI_SECRET_KEY` and
+`CULQI_PUBLIC_KEY` from the environment or `.dev.vars` and refuses anything but
+`sk_test_`/`pk_test_` keys. 3DS needs a browser, so it reports a `REVIEW` and stops.
 
 ## Stay dates and lifecycle
 
@@ -148,6 +226,12 @@ releases the rooms, keeps the nights and payments, and replaces the stay charges
 with a [policy charge](#cancellation-charges). The status, `statuses` filter,
 and the charge record's `outcome` distinguish them; see the
 [calendar](calendar.md) for which stays it shows.
+
+`unfulfilled` ("Sin disponibilidad") is set only by an
+[online card payment](#online-card-payments) whose stay can no longer happen. It
+holds no inventory and has no cancellation charge, so its total is zero, the payment
+is kept, and the whole payment is refund due, listed by `refund=due`. Staff cannot
+set or leave it (`an unfulfilled reservation cannot change status`); they refund it.
 
 ## Cancellation charges
 
@@ -217,12 +301,15 @@ return `paidCents` (gross received), `refundedCents` (completed), and
 `paidCents - refundedCents`. Requested and failed refunds change neither the
 balance nor refund due.
 
-Staff return money manually through the actual channel; the API never calls Culqi
-or refunds automatically. Three workflow actions record it:
+Nothing refunds automatically. Staff return money manually through the actual
+channel, or through Culqi for a Culqi card payment. Four workflow actions record it:
 
 - `request-refund` (`paymentId`, `amountCents`, `method`, optional `reference`,
   `reason`) records a requested refund against a received payment with the request
   time and authenticated account.
+- `request-culqi-refund` (`paymentId`, `amountCents`, `reason`) is "Reembolsar por
+  Culqi": a `card` refund requested against a payment with a Culqi charge, sent to
+  Culqi as described below.
 - `complete-refund` (`refundId`, `refundDate`, `reference`) records that the money
   was returned on a property date no later than today, with the channel's
   reference.
@@ -244,12 +331,39 @@ refunds and an idempotent retry replays its receipt; neither can exceed the limi
 Restoring and requesting a refund in one command is refused like any restoration
 with refunds.
 A payment with any refund cannot be edited or deleted (`payment with refunds cannot
-be changed`), including a refund requested earlier in the same command.
+be changed`), including a refund requested earlier in the same command. A payment
+with a Culqi charge ID is never edited or deleted (`Culqi payment cannot be
+changed`).
+
+### Culqi refunds
+
+`request-culqi-refund` applies the limits above plus Culqi's: the payment must have a
+Culqi charge (`payment is not a Culqi payment`), the amount must be at least 100
+cents (`Culqi refund must be at least 100 cents`), and the payment may have no other
+requested Culqi refund, including one earlier in the same command (`a Culqi refund
+for this payment is pending`). Culqi has no refund idempotency, so this guards double
+clicks. Without `CULQI_SECRET_KEY` the command fails with `Culqi is not configured`
+before anything is saved.
+
+The refund is saved as requested, with the payment's `culqiChargeId`, in the
+command's batch. After that batch commits, `POST /reservations/:id/commands` makes a
+single Culqi refund call for it; previews and replayed receipts make none. A `201`
+with status `completa` completes the refund with Culqi's refund ID as
+`completionReference` and `culqiRefundId`, the property's today as `refundDate`, and
+the requesting account as resolver. Any other result, including a lost response, reads
+the charge: if its `amount_refunded` equals the charge's other completed refunds
+plus this one, the refund completes with the charge ID as `completionReference`.
+Otherwise it stays requested, shown as "Reembolso pendiente", and staff check
+CulqiPanel and record the outcome with `complete-refund` or `fail-refund`. The API
+never retries a Culqi refund. Completing bumps the reservation revision, so a
+command planned against the requested refund re-plans. The command response is the
+reservation after the Culqi call.
 
 Reads and previews return `refunds`, every request oldest first, with `status`
 (`requested`, `completed`, or `failed`), `requestedAt`, `requestedBy`,
-`resolvedAt`, `resolvedBy`, `refundDate`, `completionReference`, and
-`failureReason`.
+`resolvedAt`, `resolvedBy`, `refundDate`, `completionReference`, `failureReason`,
+`culqiChargeId` (set for Culqi refunds), and `culqiRefundId` (Culqi's ID, when its
+response returned one).
 
 `GET /payments?from&to` keeps `totalCents` and `payments` as the gross payments
 received by payment date. It adds `refundedCents` and `refunds`, the completed
@@ -270,12 +384,14 @@ Optional query dimensions combine with AND:
 - `checkIn` and `checkOut` match exact business dates. Legacy `from`/`to` retain
   calendar overlap semantics: checkout is after `from`, check-in is on or before `to`.
 - `status` retains the single-status filter. `statuses` accepts comma-separated
-  `confirmed`, `checked_in`, `checked_out`, `cancelled`, and `no_show` values,
+  `confirmed`, `checked_in`, `checked_out`, `cancelled`, `no_show`, and `unfulfilled`
+  values,
   combined with OR.
   Omit both for unrestricted statuses; when both are sent, both restrictions apply.
 - `balance=outstanding|settled|credit` selects positive, zero, or negative signed
   balances independently of status. A cancelled or No-show reservation's charges are
-  its final charge, so payments beyond it are credit. The filter applies `bill()`,
+  its final charge, and an Unfulfilled one charges nothing, so payments beyond it are
+  credit. The filter applies `bill()`,
   the billing policy that `reservationBill` uses for detail, list, and workflow reads.
   Completed refunds reduce the money counted against charges.
 - `refund=due` selects reservations with refund due; `refund=requested` selects

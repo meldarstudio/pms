@@ -10,5 +10,7 @@ export type Env = {
     SESSION_SECRET: string;
     ALLOWED_ORIGINS: string;
     LOGIN_LIMITER: RateLimit;
+    /** A Culqi secret key: `sk_test_` locally, a Cloudflare secret in production. */
+    CULQI_SECRET_KEY?: string;
   };
 };

@@ -28,6 +28,8 @@
       "migrations_dir": "drizzle",
     },
   ],
+  // Resolves Culqi payment attempts whose response was lost and retries unsaved paid quotes.
+  "triggers": { "crons": ["* * * * *"] },
   "observability": {
     "logs": {
       "enabled": true,

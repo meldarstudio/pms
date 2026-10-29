@@ -146,14 +146,16 @@ export const calendarQuerySchema = z.object({
   to: dateSchema,
 });
 
-// Cancelled and No-show release inventory; the others hold it.
-const reservationStatusSchema = z.enum([
+// Statuses staff can set. Cancelled and No-show release inventory; the others hold it.
+const staffStatusSchema = z.enum([
   "confirmed",
   "checked_in",
   "checked_out",
   "cancelled",
   "no_show",
 ]);
+// Unfulfilled is set only when a paid online quote cannot become a stay; it holds no inventory.
+const reservationStatusSchema = z.enum([...staffStatusSchema.options, "unfulfilled"]);
 
 export const reservationListQuerySchema = listQuerySchema.extend({
   paginated: z
@@ -245,7 +247,7 @@ export const workflowActionSchema = z.discriminatedUnion("type", [
   z
     .object({
       type: z.literal("set-status"),
-      status: reservationStatusSchema,
+      status: staffStatusSchema,
       reason: z.string().trim().max(2000).optional(),
     })
     .strict(),
@@ -273,6 +275,15 @@ export const workflowActionSchema = z.discriminatedUnion("type", [
       amountCents: cents,
       method: paymentInputSchema.shape.method,
       reference: text(200).toUpperCase().optional(),
+      reason: text(2000),
+    })
+    .strict(),
+  // "Reembolsar por Culqi": refunds a Culqi card payment through the Culqi API.
+  z
+    .object({
+      type: z.literal("request-culqi-refund"),
+      paymentId: z.string().min(1),
+      amountCents: cents,
       reason: text(2000),
     })
     .strict(),
@@ -331,3 +342,24 @@ export type WorkflowCommand = z.infer<typeof workflowCommandSchema>;
 export type WorkflowCreate = z.infer<typeof workflowCreateSchema>;
 export type WorkflowCreatePreview = z.infer<typeof workflowCreatePreviewSchema>;
 export type QuoteCreate = z.infer<typeof quoteCreateSchema>;
+/** An online guest's card payment for a quote: a Culqi token, never an amount. */
+export const paymentAttemptCreateSchema = z
+  .object({
+    quoteId: z.uuid(),
+    sourceId: z.string().trim().min(1).max(200),
+    deviceFingerprint: z.string().trim().min(1).max(200).optional(),
+    guest: guestFields.omit({ notes: true }).extend({ email: guestFields.shape.email.unwrap() }),
+  })
+  .strict();
+/** The Culqi3DS parameters that continue an attempt Culqi sent to review. */
+export const paymentAuthenticationSchema = z
+  .object({
+    eci: z.string().max(10),
+    xid: z.string().max(200).optional(),
+    cavv: z.string().max(200),
+    protocolVersion: z.string().max(20),
+    directoryServerTransactionId: z.string().max(200),
+  })
+  .strict();
+export type PaymentAttemptCreate = z.infer<typeof paymentAttemptCreateSchema>;
+export type PaymentAuthentication = z.infer<typeof paymentAuthenticationSchema>;

@@ -14,7 +14,8 @@
     "db:seed:local": "wrangler d1 execute DB --local --file=./seed.sql",
     "db:reset:local": "node scripts/seed-reset.mjs",
     "auth:account": "node scripts/account.mjs",
-    "auth:secret": "node scripts/session-secret.mjs"
+    "auth:secret": "node scripts/session-secret.mjs",
+    "culqi:sandbox": "node scripts/culqi-sandbox.mjs"
   },
   "dependencies": {
     "@hono/zod-validator": "^0.9.1",

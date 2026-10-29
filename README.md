@@ -37,6 +37,7 @@ Run these from the repository root.
 | `pnpm exec vp test --project backend`    | Run the backend tests only                                                 |
 | `pnpm test` or `pnpm exec vp run test`   | Run the backend, then portal package test scripts                          |
 | `pnpm format`                            | Format maintained source, configuration, and documentation across the repo |
+| `pnpm culqi:sandbox`                     | Run the API's Culqi flows against the Culqi sandbox with `sk_test_` keys   |
 | `pnpm build` or `pnpm exec vp run build` | Check the repo, then build the portal                                      |
 | `pnpm exec vp -C apps/portal preview`    | Preview the portal production build                                        |
 

@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
-import app from "./index";
+import { app } from "./index";
 import type { Env } from "./env";
 import { createTestDb, type TestDb } from "./test-support/d1";
 import { ACCOUNTS, PORTAL_ORIGIN, login, loginBody, sessionCookie } from "./test-support/auth";

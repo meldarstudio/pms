@@ -3,7 +3,7 @@
 import { readFileSync } from "node:fs";
 import { DatabaseSync, type SQLInputValue } from "node:sqlite";
 import { URL } from "node:url";
-import app from "../index";
+import { app } from "../index";
 import type { Env } from "../env";
 import type { AccountRole } from "../account-sql";
 import { authEnv, PORTAL_ORIGIN, seedAccounts, signIn } from "./auth";
