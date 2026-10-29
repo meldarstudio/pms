@@ -37,8 +37,6 @@ function fixture() {
   const state = join(directory, "history.json");
   writeFileSync(log, "");
   writeFileSync(state, JSON.stringify(names.slice(0, -1)));
-  // Only the external Wrangler CLI is simulated. All wrapper code, prompts,
-  // snapshots, exports, hashes and reports execute normally in a private HOME.
   writeFileSync(
     join(bin, "pnpm"),
     `#!/usr/bin/env node
@@ -89,8 +87,6 @@ function commands(f) {
 
 async function interactive(f, approve = () => "pms-production") {
   const script = join(f.backend, "scripts/migrate-production.mjs");
-  // Python's standard-library PTY gives the real CLI a terminal on macOS and
-  // Linux, without spoofing isTTY or adding a terminal/testing dependency.
   const terminal = `
 import errno, os, pty, select, sys
 pid, fd = pty.fork()

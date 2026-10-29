@@ -19,7 +19,6 @@ import {
 } from "@/components/ui/empty";
 
 const DISMISSED_UPDATE_KEY = "manantial-dismissed-update";
-// Above the floating page action and clear of the header, whose sidebar toggle stays reachable.
 const floatingNotice =
   "fixed right-4 bottom-[max(1rem,env(safe-area-inset-bottom))] left-4 z-[100] shadow-xl sm:left-auto sm:w-80";
 
@@ -40,9 +39,7 @@ export function PwaStatus({ children }: { children: ReactNode }) {
     setDismissedUpdate(waitingWorker.scriptURL);
     try {
       window.sessionStorage.setItem(DISMISSED_UPDATE_KEY, waitingWorker.scriptURL);
-    } catch {
-      // Storage may be blocked; the notice still stays dismissed until this page closes.
-    }
+    } catch {}
   }
 
   useEffect(() => {

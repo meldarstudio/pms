@@ -146,7 +146,6 @@ export const calendarQuerySchema = z.object({
   to: dateSchema,
 });
 
-// Statuses staff can set. Cancelled and No-show release inventory; the others hold it.
 const staffStatusSchema = z.enum([
   "confirmed",
   "checked_in",
@@ -154,7 +153,6 @@ const staffStatusSchema = z.enum([
   "cancelled",
   "no_show",
 ]);
-// Unfulfilled is set only when a paid online quote cannot become a stay; it holds no inventory.
 const reservationStatusSchema = z.enum([...staffStatusSchema.options, "unfulfilled"]);
 
 export const reservationListQuerySchema = listQuerySchema.extend({
@@ -173,7 +171,6 @@ export const reservationListQuerySchema = listQuerySchema.extend({
     .pipe(z.array(reservationStatusSchema).min(1))
     .optional(),
   balance: z.enum(["outstanding", "settled", "credit"]).optional(),
-  /** `due`: money is owed back; `requested`: a refund request is unresolved. */
   refund: z.enum(["due", "requested"]).optional(),
   assignment: z.enum(["assigned", "unassigned"]).optional(),
   sort: z.enum(["checkIn", "checkOut", "guestName", "balance"]).optional(),
@@ -259,7 +256,6 @@ export const workflowActionSchema = z.discriminatedUnion("type", [
     })
     .strict(),
   z.object({ type: z.literal("delete-payment"), paymentId: z.string().min(1) }).strict(),
-  // Reduces the active cancellation charge; it is neither a payment nor a refund.
   z
     .object({
       type: z.literal("waive-cancellation-charge"),
@@ -267,7 +263,6 @@ export const workflowActionSchema = z.discriminatedUnion("type", [
       reason: text(2000),
     })
     .strict(),
-  // Refunds return received money manually through the channel staff choose.
   z
     .object({
       type: z.literal("request-refund"),
@@ -278,7 +273,6 @@ export const workflowActionSchema = z.discriminatedUnion("type", [
       reason: text(2000),
     })
     .strict(),
-  // "Reembolsar por Culqi": refunds a Culqi card payment through the Culqi API.
   z
     .object({
       type: z.literal("request-culqi-refund"),
@@ -318,11 +312,9 @@ export const workflowCreateSchema = z
     rooms: z.array(workflowRoom).min(1).max(60),
     notes: z.string().max(2000).optional(),
     discountCents: z.number().int().min(0).max(1000000000).optional(),
-    // Omitted means Flexible. Edits keep the accepted plan; no command changes it.
     ratePlan: ratePlanCodeSchema.optional(),
   })
   .strict();
-/** Prices a new reservation's rooms under a plan without validating or saving it. */
 export const workflowCreatePreviewSchema = workflowCreateSchema
   .pick({ checkIn: true, checkOut: true, discountCents: true, ratePlan: true })
   .extend({
@@ -332,7 +324,6 @@ export const workflowCreatePreviewSchema = workflowCreateSchema
       .max(60),
   })
   .strict();
-/** An online guest's request for a quote: one room, with no prices or staff terms. */
 export const quoteCreateSchema = workflowRoom
   .pick({ roomTypeId: true, adults: true, children: true })
   .extend({ checkIn: dateSchema, checkOut: dateSchema, ratePlan: ratePlanCodeSchema })
@@ -342,7 +333,6 @@ export type WorkflowCommand = z.infer<typeof workflowCommandSchema>;
 export type WorkflowCreate = z.infer<typeof workflowCreateSchema>;
 export type WorkflowCreatePreview = z.infer<typeof workflowCreatePreviewSchema>;
 export type QuoteCreate = z.infer<typeof quoteCreateSchema>;
-/** An online guest's card payment for a quote: a Culqi token, never an amount. */
 export const paymentAttemptCreateSchema = z
   .object({
     quoteId: z.uuid(),
@@ -351,7 +341,6 @@ export const paymentAttemptCreateSchema = z
     guest: guestFields.omit({ notes: true }).extend({ email: guestFields.shape.email.unwrap() }),
   })
   .strict();
-/** The Culqi3DS parameters that continue an attempt Culqi sent to review. */
 export const paymentAuthenticationSchema = z
   .object({
     eci: z.string().max(10),

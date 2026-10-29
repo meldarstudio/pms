@@ -142,13 +142,10 @@ it("is manual, serialized without cancellation, read-only, and stops at the firs
   expect(workflow.concurrency.group).not.toContain("${{");
   const checkout = steps.find((step) => step.uses?.startsWith("actions/checkout@"));
   expect(checkout.with["persist-credentials"]).toBe(false);
-  // Actions are not executed by the harness below, so guard their credential
-  // boundary statically, including workflow- and job-level environments.
   for (const settings of [workflow, workflow.jobs.release, ...steps.filter((step) => step.uses)]) {
     expect(JSON.stringify(settings.env ?? {})).not.toContain("secrets.");
     expect(JSON.stringify(settings.with ?? {})).not.toContain("secrets.");
   }
-  // Production steps are gated on every earlier step; only the summary always runs.
   expect(workflow.jobs.release["continue-on-error"]).toBeUndefined();
   expect(workflow.jobs.release.if).toBeUndefined();
   expect(steps.map((step) => step.if ?? null)).toEqual([
@@ -158,9 +155,6 @@ it("is manual, serialized without cancellation, read-only, and stops at the firs
   expect(steps.filter((step) => "continue-on-error" in step)).toEqual([]);
 });
 
-// End-to-end wiring: run the real `run:` blocks of release.yml in a temporary git
-// repository with a fake pnpm that logs each command, its checkout, and its
-// credentials. Actions are represented by a local checkout and runtime checks.
 const validationCommands = [
   "install --frozen-lockfile",
   "check",
@@ -184,8 +178,6 @@ function git(cwd, ...args) {
   return result.stdout.trim();
 }
 
-// Commits: the selected release, an unmerged branch, and a later main whose
-// runtime pins differ, so setup reading advancing main would be detected.
 function fixture() {
   const directory = mkdtempSync(join(tmpdir(), "pms-release-test-"));
   temporaryDirs.push(directory);
@@ -194,7 +186,6 @@ function fixture() {
   for (const name of ["scripts", "drizzle", "wrangler.jsonc"]) {
     cpSync(join(repo, "apps/backend", name), join(cwd, "apps/backend", name), { recursive: true });
   }
-  // This harness excludes live active-version verification; never contact production here.
   writeFileSync(
     join(cwd, "apps/backend/scripts/record-production-release.mjs"),
     "// Excluded from this harness.\n",
@@ -261,8 +252,6 @@ if (command === process.env.LEDGER_QUERY) process.stdout.write(process.env.LEDGE
   return { cwd, sha, unmerged, selected, bin, log, ledger, directory };
 }
 
-// Only the default success gate and always() are modeled; the static test above
-// pins the workflow to those semantics.
 function release(f, options = {}) {
   const job = options.steps ?? steps;
   const context = {

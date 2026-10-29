@@ -1,8 +1,5 @@
 import { HttpError } from "./http";
 
-// Culqi API v2 as observed in the sandbox (meldarstudio/pms#114). `paid` and `capture`
-// are not success evidence, and a 401 is not always a credential error, so neither is
-// read here.
 const API = "https://api.culqi.com/v2";
 const TIMEOUT_MS = 20_000;
 const SUCCESS_CODE = "AUT0000";
@@ -15,7 +12,6 @@ export type CulqiCharge = {
   amount: number;
   currency_code: string;
   email: string;
-  /** Epoch milliseconds. */
   creation_date: number;
   outcome?: { type?: string; code?: string };
   metadata?: Record<string, string> | null;
@@ -28,37 +24,30 @@ export type ChargeRequest = {
   currency: string;
   email: string;
   sourceId: string;
-  /** The booking contact, for Culqi's fraud checks. */
   fullName: string;
-  /** E.164, as saved on the reservation. */
   phone?: string | null;
   deviceFingerprint?: string | null;
   authentication3DS?: Record<string, string | undefined>;
 };
 
-/** A charge call's result. `unknown` means Culqi may or may not have charged. */
 export type ChargeResult =
   | { kind: "succeeded"; charge: CulqiCharge }
   | { kind: "review" }
   | { kind: "declined"; code: string; message: string }
   | { kind: "unknown"; reason: string };
 
-/** A refund call's result. Anything but a completed refund needs the charge checked. */
 export type RefundResult =
   | { kind: "completed"; refundId: string }
   | { kind: "unclear"; refundId: string | null; reason: string };
 
 export type Culqi = {
-  /** Whether a secret key is set; every call fails with 503 without one. */
   configured: boolean;
   createCharge(request: ChargeRequest): Promise<ChargeResult>;
-  /** Charges for an amount and email created since `from`; Culqi ignores metadata filters. */
   listCharges(filter: { amountCents: number; email: string; from: Date }): Promise<CulqiCharge[]>;
   getCharge(id: string): Promise<CulqiCharge>;
   createRefund(request: { chargeId: string; amountCents: number }): Promise<RefundResult>;
 };
 
-/** A charge Culqi reports as a successful sale. */
 export const isSuccessfulCharge = (charge: CulqiCharge) => charge.outcome?.code === SUCCESS_CODE;
 
 type Response = { status: number; body: Record<string, unknown> | null };
@@ -66,10 +55,6 @@ type Response = { status: number; body: Record<string, unknown> | null };
 const within = (value: string | undefined, min: number, max: number) =>
   value && value.length >= min && value.length <= max ? value : undefined;
 
-/**
- * The guest details Culqi's fraud checks read. A value outside Culqi's documented
- * limits is left out, so a long name never gets the charge refused.
- */
 function antifraudDetails(request: ChargeRequest) {
   const [first, ...rest] = request.fullName.trim().split(/\s+/);
   const details = Object.entries({
@@ -85,7 +70,6 @@ export function culqiClient(options: {
   secretKey: string | undefined;
   fetch?: typeof globalThis.fetch;
 }): Culqi {
-  // Resolve fetch per call so a stubbed global applies to clients created earlier.
   const send = options.fetch ?? ((...args) => globalThis.fetch(...args));
   async function call(method: string, path: string, body?: unknown): Promise<Response> {
     if (!options.secretKey) throw new HttpError(503, "Culqi is not configured");
@@ -93,7 +77,6 @@ export function culqiClient(options: {
       method,
       headers: {
         authorization: `Bearer ${options.secretKey}`,
-        // Culqi's SDKs pin the version; the recorded behaviour is version 2.
         "x-api-version": "2",
         ...(body === undefined ? {} : { "content-type": "application/json" }),
       },
@@ -104,9 +87,7 @@ export function culqiClient(options: {
     let parsed: Record<string, unknown> | null = null;
     try {
       parsed = JSON.parse(raw) as Record<string, unknown>;
-    } catch {
-      // An unparseable body is judged by its status alone.
-    }
+    } catch {}
     return { status: response.status, body: parsed };
   }
   async function read(path: string) {
@@ -126,7 +107,6 @@ export function culqiClient(options: {
           currency_code: request.currency,
           email: request.email,
           source_id: request.sourceId,
-          // An omitted capture is captured only at midnight.
           capture: true,
           metadata: { attempt_id: request.attemptId },
           ...(antifraud ? { antifraud_details: antifraud } : {}),
@@ -179,7 +159,6 @@ export function culqiClient(options: {
       }
       const { status, body } = response;
       const refundId = text(body?.id) ?? null;
-      // The sandbox returns lowercase `completa`; the docs show `Completa`.
       if (status === 201 && refundId && text(body?.status)?.toLowerCase() === "completa")
         return { kind: "completed", refundId };
       return { kind: "unclear", refundId, reason: `HTTP ${status}` };

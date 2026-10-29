@@ -44,7 +44,6 @@ function checkInterrupted() {
 function stopChild(signal) {
   if (child?.pid) {
     try {
-      // Stop pnpm and Wrangler together before releasing the local lock.
       process.kill(-child.pid, signal);
     } catch (error) {
       if (error.code !== "ESRCH") throw error;
@@ -322,7 +321,6 @@ async function main() {
       for (const file of pending) {
         assertPlanUnchanged();
         await assertHistoryUnchanged(expected);
-        // Expose only the next approved migration, so a failed migration cannot be skipped.
         writeFileSync(join(snapshotDir, file.name), file.sql, { flag: "wx", mode: 0o400 });
         report.status = "applying";
         report.attempting = file.name;
@@ -333,7 +331,6 @@ async function main() {
         saveReport();
       }
     } catch (error) {
-      // Queries are safe to repeat; migration writes are never retried.
       try {
         report.after = await readHistory(snapshotConfig);
         report.applied = report.after.filter((name) => !before.includes(name));

@@ -15,10 +15,6 @@ const QUOTE_MINUTES = 10;
 
 type Quote = typeof quotes.$inferSelect;
 
-/**
- * Prices one room for an online guest and stores the offer for 10 minutes by server
- * time. `available` is advice: the quote reserves nothing and blocks no staff write.
- */
 export async function createQuote(
   db: Db,
   input: QuoteCreate,
@@ -77,13 +73,6 @@ type QuotePayment = Pick<
   "amountCents" | "method" | "reference" | "paymentDate" | "culqiChargeId"
 >;
 
-/**
- * Saves the online reservation for a quote with its quoted nights and terms, even if
- * rates changed since, and with the payment that paid for it. The capacity triggers
- * decide availability for a confirmed save; an Unfulfilled one holds no inventory.
- * Expiry is the caller's decision, because a charge may already have succeeded. One
- * quote saves at most one reservation: a repeated or concurrent save returns the same ID.
- */
 export async function saveQuote(
   db: Db,
   quoteId: string,
@@ -139,7 +128,6 @@ export async function saveQuote(
       ),
     ]);
   } catch (error) {
-    // A concurrent save of the same quote may have committed first.
     const saved = await savedReservation(db, quoteId);
     if (saved) return saved;
     rethrowConflict(error);

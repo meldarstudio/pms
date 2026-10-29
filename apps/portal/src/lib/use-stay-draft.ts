@@ -41,8 +41,6 @@ function useDraftCommand(actionsKey: string) {
   );
 }
 
-// The opening values belong to the draft; refreshed saved details can update
-// validation and prices without replacing those values. Writes stay with callers.
 export function useStayDraft({
   detail,
   onSubmit,
@@ -70,8 +68,6 @@ export function useStayDraft({
     validators: {
       onDynamic: ({ value }) => {
         const fields = schemaErrors(schema.safeParse(value));
-        // Submit-driven focus can blur a date picker. Keep server feedback until
-        // the rejected value is corrected, rather than clearing it on that blur.
         for (const name of ["checkOut"] as const) {
           if (
             rejectedFields.current?.fields[name] &&
@@ -106,8 +102,6 @@ export function useStayDraft({
   const [previewCommand, setPreviewCommand] = useState(validationCommand);
   const pricingKey = billingPreviewKey(detail, previewActions);
   const requestPricingKey = billingPreviewKey(detail, previewCommand.actions);
-  // Assignment/occupancy validation can change while its price remains reusable.
-  // Only workflow responses publish quotes; this query just subscribes to them.
   const quote = useQuery<WorkflowBilling>({
     queryKey: reservationPreviewKey(detail.id, "billing", pricingKey),
     queryFn: skipToken,
@@ -168,7 +162,6 @@ export function useStayDraft({
     form.reset(next);
   }
 
-  /** Shows a save's field rejections until the rejected values change. */
   function rejectSave(fields: Record<string, string>) {
     rejectedFields.current = { values, fields };
     form.setErrorMap({ onDynamic: { fields } });
@@ -191,8 +184,6 @@ export function useStayDraft({
     submission: {
       command: editCommand,
       allowed: countsValid && dirty && previewReady,
-      // Invalid values must still be submittable to reveal field errors. This is
-      // deliberately different from permission to write the current draft.
       disabled:
         !dirty || roomTypes.isPending || roomTypes.isError || (pricingValid && !previewReady),
     },

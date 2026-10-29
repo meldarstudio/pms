@@ -14,7 +14,6 @@ export default defineConfig({
     ],
   },
   test: {
-    // UI suites each compile the portal in their own Vite server.
     fileParallelism: false,
     projects: ["./apps/backend", "./apps/portal"],
   },

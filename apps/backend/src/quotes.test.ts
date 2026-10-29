@@ -11,7 +11,6 @@ let db: TestDb;
 
 beforeEach(async () => {
   vi.useFakeTimers();
-  // 10:00 on 10 Oct in Lima.
   vi.setSystemTime(new Date("2026-10-10T15:00:00Z"));
   db = await createTestDb();
   seedRoomType(db.sqlite, { id: "type", name: "King", maxAdults: 2, baseRateCents: 10000 });
@@ -103,7 +102,6 @@ describe("quotes", () => {
     await save(first.id);
 
     await expect(save(second.id)).rejects.toThrow("no availability");
-    // Availability is advice; the quote is still offered.
     expect(await quote()).toMatchObject({ totalCents: 18000, available: false });
   });
 

@@ -31,8 +31,6 @@ export function RoomAssignmentSheet({
   const { assignment } = steps;
   const { target, pending } = assignment;
   const heading = useRef<HTMLHeadingElement>(null);
-  // The list and picker share a dialog: announce each step without leaving focus
-  // on the list item that was just removed (or on a room after a successful save).
   useEffect(() => {
     if (open) heading.current?.focus();
   }, [open, target?.id]);
@@ -45,7 +43,6 @@ export function RoomAssignmentSheet({
           details.cancel();
           return;
         }
-        // Escape on the picker steps back to the list, like the back button.
         if (!next && target && details.reason === "escape-key") {
           details.cancel();
           assignment.cancel();

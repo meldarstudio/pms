@@ -159,7 +159,6 @@ function ReservationBalance({
   );
 }
 
-/** Placeholder cards sized like the loaded ones; three fill a phone screen. */
 function ReservationCardsSkeleton() {
   return (
     <ul aria-label="Cargando reservas" aria-busy className="flex flex-col gap-3">
@@ -191,7 +190,6 @@ function ReservationCardsSkeleton() {
   );
 }
 
-/** Placeholder table rows sized like the loaded ones, under the real column headings. */
 function ReservationRowsSkeleton() {
   return (
     <TableBody>
@@ -266,7 +264,6 @@ export function Reservations({
   });
   const rows = query.data?.rows ?? [];
   const busy = query.isFetching || search.q !== q;
-  // Only a requested re-read spins; filter changes already dim the results.
   const [refreshing, setRefreshing] = useState(false);
   function refresh() {
     setRefreshing(true);
@@ -321,8 +318,6 @@ export function Reservations({
       onRefresh={refresh}
     />
   );
-  // Phones keep Actualizar in the header so every view has it and fold Hoy into the
-  // day picker; desktop lines both up after the view tabs.
   const headerRefresh = mobile ? refreshButton : null;
   const toolbarRefresh = mobile ? null : refreshButton;
   const pickerToday = mobile ? goToToday : undefined;
@@ -406,7 +401,6 @@ export function Reservations({
         primaryActionClearance,
       )}
     >
-      {/* On mobile Nueva reserva floats through the shell slot instead of the header. */}
       <PageHeaderActions>
         {headerRefresh}
         <NewReservationButton scrollRef={mainRef} onClick={() => setTarget({ mode: "new" })} />

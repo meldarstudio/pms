@@ -1,14 +1,5 @@
 import { readFileSync } from "node:fs";
 
-// Runs the API's Culqi flows against the Culqi sandbox: a captured charge with the
-// attempt ID in metadata and the guest's antifraud details, the lookup that resolves
-// a lost response, token reuse, a decline, and a refund resolved from the charge's
-// refunded amount. It refuses any key that is not a test key. Keys come from the
-// environment or the ignored .dev.vars:
-// CULQI_SECRET_KEY (sk_test_) and CULQI_PUBLIC_KEY (pk_test_). Cards default to
-// Culqi's published test Visa; set CULQI_TEST_CARD and CULQI_DECLINE_CARD to others.
-// 3DS needs a browser (Culqi3DS), so a REVIEW response is reported, not continued.
-
 function devVars() {
   try {
     const text = readFileSync(new URL("../.dev.vars", import.meta.url), "utf8");
@@ -52,9 +43,7 @@ async function call(base, path, key, method = "GET", body) {
   let json = null;
   try {
     json = JSON.parse(text);
-  } catch {
-    // Reported by status alone.
-  }
+  } catch {}
   return { status: response.status, body: json };
 }
 const api = (path, method, body) => call("https://api.culqi.com/v2", path, secretKey, method, body);
@@ -102,7 +91,6 @@ report(
   `HTTP ${charged.status}, paid=${charged.body?.paid}, capture=${charged.body?.capture}`,
 );
 
-// The lookup the API runs after a lost response: Culqi ignores metadata filters.
 let found;
 for (let tries = 0; tries < 8 && !found; tries++) {
   const query = new URLSearchParams({
@@ -150,7 +138,6 @@ if (chargeId) {
     refunded.status === 201 && String(refunded.body?.status).toLowerCase() === "completa",
     `HTTP ${refunded.status} ${refunded.body?.status ?? ""}`,
   );
-  // How the API resolves a lost refund response.
   let refundedCents;
   for (let tries = 0; tries < 5 && refundedCents !== 100; tries++) {
     refundedCents = (await api(`/charges/${chargeId}`)).body?.amount_refunded;

@@ -15,7 +15,6 @@ export const STAFF_USERNAME = ACCOUNTS.staff.username;
 
 const hashes = new Map<string, Promise<string>>();
 
-/** Create the staff and owner accounts the way the account script does. */
 export async function seedAccounts(sqlite: DatabaseSync) {
   for (const [role, { username, password }] of Object.entries(ACCOUNTS)) {
     if (!hashes.has(password)) hashes.set(password, hashPassword(password));
@@ -59,7 +58,6 @@ export function loginBody(overrides: Record<string, string> = {}, role: AccountR
   return { ...ACCOUNTS[role], ...overrides };
 }
 
-/** Sign in through the real login route and return the session cookie pair. */
 export async function signIn(env: Env["Bindings"], role: AccountRole = "staff"): Promise<string> {
   const response = await login(env, loginBody({}, role));
   if (response.status !== 200) throw new Error(`sign-in failed with ${response.status}`);

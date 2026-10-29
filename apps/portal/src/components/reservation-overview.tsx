@@ -114,8 +114,6 @@ export function ReservationOverview({
           <PaymentSummary detail={detail} edit={edit} />
           <NotesSummary detail={detail} edit={edit} />
         </div>
-        {/* On desktop the left column sets the row height; this card fills it and
-            scrolls its room list instead of growing past it. */}
         <div className="relative min-w-0">
           <Card className="min-w-0 md:absolute md:inset-0">
             <CardHeader>

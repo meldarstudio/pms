@@ -14,8 +14,6 @@ export function referenceDate(value = new Date().toISOString().slice(0, 10)) {
   return value;
 }
 
-// Arrival offsets and closure ranges are relative to the reference date.
-// A missing room means the booking is ready for manual assignment in the portal.
 const examples = [
   {
     id: "departed",
@@ -211,8 +209,6 @@ const closures = [
   { room: "304", starts: 1, ends: 4, reason: "Cambio de alfombra" },
 ];
 
-// Plan against physical rooms even when the emitted reservation is unassigned.
-// This leaves a feasible assignment without double-counting room-type inventory.
 function busyExamples() {
   const inventory = Array.from(
     roomSeed.matchAll(/\('room-([^']+)', '[^']+', 'type-([^']+)'\)/g),
@@ -236,7 +232,6 @@ function busyExamples() {
     const room = inventory.find(({ number }) => number === closure.room);
     for (const day of nights(closure.starts, closure.ends - closure.starts)) room.blocked.add(day);
   }
-  // Fixed assignments must be known before allocating the unassigned examples.
   for (const assigned of [true, false]) {
     for (const example of examples.filter(({ status }) => status !== "cancelled")) {
       for (const room of example.rooms.filter(({ room }) => Boolean(room) === assigned)) {
@@ -369,7 +364,6 @@ export function buildResetSql(value) {
     const result = new Date(`${anchor}T00:00:00.000Z`);
     result.setUTCDate(result.getUTCDate() + offset);
     const formatted = result.toISOString().slice(0, 10);
-    // Reject dates outside the app's four-digit-year format before touching D1.
     return referenceDate(formatted);
   }
 
@@ -394,7 +388,6 @@ export function buildResetSql(value) {
     roomSeed,
   ];
 
-  // Read the baseline prices from the same seed that creates the room types.
   const baseRates = new Map();
   for (const match of roomSeed.matchAll(/\('type-([^']+)', '[^']+', \d+, (\d+),/g)) {
     baseRates.set(match[1], Number(match[2]));

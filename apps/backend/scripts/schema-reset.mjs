@@ -1,4 +1,3 @@
-// Child tables precede their parents so rebuilding also works with foreign keys enabled.
 const tables = [
   "property_write_context",
   "reservation_requests",

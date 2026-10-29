@@ -14,14 +14,10 @@ import type { ReservationStay } from "./assignment-availability.ts";
 export type ReservationCommandResult =
   | { status: "saved"; reservation: ReservationDetail }
   | { status: "rejected"; fields: Record<string, string> }
-  /** `message` is Spanish; `code` is the server's English error code, when it sent one. */
   | { status: "failed"; message: string; code?: string };
 
 const fallbackMessage = "No se pudieron guardar los cambios.";
 
-// Unsettled commands live in the query cache, so removing queries on sign-out or
-// clearing the client forgets them. Nothing observes this entry; it never refetches.
-// Clearing the cache replaces the map, so its identity also marks the signed-in session.
 const unsettledKey = ["reservation-commands", "unsettled"] as const;
 
 type UnsettledCommands = Map<string, WorkflowCommand>;
@@ -35,11 +31,8 @@ function unsettledCommands(client: QueryClient) {
   return created;
 }
 
-/** The saves to each Reservation queued or running on one QueryClient. */
 type SaveQueue = {
-  /** The last save queued per Reservation; the next one starts after it settles. */
   lastSave: Map<string, Promise<unknown>>;
-  /** Queued or running saves by Reservation and exact actions, for joining. */
   joinable: Map<string, { session: UnsettledCommands; result: Promise<ReservationCommandResult> }>;
   saving: Map<string, number>;
   listeners: Set<() => void>;
@@ -63,7 +56,6 @@ function changeSaving(queue: SaveQueue, id: string, delta: number) {
   for (const listener of queue.listeners) listener();
 }
 
-// The fields a rejection may name depend on what the command changed.
 const scopeByAction: Partial<Record<WorkflowAction["type"], FieldScope>> = {
   "add-payment": "payment",
   "edit-payment": "payment",
@@ -88,42 +80,29 @@ function failure(cause: unknown): ReservationCommandResult {
     : { status: "failed", message };
 }
 
-/** One message for a save that did not happen, for editors with no form field to show it. */
 export function unsavedMessage(result: Exclude<ReservationCommandResult, { status: "saved" }>) {
   return result.status === "failed" ? result.message : Object.values(result.fields).join(" ");
 }
 
 const previewScope = "reservation-preview";
 
-/** What distinguishes the previews of one Reservation. */
 type PreviewParts =
-  /** A Discount or status editor's bill after `actions`. */
   | [kind: "bill", actions: WorkflowAction[]]
-  /** The Stay draft's reusable price quote for a pricing key. */
   | [kind: "billing", pricingKey: string]
-  /** The Stay draft's validation and bill for its debounced command. */
   | [kind: "edit", command: WorkflowCommand, pricingKey: string];
 
-/**
- * A cache key for a bill preview of one Reservation. Saves to that Reservation
- * refresh every preview under it.
- */
 export function reservationPreviewKey(id: string, ...parts: PreviewParts) {
   return [previewScope, id, ...parts] as const;
 }
 
-// ADR 0001: a save that changes the calendar refreshes it.
 async function refresh(client: QueryClient, saved: ReservationDetail, actions: WorkflowAction[]) {
   client.setQueryData(["reservation", saved.id], saved);
-  // A preview still loading read the Reservation before this save; without cancelling,
-  // the refresh would wait for it and show its stale bill.
   await client.cancelQueries({ queryKey: [previewScope, saved.id] });
   await Promise.all([
     ...["reservations", "availability", "inventory", "payments", "calendar"].map((key) =>
       client.invalidateQueries({ queryKey: [key] }),
     ),
     client.invalidateQueries({ queryKey: [previewScope, saved.id] }),
-    // Other Reservations of the same Booking contact show its name, email and phone.
     actions.some((action) => action.type === "contact") &&
       client.invalidateQueries({
         queryKey: ["reservation"],
@@ -135,9 +114,6 @@ async function refresh(client: QueryClient, saved: ReservationDetail, actions: W
   ]);
 }
 
-// Each command reads a Reservation snapshot. Running saves to one Reservation in send
-// order stops a Discount autosave undoing a Cancellation saved just before it.
-// A save still queued when the cache is cleared (sign-out) does not run.
 function enqueue(
   client: QueryClient,
   id: string,
@@ -162,12 +138,10 @@ function save(
   id: string,
   actions: WorkflowAction[],
 ): Promise<ReservationCommandResult> {
-  // Snapshot now: the editor may keep changing its values while this save waits.
   const snapshot = JSON.stringify(actions);
   const key = `${id}\n${snapshot}`;
   const queue = saveQueue(client);
   const joined = queue.joinable.get(key);
-  // A save from before the cache was cleared belongs to the previous session.
   if (joined?.session === unsettledCommands(client)) return joined.result;
   const result = enqueue(client, id, async (unsettled) => {
     const command = unsettled.get(key) ?? {
@@ -182,7 +156,6 @@ function save(
       unsettled.set(key, command);
       return rejection(cause, command.actions);
     }
-    // A cache cleared while this save ran is not written back into.
     if (unsettledCommands(client) === unsettled) await refresh(client, saved, command.actions);
     return { status: "saved", reservation: saved };
   });
@@ -193,10 +166,6 @@ function save(
   return result;
 }
 
-/**
- * The only way editors save changes to an existing Reservation. `send` never throws;
- * `saving` is true while any save to this Reservation is running or queued.
- */
 export function useReservationCommands(id: string | null) {
   const client = useQueryClient();
   const queue = saveQueue(client);
@@ -218,12 +187,6 @@ export function useReservationCommands(id: string | null) {
   return { send, saving };
 }
 
-/**
- * The calendar's room assignment. It waits for earlier saves to the Reservation, then
- * re-reads it so a colleague's concurrent assignment is not overwritten. Each attempt
- * builds its command from that read, so it never reuses a request ID or retry memory.
- * `saving` is true while an assignment from this hook is running.
- */
 export function useRoomAssignmentCommand() {
   const client = useQueryClient();
   const [running, setRunning] = useState(0);
@@ -246,10 +209,6 @@ export function useRoomAssignmentCommand() {
   return { assign, saving: running > 0 };
 }
 
-/**
- * The bill and validation issues the Reservation would have after `actions`, without
- * saving them. Debouncing input belongs to the caller; saves re-read open previews.
- */
 export function useReservationPreview(id: string, actions: WorkflowAction[], enabled: boolean) {
   return useQuery({
     queryKey: reservationPreviewKey(id, "bill", actions),

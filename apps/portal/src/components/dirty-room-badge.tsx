@@ -1,6 +1,5 @@
 import { Badge } from "@/components/ui/badge";
 
-/** Marks a room whose housekeeping status is dirty; clean rooms show nothing. */
 export function DirtyRoomBadge() {
   return (
     <Badge

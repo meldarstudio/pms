@@ -13,14 +13,8 @@ import { Button } from "@/components/ui/button";
 
 export const PagePrimaryActionContext = createContext<HTMLDivElement | null>(null);
 
-/** Bottom padding for a page scroller so its last content can scroll clear of the action. */
 export const primaryActionClearance = "max-md:pb-(--primary-action-clearance)";
 
-/**
- * The page's main task as a floating mobile button, reachable one-handed. It shows its
- * label at the top of `scrollRef` and collapses to the icon once the page scrolls.
- * Pages own their desktop placement.
- */
 export function PagePrimaryAction({
   icon,
   label,
@@ -59,8 +53,6 @@ export function PagePrimaryAction({
       {...props}
     >
       <span className="flex h-full aspect-square shrink-0 items-center justify-center">{icon}</span>
-      {/* Keep the button content-sized in both states so the label's 0fr ↔ 1fr
-          animation drives its width. The label stays accessible while collapsed. */}
       <span
         className={cn(
           "grid transition-[grid-template-columns,opacity] duration-300 ease-out motion-reduce:transition-none",

@@ -166,7 +166,6 @@ export function workflowDrafts(values: DetailsValues): RoomDraft[] {
   }));
 }
 
-// Preview room order follows the retained rooms, then the added rooms.
 export function detailsSummaryRooms(
   values: DetailsValues,
   pricedRooms: ReservationDetail["rooms"] | undefined,

@@ -46,7 +46,6 @@ async function create(count = 1, dates = { checkIn: "2026-10-10", checkOut: "202
   expect(response.status).toBe(201);
   return response.json() as Promise<Detail>;
 }
-/** One unassigned room quoted at a fixed nightly price. */
 async function stay(checkIn: string, checkOut: string, nightlyRateCents: number) {
   const response = await request("/reservations", "POST", {
     requestId: crypto.randomUUID(),
@@ -492,7 +491,6 @@ describe("accepted rate-plan terms", () => {
   });
 
   it("reads rows written without plan columns as Flexible without changing their saved money", async () => {
-    // Legacy rows and the previous Worker's inserts name no plan columns.
     seedReservation(db.sqlite, {
       id: "legacy",
       code: "OLD1",
@@ -794,7 +792,6 @@ describe("cancellation charges and waivers", () => {
 
   it("is free through the end of the day 2 days before check-in in the property calendar and charges from the next day", async () => {
     const d = await stay("2026-10-12", "2026-10-14", 20000);
-    // 23:59:59 on 10 Oct in Lima (UTC-5) is already 11 Oct in UTC.
     vi.setSystemTime(new Date("2026-10-11T04:59:59Z"));
     expect((await previewCommand(d, [cancel])).billing.cancellation).toMatchObject({
       freeUntil: "2026-10-10",
@@ -1055,7 +1052,6 @@ describe("no-show outcomes", () => {
   });
 
   it("charges a Flexible no-show its first night even before the free deadline, reduced by a reasoned waiver", async () => {
-    // Free cancellation would last until 2026-10-18; a no-show has no deadline.
     let d = await stay("2026-10-20", "2026-10-23", 20000);
     d = await command(d, [pay(5000)]);
     const marked = await command(d, [noShow]);
@@ -1218,7 +1214,6 @@ describe("refunds", () => {
     refundId,
     reason: "Wrong account",
   });
-  /** A late Flexible cancellation whose final charge is its S/200 first night. */
   async function lateCancellation(paidCents: number) {
     const d = await stay("2026-10-11", "2026-10-13", 20000);
     return command(d, [pay(paidCents), cancel]);
@@ -1510,8 +1505,6 @@ describe("refunds", () => {
   });
 });
 
-// Hold the next write after its preflight, before its transaction. Other
-// requests can commit through the same database while it waits.
 function pauseNextCommit() {
   let resume = () => {};
   let reached = () => {};
@@ -1537,7 +1530,6 @@ describe("concurrent reservation commands", () => {
     "rejects restoring $room to $to when its limit shrinks after preflight",
     async ({ roomId, to, limit }) => {
       let d = await create();
-      // Cover both assigned and unassigned saved rooms.
       d = await command(d, [roomEdit(d, 0, { adults: 2, children: 2, roomId })]);
       d = await command(d, [{ type: "set-status", status: "cancelled" }]);
       const body = {
@@ -1737,7 +1729,6 @@ describe("concurrent reservation commands", () => {
     });
     expect(d.rooms[0].adults).toBe(2);
     expect(d.rooms[0].children).toBe(2);
-    // A late Flexible cancellation is charged the first night.
     const saved = await command(d, [{ type: "set-status", status: "cancelled" }]);
     expect(saved).toMatchObject({ totalCents: 10000, balanceCents: 5000, refundDueCents: 0 });
   });
@@ -1931,8 +1922,6 @@ describe("concurrent reservation commands", () => {
   it("bounds retries, rolls back exhausted attempts, and keeps the request ID usable", async () => {
     const d = await create();
     const body = { requestId: crypto.randomUUID(), actions: [pay(1000)] };
-    // Before each attempt commits, another Worker commits a real command with
-    // its own receipt. Commits made inside the hook are not intercepted.
     let contenders = 0;
     const stop = db.beforeCommit(
       async () => {
@@ -2756,7 +2745,6 @@ describe("reservation dates and lifecycle", () => {
     seedRooms(db.sqlite, "other", { "201": "201" });
     let d = await create();
     const lineId = d.rooms[0].id;
-    // The API cannot record a breakdown yet; seed what a Non-refundable night and a discounted night save.
     db.sqlite.exec(`
       UPDATE reservation_room_nights SET price_cents = 9000, adjustment_cents = -1000
         WHERE reservation_room_id = '${lineId}' AND date = '2026-10-10';
@@ -2814,7 +2802,6 @@ describe("reservation dates and lifecycle", () => {
     const { billing } = await previewCommand(d, extend);
     expect(billing.totalCents).toBe(19800);
     d = await command(d, extend);
-    // Preview rooms price like the saved detail and expose only each night's final price.
     const charges = ({
       subtotalCents,
       discountCents,
@@ -2887,7 +2874,6 @@ describe("reservation dates and lifecycle", () => {
       reason: "Plans changed",
     };
     d = await command(d, [cancel]);
-    // Late: each room's first night, not the discounted stay.
     expect(d).toMatchObject({ totalCents: 20000, paidCents: 10000, balanceCents: 10000 });
     expect(d.cancellationReason).toBe("Plans changed");
     const restored = await command(d, [{ type: "set-status", status: "confirmed" }]);
@@ -3078,7 +3064,6 @@ describe("paginated reservation operations", () => {
   });
 
   it("counts a hundred matching reservations, handles a full 50-row last page, and finds balances beyond the legacy cap", async () => {
-    // Seed a known history; observe only authenticated HTTP reads over the migrated database.
     for (let index = 0; index < 100; index++) {
       const id = `history-${index}`;
       const checkIn = new Date(Date.UTC(2026, 9, index + 1)).toISOString().slice(0, 10);
@@ -3332,7 +3317,6 @@ describe("paginated reservation operations", () => {
       const adaA = await book("Ada Lovelace", { checkIn: "2026-10-02", checkOut: "2026-10-04" });
       const adaB = await book("Ada Lovelace", { checkIn: "2026-10-02", checkOut: "2026-10-04" });
       const bea = await book("Bea Jones", { checkIn: "2026-10-04", checkOut: "2026-10-05" });
-      // Fixed codes make the specified tie-breaker independent of generated codes.
       db.sqlite.prepare("UPDATE reservations SET code = ? WHERE id = ?").run("AAA", adaA.id);
       db.sqlite.prepare("UPDATE reservations SET code = ? WHERE id = ?").run("BBB", adaB.id);
       const ids: Record<string, string> = {

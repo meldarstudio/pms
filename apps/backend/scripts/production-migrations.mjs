@@ -1,7 +1,6 @@
 import { lstatSync, readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 
-// Shared validation only: no credentials, remote commands, writes or approval.
 export function productionTarget(config) {
   const databases = config.d1_databases.filter(
     (database) => database.database_name === "pms-production" || database.binding === "DB",
@@ -46,7 +45,6 @@ export function validateMigrationManifest(journal, files) {
   });
 }
 
-// Read-only adapter shared by both CLIs; the validators above are pure.
 export function readMigrationManifest(migrationsDir) {
   const journalText = readFileSync(join(migrationsDir, "meta/_journal.json"), "utf8");
   const files = readdirSync(migrationsDir)

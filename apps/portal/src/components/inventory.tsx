@@ -96,7 +96,6 @@ export function Inventory({
   const days = eachDayOfInterval({ start, end: addDays(start, span - 1) });
   const dayIds = days.map((day) => format(day, "yyyy-MM-dd"));
   const loading = grid === null && !inventory.isError;
-  // Placeholder data from another window is never shown in place of a failed one.
   const loadError = grid ? null : inventory.error;
   const retry = () => void queryClient.invalidateQueries({ queryKey: ["inventory"] });
   const [refreshing, setRefreshing] = useState(false);

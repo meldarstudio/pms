@@ -32,7 +32,6 @@ availabilityRoutes.get("/", validate("query", availabilityQuerySchema), async (c
     )
     .sort((a, b) => a.name.localeCompare(b.name))
     .map((type) => {
-      // Availability shows ordinary prices; plan prices come with plan selection.
       const priced = priceNights({
         dates: nights,
         baseRateCents: type.baseRateCents,

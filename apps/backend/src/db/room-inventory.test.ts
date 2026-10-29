@@ -46,8 +46,6 @@ beforeEach(() => {
 
 afterEach(() => db.close());
 
-// Like a D1 batch, the trusted context and the protected write are one
-// transaction. Neither a successful write nor an abort can leave a stale day.
 function changeType(roomId: string, typeId: string, today = "2026-10-31") {
   db.exec("BEGIN");
   try {
@@ -135,7 +133,6 @@ describe("property-date room type guards", () => {
       const before = snapshot();
       for (const entry of journal.entries.slice(split))
         previous.exec(readFileSync(new URL(`${entry.tag}.sql`, migrationsDir), "utf8"));
-      // Later migrations may add columns; saved values must stay unchanged.
       expect(snapshot()).toMatchObject(before);
       previous.exec("INSERT INTO property_write_context VALUES (1, '2026-10-31')");
       expect(() =>
@@ -248,7 +245,6 @@ describe("separate adult and child limits", () => {
       const before = snapshot();
       for (const entry of journal.entries.slice(split))
         previous.exec(readFileSync(new URL(`${entry.tag}.sql`, migrationsDir), "utf8"));
-      // Later migrations may add columns; saved values must stay unchanged.
       expect(snapshot()).toMatchObject(before);
       expect(previous.prepare("SELECT max_occupancy, max_children FROM room_types").all()).toEqual([
         { max_occupancy: 4, max_children: 2 },
@@ -445,7 +441,6 @@ describe("cancellation charges", () => {
         readFileSync(new URL(`${journal.entries[split].tag}.sql`, migrationsDir), "utf8"),
       );
       expect(snapshot()).toMatchObject(before);
-      // No charge is computed retroactively.
       expect(previous.prepare("SELECT * FROM reservation_cancellations").all()).toEqual([]);
       expect(previous.prepare("SELECT * FROM cancellation_waivers").all()).toEqual([]);
 
@@ -579,7 +574,6 @@ describe("refunds", () => {
       expect(() =>
         refund.run("orphan", "missing", 1000, "requested", null, null, null, null, null),
       ).toThrow("FOREIGN KEY");
-      // A payment with refunds cannot be deleted from under its history.
       expect(() => previous.exec("DELETE FROM payments WHERE id = 'payment'")).toThrow(
         "FOREIGN KEY",
       );
@@ -694,7 +688,6 @@ describe("night price breakdown", () => {
     expect(() => insert.run("negative-discount", "2026-10-05", 10000, 0, -1)).toThrow(
       "invalid night price",
     );
-    // A full discount and a plan reduction are valid.
     insert.run("free", "2026-10-05", 0, 0, 10000);
     insert.run("reduced", "2026-10-06", 9000, -1000, 0);
     expect(() =>

@@ -4,9 +4,6 @@ import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { productionTarget, readMigrationManifest } from "./production-migrations.mjs";
 
-// The release may deploy only when production has applied exactly the selected
-// commit's registered migrations: none pending, none newer, none different.
-// `response` is the parsed `wrangler d1 execute --json` output of the ledger query.
 export function checkLedger(names, response) {
   if (
     !Array.isArray(response) ||
@@ -21,7 +18,6 @@ export function checkLedger(names, response) {
   }
 }
 
-// This guard deliberately has no migration, bootstrap, or repair path.
 async function main() {
   const repo = fileURLToPath(new URL("../../../", import.meta.url));
   try {

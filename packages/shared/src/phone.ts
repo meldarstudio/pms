@@ -11,11 +11,6 @@ export const phoneErrors = {
   extension: "phone extensions are not supported",
 } as const;
 
-/**
- * Validates a newly entered contact phone and returns it in international form, such as
- * `+51987654321`. Numbers without a leading `+` are read as Peruvian. Accepts mobiles and
- * landlines, spaces, parentheses, dots, and hyphens; rejects extensions instead of dropping them.
- */
 export function normalizePhone(
   input: string,
   country: CountryCode = "PE",

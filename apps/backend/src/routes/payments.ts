@@ -9,8 +9,6 @@ import { requireInclusiveRange } from "../rules";
 
 export const paymentRoutes = new Hono<Env>();
 
-// Received payments by payment date and, separately, completed refunds by the
-// date the money was returned. `totalCents` stays the gross money received.
 paymentRoutes.get("/", validate("query", paymentListQuerySchema), async (c) => {
   const { from, to } = c.req.valid("query");
   requireInclusiveRange(from, to, 366);

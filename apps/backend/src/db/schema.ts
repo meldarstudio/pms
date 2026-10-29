@@ -4,7 +4,6 @@ import type { GuestInput } from "@pms/shared";
 import type { PricedNight } from "../lib/pricing";
 import type { RatePlanTerms } from "../lib/rate-plans";
 
-// Empty outside a protected write batch, never a cached deployment-wide clock.
 export const propertyWriteContext = sqliteTable(
   "property_write_context",
   {
@@ -60,8 +59,6 @@ export const guests = sqliteTable("guests", {
   createdAt: text("created_at").notNull(),
 });
 
-// A price offered to an online guest for 10 minutes. It reserves no room inventory and
-// references no setup rows, so staff bookings, closures and setup are never blocked by one.
 export const quotes = sqliteTable("quotes", {
   id: text("id").primaryKey(),
   roomTypeId: text("room_type_id").notNull(),
@@ -69,9 +66,7 @@ export const quotes = sqliteTable("quotes", {
   checkOut: text("check_out").notNull(),
   adults: integer("adults").notNull(),
   children: integer("children").notNull(),
-  /** The quoted nights, saved unchanged on the reservation made from the quote. */
   nights: text("nights", { mode: "json" }).$type<PricedNight[]>().notNull(),
-  /** The offered rate-plan terms, stored as the reservation's accepted terms. */
   terms: text("terms", { mode: "json" }).$type<RatePlanTerms>().notNull(),
   createdAt: text("created_at").notNull(),
   expiresAt: text("expires_at").notNull(),
@@ -95,17 +90,13 @@ export const reservations = sqliteTable(
     source: text("source").notNull().default("desk"),
     notes: text("notes"),
     createdAt: text("created_at").notNull(),
-    // Accepted rate-plan terms. Defaults give legacy rows and older Workers Flexible terms.
     ratePlan: text("rate_plan").notNull().default("flexible"),
     cancellationChargeBasis: text("cancellation_charge_basis").notNull().default("first_night"),
     freeCancellationDays: integer("free_cancellation_days").default(2),
-    // Superseded by free_cancellation_days. Still written so a Worker from before
-    // migration 0011 reads the same terms; a later release drops both.
     freeCancellationHours: integer("free_cancellation_hours").default(48),
     checkInTime: text("check_in_time").notNull().default("15:00"),
     paymentSchedule: text("payment_schedule").notNull().default("first_night_deposit"),
     priceAdjustmentPercent: integer("price_adjustment_percent").notNull().default(0),
-    /** The quote an online reservation was saved from; one quote saves at most one. */
     quoteId: text("quote_id").references(() => quotes.id),
   },
   (table) => [
@@ -145,13 +136,8 @@ export const reservationRoomNights = sqliteTable(
       .notNull()
       .references(() => reservationRooms.id),
     date: text("date").notNull(),
-    /** The final price charged for the night, after the adjustment and discount below. */
     priceCents: integer("price_cents").notNull(),
-    // The ordinary rate is price - adjustment + discount. Zero defaults describe
-    // rows from before migration 0010 and inserts by an older Worker exactly.
-    /** The accepted rate plan's price adjustment, in cents; negative for a reduction. */
     adjustmentCents: integer("adjustment_cents").notNull().default(0),
-    /** A staff discount on this night, in cents. */
     discountCents: integer("discount_cents").notNull().default(0),
   },
   (table) => [
@@ -190,7 +176,6 @@ export const payments = sqliteTable(
     paymentDate: text("payment_date").notNull(),
     createdAt: text("created_at").notNull(),
     notes: text("notes"),
-    /** The Culqi charge that collected this payment; such a payment is never edited or deleted. */
     culqiChargeId: text("culqi_charge_id"),
   },
   (table) => [
@@ -200,19 +185,11 @@ export const payments = sqliteTable(
   ],
 );
 
-/**
- * `unknown` before and after a call until resolved, `review` waiting for 3DS, `failed`,
- * `succeeded` (charged, reservation not saved yet) or `saved`.
- */
 export type AttemptStatus = "unknown" | "review" | "failed" | "succeeded" | "saved";
 
-// One request to charge an online guest for a quote, saved before each Culqi call.
-// `unknown` means a call is in flight or its response was lost: it is resolved by
-// looking the charge up, never by charging again.
 export const paymentAttempts = sqliteTable(
   "payment_attempts",
   {
-    /** Sent to Culqi as `metadata.attempt_id`. */
     id: text("id").primaryKey(),
     quoteId: text("quote_id")
       .notNull()
@@ -220,14 +197,11 @@ export const paymentAttempts = sqliteTable(
     amountCents: integer("amount_cents").notNull(),
     currency: text("currency").notNull(),
     email: text("email").notNull(),
-    /** The booking contact the reservation is saved with. */
     guest: text("guest", { mode: "json" }).$type<GuestInput>().notNull(),
-    /** The Culqi token, reused only for this attempt's 3DS continuation. */
     sourceId: text("source_id").notNull(),
     deviceFingerprint: text("device_fingerprint"),
     status: text("status").$type<AttemptStatus>().notNull(),
     createdAt: text("created_at").notNull(),
-    /** When the latest Culqi charge call started. */
     calledAt: text("called_at").notNull(),
     failureCode: text("failure_code"),
     failureMessage: text("failure_message"),
@@ -236,7 +210,6 @@ export const paymentAttempts = sqliteTable(
   },
   (table) => [
     index("payment_attempts_status").on(table.status, table.calledAt),
-    // At most one attempt per quote is open or paid, so concurrent starts cannot both charge.
     uniqueIndex("payment_attempts_open")
       .on(table.quoteId)
       .where(sql`${table.status} IN ('unknown', 'review', 'succeeded', 'saved')`),
@@ -266,8 +239,6 @@ export const reservationRequests = sqliteTable("reservation_requests", {
   createdAt: text("created_at").notNull(),
 });
 
-// One row per cancellation or no-show. The charge is computed from the accepted
-// terms when the outcome is recorded and never recomputed; restoration marks it inactive.
 export const reservationCancellations = sqliteTable(
   "reservation_cancellations",
   {
@@ -275,10 +246,8 @@ export const reservationCancellations = sqliteTable(
     reservationId: text("reservation_id")
       .notNull()
       .references(() => reservations.id),
-    /** The status it was recorded for: `cancelled` or `no_show`. */
     outcome: text("outcome").notNull().default("cancelled"),
     recordedAt: text("recorded_at").notNull(),
-    /** The last free-cancellation date in the property calendar; null for a no-show or terms never free. */
     freeUntil: text("free_until"),
     policyChargeCents: integer("policy_charge_cents").notNull(),
     accountId: text("account_id")
@@ -294,7 +263,6 @@ export const reservationCancellations = sqliteTable(
   ],
 );
 
-// Staff reductions of a cancellation charge. A waiver is neither a payment nor a refund.
 export const cancellationWaivers = sqliteTable(
   "cancellation_waivers",
   {
@@ -315,8 +283,6 @@ export const cancellationWaivers = sqliteTable(
   ],
 );
 
-// Money returned against a received payment. Only a completed refund counts as
-// returned money; a failed request stays as history and is never deleted.
 export const refunds = sqliteTable(
   "refunds",
   {
@@ -328,11 +294,9 @@ export const refunds = sqliteTable(
       .notNull()
       .references(() => payments.id),
     amountCents: integer("amount_cents").notNull(),
-    /** The channel the money is returned through, using payment methods. */
     method: text("method").notNull(),
     reference: text("reference"),
     reason: text("reason").notNull(),
-    /** `requested`, then `completed` or `failed`. */
     status: text("status").notNull().default("requested"),
     requestedAt: text("requested_at").notNull(),
     requestedAccountId: text("requested_account_id")
@@ -340,13 +304,10 @@ export const refunds = sqliteTable(
       .references(() => user.id),
     resolvedAt: text("resolved_at"),
     resolvedAccountId: text("resolved_account_id").references(() => user.id),
-    /** The property date the money was returned; set on completion. */
     refundDate: text("refund_date"),
     completionReference: text("completion_reference"),
     failureReason: text("failure_reason"),
-    /** Set when staff refund through the Culqi API against this charge. */
     culqiChargeId: text("culqi_charge_id"),
-    /** Culqi's refund ID, when its response returned one. */
     culqiRefundId: text("culqi_refund_id"),
   },
   (table) => [
@@ -366,7 +327,6 @@ export const refunds = sqliteTable(
   ],
 );
 
-// Better Auth tables. Field names are Better Auth's; times are epoch milliseconds.
 const authTime = (name: string) => integer(name, { mode: "timestamp_ms" });
 
 export const user = sqliteTable(

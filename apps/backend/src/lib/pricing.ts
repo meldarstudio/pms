@@ -2,20 +2,11 @@ import type { RatePlanTerms } from "./rate-plans";
 
 export type PricedNight = {
   date: string;
-  /** The final price; totals sum this. */
   priceCents: number;
-  /** The final price minus the ordinary rate; zero under a flat rate. */
   adjustmentCents: number;
-  /** A staff discount on the night; none is applied yet. */
   discountCents: number;
 };
 
-/**
- * Prices each night of a stay. The ordinary rate is the date's override, else the
- * base rate; the accepted plan's adjustment applies to it, rounded to the nearest
- * cent with exact half-cent ties upward. A staff flat rate is the final price, with
- * no plan adjustment.
- */
 export function priceNights(stay: {
   dates: string[];
   baseRateCents: number;
@@ -32,7 +23,6 @@ export function priceNights(stay: {
   });
 }
 
-/** Integer arithmetic in hundredths of a cent, so ties round exactly. */
 function adjusted(cents: number, percent: number): number {
   return Math.floor((cents * (100 + percent) + 50) / 100);
 }

@@ -11,7 +11,6 @@ let db: TestDb;
 
 beforeEach(async () => {
   vi.useFakeTimers();
-  // 10:00 in Lima: the property date is 2026-10-10.
   vi.setSystemTime(new Date("2026-10-10T15:00:00Z"));
   db = await createTestDb();
   seedRoomType(db.sqlite, { id: "type", name: "King", maxAdults: 2, baseRateCents: 10000 });
@@ -116,17 +115,13 @@ describe("housekeeping list", () => {
     ).toEqual([
       { number: "101", inHouse: true, departing: false, arriving: false },
       { number: "102", inHouse: false, departing: true, arriving: true },
-      // A stay already checked out is no longer departing.
       { number: "103", inHouse: false, departing: false, arriving: false },
-      // A stay that ends today without being checked in has no guest to depart.
       { number: "104", inHouse: false, departing: false, arriving: false },
-      // A confirmed stay that has begun but is not checked in is neither in-house nor arriving.
       { number: "110", inHouse: false, departing: false, arriving: false },
     ]);
   });
 
   it("uses the property date when it differs from the UTC date", async () => {
-    // 22:00 on 10 October in Lima, already 11 October in UTC.
     vi.setSystemTime(new Date("2026-10-11T03:00:00Z"));
     stay("arriving-tonight", "room-101", "confirmed", "2026-10-10", "2026-10-12");
     stay("arriving-tomorrow", "room-102", "confirmed", "2026-10-11", "2026-10-12");
@@ -204,7 +199,6 @@ describe("marking housekeeping status", () => {
 
     expect(response.status).toBe(200);
     const { rooms } = (await response.json()) as MarkedRooms;
-    // A repeat of the current status still records the mark.
     expect(
       rooms.map((r) => `${r.id}:${r.housekeepingStatus}:${r.housekeepingChangedAt}`).sort(),
     ).toEqual([

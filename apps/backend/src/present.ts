@@ -27,7 +27,6 @@ type Room = typeof rooms.$inferSelect;
 
 const released = (reservation: Reservation) => !holdsInventory(reservation.status);
 
-/** Responses expose a night's final price, not how it was reached. */
 export const presentNight = (night: { date: string; priceCents: number }) => ({
   date: night.date,
   priceCents: night.priceCents,
@@ -92,7 +91,6 @@ export function presentReservation(input: {
   const totals = reservationBill(roomsOut, input.payments, input.reservation.discountCents, {
     released: released(input.reservation),
     paymentSchedule: ratePlan.paymentSchedule,
-    // Reservations cancelled before charges existed have no row and keep a zero charge.
     cancellationChargeCents: cancellation.cancellation?.finalChargeCents ?? 0,
     refunds: input.refunds,
   });

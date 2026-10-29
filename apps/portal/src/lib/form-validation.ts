@@ -1,7 +1,6 @@
 export type FieldErrors = Record<string, string | null>;
 
 export function focusFirstError(form: HTMLFormElement, errors: FieldErrors) {
-  // Wait for the error messages to mount before focusing their controls.
   requestAnimationFrame(() => {
     if (!form.isConnected) return;
     const control = Array.from(form.querySelectorAll<HTMLElement>("[id]")).find(

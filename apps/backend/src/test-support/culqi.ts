@@ -1,11 +1,5 @@
 import type { CulqiCharge } from "../culqi";
 
-/**
- * A fake Culqi API v2 at the HTTP level, shaped like the recorded sandbox responses
- * (meldarstudio/pms#114). The token picks the card:
- * `tkn_test_decline` is declined, `tkn_test_3ds` needs 3DS authentication and any
- * other token succeeds. `next` scripts the following call to a path.
- */
 export type FakeCulqi = ReturnType<typeof fakeCulqi>;
 
 type Scripted = "lose" | "timeout" | 500 | 429 | 401 | "decline";
@@ -52,7 +46,6 @@ export function fakeCulqi() {
       outcome,
       metadata: (body.metadata as Record<string, string>) ?? null,
       amount_refunded: 0,
-      // The sandbox reports captured charges as unpaid; success never reads these.
       capture: null,
       paid: false,
     };
@@ -76,7 +69,6 @@ export function fakeCulqi() {
   function createRefund(body: Record<string, unknown>) {
     const target = charges.find((c) => c.id === body.charge_id);
     if (!target) return json(404, { object: "error", type: "parameter_error" });
-    // Culqi allows over-refunds; the API refuses them before calling.
     const refund = {
       object: "refund",
       id: `ref_test_${++sequence}`,
@@ -112,7 +104,6 @@ export function fakeCulqi() {
     charges,
     refunds,
     requests,
-    /** Script the next call to `method path`, for example `next("POST /charges", "lose")`. */
     next(call: string, ...outcomes: Scripted[]) {
       scripts.set(call, [...(scripts.get(call) ?? []), ...outcomes]);
     },
@@ -134,7 +125,6 @@ export function fakeCulqi() {
       if (scripted === "timeout")
         throw new DOMException("The operation was aborted due to timeout", "TimeoutError");
       const response = route(method, url, body);
-      // A lost response still made the change in Culqi.
       if (scripted === "lose") throw new TypeError("Network connection lost.");
       return response;
     }) as typeof fetch,

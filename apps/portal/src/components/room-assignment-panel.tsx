@@ -15,8 +15,6 @@ export function RoomAssignmentPanel({
 }: RoomAssignmentStepsProps & { rangeLabel: string; onClose: () => void }) {
   const { target, pending } = steps.assignment;
   const heading = useRef<HTMLHeadingElement>(null);
-  // Each step replaces the control that was just used (the list item, or a room
-  // after a save), so announce the new step instead of dropping focus.
   useEffect(() => {
     heading.current?.focus();
   }, [target?.id]);

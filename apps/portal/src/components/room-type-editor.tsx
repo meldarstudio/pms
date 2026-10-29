@@ -36,7 +36,6 @@ import { toast, toastError } from "@/lib/toast";
 
 type RoomTypeDraft = SetupValues & { roomNumber: string };
 
-/** The values to save: a number still in the add field goes first. */
 function withPendingRoom(value: RoomTypeDraft): SetupValues {
   const number = value.roomNumber.trim();
   return {
@@ -45,7 +44,6 @@ function withPendingRoom(value: RoomTypeDraft): SetupValues {
   };
 }
 
-// The pending add field is submitted first, but remains separate until success.
 function draftRoomField(index: number, pending: boolean) {
   return pending && index === 0 ? "roomNumber" : `rooms[${index - (pending ? 1 : 0)}].number`;
 }
@@ -180,7 +178,6 @@ export function RoomTypeEditor({
   function add() {
     if (submitting || !number || numberError) return;
     clearServerErrors();
-    // Draft-only keys need uniqueness in this editor, not a secure browser context.
     form.setFieldValue("rooms", [
       { key: `new-room-${nextRoomKey.current++}`, number },
       ...values.rooms,

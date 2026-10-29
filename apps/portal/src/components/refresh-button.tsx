@@ -2,7 +2,6 @@ import { RefreshCwIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "cn";
 
-/** Re-reads a page's data on demand; spins and disables itself while that read runs. */
 export function RefreshButton({
   refreshing,
   disabled,

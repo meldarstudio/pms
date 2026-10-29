@@ -96,7 +96,6 @@ type AssignmentPreview = {
   onSelect: () => void;
 };
 
-// Short reasons fit the room column; the full label stays in the row title.
 const assignmentNotes: Partial<Record<RoomProblem, string>> = {
   occupied: "Ocupada",
   closed: "Cerrada",
@@ -111,7 +110,6 @@ function assignmentNote(problem: RoomProblem | null | undefined) {
 }
 
 function clipStay(stay: TrackItem, rangeStart: Date, dayCount: number) {
-  // Both bookings and closures block nights, with half-day endpoints.
   const start = Math.max(
     0,
     differenceInCalendarDays(parse(stay.checkIn, "yyyy-MM-dd", rangeStart), rangeStart) + 0.5,
@@ -167,12 +165,6 @@ function stayTrack(stay: {
   };
 }
 
-/**
- * Marks today's column behind the bars, since the calendar opens on yesterday.
- * It reaches 1px past each side and the bottom (and the header's top) to cover the
- * gray grid lines, so its opaque outline runs unbroken from the header to the last room.
- * The last column has no grid line on its right, so it stays inside to avoid overflow.
- */
 function TodayColumn({ header = false, last = false }: { header?: boolean; last?: boolean }) {
   return (
     <div
@@ -318,7 +310,6 @@ function RoomTrack({
       >
         {days.map((day, dayIndex) => {
           const date = format(day, "yyyy-MM-dd");
-          // Availability is based on nights, not the bar's half-day drawing.
           const occupied = stays.some((stay) => stay.checkIn <= date && stay.checkOut > date);
           const morningBlocked = stays.some((stay) => stay.checkOut === date);
           const disabled = !onBookDay || occupied || date < today;
@@ -410,8 +401,6 @@ export function RoomCalendar({
   const assignmentTriggerRef = useRef<HTMLButtonElement>(null);
   const gridScroller = useRef<HTMLDivElement>(null);
   const gridCorner = useRef<HTMLDivElement>(null);
-  // Tied to the stay it was made for: the hovered room's button unmounts when it is
-  // assigned, so no blur clears it before the next stay opens.
   const [highlight, setHighlight] = useState<{ stayId: string; roomId: string } | null>(null);
   const [manualRefresh, setManualRefresh] = useState<Promise<void> | null>(null);
   const from = format(start, "yyyy-MM-dd");
@@ -439,7 +428,6 @@ export function RoomCalendar({
     ? "Mostrar habitaciones reservadas sin asignar"
     : `Mostrar habitaciones reservadas sin asignar, ${unassigned.length}`;
   const listError = calendar ? null : error;
-  // A failed new window must not leave the previous week's stays on screen.
   const loadError = calendar ? null : calendarQuery.error;
   const previewTrack =
     !isMobile && assignment.target
@@ -473,8 +461,6 @@ export function RoomCalendar({
     assignment.selectStay(stay);
     setHighlight(null);
     if (isMobile) return;
-    // Gaps can only be judged with the whole stay on screen, checkout morning
-    // included. The list only holds stays that overlap the window.
     const checkIn = parse(stay.checkIn, "yyyy-MM-dd", start);
     const checkOut = parse(stay.checkOut, "yyyy-MM-dd", start);
     const lastDay = addDays(start, span - 1);
@@ -499,7 +485,6 @@ export function RoomCalendar({
       ? scroller?.querySelector<HTMLElement>(`[data-room-id="${highlightedRoomId}"]`)
       : null;
     if (!scroller || !row) return;
-    // Scroll only the grid: scrollIntoView would also move the app shell.
     const view = scroller.getBoundingClientRect();
     const box = row.getBoundingClientRect();
     const top = view.top + (gridCorner.current?.offsetHeight ?? 0);
@@ -794,8 +779,6 @@ export function RoomCalendar({
         <div
           ref={gridScroller}
           className={cn(
-            // -mt-px puts the header's top border over the line above the grid,
-            // so today's header can redraw that line in its own color.
             "-mt-px min-h-0 min-w-0 flex-1 overflow-auto overscroll-none",
             primaryActionClearance,
           )}
@@ -969,8 +952,6 @@ export function RoomCalendar({
         {!isMobile && unassignedOpen && (
           <aside
             aria-label="Habitaciones reservadas sin asignar"
-            // border-l is the fixed scroll-edge separator; last grid columns
-            // omit border-r so it does not double-stack when flush.
             className="flex min-h-0 w-80 shrink-0 flex-col border-l bg-background"
           >
             <RoomAssignmentPanel

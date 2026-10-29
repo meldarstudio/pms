@@ -9,8 +9,6 @@ export type ReservationStatus = (typeof reservationStatusValues)[number];
 declare const serializedStatuses: unique symbol;
 export type SerializedReservationStatuses = string & { readonly [serializedStatuses]: true };
 
-// Controls always have a nonempty selection; all statuses means unrestricted.
-// Legacy empty/all URL values still mean unrestricted at the URL/API seam.
 export class ReservationStatusSelection {
   readonly values: readonly ReservationStatus[];
 

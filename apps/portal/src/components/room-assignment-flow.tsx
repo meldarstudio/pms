@@ -43,7 +43,6 @@ export type RoomAssignmentStepsProps = {
   onHighlightRoom?: (roomId: string | null) => void;
 };
 
-/** The unassigned list and room picker shared by the desktop panel and the mobile sheet. */
 export function RoomAssignmentSteps({
   stays,
   rooms,
@@ -59,7 +58,6 @@ export function RoomAssignmentSteps({
   const { today } = usePropertyCalendar();
   const { target, checking, ready, pending, eligibleCount, groupAssignments } = assignment;
   const error = assignment.error ?? assignment.saveError;
-  // Staff read floors and neighbours from the room number, so keep numeric order.
   const availableRooms = ready
     ? (rooms ?? [])
         .filter(
@@ -68,7 +66,6 @@ export function RoomAssignmentSteps({
         )
         .sort((a, b) => a.number.localeCompare(b.number, undefined, { numeric: true }))
     : [];
-  // The status is what staff marked now; it only matters for a stay that has begun.
   const showDirty = !!target && target.checkIn <= today;
 
   if (target) {

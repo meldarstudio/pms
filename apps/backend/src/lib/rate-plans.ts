@@ -1,18 +1,11 @@
 import type { reservations } from "../db/schema";
 
-// Code-defined offers. Each reservation stores a snapshot of the terms it was
-// accepted under, so changing a definition here never alters an existing agreement.
-
 export type CancellationChargeBasis = "first_night" | "final_total";
 export type PaymentSchedule = "first_night_deposit" | "full_upfront";
 export type RatePlanCode = "flexible" | "non_refundable";
 
 export type CancellationPolicy = {
   chargeBasis: CancellationChargeBasis;
-  /**
-   * Days before the check-in date through whose end cancellation is free, in the
-   * property calendar; null when never free. 2 frees a 10 Nov stay through 8 Nov.
-   */
   freeUntilDaysBeforeCheckIn: number | null;
 };
 
@@ -20,7 +13,6 @@ export type RatePlanTerms = {
   plan: RatePlanCode;
   cancellationPolicy: CancellationPolicy;
   paymentSchedule: PaymentSchedule;
-  /** Signed percentage applied to ordinary nightly prices; -10 is a 10% reduction. */
   priceAdjustmentPercent: number;
 };
 
@@ -61,7 +53,6 @@ type TermColumns = Pick<
   | "priceAdjustmentPercent"
 >;
 
-/** The reservation columns that snapshot a plan's terms at acceptance. */
 export function termColumns(terms: RatePlanTerms): TermColumns {
   return {
     ratePlan: terms.plan,
@@ -73,10 +64,8 @@ export function termColumns(terms: RatePlanTerms): TermColumns {
   };
 }
 
-// The pre-0011 column a Worker from before that migration still reads.
 const hoursFromDays = (days: number | null) => (days === null ? null : days * 24);
 
-/** The terms a reservation was accepted under, read from its stored snapshot. */
 export function acceptedTerms(reservation: TermColumns): RatePlanTerms {
   return {
     plan: reservation.ratePlan as RatePlanCode,

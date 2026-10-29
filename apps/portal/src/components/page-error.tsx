@@ -14,13 +14,8 @@ import {
 import { readErrorKind, readErrorMessage } from "@/lib/api-error";
 import { calendarSearch } from "@/lib/route-search";
 
-/** Copy and action for a page whose record can be missing, such as one reservation. */
 export type NotFoundState = { title: string; description: string; action: ReactNode };
 
-/**
- * Replaces a page's content when its data could not be read and nothing is on screen.
- * Keep the page's own controls outside so staff can change dates or filters instead.
- */
 export function PageError({
   error,
   onRetry,
@@ -74,7 +69,6 @@ export function PageError({
   );
 }
 
-/** Keeps data on screen when refreshing it failed, warning that it may be out of date. */
 export function StaleDataNotice({
   error,
   onRetry,
@@ -105,14 +99,12 @@ export function StaleDataNotice({
   );
 }
 
-/** Staff see generic copy for errors without a translation; the console keeps the cause. */
 function useLogUnexplained(error: unknown, explained: boolean) {
   useEffect(() => {
     if (!explained) console.error(error);
   }, [error, explained]);
 }
 
-/** The router's fallback when a page throws while rendering. */
 export function RouteCrash({ error }: ErrorComponentProps) {
   useEffect(() => {
     console.error(error);

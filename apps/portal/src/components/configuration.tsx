@@ -50,7 +50,6 @@ const sections = [
 export type ConfigurationSection = (typeof sections)[number]["id"];
 type ConfigurationSearch = { section?: Exclude<ConfigurationSection, "rooms"> };
 
-/** `/setup` opens Habitaciones, so only the other sections appear in the URL. */
 export function configurationSearch(section: ConfigurationSection): ConfigurationSearch {
   return section === "rooms" ? {} : { section };
 }
@@ -60,7 +59,6 @@ export function parseConfigurationSearch(search: Record<string, unknown>): Confi
   return section ? configurationSearch(section.id) : {};
 }
 
-/** Staff never reach `accounts`: the setup route sends them to Habitaciones. */
 export function Configuration({ section }: { section: ConfigurationSection }) {
   const navigate = useNavigate();
   const isOwner = useSession().data?.role === "owner";

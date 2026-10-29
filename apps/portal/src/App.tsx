@@ -30,9 +30,7 @@ export function App() {
     setSidebarOpen(open);
     try {
       window.localStorage.setItem(SIDEBAR_STORAGE_KEY, String(open));
-    } catch {
-      // Keep navigation usable when browser storage is unavailable.
-    }
+    } catch {}
   }
 
   return (
@@ -54,11 +52,9 @@ export function App() {
           <span className="text-xs font-medium peer-[:not(:empty)]:hidden">{title}</span>
           <div ref={setHeaderActions} className="ml-auto flex items-center gap-2" />
         </header>
-        {/* Follows the header in focus order although the action floats at the bottom. */}
         <div ref={setPrimaryAction} />
         <div
           className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden"
-          // The 2rem Lyra action plus 1rem above and below it.
           style={
             {
               "--primary-action-clearance": "calc(4rem + env(safe-area-inset-bottom))",

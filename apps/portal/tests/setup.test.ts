@@ -43,7 +43,6 @@ beforeEach(() => {
   catalog.roomTypes = [double, suite];
   catalog.rooms = [{ id: "room-101", number: "101", roomTypeId: "double" }];
   writes = api.bodies<PropertySetupInput>("POST", "/setup");
-  // Saved setup replaces the type's rooms in the catalog that later reads return.
   api.on<PropertySetupInput>("POST", "/setup", ({ body }) => {
     const roomType = { ...double, ...body, id: body.roomTypeId ?? "new-type" };
     const savedRooms = body.rooms.map((room, i) => ({

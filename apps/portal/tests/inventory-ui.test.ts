@@ -61,7 +61,6 @@ it("keeps inventory rate labels and submitted date ranges unchanged", async () =
       },
     ],
   }));
-  // Only a write to the edited type's rates is recorded.
   const writes = page.api.bodies("PUT", "/room-types/double/rates");
   page.api.on("PUT", "/room-types/double/rates", () => ({ updated: 1 }));
   await render(

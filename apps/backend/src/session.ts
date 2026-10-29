@@ -12,7 +12,6 @@ export function authConfigured(c: Context<Env>): boolean {
   return false;
 }
 
-/** Copy Better Auth's Set-Cookie headers onto the response. */
 export function forwardCookies(c: Context<Env>, headers: Headers | null | undefined) {
   for (const cookie of headers?.getSetCookie() ?? [])
     c.header("set-cookie", cookie, { append: true });

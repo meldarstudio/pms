@@ -145,8 +145,6 @@ export function RoomBookingDialog({
   useEffect(() => {
     const viewport = window.visualViewport;
     if (!open || !viewport) return;
-    // Mobile keyboards can shrink/pan the visual viewport without changing dvh.
-    // Resize the same popup rather than remounting the form and losing its draft.
     const resize = () => {
       popup.current?.style.setProperty("--reservation-viewport-height", `${viewport.height}px`);
       popup.current?.style.setProperty("--reservation-viewport-top", `${viewport.offsetTop}px`);
@@ -291,14 +289,9 @@ export function RoomBookingDialog({
   );
 }
 
-/**
- * The editor's Detalles layout with placeholders, sized like a confirmed reservation with one
- * room so the dialog keeps its size and position when the reservation loads.
- */
 function BookingEditorSkeleton() {
   const isMobile = useIsMobile();
   if (isMobile) {
-    // The full-screen phone editor: fixed header, tabs, and footer around a scrolling form.
     return (
       <div
         role="region"
@@ -458,8 +451,6 @@ export function BookingEditor({
   const [cancellationDirty, setCancellationDirty] = useState(false);
   const draftDirty = dirty || independentDraftDirty;
   const billing = summary.billing;
-  // Saves to one Reservation run in send order, so a Discount autosave finishes before a
-  // later Staying guest, Payment, status or details save reads the Reservation.
   const { send, saving: reservationSaving } = useReservationCommands(detail.id);
   const [statusSaving, setStatusSaving] = useState(false);
   const busy = submitting || reservationSaving;

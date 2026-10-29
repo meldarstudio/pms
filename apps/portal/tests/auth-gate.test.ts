@@ -112,7 +112,6 @@ it("keeps the sidebar usable after failed sign-out and returns to login after a 
   const { ToastProvider } = (await server.ssrLoadModule(
     "/src/components/ui/toast.tsx",
   )) as typeof import("../src/components/ui/toast.tsx");
-  // The default session is signed in and the default empty catalog asks for setup.
   let logout = page.api.hold("POST", "/logout");
   const router = routing.createRouter({
     routeTree: routes.router.routeTree,

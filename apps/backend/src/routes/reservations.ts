@@ -92,7 +92,6 @@ reservationRoutes.get("/", validate("query", reservationListQuerySchema), async 
   if (q.q) {
     for (const token of q.q.split(/\s+/)) {
       const needle = token.replace(/[%_]/g, "");
-      // Skip a token that was only LIKE wildcards so it cannot match every row.
       if (!needle) continue;
       const pattern = `%${needle}%`;
       filters.push(or(like(reservations.code, pattern), like(guests.fullName, pattern)));
@@ -110,8 +109,6 @@ reservationRoutes.get("/", validate("query", reservationListQuerySchema), async 
   const query = db
     .select({
       reservation: reservations,
-      // D1 batches return objects, so shared column names must be unique before
-      // Drizzle maps values back to the nested reservation/contact fields.
       guest: {
         ...getTableColumns(guests),
         id: sql<string>`${guests.id}`.as("list_guest_id"),
@@ -119,7 +116,6 @@ reservationRoutes.get("/", validate("query", reservationListQuerySchema), async 
         notes: sql<string | null>`${guests.notes}`.as("list_guest_notes"),
         createdAt: sql<string>`${guests.createdAt}`.as("list_guest_created_at"),
       },
-      // Aggregate each one-to-many relation independently; joining payments to nights inflates both.
       subtotalCents: (needsBalance
         ? sql<number>`coalesce((
         select sum(${reservationRoomNights.priceCents}) from ${reservationRooms}
@@ -142,7 +138,6 @@ reservationRoutes.get("/", validate("query", reservationListQuerySchema), async 
       ), 0)`
         : sql<number>`0`
       ).as("list_refunded_cents"),
-      // The active cancellation or no-show's final charge; restored and legacy cancellations charge nothing.
       cancellationChargeCents: (needsBalance
         ? sql<number>`coalesce((
         select ${reservationCancellations.policyChargeCents} - coalesce((
@@ -179,7 +174,6 @@ reservationRoutes.get("/", validate("query", reservationListQuerySchema), async 
   let rows = matches;
   let total = counts[0].total;
   if (needsBalance) {
-    // Keep the authoritative billing policy in bill(), which reservationBill applies to every read.
     const balanced = matches
       .map((row) => {
         const { reservation, subtotalCents, paidCents, refundedCents, cancellationChargeCents } =
@@ -193,7 +187,6 @@ reservationRoutes.get("/", validate("query", reservationListQuerySchema), async 
         );
         return { ...row, balanceCents };
       })
-      // Refund due is the credit: net money retained beyond the final charge.
       .filter(({ balanceCents }) => q.refund !== "due" || balanceCents < 0)
       .filter(({ balanceCents }) => {
         return q.balance === "outstanding"
@@ -204,7 +197,6 @@ reservationRoutes.get("/", validate("query", reservationListQuerySchema), async 
               ? balanceCents < 0
               : true;
       });
-    // Stable numeric sorting preserves the SQL name/code tie-breakers in both directions.
     if (q.sort === "balance")
       balanced.sort(
         (a, b) => (q.direction === "desc" ? -1 : 1) * (a.balanceCents - b.balanceCents),
@@ -272,7 +264,6 @@ reservationRoutes.post("/", validate("json", workflowCreateSchema), async (c) =>
     id = await createWorkflow(db, c.req.valid("json"));
   return c.json(await reservationDetail(db, id, currency(c)), 201);
 });
-// Prices a new reservation under its plan; it neither validates availability nor saves.
 reservationRoutes.post("/preview", validate("json", workflowCreatePreviewSchema), async (c) => {
   const input = c.req.valid("json");
   const { terms, rooms } = await previewCreate(getDb(c.env.DB), input);
@@ -333,14 +324,12 @@ reservationRoutes.post("/:id/commands", validate("json", workflowCommandSchema),
   const db = getDb(c.env.DB);
   const command = c.req.valid("json");
   const context = commandContext(c);
-  // Refuse before saving a request that could never reach Culqi.
   if (
     !c.env.CULQI_SECRET_KEY &&
     command.actions.some((action) => action.type === "request-culqi-refund")
   )
     throw new HttpError(503, "Culqi is not configured");
   const result = await execute(db, c.req.param("id"), command, false, context);
-  // A replayed command sent its refunds when it first committed.
   if (result.culqiRefunds?.length)
     await sendCulqiRefunds(
       db,

@@ -192,10 +192,6 @@ export function ChoiceField({
 
 type PhoneCountry = (typeof phoneCountries)[number];
 
-/**
- * A contact phone with a searchable country selector. National numbers are read in the selected
- * country; typing or pasting an explicit international number selects its country.
- */
 export function PhoneField({
   label,
   value,
