@@ -14,7 +14,6 @@ import {
 import { toast } from "@/lib/toast";
 import { translateError } from "@/lib/errors";
 
-// These conflicts get copy that names the next step.
 const conflictCopy = new Map([
   [
     "room is already assigned for those dates",
@@ -31,8 +30,6 @@ export function useRoomAssignment(rooms: Room[] | null, unassigned: ReservationS
   const { assign, saving: pending } = useRoomAssignmentCommand();
   const [saveError, setSaveError] = useState<string | null>(null);
   const [target, setTarget] = useState<ReservationStay | null>(null);
-  // A save resolves after the calendar refetch, so read the latest list then,
-  // skipping lines this group run assigned in case that render has not landed.
   const latestUnassigned = useRef(unassigned);
   const assignedLines = useRef(new Set<string>());
   useEffect(() => {
@@ -64,8 +61,6 @@ export function useRoomAssignment(rooms: Room[] | null, unassigned: ReservationS
   const ready = Boolean(target && !checking && !queryError && !staleTarget);
   const roomProblems = new Map<string, RoomProblem | null>();
   if (target && ready) {
-    // Only the reserved room being assigned is ignored, so the group's other saved
-    // reserved rooms still hold their rooms.
     const context = {
       reservations: reservations.data ?? [],
       closures: closures.data ?? [],
@@ -73,8 +68,6 @@ export function useRoomAssignment(rooms: Room[] | null, unassigned: ReservationS
     };
     for (const room of rooms ?? []) roomProblems.set(room.id, roomProblem(room, target, context));
   }
-  // Kept while the next room's availability is re-checked, so the reference stays
-  // on screen when staff need it.
   const groupAssignments =
     target && !queryError
       ? (reservations.data
@@ -132,7 +125,6 @@ export function useRoomAssignment(rooms: Room[] | null, unassigned: ReservationS
         timeout: 5000,
       });
       assignedLines.current.add(target.id);
-      // Keep a group together: continue with the reservation's next reserved room.
       const next = latestUnassigned.current.find(
         (stay) =>
           stay.reservationId === target.reservationId && !assignedLines.current.has(stay.id),
@@ -140,7 +132,6 @@ export function useRoomAssignment(rooms: Room[] | null, unassigned: ReservationS
       setTarget(next ?? null);
       return;
     }
-    // Assignment changes no form field, so any rejection is one message.
     const message =
       result.status === "failed" ? result.message : "No se pudo asignar la habitación.";
     const code = result.status === "failed" ? result.code : undefined;
@@ -152,7 +143,6 @@ export function useRoomAssignment(rooms: Room[] | null, unassigned: ReservationS
       priority: "high",
       timeout: 7000,
     });
-    // A conflict means the screen is out of date; re-read what decides availability.
     await Promise.all([
       queryClient.invalidateQueries({ queryKey: ["reservations"] }),
       queryClient.invalidateQueries({ queryKey: ["room-closures"] }),

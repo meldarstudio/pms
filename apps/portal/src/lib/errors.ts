@@ -86,7 +86,6 @@ const messages: Record<string, string> = {
   "amount cannot be zero": "El importe debe ser distinto de cero.",
 };
 
-/** The Spanish message for a known backend error, or null when it has no translation. */
 export function knownErrorMessage(message: string): string | null {
   if (messages[message]) return messages[message];
   if (/^(Invalid input|Invalid option|Too small|Too big)/i.test(message)) {

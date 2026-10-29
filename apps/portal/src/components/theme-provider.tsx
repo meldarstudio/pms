@@ -83,9 +83,7 @@ export function ThemeProvider({
     try {
       const storedTheme = localStorage.getItem(storageKey);
       if (isTheme(storedTheme)) return storedTheme;
-    } catch {
-      /* Storage can be unavailable in private or restricted browsers. */
-    }
+    } catch {}
 
     return defaultTheme;
   });
@@ -94,9 +92,7 @@ export function ThemeProvider({
     (nextTheme: Theme) => {
       try {
         localStorage.setItem(storageKey, nextTheme);
-      } catch {
-        /* Keep the visit-only choice. */
-      }
+      } catch {}
       setThemeState(nextTheme);
     },
     [storageKey],
@@ -173,9 +169,7 @@ export function ThemeProvider({
 
         try {
           localStorage.setItem(storageKey, nextTheme);
-        } catch {
-          /* Keep the visit-only choice. */
-        }
+        } catch {}
         return nextTheme;
       });
     };

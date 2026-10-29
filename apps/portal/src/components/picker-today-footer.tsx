@@ -1,7 +1,6 @@
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
 
-/** Hoy at the foot of a date picker popover, for layouts without a standalone Hoy button. */
 export function PickerTodayFooter({
   disabled,
   onToday,

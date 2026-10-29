@@ -4,7 +4,6 @@ import react from "@vitejs/plugin-react";
 import { defineConfig, loadEnv, searchForWorkspaceRoot, lazyPlugins } from "vite-plus";
 import { lint } from "../../tooling/lint.ts";
 
-// https://vite.dev/config/
 export default defineConfig(({ command, mode }) => {
   const env = loadEnv(mode, import.meta.dirname, "VITE_");
   if (command === "build" && !env.VITE_API_BASE_URL) {
@@ -32,7 +31,6 @@ export default defineConfig(({ command, mode }) => {
       name: "portal",
       environment: "node",
       include: ["tests/*.test.ts"],
-      // Also bound package-local runs, which do not load the root test config.
       fileParallelism: false,
       pool: "forks",
       execArgv: ["--max-old-space-size=1536"],

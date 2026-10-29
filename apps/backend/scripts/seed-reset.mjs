@@ -52,7 +52,6 @@ function main() {
     options.set(option, value);
   }
   const anchor = referenceDate(options.get("--date"));
-  // Generate and validate everything before migrations or deletion.
   const sql = buildResetSql(anchor);
   const persistArgs = options.has("--persist-to")
     ? ["--persist-to", resolve(options.get("--persist-to"))]

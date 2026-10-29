@@ -9,25 +9,15 @@ import type { AccountRole } from "../account-sql";
 import { authEnv, PORTAL_ORIGIN, seedAccounts, signIn } from "./auth";
 
 export type TestDb = {
-  /** The migrated database, for seeding and for rows the API does not expose. */
   sqlite: DatabaseSync;
-  /** Worker bindings for every request. Tests may change vars, then call signIn(). */
   env: Env["Bindings"];
-  /** Call the real Hono app as the portal, with the current session unless signedIn is false. */
   request(
     path: string,
     method?: string,
     body?: unknown,
     options?: { signedIn?: boolean },
   ): Promise<Response>;
-  /** Replace the session, for example after moving the clock or to act as the owner. */
   signIn(role?: AccountRole): Promise<void>;
-  /**
-   * Run `hook` before each of the next `times` (default 1) write batches, any
-   * batch with a statement that returns no rows, enters its transaction: after
-   * the request's reads and preflight. Writes made while a hook runs are not
-   * intercepted, so the hook can commit a competing request. Returns `stop`.
-   */
   beforeCommit(hook: () => unknown, options?: { times?: number }): () => void;
   close(): void;
 };
@@ -36,12 +26,10 @@ type Statement = ReturnType<typeof statement>;
 
 const migrations = new URL("../../drizzle/", import.meta.url);
 
-// Run the actual Hono routes and Drizzle SQL against SQLite with D1-style batches.
 function statement(sqlite: DatabaseSync, sql: string, params: SQLInputValue[] = []) {
   const reads = sqlite.prepare(sql).columns().length > 0;
   const execute = () => {
     if (reads) {
-      // D1 batch results use column-name keys; duplicate join columns collapse.
       return { success: true, results: sqlite.prepare(sql).all(...params) };
     }
     sqlite.prepare(sql).run(...params);
@@ -52,8 +40,6 @@ function statement(sqlite: DatabaseSync, sql: string, params: SQLInputValue[] = 
     execute,
     bind: (...values: SQLInputValue[]) => statement(sqlite, sql, values),
     raw: async () => {
-      // The subquery gives duplicate join columns distinct names on Node 22.
-      // Writes with RETURNING cannot be a subquery and have no joins.
       return sqlite
         .prepare(/^\s*(select|with)\b/i.test(sql) ? `SELECT * FROM (${sql})` : sql)
         .all(...params)
@@ -64,7 +50,6 @@ function statement(sqlite: DatabaseSync, sql: string, params: SQLInputValue[] = 
   };
 }
 
-/** A fresh database with every journal migration applied, staff and owner accounts, and a signed-in staff session. */
 export async function createTestDb(): Promise<TestDb> {
   const sqlite = new DatabaseSync(":memory:");
   sqlite.exec("PRAGMA foreign_keys = ON");
@@ -76,7 +61,6 @@ export async function createTestDb(): Promise<TestDb> {
 
   const hooks: { run: () => unknown; times: number }[] = [];
   let hookRunning = false;
-  // D1 runs one batch at a time, each as a transaction.
   let batchTail: Promise<unknown> = Promise.resolve();
   const transaction = (queries: Statement[]) => {
     const result = batchTail.then(() => {
@@ -146,14 +130,10 @@ export async function createTestDb(): Promise<TestDb> {
   };
 }
 
-// Seeds below name the legacy and positional columns once, for rows the API
-// cannot create directly (fixed IDs, histories, stays longer than the write limit).
-
 export function seedRoomType(
   sqlite: DatabaseSync,
   type: { id: string; name: string; maxAdults: number; baseRateCents: number },
 ) {
-  // max_occupancy is the legacy column behind maxAdults.
   sqlite
     .prepare(
       "INSERT INTO room_types (id, name, max_occupancy, base_rate_cents, created_at) VALUES (?, ?, ?, ?, '2026-10-10')",
@@ -161,17 +141,11 @@ export function seedRoomType(
     .run(type.id, type.name, type.maxAdults, type.baseRateCents);
 }
 
-/** Rooms keyed by ID, with their room numbers. */
 export function seedRooms(sqlite: DatabaseSync, roomTypeId: string, rooms: Record<string, string>) {
   const insert = sqlite.prepare("INSERT INTO rooms (id, number, room_type_id) VALUES (?, ?, ?)");
   for (const [id, number] of Object.entries(rooms)) insert.run(id, number, roomTypeId);
 }
 
-/**
- * A reservation with its own booking contact and one reserved room. Guest and
- * room-line IDs default to the reservation ID; `nightCents` adds a priced
- * night for each date in [checkIn, checkOut).
- */
 export function seedReservation(
   sqlite: DatabaseSync,
   reservation: {

@@ -27,8 +27,6 @@ function subscribe(notify: () => void) {
   };
 }
 
-// All date-relative UI re-renders at the boundary and on resume. Defaults stay
-// in their owning form state: a new day never overwrites a draft or a URL.
 export function usePropertyCalendar() {
   const today = useSyncExternalStore(subscribe, propertyToday);
   return { today, timeZone: propertyTimeZone() };

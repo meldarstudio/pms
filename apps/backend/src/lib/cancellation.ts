@@ -10,7 +10,6 @@ export type Cancellation = typeof reservationCancellations.$inferSelect & {
   waivers: Waiver[];
 };
 
-/** The cancellation or no-show whose charge replaces the stay bill; restored ones are history. */
 export const activeCancellation = (cancellations: Cancellation[]) =>
   cancellations.find((cancellation) => cancellation.restoredAt === null);
 
@@ -38,7 +37,6 @@ export function presentCancellation(cancellation: Cancellation) {
   };
 }
 
-/** The active cancellation and the restored history, as every read presents them. */
 export function cancellationFields(cancellations: Cancellation[]) {
   const active = activeCancellation(cancellations);
   return {
@@ -51,12 +49,6 @@ export function cancellationFields(cancellations: Cancellation[]) {
 
 type BillableRoom = Parameters<typeof reservationBill>[0][number];
 
-/**
- * The charge the accepted terms impose when the outcome is recorded at `now`.
- * Cancellation is free through the end of the deadline date in the property
- * calendar; otherwise, and always for a no-show, the basis applies to the stay
- * bill after the reservation discount.
- */
 export function policyCharge(input: {
   outcome: string;
   rooms: BillableRoom[];

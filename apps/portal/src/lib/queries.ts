@@ -85,7 +85,6 @@ export function useLogout() {
   });
 }
 
-/** Owner only: the backend answers 403 for the staff account. */
 export function useAccounts(enabled: boolean) {
   return useQuery({
     queryKey: ["accounts"],
@@ -218,7 +217,6 @@ export function usePatchRoom() {
 export const housekeepingQueryKey = ["housekeeping"] as const;
 const housekeepingMarkMutationKey = ["housekeeping", "mark"] as const;
 
-/** Includes marks and undo requests, even when different rooms save concurrently. */
 export function usePendingHousekeepingRoomIds() {
   const pending = useMutationState({
     filters: { mutationKey: housekeepingMarkMutationKey, status: "pending" },
@@ -236,14 +234,12 @@ export function useHousekeeping() {
   });
   const listDate = query.data?.date;
   const { refetch } = query;
-  // Today's stays and the order belong to one property date; re-read when it passes.
   useEffect(() => {
     if (listDate && listDate !== today) void refetch();
   }, [listDate, today, refetch]);
   return query;
 }
 
-/** Marks one or more rooms in one all-or-nothing request. */
 export function useMarkHousekeeping() {
   const client = useQueryClient();
   const setRooms = (marks: Map<string, Partial<HousekeepingMark>>) =>
@@ -258,7 +254,6 @@ export function useMarkHousekeeping() {
           }
         : list,
     );
-  // Calendar rooms carry only the status, so their windows are patched separately.
   const setCalendarRooms = (statuses: Map<string, HousekeepingStatus>, queryKey?: QueryKey) =>
     client.setQueriesData<CalendarWindow>(
       { queryKey: queryKey ?? ["calendar"], exact: !!queryKey },
@@ -276,7 +271,6 @@ export function useMarkHousekeeping() {
   return useMutation({
     mutationFn: markHousekeeping,
     mutationKey: housekeepingMarkMutationKey,
-    // The rows change at once; the re-read after a save re-sorts the list.
     onMutate: async (marks) => {
       await client.cancelQueries({ queryKey: housekeepingQueryKey });
       await client.cancelQueries({ queryKey: ["calendar"] });

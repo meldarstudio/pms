@@ -106,7 +106,6 @@ beforeEach(() => {
       limit: Number(url.searchParams.get("limit")),
       offset: Number(url.searchParams.get("offset")),
     });
-  // The fake backend also asserts that every request sends credentials.
   page.api.catalog.roomTypes = [
     { id: "double", name: "Doble", maxAdults: 2, maxChildren: 2, baseRateCents: 15000 },
   ];
@@ -549,7 +548,6 @@ it.each(["desktop", "mobile"])(
             id: "group",
             guestName: "Ester Aguilar",
             rooms: [
-              // Unsorted, and 1001 sorts first as text but last as a number.
               ...["407", "1001", "108", "213", "201", "404", "204", "205", "207"]
                 .concat(["208", "301", "304", "305", "307", "308", "405"])
                 .map((number) => ({ ...ana.rooms[0], id: number, roomNumber: number })),
@@ -596,7 +594,6 @@ it.each(["desktop", "mobile"])(
       /150Crédito/,
     );
     assert.equal(rows[2]!.textContent.includes("Saldo pendiente"), false);
-    // Long room lists stay short on screen; assistive technology still gets every room.
     assert.match(rows[3]!.textContent, /108, 201, 204 \+13 · 2 sin asignar/);
     const allRooms = rows[3]!.querySelector(".sr-only");
     assert.equal(
@@ -636,7 +633,6 @@ it.each(["desktop", "mobile"])(
     });
     await until(() => container.textContent.includes("#ANA0001"));
     const detailLink = router.state.location.href;
-    // A different table context must not overwrite the return URL encoded in this detail link.
     await React.act(async () => router.navigate({ href: "/reservations?view=all" }));
     await until(() => container.textContent.includes("Todas las reservas"));
     await render(detailLink);
@@ -699,7 +695,6 @@ it("includes cancellations with all four statuses checked and restores daily def
 it("applies mobile sheet filters immediately, closes with focus restored, and keeps state across the breakpoint", async () => {
   window.happyDOM.setWindowSize({ width: 767, height: 844 });
   await render("/reservations?view=departures&day=2026-12-31&q=Ana&sort=balance&size=25");
-  // happy-dom initializes media-query listeners to false, even when mounted on a phone.
   await React.act(async () => window.dispatchEvent(new window.Event("resize")));
   assert.ok(container.querySelector('ul[aria-label="Reservas"]'));
   await click("Filtros");

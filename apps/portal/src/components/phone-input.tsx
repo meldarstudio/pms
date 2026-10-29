@@ -15,7 +15,6 @@ const deletions: Partial<Record<string, PhoneEdit["deletion"]>> = {
   deleteContentForward: "forward",
 };
 
-/** A phone mask with digit-anchored editing and an unformatted clipboard. */
 export function PhoneInput({
   value,
   onChange,
@@ -26,7 +25,6 @@ export function PhoneInput({
 }) {
   const input = useRef<HTMLInputElement>(null);
   const selection = useRef<number | null>(null);
-  // Refs rather than state: an input event can arrive before React renders the previous one.
   const composing = useRef(false);
   const selectedBeforeInput = useRef(false);
   const [composition, setComposition] = useState<string | null>(null);
@@ -38,7 +36,6 @@ export function PhoneInput({
     }
   });
 
-  // React's onBeforeInput omits deletions, so read the selection from the native event.
   useEffect(() => {
     const element = input.current;
     if (!element) return;
@@ -53,12 +50,10 @@ export function PhoneInput({
     const next = editPhone(value, change);
     selection.current = next.caret;
     onChange(next.value);
-    // Separator-only edits may leave the form value unchanged and cause no render.
     element.value = next.text;
     element.setSelectionRange(next.caret, next.caret);
   }
 
-  /** Puts the selection's digits on the clipboard; false leaves the browser's own copy. */
   function copyDigits(event: ClipboardEvent<HTMLInputElement>) {
     const element = event.currentTarget;
     const text = phoneClipboardText(

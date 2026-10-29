@@ -8,7 +8,6 @@ export type Refund = typeof refunds.$inferSelect & {
 const byRequest = (a: Refund, b: Refund) =>
   a.requestedAt.localeCompare(b.requestedAt) || a.id.localeCompare(b.id);
 
-/** Every refund of a reservation, oldest request first, as reads present them. */
 export function presentRefunds(rows: Refund[]) {
   return rows.toSorted(byRequest).map((refund) => ({
     id: refund.id,

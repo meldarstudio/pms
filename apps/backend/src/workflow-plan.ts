@@ -21,19 +21,15 @@ const requestsRefund = (
   action: RefundAction,
 ): action is Action<"request-refund" | "request-culqi-refund"> =>
   action.type === "request-refund" || action.type === "request-culqi-refund";
-/** Culqi refuses refunds under S/1.00. */
 const CULQI_MIN_REFUND_CENTS = 100;
 
-/** Everything one `plan` call shares between its handlers and finalization steps. */
 type PlanContext = CommandContext & {
   db: Db;
   original: State;
   state: State;
   now: string;
-  // Cancellations and no-shows opened by this command are charged once its stay changes apply.
   opened: Set<string>;
   waivers: Action<"waive-cancellation-charge">[];
-  // Refunds are checked against the command's final bill, after its charges apply.
   refundActions: RefundAction[];
 };
 
@@ -50,7 +46,6 @@ export const totals = (state: State) => {
   return reservationBill(state.lines, state.payments, state.reservation.discountCents, {
     released: !holdsInventory(state.reservation.status),
     paymentSchedule: acceptedTerms(state.reservation).paymentSchedule,
-    // Reservations cancelled before charges existed have no row and keep a zero charge.
     cancellationChargeCents: cancellation ? presentCancellation(cancellation).finalChargeCents : 0,
     refunds: state.refunds,
   });
@@ -120,9 +115,7 @@ function changePayment(action: Action<"edit-payment" | "delete-payment">, ctx: P
   const index = state.payments.findIndex((payment) => payment.id === action.paymentId);
   if (index === -1) fail("payment not found");
   const payment = state.payments[index];
-  // Culqi already holds the charge; staff refund it instead.
   if (payment.culqiChargeId) fail("Culqi payment cannot be changed");
-  // Refund requests apply after the loop, so check the ones queued earlier in this command too.
   if (
     state.refunds.some((refund) => refund.paymentId === payment.id) ||
     refundActions.some((a) => requestsRefund(a) && a.paymentId === payment.id)
@@ -177,9 +170,7 @@ const handlers: Handlers = {
   },
   "set-status"(action, { state, opened, account, now }) {
     const from = state.reservation.status;
-    // An Unfulfilled reservation never had a room; staff refund it instead.
     if (from === "unfulfilled") fail("an unfulfilled reservation cannot change status");
-    // A guest who arrived is not a no-show; a no-show is restored before it is cancelled.
     if (action.status === "no_show" && from !== "confirmed" && from !== "no_show")
       fail("only a confirmed reservation can be marked no-show");
     if (action.status === "cancelled" && from === "no_show")
@@ -201,7 +192,6 @@ const handlers: Handlers = {
       });
     }
     if (holdsInventory(action.status) && !holdsInventory(from)) {
-      // Restoration keeps the charge and its waivers as inactive history.
       const cancellation = activeCancellation(state.cancellations);
       if (cancellation && opened.has(cancellation.id))
         state.cancellations = state.cancellations.filter((c) => c !== cancellation);
@@ -279,7 +269,6 @@ const handlers: Handlers = {
 };
 
 function dispatch(action: WorkflowAction, ctx: PlanContext) {
-  // TypeScript cannot narrow the table entry to the action's own type.
   const handler = handlers[action.type] as (
     action: WorkflowAction,
     ctx: PlanContext,
@@ -334,7 +323,6 @@ function applyRefunds({ state, refundActions, account, today, now }: PlanContext
         if (!payment.culqiChargeId) fail("payment is not a Culqi payment");
         if (action.amountCents < CULQI_MIN_REFUND_CENTS)
           fail("Culqi refund must be at least 100 cents");
-        // Culqi has no refund idempotency: one open request per charge guards double clicks.
         if (
           state.refunds.some(
             (refund) =>
@@ -392,8 +380,6 @@ function checkRefundLimits(
   { original, state, refundActions }: PlanContext,
   actions: WorkflowAction[],
 ) {
-  // A restoration cannot undo any refund activity, failed or requested in this
-  // command included; staff use a new reservation.
   if (
     !holdsInventory(original.reservation.status) &&
     holdsInventory(state.reservation.status) &&
@@ -408,9 +394,6 @@ function checkRefundLimits(
     )
       fail("refund exceeds the payment's remaining amount");
   }
-  // Requested refunds never exceed the refund due. Completing or failing a request
-  // keeps that true, so recording money already returned is never refused; any
-  // other change must leave room for the requests still open.
   const resolvesOnly = actions.every(
     (action) => action.type === "complete-refund" || action.type === "fail-refund",
   );
@@ -423,11 +406,6 @@ function checkRefundLimits(
     );
 }
 
-/**
- * Applies a command's actions to a copy of the saved state, in memory. Ordinary
- * actions apply in order; waivers and refunds are collected and applied after
- * them, against the command's final stay and charge.
- */
 export async function plan(
   db: Db,
   original: State,

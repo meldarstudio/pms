@@ -9,8 +9,6 @@ import { chunks } from "../lib/chunks";
 
 export const housekeepingRoutes = new Hono<Env>();
 
-// One read of every room for the property date. Today's stays come from
-// reservations; the housekeeping status is only what staff last marked.
 housekeepingRoutes.get("/", async (c) => {
   const today = c.get("propertyCalendar").today;
   const db = getDb(c.env.DB);
@@ -71,11 +69,8 @@ housekeepingRoutes.get("/", async (c) => {
   return c.json({ date: today, rooms: housekeepingRooms });
 });
 
-// D1 binds at most 100 parameters per statement.
 const ROOM_IDS_PER_STATEMENT = 90;
 
-// Rooms are never deleted and their ids never change, so a room that exists
-// here still exists when the batch runs.
 async function readMarkedRooms(db: ReturnType<typeof getDb>, roomIds: string[]) {
   const reads = await Promise.all(
     chunks(roomIds, ROOM_IDS_PER_STATEMENT).map((ids) =>
@@ -98,7 +93,6 @@ housekeepingRoutes.put("/", validate("json", housekeepingMarksSchema), async (c)
   const roomIds = marks.map((mark) => mark.roomId);
   if ((await readMarkedRooms(db, roomIds)).length !== roomIds.length)
     throw new HttpError(404, "room not found");
-  // Sets, rather than flips, each status so repeated or simultaneous marks agree.
   const changedAt = new Date().toISOString();
   await runBatch(
     db,

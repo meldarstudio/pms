@@ -2,7 +2,6 @@ import type { HousekeepingMarkInput, HousekeepingStatus } from "@/lib/api";
 import { useMarkHousekeeping } from "@/lib/queries";
 import { toast, toastError } from "@/lib/toast";
 
-/** A room as the page shows it before the mark. */
 export type MarkableRoom = { id: string; number: string; housekeepingStatus: HousekeepingStatus };
 
 export type MarkRooms = (rooms: MarkableRoom[], status: HousekeepingStatus) => Promise<boolean>;
@@ -15,10 +14,6 @@ function markedTitle(rooms: MarkableRoom[], status: HousekeepingStatus) {
   return `${rooms.length} habitaciones ${clean ? "listas" : "marcadas sucias"}`;
 }
 
-/**
- * Marks rooms in one request, then offers to undo it by setting each room's own previous
- * status again in one request. Resolves whether the mark saved.
- */
 export function useMarkRooms(): MarkRooms {
   const mutation = useMarkHousekeeping();
   const save = (marks: HousekeepingMarkInput[]) =>

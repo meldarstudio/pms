@@ -7,12 +7,6 @@ import type { CommandContext } from "./workflow";
 
 type RefundContext = Pick<CommandContext, "today" | "account">;
 
-/**
- * Sends each newly requested Culqi refund once, after its request is saved. Culqi has
- * no refund idempotency, so nothing here retries: a refund Culqi did not clearly
- * complete is completed only if the charge's refunded amount proves it, and otherwise
- * stays requested ("Reembolso pendiente") for staff to check CulqiPanel and record.
- */
 export async function sendCulqiRefunds(
   db: Db,
   culqi: Culqi,
@@ -30,7 +24,6 @@ export async function sendCulqiRefunds(
         });
         continue;
       }
-      // A lost or unclear response may still have refunded: the charge's total tells.
       const [charge, [before]] = await Promise.all([
         culqi.getCharge(chargeId),
         db
@@ -47,7 +40,6 @@ export async function sendCulqiRefunds(
       if (charge.amount_refunded === before!.cents + refund.amountCents)
         await complete(db, refund, context, { reference: chargeId, refundId: result.refundId });
     } catch (error) {
-      // The request stays pending for staff; the command itself was saved.
       console.error("Culqi refund", refund.id, error);
     }
   }
@@ -77,7 +69,6 @@ function complete(
           isNotNull(refunds.culqiChargeId),
         ),
       ),
-    // A command planned against the requested refund must replan instead of overwriting it.
     db
       .update(reservations)
       .set({ revision: sql`${reservations.revision} + 1` })

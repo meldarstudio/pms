@@ -23,7 +23,6 @@ export function stayDateLabel(value: string) {
 
 const roomNumberOrder = new Intl.Collator("es", { numeric: true });
 
-// List rows name this many rooms and count the rest.
 const listedRoomLimit = 3;
 
 export function roomsSummary(rooms: readonly { roomNumber: string | null }[]) {

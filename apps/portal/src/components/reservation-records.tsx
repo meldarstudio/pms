@@ -41,11 +41,6 @@ import type { ReservationDetail, ReservationPayment, StayingGuest } from "@/lib/
 import { format } from "@/lib/dates";
 import { formatMoney } from "@/lib/money";
 
-// Staying-guest and payment lists shared by the compact dialog and the full page.
-// Callers own what Editar and Eliminar do. `framed` draws the lists in a border
-// with an icon per guest and a visually hidden heading, and gives empty states an
-// icon, for the page's record cards.
-
 export function StayingGuestList({
   detail,
   disabled,

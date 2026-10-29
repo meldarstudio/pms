@@ -9,8 +9,6 @@ import { MAX_PASSWORD_LENGTH, MIN_PASSWORD_LENGTH, type AccountRole } from "./ac
 
 const SESSION_SECONDS = 30 * 24 * 60 * 60;
 
-// Better Auth runs only through the app's own routes; its HTTP handler is never
-// mounted, so sign-up and other built-in endpoints are unreachable.
 export function createAuth(c: Context<Env>) {
   return betterAuth({
     secret: c.env.SESSION_SECRET,

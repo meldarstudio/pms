@@ -4,8 +4,6 @@ export type PropertyCalendar = { timeZone: string; today: string };
 
 export function propertyCalendar(timeZone: string, instant = new Date()): PropertyCalendar {
   try {
-    // Intl also accepts numeric offsets in newer runtimes; deployment policy
-    // requires a named zone so seasonal rules remain available.
     if (!timeZone || !/^(?:[A-Za-z_+-]+\/)+[A-Za-z_+\d-]+$|^UTC$/.test(timeZone))
       throw new Error("missing named timezone");
     const parts = new Intl.DateTimeFormat("en-US", {

@@ -30,7 +30,6 @@ export function DateField({
   error?: string | null;
   onBlur?: () => void;
   onChange: (date: Date) => void;
-  /** Adds a Hoy footer to the picker, for pages without a standalone Hoy button. */
   onToday?: () => void;
 }) {
   const [open, setOpen] = useState(false);
@@ -74,7 +73,6 @@ export function DateField({
             disabled={disabled}
             onSelect={(date) => {
               if (!date) return;
-              // The adapter already returns midnight; keep its date-only carrier intact.
               onChange(date);
               setOpen(false);
               onBlur?.();

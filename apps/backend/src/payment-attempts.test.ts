@@ -23,7 +23,6 @@ let lookups: (() => Promise<unknown>)[];
 
 beforeEach(async () => {
   vi.useFakeTimers();
-  // 10:00 on 10 Oct in Lima.
   vi.setSystemTime(new Date("2026-10-10T15:00:00Z"));
   db = await createTestDb();
   seedRoomType(db.sqlite, { id: "type", name: "King", maxAdults: 2, baseRateCents: 10000 });
@@ -184,7 +183,6 @@ describe("payment attempts", () => {
           } as unknown as ExecutionContext,
         );
         await Promise.all(tasks);
-        // Read before polling, so the poll cannot hide a scheduler that missed expiry.
         expect(
           db.sqlite.prepare("SELECT status FROM payment_attempts WHERE id = ?").get(attempt.id),
         ).toMatchObject({ status: "failed" });
@@ -284,7 +282,6 @@ describe("payment attempts", () => {
       message: "a payment for this quote is still being confirmed",
     });
 
-    // The lookup about 10 seconds after the lost response.
     expect(lookups).toHaveLength(1);
     await lookups[0]!();
 
@@ -314,7 +311,6 @@ describe("payment attempts", () => {
     culqi.next("POST /charges", "lose");
     const attempt = await pay(quoteId, { sourceId: "tkn_test_decline" });
     expect(attempt.status).toBe("unknown");
-    // A different attempt for the same amount and email.
     culqi.charges.push({
       ...culqi.charges[0]!,
       id: "chr_test_other",
@@ -327,7 +323,6 @@ describe("payment attempts", () => {
 
   it("saves a charge for a room booked meanwhile as Unfulfilled with the payment due back", async () => {
     const quoteId = await quote();
-    // Another guest takes the last King room before the first guest pays.
     await pay(await quote(), { guest: { fullName: "Luis Rojas", email: "luis@example.com" } });
 
     const attempt = await pay(quoteId);
@@ -349,7 +344,6 @@ describe("payment attempts", () => {
     const first = await quote();
     culqi.next("POST /charges", "lose");
     const lost = await pay(first);
-    // The guest gives up waiting and books the same stay again.
     const rebooked = await pay(await quote({ checkIn: "2026-10-21", checkOut: "2026-10-23" }), {
       guest: { ...guest, email: "ANA@example.com" },
     });
@@ -366,7 +360,6 @@ describe("payment attempts", () => {
   it("saves a charge found after check-in has passed as Unfulfilled", async () => {
     culqi.next("POST /charges", "lose");
     const lost = await pay(await quote({ checkIn: "2026-10-11", checkOut: "2026-10-13" }));
-    // 01:00 on 12 Oct in Lima, within the 48 hours of lookups.
     vi.setSystemTime(new Date("2026-10-12T06:00:00Z"));
 
     await reconcile();
@@ -415,7 +408,6 @@ describe("payment attempts", () => {
     } as unknown as ExecutionContext);
     await Promise.all(tasks);
 
-    // Read the reservations, since a poll would look the charge up itself.
     const list = await db.request("/reservations");
     expect(await list.json()).toMatchObject([{ status: "confirmed", source: "online" }]);
     expect(lost.status).toBe("unknown");
@@ -445,7 +437,6 @@ describe("payment attempts", () => {
   it("dates the payment by the charge call when it is found on a later day", async () => {
     culqi.next("POST /charges", "lose");
     const lost = await pay(await quote());
-    // 00:30 on 11 Oct in Lima.
     vi.setSystemTime(new Date("2026-10-11T05:30:00Z"));
 
     const found = await poll(lost.id);

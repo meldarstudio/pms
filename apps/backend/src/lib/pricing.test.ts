@@ -53,9 +53,9 @@ describe("priceNights", () => {
         overrides: new Map(),
         terms: nonRefundable,
       })[0]?.priceCents;
-    expect(price(10004)).toBe(9004); // 9003.6
-    expect(price(10006)).toBe(9005); // 9005.4
-    expect(price(1)).toBe(1); // 0.9
+    expect(price(10004)).toBe(9004);
+    expect(price(10006)).toBe(9005);
+    expect(price(1)).toBe(1);
   });
 
   it("uses a flat rate as the final price without a plan adjustment", () => {

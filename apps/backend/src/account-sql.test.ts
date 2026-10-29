@@ -24,7 +24,6 @@ const session = (cookie: string) =>
 async function runAccountScript(password: string) {
   const directory = mkdtempSync(join(tmpdir(), "pms-account-test-"));
   const sqlPath = join(directory, "account.sql");
-  // Run the real prompts and hashing; intercept only Wrangler, never a local or remote DB.
   writeFileSync(
     join(directory, "pnpm"),
     `#!/usr/bin/env node

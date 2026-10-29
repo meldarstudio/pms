@@ -72,7 +72,6 @@ export function BookingSummary({
     "subtotalCents" | "discountCents" | "totalCents" | "balanceCents"
   > | null;
   paidCents: number;
-  /** The accepted rate plan and, when priced, its scheduled payments. */
   schedule?: {
     plan: RatePlanCode;
     amounts: Pick<
@@ -287,7 +286,6 @@ export function BookingSummary({
   );
 }
 
-/** A Reservation save's result, or `{ status: "saved" }` from a draft that keeps the value. */
 type DiscountSaveResult =
   | { status: "saved" }
   | Exclude<ReservationCommandResult, { status: "saved" }>;
@@ -325,7 +323,6 @@ function DiscountInput({
         return;
       }
       const result = await onSave(cents);
-      // A failed save keeps the draft so staff can retry it.
       if (result.status === "saved") form.reset(next);
       else toastError("No se pudo guardar el descuento", unsavedMessage(result));
     },

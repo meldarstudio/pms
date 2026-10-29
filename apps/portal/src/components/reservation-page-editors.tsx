@@ -74,8 +74,6 @@ function editorTitle(target: ReservationEditorTarget, detail: ReservationDetail)
   }
 }
 
-// The page supplies a snapshot captured when the editor opens. Background reads
-// may refresh the overview, but must never replace an in-progress form draft.
 export function ReservationPageEditor({
   target,
   detail,
@@ -233,8 +231,6 @@ function ReservationActionForm({
           : Object.fromEntries(
               result.error.issues.map((issue) => [issue.path.join("."), issue.message]),
             );
-        // submitForm focuses invalid fields; the resulting blur must not erase
-        // a server rejection until the contact value actually changes.
         if (
           target.kind === "contact" &&
           rejectedContact.current?.key === JSON.stringify([value.email, value.phone])
@@ -320,7 +316,6 @@ function ReservationActionForm({
         ? [{ type: "set-discount", amountCents: parseMajorToCents(values.amount.trim() || "0") }]
         : [],
   );
-  // The Discount amount is typed, so its preview waits for a pause; status previews do not.
   const [previewKey, setPreviewKey] = useState(actionsKey);
   useEffect(() => {
     const timer = setTimeout(() => setPreviewKey(actionsKey), target.kind === "discount" ? 300 : 0);

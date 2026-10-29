@@ -31,7 +31,6 @@ it("creates a room type and its room table in one save", async () => {
     { id: saved.rooms[0].id, number: "101", roomTypeId: saved.roomType.id },
     { id: saved.rooms[1].id, number: "102", roomTypeId: saved.roomType.id },
   ]);
-  // Setup creates rooms clean, like the rooms API.
   expect(await (await request("/housekeeping")).json()).toMatchObject({
     rooms: [{ housekeepingStatus: "clean" }, { housekeepingStatus: "clean" }],
   });

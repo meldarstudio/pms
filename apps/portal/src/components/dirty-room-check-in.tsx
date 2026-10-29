@@ -14,15 +14,10 @@ const list = new Intl.ListFormat("es", { type: "conjunction" });
 
 type Status = Extract<WorkflowAction, { type: "set-status" }>["status"];
 
-/**
- * Asks before checking a guest into a room marked dirty. Staff may continue; the
- * warning never blocks check-in. Returns the confirmation step and its dialog.
- */
 export function useDirtyRoomCheckIn() {
   const [dirtyRooms, setDirtyRooms] = useState<string[] | null>(null);
   const settle = useRef<((proceed: boolean) => void) | null>(null);
 
-  /** Resolves true unless staff back out of checking into a dirty room. */
   async function confirm(detail: ReservationDetail, status: Status) {
     if (status !== "checked_in" || detail.status === "checked_in") return true;
     const dirty = detail.rooms

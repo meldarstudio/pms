@@ -18,7 +18,6 @@ import type { Room, RoomType } from "@/lib/api";
 import { formatMoney } from "@/lib/money";
 import { useRooms, useRoomTypes } from "@/lib/queries";
 
-/** Opening values for one room-type editor; a missing type creates a new one. */
 export type RoomTypeEditorTarget = { type?: RoomType; rooms: Room[] };
 
 export function RoomTypesSection({
@@ -33,7 +32,6 @@ export function RoomTypesSection({
 } & ConfigurationEditorEvents) {
   const types = useRoomTypes();
   const rooms = useRooms();
-  // Snapshot opening values: background reads must not replace an editor draft.
   function openType(type?: RoomType) {
     onOpen({ type, rooms: (rooms.data ?? []).filter((room) => room.roomTypeId === type?.id) });
   }

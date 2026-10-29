@@ -74,7 +74,6 @@ app.route("/rate-plans", ratePlanRoutes);
 
 export default {
   fetch: app.fetch,
-  // Every minute: resolve Unknown Culqi charges and retry unsaved paid quotes.
   scheduled(_controller, env, ctx) {
     ctx.waitUntil(reconcilePaymentAttempts(getDb(env.DB), paymentContext(env)));
   },

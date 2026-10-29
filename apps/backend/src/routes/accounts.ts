@@ -8,7 +8,6 @@ import type { Env } from "../env";
 import { HttpError, validate } from "../http";
 import { forwardCookies, requireOwner, toAccount } from "../session";
 
-// Account management is the owner's. The staff account cannot change any password.
 export const accountRoutes = new Hono<Env>();
 
 accountRoutes.get("/accounts", requireOwner, async (c) => {
@@ -19,7 +18,6 @@ accountRoutes.get("/accounts", requireOwner, async (c) => {
   return c.json(rows.map(toAccount));
 });
 
-// Ends every session of that account, so whoever used the old password is signed out.
 accountRoutes.put(
   "/accounts/:id/password",
   requireOwner,

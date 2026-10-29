@@ -136,7 +136,9 @@ coverage, and package stores are excluded, along with Git-ignored files.
 Linting covers portal TS/TSX files, backend TypeScript and JavaScript files,
 and shared schemas, including tests and package configuration. Correctness
 and TypeScript rules apply to all packages. React rules apply only to the
-portal. Browser globals are limited to portal source and tests; Worker source
+portal. The local `pms/no-comments` rule in `tooling/no-comments.mjs` rejects
+code comments in every package; it allows only `/// <reference>`, `@ts-*`, and
+lint-disable directives. Browser globals are limited to portal source and tests; Worker source
 uses service-worker globals, and tests, backend scripts, and package configuration
 use Node globals.
 Generated Worker types, migrations, build output, and coverage are excluded.

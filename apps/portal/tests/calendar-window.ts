@@ -39,11 +39,6 @@ export type CalendarFixture = {
   unassigned: CalendarFixtureUnassigned[];
 };
 
-/**
- * Rooms 2 and 101 (Doble) and 10 (Suite) around 20 Oct 2026: room 10 closes 18–20 Oct,
- * room 101 has a stay checking out on 20 Oct and one running past the week, and one
- * double for 22–24 Oct has no room yet.
- */
 export const sampleWeek: CalendarFixture = {
   rooms: [
     {
@@ -112,7 +107,6 @@ export const sampleWeek: CalendarFixture = {
   ],
 };
 
-/** The sample week with one room replaced by `change(room)`. */
 export function sampleWeekWith(
   roomId: string,
   change: (room: SampleRoom) => SampleRoom,

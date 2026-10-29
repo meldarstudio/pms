@@ -1,7 +1,6 @@
 import type { Availability, Room } from "./api.ts";
 import type { NewBookingValues } from "./reservation-form-schemas.ts";
 
-// Reserve draft inventory in row order, including rooms without an assignment.
 export function newBookingAvailability(
   drafts: NewBookingValues["rooms"],
   types: Availability["roomTypes"],

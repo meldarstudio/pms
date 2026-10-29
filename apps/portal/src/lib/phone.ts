@@ -10,11 +10,6 @@ import {
 
 export type { CountryCode };
 
-/**
- * A contact phone being edited: the selected country, unformatted digits (or unsupported text),
- * and the value saved when the editor opened. Until the country or the text apart from separators
- * changes, the portal resubmits `saved` exactly; API parsing and validation still apply.
- */
 export type PhoneValue = { country: CountryCode; text: string; saved: string | null };
 
 const regionNames = new Intl.DisplayNames(["es"], { type: "region" });
@@ -44,7 +39,6 @@ function international(phone: string) {
   return parsed?.isValid() && !parsed.ext ? parsed : undefined;
 }
 
-/** The editor state for a saved phone. Unparseable legacy values appear exactly as stored. */
 export function phoneDraft(saved: string | null | undefined): PhoneValue {
   const parsed = saved ? international(saved) : undefined;
   return parsed?.country
@@ -57,12 +51,10 @@ function unchanged(value: PhoneValue) {
   return value.country === initial.country && comparable(value.text) === comparable(initial.text);
 }
 
-/** Separators are presentation in supported phone syntax; other text must match exactly. */
 function comparable(text: string) {
   return isPhoneSyntax(text) ? phoneCharacters(text) : text;
 }
 
-/** Typing an explicit international number selects its country. */
 export function typePhone(value: PhoneValue, text: string): PhoneValue {
   const country = text.trim().startsWith("+") ? parsePhoneNumberFromString(text)?.country : null;
   const parsed = international(text);
@@ -77,12 +69,10 @@ export function typePhone(value: PhoneValue, text: string): PhoneValue {
   };
 }
 
-/** Whether text uses supported phone syntax: digits, an optional `+`, and separators. */
 export function isPhoneSyntax(text: string) {
   return phoneSyntax.test(text.trim());
 }
 
-/** Dialable characters, without presentation separators. Only use for supported phone syntax. */
 export function phoneCharacters(text: string) {
   return text.replace(/[^\d+]/g, "");
 }
@@ -91,7 +81,6 @@ function nationalCharacters(phone: PhoneNumber) {
   return phoneCharacters(phone.formatNational());
 }
 
-/** Country-aware visual grouping, independent of the draft's digits. Legacy text stays visible. */
 export function phoneInputText(value: PhoneValue): string {
   if (value.saved && unchanged(value) && !international(value.saved)?.country) return value.saved;
   if (!isPhoneSyntax(value.text)) return value.text;
@@ -101,7 +90,6 @@ export function phoneInputText(value: PhoneValue): string {
     .trim();
 }
 
-/** Choosing a country keeps the national digits staff entered and reads them in that country. */
 export function choosePhoneCountry(value: PhoneValue, country: CountryCode): PhoneValue {
   const parsed = parseInternational(value.text);
   return { ...value, country, text: parsed?.nationalNumber ?? value.text };
@@ -123,14 +111,12 @@ function normalize(value: PhoneValue): { phone: string } | { error: string } {
   return invalid;
 }
 
-/** Portal validation for a new or changed phone. Blank and unchanged phones pass locally. */
 export function phoneError(value: PhoneValue): string | undefined {
   if (unchanged(value) || !value.text.trim()) return undefined;
   const result = normalize(value);
   return "error" in result ? result.error : undefined;
 }
 
-/** The phone to submit: the saved value when unchanged, null when blank, otherwise `+51…`. */
 export function phonePayload(value: PhoneValue): string | null {
   if (unchanged(value)) return value.saved;
   if (!value.text.trim()) return null;
@@ -139,7 +125,6 @@ export function phonePayload(value: PhoneValue): string | null {
   return result.phone;
 }
 
-/** Format valid international phones; show unsupported or unparseable values as stored. */
 export function phoneDisplay(phone: string) {
   const parsed = international(phone);
   return parsed

@@ -1,6 +1,3 @@
-// SQL that creates an account or replaces its password and role, for the
-// account script and test setup. Accounts have no public sign-up route.
-
 export type AccountRole = "staff" | "owner";
 
 export const MIN_PASSWORD_LENGTH = 12;
@@ -14,7 +11,6 @@ const quote = (value: string | number) =>
 export function accountSql(input: {
   username: string;
   role: AccountRole;
-  /** A Better Auth password hash. */
   passwordHash: string;
   id: string;
   now: number;

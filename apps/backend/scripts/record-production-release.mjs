@@ -4,8 +4,6 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { parseArgs } from "node:util";
 
-// --verify queries deployment status only. Without it, render available local
-// evidence even after a failed deployment; never infer success from an upload.
 const workers = [
   { key: "api", name: "pms-api", package: "@pms/backend" },
   { key: "portal", name: "pms-portal", package: "@pms/portal" },
@@ -62,7 +60,6 @@ try {
           )
         )
           throw new Error(`Invalid deployment status for ${worker.name}`);
-        // Retain observed IDs even if another deployment displaced this upload.
         writeFileSync(
           join(directory, `${worker.key}-active.json`),
           JSON.stringify({ id: deployment.id, versions: deployment.versions }),
@@ -90,9 +87,7 @@ try {
       let active = "unknown (active deployment not confirmed)";
       try {
         uploaded = uploadedVersion(directory, worker);
-      } catch {
-        /* No trustworthy upload evidence. */
-      }
+      } catch {}
       try {
         const record = JSON.parse(
           readFileSync(join(directory, `${worker.key}-active.json`), "utf8"),
@@ -104,9 +99,7 @@ try {
         ) {
           active = `${record.id}; versions: ${record.versions.map((v) => `${v.version_id} (${v.percentage}%)`).join(", ")}`;
         }
-      } catch {
-        /* Partial failures must remain explicitly unknown. */
-      }
+      } catch {}
       console.log(
         `- **${worker.name}** — uploaded version: ${uploaded}; active deployment: ${active}`,
       );

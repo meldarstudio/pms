@@ -42,7 +42,6 @@ import { useMarkRooms, type MarkRooms } from "@/lib/use-mark-rooms";
 type SelectionState = {
   view: HousekeepingView;
   ids: ReadonlySet<string>;
-  /** Where a shift-click range starts: the room clicked last. */
   anchor: string | null;
 };
 
@@ -52,11 +51,6 @@ const noSelection = (view: HousekeepingView): SelectionState => ({
   anchor: null,
 });
 
-/**
- * The desktop table's selected rooms, among `rooms` in the order on screen. Switching tabs
- * clears it, and each re-read keeps only rooms still visible in the tab, except while
- * `holding` (a bulk mark saving), so a failed mark leaves the selection for a retry.
- */
 function useRoomSelection(
   view: HousekeepingView,
   rooms: HousekeepingRoom[] | undefined,
@@ -80,7 +74,6 @@ function useRoomSelection(
     ids: current.ids,
     allSelected,
     someSelected: selectedCount > 0,
-    /** Toggles a room; with `range`, every room on screen from the room clicked last to it. */
     toggle: (roomId: string, range: boolean) => {
       const checked = !current.ids.has(roomId);
       const from = range && current.anchor ? order.indexOf(current.anchor) : -1;
@@ -94,7 +87,6 @@ function useRoomSelection(
       }
       setState({ view, ids, anchor: roomId });
     },
-    /** Clears the selection, or selects every visible room when none are selected. */
     toggleAll: () => setState({ view, ids: new Set(selectedCount ? [] : order), anchor: null }),
     clear: () => setState(noSelection(view)),
   };
@@ -102,21 +94,14 @@ function useRoomSelection(
 
 type RoomSelection = ReturnType<typeof useRoomSelection>;
 
-/**
- * The housekeeper's work for today: dirty rooms that will be free for a guest tonight.
- * A room whose guest stays tonight is in use, and a room closed tonight waits, unless a
- * guest arrives today.
- */
 function needsCleaning(room: HousekeepingRoom) {
   return room.housekeepingStatus === "dirty" && !room.inHouse && (!room.closed || room.arriving);
 }
 
-/** Arrivals first, then rooms someone can go into now, then rooms whose guest leaves today. */
 function cleaningOrder(room: HousekeepingRoom) {
   return (room.arriving ? 0 : 2) + (room.departing ? 1 : 0);
 }
 
-/** Today's stays and a closure tonight, the same in both tabs. Libre: no guest is in the room now. */
 function StayBadges({ room }: { room: HousekeepingRoom }) {
   const free = !room.departing && !room.inHouse;
   return (
@@ -155,7 +140,6 @@ function RoomHeading({ room }: { room: HousekeepingRoom }) {
   );
 }
 
-/** Keeps a row's control disabled while its own mark saves, remembering the status it sets. */
 function usePendingMark(mark: MarkRooms) {
   const [pending, setPending] = useState<HousekeepingStatus | null>(null);
   const run = (room: HousekeepingRoom, status: HousekeepingStatus) => {
@@ -165,7 +149,6 @@ function usePendingMark(mark: MarkRooms) {
   return [pending, run] as const;
 }
 
-/** One room's control, disabled while its own mark or a bulk mark saves. */
 type RowControl = {
   room: HousekeepingRoom;
   pending: HousekeepingStatus | null;
@@ -173,7 +156,6 @@ type RowControl = {
   run: (room: HousekeepingRoom, status: HousekeepingStatus) => void;
 };
 
-/** Por limpiar's one action: mark the room clean. */
 function ListaButton({ room, pending, disabled = false, run }: RowControl) {
   return (
     <Button
@@ -188,7 +170,6 @@ function ListaButton({ room, pending, disabled = false, run }: RowControl) {
   );
 }
 
-/** Each side of the Sucia | Limpia toggle: its label and its tint when pressed. */
 const statusDisplay = {
   dirty: {
     label: "Sucia",
@@ -201,7 +182,6 @@ const statusDisplay = {
   },
 } as const;
 
-/** Todas' Sucia | Limpia control, pressed on the current status. */
 function StatusToggle({ room, pending, disabled = false, run }: RowControl) {
   return (
     <ToggleGroup
@@ -213,7 +193,6 @@ function StatusToggle({ room, pending, disabled = false, run }: RowControl) {
       value={[room.housekeepingStatus]}
       disabled={disabled || !!pending}
       onValueChange={([status]) => {
-        // Tapping the pressed side unpresses it; that sets nothing.
         if (status) run(room, status as HousekeepingStatus);
       }}
     >
@@ -233,12 +212,10 @@ function StatusToggle({ room, pending, disabled = false, run }: RowControl) {
 
 type RoomRowProps = { view: HousekeepingView; room: HousekeepingRoom; mark: MarkRooms };
 
-/** The tab's action for a room: Lista on Por limpiar, Sucia | Limpia on Todas. */
 function RoomAction({ view, ...control }: RowControl & { view: HousekeepingView }) {
   return view === "to-clean" ? <ListaButton {...control} /> : <StatusToggle {...control} />;
 }
 
-/** What differs between the tabs' lists, besides each row's action. */
 const views = {
   "to-clean": {
     listLabel: "Habitaciones por limpiar",
@@ -259,7 +236,6 @@ const views = {
   }
 >;
 
-/** Marcar como's choices on Todas. */
 const bulkMenuLabel = { clean: "Limpias", dirty: "Sucias" } as const;
 
 function PhoneRow({ view, room, mark }: RoomRowProps) {
@@ -275,10 +251,6 @@ function PhoneRow({ view, room, mark }: RoomRowProps) {
   );
 }
 
-/**
- * When the status was last marked, in the property time zone: the time if on the
- * property date `today`, otherwise a short date.
- */
 function markedLabel(changedAt: string | null, today: string) {
   if (!changedAt) return "—";
   const instant = new Date(changedAt);
@@ -291,7 +263,6 @@ function markedLabel(changedAt: string | null, today: string) {
       hourCycle: "h23",
     }).format(instant);
   }
-  // Our own month names: ICU versions shorten September as "sep", "sept", or "set".
   const [, month, day] = date.split("-").map(Number);
   return `${day} ${shortMonths[month! - 1]}`;
 }
@@ -327,7 +298,6 @@ function DesktopRow({
           aria-label={`Seleccionar habitación ${room.number}`}
           checked={selected}
           disabled={!!bulkPending}
-          // Click rather than change, to read shift for a range.
           onClick={(event) => selection.toggle(room.id, event.shiftKey)}
         />
       </TableCell>
@@ -354,20 +324,12 @@ function DesktopRow({
   );
 }
 
-/**
- * The desktop table's selection and the bulk mark of it: the status it sets while
- * saving, else null.
- */
 type BulkMark = {
   selection: RoomSelection;
   pending: HousekeepingStatus | null;
   markSelected: (status: HousekeepingStatus) => void;
 };
 
-/**
- * The desktop table's actions for the selected rooms, in place of the column headings while
- * any are selected.
- */
 function SelectionActions({
   view,
   bulk: { selection, pending, markSelected },
@@ -412,10 +374,6 @@ function SelectionActions({
   );
 }
 
-/**
- * A tab's rooms: phone cards, or the front desk's table with when each was last marked and
- * a selection to mark several rooms at once.
- */
 function RoomList({
   view,
   rooms,
@@ -494,7 +452,6 @@ function ColumnHeadings({ view }: { view: HousekeepingView }) {
   );
 }
 
-/** Placeholder rows sized like the loaded ones, so nothing moves when the rooms arrive. */
 function RoomListSkeleton({ view }: { view: HousekeepingView }) {
   const phone = useIsMobile();
   const rows = Array.from({ length: 8 }, (_, index) => index);
@@ -640,7 +597,6 @@ export function Housekeeping({
       ) : !list ? (
         <RoomListSkeleton view={view} />
       ) : !visible?.length ? (
-        // Todas always lists a room; an empty property shows setup instead.
         <AllClean />
       ) : (
         <RoomList

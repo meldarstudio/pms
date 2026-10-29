@@ -22,10 +22,6 @@ export function requireInclusiveRange(from: string, to: string, maxDays: number)
   return dates;
 }
 
-/**
- * The contact phone to store. Resubmitting the stored value keeps it exactly, even a legacy
- * value the current rules would reject; any other phone must be valid and is normalized.
- */
 export function acceptPhone<T extends string | null | undefined>(
   submitted: T,
   stored?: string | null,

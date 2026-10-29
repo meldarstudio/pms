@@ -528,7 +528,6 @@ it("refreshes the discount editor's resulting bill after another save to the res
   await click("Editar descuento");
   await page.until(() => !button("Guardar cambios").disabled);
   assert.match(popup()!.textContent, /Pagos recibidosS\/\s*0Saldo pendienteS\/\s*300/);
-  // Another screen in this session records a Payment while the editor stays open.
   const commands = (await browser.server.ssrLoadModule(
     "/src/lib/reservation-commands.ts",
   )) as typeof import("../src/lib/reservation-commands.ts");
@@ -772,7 +771,6 @@ it("saves stay changes independently with the current server bill", async () => 
   assert.equal(button("Cancelar").disabled, true);
   assert.equal(await unloadPrevented(), true);
   await click("Cerrar");
-  // A second submit while the save runs (Enter in a field) sends nothing more.
   await submit();
   assert.equal(writes.length, 1);
   await React.act(async () => {

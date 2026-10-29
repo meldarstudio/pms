@@ -45,7 +45,6 @@ export type State = {
   cancellations: Cancellation[];
   refunds: Refund[];
 };
-/** Who records a command and when, from the server, never the client. */
 export type CommandContext = {
   today: string;
   timeZone: string;
@@ -57,8 +56,6 @@ export type WorkflowIssue = {
   field: "roomId" | "roomTypeId" | "occupancy";
 };
 export async function loadState(db: Db, id: string): Promise<State> {
-  // All rows and their revisions belong to one snapshot. Separate reads can
-  // mix the old reservation dates with another command's new room nights.
   const [
     parents,
     contacts,
@@ -132,7 +129,6 @@ const requester = alias(user, "refund_requester");
 const resolver = alias(user, "refund_resolver");
 const refundQuery = (db: Db) =>
   db
-    // D1 batches return objects keyed by column name, so both usernames need their own.
     .select({
       refund: refunds,
       requestedBy: sql<string | null>`${requester.username}`.as("refund_requested_by"),
@@ -151,7 +147,6 @@ const withAccounts = ({
   resolvedBy,
 });
 
-/** Every refund of the given reservations, for list reads. */
 export async function refundsFor(db: Db, reservationIds: string[]) {
   return (await refundQuery(db).where(inArray(refunds.reservationId, reservationIds))).map(
     withAccounts,
@@ -170,7 +165,6 @@ function withWaivers(cancellations: CancellationRow[], waivers: WaiverRow[]): Ca
   }));
 }
 
-/** Every cancellation of the given reservations, with its waivers, for list reads. */
 export async function cancellationsFor(db: Db, reservationIds: string[]) {
   const [cancellations, waivers] = await db.batch([
     cancellationQuery(db).where(inArray(reservationCancellations.reservationId, reservationIds)),
@@ -254,7 +248,6 @@ async function executeAttempt(
         payload,
         createdAt: now,
       }),
-      // Release the reservation inside the transaction so room swaps are atomic.
       db
         .update(reservations)
         .set({
@@ -290,7 +283,6 @@ async function executeAttempt(
             ? db.update(payments).set(e).where(eq(payments.id, e.id))
             : db.insert(payments).values(e),
         ),
-      // Restore before opening a cancellation: one reservation has one active cancellation.
       ...state.cancellations
         .filter((c) =>
           original.cancellations.some((o) => o.id === c.id && o.restoredAt !== c.restoredAt),
@@ -308,13 +300,11 @@ async function executeAttempt(
         ),
       ...state.cancellations
         .filter((c) => !original.cancellations.some((o) => o.id === c.id))
-        // Inserts write only table columns, not the presented account or waivers.
         .map((c) => db.insert(reservationCancellations).values(c)),
       ...state.cancellations
         .flatMap((c) => c.waivers)
         .filter((w) => !original.cancellations.some((o) => o.waivers.some((ow) => ow.id === w.id)))
         .map((w) => db.insert(cancellationWaivers).values(w)),
-      // Inserts and updates write only table columns, not the presented accounts.
       ...state.refunds
         .filter(
           (r) => JSON.stringify(r) !== JSON.stringify(original.refunds.find((o) => o.id === r.id)),
@@ -324,10 +314,6 @@ async function executeAttempt(
             ? db.update(refunds).set(r).where(eq(refunds.id, r.id))
             : db.insert(refunds).values(r),
         ),
-      // Restoration and changed dates must pass the room-validity triggers
-      // against current room types, even when every saved room is unchanged.
-      // Decide this from the original state, not the temporary cancelled status:
-      // ordinary saves must still allow grandfathered unchanged occupancy.
       ...(revalidateAllRooms
         ? [
             db
@@ -362,7 +348,6 @@ async function executeAttempt(
       ...chunks(state.stayingGuests, 8).map((rows) => db.insert(reservationGuests).values(rows)),
     ]);
   } catch (error) {
-    // Another copy of the same request may have committed while this one read.
     const [retry] = await db
       .select()
       .from(reservationRequests)
@@ -370,7 +355,6 @@ async function executeAttempt(
     if (retry && retry.reservationId === id && retry.payload === payload) return { replayed: true };
     rethrowConflict(error);
   }
-  // The caller sends these to Culqi now that their requests are saved.
   const culqiRefunds = state.refunds.filter(
     (refund) => refund.culqiChargeId && !original.refunds.some((o) => o.id === refund.id),
   );
@@ -430,7 +414,6 @@ export async function createWorkflow(db: Db, input: WorkflowCreate) {
   return id;
 }
 
-/** Prices a new reservation's rooms as creation would save them, without validating or writing. */
 export async function previewCreate(db: Db, input: WorkflowCreatePreview) {
   const terms = ratePlans[input.ratePlan ?? "flexible"];
   const rooms = [];
@@ -447,9 +430,6 @@ function rejectRoomIssues(issues: WorkflowIssue[]) {
   if (issue) throw new HttpError(issue.code === "room not found" ? 404 : 400, issue.code);
 }
 
-// Validate added or edited rooms against current rules. Unchanged saved rooms
-// must not block payments or cancellation after a room type's capacity changes.
-// A new stay period or restoration to inventory revalidates every room.
 async function validateRooms(
   db: Db,
   lines: Stay[],
@@ -485,8 +465,6 @@ async function validateRooms(
   return issues;
 }
 
-// Database triggers repeat availability checks under the write transaction to
-// close the concurrency gap. Preview reports all affected rooms without writing.
 async function validateAvailability(db: Db, state: State) {
   const issues: WorkflowIssue[] = [];
   const [otherLines, physical, closures] = await Promise.all([

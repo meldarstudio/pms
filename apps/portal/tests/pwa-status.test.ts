@@ -14,7 +14,6 @@ let container: BrowserPage["container"];
 let act: BrowserTest["React"]["act"];
 let themeColor: HTMLMetaElement;
 
-// PwaStatus is imported through the test runner so vi.stubEnv reaches import.meta.env.
 beforeAll(async () => {
   harness = await createBrowserTest();
   ({ window: browser } = harness);
@@ -92,7 +91,6 @@ it("keeps browser chrome in sync with system appearance until an explicit theme 
 
   await act(async () => {
     browser.happyDOM.settings.device.prefersColorScheme = "dark";
-    // happy-dom reevaluates media-query listeners on resize.
     browser.dispatchEvent(new browser.Event("resize"));
   });
   assert.equal(themeColor.getAttribute("content"), "#0c0a09");

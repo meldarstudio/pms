@@ -31,7 +31,6 @@ function errorText(err: unknown): string {
   return typeof err === "string" ? err : "";
 }
 
-/** A payment attempt on the quote is open or its charge is still Unknown. */
 export const PAYMENT_PENDING = "a payment for this quote is still being confirmed";
 
 export function rethrowConflict(err: unknown): never {

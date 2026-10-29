@@ -107,13 +107,11 @@ export type HousekeepingRoom = {
   arriving: boolean;
 };
 
-/** What staff last marked on a room. */
 export type HousekeepingMark = Pick<
   HousekeepingRoom,
   "housekeepingStatus" | "housekeepingChangedAt"
 >;
 
-/** A status to set on one room in a `PUT /housekeeping` request. */
 export type HousekeepingMarkInput = { roomId: string; status: HousekeepingStatus };
 
 export type MarkedRoom = { id: string } & HousekeepingMark;
@@ -211,7 +209,6 @@ export type ReservationPayment = {
 
 export type RatePlanCode = "flexible" | "non_refundable";
 
-/** The rate-plan terms a reservation was accepted under. */
 export type RatePlanTerms = {
   plan: RatePlanCode;
   cancellationPolicy: {
@@ -231,29 +228,23 @@ export type CancellationWaiver = {
   recordedBy: string | null;
 };
 
-/** A recorded cancellation or no-show; its charge was computed once, when it was recorded. */
 export type ReservationCancellation = {
   id: string;
-  /** The status it was recorded for. */
   outcome: "cancelled" | "no_show";
   recordedAt: string;
   recordedBy: string | null;
-  /** The free-cancellation deadline; null for a no-show or terms never free. */
   freeUntil: string | null;
   policyChargeCents: number;
   waivedCents: number;
   finalChargeCents: number;
-  /** Set when the reservation was restored; the cancellation is then history. */
   restoredAt: string | null;
   waivers: CancellationWaiver[];
 };
 
-/** Money returned manually against one received payment; only completed refunds count. */
 export type ReservationRefund = {
   id: string;
   paymentId: string;
   amountCents: number;
-  /** The channel the money is returned through. */
   method: PaymentMethod;
   reference: string | null;
   reason: string;
@@ -262,7 +253,6 @@ export type ReservationRefund = {
   requestedBy: string | null;
   resolvedAt: string | null;
   resolvedBy: string | null;
-  /** The property date the money was returned; set only when completed. */
   refundDate: string | null;
   completionReference: string | null;
   failureReason: string | null;
@@ -274,17 +264,11 @@ export type ReservationDetail = {
   cancelledAt: string | null;
   notes: string | null;
   creditCents: number;
-  /** Net money retained beyond the final charge, on any status; requests do not reduce it. */
   refundDueCents: number;
-  /** Completed refunds; paid minus refunded is the net money retained. */
   refundedCents: number;
-  /** Refunds requested but not yet completed or failed. */
   pendingRefundCents: number;
-  /** Every refund request, oldest first, including failed ones. */
   refunds: ReservationRefund[];
-  /** The active cancellation or no-show; null while active or cancelled before charges existed. */
   cancellation: ReservationCancellation | null;
-  /** Every recorded cancellation and no-show, oldest first, including restored ones. */
   cancellations: ReservationCancellation[];
   savedDiscountCents: number;
   id: string;
@@ -399,12 +383,10 @@ export function listAccounts(signal?: AbortSignal) {
   return getJson<Account[]>("/accounts", signal);
 }
 
-/** Owner only. Signs the account out everywhere. */
 export function setAccountPassword(id: string, password: string) {
   return writeJson<{ ok: true }>(`/accounts/${id}/password`, "PUT", { password });
 }
 
-/** Signs the current account out of its other sessions. */
 export function changeOwnPassword(input: { currentPassword: string; newPassword: string }) {
   return writeJson<{ ok: true }>("/account/password", "PUT", input);
 }
@@ -464,8 +446,6 @@ export function getReservation(id: string, signal?: AbortSignal) {
   return getJson<ReservationDetail>(`/reservations/${id}`, signal);
 }
 
-// Re-read just before saving: the server accepts reassignment, so this stops staff
-// overwriting a colleague's concurrent room assignment.
 export async function assignRoom(target: ReservationStay, roomId: string) {
   const detail = await getReservation(target.reservationId);
   const line = detail.rooms.find((l) => l.id === target.id);
@@ -506,7 +486,6 @@ export function getHousekeeping(signal?: AbortSignal) {
   return getJson<HousekeepingList>("/housekeeping", signal);
 }
 
-/** Saves every mark or none; the response holds each marked room. */
 export function markHousekeeping(marks: HousekeepingMarkInput[]) {
   return writeJson<{ rooms: MarkedRoom[] }>("/housekeeping", "PUT", { marks });
 }
@@ -612,7 +591,6 @@ export type WorkflowBilling = Pick<
 };
 export type WorkflowIssue = {
   code: string;
-  // Index in the proposed rooms, excluding removed rooms.
   roomIndex: number;
   field: "roomId" | "roomTypeId" | "occupancy";
 };
@@ -670,7 +648,6 @@ export type ReservationListParams = {
   checkOut?: string;
   statuses?: string;
   balance?: "outstanding" | "settled" | "credit";
-  /** `due`: money is owed back; `requested`: a refund request is unresolved. */
   refund?: "due" | "requested";
   assignment?: "assigned" | "unassigned";
   sort: "checkIn" | "checkOut" | "guestName" | "balance";

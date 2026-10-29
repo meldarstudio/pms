@@ -3,7 +3,6 @@ import type { Room, RoomType } from "../src/lib/api.ts";
 import { calendarWindow, catalogCalendarRooms } from "./calendar-window.ts";
 
 export type FakeMethod = "GET" | "POST" | "PUT" | "PATCH" | "DELETE" | "*";
-/** An exact pathname, `:name` segments (`/reservations/:id/commands`), `*`, or a RegExp. */
 export type FakePath = string | RegExp;
 
 export type FakeRequest<TBody = unknown> = {
@@ -11,16 +10,13 @@ export type FakeRequest<TBody = unknown> = {
   url: URL;
   path: string;
   params: Record<string, string>;
-  /** Parsed JSON request body; undefined when the request has none. */
   body: TBody;
   init: RequestInit | undefined;
 };
 
-/** Return a Response, any JSON value (sent with status 200), or undefined to fall through. */
 export type FakeHandler<TBody = unknown> = (request: FakeRequest<TBody>) => unknown;
 
 export type HeldRequest = {
-  /** The held request once the portal has sent it. */
   readonly request: FakeRequest | undefined;
   release(response: Response): void;
 };
@@ -58,11 +54,6 @@ function requestUrl(input: Parameters<typeof fetch>[0]) {
   return new URL(typeof input === "string" ? input : "url" in input ? input.url : input.href);
 }
 
-/**
- * A route table installed at the portal's fetch seam. Newer routes win; a handler that
- * returns undefined falls through to older routes and then the defaults. It stores only
- * what tests seed or register and does not apply backend business rules.
- */
 export function createFakeBackend() {
   const routes: Route[] = [];
   const views: View[] = [];
@@ -132,17 +123,14 @@ export function createFakeBackend() {
       item.items.push(item.bodies ? request.body : request);
   }
 
-  /** Live list of every request sent to this page, optionally filtered by method and path. */
   function requests<TBody = unknown>(method: FakeMethod = "*", path: FakePath = "*") {
     return view<FakeRequest<TBody>>(method, path, false);
   }
 
-  /** Live list of the parsed JSON bodies sent to one method and path. */
   function bodies<TBody>(method: FakeMethod, path: FakePath) {
     return view<TBody>(method, path, true);
   }
 
-  // Defaults answer the reads every screen makes from the seeded catalog.
   on("GET", "/session", () => ({
     username: "hotelmanantial",
     role: "staff",
@@ -205,12 +193,10 @@ export function createFakeBackend() {
     };
     log.push(request);
     for (const item of views) record(item, request);
-    // Iterate a copy: matching a one-shot route removes it from the table.
     for (const route of routes.slice()) {
       if (!matches(route.method, request)) continue;
       const params = route.match(request.path);
       if (!params) continue;
-      // A one-shot route is spent once it matches, even while its response is pending.
       if (route.once) routes.splice(routes.indexOf(route), 1);
       const response = await route.handler({ ...request, params } as never);
       if (response === undefined) continue;

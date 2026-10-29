@@ -23,26 +23,17 @@ export type PaymentContext = {
   culqi: Culqi;
   currency: string;
   timeZone: string;
-  /** Run `lookup` about 10 seconds later, after a charge response was lost. */
   later?: (lookup: () => Promise<unknown>) => void;
 };
 
 const MINUTE = 60_000;
-/** After this the guest is told the outcome will arrive by email. */
 const DELAYED_AFTER = 2 * MINUTE;
-/** Unknown attempts are looked up for this long, then left for staff. */
 const LOOKUP_FOR = 48 * 60 * MINUTE;
-/** Culqi's clock may run slightly behind ours. */
 const LOOKUP_SLACK = MINUTE;
 export const LOOKUP_DELAY_MS = 10_000;
 
 const PAID: AttemptStatus[] = ["succeeded", "saved"];
 
-/**
- * Charges an online guest's card for a quote's required initial payment. The attempt
- * is saved as Unknown before Culqi is called, so a lost response is resolved by
- * looking the charge up, never by charging again.
- */
 export async function startPaymentAttempt(
   db: Db,
   input: PaymentAttemptCreate,
@@ -52,7 +43,6 @@ export async function startPaymentAttempt(
   const now = new Date();
   requireValid(quote, now);
   requireCulqi(context);
-  // Checked before charging, because saving the reservation would refuse it after.
   const phone = acceptPhone(input.guest.phone);
   const previous = await db
     .select()
@@ -62,7 +52,6 @@ export async function startPaymentAttempt(
     throw new HttpError(409, "quote is already paid");
   if (previous.some((attempt) => attempt.status === "unknown"))
     throw new HttpError(409, PAYMENT_PENDING);
-  // A new card replaces one the guest did not authenticate.
   await db
     .update(paymentAttempts)
     .set({ status: "failed", failureCode: "superseded" })
@@ -88,13 +77,11 @@ export async function startPaymentAttempt(
   try {
     await db.insert(paymentAttempts).values(attempt);
   } catch (error) {
-    // A concurrent start on the same quote holds the only open slot.
     rethrowConflict(error);
   }
   return record(db, attempt, await context.culqi.createCharge(chargeRequest(attempt)), context);
 }
 
-/** Continues an attempt Culqi sent to 3DS review, with the same token. */
 export async function authenticatePaymentAttempt(
   db: Db,
   attemptId: string,
@@ -122,26 +109,17 @@ export async function authenticatePaymentAttempt(
   return record(db, claimed, result, context);
 }
 
-/**
- * The attempt's current outcome for the guest's waiting page. Each poll looks an
- * Unknown charge up, expires abandoned 3DS reviews and retries saving a paid reservation.
- */
 export async function paymentAttemptStatus(db: Db, attemptId: string, context: PaymentContext) {
   await expireReviews(db, attemptId);
   const attempt = await findAttempt(db, attemptId);
   try {
     return await present(db, await resolve(db, attempt, context));
   } catch (error) {
-    // The guest keeps waiting; the scheduled Worker tries again.
     console.error("payment attempt", attempt.id, error);
     return present(db, await findAttempt(db, attemptId));
   }
 }
 
-/**
- * The scheduled Worker's pass: expires abandoned 3DS reviews, looks up each Unknown
- * attempt younger than 48 hours and retries each paid quote not saved yet.
- */
 export async function reconcilePaymentAttempts(db: Db, context: PaymentContext) {
   await expireReviews(db);
   if (!context.culqi.configured) return;
@@ -166,7 +144,6 @@ export async function reconcilePaymentAttempts(db: Db, context: PaymentContext) 
   }
 }
 
-/** A review cannot continue after its quote expires; an in-flight charge stays Unknown. */
 async function expireReviews(db: Db, attemptId?: string) {
   await db
     .update(paymentAttempts)
@@ -199,8 +176,6 @@ async function resolve(db: Db, attempt: Attempt, context: PaymentContext): Promi
     email: attempt.email,
     from: new Date(Date.parse(attempt.calledAt) - LOOKUP_SLACK),
   });
-  // Culqi ignores metadata filters. A denied charge does not prove the attempt failed:
-  // the call may still be running, so only a successful one resolves it.
   const found = listed.find(
     (listedCharge) =>
       listedCharge.metadata?.attempt_id === attempt.id && matches(attempt, listedCharge),
@@ -208,7 +183,6 @@ async function resolve(db: Db, attempt: Attempt, context: PaymentContext): Promi
   return found ? succeed(db, attempt, found, context) : attempt;
 }
 
-/** Records a charge call's result on its Unknown attempt. */
 async function record(db: Db, attempt: Attempt, result: ChargeResult, context: PaymentContext) {
   if (result.kind === "succeeded" && matches(attempt, result.charge))
     return present(db, await succeed(db, attempt, result.charge, context));
@@ -224,7 +198,6 @@ async function record(db: Db, attempt: Attempt, result: ChargeResult, context: P
       .returning();
     return present(db, updated ?? (await findAttempt(db, attempt.id)));
   }
-  // A timeout, 5xx, 429 or unexpected reply may still have charged the card.
   context.later?.(() => resolve(db, attempt, context));
   return present(db, attempt);
 }
@@ -240,16 +213,11 @@ async function succeed(db: Db, attempt: Attempt, paid: CulqiCharge, context: Pay
   try {
     return await fulfill(db, current, context);
   } catch (error) {
-    // The charge is recorded on the attempt; polls and the scheduled Worker retry the save.
     console.error("payment attempt save", current.id, error);
     return current;
   }
 }
 
-/**
- * Saves the paid quote's reservation with its Culqi payment. When the stay can no
- * longer happen it is saved as Unfulfilled instead, keeping the payment as a refund due.
- */
 async function fulfill(db: Db, attempt: Attempt, context: PaymentContext): Promise<Attempt> {
   const quote = await findQuote(db, attempt.quoteId);
   const { today } = propertyCalendar(context.timeZone);
@@ -257,7 +225,6 @@ async function fulfill(db: Db, attempt: Attempt, context: PaymentContext): Promi
     amountCents: attempt.amountCents,
     method: "card",
     reference: attempt.culqiChargeId,
-    // The charge was made by the latest call, even when it is found days later.
     paymentDate: propertyCalendar(context.timeZone, new Date(attempt.calledAt)).today,
     culqiChargeId: attempt.culqiChargeId,
   };
@@ -283,7 +250,6 @@ async function fulfill(db: Db, attempt: Attempt, context: PaymentContext): Promi
   return saved ?? findAttempt(db, attempt.id);
 }
 
-/** Whether the same email already holds an online stay overlapping the quote. */
 async function rebooked(db: Db, quote: Quote, email: string) {
   const [row] = await db
     .select({ id: reservations.id })
@@ -359,7 +325,6 @@ async function present(db: Db, attempt: Attempt) {
     amountCents: attempt.amountCents,
     currency: attempt.currency,
     status: attempt.status,
-    // Still unknown after 2 minutes: the guest is told the outcome arrives by email.
     delayed:
       attempt.status === "unknown" && Date.now() - Date.parse(attempt.calledAt) > DELAYED_AFTER,
     failure:
@@ -370,7 +335,6 @@ async function present(db: Db, attempt: Attempt) {
   };
 }
 
-/** Schedules an attempt lookup about 10 seconds later within a Worker invocation. */
 export const lookUpLater =
   (waitUntil: (task: Promise<unknown>) => void) => (lookup: () => Promise<unknown>) =>
     waitUntil(
@@ -379,7 +343,6 @@ export const lookUpLater =
         .catch((error: unknown) => console.error("payment attempt lookup", error)),
     );
 
-/** The Culqi client and property settings from Worker bindings. */
 export const paymentContext = (
   env: Env["Bindings"],
   waitUntil?: (task: Promise<unknown>) => void,

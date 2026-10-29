@@ -11,7 +11,6 @@ let culqi: FakeCulqi;
 
 beforeEach(async () => {
   vi.useFakeTimers();
-  // 10:00 on 10 Oct in Lima.
   vi.setSystemTime(new Date("2026-10-10T15:00:00Z"));
   db = await createTestDb();
   seedRoomType(db.sqlite, { id: "type", name: "King", maxAdults: 2, baseRateCents: 10000 });
@@ -27,7 +26,6 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
-/** Two S/100 nights paid S/300 by card: S/100 is due back. */
 async function paidOnline(amountCents = 30000) {
   const response = await db.request("/reservations", "POST", {
     requestId: crypto.randomUUID(),
@@ -188,7 +186,6 @@ describe("staff Culqi refunds", () => {
 
   it("refuses more than the Culqi payment has left to refund", async () => {
     const { id, paymentId } = await paidOnline(5000);
-    // S/250 cash on top leaves S/100 due, but the card paid only S/50.
     await command(id, [
       {
         type: "add-payment",

@@ -91,7 +91,6 @@ export function overlappingRoomIds(others: WorkflowRoom[]): Set<string> {
   return new Set(others.flatMap((room) => (room.roomId ? [room.roomId] : [])));
 }
 
-// Replace the saved reservation with its draft, including unassigned rooms.
 export function availableRoomTypeIds(
   stay: { checkIn: string; checkOut: string },
   rooms: Room[],
@@ -139,7 +138,6 @@ export function availableRoomTypeIds(
   );
 }
 
-// Notes and guest/contact text do not change charges or dated inventory.
 export function validationPreviewActions(actions: WorkflowAction[]) {
   return actions.filter((action) => !["notes", "contact", "set-guests"].includes(action.type));
 }
@@ -167,8 +165,6 @@ export function hasBillingChanges(detail: ReservationDetail, actions: WorkflowAc
   });
 }
 
-// A room assignment or headcount change must revalidate the draft, but can reuse
-// its quote. Include saved prices and totals so independent saves expire it.
 export function billingPreviewKey(detail: ReservationDetail, actions: WorkflowAction[]) {
   const pricingActions = actions
     .filter((action) => hasBillingChanges(detail, [action]))

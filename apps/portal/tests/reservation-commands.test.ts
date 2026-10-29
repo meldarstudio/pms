@@ -12,7 +12,6 @@ let browser: BrowserTest;
 let page: BrowserPage;
 let React: BrowserTest["React"];
 let commands: typeof import("../src/lib/reservation-commands.ts");
-/** Command bodies sent to any reservation, in order. */
 let sent: WorkflowCommand[];
 
 beforeAll(async () => {
@@ -68,7 +67,6 @@ const stayingGuests: WorkflowAction = {
   guests: [{ id: "guest-1", fullName: "Ana", email: null, phone: null, reservationRoomId: null }],
 };
 
-/** The response a dropped connection gives after the server may have committed. */
 function dropNextCommand() {
   page.api.once("POST", "/reservations/:id/commands", () => {
     throw new TypeError("Failed to fetch");
@@ -78,7 +76,6 @@ function dropNextCommand() {
 type Commands = ReturnType<typeof commands.useReservationCommands>;
 type Result = Awaited<ReturnType<Commands["send"]>>;
 
-/** Renders one editor using the module, beside any other views, and returns its hook value. */
 async function mountEditor(id = "res-1", Beside: () => null = () => null) {
   const editor: { current: Commands } = { current: undefined as never };
   function Editor() {
@@ -102,7 +99,6 @@ async function unmount() {
 
 type Started = { result: Promise<Result> };
 
-/** Starts a send inside act so the saving flag can render, without waiting for it. */
 async function start(editor: { current: Commands }, actions: WorkflowAction[]) {
   const started = {} as Started;
   await React.act(async () => {
@@ -353,7 +349,6 @@ describe("server rejections", () => {
     fail();
     const editor = await mountEditor();
 
-    // The server's error code, when there is one, lets callers react without matching copy.
     assert.deepEqual(
       await send(editor, actions),
       code ? { status: "failed", message, code } : { status: "failed", message },
@@ -361,7 +356,6 @@ describe("server rejections", () => {
   });
 });
 
-/** Answers previews with the balance after the Payments recorded so far. */
 function previewAfterPayments() {
   const previews = page.api.bodies<WorkflowCommand>("POST", "/reservations/:id/preview");
   page.api.on("POST", "/reservations/:id/preview", ({ params }): WorkflowPreview => {
@@ -429,7 +423,6 @@ describe("bill preview", () => {
       () => preview.current?.data?.billing.balanceCents === 18000,
       "Expected the preview after the Payment",
     );
-    // The bill from before the Payment arrives last and must not replace the newer one.
     older.release(
       Response.json({
         billing: { ...reservation("res-1"), balanceCents: 28000 },
@@ -462,7 +455,6 @@ describe("refresh after saving", () => {
     queries = (await browser.server.ssrLoadModule("/src/lib/queries.ts")) as typeof queries;
   });
 
-  /** Renders an editor beside the views a save must refresh; returns what they show. */
   async function mountWithViews(otherReservations: { id: string; guestId: string }[] = []) {
     page.api.on("GET", "/reservations/:id", ({ params }) =>
       reservation(params.id, {
@@ -496,7 +488,6 @@ describe("refresh after saving", () => {
 
     await page.until(() => lists.length === 2 && calendars.length === 2);
     await page.until(() => shown.reservation?.balanceCents === 20000, "Expected the saved bill");
-    // The page shows the saved Reservation from the save itself, without re-reading it.
     assert.equal(reads.length, 1);
   });
 

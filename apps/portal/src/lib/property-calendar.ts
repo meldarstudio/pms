@@ -4,7 +4,6 @@ import { TZDate } from "react-day-picker";
 let formatter: Intl.DateTimeFormat | undefined;
 let timeZone: string | undefined;
 
-// Loaded only from authenticated API metadata, before the router is mounted.
 export function configurePropertyCalendar(value: unknown) {
   try {
     if (typeof value !== "string" || !/^(?:[A-Za-z_+-]+\/)+[A-Za-z_+\d-]+$|^UTC$/.test(value))
@@ -35,9 +34,6 @@ export function propertyToday(instant: Date | number = Date.now()): string {
   return `${part("year")}-${part("month")}-${part("day")}`;
 }
 
-// Date objects at UI boundaries carry calendar components, never stored instants.
-// UTC arithmetic elsewhere remains safe for date labels and night counts.
-// UTC carriers can also represent labels skipped by the browser's local calendar.
 export function dateOnlyCarrier(day: string, carrierTimeZone?: "UTC") {
   const [year, month, date] = day.split("-").map(Number);
   return carrierTimeZone

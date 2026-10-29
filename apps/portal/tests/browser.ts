@@ -9,8 +9,6 @@ import { createFakeBackend } from "./fake-backend.ts";
 export const desktopViewport = { width: 1024, height: 768 };
 export const mobileViewport = { width: 390, height: 844 };
 
-// Shared lifecycle from the page/dialog suites. Each page answers HTTP with its own
-// fake backend (`page.api`); suites register the responses their scenarios need.
 export async function createBrowserTest() {
   const originalFetch = globalThis.fetch;
   const window = new Window({ url: "http://localhost:5173" });
@@ -53,7 +51,6 @@ export async function createBrowserTest() {
   const { createRoot } = await import("react-dom/client");
   const query = await import("@tanstack/react-query");
   const routing = await import("@tanstack/react-router");
-  // Compile actual TSX with the portal's aliases/env without a listening server.
   const server = await createServer({
     root: fileURLToPath(new URL("../", import.meta.url)),
     configFile: fileURLToPath(new URL("../vite.config.ts", import.meta.url)),
@@ -66,7 +63,6 @@ export async function createBrowserTest() {
     globalThis.fetch = api.fetch;
     const container = window.document.createElement("div");
     window.document.body.append(container);
-    // happy-dom implements the DOM nodes React expects at this seam.
     const root = createRoot(container as unknown as Parameters<typeof createRoot>[0]);
     const client = new query.QueryClient({
       defaultOptions: {
@@ -102,7 +98,6 @@ export async function createBrowserTest() {
       assert.ok(condition(), `${message}: ${container.textContent}`);
     }
 
-    /** A button anywhere in the document (including dialogs) by trimmed text or aria-label. */
     function button(label: string) {
       const element = Array.from(window.document.querySelectorAll("button")).find(
         (element) =>
@@ -116,7 +111,6 @@ export async function createBrowserTest() {
       await React.act(async () => button(label).click());
     }
 
-    /** An input or textarea anywhere in the document by its name. */
     function field(name: string) {
       const element = window.document.querySelector<HTMLInputElement | HTMLTextAreaElement>(
         `[name="${name}"]`,
@@ -125,7 +119,6 @@ export async function createBrowserTest() {
       return element;
     }
 
-    /** Types into a named field or a given input/textarea the way React observes it. */
     async function fill(target: string | DomElement, value: string) {
       await React.act(async () => {
         const element = typeof target === "string" ? field(target) : target;
@@ -139,7 +132,6 @@ export async function createBrowserTest() {
     }
 
     let resized = false;
-    /** Switches to a phone-sized window until cleanup restores the desktop size. */
     function mobile() {
       resized = true;
       window.happyDOM.setWindowSize(mobileViewport);

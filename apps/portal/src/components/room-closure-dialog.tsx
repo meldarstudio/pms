@@ -66,7 +66,6 @@ export function RoomActionsMenu({
   number: string;
   housekeepingStatus: HousekeepingStatus;
   onEditRoom: () => void;
-  /** Sets the other housekeeping status. */
   onMarkRoom: () => void;
   markingRoom: boolean;
   onCloseRoom: () => void;

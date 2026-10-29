@@ -54,7 +54,6 @@ const roleCopy: Record<
   },
 };
 
-/** Mounted only in the owner-only configuration section. */
 export function AccountsSection({
   account,
   onSelect,

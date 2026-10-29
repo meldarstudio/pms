@@ -151,7 +151,6 @@ function detail(): ReservationDetail {
   };
 }
 
-/** What a Reservation command resolves to after the fake save succeeds. */
 const savedAs = (reservation: ReservationDetail) => ({ status: "saved" as const, reservation });
 
 const control = (name: string) => page.field(name);
@@ -193,7 +192,6 @@ async function openEditDialog({
   );
 }
 
-/** Renders the editor subscribed to the reservation cache, as the dialog does. */
 async function renderCachedEditor(reservation: () => ReservationDetail) {
   client.setQueryData(["reservation", reservation().id], reservation());
   function Editor() {
@@ -380,7 +378,6 @@ it("revalidates an edited payment's blurred date error at the new property day w
   );
 });
 
-// Every POST (preview, command, or creation) reaches the handler with its path and body.
 function mockApi(
   handler: (path: string, command: WorkflowCommand) => Promise<Response>,
   {
@@ -1110,10 +1107,6 @@ it("creates a reservation without a phone or any missing-phone warning", async (
   assert.ok(!/sin teléfono|teléfono requerido/i.test(container.textContent));
 });
 
-/**
- * A browser edit to the phone: `beforeinput` sees the current selection, then the input holds the
- * text the browser left, with the caret after the edit.
- */
 async function editPhone(
   text: string,
   caret: number,
@@ -1140,7 +1133,6 @@ async function typePhone(text: string) {
   }
 }
 
-/** Dispatches copy or cut on the given selection, returning the event and its clipboard. */
 async function clipboardEvent(type: "copy" | "cut", start: number, end: number) {
   const phone = control("phone");
   phone.setSelectionRange(start, end);
@@ -1170,7 +1162,6 @@ it("edits phone digits beside separators without moving the caret off them", asy
   await renderNewBooking();
   const phone = control("phone");
 
-  // Each edit starts from `991 039 021`; the browser has already removed the separator.
   for (const { name, selection, inputType, expected, caret } of [
     {
       name: "Backspace after a separator removes the preceding digit",
@@ -1458,7 +1449,6 @@ it("filters sold-out types, occupied and closed room numbers, and inventory alre
   }));
   page.api.on("GET", "/reservations", () => [
     { ...detail(), checkIn: "2026-10-14", checkOut: "2026-10-16" },
-    // A checkout on the arrival date must leave room 103 available.
     {
       ...detail(),
       id: "departed",
@@ -2055,7 +2045,6 @@ it("counts availability per night and waits for current dates before allowing an
       return new Promise<Response>((resolve) => {
         finish = resolve;
       });
-    // These unassigned rooms occupy successive nights, not two rooms at once.
     return [
       {
         ...detail(),
@@ -2242,7 +2231,6 @@ it.each(["confirmed", "cancelled"] as const)(
     await until(() => warning() !== undefined);
     await React.act(async () => warningButton("Hacer check-in").click());
     if (from === "cancelled") {
-      // Restoring still asks for its own confirmation after the warning.
       await until(() => restoration() !== undefined, "Restoration must follow the warning");
       return;
     }
@@ -2629,7 +2617,6 @@ for (const succeeds of [true, false]) {
           !!window.document.querySelector('[name="notes"]'),
         "Reservation must load",
       );
-      // Dialog content renders through a portal.
       const popup = window.document.querySelector('[role="dialog"]')!;
       const input = popup.querySelector<HTMLTextAreaElement>('[name="notes"]')!;
       await React.act(async () => {
@@ -2781,7 +2768,6 @@ for (const discountSucceeds of [true, false]) {
         });
       assert.ok(path.endsWith("/commands"));
       writes.push(command);
-      // Model the backend loading its full snapshot when each request starts.
       const original = structuredClone(saved);
       const action = command.actions[0];
       if (action.type === "set-discount")
@@ -2845,7 +2831,6 @@ for (const discountSucceeds of [true, false]) {
       if (!discountSucceeds) {
         assert.equal(discount.value, "10");
         assert.equal(button("Más acciones de reserva").disabled, true);
-        // Explicitly discard the rejected discount before changing status.
         await fill(discount, "0");
       }
       await until(

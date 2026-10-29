@@ -4,7 +4,6 @@ import { PagePrimaryAction } from "@/components/page-primary-action";
 import { Button } from "@/components/ui/button";
 import { useIsMobile } from "@/hooks/use-mobile";
 
-/** Nueva reserva: floating on mobile, otherwise rendered where the page places it. */
 export function NewReservationButton({
   onClick,
   disabled,

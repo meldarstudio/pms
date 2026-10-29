@@ -56,15 +56,10 @@ setupRoutes.post("/", validate("json", propertySetupSchema), async (c) => {
             })
             .where(eq(roomTypes.id, existing.id))
         : db.insert(roomTypes).values(roomType),
-      // Release existing numbers inside the transaction so valid final numbers,
-      // including swaps, do not collide with another room's previous number.
-      // These temporary values exceed the public room-number length limit.
       ...editedRooms.map((room) =>
         db
           .update(rooms)
           .set({
-            // A moved room must abort the batch, not silently skip its edit.
-            // As with reservation revision guards, NULL fails a NOT NULL column.
             number: sql`CASE WHEN ${rooms.roomTypeId} = ${roomType.id} THEN ${`__setup_${crypto.randomUUID()}`} ELSE NULL END`,
           })
           .where(eq(rooms.id, room.id)),
