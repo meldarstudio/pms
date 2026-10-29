@@ -29,7 +29,7 @@ Read the applicable instructions before changing the package or contract, includ
 
 ## Documentation
 
-Before changing maintained docs or reviewing a behavior/configuration change, read [documentation maintenance](CODING_STANDARDS.md#documentation). Update the authoritative topic guide in the same change, including affected pointers. Package READMEs index those guides; [operational status](docs/operations-status.md) holds dated reports, not current procedures.
+Before changing maintained docs or reviewing a behavior/configuration change, read [documentation maintenance](CODING_STANDARDS.md#documentation). Update the authoritative topic guide and affected pointers in the same change. The root README indexes guides; [release records](docs/releases.md#recorded-reports) hold dated operational reports, not current-state guarantees.
 
 ## Cross-package contracts
 

@@ -3,7 +3,7 @@
 Practice recovering an existing export into a **new local database**, never
 production. This checks whether the SQL can be imported and the expected records
 recovered. It does not prove remote D1 restoration, outage duration, or application
-compatibility. See [operational status](operations-status.md) for recorded
+compatibility. See [release records](releases.md#recorded-reports) for recorded
 rehearsal evidence and unresolved limits.
 
 This is occasional recovery preparation, not a per-release step. Repeat after
@@ -84,7 +84,7 @@ stay dates, saved nightly prices, room assignments, and payment amounts/dates.
 Adapt read-only queries to the backup's schema; do not modify history to make the
 checks pass. If expectations are unavailable, mark completeness **unverified**.
 
-Save a [private rehearsal note](operations-status.md#private-evidence) with the checksum, selected source/schema, tool versions,
+Save a [private rehearsal note](releases.md#private-evidence) with the checksum, selected source/schema, tool versions,
 elapsed import/check times, expected versus observed results, and failures or
 limitations. Only mark the rehearsal successful for the scope actually verified.
 Record that it was **local**, not a tested remote production-recovery procedure.

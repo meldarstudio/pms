@@ -118,5 +118,5 @@ HTTP responses substituted at the fetch boundary. The backend setup tests cover
 the actual API and transactional database behavior.
 
 See [save-time room validation](reservations.md#room-validation-at-save-time) for
-existing reservations after limits change, and [the property calendar](property-calendar.md)
+existing reservations after limits change, and [property dates](calendar.md#property-dates)
 for physical room-type changes.

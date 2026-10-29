@@ -1,7 +1,7 @@
 # Portal agent instructions
 
 Paths below are relative to `apps/portal` unless stated otherwise.
-Before portal tests or compiler changes, read the [reservation editor guidance](../../docs/reservations.md#portal-editors) and [test environment](README.md#implementation-and-tests).
+Before portal tests or compiler changes, read the [reservation editor guidance](../../docs/reservations.md#portal-editors) and [test environment](#test-environment).
 Run test commands sequentially, targeting affected files first. Ask before raising
 worker or heap limits; follow the root [frontend testing policy](../../CODING_STANDARDS.md#frontend-scope).
 
@@ -29,3 +29,10 @@ Before changing calendar reads, caching, or assignment, read [the calendar guide
 - Keep type-only imports as `import type` or inline `type` imports.
 - Follow `components.json` and existing `src/components/ui` primitives when composing shadcn UI. Import `cn` from `"cn"`, rather than the generated utils alias.
 - Add shadcn components from `apps/portal` with `pnpm exec shadcn add <name>`.
+
+## Test environment
+
+The shared happy-dom/Vite SSR harness renders real screens and forms, substituting
+HTTP responses at fetch; no browser is needed. Reuse the existing suites under
+`tests/`, including `reservation-dialog.test.ts` and `reservation-page.test.ts`.
+These tests do not establish visual or physical-device correctness.
