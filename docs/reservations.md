@@ -19,6 +19,12 @@ Invalid pricing inputs return an HTTP error.
 `workflowCreatePreviewSchema`, as creation would save it. It checks neither
 occupancy nor assignment/availability and reserves nothing.
 
+[workflow.ts](../apps/backend/src/workflow.ts) owns reservation-command execution.
+Routes validate input and supply the captured property date/account, currency, and
+Culqi adapter. `executeCommand` returns saved detail after refund processing;
+`previewCommand` returns proposed billing and validation without writing. Revision
+retries and receipt handling stay internal to the module.
+
 [pricing.ts](../apps/backend/src/lib/pricing.ts) owns pricing:
 
 - Retained nights keep saved prices; added nights use current rates. Changing type
@@ -221,8 +227,9 @@ Require a Culqi charge, at least 100 cents, no other requested Culqi refund for 
 payment (including in the same command), and `CULQI_SECRET_KEY` before saving.
 Culqi has no refund idempotency; this pending-request guard protects double clicks.
 
-After the command batch commits, the route makes **one** refund call; previews and
-receipt replays make none. A `201 completa` completes with Culqi refund ID as
+After the command batch commits, `executeCommand` makes **one** refund call per
+newly requested Culqi refund, outside revision retries; previews and receipt
+replays make none. A `201 completa` completes with Culqi refund ID as
 completion reference and provider ID, property today as refund date, and requester
 as resolver. Any other reply/lost response reads the charge: if `amount_refunded`
 equals other completed charge refunds plus this request, complete with the charge

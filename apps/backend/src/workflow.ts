@@ -1,5 +1,7 @@
 import type { WorkflowCommand, WorkflowCreate, WorkflowCreatePreview } from "@pms/shared";
 import { and, eq, isNull, sql } from "drizzle-orm";
+import type { Culqi } from "./culqi";
+import { sendCulqiRefunds } from "./culqi-refunds";
 import { runBatch, type Db } from "./db";
 import {
   cancellationWaivers,
@@ -25,7 +27,13 @@ import { acceptPhone, requireStay } from "./rules";
 import { confirmationCode } from "./lib/codes";
 import { chunks } from "./lib/chunks";
 import { claimRevision, isStaleWrite } from "./db/revisions";
-import { loadReservation, type State, type Stay } from "./reservation-read";
+import {
+  loadReservation,
+  presentReservations,
+  readReservation,
+  type State,
+  type Stay,
+} from "./reservation-read";
 import { newLine, plan, price } from "./workflow-plan";
 
 export type CommandContext = {
@@ -55,7 +63,38 @@ export function lineWrites(db: Db, line: Stay, existing: boolean) {
     ...chunks(values, 20).map((v) => db.insert(reservationRoomNights).values(v)),
   ];
 }
-export async function execute(
+export async function executeCommand(
+  db: Db,
+  id: string,
+  command: WorkflowCommand,
+  context: CommandContext,
+  options: { currency: string; culqi: Culqi },
+) {
+  if (
+    !options.culqi.configured &&
+    command.actions.some((action) => action.type === "request-culqi-refund")
+  )
+    throw new HttpError(503, "Culqi is not configured");
+  const result = await execute(db, id, command, false, context);
+  if (result.culqiRefunds?.length)
+    await sendCulqiRefunds(db, options.culqi, result.culqiRefunds, context);
+  return readReservation(db, id, options.currency);
+}
+
+export async function previewCommand(
+  db: Db,
+  id: string,
+  command: WorkflowCommand,
+  context: CommandContext,
+  currency: string,
+) {
+  const result = await execute(db, id, command, true, context);
+  if (!result.state) return { replayed: true };
+  const [billing] = await presentReservations(db, [result.state], currency);
+  return { validation: { issues: result.issues }, billing };
+}
+
+async function execute(
   db: Db,
   id: string,
   command: WorkflowCommand,
