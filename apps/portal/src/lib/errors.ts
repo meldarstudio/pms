@@ -71,6 +71,24 @@ const messages: Record<string, string> = {
     "Este pago tiene reembolsos y no se puede editar ni eliminar.",
   "reservation with refunds cannot be restored":
     "La reserva tiene reembolsos y no se puede restaurar. Crea una nueva reserva.",
+  "guest acceptance is required": "Registra que el huésped aceptó el cupón en lugar del reembolso.",
+  "coupon exceeds the refund due":
+    "El cupón supera el monto por devolver, descontando reembolsos solicitados y cupones ya emitidos.",
+  "coupon not found": "No existe un cupón con ese código.",
+  "coupon has expired": "El cupón venció y ya no se puede usar.",
+  "coupon redemption exceeds its balance": "El monto supera el saldo disponible del cupón.",
+  "coupon redemption exceeds the balance owed":
+    "El monto del cupón supera el saldo pendiente de la reserva.",
+  "stay starts after the coupon expires": "La estancia empieza después del vencimiento del cupón.",
+  "reservation already uses another coupon":
+    "Esta reserva ya usa otro cupón. Solo se permite un cupón por reserva.",
+  "coupon cannot be redeemed on the reservation that issued it":
+    "El cupón no se puede usar en la reserva que lo emitió.",
+  "coupon requires an active reservation": "Solo se puede usar un cupón en una reserva activa.",
+  "reservation with coupons cannot be restored":
+    "La reserva tiene movimientos de cupón y no se puede restaurar. Crea una nueva reserva.",
+  "payment cannot be changed after issuing a coupon":
+    "La reserva emitió un cupón; sus pagos ya no se pueden editar ni eliminar.",
   "too many guests for this room type":
     "La habitación no tiene capacidad para todos los huéspedes.",
   "stay cannot be longer than 60 nights": "La estancia no puede superar las 60 noches.",

@@ -1,9 +1,11 @@
 import type { WorkflowCommand, WorkflowCreate, WorkflowCreatePreview } from "@pms/shared";
-import { and, eq, inArray, isNull, sql } from "drizzle-orm";
+import { and, eq, inArray, isNull, or, sql } from "drizzle-orm";
 import { alias } from "drizzle-orm/sqlite-core";
 import { runBatch, type Db } from "./db";
 import {
   cancellationWaivers,
+  couponMovements,
+  coupons,
   payments,
   guests,
   refunds,
@@ -20,6 +22,13 @@ import {
 } from "./db/schema";
 import { HttpError, rethrowConflict } from "./http";
 import type { Refund } from "./lib/refunds";
+import {
+  couponMovementQuery,
+  couponQuery,
+  withIssuer,
+  type Coupon,
+  type CouponMovement,
+} from "./lib/coupons";
 import { holdsInventory } from "./lib/statuses";
 import type { Cancellation } from "./lib/cancellation";
 import { ratePlans, termColumns } from "./lib/rate-plans";
@@ -44,6 +53,8 @@ export type State = {
   payments: (typeof payments.$inferSelect)[];
   cancellations: Cancellation[];
   refunds: Refund[];
+  coupons: Coupon[];
+  couponMovements: CouponMovement[];
 };
 export type CommandContext = {
   today: string;
@@ -66,6 +77,8 @@ export async function loadState(db: Db, id: string): Promise<State> {
     cancellationRows,
     waiverRows,
     refundRows,
+    couponRows,
+    movementRows,
   ] = await db.batch([
     db.select().from(reservations).where(eq(reservations.id, id)),
     db
@@ -84,6 +97,8 @@ export async function loadState(db: Db, id: string): Promise<State> {
     cancellationQuery(db).where(eq(reservationCancellations.reservationId, id)),
     waiverQuery(db).where(eq(reservationCancellations.reservationId, id)),
     refundQuery(db).where(eq(refunds.reservationId, id)),
+    reservationCouponQuery(db, [id]),
+    couponMovementQuery(db).where(eq(couponMovements.reservationId, id)),
   ]);
   const reservation = parents[0];
   if (!reservation) throw new HttpError(404, "reservation not found");
@@ -108,6 +123,8 @@ export async function loadState(db: Db, id: string): Promise<State> {
     payments: paymentRows,
     cancellations: withWaivers(cancellationRows, waiverRows),
     refunds: refundRows.map(withAccounts),
+    coupons: couponRows.map(withIssuer),
+    couponMovements: movementRows.map(withRecorder),
   };
 }
 
@@ -151,6 +168,37 @@ export async function refundsFor(db: Db, reservationIds: string[]) {
   return (await refundQuery(db).where(inArray(refunds.reservationId, reservationIds))).map(
     withAccounts,
   );
+}
+const reservationCouponQuery = (db: Db, reservationIds: string[]) =>
+  couponQuery(db).where(
+    or(
+      inArray(coupons.sourceReservationId, reservationIds),
+      inArray(
+        coupons.id,
+        db
+          .select({ id: couponMovements.couponId })
+          .from(couponMovements)
+          .where(inArray(couponMovements.reservationId, reservationIds)),
+      ),
+    ),
+  );
+const withRecorder = ({
+  movement,
+  recordedBy,
+}: Awaited<ReturnType<typeof couponMovementQuery>>[number]): CouponMovement => ({
+  ...movement,
+  recordedBy,
+});
+
+export async function couponsFor(db: Db, reservationIds: string[]) {
+  const [couponRows, movementRows] = await db.batch([
+    reservationCouponQuery(db, reservationIds),
+    couponMovementQuery(db).where(inArray(couponMovements.reservationId, reservationIds)),
+  ]);
+  return {
+    coupons: couponRows.map(withIssuer),
+    movements: movementRows.map(withRecorder),
+  };
 }
 type CancellationRow = Awaited<ReturnType<typeof cancellationQuery>>[number];
 type WaiverRow = Awaited<ReturnType<typeof waiverQuery>>[number];
@@ -237,6 +285,10 @@ async function executeAttempt(
     return { state, issues, replayed: false };
   }
   rejectRoomIssues(roomIssues);
+  const newMovements = state.couponMovements.filter(
+    (m) => !original.couponMovements.some((o) => o.id === m.id),
+  );
+  const issued = new Set(newMovements.flatMap((m) => (m.kind === "issue" ? [m.couponId] : [])));
   const changed = state.lines.filter(
     (l) => JSON.stringify(l) !== JSON.stringify(original.lines.find((o) => o.id === l.id)),
   );
@@ -314,6 +366,23 @@ async function executeAttempt(
             ? db.update(refunds).set(r).where(eq(refunds.id, r.id))
             : db.insert(refunds).values(r),
         ),
+      ...state.coupons.filter((c) => issued.has(c.id)).map((c) => db.insert(coupons).values(c)),
+      ...state.coupons
+        .filter(
+          (c) =>
+            !issued.has(c.id) &&
+            original.coupons.find((o) => o.id === c.id)?.balanceCents !== c.balanceCents,
+        )
+        .map((c) =>
+          db
+            .update(coupons)
+            .set({
+              balanceCents: c.balanceCents,
+              revision: claimRevision(coupons.revision, c.revision),
+            })
+            .where(eq(coupons.id, c.id)),
+        ),
+      ...newMovements.map((m) => db.insert(couponMovements).values(m)),
       ...(revalidateAllRooms
         ? [
             db

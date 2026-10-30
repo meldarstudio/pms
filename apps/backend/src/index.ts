@@ -5,6 +5,7 @@ import { HttpError } from "./http";
 import { accountRoutes } from "./routes/accounts";
 import { authRoutes } from "./routes/auth";
 import { calendarRoutes } from "./routes/calendar";
+import { couponRoutes } from "./routes/coupons";
 import { availabilityRoutes } from "./routes/availability";
 import { inventoryRoutes } from "./routes/inventory";
 import { guestRoutes } from "./routes/guests";
@@ -71,6 +72,7 @@ app.route("/guests", guestRoutes);
 app.route("/reservations", reservationRoutes);
 app.route("/payments", paymentRoutes);
 app.route("/rate-plans", ratePlanRoutes);
+app.route("/coupons", couponRoutes);
 
 export default {
   fetch: app.fetch,

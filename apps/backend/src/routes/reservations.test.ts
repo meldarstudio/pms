@@ -1477,6 +1477,10 @@ describe("refunds", () => {
           reason: "Cancelled stay",
         },
       ],
+      couponIssuedCents: 0,
+      couponRedeemedCents: 0,
+      couponReturnedCents: 0,
+      couponMovements: [],
     });
     expect(await report("2026-10-11")).toMatchObject({
       totalCents: 0,

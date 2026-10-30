@@ -47,3 +47,14 @@ export function filterWeekdays(dates: string[], weekdays?: number[]): string[] {
   const allowed = new Set(weekdays);
   return dates.filter((date) => allowed.has(weekday(date)));
 }
+
+export function addMonths(value: string, months: number): string {
+  const match = datePattern.exec(value);
+  if (!match) throw new Error("invalid date");
+  const total = Number(match[1]) * 12 + Number(match[2]) - 1 + months;
+  const year = Math.floor(total / 12);
+  const month = total % 12;
+  const lastDay = new Date(Date.UTC(year, month + 1, 0)).getUTCDate();
+  const day = Math.min(Number(match[3]), lastDay);
+  return new Date(Date.UTC(year, month, day)).toISOString().slice(0, 10);
+}

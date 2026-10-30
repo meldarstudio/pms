@@ -224,13 +224,14 @@ _Avoid_: Refund, reservation discount
 ### Reservation bill
 
 **Reservation bill**:
-Room charges, discount, received payments, and resulting balance. Cancellation
-replaces room charges and discount with the final cancellation charge.
+Room charges, discount, received payments, refunds, coupon movements, and resulting
+balance. Cancellation replaces room charges and discount with the final cancellation
+charge.
 _Avoid_: Invoice, payment receipt
 
 **Subtotal / total**:
-Room charges before discount / after the capped discount, before payments. A
-cancelled reservation's total is its cancellation charge after waivers.
+Room charges before discount / after the capped discount, before payments or coupon
+settlement. A cancelled reservation's total is its cancellation charge after waivers.
 _Avoid_: Balance, amount paid
 
 **Discount**:
@@ -262,15 +263,18 @@ conversion; a pending/failed refund does not settle it.
 _Avoid_: Completed refund, redeemable coupon
 
 **Amount paid / net retained**:
-Gross received payments / those payments less completed refunds.
+Gross received payments / those payments less completed refunds. Coupon issuance and
+redemption do not change either.
 _Avoid_: Revenue
 
 **Balance**:
-Total less net retained: positive is outstanding, negative is credit, zero is settled.
+Total less applied coupon value and net retained, plus value converted into issued
+coupons: positive is outstanding, negative is credit, zero is settled.
 _Avoid_: Total, amount paid
 
 **Credit**:
-Net retained above total: refund due on any reservation, not necessarily a refund
+What is still owed back after final charges, completed refunds, coupon settlement,
+and agreed coupon conversion: refund due on any reservation, not necessarily a refund
 request or redeemable coupon.
 _Avoid_: Refund, coupon
 

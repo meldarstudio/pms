@@ -179,15 +179,17 @@ Idempotent receipts and revision races prevent duplicate charges/waivers. Repeat
 the current cancellation/no-show status records nothing new. Restoration revalidates
 inventory, marks the charge record restored, and bills the stay under unchanged
 terms. History remains, and a later cancellation computes a new charge. Any refund
-record, even failed/requested, blocks restoration; create a new reservation instead.
-Coupon activity is not recorded yet and does not block it.
+record, even failed/requested, blocks restoration (`reservation with refunds cannot
+be restored`), as does any issued, redeemed, or returned coupon movement
+(`reservation with coupons cannot be restored`); create a new reservation instead.
 
 ## Refunds
 
-Net retained is payments less completed refunds. Balance is total minus net retained;
-refund due is its positive excess over total, on any reservation. Requested/failed
-refunds change neither. Gross paid, completed refunds, and requested amounts remain
-distinct in reads.
+Net retained is payments less completed refunds. Balance is total less
+`couponAppliedCents` less net retained, plus `couponIssuedCents` (see
+[future-stay coupons](#future-stay-coupons)); refund due is the magnitude of a
+negative balance, on any reservation. Requested/failed refunds change neither.
+Gross paid, completed refunds, and requested amounts remain distinct in reads.
 
 Nothing refunds automatically. Workflow actions record manual returns or a Culqi call:
 
@@ -222,7 +224,79 @@ complete/fail manually. **Never retry a Culqi refund automatically.** Completion
 bumps the reservation revision; the response returns the post-call reservation.
 
 Reads/previews retain request and resolution history and provider IDs. `GET /payments`
-keeps gross payments by payment date separate from completed refunds by refund date.
+keeps gross payments by payment date separate from completed refunds by refund date,
+and lists [coupon movements](#future-stay-coupons) apart from both.
+
+## Future-stay coupons
+
+A future-stay coupon converts some or all of a reservation's refund due into fixed
+value for a later stay instead of returning money. Coupon value cannot be exchanged
+for cash; the portal must say so wherever staff issue or redeem one. Portal coupon
+screens are not built yet; the backend contract below is complete.
+
+`issue-coupon` (`amountCents`, `guestAccepted: true`) records the guest's acceptance
+and issues a coupon; without it the command fails with `guest acceptance is
+required`. The amount cannot exceed refund due less requested refunds (`coupon
+exceeds the refund due`); converted value no longer counts as refund due, so repeated
+issuances cannot exceed it. No bonus value is added. Issuing is neither a completed
+refund nor money received: payments stay in history, and `couponIssuedCents` lowers
+refund due by the coupon's value. A coupon has an unpredictable 10-character `code`,
+fixed `valueCents`, `balanceCents`, issuing reservation, `issuedAt`, `issuedBy`, and
+`expiresOn`: 12 months after the property date of issuance, clamped to the month's
+last day. Once a reservation issues a coupon, its payments cannot be edited or
+deleted (`payment cannot be changed after issuing a coupon`), including in the same
+command.
+
+`redeem-coupon` (`code`, `amountCents`) applies any holder's coupon to a confirmed,
+checked-in, or checked-out reservation; case, spaces, and hyphens in the code are
+ignored. The server rejects:
+
+- an unknown code (`coupon not found`, 404);
+- more than the coupon's balance (`coupon redemption exceeds its balance`);
+- more than the reservation still owes after the command's other changes (`coupon
+  redemption exceeds the balance owed`);
+- a coupon whose `expiresOn` is before property today (`coupon has expired`), so
+  value returned after expiry cannot be spent;
+- a stay whose check-in is after `expiresOn` (`stay starts after the coupon
+  expires`), rechecked whenever later edits move dates while coupon value is applied;
+- a second, different coupon on the same reservation (`reservation already uses
+  another coupon`); the same coupon may be redeemed again up to its balance;
+- the issuing reservation (`coupon cannot be redeemed on the reservation that issued
+  it`);
+- a reservation that does not hold inventory (`coupon requires an active
+  reservation`).
+
+The new stay is priced under its own plan first. Redeemed value settles the bill; it
+is not a discount or money received. `couponAppliedCents` lowers `balanceCents`, and
+`initialPaymentDueCents` is `requiredInitialPaymentCents` (unchanged plan
+requirement) less coupon applied and net retained not converted into issued coupons,
+floored at zero. A partial redemption leaves the remainder on the coupon with its
+original expiry.
+
+When a coupon-funded stay is cancelled, marked No-show, waived, or amended below the
+coupon value applied, the charge consumes coupon value first, then money. The excess
+returns to the same coupon automatically as a `return` movement, and refund due
+covers only money. Returned value keeps the original expiry.
+
+Coupon balances carry their own revision, claimed by each redemption or return in the
+command's single batch: concurrent redemptions from different reservations re-plan
+against the saved balance and cannot overspend, and idempotent retries replay their
+receipt. A database CHECK keeps every balance between zero and the coupon's value.
+
+Reads and previews return `couponIssuedCents`, `couponAppliedCents`,
+`initialPaymentDueCents`, `coupons` (coupons this reservation issued, with current
+balances), and `couponMovements` (its `issue`, `redeem`, and `return` movements with
+`code`, `amountCents`, `recordedAt`, `recordedOn`, and `recordedBy`). List `balance`
+and `refund` filters use the same arithmetic. `GET /coupons/:code` returns value,
+balance, expiry, issuing reservation (`sourceReservationId`,
+`sourceReservationCode`), and every movement with its `reservationId`.
+`GET /payments` adds `couponMovements` whose `recordedOn` is in range (`couponId`,
+`code`, `reservationId`, `reservationCode`, `guestName`, `kind`, `amountCents`,
+`recordedOn`, `recordedBy`) with `couponIssuedCents`, `couponRedeemedCents`, and
+`couponReturnedCents`; they never enter `totalCents` or `refundedCents`.
+
+Lost-code replacement, reissue, expiry extension, stacking coupons, public
+redemption, and undoing a movement are not supported.
 
 ## Reservation list reads
 

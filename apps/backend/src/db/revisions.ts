@@ -8,7 +8,7 @@ export function claimRevision(column: AnySQLiteColumn, expected: number) {
 export function isStaleWrite(error: unknown): boolean {
   if (!(error instanceof Error)) return false;
   return (
-    /NOT NULL constraint failed: (reservations|guests)\.revision/.test(error.message) ||
+    /NOT NULL constraint failed: (reservations|guests|coupons)\.revision/.test(error.message) ||
     isStaleWrite(error.cause)
   );
 }

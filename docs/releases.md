@@ -157,6 +157,8 @@ are separately authorized operations. Culqi code needs migration `0013` first; i
 deployment starts cron. Taking payments/refunds additionally requires separately
 authorized `CULQI_SECRET_KEY`; without it, calls fail and cron does no Culqi work.
 See [0013 compatibility](history/schema-rollouts.md#culqi-payments-migration-0013).
+[Future-stay coupons](reservations.md#future-stay-coupons) need migration `0014`
+first; see [0014 compatibility](history/schema-rollouts.md#future-stay-coupons-migration-0014).
 Local simulations do not establish token permissions.
 
 ## Workflow compatibility

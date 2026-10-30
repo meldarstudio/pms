@@ -370,6 +370,8 @@ export function buildResetSql(value) {
   const createdAt = `${date(-60)}T12:00:00.000Z`;
   const statements = [
     "DELETE FROM reservation_requests;",
+    "DELETE FROM coupon_movements;",
+    "DELETE FROM coupons;",
     "DELETE FROM reservation_guests;",
     "DELETE FROM reservation_room_nights;",
     "DELETE FROM refunds;",

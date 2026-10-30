@@ -10,6 +10,18 @@ tables, deliver API before portal, preserve schema/applied history for recovery,
 roll application builds back together only when compatible. These defaults do not
 authorize an operation or prove a previous Worker understands newly recorded data.
 
+## Future-stay coupons, migration 0014
+
+`0014_coupons.sql` creates `coupons` and `coupon_movements`. It alters no existing
+row or trigger, and existing reservations have no coupon activity. Apply it before
+deploying the backend that reads those tables: the new Worker's reservation reads,
+commands, and `GET /payments` fail without them. The previous Worker runs against
+the additive schema and ignores the tables. The portal only gains types, so its
+order does not matter. For recovery, keep the tables and applied history. Once a
+coupon is issued or redeemed, do not roll the backend back: the previous Worker
+ignores coupon movements, so value converted to a coupon would read as refund due
+again and redeemed value as owed.
+
 ## Culqi payments, migration 0013
 
 Creates `payment_attempts` and nullable provider IDs on payments/refunds; existing

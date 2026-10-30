@@ -52,6 +52,11 @@ beforeEach(() => {
     refundedCents: 0,
     pendingRefundCents: 0,
     refunds: [],
+    couponIssuedCents: 0,
+    couponAppliedCents: 0,
+    initialPaymentDueCents: 0,
+    coupons: [],
+    couponMovements: [],
     cancellation: null,
     cancellations: [],
     ratePlan: {

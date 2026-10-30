@@ -1,8 +1,17 @@
 import { paymentListQuerySchema } from "@pms/shared";
-import { and, asc, eq, gte, lte } from "drizzle-orm";
+import { and, asc, eq, gte, lte, sql } from "drizzle-orm";
 import { Hono } from "hono";
 import { getDb } from "../db";
-import { guests, payments, refunds, reservations } from "../db/schema";
+import {
+  couponMovements,
+  coupons,
+  guests,
+  payments,
+  refunds,
+  reservations,
+  user,
+  type CouponMovementKind,
+} from "../db/schema";
 import type { Env } from "../env";
 import { currency, validate } from "../http";
 import { requireInclusiveRange } from "../rules";
@@ -13,7 +22,7 @@ paymentRoutes.get("/", validate("query", paymentListQuerySchema), async (c) => {
   const { from, to } = c.req.valid("query");
   requireInclusiveRange(from, to, 366);
   const db = getDb(c.env.DB);
-  const [rows, refundRows] = await db.batch([
+  const [rows, refundRows, couponRows] = await db.batch([
     db
       .select({
         id: payments.id,
@@ -55,7 +64,29 @@ paymentRoutes.get("/", validate("query", paymentListQuerySchema), async (c) => {
         ),
       )
       .orderBy(asc(refunds.refundDate), asc(refunds.resolvedAt)),
+    db
+      .select({
+        id: couponMovements.id,
+        couponId: couponMovements.couponId,
+        code: sql<string>`${coupons.code}`.as("coupon_code"),
+        reservationId: couponMovements.reservationId,
+        reservationCode: reservations.code,
+        guestName: guests.fullName,
+        kind: couponMovements.kind,
+        amountCents: couponMovements.amountCents,
+        recordedOn: couponMovements.recordedOn,
+        recordedBy: user.username,
+      })
+      .from(couponMovements)
+      .innerJoin(coupons, eq(coupons.id, couponMovements.couponId))
+      .innerJoin(reservations, eq(reservations.id, couponMovements.reservationId))
+      .innerJoin(guests, eq(guests.id, reservations.guestId))
+      .leftJoin(user, eq(user.id, couponMovements.accountId))
+      .where(and(gte(couponMovements.recordedOn, from), lte(couponMovements.recordedOn, to)))
+      .orderBy(asc(couponMovements.recordedOn), asc(couponMovements.recordedAt)),
   ]);
+  const couponCents = (kind: CouponMovementKind) =>
+    couponRows.reduce((sum, row) => sum + (row.kind === kind ? row.amountCents : 0), 0);
   return c.json({
     from,
     to,
@@ -64,5 +95,9 @@ paymentRoutes.get("/", validate("query", paymentListQuerySchema), async (c) => {
     payments: rows,
     refundedCents: refundRows.reduce((sum, row) => sum + row.amountCents, 0),
     refunds: refundRows,
+    couponIssuedCents: couponCents("issue"),
+    couponRedeemedCents: couponCents("redeem"),
+    couponReturnedCents: couponCents("return"),
+    couponMovements: couponRows,
   });
 });

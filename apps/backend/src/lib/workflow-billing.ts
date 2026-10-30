@@ -1,3 +1,4 @@
+import { couponAppliedCents, couponIssuedCents, type CouponMoney } from "./coupons";
 import type { PaymentSchedule } from "./rate-plans";
 
 type BillableRoom = { nights: { date: string; priceCents: number }[] };
@@ -7,19 +8,29 @@ export function bill(
   charges: number,
   payments: { amountCents: number }[],
   discountCents: number,
-  options: { released?: boolean; refundedCents?: number } = {},
+  options: {
+    released?: boolean;
+    refundedCents?: number;
+    couponIssuedCents?: number;
+    couponAppliedCents?: number;
+  } = {},
 ) {
   const appliedDiscount = options.released ? 0 : Math.min(discountCents, charges);
   const totalCents = charges - appliedDiscount;
   const paidCents = payments.reduce((sum, payment) => sum + payment.amountCents, 0);
   const refundedCents = options.refundedCents ?? 0;
-  const balanceCents = totalCents - (paidCents - refundedCents);
+  const couponIssuedCents = options.couponIssuedCents ?? 0;
+  const couponAppliedCents = options.couponAppliedCents ?? 0;
+  const balanceCents =
+    totalCents - couponAppliedCents - (paidCents - refundedCents - couponIssuedCents);
   return {
     subtotalCents: charges,
     discountCents: appliedDiscount,
     totalCents,
     paidCents,
     refundedCents,
+    couponIssuedCents,
+    couponAppliedCents,
     balanceCents,
     creditCents: Math.max(0, -balanceCents),
   };
@@ -42,6 +53,7 @@ export function reservationBill(
     paymentSchedule: PaymentSchedule;
     cancellationChargeCents?: number;
     refunds?: RefundMoney[];
+    couponMovements?: CouponMoney[];
   },
 ) {
   const billable = terms.released ? [] : rooms;
@@ -49,17 +61,23 @@ export function reservationBill(
     ? (terms.cancellationChargeCents ?? 0)
     : billable.reduce((sum, room) => sum + roomCharges(room, false).subtotalCents, 0);
   const refunds = terms.refunds ?? [];
+  const movements = terms.couponMovements ?? [];
   const totals = bill(charges, payments, discountCents, {
     released: terms.released,
     refundedCents: refundCents(refunds, "completed"),
+    couponIssuedCents: couponIssuedCents(movements),
+    couponAppliedCents: couponAppliedCents(movements),
   });
   const requiredInitialPaymentCents = terms.released
     ? 0
     : terms.paymentSchedule === "full_upfront"
       ? totals.totalCents
       : Math.min(firstNightCents(billable), totals.totalCents);
+  const settledCents =
+    totals.couponAppliedCents + totals.paidCents - totals.refundedCents - totals.couponIssuedCents;
   return {
     ...totals,
+    initialPaymentDueCents: Math.max(0, requiredInitialPaymentCents - settledCents),
     pendingRefundCents: refundCents(refunds, "requested"),
     refundDueCents: totals.creditCents,
     requiredInitialPaymentCents,
