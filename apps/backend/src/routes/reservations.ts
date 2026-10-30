@@ -23,12 +23,17 @@ import {
 } from "drizzle-orm";
 import { Hono, type Context } from "hono";
 import { culqiClient } from "../culqi";
-import { sendCulqiRefunds } from "../culqi-refunds";
 import { getDb } from "../db";
 import { guests, refunds, reservationRooms, reservations } from "../db/schema";
 import type { Env } from "../env";
-import { currency, HttpError, validate } from "../http";
-import { createWorkflow, execute, previewCreate, type CommandContext } from "../workflow";
+import { currency, validate } from "../http";
+import {
+  createWorkflow,
+  executeCommand,
+  previewCommand,
+  previewCreate,
+  type CommandContext,
+} from "../workflow";
 import { loadReservations, presentReservations, readReservation } from "../reservation-read";
 import { presentNight, type presentReservation } from "../present";
 import { balanceCentsSql, roomCharges, stayBill } from "../lib/reservation-bill";
@@ -179,28 +184,24 @@ const commandContext = (c: Context<Env>): CommandContext => {
   return { today, timeZone, account: c.var.account };
 };
 reservationRoutes.post("/:id/preview", validate("json", workflowCommandSchema), async (c) => {
-  const db = getDb(c.env.DB);
-  const result = await execute(db, c.req.param("id"), c.req.valid("json"), true, commandContext(c));
-  if (!result.state) return c.json({ replayed: true });
-  const [billing] = await presentReservations(db, [result.state], currency(c));
-  return c.json({ validation: { issues: result.issues }, billing });
+  return c.json(
+    await previewCommand(
+      getDb(c.env.DB),
+      c.req.param("id"),
+      c.req.valid("json"),
+      commandContext(c),
+      currency(c),
+    ),
+  );
 });
 reservationRoutes.post("/:id/commands", validate("json", workflowCommandSchema), async (c) => {
-  const db = getDb(c.env.DB);
-  const command = c.req.valid("json");
-  const context = commandContext(c);
-  if (
-    !c.env.CULQI_SECRET_KEY &&
-    command.actions.some((action) => action.type === "request-culqi-refund")
-  )
-    throw new HttpError(503, "Culqi is not configured");
-  const result = await execute(db, c.req.param("id"), command, false, context);
-  if (result.culqiRefunds?.length)
-    await sendCulqiRefunds(
-      db,
-      culqiClient({ secretKey: c.env.CULQI_SECRET_KEY }),
-      result.culqiRefunds,
-      context,
-    );
-  return c.json(await readReservation(db, c.req.param("id"), currency(c)));
+  return c.json(
+    await executeCommand(
+      getDb(c.env.DB),
+      c.req.param("id"),
+      c.req.valid("json"),
+      commandContext(c),
+      { currency: currency(c), culqi: culqiClient({ secretKey: c.env.CULQI_SECRET_KEY }) },
+    ),
+  );
 });

@@ -237,6 +237,7 @@ describe("staff Culqi refunds", () => {
     });
     expect(preview.status).toBe(200);
     expect(refundCalls()).toHaveLength(0);
+    expect((await detail(id)).refunds).toEqual([]);
 
     const requestId = crypto.randomUUID();
     await command(id, [culqiRefund(paymentId)], requestId);
@@ -245,6 +246,86 @@ describe("staff Culqi refunds", () => {
     expect(replayed.status).toBe(200);
     expect(replayed.body.refunds).toHaveLength(1);
     expect(refundCalls()).toHaveLength(1);
+  });
+
+  it("replays a committed refund without refunding again while Culqi's response is pending", async () => {
+    const { id, paymentId } = await paidOnline();
+    let reachedProvider!: () => void;
+    let releaseResponse!: () => void;
+    const reached = new Promise<void>((resolve) => {
+      reachedProvider = resolve;
+    });
+    const released = new Promise<void>((resolve) => {
+      releaseResponse = resolve;
+    });
+    let paused = false;
+    vi.stubGlobal("fetch", async (input: RequestInfo | URL, init?: RequestInit) => {
+      const response = await culqi.fetch(input, init);
+      const url = new URL(input instanceof Request ? input.url : input);
+      if (url.pathname === "/v2/refunds" && !paused) {
+        paused = true;
+        reachedProvider();
+        await released;
+      }
+      return response;
+    });
+    const requestId = crypto.randomUUID();
+    const actions = [culqiRefund(paymentId)];
+    const saving = command(id, actions, requestId);
+    await reached;
+
+    try {
+      const replayed = await command(id, actions, requestId);
+      expect(replayed.status).toBe(200);
+      expect(replayed.body).toMatchObject({ refundedCents: 0, pendingRefundCents: 10000 });
+      expect(replayed.body.refunds).toEqual([
+        expect.objectContaining({ status: "requested", amountCents: 10000 }),
+      ]);
+      expect(culqi.refunds).toHaveLength(1);
+    } finally {
+      releaseResponse();
+      await saving;
+    }
+
+    const saved = await saving;
+    expect(saved.status).toBe(200);
+    expect(saved.body).toMatchObject({ refundedCents: 10000, pendingRefundCents: 0 });
+    expect(saved.body.refunds).toEqual([
+      expect.objectContaining({ status: "completed", amountCents: 10000 }),
+    ]);
+    expect(await detail(id)).toMatchObject({ refundedCents: 10000, pendingRefundCents: 0 });
+    expect(culqi.refunds).toHaveLength(1);
+  });
+
+  it("does not resend a successful Culqi refund when saving its completion fails", async () => {
+    const { id, paymentId } = await paidOnline();
+    const errorLog = vi.spyOn(console, "error").mockImplementation(() => {});
+    vi.stubGlobal("fetch", async (input: RequestInfo | URL, init?: RequestInit) => {
+      const response = await culqi.fetch(input, init);
+      const url = new URL(input instanceof Request ? input.url : input);
+      if (url.pathname === "/v2/refunds")
+        db.beforeCommit(() => {
+          throw new Error("Database unavailable while recording refund completion");
+        });
+      return response;
+    });
+    const requestId = crypto.randomUUID();
+    const actions = [culqiRefund(paymentId)];
+
+    try {
+      const saved = await command(id, actions, requestId);
+      expect(saved.status).toBe(200);
+      expect(saved.body).toMatchObject({ refundedCents: 0, pendingRefundCents: 10000 });
+      expect(saved.body.refunds).toEqual([
+        expect.objectContaining({ status: "requested", amountCents: 10000 }),
+      ]);
+      const replayed = await command(id, actions, requestId);
+      expect(replayed.status).toBe(200);
+      expect(replayed.body.refunds).toEqual(saved.body.refunds);
+      expect(culqi.refunds).toHaveLength(1);
+    } finally {
+      errorLog.mockRestore();
+    }
   });
 
   it("never edits or deletes a Culqi payment", async () => {
