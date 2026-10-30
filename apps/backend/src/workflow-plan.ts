@@ -22,7 +22,8 @@ import {
   type CouponMovement,
 } from "./lib/coupons";
 import { acceptPhone, requireStay } from "./rules";
-import type { CommandContext, State, Stay } from "./workflow";
+import type { State, Stay } from "./reservation-read";
+import type { CommandContext } from "./workflow";
 
 type Night = Stay["nights"][number];
 type Action<K extends WorkflowAction["type"]> = Extract<WorkflowAction, { type: K }>;

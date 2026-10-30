@@ -1,30 +1,19 @@
-import type {
-  reservationGuests,
-  payments,
-  guests,
-  reservationRoomNights,
-  reservationRooms,
-  reservations,
-  roomTypes,
-  rooms,
-} from "./db/schema";
-import { cancellationFields, type Cancellation } from "./lib/cancellation";
+import type { guests, roomTypes, rooms } from "./db/schema";
+import { cancellationFields } from "./lib/cancellation";
 import { nightsBetween } from "./lib/dates";
 import { acceptedTerms } from "./lib/rate-plans";
-import { presentRefunds, type Refund } from "./lib/refunds";
-import { couponFields, type Coupon, type CouponMovement } from "./lib/coupons";
+import { presentRefunds } from "./lib/refunds";
+import { couponFields } from "./lib/coupons";
 import { holdsInventory } from "./lib/statuses";
 import { reservationBill, roomCharges } from "./lib/reservation-bill";
+import type { State } from "./reservation-read";
 
 type Guest = typeof guests.$inferSelect;
-type Reservation = typeof reservations.$inferSelect;
-type Line = typeof reservationRooms.$inferSelect;
-type Night = Pick<
-  typeof reservationRoomNights.$inferSelect,
-  "reservationRoomId" | "date" | "priceCents"
->;
-type RoomType = typeof roomTypes.$inferSelect;
-type Room = typeof rooms.$inferSelect;
+type Reservation = State["reservation"];
+export type RoomLookups = {
+  roomTypes: ReadonlyMap<string, typeof roomTypes.$inferSelect>;
+  rooms: ReadonlyMap<string, typeof rooms.$inferSelect>;
+};
 
 const released = (reservation: Reservation) => !holdsInventory(reservation.status);
 
@@ -46,44 +35,15 @@ export function presentGuest(guest: Omit<Guest, "revision">) {
   };
 }
 
-export function presentReservation(input: {
-  reservation: Reservation;
-  guest: Guest;
-  lines: Line[];
-  nights: Night[];
-  types: RoomType[];
-  roomRows: Room[];
-  payments: (typeof payments.$inferSelect)[];
-  currency: string;
-  stayingGuests?: (typeof reservationGuests.$inferSelect)[];
-  cancellations: Cancellation[];
-  refunds: Refund[];
-  coupons: Coupon[];
-  couponMovements: CouponMovement[];
-}) {
-  const typeById = new Map(input.types.map((type) => [type.id, type]));
-  const roomById = new Map(input.roomRows.map((room) => [room.id, room]));
-  const nightsByLine = new Map<string, Night[]>();
-  for (const night of input.nights) {
-    const list = nightsByLine.get(night.reservationRoomId) ?? [];
-    list.push(night);
-    nightsByLine.set(night.reservationRoomId, list);
-  }
-
-  const roomsOut = input.lines.map((line) => {
-    const nights = (nightsByLine.get(line.id) ?? []).sort((a, b) => a.date.localeCompare(b.date));
+export function presentReservation(input: State, lookups: RoomLookups, currency: string) {
+  const roomsOut = input.lines.map(({ nights: savedNights, ...line }) => {
+    const nights = savedNights.toSorted((a, b) => a.date.localeCompare(b.date));
+    const room = line.roomId ? lookups.rooms.get(line.roomId) : undefined;
     return {
       ...line,
-      id: line.id,
-      roomTypeId: line.roomTypeId,
-      roomTypeName: typeById.get(line.roomTypeId)?.name ?? null,
-      roomId: line.roomId,
-      roomNumber: line.roomId ? (roomById.get(line.roomId)?.number ?? null) : null,
-      housekeepingStatus: line.roomId
-        ? (roomById.get(line.roomId)?.housekeepingStatus ?? null)
-        : null,
-      adults: line.adults,
-      children: line.children,
+      roomTypeName: lookups.roomTypes.get(line.roomTypeId)?.name ?? null,
+      roomNumber: room?.number ?? null,
+      housekeepingStatus: room?.housekeepingStatus ?? null,
       ...roomCharges({ nights }, released(input.reservation)),
       nights: nights.map(presentNight),
     };
@@ -91,7 +51,7 @@ export function presentReservation(input: {
 
   const ratePlan = acceptedTerms(input.reservation);
   const cancellation = cancellationFields(input.cancellations);
-  const totals = reservationBill({ ...input, lines: roomsOut });
+  const totals = reservationBill(input);
 
   return {
     id: input.reservation.id,
@@ -100,14 +60,14 @@ export function presentReservation(input: {
     cancellationReason: input.reservation.cancellationReason,
     cancelledAt: input.reservation.cancelledAt,
     guestId: input.reservation.guestId,
-    guest: presentGuest(input.guest),
-    stayingGuests: input.stayingGuests ?? [],
+    guest: presentGuest(input.contact),
+    stayingGuests: input.stayingGuests,
     checkIn: input.reservation.checkIn,
     checkOut: input.reservation.checkOut,
     source: input.reservation.source,
     notes: input.reservation.notes,
     createdAt: input.reservation.createdAt,
-    currency: input.currency,
+    currency,
     nights: nightsBetween(input.reservation.checkIn, input.reservation.checkOut).length,
     ratePlan,
     ...totals,

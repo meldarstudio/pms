@@ -122,6 +122,22 @@ it("uses the property day for payment commands and previews, including edits acr
   expect(after.payments.map((p) => p.paymentDate).sort()).toEqual(["2026-10-31", "2026-11-01"]);
 });
 
+it("previews the same reservation detail that saving the actions returns", async () => {
+  const d = await create(2);
+  const actions: WorkflowAction[] = [
+    roomEdit(d),
+    { type: "contact", contact: { fullName: "Ada King", email: null, phone: null } },
+    { type: "notes", notes: "Late arrival" },
+    setDiscount(500),
+  ];
+
+  const { billing } = await previewCommand(d, actions);
+
+  expect(billing.rooms[0]).toMatchObject({ roomTypeName: "King", roomNumber: "101" });
+  expect(billing.guest.fullName).toBe("Ada King");
+  expect(billing).toEqual(await command(d, actions));
+});
+
 it.each(["assigned stay", "closure-reduced capacity"])(
   "protects the current property night against room type changes: %s",
   async (scenario) => {
