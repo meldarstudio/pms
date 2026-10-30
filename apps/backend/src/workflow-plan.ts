@@ -4,15 +4,18 @@ import type { Db } from "./db";
 import { coupons, reservationGuests, roomTypes } from "./db/schema";
 import { HttpError } from "./http";
 import { ratesBetween } from "./inventory";
-import { refundCents, reservationBill } from "./lib/workflow-billing";
+import {
+  cancellationCharge,
+  couponAppliedCents,
+  refundCents,
+  reservationBill,
+} from "./lib/reservation-bill";
 import { holdsInventory } from "./lib/statuses";
-import { activeCancellation, policyCharge, presentCancellation } from "./lib/cancellation";
+import { activeCancellation, policyCharge } from "./lib/cancellation";
 import { acceptedTerms, type RatePlanTerms } from "./lib/rate-plans";
 import { overridesFor, priceNights } from "./lib/pricing";
 import {
-  couponAppliedCents,
   couponCode,
-  couponIssuedCents,
   couponExpiry,
   couponQuery,
   withIssuer,
@@ -49,17 +52,6 @@ type Handlers = {
 
 const fail = (message: string): never => {
   throw new HttpError(400, message);
-};
-
-export const totals = (state: State) => {
-  const cancellation = activeCancellation(state.cancellations);
-  return reservationBill(state.lines, state.payments, state.reservation.discountCents, {
-    released: !holdsInventory(state.reservation.status),
-    paymentSchedule: acceptedTerms(state.reservation).paymentSchedule,
-    cancellationChargeCents: cancellation ? presentCancellation(cancellation).finalChargeCents : 0,
-    refunds: state.refunds,
-    couponMovements: state.couponMovements,
-  });
 };
 
 export async function price(
@@ -328,7 +320,7 @@ function applyWaivers({ state, waivers, account, now }: PlanContext) {
       accountId: account.id,
       recordedBy: account.username,
     });
-  if (presentCancellation(cancellation!).finalChargeCents < 0)
+  if (cancellationCharge(cancellation!).finalChargeCents < 0)
     fail("waiver cannot exceed the cancellation charge");
 }
 
@@ -429,12 +421,13 @@ async function redeemCoupon(action: Action<"redeem-coupon">, ctx: PlanContext) {
   if (!state.coupons.includes(coupon)) state.coupons.push(coupon);
   coupon.balanceCents -= action.amountCents;
   state.couponMovements.push(movement(ctx, coupon.id, "redeem", action.amountCents));
-  if (totals(state).balanceCents < 0) fail("coupon redemption exceeds the balance owed");
+  if (reservationBill(state).balanceCents < 0) fail("coupon redemption exceeds the balance owed");
 }
 
 function returnCoupons(ctx: PlanContext) {
   const { state } = ctx;
-  let excess = totals(state).couponAppliedCents - totals(state).totalCents;
+  const bill = reservationBill(state);
+  let excess = bill.couponAppliedCents - bill.totalCents;
   for (const coupon of state.coupons) {
     if (excess <= 0) return;
     const applied = couponAppliedCents(
@@ -455,7 +448,7 @@ async function applyCoupons(ctx: PlanContext) {
       await redeemCoupon(action, ctx);
       continue;
     }
-    const bill = totals(state);
+    const bill = reservationBill(state);
     if (action.amountCents > bill.refundDueCents - bill.pendingRefundCents)
       fail("coupon exceeds the refund due");
     const id = crypto.randomUUID();
@@ -491,7 +484,7 @@ function checkCouponLocks({ original, state, couponActions }: PlanContext) {
   )
     fail("reservation with coupons cannot be restored");
   if (
-    (couponIssuedCents(state.couponMovements) > 0 ||
+    (reservationBill(state).couponIssuedCents > 0 ||
       couponActions.some((action) => action.type === "issue-coupon")) &&
     original.payments.some(
       (payment) =>
@@ -522,8 +515,8 @@ function checkRefundLimits(
   const resolvesOnly = actions.every(
     (action) => action.type === "complete-refund" || action.type === "fail-refund",
   );
-  const requestedCents = refundCents(state.refunds, "requested");
-  if (!resolvesOnly && requestedCents > 0 && -totals(state).balanceCents < requestedCents)
+  const bill = reservationBill(state);
+  if (!resolvesOnly && bill.pendingRefundCents > 0 && -bill.balanceCents < bill.pendingRefundCents)
     fail(
       refundActions.some(requestsRefund)
         ? "refund exceeds the refund due"

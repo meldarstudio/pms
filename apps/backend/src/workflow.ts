@@ -38,8 +38,6 @@ import { chunks } from "./lib/chunks";
 import { claimRevision, isStaleWrite } from "./db/revisions";
 import { newLine, plan, price } from "./workflow-plan";
 
-export { totals } from "./workflow-plan";
-
 type Night = Pick<
   typeof reservationRoomNights.$inferSelect,
   "date" | "priceCents" | "adjustmentCents" | "discountCents"

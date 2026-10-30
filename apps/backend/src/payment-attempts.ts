@@ -11,7 +11,7 @@ import type { Db } from "./db";
 import { guests, paymentAttempts, quotes, reservations, type AttemptStatus } from "./db/schema";
 import type { Env } from "./env";
 import { HttpError, PAYMENT_PENDING, rethrowConflict } from "./http";
-import { reservationBill } from "./lib/workflow-billing";
+import { quoteBill } from "./lib/reservation-bill";
 import { propertyCalendar } from "./property-calendar";
 import { saveQuote } from "./quotes";
 import { acceptPhone } from "./rules";
@@ -294,10 +294,7 @@ function requireValid(quote: Quote, now: Date) {
 }
 
 function initialPaymentCents(quote: Quote) {
-  return reservationBill([quote], [], 0, {
-    released: false,
-    paymentSchedule: quote.terms.paymentSchedule,
-  }).requiredInitialPaymentCents;
+  return quoteBill(quote).requiredInitialPaymentCents;
 }
 
 async function findQuote(db: Db, id: string) {

@@ -36,13 +36,6 @@ export function couponCode(): string {
 
 export const couponExpiry = (today: string) => addMonths(today, 12);
 
-const sum = (movements: CouponMoney[], kind: CouponMoney["kind"]) =>
-  movements.reduce((total, m) => total + (m.kind === kind ? m.amountCents : 0), 0);
-
-export const couponIssuedCents = (movements: CouponMoney[]) => sum(movements, "issue");
-export const couponAppliedCents = (movements: CouponMoney[]) =>
-  sum(movements, "redeem") - sum(movements, "return");
-
 export const byTime =
   <T extends { id: string }>(time: (row: T) => string) =>
   (a: T, b: T) =>

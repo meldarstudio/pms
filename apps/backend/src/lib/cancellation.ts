@@ -2,7 +2,7 @@ import type { cancellationWaivers, reservationCancellations } from "../db/schema
 import { propertyCalendar } from "../property-calendar";
 import { addDays } from "./dates";
 import type { RatePlanTerms } from "./rate-plans";
-import { reservationBill } from "./workflow-billing";
+import { cancellationCharge, stayBill } from "./reservation-bill";
 
 export type Waiver = typeof cancellationWaivers.$inferSelect & { recordedBy: string | null };
 export type Cancellation = typeof reservationCancellations.$inferSelect & {
@@ -14,16 +14,13 @@ export const activeCancellation = (cancellations: Cancellation[]) =>
   cancellations.find((cancellation) => cancellation.restoredAt === null);
 
 export function presentCancellation(cancellation: Cancellation) {
-  const waivedCents = cancellation.waivers.reduce((sum, waiver) => sum + waiver.amountCents, 0);
   return {
     id: cancellation.id,
     outcome: cancellation.outcome,
     recordedAt: cancellation.recordedAt,
     recordedBy: cancellation.recordedBy,
     freeUntil: cancellation.freeUntil,
-    policyChargeCents: cancellation.policyChargeCents,
-    waivedCents,
-    finalChargeCents: cancellation.policyChargeCents - waivedCents,
+    ...cancellationCharge(cancellation),
     restoredAt: cancellation.restoredAt,
     waivers: cancellation.waivers
       .toSorted((a, b) => a.recordedAt.localeCompare(b.recordedAt) || a.id.localeCompare(b.id))
@@ -47,7 +44,7 @@ export function cancellationFields(cancellations: Cancellation[]) {
   };
 }
 
-type BillableRoom = Parameters<typeof reservationBill>[0][number];
+type BillableRoom = Parameters<typeof stayBill>[0][number];
 
 export function policyCharge(input: {
   outcome: string;
@@ -68,8 +65,8 @@ export function policyCharge(input: {
     propertyCalendar(input.timeZone, new Date(input.now)).today <= freeUntil
   )
     return { freeUntil, policyChargeCents: 0 };
-  const stay = reservationBill(input.rooms, [], input.discountCents, {
-    released: false,
+  const stay = stayBill(input.rooms, {
+    discountCents: input.discountCents,
     paymentSchedule: "first_night_deposit",
   });
   return {
