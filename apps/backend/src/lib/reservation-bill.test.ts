@@ -334,7 +334,11 @@ describe("SQL balance", () => {
       { type: "redeem-coupon", code: issued.coupons[0].code, amountCents: 12000 },
     ]);
     const returned = await command(redeemer, [discount(10000)]);
-    expect(returned.couponMovements.map(({ kind, amountCents }) => [kind, amountCents])).toEqual([
+    expect(
+      returned.couponMovements
+        .toSorted((a, b) => a.kind.localeCompare(b.kind))
+        .map(({ kind, amountCents }) => [kind, amountCents]),
+    ).toEqual([
       ["redeem", 12000],
       ["return", 2000],
     ]);
