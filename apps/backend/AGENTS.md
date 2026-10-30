@@ -15,6 +15,7 @@ Before schema, migration, trigger, or seed changes, read [the database guide](..
 
 - Creates and edits are workflow commands, not field patches. `POST /reservations` uses `workflowCreateSchema`; `POST /reservations/:id/commands` writes; `POST /reservations/:id/preview` evaluates the same actions without writing.
 - Before changing commands, schemas, or previews, read [commands and previews](../../docs/reservations.md#commands-and-previews), and check the portal types and callers.
+- Before changing how reservations are loaded or presented (detail, list rows, preview billing), read [reservation reads](../../docs/reservations.md#reservation-reads).
 - Before changing workflow reads, batches, guest updates, retries, or request receipts, read [concurrent saves](../../docs/reservations.md#concurrent-reservation-saves), including the revision guards and temporary inventory release needed for atomic room swaps.
 - Before changing preview/preflight checks, occupancy validation, restoration, date edits, or final status writes, read [save-time validation](../../docs/reservations.md#room-validation-at-save-time), including when unchanged rooms are exempt from current-rule validation.
 
@@ -33,5 +34,6 @@ Before changing `/setup` or room renumbering, read [property setup](../../docs/p
 
 Colocated `.test.ts` and `.test.mjs` suites use `vite-plus/test` and registered
 migrations against in-memory `node:sqlite`; no running Worker is needed.
+Like D1, the test database rejects statements with more than 100 bound parameters.
 Migration CLI tests also need Python 3's standard-library PTY for simulated
 Wrangler commands and a private home directory.

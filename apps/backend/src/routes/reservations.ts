@@ -25,36 +25,13 @@ import { Hono, type Context } from "hono";
 import { culqiClient } from "../culqi";
 import { sendCulqiRefunds } from "../culqi-refunds";
 import { getDb } from "../db";
-import {
-  payments,
-  guests,
-  refunds,
-  reservationRoomNights,
-  reservationRooms,
-  reservations,
-  roomTypes,
-  rooms,
-} from "../db/schema";
+import { guests, refunds, reservationRooms, reservations } from "../db/schema";
 import type { Env } from "../env";
 import { currency, HttpError, validate } from "../http";
-import { reservationDetail } from "../load";
-import { holdsInventory } from "../lib/statuses";
-import {
-  cancellationsFor,
-  couponsFor,
-  createWorkflow,
-  execute,
-  previewCreate,
-  refundsFor,
-  type CommandContext,
-} from "../workflow";
-import { cancellationFields } from "../lib/cancellation";
-import { presentRefunds } from "../lib/refunds";
-import { couponFields } from "../lib/coupons";
-import { chunks } from "../lib/chunks";
-import { presentNight, presentReservation } from "../present";
-import { balanceCentsSql, reservationBill, roomCharges, stayBill } from "../lib/reservation-bill";
-import { acceptedTerms } from "../lib/rate-plans";
+import { createWorkflow, execute, previewCreate, type CommandContext } from "../workflow";
+import { loadReservations, presentReservations, readReservation } from "../reservation-read";
+import { presentNight, type presentReservation } from "../present";
+import { balanceCentsSql, roomCharges, stayBill } from "../lib/reservation-bill";
 
 export const reservationRoutes = new Hono<Env>();
 reservationRoutes.get("/", validate("query", reservationListQuerySchema), async (c) => {
@@ -163,72 +140,17 @@ reservationRoutes.get("/", validate("query", reservationListQuerySchema), async 
     q.paginated ? { rows, total, limit: q.limit ?? 50, offset: q.offset ?? 0 } : rows;
   if (!rows.length) return c.json(response([]));
   const ids = rows.map((r) => r.reservation.id);
-  const [lines, paymentRows, types, roomRows, cancellationRows, refundRows, couponRows] =
-    await Promise.all([
-      Promise.all(
-        chunks(ids, 80).map((ids) =>
-          db.select().from(reservationRooms).where(inArray(reservationRooms.reservationId, ids)),
-        ),
-      ).then((r) => r.flat()),
-      Promise.all(
-        chunks(ids, 80).map((ids) =>
-          db.select().from(payments).where(inArray(payments.reservationId, ids)),
-        ),
-      ).then((r) => r.flat()),
-      db.select().from(roomTypes),
-      db.select().from(rooms),
-      Promise.all(chunks(ids, 80).map((ids) => cancellationsFor(db, ids))).then((r) => r.flat()),
-      Promise.all(chunks(ids, 80).map((ids) => refundsFor(db, ids))).then((r) => r.flat()),
-      Promise.all(chunks(ids, 40).map((ids) => couponsFor(db, ids))).then((r) => ({
-        coupons: [
-          ...new Map(r.flatMap((chunk) => chunk.coupons.map((c) => [c.id, c] as const))).values(),
-        ],
-        movements: r.flatMap((chunk) => chunk.movements),
-      })),
-    ]);
-  const nights = (
-    await Promise.all(
-      chunks(
-        lines.map((l) => l.id),
-        80,
-      ).map((ids) =>
-        db
-          .select()
-          .from(reservationRoomNights)
-          .where(inArray(reservationRoomNights.reservationRoomId, ids)),
-      ),
-    )
-  ).flat();
+  const details = await presentReservations(db, await loadReservations(db, ids), currency(c));
   return c.json(
     response(
-      rows.map(({ reservation, guest }) => {
-        const ownLines = lines.filter((l) => l.reservationId === reservation.id);
-        const ownIds = new Set(ownLines.map((l) => l.id));
-        const detail = presentReservation({
-          reservation,
-          guest,
-          lines: ownLines,
-          nights: nights.filter((n) => ownIds.has(n.reservationRoomId)),
-          payments: paymentRows.filter((payment) => payment.reservationId === reservation.id),
-          cancellations: cancellationRows.filter((row) => row.reservationId === reservation.id),
-          refunds: refundRows.filter((row) => row.reservationId === reservation.id),
-          coupons: couponRows.coupons,
-          couponMovements: couponRows.movements.filter(
-            (row) => row.reservationId === reservation.id,
-          ),
-          types,
-          roomRows,
-          currency: currency(c),
-        });
-        return { ...detail, guestName: `${guest.fullName}` };
-      }),
+      details.map((detail) => ({ ...detail, stayingGuests: [], guestName: detail.guest.fullName })),
     ),
   );
 });
 reservationRoutes.post("/", validate("json", workflowCreateSchema), async (c) => {
   const db = getDb(c.env.DB),
     id = await createWorkflow(db, c.req.valid("json"));
-  return c.json(await reservationDetail(db, id, currency(c)), 201);
+  return c.json(await readReservation(db, id, currency(c)), 201);
 });
 reservationRoutes.post("/preview", validate("json", workflowCreatePreviewSchema), async (c) => {
   const input = c.req.valid("json");
@@ -250,46 +172,18 @@ reservationRoutes.post("/preview", validate("json", workflowCreatePreviewSchema)
   });
 });
 reservationRoutes.get("/:id", async (c) =>
-  c.json(await reservationDetail(getDb(c.env.DB), c.req.param("id"), currency(c))),
+  c.json(await readReservation(getDb(c.env.DB), c.req.param("id"), currency(c))),
 );
 const commandContext = (c: Context<Env>): CommandContext => {
   const { today, timeZone } = c.get("propertyCalendar");
   return { today, timeZone, account: c.var.account };
 };
 reservationRoutes.post("/:id/preview", validate("json", workflowCommandSchema), async (c) => {
-  const result = await execute(
-    getDb(c.env.DB),
-    c.req.param("id"),
-    c.req.valid("json"),
-    true,
-    commandContext(c),
-  );
+  const db = getDb(c.env.DB);
+  const result = await execute(db, c.req.param("id"), c.req.valid("json"), true, commandContext(c));
   if (!result.state) return c.json({ replayed: true });
-  const bill = reservationBill(result.state);
-  return c.json({
-    validation: { issues: result.issues },
-    billing: {
-      ...bill,
-      ...cancellationFields(result.state.cancellations),
-      ratePlan: acceptedTerms(result.state.reservation),
-      status: result.state.reservation.status,
-      checkIn: result.state.reservation.checkIn,
-      checkOut: result.state.reservation.checkOut,
-      savedDiscountCents: result.state.reservation.discountCents,
-      rooms: result.state.lines.map((line) => ({
-        ...line,
-        ...roomCharges(line, !holdsInventory(result.state!.reservation.status)),
-        nights: line.nights.map(presentNight),
-      })),
-      payments: result.state.payments,
-      refunds: presentRefunds(result.state.refunds),
-      ...couponFields(
-        result.state.reservation.id,
-        result.state.coupons,
-        result.state.couponMovements,
-      ),
-    },
-  });
+  const [billing] = await presentReservations(db, [result.state], currency(c));
+  return c.json({ validation: { issues: result.issues }, billing });
 });
 reservationRoutes.post("/:id/commands", validate("json", workflowCommandSchema), async (c) => {
   const db = getDb(c.env.DB);
@@ -308,5 +202,5 @@ reservationRoutes.post("/:id/commands", validate("json", workflowCommandSchema),
       result.culqiRefunds,
       context,
     );
-  return c.json(await reservationDetail(db, c.req.param("id"), currency(c)));
+  return c.json(await readReservation(db, c.req.param("id"), currency(c)));
 });

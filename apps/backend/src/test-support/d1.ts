@@ -26,7 +26,11 @@ type Statement = ReturnType<typeof statement>;
 
 const migrations = new URL("../../drizzle/", import.meta.url);
 
+const D1_MAX_BOUND_PARAMETERS = 100;
+
 function statement(sqlite: DatabaseSync, sql: string, params: SQLInputValue[] = []) {
+  if (params.length > D1_MAX_BOUND_PARAMETERS)
+    throw new Error(`too many SQL variables: ${params.length} exceeds D1's limit`);
   const reads = sqlite.prepare(sql).columns().length > 0;
   const execute = () => {
     if (reads) {

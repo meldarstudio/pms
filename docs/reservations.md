@@ -10,9 +10,10 @@ types/fetch helpers live in [api.ts](../apps/portal/src/lib/api.ts).
 Creation uses `POST /reservations` (`workflowCreateSchema`); edits use
 `POST /reservations/:id/commands`. These are workflow actions, not arbitrary field
 patches. `POST /reservations/:id/preview` evaluates actions without writing or
-reserving inventory: priceable drafts return 200 with billing and per-room
-validation issues even when saving is blocked. Room indices refer to proposed,
-nonremoved rooms. Invalid pricing inputs return an HTTP error.
+reserving inventory: priceable drafts return 200 with per-room validation issues
+and `billing`, the proposed reservation in the [detail shape](#reservation-reads),
+even when saving is blocked. Room indices refer to proposed, nonremoved rooms.
+Invalid pricing inputs return an HTTP error.
 
 `POST /reservations/preview` prices a new reservation using
 `workflowCreatePreviewSchema`, as creation would save it. It checks neither
@@ -304,6 +305,22 @@ balance, expiry, issuing reservation (`sourceReservationId`,
 Lost-code replacement, reissue, expiry extension, stacking coupons, public
 redemption, and undoing a movement are not supported.
 
+## Reservation reads
+
+[reservation-read.ts](../apps/backend/src/reservation-read.ts) owns loading saved
+reservations and presenting them as detail JSON. Detail, list rows, command and
+creation responses, and command previews use it; new reservation reads must too.
+
+- `loadReservations` reads each reservation with its contact, staying guests, rooms
+  and nights, payments, cancellations and waivers, refunds, coupons, and coupon
+  movements. It batches 80 reservations per D1 batch, under D1's 100 bound-parameter
+  limit, and gives each reservation only the coupons it issued or moved. A missing
+  reservation or booking contact fails the whole load with 404. `loadReservation`
+  loads one; workflow commands plan against it.
+- `presentReservations` adds room-type names and physical room numbers and
+  housekeeping status, then presents each loaded or proposed reservation through
+  [present.ts](../apps/backend/src/present.ts), which owns the bill call.
+
 ## Reservation list reads
 
 `GET /reservations` defaults to a bare array; `paginated=true` opts into rows/count/
@@ -320,12 +337,13 @@ OR, and sending it with `status` applies both restrictions.
   or physical room numbers; `guestId` matches the booking contact.
 - Sorting uses contact name/code as deterministic tie-breakers. Filters/sort cover
   all matches before pagination; count remains exact even beyond the last page.
-  Charge/payment aggregates are independent; hydrate rooms/nights/payments only for
-  the selected page. Calendar uses its own read.
+  Charge/payment aggregates are independent; [load and present](#reservation-reads)
+  only the selected page. List rows add `guestName` and return empty `stayingGuests`;
+  read the detail for staying guests. Calendar uses its own read.
 
 ## Concurrent reservation saves
 
-Load reservation/contact/rooms/nights/guests/payments in one D1 batch. Commit against
+`loadReservation` reads the reservation and all its records in one D1 batch. Commit against
 internal reservation/contact revisions, absent from the API. A stale revision aborts
 the whole batch, including receipts, contact changes, and payments; reload and reapply
 the original actions, at most three attempts. Persistent contention returns 409

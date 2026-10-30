@@ -1,6 +1,5 @@
 import type { WorkflowCommand, WorkflowCreate, WorkflowCreatePreview } from "@pms/shared";
-import { and, eq, inArray, isNull, or, sql } from "drizzle-orm";
-import { alias } from "drizzle-orm/sqlite-core";
+import { and, eq, isNull, sql } from "drizzle-orm";
 import { runBatch, type Db } from "./db";
 import {
   cancellationWaivers,
@@ -18,42 +17,17 @@ import {
   roomClosures,
   rooms,
   roomTypes,
-  user,
 } from "./db/schema";
 import { HttpError, rethrowConflict } from "./http";
-import type { Refund } from "./lib/refunds";
-import {
-  couponMovementQuery,
-  couponQuery,
-  withIssuer,
-  type Coupon,
-  type CouponMovement,
-} from "./lib/coupons";
 import { holdsInventory } from "./lib/statuses";
-import type { Cancellation } from "./lib/cancellation";
 import { ratePlans, termColumns } from "./lib/rate-plans";
 import { acceptPhone, requireStay } from "./rules";
 import { confirmationCode } from "./lib/codes";
 import { chunks } from "./lib/chunks";
 import { claimRevision, isStaleWrite } from "./db/revisions";
+import { loadReservation, type State, type Stay } from "./reservation-read";
 import { newLine, plan, price } from "./workflow-plan";
 
-type Night = Pick<
-  typeof reservationRoomNights.$inferSelect,
-  "date" | "priceCents" | "adjustmentCents" | "discountCents"
->;
-export type Stay = typeof reservationRooms.$inferSelect & { nights: Night[] };
-export type State = {
-  reservation: typeof reservations.$inferSelect;
-  contact: typeof guests.$inferSelect;
-  stayingGuests: (typeof reservationGuests.$inferSelect)[];
-  lines: Stay[];
-  payments: (typeof payments.$inferSelect)[];
-  cancellations: Cancellation[];
-  refunds: Refund[];
-  coupons: Coupon[];
-  couponMovements: CouponMovement[];
-};
 export type CommandContext = {
   today: string;
   timeZone: string;
@@ -64,161 +38,6 @@ export type WorkflowIssue = {
   roomIndex: number;
   field: "roomId" | "roomTypeId" | "occupancy";
 };
-export async function loadState(db: Db, id: string): Promise<State> {
-  const [
-    parents,
-    contacts,
-    stayingGuests,
-    lines,
-    nightRows,
-    paymentRows,
-    cancellationRows,
-    waiverRows,
-    refundRows,
-    couponRows,
-    movementRows,
-  ] = await db.batch([
-    db.select().from(reservations).where(eq(reservations.id, id)),
-    db
-      .select({ contact: guests })
-      .from(guests)
-      .innerJoin(reservations, eq(reservations.guestId, guests.id))
-      .where(eq(reservations.id, id)),
-    db.select().from(reservationGuests).where(eq(reservationGuests.reservationId, id)),
-    db.select().from(reservationRooms).where(eq(reservationRooms.reservationId, id)),
-    db
-      .select({ night: reservationRoomNights })
-      .from(reservationRoomNights)
-      .innerJoin(reservationRooms, eq(reservationRooms.id, reservationRoomNights.reservationRoomId))
-      .where(eq(reservationRooms.reservationId, id)),
-    db.select().from(payments).where(eq(payments.reservationId, id)),
-    cancellationQuery(db).where(eq(reservationCancellations.reservationId, id)),
-    waiverQuery(db).where(eq(reservationCancellations.reservationId, id)),
-    refundQuery(db).where(eq(refunds.reservationId, id)),
-    reservationCouponQuery(db, [id]),
-    couponMovementQuery(db).where(eq(couponMovements.reservationId, id)),
-  ]);
-  const reservation = parents[0];
-  if (!reservation) throw new HttpError(404, "reservation not found");
-  const contact = contacts[0]?.contact;
-  if (!contact) throw new HttpError(404, "guest not found");
-  const nights = nightRows.map(({ night }) => night);
-  return {
-    reservation,
-    contact,
-    stayingGuests,
-    lines: lines.map((l) => ({
-      ...l,
-      nights: nights
-        .filter((n) => n.reservationRoomId === l.id)
-        .map(({ date, priceCents, adjustmentCents, discountCents }) => ({
-          date,
-          priceCents,
-          adjustmentCents,
-          discountCents,
-        })),
-    })),
-    payments: paymentRows,
-    cancellations: withWaivers(cancellationRows, waiverRows),
-    refunds: refundRows.map(withAccounts),
-    coupons: couponRows.map(withIssuer),
-    couponMovements: movementRows.map(withRecorder),
-  };
-}
-
-const cancellationQuery = (db: Db) =>
-  db
-    .select({ cancellation: reservationCancellations, recordedBy: user.username })
-    .from(reservationCancellations)
-    .leftJoin(user, eq(user.id, reservationCancellations.accountId));
-const waiverQuery = (db: Db) =>
-  db
-    .select({ waiver: cancellationWaivers, recordedBy: user.username })
-    .from(cancellationWaivers)
-    .innerJoin(
-      reservationCancellations,
-      eq(reservationCancellations.id, cancellationWaivers.cancellationId),
-    )
-    .leftJoin(user, eq(user.id, cancellationWaivers.accountId));
-const requester = alias(user, "refund_requester");
-const resolver = alias(user, "refund_resolver");
-const refundQuery = (db: Db) =>
-  db
-    .select({
-      refund: refunds,
-      requestedBy: sql<string | null>`${requester.username}`.as("refund_requested_by"),
-      resolvedBy: sql<string | null>`${resolver.username}`.as("refund_resolved_by"),
-    })
-    .from(refunds)
-    .leftJoin(requester, eq(requester.id, refunds.requestedAccountId))
-    .leftJoin(resolver, eq(resolver.id, refunds.resolvedAccountId));
-const withAccounts = ({
-  refund,
-  requestedBy,
-  resolvedBy,
-}: Awaited<ReturnType<typeof refundQuery>>[number]): Refund => ({
-  ...refund,
-  requestedBy,
-  resolvedBy,
-});
-
-export async function refundsFor(db: Db, reservationIds: string[]) {
-  return (await refundQuery(db).where(inArray(refunds.reservationId, reservationIds))).map(
-    withAccounts,
-  );
-}
-const reservationCouponQuery = (db: Db, reservationIds: string[]) =>
-  couponQuery(db).where(
-    or(
-      inArray(coupons.sourceReservationId, reservationIds),
-      inArray(
-        coupons.id,
-        db
-          .select({ id: couponMovements.couponId })
-          .from(couponMovements)
-          .where(inArray(couponMovements.reservationId, reservationIds)),
-      ),
-    ),
-  );
-const withRecorder = ({
-  movement,
-  recordedBy,
-}: Awaited<ReturnType<typeof couponMovementQuery>>[number]): CouponMovement => ({
-  ...movement,
-  recordedBy,
-});
-
-export async function couponsFor(db: Db, reservationIds: string[]) {
-  const [couponRows, movementRows] = await db.batch([
-    reservationCouponQuery(db, reservationIds),
-    couponMovementQuery(db).where(inArray(couponMovements.reservationId, reservationIds)),
-  ]);
-  return {
-    coupons: couponRows.map(withIssuer),
-    movements: movementRows.map(withRecorder),
-  };
-}
-type CancellationRow = Awaited<ReturnType<typeof cancellationQuery>>[number];
-type WaiverRow = Awaited<ReturnType<typeof waiverQuery>>[number];
-
-function withWaivers(cancellations: CancellationRow[], waivers: WaiverRow[]): Cancellation[] {
-  return cancellations.map(({ cancellation, recordedBy }) => ({
-    ...cancellation,
-    recordedBy,
-    waivers: waivers
-      .filter(({ waiver }) => waiver.cancellationId === cancellation.id)
-      .map(({ waiver, recordedBy }) => ({ ...waiver, recordedBy })),
-  }));
-}
-
-export async function cancellationsFor(db: Db, reservationIds: string[]) {
-  const [cancellations, waivers] = await db.batch([
-    cancellationQuery(db).where(inArray(reservationCancellations.reservationId, reservationIds)),
-    waiverQuery(db).where(inArray(reservationCancellations.reservationId, reservationIds)),
-  ]);
-  return withWaivers(cancellations, waivers);
-}
-
 export function lineWrites(db: Db, line: Stay, existing: boolean) {
   const { nights, ...row } = line;
   const values = nights.map((n) => ({ id: crypto.randomUUID(), reservationRoomId: line.id, ...n }));
@@ -270,7 +89,7 @@ async function executeAttempt(
       throw new HttpError(409, "request ID reused with a different payload");
     return { replayed: true };
   }
-  const original = await loadState(db, id);
+  const original = await loadReservation(db, id);
   const now = new Date().toISOString();
   const { state } = await plan(db, original, command.actions, context, now);
   const revalidateAllRooms =

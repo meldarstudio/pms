@@ -433,7 +433,7 @@ describe("charging a coupon-funded stay that is cancelled or not shown", () => {
 });
 
 describe("coupon records", () => {
-  it("lists an issued coupon once when its redemption is on a later list chunk", async () => {
+  it("lists an issued coupon once with its issuer when its redeemer is on the same page", async () => {
     const issued = await command(await freeCancellationOwing(20000), [issue(20000)]);
     const coupon = issued.coupons[0];
     for (let i = 0; i < 48; i++)
