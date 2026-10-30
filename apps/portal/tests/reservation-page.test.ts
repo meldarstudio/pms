@@ -342,7 +342,7 @@ it("records payments after a failed save and prevents dismissal or navigation du
       },
     },
   ]);
-  assert.match(page.container.textContent, /PagadoS\/\s*100/);
+  assert.match(page.container.textContent, /Por cobrarS\/\s*200Pagó S\/\s*100 de S\/\s*300\./);
   assert.equal(await unloadPrevented(), false);
 });
 
@@ -420,6 +420,164 @@ it("lists assigned rooms by number with unassigned rooms last", async () => {
     );
   assert.deepEqual(rooms(), ["101", "104", "108", "203", "206", "302", "1001", "Sin asignar"]);
   assert.match(page.container.textContent, /206 · Doble2 adultos/);
+});
+
+it("leads the money card with the deposit due and keeps the breakdown behind a toggle", async () => {
+  saved = { ...saved, initialPaymentDueCents: 15000 };
+  mockApi();
+  await render();
+  const card = page.container.querySelector('[role="region"][aria-label="Pago y cuenta"]')!;
+  assert.match(card.textContent, /Falta el depósitoS\/\s*150Saldo total S\/\s*300\./);
+  assert.match(card.textContent, /Registrar pago/);
+  assert.doesNotMatch(card.textContent, /Habitaciones/);
+  await click("Ver detalle de la cuenta");
+  assert.match(card.textContent, /HabitacionesS\/\s*300TotalS\/\s*300PagadoS\/\s*0/);
+  assert.doesNotMatch(card.textContent, /Descuento/);
+});
+
+it("shows what a cancelled guest is owed and locks payments that have refunds", async () => {
+  const recorded = { recordedAt: "2026-10-18T15:00:00Z", recordedBy: "recepcion" };
+  const refund = {
+    paymentId: "payment-1",
+    amountCents: 5000,
+    method: "transfer",
+    reference: null,
+    reason: "Cancelación",
+    requestedAt: "2026-10-18T16:00:00Z",
+    requestedBy: "recepcion",
+    failureReason: null,
+  } as const;
+  saved = {
+    ...saved,
+    status: "cancelled",
+    cancellationReason: "Cambio de planes",
+    cancelledAt: "2026-10-18T15:00:00Z",
+    cancellation: {
+      id: "cancellation-1",
+      outcome: "cancelled",
+      ...recorded,
+      freeUntil: "2026-10-17",
+      policyChargeCents: 15000,
+      waivedCents: 5000,
+      finalChargeCents: 10000,
+      restoredAt: null,
+      waivers: [{ id: "waiver-1", amountCents: 5000, reason: "Emergencia familiar", ...recorded }],
+    },
+    subtotalCents: 10000,
+    totalCents: 10000,
+    paidCents: 30000,
+    refundedCents: 5000,
+    pendingRefundCents: 5000,
+    balanceCents: -15000,
+    creditCents: 15000,
+    refundDueCents: 15000,
+    payments: [
+      {
+        id: "payment-1",
+        reservationId: "reservation-1",
+        amountCents: 30000,
+        method: "card",
+        paymentDate: "2026-10-10",
+        reference: null,
+        notes: null,
+        createdAt: "2026-10-10T15:00:00Z",
+      },
+    ],
+    refunds: [
+      {
+        ...refund,
+        id: "refund-1",
+        status: "completed",
+        resolvedAt: "2026-10-18T17:00:00Z",
+        resolvedBy: "recepcion",
+        refundDate: "2026-10-18",
+        completionReference: "op-77",
+      },
+      {
+        ...refund,
+        id: "refund-2",
+        status: "requested",
+        resolvedAt: null,
+        resolvedBy: null,
+        refundDate: null,
+        completionReference: null,
+      },
+    ],
+  };
+  mockApi();
+  await render();
+  const region = (label: string) =>
+    page.container.querySelector(`[role="region"][aria-label="${label}"]`)!;
+  assert.match(
+    region("Pago y cuenta").textContent,
+    /A devolver al huéspedS\/\s*150S\/\s*50 solicitado, falta confirmar que se devolvió\./,
+  );
+  assert.match(
+    region("Pago y cuenta").textContent,
+    /Cargo por cancelación: S\/\s*100Primera noche · gratis hasta el 17 de octubre de 2026 · exonerado S\/\s*50: Emergencia familiar/,
+  );
+  assert.doesNotMatch(region("Pago y cuenta").textContent, /Registrar pago/);
+  assert.equal(page.container.querySelector('[aria-label="Más acciones"]'), null);
+  await click("Ver detalle de la cuenta");
+  assert.match(
+    region("Pago y cuenta").textContent,
+    /Cargo por cancelaciónS\/\s*100TotalS\/\s*100PagadoS\/\s*300Reembolsado-S\/\s*50/,
+  );
+  assert.ok(region("Pagos").querySelector('[aria-label="Tiene reembolsos: no se edita"]'));
+  assert.equal(region("Pagos").querySelector('[aria-label^="Acciones del pago"]'), null);
+  assert.match(region("Pagos").textContent, /↳ ReembolsoDevueltoCancelaciónOP-77−S\/\s*50/);
+  assert.match(region("Pagos").textContent, /↳ ReembolsoPendienteCancelación—−S\/\s*50/);
+});
+
+it("locks payments once a coupon is issued and says the coupon is not cash", async () => {
+  saved = {
+    ...saved,
+    paidCents: 30000,
+    couponIssuedCents: 30000,
+    balanceCents: 30000,
+    payments: [
+      {
+        id: "payment-1",
+        reservationId: "reservation-1",
+        amountCents: 30000,
+        method: "cash",
+        paymentDate: "2026-10-10",
+        reference: null,
+        notes: null,
+        createdAt: "2026-10-10T15:00:00Z",
+      },
+    ],
+    coupons: [
+      {
+        id: "coupon-1",
+        code: "CUP123",
+        valueCents: 30000,
+        balanceCents: 30000,
+        issuedAt: "2026-10-18T15:00:00Z",
+        issuedBy: "recepcion",
+        expiresOn: "2027-10-18",
+      },
+    ],
+    couponMovements: [
+      {
+        id: "movement-1",
+        couponId: "coupon-1",
+        code: "CUP123",
+        kind: "issue",
+        amountCents: 30000,
+        recordedAt: "2026-10-18T15:00:00Z",
+        recordedOn: "2026-10-18",
+        recordedBy: "recepcion",
+      },
+    ],
+  };
+  mockApi();
+  await render();
+  assert.match(
+    page.container.textContent,
+    /Cupón CUP123 emitido: S\/\s*300Vence el 18 de octubre de 2027 · no se cambia por dinero/,
+  );
+  assert.ok(page.container.querySelector('[aria-label="Se emitió un cupón: no se edita"]'));
 });
 
 async function back() {
@@ -508,7 +666,7 @@ it("waits for the current discount preview and saves its amount separately", asy
         : { billing: saved, validation: { issues: [] } },
   });
   await render();
-  await click("Editar descuento");
+  await chooseRowAction('[aria-label="Más acciones"]', "Editar descuento");
   await page.until(() => !button("Guardar cambios").disabled);
   await fill("amount", "50");
   assert.equal(button("Guardar cambios").disabled, true);
@@ -530,7 +688,7 @@ it("waits for the current discount preview and saves its amount separately", asy
 it("refreshes the discount editor's resulting bill after another save to the reservation", async () => {
   mockApi();
   await render();
-  await click("Editar descuento");
+  await chooseRowAction('[aria-label="Más acciones"]', "Editar descuento");
   await page.until(() => !button("Guardar cambios").disabled);
   assert.match(popup()!.textContent, /Pagos recibidosS\/\s*0Saldo pendienteS\/\s*300/);
   const commands = (await browser.server.ssrLoadModule(
@@ -703,7 +861,7 @@ it("previews cancellation selected in the header before saving and shows the res
   await page.until(() => !popup());
   assert.match(dateTrigger("Estado de la reserva").textContent, /Cancelada/);
   assert.match(page.container.textContent, /Cambio de planes/);
-  assert.match(page.container.textContent, /Saldo a favor/);
+  assert.match(page.container.textContent, /A devolver al huéspedS\/\s*100/);
   assert.deepEqual(writes[0].actions, [
     { type: "set-status", status: "cancelled", reason: "Cambio de planes" },
   ]);
@@ -735,7 +893,7 @@ it.each([
     await render();
     assert.match(page.container.textContent, /Reserva cancelada/);
     assert.match(page.container.textContent, /Cambio de planes/);
-    assert.match(page.container.textContent, /Saldo a favor/);
+    assert.match(page.container.textContent, /A devolver al huéspedS\/\s*100/);
     await selectStatus("Confirmada");
     await page.until(() => popup()?.textContent.includes("Habitación 1:") === true);
     assert.equal(button("Guardar cambios").disabled, true);
@@ -744,7 +902,7 @@ it.each([
     assert.equal(writes.length, 0);
     await click("Cerrar");
     assert.equal(saved.status, "cancelled");
-    assert.match(page.container.textContent, /Saldo a favor/);
+    assert.match(page.container.textContent, /A devolver al huéspedS\/\s*100/);
   },
 );
 

@@ -121,6 +121,21 @@ async function render(search = "", waitForDetail = true) {
 const button = (label: string) => page.button(label);
 const click = (label: string) => page.click(label);
 const fillAmount = (value: string) => page.fill("amount", value);
+async function editDiscount() {
+  await click("Más acciones");
+  const item = Array.from(
+    browser.window.document.querySelectorAll<HTMLElement>('[role="menuitem"]'),
+  ).find((element) => element.textContent.trim() === "Editar descuento");
+  assert.ok(item, "Missing Editar descuento");
+  await browser.React.act(async () => item.click());
+}
+async function openAccount() {
+  if (
+    !Array.from(page.container.querySelectorAll("dt")).some((term) => term.textContent === "Total")
+  )
+    await click("Ver detalle de la cuenta");
+}
+const headline = () => page.container.textContent.replace(/\s/g, "");
 function amount(label: string) {
   const term = Array.from(page.container.querySelectorAll("dt")).find(
     (element) => element.textContent.trim() === label,
@@ -156,26 +171,27 @@ it("saves a discount from its zero-valued row and then a payment without changin
     return Response.json(saved);
   };
   await render();
-  assert.equal(amount("Descuento"), "S/0");
-  await click("Editar descuento");
+  await openAccount();
+  assert.equal(amount("Total"), "S/300.50");
+  await editDiscount();
   await fillAmount("50.50");
   await page.until(() => !button("Guardar cambios").disabled);
   await click("Guardar cambios");
   await page.until(() => browser.window.document.querySelector('[role="dialog"]') === null);
-  assert.equal(amount("Subtotal"), "S/300.50");
-  assert.equal(amount("Descuento"), "S/50.50");
+  assert.equal(amount("Habitaciones"), "S/300.50");
+  assert.equal(amount("Descuento"), "-S/50.50");
   assert.equal(amount("Total"), "S/250");
   assert.equal(amount("Pagado"), "S/100.25");
-  assert.match(page.container.textContent.replace(/\s/g, ""), /SaldopendienteS\/149\.75/);
+  assert.match(headline(), /PorcobrarS\/149\.75/);
 
   await click("Registrar pago");
   await fillAmount("49.75");
   await click("Guardar cambios");
   await page.until(() => browser.window.document.querySelector('[role="dialog"]') === null);
-  assert.equal(amount("Descuento"), "S/50.50");
+  assert.equal(amount("Descuento"), "-S/50.50");
   assert.equal(amount("Total"), "S/250");
   assert.equal(amount("Pagado"), "S/150");
-  assert.match(page.container.textContent.replace(/\s/g, ""), /SaldopendienteS\/100/);
+  assert.match(headline(), /PorcobrarS\/100/);
 });
 
 it.each([
@@ -185,30 +201,31 @@ it.each([
     creditCents: 0,
     label: "Cuenta saldada",
     paid: "S/250",
-    balance: "S/0",
+    status: "CuentasaldadaPagóS/250.Nadapendiente.",
   },
   {
     paidCents: 30050,
     balanceCents: -5050,
     creditCents: 5050,
-    label: "Saldo a favor",
+    label: "A devolver al huésped",
     paid: "S/300.50",
-    balance: "S/50.50",
+    status: "AdevolveralhuéspedS/50.50",
   },
 ])(
-  "distinguishes $label from money owed without hiding bill arithmetic",
-  async ({ paidCents, balanceCents, creditCents, label, paid, balance }) => {
+  "distinguishes $label from money owed and keeps the bill arithmetic one tap away",
+  async ({ paidCents, balanceCents, creditCents, paid, status }) => {
     saved = { ...saved, paidCents, balanceCents, creditCents };
     await render();
-    assert.equal(amount("Subtotal"), "S/300.50");
-    assert.equal(amount("Descuento"), "S/50.50");
+    assert.ok(headline().includes(status));
+    assert.doesNotMatch(
+      page.container.querySelector('[role="region"][aria-label="Pago y cuenta"]')!.textContent,
+      /Registrar pago/,
+    );
+    await openAccount();
+    assert.equal(amount("Habitaciones"), "S/300.50");
+    assert.equal(amount("Descuento"), "-S/50.50");
     assert.equal(amount("Total"), "S/250");
     assert.equal(amount("Pagado"), paid);
-    assert.ok(
-      page.container.textContent
-        .replace(/\s/g, "")
-        .includes(`${label.replace(/\s/g, "")}${balance}`),
-    );
   },
 );
 
@@ -220,7 +237,7 @@ async function back() {
 
 it("protects a discount draft when Back targets Reservations and allows explicit discard", async () => {
   await render("?origin=calendar&returnTo=from%3D2026-10-19%26span%3D14");
-  await click("Editar descuento");
+  await editDiscount();
   await fillAmount("25");
   const unload = new browser.window.Event("beforeunload", { cancelable: true });
   await browser.React.act(async () => browser.window.dispatchEvent(unload));

@@ -1,7 +1,8 @@
 import { Fragment } from "react";
-import { CreditCardIcon, EllipsisIcon, UserRoundIcon, UsersIcon } from "lucide-react";
+import { CreditCardIcon, EllipsisIcon, LockIcon, UserRoundIcon, UsersIcon } from "lucide-react";
 import { cn } from "cn";
 import { isValid, parseISO } from "date-fns";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -37,9 +38,15 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { paymentMethods } from "@/components/reservation-entry-forms";
-import type { ReservationDetail, ReservationPayment, StayingGuest } from "@/lib/api";
+import type {
+  ReservationDetail,
+  ReservationPayment,
+  ReservationRefund,
+  StayingGuest,
+} from "@/lib/api";
 import { format } from "@/lib/dates";
 import { formatMoney } from "@/lib/money";
+import { propertyToday } from "@/lib/property-calendar";
 
 export function StayingGuestList({
   detail,
@@ -182,33 +189,107 @@ export function PaymentList({
         <TableBody>
           {[...entries]
             .sort((a, b) => b.createdAt.localeCompare(a.createdAt))
-            .map((e) => (
-              <TableRow key={e.id}>
-                <TableCell>{paymentDate(e.paymentDate)}</TableCell>
-                <TableCell>
-                  {paymentMethods.find((method) => method.value === e.method)?.label ??
-                    e.method ??
-                    "—"}
-                </TableCell>
-                <TableCell className={cn("max-w-40 break-words whitespace-normal", reference)}>
-                  {e.reference?.toUpperCase() || "—"}
-                </TableCell>
-                <TableCell className="text-right tabular-nums">
-                  {formatMoney(e.amountCents, detail.currency)}
-                </TableCell>
-                <TableCell className="text-right">
-                  <RowActions
-                    label={`Acciones del pago de ${formatMoney(e.amountCents, detail.currency)} del ${e.paymentDate}`}
-                    disabled={disabled}
-                    onEdit={() => onEdit(e)}
-                    onDelete={() => onDelete(e)}
-                  />
-                </TableCell>
-              </TableRow>
-            ))}
+            .map((e) => {
+              const refunds = detail.refunds.filter((refund) => refund.paymentId === e.id);
+              const locked = refunds.length
+                ? "Tiene reembolsos: no se edita"
+                : detail.couponMovements.some((movement) => movement.kind === "issue")
+                  ? "Se emitió un cupón: no se edita"
+                  : null;
+              return (
+                <Fragment key={e.id}>
+                  <TableRow>
+                    <TableCell>{paymentDate(e.paymentDate)}</TableCell>
+                    <TableCell>
+                      {paymentMethods.find((method) => method.value === e.method)?.label ??
+                        e.method ??
+                        "—"}
+                    </TableCell>
+                    <TableCell className={cn("max-w-40 break-words whitespace-normal", reference)}>
+                      {e.reference?.toUpperCase() || "—"}
+                    </TableCell>
+                    <TableCell className="text-right tabular-nums">
+                      {formatMoney(e.amountCents, detail.currency)}
+                    </TableCell>
+                    <TableCell className="text-right">
+                      {locked ? (
+                        <span
+                          role="img"
+                          aria-label={locked}
+                          title={locked}
+                          className="inline-flex size-7 items-center justify-center text-muted-foreground"
+                        >
+                          <LockIcon aria-hidden="true" className="size-3.5" />
+                        </span>
+                      ) : (
+                        <RowActions
+                          label={`Acciones del pago de ${formatMoney(e.amountCents, detail.currency)} del ${e.paymentDate}`}
+                          disabled={disabled}
+                          onEdit={() => onEdit(e)}
+                          onDelete={() => onDelete(e)}
+                        />
+                      )}
+                    </TableCell>
+                  </TableRow>
+                  {refunds.map((refund) => (
+                    <RefundRow
+                      key={refund.id}
+                      refund={refund}
+                      currency={detail.currency}
+                      reference={reference}
+                    />
+                  ))}
+                </Fragment>
+              );
+            })}
         </TableBody>
       </Table>
     </section>
+  );
+}
+
+const refundStatus = {
+  requested: { label: "Pendiente", variant: "preview" },
+  completed: { label: "Devuelto", variant: "checked_in" },
+  failed: { label: "Fallido", variant: "destructive" },
+} as const;
+
+function RefundRow({
+  refund,
+  currency,
+  reference,
+}: {
+  refund: ReservationRefund;
+  currency: string;
+  reference: string;
+}) {
+  const status = refundStatus[refund.status];
+  return (
+    <TableRow className="text-muted-foreground">
+      <TableCell>
+        {paymentDate(refund.refundDate ?? propertyToday(Date.parse(refund.requestedAt)))}
+      </TableCell>
+      <TableCell className="whitespace-normal">
+        <span className="flex flex-wrap items-center gap-1.5">
+          ↳ Reembolso
+          <Badge variant={status.variant} size="sm">
+            {status.label}
+          </Badge>
+        </span>
+        <span className="block wrap-anywhere">
+          {refund.status === "failed" ? refund.failureReason : refund.reason}
+        </span>
+      </TableCell>
+      <TableCell className={cn("max-w-40 break-words whitespace-normal", reference)}>
+        {(refund.completionReference ?? refund.reference)?.toUpperCase() || "—"}
+      </TableCell>
+      <TableCell
+        className={cn("text-right tabular-nums", refund.status !== "completed" && "line-through")}
+      >
+        −{formatMoney(refund.amountCents, currency)}
+      </TableCell>
+      <TableCell />
+    </TableRow>
   );
 }
 

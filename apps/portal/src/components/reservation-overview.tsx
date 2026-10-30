@@ -1,14 +1,21 @@
 import { Fragment, type ReactNode } from "react";
 import {
+  BanIcon,
   BedDoubleIcon,
   CalendarDaysIcon,
   CalendarCheckIcon,
+  ChevronDownIcon,
+  CircleCheckBigIcon,
   ClockIcon,
   CreditCardIcon,
+  EllipsisIcon,
+  HandCoinsIcon,
+  LockIcon,
   MailIcon,
   PencilIcon,
   PhoneIcon,
   PlusIcon,
+  TicketIcon,
   UserRoundIcon,
   UsersIcon,
   type LucideIcon,
@@ -18,6 +25,14 @@ import { Badge } from "@/components/ui/badge";
 import { ReservationStatusBadge } from "@/components/reservation-status-badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardHeader, CardTitle, CardContent, CardAction } from "@/components/ui/card";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuGroup,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import {
   Item,
   ItemContent,
@@ -28,7 +43,6 @@ import {
 } from "@/components/ui/item";
 import { PaymentList, StayingGuestList } from "@/components/reservation-records";
 import { ReservationLifecycle } from "@/components/reservation-lifecycle";
-import { balanceStatus } from "@/components/balance-status";
 import type { ReservationEditorTarget } from "@/components/reservation-page-editors";
 import type { ReservationDetail } from "@/lib/api";
 import { occupantsLabel } from "@/lib/reservation-list";
@@ -103,8 +117,7 @@ export function ReservationOverview({
               : ""}
           </p>
           <p className="whitespace-pre-wrap text-muted-foreground">
-            {detail.cancellationReason || "Sin motivo registrado."} Los pagos permanecen como saldo
-            a favor; no representan un reembolso.
+            {detail.cancellationReason || "Sin motivo registrado."}
           </p>
         </section>
       ) : null}
@@ -327,83 +340,211 @@ function ReservationDatum({
 }
 
 function PaymentSummary({ detail, edit }: Model) {
-  const { label, Icon, tone } = balanceStatus(detail.balanceCents);
+  const status = moneyStatus(detail);
+  const notes = moneyNotes(detail);
+  const released = detail.status === "cancelled" || detail.status === "no_show";
   return (
-    <Card className="min-w-0">
+    <Card className="min-w-0" role="region" aria-label="Pago y cuenta">
       <CardHeader>
         <CardTitle>
           <h2>Pago y cuenta</h2>
         </CardTitle>
+        {!released && (
+          <CardAction>
+            <DropdownMenu>
+              <DropdownMenuTrigger
+                render={
+                  <Button type="button" size="icon-sm" variant="ghost" aria-label="Más acciones" />
+                }
+              >
+                <EllipsisIcon />
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end">
+                <DropdownMenuGroup>
+                  <DropdownMenuItem onClick={() => edit({ kind: "discount" })}>
+                    Editar descuento
+                  </DropdownMenuItem>
+                </DropdownMenuGroup>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          </CardAction>
+        )}
       </CardHeader>
       <CardContent className="flex flex-col gap-3">
-        <dl className="flex flex-col gap-2">
-          <div className="flex flex-wrap justify-between gap-2">
-            <dt className="text-muted-foreground">Plan tarifario</dt>
-            <dd className="ml-auto font-semibold">{ratePlanLabels[detail.ratePlan.plan]}</dd>
-          </div>
-          <div className="flex flex-wrap justify-between gap-2">
-            <dt className="text-muted-foreground">Subtotal</dt>
-            <dd className="ml-auto font-semibold tabular-nums">
-              {money(detail, detail.subtotalCents)}
-            </dd>
-          </div>
-          <div className="flex flex-wrap items-center justify-between gap-2">
-            <dt className="flex items-center gap-2 text-muted-foreground">
-              Descuento
+        <div className={cn("flex flex-col gap-1 p-4", status.tone)}>
+          <p className="flex items-center gap-2 text-sm font-medium">
+            <status.Icon aria-hidden="true" className="size-4 shrink-0" />
+            {status.label}
+          </p>
+          {status.cents > 0 && (
+            <p className="text-3xl font-semibold tracking-tight wrap-anywhere tabular-nums">
+              {money(detail, status.cents)}
+            </p>
+          )}
+          <p className="text-xs opacity-80">{status.note}</p>
+        </div>
+        {status.collect && (
+          <Button className="w-full" onClick={() => edit({ kind: "payment" })}>
+            <CreditCardIcon data-icon="inline-start" />
+            Registrar pago
+          </Button>
+        )}
+        {notes.length > 0 && (
+          <ul aria-label="Condiciones de la cuenta" className="flex flex-col gap-2 text-xs">
+            {notes.map(({ Icon, text, detail: line }) => (
+              <li key={text} className="flex gap-2">
+                <Icon
+                  aria-hidden="true"
+                  className="mt-0.5 size-3.5 shrink-0 text-muted-foreground"
+                />
+                <span className="min-w-0 wrap-anywhere">
+                  {text}
+                  {line && <span className="block text-muted-foreground">{line}</span>}
+                </span>
+              </li>
+            ))}
+          </ul>
+        )}
+        <Collapsible>
+          <CollapsibleTrigger
+            render={
               <Button
                 variant="ghost"
-                size="icon-sm"
-                aria-label="Editar descuento"
-                onClick={() => edit({ kind: "discount" })}
-              >
-                <PencilIcon />
-              </Button>
-            </dt>
-            <dd className="ml-auto font-semibold tabular-nums">
-              {money(detail, detail.discountCents)}
-            </dd>
-          </div>
-          <div className="flex flex-wrap justify-between gap-2">
-            <dt className="text-muted-foreground">Total</dt>
-            <dd className="ml-auto font-semibold tabular-nums">
-              {money(detail, detail.totalCents)}
-            </dd>
-          </div>
-          <div className="flex flex-wrap justify-between gap-2">
-            <dt className="text-muted-foreground">Pago inicial requerido</dt>
-            <dd className="ml-auto font-semibold tabular-nums">
-              {money(detail, detail.requiredInitialPaymentCents)}
-            </dd>
-          </div>
-          <div className="flex flex-wrap justify-between gap-2">
-            <dt className="text-muted-foreground">Pago restante programado</dt>
-            <dd className="ml-auto font-semibold tabular-nums">
-              {money(detail, detail.remainingScheduledCents)}
-            </dd>
-          </div>
-          <div className="flex flex-wrap justify-between gap-2">
-            <dt className="text-muted-foreground">Pagado</dt>
-            <dd className="ml-auto font-semibold tabular-nums">
-              {money(detail, detail.paidCents)}
-            </dd>
-          </div>
-        </dl>
-        <div className={cn("flex flex-wrap items-center justify-between gap-2 p-3 text-sm", tone)}>
-          <p className="flex items-center gap-2 font-medium">
-            <Icon aria-hidden="true" className="size-4 shrink-0" />
-            {label}
-          </p>
-          <p className="ml-auto text-right font-semibold wrap-anywhere tabular-nums">
-            {money(detail, Math.abs(detail.balanceCents))}
-          </p>
-        </div>
-        <Button className="w-full" onClick={() => edit({ kind: "payment" })}>
-          <CreditCardIcon data-icon="inline-start" />
-          Registrar pago
-        </Button>
+                size="sm"
+                className="group w-full justify-between px-0 text-muted-foreground"
+              />
+            }
+          >
+            Ver detalle de la cuenta
+            <ChevronDownIcon className="transition-transform group-data-panel-open:rotate-180" />
+          </CollapsibleTrigger>
+          <CollapsibleContent className="pt-2">
+            <dl className="flex flex-col gap-1.5 text-xs tabular-nums">
+              {accountLines(detail).map(([label, cents]) => (
+                <div key={label} className="flex flex-wrap justify-between gap-x-4">
+                  <dt className="text-muted-foreground">{label}</dt>
+                  <dd className="ml-auto">{money(detail, cents)}</dd>
+                </div>
+              ))}
+            </dl>
+          </CollapsibleContent>
+        </Collapsible>
       </CardContent>
     </Card>
   );
+}
+
+function moneyStatus(detail: ReservationDetail) {
+  const owed = { tone: "bg-destructive/10 text-destructive dark:bg-destructive/20", collect: true };
+  if (detail.balanceCents < 0)
+    return {
+      label: "A devolver al huésped",
+      cents: -detail.balanceCents,
+      tone: "bg-credit text-credit-foreground",
+      Icon: HandCoinsIcon,
+      collect: false,
+      note:
+        detail.pendingRefundCents > 0
+          ? `${money(detail, detail.pendingRefundCents)} solicitado, falta confirmar que se devolvió.`
+          : "Pagó más de lo que debe.",
+    };
+  if (detail.status === "confirmed" && detail.initialPaymentDueCents > 0)
+    return {
+      ...owed,
+      label: "Falta el depósito",
+      cents: detail.initialPaymentDueCents,
+      Icon: CreditCardIcon,
+      note: `Saldo total ${money(detail, detail.balanceCents)}. El resto se cobra al llegar.`,
+    };
+  if (detail.balanceCents > 0)
+    return {
+      ...owed,
+      label: "Por cobrar",
+      cents: detail.balanceCents,
+      Icon: CreditCardIcon,
+      note:
+        detail.couponAppliedCents > 0
+          ? `Ya cubierto: ${money(detail, detail.couponAppliedCents)} con cupón.`
+          : detail.paidCents > 0
+            ? `Pagó ${money(detail, detail.paidCents)} de ${money(detail, detail.totalCents)}.`
+            : detail.status === "no_show"
+              ? "Cargo por no presentarse, sin pagar."
+              : "Cobra antes de la salida.",
+    };
+  return {
+    label: "Cuenta saldada",
+    cents: 0,
+    tone: "bg-booking text-booking-foreground",
+    Icon: CircleCheckBigIcon,
+    collect: false,
+    note:
+      detail.paidCents > 0
+        ? `Pagó ${money(detail, detail.paidCents)}. Nada pendiente.`
+        : "Nada pendiente.",
+  };
+}
+
+function moneyNotes(detail: ReservationDetail) {
+  const notes: { Icon: LucideIcon; text: string; detail?: string }[] = [];
+  const cancellation = detail.cancellation;
+  if (cancellation)
+    notes.push({
+      Icon: BanIcon,
+      text: `${cancellationLabel(cancellation.outcome)}: ${money(detail, cancellation.finalChargeCents)}`,
+      detail: [
+        detail.ratePlan.cancellationPolicy.chargeBasis === "first_night"
+          ? "Primera noche"
+          : "Total de la estadía",
+        cancellation.freeUntil && `gratis hasta el ${fullDate(cancellation.freeUntil)}`,
+        cancellation.waivedCents > 0 &&
+          `exonerado ${money(detail, cancellation.waivedCents)}: ${cancellation.waivers.map((waiver) => waiver.reason).join("; ")}`,
+      ]
+        .filter(Boolean)
+        .join(" · "),
+    });
+  for (const movement of detail.couponMovements) {
+    const amount = money(detail, movement.amountCents);
+    const coupon = detail.coupons.find((entry) => entry.id === movement.couponId);
+    notes.push(
+      movement.kind === "issue"
+        ? {
+            Icon: TicketIcon,
+            text: `Cupón ${movement.code} emitido: ${amount}`,
+            detail: [coupon && `Vence el ${fullDate(coupon.expiresOn)}`, "no se cambia por dinero"]
+              .filter(Boolean)
+              .join(" · "),
+          }
+        : {
+            Icon: TicketIcon,
+            text:
+              movement.kind === "redeem"
+                ? `Cupón ${movement.code} aplicado: ${amount}`
+                : `Cupón ${movement.code}: ${amount} regresó al cupón`,
+          },
+    );
+  }
+  if (detail.ratePlan.plan === "non_refundable")
+    notes.push({ Icon: LockIcon, text: `Tarifa ${ratePlanLabels.non_refundable.toLowerCase()}` });
+  return notes;
+}
+
+const cancellationLabel = (outcome: "cancelled" | "no_show") =>
+  outcome === "no_show" ? "Cargo por no presentarse" : "Cargo por cancelación";
+
+function accountLines(detail: ReservationDetail): [string, number][] {
+  const lines: [string, number][] = [
+    [
+      detail.cancellation ? cancellationLabel(detail.cancellation.outcome) : "Habitaciones",
+      detail.subtotalCents,
+    ],
+    ["Descuento", -detail.discountCents],
+    ["Total", detail.totalCents],
+    ["Pagado", detail.paidCents],
+    ["Reembolsado", -detail.refundedCents],
+    ["Pagado con cupón", detail.couponAppliedCents],
+    ["Pasado a cupón", -detail.couponIssuedCents],
+  ];
+  return lines.filter(([label, cents]) => cents !== 0 || label === "Total" || label === "Pagado");
 }
 
 function ContactPhone({ phone }: { phone: string | null }) {

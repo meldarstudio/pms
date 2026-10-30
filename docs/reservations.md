@@ -428,6 +428,20 @@ writes while any reservation save is queued/running. Discount previews debounce
 300 ms and require a current issue-free preview before saving. Guest/payment deletion
 requires confirmation; records remain editable on cancelled reservations.
 
+The money summary leads with the one amount staff must act on, in priority order.
+A negative balance means money is owed back to the guest, with any requested refund
+still unconfirmed. Next comes a confirmed reservation's unpaid initial payment, then
+any other positive balance. Otherwise the account is settled. The summary offers
+payment entry only while money is owed, and discount editing only while the
+reservation holds inventory. Next to the amount it shows the active cancellation
+or No-show charge with its waivers, coupon movements (an issued coupon is marked as
+not exchangeable for cash), and the Non-refundable plan. The full breakdown stays
+collapsed until opened. Refunds are shown under their payment and never
+count until completed. A payment cannot be edited or deleted once it has a refund,
+or after the reservation has issued a coupon. The portal shows these locks, but
+the backend enforces them. The full reservation page does not record refunds, waivers, or
+coupons yet.
+
 ### Compact calendar dialog
 
 Details save dates, rooms, and notes only; discard resets that draft. Routine
