@@ -2,198 +2,159 @@
 
 A property-management system with a React portal, a Hono Cloudflare Worker, and
 shared Zod schemas in a pnpm workspace. Agents start with [AGENTS.md](AGENTS.md),
-then read only the topic guides relevant to the task.
+then read the relevant topic guide.
 
 ## Setup
 
-Use the Node version pinned in [.node-version](.node-version) and the pnpm
-version in `package.json`'s `packageManager`. With a global Vite+ installation:
+Use Node from [.node-version](.node-version) and pnpm from `package.json`'s
+`packageManager`. With global Vite+, run `vp env install`, then `pnpm install`.
+Otherwise select those versions with your Node/package manager. Project commands
+use local Vite+; global `vp` is only needed for `vp env`.
 
-```sh
-vp env install
-pnpm install
-```
-
-pnpm checks the exact Node version before running scripts or `pnpm exec` commands.
-If it reports a mismatch, select the version in `.node-version` with `vp env use` or your
-Node manager, then retry. It does not download Node automatically. When upgrading
-Node, update both `.node-version` and `devEngines.runtime.version` in `package.json`.
-
-Vite+ is a local dependency. A global `vp` installation is needed only for managing
-Node and pnpm with `vp env`; project commands use the local dependency.
+pnpm rejects a Node version mismatch; it does not download Node automatically.
+Use `vp env use` or your Node manager before retrying. When upgrading Node, update
+both `.node-version` and `devEngines.runtime.version` in `package.json`.
 
 ## Commands
 
-Run these from the repository root.
+Run from the repository root:
 
-| Command                                  | Behavior                                                                   |
-| ---------------------------------------- | -------------------------------------------------------------------------- |
-| `pnpm dev` or `pnpm exec vp run dev`     | Start the portal and local backend                                         |
-| `pnpm dev:portal` or `pnpm exec vp dev`  | Start the portal at `http://localhost:5173`                                |
-| `pnpm dev:backend`                       | Start the local API at `http://localhost:8788`                             |
-| `pnpm check`                             | Check repo formatting, then each package's lint and native types           |
-| `pnpm exec vp test`                      | Run the backend and portal test projects                                   |
-| `pnpm exec vp test --project portal`     | Run the portal tests only                                                  |
-| `pnpm exec vp test --project backend`    | Run the backend tests only                                                 |
-| `pnpm test` or `pnpm exec vp run test`   | Run the backend, then portal package test scripts                          |
-| `pnpm format`                            | Format maintained source, configuration, and documentation across the repo |
-| `pnpm culqi:sandbox`                     | Run the API's Culqi flows against the Culqi sandbox with `sk_test_` keys   |
-| `pnpm build` or `pnpm exec vp run build` | Check the repo, then build the portal                                      |
-| `pnpm exec vp -C apps/portal preview`    | Preview the portal production build                                        |
+| Command                                | Behavior                                                         |
+| -------------------------------------- | ---------------------------------------------------------------- |
+| `pnpm dev`                             | Start portal (`localhost:5173`) and local API (`localhost:8788`) |
+| `pnpm dev:portal` / `pnpm dev:backend` | Start one application                                            |
+| `pnpm check`                           | Check repository formatting, then package lint and native types  |
+| `pnpm test`                            | Run backend, then portal tests                                   |
+| `pnpm exec vp test --project portal`   | Run only portal tests (`backend` selects backend)                |
+| `pnpm format`                          | Rewrite maintained source, config, and documentation formatting  |
+| `pnpm build`                           | Check the repository, then build the portal                      |
+| `pnpm exec vp -C apps/portal preview`  | Preview the portal production build                              |
+| `pnpm culqi:sandbox`                   | Exercise API payment flows with Culqi sandbox keys               |
 
-`vp dev`, `vp test`, and `vp build` are built-in tools. `vp run <task>` runs
-the corresponding package script or configured task. The root configuration
-selects the portal for application commands. Direct `vp build` does not run
-the repository checks in the package's build script; use `pnpm build` for both.
+`pnpm check` does not run tests or build. Direct `vp build` skips the repository
+checks; use `pnpm build` for both. The root Vite+ configuration selects the portal
+for application commands. Wrangler handles backend development and deployment;
+the shared package exports TypeScript source without a separate build.
 
-Use `pnpm check` to validate and `pnpm format` to rewrite formatting. Separate
-lint and typecheck scripts are intentionally omitted. Tests run separately;
-`pnpm check` does not run tests or build the portal.
-
-Production builds require `VITE_API_BASE_URL`:
+Production builds require a build-time API origin:
 
 ```sh
 VITE_API_BASE_URL=http://localhost:8788 pnpm build
 ```
 
-The portal's development environment already points to the local backend.
-The manual release workflow supplies the production API origin explicitly.
-
-## Production releases
-
-Follow the [release checklist](docs/releases.md) for exact-commit CI validation,
-optional interactive migrations, deliberate API/portal deployment, read-only
-active-version verification, and a required manual browser check. The workflow does
-not perform automated HTTP smoke checks. Version tags are optional.
-Keep automatic Workers Builds disabled for both Workers as required by that
-procedure. Dated confirmations live in [operational status](docs/operations-status.md).
+The committed development environment points at the local API; the manual release
+workflow supplies the production origin.
 
 ## Signing in
 
-The portal and API require a signed-in account. Before the first `pnpm dev`, create
-the local Worker variables and accounts:
+Before the first `pnpm dev`, create local Worker variables and accounts:
 
 ```sh
 cp apps/backend/.dev.vars.example apps/backend/.dev.vars
-pnpm auth:secret                                     # prints a SESSION_SECRET
+pnpm auth:secret
 pnpm db:migrate:local
 pnpm auth:account hotelmanantial --role=staff --local
 pnpm auth:account <owner-username> --role=owner --local
 ```
 
-Paste the secret into `apps/backend/.dev.vars`, then sign in at
-`http://localhost:5173` as `hotelmanantial` or the owner with the password you
-typed. See [authentication](docs/authentication.md) for accounts and roles. Restart
-`pnpm dev:backend` after editing `.dev.vars`; Wrangler does not always reload it.
-Use `localhost` for both the portal and the API. Mixing `localhost` and `127.0.0.1`
-prevents the browser sending the session cookie because they are different sites.
+Paste the generated `SESSION_SECRET` into `.dev.vars`, then sign in at
+`http://localhost:5173` with the password you entered. Restart `pnpm dev:backend`
+after editing `.dev.vars`; Wrangler may not reload it. Use `localhost` for both
+applications: mixing it with `127.0.0.1` prevents session cookies being sent.
+See [authentication](docs/authentication.md) for roles and password management.
 
-For a fresh local database, load [sample data](docs/local-data.md) before starting
-the app. For an empty property, apply `pnpm db:migrate:local`, then configure room
-types and rooms through [Property setup](docs/property-setup.md).
+Load [sample data](#local-sample-data) for a fresh local database, or configure
+an empty property through [Property setup](docs/property-setup.md).
+
+## Local sample data
+
+These commands target disposable local D1, need no Cloudflare credentials or
+running Worker, and run from the repository root:
+
+```sh
+pnpm db:reset:local
+pnpm db:reset:local --rebuild-schema
+pnpm db:reset:local --date=2026-10-06 --persist-to=/absolute/path/to/pms-demo
+```
+
+A plain reset applies migrations, replaces application data, and preserves schema,
+triggers, migration history, and accounts. `--rebuild-schema` drops PMS tables,
+triggers, and the ledger, then reapplies registered migrations and sample data;
+it preserves unrelated tables and Cloudflare metadata, but **drops accounts**.
+Recreate them with the [sign-in setup](#signing-in). Neither command rewrites migrations.
+
+The deterministic dataset includes assigned/unassigned and multi-room stays,
+payments, rate overrides, and closures. Scenarios live in
+[seed-data.mjs](apps/backend/scripts/seed-data.mjs); rooms/types come from
+[seed.sql](apps/backend/seed.sql). Reset with the same reference date to reproduce
+the data, then refresh the portal to discard edits. `pnpm db:seed:local` only adds
+missing rooms/types; `pnpm db:migrate:local` applies migrations without deleting data.
+
+The seed defaults to UTC today, while the app uses the property date. Pass `--date`
+for date-sensitive checks; old reference dates can disable new-booking actions.
+Use `CI=true` for noninteractive local migration confirmation. With `--persist-to`,
+start Wrangler with that same absolute directory; otherwise reset uses the normal
+local backend state. For isolated browser checks, also choose unused ports and
+matching [API origin/CORS settings](docs/portal.md#api-environment). Mutate only local data.
 
 ## Testing
 
-For test changes and code reviews, follow [the testing policy](CODING_STANDARDS.md#tests).
-Run one backend file once with:
+Follow [the testing policy](CODING_STANDARDS.md#tests). Run one file once with:
 
 ```sh
 pnpm exec vp test run --project backend apps/backend/src/routes/reservations.test.ts
-```
-
-Run one portal file once with:
-
-```sh
 pnpm exec vp test run --project portal apps/portal/tests/reservation-forms.test.ts
 ```
 
-These commands run from the repository root. Pass the file path directly, without
-an extra `--` separator; that separator can cause the runner to ignore the file
-filter and run the whole suite. Existing full-suite commands remain unchanged.
+Pass the path directly, without an extra `--`, which can cause the file filter to
+be ignored. Tests run once by default; use `pnpm exec vp test watch --project portal`
+for a watcher. Run affected files first and test commands sequentially. Use the
+full portal suite for final validation of a frontend change.
 
-Tests run once by default; use `pnpm exec vp test watch --project portal` only
-when you want a persistent watcher. Run affected files first, and run test commands
-sequentially rather than launching separate test processes in parallel. Use the
-full portal suite for the final validation of a frontend change.
-
-The root runner executes test files serially across projects. Package-local portal
-runs are also serial, and each portal fork has a 1.5 GiB JavaScript heap limit.
-This bounds test concurrency and heap growth, not total system memory: Vite,
-native allocations, and the coordinator use additional memory. Keep isolation
-enabled; the UI harness installs browser globals and loads the real portal.
+The root runner serializes files across projects. Portal package runs are also
+serial, with a 1.5 GiB heap limit per fork—not a total system-memory limit. Keep
+isolation enabled because the UI harness installs browser globals. Package test
+environments live in [backend instructions](apps/backend/AGENTS.md#test-environment)
+and [portal instructions](apps/portal/AGENTS.md#test-environment).
 
 ## Tool configuration
 
-The root `vite.config.ts` owns formatting and test project selection. Each package's
-`vite.config.ts` owns its lint rules, environments, exclusions, and native type
-checks, reusing common lint defaults from `tooling/lint.ts`. The portal enables
-React correctness rules at the package level.
+- Root [vite.config.ts](vite.config.ts) owns formatting and test projects. Package
+  `vite.config.ts` files own lint and native type checks, sharing
+  [tooling/lint.ts](tooling/lint.ts). Read those files for rules and exclusions.
+- Keep lint settings out of the root config: Vite+ gives them precedence over
+  package settings. `pnpm exec vp check .` is not equivalent to `pnpm check`.
+- Formatting uses Oxfmt defaults, without Tailwind class sorting. Installed skills
+  and generated artifacts are excluded. [The local no-comments rule](tooling/no-comments.mjs)
+  allows only reference, TypeScript, and lint-disable directives in code.
+- `pnpm check` checks formatting once, then packages serially. Target a package with
+  `pnpm --filter @pms/portal check` (or `@pms/backend` / `@pms/shared`); it skips
+  formatting. Format a subtree with `pnpm exec vp fmt apps/portal`.
+- Type checking uses Vite+'s native checker, covering portal app/config/tests,
+  backend TypeScript/config/tests, and shared schemas. Backend `.mjs` is linted,
+  not type-checked. Normal checks do not repeat a `tsc` pass. TypeScript and Zod
+  versions live in [pnpm-workspace.yaml](pnpm-workspace.yaml).
+- Type-only flags go before paths: `pnpm exec vp -C apps/portal check --no-fmt --no-lint .`.
+  `pnpm --filter @pms/portal build` checks only the portal before bundling.
 
-Formatting uses Oxfmt defaults across maintained source, configuration,
-and documentation, without Tailwind class sorting or package-specific styles.
-Generated Worker types, Drizzle metadata, lockfiles, installed agent skills,
-coverage, and package stores are excluded, along with Git-ignored files.
-Linting covers portal TS/TSX files, backend TypeScript and JavaScript files,
-and shared schemas, including tests and package configuration. Correctness
-and TypeScript rules apply to all packages. React rules apply only to the
-portal. The local `pms/no-comments` rule in `tooling/no-comments.mjs` rejects
-code comments in every package; it allows only `/// <reference>`, `@ts-*`, and
-lint-disable directives. Browser globals are limited to portal source and tests; Worker source
-uses service-worker globals, and tests, backend scripts, and package configuration
-use Node globals.
-Generated Worker types, migrations, build output, and coverage are excluded.
+## Production releases
 
-`pnpm check` checks repository-wide formatting once, then runs each package's
-`check` script serially. Package checks skip formatting and check only that
-package's lint and native types. For targeted work, run
-`pnpm --filter @pms/portal check` (or `@pms/backend` / `@pms/shared`). Run
-`pnpm exec vp fmt apps/portal` to format only the portal.
-
-Keep lint settings out of the root config: Vite+ gives a root lint block precedence
-over package settings during `vp check`. Root `pnpm exec vp check .` is therefore
-not equivalent to `pnpm check`; use the script for workspace validation. For
-package-local type-only diagnostics, place flags before paths, for example
-`pnpm exec vp -C apps/portal check --no-fmt --no-lint .`.
-
-`pnpm check` enables Vite+'s native type checker with `typeAware: true` and
-`typeCheck: true`. The portal's solution tsconfig references separate app,
-Node configuration, and test projects. `tests/tsconfig.json` extends the strict
-app options and adds Node types for the test runner. Tests remain outside the
-app project's `src` include. Native checking covers all three projects.
-
-The portal and backend share TypeScript 7 through the `typescript` catalog
-entry in `pnpm-workspace.yaml`. Update that entry to upgrade both packages.
-Vite+ uses its bundled TypeScript 7 checker for all three packages. You can also run the
-installed compiler with `pnpm --filter @pms/portal exec tsc -b`; normal check
-and build commands do not run that duplicate compiler pass.
-
-Native checking also covers backend source, configuration, colocated TypeScript
-tests, and shared schemas. `pnpm check` does not repeat the backend compiler
-pass. The release workflow uses the same `pnpm check` command.
-Backend `.mjs` scripts and tests receive syntax linting but are not type-checked.
-
-Root `pnpm build` checks the entire repository before bundling the portal once.
-`pnpm --filter @pms/portal build` checks only the portal before bundling it.
-
-The shared package exports TypeScript source directly and needs no `vp pack`
-step. Wrangler still handles backend development and deployment.
+Use [the release checklist](docs/releases.md): exact-commit validation, separately
+authorized migrations, API then portal deployment, active-version verification,
+and a manual browser check. There are no automated HTTP smoke checks. Keep Workers
+Builds disabled for both Workers. Dated reports are [historical evidence](docs/releases.md#recorded-reports),
+not proof of the live configuration.
 
 ## Topic guides
 
-Package entry points are [backend](apps/backend/README.md) and [portal](apps/portal/README.md).
-Maintained behavior and operations have one home per topic:
+- [Authentication](docs/authentication.md): sessions, accounts, credentials.
+- [Reservations](docs/reservations.md): pricing, payments, commands, concurrency, editors.
+- [Calendar, dates, and assignment](docs/calendar.md): operational dates, calendar reads, physical rooms.
+- [Property setup](docs/property-setup.md): room types, numbering, occupancy.
+- [Housekeeping](docs/housekeeping.md): manual room readiness and marking.
+- [Portal](docs/portal.md): shared UI behavior, API environment, PWA/offline safety.
+- [Releases](docs/releases.md) and [backup restore rehearsal](docs/backup-restore-rehearsal.md): operations and recovery.
 
-- [Authentication](docs/authentication.md) for sessions and credential changes.
-- [Property calendar](docs/property-calendar.md) for operational dates and timezone metadata.
-- [Reservations](docs/reservations.md) for workflow commands, validation, editors, and list filters.
-- [Calendar and assignment](docs/calendar.md) for calendar reads and physical room assignment.
-- [Property setup](docs/property-setup.md) for room types, room numbering, and occupancy.
-- [Portal shell and installed app](docs/portal.md) for navigation, API environment, and offline/update behavior.
-- [Local sample data](docs/local-data.md) for resets, fixed dates, and isolated state.
-- [Production releases](docs/releases.md) and [backup restore rehearsal](docs/backup-restore-rehearsal.md) for operations.
-- [Operational status and evidence](docs/operations-status.md) for dated reports and private record locations.
-
-Use [GLOSSARY.md](GLOSSARY.md) for domain terms and [the domain guide](docs/agents/domain.md)
-for architectural decisions. Historical [schema rollout notes](docs/history/schema-rollouts.md)
-preserve compatibility constraints without claiming current production status.
-Follow [documentation maintenance](CODING_STANDARDS.md#documentation) when changing behavior or moving a guide.
+[GLOSSARY.md](GLOSSARY.md) owns business terms; [the domain guide](docs/agents/domain.md)
+routes architectural decisions. [Historical schema rollouts](docs/history/schema-rollouts.md)
+preserve compatibility constraints without claiming deployment status.

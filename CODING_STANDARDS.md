@@ -59,8 +59,8 @@ shared browser harness before adding another integration suite.
 ## Documentation
 
 Agents are the primary audience. `AGENTS.md` files route tasks to context; the root
-README owns setup, command usage, and tool configuration. Package READMEs index
-focused guides for behavior and operations. The glossary owns business terms;
+README owns setup, command usage, tool configuration, and the topic index.
+Package agent instructions own local navigation and test-environment notes. The glossary owns business terms;
 ADRs preserve consequential architectural trade-offs.
 
 Update affected documentation in the same change as behavior, contracts,
@@ -73,6 +73,8 @@ configuration, or operational procedures. During review:
   with links, and update inbound links and heading anchors when moving a section.
   Verify repository links and code paths manually as part of review.
 - Prefer pointers to versions and other simple config facts over copied values.
+  Document non-obvious rules, trade-offs, and operational hazards rather than
+  inventories of types, configuration, rendered layouts, or button labels.
   Include exact commands where they make a procedure executable, with working
   directory, prerequisites, effects, and a checkable completion condition.
 - Rewrite current guidance when a decision changes. Remove superseded instructions
@@ -82,7 +84,7 @@ configuration, or operational procedures. During review:
 - Read the relevant package guidance for cross-package changes. Verify both backend
   schemas and portal types/callers for API changes; keep business vocabulary aligned
   with the glossary.
-- Record dated operational reports in [operational status](docs/operations-status.md),
+- Record dated operational reports in [release records](docs/releases.md#recorded-reports),
   with provenance and verification limits. Keep private evidence outside Git.
   A source review does not establish deployed versions, applied migrations, token
   permissions, or recoverability.

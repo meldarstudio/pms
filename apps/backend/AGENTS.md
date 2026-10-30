@@ -1,7 +1,7 @@
 # Backend agent instructions
 
 Paths below are relative to `apps/backend` unless stated otherwise.
-Before backend tests or compiler changes, read the root [setup and validation guidance](../../README.md#testing) and [backend test environment](README.md#implementation-and-tests).
+Before backend tests or compiler changes, read the root [setup and validation guidance](../../README.md#testing) and the [test environment](#test-environment).
 Before schema, migration, trigger, or seed changes, read [the database guide](../../docs/agents/database.md).
 
 ## Routes and authentication
@@ -20,7 +20,7 @@ Before schema, migration, trigger, or seed changes, read [the database guide](..
 
 ## Domain guardrails
 
-- Before changing stay dates, check-in/checkout, cancellation, or room removal, read [reservation dates](../../docs/reservations.md#stay-dates-and-lifecycle) and [the property calendar](../../docs/property-calendar.md). Use the [shared glossary](../../GLOSSARY.md) for statuses, billing, and room-inventory semantics.
+- Before changing stay dates, check-in/checkout, cancellation, or room removal, read [reservation dates](../../docs/reservations.md#stay-dates-and-lifecycle) and [property dates](../../docs/calendar.md#property-dates). Use the [shared glossary](../../GLOSSARY.md) for statuses, billing, and room-inventory semantics.
 - Saving and check-in allow unassigned reserved rooms; these still consume room-type inventory.
 - Retained nights keep saved prices. Added nights use current rates; changing room type reprices that reserved room. Initial pricing uses a flat nightly rate when supplied, otherwise the date's override, otherwise the base rate.
 - Guests use `fullName`. Dated closures block rooms and reduce room-type availability. A room's [housekeeping status](../../docs/housekeeping.md) is set only by staff; it never blocks check-in, availability, or assignment, and reservation workflows must not change it.
@@ -28,3 +28,10 @@ Before schema, migration, trigger, or seed changes, read [the database guide](..
 ## Property setup
 
 Before changing `/setup` or room renumbering, read [property setup](../../docs/property-setup.md), including atomic number swaps, ownership guards, omitted rooms, field errors, and last-write-wins behavior.
+
+## Test environment
+
+Colocated `.test.ts` and `.test.mjs` suites use `vite-plus/test` and registered
+migrations against in-memory `node:sqlite`; no running Worker is needed.
+Migration CLI tests also need Python 3's standard-library PTY for simulated
+Wrangler commands and a private home directory.

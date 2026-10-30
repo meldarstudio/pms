@@ -14,7 +14,7 @@ Drizzle does not generate the business-rule triggers. Their original definitions
 
 ## Local data
 
-Before resetting or seeding local data, read [Local sample data](../local-data.md) for reset/rebuild behavior, date pinning, persistence directories, and seed contents.
+Before resetting or seeding local data, read [Local sample data](../../README.md#local-sample-data) for reset/rebuild behavior, date pinning, and persistence directories.
 
 Sample data stays local; production property setup happens through the application.
 

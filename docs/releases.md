@@ -1,74 +1,56 @@
 # Production releases
 
 One operator, one exact `main` commit, API then portal. Merge when ready; release
-deliberately. The same developer may approve and ship. No release branch or
-package-version update is needed. **This document is not production authorization.**
+deliberately. The same developer may approve/ship; no release branch, version bump,
+or tag is required. **This guide is not production authorization.**
 
 ## Normal release: choose, release, check
 
-1. **Choose the code.** Merge finished work into `main` and record its full
-   40-character commit SHA. Wait for that commit's **CI push-to-main run** to pass
-   (not just its pull-request run). Run affected checks and exercise changed workflows
-   locally while developing, using sample data. You do not need to repeat the
-   entire local install/check/test/build sequence for an ordinary release: the
-   release workflow validates the exact commit before deploying it.
-2. **Skip migrations unless needed.** If the release changes the database, follow
-   [Database changes](#database-changes-the-exception) first. Otherwise continue.
-3. **Release.** In Actions → **Release production** → Run workflow, choose branch
-   **main** and enter that SHA in `commit_sha`. Or, with `SHA` set to that commit:
+1. **Choose:** merge finished work and record the full 40-character SHA. Wait for
+   its CI **push-to-main** run, not just PR CI. During development, run affected
+   checks and exercise changes against local sample data. An ordinary release need
+   not repeat all local validation: the workflow validates the selected commit.
+2. **Migrate only if needed:** follow [Database changes](#database-changes-the-exception)
+   before deploying code that needs a new schema.
+3. **Release:** Actions → Release production → Run workflow → branch `main`,
+   `commit_sha` set to that SHA; or from the repo root with `SHA` set:
 
    ```sh
    gh workflow run release.yml --ref main -f commit_sha="$SHA"
    ```
 
-   The workflow installs pinned dependencies, runs checks and all tests, builds the
-   production portal, bundles the API without deploying, and checks production
-   migration history read-only. It then
-   deploys **API first, then the already-built portal**. Both deploy every time.
-   Later merges do not change the selected commit. Releases are serialized without
-   cancelling an active run; this does not lock a separate migration terminal.
+   The workflow installs pinned dependencies, checks/tests, builds the portal,
+   bundles the API without deploying, and checks migration history read-only.
+   It deploys API then the built portal, both every time. Later merges cannot
+   change the selected source. Runs serialize without cancellation, but do not
+   lock external deployments or migration terminals.
 
-4. **Check and record.** Wait for active-version verification to pass. The
-   run summary records the SHA, run link, both Workers'
-   uploaded version/active deployment IDs, and step outcomes. Save drafts, then
-   reload/update the portal, including installed-app windows. Verify login,
+4. **Check and record:** wait for active-version verification. The Actions summary
+   records SHA/run link, uploaded versions, active deployments, and outcomes.
+   Save drafts and reload/update ordinary and installed-app windows. Check login,
    calendar/availability, and an existing reservation **without changing production
-   records**. Keep a short verification note with the SHA/run link, browser-check
-   results, and applied migration names (or "none"). Save it in the
-   [private release record](operations-status.md#private-evidence). If anything
-   fails, stop and follow [recovery](#failure-and-recovery).
+   records**. Record SHA/run link, browser results, migration names or "none," and
+   applicable [PWA checks](portal.md#manual-pwa-verification) in the
+   [private record](#private-evidence). Stop on any failure.
 
-A release is verified only after deployment **and** the checks above succeed.
-The workflow does not perform automated HTTP smoke checks: API liveness,
-unauthenticated session rejection, and deployed portal file contents or content
-types are not checked automatically. A successful workflow is not application
-verification; complete and record the manual browser checks before calling the
-release verified, including installed-app/update behavior where applicable.
-Active-version checks are control-plane evidence at that moment, not an API
-response identifying the serving code. Keep the manual browser check.
-
-The commit SHA identifies the release. Numbered tags and GitHub Releases are
-optional milestones, not a required publishing step. If publishing one, target
-the exact verified SHA, use a new tag, and include the run link and migration
-names. Never move, reuse, or delete published tags. The workflow does not publish
-tags or releases.
+Only deployment **and** manual checks establish a verified release. Control-plane
+active-version evidence does not prove serving behavior. There are no automated
+HTTP checks of liveness, session rejection, or deployed portal content/types.
+The workflow publishes no tag/release. Optional milestones target the exact verified
+SHA with run link/migration names; never reuse, move, or delete published tags.
 
 ## Database changes: the exception
 
-Ordinary schema/API changes must work with both old and new code. Support staff
-tabs and installed-app windows that have not updated; migrations must also work
-with the currently running API. Remove old fields only in a later, separately
-approved release. For a breaking handoff, arrange a short maintenance window with
-both users, save drafts, and coordinate updates. Backend-first alone is not enough.
+Prefer additive compatibility with the running API and old staff tabs/PWA windows;
+backend-first alone does not make a breaking change safe. Remove old fields only
+in a later separately approved release. A breaking handoff needs a coordinated
+maintenance window, saved drafts, and both users' updates.
 
-Before approving migrations, confirm the **exact selected SHA** has a successful
-CI push-to-main run containing checks, all tests, the production portal build, and
-the API dry-run. These CI steps do not access production or use Cloudflare secrets.
-Then use a **clean checkout of that SHA**, with its pinned Node/pnpm versions, for
-the migration. Do not use an expected release-readiness failure as validation or
-start a deployment while migrations run.
-
-For an older commit without complete CI evidence, validate locally instead:
+Before approving migrations, require successful push-to-main CI for the selected
+SHA with checks, all tests, production portal build, and API dry-run. CI validation
+does not access production or Cloudflare secrets. Migrate from a **clean checkout
+of that SHA** with pinned Node/pnpm. For older commits lacking complete CI evidence,
+validate locally from that checkout:
 
 ```sh
 pnpm install --frozen-lockfile
@@ -78,26 +60,17 @@ VITE_API_BASE_URL=https://api.hotelmanantialchurin.com pnpm build
 WRANGLER_SEND_METRICS=false WRANGLER_WRITE_LOGS=false pnpm --filter @pms/backend exec wrangler deploy --dry-run --minify
 ```
 
-Then review and run the existing [safe production migration
-procedure](#safe-production-migrations) from that checkout
-in an interactive terminal. It applies **all pending migrations in its checkout**.
-Keep its SQL review, explicit confirmation, export, history checks, private
-reports, and downtime warnings. Coordinate one operator across machines; never
-overlap migration and release runs. If history is current, skip this operation. Review applicable
-[historical rollout constraints](history/schema-rollouts.md) when upgrading an
-older schema; a checkout can have several pending migrations.
-
-Exports interrupt database access and are **not restore-tested backups**.
-Destructive changes require separate authorization and a recovery plan; this
-process does not authorize production data loss or rewriting applied migrations.
-The release's ledger check requires exactly the selected commit's registered
-migration history. Investigate any mismatch; never bypass the guard, bootstrap,
-or repair history to make deployment pass.
+Then follow the interactive migration procedure below. It applies **all pending
+migrations in its checkout**; review [historical constraints](history/schema-rollouts.md)
+for every pending transition. Coordinate one operator across machines and never
+overlap migration/release runs. Skip if history is current. A release-readiness
+failure is not pre-migration validation. Exports interrupt access and are not
+restore-tested backups. Data loss requires separate approval/recovery planning;
+never repair/bootstrap history merely to make deployment pass.
 
 ## Safe production migrations
 
-Run from the repository root in an interactive terminal, with Cloudflare access
-already configured:
+From the repo root in an interactive terminal with Cloudflare access configured:
 
 ```sh
 pnpm --filter @pms/backend run db:migrate:remote
@@ -105,127 +78,142 @@ pnpm --filter @pms/backend run db:migrate:remote
 
 This production-only command never deploys code. It:
 
-1. Reads the target binding from [the backend config](../apps/backend/wrangler.jsonc) and queries the existing migration
-   ledger without creating or repairing it. Missing or empty history, unknown names, or names out of journal order stop
-   the run. SQL files must match the Drizzle journal.
-2. Shows pending SQL, its checksums, the database name and ID, and the downtime
-   warning. Review compatibility with the currently deployed Worker and all
-   existing records. Type `pms-production` to approve the displayed work. There is
-   no `--yes` bypass; CI and noninteractive execution are refused. With no pending
-   migrations, it exits without prompting or exporting.
-3. Exports SQL to a unique directory under `~/.pms-production-backups/`. The
-   directory is private and files are owner-only from creation. Exporting
-   interrupts database access; applying migrations may also interrupt requests.
-   Choose an appropriate window before approving. Failed or empty exports block
-   migration. A completed export receives a SHA-256 checksum in `report.json`;
-   this is **not a restore-tested backup**.
-4. Applies one approved migration at a time from private copies, checking the
-   local files and remote history before each apply. A file or history change
-   stops the run. Each migration must exit successfully and appear in a fresh
-   ledger query before the next begins.
-5. Reports the observed result and retains a private `report.json` with the target,
-   migration and backup checksums, and sanitized diagnostics. Wrangler disk logs
-   are disabled and child-output URLs are redacted so signed export links are not
-   retained. Backups and reports remain until you explicitly delete them.
+1. Reads the target from [backend config](../apps/backend/wrangler.jsonc), requiring
+   an existing nonempty ledger with known names in journal order. It neither
+   creates nor repairs history; SQL files must match the journal.
+2. Displays pending SQL/checksums, database identity, and downtime warning. Review
+   compatibility with live code/data, then type `pms-production` to approve.
+   No `--yes`, CI, or noninteractive bypass exists. With nothing pending it exits
+   without prompting/exporting.
+3. Exports SQL under `~/.pms-production-backups/` with private directories/owner-only
+   files and a SHA-256 checksum in `report.json`. Failed/empty export blocks apply.
+   Exports and migrations can interrupt access; choose the window first.
+4. Applies approved migrations one at a time from private copies, rechecking files
+   and live history before each. Require successful exit and a fresh ledger entry
+   before continuing. Changed files/history stop the run.
+5. Retains a private report of target, checksums, outcome, and sanitized diagnostics.
+   Wrangler disk logs are disabled and child-output URLs redacted to avoid signed
+   export-link retention. Backups/reports remain until deliberately deleted.
 
-The command holds `~/.pms-production-backups/migration.lock` during the run. This
-only excludes cooperating runs under the same home directory. Coordinate **one
-operator at a time**, including other machines and direct Wrangler commands;
-the lock is not distributed. If a crash leaves a lock, inspect its PID, host, and
-start time and confirm no migration is running before removing that specific file.
-Existing backup directories must be owned by the operator with mode `0700`.
+The `~/.pms-production-backups/migration.lock` excludes only cooperating runs under
+the same home, not other machines/direct Wrangler. Existing backup directories must
+be operator-owned `0700`. Before removing a crash-left lock, inspect PID/host/start
+time and confirm nothing is running.
 
-On failure, stop and inspect the report. Earlier migrations may have committed.
-The report lists newly observed ledger entries when postflight succeeds; an
-`unknown` outcome means the command could not establish the final state. An
-interrupted report still marked `applying` also needs investigation. Do not rerun
-blindly: reconcile the live ledger first. There is no automatic migration retry,
-restore, history repair, or database reset. Destructive changes need explicit
-approval for their specific data loss and a separate recovery plan. A restore can
-overwrite reservations or payments saved since the export and requires its own
-authorization. Keep schema and applied history when rolling back application
-builds where compatible; prepare a reviewed forward repair when needed.
+On failure, inspect the report and live ledger before retrying: earlier migrations
+may have committed. `unknown`, or an interrupted `applying` report, requires
+reconciliation. There is no automatic retry, restore, reset, or history repair.
+Preserve schema/history for application rollback; use a reviewed forward repair
+when incompatible. Restore can overwrite newer reservations/payments and always
+needs separate authorization. Local validation proves neither remote locking,
+outage duration, restoration, nor application behavior.
 
-Local validation does not prove remote locking, outage duration, restoration, or
-application correctness. Perform the release's manual browser checks separately.
-
-The wrapper compares ordered migration names; release readiness also requires
-numeric ledger IDs exactly `1...N`. Passing migration validation alone does not
-prove release readiness. Investigate mismatches without repairing history merely
-to pass deployment. The wrapper cannot bootstrap a new database.
+Migration checks compare ordered names; release readiness additionally requires
+numeric IDs exactly `1...N` and the selected commit's exact registered history.
+Investigate mismatches without bypassing the guard. Neither tool bootstraps a new DB.
 
 ## Failure and recovery
 
-Stop at the first failure, including a partial deployment. A failed or interrupted
-command can still have changed its Worker: inspect **both live deployment
-histories** before retrying. Automation does not retry migrations, roll back code,
-restore data, or undo schemas. Hotfixes use the same checked release path, not a
-laptop-deployment shortcut.
+Stop at the first failure, including partial deployment. Interrupted commands can
+have changed a Worker: inspect **both** live histories before retrying. Automation
+does not roll back code, schemas, or data. Hotfixes follow the same release path.
 
-- **Transient problem:** deliberately rerun the same SHA with all validation gates.
-- **Code bug:** merge a fix and release its newly validated SHA.
-- **Users cannot work:** consider explicitly approved code rollback only after
-  checking compatibility with the current schema and API/portal pair. The exact
-  migration-history guard intentionally prevents generic rollback across different
-  histories. Fix forward when rollback is unsafe.
-- **Data recovery:** preserve reservations, payments, and applied migration history.
-  Code rollback does not rewind the database. Restoring an export or using D1 Time
-  Travel can remove legitimate work entered afterward; restoration always requires
-  a separate decision and authorization, never an automatic release-failure action.
+- Transient failure: deliberately rerun the same SHA through all gates.
+- Code defect: merge a fix and release its validated SHA.
+- Unusable app: explicitly authorize rollback only after checking current schema
+  and the API/portal pair. Exact-history guards prevent generic cross-history
+  rollback; fix forward when unsafe.
+- Data recovery: code rollback does not rewind data. Restore/Time Travel may erase
+  newer legitimate work and requires a separate scoped decision/authorization.
 
-Before treating recovery as dependable, rehearse restoring a backup into an
-isolated database and verify the recovered records using the
-[backup restore rehearsal guide](backup-restore-rehearsal.md). Never rehearse on production.
-This is recovery preparation, not a step required before every ordinary release.
+Rehearse an existing backup into an isolated local database using the
+[restore guide](backup-restore-rehearsal.md) before treating recovery as dependable.
+Never rehearse on production; this is preparation, not a per-release requirement.
 
 ## Setup and deployment ownership
 
-This procedure assumes an existing production database with valid migration
-history. Database creation and initial ledger bootstrap need a separately reviewed
-and authorized plan; neither the release guard nor migration wrapper initializes
-a new database. Existing authentication secrets and custom domains must be ready.
-See [authentication](authentication.md) for separately authorized credential changes.
-The configured custom domains require the `hotelmanantialchurin.com` zone on the
-Cloudflare account. The package Wrangler route entries attach those domains on
-deployment; preserve the existing zone, Workers, and bindings during release setup.
+An existing database/valid ledger, authentication secrets, and custom domains are
+prerequisites. Initial DB/ledger creation needs a separate reviewed operation.
+Wrangler route entries attach domains in the `hotelmanantialchurin.com` zone;
+preserve Workers, zone, bindings, vars, and secrets.
 
-Keep Git-triggered Workers Builds disabled for **both `pms-api` and `pms-portal`**, with no queued or
-active automatic deployments. GitHub's release lock cannot serialize external
-deployments. Preserve existing Workers, domains, bindings, variables, and secrets.
+Keep Git-triggered Workers Builds disabled for **both Workers**, with no queued or
+active automatic deployments: the release lock cannot serialize them. Reports
+[below](#recorded-reports) are historical, not live configuration verification.
 
-Check [dated operational reports](operations-status.md) for prior confirmations.
-A report does not establish the current live configuration.
+Repository Actions secrets:
 
-The existing workflow uses these repository Actions secrets:
+- `CLOUDFLARE_ACCOUNT_ID`: account, not Worker/database ID.
+- `CLOUDFLARE_READ_TOKEN`: account-scoped D1 Read for readiness.
+- `CLOUDFLARE_DEPLOY_TOKEN`: account Workers Scripts Edit (including custom domains)
+  and D1 Read for bindings; zone Zone Read and Workers Routes Edit for the property
+  zone. Restrict production resources; add only needed binding permissions, not
+  D1 Write or broad administration.
 
-- `CLOUDFLARE_ACCOUNT_ID`: account identifier, not a Worker or database ID.
-- `CLOUDFLARE_READ_TOKEN`: account-scoped **D1 Read** for the readiness query.
-- `CLOUDFLARE_DEPLOY_TOKEN`: account **Workers Scripts Edit** (including custom
-  domain attachment) and **D1 Read** (binding lookup); zone **Zone Read** and
-  **Workers Routes Edit** for `hotelmanantialchurin.com`. Restrict resources to
-  production; add only required binding permissions, not D1 Write or broad account
-  administration.
-
-Keep tokens in secrets, never committed files. Expose them only to the operations
-that need them, not installation, tests, checks, or builds. The existing Worker
-`SESSION_SECRET` stays in Cloudflare; do not copy or rotate it for release setup.
-The first release with [online card payments](reservations.md#online-card-payments)
-needs migration `0013_culqi_payments` applied first. Its deployment also starts the
-per-minute cron trigger. Taking Culqi payments or refunds additionally needs a
-separately authorized `CULQI_SECRET_KEY` Worker secret; without it, Culqi calls
-fail with `Culqi is not configured`, and the cron does no Culqi work. See
-[the 0013 rollout notes](history/schema-rollouts.md#culqi-payments-migration-0013).
-The first release with [future-stay coupons](reservations.md#future-stay-coupons)
-needs migration `0014_coupons` applied first; see
-[the 0014 rollout notes](history/schema-rollouts.md#future-stay-coupons-migration-0014).
-The one-time move to accounts follows the
-[authentication cutover](authentication.md#cutover-from-the-shared-password).
-Migration authorization remains separate. Token permissions require authorized
-operational verification; local simulations do not prove them.
+Expose tokens only to needed operations, never install/test/check/build. Keep the
+existing Worker `SESSION_SECRET`; do not copy/rotate it for release setup. Credential
+changes and the [account cutover](authentication.md#cutover-from-the-shared-password)
+are separately authorized operations. Culqi code needs migration `0013` first; its
+deployment starts cron. Taking payments/refunds additionally requires separately
+authorized `CULQI_SECRET_KEY`; without it, calls fail and cron does no Culqi work.
+See [0013 compatibility](history/schema-rollouts.md#culqi-payments-migration-0013).
+[Future-stay coupons](reservations.md#future-stay-coupons) need migration `0014`
+first; see [0014 compatibility](history/schema-rollouts.md#future-stay-coupons-migration-0014).
+Local simulations do not establish token permissions.
 
 ## Workflow compatibility
 
-Use this workflow with commits that contain its verification scripts; older
-commits without them are rejected before deployment. If CI or deployment tooling
-changes, review the workflow dispatched from `main` as well as the selected source:
-checking out a commit does not replace the already-running workflow definition.
+Commits without verification scripts are rejected. If tooling changes, review both
+the workflow dispatched from `main` and selected source: checkout does not replace
+the already-running workflow definition.
+
+## Recorded reports
+
+These dated reports are not proof of current live state or production authorization.
+Append non-sensitive results with provenance and verification limits; preserve older
+records, explicitly superseding them when appropriate. Keep development backlogs elsewhere.
+
+- **2026-10-22, operator report:** Git-triggered Cloudflare builds disconnected;
+  not independently verified. Both Workers must stay disconnected for exclusive
+  deliberate releases.
+- **2026-10-23, documentation review:** no completed actual-backup rehearsal recorded
+  and no private evidence inspected. Importability, completeness, remote restoration,
+  and recovery duration unverified. Physical-device PWA validation and authenticated
+  phone layout/touch/safe-area/desktop-scroll checks were not established. Live
+  versions, migrations, tokens, and automatic-build settings were not inspected.
+- **2026-10-26, read-only production phone audit:** an agent D1 SELECT checked 35
+  contacts and 10 staying guests. With `libphonenumber-js` 1.13.15/default Peru,
+  38 phones were structurally normalizable, 6 null, and one invalid eight-digit value;
+  no extensions/annotations. D1 reported `rows_written: 0`, `changed_db: false`.
+  No corrections, migrations, exports, or deployments. Private phone/query evidence
+  is under `~/.pms-operations/audits/`, not a backup; reachability, intended country,
+  deployed behavior, and recoverability were not verified.
+- **2026-10-26, explicitly authorized production phone cleanup:** an agent D1 batch
+  normalized 38 phones to E.164, cleared the invalid one, and left 6 nulls unchanged.
+  Original phone/revision compare-and-swap guards preceded writes; contact revisions
+  and 5 affected guest-reservation revisions incremented. Postflight matched exact
+  phones/revisions (38 canonical, 7 null), with unchanged counts/schema/history.
+  No people/reservations deleted, deployment, or migration. Original values,
+  checksummed SQL, results, and guarded recovery SQL remain privately under
+  `~/.pms-operations/phone-cleanups/`. Forward/restore and 4 stale/deleted abort cases
+  passed local SQLite; remote restore/application behavior were not tested. These
+  are targeted records, not a full backup; recovery needs separate approval and
+  reconciliation of newer writes.
+
+## Private evidence
+
+The operator owns verification records. Use `umask 077`, owner-only directories
+and files outside Git under `~/.pms-operations/`:
+
+- `releases/<full-commit-sha>/<run-id>.md`: SHA/run link, observed Worker identities,
+  migrations, manual login/calendar/PWA results, device/browser versions, failures,
+  and checks not performed.
+- `rehearsals/<date-and-id>.md`: source checksum/schema, independent expectations,
+  timings, observed results, and scope limits from the restore guide.
+
+These are conventions, not workflow automation. Actions keeps only its non-sensitive
+summary; never put guest records/backup SQL in committed docs, summaries, or artifacts.
+Existing SQL exports/reports stay under `~/.pms-production-backups/`; restore state
+under `~/.pms-restore-rehearsals/`. Decide retention before operations; no automatic
+cleanup or movement is implied. Retain source backups unless their specific deletion
+is deliberately authorized.

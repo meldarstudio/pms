@@ -1,14 +1,14 @@
 # Historical schema rollout constraints
 
-These notes preserve compatibility and recovery reasoning for the original
-transitions. They do not establish which migrations or builds are live. See
-[operational status](../operations-status.md) for recorded evidence and
-[releases](../releases.md) for the current procedure.
+Compatibility/recovery notes, **not proof of deployed migrations or builds**. Use
+[releases](../releases.md) for current procedure and [dated reports](../releases.md#recorded-reports)
+for recorded evidence. The migration command applies every pending migration in its
+checkout; review all applicable transitions together.
 
-The safe migration command applies every pending migration in the selected
-checkout. Starting before `0002` with a checkout containing `0003` requires
-reviewing both sets of constraints together. Do not treat either section as a
-command to apply only one migration.
+Unless noted, each migration is additive: apply before code that reads new fields/
+tables, deliver API before portal, preserve schema/applied history for recovery, and
+roll application builds back together only when compatible. These defaults do not
+authorize an operation or prove a previous Worker understands newly recorded data.
 
 ## Future-stay coupons, migration 0014
 
@@ -24,169 +24,92 @@ again and redeemed value as owed.
 
 ## Culqi payments, migration 0013
 
-`0013_culqi_payments.sql` creates `payment_attempts` and adds nullable
-`culqi_charge_id` to `payments` and `refunds` and `culqi_refund_id` to `refunds`.
-Existing payments and refunds read as manual records. It alters no existing row or
-trigger. Apply it before deploying the backend that reads those columns: the new
-Worker's reservation reads and its per-minute cron fail without them. The previous
-Worker runs against the additive schema, and its inserts leave the Culqi columns null.
-
-No route creates payment attempts, and the portal sends no `request-culqi-refund`,
-so the release needs no `CULQI_SECRET_KEY` while Culqi stays unused. Without the
-secret the cron only expires stale reviews, a no-op with no attempts. Deliver the
-portal after the backend. For recovery, keep the table, columns, and applied
-history and roll application builds back together; rolling back also stops the cron.
+Creates `payment_attempts` and nullable provider IDs on payments/refunds; existing
+records remain manual. Changes no rows/triggers. New reservation reads and minute
+cron require it; old inserts leave provider IDs null. No route creates attempts
+and portal sends no Culqi refunds at this stage. With no key, cron only expires
+stale reviews (a no-op without attempts); no secret is needed while Culqi is unused.
+Rolling code back also stops cron.
 
 ## Online quotes, migration 0012
 
-`0012_quotes.sql` creates `quotes` and adds a nullable, uniquely indexed
-`reservations.quote_id` referencing it. Existing reservations have no quote. It
-alters no existing row or trigger. Apply it before deploying the backend that reads
-the column: the new Worker's reservation reads fail without it. The previous Worker
-runs against the additive schema, and its inserts leave `quote_id` null. No route
-creates quotes yet. For recovery, keep the table, column, and applied history.
+Creates `quotes` and nullable unique `reservations.quote_id`. Existing reservations
+have no quote; no rows/triggers change and no route creates quotes at this stage.
+New reads require the column; old inserts leave it null.
 
 ## Free-cancellation days, migration 0011
 
-`0011_free_cancellation_days.sql` adds `reservations.free_cancellation_days` with
-default 2, then rewrites existing rows: `free_cancellation_days` becomes
-`free_cancellation_hours / 24`, and each recorded `reservation_cancellations.free_until`
-instant is cut to its date. Before `0011` the only accepted terms were 48 hours
-(Flexible) or null, so every converted value is exact; deadlines were 15:00 in the
-property timezone, so their UTC date is the property date. When `0006` through
-`0011` apply together, no cancellation records exist yet and the second update
-changes nothing. It changes no trigger and keeps `free_cancellation_hours` and
-`check_in_time`. The new Worker still writes them, so a previous Worker reads its
-reservations correctly.
-
-Apply it before deploying the backend that reads the column: the new Worker's
-reservation reads fail without it. The previous Worker runs against the schema, and
-its inserts receive 48 hours and 2 days. For recovery, keep the column, converted
-values, and applied history and roll application builds back together.
+Adds `free_cancellation_days` default 2, rewrites days as old hours / 24, and cuts
+recorded `free_until` instants to dates. Previously accepted terms were 48 hours or
+null, so conversion is exact; 15:00 property deadlines had matching UTC/property
+dates. Applying `0006`–`0011` together finds no cancellation records to convert.
+Keep old hours/check-in-time columns: new code still writes them for previous
+Workers. Old inserts receive 48 hours/2 days; no triggers change. Recovery retains
+converted values and columns.
 
 ## Night price breakdown, migration 0010
 
-`0010_night_price_breakdown.sql` adds `adjustment_cents` and `discount_cents`
-(default 0) to `reservation_room_nights`, so every existing night reads as its
-ordinary rate with no adjustment or discount. It adds insert and update triggers
-rejecting a negative `price_cents` or `discount_cents` as `invalid night price`,
-and changes no existing row or business-rule trigger. Saved rows are not
-revalidated. Apply it before deploying the backend that reads those columns: the
-new Worker's reservation reads fail without them. The previous Worker runs against
-the schema. Its request schemas already reject negative prices, and its night inserts
-receive zero defaults.
-
-For recovery, keep the columns, triggers, and applied history and roll application
-builds back together. A previous Worker that reprices a Non-refundable night
-rewrites `price_cents` without its adjustment and leaves the stored adjustment stale.
+Adds zero-default adjustment/discount cents to saved nights. Old nights/inserts read
+as ordinary rates; no rows or existing rule triggers change. New insert/update
+guards reject negative final price/discount; saved rows are not revalidated.
+Old request schemas reject negatives, but **an old Worker repricing a Non-refundable
+night leaves its stored adjustment stale**. Preserve columns/guards/history.
 
 ## Refunds, migration 0009
 
-`0009_refunds.sql` creates `refunds` with checks that keep each requested,
-completed, or failed record complete. It alters no existing table, row, or
-trigger, so existing payments, charges, and balances read unchanged. Apply it
-before deploying the backend that reads the table: the new Worker's reservation
-reads fail without it. The previous Worker runs against the additive schema but
-does not see refunds: it lets staff edit a payment with refunds (the foreign key
-still blocks deleting it), restores a reservation with refunds, and bills
-completed refunds as money still retained.
-
-Deliver the portal after the backend. Old portals ignore the added response
-fields. For recovery, keep the table and applied history and roll application
-builds back together; refunds recorded by the new Worker remain for its return.
+Adds `refunds` with complete-state checks, changing no existing rows/tables/triggers.
+Old Workers ignore refunds: they permit payment edits (FK still blocks deletion),
+restore refunded reservations, and count refunded money as retained. Recovery
+keeps refund history for new code's return; old portal ignores new fields.
 
 ## No-show outcome, migration 0008
 
-`0008_no_show_outcome.sql` adds `outcome` to `reservation_cancellations` with
-default `cancelled`, so every existing record reads as a cancellation with its
-charge, waivers, and restoration unchanged. It alters no other table, row, or
-trigger; the triggers already release inventory for any status outside confirmed,
-checked in, and checked out. Apply it before deploying the backend that reads the
-column: the new Worker's reservation reads fail without it. The previous Worker
-runs against the additive schema, and its inserts receive the default.
-
-The portal has no No-show control yet, so no reservation becomes `no_show` until a
-caller sends that status. Deliver the portal after the backend. For recovery, keep
-the column and applied history and roll application builds back together; a
-previous Worker treats a `no_show` reservation as releasing inventory but bills it
-as an active stay.
+Adds cancellation `outcome` default cancelled; existing records retain their charges/
+waivers/restoration. No other row/trigger changes; inventory triggers already release
+statuses outside confirmed/checked-in/checked-out. Portal had no No-show action at
+this transition. **An old Worker releases No-show inventory but bills it as active.**
 
 ## Cancellation charges, migration 0007
 
-`0007_cancellation_charges.sql` creates `reservation_cancellations` and
-`cancellation_waivers`. It alters no existing table, row, or trigger. Existing
-cancelled reservations get no cancellation record and keep a zero charge. A partial
-unique index allows one active (unrestored) cancellation per reservation. Apply it
-before deploying the backend that reads those tables: the new Worker's reservation
-reads fail without them. The previous Worker runs against the additive schema but
-writes no cancellation records, so cancellations it records keep a zero charge.
-
-Deliver the portal after the backend. Old portals ignore the added response fields.
-For recovery, keep the tables and applied history and roll application builds back
-together.
+Adds cancellation/waiver tables and one-active-cancellation unique index; no existing
+rows/tables/triggers change. Prior cancelled stays retain zero charges. Old Workers
+record no charge history, so their cancellations remain zero-charge. Old portal
+ignores new response fields; retain tables/history for recovery.
 
 ## Rate-plan terms, migration 0006
 
-`0006_rate_plan_terms.sql` adds six columns with defaults to `reservations`, so
-every existing reservation reads as Flexible. It changes no dates, rooms, nights,
-saved prices, discounts, payments, statuses, or cancellation records, and leaves
-the triggers unchanged. Apply it before deploying the backend that reads those
-columns: the new Worker's reservation reads fail without them. The previous Worker
-runs against the additive schema, and its inserts receive Flexible defaults.
-
-Deliver the portal after the backend. Old portals ignore the added response fields;
-the new portal expects `ratePlan` and the scheduled amounts. For recovery, keep the
-columns and applied history and roll application builds back together.
+Adds six reservation columns with Flexible defaults; no dates, rooms, prices,
+discounts, payments, status, records, or triggers change. Old inserts receive Flexible
+terms. Old portal ignores added fields; new portal expects terms/scheduled amounts.
 
 ## Property timezone, migration 0003
 
-For the original transition from a schema already containing `0002`, the
-compatibility requirements were:
+Adds empty write-context table and replaces only room-type-change trigger; retains
+all records/history. New code requires it before room changes. Old Worker otherwise
+runs but **physical type changes fail closed** without context (possibly generic 500).
+Pause these changes during migration/API handoff; never weaken the guard.
 
-1. Apply registered migration `0003_property_calendar.sql` using the [safe production
-   migration process](../releases.md#safe-production-migrations). It adds an empty context table and replaces only the
-   room-type-change trigger; all application records and applied history remain.
-2. Deploy the backend with `PROPERTY_TIME_ZONE=America/Lima`. The new Worker needs
-   the migration before changing rooms. The previous Worker can serve other routes
-   against the new schema, but **physical room-type changes fail closed** without
-   context (the old Worker may return a generic 500). Pause those changes during
-   the migration/backend handoff; do not weaken the trigger for compatibility.
-3. Deliver the portal after the backend. Old portals ignore the additive session
-   field, but retain incorrect browser/UTC defaults, so reload open staff tabs and
-   avoid date entry in the delivery gap. The new portal deliberately blocks on
-   old backend metadata without a timezone. Existing session cookies remain valid.
-4. Smoke-check login/session metadata, October/November date labels, backdated
-   payments, future-date rejection, room-type assignment/capacity conflicts, and
-   date pickers from a remote browser. Local validation includes fresh and populated
-   upgrades, transactional rollback, DST cases, and opposite-side browser zones;
-   it does not prove production rollout behavior.
+Deploy with `PROPERTY_TIME_ZONE=America/Lima`. Old portal ignores session timezone
+but keeps wrong browser/UTC defaults; reload staff tabs and avoid date entry in the
+gap. New portal blocks on missing timezone; existing cookies remain valid. Check
+login metadata, date labels from remote browser zones, backdated/future payments,
+and assignment/capacity conflicts. Local fresh/populated upgrades, rollback, DST,
+and opposite browser zones do not prove production behavior.
 
-For recovery, retain the additive table, new guard, and migration history. Prefer
-a forward Worker repair. Rolling back the Worker alone makes physical room-type
-changes unavailable but keeps the guard fail-closed. An old portal may be served
-temporarily with a warning that its operational defaults remain wrong; never
-rewrite saved dates or restore an old database to reverse this correction.
+Prefer forward repair. Old Worker rollback leaves physical type changes unavailable
+but fail-closed; old portal needs a warning about wrong operational defaults. Never
+rewrite dates or restore an old DB to reverse this correction.
 
 ## Separate occupancy limits, migration 0002
 
-For the original transition from `0001`, apply `0002_room_occupancy.sql` before deploying the backend that reads
-`max_children`. It adds that column with a default of 2 and replaces only the
-two room-validity triggers. Existing capacity values become adult limits;
-the SQL column remains named `max_occupancy` to avoid a destructive rename.
-Existing room types, reservations, payments, and saved nightly prices are
-preserved. Both limits can then be changed per type in Setup.
+Adds `max_children` default 2 and replaces two room-validity triggers. Existing
+capacity becomes adult limit; SQL retains `max_occupancy` to avoid destructive rename.
+Preserve room types, reservations, payments, prices. API changes `maxOccupancy` to
+`maxAdults`/`maxChildren`: coordinate migration, API, portal, and staff-tab reload.
+Old portal cannot edit Setup against new API.
 
-The API contract changes from `maxOccupancy` to `maxAdults` and `maxChildren`.
-Coordinate the backend and portal release: apply the migration, deploy the
-backend, then deploy the portal and reload open staff sessions. Old portals
-cannot edit Setup against the new API. Before the backend update, the previous
-Worker can run against the additive schema but retains its combined-count
-preflight, and the new database child limit can reject children above 2.
-An old Worker is therefore not a fully compatible client of the new policy.
-
-For recovery, retain the additive column and applied migration history; roll
-back application builds together if necessary. A previous build uses the old,
-more restrictive combined-count behavior, so reservations created under the
-new policy may need staff attention before changing their rooms. Do not drop
-the child column or restore the old triggers underneath the new Worker.
-No remote migration or deployment is part of local validation.
+Old Worker runs on the additive schema but still checks combined counts; DB child
+limits may reject more than 2. It is not fully policy-compatible. Recovery retains
+the child column/new guards/history and rolls builds together; stays accepted under
+new rules may need attention before an old Worker changes them. No remote operation
+is implied by local validation.
