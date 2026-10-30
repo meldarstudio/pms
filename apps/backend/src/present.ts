@@ -14,7 +14,7 @@ import { acceptedTerms } from "./lib/rate-plans";
 import { presentRefunds, type Refund } from "./lib/refunds";
 import { couponFields, type Coupon, type CouponMovement } from "./lib/coupons";
 import { holdsInventory } from "./lib/statuses";
-import { reservationBill, roomCharges } from "./lib/workflow-billing";
+import { reservationBill, roomCharges } from "./lib/reservation-bill";
 
 type Guest = typeof guests.$inferSelect;
 type Reservation = typeof reservations.$inferSelect;
@@ -91,13 +91,7 @@ export function presentReservation(input: {
 
   const ratePlan = acceptedTerms(input.reservation);
   const cancellation = cancellationFields(input.cancellations);
-  const totals = reservationBill(roomsOut, input.payments, input.reservation.discountCents, {
-    released: released(input.reservation),
-    paymentSchedule: ratePlan.paymentSchedule,
-    cancellationChargeCents: cancellation.cancellation?.finalChargeCents ?? 0,
-    refunds: input.refunds,
-    couponMovements: input.couponMovements,
-  });
+  const totals = reservationBill({ ...input, lines: roomsOut });
 
   return {
     id: input.reservation.id,

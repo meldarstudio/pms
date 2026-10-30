@@ -47,11 +47,17 @@ schedule, and adjustment. Omitted plans default to Flexible; unknown plans fail.
 Later definition changes and workflow commands do not change accepted terms.
 Retried creation replays the saved reservation rather than applying adjustment twice.
 
-[workflow-billing.ts](../apps/backend/src/lib/workflow-billing.ts) owns
-`reservationBill` for detail, list, and previews, and `roomCharges` for detail/preview
-rooms. New bill-producing reads must use it. Plain `bill()` serves the list balance
-filter's SQL aggregates. Flexible's required initial payment sums each room's first
-saved nightly price, capped at total after discount; full upfront requires total.
+[reservation-bill.ts](../apps/backend/src/lib/reservation-bill.ts) owns the
+reservation bill. `reservationBill` takes a loaded reservation and derives everything
+else: release from status, accepted schedule, active cancellation charge after
+waivers, completed versus requested refunds, and coupon settlement. Detail, list,
+command checks, and edit previews use it; `stayBill` prices unsaved rooms (creation
+preview, cancellation policy) and `quoteBill` a quote. The list filters and sorts
+balance with `balanceCentsSql`, the same rule in SQL, kept beside the TypeScript and
+tested against it; change both together. New bill-producing reads must use this
+module rather than summing money themselves. Flexible's required initial payment
+sums each room's first saved nightly price, capped at total after discount; full
+upfront requires total.
 Remaining scheduled amount is total minus that requirement. Both are zero for
 cancelled/no-show reservations and do not depend on payments received.
 

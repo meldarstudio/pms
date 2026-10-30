@@ -6,7 +6,7 @@ import { HttpError, rethrowConflict } from "./http";
 import { occupiedCounts, roomCounts } from "./inventory";
 import { confirmationCode } from "./lib/codes";
 import { ratePlans, termColumns } from "./lib/rate-plans";
-import { reservationBill } from "./lib/workflow-billing";
+import { quoteBill } from "./lib/reservation-bill";
 import { acceptPhone, requireStay } from "./rules";
 import { lineWrites } from "./workflow";
 import { price } from "./workflow-plan";
@@ -47,10 +47,7 @@ export async function createQuote(
 }
 
 function presentQuote(quote: Quote, available: boolean) {
-  const bill = reservationBill([quote], [], 0, {
-    released: false,
-    paymentSchedule: quote.terms.paymentSchedule,
-  });
+  const bill = quoteBill(quote);
   return {
     id: quote.id,
     roomTypeId: quote.roomTypeId,

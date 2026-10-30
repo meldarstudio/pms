@@ -26,12 +26,9 @@ import { culqiClient } from "../culqi";
 import { sendCulqiRefunds } from "../culqi-refunds";
 import { getDb } from "../db";
 import {
-  cancellationWaivers,
-  couponMovements,
   payments,
   guests,
   refunds,
-  reservationCancellations,
   reservationRoomNights,
   reservationRooms,
   reservations,
@@ -49,7 +46,6 @@ import {
   execute,
   previewCreate,
   refundsFor,
-  totals,
   type CommandContext,
 } from "../workflow";
 import { cancellationFields } from "../lib/cancellation";
@@ -57,7 +53,7 @@ import { presentRefunds } from "../lib/refunds";
 import { couponFields } from "../lib/coupons";
 import { chunks } from "../lib/chunks";
 import { presentNight, presentReservation } from "../present";
-import { bill, reservationBill, roomCharges } from "../lib/workflow-billing";
+import { balanceCentsSql, reservationBill, roomCharges, stayBill } from "../lib/reservation-bill";
 import { acceptedTerms } from "../lib/rate-plans";
 
 export const reservationRoutes = new Hono<Env>();
@@ -119,54 +115,7 @@ reservationRoutes.get("/", validate("query", reservationListQuerySchema), async 
         notes: sql<string | null>`${guests.notes}`.as("list_guest_notes"),
         createdAt: sql<string>`${guests.createdAt}`.as("list_guest_created_at"),
       },
-      subtotalCents: (needsBalance
-        ? sql<number>`coalesce((
-        select sum(${reservationRoomNights.priceCents}) from ${reservationRooms}
-        inner join ${reservationRoomNights} on ${reservationRoomNights.reservationRoomId} = ${reservationRooms.id}
-        where ${reservationRooms.reservationId} = ${reservations.id}
-      ), 0)`
-        : sql<number>`0`
-      ).as("list_subtotal_cents"),
-      paidCents: (needsBalance
-        ? sql<number>`coalesce((
-        select sum(${payments.amountCents}) from ${payments}
-        where ${payments.reservationId} = ${reservations.id}
-      ), 0)`
-        : sql<number>`0`
-      ).as("list_paid_cents"),
-      refundedCents: (needsBalance
-        ? sql<number>`coalesce((
-        select sum(${refunds.amountCents}) from ${refunds}
-        where ${refunds.reservationId} = ${reservations.id} and ${refunds.status} = 'completed'
-      ), 0)`
-        : sql<number>`0`
-      ).as("list_refunded_cents"),
-      couponIssuedCents: (needsBalance
-        ? sql<number>`coalesce((
-        select sum(${couponMovements.amountCents}) from ${couponMovements}
-        where ${couponMovements.reservationId} = ${reservations.id} and ${couponMovements.kind} = 'issue'
-      ), 0)`
-        : sql<number>`0`
-      ).as("list_coupon_issued_cents"),
-      couponAppliedCents: (needsBalance
-        ? sql<number>`coalesce((
-        select sum(case ${couponMovements.kind} when 'redeem' then ${couponMovements.amountCents}
-          when 'return' then -${couponMovements.amountCents} else 0 end) from ${couponMovements}
-        where ${couponMovements.reservationId} = ${reservations.id}
-      ), 0)`
-        : sql<number>`0`
-      ).as("list_coupon_applied_cents"),
-      cancellationChargeCents: (needsBalance
-        ? sql<number>`coalesce((
-        select ${reservationCancellations.policyChargeCents} - coalesce((
-          select sum(${cancellationWaivers.amountCents}) from ${cancellationWaivers}
-          where ${cancellationWaivers.cancellationId} = ${reservationCancellations.id}
-        ), 0) from ${reservationCancellations}
-        where ${reservationCancellations.reservationId} = ${reservations.id}
-          and ${reservationCancellations.restoredAt} is null
-      ), 0)`
-        : sql<number>`0`
-      ).as("list_cancellation_charge_cents"),
+      balanceCents: (needsBalance ? balanceCentsSql : sql<number>`0`).as("list_balance_cents"),
     })
     .from(reservations)
     .innerJoin(guests, eq(guests.id, reservations.guestId))
@@ -193,22 +142,6 @@ reservationRoutes.get("/", validate("query", reservationListQuerySchema), async 
   let total = counts[0].total;
   if (needsBalance) {
     const balanced = matches
-      .map((row) => {
-        const { reservation, subtotalCents, paidCents, cancellationChargeCents, ...money } = row;
-        const released = !holdsInventory(reservation.status);
-        const { balanceCents } = bill(
-          released ? cancellationChargeCents : subtotalCents,
-          [{ amountCents: paidCents }],
-          reservation.discountCents,
-          {
-            released,
-            refundedCents: money.refundedCents,
-            couponIssuedCents: money.couponIssuedCents,
-            couponAppliedCents: money.couponAppliedCents,
-          },
-        );
-        return { ...row, balanceCents };
-      })
       .filter(({ balanceCents }) => q.refund !== "due" || balanceCents < 0)
       .filter(({ balanceCents }) => {
         return q.balance === "outstanding"
@@ -302,8 +235,8 @@ reservationRoutes.post("/preview", validate("json", workflowCreatePreviewSchema)
   const { terms, rooms } = await previewCreate(getDb(c.env.DB), input);
   return c.json({
     billing: {
-      ...reservationBill(rooms, [], input.discountCents ?? 0, {
-        released: false,
+      ...stayBill(rooms, {
+        discountCents: input.discountCents ?? 0,
         paymentSchedule: terms.paymentSchedule,
       }),
       ratePlan: terms,
@@ -332,7 +265,7 @@ reservationRoutes.post("/:id/preview", validate("json", workflowCommandSchema), 
     commandContext(c),
   );
   if (!result.state) return c.json({ replayed: true });
-  const bill = totals(result.state);
+  const bill = reservationBill(result.state);
   return c.json({
     validation: { issues: result.issues },
     billing: {
