@@ -433,8 +433,9 @@ keep controls reachable while the body scrolls and protect drafts through keyboa
 safe-area changes; no swipe dismissal. Use [shared controls](portal.md#control-styling).
 
 The staying-guest form, shared by the page and the dialog, asks for no room. Edits
-resend the guest's stored room unchanged. A new guest is linked to the room of a
-one-room reservation and to none otherwise. A rejected guest room is a form-level
+resend the guest's stored room unchanged. At submission, a new guest is linked to the
+current room of a one-room reservation and to none otherwise, even if the rooms changed
+while the form was open. A rejected guest room is a form-level
 error, since no field shows it.
 
 ### Full reservation page
@@ -466,7 +467,8 @@ container queries, hiding Método and then Referencia in narrow Movimientos tabl
 - **Descuento** opens the shared
   [discount popover](../apps/portal/src/components/discount-popover.tsx), which saves
   `set-discount` directly, without a bill preview. A failed save keeps the popover and
-  its amount. An open changed draft guards router navigation and browser unload.
+  its amount. Pristine editors follow refreshed saved discounts; changed drafts survive
+  background reads. An open changed draft guards router navigation and browser unload.
 - **Status line:** positive balance is Saldo pendiente with **Registrar pago** (plus
   Falta el depósito while the initial payment is short). Refund due beyond requested
   refunds is Por devolver; refund due that is fully requested is Reembolso solicitado;
@@ -496,8 +498,11 @@ blocking it), then offers Deshacer in the success toast for 8 seconds, which sen
 Details save dates, rooms, and notes only, through Guardar cambios in the form; on
 phones a dirty details draft replaces the footer actions with it. There is no discard
 button: Cerrar, ✕, Escape, and **Ver reserva completa** ask before discarding. Each
-tab shows a dot while its form has unsaved input; the discount draft lives in the
-summary popover and shows none. Closing preserves calendar position. On desktop, and
+tab shows a dot while its form has unsaved input; the independent discount draft shows
+none. The compact edit dialog uses
+[`BookingSummary`](../apps/portal/src/components/booking-summary.tsx)'s inline discount
+input, which autosaves `set-discount` on blur, not the creation/page discount popover.
+Failed saves keep the entered amount. Closing preserves calendar position. On desktop, and
 in the page's stay editor, rooms use the shared
 [room row](../apps/portal/src/components/reservation-room-rows.tsx); the phone dialog
 keeps one field per line.

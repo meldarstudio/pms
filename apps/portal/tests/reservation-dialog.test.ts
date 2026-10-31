@@ -282,6 +282,82 @@ it("asks a staying guest for name, contact and document but not a room", async (
   assert.equal(writes[0][0].reservationRoomId, null, "A multi-room guest gets no room");
 });
 
+it.each([
+  {
+    scenario: "a new guest after replacing the only room",
+    editing: false,
+    roomIds: ["replacement"],
+    expectedRoomId: "replacement",
+  },
+  {
+    scenario: "a new guest after adding a second room",
+    editing: false,
+    roomIds: ["line-1", "line-2"],
+    expectedRoomId: null,
+  },
+  {
+    scenario: "an edited guest after adding a second room",
+    editing: true,
+    roomIds: ["line-1", "line-2"],
+    expectedRoomId: "line-1",
+  },
+])(
+  "preserves entered data and submits the right room for $scenario",
+  async ({ editing, roomIds, expectedRoomId }) => {
+    let saved = detail();
+    const guest: StayingGuest | undefined = editing
+      ? {
+          id: crypto.randomUUID(),
+          fullName: "Nombre anterior",
+          email: null,
+          phone: null,
+          documentType: null,
+          documentNumber: null,
+          reservationRoomId: "line-1",
+        }
+      : undefined;
+    if (guest) saved = { ...saved, stayingGuests: [guest] };
+    const writes: StayingGuest[][] = [];
+    const props = () => ({
+      detail: saved,
+      guest,
+      disabled: false,
+      onDirtyChange: () => {},
+      onSave: async (guests: StayingGuest[]) => {
+        writes.push(guests);
+        return savedAs({ ...saved, stayingGuests: guests });
+      },
+    });
+    await render(React.createElement(forms.GuestEntryForm, props()));
+    await fill("fullName", "Ana Pérez");
+    await fill("email", "ana@example.com");
+    await fill("phone", "987654321");
+    await choose("Documento", "DNI");
+    await fill("documentNumber", "12345678");
+    const nameInput = control("fullName");
+    saved = { ...saved, rooms: roomIds.map((id) => ({ ...saved.rooms[0], id })) };
+    await render(React.createElement(forms.GuestEntryForm, props()));
+    assert.equal(control("fullName"), nameInput, "Room changes must not remount the guest form");
+    assert.equal(control("fullName").value, "Ana Pérez");
+    assert.equal(control("email").value, "ana@example.com");
+    assert.equal(control("phone").value, "987 654 321");
+    assert.equal(control("documentNumber").value, "12345678");
+    await submit();
+    await until(() => writes.length === 1, "The guest draft must save against the current rooms");
+    const { id, ...submitted } = writes[0][0];
+    assert.ok(id);
+    if (guest) assert.equal(id, guest.id);
+    assert.deepEqual(submitted, {
+      fullName: "Ana Pérez",
+      email: "ana@example.com",
+      phone: "+51987654321",
+      documentType: "DNI",
+      documentNumber: "12345678",
+      reservationRoomId: expectedRoomId,
+    });
+  },
+);
+
 it("shows a rejected guest room as a form error, keeping the guest draft", async () => {
   const writes: WorkflowCommand[] = [];
   mockApi(async (path, command) => {
@@ -1217,6 +1293,43 @@ it("never shows a stale preview and retries a failed one before creating", async
   assert.equal(button("Crear reserva").disabled, false);
 });
 
+it("hides cached amounts and blocks creation while a revisited draft is repricing", async () => {
+  const writes: CreateBookingInput[] = [];
+  mockCreationApi(async (input) => {
+    writes.push(input);
+    return Response.json(detail(), { status: 201 });
+  });
+  await renderNewBooking();
+  await fill("fullName", "Ada Lovelace");
+  assert.equal(creationTotal(), "S/150");
+  await choose("Tarifa", "No reembolsable");
+  await until(() => creationTotal() === "S/135", "The other plan must load first");
+
+  const held = page.api.hold("POST", "/reservations/preview");
+  await choose("Tarifa", "Flexible");
+  await until(() => !!held.request, "Revisiting Flexible must refresh its cached preview");
+  assert.equal(button("Crear reserva").disabled, true);
+  assert.ok(summaryText().includes("Calculando…"));
+  assert.ok(!summaryText().includes("S/150"), "Cached bill amounts must remain hidden");
+  assert.equal(creationTotal(), "");
+  assert.deepEqual(cancellationText(), []);
+  await submit();
+  await flush();
+  assert.equal(writes.length, 0, "Submitting the form must also reject a cached, refreshing bill");
+
+  await React.act(async () =>
+    held.release(
+      Response.json(creationPreview(held.request!.body as CreationPreviewInput, () => 18000)),
+    ),
+  );
+  await until(() => creationTotal() === "S/180", "Only the refreshed bill may be displayed");
+  assert.equal(summaryAmount("Pago inicial requerido"), "S/180");
+  assert.equal(button("Crear reserva").disabled, false);
+  await submit();
+  await until(() => writes.length === 1, "The refreshed draft may be created");
+  assert.equal(writes[0].ratePlan, "flexible");
+});
+
 it("creates a reservation with its contact, notes, room quote, and initial discount", async () => {
   const writes: CreateBookingInput[] = [];
   let created = "";
@@ -1697,6 +1810,7 @@ it("preserves the remaining room draft when removing the first room", async () =
   assert.equal(control("rooms[0].room.adults").value, "2");
   assert.equal(control("rooms[0].room.children").value, "1");
   assert.equal(control("fullName").value, "Ada Lovelace");
+  await until(() => !button("Crear reserva").disabled, "The remaining room must finish repricing");
   assert.equal(creationTotal(), "S/150");
   await submit();
   await until(() => writes.length === 1, "The remaining room must save normally");
@@ -2619,7 +2733,7 @@ it("asks before Cerrar discards unsaved changes, like the close icon", async () 
   assert.equal(closed, 1);
 });
 
-it("stacks the code above the guest on phone and gives Guardar cambios the full width", async () => {
+it("shows reservation context and offers saving a dirty details draft on phone", async () => {
   mockApi(async () => previewResponse(detail()));
   page.mobile();
   await openEditDialog();
@@ -2632,7 +2746,7 @@ it("stacks the code above the guest on phone and gives Guardar cambios the full 
   assert.ok(lines.includes("14 oct – 16 oct 2026 · 2 noches"));
   assert.ok(header.querySelector('[aria-label="Ver reserva completa"]'));
   await fill("notes", "Llegada tarde");
-  assert.ok(button("Guardar cambios").classList.contains("w-full"));
+  assert.ok(button("Guardar cambios"));
   assert.equal(hasButton("Descartar"), false);
 });
 

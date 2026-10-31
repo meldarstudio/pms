@@ -514,6 +514,64 @@ it("validates and saves only contact changes without replacing guests or notes",
   assert.equal(previews.length, 0);
 });
 
+function discountTrigger() {
+  return Array.from(account().querySelectorAll<HTMLElement>("button")).find((item) =>
+    text(item).startsWith("Descuento"),
+  )!;
+}
+
+function discountInput() {
+  const label = Array.from(window.document.querySelectorAll("label")).find(
+    (item) => item.textContent.trim() === "Descuento · S/",
+  );
+  return label ? window.document.querySelector<HTMLInputElement>(`[id="${label.htmlFor}"]`) : null;
+}
+
+function discountButton(label: string) {
+  return Array.from(
+    discountInput()!.closest('[role="dialog"]')!.querySelectorAll<HTMLElement>("button"),
+  ).find((item) => item.textContent.trim() === label);
+}
+
+it.each(["unopened", "open pristine", "closed pristine"])(
+  "keeps the %s discount editor current without overwriting an edited draft",
+  async (editor) => {
+    saved = { ...saved, savedDiscountCents: 5000, discountCents: 5000 };
+    mockApi();
+    await render();
+    if (editor !== "unopened") {
+      await React.act(async () => discountTrigger().click());
+      await page.until(() => !!discountInput());
+      assert.equal(discountInput()!.value, "50");
+      if (editor === "closed pristine") {
+        await React.act(async () =>
+          discountInput()!.dispatchEvent(
+            new window.KeyboardEvent("keydown", { key: "Escape", bubbles: true }),
+          ),
+        );
+        await page.until(() => !discountInput());
+      }
+    }
+    saved = { ...saved, savedDiscountCents: 7000, discountCents: 7000 };
+    await React.act(async () => page.client.invalidateQueries({ queryKey: ["reservation"] }));
+    await page.until(() => text(discountTrigger()) === "Descuento -S/ 70");
+    if (editor !== "open pristine") await React.act(async () => discountTrigger().click());
+    await page.until(() => !!discountInput());
+    assert.equal(discountInput()!.value, "70", "A pristine editor follows the saved discount");
+    assert.equal(await unloadPrevented(), false, "A background change must not create a draft");
+
+    await page.fill(discountInput()!, "90");
+    saved = { ...saved, savedDiscountCents: 8000, discountCents: 8000 };
+    await React.act(async () => page.client.invalidateQueries({ queryKey: ["reservation"] }));
+    await page.until(() => text(discountTrigger()) === "Descuento -S/ 80");
+    assert.equal(discountInput()!.value, "90", "A background read must keep an edited draft");
+    assert.equal(await unloadPrevented(), true);
+    await React.act(async () => discountButton("Aplicar")!.click());
+    await page.until(() => !discountInput());
+    assert.deepEqual(writes[0].actions, [{ type: "set-discount", amountCents: 9000 }]);
+  },
+);
+
 it("applies and removes the discount from the Cuenta summary, keeping a rejected amount", async () => {
   mockApi({
     write: () =>
@@ -522,22 +580,9 @@ it("applies and removes the discount from the Cuenta summary, keeping a rejected
         : undefined,
   });
   await render();
-  const trigger = () =>
-    Array.from(account().querySelectorAll<HTMLElement>("button")).find((item) =>
-      text(item).startsWith("Descuento"),
-    )!;
-  const input = () => {
-    const label = Array.from(window.document.querySelectorAll("label")).find(
-      (item) => item.textContent.trim() === "Descuento · S/",
-    );
-    return label
-      ? window.document.querySelector<HTMLInputElement>(`[id="${label.htmlFor}"]`)
-      : null;
-  };
-  const popoverButton = (label: string) =>
-    Array.from(input()!.closest('[role="dialog"]')!.querySelectorAll<HTMLElement>("button")).find(
-      (item) => item.textContent.trim() === label,
-    );
+  const trigger = discountTrigger;
+  const input = discountInput;
+  const popoverButton = discountButton;
   assert.equal(text(trigger()), "Descuento S/ 0");
   await React.act(async () => trigger().click());
   await page.until(() => !!input(), "Descuento must open the discount popover");
@@ -546,6 +591,10 @@ it("applies and removes the discount from the Cuenta summary, keeping a rejected
   await React.act(async () => popoverButton("Aplicar")!.click());
   await page.until(() => writes.length === 1);
   assert.equal(input()?.value, "50", "A failed save keeps the popover and its amount");
+  saved = { ...saved, savedDiscountCents: 7000, discountCents: 7000 };
+  await React.act(async () => page.client.invalidateQueries({ queryKey: ["reservation"] }));
+  await page.until(() => text(trigger()) === "Descuento -S/ 70");
+  assert.equal(input()?.value, "50", "A background change must also preserve a failed-save draft");
   await React.act(async () => popoverButton("Aplicar")!.click());
   await page.until(() => !input(), "A saved discount closes the popover");
   assert.deepEqual(writes[1].actions, [{ type: "set-discount", amountCents: 5000 }]);

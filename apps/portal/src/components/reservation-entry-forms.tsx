@@ -57,7 +57,7 @@ export function GuestEntryForm({
           phone: phoneDraft(null),
           documentType: "",
           documentNumber: "",
-          reservationRoomId: detail.rooms.length === 1 ? detail.rooms[0].id : null,
+          reservationRoomId: null,
         },
   );
   const [formError, setFormError] = useState<string | null>(null);
@@ -68,7 +68,14 @@ export function GuestEntryForm({
     onSubmit: async ({ value }) => {
       if (disabled) return;
       setFormError(null);
-      const payload = guestPayload(value);
+      const payload = guestPayload({
+        ...value,
+        reservationRoomId: guest
+          ? value.reservationRoomId
+          : detail.rooms.length === 1
+            ? detail.rooms[0].id
+            : null,
+      });
       const result = await onSave(
         guest
           ? detail.stayingGuests.map((entry) => (entry.id === guest.id ? payload : entry))

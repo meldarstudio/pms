@@ -30,7 +30,8 @@ export function DiscountPopover({
   const inputId = useId();
   const errorId = useId();
   const [open, setOpen] = useState(false);
-  const [draft, setDraft] = useState(() => draftOf(appliedCents));
+  const [editedDraft, setEditedDraft] = useState<string | null>(null);
+  const draft = editedDraft ?? draftOf(appliedCents);
   const [attempted, setAttempted] = useState(false);
   const [applying, setApplying] = useState(false);
   const parsed = discountSchema.safeParse({ amount: draft });
@@ -43,10 +44,11 @@ export function DiscountPopover({
 
   async function apply(cents: number | null) {
     if (cents === null) return setAttempted(true);
+    setEditedDraft(cents === draftCents ? draft : draftOf(cents));
     setApplying(true);
     try {
       if ((await onApply(cents)) === false) return;
-      setDraft(draftOf(cents));
+      setEditedDraft(null);
       setAttempted(false);
       setOpen(false);
     } finally {
@@ -102,7 +104,11 @@ export function DiscountPopover({
               disabled={applying}
               aria-invalid={(attempted && !!error) || undefined}
               aria-describedby={attempted && error ? errorId : undefined}
-              onChange={(event) => setDraft(event.target.value)}
+              onChange={(event) =>
+                setEditedDraft(
+                  event.target.value === draftOf(appliedCents) ? null : event.target.value,
+                )
+              }
               onKeyDown={(event) => {
                 if (event.key !== "Enter") return;
                 event.preventDefault();

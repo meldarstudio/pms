@@ -204,7 +204,8 @@ export function NewBooking({
         }
       : null;
   const preview = useCreationPreview(previewInput);
-  const billing = previewInput && preview.isSuccess ? preview.data.billing : null;
+  const billing =
+    previewInput && preview.isSuccess && !preview.isFetching ? preview.data.billing : null;
   const ready =
     availabilityReady &&
     selection.rooms === values.rooms &&
