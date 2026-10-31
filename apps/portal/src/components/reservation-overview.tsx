@@ -4,16 +4,16 @@ import {
   CalendarDaysIcon,
   CalendarCheckIcon,
   ClockIcon,
-  CreditCardIcon,
+  CircleAlertIcon,
   MailIcon,
   PencilIcon,
   PhoneIcon,
   PlusIcon,
   UserRoundIcon,
+  TagIcon,
   UsersIcon,
   type LucideIcon,
 } from "lucide-react";
-import { cn } from "cn";
 import { Badge } from "@/components/ui/badge";
 import { ReservationStatusBadge } from "@/components/reservation-status-badge";
 import { Button } from "@/components/ui/button";
@@ -26,18 +26,20 @@ import {
   ItemSeparator,
   ItemTitle,
 } from "@/components/ui/item";
-import { PaymentList, StayingGuestList } from "@/components/reservation-records";
+import { StayingGuestList } from "@/components/reservation-records";
+import { AccountCard } from "@/components/reservation-account";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { ReservationLifecycle } from "@/components/reservation-lifecycle";
-import { balanceStatus } from "@/components/balance-status";
 import type { ReservationEditorTarget } from "@/components/reservation-page-editors";
 import type { ReservationDetail } from "@/lib/api";
 import { occupantsLabel } from "@/lib/reservation-list";
-import { formatMoney } from "@/lib/money";
-import { ratePlanLabels } from "@/lib/rate-plans";
 import { usePropertyCalendar } from "@/lib/use-property-calendar";
 import { phoneDisplay } from "@/lib/phone";
+import { ratePlanLabels } from "@/lib/rate-plans";
+import { format } from "@/lib/dates";
+import { propertyToday } from "@/lib/property-calendar";
+import { parseISO } from "date-fns";
 
-const money = (detail: ReservationDetail, cents: number) => formatMoney(cents, detail.currency);
 const fullDate = (value: string) =>
   new Intl.DateTimeFormat("es-PE", {
     day: "numeric",
@@ -51,10 +53,12 @@ export function ReservationOverview({
   detail,
   edit,
   disabled,
+  onDiscountDraftChange,
 }: Model & {
   disabled: boolean;
+  onDiscountDraftChange?: (changed: boolean) => void;
 }) {
-  const { today, timeZone } = usePropertyCalendar();
+  const { today } = usePropertyCalendar();
   const nights = Math.round((Date.parse(detail.checkOut) - Date.parse(detail.checkIn)) / 86400000);
   return (
     <fieldset disabled={disabled} aria-busy={disabled} className="flex min-w-0 flex-col gap-6">
@@ -91,27 +95,11 @@ export function ReservationOverview({
           </div>
         </div>
       </header>
-      {detail.status === "cancelled" ? (
-        <section
-          aria-label="Cancelación"
-          className="flex flex-col gap-2 border-l-2 border-destructive py-2 pl-4 text-sm"
-        >
-          <p className="font-medium">
-            Reserva cancelada
-            {detail.cancelledAt
-              ? ` · ${new Intl.DateTimeFormat("es-PE", { dateStyle: "medium", timeStyle: "short", timeZone }).format(new Date(detail.cancelledAt))}`
-              : ""}
-          </p>
-          <p className="whitespace-pre-wrap text-muted-foreground">
-            {detail.cancellationReason || "Sin motivo registrado."} Los pagos permanecen como saldo
-            a favor; no representan un reembolso.
-          </p>
-        </section>
-      ) : null}
+      <StayOutcomeAlert detail={detail} />
       <div className="grid min-w-0 gap-5 md:grid-cols-2">
         <div className="flex min-w-0 flex-col gap-5">
           <ContactSummary detail={detail} edit={edit} />
-          <PaymentSummary detail={detail} edit={edit} />
+          <GuestsSummary detail={detail} edit={edit} />
           <NotesSummary detail={detail} edit={edit} />
         </div>
         <div className="relative min-w-0">
@@ -141,13 +129,16 @@ export function ReservationOverview({
                 <ReservationDatum icon={UsersIcon} label="Ocupantes">
                   {detail.rooms.reduce((total, room) => total + room.adults + room.children, 0)}
                 </ReservationDatum>
+                <ReservationDatum icon={TagIcon} label="Plan tarifario">
+                  {ratePlanLabels[detail.ratePlan.plan]}
+                </ReservationDatum>
               </dl>
               <AssignedRooms detail={detail} />
             </CardContent>
           </Card>
         </div>
       </div>
-      <ReservationRecords detail={detail} edit={edit} />
+      <AccountCard detail={detail} edit={edit} onDiscountDraftChange={onDiscountDraftChange} />
     </fieldset>
   );
 }
@@ -193,55 +184,50 @@ function AssignedRooms({ detail }: { detail: ReservationDetail }) {
   );
 }
 
-function ReservationRecords({ detail, edit }: Model) {
+function GuestsSummary({ detail, edit }: Model) {
   return (
-    <div className="grid min-w-0 gap-5 md:grid-cols-2">
-      <Card className="min-w-0" role="region" aria-label="Huéspedes">
-        <CardHeader>
-          <CardTitle>
-            <h2>Huéspedes</h2>
-          </CardTitle>
-          <CardAction>
-            <Button variant="outline" size="sm" onClick={() => edit({ kind: "guest" })}>
-              <PlusIcon data-icon="inline-start" />
-              Agregar huésped
-            </Button>
-          </CardAction>
-        </CardHeader>
-        <CardContent className="flex flex-1 flex-col">
-          <StayingGuestList
-            detail={detail}
-            disabled={false}
-            framed
-            onEdit={(guest) => edit({ kind: "guest", id: guest.id })}
-            onDelete={(guest) => edit({ kind: "delete-guest", id: guest.id })}
-          />
-        </CardContent>
-      </Card>
-      <Card className="min-w-0" role="region" aria-label="Pagos">
-        <CardHeader>
-          <CardTitle>
-            <h2>Pagos</h2>
-          </CardTitle>
-          <CardAction>
-            <Button variant="outline" size="sm" onClick={() => edit({ kind: "payment" })}>
-              <CreditCardIcon data-icon="inline-start" />
-              Registrar pago
-            </Button>
-          </CardAction>
-        </CardHeader>
-        <CardContent className="flex flex-1 flex-col">
-          <PaymentList
-            detail={detail}
-            disabled={false}
-            framed
-            hideReferenceOnPhones
-            onEdit={(entry) => edit({ kind: "payment", id: entry.id })}
-            onDelete={(entry) => edit({ kind: "delete-payment", id: entry.id })}
-          />
-        </CardContent>
-      </Card>
-    </div>
+    <Card className="min-w-0" role="region" aria-label="Huéspedes">
+      <CardHeader>
+        <CardTitle>
+          <h2>Huéspedes</h2>
+        </CardTitle>
+        <CardAction>
+          <Button variant="outline" size="sm" onClick={() => edit({ kind: "guest" })}>
+            <PlusIcon data-icon="inline-start" />
+            Agregar huésped
+          </Button>
+        </CardAction>
+      </CardHeader>
+      <CardContent className="flex flex-1 flex-col">
+        <StayingGuestList
+          detail={detail}
+          disabled={false}
+          framed
+          onEdit={(guest) => edit({ kind: "guest", id: guest.id })}
+          onDelete={(guest) => edit({ kind: "delete-guest", id: guest.id })}
+        />
+      </CardContent>
+    </Card>
+  );
+}
+
+function StayOutcomeAlert({ detail }: { detail: ReservationDetail }) {
+  if (detail.status !== "cancelled" && detail.status !== "no_show") return null;
+  const at = detail.cancellation?.recordedAt ?? detail.cancelledAt;
+  const date = at ? ` · ${format(parseISO(propertyToday(new Date(at))), "d MMM yyyy")}` : "";
+  return (
+    <Alert variant="destructive">
+      <CircleAlertIcon />
+      <AlertTitle>
+        {detail.status === "no_show" ? "No se presentó" : "Reserva cancelada"}
+        {date}
+      </AlertTitle>
+      {detail.cancellationReason && (
+        <AlertDescription className="whitespace-pre-wrap">
+          {detail.cancellationReason}
+        </AlertDescription>
+      )}
+    </Alert>
   );
 }
 
@@ -323,86 +309,6 @@ function ReservationDatum({
         {children}
       </dd>
     </div>
-  );
-}
-
-function PaymentSummary({ detail, edit }: Model) {
-  const { label, Icon, tone } = balanceStatus(detail.balanceCents);
-  return (
-    <Card className="min-w-0">
-      <CardHeader>
-        <CardTitle>
-          <h2>Pago y cuenta</h2>
-        </CardTitle>
-      </CardHeader>
-      <CardContent className="flex flex-col gap-3">
-        <dl className="flex flex-col gap-2">
-          <div className="flex flex-wrap justify-between gap-2">
-            <dt className="text-muted-foreground">Plan tarifario</dt>
-            <dd className="ml-auto font-semibold">{ratePlanLabels[detail.ratePlan.plan]}</dd>
-          </div>
-          <div className="flex flex-wrap justify-between gap-2">
-            <dt className="text-muted-foreground">Subtotal</dt>
-            <dd className="ml-auto font-semibold tabular-nums">
-              {money(detail, detail.subtotalCents)}
-            </dd>
-          </div>
-          <div className="flex flex-wrap items-center justify-between gap-2">
-            <dt className="flex items-center gap-2 text-muted-foreground">
-              Descuento
-              <Button
-                variant="ghost"
-                size="icon-sm"
-                aria-label="Editar descuento"
-                onClick={() => edit({ kind: "discount" })}
-              >
-                <PencilIcon />
-              </Button>
-            </dt>
-            <dd className="ml-auto font-semibold tabular-nums">
-              {money(detail, detail.discountCents)}
-            </dd>
-          </div>
-          <div className="flex flex-wrap justify-between gap-2">
-            <dt className="text-muted-foreground">Total</dt>
-            <dd className="ml-auto font-semibold tabular-nums">
-              {money(detail, detail.totalCents)}
-            </dd>
-          </div>
-          <div className="flex flex-wrap justify-between gap-2">
-            <dt className="text-muted-foreground">Pago inicial requerido</dt>
-            <dd className="ml-auto font-semibold tabular-nums">
-              {money(detail, detail.requiredInitialPaymentCents)}
-            </dd>
-          </div>
-          <div className="flex flex-wrap justify-between gap-2">
-            <dt className="text-muted-foreground">Pago restante programado</dt>
-            <dd className="ml-auto font-semibold tabular-nums">
-              {money(detail, detail.remainingScheduledCents)}
-            </dd>
-          </div>
-          <div className="flex flex-wrap justify-between gap-2">
-            <dt className="text-muted-foreground">Pagado</dt>
-            <dd className="ml-auto font-semibold tabular-nums">
-              {money(detail, detail.paidCents)}
-            </dd>
-          </div>
-        </dl>
-        <div className={cn("flex flex-wrap items-center justify-between gap-2 p-3 text-sm", tone)}>
-          <p className="flex items-center gap-2 font-medium">
-            <Icon aria-hidden="true" className="size-4 shrink-0" />
-            {label}
-          </p>
-          <p className="ml-auto text-right font-semibold wrap-anywhere tabular-nums">
-            {money(detail, Math.abs(detail.balanceCents))}
-          </p>
-        </div>
-        <Button className="w-full" onClick={() => edit({ kind: "payment" })}>
-          <CreditCardIcon data-icon="inline-start" />
-          Registrar pago
-        </Button>
-      </CardContent>
-    </Card>
   );
 }
 

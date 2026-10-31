@@ -34,7 +34,11 @@ function ReservationPageContent({ id, backSearch, onBack }: PageProps) {
   const query = useReservation(id, { refetchOnReconnect: true });
   const { saving } = useReservationCommands(id);
   const dirty = useRef(false);
-  const shouldProtectUnload = useCallback(() => saving || dirty.current, [saving]);
+  const discountDraft = useRef(false);
+  const shouldProtectUnload = useCallback(
+    () => saving || dirty.current || discountDraft.current,
+    [saving],
+  );
   const blocker = useBlocker({
     shouldBlockFn: shouldProtectUnload,
     withResolver: true,
@@ -45,6 +49,9 @@ function ReservationPageContent({ id, backSearch, onBack }: PageProps) {
   } | null>(null);
   const onDirtyChange = useCallback((value: boolean) => {
     dirty.current = value;
+  }, []);
+  const onDiscountDraftChange = useCallback((value: boolean) => {
+    discountDraft.current = value;
   }, []);
   function closeEditor() {
     dirty.current = false;
@@ -101,6 +108,7 @@ function ReservationPageContent({ id, backSearch, onBack }: PageProps) {
           <ReservationOverview
             detail={query.data}
             disabled={saving}
+            onDiscountDraftChange={onDiscountDraftChange}
             edit={(target) => {
               if (editor || saving) return;
               setEditor({ target, detail: query.data });

@@ -51,11 +51,7 @@ const fieldRules = {
     ({ code }) => (code === "method is required" ? "method" : null),
   ],
   contact: contactRules,
-  guest: [
-    ...contactRules,
-    ({ code }) =>
-      code === "guest room must belong to this reservation" ? "reservationRoomId" : null,
-  ],
+  guest: contactRules,
   details: [
     ({ code }) =>
       code === "stay cannot be longer than 60 nights" || code === "stay must be at least one night"

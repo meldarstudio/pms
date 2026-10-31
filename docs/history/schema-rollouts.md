@@ -10,6 +10,24 @@ tables, deliver API before portal, preserve schema/applied history for recovery,
 roll application builds back together only when compatible. These defaults do not
 authorize an operation or prove a previous Worker understands newly recorded data.
 
+## Optional refund completion reference, migration 0015
+
+`0015_optional_refund_reference.sql` rebuilds `refunds` (create, copy, drop, rename)
+because SQLite cannot alter a CHECK in place. Only the `refunds_outcome` CHECK
+changes: a completed refund no longer needs `completion_reference`. Every row,
+column, index and foreign key is kept; no trigger or other table references
+`refunds`. The SQL does not toggle `PRAGMA foreign_keys`: D1 enforces foreign keys
+inside the migration transaction, and each copied row keeps valid references. The
+local upgrade test applies it in one transaction with foreign keys on.
+
+Apply it before deploying the backend that accepts `request-refund.completed` or a
+`complete-refund` without a reference; on the old schema those writes fail the CHECK
+as a server error. The previous Worker runs against the rebuilt table, because its
+writes always include a reference. Deliver the API before the portal that sends these
+actions. For recovery,
+keep the rebuilt table and applied history. Once a completed refund without a
+reference exists, the old CHECK cannot be restored without changing that row.
+
 ## Future-stay coupons, migration 0014
 
 `0014_coupons.sql` creates `coupons` and `coupon_movements`. It alters no existing

@@ -205,6 +205,7 @@ export type ReservationPayment = {
   reference: string | null;
   notes: string | null;
   createdAt: string;
+  culqiChargeId: string | null;
 };
 
 export type RatePlanCode = "flexible" | "non_refundable";
@@ -213,12 +214,15 @@ export type RatePlanTerms = {
   plan: RatePlanCode;
   cancellationPolicy: {
     chargeBasis: "first_night" | "final_total";
-    freeUntilHoursBeforeCheckIn: number | null;
-    checkInTime: string;
+    freeUntilDaysBeforeCheckIn: number | null;
   };
   paymentSchedule: "first_night_deposit" | "full_upfront";
   priceAdjustmentPercent: number;
 };
+
+export function listRatePlans(signal?: AbortSignal) {
+  return getJson<RatePlanTerms[]>("/rate-plans", signal);
+}
 
 export type CancellationWaiver = {
   id: string;
@@ -256,6 +260,8 @@ export type ReservationRefund = {
   refundDate: string | null;
   completionReference: string | null;
   failureReason: string | null;
+  culqiChargeId: string | null;
+  culqiRefundId: string | null;
 };
 
 export type ReservationCoupon = {
@@ -596,12 +602,14 @@ export type WorkflowAction =
       method: PaymentMethod;
       reference?: string;
       reason: string;
+      completed?: RefundCompletion;
     }
-  | { type: "complete-refund"; refundId: string; refundDate: string; reference: string }
+  | ({ type: "complete-refund"; refundId: string } & RefundCompletion)
   | { type: "fail-refund"; refundId: string; reason: string }
   | { type: "issue-coupon"; amountCents: number; guestAccepted: true }
   | { type: "redeem-coupon"; code: string; amountCents: number }
   | { type: "notes"; notes: string };
+export type RefundCompletion = { refundDate: string; reference?: string };
 export type WorkflowCommand = {
   requestId: string;
   actions: WorkflowAction[];
@@ -666,8 +674,38 @@ export function createWorkflowBooking(body: {
   rooms: WorkflowRoom[];
   notes?: string;
   discountCents?: number;
+  ratePlan?: RatePlanCode;
 }) {
   return writeJson<ReservationDetail>("/reservations", "POST", body);
+}
+export type CreationPreviewInput = {
+  checkIn: string;
+  checkOut: string;
+  rooms: Pick<WorkflowRoom, "roomTypeId" | "nightlyRateCents">[];
+  discountCents?: number;
+  ratePlan?: RatePlanCode;
+};
+export type CreationPreview = {
+  billing: Pick<
+    ReservationDetail,
+    | "subtotalCents"
+    | "discountCents"
+    | "totalCents"
+    | "paidCents"
+    | "balanceCents"
+    | "requiredInitialPaymentCents"
+    | "remainingScheduledCents"
+    | "ratePlan"
+    | "currency"
+  > & {
+    rooms: Pick<
+      ReservationDetail["rooms"][number],
+      "roomTypeId" | "subtotalCents" | "discountCents" | "totalCents" | "nights"
+    >[];
+  };
+};
+export function previewWorkflowBooking(body: CreationPreviewInput) {
+  return writeJson<CreationPreview>("/reservations/preview", "POST", body);
 }
 export function searchReservations(
   params: {
@@ -694,7 +732,7 @@ export type ReservationListParams = {
   checkIn?: string;
   checkOut?: string;
   statuses?: string;
-  balance?: "outstanding" | "settled" | "credit";
+  balance?: "outstanding" | "settled" | "credit" | "unresolved";
   refund?: "due" | "requested";
   assignment?: "assigned" | "unassigned";
   sort: "checkIn" | "checkOut" | "guestName" | "balance";

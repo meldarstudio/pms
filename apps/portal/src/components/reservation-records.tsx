@@ -21,7 +21,6 @@ import {
   Item,
   ItemActions,
   ItemContent,
-  ItemDescription,
   ItemGroup,
   ItemMedia,
   ItemSeparator,
@@ -40,6 +39,7 @@ import { paymentMethods } from "@/components/reservation-entry-forms";
 import type { ReservationDetail, ReservationPayment, StayingGuest } from "@/lib/api";
 import { format } from "@/lib/dates";
 import { formatMoney } from "@/lib/money";
+import { phoneDisplay } from "@/lib/phone";
 
 export function StayingGuestList({
   detail,
@@ -70,17 +70,6 @@ export function StayingGuestList({
         </EmptyHeader>
       </Empty>
     );
-  const roomLabel = (id: string | null) =>
-    detail.rooms.find((room) => room.id === id)?.roomNumber ?? "Sin indicar";
-  const guestLine = (guest: StayingGuest) =>
-    [
-      guest.reservationRoomId
-        ? `Hab. ${roomLabel(guest.reservationRoomId)}`
-        : "Sin habitación indicada",
-      [guest.documentType, guest.documentNumber].filter(Boolean).join(" "),
-    ]
-      .filter(Boolean)
-      .join(" · ");
   const actions = (guest: StayingGuest) => (
     <RowActions
       label={`Acciones de ${guest.fullName}`}
@@ -103,7 +92,7 @@ export function StayingGuestList({
                 </ItemMedia>
                 <ItemContent className="min-w-0">
                   <ItemTitle className="wrap-anywhere">{guest.fullName}</ItemTitle>
-                  <ItemDescription className="wrap-anywhere">{guestLine(guest)}</ItemDescription>
+                  <GuestLine guest={guest} className="text-xs/relaxed" />
                 </ItemContent>
                 <ItemActions>{actions(guest)}</ItemActions>
               </Item>
@@ -122,7 +111,7 @@ export function StayingGuestList({
             <div className="flex items-center justify-between gap-3 py-3">
               <div className="flex min-w-0 flex-col gap-1">
                 <p className="font-medium wrap-anywhere">{guest.fullName}</p>
-                <p className="text-xs wrap-anywhere text-muted-foreground">{guestLine(guest)}</p>
+                <GuestLine guest={guest} />
               </div>
               {actions(guest)}
             </div>
@@ -130,6 +119,25 @@ export function StayingGuestList({
         ))}
       </ul>
     </section>
+  );
+}
+
+function GuestLine({ guest, className }: { guest: StayingGuest; className?: string }) {
+  const parts = [
+    [guest.documentType, guest.documentNumber].filter(Boolean).join(" "),
+    guest.phone ? phoneDisplay(guest.phone).text : "",
+  ].filter(Boolean);
+  if (!parts.length && !guest.email) return null;
+  return (
+    <p className={cn("truncate text-xs text-muted-foreground", className)}>
+      {parts.join(" · ")}
+      {guest.email && (
+        <span className="max-md:hidden">
+          {parts.length ? " · " : ""}
+          {guest.email}
+        </span>
+      )}
+    </p>
   );
 }
 
@@ -217,7 +225,7 @@ function paymentDate(value: string) {
   return isValid(date) ? format(date, "d MMM yyyy") : "—";
 }
 
-function RowActions({
+export function RowActions({
   label,
   disabled,
   onEdit,

@@ -1523,6 +1523,112 @@ describe("refunds", () => {
     expect(saved.refunds).toHaveLength(1);
     expect(saved.pendingRefundCents).toBe(10000);
   });
+
+  describe("money already handed back", () => {
+    const handedBack = (d: Detail, amountCents: number, refundDate = "2026-10-09") =>
+      ({
+        type: "request-refund",
+        paymentId: d.payments[0].id,
+        amountCents,
+        method: "cash",
+        reason: "Cancelled stay",
+        completed: { refundDate },
+      }) satisfies WorkflowAction;
+
+    it("records S/60 returned in cash as one completed refund with no reference, leaving S/40 due", async () => {
+      const cancelled = await lateCancellation(30000);
+      const returned = await command(cancelled, [handedBack(cancelled, 6000)]);
+      expect(returned).toMatchObject({
+        paidCents: 30000,
+        refundedCents: 6000,
+        pendingRefundCents: 0,
+        refundDueCents: 4000,
+      });
+      expect(returned.refunds).toMatchObject([
+        {
+          amountCents: 6000,
+          method: "cash",
+          reference: null,
+          status: "completed",
+          requestedAt: "2026-10-10T15:00:00.000Z",
+          requestedBy: "hotelmanantial",
+          resolvedAt: "2026-10-10T15:00:00.000Z",
+          resolvedBy: "hotelmanantial",
+          refundDate: "2026-10-09",
+          completionReference: null,
+        },
+      ]);
+      expect(await (await request(`/reservations/${cancelled.id}`)).json()).toEqual(returned);
+    });
+
+    it("keeps the completion's reference when staff give one", async () => {
+      const cancelled = await lateCancellation(30000);
+      const action = handedBack(cancelled, 6000, "2026-10-10");
+      const returned = await command(cancelled, [
+        { ...action, method: "transfer", completed: { ...action.completed, reference: "op-12" } },
+      ]);
+      expect(returned.refunds).toMatchObject([
+        { status: "completed", refundDate: "2026-10-10", completionReference: "OP-12" },
+      ]);
+    });
+
+    it("rejects money handed back on a future date or beyond the refund due, recording nothing", async () => {
+      const cancelled = await lateCancellation(30000);
+      expect(await command(cancelled, [handedBack(cancelled, 6000, "2026-10-11")], 400)).toEqual({
+        error: "refund date cannot be in the future",
+      });
+      expect(await command(cancelled, [handedBack(cancelled, 10001)], 400)).toEqual({
+        error: "refund exceeds the refund due",
+      });
+      expect(await (await request(`/reservations/${cancelled.id}`)).json()).toEqual(cancelled);
+    });
+
+    it("replays a retried request without recording the money twice", async () => {
+      const cancelled = await lateCancellation(30000);
+      const body = { requestId: crypto.randomUUID(), actions: [handedBack(cancelled, 6000)] };
+      const first = await request(`/reservations/${cancelled.id}/commands`, "POST", body);
+      expect(first.status).toBe(200);
+      const saved = (await first.json()) as Detail;
+      vi.setSystemTime(new Date("2026-10-10T16:00:00Z"));
+      const retried = await request(`/reservations/${cancelled.id}/commands`, "POST", body);
+      expect(retried.status).toBe(200);
+      expect(await retried.json()).toEqual(saved);
+      const reread = (await (await request(`/reservations/${cancelled.id}`)).json()) as Detail;
+      expect(reread.refunds).toHaveLength(1);
+      expect(reread).toMatchObject({ refundedCents: 6000, refundDueCents: 4000 });
+    });
+
+    it("completes a requested refund without a reference", async () => {
+      const cancelled = await lateCancellation(30000);
+      const requested = await command(cancelled, [requestRefund(cancelled, 10000)]);
+      const completed = await command(requested, [
+        { type: "complete-refund", refundId: requested.refunds[0].id, refundDate: "2026-10-10" },
+      ]);
+      expect(completed).toMatchObject({ refundedCents: 10000, refundDueCents: 0 });
+      expect(completed.refunds).toMatchObject([
+        { status: "completed", refundDate: "2026-10-10", completionReference: null },
+      ]);
+    });
+
+    it("refuses to mark a Culqi refund as already handed back", async () => {
+      const cancelled = await lateCancellation(30000);
+      const response = await request(`/reservations/${cancelled.id}/commands`, "POST", {
+        requestId: crypto.randomUUID(),
+        actions: [
+          {
+            type: "request-culqi-refund",
+            paymentId: cancelled.payments[0].id,
+            amountCents: 6000,
+            reason: "Cancelled stay",
+            completed: { refundDate: "2026-10-10" },
+          },
+        ],
+      });
+      expect(response.status).toBe(400);
+      expect(await response.json()).toEqual({ error: 'Unrecognized key: "completed"' });
+      expect(await (await request(`/reservations/${cancelled.id}`)).json()).toEqual(cancelled);
+    });
+  });
 });
 
 function pauseNextCommit() {
@@ -3400,5 +3506,98 @@ describe("paginated reservation operations", () => {
       arrival.id,
     ]);
     expect((await listed("?status=cancelled")).map((row) => row.id)).toEqual([cancelled.id]);
+  });
+});
+
+describe("Unresolved bill list filter", () => {
+  async function unresolvedExamples() {
+    const examples = await billExamples();
+    const credit = await command(examples.credit, [
+      {
+        type: "request-refund",
+        paymentId: examples.credit.payments[0].id,
+        amountCents: 2000,
+        method: "transfer",
+        reason: "Overpaid",
+      },
+    ]);
+    const checkedIn = await command(
+      await book("Ike CheckedIn", { checkIn: "2026-10-10", checkOut: "2026-10-11" }),
+      [{ type: "set-status", status: "checked_in" }],
+    );
+    const noShow = await command(
+      await book("Nia NoShow", { checkIn: "2026-10-09", checkOut: "2026-10-10" }),
+      [{ type: "set-status", status: "no_show" }],
+    );
+    const charged = await command(
+      await book("Cal Charged", { checkIn: "2026-10-11", checkOut: "2026-10-12" }),
+      [{ type: "set-status", status: "cancelled" }],
+    );
+    seedReservation(db.sqlite, {
+      id: "lost",
+      code: "LOST",
+      guestName: "Lu Lost",
+      checkIn: "2026-10-26",
+      checkOut: "2026-10-27",
+      createdAt: "2026-10-10",
+      status: "unfulfilled",
+    });
+    db.sqlite
+      .exec(`INSERT INTO payments (id, reservation_id, amount_cents, method, payment_date, created_at)
+      VALUES ('lost-payment', 'lost', 10000, 'card', '2026-10-10', '2026-10-10')`);
+    return { ...examples, credit, checkedIn, noShow, charged };
+  }
+
+  it("lists refund due on any status and money owed only once the stay is over", async () => {
+    const { complex, settled, credit, cancelled, owing, checkedIn, noShow, charged } =
+      await unresolvedExamples();
+    expect(credit).toMatchObject({
+      status: "confirmed",
+      balanceCents: -2000,
+      pendingRefundCents: 2000,
+    });
+    expect(checkedIn).toMatchObject({ status: "checked_in", balanceCents: 10000 });
+    expect(noShow).toMatchObject({ status: "no_show", balanceCents: 10000 });
+    expect(charged).toMatchObject({ status: "cancelled", balanceCents: 10000 });
+    const page = await paged("balance=unresolved");
+    expect(page.total).toBe(6);
+    expect(page.rows.map((row) => [row.id, row.status, row.balanceCents])).toEqual([
+      [noShow.id, "no_show", 10000],
+      [charged.id, "cancelled", 10000],
+      [credit.id, "confirmed", -2000],
+      [cancelled.id, "cancelled", -5000],
+      [owing.id, "checked_out", 10000],
+      ["lost", "unfulfilled", -10000],
+    ]);
+    const listed = new Set(page.rows.map((row) => row.id));
+    for (const excluded of [complex, checkedIn, settled]) expect(listed).not.toContain(excluded.id);
+  });
+
+  it("pages unresolved bills with an exact total and ANDs them with other filters", async () => {
+    const { credit, cancelled, owing, noShow, charged } = await unresolvedExamples();
+    expect(await paged("balance=unresolved&limit=4&offset=4")).toMatchObject({
+      rows: [{ id: owing.id }, { id: "lost" }],
+      total: 6,
+      limit: 4,
+      offset: 4,
+    });
+    const statuses = await paged("balance=unresolved&statuses=cancelled");
+    expect(statuses.total).toBe(2);
+    expect(statuses.rows.map((row) => row.id)).toEqual([charged.id, cancelled.id]);
+    expect(await paged("limit=1&balance=unresolved")).toMatchObject({ total: 6 });
+    const ascending = ["lost", cancelled.id, credit.id, charged.id, noShow.id, owing.id];
+    const descending = [charged.id, noShow.id, owing.id, credit.id, cancelled.id, "lost"];
+    for (const [direction, order] of [
+      ["asc", ascending],
+      ["desc", descending],
+    ] as const) {
+      const pages = await Promise.all(
+        [0, 4].map((offset) =>
+          paged(`balance=unresolved&sort=balance&direction=${direction}&limit=4&offset=${offset}`),
+        ),
+      );
+      for (const page of pages) expect(page.total).toBe(6);
+      expect(pages.flatMap((page) => page.rows.map((row) => row.id))).toEqual(order);
+    }
   });
 });

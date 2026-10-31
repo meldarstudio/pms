@@ -19,7 +19,7 @@ const messages: Record<string, string> = {
   "reservation requires at least one room": "La reserva debe tener al menos una habitación.",
   "payment date is required": "Indica la fecha del pago.",
   "guest room must belong to this reservation":
-    "Asigna al huésped a una habitación de esta reserva.",
+    "La habitación del huésped ya no pertenece a esta reserva. Recarga los datos.",
   "guest belongs to another reservation":
     "Este huésped pertenece a otra reserva. Recarga los datos.",
   "duplicate staying guest": "Un huésped está repetido en la lista.",
@@ -102,6 +102,7 @@ const messages: Record<string, string> = {
   "phone number is too long": "El número tiene demasiados dígitos para el país seleccionado.",
   "phone extensions are not supported": "No se admiten extensiones telefónicas.",
   "amount cannot be zero": "El importe debe ser distinto de cero.",
+  "unknown rate plan": "Esta tarifa ya no existe. Elige otra tarifa.",
 };
 
 export function knownErrorMessage(message: string): string | null {

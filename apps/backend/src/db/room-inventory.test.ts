@@ -584,6 +584,96 @@ describe("refunds", () => {
   });
 });
 
+describe("optional refund completion reference", () => {
+  it("rebuilds refunds keeping every row, index and guard while allowing a completion without a reference", () => {
+    const previous = new DatabaseSync(":memory:");
+    try {
+      previous.exec("PRAGMA foreign_keys = ON");
+      const split = journal.entries.findIndex(
+        (entry) => entry.tag === "0015_optional_refund_reference",
+      );
+      expect(split).toBeGreaterThan(0);
+      for (const entry of journal.entries.slice(0, split))
+        previous.exec(readFileSync(new URL(`${entry.tag}.sql`, migrationsDir), "utf8"));
+      previous.exec(`
+        INSERT INTO guests (id, full_name, created_at) VALUES ('guest', 'Ada Lovelace', '2026-10-05');
+        INSERT INTO reservations (id, code, guest_id, status, cancelled_at, check_in, check_out, created_at)
+          VALUES ('cancelled', 'OLD1', 'guest', 'cancelled', '2026-10-06T12:00:00.000Z', '2026-10-08', '2026-10-10', '2026-10-05');
+        INSERT INTO payments (id, reservation_id, amount_cents, method, payment_date, created_at, culqi_charge_id)
+          VALUES ('cash', 'cancelled', 30000, 'cash', '2026-10-05', '2026-10-05', NULL),
+                 ('card', 'cancelled', 20000, 'card', '2026-10-05', '2026-10-05', 'chr_1');
+        INSERT INTO "user" (id, name, email, username, role, created_at, updated_at)
+          VALUES ('staff', 'Staff', 'staff@example.test', 'staff', 'staff', 0, 0);
+        INSERT INTO refunds (id, reservation_id, payment_id, amount_cents, method, reference, reason, status,
+            requested_at, requested_account_id, resolved_at, resolved_account_id, refund_date,
+            completion_reference, failure_reason, culqi_charge_id, culqi_refund_id)
+          VALUES ('requested', 'cancelled', 'cash', 1000, 'transfer', 'OP-1', 'Cancelled stay', 'requested',
+                    '2026-10-07T12:00:00.000Z', 'staff', NULL, NULL, NULL, NULL, NULL, NULL, NULL),
+                 ('completed', 'cancelled', 'cash', 2000, 'cash', NULL, 'Cancelled stay', 'completed',
+                    '2026-10-07T12:00:00.000Z', 'staff', '2026-10-07T13:00:00.000Z', 'staff', '2026-10-07', 'OP-2', NULL, NULL, NULL),
+                 ('failed', 'cancelled', 'cash', 3000, 'transfer', NULL, 'Cancelled stay', 'failed',
+                    '2026-10-07T12:00:00.000Z', 'staff', '2026-10-07T13:00:00.000Z', 'staff', NULL, NULL, 'Wrong account', NULL, NULL),
+                 ('culqi', 'cancelled', 'card', 4000, 'card', NULL, 'Cancelled stay', 'completed',
+                    '2026-10-07T12:00:00.000Z', 'staff', '2026-10-07T13:00:00.000Z', 'staff', '2026-10-07', 'ref_1', NULL, 'chr_1', 'ref_1');
+      `);
+      const rows = () => previous.prepare("SELECT * FROM refunds ORDER BY id").all();
+      const schema = () =>
+        previous
+          .prepare(
+            "SELECT type, name, tbl_name FROM sqlite_master WHERE name NOT LIKE 'sqlite_%' ORDER BY type, name",
+          )
+          .all();
+      const before = rows();
+      const objects = schema();
+      previous.exec("BEGIN");
+      previous.exec(
+        readFileSync(new URL(`${journal.entries[split].tag}.sql`, migrationsDir), "utf8"),
+      );
+      previous.exec("COMMIT");
+      expect(rows()).toEqual(before);
+      expect(schema()).toEqual(objects);
+      expect(
+        previous
+          .prepare(
+            "SELECT name FROM sqlite_master WHERE tbl_name = 'refunds' AND type = 'index' AND name NOT LIKE 'sqlite_%' ORDER BY name",
+          )
+          .all()
+          .map(({ name }) => name),
+      ).toEqual(["refunds_date", "refunds_payment", "refunds_reservation"]);
+      expect(previous.prepare("PRAGMA foreign_key_list(refunds)").all()).toHaveLength(4);
+      expect(
+        previous.prepare("SELECT sql FROM sqlite_master WHERE name = 'refunds'").get()?.sql,
+      ).not.toContain("__new_refunds");
+
+      const refund = previous.prepare(`INSERT INTO refunds
+        (id, reservation_id, payment_id, amount_cents, method, reason, status, requested_at,
+          requested_account_id, resolved_at, resolved_account_id, refund_date, completion_reference, failure_reason)
+        VALUES (?, 'cancelled', ?, ?, 'cash', 'Cancelled stay', ?, '2026-10-08T12:00:00.000Z', 'staff', ?, ?, ?, ?, ?)`);
+      const resolved = ["2026-10-08T13:00:00.000Z", "staff"] as const;
+      refund.run("handed-back", "cash", 1000, "completed", ...resolved, "2026-10-08", null, null);
+      for (const [id, status, date, reference, reason] of [
+        ["undated", "completed", null, null, null],
+        ["no-reason", "failed", null, null, null],
+        ["failed-reference", "failed", null, "OP-3", "Wrong account"],
+        ["unresolved", "requested", "2026-10-08", null, null],
+      ] as const)
+        expect(() =>
+          refund.run(id, "cash", 1000, status, ...resolved, date, reference, reason),
+        ).toThrow("refunds_outcome");
+      expect(() =>
+        refund.run("zero", "cash", 0, "requested", null, null, null, null, null),
+      ).toThrow("refunds_amount");
+      expect(() =>
+        refund.run("orphan", "missing", 1000, "requested", null, null, null, null, null),
+      ).toThrow("FOREIGN KEY");
+      expect(() => previous.exec("DELETE FROM payments WHERE id = 'cash'")).toThrow("FOREIGN KEY");
+      expect(previous.prepare("PRAGMA foreign_key_check").all()).toEqual([]);
+    } finally {
+      previous.close();
+    }
+  });
+});
+
 describe("free-cancellation days", () => {
   it("adds free-cancellation days from accepted hours and converts recorded deadlines to dates", () => {
     const previous = new DatabaseSync(":memory:");

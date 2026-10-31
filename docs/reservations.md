@@ -61,15 +61,18 @@ waivers, completed versus requested refunds, and coupon settlement. Detail, list
 command checks, and edit previews use it; `stayBill` prices unsaved rooms (creation
 preview, cancellation policy) and `quoteBill` a quote. The list filters and sorts
 balance with `balanceCentsSql`, the same rule in SQL, kept beside the TypeScript and
-tested against it; change both together. New bill-producing reads must use this
+tested against it; change both together. `unresolvedBillSql` builds the
+[Unresolved bill](#reservation-list-reads) rule on it. New bill-producing reads must use this
 module rather than summing money themselves. Flexible's required initial payment
 sums each room's first saved nightly price, capped at total after discount; full
 upfront requires total.
 Remaining scheduled amount is total minus that requirement. Both are zero for
 cancelled/no-show reservations and do not depend on payments received.
 
-Portal creation currently offers no plan selector or server creation preview: it
-creates Flexible stays and estimates total from availability prices less capped discount.
+Portal creation offers the `GET /rate-plans` plans (Flexible by default) and prices
+the draft with the server creation preview; see the
+[compact calendar dialog](#compact-calendar-dialog). Existing reservations show their
+accepted plan, and no editor changes it.
 
 ## Online quotes
 
@@ -207,10 +210,15 @@ Gross paid, completed refunds, and requested amounts remain distinct in reads.
 Nothing refunds automatically. Workflow actions record manual returns or a Culqi call:
 
 - `request-refund`: request an amount against a payment, with method, reason, and
-  optional reference, recording time/account.
-- `request-culqi-refund`: request a card refund against a Culqi payment.
-- `complete-refund`: record returned money with a reference and property date no
-  later than today.
+  optional reference, recording time/account. Optional `completed: { refundDate,
+  reference? }` records money already handed back: the refund is checked against the
+  request limits below, then saved completed in the same action, with the requester
+  as resolver at the same time.
+- `request-culqi-refund`: request a card refund against a Culqi payment. It does not
+  accept `completed`; Culqi refunds complete through their own call.
+- `complete-refund`: record returned money with a property date no later than today
+  and an optional reference. Completed refunds read `completionReference: null`
+  when none was given, as does the refund `reference` in `GET /payments`.
 - `fail-refund`: resolve a mistaken/failed request with a reason; never delete it.
 
 Only requested refunds can resolve. Requests cannot exceed refund due less other
@@ -337,13 +345,23 @@ OR, and sending it with `status` applies both restrictions.
 
 - Exact check-in/checkout filters differ from legacy `from`/`to` overlap semantics:
   checkout after `from`, check-in on/before `to`.
-- Balance filters use signed cents and final charges/net retained independently of
-  status. Refund filters distinguish money due from unresolved requests.
+- Balance filters use the signed `balanceCents` (final charges against net retained):
+  `outstanding` > 0, `settled` = 0 and `credit` (Por devolver) < 0, independently of
+  status. `unresolved` selects an [Unresolved bill](../GLOSSARY.md): refund due on any
+  status, including Unfulfilled, or an outstanding balance on a checked-out, cancelled
+  or no-show stay. Requested or failed refunds don't settle refund due, so those
+  reservations stay listed. Its SQL predicate, `unresolvedBillSql` in
+  [the bill module](../apps/backend/src/lib/reservation-bill.ts), is the shared rule
+  for other callers; `paginated=true&limit=1&balance=unresolved` returns its count.
+- Refund filters are kept for compatibility: `refund=due` matches `balance=credit`,
+  and `refund=requested` matches reservations with a requested refund.
 - Assigned means every reserved room has an assignment; unassigned includes partial
   assignments. Search matches booking-contact-name tokens/code, not staying guests
   or physical room numbers; `guestId` matches the booking contact.
-- Sorting uses contact name/code as deterministic tie-breakers. Filters/sort cover
-  all matches before pagination; count remains exact even beyond the last page.
+- Sorting uses ascending contact name/code as deterministic tie-breakers, including
+  for `sort=balance` in either direction. Every filter, the balance sort, `limit`/
+  `offset` and the count run in SQL, so pages and the count cover all matches and the
+  count remains exact even beyond the last page.
   Charge/payment aggregates are independent; [load and present](#reservation-reads)
   only the selected page. List rows add `guestName` and return empty `stayingGuests`;
   read the detail for staying guests. Calendar uses its own read.
@@ -409,10 +427,16 @@ still subject to API parsing. Blank is valid; errors follow editor reveal rules.
 ## Portal editors
 
 Calendar bars open compact `RoomBookingDialog`; the list and **Ver reserva completa**
-open read-first `ReservationPage`. Creation is one form for dates, rooms, contact,
-notes, and discount; at least one room remains, with shared dates. Mobile editors
+open read-first `ReservationPage`. Creation is one form for dates, rate plan, rooms,
+contact, notes, and discount; at least one room remains, with shared dates. Mobile editors
 keep controls reachable while the body scrolls and protect drafts through keyboard/
 safe-area changes; no swipe dismissal. Use [shared controls](portal.md#control-styling).
+
+The staying-guest form, shared by the page and the dialog, asks for no room. Edits
+resend the guest's stored room unchanged. At submission, a new guest is linked to the
+current room of a one-room reservation and to none otherwise, even if the rooms changed
+while the form was open. A rejected guest room is a form-level
+error, since no field shows it.
 
 ### Full reservation page
 
@@ -424,26 +448,88 @@ named guests. Reservation notes are distinct from contact notes.
 
 Active status changes save immediately and revert on failure; cancellation and
 restoration require current server bill/validation plus confirmation. Disable status
-writes while any reservation save is queued/running. Discount previews debounce
-300 ms and require a current issue-free preview before saving. Guest/payment deletion
-requires confirmation; records remain editable on cancelled reservations.
+writes while any reservation save is queued/running. Guest/payment deletion requires
+confirmation; records remain editable on cancelled reservations.
+
+Money lives in one full-width **Cuenta** card
+([`reservation-account.tsx`](../apps/portal/src/components/reservation-account.tsx));
+Huéspedes sits in the left column between Contacto and Notas. The accepted rate plan
+is read-only stay metadata in Estadía y habitaciones, not a Cuenta row. Every amount is a backend
+bill field; the portal does no bill arithmetic. The card follows its own width through
+container queries, hiding Método and then Referencia in narrow Movimientos tables.
+
+- **Summary:** active stays show Subtotal, the editable Descuento row (S/ 0 when none),
+  Total and Pagado. Cancelled/No-show stays replace Subtotal/Descuento with the active
+  cancellation's charge and one Cargo perdonado row per waiver (with its reason); their
+  discount is hidden and not editable. Pagado con cupón, Reembolsado (completed refunds
+  only) and Pasado a cupón (with each issued coupon's code and expiry) appear only when
+  non-zero.
+- **Descuento** opens the shared
+  [discount popover](../apps/portal/src/components/discount-popover.tsx), which saves
+  `set-discount` directly, without a bill preview. A failed save keeps the popover and
+  its amount. Pristine editors follow refreshed saved discounts; changed drafts survive
+  background reads. An open changed draft guards router navigation and browser unload.
+- **Status line:** positive balance is Saldo pendiente with **Registrar pago** (plus
+  Falta el depósito while the initial payment is short). Refund due beyond requested
+  refunds is Por devolver; refund due that is fully requested is Reembolso solicitado;
+  zero is Cuenta saldada. Requested and failed refunds never settle the bill. Only
+  Saldo pendiente offers a payment action; the other states have none.
+- **Movimientos:** payments, refunds and coupon movements as flat rows, oldest first, with
+  no running balance. Payments keep edit/delete unless the backend would reject the
+  change: Culqi payments (En línea, Tarjeta), payments with refunds, and every payment
+  once a coupon was issued show a lock. Refund rows are read-only, with Solicitado or
+  Fallido; a failed refund is muted and struck through.
+- Cancelled and No-show stays show a destructive alert at the top: **Reserva cancelada**
+  or **No se presentó**, the property-calendar date of the active cancellation, and the
+  saved reason.
 
 ### Compact calendar dialog
 
-Details save dates, rooms, and notes only; discard resets that draft. Routine
-check-in/checkout/status corrections save independently. Restoration previews the
-chosen status and availability before confirmation and keeps the dialog open after
-success. Closing preserves calendar position.
+The dialog keeps only everyday actions. Status corrections, cancellation, No-show,
+and restoration happen on the full page; calendar bars never show cancelled stays.
+The footer holds Cerrar, then Hacer check-in (confirmed) or Hacer check-out (checked
+in); checked-out stays get Cerrar alone. The action is primary once its date has
+arrived in the property calendar, outline before. The shared
+[lifecycle action](../apps/portal/src/components/lifecycle-action.tsx) confirms a
+dirty room before check-in and a positive saved balance before check-out (without
+blocking it), then offers Deshacer in the success toast for 8 seconds, which sends
+`set-status` back to the previous status.
 
-Dirty drafts block check-in/checkout/status correction. Dirty details, guest,
-payment, and discount drafts block restoration; guest/payment/discount drafts block
-cancellation. Dirty details alone permit cancellation, explicitly discarded only
-on success, which closes the dialog. Dismissal/failure retains them. Disable writes
-while any save is queued/running, including discount autosave. Autosave queued after
-cancellation waits and reads the cancelled reservation.
+Details save dates, rooms, and notes only, through Guardar cambios in the form; on
+phones a dirty details draft replaces the footer actions with it. There is no discard
+button: Cerrar, ✕, Escape, and **Ver reserva completa** ask before discarding. Each
+tab shows a dot while its form has unsaved input; the independent discount draft shows
+none. The compact edit dialog uses
+[`BookingSummary`](../apps/portal/src/components/booking-summary.tsx)'s inline discount
+input, which autosaves `set-discount` on blur, not the creation/page discount popover.
+Failed saves keep the entered amount. Closing preserves calendar position. On desktop, and
+in the page's stay editor, rooms use the shared
+[room row](../apps/portal/src/components/reservation-room-rows.tsx); the phone dialog
+keeps one field per line.
+
+Any dirty draft (details, guest, payment, discount, or a nested guest/payment editor)
+blocks check-in/checkout. Disable writes while any save is queued/running, including
+discount autosave.
 
 The mobile bill accordion keeps the discount draft mounted through collapse/resize.
 Draft bills show preview state and never substitute stale saved amounts when unavailable.
+
+Creation (`NewBooking`) sends the chosen `ratePlan` and shows only the current
+`POST /reservations/preview` bill: Total, required initial payment, remaining
+scheduled amount, and cancellation terms ([creation-summary.tsx](../apps/portal/src/components/creation-summary.tsx)).
+While a changed draft is repricing or its preview failed (with Reintentar), the
+summary shows no amounts and creating is disabled. Cancellation terms derive from the
+preview's accepted policy and prices: the inclusive free deadline (check-in minus the
+plan's days) while property today has not passed it, otherwise the actual charge (first
+nights capped at total, or total); zero totals read as no charge. **Ver detalle** shows
+nightly prices for several rooms or varying prices. The reservation discount is the
+shared [discount popover](../apps/portal/src/components/discount-popover.tsx): only an
+applied amount reaches the preview and request; the server caps it at the subtotal; an
+open changed or invalid draft blocks creating. Room rows use the shared
+[room row](../apps/portal/src/components/reservation-room-rows.tsx) layout.
+
+Creating records no payment. The dialog stays open, switching to the new reservation
+on Pagos with Importe prefilled from its required initial payment.
 
 ### Reservation command module
 
@@ -466,7 +552,7 @@ existing-reservation writes, including calendar assignment; creation is separate
   inventory, payments, calendar, and open bill previews; cancel loading previews first
   so an old bill cannot replace refreshed data. Contact edits refresh other reservations
   for that contact.
-- `useReservationPreview` serves discount/status editors; callers debounce. Stay drafts
+- `useReservationPreview` serves status editors; callers debounce. Stay drafts
   reuse quotes but share `reservationPreviewKey`, so writes refresh them too.
 - `useRoomAssignmentCommand` re-reads the reservation, uses a fresh ID per attempt
   without retry memory, and shares save ordering/refresh. See [assignment](calendar.md#picker).

@@ -11,7 +11,6 @@ import {
   desc,
   eq,
   exists,
-  getTableColumns,
   gt,
   inArray,
   isNull,
@@ -36,7 +35,7 @@ import {
 } from "../workflow";
 import { loadReservations, presentReservations, readReservation } from "../reservation-read";
 import { presentNight, type presentReservation } from "../present";
-import { balanceCentsSql, roomCharges, stayBill } from "../lib/reservation-bill";
+import { balanceCentsSql, roomCharges, stayBill, unresolvedBillSql } from "../lib/reservation-bill";
 
 export const reservationRoutes = new Hono<Env>();
 reservationRoutes.get("/", validate("query", reservationListQuerySchema), async (c) => {
@@ -78,73 +77,45 @@ reservationRoutes.get("/", validate("query", reservationListQuerySchema), async 
       filters.push(or(like(reservations.code, pattern), like(guests.fullName, pattern)));
     }
   }
-  const sortColumn =
-    q.sort === "guestName" || q.sort === "balance"
-      ? guests.fullName
-      : q.sort === "checkOut"
-        ? reservations.checkOut
-        : reservations.checkIn;
-  const primaryOrder =
-    q.direction === "desc" && q.sort !== "balance" ? desc(sortColumn) : asc(sortColumn);
-  const needsBalance = q.balance !== undefined || q.sort === "balance" || q.refund === "due";
+  if (q.refund === "due" || q.balance === "credit") filters.push(sql`${balanceCentsSql} < 0`);
+  if (q.balance === "outstanding") filters.push(sql`${balanceCentsSql} > 0`);
+  if (q.balance === "settled") filters.push(sql`${balanceCentsSql} = 0`);
+  if (q.balance === "unresolved") filters.push(unresolvedBillSql);
+  const sortKey =
+    q.sort === "balance"
+      ? balanceCentsSql
+      : q.sort === "guestName"
+        ? guests.fullName
+        : q.sort === "checkOut"
+          ? reservations.checkOut
+          : reservations.checkIn;
   const query = db
-    .select({
-      reservation: reservations,
-      guest: {
-        ...getTableColumns(guests),
-        id: sql<string>`${guests.id}`.as("list_guest_id"),
-        revision: sql<number>`${guests.revision}`.as("list_guest_revision"),
-        notes: sql<string | null>`${guests.notes}`.as("list_guest_notes"),
-        createdAt: sql<string>`${guests.createdAt}`.as("list_guest_created_at"),
-      },
-      balanceCents: (needsBalance ? balanceCentsSql : sql<number>`0`).as("list_balance_cents"),
-    })
+    .select({ id: reservations.id })
     .from(reservations)
     .innerJoin(guests, eq(guests.id, reservations.guestId))
     .where(and(...filters))
     .orderBy(
-      primaryOrder,
-      ...(q.sort === "guestName" || q.sort === "balance" ? [] : [asc(guests.fullName)]),
+      q.direction === "desc" ? desc(sortKey) : asc(sortKey),
+      ...(q.sort === "guestName" ? [] : [asc(guests.fullName)]),
       asc(reservations.code),
     )
-    .$dynamic();
-  if (!needsBalance) query.limit(q.limit ?? 50).offset(q.offset ?? 0);
-  const [matches, counts] =
-    q.paginated && !needsBalance
-      ? await db.batch([
-          query,
-          db
-            .select({ total: count() })
-            .from(reservations)
-            .innerJoin(guests, eq(guests.id, reservations.guestId))
-            .where(and(...filters)),
-        ])
-      : [await query, [{ total: 0 }]];
-  let rows = matches;
-  let total = counts[0].total;
-  if (needsBalance) {
-    const balanced = matches
-      .filter(({ balanceCents }) => q.refund !== "due" || balanceCents < 0)
-      .filter(({ balanceCents }) => {
-        return q.balance === "outstanding"
-          ? balanceCents > 0
-          : q.balance === "settled"
-            ? balanceCents === 0
-            : q.balance === "credit"
-              ? balanceCents < 0
-              : true;
-      });
-    if (q.sort === "balance")
-      balanced.sort(
-        (a, b) => (q.direction === "desc" ? -1 : 1) * (a.balanceCents - b.balanceCents),
-      );
-    total = balanced.length;
-    rows = balanced.slice(q.offset ?? 0, (q.offset ?? 0) + (q.limit ?? 50));
-  }
+    .limit(q.limit ?? 50)
+    .offset(q.offset ?? 0);
+  const [rows, counts] = q.paginated
+    ? await db.batch([
+        query,
+        db
+          .select({ total: count() })
+          .from(reservations)
+          .innerJoin(guests, eq(guests.id, reservations.guestId))
+          .where(and(...filters)),
+      ])
+    : [await query, [{ total: 0 }]];
+  const total = counts[0].total;
   const response = (rows: (ReturnType<typeof presentReservation> & { guestName: string })[]) =>
     q.paginated ? { rows, total, limit: q.limit ?? 50, offset: q.offset ?? 0 } : rows;
   if (!rows.length) return c.json(response([]));
-  const ids = rows.map((r) => r.reservation.id);
+  const ids = rows.map((row) => row.id);
   const details = await presentReservations(db, await loadReservations(db, ids), currency(c));
   return c.json(
     response(

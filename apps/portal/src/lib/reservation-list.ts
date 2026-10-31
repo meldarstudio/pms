@@ -13,8 +13,14 @@ export const reservationStatusOptions: {
   { value: "cancelled", label: "Cancelada" },
 ];
 
+const otherStatusLabels: Record<string, string> = { no_show: "No se presentó" };
+
 export function reservationStatusLabel(status: string) {
-  return reservationStatusOptions.find((option) => option.value === status)?.label ?? status;
+  return (
+    reservationStatusOptions.find((option) => option.value === status)?.label ??
+    otherStatusLabels[status] ??
+    status
+  );
 }
 
 export function stayDateLabel(value: string) {
