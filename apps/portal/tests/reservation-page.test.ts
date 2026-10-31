@@ -669,7 +669,6 @@ for (const balance of [-10000]) {
     saved = { ...saved, status: "checked_out", balanceCents: balance };
     mockApi();
     await render();
-    assert.ok(button("Registrar pago"));
     await click("Editar contacto");
     await fill("phone", "999333444");
     await submit();
@@ -1218,6 +1217,13 @@ it.each([
   const status = account().querySelector('[aria-label="Estado de la cuenta"]')!;
   assert.equal(text(status).replace(` ${action}`, ""), line);
   assert.deepEqual(Array.from(status.querySelectorAll("button")).map(text), action ? [action] : []);
+  assert.equal(
+    Array.from(page.container.querySelectorAll("button")).filter(
+      (item) => text(item) === "Registrar pago",
+    ).length,
+    action ? 1 : 0,
+    "Only a bill the guest owes offers Registrar pago",
+  );
 });
 
 it("lists payments, refunds and coupon movements oldest first, locking changed payments", async () => {
@@ -1407,3 +1413,20 @@ it("reads No se presentó for a No-show stay and bills its charge", async () => 
     "Pagado S/ 0",
   ]);
 });
+
+it.each([
+  { plan: "flexible", label: "Flexible" },
+  { plan: "non_refundable", label: "No reembolsable" },
+] as const)(
+  "shows the accepted $label rate plan with the stay, outside the Cuenta",
+  async ({ plan, label }) => {
+    saved = { ...saved, ratePlan: { ...saved.ratePlan, plan } };
+    mockApi();
+    await render();
+    const stay = Array.from(page.container.querySelectorAll('[data-slot="card"]')).find(
+      (card) => card.querySelector("h2")?.textContent === "Estadía y habitaciones",
+    )!;
+    assert.match(text(stay), new RegExp(`Plan tarifario ${label}`));
+    assert.doesNotMatch(text(account()), /Plan tarifario/);
+  },
+);

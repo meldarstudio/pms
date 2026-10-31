@@ -10,6 +10,7 @@ import {
   PhoneIcon,
   PlusIcon,
   UserRoundIcon,
+  TagIcon,
   UsersIcon,
   type LucideIcon,
 } from "lucide-react";
@@ -34,6 +35,7 @@ import type { ReservationDetail } from "@/lib/api";
 import { occupantsLabel } from "@/lib/reservation-list";
 import { usePropertyCalendar } from "@/lib/use-property-calendar";
 import { phoneDisplay } from "@/lib/phone";
+import { ratePlanLabels } from "@/lib/rate-plans";
 import { format } from "@/lib/dates";
 import { propertyToday } from "@/lib/property-calendar";
 import { parseISO } from "date-fns";
@@ -126,6 +128,9 @@ export function ReservationOverview({
                 </ReservationDatum>
                 <ReservationDatum icon={UsersIcon} label="Ocupantes">
                   {detail.rooms.reduce((total, room) => total + room.adults + room.children, 0)}
+                </ReservationDatum>
+                <ReservationDatum icon={TagIcon} label="Plan tarifario">
+                  {ratePlanLabels[detail.ratePlan.plan]}
                 </ReservationDatum>
               </dl>
               <AssignedRooms detail={detail} />

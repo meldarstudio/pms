@@ -89,15 +89,7 @@ export function AccountCard({
           </section>
         </div>
         <section aria-label="Movimientos" className="@container/mov flex min-w-0 flex-col">
-          <div className="flex min-h-8 items-center justify-between gap-2 border-b pb-2">
-            <h3 className="text-sm font-medium">Movimientos</h3>
-            {!owing && (
-              <Button size="xs" variant="ghost" onClick={() => edit({ kind: "payment" })}>
-                <CreditCardIcon data-icon="inline-start" />
-                Registrar pago
-              </Button>
-            )}
-          </div>
+          <h3 className="border-b pb-2 text-sm font-medium">Movimientos</h3>
           <Movements detail={detail} edit={edit} />
         </section>
       </CardContent>

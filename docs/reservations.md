@@ -436,7 +436,8 @@ confirmation; records remain editable on cancelled reservations.
 
 Money lives in one full-width **Cuenta** card
 ([`reservation-account.tsx`](../apps/portal/src/components/reservation-account.tsx));
-Huéspedes sits in the left column between Contacto and Notas. Every amount is a backend
+Huéspedes sits in the left column between Contacto and Notas. The accepted rate plan
+is read-only stay metadata in Estadía y habitaciones, not a Cuenta row. Every amount is a backend
 bill field; the portal does no bill arithmetic. The card follows its own width through
 container queries, hiding Método and then Referencia in narrow Movimientos tables.
 
@@ -453,8 +454,8 @@ container queries, hiding Método and then Referencia in narrow Movimientos tabl
 - **Status line:** positive balance is Saldo pendiente with **Registrar pago** (plus
   Falta el depósito while the initial payment is short). Refund due beyond requested
   refunds is Por devolver; refund due that is fully requested is Reembolso solicitado;
-  zero is Cuenta saldada. Requested and failed refunds never settle the bill. Outside
-  Saldo pendiente, Registrar pago stays in the Movimientos header.
+  zero is Cuenta saldada. Requested and failed refunds never settle the bill. Only
+  Saldo pendiente offers a payment action; the other states have none.
 - **Movimientos:** payments, refunds and coupon movements as flat rows, oldest first, with
   no running balance. Payments keep edit/delete unless the backend would reject the
   change: Culqi payments (En línea, Tarjeta), payments with refunds, and every payment
