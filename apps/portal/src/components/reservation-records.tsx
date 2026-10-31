@@ -225,7 +225,7 @@ function paymentDate(value: string) {
   return isValid(date) ? format(date, "d MMM yyyy") : "—";
 }
 
-function RowActions({
+export function RowActions({
   label,
   disabled,
   onEdit,

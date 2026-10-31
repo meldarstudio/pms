@@ -42,11 +42,6 @@ export function WorkflowBill({
         </dt>
         <dd>{formatMoney(Math.abs(bill.balanceCents))}</dd>
       </div>
-      {bill.balanceCents < 0 && (
-        <p className="text-muted-foreground">
-          Este crédito sigue en la reserva. No se ha devuelto automáticamente.
-        </p>
-      )}
     </dl>
   );
 }

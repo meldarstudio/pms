@@ -205,6 +205,7 @@ export type ReservationPayment = {
   reference: string | null;
   notes: string | null;
   createdAt: string;
+  culqiChargeId: string | null;
 };
 
 export type RatePlanCode = "flexible" | "non_refundable";
@@ -259,6 +260,8 @@ export type ReservationRefund = {
   refundDate: string | null;
   completionReference: string | null;
   failureReason: string | null;
+  culqiChargeId: string | null;
+  culqiRefundId: string | null;
 };
 
 export type ReservationCoupon = {

@@ -431,9 +431,38 @@ named guests. Reservation notes are distinct from contact notes.
 
 Active status changes save immediately and revert on failure; cancellation and
 restoration require current server bill/validation plus confirmation. Disable status
-writes while any reservation save is queued/running. Discount previews debounce
-300 ms and require a current issue-free preview before saving. Guest/payment deletion
-requires confirmation; records remain editable on cancelled reservations.
+writes while any reservation save is queued/running. Guest/payment deletion requires
+confirmation; records remain editable on cancelled reservations.
+
+Money lives in one full-width **Cuenta** card
+([`reservation-account.tsx`](../apps/portal/src/components/reservation-account.tsx));
+Huéspedes sits in the left column between Contacto and Notas. Every amount is a backend
+bill field; the portal does no bill arithmetic. The card follows its own width through
+container queries, hiding Método and then Referencia in narrow Movimientos tables.
+
+- **Summary:** active stays show Subtotal, the editable Descuento row (S/ 0 when none),
+  Total and Pagado. Cancelled/No-show stays replace Subtotal/Descuento with the active
+  cancellation's charge and one Cargo perdonado row per waiver (with its reason); their
+  discount is hidden and not editable. Pagado con cupón, Reembolsado (completed refunds
+  only) and Pasado a cupón (with each issued coupon's code and expiry) appear only when
+  non-zero.
+- **Descuento** opens the shared
+  [discount popover](../apps/portal/src/components/discount-popover.tsx), which saves
+  `set-discount` directly, without a bill preview. A failed save keeps the popover and
+  its amount. An open changed draft guards router navigation and browser unload.
+- **Status line:** positive balance is Saldo pendiente with **Registrar pago** (plus
+  Falta el depósito while the initial payment is short). Refund due beyond requested
+  refunds is Por devolver; refund due that is fully requested is Reembolso solicitado;
+  zero is Cuenta saldada. Requested and failed refunds never settle the bill. Outside
+  Saldo pendiente, Registrar pago stays in the Movimientos header.
+- **Movimientos:** payments, refunds and coupon movements as flat rows, oldest first, with
+  no running balance. Payments keep edit/delete unless the backend would reject the
+  change: Culqi payments (En línea, Tarjeta), payments with refunds, and every payment
+  once a coupon was issued show a lock. Refund rows are read-only, with Solicitado or
+  Fallido; a failed refund is muted and struck through.
+- Cancelled and No-show stays show a destructive alert at the top: **Reserva cancelada**
+  or **No se presentó**, the property-calendar date of the active cancellation, and the
+  saved reason.
 
 ### Compact calendar dialog
 
@@ -501,7 +530,7 @@ existing-reservation writes, including calendar assignment; creation is separate
   inventory, payments, calendar, and open bill previews; cancel loading previews first
   so an old bill cannot replace refreshed data. Contact edits refresh other reservations
   for that contact.
-- `useReservationPreview` serves discount/status editors; callers debounce. Stay drafts
+- `useReservationPreview` serves status editors; callers debounce. Stay drafts
   reuse quotes but share `reservationPreviewKey`, so writes refresh them too.
 - `useRoomAssignmentCommand` re-reads the reservation, uses a fresh ID per attempt
   without retry memory, and shares save ordering/refresh. See [assignment](calendar.md#picker).

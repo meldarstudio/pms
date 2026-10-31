@@ -117,15 +117,30 @@ async function render(search = "", waitForDetail = true) {
   await page.renderRouter(router);
   if (waitForDetail) await page.until(() => page.container.textContent.includes("#BILL0001"));
 }
-const button = (label: string) => page.button(label);
 const click = (label: string) => page.click(label);
 const fillAmount = (value: string) => page.fill("amount", value);
 function amount(label: string) {
-  const term = Array.from(page.container.querySelectorAll("dt")).find(
-    (element) => element.textContent.trim() === label,
+  const row = Array.from(
+    page.container.querySelectorAll('dl[aria-label="Resumen de la cuenta"] > div'),
+  ).find((element) => element.querySelector("dt, button > span")?.textContent.trim() === label);
+  assert.ok(row, `Missing bill row ${label}`);
+  return row.querySelector("dd, button > span:last-child")!.textContent.replace(/\s/g, "");
+}
+function discountInput() {
+  const label = Array.from(browser.window.document.querySelectorAll("label")).find(
+    (item) => item.textContent.trim() === "Descuento · S/",
   );
-  assert.ok(term, `Missing bill row ${label}`);
-  return term.parentElement!.querySelector("dd")!.textContent.replace(/\s/g, "");
+  return label
+    ? browser.window.document.querySelector<HTMLInputElement>(`[id="${label.htmlFor}"]`)
+    : null;
+}
+async function openDiscount() {
+  const trigger = Array.from(page.container.querySelectorAll<HTMLElement>("button")).find((item) =>
+    item.textContent.trim().startsWith("Descuento"),
+  );
+  assert.ok(trigger, "The Cuenta summary must offer the discount");
+  await browser.React.act(async () => trigger.click());
+  await page.until(() => !!discountInput(), "Descuento must open the discount popover");
 }
 
 it("saves a discount from its zero-valued row and then a payment without changing the discount", async () => {
@@ -156,13 +171,12 @@ it("saves a discount from its zero-valued row and then a payment without changin
   };
   await render();
   assert.equal(amount("Descuento"), "S/0");
-  await click("Editar descuento");
-  await fillAmount("50.50");
-  await page.until(() => !button("Guardar cambios").disabled);
-  await click("Guardar cambios");
-  await page.until(() => browser.window.document.querySelector('[role="dialog"]') === null);
+  await openDiscount();
+  await page.fill(discountInput()!, "50.50");
+  await click("Aplicar");
+  await page.until(() => !discountInput(), "A saved discount closes the popover");
   assert.equal(amount("Subtotal"), "S/300.50");
-  assert.equal(amount("Descuento"), "S/50.50");
+  assert.equal(amount("Descuento"), "-S/50.50");
   assert.equal(amount("Total"), "S/250");
   assert.equal(amount("Pagado"), "S/100.25");
   assert.match(page.container.textContent.replace(/\s/g, ""), /SaldopendienteS\/149\.75/);
@@ -171,7 +185,7 @@ it("saves a discount from its zero-valued row and then a payment without changin
   await fillAmount("49.75");
   await click("Guardar cambios");
   await page.until(() => browser.window.document.querySelector('[role="dialog"]') === null);
-  assert.equal(amount("Descuento"), "S/50.50");
+  assert.equal(amount("Descuento"), "-S/50.50");
   assert.equal(amount("Total"), "S/250");
   assert.equal(amount("Pagado"), "S/150");
   assert.match(page.container.textContent.replace(/\s/g, ""), /SaldopendienteS\/100/);
@@ -190,7 +204,7 @@ it.each([
     paidCents: 30050,
     balanceCents: -5050,
     creditCents: 5050,
-    label: "Saldo a favor",
+    label: "Por devolver",
     paid: "S/300.50",
     balance: "S/50.50",
   },
@@ -200,7 +214,7 @@ it.each([
     saved = { ...saved, paidCents, balanceCents, creditCents };
     await render();
     assert.equal(amount("Subtotal"), "S/300.50");
-    assert.equal(amount("Descuento"), "S/50.50");
+    assert.equal(amount("Descuento"), "-S/50.50");
     assert.equal(amount("Total"), "S/250");
     assert.equal(amount("Pagado"), paid);
     assert.ok(
@@ -219,8 +233,8 @@ async function back() {
 
 it("protects a discount draft when Back targets Reservations and allows explicit discard", async () => {
   await render("?origin=calendar&returnTo=from%3D2026-10-19%26span%3D14");
-  await click("Editar descuento");
-  await fillAmount("25");
+  await openDiscount();
+  await page.fill(discountInput()!, "25");
   const unload = new browser.window.Event("beforeunload", { cancelable: true });
   await browser.React.act(async () => browser.window.dispatchEvent(unload));
   assert.equal(unload.defaultPrevented, true, "A discount draft must block an update reload");
@@ -230,10 +244,8 @@ it("protects a discount draft when Back targets Reservations and allows explicit
   );
   assert.equal(router.state.location.pathname, "/reservations/summary");
   await click("Seguir editando");
-  assert.equal(
-    browser.window.document.querySelector<HTMLInputElement>('input[name="amount"]')?.value,
-    "25",
-  );
+  if (!discountInput()) await openDiscount();
+  assert.equal(discountInput()!.value, "25", "Staying must keep the discount draft");
   await back();
   await click("Descartar y salir");
   await page.until(() => router.state.location.pathname === "/reservations");

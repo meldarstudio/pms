@@ -26,14 +26,13 @@ import {
   contactDefaults,
   contactPayload,
   notesSchema,
-  discountSchema,
   paymentSchema,
   cancellationSchema,
   paymentDefaults,
   paymentPayload,
 } from "@/lib/reservation-form-schemas";
 import { setServerErrors } from "@/lib/form-errors";
-import { formatMajor, formatMoney, parseMajorToCents } from "@/lib/money";
+import { formatMajor, formatMoney } from "@/lib/money";
 import { reservationStatusLabel } from "@/lib/reservation-list";
 import { usePropertyCalendar } from "@/lib/use-property-calendar";
 import { translateError } from "@/lib/errors";
@@ -41,7 +40,7 @@ import { toast, toastError } from "@/lib/toast";
 
 export type ReservationEditorTarget =
   | { kind: "stay" }
-  | { kind: "contact" | "notes" | "discount" }
+  | { kind: "contact" | "notes" }
   | { kind: "guest"; id?: string }
   | { kind: "payment"; id?: string }
   | { kind: "delete-payment" | "delete-guest"; id: string }
@@ -55,8 +54,6 @@ function editorTitle(target: ReservationEditorTarget, detail: ReservationDetail)
       return "Editar contacto";
     case "notes":
       return "Notas de la reserva";
-    case "discount":
-      return "Editar descuento";
     case "guest":
       return target.id ? "Editar huésped" : "Agregar huésped";
     case "payment":
@@ -198,7 +195,6 @@ function ReservationActionForm({
     ...contactDefaults(detail),
     notes: detail.notes ?? "",
     ...paymentDefaults(detail.balanceCents),
-    ...(target.kind === "discount" ? { amount: formatMajor(detail.savedDiscountCents) } : {}),
     ...(payment
       ? {
           amount: formatMajor(payment.amountCents),
@@ -214,11 +210,9 @@ function ReservationActionForm({
       ? contactSchema
       : target.kind === "notes"
         ? notesSchema
-        : target.kind === "discount"
-          ? discountSchema
-          : target.kind === "payment"
-            ? paymentSchema
-            : cancellationSchema;
+        : target.kind === "payment"
+          ? paymentSchema
+          : cancellationSchema;
   const rejectedContact = useRef<{ key: string; fields: Record<string, string> } | null>(null);
   const form = useReservationForm({
     defaultValues: defaults,
@@ -249,11 +243,6 @@ function ReservationActionForm({
         }
         case "notes":
           actions = [{ type: "notes", notes: value.notes }];
-          break;
-        case "discount":
-          actions = [
-            { type: "set-discount", amountCents: parseMajorToCents(value.amount.trim() || "0")! },
-          ];
           break;
         case "payment":
           actions = [
@@ -308,29 +297,15 @@ function ReservationActionForm({
     if (target.kind === "payment" && form.state.fieldMeta.date?.errors.length)
       void form.validate("submit");
   }, [today, form, target.kind]);
-  const needsPreview = target.kind === "status" || target.kind === "discount";
-  const actionsKey = JSON.stringify(
-    target.kind === "status"
-      ? [{ type: "set-status", status: target.status }]
-      : target.kind === "discount"
-        ? [{ type: "set-discount", amountCents: parseMajorToCents(values.amount.trim() || "0") }]
-        : [],
+  const needsPreview = target.kind === "status";
+  const status = target.kind === "status" ? target.status : null;
+  const previewActions = useMemo<WorkflowAction[]>(
+    () => (status ? [{ type: "set-status", status }] : []),
+    [status],
   );
-  const [previewKey, setPreviewKey] = useState(actionsKey);
-  useEffect(() => {
-    const timer = setTimeout(() => setPreviewKey(actionsKey), target.kind === "discount" ? 300 : 0);
-    return () => clearTimeout(timer);
-  }, [actionsKey, target.kind]);
-  const previewActions = useMemo(() => JSON.parse(previewKey) as WorkflowAction[], [previewKey]);
   const valid = schema.safeParse(values).success;
-  const current = previewKey === actionsKey;
-  const preview = useReservationPreview(
-    detail.id,
-    previewActions,
-    needsPreview && current && valid,
-  );
+  const preview = useReservationPreview(detail.id, previewActions, needsPreview && valid);
   const previewReady =
-    current &&
     valid &&
     preview.isSuccess &&
     !preview.isFetching &&
@@ -371,16 +346,6 @@ function ReservationActionForm({
             <form.AppField name="notes">
               {(field) => <field.Text label="Notas para esta reserva" type="textarea" max={2000} />}
             </form.AppField>
-          )}
-          {target.kind === "discount" && (
-            <>
-              <form.AppField name="amount">
-                {(field) => <field.Text label={`Descuento fijo (${detail.currency})`} />}
-              </form.AppField>
-              <FieldDescription>
-                Se aplica a la reserva completa, limitado al subtotal. No es un pago.
-              </FieldDescription>
-            </>
           )}
           {target.kind === "payment" && (
             <>
@@ -445,7 +410,7 @@ function ReservationActionForm({
       </fieldset>
       {needsPreview && (
         <section aria-label="Cuenta resultante" className="flex flex-col gap-3">
-          {!current || preview.isFetching || (!preview.data && !preview.error) ? (
+          {preview.isFetching || (!preview.data && !preview.error) ? (
             <p role="status" className="text-sm text-muted-foreground">
               Calculando…
             </p>

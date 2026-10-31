@@ -10,7 +10,7 @@ function statusVariant(status: string) {
 
 export function ReservationStatusBadge({ status }: { status: string }) {
   return (
-    <Badge variant={statusVariant(status)} className="w-24 px-1.5">
+    <Badge variant={statusVariant(status)} className="min-w-24 px-1.5">
       {reservationStatusLabel(status)}
     </Badge>
   );

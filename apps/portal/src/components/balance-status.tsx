@@ -1,25 +1,44 @@
-import { CircleAlertIcon, CircleCheckIcon, WalletIcon } from "lucide-react";
+import { CircleAlertIcon, CircleCheckIcon, Undo2Icon, WalletIcon } from "lucide-react";
+import type { ReservationDetail } from "@/lib/api";
+
+const owing = {
+  label: "Saldo pendiente",
+  Icon: CircleAlertIcon,
+  tone: "bg-destructive/10 text-destructive dark:bg-destructive/20",
+};
+const owedBack = {
+  label: "Por devolver",
+  Icon: Undo2Icon,
+  tone: "bg-credit text-credit-foreground",
+};
+const settled = {
+  label: "Cuenta saldada",
+  Icon: CircleCheckIcon,
+  tone: "bg-booking text-booking-foreground",
+};
 
 export function balanceStatus(balanceCents: number) {
-  if (balanceCents > 0) {
+  if (balanceCents > 0) return owing;
+  if (balanceCents < 0) return owedBack;
+  return settled;
+}
+
+export function accountStatus(
+  bill: Pick<ReservationDetail, "balanceCents" | "pendingRefundCents">,
+) {
+  if (bill.balanceCents > 0) return { state: "owing" as const, ...owing, cents: bill.balanceCents };
+  const refundDueCents = -bill.balanceCents;
+  const toReturnCents = Math.max(0, refundDueCents - bill.pendingRefundCents);
+  if (toReturnCents > 0) return { state: "owed-back" as const, ...owedBack, cents: toReturnCents };
+  if (refundDueCents > 0)
     return {
-      label: "Saldo pendiente",
-      Icon: CircleAlertIcon,
-      tone: "bg-destructive/10 text-destructive dark:bg-destructive/20",
-    };
-  }
-  if (balanceCents < 0) {
-    return {
-      label: "Saldo a favor",
+      state: "refund-requested" as const,
+      label: "Reembolso solicitado",
       Icon: WalletIcon,
-      tone: "bg-credit text-credit-foreground",
+      tone: "bg-preview text-preview-foreground",
+      cents: refundDueCents,
     };
-  }
-  return {
-    label: "Cuenta saldada",
-    Icon: CircleCheckIcon,
-    tone: "bg-booking text-booking-foreground",
-  };
+  return { state: "settled" as const, ...settled, cents: 0 };
 }
 
 export function BalanceLabel({ balanceCents }: { balanceCents: number }) {

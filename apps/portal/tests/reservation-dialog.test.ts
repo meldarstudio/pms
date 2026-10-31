@@ -402,6 +402,7 @@ it("revalidates an edited payment's blurred date error at the new property day w
     notes: null,
     reservationId: "reservation-1",
     createdAt: "2026-11-01T01:00:00Z",
+    culqiChargeId: null,
   };
   const saved = { ...detail(), payments: [payment] };
   mockApi(async () => Response.json(saved));
@@ -485,7 +486,7 @@ it.each([
     paidCents: 3000,
     subtotalCents: 8000,
     discountCents: 8000,
-    balanceLabel: "Saldo a favor",
+    balanceLabel: "Por devolver",
     applied: "-S/80",
     balance: "S/30",
   },
@@ -495,7 +496,7 @@ it.each([
     paidCents: 3000,
     subtotalCents: 0,
     discountCents: 0,
-    balanceLabel: "Saldo a favor",
+    balanceLabel: "Por devolver",
     applied: "S/0",
     balance: "S/30",
   },
@@ -812,7 +813,7 @@ it("protects mobile payment drafts when opening the full reservation from the he
   assert.equal(writes, 0);
 });
 
-it("announces the mobile balance preview without showing stale credit", async () => {
+it("announces the mobile balance preview without showing a stale refund due", async () => {
   const saved = { ...detail(), paidCents: 50000, balanceCents: -20000 };
   let finishPreview!: () => void;
   mockApi(async (path) => {
@@ -836,7 +837,7 @@ it("announces the mobile balance preview without showing stale credit", async ()
   const financials = window.document.querySelector('[aria-label="Importes de la reserva"]')!;
   assert.equal(financials.getAttribute("aria-live"), "polite");
   const text = () => financials.textContent.replace(/\s/g, "");
-  assert.ok(text().includes("SaldoafavorS/200"));
+  assert.ok(text().includes("PordevolverS/200"));
   await React.act(async () => fieldTrigger("Check-out").click());
   const day = [...window.document.querySelectorAll<HTMLButtonElement>("button[data-day]")].find(
     (item) => item.textContent.trim() === "17",
@@ -847,17 +848,17 @@ it("announces the mobile balance preview without showing stale credit", async ()
   assert.equal(text().includes("Singuardar"), false);
   assert.ok(button("Ver desglose").textContent.includes("Vista previa"));
   assert.ok(text().includes("Calculando…"));
-  assert.equal(text().includes("S/200"), false, "Do not show stale credit while repricing");
+  assert.equal(text().includes("S/200"), false, "Do not show a stale refund due while repricing");
   assert.equal(button("Ver desglose").disabled, false);
   await React.act(async () => button("Ver desglose").click());
   assert.equal(button("Ocultar desglose").getAttribute("aria-expanded"), "true");
   await until(() => !!finishPreview, "The updated stay must request its price");
   await React.act(async () => finishPreview());
   await until(
-    () => text().includes("SaldoafavorVistapreviaS/50"),
+    () => text().includes("PordevolverVistapreviaS/50"),
     "The persistent balance must use the server preview",
   );
-  assert.ok(text().includes("SaldoafavorVistapreviaS/50"));
+  assert.ok(text().includes("PordevolverVistapreviaS/50"));
   assert.equal(button("Guardar cambios").disabled, false);
 });
 
@@ -2903,6 +2904,7 @@ it.each(["guest", "payment"] as const)(
         reference: null,
         notes: null,
         createdAt: "2026-10-14T12:00:00Z",
+        culqiChargeId: null,
       },
     ];
     let writes = 0;

@@ -15,6 +15,7 @@ export function DiscountPopover({
   shownCents = appliedCents,
   currency,
   disabled = false,
+  variant = "add",
   onApply,
   onBlockingChange,
 }: {
@@ -22,6 +23,7 @@ export function DiscountPopover({
   shownCents?: number;
   currency: string;
   disabled?: boolean;
+  variant?: "add" | "row";
   onApply: (amountCents: number) => void | boolean | Promise<boolean | void>;
   onBlockingChange?: (blocking: boolean) => void;
 }) {
@@ -35,6 +37,7 @@ export function DiscountPopover({
   const error = parsed.success ? null : (parsed.error.issues[0]?.message ?? null);
   const draftCents = parsed.success ? parseMajorToCents(draft.trim() || "0") : null;
   const blocking = open && (draftCents === null || draftCents !== appliedCents);
+  const row = variant === "row" || appliedCents > 0;
   useEffect(() => onBlockingChange?.(blocking), [blocking, onBlockingChange]);
   useEffect(() => () => onBlockingChange?.(false), [onBlockingChange]);
 
@@ -56,7 +59,7 @@ export function DiscountPopover({
       <PopoverTrigger
         disabled={disabled}
         render={
-          appliedCents > 0 ? (
+          row ? (
             <Button
               type="button"
               variant="ghost"
@@ -67,13 +70,15 @@ export function DiscountPopover({
           )
         }
       >
-        {appliedCents > 0 ? (
+        {row ? (
           <>
             <span className="flex items-center gap-1">
               Descuento
               <PencilIcon aria-hidden className="size-3 text-muted-foreground" />
             </span>
-            <span className="tabular-nums">{formatMoney(-shownCents, currency)}</span>
+            <span className="tabular-nums">
+              {formatMoney(shownCents ? -shownCents : 0, currency)}
+            </span>
           </>
         ) : (
           <>

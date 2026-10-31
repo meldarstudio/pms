@@ -1,8 +1,12 @@
 import assert from "node:assert/strict";
 import { afterAll, afterEach, beforeAll, beforeEach, it, vi } from "vite-plus/test";
-import type { HTMLElement } from "happy-dom";
+import type { HTMLElement, HTMLInputElement } from "happy-dom";
 import type {
+  ReservationCancellation,
+  ReservationCouponMovement,
   ReservationDetail,
+  ReservationPayment,
+  ReservationRefund,
   WorkflowCommand,
   WorkflowIssue,
   WorkflowPreview,
@@ -153,6 +157,7 @@ function mockApi(options: ApiOptions = {}) {
               id: "payment-1",
               reservationId: saved.id,
               createdAt: "2026-10-19T15:00:00Z",
+              culqiChargeId: null,
             },
           ],
         };
@@ -168,9 +173,9 @@ function mockApi(options: ApiOptions = {}) {
         saved = {
           ...saved,
           savedDiscountCents: action.amountCents,
-          discountCents: 5000,
-          totalCents: 25000,
-          balanceCents: 25000,
+          discountCents: action.amountCents,
+          totalCents: saved.subtotalCents - action.amountCents,
+          balanceCents: saved.subtotalCents - action.amountCents - saved.paidCents,
         };
       if (action.type === "set-status")
         saved = {
@@ -364,18 +369,7 @@ it("shows notes, staying guests, and payments in their own cards and edits recor
     ],
     paidCents: 10000,
     balanceCents: 20000,
-    payments: [
-      {
-        id: "payment-1",
-        reservationId: "reservation-1",
-        amountCents: 10000,
-        method: "cash",
-        paymentDate: "2026-10-19",
-        reference: null,
-        notes: null,
-        createdAt: "2026-10-19T15:00:00Z",
-      },
-    ],
+    payments: [payment()],
   };
   mockApi();
   await render();
@@ -520,68 +514,52 @@ it("validates and saves only contact changes without replacing guests or notes",
   assert.equal(previews.length, 0);
 });
 
-it("waits for the current discount preview and saves its amount separately", async () => {
-  let finish!: (preview: WorkflowPreview) => void;
+it("applies and removes the discount from the Cuenta summary, keeping a rejected amount", async () => {
   mockApi({
-    preview: (command) =>
-      !finish &&
-      command.actions.some(
-        (action) => action.type === "set-discount" && action.amountCents === 5000,
-      )
-        ? new Promise((resolve) => {
-            finish = resolve;
-          })
-        : { billing: saved, validation: { issues: [] } },
+    write: () =>
+      writes.length === 1
+        ? Response.json({ error: "Temporary save failure" }, { status: 503 })
+        : undefined,
   });
   await render();
-  await click("Editar descuento");
-  await page.until(() => !button("Guardar cambios").disabled);
-  await fill("amount", "50");
-  assert.equal(button("Guardar cambios").disabled, true);
-  await page.until(() => !!finish);
-  await submit();
-  assert.equal(writes.length, 0);
-  await React.act(async () => {
-    finish({
-      billing: { ...saved, discountCents: 5000, totalCents: 25000, balanceCents: 25000 },
-      validation: { issues: [] },
-    });
-  });
-  await page.until(() => !button("Guardar cambios").disabled);
-  await submit();
-  await page.until(() => !popup());
-  assert.deepEqual(writes[0].actions, [{ type: "set-discount", amountCents: 5000 }]);
-});
-
-it("refreshes the discount editor's resulting bill after another save to the reservation", async () => {
-  mockApi();
-  await render();
-  await click("Editar descuento");
-  await page.until(() => !button("Guardar cambios").disabled);
-  assert.match(popup()!.textContent, /Pagos recibidosS\/\s*0Saldo pendienteS\/\s*300/);
-  const commands = (await browser.server.ssrLoadModule(
-    "/src/lib/reservation-commands.ts",
-  )) as typeof import("../src/lib/reservation-commands.ts");
-  let send!: ReturnType<typeof commands.useReservationCommands>["send"];
-  function OtherScreen() {
-    ({ send } = commands.useReservationCommands("reservation-1"));
-    return null;
-  }
-  const { createRoot } = await import("react-dom/client");
-  const other = createRoot(window.document.createElement("div") as never);
-  await React.act(async () => other.render(page.withClient(React.createElement(OtherScreen))));
-  await React.act(async () => {
-    await send([
-      {
-        type: "add-payment",
-        payment: { amountCents: 10000, method: "cash", paymentDate: "2026-10-19" },
-      },
-    ]);
-  });
-  await page.until(() =>
-    /Pagos recibidos-S\/\s*100Saldo pendienteS\/\s*200/.test(popup()!.textContent),
-  );
-  await React.act(async () => other.unmount());
+  const trigger = () =>
+    Array.from(account().querySelectorAll<HTMLElement>("button")).find((item) =>
+      text(item).startsWith("Descuento"),
+    )!;
+  const input = () => {
+    const label = Array.from(window.document.querySelectorAll("label")).find(
+      (item) => item.textContent.trim() === "Descuento · S/",
+    );
+    return label
+      ? window.document.querySelector<HTMLInputElement>(`[id="${label.htmlFor}"]`)
+      : null;
+  };
+  const popoverButton = (label: string) =>
+    Array.from(input()!.closest('[role="dialog"]')!.querySelectorAll<HTMLElement>("button")).find(
+      (item) => item.textContent.trim() === label,
+    );
+  assert.equal(text(trigger()), "Descuento S/ 0");
+  await React.act(async () => trigger().click());
+  await page.until(() => !!input(), "Descuento must open the discount popover");
+  assert.equal(popoverButton("Quitar"), undefined, "Quitar is only for an applied discount");
+  await page.fill(input()!, "50");
+  await React.act(async () => popoverButton("Aplicar")!.click());
+  await page.until(() => writes.length === 1);
+  assert.equal(input()?.value, "50", "A failed save keeps the popover and its amount");
+  await React.act(async () => popoverButton("Aplicar")!.click());
+  await page.until(() => !input(), "A saved discount closes the popover");
+  assert.deepEqual(writes[1].actions, [{ type: "set-discount", amountCents: 5000 }]);
+  assert.deepEqual(summaryRows().slice(0, 3), [
+    "Subtotal S/ 300",
+    "Descuento -S/ 50",
+    "Total S/ 250",
+  ]);
+  await React.act(async () => trigger().click());
+  await page.until(() => !!input());
+  await React.act(async () => popoverButton("Quitar")!.click());
+  await page.until(() => writes.length === 3 && !input());
+  assert.deepEqual(writes[2].actions, [{ type: "set-discount", amountCents: 0 }]);
+  assert.equal(previews.length, 0, "The popover saves the amount without a bill preview");
 });
 
 it.each([
@@ -704,7 +682,7 @@ for (const balance of [-10000]) {
   });
 }
 
-it("previews cancellation selected in the header before saving and shows the resulting credit", async () => {
+it("previews cancellation selected in the header before saving and shows the resulting refund due", async () => {
   saved = { ...saved, paidCents: 10000, balanceCents: 20000 };
   mockApi({
     preview: () => ({
@@ -729,7 +707,7 @@ it("previews cancellation selected in the header before saving and shows the res
   await page.until(() => !popup());
   assert.match(dateTrigger("Estado de la reserva").textContent, /Cancelada/);
   assert.match(page.container.textContent, /Cambio de planes/);
-  assert.match(page.container.textContent, /Saldo a favor/);
+  assert.match(page.container.textContent, /Por devolver/);
   assert.deepEqual(writes[0].actions, [
     { type: "set-status", status: "cancelled", reason: "Cambio de planes" },
   ]);
@@ -813,7 +791,7 @@ it.each([
   ["roomTypeId", "not enough rooms available for those dates"],
   ["roomId", "room is already assigned for those dates"],
 ] as const)(
-  "keeps cancelled credit intact when header restoration conflicts on %s",
+  "keeps the cancelled refund due intact when header restoration conflicts on %s",
   async (field, code) => {
     saved = {
       ...saved,
@@ -835,7 +813,7 @@ it.each([
     await render();
     assert.match(page.container.textContent, /Reserva cancelada/);
     assert.match(page.container.textContent, /Cambio de planes/);
-    assert.match(page.container.textContent, /Saldo a favor/);
+    assert.match(page.container.textContent, /Por devolver/);
     await selectStatus("Confirmada");
     await page.until(() => popup()?.textContent.includes("Habitación 1:") === true);
     assert.equal(button("Guardar cambios").disabled, true);
@@ -844,7 +822,7 @@ it.each([
     assert.equal(writes.length, 0);
     await click("Cerrar");
     assert.equal(saved.status, "cancelled");
-    assert.match(page.container.textContent, /Saldo a favor/);
+    assert.match(page.container.textContent, /Por devolver/);
   },
 );
 
@@ -1081,3 +1059,351 @@ it.each(["loading", "failed"] as const)(
     );
   },
 );
+
+const account = () => page.container.querySelector('[role="region"][aria-label="Cuenta"]')!;
+function text(node: object) {
+  const walker = window.document.createTreeWalker(node as never, 4);
+  const parts: string[] = [];
+  while (walker.nextNode())
+    parts.push(walker.currentNode!.textContent!.replace(/\s+/g, " ").trim());
+  return parts.filter(Boolean).join(" ");
+}
+const summaryRows = () =>
+  Array.from(account().querySelectorAll('dl[aria-label="Resumen de la cuenta"] > div')).map(text);
+
+it("shows the coupon and refund summary rows only when the bill has them", async () => {
+  mockApi();
+  await render();
+  assert.deepEqual(summaryRows(), [
+    "Subtotal S/ 300",
+    "Descuento S/ 0",
+    "Total S/ 300",
+    "Pagado S/ 0",
+  ]);
+  assert.equal(page.container.querySelector('[role="region"][aria-label="Pagos"]'), null);
+
+  saved = {
+    ...saved,
+    paidCents: 30000,
+    refundedCents: 5000,
+    couponAppliedCents: 10000,
+    couponIssuedCents: 5000,
+    balanceCents: 0,
+    payments: [payment({ amountCents: 30000 })],
+    refunds: [refund({ status: "completed", amountCents: 5000, refundDate: "2026-10-20" })],
+    coupons: [
+      {
+        id: "coupon-1",
+        code: "VUELTA50",
+        valueCents: 5000,
+        balanceCents: 5000,
+        issuedAt: "2026-10-20T16:00:00Z",
+        issuedBy: "admin",
+        expiresOn: "2027-10-20",
+      },
+    ],
+    couponMovements: [
+      couponMovement({ kind: "redeem", code: "OTRO100", amountCents: 10000 }),
+      couponMovement({
+        kind: "issue",
+        code: "VUELTA50",
+        amountCents: 5000,
+        at: "2026-10-20T16:00:00Z",
+      }),
+    ],
+  };
+  await page.client.invalidateQueries();
+  await page.until(
+    () => summaryRows().length > 4,
+    "The refreshed bill must show its optional rows",
+  );
+  assert.deepEqual(summaryRows(), [
+    "Subtotal S/ 300",
+    "Descuento S/ 0",
+    "Total S/ 300",
+    "Pagado S/ 300",
+    "Pagado con cupón S/ 100",
+    "Reembolsado -S/ 50",
+    "Pasado a cupón -S/ 50 VUELTA50 · Vence el 20 de octubre de 2027",
+  ]);
+});
+
+function payment(fields: Partial<ReservationPayment> = {}): ReservationPayment {
+  return {
+    id: "payment-1",
+    reservationId: "reservation-1",
+    amountCents: 10000,
+    method: "cash",
+    paymentDate: "2026-10-19",
+    reference: null,
+    notes: null,
+    createdAt: "2026-10-19T15:00:00Z",
+    culqiChargeId: null,
+    ...fields,
+  };
+}
+
+function refund(fields: Partial<ReservationRefund> = {}): ReservationRefund {
+  return {
+    id: "refund-1",
+    paymentId: "payment-1",
+    amountCents: 5000,
+    method: "transfer",
+    reference: null,
+    reason: "Sobrepago",
+    status: "requested",
+    requestedAt: "2026-10-20T15:00:00Z",
+    requestedBy: "admin",
+    resolvedAt: null,
+    resolvedBy: null,
+    refundDate: null,
+    completionReference: null,
+    failureReason: null,
+    culqiChargeId: null,
+    culqiRefundId: null,
+    ...fields,
+  };
+}
+
+function couponMovement({
+  kind,
+  code,
+  amountCents,
+  at = "2026-10-19T16:00:00Z",
+}: {
+  kind: ReservationCouponMovement["kind"];
+  code: string;
+  amountCents: number;
+  at?: string;
+}): ReservationCouponMovement {
+  return {
+    id: `${kind}-${code}`,
+    couponId: `coupon-${code}`,
+    code,
+    kind,
+    amountCents,
+    recordedAt: at,
+    recordedOn: at.slice(0, 10),
+    recordedBy: "admin",
+  };
+}
+
+it.each([
+  {
+    state: "guest owes",
+    bill: { initialPaymentDueCents: 15000 },
+    line: "Saldo pendiente S/ 300 Falta el depósito: S/ 150",
+    action: "Registrar pago",
+  },
+  {
+    state: "hotel owes",
+    bill: { paidCents: 40000, balanceCents: -10000 },
+    line: "Por devolver S/ 100",
+  },
+  {
+    state: "part of the refund due requested",
+    bill: { paidCents: 40000, balanceCents: -10000, pendingRefundCents: 4000 },
+    line: "Por devolver S/ 60",
+  },
+  {
+    state: "the whole refund due requested",
+    bill: { paidCents: 40000, balanceCents: -10000, pendingRefundCents: 10000 },
+    line: "Reembolso solicitado S/ 100",
+  },
+  { state: "settled", bill: { paidCents: 30000, balanceCents: 0 }, line: "Cuenta saldada S/ 0" },
+])("shows one status line and its action when the $state", async ({ bill, line, action }) => {
+  saved = { ...saved, ...bill };
+  mockApi();
+  await render();
+  const status = account().querySelector('[aria-label="Estado de la cuenta"]')!;
+  assert.equal(text(status).replace(` ${action}`, ""), line);
+  assert.deepEqual(Array.from(status.querySelectorAll("button")).map(text), action ? [action] : []);
+});
+
+it("lists payments, refunds and coupon movements oldest first, locking changed payments", async () => {
+  saved = {
+    ...saved,
+    paidCents: 41000,
+    refundedCents: 2000,
+    pendingRefundCents: 3000,
+    couponAppliedCents: 10000,
+    balanceCents: -19000,
+    payments: [
+      payment({ id: "cash", amountCents: 20000 }),
+      payment({
+        id: "online",
+        amountCents: 20000,
+        method: "card",
+        createdAt: "2026-10-19T16:00:00Z",
+        culqiChargeId: "chr_1",
+      }),
+      payment({
+        id: "yape",
+        amountCents: 1000,
+        method: "yape",
+        reference: "op-77",
+        createdAt: "2026-10-19T17:00:00Z",
+      }),
+    ],
+    refunds: [
+      refund({ id: "failed", paymentId: "cash", status: "failed", failureReason: "Cuenta errada" }),
+      refund({
+        id: "requested",
+        paymentId: "cash",
+        amountCents: 3000,
+        requestedAt: "2026-10-20T16:00:00Z",
+      }),
+      refund({
+        id: "completed",
+        paymentId: "cash",
+        amountCents: 2000,
+        status: "completed",
+        requestedAt: "2026-10-21T15:00:00Z",
+        refundDate: "2026-10-21",
+        completionReference: "OP-1",
+      }),
+    ],
+    couponMovements: [
+      couponMovement({
+        kind: "redeem",
+        code: "OTRO100",
+        amountCents: 10000,
+        at: "2026-10-19T14:00:00Z",
+      }),
+    ],
+  };
+  mockApi();
+  await render();
+  const table = account().querySelector('table[aria-label="Movimientos"]')!;
+  assert.deepEqual(Array.from(table.querySelectorAll("th")).map(text), [
+    "Fecha",
+    "Movimiento",
+    "Método",
+    "Referencia",
+    "Importe",
+    "Acciones",
+  ]);
+  const rows = Array.from(table.querySelectorAll("tbody tr"));
+  assert.deepEqual(rows.map(text), [
+    "19 oct 2026 Cupón aplicado Cupón OTRO100 S/ 100",
+    "19 oct 2026 Pago Efectivo — S/ 200",
+    "19 oct 2026 Pago En línea Tarjeta — S/ 200",
+    "19 oct 2026 Pago Yape OP-77 S/ 10",
+    "20 oct 2026 Reembolso Fallido Transferencia — S/ 50",
+    "20 oct 2026 Reembolso Solicitado Transferencia — (S/ 30)",
+    "21 oct 2026 Reembolso Transferencia OP-1 -S/ 20",
+  ]);
+  assert.equal(text(rows[4].querySelector("del")!), "S/ 50", "A failed refund is struck through");
+  assert.ok(rows[1].querySelector('[aria-label="Tiene reembolsos: no se puede editar"]'));
+  assert.ok(rows[2].querySelector('[aria-label="Pago en línea: no se puede editar"]'));
+  assert.equal(rows[0].querySelector("button"), null, "Coupon movements are read-only");
+  assert.equal(rows[5].querySelector("button"), null, "Refund rows are read-only here");
+  assert.ok(summaryRows().includes("Reembolsado -S/ 20"), "Only the completed refund counts");
+  assert.equal(table.querySelectorAll('[aria-label^="Acciones del pago"]').length, 1);
+  await chooseRowAction('[aria-label^="Acciones del pago"]', "Eliminar");
+  await submit();
+  await page.until(() => writes.length === 1);
+  assert.deepEqual(writes[0].actions, [{ type: "delete-payment", paymentId: "yape" }]);
+});
+
+function cancellation(fields: Partial<ReservationCancellation> = {}): ReservationCancellation {
+  return {
+    id: "cancellation-1",
+    outcome: "cancelled",
+    recordedAt: "2026-10-18T15:00:00Z",
+    recordedBy: "admin",
+    freeUntil: "2026-10-17",
+    policyChargeCents: 15000,
+    waivedCents: 0,
+    finalChargeCents: 15000,
+    restoredAt: null,
+    waivers: [],
+    ...fields,
+  };
+}
+
+it("bills a cancelled stay by its active charge and waivers and explains it in an alert", async () => {
+  const waiver = (id: string, amountCents: number, reason: string) => ({
+    id,
+    amountCents,
+    reason,
+    recordedAt: "2026-10-18T16:00:00Z",
+    recordedBy: "admin",
+  });
+  const active = cancellation({
+    id: "active",
+    waivedCents: 5000,
+    finalChargeCents: 10000,
+    waivers: [waiver("waiver-1", 5000, "Cliente frecuente")],
+  });
+  saved = {
+    ...saved,
+    status: "cancelled",
+    cancelledAt: "2026-10-18T15:00:00Z",
+    cancellationReason: "Cambio de planes",
+    savedDiscountCents: 2000,
+    subtotalCents: 10000,
+    discountCents: 0,
+    totalCents: 10000,
+    paidCents: 15000,
+    balanceCents: -5000,
+    payments: [payment({ amountCents: 15000 })],
+    cancellation: active,
+    cancellations: [
+      cancellation({
+        id: "restored",
+        recordedAt: "2026-10-10T15:00:00Z",
+        restoredAt: "2026-10-11T15:00:00Z",
+        waivers: [waiver("old-waiver", 15000, "Error del hotel")],
+      }),
+      active,
+    ],
+  };
+  mockApi();
+  await render();
+  assert.deepEqual(summaryRows(), [
+    "Cargo por cancelación S/ 150",
+    "Cargo perdonado -S/ 50 Cliente frecuente",
+    "Total S/ 100",
+    "Pagado S/ 150",
+  ]);
+  assert.equal(
+    Array.from(account().querySelectorAll("button")).some((item) =>
+      text(item).startsWith("Descuento"),
+    ),
+    false,
+    "A cancelled stay's discount cannot be edited",
+  );
+  const alert = page.container.querySelector('[role="alert"]')!;
+  assert.equal(text(alert), "Reserva cancelada · 18 oct 2026 Cambio de planes");
+  assert.doesNotMatch(page.container.textContent, /saldo a favor|crédito/i);
+});
+
+it("reads No se presentó for a No-show stay and bills its charge", async () => {
+  saved = {
+    ...saved,
+    status: "no_show",
+    subtotalCents: 15000,
+    totalCents: 15000,
+    balanceCents: 15000,
+    cancellation: cancellation({
+      outcome: "no_show",
+      recordedAt: "2026-10-20T03:00:00Z",
+      freeUntil: null,
+    }),
+  };
+  saved.cancellations = [saved.cancellation!];
+  mockApi();
+  await render();
+  assert.match(text(page.container.querySelector("fieldset header")!), /Ana Pérez No se presentó/);
+  assert.match(dateTrigger("Estado de la reserva").textContent, /No se presentó/);
+  assert.equal(
+    text(page.container.querySelector('[role="alert"]')!),
+    "No se presentó · 19 oct 2026",
+  );
+  assert.deepEqual(summaryRows(), [
+    "Cargo por no presentarse S/ 150",
+    "Total S/ 150",
+    "Pagado S/ 0",
+  ]);
+});

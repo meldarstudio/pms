@@ -44,7 +44,11 @@ export function ReservationLifecycle({
           label="Estado de la reserva"
           hideLabel
           value={detail.status}
-          options={options}
+          options={
+            options.some((option) => option.value === detail.status)
+              ? options
+              : [...options, { value: detail.status, label: reservationStatusLabel(detail.status) }]
+          }
           disabled={blocked || saving}
           onChange={(value) => {
             const status = statuses.find((status) => status === value);
