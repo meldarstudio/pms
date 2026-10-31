@@ -210,10 +210,15 @@ Gross paid, completed refunds, and requested amounts remain distinct in reads.
 Nothing refunds automatically. Workflow actions record manual returns or a Culqi call:
 
 - `request-refund`: request an amount against a payment, with method, reason, and
-  optional reference, recording time/account.
-- `request-culqi-refund`: request a card refund against a Culqi payment.
-- `complete-refund`: record returned money with a reference and property date no
-  later than today.
+  optional reference, recording time/account. Optional `completed: { refundDate,
+  reference? }` records money already handed back: the refund is checked against the
+  request limits below, then saved completed in the same action, with the requester
+  as resolver at the same time.
+- `request-culqi-refund`: request a card refund against a Culqi payment. It does not
+  accept `completed`; Culqi refunds complete through their own call.
+- `complete-refund`: record returned money with a property date no later than today
+  and an optional reference. Completed refunds read `completionReference: null`
+  when none was given, as does the refund `reference` in `GET /payments`.
 - `fail-refund`: resolve a mistaken/failed request with a reason; never delete it.
 
 Only requested refunds can resolve. Requests cannot exceed refund due less other

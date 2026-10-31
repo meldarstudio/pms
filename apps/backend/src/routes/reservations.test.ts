@@ -1523,6 +1523,112 @@ describe("refunds", () => {
     expect(saved.refunds).toHaveLength(1);
     expect(saved.pendingRefundCents).toBe(10000);
   });
+
+  describe("money already handed back", () => {
+    const handedBack = (d: Detail, amountCents: number, refundDate = "2026-10-09") =>
+      ({
+        type: "request-refund",
+        paymentId: d.payments[0].id,
+        amountCents,
+        method: "cash",
+        reason: "Cancelled stay",
+        completed: { refundDate },
+      }) satisfies WorkflowAction;
+
+    it("records S/60 returned in cash as one completed refund with no reference, leaving S/40 due", async () => {
+      const cancelled = await lateCancellation(30000);
+      const returned = await command(cancelled, [handedBack(cancelled, 6000)]);
+      expect(returned).toMatchObject({
+        paidCents: 30000,
+        refundedCents: 6000,
+        pendingRefundCents: 0,
+        refundDueCents: 4000,
+      });
+      expect(returned.refunds).toMatchObject([
+        {
+          amountCents: 6000,
+          method: "cash",
+          reference: null,
+          status: "completed",
+          requestedAt: "2026-10-10T15:00:00.000Z",
+          requestedBy: "hotelmanantial",
+          resolvedAt: "2026-10-10T15:00:00.000Z",
+          resolvedBy: "hotelmanantial",
+          refundDate: "2026-10-09",
+          completionReference: null,
+        },
+      ]);
+      expect(await (await request(`/reservations/${cancelled.id}`)).json()).toEqual(returned);
+    });
+
+    it("keeps the completion's reference when staff give one", async () => {
+      const cancelled = await lateCancellation(30000);
+      const action = handedBack(cancelled, 6000, "2026-10-10");
+      const returned = await command(cancelled, [
+        { ...action, method: "transfer", completed: { ...action.completed, reference: "op-12" } },
+      ]);
+      expect(returned.refunds).toMatchObject([
+        { status: "completed", refundDate: "2026-10-10", completionReference: "OP-12" },
+      ]);
+    });
+
+    it("rejects money handed back on a future date or beyond the refund due, recording nothing", async () => {
+      const cancelled = await lateCancellation(30000);
+      expect(await command(cancelled, [handedBack(cancelled, 6000, "2026-10-11")], 400)).toEqual({
+        error: "refund date cannot be in the future",
+      });
+      expect(await command(cancelled, [handedBack(cancelled, 10001)], 400)).toEqual({
+        error: "refund exceeds the refund due",
+      });
+      expect(await (await request(`/reservations/${cancelled.id}`)).json()).toEqual(cancelled);
+    });
+
+    it("replays a retried request without recording the money twice", async () => {
+      const cancelled = await lateCancellation(30000);
+      const body = { requestId: crypto.randomUUID(), actions: [handedBack(cancelled, 6000)] };
+      const first = await request(`/reservations/${cancelled.id}/commands`, "POST", body);
+      expect(first.status).toBe(200);
+      const saved = (await first.json()) as Detail;
+      vi.setSystemTime(new Date("2026-10-10T16:00:00Z"));
+      const retried = await request(`/reservations/${cancelled.id}/commands`, "POST", body);
+      expect(retried.status).toBe(200);
+      expect(await retried.json()).toEqual(saved);
+      const reread = (await (await request(`/reservations/${cancelled.id}`)).json()) as Detail;
+      expect(reread.refunds).toHaveLength(1);
+      expect(reread).toMatchObject({ refundedCents: 6000, refundDueCents: 4000 });
+    });
+
+    it("completes a requested refund without a reference", async () => {
+      const cancelled = await lateCancellation(30000);
+      const requested = await command(cancelled, [requestRefund(cancelled, 10000)]);
+      const completed = await command(requested, [
+        { type: "complete-refund", refundId: requested.refunds[0].id, refundDate: "2026-10-10" },
+      ]);
+      expect(completed).toMatchObject({ refundedCents: 10000, refundDueCents: 0 });
+      expect(completed.refunds).toMatchObject([
+        { status: "completed", refundDate: "2026-10-10", completionReference: null },
+      ]);
+    });
+
+    it("refuses to mark a Culqi refund as already handed back", async () => {
+      const cancelled = await lateCancellation(30000);
+      const response = await request(`/reservations/${cancelled.id}/commands`, "POST", {
+        requestId: crypto.randomUUID(),
+        actions: [
+          {
+            type: "request-culqi-refund",
+            paymentId: cancelled.payments[0].id,
+            amountCents: 6000,
+            reason: "Cancelled stay",
+            completed: { refundDate: "2026-10-10" },
+          },
+        ],
+      });
+      expect(response.status).toBe(400);
+      expect(await response.json()).toEqual({ error: 'Unrecognized key: "completed"' });
+      expect(await (await request(`/reservations/${cancelled.id}`)).json()).toEqual(cancelled);
+    });
+  });
 });
 
 function pauseNextCommit() {

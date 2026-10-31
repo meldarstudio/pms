@@ -602,12 +602,14 @@ export type WorkflowAction =
       method: PaymentMethod;
       reference?: string;
       reason: string;
+      completed?: RefundCompletion;
     }
-  | { type: "complete-refund"; refundId: string; refundDate: string; reference: string }
+  | ({ type: "complete-refund"; refundId: string } & RefundCompletion)
   | { type: "fail-refund"; refundId: string; reason: string }
   | { type: "issue-coupon"; amountCents: number; guestAccepted: true }
   | { type: "redeem-coupon"; code: string; amountCents: number }
   | { type: "notes"; notes: string };
+export type RefundCompletion = { refundDate: string; reference?: string };
 export type WorkflowCommand = {
   requestId: string;
   actions: WorkflowAction[];

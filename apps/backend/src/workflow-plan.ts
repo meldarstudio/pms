@@ -35,6 +35,7 @@ const requestsRefund = (
 ): action is Action<"request-refund" | "request-culqi-refund"> =>
   action.type === "request-refund" || action.type === "request-culqi-refund";
 const CULQI_MIN_REFUND_CENTS = 100;
+type RefundCompletion = Pick<Action<"complete-refund">, "refundDate" | "reference">;
 
 type PlanContext = CommandContext & {
   db: Db;
@@ -44,6 +45,7 @@ type PlanContext = CommandContext & {
   opened: Set<string>;
   waivers: Action<"waive-cancellation-charge">[];
   refundActions: RefundAction[];
+  handedBack: { refund: State["refunds"][number]; completion: RefundCompletion }[];
   couponActions: Action<"issue-coupon" | "redeem-coupon">[];
 };
 
@@ -325,7 +327,7 @@ function applyWaivers({ state, waivers, account, now }: PlanContext) {
     fail("waiver cannot exceed the cancellation charge");
 }
 
-function applyRefunds({ state, refundActions, account, today, now }: PlanContext) {
+function applyRefunds({ state, refundActions, handedBack, account, today, now }: PlanContext) {
   for (const action of refundActions) {
     if (requestsRefund(action)) {
       const payment =
@@ -346,7 +348,7 @@ function applyRefunds({ state, refundActions, account, today, now }: PlanContext
         )
           fail("a Culqi refund for this payment is pending");
       }
-      state.refunds.push({
+      const refund: State["refunds"][number] = {
         id: crypto.randomUUID(),
         reservationId: state.reservation.id,
         paymentId: action.paymentId,
@@ -366,27 +368,48 @@ function applyRefunds({ state, refundActions, account, today, now }: PlanContext
         failureReason: null,
         culqiChargeId: culqi ? payment.culqiChargeId : null,
         culqiRefundId: null,
-      });
+      };
+      state.refunds.push(refund);
+      if (!culqi && action.completed)
+        handedBack.push({ refund, completion: checkCompletion(action.completed, today) });
       continue;
     }
     const refund =
       state.refunds.find((refund) => refund.id === action.refundId) ?? fail("refund not found");
     if (refund.status !== "requested") fail("refund is already resolved");
-    if (action.type === "complete-refund" && action.refundDate > today)
-      fail("refund date cannot be in the future");
-    Object.assign(refund, {
-      status: action.type === "complete-refund" ? "completed" : "failed",
-      resolvedAt: now,
-      resolvedAccountId: account.id,
-      resolvedBy: account.username,
-      ...(action.type === "complete-refund"
-        ? {
-            refundDate: action.refundDate,
-            completionReference: action.reference,
-          }
-        : { failureReason: action.reason }),
-    });
+    if (action.type === "complete-refund")
+      completeRefund(refund, checkCompletion(action, today), { account, now });
+    else
+      Object.assign(refund, {
+        status: "failed",
+        ...resolution({ account, now }),
+        failureReason: action.reason,
+      });
   }
+}
+
+function checkCompletion({ refundDate, reference }: RefundCompletion, today: string) {
+  if (refundDate > today) fail("refund date cannot be in the future");
+  return { refundDate, reference };
+}
+
+const resolution = ({ account, now }: Pick<PlanContext, "account" | "now">) => ({
+  resolvedAt: now,
+  resolvedAccountId: account.id,
+  resolvedBy: account.username,
+});
+
+function completeRefund(
+  refund: State["refunds"][number],
+  { refundDate, reference }: RefundCompletion,
+  ctx: Pick<PlanContext, "account" | "now">,
+) {
+  Object.assign(refund, {
+    status: "completed",
+    ...resolution(ctx),
+    refundDate,
+    completionReference: reference ?? null,
+  });
 }
 
 const movement = (
@@ -541,6 +564,7 @@ export async function plan(
     opened: new Set(),
     waivers: [],
     refundActions: [],
+    handedBack: [],
     couponActions: [],
   };
   for (const action of actions) await dispatch(action, ctx);
@@ -552,5 +576,6 @@ export async function plan(
   checkCouponLocks(ctx);
   await applyCoupons(ctx);
   checkRefundLimits(ctx, actions);
+  for (const { refund, completion } of ctx.handedBack) completeRefund(refund, completion, ctx);
   return { state: ctx.state };
 }

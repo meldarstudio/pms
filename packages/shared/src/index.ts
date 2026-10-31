@@ -223,6 +223,10 @@ export const couponCodeSchema = z
   .string()
   .transform((code) => code.replace(/[\s-]/g, "").toUpperCase())
   .pipe(z.string().min(1, "coupon not found").max(40, "coupon not found"));
+const refundCompletionSchema = z
+  .object({ refundDate: z.iso.date(), reference: text(200).toUpperCase().optional() })
+  .strict();
+
 export const workflowActionSchema = z.discriminatedUnion("type", [
   z.object({ type: z.literal("contact"), contact: contactSchema }).strict(),
   z
@@ -275,6 +279,7 @@ export const workflowActionSchema = z.discriminatedUnion("type", [
       method: paymentInputSchema.shape.method,
       reference: text(200).toUpperCase().optional(),
       reason: text(2000),
+      completed: refundCompletionSchema.optional(),
     })
     .strict(),
   z
@@ -289,8 +294,7 @@ export const workflowActionSchema = z.discriminatedUnion("type", [
     .object({
       type: z.literal("complete-refund"),
       refundId: z.string().min(1),
-      refundDate: z.iso.date(),
-      reference: text(200).toUpperCase(),
+      ...refundCompletionSchema.shape,
     })
     .strict(),
   z

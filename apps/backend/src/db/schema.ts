@@ -320,7 +320,7 @@ export const refunds = sqliteTable(
       sql`(${table.status} = 'requested' AND ${table.resolvedAt} IS NULL AND ${table.resolvedAccountId} IS NULL
           AND ${table.refundDate} IS NULL AND ${table.completionReference} IS NULL AND ${table.failureReason} IS NULL)
         OR (${table.status} = 'completed' AND ${table.resolvedAt} IS NOT NULL AND ${table.resolvedAccountId} IS NOT NULL
-          AND ${table.refundDate} IS NOT NULL AND ${table.completionReference} IS NOT NULL AND ${table.failureReason} IS NULL)
+          AND ${table.refundDate} IS NOT NULL AND ${table.failureReason} IS NULL)
         OR (${table.status} = 'failed' AND ${table.resolvedAt} IS NOT NULL AND ${table.resolvedAccountId} IS NOT NULL
           AND ${table.refundDate} IS NULL AND ${table.completionReference} IS NULL AND ${table.failureReason} IS NOT NULL)`,
     ),
