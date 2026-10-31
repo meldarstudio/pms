@@ -125,6 +125,12 @@ const totalSql = sql<number>`case when ${inArray(reservations.status, inventoryS
 export const balanceCentsSql = sql<number>`(${totalSql} - ${couponAppliedSql}
   - (${paidSql} - ${refundedSql} - ${couponIssuedSql}))`;
 
+const stayOverStatuses = ["checked_out", "cancelled", "no_show"];
+
+export const unresolvedBillSql = sql<boolean>`(case
+  when ${inArray(reservations.status, stayOverStatuses)} then ${balanceCentsSql} <> 0
+  else ${balanceCentsSql} < 0 end)`;
+
 function settle(terms: {
   rooms: BillableRoom[];
   released: boolean;

@@ -3402,3 +3402,96 @@ describe("paginated reservation operations", () => {
     expect((await listed("?status=cancelled")).map((row) => row.id)).toEqual([cancelled.id]);
   });
 });
+
+describe("Unresolved bill list filter", () => {
+  async function unresolvedExamples() {
+    const examples = await billExamples();
+    const credit = await command(examples.credit, [
+      {
+        type: "request-refund",
+        paymentId: examples.credit.payments[0].id,
+        amountCents: 2000,
+        method: "transfer",
+        reason: "Overpaid",
+      },
+    ]);
+    const checkedIn = await command(
+      await book("Ike CheckedIn", { checkIn: "2026-10-10", checkOut: "2026-10-11" }),
+      [{ type: "set-status", status: "checked_in" }],
+    );
+    const noShow = await command(
+      await book("Nia NoShow", { checkIn: "2026-10-09", checkOut: "2026-10-10" }),
+      [{ type: "set-status", status: "no_show" }],
+    );
+    const charged = await command(
+      await book("Cal Charged", { checkIn: "2026-10-11", checkOut: "2026-10-12" }),
+      [{ type: "set-status", status: "cancelled" }],
+    );
+    seedReservation(db.sqlite, {
+      id: "lost",
+      code: "LOST",
+      guestName: "Lu Lost",
+      checkIn: "2026-10-26",
+      checkOut: "2026-10-27",
+      createdAt: "2026-10-10",
+      status: "unfulfilled",
+    });
+    db.sqlite
+      .exec(`INSERT INTO payments (id, reservation_id, amount_cents, method, payment_date, created_at)
+      VALUES ('lost-payment', 'lost', 10000, 'card', '2026-10-10', '2026-10-10')`);
+    return { ...examples, credit, checkedIn, noShow, charged };
+  }
+
+  it("lists refund due on any status and money owed only once the stay is over", async () => {
+    const { complex, settled, credit, cancelled, owing, checkedIn, noShow, charged } =
+      await unresolvedExamples();
+    expect(credit).toMatchObject({
+      status: "confirmed",
+      balanceCents: -2000,
+      pendingRefundCents: 2000,
+    });
+    expect(checkedIn).toMatchObject({ status: "checked_in", balanceCents: 10000 });
+    expect(noShow).toMatchObject({ status: "no_show", balanceCents: 10000 });
+    expect(charged).toMatchObject({ status: "cancelled", balanceCents: 10000 });
+    const page = await paged("balance=unresolved");
+    expect(page.total).toBe(6);
+    expect(page.rows.map((row) => [row.id, row.status, row.balanceCents])).toEqual([
+      [noShow.id, "no_show", 10000],
+      [charged.id, "cancelled", 10000],
+      [credit.id, "confirmed", -2000],
+      [cancelled.id, "cancelled", -5000],
+      [owing.id, "checked_out", 10000],
+      ["lost", "unfulfilled", -10000],
+    ]);
+    const listed = new Set(page.rows.map((row) => row.id));
+    for (const excluded of [complex, checkedIn, settled]) expect(listed).not.toContain(excluded.id);
+  });
+
+  it("pages unresolved bills with an exact total and ANDs them with other filters", async () => {
+    const { credit, cancelled, owing, noShow, charged } = await unresolvedExamples();
+    expect(await paged("balance=unresolved&limit=4&offset=4")).toMatchObject({
+      rows: [{ id: owing.id }, { id: "lost" }],
+      total: 6,
+      limit: 4,
+      offset: 4,
+    });
+    const statuses = await paged("balance=unresolved&statuses=cancelled");
+    expect(statuses.total).toBe(2);
+    expect(statuses.rows.map((row) => row.id)).toEqual([charged.id, cancelled.id]);
+    expect(await paged("limit=1&balance=unresolved")).toMatchObject({ total: 6 });
+    const ascending = ["lost", cancelled.id, credit.id, charged.id, noShow.id, owing.id];
+    const descending = [charged.id, noShow.id, owing.id, credit.id, cancelled.id, "lost"];
+    for (const [direction, order] of [
+      ["asc", ascending],
+      ["desc", descending],
+    ] as const) {
+      const pages = await Promise.all(
+        [0, 4].map((offset) =>
+          paged(`balance=unresolved&sort=balance&direction=${direction}&limit=4&offset=${offset}`),
+        ),
+      );
+      for (const page of pages) expect(page.total).toBe(6);
+      expect(pages.flatMap((page) => page.rows.map((row) => row.id))).toEqual(order);
+    }
+  });
+});

@@ -730,7 +730,7 @@ export type ReservationListParams = {
   checkIn?: string;
   checkOut?: string;
   statuses?: string;
-  balance?: "outstanding" | "settled" | "credit";
+  balance?: "outstanding" | "settled" | "credit" | "unresolved";
   refund?: "due" | "requested";
   assignment?: "assigned" | "unassigned";
   sort: "checkIn" | "checkOut" | "guestName" | "balance";

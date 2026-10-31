@@ -61,7 +61,8 @@ waivers, completed versus requested refunds, and coupon settlement. Detail, list
 command checks, and edit previews use it; `stayBill` prices unsaved rooms (creation
 preview, cancellation policy) and `quoteBill` a quote. The list filters and sorts
 balance with `balanceCentsSql`, the same rule in SQL, kept beside the TypeScript and
-tested against it; change both together. New bill-producing reads must use this
+tested against it; change both together. `unresolvedBillSql` builds the
+[Unresolved bill](#reservation-list-reads) rule on it. New bill-producing reads must use this
 module rather than summing money themselves. Flexible's required initial payment
 sums each room's first saved nightly price, capped at total after discount; full
 upfront requires total.
@@ -339,13 +340,23 @@ OR, and sending it with `status` applies both restrictions.
 
 - Exact check-in/checkout filters differ from legacy `from`/`to` overlap semantics:
   checkout after `from`, check-in on/before `to`.
-- Balance filters use signed cents and final charges/net retained independently of
-  status. Refund filters distinguish money due from unresolved requests.
+- Balance filters use the signed `balanceCents` (final charges against net retained):
+  `outstanding` > 0, `settled` = 0 and `credit` (Por devolver) < 0, independently of
+  status. `unresolved` selects an [Unresolved bill](../GLOSSARY.md): refund due on any
+  status, including Unfulfilled, or an outstanding balance on a checked-out, cancelled
+  or no-show stay. Requested or failed refunds don't settle refund due, so those
+  reservations stay listed. Its SQL predicate, `unresolvedBillSql` in
+  [the bill module](../apps/backend/src/lib/reservation-bill.ts), is the shared rule
+  for other callers; `paginated=true&limit=1&balance=unresolved` returns its count.
+- Refund filters are kept for compatibility: `refund=due` matches `balance=credit`,
+  and `refund=requested` matches reservations with a requested refund.
 - Assigned means every reserved room has an assignment; unassigned includes partial
   assignments. Search matches booking-contact-name tokens/code, not staying guests
   or physical room numbers; `guestId` matches the booking contact.
-- Sorting uses contact name/code as deterministic tie-breakers. Filters/sort cover
-  all matches before pagination; count remains exact even beyond the last page.
+- Sorting uses ascending contact name/code as deterministic tie-breakers, including
+  for `sort=balance` in either direction. Every filter, the balance sort, `limit`/
+  `offset` and the count run in SQL, so pages and the count cover all matches and the
+  count remains exact even beyond the last page.
   Charge/payment aggregates are independent; [load and present](#reservation-reads)
   only the selected page. List rows add `guestName` and return empty `stayingGuests`;
   read the detail for staying guests. Calendar uses its own read.

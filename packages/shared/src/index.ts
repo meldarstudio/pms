@@ -170,7 +170,7 @@ export const reservationListQuerySchema = listQuerySchema.extend({
     .transform((value) => value.split(","))
     .pipe(z.array(reservationStatusSchema).min(1))
     .optional(),
-  balance: z.enum(["outstanding", "settled", "credit"]).optional(),
+  balance: z.enum(["outstanding", "settled", "credit", "unresolved"]).optional(),
   refund: z.enum(["due", "requested"]).optional(),
   assignment: z.enum(["assigned", "unassigned"]).optional(),
   sort: z.enum(["checkIn", "checkOut", "guestName", "balance"]).optional(),
