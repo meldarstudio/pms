@@ -55,8 +55,7 @@ beforeEach(() => {
       plan: "flexible",
       cancellationPolicy: {
         chargeBasis: "first_night",
-        freeUntilHoursBeforeCheckIn: 48,
-        checkInTime: "15:00",
+        freeUntilDaysBeforeCheckIn: 2,
       },
       paymentSchedule: "first_night_deposit",
       priceAdjustmentPercent: 0,

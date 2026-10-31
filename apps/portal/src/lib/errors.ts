@@ -102,6 +102,7 @@ const messages: Record<string, string> = {
   "phone number is too long": "El número tiene demasiados dígitos para el país seleccionado.",
   "phone extensions are not supported": "No se admiten extensiones telefónicas.",
   "amount cannot be zero": "El importe debe ser distinto de cero.",
+  "unknown rate plan": "Esta tarifa ya no existe. Elige otra tarifa.",
 };
 
 export function knownErrorMessage(message: string): string | null {

@@ -1,8 +1,10 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useSelector } from "@tanstack/react-form";
 import { useQueryClient } from "@tanstack/react-query";
-import { BedDoubleIcon, PlusIcon, Trash2Icon, XIcon } from "lucide-react";
-import { BookingSummary } from "@/components/booking-summary";
+import { BedDoubleIcon, PlusIcon } from "lucide-react";
+import { CreationSummary } from "@/components/creation-summary";
+import { DiscountPopover } from "@/components/discount-popover";
+import { ReservationRoomRow } from "@/components/reservation-room-rows";
 import type { BookingTarget } from "@/components/room-booking-dialog";
 import { Button } from "@/components/ui/button";
 import {
@@ -14,21 +16,28 @@ import {
 } from "@/components/ui/empty";
 import { FieldError, FieldGroup, FieldLegend, FieldSet } from "@/components/ui/field";
 import { Separator } from "@/components/ui/separator";
-import { createWorkflowBooking } from "@/lib/api";
+import {
+  createWorkflowBooking,
+  type CreationPreviewInput,
+  type ReservationDetail,
+} from "@/lib/api";
 import { serverFieldErrors } from "@/lib/api-error";
 import { format } from "@/lib/dates";
 import { parseISO } from "date-fns";
 import { setServerErrors } from "@/lib/form-errors";
-import { CURRENCY, formatMajor, formatMoney, parseMajorToCents } from "@/lib/money";
+import { CURRENCY, formatMajor, parseMajorToCents } from "@/lib/money";
 import { newBookingAvailability } from "@/lib/new-booking-availability";
 import {
   useAvailability,
+  useCreationPreview,
+  useRatePlans,
   useReservations,
   useRoomClosures,
   useRooms,
   useRoomTypes,
 } from "@/lib/queries";
 import { unavailableRoomIds } from "@/lib/assignment-availability";
+import { ratePlanLabels } from "@/lib/rate-plans";
 import { changeCheckIn, minimumCheckOut } from "@/lib/reservation-editor";
 import { blurThenChange, submitForm, useReservationForm } from "@/lib/reservation-form";
 import {
@@ -38,6 +47,7 @@ import {
   type NewBookingValues,
 } from "@/lib/reservation-form-schemas";
 import { propertyToday } from "@/lib/property-calendar";
+import { usePropertyCalendar } from "@/lib/use-property-calendar";
 import { phoneDraft, phonePayload } from "@/lib/phone";
 
 export function NewBooking({
@@ -48,7 +58,7 @@ export function NewBooking({
   onSavingChange,
 }: {
   target: Exclude<BookingTarget, { mode: "edit" }>;
-  onCreated: (id: string) => void;
+  onCreated: (reservation: ReservationDetail) => void;
   onCancel: () => void;
   onDirtyChange: (dirty: boolean) => void;
   onSavingChange: (saving: boolean) => void;
@@ -56,6 +66,8 @@ export function NewBooking({
   const client = useQueryClient();
   const roomTypes = useRoomTypes();
   const rooms = useRooms();
+  const ratePlans = useRatePlans();
+  const { today } = usePropertyCalendar();
   const schema = useMemo(() => newBookingSchema(roomTypes.data ?? []), [roomTypes.data]);
   const [defaults] = useState<NewBookingValues>(() => {
     const checkIn = target.mode === "create" ? target.checkIn : propertyToday();
@@ -63,6 +75,7 @@ export function NewBooking({
       checkIn,
       checkOut: minimumCheckOut(checkIn),
       status: "confirmed",
+      ratePlan: "flexible",
       fullName: "",
       email: "",
       phone: phoneDraft(null),
@@ -83,14 +96,14 @@ export function NewBooking({
     };
   });
   const [error, setError] = useState("");
-  const [discountDirty, setDiscountDirty] = useState(false);
+  const [discountBlocking, setDiscountBlocking] = useState(false);
   const retry = useRef<{ payload: string; requestId: string } | null>(null);
   const form = useReservationForm({
     defaultValues: defaults,
     validationLogic: blurThenChange(),
     validators: { onDynamic: schema },
     onSubmit: async ({ value }) => {
-      if (!availabilityReady || selection.rooms !== values.rooms) return;
+      if (!ready) return;
       setError("");
       const parsed = schema.parse(value);
       const phone = phonePayload(parsed.phone);
@@ -105,6 +118,7 @@ export function NewBooking({
         rooms: workflowDrafts(parsed).map((draft) => draft.room),
         notes: parsed.notes,
         discountCents: parseMajorToCents(parsed.discount.trim() || "0")!,
+        ratePlan: parsed.ratePlan,
       };
       const payload = JSON.stringify(data);
       if (retry.current?.payload !== payload)
@@ -116,7 +130,7 @@ export function NewBooking({
         });
         await client.invalidateQueries();
         onDirtyChange(false);
-        onCreated(result.id);
+        onCreated(result);
       } catch (cause) {
         const fields = serverFieldErrors(cause, "details") ?? serverFieldErrors(cause, "guest");
         if (fields) setServerErrors(form, fields);
@@ -128,8 +142,8 @@ export function NewBooking({
   const busy = useSelector(form.store, (state) => state.isSubmitting);
   const unchanged = useSelector(form.store, (state) => state.isDefaultValue);
   useEffect(
-    () => onDirtyChange(!unchanged || discountDirty),
-    [unchanged, discountDirty, onDirtyChange],
+    () => onDirtyChange(!unchanged || discountBlocking),
+    [unchanged, discountBlocking, onDirtyChange],
   );
   useEffect(() => {
     onSavingChange(busy);
@@ -178,34 +192,37 @@ export function NewBooking({
     availability.data.roomTypes.length > 0 &&
     availability.data.roomTypes.every((type) => type.free === 0);
   const errors = schemaErrors(schema.safeParse(values));
-  const summaryRooms = values.rooms.map((draft) => {
-    const type = availability.data?.roomTypes.find((type) => type.id === draft.room.roomTypeId);
-    return {
-      key: draft.id,
-      typeName:
-        roomTypes.data?.find((type) => type.id === draft.room.roomTypeId)?.name ??
-        "Selecciona un tipo",
-      adults: /^\d+$/.test(draft.room.adults) ? Number(draft.room.adults) : null,
-      children: /^\d+$/.test(draft.room.children) ? Number(draft.room.children) : null,
-      charges:
-        validStay && !availability.isError && type
-          ? {
-              subtotalCents: type.totalCents,
-              discountCents: 0,
-              totalCents: type.totalCents,
-            }
-          : null,
-    };
-  });
-  const subtotalCents = summaryRooms.reduce(
-    (sum, room) => sum + (room.charges?.totalCents ?? 0),
-    0,
-  );
   const discountCents = parseMajorToCents(values.discount.trim() || "0") ?? 0;
-  const priced = summaryRooms.every((room) => room.charges !== null);
-  const appliedDiscountCents = Math.min(discountCents, subtotalCents);
-  const totalCents = subtotalCents - appliedDiscountCents;
-  const currency = availability.data?.currency ?? CURRENCY;
+  const previewInput: CreationPreviewInput | null =
+    validStay && values.rooms.every((draft) => draft.room.roomTypeId)
+      ? {
+          checkIn: values.checkIn,
+          checkOut: values.checkOut,
+          ratePlan: values.ratePlan,
+          discountCents,
+          rooms: values.rooms.map((draft) => ({ roomTypeId: draft.room.roomTypeId })),
+        }
+      : null;
+  const preview = useCreationPreview(previewInput);
+  const billing = previewInput && preview.isSuccess ? preview.data.billing : null;
+  const ready =
+    availabilityReady &&
+    selection.rooms === values.rooms &&
+    billing !== null &&
+    !preview.isFetching &&
+    !discountBlocking;
+  const summaryRooms = values.rooms.map((draft) => ({
+    key: draft.id,
+    typeName:
+      roomTypes.data?.find((type) => type.id === draft.room.roomTypeId)?.name ??
+      "Selecciona un tipo",
+    adults: /^\d+$/.test(draft.room.adults) ? Number(draft.room.adults) : null,
+    children: /^\d+$/.test(draft.room.children) ? Number(draft.room.children) : null,
+  }));
+  const planOptions = (ratePlans.data ?? [{ plan: "flexible" as const }]).map(({ plan }) => ({
+    value: plan,
+    label: ratePlanLabels[plan] ?? plan,
+  }));
 
   return (
     <form
@@ -218,7 +235,7 @@ export function NewBooking({
           <div className="flex min-w-0 flex-col gap-5">
             <FieldSet>
               <FieldLegend className="md:sr-only">Estadía</FieldLegend>
-              <FieldGroup className="grid grid-cols-1 gap-3 md:grid-cols-2">
+              <FieldGroup className="grid grid-cols-1 gap-3 md:grid-cols-3">
                 <form.AppField
                   name="checkIn"
                   listeners={{
@@ -248,6 +265,9 @@ export function NewBooking({
                     />
                   )}
                 </form.AppField>
+                <form.AppField name="ratePlan">
+                  {(field) => <field.Choice label="Tarifa" options={planOptions} />}
+                </form.AppField>
               </FieldGroup>
             </FieldSet>
             <section className="flex flex-col gap-3" aria-label="Habitaciones">
@@ -271,82 +291,59 @@ export function NewBooking({
                       values.rooms.map((draft, index) => {
                         const options = selection.options[index];
                         const capacity = errors[`rooms[${index}].room`];
-                        const titleId = `${draft.id}-title`;
-                        const roomRemoval = {
-                          label: `Quitar habitación ${index + 1}`,
-                          onClick: () => form.removeFieldValue("rooms", index),
-                        };
                         return (
-                          <section
+                          <ReservationRoomRow
                             key={draft.id}
-                            aria-labelledby={values.rooms.length > 1 ? titleId : undefined}
-                            aria-label={values.rooms.length === 1 ? "Habitación" : undefined}
-                            className="flex min-w-0 flex-col gap-3"
-                          >
-                            {index > 0 && <Separator className="my-2 md:hidden" />}
-                            {values.rooms.length > 1 && (
-                              <div className="flex items-center justify-between gap-3 md:hidden">
-                                <h4 id={titleId} className="font-medium text-muted-foreground">
-                                  Habitación {index + 1}
-                                </h4>
-                                <Button
-                                  type="button"
-                                  variant="ghost"
-                                  aria-label={roomRemoval.label}
-                                  onClick={roomRemoval.onClick}
-                                >
-                                  <Trash2Icon data-icon="inline-start" />
-                                  Quitar
-                                </Button>
-                              </div>
-                            )}
-                            <FieldGroup className="grid grid-cols-2 gap-3 md:grid-cols-[minmax(0,1fr)_88px_56px_56px_28px]">
-                              <div className="col-span-full min-w-0 md:col-span-1">
-                                <form.AppField name={`rooms[${index}].room.roomTypeId`}>
-                                  {(field) => (
-                                    <field.Choice
-                                      label="Tipo"
-                                      placeholder="Selecciona un tipo"
-                                      disabled={!availabilityReady}
-                                      options={
-                                        availabilityReady
-                                          ? options.types
-                                          : (roomTypes.data ?? []).map((type) => ({
-                                              value: type.id,
-                                              label: type.name,
-                                            }))
-                                      }
-                                      onValueChange={() =>
-                                        form.setFieldValue(`rooms[${index}].room.roomId`, null)
-                                      }
-                                    />
-                                  )}
-                                </form.AppField>
-                              </div>
-                              <div className="col-span-full min-w-0 md:col-span-1">
-                                <form.AppField name={`rooms[${index}].room.roomId`}>
-                                  {(field) => (
-                                    <field.Choice
-                                      label="Hab."
-                                      nullable
-                                      disabled={!availabilityReady || !draft.room.roomTypeId}
-                                      options={[
-                                        { value: "none", label: "Sin asignar" },
-                                        ...(availabilityReady
-                                          ? options.numbers
-                                          : (rooms.data ?? [])
-                                              .filter(
-                                                (room) => room.roomTypeId === draft.room.roomTypeId,
-                                              )
-                                              .map((room) => ({
-                                                value: room.id,
-                                                label: room.number,
-                                              }))),
-                                      ]}
-                                    />
-                                  )}
-                                </form.AppField>
-                              </div>
+                            index={index}
+                            count={values.rooms.length}
+                            onRemove={() => form.removeFieldValue("rooms", index)}
+                            typeField={
+                              <form.AppField name={`rooms[${index}].room.roomTypeId`}>
+                                {(field) => (
+                                  <field.Choice
+                                    label="Tipo"
+                                    placeholder="Selecciona un tipo"
+                                    disabled={!availabilityReady}
+                                    options={
+                                      availabilityReady
+                                        ? options.types
+                                        : (roomTypes.data ?? []).map((type) => ({
+                                            value: type.id,
+                                            label: type.name,
+                                          }))
+                                    }
+                                    onValueChange={() =>
+                                      form.setFieldValue(`rooms[${index}].room.roomId`, null)
+                                    }
+                                  />
+                                )}
+                              </form.AppField>
+                            }
+                            roomField={
+                              <form.AppField name={`rooms[${index}].room.roomId`}>
+                                {(field) => (
+                                  <field.Choice
+                                    label="Hab."
+                                    nullable
+                                    disabled={!availabilityReady || !draft.room.roomTypeId}
+                                    options={[
+                                      { value: "none", label: "Sin asignar" },
+                                      ...(availabilityReady
+                                        ? options.numbers
+                                        : (rooms.data ?? [])
+                                            .filter(
+                                              (room) => room.roomTypeId === draft.room.roomTypeId,
+                                            )
+                                            .map((room) => ({
+                                              value: room.id,
+                                              label: room.number,
+                                            }))),
+                                    ]}
+                                  />
+                                )}
+                              </form.AppField>
+                            }
+                            adultsField={
                               <form.AppField name={`rooms[${index}].room.adults`}>
                                 {(field) => (
                                   <field.Text
@@ -360,6 +357,8 @@ export function NewBooking({
                                   />
                                 )}
                               </form.AppField>
+                            }
+                            childrenField={
                               <form.AppField name={`rooms[${index}].room.children`}>
                                 {(field) => (
                                   <field.Text
@@ -373,24 +372,13 @@ export function NewBooking({
                                   />
                                 )}
                               </form.AppField>
-                              <Button
-                                type="button"
-                                variant="destructive"
-                                size="icon"
-                                className="hidden self-end justify-self-end md:inline-flex"
-                                aria-label={roomRemoval.label}
-                                disabled={values.rooms.length === 1}
-                                onClick={roomRemoval.onClick}
-                              >
-                                <XIcon />
-                              </Button>
-                              {capacity && (
-                                <FieldError id={`${draft.id}-capacity`} className="col-span-full">
-                                  {capacity}
-                                </FieldError>
-                              )}
-                            </FieldGroup>
-                          </section>
+                            }
+                            feedback={
+                              capacity && (
+                                <FieldError id={`${draft.id}-capacity`}>{capacity}</FieldError>
+                              )
+                            }
+                          />
                         );
                       })
                     }
@@ -467,51 +455,55 @@ export function NewBooking({
             </FieldGroup>
           </div>
           <aside className="flex min-w-0 flex-col gap-3 lg:self-start">
-            <BookingSummary
-              cancelled={false}
-              rooms={summaryRooms}
-              summary={
-                priced
-                  ? {
-                      subtotalCents,
-                      discountCents: appliedDiscountCents,
-                      totalCents,
-                      balanceCents: totalCents,
-                    }
-                  : null
-              }
-              paidCents={0}
-              currency={currency}
-              editableDiscountCents={discountCents}
-              discountDisabled={busy}
-              onDiscountSave={async (cents) => {
-                form.setFieldValue("discount", formatMajor(cents));
-                return { status: "saved" };
-              }}
-              onDiscountDirtyChange={setDiscountDirty}
+            <CreationSummary
               stayLabel={
                 validStay
                   ? `${format(parseISO(values.checkIn), "d MMM")} – ${format(parseISO(values.checkOut), "d MMM yyyy")}`
                   : null
               }
-              showPayments={false}
+              rooms={summaryRooms}
+              billing={billing}
+              checkIn={values.checkIn}
+              today={today}
               message={
                 !validStay
                   ? "Indica una estancia de 1 a 60 noches."
-                  : availability.isPending
-                    ? "Calculando…"
-                    : "Selecciona los tipos de habitación para ver el total."
+                  : !previewInput
+                    ? "Selecciona los tipos de habitación para ver el total."
+                    : "Calculando…"
+              }
+              error={
+                previewInput &&
+                preview.error && (
+                  <div className="flex flex-col items-start gap-2">
+                    <FieldError>{preview.error.message}</FieldError>
+                    <Button type="button" variant="outline" onClick={() => void preview.refetch()}>
+                      Reintentar
+                    </Button>
+                  </div>
+                )
+              }
+              discount={
+                <DiscountPopover
+                  appliedCents={discountCents}
+                  shownCents={billing?.discountCents ?? discountCents}
+                  currency={billing?.currency ?? availability.data?.currency ?? CURRENCY}
+                  disabled={busy}
+                  onApply={(cents) => form.setFieldValue("discount", formatMajor(cents))}
+                  onBlockingChange={setDiscountBlocking}
+                />
               }
             />
-            {[roomTypes, rooms, availability, reservations, closures].map((query, index) =>
-              query.error ? (
-                <div key={index} className="flex flex-col items-start gap-2">
-                  <FieldError>{query.error.message}</FieldError>
-                  <Button type="button" variant="outline" onClick={() => void query.refetch()}>
-                    Reintentar
-                  </Button>
-                </div>
-              ) : null,
+            {[roomTypes, rooms, ratePlans, availability, reservations, closures].map(
+              (query, index) =>
+                query.error ? (
+                  <div key={index} className="flex flex-col items-start gap-2">
+                    <FieldError>{query.error.message}</FieldError>
+                    <Button type="button" variant="outline" onClick={() => void query.refetch()}>
+                      Reintentar
+                    </Button>
+                  </div>
+                ) : null,
             )}
           </aside>
         </fieldset>
@@ -519,22 +511,9 @@ export function NewBooking({
       </div>
       <Separator className="shrink-0" />
       <div className="flex shrink-0 flex-col gap-3 max-md:py-4 max-md:pb-[max(1rem,env(safe-area-inset-bottom))] max-md:safe-area-padding-x">
-        <dl
-          aria-label="Total de la nueva reserva"
-          className="flex items-baseline justify-between gap-3 md:hidden"
-        >
-          <dt className="text-muted-foreground">Total</dt>
-          <dd className="text-sm font-semibold tabular-nums">
-            {availability.isFetching
-              ? "Calculando…"
-              : priced
-                ? formatMoney(totalCents, currency)
-                : "—"}
-          </dd>
-        </dl>
-        {discountDirty && (
-          <p role="status" className="text-muted-foreground md:hidden">
-            Termina de editar el descuento para actualizar el total y crear la reserva.
+        {discountBlocking && (
+          <p role="status" className="text-muted-foreground">
+            Aplica o cierra el descuento para crear la reserva.
           </p>
         )}
         <div className="flex flex-wrap justify-end gap-2 max-md:[&>button]:flex-1">
@@ -543,14 +522,7 @@ export function NewBooking({
           </Button>
           <Button
             type="submit"
-            disabled={
-              busy ||
-              !priced ||
-              !availabilityReady ||
-              roomTypes.isPending ||
-              roomTypes.isError ||
-              discountDirty
-            }
+            disabled={busy || !ready || roomTypes.isPending || roomTypes.isError}
           >
             {busy ? "Guardando…" : "Crear reserva"}
           </Button>

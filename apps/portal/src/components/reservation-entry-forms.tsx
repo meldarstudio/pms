@@ -150,11 +150,13 @@ export function GuestEntryForm({
 
 export function PaymentForm({
   detail,
+  suggestedAmountCents,
   disabled,
   onReady,
   onDirtyChange,
 }: {
   detail: ReservationDetail;
+  suggestedAmountCents?: number;
   disabled: boolean;
   onReady: (title: string, actions: WorkflowAction[]) => Promise<ReservationCommandResult>;
   onDirtyChange: (dirty: boolean) => void;
@@ -162,8 +164,8 @@ export function PaymentForm({
   const { today } = usePropertyCalendar();
   const [savedDefaults, setSavedDefaults] = useState<PaymentValues | null>(null);
   const defaults = useMemo(
-    () => savedDefaults ?? paymentDefaults(detail.balanceCents),
-    [savedDefaults, detail.balanceCents],
+    () => savedDefaults ?? paymentDefaults(suggestedAmountCents ?? detail.balanceCents),
+    [savedDefaults, suggestedAmountCents, detail.balanceCents],
   );
   const form = useReservationForm({
     defaultValues: defaults,

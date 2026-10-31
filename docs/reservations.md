@@ -68,8 +68,10 @@ upfront requires total.
 Remaining scheduled amount is total minus that requirement. Both are zero for
 cancelled/no-show reservations and do not depend on payments received.
 
-Portal creation currently offers no plan selector or server creation preview: it
-creates Flexible stays and estimates total from availability prices less capped discount.
+Portal creation offers the `GET /rate-plans` plans (Flexible by default) and prices
+the draft with the server creation preview; see the
+[compact calendar dialog](#compact-calendar-dialog). Existing reservations show their
+accepted plan, and no editor changes it.
 
 ## Online quotes
 
@@ -409,8 +411,8 @@ still subject to API parsing. Blank is valid; errors follow editor reveal rules.
 ## Portal editors
 
 Calendar bars open compact `RoomBookingDialog`; the list and **Ver reserva completa**
-open read-first `ReservationPage`. Creation is one form for dates, rooms, contact,
-notes, and discount; at least one room remains, with shared dates. Mobile editors
+open read-first `ReservationPage`. Creation is one form for dates, rate plan, rooms,
+contact, notes, and discount; at least one room remains, with shared dates. Mobile editors
 keep controls reachable while the body scrolls and protect drafts through keyboard/
 safe-area changes; no swipe dismissal. Use [shared controls](portal.md#control-styling).
 
@@ -449,6 +451,23 @@ cancellation waits and reads the cancelled reservation.
 
 The mobile bill accordion keeps the discount draft mounted through collapse/resize.
 Draft bills show preview state and never substitute stale saved amounts when unavailable.
+
+Creation (`NewBooking`) sends the chosen `ratePlan` and shows only the current
+`POST /reservations/preview` bill: Total, required initial payment, remaining
+scheduled amount, and cancellation terms ([creation-summary.tsx](../apps/portal/src/components/creation-summary.tsx)).
+While a changed draft is repricing or its preview failed (with Reintentar), the
+summary shows no amounts and creating is disabled. Cancellation terms derive from the
+preview's accepted policy and prices: the inclusive free deadline (check-in minus the
+plan's days) while property today has not passed it, otherwise the actual charge (first
+nights capped at total, or total); zero totals read as no charge. **Ver detalle** shows
+nightly prices for several rooms or varying prices. The reservation discount is the
+shared [discount popover](../apps/portal/src/components/discount-popover.tsx): only an
+applied amount reaches the preview and request; the server caps it at the subtotal; an
+open changed or invalid draft blocks creating. Room rows use the shared
+[room row](../apps/portal/src/components/reservation-room-rows.tsx) layout.
+
+Creating records no payment. The dialog stays open, switching to the new reservation
+on Pagos with Importe prefilled from its required initial payment.
 
 ### Reservation command module
 

@@ -213,12 +213,15 @@ export type RatePlanTerms = {
   plan: RatePlanCode;
   cancellationPolicy: {
     chargeBasis: "first_night" | "final_total";
-    freeUntilHoursBeforeCheckIn: number | null;
-    checkInTime: string;
+    freeUntilDaysBeforeCheckIn: number | null;
   };
   paymentSchedule: "first_night_deposit" | "full_upfront";
   priceAdjustmentPercent: number;
 };
+
+export function listRatePlans(signal?: AbortSignal) {
+  return getJson<RatePlanTerms[]>("/rate-plans", signal);
+}
 
 export type CancellationWaiver = {
   id: string;
@@ -666,8 +669,38 @@ export function createWorkflowBooking(body: {
   rooms: WorkflowRoom[];
   notes?: string;
   discountCents?: number;
+  ratePlan?: RatePlanCode;
 }) {
   return writeJson<ReservationDetail>("/reservations", "POST", body);
+}
+export type CreationPreviewInput = {
+  checkIn: string;
+  checkOut: string;
+  rooms: Pick<WorkflowRoom, "roomTypeId" | "nightlyRateCents">[];
+  discountCents?: number;
+  ratePlan?: RatePlanCode;
+};
+export type CreationPreview = {
+  billing: Pick<
+    ReservationDetail,
+    | "subtotalCents"
+    | "discountCents"
+    | "totalCents"
+    | "paidCents"
+    | "balanceCents"
+    | "requiredInitialPaymentCents"
+    | "remainingScheduledCents"
+    | "ratePlan"
+    | "currency"
+  > & {
+    rooms: Pick<
+      ReservationDetail["rooms"][number],
+      "roomTypeId" | "subtotalCents" | "discountCents" | "totalCents" | "nights"
+    >[];
+  };
+};
+export function previewWorkflowBooking(body: CreationPreviewInput) {
+  return writeJson<CreationPreview>("/reservations/preview", "POST", body);
 }
 export function searchReservations(
   params: {

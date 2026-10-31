@@ -1,5 +1,11 @@
 import { z } from "zod";
-import type { PaymentInput, ReservationDetail, RoomType, StayingGuest } from "./api.ts";
+import type {
+  PaymentInput,
+  RatePlanCode,
+  ReservationDetail,
+  RoomType,
+  StayingGuest,
+} from "./api.ts";
 import { formatMajor, parseMajorToCents } from "./money.ts";
 import type { RoomDraft } from "./reservation-editor.ts";
 import { propertyToday } from "./property-calendar.ts";
@@ -288,9 +294,10 @@ export const discountSchema = z.object({ amount: money(false) });
 export const newBookingSchema = (types: RoomType[]) =>
   z.intersection(
     detailsSchema(types),
-    guestSchema
-      .pick({ fullName: true, email: true, phone: true })
-      .extend({ discount: discountSchema.shape.amount }),
+    guestSchema.pick({ fullName: true, email: true, phone: true }).extend({
+      discount: discountSchema.shape.amount,
+      ratePlan: z.enum(["flexible", "non_refundable"] satisfies RatePlanCode[]),
+    }),
   );
 export type NewBookingValues = z.input<ReturnType<typeof newBookingSchema>>;
 export const cancellationSchema = z.object({ reason: optionalText(2000) });

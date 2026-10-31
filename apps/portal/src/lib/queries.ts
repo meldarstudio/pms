@@ -27,6 +27,8 @@ import {
   listRoomTypes,
   listRooms,
   listAccounts,
+  listRatePlans,
+  previewWorkflowBooking,
   login,
   setAccountPassword,
   changeOwnPassword,
@@ -44,6 +46,7 @@ import {
   type HousekeepingStatus,
   type ReservationListParams,
   type AvailabilityOccupancy,
+  type CreationPreviewInput,
   type Room,
   type RoomType,
 } from "@/lib/api";
@@ -158,6 +161,24 @@ export function useRoomTypes() {
   return useQuery({
     queryKey: ["room-types"],
     queryFn: ({ signal }) => listRoomTypes(signal),
+  });
+}
+
+export function useRatePlans() {
+  return useQuery({
+    queryKey: ["rate-plans"],
+    queryFn: ({ signal }) => listRatePlans(signal),
+    staleTime: Infinity,
+  });
+}
+
+export function useCreationPreview(input: CreationPreviewInput | null) {
+  return useQuery({
+    queryKey: ["creation-preview", input],
+    queryFn: () => previewWorkflowBooking(input!),
+    enabled: input !== null,
+    retry: false,
+    refetchOnWindowFocus: false,
   });
 }
 

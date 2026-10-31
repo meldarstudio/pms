@@ -13,6 +13,7 @@ import {
   type BrowserPage,
 } from "./browser.ts";
 import type {
+  RatePlanTerms,
   ReservationDetail,
   RoomType,
   StayingGuest,
@@ -31,6 +32,9 @@ let dialogs: typeof import("../src/components/room-booking-dialog.tsx");
 let newBookings: typeof import("../src/components/new-booking.tsx");
 let commands: typeof import("../src/lib/reservation-commands.ts");
 type CreateBookingInput = Parameters<typeof import("../src/lib/api.ts").createWorkflowBooking>[0];
+type CreationPreviewInput = Parameters<
+  typeof import("../src/lib/api.ts").previewWorkflowBooking
+>[0];
 let root: BrowserPage["root"];
 let container: BrowserPage["container"];
 let client: BrowserPage["client"];
@@ -108,11 +112,7 @@ function detail(): ReservationDetail {
     cancellations: [],
     ratePlan: {
       plan: "flexible",
-      cancellationPolicy: {
-        chargeBasis: "first_night",
-        freeUntilHoursBeforeCheckIn: 48,
-        checkInTime: "15:00",
-      },
+      cancellationPolicy: { chargeBasis: "first_night", freeUntilDaysBeforeCheckIn: 2 },
       paymentSchedule: "first_night_deposit",
       priceAdjustmentPercent: 0,
     },
@@ -916,11 +916,81 @@ it("announces the mobile balance preview without showing stale credit", async ()
   assert.equal(button("Guardar cambios").disabled, false);
 });
 
-function mockCreationApi(handler: (input: CreateBookingInput) => Promise<Response>) {
+const ratePlans: RatePlanTerms[] = [
+  {
+    plan: "flexible",
+    cancellationPolicy: { chargeBasis: "first_night", freeUntilDaysBeforeCheckIn: 2 },
+    paymentSchedule: "first_night_deposit",
+    priceAdjustmentPercent: 0,
+  },
+  {
+    plan: "non_refundable",
+    cancellationPolicy: { chargeBasis: "final_total", freeUntilDaysBeforeCheckIn: null },
+    paymentSchedule: "full_upfront",
+    priceAdjustmentPercent: -10,
+  },
+];
+
+function stayDates(checkIn: string, checkOut: string) {
+  const dates: string[] = [];
+  for (let day = Date.parse(checkIn); day < Date.parse(checkOut); day += 86400000)
+    dates.push(new Date(day).toISOString().slice(0, 10));
+  return dates;
+}
+
+function creationPreview(
+  body: CreationPreviewInput,
+  nightCents: (date: string) => number = () => 15000,
+) {
+  const terms = ratePlans.find((plan) => plan.plan === (body.ratePlan ?? "flexible"))!;
+  const rooms = body.rooms.map((room) => {
+    const nights = stayDates(body.checkIn, body.checkOut).map((date) => ({
+      date,
+      priceCents: Math.round((nightCents(date) * (100 + terms.priceAdjustmentPercent)) / 100),
+    }));
+    const subtotalCents = nights.reduce((sum, night) => sum + night.priceCents, 0);
+    return {
+      roomTypeId: room.roomTypeId,
+      subtotalCents,
+      discountCents: 0,
+      totalCents: subtotalCents,
+      nights,
+    };
+  });
+  const subtotalCents = rooms.reduce((sum, room) => sum + room.subtotalCents, 0);
+  const discountCents = Math.min(body.discountCents ?? 0, subtotalCents);
+  const totalCents = subtotalCents - discountCents;
+  const firstNights = rooms.reduce((sum, room) => sum + room.nights[0].priceCents, 0);
+  const requiredInitialPaymentCents =
+    terms.paymentSchedule === "full_upfront" ? totalCents : Math.min(firstNights, totalCents);
+  return {
+    billing: {
+      subtotalCents,
+      discountCents,
+      totalCents,
+      paidCents: 0,
+      balanceCents: totalCents,
+      requiredInitialPaymentCents,
+      remainingScheduledCents: totalCents - requiredInitialPaymentCents,
+      ratePlan: terms,
+      currency: "PEN",
+      rooms,
+    },
+  };
+}
+
+function mockCreationApi(
+  handler: (input: CreateBookingInput) => Promise<Response>,
+  { nightCents }: { nightCents?: (date: string) => number } = {},
+) {
   mockApi(async (path, input) => {
     assert.equal(path, "/reservations");
     return handler(input as unknown as CreateBookingInput);
   });
+  page.api.on("GET", "/rate-plans", () => ratePlans);
+  page.api.on<CreationPreviewInput>("POST", "/reservations/preview", ({ body }) =>
+    creationPreview(body, nightCents),
+  );
   page.api.on("GET", "/availability", ({ url }) => {
     const checkIn = url.searchParams.get("checkIn")!;
     const checkOut = url.searchParams.get("checkOut")!;
@@ -945,11 +1015,14 @@ function mockCreationApi(handler: (input: CreateBookingInput) => Promise<Respons
   });
 }
 
-async function renderNewBooking(onCreated: (id: string) => void = () => {}) {
+async function renderNewBooking(
+  onCreated: (id: string) => void = () => {},
+  target: typeof createTarget | { mode: "new" } = createTarget,
+) {
   await render(
     React.createElement(newBookings.NewBooking, {
-      target: createTarget,
-      onCreated,
+      target,
+      onCreated: (reservation: ReservationDetail) => onCreated(reservation.id),
       onCancel: () => {},
       onDirtyChange: () => {},
       onSavingChange: () => {},
@@ -958,11 +1031,245 @@ async function renderNewBooking(onCreated: (id: string) => void = () => {}) {
   await until(() => !button("Crear reserva").disabled, "New booking quote must load");
 }
 
-function creationTotal() {
-  const total = window.document.querySelector('[aria-label="Total de la nueva reserva"] dd');
-  assert.ok(total, "The mobile actions must include the reservation total");
-  return total.textContent.replace(/\s/g, "");
+const creationTotal = () =>
+  Array.from(window.document.querySelectorAll("dt"))
+    .find((term) => term.textContent === "Total")
+    ?.nextElementSibling?.textContent.replace(/\s/g, "") ?? "";
+
+function discountTrigger() {
+  const trigger = Array.from(window.document.querySelectorAll("button")).find((item) =>
+    /^(Añadir descuento|Descuento)/.test(item.textContent.trim()),
+  );
+  assert.ok(trigger, "The summary must offer the reservation discount");
+  return trigger;
 }
+
+function discountInput() {
+  const label = Array.from(window.document.querySelectorAll("label")).find(
+    (item) => item.textContent.trim() === "Descuento · S/",
+  );
+  return label ? window.document.querySelector<HTMLInputElement>(`[id="${label.htmlFor}"]`) : null;
+}
+
+function discountPopover() {
+  const popup = discountInput()?.closest('[role="dialog"]');
+  assert.ok(popup, "The discount popover must be open");
+  return popup;
+}
+
+const popoverButton = (label: string) => {
+  const found = Array.from(discountPopover().querySelectorAll("button")).find(
+    (item) => item.textContent.trim() === label,
+  );
+  return found as HTMLButtonElement | undefined;
+};
+
+async function openDiscount() {
+  await React.act(async () => discountTrigger().click());
+  await until(() => !!discountInput(), "The discount popover must open");
+}
+
+async function applyDiscount(amount: string) {
+  await openDiscount();
+  await fill(discountInput()!, amount);
+  await React.act(async () => popoverButton("Aplicar")!.click());
+  await until(() => !discountInput(), "Applying must close the discount popover");
+  await until(() => !button("Crear reserva").disabled, "The discounted preview must load");
+}
+
+async function pickDay(field: string, day: string) {
+  await React.act(async () => fieldTrigger(field).click());
+  const target = Array.from(
+    window.document.querySelectorAll<HTMLButtonElement>("button[data-day]"),
+  ).find((item) => item.textContent.trim() === day);
+  assert.ok(target, `Missing day ${day}`);
+  await React.act(async () => target.click());
+}
+
+const summaryText = () =>
+  Array.from(window.document.querySelectorAll("h3"))
+    .find((heading) => heading.textContent === "Resumen de reserva")
+    ?.closest("section")?.textContent ?? "";
+const appliedDiscount = () =>
+  discountTrigger()
+    .textContent.replace(/\s/g, "")
+    .replace(/^Descuento/, "");
+const cancellationText = () =>
+  Array.from(
+    window.document.querySelectorAll('[aria-label="Condiciones de cancelación"] p'),
+    (line) => line.textContent.replace(/S\/\s/g, "S/"),
+  );
+
+it("defaults to Flexible, previews and creates under the chosen rate plan", async () => {
+  const writes: CreateBookingInput[] = [];
+  mockCreationApi(async (input) => {
+    writes.push(input);
+    return Response.json(detail(), { status: 201 });
+  });
+  const previews = page.api.bodies<CreationPreviewInput>("POST", "/reservations/preview");
+  await renderNewBooking();
+  assert.match(fieldTrigger("Tarifa").textContent, /^Flexible/);
+  assert.equal(previews.at(-1)?.ratePlan, "flexible");
+  await fill("fullName", "Ada Lovelace");
+  await submit();
+  await until(() => writes.length === 1, "A Flexible reservation must save");
+  assert.equal(writes[0].ratePlan, "flexible");
+
+  await choose("Tarifa", "No reembolsable");
+  await until(
+    () => previews.at(-1)?.ratePlan === "non_refundable" && !button("Crear reserva").disabled,
+    "Choosing a plan must request its preview",
+  );
+  await submit();
+  await until(() => writes.length === 2, "A Non-refundable reservation must save");
+  assert.equal(writes[1].ratePlan, "non_refundable");
+});
+
+it("summarizes the server preview's total, payment schedule and cancellation terms per plan", async () => {
+  mockCreationApi(async () => Response.json(detail(), { status: 201 }));
+  await renderNewBooking(() => {}, { ...createTarget, checkIn: "2026-11-10" });
+  await pickDay("Check-out", "12");
+  await until(() => creationTotal() === "S/300", "Two nights must be previewed");
+  assert.equal(summaryAmount("Pago inicial requerido"), "S/150");
+  assert.equal(summaryAmount("Pago restante programado"), "S/150");
+  assert.deepEqual(cancellationText(), [
+    "Cancelación gratuita hasta el 8 nov.",
+    "Después, cargo de la primera noche: S/150",
+  ]);
+  assert.equal(
+    summaryText().match(/S\/\s?300/g)?.length,
+    1,
+    "The total must not be repeated as a subtotal or footer total",
+  );
+
+  await choose("Tarifa", "No reembolsable");
+  await until(() => creationTotal() === "S/270", "Non-refundable must be repriced by the server");
+  assert.equal(summaryAmount("Pago inicial requerido"), "S/270");
+  assert.equal(summaryAmount("Pago restante programado"), "S/0");
+  assert.deepEqual(cancellationText(), [
+    "Tarifa no reembolsable · Cargo del total de la reserva: S/270",
+  ]);
+});
+
+it("shows only the actual charge once free cancellation has passed, as for a walk-in", async () => {
+  mockCreationApi(async () => Response.json(detail(), { status: 201 }));
+  await render(
+    React.createElement(newBookings.NewBooking, {
+      target: { mode: "new" },
+      onCreated: () => {},
+      onCancel: () => {},
+      onDirtyChange: () => {},
+      onSavingChange: () => {},
+    }),
+  );
+  await choose("Tipo", "Doble");
+  await until(() => creationTotal() === "S/150", "A walk-in must be previewed");
+  assert.deepEqual(cancellationText(), ["Cancelación o no-show: cargo de la primera noche, S/150"]);
+});
+
+it("keeps an unapplied discount draft out of the bill and blocks creating while it is open", async () => {
+  const writes: CreateBookingInput[] = [];
+  mockCreationApi(async (input) => {
+    writes.push(input);
+    return Response.json(detail(), { status: 201 });
+  });
+  const previews = page.api.bodies<CreationPreviewInput>("POST", "/reservations/preview");
+  await render(
+    React.createElement(dialogs.RoomBookingDialog, {
+      target: createTarget,
+      onClose: () => assert.fail("Esc in the discount popover must not close the dialog"),
+      onViewReservation: () => {},
+    }),
+  );
+  await until(() => !button("Crear reserva").disabled, "New dialog must load");
+  await fill("fullName", "Ada Lovelace");
+  await openDiscount();
+  assert.ok(discountPopover().getAttribute("aria-labelledby"), "The popover keeps a dialog title");
+  assert.equal(popoverButton("Cancelar"), undefined);
+  assert.equal(popoverButton("Quitar"), undefined, "Quitar is only for an applied discount");
+  await fill(discountInput()!, "abc");
+  await React.act(async () => popoverButton("Aplicar")!.click());
+  assert.ok(discountInput(), "An invalid amount must not apply");
+  assert.equal(discountInput()!.getAttribute("aria-invalid"), "true");
+  await fill(discountInput()!, "20");
+  assert.equal(button("Crear reserva").disabled, true);
+  const submitDialog = () =>
+    React.act(async () => {
+      button("Crear reserva")
+        .closest("form")!
+        .dispatchEvent(new window.Event("submit", { bubbles: true, cancelable: true }));
+    });
+  await submitDialog();
+  await flush();
+  assert.equal(writes.length, 0, "An open changed draft must block creation");
+
+  await React.act(async () =>
+    discountInput()!.dispatchEvent(
+      new window.KeyboardEvent("keydown", { key: "Escape", bubbles: true }),
+    ),
+  );
+  await until(() => !discountInput(), "Esc must close the popover");
+  assert.ok(window.document.querySelector('[role="dialog"]'), "The reservation dialog stays open");
+  assert.ok(discountTrigger().textContent.includes("Añadir descuento"));
+  assert.equal(creationTotal(), "S/150");
+  assert.ok(previews.every((preview) => !preview.discountCents));
+  await openDiscount();
+  assert.equal(discountInput()!.value, "20", "Reopening must keep the draft");
+  await React.act(async () => popoverButton("Aplicar")!.click());
+  await until(() => creationTotal() === "S/130", "Applying must reprice the preview");
+  await openDiscount();
+  await React.act(async () => popoverButton("Quitar")!.click());
+  await until(() => creationTotal() === "S/150", "Quitar must remove the applied discount");
+  await submitDialog();
+  await until(() => writes.length === 1, "A closed or applied draft must allow creating");
+  assert.equal(writes[0].discountCents, 0);
+});
+
+it("offers Ver detalle only for several rooms or varying nightly prices", async () => {
+  const weekend = (date: string) => ([5, 6].includes(new Date(date).getUTCDay()) ? 20000 : 15000);
+  mockCreationApi(async () => Response.json(detail(), { status: 201 }), { nightCents: weekend });
+  const detailToggle = () =>
+    Array.from(container.querySelectorAll("button")).find(
+      (item) => item.textContent.trim() === "Ver detalle",
+    );
+  await renderNewBooking();
+  assert.equal(detailToggle(), undefined, "One flat-price room needs no breakdown");
+
+  await React.act(async () => button("Agregar habitación").click());
+  await until(() => creationTotal() === "S/300", "Both rooms must be previewed");
+  assert.equal(detailToggle()?.getAttribute("aria-expanded"), "false");
+  await React.act(async () => button("Quitar habitación 2").click());
+  await until(() => detailToggle() === undefined, "Back to one flat room hides the breakdown");
+
+  await pickDay("Check-out", "17");
+  await until(() => creationTotal() === "S/500", "Wed–Sat must include a Friday price");
+  assert.equal(detailToggle()?.getAttribute("aria-expanded"), "false", "It starts collapsed");
+  await React.act(async () => detailToggle()!.click());
+  const nights = Array.from(
+    container.querySelectorAll('section[aria-label="Habitación 1: Doble"] dd'),
+    (night) => night.textContent.replace(/\s/g, ""),
+  );
+  assert.deepEqual(nights, ["S/150", "S/150", "S/200"]);
+});
+
+it("never shows a stale preview and retries a failed one before creating", async () => {
+  mockCreationApi(async () => Response.json(detail(), { status: 201 }));
+  await renderNewBooking();
+  const held = page.api.hold("POST", "/reservations/preview");
+  await choose("Tarifa", "No reembolsable");
+  await until(() => !!held.request, "The new plan must be previewed");
+  assert.equal(button("Crear reserva").disabled, true);
+  assert.ok(summaryText().includes("Calculando…"));
+  assert.ok(!summaryText().includes("S/150"), "The Flexible total must not stay visible");
+  await React.act(async () =>
+    held.release(Response.json({ error: "unknown rate plan" }, { status: 400 })),
+  );
+  await until(() => summaryText().includes("Esta tarifa ya no existe"), "Errors are translated");
+  assert.equal(button("Crear reserva").disabled, true);
+  await React.act(async () => button("Reintentar").click());
+  await until(() => creationTotal() === "S/135", "Retrying must load the preview");
+  assert.equal(button("Crear reserva").disabled, false);
+});
 
 it("creates a reservation with its contact, notes, room quote, and initial discount", async () => {
   const writes: CreateBookingInput[] = [];
@@ -998,14 +1305,9 @@ it("creates a reservation with its contact, notes, room quote, and initial disco
     () => container.textContent.replace(/\s/g, "").includes("S/600"),
     "Both rooms must appear in the total",
   );
-  const discount = container.querySelector<HTMLInputElement>('[aria-label="Descuento en soles"]')!;
-  await fill(discount, "30");
-  await React.act(async () => {
-    discount.dispatchEvent(new window.FocusEvent("focusout", { bubbles: true }));
-  });
-  await until(() => !button("Crear reserva").disabled, "Valid discount must finish updating");
-  assert.ok(container.textContent.replace(/\s/g, "").includes("S/570"));
-  assert.equal(creationTotal(), "S/570");
+  await applyDiscount("30");
+  assert.equal(appliedDiscount(), "-S/30");
+  assert.equal(creationTotal(), "S/570", "The discount applies after both rooms' subtotal");
   await submit();
   await until(
     () => created === "reservation-1",
@@ -1457,7 +1759,7 @@ it("preserves the remaining room draft when removing the first room", async () =
   ]);
 });
 
-it("caps the creation preview without reducing the entered initial discount", async () => {
+it("caps the creation discount at the subtotal without reducing the entered amount", async () => {
   const writes: CreateBookingInput[] = [];
   mockCreationApi(async (input) => {
     writes.push(input);
@@ -1465,17 +1767,18 @@ it("caps the creation preview without reducing the entered initial discount", as
   });
   await renderNewBooking();
   await fill("fullName", "Booking Contact");
-  const discount = container.querySelector<HTMLInputElement>('[aria-label="Descuento en soles"]')!;
-  await fill(discount, "200");
-  await React.act(async () => {
-    discount.dispatchEvent(new window.FocusEvent("focusout", { bubbles: true }));
-  });
-  await until(() => !button("Crear reserva").disabled, "Initial discount must finish updating");
-  assert.equal(summaryAmount("Importe habitaciones"), "S/150");
-  assert.equal(summaryAmount("Total de reserva"), "S/0");
+  await applyDiscount("200");
   assert.equal(creationTotal(), "S/0");
-  assert.equal(summaryAmount("Descuento aplicado"), "-S/150");
-  assert.equal(discount.value, "200");
+  assert.equal(appliedDiscount(), "-S/150");
+  assert.deepEqual(cancellationText(), ["Cancelación y no-show sin cargo"]);
+  await openDiscount();
+  assert.equal(discountInput()!.value, "200");
+  await React.act(async () =>
+    discountInput()!.dispatchEvent(
+      new window.KeyboardEvent("keydown", { key: "Escape", bubbles: true }),
+    ),
+  );
+  await until(() => !discountInput(), "Esc must close the discount popover");
   await submit();
   await until(() => writes.length === 1, "Reservation must save");
   assert.equal(writes[0].discountCents, 20000);
@@ -1606,7 +1909,6 @@ it("replaces sold-out room controls with an empty state and restores them when d
   assert.equal(fieldTrigger("Hab.").disabled, true);
   assert.equal(button("Crear reserva").disabled, true);
   assert.ok(!container.textContent.includes("Sin habitaciones disponibles"));
-  assert.equal(creationTotal(), "Calculando…");
   await React.act(async () =>
     finish(
       Response.json({
@@ -1643,7 +1945,7 @@ it("replaces sold-out room controls with an empty state and restores them when d
   assert.equal(control("notes").value, "Llegada por la tarde");
   assert.ok(container.querySelector("aside"));
   assert.equal(button("Crear reserva").disabled, true);
-  assert.equal(creationTotal(), "—");
+  assert.ok(summaryText().includes("Selecciona los tipos de habitación para ver el total."));
 
   await React.act(async () => fieldTrigger("Check-out").click());
   const availableDay = [
@@ -1829,12 +2131,11 @@ it("preserves the reservation and discount drafts when the keyboard viewport or 
     await fill("fullName", "Ada Lovelace");
     await fill("notes", "Llegada tarde");
     const name = control("fullName");
-    const discount = window.document.querySelector<HTMLInputElement>(
-      '[aria-label="Descuento en soles"]',
-    )!;
+    await openDiscount();
+    const discount = discountInput()!;
     await fill(discount, "25");
     assert.equal(button("Crear reserva").disabled, true);
-    assert.ok(window.document.body.textContent.includes("Termina de editar el descuento"));
+    assert.ok(window.document.body.textContent.includes("Aplica o cierra el descuento"));
     await React.act(async () => {
       viewport.height = 420;
       viewport.offsetTop = 30;
@@ -1848,11 +2149,10 @@ it("preserves the reservation and discount drafts when the keyboard viewport or 
     assert.equal(control("fullName"), name, "Responsive changes must not replace the form");
     assert.equal(name.value, "Ada Lovelace");
     assert.equal(control("notes").value, "Llegada tarde");
+    assert.equal(discountInput(), discount, "Responsive changes must keep the discount draft open");
     assert.equal(discount.value, "25");
-    await React.act(async () => {
-      discount.dispatchEvent(new window.FocusEvent("focusout", { bubbles: true }));
-    });
-    await until(() => !button("Crear reserva").disabled, "The discount draft must still commit");
+    await React.act(async () => popoverButton("Aplicar")!.click());
+    await until(() => !button("Crear reserva").disabled, "The discount draft must still apply");
     assert.equal(creationTotal(), "S/125");
   } finally {
     if (descriptor) Object.defineProperty(window, "visualViewport", descriptor);
@@ -1860,7 +2160,7 @@ it("preserves the reservation and discount drafts when the keyboard viewport or 
   }
 });
 
-it("protects a new reservation draft, blocks closing during creation, and closes after saving", async () => {
+it("protects a new reservation draft, blocks closing during creation, then opens it on Pagos", async () => {
   let finish!: (response: Response) => void;
   let closed = 0;
   let created = 0;
@@ -1903,10 +2203,23 @@ it("protects a new reservation draft, blocks closing during creation, and closes
   assert.equal(closed, 0);
   await React.act(async () => finish(Response.json(detail(), { status: 201 })));
   await until(
-    () => closed === 1 && !window.document.querySelector('[role="dialog"]'),
-    "Successful creation must close the dialog",
+    () => !!window.document.querySelector('[name="amount"]'),
+    "Successful creation must open the new reservation's payments",
   );
+  assert.equal(closed, 0, "Creating must keep the dialog open");
   assert.equal(created, 0, "Creating must not navigate to the reservation page");
+  const payments = Array.from(window.document.querySelectorAll('[role="tab"]')).find(
+    (tab) => tab.textContent.trim() === "Pagos",
+  );
+  assert.equal(payments?.getAttribute("aria-selected"), "true");
+  assert.equal(
+    control("amount").value,
+    "150.00",
+    "Importe must be the required initial payment, not the S/300 balance",
+  );
+  assert.equal(page.api.requests("POST", /\/commands$/).length, 0, "Creating records no payment");
+  await React.act(async () => button("Cerrar").click());
+  assert.equal(closed, 1, "An untouched prefilled payment must not block closing");
 });
 
 it("keeps an extension price visible and identifies the conflicting room without exposing its ID", async () => {

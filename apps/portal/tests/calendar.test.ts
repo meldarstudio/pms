@@ -10,6 +10,7 @@ import {
   type CalendarFixtureStay,
 } from "./calendar-window.ts";
 import type { FakeRequest, HeldRequest } from "./fake-backend.ts";
+import type { RatePlanTerms, ReservationDetail } from "../src/lib/api.ts";
 
 let browser: BrowserTest;
 let page: BrowserPage;
@@ -775,9 +776,100 @@ function stayOn(roomId: string, guestName: string) {
   return (url: URL) => calendarResponse(url, stayIn(roomId, { guestName }));
 }
 
+const flexible: RatePlanTerms = {
+  plan: "flexible",
+  cancellationPolicy: { chargeBasis: "first_night", freeUntilDaysBeforeCheckIn: 2 },
+  paymentSchedule: "first_night_deposit",
+  priceAdjustmentPercent: 0,
+};
+
+function createdReservation(): ReservationDetail {
+  const night = { date: "2026-10-22", priceCents: 15000 };
+  return {
+    id: "res-new",
+    code: "NEW00001",
+    status: "confirmed",
+    notes: "",
+    cancellationReason: null,
+    cancelledAt: null,
+    savedDiscountCents: 0,
+    creditCents: 0,
+    refundDueCents: 0,
+    refundedCents: 0,
+    pendingRefundCents: 0,
+    refunds: [],
+    couponIssuedCents: 0,
+    couponAppliedCents: 0,
+    initialPaymentDueCents: 15000,
+    coupons: [],
+    couponMovements: [],
+    cancellation: null,
+    cancellations: [],
+    ratePlan: flexible,
+    requiredInitialPaymentCents: 15000,
+    remainingScheduledCents: 0,
+    guestId: "guest-new",
+    guest: {
+      id: "guest-new",
+      fullName: "Rosalind Franklin",
+      email: null,
+      phone: null,
+      notes: null,
+    },
+    stayingGuests: [],
+    checkIn: "2026-10-22",
+    checkOut: "2026-10-23",
+    source: "direct",
+    currency: "PEN",
+    totalCents: 15000,
+    subtotalCents: 15000,
+    discountCents: 0,
+    paidCents: 0,
+    balanceCents: 15000,
+    payments: [],
+    rooms: [
+      {
+        id: "line-new",
+        roomTypeId: "double",
+        roomTypeName: "Doble",
+        roomId: "room-2",
+        roomNumber: "2",
+        housekeepingStatus: "clean",
+        adults: 1,
+        children: 0,
+        subtotalCents: 15000,
+        discountCents: 0,
+        totalCents: 15000,
+        nights: [night],
+      },
+    ],
+  };
+}
+
+function answerCreation() {
+  const created = createdReservation();
+  page.api.on("GET", "/rate-plans", () => [flexible]);
+  page.api.on("POST", "/reservations/preview", () => ({
+    billing: {
+      ...created,
+      rooms: created.rooms.map(
+        ({ roomTypeId, subtotalCents, discountCents, totalCents, nights }) => ({
+          roomTypeId,
+          subtotalCents,
+          discountCents,
+          totalCents,
+          nights,
+        }),
+      ),
+    },
+  }));
+  page.api.on("POST", "/reservations", () => Response.json(created, { status: 201 }));
+  page.api.on("GET", "/reservations/res-new", () => created);
+}
+
 it("shows a new reservation on its room without blanking the calendar", async () => {
   answerAvailability();
-  page.api.on("POST", "/reservations", () => ({ id: "res-new" }));
+  answerCreation();
   await render(React.createElement(CalendarSession));
   await until(() => !!adaBar(), "Week must paint before the new reservation");
   const refresh = page.api.hold("GET", "/calendar");

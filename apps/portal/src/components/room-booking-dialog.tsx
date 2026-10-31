@@ -1,5 +1,6 @@
-import { useCallback, useEffect, useRef, useState, useId, type ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, useId, type ReactNode } from "react";
 import { useSelector } from "@tanstack/react-form";
+import { useQueryClient } from "@tanstack/react-query";
 import {
   ArrowUpRightIcon,
   EllipsisIcon,
@@ -121,7 +122,7 @@ const stayDate = (value: string, pattern: string) => {
 type Intent = { type: "edit-payment" | "delete-payment"; entry: ReservationPayment };
 
 export function RoomBookingDialog({
-  target,
+  target: requested,
   onClose,
   onViewReservation,
 }: {
@@ -129,6 +130,24 @@ export function RoomBookingDialog({
   onClose: () => void;
   onViewReservation: (id: string) => void;
 }) {
+  const client = useQueryClient();
+  const [created, setCreated] = useState<{
+    from: BookingTarget;
+    reservation: ReservationDetail;
+  } | null>(null);
+  const target = useMemo<BookingTarget | null>(
+    () =>
+      created && created.from === requested
+        ? {
+            mode: "edit",
+            reservationId: created.reservation.id,
+            roomId: created.reservation.rooms[0]?.roomId ?? "",
+            number: created.reservation.rooms[0]?.roomNumber ?? "",
+            typeName: created.reservation.rooms[0]?.roomTypeName ?? "",
+          }
+        : requested,
+    [created, requested],
+  );
   const reservationId = target?.mode === "edit" ? target.reservationId : null;
   const detail = useReservation(reservationId);
   const { saving } = useReservationCommands(reservationId);
@@ -174,6 +193,7 @@ export function RoomBookingDialog({
   function close() {
     dirty.current = false;
     setTab("details");
+    setCreated(null);
     onClose();
   }
   return (
@@ -235,6 +255,11 @@ export function RoomBookingDialog({
                 onRefresh={() => void detail.refetch()}
                 initialTab={tab}
                 onTabChange={setTab}
+                paymentSuggestionCents={
+                  created?.reservation.id === detail.data.id
+                    ? created.reservation.requiredInitialPaymentCents
+                    : undefined
+                }
                 onDirtyChange={onDirtyChange}
                 onCancelled={close}
                 onViewReservation={(id) => navigate(() => onViewReservation(id))}
@@ -247,9 +272,12 @@ export function RoomBookingDialog({
             <NewBooking
               key={target.mode === "create" ? target.roomId + target.checkIn : "new"}
               target={target}
-              onCreated={() => {
+              onCreated={(reservation) => {
                 toast.add({ title: "Reserva creada", type: "success" });
-                close();
+                client.setQueryData(["reservation", reservation.id], reservation);
+                dirty.current = false;
+                setTab("payments");
+                setCreated({ from: requested!, reservation });
               }}
               onCancel={() => navigate(close)}
               onDirtyChange={onDirtyChange}
@@ -384,6 +412,7 @@ export function BookingEditor({
   stayOnly = false,
   onCancel,
   onSaved,
+  paymentSuggestionCents,
 }: {
   detail: ReservationDetail;
   onRefresh?: () => void;
@@ -396,6 +425,7 @@ export function BookingEditor({
   stayOnly?: boolean;
   onCancel?: () => void;
   onSaved?: () => void;
+  paymentSuggestionCents?: number;
 }) {
   const contact = detail.guest;
   const [guestDirty, setGuestDirty] = useState(false);
@@ -867,6 +897,7 @@ export function BookingEditor({
               <TabsContent value="payments" keepMounted className="flex flex-col gap-5">
                 <PaymentForm
                   detail={detail}
+                  suggestedAmountCents={paymentSuggestionCents}
                   disabled={busy}
                   onDirtyChange={setPaymentDirty}
                   onReady={savePayment}
