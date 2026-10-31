@@ -93,7 +93,7 @@ Withdrawal of a reservation by its booker or staff, releasing inventory but keep
 the reservation and payment history.
 _Avoid_: Deletion, refund
 
-**No-show**:
+**No-show / No se presentó**:
 Staff's determination that an expected guest will not arrive, releasing inventory
 while keeping the reservation and financial history.
 _Avoid_: Guest-requested cancellation, automatic checkout
@@ -217,7 +217,7 @@ _Avoid_: Payment
 The policy amount owed on cancellation or no-show, before staff waivers.
 _Avoid_: Deposit received, refund
 
-**Charge waiver**:
+**Charge waiver / Cargo perdonado**:
 A reasoned staff reduction of a cancellation charge.
 _Avoid_: Refund, reservation discount
 
@@ -257,10 +257,19 @@ Money returned against a received payment. Only a completed refund has returned 
 a requested or failed refund has not.
 _Avoid_: Cancellation, charge waiver, future-stay coupon
 
-**Refund due**:
+**Refund due / Por devolver**:
 Money still owed back after charges, completed refunds, and agreed future-stay coupon
 conversion; a pending/failed refund does not settle it.
 _Avoid_: Completed refund, redeemable coupon
+
+**Unresolved bill / Por resolver**:
+A reservation bill with refund due, or with an outstanding balance after the stay
+ended (checked out, cancelled, or no-show).
+_Avoid_: Attention list, open balance
+
+**Outstanding balance / Saldo pendiente**:
+The amount still owed toward a reservation bill after payments and coupon settlement.
+_Avoid_: Total, required initial payment
 
 **Amount paid / net retained**:
 Gross received payments / those payments less completed refunds. Coupon issuance and
@@ -286,3 +295,13 @@ _Avoid_: Promotional discount, reservation credit, refund
 Applying coupon value toward a reservation, reducing coupon balance and the amount
 owed without receiving new money.
 _Avoid_: Cash payment, promotional discount, refund
+
+**Coupon settlement / Pagado con cupón**:
+Coupon value currently applied toward a reservation bill, excluding value returned
+to the coupon.
+_Avoid_: Money received, discount
+
+**Coupon conversion / Pasado a cupón**:
+Refund due converted into future-stay coupon value with the guest's agreement instead
+of returning money.
+_Avoid_: Completed refund, coupon redemption
