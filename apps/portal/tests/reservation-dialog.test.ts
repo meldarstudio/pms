@@ -250,6 +250,63 @@ it("adds consecutive trimmed guests with distinct IDs and resets the real form a
   });
 });
 
+it("asks a staying guest for name, contact and document but not a room", async () => {
+  const saved = detail();
+  saved.rooms.push({ ...saved.rooms[0], id: "line-2", roomId: "room-2", roomNumber: "102" });
+  const writes: StayingGuest[][] = [];
+  await render(
+    React.createElement(forms.GuestEntryForm, {
+      detail: saved,
+      disabled: false,
+      onDirtyChange: () => {},
+      onSave: async (guests: StayingGuest[]) => {
+        writes.push(guests);
+        return savedAs({ ...saved, stayingGuests: guests });
+      },
+    }),
+  );
+  assert.deepEqual(
+    Array.from(container.querySelectorAll("label"), (label) => label.textContent.trim()),
+    [
+      "Nombre completo",
+      "Correo · Opcional",
+      "Teléfono · Opcional",
+      "Documento",
+      "Número de documento",
+    ],
+  );
+  assert.doesNotMatch(container.textContent, /Hab\. del huésped/);
+  await fill("fullName", "Ana Pérez");
+  await submit();
+  await until(() => writes.length === 1, "The guest must save");
+  assert.equal(writes[0][0].reservationRoomId, null, "A multi-room guest gets no room");
+});
+
+it("shows a rejected guest room as a form error, keeping the guest draft", async () => {
+  const writes: WorkflowCommand[] = [];
+  mockApi(async (path, command) => {
+    if (path.endsWith("/preview")) return previewResponse(detail());
+    writes.push(command);
+    return Response.json({ error: "guest room must belong to this reservation" }, { status: 400 });
+  });
+  await render(React.createElement(dialogs.BookingEditor, { detail: detail() }));
+  await React.act(async () => button("Huéspedes").click());
+  await fill("fullName", "Ana Pérez");
+  const form = control("fullName").closest("form")!;
+  await React.act(async () => {
+    form.dispatchEvent(new window.Event("submit", { bubbles: true, cancelable: true }));
+  });
+  await until(() => writes.length === 1, "The guest must be sent");
+  await until(
+    () =>
+      form.querySelector('[role="alert"]')?.textContent ===
+      "La habitación del huésped ya no pertenece a esta reserva. Recarga los datos.",
+    "The room rejection must appear on the form",
+  );
+  assert.equal(form.querySelector('[aria-invalid="true"]'), null);
+  assert.equal(control("fullName").value, "Ana Pérez");
+});
+
 it("refreshes an untouched payment suggestion and submits a manual Yape amount without a reference", async () => {
   const writes: WorkflowCommand["actions"][] = [];
   const props = {

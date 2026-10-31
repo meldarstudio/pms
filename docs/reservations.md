@@ -414,6 +414,11 @@ notes, and discount; at least one room remains, with shared dates. Mobile editor
 keep controls reachable while the body scrolls and protect drafts through keyboard/
 safe-area changes; no swipe dismissal. Use [shared controls](portal.md#control-styling).
 
+The staying-guest form, shared by the page and the dialog, asks for no room. Edits
+resend the guest's stored room unchanged. A new guest is linked to the room of a
+one-room reservation and to none otherwise. A rejected guest room is a form-level
+error, since no field shows it.
+
 ### Full reservation page
 
 Independent editors save contact, stay, notes, discount, guests, and payments.

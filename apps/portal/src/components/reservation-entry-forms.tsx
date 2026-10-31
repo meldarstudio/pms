@@ -3,7 +3,7 @@ import { usePropertyCalendar } from "@/lib/use-property-calendar";
 import { useSelector } from "@tanstack/react-form";
 import { PlusIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { FieldGroup } from "@/components/ui/field";
+import { FieldError, FieldGroup } from "@/components/ui/field";
 import type { ReservationDetail, StayingGuest, WorkflowAction } from "@/lib/api";
 import { setServerErrors } from "@/lib/form-errors";
 import type { ReservationCommandResult } from "@/lib/reservation-commands";
@@ -60,12 +60,14 @@ export function GuestEntryForm({
           reservationRoomId: detail.rooms.length === 1 ? detail.rooms[0].id : null,
         },
   );
+  const [formError, setFormError] = useState<string | null>(null);
   const form = useReservationForm({
     defaultValues: defaults,
     validationLogic: blurThenChange(),
     validators: { onDynamic: guestSchema },
     onSubmit: async ({ value }) => {
       if (disabled) return;
+      setFormError(null);
       const payload = guestPayload(value);
       const result = await onSave(
         guest
@@ -73,6 +75,11 @@ export function GuestEntryForm({
           : [...detail.stayingGuests, payload],
       );
       if (result.status === "rejected") return setServerErrors(form, result.fields);
+      if (
+        result.status === "failed" &&
+        result.code === "guest room must belong to this reservation"
+      )
+        return setFormError(result.message);
       if (result.status === "failed")
         return toastError("No se pudo guardar el huésped", result.message);
       const next = guest ? guestDefaults(payload) : { ...defaults, id: crypto.randomUUID() };
@@ -91,52 +98,37 @@ export function GuestEntryForm({
   return (
     <form noValidate onSubmit={(event) => void submitForm(event, () => form.handleSubmit())}>
       <fieldset disabled={disabled || submitting} className="flex min-w-0 flex-col gap-3">
-        <FieldGroup className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+        <FieldGroup className="gap-3">
           <form.AppField name="fullName">
             {(field) => <field.Text label="Nombre completo" />}
           </form.AppField>
-          <form.AppField name="reservationRoomId">
-            {(field) => (
-              <field.Choice
-                label="Hab. del huésped"
-                nullable
-                options={[
-                  { value: "none", label: "Sin indicar" },
-                  ...detail.rooms
-                    .filter(
-                      (room) =>
-                        detail.status !== "cancelled" || room.id === defaults.reservationRoomId,
-                    )
-                    .map((room, index) => ({
-                      value: room.id,
-                      label: room.roomNumber ?? `Sin asignar · ${index + 1}`,
-                    })),
-                ]}
-              />
-            )}
-          </form.AppField>
-          <form.AppField name="documentType">
-            {(field) => (
-              <field.Choice
-                label="Documento"
-                blank
-                options={[
-                  { value: "none", label: "Sin indicar" },
-                  { value: "DNI", label: "DNI" },
-                  { value: "Pasaporte", label: "Pasaporte" },
-                  { value: "Otro", label: "Otro" },
-                ]}
-              />
-            )}
-          </form.AppField>
-          <form.AppField name="documentNumber">
-            {(field) => <field.Text label="Número de documento" />}
-          </form.AppField>
-          <form.AppField name="email">
-            {(field) => <field.Text label="Email del huésped" type="email" />}
-          </form.AppField>
-          <form.AppField name="phone">{(field) => <field.Phone />}</form.AppField>
+          <FieldGroup className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+            <form.AppField name="email">
+              {(field) => <field.Text label="Correo · Opcional" type="email" />}
+            </form.AppField>
+            <form.AppField name="phone">{(field) => <field.Phone />}</form.AppField>
+          </FieldGroup>
+          <FieldGroup className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+            <form.AppField name="documentType">
+              {(field) => (
+                <field.Choice
+                  label="Documento"
+                  blank
+                  options={[
+                    { value: "none", label: "Sin indicar" },
+                    { value: "DNI", label: "DNI" },
+                    { value: "Pasaporte", label: "Pasaporte" },
+                    { value: "Otro", label: "Otro" },
+                  ]}
+                />
+              )}
+            </form.AppField>
+            <form.AppField name="documentNumber">
+              {(field) => <field.Text label="Número de documento" />}
+            </form.AppField>
+          </FieldGroup>
         </FieldGroup>
+        {formError && <FieldError>{formError}</FieldError>}
         <div className="flex items-center gap-2">
           <Button
             type="submit"

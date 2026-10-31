@@ -349,13 +349,14 @@ it("records payments after a failed save and prevents dismissal or navigation du
 it("shows notes, staying guests, and payments in their own cards and edits records from them", async () => {
   saved = {
     ...saved,
+    rooms: [...saved.rooms, { ...saved.rooms[0], id: "line-2" }],
     stayingGuests: [
       {
-        id: "guest-1",
-        reservationRoomId: "line-1",
+        id: "8d0f1b5e-2c4a-4f6e-9b7d-3a1c5e7f9b2d",
+        reservationRoomId: "line-2",
         fullName: "Luis Gómez",
-        email: null,
-        phone: null,
+        email: "luis@example.com",
+        phone: "+51987654321",
         documentType: "DNI",
         documentNumber: "12345678",
       },
@@ -386,12 +387,36 @@ it("shows notes, staying guests, and payments in their own cards and edits recor
     page.container.ownerDocument.querySelector('nav[aria-label="breadcrumb"]')!.textContent,
     "ReservasDetalle",
   );
-  assert.match(region("Huéspedes").textContent, /Luis Gómez.*Hab\. Sin indicar · DNI 12345678/);
-  await chooseRowAction('[aria-label="Acciones de Luis Gómez"]', "Eliminar");
-  assert.match(popup()!.textContent, /Se eliminará a Luis Gómez/);
+  assert.match(
+    region("Huéspedes").textContent,
+    /Luis GómezDNI 12345678 · \+51 987 654 321 · luis@example\.com/,
+  );
+  await chooseRowAction('[aria-label="Acciones de Luis Gómez"]', "Editar");
+  await fill("fullName", "Luis Gómez Ruiz");
   await submit();
+  await page.until(() => writes.length === 1, "The guest edit must save");
+  assert.deepEqual(writes[0].actions, [
+    {
+      type: "set-guests",
+      guests: [
+        {
+          id: "8d0f1b5e-2c4a-4f6e-9b7d-3a1c5e7f9b2d",
+          reservationRoomId: "line-2",
+          fullName: "Luis Gómez Ruiz",
+          email: "luis@example.com",
+          phone: "+51987654321",
+          documentType: "DNI",
+          documentNumber: "12345678",
+        },
+      ],
+    },
+  ]);
   await page.until(() => !popup());
-  assert.deepEqual(writes[0].actions, [{ type: "set-guests", guests: [] }]);
+  await chooseRowAction('[aria-label="Acciones de Luis Gómez Ruiz"]', "Eliminar");
+  assert.match(popup()!.textContent, /Se eliminará a Luis Gómez Ruiz/);
+  await submit();
+  await page.until(() => writes.length === 2);
+  assert.deepEqual(writes[1].actions, [{ type: "set-guests", guests: [] }]);
   assert.match(region("Huéspedes").textContent, /Sin huéspedes registrados/);
   await chooseRowAction('[aria-label^="Acciones del pago"]', "Editar");
   assert.match(popup()!.textContent, /Editar pago/);

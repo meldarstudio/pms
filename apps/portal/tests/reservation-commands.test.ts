@@ -288,12 +288,6 @@ describe("server rejections", () => {
       },
     },
     {
-      name: "a Staying guest outside the Reservation's Reserved rooms on the room",
-      actions: [stayingGuests],
-      error: "guest room must belong to this reservation",
-      fields: { reservationRoomId: "Asigna al huésped a una habitación de esta reserva." },
-    },
-    {
       name: "a stay longer than 60 nights on the Checkout date",
       actions: [dates],
       error: "stay cannot be longer than 60 nights",
@@ -338,6 +332,16 @@ describe("server rejections", () => {
         }),
       message: "La fecha del pago no puede ser futura.",
       code: "payment date cannot be in the future",
+    },
+    {
+      name: "a Staying guest outside the Reservation's Reserved rooms",
+      actions: [stayingGuests],
+      fail: () =>
+        page.api.failOnce("POST", "/reservations/:id/commands", 400, {
+          error: "guest room must belong to this reservation",
+        }),
+      message: "La habitación del huésped ya no pertenece a esta reserva. Recarga los datos.",
+      code: "guest room must belong to this reservation",
     },
     {
       name: "a lost connection",
