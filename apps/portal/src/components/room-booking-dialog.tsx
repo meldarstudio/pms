@@ -1,20 +1,14 @@
-import { useCallback, useEffect, useMemo, useRef, useState, useId, type ReactNode } from "react";
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState, useId } from "react";
 import { useSelector } from "@tanstack/react-form";
 import { useQueryClient } from "@tanstack/react-query";
-import {
-  ArrowUpRightIcon,
-  EllipsisIcon,
-  LogInIcon,
-  LogOutIcon,
-  PlusIcon,
-  XIcon,
-} from "lucide-react";
+import { ArrowUpRightIcon, LogInIcon, LogOutIcon, PlusIcon, XIcon } from "lucide-react";
 import { cn } from "cn";
 import { guestValues, overlappingRoomIds, availableRoomTypeIds } from "@/lib/reservation-editor";
 import { unavailableRoomIds } from "@/lib/assignment-availability";
 import { useStayDraft } from "@/lib/use-stay-draft";
 import { ReservationStatusBadge } from "@/components/reservation-status-badge";
-import { useDirtyRoomCheckIn } from "@/components/dirty-room-check-in";
+import { useLifecycleAction } from "@/components/lifecycle-action";
+import { ReservationRoomRow } from "@/components/reservation-room-rows";
 import { Button } from "@/components/ui/button";
 import { Spinner } from "@/components/ui/spinner";
 import {
@@ -35,25 +29,12 @@ import {
   AlertDialogCancel,
   AlertDialogAction,
 } from "@/components/ui/alert-dialog";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuGroup,
-  DropdownMenuItem,
-  DropdownMenuRadioGroup,
-  DropdownMenuRadioItem,
-  DropdownMenuSub,
-  DropdownMenuSubContent,
-  DropdownMenuSubTrigger,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
 import { FieldError, FieldGroup } from "@/components/ui/field";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Separator } from "@/components/ui/separator";
 import { BookingSummary } from "@/components/booking-summary";
 import { useIsMobile } from "@/hooks/use-mobile";
-import { ReservationPageEditor } from "@/components/reservation-page-editors";
 import { NewBooking } from "@/components/new-booking";
 import { PaymentList, StayingGuestList } from "@/components/reservation-records";
 import { GuestEntryForm, PaymentForm, paymentMethods } from "@/components/reservation-entry-forms";
@@ -261,7 +242,6 @@ export function RoomBookingDialog({
                     : undefined
                 }
                 onDirtyChange={onDirtyChange}
-                onCancelled={close}
                 onViewReservation={(id) => navigate(() => onViewReservation(id))}
                 onCancel={() => navigate(close)}
               />
@@ -403,7 +383,6 @@ function BookingEditorSkeleton() {
 
 export function BookingEditor({
   detail,
-  onCancelled,
   onViewReservation,
   onDirtyChange,
   full = false,
@@ -416,7 +395,6 @@ export function BookingEditor({
 }: {
   detail: ReservationDetail;
   onRefresh?: () => void;
-  onCancelled?: () => void;
   onViewReservation?: (id: string) => void;
   onDirtyChange?: (dirty: boolean) => void;
   full?: boolean;
@@ -470,23 +448,15 @@ export function BookingEditor({
   const [discountDirty, setDiscountDirty] = useState(false);
   const [actionDirty, setActionDirty] = useState(false);
   const independentDraftDirty = guestDirty || paymentDirty || discountDirty || actionDirty;
-  const [cancellation, setCancellation] = useState<{
-    detail: ReservationDetail;
-    discardDraft: boolean;
-  } | null>(null);
-  const [restoration, setRestoration] = useState<{
-    detail: ReservationDetail;
-    status: "confirmed" | "checked_in" | "checked_out";
-  } | null>(null);
-  const [cancellationDirty, setCancellationDirty] = useState(false);
   const draftDirty = dirty || independentDraftDirty;
   const billing = summary.billing;
   const { send, saving: reservationSaving } = useReservationCommands(detail.id);
-  const [statusSaving, setStatusSaving] = useState(false);
+  const lifecycle = useLifecycleAction(detail);
   const busy = submitting || reservationSaving;
+  const bodySave = compactEditor && !mobileEditor;
   useEffect(() => {
-    onDirtyChange?.(draftDirty || cancellationDirty);
-  }, [draftDirty, cancellationDirty, onDirtyChange]);
+    onDirtyChange?.(draftDirty);
+  }, [draftDirty, onDirtyChange]);
   async function savePayment(title: string, actions: WorkflowAction[]) {
     const result = await send(actions);
     if (result.status === "saved") toast.add({ title, type: "success" });
@@ -494,16 +464,6 @@ export function BookingEditor({
   }
 
   const activeDrafts = drafts.filter((draft) => !draft.removed);
-  const [confirmCheckIn, checkInDialog] = useDirtyRoomCheckIn();
-  async function changeStatus(status: "confirmed" | "checked_in" | "checked_out") {
-    if (status === detail.status || dirty || independentDraftDirty || busy) return;
-    if (!(await confirmCheckIn(detail, status))) return;
-    setStatusSaving(true);
-    const result = await send([{ type: "set-status", status }]);
-    setStatusSaving(false);
-    if (result.status === "saved") toast.add({ title: "Estado guardado", type: "success" });
-    else toastError("No se pudo cambiar el estado", unsavedMessage(result));
-  }
   async function saveChanges() {
     if (tab !== "details" || !stayDraft.submission.allowed) return;
     const result = await send(stayDraft.submission.command.actions);
@@ -514,85 +474,35 @@ export function BookingEditor({
     } else if (result.status === "rejected") stayDraft.rejectSave(result.fields);
     else toastError("No se pudo guardar", result.message);
   }
-  const reservationActions = (
-    <DropdownMenu>
-      <DropdownMenuTrigger
-        disabled={busy || (!mobileEditor && independentDraftDirty)}
-        render={
-          <Button type="button" variant="ghost" size="icon" aria-label="Más acciones de reserva" />
-        }
-      >
-        <span className="sr-only">Más acciones de reserva</span>
-        <EllipsisIcon data-icon="inline-start" />
-      </DropdownMenuTrigger>
-      <DropdownMenuContent align="end" side={mobileEditor ? "bottom" : "top"} className="w-52">
-        <DropdownMenuGroup>
-          {mobileEditor && onViewReservation && (
-            <DropdownMenuItem onClick={() => onViewReservation(detail.id)}>
-              Ver reserva completa
-            </DropdownMenuItem>
-          )}
-          {detail.status !== "cancelled" && (
-            <DropdownMenuItem
-              variant="destructive"
-              disabled={independentDraftDirty}
-              closeOnClick={false}
-              onClick={() => {
-                if (reservationSaving) return;
-                setCancellation({ detail, discardDraft: dirty });
-              }}
-            >
-              Cancelar reserva
-            </DropdownMenuItem>
-          )}
-          <DropdownMenuSub>
-            <DropdownMenuSubTrigger disabled={dirty || independentDraftDirty}>
-              Cambiar estado
-            </DropdownMenuSubTrigger>
-            <DropdownMenuSubContent className="min-w-36">
-              <DropdownMenuRadioGroup
-                aria-label="Estado de la reserva"
-                value={detail.status}
-                onValueChange={(value) => {
-                  if (value !== "confirmed" && value !== "checked_in" && value !== "checked_out")
-                    return;
-                  if (detail.status === "cancelled") {
-                    const next = value;
-                    queueMicrotask(async () => {
-                      if (await confirmCheckIn(detail, next))
-                        setRestoration({ detail, status: next });
-                    });
-                    return;
-                  }
-                  void changeStatus(value);
-                }}
-              >
-                <DropdownMenuRadioItem value="confirmed" closeOnClick>
-                  Confirmada
-                </DropdownMenuRadioItem>
-                <DropdownMenuRadioItem value="checked_in" closeOnClick>
-                  Check-in
-                </DropdownMenuRadioItem>
-                <DropdownMenuRadioItem value="checked_out" closeOnClick>
-                  Check-out
-                </DropdownMenuRadioItem>
-              </DropdownMenuRadioGroup>
-            </DropdownMenuSubContent>
-          </DropdownMenuSub>
-        </DropdownMenuGroup>
-      </DropdownMenuContent>
-    </DropdownMenu>
-  );
-  const discardDetails = !full && !stayOnly && (mobileEditor ? dirty : tab === "details") && (
+  const removeRoom = (id: string) =>
+    form.setFieldValue(`rooms[${values.rooms.findIndex((room) => room.id === id)}].removed`, true);
+  const viewReservation = !full && onViewReservation && (
     <Button
       type="button"
-      variant={mobileEditor ? "ghost" : "outline"}
-      disabled={!dirty || busy}
-      onClick={stayDraft.discard}
+      variant="ghost"
+      size={mobileEditor ? "icon" : "icon-sm"}
+      aria-label="Ver reserva completa"
+      title="Ver reserva completa"
+      disabled={busy}
+      onClick={() => onViewReservation(detail.id)}
     >
-      {mobileEditor ? "Descartar" : "Descartar cambios"}
+      <ArrowUpRightIcon />
     </Button>
   );
+  const saveDetails = (
+    <Button
+      type="submit"
+      form={formId}
+      className={cn(mobileEditor && "w-full")}
+      disabled={stayDraft.submission.disabled || busy}
+    >
+      {submitting && <Spinner data-icon="inline-start" />}
+      {submitting ? "Guardando…" : "Guardar cambios"}
+    </Button>
+  );
+  const nights =
+    (Date.parse(`${detail.checkOut}T00:00:00Z`) - Date.parse(`${detail.checkIn}T00:00:00Z`)) /
+    86400000;
   return (
     <div
       className={cn(
@@ -601,53 +511,36 @@ export function BookingEditor({
         compactEditor && "max-md:gap-0",
       )}
     >
-      {checkInDialog}
-      {!stayOnly && (
-        <div
-          className={cn(
-            "flex shrink-0 flex-wrap items-center gap-2 pr-8",
-            compactEditor &&
-              "max-md:min-h-[calc(2rem+max(1rem,env(safe-area-inset-top)))] max-md:flex-nowrap max-md:items-start max-md:pt-[max(1rem,env(safe-area-inset-top))] max-md:pr-[calc(2.25rem+max(1rem,env(safe-area-inset-right)))] max-md:pl-[max(1rem,env(safe-area-inset-left))]",
-          )}
-        >
-          <div
-            className={
-              mobileEditor
-                ? "flex min-h-7 min-w-0 flex-1 flex-nowrap items-center gap-2"
-                : "contents"
-            }
-          >
-            <span className={cn("text-lg font-semibold", mobileEditor && "min-w-0 truncate")}>
-              {`${contact.fullName}`.trim()}
+      {lifecycle.dialogs}
+      {mobileEditor && (
+        <header className="flex shrink-0 items-start gap-2 pt-[max(1rem,env(safe-area-inset-top))] pr-[calc(2.25rem+max(1rem,env(safe-area-inset-right)))] pb-2 pl-[max(1rem,env(safe-area-inset-left))]">
+          <div className="flex min-w-0 flex-1 flex-col gap-0.5">
+            <span className="text-xs text-muted-foreground">{detail.code}</span>
+            <div className="flex min-w-0 items-center gap-2">
+              <span className="min-w-0 truncate text-sm font-medium">
+                {contact.fullName.trim()}
+              </span>
+              <ReservationStatusBadge status={detail.status} />
+            </div>
+            <span className="text-xs text-muted-foreground">
+              {`${stayDate(detail.checkIn, "d MMM")} – ${stayDate(detail.checkOut, "d MMM yyyy")} · ${nights} ${nights === 1 ? "noche" : "noches"}`}
             </span>
-            <ReservationStatusBadge status={detail.status} />
           </div>
-          {mobileEditor && reservationActions}
+          {viewReservation}
+        </header>
+      )}
+      {!stayOnly && !mobileEditor && (
+        <div className="flex shrink-0 flex-wrap items-center gap-2 pr-8">
+          <span className="text-lg font-semibold">{contact.fullName.trim()}</span>
+          <ReservationStatusBadge status={detail.status} />
         </div>
       )}
-      {!stayOnly && (
-        <p
-          className={cn(
-            "-mt-2 flex shrink-0 flex-wrap items-center gap-1 text-sm wrap-anywhere text-muted-foreground",
-            compactEditor && "max-md:mt-0 max-md:safe-area-padding-x",
-          )}
-        >
+      {!stayOnly && !mobileEditor && (
+        <p className="-mt-2 flex shrink-0 flex-wrap items-center gap-1 text-sm wrap-anywhere text-muted-foreground">
           {[contact.phone && phoneDisplay(contact.phone).text, detail.code]
             .filter(Boolean)
             .join(" · ")}
-          {!full && !mobileEditor && onViewReservation && (
-            <Button
-              type="button"
-              variant="ghost"
-              size="icon-sm"
-              aria-label="Ver reserva completa"
-              title="Ver reserva completa"
-              disabled={busy}
-              onClick={() => onViewReservation(detail.id)}
-            >
-              <ArrowUpRightIcon />
-            </Button>
-          )}
+          {viewReservation}
         </p>
       )}
       <Tabs
@@ -672,16 +565,16 @@ export function BookingEditor({
           >
             <TabsTrigger value="details">
               Detalles
-              {dirty ? (
-                <span
-                  className="size-1.5 shrink-0 rounded-full bg-primary"
-                  aria-label="Cambios sin guardar"
-                  title="Cambios sin guardar"
-                />
-              ) : null}
+              {dirty && <UnsavedDot />}
             </TabsTrigger>
-            <TabsTrigger value="guests">Huéspedes</TabsTrigger>
-            <TabsTrigger value="payments">Pagos</TabsTrigger>
+            <TabsTrigger value="payments">
+              Pagos
+              {(paymentDirty || actionDirty) && <UnsavedDot />}
+            </TabsTrigger>
+            <TabsTrigger value="guests">
+              Huéspedes
+              {guestDirty && <UnsavedDot />}
+            </TabsTrigger>
           </TabsList>
         )}
         <div
@@ -748,51 +641,20 @@ export function BookingEditor({
                   )}
                   <form.Field name="rooms" mode="array">
                     {() => (
-                      <section className="flex flex-col gap-3">
-                        <div className="flex flex-wrap items-center justify-between gap-2">
-                          <h3 className="font-medium">Habitaciones</h3>
-                        </div>
-                        {activeDrafts.map((draft, i) => (
-                          <section
-                            key={draft.id}
-                            aria-labelledby={
-                              mobileEditor && activeDrafts.length > 1
-                                ? `${formId}-${draft.id}-title`
-                                : undefined
-                            }
-                            className="flex min-w-0 flex-col gap-3"
-                          >
-                            {mobileEditor && i > 0 && <Separator className="my-2" />}
-                            {mobileEditor && activeDrafts.length > 1 && (
-                              <div className="flex items-center justify-between gap-3">
-                                <h4
-                                  id={`${formId}-${draft.id}-title`}
-                                  className="font-medium text-muted-foreground"
-                                >
-                                  Habitación {i + 1}
-                                </h4>
-                                <Button
-                                  type="button"
-                                  variant="ghost"
-                                  aria-label={`Quitar habitación ${i + 1}`}
-                                  onClick={() =>
-                                    form.setFieldValue(
-                                      `rooms[${values.rooms.findIndex((room) => room.id === draft.id)}].removed`,
-                                      true,
-                                    )
-                                  }
-                                >
-                                  Quitar
-                                </Button>
-                              </div>
-                            )}
-                            <form.Field
-                              name={`rooms[${values.rooms.findIndex((room) => room.id === draft.id)}].room`}
-                            >
+                      <section className={cn("flex flex-col", mobileEditor ? "gap-3" : "gap-5")}>
+                        {mobileEditor && (
+                          <div className="flex flex-wrap items-center justify-between gap-2">
+                            <h3 className="font-medium">Habitaciones</h3>
+                          </div>
+                        )}
+                        {activeDrafts.map((draft, i) => {
+                          const roomIndex = values.rooms.findIndex((room) => room.id === draft.id);
+                          const fields = (
+                            <form.Field name={`rooms[${roomIndex}].room`}>
                               {() => (
                                 <CompactRoomFields
                                   form={form}
-                                  roomIndex={values.rooms.findIndex((room) => room.id === draft.id)}
+                                  roomIndex={roomIndex}
                                   errors={errors}
                                   reservationId={detail.id}
                                   availableTypeIds={availableRoomTypeIds(
@@ -806,36 +668,56 @@ export function BookingEditor({
                                   typesReady={
                                     roomTypes.isSuccess && rooms.isSuccess && availability.ready
                                   }
-                                  mobileLayout={compactEditor}
                                   blockedRoomIds={overlappingRoomIds(
                                     activeDrafts
                                       .filter((other) => other.id !== draft.id)
                                       .map((other) => other.room),
                                   )}
-                                  actions={
-                                    !mobileEditor && (
-                                      <Button
-                                        type="button"
-                                        variant="destructive"
-                                        size="icon"
-                                        aria-label={`Quitar habitación ${i + 1}`}
-                                        disabled={activeDrafts.length <= 1}
-                                        onClick={() =>
-                                          form.setFieldValue(
-                                            `rooms[${values.rooms.findIndex((room) => room.id === draft.id)}].removed`,
-                                            true,
-                                          )
+                                  row={
+                                    mobileEditor
+                                      ? null
+                                      : {
+                                          index: i,
+                                          count: activeDrafts.length,
+                                          onRemove: () => removeRoom(draft.id),
                                         }
-                                      >
-                                        <XIcon />
-                                      </Button>
-                                    )
                                   }
                                 />
                               )}
                             </form.Field>
-                          </section>
-                        ))}
+                          );
+                          if (!mobileEditor) return <Fragment key={draft.id}>{fields}</Fragment>;
+                          return (
+                            <section
+                              key={draft.id}
+                              aria-labelledby={
+                                activeDrafts.length > 1 ? `${formId}-${draft.id}-title` : undefined
+                              }
+                              className="flex min-w-0 flex-col gap-3"
+                            >
+                              {i > 0 && <Separator className="my-2" />}
+                              {activeDrafts.length > 1 && (
+                                <div className="flex items-center justify-between gap-3">
+                                  <h4
+                                    id={`${formId}-${draft.id}-title`}
+                                    className="font-medium text-muted-foreground"
+                                  >
+                                    Habitación {i + 1}
+                                  </h4>
+                                  <Button
+                                    type="button"
+                                    variant="ghost"
+                                    aria-label={`Quitar habitación ${i + 1}`}
+                                    onClick={() => removeRoom(draft.id)}
+                                  >
+                                    Quitar
+                                  </Button>
+                                </div>
+                              )}
+                              {fields}
+                            </section>
+                          );
+                        })}
                         {activeDrafts.length > 0 && (
                           <Button
                             type="button"
@@ -880,6 +762,7 @@ export function BookingEditor({
                       </FieldGroup>
                     </section>
                   )}
+                  {bodySave && <div className="flex">{saveDetails}</div>}
                 </fieldset>
               </form>
             </TabsContent>
@@ -985,153 +868,74 @@ export function BookingEditor({
             "max-md:flex max-md:shrink-0 max-md:flex-col max-md:gap-3 max-md:py-3 max-md:pb-[max(0.75rem,env(safe-area-inset-bottom))] max-md:safe-area-padding-x",
         )}
       >
-        {!stayOnly && independentDraftDirty && (
+        {compactEditor && independentDraftDirty && (
           <p className="text-xs text-muted-foreground">
-            Guarda o descarta los cambios de huéspedes, pagos o descuento antes de cambiar el estado
-            o cancelar la reserva.
+            Guarda o descarta los cambios de huéspedes, pagos o descuento antes del check-in o
+            check-out.
           </p>
         )}
-        {(!mobileEditor ||
-          dirty ||
-          (mobileEditor && !dirty) ||
-          detail.status === "confirmed" ||
-          detail.status === "checked_in") && (
-          <div
-            className={cn(
-              "flex shrink-0 flex-wrap items-center justify-between gap-3",
-              compactEditor && "max-md:flex-nowrap max-md:gap-2",
-            )}
-          >
-            {!stayOnly && (!mobileEditor || !dirty) && (
-              <div
-                className={cn("flex flex-wrap items-center gap-2", mobileEditor && "max-md:flex-1")}
+        {compactEditor &&
+          (mobileEditor && dirty ? (
+            tab === "details" ? (
+              saveDetails
+            ) : (
+              <Button
+                type="button"
+                className="w-full"
+                disabled={busy}
+                onClick={() => {
+                  setTab("details");
+                  onTabChange?.("details");
+                }}
               >
-                {(!mobileEditor || !dirty) &&
-                  (detail.status === "confirmed" || detail.status === "checked_in") && (
-                    <Button
-                      type="button"
-                      variant={mobileEditor ? "default" : "outline"}
-                      className={cn(mobileEditor && "max-md:min-w-0 max-md:flex-1")}
-                      disabled={busy || dirty || independentDraftDirty}
-                      onClick={() =>
-                        void changeStatus(
-                          detail.status === "confirmed" ? "checked_in" : "checked_out",
-                        )
-                      }
-                    >
-                      {statusSaving ? (
-                        <Spinner data-icon="inline-start" />
-                      ) : detail.status === "confirmed" ? (
-                        <LogInIcon data-icon="inline-start" />
-                      ) : (
-                        <LogOutIcon data-icon="inline-start" />
-                      )}
-                      {detail.status === "confirmed" ? "Hacer check-in" : "Hacer check-out"}
-                    </Button>
-                  )}
-                {statusSaving && (
-                  <p role="status" className="text-xs text-muted-foreground">
-                    Guardando estado…
-                  </p>
-                )}
-                {!mobileEditor && reservationActions}
-                {mobileEditor && !dirty && (
-                  <Button
-                    type="button"
-                    variant="outline"
-                    className="max-md:min-w-0 max-md:flex-1"
-                    disabled={busy}
-                    onClick={onCancel}
-                  >
-                    Cerrar
-                  </Button>
-                )}
-              </div>
-            )}
-            {(!mobileEditor || dirty) && (
-              <div
-                className={cn(
-                  "ml-auto flex flex-wrap items-end justify-end gap-3",
-                  mobileEditor && dirty && "min-w-0 flex-1",
-                )}
+                Volver a Detalles
+              </Button>
+            )
+          ) : (
+            <div className="flex shrink-0 flex-wrap items-center justify-end gap-2 max-md:flex-nowrap">
+              {lifecycle.running && (
+                <p role="status" className="mr-auto text-xs text-muted-foreground">
+                  Guardando estado…
+                </p>
+              )}
+              <Button
+                type="button"
+                variant="outline"
+                className={cn(mobileEditor && "min-w-0 flex-1")}
+                disabled={busy}
+                onClick={onCancel}
               >
-                <div
-                  className={cn(
-                    "flex flex-wrap gap-2",
-                    mobileEditor &&
-                      dirty &&
-                      "w-full flex-nowrap justify-end [&>button]:min-w-0 [&>button]:flex-1",
-                  )}
+                Cerrar
+              </Button>
+              {lifecycle.step && (
+                <Button
+                  type="button"
+                  variant={lifecycle.step.due ? "default" : "outline"}
+                  className={cn(mobileEditor && "min-w-0 flex-1")}
+                  disabled={busy || lifecycle.running || draftDirty}
+                  onClick={() => void lifecycle.run()}
                 >
-                  {stayOnly && (
-                    <Button type="button" variant="outline" disabled={busy} onClick={onCancel}>
-                      Cancelar
-                    </Button>
+                  {lifecycle.running ? (
+                    <Spinner data-icon="inline-start" />
+                  ) : lifecycle.step.status === "checked_in" ? (
+                    <LogInIcon data-icon="inline-start" />
+                  ) : (
+                    <LogOutIcon data-icon="inline-start" />
                   )}
-                  {mobileEditor && discardDetails}
-                  {tab === "details" && (!mobileEditor || dirty) && (
-                    <Button
-                      type="submit"
-                      form={formId}
-                      disabled={stayDraft.submission.disabled || busy}
-                    >
-                      {submitting && <Spinner data-icon="inline-start" />}
-                      {submitting ? "Guardando…" : "Guardar cambios"}
-                    </Button>
-                  )}
-                  {mobileEditor && dirty && tab !== "details" && (
-                    <Button
-                      type="button"
-                      disabled={busy}
-                      onClick={() => {
-                        setTab("details");
-                        onTabChange?.("details");
-                      }}
-                    >
-                      Volver a Detalles
-                    </Button>
-                  )}
-                  {!mobileEditor && discardDetails}
-                </div>
-              </div>
-            )}
+                  {lifecycle.step.label}
+                </Button>
+              )}
+            </div>
+          ))}
+        {stayOnly && (
+          <div className="flex flex-wrap justify-end gap-2">
+            <Button type="button" variant="outline" disabled={busy} onClick={onCancel}>
+              Cancelar
+            </Button>
+            {saveDetails}
           </div>
         )}
       </div>
-      {restoration && (
-        <ReservationPageEditor
-          target={{ kind: "status", status: restoration.status }}
-          detail={restoration.detail}
-          onDirtyChange={() => {}}
-          onClose={() => setRestoration(null)}
-          onSaved={(saved) => {
-            resetDetails(saved);
-            setRestoration(null);
-          }}
-        />
-      )}
-      {cancellation && (
-        <ReservationPageEditor
-          target={{ kind: "status", status: "cancelled" }}
-          detail={cancellation.detail}
-          description={
-            cancellation.discardDraft
-              ? "Confirmar descarta los demás cambios sin guardar de Detalles."
-              : undefined
-          }
-          onDirtyChange={setCancellationDirty}
-          onClose={() => {
-            setCancellation(null);
-            setCancellationDirty(false);
-          }}
-          onSaved={(saved) => {
-            resetDetails(saved);
-            setCancellation(null);
-            setCancellationDirty(false);
-            onCancelled?.();
-          }}
-        />
-      )}
       {intent && (
         <ActionForm
           key={intent.type + ("entry" in intent ? intent.entry.id : "")}
@@ -1188,9 +992,8 @@ const CompactRoomFields = withReservationForm({
     availableTypeIds: new Set<string>(),
     typesReady: false,
     blockedRoomIds: new Set<string>(),
-    actions: null as ReactNode,
     errors: {} as Record<string, string>,
-    mobileLayout: false,
+    row: null as { index: number; count: number; onRemove: () => void } | null,
   },
   render: function CompactRoomFields({
     form,
@@ -1199,9 +1002,8 @@ const CompactRoomFields = withReservationForm({
     availableTypeIds,
     typesReady,
     blockedRoomIds,
-    actions,
     errors,
-    mobileLayout,
+    row,
   }) {
     const types = useRoomTypes(),
       rooms = useRooms();
@@ -1221,93 +1023,91 @@ const CompactRoomFields = withReservationForm({
     const assignmentErrorId = useId();
     const typeError = errors[`rooms[${roomIndex}].room.roomTypeId`];
     const typeErrorId = useId();
-    return (
-      <FieldGroup
-        className={cn(
-          "grid gap-3",
-          mobileLayout
-            ? "grid-cols-1 md:grid-cols-[minmax(0,1fr)_88px_56px_56px_28px]"
-            : "grid-cols-2 sm:grid-cols-[minmax(0,1fr)_88px_56px_56px_28px]",
-        )}
+    const typeField = (
+      <form.AppField
+        name={`rooms[${roomIndex}].room.roomTypeId`}
+        listeners={{
+          onChange: ({ value }) => {
+            if (value === roomTypeId.current) return;
+            form.setFieldValue(`rooms[${roomIndex}].room.roomId`, null);
+          },
+        }}
       >
-        <form.AppField
-          name={`rooms[${roomIndex}].room.roomTypeId`}
-          listeners={{
-            onChange: ({ value }) => {
-              if (value === roomTypeId.current) return;
-              form.setFieldValue(`rooms[${roomIndex}].room.roomId`, null);
-            },
-          }}
-        >
-          {(field) => (
-            <field.Choice
-              label="Tipo"
-              disabled={!typesReady}
-              groupErrorId={typeError ? typeErrorId : undefined}
-              options={(types.data ?? [])
-                .filter((type) => type.id === room.roomTypeId || availableTypeIds.has(type.id))
-                .map((type) => ({ value: type.id, label: type.name }))}
-            />
-          )}
-        </form.AppField>
-        <form.AppField name={`rooms[${roomIndex}].room.roomId`}>
-          {(field) => (
-            <field.Choice
-              label="Hab."
-              nullable
-              disabled={!availability.ready}
-              groupErrorId={assignmentError ? assignmentErrorId : undefined}
-              options={[
-                { value: "none", label: "Sin asignar" },
-                ...(rooms.data ?? [])
-                  .filter(
-                    (r) =>
-                      r.id === room.roomId ||
-                      (r.roomTypeId === room.roomTypeId &&
-                        !blockedRoomIds.has(r.id) &&
-                        !availability.blocked.has(r.id)),
-                  )
-                  .map((r) => ({
-                    value: r.id,
-                    label: r.number,
-                    disabled:
-                      blockedRoomIds.has(r.id) ||
-                      availability.blocked.has(r.id) ||
-                      r.roomTypeId !== room.roomTypeId,
-                  })),
-              ]}
-            />
-          )}
-        </form.AppField>
-        <form.AppField name={`rooms[${roomIndex}].room.adults`}>
-          {(field) => (
-            <field.Text
-              label="Adultos"
-              type="number"
-              required
-              min={1}
-              max={100}
-              live
-              groupErrorId={capacity ? capacityId : undefined}
-            />
-          )}
-        </form.AppField>
-        <form.AppField name={`rooms[${roomIndex}].room.children`}>
-          {(field) => (
-            <field.Text
-              label="Niños"
-              type="number"
-              required
-              min={0}
-              max={100}
-              live
-              groupErrorId={capacity ? capacityId : undefined}
-            />
-          )}
-        </form.AppField>
-        {actions && (
-          <div className="col-start-2 self-end justify-self-end sm:col-start-auto">{actions}</div>
+        {(field) => (
+          <field.Choice
+            label="Tipo"
+            disabled={!typesReady}
+            groupErrorId={typeError ? typeErrorId : undefined}
+            options={(types.data ?? [])
+              .filter((type) => type.id === room.roomTypeId || availableTypeIds.has(type.id))
+              .map((type) => ({ value: type.id, label: type.name }))}
+          />
         )}
+      </form.AppField>
+    );
+    const roomField = (
+      <form.AppField name={`rooms[${roomIndex}].room.roomId`}>
+        {(field) => (
+          <field.Choice
+            label="Hab."
+            nullable
+            disabled={!availability.ready}
+            groupErrorId={assignmentError ? assignmentErrorId : undefined}
+            options={[
+              { value: "none", label: "Sin asignar" },
+              ...(rooms.data ?? [])
+                .filter(
+                  (r) =>
+                    r.id === room.roomId ||
+                    (r.roomTypeId === room.roomTypeId &&
+                      !blockedRoomIds.has(r.id) &&
+                      !availability.blocked.has(r.id)),
+                )
+                .map((r) => ({
+                  value: r.id,
+                  label: r.number,
+                  disabled:
+                    blockedRoomIds.has(r.id) ||
+                    availability.blocked.has(r.id) ||
+                    r.roomTypeId !== room.roomTypeId,
+                })),
+            ]}
+          />
+        )}
+      </form.AppField>
+    );
+    const adultsField = (
+      <form.AppField name={`rooms[${roomIndex}].room.adults`}>
+        {(field) => (
+          <field.Text
+            label="Adultos"
+            type="number"
+            required
+            min={1}
+            max={100}
+            live
+            groupErrorId={capacity ? capacityId : undefined}
+          />
+        )}
+      </form.AppField>
+    );
+    const childrenField = (
+      <form.AppField name={`rooms[${roomIndex}].room.children`}>
+        {(field) => (
+          <field.Text
+            label="Niños"
+            type="number"
+            required
+            min={0}
+            max={100}
+            live
+            groupErrorId={capacity ? capacityId : undefined}
+          />
+        )}
+      </form.AppField>
+    );
+    const feedback = (capacity || typeError || assignmentError || availability.error) && (
+      <>
         {capacity && (
           <FieldError id={capacityId} className="col-span-full">
             {capacity}
@@ -1326,6 +1126,26 @@ const CompactRoomFields = withReservationForm({
         {availability.error && (
           <FieldError className="col-span-full">{availability.error}</FieldError>
         )}
+      </>
+    );
+    if (row)
+      return (
+        <ReservationRoomRow
+          {...row}
+          typeField={typeField}
+          roomField={roomField}
+          adultsField={adultsField}
+          childrenField={childrenField}
+          feedback={feedback}
+        />
+      );
+    return (
+      <FieldGroup className="grid grid-cols-1 gap-3">
+        {typeField}
+        {roomField}
+        {adultsField}
+        {childrenField}
+        {feedback}
       </FieldGroup>
     );
   },
@@ -1580,5 +1400,15 @@ export function DiscardChanges({
         </div>
       </DialogContent>
     </Dialog>
+  );
+}
+
+function UnsavedDot() {
+  return (
+    <span
+      className="size-1.5 shrink-0 rounded-full bg-primary"
+      aria-label="Cambios sin guardar"
+      title="Cambios sin guardar"
+    />
   );
 }

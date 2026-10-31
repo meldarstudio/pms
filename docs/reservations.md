@@ -437,17 +437,28 @@ requires confirmation; records remain editable on cancelled reservations.
 
 ### Compact calendar dialog
 
-Details save dates, rooms, and notes only; discard resets that draft. Routine
-check-in/checkout/status corrections save independently. Restoration previews the
-chosen status and availability before confirmation and keeps the dialog open after
-success. Closing preserves calendar position.
+The dialog keeps only everyday actions. Status corrections, cancellation, No-show,
+and restoration happen on the full page; calendar bars never show cancelled stays.
+The footer holds Cerrar, then Hacer check-in (confirmed) or Hacer check-out (checked
+in); checked-out stays get Cerrar alone. The action is primary once its date has
+arrived in the property calendar, outline before. The shared
+[lifecycle action](../apps/portal/src/components/lifecycle-action.tsx) confirms a
+dirty room before check-in and a positive saved balance before check-out (without
+blocking it), then offers Deshacer in the success toast for 8 seconds, which sends
+`set-status` back to the previous status.
 
-Dirty drafts block check-in/checkout/status correction. Dirty details, guest,
-payment, and discount drafts block restoration; guest/payment/discount drafts block
-cancellation. Dirty details alone permit cancellation, explicitly discarded only
-on success, which closes the dialog. Dismissal/failure retains them. Disable writes
-while any save is queued/running, including discount autosave. Autosave queued after
-cancellation waits and reads the cancelled reservation.
+Details save dates, rooms, and notes only, through Guardar cambios in the form; on
+phones a dirty details draft replaces the footer actions with it. There is no discard
+button: Cerrar, ✕, Escape, and **Ver reserva completa** ask before discarding. Each
+tab shows a dot while its form has unsaved input; the discount draft lives in the
+summary popover and shows none. Closing preserves calendar position. On desktop, and
+in the page's stay editor, rooms use the shared
+[room row](../apps/portal/src/components/reservation-room-rows.tsx); the phone dialog
+keeps one field per line.
+
+Any dirty draft (details, guest, payment, discount, or a nested guest/payment editor)
+blocks check-in/checkout. Disable writes while any save is queued/running, including
+discount autosave.
 
 The mobile bill accordion keeps the discount draft mounted through collapse/resize.
 Draft bills show preview state and never substitute stale saved amounts when unavailable.

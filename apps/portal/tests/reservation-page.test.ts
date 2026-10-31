@@ -121,7 +121,9 @@ afterAll(async () => {
 
 type ApiOptions = {
   write?: (command: WorkflowCommand) => Response | undefined | Promise<Response | undefined>;
-  preview?: (command: WorkflowCommand) => WorkflowPreview | Promise<WorkflowPreview>;
+  preview?: (
+    command: WorkflowCommand,
+  ) => WorkflowPreview | Response | Promise<WorkflowPreview | Response>;
 };
 function mockApi(options: ApiOptions = {}) {
   page.api.on<WorkflowCommand>(
@@ -733,6 +735,80 @@ it("previews cancellation selected in the header before saving and shows the res
   ]);
 });
 
+it("retries a failed cancellation preview and keeps the reason after a failed save", async () => {
+  mockApi({
+    preview: () =>
+      previews.length === 1
+        ? Response.json({ error: "Temporary preview failure" }, { status: 503 })
+        : { billing: { ...saved, totalCents: 0, balanceCents: 0 }, validation: { issues: [] } },
+    write: () =>
+      writes.length === 1
+        ? Response.json({ error: "Temporary cancellation save failure" }, { status: 503 })
+        : undefined,
+  });
+  await render();
+  await selectStatus("Cancelada");
+  await page.until(() => popup()?.textContent.includes("Temporary preview failure") === true);
+  assert.equal(button("Confirmar").disabled, true);
+  await click("Reintentar");
+  await page.until(() => !button("Confirmar").disabled, "The retried preview must finish");
+  assert.deepEqual(previews[1].actions, previews[0].actions);
+  const reason = "  Cambio de planes  ";
+  await fill("reason", reason);
+  await click("Confirmar");
+  await page.until(
+    () => writes.length === 1 && !button("Confirmar").disabled,
+    "A failed cancellation save must allow retrying",
+  );
+  assert.equal(field("reason").value, reason);
+  assert.equal(saved.status, "confirmed");
+  await click("Confirmar");
+  await page.until(() => !popup(), "A successful cancellation closes the confirmation");
+  assert.deepEqual(writes[1].actions, [
+    { type: "set-status", status: "cancelled", reason: "Cambio de planes" },
+  ]);
+});
+
+it("warns before restoring a cancelled reservation into a dirty room, then restores it", async () => {
+  saved = {
+    ...saved,
+    status: "cancelled",
+    cancelledAt: "2026-10-18T15:00:00Z",
+    rooms: [
+      { ...saved.rooms[0], roomId: "room-1", roomNumber: "101", housekeepingStatus: "dirty" },
+    ],
+  };
+  mockApi({
+    preview: () => ({ billing: { ...saved, status: "checked_in" }, validation: { issues: [] } }),
+  });
+  await render();
+  const warning = () =>
+    [...window.document.querySelectorAll('[role="alertdialog"]')].find((item) =>
+      item.textContent.includes("La habitación 101 está sucia"),
+    );
+  const warningButton = (label: string) =>
+    [...warning()!.querySelectorAll<HTMLElement>("button")].find(
+      (item) => item.textContent.trim() === label,
+    )!;
+  await selectStatus("Check-in");
+  await page.until(() => warning() !== undefined, "Restoring into a dirty room must warn");
+  await React.act(async () => warningButton("Volver").click());
+  await page.until(() => warning() === undefined);
+  assert.equal(popup(), null);
+  await selectStatus("Check-in");
+  await page.until(() => warning() !== undefined);
+  await React.act(async () => warningButton("Hacer check-in").click());
+  await page.until(
+    () => popup()?.textContent.includes("Restaurar reserva") === true,
+    "Restoration must follow the warning",
+  );
+  assert.equal(writes.length, 0);
+  await page.until(() => !button("Guardar cambios").disabled);
+  await click("Guardar cambios");
+  await page.until(() => saved.status === "checked_in" && !popup());
+  assert.deepEqual(writes[0].actions, [{ type: "set-status", status: "checked_in" }]);
+});
+
 it.each([
   ["roomTypeId", "not enough rooms available for those dates"],
   ["roomId", "room is already assigned for those dates"],
@@ -847,7 +923,11 @@ it("validates occupancy and saves room changes together while retaining at least
   await render();
   await click("Editar estadía");
   await click("Quitar habitación 2");
-  assert.equal(button("Quitar habitación 1").disabled, true);
+  assert.equal(
+    window.document.querySelector('[aria-label="Quitar habitación 1"]'),
+    null,
+    "The last room cannot be removed",
+  );
   await fill("rooms[0].room.adults", "3");
   await submit();
   assert.equal(writes.length, 0);

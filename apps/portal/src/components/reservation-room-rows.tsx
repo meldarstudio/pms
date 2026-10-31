@@ -1,4 +1,5 @@
 import { useId, type ReactNode } from "react";
+import { Trash2Icon } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { FieldGroup } from "@/components/ui/field";
 
@@ -41,13 +42,14 @@ export function ReservationRoomRow({
                 aria-label={`Quitar habitación ${index + 1}`}
                 onClick={onRemove}
               >
+                <Trash2Icon data-icon="inline-start" />
                 Quitar
               </Button>
             )}
           </div>
         )}
       </div>
-      <FieldGroup className="grid grid-cols-3 gap-3 md:grid-cols-[minmax(0,1fr)_88px_56px_56px]">
+      <FieldGroup className="grid grid-cols-3 gap-3 md:grid-cols-[minmax(0,1fr)_7rem_4rem_4rem]">
         <div className="col-span-full min-w-0 md:col-span-1">{typeField}</div>
         <div className="min-w-0">{roomField}</div>
         <div className="min-w-0">{adultsField}</div>
