@@ -167,12 +167,10 @@ const handlers: Handlers = {
         .length
     )
       fail("guest belongs to another reservation");
-    state.stayingGuests = action.guests.map((guest) => {
+    state.stayingGuests = action.guests.map(({ reservationRoomId: _room, ...guest }) => {
       const saved = original.stayingGuests.find((g) => g.id === guest.id);
       return {
         ...guest,
-        reservationRoomId:
-          state.lines.find((line) => line.id === saved?.reservationRoomId)?.id ?? null,
         phone: acceptPhone(guest.phone, saved?.phone),
         documentType: guest.documentType ?? null,
         documentNumber: guest.documentNumber ?? null,
@@ -230,9 +228,6 @@ const handlers: Handlers = {
     const { state } = ctx;
     lineFor(ctx, action.lineId);
     state.lines = state.lines.filter((line) => line.id !== action.lineId);
-    for (const guest of state.stayingGuests) {
-      if (guest.reservationRoomId === action.lineId) guest.reservationRoomId = null;
-    }
   },
   "edit-payment": changePayment,
   "delete-payment": changePayment,

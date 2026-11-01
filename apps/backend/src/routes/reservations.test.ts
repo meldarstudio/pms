@@ -2448,30 +2448,22 @@ describe("reservation workflow", () => {
     );
   });
   it.each([undefined, null, "another-room"])(
-    "preserves stored guest rooms by id while ignoring submitted room %s",
+    "saves guests while ignoring legacy submitted room %s",
     async (reservationRoomId) => {
       const d = await create(2);
       const first = guest(null),
         second = guest(null),
         added = guest("foreign-room");
-      const insert = db.sqlite.prepare(
-        "INSERT INTO reservation_guests (id, reservation_id, reservation_room_id, full_name, created_at) VALUES (?, ?, ?, ?, ?)",
-      );
-      insert.run(first.id, d.id, d.rooms[0].id, first.fullName, "2026-10-09");
-      insert.run(second.id, d.id, d.rooms[1].id, second.fullName, "2026-10-09");
+      await command(d, [{ type: "set-guests", guests: [first, second] }]);
       const actions: WorkflowAction[] = [
         {
           type: "set-guests",
           guests: [second, first, added].map((person) => ({ ...person, reservationRoomId })),
         },
       ];
-      const rooms = () =>
-        db.sqlite
-          .prepare("SELECT id, reservation_room_id AS room FROM reservation_guests ORDER BY id")
-          .all();
-      const before = rooms();
+      const before = await (await request(`/reservations/${d.id}`)).json();
       const proposed = await previewCommand(d, actions);
-      expect(rooms()).toEqual(before);
+      expect(await (await request(`/reservations/${d.id}`)).json()).toEqual(before);
       const saved = await command(d, actions);
       for (const detail of [
         proposed.billing,
@@ -2486,13 +2478,6 @@ describe("reservation workflow", () => {
         for (const person of detail.stayingGuests)
           expect(person).not.toHaveProperty("reservationRoomId");
       }
-      expect(rooms()).toEqual(
-        [
-          { id: first.id, room: d.rooms[0].id },
-          { id: second.id, room: d.rooms[1].id },
-          { id: added.id, room: null },
-        ].sort((a, b) => a.id.localeCompare(b.id)),
-      );
     },
   );
   it("saves contact changes and staying guests atomically, separate from the booking contact", async () => {
@@ -3011,9 +2996,6 @@ describe("reservation dates and lifecycle", () => {
       setDiscount(5000),
       pay(35000),
     ]);
-    db.sqlite
-      .prepare("UPDATE reservation_guests SET reservation_room_id = ? WHERE id = ?")
-      .run(removed, d.stayingGuests[0].id);
     d = await command(d, [{ type: "remove-room", lineId: removed }]);
     expect(d.rooms).toEqual([retained]);
     expect(d).toMatchObject({
@@ -3028,11 +3010,6 @@ describe("reservation dates and lifecycle", () => {
     });
     expect(d.payments[0].amountCents).toBe(35000);
     expect(d.stayingGuests).toHaveLength(1);
-    expect(
-      db.sqlite
-        .prepare("SELECT reservation_room_id FROM reservation_guests WHERE id = ?")
-        .get(d.stayingGuests[0].id),
-    ).toEqual({ reservation_room_id: null });
     expect(
       await (await request("/availability?checkIn=2026-10-10&checkOut=2026-10-13")).json(),
     ).toMatchObject({ roomTypes: [{ free: 2 }] });

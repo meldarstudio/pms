@@ -435,11 +435,12 @@ safe-area changes; no swipe dismissal. Use [shared controls](portal.md#control-s
 The staying-guest form, shared by the page and the dialog, asks for no room and never
 sends a guest-room association. Detail, preview, and command responses omit it.
 The strict shared request schema still accepts legacy `reservationRoomId` values
-from open older portals, but commands ignore them. Until the separately staged
-[column removal](history/schema-rollouts.md#staying-guest-room-retirement-two-releases),
-`set-guests` preserves stored rooms by guest id; new guests get none, and room removal
-still clears the stored association. Guest identity, contact, and document editing
-remain independent of reserved rooms and declared occupancy.
+from open older portals, but commands ignore them. Migration `0016` removes the stored
+association without removing guests; room removal needs no guest changes. Guest
+identity, contact, and document editing remain independent of reserved rooms and
+declared occupancy. See the separately staged
+[two-release cutover](history/schema-rollouts.md#staying-guest-room-retirement-two-releases)
+before deploying or migrating.
 
 ### Prices for newly reserved rooms
 

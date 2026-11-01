@@ -390,21 +390,87 @@ describe("closure-only room inventory", () => {
   });
 });
 
-describe("staying guest assignment", () => {
-  it("rejects a reserved room belonging to a different reservation on insert and update", () => {
-    reservation("first");
-    line("first", "room-101");
-    reservation("second", "2026-10-07", "2026-10-09");
-    expect(() =>
-      db.exec(`INSERT INTO reservation_guests (id,reservation_id,reservation_room_id,full_name,created_at)
-        VALUES ('wrong','second','first','Test Guest','2026-10-05')`),
-    ).toThrow("guest room must belong to this reservation");
-    db.exec(`INSERT INTO reservation_guests (id,reservation_id,reservation_room_id,full_name,created_at)
-      VALUES ('valid','first','first','Test Guest','2026-10-05')`);
-    expect(() =>
-      db.exec("UPDATE reservation_guests SET reservation_id='second' WHERE id='valid'"),
-    ).toThrow("guest room must belong to this reservation");
-    expect(db.prepare("PRAGMA foreign_key_check").all()).toEqual([]);
+describe("staying guest room retirement", () => {
+  it("retires only guest-room associations on a populated upgrade, retaining guests through room removal", () => {
+    const previous = new DatabaseSync(":memory:");
+    try {
+      previous.exec("PRAGMA foreign_keys = ON");
+      const split = journal.entries.findIndex(
+        (entry) => entry.tag === "0016_guest_room_retirement",
+      );
+      expect(split).toBeGreaterThan(0);
+      for (const entry of journal.entries.slice(0, split))
+        previous.exec(readFileSync(new URL(`${entry.tag}.sql`, migrationsDir), "utf8"));
+      previous.exec(`
+        INSERT INTO room_types (id, name, max_occupancy, base_rate_cents, created_at)
+          VALUES ('type', 'Standard', 2, 10000, '2026-10-05');
+        INSERT INTO rooms (id, number, room_type_id) VALUES ('room', '101', 'type'), ('spare', '102', 'type');
+        INSERT INTO guests (id, full_name, created_at) VALUES ('contact', 'Booking Contact', '2026-10-05');
+        INSERT INTO reservations (id, code, guest_id, check_in, check_out, created_at)
+          VALUES ('stay', 'UPGRADE', 'contact', '2026-10-05', '2026-10-07', '2026-10-05'),
+          ('other', 'OTHER', 'contact', '2026-10-07', '2026-10-09', '2026-10-05');
+        INSERT INTO reservation_rooms (id, reservation_id, room_type_id, room_id, adults, created_at)
+          VALUES ('assigned', 'stay', 'type', 'room', 1, '2026-10-05'),
+          ('unassigned', 'stay', 'type', NULL, 1, '2026-10-05');
+        INSERT INTO reservation_room_nights (id, reservation_room_id, date, price_cents)
+          VALUES ('night', 'assigned', '2026-10-05', 10000);
+        INSERT INTO reservation_guests (id, reservation_id, reservation_room_id, full_name, email, phone, document_type, document_number, created_at)
+          VALUES ('ana', 'stay', 'assigned', 'Ana Pérez', 'ana@example.com', '+51987654321', 'DNI', '12345678', '2026-10-05T15:00:00Z'),
+          ('luis', 'stay', 'unassigned', 'Luis Gómez', NULL, NULL, 'Pasaporte', 'ABC123', '2026-10-05T16:00:00Z'),
+          ('grace', 'other', NULL, 'Grace Hopper', 'grace@example.com', NULL, NULL, NULL, '2026-10-05T17:00:00Z');
+      `);
+      const retainedGuests = previous
+        .prepare(`SELECT id, reservation_id, full_name, email, phone, document_type, document_number, created_at
+        FROM reservation_guests ORDER BY id`)
+        .all();
+      const indexes = () =>
+        previous
+          .prepare(
+            "SELECT name, sql FROM sqlite_schema WHERE type = 'index' AND tbl_name = 'reservation_guests' ORDER BY name",
+          )
+          .all();
+      const retainedIndexes = indexes();
+      const otherSchema = () =>
+        previous
+          .prepare(
+            "SELECT name, sql FROM sqlite_schema WHERE tbl_name != 'reservation_guests' ORDER BY name",
+          )
+          .all();
+      const retainedSchema = otherSchema();
+      const tables = previous
+        .prepare(
+          "SELECT name FROM sqlite_schema WHERE type = 'table' AND name != 'reservation_guests' ORDER BY name",
+        )
+        .all() as { name: string }[];
+      const otherRows = () =>
+        tables.map(({ name }) => previous.prepare(`SELECT * FROM "${name}" ORDER BY rowid`).all());
+      const retainedRows = otherRows();
+      previous.exec("BEGIN");
+      previous.exec(
+        readFileSync(new URL(`${journal.entries[split].tag}.sql`, migrationsDir), "utf8"),
+      );
+      previous.exec("COMMIT");
+      expect(previous.prepare("SELECT * FROM reservation_guests ORDER BY id").all()).toEqual(
+        retainedGuests,
+      );
+      expect(indexes()).toEqual(retainedIndexes);
+      expect(otherSchema()).toEqual(retainedSchema);
+      expect(otherRows()).toEqual(retainedRows);
+      expect(previous.prepare("PRAGMA foreign_keys").get()).toEqual({ foreign_keys: 1 });
+      expect(previous.prepare("PRAGMA foreign_key_check").all()).toEqual([]);
+      expect(previous.prepare("PRAGMA integrity_check").all()).toEqual([{ integrity_check: "ok" }]);
+      previous.exec(
+        "DELETE FROM reservation_room_nights WHERE reservation_room_id = 'assigned'; DELETE FROM reservation_rooms WHERE id = 'assigned'",
+      );
+      expect(previous.prepare("SELECT * FROM reservation_guests ORDER BY id").all()).toEqual(
+        retainedGuests,
+      );
+      expect(() =>
+        previous.exec("UPDATE reservation_guests SET reservation_id = 'missing' WHERE id = 'ana'"),
+      ).toThrow("FOREIGN KEY constraint failed");
+    } finally {
+      previous.close();
+    }
   });
 });
 

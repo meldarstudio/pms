@@ -152,7 +152,6 @@ export const reservationGuests = sqliteTable(
     reservationId: text("reservation_id")
       .notNull()
       .references(() => reservations.id),
-    reservationRoomId: text("reservation_room_id").references(() => reservationRooms.id),
     fullName: text("full_name").notNull(),
     email: text("email"),
     phone: text("phone"),
