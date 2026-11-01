@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import { CreditCardIcon, LockIcon } from "lucide-react";
+import { CreditCardIcon, LockIcon, Undo2Icon } from "lucide-react";
 import { cn } from "cn";
 import { parseISO } from "date-fns";
 import { accountStatus } from "@/components/balance-status";
@@ -18,7 +18,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import type { ReservationDetail, ReservationPayment } from "@/lib/api";
+import type { ReservationDetail, ReservationPayment, ReservationRefund } from "@/lib/api";
 import { format } from "@/lib/dates";
 import { formatMoney } from "@/lib/money";
 import { propertyToday } from "@/lib/property-calendar";
@@ -86,11 +86,17 @@ export function AccountCard({
                 Registrar pago
               </Button>
             )}
+            {status.state === "owed-back" && (
+              <Button className="w-full" onClick={() => edit({ kind: "refund" })}>
+                <Undo2Icon data-icon="inline-start" />
+                Devolver…
+              </Button>
+            )}
           </section>
         </div>
         <section aria-label="Movimientos" className="@container/mov flex min-w-0 flex-col">
           <h3 className="border-b pb-2 text-sm font-medium">Movimientos</h3>
-          <Movements detail={detail} edit={edit} />
+          <Movements detail={detail} edit={edit} resolveRefunds />
         </section>
       </CardContent>
     </Card>
@@ -210,7 +216,21 @@ function paymentLock(detail: ReservationDetail, payment: ReservationPayment) {
   return null;
 }
 
-function movements(detail: ReservationDetail, edit: Props["edit"], disabled: boolean): Movement[] {
+function refundNote(refund: ReservationRefund) {
+  const parts = [refund.status === "failed" ? refund.failureReason : null];
+  if (refund.requestedBy) parts.push(`Registró ${refund.requestedBy}`);
+  if (refund.resolvedBy && refund.resolvedBy !== refund.requestedBy)
+    parts.push(`${refund.status === "failed" ? "Marcó fallido" : "Confirmó"} ${refund.resolvedBy}`);
+  const note = parts.filter(Boolean).join(" · ");
+  return note && <span className="block w-full text-xs text-muted-foreground">{note}</span>;
+}
+
+function movements(
+  detail: ReservationDetail,
+  edit: Props["edit"],
+  disabled: boolean,
+  resolveRefunds: boolean,
+): Movement[] {
   const money = (cents: number) => formatMoney(cents, detail.currency);
   const rows: Movement[] = [];
   for (const payment of detail.payments) {
@@ -254,6 +274,7 @@ function movements(detail: ReservationDetail, edit: Props["edit"], disabled: boo
           Reembolso
           {refund.status === "requested" && <Badge variant="preview">Solicitado</Badge>}
           {refund.status === "failed" && <Badge variant="secondary">Fallido</Badge>}
+          {refundNote(refund)}
         </span>
       ),
       method: methodLabel(refund.method),
@@ -267,7 +288,19 @@ function movements(detail: ReservationDetail, edit: Props["edit"], disabled: boo
           `(${amount})`
         ),
       muted: refund.status !== "completed",
-      action: null,
+      action:
+        resolveRefunds && refund.status === "requested" ? (
+          <Button
+            type="button"
+            size="xs"
+            variant="outline"
+            disabled={disabled}
+            aria-label={`Confirmar reembolso de ${amount}`}
+            onClick={() => edit({ kind: "resolve-refund", id: refund.id })}
+          >
+            Confirmar
+          </Button>
+        ) : null,
     });
   }
   for (const movement of detail.couponMovements)
@@ -286,8 +319,13 @@ function movements(detail: ReservationDetail, edit: Props["edit"], disabled: boo
   return rows.sort((a, b) => a.at.localeCompare(b.at) || a.key.localeCompare(b.key));
 }
 
-export function Movements({ detail, edit, disabled = false }: Props & { disabled?: boolean }) {
-  const rows = movements(detail, edit, disabled);
+export function Movements({
+  detail,
+  edit,
+  disabled = false,
+  resolveRefunds = false,
+}: Props & { disabled?: boolean; resolveRefunds?: boolean }) {
+  const rows = movements(detail, edit, disabled, resolveRefunds);
   if (!rows.length)
     return <p className="py-3 text-sm text-muted-foreground">Sin movimientos todavía.</p>;
   return (

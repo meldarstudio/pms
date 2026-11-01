@@ -3,6 +3,7 @@ import { useSelector } from "@tanstack/react-form";
 import { cn } from "cn";
 import { BookingEditor, DiscardChanges } from "@/components/room-booking-dialog";
 import { GuestEntryForm, PaymentForm, paymentMethods } from "@/components/reservation-entry-forms";
+import { RefundForm, ResolveRefundForm } from "@/components/refund-forms";
 import { WorkflowBill } from "@/components/workflow-bill";
 import { ChoiceField } from "@/components/workflow-fields";
 import { useDirtyRoomCheckIn } from "@/components/dirty-room-check-in";
@@ -45,6 +46,8 @@ export type ReservationEditorTarget =
   | { kind: "contact" | "notes" }
   | { kind: "guest"; id?: string }
   | { kind: "payment"; id?: string }
+  | { kind: "refund" }
+  | { kind: "resolve-refund"; id: string }
   | { kind: "delete-payment" | "delete-guest"; id: string }
   | { kind: "correct-status" }
   | { kind: "status"; status: Extract<WorkflowAction, { type: "set-status" }>["status"] };
@@ -61,6 +64,10 @@ function editorTitle(target: ReservationEditorTarget, detail: ReservationDetail)
       return target.id ? "Editar huésped" : "Agregar huésped";
     case "payment":
       return target.id ? "Editar pago" : "Registrar pago";
+    case "refund":
+      return "Devolver";
+    case "resolve-refund":
+      return "Confirmar reembolso";
     case "delete-payment":
       return "Eliminar registro de pago";
     case "delete-guest":
@@ -96,6 +103,10 @@ export function ReservationPageEditor({
   const [leaving, setLeaving] = useState(false);
   const { send, saving } = useReservationCommands(detail.id);
   const fullScreen = ["stay", "contact", "notes", "guest", "payment"].includes(target.kind);
+  const refund =
+    target.kind === "resolve-refund"
+      ? detail.refunds.find((entry) => entry.id === target.id && entry.status === "requested")
+      : undefined;
   useEffect(() => {
     const viewport = window.visualViewport;
     if (!viewport || !popup) return;
@@ -147,7 +158,11 @@ export function ReservationPageEditor({
               {description ??
                 (target.kind === "stay"
                   ? "Revisa las fechas, habitaciones y el importe antes de guardar."
-                  : "Los cambios se guardan al confirmar.")}
+                  : target.kind === "refund"
+                    ? "En mano o por transferencia. El importe se reparte entre los pagos recibidos."
+                    : target.kind === "resolve-refund"
+                      ? "Registra si el dinero llegó al huésped."
+                      : "Los cambios se guardan al confirmar.")}
             </DialogDescription>
           </DialogHeader>
           {target.kind === "stay" ? (
@@ -183,6 +198,29 @@ export function ReservationPageEditor({
                 return result;
               }}
             />
+          ) : target.kind === "refund" ? (
+            <RefundForm
+              detail={detail}
+              disabled={saving}
+              onDirtyChange={handleDirty}
+              onSave={send}
+              onSaved={onSaved ?? onClose}
+              onCancel={close}
+            />
+          ) : target.kind === "resolve-refund" ? (
+            refund ? (
+              <ResolveRefundForm
+                detail={detail}
+                refund={refund}
+                disabled={saving}
+                onDirtyChange={handleDirty}
+                onSave={send}
+                onSaved={onSaved ?? onClose}
+                onCancel={close}
+              />
+            ) : (
+              <FieldError>Este reembolso ya fue completado o marcado como fallido.</FieldError>
+            )
           ) : (
             <ReservationActionForm
               target={target}
@@ -218,7 +256,10 @@ function ReservationActionForm({
   onCancel,
   onDirtyChange,
 }: {
-  target: Exclude<ReservationEditorTarget, { kind: "guest" | "stay" }>;
+  target: Exclude<
+    ReservationEditorTarget,
+    { kind: "guest" | "stay" | "refund" | "resolve-refund" }
+  >;
   detail: ReservationDetail;
   disabled: boolean;
   onSave: (actions: WorkflowAction[]) => Promise<ReservationCommandResult>;

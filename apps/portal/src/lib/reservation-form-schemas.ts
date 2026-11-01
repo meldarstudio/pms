@@ -6,7 +6,7 @@ import type {
   RoomType,
   StayingGuest,
 } from "./api.ts";
-import { formatMajor, parseMajorToCents } from "./money.ts";
+import { formatMajor, formatMoney, parseMajorToCents } from "./money.ts";
 import type { RoomDraft } from "./reservation-editor.ts";
 import { propertyToday } from "./property-calendar.ts";
 import { phoneDraft, phoneError, phonePayload, type PhoneValue } from "./phone.ts";
@@ -314,6 +314,54 @@ export function paymentPayload(values: PaymentValues): PaymentInput {
     ...(parsed.reason ? { notes: parsed.reason } : {}),
   };
 }
+const refundReason = z
+  .string()
+  .trim()
+  .min(1, "Indica el motivo.")
+  .max(2000, "Máximo 2000 caracteres.");
+const refundDate = date.refine(
+  (value) => value <= propertyToday(),
+  "La fecha del reembolso no puede ser futura.",
+);
+export const refundMethods = ["cash", "transfer", "yape", "plin", "other"] as const;
+export const refundSchema = (maxCents: number, currency?: string) =>
+  z
+    .object({
+      amount: money(true).refine(
+        (value) => (parseMajorToCents(value.trim()) ?? 0) <= maxCents,
+        `El importe no puede superar ${formatMoney(maxCents, currency)}.`,
+      ),
+      method: z.enum(refundMethods, { error: "Selecciona un método válido." }),
+      reason: refundReason,
+      handedOver: z.boolean(),
+      date: z.string(),
+      reference: optionalText(200),
+    })
+    .superRefine((value, ctx) => {
+      if (!value.handedOver) return;
+      const result = refundDate.safeParse(value.date);
+      if (!result.success)
+        ctx.addIssue({ code: "custom", path: ["date"], message: result.error.issues[0].message });
+    });
+export type RefundValues = z.input<ReturnType<typeof refundSchema>>;
+export function refundDefaults(
+  amountCents: number,
+  method: RefundValues["method"] = "cash",
+): RefundValues {
+  return {
+    amount: amountCents > 0 ? formatMajor(amountCents) : "",
+    method,
+    reason: "",
+    handedOver: true,
+    date: propertyToday(),
+    reference: "",
+  };
+}
+export const refundCompletionSchema = z.object({
+  date: refundDate,
+  reference: optionalText(200),
+});
+export const refundFailureSchema = z.object({ reason: refundReason });
 export const discountSchema = z.object({ amount: money(false) });
 export const newBookingSchema = (types: RoomType[]) =>
   z.intersection(

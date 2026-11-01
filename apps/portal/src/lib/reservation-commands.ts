@@ -60,6 +60,8 @@ const scopeByAction: Partial<Record<WorkflowAction["type"], FieldScope>> = {
   "redeem-coupon": "coupon",
   "add-payment": "payment",
   "edit-payment": "payment",
+  "request-refund": "refund",
+  "complete-refund": "refund",
   contact: "contact",
   "set-guests": "guest",
   dates: "details",

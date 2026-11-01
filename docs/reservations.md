@@ -499,9 +499,10 @@ for viewport, scrolling and draft protections.
 Money lives in one full-width **Cuenta** card
 ([`reservation-account.tsx`](../apps/portal/src/components/reservation-account.tsx));
 Huéspedes sits in the left column between Contacto and Notas. The accepted rate plan
-is read-only stay metadata in Estadía y habitaciones, not a Cuenta row. Every amount is a backend
-bill field; the portal does no bill arithmetic. The card follows its own width through
-container queries, hiding Método and then Referencia in narrow Movimientos tables.
+is read-only stay metadata in Estadía y habitaciones, not a Cuenta row. Every amount is a
+backend bill field; the portal does no bill arithmetic beyond splitting a refund across
+payments. The card follows its own width through container queries, hiding Método and
+then Referencia in narrow Movimientos tables.
 
 - **Summary:** active stays show Subtotal, the editable Descuento row (S/ 0 when none),
   Total and Pagado. Cancelled/No-show stays replace Subtotal/Descuento with the active
@@ -516,14 +517,28 @@ container queries, hiding Método and then Referencia in narrow Movimientos tabl
   background reads. An open changed draft guards router navigation and browser unload.
 - **Status line:** positive balance is Saldo pendiente with **Registrar pago** (plus
   Falta el depósito while the initial payment is short). Refund due beyond requested
-  refunds is Por devolver; refund due that is fully requested is Reembolso solicitado;
-  zero is Cuenta saldada. Requested and failed refunds never settle the bill. Only
-  Saldo pendiente offers a payment action; the other states have none.
+  refunds is Por devolver with **Devolver…**; refund due that is fully requested is
+  Reembolso solicitado, with no action; zero is Cuenta saldada. Requested and failed
+  refunds never settle the bill.
+- **Devolver…** returns money by hand or transfer (Dinero only until coupons can be
+  offered here). Importe starts at, and cannot exceed, the Por devolver amount (also
+  capped by what received payments have left); Método excludes Tarjeta, whose refunds
+  go through Culqi; Motivo is required. Staff never pick a payment: the portal splits
+  the amount across payments with value left, non-Culqi first, newest payment date
+  first, each capped at its amount less completed and requested refunds. **Ya se
+  entregó el dinero** (ticked by default) adds a Fecha (property today by default, never
+  future) and optional Referencia, sending each part as `request-refund` with
+  `completed`; unticked parts are plain requests. All parts travel in one
+  duplicate-safe command; refund-limit rejections stay inline on Importe with the draft.
 - **Movimientos:** payments, refunds and coupon movements as flat rows, oldest first, with
   no running balance. Payments keep edit/delete unless the backend would reject the
   change: Culqi payments (En línea, Tarjeta), payments with refunds, and every payment
-  once a coupon was issued show a lock. Refund and coupon rows are read-only, with Solicitado or
-  Fallido; a failed refund is muted and struck through.
+  once a coupon was issued show a lock. Refund rows show Solicitado or Fallido, any
+  failure reason, and who requested or resolved them; a failed refund is muted, struck
+  through and not counted. A requested refund's **Confirmar** opens an inset dialog
+  that sends `complete-refund` with a Fecha (property today by default, never future)
+  and optional Referencia, or **Marcar como fallido** with a required Motivo
+  (`fail-refund`); refunds are never deleted. Coupon rows are read-only.
 - Cancelled and No-show stays show a destructive alert at the top: **Reserva cancelada**
   or **No se presentó**, the property-calendar date of the active cancellation, and the
   saved reason.
@@ -570,8 +585,9 @@ upward-opening breakdown scrolls independently above the persistent footer actio
 
 Pagos shows the payment form only while the saved bill owes money. It defaults to
 the full balance (the immediate post-creation cash suggestion still uses the required
-initial payment), and shares the page's oldest-first, read-only refund/coupon movement
-rows and payment locks. Unlocked payments retain edit/delete. Hidden forms stay
+initial payment), and shares the page's oldest-first movement rows and payment locks.
+Refund and coupon rows are read-only there: refunds are returned and resolved on the
+page. Unlocked payments retain edit/delete. Hidden forms stay
 mounted so a background settlement does not discard an entered draft.
 If settlement hides a changed payment draft, an explicit discard action clears
 only that draft; movement corrections and unrelated drafts remain available.

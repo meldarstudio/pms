@@ -46,7 +46,8 @@ limits are unchanged.
 
 Status corrections, cancellation/restoration and record-deletion confirmations remain
 inset with scrolling content and visible actions, as do the shared lifecycle
-confirmations. The full-screen treatment is for reservation editors, not refund dialogs. The page's
+confirmations and the Devolver…/Confirmar reembolso refund dialogs. The full-screen
+treatment is for reservation editors, not refund dialogs. The page's
 contextual header action and overflow menu replace its status select; behavior belongs
 to the [full reservation page guide](reservations.md#full-reservation-page).
 
