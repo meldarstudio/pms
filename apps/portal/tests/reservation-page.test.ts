@@ -261,6 +261,27 @@ async function unloadPrevented() {
   return event.defaultPrevented;
 }
 
+it.each([
+  { status: "confirmed", today: "2026-10-18", action: "Hacer check-in", variant: "outline" },
+  { status: "confirmed", today: "2026-10-19", action: "Hacer check-in", variant: "default" },
+  { status: "confirmed", today: "2026-10-20", action: "Hacer check-in", variant: "default" },
+  { status: "checked_in", today: "2026-10-20", action: "Hacer check-out", variant: "outline" },
+  { status: "checked_in", today: "2026-10-21", action: "Hacer check-out", variant: "default" },
+  { status: "checked_out", today: "2026-10-21", action: null, variant: null },
+] as const)("offers the contextual header action for $status on $today", async ({ status, today, action, variant }) => {
+  vi.setSystemTime(new Date(`${today}T05:00:00Z`));
+  saved = { ...saved, status };
+  mockApi();
+  await render();
+  const header = page.container.querySelector("h1")!.closest("header")!;
+  assert.equal(header.querySelector('[role="combobox"]'), null);
+  const actions = Array.from(header.querySelectorAll("button")).filter((item) =>
+    /^Hacer check-/.test(item.textContent),
+  );
+  assert.deepEqual(actions.map((item) => item.textContent), action ? [action] : []);
+  if (action) assert.equal(actions[0].getAttribute("data-variant"), variant);
+});
+
 it("retains the contact draft after a failed save and a reconnect refresh", async () => {
   mockApi({
     write: () =>
