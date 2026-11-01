@@ -42,6 +42,26 @@ const contactRules: FieldRule[] = [
 ];
 
 const fieldRules = {
+  coupon: [
+    ({ code }) =>
+      [
+        "coupon redemption exceeds its balance",
+        "coupon redemption exceeds the balance owed",
+      ].includes(code)
+        ? "amount"
+        : null,
+    ({ code }) =>
+      [
+        "coupon not found",
+        "coupon has expired",
+        "stay starts after the coupon expires",
+        "reservation already uses another coupon",
+        "coupon cannot be redeemed on the reservation that issued it",
+        "coupon requires an active reservation",
+      ].includes(code)
+        ? "code"
+        : null,
+  ],
   payment: [
     ({ code }) =>
       code === "payment date cannot be in the future" || code === "payment date is required"

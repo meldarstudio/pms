@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useSelector } from "@tanstack/react-form";
 import { cn } from "cn";
 import { BookingEditor, DiscardChanges } from "@/components/room-booking-dialog";
-import { GuestEntryForm, paymentMethods } from "@/components/reservation-entry-forms";
+import { GuestEntryForm, PaymentForm, paymentMethods } from "@/components/reservation-entry-forms";
 import { WorkflowBill } from "@/components/workflow-bill";
 import { ChoiceField } from "@/components/workflow-fields";
 import { useDirtyRoomCheckIn } from "@/components/dirty-room-check-in";
@@ -168,6 +168,20 @@ export function ReservationPageEditor({
               onSave={(guests) => send([{ type: "set-guests", guests: guestValues(guests) }])}
               onDone={onClose}
               onCancel={close}
+            />
+          ) : target.kind === "payment" && !target.id ? (
+            <PaymentForm
+              scrollable
+              detail={detail}
+              disabled={saving}
+              onDirtyChange={handleDirty}
+              onCancel={close}
+              onSaved={onSaved ?? onClose}
+              onReady={async (title, actions) => {
+                const result = await send(actions);
+                if (result.status === "saved") toast.add({ title, type: "success" });
+                return result;
+              }}
             />
           ) : (
             <ReservationActionForm

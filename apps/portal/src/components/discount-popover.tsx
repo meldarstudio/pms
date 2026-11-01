@@ -20,7 +20,7 @@ export function DiscountPopover({
   onBlockingChange,
 }: {
   appliedCents: number;
-  shownCents?: number;
+  shownCents?: number | null;
   currency: string;
   disabled?: boolean;
   variant?: "add" | "row";
@@ -79,7 +79,11 @@ export function DiscountPopover({
               <PencilIcon aria-hidden className="size-3 text-muted-foreground" />
             </span>
             <span className="tabular-nums">
-              {formatMoney(shownCents ? -shownCents : 0, currency)}
+              {shownCents === null ? (
+                <span aria-label="No disponible">...</span>
+              ) : (
+                formatMoney(shownCents ? -shownCents : 0, currency)
+              )}
             </span>
           </>
         ) : (
