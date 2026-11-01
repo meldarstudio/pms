@@ -13,6 +13,7 @@ import {
   type BrowserPage,
 } from "./browser.ts";
 import type {
+  CouponLookup,
   RatePlanTerms,
   ReservationDetail,
   RoomType,
@@ -553,7 +554,7 @@ it.each(["desktop", "phone"])(
       8000,
     );
     if (viewport === "phone") await page.click("Ver desglose");
-    assert.equal(summaryAmount("Total de reserva"), "S/460");
+    assert.equal(summaryAmount("Total"), "S/460");
     await page.click("Deshacer precio por noche");
     await until(
       () => !button("Guardar cambios").disabled,
@@ -563,7 +564,7 @@ it.each(["desktop", "phone"])(
       previews.at(-1)?.actions.find((action) => action.type === "add-room")?.room.nightlyRateCents,
       undefined,
     );
-    assert.equal(summaryAmount("Total de reserva"), "S/600");
+    assert.equal(summaryAmount("Total"), "S/600");
     await page.click("Cambiar precio por noche");
     await fill("rooms[1].room.nightlyRate", "80");
     await until(() => !button("Guardar cambios").disabled, "The changed price must be validated");
@@ -592,12 +593,258 @@ it.each(["desktop", "phone"])(
 );
 
 function summaryAmount(label: string) {
+  if (label === "Descuento")
+    return discountTrigger().lastElementChild?.textContent.replace(/\s/g, "");
+  const status = container.querySelector(`output[aria-label="${label}"]`);
+  if (status) return status.textContent.replace(/\s/g, "");
   const term = Array.from(container.querySelectorAll("dt")).find(
     (item) => item.textContent === label,
   );
   assert.ok(term, `Missing bill label ${label}`);
   return term.nextElementSibling?.textContent.replace(/\s/g, "");
 }
+
+it.each([
+  {
+    scenario: "owing with deposit",
+    changes: { initialPaymentDueCents: 15000 },
+    label: "Saldo pendiente",
+    amount: "S/300",
+  },
+  {
+    scenario: "settled",
+    changes: { balanceCents: 0, paidCents: 30000 },
+    label: "Cuenta saldada",
+    amount: "S/0",
+  },
+])(
+  "uses the server's $scenario status and only offers payment for money owed",
+  async ({ changes, label, amount }) => {
+    const saved = { ...detail(), ...changes };
+    mockApi(async () => previewResponse(saved));
+    await renderCachedEditor(() => saved);
+    assert.equal(summaryAmount(label), amount);
+    assert.equal(
+      container.textContent.includes("Falta el depósito:"),
+      saved.initialPaymentDueCents > 0,
+    );
+    if (saved.initialPaymentDueCents > 0)
+      assert.match(container.textContent, /Falta el depósito: S\/\s*150/);
+    await page.click("Pagos");
+    assert.equal(control("amount").closest("[hidden]") === null, saved.balanceCents > 0);
+    if (saved.balanceCents > 0) {
+      assert.equal(control("amount").value, "300.00");
+      await fill("amount", "75");
+      await fill("notes", "Conservar esta nota");
+      const amount = control("amount");
+      await React.act(async () =>
+        client.setQueryData(["reservation", saved.id], {
+          ...saved,
+          balanceCents: 0,
+          paidCents: 30000,
+        }),
+      );
+      await until(
+        () => !!amount.closest("[hidden]"),
+        "A background settlement hides, but does not replace, the draft",
+      );
+      assert.equal(amount.value, "75");
+      await page.click("Descartar pago pendiente");
+      assert.equal(control("amount").value, "");
+      assert.equal(control("notes").value, "Conservar esta nota");
+    }
+  },
+);
+
+it.each([false, true])(
+  "shows optional bill rows only when present (present: %s)",
+  async (present) => {
+    const saved = {
+      ...detail(),
+      ...(present
+        ? {
+            savedDiscountCents: 3000,
+            discountCents: 3000,
+            totalCents: 27000,
+            paidCents: 30000,
+            refundedCents: 6000,
+            couponIssuedCents: 2000,
+            couponAppliedCents: 1000,
+            balanceCents: 4000,
+          }
+        : {}),
+    };
+    mockApi(async () => previewResponse(saved));
+    await renderCachedEditor(() => saved);
+    const rows = [...container.querySelectorAll("dt")].map((term) => term.textContent);
+    for (const label of ["Subtotal", "Pagado con cupón", "Reembolsado", "Pasado a cupón"])
+      assert.equal(rows.includes(label), present);
+    assert.equal(summaryAmount("Descuento"), present ? "-S/30" : "S/0");
+    assert.equal(
+      summaryAmount("Pagado"),
+      present ? "S/300" : "S/0",
+      "Pagado is gross, not net of refunds",
+    );
+    if (present) {
+      assert.equal(summaryAmount("Total"), "S/270");
+      assert.equal(summaryAmount("Pagado con cupón"), "S/10");
+      assert.equal(summaryAmount("Reembolsado"), "-S/60");
+      assert.equal(summaryAmount("Pasado a cupón"), "-S/20");
+    }
+  },
+);
+
+function coupon(changes: Partial<CouponLookup> = {}): CouponLookup {
+  return {
+    id: "coupon-1",
+    code: "ABCD123456",
+    valueCents: 50000,
+    balanceCents: 50000,
+    issuedAt: "2026-10-01T15:00:00Z",
+    issuedBy: null,
+    expiresOn: "2027-10-01",
+    sourceReservationId: "source-reservation",
+    sourceReservationCode: "SOURCE01",
+    movements: [],
+    ...changes,
+  };
+}
+
+async function submitPayment() {
+  await React.act(async () =>
+    control("amount")
+      .closest("form")!
+      .dispatchEvent(new window.Event("submit", { bubbles: true, cancelable: true })),
+  );
+}
+
+it.each([{ balanceCents: 50000, expected: "300.00", cents: 30000 }])(
+  "redeems a normalized coupon with balance $balanceCents against the saved balance, not the deposit",
+  async ({ balanceCents, expected, cents }) => {
+    let saved = { ...detail(), initialPaymentDueCents: 15000 };
+    const writes = page.api.bodies<WorkflowCommand>("POST", "/reservations/:id/commands");
+    mockApi(
+      async (path, command) => {
+        assert.ok(path.endsWith("/commands"));
+        assert.deepEqual(command.actions, [
+          { type: "redeem-coupon", code: "ABCD123456", amountCents: cents },
+        ]);
+        saved = { ...saved, couponAppliedCents: cents, balanceCents: 30000 - cents };
+        return Response.json(saved);
+      },
+      { reservation: () => saved },
+    );
+    page.api.on("GET", "/coupons/ABCD123456", () => coupon({ balanceCents }));
+    await renderCachedEditor(() => saved);
+    await page.click("Pagos");
+    await choose("Método", "Cupón");
+    assert.equal(window.document.querySelector('[name="reference"]'), null);
+    await fill("code", " abcd-123 456 ");
+    await until(() => !button("Aplicar cupón").disabled);
+    assert.equal(control("amount").value, expected);
+    assert.match(container.textContent, /No canjeable por dinero/);
+    await submitPayment();
+    await until(
+      () =>
+        writes.length === 1 &&
+        summaryAmount("Pagado con cupón") === (cents === 30000 ? "S/300" : "S/80"),
+    );
+    assert.equal(summaryAmount("Pagado"), "S/0");
+  },
+);
+
+it.each([
+  {
+    scenario: "expired",
+    changes: { expiresOn: "2026-10-30" },
+    error: "El cupón venció y ya no se puede usar.",
+  },
+  {
+    scenario: "own source",
+    changes: { sourceReservationId: "reservation-1" },
+    error: "El cupón no se puede usar en la reserva que lo emitió.",
+  },
+  { scenario: "unknown", changes: {}, unknown: true, error: "No existe un cupón con ese código." },
+])("rejects an $scenario coupon inline and sends nothing", async ({ changes, unknown, error }) => {
+  const saved = detail();
+  mockApi(async () => assert.fail("Invalid coupons must not write"));
+  page.api.on("GET", "/coupons/ABCD123456", () =>
+    unknown ? Response.json({ error: "coupon not found" }, { status: 404 }) : coupon(changes),
+  );
+  await renderCachedEditor(() => saved);
+  await page.click("Pagos");
+  await choose("Método", "Cupón");
+  await fill("code", "ABCD123456");
+  await until(() => container.textContent.includes(error), error);
+  assert.equal(control("code").getAttribute("aria-invalid"), "true");
+  assert.equal(button("Aplicar cupón").disabled, true);
+  await submitPayment();
+  assert.equal(page.api.requests("POST", /\/commands$/).length, 0);
+});
+
+it("keeps a coupon draft and retry ID after a lost response, and rejects excessive amounts inline", async () => {
+  let available = 8000;
+  const writes = page.api.bodies<WorkflowCommand>("POST", "/reservations/:id/commands");
+  mockApi(async () =>
+    writes.length === 1
+      ? Response.json({ error: "Temporary failure" }, { status: 503 })
+      : Response.json({ ...detail(), couponAppliedCents: 5000, balanceCents: 25000 }),
+  );
+  page.api.on("GET", "/coupons/ABCD123456", () => coupon({ balanceCents: available }));
+  await renderCachedEditor(detail);
+  await page.click("Pagos");
+  await choose("Método", "Cupón");
+  await fill("code", "ABCD123456");
+  await until(() => !button("Aplicar cupón").disabled);
+  assert.equal(control("amount").value, "80.00", "A smaller coupon balance caps the suggestion");
+  await fill("amount", "90");
+  assert.equal(button("Aplicar cupón").disabled, true);
+  assert.equal(control("amount").getAttribute("aria-invalid"), "true");
+  assert.match(container.textContent, /El monto supera el saldo disponible del cupón/);
+  await fill("amount", "50");
+  await submitPayment();
+  await until(() => writes.length === 1 && !button("Aplicar cupón").disabled);
+  assert.equal(control("amount").value, "50");
+  assert.equal(control("code").value, "ABCD123456");
+  available = 0;
+  await React.act(async () => client.invalidateQueries({ queryKey: ["coupon"] }));
+  assert.equal(
+    button("Aplicar cupón").disabled,
+    false,
+    "A fresh exhausted balance must not block confirming an uncertain redemption",
+  );
+  await submitPayment();
+  await until(() => writes.length === 2 && summaryAmount("Pagado con cupón") === "S/50");
+  assert.deepEqual(writes[1], writes[0]);
+});
+
+it("never redeems a previous lookup during debounce or while the new code is loading", async () => {
+  let finish!: (response: CouponLookup) => void;
+  mockApi(async () => assert.fail("A stale lookup must not submit"));
+  page.api.on("GET", "/coupons/ABCD123456", () => coupon());
+  page.api.on(
+    "GET",
+    "/coupons/SECOND1234",
+    () =>
+      new Promise<CouponLookup>((resolve) => {
+        finish = resolve;
+      }),
+  );
+  await renderCachedEditor(detail);
+  await page.click("Pagos");
+  await choose("Método", "Cupón");
+  await fill("code", "ABCD123456");
+  await until(() => !button("Aplicar cupón").disabled);
+  await fill("code", "SECOND1234");
+  assert.equal(button("Aplicar cupón").disabled, true);
+  await submitPayment();
+  await until(() => !!finish);
+  await submitPayment();
+  assert.equal(page.api.requests("POST", /\/commands$/).length, 0);
+  await React.act(async () => finish(coupon({ code: "SECOND1234", balanceCents: 5000 })));
+  await until(() => !button("Aplicar cupón").disabled);
+  assert.equal(control("amount").value, "50.00");
+});
 
 it("shows variable nightly prices and detail without assignments in the phone pricing summary", async () => {
   page.mobile();
@@ -675,24 +922,18 @@ it.each([
     await render(
       React.createElement(dialogs.BookingEditor, { detail: saved, onRefresh: () => {} }),
     );
-    const discount = container.querySelector<HTMLInputElement>(
-      '[aria-label="Descuento en soles"]',
-    )!;
-    assert.equal(discount.value, "100");
-    assert.ok(container.textContent.includes("Descuento guardado"));
-    assert.equal(summaryAmount("Descuento aplicado"), applied);
-    assert.equal(summaryAmount("Total de reserva"), "S/0");
+    if (status !== "cancelled") {
+      assert.equal(summaryAmount("Descuento"), applied);
+      await openDiscount();
+      assert.equal(discountInput()!.value, "100");
+    } else assert.equal(container.querySelector('button[aria-label="Descuento"]'), null);
+    assert.equal(summaryAmount("Total"), "S/0");
     assert.equal(summaryAmount(balanceLabel), balance);
-    await React.act(async () => {
-      discount.dispatchEvent(new window.FocusEvent("focusout", { bubbles: true }));
-    });
-    await flush();
-    assert.equal(discount.value, "100");
     assert.equal(writes, 0);
   },
 );
 
-it("autosaves an above-subtotal discount without capping the saved input or losing a notes draft", async () => {
+it("applies an above-subtotal discount without capping the saved input or losing a notes draft", async () => {
   const initial = detail();
   let saved = {
     ...initial,
@@ -713,15 +954,15 @@ it("autosaves an above-subtotal discount without capping the saved input or losi
   });
   await renderCachedEditor(() => saved);
   await fill("notes", "Call the booking contact before arrival");
-  const discount = container.querySelector<HTMLInputElement>('[aria-label="Descuento en soles"]')!;
+  await openDiscount();
+  const discount = discountInput()!;
   await fill(discount, "120");
-  await React.act(async () => {
-    discount.dispatchEvent(new window.FocusEvent("focusout", { bubbles: true }));
-  });
-  await until(() => writes.length === 1 && !discount.disabled, "Discount autosave must finish");
-  assert.equal(discount.value, "120");
-  assert.equal(summaryAmount("Descuento aplicado"), "-S/80");
-  assert.equal(summaryAmount("Total de reserva"), "S/0");
+  await React.act(async () => popoverButton("Aplicar")!.click());
+  await until(() => writes.length === 1 && !discountInput(), "Applying the discount must finish");
+  await openDiscount();
+  assert.equal(discountInput()!.value, "120");
+  assert.equal(summaryAmount("Descuento"), "-S/80");
+  assert.equal(summaryAmount("Total"), "S/0");
   assert.equal(control("notes").value, "Call the booking contact before arrival");
   assert.equal(saved.notes, null);
   assert.ok(container.querySelector('[aria-label="Cambios sin guardar"]'));
@@ -768,14 +1009,12 @@ it("uses the server-applied discount in a room-removal preview while retaining t
   });
   await until(() => !button("Guardar cambios").disabled, "Room-removal preview must load");
   assert.ok(container.textContent.includes("Vista previa"));
-  assert.equal(summaryAmount("Importe habitaciones"), "S/80");
-  assert.equal(summaryAmount("Descuento aplicado"), "-S/80");
-  assert.equal(summaryAmount("Total de reserva"), "S/0");
+  assert.equal(summaryAmount("Subtotal"), "S/80");
+  assert.equal(summaryAmount("Descuento"), "-S/80");
+  assert.equal(summaryAmount("Total"), "S/0");
   assert.equal(summaryAmount("Cuenta saldada"), "S/0");
-  assert.equal(
-    container.querySelector<HTMLInputElement>('[aria-label="Descuento en soles"]')!.value,
-    "100",
-  );
+  await openDiscount();
+  assert.equal(discountInput()!.value, "100");
 });
 
 function fieldTrigger(label: string, index = 0) {
@@ -2313,8 +2552,8 @@ it("keeps mobile edit drafts mounted as the keyboard viewport and screen size ch
     const notes = control("notes");
     await React.act(async () => button("Ver desglose").click());
     assert.equal(breakdown.hidden, false);
-    assert.ok(breakdown.textContent.includes("Importe habitaciones"));
-    assert.ok(breakdown.textContent.includes("Total de reserva"));
+    assert.ok(breakdown.textContent.includes("Resumen de reserva"));
+    assert.ok(breakdown.textContent.includes("Total"));
     assert.ok(breakdown.textContent.includes("Pagado"));
     assert.ok(
       breakdown.compareDocumentPosition(toggle) & window.Node.DOCUMENT_POSITION_FOLLOWING,
@@ -2326,14 +2565,24 @@ it("keeps mobile edit drafts mounted as the keyboard viewport and screen size ch
       1,
       "Expanding the bill must not repeat its balance",
     );
-    const discount = window.document.querySelector<HTMLInputElement>(
-      '[aria-label="Descuento en soles"]',
-    )!;
+    await openDiscount();
+    const discount = discountInput()!;
     await fill(discount, "25");
+    await React.act(async () =>
+      discount.dispatchEvent(new window.KeyboardEvent("keydown", { key: "Escape", bubbles: true })),
+    );
+    await until(() => !discountInput());
     await React.act(async () => button("Ocultar desglose").click());
     assert.ok(breakdown.hidden);
     await React.act(async () => button("Ver desglose").click());
-    assert.equal(window.document.querySelector('[aria-label="Descuento en soles"]'), discount);
+    await openDiscount();
+    assert.equal(discountInput()!.value, "25");
+    await React.act(async () =>
+      discountInput()!.dispatchEvent(
+        new window.KeyboardEvent("keydown", { key: "Escape", bubbles: true }),
+      ),
+    );
+    await until(() => !discountInput());
     await React.act(async () => button("Huéspedes").click());
     assert.equal(button("Ocultar desglose").getAttribute("aria-expanded"), "true");
     assert.equal(breakdown.hidden, false, "Changing tabs keeps the bill expanded");
@@ -2346,17 +2595,21 @@ it("keeps mobile edit drafts mounted as the keyboard viewport and screen size ch
     });
     await React.act(async () => window.happyDOM.setWindowSize(desktopViewport));
     assert.ok(control("notes") === notes, "Resizing must retain the details input");
-    assert.ok(
-      window.document.querySelector('[aria-label="Descuento en soles"]') === discount,
-      "Resizing must retain the discount input",
-    );
+    await openDiscount();
+    assert.equal(discountInput()!.value, "25", "Resizing must retain the discount draft");
     assert.equal(notes.value, "Llegada tarde");
-    assert.equal(discount.value, "25");
+    await React.act(async () =>
+      discountInput()!.dispatchEvent(
+        new window.KeyboardEvent("keydown", { key: "Escape", bubbles: true }),
+      ),
+    );
+    await until(() => !discountInput());
     await React.act(async () => button("Cerrar").click());
     assert.ok(button("Seguir editando"));
     await React.act(async () => button("Seguir editando").click());
     assert.equal(notes.value, "Llegada tarde");
-    assert.equal(discount.value, "25");
+    await openDiscount();
+    assert.equal(discountInput()!.value, "25");
   } finally {
     if (descriptor) Object.defineProperty(window, "visualViewport", descriptor);
     else Reflect.deleteProperty(window, "visualViewport");
@@ -2545,7 +2798,7 @@ it("keeps an extension price visible and identifies the conflicting room without
   assert.ok(error.textContent.includes("ocupada para esas fechas"));
   assert.equal(container.querySelector("aside")!.contains(error), false);
   const subtotal = Array.from(container.querySelectorAll("dt")).find(
-    (item) => item.textContent === "Importe habitaciones",
+    (item) => item.textContent === "Total",
   )!;
   assert.equal(subtotal.nextElementSibling?.textContent.replace(/\s/g, ""), "S/450");
   assert.equal(summaryAmount("Saldo pendiente"), "S/450");
@@ -2771,7 +3024,7 @@ it("keeps pricing an added room when its occupancy is invalid and blocks saving"
     "Invalid occupancy must still receive a price",
   );
   const subtotal = Array.from(container.querySelectorAll("dt")).find(
-    (item) => item.textContent === "Importe habitaciones",
+    (item) => item.textContent === "Total",
   )!;
   assert.equal(subtotal.nextElementSibling?.textContent.replace(/\s/g, ""), "S/600");
   assert.ok(container.textContent.includes("La habitación no tiene capacidad"));
@@ -2883,15 +3136,16 @@ it("marks each tab whose form has unsaved input, but not a discount draft", asyn
     [...window.document.querySelectorAll('[role="tab"]')].map((tab) => tab.textContent.trim()),
     ["Detalles", "Pagos", "Huéspedes"],
   );
-  await fill(
-    window.document.querySelector<HTMLInputElement>('[aria-label="Descuento en soles"]')!,
-    "10",
-  );
+  await openDiscount();
+  await fill(discountInput()!, "10");
   assert.deepEqual(marked(), []);
-  await fill(
-    window.document.querySelector<HTMLInputElement>('[aria-label="Descuento en soles"]')!,
-    "0",
+  await fill(discountInput()!, "0");
+  await React.act(async () =>
+    discountInput()!.dispatchEvent(
+      new window.KeyboardEvent("keydown", { key: "Escape", bubbles: true }),
+    ),
   );
+  await until(() => !discountInput());
   await React.act(async () => button("Pagos").click());
   const suggested = control("amount").value;
   await fill("amount", "75");
@@ -3190,8 +3444,8 @@ it.each(["guest", "payment", "discount"] as const)(
       await fill("amount", "75");
     }
     if (draft === "discount") {
-      const input = container.querySelector<HTMLInputElement>('[aria-label="Descuento en soles"]')!;
-      await fill(input, "10");
+      await openDiscount();
+      await fill(discountInput()!, "10");
     }
     await until(
       () => button("Hacer check-in").disabled,
@@ -3207,11 +3461,7 @@ it.each(["guest", "payment", "discount"] as const)(
     assert.equal(button("Guardar cambios").disabled, true);
     if (draft === "guest") assert.equal(control("fullName").value, "Huésped pendiente");
     if (draft === "payment") assert.equal(control("amount").value, "75");
-    if (draft === "discount")
-      assert.equal(
-        container.querySelector<HTMLInputElement>('[aria-label="Descuento en soles"]')!.value,
-        "10",
-      );
+    if (draft === "discount") assert.equal(discountInput()!.value, "10");
   },
 );
 
@@ -3365,7 +3615,7 @@ it("previews and saves added unassigned rooms after check-in and allows clearing
     previews.some((command) => command.actions.some((action) => action.type === "add-room")),
   );
   const subtotal = Array.from(window.document.querySelectorAll("dt")).find(
-    (item) => item.textContent === "Importe habitaciones",
+    (item) => item.textContent === "Total",
   )!;
   assert.equal(subtotal.nextElementSibling?.textContent.replace(/\s/g, ""), "S/600");
   assert.ok(window.document.body.textContent.includes("Vista previa"));

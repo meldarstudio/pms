@@ -18,6 +18,7 @@ import {
   deleteRoomTypeRates,
   getAvailability,
   getCalendar,
+  getCoupon,
   getHousekeeping,
   getInventory,
   getReservation,
@@ -52,6 +53,15 @@ import {
 } from "@/lib/api";
 
 export const sessionQueryKey = ["session"] as const;
+
+export function useCoupon(code: string, enabled: boolean) {
+  return useQuery({
+    queryKey: ["coupon", code],
+    queryFn: ({ signal }) => getCoupon(code, signal),
+    enabled: enabled && !!code,
+    refetchOnWindowFocus: false,
+  });
+}
 
 export function useSession() {
   return useQuery({

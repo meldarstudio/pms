@@ -43,6 +43,13 @@ confirmations. The full-screen treatment is for reservation editors, not refund 
 contextual header action and overflow menu replace its status select; behavior belongs
 to the [full reservation page guide](reservations.md#full-reservation-page).
 
+The compact calendar edit dialog keeps the phone bill accordion above its bottom
+actions, with a capped, independently scrolling breakdown. Expanding it does not
+duplicate the balance or remount discount drafts. The page's payment-creation
+editor shares the dialog's cash/coupon form and keeps its actions outside the
+scrolling fields. Bill and redemption rules belong to the
+[compact dialog guide](reservations.md#compact-calendar-dialog).
+
 ### Date navigation
 
 Mobile calendar/inventory share compact day navigation with **Hoy** in the picker
