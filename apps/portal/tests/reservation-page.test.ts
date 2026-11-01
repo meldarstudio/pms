@@ -205,14 +205,24 @@ function mockApi(options: ApiOptions = {}) {
     return saved;
   });
 }
-async function render(search = "", waitForDetail = true) {
+async function render(search = "", waitForDetail = true, withToasts = false) {
   router = browser.routing.createRouter({
     routeTree: routes.router.routeTree,
     history: browser.routing.createMemoryHistory({
       initialEntries: [`/reservations/reservation-1${search}`],
     }),
   });
-  await page.renderRouter(router);
+  if (withToasts) {
+    const { ToastProvider } = await browser.server.ssrLoadModule("/src/components/ui/toast.tsx");
+    await React.act(async () => router.load());
+    await page.render(
+      React.createElement(
+        ToastProvider,
+        null,
+        React.createElement(browser.routing.RouterProvider, { router }),
+      ),
+    );
+  } else await page.renderRouter(router);
   if (waitForDetail) await page.until(() => page.container.textContent.includes("#TEST0001"));
 }
 const button = (label: string) => page.button(label);
@@ -227,6 +237,9 @@ async function submit() {
   });
 }
 const popup = () => window.document.querySelector('[role="dialog"]');
+const header = () => page.container.querySelector("h1")!.closest("header")!;
+const statusMenu = (label: string) =>
+  chooseRowAction('[aria-label="Acciones de la reserva"]', label);
 function dateTrigger(label: string) {
   const fieldLabel = Array.from(window.document.querySelectorAll("label")).find(
     (node) => node.textContent.trim() === label,
@@ -242,8 +255,8 @@ async function selectDate(label: string, day: string) {
   assert.ok(element, `Missing date ${day}`);
   await React.act(async () => element.click());
 }
-async function selectStatus(label: string) {
-  await React.act(async () => dateTrigger("Estado de la reserva").click());
+async function chooseStatus(label: string) {
+  await React.act(async () => dateTrigger("Estado").click());
   await React.act(async () => statusOption(label).click());
 }
 function statusOption(label: string) {
@@ -268,18 +281,125 @@ it.each([
   { status: "checked_in", today: "2026-10-20", action: "Hacer check-out", variant: "outline" },
   { status: "checked_in", today: "2026-10-21", action: "Hacer check-out", variant: "default" },
   { status: "checked_out", today: "2026-10-21", action: null, variant: null },
-] as const)("offers the contextual header action for $status on $today", async ({ status, today, action, variant }) => {
-  vi.setSystemTime(new Date(`${today}T05:00:00Z`));
-  saved = { ...saved, status };
+] as const)(
+  "offers the contextual header action for $status on $today",
+  async ({ status, today, action, variant }) => {
+    vi.setSystemTime(new Date(`${today}T05:00:00Z`));
+    saved = { ...saved, status };
+    mockApi();
+    await render();
+    const header = page.container.querySelector("h1")!.closest("header")!;
+    assert.equal(header.querySelector('[role="combobox"]'), null);
+    const actions = Array.from(header.querySelectorAll("button")).filter((item) =>
+      /^Hacer check-/.test(item.textContent),
+    );
+    assert.deepEqual(
+      actions.map((item) => item.textContent),
+      action ? [action] : [],
+    );
+    if (action) assert.equal(actions[0].getAttribute("data-variant"), variant);
+  },
+);
+
+it("corrects status through the menu without offering cancellation or the current status", async () => {
   mockApi();
   await render();
-  const header = page.container.querySelector("h1")!.closest("header")!;
-  assert.equal(header.querySelector('[role="combobox"]'), null);
-  const actions = Array.from(header.querySelectorAll("button")).filter((item) =>
-    /^Hacer check-/.test(item.textContent),
+  await chooseRowAction('[aria-label="Acciones de la reserva"]', "Corregir estado…");
+  assert.match(popup()!.textContent, /Corregir estado/);
+  assert.equal(button("Guardar cambios").disabled, true);
+  await React.act(async () => dateTrigger("Estado").click());
+  assert.deepEqual(
+    Array.from(window.document.querySelectorAll('[role="option"]')).map((item) => item.textContent),
+    ["Check-in", "Check-out"],
   );
-  assert.deepEqual(actions.map((item) => item.textContent), action ? [action] : []);
-  if (action) assert.equal(actions[0].getAttribute("data-variant"), variant);
+  await React.act(async () => statusOption("Check-out").click());
+  assert.equal(writes.length, 0);
+  await submit();
+  await page.until(() => !popup());
+  assert.deepEqual(writes[0].actions, [{ type: "set-status", status: "checked_out" }]);
+  assert.match(page.container.querySelector("h1")!.closest("header")!.textContent, /Check-out/);
+});
+
+it.each([
+  { status: "confirmed", items: ["Corregir estado…", "Cancelar reserva"] },
+  { status: "cancelled", items: ["Restaurar reserva"] },
+  { status: "unfulfilled", items: [] },
+] as const)(
+  "offers only the allowed status menu actions for $status",
+  async ({ status, items }) => {
+    saved = { ...saved, status };
+    mockApi();
+    await render();
+    const trigger = header().querySelector<HTMLElement>('[aria-label="Acciones de la reserva"]');
+    if (items.length) {
+      assert.ok(trigger);
+      await React.act(async () => trigger.click());
+      assert.deepEqual(
+        Array.from(window.document.querySelectorAll('[role="menuitem"]')).map(
+          (item) => item.textContent,
+        ),
+        [...items],
+      );
+    } else {
+      assert.equal(trigger, null);
+      assert.equal(header().querySelector("button"), null);
+    }
+    assert.equal(writes.length, 0);
+  },
+);
+
+it("confirms the page check-out balance, sends nothing on Volver, and offers undo", async () => {
+  saved = { ...saved, status: "checked_in", paidCents: 10000, balanceCents: 20000 };
+  mockApi();
+  await render("", true, true);
+  await click("Hacer check-out");
+  const confirmation = () => window.document.querySelector('[role="alertdialog"]');
+  assert.match(
+    confirmation()!.textContent,
+    /Quedan S\/\s*200 por pagar\. ¿Hacer check-out de todos modos\?/,
+  );
+  await click("Volver");
+  assert.equal(confirmation(), null);
+  assert.equal(writes.length, 0);
+  await click("Hacer check-out");
+  const confirm = Array.from(confirmation()!.querySelectorAll<HTMLElement>("button")).find(
+    (item) => item.textContent === "Hacer check-out",
+  )!;
+  await React.act(async () => confirm.click());
+  await page.until(() => window.document.body.textContent.includes("Check-out registrado"));
+  assert.deepEqual(writes[0].actions, [{ type: "set-status", status: "checked_out" }]);
+  await click("Deshacer");
+  await page.until(() => window.document.body.textContent.includes("Check-out deshecho"));
+  assert.deepEqual(writes[1].actions, [{ type: "set-status", status: "checked_in" }]);
+  assert.equal(saved.balanceCents, 20000);
+});
+
+it("warns about a dirty room before the page check-in and undoes the successful action", async () => {
+  saved = {
+    ...saved,
+    rooms: [
+      { ...saved.rooms[0], roomId: "room-1", roomNumber: "101", housekeepingStatus: "dirty" },
+    ],
+  };
+  mockApi();
+  await render("", true, true);
+  await click("Hacer check-in");
+  assert.match(
+    window.document.querySelector('[role="alertdialog"]')!.textContent,
+    /La habitación 101 está sucia/,
+  );
+  await click("Volver");
+  assert.equal(writes.length, 0);
+  await click("Hacer check-in");
+  const confirm = Array.from(
+    window.document.querySelectorAll<HTMLElement>('[role="alertdialog"] button'),
+  ).find((item) => item.textContent === "Hacer check-in")!;
+  await React.act(async () => confirm.click());
+  await page.until(() => window.document.body.textContent.includes("Check-in registrado"));
+  assert.deepEqual(writes[0].actions, [{ type: "set-status", status: "checked_in" }]);
+  await click("Deshacer");
+  await page.until(() => window.document.body.textContent.includes("Check-in deshecho"));
+  assert.deepEqual(writes[1].actions, [{ type: "set-status", status: "confirmed" }]);
 });
 
 it("retains the contact draft after a failed save and a reconnect refresh", async () => {
@@ -633,7 +753,7 @@ it.each([
   { label: "Check-in", initial: "confirmed", previous: "Confirmada", status: "checked_in" },
   { label: "Check-out", initial: "checked_in", previous: "Check-in", status: "checked_out" },
 ])(
-  "autosaves $label once and saves it again after a failed response",
+  "saves a $label correction once and keeps the chosen status after a failed response",
   async ({ label, initial, previous, status }) => {
     saved = { ...saved, status: initial };
     let finish!: (response: Response) => void;
@@ -646,15 +766,17 @@ it.each([
           : undefined,
     });
     await render();
-    await React.act(async () => dateTrigger("Estado de la reserva").click());
-    const checkout = statusOption(label);
+    await statusMenu("Corregir estado…");
+    await chooseStatus(label);
+    const save = button("Guardar cambios");
     await React.act(async () => {
-      checkout.click();
-      checkout.click();
+      save.click();
+      save.click();
     });
-    await page.until(() => page.container.textContent.includes("Guardando estado…"));
+    await page.until(() => writes.length === 1);
     assert.equal(writes.length, 1);
-    assert.equal(dateTrigger("Estado de la reserva").disabled, true);
+    assert.equal(button("Guardando…").disabled, true);
+    assert.equal(button("Acciones de la reserva").disabled, true);
     assert.equal(await unloadPrevented(), true);
     assert.equal(saved.status, initial);
     await React.act(async () => {
@@ -665,13 +787,13 @@ it.each([
     await React.act(async () =>
       finish(Response.json({ error: "Temporary save failure" }, { status: 503 })),
     );
-    await page.until(() => !dateTrigger("Estado de la reserva").disabled);
-    assert.ok(dateTrigger("Estado de la reserva").textContent.includes(previous));
-    await selectStatus(label);
-    await page.until(
-      () => !page.container.textContent.includes("Guardando estado…") && saved.status === status,
-    );
+    await page.until(() => !button("Guardar cambios").disabled);
+    assert.match(header().textContent, new RegExp(previous));
+    assert.ok(dateTrigger("Estado").textContent.includes(label));
+    await submit();
+    await page.until(() => !popup() && saved.status === status);
     assert.deepEqual(writes[1].actions, [{ type: "set-status", status }]);
+    assert.equal(writes[1].requestId, writes[0].requestId);
     assert.equal(saved.checkIn, "2026-10-19");
     assert.equal(saved.checkOut, "2026-10-21");
     assert.equal(saved.balanceCents, 30000);
@@ -763,15 +885,15 @@ it("previews cancellation selected in the header before saving and shows the res
     }),
   });
   await render();
-  await selectStatus("Cancelada");
+  await statusMenu("Cancelar reserva");
   await page.until(() => popup() !== null && !button("Confirmar").disabled);
   assert.equal(writes.length, 0);
-  assert.match(dateTrigger("Estado de la reserva").textContent, /Confirmada/);
+  assert.match(header().textContent, /Confirmada/);
   assert.match(popup()!.textContent, /sin registrar un reembolso/);
   await fill("reason", "Cambio de planes");
   await submit();
   await page.until(() => !popup());
-  assert.match(dateTrigger("Estado de la reserva").textContent, /Cancelada/);
+  assert.match(header().textContent, /Cancelada/);
   assert.match(page.container.textContent, /Cambio de planes/);
   assert.match(page.container.textContent, /Por devolver/);
   assert.deepEqual(writes[0].actions, [
@@ -791,7 +913,7 @@ it("retries a failed cancellation preview and keeps the reason after a failed sa
         : undefined,
   });
   await render();
-  await selectStatus("Cancelada");
+  await statusMenu("Cancelar reserva");
   await page.until(() => popup()?.textContent.includes("Temporary preview failure") === true);
   assert.equal(button("Confirmar").disabled, true);
   await click("Reintentar");
@@ -834,21 +956,18 @@ it("warns before restoring a cancelled reservation into a dirty room, then resto
     [...warning()!.querySelectorAll<HTMLElement>("button")].find(
       (item) => item.textContent.trim() === label,
     )!;
-  await selectStatus("Check-in");
+  await statusMenu("Restaurar reserva");
+  await chooseStatus("Check-in");
+  await page.until(() => !button("Guardar cambios").disabled);
+  await submit();
   await page.until(() => warning() !== undefined, "Restoring into a dirty room must warn");
   await React.act(async () => warningButton("Volver").click());
   await page.until(() => warning() === undefined);
-  assert.equal(popup(), null);
-  await selectStatus("Check-in");
+  assert.match(popup()!.textContent, /Restaurar reserva/);
+  assert.equal(writes.length, 0);
+  await submit();
   await page.until(() => warning() !== undefined);
   await React.act(async () => warningButton("Hacer check-in").click());
-  await page.until(
-    () => popup()?.textContent.includes("Restaurar reserva") === true,
-    "Restoration must follow the warning",
-  );
-  assert.equal(writes.length, 0);
-  await page.until(() => !button("Guardar cambios").disabled);
-  await click("Guardar cambios");
   await page.until(() => saved.status === "checked_in" && !popup());
   assert.deepEqual(writes[0].actions, [{ type: "set-status", status: "checked_in" }]);
 });
@@ -880,10 +999,10 @@ it.each([
     assert.match(page.container.textContent, /Reserva cancelada/);
     assert.match(page.container.textContent, /Cambio de planes/);
     assert.match(page.container.textContent, /Por devolver/);
-    await selectStatus("Confirmada");
+    await statusMenu("Restaurar reserva");
     await page.until(() => popup()?.textContent.includes("Habitación 1:") === true);
     assert.equal(button("Guardar cambios").disabled, true);
-    assert.match(dateTrigger("Estado de la reserva").textContent, /Cancelada/);
+    assert.match(header().textContent, /Cancelada/);
     await submit();
     assert.equal(writes.length, 0);
     await click("Cerrar");
@@ -1586,7 +1705,6 @@ it("reads No se presentó for a No-show stay and bills its charge", async () => 
   mockApi();
   await render();
   assert.match(text(page.container.querySelector("fieldset header")!), /Ana Pérez No se presentó/);
-  assert.match(dateTrigger("Estado de la reserva").textContent, /No se presentó/);
   assert.equal(
     text(page.container.querySelector('[role="alert"]')!),
     "No se presentó · 19 oct 2026",

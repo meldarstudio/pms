@@ -4,6 +4,8 @@ import { cn } from "cn";
 import { BookingEditor, DiscardChanges } from "@/components/room-booking-dialog";
 import { GuestEntryForm, paymentMethods } from "@/components/reservation-entry-forms";
 import { WorkflowBill } from "@/components/workflow-bill";
+import { ChoiceField } from "@/components/workflow-fields";
+import { useDirtyRoomCheckIn } from "@/components/dirty-room-check-in";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -44,6 +46,7 @@ export type ReservationEditorTarget =
   | { kind: "guest"; id?: string }
   | { kind: "payment"; id?: string }
   | { kind: "delete-payment" | "delete-guest"; id: string }
+  | { kind: "correct-status" }
   | { kind: "status"; status: Extract<WorkflowAction, { type: "set-status" }>["status"] };
 
 function editorTitle(target: ReservationEditorTarget, detail: ReservationDetail) {
@@ -68,6 +71,8 @@ function editorTitle(target: ReservationEditorTarget, detail: ReservationDetail)
         : detail.status === "cancelled"
           ? "Restaurar reserva"
           : `Confirmar ${reservationStatusLabel(target.status)}`;
+    case "correct-status":
+      return "Corregir estado";
   }
 }
 
@@ -189,6 +194,10 @@ function ReservationActionForm({
   onDirtyChange: (dirty: boolean) => void;
 }) {
   const { today } = usePropertyCalendar();
+  const [selectedStatus, setSelectedStatus] = useState<
+    Extract<WorkflowAction, { type: "set-status" }>["status"] | ""
+  >(target.kind === "status" ? target.status : "");
+  const [confirmCheckIn, checkInDialog] = useDirtyRoomCheckIn();
   const payment =
     "id" in target ? detail.payments.find((payment) => payment.id === target.id) : undefined;
   const [defaults] = useState(() => ({
@@ -235,6 +244,8 @@ function ReservationActionForm({
     },
     onSubmit: async ({ value }) => {
       if (disabled || (needsPreview && !previewReady)) return;
+      if (statusEditor && (!selectedStatus || !(await confirmCheckIn(detail, selectedStatus))))
+        return;
       let actions: WorkflowAction[];
       switch (target.kind) {
         case "contact": {
@@ -262,12 +273,14 @@ function ReservationActionForm({
             },
           ];
           break;
+        case "correct-status":
         case "status":
+          if (!selectedStatus) return;
           actions = [
             {
               type: "set-status",
-              status: target.status,
-              ...(target.status === "cancelled" && value.reason.trim()
+              status: selectedStatus,
+              ...(selectedStatus === "cancelled" && value.reason.trim()
                 ? { reason: value.reason.trim() }
                 : {}),
             },
@@ -292,13 +305,15 @@ function ReservationActionForm({
   const changed = !useSelector(form.store, (state) => state.isDefaultValue);
   const submitting = useSelector(form.store, (state) => state.isSubmitting);
   const saving = disabled || submitting;
-  useEffect(() => onDirtyChange(changed), [changed, onDirtyChange]);
+  const statusEditor = target.kind === "status" || target.kind === "correct-status";
+  const statusChanged = selectedStatus !== (target.kind === "status" ? target.status : "");
+  useEffect(() => onDirtyChange(changed || statusChanged), [changed, statusChanged, onDirtyChange]);
   useEffect(() => {
     if (target.kind === "payment" && form.state.fieldMeta.date?.errors.length)
       void form.validate("submit");
   }, [today, form, target.kind]);
   const needsPreview = target.kind === "status";
-  const status = target.kind === "status" ? target.status : null;
+  const status = target.kind === "status" ? selectedStatus : null;
   const previewActions = useMemo<WorkflowAction[]>(
     () => (status ? [{ type: "set-status", status }] : []),
     [status],
@@ -323,6 +338,7 @@ function ReservationActionForm({
       )}
       onSubmit={(event) => void submitForm(event, () => form.handleSubmit())}
     >
+      {checkInDialog}
       <fieldset
         disabled={saving}
         className={cn(target.kind === "contact" && "min-h-0 overflow-y-auto p-px")}
@@ -381,8 +397,22 @@ function ReservationActionForm({
               de huéspedes. La ocupación declarada de la habitación no cambia.
             </FieldDescription>
           )}
-          {target.kind === "status" && (
+          {statusEditor && (
             <>
+              {(target.kind === "correct-status" || detail.status === "cancelled") && (
+                <ChoiceField
+                  label="Estado"
+                  value={selectedStatus}
+                  disabled={saving}
+                  options={(["confirmed", "checked_in", "checked_out"] as const)
+                    .filter((status) => status !== detail.status)
+                    .map((value) => ({ value, label: reservationStatusLabel(value) }))}
+                  onChange={(value) => {
+                    if (value === "confirmed" || value === "checked_in" || value === "checked_out")
+                      setSelectedStatus(value);
+                  }}
+                />
+              )}
               <FieldDescription>
                 Cambiar el estado no modifica las fechas de la estadía. El saldo y las habitaciones
                 sin asignar no impiden el check-in ni el check-out.
@@ -390,14 +420,15 @@ function ReservationActionForm({
               {detail.status === "cancelled" && (
                 <FieldDescription>
                   Se revisa la disponibilidad, las asignaciones y la capacidad antes de restaurar
-                  como {reservationStatusLabel(target.status)}.
+                  como {reservationStatusLabel(selectedStatus || "confirmed")}.
                 </FieldDescription>
               )}
-              {target.status === "cancelled" && (
+              {selectedStatus === "cancelled" && (
                 <>
                   <FieldDescription>
-                    Se liberará el inventario y la cuenta quedará en cero. Los pagos se conservarán
-                    como saldo a favor, sin registrar un reembolso.
+                    Se liberará el inventario y se aplicará el cargo según la política de la
+                    reserva, sin registrar un reembolso. Revisa la cuenta resultante antes de
+                    confirmar.
                   </FieldDescription>
                   <form.AppField name="reason">
                     {(field) => <field.Text label="Motivo · Opcional" type="textarea" max={2000} />}
@@ -447,7 +478,7 @@ function ReservationActionForm({
         <Button
           type="submit"
           variant={destructive ? "destructive" : "default"}
-          disabled={saving || (needsPreview && !previewReady)}
+          disabled={saving || (statusEditor && !selectedStatus) || (needsPreview && !previewReady)}
         >
           {saving ? "Guardando…" : destructive ? "Confirmar" : "Guardar cambios"}
         </Button>
