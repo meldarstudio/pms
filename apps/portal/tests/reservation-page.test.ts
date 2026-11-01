@@ -284,7 +284,9 @@ it.each([
 ] as const)(
   "offers the contextual header action for $status on $today",
   async ({ status, today, action, variant }) => {
-    vi.setSystemTime(new Date(`${today}T05:00:00Z`));
+    vi.setSystemTime(
+      new Date(today === "2026-10-18" ? "2026-10-19T03:00:00Z" : `${today}T05:00:00Z`),
+    );
     saved = { ...saved, status };
     mockApi();
     await render();
@@ -402,6 +404,63 @@ it("warns about a dirty room before the page check-in and undoes the successful 
   assert.deepEqual(writes[1].actions, [{ type: "set-status", status: "confirmed" }]);
 });
 
+it.each([
+  { editor: "Editar estadía", fieldName: "rooms[0].room.adults", value: "1", action: "edit-room" },
+  { editor: "Editar contacto", fieldName: "fullName", value: "Ana María Pérez", action: "contact" },
+  { editor: "Editar notas", fieldName: "notes", value: "Entrada por la noche", action: "notes" },
+  { editor: "Agregar huésped", fieldName: "fullName", value: "Luis Gómez", action: "set-guests" },
+  { editor: "Registrar pago", fieldName: "amount", value: "100", action: "add-payment" },
+])(
+  "preserves the phone $editor draft and actions through keyboard viewport changes",
+  async ({ editor, fieldName, value, action }) => {
+    const descriptor = Object.getOwnPropertyDescriptor(window, "visualViewport");
+    const viewport = Object.assign(new window.EventTarget(), { height: 844, offsetTop: 0 });
+    Object.defineProperty(window, "visualViewport", { configurable: true, value: viewport });
+    try {
+      page.mobile();
+      mockApi();
+      await render();
+      await click(editor);
+      const dialog = popup()! as HTMLElement;
+      assert.equal(dialog.style.getPropertyValue("--reservation-viewport-height"), "844px");
+      await fill(fieldName, value);
+      const input = field(fieldName);
+      await React.act(async () => {
+        viewport.height = 420;
+        viewport.offsetTop = 30;
+        viewport.dispatchEvent(new window.Event("resize"));
+        viewport.dispatchEvent(new window.Event("scroll"));
+        window.happyDOM.setWindowSize({ width: 1024, height: 768 });
+        window.dispatchEvent(new window.Event("resize"));
+      });
+      assert.equal(dialog.style.getPropertyValue("--reservation-viewport-height"), "420px");
+      assert.equal(dialog.style.getPropertyValue("--reservation-viewport-top"), "30px");
+      assert.equal(field(fieldName), input);
+      assert.equal(input.value, value);
+      assert.equal(await unloadPrevented(), true);
+      assert.equal(button("Hacer check-in").disabled, true);
+      await click("Cerrar");
+      assert.match(window.document.body.textContent, /Hay cambios sin guardar/);
+      await click("Seguir editando");
+      assert.equal(field(fieldName).value, value);
+      await page.until(
+        () =>
+          !window.document
+            .querySelector('[role="dialog"] button[type="submit"]')
+            ?.hasAttribute("disabled"),
+      );
+      await submit();
+      await page.until(() => !popup());
+      assert.equal(writes.length, 1);
+      assert.equal(writes[0].actions[0].type, action);
+      assert.equal(await unloadPrevented(), false);
+    } finally {
+      if (descriptor) Object.defineProperty(window, "visualViewport", descriptor);
+      else Reflect.deleteProperty(window, "visualViewport");
+    }
+  },
+);
+
 it("retains the contact draft after a failed save and a reconnect refresh", async () => {
   mockApi({
     write: () =>
@@ -466,6 +525,8 @@ it("records payments after a failed save and prevents dismissal or navigation du
   await fill("reference", "op-123");
   await submit();
   await page.until(() => writes.length === 1);
+  assert.equal(button("Hacer check-in").disabled, true);
+  assert.equal(button("Acciones de la reserva").disabled, true);
   assert.equal(await unloadPrevented(), true);
   await React.act(async () => {
     popup()!.dispatchEvent(new window.KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
@@ -726,6 +787,10 @@ it("applies and removes the discount from the Cuenta summary, keeping a rejected
   await page.until(() => !!input(), "Descuento must open the discount popover");
   assert.equal(popoverButton("Quitar"), undefined, "Quitar is only for an applied discount");
   await page.fill(input()!, "50");
+  assert.equal(button("Hacer check-in").disabled, true);
+  assert.equal(button("Acciones de la reserva").disabled, true);
+  await click("Hacer check-in");
+  assert.equal(writes.length, 0);
   await React.act(async () => popoverButton("Aplicar")!.click());
   await page.until(() => writes.length === 1);
   assert.equal(input()?.value, "50", "A failed save keeps the popover and its amount");
@@ -735,6 +800,7 @@ it("applies and removes the discount from the Cuenta summary, keeping a rejected
   assert.equal(input()?.value, "50", "A background change must also preserve a failed-save draft");
   await React.act(async () => popoverButton("Aplicar")!.click());
   await page.until(() => !input(), "A saved discount closes the popover");
+  assert.equal(button("Hacer check-in").disabled, false);
   assert.deepEqual(writes[1].actions, [{ type: "set-discount", amountCents: 5000 }]);
   assert.deepEqual(summaryRows().slice(0, 3), [
     "Subtotal S/ 300",

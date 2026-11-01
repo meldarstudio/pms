@@ -92,8 +92,25 @@ export function ReservationPageEditor({
   description?: string;
 }) {
   const dirty = useRef(false);
+  const [popup, setPopup] = useState<HTMLDivElement | null>(null);
   const [leaving, setLeaving] = useState(false);
   const { send, saving } = useReservationCommands(detail.id);
+  const fullScreen = ["stay", "contact", "notes", "guest", "payment"].includes(target.kind);
+  useEffect(() => {
+    const viewport = window.visualViewport;
+    if (!viewport || !popup) return;
+    const resize = () => {
+      popup.style.setProperty("--reservation-viewport-height", `${viewport.height}px`);
+      popup.style.setProperty("--reservation-viewport-top", `${viewport.offsetTop}px`);
+    };
+    resize();
+    viewport.addEventListener("resize", resize);
+    viewport.addEventListener("scroll", resize);
+    return () => {
+      viewport.removeEventListener("resize", resize);
+      viewport.removeEventListener("scroll", resize);
+    };
+  }, [popup]);
   const handleDirty = useCallback(
     (value: boolean) => {
       dirty.current = value;
@@ -115,11 +132,12 @@ export function ReservationPageEditor({
         }}
       >
         <DialogContent
+          ref={setPopup}
           closeDisabled={saving}
           className={cn(
-            "max-h-[90svh] overflow-y-auto sm:max-w-lg",
-            (target.kind === "stay" || target.kind === "contact") &&
-              "top-0 left-0 flex h-svh max-h-svh w-full max-w-full translate-x-0 translate-y-0 flex-col overflow-hidden sm:top-1/2 sm:left-1/2 sm:h-auto sm:max-h-[90svh] sm:-translate-x-1/2 sm:-translate-y-1/2",
+            "flex max-h-[90svh] flex-col overflow-hidden sm:max-w-lg max-sm:top-[calc(var(--reservation-viewport-top,0px)+var(--reservation-viewport-height,100dvh)/2)] max-sm:max-h-[calc(var(--reservation-viewport-height,100dvh)-2rem)]",
+            fullScreen &&
+              "max-sm:top-(--reservation-viewport-top,0px) max-sm:left-0 max-sm:h-(--reservation-viewport-height,100dvh) max-sm:max-h-(--reservation-viewport-height,100dvh) max-sm:max-w-full max-sm:translate-x-0 max-sm:translate-y-0 max-sm:pt-[max(1rem,env(safe-area-inset-top))] max-sm:pb-[max(1rem,env(safe-area-inset-bottom))] max-sm:safe-area-padding-x max-sm:transition-none",
             target.kind === "stay" && "sm:max-w-2xl",
           )}
         >
@@ -142,6 +160,7 @@ export function ReservationPageEditor({
             />
           ) : target.kind === "guest" ? (
             <GuestEntryForm
+              scrollable
               detail={detail}
               guest={detail.stayingGuests.find((guest) => guest.id === target.id)}
               disabled={saving}
@@ -332,145 +351,152 @@ function ReservationActionForm({
   return (
     <form
       noValidate
-      className={cn(
-        "flex flex-col gap-6",
-        target.kind === "contact" && "min-h-0 flex-1 overflow-hidden",
-      )}
+      className="flex min-h-0 flex-1 flex-col gap-6 overflow-hidden"
       onSubmit={(event) => void submitForm(event, () => form.handleSubmit())}
     >
       {checkInDialog}
-      <fieldset
-        disabled={saving}
-        className={cn(target.kind === "contact" && "min-h-0 overflow-y-auto p-px")}
-      >
-        <FieldGroup>
-          {target.kind === "contact" && (
-            <>
-              <FieldDescription>
-                Corrige los datos del contacto principal. La lista de huéspedes no cambia.
-              </FieldDescription>
-              <form.AppField name="fullName">
-                {(field) => <field.Text label="Nombre completo" required max={200} />}
-              </form.AppField>
-              <form.AppField name="email">
-                {(field) => <field.Text label="Correo electrónico" type="email" max={320} />}
-              </form.AppField>
-              <form.AppField name="phone">{(field) => <field.Phone />}</form.AppField>
-            </>
-          )}
-          {target.kind === "notes" && (
-            <form.AppField name="notes">
-              {(field) => <field.Text label="Notas para esta reserva" type="textarea" max={2000} />}
-            </form.AppField>
-          )}
-          {target.kind === "payment" && (
-            <>
-              <form.AppField name="amount">
+      <div className="flex min-h-0 flex-1 flex-col gap-6 overflow-y-auto overscroll-contain p-px">
+        <fieldset disabled={saving}>
+          <FieldGroup>
+            {target.kind === "contact" && (
+              <>
+                <FieldDescription>
+                  Corrige los datos del contacto principal. La lista de huéspedes no cambia.
+                </FieldDescription>
+                <form.AppField name="fullName">
+                  {(field) => <field.Text label="Nombre completo" required max={200} />}
+                </form.AppField>
+                <form.AppField name="email">
+                  {(field) => <field.Text label="Correo electrónico" type="email" max={320} />}
+                </form.AppField>
+                <form.AppField name="phone">{(field) => <field.Phone />}</form.AppField>
+              </>
+            )}
+            {target.kind === "notes" && (
+              <form.AppField name="notes">
                 {(field) => (
-                  <field.Text label={`Importe (${detail.currency})`} placeholder="0.00" />
+                  <field.Text label="Notas para esta reserva" type="textarea" max={2000} />
                 )}
               </form.AppField>
-              <form.AppField name="method">
-                {(field) => <field.Choice label="Método de pago" options={paymentMethods} />}
-              </form.AppField>
-              <form.AppField name="date">
-                {(field) => <field.Text label="Fecha del pago" type="date" max={today} required />}
-              </form.AppField>
-              <form.AppField name="reference">
-                {(field) => <field.Text label="Referencia · Opcional" />}
-              </form.AppField>
-              <form.AppField name="reason">
-                {(field) => <field.Text label="Nota del pago" type="textarea" max={2000} />}
-              </form.AppField>
-            </>
-          )}
-          {target.kind === "delete-payment" && (
-            <FieldDescription>
-              Se eliminará el registro de {formatMoney(payment?.amountCents ?? 0, detail.currency)}.
-              Eliminar un registro no representa un reembolso.
-            </FieldDescription>
-          )}
-          {target.kind === "delete-guest" && (
-            <FieldDescription>
-              Se eliminará a{" "}
-              {detail.stayingGuests.find((guest) => guest.id === target.id)?.fullName} de la lista
-              de huéspedes. La ocupación declarada de la habitación no cambia.
-            </FieldDescription>
-          )}
-          {statusEditor && (
-            <>
-              {(target.kind === "correct-status" || detail.status === "cancelled") && (
-                <ChoiceField
-                  label="Estado"
-                  value={selectedStatus}
-                  disabled={saving}
-                  options={(["confirmed", "checked_in", "checked_out"] as const)
-                    .filter((status) => status !== detail.status)
-                    .map((value) => ({ value, label: reservationStatusLabel(value) }))}
-                  onChange={(value) => {
-                    if (value === "confirmed" || value === "checked_in" || value === "checked_out")
-                      setSelectedStatus(value);
-                  }}
-                />
-              )}
-              <FieldDescription>
-                Cambiar el estado no modifica las fechas de la estadía. El saldo y las habitaciones
-                sin asignar no impiden el check-in ni el check-out.
-              </FieldDescription>
-              {detail.status === "cancelled" && (
-                <FieldDescription>
-                  Se revisa la disponibilidad, las asignaciones y la capacidad antes de restaurar
-                  como {reservationStatusLabel(selectedStatus || "confirmed")}.
-                </FieldDescription>
-              )}
-              {selectedStatus === "cancelled" && (
-                <>
-                  <FieldDescription>
-                    Se liberará el inventario y se aplicará el cargo según la política de la
-                    reserva, sin registrar un reembolso. Revisa la cuenta resultante antes de
-                    confirmar.
-                  </FieldDescription>
-                  <form.AppField name="reason">
-                    {(field) => <field.Text label="Motivo · Opcional" type="textarea" max={2000} />}
-                  </form.AppField>
-                </>
-              )}
-            </>
-          )}
-        </FieldGroup>
-      </fieldset>
-      {needsPreview && (
-        <section aria-label="Cuenta resultante" className="flex flex-col gap-3">
-          {preview.isFetching || (!preview.data && !preview.error) ? (
-            <p role="status" className="text-sm text-muted-foreground">
-              Calculando…
-            </p>
-          ) : preview.error ? (
-            <>
-              <FieldError>{preview.error.message}</FieldError>
-              <Button
-                type="button"
-                variant="outline"
-                disabled={saving || !valid}
-                onClick={() => void preview.refetch()}
-              >
-                Reintentar
-              </Button>
-            </>
-          ) : (
-            preview.data && (
+            )}
+            {target.kind === "payment" && (
               <>
-                <WorkflowBill bill={preview.data.billing} />
-                {preview.data.validation.issues.map((issue, index) => (
-                  <FieldError key={index}>
-                    Habitación {issue.roomIndex + 1}: {translateError(issue.code)}
-                  </FieldError>
-                ))}
+                <form.AppField name="amount">
+                  {(field) => (
+                    <field.Text label={`Importe (${detail.currency})`} placeholder="0.00" />
+                  )}
+                </form.AppField>
+                <form.AppField name="method">
+                  {(field) => <field.Choice label="Método de pago" options={paymentMethods} />}
+                </form.AppField>
+                <form.AppField name="date">
+                  {(field) => (
+                    <field.Text label="Fecha del pago" type="date" max={today} required />
+                  )}
+                </form.AppField>
+                <form.AppField name="reference">
+                  {(field) => <field.Text label="Referencia · Opcional" />}
+                </form.AppField>
+                <form.AppField name="reason">
+                  {(field) => <field.Text label="Nota del pago" type="textarea" max={2000} />}
+                </form.AppField>
               </>
-            )
-          )}
-        </section>
-      )}
+            )}
+            {target.kind === "delete-payment" && (
+              <FieldDescription>
+                Se eliminará el registro de{" "}
+                {formatMoney(payment?.amountCents ?? 0, detail.currency)}. Eliminar un registro no
+                representa un reembolso.
+              </FieldDescription>
+            )}
+            {target.kind === "delete-guest" && (
+              <FieldDescription>
+                Se eliminará a{" "}
+                {detail.stayingGuests.find((guest) => guest.id === target.id)?.fullName} de la lista
+                de huéspedes. La ocupación declarada de la habitación no cambia.
+              </FieldDescription>
+            )}
+            {statusEditor && (
+              <>
+                {(target.kind === "correct-status" || detail.status === "cancelled") && (
+                  <ChoiceField
+                    label="Estado"
+                    value={selectedStatus}
+                    disabled={saving}
+                    options={(["confirmed", "checked_in", "checked_out"] as const)
+                      .filter((status) => status !== detail.status)
+                      .map((value) => ({ value, label: reservationStatusLabel(value) }))}
+                    onChange={(value) => {
+                      if (
+                        value === "confirmed" ||
+                        value === "checked_in" ||
+                        value === "checked_out"
+                      )
+                        setSelectedStatus(value);
+                    }}
+                  />
+                )}
+                <FieldDescription>
+                  Cambiar el estado no modifica las fechas de la estadía. El saldo y las
+                  habitaciones sin asignar no impiden el check-in ni el check-out.
+                </FieldDescription>
+                {detail.status === "cancelled" && (
+                  <FieldDescription>
+                    Se revisa la disponibilidad, las asignaciones y la capacidad antes de restaurar
+                    como {reservationStatusLabel(selectedStatus || "confirmed")}.
+                  </FieldDescription>
+                )}
+                {selectedStatus === "cancelled" && (
+                  <>
+                    <FieldDescription>
+                      Se liberará el inventario y se aplicará el cargo según la política de la
+                      reserva, sin registrar un reembolso. Revisa la cuenta resultante antes de
+                      confirmar.
+                    </FieldDescription>
+                    <form.AppField name="reason">
+                      {(field) => (
+                        <field.Text label="Motivo · Opcional" type="textarea" max={2000} />
+                      )}
+                    </form.AppField>
+                  </>
+                )}
+              </>
+            )}
+          </FieldGroup>
+        </fieldset>
+        {needsPreview && (
+          <section aria-label="Cuenta resultante" className="flex flex-col gap-3">
+            {preview.isFetching || (!preview.data && !preview.error) ? (
+              <p role="status" className="text-sm text-muted-foreground">
+                Calculando…
+              </p>
+            ) : preview.error ? (
+              <>
+                <FieldError>{preview.error.message}</FieldError>
+                <Button
+                  type="button"
+                  variant="outline"
+                  disabled={saving || !valid}
+                  onClick={() => void preview.refetch()}
+                >
+                  Reintentar
+                </Button>
+              </>
+            ) : (
+              preview.data && (
+                <>
+                  <WorkflowBill bill={preview.data.billing} />
+                  {preview.data.validation.issues.map((issue, index) => (
+                    <FieldError key={index}>
+                      Habitación {issue.roomIndex + 1}: {translateError(issue.code)}
+                    </FieldError>
+                  ))}
+                </>
+              )
+            )}
+          </section>
+        )}
+      </div>
       <div className="flex shrink-0 flex-wrap justify-end gap-2">
         <Button type="button" variant="outline" disabled={saving} onClick={onCancel}>
           {target.kind === "contact" ? "Cancelar" : "Cerrar"}

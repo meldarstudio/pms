@@ -122,15 +122,15 @@ export function CheckOutBalanceConfirmation({
         if (!open) onBack();
       }}
     >
-      <AlertDialogContent className="max-h-[90svh] overflow-y-auto">
-        <AlertDialogHeader>
+      <AlertDialogContent className="flex max-h-[90dvh] flex-col overflow-hidden">
+        <AlertDialogHeader className="min-h-0 overflow-y-auto">
           <AlertDialogTitle>Hacer check-out</AlertDialogTitle>
           <AlertDialogDescription>
             Quedan {formatMoney(balanceCents ?? 0, currency)} por pagar. ¿Hacer check-out de todos
             modos?
           </AlertDialogDescription>
         </AlertDialogHeader>
-        <AlertDialogFooter>
+        <AlertDialogFooter className="shrink-0">
           <Button variant="outline" onClick={onBack}>
             Volver
           </Button>
