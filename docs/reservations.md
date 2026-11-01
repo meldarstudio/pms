@@ -438,6 +438,32 @@ current room of a one-room reservation and to none otherwise, even if the rooms 
 while the form was open. A rejected guest room is a form-level
 error, since no field shows it.
 
+### Prices for newly reserved rooms
+
+Creation and **Agregar habitación** in the dialog's Detalles and the page's stay
+editor offer **Cambiar precio por noche** per unsaved room, on desktop and phone.
+It reveals a final nightly amount in soles and an undo action; on phone the initial
+button fills the content width. The value travels as that room's `nightlyRateCents`
+in creation previews/requests or the command module's `add-room`, never as a
+reservation discount. Rooms without it keep ordinary server plan pricing.
+
+An opened but empty field is invalid, not an omitted price or zero. Amounts must
+be nonnegative, at most S/ 10 000 000, and have at most two decimals; zero is valid.
+Invalid prices suppress pricing requests and amounts and block saving. Errors
+appear on blur/submit. Undo clears the value and its errors, restores the initial
+button, and obtains ordinary server pricing before saving. Failed previews/saves
+retain the draft; identical uncertain saves retain their retry request ID.
+
+Saved rooms never expose this control, including immediately after saving an added
+room. `edit-room` omits nightly pricing. A flat price applies only to initial nights;
+extending a saved stay uses current rates for added nights, not the earlier flat price.
+
+The phone dialog and stay editor's pricing summary shows type and room total, then nights × price
+and occupancy. Varying nights read **Precio variable**, not a calculated average.
+**Ver detalle** reveals server-priced nightly rows for varying prices or multiple
+rooms. This summary never includes physical room numbers or **Sin asignar**;
+assignment remains in the editable fields. Desktop summary presentation is unchanged.
+
 ### Full reservation page
 
 Independent editors save contact, stay, notes, discount, guests, and payments.
@@ -445,6 +471,7 @@ Contact editing changes the existing contact, not its identity, and omits docume
 fields. Stay editing saves dates/type/assignment/occupancy together, excluding notes,
 guests, payments, discount, and status. Declared occupant totals are independent of
 named guests. Reservation notes are distinct from contact notes.
+New rooms also accept the [final nightly price](#prices-for-newly-reserved-rooms).
 
 Active status changes save immediately and revert on failure; cancellation and
 restoration require current server bill/validation plus confirmation. Disable status
@@ -514,7 +541,8 @@ discount autosave.
 The mobile bill accordion keeps the discount draft mounted through collapse/resize.
 Draft bills show preview state and never substitute stale saved amounts when unavailable.
 
-Creation (`NewBooking`) sends the chosen `ratePlan` and shows only the current
+Creation (`NewBooking`) sends the chosen `ratePlan` and optional
+[per-room final nightly prices](#prices-for-newly-reserved-rooms), and shows only the current
 `POST /reservations/preview` bill: Total, required initial payment, remaining
 scheduled amount, and cancellation terms ([creation-summary.tsx](../apps/portal/src/components/creation-summary.tsx)).
 While a changed draft is repricing or its preview failed (with Reintentar), the
@@ -525,6 +553,7 @@ nights capped at total, or total); zero totals read as no charge. **Ver detalle*
 nightly prices for several rooms or varying prices. The reservation discount is the
 shared [discount popover](../apps/portal/src/components/discount-popover.tsx): only an
 applied amount reaches the preview and request; the server caps it at the subtotal; an
+override is priced before this reservation discount (S/ 95 × 3 − S/ 30 = S/ 255). An
 open changed or invalid draft blocks creating. Room rows use the shared
 [room row](../apps/portal/src/components/reservation-room-rows.tsx) layout.
 

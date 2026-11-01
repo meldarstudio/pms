@@ -37,6 +37,7 @@ const room = z.object({
     roomId: z.string().nullable(),
     adults: z.string(),
     children: z.string(),
+    nightlyRate: z.string().optional(),
   }),
 });
 export const capacityMessage = "La habitación no tiene capacidad para todos los huéspedes.";
@@ -109,6 +110,17 @@ export const detailsSchema = (
             message: children.error.issues[0].message,
           });
         const previous = saved?.rooms.find((room) => room.id === draft.id);
+        if (!previous && draft.room.nightlyRate !== undefined) {
+          const rate = money(false)
+            .refine((value) => value.trim() !== "", "Ingresa un precio por noche.")
+            .safeParse(draft.room.nightlyRate);
+          if (!rate.success)
+            ctx.addIssue({
+              code: "custom",
+              path: [...path, "nightlyRate"],
+              message: rate.error.issues[0].message,
+            });
+        }
         const changed =
           !previous ||
           draft.room.roomTypeId !== previous.roomTypeId ||
@@ -162,12 +174,15 @@ export function detailsDefaults(detail: ReservationDetail): DetailsValues {
   };
 }
 export function workflowDrafts(values: DetailsValues): RoomDraft[] {
-  return values.rooms.map((draft) => ({
+  return values.rooms.map(({ room: { nightlyRate, ...room }, ...draft }) => ({
     ...draft,
     room: {
-      ...draft.room,
-      adults: Number(draft.room.adults),
-      children: Number(draft.room.children),
+      ...room,
+      adults: Number(room.adults),
+      children: Number(room.children),
+      ...(nightlyRate !== undefined
+        ? { nightlyRateCents: parseMajorToCents(nightlyRate.trim()) ?? undefined }
+        : {}),
     },
   }));
 }
@@ -188,6 +203,7 @@ export function detailsSummaryRooms(
         roomTypeName: priced?.roomTypeName,
         adults: adults.success ? Number(adults.data) : null,
         children: children.success ? Number(children.data) : null,
+        nights: priced?.nights,
         charges: priced
           ? {
               subtotalCents: priced.subtotalCents,
@@ -251,8 +267,8 @@ export function guestPayload(values: GuestValues): StayingGuest {
     documentNumber: parsed.documentNumber || null,
   };
 }
-const money = (positive: boolean) =>
-  z.string().refine(
+function money(positive: boolean) {
+  return z.string().refine(
     (value) => {
       const cents = parseMajorToCents(value.trim() || (positive ? "" : "0"));
       return cents !== null && cents >= (positive ? 1 : 0) && cents <= 1000000000;
@@ -261,6 +277,7 @@ const money = (positive: boolean) =>
       ? "Introduce un importe positivo con hasta dos decimales, máximo S/ 10 000 000."
       : "Ingresa un importe válido con hasta dos decimales, máximo S/ 10 000 000.",
   );
+}
 export const paymentSchema = z.object({
   amount: money(true),
   method: z.enum(["cash", "card", "transfer", "yape", "plin", "other"], {

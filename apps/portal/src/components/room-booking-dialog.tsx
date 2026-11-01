@@ -655,6 +655,7 @@ export function BookingEditor({
                                 <CompactRoomFields
                                   form={form}
                                   roomIndex={roomIndex}
+                                  newRoom={!detail.rooms.some((room) => room.id === draft.id)}
                                   errors={errors}
                                   reservationId={detail.id}
                                   availableTypeIds={availableRoomTypeIds(
@@ -811,6 +812,7 @@ export function BookingEditor({
                   "Habitación",
                 adults: room.adults,
                 children: room.children,
+                nights: room.nights,
                 charges: room.charges,
               }))}
               summary={billing ?? null}
@@ -831,12 +833,15 @@ export function BookingEditor({
                   : null
               }
               showPayments
+              showNightlyPrices={isMobile}
               message={
-                summary.calculating
-                  ? "Calculando…"
-                  : mobileEditor && !billing
-                    ? "Importes no disponibles"
-                    : null
+                summary.invalidPrices
+                  ? "Revisa el precio por noche para ver el total."
+                  : summary.calculating
+                    ? "Calculando…"
+                    : mobileEditor && !billing
+                      ? "Importes no disponibles"
+                      : null
               }
               error={
                 summary.error && (
@@ -988,6 +993,7 @@ const CompactRoomFields = withReservationForm({
   defaultValues: emptyDetails,
   props: {
     roomIndex: 0,
+    newRoom: false,
     reservationId: "",
     availableTypeIds: new Set<string>(),
     typesReady: false,
@@ -998,6 +1004,7 @@ const CompactRoomFields = withReservationForm({
   render: function CompactRoomFields({
     form,
     roomIndex,
+    newRoom,
     reservationId,
     availableTypeIds,
     typesReady,
@@ -1128,10 +1135,16 @@ const CompactRoomFields = withReservationForm({
         )}
       </>
     );
+    const nightlyPrice = newRoom ? (
+      <form.AppField name={`rooms[${roomIndex}].room.nightlyRate`}>
+        {(field) => <field.NightlyPrice />}
+      </form.AppField>
+    ) : null;
     if (row)
       return (
         <ReservationRoomRow
           {...row}
+          actions={nightlyPrice}
           typeField={typeField}
           roomField={roomField}
           adultsField={adultsField}
@@ -1145,6 +1158,7 @@ const CompactRoomFields = withReservationForm({
         {roomField}
         {adultsField}
         {childrenField}
+        {nightlyPrice}
         {feedback}
       </FieldGroup>
     );

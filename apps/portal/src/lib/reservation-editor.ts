@@ -81,8 +81,14 @@ export function roomEdits(detail: ReservationDetail, drafts: RoomDraft[]): Workf
     } else if (!saved) actions.push({ type: "add-room", room: draft.room });
     else {
       const previous = stayValue(saved);
-      if (JSON.stringify(draft.room) !== JSON.stringify(previous))
-        actions.push({ type: "edit-room", lineId: saved.id, room: draft.room });
+      const room = {
+        roomTypeId: draft.room.roomTypeId,
+        roomId: draft.room.roomId,
+        adults: draft.room.adults,
+        children: draft.room.children,
+      };
+      if (JSON.stringify(room) !== JSON.stringify(previous))
+        actions.push({ type: "edit-room", lineId: saved.id, room });
     }
   }
   return actions;

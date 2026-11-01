@@ -31,6 +31,7 @@ import {
 import type { RatePlanCode, ReservationDetail } from "@/lib/api";
 import { formatMajor, formatMoney, parseMajorToCents } from "@/lib/money";
 import { ratePlanLabels } from "@/lib/rate-plans";
+import { NightlyPriceDetail } from "@/components/nightly-price-detail";
 
 const amountColumn = "w-24 shrink-0 text-right tabular-nums";
 
@@ -39,6 +40,7 @@ export type BookingSummaryRoom = {
   typeName: string;
   adults: number | null;
   children: number | null;
+  nights?: { date: string; priceCents: number }[];
   charges: Pick<
     ReservationDetail["rooms"][number],
     "subtotalCents" | "discountCents" | "totalCents"
@@ -54,6 +56,7 @@ export function BookingSummary({
   currency,
   stayLabel,
   showPayments,
+  showNightlyPrices = false,
   message,
   error,
   editableDiscountCents,
@@ -82,6 +85,7 @@ export function BookingSummary({
   currency: string;
   stayLabel: string | null;
   showPayments: boolean;
+  showNightlyPrices?: boolean;
   message: string | null;
   error?: ReactNode;
   editableDiscountCents?: number;
@@ -132,9 +136,21 @@ export function BookingSummary({
           <CardContent className="flex flex-col gap-3">
             <div className="flex flex-col gap-4">
               {(cancelled ? [] : rooms).map((room, index) => (
-                <RoomSummary key={room.key} room={room} index={index} currency={currency} />
+                <RoomSummary
+                  key={room.key}
+                  room={room}
+                  index={index}
+                  currency={currency}
+                  showNightlyPrice={showNightlyPrices}
+                />
               ))}
             </div>
+            {showNightlyPrices && !cancelled && (
+              <NightlyPriceDetail
+                rooms={rooms.map((room) => ({ ...room, nights: room.nights ?? [] }))}
+                currency={currency}
+              />
+            )}
             <Separator />
             <dl className="flex flex-col gap-2">
               <SummaryRow
@@ -402,15 +418,24 @@ function RoomSummary({
   room,
   index,
   currency,
+  showNightlyPrice,
 }: {
   room: BookingSummaryRoom;
   index: number;
   currency: string;
+  showNightlyPrice: boolean;
 }) {
   const guests =
     room.adults === null || room.children === null
       ? "Revisa el número de huéspedes"
       : `${room.adults} ${room.adults === 1 ? "adulto" : "adultos"}${room.children > 0 ? ` · ${room.children} ${room.children === 1 ? "niño" : "niños"}` : ""}`;
+  const nights = room.nights ?? [];
+  const nightCount = `${nights.length} ${nights.length === 1 ? "noche" : "noches"}`;
+  const nightlyPrice = !nights.length
+    ? null
+    : nights.some((night) => night.priceCents !== nights[0].priceCents)
+      ? `${nightCount} · Precio variable`
+      : `${nightCount} × ${formatMoney(nights[0].priceCents, currency)}`;
 
   return (
     <section
@@ -424,7 +449,10 @@ function RoomSummary({
           currency={currency}
         />
       </dl>
-      <p className="text-xs text-muted-foreground">{guests}</p>
+      <p className="text-xs text-muted-foreground">
+        {showNightlyPrice && nightlyPrice ? `${nightlyPrice} · ` : ""}
+        {guests}
+      </p>
     </section>
   );
 }

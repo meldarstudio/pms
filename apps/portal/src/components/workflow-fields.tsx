@@ -41,6 +41,7 @@ export function TextField({
   name,
   onBlur,
   groupErrorId,
+  inputMode,
 }: {
   label: string;
   value: string | number;
@@ -56,6 +57,7 @@ export function TextField({
   name?: string;
   onBlur?: () => void;
   groupErrorId?: string;
+  inputMode?: "decimal";
 }) {
   const generatedId = useId();
   const id = providedId ?? generatedId;
@@ -101,6 +103,7 @@ export function TextField({
           name={name}
           onBlur={onBlur}
           type={type}
+          inputMode={inputMode}
           value={value}
           min={min}
           max={max}

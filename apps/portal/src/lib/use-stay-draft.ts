@@ -87,6 +87,7 @@ export function useStayDraft({
   const stay = { checkIn: values.checkIn, checkOut: values.checkOut };
   const validation = schema.safeParse(values);
   const localErrors = schemaErrors(validation);
+  const invalidPrices = Object.keys(localErrors).some((name) => name.endsWith(".nightlyRate"));
   const countsValid = validation.success && !!roomTypes.data;
   const pricingValid = pricingSchema.safeParse(values).success && !!roomTypes.data;
   const changes = roomEdits(detail, drafts);
@@ -185,10 +186,15 @@ export function useStayDraft({
       command: editCommand,
       allowed: countsValid && dirty && previewReady,
       disabled:
-        !dirty || roomTypes.isPending || roomTypes.isError || (pricingValid && !previewReady),
+        !dirty ||
+        invalidPrices ||
+        roomTypes.isPending ||
+        roomTypes.isError ||
+        (pricingValid && !previewReady),
     },
     summary: {
       billing,
+      invalidPrices,
       rooms: detailsSummaryRooms(values, billing?.rooms),
       provisional: billingDirty,
       calculating:

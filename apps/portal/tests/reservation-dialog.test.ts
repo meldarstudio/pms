@@ -537,6 +537,91 @@ function previewResponse(billing: WorkflowBilling, issues: WorkflowIssue[] = [])
   return Response.json({ billing, validation: { issues } });
 }
 
+it.each(["desktop", "phone"])(
+  "adds a new room at an agreed price in the %s dialog without repricing saved rooms",
+  async (viewport) => {
+    if (viewport === "phone") page.mobile();
+    const writes: WorkflowCommand[] = [];
+    const previews: WorkflowCommand[] = [];
+    mockApi(
+      async (path, command) => {
+        if (path.endsWith("/preview")) {
+          previews.push(command);
+          const added = command.actions.find((action) => action.type === "add-room");
+          const cents = added?.room.nightlyRateCents === 8000 ? 46000 : 60000;
+          return previewResponse({
+            ...detail(),
+            subtotalCents: cents,
+            totalCents: cents,
+            balanceCents: cents,
+          });
+        }
+        writes.push(command);
+        return writes.length === 1
+          ? Response.json({ error: "Temporary save failure" }, { status: 503 })
+          : Response.json(detail());
+      },
+      { roomCount: 3 },
+    );
+    await renderCachedEditor(detail);
+    await until(
+      () => !!window.document.querySelector('[name="rooms[0].room.adults"]'),
+      "The details form must load",
+    );
+    await until(() => !button("Agregar habitación").disabled, "Room availability must load");
+    assert.equal(window.document.querySelector('[name$=".nightlyRate"]'), null);
+    assert.ok(
+      !Array.from(window.document.querySelectorAll("button")).some(
+        (item) => item.textContent === "Cambiar precio por noche",
+      ),
+    );
+    await page.click("Agregar habitación");
+    await page.click("Cambiar precio por noche");
+    await fill("rooms[1].room.nightlyRate", "80");
+    await until(() => !button("Guardar cambios").disabled, "The agreed price preview must load");
+    assert.equal(
+      previews.at(-1)?.actions.find((action) => action.type === "add-room")?.room.nightlyRateCents,
+      8000,
+    );
+    if (viewport === "phone") await page.click("Ver desglose");
+    assert.equal(summaryAmount("Total de reserva"), "S/460");
+    await page.click("Deshacer precio por noche");
+    await until(
+      () => !button("Guardar cambios").disabled,
+      "Undo must restore ordinary server pricing",
+    );
+    assert.equal(
+      previews.at(-1)?.actions.find((action) => action.type === "add-room")?.room.nightlyRateCents,
+      undefined,
+    );
+    assert.equal(summaryAmount("Total de reserva"), "S/600");
+    await page.click("Cambiar precio por noche");
+    await fill("rooms[1].room.nightlyRate", "80");
+    await until(() => !button("Guardar cambios").disabled, "The changed price must be validated");
+    await page.click("Guardar cambios");
+    await until(
+      () => writes.length === 1 && !button("Guardar cambios").disabled,
+      "A failed save must keep the draft retryable",
+    );
+    assert.equal(control("rooms[1].room.nightlyRate").value, "80");
+    await page.click("Guardar cambios");
+    await until(() => writes.length === 2, "Retry must save the same new room");
+    assert.deepEqual(writes[1], writes[0]);
+    assert.deepEqual(writes[0].actions, [
+      {
+        type: "add-room",
+        room: {
+          roomTypeId: "double",
+          roomId: null,
+          adults: 1,
+          children: 0,
+          nightlyRateCents: 8000,
+        },
+      },
+    ]);
+  },
+);
+
 function summaryAmount(label: string) {
   const term = Array.from(container.querySelectorAll("dt")).find(
     (item) => item.textContent === label,
@@ -544,6 +629,27 @@ function summaryAmount(label: string) {
   assert.ok(term, `Missing bill label ${label}`);
   return term.nextElementSibling?.textContent.replace(/\s/g, "");
 }
+
+it("shows variable nightly prices and detail without assignments in the phone pricing summary", async () => {
+  page.mobile();
+  const saved = detail();
+  saved.rooms[0].nights = [
+    { date: saved.checkIn, priceCents: 12000 },
+    { date: "2026-10-15", priceCents: 18000 },
+  ];
+  mockApi(async () => previewResponse(saved), { reservation: () => saved });
+  await renderCachedEditor(() => saved);
+  await page.click("Ver desglose");
+  const summary = () =>
+    Array.from(container.querySelectorAll("section")).find(
+      (section) => section.querySelector("h3")?.textContent === "Resumen de reserva",
+    )!;
+  assert.match(summary().textContent, /2 noches · Precio variable · 1 adulto/);
+  assert.doesNotMatch(summary().textContent, /101|Sin asignar/);
+  await page.click("Ver detalle");
+  assert.match(summary().textContent.replace(/\s/g, ""), /S\/120/);
+  assert.match(summary().textContent.replace(/\s/g, ""), /S\/180/);
+});
 
 it.each([
   {
@@ -968,7 +1074,9 @@ function creationPreview(
   const rooms = body.rooms.map((room) => {
     const nights = stayDates(body.checkIn, body.checkOut).map((date) => ({
       date,
-      priceCents: Math.round((nightCents(date) * (100 + terms.priceAdjustmentPercent)) / 100),
+      priceCents:
+        room.nightlyRateCents ??
+        Math.round((nightCents(date) * (100 + terms.priceAdjustmentPercent)) / 100),
     }));
     const subtotalCents = nights.reduce((sum, night) => sum + night.priceCents, 0);
     return {
@@ -1121,6 +1229,107 @@ const cancellationText = () =>
     window.document.querySelectorAll('[aria-label="Condiciones de cancelación"] p'),
     (line) => line.textContent.replace(/S\/\s/g, "S/"),
   );
+
+it.each([
+  { name: "an agreed price", rates: [9500], total: "S/255", plan: "flexible" },
+  { name: "ordinary pricing", rates: [undefined], total: "S/420", plan: "flexible" },
+  {
+    name: "mixed final and plan prices",
+    rates: [9500, undefined],
+    total: "S/660",
+    plan: "non_refundable",
+  },
+])(
+  "previews and creates $name before applying the reservation discount",
+  async ({ rates, total, plan }) => {
+    const writes: CreateBookingInput[] = [];
+    mockCreationApi(async (input) => {
+      writes.push(input);
+      return Response.json(detail(), { status: 201 });
+    });
+    const previews = page.api.bodies<CreationPreviewInput>("POST", "/reservations/preview");
+    await renderNewBooking();
+    await pickDay("Check-out", "17");
+    await fill("fullName", "Ana Pérez");
+    if (plan === "non_refundable") await choose("Tarifa", "No reembolsable");
+    if (rates[0] !== undefined) {
+      await page.click("Cambiar precio por noche");
+      await fill("rooms[0].room.nightlyRate", "95");
+    }
+    if (rates.length > 1) await page.click("Agregar habitación");
+    await until(() => !button("Crear reserva").disabled, "Room pricing must be current");
+    await applyDiscount("30");
+    assert.equal(creationTotal(), total);
+    assert.deepEqual(
+      previews.at(-1)?.rooms.map((room) => room.nightlyRateCents),
+      rates,
+    );
+    if (rates.length > 1) {
+      await page.click("Ver detalle");
+      assert.match(summaryText().replace(/\s/g, ""), /S\/95/);
+      assert.match(summaryText().replace(/\s/g, ""), /S\/135/);
+    } else
+      assert.ok(
+        !Array.from(container.querySelectorAll("button")).some(
+          (item) => item.textContent.trim() === "Ver detalle",
+        ),
+      );
+    await submit();
+    await until(() => writes.length === 1, "The priced reservation must save");
+    assert.deepEqual(
+      writes[0].rooms.map((room) => room.nightlyRateCents),
+      rates,
+    );
+    assert.equal(writes[0].discountCents, 3000);
+  },
+);
+
+it("blocks empty or invalid nightly prices without quoting them, and undo clears the field and its errors", async () => {
+  page.mobile();
+  const writes: CreateBookingInput[] = [];
+  mockCreationApi(async (input) => {
+    writes.push(input);
+    return Response.json(detail());
+  });
+  const previews = page.api.bodies<CreationPreviewInput>("POST", "/reservations/preview");
+  await renderNewBooking();
+  await fill("fullName", "Ana Pérez");
+  const quoted = previews.length;
+  await page.click("Cambiar precio por noche");
+  for (const value of ["", "-1", "80.001", "10000000.01", "abc"]) {
+    await fill("rooms[0].room.nightlyRate", value);
+    await React.act(async () =>
+      control("rooms[0].room.nightlyRate").dispatchEvent(
+        new window.FocusEvent("focusout", { bubbles: true }),
+      ),
+    );
+    await submit();
+    await flush(350);
+    assert.equal(control("rooms[0].room.nightlyRate").getAttribute("aria-invalid"), "true");
+    assert.equal(button("Crear reserva").disabled, true);
+    assert.equal(creationTotal(), "");
+    assert.equal(previews.length, quoted, "Invalid prices must never reach the preview API");
+    assert.equal(writes.length, 0);
+    assert.match(summaryText(), /Revisa el precio por noche/);
+  }
+  await page.click("Deshacer precio por noche");
+  await until(() => !button("Crear reserva").disabled, "Undo must restore ordinary pricing");
+  assert.equal(window.document.querySelector('[name="rooms[0].room.nightlyRate"]'), null);
+  assert.ok(button("Cambiar precio por noche"));
+  assert.ok(!container.querySelector('[aria-invalid="true"]'));
+  assert.equal(creationTotal(), "S/150");
+  await submit();
+  await until(() => writes.length === 1);
+  assert.equal(writes[0].rooms[0].nightlyRateCents, undefined);
+  await page.click("Cambiar precio por noche");
+  await fill("rooms[0].room.nightlyRate", "0");
+  await until(() => !button("Crear reserva").disabled);
+  assert.equal(creationTotal(), "S/0");
+  assert.deepEqual(cancellationText(), ["Cancelación y no-show sin cargo"]);
+  await submit();
+  await until(() => writes.length === 2);
+  assert.equal(writes[1].rooms[0].nightlyRateCents, 0);
+});
 
 it("defaults to Flexible, previews and creates under the chosen rate plan", async () => {
   const writes: CreateBookingInput[] = [];
@@ -1819,30 +2028,41 @@ it("preserves the remaining room draft when removing the first room", async () =
   ]);
 });
 
-it("caps the creation discount at the subtotal without reducing the entered amount", async () => {
-  const writes: CreateBookingInput[] = [];
-  mockCreationApi(async (input) => {
-    writes.push(input);
-    return Response.json(detail(), { status: 201 });
-  });
-  await renderNewBooking();
-  await fill("fullName", "Booking Contact");
-  await applyDiscount("200");
-  assert.equal(creationTotal(), "S/0");
-  assert.equal(appliedDiscount(), "-S/150");
-  assert.deepEqual(cancellationText(), ["Cancelación y no-show sin cargo"]);
-  await openDiscount();
-  assert.equal(discountInput()!.value, "200");
-  await React.act(async () =>
-    discountInput()!.dispatchEvent(
-      new window.KeyboardEvent("keydown", { key: "Escape", bubbles: true }),
-    ),
-  );
-  await until(() => !discountInput(), "Esc must close the discount popover");
-  await submit();
-  await until(() => writes.length === 1, "Reservation must save");
-  assert.equal(writes[0].discountCents, 20000);
-});
+it.each([
+  { nightlyRate: undefined, applied: "-S/150" },
+  { nightlyRate: "95", applied: "-S/95" },
+])(
+  "caps the creation discount after nightly price $nightlyRate without reducing the entered amount",
+  async ({ nightlyRate, applied }) => {
+    const writes: CreateBookingInput[] = [];
+    mockCreationApi(async (input) => {
+      writes.push(input);
+      return Response.json(detail(), { status: 201 });
+    });
+    await renderNewBooking();
+    await fill("fullName", "Booking Contact");
+    if (nightlyRate !== undefined) {
+      await page.click("Cambiar precio por noche");
+      await fill("rooms[0].room.nightlyRate", nightlyRate);
+      await until(() => !button("Crear reserva").disabled);
+    }
+    await applyDiscount("200");
+    assert.equal(creationTotal(), "S/0");
+    assert.equal(appliedDiscount(), applied);
+    assert.deepEqual(cancellationText(), ["Cancelación y no-show sin cargo"]);
+    await openDiscount();
+    assert.equal(discountInput()!.value, "200");
+    await React.act(async () =>
+      discountInput()!.dispatchEvent(
+        new window.KeyboardEvent("keydown", { key: "Escape", bubbles: true }),
+      ),
+    );
+    await until(() => !discountInput(), "Esc must close the discount popover");
+    await submit();
+    await until(() => writes.length === 1, "Reservation must save");
+    assert.equal(writes[0].discountCents, 20000);
+  },
+);
 
 it("filters sold-out types, occupied and closed room numbers, and inventory already used by this draft", async () => {
   mockCreationApi(async () => Response.json(detail()));
@@ -2083,6 +2303,9 @@ it("preserves a failed creation draft and safely retries until its payload chang
   await renderNewBooking();
   await fill("fullName", "Ada Lovelace");
   await fill("notes", "Llegada tarde");
+  await page.click("Cambiar precio por noche");
+  await fill("rooms[0].room.nightlyRate", "95");
+  await until(() => !button("Crear reserva").disabled);
   for (let attempt = 1; attempt <= 2; attempt++) {
     await submit();
     await until(
@@ -2090,9 +2313,11 @@ it("preserves a failed creation draft and safely retries until its payload chang
       "Failed save must allow retrying",
     );
     assert.equal(control("notes").value, "Llegada tarde");
+    assert.equal(control("rooms[0].room.nightlyRate").value, "95");
   }
   assert.deepEqual(writes[0], writes[1]);
-  await fill("notes", "Llegada a las 23:00");
+  await fill("rooms[0].room.nightlyRate", "80");
+  await until(() => !button("Crear reserva").disabled);
   await submit();
   await until(() => writes.length === 3, "Updated draft must save");
   assert.notEqual(writes[2].requestId, writes[1].requestId);
