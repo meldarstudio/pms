@@ -1917,87 +1917,155 @@ it.each([
 ])(
   "returns S/ 100 owed back by hand (money handed over: $handedOver)",
   async ({ handedOver, completed, line, reembolsado }) => {
-    owesBack();
+    const browserTimeZone = process.env.TZ;
+    process.env.TZ = "Pacific/Kiritimati";
+    vi.setSystemTime(new Date("2026-10-20T03:00:00Z"));
+    try {
+      await returnOwedMoney({ handedOver, completed, line, reembolsado });
+    } finally {
+      if (browserTimeZone === undefined) delete process.env.TZ;
+      else process.env.TZ = browserTimeZone;
+    }
+  },
+);
+
+async function returnOwedMoney({
+  handedOver,
+  completed,
+  line,
+  reembolsado,
+}: {
+  handedOver: boolean;
+  completed?: { refundDate: string; reference: string };
+  line: string;
+  reembolsado?: string;
+}) {
+  owesBack();
+  mockApi();
+  await render();
+  assert.equal(text(accountStatusLine()), "Por devolver S/ 100 Devolver…");
+  await click("Devolver…");
+  assert.equal(field("amount").value, "100.00", "Importe starts at what remains owed back");
+  assert.deepEqual(
+    await dialogOptions("Método"),
+    ["Efectivo", "Transferencia", "Yape", "Plin", "Otro"],
+    "Tarjeta refunds go through Culqi",
+  );
+  await React.act(async () => statusOption("Transferencia").click());
+  await submit();
+  assert.equal(writes.length, 0, "Motivo is required");
+  assert.match(popup()!.textContent, /Indica el motivo\./);
+  await fill("reason", "Sobrepago");
+  const box = popup()!.querySelector<HTMLElement>('[role="checkbox"]')!;
+  assert.equal(box.getAttribute("aria-checked"), "true", "Ya se entregó el dinero starts ticked");
+  if (handedOver) {
+    assert.equal(
+      text(dateTrigger("Fecha")),
+      "19 oct 2026",
+      "Fecha is property today in Lima, not the browser's 20 Oct",
+    );
+    await React.act(async () => dateTrigger("Fecha").click());
+    assert.equal(pickerDay("20/10/2026").disabled, true, "A refund date cannot be future");
+    await React.act(async () => pickerDay("18/10/2026").click());
+    await fill("reference", "op-5");
+  } else {
+    await React.act(async () => box.click());
+    assert.equal(popup()!.querySelector('[name="reference"]'), null);
+  }
+  await submit();
+  await page.until(() => !popup(), "A saved refund closes the dialog");
+  assert.deepEqual(writes[0].actions, [
+    {
+      type: "request-refund",
+      paymentId: "payment-1",
+      amountCents: 10000,
+      method: "transfer",
+      reason: "Sobrepago",
+      ...(completed ? { completed } : {}),
+    },
+  ]);
+  await page.until(() => text(accountStatusLine()) === line);
+  assert.equal(accountStatusLine().querySelector("button"), null);
+  assert.equal(
+    summaryRows().find((row) => row.startsWith("Reembolsado")),
+    reembolsado,
+    "Only a completed refund counts as Reembolsado",
+  );
+}
+
+const splitPayments = () => [
+  payment({ id: "transfer", amountCents: 5000, method: "transfer", paymentDate: "2026-10-18" }),
+  payment({ id: "cash", amountCents: 6000, createdAt: "2026-10-19T16:00:00Z" }),
+  payment({
+    id: "online",
+    amountCents: 2000,
+    method: "card",
+    createdAt: "2026-10-19T17:00:00Z",
+    culqiChargeId: "chr_1",
+  }),
+];
+
+it.each([
+  {
+    dueCents: 10000,
+    parts: [
+      ["cash", 6000],
+      ["transfer", 4000],
+    ],
+  },
+  {
+    dueCents: 12000,
+    parts: [
+      ["cash", 6000],
+      ["transfer", 5000],
+      ["online", 1000],
+    ],
+  },
+])(
+  "splits $dueCents cents across payments, non-Culqi newest first and Culqi last",
+  async ({ dueCents, parts }) => {
+    owesBack({
+      totalCents: 13000 - dueCents,
+      subtotalCents: 13000 - dueCents,
+      paidCents: 13000,
+      balanceCents: -dueCents,
+      payments: splitPayments(),
+    });
     mockApi();
     await render();
-    assert.equal(text(accountStatusLine()), "Por devolver S/ 100 Devolver…");
     await click("Devolver…");
-    assert.equal(field("amount").value, "100.00", "Importe starts at what remains owed back");
-    assert.deepEqual(
-      await dialogOptions("Método"),
-      ["Efectivo", "Transferencia", "Yape", "Plin", "Otro"],
-      "Tarjeta refunds go through Culqi",
-    );
-    await React.act(async () => statusOption("Transferencia").click());
-    await submit();
-    assert.equal(writes.length, 0, "Motivo is required");
-    assert.match(popup()!.textContent, /Indica el motivo\./);
     await fill("reason", "Sobrepago");
-    const box = popup()!.querySelector<HTMLElement>('[role="checkbox"]')!;
-    assert.equal(box.getAttribute("aria-checked"), "true", "Ya se entregó el dinero starts ticked");
-    if (handedOver) {
-      await React.act(async () => dateTrigger("Fecha").click());
-      assert.equal(pickerDay("20/10/2026").disabled, true, "A refund date cannot be future");
-      await React.act(async () => pickerDay("18/10/2026").click());
-      await fill("reference", "op-5");
-    } else {
-      await React.act(async () => box.click());
-      assert.equal(popup()!.querySelector('[name="reference"]'), null);
-    }
     await submit();
-    await page.until(() => !popup(), "A saved refund closes the dialog");
-    assert.deepEqual(writes[0].actions, [
-      {
-        type: "request-refund",
-        paymentId: "payment-1",
-        amountCents: 10000,
-        method: "transfer",
-        reason: "Sobrepago",
-        ...(completed ? { completed } : {}),
-      },
-    ]);
-    await page.until(() => text(accountStatusLine()) === line);
-    assert.equal(accountStatusLine().querySelector("button"), null);
-    assert.equal(
-      summaryRows().find((row) => row.startsWith("Reembolsado")),
-      reembolsado,
-      "Only a completed refund counts as Reembolsado",
+    await page.until(() => writes.length === 1);
+    assert.deepEqual(
+      writes[0].actions.map((action) =>
+        action.type === "request-refund" ? [action.paymentId, action.amountCents] : action.type,
+      ),
+      parts,
     );
   },
 );
 
-it("splits a refund across received payments, non-Culqi and newest first", async () => {
-  owesBack({
-    totalCents: 3000,
-    subtotalCents: 3000,
-    paidCents: 13000,
-    payments: [
-      payment({ id: "transfer", amountCents: 5000, method: "transfer", paymentDate: "2026-10-18" }),
-      payment({ id: "cash", amountCents: 6000, createdAt: "2026-10-19T16:00:00Z" }),
-      payment({
-        id: "online",
-        amountCents: 2000,
-        method: "card",
-        createdAt: "2026-10-19T17:00:00Z",
-        culqiChargeId: "chr_1",
-      }),
-    ],
+it("retries a lost refund with the same split and request ID after a background refresh", async () => {
+  owesBack({ totalCents: 3000, subtotalCents: 3000, paidCents: 13000, payments: splitPayments() });
+  mockApi({
+    write: () =>
+      writes.length === 1
+        ? Response.json({ error: "response unavailable" }, { status: 503 })
+        : undefined,
   });
-  mockApi();
   await render();
   await click("Devolver…");
   await fill("reason", "Sobrepago");
   await submit();
   await page.until(() => writes.length === 1);
-  assert.deepEqual(
-    writes[0].actions.map((action) =>
-      action.type === "request-refund" ? [action.paymentId, action.amountCents] : action.type,
-    ),
-    [
-      ["cash", 6000],
-      ["transfer", 4000],
-    ],
-  );
+  assert.ok(popup(), "A lost response keeps the draft open");
+  saved = { ...saved, refunds: [refund({ paymentId: "cash", amountCents: 6000 })] };
+  await page.client.invalidateQueries({ queryKey: ["reservation", "reservation-1"] });
+  await submit();
+  await page.until(() => writes.length === 2);
+  assert.equal(writes[1].requestId, writes[0].requestId);
+  assert.deepEqual(writes[1].actions, writes[0].actions);
 });
 
 it("keeps the Devolver draft and shows the Spanish rejection when the refund due changed", async () => {
@@ -2033,7 +2101,7 @@ it("confirms a requested refund with its date and optional reference", async () 
   await render();
   assert.equal(text(accountStatusLine()), "Reembolso solicitado S/ 100");
   await React.act(async () => labelled("Confirmar reembolso de S/ 100").click());
-  assert.match(text(popup()!), /S\/ 100 · Transferencia · Solicitó admin · Sobrepago/);
+  assert.match(text(popup()!), /S\/ 100 · Transferencia · Registró admin · Sobrepago/);
   await React.act(async () => dateTrigger("Fecha").click());
   assert.equal(pickerDay("20/10/2026").disabled, true, "A refund date cannot be future");
   await React.act(async () => pickerDay("19/10/2026").click());
@@ -2053,6 +2121,10 @@ it("marks a requested refund failed with a reason, leaving the money owed back",
   await React.act(async () => labelled("Confirmar reembolso de S/ 100").click());
   await click("Marcar como fallido");
   assert.equal(popup()!.querySelector('[name="reference"]'), null);
+  assert.equal(window.document.activeElement, field("reason"), "Focus moves to Motivo");
+  await click("Volver");
+  assert.equal(window.document.activeElement, dateTrigger("Fecha"), "Focus returns to Fecha");
+  await click("Marcar como fallido");
   await submit();
   assert.equal(writes.length, 0, "A failure needs a Motivo");
   await fill("reason", "Cuenta errada");

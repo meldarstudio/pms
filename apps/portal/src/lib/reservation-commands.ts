@@ -62,6 +62,7 @@ const scopeByAction: Partial<Record<WorkflowAction["type"], FieldScope>> = {
   "edit-payment": "payment",
   "request-refund": "refund",
   "complete-refund": "refund",
+  "fail-refund": "refund",
   contact: "contact",
   "set-guests": "guest",
   dates: "details",

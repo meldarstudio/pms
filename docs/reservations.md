@@ -529,7 +529,8 @@ then Referencia in narrow Movimientos tables.
   entregó el dinero** (ticked by default) adds a Fecha (property today by default, never
   future) and optional Referencia, sending each part as `request-refund` with
   `completed`; unticked parts are plain requests. All parts travel in one
-  duplicate-safe command; refund-limit rejections stay inline on Importe with the draft.
+  duplicate-safe command, split from the payments as the dialog opened so a retry repeats
+  the same parts; refund-limit rejections stay inline on Importe with the draft.
 - **Movimientos:** payments, refunds and coupon movements as flat rows, oldest first, with
   no running balance. Payments keep edit/delete unless the backend would reject the
   change: Culqi payments (En línea, Tarjeta), payments with refunds, and every payment

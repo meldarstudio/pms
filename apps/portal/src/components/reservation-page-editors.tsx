@@ -219,7 +219,14 @@ export function ReservationPageEditor({
                 onCancel={close}
               />
             ) : (
-              <FieldError>Este reembolso ya fue completado o marcado como fallido.</FieldError>
+              <div className="flex flex-col gap-6">
+                <FieldError>Este reembolso ya fue completado o marcado como fallido.</FieldError>
+                <div className="flex justify-end">
+                  <Button type="button" variant="outline" onClick={close}>
+                    Cerrar
+                  </Button>
+                </div>
+              </div>
             )
           ) : (
             <ReservationActionForm

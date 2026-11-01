@@ -1,4 +1,4 @@
-import { useEffect, useId, useRef, useState, type ReactNode } from "react";
+import { useEffect, useId, useRef, useState, type ReactNode, type RefObject } from "react";
 import { useSelector } from "@tanstack/react-form";
 import type { ZodSafeParseResult } from "zod";
 import { accountStatus } from "@/components/balance-status";
@@ -62,14 +62,17 @@ function RefundFormLayout({
   children,
   actions,
   onSubmit,
+  formRef,
 }: {
   saving: boolean;
   children: ReactNode;
   actions: ReactNode;
   onSubmit: () => Promise<void>;
+  formRef?: RefObject<HTMLFormElement | null>;
 }) {
   return (
     <form
+      ref={formRef}
       noValidate
       className="flex min-h-0 flex-1 flex-col gap-6 overflow-hidden"
       onSubmit={(event) => void submitForm(event, onSubmit)}
@@ -103,6 +106,7 @@ export function RefundForm({
     const newest = firstRefundPayment(detail)?.method;
     return {
       maxCents,
+      basis: { payments: detail.payments, refunds: detail.refunds },
       schema: refundSchema(maxCents, detail.currency),
       defaults: refundDefaults(
         maxCents,
@@ -121,15 +125,19 @@ export function RefundForm({
       const completed = parsed.handedOver
         ? { refundDate: parsed.date, ...(reference ? { reference } : {}) }
         : undefined;
-      const actions = splitRefund(detail, parseMajorToCents(parsed.amount.trim())!).map(
-        (part): WorkflowAction => ({
-          type: "request-refund",
-          ...part,
-          method: parsed.method,
-          reason: parsed.reason,
-          ...(completed ? { completed } : {}),
-        }),
-      );
+      const amountCents = parseMajorToCents(parsed.amount.trim())!;
+      const parts = splitRefund(setup.basis, amountCents);
+      if (!parts.length || parts.reduce((sum, part) => sum + part.amountCents, 0) !== amountCents)
+        return setServerErrors(form, {
+          amount: "Los pagos recibidos no alcanzan para devolver este importe.",
+        });
+      const actions = parts.map((part): WorkflowAction => ({
+        type: "request-refund",
+        ...part,
+        method: parsed.method,
+        reason: parsed.reason,
+        ...(completed ? { completed } : {}),
+      }));
       await finish(
         await onSave(actions),
         completed ? "Reembolso registrado" : "Reembolso solicitado",
@@ -216,10 +224,19 @@ export function ResolveRefundForm({
   const { today } = usePropertyCalendar();
   const [failing, setFailing] = useState(false);
   const failingRef = useRef(false);
+  const formRef = useRef<HTMLFormElement>(null);
+  const switched = useRef(false);
   function chooseFailing(next: boolean) {
     failingRef.current = next;
+    switched.current = true;
     setFailing(next);
   }
+  useEffect(() => {
+    if (!switched.current) return;
+    switched.current = false;
+    const id = formRef.current?.querySelector("fieldset label[for]")?.getAttribute("for");
+    if (id) document.getElementById(id)?.focus();
+  }, [failing]);
   const form = useReservationForm({
     defaultValues: { date: propertyToday(), reference: "", reason: "" },
     validationLogic: blurThenChange(),
@@ -268,6 +285,7 @@ export function ResolveRefundForm({
   const method = paymentMethods.find((entry) => entry.value === refund.method)?.label;
   return (
     <RefundFormLayout
+      formRef={formRef}
       saving={saving}
       onSubmit={() => form.handleSubmit()}
       actions={
@@ -309,7 +327,7 @@ export function ResolveRefundForm({
       <FieldDescription>
         {formatMoney(refund.amountCents, detail.currency)}
         {method ? ` · ${method}` : ""}
-        {refund.requestedBy ? ` · Solicitó ${refund.requestedBy}` : ""}
+        {refund.requestedBy ? ` · Registró ${refund.requestedBy}` : ""}
         {refund.reason ? ` · ${refund.reason}` : ""}
       </FieldDescription>
       {refund.culqiChargeId && (
