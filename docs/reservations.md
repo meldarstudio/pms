@@ -537,7 +537,11 @@ arrived in the property calendar, outline before. The shared
 [lifecycle action](../apps/portal/src/components/lifecycle-action.tsx) confirms a
 dirty room before check-in and a positive saved balance before check-out (without
 blocking it), then offers Deshacer in the success toast for 8 seconds, which sends
-`set-status` back to the previous status.
+`set-status` back to the previous status. Undo checks the current screen's draft/save
+guards, not their values when the toast appeared. It is disabled while those guards
+apply. Any intervening status change permanently invalidates that undo, even if the
+status later cycles back; leaving the editor/page also invalidates it. Cancellation
+must never be restored through an earlier check-in/checkout toast.
 
 Details save dates, rooms, and notes only, through Guardar cambios in the form; on
 phones a dirty details draft replaces the footer actions with it. There is no discard

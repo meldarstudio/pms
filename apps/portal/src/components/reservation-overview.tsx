@@ -62,7 +62,7 @@ export function ReservationOverview({
   onDiscountDraftChange?: (changed: boolean) => void;
 }) {
   const { today } = usePropertyCalendar();
-  const lifecycle = useLifecycleAction(detail);
+  const lifecycle = useLifecycleAction(detail, lifecycleBlocked || disabled);
   const nights = Math.round((Date.parse(detail.checkOut) - Date.parse(detail.checkIn)) / 86400000);
   return (
     <fieldset disabled={disabled} aria-busy={disabled} className="flex min-w-0 flex-col gap-6">

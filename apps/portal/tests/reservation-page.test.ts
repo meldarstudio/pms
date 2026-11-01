@@ -404,6 +404,95 @@ it("warns about a dirty room before the page check-in and undoes the successful 
   assert.deepEqual(writes[1].actions, [{ type: "set-status", status: "confirmed" }]);
 });
 
+it("invalidates check-in undo after cancellation, even when the status later returns to checked-in", async () => {
+  mockApi();
+  await render("", true, true);
+  await click("Hacer check-in");
+  await page.until(() => window.document.body.textContent.includes("Check-in registrado"));
+  const undo = button("Deshacer");
+  await statusMenu("Cancelar reserva");
+  await page.until(() => !button("Confirmar").disabled);
+  await click("Confirmar");
+  await page.until(() => !window.document.querySelector('[role="dialog"] form'));
+  await React.act(async () => undo.click());
+  assert.equal(saved.status, "cancelled", "An old undo must not silently restore a cancellation");
+  assert.equal(writes.length, 2);
+  await statusMenu("Restaurar reserva");
+  await chooseStatus("Check-in");
+  await page.until(() => !button("Guardar cambios").disabled);
+  await submit();
+  await page.until(() => !window.document.querySelector('[role="dialog"] form'));
+  await React.act(async () => undo.click());
+  assert.equal(saved.status, "checked_in", "A status cycle must not revive the invalidated undo");
+  assert.equal(writes.length, 3);
+  assert.ok(!undo.isConnected || undo.disabled);
+});
+
+it.each(["discount", "editor"])(
+  "blocks undo using the current page %s draft, then allows it after discarding",
+  async (draft) => {
+    mockApi();
+    await render("", true, true);
+    await click("Hacer check-in");
+    await page.until(() => window.document.body.textContent.includes("Check-in registrado"));
+    const undo = button("Deshacer");
+    if (draft === "discount") {
+      await React.act(async () => discountTrigger().click());
+      await page.fill(discountInput()!, "50");
+    } else {
+      await click("Editar notas");
+      assert.equal(undo.disabled, true, "Even a pristine open page editor blocks undo");
+      await fill("notes", "Borrador protegido");
+    }
+    assert.equal(undo.disabled, true);
+    await React.act(async () => undo.click());
+    assert.equal(writes.length, 1);
+    assert.equal(saved.status, "checked_in");
+    if (draft === "discount") {
+      assert.equal(discountInput()!.value, "50");
+      await page.fill(discountInput()!, "0");
+    } else {
+      assert.equal(field("notes").value, "Borrador protegido");
+      await click("Cerrar");
+      await click("Descartar y salir");
+    }
+    await page.until(() => !undo.disabled);
+    await React.act(async () => undo.click());
+    await page.until(() => saved.status === "confirmed");
+    assert.deepEqual(writes[1].actions, [{ type: "set-status", status: "confirmed" }]);
+  },
+);
+
+it("does not queue an old undo behind a running lifecycle save", async () => {
+  saved = { ...saved, paidCents: 30000, balanceCents: 0 };
+  let finish!: (response: Response) => void;
+  mockApi({
+    write: () =>
+      writes.length === 2
+        ? new Promise<Response>((resolve) => {
+            finish = resolve;
+          })
+        : undefined,
+  });
+  await render("", true, true);
+  await click("Hacer check-in");
+  await page.until(() => window.document.body.textContent.includes("Check-in registrado"));
+  const undo = button("Deshacer");
+  await click("Hacer check-out");
+  await page.until(() => writes.length === 2);
+  assert.equal(undo.disabled, true);
+  await React.act(async () => undo.click());
+  assert.equal(writes.length, 2);
+  await React.act(async () => {
+    saved = { ...saved, status: "checked_out" };
+    finish(Response.json(saved));
+  });
+  await page.until(() => window.document.body.textContent.includes("Check-out registrado"));
+  await React.act(async () => undo.click());
+  assert.equal(saved.status, "checked_out");
+  assert.equal(writes.length, 2);
+});
+
 it.each([
   { editor: "Editar estadía", fieldName: "rooms[0].room.adults", value: "1", action: "edit-room" },
   { editor: "Editar contacto", fieldName: "fullName", value: "Ana María Pérez", action: "contact" },

@@ -451,7 +451,7 @@ export function BookingEditor({
   const draftDirty = dirty || independentDraftDirty;
   const billing = summary.billing;
   const { send, saving: reservationSaving } = useReservationCommands(detail.id);
-  const lifecycle = useLifecycleAction(detail);
+  const lifecycle = useLifecycleAction(detail, draftDirty || submitting);
   const busy = submitting || reservationSaving;
   const bodySave = compactEditor && !mobileEditor;
   useEffect(() => {

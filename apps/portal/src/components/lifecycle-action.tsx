@@ -1,4 +1,4 @@
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   AlertDialog,
   AlertDialogContent,
@@ -31,7 +31,7 @@ export function lifecycleStep(detail: ReservationDetail, today: string): Lifecyc
   return null;
 }
 
-export function useLifecycleAction(detail: ReservationDetail) {
+export function useLifecycleAction(detail: ReservationDetail, blocked = false) {
   const { today } = usePropertyCalendar();
   const step = lifecycleStep(detail, today);
   const { send, saving } = useReservationCommands(detail.id);
@@ -39,6 +39,28 @@ export function useLifecycleAction(detail: ReservationDetail) {
   const [confirmCheckIn, checkInDialog] = useDirtyRoomCheckIn();
   const [owed, setOwed] = useState<number | null>(null);
   const settleOwed = useRef<((proceed: boolean) => void) | null>(null);
+  const eligible = !blocked && !saving && !running;
+  const current = useRef({ status: detail.status, eligible });
+  current.current = { status: detail.status, eligible };
+  const undo = useRef<{ id: string; status: ReservationDetail["status"] } | null>(null);
+  useEffect(() => {
+    if (undo.current && undo.current.status !== detail.status) {
+      const { id } = undo.current;
+      undo.current = null;
+      toast.close(id);
+    } else if (undo.current) {
+      toast.update(undo.current.id, (previous) => ({
+        actionProps: { ...previous.actionProps, disabled: !eligible },
+      }));
+    }
+  }, [detail.status, eligible]);
+  useEffect(
+    () => () => {
+      if (undo.current) toast.close(undo.current.id);
+      undo.current = null;
+    },
+    [],
+  );
 
   function confirmBalance() {
     if (detail.balanceCents <= 0) return Promise.resolve(true);
@@ -56,27 +78,40 @@ export function useLifecycleAction(detail: ReservationDetail) {
   }
 
   async function run() {
-    if (!step || running || saving) return;
+    if (!step || !current.current.eligible) return;
     const previous = detail.status === "checked_in" ? "checked_in" : "confirmed";
     const proceed =
       step.status === "checked_in"
         ? await confirmCheckIn(detail, step.status)
         : await confirmBalance();
-    if (!proceed) return;
+    if (!proceed || !current.current.eligible || current.current.status !== previous) return;
     setRunning(true);
     const result = await send([{ type: "set-status", status: step.status }]);
     setRunning(false);
     if (result.status !== "saved")
       return toastError("No se pudo cambiar el estado", unsavedMessage(result));
     const checkIn = step.status === "checked_in";
-    const id = toast.add({
+    if (undo.current) toast.close(undo.current.id);
+    const entry = { id: "", status: step.status };
+    entry.id = toast.add({
       title: checkIn ? "Check-in registrado" : "Check-out registrado",
       type: "success",
       timeout: undoTimeout,
+      onClose: () => {
+        if (undo.current === entry) undo.current = null;
+      },
       actionProps: {
         children: "Deshacer",
+        disabled: !current.current.eligible,
         onClick: async () => {
-          toast.close(id);
+          if (
+            undo.current !== entry ||
+            current.current.status !== entry.status ||
+            !current.current.eligible
+          )
+            return;
+          undo.current = null;
+          toast.close(entry.id);
           const undone = await send([{ type: "set-status", status: previous }]);
           if (undone.status === "saved")
             toast.add({
@@ -87,6 +122,7 @@ export function useLifecycleAction(detail: ReservationDetail) {
         },
       },
     });
+    undo.current = entry;
   }
 
   const dialogs = (
