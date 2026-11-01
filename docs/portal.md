@@ -22,8 +22,9 @@ The Reservas item badges the [Unresolved bill](../GLOSSARY.md) count from
 `paginated=true&limit=1&balance=unresolved`, hidden at 0; it counts no arrivals or
 departures. The badge is its own link to Todas las reservas with every status and
 Saldo: Por resolver, so cancelled and No-show stays are never hidden by default status
-selections; the Reservas item itself keeps returning to the last list context. The count
-shares the list's `reservations` query prefix, so it refreshes with the list.
+selections; the Reservas item itself keeps returning to the last list context. Like the
+list, the count refetches on focus and reconnect; it shares the list's `reservations`
+query prefix, so this browser's saves refresh it too.
 
 Below 768px, **Nueva reserva** uses `page-primary-action.tsx`'s floating slot on
 reservations/calendar. Keep its accessible label, focus order, safe areas, reduced

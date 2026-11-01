@@ -50,6 +50,10 @@ function matcher(path: FakePath): Route["match"] {
   };
 }
 
+function legacyListForPage(request: FakeRequest, response: unknown) {
+  return Array.isArray(response) && request.url.searchParams.get("paginated") === "true";
+}
+
 function requestUrl(input: Parameters<typeof fetch>[0]) {
   return new URL(typeof input === "string" ? input : "url" in input ? input.url : input.href);
 }
@@ -199,7 +203,7 @@ export function createFakeBackend() {
       if (!params) continue;
       if (route.once) routes.splice(routes.indexOf(route), 1);
       const response = await route.handler({ ...request, params } as never);
-      if (response === undefined) continue;
+      if (response === undefined || legacyListForPage(request, response)) continue;
       return response instanceof Response ? response : Response.json(response);
     }
     throw new Error(`Unexpected request ${method} ${url.pathname}`);

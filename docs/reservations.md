@@ -689,7 +689,8 @@ and `reservation-status-selection.ts`. Mobile sheets close without a separate ap
 **Cancelada** requests both `cancelled` and `unfulfilled`, since Unfulfilled reads as
 Cancelada; there is no separate option. **No se presentó** (`no_show`) shares
 Cancelada's default selection, so daily views exclude both. URLs keep the portal's
-status names; only the API request expands Cancelada. Saldo's **Por devolver** sends
+status names; only the API request expands Cancelada. A URL listing the four statuses
+that existed before No-show now excludes No-show rather than meaning all. Saldo's **Por devolver** sends
 `credit` and **Por resolver** sends `unresolved` ([Unresolved bill](#reservation-list-reads));
 the list's Saldo cell labels a negative balance Por devolver. The portal does not use
 the compatibility `refund` parameter.
