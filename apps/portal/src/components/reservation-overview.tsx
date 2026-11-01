@@ -29,7 +29,7 @@ import {
 import { StayingGuestList } from "@/components/reservation-records";
 import { AccountCard } from "@/components/reservation-account";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
-import { ReservationLifecycle } from "@/components/reservation-lifecycle";
+import { useLifecycleAction } from "@/components/lifecycle-action";
 import type { ReservationEditorTarget } from "@/components/reservation-page-editors";
 import type { ReservationDetail } from "@/lib/api";
 import { occupantsLabel } from "@/lib/reservation-list";
@@ -53,12 +53,15 @@ export function ReservationOverview({
   detail,
   edit,
   disabled,
+  lifecycleBlocked = false,
   onDiscountDraftChange,
 }: Model & {
   disabled: boolean;
+  lifecycleBlocked?: boolean;
   onDiscountDraftChange?: (changed: boolean) => void;
 }) {
   const { today } = usePropertyCalendar();
+  const lifecycle = useLifecycleAction(detail);
   const nights = Math.round((Date.parse(detail.checkOut) - Date.parse(detail.checkIn)) / 86400000);
   return (
     <fieldset disabled={disabled} aria-busy={disabled} className="flex min-w-0 flex-col gap-6">
@@ -88,13 +91,19 @@ export function ReservationOverview({
             </div>
           </div>
           <div className="ml-auto flex flex-wrap items-center justify-end gap-2">
-            <ReservationLifecycle
-              detail={detail}
-              onConfirm={(status) => edit({ kind: "status", status })}
-            />
+            {lifecycle.step && (
+              <Button
+                variant={lifecycle.step.due ? "default" : "outline"}
+                disabled={disabled || lifecycleBlocked || lifecycle.running}
+                onClick={() => void lifecycle.run()}
+              >
+                {lifecycle.step.label}
+              </Button>
+            )}
           </div>
         </div>
       </header>
+      {lifecycle.dialogs}
       <StayOutcomeAlert detail={detail} />
       <div className="grid min-w-0 gap-5 md:grid-cols-2">
         <div className="flex min-w-0 flex-col gap-5">
