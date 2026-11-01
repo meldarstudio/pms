@@ -699,7 +699,7 @@ it.each([false, true])(
   },
 );
 
-it("locks a payment with a refund in Pagos and leaves resolving refunds to the page", async () => {
+it("locks refunded and online payments in Pagos and leaves resolving refunds to the page", async () => {
   const entry = {
     reservationId: "reservation-1",
     paymentDate: "2026-10-14",
@@ -709,11 +709,19 @@ it("locks a payment with a refund in Pagos and leaves resolving refunds to the p
   };
   const saved: ReservationDetail = {
     ...detail(),
-    paidCents: 35000,
-    balanceCents: -5000,
-    refundDueCents: 5000,
+    paidCents: 45000,
+    balanceCents: -15000,
+    refundDueCents: 15000,
     pendingRefundCents: 5000,
     payments: [
+      {
+        ...entry,
+        id: "online",
+        amountCents: 10000,
+        method: "card",
+        createdAt: "2026-10-14T14:00:00Z",
+        culqiChargeId: "chr_1",
+      },
       {
         ...entry,
         id: "cash",
@@ -754,12 +762,15 @@ it("locks a payment with a refund in Pagos and leaves resolving refunds to the p
   await renderCachedEditor(() => saved);
   await page.click("Pagos");
   const rows = [...container.querySelectorAll('table[aria-label="Movimientos"] tbody tr')];
-  assert.equal(rows.length, 3);
-  assert.ok(rows[0].querySelector('[aria-label="Tiene reembolsos: no se puede editar"]'));
-  assert.equal(rows[0].querySelector("button"), null, "A refunded payment offers no Editar");
-  assert.ok(rows[1].querySelector('[aria-label^="Acciones del pago"]'));
-  assert.match(rows[2].textContent, /Reembolso.*Solicitado/);
-  assert.equal(rows[2].querySelector("button"), null, "Refunds are resolved on the page");
+  assert.equal(rows.length, 4);
+  assert.match(rows[0].textContent, /Pago\s*En línea\s*Tarjeta/);
+  assert.ok(rows[0].querySelector('[aria-label="Pago en línea: no se puede editar"]'));
+  assert.equal(rows[0].querySelector("button"), null, "An online payment offers no Editar");
+  assert.ok(rows[1].querySelector('[aria-label="Tiene reembolsos: no se puede editar"]'));
+  assert.equal(rows[1].querySelector("button"), null, "A refunded payment offers no Editar");
+  assert.ok(rows[2].querySelector('[aria-label^="Acciones del pago"]'));
+  assert.match(rows[3].textContent, /Reembolso.*Solicitado/);
+  assert.equal(rows[3].querySelector("button"), null, "Refunds are resolved on the page");
 });
 
 function coupon(changes: Partial<CouponLookup> = {}): CouponLookup {
@@ -966,11 +977,11 @@ it.each([
     applied: "S/0",
     balance: "S/30",
   },
-])(
+] as const)(
   "distinguishes the saved discount from the server-applied discount on a $scenario",
   async ({ status, paidCents, subtotalCents, discountCents, balanceLabel, applied, balance }) => {
     const initial = detail();
-    const saved = {
+    const saved: ReservationDetail = {
       ...initial,
       status,
       savedDiscountCents: 10000,
@@ -3423,7 +3434,12 @@ it("warns before checking a confirmed reservation into a dirty room, then allows
 });
 
 it("confirms checking out with money owed, sending nothing on Volver", async () => {
-  let saved = { ...detail(), status: "checked_in", paidCents: 10000, balanceCents: 20000 };
+  let saved: ReservationDetail = {
+    ...detail(),
+    status: "checked_in",
+    paidCents: 10000,
+    balanceCents: 20000,
+  };
   const writes: WorkflowCommand[] = [];
   mockApi(
     async (path, command) => {
@@ -3461,7 +3477,12 @@ it("confirms checking out with money owed, sending nothing on Volver", async () 
 });
 
 it("checks out immediately and preserves that status on a later notes save", async () => {
-  let saved = { ...detail(), status: "checked_in", paidCents: 30000, balanceCents: 0 };
+  let saved: ReservationDetail = {
+    ...detail(),
+    status: "checked_in",
+    paidCents: 30000,
+    balanceCents: 0,
+  };
   saved.rooms[0].roomId = null;
   saved.rooms[0].roomNumber = null;
   const writes: WorkflowCommand[] = [];
@@ -3654,7 +3675,7 @@ it.each(["occupancy", "dates"] as const)(
 );
 
 it("previews and saves added unassigned rooms after check-in and allows clearing assignments", async () => {
-  const initial = { ...detail(), status: "checked_in" };
+  const initial: ReservationDetail = { ...detail(), status: "checked_in" };
   const writes: WorkflowCommand[] = [];
   const previews: WorkflowCommand[] = [];
   mockApi(

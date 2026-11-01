@@ -213,6 +213,16 @@ function GuestsSummary({ detail, edit }: Model) {
 }
 
 function StayOutcomeAlert({ detail }: { detail: ReservationDetail }) {
+  if (detail.status === "unfulfilled")
+    return (
+      <Alert variant="destructive">
+        <CircleAlertIcon />
+        <AlertTitle>Reserva cancelada</AlertTitle>
+        <AlertDescription>
+          No había disponibilidad cuando se completó el pago en línea.
+        </AlertDescription>
+      </Alert>
+    );
   if (detail.status !== "cancelled" && detail.status !== "no_show") return null;
   const at = detail.cancellation?.recordedAt ?? detail.cancelledAt;
   const date = at ? ` · ${format(parseISO(propertyToday(new Date(at))), "d MMM yyyy")}` : "";

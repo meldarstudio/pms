@@ -21,6 +21,10 @@ function refundablePayments({ payments, refunds }: RefundSource) {
     );
 }
 
+export function cardRefundPayments(detail: RefundSource) {
+  return refundablePayments(detail).filter((entry) => entry.payment.culqiChargeId);
+}
+
 export function refundCapacityCents(detail: RefundSource) {
   return refundablePayments(detail).reduce((sum, entry) => sum + entry.leftCents, 0);
 }

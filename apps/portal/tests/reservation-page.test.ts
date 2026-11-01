@@ -1009,7 +1009,7 @@ it("applies and removes the discount from the Cuenta summary, keeping a rejected
 it.each([
   { label: "Check-in", initial: "confirmed", previous: "Confirmada", status: "checked_in" },
   { label: "Check-out", initial: "checked_in", previous: "Check-in", status: "checked_out" },
-])(
+] as const)(
   "saves a $label correction once and keeps the chosen status after a failed response",
   async ({ label, initial, previous, status }) => {
     saved = { ...saved, status: initial };
@@ -2036,6 +2036,7 @@ it.each([
     mockApi();
     await render();
     await click("Devolver…");
+    await chooseReturn("En mano o por transferencia");
     await fill("reason", "Sobrepago");
     await submit();
     await page.until(() => writes.length === 1);
@@ -2048,27 +2049,41 @@ it.each([
   },
 );
 
-it("retries a lost refund with the same split and request ID after a background refresh", async () => {
-  owesBack({ totalCents: 3000, subtotalCents: 3000, paidCents: 13000, payments: splitPayments() });
-  mockApi({
-    write: () =>
-      writes.length === 1
-        ? Response.json({ error: "response unavailable" }, { status: 503 })
-        : undefined,
-  });
-  await render();
-  await click("Devolver…");
-  await fill("reason", "Sobrepago");
-  await submit();
-  await page.until(() => writes.length === 1);
-  assert.ok(popup(), "A lost response keeps the draft open");
-  saved = { ...saved, refunds: [refund({ paymentId: "cash", amountCents: 6000 })] };
-  await page.client.invalidateQueries({ queryKey: ["reservation", "reservation-1"] });
-  await submit();
-  await page.until(() => writes.length === 2);
-  assert.equal(writes[1].requestId, writes[0].requestId);
-  assert.deepEqual(writes[1].actions, writes[0].actions);
-});
+it.each([
+  { source: "En mano o por transferencia", action: "request-refund" },
+  { source: "A la tarjeta · Pago en línea del 19 oct 2026", action: "request-culqi-refund" },
+])(
+  "retries a lost $action with the same actions and request ID after a background refresh",
+  async ({ source, action }) => {
+    owesBack({
+      totalCents: 3000,
+      subtotalCents: 3000,
+      paidCents: 13000,
+      payments: splitPayments(),
+    });
+    mockApi({
+      write: () =>
+        writes.length === 1
+          ? Response.json({ error: "response unavailable" }, { status: 503 })
+          : undefined,
+    });
+    await render();
+    await click("Devolver…");
+    await chooseReturn(source);
+    await fill("amount", "20");
+    await fill("reason", "Sobrepago");
+    await submit();
+    await page.until(() => writes.length === 1);
+    assert.equal(writes[0].actions[0].type, action);
+    assert.ok(popup(), "A lost response keeps the draft open");
+    saved = { ...saved, refunds: [refund({ paymentId: "cash", amountCents: 6000 })] };
+    await page.client.invalidateQueries({ queryKey: ["reservation", "reservation-1"] });
+    await submit();
+    await page.until(() => writes.length === 2);
+    assert.equal(writes[1].requestId, writes[0].requestId);
+    assert.deepEqual(writes[1].actions, writes[0].actions);
+  },
+);
 
 it.each([
   { attempt: "edited after a lost save", committed: true, reopen: false },
@@ -2197,6 +2212,236 @@ it("marks a requested refund failed with a reason, leaving the money owed back",
   assert.match(text(row), /^\S+ \S+ \S+ Reembolso Fallido Transferencia/);
   assert.equal(text(row.querySelector("del")!), "S/ 100", "A failed refund is struck through");
   assert.ok(!summaryRows().some((row) => row.startsWith("Reembolsado")));
+});
+
+const culqiLine = "Comprueba el resultado en Culqi antes de confirmarlo o marcarlo como fallido.";
+
+function paidOnlineAndByPos(fields: Partial<ReservationDetail> = {}) {
+  owesBack({
+    subtotalCents: 22000,
+    totalCents: 22000,
+    paidCents: 32000,
+    payments: [
+      payment({
+        id: "online",
+        amountCents: 30000,
+        method: "card",
+        paymentDate: "2026-10-18",
+        createdAt: "2026-10-18T15:00:00Z",
+        culqiChargeId: "chr_1",
+      }),
+      payment({ id: "pos", amountCents: 2000, method: "card", reference: "POS-1" }),
+    ],
+    ...fields,
+  });
+}
+
+const radioName = (radio: HTMLElement) =>
+  text(window.document.getElementById(radio.getAttribute("aria-labelledby")!)!);
+const returnOptions = () =>
+  Array.from(popup()!.querySelectorAll<HTMLElement>('[role="radio"]')).map((radio) => ({
+    label: radioName(radio),
+    checked: radio.getAttribute("aria-checked") === "true",
+  }));
+
+async function chooseReturn(label: string) {
+  const option = Array.from(popup()!.querySelectorAll<HTMLElement>('[role="radio"]')).find(
+    (radio) => radioName(radio) === label,
+  );
+  assert.ok(option, `Missing return option ${label}`);
+  await React.act(async () => option.click());
+}
+
+function culqiRefundSaved(status: "completed" | "requested") {
+  return (command: WorkflowCommand) => {
+    const action = command.actions[0];
+    if (action.type !== "request-culqi-refund") return undefined;
+    const completed = status === "completed";
+    saved = {
+      ...saved,
+      refundedCents: completed ? action.amountCents : 0,
+      pendingRefundCents: completed ? 0 : action.amountCents,
+      balanceCents: saved.balanceCents + (completed ? action.amountCents : 0),
+      refunds: [
+        refund({
+          paymentId: action.paymentId,
+          amountCents: action.amountCents,
+          method: "card",
+          reason: action.reason,
+          status,
+          requestedAt: "2026-10-19T15:00:00Z",
+          refundDate: completed ? "2026-10-19" : null,
+          completionReference: completed ? "ref_1" : null,
+          culqiChargeId: "chr_1",
+          culqiRefundId: completed ? "ref_1" : null,
+        }),
+      ],
+    };
+    return Response.json(saved);
+  };
+}
+
+it.each([
+  {
+    outcome: "completed",
+    line: "Cuenta saldada S/ 0",
+    row: "19 oct 2026 Reembolso Tarjeta REF_1 -S/ 100",
+    toast: "Reembolso registrado",
+  },
+  {
+    outcome: "requested",
+    line: "Reembolso solicitado S/ 100",
+    row: `19 oct 2026 Reembolso Solicitado ${culqiLine} Tarjeta — (S/ 100)`,
+    toast: "Reembolso solicitado",
+  },
+] as const)(
+  "returns money to the card through Culqi when Culqi answers $outcome",
+  async ({ outcome, line, row, toast }) => {
+    paidOnlineAndByPos();
+    mockApi({ write: culqiRefundSaved(outcome) });
+    await render("", true, true);
+    await click("Devolver…");
+    assert.deepEqual(
+      returnOptions(),
+      [
+        { label: "A la tarjeta · Pago en línea del 18 oct 2026", checked: true },
+        { label: "En mano o por transferencia", checked: false },
+      ],
+      "Only the Culqi payment goes back to the card, not the POS Tarjeta payment",
+    );
+    assert.equal(field("amount").value, "100.00");
+    assert.equal(popup()!.querySelector('[role="checkbox"]'), null, "Culqi hands nothing over");
+    assert.ok(!text(popup()!).includes("Método"), "The card refund has no Método");
+    await submit();
+    assert.equal(writes.length, 0, "Motivo is required");
+    await fill("reason", "Sobrepago");
+    await submit();
+    await page.until(
+      () => !window.document.querySelector('[role="dialog"] form'),
+      "A saved card refund closes the dialog",
+    );
+    assert.deepEqual(writes[0].actions, [
+      {
+        type: "request-culqi-refund",
+        paymentId: "online",
+        amountCents: 10000,
+        reason: "Sobrepago",
+      },
+    ]);
+    await page.until(() => text(accountStatusLine()) === line);
+    assert.match(window.document.body.textContent, new RegExp(toast));
+    const rows = Array.from(account().querySelectorAll('table[aria-label="Movimientos"] tbody tr'));
+    assert.equal(text(rows.at(-1)!), row);
+    assert.ok(
+      !/reintentar|de nuevo|otra vez/i.test(text(account())),
+      "A Culqi refund is never offered again",
+    );
+    if (outcome === "requested")
+      assert.equal(
+        rows.at(-1)!.querySelector("button")?.getAttribute("aria-label")?.replace(/\s+/g, " "),
+        "Acciones del reembolso de S/ 100",
+        "Staff resolve it with Confirmar reembolso or Marcar como fallido",
+      );
+  },
+);
+
+it("limits a card refund to what the online payment has left and at least S/ 1", async () => {
+  paidOnlineAndByPos({
+    subtotalCents: 2000,
+    totalCents: 2000,
+    paidCents: 6000,
+    balanceCents: -4000,
+    refundDueCents: 4000,
+    payments: [
+      payment({
+        id: "online",
+        amountCents: 3000,
+        method: "card",
+        paymentDate: "2026-10-18",
+        culqiChargeId: "chr_1",
+      }),
+      payment({ id: "cash", amountCents: 3000 }),
+    ],
+  });
+  mockApi();
+  await render();
+  await click("Devolver…");
+  assert.equal(field("amount").value, "30.00", "Importe starts at what the card payment has left");
+  await fill("amount", "35");
+  await fill("reason", "Sobrepago");
+  await submit();
+  assert.match(text(popup()!), /El importe no puede superar S\/ 30\./);
+  await fill("amount", "0.50");
+  await submit();
+  assert.match(text(popup()!), /El reembolso a la tarjeta debe ser de al menos S\/ 1\./);
+  assert.equal(writes.length, 0);
+  await chooseReturn("En mano o por transferencia");
+  await fill("amount", "35");
+  await submit();
+  await page.until(() => writes.length === 1);
+  assert.deepEqual(
+    writes[0].actions.map((action) =>
+      action.type === "request-refund" ? [action.paymentId, action.amountCents] : action.type,
+    ),
+    [
+      ["cash", 3000],
+      ["online", 500],
+    ],
+    "En mano o por transferencia stays available",
+  );
+});
+
+it.each([
+  {
+    error: "a Culqi refund for this payment is pending",
+    status: 400,
+    message:
+      "Este pago ya tiene un reembolso a la tarjeta solicitado. Confírmalo o márcalo como fallido en Movimientos.",
+  },
+  {
+    error: "Culqi is not configured",
+    status: 503,
+    message: "Los pagos en línea no están configurados en el servidor.",
+  },
+])("keeps the card refund draft and explains: $error", async ({ error, status, message }) => {
+  paidOnlineAndByPos();
+  mockApi({ write: () => Response.json({ error }, { status }) });
+  await render("", true, true);
+  await click("Devolver…");
+  await fill("amount", "80");
+  await fill("reason", "Sobrepago");
+  await submit();
+  await page.until(() => writes.length === 1);
+  await page.until(() => window.document.body.textContent.includes(message));
+  assert.ok(popup(), "The dialog stays open");
+  assert.equal(field("amount").value, "80");
+  assert.equal(field("reason").value, "Sobrepago");
+  assert.equal(returnOptions()[0].checked, true);
+});
+
+it("reads an Unfulfilled reservation as Cancelada with nothing to do but return the money", async () => {
+  saved = {
+    ...saved,
+    status: "unfulfilled",
+    subtotalCents: 0,
+    totalCents: 0,
+    paidCents: 25000,
+    balanceCents: -25000,
+    refundDueCents: 25000,
+    payments: [
+      payment({ id: "online", amountCents: 25000, method: "card", culqiChargeId: "chr_1" }),
+    ],
+  };
+  mockApi();
+  await render();
+  assert.match(text(header()), /Reserva # TEST0001 Cancelada Ana Pérez/);
+  assert.equal(
+    text(page.container.querySelector('[role="alert"]')!),
+    "Reserva cancelada No había disponibilidad cuando se completó el pago en línea.",
+  );
+  assert.equal(header().querySelector("button"), null, "No status actions or Restaurar reserva");
+  assert.deepEqual(summaryRows(), ["Cargo por cancelación S/ 0", "Total S/ 0", "Pagado S/ 250"]);
+  assert.equal(text(accountStatusLine()), "Por devolver S/ 250 Devolver…");
 });
 
 function cancellation(fields: Partial<ReservationCancellation> = {}): ReservationCancellation {

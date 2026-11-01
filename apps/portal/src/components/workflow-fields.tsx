@@ -1,7 +1,8 @@
 import { useId, useRef } from "react";
 import { format, parseISO } from "date-fns";
 import { DateField } from "@/components/date-field";
-import { Field, FieldError, FieldLabel } from "@/components/ui/field";
+import { Field, FieldError, FieldLabel, FieldLegend, FieldSet } from "@/components/ui/field";
+import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Input } from "@/components/ui/input";
 import { PhoneInput } from "@/components/phone-input";
 import { Button } from "@/components/ui/button";
@@ -190,6 +191,52 @@ export function ChoiceField({
       </Select>
       {error && !groupErrorId && <FieldError id={`${id}-error`}>{error}</FieldError>}
     </Field>
+  );
+}
+
+export function RadioField({
+  label,
+  value,
+  onChange,
+  options,
+  disabled = false,
+  error,
+  id: providedId,
+  name,
+}: {
+  label: string;
+  value: string;
+  onChange: (value: string) => void;
+  options: { value: string; label: string }[];
+  disabled?: boolean;
+  error?: string;
+  id?: string;
+  name?: string;
+}) {
+  const generatedId = useId();
+  const id = providedId ?? generatedId;
+  return (
+    <FieldSet data-disabled={disabled} data-invalid={!!error}>
+      <FieldLegend variant="label">{label}</FieldLegend>
+      <RadioGroup
+        name={name}
+        value={value}
+        disabled={disabled}
+        onValueChange={(next) => typeof next === "string" && onChange(next)}
+        aria-invalid={!!error}
+        aria-describedby={error ? `${id}-error` : undefined}
+      >
+        {options.map((option, index) => (
+          <Field key={option.value} orientation="horizontal">
+            <RadioGroupItem id={`${id}-${index}`} value={option.value} />
+            <FieldLabel htmlFor={`${id}-${index}`} className="font-normal">
+              {option.label}
+            </FieldLabel>
+          </Field>
+        ))}
+      </RadioGroup>
+      {error && <FieldError id={`${id}-error`}>{error}</FieldError>}
+    </FieldSet>
   );
 }
 

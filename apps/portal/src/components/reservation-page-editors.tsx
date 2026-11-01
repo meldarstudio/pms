@@ -4,6 +4,7 @@ import { cn } from "cn";
 import { BookingEditor, DiscardChanges } from "@/components/room-booking-dialog";
 import { GuestEntryForm, PaymentForm, paymentMethods } from "@/components/reservation-entry-forms";
 import { RefundForm, ResolveRefundForm } from "@/components/refund-forms";
+import { cardRefundPayments } from "@/lib/refund-split";
 import { WorkflowBill } from "@/components/workflow-bill";
 import { ChoiceField } from "@/components/workflow-fields";
 import { useDirtyRoomCheckIn } from "@/components/dirty-room-check-in";
@@ -159,7 +160,9 @@ export function ReservationPageEditor({
                 (target.kind === "stay"
                   ? "Revisa las fechas, habitaciones y el importe antes de guardar."
                   : target.kind === "refund"
-                    ? "En mano o por transferencia. El importe se reparte entre los pagos recibidos."
+                    ? cardRefundPayments(detail).length
+                      ? "Elige cómo se devuelve el dinero."
+                      : "En mano o por transferencia. El importe se reparte entre los pagos recibidos."
                     : target.kind === "resolve-refund"
                       ? target.failing
                         ? "El reembolso queda registrado como fallido y el dinero sigue por devolver."

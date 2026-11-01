@@ -69,6 +69,22 @@ const messages: Record<string, string> = {
     "Este pago tiene reembolsos y no se puede editar ni eliminar.",
   "reservation with refunds cannot be restored":
     "La reserva tiene reembolsos y no se puede restaurar. Crea una nueva reserva.",
+  "a Culqi refund for this payment is pending":
+    "Este pago ya tiene un reembolso a la tarjeta solicitado. Confírmalo o márcalo como fallido en Movimientos.",
+  "Culqi refund must be at least 100 cents": "El reembolso a la tarjeta debe ser de al menos S/ 1.",
+  "payment is not a Culqi payment":
+    "Este pago no se hizo en línea y no se puede devolver a la tarjeta.",
+  "Culqi payment cannot be changed": "Los pagos en línea no se pueden editar ni eliminar.",
+  "Culqi is not configured": "Los pagos en línea no están configurados en el servidor.",
+  "an unfulfilled reservation cannot change status":
+    "Esta reserva se canceló porque no había disponibilidad al completarse el pago en línea. Su estado no se puede cambiar.",
+  "quote has expired": "La cotización venció. Vuelve a consultar el precio.",
+  "quote is already paid": "Esta cotización ya está pagada.",
+  "a payment for this quote is still being confirmed":
+    "Todavía se está confirmando un pago para esta cotización.",
+  "payment is not waiting for authentication":
+    "Este pago ya no espera la verificación de la tarjeta.",
+  "payment attempt not found": "No se encontró el intento de pago.",
   "guest acceptance is required": "Registra que el huésped aceptó el cupón en lugar del reembolso.",
   "coupon exceeds the refund due":
     "El cupón supera el monto por devolver, descontando reembolsos solicitados y cupones ya emitidos.",

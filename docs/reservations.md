@@ -523,28 +523,44 @@ then Referencia in narrow Movimientos tables.
   refunds is Por devolver with **Devolver…**; refund due that is fully requested is
   Reembolso solicitado, with no action; zero is Cuenta saldada. Requested and failed
   refunds never settle the bill.
-- **Devolver…** returns money by hand or transfer (Dinero only until coupons can be
-  offered here). Importe starts at, and cannot exceed, the Por devolver amount (also
-  capped by what received payments have left); Método excludes Tarjeta, whose refunds
-  go through Culqi; Motivo is required. Staff never pick a payment: the portal splits
-  the amount across payments with value left, non-Culqi first, newest payment date
-  first, each capped at its amount less completed and requested refunds. **Ya se
-  entregó el dinero** (ticked by default) adds a Fecha (property today by default, never
-  future) and optional Referencia, sending each part as `request-refund` with
-  `completed`; unticked parts are plain requests. All parts travel in one
-  duplicate-safe command, split from the payments as the dialog opened so a retry repeats
-  the same parts; refund-limit rejections stay inline on Importe with the draft. Every
-  attempt from the same payments and refunds reuses one request ID, even after staff edit
-  the draft or reopen the dialog before the bill refreshes. An edited retry whose lost
-  first attempt already committed is refused by the server as a reused request ID; the
-  portal then refreshes, closes the dialog and says the refund was already recorded
-  with the first attempt's details. Edits after an uncommitted failure save normally.
+- **Devolver…** returns money (Dinero only until coupons can be offered here). When
+  any Culqi payment has value left, **Cómo se devuelve** lists **A la tarjeta · Pago en
+  línea del {fecha}** per such payment, newest first and preselected, plus **En mano o
+  por transferencia**; without one, the dialog shows only the manual return. Only
+  payments with a Culqi charge are offered A la tarjeta, never manual Tarjeta or Yape
+  payments. Motivo is always required.
+  - **A la tarjeta** sends one [`request-culqi-refund`](#culqi-refunds) for that payment.
+    Importe starts at, and cannot exceed, the smaller of Por devolver and what that
+    payment has left, and must be at least S/ 1.00; it has no Método, Fecha or
+    Referencia. A completed reply closes the dialog as Reembolso registrado; a refund
+    that stays requested closes it as Reembolso solicitado with the Culqi check line
+    below. A pending-Culqi-refund or not-a-Culqi-payment rejection shows inline on
+    Cómo se devuelve; other failures, including Culqi not configured, keep the draft
+    with a toast.
+  - **En mano o por transferencia:** Importe starts at, and cannot exceed, the Por
+    devolver amount (also capped by what received payments have left); Método excludes
+    Tarjeta. Staff never pick a payment: the portal splits the amount across payments
+    with value left, non-Culqi first, newest payment date first, each capped at its
+    amount less completed and requested refunds. **Ya se entregó el dinero** (ticked by
+    default) adds a Fecha (property today by default, never future) and optional
+    Referencia, sending each part as `request-refund` with `completed`; unticked parts
+    are plain requests. All parts travel in one command, split from the payments as the
+    dialog opened so a retry repeats the same parts; refund-limit rejections stay inline
+    on Importe with the draft.
+  - Every attempt from the same payments and refunds, by either route, reuses one
+    request ID, even after staff edit the draft or reopen the dialog before the bill
+    refreshes. A lost card refund therefore replays the committed receipt and never
+    calls Culqi twice. An edited retry whose lost first attempt already committed is
+    refused by the server as a reused request ID; the portal then refreshes, closes the
+    dialog and says the refund was already recorded with the first attempt's details.
+    Edits after an uncommitted failure save normally.
 - **Movimientos:** payments, refunds and coupon movements as flat rows, oldest first, with
   no running balance. Payments keep edit/delete unless the backend would reject the
   change: Culqi payments (En línea, Tarjeta), payments with refunds, and every payment
-  once a coupon was issued show a lock. Refund rows show Solicitado or Fallido with no
-  note beneath: failure reasons and who requested or resolved a refund are not shown
-  on the row. A failed refund is muted, struck
+  once a coupon was issued show a lock. Refund rows show Solicitado or Fallido; failure
+  reasons and who requested or resolved a refund are not shown on the row. A requested
+  Culqi refund adds **Comprueba el resultado en Culqi antes de confirmarlo o marcarlo
+  como fallido.** beneath it; there is no retry, and staff record the outcome below. A failed refund is muted, struck
   through and not counted. A requested refund's ⋯ menu offers **Confirmar reembolso**,
   an inset dialog that sends `complete-refund` with a Fecha (property today by default,
   never future) and optional Referencia, and **Marcar como fallido**, which sends
@@ -555,6 +571,10 @@ then Referencia in narrow Movimientos tables.
 - Cancelled and No-show stays show a destructive alert at the top: **Reserva cancelada**
   or **No se presentó**, the property-calendar date of the active cancellation, and the
   saved reason.
+- Unfulfilled stays read **Cancelada** in the badge and the alert reads **Reserva
+  cancelada** with **No había disponibilidad cuando se completó el pago en línea.**
+  and no date. The Cuenta shows a Cargo por cancelación of S/ 0 and the payment as Por
+  devolver with Devolver…. Staff find them through Saldo: Por resolver.
 
 ### Compact calendar dialog
 

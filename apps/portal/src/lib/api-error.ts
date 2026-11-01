@@ -73,8 +73,14 @@ const fieldRules = {
   refund: [
     ({ code }) =>
       code === "refund exceeds the refund due" ||
-      code === "refund exceeds the payment's remaining amount"
+      code === "refund exceeds the payment's remaining amount" ||
+      code === "Culqi refund must be at least 100 cents"
         ? "amount"
+        : null,
+    ({ code }) =>
+      code === "a Culqi refund for this payment is pending" ||
+      code === "payment is not a Culqi payment"
+        ? "source"
         : null,
     ({ code }) => (code === "refund date cannot be in the future" ? "date" : null),
   ],

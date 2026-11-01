@@ -4,6 +4,7 @@ import { cn } from "cn";
 import { parseISO } from "date-fns";
 import { accountStatus } from "@/components/balance-status";
 import { DiscountPopover } from "@/components/discount-popover";
+import { culqiPendingLine } from "@/components/refund-forms";
 import { paymentMethods } from "@/components/reservation-entry-forms";
 import { RowActions } from "@/components/reservation-records";
 import type { ReservationEditorTarget } from "@/components/reservation-page-editors";
@@ -260,11 +261,16 @@ function movements(
       at: refund.requestedAt,
       date: refund.refundDate ?? propertyToday(new Date(refund.requestedAt)),
       label: (
-        <span className="inline-flex flex-wrap items-center gap-1.5">
-          Reembolso
-          {refund.status === "requested" && <Badge variant="preview">Solicitado</Badge>}
-          {refund.status === "failed" && <Badge variant="secondary">Fallido</Badge>}
-        </span>
+        <>
+          <span className="inline-flex flex-wrap items-center gap-1.5">
+            Reembolso
+            {refund.status === "requested" && <Badge variant="preview">Solicitado</Badge>}
+            {refund.status === "failed" && <Badge variant="secondary">Fallido</Badge>}
+          </span>
+          {refund.status === "requested" && refund.culqiChargeId && (
+            <span className="mt-1 block text-xs text-muted-foreground">{culqiPendingLine}</span>
+          )}
+        </>
       ),
       method: methodLabel(refund.method),
       reference: refund.completionReference ?? refund.reference,

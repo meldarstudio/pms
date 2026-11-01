@@ -1,6 +1,6 @@
 import { useId, type ComponentProps, type FormEvent } from "react";
 import { createFormHook, createFormHookContexts, useSelector } from "@tanstack/react-form";
-import { TextField, ChoiceField, PhoneField } from "@/components/workflow-fields";
+import { TextField, ChoiceField, PhoneField, RadioField } from "@/components/workflow-fields";
 import type { PhoneValue } from "./phone";
 import { errorMessage } from "./form-errors";
 import { Button } from "@/components/ui/button";
@@ -67,6 +67,26 @@ function FormChoice(
   );
 }
 
+function FormRadio(
+  props: Omit<ComponentProps<typeof RadioField>, "value" | "onChange" | "error"> & {
+    onValueChange?: (value: string, previous: string) => void;
+  },
+) {
+  const { value, onChange, onBlur: _blur, ...control } = useFormControl<string>();
+  const { onValueChange, ...rest } = props;
+  return (
+    <RadioField
+      {...rest}
+      {...control}
+      value={value}
+      onChange={(next) => {
+        onChange(next);
+        onValueChange?.(next, value);
+      }}
+    />
+  );
+}
+
 function FormNightlyPrice() {
   const control = useFormControl<string | undefined>();
   const field = useFieldContext<string | undefined>();
@@ -122,6 +142,7 @@ export const { useAppForm: useReservationForm, withForm: withReservationForm } =
   fieldComponents: {
     Text: FormText,
     Choice: FormChoice,
+    Radio: FormRadio,
     Phone: FormPhone,
     NightlyPrice: FormNightlyPrice,
   },

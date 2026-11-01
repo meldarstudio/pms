@@ -298,8 +298,16 @@ export function getCoupon(code: string, signal?: AbortSignal) {
   return getJson<CouponLookup>(`/coupons/${encodeURIComponent(code)}`, signal);
 }
 
+export type ReservationDetailStatus =
+  | "confirmed"
+  | "checked_in"
+  | "checked_out"
+  | "cancelled"
+  | "no_show"
+  | "unfulfilled";
+
 export type ReservationDetail = {
-  status: string;
+  status: ReservationDetailStatus;
   cancellationReason: string | null;
   cancelledAt: string | null;
   notes: string | null;
@@ -603,6 +611,7 @@ export type WorkflowAction =
       reason: string;
       completed?: RefundCompletion;
     }
+  | { type: "request-culqi-refund"; paymentId: string; amountCents: number; reason: string }
   | ({ type: "complete-refund"; refundId: string } & RefundCompletion)
   | { type: "fail-refund"; refundId: string; reason: string }
   | { type: "issue-coupon"; amountCents: number; guestAccepted: true }

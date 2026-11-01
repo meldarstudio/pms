@@ -336,6 +336,7 @@ export const refundSchema = (maxCents: number, currency?: string) =>
       handedOver: z.boolean(),
       date: z.string(),
       reference: optionalText(200),
+      source: z.string(),
     })
     .superRefine((value, ctx) => {
       if (!value.handedOver) return;
@@ -344,9 +345,12 @@ export const refundSchema = (maxCents: number, currency?: string) =>
         ctx.addIssue({ code: "custom", path: ["date"], message: result.error.issues[0].message });
     });
 export type RefundValues = z.input<ReturnType<typeof refundSchema>>;
+export const manualRefundSource = "manual";
+export const culqiMinRefundCents = 100;
 export function refundDefaults(
   amountCents: number,
   method: RefundValues["method"] = "cash",
+  source: string = manualRefundSource,
 ): RefundValues {
   return {
     amount: amountCents > 0 ? formatMajor(amountCents) : "",
@@ -355,8 +359,23 @@ export function refundDefaults(
     handedOver: true,
     date: propertyToday(),
     reference: "",
+    source,
   };
 }
+export const cardRefundSchema = (maxCents: number, currency?: string) =>
+  z.object({
+    source: z.string(),
+    amount: money(true)
+      .refine(
+        (value) => (parseMajorToCents(value.trim()) ?? 0) <= maxCents,
+        `El importe no puede superar ${formatMoney(maxCents, currency)}.`,
+      )
+      .refine(
+        (value) => (parseMajorToCents(value.trim()) ?? 0) >= culqiMinRefundCents,
+        `El reembolso a la tarjeta debe ser de al menos ${formatMoney(culqiMinRefundCents, currency)}.`,
+      ),
+    reason: refundReason,
+  });
 export const refundCompletionSchema = z.object({
   date: refundDate,
   reference: optionalText(200),
