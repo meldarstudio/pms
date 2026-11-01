@@ -29,7 +29,8 @@ import {
 import { StayingGuestList } from "@/components/reservation-records";
 import { AccountCard } from "@/components/reservation-account";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
-import { ReservationLifecycle } from "@/components/reservation-lifecycle";
+import { useLifecycleAction } from "@/components/lifecycle-action";
+import { ReservationStatusMenu } from "@/components/reservation-status-menu";
 import type { ReservationEditorTarget } from "@/components/reservation-page-editors";
 import type { ReservationDetail } from "@/lib/api";
 import { occupantsLabel } from "@/lib/reservation-list";
@@ -53,48 +54,63 @@ export function ReservationOverview({
   detail,
   edit,
   disabled,
+  lifecycleBlocked = false,
   onDiscountDraftChange,
 }: Model & {
   disabled: boolean;
+  lifecycleBlocked?: boolean;
   onDiscountDraftChange?: (changed: boolean) => void;
 }) {
   const { today } = usePropertyCalendar();
+  const lifecycle = useLifecycleAction(detail, lifecycleBlocked || disabled);
   const nights = Math.round((Date.parse(detail.checkOut) - Date.parse(detail.checkIn)) / 86400000);
   return (
     <fieldset disabled={disabled} aria-busy={disabled} className="flex min-w-0 flex-col gap-6">
-      <header className="flex min-w-0 flex-col gap-5">
-        <div className="flex min-w-0 flex-wrap items-start justify-between gap-4">
-          <div className="flex min-w-0 flex-col gap-1.5">
-            <p className="font-mono text-xs tracking-widest wrap-anywhere text-muted-foreground uppercase">
-              Reserva #{detail.code}
-            </p>
-            <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
-              <h1 className="text-2xl font-semibold tracking-tight wrap-anywhere">
-                {detail.guest.fullName}
-              </h1>
-              <ReservationStatusBadge status={detail.status} />
-              {detail.checkIn === today && detail.status === "confirmed" && (
-                <Badge variant="preview">
-                  <ClockIcon data-icon="inline-start" />
-                  Llegada hoy
-                </Badge>
-              )}
-              {detail.checkOut === today && detail.status === "checked_in" && (
-                <Badge variant="preview">
-                  <ClockIcon data-icon="inline-start" />
-                  Salida hoy{detail.balanceCents > 0 ? " · saldo pendiente" : ""}
-                </Badge>
-              )}
-            </div>
-          </div>
-          <div className="ml-auto flex flex-wrap items-center justify-end gap-2">
-            <ReservationLifecycle
-              detail={detail}
-              onConfirm={(status) => edit({ kind: "status", status })}
-            />
+      <header className="grid min-w-0 grid-cols-[minmax(0,1fr)_auto] items-start gap-3 md:gap-x-4">
+        <div className="flex min-w-0 flex-col gap-1.5">
+          <p className="font-mono text-xs tracking-widest wrap-anywhere text-muted-foreground uppercase">
+            Reserva #{detail.code}
+          </p>
+          <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
+            <h1 className="text-2xl font-semibold tracking-tight wrap-anywhere">
+              {detail.guest.fullName}
+            </h1>
           </div>
         </div>
+        <div className="col-start-2 row-start-1 md:col-start-3">
+          <ReservationStatusMenu
+            detail={detail}
+            disabled={disabled || lifecycleBlocked || lifecycle.running}
+            edit={edit}
+          />
+        </div>
+        <div className="col-span-full flex flex-wrap items-center gap-2 md:col-span-1 md:col-start-1 md:row-start-2">
+          <ReservationStatusBadge status={detail.status} />
+          {detail.checkIn === today && detail.status === "confirmed" && (
+            <Badge variant="preview">
+              <ClockIcon data-icon="inline-start" />
+              Llegada hoy
+            </Badge>
+          )}
+          {detail.checkOut === today && detail.status === "checked_in" && (
+            <Badge variant="preview">
+              <ClockIcon data-icon="inline-start" />
+              Salida hoy{detail.balanceCents > 0 ? " · saldo pendiente" : ""}
+            </Badge>
+          )}
+        </div>
+        {lifecycle.step && (
+          <Button
+            className="col-span-full w-full md:col-span-1 md:col-start-2 md:row-start-1 md:w-auto"
+            variant={lifecycle.step.due ? "default" : "outline"}
+            disabled={disabled || lifecycleBlocked || lifecycle.running}
+            onClick={() => void lifecycle.run()}
+          >
+            {lifecycle.step.label}
+          </Button>
+        )}
       </header>
+      {lifecycle.dialogs}
       <StayOutcomeAlert detail={detail} />
       <div className="grid min-w-0 gap-5 md:grid-cols-2">
         <div className="flex min-w-0 flex-col gap-5">

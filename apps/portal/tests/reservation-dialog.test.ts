@@ -3036,6 +3036,36 @@ it("checks in a confirmed reservation immediately without changing the form draf
   assert.equal(button("Guardar cambios").disabled, true);
 });
 
+it("blocks an existing undo while the compact dialog has a new dirty draft", async () => {
+  let saved = detail();
+  const writes: WorkflowCommand[] = [];
+  mockApi(
+    async (path, command) => {
+      if (path.endsWith("/preview")) return previewResponse(saved);
+      writes.push(command);
+      for (const action of command.actions)
+        if (action.type === "set-status") saved = { ...saved, status: action.status };
+      return Response.json(saved);
+    },
+    { reservation: () => saved },
+  );
+  await openEditDialogWithToasts();
+  await React.act(async () => button("Hacer check-in").click());
+  await until(() => bodyText().includes("Check-in registrado"));
+  const undo = button("Deshacer");
+  await fill("notes", "Borrador después del check-in");
+  assert.equal(undo.disabled, true);
+  await React.act(async () => undo.click());
+  assert.equal(saved.status, "checked_in");
+  assert.equal(writes.length, 1);
+  assert.equal(control("notes").value, "Borrador después del check-in");
+  await fill("notes", "");
+  await until(() => !undo.disabled);
+  await React.act(async () => undo.click());
+  await until(() => saved.status === "confirmed");
+  assert.deepEqual(writes[1].actions, [{ type: "set-status", status: "confirmed" }]);
+});
+
 it("warns before checking a confirmed reservation into a dirty room, then allows it", async () => {
   let saved = detail();
   saved.rooms[0].housekeepingStatus = "dirty";

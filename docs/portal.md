@@ -28,6 +28,21 @@ Calendar/inventory use `from`/`span`; reservations retain view/day/filter/sort/p
 context and legacy URLs. Defaults use [property dates](calendar.md#property-dates).
 Editor entry points are documented with [reservations](reservations.md#portal-editors).
 
+### Reservation overlays
+
+The reservation page's stay, contact, notes, guest and payment editors fill the visible
+phone viewport, following its height and top offset when the keyboard changes it.
+Their fields scroll independently of the actions; safe-area padding keeps controls
+clear of screen edges. Resizing does not remount the forms or discard drafts, and
+closing/navigation retain the existing unsaved-change guards. Desktop editor width
+limits are unchanged.
+
+Status corrections, cancellation/restoration and record-deletion confirmations remain
+inset with scrolling content and visible actions, as do the shared lifecycle
+confirmations. The full-screen treatment is for reservation editors, not refund dialogs. The page's
+contextual header action and overflow menu replace its status select; behavior belongs
+to the [full reservation page guide](reservations.md#full-reservation-page).
+
 ### Date navigation
 
 Mobile calendar/inventory share compact day navigation with **Hoy** in the picker

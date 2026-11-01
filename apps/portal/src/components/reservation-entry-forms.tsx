@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { cn } from "cn";
 import { usePropertyCalendar } from "@/lib/use-property-calendar";
 import { useSelector } from "@tanstack/react-form";
 import { PlusIcon } from "lucide-react";
@@ -38,6 +39,7 @@ export function GuestEntryForm({
   onDirtyChange,
   onDone,
   onCancel,
+  scrollable = false,
 }: {
   detail: ReservationDetail;
   guest?: StayingGuest;
@@ -46,6 +48,7 @@ export function GuestEntryForm({
   onDirtyChange: (dirty: boolean) => void;
   onDone?: () => void;
   onCancel?: () => void;
+  scrollable?: boolean;
 }) {
   const [defaults, setDefaults] = useState<GuestValues>(() =>
     guest
@@ -88,9 +91,24 @@ export function GuestEntryForm({
   const submitting = useSelector(form.store, (state) => state.isSubmitting);
   useEffect(() => onDirtyChange(!unchanged), [unchanged, onDirtyChange]);
   return (
-    <form noValidate onSubmit={(event) => void submitForm(event, () => form.handleSubmit())}>
-      <fieldset disabled={disabled || submitting} className="flex min-w-0 flex-col gap-3">
-        <FieldGroup className="gap-3">
+    <form
+      noValidate
+      className={cn(scrollable && "flex min-h-0 flex-1 flex-col overflow-hidden")}
+      onSubmit={(event) => void submitForm(event, () => form.handleSubmit())}
+    >
+      <fieldset
+        disabled={disabled || submitting}
+        className={cn(
+          "flex min-w-0 flex-col gap-3",
+          scrollable && "min-h-0 flex-1 overflow-hidden",
+        )}
+      >
+        <FieldGroup
+          className={cn(
+            "gap-3",
+            scrollable && "min-h-0 flex-1 overflow-y-auto overscroll-contain p-px",
+          )}
+        >
           <form.AppField name="fullName">
             {(field) => <field.Text label="Nombre completo" />}
           </form.AppField>
@@ -120,7 +138,7 @@ export function GuestEntryForm({
             </form.AppField>
           </FieldGroup>
         </FieldGroup>
-        <div className="flex items-center gap-2">
+        <div className="flex shrink-0 items-center gap-2">
           <Button
             type="submit"
             disabled={disabled || submitting || (!guest && detail.stayingGuests.length >= 200)}
