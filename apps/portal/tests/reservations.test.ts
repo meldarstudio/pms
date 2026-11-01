@@ -19,6 +19,7 @@ let until: BrowserPage["until"];
 let requests: FakeRequest[];
 let calendarReservation: () => typeof ana;
 let respond: (url: URL) => Response | Promise<Response>;
+let unresolvedTotal: number;
 let respondToDetail: (url: URL, init?: RequestInit) => Response | Promise<Response>;
 const originalTimeZone = process.env.TZ;
 
@@ -140,8 +141,21 @@ beforeEach(() => {
     });
   });
   page.api.on("*", "/reservations", ({ url }) => respond(url));
+  unresolvedTotal = 0;
+  page.api.on("GET", "/reservations", ({ url }) =>
+    unresolvedCount(url)
+      ? Response.json({ rows: [], total: unresolvedTotal, limit: 1, offset: 0 })
+      : undefined,
+  );
   requests = page.api.requests("*", "/reservations");
 });
+
+function unresolvedCount(url: URL) {
+  return url.searchParams.get("limit") === "1" && url.searchParams.get("balance") === "unresolved";
+}
+function listRequests() {
+  return requests.filter((request) => !unresolvedCount(request.url));
+}
 
 afterEach(async () => {
   await page.cleanup();
@@ -189,8 +203,9 @@ function assertFilterCount(expected: number) {
   );
 }
 function params() {
-  assert.ok(requests.length);
-  return requests.at(-1)!.url.searchParams;
+  const lists = listRequests();
+  assert.ok(lists.length);
+  return lists.at(-1)!.url.searchParams;
 }
 
 async function fill(label: string, value: string) {
@@ -313,6 +328,37 @@ it("refreshes the sidebar's today links on resume without changing the selected 
   assert.equal(router.state.location.search.day, "2026-10-31");
 });
 
+it("badges the Reservas item with the Por resolver count and opens every status filtered to it", async () => {
+  unresolvedTotal = 3;
+  await render("/reservations?view=departures&day=2026-12-31");
+  const badge = () =>
+    container.querySelector<HTMLElement>(
+      'nav[aria-label="Navegación principal"] a[aria-label$="por resolver"]',
+    );
+  await until(() => badge()?.textContent === "3");
+  assert.equal(badge()!.getAttribute("aria-label"), "3 reservas por resolver");
+  const count = requests.find((request) => unresolvedCount(request.url))!.url.searchParams;
+  assert.equal(count.get("paginated"), "true");
+  assert.equal(count.has("statuses"), false);
+  await React.act(async () => badge()!.click());
+  await until(() => params().get("balance") === "unresolved");
+  assert.equal(router.state.location.search.view, "all");
+  assert.equal(router.state.location.search.statuses, "all");
+  assert.equal(params().has("statuses"), false);
+  assert.equal(params().has("checkOut"), false);
+  assertFilterCount(1);
+  unresolvedTotal = 1;
+  await React.act(async () => {
+    await client.invalidateQueries({ queryKey: ["reservations"] });
+  });
+  await until(() => badge()?.getAttribute("aria-label") === "1 reserva por resolver");
+  unresolvedTotal = 0;
+  await React.act(async () => {
+    await client.invalidateQueries({ queryKey: ["reservations"] });
+  });
+  await until(() => !badge());
+});
+
 it("counts changed filter groups instead of chips and restores defaults without clearing search or context", async () => {
   respond = (url) =>
     Response.json({
@@ -331,19 +377,25 @@ it("counts changed filter groups instead of chips and restores defaults without 
   assertFilterCount(0);
   await click("Filtros");
   assert.equal(button("Restablecer").hasAttribute("disabled"), true);
-  await choose("Saldo", "Con crédito");
+  await choose("Saldo", "Por devolver");
   await until(() => params().get("balance") === "credit");
   assertFilterCount(1);
   await choose("Asignación", "Con habitaciones sin asignar");
   await until(() => params().get("assignment") === "unassigned");
   assertFilterCount(2);
   await click("Cancelada");
-  await until(() => !params().has("statuses"));
+  await until(
+    () => params().get("statuses") === "confirmed,checked_in,checked_out,cancelled,unfulfilled",
+  );
   assertFilterCount(3);
+  await click("No se presentó");
+  await until(() => !params().has("statuses"));
   await click("Check-out");
-  await until(() => params().get("statuses") === "confirmed,checked_in,cancelled");
+  await until(
+    () => params().get("statuses") === "confirmed,checked_in,cancelled,unfulfilled,no_show",
+  );
   await click("Confirmada");
-  await until(() => params().get("statuses") === "checked_in,cancelled");
+  await until(() => params().get("statuses") === "checked_in,cancelled,unfulfilled,no_show");
   assertFilterCount(3);
   await choose("Saldo", "Cualquier saldo");
   await until(() => !params().has("balance"));
@@ -453,7 +505,7 @@ it("refreshes cached operations and legacy calendar results after saving in rese
   };
   await render("/calendar?from=2026-10-31");
   assert.ok(button("Editar reserva de Ana Pérez · Confirmada"));
-  assert.equal(requests.length, 0);
+  assert.equal(listRequests().length, 0);
   await React.act(async () =>
     router.navigate({ href: "/reservations?day=2026-10-31&statuses=confirmed" }),
   );
@@ -595,7 +647,7 @@ it.each(["desktop", "mobile"])(
     assert.match(
       rows[2]!.querySelector(viewport === "mobile" ? '[data-slot="card-footer"]' : "td:last-child")!
         .textContent,
-      /150Crédito/,
+      /150Por devolver/,
     );
     assert.equal(rows[2]!.textContent.includes("Saldo pendiente"), false);
     assert.match(rows[3]!.textContent, /108, 201, 204 \+13 · 2 sin asignar/);
@@ -649,7 +701,7 @@ it.each(["desktop", "mobile"])(
   },
 );
 
-it("includes cancellations with all four statuses checked and restores daily defaults after a shared URL reload", async () => {
+it("includes cancellations with every status checked and restores daily defaults after a shared URL reload", async () => {
   const cancelled = {
     ...ana,
     id: "cancelled",
@@ -663,7 +715,9 @@ it("includes cancellations with all four statuses checked and restores daily def
   await render("/reservations?day=2026-10-30");
   assert.equal(container.querySelector("tbody")!.textContent.includes("Cancelled contact"), false);
   await click("Filtros");
+  assert.equal((button("No se presentó") as HTMLInputElement).checked, false);
   await click("Cancelada");
+  await click("No se presentó");
   await until(() => container.querySelector("tbody")!.textContent.includes("Cancelled contact"));
   assert.equal(params().has("statuses"), false);
   const link = router.state.location.href;
@@ -673,7 +727,7 @@ it("includes cancellations with all four statuses checked and restores daily def
   await until(() => container.querySelector("tbody")!.textContent.includes("Cancelled contact"));
   assert.equal(params().get("checkIn"), "2026-10-30");
   await click("Filtros");
-  for (const status of ["Confirmada", "Check-in", "Check-out", "Cancelada"]) {
+  for (const status of ["Confirmada", "Check-in", "Check-out", "Cancelada", "No se presentó"]) {
     assert.equal((button(status) as HTMLInputElement).checked, true);
   }
   assertFilterCount(1);
@@ -688,12 +742,13 @@ it("includes cancellations with all four statuses checked and restores daily def
   await click("Check-out");
   assert.equal(params().get("statuses"), "checked_out");
   await click("Cancelada");
-  await until(() => params().get("statuses") === "checked_out,cancelled");
+  await until(() => params().get("statuses") === "checked_out,cancelled,unfulfilled");
   assert.equal(button("Check-out").hasAttribute("disabled"), false);
+  assert.equal(router.state.location.search.statuses, "checked_out,cancelled");
   const partialLink = router.state.location.href;
   await click("Filtros");
   await render(partialLink);
-  assert.equal(params().get("statuses"), "checked_out,cancelled");
+  assert.equal(params().get("statuses"), "checked_out,cancelled,unfulfilled");
 });
 
 it("applies mobile sheet filters immediately, closes with focus restored, and keeps state across the breakpoint", async () => {
@@ -708,15 +763,15 @@ it("applies mobile sheet filters immediately, closes with focus restored, and ke
     window.document.getElementById(sheet.getAttribute("aria-labelledby")!)!.textContent,
     "Filtros de reservas",
   );
-  await choose("Saldo", "Con crédito");
-  await until(() => params().get("balance") === "credit");
+  await choose("Saldo", "Por resolver");
+  await until(() => params().get("balance") === "unresolved");
   assertFilterCount(1);
   assert.ok(window.document.querySelector('[data-slot="sheet-content"]'));
   await click("Listo");
   await until(() => !window.document.querySelector('[data-slot="sheet-content"]'));
   await until(() => window.document.activeElement === button("Filtros"));
   await click("Filtros");
-  assert.match(button("Saldo").textContent, /Con crédito/);
+  assert.match(button("Saldo").textContent, /Por resolver/);
   await click("Restablecer");
   await until(() => !params().has("balance"));
   assert.equal(params().get("q"), "Ana");

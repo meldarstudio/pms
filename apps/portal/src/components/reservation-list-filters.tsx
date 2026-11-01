@@ -116,7 +116,8 @@ export function ReservationListFilters({
           { value: "all", label: "Cualquier saldo" },
           { value: "outstanding", label: "Saldo pendiente" },
           { value: "settled", label: "Saldada" },
-          { value: "credit", label: "Con crédito" },
+          { value: "credit", label: "Por devolver" },
+          { value: "unresolved", label: "Por resolver" },
         ]}
         onChange={(balance) => onChange({ balance: balance as ReservationsSearch["balance"] })}
       />
