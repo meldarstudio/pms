@@ -36,7 +36,8 @@ import { Separator } from "@/components/ui/separator";
 import { BookingSummary } from "@/components/booking-summary";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { NewBooking } from "@/components/new-booking";
-import { PaymentList, StayingGuestList } from "@/components/reservation-records";
+import { StayingGuestList } from "@/components/reservation-records";
+import { Movements } from "@/components/reservation-account";
 import { GuestEntryForm, PaymentForm, paymentMethods } from "@/components/reservation-entry-forms";
 import { format } from "@/lib/dates";
 import { isValid, parseISO } from "date-fns";
@@ -780,19 +781,31 @@ export function BookingEditor({
             )}
             {!stayOnly && (
               <TabsContent value="payments" keepMounted className="flex flex-col gap-5">
-                <PaymentForm
-                  detail={detail}
-                  suggestedAmountCents={paymentSuggestionCents}
-                  disabled={busy}
-                  onDirtyChange={setPaymentDirty}
-                  onReady={savePayment}
-                />
-                <PaymentList
-                  detail={detail}
-                  disabled={busy}
-                  onEdit={(entry) => setIntent({ type: "edit-payment", entry })}
-                  onDelete={(entry) => setIntent({ type: "delete-payment", entry })}
-                />
+                <div hidden={detail.balanceCents <= 0}>
+                  <PaymentForm
+                    detail={detail}
+                    suggestedAmountCents={paymentSuggestionCents}
+                    disabled={busy || detail.balanceCents <= 0}
+                    onDirtyChange={setPaymentDirty}
+                    onReady={savePayment}
+                  />
+                </div>
+                <section aria-label="Movimientos" className="@container/mov min-w-0">
+                  <h3 className="border-b pb-2 text-sm font-medium">Movimientos</h3>
+                  <Movements
+                    detail={detail}
+                    disabled={busy || paymentDirty}
+                    edit={(target) => {
+                      if (target.kind !== "payment" && target.kind !== "delete-payment") return;
+                      const entry = detail.payments.find((payment) => payment.id === target.id);
+                      if (!entry) return;
+                      setIntent({
+                        type: target.kind === "delete-payment" ? "delete-payment" : "edit-payment",
+                        entry,
+                      });
+                    }}
+                  />
+                </section>
               </TabsContent>
             )}
           </div>
@@ -817,8 +830,6 @@ export function BookingEditor({
                 charges: room.charges,
               }))}
               summary={billing ?? null}
-              paidCents={billing?.paidCents ?? detail.paidCents}
-              schedule={{ plan: detail.ratePlan.plan, amounts: billing ?? null }}
               editableDiscountCents={detail.savedDiscountCents}
               discountDisabled={busy}
               onDiscountSave={
@@ -830,10 +841,9 @@ export function BookingEditor({
               currency={detail.currency}
               stayLabel={
                 common
-                  ? `${stayDate(common.checkIn, "d MMM")} – ${stayDate(common.checkOut, "d MMM yyyy")}`
+                  ? `${stayDate(common.checkIn, "d MMM")} – ${stayDate(common.checkOut, "d MMM yyyy")} · ${(Date.parse(common.checkOut) - Date.parse(common.checkIn)) / 86400000} noches`
                   : null
               }
-              showPayments
               showNightlyPrices={isMobile}
               message={
                 summary.invalidPrices

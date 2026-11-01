@@ -57,6 +57,7 @@ function changeSaving(queue: SaveQueue, id: string, delta: number) {
 }
 
 const scopeByAction: Partial<Record<WorkflowAction["type"], FieldScope>> = {
+  "redeem-coupon": "coupon",
   "add-payment": "payment",
   "edit-payment": "payment",
   contact: "contact",
@@ -99,7 +100,7 @@ async function refresh(client: QueryClient, saved: ReservationDetail, actions: W
   client.setQueryData(["reservation", saved.id], saved);
   await client.cancelQueries({ queryKey: [previewScope, saved.id] });
   await Promise.all([
-    ...["reservations", "availability", "inventory", "payments", "calendar"].map((key) =>
+    ...["reservations", "availability", "inventory", "payments", "calendar", "coupon"].map((key) =>
       client.invalidateQueries({ queryKey: [key] }),
     ),
     client.invalidateQueries({ queryKey: [previewScope, saved.id] }),

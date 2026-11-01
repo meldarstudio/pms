@@ -253,8 +253,9 @@ and lists [coupon movements](#future-stay-coupons) apart from both.
 
 A future-stay coupon converts some or all of a reservation's refund due into fixed
 value for a later stay instead of returning money. Coupon value cannot be exchanged
-for cash; the portal must say so wherever staff issue or redeem one. Portal coupon
-screens are not built yet; the backend contract below is complete.
+for cash; the portal must say so wherever staff issue or redeem one. The shared
+[payment form](#compact-calendar-dialog) supports redemption; issuing remains a
+backend command until its page workflow is built.
 
 `issue-coupon` (`amountCents`, `guestAccepted: true`) records the guest's acceptance
 and issues a coupon; without it the command fails with `guest acceptance is
@@ -521,7 +522,7 @@ container queries, hiding Método and then Referencia in narrow Movimientos tabl
 - **Movimientos:** payments, refunds and coupon movements as flat rows, oldest first, with
   no running balance. Payments keep edit/delete unless the backend would reject the
   change: Culqi payments (En línea, Tarjeta), payments with refunds, and every payment
-  once a coupon was issued show a lock. Refund rows are read-only, with Solicitado or
+  once a coupon was issued show a lock. Refund and coupon rows are read-only, with Solicitado or
   Fallido; a failed refund is muted and struck through.
 - Cancelled and No-show stays show a destructive alert at the top: **Reserva cancelada**
   or **No se presentó**, the property-calendar date of the active cancellation, and the
@@ -547,20 +548,40 @@ Details save dates, rooms, and notes only, through Guardar cambios in the form; 
 phones a dirty details draft replaces the footer actions with it. There is no discard
 button: Cerrar, ✕, Escape, and **Ver reserva completa** ask before discarding. Each
 tab shows a dot while its form has unsaved input; the independent discount draft shows
-none. The compact edit dialog uses
-[`BookingSummary`](../apps/portal/src/components/booking-summary.tsx)'s inline discount
-input, which autosaves `set-discount` on blur, not the creation/page discount popover.
-Failed saves keep the entered amount. Closing preserves calendar position. On desktop, and
+none. The compact edit dialog uses the same discount popover as the page, saving
+`set-discount` only on Aplicar or Quitar and retaining failed drafts. Closing preserves
+calendar position. On desktop, and
 in the page's stay editor, rooms use the shared
 [room row](../apps/portal/src/components/reservation-room-rows.tsx); the phone dialog
 keeps one field per line.
 
 Any dirty draft (details, guest, payment, discount, or a nested guest/payment editor)
 blocks check-in/checkout. Disable writes while any save is queued/running, including
-discount autosave.
+discount saves.
 
-The mobile bill accordion keeps the discount draft mounted through collapse/resize.
-Draft bills show preview state and never substitute stale saved amounts when unavailable.
+[`BookingSummary`](../apps/portal/src/components/booking-summary.tsx) shows the saved
+or server-preview bill separately from creation: Subtotal only with a discount,
+Descuento, Total, gross Pagado and nonzero coupon/refund rows. It uses the page's
+account status, including the unpaid-deposit note, without plan/schedule rows. Draft
+bills show preview state and never substitute stale saved amounts when unavailable.
+On phones the footer accordion keeps its discount draft mounted through collapse/
+resize; the coloured trigger is the sole balance display even when expanded. Its
+upward-opening breakdown scrolls independently above the persistent footer actions.
+
+Pagos shows the payment form only while the saved bill owes money. It defaults to
+the full balance (the immediate post-creation cash suggestion still uses the required
+initial payment), and shares the page's oldest-first, read-only refund/coupon movement
+rows and payment locks. Unlocked payments retain edit/delete. Hidden forms stay
+mounted so a background settlement does not discard an entered draft.
+
+The dialog and page share payment creation, including Método **Cupón**. It replaces
+date/reference with a code lookup; codes ignore case, spaces and hyphens, and an
+already-used code is prefilled. A valid lookup suggests the smaller of the saved
+balance owed and coupon balance, never the deposit. Changed/in-flight or failed
+lookups block redemption; lookup and amount failures stay inline. Editing a payment
+does not offer Cupón. Coupon redemption uses the command module's duplicate-safe
+retry and refreshes coupon reads; the server remains authoritative for concurrent
+balance, expiry and eligibility changes. Creation has no coupon input.
 
 Creation (`NewBooking`) sends the chosen `ratePlan` and optional
 [per-room final nightly prices](#prices-for-newly-reserved-rooms), and shows only the current
@@ -599,7 +620,7 @@ existing-reservation writes, including calendar assignment; creation is separate
 - Action-specific field mapping shares `serverFieldErrors` in `api-error.ts` with
   creation/stay previews. Unmatched errors become one message.
 - Resolve only after refresh. Success updates detail and refreshes lists, availability,
-  inventory, payments, calendar, and open bill previews; cancel loading previews first
+  inventory, payments, coupon lookups, calendar, and open bill previews; cancel loading previews first
   so an old bill cannot replace refreshed data. Contact edits refresh other reservations
   for that contact.
 - `useReservationPreview` serves status editors; callers debounce. Stay drafts

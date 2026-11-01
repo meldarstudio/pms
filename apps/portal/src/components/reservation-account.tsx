@@ -210,7 +210,7 @@ function paymentLock(detail: ReservationDetail, payment: ReservationPayment) {
   return null;
 }
 
-function movements(detail: ReservationDetail, edit: Props["edit"]): Movement[] {
+function movements(detail: ReservationDetail, edit: Props["edit"], disabled: boolean): Movement[] {
   const money = (cents: number) => formatMoney(cents, detail.currency);
   const rows: Movement[] = [];
   for (const payment of detail.payments) {
@@ -236,7 +236,7 @@ function movements(detail: ReservationDetail, edit: Props["edit"]): Movement[] {
       ) : (
         <RowActions
           label={`Acciones del pago de ${money(payment.amountCents)} del ${payment.paymentDate}`}
-          disabled={false}
+          disabled={disabled}
           onEdit={() => edit({ kind: "payment", id: payment.id })}
           onDelete={() => edit({ kind: "delete-payment", id: payment.id })}
         />
@@ -286,8 +286,8 @@ function movements(detail: ReservationDetail, edit: Props["edit"]): Movement[] {
   return rows.sort((a, b) => a.at.localeCompare(b.at) || a.key.localeCompare(b.key));
 }
 
-function Movements({ detail, edit }: Props) {
-  const rows = movements(detail, edit);
+export function Movements({ detail, edit, disabled = false }: Props & { disabled?: boolean }) {
+  const rows = movements(detail, edit, disabled);
   if (!rows.length)
     return <p className="py-3 text-sm text-muted-foreground">Sin movimientos todavía.</p>;
   return (

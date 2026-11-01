@@ -643,6 +643,59 @@ it("records payments after a failed save and prevents dismissal or navigation du
   assert.equal(await unloadPrevented(), false);
 });
 
+it("offers the shared coupon method from Registrar pago and prefills the already-used code", async () => {
+  saved = {
+    ...saved,
+    couponAppliedCents: 1000,
+    balanceCents: 29000,
+    couponMovements: [
+      {
+        id: "redeem-1",
+        couponId: "coupon-1",
+        code: "ABCD123456",
+        kind: "redeem",
+        amountCents: 1000,
+        recordedAt: "2026-10-18T15:00:00Z",
+        recordedOn: "2026-10-18",
+        recordedBy: null,
+      },
+    ],
+  };
+  page.api.on("GET", "/coupons/ABCD123456", () => ({
+    id: "coupon-1",
+    code: "ABCD123456",
+    valueCents: 50000,
+    balanceCents: 49000,
+    issuedAt: "2026-10-01T15:00:00Z",
+    issuedBy: null,
+    expiresOn: "2027-10-01",
+    sourceReservationId: "source-reservation",
+    sourceReservationCode: "SOURCE01",
+    movements: [],
+  }));
+  mockApi({
+    write: (command) => {
+      assert.deepEqual(command.actions, [
+        { type: "redeem-coupon", code: "ABCD123456", amountCents: 29000 },
+      ]);
+      saved = { ...saved, couponAppliedCents: 30000, balanceCents: 0 };
+      return Response.json(saved);
+    },
+  });
+  await render();
+  await click("Registrar pago");
+  await React.act(async () => dateTrigger("Método").click());
+  await React.act(async () => statusOption("Cupón").click());
+  assert.equal(field("code").value, "ABCD123456");
+  await page.until(() => !button("Aplicar cupón").disabled);
+  assert.equal(field("amount").value, "290.00");
+  await click("Aplicar cupón");
+  await page.until(() => !popup());
+  assert.match(account().textContent, /Cuenta saldada/);
+  assert.equal(writes.length, 1);
+  assert.equal(previews.length, 0);
+});
+
 it("shows notes, staying guests, and payments in their own cards and edits records from them", async () => {
   saved = {
     ...saved,
