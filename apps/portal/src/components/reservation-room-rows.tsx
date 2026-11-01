@@ -27,26 +27,23 @@ export function ReservationRoomRow({
   const titleId = useId();
   return (
     <section aria-labelledby={titleId} className="flex min-w-0 flex-col gap-2">
-      <div className="flex min-h-6 items-center justify-between gap-2">
-        <h4 id={titleId} className="text-xs font-medium text-muted-foreground">
+      <div className="grid min-h-6 grid-cols-[minmax(0,1fr)_auto] items-center gap-2 md:flex">
+        <h4 id={titleId} className="text-xs font-medium text-muted-foreground md:flex-1">
           Habitación {index + 1}
         </h4>
-        {(actions || count > 1) && (
-          <div className="flex items-center gap-1">
-            {actions}
-            {count > 1 && (
-              <Button
-                type="button"
-                variant="ghost"
-                size="xs"
-                aria-label={`Quitar habitación ${index + 1}`}
-                onClick={onRemove}
-              >
-                <Trash2Icon data-icon="inline-start" />
-                Quitar
-              </Button>
-            )}
-          </div>
+        {actions && <div className="col-span-full row-start-2 min-w-0">{actions}</div>}
+        {count > 1 && (
+          <Button
+            type="button"
+            variant="ghost"
+            size="xs"
+            className="col-start-2 row-start-1"
+            aria-label={`Quitar habitación ${index + 1}`}
+            onClick={onRemove}
+          >
+            <Trash2Icon data-icon="inline-start" />
+            Quitar
+          </Button>
         )}
       </div>
       <FieldGroup className="grid grid-cols-3 gap-3 md:grid-cols-[minmax(0,1fr)_7rem_4rem_4rem]">

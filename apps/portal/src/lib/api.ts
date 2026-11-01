@@ -581,7 +581,7 @@ export type WorkflowRoom = {
 export type WorkflowAction =
   | { type: "contact"; contact: BookingContact }
   | { type: "set-guests"; guests: StayingGuest[] }
-  | { type: "edit-room"; lineId: string; room: WorkflowRoom }
+  | { type: "edit-room"; lineId: string; room: Omit<WorkflowRoom, "nightlyRateCents"> }
   | { type: "add-room"; room: WorkflowRoom }
   | { type: "dates"; checkIn: string; checkOut: string }
   | { type: "remove-room"; lineId: string }

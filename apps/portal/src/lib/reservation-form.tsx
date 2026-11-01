@@ -3,6 +3,8 @@ import { createFormHook, createFormHookContexts } from "@tanstack/react-form";
 import { TextField, ChoiceField, PhoneField } from "@/components/workflow-fields";
 import type { PhoneValue } from "./phone";
 import { errorMessage } from "./form-errors";
+import { Button } from "@/components/ui/button";
+import { Undo2Icon } from "lucide-react";
 export { blurThenChange } from "./reservation-form-state";
 
 const { fieldContext, formContext, useFieldContext } = createFormHookContexts();
@@ -64,6 +66,48 @@ function FormChoice(
   );
 }
 
+function FormNightlyPrice() {
+  const control = useFormControl<string | undefined>();
+  const field = useFieldContext<string | undefined>();
+  if (control.value === undefined)
+    return (
+      <Button
+        type="button"
+        variant="outline"
+        size="xs"
+        className="max-md:w-full"
+        onClick={() => control.onChange("")}
+      >
+        Cambiar precio por noche
+      </Button>
+    );
+  return (
+    <div className="flex min-w-0 items-start gap-1">
+      <div className="min-w-0 max-w-56 flex-1">
+        <TextField
+          {...control}
+          value={control.value}
+          label="Precio por noche · S/"
+          inputMode="decimal"
+        />
+      </div>
+      <Button
+        type="button"
+        variant="ghost"
+        size="icon-xs"
+        className="mt-5"
+        aria-label="Deshacer precio por noche"
+        onClick={() => {
+          control.onChange(undefined);
+          field.setMeta((meta) => ({ ...meta, isBlurred: false, errorMap: {} }));
+        }}
+      >
+        <Undo2Icon />
+      </Button>
+    </div>
+  );
+}
+
 function FormPhone(
   props: Omit<ComponentProps<typeof PhoneField>, "value" | "onChange" | "error" | "label">,
 ) {
@@ -74,7 +118,12 @@ function FormPhone(
 export const { useAppForm: useReservationForm, withForm: withReservationForm } = createFormHook({
   fieldContext,
   formContext,
-  fieldComponents: { Text: FormText, Choice: FormChoice, Phone: FormPhone },
+  fieldComponents: {
+    Text: FormText,
+    Choice: FormChoice,
+    Phone: FormPhone,
+    NightlyPrice: FormNightlyPrice,
+  },
   formComponents: {},
 });
 export async function submitForm(event: FormEvent<HTMLFormElement>, submit: () => Promise<void>) {
