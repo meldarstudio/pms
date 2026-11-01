@@ -279,6 +279,7 @@ export type ReservationCouponMovement = {
   id: string;
   couponId: string;
   code: string;
+  expiresOn: string;
   kind: CouponMovementKind;
   amountCents: number;
   recordedAt: string;
@@ -289,7 +290,7 @@ export type ReservationCouponMovement = {
 export type CouponLookup = ReservationCoupon & {
   sourceReservationId: string;
   sourceReservationCode: string;
-  movements: (Omit<ReservationCouponMovement, "couponId" | "code"> & {
+  movements: (Omit<ReservationCouponMovement, "couponId" | "code" | "expiresOn"> & {
     reservationId: string;
   })[];
 };

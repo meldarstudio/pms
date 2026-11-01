@@ -42,6 +42,9 @@ const contactRules: FieldRule[] = [
 ];
 
 const fieldRules = {
+  waiver: [
+    ({ code }) => (code === "waiver cannot exceed the cancellation charge" ? "amount" : null),
+  ],
   coupon: [
     ({ code }) =>
       [

@@ -9,6 +9,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import type { ReservationEditorTarget } from "@/components/reservation-page-editors";
 import type { ReservationDetail } from "@/lib/api";
+import { usePropertyCalendar } from "@/lib/use-property-calendar";
 
 export function ReservationStatusMenu({
   detail,
@@ -19,8 +20,10 @@ export function ReservationStatusMenu({
   disabled: boolean;
   edit: (target: ReservationEditorTarget) => void;
 }) {
+  const { today } = usePropertyCalendar();
   if (detail.status === "unfulfilled") return null;
   const cancelled = detail.status === "cancelled";
+  const noShow = detail.status === "no_show";
   return (
     <DropdownMenu>
       <DropdownMenuTrigger
@@ -37,15 +40,27 @@ export function ReservationStatusMenu({
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end">
         <DropdownMenuGroup>
-          {cancelled ? (
-            <DropdownMenuItem onClick={() => edit({ kind: "status", status: "confirmed" })}>
-              Restaurar reserva
-            </DropdownMenuItem>
+          {cancelled || noShow ? (
+            <>
+              <DropdownMenuItem onClick={() => edit({ kind: "status", status: "confirmed" })}>
+                Restaurar reserva
+              </DropdownMenuItem>
+              {noShow && (
+                <DropdownMenuItem onClick={() => edit({ kind: "correct-status" })}>
+                  Corregir estado…
+                </DropdownMenuItem>
+              )}
+            </>
           ) : (
             <>
               <DropdownMenuItem onClick={() => edit({ kind: "correct-status" })}>
                 Corregir estado…
               </DropdownMenuItem>
+              {detail.status === "confirmed" && detail.checkIn <= today && (
+                <DropdownMenuItem onClick={() => edit({ kind: "status", status: "no_show" })}>
+                  Marcar como no presentado
+                </DropdownMenuItem>
+              )}
               <DropdownMenuItem
                 variant="destructive"
                 onClick={() => edit({ kind: "status", status: "cancelled" })}

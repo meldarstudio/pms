@@ -57,6 +57,7 @@ function changeSaving(queue: SaveQueue, id: string, delta: number) {
 }
 
 const scopeByAction: Partial<Record<WorkflowAction["type"], FieldScope>> = {
+  "waive-cancellation-charge": "waiver",
   "redeem-coupon": "coupon",
   "add-payment": "payment",
   "edit-payment": "payment",

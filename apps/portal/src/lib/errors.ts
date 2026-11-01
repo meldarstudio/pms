@@ -51,11 +51,11 @@ const messages: Record<string, string> = {
   "payment not found": "El pago ya no existe.",
   "reservation has no active cancellation": "La reserva no tiene una cancelación activa.",
   "only a confirmed reservation can be marked no-show":
-    "Solo una reserva confirmada puede marcarse como No-show.",
+    "Solo una reserva confirmada puede marcarse como «No se presentó».",
   "restore the no-show reservation before cancelling it":
-    "Restaura la reserva No-show antes de cancelarla.",
+    "No se puede cancelar una reserva marcada como «No se presentó».",
   "waiver cannot exceed the cancellation charge":
-    "La exoneración no puede superar el cargo de cancelación pendiente.",
+    "El importe a perdonar no puede superar el cargo pendiente.",
   "refund not found": "El reembolso ya no existe.",
   "refund is already resolved": "Este reembolso ya fue completado o marcado como fallido.",
   "refund date cannot be in the future": "La fecha del reembolso no puede ser futura.",

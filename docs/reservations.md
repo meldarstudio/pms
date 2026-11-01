@@ -161,8 +161,9 @@ Cancellation releases inventory and replaces stay charges with a policy charge,
 keeping nights and payments. Removing one reserved room drops its charges/inventory
 but leaves the other rooms' status/dates unchanged. Cancel to release the last room.
 
-No-show is manual, only from confirmed—not checked in/out or cancelled. Restore it
-before cancelling. It keeps nights/payments and applies the policy charge, like
+No-show is manual, only from confirmed—not checked in/out or cancelled. It cannot
+be cancelled directly; correcting an incorrectly charged No-show means waiving the
+charge, not recomputing a later cancellation. It keeps nights/payments and applies the policy charge, like
 cancellation; outcome/status distinguish them. Calendar visibility is [separate](calendar.md#calendar-read).
 
 Unfulfilled is set only by online payment completion when the stay cannot happen.
@@ -310,7 +311,7 @@ receipt. A database CHECK keeps every balance between zero and the coupon's valu
 Reads and previews return `couponIssuedCents`, `couponAppliedCents`,
 `initialPaymentDueCents`, `coupons` (coupons this reservation issued, with current
 balances), and `couponMovements` (its `issue`, `redeem`, and `return` movements with
-`code`, `amountCents`, `recordedAt`, `recordedOn`, and `recordedBy`). List `balance`
+`code`, original `expiresOn`, `amountCents`, `recordedAt`, `recordedOn`, and `recordedBy`). List `balance`
 and `refund` filters use the same arithmetic. `GET /coupons/:code` returns value,
 balance, expiry, issuing reservation (`sourceReservationId`,
 `sourceReservationCode`), and every movement with its `reservationId`.
@@ -491,14 +492,44 @@ menu precede the full-width action; there is no fixed bottom page action.
 
 The overflow menu replaces the status select. **Corregir estado…** opens a small
 editor for another inventory-holding status and saves `set-status` on confirmation;
-failure retains the choice. **Cancelar reserva** keeps the reason and current server
-bill preview. Cancelled stays instead offer **Restaurar reserva**, with a destination
-status and current server bill/availability validation. Restoration still warns before
+failure retains the choice. **Marcar como no presentado** is offered only for Confirmada
+on or after check-in in the property calendar. Cancelled stays instead offer
+**Restaurar reserva**; No-show stays offer **Restaurar reserva** and **Corregir estado…**,
+never **Cancelar reserva**. Restoration currently has a destination
+status and current server bill/availability validation, and still warns before
 entering a dirty room. Unfulfilled stays offer no status actions. Disable header status
 actions while a page editor or changed discount draft is open, and while any reservation
 save is queued/running. Guest/payment deletion requires confirmation; records remain
 editable on cancelled reservations. See [phone editor sizing](portal.md#reservation-overlays)
 for viewport, scrolling and draft protections.
+
+**Cancelar reserva** and **¿El huésped no se presentó?** use the same inset confirmation:
+
+- The `set-status` preview supplies the accepted policy, inclusive free deadline,
+  policy charge and resulting account status. No full bill or promise of a zero
+  charge is shown. Date-sensitive previews refresh when property today changes,
+  preserving the reason and waiver draft. Loading/failed or outdated previews block
+  confirmation and hide unconfirmed resulting amounts; failures offer Reintentar.
+- **Perdonar cargo** is collapsed and appears only for a positive previewed charge.
+  It opens **Importe a perdonar**, prefilled with, and capped at, that charge. A valid
+  amount and reason preview `set-status` and `waive-cancellation-charge` together;
+  confirmation saves those same actions atomically. A changed-charge rejection stays
+  beside the amount without losing either field.
+- There is one **Motivo**: optional for plain cancellation, required with a waiver
+  and saved as both cancellation and waiver reason. For No-show it appears only
+  with a waiver and is sent only as the waiver reason, since the backend does not
+  save a No-show `set-status` reason.
+- Only new positive coupon `return` movements from the preview are announced, using
+  their actual amount, code and original expiry, never the whole applied value or
+  an earlier return. Expiry before property today warns that returned value cannot
+  be used; a return neither renews expiry nor refunds money.
+- Success closes the confirmation, stays on this page and says **Reserva cancelada**
+  or **Marcada como no presentada**, appending **· Por devolver {importe}** for saved
+  refund due. It never opens Devolver… automatically; Cuenta supplies the next action.
+  Failed/uncertain attempts retain one request ID across changed or reopened drafts
+  for the same opening lifecycle/history, preventing a lost response from applying
+  another waiver. An edited retry of an already-committed attempt refreshes and closes
+  with confirmation that the first changes were saved.
 
 Money lives in one full-width **Cuenta** card
 ([`reservation-account.tsx`](../apps/portal/src/components/reservation-account.tsx));

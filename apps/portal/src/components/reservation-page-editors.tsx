@@ -4,6 +4,7 @@ import { cn } from "cn";
 import { BookingEditor, DiscardChanges } from "@/components/room-booking-dialog";
 import { GuestEntryForm, PaymentForm, paymentMethods } from "@/components/reservation-entry-forms";
 import { CouponIssued, RefundForm, ResolveRefundForm } from "@/components/refund-forms";
+import { CancellationForm } from "@/components/cancellation-form";
 import { WorkflowBill } from "@/components/workflow-bill";
 import { ChoiceField } from "@/components/workflow-fields";
 import { useDirtyRoomCheckIn } from "@/components/dirty-room-check-in";
@@ -75,9 +76,11 @@ function editorTitle(target: ReservationEditorTarget, detail: ReservationDetail)
     case "status":
       return target.status === "cancelled"
         ? "Cancelar reserva"
-        : detail.status === "cancelled"
-          ? "Restaurar reserva"
-          : `Confirmar ${reservationStatusLabel(target.status)}`;
+        : target.status === "no_show"
+          ? "¿El huésped no se presentó?"
+          : detail.status === "cancelled" || detail.status === "no_show"
+            ? "Restaurar reserva"
+            : `Confirmar ${reservationStatusLabel(target.status)}`;
     case "correct-status":
       return "Corregir estado";
   }
@@ -247,6 +250,17 @@ export function ReservationPageEditor({
                 </div>
               </div>
             )
+          ) : target.kind === "status" &&
+            (target.status === "cancelled" || target.status === "no_show") ? (
+            <CancellationForm
+              detail={detail}
+              outcome={target.status}
+              disabled={saving}
+              onDirtyChange={handleDirty}
+              onSave={send}
+              onDone={onClose}
+              onCancel={close}
+            />
           ) : (
             <ReservationActionForm
               target={target}
@@ -380,9 +394,6 @@ function ReservationActionForm({
             {
               type: "set-status",
               status: selectedStatus,
-              ...(selectedStatus === "cancelled" && value.reason.trim()
-                ? { reason: value.reason.trim() }
-                : {}),
             },
           ];
           break;
@@ -425,10 +436,7 @@ function ReservationActionForm({
     preview.isSuccess &&
     !preview.isFetching &&
     preview.data.validation.issues.length === 0;
-  const destructive =
-    target.kind === "delete-payment" ||
-    target.kind === "delete-guest" ||
-    (target.kind === "status" && target.status === "cancelled");
+  const destructive = target.kind === "delete-payment" || target.kind === "delete-guest";
   return (
     <form
       noValidate
@@ -499,7 +507,9 @@ function ReservationActionForm({
             )}
             {statusEditor && (
               <>
-                {(target.kind === "correct-status" || detail.status === "cancelled") && (
+                {(target.kind === "correct-status" ||
+                  detail.status === "cancelled" ||
+                  detail.status === "no_show") && (
                   <ChoiceField
                     label="Estado"
                     value={selectedStatus}
@@ -521,25 +531,11 @@ function ReservationActionForm({
                   Cambiar el estado no modifica las fechas de la estadía. El saldo y las
                   habitaciones sin asignar no impiden el check-in ni el check-out.
                 </FieldDescription>
-                {detail.status === "cancelled" && (
+                {(detail.status === "cancelled" || detail.status === "no_show") && (
                   <FieldDescription>
                     Se revisa la disponibilidad, las asignaciones y la capacidad antes de restaurar
                     como {reservationStatusLabel(selectedStatus || "confirmed")}.
                   </FieldDescription>
-                )}
-                {selectedStatus === "cancelled" && (
-                  <>
-                    <FieldDescription>
-                      Se liberará el inventario y se aplicará el cargo según la política de la
-                      reserva, sin registrar un reembolso. Revisa la cuenta resultante antes de
-                      confirmar.
-                    </FieldDescription>
-                    <form.AppField name="reason">
-                      {(field) => (
-                        <field.Text label="Motivo · Opcional" type="textarea" max={2000} />
-                      )}
-                    </form.AppField>
-                  </>
                 )}
               </>
             )}

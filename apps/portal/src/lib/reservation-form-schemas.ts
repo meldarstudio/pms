@@ -402,6 +402,11 @@ export const newBookingSchema = (types: RoomType[]) =>
   );
 export type NewBookingValues = z.input<ReturnType<typeof newBookingSchema>>;
 export const cancellationSchema = z.object({ reason: optionalText(2000) });
+export const cancellationOutcomeSchema = (waiving: boolean, maxCents: number, currency: string) =>
+  z.object({
+    reason: waiving ? refundReason : optionalText(2000),
+    amount: waiving ? refundAmount(maxCents, currency) : z.string(),
+  });
 
 export function schemaErrors(
   result: ReturnType<ReturnType<typeof detailsSchema>["safeParse"]>,

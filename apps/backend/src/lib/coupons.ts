@@ -72,6 +72,7 @@ export function couponFields(
           id: movement.id,
           couponId: movement.couponId,
           code: coupon.code,
+          expiresOn: coupon.expiresOn,
           kind: movement.kind,
           amountCents: movement.amountCents,
           recordedAt: movement.recordedAt,

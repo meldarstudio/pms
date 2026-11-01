@@ -1624,7 +1624,7 @@ it("blocks empty or invalid nightly prices without quoting them, and undo clears
   await fill("rooms[0].room.nightlyRate", "0");
   await until(() => !button("Crear reserva").disabled);
   assert.equal(creationTotal(), "S/0");
-  assert.deepEqual(cancellationText(), ["Cancelación y no-show sin cargo"]);
+  assert.deepEqual(cancellationText(), ["Cancelación / No se presentó · Sin cargo"]);
   await submit();
   await until(() => writes.length === 2);
   assert.equal(writes[1].rooms[0].nightlyRateCents, 0);
@@ -1693,7 +1693,9 @@ it("shows only the actual charge once free cancellation has passed, as for a wal
   );
   await choose("Tipo", "Doble");
   await until(() => creationTotal() === "S/150", "A walk-in must be previewed");
-  assert.deepEqual(cancellationText(), ["Cancelación o no-show: cargo de la primera noche, S/150"]);
+  assert.deepEqual(cancellationText(), [
+    "Cancelación / No se presentó · Cargo de la primera noche, S/150",
+  ]);
 });
 
 it("keeps an unapplied discount draft out of the bill and blocks creating while it is open", async () => {
@@ -2345,7 +2347,7 @@ it.each([
     await applyDiscount("200");
     assert.equal(creationTotal(), "S/0");
     assert.equal(appliedDiscount(), applied);
-    assert.deepEqual(cancellationText(), ["Cancelación y no-show sin cargo"]);
+    assert.deepEqual(cancellationText(), ["Cancelación / No se presentó · Sin cargo"]);
     await openDiscount();
     assert.equal(discountInput()!.value, "200");
     await React.act(async () =>

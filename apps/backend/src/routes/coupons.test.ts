@@ -362,6 +362,24 @@ describe("charging a coupon-funded stay that is cancelled or not shown", () => {
     ]);
     vi.setSystemTime(new Date("2026-10-10T16:00:00Z"));
 
+    const preview = await db.request(`/reservations/${funded.id}/preview`, "POST", {
+      requestId: crypto.randomUUID(),
+      actions: [cancel],
+    });
+    expect(preview.status).toBe(200);
+    expect(await preview.json()).toMatchObject({
+      billing: {
+        couponMovements: [
+          expect.objectContaining({ kind: "redeem" }),
+          expect.objectContaining({
+            kind: "return",
+            amountCents: 5000,
+            code: coupon.code,
+            expiresOn: "2027-10-10",
+          }),
+        ],
+      },
+    });
     const cancelled = await command(funded, [cancel]);
 
     expect(cancelled).toMatchObject({

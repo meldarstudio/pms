@@ -136,7 +136,18 @@ function mockApi(options: ApiOptions = {}) {
     "/reservations/:id/preview",
     async ({ body }) =>
       (await options.preview?.(body)) ?? {
-        billing: body.actions.reduce(issueCoupon, saved),
+        billing: body.actions.reduce((bill, action) => {
+          if (
+            action.type === "set-status" &&
+            (action.status === "cancelled" || action.status === "no_show")
+          )
+            return {
+              ...bill,
+              status: action.status,
+              cancellation: cancellation({ outcome: action.status }),
+            };
+          return issueCoupon(bill, action);
+        }, saved),
         validation: { issues: [] },
       },
   );
@@ -280,7 +291,7 @@ async function submit() {
     form.dispatchEvent(new window.Event("submit", { bubbles: true, cancelable: true }));
   });
 }
-const popup = () => window.document.querySelector('[role="dialog"]');
+const popup = () => window.document.querySelector('[role="dialog"][data-slot="dialog-content"]');
 const header = () => page.container.querySelector("h1")!.closest("header")!;
 const statusMenu = (label: string) =>
   chooseRowAction('[aria-label="Acciones de la reserva"]', label);
@@ -377,12 +388,42 @@ it("corrects status through the menu without offering cancellation or the curren
 });
 
 it.each([
-  { status: "confirmed", items: ["Corregir estado…", "Cancelar reserva"] },
-  { status: "cancelled", items: ["Restaurar reserva"] },
-  { status: "unfulfilled", items: [] },
+  {
+    status: "confirmed",
+    time: "2026-10-19T03:00:00Z",
+    items: ["Corregir estado…", "Cancelar reserva"],
+  },
+  {
+    status: "confirmed",
+    time: "2026-10-19T05:00:00Z",
+    items: ["Corregir estado…", "Marcar como no presentado", "Cancelar reserva"],
+  },
+  {
+    status: "confirmed",
+    time: "2026-10-20T05:00:00Z",
+    items: ["Corregir estado…", "Marcar como no presentado", "Cancelar reserva"],
+  },
+  {
+    status: "checked_in",
+    time: "2026-10-19T15:00:00Z",
+    items: ["Corregir estado…", "Cancelar reserva"],
+  },
+  {
+    status: "checked_out",
+    time: "2026-10-21T15:00:00Z",
+    items: ["Corregir estado…", "Cancelar reserva"],
+  },
+  { status: "cancelled", time: "2026-10-19T15:00:00Z", items: ["Restaurar reserva"] },
+  {
+    status: "no_show",
+    time: "2026-10-19T15:00:00Z",
+    items: ["Restaurar reserva", "Corregir estado…"],
+  },
+  { status: "unfulfilled", time: "2026-10-19T15:00:00Z", items: [] },
 ] as const)(
-  "offers only the allowed status menu actions for $status",
-  async ({ status, items }) => {
+  "offers only the allowed status menu actions for $status at $time",
+  async ({ status, time, items }) => {
+    vi.setSystemTime(new Date(time));
     saved = { ...saved, status };
     mockApi();
     await render();
@@ -707,6 +748,7 @@ it("offers the shared coupon method from Registrar pago and prefills the already
         id: "redeem-1",
         couponId: "coupon-1",
         code: "ABCD123456",
+        expiresOn: "2027-10-18",
         kind: "redeem",
         amountCents: 1000,
         recordedAt: "2026-10-18T15:00:00Z",
@@ -1133,25 +1175,43 @@ for (const balance of [-10000]) {
 }
 
 it("previews cancellation selected in the header before saving and shows the resulting refund due", async () => {
-  saved = { ...saved, paidCents: 10000, balanceCents: 20000 };
+  saved = { ...saved, paidCents: 20000, balanceCents: 10000 };
+  const released = {
+    ...saved,
+    status: "cancelled" as const,
+    totalCents: 12345,
+    subtotalCents: 12345,
+    balanceCents: -7655,
+    refundDueCents: 7655,
+    creditCents: 7655,
+    cancellation: cancellation({ policyChargeCents: 12345, finalChargeCents: 12345 }),
+  };
   mockApi({
     preview: () => ({
-      billing: {
-        ...saved,
-        totalCents: 0,
-        subtotalCents: 0,
-        balanceCents: -10000,
-        creditCents: 10000,
-      },
+      billing: released,
       validation: { issues: [] },
     }),
+    write: (command) => {
+      saved = {
+        ...released,
+        cancellationReason:
+          command.actions[0].type === "set-status" ? (command.actions[0].reason ?? null) : null,
+      };
+      return Response.json(saved);
+    },
   });
-  await render();
+  await render("", true, true);
   await statusMenu("Cancelar reserva");
   await page.until(() => popup() !== null && !button("Confirmar").disabled);
   assert.equal(writes.length, 0);
   assert.match(header().textContent, /Confirmada/);
-  assert.match(popup()!.textContent, /sin registrar un reembolso/);
+  assert.match(
+    text(popup()!),
+    /Fuera del plazo de cancelación gratuita · Cargo de la primera noche/,
+  );
+  assert.match(text(popup()!), /Cargo por cancelación S\/ 123\.45/);
+  assert.match(text(popup()!), /Por devolver S\/ 76\.55/);
+  assert.doesNotMatch(text(popup()!), /Subtotal|Pagado|Descuento/);
   await fill("reason", "Cambio de planes");
   await submit();
   await page.until(() => !popup());
@@ -1161,14 +1221,354 @@ it("previews cancellation selected in the header before saving and shows the res
   assert.deepEqual(writes[0].actions, [
     { type: "set-status", status: "cancelled", reason: "Cambio de planes" },
   ]);
+  assert.equal(router.state.location.pathname, "/reservations/reservation-1");
+  await page.until(() =>
+    text(window.document.body).includes("Reserva cancelada · Por devolver S/ 76.55"),
+  );
+  assert.ok(button("Devolver…"));
 });
+
+it("requires one reason for an inline waiver and saves the cancellation and waiver atomically", async () => {
+  mockApi({
+    preview: (command) => ({
+      billing: {
+        ...saved,
+        cancellation: cancellation({
+          policyChargeCents: 12345,
+          finalChargeCents: command.actions.length === 2 ? 2345 : 12345,
+        }),
+        balanceCents: command.actions.length === 2 ? 2345 : 12345,
+      },
+      validation: { issues: [] },
+    }),
+  });
+  await render();
+  await statusMenu("Cancelar reserva");
+  await page.until(() => !button("Confirmar").disabled);
+  assert.equal(popup()!.querySelector('[name="amount"]'), null);
+  await click("Perdonar cargo");
+  assert.equal(field("amount").value, "123.45");
+  assert.equal(field("reason").required, true);
+  await submit();
+  assert.equal(writes.length, 0);
+  assert.match(popup()!.textContent, /Indica el motivo/);
+  await fill("amount", "123.46");
+  await fill("reason", "  Error del hotel  ");
+  await submit();
+  assert.equal(writes.length, 0);
+  assert.match(text(popup()!), /El importe no puede superar S\/ 123\.45/);
+  await fill("amount", "100");
+  await page.until(() => text(popup()!).includes("Saldo pendiente S/ 23.45"));
+  await submit();
+  await page.until(() => !popup());
+  assert.deepEqual(writes[0].actions, [
+    { type: "set-status", status: "cancelled", reason: "Error del hotel" },
+    { type: "waive-cancellation-charge", amountCents: 10000, reason: "Error del hotel" },
+  ]);
+});
+
+it("keeps the inline waiver draft and marks its amount when the server rejects a changed charge", async () => {
+  mockApi({
+    write: () =>
+      Response.json({ error: "waiver cannot exceed the cancellation charge" }, { status: 400 }),
+  });
+  await render();
+  await statusMenu("Cancelar reserva");
+  await page.until(() => !button("Confirmar").disabled);
+  await click("Perdonar cargo");
+  await fill("reason", "Error del hotel");
+  await page.until(() => !button("Confirmar").disabled);
+  await submit();
+  assert.equal(writes[0].actions.length, 2);
+  await page.until(() => field("amount").getAttribute("aria-invalid") === "true");
+  assert.equal(field("reason").value, "Error del hotel");
+  assert.equal(field("amount").value, "150.00");
+  assert.match(text(popup()!), /El importe a perdonar no puede superar el cargo pendiente/);
+  assert.equal(saved.status, "confirmed");
+});
+
+it("blocks saving through failed and stale waiver previews without substituting the saved bill", async () => {
+  let fail = true;
+  let finishOld!: (preview: WorkflowPreview) => void;
+  let finishCurrent!: (preview: WorkflowPreview) => void;
+  const previewBill = (balanceCents: number): WorkflowPreview => ({
+    billing: {
+      ...saved,
+      cancellation: cancellation(),
+      balanceCents,
+    },
+    validation: { issues: [] },
+  });
+  mockApi({
+    preview: (command) => {
+      if (saved.status === "cancelled") return previewBill(10000);
+      const waiver = command.actions.find((action) => action.type === "waive-cancellation-charge");
+      if (!waiver) return previewBill(15000);
+      if (fail) return Response.json({ error: "preview unavailable" }, { status: 503 });
+      return new Promise((resolve) => {
+        if (waiver.amountCents === 10000) finishOld = resolve;
+        else finishCurrent = resolve;
+      });
+    },
+  });
+  await render();
+  await statusMenu("Cancelar reserva");
+  await page.until(() => !button("Confirmar").disabled);
+  await click("Perdonar cargo");
+  await fill("amount", "100");
+  await fill("reason", "Error del hotel");
+  await page.until(() => text(popup()!).includes("preview unavailable"));
+  assert.equal(button("Confirmar").disabled, true);
+  assert.doesNotMatch(text(popup()!), /Saldo pendiente/);
+  fail = false;
+  await click("Reintentar");
+  await page.until(() => !!finishOld);
+  await fill("amount", "50");
+  await page.until(() => !!finishCurrent);
+  await React.act(async () => finishOld(previewBill(5000)));
+  assert.equal(button("Confirmar").disabled, true);
+  assert.doesNotMatch(text(popup()!), /Saldo pendiente S\/ 50/);
+  await submit();
+  assert.equal(writes.length, 0);
+  await React.act(async () => finishCurrent(previewBill(10000)));
+  await page.until(() => !button("Confirmar").disabled);
+  assert.match(text(popup()!), /Saldo pendiente S\/ 100/);
+  await submit();
+  await page.until(() => !popup());
+  assert.deepEqual(writes[0].actions, [
+    { type: "set-status", status: "cancelled", reason: "Error del hotel" },
+    { type: "waive-cancellation-charge", amountCents: 5000, reason: "Error del hotel" },
+  ]);
+});
+
+it("refreshes the cancellation charge across the property deadline without losing the reason", async () => {
+  mockApi({
+    preview: () => ({
+      billing: {
+        ...saved,
+        cancellation: cancellation({
+          freeUntil: "2026-10-19",
+          policyChargeCents: previews.length === 1 ? 0 : 15000,
+        }),
+        totalCents: previews.length === 1 ? 0 : 15000,
+        balanceCents: previews.length === 1 ? 0 : 15000,
+      },
+      validation: { issues: [] },
+    }),
+  });
+  await render();
+  await statusMenu("Cancelar reserva");
+  await page.until(() => text(popup()!).includes("Sin cargo"));
+  await fill("reason", "Cambio de planes");
+  await React.act(async () => {
+    vi.setSystemTime(new Date("2026-10-20T05:00:00Z"));
+    window.dispatchEvent(new window.Event("focus"));
+  });
+  await page.until(() => text(popup()!).includes("Fuera del plazo"));
+  assert.match(text(popup()!), /Cargo por cancelación S\/ 150/);
+  assert.match(text(popup()!), /Saldo pendiente S\/ 150/);
+  assert.equal(field("reason").value, "Cambio de planes");
+});
+
+it("never applies a second waiver when staff edit an uncertain cancellation attempt", async () => {
+  let receipt: WorkflowCommand | undefined;
+  mockApi({
+    write: (command) => {
+      if (receipt) {
+        assert.equal(command.requestId, receipt.requestId);
+        return Response.json(
+          { error: "request ID reused with a different payload" },
+          { status: 409 },
+        );
+      }
+      receipt = command;
+      saved = {
+        ...saved,
+        status: "cancelled",
+        cancellation: cancellation({ waivedCents: 10000, finalChargeCents: 5000 }),
+        totalCents: 5000,
+        balanceCents: 5000,
+      };
+      return Response.json({ error: "response unavailable" }, { status: 503 });
+    },
+  });
+  await render();
+  await statusMenu("Cancelar reserva");
+  await page.until(() => !button("Confirmar").disabled);
+  await click("Perdonar cargo");
+  await fill("amount", "100");
+  await fill("reason", "Error del hotel");
+  await page.until(() => !button("Confirmar").disabled);
+  await submit();
+  await page.until(() => writes.length === 1 && !button("Confirmar").disabled);
+  await fill("amount", "50");
+  await page.until(() => !button("Confirmar").disabled);
+  await submit();
+  await page.until(() => !popup());
+  assert.equal(writes[0].requestId, writes[1].requestId);
+  assert.equal(saved.cancellation!.waivedCents, 10000);
+  assert.match(header().textContent, /Cancelada/);
+});
+
+it.each([false, true])("marks a stay as not presented with inline waiver = %s", async (waiving) => {
+  mockApi({
+    preview: (command) => ({
+      billing: {
+        ...saved,
+        cancellation: cancellation({
+          outcome: "no_show",
+          policyChargeCents: 15000,
+          finalChargeCents: command.actions.length === 2 ? 0 : 15000,
+        }),
+        balanceCents: command.actions.length === 2 ? 0 : 15000,
+      },
+      validation: { issues: [] },
+    }),
+  });
+  await render("", true, true);
+  await statusMenu("Marcar como no presentado");
+  await page.until(() => !button("Confirmar").disabled);
+  assert.match(popup()!.textContent, /¿El huésped no se presentó\?/);
+  assert.match(text(popup()!), /Cargo por no presentarse · Primera noche/);
+  assert.equal(popup()!.querySelector('[name="reason"]'), null);
+  if (waiving) {
+    await click("Perdonar cargo");
+    assert.equal(field("amount").value, "150.00");
+    assert.equal(field("reason").required, true);
+    await fill("reason", "Error del hotel");
+    await page.until(() => text(popup()!).includes("Cuenta saldada S/ 0"));
+  }
+  await submit();
+  await page.until(() => !popup());
+  assert.deepEqual(writes[0].actions, [
+    { type: "set-status", status: "no_show" },
+    ...(waiving
+      ? [{ type: "waive-cancellation-charge", amountCents: 15000, reason: "Error del hotel" }]
+      : []),
+  ]);
+  await page.until(() => text(window.document.body).includes("Marcada como no presentada"));
+});
+
+it.each([
+  {
+    expiresOn: "2027-04-30",
+    amount: 4321,
+    line: "S/ 43.21 vuelven al cupón K7Q2M9XPA4 · Vence el 30 de abril de 2027",
+  },
+  {
+    expiresOn: "2026-10-18",
+    amount: 4321,
+    line: "S/ 43.21 vuelven al cupón K7Q2M9XPA4, ya vencido. No se podrá usar.",
+  },
+  {
+    expiresOn: "2026-10-19",
+    amount: 4321,
+    line: "S/ 43.21 vuelven al cupón K7Q2M9XPA4 · Vence el 19 de octubre de 2026",
+  },
+  { expiresOn: "2027-04-30", amount: 0, line: null },
+])(
+  "shows only the newly previewed coupon return ($amount, expiry $expiresOn)",
+  async ({ expiresOn, amount, line }) => {
+    const previous = couponMovement({ kind: "return", code: "K7Q2M9XPA4", amountCents: 1000 });
+    saved = { ...saved, couponAppliedCents: 12000, couponMovements: [previous] };
+    mockApi({
+      preview: () => ({
+        billing: {
+          ...saved,
+          cancellation: cancellation(),
+          couponMovements: [
+            previous,
+            ...(amount ? [{ ...previous, id: "new-return", amountCents: amount, expiresOn }] : []),
+          ],
+        },
+        validation: { issues: [] },
+      }),
+    });
+    await render();
+    await statusMenu("Cancelar reserva");
+    await page.until(() => !button("Confirmar").disabled);
+    if (line) assert.ok(text(popup()!).includes(line), text(popup()!));
+    else assert.doesNotMatch(text(popup()!), /vuelven al cupón/);
+    assert.equal(writes.length, 0);
+  },
+);
+
+it.each([
+  {
+    outcome: "cancelled",
+    freeUntil: "2026-10-19",
+    basis: "first_night",
+    charge: 0,
+    line: "Cancelación gratuita hasta el 19 de octubre de 2026 · Sin cargo",
+  },
+  {
+    outcome: "cancelled",
+    freeUntil: null,
+    basis: "final_total",
+    charge: 27000,
+    line: "Tarifa no reembolsable · Cargo del total de la reserva",
+  },
+  {
+    outcome: "no_show",
+    freeUntil: null,
+    basis: "final_total",
+    charge: 27000,
+    line: "Cargo por no presentarse · Total de la reserva",
+  },
+] as const)(
+  "explains the accepted preview policy: $line",
+  async ({ outcome, freeUntil, basis, charge, line }) => {
+    mockApi({
+      preview: () => ({
+        billing: {
+          ...saved,
+          ratePlan: {
+            ...saved.ratePlan,
+            cancellationPolicy: {
+              chargeBasis: basis,
+              freeUntilDaysBeforeCheckIn: freeUntil ? 2 : null,
+            },
+          },
+          cancellation: cancellation({
+            outcome,
+            freeUntil,
+            policyChargeCents: charge,
+            finalChargeCents: charge,
+          }),
+          totalCents: charge,
+          balanceCents: charge,
+        },
+        validation: { issues: [] },
+      }),
+    });
+    await render();
+    await statusMenu(outcome === "cancelled" ? "Cancelar reserva" : "Marcar como no presentado");
+    await page.until(() => !button("Confirmar").disabled);
+    assert.ok(text(popup()!).includes(line), text(popup()!));
+    if (charge === 0) {
+      assert.doesNotMatch(text(popup()!), /Perdonar cargo/);
+      assert.match(text(popup()!), /Cuenta saldada S\/ 0/);
+      await submit();
+      await page.until(() => !popup());
+      assert.deepEqual(writes[0].actions, [{ type: "set-status", status: "cancelled" }]);
+    }
+  },
+);
 
 it("retries a failed cancellation preview and keeps the reason after a failed save", async () => {
   mockApi({
     preview: () =>
       previews.length === 1
         ? Response.json({ error: "Temporary preview failure" }, { status: 503 })
-        : { billing: { ...saved, totalCents: 0, balanceCents: 0 }, validation: { issues: [] } },
+        : {
+            billing: {
+              ...saved,
+              cancellation: cancellation({ policyChargeCents: 0, finalChargeCents: 0 }),
+              totalCents: 0,
+              balanceCents: 0,
+            },
+            validation: { issues: [] },
+          },
     write: () =>
       writes.length === 1
         ? Response.json({ error: "Temporary cancellation save failure" }, { status: 503 })
@@ -1744,6 +2144,7 @@ function couponMovement({
     id: `${kind}-${code}`,
     couponId: `coupon-${code}`,
     code,
+    expiresOn: "2027-10-19",
     kind,
     amountCents,
     recordedAt: at,
