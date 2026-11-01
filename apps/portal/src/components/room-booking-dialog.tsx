@@ -446,6 +446,7 @@ export function BookingEditor({
   const mobileEditor = isMobile && compactEditor;
   const [billOpen, setBillOpen] = useState(false);
   const [paymentDirty, setPaymentDirty] = useState(false);
+  const [paymentDraftKey, setPaymentDraftKey] = useState(0);
   const [discountDirty, setDiscountDirty] = useState(false);
   const [actionDirty, setActionDirty] = useState(false);
   const independentDraftDirty = guestDirty || paymentDirty || discountDirty || actionDirty;
@@ -783,6 +784,7 @@ export function BookingEditor({
               <TabsContent value="payments" keepMounted className="flex flex-col gap-5">
                 <div hidden={detail.balanceCents <= 0}>
                   <PaymentForm
+                    key={paymentDraftKey}
                     detail={detail}
                     suggestedAmountCents={paymentSuggestionCents}
                     disabled={busy || detail.balanceCents <= 0}
@@ -790,11 +792,30 @@ export function BookingEditor({
                     onReady={savePayment}
                   />
                 </div>
+                {detail.balanceCents <= 0 && paymentDirty && (
+                  <div className="flex flex-col items-start gap-2">
+                    <p role="status" className="text-sm text-muted-foreground">
+                      La cuenta ya no tiene saldo pendiente. El pago que estabas preparando no se ha
+                      guardado.
+                    </p>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      disabled={busy}
+                      onClick={() => {
+                        setPaymentDraftKey((key) => key + 1);
+                        setPaymentDirty(false);
+                      }}
+                    >
+                      Descartar pago pendiente
+                    </Button>
+                  </div>
+                )}
                 <section aria-label="Movimientos" className="@container/mov min-w-0">
                   <h3 className="border-b pb-2 text-sm font-medium">Movimientos</h3>
                   <Movements
                     detail={detail}
-                    disabled={busy || paymentDirty}
+                    disabled={busy}
                     edit={(target) => {
                       if (target.kind !== "payment" && target.kind !== "delete-payment") return;
                       const entry = detail.payments.find((payment) => payment.id === target.id);

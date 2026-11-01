@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button";
 import { FieldGroup, FieldError } from "@/components/ui/field";
 import type { ReservationDetail, StayingGuest, WorkflowAction } from "@/lib/api";
 import { setServerErrors } from "@/lib/form-errors";
-import type { ReservationCommandResult } from "@/lib/reservation-commands";
+import { useReservationCommands, type ReservationCommandResult } from "@/lib/reservation-commands";
 import { useReservationForm, blurThenChange, submitForm } from "@/lib/reservation-form";
 import {
   guestSchema,
@@ -187,6 +187,7 @@ export function PaymentForm({
   onSaved?: (detail: ReservationDetail) => void;
 }) {
   const { today } = usePropertyCalendar();
+  const { canReplay } = useReservationCommands(detail.id);
   const appliedCode =
     detail.couponMovements.find((movement) => movement.kind === "redeem")?.code ?? "";
   const [savedDefaults, setSavedDefaults] = useState<PaymentValues | null>(null);
@@ -221,16 +222,25 @@ export function PaymentForm({
       let actions: WorkflowAction[];
       if (value.method === "coupon") {
         const cents = parseMajorToCents(value.amount.trim());
+        if (!cents) return;
+        const redemption: WorkflowAction[] = [
+          { type: "redeem-coupon", code: normalizeCouponCode(value.code), amountCents: cents },
+        ];
+        const replay = canReplay(redemption);
         if (
-          !currentCoupon ||
-          normalizeCouponCode(value.code) !== lookupCode ||
-          lookup.isFetching ||
-          lookup.isError ||
-          couponProblem ||
-          !cents
+          !replay &&
+          (!currentCoupon ||
+            normalizeCouponCode(value.code) !== lookupCode ||
+            lookup.isFetching ||
+            lookup.isError ||
+            couponProblem)
         )
           return;
-        if (cents > Math.min(currentCoupon.balanceCents, detail.balanceCents)) {
+        if (
+          !replay &&
+          currentCoupon &&
+          cents > Math.min(currentCoupon.balanceCents, detail.balanceCents)
+        ) {
           setServerErrors(form, {
             amount: translateError(
               cents > currentCoupon.balanceCents
@@ -240,7 +250,7 @@ export function PaymentForm({
           });
           return;
         }
-        actions = [{ type: "redeem-coupon", code: lookupCode, amountCents: cents }];
+        actions = redemption;
       } else {
         actions = [{ type: "add-payment", payment: paymentPayload(paymentSchema.parse(value)) }];
       }
@@ -271,6 +281,11 @@ export function PaymentForm({
   const code = useSelector(form.store, (state) => state.values.code);
   const amount = useSelector(form.store, (state) => state.values.amount);
   const normalizedCode = normalizeCouponCode(code);
+  const amountCents = parseMajorToCents(amount.trim());
+  const replaying =
+    method === "coupon" &&
+    amountCents !== null &&
+    canReplay([{ type: "redeem-coupon", code: normalizedCode, amountCents }]);
   useEffect(() => {
     const timer = setTimeout(() => setLookupCode(normalizedCode), 250);
     return () => clearTimeout(timer);
@@ -321,8 +336,8 @@ export function PaymentForm({
     lookup.isFetching,
     lookup.isError,
   ]);
-  const amountCents = parseMajorToCents(amount.trim());
   const amountProblem =
+    !replaying &&
     currentCoupon &&
     amountCents !== null &&
     amountCents > 0 &&
@@ -332,7 +347,7 @@ export function PaymentForm({
         ? "coupon redemption exceeds the balance owed"
         : null);
   const lookupError =
-    normalizedCode === lookupCode
+    !replaying && normalizedCode === lookupCode
       ? couponProblem
         ? translateError(couponProblem)
         : lookup.error?.message
@@ -396,6 +411,12 @@ export function PaymentForm({
                   />
                 )}
               </form.AppField>
+              {replaying && (
+                <p role="status" className="text-xs text-muted-foreground">
+                  El intento anterior pudo guardarse. Reintenta para confirmar sin duplicar el
+                  canje.
+                </p>
+              )}
               {lookupError ? (
                 <FieldError id={lookupErrorId}>{lookupError}</FieldError>
               ) : currentCoupon ? (
@@ -458,6 +479,7 @@ export function PaymentForm({
               disabled ||
               submitting ||
               (method === "coupon" &&
+                !replaying &&
                 (!currentCoupon || lookup.isFetching || !!lookupError || !!amountProblem))
             }
           >

@@ -20,7 +20,7 @@ const fallbackMessage = "No se pudieron guardar los cambios.";
 
 const unsettledKey = ["reservation-commands", "unsettled"] as const;
 
-type UnsettledCommands = Map<string, WorkflowCommand>;
+type UnsettledCommands = Map<string, { command: WorkflowCommand; uncertain: boolean }>;
 
 function unsettledCommands(client: QueryClient) {
   const existing = client.getQueryData<UnsettledCommands>(unsettledKey);
@@ -145,7 +145,7 @@ function save(
   const joined = queue.joinable.get(key);
   if (joined?.session === unsettledCommands(client)) return joined.result;
   const result = enqueue(client, id, async (unsettled) => {
-    const command = unsettled.get(key) ?? {
+    const command = unsettled.get(key)?.command ?? {
       requestId: crypto.randomUUID(),
       actions: JSON.parse(snapshot) as WorkflowAction[],
     };
@@ -154,7 +154,10 @@ function save(
       saved = await sendWorkflow(id, command);
       unsettled.delete(key);
     } catch (cause) {
-      unsettled.set(key, command);
+      unsettled.set(key, {
+        command,
+        uncertain: !(cause instanceof ApiError) || cause.status >= 500,
+      });
       return rejection(cause, command.actions);
     }
     if (unsettledCommands(client) === unsettled) await refresh(client, saved, command.actions);
@@ -185,7 +188,14 @@ export function useReservationCommands(id: string | null) {
       id === null ? Promise.resolve(failure(null)) : save(client, id, actions),
     [client, id],
   );
-  return { send, saving };
+  const canReplay = useCallback(
+    (actions: WorkflowAction[]) =>
+      id !== null &&
+      client.getQueryData<UnsettledCommands>(unsettledKey)?.get(`${id}\n${JSON.stringify(actions)}`)
+        ?.uncertain === true,
+    [client, id],
+  );
+  return { send, saving, canReplay };
 }
 
 export function useRoomAssignmentCommand() {

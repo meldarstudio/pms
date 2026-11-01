@@ -59,7 +59,6 @@ export function useCoupon(code: string, enabled: boolean) {
     queryKey: ["coupon", code],
     queryFn: ({ signal }) => getCoupon(code, signal),
     enabled: enabled && !!code,
-    retry: false,
     refetchOnWindowFocus: false,
   });
 }

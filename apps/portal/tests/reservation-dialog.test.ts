@@ -632,7 +632,27 @@ it.each([
       assert.match(container.textContent, /Falta el depósito: S\/\s*150/);
     await page.click("Pagos");
     assert.equal(control("amount").closest("[hidden]") === null, saved.balanceCents > 0);
-    if (saved.balanceCents > 0) assert.equal(control("amount").value, "300.00");
+    if (saved.balanceCents > 0) {
+      assert.equal(control("amount").value, "300.00");
+      await fill("amount", "75");
+      await fill("notes", "Conservar esta nota");
+      const amount = control("amount");
+      await React.act(async () =>
+        client.setQueryData(["reservation", saved.id], {
+          ...saved,
+          balanceCents: 0,
+          paidCents: 30000,
+        }),
+      );
+      await until(
+        () => !!amount.closest("[hidden]"),
+        "A background settlement hides, but does not replace, the draft",
+      );
+      assert.equal(amount.value, "75");
+      await page.click("Descartar pago pendiente");
+      assert.equal(control("amount").value, "");
+      assert.equal(control("notes").value, "Conservar esta nota");
+    }
   },
 );
 
@@ -763,13 +783,14 @@ it.each([
 });
 
 it("keeps a coupon draft and retry ID after a lost response, and rejects excessive amounts inline", async () => {
+  let available = 8000;
   const writes = page.api.bodies<WorkflowCommand>("POST", "/reservations/:id/commands");
   mockApi(async () =>
     writes.length === 1
       ? Response.json({ error: "Temporary failure" }, { status: 503 })
       : Response.json({ ...detail(), couponAppliedCents: 5000, balanceCents: 25000 }),
   );
-  page.api.on("GET", "/coupons/ABCD123456", () => coupon({ balanceCents: 8000 }));
+  page.api.on("GET", "/coupons/ABCD123456", () => coupon({ balanceCents: available }));
   await renderCachedEditor(detail);
   await page.click("Pagos");
   await choose("Método", "Cupón");
@@ -785,6 +806,13 @@ it("keeps a coupon draft and retry ID after a lost response, and rejects excessi
   await until(() => writes.length === 1 && !button("Aplicar cupón").disabled);
   assert.equal(control("amount").value, "50");
   assert.equal(control("code").value, "ABCD123456");
+  available = 0;
+  await React.act(async () => client.invalidateQueries({ queryKey: ["coupon"] }));
+  assert.equal(
+    button("Aplicar cupón").disabled,
+    false,
+    "A fresh exhausted balance must not block confirming an uncertain redemption",
+  );
   await submitPayment();
   await until(() => writes.length === 2 && summaryAmount("Pagado con cupón") === "S/50");
   assert.deepEqual(writes[1], writes[0]);

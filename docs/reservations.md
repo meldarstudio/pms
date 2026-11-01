@@ -573,6 +573,8 @@ the full balance (the immediate post-creation cash suggestion still uses the req
 initial payment), and shares the page's oldest-first, read-only refund/coupon movement
 rows and payment locks. Unlocked payments retain edit/delete. Hidden forms stay
 mounted so a background settlement does not discard an entered draft.
+If settlement hides a changed payment draft, an explicit discard action clears
+only that draft; movement corrections and unrelated drafts remain available.
 
 The dialog and page share payment creation, including Método **Cupón**. It replaces
 date/reference with a code lookup; codes ignore case, spaces and hyphens, and an
@@ -581,7 +583,9 @@ balance owed and coupon balance, never the deposit. Changed/in-flight or failed
 lookups block redemption; lookup and amount failures stay inline. Editing a payment
 does not offer Cupón. Coupon redemption uses the command module's duplicate-safe
 retry and refreshes coupon reads; the server remains authoritative for concurrent
-balance, expiry and eligibility changes. Creation has no coupon input.
+balance, expiry and eligibility changes. An exact uncertain redemption can still
+replay its receipt when a newer lookup shows consumed value or changed eligibility;
+changing its code or amount restores normal lookup validation. Creation has no coupon input.
 
 Creation (`NewBooking`) sends the chosen `ratePlan` and optional
 [per-room final nightly prices](#prices-for-newly-reserved-rooms), and shows only the current
@@ -608,7 +612,8 @@ on Pagos with Importe prefilled from its required initial payment.
 existing-reservation writes, including calendar assignment; creation is separate.
 
 - `useReservationCommands(id)` exposes `send(actions)` and shared queued/running
-  `saving`. Results never throw: `saved`, `rejected` Spanish field errors, or
+  `saving`, plus `canReplay(actions)` for exact uncertain attempts that must remain
+  confirmable despite newer read validation. Results never throw: `saved`, `rejected` Spanish field errors, or
   `failed` Spanish message plus any server code. Editors without fields use
   `unsavedMessage`.
 - Failed saves retain request IDs by reservation/exact actions, even across reopened
