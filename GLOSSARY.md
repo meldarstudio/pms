@@ -46,7 +46,7 @@ The reservation's primary contact, who need not be staying at the property.
 _Avoid_: Guest when only the contact is meant, payer
 
 **Staying guest**:
-A named person staying under a reservation, optionally linked to a reserved room.
+A named person staying under a reservation.
 _Avoid_: Booking contact, occupant count
 
 **Contact phone**:

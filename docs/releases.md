@@ -162,6 +162,10 @@ first; see [0014 compatibility](history/schema-rollouts.md#future-stay-coupons-m
 [Refunds](reservations.md#refunds) already handed back or completed without a
 reference need migration `0015` first; see
 [0015 compatibility](history/schema-rollouts.md#optional-refund-completion-reference-migration-0015).
+[Guest-room retirement](history/schema-rollouts.md#staying-guest-room-retirement-two-releases)
+requires the code-only Release 1 checkpoint to be verified live before separately
+authorizing migration `0016` and Release 2. Release 1 is incompatible after the drop;
+use the documented maintenance cutover, not the ordinary additive migration order.
 Local simulations do not establish token permissions.
 
 ## Workflow compatibility

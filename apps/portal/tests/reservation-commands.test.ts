@@ -64,7 +64,7 @@ const payment: WorkflowAction = {
 
 const stayingGuests: WorkflowAction = {
   type: "set-guests",
-  guests: [{ id: "guest-1", fullName: "Ana", email: null, phone: null, reservationRoomId: null }],
+  guests: [{ id: "guest-1", fullName: "Ana", email: null, phone: null }],
 };
 
 function dropNextCommand() {
@@ -332,16 +332,6 @@ describe("server rejections", () => {
         }),
       message: "La fecha del pago no puede ser futura.",
       code: "payment date cannot be in the future",
-    },
-    {
-      name: "a Staying guest outside the Reservation's Reserved rooms",
-      actions: [stayingGuests],
-      fail: () =>
-        page.api.failOnce("POST", "/reservations/:id/commands", 400, {
-          error: "guest room must belong to this reservation",
-        }),
-      message: "La habitación del huésped ya no pertenece a esta reserva. Recarga los datos.",
-      code: "guest room must belong to this reservation",
     },
     {
       name: "a lost connection",

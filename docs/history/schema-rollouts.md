@@ -10,6 +10,62 @@ tables, deliver API before portal, preserve schema/applied history for recovery,
 roll application builds back together only when compatible. These defaults do not
 authorize an operation or prove a previous Worker understands newly recorded data.
 
+## Staying-guest room retirement, two releases
+
+This transition requires **two independently authorized production releases**, even
+if both commits have merged. No live verification or production operation is implied.
+
+1. **Release 1, code only:** select commit
+   `adbe05fdb42c2934f8409cfbe0dd0b9c6bad757d`, validate/release it using the
+   [release checklist](../releases.md), and verify API and portal live. Reads/previews/
+   command responses omit the guest-room association and portals stop sending it.
+   The strict shared schema accepts legacy `reservationRoomId` input but ignores its
+   value. Guest replacement preserves existing stored rooms by guest id; new guests
+   get null. The column, its two guards, and room-removal clearing remain intact.
+   **Do not apply `0016` from a later checkout for this release.**
+2. **Release 2, migration then Worker:** only after Release 1 is verified live,
+   separately authorize the migration and deployment of the validated Release 2 SHA.
+   Save staff drafts and arrange a maintenance window: **Release 1 and older Workers
+   still select/insert the dropped column and are incompatible after `0016`.** Stop
+   staff traffic during this gap. From a clean Release 2 checkout, use the
+   [safe migration procedure](../releases.md#safe-production-migrations), reviewing
+   every pending migration, exporting first, and checking the ledger. Apply
+   `0016_guest_room_retirement.sql` before deploying the Release 2 Worker, then portal;
+   verify active versions and reservation/guest reads, guest saves and room removal
+   before resuming use. No deployment is bundled with the migration command.
+
+`0016` drops only `reservation_guest_room_insert` and
+`reservation_guest_room_update`, then creates/copies/drops/renames `reservation_guests`
+without `reservation_room_id` and recreates its reservation index. Every other guest
+column and row, primary key, and reservation foreign key remain. No table references
+`reservation_guests`; foreign keys remain enforced throughout, with no PRAGMA toggle.
+Release 2 removes backend clearing and storage use; strict legacy input remains
+accepted/ignored until a later cleanup.
+
+Only `reservation_guests.reservation_room_id` values are approved for loss by the owner
+in [#150](https://github.com/meldarstudio/pms/issues/150). This does not authorize an
+operation or other data loss. Preserve the applied files and ledger. Recovery should
+fix forward on the new schema: neither Release 1 nor an older Worker is a safe code
+rollback after `0016`, and exact-history release guards also prevent a generic
+cross-history rollback. Code rollback cannot recover discarded associations. A reviewed
+forward compatibility repair could re-add a nullable column and guards, but cannot
+reconstruct values; restoring an export could overwrite newer reservations/payments
+and requires separate scoped authorization and reconciliation. Export availability
+alone is not a proven restore; follow the [restore rehearsal guide](../backup-restore-rehearsal.md).
+
+Local evidence in `room-inventory.test.ts` applies the registered migration in one
+transaction with foreign keys on to the previous schema containing three named
+guests: linked to physically assigned and unassigned reserved rooms, and unlinked in
+another reservation. It compares every retained guest value/index, all other schema
+objects and table rows, checks integrity/foreign keys, deletes the formerly linked
+room without deleting guests, and verifies the retained reservation foreign key.
+Route tests separately exercise real `remove-room` commands on the migrated schema.
+Release 1's checkpoint tests preserve stored links for omitted/null/foreign legacy
+input and omit them from detail/preview/commands. Fresh local Wrangler rebuild/sample
+data and full suites are development evidence only: they do not establish deployed
+versions, live ledger, outage duration, old-tab usability, remote restoration, or
+physical-device/browser behavior.
+
 ## Optional refund completion reference, migration 0015
 
 `0015_optional_refund_reference.sql` rebuilds `refunds` (create, copy, drop, rename)

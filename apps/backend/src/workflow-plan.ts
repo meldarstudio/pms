@@ -167,9 +167,7 @@ const handlers: Handlers = {
         .length
     )
       fail("guest belongs to another reservation");
-    state.stayingGuests = action.guests.map((guest) => {
-      if (guest.reservationRoomId && !state.lines.some((l) => l.id === guest.reservationRoomId))
-        fail("guest room must belong to this reservation");
+    state.stayingGuests = action.guests.map(({ reservationRoomId: _room, ...guest }) => {
       const saved = original.stayingGuests.find((g) => g.id === guest.id);
       return {
         ...guest,
@@ -230,9 +228,6 @@ const handlers: Handlers = {
     const { state } = ctx;
     lineFor(ctx, action.lineId);
     state.lines = state.lines.filter((line) => line.id !== action.lineId);
-    for (const guest of state.stayingGuests) {
-      if (guest.reservationRoomId === action.lineId) guest.reservationRoomId = null;
-    }
   },
   "edit-payment": changePayment,
   "delete-payment": changePayment,

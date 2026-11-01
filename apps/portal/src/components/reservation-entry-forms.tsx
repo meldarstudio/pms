@@ -3,7 +3,7 @@ import { usePropertyCalendar } from "@/lib/use-property-calendar";
 import { useSelector } from "@tanstack/react-form";
 import { PlusIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { FieldError, FieldGroup } from "@/components/ui/field";
+import { FieldGroup } from "@/components/ui/field";
 import type { ReservationDetail, StayingGuest, WorkflowAction } from "@/lib/api";
 import { setServerErrors } from "@/lib/form-errors";
 import type { ReservationCommandResult } from "@/lib/reservation-commands";
@@ -57,36 +57,21 @@ export function GuestEntryForm({
           phone: phoneDraft(null),
           documentType: "",
           documentNumber: "",
-          reservationRoomId: null,
         },
   );
-  const [formError, setFormError] = useState<string | null>(null);
   const form = useReservationForm({
     defaultValues: defaults,
     validationLogic: blurThenChange(),
     validators: { onDynamic: guestSchema },
     onSubmit: async ({ value }) => {
       if (disabled) return;
-      setFormError(null);
-      const payload = guestPayload({
-        ...value,
-        reservationRoomId: guest
-          ? value.reservationRoomId
-          : detail.rooms.length === 1
-            ? detail.rooms[0].id
-            : null,
-      });
+      const payload = guestPayload(value);
       const result = await onSave(
         guest
           ? detail.stayingGuests.map((entry) => (entry.id === guest.id ? payload : entry))
           : [...detail.stayingGuests, payload],
       );
       if (result.status === "rejected") return setServerErrors(form, result.fields);
-      if (
-        result.status === "failed" &&
-        result.code === "guest room must belong to this reservation"
-      )
-        return setFormError(result.message);
       if (result.status === "failed")
         return toastError("No se pudo guardar el huésped", result.message);
       const next = guest ? guestDefaults(payload) : { ...defaults, id: crypto.randomUUID() };
@@ -135,7 +120,6 @@ export function GuestEntryForm({
             </form.AppField>
           </FieldGroup>
         </FieldGroup>
-        {formError && <FieldError>{formError}</FieldError>}
         <div className="flex items-center gap-2">
           <Button
             type="submit"

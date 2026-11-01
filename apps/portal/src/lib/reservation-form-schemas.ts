@@ -228,7 +228,6 @@ export const guestSchema = z.object({
   phone,
   documentType: optionalText(40),
   documentNumber: optionalText(60),
-  reservationRoomId: z.string().nullable(),
 });
 export type GuestValues = z.input<typeof guestSchema>;
 export const contactSchema = guestSchema.pick({ fullName: true, phone: true, email: true });

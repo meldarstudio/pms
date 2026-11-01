@@ -359,7 +359,6 @@ it("shows notes, staying guests, and payments in their own cards and edits recor
     stayingGuests: [
       {
         id: "8d0f1b5e-2c4a-4f6e-9b7d-3a1c5e7f9b2d",
-        reservationRoomId: "line-2",
         fullName: "Luis Gómez",
         email: "luis@example.com",
         phone: "+51987654321",
@@ -396,7 +395,6 @@ it("shows notes, staying guests, and payments in their own cards and edits recor
       guests: [
         {
           id: "8d0f1b5e-2c4a-4f6e-9b7d-3a1c5e7f9b2d",
-          reservationRoomId: "line-2",
           fullName: "Luis Gómez Ruiz",
           email: "luis@example.com",
           phone: "+51987654321",
@@ -469,7 +467,6 @@ it("validates and saves only contact changes without replacing guests or notes",
         fullName: "Luis García",
         email: null,
         phone: null,
-        reservationRoomId: "line-1",
       },
     ],
   };

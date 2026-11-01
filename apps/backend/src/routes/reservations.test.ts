@@ -1905,7 +1905,8 @@ describe("concurrent reservation commands", () => {
     await command(d, [{ type: "set-guests", guests: [person] }]);
     paused.resume();
     const saved = await pending;
-    expect(saved.stayingGuests).toMatchObject([person]);
+    const { reservationRoomId: _room, ...expected } = person;
+    expect(saved.stayingGuests).toMatchObject([expected]);
     expect(saved.paidCents).toBe(1000);
     expect(saved.payments).toHaveLength(1);
   });
@@ -2446,6 +2447,39 @@ describe("reservation workflow", () => {
       d.checkOut,
     );
   });
+  it.each([undefined, null, "another-room"])(
+    "saves guests while ignoring legacy submitted room %s",
+    async (reservationRoomId) => {
+      const d = await create(2);
+      const first = guest(null),
+        second = guest(null),
+        added = guest("foreign-room");
+      await command(d, [{ type: "set-guests", guests: [first, second] }]);
+      const actions: WorkflowAction[] = [
+        {
+          type: "set-guests",
+          guests: [second, first, added].map((person) => ({ ...person, reservationRoomId })),
+        },
+      ];
+      const before = await (await request(`/reservations/${d.id}`)).json();
+      const proposed = await previewCommand(d, actions);
+      expect(await (await request(`/reservations/${d.id}`)).json()).toEqual(before);
+      const saved = await command(d, actions);
+      for (const detail of [
+        proposed.billing,
+        saved,
+        (await (await request(`/reservations/${d.id}`)).json()) as Detail,
+      ]) {
+        expect(detail.stayingGuests.map((person) => person.id)).toEqual([
+          second.id,
+          first.id,
+          added.id,
+        ]);
+        for (const person of detail.stayingGuests)
+          expect(person).not.toHaveProperty("reservationRoomId");
+      }
+    },
+  );
   it("saves contact changes and staying guests atomically, separate from the booking contact", async () => {
     let d = await create(2);
     const person = guest(d.rooms[0].id);
@@ -2460,22 +2494,25 @@ describe("reservation workflow", () => {
     d = await command(d, actions);
     expect(d.guest.fullName).toBe("Booker Company");
     expect(d.stayingGuests).toHaveLength(2);
-    expect(d.stayingGuests[0]).toMatchObject(person);
+    const { reservationRoomId: _room, ...expected } = person;
+    expect(d.stayingGuests[0]).toMatchObject(expected);
     d = await arrive(d);
     d = await command(d, [roomEdit(d, 0, { roomId: "room-103" })]);
-    expect(d.stayingGuests[0].reservationRoomId).toBe(d.rooms[0].id);
+    expect(d.stayingGuests[0]).toMatchObject(expected);
     expect(d.rooms[0].roomId).toBe("room-103");
     d = await command(d, [{ type: "set-guests", guests: [] }]);
     expect(d.stayingGuests).toEqual([]);
   });
-  it("rejects foreign-room assignments and leaves contact and guests unchanged on failure", async () => {
+  it("rejects foreign guests and leaves contact and guests unchanged on failure", async () => {
     const d = await create(),
       other = await create();
+    const person = guest(null);
+    await command(other, [{ type: "set-guests", guests: [person] }]);
     await command(
       d,
       [
         { type: "contact", contact: { fullName: "Changed Name", email: null, phone: null } },
-        { type: "set-guests", guests: [guest(other.rooms[0].id)] },
+        { type: "set-guests", guests: [person] },
       ],
       400,
     );
@@ -2972,7 +3009,7 @@ describe("reservation dates and lifecycle", () => {
       creditCents: 10000,
     });
     expect(d.payments[0].amountCents).toBe(35000);
-    expect(d.stayingGuests[0].reservationRoomId).toBeNull();
+    expect(d.stayingGuests).toHaveLength(1);
     expect(
       await (await request("/availability?checkIn=2026-10-10&checkOut=2026-10-13")).json(),
     ).toMatchObject({ roomTypes: [{ free: 2 }] });
