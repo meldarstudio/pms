@@ -293,7 +293,7 @@ it.each([
     const header = page.container.querySelector("h1")!.closest("header")!;
     assert.equal(header.querySelector('[role="combobox"]'), null);
     const actions = Array.from(header.querySelectorAll("button")).filter((item) =>
-      /^Hacer check-/.test(item.textContent),
+      item.textContent.startsWith("Hacer check-"),
     );
     assert.deepEqual(
       actions.map((item) => item.textContent),
