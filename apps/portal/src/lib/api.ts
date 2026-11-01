@@ -183,7 +183,6 @@ export type BookingContact = {
 };
 export type StayingGuest = BookingContact & {
   id: string;
-  reservationRoomId: string | null;
 };
 
 export type PaymentMethod = "cash" | "card" | "transfer" | "yape" | "plin" | "other";

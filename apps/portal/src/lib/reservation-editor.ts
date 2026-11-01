@@ -66,7 +66,6 @@ export const guestValues = (guests: StayingGuest[]) =>
   guests.map((g) => ({
     ...contactValue(g),
     id: g.id,
-    reservationRoomId: g.reservationRoomId,
   }));
 export function roomEdits(detail: ReservationDetail, drafts: RoomDraft[]): WorkflowAction[] {
   const actions: WorkflowAction[] = [];

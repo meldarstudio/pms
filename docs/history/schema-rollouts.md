@@ -10,6 +10,27 @@ tables, deliver API before portal, preserve schema/applied history for recovery,
 roll application builds back together only when compatible. These defaults do not
 authorize an operation or prove a previous Worker understands newly recorded data.
 
+## Staying-guest room retirement, two releases
+
+Release 1 is code only, with no migration: reads/previews/command responses omit the
+guest-room association and portals stop sending it. The strict shared schema accepts
+legacy `reservationRoomId` input but ignores its value. Guest replacement preserves
+existing stored rooms by guest id; new guests get null. The column, its two guards,
+and room-removal clearing remain intact. Deploy and verify this release independently
+before authorizing the later column-removal operation; do not apply all future
+pending migrations from a combined checkout when deploying Release 1.
+
+Only `reservation_guests.reservation_room_id` values are approved for loss by the
+owner in [#150](https://github.com/meldarstudio/pms/issues/150). That approval is not
+deployment, remote migration, or restore authorization. Release 2 must append a
+table-rebuild migration preserving all other guest columns, rows, and indexes and
+remove only the guest-room guards. Release 1 still reads/writes the old column, so
+it will not run after that migration: plan a coordinated maintenance cutover to the
+Release 2 Worker, not a live-compatible migration. Follow the
+[release procedure](../releases.md#safe-production-migrations), including export and
+ledger checks. Code rollback cannot recover discarded associations; any restore
+needs separate authorization and reconciliation of newer writes.
+
 ## Optional refund completion reference, migration 0015
 
 `0015_optional_refund_reference.sql` rebuilds `refunds` (create, copy, drop, rename)

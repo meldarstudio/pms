@@ -1905,7 +1905,8 @@ describe("concurrent reservation commands", () => {
     await command(d, [{ type: "set-guests", guests: [person] }]);
     paused.resume();
     const saved = await pending;
-    expect(saved.stayingGuests).toMatchObject([person]);
+    const { reservationRoomId: _room, ...expected } = person;
+    expect(saved.stayingGuests).toMatchObject([expected]);
     expect(saved.paidCents).toBe(1000);
     expect(saved.payments).toHaveLength(1);
   });
@@ -2446,6 +2447,54 @@ describe("reservation workflow", () => {
       d.checkOut,
     );
   });
+  it.each([undefined, null, "another-room"])(
+    "preserves stored guest rooms by id while ignoring submitted room %s",
+    async (reservationRoomId) => {
+      const d = await create(2);
+      const first = guest(null),
+        second = guest(null),
+        added = guest("foreign-room");
+      const insert = db.sqlite.prepare(
+        "INSERT INTO reservation_guests (id, reservation_id, reservation_room_id, full_name, created_at) VALUES (?, ?, ?, ?, ?)",
+      );
+      insert.run(first.id, d.id, d.rooms[0].id, first.fullName, "2026-10-09");
+      insert.run(second.id, d.id, d.rooms[1].id, second.fullName, "2026-10-09");
+      const actions: WorkflowAction[] = [
+        {
+          type: "set-guests",
+          guests: [second, first, added].map((person) => ({ ...person, reservationRoomId })),
+        },
+      ];
+      const rooms = () =>
+        db.sqlite
+          .prepare("SELECT id, reservation_room_id AS room FROM reservation_guests ORDER BY id")
+          .all();
+      const before = rooms();
+      const proposed = await previewCommand(d, actions);
+      expect(rooms()).toEqual(before);
+      const saved = await command(d, actions);
+      for (const detail of [
+        proposed.billing,
+        saved,
+        (await (await request(`/reservations/${d.id}`)).json()) as Detail,
+      ]) {
+        expect(detail.stayingGuests.map((person) => person.id)).toEqual([
+          second.id,
+          first.id,
+          added.id,
+        ]);
+        for (const person of detail.stayingGuests)
+          expect(person).not.toHaveProperty("reservationRoomId");
+      }
+      expect(rooms()).toEqual(
+        [
+          { id: first.id, room: d.rooms[0].id },
+          { id: second.id, room: d.rooms[1].id },
+          { id: added.id, room: null },
+        ].sort((a, b) => a.id.localeCompare(b.id)),
+      );
+    },
+  );
   it("saves contact changes and staying guests atomically, separate from the booking contact", async () => {
     let d = await create(2);
     const person = guest(d.rooms[0].id);
@@ -2460,22 +2509,25 @@ describe("reservation workflow", () => {
     d = await command(d, actions);
     expect(d.guest.fullName).toBe("Booker Company");
     expect(d.stayingGuests).toHaveLength(2);
-    expect(d.stayingGuests[0]).toMatchObject(person);
+    const { reservationRoomId: _room, ...expected } = person;
+    expect(d.stayingGuests[0]).toMatchObject(expected);
     d = await arrive(d);
     d = await command(d, [roomEdit(d, 0, { roomId: "room-103" })]);
-    expect(d.stayingGuests[0].reservationRoomId).toBe(d.rooms[0].id);
+    expect(d.stayingGuests[0]).toMatchObject(expected);
     expect(d.rooms[0].roomId).toBe("room-103");
     d = await command(d, [{ type: "set-guests", guests: [] }]);
     expect(d.stayingGuests).toEqual([]);
   });
-  it("rejects foreign-room assignments and leaves contact and guests unchanged on failure", async () => {
+  it("rejects foreign guests and leaves contact and guests unchanged on failure", async () => {
     const d = await create(),
       other = await create();
+    const person = guest(null);
+    await command(other, [{ type: "set-guests", guests: [person] }]);
     await command(
       d,
       [
         { type: "contact", contact: { fullName: "Changed Name", email: null, phone: null } },
-        { type: "set-guests", guests: [guest(other.rooms[0].id)] },
+        { type: "set-guests", guests: [person] },
       ],
       400,
     );
@@ -2959,6 +3011,9 @@ describe("reservation dates and lifecycle", () => {
       setDiscount(5000),
       pay(35000),
     ]);
+    db.sqlite
+      .prepare("UPDATE reservation_guests SET reservation_room_id = ? WHERE id = ?")
+      .run(removed, d.stayingGuests[0].id);
     d = await command(d, [{ type: "remove-room", lineId: removed }]);
     expect(d.rooms).toEqual([retained]);
     expect(d).toMatchObject({
@@ -2972,7 +3027,12 @@ describe("reservation dates and lifecycle", () => {
       creditCents: 10000,
     });
     expect(d.payments[0].amountCents).toBe(35000);
-    expect(d.stayingGuests[0].reservationRoomId).toBeNull();
+    expect(d.stayingGuests).toHaveLength(1);
+    expect(
+      db.sqlite
+        .prepare("SELECT reservation_room_id FROM reservation_guests WHERE id = ?")
+        .get(d.stayingGuests[0].id),
+    ).toEqual({ reservation_room_id: null });
     expect(
       await (await request("/availability?checkIn=2026-10-10&checkOut=2026-10-13")).json(),
     ).toMatchObject({ roomTypes: [{ free: 2 }] });

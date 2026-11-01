@@ -246,7 +246,6 @@ it("adds consecutive trimmed guests with distinct IDs and resets the real form a
     phone: null,
     documentType: null,
     documentNumber: null,
-    reservationRoomId: "line-1",
   });
 });
 
@@ -279,7 +278,7 @@ it("asks a staying guest for name, contact and document but not a room", async (
   await fill("fullName", "Ana Pérez");
   await submit();
   await until(() => writes.length === 1, "The guest must save");
-  assert.equal(writes[0][0].reservationRoomId, null, "A multi-room guest gets no room");
+  assert.equal(Object.hasOwn(writes[0][0], "reservationRoomId"), false);
 });
 
 it.each([
@@ -287,23 +286,20 @@ it.each([
     scenario: "a new guest after replacing the only room",
     editing: false,
     roomIds: ["replacement"],
-    expectedRoomId: "replacement",
   },
   {
     scenario: "a new guest after adding a second room",
     editing: false,
     roomIds: ["line-1", "line-2"],
-    expectedRoomId: null,
   },
   {
     scenario: "an edited guest after adding a second room",
     editing: true,
     roomIds: ["line-1", "line-2"],
-    expectedRoomId: "line-1",
   },
 ])(
-  "preserves entered data and submits the right room for $scenario",
-  async ({ editing, roomIds, expectedRoomId }) => {
+  "preserves entered data without submitting a room for $scenario",
+  async ({ editing, roomIds }) => {
     let saved = detail();
     const guest: StayingGuest | undefined = editing
       ? {
@@ -313,7 +309,6 @@ it.each([
           phone: null,
           documentType: null,
           documentNumber: null,
-          reservationRoomId: "line-1",
         }
       : undefined;
     if (guest) saved = { ...saved, stayingGuests: [guest] };
@@ -353,35 +348,9 @@ it.each([
       phone: "+51987654321",
       documentType: "DNI",
       documentNumber: "12345678",
-      reservationRoomId: expectedRoomId,
     });
   },
 );
-
-it("shows a rejected guest room as a form error, keeping the guest draft", async () => {
-  const writes: WorkflowCommand[] = [];
-  mockApi(async (path, command) => {
-    if (path.endsWith("/preview")) return previewResponse(detail());
-    writes.push(command);
-    return Response.json({ error: "guest room must belong to this reservation" }, { status: 400 });
-  });
-  await render(React.createElement(dialogs.BookingEditor, { detail: detail() }));
-  await React.act(async () => button("Huéspedes").click());
-  await fill("fullName", "Ana Pérez");
-  const form = control("fullName").closest("form")!;
-  await React.act(async () => {
-    form.dispatchEvent(new window.Event("submit", { bubbles: true, cancelable: true }));
-  });
-  await until(() => writes.length === 1, "The guest must be sent");
-  await until(
-    () =>
-      form.querySelector('[role="alert"]')?.textContent ===
-      "La habitación del huésped ya no pertenece a esta reserva. Recarga los datos.",
-    "The room rejection must appear on the form",
-  );
-  assert.equal(form.querySelector('[aria-invalid="true"]'), null);
-  assert.equal(control("fullName").value, "Ana Pérez");
-});
 
 it("refreshes an untouched payment suggestion and submits a manual Yape amount without a reference", async () => {
   const writes: WorkflowCommand["actions"][] = [];
@@ -1902,7 +1871,6 @@ it("resubmits an unformatted legacy phone exactly once an edit is undone", async
     phone: "991 039 021",
     documentType: null,
     documentNumber: null,
-    reservationRoomId: null,
   };
   saved.stayingGuests = [legacy];
   const writes: StayingGuest[][] = [];
@@ -1939,7 +1907,6 @@ it("saves staying-guest phones on their own, keeping an unchanged legacy phone",
     phone: "pedir en recepción",
     documentType: null,
     documentNumber: null,
-    reservationRoomId: null,
   };
   saved.stayingGuests = [legacy];
   const writes: StayingGuest[][] = [];
@@ -3230,7 +3197,6 @@ it.each(["guest", "payment"] as const)(
         phone: null,
         documentType: null,
         documentNumber: null,
-        reservationRoomId: null,
       },
     ];
     initial.payments = [

@@ -61,7 +61,7 @@ export function presentReservation(input: State, lookups: RoomLookups, currency:
     cancelledAt: input.reservation.cancelledAt,
     guestId: input.reservation.guestId,
     guest: presentGuest(input.contact),
-    stayingGuests: input.stayingGuests,
+    stayingGuests: input.stayingGuests.map(({ reservationRoomId: _room, ...guest }) => guest),
     checkIn: input.reservation.checkIn,
     checkOut: input.reservation.checkOut,
     source: input.reservation.source,

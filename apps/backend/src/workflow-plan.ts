@@ -168,11 +168,11 @@ const handlers: Handlers = {
     )
       fail("guest belongs to another reservation");
     state.stayingGuests = action.guests.map((guest) => {
-      if (guest.reservationRoomId && !state.lines.some((l) => l.id === guest.reservationRoomId))
-        fail("guest room must belong to this reservation");
       const saved = original.stayingGuests.find((g) => g.id === guest.id);
       return {
         ...guest,
+        reservationRoomId:
+          state.lines.find((line) => line.id === saved?.reservationRoomId)?.id ?? null,
         phone: acceptPhone(guest.phone, saved?.phone),
         documentType: guest.documentType ?? null,
         documentNumber: guest.documentNumber ?? null,

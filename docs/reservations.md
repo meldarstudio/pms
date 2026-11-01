@@ -432,11 +432,14 @@ contact, notes, and discount; at least one room remains, with shared dates. Mobi
 keep controls reachable while the body scrolls and protect drafts through keyboard/
 safe-area changes; no swipe dismissal. Use [shared controls](portal.md#control-styling).
 
-The staying-guest form, shared by the page and the dialog, asks for no room. Edits
-resend the guest's stored room unchanged. At submission, a new guest is linked to the
-current room of a one-room reservation and to none otherwise, even if the rooms changed
-while the form was open. A rejected guest room is a form-level
-error, since no field shows it.
+The staying-guest form, shared by the page and the dialog, asks for no room and never
+sends a guest-room association. Detail, preview, and command responses omit it.
+The strict shared request schema still accepts legacy `reservationRoomId` values
+from open older portals, but commands ignore them. Until the separately staged
+[column removal](history/schema-rollouts.md#staying-guest-room-retirement-two-releases),
+`set-guests` preserves stored rooms by guest id; new guests get none, and room removal
+still clears the stored association. Guest identity, contact, and document editing
+remain independent of reserved rooms and declared occupancy.
 
 ### Prices for newly reserved rooms
 
