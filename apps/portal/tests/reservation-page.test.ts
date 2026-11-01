@@ -192,6 +192,45 @@ function mockApi(options: ApiOptions = {}) {
               }
             : {}),
         };
+      if (action.type === "request-refund") {
+        const returned = action.completed ? action.amountCents : 0;
+        saved = {
+          ...saved,
+          refundedCents: saved.refundedCents + returned,
+          pendingRefundCents: saved.pendingRefundCents + action.amountCents - returned,
+          balanceCents: saved.balanceCents + returned,
+          refunds: [
+            ...saved.refunds,
+            refund({
+              id: `refund-${saved.refunds.length + 1}`,
+              paymentId: action.paymentId,
+              amountCents: action.amountCents,
+              method: action.method,
+              reason: action.reason,
+              status: action.completed ? "completed" : "requested",
+              refundDate: action.completed?.refundDate ?? null,
+              completionReference: action.completed?.reference ?? null,
+            }),
+          ],
+        };
+      }
+      if (action.type === "complete-refund" || action.type === "fail-refund") {
+        const target = saved.refunds.find((entry) => entry.id === action.refundId)!;
+        const returned = action.type === "complete-refund" ? target.amountCents : 0;
+        saved = {
+          ...saved,
+          refundedCents: saved.refundedCents + returned,
+          pendingRefundCents: saved.pendingRefundCents - target.amountCents,
+          balanceCents: saved.balanceCents + returned,
+          refunds: saved.refunds.map((entry) =>
+            entry !== target
+              ? entry
+              : action.type === "complete-refund"
+                ? { ...entry, status: "completed", refundDate: action.refundDate }
+                : { ...entry, status: "failed", failureReason: action.reason },
+          ),
+        };
+      }
       if (action.type === "dates")
         saved = {
           ...saved,
@@ -302,6 +341,16 @@ it.each([
     if (action) assert.equal(actions[0].getAttribute("data-variant"), variant);
   },
 );
+
+it("shows the status beside the reservation code above the guest name", async () => {
+  mockApi();
+  await render();
+  const identity = header().querySelector("h1")!.parentElement!.previousElementSibling!;
+  assert.deepEqual(
+    Array.from(identity.children).map((item) => item.textContent),
+    ["Reserva #TEST0001", "Confirmada"],
+  );
+});
 
 it("corrects status through the menu without offering cancellation or the current status", async () => {
   mockApi();
@@ -1709,11 +1758,13 @@ it.each([
     state: "hotel owes",
     bill: { paidCents: 40000, balanceCents: -10000 },
     line: "Por devolver S/ 100",
+    action: "Devolver…",
   },
   {
     state: "part of the refund due requested",
     bill: { paidCents: 40000, balanceCents: -10000, pendingRefundCents: 4000 },
     line: "Por devolver S/ 60",
+    action: "Devolver…",
   },
   {
     state: "the whole refund due requested",
@@ -1732,7 +1783,7 @@ it.each([
     Array.from(page.container.querySelectorAll("button")).filter(
       (item) => text(item) === "Registrar pago",
     ).length,
-    action ? 1 : 0,
+    action === "Registrar pago" ? 1 : 0,
     "Only a bill the guest owes offers Registrar pago",
   );
 });
@@ -1778,6 +1829,7 @@ it("lists payments, refunds and coupon movements oldest first, locking changed p
         requestedAt: "2026-10-21T15:00:00Z",
         refundDate: "2026-10-21",
         completionReference: "OP-1",
+        resolvedBy: "maria",
       }),
     ],
     couponMovements: [
@@ -1814,13 +1866,337 @@ it("lists payments, refunds and coupon movements oldest first, locking changed p
   assert.ok(rows[1].querySelector('[aria-label="Tiene reembolsos: no se puede editar"]'));
   assert.ok(rows[2].querySelector('[aria-label="Pago en línea: no se puede editar"]'));
   assert.equal(rows[0].querySelector("button"), null, "Coupon movements are read-only");
-  assert.equal(rows[5].querySelector("button"), null, "Refund rows are read-only here");
+  assert.deepEqual(
+    [rows[4], rows[5], rows[6]].map(
+      (row) =>
+        row.querySelector("button")?.getAttribute("aria-label")?.replace(/\s+/g, " ") ?? null,
+    ),
+    [null, "Acciones del reembolso de S/ 30", null],
+    "Only a requested refund can be resolved",
+  );
   assert.ok(summaryRows().includes("Reembolsado -S/ 20"), "Only the completed refund counts");
   assert.equal(table.querySelectorAll('[aria-label^="Acciones del pago"]').length, 1);
   await chooseRowAction('[aria-label^="Acciones del pago"]', "Eliminar");
   await submit();
   await page.until(() => writes.length === 1);
   assert.deepEqual(writes[0].actions, [{ type: "delete-payment", paymentId: "yape" }]);
+});
+
+const accountStatusLine = () => account().querySelector('[aria-label="Estado de la cuenta"]')!;
+
+function owesBack(fields: Partial<ReservationDetail> = {}) {
+  saved = {
+    ...saved,
+    subtotalCents: 20000,
+    totalCents: 20000,
+    paidCents: 30000,
+    balanceCents: -10000,
+    refundDueCents: 10000,
+    payments: [payment({ amountCents: 30000 })],
+    ...fields,
+  };
+}
+
+async function dialogOptions(label: string) {
+  await React.act(async () => dateTrigger(label).click());
+  return Array.from(window.document.querySelectorAll('[role="option"]')).map(text);
+}
+
+function pickerDay(day: string) {
+  const element = window.document.querySelector<HTMLElement>(`button[data-day="${day}"]`);
+  assert.ok(element, `Missing date ${day}`);
+  return element as unknown as HTMLButtonElement;
+}
+
+it.each([
+  {
+    handedOver: true,
+    completed: { refundDate: "2026-10-18", reference: "OP-5" },
+    line: "Cuenta saldada S/ 0",
+    reembolsado: "Reembolsado -S/ 100",
+  },
+  { handedOver: false, line: "Reembolso solicitado S/ 100", reembolsado: undefined },
+])(
+  "returns S/ 100 owed back by hand (money handed over: $handedOver)",
+  async ({ handedOver, completed, line, reembolsado }) => {
+    const browserTimeZone = process.env.TZ;
+    process.env.TZ = "Pacific/Kiritimati";
+    vi.setSystemTime(new Date("2026-10-20T03:00:00Z"));
+    try {
+      await returnOwedMoney({ handedOver, completed, line, reembolsado });
+    } finally {
+      if (browserTimeZone === undefined) delete process.env.TZ;
+      else process.env.TZ = browserTimeZone;
+    }
+  },
+);
+
+async function returnOwedMoney({
+  handedOver,
+  completed,
+  line,
+  reembolsado,
+}: {
+  handedOver: boolean;
+  completed?: { refundDate: string; reference: string };
+  line: string;
+  reembolsado?: string;
+}) {
+  owesBack();
+  mockApi();
+  await render();
+  assert.equal(text(accountStatusLine()), "Por devolver S/ 100 Devolver…");
+  await click("Devolver…");
+  assert.equal(field("amount").value, "100.00", "Importe starts at what remains owed back");
+  assert.deepEqual(
+    await dialogOptions("Método"),
+    ["Efectivo", "Transferencia", "Yape", "Plin", "Otro"],
+    "Tarjeta refunds go through Culqi",
+  );
+  await React.act(async () => statusOption("Transferencia").click());
+  await submit();
+  assert.equal(writes.length, 0, "Motivo is required");
+  assert.match(popup()!.textContent, /Indica el motivo\./);
+  await fill("reason", "Sobrepago");
+  const box = popup()!.querySelector<HTMLElement>('[role="checkbox"]')!;
+  assert.equal(box.getAttribute("aria-checked"), "true", "Ya se entregó el dinero starts ticked");
+  if (handedOver) {
+    assert.equal(
+      text(dateTrigger("Fecha")),
+      "19 oct 2026",
+      "Fecha is property today in Lima, not the browser's 20 Oct",
+    );
+    await React.act(async () => dateTrigger("Fecha").click());
+    assert.equal(pickerDay("20/10/2026").disabled, true, "A refund date cannot be future");
+    await React.act(async () => pickerDay("18/10/2026").click());
+    await fill("reference", "op-5");
+  } else {
+    await React.act(async () => box.click());
+    assert.equal(popup()!.querySelector('[name="reference"]'), null);
+  }
+  await submit();
+  await page.until(() => !popup(), "A saved refund closes the dialog");
+  assert.deepEqual(writes[0].actions, [
+    {
+      type: "request-refund",
+      paymentId: "payment-1",
+      amountCents: 10000,
+      method: "transfer",
+      reason: "Sobrepago",
+      ...(completed ? { completed } : {}),
+    },
+  ]);
+  await page.until(() => text(accountStatusLine()) === line);
+  assert.equal(accountStatusLine().querySelector("button"), null);
+  assert.equal(
+    summaryRows().find((row) => row.startsWith("Reembolsado")),
+    reembolsado,
+    "Only a completed refund counts as Reembolsado",
+  );
+}
+
+const splitPayments = () => [
+  payment({ id: "transfer", amountCents: 5000, method: "transfer", paymentDate: "2026-10-18" }),
+  payment({ id: "cash", amountCents: 6000, createdAt: "2026-10-19T16:00:00Z" }),
+  payment({
+    id: "online",
+    amountCents: 2000,
+    method: "card",
+    createdAt: "2026-10-19T17:00:00Z",
+    culqiChargeId: "chr_1",
+  }),
+];
+
+it.each([
+  {
+    dueCents: 10000,
+    parts: [
+      ["cash", 6000],
+      ["transfer", 4000],
+    ],
+  },
+  {
+    dueCents: 12000,
+    parts: [
+      ["cash", 6000],
+      ["transfer", 5000],
+      ["online", 1000],
+    ],
+  },
+])(
+  "splits $dueCents cents across payments, non-Culqi newest first and Culqi last",
+  async ({ dueCents, parts }) => {
+    owesBack({
+      totalCents: 13000 - dueCents,
+      subtotalCents: 13000 - dueCents,
+      paidCents: 13000,
+      balanceCents: -dueCents,
+      payments: splitPayments(),
+    });
+    mockApi();
+    await render();
+    await click("Devolver…");
+    await fill("reason", "Sobrepago");
+    await submit();
+    await page.until(() => writes.length === 1);
+    assert.deepEqual(
+      writes[0].actions.map((action) =>
+        action.type === "request-refund" ? [action.paymentId, action.amountCents] : action.type,
+      ),
+      parts,
+    );
+  },
+);
+
+it("retries a lost refund with the same split and request ID after a background refresh", async () => {
+  owesBack({ totalCents: 3000, subtotalCents: 3000, paidCents: 13000, payments: splitPayments() });
+  mockApi({
+    write: () =>
+      writes.length === 1
+        ? Response.json({ error: "response unavailable" }, { status: 503 })
+        : undefined,
+  });
+  await render();
+  await click("Devolver…");
+  await fill("reason", "Sobrepago");
+  await submit();
+  await page.until(() => writes.length === 1);
+  assert.ok(popup(), "A lost response keeps the draft open");
+  saved = { ...saved, refunds: [refund({ paymentId: "cash", amountCents: 6000 })] };
+  await page.client.invalidateQueries({ queryKey: ["reservation", "reservation-1"] });
+  await submit();
+  await page.until(() => writes.length === 2);
+  assert.equal(writes[1].requestId, writes[0].requestId);
+  assert.deepEqual(writes[1].actions, writes[0].actions);
+});
+
+it.each([
+  { attempt: "edited after a lost save", committed: true, reopen: false },
+  { attempt: "edited after a save that never arrived", committed: false, reopen: false },
+  { attempt: "reopened before a refresh", committed: true, reopen: true },
+])("records one partial refund when the retry is $attempt", async ({ committed, reopen }) => {
+  owesBack();
+  const receipts = new Map<string, string>();
+  mockApi({
+    write: (command) => {
+      const payload = JSON.stringify(command);
+      const receipt = receipts.get(command.requestId);
+      if (receipt === payload) return Response.json(saved);
+      if (receipt !== undefined)
+        return Response.json(
+          { error: "request ID reused with a different payload" },
+          { status: 409 },
+        );
+      const lost = Response.json({ error: "response unavailable" }, { status: 503 });
+      if (writes.length === 1 && !committed) return lost;
+      receipts.set(command.requestId, payload);
+      if (writes.length > 1) return undefined;
+      saved = {
+        ...saved,
+        refundedCents: 4000,
+        balanceCents: -6000,
+        refunds: [refund({ amountCents: 4000, status: "completed", refundDate: "2026-10-19" })],
+      };
+      return lost;
+    },
+  });
+  await render("", true, true);
+  await click("Devolver…");
+  await fill("amount", "40");
+  await fill("reason", "Sobrepago");
+  await submit();
+  await page.until(() => writes.length === 1);
+  assert.ok(popup(), "A lost response keeps the draft open");
+  if (reopen) {
+    await click("Cerrar");
+    await click("Descartar y salir");
+    await click("Devolver…");
+    await fill("amount", "40");
+  }
+  await fill("reason", "Sobrepago de la tarifa");
+  await submit();
+  const editor = () => window.document.querySelector('[role="dialog"] form');
+  await page.until(() => !editor(), "The retry closes the Devolver dialog");
+  assert.deepEqual(
+    saved.refunds.map((entry) => entry.reason),
+    [committed ? "Sobrepago" : "Sobrepago de la tarifa"],
+    "The lost refund is recorded exactly once",
+  );
+  assert.match(
+    window.document.body.textContent,
+    committed ? /Este reembolso ya se había registrado/ : /Reembolso registrado/,
+  );
+  await page.until(() => text(accountStatusLine()) === "Por devolver S/ 60 Devolver…");
+});
+
+it("keeps the Devolver draft and shows the Spanish rejection when the refund due changed", async () => {
+  owesBack();
+  mockApi({
+    write: () => Response.json({ error: "refund exceeds the refund due" }, { status: 409 }),
+  });
+  await render("", true, true);
+  await click("Devolver…");
+  await fill("amount", "80");
+  await fill("reason", "Sobrepago");
+  await submit();
+  await page.until(() => writes.length === 1);
+  await page.until(() =>
+    popup()!.textContent.includes(
+      "El reembolso supera el monto por devolver, descontando las solicitudes pendientes.",
+    ),
+  );
+  assert.equal(field("amount").value, "80");
+  assert.equal(field("reason").value, "Sobrepago");
+});
+
+function requestedRefund() {
+  owesBack({
+    pendingRefundCents: 10000,
+    refunds: [refund({ amountCents: 10000, paymentId: "payment-1" })],
+  });
+}
+
+it("confirms a requested refund with its date and optional reference", async () => {
+  requestedRefund();
+  mockApi();
+  await render();
+  assert.equal(text(accountStatusLine()), "Reembolso solicitado S/ 100");
+  await chooseRowAction('[aria-label^="Acciones del reembolso"]', "Confirmar reembolso");
+  assert.match(text(popup()!), /S\/ 100 · Transferencia · Sobrepago/);
+  assert.equal(popup()!.querySelector('[name="reason"]'), null, "Confirming asks no Motivo");
+  await React.act(async () => dateTrigger("Fecha").click());
+  assert.equal(pickerDay("20/10/2026").disabled, true, "A refund date cannot be future");
+  await React.act(async () => pickerDay("19/10/2026").click());
+  await fill("reference", "op-9");
+  await submit();
+  await page.until(() => !popup());
+  assert.deepEqual(writes[0].actions, [
+    { type: "complete-refund", refundId: "refund-1", refundDate: "2026-10-19", reference: "OP-9" },
+  ]);
+  await page.until(() => summaryRows().includes("Reembolsado -S/ 100"));
+});
+
+it("marks a requested refund failed with a reason, leaving the money owed back", async () => {
+  requestedRefund();
+  mockApi();
+  await render();
+  await chooseRowAction('[aria-label^="Acciones del reembolso"]', "Marcar como fallido");
+  assert.equal(text(popup()!.querySelector("h2")!), "Marcar como fallido");
+  assert.match(text(popup()!), /el dinero sigue por devolver/);
+  assert.equal(popup()!.querySelector('[name="reference"]'), null, "Failing asks no Referencia");
+  await submit();
+  assert.equal(writes.length, 0, "A failure needs a Motivo");
+  await fill("reason", "Cuenta errada");
+  await submit();
+  await page.until(() => !popup());
+  assert.deepEqual(writes[0].actions, [
+    { type: "fail-refund", refundId: "refund-1", reason: "Cuenta errada" },
+  ]);
+  await page.until(() => text(accountStatusLine()) === "Por devolver S/ 100 Devolver…");
+  const row = account().querySelector('table[aria-label="Movimientos"] tbody tr:last-child')!;
+  assert.match(text(row), /^\S+ \S+ \S+ Reembolso Fallido Transferencia/);
+  assert.equal(text(row.querySelector("del")!), "S/ 100", "A failed refund is struck through");
+  assert.ok(!summaryRows().some((row) => row.startsWith("Reembolsado")));
 });
 
 function cancellation(fields: Partial<ReservationCancellation> = {}): ReservationCancellation {
@@ -1912,7 +2288,10 @@ it("reads No se presentó for a No-show stay and bills its charge", async () => 
   saved.cancellations = [saved.cancellation!];
   mockApi();
   await render();
-  assert.match(text(page.container.querySelector("fieldset header")!), /Ana Pérez No se presentó/);
+  assert.match(
+    text(page.container.querySelector("fieldset header")!),
+    /Reserva # TEST0001 No se presentó Ana Pérez/,
+  );
   assert.equal(
     text(page.container.querySelector('[role="alert"]')!),
     "No se presentó · 19 oct 2026",

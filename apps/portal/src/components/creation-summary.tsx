@@ -1,8 +1,17 @@
 import { useId, type ReactNode } from "react";
 import { parseISO } from "date-fns";
+import { ReceiptTextIcon } from "lucide-react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+  Empty,
+  EmptyDescription,
+  EmptyHeader,
+  EmptyMedia,
+  EmptyTitle,
+} from "@/components/ui/empty";
 import { NightlyPriceDetail } from "@/components/nightly-price-detail";
 import { Separator } from "@/components/ui/separator";
+import { Spinner } from "@/components/ui/spinner";
 import type { CreationPreview } from "@/lib/api";
 import { addDateLabelDays, format } from "@/lib/dates";
 import { formatMoney } from "@/lib/money";
@@ -31,7 +40,7 @@ export function CreationSummary({
   billing: Billing | null;
   checkIn: string;
   today: string;
-  message: string;
+  message: string | null;
   error?: ReactNode;
   discount: ReactNode;
 }) {
@@ -46,58 +55,63 @@ export function CreationSummary({
           {stayLabel && <CardDescription>{stayLabel}</CardDescription>}
         </CardHeader>
         <CardContent className="flex flex-col gap-3">
-          <ul className="flex flex-col gap-2">
-            {rooms.map((room) => (
-              <li key={room.key} className="flex min-w-0 flex-col">
-                <span className="wrap-anywhere">{room.typeName}</span>
-                <span className="text-muted-foreground">{guestLine(room)}</span>
-              </li>
-            ))}
-          </ul>
-          <Separator />
-          {billing ? (
+          {billing || error ? (
             <>
-              {discount}
-              <dl aria-label="Importes de la nueva reserva" className="flex flex-col gap-2">
-                <div className="flex items-baseline justify-between gap-4">
-                  <dt className="text-sm font-medium">Total</dt>
-                  <dd className="text-xl font-medium tabular-nums">
-                    {formatMoney(billing.totalCents, billing.currency)}
-                  </dd>
-                </div>
-                <Amount
-                  label="Pago inicial requerido"
-                  cents={billing.requiredInitialPaymentCents}
-                  currency={billing.currency}
-                />
-                <Amount
-                  label="Pago restante programado"
-                  cents={billing.remainingScheduledCents}
-                  currency={billing.currency}
-                />
-              </dl>
-              <div aria-label="Condiciones de cancelación" className="flex flex-col gap-0.5">
-                {cancellationTerms(billing, checkIn, today).map((line) => (
-                  <p key={line} className="text-muted-foreground">
-                    {line}
-                  </p>
+              <ul className="flex flex-col gap-2">
+                {rooms.map((room) => (
+                  <li key={room.key} className="flex min-w-0 flex-col">
+                    <span className="wrap-anywhere">{room.typeName}</span>
+                    <span className="text-muted-foreground">{guestLine(room)}</span>
+                  </li>
                 ))}
-              </div>
-              <NightlyPriceDetail
-                currency={billing.currency}
-                rooms={billing.rooms.map((room, index) => ({
-                  key: rooms[index]?.key ?? String(index),
-                  typeName: rooms[index]?.typeName ?? "",
-                  nights: room.nights,
-                }))}
-              />
+              </ul>
+              <Separator />
+              {billing ? (
+                <>
+                  {discount}
+                  <dl aria-label="Importes de la nueva reserva" className="flex flex-col gap-2">
+                    <div className="flex items-baseline justify-between gap-4">
+                      <dt className="text-sm font-medium">Total</dt>
+                      <dd className="text-xl font-medium tabular-nums">
+                        {formatMoney(billing.totalCents, billing.currency)}
+                      </dd>
+                    </div>
+                    <Amount
+                      label="Pago inicial requerido"
+                      cents={billing.requiredInitialPaymentCents}
+                      currency={billing.currency}
+                    />
+                  </dl>
+                  <div aria-label="Condiciones de cancelación" className="flex flex-col gap-0.5">
+                    {cancellationTerms(billing, checkIn, today).map((line) => (
+                      <p key={line} className="text-muted-foreground">
+                        {line}
+                      </p>
+                    ))}
+                  </div>
+                  <NightlyPriceDetail
+                    currency={billing.currency}
+                    rooms={billing.rooms.map((room, index) => ({
+                      key: rooms[index]?.key ?? String(index),
+                      typeName: rooms[index]?.typeName ?? "",
+                      nights: room.nights,
+                    }))}
+                  />
+                </>
+              ) : (
+                error
+              )}
             </>
           ) : (
-            error || (
-              <p role="status" className="text-muted-foreground">
-                {message}
-              </p>
-            )
+            <Empty role="status" className="gap-3 border border-dashed p-5 md:p-5">
+              <EmptyHeader>
+                <EmptyMedia variant="icon">
+                  {message === null ? <Spinner /> : <ReceiptTextIcon />}
+                </EmptyMedia>
+                <EmptyTitle>{message === null ? "Calculando…" : "Aún no hay total"}</EmptyTitle>
+                {message !== null && <EmptyDescription>{message}</EmptyDescription>}
+              </EmptyHeader>
+            </Empty>
           )}
         </CardContent>
       </Card>

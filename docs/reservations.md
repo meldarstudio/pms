@@ -446,7 +446,8 @@ before deploying or migrating.
 ### Prices for newly reserved rooms
 
 Creation and **Agregar habitación** in the dialog's Detalles and the page's stay
-editor offer **Cambiar precio por noche** per unsaved room, on desktop and phone.
+editor offer **Cambiar precio por noche** per unsaved room, below that room's
+fields on desktop and phone.
 It reveals a final nightly amount in soles and an undo action; on phone the initial
 button fills the content width. The value travels as that room's `nightlyRateCents`
 in creation previews/requests or the command module's `add-room`, never as a
@@ -482,8 +483,10 @@ The header offers the same contextual check-in/check-out
 [lifecycle action](#compact-calendar-dialog) as the calendar dialog, including property-date
 emphasis, dirty-room/balance confirmations and the 8-second Deshacer toast. Confirmed
 stays offer check-in even before arrival; checked-in stays offer check-out; other
-statuses have no contextual action. On phones, identity and the overflow menu precede
-the status badges and full-width action; there is no fixed bottom page action.
+statuses have no contextual action. The status badge sits beside the reservation
+code above the guest name; phones drop the visible "Reserva" label and keep `#code`.
+The header shows no arrival or departure badge. On phones, identity and the overflow
+menu precede the full-width action; there is no fixed bottom page action.
 
 The overflow menu replaces the status select. **Corregir estado…** opens a small
 editor for another inventory-holding status and saves `set-status` on confirmation;
@@ -499,9 +502,10 @@ for viewport, scrolling and draft protections.
 Money lives in one full-width **Cuenta** card
 ([`reservation-account.tsx`](../apps/portal/src/components/reservation-account.tsx));
 Huéspedes sits in the left column between Contacto and Notas. The accepted rate plan
-is read-only stay metadata in Estadía y habitaciones, not a Cuenta row. Every amount is a backend
-bill field; the portal does no bill arithmetic. The card follows its own width through
-container queries, hiding Método and then Referencia in narrow Movimientos tables.
+is read-only stay metadata in Estadía y habitaciones, not a Cuenta row. Every amount is a
+backend bill field; the portal does no bill arithmetic beyond splitting a refund across
+payments. The card follows its own width through container queries, hiding Método and
+then Referencia in narrow Movimientos tables.
 
 - **Summary:** active stays show Subtotal, the editable Descuento row (S/ 0 when none),
   Total and Pagado. Cancelled/No-show stays replace Subtotal/Descuento with the active
@@ -516,14 +520,38 @@ container queries, hiding Método and then Referencia in narrow Movimientos tabl
   background reads. An open changed draft guards router navigation and browser unload.
 - **Status line:** positive balance is Saldo pendiente with **Registrar pago** (plus
   Falta el depósito while the initial payment is short). Refund due beyond requested
-  refunds is Por devolver; refund due that is fully requested is Reembolso solicitado;
-  zero is Cuenta saldada. Requested and failed refunds never settle the bill. Only
-  Saldo pendiente offers a payment action; the other states have none.
+  refunds is Por devolver with **Devolver…**; refund due that is fully requested is
+  Reembolso solicitado, with no action; zero is Cuenta saldada. Requested and failed
+  refunds never settle the bill.
+- **Devolver…** returns money by hand or transfer (Dinero only until coupons can be
+  offered here). Importe starts at, and cannot exceed, the Por devolver amount (also
+  capped by what received payments have left); Método excludes Tarjeta, whose refunds
+  go through Culqi; Motivo is required. Staff never pick a payment: the portal splits
+  the amount across payments with value left, non-Culqi first, newest payment date
+  first, each capped at its amount less completed and requested refunds. **Ya se
+  entregó el dinero** (ticked by default) adds a Fecha (property today by default, never
+  future) and optional Referencia, sending each part as `request-refund` with
+  `completed`; unticked parts are plain requests. All parts travel in one
+  duplicate-safe command, split from the payments as the dialog opened so a retry repeats
+  the same parts; refund-limit rejections stay inline on Importe with the draft. Every
+  attempt from the same payments and refunds reuses one request ID, even after staff edit
+  the draft or reopen the dialog before the bill refreshes. An edited retry whose lost
+  first attempt already committed is refused by the server as a reused request ID; the
+  portal then refreshes, closes the dialog and says the refund was already recorded
+  with the first attempt's details. Edits after an uncommitted failure save normally.
 - **Movimientos:** payments, refunds and coupon movements as flat rows, oldest first, with
   no running balance. Payments keep edit/delete unless the backend would reject the
   change: Culqi payments (En línea, Tarjeta), payments with refunds, and every payment
-  once a coupon was issued show a lock. Refund and coupon rows are read-only, with Solicitado or
-  Fallido; a failed refund is muted and struck through.
+  once a coupon was issued show a lock. Refund rows show Solicitado or Fallido with no
+  note beneath: failure reasons and who requested or resolved a refund are not shown
+  on the row. A failed refund is muted, struck
+  through and not counted. A requested refund's ⋯ menu offers **Confirmar reembolso**,
+  an inset dialog that sends `complete-refund` with a Fecha (property today by default,
+  never future) and optional Referencia, and **Marcar como fallido**, which sends
+  `fail-refund` with a required Motivo. Failing also covers a request staff will no
+  longer fulfil; its money stays Por devolver. Both dialogs summarize the amount,
+  method and reason, not who requested it. Refunds are never deleted. Coupon rows
+  are read-only.
 - Cancelled and No-show stays show a destructive alert at the top: **Reserva cancelada**
   or **No se presentó**, the property-calendar date of the active cancellation, and the
   saved reason.
@@ -570,8 +598,9 @@ upward-opening breakdown scrolls independently above the persistent footer actio
 
 Pagos shows the payment form only while the saved bill owes money. It defaults to
 the full balance (the immediate post-creation cash suggestion still uses the required
-initial payment), and shares the page's oldest-first, read-only refund/coupon movement
-rows and payment locks. Unlocked payments retain edit/delete. Hidden forms stay
+initial payment), and shares the page's oldest-first movement rows and payment locks.
+Refund and coupon rows are read-only there: refunds are returned and resolved on the
+page. Unlocked payments retain edit/delete. Hidden forms stay
 mounted so a background settlement does not discard an entered draft.
 If settlement hides a changed payment draft, an explicit discard action clears
 only that draft; movement corrections and unrelated drafts remain available.
@@ -589,10 +618,13 @@ changing its code or amount restores normal lookup validation. Creation has no c
 
 Creation (`NewBooking`) sends the chosen `ratePlan` and optional
 [per-room final nightly prices](#prices-for-newly-reserved-rooms), and shows only the current
-`POST /reservations/preview` bill: Total, required initial payment, remaining
-scheduled amount, and cancellation terms ([creation-summary.tsx](../apps/portal/src/components/creation-summary.tsx)).
+`POST /reservations/preview` bill: Total, required initial payment, and cancellation
+terms ([creation-summary.tsx](../apps/portal/src/components/creation-summary.tsx)).
 While a changed draft is repricing or its preview failed (with Reintentar), the
-summary shows no amounts and creating is disabled. Cancellation terms derive from the
+summary shows no amounts and creating is disabled. Until a bill exists, the summary keeps
+its title and dates and hides the room list: it shows **Calculando…** while repricing, or
+**Aún no hay total** with the missing input (stay, room types or nightly prices); a failed
+preview keeps the rooms and shows the error. Cancellation terms derive from the
 preview's accepted policy and prices: the inclusive free deadline (check-in minus the
 plan's days) while property today has not passed it, otherwise the actual charge (first
 nights capped at total, or total); zero totals read as no charge. **Ver detalle** shows
@@ -619,6 +651,9 @@ existing-reservation writes, including calendar assignment; creation is separate
 - Failed saves retain request IDs by reservation/exact actions, even across reopened
   editors, so lost-response retries cannot duplicate payments. Success forgets the
   ID; a later identical write is new. Memory belongs to the query client.
+  `send(actions, retryKey)` instead retains the ID by reservation/key, so edited
+  attempts stay one request; a `request ID reused with a different payload` reply then
+  means an earlier attempt committed, so the module forgets the ID and refreshes reads.
 - Saves serialize per reservation; identical queued/running actions join one request.
   Different reservations are independent. Clearing cache drops queued saves as failed,
   prevents new callers joining pre-clear saves, and prevents running results repopulating cache.
@@ -642,6 +677,8 @@ show pending/success/failure. Identical uncertain writes retry through the comma
 Room-type menus consider other stays, closures, and draft rooms; keep the current
 choice visible and wait for current availability before changes. Server previews
 validate before saving. Validate on blur/submit, then change after attempted submit;
+a field reveals its blur error only once staff changed it, so leaving an untouched
+field (for example to press Cancelar) stays quiet while saving still flags every field;
 room count/capacity validate on change to control previews. Field errors stay inline,
 other write errors use toasts, and query errors stay beside blocked content.
 
@@ -669,3 +706,12 @@ page, preserving search/view/day/sort/page size. Keep at least one status select
 all selected means unrestricted. In-house locks checked-in and hides status selection.
 Defaults/legacy URL parsing live in [route-search.ts](../apps/portal/src/lib/route-search.ts)
 and `reservation-status-selection.ts`. Mobile sheets close without a separate apply step.
+
+**Cancelada** requests both `cancelled` and `unfulfilled`, since Unfulfilled reads as
+Cancelada; there is no separate option. **No se presentó** (`no_show`) shares
+Cancelada's default selection, so daily views exclude both. URLs keep the portal's
+status names; only the API request expands Cancelada. A URL listing the four statuses
+that existed before No-show now excludes No-show rather than meaning all. Saldo's **Por devolver** sends
+`credit` and **Por resolver** sends `unresolved` ([Unresolved bill](#reservation-list-reads));
+the list's Saldo cell labels a negative balance Por devolver. The portal does not use
+the compatibility `refund` parameter.

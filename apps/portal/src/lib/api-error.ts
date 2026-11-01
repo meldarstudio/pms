@@ -70,6 +70,14 @@ const fieldRules = {
     ({ code }) => (code === "amount cannot be zero" ? "amount" : null),
     ({ code }) => (code === "method is required" ? "method" : null),
   ],
+  refund: [
+    ({ code }) =>
+      code === "refund exceeds the refund due" ||
+      code === "refund exceeds the payment's remaining amount"
+        ? "amount"
+        : null,
+    ({ code }) => (code === "refund date cannot be in the future" ? "date" : null),
+  ],
   contact: contactRules,
   guest: contactRules,
   details: [

@@ -18,6 +18,14 @@ Desktop sidebar preference persists in local storage, falling back to visit-only
 state if unavailable; mobile starts closed without changing it. Toggling does not
 remount screens. Navigation retains reservation filters/calendar dates and draft guards.
 
+The Reservas item badges the [Unresolved bill](../GLOSSARY.md) count from
+`paginated=true&limit=1&balance=unresolved`, hidden at 0; it counts no arrivals or
+departures. The badge is its own link to Todas las reservas with every status and
+Saldo: Por resolver, so cancelled and No-show stays are never hidden by default status
+selections; the Reservas item itself keeps returning to the last list context. Like the
+list, the count refetches on focus and reconnect; it shares the list's `reservations`
+query prefix, so this browser's saves refresh it too.
+
 Below 768px, **Nueva reserva** uses `page-primary-action.tsx`'s floating slot on
 reservations/calendar. Keep its accessible label, focus order, safe areas, reduced
 motion, and content clearance even when its visual label collapses on scroll.
@@ -39,7 +47,8 @@ limits are unchanged.
 
 Status corrections, cancellation/restoration and record-deletion confirmations remain
 inset with scrolling content and visible actions, as do the shared lifecycle
-confirmations. The full-screen treatment is for reservation editors, not refund dialogs. The page's
+confirmations and the Devolver…/Confirmar reembolso refund dialogs. The full-screen
+treatment is for reservation editors, not refund dialogs. The page's
 contextual header action and overflow menu replace its status select; behavior belongs
 to the [full reservation page guide](reservations.md#full-reservation-page).
 

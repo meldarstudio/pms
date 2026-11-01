@@ -14,7 +14,6 @@ import {
   UsersIcon,
   type LucideIcon,
 } from "lucide-react";
-import { Badge } from "@/components/ui/badge";
 import { ReservationStatusBadge } from "@/components/reservation-status-badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardHeader, CardTitle, CardContent, CardAction } from "@/components/ui/card";
@@ -34,7 +33,6 @@ import { ReservationStatusMenu } from "@/components/reservation-status-menu";
 import type { ReservationEditorTarget } from "@/components/reservation-page-editors";
 import type { ReservationDetail } from "@/lib/api";
 import { occupantsLabel } from "@/lib/reservation-list";
-import { usePropertyCalendar } from "@/lib/use-property-calendar";
 import { phoneDisplay } from "@/lib/phone";
 import { ratePlanLabels } from "@/lib/rate-plans";
 import { format } from "@/lib/dates";
@@ -61,16 +59,18 @@ export function ReservationOverview({
   lifecycleBlocked?: boolean;
   onDiscountDraftChange?: (changed: boolean) => void;
 }) {
-  const { today } = usePropertyCalendar();
   const lifecycle = useLifecycleAction(detail, lifecycleBlocked || disabled);
   const nights = Math.round((Date.parse(detail.checkOut) - Date.parse(detail.checkIn)) / 86400000);
   return (
     <fieldset disabled={disabled} aria-busy={disabled} className="flex min-w-0 flex-col gap-6">
       <header className="grid min-w-0 grid-cols-[minmax(0,1fr)_auto] items-start gap-3 md:gap-x-4">
         <div className="flex min-w-0 flex-col gap-1.5">
-          <p className="font-mono text-xs tracking-widest wrap-anywhere text-muted-foreground uppercase">
-            Reserva #{detail.code}
-          </p>
+          <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5">
+            <p className="font-mono text-xs tracking-widest wrap-anywhere text-muted-foreground uppercase">
+              <span className="max-sm:sr-only">Reserva </span>#{detail.code}
+            </p>
+            <ReservationStatusBadge status={detail.status} />
+          </div>
           <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
             <h1 className="text-2xl font-semibold tracking-tight wrap-anywhere">
               {detail.guest.fullName}
@@ -83,21 +83,6 @@ export function ReservationOverview({
             disabled={disabled || lifecycleBlocked || lifecycle.running}
             edit={edit}
           />
-        </div>
-        <div className="col-span-full flex flex-wrap items-center gap-2 md:col-span-1 md:col-start-1 md:row-start-2">
-          <ReservationStatusBadge status={detail.status} />
-          {detail.checkIn === today && detail.status === "confirmed" && (
-            <Badge variant="preview">
-              <ClockIcon data-icon="inline-start" />
-              Llegada hoy
-            </Badge>
-          )}
-          {detail.checkOut === today && detail.status === "checked_in" && (
-            <Badge variant="preview">
-              <ClockIcon data-icon="inline-start" />
-              Salida hoy{detail.balanceCents > 0 ? " · saldo pendiente" : ""}
-            </Badge>
-          )}
         </div>
         {lifecycle.step && (
           <Button

@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import { CreditCardIcon, LockIcon } from "lucide-react";
+import { CreditCardIcon, LockIcon, Undo2Icon } from "lucide-react";
 import { cn } from "cn";
 import { parseISO } from "date-fns";
 import { accountStatus } from "@/components/balance-status";
@@ -86,11 +86,17 @@ export function AccountCard({
                 Registrar pago
               </Button>
             )}
+            {status.state === "owed-back" && (
+              <Button className="w-full" onClick={() => edit({ kind: "refund" })}>
+                <Undo2Icon data-icon="inline-start" />
+                Devolver…
+              </Button>
+            )}
           </section>
         </div>
         <section aria-label="Movimientos" className="@container/mov flex min-w-0 flex-col">
           <h3 className="border-b pb-2 text-sm font-medium">Movimientos</h3>
-          <Movements detail={detail} edit={edit} />
+          <Movements detail={detail} edit={edit} resolveRefunds />
         </section>
       </CardContent>
     </Card>
@@ -153,7 +159,6 @@ function AccountSummary({
           <SummaryRow label="Subtotal" value={money(detail.subtotalCents)} />
           <div>
             <DiscountPopover
-              variant="row"
               appliedCents={detail.savedDiscountCents}
               shownCents={detail.discountCents}
               currency={detail.currency}
@@ -210,7 +215,12 @@ function paymentLock(detail: ReservationDetail, payment: ReservationPayment) {
   return null;
 }
 
-function movements(detail: ReservationDetail, edit: Props["edit"], disabled: boolean): Movement[] {
+function movements(
+  detail: ReservationDetail,
+  edit: Props["edit"],
+  disabled: boolean,
+  resolveRefunds: boolean,
+): Movement[] {
   const money = (cents: number) => formatMoney(cents, detail.currency);
   const rows: Movement[] = [];
   for (const payment of detail.payments) {
@@ -267,7 +277,17 @@ function movements(detail: ReservationDetail, edit: Props["edit"], disabled: boo
           `(${amount})`
         ),
       muted: refund.status !== "completed",
-      action: null,
+      action:
+        resolveRefunds && refund.status === "requested" ? (
+          <RowActions
+            label={`Acciones del reembolso de ${amount}`}
+            disabled={disabled}
+            editLabel="Confirmar reembolso"
+            deleteLabel="Marcar como fallido"
+            onEdit={() => edit({ kind: "resolve-refund", id: refund.id, failing: false })}
+            onDelete={() => edit({ kind: "resolve-refund", id: refund.id, failing: true })}
+          />
+        ) : null,
     });
   }
   for (const movement of detail.couponMovements)
@@ -286,8 +306,13 @@ function movements(detail: ReservationDetail, edit: Props["edit"], disabled: boo
   return rows.sort((a, b) => a.at.localeCompare(b.at) || a.key.localeCompare(b.key));
 }
 
-export function Movements({ detail, edit, disabled = false }: Props & { disabled?: boolean }) {
-  const rows = movements(detail, edit, disabled);
+export function Movements({
+  detail,
+  edit,
+  disabled = false,
+  resolveRefunds = false,
+}: Props & { disabled?: boolean; resolveRefunds?: boolean }) {
+  const rows = movements(detail, edit, disabled, resolveRefunds);
   if (!rows.length)
     return <p className="py-3 text-sm text-muted-foreground">Sin movimientos todavía.</p>;
   return (

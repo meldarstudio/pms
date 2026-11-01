@@ -1,5 +1,5 @@
 import { useEffect, useId, useState } from "react";
-import { PencilIcon, PlusIcon } from "lucide-react";
+import { PencilIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Field, FieldError, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
@@ -15,7 +15,6 @@ export function DiscountPopover({
   shownCents = appliedCents,
   currency,
   disabled = false,
-  variant = "add",
   onApply,
   onBlockingChange,
 }: {
@@ -23,7 +22,6 @@ export function DiscountPopover({
   shownCents?: number | null;
   currency: string;
   disabled?: boolean;
-  variant?: "add" | "row";
   onApply: (amountCents: number) => void | boolean | Promise<boolean | void>;
   onBlockingChange?: (blocking: boolean) => void;
 }) {
@@ -38,7 +36,6 @@ export function DiscountPopover({
   const error = parsed.success ? null : (parsed.error.issues[0]?.message ?? null);
   const draftCents = parsed.success ? parseMajorToCents(draft.trim() || "0") : null;
   const blocking = open && (draftCents === null || draftCents !== appliedCents);
-  const row = variant === "row" || appliedCents > 0;
   useEffect(() => onBlockingChange?.(blocking), [blocking, onBlockingChange]);
   useEffect(() => () => onBlockingChange?.(false), [onBlockingChange]);
 
@@ -61,37 +58,24 @@ export function DiscountPopover({
       <PopoverTrigger
         disabled={disabled}
         render={
-          row ? (
-            <Button
-              type="button"
-              variant="ghost"
-              className="h-auto w-full justify-between px-0 py-0 font-normal hover:bg-transparent"
-            />
-          ) : (
-            <Button type="button" variant="ghost" size="xs" className="w-fit px-0" />
-          )
+          <Button
+            type="button"
+            variant="ghost"
+            className="h-auto w-full justify-between px-0 py-0 font-normal underline-offset-4 hover:bg-transparent hover:underline aria-expanded:bg-transparent aria-expanded:underline dark:hover:bg-transparent"
+          />
         }
       >
-        {row ? (
-          <>
-            <span className="flex items-center gap-1">
-              Descuento
-              <PencilIcon aria-hidden className="size-3 text-muted-foreground" />
-            </span>
-            <span className="tabular-nums">
-              {shownCents === null ? (
-                <span aria-label="No disponible">...</span>
-              ) : (
-                formatMoney(shownCents ? -shownCents : 0, currency)
-              )}
-            </span>
-          </>
-        ) : (
-          <>
-            <PlusIcon data-icon="inline-start" />
-            Añadir descuento
-          </>
-        )}
+        <span className="flex items-center gap-1">
+          Descuento
+          <PencilIcon aria-hidden className="size-3 text-muted-foreground" />
+        </span>
+        <span className="tabular-nums">
+          {shownCents === null ? (
+            <span aria-label="No disponible">...</span>
+          ) : (
+            formatMoney(shownCents ? -shownCents : 0, currency)
+          )}
+        </span>
       </PopoverTrigger>
       <PopoverContent align="end" className="w-56">
         <PopoverTitle className="sr-only">Descuento</PopoverTitle>

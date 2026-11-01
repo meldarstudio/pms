@@ -31,7 +31,6 @@ export function ReservationRoomRow({
         <h4 id={titleId} className="text-xs font-medium text-muted-foreground md:flex-1">
           Habitación {index + 1}
         </h4>
-        {actions && <div className="col-span-full row-start-2 min-w-0">{actions}</div>}
         {count > 1 && (
           <Button
             type="button"
@@ -53,6 +52,7 @@ export function ReservationRoomRow({
         <div className="min-w-0">{childrenField}</div>
         {feedback && <div className="col-span-full flex flex-col gap-1">{feedback}</div>}
       </FieldGroup>
+      {actions && <div className="min-w-0">{actions}</div>}
     </section>
   );
 }
