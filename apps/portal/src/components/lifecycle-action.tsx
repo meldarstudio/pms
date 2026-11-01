@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import {
   AlertDialog,
   AlertDialogContent,
@@ -41,7 +41,9 @@ export function useLifecycleAction(detail: ReservationDetail, blocked = false) {
   const settleOwed = useRef<((proceed: boolean) => void) | null>(null);
   const eligible = !blocked && !saving && !running;
   const current = useRef({ status: detail.status, eligible });
-  current.current = { status: detail.status, eligible };
+  useLayoutEffect(() => {
+    current.current = { status: detail.status, eligible };
+  }, [detail.status, eligible]);
   const undo = useRef<{ id: string; status: ReservationDetail["status"] } | null>(null);
   useEffect(() => {
     if (undo.current && undo.current.status !== detail.status) {
