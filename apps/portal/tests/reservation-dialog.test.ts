@@ -694,6 +694,69 @@ it.each([false, true])(
   },
 );
 
+it("locks a payment with a refund in Pagos and leaves resolving refunds to the page", async () => {
+  const entry = {
+    reservationId: "reservation-1",
+    paymentDate: "2026-10-14",
+    reference: null,
+    notes: null,
+    culqiChargeId: null,
+  };
+  const saved: ReservationDetail = {
+    ...detail(),
+    paidCents: 35000,
+    balanceCents: -5000,
+    refundDueCents: 5000,
+    pendingRefundCents: 5000,
+    payments: [
+      {
+        ...entry,
+        id: "cash",
+        amountCents: 30000,
+        method: "cash",
+        createdAt: "2026-10-14T15:00:00Z",
+      },
+      {
+        ...entry,
+        id: "yape",
+        amountCents: 5000,
+        method: "yape",
+        createdAt: "2026-10-14T16:00:00Z",
+      },
+    ],
+    refunds: [
+      {
+        id: "refund-1",
+        paymentId: "cash",
+        amountCents: 5000,
+        method: "cash",
+        reference: null,
+        reason: "Sobrepago",
+        status: "requested",
+        requestedAt: "2026-10-15T15:00:00Z",
+        requestedBy: "admin",
+        resolvedAt: null,
+        resolvedBy: null,
+        refundDate: null,
+        completionReference: null,
+        failureReason: null,
+        culqiChargeId: null,
+        culqiRefundId: null,
+      },
+    ],
+  };
+  mockApi(async () => previewResponse(saved));
+  await renderCachedEditor(() => saved);
+  await page.click("Pagos");
+  const rows = [...container.querySelectorAll('table[aria-label="Movimientos"] tbody tr')];
+  assert.equal(rows.length, 3);
+  assert.ok(rows[0].querySelector('[aria-label="Tiene reembolsos: no se puede editar"]'));
+  assert.equal(rows[0].querySelector("button"), null, "A refunded payment offers no Editar");
+  assert.ok(rows[1].querySelector('[aria-label^="Acciones del pago"]'));
+  assert.match(rows[2].textContent, /Reembolso.*Solicitado/);
+  assert.equal(rows[2].querySelector("button"), null, "Refunds are resolved on the page");
+});
+
 function coupon(changes: Partial<CouponLookup> = {}): CouponLookup {
   return {
     id: "coupon-1",
