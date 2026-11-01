@@ -3,8 +3,17 @@ export const reservationStatusValues = [
   "checked_in",
   "checked_out",
   "cancelled",
+  "no_show",
 ] as const;
 export type ReservationStatus = (typeof reservationStatusValues)[number];
+
+const queryStatuses: Record<ReservationStatus, readonly string[]> = {
+  confirmed: ["confirmed"],
+  checked_in: ["checked_in"],
+  checked_out: ["checked_out"],
+  cancelled: ["cancelled", "unfulfilled"],
+  no_show: ["no_show"],
+};
 
 declare const serializedStatuses: unique symbol;
 export type SerializedReservationStatuses = string & { readonly [serializedStatuses]: true };
@@ -45,6 +54,8 @@ export class ReservationStatusSelection {
   }
 
   toQuery() {
-    return this.unrestricted ? undefined : this.toSearch();
+    return this.unrestricted
+      ? undefined
+      : this.values.flatMap((status) => queryStatuses[status]).join(",");
   }
 }

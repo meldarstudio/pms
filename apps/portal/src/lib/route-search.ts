@@ -14,12 +14,13 @@ export type HousekeepingSearch = { view: HousekeepingView };
 export const reservationViews = ["all", "arrivals", "departures", "in-house"] as const;
 export type ReservationView = (typeof reservationViews)[number];
 export type ReservationSort = "checkIn" | "checkOut" | "guestName" | "balance";
+const reservationBalances = ["all", "outstanding", "settled", "credit", "unresolved"] as const;
 export type ReservationsSearch = {
   view: ReservationView;
   day: string;
   q: string;
   statuses: SerializedReservationStatuses;
-  balance: "all" | "outstanding" | "settled" | "credit";
+  balance: (typeof reservationBalances)[number];
   assignment: "all" | "assigned" | "unassigned";
   sort: ReservationSort;
   direction: "asc" | "desc";
@@ -98,7 +99,7 @@ export function reservationsSearch(search: Record<string, unknown>): Reservation
     day: validDay(search.day) ?? validDay(search.checkIn) ?? propertyToday(),
     q: typeof search.q === "string" ? search.q : "",
     statuses: view === "in-house" ? defaults.statuses : statuses.toSearch(),
-    balance: choice(search.balance, ["all", "outstanding", "settled", "credit"], "all"),
+    balance: choice(search.balance, reservationBalances, "all"),
     assignment: choice(search.assignment, ["all", "assigned", "unassigned"], "all"),
     sort: choice(search.sort, ["checkIn", "checkOut", "guestName", "balance"], defaults.sort),
     direction: choice(search.direction, ["asc", "desc"], defaults.direction),
@@ -108,6 +109,10 @@ export function reservationsSearch(search: Record<string, unknown>): Reservation
         ? page
         : 0,
   };
+}
+
+export function unresolvedReservationsSearch(day: string): ReservationsSearch {
+  return reservationsSearch({ view: "all", day, statuses: "all", balance: "unresolved" });
 }
 
 export const lastReservationsSearch: {

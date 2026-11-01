@@ -5,7 +5,7 @@ function statusVariant(status: string) {
   if (status === "confirmed" || status === "checked_in" || status === "checked_out") {
     return status;
   }
-  return status === "cancelled" ? "cancelled" : "secondary";
+  return status === "cancelled" || status === "unfulfilled" ? "cancelled" : "secondary";
 }
 
 export function ReservationStatusBadge({ status }: { status: string }) {

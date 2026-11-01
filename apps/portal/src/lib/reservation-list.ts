@@ -11,9 +11,10 @@ export const reservationStatusOptions: {
   { value: "checked_in", label: "Check-in" },
   { value: "checked_out", label: "Check-out" },
   { value: "cancelled", label: "Cancelada" },
+  { value: "no_show", label: "No se presentó" },
 ];
 
-const otherStatusLabels: Record<string, string> = { no_show: "No se presentó" };
+const otherStatusLabels: Record<string, string> = { unfulfilled: "Cancelada" };
 
 export function reservationStatusLabel(status: string) {
   return (

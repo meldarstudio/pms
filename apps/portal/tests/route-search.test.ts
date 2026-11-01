@@ -50,9 +50,12 @@ describe("route search validation", () => {
     assert.equal(reservationsSearch({ statuses: "all" }).statuses, "all");
     assert.equal(reservationsSearch({ statuses: "" }).statuses, "all");
     assert.equal(
-      reservationsSearch({ statuses: "confirmed,checked_in,checked_out,cancelled" }).statuses,
+      reservationsSearch({ statuses: "confirmed,checked_in,checked_out,cancelled,no_show" })
+        .statuses,
       "all",
     );
+    assert.equal(reservationsSearch({ balance: "unresolved" }).balance, "unresolved");
+    assert.equal(reservationsSearch({ balance: "due" }).balance, "all");
     assert.equal(
       reservationsSearch({ view: "in-house", statuses: "cancelled" }).statuses,
       "checked_in",

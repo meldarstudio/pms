@@ -669,3 +669,11 @@ page, preserving search/view/day/sort/page size. Keep at least one status select
 all selected means unrestricted. In-house locks checked-in and hides status selection.
 Defaults/legacy URL parsing live in [route-search.ts](../apps/portal/src/lib/route-search.ts)
 and `reservation-status-selection.ts`. Mobile sheets close without a separate apply step.
+
+**Cancelada** requests both `cancelled` and `unfulfilled`, since Unfulfilled reads as
+Cancelada; there is no separate option. **No se presentó** (`no_show`) shares
+Cancelada's default selection, so daily views exclude both. URLs keep the portal's
+status names; only the API request expands Cancelada. Saldo's **Por devolver** sends
+`credit` and **Por resolver** sends `unresolved` ([Unresolved bill](#reservation-list-reads));
+the list's Saldo cell labels a negative balance Por devolver. The portal does not use
+the compatibility `refund` parameter.

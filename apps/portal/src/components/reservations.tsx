@@ -123,7 +123,7 @@ function ReservationBalance({
         }
       : balanceCents < 0
         ? {
-            label: "Crédito",
+            label: "Por devolver",
             Icon: WalletIcon,
             amountColor: "text-credit-foreground",
             labelColor: "text-credit-foreground",
