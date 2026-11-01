@@ -2162,7 +2162,7 @@ it("confirms a requested refund with its date and optional reference", async () 
   await render();
   assert.equal(text(accountStatusLine()), "Reembolso solicitado S/ 100");
   await chooseRowAction('[aria-label^="Acciones del reembolso"]', "Confirmar reembolso");
-  assert.match(text(popup()!), /S\/ 100 · Transferencia · Registró admin · Sobrepago/);
+  assert.match(text(popup()!), /S\/ 100 · Transferencia · Sobrepago/);
   assert.equal(popup()!.querySelector('[name="reason"]'), null, "Confirming asks no Motivo");
   await React.act(async () => dateTrigger("Fecha").click());
   assert.equal(pickerDay("20/10/2026").disabled, true, "A refund date cannot be future");

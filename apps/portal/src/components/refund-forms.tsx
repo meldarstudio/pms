@@ -294,7 +294,6 @@ export function ResolveRefundForm({
       <FieldDescription>
         {formatMoney(refund.amountCents, detail.currency)}
         {method ? ` · ${method}` : ""}
-        {refund.requestedBy ? ` · Registró ${refund.requestedBy}` : ""}
         {refund.reason ? ` · ${refund.reason}` : ""}
       </FieldDescription>
       {refund.culqiChargeId && (

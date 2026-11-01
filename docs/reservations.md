@@ -549,7 +549,8 @@ then Referencia in narrow Movimientos tables.
   an inset dialog that sends `complete-refund` with a Fecha (property today by default,
   never future) and optional Referencia, and **Marcar como fallido**, which sends
   `fail-refund` with a required Motivo. Failing also covers a request staff will no
-  longer fulfil; its money stays Por devolver. Refunds are never deleted. Coupon rows
+  longer fulfil; its money stays Por devolver. Both dialogs summarize the amount,
+  method and reason, not who requested it. Refunds are never deleted. Coupon rows
   are read-only.
 - Cancelled and No-show stays show a destructive alert at the top: **Reserva cancelada**
   or **No se presentó**, the property-calendar date of the active cancellation, and the
