@@ -24,6 +24,8 @@ export function ReservationStatusMenu({
   if (detail.status === "unfulfilled") return null;
   const cancelled = detail.status === "cancelled";
   const noShow = detail.status === "no_show";
+  const restoreBlocked =
+    detail.refunds.length > 0 || detail.coupons.length > 0 || detail.couponMovements.length > 0;
   return (
     <DropdownMenu>
       <DropdownMenuTrigger
@@ -42,9 +44,21 @@ export function ReservationStatusMenu({
         <DropdownMenuGroup>
           {cancelled || noShow ? (
             <>
-              <DropdownMenuItem onClick={() => edit({ kind: "status", status: "confirmed" })}>
+              <DropdownMenuItem
+                disabled={restoreBlocked}
+                aria-describedby={restoreBlocked ? "restore-blocked" : undefined}
+                onClick={() => edit({ kind: "status", status: "confirmed" })}
+              >
                 Restaurar reserva
               </DropdownMenuItem>
+              {restoreBlocked && (
+                <p
+                  id="restore-blocked"
+                  className="max-w-64 px-2 py-1 text-xs text-muted-foreground"
+                >
+                  Tiene reembolsos o cupones. Crea una nueva reserva.
+                </p>
+              )}
               {noShow && (
                 <DropdownMenuItem onClick={() => edit({ kind: "correct-status" })}>
                   Corregir estado…

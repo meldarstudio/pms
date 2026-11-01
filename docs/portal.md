@@ -45,7 +45,7 @@ clear of screen edges. Resizing does not remount the forms or discard drafts, an
 closing/navigation retain the existing unsaved-change guards. Desktop editor width
 limits are unchanged.
 
-Status corrections, cancellation/restoration and record-deletion confirmations remain
+Status corrections, cancellation/restoration, later charge waivers and record-deletion confirmations remain
 inset with scrolling content and visible actions, as do the shared lifecycle
 confirmations and the Devolver…/Confirmar reembolso refund dialogs. The full-screen
 treatment is for reservation editors, not refund dialogs. The page's

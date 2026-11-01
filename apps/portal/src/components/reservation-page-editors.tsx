@@ -5,6 +5,8 @@ import { BookingEditor, DiscardChanges } from "@/components/room-booking-dialog"
 import { GuestEntryForm, PaymentForm, paymentMethods } from "@/components/reservation-entry-forms";
 import { CouponIssued, RefundForm, ResolveRefundForm } from "@/components/refund-forms";
 import { CancellationForm } from "@/components/cancellation-form";
+import { WaiverForm } from "@/components/waiver-form";
+import { RestoreReservationForm } from "@/components/restore-reservation-form";
 import { WorkflowBill } from "@/components/workflow-bill";
 import { ChoiceField } from "@/components/workflow-fields";
 import { useDirtyRoomCheckIn } from "@/components/dirty-room-check-in";
@@ -48,6 +50,7 @@ export type ReservationEditorTarget =
   | { kind: "guest"; id?: string }
   | { kind: "payment"; id?: string }
   | { kind: "refund" }
+  | { kind: "waiver" }
   | { kind: "resolve-refund"; id: string; failing: boolean }
   | { kind: "delete-payment" | "delete-guest"; id: string }
   | { kind: "correct-status" }
@@ -55,6 +58,8 @@ export type ReservationEditorTarget =
 
 function editorTitle(target: ReservationEditorTarget, detail: ReservationDetail) {
   switch (target.kind) {
+    case "waiver":
+      return "Perdonar cargo";
     case "stay":
       return "Editar estadía";
     case "contact":
@@ -79,7 +84,7 @@ function editorTitle(target: ReservationEditorTarget, detail: ReservationDetail)
         : target.status === "no_show"
           ? "¿El huésped no se presentó?"
           : detail.status === "cancelled" || detail.status === "no_show"
-            ? "Restaurar reserva"
+            ? "¿Restaurar reserva?"
             : `Confirmar ${reservationStatusLabel(target.status)}`;
     case "correct-status":
       return "Corregir estado";
@@ -163,13 +168,17 @@ export function ReservationPageEditor({
                 {description ??
                   (target.kind === "stay"
                     ? "Revisa las fechas, habitaciones y el importe antes de guardar."
-                    : target.kind === "refund"
-                      ? "Pasa el importe a un cupón para una próxima estadía o devuelve el dinero."
-                      : target.kind === "resolve-refund"
-                        ? target.failing
-                          ? "El reembolso queda registrado como fallido y el dinero sigue por devolver."
-                          : "Registra si el dinero llegó al huésped."
-                        : "Los cambios se guardan al confirmar.")}
+                    : target.kind === "status" &&
+                        target.status === "confirmed" &&
+                        (detail.status === "cancelled" || detail.status === "no_show")
+                      ? "Volverá a Confirmada."
+                      : target.kind === "refund"
+                        ? "Pasa el importe a un cupón para una próxima estadía o devuelve el dinero."
+                        : target.kind === "resolve-refund"
+                          ? target.failing
+                            ? "El reembolso queda registrado como fallido y el dinero sigue por devolver."
+                            : "Registra si el dinero llegó al huésped."
+                          : "Los cambios se guardan al confirmar.")}
               </DialogDescription>
             )}
           </DialogHeader>
@@ -251,6 +260,25 @@ export function ReservationPageEditor({
               </div>
             )
           ) : target.kind === "status" &&
+            target.status === "confirmed" &&
+            (detail.status === "cancelled" || detail.status === "no_show") ? (
+            <RestoreReservationForm
+              detail={detail}
+              disabled={saving}
+              onSave={send}
+              onDone={onClose}
+              onCancel={close}
+            />
+          ) : target.kind === "waiver" ? (
+            <WaiverForm
+              detail={detail}
+              disabled={saving}
+              onDirtyChange={handleDirty}
+              onSave={send}
+              onDone={onClose}
+              onCancel={close}
+            />
+          ) : target.kind === "status" &&
             (target.status === "cancelled" || target.status === "no_show") ? (
             <CancellationForm
               detail={detail}
@@ -298,7 +326,7 @@ function ReservationActionForm({
 }: {
   target: Exclude<
     ReservationEditorTarget,
-    { kind: "guest" | "stay" | "refund" | "resolve-refund" }
+    { kind: "guest" | "stay" | "refund" | "resolve-refund" | "waiver" }
   >;
   detail: ReservationDetail;
   disabled: boolean;

@@ -495,9 +495,15 @@ editor for another inventory-holding status and saves `set-status` on confirmati
 failure retains the choice. **Marcar como no presentado** is offered only for Confirmada
 on or after check-in in the property calendar. Cancelled stays instead offer
 **Restaurar reserva**; No-show stays offer **Restaurar reserva** and **Corregir estado…**,
-never **Cancelar reserva**. Restoration currently has a destination
-status and current server bill/availability validation, and still warns before
-entering a dirty room. Unfulfilled stays offer no status actions. Disable header status
+never **Cancelar reserva**. **Restaurar reserva** opens **¿Restaurar reserva?** with
+**Volverá a Confirmada.** and the server-preview account status, without a status
+picker or check-in. Preview availability issues (type inventory or an assigned room)
+and failed/loading previews disable confirmation and hide unconfirmed account amounts;
+failed reads offer Reintentar. Property-day changes obtain a new preview. Any refund
+record, including requested/failed, or any issued, redeemed or returned coupon movement
+keeps restoration visible but disabled with **Tiene reembolsos o cupones. Crea una nueva
+reserva.** The backend rechecks these restrictions and availability when saving.
+Unfulfilled stays offer no status actions. Disable header status
 actions while a page editor or changed discount draft is open, and while any reservation
 save is queued/running. Guest/payment deletion requires confirmation; records remain
 editable on cancelled reservations. See [phone editor sizing](portal.md#reservation-overlays)
@@ -530,6 +536,28 @@ for viewport, scrolling and draft protections.
   for the same opening lifecycle/history, preventing a lost response from applying
   another waiver. An edited retry of an already-committed attempt refreshes and closes
   with confirmation that the first changes were saved.
+
+Cancelled and No-show stays can also **Perdonar cargo** later from the charge row's
+pencil in Cuenta, only while the active cancellation has a positive remaining charge:
+
+- The inset dialog prefills **Importe a perdonar** with that remaining charge and caps
+  it there; **Motivo** is required. It previews `waive-cancellation-charge` and shows
+  only the resulting account status and any newly returned coupon value, not a full
+  bill. **No se puede deshacer.** warns that there is no un-waive action.
+- Invalid drafts and stale/loading/failed previews block saving and hide unconfirmed
+  results. A property-day change refreshes the preview without replacing either field;
+  read failures offer Reintentar. Unknown preview/save failures are logged and shown
+  as generic Spanish, not raw backend text. A concurrent changed-charge rejection stays
+  beside the amount, preserving both fields.
+- Confirmation sends only the waiver amount and reason. Success stays on the page,
+  says **Cargo perdonado**, appends **· Por devolver {importe}** for saved refund due,
+  and never opens Devolver… automatically. Waivers after refunds can raise refund due.
+  Failed/uncertain attempts retain one request ID across edited/reopened drafts for
+  the same opening cancellation history, so an already-committed attempt cannot add a
+  second waiver.
+- Each waiver has its own **Cargo perdonado** row and reason. After restore and another
+  cancellation, only the active cancellation and its waivers appear; older history stays
+  in the API. Fully waived charges have no pencil, and Unfulfilled never has one.
 
 Money lives in one full-width **Cuenta** card
 ([`reservation-account.tsx`](../apps/portal/src/components/reservation-account.tsx));

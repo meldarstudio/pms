@@ -513,13 +513,14 @@ it("invalidates check-in undo after cancellation, even when the status later ret
   assert.equal(saved.status, "cancelled", "An old undo must not silently restore a cancellation");
   assert.equal(writes.length, 2);
   await statusMenu("Restaurar reserva");
-  await chooseStatus("Check-in");
-  await page.until(() => !button("Guardar cambios").disabled);
+  await page.until(() => !button("Restaurar reserva").disabled);
   await submit();
   await page.until(() => !window.document.querySelector('[role="dialog"] form'));
+  await click("Hacer check-in");
+  await page.until(() => saved.status === "checked_in");
   await React.act(async () => undo.click());
   assert.equal(saved.status, "checked_in", "A status cycle must not revive the invalidated undo");
-  assert.equal(writes.length, 3);
+  assert.equal(writes.length, 4);
   assert.ok(!undo.isConnected || undo.disabled);
 });
 
@@ -1597,42 +1598,36 @@ it("retries a failed cancellation preview and keeps the reason after a failed sa
   ]);
 });
 
-it("warns before restoring a cancelled reservation into a dirty room, then restores it", async () => {
-  saved = {
-    ...saved,
-    status: "cancelled",
-    cancelledAt: "2026-10-18T15:00:00Z",
-    rooms: [
-      { ...saved.rooms[0], roomId: "room-1", roomNumber: "101", housekeepingStatus: "dirty" },
-    ],
-  };
-  mockApi({
-    preview: () => ({ billing: { ...saved, status: "checked_in" }, validation: { issues: [] } }),
-  });
-  await render();
-  const warning = () =>
-    [...window.document.querySelectorAll('[role="alertdialog"]')].find((item) =>
-      item.textContent.includes("La habitación 101 está sucia"),
-    );
-  const warningButton = (label: string) =>
-    [...warning()!.querySelectorAll<HTMLElement>("button")].find(
-      (item) => item.textContent.trim() === label,
-    )!;
-  await statusMenu("Restaurar reserva");
-  await chooseStatus("Check-in");
-  await page.until(() => !button("Guardar cambios").disabled);
-  await submit();
-  await page.until(() => warning() !== undefined, "Restoring into a dirty room must warn");
-  await React.act(async () => warningButton("Volver").click());
-  await page.until(() => warning() === undefined);
-  assert.match(popup()!.textContent, /Restaurar reserva/);
-  assert.equal(writes.length, 0);
-  await submit();
-  await page.until(() => warning() !== undefined);
-  await React.act(async () => warningButton("Hacer check-in").click());
-  await page.until(() => saved.status === "checked_in" && !popup());
-  assert.deepEqual(writes[0].actions, [{ type: "set-status", status: "checked_in" }]);
-});
+it.each(["cancelled", "no_show"] as const)(
+  "restores %s only to Confirmada without a picker or dirty-room check-in",
+  async (status) => {
+    saved = {
+      ...saved,
+      status,
+      cancelledAt: "2026-10-18T15:00:00Z",
+      rooms: [
+        { ...saved.rooms[0], roomId: "room-1", roomNumber: "101", housekeepingStatus: "dirty" },
+      ],
+    };
+    mockApi({
+      preview: () => ({
+        billing: { ...saved, status: "confirmed", balanceCents: 9000 },
+        validation: { issues: [] },
+      }),
+    });
+    await render();
+    await statusMenu("Restaurar reserva");
+    assert.match(text(popup()!), /¿Restaurar reserva\? Volverá a Confirmada\./);
+    assert.equal(popup()!.querySelector('[role="combobox"]'), null);
+    await page.until(() => !button("Restaurar reserva").disabled);
+    assert.match(text(popup()!), /Saldo pendiente S\/ 90/);
+    assert.equal(writes.length, 0);
+    await submit();
+    await page.until(() => saved.status === "confirmed" && !popup());
+    assert.equal(window.document.querySelector('[role="alertdialog"]'), null);
+    assert.deepEqual(writes[0].actions, [{ type: "set-status", status: "confirmed" }]);
+  },
+);
 
 it.each([
   ["roomTypeId", "not enough rooms available for those dates"],
@@ -1663,7 +1658,7 @@ it.each([
     assert.match(page.container.textContent, /Por devolver/);
     await statusMenu("Restaurar reserva");
     await page.until(() => popup()?.textContent.includes("Habitación 1:") === true);
-    assert.equal(button("Guardar cambios").disabled, true);
+    assert.equal(button("Restaurar reserva").disabled, true);
     assert.match(header().textContent, /Cancelada/);
     await submit();
     assert.equal(writes.length, 0);
@@ -3270,6 +3265,351 @@ function cancellation(fields: Partial<ReservationCancellation> = {}): Reservatio
     ...fields,
   };
 }
+
+function releasedStay(status: "cancelled" | "no_show" = "cancelled") {
+  const active = cancellation({ outcome: status });
+  saved = {
+    ...saved,
+    status,
+    cancellation: active,
+    cancellations: [active],
+    totalCents: 15000,
+    subtotalCents: 15000,
+    balanceCents: 15000,
+  };
+}
+
+it("waives a remaining charge later with a required reason and shows the saved refund due", async () => {
+  releasedStay();
+  saved = { ...saved, paidCents: 15000, balanceCents: 0, payments: [payment()] };
+  const waived = (): ReservationDetail => ({
+    ...saved,
+    totalCents: 10000,
+    balanceCents: -5000,
+    refundDueCents: 5000,
+    cancellation: cancellation({
+      waivedCents: 5000,
+      finalChargeCents: 10000,
+      waivers: [
+        {
+          id: "later",
+          amountCents: 5000,
+          reason: "Error del hotel",
+          recordedAt: "2026-10-19T15:00:00Z",
+          recordedBy: "admin",
+        },
+      ],
+    }),
+  });
+  mockApi({
+    preview: () => ({ billing: waived(), validation: { issues: [] } }),
+    write: () => {
+      saved = waived();
+      return Response.json(saved);
+    },
+  });
+  await render("", true, true);
+  await click("Perdonar cargo");
+  assert.match(text(popup()!), /No se puede deshacer\./);
+  assert.equal(field("amount").value, "150.00");
+  await submit();
+  assert.match(text(popup()!), /Indica el motivo/);
+  assert.equal(writes.length, 0);
+  await fill("amount", "50");
+  await fill("reason", "Error del hotel");
+  await page.until(() => !waiverSubmit().disabled);
+  assert.match(text(popup()!), /Por devolver S\/ 50/);
+  await React.act(async () => waiverSubmit().click());
+  await page.until(() => !popup());
+  assert.deepEqual(writes[0].actions, [
+    { type: "waive-cancellation-charge", amountCents: 5000, reason: "Error del hotel" },
+  ]);
+  assert.ok(summaryRows().includes("Cargo perdonado -S/ 50 Error del hotel"));
+  await page.until(() =>
+    text(window.document.body).includes("Cargo perdonado · Por devolver S/ 50"),
+  );
+});
+
+const waiverSubmit = () =>
+  popup()!.querySelector<import("happy-dom").HTMLButtonElement>('button[type="submit"]')!;
+
+it("caps a later No-show waiver at the remaining charge and raises refund due even after a refund", async () => {
+  releasedStay("no_show");
+  const first = {
+    id: "first",
+    amountCents: 5000,
+    reason: "Cliente frecuente",
+    recordedAt: "2026-10-18T15:00:00Z",
+    recordedBy: "admin",
+  };
+  saved = {
+    ...saved,
+    totalCents: 10000,
+    balanceCents: 0,
+    paidCents: 15000,
+    refundedCents: 5000,
+    refunds: [refund({ status: "completed", amountCents: 5000 })],
+    cancellation: cancellation({
+      outcome: "no_show",
+      finalChargeCents: 10000,
+      waivedCents: 5000,
+      waivers: [first],
+    }),
+  };
+  const finalBill = (): ReservationDetail => ({
+    ...saved,
+    totalCents: 0,
+    balanceCents: -10000,
+    refundDueCents: 10000,
+    cancellation: {
+      ...saved.cancellation!,
+      finalChargeCents: 0,
+      waivedCents: 15000,
+      waivers: [
+        first,
+        { ...first, id: "second", amountCents: 10000, reason: "Canceló por correo" },
+      ],
+    },
+  });
+  mockApi({
+    preview: () => ({ billing: finalBill(), validation: { issues: [] } }),
+    write: () => {
+      saved = finalBill();
+      return Response.json(saved);
+    },
+  });
+  await render();
+  await click("Perdonar cargo");
+  assert.equal(field("amount").value, "100.00");
+  await fill("reason", "Canceló por correo");
+  await fill("amount", "100.01");
+  await submit();
+  assert.equal(field("amount").getAttribute("aria-invalid"), "true");
+  assert.equal(writes.length, 0);
+  await fill("amount", "100");
+  await page.until(() => !waiverSubmit().disabled);
+  await submit();
+  await page.until(() => !popup());
+  assert.deepEqual(writes[0].actions, [
+    { type: "waive-cancellation-charge", amountCents: 10000, reason: "Canceló por correo" },
+  ]);
+  assert.ok(summaryRows().includes("Cargo perdonado -S/ 50 Cliente frecuente"));
+  assert.ok(summaryRows().includes("Cargo perdonado -S/ 100 Canceló por correo"));
+  assert.equal(account().querySelector('[aria-label="Perdonar cargo"]'), null);
+  assert.match(text(accountStatusLine()), /Por devolver S\/ 100/);
+});
+
+it("hides unconfirmed later-waiver amounts through failed, stale and property-day previews", async () => {
+  releasedStay();
+  const log = vi.spyOn(console, "error").mockImplementation(() => {});
+  let fail = true;
+  const finish = new Map<number, (preview: WorkflowPreview) => void>();
+  const quoted = (balanceCents: number): WorkflowPreview => ({
+    billing: { ...saved, balanceCents },
+    validation: { issues: [] },
+  });
+  mockApi({
+    preview: (command) =>
+      fail
+        ? Response.json({ error: "private preview details" }, { status: 503 })
+        : new Promise((resolve) => {
+            const action = command.actions[0];
+            if (action.type === "waive-cancellation-charge")
+              finish.set(action.amountCents, resolve);
+          }),
+  });
+  await render();
+  await click("Perdonar cargo");
+  await fill("reason", "Error del hotel");
+  await page.until(() => text(popup()!).includes("Ocurrió un error inesperado"));
+  assert.doesNotMatch(text(popup()!), /private preview details|Saldo pendiente/);
+  assert.ok(log.mock.calls.length);
+  assert.equal(waiverSubmit().disabled, true);
+  fail = false;
+  await click("Reintentar");
+  await page.until(() => finish.has(15000));
+  await fill("amount", "50");
+  await page.until(() => finish.has(5000));
+  await React.act(async () => finish.get(15000)!(quoted(0)));
+  assert.equal(waiverSubmit().disabled, true);
+  assert.doesNotMatch(text(popup()!), /Cuenta saldada/);
+  await submit();
+  assert.equal(writes.length, 0);
+  await React.act(async () => finish.get(5000)!(quoted(10000)));
+  await page.until(() => !waiverSubmit().disabled);
+  assert.match(text(popup()!), /Saldo pendiente S\/ 100/);
+  finish.delete(5000);
+  await React.act(async () => {
+    vi.setSystemTime(new Date("2026-10-20T05:00:00Z"));
+    window.dispatchEvent(new window.Event("focus"));
+  });
+  await page.until(() => finish.has(5000));
+  assert.equal(field("amount").value, "50");
+  assert.equal(field("reason").value, "Error del hotel");
+  assert.equal(waiverSubmit().disabled, true);
+  assert.doesNotMatch(text(popup()!), /Saldo pendiente/);
+  await React.act(async () => finish.get(5000)!(quoted(10000)));
+  await page.until(() => !waiverSubmit().disabled);
+});
+
+it("keeps later-waiver drafts and puts a concurrent charge rejection beside the amount", async () => {
+  releasedStay();
+  mockApi({
+    write: () =>
+      Response.json({ error: "waiver cannot exceed the cancellation charge" }, { status: 409 }),
+  });
+  await render();
+  await click("Perdonar cargo");
+  await fill("reason", "Error del hotel");
+  await page.until(() => !waiverSubmit().disabled);
+  await submit();
+  await page.until(() => field("amount").getAttribute("aria-invalid") === "true");
+  assert.match(text(popup()!), /El importe a perdonar no puede superar el cargo pendiente/);
+  assert.equal(field("reason").value, "Error del hotel");
+  await React.act(async () =>
+    field("amount").dispatchEvent(new window.FocusEvent("blur", { bubbles: true })),
+  );
+  assert.equal(field("amount").getAttribute("aria-invalid"), "true");
+  await fill("amount", "50");
+  await page.until(() => field("amount").getAttribute("aria-invalid") !== "true");
+});
+
+it("never doubles a later waiver after a lost response, closing and editing the reopened draft", async () => {
+  releasedStay();
+  vi.spyOn(console, "error").mockImplementation(() => {});
+  let receipt: WorkflowCommand | undefined;
+  mockApi({
+    write: (command) => {
+      if (receipt) {
+        assert.equal(command.requestId, receipt.requestId);
+        return Response.json(
+          { error: "request ID reused with a different payload" },
+          { status: 409 },
+        );
+      }
+      receipt = command;
+      saved = {
+        ...saved,
+        cancellation: cancellation({ waivedCents: 10000, finalChargeCents: 5000 }),
+      };
+      return Response.json({ error: "private save details" }, { status: 503 });
+    },
+  });
+  await render("", true, true);
+  await click("Perdonar cargo");
+  await fill("reason", "Error del hotel");
+  await fill("amount", "100");
+  await page.until(() => !waiverSubmit().disabled);
+  await submit();
+  await page.until(() =>
+    text(window.document.body).includes("No se pudieron guardar los cambios."),
+  );
+  assert.doesNotMatch(text(window.document.body), /private save details/);
+  await click("Cerrar");
+  await click("Descartar y salir");
+  await page.until(() => !popup());
+  await click("Perdonar cargo");
+  await fill("reason", "Otro motivo");
+  await fill("amount", "50");
+  await page.until(() => !waiverSubmit().disabled);
+  await submit();
+  await page.until(() => !popup());
+  assert.equal(saved.cancellation!.waivedCents, 10000);
+  assert.equal(writes[0].requestId, writes[1].requestId);
+  assert.match(text(window.document.body), /Los cambios ya se habían guardado/);
+});
+
+it.each([
+  "room is already assigned for those dates",
+  "reservation with refunds cannot be restored",
+  "reservation with coupons cannot be restored",
+])("blocks restoration after a failed server preview: %s", async (error) => {
+  releasedStay();
+  mockApi({ preview: () => Response.json({ error }, { status: 409 }) });
+  await render();
+  await statusMenu("Restaurar reserva");
+  await page.until(() => !!popup()?.querySelector('[role="alert"]'));
+  assert.equal(button("Restaurar reserva").disabled, true);
+  assert.doesNotMatch(text(popup()!), /Saldo pendiente|Cuenta saldada/);
+  assert.doesNotMatch(text(popup()!), new RegExp(error));
+  await submit();
+  assert.equal(writes.length, 0);
+});
+
+it("retries a generic restoration preview failure and waits again on property-day rollover", async () => {
+  releasedStay();
+  const log = vi.spyOn(console, "error").mockImplementation(() => {});
+  let finish!: (preview: WorkflowPreview) => void;
+  mockApi({
+    preview: () =>
+      previews.length === 1
+        ? Response.json({ error: "private restore details" }, { status: 503 })
+        : new Promise((resolve) => {
+            finish = resolve;
+          }),
+  });
+  await render();
+  await statusMenu("Restaurar reserva");
+  await page.until(() => text(popup()!).includes("Ocurrió un error inesperado"));
+  assert.doesNotMatch(text(popup()!), /private restore details/);
+  assert.ok(log.mock.calls.length);
+  await click("Reintentar");
+  await page.until(() => !!finish);
+  assert.equal(button("Restaurar reserva").disabled, true);
+  const bill: WorkflowPreview = {
+    billing: { ...saved, status: "confirmed", balanceCents: 30000 },
+    validation: { issues: [] },
+  };
+  await React.act(async () => finish(bill));
+  await page.until(() => !button("Restaurar reserva").disabled);
+  await React.act(async () => {
+    vi.setSystemTime(new Date("2026-10-20T05:00:00Z"));
+    window.dispatchEvent(new window.Event("focus"));
+  });
+  await page.until(() => previews.length === 3);
+  assert.equal(button("Restaurar reserva").disabled, true);
+  assert.doesNotMatch(text(popup()!), /Saldo pendiente/);
+  await submit();
+  assert.equal(writes.length, 0);
+  await React.act(async () => finish(bill));
+  await page.until(() => !button("Restaurar reserva").disabled);
+});
+
+it.each(["requested", "failed", "completed", "issue", "redeem", "return"] as const)(
+  "keeps restoration visible but disabled for any %s refund or coupon record",
+  async (kind) => {
+    releasedStay("no_show");
+    if (kind === "requested" || kind === "failed" || kind === "completed")
+      saved.refunds = [refund({ status: kind })];
+    else
+      saved.couponMovements = [
+        {
+          id: "movement",
+          couponId: "coupon",
+          code: "ABCD123456",
+          expiresOn: "2027-10-19",
+          kind,
+          amountCents: 5000,
+          recordedAt: "2026-10-19T15:00:00Z",
+          recordedOn: "2026-10-19",
+          recordedBy: "admin",
+        },
+      ];
+    mockApi();
+    await render();
+    await click("Acciones de la reserva");
+    const item = window.document.querySelector<HTMLElement>('[role="menuitem"]')!;
+    assert.equal(text(item), "Restaurar reserva");
+    assert.equal(item.getAttribute("aria-disabled"), "true");
+    assert.match(
+      text(window.document.body),
+      /Tiene reembolsos o cupones\. Crea una nueva reserva\./,
+    );
+    await React.act(async () => item.click());
+    assert.equal(popup(), null);
+    assert.equal(writes.length, 0);
+  },
+);
 
 it("bills a cancelled stay by its active charge and waivers and explains it in an alert", async () => {
   const waiver = (id: string, amountCents: number, reason: string) => ({

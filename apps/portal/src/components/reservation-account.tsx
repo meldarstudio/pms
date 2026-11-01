@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import { CopyIcon, CreditCardIcon, LockIcon, Undo2Icon } from "lucide-react";
+import { CopyIcon, CreditCardIcon, LockIcon, PencilIcon, Undo2Icon } from "lucide-react";
 import { cn } from "cn";
 import { parseISO } from "date-fns";
 import { accountStatus } from "@/components/balance-status";
@@ -56,7 +56,11 @@ export function AccountCard({
       </CardHeader>
       <CardContent className="grid gap-x-8 gap-y-5 @2xl/cuenta:grid-cols-[17rem_minmax(0,1fr)] @2xl/cuenta:items-start">
         <div className="flex min-w-0 flex-col gap-4">
-          <AccountSummary detail={detail} onDiscountDraftChange={onDiscountDraftChange} />
+          <AccountSummary
+            detail={detail}
+            edit={edit}
+            onDiscountDraftChange={onDiscountDraftChange}
+          />
           <section aria-label="Estado de la cuenta" className="flex flex-col gap-3">
             <div
               className={cn(
@@ -110,9 +114,11 @@ function SummaryRow({ label, value, note }: { label: ReactNode; value: string; n
 
 function AccountSummary({
   detail,
+  edit,
   onDiscountDraftChange,
 }: {
   detail: ReservationDetail;
+  edit: Props["edit"];
   onDiscountDraftChange?: (changed: boolean) => void;
 }) {
   const money = (cents: number) => formatMoney(cents, detail.currency);
@@ -134,9 +140,25 @@ function AccountSummary({
         <>
           <SummaryRow
             label={
-              (cancellation?.outcome ?? detail.status) === "no_show"
-                ? "Cargo por no presentarse"
-                : "Cargo por cancelación"
+              <span className="inline-flex items-center gap-1">
+                {(cancellation?.outcome ?? detail.status) === "no_show"
+                  ? "Cargo por no presentarse"
+                  : "Cargo por cancelación"}
+                {(detail.status === "cancelled" || detail.status === "no_show") &&
+                  cancellation &&
+                  cancellation.finalChargeCents > 0 && (
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon-xs"
+                      aria-label="Perdonar cargo"
+                      title="Perdonar cargo"
+                      onClick={() => edit({ kind: "waiver" })}
+                    >
+                      <PencilIcon />
+                    </Button>
+                  )}
+              </span>
             }
             value={money(cancellation?.policyChargeCents ?? detail.totalCents)}
           />
