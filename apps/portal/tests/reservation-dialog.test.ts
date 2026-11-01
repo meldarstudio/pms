@@ -469,6 +469,11 @@ it("revalidates an edited payment's blurred date error at the new property day w
   await fill(amount, "25");
   await React.act(async () => button("1 nov 2026").click());
   await React.act(async () => button("1 nov 2026").click());
+  assert.ok(
+    !editor().textContent.includes("La fecha del pago no puede ser futura."),
+    "An untouched date stays quiet until save",
+  );
+  await React.act(async () => button("Guardar").click());
   await until(
     () => editor().textContent.includes("La fecha del pago no puede ser futura."),
     "Editing uses the same future-date rule",
@@ -1439,7 +1444,7 @@ const creationTotal = () =>
 
 function discountTrigger() {
   const trigger = Array.from(window.document.querySelectorAll("button")).find((item) =>
-    /^(Añadir descuento|Descuento)/.test(item.textContent.trim()),
+    item.textContent.trim().startsWith("Descuento"),
   );
   assert.ok(trigger, "The summary must offer the reservation discount");
   return trigger;
@@ -1627,13 +1632,13 @@ it("defaults to Flexible, previews and creates under the chosen rate plan", asyn
   assert.equal(writes[1].ratePlan, "non_refundable");
 });
 
-it("summarizes the server preview's total, payment schedule and cancellation terms per plan", async () => {
+it("summarizes the server preview's total, initial payment and cancellation terms per plan", async () => {
   mockCreationApi(async () => Response.json(detail(), { status: 201 }));
   await renderNewBooking(() => {}, { ...createTarget, checkIn: "2026-11-10" });
   await pickDay("Check-out", "12");
   await until(() => creationTotal() === "S/300", "Two nights must be previewed");
   assert.equal(summaryAmount("Pago inicial requerido"), "S/150");
-  assert.equal(summaryAmount("Pago restante programado"), "S/150");
+  assert.equal(summaryText().includes("Pago restante"), false);
   assert.deepEqual(cancellationText(), [
     "Cancelación gratuita hasta el 8 nov.",
     "Después, cargo de la primera noche: S/150",
@@ -1647,7 +1652,6 @@ it("summarizes the server preview's total, payment schedule and cancellation ter
   await choose("Tarifa", "No reembolsable");
   await until(() => creationTotal() === "S/270", "Non-refundable must be repriced by the server");
   assert.equal(summaryAmount("Pago inicial requerido"), "S/270");
-  assert.equal(summaryAmount("Pago restante programado"), "S/0");
   assert.deepEqual(cancellationText(), [
     "Tarifa no reembolsable · Cargo del total de la reserva: S/270",
   ]);
@@ -1712,7 +1716,7 @@ it("keeps an unapplied discount draft out of the bill and blocks creating while 
   );
   await until(() => !discountInput(), "Esc must close the popover");
   assert.ok(window.document.querySelector('[role="dialog"]'), "The reservation dialog stays open");
-  assert.ok(discountTrigger().textContent.includes("Añadir descuento"));
+  assert.equal(discountTrigger().textContent.replace(/\s/g, ""), "DescuentoS/0");
   assert.equal(creationTotal(), "S/150");
   assert.ok(previews.every((preview) => !preview.discountCents));
   await openDiscount();

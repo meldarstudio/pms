@@ -47,7 +47,7 @@ export type ReservationEditorTarget =
   | { kind: "guest"; id?: string }
   | { kind: "payment"; id?: string }
   | { kind: "refund" }
-  | { kind: "resolve-refund"; id: string }
+  | { kind: "resolve-refund"; id: string; failing: boolean }
   | { kind: "delete-payment" | "delete-guest"; id: string }
   | { kind: "correct-status" }
   | { kind: "status"; status: Extract<WorkflowAction, { type: "set-status" }>["status"] };
@@ -67,7 +67,7 @@ function editorTitle(target: ReservationEditorTarget, detail: ReservationDetail)
     case "refund":
       return "Devolver";
     case "resolve-refund":
-      return "Confirmar reembolso";
+      return target.failing ? "Marcar como fallido" : "Confirmar reembolso";
     case "delete-payment":
       return "Eliminar registro de pago";
     case "delete-guest":
@@ -161,7 +161,9 @@ export function ReservationPageEditor({
                   : target.kind === "refund"
                     ? "En mano o por transferencia. El importe se reparte entre los pagos recibidos."
                     : target.kind === "resolve-refund"
-                      ? "Registra si el dinero llegó al huésped."
+                      ? target.failing
+                        ? "El reembolso queda registrado como fallido y el dinero sigue por devolver."
+                        : "Registra si el dinero llegó al huésped."
                       : "Los cambios se guardan al confirmar.")}
             </DialogDescription>
           </DialogHeader>
@@ -204,7 +206,7 @@ export function ReservationPageEditor({
               disabled={saving}
               onDirtyChange={handleDirty}
               onSave={send}
-              onSaved={onSaved ?? onClose}
+              onDone={onClose}
               onCancel={close}
             />
           ) : target.kind === "resolve-refund" ? (
@@ -212,10 +214,11 @@ export function ReservationPageEditor({
               <ResolveRefundForm
                 detail={detail}
                 refund={refund}
+                failing={target.failing}
                 disabled={saving}
                 onDirtyChange={handleDirty}
                 onSave={send}
-                onSaved={onSaved ?? onClose}
+                onDone={onClose}
                 onCancel={close}
               />
             ) : (

@@ -99,13 +99,29 @@ export function reservationPreviewKey(id: string, ...parts: PreviewParts) {
   return [previewScope, id, ...parts] as const;
 }
 
+const dependentReads = [
+  "reservations",
+  "availability",
+  "inventory",
+  "payments",
+  "calendar",
+  "coupon",
+];
+
+async function refreshAll(client: QueryClient, id: string) {
+  await client.cancelQueries({ queryKey: [previewScope, id] });
+  await Promise.all([
+    client.invalidateQueries({ queryKey: ["reservation", id] }),
+    ...dependentReads.map((key) => client.invalidateQueries({ queryKey: [key] })),
+    client.invalidateQueries({ queryKey: [previewScope, id] }),
+  ]);
+}
+
 async function refresh(client: QueryClient, saved: ReservationDetail, actions: WorkflowAction[]) {
   client.setQueryData(["reservation", saved.id], saved);
   await client.cancelQueries({ queryKey: [previewScope, saved.id] });
   await Promise.all([
-    ...["reservations", "availability", "inventory", "payments", "calendar", "coupon"].map((key) =>
-      client.invalidateQueries({ queryKey: [key] }),
-    ),
+    ...dependentReads.map((key) => client.invalidateQueries({ queryKey: [key] })),
     client.invalidateQueries({ queryKey: [previewScope, saved.id] }),
     actions.some((action) => action.type === "contact") &&
       client.invalidateQueries({
@@ -137,27 +153,36 @@ function enqueue(
   return result;
 }
 
+export const earlierAttemptSaved = "request ID reused with a different payload";
+
 function save(
   client: QueryClient,
   id: string,
   actions: WorkflowAction[],
+  retryKey?: string,
 ): Promise<ReservationCommandResult> {
   const snapshot = JSON.stringify(actions);
   const key = `${id}\n${snapshot}`;
+  const memory = retryKey === undefined ? key : `${id}\n#${retryKey}`;
   const queue = saveQueue(client);
   const joined = queue.joinable.get(key);
   if (joined?.session === unsettledCommands(client)) return joined.result;
   const result = enqueue(client, id, async (unsettled) => {
-    const command = unsettled.get(key)?.command ?? {
-      requestId: crypto.randomUUID(),
+    const command = {
+      requestId: unsettled.get(memory)?.command.requestId ?? crypto.randomUUID(),
       actions: JSON.parse(snapshot) as WorkflowAction[],
     };
     let saved: ReservationDetail;
     try {
       saved = await sendWorkflow(id, command);
-      unsettled.delete(key);
+      unsettled.delete(memory);
     } catch (cause) {
-      unsettled.set(key, {
+      if (memory !== key && cause instanceof ApiError && cause.code === earlierAttemptSaved) {
+        unsettled.delete(memory);
+        if (unsettledCommands(client) === unsettled) await refreshAll(client, id);
+        return failure(cause);
+      }
+      unsettled.set(memory, {
         command,
         uncertain: !(cause instanceof ApiError) || cause.status >= 500,
       });
@@ -187,8 +212,8 @@ export function useReservationCommands(id: string | null) {
     () => id !== null && queue.saving.has(id),
   );
   const send = useCallback(
-    (actions: WorkflowAction[]): Promise<ReservationCommandResult> =>
-      id === null ? Promise.resolve(failure(null)) : save(client, id, actions),
+    (actions: WorkflowAction[], retryKey?: string): Promise<ReservationCommandResult> =>
+      id === null ? Promise.resolve(failure(null)) : save(client, id, actions, retryKey),
     [client, id],
   );
   const canReplay = useCallback(

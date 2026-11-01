@@ -18,7 +18,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import type { ReservationDetail, ReservationPayment, ReservationRefund } from "@/lib/api";
+import type { ReservationDetail, ReservationPayment } from "@/lib/api";
 import { format } from "@/lib/dates";
 import { formatMoney } from "@/lib/money";
 import { propertyToday } from "@/lib/property-calendar";
@@ -159,7 +159,6 @@ function AccountSummary({
           <SummaryRow label="Subtotal" value={money(detail.subtotalCents)} />
           <div>
             <DiscountPopover
-              variant="row"
               appliedCents={detail.savedDiscountCents}
               shownCents={detail.discountCents}
               currency={detail.currency}
@@ -216,15 +215,6 @@ function paymentLock(detail: ReservationDetail, payment: ReservationPayment) {
   return null;
 }
 
-function refundNote(refund: ReservationRefund) {
-  const parts = [refund.status === "failed" ? refund.failureReason : null];
-  if (refund.requestedBy) parts.push(`Registró ${refund.requestedBy}`);
-  if (refund.resolvedBy && refund.resolvedBy !== refund.requestedBy)
-    parts.push(`${refund.status === "failed" ? "Marcó fallido" : "Confirmó"} ${refund.resolvedBy}`);
-  const note = parts.filter(Boolean).join(" · ");
-  return note && <span className="block w-full text-xs text-muted-foreground">{note}</span>;
-}
-
 function movements(
   detail: ReservationDetail,
   edit: Props["edit"],
@@ -274,7 +264,6 @@ function movements(
           Reembolso
           {refund.status === "requested" && <Badge variant="preview">Solicitado</Badge>}
           {refund.status === "failed" && <Badge variant="secondary">Fallido</Badge>}
-          {refundNote(refund)}
         </span>
       ),
       method: methodLabel(refund.method),
@@ -290,16 +279,14 @@ function movements(
       muted: refund.status !== "completed",
       action:
         resolveRefunds && refund.status === "requested" ? (
-          <Button
-            type="button"
-            size="xs"
-            variant="outline"
+          <RowActions
+            label={`Acciones del reembolso de ${amount}`}
             disabled={disabled}
-            aria-label={`Confirmar reembolso de ${amount}`}
-            onClick={() => edit({ kind: "resolve-refund", id: refund.id })}
-          >
-            Confirmar
-          </Button>
+            editLabel="Confirmar reembolso"
+            deleteLabel="Marcar como fallido"
+            onEdit={() => edit({ kind: "resolve-refund", id: refund.id, failing: false })}
+            onDelete={() => edit({ kind: "resolve-refund", id: refund.id, failing: true })}
+          />
         ) : null,
     });
   }

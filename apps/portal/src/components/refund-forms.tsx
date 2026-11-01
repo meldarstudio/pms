@@ -1,4 +1,4 @@
-import { useEffect, useId, useRef, useState, type ReactNode, type RefObject } from "react";
+import { useEffect, useId, useState, type ReactNode } from "react";
 import { useSelector } from "@tanstack/react-form";
 import type { ZodSafeParseResult } from "zod";
 import { accountStatus } from "@/components/balance-status";
@@ -10,7 +10,7 @@ import type { ReservationDetail, ReservationRefund, WorkflowAction } from "@/lib
 import { setServerErrors } from "@/lib/form-errors";
 import { formatMoney, parseMajorToCents } from "@/lib/money";
 import { propertyToday } from "@/lib/property-calendar";
-import type { ReservationCommandResult } from "@/lib/reservation-commands";
+import { earlierAttemptSaved, type ReservationCommandResult } from "@/lib/reservation-commands";
 import { blurThenChange, submitForm, useReservationForm } from "@/lib/reservation-form";
 import {
   refundCompletionSchema,
@@ -26,8 +26,8 @@ import { usePropertyCalendar } from "@/lib/use-property-calendar";
 type FormProps = {
   detail: ReservationDetail;
   disabled: boolean;
-  onSave: (actions: WorkflowAction[]) => Promise<ReservationCommandResult>;
-  onSaved: (saved: ReservationDetail) => void;
+  onSave: (actions: WorkflowAction[], retryKey?: string) => Promise<ReservationCommandResult>;
+  onDone: () => void;
   onCancel: () => void;
   onDirtyChange: (dirty: boolean) => void;
 };
@@ -48,11 +48,11 @@ async function finish(
   result: ReservationCommandResult,
   title: string,
   form: Parameters<typeof setServerErrors>[0],
-  onSaved: (saved: ReservationDetail) => void,
+  onDone: () => void,
 ) {
   if (result.status === "saved") {
     toast.add({ title, type: "success" });
-    onSaved(result.reservation);
+    onDone();
   } else if (result.status === "failed") toastError("No se pudo guardar", result.message);
   else setServerErrors(form, result.fields);
 }
@@ -62,17 +62,14 @@ function RefundFormLayout({
   children,
   actions,
   onSubmit,
-  formRef,
 }: {
   saving: boolean;
   children: ReactNode;
   actions: ReactNode;
   onSubmit: () => Promise<void>;
-  formRef?: RefObject<HTMLFormElement | null>;
 }) {
   return (
     <form
-      ref={formRef}
       noValidate
       className="flex min-h-0 flex-1 flex-col gap-6 overflow-hidden"
       onSubmit={(event) => void submitForm(event, onSubmit)}
@@ -91,7 +88,7 @@ export function RefundForm({
   detail,
   disabled,
   onSave,
-  onSaved,
+  onDone,
   onCancel,
   onDirtyChange,
 }: FormProps) {
@@ -104,9 +101,11 @@ export function RefundForm({
       refundCapacityCents(detail),
     );
     const newest = firstRefundPayment(detail)?.method;
+    const basis = { payments: detail.payments, refunds: detail.refunds };
     return {
       maxCents,
-      basis: { payments: detail.payments, refunds: detail.refunds },
+      basis,
+      retryKey: `refund\n${JSON.stringify(basis)}`,
       schema: refundSchema(maxCents, detail.currency),
       defaults: refundDefaults(
         maxCents,
@@ -138,11 +137,21 @@ export function RefundForm({
         reason: parsed.reason,
         ...(completed ? { completed } : {}),
       }));
+      const result = await onSave(actions, setup.retryKey);
+      if (result.status === "failed" && result.code === earlierAttemptSaved) {
+        toast.add({
+          title: "Este reembolso ya se había registrado",
+          description: "Se guardó con los datos del primer intento. Revísalo en Movimientos.",
+          priority: "high",
+          timeout: 7000,
+        });
+        return onDone();
+      }
       await finish(
-        await onSave(actions),
+        result,
         completed ? "Reembolso registrado" : "Reembolso solicitado",
         form,
-        onSaved,
+        onDone,
       );
     },
   });
@@ -217,44 +226,28 @@ export function ResolveRefundForm({
   refund,
   disabled,
   onSave,
-  onSaved,
+  onDone,
   onCancel,
   onDirtyChange,
-}: FormProps & { refund: ReservationRefund }) {
+  failing,
+}: FormProps & { refund: ReservationRefund; failing: boolean }) {
   const { today } = usePropertyCalendar();
-  const [failing, setFailing] = useState(false);
-  const failingRef = useRef(false);
-  const formRef = useRef<HTMLFormElement>(null);
-  const switched = useRef(false);
-  function chooseFailing(next: boolean) {
-    failingRef.current = next;
-    switched.current = true;
-    setFailing(next);
-  }
-  useEffect(() => {
-    if (!switched.current) return;
-    switched.current = false;
-    const id = formRef.current?.querySelector("fieldset label[for]")?.getAttribute("for");
-    if (id) document.getElementById(id)?.focus();
-  }, [failing]);
   const form = useReservationForm({
     defaultValues: { date: propertyToday(), reference: "", reason: "" },
     validationLogic: blurThenChange(),
     validators: {
       onDynamic: ({ value }) =>
-        fieldIssues(
-          (failingRef.current ? refundFailureSchema : refundCompletionSchema).safeParse(value),
-        ),
+        fieldIssues((failing ? refundFailureSchema : refundCompletionSchema).safeParse(value)),
     },
     onSubmit: async ({ value }) => {
       if (disabled) return;
-      if (failingRef.current) {
+      if (failing) {
         const { reason } = refundFailureSchema.parse(value);
         await finish(
           await onSave([{ type: "fail-refund", refundId: refund.id, reason }]),
           "Reembolso marcado como fallido",
           form,
-          onSaved,
+          onDone,
         );
         return;
       }
@@ -271,7 +264,7 @@ export function ResolveRefundForm({
         ]),
         "Reembolso confirmado",
         form,
-        onSaved,
+        onDone,
       );
     },
   });
@@ -285,43 +278,17 @@ export function ResolveRefundForm({
   const method = paymentMethods.find((entry) => entry.value === refund.method)?.label;
   return (
     <RefundFormLayout
-      formRef={formRef}
       saving={saving}
       onSubmit={() => form.handleSubmit()}
       actions={
-        failing ? (
-          <>
-            <Button
-              type="button"
-              variant="outline"
-              disabled={saving}
-              onClick={() => chooseFailing(false)}
-            >
-              Volver
-            </Button>
-            <Button type="submit" variant="destructive" disabled={saving}>
-              {saving ? "Guardando…" : "Marcar como fallido"}
-            </Button>
-          </>
-        ) : (
-          <>
-            <Button
-              type="button"
-              variant="ghost"
-              className="mr-auto"
-              disabled={saving}
-              onClick={() => chooseFailing(true)}
-            >
-              Marcar como fallido
-            </Button>
-            <Button type="button" variant="outline" disabled={saving} onClick={onCancel}>
-              Cerrar
-            </Button>
-            <Button type="submit" disabled={saving}>
-              {saving ? "Guardando…" : "Confirmar reembolso"}
-            </Button>
-          </>
-        )
+        <>
+          <Button type="button" variant="outline" disabled={saving} onClick={onCancel}>
+            Cerrar
+          </Button>
+          <Button type="submit" variant={failing ? "destructive" : "default"} disabled={saving}>
+            {saving ? "Guardando…" : failing ? "Marcar como fallido" : "Confirmar reembolso"}
+          </Button>
+        </>
       }
     >
       <FieldDescription>
@@ -336,14 +303,9 @@ export function ResolveRefundForm({
         </FieldDescription>
       )}
       {failing ? (
-        <>
-          <FieldDescription>
-            El reembolso queda registrado como fallido y el dinero sigue por devolver.
-          </FieldDescription>
-          <form.AppField name="reason">
-            {(field) => <field.Text label="Motivo" type="textarea" max={2000} required />}
-          </form.AppField>
-        </>
+        <form.AppField name="reason">
+          {(field) => <field.Text label="Motivo" type="textarea" max={2000} required />}
+        </form.AppField>
       ) : (
         <>
           <form.AppField name="date">

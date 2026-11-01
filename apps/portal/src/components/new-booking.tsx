@@ -485,7 +485,7 @@ export function NewBooking({
                     ? "Revisa el precio por noche para ver el total."
                     : !previewInput
                       ? "Selecciona los tipos de habitación para ver el total."
-                      : "Calculando…"
+                      : null
               }
               error={
                 previewInput &&

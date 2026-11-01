@@ -1,5 +1,5 @@
 import { useId, type ComponentProps, type FormEvent } from "react";
-import { createFormHook, createFormHookContexts } from "@tanstack/react-form";
+import { createFormHook, createFormHookContexts, useSelector } from "@tanstack/react-form";
 import { TextField, ChoiceField, PhoneField } from "@/components/workflow-fields";
 import type { PhoneValue } from "./phone";
 import { errorMessage } from "./form-errors";
@@ -12,10 +12,11 @@ const { fieldContext, formContext, useFieldContext } = createFormHookContexts();
 function useFormControl<T>(live = false) {
   const field = useFieldContext<T>();
   const id = useId();
+  const attempted = useSelector(field.form.store, (state) => state.submissionAttempts > 0);
   const reveal =
     live ||
-    field.state.meta.isBlurred ||
-    field.form.state.submissionAttempts > 0 ||
+    (field.state.meta.isBlurred && field.state.meta.isDirty) ||
+    attempted ||
     !!field.state.meta.errorMap.onServer;
   return {
     id,
@@ -74,7 +75,6 @@ function FormNightlyPrice() {
       <Button
         type="button"
         variant="outline"
-        size="xs"
         className="max-md:w-full"
         onClick={() => control.onChange("")}
       >
@@ -82,8 +82,8 @@ function FormNightlyPrice() {
       </Button>
     );
   return (
-    <div className="flex min-w-0 items-start gap-1">
-      <div className="min-w-0 max-w-56 flex-1">
+    <div className="flex min-w-0 items-start gap-2">
+      <div className="min-w-0 flex-1 md:max-w-56">
         <TextField
           {...control}
           value={control.value}
@@ -93,10 +93,11 @@ function FormNightlyPrice() {
       </div>
       <Button
         type="button"
-        variant="ghost"
-        size="icon-xs"
-        className="mt-5"
+        variant="outline"
+        size="icon"
+        className="mt-[calc(0.75rem*1.375+0.5rem)]"
         aria-label="Deshacer precio por noche"
+        title="Deshacer precio por noche"
         onClick={() => {
           control.onChange(undefined);
           field.setMeta((meta) => ({ ...meta, isBlurred: false, errorMap: {} }));

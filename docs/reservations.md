@@ -446,7 +446,8 @@ before deploying or migrating.
 ### Prices for newly reserved rooms
 
 Creation and **Agregar habitación** in the dialog's Detalles and the page's stay
-editor offer **Cambiar precio por noche** per unsaved room, on desktop and phone.
+editor offer **Cambiar precio por noche** per unsaved room, below that room's
+fields on desktop and phone.
 It reveals a final nightly amount in soles and an undo action; on phone the initial
 button fills the content width. The value travels as that room's `nightlyRateCents`
 in creation previews/requests or the command module's `add-room`, never as a
@@ -482,8 +483,10 @@ The header offers the same contextual check-in/check-out
 [lifecycle action](#compact-calendar-dialog) as the calendar dialog, including property-date
 emphasis, dirty-room/balance confirmations and the 8-second Deshacer toast. Confirmed
 stays offer check-in even before arrival; checked-in stays offer check-out; other
-statuses have no contextual action. On phones, identity and the overflow menu precede
-the status badges and full-width action; there is no fixed bottom page action.
+statuses have no contextual action. The status badge sits beside the reservation
+code above the guest name; phones drop the visible "Reserva" label and keep `#code`.
+The header shows no arrival or departure badge. On phones, identity and the overflow
+menu precede the full-width action; there is no fixed bottom page action.
 
 The overflow menu replaces the status select. **Corregir estado…** opens a small
 editor for another inventory-holding status and saves `set-status` on confirmation;
@@ -530,16 +533,24 @@ then Referencia in narrow Movimientos tables.
   future) and optional Referencia, sending each part as `request-refund` with
   `completed`; unticked parts are plain requests. All parts travel in one
   duplicate-safe command, split from the payments as the dialog opened so a retry repeats
-  the same parts; refund-limit rejections stay inline on Importe with the draft.
+  the same parts; refund-limit rejections stay inline on Importe with the draft. Every
+  attempt from the same payments and refunds reuses one request ID, even after staff edit
+  the draft or reopen the dialog before the bill refreshes. An edited retry whose lost
+  first attempt already committed is refused by the server as a reused request ID; the
+  portal then refreshes, closes the dialog and says the refund was already recorded
+  with the first attempt's details. Edits after an uncommitted failure save normally.
 - **Movimientos:** payments, refunds and coupon movements as flat rows, oldest first, with
   no running balance. Payments keep edit/delete unless the backend would reject the
   change: Culqi payments (En línea, Tarjeta), payments with refunds, and every payment
-  once a coupon was issued show a lock. Refund rows show Solicitado or Fallido, any
-  failure reason, and who requested or resolved them; a failed refund is muted, struck
-  through and not counted. A requested refund's **Confirmar** opens an inset dialog
-  that sends `complete-refund` with a Fecha (property today by default, never future)
-  and optional Referencia, or **Marcar como fallido** with a required Motivo
-  (`fail-refund`); refunds are never deleted. Coupon rows are read-only.
+  once a coupon was issued show a lock. Refund rows show Solicitado or Fallido with no
+  note beneath: failure reasons and who requested or resolved a refund are not shown
+  on the row. A failed refund is muted, struck
+  through and not counted. A requested refund's ⋯ menu offers **Confirmar reembolso**,
+  an inset dialog that sends `complete-refund` with a Fecha (property today by default,
+  never future) and optional Referencia, and **Marcar como fallido**, which sends
+  `fail-refund` with a required Motivo. Failing also covers a request staff will no
+  longer fulfil; its money stays Por devolver. Refunds are never deleted. Coupon rows
+  are read-only.
 - Cancelled and No-show stays show a destructive alert at the top: **Reserva cancelada**
   or **No se presentó**, the property-calendar date of the active cancellation, and the
   saved reason.
@@ -606,10 +617,13 @@ changing its code or amount restores normal lookup validation. Creation has no c
 
 Creation (`NewBooking`) sends the chosen `ratePlan` and optional
 [per-room final nightly prices](#prices-for-newly-reserved-rooms), and shows only the current
-`POST /reservations/preview` bill: Total, required initial payment, remaining
-scheduled amount, and cancellation terms ([creation-summary.tsx](../apps/portal/src/components/creation-summary.tsx)).
+`POST /reservations/preview` bill: Total, required initial payment, and cancellation
+terms ([creation-summary.tsx](../apps/portal/src/components/creation-summary.tsx)).
 While a changed draft is repricing or its preview failed (with Reintentar), the
-summary shows no amounts and creating is disabled. Cancellation terms derive from the
+summary shows no amounts and creating is disabled. Until a bill exists, the summary keeps
+its title and dates and hides the room list: it shows **Calculando…** while repricing, or
+**Aún no hay total** with the missing input (stay, room types or nightly prices); a failed
+preview keeps the rooms and shows the error. Cancellation terms derive from the
 preview's accepted policy and prices: the inclusive free deadline (check-in minus the
 plan's days) while property today has not passed it, otherwise the actual charge (first
 nights capped at total, or total); zero totals read as no charge. **Ver detalle** shows
@@ -636,6 +650,9 @@ existing-reservation writes, including calendar assignment; creation is separate
 - Failed saves retain request IDs by reservation/exact actions, even across reopened
   editors, so lost-response retries cannot duplicate payments. Success forgets the
   ID; a later identical write is new. Memory belongs to the query client.
+  `send(actions, retryKey)` instead retains the ID by reservation/key, so edited
+  attempts stay one request; a `request ID reused with a different payload` reply then
+  means an earlier attempt committed, so the module forgets the ID and refreshes reads.
 - Saves serialize per reservation; identical queued/running actions join one request.
   Different reservations are independent. Clearing cache drops queued saves as failed,
   prevents new callers joining pre-clear saves, and prevents running results repopulating cache.
@@ -659,6 +676,8 @@ show pending/success/failure. Identical uncertain writes retry through the comma
 Room-type menus consider other stays, closures, and draft rooms; keep the current
 choice visible and wait for current availability before changes. Server previews
 validate before saving. Validate on blur/submit, then change after attempted submit;
+a field reveals its blur error only once staff changed it, so leaving an untouched
+field (for example to press Cancelar) stays quiet while saving still flags every field;
 room count/capacity validate on change to control previews. Field errors stay inline,
 other write errors use toasts, and query errors stay beside blocked content.
 

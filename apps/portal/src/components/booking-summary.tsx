@@ -150,7 +150,6 @@ export function BookingSummary({
                 (onDiscountSave ? (
                   <div>
                     <DiscountPopover
-                      variant="row"
                       appliedCents={editableDiscountCents}
                       shownCents={summary?.discountCents ?? null}
                       currency={currency}

@@ -230,11 +230,15 @@ export function RowActions({
   disabled,
   onEdit,
   onDelete,
+  editLabel = "Editar",
+  deleteLabel = "Eliminar",
 }: {
   label: string;
   disabled: boolean;
   onEdit: () => void;
   onDelete: () => void;
+  editLabel?: string;
+  deleteLabel?: string;
 }) {
   return (
     <DropdownMenu>
@@ -253,9 +257,9 @@ export function RowActions({
       </DropdownMenuTrigger>
       <DropdownMenuContent>
         <DropdownMenuGroup>
-          <DropdownMenuItem onClick={onEdit}>Editar</DropdownMenuItem>
+          <DropdownMenuItem onClick={onEdit}>{editLabel}</DropdownMenuItem>
           <DropdownMenuItem variant="destructive" onClick={onDelete}>
-            Eliminar
+            {deleteLabel}
           </DropdownMenuItem>
         </DropdownMenuGroup>
       </DropdownMenuContent>

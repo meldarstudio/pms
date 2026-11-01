@@ -342,6 +342,16 @@ it.each([
   },
 );
 
+it("shows the status beside the reservation code above the guest name", async () => {
+  mockApi();
+  await render();
+  const identity = header().querySelector("h1")!.parentElement!.previousElementSibling!;
+  assert.deepEqual(
+    Array.from(identity.children).map((item) => item.textContent),
+    ["Reserva #TEST0001", "Confirmada"],
+  );
+});
+
 it("corrects status through the menu without offering cancellation or the current status", async () => {
   mockApi();
   await render();
@@ -1848,9 +1858,9 @@ it("lists payments, refunds and coupon movements oldest first, locking changed p
     "19 oct 2026 Pago Efectivo — S/ 200",
     "19 oct 2026 Pago En línea Tarjeta — S/ 200",
     "19 oct 2026 Pago Yape OP-77 S/ 10",
-    "20 oct 2026 Reembolso Fallido Cuenta errada · Registró admin Transferencia — S/ 50",
-    "20 oct 2026 Reembolso Solicitado Registró admin Transferencia — (S/ 30) Confirmar",
-    "21 oct 2026 Reembolso Registró admin · Confirmó maria Transferencia OP-1 -S/ 20",
+    "20 oct 2026 Reembolso Fallido Transferencia — S/ 50",
+    "20 oct 2026 Reembolso Solicitado Transferencia — (S/ 30)",
+    "21 oct 2026 Reembolso Transferencia OP-1 -S/ 20",
   ]);
   assert.equal(text(rows[4].querySelector("del")!), "S/ 50", "A failed refund is struck through");
   assert.ok(rows[1].querySelector('[aria-label="Tiene reembolsos: no se puede editar"]'));
@@ -1861,7 +1871,7 @@ it("lists payments, refunds and coupon movements oldest first, locking changed p
       (row) =>
         row.querySelector("button")?.getAttribute("aria-label")?.replace(/\s+/g, " ") ?? null,
     ),
-    [null, "Confirmar reembolso de S/ 30", null],
+    [null, "Acciones del reembolso de S/ 30", null],
     "Only a requested refund can be resolved",
   );
   assert.ok(summaryRows().includes("Reembolsado -S/ 20"), "Only the completed refund counts");
@@ -1890,14 +1900,6 @@ function owesBack(fields: Partial<ReservationDetail> = {}) {
 async function dialogOptions(label: string) {
   await React.act(async () => dateTrigger(label).click());
   return Array.from(window.document.querySelectorAll('[role="option"]')).map(text);
-}
-
-function labelled(label: string) {
-  const element = Array.from(window.document.querySelectorAll("button")).find(
-    (item) => item.getAttribute("aria-label")?.replace(/\s+/g, " ") === label,
-  );
-  assert.ok(element, `Missing button ${label}`);
-  return element;
 }
 
 function pickerDay(day: string) {
@@ -2068,6 +2070,65 @@ it("retries a lost refund with the same split and request ID after a background 
   assert.deepEqual(writes[1].actions, writes[0].actions);
 });
 
+it.each([
+  { attempt: "edited after a lost save", committed: true, reopen: false },
+  { attempt: "edited after a save that never arrived", committed: false, reopen: false },
+  { attempt: "reopened before a refresh", committed: true, reopen: true },
+])("records one partial refund when the retry is $attempt", async ({ committed, reopen }) => {
+  owesBack();
+  const receipts = new Map<string, string>();
+  mockApi({
+    write: (command) => {
+      const payload = JSON.stringify(command);
+      const receipt = receipts.get(command.requestId);
+      if (receipt === payload) return Response.json(saved);
+      if (receipt !== undefined)
+        return Response.json(
+          { error: "request ID reused with a different payload" },
+          { status: 409 },
+        );
+      const lost = Response.json({ error: "response unavailable" }, { status: 503 });
+      if (writes.length === 1 && !committed) return lost;
+      receipts.set(command.requestId, payload);
+      if (writes.length > 1) return undefined;
+      saved = {
+        ...saved,
+        refundedCents: 4000,
+        balanceCents: -6000,
+        refunds: [refund({ amountCents: 4000, status: "completed", refundDate: "2026-10-19" })],
+      };
+      return lost;
+    },
+  });
+  await render("", true, true);
+  await click("Devolver…");
+  await fill("amount", "40");
+  await fill("reason", "Sobrepago");
+  await submit();
+  await page.until(() => writes.length === 1);
+  assert.ok(popup(), "A lost response keeps the draft open");
+  if (reopen) {
+    await click("Cerrar");
+    await click("Descartar y salir");
+    await click("Devolver…");
+    await fill("amount", "40");
+  }
+  await fill("reason", "Sobrepago de la tarifa");
+  await submit();
+  const editor = () => window.document.querySelector('[role="dialog"] form');
+  await page.until(() => !editor(), "The retry closes the Devolver dialog");
+  assert.deepEqual(
+    saved.refunds.map((entry) => entry.reason),
+    [committed ? "Sobrepago" : "Sobrepago de la tarifa"],
+    "The lost refund is recorded exactly once",
+  );
+  assert.match(
+    window.document.body.textContent,
+    committed ? /Este reembolso ya se había registrado/ : /Reembolso registrado/,
+  );
+  await page.until(() => text(accountStatusLine()) === "Por devolver S/ 60 Devolver…");
+});
+
 it("keeps the Devolver draft and shows the Spanish rejection when the refund due changed", async () => {
   owesBack();
   mockApi({
@@ -2100,8 +2161,9 @@ it("confirms a requested refund with its date and optional reference", async () 
   mockApi();
   await render();
   assert.equal(text(accountStatusLine()), "Reembolso solicitado S/ 100");
-  await React.act(async () => labelled("Confirmar reembolso de S/ 100").click());
+  await chooseRowAction('[aria-label^="Acciones del reembolso"]', "Confirmar reembolso");
   assert.match(text(popup()!), /S\/ 100 · Transferencia · Registró admin · Sobrepago/);
+  assert.equal(popup()!.querySelector('[name="reason"]'), null, "Confirming asks no Motivo");
   await React.act(async () => dateTrigger("Fecha").click());
   assert.equal(pickerDay("20/10/2026").disabled, true, "A refund date cannot be future");
   await React.act(async () => pickerDay("19/10/2026").click());
@@ -2118,13 +2180,10 @@ it("marks a requested refund failed with a reason, leaving the money owed back",
   requestedRefund();
   mockApi();
   await render();
-  await React.act(async () => labelled("Confirmar reembolso de S/ 100").click());
-  await click("Marcar como fallido");
-  assert.equal(popup()!.querySelector('[name="reference"]'), null);
-  assert.equal(window.document.activeElement, field("reason"), "Focus moves to Motivo");
-  await click("Volver");
-  assert.equal(window.document.activeElement, dateTrigger("Fecha"), "Focus returns to Fecha");
-  await click("Marcar como fallido");
+  await chooseRowAction('[aria-label^="Acciones del reembolso"]', "Marcar como fallido");
+  assert.equal(text(popup()!.querySelector("h2")!), "Marcar como fallido");
+  assert.match(text(popup()!), /el dinero sigue por devolver/);
+  assert.equal(popup()!.querySelector('[name="reference"]'), null, "Failing asks no Referencia");
   await submit();
   assert.equal(writes.length, 0, "A failure needs a Motivo");
   await fill("reason", "Cuenta errada");
@@ -2135,7 +2194,7 @@ it("marks a requested refund failed with a reason, leaving the money owed back",
   ]);
   await page.until(() => text(accountStatusLine()) === "Por devolver S/ 100 Devolver…");
   const row = account().querySelector('table[aria-label="Movimientos"] tbody tr:last-child')!;
-  assert.match(text(row), /Reembolso Fallido Cuenta errada/);
+  assert.match(text(row), /^\S+ \S+ \S+ Reembolso Fallido Transferencia/);
   assert.equal(text(row.querySelector("del")!), "S/ 100", "A failed refund is struck through");
   assert.ok(!summaryRows().some((row) => row.startsWith("Reembolsado")));
 });
@@ -2229,7 +2288,10 @@ it("reads No se presentó for a No-show stay and bills its charge", async () => 
   saved.cancellations = [saved.cancellation!];
   mockApi();
   await render();
-  assert.match(text(page.container.querySelector("fieldset header")!), /Ana Pérez No se presentó/);
+  assert.match(
+    text(page.container.querySelector("fieldset header")!),
+    /Reserva # TEST0001 No se presentó Ana Pérez/,
+  );
   assert.equal(
     text(page.container.querySelector('[role="alert"]')!),
     "No se presentó · 19 oct 2026",
