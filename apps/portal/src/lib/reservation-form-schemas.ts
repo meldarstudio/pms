@@ -324,19 +324,24 @@ const refundDate = date.refine(
   "La fecha del reembolso no puede ser futura.",
 );
 export const refundMethods = ["cash", "transfer", "yape", "plin", "other"] as const;
+export const refundKinds = ["coupon", "money"] as const;
+const refundAmount = (maxCents: number, currency?: string) =>
+  money(true).refine(
+    (value) => (parseMajorToCents(value.trim()) ?? 0) <= maxCents,
+    `El importe no puede superar ${formatMoney(maxCents, currency)}.`,
+  );
 export const refundSchema = (maxCents: number, currency?: string) =>
   z
     .object({
-      amount: money(true).refine(
-        (value) => (parseMajorToCents(value.trim()) ?? 0) <= maxCents,
-        `El importe no puede superar ${formatMoney(maxCents, currency)}.`,
-      ),
+      kind: z.enum(refundKinds),
+      amount: refundAmount(maxCents, currency),
       method: z.enum(refundMethods, { error: "Selecciona un método válido." }),
       reason: refundReason,
       handedOver: z.boolean(),
       date: z.string(),
       reference: optionalText(200),
       source: z.string(),
+      guestAccepted: z.boolean(),
     })
     .superRefine((value, ctx) => {
       if (!value.handedOver) return;
@@ -351,8 +356,11 @@ export function refundDefaults(
   amountCents: number,
   method: RefundValues["method"] = "cash",
   source: string = manualRefundSource,
+  kind: RefundValues["kind"] = "money",
 ): RefundValues {
   return {
+    kind,
+    guestAccepted: false,
     amount: amountCents > 0 ? formatMajor(amountCents) : "",
     method,
     reason: "",
@@ -362,18 +370,20 @@ export function refundDefaults(
     source,
   };
 }
+export const couponIssueSchema = (maxCents: number, currency?: string) =>
+  z.object({
+    amount: refundAmount(maxCents, currency),
+    guestAccepted: z.literal(true, {
+      error: "Registra que el huésped aceptó el cupón en lugar del reembolso.",
+    }),
+  });
 export const cardRefundSchema = (maxCents: number, currency?: string) =>
   z.object({
     source: z.string(),
-    amount: money(true)
-      .refine(
-        (value) => (parseMajorToCents(value.trim()) ?? 0) <= maxCents,
-        `El importe no puede superar ${formatMoney(maxCents, currency)}.`,
-      )
-      .refine(
-        (value) => (parseMajorToCents(value.trim()) ?? 0) >= culqiMinRefundCents,
-        `El reembolso a la tarjeta debe ser de al menos ${formatMoney(culqiMinRefundCents, currency)}.`,
-      ),
+    amount: refundAmount(maxCents, currency).refine(
+      (value) => (parseMajorToCents(value.trim()) ?? 0) >= culqiMinRefundCents,
+      `El reembolso a la tarjeta debe ser de al menos ${formatMoney(culqiMinRefundCents, currency)}.`,
+    ),
     reason: refundReason,
   });
 export const refundCompletionSchema = z.object({

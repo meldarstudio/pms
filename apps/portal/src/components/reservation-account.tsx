@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import { CreditCardIcon, LockIcon, Undo2Icon } from "lucide-react";
+import { CopyIcon, CreditCardIcon, LockIcon, Undo2Icon } from "lucide-react";
 import { cn } from "cn";
 import { parseISO } from "date-fns";
 import { accountStatus } from "@/components/balance-status";
@@ -20,7 +20,8 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import type { ReservationDetail, ReservationPayment } from "@/lib/api";
-import { format } from "@/lib/dates";
+import { copyCouponMessage } from "@/lib/coupon-message";
+import { format, longDate } from "@/lib/dates";
 import { formatMoney } from "@/lib/money";
 import { propertyToday } from "@/lib/property-calendar";
 import { unsavedMessage, useReservationCommands } from "@/lib/reservation-commands";
@@ -34,13 +35,6 @@ type Props = {
 export const isReleased = (status: string) =>
   !["confirmed", "checked_in", "checked_out"].includes(status);
 
-const longDate = (day: string) =>
-  new Intl.DateTimeFormat("es-PE", {
-    day: "numeric",
-    month: "long",
-    year: "numeric",
-    timeZone: "UTC",
-  }).format(new Date(`${day}T12:00:00Z`));
 const shortDate = (day: string) => format(parseISO(day), "d MMM yyyy");
 const methodLabel = (method: string) =>
   paymentMethods.find((entry) => entry.value === method)?.label ?? method;
@@ -185,9 +179,26 @@ function AccountSummary({
           label="Pasado a cupón"
           value={minus(detail.couponIssuedCents)}
           note={detail.coupons.map((coupon) => (
-            <span key={coupon.id} className="block">
-              <span className="font-mono">{coupon.code}</span> · Vence el{" "}
-              {longDate(coupon.expiresOn)}
+            <span key={coupon.id} className="flex items-center gap-1">
+              <span>
+                <span className="font-mono">{coupon.code}</span> · Vence el{" "}
+                {longDate(coupon.expiresOn)}
+                {coupon.balanceCents === 0
+                  ? " · Usado"
+                  : coupon.balanceCents < coupon.valueCents
+                    ? ` · Quedan ${money(coupon.balanceCents)}`
+                    : null}
+              </span>
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon-xs"
+                aria-label={`Copiar mensaje del cupón ${coupon.code}`}
+                title="Copiar mensaje"
+                onClick={() => void copyCouponMessage(coupon, detail.currency, { announce: true })}
+              >
+                <CopyIcon />
+              </Button>
             </span>
           ))}
         />

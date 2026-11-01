@@ -3,8 +3,7 @@ import { useSelector } from "@tanstack/react-form";
 import { cn } from "cn";
 import { BookingEditor, DiscardChanges } from "@/components/room-booking-dialog";
 import { GuestEntryForm, PaymentForm, paymentMethods } from "@/components/reservation-entry-forms";
-import { RefundForm, ResolveRefundForm } from "@/components/refund-forms";
-import { cardRefundPayments } from "@/lib/refund-split";
+import { CouponIssued, RefundForm, ResolveRefundForm } from "@/components/refund-forms";
 import { WorkflowBill } from "@/components/workflow-bill";
 import { ChoiceField } from "@/components/workflow-fields";
 import { useDirtyRoomCheckIn } from "@/components/dirty-room-check-in";
@@ -17,7 +16,7 @@ import {
   DialogDescription,
 } from "@/components/ui/dialog";
 import { FieldGroup, FieldDescription, FieldError } from "@/components/ui/field";
-import type { ReservationDetail, WorkflowAction } from "@/lib/api";
+import type { ReservationCoupon, ReservationDetail, WorkflowAction } from "@/lib/api";
 import {
   useReservationCommands,
   useReservationPreview,
@@ -103,6 +102,7 @@ export function ReservationPageEditor({
   const [popup, setPopup] = useState<HTMLDivElement | null>(null);
   const [leaving, setLeaving] = useState(false);
   const { send, saving } = useReservationCommands(detail.id);
+  const [issued, setIssued] = useState<ReservationCoupon | null>(null);
   const fullScreen = ["stay", "contact", "notes", "guest", "payment"].includes(target.kind);
   const refund =
     target.kind === "resolve-refund"
@@ -154,21 +154,21 @@ export function ReservationPageEditor({
           )}
         >
           <DialogHeader className="shrink-0">
-            <DialogTitle>{editorTitle(target, detail)}</DialogTitle>
-            <DialogDescription>
-              {description ??
-                (target.kind === "stay"
-                  ? "Revisa las fechas, habitaciones y el importe antes de guardar."
-                  : target.kind === "refund"
-                    ? cardRefundPayments(detail).length
-                      ? "Elige cómo se devuelve el dinero."
-                      : "En mano o por transferencia. El importe se reparte entre los pagos recibidos."
-                    : target.kind === "resolve-refund"
-                      ? target.failing
-                        ? "El reembolso queda registrado como fallido y el dinero sigue por devolver."
-                        : "Registra si el dinero llegó al huésped."
-                      : "Los cambios se guardan al confirmar.")}
-            </DialogDescription>
+            <DialogTitle>{issued ? "Cupón emitido" : editorTitle(target, detail)}</DialogTitle>
+            {!issued && (
+              <DialogDescription>
+                {description ??
+                  (target.kind === "stay"
+                    ? "Revisa las fechas, habitaciones y el importe antes de guardar."
+                    : target.kind === "refund"
+                      ? "Pasa el importe a un cupón para una próxima estadía o devuelve el dinero."
+                      : target.kind === "resolve-refund"
+                        ? target.failing
+                          ? "El reembolso queda registrado como fallido y el dinero sigue por devolver."
+                          : "Registra si el dinero llegó al huésped."
+                        : "Los cambios se guardan al confirmar.")}
+              </DialogDescription>
+            )}
           </DialogHeader>
           {target.kind === "stay" ? (
             <BookingEditor
@@ -204,14 +204,27 @@ export function ReservationPageEditor({
               }}
             />
           ) : target.kind === "refund" ? (
-            <RefundForm
-              detail={detail}
-              disabled={saving}
-              onDirtyChange={handleDirty}
-              onSave={send}
-              onDone={onClose}
-              onCancel={close}
-            />
+            issued ? (
+              <CouponIssued
+                coupon={issued}
+                reservationId={detail.id}
+                currency={detail.currency}
+                onDone={onClose}
+              />
+            ) : (
+              <RefundForm
+                detail={detail}
+                disabled={saving}
+                onDirtyChange={handleDirty}
+                onSave={send}
+                onDone={onClose}
+                onCancel={close}
+                onCouponIssued={(coupon) => {
+                  handleDirty(false);
+                  setIssued(coupon);
+                }}
+              />
+            )
           ) : target.kind === "resolve-refund" ? (
             refund ? (
               <ResolveRefundForm

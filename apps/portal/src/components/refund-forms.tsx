@@ -1,21 +1,41 @@
 import { useEffect, useId, useState, type ReactNode } from "react";
 import { useSelector } from "@tanstack/react-form";
+import { CheckIcon, CopyIcon } from "lucide-react";
 import { parseISO } from "date-fns";
 import type { ZodSafeParseResult } from "zod";
 import { accountStatus } from "@/components/balance-status";
 import { paymentMethods } from "@/components/reservation-entry-forms";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
-import { Field, FieldDescription, FieldGroup, FieldLabel } from "@/components/ui/field";
-import type { ReservationDetail, ReservationRefund, WorkflowAction } from "@/lib/api";
-import { setServerErrors } from "@/lib/form-errors";
-import { format } from "@/lib/dates";
+import {
+  Field,
+  FieldContent,
+  FieldDescription,
+  FieldError,
+  FieldGroup,
+  FieldLabel,
+} from "@/components/ui/field";
+import type {
+  ReservationCoupon,
+  ReservationDetail,
+  ReservationRefund,
+  WorkflowAction,
+} from "@/lib/api";
+import { copyCouponMessage } from "@/lib/coupon-message";
+import { errorMessage, setServerErrors } from "@/lib/form-errors";
+import { format, longDate } from "@/lib/dates";
 import { formatMajor, formatMoney, parseMajorToCents } from "@/lib/money";
 import { propertyToday } from "@/lib/property-calendar";
-import { earlierAttemptSaved, type ReservationCommandResult } from "@/lib/reservation-commands";
+import { useReservation } from "@/lib/queries";
+import {
+  earlierAttemptSaved,
+  useReservationPreview,
+  type ReservationCommandResult,
+} from "@/lib/reservation-commands";
 import { blurThenChange, submitForm, useReservationForm } from "@/lib/reservation-form";
 import {
   cardRefundSchema,
+  couponIssueSchema,
   manualRefundSource,
   refundCompletionSchema,
   refundDefaults,
@@ -41,6 +61,13 @@ type FormProps = {
   onCancel: () => void;
   onDirtyChange: (dirty: boolean) => void;
 };
+
+type ReturnChoice = { kind: string; source: string };
+
+const returnKinds = [
+  { value: "coupon", label: "Cupón" },
+  { value: "money", label: "Dinero" },
+];
 
 const refundMethodOptions = paymentMethods.filter((method) => method.value !== "card");
 
@@ -106,25 +133,32 @@ function refundSetup(detail: ReservationDetail) {
     label: `A la tarjeta · Pago en línea del ${format(parseISO(payment.paymentDate), "d MMM yyyy")}`,
     maxCents: Math.min(owedCents, leftCents),
   }));
-  const limit = (source: string) =>
-    cards.find((card) => card.value === source)?.maxCents ?? maxCents;
+  const limit = ({ kind, source }: ReturnChoice) =>
+    kind === "coupon"
+      ? owedCents
+      : (cards.find((card) => card.value === source)?.maxCents ?? maxCents);
   const newest = firstRefundPayment(detail)?.method;
   const basis = { payments: detail.payments, refunds: detail.refunds };
+  const couponIds = detail.coupons.map((coupon) => coupon.id);
   const source = cards[0]?.value ?? manualRefundSource;
   return {
     cards,
     sources: [...cards, { value: manualRefundSource, label: "En mano o por transferencia" }],
     limit,
     basis,
-    retryKey: `refund\n${JSON.stringify(basis)}`,
-    schema: (source: string) =>
-      source === manualRefundSource
-        ? refundSchema(maxCents, detail.currency)
-        : cardRefundSchema(limit(source), detail.currency),
+    couponIds,
+    retryKey: `refund\n${JSON.stringify({ ...basis, couponIds })}`,
+    schema: (value: RefundValues) =>
+      value.kind === "coupon"
+        ? couponIssueSchema(owedCents, detail.currency)
+        : value.source === manualRefundSource
+          ? refundSchema(maxCents, detail.currency)
+          : cardRefundSchema(limit(value), detail.currency),
     defaults: refundDefaults(
-      limit(source),
+      owedCents,
       refundMethods.find((method) => method === newest),
       source,
+      "coupon",
     ),
   };
 }
@@ -136,20 +170,23 @@ export function RefundForm({
   onDone,
   onCancel,
   onDirtyChange,
-}: FormProps) {
+  onCouponIssued,
+}: FormProps & { onCouponIssued: (coupon: ReservationCoupon) => void }) {
   const { today } = usePropertyCalendar();
   const checkboxId = useId();
+  const acceptedId = useId();
   const [setup] = useState(() => refundSetup(detail));
   const form = useReservationForm({
     defaultValues: setup.defaults,
     validationLogic: blurThenChange(),
     validators: {
-      onDynamic: ({ value }) => fieldIssues(setup.schema(value.source).safeParse(value)),
+      onDynamic: ({ value }) => fieldIssues(setup.schema(value).safeParse(value)),
     },
     onSubmit: async ({ value }) => {
       if (disabled) return;
+      if (value.kind === "coupon") return issueCoupon(value);
       if (value.source !== manualRefundSource) return returnToCard(value);
-      const parsed = refundSchema(setup.limit(manualRefundSource), detail.currency).parse(value);
+      const parsed = refundSchema(setup.limit(value), detail.currency).parse(value);
       const reference = parsed.reference.toUpperCase();
       const completed = parsed.handedOver
         ? { refundDate: parsed.date, ...(reference ? { reference } : {}) }
@@ -177,8 +214,32 @@ export function RefundForm({
       );
     },
   });
+  async function issueCoupon(value: RefundValues) {
+    if (!expiresOn) return;
+    const parsed = couponIssueSchema(setup.limit(value), detail.currency).parse(value);
+    const amountCents = parseMajorToCents(parsed.amount.trim())!;
+    const result = await onSave(
+      [
+        {
+          type: "issue-coupon",
+          amountCents,
+          guestAccepted: true,
+        },
+      ],
+      setup.retryKey,
+    );
+    if (alreadyRecorded(result, "Este cupón ya se había emitido")) return;
+    if (result.status === "failed") return toastError("No se pudo guardar", result.message);
+    if (result.status === "rejected") return setServerErrors(form, result.fields);
+    const coupons = result.reservation.coupons.filter(
+      (entry) => !setup.couponIds.includes(entry.id) && entry.valueCents === amountCents,
+    );
+    if (coupons.length === 1) return onCouponIssued(coupons[0]);
+    toast.add({ title: "Cupón emitido", type: "success" });
+    onDone();
+  }
   async function returnToCard(value: RefundValues) {
-    const parsed = cardRefundSchema(setup.limit(value.source), detail.currency).parse(value);
+    const parsed = cardRefundSchema(setup.limit(value), detail.currency).parse(value);
     const result = await onSave(
       [
         {
@@ -206,10 +267,13 @@ export function RefundForm({
     );
     onDone();
   }
-  function alreadyRecorded(result: ReservationCommandResult) {
+  function alreadyRecorded(
+    result: ReservationCommandResult,
+    title = "Este reembolso ya se había registrado",
+  ) {
     if (result.status !== "failed" || result.code !== earlierAttemptSaved) return false;
     toast.add({
-      title: "Este reembolso ya se había registrado",
+      title,
       description: "Se guardó con los datos del primer intento. Revísalo en Movimientos.",
       priority: "high",
       timeout: 7000,
@@ -221,13 +285,32 @@ export function RefundForm({
   const submitting = useSelector(form.store, (state) => state.isSubmitting);
   const handedOver = useSelector(form.store, (state) => state.values.handedOver);
   const source = useSelector(form.store, (state) => state.values.source);
-  const manual = source === manualRefundSource;
-  const maxCents = setup.limit(source);
+  const kind = useSelector(form.store, (state) => state.values.kind);
+  const amount = useSelector(form.store, (state) => state.values.amount);
+  const guestAccepted = useSelector(form.store, (state) => state.values.guestAccepted);
+  const coupon = kind === "coupon";
+  const manual = !coupon && source === manualRefundSource;
+  const maxCents = setup.limit({ kind, source });
+  const previewAmount = parseMajorToCents(amount.trim()) ?? 0;
+  const preview = useReservationPreview(
+    detail.id,
+    [{ type: "issue-coupon", amountCents: previewAmount, guestAccepted: true }],
+    coupon && previewAmount > 0 && previewAmount <= maxCents,
+    today,
+  );
+  const expiresOn = preview.data?.billing.coupons.findLast(
+    (entry) => !setup.couponIds.includes(entry.id),
+  )?.expiresOn;
   const saving = disabled || submitting;
   useEffect(() => onDirtyChange(changed), [changed, onDirtyChange]);
   useEffect(() => {
     if (form.state.fieldMeta.date?.errors.length) void form.validate("submit");
   }, [form, today]);
+  function followLimit(previous: ReturnChoice, next: ReturnChoice) {
+    const followed = setup.limit(previous);
+    if (followed > 0 && form.getFieldValue("amount") === formatMajor(followed))
+      form.setFieldValue("amount", formatMajor(setup.limit(next)));
+  }
   return (
     <RefundFormLayout
       saving={saving}
@@ -237,30 +320,48 @@ export function RefundForm({
           <Button type="button" variant="outline" disabled={saving} onClick={onCancel}>
             Cerrar
           </Button>
-          <Button type="submit" disabled={saving || maxCents <= 0}>
+          <Button
+            type="submit"
+            disabled={saving || maxCents <= 0 || (coupon && (!guestAccepted || !expiresOn))}
+          >
             {saving
               ? "Guardando…"
-              : !manual
-                ? "Devolver a la tarjeta"
-                : handedOver
-                  ? "Registrar reembolso"
-                  : "Solicitar reembolso"}
+              : coupon
+                ? "Emitir cupón"
+                : !manual
+                  ? "Devolver a la tarjeta"
+                  : handedOver
+                    ? "Registrar reembolso"
+                    : "Solicitar reembolso"}
           </Button>
         </>
       }
     >
-      {setup.cards.length > 0 && (
+      <form.AppField name="kind">
+        {(field) => (
+          <field.Radio
+            label="Devolver como"
+            options={returnKinds}
+            onValueChange={(next, previous) =>
+              followLimit({ kind: previous, source }, { kind: next, source })
+            }
+          />
+        )}
+      </form.AppField>
+      {!coupon && setup.cards.length === 0 && (
+        <FieldDescription>
+          En mano o por transferencia. El importe se reparte entre los pagos recibidos.
+        </FieldDescription>
+      )}
+      {!coupon && setup.cards.length > 0 && (
         <form.AppField name="source">
           {(field) => (
             <field.Radio
               label="Cómo se devuelve"
               options={setup.sources}
-              onValueChange={(next, previous) => {
-                const amount = form.getFieldValue("amount");
-                const followed = setup.limit(previous);
-                if (followed > 0 && amount === formatMajor(followed))
-                  form.setFieldValue("amount", formatMajor(setup.limit(next)));
-              }}
+              onValueChange={(next, previous) =>
+                followLimit({ kind, source: previous }, { kind, source: next })
+              }
             />
           )}
         </form.AppField>
@@ -271,14 +372,63 @@ export function RefundForm({
       <form.AppField name="amount">
         {(field) => <field.Text label={`Importe (${detail.currency})`} placeholder="0.00" />}
       </form.AppField>
+      {coupon && maxCents > 0 && (
+        <>
+          {expiresOn ? (
+            <FieldDescription>
+              Vence el {longDate(expiresOn)} · No canjeable por dinero
+            </FieldDescription>
+          ) : preview.error && !preview.isFetching ? (
+            <div className="flex flex-col items-start gap-2">
+              <FieldError>{preview.error.message}</FieldError>
+              <Button type="button" variant="outline" onClick={() => void preview.refetch()}>
+                Reintentar
+              </Button>
+            </div>
+          ) : (
+            <p role="status" className="text-sm text-muted-foreground">
+              Calculando…
+            </p>
+          )}
+          <form.AppField name="guestAccepted">
+            {(field) => (
+              <Field orientation="horizontal" data-invalid={!!field.state.meta.errors.length}>
+                <Checkbox
+                  id={acceptedId}
+                  name={field.name}
+                  required
+                  aria-invalid={!!field.state.meta.errors.length}
+                  aria-describedby={
+                    field.state.meta.errors.length ? `${acceptedId}-error` : undefined
+                  }
+                  checked={field.state.value}
+                  onCheckedChange={(checked) => field.handleChange(checked)}
+                />
+                <FieldContent>
+                  <FieldLabel htmlFor={acceptedId}>
+                    El huésped aceptó un cupón en lugar del reembolso
+                  </FieldLabel>
+                  {!!field.state.meta.errors.length && (
+                    <FieldError id={`${acceptedId}-error`}>
+                      {errorMessage(field.state.meta.errors)}
+                    </FieldError>
+                  )}
+                </FieldContent>
+              </Field>
+            )}
+          </form.AppField>
+        </>
+      )}
       {manual && (
         <form.AppField name="method">
           {(field) => <field.Choice label="Método" options={refundMethodOptions} />}
         </form.AppField>
       )}
-      <form.AppField name="reason">
-        {(field) => <field.Text label="Motivo" type="textarea" max={2000} required />}
-      </form.AppField>
+      {!coupon && (
+        <form.AppField name="reason">
+          {(field) => <field.Text label="Motivo" type="textarea" max={2000} required />}
+        </form.AppField>
+      )}
       {manual && (
         <form.AppField name="handedOver">
           {(field) => (
@@ -404,5 +554,45 @@ export function ResolveRefundForm({
         </>
       )}
     </RefundFormLayout>
+  );
+}
+
+export function CouponIssued({
+  coupon: issued,
+  reservationId,
+  currency,
+  onDone,
+}: {
+  coupon: ReservationCoupon;
+  reservationId: string;
+  currency: string;
+  onDone: () => void;
+}) {
+  const [copied, setCopied] = useState(false);
+  const reservation = useReservation(reservationId);
+  const coupon = reservation.data?.coupons.find((entry) => entry.id === issued.id) ?? issued;
+  return (
+    <div className="flex flex-col gap-6">
+      <div className="flex flex-col items-center gap-2 py-2 text-center">
+        <p className="font-mono text-3xl font-semibold tracking-widest break-all">{coupon.code}</p>
+        <p className="text-sm text-muted-foreground">
+          Saldo {formatMoney(coupon.balanceCents, currency)} · Vence el {longDate(coupon.expiresOn)}{" "}
+          · No canjeable por dinero
+        </p>
+      </div>
+      <div className="flex flex-wrap justify-end gap-2">
+        <Button
+          type="button"
+          variant="outline"
+          onClick={async () => setCopied(await copyCouponMessage(coupon, currency))}
+        >
+          {copied ? <CheckIcon data-icon="inline-start" /> : <CopyIcon data-icon="inline-start" />}
+          <span aria-live="polite">{copied ? "Mensaje copiado" : "Copiar mensaje"}</span>
+        </Button>
+        <Button type="button" onClick={onDone}>
+          Listo
+        </Button>
+      </div>
+    </div>
   );
 }

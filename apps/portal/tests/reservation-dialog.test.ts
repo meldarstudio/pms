@@ -699,7 +699,7 @@ it.each([false, true])(
   },
 );
 
-it("locks refunded and online payments in Pagos and leaves resolving refunds to the page", async () => {
+it("locks refunded, online and coupon-issuing payments in Pagos and leaves resolving refunds to the page", async () => {
   const entry = {
     reservationId: "reservation-1",
     paymentDate: "2026-10-14",
@@ -771,6 +771,18 @@ it("locks refunded and online payments in Pagos and leaves resolving refunds to 
   assert.ok(rows[2].querySelector('[aria-label^="Acciones del pago"]'));
   assert.match(rows[3].textContent, /Reembolso.*Solicitado/);
   assert.equal(rows[3].querySelector("button"), null, "Refunds are resolved on the page");
+  await React.act(async () =>
+    client.setQueryData(["reservation", saved.id], {
+      ...saved,
+      couponIssuedCents: 2000,
+      balanceCents: -13000,
+      refundDueCents: 13000,
+      coupons: [coupon({ valueCents: 2000, balanceCents: 2000 })],
+    }),
+  );
+  await until(() => !container.querySelector('[aria-label^="Acciones del pago"]'));
+  assert.ok(rows[2].querySelector('[aria-label="Se emitió un cupón: no se puede editar"]'));
+  assert.equal(rows[2].querySelector("button"), null, "Issuing a coupon locks every payment");
 });
 
 function coupon(changes: Partial<CouponLookup> = {}): CouponLookup {

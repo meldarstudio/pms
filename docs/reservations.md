@@ -253,9 +253,10 @@ and lists [coupon movements](#future-stay-coupons) apart from both.
 
 A future-stay coupon converts some or all of a reservation's refund due into fixed
 value for a later stay instead of returning money. Coupon value cannot be exchanged
-for cash; the portal must say so wherever staff issue or redeem one. The shared
-[payment form](#compact-calendar-dialog) supports redemption; issuing remains a
-backend command until its page workflow is built.
+for cash; the portal says so when staff issue or redeem one. The shared
+[payment form](#compact-calendar-dialog) supports redemption; the full page's
+[Devolver… workflow](#full-reservation-page) supports issuance and copying a message
+for the guest. It sends no email.
 
 `issue-coupon` (`amountCents`, `guestAccepted: true`) records the guest's acceptance
 and issues a coupon; without it the command fails with `guest acceptance is
@@ -512,7 +513,9 @@ then Referencia in narrow Movimientos tables.
   cancellation's charge and one Cargo perdonado row per waiver (with its reason); their
   discount is hidden and not editable. Pagado con cupón, Reembolsado (completed refunds
   only) and Pasado a cupón (with each issued coupon's code and expiry) appear only when
-  non-zero.
+  non-zero. Each issued coupon has a small **Copiar mensaje** action using its current
+  available balance and original expiry, with **Quedan {importe}** when partly used
+  and **Usado** when spent.
 - **Descuento** opens the shared
   [discount popover](../apps/portal/src/components/discount-popover.tsx), which saves
   `set-discount` directly, without a bill preview. A failed save keeps the popover and
@@ -523,12 +526,28 @@ then Referencia in narrow Movimientos tables.
   refunds is Por devolver with **Devolver…**; refund due that is fully requested is
   Reembolso solicitado, with no action; zero is Cuenta saldada. Requested and failed
   refunds never settle the bill.
-- **Devolver…** returns money (Dinero only until coupons can be offered here). When
-  any Culqi payment has value left, **Cómo se devuelve** lists **A la tarjeta · Pago en
-  línea del {fecha}** per such payment, newest first and preselected, plus **En mano o
-  por transferencia**; without one, the dialog shows only the manual return. Only
-  payments with a Culqi charge are offered A la tarjeta, never manual Tarjeta or Yape
-  payments. Motivo is always required.
+- **Devolver…** offers **Devolver como: Cupón** (default) or **Dinero**. Each run
+  issues a coupon or returns money, never both; a partial coupon leaves the rest Por
+  devolver for another run.
+  - **Cupón:** Importe starts at, and cannot exceed, refund due less requested refunds.
+    The `issue-coupon` preview supplies **Vence el {fecha} · No canjeable por dinero**;
+    changing the amount previews again, and a new property date refreshes the terms
+    without replacing the draft. A failed preview offers Reintentar. The required
+    **El huésped aceptó un cupón en lugar del reembolso** starts unticked and enables
+    **Emitir cupón** only with previewed terms. The command sends only `issue-coupon`
+    with `amountCents` and `guestAccepted: true`. Limit rejections stay on Importe.
+    Success keeps the dialog open as **Cupón emitido**, with the code, balance, expiry,
+    no-cash term, **Copiar mensaje** and **Listo**. Copying uses the latest balance in
+    the reservation read and the original expiry, not the original issued value;
+    clipboard failure leaves the code visible and reports the failure. Listo closes
+    without a draft-discard prompt. If concurrent issuance makes the returned coupon
+    ambiguous, success closes to Cuenta rather than guessing which code to hand over;
+    its issued-coupon rows still offer copying.
+  - **Dinero:** when any Culqi payment has value left, **Cómo se devuelve** lists **A la tarjeta · Pago en
+    línea del {fecha}** per such payment, newest first and preselected, plus **En mano o
+    por transferencia**; without one, the dialog shows only the manual return. Only
+    payments with a Culqi charge are offered A la tarjeta, never manual Tarjeta or Yape
+    payments. Motivo is always required for money returns.
   - **A la tarjeta** sends one [`request-culqi-refund`](#culqi-refunds) for that payment.
     Importe starts at, and cannot exceed, the smaller of Por devolver and what that
     payment has left, and must be at least S/ 1.00; it has no Método, Fecha or
@@ -547,12 +566,13 @@ then Referencia in narrow Movimientos tables.
     are plain requests. All parts travel in one command, split from the payments as the
     dialog opened so a retry repeats the same parts; refund-limit rejections stay inline
     on Importe with the draft.
-  - Every attempt from the same payments and refunds, by either route, reuses one
+  - Every attempt from the same payments, refunds and issued coupons, across Cupón
+    and both Dinero routes, reuses one
     request ID, even after staff edit the draft or reopen the dialog before the bill
     refreshes. A lost card refund therefore replays the committed receipt and never
     calls Culqi twice. An edited retry whose lost first attempt already committed is
     refused by the server as a reused request ID; the portal then refreshes, closes the
-    dialog and says the refund was already recorded with the first attempt's details.
+    dialog and says the return was already recorded with the first attempt's details.
     Edits after an uncommitted failure save normally.
 - **Movimientos:** payments, refunds and coupon movements as flat rows, oldest first, with
   no running balance. Payments keep edit/delete unless the backend would reject the

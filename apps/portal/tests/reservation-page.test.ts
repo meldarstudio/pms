@@ -3,6 +3,7 @@ import { afterAll, afterEach, beforeAll, beforeEach, it, vi } from "vite-plus/te
 import type { HTMLElement, HTMLInputElement } from "happy-dom";
 import type {
   ReservationCancellation,
+  ReservationCoupon,
   ReservationCouponMovement,
   ReservationDetail,
   ReservationPayment,
@@ -134,7 +135,10 @@ function mockApi(options: ApiOptions = {}) {
     "POST",
     "/reservations/:id/preview",
     async ({ body }) =>
-      (await options.preview?.(body)) ?? { billing: saved, validation: { issues: [] } },
+      (await options.preview?.(body)) ?? {
+        billing: body.actions.reduce(issueCoupon, saved),
+        validation: { issues: [] },
+      },
   );
   page.api.on<WorkflowCommand>("POST", "/reservations/:id/commands", async ({ body: command }) => {
     const response = await options.write?.(command);
@@ -231,6 +235,7 @@ function mockApi(options: ApiOptions = {}) {
           ),
         };
       }
+      saved = issueCoupon(saved, action);
       if (action.type === "dates")
         saved = {
           ...saved,
@@ -1747,6 +1752,44 @@ function couponMovement({
   };
 }
 
+function issuedCoupon(fields: Partial<ReservationCoupon> = {}): ReservationCoupon {
+  return {
+    id: "coupon-1",
+    code: "K7Q2M9XPA4",
+    valueCents: 10000,
+    balanceCents: 10000,
+    issuedAt: "2026-10-19T15:30:00Z",
+    issuedBy: "admin",
+    expiresOn: "2027-10-19",
+    ...fields,
+  };
+}
+
+function issueCoupon(bill: ReservationDetail, action: WorkflowCommand["actions"][number]) {
+  if (action.type !== "issue-coupon") return bill;
+  const coupon = issuedCoupon({
+    id: `coupon-${bill.coupons.length + 1}`,
+    valueCents: action.amountCents,
+    balanceCents: action.amountCents,
+  });
+  return {
+    ...bill,
+    couponIssuedCents: bill.couponIssuedCents + action.amountCents,
+    balanceCents: bill.balanceCents + action.amountCents,
+    refundDueCents: bill.refundDueCents - action.amountCents,
+    coupons: [...bill.coupons, coupon],
+    couponMovements: [
+      ...bill.couponMovements,
+      couponMovement({
+        kind: "issue",
+        code: coupon.code,
+        amountCents: action.amountCents,
+        at: coupon.issuedAt,
+      }),
+    ],
+  };
+}
+
 it.each([
   {
     state: "guest owes",
@@ -1947,6 +1990,7 @@ async function returnOwedMoney({
   await render();
   assert.equal(text(accountStatusLine()), "Por devolver S/ 100 Devolver…");
   await click("Devolver…");
+  await chooseReturn("Dinero");
   assert.equal(field("amount").value, "100.00", "Importe starts at what remains owed back");
   assert.deepEqual(
     await dialogOptions("Método"),
@@ -2036,6 +2080,7 @@ it.each([
     mockApi();
     await render();
     await click("Devolver…");
+    await chooseReturn("Dinero");
     await chooseReturn("En mano o por transferencia");
     await fill("reason", "Sobrepago");
     await submit();
@@ -2069,6 +2114,7 @@ it.each([
     });
     await render();
     await click("Devolver…");
+    await chooseReturn("Dinero");
     await chooseReturn(source);
     await fill("amount", "20");
     await fill("reason", "Sobrepago");
@@ -2117,6 +2163,7 @@ it.each([
   });
   await render("", true, true);
   await click("Devolver…");
+  await chooseReturn("Dinero");
   await fill("amount", "40");
   await fill("reason", "Sobrepago");
   await submit();
@@ -2126,6 +2173,7 @@ it.each([
     await click("Cerrar");
     await click("Descartar y salir");
     await click("Devolver…");
+    await chooseReturn("Dinero");
     await fill("amount", "40");
   }
   await fill("reason", "Sobrepago de la tarifa");
@@ -2151,6 +2199,7 @@ it("keeps the Devolver draft and shows the Spanish rejection when the refund due
   });
   await render("", true, true);
   await click("Devolver…");
+  await chooseReturn("Dinero");
   await fill("amount", "80");
   await fill("reason", "Sobrepago");
   await submit();
@@ -2238,8 +2287,12 @@ function paidOnlineAndByPos(fields: Partial<ReservationDetail> = {}) {
 
 const radioName = (radio: HTMLElement) =>
   text(window.document.getElementById(radio.getAttribute("aria-labelledby")!)!);
-const returnOptions = () =>
-  Array.from(popup()!.querySelectorAll<HTMLElement>('[role="radio"]')).map((radio) => ({
+const returnOptions = (group = "Cómo se devuelve") =>
+  Array.from(
+    Array.from(popup()!.querySelectorAll<HTMLElement>("fieldset"))
+      .find((fieldset) => fieldset.querySelector("legend")?.textContent === group)!
+      .querySelectorAll<HTMLElement>('[role="radio"]'),
+  ).map((radio) => ({
     label: radioName(radio),
     checked: radio.getAttribute("aria-checked") === "true",
   }));
@@ -2301,6 +2354,7 @@ it.each([
     mockApi({ write: culqiRefundSaved(outcome) });
     await render("", true, true);
     await click("Devolver…");
+    await chooseReturn("Dinero");
     assert.deepEqual(
       returnOptions(),
       [
@@ -2366,6 +2420,7 @@ it("limits a card refund to what the online payment has left and at least S/ 1",
   mockApi();
   await render();
   await click("Devolver…");
+  await chooseReturn("Dinero");
   assert.equal(field("amount").value, "30.00", "Importe starts at what the card payment has left");
   await fill("amount", "35");
   await fill("reason", "Sobrepago");
@@ -2408,6 +2463,7 @@ it.each([
   mockApi({ write: () => Response.json({ error }, { status }) });
   await render("", true, true);
   await click("Devolver…");
+  await chooseReturn("Dinero");
   await fill("amount", "80");
   await fill("reason", "Sobrepago");
   await submit();
@@ -2417,6 +2473,360 @@ it.each([
   assert.equal(field("amount").value, "80");
   assert.equal(field("reason").value, "Sobrepago");
   assert.equal(returnOptions()[0].checked, true);
+});
+
+const couponTerms = "Vence el 19 de octubre de 2027 · No canjeable por dinero";
+
+it("defaults Devolver… to a coupon for the refund due less requested refunds, on the preview's terms", async () => {
+  owesBack({ pendingRefundCents: 2000, refunds: [refund({ amountCents: 2000 })] });
+  mockApi();
+  await render();
+  await click("Devolver…");
+  assert.deepEqual(returnOptions("Devolver como"), [
+    { label: "Cupón", checked: true },
+    { label: "Dinero", checked: false },
+  ]);
+  assert.equal(field("amount").value, "80.00");
+  await page.until(() => text(popup()!).includes(couponTerms), "The expiry comes from the preview");
+  await fill("amount", "80.01");
+  await submit();
+  assert.match(text(popup()!), /El importe no puede superar S\/ 80\./);
+  assert.equal(writes.length, 0, "Importe can be lowered, not raised");
+});
+
+const couponMessage = (balance: string) =>
+  `Tu cupón K7Q2M9XPA4 tiene un saldo disponible de ${balance}. Puedes usarlo total o parcialmente en una próxima estadía con llegada hasta el 19 de octubre de 2027. No canjeable por dinero.`;
+
+const copiedText = async () => (await window.navigator.clipboard.readText()).replace(/\s/g, " ");
+
+it.each([
+  { balanceCents: 4000, label: "Quedan S/ 40", amount: "S/ 40" },
+  { balanceCents: 0, label: "Usado", amount: "S/ 0" },
+])(
+  "shows $label on the issued coupon row and copies its current balance",
+  async ({ balanceCents, label, amount }) => {
+    saved = {
+      ...saved,
+      couponIssuedCents: 10000,
+      coupons: [issuedCoupon({ balanceCents })],
+    };
+    mockApi();
+    await render("", true, true);
+    assert.ok(
+      summaryRows().includes(
+        `Pasado a cupón -S/ 100 K7Q2M9XPA4 · Vence el 19 de octubre de 2027 · ${label}`,
+      ),
+    );
+    const copy = account().querySelector<HTMLElement>(
+      '[aria-label="Copiar mensaje del cupón K7Q2M9XPA4"]',
+    );
+    assert.ok(copy, "The issued row must offer a copy action");
+    await React.act(async () => copy.click());
+    await page.until(() => window.document.body.textContent.includes("Mensaje copiado"));
+    assert.equal(await copiedText(), couponMessage(amount));
+  },
+);
+
+it("keeps the coupon code visible and explains a denied clipboard without claiming it was copied", async () => {
+  saved = { ...saved, couponIssuedCents: 10000, coupons: [issuedCoupon()] };
+  mockApi();
+  vi.spyOn(window.navigator.clipboard, "writeText").mockRejectedValue(new Error("Denied"));
+  await render("", true, true);
+  await click("Copiar mensaje del cupón K7Q2M9XPA4");
+  await page.until(() => window.document.body.textContent.includes("No se pudo copiar el mensaje"));
+  assert.ok(summaryRows().some((row) => row.includes("K7Q2M9XPA4")));
+  assert.equal(window.document.body.textContent.includes("Mensaje copiado"), false);
+});
+
+function acceptance() {
+  const label = Array.from(popup()!.querySelectorAll("label")).find(
+    (node) => text(node) === "El huésped aceptó un cupón en lugar del reembolso",
+  );
+  const box = window.document.getElementById(label?.getAttribute("for") ?? "");
+  assert.ok(box instanceof window.HTMLInputElement, "Missing the acceptance checkbox");
+  return box;
+}
+
+it("issues a coupon only once the guest's acceptance is ticked and hands over its message", async () => {
+  owesBack();
+  mockApi();
+  await render();
+  await click("Devolver…");
+  await page.until(() => text(popup()!).includes(couponTerms));
+  assert.equal(acceptance().checked, false, "Acceptance starts unticked");
+  assert.equal(button("Emitir cupón").disabled, true);
+  await React.act(async () => acceptance().click());
+  assert.equal(button("Emitir cupón").disabled, false);
+  await click("Emitir cupón");
+  await page.until(() => writes.length === 1);
+  assert.deepEqual(writes[0].actions, [
+    { type: "issue-coupon", amountCents: 10000, guestAccepted: true },
+  ]);
+  await page.until(() => text(popup()!.querySelector("h2")!) === "Cupón emitido");
+  assert.equal(
+    text(popup()!),
+    `Cupón emitido K7Q2M9XPA4 Saldo S/ 100 · ${couponTerms} Copiar mensaje Listo Cerrar`,
+  );
+  await click("Copiar mensaje");
+  await page.until(() => !!popup()!.textContent.includes("Mensaje copiado"));
+  assert.equal(await copiedText(), couponMessage("S/ 100"));
+  saved = { ...saved, coupons: [issuedCoupon({ balanceCents: 4000 })] };
+  await page.client.invalidateQueries({ queryKey: ["reservation", saved.id] });
+  await page.until(() => text(popup()!).includes("Saldo S/ 40"));
+  await click("Mensaje copiado");
+  assert.equal(await copiedText(), couponMessage("S/ 40"));
+  await click("Listo");
+  await page.until(() => !popup(), "Listo closes the dialog");
+  assert.equal(text(accountStatusLine()), "Cuenta saldada S/ 0");
+});
+
+it("keeps the coupon draft through a failed preview and waits for server expiry before issuing", async () => {
+  owesBack();
+  let resolve: (result: WorkflowPreview) => void = () => assert.fail("Missing pending preview");
+  mockApi({
+    preview: (command) =>
+      previews.length === 1
+        ? Response.json({ error: "preview unavailable" }, { status: 503 })
+        : new Promise((done) => {
+            resolve = done;
+            assert.equal(command.actions[0].type, "issue-coupon");
+          }),
+  });
+  await render();
+  await click("Devolver…");
+  await page.until(() => !!popup()?.textContent.includes("preview unavailable"));
+  await React.act(async () => acceptance().click());
+  assert.equal(button("Emitir cupón").disabled, true);
+  await click("Reintentar");
+  await page.until(() => previews.length === 2);
+  assert.equal(
+    button("Emitir cupón").disabled,
+    true,
+    "An in-flight preview has no confirmed terms",
+  );
+  await React.act(async () =>
+    resolve({
+      billing: { ...saved, coupons: [issuedCoupon({ expiresOn: "2028-02-29" })] },
+      validation: { issues: [] },
+    }),
+  );
+  await page.until(() => text(popup()!).includes("Vence el 29 de febrero de 2028"));
+  assert.equal(field("amount").value, "100.00");
+  assert.equal(acceptance().checked, true);
+  assert.equal(button("Emitir cupón").disabled, false);
+  assert.equal(writes.length, 0);
+});
+
+it.each([false, true])(
+  "replays a lost coupon issuance exactly once (reopen: %s)",
+  async (reopen) => {
+    owesBack();
+    let receipt: WorkflowCommand | undefined;
+    mockApi({
+      write: (command) => {
+        if (receipt) {
+          assert.deepEqual(command, receipt, "A retry reuses the committed actions and request ID");
+          return Response.json(saved);
+        }
+        receipt = command;
+        saved = command.actions.reduce(issueCoupon, saved);
+        return Response.json({ error: "response unavailable" }, { status: 503 });
+      },
+    });
+    await render();
+    await click("Devolver…");
+    await page.until(() => text(popup()!).includes(couponTerms));
+    await fill("amount", "60");
+    await React.act(async () => acceptance().click());
+    await click("Emitir cupón");
+    await page.until(() => writes.length === 1 && !button("Emitir cupón").disabled);
+    if (reopen) {
+      await click("Cerrar");
+      await click("Descartar y salir");
+      await click("Devolver…");
+      await page.until(() => text(popup()!).includes(couponTerms));
+      await fill("amount", "60");
+      await React.act(async () => acceptance().click());
+    }
+    await click("Emitir cupón");
+    await page.until(() => text(popup()!.querySelector("h2")!) === "Cupón emitido");
+    assert.equal(writes.length, 2);
+    assert.equal(saved.coupons.length, 1, "No second coupon was issued");
+    assert.match(text(popup()!), /K7Q2M9XPA4 Saldo S\/ 60/);
+  },
+);
+
+it("does not return money as well when staff change a lost coupon attempt to Dinero", async () => {
+  owesBack();
+  let receipt: WorkflowCommand | undefined;
+  mockApi({
+    write: (command) => {
+      if (receipt) {
+        assert.equal(command.requestId, receipt.requestId);
+        return Response.json(
+          { error: "request ID reused with a different payload" },
+          { status: 409 },
+        );
+      }
+      receipt = command;
+      saved = command.actions.reduce(issueCoupon, saved);
+      return Response.json({ error: "response unavailable" }, { status: 503 });
+    },
+  });
+  await render("", true, true);
+  await click("Devolver…");
+  await page.until(() => text(popup()!).includes(couponTerms));
+  await fill("amount", "60");
+  await React.act(async () => acceptance().click());
+  await click("Emitir cupón");
+  await page.until(() => writes.length === 1 && !button("Emitir cupón").disabled);
+  await chooseReturn("Dinero");
+  await fill("reason", "En efectivo");
+  await submit();
+  await page.until(() => !popup());
+  assert.equal(saved.coupons.length, 1);
+  assert.equal(saved.refunds.length, 0);
+  assert.equal(text(accountStatusLine()), "Por devolver S/ 40 Devolver…");
+});
+
+it("refreshes coupon expiry when property today changes without losing acceptance or amount", async () => {
+  owesBack();
+  mockApi({
+    preview: () => ({
+      billing: {
+        ...saved,
+        coupons: [issuedCoupon({ expiresOn: previews.length === 1 ? "2027-10-19" : "2027-10-20" })],
+      },
+      validation: { issues: [] },
+    }),
+  });
+  await render();
+  await click("Devolver…");
+  await page.until(() => text(popup()!).includes(couponTerms));
+  await fill("amount", "60");
+  await React.act(async () => acceptance().click());
+  await React.act(async () => {
+    vi.setSystemTime(new Date("2026-10-20T05:00:00Z"));
+    window.dispatchEvent(new window.Event("focus"));
+  });
+  await page.until(() => text(popup()!).includes("Vence el 20 de octubre de 2027"));
+  assert.equal(field("amount").value, "60");
+  assert.equal(acceptance().checked, true);
+});
+
+it("keeps the accepted coupon draft and shows a changed refund-due limit beside Importe", async () => {
+  owesBack();
+  mockApi({
+    write: () => Response.json({ error: "coupon exceeds the refund due" }, { status: 409 }),
+  });
+  await render();
+  await click("Devolver…");
+  await page.until(() => text(popup()!).includes(couponTerms));
+  await fill("amount", "60");
+  await React.act(async () => acceptance().click());
+  await click("Emitir cupón");
+  await page.until(() => field("amount").getAttribute("aria-invalid") === "true");
+  assert.match(
+    text(popup()!),
+    /El cupón supera el monto por devolver, descontando reembolsos solicitados y cupones ya emitidos\./,
+  );
+  assert.equal(field("amount").value, "60");
+  assert.equal(acceptance().checked, true);
+});
+
+it("lets staff lower the amount after the coupon preview rejects a changed refund due", async () => {
+  owesBack();
+  mockApi({
+    preview: (command) =>
+      command.actions.some((action) => action.type === "issue-coupon" && action.amountCents > 6000)
+        ? Response.json({ error: "coupon exceeds the refund due" }, { status: 409 })
+        : { billing: command.actions.reduce(issueCoupon, saved), validation: { issues: [] } },
+  });
+  await render();
+  await click("Devolver…");
+  await page.until(() => !!popup()?.textContent.includes("El cupón supera el monto por devolver"));
+  await fill("amount", "60");
+  await React.act(async () => acceptance().click());
+  await page.until(() => !button("Emitir cupón").disabled);
+  await click("Emitir cupón");
+  await page.until(() => text(popup()!.querySelector("h2")!) === "Cupón emitido");
+  assert.deepEqual(writes[0].actions, [
+    { type: "issue-coupon", amountCents: 6000, guestAccepted: true },
+  ]);
+});
+
+it("hands over the coupon just issued, not a different coupon issued since the form opened", async () => {
+  owesBack();
+  mockApi({
+    write: () => {
+      saved = {
+        ...saved,
+        couponIssuedCents: 2000,
+        balanceCents: -8000,
+        refundDueCents: 8000,
+        coupons: [
+          issuedCoupon({
+            id: "other-coupon",
+            code: "OTHER20000",
+            valueCents: 2000,
+            balanceCents: 2000,
+          }),
+        ],
+      };
+      return undefined;
+    },
+  });
+  await render();
+  await click("Devolver…");
+  await page.until(() => text(popup()!).includes(couponTerms));
+  await fill("amount", "60");
+  await React.act(async () => acceptance().click());
+  await click("Emitir cupón");
+  await page.until(() => text(popup()!.querySelector("h2")!) === "Cupón emitido");
+  assert.match(text(popup()!), /K7Q2M9XPA4 Saldo S\/ 60/);
+  assert.equal(text(popup()!).includes("OTHER20000"), false);
+});
+
+it("leaves the rest of a partial coupon Por devolver for a later Dinero run and locks payments", async () => {
+  owesBack();
+  mockApi();
+  await render();
+  await click("Devolver…");
+  await page.until(() => text(popup()!).includes(couponTerms));
+  await fill("amount", "60");
+  await React.act(async () => acceptance().click());
+  await click("Emitir cupón");
+  await page.until(() => text(popup()!.querySelector("h2")!) === "Cupón emitido");
+  assert.deepEqual(writes[0].actions, [
+    { type: "issue-coupon", amountCents: 6000, guestAccepted: true },
+  ]);
+  await click("Listo");
+  await page.until(() => text(accountStatusLine()) === "Por devolver S/ 40 Devolver…");
+  assert.ok(
+    summaryRows().includes(`Pasado a cupón -S/ 60 K7Q2M9XPA4 · Vence el 19 de octubre de 2027`),
+  );
+  const movements = account().querySelector('table[aria-label="Movimientos"]')!;
+  assert.ok(movements.querySelector('[aria-label="Se emitió un cupón: no se puede editar"]'));
+  assert.equal(movements.querySelector('[aria-label^="Acciones del pago"]'), null);
+
+  await click("Devolver…");
+  assert.equal(field("amount").value, "40.00", "The next run starts at the remainder");
+  await chooseReturn("Dinero");
+  assert.equal(field("amount").value, "40.00");
+  assert.equal(popup()!.querySelector('[name="guestAccepted"]'), null);
+  await fill("reason", "Resto en efectivo");
+  await submit();
+  await page.until(() => writes.length === 2);
+  assert.deepEqual(writes[1].actions, [
+    {
+      type: "request-refund",
+      paymentId: "payment-1",
+      amountCents: 4000,
+      method: "cash",
+      reason: "Resto en efectivo",
+      completed: { refundDate: "2026-10-19" },
+    },
+  ]);
 });
 
 it("reads an Unfulfilled reservation as Cancelada with nothing to do but return the money", async () => {

@@ -62,6 +62,7 @@ const scopeByAction: Partial<Record<WorkflowAction["type"], FieldScope>> = {
   "edit-payment": "payment",
   "request-refund": "refund",
   "request-culqi-refund": "refund",
+  "issue-coupon": "refund",
   "complete-refund": "refund",
   "fail-refund": "refund",
   contact: "contact",
@@ -249,9 +250,15 @@ export function useRoomAssignmentCommand() {
   return { assign, saving: running > 0 };
 }
 
-export function useReservationPreview(id: string, actions: WorkflowAction[], enabled: boolean) {
+export function useReservationPreview(
+  id: string,
+  actions: WorkflowAction[],
+  enabled: boolean,
+  propertyDate?: string,
+) {
+  const key = reservationPreviewKey(id, "bill", actions);
   return useQuery({
-    queryKey: reservationPreviewKey(id, "bill", actions),
+    queryKey: propertyDate ? [...key, propertyDate] : key,
     queryFn: () => previewWorkflow(id, { requestId: crypto.randomUUID(), actions }),
     enabled,
     retry: false,
