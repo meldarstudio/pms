@@ -477,10 +477,23 @@ guests, payments, discount, and status. Declared occupant totals are independent
 named guests. Reservation notes are distinct from contact notes.
 New rooms also accept the [final nightly price](#prices-for-newly-reserved-rooms).
 
-Active status changes save immediately and revert on failure; cancellation and
-restoration require current server bill/validation plus confirmation. Disable status
-writes while any reservation save is queued/running. Guest/payment deletion requires
-confirmation; records remain editable on cancelled reservations.
+The header offers the same contextual check-in/check-out
+[lifecycle action](#compact-calendar-dialog) as the calendar dialog, including property-date
+emphasis, dirty-room/balance confirmations and the 8-second Deshacer toast. Confirmed
+stays offer check-in even before arrival; checked-in stays offer check-out; other
+statuses have no contextual action. On phones, identity and the overflow menu precede
+the status badges and full-width action; there is no fixed bottom page action.
+
+The overflow menu replaces the status select. **Corregir estado…** opens a small
+editor for another inventory-holding status and saves `set-status` on confirmation;
+failure retains the choice. **Cancelar reserva** keeps the reason and current server
+bill preview. Cancelled stays instead offer **Restaurar reserva**, with a destination
+status and current server bill/availability validation. Restoration still warns before
+entering a dirty room. Unfulfilled stays offer no status actions. Disable header status
+actions while a page editor or changed discount draft is open, and while any reservation
+save is queued/running. Guest/payment deletion requires confirmation; records remain
+editable on cancelled reservations. See [phone editor sizing](portal.md#reservation-overlays)
+for viewport, scrolling and draft protections.
 
 Money lives in one full-width **Cuenta** card
 ([`reservation-account.tsx`](../apps/portal/src/components/reservation-account.tsx));
@@ -524,7 +537,11 @@ arrived in the property calendar, outline before. The shared
 [lifecycle action](../apps/portal/src/components/lifecycle-action.tsx) confirms a
 dirty room before check-in and a positive saved balance before check-out (without
 blocking it), then offers Deshacer in the success toast for 8 seconds, which sends
-`set-status` back to the previous status.
+`set-status` back to the previous status. Undo checks the current screen's draft/save
+guards, not their values when the toast appeared. It is disabled while those guards
+apply. Any intervening status change permanently invalidates that undo, even if the
+status later cycles back; leaving the editor/page also invalidates it. Cancellation
+must never be restored through an earlier check-in/checkout toast.
 
 Details save dates, rooms, and notes only, through Guardar cambios in the form; on
 phones a dirty details draft replaces the footer actions with it. There is no discard

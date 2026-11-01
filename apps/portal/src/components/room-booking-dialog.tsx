@@ -451,7 +451,7 @@ export function BookingEditor({
   const draftDirty = dirty || independentDraftDirty;
   const billing = summary.billing;
   const { send, saving: reservationSaving } = useReservationCommands(detail.id);
-  const lifecycle = useLifecycleAction(detail);
+  const lifecycle = useLifecycleAction(detail, draftDirty || submitting);
   const busy = submitting || reservationSaving;
   const bodySave = compactEditor && !mobileEditor;
   useEffect(() => {
@@ -552,6 +552,7 @@ export function BookingEditor({
         className={cn(
           "gap-4",
           !full && "min-h-0 overflow-y-auto",
+          stayOnly && "max-sm:flex-1",
           compactEditor && "max-md:flex-1 max-md:gap-0 max-md:overflow-hidden",
         )}
       >
@@ -1395,8 +1396,8 @@ export function DiscardChanges({
 }) {
   return (
     <Dialog open onOpenChange={(open) => !open && onStay()}>
-      <DialogContent closeDisabled={saving}>
-        <DialogHeader>
+      <DialogContent closeDisabled={saving} className="flex max-h-[90dvh] flex-col overflow-hidden">
+        <DialogHeader className="min-h-0 overflow-y-auto">
           <DialogTitle>{saving ? "Guardando cambios" : "Hay cambios sin guardar"}</DialogTitle>
           <DialogDescription>
             {saving
@@ -1404,7 +1405,7 @@ export function DiscardChanges({
               : "Si sales ahora, se descartarán tus cambios en esta reserva."}
           </DialogDescription>
         </DialogHeader>
-        <div className="flex flex-wrap justify-end gap-2">
+        <div className="flex shrink-0 flex-wrap justify-end gap-2">
           <Button type="button" variant="outline" onClick={onStay}>
             Seguir editando
           </Button>

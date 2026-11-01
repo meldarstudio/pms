@@ -44,8 +44,8 @@ export function useDirtyRoomCheckIn() {
         if (!open) close(false);
       }}
     >
-      <AlertDialogContent>
-        <AlertDialogHeader>
+      <AlertDialogContent className="flex max-h-[90dvh] flex-col overflow-hidden">
+        <AlertDialogHeader className="min-h-0 overflow-y-auto">
           <AlertDialogTitle>
             {dirtyRooms?.length === 1
               ? `La habitación ${dirtyRooms[0]} está sucia`
@@ -58,7 +58,7 @@ export function useDirtyRoomCheckIn() {
             Puedes hacer el check-in de todos modos.
           </AlertDialogDescription>
         </AlertDialogHeader>
-        <AlertDialogFooter>
+        <AlertDialogFooter className="shrink-0">
           <Button variant="outline" onClick={() => close(false)}>
             Volver
           </Button>
