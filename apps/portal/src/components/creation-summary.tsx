@@ -1,9 +1,12 @@
 import { useId, type ReactNode } from "react";
 import { parseISO } from "date-fns";
-import { ReceiptTextIcon } from "lucide-react";
+import { CircleAlertIcon, ReceiptTextIcon, WifiOffIcon } from "lucide-react";
+import { cn } from "cn";
+import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import {
   Empty,
+  EmptyContent,
   EmptyDescription,
   EmptyHeader,
   EmptyMedia,
@@ -13,14 +16,18 @@ import { NightlyPriceDetail } from "@/components/nightly-price-detail";
 import { Separator } from "@/components/ui/separator";
 import { Skeleton } from "@/components/ui/skeleton";
 import type { CreationPreview } from "@/lib/api";
+import { readErrorKind } from "@/lib/api-error";
 import { addDateLabelDays, format } from "@/lib/dates";
 import { formatMoney } from "@/lib/money";
 
 type Billing = CreationPreview["billing"];
 
+export type CreationSummaryError = { title: string; error: Error; onRetry: () => void };
+
 export type CreationSummaryRoom = {
   key: string;
   typeName: string;
+  roomNumber: string | null;
   adults: number | null;
   children: number | null;
 };
@@ -41,11 +48,11 @@ export function CreationSummary({
   checkIn: string;
   today: string;
   message: string | null;
-  error?: ReactNode;
+  error: CreationSummaryError | null;
   discount: ReactNode;
 }) {
   const titleId = useId();
-  const loading = !billing && !error && message === null;
+  const loading = !billing && message === null;
   return (
     <section aria-labelledby={titleId} className="min-w-0">
       <Card size="sm">
@@ -56,7 +63,9 @@ export function CreationSummary({
           {stayLabel && <CardDescription>{stayLabel}</CardDescription>}
         </CardHeader>
         <CardContent className="flex flex-col gap-3">
-          {billing || error || loading ? (
+          {error ? (
+            <ErrorState {...error} />
+          ) : billing || loading ? (
             <>
               <ul className="flex flex-col gap-2">
                 {rooms.map((room) => (
@@ -64,7 +73,11 @@ export function CreationSummary({
                     key={room.key}
                     className="flex min-w-0 flex-wrap items-baseline justify-between gap-x-4"
                   >
-                    <span className="wrap-anywhere">{room.typeName}</span>
+                    <span className="wrap-anywhere">
+                      {room.roomNumber
+                        ? `${room.typeName} · Hab. ${room.roomNumber}`
+                        : room.typeName}
+                    </span>
                     <span className="text-muted-foreground">{guestLine(room)}</span>
                   </li>
                 ))}
@@ -102,14 +115,12 @@ export function CreationSummary({
                     }))}
                   />
                 </>
-              ) : error ? (
-                error
               ) : (
                 <AmountsSkeleton discount={discount} />
               )}
             </>
           ) : (
-            <Empty role="status" className="gap-3 border border-dashed p-5 md:p-5">
+            <Empty role="status" className={noticeClass}>
               <EmptyHeader>
                 <EmptyMedia variant="icon">
                   <ReceiptTextIcon />
@@ -122,6 +133,35 @@ export function CreationSummary({
         </CardContent>
       </Card>
     </section>
+  );
+}
+
+const noticeClass = "gap-3 border border-dashed p-5 md:p-5";
+
+function ErrorState({ title, error, onRetry }: CreationSummaryError) {
+  const offline = readErrorKind(error) === "offline";
+  return (
+    <Empty role="alert" className={cn(noticeClass, "border-destructive/50 bg-destructive/5")}>
+      <EmptyHeader>
+        <EmptyMedia
+          variant="icon"
+          className="bg-destructive/10 text-destructive dark:bg-destructive/20"
+        >
+          {offline ? <WifiOffIcon /> : <CircleAlertIcon />}
+        </EmptyMedia>
+        <EmptyTitle className="text-destructive">
+          {offline ? "Sin conexión con el servidor" : title}
+        </EmptyTitle>
+        <EmptyDescription className="text-destructive/90">
+          {offline ? "Revisa tu conexión a internet e inténtalo de nuevo." : error.message}
+        </EmptyDescription>
+      </EmptyHeader>
+      <EmptyContent>
+        <Button type="button" variant="outline" onClick={onRetry}>
+          Reintentar
+        </Button>
+      </EmptyContent>
+    </Empty>
   );
 }
 

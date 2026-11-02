@@ -1,6 +1,6 @@
-import { differenceInCalendarDays, parseISO } from "date-fns";
 import { z } from "zod";
 import { ApiError } from "./api-error.ts";
+import { nightsBetween } from "./dates.ts";
 
 export const roomClosureFormSchema = z
   .object({
@@ -27,7 +27,7 @@ export const roomClosureFormSchema = z
 export type RoomClosureValues = z.input<typeof roomClosureFormSchema>;
 
 export function closureNights(starts: string, ends: string) {
-  return starts && ends ? differenceInCalendarDays(parseISO(ends), parseISO(starts)) : 0;
+  return starts && ends ? nightsBetween(starts, ends) : 0;
 }
 
 export function closureUnchanged(

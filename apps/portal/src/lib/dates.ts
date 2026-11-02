@@ -1,8 +1,12 @@
-import { format as formatDate } from "date-fns";
+import { differenceInCalendarDays, format as formatDate, parseISO } from "date-fns";
 import { es } from "date-fns/locale";
 
 export function format(date: Date | number | string, pattern: string) {
   return formatDate(date, pattern, { locale: es });
+}
+
+export function nightsBetween(start: string, end: string) {
+  return differenceInCalendarDays(parseISO(end), parseISO(start));
 }
 
 export function addDateLabelDays(day: string, days: number) {

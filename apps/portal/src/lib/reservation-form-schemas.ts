@@ -6,6 +6,7 @@ import type {
   RoomType,
   StayingGuest,
 } from "./api.ts";
+import { nightsBetween } from "./dates.ts";
 import { formatMajor, formatMoney, parseMajorToCents } from "./money.ts";
 import type { RoomDraft } from "./reservation-editor.ts";
 import { propertyToday } from "./property-calendar.ts";
@@ -60,9 +61,7 @@ export const detailsSchema = (
       rooms: z.array(room),
     })
     .superRefine((value, ctx) => {
-      const nights =
-        (Date.parse(`${value.checkOut}T00:00:00Z`) - Date.parse(`${value.checkIn}T00:00:00Z`)) /
-        86400000;
+      const nights = nightsBetween(value.checkIn, value.checkOut);
       if (nights < 1 || nights > 60)
         ctx.addIssue({
           code: "custom",

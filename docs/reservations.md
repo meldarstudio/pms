@@ -733,16 +733,21 @@ balance, expiry and eligibility changes. An exact uncertain redemption can still
 replay its receipt when a newer lookup shows consumed value or changed eligibility;
 changing its code or amount restores normal lookup validation. Creation has no coupon input.
 
-Creation (`NewBooking`) sends the chosen `ratePlan` (a select on desktop; on phones,
-choice cards summarizing each plan's `GET /rate-plans` terms) and optional
+Creation (`NewBooking`) sends the chosen `ratePlan` (choice cards summarizing each
+plan's `GET /rate-plans` terms) and optional
 [per-room final nightly prices](#prices-for-newly-reserved-rooms), and shows only the current
 `POST /reservations/preview` bill: Total, required initial payment, and cancellation
 terms ([creation-summary.tsx](../apps/portal/src/components/creation-summary.tsx)).
 While a changed draft is repricing or its preview failed (with Reintentar), the
-summary shows no amounts and creating is disabled. Until a bill exists, the summary keeps
-its title and dates and hides the room list: it shows **Calculando…** while repricing, or
-**Aún no hay total** with the missing input (stay, room types or nightly prices); a failed
-preview keeps the rooms and shows the error. Cancellation terms derive from the
+summary shows no amounts and creating is disabled. The summary keeps its title, dates and
+night count. While repricing it lists the rooms (type, assigned room number, guests) and
+shows a skeleton in place of the amounts. Missing input (stay, room types or nightly
+prices) hides the room list and shows **Aún no hay total** with what is missing. A failed
+form read (room types, rooms, rate plans, availability, reservations or closures) or
+failed preview replaces the summary body with the same frame as an error, **No se
+pudieron cargar los datos** or **No se pudo calcular el total** (**Sin conexión con el
+servidor** when offline), and one Reintentar that refetches every failed read; read
+failures take precedence. Cancellation terms derive from the
 preview's accepted policy and prices: the inclusive free deadline (check-in minus the
 plan's days) while property today has not passed it, otherwise the actual charge (first
 nights capped at total, or total); zero totals read as no charge. **Ver detalle** shows
@@ -750,7 +755,8 @@ nightly prices for several rooms or varying prices. The reservation discount is 
 shared [discount popover](../apps/portal/src/components/discount-popover.tsx): only an
 applied amount reaches the preview and request; the server caps it at the subtotal; an
 override is priced before this reservation discount (S/ 95 × 3 − S/ 30 = S/ 255). An
-open changed or invalid draft blocks creating. Room rows use the shared
+open changed or invalid draft blocks creating. Check-in has no lower bound so staff can
+record past stays. Room rows use the shared
 [room row](../apps/portal/src/components/reservation-room-rows.tsx) layout.
 
 Creating records no payment. The dialog stays open, switching to the new reservation

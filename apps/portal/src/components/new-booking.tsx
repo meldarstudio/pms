@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useSelector } from "@tanstack/react-form";
 import { useQueryClient } from "@tanstack/react-query";
 import { BedDoubleIcon, PlusIcon } from "lucide-react";
-import { CreationSummary } from "@/components/creation-summary";
+import { CreationSummary, type CreationSummaryError } from "@/components/creation-summary";
 import { DiscountPopover } from "@/components/discount-popover";
 import { ReservationRoomRow } from "@/components/reservation-room-rows";
 import type { BookingTarget } from "@/components/room-booking-dialog";
@@ -22,7 +22,7 @@ import {
   type ReservationDetail,
 } from "@/lib/api";
 import { serverFieldErrors } from "@/lib/api-error";
-import { format } from "@/lib/dates";
+import { format, nightsBetween } from "@/lib/dates";
 import { parseISO } from "date-fns";
 import { setServerErrors } from "@/lib/form-errors";
 import { CURRENCY, formatMajor, parseMajorToCents } from "@/lib/money";
@@ -74,7 +74,6 @@ export function NewBooking({
     return {
       checkIn,
       checkOut: minimumCheckOut(checkIn),
-      status: "confirmed",
       ratePlan: "flexible",
       fullName: "",
       email: "",
@@ -150,9 +149,7 @@ export function NewBooking({
     return () => onSavingChange(false);
   }, [busy, onSavingChange]);
 
-  const nights =
-    (Date.parse(`${values.checkOut}T00:00:00Z`) - Date.parse(`${values.checkIn}T00:00:00Z`)) /
-    86400000;
+  const nights = nightsBetween(values.checkIn, values.checkOut);
   const validStay = nights >= 1 && nights <= 60;
   const availability = useAvailability(values.checkIn, values.checkOut, validStay);
   const reservations = useReservations(values.checkIn, values.checkOut, validStay);
@@ -223,9 +220,26 @@ export function NewBooking({
     typeName:
       roomTypes.data?.find((type) => type.id === draft.room.roomTypeId)?.name ??
       "Selecciona un tipo",
+    roomNumber: rooms.data?.find((room) => room.id === draft.room.roomId)?.number ?? null,
     adults: /^\d+$/.test(draft.room.adults) ? Number(draft.room.adults) : null,
     children: /^\d+$/.test(draft.room.children) ? Number(draft.room.children) : null,
   }));
+  const failedLoads = [roomTypes, rooms, ratePlans, availability, reservations, closures].filter(
+    (query) => query.error,
+  );
+  const summaryError: CreationSummaryError | null = failedLoads[0]?.error
+    ? {
+        title: "No se pudieron cargar los datos",
+        error: failedLoads[0].error,
+        onRetry: () => failedLoads.forEach((query) => void query.refetch()),
+      }
+    : previewInput && preview.error
+      ? {
+          title: "No se pudo calcular el total",
+          error: preview.error,
+          onRetry: () => void preview.refetch(),
+        }
+      : null;
   const planOptions = (ratePlans.data ?? [{ plan: "flexible" as const }]).map((terms) => ({
     value: terms.plan,
     label: ratePlanLabels[terms.plan] ?? terms.plan,
@@ -484,7 +498,7 @@ export function NewBooking({
             <CreationSummary
               stayLabel={
                 validStay
-                  ? `${format(parseISO(values.checkIn), "d MMM")} – ${format(parseISO(values.checkOut), "d MMM yyyy")}`
+                  ? `${format(parseISO(values.checkIn), "d MMM")} – ${format(parseISO(values.checkOut), "d MMM yyyy")} · ${nights} ${nights === 1 ? "noche" : "noches"}`
                   : null
               }
               rooms={summaryRooms}
@@ -500,17 +514,7 @@ export function NewBooking({
                       ? "Selecciona los tipos de habitación para ver el total."
                       : null
               }
-              error={
-                previewInput &&
-                preview.error && (
-                  <div className="flex flex-col items-start gap-2">
-                    <FieldError>{preview.error.message}</FieldError>
-                    <Button type="button" variant="outline" onClick={() => void preview.refetch()}>
-                      Reintentar
-                    </Button>
-                  </div>
-                )
-              }
+              error={summaryError}
               discount={
                 <DiscountPopover
                   appliedCents={discountCents}
@@ -522,29 +526,20 @@ export function NewBooking({
                 />
               }
             />
-            {[roomTypes, rooms, ratePlans, availability, reservations, closures].map(
-              (query, index) =>
-                query.error ? (
-                  <div key={index} className="flex flex-col items-start gap-2">
-                    <FieldError>{query.error.message}</FieldError>
-                    <Button type="button" variant="outline" onClick={() => void query.refetch()}>
-                      Reintentar
-                    </Button>
-                  </div>
-                ) : null,
-            )}
           </aside>
         </fieldset>
-        <FieldError>{error}</FieldError>
       </div>
       <Separator className="shrink-0" />
-      <div className="flex shrink-0 flex-col gap-3 max-md:py-4 max-md:pb-[max(1rem,env(safe-area-inset-bottom))] max-md:safe-area-padding-x">
-        {discountBlocking && (
-          <p role="status" className="text-muted-foreground">
-            Aplica o cierra el descuento para crear la reserva.
-          </p>
-        )}
-        <div className="flex flex-wrap justify-end gap-2 max-md:[&>button]:flex-1">
+      <div className="flex shrink-0 flex-col gap-3 max-md:py-4 max-md:pb-[max(1rem,env(safe-area-inset-bottom))] max-md:safe-area-padding-x md:flex-row md:items-center md:gap-6">
+        <div className="flex min-w-0 flex-col gap-1 empty:hidden">
+          <FieldError>{error}</FieldError>
+          {discountBlocking && (
+            <p role="status" className="text-muted-foreground">
+              Aplica o cierra el descuento para crear la reserva.
+            </p>
+          )}
+        </div>
+        <div className="flex flex-wrap justify-end gap-2 max-md:[&>button]:flex-1 md:ml-auto md:shrink-0">
           <Button type="button" variant="outline" disabled={busy} onClick={onCancel}>
             Cancelar
           </Button>
