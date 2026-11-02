@@ -27,9 +27,14 @@ list, the count refetches on focus and reconnect; it shares the list's `reservat
 query prefix, so this browser's saves refresh it too.
 
 Below 768px, **Nueva reserva** uses `page-primary-action.tsx`'s floating slot on
-reservations/calendar. Keep its accessible label, focus order, safe areas, reduced
-motion, and content clearance even when its visual label collapses on scroll.
-Dialogs/sheets/update notices sit above it.
+reservations/calendar. Keep its 48px touch target, accessible label, focus order, safe
+areas, reduced motion, and content clearance even when its visual label collapses on
+scroll. Dialogs/sheets/update notices sit above it.
+
+At 768px and wider, the calendar toolbar adapts to its own width (a
+`@container/toolbar` query), not the viewport, so an open sidebar compacts it:
+**Nueva reserva** becomes icon-only (keeping its accessible name) below 48rem, and
+date navigation moves to its own full-width row below 42rem.
 
 URL search parsing/defaults live in [route-search.ts](../apps/portal/src/lib/route-search.ts).
 Calendar/inventory use `from`/`span`; reservations retain view/day/filter/sort/pagination

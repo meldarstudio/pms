@@ -57,7 +57,7 @@ export function App() {
           className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden"
           style={
             {
-              "--primary-action-clearance": "calc(4rem + env(safe-area-inset-bottom))",
+              "--primary-action-clearance": "calc(5rem + env(safe-area-inset-bottom))",
             } as CSSProperties
           }
         >

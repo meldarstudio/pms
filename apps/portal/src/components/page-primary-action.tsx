@@ -47,7 +47,7 @@ export function PagePrimaryAction({
       data-collapsed={collapsed || undefined}
       size="icon"
       className={cn(
-        "fixed right-[max(1rem,env(safe-area-inset-right))] bottom-[max(1rem,env(safe-area-inset-bottom))] z-40 w-auto gap-0 shadow-lg",
+        "fixed right-[max(1rem,env(safe-area-inset-right))] bottom-[max(1rem,env(safe-area-inset-bottom))] z-40 h-12 w-auto min-w-12 gap-0 text-sm shadow-lg [&_svg:not([class*='size-'])]:size-5",
         className,
       )}
       {...props}
@@ -60,7 +60,7 @@ export function PagePrimaryAction({
         )}
       >
         <span className="min-w-0 overflow-hidden">
-          <span className="block pr-2.5">{label}</span>
+          <span className="block pr-4">{label}</span>
         </span>
       </span>
     </Button>,

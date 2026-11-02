@@ -572,7 +572,7 @@ export function RoomCalendar({
   );
 
   return (
-    <div className="flex min-h-0 min-w-0 flex-1 flex-col">
+    <div className="@container/toolbar flex min-h-0 min-w-0 flex-1 flex-col">
       {isMobile && newReservationButton}
       <RoomClosureDialog target={closureTarget} onClose={() => setClosureTarget(null)} />
       <RoomEditDialog target={roomTarget} onClose={() => setRoomTarget(null)} />
@@ -600,7 +600,7 @@ export function RoomCalendar({
                 }
               }}
             >
-              <SelectTrigger className="w-28">
+              <SelectTrigger className="w-28 @max-3xl/toolbar:w-24">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent alignItemWithTrigger={false} align="start">
@@ -623,7 +623,9 @@ export function RoomCalendar({
             {refreshButton}
           </div>
         )}
-        <ButtonGroup>
+        <ButtonGroup
+          className={cn(!isMobile && "@max-2xl/toolbar:order-last @max-2xl/toolbar:w-full")}
+        >
           {!isMobile && (
             <Button
               variant="outline"
@@ -649,7 +651,10 @@ export function RoomCalendar({
               render={
                 <Button
                   variant="outline"
-                  className="min-w-32 justify-between md:min-w-36"
+                  className={cn(
+                    "min-w-32 justify-between md:min-w-36",
+                    !isMobile && "@max-2xl/toolbar:flex-1",
+                  )}
                   disabled={assignment.pending}
                 />
               }

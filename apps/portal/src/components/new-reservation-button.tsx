@@ -25,9 +25,14 @@ export function NewReservationButton({
       />
     );
   return (
-    <Button disabled={disabled} onClick={onClick}>
+    <Button
+      disabled={disabled}
+      title="Nueva reserva"
+      className="@max-3xl/toolbar:w-8 @max-3xl/toolbar:px-0!"
+      onClick={onClick}
+    >
       <PlusIcon data-icon="inline-start" />
-      Nueva reserva
+      <span className="@max-3xl/toolbar:sr-only">Nueva reserva</span>
     </Button>
   );
 }
