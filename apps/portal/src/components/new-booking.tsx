@@ -26,6 +26,7 @@ import { format, nightsBetween } from "@/lib/dates";
 import { parseISO } from "date-fns";
 import { setServerErrors } from "@/lib/form-errors";
 import { CURRENCY, formatMajor, parseMajorToCents } from "@/lib/money";
+import { ChoiceCardsSkeleton } from "@/components/workflow-fields";
 import { newBookingAvailability } from "@/lib/new-booking-availability";
 import {
   useAvailability,
@@ -280,16 +281,29 @@ export function NewBooking({
                     />
                   )}
                 </form.AppField>
-                <form.AppField name="ratePlan">
-                  {(field) => (
-                    <field.ChoiceCards
-                      label="Tarifa"
-                      options={planOptions}
-                      className="md:col-span-2"
-                      optionsClassName="md:grid-cols-2"
-                    />
-                  )}
-                </form.AppField>
+                {ratePlans.isPending ? (
+                  <ChoiceCardsSkeleton
+                    label="Tarifa"
+                    loadingLabel="Cargando tarifas…"
+                    className="md:col-span-2"
+                    optionsClassName="md:grid-cols-2"
+                    cards={[
+                      { title: "w-12", lines: ["block w-full", "block w-3/4"] },
+                      { title: "w-24", lines: ["block w-full", "block w-1/2 max-md:hidden"] },
+                    ]}
+                  />
+                ) : (
+                  <form.AppField name="ratePlan">
+                    {(field) => (
+                      <field.ChoiceCards
+                        label="Tarifa"
+                        options={planOptions}
+                        className="md:col-span-2"
+                        optionsClassName="md:grid-cols-2"
+                      />
+                    )}
+                  </form.AppField>
+                )}
               </FieldGroup>
             </FieldSet>
             <section className="flex flex-col gap-3" aria-label="Habitaciones">

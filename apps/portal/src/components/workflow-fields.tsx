@@ -12,6 +12,8 @@ import {
   FieldTitle,
 } from "@/components/ui/field";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
+import { Skeleton } from "@/components/ui/skeleton";
+import { cn } from "cn";
 import { Input } from "@/components/ui/input";
 import { PhoneInput } from "@/components/phone-input";
 import { Button } from "@/components/ui/button";
@@ -307,6 +309,48 @@ export function ChoiceCardField({
         ))}
       </RadioGroup>
       {error && <FieldError id={`${id}-error`}>{error}</FieldError>}
+    </FieldSet>
+  );
+}
+
+export function ChoiceCardsSkeleton({
+  label,
+  loadingLabel,
+  cards,
+  className,
+  optionsClassName,
+}: {
+  label: string;
+  loadingLabel: string;
+  cards: { title: string; lines: string[] }[];
+  className?: string;
+  optionsClassName?: string;
+}) {
+  return (
+    <FieldSet aria-busy className={className}>
+      <FieldLegend variant="label">{label}</FieldLegend>
+      <p role="status" className="sr-only">
+        {loadingLabel}
+      </p>
+      <div aria-hidden className={cn("grid w-full gap-2", optionsClassName)}>
+        {cards.map((card, index) => (
+          <FieldLabel key={index}>
+            <Field orientation="horizontal">
+              <FieldContent>
+                <FieldTitle>
+                  <Skeleton className={cn("inline-block h-lh align-top", card.title)} />
+                </FieldTitle>
+                <FieldDescription>
+                  {card.lines.map((line, lineIndex) => (
+                    <Skeleton key={lineIndex} className={cn("h-lh align-top", line)} />
+                  ))}
+                </FieldDescription>
+              </FieldContent>
+              <Skeleton className="size-4 shrink-0 rounded-full" />
+            </Field>
+          </FieldLabel>
+        ))}
+      </div>
     </FieldSet>
   );
 }
