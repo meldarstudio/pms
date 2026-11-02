@@ -76,7 +76,7 @@ export async function occupiedCounts(
   return peakOccupied(dates, stays, closures);
 }
 
-export async function freeRoomIds(
+export async function assignableRooms(
   db: Db,
   checkIn: string,
   checkOut: string,
@@ -106,10 +106,12 @@ export async function freeRoomIds(
       .where(and(lt(roomClosures.starts, checkOut), gt(roomClosures.ends, checkIn))),
   ]);
   const blocked = new Set([...held, ...closed].map((row) => row.roomId));
-  const byType = new Map<string, string[]>();
+  const byType = new Map<string, { count: number; freeRoomIds: string[] }>();
   for (const room of all) {
-    if (blocked.has(room.id)) continue;
-    byType.set(room.roomTypeId, [...(byType.get(room.roomTypeId) ?? []), room.id]);
+    const type = byType.get(room.roomTypeId) ?? { count: 0, freeRoomIds: [] };
+    type.count += 1;
+    if (!blocked.has(room.id)) type.freeRoomIds.push(room.id);
+    byType.set(room.roomTypeId, type);
   }
   return byType;
 }

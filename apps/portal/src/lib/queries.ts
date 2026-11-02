@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import {
   keepPreviousData,
   useMutation,
@@ -183,13 +183,31 @@ export function useRatePlans() {
 }
 
 export function useCreationPreview(input: CreationPreviewInput | null) {
-  return useQuery({
-    queryKey: ["creation-preview", input],
-    queryFn: () => previewWorkflowBooking(input!),
-    enabled: input !== null,
+  const draft = JSON.stringify(input);
+  const [settled, setSettled] = useState(draft);
+  const current = settled === draft;
+  useEffect(() => {
+    if (current) return;
+    const timer = setTimeout(() => setSettled(draft), 300);
+    return () => clearTimeout(timer);
+  }, [draft, current]);
+  const settledInput = JSON.parse(settled) as CreationPreviewInput | null;
+  const preview = useQuery({
+    queryKey: ["creation-preview", settledInput],
+    queryFn: () => previewWorkflowBooking(settledInput!),
+    enabled: current && settledInput !== null,
     retry: false,
     refetchOnWindowFocus: false,
   });
+  return { ...preview, current };
+}
+
+export function refreshAfterCreation(client: QueryClient) {
+  return Promise.all(
+    ["reservations", "availability", "inventory", "calendar", housekeepingQueryKey[0]].map((key) =>
+      client.invalidateQueries({ queryKey: [key] }),
+    ),
+  );
 }
 
 export function useSavePropertySetup() {

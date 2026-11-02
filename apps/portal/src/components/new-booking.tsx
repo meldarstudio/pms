@@ -29,6 +29,7 @@ import { CURRENCY, formatMajor, parseMajorToCents } from "@/lib/money";
 import { newBookingAvailability } from "@/lib/new-booking-availability";
 import {
   useAvailability,
+  refreshAfterCreation,
   useCreationPreview,
   useRatePlans,
   useRooms,
@@ -129,7 +130,7 @@ export function NewBooking({
           ...data,
           requestId: retry.current!.requestId,
         });
-        await client.invalidateQueries();
+        await refreshAfterCreation(client);
         onDirtyChange(false);
         onCreated(result);
       } catch (cause) {
@@ -200,7 +201,9 @@ export function NewBooking({
       : null;
   const preview = useCreationPreview(previewInput);
   const billing =
-    previewInput && preview.isSuccess && !preview.isFetching ? preview.data.billing : null;
+    previewInput && preview.current && preview.isSuccess && !preview.isFetching
+      ? preview.data.billing
+      : null;
   const ready =
     availabilityFresh &&
     selection.rooms === values.rooms &&
@@ -223,7 +226,7 @@ export function NewBooking({
         error: failedLoads[0].error,
         onRetry: () => failedLoads.forEach((query) => void query.refetch()),
       }
-    : previewInput && preview.error
+    : previewInput && preview.current && preview.error
       ? {
           title: "No se pudo calcular el total",
           error: preview.error,

@@ -6,7 +6,7 @@ import { currency, HttpError, validate } from "../http";
 import { addDays } from "../lib/dates";
 import { overridesFor, priceNights, totalCents } from "../lib/pricing";
 import { ratePlans } from "../lib/rate-plans";
-import { freeRoomIds, roomCounts, loadRoomTypes, occupiedCounts, ratesBetween } from "../inventory";
+import { assignableRooms, loadRoomTypes, occupiedCounts, ratesBetween } from "../inventory";
 import { requireStay } from "../rules";
 
 export const availabilityRoutes = new Hono<Env>();
@@ -19,11 +19,10 @@ availabilityRoutes.get("/", validate("query", availabilityQuerySchema), async (c
   const types = await loadRoomTypes(db, query.roomTypeId ? [query.roomTypeId] : undefined);
   if (query.roomTypeId && types.length === 0) throw new HttpError(404, "room type not found");
   const typeIds = types.map((type) => type.id);
-  const [capacity, occupied, rates, assignable] = await Promise.all([
-    roomCounts(db),
+  const [occupied, rates, supply] = await Promise.all([
     occupiedCounts(db, query.checkIn, checkOut, query.excludeReservationId),
     ratesBetween(db, typeIds, query.checkIn, checkOut),
-    freeRoomIds(db, query.checkIn, checkOut, query.excludeReservationId),
+    assignableRooms(db, query.checkIn, checkOut, query.excludeReservationId),
   ]);
   const roomTypesOut = types
     .filter(
@@ -44,8 +43,8 @@ availabilityRoutes.get("/", validate("query", availabilityQuerySchema), async (c
         name: type.name,
         maxAdults: type.maxAdults,
         maxChildren: type.maxChildren,
-        free: Math.max(0, (capacity.get(type.id) ?? 0) - (occupied.get(type.id) ?? 0)),
-        freeRoomIds: assignable.get(type.id) ?? [],
+        free: Math.max(0, (supply.get(type.id)?.count ?? 0) - (occupied.get(type.id) ?? 0)),
+        freeRoomIds: supply.get(type.id)?.freeRoomIds ?? [],
         totalCents: totalCents(priced),
         nights: priced.map(({ date, priceCents }) => ({ date, priceCents })),
       };

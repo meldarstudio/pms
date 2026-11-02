@@ -744,8 +744,8 @@ plan's `GET /rate-plans` terms) and optional
 [per-room final nightly prices](#prices-for-newly-reserved-rooms), and shows only the current
 `POST /reservations/preview` bill: Total, required initial payment, and cancellation
 terms ([creation-summary.tsx](../apps/portal/src/components/creation-summary.tsx)).
-While a changed draft is repricing or its preview failed (with Reintentar), the
-summary shows no amounts and creating is disabled. The summary keeps its title, dates and
+A changed draft reprices once edits pause for 300 ms. Until that preview arrives, or
+while it failed (with Reintentar), the summary shows no amounts and creating is disabled. The summary keeps its title, dates and
 night count. While repricing it lists the rooms (type, assigned room number, guests) and
 shows a skeleton in place of the amounts. Missing input (stay, room types or nightly
 prices) hides the room list and shows **Aún no hay total** with what is missing. A failed
