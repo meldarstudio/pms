@@ -34,7 +34,7 @@ import {
   type State,
   type Stay,
 } from "./reservation-read";
-import { newLine, plan, price } from "./workflow-plan";
+import { plan, priceRooms, stayLine } from "./workflow-plan";
 
 export type CommandContext = {
   today: string;
@@ -302,8 +302,8 @@ export async function createWorkflow(db: Db, input: WorkflowCreate) {
     guestId = crypto.randomUUID();
   const phone = acceptPhone(input.guest.phone);
   const terms = ratePlans[input.ratePlan ?? "flexible"];
-  const lines: Stay[] = [];
-  for (const room of input.rooms) lines.push(await newLine(db, id, room, now, input, terms));
+  const nights = await priceRooms(db, input, input.rooms, terms);
+  const lines = input.rooms.map((room, index) => stayLine(id, room, now, nights[index]));
   rejectRoomIssues(await validateRooms(db, lines));
   try {
     await runBatch(db, [
@@ -341,12 +341,11 @@ export async function createWorkflow(db: Db, input: WorkflowCreate) {
 
 export async function previewCreate(db: Db, input: WorkflowCreatePreview) {
   const terms = ratePlans[input.ratePlan ?? "flexible"];
-  const rooms = [];
-  for (const room of input.rooms)
-    rooms.push({
-      roomTypeId: room.roomTypeId,
-      nights: await price(db, { ...room, checkIn: input.checkIn, checkOut: input.checkOut }, terms),
-    });
+  const nights = await priceRooms(db, input, input.rooms, terms);
+  const rooms = input.rooms.map((room, index) => ({
+    roomTypeId: room.roomTypeId,
+    nights: nights[index],
+  }));
   return { terms, rooms };
 }
 

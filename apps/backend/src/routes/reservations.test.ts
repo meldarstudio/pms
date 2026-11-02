@@ -645,6 +645,60 @@ describe("accepted rate-plan terms", () => {
   });
 });
 
+describe("Creation pricing", () => {
+  const twoNights = { checkIn: "2026-10-10", checkOut: "2026-10-12" };
+  const rooms = [
+    { roomTypeId: "type" },
+    { roomTypeId: "suite" },
+    { roomTypeId: "type", nightlyRateCents: 8000 },
+  ];
+  const create = (priced: typeof rooms) =>
+    request("/reservations", "POST", {
+      requestId: crypto.randomUUID(),
+      ...twoNights,
+      guest: { fullName: "Ada Lovelace" },
+      rooms: priced.map((room) => ({ ...room, adults: 1, children: 0 })),
+    });
+  const preview = (priced: typeof rooms) =>
+    request("/reservations/preview", "POST", { ...twoNights, rooms: priced });
+
+  beforeEach(() => {
+    seedRoomType(db.sqlite, { id: "suite", name: "Suite", maxAdults: 2, baseRateCents: 25000 });
+    seedRooms(db.sqlite, "suite", { "room-201": "201" });
+    db.sqlite.exec(
+      `INSERT INTO room_type_rates (id, room_type_id, date, price_cents) VALUES
+        ('type-rate', 'type', '2026-10-11', 12000),
+        ('suite-rate', 'suite', '2026-10-10', 30000)`,
+    );
+  });
+
+  it("prices each room from its own type's overrides and base rate, or its flat rate", async () => {
+    const expected = {
+      totalCents: 93000,
+      rooms: [
+        { roomTypeId: "type", nights: [{ priceCents: 10000 }, { priceCents: 12000 }] },
+        { roomTypeId: "suite", nights: [{ priceCents: 30000 }, { priceCents: 25000 }] },
+        { roomTypeId: "type", nights: [{ priceCents: 8000 }, { priceCents: 8000 }] },
+      ],
+    };
+    const previewed = await preview(rooms);
+    expect(previewed.status).toBe(200);
+    expect(((await previewed.json()) as { billing: Detail }).billing).toMatchObject(expected);
+    const saved = await create(rooms);
+    expect(saved.status).toBe(201);
+    expect(await saved.json()).toMatchObject(expected);
+  });
+
+  it("rejects an unknown room type among priced rooms without saving", async () => {
+    const priced = [...rooms, { roomTypeId: "missing" }];
+    for (const response of [await preview(priced), await create(priced)]) {
+      expect(response.status).toBe(404);
+      expect(await response.json()).toEqual({ error: "room type not found" });
+    }
+    expect(await listed()).toEqual([]);
+  });
+});
+
 describe("Non-refundable reservations", () => {
   const nonRefundable = {
     plan: "non_refundable",

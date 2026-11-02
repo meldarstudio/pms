@@ -57,33 +57,50 @@ const fail = (message: string): never => {
   throw new HttpError(400, message);
 };
 
-export async function price(
+type PricedRoom = { roomTypeId: string; nightlyRateCents?: number };
+
+export async function priceRooms(
   db: Db,
-  room: { roomTypeId: string; checkIn: string; checkOut: string; nightlyRateCents?: number },
+  stay: { checkIn: string; checkOut: string },
+  rooms: PricedRoom[],
   terms: RatePlanTerms,
-): Promise<Night[]> {
-  const dates = requireStay(room.checkIn, room.checkOut);
-  const [type] = await db.select().from(roomTypes).where(eq(roomTypes.id, room.roomTypeId));
-  if (!type) throw new HttpError(404, "room type not found");
-  const rates = await ratesBetween(db, [type.id], room.checkIn, room.checkOut);
-  return priceNights({
-    dates,
-    baseRateCents: type.baseRateCents,
-    overrides: overridesFor(rates, type.id),
-    terms,
-    flatRateCents: room.nightlyRateCents,
+): Promise<Night[][]> {
+  const dates = requireStay(stay.checkIn, stay.checkOut);
+  if (!rooms.length) return [];
+  const typeIds = [...new Set(rooms.map((room) => room.roomTypeId))];
+  const [types, rates] = await Promise.all([
+    db.select().from(roomTypes).where(inArray(roomTypes.id, typeIds)),
+    ratesBetween(db, typeIds, stay.checkIn, stay.checkOut),
+  ]);
+  return rooms.map((room) => {
+    const type = types.find((type) => type.id === room.roomTypeId);
+    if (!type) throw new HttpError(404, "room type not found");
+    return priceNights({
+      dates,
+      baseRateCents: type.baseRateCents,
+      overrides: overridesFor(rates, type.id),
+      terms,
+      flatRateCents: room.nightlyRateCents,
+    });
   });
 }
-export async function newLine(
+
+export async function price(
   db: Db,
+  room: PricedRoom & { checkIn: string; checkOut: string },
+  terms: RatePlanTerms,
+): Promise<Night[]> {
+  const [nights] = await priceRooms(db, room, [room], terms);
+  return nights;
+}
+
+export function stayLine(
   id: string,
   room: Action<"add-room">["room"],
   now: string,
-  dates: { checkIn: string; checkOut: string },
-  terms: RatePlanTerms,
-): Promise<Stay> {
-  const nights = await price(db, { ...room, ...dates }, terms);
-  const line: Stay = {
+  nights: Night[],
+): Stay {
+  return {
     id: crypto.randomUUID(),
     reservationId: id,
     roomTypeId: room.roomTypeId,
@@ -93,7 +110,6 @@ export async function newLine(
     createdAt: now,
     nights,
   };
-  return line;
 }
 
 const lineFor = ({ state }: PlanContext, id: string) =>
@@ -217,12 +233,16 @@ const handlers: Handlers = {
   async dates(action, { db, state }) {
     requireStay(action.checkIn, action.checkOut);
     Object.assign(state.reservation, { checkIn: action.checkIn, checkOut: action.checkOut });
-    for (const line of state.lines) {
+    const priced = await priceRooms(
+      db,
+      state.reservation,
+      state.lines,
+      acceptedTerms(state.reservation),
+    );
+    state.lines.forEach((line, index) => {
       const saved = new Map(line.nights.map((n) => [n.date, n]));
-      line.nights = (
-        await price(db, { ...line, ...state.reservation }, acceptedTerms(state.reservation))
-      ).map((n) => saved.get(n.date) ?? n);
-    }
+      line.nights = priced[index].map((n) => saved.get(n.date) ?? n);
+    });
   },
   "remove-room"(action, ctx) {
     const { state } = ctx;
@@ -239,16 +259,12 @@ const handlers: Handlers = {
   },
   async "add-room"(action, { db, state, now }) {
     if (state.lines.length >= 60) fail("reservation cannot exceed 60 rooms");
-    state.lines.push(
-      await newLine(
-        db,
-        state.reservation.id,
-        action.room,
-        now,
-        state.reservation,
-        acceptedTerms(state.reservation),
-      ),
+    const nights = await price(
+      db,
+      { ...action.room, ...state.reservation },
+      acceptedTerms(state.reservation),
     );
+    state.lines.push(stayLine(state.reservation.id, action.room, now, nights));
   },
   async "edit-room"(action, ctx) {
     const { db, state } = ctx;
