@@ -744,6 +744,9 @@ function answerAvailability() {
         maxAdults: 2,
         maxChildren: 1,
         free: 2,
+        freeRoomIds: page.api.catalog.rooms
+          .filter((room) => room.roomTypeId === "double")
+          .map((room) => room.id),
         totalCents: 15000,
         nights: [],
       },

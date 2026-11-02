@@ -743,7 +743,7 @@ summary shows no amounts and creating is disabled. The summary keeps its title, 
 night count. While repricing it lists the rooms (type, assigned room number, guests) and
 shows a skeleton in place of the amounts. Missing input (stay, room types or nightly
 prices) hides the room list and shows **Aún no hay total** with what is missing. A failed
-form read (room types, rooms, rate plans, availability, reservations or closures) or
+form read (room types, rooms, rate plans or availability) or
 failed preview replaces the summary body with the same frame as an error, **No se
 pudieron cargar los datos** or **No se pudo calcular el total** (**Sin conexión con el
 servidor** when offline), and one Reintentar that refetches every failed read; read
@@ -756,7 +756,10 @@ shared [discount popover](../apps/portal/src/components/discount-popover.tsx): o
 applied amount reaches the preview and request; the server caps it at the subtotal; an
 override is priced before this reservation discount (S/ 95 × 3 − S/ 30 = S/ 255). An
 open changed or invalid draft blocks creating. Check-in has no lower bound so staff can
-record past stays. Room rows use the shared
+record past stays. Room choices come from one `GET /availability` read for the dates:
+types while draft rooms stay below their `free`, and room numbers from
+[`freeRoomIds`](property-setup.md#occupancy-and-availability) not already chosen in the
+draft. New dates clear choices the fresh read no longer offers. Room rows use the shared
 [room row](../apps/portal/src/components/reservation-room-rows.tsx) layout.
 
 Creating records no payment. The dialog stays open, switching to the new reservation

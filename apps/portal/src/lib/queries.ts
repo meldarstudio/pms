@@ -400,6 +400,7 @@ export function useSaveRoomClosure() {
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: ["room-closures"] });
       await queryClient.invalidateQueries({ queryKey: ["calendar"] });
+      await queryClient.invalidateQueries({ queryKey: ["availability"] });
     },
   });
 }
@@ -411,6 +412,7 @@ export function useDeleteRoomClosure() {
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: ["room-closures"] });
       await queryClient.invalidateQueries({ queryKey: ["calendar"] });
+      await queryClient.invalidateQueries({ queryKey: ["availability"] });
     },
   });
 }

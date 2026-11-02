@@ -429,6 +429,55 @@ it("filters availability by both adult and child limits without changing room pr
   expect(tooManyChildren.roomTypes).toEqual([]);
 });
 
+it("lists assignable rooms using the same holding statuses and [start, end) overlap as saves", async () => {
+  seedRooms(db.sqlite, "type", { "room-104": "104", "room-105": "105" });
+  const seed = (
+    id: string,
+    status: string,
+    roomId: string | null,
+    checkIn: string,
+    checkOut: string,
+  ) =>
+    seedReservation(db.sqlite, {
+      id,
+      code: id,
+      guestName: id,
+      status,
+      roomId,
+      checkIn,
+      checkOut,
+      createdAt: "2026-10-01",
+    });
+  seed("overlapping", "confirmed", "room-101", "2026-10-13", "2026-10-15");
+  seed("released", "no_show", "room-102", "2026-10-12", "2026-10-14");
+  seed("departed", "checked_out", "room-104", "2026-10-10", "2026-10-13");
+  seed("unassigned", "confirmed", null, "2026-10-12", "2026-10-14");
+  db.sqlite.exec(
+    "INSERT INTO room_closures (id, room_id, starts, ends, created_at) VALUES ('turnover', 'room-103', '2026-10-14', '2026-10-16', '2026-10-01'), ('repairs', 'room-105', '2026-10-11', '2026-10-13', '2026-10-01')",
+  );
+  const response = await request("/availability?checkIn=2026-10-12&checkOut=2026-10-14");
+  expect(response.status).toBe(200);
+  const { roomTypes } = (await response.json()) as {
+    roomTypes: { free: number; freeRoomIds: string[] }[];
+  };
+  expect(roomTypes).toEqual([
+    expect.objectContaining({ free: 2, freeRoomIds: ["room-102", "room-103"] }),
+  ]);
+  const assigned = await request("/reservations", "POST", {
+    requestId: crypto.randomUUID(),
+    checkIn: "2026-10-12",
+    checkOut: "2026-10-14",
+    guest: { fullName: "Ada Lovelace" },
+    rooms: ["room-102", "room-103"].map((roomId) => ({
+      roomTypeId: "type",
+      roomId,
+      adults: 1,
+      children: 0,
+    })),
+  });
+  expect(assigned.status).toBe(201);
+});
+
 it.each([
   { adults: 3, children: 0 },
   { adults: 2, children: 3 },

@@ -5,10 +5,10 @@ export function newBookingAvailability(
   drafts: NewBookingValues["rooms"],
   types: Availability["roomTypes"],
   physicalRooms: Room[],
-  unavailable: Set<string>,
 ) {
   const remaining = new Map(types.map((type) => [type.id, type.free]));
-  const assigned = new Set(unavailable);
+  const assignable = new Set(types.flatMap((type) => type.freeRoomIds));
+  const assigned = new Set<string>();
   let changed = false;
   const normalized = drafts.map((draft) => {
     let { roomTypeId, roomId } = draft.room;
@@ -20,7 +20,13 @@ export function newBookingAvailability(
       remaining.set(roomTypeId, free - 1);
       if (roomId) {
         const room = physicalRooms.find((room) => room.id === roomId);
-        if (!room || room.roomTypeId !== roomTypeId || assigned.has(roomId)) roomId = null;
+        if (
+          !room ||
+          room.roomTypeId !== roomTypeId ||
+          !assignable.has(roomId) ||
+          assigned.has(roomId)
+        )
+          roomId = null;
         else assigned.add(roomId);
       }
     }
@@ -44,7 +50,7 @@ export function newBookingAvailability(
           .filter(
             (room) =>
               room.roomTypeId === draft.room.roomTypeId &&
-              !unavailable.has(room.id) &&
+              assignable.has(room.id) &&
               !usedRoomIds.has(room.id),
           )
           .map((room) => ({ value: room.id, label: room.number })),

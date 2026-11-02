@@ -92,8 +92,9 @@ Rooms include current [housekeeping status](housekeeping.md#elsewhere-in-the-por
 ## Assignment availability rules
 
 [assignment-availability.ts](../apps/portal/src/lib/assignment-availability.ts) owns
-portal assignment checks for picker, saves, and reservation editors/creation.
-Callers supply loaded stays/closures. Only confirmed/checked-in reservations receive
+portal assignment checks for picker, saves, and existing-reservation editors.
+Callers supply loaded stays/closures. Creation instead offers the server's
+[`freeRoomIds`](property-setup.md#occupancy-and-availability). Only confirmed/checked-in reservations receive
 assignments. Stay/closure nights use `[start, end)`, allowing same-day turnover.
 The helper's current conflict predicate excludes cancelled status only; do not
 treat that as a business rule for No-show/Unfulfilled, which release inventory.

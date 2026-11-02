@@ -1,4 +1,4 @@
-import { and, eq, gt, inArray, lt, ne, sql } from "drizzle-orm";
+import { and, asc, eq, gt, inArray, isNotNull, lt, ne, sql } from "drizzle-orm";
 import type { Db } from "./db";
 import {
   reservationRooms,
@@ -10,8 +10,7 @@ import {
 } from "./db/schema";
 import { nightsBetween } from "./lib/dates";
 import { peakOccupied } from "./lib/inventory-grid";
-
-const openStatuses = ["confirmed", "checked_in", "checked_out"];
+import { inventoryStatuses } from "./lib/statuses";
 
 export async function loadRoomTypes(db: Db, ids?: string[]) {
   if (ids && ids.length === 0) return [];
@@ -51,7 +50,7 @@ export async function occupiedCounts(
       .innerJoin(reservations, eq(reservations.id, reservationRooms.reservationId))
       .where(
         and(
-          inArray(reservations.status, openStatuses),
+          inArray(reservations.status, inventoryStatuses),
           lt(reservations.checkIn, checkOut),
           gt(reservations.checkOut, checkIn),
           excludeReservationId ? ne(reservations.id, excludeReservationId) : undefined,
@@ -75,6 +74,38 @@ export async function occupiedCounts(
       ),
   ]);
   return peakOccupied(dates, stays, closures);
+}
+
+export async function freeRoomIds(db: Db, checkIn: string, checkOut: string) {
+  const [all, held, closed] = await Promise.all([
+    db
+      .select({ id: rooms.id, roomTypeId: rooms.roomTypeId })
+      .from(rooms)
+      .orderBy(asc(rooms.number)),
+    db
+      .selectDistinct({ roomId: reservationRooms.roomId })
+      .from(reservationRooms)
+      .innerJoin(reservations, eq(reservations.id, reservationRooms.reservationId))
+      .where(
+        and(
+          isNotNull(reservationRooms.roomId),
+          inArray(reservations.status, inventoryStatuses),
+          lt(reservations.checkIn, checkOut),
+          gt(reservations.checkOut, checkIn),
+        ),
+      ),
+    db
+      .selectDistinct({ roomId: roomClosures.roomId })
+      .from(roomClosures)
+      .where(and(lt(roomClosures.starts, checkOut), gt(roomClosures.ends, checkIn))),
+  ]);
+  const blocked = new Set([...held, ...closed].map((row) => row.roomId));
+  const byType = new Map<string, string[]>();
+  for (const room of all) {
+    if (blocked.has(room.id)) continue;
+    byType.set(room.roomTypeId, [...(byType.get(room.roomTypeId) ?? []), room.id]);
+  }
+  return byType;
 }
 
 export async function ratesBetween(db: Db, typeIds: string[], checkIn: string, checkOut: string) {

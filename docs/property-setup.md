@@ -55,6 +55,15 @@ types for the staff's multi-room editor. Adult filters accept integers from 1
 to 100 and child filters from 0 to 100. Pricing and free-room counts are
 unchanged. The endpoint requires a signed-in session.
 
+Each type's `free` is its room count minus the busiest night's inventory-holding
+stays (assigned or not) and closed rooms. `freeRoomIds` lists, in room-number order,
+the type's rooms with no overlapping assigned stay in an inventory-holding status
+(confirmed, checked-in, checked-out) and no overlapping closure. That is the same
+`[start, end)` rule the overlap triggers enforce, so same-day turnover is free and
+No-show/Unfulfilled stays release their room. Unassigned stays reduce `free` without
+removing room IDs, so `free` can be lower than the list's length; only `free` limits
+how many rooms a booking may reserve.
+
 ## Portal setup
 
 After signing in, calendar, reservations, and inventory stay accessible even when

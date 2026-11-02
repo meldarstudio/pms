@@ -1453,6 +1453,9 @@ function mockCreationApi(
           maxAdults: 2,
           maxChildren: 2,
           free: 5,
+          freeRoomIds: page.api.catalog.rooms
+            .filter((room) => room.roomTypeId === "double")
+            .map((room) => room.id),
           totalCents: nights * 15000,
           nights: [],
         },
@@ -2380,7 +2383,7 @@ it.each([
   },
 );
 
-it("filters sold-out types, occupied and closed room numbers, and inventory already used by this draft", async () => {
+it("offers only server-listed free room numbers and types not used up by this draft", async () => {
   mockCreationApi(async () => Response.json(detail()));
   const types = [
     { ...doubleType, free: 2 },
@@ -2404,29 +2407,11 @@ it("filters sold-out types, occupied and closed room numbers, and inventory alre
     currency: "PEN",
     roomTypes: types.map((type) => ({
       ...type,
+      freeRoomIds: { double: ["room-3", "room-4"], suite: [], family: ["family-1"] }[type.id],
       totalCents: 15000,
       nights: [],
     })),
   }));
-  page.api.on("GET", "/reservations", () => [
-    { ...detail(), checkIn: "2026-10-14", checkOut: "2026-10-16" },
-    {
-      ...detail(),
-      id: "departed",
-      checkIn: "2026-10-12",
-      checkOut: "2026-10-14",
-      rooms: [{ roomId: "room-3", roomTypeId: "double" }],
-    },
-  ]);
-  page.api.on("GET", "/room-closures", () => [
-    {
-      id: "closure",
-      roomId: "room-2",
-      starts: "2026-10-14",
-      ends: "2026-10-15",
-      reason: null,
-    },
-  ]);
   await renderNewBooking();
   assert.match(fieldTrigger("Hab.").textContent, /Sin asignar/);
   await React.act(async () => fieldTrigger("Tipo").click());
@@ -2517,6 +2502,7 @@ it("replaces sold-out room controls with an empty state and restores them when d
             maxAdults: 2,
             maxChildren: 2,
             free: 0,
+            freeRoomIds: [],
             totalCents: 30000,
             nights: [],
           },

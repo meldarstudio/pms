@@ -9,6 +9,7 @@ const types: Availability["roomTypes"] = [
     id: "double",
     name: "Doble",
     free: 2,
+    freeRoomIds: ["101", "102", "103"],
     maxAdults: 2,
     maxChildren: 2,
     totalCents: 10000,
@@ -18,6 +19,7 @@ const types: Availability["roomTypes"] = [
     id: "suite",
     name: "Suite",
     free: 0,
+    freeRoomIds: [],
     maxAdults: 4,
     maxChildren: 2,
     totalCents: 20000,
@@ -42,7 +44,7 @@ const draft = (
 
 it("keeps earlier room selections when inventory shrinks and releases duplicate assignments", () => {
   const drafts = [draft("a", "double", "101"), draft("b", "double", "101"), draft("c")];
-  const result = newBookingAvailability(drafts, types, physical, new Set());
+  const result = newBookingAvailability(drafts, types, physical);
   assert.equal(result.rooms[0].room.roomId, "101");
   assert.equal(result.rooms[1].room.roomId, null);
   assert.equal(result.rooms[2].room.roomTypeId, "");
@@ -51,7 +53,11 @@ it("keeps earlier room selections when inventory shrinks and releases duplicate 
 
 it("clears an occupied assignment while retaining its available type and guest counts", () => {
   const drafts = [draft("a", "double", "101")];
-  const result = newBookingAvailability(drafts, types, physical, new Set(["101"]));
+  const occupied = types.map((type) => ({
+    ...type,
+    freeRoomIds: type.freeRoomIds.filter((id) => id !== "101"),
+  }));
+  const result = newBookingAvailability(drafts, occupied, physical);
   assert.equal(result.rooms[0].room.roomId, null);
   assert.equal(result.rooms[0].room.roomTypeId, "double");
   assert.equal(result.rooms[0].room.adults, "1");

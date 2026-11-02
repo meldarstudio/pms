@@ -31,12 +31,9 @@ import {
   useAvailability,
   useCreationPreview,
   useRatePlans,
-  useReservations,
-  useRoomClosures,
   useRooms,
   useRoomTypes,
 } from "@/lib/queries";
-import { unavailableRoomIds } from "@/lib/assignment-availability";
 import { ratePlanLabels, ratePlanSummary } from "@/lib/rate-plans";
 import { changeCheckIn, minimumCheckOut } from "@/lib/reservation-editor";
 import { blurThenChange, submitForm, useReservationForm } from "@/lib/reservation-form";
@@ -152,26 +149,12 @@ export function NewBooking({
   const nights = nightsBetween(values.checkIn, values.checkOut);
   const validStay = nights >= 1 && nights <= 60;
   const availability = useAvailability(values.checkIn, values.checkOut, validStay);
-  const reservations = useReservations(values.checkIn, values.checkOut, validStay);
-  const closures = useRoomClosures(values.checkIn, values.checkOut, validStay);
   const availabilityReady =
-    validStay &&
-    roomTypes.isSuccess &&
-    rooms.isSuccess &&
-    availability.isSuccess &&
-    reservations.isSuccess &&
-    !reservations.isPlaceholderData &&
-    closures.isSuccess &&
-    !closures.isPlaceholderData;
+    validStay && roomTypes.isSuccess && rooms.isSuccess && availability.isSuccess;
   const selection = newBookingAvailability(
     values.rooms,
     availability.data?.roomTypes ?? [],
     rooms.data ?? [],
-    unavailableRoomIds(
-      { checkIn: values.checkIn, checkOut: values.checkOut },
-      reservations.data ?? [],
-      closures.data ?? [],
-    ),
   );
   useEffect(() => {
     if (availabilityReady && !busy && selection.rooms !== values.rooms)
@@ -224,9 +207,7 @@ export function NewBooking({
     adults: /^\d+$/.test(draft.room.adults) ? Number(draft.room.adults) : null,
     children: /^\d+$/.test(draft.room.children) ? Number(draft.room.children) : null,
   }));
-  const failedLoads = [roomTypes, rooms, ratePlans, availability, reservations, closures].filter(
-    (query) => query.error,
-  );
+  const failedLoads = [roomTypes, rooms, ratePlans, availability].filter((query) => query.error);
   const summaryError: CreationSummaryError | null = failedLoads[0]?.error
     ? {
         title: "No se pudieron cargar los datos",

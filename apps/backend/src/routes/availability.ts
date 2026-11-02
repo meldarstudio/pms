@@ -6,7 +6,7 @@ import { currency, HttpError, validate } from "../http";
 import { addDays } from "../lib/dates";
 import { overridesFor, priceNights, totalCents } from "../lib/pricing";
 import { ratePlans } from "../lib/rate-plans";
-import { roomCounts, loadRoomTypes, occupiedCounts, ratesBetween } from "../inventory";
+import { freeRoomIds, roomCounts, loadRoomTypes, occupiedCounts, ratesBetween } from "../inventory";
 import { requireStay } from "../rules";
 
 export const availabilityRoutes = new Hono<Env>();
@@ -19,10 +19,11 @@ availabilityRoutes.get("/", validate("query", availabilityQuerySchema), async (c
   const types = await loadRoomTypes(db, query.roomTypeId ? [query.roomTypeId] : undefined);
   if (query.roomTypeId && types.length === 0) throw new HttpError(404, "room type not found");
   const typeIds = types.map((type) => type.id);
-  const [capacity, occupied, rates] = await Promise.all([
+  const [capacity, occupied, rates, assignable] = await Promise.all([
     roomCounts(db),
     occupiedCounts(db, query.checkIn, checkOut),
     ratesBetween(db, typeIds, query.checkIn, checkOut),
+    freeRoomIds(db, query.checkIn, checkOut),
   ]);
   const roomTypesOut = types
     .filter(
@@ -44,6 +45,7 @@ availabilityRoutes.get("/", validate("query", availabilityQuerySchema), async (c
         maxAdults: type.maxAdults,
         maxChildren: type.maxChildren,
         free: Math.max(0, (capacity.get(type.id) ?? 0) - (occupied.get(type.id) ?? 0)),
+        freeRoomIds: assignable.get(type.id) ?? [],
         totalCents: totalCents(priced),
         nights: priced.map(({ date, priceCents }) => ({ date, priceCents })),
       };

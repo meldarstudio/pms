@@ -157,6 +157,7 @@ export type Availability = {
     maxAdults: number;
     maxChildren: number;
     free: number;
+    freeRoomIds: string[];
     totalCents: number;
     nights: { date: string; priceCents: number }[];
   }[];
