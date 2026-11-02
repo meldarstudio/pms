@@ -21,9 +21,9 @@ availabilityRoutes.get("/", validate("query", availabilityQuerySchema), async (c
   const typeIds = types.map((type) => type.id);
   const [capacity, occupied, rates, assignable] = await Promise.all([
     roomCounts(db),
-    occupiedCounts(db, query.checkIn, checkOut),
+    occupiedCounts(db, query.checkIn, checkOut, query.excludeReservationId),
     ratesBetween(db, typeIds, query.checkIn, checkOut),
-    freeRoomIds(db, query.checkIn, checkOut),
+    freeRoomIds(db, query.checkIn, checkOut, query.excludeReservationId),
   ]);
   const roomTypesOut = types
     .filter(

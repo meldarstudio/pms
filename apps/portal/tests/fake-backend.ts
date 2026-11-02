@@ -176,6 +176,27 @@ export function createFakeBackend() {
     })),
   }));
   on("GET", "/room-closures", () => []);
+  on("GET", "/availability", ({ url }) => ({
+    checkIn: url.searchParams.get("checkIn"),
+    checkOut: url.searchParams.get("checkOut"),
+    nights: 1,
+    currency: "PEN",
+    roomTypes: catalog.roomTypes.map((type) => {
+      const freeRoomIds = catalog.rooms
+        .filter((room) => room.roomTypeId === type.id)
+        .map((room) => room.id);
+      return {
+        id: type.id,
+        name: type.name,
+        maxAdults: type.maxAdults,
+        maxChildren: type.maxChildren,
+        free: freeRoomIds.length,
+        freeRoomIds,
+        totalCents: 0,
+        nights: [],
+      };
+    }),
+  }));
   on("GET", "/inventory", ({ url }) => ({
     from: url.searchParams.get("from"),
     to: url.searchParams.get("to"),

@@ -478,6 +478,44 @@ it("lists assignable rooms using the same holding statuses and [start, end) over
   expect(assigned.status).toBe(201);
 });
 
+it("lists the edited reservation's own rooms as free when it is excluded from availability", async () => {
+  const seed = (id: string, status: string, roomId: string) =>
+    seedReservation(db.sqlite, {
+      id,
+      code: id,
+      guestName: id,
+      status,
+      roomId,
+      checkIn: "2026-10-12",
+      checkOut: "2026-10-14",
+      createdAt: "2026-10-01",
+    });
+  seed("editing", "confirmed", "room-101");
+  seed("other", "confirmed", "room-102");
+  seed("released", "no_show", "room-103");
+  const availability = async (query: string) => {
+    const response = await request(`/availability?checkIn=2026-10-12&checkOut=2026-10-14${query}`);
+    expect(response.status).toBe(200);
+    const { roomTypes } = (await response.json()) as {
+      roomTypes: { free: number; freeRoomIds: string[] }[];
+    };
+    return roomTypes;
+  };
+  expect(await availability("")).toEqual([
+    expect.objectContaining({ free: 1, freeRoomIds: ["room-103"] }),
+  ]);
+  expect(await availability("&excludeReservationId=editing")).toEqual([
+    expect.objectContaining({ free: 2, freeRoomIds: ["room-101", "room-103"] }),
+  ]);
+  await command({ id: "editing" } as Detail, [
+    {
+      type: "edit-room",
+      lineId: "editing",
+      room: { roomTypeId: "type", roomId: "room-103", adults: 1, children: 0 },
+    },
+  ]);
+});
+
 it.each([
   { adults: 3, children: 0 },
   { adults: 2, children: 3 },

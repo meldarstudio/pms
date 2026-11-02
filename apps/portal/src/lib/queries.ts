@@ -46,7 +46,7 @@ import {
   type HousekeepingMarkInput,
   type HousekeepingStatus,
   type ReservationListParams,
-  type AvailabilityOccupancy,
+  type AvailabilityFilters,
   type CreationPreviewInput,
   type Room,
   type RoomType,
@@ -344,11 +344,11 @@ export function useAvailability(
   checkIn: string,
   checkOut: string,
   enabled = true,
-  occupancy?: AvailabilityOccupancy,
+  filters?: AvailabilityFilters,
 ) {
   return useQuery({
-    queryKey: ["availability", checkIn, checkOut, occupancy],
-    queryFn: ({ signal }) => getAvailability(checkIn, checkOut, signal, occupancy),
+    queryKey: ["availability", checkIn, checkOut, filters],
+    queryFn: ({ signal }) => getAvailability(checkIn, checkOut, signal, filters),
     enabled,
   });
 }

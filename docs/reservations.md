@@ -806,8 +806,11 @@ Opening values isolate drafts from background reads. Failed saves retain drafts;
 dirty dismissal, router navigation, and browser unload are guarded. Lifecycle writes
 show pending/success/failure. Identical uncertain writes retry through the command module.
 
-Room-type menus consider other stays, closures, and draft rooms; keep the current
-choice visible and wait for current availability before changes. Server previews
+Room choices come from `GET /availability` with `excludeReservationId`, since the
+draft replaces the saved reservation: types while draft rooms stay below their
+[`free`](property-setup.md#occupancy-and-availability), and room numbers from
+`freeRoomIds` not chosen by another draft room. Keep the current choice visible and
+wait for current availability before changes. Server previews
 validate before saving. Validate on blur/submit, then change after attempted submit;
 a field reveals its blur error only once staff changed it, so leaving an untouched
 field (for example to press Cancelar) stays quiet while saving still flags every field;

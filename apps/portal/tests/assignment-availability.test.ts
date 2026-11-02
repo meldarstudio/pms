@@ -6,7 +6,6 @@ import {
   assignmentProblemLabels,
   roomProblem,
   targetProblem,
-  unavailableRoomIds,
   type AssignmentContext,
   type ReservationStay,
 } from "../src/lib/assignment-availability.ts";
@@ -147,67 +146,6 @@ describe("room check", () => {
       ),
       "occupied",
     );
-  });
-});
-
-describe("unavailable rooms for a stay draft", () => {
-  const stay = { checkIn: "2026-10-12", checkOut: "2026-10-15" };
-  const held = (id: string, status = "confirmed", checkIn = stay.checkIn) =>
-    reservation({
-      id,
-      status,
-      checkIn,
-      checkOut: stay.checkOut,
-      rooms: [{ id: `line-${id}`, roomTypeId: "double", roomId: id }],
-    });
-
-  it("excludes occupied and closed rooms, but not the saved reservation's own or cancelled rooms", () => {
-    assert.deepEqual(
-      [
-        ...unavailableRoomIds(
-          stay,
-          [
-            held("101"),
-            held("102", "checked_in"),
-            held("103", "cancelled"),
-            held("104", "checked_out"),
-            reservation({
-              id: "105",
-              checkIn: "2026-10-10",
-              checkOut: stay.checkIn,
-              rooms: [{ id: "line-105", roomTypeId: "double", roomId: "105" }],
-            }),
-          ],
-          [
-            {
-              id: "closure",
-              roomId: "106",
-              starts: stay.checkIn,
-              ends: stay.checkOut,
-              reason: null,
-            },
-          ],
-          "101",
-        ),
-      ].sort(),
-      ["102", "104", "106"],
-    );
-  });
-
-  it("ignores every reserved room of the saved reservation, whose stay draft replaces it", () => {
-    const saved = reservation({
-      id: "saved",
-      ...stay,
-      rooms: [
-        { id: "line-a", roomTypeId: "double", roomId: "101" },
-        { id: "line-b", roomTypeId: "double", roomId: "102" },
-      ],
-    });
-    assert.deepEqual([...unavailableRoomIds(stay, [saved, held("103")], [], "saved")], ["103"]);
-  });
-
-  it("excludes every reservation's rooms for a new booking", () => {
-    assert.deepEqual([...unavailableRoomIds(stay, [held("101")], [])], ["101"]);
   });
 });
 

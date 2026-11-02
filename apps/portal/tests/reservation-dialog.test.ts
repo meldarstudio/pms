@@ -512,6 +512,18 @@ function previewResponse(billing: WorkflowBilling, issues: WorkflowIssue[] = [])
   return Response.json({ billing, validation: { issues } });
 }
 
+function doubleAvailability(free: number, freeRoomIds: string[]) {
+  return {
+    checkIn: "2026-10-14",
+    checkOut: "2026-10-16",
+    nights: 2,
+    currency: "PEN",
+    roomTypes: [
+      { id: "double", name: "Doble", maxAdults: 2, maxChildren: 2, free, freeRoomIds },
+    ].map((type) => ({ ...type, totalCents: 0, nights: [] })),
+  };
+}
+
 it.each(["desktop", "phone"])(
   "adds a new room at an agreed price in the %s dialog without repricing saved rooms",
   async (viewport) => {
@@ -2860,15 +2872,11 @@ it("keeps an extension price visible and identifies the conflicting room without
         })
       : response;
   });
-  page.api.on("GET", "/reservations", () => [
-    {
-      id: "next-reservation",
-      status: "confirmed",
-      checkIn: "2026-10-16",
-      checkOut: "2026-10-18",
-      rooms: [{ id: "next-line", roomTypeId: "double", roomId: "room-1" }],
-    },
-  ]);
+  page.api.on("GET", "/availability", ({ url }) =>
+    url.searchParams.get("checkOut") === "2026-10-17"
+      ? doubleAvailability(0, [])
+      : doubleAvailability(1, ["room-1"]),
+  );
   await render(
     React.createElement(dialogs.BookingEditor, {
       detail: initial,
@@ -2930,21 +2938,21 @@ it("keeps an extension price visible and identifies the conflicting room without
   assert.equal(previews.length, 2);
 });
 
-it("disables adding a room when a closure exhausts availability", async () => {
+it("disables adding a room when availability without this reservation is exhausted", async () => {
   mockApi(
     async () => {
       throw new Error("Unchanged reservation must not write or preview");
     },
     { roomCount: 2 },
   );
-  page.api.on("GET", "/room-closures", () => [
-    { id: "closure", roomId: "room-2", starts: "2026-10-15", ends: "2026-10-16", reason: null },
-  ]);
+  const lookups = page.api.requests("GET", "/availability");
+  page.api.on("GET", "/availability", () => doubleAvailability(1, ["room-1"]));
   await openEditDialog();
   await until(
     () => window.document.querySelector('[name="notes"]') !== null && client.isFetching() === 0,
   );
   assert.equal(button("Agregar habitación").disabled, true);
+  assert.equal(lookups.at(-1)?.url.searchParams.get("excludeReservationId"), "reservation-1");
 });
 
 function useDoubleAndSingleRooms() {
@@ -2964,7 +2972,6 @@ it("adds the available type instead of a sold-out type and releases draft invent
   initial.rooms[0].children = 1;
   mockApi(async () => previewResponse(initial));
   useDoubleAndSingleRooms();
-  page.api.on("GET", "/reservations", () => [initial]);
   await render(
     React.createElement(dialogs.BookingEditor, { detail: initial, onRefresh: () => {} }),
   );
@@ -3009,51 +3016,22 @@ it("adds the available type instead of a sold-out type and releases draft invent
   );
 });
 
-it("counts availability per night and waits for current dates before allowing another room", async () => {
+it("waits for availability on the current dates before allowing another room", async () => {
   mockApi(async () => previewResponse(detail()), { roomCount: 3 });
   let finish!: (response: Response) => void;
-  page.api.on("GET", "/reservations", ({ url }) => {
-    if (url.searchParams.get("to") === "2026-10-17")
+  page.api.on("GET", "/availability", ({ url }) => {
+    if (url.searchParams.get("checkOut") === "2026-10-17")
       return new Promise<Response>((resolve) => {
         finish = resolve;
       });
-    return [
-      {
-        ...detail(),
-        id: "first-night",
-        checkOut: "2026-10-15",
-        rooms: [{ roomTypeId: "double", roomId: null }],
-      },
-      {
-        ...detail(),
-        id: "second-night",
-        checkIn: "2026-10-15",
-        rooms: [{ roomTypeId: "double", roomId: null }],
-      },
-    ];
+    return doubleAvailability(2, ["room-1", "room-2", "room-3"]);
   });
-  page.api.on("GET", "/room-closures", () => [
-    {
-      id: "closure-1",
-      roomId: "room-2",
-      starts: "2026-10-16",
-      ends: "2026-10-17",
-      reason: null,
-    },
-    {
-      id: "closure-2",
-      roomId: "room-3",
-      starts: "2026-10-16",
-      ends: "2026-10-17",
-      reason: null,
-    },
-  ]);
   await render(
     React.createElement(dialogs.BookingEditor, { detail: detail(), onRefresh: () => {} }),
   );
   await until(
     () => !button("Agregar habitación").disabled,
-    "Successive stays must leave one room available",
+    "A spare room must allow adding another",
   );
   await React.act(async () => fieldTrigger("Check-out").click());
   const day = [...window.document.querySelectorAll<HTMLButtonElement>("button[data-day]")].find(
@@ -3061,13 +3039,13 @@ it("counts availability per night and waits for current dates before allowing an
   )!;
   assert.ok(day);
   await React.act(async () => day.click());
-  await until(() => !!finish, "Changed dates must request current reservations");
+  await until(() => !!finish, "Changed dates must request current availability");
   assert.equal(button("Agregar habitación").disabled, true);
   assert.equal(fieldTrigger("Tipo").hasAttribute("disabled"), true);
-  await React.act(async () => finish(Response.json([])));
+  await React.act(async () => finish(Response.json(doubleAvailability(1, ["room-1"]))));
   await until(() => client.isFetching() === 0, "Current availability must finish loading");
   await flush();
-  assert.equal(button("Agregar habitación").disabled, true, "Closures exhaust the added night");
+  assert.equal(button("Agregar habitación").disabled, true, "The new dates leave no spare room");
   assert.equal(fieldTrigger("Tipo").hasAttribute("disabled"), false);
 });
 

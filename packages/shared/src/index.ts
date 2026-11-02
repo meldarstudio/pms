@@ -106,6 +106,7 @@ export const availabilityQuerySchema = z.object({
   roomTypeId: z.string().min(1).optional(),
   adults: z.coerce.number().int().min(1).max(100).optional(),
   children: z.coerce.number().int().min(0).max(100).optional(),
+  excludeReservationId: z.string().min(1).optional(),
 });
 
 export const paymentListQuerySchema = z.object({

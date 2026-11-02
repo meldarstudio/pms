@@ -95,27 +95,3 @@ export function targetProblem(
   }
   return null;
 }
-
-export function unavailableRoomIds(
-  stay: { checkIn: string; checkOut: string },
-  reservations: AssignmentReservation[],
-  closures: RoomClosure[],
-  reservationId?: string,
-): Set<string> {
-  const context: AssignmentContext = {
-    reservations,
-    closures,
-    ignoredReservedRoomIds: new Set(
-      reservations
-        .filter((reservation) => reservation.id === reservationId)
-        .flatMap((reservation) => reservation.rooms.map((line) => line.id)),
-    ),
-  };
-  const roomIds = new Set([
-    ...reservations.flatMap((reservation) =>
-      reservation.rooms.flatMap((line) => (line.roomId ? [line.roomId] : [])),
-    ),
-    ...closures.map((closure) => closure.roomId),
-  ]);
-  return new Set([...roomIds].filter((roomId) => roomConflict(roomId, stay, context) !== null));
-}

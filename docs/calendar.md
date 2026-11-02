@@ -92,16 +92,16 @@ Rooms include current [housekeeping status](housekeeping.md#elsewhere-in-the-por
 ## Assignment availability rules
 
 [assignment-availability.ts](../apps/portal/src/lib/assignment-availability.ts) owns
-portal assignment checks for picker, saves, and existing-reservation editors.
-Callers supply loaded stays/closures. Creation instead offers the server's
-[`freeRoomIds`](property-setup.md#occupancy-and-availability). Only confirmed/checked-in reservations receive
+portal assignment checks for the calendar picker and its saves. Callers supply
+loaded stays/closures. Reservation creation and editors instead offer the server's
+[`freeRoomIds`](property-setup.md#occupancy-and-availability); editors exclude the
+saved reservation, whose draft replaces it. Only confirmed/checked-in reservations receive
 assignments. Stay/closure nights use `[start, end)`, allowing same-day turnover.
 The helper's current conflict predicate excludes cancelled status only; do not
 treat that as a business rule for No-show/Unfulfilled, which release inventory.
 
 Calendar assignment ignores just the selected reserved room so the group's other
-assignments still conflict. Stay editors ignore the whole saved reservation because
-the draft replaces it. Problems have local typed codes/Spanish labels, separate from
+assignments still conflict. Problems have local typed codes/Spanish labels, separate from
 backend errors. Re-read before assignment and reject a stale target—the server could
 otherwise accept a reassignment. Backend backlog and database overlap checks remain
 independent and authoritative at save time.

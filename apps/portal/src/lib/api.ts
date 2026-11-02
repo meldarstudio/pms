@@ -483,17 +483,23 @@ export function deleteRoomTypeRates(id: string, from: string, to: string) {
   return writeJson<{ deleted: number }>(`/room-types/${id}/rates?from=${from}&to=${to}`, "DELETE");
 }
 
-export type AvailabilityOccupancy = { adults?: number; children?: number };
+export type AvailabilityFilters = {
+  adults?: number;
+  children?: number;
+  excludeReservationId?: string;
+};
 
 export function getAvailability(
   checkIn: string,
   checkOut: string,
   signal?: AbortSignal,
-  occupancy?: AvailabilityOccupancy,
+  filters?: AvailabilityFilters,
 ) {
   const query = new URLSearchParams({ checkIn, checkOut });
-  if (occupancy?.adults !== undefined) query.set("adults", String(occupancy.adults));
-  if (occupancy?.children !== undefined) query.set("children", String(occupancy.children));
+  if (filters?.adults !== undefined) query.set("adults", String(filters.adults));
+  if (filters?.children !== undefined) query.set("children", String(filters.children));
+  if (filters?.excludeReservationId)
+    query.set("excludeReservationId", filters.excludeReservationId);
   return getJson<Availability>(`/availability?${query}`, signal);
 }
 

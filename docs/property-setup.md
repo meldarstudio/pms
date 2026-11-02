@@ -64,6 +64,11 @@ No-show/Unfulfilled stays release their room. Unassigned stays reduce `free` wit
 removing room IDs, so `free` can be lower than the list's length; only `free` limits
 how many rooms a booking may reserve.
 
+`excludeReservationId` drops that reservation's stays from both `free` and
+`freeRoomIds`, so an editor whose draft replaces the saved reservation sees its own
+rooms as free while other holders and closures still block. An unknown ID excludes
+nothing.
+
 ## Portal setup
 
 After signing in, calendar, reservations, and inventory stay accessible even when

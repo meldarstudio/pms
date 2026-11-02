@@ -4,7 +4,6 @@ import { useQueryClient } from "@tanstack/react-query";
 import { ArrowUpRightIcon, LogInIcon, LogOutIcon, PlusIcon, XIcon } from "lucide-react";
 import { cn } from "cn";
 import { guestValues, overlappingRoomIds, availableRoomTypeIds } from "@/lib/reservation-editor";
-import { unavailableRoomIds } from "@/lib/assignment-availability";
 import { useStayDraft } from "@/lib/use-stay-draft";
 import { ReservationStatusBadge } from "@/components/reservation-status-badge";
 import { useLifecycleAction } from "@/components/lifecycle-action";
@@ -47,13 +46,7 @@ import {
   type ReservationDetail,
   type WorkflowAction,
 } from "@/lib/api";
-import {
-  useReservation,
-  useReservations,
-  useRoomClosures,
-  useRooms,
-  useRoomTypes,
-} from "@/lib/queries";
+import { useAvailability, useReservation, useRooms, useRoomTypes } from "@/lib/queries";
 import {
   unsavedMessage,
   useReservationCommands,
@@ -424,14 +417,7 @@ export function BookingEditor({
   } = stayDraft;
   const rooms = useRooms();
   const availability = useRoomAssignmentOptions(common, detail.id);
-  const availableTypes = availableRoomTypeIds(
-    common,
-    rooms.data ?? [],
-    availability.reservations ?? [],
-    availability.closures ?? [],
-    drafts,
-    detail.id,
-  );
+  const availableTypes = availableRoomTypeIds(availability.types, drafts);
   const previousRoom = values.rooms.find((room) => !room.removed)?.room;
   const nextRoomType =
     roomTypes.data?.find(
@@ -675,12 +661,8 @@ export function BookingEditor({
                                   errors={errors}
                                   reservationId={detail.id}
                                   availableTypeIds={availableRoomTypeIds(
-                                    common,
-                                    rooms.data ?? [],
-                                    availability.reservations ?? [],
-                                    availability.closures ?? [],
+                                    availability.types,
                                     drafts.filter((other) => other.id !== draft.id),
-                                    detail.id,
                                   )}
                                   typesReady={
                                     roomTypes.isSuccess && rooms.isSuccess && availability.ready
@@ -969,21 +951,18 @@ function useRoomAssignmentOptions(
   const nights =
     (Date.parse(`${room.checkOut}T00:00:00Z`) - Date.parse(`${room.checkIn}T00:00:00Z`)) / 86400000;
   const enabled = nights >= 1 && nights <= 60;
-  const reservations = useReservations(room.checkIn, room.checkOut, enabled);
-  const closures = useRoomClosures(room.checkIn, room.checkOut, enabled);
+  const availability = useAvailability(
+    room.checkIn,
+    room.checkOut,
+    enabled,
+    reservationId ? { excludeReservationId: reservationId } : undefined,
+  );
+  const types = availability.data?.roomTypes ?? [];
   return {
-    reservations: reservations.data,
-    closures: closures.data,
-    blocked: unavailableRoomIds(room, reservations.data ?? [], closures.data ?? [], reservationId),
-    ready:
-      enabled &&
-      !!reservations.data &&
-      !!closures.data &&
-      !reservations.isPlaceholderData &&
-      !closures.isPlaceholderData &&
-      !reservations.isError &&
-      !closures.isError,
-    error: reservations.error?.message ?? closures.error?.message,
+    types,
+    assignable: new Set(types.flatMap((type) => type.freeRoomIds)),
+    ready: enabled && availability.isSuccess,
+    error: availability.error?.message,
   };
 }
 
@@ -1072,14 +1051,14 @@ const CompactRoomFields = withReservationForm({
                     r.id === room.roomId ||
                     (r.roomTypeId === room.roomTypeId &&
                       !blockedRoomIds.has(r.id) &&
-                      !availability.blocked.has(r.id)),
+                      availability.assignable.has(r.id)),
                 )
                 .map((r) => ({
                   value: r.id,
                   label: r.number,
                   disabled:
                     blockedRoomIds.has(r.id) ||
-                    availability.blocked.has(r.id) ||
+                    (availability.ready && !availability.assignable.has(r.id)) ||
                     r.roomTypeId !== room.roomTypeId,
                 })),
             ]}

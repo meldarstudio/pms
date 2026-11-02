@@ -76,7 +76,12 @@ export async function occupiedCounts(
   return peakOccupied(dates, stays, closures);
 }
 
-export async function freeRoomIds(db: Db, checkIn: string, checkOut: string) {
+export async function freeRoomIds(
+  db: Db,
+  checkIn: string,
+  checkOut: string,
+  excludeReservationId?: string,
+) {
   const [all, held, closed] = await Promise.all([
     db
       .select({ id: rooms.id, roomTypeId: rooms.roomTypeId })
@@ -92,6 +97,7 @@ export async function freeRoomIds(db: Db, checkIn: string, checkOut: string) {
           inArray(reservations.status, inventoryStatuses),
           lt(reservations.checkIn, checkOut),
           gt(reservations.checkOut, checkIn),
+          excludeReservationId ? ne(reservations.id, excludeReservationId) : undefined,
         ),
       ),
     db
