@@ -90,6 +90,12 @@ const fieldRules = {
   ],
   contact: contactRules,
   guest: contactRules,
+  rooms: [
+    ({ field }) => {
+      const match = field?.match(/^rooms\[(\d+)\](\.roomId|\.roomTypeId)?$/);
+      return match ? `rooms[${match[1]}].room${match[2] ?? ""}` : null;
+    },
+  ],
   details: [
     ({ code }) =>
       code === "stay cannot be longer than 60 nights" || code === "stay must be at least one night"

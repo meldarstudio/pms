@@ -351,7 +351,9 @@ export async function previewCreate(db: Db, input: WorkflowCreatePreview) {
 
 function rejectRoomIssues(issues: WorkflowIssue[]) {
   const issue = issues[0];
-  if (issue) throw new HttpError(issue.code === "room not found" ? 404 : 400, issue.code);
+  if (!issue) return;
+  const field = `rooms[${issue.roomIndex}]${issue.field === "occupancy" ? "" : `.${issue.field}`}`;
+  throw new HttpError(issue.code === "room not found" ? 404 : 400, issue.code, field);
 }
 
 async function validateRooms(

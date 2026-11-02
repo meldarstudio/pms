@@ -92,6 +92,10 @@ export function NewBooking({
     };
   });
   const [error, setError] = useState("");
+  const [rejected, setRejected] = useState<{
+    rooms: NewBookingValues["rooms"];
+    fields: Record<string, string>;
+  } | null>(null);
   const [discountBlocking, setDiscountBlocking] = useState(false);
   const retry = useRef<{ payload: string; requestId: string } | null>(null);
   const form = useReservationForm({
@@ -101,6 +105,7 @@ export function NewBooking({
     onSubmit: async ({ value }) => {
       if (!ready) return;
       setError("");
+      setRejected(null);
       const parsed = schema.parse(value);
       const phone = phonePayload(parsed.phone);
       const data = {
@@ -128,9 +133,12 @@ export function NewBooking({
         onDirtyChange(false);
         onCreated(result);
       } catch (cause) {
-        const fields = serverFieldErrors(cause, "details") ?? serverFieldErrors(cause, "guest");
-        if (fields) setServerErrors(form, fields);
-        else setError(cause instanceof Error ? cause.message : "No se pudo guardar.");
+        const fields =
+          serverFieldErrors(cause, "details", "rooms") ?? serverFieldErrors(cause, "guest");
+        if (fields) {
+          setServerErrors(form, fields);
+          setRejected({ rooms: form.state.values.rooms, fields });
+        } else setError(cause instanceof Error ? cause.message : "No se pudo guardar.");
       }
     },
   });
@@ -300,7 +308,11 @@ export function NewBooking({
                     {() =>
                       values.rooms.map((draft, index) => {
                         const options = selection.options[index];
-                        const capacity = errors[`rooms[${index}].room`];
+                        const capacity =
+                          errors[`rooms[${index}].room`] ??
+                          (rejected?.rooms === values.rooms
+                            ? rejected.fields[`rooms[${index}].room`]
+                            : undefined);
                         return (
                           <ReservationRoomRow
                             key={draft.id}

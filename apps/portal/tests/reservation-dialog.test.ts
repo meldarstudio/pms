@@ -2635,6 +2635,61 @@ it("preserves a failed creation draft and safely retries until its payload chang
   assert.notEqual(writes[2].requestId, writes[1].requestId);
 });
 
+it.each([
+  {
+    rejected: "too many guests",
+    field: "rooms[1]",
+    response: Response.json({ error: "too many guests for this room type" }, { status: 400 }),
+    target: () => control("rooms[1].room.adults"),
+    message: "no tiene capacidad",
+    correct: () => fill("rooms[1].room.adults", "2"),
+  },
+  {
+    rejected: "room number",
+    field: "rooms[1].roomId",
+    response: Response.json({ error: "room not found" }, { status: 404 }),
+    target: () => fieldTrigger("Hab.", 1),
+    message: "Esta habitación ya no existe.",
+    correct: () => choose("Hab.", "Sin asignar", 1),
+  },
+])(
+  "shows a rejected $rejected at the second room's fields until corrected, keeping the draft",
+  async ({ field, response, target, message, correct }) => {
+    const writes: CreateBookingInput[] = [];
+    mockCreationApi(async (input) => {
+      writes.push(input);
+      response.headers.set("X-Error-Field", field);
+      return response;
+    });
+    page.api.catalog.rooms.push({ id: "room-2", number: "102", roomTypeId: "double" });
+    await renderNewBooking();
+    await fill("fullName", "Ada Lovelace");
+    await React.act(async () => button("Agregar habitación").click());
+    await choose("Hab.", "102", 1);
+    await until(() => !button("Crear reserva").disabled);
+    await submit();
+    await until(() => writes.length === 1 && !button("Crear reserva").disabled);
+    assert.equal(writes[0].rooms[1].roomId, "room-2");
+    const element = target();
+    await until(
+      () => element.getAttribute("aria-invalid") === "true",
+      "The rejected room's field must be marked",
+    );
+    const described = (element.getAttribute("aria-describedby") ?? "")
+      .split(" ")
+      .map((id) => window.document.getElementById(id)?.textContent ?? "")
+      .join(" ");
+    assert.ok(described.includes(message), described);
+    assert.equal(control("rooms[0].room.adults").getAttribute("aria-invalid"), "false");
+    assert.equal(control("fullName").value, "Ada Lovelace");
+    await correct();
+    await until(
+      () => target().getAttribute("aria-invalid") === "false",
+      "Correcting the room must clear its rejection",
+    );
+  },
+);
+
 it("keeps mobile edit drafts mounted as the keyboard viewport and screen size change", async () => {
   mockApi(async () => {
     throw new Error("Resizing must not save the reservation");

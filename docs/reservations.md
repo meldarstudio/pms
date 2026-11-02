@@ -405,6 +405,12 @@ Validating occupancy on every final update would reject unrelated saves. A race
 after successful preview/preflight returns the existing 409 and rolls back everything,
 including the receipt. Preview neither reserves inventory nor freezes rules.
 
+A save rejected by preflight returns the first room issue's English message with the
+CORS-exposed `X-Error-Field` header naming that room: `rooms[1]` for occupancy, or
+`rooms[1].roomId` / `rooms[1].roomTypeId`. The index matches preview issues (request
+order for creation). Trigger 409s and pricing errors such as `room type not found`
+carry no field.
+
 ## Contact phones
 
 Phones are optional, nullable, and may be shared; booking contacts and staying guests
@@ -815,7 +821,10 @@ validate before saving. Validate on blur/submit, then change after attempted sub
 a field reveals its blur error only once staff changed it, so leaving an untouched
 field (for example to press Cancelar) stays quiet while saving still flags every field;
 room count/capacity validate on change to control previews. Field errors stay inline,
-other write errors use toasts, and query errors stay beside blocked content.
+other write errors use toasts, and query errors stay beside blocked content. Creation
+shows a rejected room's [field error](#room-validation-at-save-time) at that room's
+fields until staff change it; edits show room issues from previews, so a save
+rejection there stays one message.
 
 Forms use TanStack Form/local Zod in `reservation-form-schemas.ts`. Independent
 forms share `use-stay-draft.ts` for stay values, feedback, preview timing, price reuse,

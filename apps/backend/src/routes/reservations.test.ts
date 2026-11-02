@@ -525,10 +525,31 @@ it.each([
     checkIn: "2026-10-10",
     checkOut: "2026-10-13",
     guest: { fullName: "Family Guest" },
-    rooms: [{ roomTypeId: "type", ...occupancy }],
+    rooms: [
+      { roomTypeId: "type", adults: 1, children: 0 },
+      { roomTypeId: "type", ...occupancy },
+    ],
   });
   expect(response.status).toBe(400);
+  expect(response.headers.get("X-Error-Field")).toBe("rooms[1]");
   expect(await response.json()).toEqual({ error: "too many guests for this room type" });
+  expect(await (await request("/reservations")).json()).toEqual([]);
+});
+
+it("identifies the rejected room number of a new reservation", async () => {
+  const response = await request("/reservations", "POST", {
+    requestId: crypto.randomUUID(),
+    checkIn: "2026-10-10",
+    checkOut: "2026-10-13",
+    guest: { fullName: "Family Guest" },
+    rooms: [
+      { roomTypeId: "type", roomId: "room-101", adults: 1, children: 0 },
+      { roomTypeId: "type", roomId: "room-gone", adults: 1, children: 0 },
+    ],
+  });
+  expect(response.status).toBe(404);
+  expect(response.headers.get("X-Error-Field")).toBe("rooms[1].roomId");
+  expect(await response.json()).toEqual({ error: "room not found" });
   expect(await (await request("/reservations")).json()).toEqual([]);
 });
 
