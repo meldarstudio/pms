@@ -3,7 +3,12 @@ import { fileURLToPath } from "node:url";
 import { Window } from "happy-dom";
 import { createServer } from "vite";
 import type { AnyRouter } from "@tanstack/react-router";
-import type { Element as DomElement, HTMLInputElement, HTMLTextAreaElement } from "happy-dom";
+import type {
+  Element as DomElement,
+  HTMLElement,
+  HTMLInputElement,
+  HTMLTextAreaElement,
+} from "happy-dom";
 import { createFakeBackend } from "./fake-backend.ts";
 
 export const desktopViewport = { width: 1024, height: 768 };
@@ -111,6 +116,19 @@ export async function createBrowserTest() {
       await React.act(async () => button(label).click());
     }
 
+    async function openMenu(trigger: string) {
+      await click(trigger);
+      return Array.from(window.document.querySelectorAll<HTMLElement>('[role="menuitem"]'));
+    }
+
+    async function menuAction(trigger: string, label: string) {
+      const item = (await openMenu(trigger)).find(
+        (element) => element.textContent.trim() === label,
+      );
+      assert.ok(item, `Missing menu item ${label}`);
+      await React.act(async () => item.click());
+    }
+
     function field(name: string) {
       const element = window.document.querySelector<HTMLInputElement | HTMLTextAreaElement>(
         `[name="${name}"]`,
@@ -157,6 +175,8 @@ export async function createBrowserTest() {
       until,
       button,
       click,
+      openMenu,
+      menuAction,
       field,
       fill,
       mobile,

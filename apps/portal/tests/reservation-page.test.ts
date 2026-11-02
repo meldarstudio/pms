@@ -1810,10 +1810,14 @@ it.each(["desktop", "phone"])(
     });
     await render();
     await click("Editar estadía");
-    assert.doesNotMatch(popup()!.textContent, /Cambiar precio por noche/);
+    assert.equal(
+      popup()!.querySelector('[aria-label="Acciones de la habitación 1"]'),
+      null,
+      "A lone saved room has no actions",
+    );
     await page.until(() => !button("Agregar habitación").disabled);
     await click("Agregar habitación");
-    await click("Cambiar precio por noche");
+    await page.menuAction("Acciones de la habitación 2", "Cambiar precio por noche");
     await fill("rooms[1].room.nightlyRate", "120.25");
     await page.until(() => !button("Guardar cambios").disabled);
     assert.match(popup()!.textContent.replace(/\s/g, ""), /S\/540\.50/);
@@ -1837,7 +1841,12 @@ it.each(["desktop", "phone"])(
       },
     ]);
     await click("Editar estadía");
-    assert.doesNotMatch(popup()!.textContent, /Cambiar precio por noche|Precio por noche · S\//);
+    assert.doesNotMatch(popup()!.textContent, /Precio por noche · S\//);
+    assert.deepEqual(
+      (await page.openMenu("Acciones de la habitación 2")).map((item) => item.textContent.trim()),
+      ["Quitar habitación"],
+      "A saved added room cannot be repriced",
+    );
     await fill("rooms[1].room.adults", "1");
     await page.until(() => !button("Guardar cambios").disabled);
     await click("Guardar cambios");
@@ -1862,7 +1871,7 @@ it("blocks new-room price previews and saves until an empty or invalid override 
   await click("Agregar habitación");
   await page.until(() => !button("Guardar cambios").disabled);
   const quoted = previews.length;
-  await click("Cambiar precio por noche");
+  await page.menuAction("Acciones de la habitación 2", "Cambiar precio por noche");
   for (const value of ["", "-1"]) {
     await fill("rooms[1].room.nightlyRate", value);
     await submit();
@@ -1875,7 +1884,6 @@ it("blocks new-room price previews and saves until an empty or invalid override 
   }
   await click("Deshacer precio por noche");
   await page.until(() => !button("Guardar cambios").disabled);
-  assert.ok(button("Cambiar precio por noche"));
   assert.ok(!popup()!.querySelector('[aria-invalid="true"]'));
   await click("Guardar cambios");
   await page.until(() => writes.length === 1);
@@ -1900,9 +1908,9 @@ it("validates occupancy and saves room changes together while retaining at least
   });
   await render();
   await click("Editar estadía");
-  await click("Quitar habitación 2");
+  await page.menuAction("Acciones de la habitación 2", "Quitar habitación");
   assert.equal(
-    window.document.querySelector('[aria-label="Quitar habitación 1"]'),
+    window.document.querySelector('[aria-label="Acciones de la habitación 1"]'),
     null,
     "The last room cannot be removed",
   );

@@ -448,10 +448,11 @@ before deploying or migrating.
 ### Prices for newly reserved rooms
 
 Creation and **Agregar habitación** in the dialog's Detalles and the page's stay
-editor offer **Cambiar precio por noche** per unsaved room, below that room's
-fields on desktop and phone.
-It reveals a final nightly amount in soles and an undo action; on phone the initial
-button fills the content width. The value travels as that room's `nightlyRateCents`
+editor offer **Cambiar precio por noche** per unsaved room, in that room's actions
+menu beside **Quitar habitación**. It reveals a final nightly amount in soles below
+the room's fields, with an outlined undo button on the input's line; on phone the
+input fills the content width. Choosing it focuses the input, and undo returns focus
+to the room's menu. The value travels as that room's `nightlyRateCents`
 in creation previews/requests or the command module's `add-room`, never as a
 reservation discount. Rooms without it keep ordinary server plan pricing.
 
@@ -692,10 +693,11 @@ button: Cerrar, ✕, Escape, and **Ver reserva completa** ask before discarding.
 tab shows a dot while its form has unsaved input; the independent discount draft shows
 none. The compact edit dialog uses the same discount popover as the page, saving
 `set-discount` only on Aplicar or Quitar and retaining failed drafts. Closing preserves
-calendar position. On desktop, and
-in the page's stay editor, rooms use the shared
-[room row](../apps/portal/src/components/reservation-room-rows.tsx); the phone dialog
-keeps one field per line.
+calendar position. Rooms use the shared
+[room row](../apps/portal/src/components/reservation-room-rows.tsx), whose per-room
+menu holds the uncommon actions so **Agregar habitación** stays the section's only
+prominent button. The phone dialog stacks the row one field per line except Adultos
+and Niños, which share a row.
 
 Any dirty draft (details, guest, payment, discount, or a nested guest/payment editor)
 blocks check-in/checkout. Disable writes while any save is queued/running, including
@@ -704,7 +706,8 @@ discount saves.
 [`BookingSummary`](../apps/portal/src/components/booking-summary.tsx) shows the saved
 or server-preview bill separately from creation: Subtotal only with a discount,
 Descuento, Total, gross Pagado and nonzero coupon/refund rows. It uses the page's
-account status, including the unpaid-deposit note, without plan/schedule rows. Draft
+account status without the unpaid-deposit note or plan/schedule rows: the dialog
+emphasizes the balance, and the page owns the deposit shortfall. Draft
 bills show preview state and never substitute stale saved amounts when unavailable.
 On phones the footer accordion keeps its discount draft mounted through collapse/
 resize; the coloured trigger is the sole balance display even when expanded. Its
@@ -730,7 +733,8 @@ balance, expiry and eligibility changes. An exact uncertain redemption can still
 replay its receipt when a newer lookup shows consumed value or changed eligibility;
 changing its code or amount restores normal lookup validation. Creation has no coupon input.
 
-Creation (`NewBooking`) sends the chosen `ratePlan` and optional
+Creation (`NewBooking`) sends the chosen `ratePlan` (a select on desktop; on phones,
+choice cards summarizing each plan's `GET /rate-plans` terms) and optional
 [per-room final nightly prices](#prices-for-newly-reserved-rooms), and shows only the current
 `POST /reservations/preview` bill: Total, required initial payment, and cancellation
 terms ([creation-summary.tsx](../apps/portal/src/components/creation-summary.tsx)).

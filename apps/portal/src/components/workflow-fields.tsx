@@ -1,7 +1,16 @@
-import { useId, useRef } from "react";
+import { useId, useRef, type ReactNode } from "react";
 import { format, parseISO } from "date-fns";
 import { DateField } from "@/components/date-field";
-import { Field, FieldError, FieldLabel, FieldLegend, FieldSet } from "@/components/ui/field";
+import {
+  Field,
+  FieldContent,
+  FieldDescription,
+  FieldError,
+  FieldLabel,
+  FieldLegend,
+  FieldSet,
+  FieldTitle,
+} from "@/components/ui/field";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Input } from "@/components/ui/input";
 import { PhoneInput } from "@/components/phone-input";
@@ -43,6 +52,7 @@ export function TextField({
   onBlur,
   groupErrorId,
   inputMode,
+  action,
 }: {
   label: string;
   value: string | number;
@@ -59,6 +69,7 @@ export function TextField({
   onBlur?: () => void;
   groupErrorId?: string;
   inputMode?: "decimal";
+  action?: ReactNode;
 }) {
   const generatedId = useId();
   const id = providedId ?? generatedId;
@@ -79,6 +90,26 @@ export function TextField({
       />
     );
   }
+  const input = (
+    <Input
+      id={id}
+      name={name}
+      onBlur={onBlur}
+      type={type}
+      inputMode={inputMode}
+      value={value}
+      min={min}
+      max={max}
+      required={required}
+      placeholder={placeholder}
+      aria-invalid={!!error || !!groupErrorId}
+      aria-describedby={
+        [error ? `${id}-error` : undefined, groupErrorId].filter(Boolean).join(" ") || undefined
+      }
+      disabled={disabled}
+      onChange={(e) => onChange(e.target.value)}
+    />
+  );
   return (
     <Field data-disabled={disabled} data-invalid={!!error || !!groupErrorId}>
       <FieldLabel htmlFor={id}>{label}</FieldLabel>
@@ -98,25 +129,13 @@ export function TextField({
           maxLength={typeof max === "number" ? max : undefined}
           onChange={(e) => onChange(e.target.value)}
         />
+      ) : action ? (
+        <div className="flex min-w-0 items-center gap-2">
+          {input}
+          {action}
+        </div>
       ) : (
-        <Input
-          id={id}
-          name={name}
-          onBlur={onBlur}
-          type={type}
-          inputMode={inputMode}
-          value={value}
-          min={min}
-          max={max}
-          required={required}
-          placeholder={placeholder}
-          aria-invalid={!!error || !!groupErrorId}
-          aria-describedby={
-            [error ? `${id}-error` : undefined, groupErrorId].filter(Boolean).join(" ") || undefined
-          }
-          disabled={disabled}
-          onChange={(e) => onChange(e.target.value)}
-        />
+        input
       )}
       {error && <FieldError id={`${id}-error`}>{error}</FieldError>}
     </Field>
@@ -231,6 +250,55 @@ export function RadioField({
             <RadioGroupItem id={`${id}-${index}`} value={option.value} />
             <FieldLabel htmlFor={`${id}-${index}`}>{option.label}</FieldLabel>
           </Field>
+        ))}
+      </RadioGroup>
+      {error && <FieldError id={`${id}-error`}>{error}</FieldError>}
+    </FieldSet>
+  );
+}
+
+export function ChoiceCardField({
+  label,
+  value,
+  onChange,
+  options,
+  disabled = false,
+  error,
+  id: providedId,
+  name,
+}: {
+  label: string;
+  value: string;
+  onChange: (value: string) => void;
+  options: { value: string; label: string; description?: string }[];
+  disabled?: boolean;
+  error?: string;
+  id?: string;
+  name?: string;
+}) {
+  const generatedId = useId();
+  const id = providedId ?? generatedId;
+  return (
+    <FieldSet data-disabled={disabled} data-invalid={!!error}>
+      <FieldLegend variant="label">{label}</FieldLegend>
+      <RadioGroup
+        name={name}
+        value={value}
+        disabled={disabled}
+        onValueChange={(next) => typeof next === "string" && onChange(next)}
+        aria-invalid={!!error}
+        aria-describedby={error ? `${id}-error` : undefined}
+      >
+        {options.map((option, index) => (
+          <FieldLabel key={option.value} htmlFor={`${id}-${index}`}>
+            <Field orientation="horizontal">
+              <FieldContent>
+                <FieldTitle>{option.label}</FieldTitle>
+                {option.description && <FieldDescription>{option.description}</FieldDescription>}
+              </FieldContent>
+              <RadioGroupItem id={`${id}-${index}`} value={option.value} />
+            </Field>
+          </FieldLabel>
         ))}
       </RadioGroup>
       {error && <FieldError id={`${id}-error`}>{error}</FieldError>}

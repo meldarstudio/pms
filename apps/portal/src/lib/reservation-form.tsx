@@ -1,6 +1,12 @@
 import { useId, type ComponentProps, type FormEvent } from "react";
 import { createFormHook, createFormHookContexts, useSelector } from "@tanstack/react-form";
-import { TextField, ChoiceField, PhoneField, RadioField } from "@/components/workflow-fields";
+import {
+  TextField,
+  ChoiceCardField,
+  ChoiceField,
+  PhoneField,
+  RadioField,
+} from "@/components/workflow-fields";
 import type { PhoneValue } from "./phone";
 import { errorMessage } from "./form-errors";
 import { Button } from "@/components/ui/button";
@@ -87,44 +93,41 @@ function FormRadio(
   );
 }
 
-function FormNightlyPrice() {
+function FormChoiceCards(
+  props: Omit<ComponentProps<typeof ChoiceCardField>, "value" | "onChange" | "error">,
+) {
+  const { onBlur: _blur, ...control } = useFormControl<string>();
+  return <ChoiceCardField {...props} {...control} />;
+}
+
+function FormNightlyPrice({ onUndo }: { onUndo?: () => void }) {
   const control = useFormControl<string | undefined>();
   const field = useFieldContext<string | undefined>();
-  if (control.value === undefined)
-    return (
-      <Button
-        type="button"
-        variant="outline"
-        className="max-md:w-full"
-        onClick={() => control.onChange("")}
-      >
-        Cambiar precio por noche
-      </Button>
-    );
+  if (control.value === undefined) return null;
   return (
-    <div className="flex min-w-0 items-start gap-2">
-      <div className="min-w-0 flex-1 md:max-w-56">
-        <TextField
-          {...control}
-          value={control.value}
-          label="Precio por noche · S/"
-          inputMode="decimal"
-        />
-      </div>
-      <Button
-        type="button"
-        variant="outline"
-        size="icon"
-        className="mt-[calc(0.75rem*1.375+0.5rem)]"
-        aria-label="Deshacer precio por noche"
-        title="Deshacer precio por noche"
-        onClick={() => {
-          control.onChange(undefined);
-          field.setMeta((meta) => ({ ...meta, isBlurred: false, errorMap: {} }));
-        }}
-      >
-        <Undo2Icon />
-      </Button>
+    <div className="min-w-0 md:max-w-64">
+      <TextField
+        {...control}
+        value={control.value}
+        label="Precio por noche · S/"
+        inputMode="decimal"
+        action={
+          <Button
+            type="button"
+            variant="outline"
+            size="icon"
+            aria-label="Deshacer precio por noche"
+            title="Deshacer precio por noche"
+            onClick={() => {
+              control.onChange(undefined);
+              field.setMeta((meta) => ({ ...meta, isBlurred: false, errorMap: {} }));
+              onUndo?.();
+            }}
+          >
+            <Undo2Icon />
+          </Button>
+        }
+      />
     </div>
   );
 }
@@ -143,6 +146,7 @@ export const { useAppForm: useReservationForm, withForm: withReservationForm } =
     Text: FormText,
     Choice: FormChoice,
     Radio: FormRadio,
+    ChoiceCards: FormChoiceCards,
     Phone: FormPhone,
     NightlyPrice: FormNightlyPrice,
   },

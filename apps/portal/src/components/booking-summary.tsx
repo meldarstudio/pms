@@ -82,20 +82,18 @@ export function BookingSummary({
     return false;
   }
   const balance = (
-    <span id={balanceId} className="flex min-w-0 flex-1 flex-col gap-1">
-      <span className="flex flex-wrap items-center justify-between gap-2">
-        <span className="inline-flex items-center gap-1.5">
-          {status && <status.Icon aria-hidden className="size-4 shrink-0" />}
-          {status?.label ?? "Saldo"}
-          {provisional && <Badge variant="preview">Vista previa</Badge>}
-        </span>
-        <output aria-label={status?.label ?? "Saldo"} className="tabular-nums">
-          {status ? money(status.cents) : "—"}
-        </output>
+    <span
+      id={balanceId}
+      className="flex min-w-0 flex-1 flex-wrap items-center justify-between gap-2"
+    >
+      <span className="inline-flex items-center gap-1.5 font-medium">
+        {status && <status.Icon aria-hidden className="size-4 shrink-0" />}
+        {status?.label ?? "Saldo"}
+        {provisional && <Badge variant="preview">Vista previa</Badge>}
       </span>
-      {status?.state === "owing" && summary && summary.initialPaymentDueCents > 0 && (
-        <span className="text-xs">Falta el depósito: {money(summary.initialPaymentDueCents)}</span>
-      )}
+      <output aria-label={status?.label ?? "Saldo"} className="font-semibold tabular-nums">
+        {status ? money(status.cents) : "—"}
+      </output>
     </span>
   );
   return (

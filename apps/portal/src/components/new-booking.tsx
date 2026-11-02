@@ -37,7 +37,8 @@ import {
   useRoomTypes,
 } from "@/lib/queries";
 import { unavailableRoomIds } from "@/lib/assignment-availability";
-import { ratePlanLabels } from "@/lib/rate-plans";
+import { useIsMobile } from "@/hooks/use-mobile";
+import { ratePlanLabels, ratePlanSummary } from "@/lib/rate-plans";
 import { changeCheckIn, minimumCheckOut } from "@/lib/reservation-editor";
 import { blurThenChange, submitForm, useReservationForm } from "@/lib/reservation-form";
 import {
@@ -67,6 +68,7 @@ export function NewBooking({
   const roomTypes = useRoomTypes();
   const rooms = useRooms();
   const ratePlans = useRatePlans();
+  const isMobile = useIsMobile();
   const { today } = usePropertyCalendar();
   const schema = useMemo(() => newBookingSchema(roomTypes.data ?? []), [roomTypes.data]);
   const [defaults] = useState<NewBookingValues>(() => {
@@ -226,9 +228,10 @@ export function NewBooking({
     adults: /^\d+$/.test(draft.room.adults) ? Number(draft.room.adults) : null,
     children: /^\d+$/.test(draft.room.children) ? Number(draft.room.children) : null,
   }));
-  const planOptions = (ratePlans.data ?? [{ plan: "flexible" as const }]).map(({ plan }) => ({
-    value: plan,
-    label: ratePlanLabels[plan] ?? plan,
+  const planOptions = (ratePlans.data ?? [{ plan: "flexible" as const }]).map((terms) => ({
+    value: terms.plan,
+    label: ratePlanLabels[terms.plan] ?? terms.plan,
+    description: "cancellationPolicy" in terms ? ratePlanSummary(terms) : undefined,
   }));
 
   return (
@@ -273,7 +276,13 @@ export function NewBooking({
                   )}
                 </form.AppField>
                 <form.AppField name="ratePlan">
-                  {(field) => <field.Choice label="Tarifa" options={planOptions} />}
+                  {(field) =>
+                    isMobile ? (
+                      <field.ChoiceCards label="Tarifa" options={planOptions} />
+                    ) : (
+                      <field.Choice label="Tarifa" options={planOptions} />
+                    )
+                  }
                 </form.AppField>
               </FieldGroup>
             </FieldSet>
@@ -304,11 +313,16 @@ export function NewBooking({
                             index={index}
                             count={values.rooms.length}
                             onRemove={() => form.removeFieldValue("rooms", index)}
-                            actions={
-                              <form.AppField name={`rooms[${index}].room.nightlyRate`}>
-                                {(field) => <field.NightlyPrice />}
-                              </form.AppField>
-                            }
+                            price={{
+                              open: draft.room.nightlyRate !== undefined,
+                              onOpen: () =>
+                                form.setFieldValue(`rooms[${index}].room.nightlyRate`, ""),
+                              field: (onUndo) => (
+                                <form.AppField name={`rooms[${index}].room.nightlyRate`}>
+                                  {(field) => <field.NightlyPrice onUndo={onUndo} />}
+                                </form.AppField>
+                              ),
+                            }}
                             typeField={
                               <form.AppField name={`rooms[${index}].room.roomTypeId`}>
                                 {(field) => (

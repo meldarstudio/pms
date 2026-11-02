@@ -445,6 +445,19 @@ export function BookingEditor({
   const compactEditor = !stayOnly && !full;
   const mobileEditor = isMobile && compactEditor;
   const [billOpen, setBillOpen] = useState(false);
+  function addRoom() {
+    if (!canAddRoom || !nextRoomType || !previousRoom) return;
+    form.pushFieldValue("rooms", {
+      id: crypto.randomUUID(),
+      room: {
+        roomTypeId: nextRoomType.id,
+        roomId: null,
+        adults: String(Math.min(Number(previousRoom.adults), nextRoomType.maxAdults)),
+        children: String(Math.min(Number(previousRoom.children), nextRoomType.maxChildren)),
+      },
+      removed: false,
+    });
+  }
   const [paymentDirty, setPaymentDirty] = useState(false);
   const [paymentDraftKey, setPaymentDraftKey] = useState(0);
   const [discountDirty, setDiscountDirty] = useState(false);
@@ -677,77 +690,30 @@ export function BookingEditor({
                                       .filter((other) => other.id !== draft.id)
                                       .map((other) => other.room),
                                   )}
-                                  row={
-                                    mobileEditor
-                                      ? null
-                                      : {
-                                          index: i,
-                                          count: activeDrafts.length,
-                                          onRemove: () => removeRoom(draft.id),
-                                        }
-                                  }
+                                  row={{
+                                    index: i,
+                                    count: activeDrafts.length,
+                                    onRemove: () => removeRoom(draft.id),
+                                  }}
+                                  stacked={mobileEditor}
                                 />
                               )}
                             </form.Field>
                           );
-                          if (!mobileEditor) return <Fragment key={draft.id}>{fields}</Fragment>;
                           return (
-                            <section
-                              key={draft.id}
-                              aria-labelledby={
-                                activeDrafts.length > 1 ? `${formId}-${draft.id}-title` : undefined
-                              }
-                              className="flex min-w-0 flex-col gap-3"
-                            >
-                              {i > 0 && <Separator className="my-2" />}
-                              {activeDrafts.length > 1 && (
-                                <div className="flex items-center justify-between gap-3">
-                                  <h4
-                                    id={`${formId}-${draft.id}-title`}
-                                    className="font-medium text-muted-foreground"
-                                  >
-                                    Habitación {i + 1}
-                                  </h4>
-                                  <Button
-                                    type="button"
-                                    variant="ghost"
-                                    aria-label={`Quitar habitación ${i + 1}`}
-                                    onClick={() => removeRoom(draft.id)}
-                                  >
-                                    Quitar
-                                  </Button>
-                                </div>
-                              )}
+                            <Fragment key={draft.id}>
+                              {mobileEditor && i > 0 && <Separator className="my-2" />}
                               {fields}
-                            </section>
+                            </Fragment>
                           );
                         })}
                         {activeDrafts.length > 0 && (
                           <Button
                             type="button"
                             variant="outline"
-                            className="w-fit"
+                            className={cn(mobileEditor ? "w-full" : "w-fit")}
                             disabled={drafts.length >= 60 || !canAddRoom}
-                            onClick={() => {
-                              if (!canAddRoom || !nextRoomType || !previousRoom) return;
-                              form.pushFieldValue("rooms", {
-                                id: crypto.randomUUID(),
-                                room: {
-                                  roomTypeId: nextRoomType.id,
-                                  roomId: null,
-                                  adults: String(
-                                    Math.min(Number(previousRoom.adults), nextRoomType.maxAdults),
-                                  ),
-                                  children: String(
-                                    Math.min(
-                                      Number(previousRoom.children),
-                                      nextRoomType.maxChildren,
-                                    ),
-                                  ),
-                                },
-                                removed: false,
-                              });
-                            }}
+                            onClick={addRoom}
                           >
                             <PlusIcon data-icon="inline-start" />
                             Agregar habitación
@@ -1031,7 +997,12 @@ const CompactRoomFields = withReservationForm({
     typesReady: false,
     blockedRoomIds: new Set<string>(),
     errors: {} as Record<string, string>,
-    row: null as { index: number; count: number; onRemove: () => void } | null,
+    row: { index: 0, count: 1, onRemove: () => {} } as {
+      index: number;
+      count: number;
+      onRemove: () => void;
+    },
+    stacked: false,
   },
   render: function CompactRoomFields({
     form,
@@ -1043,6 +1014,7 @@ const CompactRoomFields = withReservationForm({
     blockedRoomIds,
     errors,
     row,
+    stacked,
   }) {
     const types = useRoomTypes(),
       rooms = useRooms();
@@ -1167,32 +1139,29 @@ const CompactRoomFields = withReservationForm({
         )}
       </>
     );
-    const nightlyPrice = newRoom ? (
-      <form.AppField name={`rooms[${roomIndex}].room.nightlyRate`}>
-        {(field) => <field.NightlyPrice />}
-      </form.AppField>
-    ) : null;
-    if (row)
-      return (
-        <ReservationRoomRow
-          {...row}
-          actions={nightlyPrice}
-          typeField={typeField}
-          roomField={roomField}
-          adultsField={adultsField}
-          childrenField={childrenField}
-          feedback={feedback}
-        />
-      );
     return (
-      <FieldGroup className="grid grid-cols-1 gap-3">
-        {typeField}
-        {roomField}
-        {adultsField}
-        {childrenField}
-        {nightlyPrice}
-        {feedback}
-      </FieldGroup>
+      <ReservationRoomRow
+        {...row}
+        stacked={stacked}
+        price={
+          newRoom
+            ? {
+                open: room.nightlyRate !== undefined,
+                onOpen: () => form.setFieldValue(`rooms[${roomIndex}].room.nightlyRate`, ""),
+                field: (onUndo) => (
+                  <form.AppField name={`rooms[${roomIndex}].room.nightlyRate`}>
+                    {(field) => <field.NightlyPrice onUndo={onUndo} />}
+                  </form.AppField>
+                ),
+              }
+            : null
+        }
+        typeField={typeField}
+        roomField={roomField}
+        adultsField={adultsField}
+        childrenField={childrenField}
+        feedback={feedback}
+      />
     );
   },
 });

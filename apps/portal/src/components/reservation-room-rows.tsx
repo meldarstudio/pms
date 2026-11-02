@@ -1,13 +1,20 @@
-import { useId, type ReactNode } from "react";
-import { Trash2Icon } from "lucide-react";
-import { Button } from "@/components/ui/button";
+import { useId, useRef, useState, type ReactNode } from "react";
+import { cn } from "cn";
+import { RoomActionsMenu } from "@/components/room-actions-menu";
 import { FieldGroup } from "@/components/ui/field";
+
+export type RoomRowPrice = {
+  open: boolean;
+  onOpen: () => void;
+  field: (onUndo: () => void) => ReactNode;
+};
 
 export function ReservationRoomRow({
   index,
   count,
   onRemove,
-  actions,
+  price,
+  stacked = false,
   typeField,
   roomField,
   adultsField,
@@ -17,7 +24,8 @@ export function ReservationRoomRow({
   index: number;
   count: number;
   onRemove: () => void;
-  actions?: ReactNode;
+  price?: RoomRowPrice | null;
+  stacked?: boolean;
   typeField: ReactNode;
   roomField: ReactNode;
   adultsField: ReactNode;
@@ -25,34 +33,46 @@ export function ReservationRoomRow({
   feedback?: ReactNode;
 }) {
   const titleId = useId();
+  const [menu, setMenu] = useState<HTMLButtonElement | null>(null);
+  const priceSlot = useRef<HTMLDivElement>(null);
   return (
     <section aria-labelledby={titleId} className="flex min-w-0 flex-col gap-2">
-      <div className="grid min-h-6 grid-cols-[minmax(0,1fr)_auto] items-center gap-2 md:flex">
-        <h4 id={titleId} className="text-xs font-medium text-muted-foreground md:flex-1">
+      <div className="flex min-h-6 items-center justify-between gap-2">
+        <h4 id={titleId} className="text-xs font-medium text-muted-foreground">
           Habitación {index + 1}
         </h4>
-        {count > 1 && (
-          <Button
-            type="button"
-            variant="ghost"
-            size="xs"
-            className="col-start-2 row-start-1"
-            aria-label={`Quitar habitación ${index + 1}`}
-            onClick={onRemove}
-          >
-            <Trash2Icon data-icon="inline-start" />
-            Quitar
-          </Button>
-        )}
+        <RoomActionsMenu
+          index={index}
+          size={stacked ? "icon" : "icon-sm"}
+          triggerRef={setMenu}
+          onReprice={
+            price && !price.open
+              ? () => {
+                  price.onOpen();
+                  requestAnimationFrame(() => priceSlot.current?.querySelector("input")?.focus());
+                }
+              : undefined
+          }
+          onRemove={count > 1 ? onRemove : undefined}
+        />
       </div>
-      <FieldGroup className="grid grid-cols-3 gap-3 md:grid-cols-[minmax(0,1fr)_7rem_4rem_4rem]">
-        <div className="col-span-full min-w-0 md:col-span-1">{typeField}</div>
-        <div className="min-w-0">{roomField}</div>
+      <FieldGroup
+        className={cn(
+          "grid gap-3",
+          stacked ? "grid-cols-2" : "grid-cols-3 md:grid-cols-[minmax(0,1fr)_7rem_4rem_4rem]",
+        )}
+      >
+        <div className={cn("col-span-full min-w-0", !stacked && "md:col-span-1")}>{typeField}</div>
+        <div className={cn("min-w-0", stacked && "col-span-full")}>{roomField}</div>
         <div className="min-w-0">{adultsField}</div>
         <div className="min-w-0">{childrenField}</div>
         {feedback && <div className="col-span-full flex flex-col gap-1">{feedback}</div>}
       </FieldGroup>
-      {actions && <div className="min-w-0">{actions}</div>}
+      {price?.open && (
+        <div ref={priceSlot} className="min-w-0">
+          {price.field(() => requestAnimationFrame(() => menu?.focus()))}
+        </div>
+      )}
     </section>
   );
 }
