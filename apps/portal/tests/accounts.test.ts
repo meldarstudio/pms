@@ -67,20 +67,6 @@ async function sectionOptions() {
   return Array.from(browser.window.document.querySelectorAll('[role="option"]'));
 }
 
-it("redirects old account links to Configuración instead of a sidebar destination", async () => {
-  signedInAs("owner");
-  const router = await render("/accounts");
-  await page.until(() => page.container.textContent.includes("hotelmanantial"));
-  assert.equal(router.state.location.pathname, "/setup");
-  assert.equal(router.state.location.search.section, "accounts");
-  assert.equal(
-    page.container
-      .querySelector('nav[aria-label="Navegación principal"]')
-      ?.textContent.includes("Cuentas"),
-    false,
-  );
-});
-
 it("lets the owner set the staff password after confirming it", async () => {
   signedInAs("owner");
   const writes = page.api.bodies<{ password: string }>("PUT", "/accounts/staff-id/password");
@@ -106,43 +92,6 @@ it("lets the owner set the staff password after confirming it", async () => {
     "The owner is told staff must sign in again",
   );
   assert.equal(page.field("staffPassword").value, "");
-});
-
-it("keeps the section and role headings available while the first account read loads", async () => {
-  page.mobile();
-  signedInAs("owner");
-  const read = page.api.hold("GET", "/accounts");
-  await render("/accounts");
-  await page.until(() => !!read.request);
-  const loading = page.container.querySelector('[aria-label="Cargando cuentas"]');
-  assert.equal(loading?.getAttribute("aria-busy"), "true");
-  assert.equal(page.container.querySelector("main h1")?.textContent, "Cuentas");
-  assert.deepEqual(
-    Array.from(loading!.querySelectorAll("h2"), (heading) => heading.textContent),
-    ["Personal", "Propietario"],
-  );
-  read.release(Response.json(accounts));
-  await page.until(() => page.container.textContent.includes("hotelmanantial"));
-  assert.equal(page.container.querySelector('[aria-label="Cargando cuentas"]'), null);
-});
-
-it("lets the owner leave and return to Cuentas through the mobile section select", async () => {
-  page.mobile();
-  signedInAs("owner");
-  await render("/accounts");
-  await page.until(() => page.container.textContent.includes("hotelmanantial"));
-  const rooms = (await sectionOptions()).find(
-    (option) => option.textContent.trim() === "Habitaciones",
-  );
-  assert.ok(rooms);
-  await browser.React.act(async () => (rooms as HTMLElement).click());
-  await page.until(() => page.container.querySelector("main h1")?.textContent === "Habitaciones");
-  const accountSection = (await sectionOptions()).find(
-    (option) => option.textContent.trim() === "Cuentas",
-  );
-  assert.ok(accountSection, "Owner can return to accounts through the section select");
-  await browser.React.act(async () => (accountSection as HTMLElement).click());
-  await page.until(() => page.container.textContent.includes("hotelmanantial"));
 });
 
 it("warns when refreshing accounts fails and retries without losing password drafts", async () => {

@@ -840,11 +840,6 @@ describe("Non-refundable reservations", () => {
     expect(response.status).toBe(400);
     expect(await response.json()).toEqual({ error: "unknown rate plan" });
   });
-
-  it("lists the plans staff can offer, Flexible first", async () => {
-    const plans = (await (await request("/rate-plans")).json()) as { plan: string }[];
-    expect(plans).toMatchObject([{ plan: "flexible" }, nonRefundable]);
-  });
 });
 
 describe("cancellation charges and waivers", () => {

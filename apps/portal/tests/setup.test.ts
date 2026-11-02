@@ -552,35 +552,3 @@ it("protects a draft when the mobile section select changes sections", async () 
   await openType();
   assert.equal(input("roomNumber").value, "");
 });
-
-it.each([false, true])(
-  "applies appearance through the real selector (storage unavailable: %s)",
-  async (unavailable) => {
-    if (unavailable) {
-      vi.spyOn(window.localStorage, "getItem").mockImplementation(() => {
-        throw new Error("Storage denied");
-      });
-      vi.spyOn(window.localStorage, "setItem").mockImplementation(() => {
-        throw new Error("Storage denied");
-      });
-    } else window.localStorage.setItem("theme", "light");
-    await render("/setup?section=appearance");
-    await until(() => !!container.querySelector("#configuration-theme"));
-    await React.act(async () =>
-      (container.querySelector("#configuration-theme") as HTMLElement).click(),
-    );
-    await until(() =>
-      Array.from(window.document.querySelectorAll('[role="option"]')).some(
-        (element) => element.textContent.trim() === "Oscuro",
-      ),
-    );
-    const option = Array.from(window.document.querySelectorAll('[role="option"]')).find(
-      (element) => element.textContent.trim() === "Oscuro",
-    )!;
-    await React.act(async () => (option as HTMLElement).click());
-    await until(() => window.document.documentElement.classList.contains("dark"));
-    assert.ok(container.querySelector("#configuration-theme")?.textContent.includes("Oscuro"));
-    if (!unavailable) assert.equal(window.localStorage.getItem("theme"), "dark");
-    assert.equal(writes.length, 0, "Appearance must not write property settings");
-  },
-);

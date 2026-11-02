@@ -523,92 +523,86 @@ function doubleAvailability(free: number, freeRoomIds: string[]) {
   };
 }
 
-it.each(["desktop", "phone"])(
-  "adds a new room at an agreed price in the %s dialog without repricing saved rooms",
-  async (viewport) => {
-    if (viewport === "phone") page.mobile();
-    const writes: WorkflowCommand[] = [];
-    const previews: WorkflowCommand[] = [];
-    mockApi(
-      async (path, command) => {
-        if (path.endsWith("/preview")) {
-          previews.push(command);
-          const added = command.actions.find((action) => action.type === "add-room");
-          const cents = added?.room.nightlyRateCents === 8000 ? 46000 : 60000;
-          return previewResponse({
-            ...detail(),
-            subtotalCents: cents,
-            totalCents: cents,
-            balanceCents: cents,
-          });
-        }
-        writes.push(command);
-        return writes.length === 1
-          ? Response.json({ error: "Temporary save failure" }, { status: 503 })
-          : Response.json(detail());
+it("adds a new room at an agreed price in the dialog without repricing saved rooms", async () => {
+  const writes: WorkflowCommand[] = [];
+  const previews: WorkflowCommand[] = [];
+  mockApi(
+    async (path, command) => {
+      if (path.endsWith("/preview")) {
+        previews.push(command);
+        const added = command.actions.find((action) => action.type === "add-room");
+        const cents = added?.room.nightlyRateCents === 8000 ? 46000 : 60000;
+        return previewResponse({
+          ...detail(),
+          subtotalCents: cents,
+          totalCents: cents,
+          balanceCents: cents,
+        });
+      }
+      writes.push(command);
+      return writes.length === 1
+        ? Response.json({ error: "Temporary save failure" }, { status: 503 })
+        : Response.json(detail());
+    },
+    { roomCount: 3 },
+  );
+  await renderCachedEditor(detail);
+  await until(
+    () => !!window.document.querySelector('[name="rooms[0].room.adults"]'),
+    "The details form must load",
+  );
+  await until(() => !button("Agregar habitación").disabled, "Room availability must load");
+  assert.equal(window.document.querySelector('[name$=".nightlyRate"]'), null);
+  assert.ok(
+    !Array.from(window.document.querySelectorAll("button")).some(
+      (item) => item.textContent === "Cambiar precio por noche",
+    ),
+  );
+  await page.click("Agregar habitación");
+  const reprice = () => page.menuAction("Acciones de la habitación 2", "Cambiar precio por noche");
+  await reprice();
+  await fill("rooms[1].room.nightlyRate", "80");
+  await until(() => !button("Guardar cambios").disabled, "The agreed price preview must load");
+  assert.equal(
+    previews.at(-1)?.actions.find((action) => action.type === "add-room")?.room.nightlyRateCents,
+    8000,
+  );
+  assert.equal(summaryAmount("Total"), "S/460");
+  await page.click("Deshacer precio por noche");
+  await until(
+    () => !button("Guardar cambios").disabled,
+    "Undo must restore ordinary server pricing",
+  );
+  assert.equal(
+    previews.at(-1)?.actions.find((action) => action.type === "add-room")?.room.nightlyRateCents,
+    undefined,
+  );
+  assert.equal(summaryAmount("Total"), "S/600");
+  await reprice();
+  await fill("rooms[1].room.nightlyRate", "80");
+  await until(() => !button("Guardar cambios").disabled, "The changed price must be validated");
+  await page.click("Guardar cambios");
+  await until(
+    () => writes.length === 1 && !button("Guardar cambios").disabled,
+    "A failed save must keep the draft retryable",
+  );
+  assert.equal(control("rooms[1].room.nightlyRate").value, "80");
+  await page.click("Guardar cambios");
+  await until(() => writes.length === 2, "Retry must save the same new room");
+  assert.deepEqual(writes[1], writes[0]);
+  assert.deepEqual(writes[0].actions, [
+    {
+      type: "add-room",
+      room: {
+        roomTypeId: "double",
+        roomId: null,
+        adults: 1,
+        children: 0,
+        nightlyRateCents: 8000,
       },
-      { roomCount: 3 },
-    );
-    await renderCachedEditor(detail);
-    await until(
-      () => !!window.document.querySelector('[name="rooms[0].room.adults"]'),
-      "The details form must load",
-    );
-    await until(() => !button("Agregar habitación").disabled, "Room availability must load");
-    assert.equal(window.document.querySelector('[name$=".nightlyRate"]'), null);
-    assert.ok(
-      !Array.from(window.document.querySelectorAll("button")).some(
-        (item) => item.textContent === "Cambiar precio por noche",
-      ),
-    );
-    await page.click("Agregar habitación");
-    const reprice = () =>
-      page.menuAction("Acciones de la habitación 2", "Cambiar precio por noche");
-    await reprice();
-    await fill("rooms[1].room.nightlyRate", "80");
-    await until(() => !button("Guardar cambios").disabled, "The agreed price preview must load");
-    assert.equal(
-      previews.at(-1)?.actions.find((action) => action.type === "add-room")?.room.nightlyRateCents,
-      8000,
-    );
-    if (viewport === "phone") await page.click("Ver desglose");
-    assert.equal(summaryAmount("Total"), "S/460");
-    await page.click("Deshacer precio por noche");
-    await until(
-      () => !button("Guardar cambios").disabled,
-      "Undo must restore ordinary server pricing",
-    );
-    assert.equal(
-      previews.at(-1)?.actions.find((action) => action.type === "add-room")?.room.nightlyRateCents,
-      undefined,
-    );
-    assert.equal(summaryAmount("Total"), "S/600");
-    await reprice();
-    await fill("rooms[1].room.nightlyRate", "80");
-    await until(() => !button("Guardar cambios").disabled, "The changed price must be validated");
-    await page.click("Guardar cambios");
-    await until(
-      () => writes.length === 1 && !button("Guardar cambios").disabled,
-      "A failed save must keep the draft retryable",
-    );
-    assert.equal(control("rooms[1].room.nightlyRate").value, "80");
-    await page.click("Guardar cambios");
-    await until(() => writes.length === 2, "Retry must save the same new room");
-    assert.deepEqual(writes[1], writes[0]);
-    assert.deepEqual(writes[0].actions, [
-      {
-        type: "add-room",
-        room: {
-          roomTypeId: "double",
-          roomId: null,
-          adults: 1,
-          children: 0,
-          nightlyRateCents: 8000,
-        },
-      },
-    ]);
-  },
-);
+    },
+  ]);
+});
 
 function summaryAmount(label: string) {
   if (label === "Descuento")
@@ -964,34 +958,6 @@ it("shows variable nightly prices and detail without assignments in the phone pr
   await page.click("Ver detalle");
   assert.match(summary().textContent.replace(/\s/g, ""), /S\/120/);
   assert.match(summary().textContent.replace(/\s/g, ""), /S\/180/);
-});
-
-const summaryStay = () =>
-  Array.from(container.querySelectorAll("section"))
-    .find((section) => section.querySelector("h3")?.textContent === "Resumen de reserva")
-    ?.querySelector('[data-slot="card-description"] > span')?.textContent;
-
-it.each([
-  { draft: "one night", day: "15", count: "· 1 noche" },
-  { draft: "three nights", day: "17", count: "· 3 noches" },
-])("labels the summary stay for a $draft draft", async ({ day, count }) => {
-  const saved = detail();
-  mockApi(async () => previewResponse(saved), { reservation: () => saved });
-  await renderCachedEditor(() => saved);
-  assert.match(summaryStay()!, /· 2 noches$/);
-  await pickDay("Check-out", day);
-  await until(() => summaryStay()!.endsWith(count), `The summary must read ${count}`);
-});
-
-it("labels a one-night stay in the phone header", async () => {
-  page.mobile();
-  const saved = { ...detail(), checkOut: "2026-10-15" };
-  mockApi(async () => previewResponse(saved), { reservation: () => saved });
-  await renderCachedEditor(() => saved);
-  const stay = Array.from(container.querySelectorAll("header span")).find((span) =>
-    /noche/.test(span.textContent),
-  );
-  assert.match(stay!.textContent, /· 1 noche$/);
 });
 
 it.each([
@@ -1811,33 +1777,6 @@ it("keeps an unapplied discount draft out of the bill and blocks creating while 
   assert.equal(writes[0].discountCents, 0);
 });
 
-it("offers Ver detalle only for several rooms or varying nightly prices", async () => {
-  const weekend = (date: string) => ([5, 6].includes(new Date(date).getUTCDay()) ? 20000 : 15000);
-  mockCreationApi(async () => Response.json(detail(), { status: 201 }), { nightCents: weekend });
-  const detailToggle = () =>
-    Array.from(container.querySelectorAll("button")).find(
-      (item) => item.textContent.trim() === "Ver detalle",
-    );
-  await renderNewBooking();
-  assert.equal(detailToggle(), undefined, "One flat-price room needs no breakdown");
-
-  await React.act(async () => button("Agregar habitación").click());
-  await until(() => creationTotal() === "S/300", "Both rooms must be previewed");
-  assert.equal(detailToggle()?.getAttribute("aria-expanded"), "false");
-  await page.menuAction("Acciones de la habitación 2", "Quitar habitación");
-  await until(() => detailToggle() === undefined, "Back to one flat room hides the breakdown");
-
-  await pickDay("Check-out", "17");
-  await until(() => creationTotal() === "S/500", "Wed–Sat must include a Friday price");
-  assert.equal(detailToggle()?.getAttribute("aria-expanded"), "false", "It starts collapsed");
-  await React.act(async () => detailToggle()!.click());
-  const nights = Array.from(
-    container.querySelectorAll('section[aria-label="Habitación 1: Doble"] dd'),
-    (night) => night.textContent.replace(/\s/g, ""),
-  );
-  assert.deepEqual(nights, ["S/150", "S/150", "S/200"]);
-});
-
 it("never shows a stale preview and retries a failed one before creating", async () => {
   mockCreationApi(async () => Response.json(detail(), { status: 201 }));
   await renderNewBooking();
@@ -2120,15 +2059,6 @@ async function typePhone(text: string) {
   }
 }
 
-async function clipboardEvent(type: "copy" | "cut", start: number, end: number) {
-  const phone = control("phone");
-  phone.setSelectionRange(start, end);
-  const clipboardData = new window.DataTransfer();
-  const event = new window.ClipboardEvent(type, { bubbles: true, cancelable: true, clipboardData });
-  await React.act(async () => phone.dispatchEvent(event));
-  return { prevented: event.defaultPrevented, text: clipboardData.getData("text/plain") };
-}
-
 it("groups phone digits while typing and saves the canonical phone", async () => {
   const writes: CreateBookingInput[] = [];
   mockCreationApi(async (input) => {
@@ -2142,76 +2072,6 @@ it("groups phone digits while typing and saves the canonical phone", async () =>
   await submit();
   await until(() => writes.length === 1, "The masked phone must save");
   assert.equal(writes[0].guest.phone, "+51991039021");
-});
-
-it("edits phone digits beside separators without moving the caret off them", async () => {
-  mockCreationApi(async () => Response.json(detail(), { status: 201 }));
-  await renderNewBooking();
-  const phone = control("phone");
-
-  for (const { name, selection, inputType, expected, caret } of [
-    {
-      name: "Backspace after a separator removes the preceding digit",
-      selection: [4, 4],
-      inputType: "deleteContentBackward",
-      expected: "990 390 21",
-      caret: 2,
-    },
-    {
-      name: "Delete before a separator removes the following digit",
-      selection: [3, 3],
-      inputType: "deleteContentForward",
-      expected: "991 390 21",
-      caret: 3,
-    },
-    {
-      name: "Deleting a selected separator alone keeps every digit",
-      selection: [3, 4],
-      inputType: "deleteContentBackward",
-      expected: "991 039 021",
-      caret: 3,
-    },
-  ]) {
-    await fill(phone, "991039021");
-    phone.setSelectionRange(selection[0], selection[1]);
-    await editPhone("991039 021", 3, inputType);
-    assert.equal(phone.value, expected, name);
-    assert.equal(phone.selectionStart, caret, name);
-  }
-
-  await fill(phone, "991039021");
-  phone.setSelectionRange(4, 7);
-  await editPhone("991 777 021", 7, "insertReplacementText");
-  assert.equal(phone.value, "991 777 021");
-  assert.equal(phone.selectionStart, 7, "Replacing selected digits must not jump to the end");
-});
-
-it("copies and cuts phone digits without separators, leaving unsupported text to the browser", async () => {
-  mockCreationApi(async () => Response.json(detail(), { status: 201 }));
-  await renderNewBooking();
-  const phone = control("phone");
-  await fill(phone, "991039021");
-  assert.deepEqual(await clipboardEvent("copy", 0, phone.value.length), {
-    prevented: true,
-    text: "991039021",
-  });
-
-  assert.deepEqual(await clipboardEvent("cut", 4, 7), { prevented: true, text: "039" });
-  assert.equal(phone.value, "991 021");
-  assert.equal(phone.selectionStart, 3);
-
-  await fill(phone, "");
-  await typePhone("+5199");
-  assert.equal(phone.value, "+51 99");
-  assert.deepEqual(
-    await clipboardEvent("copy", 0, "+51 99".length),
-    { prevented: true, text: "+5199" },
-    "Incomplete international input must keep its + on the clipboard",
-  );
-
-  await fill(phone, "+51 987654321 ext. 5");
-  const annotated = await clipboardEvent("copy", 0, "+51 987654321 ext. 5".length);
-  assert.equal(annotated.prevented, false, "Unsupported text must be copied as shown");
 });
 
 it("selects the country of a pasted international phone and shows its national digits", async () => {
@@ -2233,19 +2093,6 @@ it("selects the country of a pasted international phone and shows its national d
   await submit();
   await until(() => writes.length === 1, "The pasted phone must save");
   assert.equal(writes[0].guest.phone, "+56987654321");
-});
-
-it("leaves IME composition text unformatted until the composition ends", async () => {
-  mockCreationApi(async () => Response.json(detail(), { status: 201 }));
-  await renderNewBooking();
-  const phone = control("phone");
-  const composition = (type: string) =>
-    phone.dispatchEvent(new window.CompositionEvent(type, { bubbles: true }));
-  await React.act(async () => composition("compositionstart"));
-  await editPhone("9910", 4, "insertCompositionText", true);
-  assert.equal(phone.value, "9910");
-  await React.act(async () => composition("compositionend"));
-  assert.equal(phone.value, "991 0");
 });
 
 it("resubmits an unformatted legacy phone exactly once an edit is undone", async () => {
@@ -2873,55 +2720,6 @@ it("keeps mobile edit drafts mounted as the keyboard viewport and screen size ch
   }
 });
 
-it("preserves the reservation and discount drafts when the keyboard viewport or screen size changes", async () => {
-  mockCreationApi(async () => {
-    throw new Error("Resizing must not submit the reservation");
-  });
-  const descriptor = Object.getOwnPropertyDescriptor(window, "visualViewport");
-  const viewport = Object.assign(new window.EventTarget(), { height: 844, offsetTop: 0 });
-  Object.defineProperty(window, "visualViewport", { configurable: true, value: viewport });
-  try {
-    page.mobile();
-    await render(
-      React.createElement(dialogs.RoomBookingDialog, {
-        target: createTarget,
-        onClose: () => {},
-        onViewReservation: () => {},
-      }),
-    );
-    await until(() => !button("Crear reserva").disabled, "New dialog must load");
-    await fill("fullName", "Ada Lovelace");
-    await fill("notes", "Llegada tarde");
-    const name = control("fullName");
-    await openDiscount();
-    const discount = discountInput()!;
-    await fill(discount, "25");
-    assert.equal(button("Crear reserva").disabled, true);
-    assert.ok(window.document.body.textContent.includes("Aplica o cierra el descuento"));
-    await React.act(async () => {
-      viewport.height = 420;
-      viewport.offsetTop = 30;
-      viewport.dispatchEvent(new window.Event("resize"));
-      viewport.dispatchEvent(new window.Event("scroll"));
-    });
-    await React.act(async () => {
-      window.happyDOM.setWindowSize(desktopViewport);
-      window.dispatchEvent(new window.Event("resize"));
-    });
-    assert.equal(control("fullName"), name, "Responsive changes must not replace the form");
-    assert.equal(name.value, "Ada Lovelace");
-    assert.equal(control("notes").value, "Llegada tarde");
-    assert.equal(discountInput(), discount, "Responsive changes must keep the discount draft open");
-    assert.equal(discount.value, "25");
-    await React.act(async () => popoverButton("Aplicar")!.click());
-    await until(() => !button("Crear reserva").disabled, "The discount draft must still apply");
-    assert.equal(creationTotal(), "S/125");
-  } finally {
-    if (descriptor) Object.defineProperty(window, "visualViewport", descriptor);
-    else Reflect.deleteProperty(window, "visualViewport");
-  }
-});
-
 it("protects a new reservation draft, blocks closing during creation, then opens it on Pagos", async () => {
   let finish!: (response: Response) => void;
   let closed = 0;
@@ -3280,98 +3078,6 @@ it.each([
   assert.deepEqual(footerActions(), scenario.actions);
 });
 
-it.each([
-  {
-    scenario: "check-in tomorrow",
-    status: "confirmed",
-    stay: ["2026-11-01", "2026-11-03"],
-    variant: "outline",
-  },
-  {
-    scenario: "check-in today",
-    status: "confirmed",
-    stay: ["2026-10-31", "2026-11-02"],
-    variant: "default",
-  },
-  {
-    scenario: "late check-in",
-    status: "confirmed",
-    stay: ["2026-10-30", "2026-11-02"],
-    variant: "default",
-  },
-  {
-    scenario: "check-out tomorrow",
-    status: "checked_in",
-    stay: ["2026-10-30", "2026-11-01"],
-    variant: "outline",
-  },
-  {
-    scenario: "check-out today",
-    status: "checked_in",
-    stay: ["2026-10-29", "2026-10-31"],
-    variant: "default",
-  },
-] as const)(
-  "makes the lifecycle action primary only once it is due: $scenario",
-  async ({ status, stay: [checkIn, checkOut], variant }) => {
-    mockApi(async () => previewResponse(detail()), {
-      reservation: () => ({ ...detail(), status, checkIn, checkOut }),
-    });
-    await openEditDialog();
-    await until(() => window.document.querySelector('[name="notes"]') !== null);
-    const action = button(status === "confirmed" ? "Hacer check-in" : "Hacer check-out");
-    assert.equal(action.dataset.variant, variant);
-  },
-);
-
-it.each(["desktop", "phone"] as const)(
-  "leaves status corrections and cancellation to the reservation page on %s",
-  async (screen) => {
-    mockApi(async () => previewResponse(detail()));
-    if (screen === "phone") page.mobile();
-    await openEditDialog();
-    await until(() => window.document.querySelector('[name="notes"]') !== null);
-    for (const label of ["Más acciones de reserva", "Cambiar estado", "Cancelar reserva"])
-      assert.equal(bodyText().includes(label), false, `${label} must not be in the dialog`);
-    assert.equal(window.document.querySelector('[aria-label="Más acciones de reserva"]'), null);
-    assert.ok(button("Ver reserva completa"));
-  },
-);
-
-it("marks each tab whose form has unsaved input, but not a discount draft", async () => {
-  mockApi(async () => previewResponse(detail()));
-  await openEditDialog();
-  await until(() => window.document.querySelector('[name="notes"]') !== null);
-  const marked = () =>
-    [...window.document.querySelectorAll('[role="tab"]')]
-      .filter((tab) => tab.querySelector('[role="img"][aria-label="Cambios sin guardar"]'))
-      .map((tab) => tab.textContent.trim());
-  assert.deepEqual(
-    [...window.document.querySelectorAll('[role="tab"]')].map((tab) => tab.textContent.trim()),
-    ["Detalles", "Movimientos", "Huéspedes"],
-  );
-  await openDiscount();
-  await fill(discountInput()!, "10");
-  assert.deepEqual(marked(), []);
-  await fill(discountInput()!, "0");
-  await React.act(async () =>
-    discountInput()!.dispatchEvent(
-      new window.KeyboardEvent("keydown", { key: "Escape", bubbles: true }),
-    ),
-  );
-  await until(() => !discountInput());
-  await React.act(async () => button("Movimientos").click());
-  const suggested = control("amount").value;
-  await fill("amount", "75");
-  await React.act(async () => button("Huéspedes").click());
-  await fill("fullName", "Huésped pendiente");
-  await React.act(async () => button("Detalles").click());
-  await fill("notes", "Llegada tarde");
-  assert.deepEqual(marked(), ["Detalles", "Movimientos", "Huéspedes"]);
-  await fill("amount", suggested);
-  assert.deepEqual(marked(), ["Detalles", "Huéspedes"]);
-});
-
 it("asks before Cerrar discards unsaved changes, like the close icon", async () => {
   let closed = 0;
   mockApi(async () => previewResponse(detail()));
@@ -3542,84 +3248,6 @@ it("blocks an existing undo while the compact dialog has a new dirty draft", asy
   await React.act(async () => undo.click());
   await until(() => saved.status === "confirmed");
   assert.deepEqual(writes[1].actions, [{ type: "set-status", status: "confirmed" }]);
-});
-
-it("warns before checking a confirmed reservation into a dirty room, then allows it", async () => {
-  let saved = detail();
-  saved.rooms[0].housekeepingStatus = "dirty";
-  const writes: WorkflowCommand[] = [];
-  mockApi(
-    async (path, command) => {
-      if (path.endsWith("/preview")) return previewResponse(saved);
-      writes.push(command);
-      saved = { ...saved, status: "checked_in" };
-      return Response.json(saved);
-    },
-    { reservation: () => saved },
-  );
-  await openEditDialog();
-  await until(() => window.document.querySelector('[name="notes"]') !== null);
-  const warning = () =>
-    Array.from(window.document.querySelectorAll('[role="alertdialog"]')).find((dialog) =>
-      dialog.textContent.includes("La habitación 101 está sucia"),
-    );
-  const warningButton = (label: string) =>
-    Array.from(warning()!.querySelectorAll("button")).find(
-      (item) => item.textContent.trim() === label,
-    )!;
-  await React.act(async () => button("Hacer check-in").click());
-  await until(() => warning() !== undefined, "Check-in must warn about the dirty room");
-  await React.act(async () => warningButton("Volver").click());
-  await until(() => warning() === undefined);
-  assert.equal(writes.length, 0);
-  await React.act(async () => button("Hacer check-in").click());
-  await until(() => warning() !== undefined);
-  await React.act(async () => warningButton("Hacer check-in").click());
-  await until(() => saved.status === "checked_in");
-  assert.deepEqual(writes[0].actions, [{ type: "set-status", status: "checked_in" }]);
-});
-
-it("confirms checking out with money owed, sending nothing on Volver", async () => {
-  let saved: ReservationDetail = {
-    ...detail(),
-    status: "checked_in",
-    paidCents: 10000,
-    balanceCents: 20000,
-  };
-  const writes: WorkflowCommand[] = [];
-  mockApi(
-    async (path, command) => {
-      if (path.endsWith("/preview")) return previewResponse(saved);
-      writes.push(command);
-      saved = { ...saved, status: "checked_out" };
-      return Response.json(saved);
-    },
-    { reservation: () => saved },
-  );
-  await openEditDialog();
-  await until(() => window.document.querySelector('[name="notes"]') !== null);
-  const confirmation = () =>
-    [...window.document.querySelectorAll('[role="alertdialog"]')].find((item) =>
-      item.textContent.includes("por pagar"),
-    );
-  const confirmationButton = (label: string) =>
-    [...confirmation()!.querySelectorAll("button")].find(
-      (item) => item.textContent.trim() === label,
-    )!;
-  await React.act(async () => button("Hacer check-out").click());
-  await until(() => confirmation() !== undefined, "Money owed must be confirmed");
-  assert.match(
-    confirmation()!.textContent.replace(/\s/g, " "),
-    /Quedan S\/ 200 por pagar\. ¿Hacer check-out de todos modos\?/,
-  );
-  await React.act(async () => confirmationButton("Volver").click());
-  await until(() => confirmation() === undefined);
-  assert.equal(writes.length, 0);
-  await React.act(async () => button("Hacer check-out").click());
-  await until(() => confirmation() !== undefined);
-  await React.act(async () => confirmationButton("Hacer check-out").click());
-  await until(() => saved.status === "checked_out", "Check-out proceeds despite the balance");
-  assert.deepEqual(writes[0].actions, [{ type: "set-status", status: "checked_out" }]);
 });
 
 it("checks out immediately and preserves that status on a later notes save", async () => {

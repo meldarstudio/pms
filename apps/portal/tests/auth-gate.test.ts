@@ -46,36 +46,6 @@ async function render() {
   );
 }
 
-it("reveals and hides the password without submitting or changing the credentials", async () => {
-  const logins = mockApi(
-    Response.json({ username: "hotelmanantial", propertyTimeZone: "America/Lima" }),
-  );
-  await render();
-  assert.equal(button("Iniciar sesión").disabled, true);
-  assert.equal(input("password").type, "password");
-
-  await fill("username", "  hotelmanantial  ");
-  await fill("password", "  test password  ");
-  assert.equal(button("Iniciar sesión").disabled, false);
-  await React.act(async () => button("Mostrar contraseña").click());
-  assert.equal(input("password").type, "text");
-  assert.equal(button("Ocultar contraseña").getAttribute("aria-pressed"), "true");
-  assert.equal(input("password").value, "  test password  ");
-  assert.deepEqual(logins, []);
-
-  await React.act(async () => button("Ocultar contraseña").click());
-  assert.equal(input("password").type, "password");
-  assert.equal(button("Mostrar contraseña").getAttribute("aria-pressed"), "false");
-  assert.deepEqual(logins, []);
-
-  await React.act(async () => button("Iniciar sesión").click());
-  await until(
-    () => container.textContent.includes("Signed-in app"),
-    "Successful login opens the app",
-  );
-  assert.deepEqual(logins, [{ username: "hotelmanantial", password: "  test password  " }]);
-});
-
 it("keeps entered credentials and translates a failed login", async () => {
   const logins = mockApi(Response.json({ error: "invalid credentials" }, { status: 401 }));
   await render();

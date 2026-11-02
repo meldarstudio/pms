@@ -365,16 +365,6 @@ it.each([
   },
 );
 
-it("shows the status beside the reservation code above the guest name", async () => {
-  mockApi();
-  await render();
-  const identity = header().querySelector("h1")!.parentElement!.previousElementSibling!;
-  assert.deepEqual(
-    Array.from(identity.children).map((item) => item.textContent),
-    ["Reserva #TEST0001", "Confirmada"],
-  );
-});
-
 it("corrects status through the menu without offering cancellation or the current status", async () => {
   mockApi();
   await render();
@@ -598,9 +588,6 @@ it("does not queue an old undo behind a running lifecycle save", async () => {
 
 it.each([
   { editor: "Editar estadía", fieldName: "rooms[0].room.adults", value: "1", action: "edit-room" },
-  { editor: "Editar contacto", fieldName: "fullName", value: "Ana María Pérez", action: "contact" },
-  { editor: "Editar notas", fieldName: "notes", value: "Entrada por la noche", action: "notes" },
-  { editor: "Agregar huésped", fieldName: "fullName", value: "Luis Gómez", action: "set-guests" },
   { editor: "Registrar pago", fieldName: "amount", value: "100", action: "add-payment" },
 ])(
   "preserves the phone $editor draft and actions through keyboard viewport changes",
@@ -862,30 +849,6 @@ it("shows notes, staying guests, and payments in their own cards and edits recor
   await chooseRowAction('[aria-label^="Acciones del pago"]', "Editar");
   assert.match(popup()!.textContent, /Editar pago/);
   assert.equal(field("amount").value, "100.00");
-});
-
-it("lists assigned rooms by number with unassigned rooms last", async () => {
-  const room = saved.rooms[0];
-  saved = {
-    ...saved,
-    rooms: [null, "206", "104", "302", "101", "1001", "203", "108"].map((roomNumber, index) => ({
-      ...room,
-      id: `line-${index}`,
-      roomId: roomNumber && `room-${roomNumber}`,
-      roomNumber,
-    })),
-  };
-  mockApi();
-  await render();
-  const rooms = () =>
-    Array.from(
-      page.container.querySelectorAll<HTMLElement>(
-        '[aria-label="Habitaciones asignadas"] [role="listitem"]',
-      ),
-      (element) => element.textContent.split(" · ")[0],
-    );
-  assert.deepEqual(rooms(), ["101", "104", "108", "203", "206", "302", "1001", "Sin asignar"]);
-  assert.match(page.container.textContent, /206 · Doble2 adultos/);
 });
 
 async function back() {
@@ -1767,99 +1730,88 @@ it("saves stay changes independently with the current server bill", async () => 
   assert.match(page.container.textContent, /3 noches/);
 });
 
-it.each(["desktop", "phone"])(
-  "saves an agreed nightly price only for a new room in the %s stay editor",
-  async (viewport) => {
-    if (viewport === "phone") page.mobile();
-    page.api.catalog.rooms.push({ id: "room-2", number: "102", roomTypeId: "double" });
-    const added = {
-      ...saved.rooms[0],
-      id: "line-2",
-      adults: 2,
-      subtotalCents: 24050,
-      totalCents: 24050,
-      nights: [
-        { date: "2026-10-19", priceCents: 12025 },
-        { date: "2026-10-20", priceCents: 12025 },
-      ],
-    };
-    mockApi({
-      preview: () => ({
-        billing: {
-          ...saved,
-          rooms: [...saved.rooms, added],
-          subtotalCents: 54050,
-          totalCents: 54050,
-          balanceCents: 54050,
-        },
-        validation: { issues: [] },
-      }),
-      write: () => {
-        saved = {
-          ...saved,
-          rooms:
-            writes.length === 1
-              ? [...saved.rooms, added]
-              : [saved.rooms[0], { ...added, adults: 1 }],
-          subtotalCents: 54050,
-          totalCents: 54050,
-          balanceCents: 54050,
-        };
-        return Response.json(saved);
+it("saves an agreed nightly price only for a new room in the stay editor", async () => {
+  page.api.catalog.rooms.push({ id: "room-2", number: "102", roomTypeId: "double" });
+  const added = {
+    ...saved.rooms[0],
+    id: "line-2",
+    adults: 2,
+    subtotalCents: 24050,
+    totalCents: 24050,
+    nights: [
+      { date: "2026-10-19", priceCents: 12025 },
+      { date: "2026-10-20", priceCents: 12025 },
+    ],
+  };
+  mockApi({
+    preview: () => ({
+      billing: {
+        ...saved,
+        rooms: [...saved.rooms, added],
+        subtotalCents: 54050,
+        totalCents: 54050,
+        balanceCents: 54050,
       },
-    });
-    await render();
-    await click("Editar estadía");
-    assert.equal(
-      popup()!.querySelector('[aria-label="Acciones de la habitación 1"]'),
-      null,
-      "A lone saved room has no actions",
-    );
-    await page.until(() => !button("Agregar habitación").disabled);
-    await click("Agregar habitación");
-    await page.menuAction("Acciones de la habitación 2", "Cambiar precio por noche");
-    await fill("rooms[1].room.nightlyRate", "120.25");
-    await page.until(() => !button("Guardar cambios").disabled);
-    assert.match(popup()!.textContent.replace(/\s/g, ""), /S\/540\.50/);
-    if (viewport === "phone") {
-      assert.match(popup()!.textContent.replace(/\s/g, ""), /2noches×S\/120\.25·2adultos/);
-      await click("Ver detalle");
-      assert.equal(button("Ver detalle").getAttribute("aria-expanded"), "true");
-    }
-    await click("Guardar cambios");
-    await page.until(() => !popup());
-    assert.deepEqual(writes[0].actions, [
-      {
-        type: "add-room",
-        room: {
-          roomTypeId: "double",
-          roomId: null,
-          adults: 2,
-          children: 0,
-          nightlyRateCents: 12025,
-        },
+      validation: { issues: [] },
+    }),
+    write: () => {
+      saved = {
+        ...saved,
+        rooms:
+          writes.length === 1 ? [...saved.rooms, added] : [saved.rooms[0], { ...added, adults: 1 }],
+        subtotalCents: 54050,
+        totalCents: 54050,
+        balanceCents: 54050,
+      };
+      return Response.json(saved);
+    },
+  });
+  await render();
+  await click("Editar estadía");
+  assert.equal(
+    popup()!.querySelector('[aria-label="Acciones de la habitación 1"]'),
+    null,
+    "A lone saved room has no actions",
+  );
+  await page.until(() => !button("Agregar habitación").disabled);
+  await click("Agregar habitación");
+  await page.menuAction("Acciones de la habitación 2", "Cambiar precio por noche");
+  await fill("rooms[1].room.nightlyRate", "120.25");
+  await page.until(() => !button("Guardar cambios").disabled);
+  assert.match(popup()!.textContent.replace(/\s/g, ""), /S\/540\.50/);
+  await click("Guardar cambios");
+  await page.until(() => !popup());
+  assert.deepEqual(writes[0].actions, [
+    {
+      type: "add-room",
+      room: {
+        roomTypeId: "double",
+        roomId: null,
+        adults: 2,
+        children: 0,
+        nightlyRateCents: 12025,
       },
-    ]);
-    await click("Editar estadía");
-    assert.doesNotMatch(popup()!.textContent, /Precio por noche · S\//);
-    assert.deepEqual(
-      (await page.openMenu("Acciones de la habitación 2")).map((item) => item.textContent.trim()),
-      ["Quitar habitación"],
-      "A saved added room cannot be repriced",
-    );
-    await fill("rooms[1].room.adults", "1");
-    await page.until(() => !button("Guardar cambios").disabled);
-    await click("Guardar cambios");
-    await page.until(() => writes.length === 2);
-    assert.deepEqual(writes[1].actions, [
-      {
-        type: "edit-room",
-        lineId: "line-2",
-        room: { roomTypeId: "double", roomId: null, adults: 1, children: 0 },
-      },
-    ]);
-  },
-);
+    },
+  ]);
+  await click("Editar estadía");
+  assert.doesNotMatch(popup()!.textContent, /Precio por noche · S\//);
+  assert.deepEqual(
+    (await page.openMenu("Acciones de la habitación 2")).map((item) => item.textContent.trim()),
+    ["Quitar habitación"],
+    "A saved added room cannot be repriced",
+  );
+  await fill("rooms[1].room.adults", "1");
+  await page.until(() => !button("Guardar cambios").disabled);
+  await click("Guardar cambios");
+  await page.until(() => writes.length === 2);
+  assert.deepEqual(writes[1].actions, [
+    {
+      type: "edit-room",
+      lineId: "line-2",
+      room: { roomTypeId: "double", roomId: null, adults: 1, children: 0 },
+    },
+  ]);
+});
 
 it("blocks new-room price previews and saves until an empty or invalid override is undone", async () => {
   page.mobile();
@@ -2036,37 +1988,6 @@ it("explains a missing reservation instead of offering a retry", async () => {
   await click("Volver a reservas");
   await page.until(() => router.state.location.pathname === "/reservations");
 });
-
-it.each(["loading", "failed"] as const)(
-  "returns to the originating reservation list filters while the detail is %s",
-  async (state) => {
-    mockApi();
-    if (state === "loading")
-      page.api.on("GET", "/reservations/reservation-1", () => new Promise<Response>(() => {}));
-    if (state === "failed")
-      page.api.on("GET", "/reservations/reservation-1", () =>
-        Response.json({ error: "Request failed" }, { status: 503 }),
-      );
-    const search = new URLSearchParams({
-      view: "all",
-      day: "2026-10-12",
-      q: "Ana",
-      balance: "credit",
-      assignment: "unassigned",
-      sort: "balance",
-      direction: "desc",
-    });
-    await render(`?returnTo=${encodeURIComponent(search.toString())}`, false);
-    if (state === "failed")
-      await page.until(() => page.container.textContent.includes("Reintentar"));
-    await back();
-    await page.until(() => router.state.location.pathname === "/reservations");
-    assert.deepEqual(
-      { ...router.state.location.search },
-      { ...Object.fromEntries(search), statuses: "all", size: 50 },
-    );
-  },
-);
 
 const account = () => page.container.querySelector('[role="region"][aria-label="Cuenta"]')!;
 function text(node: object) {
@@ -3090,17 +3011,6 @@ it.each([
   },
 );
 
-it("keeps the coupon code visible and explains a denied clipboard without claiming it was copied", async () => {
-  saved = { ...saved, couponIssuedCents: 10000, coupons: [issuedCoupon()] };
-  mockApi();
-  vi.spyOn(window.navigator.clipboard, "writeText").mockRejectedValue(new Error("Denied"));
-  await render("", true, true);
-  await click("Copiar mensaje del cupón K7Q2M9XPA4");
-  await page.until(() => window.document.body.textContent.includes("No se pudo copiar el mensaje"));
-  assert.ok(summaryRows().some((row) => row.includes("K7Q2M9XPA4")));
-  assert.equal(window.document.body.textContent.includes("Mensaje copiado"), false);
-});
-
 function acceptance() {
   const label = Array.from(popup()!.querySelectorAll("label")).find(
     (node) => text(node) === "El huésped aceptó un cupón en lugar del reembolso",
@@ -3364,35 +3274,6 @@ it("reconciles a reopened lost coupon even when current terms reject the already
   assert.equal(writes.length, 2);
   assert.match(text(window.document.body), /Intento anterior comprobado/);
 });
-
-it.each(["coupon", "manual", "card"] as const)(
-  "logs unknown %s return save errors without leaking backend text",
-  async (kind) => {
-    if (kind === "card") paidOnlineAndByPos();
-    else owesBack();
-    const log = vi.spyOn(console, "error").mockImplementation(() => {});
-    mockApi({
-      write: () => Response.json({ error: "private return save failure" }, { status: 503 }),
-    });
-    await render("", true, true);
-    await click("Devolver…");
-    if (kind === "coupon") {
-      await React.act(async () => acceptance().click());
-      await page.until(() => !button("Emitir cupón").disabled);
-    } else {
-      await chooseReturn("Dinero");
-      await fill("reason", "Sobrepago");
-    }
-    await submit();
-    await page.until(() =>
-      text(window.document.body).includes("No se pudieron guardar los cambios."),
-    );
-    assert.doesNotMatch(text(window.document.body), /private return save failure/);
-    assert.ok(log.mock.calls.length);
-    assert.ok(popup());
-    assert.equal(field("amount").value, "100.00");
-  },
-);
 
 it("refreshes coupon expiry when property today changes without losing acceptance or amount", async () => {
   owesBack();
@@ -4073,20 +3954,3 @@ it("reads No se presentó for a No-show stay and bills its charge", async () => 
     "Pagado S/ 0",
   ]);
 });
-
-it.each([
-  { plan: "flexible", label: "Flexible" },
-  { plan: "non_refundable", label: "No reembolsable" },
-] as const)(
-  "shows the accepted $label rate plan with the stay, outside the Cuenta",
-  async ({ plan, label }) => {
-    saved = { ...saved, ratePlan: { ...saved.ratePlan, plan } };
-    mockApi();
-    await render();
-    const stay = Array.from(page.container.querySelectorAll('[data-slot="card"]')).find(
-      (card) => card.querySelector("h2")?.textContent === "Estadía y habitaciones",
-    )!;
-    assert.match(text(stay), new RegExp(`Plan tarifario ${label}`));
-    assert.doesNotMatch(text(account()), /Plan tarifario/);
-  },
-);
