@@ -386,7 +386,8 @@ replays its save; reuse with a different payload returns 409.
 Revision mismatch deliberately violates NOT NULL: a conditional update of zero rows
 would not stop later D1 batch statements. Only revision-constraint failures retry;
 inventory conflicts retain their trigger errors. Temporarily cancelling to release
-inventory for atomic room swaps stays inside the transaction.
+inventory for atomic room swaps stays inside the transaction. A save replaces the
+staying-guest rows only when its command includes `set-guests`.
 
 ## Room validation at save time
 
@@ -398,7 +399,8 @@ are lowered.
 Preflight produces advisory prices/issues; database triggers authoritatively enforce
 occupancy, type agreement, inventory, closures, and overlap. Restoration/date edits
 update each proposed room's type to itself to fire validity triggers without rewriting
-prices. Final reservation update validates proposed dates/status.
+prices. Final reservation update validates proposed dates/status. Preview availability
+reads only inventory-holding reservations and closures that overlap the proposed stay.
 
 Decide extra validation from the original state, before temporary cancellation.
 Validating occupancy on every final update would reject unrelated saves. A race

@@ -1,5 +1,5 @@
 import type { WorkflowCommand, WorkflowCreate, WorkflowCreatePreview } from "@pms/shared";
-import { and, eq, isNull, sql } from "drizzle-orm";
+import { and, eq, gt, inArray, isNull, lt, ne, sql } from "drizzle-orm";
 import type { Culqi } from "./culqi";
 import { sendCulqiRefunds } from "./culqi-refunds";
 import { runBatch, type Db } from "./db";
@@ -21,7 +21,7 @@ import {
   roomTypes,
 } from "./db/schema";
 import { HttpError, rethrowConflict } from "./http";
-import { holdsInventory } from "./lib/statuses";
+import { holdsInventory, inventoryStatuses } from "./lib/statuses";
 import { ratePlans, termColumns } from "./lib/rate-plans";
 import { acceptPhone, requireStay } from "./rules";
 import { confirmationCode } from "./lib/codes";
@@ -145,6 +145,7 @@ async function executeAttempt(
     (m) => !original.couponMovements.some((o) => o.id === m.id),
   );
   const issued = new Set(newMovements.flatMap((m) => (m.kind === "issue" ? [m.couponId] : [])));
+  const guestsChanged = command.actions.some((action) => action.type === "set-guests");
   const changed = state.lines.filter(
     (l) => JSON.stringify(l) !== JSON.stringify(original.lines.find((o) => o.id === l.id)),
   );
@@ -163,7 +164,9 @@ async function executeAttempt(
           revision: claimRevision(reservations.revision, original.reservation.revision),
         })
         .where(eq(reservations.id, id)),
-      db.delete(reservationGuests).where(eq(reservationGuests.reservationId, id)),
+      ...(guestsChanged
+        ? [db.delete(reservationGuests).where(eq(reservationGuests.reservationId, id))]
+        : []),
       ...original.lines
         .filter((line) => !state.lines.some((saved) => saved.id === line.id))
         .flatMap((line) => [
@@ -270,7 +273,9 @@ async function executeAttempt(
               .where(eq(guests.id, state.contact.id)),
           ]
         : []),
-      ...chunks(state.stayingGuests, 8).map((rows) => db.insert(reservationGuests).values(rows)),
+      ...(guestsChanged
+        ? chunks(state.stayingGuests, 8).map((rows) => db.insert(reservationGuests).values(rows))
+        : []),
     ]);
   } catch (error) {
     const [retry] = await db
@@ -393,33 +398,43 @@ async function validateRooms(
 
 async function validateAvailability(db: Db, state: State) {
   const issues: WorkflowIssue[] = [];
+  if (!holdsInventory(state.reservation.status)) return issues;
+  const { checkIn: stayStart, checkOut: stayEnd } = state.reservation;
   const [otherLines, physical, closures] = await Promise.all([
     db
       .select({ line: reservationRooms, reservation: reservations })
       .from(reservationRooms)
-      .innerJoin(reservations, eq(reservations.id, reservationRooms.reservationId)),
+      .innerJoin(reservations, eq(reservations.id, reservationRooms.reservationId))
+      .where(
+        and(
+          ne(reservations.id, state.reservation.id),
+          inArray(reservations.status, inventoryStatuses),
+          lt(reservations.checkIn, stayEnd),
+          gt(reservations.checkOut, stayStart),
+        ),
+      ),
     db.select().from(rooms),
-    db.select().from(roomClosures),
+    db
+      .select()
+      .from(roomClosures)
+      .where(and(lt(roomClosures.starts, stayEnd), gt(roomClosures.ends, stayStart))),
   ]);
   const lines = [
-    ...otherLines
-      .filter((l) => l.reservation.id !== state.reservation.id)
-      .map(({ line, reservation }) => ({
-        ...line,
-        checkIn: reservation.checkIn,
-        checkOut: reservation.checkOut,
-        status: reservation.status,
-      })),
+    ...otherLines.map(({ line, reservation }) => ({
+      ...line,
+      checkIn: reservation.checkIn,
+      checkOut: reservation.checkOut,
+      status: reservation.status,
+    })),
     ...state.lines.map((line) => ({
       ...line,
       checkIn: state.reservation.checkIn,
       checkOut: state.reservation.checkOut,
       status: state.reservation.status,
     })),
-  ].filter((l) => holdsInventory(l.status));
+  ];
   const overlap = (a: string, b: string, c: string, d: string) => a < d && b > c;
   for (const [roomIndex, line] of state.lines.entries()) {
-    if (!holdsInventory(state.reservation.status)) break;
     const checkIn = state.reservation.checkIn;
     const checkOut = state.reservation.checkOut;
     for (const date of requireStay(checkIn, checkOut)) {

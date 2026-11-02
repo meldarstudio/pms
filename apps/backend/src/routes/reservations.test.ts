@@ -2597,6 +2597,75 @@ describe("reservation workflow", () => {
     );
     await command(d, actions, 409);
   });
+  it.each([
+    ["an assigned booking", "2026-10-21", "2026-10-23", "room is already assigned for those dates"],
+    ["an assigned booking", "2026-10-22", "2026-10-24", null],
+    ["an assigned booking", "2026-10-18", "2026-10-20", null],
+    ["a cancelled booking", "2026-10-21", "2026-10-23", null],
+    ["a room closure", "2026-10-21", "2026-10-23", "room is closed for those dates"],
+    ["a room closure", "2026-10-22", "2026-10-24", null],
+    ["a room closure", "2026-10-18", "2026-10-20", null],
+    ["a full room type", "2026-10-21", "2026-10-23", "no availability"],
+    ["a full room type", "2026-10-22", "2026-10-24", null],
+    ["a full room type", "2026-10-18", "2026-10-20", null],
+  ])(
+    "previews moving away from the saved stay against %s on 20–22 Oct: %s to %s → %s",
+    async (blocker, checkIn, checkOut, issue) => {
+      let d = await create();
+      const blocked = { checkIn: "2026-10-20", checkOut: "2026-10-22" };
+      if (blocker === "a full room type") await create(3, blocked);
+      else d = await command(d, [roomEdit(d)]);
+      if (blocker === "a room closure")
+        db.sqlite.exec(
+          "INSERT INTO room_closures (id, room_id, starts, ends, reason, created_at) VALUES ('closed', 'room-101', '2026-10-20', '2026-10-22', NULL, '2026-10-10')",
+        );
+      if (blocker.endsWith("booking")) {
+        const other = await create(1, blocked);
+        await command(other, [
+          roomEdit(other),
+          ...(blocker === "a cancelled booking"
+            ? [{ type: "set-status", status: "cancelled" } as WorkflowAction]
+            : []),
+        ]);
+      }
+      const move: WorkflowAction[] = [{ type: "dates", checkIn, checkOut }];
+      const preview = await previewCommand(d, move);
+      expect(preview.validation.issues.map((found) => found.code)).toEqual(issue ? [issue] : []);
+      const saved = await command(d, move, issue ? 409 : 200);
+      if (!issue) expect(saved).toMatchObject({ checkIn, checkOut });
+    },
+  );
+  it("keeps staying guests through saves that do not change them, without rewriting their rows", async () => {
+    let d = await create();
+    const kept = guest(null);
+    d = await command(d, [{ type: "set-guests", guests: [guest(null), kept] }]);
+    const staying = d.stayingGuests;
+    expect(staying).toHaveLength(2);
+    db.sqlite.exec(`
+      CREATE TABLE guest_writes (op TEXT NOT NULL);
+      CREATE TRIGGER log_guest_insert AFTER INSERT ON reservation_guests
+      BEGIN INSERT INTO guest_writes VALUES ('insert'); END;
+      CREATE TRIGGER log_guest_update AFTER UPDATE ON reservation_guests
+      BEGIN INSERT INTO guest_writes VALUES ('update'); END;
+      CREATE TRIGGER log_guest_delete AFTER DELETE ON reservation_guests
+      BEGIN INSERT INTO guest_writes VALUES ('delete'); END;
+    `);
+    const writes = () => db.sqlite.prepare("SELECT op FROM guest_writes").all();
+    for (const actions of [
+      [{ type: "notes", notes: "Late arrival" }],
+      [pay(1000)],
+      [roomEdit(d)],
+      [{ type: "dates", checkIn: d.checkIn, checkOut: "2026-10-14" }],
+      [{ type: "contact", contact: { fullName: "Ada King", email: null, phone: null } }],
+    ] as WorkflowAction[][]) {
+      d = await command(d, actions);
+      expect(d.stayingGuests).toEqual(staying);
+    }
+    expect(writes()).toEqual([]);
+    d = await command(d, [{ type: "set-guests", guests: [kept] }]);
+    expect(d.stayingGuests).toEqual([staying[1]]);
+    expect(writes().length).toBeGreaterThan(0);
+  });
   it("rejects dates that cannot be priced without changing the reservation", async () => {
     const d = await create();
     const response = await request(`/reservations/${d.id}/preview`, "POST", {
