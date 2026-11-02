@@ -4,6 +4,9 @@ import { CheckIcon, CopyIcon } from "lucide-react";
 import { parseISO } from "date-fns";
 import type { ZodSafeParseResult } from "zod";
 import { accountStatus } from "@/components/balance-status";
+import { PageError } from "@/components/page-error";
+import { outcomeSaveError } from "@/components/outcome-command-preview";
+import { CommandRecovery } from "@/components/command-recovery";
 import { paymentMethods } from "@/components/reservation-entry-forms";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -29,7 +32,7 @@ import { propertyToday } from "@/lib/property-calendar";
 import { useReservation } from "@/lib/queries";
 import {
   earlierAttemptSaved,
-  useReservationPreview,
+  useDebouncedReservationPreview,
   type ReservationCommandResult,
 } from "@/lib/reservation-commands";
 import { blurThenChange, submitForm, useReservationForm } from "@/lib/reservation-form";
@@ -50,7 +53,7 @@ import {
   refundCapacityCents,
   splitRefund,
 } from "@/lib/refund-split";
-import { toast, toastError } from "@/lib/toast";
+import { toast } from "@/lib/toast";
 import { usePropertyCalendar } from "@/lib/use-property-calendar";
 
 type FormProps = {
@@ -62,7 +65,10 @@ type FormProps = {
   onDirtyChange: (dirty: boolean) => void;
 };
 
-type ReturnChoice = { kind: string; source: string };
+type ReturnSelection = { kind: string; source: string };
+type ReturnChoice =
+  | { kind: "coupon" | "manual"; maxCents: number }
+  | { kind: "card"; paymentId: string; maxCents: number };
 
 const returnKinds = [
   { value: "coupon", label: "Cupón" },
@@ -90,7 +96,7 @@ async function finish(
   if (result.status === "saved") {
     toast.add({ title, type: "success" });
     onDone();
-  } else if (result.status === "failed") toastError("No se pudo guardar", result.message);
+  } else if (result.status === "failed") outcomeSaveError(result);
   else setServerErrors(form, result.fields);
 }
 
@@ -133,10 +139,14 @@ function refundSetup(detail: ReservationDetail) {
     label: `A la tarjeta · Pago en línea del ${format(parseISO(payment.paymentDate), "d MMM yyyy")}`,
     maxCents: Math.min(owedCents, leftCents),
   }));
-  const limit = ({ kind, source }: ReturnChoice) =>
-    kind === "coupon"
-      ? owedCents
-      : (cards.find((card) => card.value === source)?.maxCents ?? maxCents);
+  const choice = ({ kind, source }: ReturnSelection): ReturnChoice | null => {
+    if (kind === "coupon") return { kind: "coupon", maxCents: owedCents };
+    if (kind !== "money") return null;
+    if (source === manualRefundSource) return { kind: "manual", maxCents };
+    const card = cards.find((card) => card.value === source);
+    return card ? { kind: "card", paymentId: card.value, maxCents: card.maxCents } : null;
+  };
+  const limit = (selection: ReturnSelection) => choice(selection)?.maxCents ?? 0;
   const newest = firstRefundPayment(detail)?.method;
   const basis = { payments: detail.payments, refunds: detail.refunds };
   const couponIds = detail.coupons.map((coupon) => coupon.id);
@@ -145,15 +155,16 @@ function refundSetup(detail: ReservationDetail) {
     cards,
     sources: [...cards, { value: manualRefundSource, label: "En mano o por transferencia" }],
     limit,
+    choice,
     basis,
     couponIds,
     retryKey: `refund\n${JSON.stringify({ ...basis, couponIds })}`,
-    schema: (value: RefundValues) =>
-      value.kind === "coupon"
-        ? couponIssueSchema(owedCents, detail.currency)
-        : value.source === manualRefundSource
-          ? refundSchema(maxCents, detail.currency)
-          : cardRefundSchema(limit(value), detail.currency),
+    schema: (value: RefundValues) => {
+      const selected = choice(value);
+      if (selected?.kind === "coupon") return couponIssueSchema(selected.maxCents, detail.currency);
+      if (selected?.kind === "card") return cardRefundSchema(selected.maxCents, detail.currency);
+      return refundSchema(selected?.maxCents ?? 0, detail.currency);
+    },
     defaults: refundDefaults(
       owedCents,
       refundMethods.find((method) => method === newest),
@@ -184,8 +195,10 @@ export function RefundForm({
     },
     onSubmit: async ({ value }) => {
       if (disabled) return;
-      if (value.kind === "coupon") return issueCoupon(value);
-      if (value.source !== manualRefundSource) return returnToCard(value);
+      const selected = setup.choice(value);
+      if (!selected) return;
+      if (selected.kind === "coupon") return issueCoupon(value);
+      if (selected.kind === "card") return returnToCard(value, selected.paymentId);
       const parsed = refundSchema(setup.limit(value), detail.currency).parse(value);
       const reference = parsed.reference.toUpperCase();
       const completed = parsed.handedOver
@@ -215,7 +228,7 @@ export function RefundForm({
     },
   });
   async function issueCoupon(value: RefundValues) {
-    if (!expiresOn) return;
+    if (!couponPreviewReady || !expiresOn) return;
     const parsed = couponIssueSchema(setup.limit(value), detail.currency).parse(value);
     const amountCents = parseMajorToCents(parsed.amount.trim())!;
     const result = await onSave(
@@ -228,8 +241,8 @@ export function RefundForm({
       ],
       setup.retryKey,
     );
-    if (alreadyRecorded(result, "Este cupón ya se había emitido")) return;
-    if (result.status === "failed") return toastError("No se pudo guardar", result.message);
+    if (alreadyRecorded(result)) return;
+    if (result.status === "failed") return outcomeSaveError(result);
     if (result.status === "rejected") return setServerErrors(form, result.fields);
     const coupons = result.reservation.coupons.filter(
       (entry) => !setup.couponIds.includes(entry.id) && entry.valueCents === amountCents,
@@ -238,13 +251,13 @@ export function RefundForm({
     toast.add({ title: "Cupón emitido", type: "success" });
     onDone();
   }
-  async function returnToCard(value: RefundValues) {
+  async function returnToCard(value: RefundValues, paymentId: string) {
     const parsed = cardRefundSchema(setup.limit(value), detail.currency).parse(value);
     const result = await onSave(
       [
         {
           type: "request-culqi-refund",
-          paymentId: parsed.source,
+          paymentId,
           amountCents: parseMajorToCents(parsed.amount.trim())!,
           reason: parsed.reason,
         },
@@ -252,28 +265,35 @@ export function RefundForm({
       setup.retryKey,
     );
     if (alreadyRecorded(result)) return;
-    if (result.status === "failed") return toastError("No se pudo guardar", result.message);
+    if (result.status === "failed") return outcomeSaveError(result);
     if (result.status === "rejected") return setServerErrors(form, result.fields);
-    const requested = result.reservation.refunds.find(
+    const candidates = result.reservation.refunds.filter(
       (refund) =>
-        refund.paymentId === parsed.source &&
-        refund.status === "requested" &&
+        refund.paymentId === paymentId &&
+        refund.culqiChargeId ===
+          detail.payments.find((payment) => payment.id === paymentId)?.culqiChargeId &&
+        refund.amountCents === parseMajorToCents(parsed.amount.trim()) &&
+        refund.reason === parsed.reason &&
         !setup.basis.refunds.some((earlier) => earlier.id === refund.id),
     );
+    const returned = candidates.length === 1 ? candidates[0] : undefined;
     toast.add(
-      requested
+      returned?.status === "requested"
         ? { title: "Reembolso solicitado", description: culqiPendingLine, priority: "high" }
-        : { title: "Reembolso registrado", type: "success" },
+        : returned?.status === "completed"
+          ? { title: "Reembolso registrado", type: "success" }
+          : {
+              title: "Solicitud procesada",
+              description: "Revisa el resultado en Movimientos.",
+              priority: "high",
+            },
     );
     onDone();
   }
-  function alreadyRecorded(
-    result: ReservationCommandResult,
-    title = "Este reembolso ya se había registrado",
-  ) {
+  function alreadyRecorded(result: ReservationCommandResult) {
     if (result.status !== "failed" || result.code !== earlierAttemptSaved) return false;
     toast.add({
-      title,
+      title: "Los cambios ya se habían guardado",
       description: "Se guardó con los datos del primer intento. Revísalo en Movimientos.",
       priority: "high",
       timeout: 7000,
@@ -288,25 +308,34 @@ export function RefundForm({
   const kind = useSelector(form.store, (state) => state.values.kind);
   const amount = useSelector(form.store, (state) => state.values.amount);
   const guestAccepted = useSelector(form.store, (state) => state.values.guestAccepted);
-  const coupon = kind === "coupon";
-  const manual = !coupon && source === manualRefundSource;
-  const maxCents = setup.limit({ kind, source });
+  const selected = setup.choice({ kind, source });
+  const coupon = selected?.kind === "coupon";
+  const manual = selected?.kind === "manual";
+  const maxCents = selected?.maxCents ?? 0;
   const previewAmount = parseMajorToCents(amount.trim()) ?? 0;
-  const preview = useReservationPreview(
+  const previewEnabled = coupon && previewAmount > 0 && previewAmount <= maxCents;
+  const preview = useDebouncedReservationPreview(
     detail.id,
     [{ type: "issue-coupon", amountCents: previewAmount, guestAccepted: true }],
-    coupon && previewAmount > 0 && previewAmount <= maxCents,
+    previewEnabled,
     today,
   );
-  const expiresOn = preview.data?.billing.coupons.findLast(
-    (entry) => !setup.couponIds.includes(entry.id),
-  )?.expiresOn;
+  const couponPreviewReady =
+    previewEnabled &&
+    preview.current &&
+    preview.isSuccess &&
+    !preview.isFetching &&
+    !preview.data.validation.issues.length;
+  const expiresOn = couponPreviewReady
+    ? preview.data.billing.coupons.findLast((entry) => !setup.couponIds.includes(entry.id))
+        ?.expiresOn
+    : undefined;
   const saving = disabled || submitting;
   useEffect(() => onDirtyChange(changed), [changed, onDirtyChange]);
   useEffect(() => {
     if (form.state.fieldMeta.date?.errors.length) void form.validate("submit");
   }, [form, today]);
-  function followLimit(previous: ReturnChoice, next: ReturnChoice) {
+  function followLimit(previous: ReturnSelection, next: ReturnSelection) {
     const followed = setup.limit(previous);
     if (followed > 0 && form.getFieldValue("amount") === formatMajor(followed))
       form.setFieldValue("amount", formatMajor(setup.limit(next)));
@@ -322,7 +351,11 @@ export function RefundForm({
           </Button>
           <Button
             type="submit"
-            disabled={saving || maxCents <= 0 || (coupon && (!guestAccepted || !expiresOn))}
+            disabled={
+              saving ||
+              maxCents <= 0 ||
+              (coupon && (!guestAccepted || !couponPreviewReady || !expiresOn))
+            }
           >
             {saving
               ? "Guardando…"
@@ -337,6 +370,12 @@ export function RefundForm({
         </>
       }
     >
+      <CommandRecovery
+        reservationId={detail.id}
+        retryKey={setup.retryKey}
+        disabled={saving}
+        onDone={onDone}
+      />
       <form.AppField name="kind">
         {(field) => (
           <field.Radio
@@ -378,13 +417,8 @@ export function RefundForm({
             <FieldDescription>
               Vence el {longDate(expiresOn)} · No canjeable por dinero
             </FieldDescription>
-          ) : preview.error && !preview.isFetching ? (
-            <div className="flex flex-col items-start gap-2">
-              <FieldError>{preview.error.message}</FieldError>
-              <Button type="button" variant="outline" onClick={() => void preview.refetch()}>
-                Reintentar
-              </Button>
-            </div>
+          ) : preview.current && preview.error && !preview.isFetching ? (
+            <PageError error={preview.error} onRetry={() => void preview.refetch()} />
           ) : (
             <p role="status" className="text-sm text-muted-foreground">
               Calculando…

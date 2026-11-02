@@ -229,9 +229,7 @@ export function RadioField({
         {options.map((option, index) => (
           <Field key={option.value} orientation="horizontal">
             <RadioGroupItem id={`${id}-${index}`} value={option.value} />
-            <FieldLabel htmlFor={`${id}-${index}`} className="font-normal">
-              {option.label}
-            </FieldLabel>
+            <FieldLabel htmlFor={`${id}-${index}`}>{option.label}</FieldLabel>
           </Field>
         ))}
       </RadioGroup>

@@ -535,7 +535,10 @@ for viewport, scrolling and draft protections.
   Failed/uncertain attempts retain one request ID across changed or reopened drafts
   for the same opening lifecycle/history, preventing a lost response from applying
   another waiver. An edited retry of an already-committed attempt refreshes and closes
-  with confirmation that the first changes were saved.
+  with confirmation that the first changes were saved. **Comprobar intento anterior**
+  separately replays only the retained command with its retained ID, even if a later
+  prospective preview rejects because the waiver already reduced the charge. It does
+  not apply current draft edits or bypass preview validation for a new cancellation.
 
 Cancelled and No-show stays can also **Perdonar cargo** later from the charge row's
 pencil in Cuenta, only while the active cancellation has a positive remaining charge:
@@ -554,7 +557,8 @@ pencil in Cuenta, only while the active cancellation has a positive remaining ch
   and never opens Devolver… automatically. Waivers after refunds can raise refund due.
   Failed/uncertain attempts retain one request ID across edited/reopened drafts for
   the same opening cancellation history, so an already-committed attempt cannot add a
-  second waiver.
+  second waiver. The same explicit retained-command recovery as cancellation remains
+  available independently of draft validity or prospective preview success.
 - Each waiver has its own **Cargo perdonado** row and reason. After restore and another
   cancellation, only the active cancellation and its waivers appear; older history stays
   in the API. Fully waived charges have no pencil, and Unfulfilled never has one.
@@ -590,15 +594,19 @@ then Referencia in narrow Movimientos tables.
   devolver for another run.
   - **Cupón:** Importe starts at, and cannot exceed, refund due less requested refunds.
     The `issue-coupon` preview supplies **Vence el {fecha} · No canjeable por dinero**;
-    changing the amount previews again, and a new property date refreshes the terms
+    changing the amount debounces another preview, and a new property date refreshes the terms
     without replacing the draft. A failed preview offers Reintentar. The required
     **El huésped aceptó un cupón en lugar del reembolso** starts unticked and enables
-    **Emitir cupón** only with previewed terms. The command sends only `issue-coupon`
+    **Emitir cupón** only with successful current, non-fetching previewed terms. Cached
+    terms are hidden and cannot authorize issuance during a refresh or after its failure.
+    The command sends only `issue-coupon`
     with `amountCents` and `guestAccepted: true`. Limit rejections stay on Importe.
     Success keeps the dialog open as **Cupón emitido**, with the code, balance, expiry,
-    no-cash term, **Copiar mensaje** and **Listo**. Copying uses the latest balance in
-    the reservation read and the original expiry, not the original issued value;
-    clipboard failure leaves the code visible and reports the failure. Listo closes
+    no-cash term, **Copiar mensaje** and **Listo**. Each copy, here and on the Cuenta
+    row, fetches `/coupons/:code` afresh for the available balance and original expiry,
+    rather than trusting the cached reservation or original issued value. A lookup
+    failure copies nothing; lookup/clipboard failures leave the code visible and
+    report the failure. Listo closes
     without a draft-discard prompt. If concurrent issuance makes the returned coupon
     ambiguous, success closes to Cuenta rather than guessing which code to hand over;
     its issued-coupon rows still offer copying.
@@ -612,7 +620,10 @@ then Referencia in narrow Movimientos tables.
     payment has left, and must be at least S/ 1.00; it has no Método, Fecha or
     Referencia. A completed reply closes the dialog as Reembolso registrado; a refund
     that stays requested closes it as Reembolso solicitado with the Culqi check line
-    below. A pending-Culqi-refund or not-a-Culqi-payment rejection shows inline on
+    below. Feedback matches a new provider refund by payment/charge, amount and reason;
+    concurrent manual refunds do not count. If provider candidates are ambiguous,
+    neutral feedback points to Movimientos rather than guessing the outcome.
+    A pending-Culqi-refund or not-a-Culqi-payment rejection shows inline on
     Cómo se devuelve; other failures, including Culqi not configured, keep the draft
     with a toast.
   - **En mano o por transferencia:** Importe starts at, and cannot exceed, the Por
@@ -631,8 +642,12 @@ then Referencia in narrow Movimientos tables.
     refreshes. A lost card refund therefore replays the committed receipt and never
     calls Culqi twice. An edited retry whose lost first attempt already committed is
     refused by the server as a reused request ID; the portal then refreshes, closes the
-    dialog and says the return was already recorded with the first attempt's details.
-    Edits after an uncommitted failure save normally.
+    dialog and neutrally says the first changes were saved, without claiming the current
+    selection's financial kind. **Comprobar intento anterior** can replay the retained
+    command independently of fresh coupon terms, including when issuance already
+    consumed the refund due. Recovery closes to the refreshed Cuenta/Movimientos;
+    normal issuance always requires current successful terms. Edits after an uncommitted
+    failure save normally.
 - **Movimientos:** payments, refunds and coupon movements as flat rows, oldest first, with
   no running balance. Payments keep edit/delete unless the backend would reject the
   change: Culqi payments (En línea, Tarjeta), payments with refunds, and every payment
@@ -753,6 +768,9 @@ existing-reservation writes, including calendar assignment; creation is separate
   `send(actions, retryKey)` instead retains the ID by reservation/key, so edited
   attempts stay one request; a `request ID reused with a different payload` reply then
   means an earlier attempt committed, so the module forgets the ID and refreshes reads.
+  `canReplay(actions, retryKey)` checks keyed uncertainty, and `replay(retryKey)` reuses
+  only that retained command and ID. Replay refuses if uncertainty has been resolved
+  or the client was cleared; it never creates a fresh command from a draft.
 - Saves serialize per reservation; identical queued/running actions join one request.
   Different reservations are independent. Clearing cache drops queued saves as failed,
   prevents new callers joining pre-clear saves, and prevents running results repopulating cache.
@@ -762,7 +780,9 @@ existing-reservation writes, including calendar assignment; creation is separate
   inventory, payments, coupon lookups, calendar, and open bill previews; cancel loading previews first
   so an old bill cannot replace refreshed data. Contact edits refresh other reservations
   for that contact.
-- `useReservationPreview` serves status editors; callers debounce. Stay drafts
+- `useReservationPreview` serves status editors; editable waiver/coupon actions use
+  `useDebouncedReservationPreview` (300 ms). Its immediate `current` gate hides stale
+  results and disables normal saving before the debounce fires. Stay drafts
   reuse quotes but share `reservationPreviewKey`, so writes refresh them too.
 - `useRoomAssignmentCommand` re-reads the reservation, uses a fresh ID per attempt
   without retry memory, and shares save ordering/refresh. See [assignment](calendar.md#picker).

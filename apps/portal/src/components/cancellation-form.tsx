@@ -1,20 +1,25 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import { useSelector } from "@tanstack/react-form";
 import { OutcomeAccountPreview } from "@/components/outcome-account-preview";
+import { CommandRecovery } from "@/components/command-recovery";
+import { PageError } from "@/components/page-error";
+import { outcomeSaveError } from "@/components/outcome-command-preview";
 import { Button } from "@/components/ui/button";
-import { FieldError, FieldGroup } from "@/components/ui/field";
+import { FieldGroup } from "@/components/ui/field";
 import type { ReservationDetail, WorkflowAction, WorkflowBilling } from "@/lib/api";
 import { longDate } from "@/lib/dates";
 import { formatMajor, formatMoney, parseMajorToCents } from "@/lib/money";
 import {
   earlierAttemptSaved,
+  useDebouncedReservationPreview,
   useReservationPreview,
   type ReservationCommandResult,
 } from "@/lib/reservation-commands";
 import { blurThenChange, submitForm, useReservationForm } from "@/lib/reservation-form";
 import { cancellationOutcomeSchema } from "@/lib/reservation-form-schemas";
-import { toast, toastError } from "@/lib/toast";
+import { toast } from "@/lib/toast";
 import { usePropertyCalendar } from "@/lib/use-property-calendar";
+import { useWaiverValidation } from "@/lib/use-waiver-validation";
 
 function policyLine(bill: WorkflowBilling, today: string) {
   const cancellation = bill.cancellation;
@@ -58,7 +63,7 @@ export function CancellationForm({
   const charge =
     policy.data?.billing.cancellation?.policyChargeCents ?? policy.data?.billing.totalCents ?? 0;
   const schema = cancellationOutcomeSchema(waiving, charge, detail.currency);
-  const rejected = useRef<{ amount: string; fields: Record<string, string> } | null>(null);
+  const validation = useWaiverValidation(schema);
   function actions(value: { reason: string; amount: string }): WorkflowAction[] {
     const reason = value.reason.trim();
     return [
@@ -82,17 +87,7 @@ export function CancellationForm({
     defaultValues: { reason: "", amount: "" },
     validationLogic: blurThenChange(),
     validators: {
-      onDynamic: ({ value }) => {
-        const result = schema.safeParse(value);
-        const fields = result.success
-          ? {}
-          : Object.fromEntries(
-              result.error.issues.map((issue) => [issue.path.join("."), issue.message]),
-            );
-        if (rejected.current?.amount === value.amount)
-          Object.assign(fields, rejected.current.fields);
-        return Object.keys(fields).length ? { fields } : undefined;
-      },
+      onDynamic: ({ value }) => validation.validate(value),
     },
     onSubmit: async ({ value }) => {
       if (disabled || !ready) return;
@@ -110,11 +105,8 @@ export function CancellationForm({
           type: "success",
         });
         onDone();
-      } else if (result.status === "failed") toastError("No se pudo guardar", result.message);
-      else {
-        rejected.current = { amount: value.amount, fields: result.fields };
-        form.setErrorMap({ onDynamic: { fields: result.fields } });
-      }
+      } else if (result.status === "failed") outcomeSaveError(result);
+      else validation.reject(form, value.amount, result.fields);
     },
   });
   const values = useSelector(form.store, (state) => state.values);
@@ -123,15 +115,20 @@ export function CancellationForm({
   useEffect(() => onDirtyChange(changed || waiving), [changed, waiving, onDirtyChange]);
   const saving = disabled || submitting;
   const valid = schema.safeParse(values).success;
-  const waived = useReservationPreview(
+  const waived = useDebouncedReservationPreview(
     detail.id,
     valid && waiving ? actions(values) : [],
     valid && waiving,
     today,
   );
   const preview = waiving ? waived : policy;
+  const current = !waiving || waived.current;
   const ready =
-    valid && preview.isSuccess && !preview.isFetching && !preview.data.validation.issues.length;
+    valid &&
+    current &&
+    preview.isSuccess &&
+    !preview.isFetching &&
+    !preview.data.validation.issues.length;
   const bill = ready ? preview.data.billing : null;
   return (
     <form
@@ -140,23 +137,19 @@ export function CancellationForm({
       onSubmit={(event) => void submitForm(event, () => form.handleSubmit())}
     >
       <div className="flex min-h-0 flex-1 flex-col gap-6 overflow-y-auto overscroll-contain p-px">
+        <CommandRecovery
+          reservationId={detail.id}
+          retryKey={retryKey}
+          disabled={saving}
+          onDone={onDone}
+        />
         <section aria-label="Cuenta resultante" className="flex flex-col gap-3 text-sm">
           {waiving && !valid ? (
             <p>Indica el importe y el motivo para revisar la cuenta resultante.</p>
-          ) : preview.isFetching || (!preview.data && !preview.error) ? (
+          ) : !current || preview.isFetching || (!preview.data && !preview.error) ? (
             <p role="status">Calculando…</p>
           ) : preview.error ? (
-            <>
-              <FieldError>{preview.error.message}</FieldError>
-              <Button
-                type="button"
-                variant="outline"
-                disabled={saving}
-                onClick={() => void preview.refetch()}
-              >
-                Reintentar
-              </Button>
-            </>
+            <PageError error={preview.error} onRetry={() => void preview.refetch()} />
           ) : bill ? (
             <>
               <p>{policyLine(bill, today)}</p>

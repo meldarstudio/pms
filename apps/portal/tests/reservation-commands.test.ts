@@ -120,6 +120,39 @@ async function send(editor: { current: Commands }, actions: WorkflowAction[]) {
 }
 
 describe("duplicate-safe retry", () => {
+  it("replays keyed recovery with original actions only while an uncertain command remains", async () => {
+    const first = await mountEditor();
+    dropNextCommand();
+    await React.act(async () => {
+      assert.equal((await first.current.send([payment], "financial-return")).status, "failed");
+    });
+    await unmount();
+    const reopened = await mountEditor();
+    assert.equal(reopened.current.canReplay([], "financial-return"), true);
+    await React.act(async () => {
+      assert.equal((await reopened.current.replay("financial-return")).status, "saved");
+    });
+    assert.deepEqual(sent[1], sent[0]);
+    assert.equal(reopened.current.canReplay([], "financial-return"), false);
+    await React.act(async () => {
+      assert.equal((await reopened.current.replay("financial-return")).status, "failed");
+    });
+    assert.equal(
+      sent.length,
+      2,
+      "Recovery without retained uncertainty never creates a new payment",
+    );
+    dropNextCommand();
+    await React.act(async () => {
+      await reopened.current.send([payment], "financial-return");
+    });
+    page.client.clear();
+    await React.act(async () => {
+      assert.equal((await reopened.current.replay("financial-return")).status, "failed");
+    });
+    assert.equal(sent.length, 3, "Cleared recovery must not mint a new request ID");
+  });
+
   it("resends a lost Payment with the same request ID after its editor closes and reopens", async () => {
     dropNextCommand();
     const first = await mountEditor();

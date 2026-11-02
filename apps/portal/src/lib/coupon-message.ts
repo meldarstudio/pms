@@ -1,4 +1,5 @@
-import type { ReservationCoupon } from "./api.ts";
+import { getCoupon, type ReservationCoupon } from "./api.ts";
+import { readErrorKind, readErrorMessage } from "./api-error.ts";
 import { longDate } from "./dates.ts";
 import { formatMoney } from "./money.ts";
 import { toast, toastError } from "./toast.ts";
@@ -14,8 +15,24 @@ export async function copyCouponMessage(
   currency: string,
   { announce = false } = {},
 ) {
+  let current: CouponFacts;
   try {
-    await navigator.clipboard.writeText(couponMessage(coupon, currency));
+    current = await getCoupon(coupon.code);
+  } catch (cause) {
+    const offline = readErrorKind(cause) === "offline";
+    const known = readErrorMessage(cause);
+    if (!offline && !known) console.error(cause);
+    toastError(
+      "No se pudo actualizar el cupón",
+      known ??
+        (offline
+          ? "Revisa tu conexión e inténtalo de nuevo."
+          : "Inténtalo de nuevo antes de compartir el saldo."),
+    );
+    return false;
+  }
+  try {
+    await navigator.clipboard.writeText(couponMessage(current, currency));
   } catch {
     toastError("No se pudo copiar el mensaje", `Comparte el código ${coupon.code} manualmente.`);
     return false;

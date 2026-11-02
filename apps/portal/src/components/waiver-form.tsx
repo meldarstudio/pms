@@ -1,6 +1,7 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import { useSelector } from "@tanstack/react-form";
 import { OutcomeCommandPreview, outcomeSaveError } from "@/components/outcome-command-preview";
+import { CommandRecovery } from "@/components/command-recovery";
 import { Alert, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { FieldGroup } from "@/components/ui/field";
@@ -8,13 +9,14 @@ import type { ReservationDetail, WorkflowAction } from "@/lib/api";
 import { formatMajor, formatMoney, parseMajorToCents } from "@/lib/money";
 import {
   earlierAttemptSaved,
-  useReservationPreview,
+  useDebouncedReservationPreview,
   type ReservationCommandResult,
 } from "@/lib/reservation-commands";
 import { blurThenChange, submitForm, useReservationForm } from "@/lib/reservation-form";
 import { cancellationOutcomeSchema } from "@/lib/reservation-form-schemas";
 import { toast } from "@/lib/toast";
 import { usePropertyCalendar } from "@/lib/use-property-calendar";
+import { useWaiverValidation } from "@/lib/use-waiver-validation";
 
 export function WaiverForm({
   detail,
@@ -36,7 +38,7 @@ export function WaiverForm({
   const remaining = opening.cancellation?.finalChargeCents ?? 0;
   const retryKey = `waiver\n${JSON.stringify([opening.status, opening.cancellations])}`;
   const schema = cancellationOutcomeSchema(true, remaining, detail.currency);
-  const rejected = useRef<{ amount: string; fields: Record<string, string> } | null>(null);
+  const validation = useWaiverValidation(schema);
   const actions = (value: { amount: string; reason: string }): WorkflowAction[] => [
     {
       type: "waive-cancellation-charge",
@@ -48,17 +50,7 @@ export function WaiverForm({
     defaultValues: { amount: formatMajor(remaining), reason: "" },
     validationLogic: blurThenChange(),
     validators: {
-      onDynamic: ({ value }) => {
-        const result = schema.safeParse(value);
-        const fields = result.success
-          ? {}
-          : Object.fromEntries(
-              result.error.issues.map((issue) => [issue.path.join("."), issue.message]),
-            );
-        if (rejected.current?.amount === value.amount)
-          Object.assign(fields, rejected.current.fields);
-        return Object.keys(fields).length ? { fields } : undefined;
-      },
+      onDynamic: ({ value }) => validation.validate(value),
     },
     onSubmit: async ({ value }) => {
       if (disabled || !ready) return;
@@ -77,10 +69,7 @@ export function WaiverForm({
         toast.add({ title: "Los cambios ya se habían guardado", type: "success" });
         onDone();
       } else if (result.status === "failed") outcomeSaveError(result);
-      else {
-        rejected.current = { amount: value.amount, fields: result.fields };
-        form.setErrorMap({ onDynamic: { fields: result.fields } });
-      }
+      else validation.reject(form, value.amount, result.fields);
     },
   });
   const values = useSelector(form.store, (state) => state.values);
@@ -88,9 +77,18 @@ export function WaiverForm({
   const submitting = useSelector(form.store, (state) => state.isSubmitting);
   useEffect(() => onDirtyChange(changed), [changed, onDirtyChange]);
   const valid = schema.safeParse(values).success;
-  const preview = useReservationPreview(detail.id, valid ? actions(values) : [], valid, today);
+  const preview = useDebouncedReservationPreview(
+    detail.id,
+    valid ? actions(values) : [],
+    valid,
+    today,
+  );
   const ready =
-    valid && preview.isSuccess && !preview.isFetching && !preview.data.validation.issues.length;
+    valid &&
+    preview.current &&
+    preview.isSuccess &&
+    !preview.isFetching &&
+    !preview.data.validation.issues.length;
   const saving = disabled || submitting;
   return (
     <form
@@ -99,6 +97,12 @@ export function WaiverForm({
       onSubmit={(event) => void submitForm(event, () => form.handleSubmit())}
     >
       <div className="flex min-h-0 flex-1 flex-col gap-6 overflow-y-auto overscroll-contain p-px">
+        <CommandRecovery
+          reservationId={detail.id}
+          retryKey={retryKey}
+          disabled={saving}
+          onDone={onDone}
+        />
         <fieldset disabled={saving}>
           <FieldGroup>
             <form.AppField name="amount">
@@ -110,7 +114,12 @@ export function WaiverForm({
           </FieldGroup>
         </fieldset>
         {valid ? (
-          <OutcomeCommandPreview preview={preview} detail={opening} today={today} />
+          <OutcomeCommandPreview
+            preview={preview}
+            pending={!preview.current}
+            detail={opening}
+            today={today}
+          />
         ) : (
           <p className="text-sm">
             Indica el importe y el motivo para revisar la cuenta resultante.

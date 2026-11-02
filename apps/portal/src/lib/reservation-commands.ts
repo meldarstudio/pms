@@ -1,4 +1,4 @@
-import { useCallback, useState, useSyncExternalStore } from "react";
+import { useCallback, useEffect, useState, useSyncExternalStore } from "react";
 import { useQuery, useQueryClient, type QueryClient } from "@tanstack/react-query";
 import {
   assignRoom,
@@ -163,18 +163,26 @@ function save(
   id: string,
   actions: WorkflowAction[],
   retryKey?: string,
+  replayOnly = false,
 ): Promise<ReservationCommandResult> {
   const snapshot = JSON.stringify(actions);
-  const key = `${id}\n${snapshot}`;
+  const key = replayOnly ? `${id}\n#${retryKey}\nreplay` : `${id}\n${snapshot}`;
   const memory = retryKey === undefined ? key : `${id}\n#${retryKey}`;
   const queue = saveQueue(client);
   const joined = queue.joinable.get(key);
   if (joined?.session === unsettledCommands(client)) return joined.result;
   const result = enqueue(client, id, async (unsettled) => {
-    const command = {
-      requestId: unsettled.get(memory)?.command.requestId ?? crypto.randomUUID(),
-      actions: JSON.parse(snapshot) as WorkflowAction[],
-    };
+    const retained = unsettled.get(memory);
+    let command: WorkflowCommand;
+    if (replayOnly) {
+      if (!retained?.uncertain) return failure(null);
+      command = retained.command;
+    } else {
+      command = {
+        requestId: retained?.command.requestId ?? crypto.randomUUID(),
+        actions: JSON.parse(snapshot) as WorkflowAction[],
+      };
+    }
     let saved: ReservationDetail;
     try {
       saved = await sendWorkflow(id, command);
@@ -220,13 +228,21 @@ export function useReservationCommands(id: string | null) {
     [client, id],
   );
   const canReplay = useCallback(
-    (actions: WorkflowAction[]) =>
-      id !== null &&
-      client.getQueryData<UnsettledCommands>(unsettledKey)?.get(`${id}\n${JSON.stringify(actions)}`)
-        ?.uncertain === true,
+    (actions: WorkflowAction[], retryKey?: string) => {
+      const key = `${id}\n${retryKey === undefined ? JSON.stringify(actions) : `#${retryKey}`}`;
+      return (
+        id !== null &&
+        client.getQueryData<UnsettledCommands>(unsettledKey)?.get(key)?.uncertain === true
+      );
+    },
     [client, id],
   );
-  return { send, saving, canReplay };
+  const replay = useCallback(
+    (retryKey: string): Promise<ReservationCommandResult> =>
+      id === null ? Promise.resolve(failure(null)) : save(client, id, [], retryKey, true),
+    [client, id],
+  );
+  return { send, saving, canReplay, replay };
 }
 
 export function useRoomAssignmentCommand() {
@@ -265,4 +281,27 @@ export function useReservationPreview(
     retry: false,
     refetchOnWindowFocus: false,
   });
+}
+
+export function useDebouncedReservationPreview(
+  id: string,
+  actions: WorkflowAction[],
+  enabled: boolean,
+  propertyDate: string,
+) {
+  const draft = JSON.stringify(actions);
+  const [settled, setSettled] = useState(draft);
+  const current = settled === draft;
+  useEffect(() => {
+    if (settled === draft) return;
+    const timer = setTimeout(() => setSettled(draft), 300);
+    return () => clearTimeout(timer);
+  }, [draft, settled]);
+  const preview = useReservationPreview(
+    id,
+    JSON.parse(settled) as WorkflowAction[],
+    enabled && current,
+    propertyDate,
+  );
+  return { ...preview, current };
 }

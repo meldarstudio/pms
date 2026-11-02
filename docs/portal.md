@@ -81,6 +81,9 @@ returns to sign-in.
   new calendar/inventory window shows `PageError`, not old data under new dates.
 - Translate known errors with `errors.ts`; otherwise show generic Spanish and log.
   Network failures and intentional reservation 404s are not logged.
+  Financial confirmations use the same failed-read presentation and sanitized save
+  errors; stale-preview gating and retained-command recovery belong to the
+  [reservation command guide](reservations.md#reservation-command-module).
 - Do not retry 4xx reads; retry connection/server failures twice (`query-client.ts`).
   Reconnect refetches page reads without replacing drafts. Compact reservation
   detail is an exception: no automatic reconnect refetch. Both editors disable

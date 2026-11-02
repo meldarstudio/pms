@@ -42,6 +42,13 @@ beforeEach(() => {
   ];
   page.api.catalog.rooms = [{ id: "room-1", number: "101", roomTypeId: "double" }];
   page.api.on("GET", "/reservations/reservation-1", () => saved);
+  page.api.on(
+    "GET",
+    "/coupons/:code",
+    ({ params }) =>
+      saved.coupons.find((coupon) => coupon.code === params.code) ??
+      Response.json({ error: "coupon not found" }, { status: 404 }),
+  );
   writes = page.api.bodies<WorkflowCommand>("POST", "/reservations/:id/commands");
   previews = page.api.bodies<WorkflowCommand>("POST", "/reservations/:id/preview");
   saved = {
@@ -1289,6 +1296,7 @@ it("keeps the inline waiver draft and marks its amount when the server rejects a
 });
 
 it("blocks saving through failed and stale waiver previews without substituting the saved bill", async () => {
+  const log = vi.spyOn(console, "error").mockImplementation(() => {});
   let fail = true;
   let finishOld!: (preview: WorkflowPreview) => void;
   let finishCurrent!: (preview: WorkflowPreview) => void;
@@ -1318,7 +1326,9 @@ it("blocks saving through failed and stale waiver previews without substituting 
   await click("Perdonar cargo");
   await fill("amount", "100");
   await fill("reason", "Error del hotel");
-  await page.until(() => text(popup()!).includes("preview unavailable"));
+  await page.until(() => text(popup()!).includes("Ocurrió un error inesperado"));
+  assert.doesNotMatch(text(popup()!), /preview unavailable/);
+  assert.ok(log.mock.calls.length);
   assert.equal(button("Confirmar").disabled, true);
   assert.doesNotMatch(text(popup()!), /Saldo pendiente/);
   fail = false;
@@ -1371,45 +1381,70 @@ it("refreshes the cancellation charge across the property deadline without losin
   assert.equal(field("reason").value, "Cambio de planes");
 });
 
-it("never applies a second waiver when staff edit an uncertain cancellation attempt", async () => {
-  let receipt: WorkflowCommand | undefined;
-  mockApi({
-    write: (command) => {
-      if (receipt) {
-        assert.equal(command.requestId, receipt.requestId);
-        return Response.json(
-          { error: "request ID reused with a different payload" },
-          { status: 409 },
+it.each([false, true])(
+  "reconciles an uncertain cancellation after its prospective waiver rejects (reopen: %s)",
+  async (reopen) => {
+    let receipt: WorkflowCommand | undefined;
+    mockApi({
+      preview: (command) => {
+        const waiver = command.actions.find(
+          (action) => action.type === "waive-cancellation-charge",
         );
-      }
-      receipt = command;
-      saved = {
-        ...saved,
-        status: "cancelled",
-        cancellation: cancellation({ waivedCents: 10000, finalChargeCents: 5000 }),
-        totalCents: 5000,
-        balanceCents: 5000,
-      };
-      return Response.json({ error: "response unavailable" }, { status: 503 });
-    },
-  });
-  await render();
-  await statusMenu("Cancelar reserva");
-  await page.until(() => !button("Confirmar").disabled);
-  await click("Perdonar cargo");
-  await fill("amount", "100");
-  await fill("reason", "Error del hotel");
-  await page.until(() => !button("Confirmar").disabled);
-  await submit();
-  await page.until(() => writes.length === 1 && !button("Confirmar").disabled);
-  await fill("amount", "50");
-  await page.until(() => !button("Confirmar").disabled);
-  await submit();
-  await page.until(() => !popup());
-  assert.equal(writes[0].requestId, writes[1].requestId);
-  assert.equal(saved.cancellation!.waivedCents, 10000);
-  assert.match(header().textContent, /Cancelada/);
-});
+        if (receipt && waiver && waiver.amountCents > 5000)
+          return Response.json(
+            { error: "waiver cannot exceed the cancellation charge" },
+            { status: 400 },
+          );
+        return { billing: { ...saved, cancellation: cancellation() }, validation: { issues: [] } };
+      },
+      write: (command) => {
+        if (receipt) {
+          assert.deepEqual(command, receipt);
+          return Response.json(saved);
+        }
+        receipt = command;
+        saved = {
+          ...saved,
+          status: "cancelled",
+          cancellation: cancellation({ waivedCents: 10000, finalChargeCents: 5000 }),
+          totalCents: 5000,
+          balanceCents: 5000,
+        };
+        return Response.json({ error: "response unavailable" }, { status: 503 });
+      },
+    });
+    await render();
+    await statusMenu("Cancelar reserva");
+    await page.until(() => !button("Confirmar").disabled);
+    await click("Perdonar cargo");
+    await fill("amount", "100");
+    await fill("reason", "Error del hotel");
+    await page.until(() => !button("Confirmar").disabled);
+    await submit();
+    await page.until(() => writes.length === 1 && !button("Cerrar").disabled);
+    if (reopen) {
+      await click("Cerrar");
+      await click("Descartar y salir");
+      await statusMenu("Cancelar reserva");
+      await page.until(() => !button("Confirmar").disabled);
+      await click("Perdonar cargo");
+      await fill("amount", "100");
+    }
+    await fill("reason", "Otro motivo");
+    await page.until(() =>
+      text(popup()!).includes("El importe a perdonar no puede superar el cargo pendiente"),
+    );
+    assert.equal(button("Confirmar").disabled, true);
+    await fill("amount", "no válido");
+    await submit();
+    assert.equal(writes.length, 1, "Invalid local input cannot create a new waiver");
+    await click("Comprobar intento anterior");
+    await page.until(() => !popup());
+    assert.equal(writes[0].requestId, writes[1].requestId);
+    assert.equal(saved.cancellation!.waivedCents, 10000);
+    assert.match(header().textContent, /Cancelada/);
+  },
+);
 
 it.each([false, true])("marks a stay as not presented with inline waiver = %s", async (waiving) => {
   mockApi({
@@ -1557,6 +1592,7 @@ it.each([
 );
 
 it("retries a failed cancellation preview and keeps the reason after a failed save", async () => {
+  const log = vi.spyOn(console, "error").mockImplementation(() => {});
   mockApi({
     preview: () =>
       previews.length === 1
@@ -1575,9 +1611,11 @@ it("retries a failed cancellation preview and keeps the reason after a failed sa
         ? Response.json({ error: "Temporary cancellation save failure" }, { status: 503 })
         : undefined,
   });
-  await render();
+  await render("", true, true);
   await statusMenu("Cancelar reserva");
-  await page.until(() => popup()?.textContent.includes("Temporary preview failure") === true);
+  await page.until(() => popup()?.textContent.includes("Ocurrió un error inesperado") === true);
+  assert.ok(log.mock.calls.length);
+  assert.doesNotMatch(text(popup()!), /Temporary preview failure/);
   assert.equal(button("Confirmar").disabled, true);
   await click("Reintentar");
   await page.until(() => !button("Confirmar").disabled, "The retried preview must finish");
@@ -1590,6 +1628,9 @@ it("retries a failed cancellation preview and keeps the reason after a failed sa
     "A failed cancellation save must allow retrying",
   );
   assert.equal(field("reason").value, reason);
+  assert.match(text(window.document.body), /No se pudieron guardar los cambios/);
+  assert.doesNotMatch(text(window.document.body), /Temporary cancellation save failure/);
+  assert.ok(log.mock.calls.length >= 2);
   assert.equal(saved.status, "confirmed");
   await click("Confirmar");
   await page.until(() => !popup(), "A successful cancellation closes the confirmation");
@@ -2583,7 +2624,7 @@ it.each([
   );
   assert.match(
     window.document.body.textContent,
-    committed ? /Este reembolso ya se había registrado/ : /Reembolso registrado/,
+    committed ? /Los cambios ya se habían guardado/ : /Reembolso registrado/,
   );
   await page.until(() => text(accountStatusLine()) === "Por devolver S/ 60 Devolver…");
 });
@@ -2795,6 +2836,47 @@ it.each([
   },
 );
 
+it.each(["manual", "provider"] as const)(
+  "does not mistake a concurrent %s refund for this Culqi result",
+  async (concurrent) => {
+    paidOnlineAndByPos();
+    const complete = culqiRefundSaved("completed");
+    mockApi({
+      write: (command) => {
+        complete(command);
+        saved = {
+          ...saved,
+          refunds: [
+            ...saved.refunds,
+            refund({
+              id: "concurrent-refund",
+              paymentId: "online",
+              amountCents: 10000,
+              reason: "Sobrepago",
+              status: "requested",
+              culqiChargeId: concurrent === "provider" ? "chr_1" : null,
+            }),
+          ],
+        };
+        return Response.json(saved);
+      },
+    });
+    await render("", true, true);
+    await click("Devolver…");
+    await chooseReturn("Dinero");
+    await fill("reason", "Sobrepago");
+    await submit();
+    await page.until(() => !popup());
+    const notice = window.document.querySelector('[data-slot="toast"]')!;
+    assert.ok(notice);
+    assert.match(
+      text(notice),
+      concurrent === "manual" ? /Reembolso registrado/ : /Solicitud procesada/,
+    );
+    assert.doesNotMatch(text(notice), /Reembolso solicitado|Comprueba el resultado en Culqi/);
+  },
+);
+
 it("limits a card refund to what the online payment has left and at least S/ 1", async () => {
   paidOnlineAndByPos({
     subtotalCents: 2000,
@@ -2873,6 +2955,83 @@ it.each([
 
 const couponTerms = "Vence el 19 de octubre de 2027 · No canjeable por dinero";
 
+it("never issues against cached coupon terms during a failed refresh", async () => {
+  owesBack();
+  const log = vi.spyOn(console, "error").mockImplementation(() => {});
+  let finishRefresh!: (response: Response) => void;
+  mockApi({
+    preview: (command) =>
+      previews.length === 2
+        ? new Promise((resolve) => {
+            finishRefresh = resolve;
+          })
+        : { billing: command.actions.reduce(issueCoupon, saved), validation: { issues: [] } },
+  });
+  await render();
+  await click("Devolver…");
+  await page.until(() => text(popup()!).includes(couponTerms));
+  await React.act(async () => acceptance().click());
+  let refresh!: Promise<void>;
+  await React.act(async () => {
+    refresh = page.client.invalidateQueries({ queryKey: ["reservation-preview", saved.id] });
+  });
+  await page.until(() => !!finishRefresh);
+  await page.until(() => text(popup()!).includes("Calculando…"));
+  assert.equal(button("Emitir cupón").disabled, true);
+  assert.doesNotMatch(text(popup()!), /Vence el/);
+  await submit();
+  assert.equal(writes.length, 0);
+  await React.act(async () => {
+    finishRefresh(Response.json({ error: "private refresh failure" }, { status: 503 }));
+    await refresh;
+  });
+  await page.until(() => text(popup()!).includes("Ocurrió un error inesperado"));
+  assert.equal(button("Emitir cupón").disabled, true);
+  assert.doesNotMatch(text(popup()!), /Vence el|private refresh failure/);
+  assert.ok(log.mock.calls.length);
+  await submit();
+  assert.equal(writes.length, 0);
+  await click("Reintentar");
+  await page.until(() => !button("Emitir cupón").disabled);
+  await click("Emitir cupón");
+  await page.until(() => writes.length === 1);
+});
+
+it.each(["cancellation", "waiver", "coupon"] as const)(
+  "debounces editable %s previews and immediately gates a changed draft",
+  async (workflow) => {
+    if (workflow === "waiver") releasedStay();
+    if (workflow === "coupon") owesBack();
+    mockApi();
+    await render();
+    if (workflow === "cancellation") {
+      await statusMenu("Cancelar reserva");
+      await page.until(() => !button("Confirmar").disabled);
+      await click("Perdonar cargo");
+    } else await click(workflow === "coupon" ? "Devolver…" : "Perdonar cargo");
+    if (workflow === "coupon") await React.act(async () => acceptance().click());
+    else await fill("reason", "Error del hotel");
+    const save = () =>
+      workflow === "waiver"
+        ? waiverSubmit()
+        : button(workflow === "coupon" ? "Emitir cupón" : "Confirmar");
+    await page.until(() => !save().disabled);
+    const openingPreviews = previews.length;
+    await fill("amount", "80");
+    assert.equal(save().disabled, true, "Stale draft is blocked before debounce fires");
+    await fill("amount", "70");
+    if (workflow !== "coupon") await fill("reason", "Motivo corregido");
+    await submit();
+    assert.equal(writes.length, 0);
+    assert.equal(previews.length, openingPreviews, "Typing does not send intermediate previews");
+    await page.until(() => !save().disabled);
+    assert.equal(previews.length, openingPreviews + 1);
+    const action = previews.at(-1)!.actions.at(-1)!;
+    assert.ok(action.type === "issue-coupon" || action.type === "waive-cancellation-charge");
+    assert.equal(action.amountCents, 7000);
+  },
+);
+
 it("defaults Devolver… to a coupon for the refund due less requested refunds, on the preview's terms", async () => {
   owesBack({ pendingRefundCents: 2000, refunds: [refund({ amountCents: 2000 })] });
   mockApi();
@@ -2946,6 +3105,7 @@ function acceptance() {
 it("issues a coupon only once the guest's acceptance is ticked and hands over its message", async () => {
   owesBack();
   mockApi();
+  const clipboard = vi.spyOn(window.navigator.clipboard, "writeText");
   await render();
   await click("Devolver…");
   await page.until(() => text(popup()!).includes(couponTerms));
@@ -2967,16 +3127,46 @@ it("issues a coupon only once the guest's acceptance is ticked and hands over it
   await page.until(() => !!popup()!.textContent.includes("Mensaje copiado"));
   assert.equal(await copiedText(), couponMessage("S/ 100"));
   saved = { ...saved, coupons: [issuedCoupon({ balanceCents: 4000 })] };
-  await page.client.invalidateQueries({ queryKey: ["reservation", saved.id] });
-  await page.until(() => text(popup()!).includes("Saldo S/ 40"));
+  assert.match(
+    text(popup()!),
+    /Saldo S\/ 100/,
+    "Another device's spending is not in the local reservation cache",
+  );
   await click("Mensaje copiado");
+  await page.until(() => clipboard.mock.calls.length === 2);
   assert.equal(await copiedText(), couponMessage("S/ 40"));
   await click("Listo");
   await page.until(() => !popup(), "Listo closes the dialog");
   assert.equal(text(accountStatusLine()), "Cuenta saldada S/ 0");
 });
 
+it("refreshes coupon facts for each row copy and never copies stale value after a failed lookup", async () => {
+  saved = { ...saved, couponIssuedCents: 10000, coupons: [issuedCoupon()] };
+  mockApi();
+  const log = vi.spyOn(console, "error").mockImplementation(() => {});
+  const clipboard = vi.spyOn(window.navigator.clipboard, "writeText");
+  await render("", true, true);
+  saved = { ...saved, coupons: [issuedCoupon({ balanceCents: 4000, expiresOn: "2027-09-01" })] };
+  await click("Copiar mensaje del cupón K7Q2M9XPA4");
+  await page.until(() => clipboard.mock.calls.length === 1);
+  assert.match(await copiedText(), /saldo disponible de S\/ 40.*1 de setiembre de 2027/);
+  const removeFailure = page.api.on("GET", "/coupons/:code", () =>
+    Response.json({ error: "private coupon lookup failure" }, { status: 503 }),
+  );
+  await click("Copiar mensaje del cupón K7Q2M9XPA4");
+  await page.until(() => text(window.document.body).includes("No se pudo actualizar el cupón"));
+  assert.equal(clipboard.mock.calls.length, 1, "A failed refresh cannot copy cached facts");
+  assert.doesNotMatch(text(window.document.body), /private coupon lookup failure/);
+  assert.ok(log.mock.calls.length);
+  removeFailure();
+  saved = { ...saved, coupons: [issuedCoupon({ balanceCents: 0 })] };
+  await click("Copiar mensaje del cupón K7Q2M9XPA4");
+  await page.until(() => clipboard.mock.calls.length === 2);
+  assert.equal(await copiedText(), couponMessage("S/ 0"));
+});
+
 it("keeps the coupon draft through a failed preview and waits for server expiry before issuing", async () => {
+  const log = vi.spyOn(console, "error").mockImplementation(() => {});
   owesBack();
   let resolve: (result: WorkflowPreview) => void = () => assert.fail("Missing pending preview");
   mockApi({
@@ -2990,7 +3180,9 @@ it("keeps the coupon draft through a failed preview and waits for server expiry 
   });
   await render();
   await click("Devolver…");
-  await page.until(() => !!popup()?.textContent.includes("preview unavailable"));
+  await page.until(() => !!popup()?.textContent.includes("Ocurrió un error inesperado"));
+  assert.doesNotMatch(text(popup()!), /preview unavailable/);
+  assert.ok(log.mock.calls.length);
   await React.act(async () => acceptance().click());
   assert.equal(button("Emitir cupón").disabled, true);
   await click("Reintentar");
@@ -3034,6 +3226,7 @@ it.each([false, true])(
     await page.until(() => text(popup()!).includes(couponTerms));
     await fill("amount", "60");
     await React.act(async () => acceptance().click());
+    await page.until(() => !button("Emitir cupón").disabled);
     await click("Emitir cupón");
     await page.until(() => writes.length === 1 && !button("Emitir cupón").disabled);
     if (reopen) {
@@ -3043,6 +3236,7 @@ it.each([false, true])(
       await page.until(() => text(popup()!).includes(couponTerms));
       await fill("amount", "60");
       await React.act(async () => acceptance().click());
+      await page.until(() => !button("Emitir cupón").disabled);
     }
     await click("Emitir cupón");
     await page.until(() => text(popup()!.querySelector("h2")!) === "Cupón emitido");
@@ -3052,17 +3246,87 @@ it.each([false, true])(
   },
 );
 
-it("does not return money as well when staff change a lost coupon attempt to Dinero", async () => {
+it.each(["coupon", "money"] as const)(
+  "does not duplicate or mislabel an edited cross-kind lost %s attempt",
+  async (original) => {
+    owesBack();
+    let receipt: WorkflowCommand | undefined;
+    mockApi({
+      write: (command) => {
+        if (receipt) {
+          assert.equal(command.requestId, receipt.requestId);
+          return Response.json(
+            { error: "request ID reused with a different payload" },
+            { status: 409 },
+          );
+        }
+        receipt = command;
+        saved =
+          original === "coupon"
+            ? command.actions.reduce(issueCoupon, saved)
+            : {
+                ...saved,
+                refunds: [refund({ amountCents: 6000, status: "completed" })],
+                refundedCents: 6000,
+                balanceCents: -4000,
+                refundDueCents: 4000,
+              };
+        return Response.json({ error: "response unavailable" }, { status: 503 });
+      },
+    });
+    await render("", true, true);
+    await click("Devolver…");
+    await page.until(() => text(popup()!).includes(couponTerms));
+    await fill("amount", "60");
+    if (original === "coupon") {
+      await React.act(async () => acceptance().click());
+      await page.until(() => !button("Emitir cupón").disabled);
+      await click("Emitir cupón");
+    } else {
+      await chooseReturn("Dinero");
+      await fill("reason", "En efectivo");
+      await submit();
+    }
+    await page.until(() => writes.length === 1 && !button("Cerrar").disabled);
+    if (original === "coupon") {
+      await chooseReturn("Dinero");
+      await fill("reason", "En efectivo");
+    } else {
+      await chooseReturn("Cupón");
+      await React.act(async () => acceptance().click());
+      await page.until(() => !button("Emitir cupón").disabled);
+    }
+    await submit();
+    await page.until(() => !popup());
+    assert.equal(saved.coupons.length, original === "coupon" ? 1 : 0);
+    assert.equal(saved.refunds.length, original === "money" ? 1 : 0);
+    assert.equal(text(accountStatusLine()), "Por devolver S/ 40 Devolver…");
+    const notices = Array.from(window.document.querySelectorAll('[data-slot="toast"]'))
+      .map(text)
+      .join(" ");
+    assert.match(notices, /Los cambios ya se habían guardado/);
+    assert.doesNotMatch(
+      notices,
+      /Este reembolso ya se había registrado|Este cupón ya se había emitido/,
+    );
+  },
+);
+
+it("reconciles a reopened lost coupon even when current terms reject the already-issued value", async () => {
   owesBack();
+  vi.spyOn(console, "error").mockImplementation(() => {});
   let receipt: WorkflowCommand | undefined;
   mockApi({
+    preview: (command) => {
+      const action = command.actions[0];
+      return action.type === "issue-coupon" && action.amountCents > saved.refundDueCents
+        ? Response.json({ error: "coupon exceeds the refund due" }, { status: 409 })
+        : { billing: command.actions.reduce(issueCoupon, saved), validation: { issues: [] } };
+    },
     write: (command) => {
       if (receipt) {
-        assert.equal(command.requestId, receipt.requestId);
-        return Response.json(
-          { error: "request ID reused with a different payload" },
-          { status: 409 },
-        );
+        assert.deepEqual(command, receipt);
+        return Response.json(saved);
       }
       receipt = command;
       saved = command.actions.reduce(issueCoupon, saved);
@@ -3071,19 +3335,56 @@ it("does not return money as well when staff change a lost coupon attempt to Din
   });
   await render("", true, true);
   await click("Devolver…");
-  await page.until(() => text(popup()!).includes(couponTerms));
   await fill("amount", "60");
   await React.act(async () => acceptance().click());
+  await page.until(() => !button("Emitir cupón").disabled);
   await click("Emitir cupón");
-  await page.until(() => writes.length === 1 && !button("Emitir cupón").disabled);
-  await chooseReturn("Dinero");
-  await fill("reason", "En efectivo");
+  await page.until(() => writes.length === 1 && !button("Cerrar").disabled);
+  await click("Cerrar");
+  await click("Descartar y salir");
+  await click("Devolver…");
+  await fill("amount", "60");
+  await React.act(async () => acceptance().click());
+  await page.client.invalidateQueries({ queryKey: ["reservation-preview", saved.id] });
+  await page.until(() => text(popup()!).includes("El cupón supera el monto por devolver"));
+  assert.equal(button("Emitir cupón").disabled, true);
   await submit();
+  assert.equal(writes.length, 1);
+  await click("Comprobar intento anterior");
   await page.until(() => !popup());
   assert.equal(saved.coupons.length, 1);
-  assert.equal(saved.refunds.length, 0);
-  assert.equal(text(accountStatusLine()), "Por devolver S/ 40 Devolver…");
+  assert.equal(writes.length, 2);
+  assert.match(text(window.document.body), /Intento anterior comprobado/);
 });
+
+it.each(["coupon", "manual", "card"] as const)(
+  "logs unknown %s return save errors without leaking backend text",
+  async (kind) => {
+    if (kind === "card") paidOnlineAndByPos();
+    else owesBack();
+    const log = vi.spyOn(console, "error").mockImplementation(() => {});
+    mockApi({
+      write: () => Response.json({ error: "private return save failure" }, { status: 503 }),
+    });
+    await render("", true, true);
+    await click("Devolver…");
+    if (kind === "coupon") {
+      await React.act(async () => acceptance().click());
+      await page.until(() => !button("Emitir cupón").disabled);
+    } else {
+      await chooseReturn("Dinero");
+      await fill("reason", "Sobrepago");
+    }
+    await submit();
+    await page.until(() =>
+      text(window.document.body).includes("No se pudieron guardar los cambios."),
+    );
+    assert.doesNotMatch(text(window.document.body), /private return save failure/);
+    assert.ok(log.mock.calls.length);
+    assert.ok(popup());
+    assert.equal(field("amount").value, "100.00");
+  },
+);
 
 it("refreshes coupon expiry when property today changes without losing acceptance or amount", async () => {
   owesBack();
@@ -3120,6 +3421,7 @@ it("keeps the accepted coupon draft and shows a changed refund-due limit beside 
   await page.until(() => text(popup()!).includes(couponTerms));
   await fill("amount", "60");
   await React.act(async () => acceptance().click());
+  await page.until(() => !button("Emitir cupón").disabled);
   await click("Emitir cupón");
   await page.until(() => field("amount").getAttribute("aria-invalid") === "true");
   assert.match(
@@ -3177,6 +3479,7 @@ it("hands over the coupon just issued, not a different coupon issued since the f
   await page.until(() => text(popup()!).includes(couponTerms));
   await fill("amount", "60");
   await React.act(async () => acceptance().click());
+  await page.until(() => !button("Emitir cupón").disabled);
   await click("Emitir cupón");
   await page.until(() => text(popup()!.querySelector("h2")!) === "Cupón emitido");
   assert.match(text(popup()!), /K7Q2M9XPA4 Saldo S\/ 60/);
@@ -3191,6 +3494,7 @@ it("leaves the rest of a partial coupon Por devolver for a later Dinero run and 
   await page.until(() => text(popup()!).includes(couponTerms));
   await fill("amount", "60");
   await React.act(async () => acceptance().click());
+  await page.until(() => !button("Emitir cupón").disabled);
   await click("Emitir cupón");
   await page.until(() => text(popup()!.querySelector("h2")!) === "Cupón emitido");
   assert.deepEqual(writes[0].actions, [
@@ -3474,25 +3778,89 @@ it("keeps later-waiver drafts and puts a concurrent charge rejection beside the 
   await page.until(() => field("amount").getAttribute("aria-invalid") !== "true");
 });
 
-it("never doubles a later waiver after a lost response, closing and editing the reopened draft", async () => {
+it.each([false, true])(
+  "reconciles a lost later waiver despite a rejected prospective preview (reopen: %s)",
+  async (reopen) => {
+    releasedStay();
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    let receipt: WorkflowCommand | undefined;
+    mockApi({
+      preview: (command) => {
+        const waiver = command.actions[0];
+        if (receipt && waiver.type === "waive-cancellation-charge" && waiver.amountCents > 5000)
+          return Response.json(
+            { error: "waiver cannot exceed the cancellation charge" },
+            { status: 400 },
+          );
+        return { billing: saved, validation: { issues: [] } };
+      },
+      write: (command) => {
+        if (receipt) {
+          assert.deepEqual(command, receipt);
+          return Response.json(saved);
+        }
+        receipt = command;
+        saved = {
+          ...saved,
+          cancellation: cancellation({ waivedCents: 10000, finalChargeCents: 5000 }),
+        };
+        return Response.json({ error: "private save details" }, { status: 503 });
+      },
+    });
+    await render("", true, true);
+    await click("Perdonar cargo");
+    await fill("reason", "Error del hotel");
+    await fill("amount", "100");
+    await page.until(() => !waiverSubmit().disabled);
+    await submit();
+    await page.until(() =>
+      text(window.document.body).includes("No se pudieron guardar los cambios."),
+    );
+    assert.doesNotMatch(text(window.document.body), /private save details/);
+    if (reopen) {
+      await click("Cerrar");
+      await click("Descartar y salir");
+      await page.until(() => !popup());
+      await click("Perdonar cargo");
+      await fill("amount", "100");
+    }
+    await fill("reason", "Otro motivo");
+    await page.until(() =>
+      text(popup()!).includes("El importe a perdonar no puede superar el cargo pendiente"),
+    );
+    assert.equal(waiverSubmit().disabled, true);
+    await click("Comprobar intento anterior");
+    await page.until(() => !popup());
+    assert.equal(saved.cancellation!.waivedCents, 10000);
+    assert.equal(writes[0].requestId, writes[1].requestId);
+    assert.match(text(window.document.body), /Intento anterior comprobado/);
+  },
+);
+
+it("finishes retained recovery when a lost edited retry returns the original payload-conflict receipt", async () => {
   releasedStay();
   vi.spyOn(console, "error").mockImplementation(() => {});
-  let receipt: WorkflowCommand | undefined;
   mockApi({
-    write: (command) => {
-      if (receipt) {
-        assert.equal(command.requestId, receipt.requestId);
-        return Response.json(
-          { error: "request ID reused with a different payload" },
-          { status: 409 },
-        );
+    preview: (command) => {
+      const action = command.actions[0];
+      return writes.length &&
+        action.type === "waive-cancellation-charge" &&
+        action.amountCents > 5000
+        ? Response.json({ error: "waiver cannot exceed the cancellation charge" }, { status: 400 })
+        : { billing: saved, validation: { issues: [] } };
+    },
+    write: () => {
+      if (writes.length < 3) {
+        saved = {
+          ...saved,
+          cancellation: cancellation({ waivedCents: 10000, finalChargeCents: 5000 }),
+        };
+        return Response.json({ error: "response unavailable" }, { status: 503 });
       }
-      receipt = command;
-      saved = {
-        ...saved,
-        cancellation: cancellation({ waivedCents: 10000, finalChargeCents: 5000 }),
-      };
-      return Response.json({ error: "private save details" }, { status: 503 });
+      return Response.json(
+        { error: "request ID reused with a different payload" },
+        { status: 409 },
+      );
     },
   });
   await render("", true, true);
@@ -3501,22 +3869,21 @@ it("never doubles a later waiver after a lost response, closing and editing the 
   await fill("amount", "100");
   await page.until(() => !waiverSubmit().disabled);
   await submit();
-  await page.until(() =>
-    text(window.document.body).includes("No se pudieron guardar los cambios."),
-  );
-  assert.doesNotMatch(text(window.document.body), /private save details/);
-  await click("Cerrar");
-  await click("Descartar y salir");
-  await page.until(() => !popup());
-  await click("Perdonar cargo");
-  await fill("reason", "Otro motivo");
+  await page.until(() => writes.length === 1 && !button("Cerrar").disabled);
   await fill("amount", "50");
   await page.until(() => !waiverSubmit().disabled);
   await submit();
+  await page.until(() => writes.length === 2 && !button("Cerrar").disabled);
+  await fill("amount", "100");
+  await page.until(() =>
+    text(popup()!).includes("El importe a perdonar no puede superar el cargo pendiente"),
+  );
+  await click("Comprobar intento anterior");
   await page.until(() => !popup());
   assert.equal(saved.cancellation!.waivedCents, 10000);
-  assert.equal(writes[0].requestId, writes[1].requestId);
-  assert.match(text(window.document.body), /Los cambios ya se habían guardado/);
+  assert.equal(writes[2].requestId, writes[0].requestId);
+  assert.deepEqual(writes[2], writes[1]);
+  assert.match(text(window.document.body), /Intento anterior comprobado/);
 });
 
 it.each([

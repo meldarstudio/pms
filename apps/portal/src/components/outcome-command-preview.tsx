@@ -21,23 +21,25 @@ export function OutcomeCommandPreview({
   preview,
   detail,
   today,
+  pending = false,
 }: {
   preview: ReturnType<typeof useReservationPreview>;
   detail: ReservationDetail;
   today: string;
+  pending?: boolean;
 }) {
   const issues = preview.data?.validation.issues;
   useEffect(() => {
-    if (!preview.isFetching && !preview.error)
+    if (!pending && !preview.isFetching && !preview.error)
       for (const issue of issues ?? []) if (!knownErrorMessage(issue.code)) console.error(issue);
-  }, [issues, preview.isFetching, preview.error]);
+  }, [issues, pending, preview.isFetching, preview.error]);
   return (
     <section
       aria-label="Cuenta resultante"
-      aria-busy={preview.isFetching}
+      aria-busy={pending || preview.isFetching}
       className="flex flex-col gap-3 text-sm"
     >
-      {preview.isFetching || (!preview.data && !preview.error) ? (
+      {pending || preview.isFetching || (!preview.data && !preview.error) ? (
         <p role="status">Calculando…</p>
       ) : preview.error ? (
         <PageError error={preview.error} onRetry={() => void preview.refetch()} />
