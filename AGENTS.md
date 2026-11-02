@@ -4,32 +4,34 @@
 
 - Production is live. Preserve production data and applied migration history. Local sample data is disposable; production is not.
 - Run deployments, remote migrations, and production secret changes only for an explicitly requested production operation. A schema change in a development task is not deployment authorization.
-- Feature branches merge to `main`; production releases follow [the release checklist](docs/releases.md), including deployment ownership and separately authorized automatic-build changes. Prepare required production migrations before deploying code that needs them.
+- Feature branches merge to `main`. Prepare required production migrations before deploying code that needs them.
 - Keep credentials in local ignored environment files or Cloudflare secrets, not committed files.
 
 ## Toolchain and validation
 
-- Use pnpm, not npm or npx. Run project commands from the repo root unless a task-specific instruction says otherwise. Use the Node version in `.node-version` and pnpm version in `package.json`.
-- Before development, test, build, or check commands, read [README.md](README.md#commands). It owns command usage and environment setup.
+- Use pnpm, not npm or npx. Run project commands from the repo root. Use the Node version in `.node-version` and pnpm version in `package.json`. Root `package.json` scripts are the command reference.
 - Before changing tests or reviewing code, read [CODING_STANDARDS.md](CODING_STANDARDS.md). Run affected tests and `pnpm check` for code changes; checks do not run tests.
-- Before changing formatting, lint, or compiler configuration, read [README.md](README.md#tool-configuration). Root `vite.config.ts` owns formatting; package configs own lint and type checks.
+- Root `vite.config.ts` owns formatting; package configs own lint and type checks.
 - Keep TypeScript and Zod dependencies as `"catalog:"`; use the APIs of the versions in `pnpm-workspace.yaml`.
+
+## Database
+
+- After editing `apps/backend/src/db/schema.ts`, run `pnpm db:generate` to append a migration. Never edit, consolidate, or regenerate applied migrations, snapshots, or journal entries.
+- Hand-written trigger changes go in a new migration registered in `apps/backend/drizzle/meta/_journal.json`. Tests execute journal entries, so an unregistered migration is untested.
+- Destructive production migrations, resets, or database replacement require explicit approval for the specific data loss.
 
 ## Task-specific context
 
-Read the applicable instructions before changing the package or contract, including callers in other packages:
-
-- **Backend/API:** [apps/backend/AGENTS.md](apps/backend/AGENTS.md) for Hono routes, authentication, reservation workflows, and database-backed behavior.
-- **Portal/UI:** [apps/portal/AGENTS.md](apps/portal/AGENTS.md) for routing, forms, queries, API clients, and UI components.
-- **Database:** [docs/agents/database.md](docs/agents/database.md) before changing schemas, migrations, triggers, seeds, or deploying schema-dependent code.
+- **Backend/API:** [apps/backend/AGENTS.md](apps/backend/AGENTS.md).
+- **Portal/UI:** [apps/portal/AGENTS.md](apps/portal/AGENTS.md).
 - **Shared schemas:** `packages/shared` (`@pms/shared`) supplies backend request schemas. The portal maintains its own schemas and API types; check both sides when changing a contract.
-- **Domain/architecture:** [docs/agents/domain.md](docs/agents/domain.md) before exploring domain concepts or architectural decisions; it points to the shared glossary and ADRs.
-- **Issues/specs:** [docs/agents/issue-tracker.md](docs/agents/issue-tracker.md) before tracker operations. Use GitHub Issues in `meldarstudio/pms`.
-- **Triage:** [docs/agents/triage-labels.md](docs/agents/triage-labels.md) before triaging incoming issues.
+- **Domain/architecture:** [docs/agents/domain.md](docs/agents/domain.md); terms live in [GLOSSARY.md](GLOSSARY.md).
+- **Issues/specs:** [docs/agents/issue-tracker.md](docs/agents/issue-tracker.md). Use GitHub Issues in `meldarstudio/pms`.
+- **Triage:** [docs/agents/triage-labels.md](docs/agents/triage-labels.md).
 
 ## Documentation
 
-Before changing maintained docs or reviewing a behavior/configuration change, read [documentation maintenance](CODING_STANDARDS.md#documentation). Update the authoritative topic guide and affected pointers in the same change. The root README indexes guides; [release records](docs/releases.md#recorded-reports) hold dated operational reports, not current-state guarantees.
+Code is the docs. Don't add prose guides; put knowledge in names, types, and tests. See [CODING_STANDARDS.md](CODING_STANDARDS.md#documentation).
 
 ## Cross-package contracts
 

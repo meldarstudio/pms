@@ -1,7 +1,7 @@
 # Coding standards
 
 These standards cover judgment calls in code review. Formatting, lint rules, and
-type checks live in the tool configuration described in [README.md](README.md#tool-configuration).
+type checks live in the root `vite.config.ts` and package configs.
 
 ## Tests
 
@@ -58,36 +58,14 @@ shared browser harness before adding another integration suite.
 
 ## Documentation
 
-Agents are the primary audience. `AGENTS.md` files route tasks to context; the root
-README owns setup, command usage, tool configuration, and the topic index.
-Package agent instructions own local navigation and test-environment notes. The glossary owns business terms;
-ADRs preserve consequential architectural trade-offs.
+Code is the docs. Prose is limited to `AGENTS.md` files, `docs/agents/`, this file,
+and `GLOSSARY.md`. During review:
 
-Update affected documentation in the same change as behavior, contracts,
-configuration, or operational procedures. During review:
+- Flag new prose guides. Prefer clear names, types, and tests that state the rule.
+- Keep `AGENTS.md` and `docs/agents/` accurate against the final code, scripts, and
+  config. Verify repository links and code paths they mention.
+- Keep business vocabulary aligned with the glossary; update it in the same change
+  when a term's meaning changes.
+- Comments explain non-obvious reasons and hazards, not what the code already says.
 
-- Check the relevant guide against the final code, tests, scripts, and config.
-  State actual behavior and known limitations precisely. Do not describe a bug as
-  an intended business rule or promise guarantees the implementation lacks.
-- Keep each detailed rule in one authoritative topic. Replace repeated explanations
-  with links, and update inbound links and heading anchors when moving a section.
-  Verify repository links and code paths manually as part of review.
-- Prefer pointers to versions and other simple config facts over copied values.
-  Document non-obvious rules, trade-offs, and operational hazards rather than
-  inventories of types, configuration, rendered layouts, or button labels.
-  Include exact commands where they make a procedure executable, with working
-  directory, prerequisites, effects, and a checkable completion condition.
-- Rewrite current guidance when a decision changes. Remove superseded instructions
-  and task-specific branch, approval, publication, or testing history. Git retains
-  old drafts; preserve useful compatibility reasoning in clearly historical notes.
-  Create ADRs only for durable architectural trade-offs.
-- Read the relevant package guidance for cross-package changes. Verify both backend
-  schemas and portal types/callers for API changes; keep business vocabulary aligned
-  with the glossary.
-- Record dated operational reports in [release records](docs/releases.md#recorded-reports),
-  with provenance and verification limits. Keep private evidence outside Git.
-  A source review does not establish deployed versions, applied migrations, token
-  permissions, or recoverability.
-
-A documentation-only change needs reference review and formatting validation.
-Run the affected tests and `pnpm check` for code changes under the existing policy.
+Run the affected tests and `pnpm check` for code changes.
