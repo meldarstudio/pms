@@ -208,7 +208,6 @@ async function renderCachedEditor(reservation: () => ReservationDetail) {
     });
     return React.createElement(dialogs.BookingEditor, {
       detail: cached.data!,
-      onRefresh: () => {},
     });
   }
   await render(React.createElement(Editor));
@@ -452,7 +451,7 @@ it("revalidates an edited payment's blurred date error at the new property day w
   };
   const saved = { ...detail(), payments: [payment] };
   mockApi(async () => Response.json(saved));
-  await render(React.createElement(dialogs.BookingEditor, { detail: saved, onRefresh: () => {} }));
+  await render(React.createElement(dialogs.BookingEditor, { detail: saved }));
   await React.act(async () => button("Movimientos").click());
   const actions = window.document.querySelector<HTMLButtonElement>(
     'button[aria-label^="Acciones del pago"]',
@@ -1019,9 +1018,7 @@ it.each([
       writes++;
       throw new Error("Viewing a saved discount must not write it back");
     });
-    await render(
-      React.createElement(dialogs.BookingEditor, { detail: saved, onRefresh: () => {} }),
-    );
+    await render(React.createElement(dialogs.BookingEditor, { detail: saved }));
     if (status !== "cancelled") {
       assert.equal(summaryAmount("Descuento"), applied);
       await openDiscount();
@@ -1101,9 +1098,7 @@ it("uses the server-applied discount in a room-removal preview while retaining t
     },
     { roomCount: 2 },
   );
-  await render(
-    React.createElement(dialogs.BookingEditor, { detail: initial, onRefresh: () => {} }),
-  );
+  await render(React.createElement(dialogs.BookingEditor, { detail: initial }));
   await page.menuAction("Acciones de la habitación 2", "Quitar habitación");
   await until(() => !button("Guardar cambios").disabled, "Room-removal preview must load");
   assert.equal(summaryAmount("Subtotal"), "S/80");
@@ -3008,7 +3003,6 @@ it("keeps an extension price visible and identifies the conflicting room without
   await render(
     React.createElement(dialogs.BookingEditor, {
       detail: initial,
-      onRefresh: () => {},
     }),
   );
   await React.act(async () => fieldTrigger("Check-out").click());
@@ -3099,9 +3093,7 @@ it("adds the available type instead of a sold-out type and releases draft invent
   initial.rooms[0].children = 1;
   mockApi(async () => previewResponse(initial));
   useDoubleAndSingleRooms();
-  await render(
-    React.createElement(dialogs.BookingEditor, { detail: initial, onRefresh: () => {} }),
-  );
+  await render(React.createElement(dialogs.BookingEditor, { detail: initial }));
   await until(
     () => !button("Agregar habitación").disabled,
     "Available room type must allow adding",
@@ -3153,9 +3145,7 @@ it("waits for availability on the current dates before allowing another room", a
       });
     return doubleAvailability(2, ["room-1", "room-2", "room-3"]);
   });
-  await render(
-    React.createElement(dialogs.BookingEditor, { detail: detail(), onRefresh: () => {} }),
-  );
+  await render(React.createElement(dialogs.BookingEditor, { detail: detail() }));
   await until(
     () => !button("Agregar habitación").disabled,
     "A spare room must allow adding another",
@@ -3209,7 +3199,6 @@ it("keeps pricing an added room when its occupancy is invalid and blocks saving"
   await render(
     React.createElement(dialogs.BookingEditor, {
       detail: detail(),
-      onRefresh: () => {},
     }),
   );
   await until(() => !button("Agregar habitación").disabled, "Room inventory must load");
@@ -3746,9 +3735,7 @@ it("allows an unrelated notes correction above the saved room's current child li
     writes.push(command);
     return Response.json(saved);
   });
-  await render(
-    React.createElement(dialogs.BookingEditor, { detail: initial, onRefresh: () => {} }),
-  );
+  await render(React.createElement(dialogs.BookingEditor, { detail: initial }));
   await fill("notes", "Late arrival");
   await until(() => !button("Guardar cambios").disabled);
   assert.equal(container.textContent.includes("no tiene capacidad"), false);
@@ -3775,7 +3762,6 @@ it.each(["occupancy", "dates"] as const)(
     await render(
       React.createElement(dialogs.BookingEditor, {
         detail: initial,
-        onRefresh: () => {},
       }),
     );
     await flush();
@@ -3850,9 +3836,7 @@ it("retries a failed details preview without losing its draft", async () => {
       ? Response.json({ error: "Temporary preview failure" }, { status: 503 })
       : previewResponse(detail());
   });
-  await render(
-    React.createElement(dialogs.BookingEditor, { detail: detail(), onRefresh: () => {} }),
-  );
+  await render(React.createElement(dialogs.BookingEditor, { detail: detail() }));
   await fill("rooms[0].room.adults", "2");
   await until(() => window.document.body.textContent.includes("Temporary preview failure"));
   assert.equal(button("Guardar cambios").disabled, true);

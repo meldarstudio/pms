@@ -69,7 +69,6 @@ import {
   cancellationSchema,
   type PaymentValues,
 } from "@/lib/reservation-form-schemas";
-import { propertyToday } from "@/lib/property-calendar";
 import { usePropertyCalendar } from "@/lib/use-property-calendar";
 import { phoneDisplay } from "@/lib/phone";
 import { ratePlanLabels } from "@/lib/rate-plans";
@@ -94,6 +93,12 @@ export type BookingTarget =
 const stayDate = (value: string, pattern: string) => {
   const date = parseISO(value);
   return isValid(date) ? format(date, pattern) : "—";
+};
+const stayRange = (checkIn: string, checkOut: string) => {
+  const range = `${stayDate(checkIn, "d MMM")} – ${stayDate(checkOut, "d MMM yyyy")}`;
+  const nights =
+    (Date.parse(`${checkOut}T00:00:00Z`) - Date.parse(`${checkIn}T00:00:00Z`)) / 86400000;
+  return nights >= 1 ? `${range} · ${nights} ${nights === 1 ? "noche" : "noches"}` : range;
 };
 type Intent = { type: "edit-payment" | "delete-payment"; entry: ReservationPayment };
 
@@ -228,7 +233,6 @@ export function RoomBookingDialog({
               <BookingEditor
                 key={detail.data.id}
                 detail={detail.data}
-                onRefresh={() => void detail.refetch()}
                 initialTab={tab}
                 onTabChange={setTab}
                 paymentSuggestionCents={
@@ -394,7 +398,6 @@ export function BookingEditor({
   paymentSuggestionCents,
 }: {
   detail: ReservationDetail;
-  onRefresh?: () => void;
   onViewReservation?: (id: string) => void;
   onDirtyChange?: (dirty: boolean) => void;
   full?: boolean;
@@ -518,9 +521,6 @@ export function BookingEditor({
       Deshacer cambios
     </Button>
   );
-  const nights =
-    (Date.parse(`${detail.checkOut}T00:00:00Z`) - Date.parse(`${detail.checkIn}T00:00:00Z`)) /
-    86400000;
   return (
     <div
       className={cn(
@@ -543,7 +543,7 @@ export function BookingEditor({
               {contact.fullName.trim()}
             </span>
             <span className="text-sm text-muted-foreground">
-              {`${stayDate(detail.checkIn, "d MMM")} – ${stayDate(detail.checkOut, "d MMM yyyy")} · ${nights} ${nights === 1 ? "noche" : "noches"}`}
+              {stayRange(detail.checkIn, detail.checkOut)}
             </span>
             {contact.phone && <ContactPhone phone={contact.phone} className="text-sm" />}
           </div>
@@ -834,11 +834,7 @@ export function BookingEditor({
               }
               onDiscountDirtyChange={setDiscountDirty}
               currency={detail.currency}
-              stayLabel={
-                common
-                  ? `${stayDate(common.checkIn, "d MMM")} – ${stayDate(common.checkOut, "d MMM yyyy")} · ${(Date.parse(common.checkOut) - Date.parse(common.checkIn)) / 86400000} noches`
-                  : null
-              }
+              stayLabel={stayRange(common.checkIn, common.checkOut)}
               ratePlan={ratePlanLabels[detail.ratePlan.plan]}
               showNightlyPrices={isMobile}
               message={
@@ -950,7 +946,7 @@ export function BookingEditor({
       </div>
       {intent && (
         <ActionForm
-          key={intent.type + ("entry" in intent ? intent.entry.id : "")}
+          key={intent.type + intent.entry.id}
           intent={intent}
           onClose={() => {
             setIntent(null);
@@ -1266,20 +1262,19 @@ function ActionForm({
   const entry = intent.entry;
   const [leaving, setLeaving] = useState(false);
   const deleting = intent.type === "delete-payment";
-  const confirmation = deleting;
   const [defaults] = useState<PaymentValues>(() => ({
-    ...paymentDefaults(entry?.amountCents),
-    method: entry?.method ?? "cash",
-    date: entry?.paymentDate ?? propertyToday(),
-    reference: entry?.reference ?? "",
-    reason: entry?.notes ?? "",
+    ...paymentDefaults(entry.amountCents),
+    method: entry.method,
+    date: entry.paymentDate,
+    reference: entry.reference ?? "",
+    reason: entry.notes ?? "",
   }));
   const form = useReservationForm({
     defaultValues: defaults,
     validationLogic: blurThenChange(),
     validators: {
       onDynamic: ({ value }) => {
-        const result = confirmation
+        const result = deleting
           ? cancellationSchema.safeParse(value)
           : paymentSchema.safeParse(value);
         return result.success
@@ -1296,23 +1291,22 @@ function ActionForm({
   const saving = useSelector(form.store, (state) => state.isSubmitting);
   const changed = !useSelector(form.store, (state) => state.isDefaultValue);
   useEffect(() => {
-    if (!confirmation && form.state.fieldMeta.date?.errors.length) void form.validate("submit");
-  }, [confirmation, form, today]);
+    if (!deleting && form.state.fieldMeta.date?.errors.length) void form.validate("submit");
+  }, [deleting, form, today]);
   useEffect(() => onDirtyChange(changed), [changed, onDirtyChange]);
   const formId = useId();
   const title = deleting ? "Eliminar pago" : "Editar pago";
   function close() {
     if (saving) return;
-    if (changed && !confirmation) setLeaving(true);
+    if (changed && !deleting) setLeaving(true);
     else onClose();
   }
   async function submit(value: PaymentValues) {
-    if (deleting && entry) {
-      await commit([{ type: "delete-payment", paymentId: entry.id }]);
-      return;
-    }
-    const input = paymentPayload(value);
-    if (entry) await commit([{ type: "edit-payment", paymentId: entry.id, payment: input }]);
+    await commit(
+      deleting
+        ? [{ type: "delete-payment", paymentId: entry.id }]
+        : [{ type: "edit-payment", paymentId: entry.id, payment: paymentPayload(value) }],
+    );
   }
   async function commit(actions: WorkflowAction[]) {
     const result = await onReady(title, actions);
@@ -1323,14 +1317,14 @@ function ActionForm({
         result.message,
       );
   }
-  const Root = confirmation ? AlertDialog : Dialog;
-  const Content = confirmation ? AlertDialogContent : DialogContent;
-  const Header = confirmation ? AlertDialogHeader : DialogHeader;
-  const Title = confirmation ? AlertDialogTitle : DialogTitle;
-  const Description = confirmation ? AlertDialogDescription : DialogDescription;
-  const Footer = confirmation ? AlertDialogFooter : "div";
-  const CancelButton = confirmation ? AlertDialogCancel : Button;
-  const ConfirmButton = confirmation ? AlertDialogAction : Button;
+  const Root = deleting ? AlertDialog : Dialog;
+  const Content = deleting ? AlertDialogContent : DialogContent;
+  const Header = deleting ? AlertDialogHeader : DialogHeader;
+  const Title = deleting ? AlertDialogTitle : DialogTitle;
+  const Description = deleting ? AlertDialogDescription : DialogDescription;
+  const Footer = deleting ? AlertDialogFooter : "div";
+  const CancelButton = deleting ? AlertDialogCancel : Button;
+  const ConfirmButton = deleting ? AlertDialogAction : Button;
   return (
     <>
       <Root open onOpenChange={(open) => !open && close()}>
@@ -1339,7 +1333,7 @@ function ActionForm({
             <Title>{title}</Title>
             <Description>
               {deleting
-                ? `Se eliminará el pago de ${formatMoney(entry?.amountCents ?? 0)} al confirmar.`
+                ? `Se eliminará el pago de ${formatMoney(entry.amountCents)} al confirmar.`
                 : "El cambio se guardará al confirmar. Los cambios de Detalles se guardan por separado."}
             </Description>
           </Header>
@@ -1379,7 +1373,7 @@ function ActionForm({
             <ConfirmButton
               type="submit"
               form={formId}
-              variant={confirmation ? "destructive" : "default"}
+              variant={deleting ? "destructive" : "default"}
               disabled={saving}
             >
               {saving ? "Guardando…" : deleting ? "Eliminar" : "Guardar"}
@@ -1445,6 +1439,7 @@ function ContactPhone({ phone, className }: { phone: string; className?: string 
 function UnsavedDot() {
   return (
     <span
+      role="img"
       className="size-1.5 shrink-0 rounded-full bg-primary"
       aria-label="Cambios sin guardar"
       title="Cambios sin guardar"
