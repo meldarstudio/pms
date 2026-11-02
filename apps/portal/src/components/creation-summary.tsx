@@ -59,7 +59,10 @@ export function CreationSummary({
             <>
               <ul className="flex flex-col gap-2">
                 {rooms.map((room) => (
-                  <li key={room.key} className="flex min-w-0 flex-col">
+                  <li
+                    key={room.key}
+                    className="flex min-w-0 flex-wrap items-baseline justify-between gap-x-4"
+                  >
                     <span className="wrap-anywhere">{room.typeName}</span>
                     <span className="text-muted-foreground">{guestLine(room)}</span>
                   </li>
@@ -138,7 +141,7 @@ function Amount({ label, cents, currency }: { label: string; cents: number; curr
 
 export function cancellationTerms(billing: Billing, checkIn: string, today: string): string[] {
   const { chargeBasis, freeUntilDaysBeforeCheckIn: days } = billing.ratePlan.cancellationPolicy;
-  if (billing.totalCents === 0) return ["Cancelación / No se presentó · Sin cargo"];
+  if (billing.totalCents === 0) return ["Cancelación / No se presentó", "Sin cargo"];
   const firstNights = billing.rooms.reduce((sum, room) => {
     const first = room.nights.toSorted((a, b) => a.date.localeCompare(b.date))[0];
     return sum + (first?.priceCents ?? 0);
@@ -155,6 +158,6 @@ export function cancellationTerms(billing: Billing, checkIn: string, today: stri
       `Cancelación gratuita hasta el ${format(parseISO(freeUntil), "d MMM")}.`,
       `Después, cargo ${basis}: ${charge}`,
     ];
-  if (days === null && totalBasis) return [`Tarifa no reembolsable · Cargo ${basis}: ${charge}`];
-  return [`Cancelación / No se presentó · Cargo ${basis}, ${charge}`];
+  if (days === null && totalBasis) return ["Tarifa no reembolsable", `Cargo ${basis}: ${charge}`];
+  return ["Cancelación / No se presentó", `Cargo ${basis}: ${charge}`];
 }
