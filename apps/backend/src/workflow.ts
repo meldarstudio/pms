@@ -27,13 +27,22 @@ import { acceptPhone, requireStay } from "./rules";
 import { confirmationCode } from "./lib/codes";
 import { chunks } from "./lib/chunks";
 import { claimRevision, isStaleWrite } from "./db/revisions";
+import { presentReservation } from "./present";
 import {
   loadReservation,
-  presentReservations,
   readReservation,
+  roomLookups,
   type State,
   type Stay,
 } from "./reservation-read";
+
+type RoomType = typeof roomTypes.$inferSelect;
+type Room = typeof rooms.$inferSelect;
+type OccupiedRoom = Pick<Stay, "id" | "roomTypeId" | "roomId"> & {
+  checkIn: string;
+  checkOut: string;
+};
+type RoomClosure = typeof roomClosures.$inferSelect;
 import { plan, priceRooms, stayLine } from "./workflow-plan";
 
 export type CommandContext = {
@@ -75,7 +84,7 @@ export async function executeCommand(
     command.actions.some((action) => action.type === "request-culqi-refund")
   )
     throw new HttpError(503, "Culqi is not configured");
-  const result = await execute(db, id, command, false, context);
+  const result = await execute(db, id, command, context);
   if (result.culqiRefunds?.length)
     await sendCulqiRefunds(db, options.culqi, result.culqiRefunds, context);
   return readReservation(db, id, options.currency);
@@ -88,22 +97,49 @@ export async function previewCommand(
   context: CommandContext,
   currency: string,
 ) {
-  const result = await execute(db, id, command, true, context);
-  if (!result.state) return { replayed: true };
-  const [billing] = await presentReservations(db, [result.state], currency);
-  return { validation: { issues: result.issues }, billing };
+  const original = await loadReservation(db, id);
+  const { state } = await plan(db, original, command.actions, context, new Date().toISOString());
+  const { checkIn, checkOut } = state.reservation;
+  const [types, physical, otherLines, closures] = await db.batch([
+    db.select().from(roomTypes),
+    db.select().from(rooms),
+    db
+      .select({
+        id: reservationRooms.id,
+        roomTypeId: reservationRooms.roomTypeId,
+        roomId: reservationRooms.roomId,
+        checkIn: reservations.checkIn,
+        checkOut: reservations.checkOut,
+      })
+      .from(reservationRooms)
+      .innerJoin(reservations, eq(reservations.id, reservationRooms.reservationId))
+      .where(
+        and(
+          ne(reservations.id, state.reservation.id),
+          inArray(reservations.status, inventoryStatuses),
+          lt(reservations.checkIn, checkOut),
+          gt(reservations.checkOut, checkIn),
+        ),
+      ),
+    db
+      .select()
+      .from(roomClosures)
+      .where(and(lt(roomClosures.starts, checkOut), gt(roomClosures.ends, checkIn))),
+  ]);
+  const issues = [
+    ...roomIssues(changedRooms(state.lines, roomBaseline(original, state)), types, physical),
+    ...(holdsInventory(state.reservation.status)
+      ? availabilityIssues(state, physical, otherLines, closures)
+      : []),
+  ];
+  const billing = presentReservation(state, roomLookups(types, physical), currency);
+  return { validation: { issues }, billing };
 }
 
-async function execute(
-  db: Db,
-  id: string,
-  command: WorkflowCommand,
-  preview: boolean,
-  context: CommandContext,
-) {
+async function execute(db: Db, id: string, command: WorkflowCommand, context: CommandContext) {
   for (let attempt = 0; attempt < 3; attempt++) {
     try {
-      return await executeAttempt(db, id, command, preview, context);
+      return await executeAttempt(db, id, command, context);
     } catch (error) {
       if (!isStaleWrite(error)) throw error;
     }
@@ -115,7 +151,6 @@ async function executeAttempt(
   db: Db,
   id: string,
   command: WorkflowCommand,
-  preview: boolean,
   context: CommandContext,
 ) {
   const payload = JSON.stringify(command);
@@ -131,16 +166,8 @@ async function executeAttempt(
   const original = await loadReservation(db, id);
   const now = new Date().toISOString();
   const { state } = await plan(db, original, command.actions, context, now);
-  const revalidateAllRooms =
-    original.reservation.checkIn !== state.reservation.checkIn ||
-    original.reservation.checkOut !== state.reservation.checkOut ||
-    (!holdsInventory(original.reservation.status) && holdsInventory(state.reservation.status));
-  const roomIssues = await validateRooms(db, state.lines, revalidateAllRooms ? [] : original.lines);
-  if (preview) {
-    const issues = [...roomIssues, ...(await validateAvailability(db, state))];
-    return { state, issues, replayed: false };
-  }
-  rejectRoomIssues(roomIssues);
+  const revalidateAllRooms = revalidatesAllRooms(original, state);
+  rejectRoomIssues(await validateRooms(db, state.lines, roomBaseline(original, state)));
   const newMovements = state.couponMovements.filter(
     (m) => !original.couponMovements.some((o) => o.id === m.id),
   );
@@ -361,13 +388,21 @@ function rejectRoomIssues(issues: WorkflowIssue[]) {
   throw new HttpError(issue.code === "room not found" ? 404 : 400, issue.code, field);
 }
 
-async function validateRooms(
-  db: Db,
-  lines: Stay[],
-  previousLines: Stay[] = [],
-): Promise<WorkflowIssue[]> {
+function revalidatesAllRooms(original: State, state: State) {
+  return (
+    original.reservation.checkIn !== state.reservation.checkIn ||
+    original.reservation.checkOut !== state.reservation.checkOut ||
+    (!holdsInventory(original.reservation.status) && holdsInventory(state.reservation.status))
+  );
+}
+
+function roomBaseline(original: State, state: State) {
+  return revalidatesAllRooms(original, state) ? [] : original.lines;
+}
+
+function changedRooms(lines: Stay[], previousLines: Stay[]) {
   const previousById = new Map(previousLines.map((line) => [line.id, line]));
-  const affected = lines.flatMap((line, roomIndex) => {
+  return lines.flatMap((line, roomIndex) => {
     const previous = previousById.get(line.id);
     const unchanged =
       previous &&
@@ -377,11 +412,24 @@ async function validateRooms(
       previous.children === line.children;
     return unchanged ? [] : [{ line, roomIndex }];
   });
+}
+
+async function validateRooms(
+  db: Db,
+  lines: Stay[],
+  previousLines: Stay[] = [],
+): Promise<WorkflowIssue[]> {
+  const affected = changedRooms(lines, previousLines);
   if (!affected.length) return [];
-  const [types, physical] = await Promise.all([
-    db.select().from(roomTypes),
-    db.select().from(rooms),
-  ]);
+  const [types, physical] = await db.batch([db.select().from(roomTypes), db.select().from(rooms)]);
+  return roomIssues(affected, types, physical);
+}
+
+function roomIssues(
+  affected: ReturnType<typeof changedRooms>,
+  types: RoomType[],
+  physical: Room[],
+): WorkflowIssue[] {
   const issues: WorkflowIssue[] = [];
   affected.forEach(({ line, roomIndex }) => {
     const type = types.find((type) => type.id === line.roomTypeId);
@@ -396,50 +444,29 @@ async function validateRooms(
   return issues;
 }
 
-async function validateAvailability(db: Db, state: State) {
+function availabilityIssues(
+  state: State,
+  physical: Room[],
+  otherLines: OccupiedRoom[],
+  closures: RoomClosure[],
+) {
   const issues: WorkflowIssue[] = [];
-  if (!holdsInventory(state.reservation.status)) return issues;
-  const { checkIn: stayStart, checkOut: stayEnd } = state.reservation;
-  const [otherLines, physical, closures] = await Promise.all([
-    db
-      .select({ line: reservationRooms, reservation: reservations })
-      .from(reservationRooms)
-      .innerJoin(reservations, eq(reservations.id, reservationRooms.reservationId))
-      .where(
-        and(
-          ne(reservations.id, state.reservation.id),
-          inArray(reservations.status, inventoryStatuses),
-          lt(reservations.checkIn, stayEnd),
-          gt(reservations.checkOut, stayStart),
-        ),
-      ),
-    db.select().from(rooms),
-    db
-      .select()
-      .from(roomClosures)
-      .where(and(lt(roomClosures.starts, stayEnd), gt(roomClosures.ends, stayStart))),
-  ]);
-  const lines = [
-    ...otherLines.map(({ line, reservation }) => ({
-      ...line,
-      checkIn: reservation.checkIn,
-      checkOut: reservation.checkOut,
-      status: reservation.status,
-    })),
-    ...state.lines.map((line) => ({
-      ...line,
-      checkIn: state.reservation.checkIn,
-      checkOut: state.reservation.checkOut,
-      status: state.reservation.status,
+  const { checkIn, checkOut } = state.reservation;
+  const lines: OccupiedRoom[] = [
+    ...otherLines,
+    ...state.lines.map(({ id, roomTypeId, roomId }) => ({
+      id,
+      roomTypeId,
+      roomId,
+      checkIn,
+      checkOut,
     })),
   ];
   const overlap = (a: string, b: string, c: string, d: string) => a < d && b > c;
   for (const [roomIndex, line] of state.lines.entries()) {
-    const checkIn = state.reservation.checkIn;
-    const checkOut = state.reservation.checkOut;
     for (const date of requireStay(checkIn, checkOut)) {
       const count = lines.filter(
-        (l) => l.roomTypeId === line.roomTypeId && l.checkIn! <= date && l.checkOut! > date,
+        (l) => l.roomTypeId === line.roomTypeId && l.checkIn <= date && l.checkOut > date,
       ).length;
       const closed = new Set(
         closures
@@ -457,18 +484,17 @@ async function validateAvailability(db: Db, state: State) {
       }
     }
     if (!line.roomId) continue;
-    const start = checkIn;
     if (
       lines.some(
         (l) =>
           l.id !== line.id &&
           l.roomId === line.roomId &&
-          overlap(start, checkOut, l.checkIn!, l.checkOut!),
+          overlap(checkIn, checkOut, l.checkIn, l.checkOut),
       )
     )
       issues.push({ code: "room is already assigned for those dates", roomIndex, field: "roomId" });
     if (
-      closures.some((c) => c.roomId === line.roomId && overlap(start, checkOut, c.starts, c.ends))
+      closures.some((c) => c.roomId === line.roomId && overlap(checkIn, checkOut, c.starts, c.ends))
     )
       issues.push({ code: "room is closed for those dates", roomIndex, field: "roomId" });
   }

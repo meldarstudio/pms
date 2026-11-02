@@ -13,6 +13,8 @@ patches. `POST /reservations/:id/preview` evaluates actions without writing or
 reserving inventory: priceable drafts return 200 with per-room validation issues
 and `billing`, the proposed reservation in the [detail shape](#reservation-reads),
 even when saving is blocked. Room indices refer to proposed, nonremoved rooms.
+Previews skip request-ID replay and revision retries, and read the room catalog,
+overlapping reservations, and closures in one batch.
 Invalid pricing inputs return an HTTP error.
 
 `POST /reservations/preview` prices a new reservation using

@@ -22,7 +22,7 @@ import type { Cancellation } from "./lib/cancellation";
 import { chunks } from "./lib/chunks";
 import { couponMovementQuery, type Coupon, type CouponMovement } from "./lib/coupons";
 import type { Refund } from "./lib/refunds";
-import { presentReservation } from "./present";
+import { presentReservation, type RoomLookups } from "./present";
 
 type Night = Pick<
   typeof reservationRoomNights.$inferSelect,
@@ -59,11 +59,18 @@ export async function loadReservations(db: Db, ids: string[]): Promise<State[]> 
 export async function presentReservations(db: Db, states: State[], currency: string) {
   if (!states.length) return [];
   const [types, physical] = await db.batch([db.select().from(roomTypes), db.select().from(rooms)]);
-  const lookups = {
+  const lookups = roomLookups(types, physical);
+  return states.map((state) => presentReservation(state, lookups, currency));
+}
+
+export function roomLookups(
+  types: (typeof roomTypes.$inferSelect)[],
+  physical: (typeof rooms.$inferSelect)[],
+): RoomLookups {
+  return {
     roomTypes: new Map(types.map((type) => [type.id, type])),
     rooms: new Map(physical.map((room) => [room.id, room])),
   };
-  return states.map((state) => presentReservation(state, lookups, currency));
 }
 
 export async function readReservation(db: Db, id: string, currency: string) {
