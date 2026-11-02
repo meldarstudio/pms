@@ -159,15 +159,16 @@ export function NewBooking({
   const availability = useAvailability(values.checkIn, values.checkOut, validStay);
   const availabilityReady =
     validStay && roomTypes.isSuccess && rooms.isSuccess && availability.isSuccess;
+  const availabilityFresh = availabilityReady && !availability.isFetching;
   const selection = newBookingAvailability(
     values.rooms,
     availability.data?.roomTypes ?? [],
     rooms.data ?? [],
   );
   useEffect(() => {
-    if (availabilityReady && !busy && selection.rooms !== values.rooms)
+    if (availabilityFresh && !busy && selection.rooms !== values.rooms)
       form.setFieldValue("rooms", selection.rooms);
-  }, [availabilityReady, busy, selection.rooms, values.rooms, form]);
+  }, [availabilityFresh, busy, selection.rooms, values.rooms, form]);
   const setupMessage =
     roomTypes.isSuccess && roomTypes.data.length === 0
       ? "Aún no hay tipos de habitación. Agrégalos en Configuración."
@@ -201,7 +202,7 @@ export function NewBooking({
   const billing =
     previewInput && preview.isSuccess && !preview.isFetching ? preview.data.billing : null;
   const ready =
-    availabilityReady &&
+    availabilityFresh &&
     selection.rooms === values.rooms &&
     billing !== null &&
     !preview.isFetching &&

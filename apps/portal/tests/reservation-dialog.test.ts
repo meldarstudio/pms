@@ -2474,6 +2474,80 @@ it("offers only server-listed free room numbers and types not used up by this dr
   assert.equal(button("Agregar habitación").disabled, false);
 });
 
+for (const { name, cached, fresh, roomId, shown } of [
+  {
+    name: "clears a preselected room the fresh read no longer lists",
+    cached: ["room-1"],
+    fresh: [],
+    roomId: null,
+    shown: /^Sin asignar/,
+  },
+  {
+    name: "keeps a preselected room the fresh read lists again",
+    cached: [],
+    fresh: ["room-1"],
+    roomId: "room-1",
+    shown: /^101/,
+  },
+])
+  it(`rechecks cached availability on reopen before creating and ${name}`, async () => {
+    const writes: CreateBookingInput[] = [];
+    mockCreationApi(async (input) => {
+      writes.push(input);
+      return Response.json(detail(), { status: 201 });
+    });
+    const availabilityFor = (url: URL, freeRoomIds: string[]) => ({
+      checkIn: url.searchParams.get("checkIn"),
+      checkOut: url.searchParams.get("checkOut"),
+      nights: 1,
+      currency: "PEN",
+      roomTypes: [{ ...doubleType, free: 5, freeRoomIds, totalCents: 15000, nights: [] }],
+    });
+    page.api.on("GET", "/availability", ({ url }) => availabilityFor(url, cached));
+    function Reopenable() {
+      const [open, setOpen] = React.useState(true);
+      return React.createElement(
+        React.Fragment,
+        null,
+        React.createElement("button", { type: "button", onClick: () => setOpen(!open) }, "Toggle"),
+        open &&
+          React.createElement(newBookings.NewBooking, {
+            target: createTarget,
+            onCreated: () => {},
+            onCancel: () => {},
+            onDirtyChange: () => {},
+            onSavingChange: () => {},
+          }),
+      );
+    }
+    await render(React.createElement(Reopenable));
+    await until(() => !button("Crear reserva").disabled, "The first open must load");
+    await React.act(async () => button("Toggle").click());
+    await until(
+      () => window.document.querySelector('[name="fullName"]') === null,
+      "Closing must unmount the form",
+    );
+
+    const held = page.api.hold("GET", "/availability");
+    await React.act(async () => button("Toggle").click());
+    await until(() => !!held.request, "Reopening must refetch the cached availability");
+    await fill("fullName", "Ada Lovelace");
+    await flush();
+    assert.equal(button("Crear reserva").disabled, true);
+    await submit();
+    await flush();
+    assert.equal(writes.length, 0, "Submitting must wait for the fresh availability");
+
+    await React.act(async () =>
+      held.release(Response.json(availabilityFor(held.request!.url, fresh))),
+    );
+    await until(() => !button("Crear reserva").disabled, "Fresh availability must allow creating");
+    assert.match(fieldTrigger("Hab.").textContent, shown);
+    await submit();
+    await until(() => writes.length === 1, "The rechecked draft may be created");
+    assert.equal(writes[0].rooms[0].roomId ?? null, roomId);
+  });
+
 it("replaces sold-out room controls with an empty state and restores them when dates are available", async () => {
   mockCreationApi(async () => Response.json(detail()));
   let finish!: (response: Response) => void;

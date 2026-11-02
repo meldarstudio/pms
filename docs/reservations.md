@@ -765,7 +765,9 @@ open changed or invalid draft blocks creating. Check-in has no lower bound so st
 record past stays. Room choices come from one `GET /availability` read for the dates:
 types while draft rooms stay below their `free`, and room numbers from
 [`freeRoomIds`](property-setup.md#occupancy-and-availability) not already chosen in the
-draft. New dates clear choices the fresh read no longer offers. Room rows use the shared
+draft. Choices are checked only against a fresh read: while a cached read refetches
+(reopening the dialog, focus), creating waits and choices stay as they are; then the
+fresh read clears choices it no longer offers, as it does after new dates. Room rows use the shared
 [room row](../apps/portal/src/components/reservation-room-rows.tsx) layout.
 
 Creating records no payment. The dialog stays open, switching to the new reservation
