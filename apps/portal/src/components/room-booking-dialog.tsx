@@ -1,7 +1,7 @@
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState, useId } from "react";
 import { useSelector } from "@tanstack/react-form";
 import { useQueryClient } from "@tanstack/react-query";
-import { ArrowUpRightIcon, LogInIcon, LogOutIcon, PlusIcon, XIcon } from "lucide-react";
+import { ArrowUpRightIcon, LogInIcon, LogOutIcon, PhoneIcon, PlusIcon, XIcon } from "lucide-react";
 import { cn } from "cn";
 import { guestValues, overlappingRoomIds, availableRoomTypeIds } from "@/lib/reservation-editor";
 import { useStayDraft } from "@/lib/use-stay-draft";
@@ -72,6 +72,7 @@ import {
 import { propertyToday } from "@/lib/property-calendar";
 import { usePropertyCalendar } from "@/lib/use-property-calendar";
 import { phoneDisplay } from "@/lib/phone";
+import { ratePlanLabels } from "@/lib/rate-plans";
 
 export type BookingTarget =
   | {
@@ -301,12 +302,14 @@ function BookingEditorSkeleton() {
         aria-busy
         className="flex min-h-0 flex-1 flex-col"
       >
-        <div className="flex h-12 shrink-0 items-start gap-2 pt-[max(1rem,env(safe-area-inset-top))] pl-[max(1rem,env(safe-area-inset-left))]">
-          <Skeleton className="h-7 w-36" />
-          <Skeleton className="mt-1 h-5 w-24" />
-        </div>
-        <div className="h-5 shrink-0 safe-area-padding-x">
+        <div className="flex shrink-0 flex-col gap-1.5 pt-[max(1rem,env(safe-area-inset-top))] pb-2 pl-[max(1rem,env(safe-area-inset-left))]">
+          <div className="flex items-center gap-2">
+            <Skeleton className="h-4 w-20" />
+            <Skeleton className="h-5 w-24" />
+          </div>
+          <Skeleton className="h-6 w-44" />
           <Skeleton className="h-5 w-52" />
+          <Skeleton className="h-5 w-36" />
         </div>
         <div className="flex h-8 shrink-0 items-center justify-around border-b">
           {[0, 1, 2].map((tab) => (
@@ -328,7 +331,7 @@ function BookingEditorSkeleton() {
           <Skeleton className="h-22.25 shrink-0" />
         </div>
         <div className="shrink-0 pt-3 pb-px safe-area-padding-x">
-          <Skeleton className="h-7" />
+          <Skeleton className="h-8" />
         </div>
         <div className="flex shrink-0 gap-2 py-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] safe-area-padding-x">
           <Skeleton className="h-8 flex-1" />
@@ -344,11 +347,14 @@ function BookingEditorSkeleton() {
       aria-busy
       className="flex min-w-0 flex-col gap-4"
     >
-      <div className="flex items-center gap-2 pr-8">
-        <Skeleton className="h-7 w-40" />
-        <Skeleton className="h-5 w-24" />
+      <div className="flex flex-col gap-1.5 pr-8">
+        <div className="flex items-center gap-3">
+          <Skeleton className="h-4 w-36" />
+          <Skeleton className="h-5 w-24" />
+        </div>
+        <Skeleton className="h-8 w-60" />
+        <Skeleton className="h-5 w-36" />
       </div>
-      <Skeleton className="-mt-2 h-7 w-52" />
       <div className="flex flex-col gap-4">
         <Skeleton className="h-8 w-52" />
         <div className="grid min-w-0 gap-6 p-px lg:grid-cols-[minmax(0,1fr)_280px]">
@@ -364,7 +370,7 @@ function BookingEditorSkeleton() {
             </div>
             <Skeleton className="h-22.25" />
           </div>
-          <Skeleton className="h-77.75" />
+          <Skeleton className="h-82.5" />
         </div>
       </div>
       <div className="flex flex-wrap items-center justify-between gap-3">
@@ -494,11 +500,22 @@ export function BookingEditor({
     <Button
       type="submit"
       form={formId}
-      className={cn(mobileEditor && "w-full")}
+      className={cn(mobileEditor && "min-w-0 flex-1")}
       disabled={stayDraft.submission.disabled || busy}
     >
       {submitting && <Spinner data-icon="inline-start" />}
       {submitting ? "Guardando…" : "Guardar cambios"}
+    </Button>
+  );
+  const undoDetails = compactEditor && (
+    <Button
+      type="button"
+      variant="outline"
+      className={cn(mobileEditor && "min-w-0 flex-1")}
+      disabled={!dirty || busy}
+      onClick={stayDraft.discard}
+    >
+      Deshacer cambios
     </Button>
   );
   const nights =
@@ -515,34 +532,38 @@ export function BookingEditor({
       {lifecycle.dialogs}
       {mobileEditor && (
         <header className="flex shrink-0 items-start gap-2 pt-[max(1rem,env(safe-area-inset-top))] pr-[calc(2.25rem+max(1rem,env(safe-area-inset-right)))] pb-2 pl-[max(1rem,env(safe-area-inset-left))]">
-          <div className="flex min-w-0 flex-1 flex-col gap-0.5">
-            <span className="text-xs text-muted-foreground">{detail.code}</span>
-            <div className="flex min-w-0 items-center gap-2">
-              <span className="min-w-0 truncate text-sm font-medium">
-                {contact.fullName.trim()}
+          <div className="flex min-w-0 flex-1 flex-col gap-1.5">
+            <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
+              <span className="font-mono text-xs tracking-widest wrap-anywhere text-muted-foreground uppercase">
+                #{detail.code}
               </span>
               <ReservationStatusBadge status={detail.status} />
             </div>
-            <span className="text-xs text-muted-foreground">
+            <span className="min-w-0 truncate text-lg/tight font-semibold tracking-tight">
+              {contact.fullName.trim()}
+            </span>
+            <span className="text-sm text-muted-foreground">
               {`${stayDate(detail.checkIn, "d MMM")} – ${stayDate(detail.checkOut, "d MMM yyyy")} · ${nights} ${nights === 1 ? "noche" : "noches"}`}
             </span>
+            {contact.phone && <ContactPhone phone={contact.phone} className="text-sm" />}
           </div>
           {viewReservation}
         </header>
       )}
       {!stayOnly && !mobileEditor && (
-        <div className="flex shrink-0 flex-wrap items-center gap-2 pr-8">
-          <span className="text-lg font-semibold">{contact.fullName.trim()}</span>
-          <ReservationStatusBadge status={detail.status} />
-        </div>
-      )}
-      {!stayOnly && !mobileEditor && (
-        <p className="-mt-2 flex shrink-0 flex-wrap items-center gap-1 text-sm wrap-anywhere text-muted-foreground">
-          {[contact.phone && phoneDisplay(contact.phone).text, detail.code]
-            .filter(Boolean)
-            .join(" · ")}
-          {viewReservation}
-        </p>
+        <header className="flex shrink-0 flex-col gap-1.5 pr-16">
+          <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5">
+            <p className="font-mono text-xs tracking-widest wrap-anywhere text-muted-foreground uppercase">
+              Reserva #{detail.code}
+            </p>
+            <ReservationStatusBadge status={detail.status} />
+          </div>
+          <span className="text-2xl font-semibold tracking-tight wrap-anywhere">
+            {contact.fullName.trim()}
+          </span>
+          {viewReservation && <div className="absolute top-2 right-10">{viewReservation}</div>}
+          {contact.phone && <ContactPhone phone={contact.phone} className="text-sm" />}
+        </header>
       )}
       <Tabs
         value={tab}
@@ -570,7 +591,7 @@ export function BookingEditor({
               {dirty && <UnsavedDot />}
             </TabsTrigger>
             <TabsTrigger value="payments">
-              Pagos
+              Movimientos
               {(paymentDirty || actionDirty) && <UnsavedDot />}
             </TabsTrigger>
             <TabsTrigger value="guests">
@@ -646,7 +667,7 @@ export function BookingEditor({
                       <section className={cn("flex flex-col", mobileEditor ? "gap-3" : "gap-5")}>
                         {mobileEditor && (
                           <div className="flex flex-wrap items-center justify-between gap-2">
-                            <h3 className="font-medium">Habitaciones</h3>
+                            <h3 className="text-sm font-medium">Habitaciones</h3>
                           </div>
                         )}
                         {activeDrafts.map((draft, i) => {
@@ -714,7 +735,12 @@ export function BookingEditor({
                       </FieldGroup>
                     </section>
                   )}
-                  {bodySave && <div className="flex">{saveDetails}</div>}
+                  {bodySave && (
+                    <div className="flex gap-2">
+                      {undoDetails}
+                      {saveDetails}
+                    </div>
+                  )}
                 </fieldset>
               </form>
             </TabsContent>
@@ -738,6 +764,7 @@ export function BookingEditor({
                     disabled={busy || detail.balanceCents <= 0}
                     onDirtyChange={setPaymentDirty}
                     onReady={savePayment}
+                    undoable
                   />
                 </div>
                 {detail.balanceCents <= 0 && paymentDirty && (
@@ -760,7 +787,6 @@ export function BookingEditor({
                   </div>
                 )}
                 <section aria-label="Movimientos" className="@container/mov min-w-0">
-                  <h3 className="border-b pb-2 text-sm font-medium">Movimientos</h3>
                   <Movements
                     detail={detail}
                     disabled={busy}
@@ -813,6 +839,7 @@ export function BookingEditor({
                   ? `${stayDate(common.checkIn, "d MMM")} – ${stayDate(common.checkOut, "d MMM yyyy")} · ${(Date.parse(common.checkOut) - Date.parse(common.checkIn)) / 86400000} noches`
                   : null
               }
+              ratePlan={ratePlanLabels[detail.ratePlan.plan]}
               showNightlyPrices={isMobile}
               message={
                 summary.invalidPrices
@@ -838,7 +865,6 @@ export function BookingEditor({
                   </div>
                 )
               }
-              provisional={summary.provisional}
               collapsible={mobileEditor}
               expanded={billOpen}
               onExpandedChange={setBillOpen}
@@ -853,18 +879,16 @@ export function BookingEditor({
             "max-md:flex max-md:shrink-0 max-md:flex-col max-md:gap-3 max-md:py-3 max-md:pb-[max(0.75rem,env(safe-area-inset-bottom))] max-md:safe-area-padding-x",
         )}
       >
-        {compactEditor && independentDraftDirty && (
-          <p className="text-xs text-muted-foreground">
-            Guarda o descarta los cambios de huéspedes, pagos o descuento antes del check-in o
-            check-out.
-          </p>
-        )}
         {compactEditor &&
           (mobileEditor && dirty ? (
             tab === "details" ? (
-              saveDetails
+              <div key="save-details" className="flex gap-2">
+                {undoDetails}
+                {saveDetails}
+              </div>
             ) : (
               <Button
+                key="back-to-details"
                 type="button"
                 className="w-full"
                 disabled={busy}
@@ -879,7 +903,10 @@ export function BookingEditor({
           ) : (
             <div className="flex shrink-0 flex-wrap items-center justify-end gap-2 max-md:flex-nowrap">
               {lifecycle.running && (
-                <p role="status" className="mr-auto text-xs text-muted-foreground">
+                <p
+                  role="status"
+                  className={cn("mr-auto text-xs text-muted-foreground", mobileEditor && "sr-only")}
+                >
                   Guardando estado…
                 </p>
               )}
@@ -1186,6 +1213,7 @@ function GuestFields({
         disabled={disabled || !!editing}
         onSave={onSave}
         onDirtyChange={setAddDirty}
+        undoable
       />
       <Dialog
         open={!!editing}
@@ -1394,6 +1422,23 @@ export function DiscardChanges({
         </div>
       </DialogContent>
     </Dialog>
+  );
+}
+
+function ContactPhone({ phone, className }: { phone: string; className?: string }) {
+  const display = phoneDisplay(phone);
+  return (
+    <a
+      href={display.href}
+      className={cn(
+        "flex w-fit items-center gap-1.5 text-muted-foreground hover:text-foreground",
+        className,
+      )}
+    >
+      <PhoneIcon aria-hidden className="size-3.5 shrink-0" />
+      <span className="sr-only">Teléfono </span>
+      {display.text}
+    </a>
   );
 }
 

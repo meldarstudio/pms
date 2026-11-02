@@ -2,7 +2,6 @@ import { useEffect, useId, useMemo, useRef, useState } from "react";
 import { cn } from "cn";
 import { usePropertyCalendar } from "@/lib/use-property-calendar";
 import { useSelector } from "@tanstack/react-form";
-import { PlusIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { FieldGroup, FieldError } from "@/components/ui/field";
 import type { ReservationDetail, StayingGuest, WorkflowAction } from "@/lib/api";
@@ -50,6 +49,7 @@ export function GuestEntryForm({
   onDone,
   onCancel,
   scrollable = false,
+  undoable = false,
 }: {
   detail: ReservationDetail;
   guest?: StayingGuest;
@@ -59,6 +59,7 @@ export function GuestEntryForm({
   onDone?: () => void;
   onCancel?: () => void;
   scrollable?: boolean;
+  undoable?: boolean;
 }) {
   const [defaults, setDefaults] = useState<GuestValues>(() =>
     guest
@@ -148,19 +149,19 @@ export function GuestEntryForm({
             </form.AppField>
           </FieldGroup>
         </FieldGroup>
-        <div className="flex shrink-0 items-center gap-2">
+        <div className={cn("flex shrink-0 items-center gap-2", onCancel && "justify-end")}>
+          {onCancel && (
+            <Button type="button" variant="outline" onClick={onCancel}>
+              Cancelar
+            </Button>
+          )}
+          {undoable && <UndoChanges disabled={unchanged} onClick={() => form.reset(defaults)} />}
           <Button
             type="submit"
             disabled={disabled || submitting || (!guest && detail.stayingGuests.length >= 200)}
           >
-            {!guest && <PlusIcon data-icon="inline-start" />}
             {submitting ? "Guardando…" : guest ? "Guardar" : "Agregar huésped"}
           </Button>
-          {onCancel && (
-            <Button type="button" variant="ghost" onClick={onCancel}>
-              Cancelar
-            </Button>
-          )}
         </div>
       </fieldset>
     </form>
@@ -176,6 +177,7 @@ export function PaymentForm({
   scrollable = false,
   onCancel,
   onSaved,
+  undoable = false,
 }: {
   detail: ReservationDetail;
   suggestedAmountCents?: number;
@@ -185,6 +187,7 @@ export function PaymentForm({
   scrollable?: boolean;
   onCancel?: () => void;
   onSaved?: (detail: ReservationDetail) => void;
+  undoable?: boolean;
 }) {
   const { today } = usePropertyCalendar();
   const { canReplay } = useReservationCommands(detail.id);
@@ -472,6 +475,15 @@ export function PaymentForm({
               Cerrar
             </Button>
           )}
+          {undoable && (
+            <UndoChanges
+              disabled={unchanged}
+              onClick={() => {
+                form.reset(defaults);
+                prefilledCode.current = "";
+              }}
+            />
+          )}
           <Button
             type="submit"
             className="w-fit"
@@ -494,5 +506,13 @@ export function PaymentForm({
         </div>
       </fieldset>
     </form>
+  );
+}
+
+function UndoChanges({ disabled, onClick }: { disabled: boolean; onClick: () => void }) {
+  return (
+    <Button type="button" variant="outline" disabled={disabled} onClick={onClick}>
+      Deshacer cambios
+    </Button>
   );
 }

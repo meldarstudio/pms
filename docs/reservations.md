@@ -693,10 +693,19 @@ apply. Any intervening status change permanently invalidates that undo, even if 
 status later cycles back; leaving the editor/page also invalidates it. Cancellation
 must never be restored through an earlier check-in/checkout toast.
 
+The header matches the page's identity block: `Reserva #code` with the status badge,
+then the guest name, then the contact phone as a `tel:` link with a phone icon. On
+phones the badge sits beside `#code`, and the phone follows the date range on its own
+line. **Ver reserva completa** sits beside the ✕ in the top-right corner on every
+screen size. The tabs are Detalles, Movimientos and Huéspedes; the bill shows no preview badge.
+
 Details save dates, rooms, and notes only, through Guardar cambios in the form; on
-phones a dirty details draft replaces the footer actions with it. There is no discard
-button: Cerrar, ✕, Escape, and **Ver reserva completa** ask before discarding. Each
-tab shows a dot while its form has unsaved input; the independent discount draft shows
+phones a dirty details draft replaces the footer actions with **Deshacer cambios** and
+Guardar cambios. From another tab, a dirty details draft offers **Volver a Detalles**,
+which only switches tabs and never saves. Details, the new-guest form and the payment
+form each offer **Deshacer cambios** (left of the save button, no icons), which restores that form's opening values and
+is disabled while unchanged. Cerrar, ✕, Escape, and **Ver reserva completa** ask before
+discarding. Each tab shows a dot while its form has unsaved input; the independent discount draft shows
 none. The compact edit dialog uses the same discount popover as the page, saving
 `set-discount` only on Aplicar or Quitar and retaining failed drafts. Closing preserves
 calendar position. Rooms use the shared
@@ -710,7 +719,8 @@ blocks check-in/checkout. Disable writes while any save is queued/running, inclu
 discount saves.
 
 [`BookingSummary`](../apps/portal/src/components/booking-summary.tsx) shows the saved
-or server-preview bill separately from creation: Subtotal only with a discount,
+or server-preview bill separately from creation. Under the date range it names the
+reservation's rate plan (**Plan Flexible**/**Plan No reembolsable**) without its terms. Rows: Subtotal only with a discount,
 Descuento, Total, gross Pagado and nonzero coupon/refund rows. It uses the page's
 account status without the unpaid-deposit note or plan/schedule rows: the dialog
 emphasizes the balance, and the page owns the deposit shortfall. Draft
@@ -719,7 +729,7 @@ On phones the footer accordion keeps its discount draft mounted through collapse
 resize; the coloured trigger is the sole balance display even when expanded. Its
 upward-opening breakdown scrolls independently above the persistent footer actions.
 
-Pagos shows the payment form only while the saved bill owes money. It defaults to
+Movimientos shows the payment form only while the saved bill owes money. It defaults to
 the full balance (the immediate post-creation cash suggestion still uses the required
 initial payment), and shares the page's oldest-first movement rows and payment locks.
 Refund and coupon rows are read-only there: refunds are returned and resolved on the
@@ -771,7 +781,7 @@ fresh read clears choices it no longer offers, as it does after new dates. Room 
 [room row](../apps/portal/src/components/reservation-room-rows.tsx) layout.
 
 Creating records no payment. The dialog stays open, switching to the new reservation
-on Pagos with Importe prefilled from its required initial payment.
+on Movimientos with Importe prefilled from its required initial payment.
 
 ### Reservation command module
 

@@ -4,7 +4,6 @@ import { ChevronDownIcon, ChevronUpIcon } from "lucide-react";
 import { accountStatus } from "@/components/balance-status";
 import { DiscountPopover } from "@/components/discount-popover";
 import { NightlyPriceDetail } from "@/components/nightly-price-detail";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import {
@@ -39,6 +38,7 @@ export function BookingSummary({
   summary,
   currency,
   stayLabel,
+  ratePlan,
   showNightlyPrices = false,
   message,
   error,
@@ -46,7 +46,6 @@ export function BookingSummary({
   discountDisabled = false,
   onDiscountSave,
   onDiscountDirtyChange,
-  provisional = false,
   collapsible = false,
   expanded = false,
   onExpandedChange,
@@ -56,6 +55,7 @@ export function BookingSummary({
   summary: WorkflowBilling | null;
   currency: string;
   stayLabel: string | null;
+  ratePlan?: string;
   showNightlyPrices?: boolean;
   message: string | null;
   error?: ReactNode;
@@ -63,7 +63,6 @@ export function BookingSummary({
   discountDisabled?: boolean;
   onDiscountSave?: (amountCents: number) => Promise<ReservationCommandResult>;
   onDiscountDirtyChange?: (dirty: boolean) => void;
-  provisional?: boolean;
   collapsible?: boolean;
   expanded?: boolean;
   onExpandedChange?: (expanded: boolean) => void;
@@ -89,9 +88,8 @@ export function BookingSummary({
       <span className="inline-flex items-center gap-1.5 font-medium">
         {status && <status.Icon aria-hidden className="size-4 shrink-0" />}
         {status?.label ?? "Saldo"}
-        {provisional && <Badge variant="preview">Vista previa</Badge>}
       </span>
-      <output aria-label={status?.label ?? "Saldo"} className="font-semibold tabular-nums">
+      <output aria-label={status?.label ?? "Saldo"} className="font-medium tabular-nums">
         {status ? money(status.cents) : "—"}
       </output>
     </span>
@@ -119,10 +117,15 @@ export function BookingSummary({
             <CardTitle>
               <h3 id={titleId}>Resumen de reserva</h3>
             </CardTitle>
-            {stayLabel && <CardDescription>{stayLabel}</CardDescription>}
+            {(stayLabel || ratePlan) && (
+              <CardDescription className="flex flex-col">
+                {stayLabel && <span>{stayLabel}</span>}
+                {ratePlan && <span>Plan {ratePlan}</span>}
+              </CardDescription>
+            )}
           </CardHeader>
           <CardContent className="flex flex-col gap-3">
-            <div className="flex flex-col gap-4">
+            <div className="flex flex-col gap-3">
               {(cancelled ? [] : rooms).map((room, index) => (
                 <RoomSummary
                   key={room.key}
@@ -164,9 +167,10 @@ export function BookingSummary({
                   />
                 ))}
               <SummaryRow
-                label={<span className="font-medium">Total</span>}
+                label="Total"
                 cents={summary?.totalCents ?? null}
                 currency={currency}
+                emphasis
               />
               <SummaryRow label="Pagado" cents={summary?.paidCents ?? null} currency={currency} />
               {!!summary?.couponAppliedCents && (
@@ -227,7 +231,12 @@ export function BookingSummary({
                   />
                 }
               >
-                <span className={cn("flex w-full items-center gap-3 px-2.5 py-1.5", status?.tone)}>
+                <span
+                  className={cn(
+                    "flex w-full items-center gap-3 px-(--card-spacing) py-2",
+                    status?.tone,
+                  )}
+                >
                   {balance}
                   {expanded ? (
                     <ChevronDownIcon aria-hidden data-icon="inline-end" />
@@ -280,7 +289,7 @@ function RoomSummary({
           currency={currency}
         />
       </dl>
-      <p className="text-xs text-muted-foreground">
+      <p className="text-muted-foreground">
         {showNightlyPrice && nightlyPrice ? `${nightlyPrice} · ` : ""}
         {guests}
       </p>
@@ -292,15 +301,22 @@ function SummaryRow({
   label,
   cents,
   currency,
+  emphasis = false,
 }: {
   label: ReactNode;
   cents: number | null;
   currency: string;
+  emphasis?: boolean;
 }) {
   return (
-    <div className="grid min-w-0 grid-cols-[minmax(0,1fr)_6rem] items-baseline gap-4">
+    <div
+      className={cn(
+        "grid min-w-0 grid-cols-[minmax(0,1fr)_6rem] items-baseline gap-4",
+        emphasis && "font-medium",
+      )}
+    >
       <dt className="min-w-0 wrap-anywhere">{label}</dt>
-      <dd className="w-24 shrink-0 text-right tabular-nums">
+      <dd className="text-right tabular-nums">
         {cents === null ? (
           <span aria-label="No disponible">...</span>
         ) : (
