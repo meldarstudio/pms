@@ -11,7 +11,7 @@ import {
 } from "@/components/ui/empty";
 import { NightlyPriceDetail } from "@/components/nightly-price-detail";
 import { Separator } from "@/components/ui/separator";
-import { Spinner } from "@/components/ui/spinner";
+import { Skeleton } from "@/components/ui/skeleton";
 import type { CreationPreview } from "@/lib/api";
 import { addDateLabelDays, format } from "@/lib/dates";
 import { formatMoney } from "@/lib/money";
@@ -45,6 +45,7 @@ export function CreationSummary({
   discount: ReactNode;
 }) {
   const titleId = useId();
+  const loading = !billing && !error && message === null;
   return (
     <section aria-labelledby={titleId} className="min-w-0">
       <Card size="sm">
@@ -55,7 +56,7 @@ export function CreationSummary({
           {stayLabel && <CardDescription>{stayLabel}</CardDescription>}
         </CardHeader>
         <CardContent className="flex flex-col gap-3">
-          {billing || error ? (
+          {billing || error || loading ? (
             <>
               <ul className="flex flex-col gap-2">
                 {rooms.map((room) => (
@@ -101,24 +102,61 @@ export function CreationSummary({
                     }))}
                   />
                 </>
-              ) : (
+              ) : error ? (
                 error
+              ) : (
+                <AmountsSkeleton discount={discount} />
               )}
             </>
           ) : (
             <Empty role="status" className="gap-3 border border-dashed p-5 md:p-5">
               <EmptyHeader>
                 <EmptyMedia variant="icon">
-                  {message === null ? <Spinner /> : <ReceiptTextIcon />}
+                  <ReceiptTextIcon />
                 </EmptyMedia>
-                <EmptyTitle>{message === null ? "Calculando…" : "Aún no hay total"}</EmptyTitle>
-                {message !== null && <EmptyDescription>{message}</EmptyDescription>}
+                <EmptyTitle>Aún no hay total</EmptyTitle>
+                <EmptyDescription>{message}</EmptyDescription>
               </EmptyHeader>
             </Empty>
           )}
         </CardContent>
       </Card>
     </section>
+  );
+}
+
+function AmountsSkeleton({ discount }: { discount: ReactNode }) {
+  return (
+    <>
+      {discount}
+      <div aria-busy className="flex flex-col gap-3">
+        <p role="status" className="sr-only">
+          Calculando…
+        </p>
+        <div aria-hidden className="flex flex-col gap-2">
+          <div className="flex items-baseline justify-between gap-4">
+            <span className="text-sm font-medium">Total</span>
+            <TextSkeleton className="text-xl" width="w-16" />
+          </div>
+          <div className="flex items-baseline justify-between gap-4">
+            <span className="text-muted-foreground">Pago inicial requerido</span>
+            <TextSkeleton width="w-10" />
+          </div>
+        </div>
+        <div aria-hidden className="flex flex-col gap-0.5">
+          <TextSkeleton width="w-44" />
+          <TextSkeleton width="w-52" />
+        </div>
+      </div>
+    </>
+  );
+}
+
+function TextSkeleton({ className, width }: { className?: string; width: string }) {
+  return (
+    <span className={className}>
+      <Skeleton className={`inline-block h-lh align-top ${width}`} />
+    </span>
   );
 }
 

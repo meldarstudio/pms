@@ -106,7 +106,8 @@ layout shift; the reservation page still has a single-block placeholder.
 Measure loaded versus delayed-read boxes in a browser at desktop/phone widths
 before adjusting geometry. Use disposable local sample data and the real sign-in
 flow. Playwright, if needed, runs from a scratch directory outside this repo; it
-is not a project dependency.
+is not a project dependency. The `loading-skeleton` agent skill
+(`.claude/skills/loading-skeleton`) scripts this measurement.
 
 ## API environment
 
