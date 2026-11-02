@@ -37,7 +37,6 @@ import {
   useRoomTypes,
 } from "@/lib/queries";
 import { unavailableRoomIds } from "@/lib/assignment-availability";
-import { useIsMobile } from "@/hooks/use-mobile";
 import { ratePlanLabels, ratePlanSummary } from "@/lib/rate-plans";
 import { changeCheckIn, minimumCheckOut } from "@/lib/reservation-editor";
 import { blurThenChange, submitForm, useReservationForm } from "@/lib/reservation-form";
@@ -68,7 +67,6 @@ export function NewBooking({
   const roomTypes = useRoomTypes();
   const rooms = useRooms();
   const ratePlans = useRatePlans();
-  const isMobile = useIsMobile();
   const { today } = usePropertyCalendar();
   const schema = useMemo(() => newBookingSchema(roomTypes.data ?? []), [roomTypes.data]);
   const [defaults] = useState<NewBookingValues>(() => {
@@ -245,7 +243,7 @@ export function NewBooking({
           <div className="flex min-w-0 flex-col gap-5">
             <FieldSet>
               <FieldLegend className="md:sr-only">Estadía</FieldLegend>
-              <FieldGroup className="grid grid-cols-1 gap-3 md:grid-cols-3">
+              <FieldGroup className="grid grid-cols-1 gap-3 md:grid-cols-2">
                 <form.AppField
                   name="checkIn"
                   listeners={{
@@ -276,13 +274,14 @@ export function NewBooking({
                   )}
                 </form.AppField>
                 <form.AppField name="ratePlan">
-                  {(field) =>
-                    isMobile ? (
-                      <field.ChoiceCards label="Tarifa" options={planOptions} />
-                    ) : (
-                      <field.Choice label="Tarifa" options={planOptions} />
-                    )
-                  }
+                  {(field) => (
+                    <field.ChoiceCards
+                      label="Tarifa"
+                      options={planOptions}
+                      className="md:col-span-2"
+                      optionsClassName="md:grid-cols-2"
+                    />
+                  )}
                 </form.AppField>
               </FieldGroup>
             </FieldSet>

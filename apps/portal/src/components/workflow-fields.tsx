@@ -266,11 +266,15 @@ export function ChoiceCardField({
   error,
   id: providedId,
   name,
+  className,
+  optionsClassName,
 }: {
   label: string;
   value: string;
   onChange: (value: string) => void;
   options: { value: string; label: string; description?: string }[];
+  className?: string;
+  optionsClassName?: string;
   disabled?: boolean;
   error?: string;
   id?: string;
@@ -279,9 +283,10 @@ export function ChoiceCardField({
   const generatedId = useId();
   const id = providedId ?? generatedId;
   return (
-    <FieldSet data-disabled={disabled} data-invalid={!!error}>
+    <FieldSet data-disabled={disabled} data-invalid={!!error} className={className}>
       <FieldLegend variant="label">{label}</FieldLegend>
       <RadioGroup
+        className={optionsClassName}
         name={name}
         value={value}
         disabled={disabled}

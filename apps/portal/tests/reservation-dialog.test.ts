@@ -1123,6 +1123,28 @@ async function choose(label: string, option: string, index = 0) {
   await React.act(async () => (item as HTMLElement).click());
 }
 
+function ratePlanRadios() {
+  const legend = Array.from(window.document.querySelectorAll("legend")).find(
+    (item) => item.textContent.trim() === "Tarifa",
+  );
+  assert.ok(legend?.parentElement, "Missing Tarifa radio group");
+  return Array.from(legend.parentElement.querySelectorAll("label")).map((option) => ({
+    radio: option.querySelector<HTMLElement>('[role="radio"]')!,
+    label: option.querySelector('[data-slot="field-content"]')?.firstElementChild?.textContent,
+  }));
+}
+
+function checkedRatePlan() {
+  return ratePlanRadios().find(({ radio }) => radio.getAttribute("aria-checked") === "true")?.label;
+}
+
+async function chooseRatePlan(option: string) {
+  const match = ratePlanRadios().find(({ label }) => label === option);
+  assert.ok(match, `Missing rate plan ${option}`);
+  await React.act(async () => match.radio.click());
+  await until(() => checkedRatePlan() === option, `${option} must be selected`);
+}
+
 it("reopens a cached reservation with the room saved by the assignment panel", async () => {
   const assigned = detail();
   let saved: ReservationDetail = {
@@ -1545,7 +1567,7 @@ it.each([
     await renderNewBooking();
     await pickDay("Check-out", "17");
     await fill("fullName", "Ana Pérez");
-    if (plan === "non_refundable") await choose("Tarifa", "No reembolsable");
+    if (plan === "non_refundable") await chooseRatePlan("No reembolsable");
     if (rates[0] !== undefined) {
       await page.menuAction("Acciones de la habitación 1", "Cambiar precio por noche");
       await fill("rooms[0].room.nightlyRate", "95");
@@ -1632,14 +1654,14 @@ it("defaults to Flexible, previews and creates under the chosen rate plan", asyn
   });
   const previews = page.api.bodies<CreationPreviewInput>("POST", "/reservations/preview");
   await renderNewBooking();
-  assert.match(fieldTrigger("Tarifa").textContent, /^Flexible/);
+  assert.equal(checkedRatePlan(), "Flexible");
   assert.equal(previews.at(-1)?.ratePlan, "flexible");
   await fill("fullName", "Ada Lovelace");
   await submit();
   await until(() => writes.length === 1, "A Flexible reservation must save");
   assert.equal(writes[0].ratePlan, "flexible");
 
-  await choose("Tarifa", "No reembolsable");
+  await chooseRatePlan("No reembolsable");
   await until(
     () => previews.at(-1)?.ratePlan === "non_refundable" && !button("Crear reserva").disabled,
     "Choosing a plan must request its preview",
@@ -1666,7 +1688,7 @@ it("summarizes the server preview's total, initial payment and cancellation term
     "The total must not be repeated as a subtotal or footer total",
   );
 
-  await choose("Tarifa", "No reembolsable");
+  await chooseRatePlan("No reembolsable");
   await until(() => creationTotal() === "S/270", "Non-refundable must be repriced by the server");
   assert.equal(summaryAmount("Pago inicial requerido"), "S/270");
   assert.deepEqual(cancellationText(), [
@@ -1783,7 +1805,7 @@ it("never shows a stale preview and retries a failed one before creating", async
   mockCreationApi(async () => Response.json(detail(), { status: 201 }));
   await renderNewBooking();
   const held = page.api.hold("POST", "/reservations/preview");
-  await choose("Tarifa", "No reembolsable");
+  await chooseRatePlan("No reembolsable");
   await until(() => !!held.request, "The new plan must be previewed");
   assert.equal(button("Crear reserva").disabled, true);
   assert.ok(summaryText().includes("Calculando…"));
@@ -1807,11 +1829,11 @@ it("hides cached amounts and blocks creation while a revisited draft is repricin
   await renderNewBooking();
   await fill("fullName", "Ada Lovelace");
   assert.equal(creationTotal(), "S/150");
-  await choose("Tarifa", "No reembolsable");
+  await chooseRatePlan("No reembolsable");
   await until(() => creationTotal() === "S/135", "The other plan must load first");
 
   const held = page.api.hold("POST", "/reservations/preview");
-  await choose("Tarifa", "Flexible");
+  await chooseRatePlan("Flexible");
   await until(() => !!held.request, "Revisiting Flexible must refresh its cached preview");
   assert.equal(button("Crear reserva").disabled, true);
   assert.ok(summaryText().includes("Calculando…"));
