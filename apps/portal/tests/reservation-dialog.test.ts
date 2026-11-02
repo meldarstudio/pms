@@ -966,6 +966,34 @@ it("shows variable nightly prices and detail without assignments in the phone pr
   assert.match(summary().textContent.replace(/\s/g, ""), /S\/180/);
 });
 
+const summaryStay = () =>
+  Array.from(container.querySelectorAll("section"))
+    .find((section) => section.querySelector("h3")?.textContent === "Resumen de reserva")
+    ?.querySelector('[data-slot="card-description"] > span')?.textContent;
+
+it.each([
+  { draft: "one night", day: "15", count: "· 1 noche" },
+  { draft: "three nights", day: "17", count: "· 3 noches" },
+])("labels the summary stay for a $draft draft", async ({ day, count }) => {
+  const saved = detail();
+  mockApi(async () => previewResponse(saved), { reservation: () => saved });
+  await renderCachedEditor(() => saved);
+  assert.match(summaryStay()!, /· 2 noches$/);
+  await pickDay("Check-out", day);
+  await until(() => summaryStay()!.endsWith(count), `The summary must read ${count}`);
+});
+
+it("labels a one-night stay in the phone header", async () => {
+  page.mobile();
+  const saved = { ...detail(), checkOut: "2026-10-15" };
+  mockApi(async () => previewResponse(saved), { reservation: () => saved });
+  await renderCachedEditor(() => saved);
+  const stay = Array.from(container.querySelectorAll("header span")).find((span) =>
+    /noche/.test(span.textContent),
+  );
+  assert.match(stay!.textContent, /· 1 noche$/);
+});
+
 it.each([
   {
     scenario: "unpaid bill",
@@ -3316,7 +3344,7 @@ it("marks each tab whose form has unsaved input, but not a discount draft", asyn
   await until(() => window.document.querySelector('[name="notes"]') !== null);
   const marked = () =>
     [...window.document.querySelectorAll('[role="tab"]')]
-      .filter((tab) => tab.querySelector('[aria-label="Cambios sin guardar"]'))
+      .filter((tab) => tab.querySelector('[role="img"][aria-label="Cambios sin guardar"]'))
       .map((tab) => tab.textContent.trim());
   assert.deepEqual(
     [...window.document.querySelectorAll('[role="tab"]')].map((tab) => tab.textContent.trim()),
