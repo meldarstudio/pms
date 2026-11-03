@@ -4,10 +4,12 @@ import type { ReactNode } from "react";
 import { cn } from "cn";
 
 import { Button } from "@/components/ui/button";
+import { useIsMobile } from "@/hooks/use-mobile";
 import { toast } from "@/lib/toast";
 
 function ToastList() {
   const { toasts } = ToastPrimitive.useToastManager();
+  const isMobile = useIsMobile();
 
   return (
     <ToastPrimitive.Portal>
@@ -16,9 +18,10 @@ function ToastList() {
           <ToastPrimitive.Root
             key={item.id}
             toast={item}
+            swipeDirection={isMobile ? ["up", "left", "right"] : ["down", "right"]}
             data-slot="toast"
             className={cn(
-              "relative flex items-start gap-2.5 border bg-popover p-3 text-xs text-popover-foreground shadow-md transition-[opacity,transform] duration-100 outline-none data-ending-style:-translate-y-2 data-ending-style:opacity-0 data-limited:hidden data-starting-style:translate-y-2 data-starting-style:opacity-0 md:data-ending-style:translate-y-2",
+              "relative flex items-start gap-2.5 border bg-popover p-3 text-xs text-popover-foreground shadow-md transition-[opacity,transform] duration-100 outline-none data-ending-style:-translate-y-2 data-ending-style:opacity-0 data-limited:hidden data-starting-style:translate-y-2 data-starting-style:opacity-0 md:data-ending-style:translate-y-2 data-swipe-direction:duration-200 data-ending-style:data-[swipe-direction=down]:[transform:translateY(calc(var(--toast-swipe-movement-y)+150%))] data-ending-style:data-[swipe-direction=left]:[transform:translateX(calc(var(--toast-swipe-movement-x)-150%))] data-ending-style:data-[swipe-direction=right]:[transform:translateX(calc(var(--toast-swipe-movement-x)+150%))] data-ending-style:data-[swipe-direction=up]:[transform:translateY(calc(var(--toast-swipe-movement-y)-150%))]",
               item.type === "error" && "border-destructive/40",
             )}
           >
