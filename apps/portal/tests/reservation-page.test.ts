@@ -794,7 +794,11 @@ it("offers the shared coupon method from Registrar pago and prefills the already
   await page.until(() => !popup());
   assert.match(account().textContent, /Cuenta saldada/);
   assert.equal(writes.length, 1);
-  assert.equal(previews.length, 0);
+  assert.deepEqual(
+    previews.map((preview) => preview.actions),
+    [writes[0].actions],
+    "The redemption is checked by the command preview before it is saved",
+  );
 });
 
 it("shows notes, staying guests, and payments in their own cards and edits records from them", async () => {

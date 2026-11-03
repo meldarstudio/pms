@@ -455,7 +455,10 @@ export function BookingEditor({
     });
   }
   const [paymentDirty, setPaymentDirty] = useState(false);
+  const [paymentMethod, setPaymentMethod] = useState<string>("cash");
   const [paymentDraftKey, setPaymentDraftKey] = useState(0);
+  const unpayablePaymentDraft =
+    detail.balanceCents <= 0 && paymentDirty && paymentMethod !== "coupon";
   const [discountDirty, setDiscountDirty] = useState(false);
   const [actionDirty, setActionDirty] = useState(false);
   const independentDraftDirty = guestDirty || paymentDirty || discountDirty || actionDirty;
@@ -756,18 +759,19 @@ export function BookingEditor({
             )}
             {!stayOnly && (
               <TabsContent value="payments" keepMounted className="flex flex-col gap-5">
-                <div hidden={detail.balanceCents <= 0}>
+                <div hidden={unpayablePaymentDraft}>
                   <PaymentForm
                     key={paymentDraftKey}
                     detail={detail}
                     suggestedAmountCents={paymentSuggestionCents}
-                    disabled={busy || detail.balanceCents <= 0}
+                    disabled={busy || unpayablePaymentDraft}
                     onDirtyChange={setPaymentDirty}
+                    onMethodChange={setPaymentMethod}
                     onReady={savePayment}
                     undoable
                   />
                 </div>
-                {detail.balanceCents <= 0 && paymentDirty && (
+                {unpayablePaymentDraft && (
                   <div className="flex flex-col items-start gap-2">
                     <p role="status" className="text-sm text-muted-foreground">
                       La cuenta ya no tiene saldo pendiente. El pago que estabas preparando no se ha
