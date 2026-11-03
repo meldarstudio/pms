@@ -298,7 +298,10 @@ async function submit() {
     form.dispatchEvent(new window.Event("submit", { bubbles: true, cancelable: true }));
   });
 }
-const popup = () => window.document.querySelector('[role="dialog"][data-slot="dialog-content"]');
+const popup = () =>
+  window.document.querySelector(
+    '[role="dialog"]:is([data-slot="dialog-content"], [data-slot="sheet-content"])',
+  );
 async function chooseCharge(title: string) {
   const option = Array.from(popup()!.querySelectorAll<HTMLElement>('[role="radio"]')).find(
     (radio) => radioName(radio).startsWith(title),
@@ -2062,7 +2065,7 @@ it("shows the coupon and refund summary rows only when the bill has them", async
     "Pagado S/ 300",
     "Pagado con cupón S/ 100",
     "Reembolsado -S/ 50",
-    "Pasado a cupón -S/ 50 VUELTA50 · Vence el 20 de octubre de 2027",
+    "Pasado a cupón -S/ 50",
   ]);
 });
 
@@ -2993,34 +2996,6 @@ const couponMessage = (balance: string) =>
 
 const copiedText = async () => (await window.navigator.clipboard.readText()).replace(/\s/g, " ");
 
-it.each([
-  { balanceCents: 4000, label: "Quedan S/ 40", amount: "S/ 40" },
-  { balanceCents: 0, label: "Usado", amount: "S/ 0" },
-])(
-  "shows $label on the issued coupon row and copies its current balance",
-  async ({ balanceCents, label, amount }) => {
-    saved = {
-      ...saved,
-      couponIssuedCents: 10000,
-      coupons: [issuedCoupon({ balanceCents })],
-    };
-    mockApi();
-    await render("", true, true);
-    assert.ok(
-      summaryRows().includes(
-        `Pasado a cupón -S/ 100 K7Q2M9XPA4 · Vence el 19 de octubre de 2027 · ${label}`,
-      ),
-    );
-    const copy = account().querySelector<HTMLElement>(
-      '[aria-label="Copiar mensaje del cupón K7Q2M9XPA4"]',
-    );
-    assert.ok(copy, "The issued row must offer a copy action");
-    await React.act(async () => copy.click());
-    await page.until(() => window.document.body.textContent.includes("Mensaje copiado"));
-    assert.equal(await copiedText(), couponMessage(amount));
-  },
-);
-
 it("issues a coupon and hands over its message", async () => {
   owesBack();
   mockApi();
@@ -3056,29 +3031,24 @@ it("issues a coupon and hands over its message", async () => {
   assert.equal(text(accountStatusLine()), "Cuenta saldada S/ 0");
 });
 
-it("refreshes coupon facts for each row copy and never copies stale value after a failed lookup", async () => {
-  saved = { ...saved, couponIssuedCents: 10000, coupons: [issuedCoupon()] };
+it("never copies an issued coupon's message when its refresh fails", async () => {
+  owesBack();
   mockApi();
   const log = vi.spyOn(console, "error").mockImplementation(() => {});
   const clipboard = vi.spyOn(window.navigator.clipboard, "writeText");
   await render("", true, true);
-  saved = { ...saved, coupons: [issuedCoupon({ balanceCents: 4000, expiresOn: "2027-09-01" })] };
-  await click("Copiar mensaje del cupón K7Q2M9XPA4");
-  await page.until(() => clipboard.mock.calls.length === 1);
-  assert.match(await copiedText(), /saldo disponible de S\/ 40.*1 de setiembre de 2027/);
-  const removeFailure = page.api.on("GET", "/coupons/:code", () =>
+  await click("Devolver…");
+  await page.until(() => !button("Emitir cupón").disabled);
+  await click("Emitir cupón");
+  await page.until(() => text(popup()!.querySelector("h2")!) === "Cupón emitido");
+  page.api.on("GET", "/coupons/:code", () =>
     Response.json({ error: "private coupon lookup failure" }, { status: 503 }),
   );
-  await click("Copiar mensaje del cupón K7Q2M9XPA4");
+  await click("Copiar mensaje");
   await page.until(() => text(window.document.body).includes("No se pudo actualizar el cupón"));
-  assert.equal(clipboard.mock.calls.length, 1, "A failed refresh cannot copy cached facts");
+  assert.equal(clipboard.mock.calls.length, 0, "A failed refresh cannot copy cached facts");
   assert.doesNotMatch(text(window.document.body), /private coupon lookup failure/);
   assert.ok(log.mock.calls.length);
-  removeFailure();
-  saved = { ...saved, coupons: [issuedCoupon({ balanceCents: 0 })] };
-  await click("Copiar mensaje del cupón K7Q2M9XPA4");
-  await page.until(() => clipboard.mock.calls.length === 2);
-  assert.equal(await copiedText(), couponMessage("S/ 0"));
 });
 
 it("keeps the coupon draft through a failed preview and waits for server expiry before issuing", async () => {
@@ -3374,9 +3344,7 @@ it("leaves the rest of a partial coupon Por devolver for a later Dinero run and 
   ]);
   await click("Listo");
   await page.until(() => text(accountStatusLine()) === "Por devolver S/ 40 Devolver…");
-  assert.ok(
-    summaryRows().includes(`Pasado a cupón -S/ 60 K7Q2M9XPA4 · Vence el 19 de octubre de 2027`),
-  );
+  assert.ok(summaryRows().includes("Pasado a cupón -S/ 60"));
   const movements = movementsCard().querySelector('table[aria-label="Movimientos"]')!;
   assert.ok(movements.querySelector('[aria-label="Se emitió un cupón: no se puede editar"]'));
   assert.equal(movements.querySelector('[aria-label^="Acciones del pago"]'), null);

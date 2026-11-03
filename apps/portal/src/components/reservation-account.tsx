@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import { CopyIcon, CreditCardIcon, LockIcon, PencilIcon, Undo2Icon } from "lucide-react";
+import { CreditCardIcon, LockIcon, PencilIcon, Undo2Icon } from "lucide-react";
 import { cn } from "cn";
 import { parseISO } from "date-fns";
 import { AccountStatusBanner, SummaryRow, accountStatus } from "@/components/balance-status";
@@ -20,8 +20,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import type { ReservationDetail, ReservationPayment } from "@/lib/api";
-import { copyCouponMessage } from "@/lib/coupon-message";
-import { format, longDate } from "@/lib/dates";
+import { format } from "@/lib/dates";
 import { formatMoney } from "@/lib/money";
 import { propertyToday } from "@/lib/property-calendar";
 import { holdsInventory } from "@/lib/reservation-statuses";
@@ -171,33 +170,7 @@ function AccountSummary({
         <SummaryRow label="Reembolsado" value={minus(detail.refundedCents)} />
       )}
       {detail.couponIssuedCents > 0 && (
-        <SummaryRow
-          label="Pasado a cupón"
-          value={minus(detail.couponIssuedCents)}
-          note={detail.coupons.map((coupon) => (
-            <span key={coupon.id} className="flex items-center gap-1">
-              <span>
-                <span className="font-mono">{coupon.code}</span> · Vence el{" "}
-                {longDate(coupon.expiresOn)}
-                {coupon.balanceCents === 0
-                  ? " · Usado"
-                  : coupon.balanceCents < coupon.valueCents
-                    ? ` · Quedan ${money(coupon.balanceCents)}`
-                    : null}
-              </span>
-              <Button
-                type="button"
-                variant="ghost"
-                size="icon-xs"
-                aria-label={`Copiar mensaje del cupón ${coupon.code}`}
-                title="Copiar mensaje"
-                onClick={() => void copyCouponMessage(coupon, detail.currency, { announce: true })}
-              >
-                <CopyIcon />
-              </Button>
-            </span>
-          ))}
-        />
+        <SummaryRow label="Pasado a cupón" value={minus(detail.couponIssuedCents)} />
       )}
     </dl>
   );

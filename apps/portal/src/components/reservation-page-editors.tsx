@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useSelector } from "@tanstack/react-form";
+import { XIcon } from "lucide-react";
 import { cn } from "cn";
 import { BookingEditor, DiscardChanges } from "@/components/room-booking-dialog";
 import { GuestEntryForm, PaymentForm, paymentMethods } from "@/components/reservation-entry-forms";
@@ -18,6 +19,15 @@ import {
   DialogTitle,
   DialogDescription,
 } from "@/components/ui/dialog";
+import {
+  Sheet,
+  SheetClose,
+  SheetContent,
+  SheetDescription,
+  SheetHeader,
+  SheetTitle,
+} from "@/components/ui/sheet";
+import { useIsMobile } from "@/hooks/use-mobile";
 import { FieldGroup, FieldDescription, FieldError } from "@/components/ui/field";
 import type { ReservationCoupon, ReservationDetail, WorkflowAction } from "@/lib/api";
 import {
@@ -91,6 +101,8 @@ function editorTitle(target: ReservationEditorTarget, detail: ReservationDetail)
   }
 }
 
+const phoneSheetKinds: ReservationEditorTarget["kind"][] = ["payment", "contact", "guest", "notes"];
+
 export function ReservationPageEditor({
   target,
   detail,
@@ -112,6 +124,15 @@ export function ReservationPageEditor({
   const { send, saving } = useReservationCommands(detail.id);
   const [issued, setIssued] = useState<ReservationCoupon | null>(null);
   const fullScreen = ["stay", "contact", "notes", "guest", "payment"].includes(target.kind);
+  const isMobile = useIsMobile();
+  const [asSheet] = useState(() => isMobile && phoneSheetKinds.includes(target.kind));
+  const [sheetOpen, setSheetOpen] = useState(false);
+  useEffect(() => {
+    if (!asSheet) return;
+    const frame = requestAnimationFrame(() => setSheetOpen(true));
+    return () => cancelAnimationFrame(frame);
+  }, [asSheet]);
+  const finish = asSheet ? () => setSheetOpen(false) : onClose;
   const refund =
     target.kind === "resolve-refund"
       ? detail.refunds.find((entry) => entry.id === target.id && entry.status === "requested")
@@ -122,6 +143,10 @@ export function ReservationPageEditor({
     const resize = () => {
       popup.style.setProperty("--reservation-viewport-height", `${viewport.height}px`);
       popup.style.setProperty("--reservation-viewport-top", `${viewport.offsetTop}px`);
+      popup.style.setProperty(
+        "--reservation-keyboard-inset",
+        `${Math.max(0, window.innerHeight - viewport.height - viewport.offsetTop)}px`,
+      );
     };
     resize();
     viewport.addEventListener("resize", resize);
@@ -141,173 +166,213 @@ export function ReservationPageEditor({
   function close() {
     if (saving) return;
     if (dirty.current) setLeaving(true);
-    else onClose();
+    else finish();
   }
+  const title = issued ? "Cupón emitido" : editorTitle(target, detail);
+  const descriptionText =
+    description ??
+    (target.kind === "stay"
+      ? "Revisa las fechas, habitaciones y el importe antes de guardar."
+      : target.kind === "status" &&
+          target.status === "confirmed" &&
+          (detail.status === "cancelled" || detail.status === "no_show")
+        ? "Volverá a Confirmada."
+        : target.kind === "refund"
+          ? "Pasa el importe a un cupón para una próxima estadía o devuelve el dinero."
+          : target.kind === "resolve-refund"
+            ? target.failing
+              ? "El reembolso queda registrado como fallido y el dinero sigue por devolver."
+              : "Registra si el dinero llegó al huésped."
+            : "Los cambios se guardan al confirmar.");
+  const body =
+    target.kind === "stay" ? (
+      <BookingEditor
+        detail={detail}
+        stayOnly
+        onCancel={close}
+        onDirtyChange={handleDirty}
+        onSaved={finish}
+      />
+    ) : target.kind === "guest" ? (
+      <GuestEntryForm
+        scrollable
+        detail={detail}
+        guest={detail.stayingGuests.find((guest) => guest.id === target.id)}
+        disabled={saving}
+        onDirtyChange={handleDirty}
+        onSave={(guests) => send([{ type: "set-guests", guests: guestValues(guests) }])}
+        onDone={finish}
+        onCancel={close}
+      />
+    ) : target.kind === "payment" && !target.id ? (
+      <PaymentForm
+        scrollable
+        detail={detail}
+        disabled={saving}
+        onDirtyChange={handleDirty}
+        onCancel={close}
+        onSaved={onSaved ?? finish}
+        onReady={async (title, actions) => {
+          const result = await send(actions);
+          if (result.status === "saved") toast.add({ title, type: "success" });
+          return result;
+        }}
+      />
+    ) : target.kind === "refund" ? (
+      issued ? (
+        <CouponIssued
+          coupon={issued}
+          reservationId={detail.id}
+          currency={detail.currency}
+          onDone={finish}
+        />
+      ) : (
+        <RefundForm
+          detail={detail}
+          disabled={saving}
+          onDirtyChange={handleDirty}
+          onSave={send}
+          onDone={finish}
+          onCancel={close}
+          onCouponIssued={(coupon) => {
+            handleDirty(false);
+            setIssued(coupon);
+          }}
+        />
+      )
+    ) : target.kind === "resolve-refund" ? (
+      refund ? (
+        <ResolveRefundForm
+          detail={detail}
+          refund={refund}
+          failing={target.failing}
+          disabled={saving}
+          onDirtyChange={handleDirty}
+          onSave={send}
+          onDone={finish}
+          onCancel={close}
+        />
+      ) : (
+        <div className="flex flex-col gap-6">
+          <FieldError>Este reembolso ya fue completado o marcado como fallido.</FieldError>
+          <div className="flex justify-end">
+            <Button type="button" variant="outline" onClick={close}>
+              Cerrar
+            </Button>
+          </div>
+        </div>
+      )
+    ) : target.kind === "status" &&
+      target.status === "confirmed" &&
+      (detail.status === "cancelled" || detail.status === "no_show") ? (
+      <RestoreReservationForm
+        detail={detail}
+        disabled={saving}
+        onSave={send}
+        onDone={finish}
+        onCancel={close}
+      />
+    ) : target.kind === "waiver" ? (
+      <WaiverForm
+        detail={detail}
+        disabled={saving}
+        onDirtyChange={handleDirty}
+        onSave={send}
+        onDone={finish}
+        onCancel={close}
+      />
+    ) : target.kind === "status" &&
+      (target.status === "cancelled" || target.status === "no_show") ? (
+      <CancellationForm
+        detail={detail}
+        outcome={target.status}
+        disabled={saving}
+        onDirtyChange={handleDirty}
+        onSave={send}
+        onDone={finish}
+        onCancel={close}
+      />
+    ) : (
+      <ReservationActionForm
+        target={target}
+        detail={detail}
+        disabled={saving}
+        onDirtyChange={handleDirty}
+        onSave={send}
+        onSaved={onSaved ?? finish}
+        onCancel={close}
+      />
+    );
   return (
     <>
-      <Dialog
-        open
-        onOpenChange={(open) => {
-          if (!open) close();
-        }}
-      >
-        <DialogContent
-          ref={setPopup}
-          closeDisabled={saving}
-          className={cn(
-            "flex max-h-[90svh] flex-col overflow-hidden sm:max-w-lg max-sm:top-[calc(var(--reservation-viewport-top,0px)+var(--reservation-viewport-height,100dvh)/2)] max-sm:max-h-[calc(var(--reservation-viewport-height,100dvh)-2rem)]",
-            fullScreen &&
-              "max-sm:top-(--reservation-viewport-top,0px) max-sm:left-0 max-sm:h-(--reservation-viewport-height,100dvh) max-sm:max-h-(--reservation-viewport-height,100dvh) max-sm:max-w-full max-sm:translate-x-0 max-sm:translate-y-0 max-sm:pt-[max(1rem,env(safe-area-inset-top))] max-sm:pb-[max(1rem,env(safe-area-inset-bottom))] max-sm:safe-area-padding-x max-sm:transition-none",
-            target.kind === "stay" && "sm:max-w-4xl",
-          )}
+      {asSheet ? (
+        <Sheet
+          open={sheetOpen}
+          onOpenChange={(open) => {
+            if (!open) close();
+          }}
+          onOpenChangeComplete={(open) => {
+            if (!open) onClose();
+          }}
         >
-          <DialogHeader className="shrink-0">
-            <DialogTitle>{issued ? "Cupón emitido" : editorTitle(target, detail)}</DialogTitle>
-            {!issued && (
-              <DialogDescription>
-                {description ??
-                  (target.kind === "stay"
-                    ? "Revisa las fechas, habitaciones y el importe antes de guardar."
-                    : target.kind === "status" &&
-                        target.status === "confirmed" &&
-                        (detail.status === "cancelled" || detail.status === "no_show")
-                      ? "Volverá a Confirmada."
-                      : target.kind === "refund"
-                        ? "Pasa el importe a un cupón para una próxima estadía o devuelve el dinero."
-                        : target.kind === "resolve-refund"
-                          ? target.failing
-                            ? "El reembolso queda registrado como fallido y el dinero sigue por devolver."
-                            : "Registra si el dinero llegó al huésped."
-                          : "Los cambios se guardan al confirmar.")}
-              </DialogDescription>
-            )}
-          </DialogHeader>
-          {target.kind === "stay" ? (
-            <BookingEditor
-              detail={detail}
-              stayOnly
-              onCancel={close}
-              onDirtyChange={handleDirty}
-              onSaved={onClose}
-            />
-          ) : target.kind === "guest" ? (
-            <GuestEntryForm
-              scrollable
-              detail={detail}
-              guest={detail.stayingGuests.find((guest) => guest.id === target.id)}
-              disabled={saving}
-              onDirtyChange={handleDirty}
-              onSave={(guests) => send([{ type: "set-guests", guests: guestValues(guests) }])}
-              onDone={onClose}
-              onCancel={close}
-            />
-          ) : target.kind === "payment" && !target.id ? (
-            <PaymentForm
-              scrollable
-              detail={detail}
-              disabled={saving}
-              onDirtyChange={handleDirty}
-              onCancel={close}
-              onSaved={onSaved ?? onClose}
-              onReady={async (title, actions) => {
-                const result = await send(actions);
-                if (result.status === "saved") toast.add({ title, type: "success" });
-                return result;
-              }}
-            />
-          ) : target.kind === "refund" ? (
-            issued ? (
-              <CouponIssued
-                coupon={issued}
-                reservationId={detail.id}
-                currency={detail.currency}
-                onDone={onClose}
-              />
-            ) : (
-              <RefundForm
-                detail={detail}
-                disabled={saving}
-                onDirtyChange={handleDirty}
-                onSave={send}
-                onDone={onClose}
-                onCancel={close}
-                onCouponIssued={(coupon) => {
-                  handleDirty(false);
-                  setIssued(coupon);
-                }}
-              />
-            )
-          ) : target.kind === "resolve-refund" ? (
-            refund ? (
-              <ResolveRefundForm
-                detail={detail}
-                refund={refund}
-                failing={target.failing}
-                disabled={saving}
-                onDirtyChange={handleDirty}
-                onSave={send}
-                onDone={onClose}
-                onCancel={close}
-              />
-            ) : (
-              <div className="flex flex-col gap-6">
-                <FieldError>Este reembolso ya fue completado o marcado como fallido.</FieldError>
-                <div className="flex justify-end">
-                  <Button type="button" variant="outline" onClick={close}>
-                    Cerrar
-                  </Button>
+          <SheetContent
+            ref={setPopup}
+            side="bottom"
+            showCloseButton={false}
+            className="max-h-[min(90dvh,calc(var(--reservation-viewport-height,100dvh)-1rem))] overflow-hidden pb-[env(safe-area-inset-bottom)] data-[side=bottom]:bottom-(--reservation-keyboard-inset,0px)"
+          >
+            <SheetHeader className="shrink-0 border-b">
+              <div className="flex items-start gap-2">
+                <div className="flex min-w-0 flex-1 flex-col gap-0.5">
+                  <SheetTitle>{title}</SheetTitle>
+                  {!issued && <SheetDescription>{descriptionText}</SheetDescription>}
                 </div>
+                <SheetClose
+                  render={<Button variant="ghost" size="icon-sm" disabled={saving} />}
+                  aria-label="Cerrar"
+                >
+                  <XIcon />
+                </SheetClose>
               </div>
-            )
-          ) : target.kind === "status" &&
-            target.status === "confirmed" &&
-            (detail.status === "cancelled" || detail.status === "no_show") ? (
-            <RestoreReservationForm
-              detail={detail}
-              disabled={saving}
-              onSave={send}
-              onDone={onClose}
-              onCancel={close}
-            />
-          ) : target.kind === "waiver" ? (
-            <WaiverForm
-              detail={detail}
-              disabled={saving}
-              onDirtyChange={handleDirty}
-              onSave={send}
-              onDone={onClose}
-              onCancel={close}
-            />
-          ) : target.kind === "status" &&
-            (target.status === "cancelled" || target.status === "no_show") ? (
-            <CancellationForm
-              detail={detail}
-              outcome={target.status}
-              disabled={saving}
-              onDirtyChange={handleDirty}
-              onSave={send}
-              onDone={onClose}
-              onCancel={close}
-            />
-          ) : (
-            <ReservationActionForm
-              target={target}
-              detail={detail}
-              disabled={saving}
-              onDirtyChange={handleDirty}
-              onSave={send}
-              onSaved={onSaved ?? onClose}
-              onCancel={close}
-            />
-          )}
-        </DialogContent>
-      </Dialog>
+            </SheetHeader>
+            <div className="flex min-h-0 flex-1 flex-col overflow-y-auto overscroll-contain p-4">
+              {body}
+            </div>
+          </SheetContent>
+        </Sheet>
+      ) : (
+        <Dialog
+          open
+          onOpenChange={(open) => {
+            if (!open) close();
+          }}
+        >
+          <DialogContent
+            ref={setPopup}
+            closeDisabled={saving}
+            className={cn(
+              "flex max-h-[90svh] flex-col overflow-hidden sm:max-w-lg max-sm:top-[calc(var(--reservation-viewport-top,0px)+var(--reservation-viewport-height,100dvh)/2)] max-sm:max-h-[calc(var(--reservation-viewport-height,100dvh)-2rem)]",
+              fullScreen &&
+                "max-sm:top-(--reservation-viewport-top,0px) max-sm:left-0 max-sm:h-(--reservation-viewport-height,100dvh) max-sm:max-h-(--reservation-viewport-height,100dvh) max-sm:max-w-full max-sm:translate-x-0 max-sm:translate-y-0 max-sm:pt-[max(1rem,env(safe-area-inset-top))] max-sm:pb-[max(1rem,env(safe-area-inset-bottom))] max-sm:safe-area-padding-x max-sm:transition-none",
+              target.kind === "stay" && "sm:max-w-4xl",
+            )}
+          >
+            <DialogHeader className="shrink-0">
+              <DialogTitle>{title}</DialogTitle>
+              {!issued && <DialogDescription>{descriptionText}</DialogDescription>}
+            </DialogHeader>
+            {body}
+          </DialogContent>
+        </Dialog>
+      )}
       {leaving && (
         <DiscardChanges
           saving={saving}
           onStay={() => setLeaving(false)}
           onLeave={() => {
-            if (!saving) onClose();
+            if (saving) return;
+            setLeaving(false);
+            finish();
           }}
         />
       )}
