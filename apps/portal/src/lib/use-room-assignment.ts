@@ -60,14 +60,27 @@ export function useRoomAssignment(rooms: Room[] | null, unassigned: ReservationS
       : null;
   const ready = Boolean(target && !checking && !queryError && !staleTarget);
   const roomProblems = new Map<string, RoomProblem | null>();
-  if (target && ready) {
-    const context = {
-      reservations: reservations.data ?? [],
-      closures: closures.data ?? [],
-      ignoredReservedRoomIds: new Set([target.id]),
-    };
+  const context = target && {
+    reservations: reservations.data ?? [],
+    closures: closures.data ?? [],
+    ignoredReservedRoomIds: new Set([target.id]),
+  };
+  if (target && context && ready) {
     for (const room of rooms ?? []) roomProblems.set(room.id, roomProblem(room, target, context));
   }
+  const cachedCheck =
+    checking &&
+    reservations.data &&
+    closures.data &&
+    !reservations.isPlaceholderData &&
+    !closures.isPlaceholderData;
+  const typeRooms = target
+    ? (rooms ?? []).filter((room) => room.roomTypeId === target.roomTypeId)
+    : [];
+  const expectedCount =
+    target && context && cachedCheck
+      ? typeRooms.filter((room) => roomProblem(room, target, context) === null).length
+      : Math.min(3, rooms ? typeRooms.length : 3);
   const groupAssignments =
     target && !queryError
       ? (reservations.data
@@ -157,6 +170,7 @@ export function useRoomAssignment(rooms: Room[] | null, unassigned: ReservationS
     checking,
     ready,
     eligibleCount,
+    expectedCount,
     roomProblems,
     groupAssignments,
     pending,

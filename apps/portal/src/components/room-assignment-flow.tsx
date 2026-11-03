@@ -104,6 +104,9 @@ export function RoomAssignmentSteps({
             )}
           </div>
         )}
+        {checking && assignment.expectedCount > 0 && (
+          <AvailableRoomsSkeleton count={assignment.expectedCount} />
+        )}
         {availableRooms.length > 0 && (
           <ul className="flex flex-col border" onMouseLeave={() => onHighlightRoom?.(null)}>
             {availableRooms.map((room, index) => {
@@ -162,18 +165,7 @@ export function RoomAssignmentSteps({
     );
   }
 
-  if (loading) {
-    return (
-      <div
-        className="flex flex-col gap-2"
-        aria-label="Cargando habitaciones reservadas sin asignar"
-      >
-        {Array.from({ length: 3 }, (_, index) => (
-          <Skeleton key={index} className="h-16 w-full" />
-        ))}
-      </div>
-    );
-  }
+  if (loading) return <UnassignedStaysSkeleton />;
 
   if (stays.length === 0) {
     return (
@@ -207,6 +199,74 @@ export function RoomAssignmentSteps({
             </span>
             <ChevronRightIcon className="size-4 shrink-0" aria-hidden="true" />
           </button>
+        </li>
+      ))}
+    </ul>
+  );
+}
+
+function TextBar({ className }: { className: string }) {
+  return <Skeleton className={`inline-block h-lh align-top ${className}`} />;
+}
+
+function AvailableRoomsSkeleton({ count }: { count: number }) {
+  return (
+    <ul
+      aria-busy="true"
+      aria-label="Cargando habitaciones disponibles"
+      className="flex flex-col border"
+    >
+      {Array.from({ length: count }, (_, index) => (
+        <li key={index}>
+          {index > 0 && <Separator />}
+          <div className="flex items-center gap-2 p-2.5">
+            <BedDoubleIcon className="size-4 shrink-0 text-muted-foreground" aria-hidden="true" />
+            <span className="flex min-w-0 flex-1 flex-col gap-0.5">
+              <span className="font-medium">
+                <TextBar className="w-22" />
+              </span>
+              <span>
+                <TextBar className="w-14" />
+              </span>
+            </span>
+            <ChevronRightIcon
+              className="size-4 shrink-0 text-muted-foreground"
+              aria-hidden="true"
+            />
+          </div>
+        </li>
+      ))}
+    </ul>
+  );
+}
+
+function UnassignedStaysSkeleton() {
+  return (
+    <ul
+      aria-busy="true"
+      aria-label="Cargando habitaciones reservadas sin asignar"
+      className="flex flex-col border"
+    >
+      {Array.from({ length: 3 }, (_, index) => (
+        <li key={index}>
+          {index > 0 && <Separator />}
+          <div className="flex items-center gap-2 p-2.5">
+            <span className="flex min-w-0 flex-1 flex-col gap-0.5">
+              <span className="font-medium">
+                <TextBar className="w-32" />
+              </span>
+              <span>
+                <TextBar className="w-20" />
+              </span>
+              <span>
+                <TextBar className="w-40" />
+              </span>
+            </span>
+            <ChevronRightIcon
+              className="size-4 shrink-0 text-muted-foreground"
+              aria-hidden="true"
+            />
+          </div>
         </li>
       ))}
     </ul>
