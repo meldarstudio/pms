@@ -24,6 +24,7 @@ import { copyCouponMessage } from "@/lib/coupon-message";
 import { format, longDate } from "@/lib/dates";
 import { formatMoney } from "@/lib/money";
 import { propertyToday } from "@/lib/property-calendar";
+import { holdsInventory } from "@/lib/reservation-statuses";
 import { unsavedMessage, useReservationCommands } from "@/lib/reservation-commands";
 import { toast, toastError } from "@/lib/toast";
 
@@ -32,8 +33,7 @@ type Props = {
   edit: (target: ReservationEditorTarget) => void;
 };
 
-export const isReleased = (status: string) =>
-  !["confirmed", "checked_in", "checked_out"].includes(status);
+export const isReleased = (status: string) => !holdsInventory(status);
 
 const shortDate = (day: string) => format(parseISO(day), "d MMM yyyy");
 const methodLabel = (method: string) =>

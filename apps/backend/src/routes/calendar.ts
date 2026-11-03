@@ -13,9 +13,9 @@ import {
 import type { Env } from "../env";
 import { HttpError, validate } from "../http";
 import { inclusiveDates } from "../lib/dates";
+import { inventoryStatuses } from "../lib/statuses";
 
 const maxCalendarDays = 14 + 7 + 7;
-const stayStatuses = ["confirmed", "checked_in", "checked_out"];
 const openStatuses = new Set(["confirmed", "checked_in"]);
 
 export const calendarRoutes = new Hono<Env>();
@@ -55,7 +55,7 @@ calendarRoutes.get("/", validate("query", calendarQuerySchema), async (c) => {
       .innerJoin(guests, eq(guests.id, reservations.guestId))
       .where(
         and(
-          inArray(reservations.status, stayStatuses),
+          inArray(reservations.status, inventoryStatuses),
           lte(reservations.checkIn, to),
           gte(reservations.checkOut, from),
         ),

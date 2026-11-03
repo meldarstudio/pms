@@ -1,6 +1,7 @@
 import { ApiError, NetworkError } from "./api-error";
 import { targetProblem, type ReservationStay } from "./assignment-availability";
 import { configurePropertyCalendar } from "./property-calendar";
+import type { InventoryStatus } from "./reservation-statuses";
 
 export type Room = {
   id: string;
@@ -87,7 +88,7 @@ export type CalendarAssignedStay = {
   id: string;
   reservationId: string;
   guestName: string;
-  status: string;
+  status: InventoryStatus;
   checkIn: string;
   checkOut: string;
 };

@@ -57,6 +57,11 @@ import { useRoomAssignment } from "@/lib/use-room-assignment";
 import { useMarkRooms } from "@/lib/use-mark-rooms";
 import { format } from "@/lib/dates";
 import { useCalendar, usePendingHousekeepingRoomIds } from "@/lib/queries";
+import {
+  holdsInventory,
+  inventoryStatuses,
+  type InventoryStatus,
+} from "@/lib/reservation-statuses";
 import { useIsMobile } from "@/hooks/use-mobile";
 
 const spans = [
@@ -64,18 +69,22 @@ const spans = [
   { label: "14 días", value: "14" },
 ];
 
-export const stayColors: Record<string, string> = {
+export const stayColors: Record<InventoryStatus, string> = {
   confirmed:
     "border-booking-confirmed-foreground/20 bg-booking-confirmed text-booking-confirmed-foreground",
   checked_in: "border-booking-foreground/20 bg-booking text-booking-foreground",
   checked_out:
     "border-booking-completed-foreground/20 bg-booking-completed text-booking-completed-foreground",
 };
-const stayLabels: Record<string, string> = {
+const stayLabels: Record<InventoryStatus, string> = {
   confirmed: "Confirmada",
   checked_in: "Check-in",
   checked_out: "Check-out",
 };
+
+function stayStatus(status: string | undefined): InventoryStatus {
+  return status && holdsInventory(status) ? status : "confirmed";
+}
 
 type TrackItem = {
   id: string;
@@ -159,7 +168,7 @@ function stayTrack(stay: {
     kind: "stay",
     status: stay.status,
     label: stay.guestName,
-    title: `${stay.guestName} · ${stayLabels[stay.status ?? "confirmed"]}, ${stay.checkIn} al ${stay.checkOut}`,
+    title: `${stay.guestName} · ${stayLabels[stayStatus(stay.status)]}, ${stay.checkIn} al ${stay.checkOut}`,
     checkIn: stay.checkIn,
     checkOut: stay.checkOut,
   };
@@ -213,7 +222,7 @@ function StayBar({
 }) {
   const className = cn(
     "absolute z-10 flex items-center overflow-hidden rounded-none border px-2.5 text-left text-xs",
-    stayColors[stay.status ?? "confirmed"] ?? stayColors.confirmed,
+    stayColors[stayStatus(stay.status)],
   );
   if (!onOpen || !stay.reservationId) {
     return (
@@ -227,7 +236,7 @@ function StayBar({
     <button
       type="button"
       title={stay.title}
-      aria-label={`Editar reserva de ${stay.label} · ${stayLabels[stay.status ?? "confirmed"]}`}
+      aria-label={`Editar reserva de ${stay.label} · ${stayLabels[stayStatus(stay.status)]}`}
       className={cn(
         className,
         "cursor-pointer outline-none focus-visible:ring-1 focus-visible:ring-ring",
@@ -732,13 +741,13 @@ export function RoomCalendar({
               </TooltipTrigger>
               <TooltipContent variant="legend" side="bottom" align="end" sideOffset={8}>
                 <div aria-label="Colores de reservas" className="flex min-w-40 flex-col gap-2.5">
-                  {Object.entries(stayLabels).map(([status, label]) => (
+                  {inventoryStatuses.map((status) => (
                     <span key={status} className="flex items-center gap-2">
                       <span
                         aria-hidden="true"
                         className={cn("size-3 rounded-none border", stayColors[status])}
                       />
-                      {label}
+                      {stayLabels[status]}
                     </span>
                   ))}
                   <span className="flex items-center gap-2">

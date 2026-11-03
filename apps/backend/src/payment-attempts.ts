@@ -12,6 +12,7 @@ import { guests, paymentAttempts, quotes, reservations, type AttemptStatus } fro
 import type { Env } from "./env";
 import { HttpError, PAYMENT_PENDING, rethrowConflict } from "./http";
 import { quoteBill } from "./lib/reservation-bill";
+import { inventoryStatuses } from "./lib/statuses";
 import { propertyCalendar } from "./property-calendar";
 import { saveQuote } from "./quotes";
 import { acceptPhone } from "./rules";
@@ -259,7 +260,7 @@ async function rebooked(db: Db, quote: Quote, email: string) {
       and(
         eq(reservations.source, "online"),
         ne(reservations.quoteId, quote.id),
-        inArray(reservations.status, ["confirmed", "checked_in", "checked_out"]),
+        inArray(reservations.status, inventoryStatuses),
         lt(reservations.checkIn, quote.checkOut),
         gt(reservations.checkOut, quote.checkIn),
         eq(sql`lower(${guests.email})`, email.toLowerCase()),

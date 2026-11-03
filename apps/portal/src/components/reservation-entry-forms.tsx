@@ -24,6 +24,7 @@ import { phoneDraft } from "@/lib/phone";
 import { useCoupon } from "@/lib/queries";
 import { translateError } from "@/lib/errors";
 import { formatMajor, formatMoney, parseMajorToCents } from "@/lib/money";
+import { holdsInventory } from "@/lib/reservation-statuses";
 
 export const paymentMethods = [
   { value: "cash", label: "Efectivo" },
@@ -308,7 +309,7 @@ export function PaymentForm({
             ? "coupon cannot be redeemed on the reservation that issued it"
             : appliedCode && appliedCode !== currentCoupon.code
               ? "reservation already uses another coupon"
-              : !["confirmed", "checked_in", "checked_out"].includes(detail.status)
+              : !holdsInventory(detail.status)
                 ? "coupon requires an active reservation"
                 : null);
   const prefilledCode = useRef("");

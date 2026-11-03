@@ -11,8 +11,7 @@ import {
 } from "../db/schema";
 import type { Env } from "../env";
 import { HttpError, rethrowConflict, validate } from "../http";
-
-const assignedStay = ["confirmed", "checked_in", "checked_out"];
+import { inventoryStatuses } from "../lib/statuses";
 
 export const roomRoutes = new Hono<Env>();
 
@@ -72,7 +71,7 @@ roomRoutes.patch("/:id", validate("json", patchRoomSchema), async (c) => {
       .where(
         and(
           eq(reservationRooms.roomId, room.id),
-          inArray(reservations.status, assignedStay),
+          inArray(reservations.status, inventoryStatuses),
           gt(reservations.checkOut, c.get("propertyCalendar").today),
         ),
       )

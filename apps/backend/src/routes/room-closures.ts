@@ -6,9 +6,8 @@ import { reservationRooms, reservations, roomClosures, rooms } from "../db/schem
 import type { Env } from "../env";
 import { HttpError, rethrowConflict, validate } from "../http";
 import { roomCounts, occupiedCounts } from "../inventory";
+import { inventoryStatuses } from "../lib/statuses";
 import { requireStay } from "../rules";
-
-const blockingStay = ["confirmed", "checked_in", "checked_out"];
 
 export const roomClosureRoutes = new Hono<Env>();
 
@@ -37,7 +36,7 @@ async function assertCanClose(
     .where(
       and(
         eq(reservationRooms.roomId, room.id),
-        inArray(reservations.status, blockingStay),
+        inArray(reservations.status, inventoryStatuses),
         lt(reservations.checkIn, ends),
         gt(reservations.checkOut, starts),
       ),

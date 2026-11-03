@@ -1,4 +1,5 @@
 import type { Reservation, ReservationLine, Room, RoomClosure } from "./api";
+import { holdsInventory } from "./reservation-statuses";
 
 export type ReservationStay = {
   id: string;
@@ -37,10 +38,6 @@ export const assignmentProblemLabels: Record<AssignmentProblem, string> = {
   closed: "Cerrada durante la estancia",
 };
 
-function holdsRooms(status: string) {
-  return status !== "cancelled";
-}
-
 function receivesAssignments(status: string) {
   return status === "confirmed" || status === "checked_in";
 }
@@ -56,7 +53,7 @@ function roomConflict(
 ): "occupied" | "closed" | null {
   const occupied = reservations.some(
     (reservation) =>
-      holdsRooms(reservation.status) &&
+      holdsInventory(reservation.status) &&
       overlaps(stay, reservation.checkIn, reservation.checkOut) &&
       reservation.rooms.some(
         (line) => line.roomId === roomId && !ignoredReservedRoomIds?.has(line.id),

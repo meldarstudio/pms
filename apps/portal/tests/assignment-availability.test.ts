@@ -93,6 +93,8 @@ describe("room check", () => {
     ["checked_in", "occupied"],
     ["checked_out", "occupied"],
     ["cancelled", null],
+    ["no_show", null],
+    ["unfulfilled", null],
   ] as const)("treats a %s reservation's room as %s", (status, problem) => {
     assert.equal(
       roomProblem(
