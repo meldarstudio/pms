@@ -4,6 +4,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { ArrowUpRightIcon, LogInIcon, LogOutIcon, PhoneIcon, PlusIcon, XIcon } from "lucide-react";
 import { cn } from "cn";
 import { guestValues, overlappingRoomIds, availableRoomTypeIds } from "@/lib/reservation-editor";
+import { holdsInventory } from "@/lib/reservation-statuses";
 import { useStayDraft } from "@/lib/use-stay-draft";
 import { ReservationStatusBadge } from "@/components/reservation-status-badge";
 import { useLifecycleAction } from "@/components/lifecycle-action";
@@ -811,7 +812,7 @@ export function BookingEditor({
             )}
           >
             <BookingSummary
-              cancelled={reservationState === "cancelled"}
+              cancelled={!holdsInventory(reservationState)}
               rooms={summary.rooms.map((room) => ({
                 key: room.key,
                 typeName:

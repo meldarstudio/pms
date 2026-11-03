@@ -3454,6 +3454,19 @@ function releasedStay(status: "cancelled" | "no_show" = "cancelled") {
   };
 }
 
+it.each(["no_show", "unfulfilled"] as const)(
+  "opens the stay editor on a %s reservation",
+  async (status) => {
+    releasedStay();
+    saved = { ...saved, status };
+    mockApi({});
+    await render();
+    await click("Editar estadía");
+    await page.until(() => !!popup());
+    assert.match(popup()!.textContent, /Editar estadía/);
+  },
+);
+
 it("waives a remaining charge later with a required reason and shows the saved refund due", async () => {
   releasedStay();
   saved = { ...saved, paidCents: 15000, balanceCents: 0, payments: [payment()] };

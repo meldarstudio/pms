@@ -3,6 +3,7 @@ import type {
   PaymentInput,
   RatePlanCode,
   ReservationDetail,
+  ReservationDetailStatus,
   RoomType,
   StayingGuest,
 } from "./api.ts";
@@ -10,6 +11,7 @@ import { nightsBetween } from "./dates.ts";
 import { formatMajor, formatMoney, parseMajorToCents } from "./money.ts";
 import type { RoomDraft } from "./reservation-editor.ts";
 import { propertyToday } from "./property-calendar.ts";
+import { holdsInventory } from "./reservation-statuses.ts";
 import { phoneDraft, phoneError, phonePayload, type PhoneValue } from "./phone.ts";
 
 const optionalText = (max: number) => z.string().trim().max(max, `Máximo ${max} caracteres.`);
@@ -18,7 +20,14 @@ const phone = z.custom<PhoneValue>().superRefine((value, ctx) => {
   if (message) ctx.addIssue({ code: "custom", message });
 });
 const date = z.iso.date({ error: "Indica una fecha válida." });
-const status = z.enum(["confirmed", "checked_in", "checked_out", "cancelled"]);
+const status = z.enum([
+  "confirmed",
+  "checked_in",
+  "checked_out",
+  "cancelled",
+  "no_show",
+  "unfulfilled",
+] satisfies ReservationDetailStatus[]);
 const count = (min: number, message: string) =>
   z
     .string()
@@ -83,7 +92,7 @@ export const detailsSchema = (
         !saved ||
         value.checkIn !== saved.checkIn ||
         value.checkOut !== saved.checkOut ||
-        (saved.status === "cancelled" && !!value.status && value.status !== "cancelled");
+        (!holdsInventory(saved.status) && !!value.status && holdsInventory(value.status));
       value.rooms.forEach((draft, index) => {
         if (draft.removed) return;
         const path = ["rooms", index, "room"];
