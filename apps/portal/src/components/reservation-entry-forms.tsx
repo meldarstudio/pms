@@ -1,10 +1,16 @@
-import { useEffect, useId, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { cn } from "cn";
 import { usePropertyCalendar } from "@/lib/use-property-calendar";
 import { useSelector } from "@tanstack/react-form";
 import { Button } from "@/components/ui/button";
-import { FieldGroup, FieldError } from "@/components/ui/field";
-import type { ReservationDetail, StayingGuest, WorkflowAction } from "@/lib/api";
+import { FieldGroup } from "@/components/ui/field";
+import {
+  previewWorkflow,
+  type ReservationDetail,
+  type StayingGuest,
+  type WorkflowAction,
+} from "@/lib/api";
+import { serverFieldErrors } from "@/lib/api-error";
 import { setServerErrors } from "@/lib/form-errors";
 import { useReservationCommands, type ReservationCommandResult } from "@/lib/reservation-commands";
 import { useReservationForm, blurThenChange, submitForm } from "@/lib/reservation-form";
@@ -22,9 +28,7 @@ import {
 import { toast, toastError } from "@/lib/toast";
 import { phoneDraft } from "@/lib/phone";
 import { useCoupon } from "@/lib/queries";
-import { translateError } from "@/lib/errors";
-import { formatMajor, formatMoney, parseMajorToCents } from "@/lib/money";
-import { holdsInventory } from "@/lib/reservation-statuses";
+import { formatMoney, parseMajorToCents } from "@/lib/money";
 
 export const paymentMethods = [
   { value: "cash", label: "Efectivo" },
@@ -175,6 +179,7 @@ export function PaymentForm({
   disabled,
   onReady,
   onDirtyChange,
+  onMethodChange,
   scrollable = false,
   onCancel,
   onSaved,
@@ -185,6 +190,7 @@ export function PaymentForm({
   disabled: boolean;
   onReady: (title: string, actions: WorkflowAction[]) => Promise<ReservationCommandResult>;
   onDirtyChange: (dirty: boolean) => void;
+  onMethodChange?: (method: PaymentEntryValues["method"]) => void;
   scrollable?: boolean;
   onCancel?: () => void;
   onSaved?: (detail: ReservationDetail) => void;
@@ -192,17 +198,19 @@ export function PaymentForm({
 }) {
   const { today } = usePropertyCalendar();
   const { canReplay } = useReservationCommands(detail.id);
+  const owing = detail.balanceCents > 0;
   const appliedCode =
     detail.couponMovements.find((movement) => movement.kind === "redeem")?.code ?? "";
   const [savedDefaults, setSavedDefaults] = useState<PaymentValues | null>(null);
   const defaults = useMemo<PaymentEntryValues>(
     () => ({
       ...(savedDefaults ?? paymentDefaults(suggestedAmountCents ?? detail.balanceCents)),
+      ...(owing ? {} : { method: "coupon" as const }),
       code: appliedCode,
     }),
-    [savedDefaults, suggestedAmountCents, detail.balanceCents, appliedCode],
+    [savedDefaults, suggestedAmountCents, detail.balanceCents, owing, appliedCode],
   );
-  const [lookupCode, setLookupCode] = useState("");
+  const [submittedCode, setSubmittedCode] = useState<string | null>(null);
   const form = useReservationForm({
     defaultValues: defaults,
     validationLogic: blurThenChange(),
@@ -227,35 +235,23 @@ export function PaymentForm({
       if (value.method === "coupon") {
         const cents = parseMajorToCents(value.amount.trim());
         if (!cents) return;
-        const redemption: WorkflowAction[] = [
-          { type: "redeem-coupon", code: normalizeCouponCode(value.code), amountCents: cents },
-        ];
-        const replay = canReplay(redemption);
-        if (
-          !replay &&
-          (!currentCoupon ||
-            normalizeCouponCode(value.code) !== lookupCode ||
-            lookup.isFetching ||
-            lookup.isError ||
-            couponProblem)
-        )
-          return;
-        if (
-          !replay &&
-          currentCoupon &&
-          cents > Math.min(currentCoupon.balanceCents, detail.balanceCents)
-        ) {
-          setServerErrors(form, {
-            amount: translateError(
-              cents > currentCoupon.balanceCents
-                ? "coupon redemption exceeds its balance"
-                : "coupon redemption exceeds the balance owed",
-            ),
-          });
-          return;
+        const code = normalizeCouponCode(value.code);
+        actions = [{ type: "redeem-coupon", code, amountCents: cents }];
+        setSubmittedCode(code);
+        if (!canReplay(actions)) {
+          try {
+            await previewWorkflow(detail.id, { requestId: crypto.randomUUID(), actions });
+          } catch (cause) {
+            const fields = serverFieldErrors(cause, "coupon");
+            if (fields) return setServerErrors(form, fields);
+            return toastError(
+              "No se pudo comprobar el cupón",
+              cause instanceof Error ? cause.message : undefined,
+            );
+          }
         }
-        actions = redemption;
       } else {
+        if (!owing) return;
         actions = [{ type: "add-payment", payment: paymentPayload(paymentSchema.parse(value)) }];
       }
       const result = await onReady(
@@ -290,75 +286,14 @@ export function PaymentForm({
     method === "coupon" &&
     amountCents !== null &&
     canReplay([{ type: "redeem-coupon", code: normalizedCode, amountCents }]);
-  useEffect(() => {
-    const timer = setTimeout(() => setLookupCode(normalizedCode), 250);
-    return () => clearTimeout(timer);
-  }, [normalizedCode]);
-  const lookup = useCoupon(lookupCode, method === "coupon" && normalizedCode === lookupCode);
-  const currentCoupon =
-    method === "coupon" && normalizedCode === lookupCode ? lookup.data : undefined;
-  const couponProblem =
-    currentCoupon &&
-    (currentCoupon.expiresOn < today
-      ? "coupon has expired"
-      : detail.checkIn > currentCoupon.expiresOn
-        ? "stay starts after the coupon expires"
-        : currentCoupon.balanceCents <= 0
-          ? "coupon redemption exceeds its balance"
-          : currentCoupon.sourceReservationId === detail.id
-            ? "coupon cannot be redeemed on the reservation that issued it"
-            : appliedCode && appliedCode !== currentCoupon.code
-              ? "reservation already uses another coupon"
-              : !holdsInventory(detail.status)
-                ? "coupon requires an active reservation"
-                : null);
-  const prefilledCode = useRef("");
-  useEffect(() => {
-    if (method !== "coupon") {
-      prefilledCode.current = "";
-      return;
-    }
-    if (
-      !currentCoupon ||
-      couponProblem ||
-      lookup.isFetching ||
-      lookup.isError ||
-      prefilledCode.current === currentCoupon.code
-    )
-      return;
-    form.setFieldValue(
-      "amount",
-      formatMajor(Math.min(detail.balanceCents, currentCoupon.balanceCents)),
-    );
-    prefilledCode.current = currentCoupon.code;
-  }, [
-    method,
-    currentCoupon,
-    couponProblem,
-    detail.balanceCents,
-    form,
-    lookup.isFetching,
-    lookup.isError,
-  ]);
-  const amountProblem =
-    !replaying &&
-    currentCoupon &&
-    amountCents !== null &&
-    amountCents > 0 &&
-    (amountCents > currentCoupon.balanceCents
-      ? "coupon redemption exceeds its balance"
-      : amountCents > detail.balanceCents
-        ? "coupon redemption exceeds the balance owed"
-        : null);
-  const lookupError =
-    !replaying && normalizedCode === lookupCode
-      ? couponProblem
-        ? translateError(couponProblem)
-        : lookup.error?.message
-      : null;
-  const amountErrorId = useId();
-  const lookupErrorId = useId();
+  const lookup = useCoupon(
+    submittedCode ?? "",
+    method === "coupon" && submittedCode === normalizedCode,
+  );
+  const submittedCoupon =
+    method === "coupon" && submittedCode === normalizedCode ? lookup.data : undefined;
   useEffect(() => onDirtyChange(!unchanged), [unchanged, onDirtyChange]);
+  useEffect(() => onMethodChange?.(method), [method, onMethodChange]);
   return (
     <form
       noValidate
@@ -383,37 +318,21 @@ export function PaymentForm({
             scrollable && "min-h-0 flex-1 overflow-y-auto overscroll-contain p-px",
           )}
         >
-          <FieldGroup className="gap-2">
-            <form.AppField name="amount">
-              {(field) => (
-                <field.Text
-                  label="Importe S/"
-                  placeholder="0.00"
-                  groupErrorId={amountProblem ? amountErrorId : undefined}
-                />
-              )}
-            </form.AppField>
-            {amountProblem && (
-              <FieldError id={amountErrorId}>{translateError(amountProblem)}</FieldError>
-            )}
-          </FieldGroup>
+          <form.AppField name="amount">
+            {(field) => <field.Text label="Importe S/" placeholder="0.00" />}
+          </form.AppField>
           <form.AppField name="method">
             {(field) => (
               <field.Choice
                 label="Método"
-                options={[...paymentMethods, { value: "coupon", label: "Cupón" }]}
+                options={[...(owing ? paymentMethods : []), { value: "coupon", label: "Cupón" }]}
               />
             )}
           </form.AppField>
           {method === "coupon" ? (
             <FieldGroup className="col-span-2 gap-2">
               <form.AppField name="code">
-                {(field) => (
-                  <field.Text
-                    label="Código del cupón"
-                    groupErrorId={lookupError ? lookupErrorId : undefined}
-                  />
-                )}
+                {(field) => <field.Text label="Código del cupón" />}
               </form.AppField>
               {replaying && (
                 <p role="status" className="text-xs text-muted-foreground">
@@ -421,27 +340,11 @@ export function PaymentForm({
                   canje.
                 </p>
               )}
-              {lookupError ? (
-                <FieldError id={lookupErrorId}>{lookupError}</FieldError>
-              ) : currentCoupon ? (
+              {submittedCoupon && (
                 <p className="text-xs text-muted-foreground">
-                  Saldo {formatMoney(currentCoupon.balanceCents, detail.currency)} · Vence el{" "}
-                  {currentCoupon.expiresOn} · No canjeable por dinero
+                  Saldo {formatMoney(submittedCoupon.balanceCents, detail.currency)} · Vence el{" "}
+                  {submittedCoupon.expiresOn} · No canjeable por dinero
                 </p>
-              ) : normalizedCode ? (
-                <p role="status" className="text-xs text-muted-foreground">
-                  Buscando cupón…
-                </p>
-              ) : null}
-              {lookup.isError && normalizedCode === lookupCode && (
-                <Button
-                  type="button"
-                  variant="outline"
-                  className="w-fit"
-                  onClick={() => void lookup.refetch()}
-                >
-                  Reintentar
-                </Button>
               )}
             </FieldGroup>
           ) : (
@@ -478,25 +381,11 @@ export function PaymentForm({
               Cerrar
             </Button>
           )}
-          {undoable && (
-            <UndoChanges
-              disabled={unchanged}
-              onClick={() => {
-                form.reset(defaults);
-                prefilledCode.current = "";
-              }}
-            />
-          )}
+          {undoable && <UndoChanges disabled={unchanged} onClick={() => form.reset(defaults)} />}
           <Button
             type="submit"
             className="w-fit"
-            disabled={
-              disabled ||
-              submitting ||
-              (method === "coupon" &&
-                !replaying &&
-                (!currentCoupon || lookup.isFetching || !!lookupError || !!amountProblem))
-            }
+            disabled={disabled || submitting || (method !== "coupon" && !owing)}
           >
             {submitting
               ? "Guardando…"

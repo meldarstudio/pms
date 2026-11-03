@@ -602,4 +602,137 @@ describe("previewing coupon actions", () => {
     });
     expect((await lookup(coupon.code)).body).toMatchObject({ balanceCents: 20000 });
   });
+
+  async function previewRejection(d: { id: string }, actions: WorkflowAction[]) {
+    const response = await db.request(`/reservations/${d.id}/preview`, "POST", {
+      requestId: crypto.randomUUID(),
+      actions,
+    });
+    return { status: response.status, body: await response.json() };
+  }
+
+  it.each([
+    {
+      name: "an unknown code",
+      setup: async () => ({ target: await stay("2026-11-01", "2026-11-03"), code: "NOPE" }),
+      status: 404,
+      error: "coupon not found",
+    },
+    {
+      name: "a code longer than the command allows",
+      setup: async () => ({ target: await stay("2026-11-01", "2026-11-03"), code: "A".repeat(41) }),
+      status: 400,
+      error: "coupon not found",
+    },
+    {
+      name: "the reservation that issued it",
+      setup: async () => {
+        const owed = await freeCancellationOwing(20000);
+        const coupon = (await command(owed, [issue(5000)])).coupons[0];
+        return { target: owed, code: coupon.code };
+      },
+      status: 400,
+      error: "coupon cannot be redeemed on the reservation that issued it",
+    },
+    {
+      name: "a cancelled reservation, even after the coupon expired",
+      setup: async () => {
+        const coupon = await couponWorth(5000);
+        const cancelled = await command(await stay("2027-10-12", "2027-10-14"), [cancel]);
+        vi.setSystemTime(new Date("2027-10-11T15:00:00Z"));
+        await db.signIn();
+        return { target: cancelled, code: coupon.code };
+      },
+      status: 400,
+      error: "coupon requires an active reservation",
+    },
+    {
+      name: "a reservation that already uses another coupon",
+      setup: async () => {
+        const coupon = await couponWorth(5000);
+        const other = await couponWorth(5000);
+        const used = await command(await stay("2026-11-01", "2026-11-03"), [
+          redeem(other.code, 1000),
+        ]);
+        return { target: used, code: coupon.code };
+      },
+      status: 400,
+      error: "reservation already uses another coupon",
+    },
+    {
+      name: "an expired coupon",
+      setup: async () => {
+        const coupon = await couponWorth(5000);
+        const active = await stay("2027-10-12", "2027-10-14");
+        vi.setSystemTime(new Date("2027-10-11T15:00:00Z"));
+        await db.signIn();
+        return { target: active, code: coupon.code };
+      },
+      status: 400,
+      error: "coupon has expired",
+    },
+    {
+      name: "a stay starting after the coupon expires",
+      setup: async () => {
+        const coupon = await couponWorth(5000);
+        return { target: await stay("2027-10-11", "2027-10-13"), code: coupon.code };
+      },
+      status: 400,
+      error: "stay starts after the coupon expires",
+    },
+    {
+      name: "a coupon with no balance left",
+      setup: async () => {
+        const coupon = await couponWorth(5000);
+        await command(await stay("2026-11-01", "2026-11-03"), [redeem(coupon.code, 5000)]);
+        return { target: await stay("2026-11-05", "2026-11-07"), code: coupon.code };
+      },
+      status: 400,
+      error: "coupon redemption exceeds its balance",
+    },
+    {
+      name: "more than the stay owes after the redemption",
+      setup: async () => {
+        const coupon = await couponWorth(5000);
+        const paid = await command(await stay("2026-11-01", "2026-11-03"), [pay(19500)]);
+        return { target: paid, code: coupon.code };
+      },
+      status: 400,
+      error: "coupon redemption exceeds the balance owed",
+    },
+  ])("rejects redeeming on $name in the preview", async ({ setup, status, error }) => {
+    const { target, code } = await setup();
+    expect(await previewRejection(target, [redeem(code, 1000)])).toEqual({
+      status,
+      body: { error },
+    });
+  });
+
+  it("judges a redemption on the bill after every action in the command", async () => {
+    const coupon = await couponWorth(30000);
+    const twoNights = await stay("2026-11-01", "2026-11-03");
+    expect(twoNights.balanceCents).toBe(20000);
+    const longer = { type: "dates", checkIn: "2026-11-01", checkOut: "2026-11-04" } as const;
+    const preview = await db.request(`/reservations/${twoNights.id}/preview`, "POST", {
+      requestId: crypto.randomUUID(),
+      actions: [longer, redeem(coupon.code, 30000)],
+    });
+    expect(preview.status).toBe(200);
+    expect(((await preview.json()) as { billing: Detail }).billing).toMatchObject({
+      couponAppliedCents: 30000,
+      balanceCents: 0,
+    });
+
+    const nearExpiry = await stay("2027-10-09", "2027-10-11");
+    const pastExpiry = { type: "dates", checkIn: "2027-10-11", checkOut: "2027-10-13" } as const;
+    expect(await previewRejection(nearExpiry, [pastExpiry, redeem(coupon.code, 1000)])).toEqual({
+      status: 400,
+      body: { error: "stay starts after the coupon expires" },
+    });
+
+    const other = await couponWorth(5000);
+    expect(
+      await previewRejection(nearExpiry, [redeem(other.code, 1000), redeem(coupon.code, 1000)]),
+    ).toEqual({ status: 400, body: { error: "reservation already uses another coupon" } });
+  });
 });

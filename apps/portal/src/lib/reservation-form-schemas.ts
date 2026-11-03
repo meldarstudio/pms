@@ -297,11 +297,7 @@ export const paymentSchema = z.object({
 export type PaymentValues = z.input<typeof paymentSchema>;
 export const couponRedemptionSchema = z.object({
   amount: money(true),
-  code: z
-    .string()
-    .trim()
-    .min(1, "Introduce el código del cupón.")
-    .max(100, "Máximo 100 caracteres."),
+  code: z.string().trim().min(1, "Introduce el código del cupón."),
 });
 export function paymentDefaults(amountCents = 0): PaymentValues {
   return {
