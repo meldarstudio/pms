@@ -342,7 +342,11 @@ export function ChoiceCardsSkeleton({
                 </FieldTitle>
                 <FieldDescription>
                   {card.lines.map((line, lineIndex) => (
-                    <Skeleton key={lineIndex} className={cn("h-lh align-top", line)} />
+                    <span
+                      key={lineIndex}
+                      data-slot="skeleton"
+                      className={cn("h-lh animate-pulse bg-muted align-top", line)}
+                    />
                   ))}
                 </FieldDescription>
               </FieldContent>
