@@ -2871,6 +2871,60 @@ it("limits a card refund to what the online payment has left and at least S/ 1",
   );
 });
 
+it("offers no card return for an online payment with less than S/ 1 left, but splits a manual return onto it", async () => {
+  paidOnlineAndByPos({
+    subtotalCents: 1900,
+    totalCents: 1900,
+    paidCents: 14000,
+    refundedCents: 12950,
+    balanceCents: -1050,
+    refundDueCents: 1050,
+    payments: [
+      payment({
+        id: "online",
+        amountCents: 13000,
+        method: "card",
+        paymentDate: "2026-10-18",
+        culqiChargeId: "chr_1",
+      }),
+      payment({ id: "cash", amountCents: 1000 }),
+    ],
+    refunds: [
+      refund({
+        paymentId: "online",
+        amountCents: 12950,
+        method: "card",
+        status: "completed",
+        refundDate: "2026-10-19",
+        culqiChargeId: "chr_1",
+        culqiRefundId: "ref_1",
+      }),
+    ],
+  });
+  mockApi();
+  await render();
+  await click("Devolver…");
+  await chooseReturn("Dinero");
+  assert.ok(
+    !text(popup()!).includes("A la tarjeta"),
+    "S/ 0.50 left on the card is below the Culqi minimum",
+  );
+  assert.ok(!text(popup()!).includes("Cómo se devuelve"), "Only the manual return remains");
+  await fill("amount", "10.50");
+  await fill("reason", "Sobrepago");
+  await submit();
+  await page.until(() => writes.length === 1);
+  assert.deepEqual(
+    writes[0].actions.map((action) =>
+      action.type === "request-refund" ? [action.paymentId, action.amountCents] : action.type,
+    ),
+    [
+      ["cash", 1000],
+      ["online", 50],
+    ],
+  );
+});
+
 it.each([
   {
     error: "a Culqi refund for this payment is pending",
