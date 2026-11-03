@@ -1,10 +1,16 @@
-import { useEffect, useId, useMemo, useRef, useState } from "react";
+import { useEffect, useId, useMemo, useState } from "react";
 import { cn } from "cn";
 import { usePropertyCalendar } from "@/lib/use-property-calendar";
 import { useSelector } from "@tanstack/react-form";
 import { Button } from "@/components/ui/button";
 import { FieldGroup, FieldError } from "@/components/ui/field";
-import type { ReservationDetail, StayingGuest, WorkflowAction } from "@/lib/api";
+import {
+  getCoupon,
+  type CouponLookup,
+  type ReservationDetail,
+  type StayingGuest,
+  type WorkflowAction,
+} from "@/lib/api";
 import { setServerErrors } from "@/lib/form-errors";
 import { useReservationCommands, type ReservationCommandResult } from "@/lib/reservation-commands";
 import { useReservationForm, blurThenChange, submitForm } from "@/lib/reservation-form";
@@ -21,9 +27,8 @@ import {
 } from "@/lib/reservation-form-schemas";
 import { toast, toastError } from "@/lib/toast";
 import { phoneDraft } from "@/lib/phone";
-import { useCoupon } from "@/lib/queries";
 import { translateError } from "@/lib/errors";
-import { formatMajor, formatMoney, parseMajorToCents } from "@/lib/money";
+import { formatMoney, parseMajorToCents } from "@/lib/money";
 import { holdsInventory } from "@/lib/reservation-statuses";
 
 export const paymentMethods = [
@@ -40,6 +45,33 @@ type PaymentEntryValues = Omit<PaymentValues, "method"> & {
   method: PaymentValues["method"] | "coupon";
   code: string;
 };
+
+type CouponCheck = { code: string; coupon?: CouponLookup; error?: string };
+
+function couponProblem(coupon: CouponLookup, detail: ReservationDetail, today: string) {
+  const appliedCode = detail.couponMovements.find((movement) => movement.kind === "redeem")?.code;
+  return coupon.expiresOn < today
+    ? "coupon has expired"
+    : detail.checkIn > coupon.expiresOn
+      ? "stay starts after the coupon expires"
+      : coupon.balanceCents <= 0
+        ? "coupon redemption exceeds its balance"
+        : coupon.sourceReservationId === detail.id
+          ? "coupon cannot be redeemed on the reservation that issued it"
+          : appliedCode && appliedCode !== coupon.code
+            ? "reservation already uses another coupon"
+            : !holdsInventory(detail.status)
+              ? "coupon requires an active reservation"
+              : null;
+}
+
+function couponAmountProblem(coupon: CouponLookup, amountCents: number, detail: ReservationDetail) {
+  return amountCents > coupon.balanceCents
+    ? "coupon redemption exceeds its balance"
+    : amountCents > detail.balanceCents
+      ? "coupon redemption exceeds the balance owed"
+      : null;
+}
 
 export function GuestEntryForm({
   detail,
@@ -202,7 +234,7 @@ export function PaymentForm({
     }),
     [savedDefaults, suggestedAmountCents, detail.balanceCents, appliedCode],
   );
-  const [lookupCode, setLookupCode] = useState("");
+  const [couponCheck, setCouponCheck] = useState<CouponCheck | null>(null);
   const form = useReservationForm({
     defaultValues: defaults,
     validationLogic: blurThenChange(),
@@ -227,32 +259,19 @@ export function PaymentForm({
       if (value.method === "coupon") {
         const cents = parseMajorToCents(value.amount.trim());
         if (!cents) return;
-        const redemption: WorkflowAction[] = [
-          { type: "redeem-coupon", code: normalizeCouponCode(value.code), amountCents: cents },
-        ];
-        const replay = canReplay(redemption);
-        if (
-          !replay &&
-          (!currentCoupon ||
-            normalizeCouponCode(value.code) !== lookupCode ||
-            lookup.isFetching ||
-            lookup.isError ||
-            couponProblem)
-        )
-          return;
-        if (
-          !replay &&
-          currentCoupon &&
-          cents > Math.min(currentCoupon.balanceCents, detail.balanceCents)
-        ) {
-          setServerErrors(form, {
-            amount: translateError(
-              cents > currentCoupon.balanceCents
-                ? "coupon redemption exceeds its balance"
-                : "coupon redemption exceeds the balance owed",
-            ),
-          });
-          return;
+        const code = normalizeCouponCode(value.code);
+        const redemption: WorkflowAction[] = [{ type: "redeem-coupon", code, amountCents: cents }];
+        if (!canReplay(redemption)) {
+          let coupon: CouponLookup;
+          try {
+            coupon = await getCoupon(code);
+          } catch (error) {
+            if (!(error instanceof Error)) throw error;
+            return setCouponCheck({ code, error: error.message });
+          }
+          setCouponCheck({ code, coupon });
+          if (couponProblem(coupon, detail, today) || couponAmountProblem(coupon, cents, detail))
+            return;
         }
         actions = redemption;
       } else {
@@ -267,6 +286,7 @@ export function PaymentForm({
         return toastError("No se pudo guardar el pago", result.message);
       const next = { ...paymentDefaults(), date: value.date };
       setSavedDefaults(next);
+      setCouponCheck(null);
       form.reset({
         ...next,
         code:
@@ -290,71 +310,14 @@ export function PaymentForm({
     method === "coupon" &&
     amountCents !== null &&
     canReplay([{ type: "redeem-coupon", code: normalizedCode, amountCents }]);
-  useEffect(() => {
-    const timer = setTimeout(() => setLookupCode(normalizedCode), 250);
-    return () => clearTimeout(timer);
-  }, [normalizedCode]);
-  const lookup = useCoupon(lookupCode, method === "coupon" && normalizedCode === lookupCode);
-  const currentCoupon =
-    method === "coupon" && normalizedCode === lookupCode ? lookup.data : undefined;
-  const couponProblem =
-    currentCoupon &&
-    (currentCoupon.expiresOn < today
-      ? "coupon has expired"
-      : detail.checkIn > currentCoupon.expiresOn
-        ? "stay starts after the coupon expires"
-        : currentCoupon.balanceCents <= 0
-          ? "coupon redemption exceeds its balance"
-          : currentCoupon.sourceReservationId === detail.id
-            ? "coupon cannot be redeemed on the reservation that issued it"
-            : appliedCode && appliedCode !== currentCoupon.code
-              ? "reservation already uses another coupon"
-              : !holdsInventory(detail.status)
-                ? "coupon requires an active reservation"
-                : null);
-  const prefilledCode = useRef("");
-  useEffect(() => {
-    if (method !== "coupon") {
-      prefilledCode.current = "";
-      return;
-    }
-    if (
-      !currentCoupon ||
-      couponProblem ||
-      lookup.isFetching ||
-      lookup.isError ||
-      prefilledCode.current === currentCoupon.code
-    )
-      return;
-    form.setFieldValue(
-      "amount",
-      formatMajor(Math.min(detail.balanceCents, currentCoupon.balanceCents)),
-    );
-    prefilledCode.current = currentCoupon.code;
-  }, [
-    method,
-    currentCoupon,
-    couponProblem,
-    detail.balanceCents,
-    form,
-    lookup.isFetching,
-    lookup.isError,
-  ]);
+  const checked =
+    method === "coupon" && !replaying && couponCheck?.code === normalizedCode ? couponCheck : null;
+  const checkedCoupon = checked?.coupon;
+  const codeProblem = checkedCoupon && couponProblem(checkedCoupon, detail, today);
+  const lookupError = checked?.error ?? (codeProblem ? translateError(codeProblem) : null);
   const amountProblem =
-    !replaying &&
-    currentCoupon &&
-    amountCents !== null &&
-    amountCents > 0 &&
-    (amountCents > currentCoupon.balanceCents
-      ? "coupon redemption exceeds its balance"
-      : amountCents > detail.balanceCents
-        ? "coupon redemption exceeds the balance owed"
-        : null);
-  const lookupError =
-    !replaying && normalizedCode === lookupCode
-      ? couponProblem
-        ? translateError(couponProblem)
-        : lookup.error?.message
+    checkedCoupon && !codeProblem && amountCents
+      ? couponAmountProblem(checkedCoupon, amountCents, detail)
       : null;
   const amountErrorId = useId();
   const lookupErrorId = useId();
@@ -423,26 +386,12 @@ export function PaymentForm({
               )}
               {lookupError ? (
                 <FieldError id={lookupErrorId}>{lookupError}</FieldError>
-              ) : currentCoupon ? (
+              ) : checkedCoupon ? (
                 <p className="text-xs text-muted-foreground">
-                  Saldo {formatMoney(currentCoupon.balanceCents, detail.currency)} · Vence el{" "}
-                  {currentCoupon.expiresOn} · No canjeable por dinero
-                </p>
-              ) : normalizedCode ? (
-                <p role="status" className="text-xs text-muted-foreground">
-                  Buscando cupón…
+                  Saldo {formatMoney(checkedCoupon.balanceCents, detail.currency)} · Vence el{" "}
+                  {checkedCoupon.expiresOn} · No canjeable por dinero
                 </p>
               ) : null}
-              {lookup.isError && normalizedCode === lookupCode && (
-                <Button
-                  type="button"
-                  variant="outline"
-                  className="w-fit"
-                  onClick={() => void lookup.refetch()}
-                >
-                  Reintentar
-                </Button>
-              )}
             </FieldGroup>
           ) : (
             <>
@@ -483,21 +432,11 @@ export function PaymentForm({
               disabled={unchanged}
               onClick={() => {
                 form.reset(defaults);
-                prefilledCode.current = "";
+                setCouponCheck(null);
               }}
             />
           )}
-          <Button
-            type="submit"
-            className="w-fit"
-            disabled={
-              disabled ||
-              submitting ||
-              (method === "coupon" &&
-                !replaying &&
-                (!currentCoupon || lookup.isFetching || !!lookupError || !!amountProblem))
-            }
-          >
+          <Button type="submit" className="w-fit" disabled={disabled || submitting}>
             {submitting
               ? "Guardando…"
               : method === "coupon"

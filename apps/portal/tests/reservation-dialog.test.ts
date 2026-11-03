@@ -833,9 +833,7 @@ it.each([{ balanceCents: 50000, expected: "300.00", cents: 30000 }])(
     await choose("Método", "Cupón");
     assert.equal(window.document.querySelector('[name="reference"]'), null);
     await fill("code", " abcd-123 456 ");
-    await until(() => !button("Aplicar cupón").disabled);
     assert.equal(control("amount").value, expected);
-    assert.match(container.textContent, /No canjeable por dinero/);
     await submitPayment();
     await until(
       () =>
@@ -858,22 +856,31 @@ it.each([
     error: "El cupón no se puede usar en la reserva que lo emitió.",
   },
   { scenario: "unknown", changes: {}, unknown: true, error: "No existe un cupón con ese código." },
-])("rejects an $scenario coupon inline and sends nothing", async ({ changes, unknown, error }) => {
-  const saved = detail();
-  mockApi(async () => assert.fail("Invalid coupons must not write"));
-  page.api.on("GET", "/coupons/ABCD123456", () =>
-    unknown ? Response.json({ error: "coupon not found" }, { status: 404 }) : coupon(changes),
-  );
-  await renderCachedEditor(() => saved);
-  await page.click("Movimientos");
-  await choose("Método", "Cupón");
-  await fill("code", "ABCD123456");
-  await until(() => container.textContent.includes(error), error);
-  assert.equal(control("code").getAttribute("aria-invalid"), "true");
-  assert.equal(button("Aplicar cupón").disabled, true);
-  await submitPayment();
-  assert.equal(page.api.requests("POST", /\/commands$/).length, 0);
-});
+])(
+  "looks up an $scenario coupon only on submit, rejects it inline, and sends nothing",
+  async ({ changes, unknown, error }) => {
+    const saved = detail();
+    const lookups = page.api.requests("GET", /^\/coupons\//);
+    mockApi(async () => assert.fail("Invalid coupons must not write"));
+    page.api.on("GET", "/coupons/ABCD123456", () =>
+      unknown ? Response.json({ error: "coupon not found" }, { status: 404 }) : coupon(changes),
+    );
+    await renderCachedEditor(() => saved);
+    await page.click("Movimientos");
+    await choose("Método", "Cupón");
+    await fill("code", "ABCD123456");
+    await page.flush(300);
+    assert.equal(lookups.length, 0, "Typing a code must not look it up");
+    assert.doesNotMatch(container.textContent, new RegExp(error));
+    await submitPayment();
+    await until(() => container.textContent.includes(error), error);
+    assert.equal(lookups.length, 1);
+    assert.equal(control("code").getAttribute("aria-invalid"), "true");
+    assert.equal(page.api.requests("POST", /\/commands$/).length, 0);
+    await fill("code", "ABCD12345");
+    assert.doesNotMatch(container.textContent, new RegExp(error), "Editing the code clears it");
+  },
+);
 
 it("keeps a coupon draft and retry ID after a lost response, and rejects excessive amounts inline", async () => {
   let available = 8000;
@@ -883,60 +890,35 @@ it("keeps a coupon draft and retry ID after a lost response, and rejects excessi
       ? Response.json({ error: "Temporary failure" }, { status: 503 })
       : Response.json({ ...detail(), couponAppliedCents: 5000, balanceCents: 25000 }),
   );
+  const lookups = page.api.requests("GET", /^\/coupons\//);
   page.api.on("GET", "/coupons/ABCD123456", () => coupon({ balanceCents: available }));
   await renderCachedEditor(detail);
   await page.click("Movimientos");
   await choose("Método", "Cupón");
   await fill("code", "ABCD123456");
-  await until(() => !button("Aplicar cupón").disabled);
-  assert.equal(control("amount").value, "80.00", "A smaller coupon balance caps the suggestion");
   await fill("amount", "90");
-  assert.equal(button("Aplicar cupón").disabled, true);
-  assert.equal(control("amount").getAttribute("aria-invalid"), "true");
+  await submitPayment();
+  await until(() => control("amount").getAttribute("aria-invalid") === "true");
   assert.match(container.textContent, /El monto supera el saldo disponible del cupón/);
+  assert.match(
+    container.textContent,
+    /Saldo S\/\s*80 · Vence el 2027-10-01 · No canjeable por dinero/,
+  );
+  assert.equal(writes.length, 0);
   await fill("amount", "50");
   await submitPayment();
   await until(() => writes.length === 1 && !button("Aplicar cupón").disabled);
   assert.equal(control("amount").value, "50");
   assert.equal(control("code").value, "ABCD123456");
   available = 0;
-  await React.act(async () => client.invalidateQueries({ queryKey: ["coupon"] }));
-  assert.equal(
-    button("Aplicar cupón").disabled,
-    false,
-    "A fresh exhausted balance must not block confirming an uncertain redemption",
-  );
   await submitPayment();
   await until(() => writes.length === 2 && summaryAmount("Pagado con cupón") === "S/50");
   assert.deepEqual(writes[1], writes[0]);
-});
-
-it("never redeems a previous lookup during debounce or while the new code is loading", async () => {
-  let finish!: (response: CouponLookup) => void;
-  mockApi(async () => assert.fail("A stale lookup must not submit"));
-  page.api.on("GET", "/coupons/ABCD123456", () => coupon());
-  page.api.on(
-    "GET",
-    "/coupons/SECOND1234",
-    () =>
-      new Promise<CouponLookup>((resolve) => {
-        finish = resolve;
-      }),
+  assert.equal(
+    lookups.length,
+    2,
+    "A fresh exhausted balance must not block confirming an uncertain redemption",
   );
-  await renderCachedEditor(detail);
-  await page.click("Movimientos");
-  await choose("Método", "Cupón");
-  await fill("code", "ABCD123456");
-  await until(() => !button("Aplicar cupón").disabled);
-  await fill("code", "SECOND1234");
-  assert.equal(button("Aplicar cupón").disabled, true);
-  await submitPayment();
-  await until(() => !!finish);
-  await submitPayment();
-  assert.equal(page.api.requests("POST", /\/commands$/).length, 0);
-  await React.act(async () => finish(coupon({ code: "SECOND1234", balanceCents: 5000 })));
-  await until(() => !button("Aplicar cupón").disabled);
-  assert.equal(control("amount").value, "50.00");
 });
 
 it("shows variable nightly prices and detail without assignments in the phone pricing summary", async () => {
