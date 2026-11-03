@@ -5,7 +5,11 @@
 - Production is live. Preserve production data and applied migration history. Local sample data is disposable; production is not.
 - Run deployments, remote migrations, and production secret changes only for an explicitly requested production operation. A schema change in a development task is not deployment authorization.
 - Feature branches merge to `main`. Prepare required production migrations before deploying code that needs them.
-- Keep credentials in local ignored environment files or Cloudflare secrets, not committed files.
+- Keep production credentials in local ignored environment files or Cloudflare secrets, not committed files. The local sample owner login below is the exception.
+
+## Local sign-in
+
+Sign in to the local portal as owner `kevin` with password `owner horse battery staple`. `pnpm db:reset:local` and `pnpm db:seed:local` create that account in the local database. Use this login for local dev.
 
 ## Toolchain and validation
 

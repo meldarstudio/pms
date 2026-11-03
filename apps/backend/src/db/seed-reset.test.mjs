@@ -2,7 +2,10 @@ import { spawnSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 import { DatabaseSync } from "node:sqlite";
 import { fileURLToPath } from "node:url";
+import { hashPassword, verifyPassword } from "better-auth/crypto";
 import { afterEach, beforeEach, describe, expect, it } from "vite-plus/test";
+import { accountSql } from "../account-sql.ts";
+import { localOwner } from "../../scripts/local-owner.mjs";
 import { buildResetSql } from "../../scripts/seed-data.mjs";
 
 const backendDir = new URL("../../", import.meta.url);
@@ -173,6 +176,37 @@ describe("local dummy data reset", () => {
         expect(type.booked, `${day}: ${type.name}`).toBeLessThanOrEqual(type.sellable);
       }
     }
+  });
+
+  it("creates the documented local owner login", async () => {
+    const agents = readFileSync(new URL("../../../../AGENTS.md", import.meta.url), "utf8");
+    expect(agents).toContain(`owner \`${localOwner.username}\``);
+    expect(agents).toContain(`password \`${localOwner.password}\``);
+    const backendPackage = JSON.parse(
+      readFileSync(new URL("../../package.json", import.meta.url), "utf8"),
+    );
+    expect(backendPackage.scripts["db:seed:local"]).toContain("scripts/seed-owner.mjs");
+    expect(
+      readFileSync(new URL("../../scripts/seed-reset.mjs", import.meta.url), "utf8"),
+    ).toContain("seedLocalOwner");
+
+    db.exec(
+      accountSql({
+        username: localOwner.username,
+        role: localOwner.role,
+        passwordHash: await hashPassword(localOwner.password),
+        id: "seed-owner",
+        now: 0,
+      }),
+    );
+    const row = db
+      .prepare(
+        `SELECT u.username, u.role, a.password AS password
+         FROM user u JOIN account a ON a.user_id = u.id WHERE u.username = ?`,
+      )
+      .get(localOwner.username);
+    expect(row).toMatchObject({ username: localOwner.username, role: "owner" });
+    expect(await verifyPassword({ hash: row.password, password: localOwner.password })).toBe(true);
   });
 
   it.each([["--remote"]])("refuses remote reset before running Wrangler: %j", (...args) => {

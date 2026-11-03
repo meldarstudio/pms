@@ -11,9 +11,7 @@ A skeleton is done when it is a **tracing** of the loaded UI: same region size, 
 
 ## Steps
 
-1. **App running and signed in.** Start the portal and API per [README commands](../../../README.md#commands) if ports 5173/8788 are not listening. Sign in with a disposable **local** account; create one by piping the password twice:
-   `(printf 'PASSWORD\n'; sleep 1; printf 'PASSWORD\n'; sleep 3) | pnpm auth:account <name> --role=staff --local`
-   (usernames: letters, digits, `_`, `.`). Local sample data is disposable; use `--local` only.
+1. **App running and signed in.** Start the portal and API with `pnpm dev` if ports 5173/8788 are not listening. Sign in with the [local owner account](../../../AGENTS.md#local-sign-in). Set `PMS_USER` and `PMS_PASSWORD` to that same login. Local sample data is disposable; use `--local` only.
 2. **Scratch Playwright outside the repo.** It is not a project dependency:
    ```sh
    mkdir -p /tmp/skeleton-measure && cd /tmp/skeleton-measure

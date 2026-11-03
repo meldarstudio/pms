@@ -5,7 +5,7 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { createInterface } from "node:readline";
 import { Writable } from "node:stream";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import { hashPassword } from "better-auth/crypto";
 import {
   accountSql,
@@ -110,6 +110,14 @@ async function main() {
     prompt.close();
   }
 
+  await saveAccount({ username, role, password, target });
+}
+
+export async function saveAccount({ username, role, password, target }) {
+  if (password.length < MIN_PASSWORD_LENGTH)
+    throw new Error(`Use at least ${MIN_PASSWORD_LENGTH} characters.`);
+  if (password.length > MAX_PASSWORD_LENGTH)
+    throw new Error(`Use at most ${MAX_PASSWORD_LENGTH} characters.`);
   const sql = accountSql({
     username,
     role,
@@ -131,10 +139,14 @@ async function main() {
   } finally {
     rmSync(temporaryDir, { recursive: true, force: true });
   }
+  const remote = target.includes("--remote");
   console.log(`Account "${username}" (${role}) saved ${remote ? "in production" : "locally"}.`);
 }
 
-main().catch((error) => {
-  console.error(error instanceof Error ? error.message : error);
-  process.exitCode = 1;
-});
+const entry = process.argv[1];
+if (entry && import.meta.url === pathToFileURL(resolve(entry)).href) {
+  main().catch((error) => {
+    console.error(error instanceof Error ? error.message : error);
+    process.exitCode = 1;
+  });
+}
