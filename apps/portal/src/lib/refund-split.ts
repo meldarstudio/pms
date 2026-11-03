@@ -1,4 +1,5 @@
 import type { ReservationDetail } from "./api.ts";
+import { culqiMinRefundCents } from "./reservation-form-schemas.ts";
 
 type RefundSource = Pick<ReservationDetail, "payments" | "refunds">;
 
@@ -22,7 +23,9 @@ function refundablePayments({ payments, refunds }: RefundSource) {
 }
 
 export function cardRefundPayments(detail: RefundSource) {
-  return refundablePayments(detail).filter((entry) => entry.payment.culqiChargeId);
+  return refundablePayments(detail).filter(
+    (entry) => entry.payment.culqiChargeId && entry.leftCents >= culqiMinRefundCents,
+  );
 }
 
 export function refundCapacityCents(detail: RefundSource) {
