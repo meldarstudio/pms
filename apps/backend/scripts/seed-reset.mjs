@@ -3,6 +3,7 @@ import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import { seedLocalOwner } from "./local-owner.mjs";
 import { buildResetSql, referenceDate } from "./seed-data.mjs";
 import { buildSchemaResetSql } from "./schema-reset.mjs";
 
@@ -31,7 +32,7 @@ function runWrangler(args, captureOutput = false) {
   return result.stdout;
 }
 
-function main() {
+async function main() {
   const args = process.argv.slice(2);
   if (args.length === 1 && args[0] === "--help") {
     console.log(
@@ -100,15 +101,16 @@ function main() {
       ["d1", "execute", "DB", "--local", ...persistArgs, "--file", sqlPath, "--json"],
       true,
     );
+    await seedLocalOwner(
+      options.has("--persist-to") ? resolve(options.get("--persist-to")) : undefined,
+    );
     console.log("Local database reset. Refresh the portal to load the sample data.");
   } finally {
     rmSync(temporaryDir, { recursive: true, force: true });
   }
 }
 
-try {
-  main();
-} catch (error) {
+main().catch((error) => {
   console.error(error instanceof Error ? error.message : error);
   process.exitCode = 1;
-}
+});
