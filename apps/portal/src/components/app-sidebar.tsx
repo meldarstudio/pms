@@ -8,7 +8,7 @@ import {
   LogOutIcon,
   Settings2Icon,
 } from "lucide-react";
-import logo from "@/assets/logo.svg";
+import { HotelLogo } from "@/components/hotel-logo";
 import { Separator } from "@/components/ui/separator";
 import {
   Sidebar,
@@ -84,13 +84,7 @@ export function AppSidebar() {
     <Sidebar collapsible="offcanvas">
       <nav aria-label="Navegación principal" className="flex min-h-0 flex-1 flex-col">
         <SidebarHeader className="items-center py-6">
-          <img
-            src={logo}
-            alt="Hotel Manantial"
-            width={112}
-            height={28}
-            className="h-7 w-28 scheme-light dark:scheme-dark"
-          />
+          <HotelLogo className="h-7 w-28 text-sidebar-foreground" />
         </SidebarHeader>
         <SidebarContent>
           <SidebarGroup>

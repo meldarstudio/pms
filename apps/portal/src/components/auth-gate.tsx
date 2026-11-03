@@ -1,7 +1,7 @@
 import { useState, type FormEvent, type ReactNode } from "react";
 import { EyeIcon, EyeOffIcon } from "lucide-react";
 
-import logo from "@/assets/logo.svg";
+import { HotelLogo } from "@/components/hotel-logo";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Field, FieldError, FieldGroup, FieldLabel } from "@/components/ui/field";
@@ -58,13 +58,7 @@ function LoginPage() {
         <CardHeader className="justify-items-center py-2">
           <CardTitle>
             <h1>
-              <img
-                src={logo}
-                alt="Hotel Manantial"
-                width={144}
-                height={36}
-                className="h-9 w-36 scheme-light dark:scheme-dark"
-              />
+              <HotelLogo className="h-9 w-36 text-foreground" />
             </h1>
           </CardTitle>
         </CardHeader>
