@@ -529,6 +529,7 @@ it.each(["desktop", "mobile"])(
       "108, 201, 204, 205, 207, 208, 213, 301, 304, 305, 307, 308, 404, 405, 407, 1001 · 2 sin asignar",
     );
     await fill("Contacto principal o código", "Ana ANA0001");
+    await click("Buscar");
     await until(() => params().get("q") === "Ana ANA0001");
   },
 );
@@ -759,10 +760,12 @@ it("searches historical cancelled reservations across every date and retains vis
     });
   await render("/reservations?view=all");
   await fill("Contacto principal o código", "   ");
+  await click("Buscar");
   await until(() => !container.querySelector('table[aria-busy="true"]'));
   assert.equal(params().has("q"), false);
   assert.equal(container.textContent.includes("Reintentar"), false);
   await fill("Contacto principal o código", "Historic PAST0001");
+  await click("Buscar");
   await until(() => container.querySelector("tbody")!.textContent.includes("Historic contact"));
   assert.ok(container.querySelector("tbody")!.textContent.includes("Cancelada"));
   assert.equal(params().has("checkIn"), false);

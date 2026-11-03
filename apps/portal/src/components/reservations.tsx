@@ -30,7 +30,12 @@ import { ReservationStatusBadge } from "@/components/reservation-status-badge";
 import { Empty, EmptyHeader, EmptyTitle, EmptyDescription } from "@/components/ui/empty";
 import { Field, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { PageError, StaleDataNotice } from "@/components/page-error";
-import { InputGroup, InputGroupAddon, InputGroupInput } from "@/components/ui/input-group";
+import {
+  InputGroup,
+  InputGroupAddon,
+  InputGroupButton,
+  InputGroupInput,
+} from "@/components/ui/input-group";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Popover, PopoverContent, PopoverTitle, PopoverTrigger } from "@/components/ui/popover";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -242,6 +247,12 @@ export function Reservations({
 }) {
   const arrivalId = useId();
   const guestId = useId();
+  const [draftQ, setDraftQ] = useState(search.q);
+  const [appliedQ, setAppliedQ] = useState(search.q);
+  if (appliedQ !== search.q) {
+    setAppliedQ(search.q);
+    setDraftQ(search.q);
+  }
   const cardsId = useId();
   const mobile = useIsMobile();
   const mainRef = useRef<HTMLElement>(null);
@@ -473,7 +484,15 @@ export function Reservations({
         ) : null}
       </div>
       <div className="flex flex-wrap items-center gap-2">
-        <div className="w-full md:max-w-sm">
+        <form
+          role="search"
+          className="w-full md:max-w-sm"
+          onSubmit={(event) => {
+            event.preventDefault();
+            if (mobile) (document.activeElement as HTMLElement | null)?.blur();
+            refine({ q: draftQ });
+          }}
+        >
           <Field>
             <FieldLabel htmlFor={guestId} className="sr-only">
               Contacto principal o código
@@ -485,24 +504,31 @@ export function Reservations({
               <InputGroupInput
                 id={guestId}
                 placeholder="Buscar contacto principal o código…"
-                value={search.q}
-                onChange={(event) => refine({ q: event.target.value })}
+                enterKeyHint="search"
+                value={draftQ}
+                onChange={(event) => setDraftQ(event.target.value)}
               />
-              {search.q ? (
-                <InputGroupAddon align="inline-end">
+              <InputGroupAddon align="inline-end">
+                {draftQ || search.q ? (
                   <Button
                     variant="ghost"
                     size="icon-xs"
                     aria-label="Borrar búsqueda"
-                    onClick={() => refine({ q: "" })}
+                    onClick={() => {
+                      setDraftQ("");
+                      if (search.q) refine({ q: "" });
+                    }}
                   >
                     <XIcon data-icon="inline-end" />
                   </Button>
-                </InputGroupAddon>
-              ) : null}
+                ) : null}
+                <InputGroupButton type="submit" variant="secondary">
+                  Buscar
+                </InputGroupButton>
+              </InputGroupAddon>
             </InputGroup>
           </Field>
-        </div>
+        </form>
         <ReservationListFilters search={search} onChange={refine} />
         <div className="ml-auto min-w-0">
           <Popover>
