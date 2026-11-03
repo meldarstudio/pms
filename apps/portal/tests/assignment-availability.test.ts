@@ -156,9 +156,12 @@ describe("target check", () => {
     assert.equal(targetProblem(target, [reservation({ status })]), null);
   });
 
-  it.each(["checked_out", "cancelled"])("stops a %s reserved room receiving a room", (status) => {
-    assert.equal(targetProblem(target, [reservation({ status })]), "not-awaiting");
-  });
+  it.each(["checked_out", "cancelled", "no_show", "unfulfilled"])(
+    "stops a %s reserved room receiving a room",
+    (status) => {
+      assert.equal(targetProblem(target, [reservation({ status })]), "not-awaiting");
+    },
+  );
 
   it("stops a reserved room whose reservation or line is gone", () => {
     assert.equal(targetProblem(target, []), "not-awaiting");

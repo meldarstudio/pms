@@ -1,5 +1,5 @@
 import { spawnSync } from "node:child_process";
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -7,6 +7,13 @@ import { buildResetSql, referenceDate } from "./seed-data.mjs";
 import { buildSchemaResetSql } from "./schema-reset.mjs";
 
 const backendDir = fileURLToPath(new URL("..", import.meta.url));
+
+function propertyToday() {
+  const config = readFileSync(join(backendDir, "wrangler.jsonc"), "utf8");
+  const timeZone = config.match(/"PROPERTY_TIME_ZONE"\s*:\s*"([^"]+)"/)?.[1];
+  if (!timeZone) throw new Error("PROPERTY_TIME_ZONE is missing from wrangler.jsonc");
+  return new Intl.DateTimeFormat("en-CA", { timeZone }).format(new Date());
+}
 
 function runWrangler(args, captureOutput = false) {
   const result = spawnSync("pnpm", ["exec", "wrangler", ...args], {
@@ -30,7 +37,7 @@ function main() {
     console.log(
       "Usage: pnpm db:reset:local [--date=YYYY-MM-DD] [--persist-to=PATH] [--rebuild-schema]",
     );
-    console.log("Replaces application data with dummy data. Defaults to today in UTC.");
+    console.log("Replaces application data with dummy data. Defaults to today at the property.");
     console.log(
       "--rebuild-schema also replaces application tables, triggers, and migration history.",
     );
@@ -51,7 +58,7 @@ function main() {
     if (!value || value.startsWith("--")) throw new Error(`Missing value for ${option}`);
     options.set(option, value);
   }
-  const anchor = referenceDate(options.get("--date"));
+  const anchor = referenceDate(options.get("--date") ?? propertyToday());
   const sql = buildResetSql(anchor);
   const persistArgs = options.has("--persist-to")
     ? ["--persist-to", resolve(options.get("--persist-to"))]
@@ -87,7 +94,7 @@ function main() {
       console.log("Rebuilding PMS application schema and migration history.");
       runWrangler(["d1", "execute", ...targetArgs, "--file", resetPath, "--json"], true);
     }
-    console.log(`Replacing local PMS data with sample data around ${anchor} UTC.`);
+    console.log(`Replacing local PMS data with sample data around ${anchor}.`);
     runWrangler(["d1", "migrations", "apply", "DB", "--local", ...persistArgs]);
     runWrangler(
       ["d1", "execute", "DB", "--local", ...persistArgs, "--file", sqlPath, "--json"],

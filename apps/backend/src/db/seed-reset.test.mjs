@@ -135,7 +135,7 @@ describe("local dummy data reset", () => {
       JOIN reservation_rooms rr ON rr.id = n.reservation_room_id
       JOIN room_types t ON t.id = rr.room_type_id
       LEFT JOIN room_type_rates rate ON rate.room_type_id = t.id AND rate.date = n.date
-      WHERE n.price_cents != CASE WHEN rr.id = 'line-long-stay-1' THEN 9500 ELSE COALESCE(rate.price_cents, t.base_rate_cents) END`,
+      WHERE n.price_cents - n.adjustment_cents != CASE WHEN rr.id = 'line-long-stay-1' THEN 9500 ELSE COALESCE(rate.price_cents, t.base_rate_cents) END`,
         )
         .all(),
     ).toEqual([]);
@@ -163,7 +163,7 @@ describe("local dummy data reset", () => {
         .prepare(`
         SELECT t.name,
           (SELECT COUNT(*) FROM reservation_rooms rr JOIN reservations r ON r.id=rr.reservation_id
-            WHERE rr.room_type_id=t.id AND r.status != 'cancelled' AND r.check_in <= ? AND r.check_out > ?) AS booked,
+            WHERE rr.room_type_id=t.id AND r.status IN ('confirmed', 'checked_in', 'checked_out') AND r.check_in <= ? AND r.check_out > ?) AS booked,
           (SELECT COUNT(*) FROM rooms WHERE room_type_id=t.id) -
           (SELECT COUNT(*) FROM room_closures c JOIN rooms rm ON rm.id=c.room_id
             WHERE rm.room_type_id=t.id AND c.starts <= ? AND c.ends > ?) AS sellable

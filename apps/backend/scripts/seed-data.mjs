@@ -201,7 +201,228 @@ const examples = [
     payment: "installments",
     rooms: [{ type: "deluxe", room: "204", adults: 2, discountCents: 5000 }],
   },
+  {
+    id: "no-show",
+    name: ["Martín", "Ríos"],
+    arrival: 0,
+    nights: 2,
+    status: "no_show",
+    payments: [{ amount: "first-night", method: "yape" }],
+    cancellation: { recorded: 0 },
+    rooms: [{ type: "deluxe", room: "205", adults: 2 }],
+  },
+  {
+    id: "no-show-rebooked",
+    name: ["Fiorella", "Campos"],
+    arrival: 0,
+    nights: 2,
+    status: "no_show",
+    payments: [{ amount: "first-night", method: "card" }],
+    cancellation: { recorded: 0 },
+    rooms: [{ type: "deluxe", room: "206", adults: 2 }],
+  },
+  {
+    id: "rebooked-room",
+    name: ["Gonzalo", "Herrera"],
+    arrival: 0,
+    nights: 2,
+    payment: "deposit",
+    rooms: [{ type: "deluxe", room: "206", adults: 1 }],
+  },
+  {
+    id: "no-show-waived",
+    name: ["Ximena", "Aguilar"],
+    arrival: -1,
+    nights: 3,
+    status: "no_show",
+    plan: "non_refundable",
+    payments: [{ amount: "total", method: "transfer" }],
+    cancellation: {
+      recorded: -1,
+      waivers: [{ amountCents: 15000, reason: "Vuelo cancelado; se acordó devolver una noche." }],
+    },
+    refunds: [{ amountCents: 15000, method: "transfer", status: "requested" }],
+    rooms: [{ type: "standard", room: "111", adults: 1 }],
+  },
+  {
+    id: "no-show-unpaid",
+    name: ["Joaquín", "Ñahui"],
+    guest: { email: null, phone: null, documentType: null, documentNumber: null, notes: null },
+    arrival: -2,
+    nights: 2,
+    status: "no_show",
+    cancellation: { recorded: -2 },
+    rooms: [{ type: "standard", adults: 1 }],
+  },
+  {
+    id: "cancel-free",
+    name: ["Lorena", "Bustamante"],
+    arrival: 10,
+    nights: 3,
+    status: "cancelled",
+    reason: "El huésped cambió de fechas.",
+    payments: [{ amount: "first-night", method: "transfer" }],
+    cancellation: { recorded: 0, chargeCents: 0, freeUntil: 8 },
+    refunds: [{ amount: "first-night", method: "transfer", status: "requested" }],
+    rooms: [{ type: "standard", adults: 2 }],
+  },
+  {
+    id: "cancel-late-waived",
+    name: ["Hugo", "Tapia"],
+    arrival: 1,
+    nights: 2,
+    status: "cancelled",
+    reason: "Emergencia familiar.",
+    payments: [{ amount: "first-night", method: "cash" }],
+    cancellation: {
+      recorded: 0,
+      freeUntil: -1,
+      waivers: [{ amountCents: 5000, reason: "Cliente frecuente." }],
+    },
+    refunds: [{ amountCents: 5000, method: "cash", status: "completed", reference: "CAJA-12" }],
+    rooms: [{ type: "deluxe", adults: 2 }],
+  },
+  {
+    id: "cancel-refund-failed",
+    name: ["Inés", "Valdivia"],
+    arrival: 12,
+    nights: 2,
+    status: "cancelled",
+    payments: [{ amount: "first-night", method: "card" }],
+    cancellation: { recorded: -1, chargeCents: 0, freeUntil: 10 },
+    refunds: [
+      {
+        amount: "first-night",
+        method: "card",
+        status: "failed",
+        failure: "La tarjeta del huésped está vencida.",
+      },
+    ],
+    rooms: [{ type: "deluxe", adults: 1, children: 2 }],
+  },
+  {
+    id: "cancel-coupon",
+    name: ["Óscar", "Benavides"],
+    arrival: 6,
+    nights: 2,
+    status: "cancelled",
+    reason: "Prefiere volver en otra fecha.",
+    payments: [{ amount: "total", method: "plin" }],
+    cancellation: { recorded: -3, chargeCents: 0, freeUntil: 4 },
+    coupon: { code: "DEMOVALE2026", issued: -3, redeemCents: 10000, redeemedBy: "coupon-redeemer" },
+    rooms: [{ type: "standard", adults: 2 }],
+  },
+  {
+    id: "coupon-redeemer",
+    name: ["Teresa", "Cáceres"],
+    arrival: 14,
+    nights: 2,
+    rooms: [{ type: "standard", adults: 1 }],
+  },
+  {
+    id: "coupon-expired",
+    name: ["Ricardo", "Palacios"],
+    arrival: -400,
+    nights: 2,
+    created: -420,
+    status: "cancelled",
+    payments: [{ amount: "first-night", method: "cash", day: -410 }],
+    cancellation: { recorded: -403, chargeCents: 0, freeUntil: -402 },
+    coupon: { code: "DEMOVENCIDO", issued: -403 },
+    rooms: [{ type: "standard", adults: 1 }],
+  },
+  {
+    id: "restored",
+    name: ["Natalia", "Morales"],
+    arrival: 5,
+    nights: 3,
+    payments: [{ amount: "first-night", method: "card" }],
+    cancellation: {
+      recorded: -2,
+      restored: -1,
+      freeUntil: 3,
+      chargeCents: 0,
+    },
+    rooms: [{ type: "standard", room: "112", adults: 2 }],
+  },
+  {
+    id: "unfulfilled",
+    name: ["Emma", "Wilson"],
+    source: "online",
+    arrival: 2,
+    nights: 2,
+    status: "unfulfilled",
+    plan: "non_refundable",
+    payments: [{ amount: "total", method: "card", culqi: "chr_test_demo_unfulfilled" }],
+    rooms: [{ type: "suite", adults: 2, children: 1 }],
+  },
+  {
+    id: "online-prepaid",
+    name: ["Lucas", "Fernández"],
+    source: "online",
+    arrival: 3,
+    nights: 2,
+    plan: "non_refundable",
+    payments: [{ amount: "total", method: "card", culqi: "chr_test_demo_prepaid" }],
+    rooms: [{ type: "deluxe", adults: 1, children: 2 }],
+  },
+  {
+    id: "overdue-arrival",
+    name: ["Silvia", "Ponce"],
+    arrival: -1,
+    nights: 3,
+    payment: "deposit",
+    rooms: [{ type: "standard", room: "103", adults: 2 }],
+  },
+  {
+    id: "overdue-departure",
+    name: ["Felipe", "Arana"],
+    arrival: -3,
+    nights: 2,
+    status: "checked_in",
+    payment: "deposit",
+    rooms: [{ type: "deluxe", room: "206", adults: 2 }],
+  },
+  {
+    id: "in-house-unassigned",
+    name: ["Daniel", "Cueva"],
+    arrival: -1,
+    nights: 2,
+    status: "checked_in",
+    payment: "full",
+    rooms: [{ type: "deluxe", adults: 3 }],
+  },
+  {
+    id: "departed-unpaid",
+    name: ["Pilar", "Gamarra"],
+    arrival: -6,
+    nights: 3,
+    status: "checked_out",
+    rooms: [{ type: "standard", room: "112", adults: 1 }],
+  },
+  {
+    id: "max-stay",
+    name: ["María de los Ángeles", "Fernández-Villanueva de la Torre y Santisteban"],
+    guest: { email: null, notes: "Estadía corporativa de 60 noches, el máximo permitido." },
+    arrival: 20,
+    nights: 60,
+    payment: "deposit",
+    rooms: [{ type: "standard", adults: 1 }],
+  },
 ];
+
+const dirtyRooms = ["107", "203", "206"];
+
+const stayingGuests = {
+  "in-house": [
+    { name: "Diego Salazar", document: "45678912" },
+    { name: "Renata Salazar", document: null },
+  ],
+  family: [{ name: "Mariana García", document: "70112233" }],
+};
+
+const inventoryStatuses = ["confirmed", "checked_in", "checked_out"];
+const holdsInventory = (status = "confirmed") => inventoryStatuses.includes(status);
 
 const closures = [
   { room: "110", starts: -1, ends: 3, reason: "Reparación del baño" },
@@ -233,7 +454,7 @@ function busyExamples() {
     for (const day of nights(closure.starts, closure.ends - closure.starts)) room.blocked.add(day);
   }
   for (const assigned of [true, false]) {
-    for (const example of examples.filter(({ status }) => status !== "cancelled")) {
+    for (const example of examples.filter(({ status }) => holdsInventory(status))) {
       for (const room of example.rooms.filter(({ room }) => Boolean(room) === assigned)) {
         const available = inventory.find(
           (candidate) =>
@@ -348,6 +569,34 @@ function busyExamples() {
   return [...examples, ...generated];
 }
 
+const ratePlans = {
+  flexible: {
+    plan: "flexible",
+    chargeBasis: "first_night",
+    freeDays: 2,
+    paymentSchedule: "first_night_deposit",
+    adjustmentPercent: 0,
+  },
+  non_refundable: {
+    plan: "non_refundable",
+    chargeBasis: "final_total",
+    freeDays: null,
+    paymentSchedule: "full_upfront",
+    adjustmentPercent: -10,
+  },
+};
+
+function guestOverrides(guest = {}) {
+  const columns = {
+    email: "email",
+    phone: "phone",
+    documentType: "document_type",
+    documentNumber: "document_number",
+    notes: "notes",
+  };
+  return Object.fromEntries(Object.entries(guest).map(([key, value]) => [columns[key], value]));
+}
+
 function literal(value) {
   if (value === null || value === undefined) return "NULL";
   if (typeof value === "number") return String(value);
@@ -424,11 +673,28 @@ export function buildResetSql(value) {
     );
   }
 
+  const seedStaff = "seed-staff";
+  statements.push(
+    `INSERT OR IGNORE INTO user (id, name, email, username, display_username, role, created_at, updated_at) VALUES ('${seedStaff}', 'Recepción demo', 'demo.recepcion@example.invalid', 'demo.recepcion', 'demo.recepcion', 'staff', 0, 0);`,
+  );
+  for (const number of dirtyRooms) {
+    statements.push(
+      `UPDATE rooms SET housekeeping_status = 'dirty', housekeeping_changed_at = ${literal(`${date(0)}T08:00:00.000Z`)} WHERE id = 'room-${number}';`,
+    );
+  }
+
+  const at = (offset, time = "12:00:00") => `${date(offset)}T${time}.000Z`;
+  const reservationIds = new Map();
+  const pendingCoupons = [];
   for (const [index, example] of busyExamples().entries()) {
     const guestId = `guest-${example.id}`;
     const reservationId = `reservation-${example.id}`;
+    reservationIds.set(example.id, reservationId);
     const checkIn = date(example.arrival);
     const checkOut = date(example.arrival + example.nights);
+    const status = example.status ?? "confirmed";
+    const plan = ratePlans[example.plan ?? "flexible"];
+    const created = example.created === undefined ? createdAt : at(example.created);
     statements.push(
       insert("guests", {
         id: guestId,
@@ -438,9 +704,16 @@ export function buildResetSql(value) {
         document_type: "DNI",
         document_number: String(index + 1).padStart(8, "0"),
         notes: "Huésped de prueba para la gestión del alojamiento.",
-        created_at: createdAt,
+        created_at: created,
+        ...guestOverrides(example.guest),
       }),
     );
+    const cancelledAt =
+      status === "cancelled"
+        ? example.cancellation
+          ? at(example.cancellation.recorded)
+          : createdAt
+        : null;
     statements.push(
       insert("reservations", {
         id: reservationId,
@@ -448,15 +721,23 @@ export function buildResetSql(value) {
         guest_id: guestId,
         check_in: checkIn,
         check_out: checkOut,
-        status: example.status ?? "confirmed",
-        cancelled_at: example.status === "cancelled" ? createdAt : null,
-        source: "desk",
+        status,
+        cancelled_at: cancelledAt,
+        cancellation_reason: status === "cancelled" ? (example.reason ?? null) : null,
+        source: example.source ?? "desk",
         notes: "Reserva de prueba. Restablecer con pnpm db:reset:local.",
-        created_at: createdAt,
+        created_at: created,
+        rate_plan: plan.plan,
+        cancellation_charge_basis: plan.chargeBasis,
+        free_cancellation_days: plan.freeDays,
+        free_cancellation_hours: plan.freeDays === null ? null : plan.freeDays * 24,
+        payment_schedule: plan.paymentSchedule,
+        price_adjustment_percent: plan.adjustmentPercent,
       }),
     );
 
     let total = 0;
+    let firstNight = 0;
     let totalDiscount = 0;
     for (const [lineIndex, room] of example.rooms.entries()) {
       const baseRate = baseRates.get(room.type);
@@ -464,10 +745,11 @@ export function buildResetSql(value) {
       const lineId = `line-${example.id}-${lineIndex + 1}`;
       const nights = Array.from({ length: example.nights }, (_, night) => {
         const day = date(example.arrival + night);
-        return {
-          date: day,
-          price: room.flatRateCents ?? overrides.get(`${room.type}:${day}`) ?? baseRate,
-        };
+        if (room.flatRateCents !== undefined)
+          return { date: day, price: room.flatRateCents, adjustment: 0 };
+        const ordinary = overrides.get(`${room.type}:${day}`) ?? baseRate;
+        const price = Math.floor((ordinary * (100 + plan.adjustmentPercent) + 50) / 100);
+        return { date: day, price, adjustment: price - ordinary };
       });
       const subtotal = nights.reduce((sum, night) => sum + night.price, 0);
       const discount = room.fullDiscount ? subtotal : (room.discountCents ?? 0);
@@ -475,6 +757,7 @@ export function buildResetSql(value) {
         throw new Error(`Invalid discount for ${lineId}`);
       }
       total += subtotal - discount;
+      firstNight += nights[0].price;
       totalDiscount += discount;
       statements.push(
         insert("reservation_rooms", {
@@ -484,16 +767,17 @@ export function buildResetSql(value) {
           room_id: room.room ? `room-${room.room}` : null,
           adults: room.adults,
           children: room.children ?? 0,
-          created_at: createdAt,
+          created_at: created,
         }),
       );
-      for (const { date: day, price } of nights) {
+      for (const { date: day, price, adjustment } of nights) {
         statements.push(
           insert("reservation_room_nights", {
             id: `night-${lineId}-${day}`,
             reservation_room_id: lineId,
             date: day,
             price_cents: price,
+            adjustment_cents: adjustment,
           }),
         );
       }
@@ -502,25 +786,55 @@ export function buildResetSql(value) {
     statements.push(
       `UPDATE reservations SET discount_cents = ${totalDiscount} WHERE id = ${literal(reservationId)};`,
     );
-    if (example.payment) {
-      if (example.payment === "installments") {
-        const third = Math.floor(total / 3);
-        for (const [part, amount] of [third, third, total - third * 2].entries()) {
-          statements.push(
-            insert("payments", {
-              id: `payment-${example.id}-${part + 1}`,
-              reservation_id: reservationId,
-              amount_cents: amount,
-              method: ["cash", "transfer", "card"][part],
-              reference: `DEMO-CUOTA-${part + 1}`,
-              payment_date: date(Math.min(0, example.arrival)),
-              created_at: createdAt,
-              notes: `Pago ${part + 1} de 3.`,
-            }),
-          );
-        }
-        continue;
+    for (const [guestIndex, guest] of (stayingGuests[example.id] ?? []).entries()) {
+      statements.push(
+        insert("reservation_guests", {
+          id: `staying-${example.id}-${guestIndex + 1}`,
+          reservation_id: reservationId,
+          full_name: guest.name,
+          document_type: guest.document ? "DNI" : null,
+          document_number: guest.document,
+          created_at: created,
+        }),
+      );
+    }
+    const amountOf = (value) =>
+      value === "total" ? total : value === "first-night" ? Math.min(firstNight, total) : value;
+    const paymentIds = [];
+    for (const [part, payment] of (example.payments ?? []).entries()) {
+      const id = `payment-${example.id}-${part + 1}`;
+      paymentIds.push(id);
+      statements.push(
+        insert("payments", {
+          id,
+          reservation_id: reservationId,
+          amount_cents: amountOf(payment.amount),
+          method: payment.method,
+          reference: payment.culqi ? null : `DEMO-${example.id}`.toUpperCase(),
+          payment_date: date(payment.day ?? Math.min(0, example.arrival - 1)),
+          created_at: created,
+          notes: payment.culqi ? "Pago en línea con Culqi." : "Pago de prueba.",
+          culqi_charge_id: payment.culqi ?? null,
+        }),
+      );
+    }
+    if (example.payment === "installments") {
+      const third = Math.floor(total / 3);
+      for (const [part, amount] of [third, third, total - third * 2].entries()) {
+        statements.push(
+          insert("payments", {
+            id: `payment-${example.id}-${part + 1}`,
+            reservation_id: reservationId,
+            amount_cents: amount,
+            method: ["cash", "transfer", "card"][part],
+            reference: `DEMO-CUOTA-${part + 1}`,
+            payment_date: date(Math.min(0, example.arrival)),
+            created_at: created,
+            notes: `Pago ${part + 1} de 3.`,
+          }),
+        );
       }
+    } else if (example.payment) {
       const amount =
         example.payment === "full"
           ? total
@@ -535,11 +849,117 @@ export function buildResetSql(value) {
           method: example.method ?? (index % 2 === 0 ? "card" : "transfer"),
           reference: `DEMO-${example.id}`.toUpperCase(),
           payment_date: date(Math.min(0, example.arrival - 1)),
-          created_at: createdAt,
+          created_at: created,
           notes:
             example.payment === "credit"
               ? "Pago con saldo a favor por salida anticipada."
               : "Pago de prueba.",
+        }),
+      );
+    }
+
+    const cancellation = example.cancellation;
+    if (cancellation) {
+      const id = `cancellation-${example.id}`;
+      const outcome = status === "no_show" ? "no_show" : "cancelled";
+      statements.push(
+        insert("reservation_cancellations", {
+          id,
+          reservation_id: reservationId,
+          outcome,
+          recorded_at: at(cancellation.recorded),
+          free_until:
+            outcome === "no_show" || cancellation.freeUntil === undefined
+              ? null
+              : date(cancellation.freeUntil),
+          policy_charge_cents:
+            cancellation.chargeCents ??
+            (plan.chargeBasis === "final_total" ? total : Math.min(firstNight, total)),
+          account_id: seedStaff,
+          restored_at: cancellation.restored === undefined ? null : at(cancellation.restored),
+        }),
+      );
+      for (const [waiverIndex, waiver] of (cancellation.waivers ?? []).entries()) {
+        statements.push(
+          insert("cancellation_waivers", {
+            id: `${id}-waiver-${waiverIndex + 1}`,
+            cancellation_id: id,
+            amount_cents: waiver.amountCents,
+            reason: waiver.reason,
+            recorded_at: at(cancellation.recorded, "12:05:00"),
+            account_id: seedStaff,
+          }),
+        );
+      }
+    }
+    for (const [refundIndex, refund] of (example.refunds ?? []).entries()) {
+      const resolved = refund.status !== "requested";
+      statements.push(
+        insert("refunds", {
+          id: `refund-${example.id}-${refundIndex + 1}`,
+          reservation_id: reservationId,
+          payment_id: paymentIds[0],
+          amount_cents: refund.amountCents ?? amountOf(refund.amount),
+          method: refund.method,
+          reference: refund.reference ?? null,
+          reason: "Saldo a favor tras la cancelación.",
+          status: refund.status,
+          requested_at: at(cancellation?.recorded ?? 0, "12:10:00"),
+          requested_account_id: seedStaff,
+          resolved_at: resolved ? at(0, "09:00:00") : null,
+          resolved_account_id: resolved ? seedStaff : null,
+          refund_date: refund.status === "completed" ? date(0) : null,
+          completion_reference: refund.status === "completed" ? (refund.reference ?? null) : null,
+          failure_reason: refund.status === "failed" ? refund.failure : null,
+        }),
+      );
+    }
+    if (example.coupon) {
+      const paid = (example.payments ?? []).reduce((sum, p) => sum + amountOf(p.amount), 0);
+      const charge = cancellation?.chargeCents ?? 0;
+      pendingCoupons.push({ example, reservationId, value: paid - charge });
+    }
+  }
+
+  for (const { example, reservationId, value } of pendingCoupons) {
+    const { code, issued, redeemCents = 0, redeemedBy } = example.coupon;
+    const id = `coupon-${example.id}`;
+    const issuedAt = at(issued, "12:15:00");
+    const expires = new Date(`${date(issued)}T00:00:00.000Z`);
+    expires.setUTCFullYear(expires.getUTCFullYear() + 1);
+    statements.push(
+      insert("coupons", {
+        id,
+        code,
+        source_reservation_id: reservationId,
+        value_cents: value,
+        balance_cents: value - redeemCents,
+        issued_at: issuedAt,
+        expires_on: expires.toISOString().slice(0, 10),
+        account_id: seedStaff,
+      }),
+      insert("coupon_movements", {
+        id: `${id}-issue`,
+        coupon_id: id,
+        reservation_id: reservationId,
+        kind: "issue",
+        amount_cents: value,
+        recorded_at: issuedAt,
+        recorded_on: date(issued),
+        account_id: seedStaff,
+      }),
+    );
+    if (redeemCents > 0) {
+      statements.push(
+        insert("coupon_movements", {
+          id: `${id}-redeem`,
+          coupon_id: id,
+          reservation_id: reservationIds.get(redeemedBy),
+          kind: "redeem",
+          amount_cents: redeemCents,
+          recorded_at: at(0, "10:00:00"),
+          recorded_on: date(0),
+          account_id: seedStaff,
         }),
       );
     }

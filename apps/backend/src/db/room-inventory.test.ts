@@ -256,6 +256,22 @@ describe("closure-only room inventory", () => {
     db.exec("UPDATE reservation_rooms SET room_id = 'room-101' WHERE id = 'first'");
     expect(() => closure("overlap", "room-101")).toThrow("closure overlaps stay");
   });
+
+  it.each(["cancelled", "no_show", "unfulfilled"])(
+    "lets a %s reservation keep its room without blocking a type change, closure, or rebooking",
+    (status) => {
+      db.exec(`INSERT INTO room_types (id, name, max_occupancy, base_rate_cents, created_at)
+        VALUES ('other', 'Other', 2, 10000, '2026-10-31')`);
+      reservation("released", "2026-11-05", "2026-11-07");
+      line("released", "room-101", status);
+      expect(() => changeType("room-101", "other")).not.toThrow();
+      changeType("room-101", "type");
+      expect(() => closure("repairs", "room-101", "2026-11-05", "2026-11-06")).not.toThrow();
+      db.exec("DELETE FROM room_closures WHERE id = 'repairs'");
+      reservation("rebooked", "2026-11-05", "2026-11-07");
+      expect(() => line("rebooked", "room-101")).not.toThrow();
+    },
+  );
 });
 
 describe("staying guest room retirement", () => {

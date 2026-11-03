@@ -247,6 +247,27 @@ describe("calendar read", () => {
     expect(body.rooms.find((room) => room.number === "102")?.stays).toEqual([]);
   });
 
+  it("omits a no-show from its room and from the assignment backlog", async () => {
+    const assigned = await create("Ada Lovelace", {
+      checkIn: "2026-10-10",
+      checkOut: "2026-10-12",
+    });
+    await assign(assigned, "room-101");
+    const unassigned = await create("Grace Hopper", {
+      checkIn: "2026-10-10",
+      checkOut: "2026-10-12",
+    });
+    for (const reservation of [assigned, unassigned])
+      await command(reservation, [{ type: "set-status", status: "no_show" }]);
+
+    const response = await request("/calendar?from=2026-10-10&to=2026-10-16");
+
+    expect(response.status).toBe(200);
+    const body = (await response.json()) as CalendarBody & { unassigned: unknown[] };
+    expect(body.rooms.find((room) => room.number === "101")?.stays).toEqual([]);
+    expect(body.unassigned).toEqual([]);
+  });
+
   it("lists confirmed and checked-in reserved rooms with no assignment that still occupy a visible night", async () => {
     seedRooms(db.sqlite, "type", { "room-104": "104", "room-105": "105" });
     const waiting = await create("Ada Lovelace", { checkIn: "2026-10-21", checkOut: "2026-10-23" });
