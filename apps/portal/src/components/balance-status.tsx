@@ -1,3 +1,5 @@
+import type { ReactNode } from "react";
+import { cn } from "cn";
 import { CircleAlertIcon, CircleCheckIcon, Undo2Icon, WalletIcon } from "lucide-react";
 import type { ReservationDetail } from "@/lib/api";
 
@@ -48,5 +50,43 @@ export function BalanceLabel({ balanceCents }: { balanceCents: number }) {
       <Icon aria-hidden className="size-4 shrink-0" />
       {label}
     </span>
+  );
+}
+
+export function AccountStatusBanner({
+  status,
+  amount,
+}: {
+  status: ReturnType<typeof accountStatus>;
+  amount: string;
+}) {
+  return (
+    <div
+      className={cn("flex flex-wrap items-center justify-between gap-2 px-2.5 py-2", status.tone)}
+    >
+      <p className="flex items-center gap-2 font-medium">
+        <status.Icon aria-hidden className="size-4 shrink-0" />
+        {status.label}
+      </p>
+      <p className="ml-auto font-semibold tabular-nums">{amount}</p>
+    </div>
+  );
+}
+
+export function SummaryRow({
+  label,
+  value,
+  note,
+}: {
+  label: ReactNode;
+  value: string;
+  note?: ReactNode;
+}) {
+  return (
+    <div className="flex flex-wrap justify-between gap-x-2">
+      <dt>{label}</dt>
+      <dd className="ml-auto tabular-nums">{value}</dd>
+      {note && <dd className="w-full text-muted-foreground">{note}</dd>}
+    </div>
   );
 }

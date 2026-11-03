@@ -10,14 +10,7 @@ import { CommandRecovery } from "@/components/command-recovery";
 import { paymentMethods } from "@/components/reservation-entry-forms";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
-import {
-  Field,
-  FieldContent,
-  FieldDescription,
-  FieldError,
-  FieldGroup,
-  FieldLabel,
-} from "@/components/ui/field";
+import { Field, FieldDescription, FieldGroup, FieldLabel } from "@/components/ui/field";
 import type {
   ReservationCoupon,
   ReservationDetail,
@@ -25,7 +18,7 @@ import type {
   WorkflowAction,
 } from "@/lib/api";
 import { copyCouponMessage } from "@/lib/coupon-message";
-import { errorMessage, setServerErrors } from "@/lib/form-errors";
+import { setServerErrors } from "@/lib/form-errors";
 import { format, longDate } from "@/lib/dates";
 import { formatMajor, formatMoney, parseMajorToCents } from "@/lib/money";
 import { propertyToday } from "@/lib/property-calendar";
@@ -185,7 +178,6 @@ export function RefundForm({
 }: FormProps & { onCouponIssued: (coupon: ReservationCoupon) => void }) {
   const { today } = usePropertyCalendar();
   const checkboxId = useId();
-  const acceptedId = useId();
   const [setup] = useState(() => refundSetup(detail));
   const form = useReservationForm({
     defaultValues: setup.defaults,
@@ -307,7 +299,6 @@ export function RefundForm({
   const source = useSelector(form.store, (state) => state.values.source);
   const kind = useSelector(form.store, (state) => state.values.kind);
   const amount = useSelector(form.store, (state) => state.values.amount);
-  const guestAccepted = useSelector(form.store, (state) => state.values.guestAccepted);
   const selected = setup.choice({ kind, source });
   const coupon = selected?.kind === "coupon";
   const manual = selected?.kind === "manual";
@@ -351,11 +342,7 @@ export function RefundForm({
           </Button>
           <Button
             type="submit"
-            disabled={
-              saving ||
-              maxCents <= 0 ||
-              (coupon && (!guestAccepted || !couponPreviewReady || !expiresOn))
-            }
+            disabled={saving || maxCents <= 0 || (coupon && (!couponPreviewReady || !expiresOn))}
           >
             {saving
               ? "Guardando…"
@@ -378,8 +365,9 @@ export function RefundForm({
       />
       <form.AppField name="kind">
         {(field) => (
-          <field.Radio
+          <field.ChoiceCards
             label="Devolver como"
+            optionsClassName="grid-cols-2"
             options={returnKinds}
             onValueChange={(next, previous) =>
               followLimit({ kind: previous, source }, { kind: next, source })
@@ -387,11 +375,6 @@ export function RefundForm({
           />
         )}
       </form.AppField>
-      {!coupon && setup.cards.length === 0 && (
-        <FieldDescription>
-          En mano o por transferencia. El importe se reparte entre los pagos recibidos.
-        </FieldDescription>
-      )}
       {!coupon && setup.cards.length > 0 && (
         <form.AppField name="source">
           {(field) => (
@@ -424,33 +407,6 @@ export function RefundForm({
               Calculando…
             </p>
           )}
-          <form.AppField name="guestAccepted">
-            {(field) => (
-              <Field orientation="horizontal" data-invalid={!!field.state.meta.errors.length}>
-                <Checkbox
-                  id={acceptedId}
-                  name={field.name}
-                  required
-                  aria-invalid={!!field.state.meta.errors.length}
-                  aria-describedby={
-                    field.state.meta.errors.length ? `${acceptedId}-error` : undefined
-                  }
-                  checked={field.state.value}
-                  onCheckedChange={(checked) => field.handleChange(checked)}
-                />
-                <FieldContent>
-                  <FieldLabel htmlFor={acceptedId}>
-                    El huésped aceptó un cupón en lugar del reembolso
-                  </FieldLabel>
-                  {!!field.state.meta.errors.length && (
-                    <FieldError id={`${acceptedId}-error`}>
-                      {errorMessage(field.state.meta.errors)}
-                    </FieldError>
-                  )}
-                </FieldContent>
-              </Field>
-            )}
-          </form.AppField>
         </>
       )}
       {manual && (

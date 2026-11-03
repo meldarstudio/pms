@@ -37,7 +37,7 @@ export function OutcomeCommandPreview({
     <section
       aria-label="Cuenta resultante"
       aria-busy={pending || preview.isFetching}
-      className="flex flex-col gap-3 text-sm"
+      className="flex flex-col gap-3"
     >
       {pending || preview.isFetching || (!preview.data && !preview.error) ? (
         <p role="status">Calculando…</p>

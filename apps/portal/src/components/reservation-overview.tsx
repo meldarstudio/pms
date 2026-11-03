@@ -1,6 +1,5 @@
-import { Fragment, type ReactNode } from "react";
+import type { ReactNode } from "react";
 import {
-  BedDoubleIcon,
   CalendarDaysIcon,
   CalendarCheckIcon,
   ClockIcon,
@@ -14,25 +13,17 @@ import {
   UsersIcon,
   type LucideIcon,
 } from "lucide-react";
+import { AssignedRooms } from "@/components/assigned-rooms";
 import { ReservationStatusBadge } from "@/components/reservation-status-badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardHeader, CardTitle, CardContent, CardAction } from "@/components/ui/card";
-import {
-  Item,
-  ItemContent,
-  ItemGroup,
-  ItemMedia,
-  ItemSeparator,
-  ItemTitle,
-} from "@/components/ui/item";
 import { StayingGuestList } from "@/components/reservation-records";
-import { AccountCard } from "@/components/reservation-account";
+import { AccountCard, MovementsCard } from "@/components/reservation-account";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { useLifecycleAction } from "@/components/lifecycle-action";
 import { ReservationStatusMenu } from "@/components/reservation-status-menu";
 import type { ReservationEditorTarget } from "@/components/reservation-page-editors";
 import type { ReservationDetail } from "@/lib/api";
-import { occupantsLabel } from "@/lib/reservation-list";
 import { phoneDisplay } from "@/lib/phone";
 import { ratePlanLabels } from "@/lib/rate-plans";
 import { format } from "@/lib/dates";
@@ -139,49 +130,11 @@ export function ReservationOverview({
           </Card>
         </div>
       </div>
-      <AccountCard detail={detail} edit={edit} onDiscountDraftChange={onDiscountDraftChange} />
+      <div className="grid min-w-0 gap-5 lg:grid-cols-[20rem_minmax(0,1fr)]">
+        <AccountCard detail={detail} edit={edit} onDiscountDraftChange={onDiscountDraftChange} />
+        <MovementsCard detail={detail} edit={edit} />
+      </div>
     </fieldset>
-  );
-}
-
-function AssignedRooms({ detail }: { detail: ReservationDetail }) {
-  const rooms = detail.rooms.toSorted((a, b) =>
-    a.roomNumber === null || b.roomNumber === null
-      ? Number(a.roomNumber === null) - Number(b.roomNumber === null)
-      : a.roomNumber.localeCompare(b.roomNumber, "es", { numeric: true }),
-  );
-  return (
-    <section
-      aria-label="Habitaciones asignadas"
-      className="flex min-h-0 min-w-0 flex-1 flex-col gap-3"
-    >
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <h3 className="text-sm font-medium">Habitaciones asignadas</h3>
-        <p className="text-xs text-muted-foreground">
-          {rooms.length} {rooms.length === 1 ? "habitación" : "habitaciones"}
-        </p>
-      </div>
-      <div className="min-h-0 overflow-y-auto border">
-        <ItemGroup className="gap-0 has-data-[size=xs]:gap-0">
-          {rooms.map((room, index) => (
-            <Fragment key={room.id}>
-              {index > 0 && <ItemSeparator className="my-0" />}
-              <Item role="listitem" size="xs" className="flex-nowrap">
-                <ItemMedia variant="icon">
-                  <BedDoubleIcon aria-hidden="true" />
-                </ItemMedia>
-                <ItemContent className="min-w-0">
-                  <ItemTitle className="wrap-anywhere">
-                    {room.roomNumber ?? "Sin asignar"} · {room.roomTypeName || "Habitación"}
-                  </ItemTitle>
-                </ItemContent>
-                <p className="shrink-0 text-muted-foreground">{occupantsLabel([room])}</p>
-              </Item>
-            </Fragment>
-          ))}
-        </ItemGroup>
-      </div>
-    </section>
   );
 }
 

@@ -340,7 +340,6 @@ export const refundSchema = (maxCents: number, currency?: string) =>
       date: z.string(),
       reference: optionalText(200),
       source: z.string(),
-      guestAccepted: z.boolean(),
     })
     .superRefine((value, ctx) => {
       if (!value.handedOver) return;
@@ -359,7 +358,6 @@ export function refundDefaults(
 ): RefundValues {
   return {
     kind,
-    guestAccepted: false,
     amount: amountCents > 0 ? formatMajor(amountCents) : "",
     method,
     reason: "",
@@ -372,9 +370,6 @@ export function refundDefaults(
 export const couponIssueSchema = (maxCents: number, currency?: string) =>
   z.object({
     amount: refundAmount(maxCents, currency),
-    guestAccepted: z.literal(true, {
-      error: "Registra que el huésped aceptó el cupón en lugar del reembolso.",
-    }),
   });
 export const cardRefundSchema = (maxCents: number, currency?: string) =>
   z.object({

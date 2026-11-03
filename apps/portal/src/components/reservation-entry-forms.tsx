@@ -457,9 +457,11 @@ export function PaymentForm({
                 )}
               </form.AppField>
               {scrollable && (
-                <form.AppField name="reason">
-                  {(field) => <field.Text label="Nota del pago" type="textarea" max={2000} />}
-                </form.AppField>
+                <div className="col-span-2">
+                  <form.AppField name="reason">
+                    {(field) => <field.Text label="Nota del pago" type="textarea" max={2000} />}
+                  </form.AppField>
+                </div>
               )}
             </>
           )}

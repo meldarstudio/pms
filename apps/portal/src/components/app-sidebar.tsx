@@ -9,7 +9,6 @@ import {
   Settings2Icon,
 } from "lucide-react";
 import logo from "@/assets/logo.svg";
-import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import {
   Sidebar,
@@ -19,12 +18,11 @@ import {
   SidebarGroupContent,
   SidebarHeader,
   SidebarMenu,
-  SidebarMenuBadge,
   SidebarMenuButton,
   SidebarMenuItem,
   useSidebar,
 } from "@/components/ui/sidebar";
-import { useLogout, useUnresolvedReservationCount } from "@/lib/queries";
+import { useLogout } from "@/lib/queries";
 import { activeNavigation, appNavigation } from "@/lib/navigation";
 import {
   calendarSearch,
@@ -34,7 +32,6 @@ import {
   lastCalendarSearch,
   lastReservationsSearch,
   reservationsSearch,
-  unresolvedReservationsSearch,
 } from "@/lib/route-search";
 import { toastError } from "@/lib/toast";
 import { usePropertyCalendar } from "@/lib/use-property-calendar";
@@ -45,7 +42,6 @@ export function AppSidebar() {
   const logout = useLogout();
   const { today } = usePropertyCalendar();
   const activeDestination = activeNavigation(location.pathname);
-  const unresolvedCount = useUnresolvedReservationCount().data ?? 0;
   const destinations = [
     {
       ...appNavigation.reservations,
@@ -116,24 +112,6 @@ export function AppSidebar() {
                       <Icon />
                       <span>{label}</span>
                     </SidebarMenuButton>
-                    {to === appNavigation.reservations.to && unresolvedCount ? (
-                      <SidebarMenuBadge className="pointer-events-auto p-0">
-                        <Badge
-                          variant="destructive"
-                          className="min-w-5 px-1.5"
-                          aria-label={`${unresolvedCount} ${unresolvedCount === 1 ? "reserva" : "reservas"} por resolver`}
-                          render={
-                            <Link
-                              to={appNavigation.reservations.to}
-                              search={unresolvedReservationsSearch(today)}
-                              onClick={closeMobileNavigation}
-                            />
-                          }
-                        >
-                          {unresolvedCount}
-                        </Badge>
-                      </SidebarMenuBadge>
-                    ) : null}
                   </SidebarMenuItem>
                 ))}
               </SidebarMenu>

@@ -111,10 +111,6 @@ export function reservationsSearch(search: Record<string, unknown>): Reservation
   };
 }
 
-export function unresolvedReservationsSearch(day: string): ReservationsSearch {
-  return reservationsSearch({ view: "all", day, statuses: "all", balance: "unresolved" });
-}
-
 export const lastReservationsSearch: {
   current: ReservationsSearch | null;
 } = {

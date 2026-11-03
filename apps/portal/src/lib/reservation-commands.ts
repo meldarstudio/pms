@@ -193,10 +193,10 @@ function save(
         if (unsettledCommands(client) === unsettled) await refreshAll(client, id);
         return failure(cause);
       }
-      unsettled.set(memory, {
-        command,
-        uncertain: !(cause instanceof ApiError) || cause.status >= 500,
-      });
+      const uncertain = !(cause instanceof ApiError) || cause.status >= 500;
+      unsettled.set(memory, { command, uncertain });
+      if (uncertain && unsettledCommands(client) === unsettled)
+        await client.invalidateQueries({ queryKey: [previewScope, id] });
       return rejection(cause, command.actions);
     }
     if (unsettledCommands(client) === unsettled) await refresh(client, saved, command.actions);
@@ -303,5 +303,6 @@ export function useDebouncedReservationPreview(
     enabled && current,
     propertyDate,
   );
-  return { ...preview, current };
+  const settleNow = (next: WorkflowAction[]) => setSettled(JSON.stringify(next));
+  return { ...preview, current, settleNow };
 }

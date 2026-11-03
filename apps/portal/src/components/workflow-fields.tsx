@@ -303,7 +303,7 @@ export function ChoiceCardField({
                 <FieldTitle>{option.label}</FieldTitle>
                 {option.description && <FieldDescription>{option.description}</FieldDescription>}
               </FieldContent>
-              <RadioGroupItem id={`${id}-${index}`} value={option.value} />
+              <RadioGroupItem id={`${id}-${index}`} value={option.value} className="after:hidden" />
             </Field>
           </FieldLabel>
         ))}

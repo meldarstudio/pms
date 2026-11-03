@@ -496,16 +496,3 @@ export function useReservationList(params: ReservationListParams) {
     placeholderData: keepPreviousData,
   });
 }
-
-export function useUnresolvedReservationCount() {
-  return useQuery({
-    queryKey: ["reservations", "unresolved-count"],
-    queryFn: async ({ signal }) => {
-      const page = await searchReservationsPage(
-        { balance: "unresolved", sort: "checkIn", direction: "desc", limit: 1, offset: 0 },
-        signal,
-      );
-      return page.total;
-    },
-  });
-}

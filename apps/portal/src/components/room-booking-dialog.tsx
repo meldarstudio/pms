@@ -603,7 +603,7 @@ export function BookingEditor({
         <div
           className={cn(
             "grid min-w-0 shrink-0 gap-6 p-px",
-            !stayOnly && "lg:grid-cols-[minmax(0,1fr)_280px]",
+            "lg:grid-cols-[minmax(0,1fr)_280px]",
             compactEditor && "max-md:contents",
           )}
         >
@@ -621,11 +621,10 @@ export function BookingEditor({
                 onSubmit={(event) => void submitForm(event, () => form.handleSubmit())}
               >
                 <fieldset disabled={busy} className="flex min-w-0 flex-col gap-5">
-                  {stayOnly && <h3 className="font-medium">Estadía</h3>}
                   <FieldGroup
                     className={cn(
                       "grid gap-3",
-                      compactEditor ? "grid-cols-1 md:grid-cols-2" : "grid-cols-2",
+                      full ? "grid-cols-2" : "grid-cols-1 md:grid-cols-2",
                     )}
                   >
                     <form.AppField

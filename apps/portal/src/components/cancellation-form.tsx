@@ -1,11 +1,14 @@
 import { useEffect, useState } from "react";
-import { useSelector } from "@tanstack/react-form";
-import { OutcomeAccountPreview } from "@/components/outcome-account-preview";
+import { revalidateLogic, useSelector } from "@tanstack/react-form";
+import { cn } from "cn";
+import { accountStatus } from "@/components/balance-status";
+import { CouponReturns } from "@/components/outcome-account-preview";
 import { CommandRecovery } from "@/components/command-recovery";
 import { PageError } from "@/components/page-error";
 import { outcomeSaveError } from "@/components/outcome-command-preview";
 import { Button } from "@/components/ui/button";
 import { FieldGroup } from "@/components/ui/field";
+import { ChoiceCardField } from "@/components/workflow-fields";
 import type { ReservationDetail, WorkflowAction, WorkflowBilling } from "@/lib/api";
 import { longDate } from "@/lib/dates";
 import { formatMajor, formatMoney, parseMajorToCents } from "@/lib/money";
@@ -15,7 +18,7 @@ import {
   useReservationPreview,
   type ReservationCommandResult,
 } from "@/lib/reservation-commands";
-import { blurThenChange, submitForm, useReservationForm } from "@/lib/reservation-form";
+import { submitForm, useReservationForm } from "@/lib/reservation-form";
 import { cancellationOutcomeSchema } from "@/lib/reservation-form-schemas";
 import { toast } from "@/lib/toast";
 import { usePropertyCalendar } from "@/lib/use-property-calendar";
@@ -54,7 +57,8 @@ export function CancellationForm({
   onDirtyChange: (dirty: boolean) => void;
 }) {
   const { today } = usePropertyCalendar();
-  const [waiving, setWaiving] = useState(false);
+  const [choice, setChoice] = useState<ChargeChoice>("policy");
+  const waiving = choice !== "policy";
   const [retryKey] = useState(
     () => `cancellation\n${JSON.stringify([detail.status, detail.cancellations])}`,
   );
@@ -85,7 +89,7 @@ export function CancellationForm({
   }
   const form = useReservationForm({
     defaultValues: { reason: "", amount: "" },
-    validationLogic: blurThenChange(),
+    validationLogic: revalidateLogic({ mode: "change" }),
     validators: {
       onDynamic: ({ value }) => validation.validate(value),
     },
@@ -106,7 +110,10 @@ export function CancellationForm({
         });
         onDone();
       } else if (result.status === "failed") outcomeSaveError(result);
-      else validation.reject(form, value.amount, result.fields);
+      else {
+        if (choice === "all" && result.fields.amount) setChoice("part");
+        validation.reject(form, value.amount, result.fields);
+      }
     },
   });
   const values = useSelector(form.store, (state) => state.values);
@@ -115,70 +122,108 @@ export function CancellationForm({
   useEffect(() => onDirtyChange(changed || waiving), [changed, waiving, onDirtyChange]);
   const saving = disabled || submitting;
   const valid = schema.safeParse(values).success;
+  const amountValid = !waiving || schema.shape.amount.safeParse(values.amount).success;
+  const previewActions = (value: { amount: string }): WorkflowAction[] => [
+    ...baseActions,
+    {
+      type: "waive-cancellation-charge",
+      amountCents: parseMajorToCents(value.amount.trim()) ?? 0,
+      reason: previewReason,
+    },
+  ];
   const waived = useDebouncedReservationPreview(
     detail.id,
-    valid && waiving ? actions(values) : [],
-    valid && waiving,
+    amountValid && waiving ? previewActions(values) : [],
+    amountValid && waiving,
     today,
   );
-  const preview = waiving ? waived : policy;
-  const current = !waiving || waived.current;
-  const ready =
-    valid &&
-    current &&
-    preview.isSuccess &&
-    !preview.isFetching &&
-    !preview.data.validation.issues.length;
-  const bill = ready ? preview.data.billing : null;
+  const preview = waiving && amountValid ? waived : policy;
+  const current = preview !== waived || waived.current;
+  const previewed =
+    current && preview.isSuccess && !preview.isFetching && !preview.data.validation.issues.length;
+  const ready = valid && previewed;
+  const bill = previewed ? preview.data.billing : null;
+  const status = bill ? accountStatus(bill) : null;
+  const money = (cents: number) => formatMoney(cents, detail.currency);
+  const policyBill = policy.isSuccess ? policy.data.billing : null;
+  const chargeLabel =
+    outcome === "cancelled" ? "Cargo por cancelación" : "Cargo por no presentarse";
+  function choose(next: string) {
+    const value = next as ChargeChoice;
+    const amount = value === "all" ? formatMajor(charge) : "";
+    setChoice(value);
+    form.setFieldValue("amount", amount);
+    if (value === "all") waived.settleNow(previewActions({ amount }));
+  }
   return (
     <form
       noValidate
       className="flex min-h-0 flex-1 flex-col gap-6 overflow-hidden"
       onSubmit={(event) => void submitForm(event, () => form.handleSubmit())}
     >
-      <div className="flex min-h-0 flex-1 flex-col gap-6 overflow-y-auto overscroll-contain p-px">
-        <CommandRecovery
-          reservationId={detail.id}
-          retryKey={retryKey}
-          disabled={saving}
-          onDone={onDone}
-        />
-        <section aria-label="Cuenta resultante" className="flex flex-col gap-3 text-sm">
-          {waiving && !valid ? (
-            <p>Indica el importe y el motivo para revisar la cuenta resultante.</p>
-          ) : !current || preview.isFetching || (!preview.data && !preview.error) ? (
-            <p role="status">Calculando…</p>
-          ) : preview.error ? (
-            <PageError error={preview.error} onRetry={() => void preview.refetch()} />
-          ) : bill ? (
-            <>
-              <p>{policyLine(bill, today)}</p>
-              <p>
-                {outcome === "cancelled" ? "Cargo por cancelación" : "Cargo por no presentarse"}{" "}
-                {formatMoney(
-                  bill.cancellation?.policyChargeCents ?? bill.totalCents,
-                  detail.currency,
-                )}
+      <CommandRecovery
+        reservationId={detail.id}
+        retryKey={retryKey}
+        disabled={saving}
+        onDone={onDone}
+      />
+      <section aria-label="Cuenta resultante" className="flex shrink-0 flex-col gap-2">
+        {preview.error ? (
+          <PageError error={preview.error} onRetry={() => void preview.refetch()} />
+        ) : (
+          <div
+            className={cn(
+              "flex flex-col gap-1 p-4",
+              status?.tone ?? "bg-muted text-muted-foreground",
+            )}
+          >
+            <p className="flex items-center gap-2 font-medium" role={status ? undefined : "status"}>
+              {status && <status.Icon aria-hidden className="size-4 shrink-0" />}
+              {status?.label ?? "Calculando…"}
+            </p>
+            <p className="text-3xl font-semibold tracking-tight tabular-nums">
+              {status ? money(status.cents) : "—"}
+            </p>
+            {bill && (
+              <p className="opacity-80">
+                {`Cargo ${money(bill.totalCents)} · Pagado ${money(bill.paidCents)}`}
               </p>
-              <OutcomeAccountPreview billing={bill} detail={detail} today={today} />
-            </>
-          ) : null}
-        </section>
+            )}
+          </div>
+        )}
+        {bill && <CouponReturns billing={bill} detail={detail} today={today} />}
+      </section>
+      <div className="flex min-h-0 flex-1 flex-col gap-6 overflow-y-auto overscroll-contain p-px">
         <fieldset disabled={saving}>
           <FieldGroup>
-            {charge > 0 && !waiving && policy.isSuccess && !policy.isFetching && (
-              <Button
-                type="button"
-                variant="link"
-                onClick={() => {
-                  form.setFieldValue("amount", formatMajor(charge));
-                  setWaiving(true);
-                }}
-              >
-                Perdonar cargo
-              </Button>
+            {policyBill && charge > 0 ? (
+              <ChoiceCardField
+                label={chargeLabel}
+                value={choice}
+                onChange={choose}
+                disabled={saving}
+                options={[
+                  {
+                    value: "policy",
+                    label: `Cobrar ${money(charge)}`,
+                    description: policyLine(policyBill, today) ?? undefined,
+                  },
+                  {
+                    value: "all",
+                    label: "Perdonar todo el cargo",
+                    description: `Se cobrará ${money(0)}`,
+                  },
+                  {
+                    value: "part",
+                    label: "Perdonar una parte",
+                    description: "Indica cuánto perdonas",
+                  },
+                ]}
+              />
+            ) : (
+              policyBill && <p className="text-muted-foreground">{policyLine(policyBill, today)}</p>
             )}
-            {waiving && (
+            {choice === "part" && (
               <form.AppField name="amount">
                 {(field) => <field.Text label="Importe a perdonar" inputMode="decimal" required />}
               </form.AppField>
@@ -209,3 +254,7 @@ export function CancellationForm({
     </form>
   );
 }
+
+type ChargeChoice = "policy" | "all" | "part";
+
+const previewReason = "Vista previa";

@@ -94,10 +94,23 @@ function FormRadio(
 }
 
 function FormChoiceCards(
-  props: Omit<ComponentProps<typeof ChoiceCardField>, "value" | "onChange" | "error">,
+  props: Omit<ComponentProps<typeof ChoiceCardField>, "value" | "onChange" | "error"> & {
+    onValueChange?: (value: string, previous: string) => void;
+  },
 ) {
-  const { onBlur: _blur, ...control } = useFormControl<string>();
-  return <ChoiceCardField {...props} {...control} />;
+  const { value, onChange, onBlur: _blur, ...control } = useFormControl<string>();
+  const { onValueChange, ...rest } = props;
+  return (
+    <ChoiceCardField
+      {...rest}
+      {...control}
+      value={value}
+      onChange={(next) => {
+        onChange(next);
+        onValueChange?.(next, value);
+      }}
+    />
+  );
 }
 
 function FormNightlyPrice({ onUndo }: { onUndo?: () => void }) {

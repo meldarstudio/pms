@@ -2,7 +2,7 @@ import type { ReactNode } from "react";
 import { CopyIcon, CreditCardIcon, LockIcon, PencilIcon, Undo2Icon } from "lucide-react";
 import { cn } from "cn";
 import { parseISO } from "date-fns";
-import { accountStatus } from "@/components/balance-status";
+import { AccountStatusBanner, SummaryRow, accountStatus } from "@/components/balance-status";
 import { DiscountPopover } from "@/components/discount-popover";
 import { culqiPendingLine } from "@/components/refund-forms";
 import { paymentMethods } from "@/components/reservation-entry-forms";
@@ -48,67 +48,46 @@ export function AccountCard({
   const status = accountStatus(detail);
   const owing = status.state === "owing";
   return (
-    <Card className="@container/cuenta min-w-0" role="region" aria-label="Cuenta">
+    <Card className="min-w-0" role="region" aria-label="Cuenta">
       <CardHeader>
         <CardTitle>
           <h2>Cuenta</h2>
         </CardTitle>
       </CardHeader>
-      <CardContent className="grid gap-x-8 gap-y-5 @2xl/cuenta:grid-cols-[17rem_minmax(0,1fr)] @2xl/cuenta:items-start">
-        <div className="flex min-w-0 flex-col gap-4">
-          <AccountSummary
-            detail={detail}
-            edit={edit}
-            onDiscountDraftChange={onDiscountDraftChange}
-          />
-          <section aria-label="Estado de la cuenta" className="flex flex-col gap-3">
-            <div
-              className={cn(
-                "flex flex-wrap items-center justify-between gap-2 p-3 text-sm",
-                status.tone,
-              )}
-            >
-              <p className="flex items-center gap-2 font-medium">
-                <status.Icon aria-hidden className="size-4 shrink-0" />
-                {status.label}
-              </p>
-              <p className="ml-auto font-semibold tabular-nums">{money(status.cents)}</p>
-              {owing && detail.initialPaymentDueCents > 0 && (
-                <p className="w-full text-xs opacity-80">
-                  Falta el depósito: {money(detail.initialPaymentDueCents)}
-                </p>
-              )}
-            </div>
-            {owing && (
-              <Button className="w-full" onClick={() => edit({ kind: "payment" })}>
-                <CreditCardIcon data-icon="inline-start" />
-                Registrar pago
-              </Button>
-            )}
-            {status.state === "owed-back" && (
-              <Button className="w-full" onClick={() => edit({ kind: "refund" })}>
-                <Undo2Icon data-icon="inline-start" />
-                Devolver…
-              </Button>
-            )}
-          </section>
-        </div>
-        <section aria-label="Movimientos" className="@container/mov flex min-w-0 flex-col">
-          <h3 className="border-b pb-2 text-sm font-medium">Movimientos</h3>
-          <Movements detail={detail} edit={edit} resolveRefunds />
+      <CardContent className="flex min-w-0 flex-col gap-4">
+        <AccountSummary detail={detail} edit={edit} onDiscountDraftChange={onDiscountDraftChange} />
+        <section aria-label="Estado de la cuenta" className="flex flex-col gap-3">
+          <AccountStatusBanner status={status} amount={money(status.cents)} />
+          {owing && (
+            <Button className="w-full" onClick={() => edit({ kind: "payment" })}>
+              <CreditCardIcon data-icon="inline-start" />
+              Registrar pago
+            </Button>
+          )}
+          {status.state === "owed-back" && (
+            <Button className="w-full" onClick={() => edit({ kind: "refund" })}>
+              <Undo2Icon data-icon="inline-start" />
+              Devolver…
+            </Button>
+          )}
         </section>
       </CardContent>
     </Card>
   );
 }
 
-function SummaryRow({ label, value, note }: { label: ReactNode; value: string; note?: ReactNode }) {
+export function MovementsCard({ detail, edit }: Props) {
   return (
-    <div className="flex flex-wrap justify-between gap-x-2">
-      <dt>{label}</dt>
-      <dd className="ml-auto tabular-nums">{value}</dd>
-      {note && <dd className="w-full text-xs text-muted-foreground">{note}</dd>}
-    </div>
+    <Card className="@container/mov min-w-0" role="region" aria-label="Movimientos">
+      <CardHeader>
+        <CardTitle>
+          <h2>Movimientos</h2>
+        </CardTitle>
+      </CardHeader>
+      <CardContent className="min-w-0">
+        <Movements detail={detail} edit={edit} resolveRefunds />
+      </CardContent>
+    </Card>
   );
 }
 
@@ -135,7 +114,7 @@ function AccountSummary({
     return false;
   }
   return (
-    <dl aria-label="Resumen de la cuenta" className="flex flex-col gap-2 text-sm">
+    <dl aria-label="Resumen de la cuenta" className="flex flex-col gap-2">
       {isReleased(detail.status) ? (
         <>
           <SummaryRow
@@ -163,12 +142,7 @@ function AccountSummary({
             value={money(cancellation?.policyChargeCents ?? detail.totalCents)}
           />
           {cancellation?.waivers.map((waiver) => (
-            <SummaryRow
-              key={waiver.id}
-              label="Cargo perdonado"
-              value={minus(waiver.amountCents)}
-              note={waiver.reason}
-            />
+            <SummaryRow key={waiver.id} label="Cargo perdonado" value={minus(waiver.amountCents)} />
           ))}
         </>
       ) : (
@@ -352,8 +326,7 @@ export function Movements({
   resolveRefunds = false,
 }: Props & { disabled?: boolean; resolveRefunds?: boolean }) {
   const rows = movements(detail, edit, disabled, resolveRefunds);
-  if (!rows.length)
-    return <p className="py-3 text-sm text-muted-foreground">Sin movimientos todavía.</p>;
+  if (!rows.length) return <p className="py-3 text-muted-foreground">Sin movimientos todavía.</p>;
   return (
     <Table aria-label="Movimientos">
       <TableHeader>

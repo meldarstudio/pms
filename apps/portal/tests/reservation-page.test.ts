@@ -299,6 +299,13 @@ async function submit() {
   });
 }
 const popup = () => window.document.querySelector('[role="dialog"][data-slot="dialog-content"]');
+async function chooseCharge(title: string) {
+  const option = Array.from(popup()!.querySelectorAll<HTMLElement>('[role="radio"]')).find(
+    (radio) => radioName(radio).startsWith(title),
+  );
+  assert.ok(option, `Missing charge option ${title}`);
+  await React.act(async () => option.click());
+}
 const header = () => page.container.querySelector("h1")!.closest("header")!;
 const statusMenu = (label: string) =>
   chooseRowAction('[aria-label="Acciones de la reserva"]', label);
@@ -1180,9 +1187,9 @@ it("previews cancellation selected in the header before saving and shows the res
     text(popup()!),
     /Fuera del plazo de cancelación gratuita · Cargo de la primera noche/,
   );
-  assert.match(text(popup()!), /Cargo por cancelación S\/ 123\.45/);
+  assert.match(text(popup()!), /Cargo por cancelación Cobrar S\/ 123\.45/);
   assert.match(text(popup()!), /Por devolver S\/ 76\.55/);
-  assert.doesNotMatch(text(popup()!), /Subtotal|Pagado|Descuento/);
+  assert.doesNotMatch(text(popup()!), /Subtotal|Descuento/);
   await fill("reason", "Cambio de planes");
   await submit();
   await page.until(() => !popup());
@@ -1217,8 +1224,8 @@ it("requires one reason for an inline waiver and saves the cancellation and waiv
   await statusMenu("Cancelar reserva");
   await page.until(() => !button("Confirmar").disabled);
   assert.equal(popup()!.querySelector('[name="amount"]'), null);
-  await click("Perdonar cargo");
-  assert.equal(field("amount").value, "123.45");
+  await chooseCharge("Perdonar una parte");
+  assert.equal(field("amount").value, "");
   assert.equal(field("reason").required, true);
   await submit();
   assert.equal(writes.length, 0);
@@ -1246,7 +1253,7 @@ it("keeps the inline waiver draft and marks its amount when the server rejects a
   await render();
   await statusMenu("Cancelar reserva");
   await page.until(() => !button("Confirmar").disabled);
-  await click("Perdonar cargo");
+  await chooseCharge("Perdonar todo el cargo");
   await fill("reason", "Error del hotel");
   await page.until(() => !button("Confirmar").disabled);
   await submit();
@@ -1286,7 +1293,7 @@ it("blocks saving through failed and stale waiver previews without substituting 
   await render();
   await statusMenu("Cancelar reserva");
   await page.until(() => !button("Confirmar").disabled);
-  await click("Perdonar cargo");
+  await chooseCharge("Perdonar una parte");
   await fill("amount", "100");
   await fill("reason", "Error del hotel");
   await page.until(() => text(popup()!).includes("Ocurrió un error inesperado"));
@@ -1339,7 +1346,7 @@ it("refreshes the cancellation charge across the property deadline without losin
     window.dispatchEvent(new window.Event("focus"));
   });
   await page.until(() => text(popup()!).includes("Fuera del plazo"));
-  assert.match(text(popup()!), /Cargo por cancelación S\/ 150/);
+  assert.match(text(popup()!), /Cobrar S\/ 150/);
   assert.match(text(popup()!), /Saldo pendiente S\/ 150/);
   assert.equal(field("reason").value, "Cambio de planes");
 });
@@ -1379,7 +1386,7 @@ it.each([false, true])(
     await render();
     await statusMenu("Cancelar reserva");
     await page.until(() => !button("Confirmar").disabled);
-    await click("Perdonar cargo");
+    await chooseCharge("Perdonar una parte");
     await fill("amount", "100");
     await fill("reason", "Error del hotel");
     await page.until(() => !button("Confirmar").disabled);
@@ -1390,7 +1397,7 @@ it.each([false, true])(
       await click("Descartar y salir");
       await statusMenu("Cancelar reserva");
       await page.until(() => !button("Confirmar").disabled);
-      await click("Perdonar cargo");
+      await chooseCharge("Perdonar una parte");
       await fill("amount", "100");
     }
     await fill("reason", "Otro motivo");
@@ -1431,8 +1438,8 @@ it.each([false, true])("marks a stay as not presented with inline waiver = %s", 
   assert.match(text(popup()!), /Cargo por no presentarse · Primera noche/);
   assert.equal(popup()!.querySelector('[name="reason"]'), null);
   if (waiving) {
-    await click("Perdonar cargo");
-    assert.equal(field("amount").value, "150.00");
+    await chooseCharge("Perdonar todo el cargo");
+    assert.equal(popup()!.querySelector('[name="amount"]'), null);
     assert.equal(field("reason").required, true);
     await fill("reason", "Error del hotel");
     await page.until(() => text(popup()!).includes("Cuenta saldada S/ 0"));
@@ -1545,7 +1552,7 @@ it.each([
     await page.until(() => !button("Confirmar").disabled);
     assert.ok(text(popup()!).includes(line), text(popup()!));
     if (charge === 0) {
-      assert.doesNotMatch(text(popup()!), /Perdonar cargo/);
+      assert.doesNotMatch(text(popup()!), /Perdonar/);
       assert.match(text(popup()!), /Cuenta saldada S\/ 0/);
       await submit();
       await page.until(() => !popup());
@@ -1990,6 +1997,8 @@ it("explains a missing reservation instead of offering a retry", async () => {
 });
 
 const account = () => page.container.querySelector('[role="region"][aria-label="Cuenta"]')!;
+const movementsCard = () =>
+  page.container.querySelector('[role="region"][aria-label="Movimientos"]')!;
 function text(node: object) {
   const walker = window.document.createTreeWalker(node as never, 4);
   const parts: string[] = [];
@@ -2159,8 +2168,8 @@ function issueCoupon(bill: ReservationDetail, action: WorkflowCommand["actions"]
 it.each([
   {
     state: "guest owes",
-    bill: { initialPaymentDueCents: 15000 },
-    line: "Saldo pendiente S/ 300 Falta el depósito: S/ 150",
+    bill: {},
+    line: "Saldo pendiente S/ 300",
     action: "Registrar pago",
   },
   {
@@ -2252,7 +2261,7 @@ it("lists payments, refunds and coupon movements oldest first, locking changed p
   };
   mockApi();
   await render();
-  const table = account().querySelector('table[aria-label="Movimientos"]')!;
+  const table = movementsCard().querySelector('table[aria-label="Movimientos"]')!;
   assert.deepEqual(Array.from(table.querySelectorAll("th")).map(text), [
     "Fecha",
     "Movimiento",
@@ -2623,7 +2632,7 @@ it("marks a requested refund failed with a reason, leaving the money owed back",
     { type: "fail-refund", refundId: "refund-1", reason: "Cuenta errada" },
   ]);
   await page.until(() => text(accountStatusLine()) === "Por devolver S/ 100 Devolver…");
-  const row = account().querySelector('table[aria-label="Movimientos"] tbody tr:last-child')!;
+  const row = movementsCard().querySelector('table[aria-label="Movimientos"] tbody tr:last-child')!;
   assert.match(text(row), /^\S+ \S+ \S+ Reembolso Fallido Transferencia/);
   assert.equal(text(row.querySelector("del")!), "S/ 100", "A failed refund is struck through");
   assert.ok(!summaryRows().some((row) => row.startsWith("Reembolsado")));
@@ -2750,10 +2759,12 @@ it.each([
     ]);
     await page.until(() => text(accountStatusLine()) === line);
     assert.match(window.document.body.textContent, new RegExp(toast));
-    const rows = Array.from(account().querySelectorAll('table[aria-label="Movimientos"] tbody tr'));
+    const rows = Array.from(
+      movementsCard().querySelectorAll('table[aria-label="Movimientos"] tbody tr'),
+    );
     assert.equal(text(rows.at(-1)!), row);
     assert.ok(
-      !/reintentar|de nuevo|otra vez/i.test(text(account())),
+      !/reintentar|de nuevo|otra vez/i.test(`${text(account())} ${text(movementsCard())}`),
       "A Culqi refund is never offered again",
     );
     if (outcome === "requested")
@@ -2899,7 +2910,6 @@ it("never issues against cached coupon terms during a failed refresh", async () 
   await render();
   await click("Devolver…");
   await page.until(() => text(popup()!).includes(couponTerms));
-  await React.act(async () => acceptance().click());
   let refresh!: Promise<void>;
   await React.act(async () => {
     refresh = page.client.invalidateQueries({ queryKey: ["reservation-preview", saved.id] });
@@ -2936,10 +2946,10 @@ it.each(["cancellation", "waiver", "coupon"] as const)(
     if (workflow === "cancellation") {
       await statusMenu("Cancelar reserva");
       await page.until(() => !button("Confirmar").disabled);
-      await click("Perdonar cargo");
+      await chooseCharge("Perdonar una parte");
+      await fill("amount", "100");
     } else await click(workflow === "coupon" ? "Devolver…" : "Perdonar cargo");
-    if (workflow === "coupon") await React.act(async () => acceptance().click());
-    else await fill("reason", "Error del hotel");
+    if (workflow !== "coupon") await fill("reason", "Error del hotel");
     const save = () =>
       workflow === "waiver"
         ? waiverSubmit()
@@ -3011,26 +3021,14 @@ it.each([
   },
 );
 
-function acceptance() {
-  const label = Array.from(popup()!.querySelectorAll("label")).find(
-    (node) => text(node) === "El huésped aceptó un cupón en lugar del reembolso",
-  );
-  const box = window.document.getElementById(label?.getAttribute("for") ?? "");
-  assert.ok(box instanceof window.HTMLInputElement, "Missing the acceptance checkbox");
-  return box;
-}
-
-it("issues a coupon only once the guest's acceptance is ticked and hands over its message", async () => {
+it("issues a coupon and hands over its message", async () => {
   owesBack();
   mockApi();
   const clipboard = vi.spyOn(window.navigator.clipboard, "writeText");
   await render();
   await click("Devolver…");
   await page.until(() => text(popup()!).includes(couponTerms));
-  assert.equal(acceptance().checked, false, "Acceptance starts unticked");
-  assert.equal(button("Emitir cupón").disabled, true);
-  await React.act(async () => acceptance().click());
-  assert.equal(button("Emitir cupón").disabled, false);
+  await page.until(() => !button("Emitir cupón").disabled);
   await click("Emitir cupón");
   await page.until(() => writes.length === 1);
   assert.deepEqual(writes[0].actions, [
@@ -3101,7 +3099,6 @@ it("keeps the coupon draft through a failed preview and waits for server expiry 
   await page.until(() => !!popup()?.textContent.includes("Ocurrió un error inesperado"));
   assert.doesNotMatch(text(popup()!), /preview unavailable/);
   assert.ok(log.mock.calls.length);
-  await React.act(async () => acceptance().click());
   assert.equal(button("Emitir cupón").disabled, true);
   await click("Reintentar");
   await page.until(() => previews.length === 2);
@@ -3118,7 +3115,6 @@ it("keeps the coupon draft through a failed preview and waits for server expiry 
   );
   await page.until(() => text(popup()!).includes("Vence el 29 de febrero de 2028"));
   assert.equal(field("amount").value, "100.00");
-  assert.equal(acceptance().checked, true);
   assert.equal(button("Emitir cupón").disabled, false);
   assert.equal(writes.length, 0);
 });
@@ -3143,7 +3139,6 @@ it.each([false, true])(
     await click("Devolver…");
     await page.until(() => text(popup()!).includes(couponTerms));
     await fill("amount", "60");
-    await React.act(async () => acceptance().click());
     await page.until(() => !button("Emitir cupón").disabled);
     await click("Emitir cupón");
     await page.until(() => writes.length === 1 && !button("Emitir cupón").disabled);
@@ -3153,7 +3148,6 @@ it.each([false, true])(
       await click("Devolver…");
       await page.until(() => text(popup()!).includes(couponTerms));
       await fill("amount", "60");
-      await React.act(async () => acceptance().click());
       await page.until(() => !button("Emitir cupón").disabled);
     }
     await click("Emitir cupón");
@@ -3197,7 +3191,6 @@ it.each(["coupon", "money"] as const)(
     await page.until(() => text(popup()!).includes(couponTerms));
     await fill("amount", "60");
     if (original === "coupon") {
-      await React.act(async () => acceptance().click());
       await page.until(() => !button("Emitir cupón").disabled);
       await click("Emitir cupón");
     } else {
@@ -3211,7 +3204,6 @@ it.each(["coupon", "money"] as const)(
       await fill("reason", "En efectivo");
     } else {
       await chooseReturn("Cupón");
-      await React.act(async () => acceptance().click());
       await page.until(() => !button("Emitir cupón").disabled);
     }
     await submit();
@@ -3254,7 +3246,6 @@ it("reconciles a reopened lost coupon even when current terms reject the already
   await render("", true, true);
   await click("Devolver…");
   await fill("amount", "60");
-  await React.act(async () => acceptance().click());
   await page.until(() => !button("Emitir cupón").disabled);
   await click("Emitir cupón");
   await page.until(() => writes.length === 1 && !button("Cerrar").disabled);
@@ -3262,7 +3253,6 @@ it("reconciles a reopened lost coupon even when current terms reject the already
   await click("Descartar y salir");
   await click("Devolver…");
   await fill("amount", "60");
-  await React.act(async () => acceptance().click());
   await page.client.invalidateQueries({ queryKey: ["reservation-preview", saved.id] });
   await page.until(() => text(popup()!).includes("El cupón supera el monto por devolver"));
   assert.equal(button("Emitir cupón").disabled, true);
@@ -3275,7 +3265,7 @@ it("reconciles a reopened lost coupon even when current terms reject the already
   assert.match(text(window.document.body), /Intento anterior comprobado/);
 });
 
-it("refreshes coupon expiry when property today changes without losing acceptance or amount", async () => {
+it("refreshes coupon expiry when property today changes without losing the amount", async () => {
   owesBack();
   mockApi({
     preview: () => ({
@@ -3290,17 +3280,15 @@ it("refreshes coupon expiry when property today changes without losing acceptanc
   await click("Devolver…");
   await page.until(() => text(popup()!).includes(couponTerms));
   await fill("amount", "60");
-  await React.act(async () => acceptance().click());
   await React.act(async () => {
     vi.setSystemTime(new Date("2026-10-20T05:00:00Z"));
     window.dispatchEvent(new window.Event("focus"));
   });
   await page.until(() => text(popup()!).includes("Vence el 20 de octubre de 2027"));
   assert.equal(field("amount").value, "60");
-  assert.equal(acceptance().checked, true);
 });
 
-it("keeps the accepted coupon draft and shows a changed refund-due limit beside Importe", async () => {
+it("keeps the coupon draft and shows a changed refund-due limit beside Importe", async () => {
   owesBack();
   mockApi({
     write: () => Response.json({ error: "coupon exceeds the refund due" }, { status: 409 }),
@@ -3309,7 +3297,6 @@ it("keeps the accepted coupon draft and shows a changed refund-due limit beside 
   await click("Devolver…");
   await page.until(() => text(popup()!).includes(couponTerms));
   await fill("amount", "60");
-  await React.act(async () => acceptance().click());
   await page.until(() => !button("Emitir cupón").disabled);
   await click("Emitir cupón");
   await page.until(() => field("amount").getAttribute("aria-invalid") === "true");
@@ -3318,7 +3305,6 @@ it("keeps the accepted coupon draft and shows a changed refund-due limit beside 
     /El cupón supera el monto por devolver, descontando reembolsos solicitados y cupones ya emitidos\./,
   );
   assert.equal(field("amount").value, "60");
-  assert.equal(acceptance().checked, true);
 });
 
 it("lets staff lower the amount after the coupon preview rejects a changed refund due", async () => {
@@ -3333,7 +3319,6 @@ it("lets staff lower the amount after the coupon preview rejects a changed refun
   await click("Devolver…");
   await page.until(() => !!popup()?.textContent.includes("El cupón supera el monto por devolver"));
   await fill("amount", "60");
-  await React.act(async () => acceptance().click());
   await page.until(() => !button("Emitir cupón").disabled);
   await click("Emitir cupón");
   await page.until(() => text(popup()!.querySelector("h2")!) === "Cupón emitido");
@@ -3367,7 +3352,6 @@ it("hands over the coupon just issued, not a different coupon issued since the f
   await click("Devolver…");
   await page.until(() => text(popup()!).includes(couponTerms));
   await fill("amount", "60");
-  await React.act(async () => acceptance().click());
   await page.until(() => !button("Emitir cupón").disabled);
   await click("Emitir cupón");
   await page.until(() => text(popup()!.querySelector("h2")!) === "Cupón emitido");
@@ -3382,7 +3366,6 @@ it("leaves the rest of a partial coupon Por devolver for a later Dinero run and 
   await click("Devolver…");
   await page.until(() => text(popup()!).includes(couponTerms));
   await fill("amount", "60");
-  await React.act(async () => acceptance().click());
   await page.until(() => !button("Emitir cupón").disabled);
   await click("Emitir cupón");
   await page.until(() => text(popup()!.querySelector("h2")!) === "Cupón emitido");
@@ -3394,7 +3377,7 @@ it("leaves the rest of a partial coupon Por devolver for a later Dinero run and 
   assert.ok(
     summaryRows().includes(`Pasado a cupón -S/ 60 K7Q2M9XPA4 · Vence el 19 de octubre de 2027`),
   );
-  const movements = account().querySelector('table[aria-label="Movimientos"]')!;
+  const movements = movementsCard().querySelector('table[aria-label="Movimientos"]')!;
   assert.ok(movements.querySelector('[aria-label="Se emitió un cupón: no se puede editar"]'));
   assert.equal(movements.querySelector('[aria-label^="Acciones del pago"]'), null);
 
@@ -3402,7 +3385,6 @@ it("leaves the rest of a partial coupon Por devolver for a later Dinero run and 
   assert.equal(field("amount").value, "40.00", "The next run starts at the remainder");
   await chooseReturn("Dinero");
   assert.equal(field("amount").value, "40.00");
-  assert.equal(popup()!.querySelector('[name="guestAccepted"]'), null);
   await fill("reason", "Resto en efectivo");
   await submit();
   await page.until(() => writes.length === 2);
@@ -3517,7 +3499,7 @@ it("waives a remaining charge later with a required reason and shows the saved r
   assert.deepEqual(writes[0].actions, [
     { type: "waive-cancellation-charge", amountCents: 5000, reason: "Error del hotel" },
   ]);
-  assert.ok(summaryRows().includes("Cargo perdonado -S/ 50 Error del hotel"));
+  assert.ok(summaryRows().includes("Cargo perdonado -S/ 50"));
   await page.until(() =>
     text(window.document.body).includes("Cargo perdonado · Por devolver S/ 50"),
   );
@@ -3586,8 +3568,8 @@ it("caps a later No-show waiver at the remaining charge and raises refund due ev
   assert.deepEqual(writes[0].actions, [
     { type: "waive-cancellation-charge", amountCents: 10000, reason: "Canceló por correo" },
   ]);
-  assert.ok(summaryRows().includes("Cargo perdonado -S/ 50 Cliente frecuente"));
-  assert.ok(summaryRows().includes("Cargo perdonado -S/ 100 Canceló por correo"));
+  assert.ok(summaryRows().includes("Cargo perdonado -S/ 50"));
+  assert.ok(summaryRows().includes("Cargo perdonado -S/ 100"));
   assert.equal(account().querySelector('[aria-label="Perdonar cargo"]'), null);
   assert.match(text(accountStatusLine()), /Por devolver S\/ 100/);
 });
@@ -3908,7 +3890,7 @@ it("bills a cancelled stay by its active charge and waivers and explains it in a
   await render();
   assert.deepEqual(summaryRows(), [
     "Cargo por cancelación S/ 150",
-    "Cargo perdonado -S/ 50 Cliente frecuente",
+    "Cargo perdonado -S/ 50",
     "Total S/ 100",
     "Pagado S/ 150",
   ]);
