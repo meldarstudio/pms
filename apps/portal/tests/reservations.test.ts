@@ -794,3 +794,24 @@ it("searches historical cancelled reservations across every date and retains vis
   assert.equal(params().get("balance"), "outstanding");
   assertFilterCount(1);
 });
+
+it("retains mobile filters after closing the drawer and restores defaults", async () => {
+  page.mobile();
+  await render("/reservations?view=all");
+  await click("Filtros");
+  await until(() => !!window.document.querySelector('[role="dialog"]'));
+  await choose("Saldo", "Saldo pendiente");
+  await until(() => params().get("balance") === "outstanding");
+  await click("Listo");
+  await until(() => !window.document.querySelector('[role="dialog"]'));
+  await until(() => window.document.activeElement === button("Filtros"));
+  assertFilterCount(1);
+  await click("Filtros");
+  assert.match(button("Saldo").textContent, /Saldo pendiente/);
+  await click("Restablecer");
+  await until(() => !params().has("balance"));
+  assert.match(button("Saldo").textContent, /Cualquier saldo/);
+  await click("Listo");
+  await until(() => !window.document.querySelector('[role="dialog"]'));
+  assert.equal(params().has("balance"), false);
+});
