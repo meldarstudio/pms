@@ -1,4 +1,13 @@
-import { Fragment, useCallback, useEffect, useMemo, useRef, useState, useId } from "react";
+import {
+  Fragment,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  useId,
+  type MouseEvent,
+} from "react";
 import { useSelector } from "@tanstack/react-form";
 import { useQueryClient } from "@tanstack/react-query";
 import { ArrowUpRightIcon, LogInIcon, LogOutIcon, PhoneIcon, PlusIcon, XIcon } from "lucide-react";
@@ -442,10 +451,13 @@ export function BookingEditor({
   const compactEditor = !stayOnly && !full;
   const mobileEditor = isMobile && compactEditor;
   const [billOpen, setBillOpen] = useState(false);
-  function addRoom() {
+  const [revealingRoomId, setRevealingRoomId] = useState<string | null>(null);
+  function addRoom(event: MouseEvent<HTMLButtonElement>) {
     if (!canAddRoom || !nextRoomType || !previousRoom) return;
+    const id = crypto.randomUUID();
+    setRevealingRoomId(event.detail > 0 ? id : null);
     form.pushFieldValue("rooms", {
-      id: crypto.randomUUID(),
+      id,
       room: {
         roomTypeId: nextRoomType.id,
         roomId: null,
@@ -700,6 +712,7 @@ export function BookingEditor({
                                   row={{
                                     index: i,
                                     count: activeDrafts.length,
+                                    reveal: draft.id === revealingRoomId,
                                     onRemove: () => removeRoom(draft.id),
                                   }}
                                   stacked={mobileEditor}
@@ -1004,9 +1017,10 @@ const CompactRoomFields = withReservationForm({
     typesReady: false,
     blockedRoomIds: new Set<string>(),
     errors: {} as Record<string, string>,
-    row: { index: 0, count: 1, onRemove: () => {} } as {
+    row: { index: 0, count: 1, reveal: false, onRemove: () => {} } as {
       index: number;
       count: number;
+      reveal: boolean;
       onRemove: () => void;
     },
     stacked: false,

@@ -1,6 +1,6 @@
-import { useId, type ReactNode } from "react";
+import { useId, useState, type ReactNode } from "react";
 import { cn } from "cn";
-import { ChevronDownIcon, ChevronUpIcon } from "lucide-react";
+import { ChevronUpIcon } from "lucide-react";
 import { accountStatus } from "@/components/balance-status";
 import { DiscountPopover } from "@/components/discount-popover";
 import { NightlyPriceDetail } from "@/components/nightly-price-detail";
@@ -70,6 +70,7 @@ export function BookingSummary({
   const titleId = useId();
   const panelId = useId();
   const balanceId = useId();
+  const [pointerMotion, setPointerMotion] = useState(false);
   const status = summary ? accountStatus(summary) : null;
   const feedback = error || (!summary ? message : null);
   const money = (cents: number) => formatMoney(cents, currency);
@@ -101,7 +102,14 @@ export function BookingSummary({
     >
       <Collapsible
         open={!collapsible || expanded}
-        onOpenChange={onExpandedChange}
+        onOpenChange={(open, details) => {
+          setPointerMotion(
+            details.reason === "trigger-press" &&
+              details.event.type === "click" &&
+              details.event.detail > 0,
+          );
+          onExpandedChange?.(open);
+        }}
         render={<Card size="sm" className={cn(collapsible && "min-h-0 gap-0 py-0")} />}
       >
         <CollapsibleContent
@@ -111,7 +119,11 @@ export function BookingSummary({
             "flex min-h-0 flex-col gap-(--card-spacing) [&[hidden]]:hidden",
             collapsible &&
               "max-h-[min(22rem,calc(var(--reservation-viewport-height,100dvh)*0.45))] overflow-y-auto overscroll-contain py-3",
+            collapsible &&
+              pointerMotion &&
+              "transition-opacity duration-180 ease-ui-out data-ending-style:opacity-0 data-starting-style:opacity-0 motion-reduce:duration-120",
           )}
+          inert={collapsible && !expanded}
         >
           <CardHeader>
             <CardTitle>
@@ -238,11 +250,15 @@ export function BookingSummary({
                   )}
                 >
                   {balance}
-                  {expanded ? (
-                    <ChevronDownIcon aria-hidden data-icon="inline-end" />
-                  ) : (
-                    <ChevronUpIcon aria-hidden data-icon="inline-end" />
-                  )}
+                  <ChevronUpIcon
+                    aria-hidden
+                    data-icon="inline-end"
+                    className={cn(
+                      expanded && "rotate-180",
+                      pointerMotion &&
+                        "transition-transform duration-150 ease-tab motion-reduce:transition-none",
+                    )}
+                  />
                 </span>
               </CollapsibleTrigger>
             </>
