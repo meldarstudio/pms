@@ -77,13 +77,15 @@ export function SummaryRow({
   label,
   value,
   note,
+  className,
 }: {
   label: ReactNode;
   value: string;
   note?: ReactNode;
+  className?: string;
 }) {
   return (
-    <div className="flex flex-wrap justify-between gap-x-2">
+    <div className={cn("flex flex-wrap justify-between gap-x-2", className)}>
       <dt>{label}</dt>
       <dd className="ml-auto tabular-nums">{value}</dd>
       {note && <dd className="w-full text-muted-foreground">{note}</dd>}

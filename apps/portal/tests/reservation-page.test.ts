@@ -398,35 +398,39 @@ it.each([
   {
     status: "confirmed",
     time: "2026-10-19T03:00:00Z",
-    items: ["Corregir estado…", "Cancelar reserva"],
+    items: ["Editar contacto", "Corregir estado…", "Cancelar reserva"],
   },
   {
     status: "confirmed",
     time: "2026-10-19T05:00:00Z",
-    items: ["Corregir estado…", "Marcar como no presentado", "Cancelar reserva"],
+    items: ["Editar contacto", "Corregir estado…", "Marcar como no presentado", "Cancelar reserva"],
   },
   {
     status: "confirmed",
     time: "2026-10-20T05:00:00Z",
-    items: ["Corregir estado…", "Marcar como no presentado", "Cancelar reserva"],
+    items: ["Editar contacto", "Corregir estado…", "Marcar como no presentado", "Cancelar reserva"],
   },
   {
     status: "checked_in",
     time: "2026-10-19T15:00:00Z",
-    items: ["Corregir estado…", "Cancelar reserva"],
+    items: ["Editar contacto", "Corregir estado…", "Cancelar reserva"],
   },
   {
     status: "checked_out",
     time: "2026-10-21T15:00:00Z",
-    items: ["Corregir estado…", "Cancelar reserva"],
+    items: ["Editar contacto", "Corregir estado…", "Cancelar reserva"],
   },
-  { status: "cancelled", time: "2026-10-19T15:00:00Z", items: ["Restaurar reserva"] },
+  {
+    status: "cancelled",
+    time: "2026-10-19T15:00:00Z",
+    items: ["Editar contacto", "Restaurar reserva"],
+  },
   {
     status: "no_show",
     time: "2026-10-19T15:00:00Z",
-    items: ["Restaurar reserva", "Corregir estado…"],
+    items: ["Editar contacto", "Restaurar reserva", "Corregir estado…"],
   },
-  { status: "unfulfilled", time: "2026-10-19T15:00:00Z", items: [] },
+  { status: "unfulfilled", time: "2026-10-19T15:00:00Z", items: ["Editar contacto"] },
 ] as const)(
   "offers only the allowed status menu actions for $status at $time",
   async ({ status, time, items }) => {
@@ -435,19 +439,14 @@ it.each([
     mockApi();
     await render();
     const trigger = header().querySelector<HTMLElement>('[aria-label="Acciones de la reserva"]');
-    if (items.length) {
-      assert.ok(trigger);
-      await React.act(async () => trigger.click());
-      assert.deepEqual(
-        Array.from(window.document.querySelectorAll('[role="menuitem"]')).map(
-          (item) => item.textContent,
-        ),
-        [...items],
-      );
-    } else {
-      assert.equal(trigger, null);
-      assert.equal(header().querySelector("button"), null);
-    }
+    assert.ok(trigger);
+    await React.act(async () => trigger.click());
+    assert.deepEqual(
+      Array.from(window.document.querySelectorAll('[role="menuitem"]')).map(
+        (item) => item.textContent,
+      ),
+      [...items],
+    );
     assert.equal(writes.length, 0);
   },
 );
@@ -658,7 +657,7 @@ it("retains the contact draft after a failed save and a reconnect refresh", asyn
         : undefined,
   });
   await render();
-  await click("Editar contacto");
+  await statusMenu("Editar contacto");
   await fill("fullName", "Ana María Pérez");
   await fill("phone", "999333444");
   await fill("email", "nuevo@example.com");
@@ -801,6 +800,16 @@ it("offers the shared coupon method from Registrar pago and prefills the already
   );
 });
 
+it("offers to add notes when the reservation has none", async () => {
+  saved = { ...saved, notes: null };
+  mockApi();
+  await render();
+  const notes = page.container.querySelector('[role="region"][aria-label="Notas de la reserva"]')!;
+  assert.equal(notes.textContent, "Agregar notas para el equipo");
+  await click("Agregar notas para el equipo");
+  await page.until(() => popup()?.textContent.includes("Notas de la reserva") ?? false);
+});
+
 it("shows notes, staying guests, and payments in their own cards and edits records from them", async () => {
   saved = {
     ...saved,
@@ -900,7 +909,7 @@ it("validates and saves only contact changes without replacing guests or notes",
       writes.length === 1 ? Response.json({ error: "invalid email" }, { status: 400 }) : undefined,
   });
   await render();
-  await click("Editar contacto");
+  await statusMenu("Editar contacto");
   assert.equal(popup()!.querySelector('[name="documentType"]') !== null, false);
   assert.equal(popup()!.querySelector('[name="documentNumber"]') !== null, false);
   await fill("fullName", "Ana María Pérez");
@@ -1124,7 +1133,7 @@ it("keeps a server phone rejection on the contact field until the phone changes"
         : undefined,
   });
   await render();
-  await click("Editar contacto");
+  await statusMenu("Editar contacto");
   await fill("phone", "987 654 321");
   await submit();
   await page.until(() => field("phone").getAttribute("aria-invalid") === "true");
@@ -1147,7 +1156,7 @@ for (const balance of [-10000]) {
     saved = { ...saved, status: "checked_out", balanceCents: balance };
     mockApi();
     await render();
-    await click("Editar contacto");
+    await statusMenu("Editar contacto");
     await fill("phone", "999333444");
     await submit();
     await page.until(() => !popup());
@@ -1744,6 +1753,51 @@ it("saves stay changes independently with the current server bill", async () => 
   assert.match(page.container.textContent, /3 noches/);
 });
 
+it("shows each room ticket with its subtotal and assigns an unassigned room from its ticket", async () => {
+  saved = {
+    ...saved,
+    checkOut: "2026-10-22",
+    rooms: [
+      {
+        ...saved.rooms[0],
+        id: "line-1",
+        roomId: "room-1",
+        roomNumber: "101",
+        subtotalCents: 32000,
+        totalCents: 32000,
+        nights: [
+          { date: "2026-10-19", priceCents: 10000 },
+          { date: "2026-10-20", priceCents: 12000 },
+          { date: "2026-10-21", priceCents: 10000 },
+        ],
+      },
+      {
+        ...saved.rooms[0],
+        id: "line-2",
+        adults: 1,
+        subtotalCents: 45000,
+        totalCents: 45000,
+        nights: [
+          { date: "2026-10-19", priceCents: 15000 },
+          { date: "2026-10-20", priceCents: 15000 },
+          { date: "2026-10-21", priceCents: 15000 },
+        ],
+      },
+    ],
+  };
+  mockApi();
+  await render();
+  const tickets = Array.from(
+    page.container.querySelectorAll('[aria-label="Habitaciones"] > li'),
+    (ticket) => ticket.textContent.replace(/\s+/g, " "),
+  );
+  assert.equal(tickets.length, 2);
+  assert.match(tickets[0], /^101Doble2 adultos · 3 nochesS\/ 320$/);
+  assert.match(tickets[1], /^AsignarDobleSin asignar1 adulto · 3 nochesS\/ 450$/);
+  await click("Asignar Doble");
+  await page.until(() => popup()?.textContent.includes("Elegir habitación") ?? false);
+});
+
 it("saves an agreed nightly price only for a new room in the stay editor", async () => {
   page.api.catalog.rooms.push({ id: "room-2", number: "102", roomTypeId: "double" });
   const added = {
@@ -1986,6 +2040,23 @@ it("protects a stay draft from background refresh, router navigation and dirty d
   await page.until(() => !popup());
   await back();
   await page.until(() => router.state.location.pathname === "/reservations");
+});
+
+it("announces the loading reservation until its detail arrives", async () => {
+  mockApi();
+  let release = () => {};
+  const held = new Promise<void>((resolve) => (release = resolve));
+  page.api.on("GET", "/reservations/reservation-1", async () => {
+    await held;
+    return saved;
+  });
+  await render("", false);
+  await page.until(() => page.container.textContent.includes("Cargando reserva…"));
+  assert.equal(page.container.querySelector('[aria-busy="true"]') !== null, true);
+  assert.equal(page.container.querySelector('[role="region"][aria-label="Estadía"]'), null);
+  release();
+  await page.until(() => page.container.textContent.includes("#TEST0001"));
+  assert.equal(page.container.textContent.includes("Cargando reserva…"), false);
 });
 
 it("explains a missing reservation instead of offering a retry", async () => {
@@ -3446,7 +3517,12 @@ it("reads an Unfulfilled reservation as Cancelada with nothing to do but return 
     text(page.container.querySelector('[role="alert"]')!),
     "Reserva cancelada No había disponibilidad cuando se completó el pago en línea.",
   );
-  assert.equal(header().querySelector("button"), null, "No status actions or Restaurar reserva");
+  await click("Acciones de la reserva");
+  assert.deepEqual(
+    Array.from(window.document.querySelectorAll('[role="menuitem"]'), (item) => item.textContent),
+    ["Editar contacto"],
+    "No status actions or Restaurar reserva",
+  );
   assert.deepEqual(summaryRows(), ["Cargo por cancelación S/ 0", "Total S/ 0", "Pagado S/ 250"]);
   assert.equal(text(accountStatusLine()), "Por devolver S/ 250 Devolver…");
 });
@@ -3875,8 +3951,10 @@ it.each(["requested", "failed", "completed", "issue", "redeem", "return"] as con
     mockApi();
     await render();
     await click("Acciones de la reserva");
-    const item = window.document.querySelector<HTMLElement>('[role="menuitem"]')!;
-    assert.equal(text(item), "Restaurar reserva");
+    const item = Array.from(
+      window.document.querySelectorAll<HTMLElement>('[role="menuitem"]'),
+    ).find((menuItem) => text(menuItem) === "Restaurar reserva")!;
+    assert.ok(item);
     assert.equal(item.getAttribute("aria-disabled"), "true");
     assert.match(
       text(window.document.body),

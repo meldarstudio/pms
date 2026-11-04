@@ -1,42 +1,20 @@
-import type { ReactNode } from "react";
-import {
-  CalendarDaysIcon,
-  CalendarCheckIcon,
-  ClockIcon,
-  CircleAlertIcon,
-  MailIcon,
-  PencilIcon,
-  PhoneIcon,
-  PlusIcon,
-  UserRoundIcon,
-  TagIcon,
-  UsersIcon,
-  type LucideIcon,
-} from "lucide-react";
-import { AssignedRooms } from "@/components/assigned-rooms";
+import { MailIcon, PencilIcon, PhoneIcon, PlusIcon, CircleAlertIcon } from "lucide-react";
+import { parseISO } from "date-fns";
 import { ReservationStatusBadge } from "@/components/reservation-status-badge";
 import { Button } from "@/components/ui/button";
-import { Card, CardHeader, CardTitle, CardContent, CardAction } from "@/components/ui/card";
-import { StayingGuestList } from "@/components/reservation-records";
-import { AccountCard, MovementsCard } from "@/components/reservation-account";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { GuestLine, NoStayingGuests, RowActions } from "@/components/reservation-records";
+import { AccountPanel, MovementsSection } from "@/components/reservation-account";
+import { SectionHeading } from "@/components/reservation-section";
+import { StaySection } from "@/components/reservation-stay";
 import { useLifecycleAction } from "@/components/lifecycle-action";
 import { ReservationStatusMenu } from "@/components/reservation-status-menu";
 import type { ReservationEditorTarget } from "@/components/reservation-page-editors";
 import type { ReservationDetail } from "@/lib/api";
 import { phoneDisplay } from "@/lib/phone";
-import { ratePlanLabels } from "@/lib/rate-plans";
 import { format } from "@/lib/dates";
 import { propertyToday } from "@/lib/property-calendar";
-import { parseISO } from "date-fns";
 
-const fullDate = (value: string) =>
-  new Intl.DateTimeFormat("es-PE", {
-    day: "numeric",
-    month: "long",
-    year: "numeric",
-    timeZone: "UTC",
-  }).format(new Date(`${value}T12:00:00Z`));
 type Model = { detail: ReservationDetail; edit: (target: ReservationEditorTarget) => void };
 
 export function ReservationOverview({
@@ -51,117 +29,202 @@ export function ReservationOverview({
   onDiscountDraftChange?: (changed: boolean) => void;
 }) {
   const lifecycle = useLifecycleAction(detail, lifecycleBlocked || disabled);
-  const nights = Math.round((Date.parse(detail.checkOut) - Date.parse(detail.checkIn)) / 86400000);
   return (
-    <fieldset disabled={disabled} aria-busy={disabled} className="flex min-w-0 flex-col gap-6">
-      <header className="grid min-w-0 grid-cols-[minmax(0,1fr)_auto] items-start gap-3 md:gap-x-4">
-        <div className="flex min-w-0 flex-col gap-1.5">
-          <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5">
-            <p className="font-mono text-xs tracking-widest wrap-anywhere text-muted-foreground uppercase">
-              <span className="max-sm:sr-only">Reserva </span>#{detail.code}
-            </p>
-            <ReservationStatusBadge status={detail.status} />
+    <fieldset disabled={disabled} aria-busy={disabled} className="min-w-0">
+      <div className="grid min-w-0 gap-6 lg:-my-6 lg:-mr-6 lg:grid-cols-[minmax(0,1fr)_24rem] lg:grid-rows-[auto_1fr]">
+        <div className="flex min-w-0 flex-col gap-6 lg:pt-6">
+          <header className="grid min-w-0 grid-cols-[minmax(0,1fr)_auto] items-start gap-3 md:gap-x-4">
+            <div className="flex min-w-0 flex-col gap-1.5">
+              <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5">
+                <p className="font-mono text-xs tracking-widest wrap-anywhere text-muted-foreground uppercase">
+                  <span className="max-sm:sr-only">Reserva </span>#{detail.code}
+                </p>
+                <ReservationStatusBadge status={detail.status} />
+              </div>
+              <h1 className="text-2xl font-semibold tracking-tight wrap-anywhere">
+                {detail.guest.fullName}
+              </h1>
+            </div>
+            <div className="col-start-2 row-start-1 md:col-start-3">
+              <ReservationStatusMenu
+                detail={detail}
+                disabled={disabled || lifecycleBlocked || lifecycle.running}
+                edit={edit}
+              />
+            </div>
+            {lifecycle.step && (
+              <Button
+                className="col-span-full w-full md:col-span-1 md:col-start-2 md:row-start-1 md:w-auto"
+                variant={lifecycle.step.due ? "default" : "outline"}
+                disabled={disabled || lifecycleBlocked || lifecycle.running}
+                onClick={() => void lifecycle.run()}
+              >
+                {lifecycle.step.label}
+              </Button>
+            )}
+          </header>
+          {lifecycle.dialogs}
+          <ContactLine detail={detail} edit={edit} />
+          <StayOutcomeAlert detail={detail} />
+          <NotesLine detail={detail} edit={edit} />
+        </div>
+        <aside
+          aria-label="Cuenta y huéspedes"
+          className="contents lg:sticky lg:top-0 lg:col-start-2 lg:row-span-2 lg:row-start-1 lg:flex lg:h-[calc(100svh-3rem-1px)] lg:min-w-0 lg:flex-col lg:overflow-y-auto lg:border-l lg:bg-muted/40"
+        >
+          <div className="-mx-4 min-w-0 bg-muted/40 lg:mx-0 lg:bg-transparent">
+            <AccountPanel
+              detail={detail}
+              edit={edit}
+              onDiscountDraftChange={onDiscountDraftChange}
+            />
           </div>
-          <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
-            <h1 className="text-2xl font-semibold tracking-tight wrap-anywhere">
-              {detail.guest.fullName}
-            </h1>
-          </div>
+          <GuestsPanel detail={detail} edit={edit} />
+        </aside>
+        <div className="flex min-w-0 flex-col gap-10 lg:pb-6">
+          <StaySection detail={detail} edit={edit} />
+          <MovementsSection detail={detail} edit={edit} />
         </div>
-        <div className="col-start-2 row-start-1 md:col-start-3">
-          <ReservationStatusMenu
-            detail={detail}
-            disabled={disabled || lifecycleBlocked || lifecycle.running}
-            edit={edit}
-          />
-        </div>
-        {lifecycle.step && (
-          <Button
-            className="col-span-full w-full md:col-span-1 md:col-start-2 md:row-start-1 md:w-auto"
-            variant={lifecycle.step.due ? "default" : "outline"}
-            disabled={disabled || lifecycleBlocked || lifecycle.running}
-            onClick={() => void lifecycle.run()}
-          >
-            {lifecycle.step.label}
-          </Button>
-        )}
-      </header>
-      {lifecycle.dialogs}
-      <StayOutcomeAlert detail={detail} />
-      <div className="grid min-w-0 gap-5 md:grid-cols-2">
-        <div className="flex min-w-0 flex-col gap-5">
-          <ContactSummary detail={detail} edit={edit} />
-          <GuestsSummary detail={detail} edit={edit} />
-          <NotesSummary detail={detail} edit={edit} />
-        </div>
-        <div className="relative min-w-0">
-          <Card className="min-w-0 md:absolute md:inset-0">
-            <CardHeader>
-              <CardTitle>
-                <h2>Estadía y habitaciones</h2>
-              </CardTitle>
-              <CardAction>
-                <Button variant="outline" size="sm" onClick={() => edit({ kind: "stay" })}>
-                  <PencilIcon data-icon="inline-start" />
-                  Editar estadía
-                </Button>
-              </CardAction>
-            </CardHeader>
-            <CardContent className="flex min-h-0 flex-1 flex-col gap-4">
-              <dl className="flex flex-col">
-                <ReservationDatum icon={CalendarDaysIcon} label="Fecha de ingreso">
-                  {fullDate(detail.checkIn)}
-                </ReservationDatum>
-                <ReservationDatum icon={CalendarCheckIcon} label="Fecha de egreso">
-                  {fullDate(detail.checkOut)}
-                </ReservationDatum>
-                <ReservationDatum icon={ClockIcon} label="Duración">
-                  {nights} {nights === 1 ? "noche" : "noches"}
-                </ReservationDatum>
-                <ReservationDatum icon={UsersIcon} label="Ocupantes">
-                  {detail.rooms.reduce((total, room) => total + room.adults + room.children, 0)}
-                </ReservationDatum>
-                <ReservationDatum icon={TagIcon} label="Plan tarifario">
-                  {ratePlanLabels[detail.ratePlan.plan]}
-                </ReservationDatum>
-              </dl>
-              <AssignedRooms detail={detail} />
-            </CardContent>
-          </Card>
-        </div>
-      </div>
-      <div className="grid min-w-0 gap-5 lg:grid-cols-[20rem_minmax(0,1fr)]">
-        <AccountCard detail={detail} edit={edit} onDiscountDraftChange={onDiscountDraftChange} />
-        <MovementsCard detail={detail} edit={edit} />
       </div>
     </fieldset>
   );
 }
 
-function GuestsSummary({ detail, edit }: Model) {
+function ContactLine({ detail, edit }: Model) {
+  const { phone, email } = detail.guest;
+  const shown = phone ? phoneDisplay(phone) : null;
   return (
-    <Card className="min-w-0" role="region" aria-label="Huéspedes">
-      <CardHeader>
-        <CardTitle>
-          <h2>Huéspedes</h2>
-        </CardTitle>
-        <CardAction>
-          <Button variant="outline" size="sm" onClick={() => edit({ kind: "guest" })}>
+    <section
+      role="region"
+      aria-label="Contacto principal"
+      className="-mt-3 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-muted-foreground"
+    >
+      <span className="inline-flex items-center gap-1.5">
+        <PhoneIcon aria-label="Teléfono" className="size-3.5" />
+        {shown ? (
+          <a className="text-foreground" href={shown.href}>
+            {shown.text}
+          </a>
+        ) : (
+          "Sin teléfono"
+        )}
+      </span>
+      <span className="inline-flex min-w-0 items-center gap-1.5">
+        <MailIcon aria-label="Correo electrónico" className="size-3.5" />
+        {email ? (
+          <a className="wrap-anywhere text-foreground" href={`mailto:${email}`}>
+            {email}
+          </a>
+        ) : (
+          "Sin correo"
+        )}
+      </span>
+      <Button
+        variant="ghost"
+        size="icon-xs"
+        className="-ml-2 max-md:hidden"
+        aria-label="Editar contacto"
+        title="Editar contacto"
+        onClick={() => edit({ kind: "contact" })}
+      >
+        <PencilIcon />
+      </Button>
+    </section>
+  );
+}
+
+function NotesLine({ detail, edit }: Model) {
+  const notes = detail.notes;
+  return (
+    <section role="region" aria-label="Notas de la reserva" className="flex">
+      {notes ? (
+        <div className="flex min-w-0 flex-1 items-start gap-2 border-l-2 border-warning-foreground/50 bg-warning py-2 pr-2 pl-3 text-xs text-warning-foreground">
+          <div className="flex min-w-0 flex-1 flex-col gap-0.5">
+            <span className="text-[0.65rem] font-semibold tracking-widest uppercase opacity-80">
+              Notas
+            </span>
+            <p className="whitespace-pre-wrap wrap-anywhere">{notes}</p>
+          </div>
+          <Button
+            variant="ghost"
+            size="icon-xs"
+            aria-label="Editar notas"
+            title="Editar notas"
+            onClick={() => edit({ kind: "notes" })}
+          >
+            <PencilIcon />
+          </Button>
+        </div>
+      ) : (
+        <Button
+          variant="ghost"
+          size="xs"
+          className="-ml-1.5"
+          onClick={() => edit({ kind: "notes" })}
+        >
+          <PlusIcon data-icon="inline-start" />
+          Agregar notas para el equipo
+        </Button>
+      )}
+    </section>
+  );
+}
+
+const initials = (name: string) =>
+  name
+    .split(/\s+/)
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((part) => part[0])
+    .join("")
+    .toUpperCase();
+
+function GuestsPanel({ detail, edit }: Model) {
+  return (
+    <section
+      role="region"
+      aria-label="Huéspedes"
+      className="-mx-4 flex flex-col gap-3 px-4 max-lg:order-last lg:mx-0 lg:border-t lg:py-4"
+    >
+      <SectionHeading
+        title="Huéspedes"
+        action={
+          <Button variant="ghost" size="xs" onClick={() => edit({ kind: "guest" })}>
             <PlusIcon data-icon="inline-start" />
             Agregar huésped
           </Button>
-        </CardAction>
-      </CardHeader>
-      <CardContent className="flex flex-1 flex-col">
-        <StayingGuestList
-          detail={detail}
-          disabled={false}
-          framed
-          onEdit={(guest) => edit({ kind: "guest", id: guest.id })}
-          onDelete={(guest) => edit({ kind: "delete-guest", id: guest.id })}
-        />
-      </CardContent>
-    </Card>
+        }
+      />
+      {detail.stayingGuests.length === 0 ? (
+        <NoStayingGuests framed />
+      ) : (
+        <ul aria-label="Huéspedes registrados" className="flex flex-col">
+          {detail.stayingGuests.map((guest) => (
+            <li
+              key={guest.id}
+              className="flex items-center gap-2.5 border-b py-2 text-xs last:border-0"
+            >
+              <span
+                aria-hidden
+                className="flex size-7 shrink-0 items-center justify-center rounded-full bg-background text-[0.65rem] font-medium ring-1 ring-border"
+              >
+                {initials(guest.fullName)}
+              </span>
+              <div className="flex min-w-0 flex-1 flex-col">
+                <span className="truncate font-medium">{guest.fullName}</span>
+                <GuestLine guest={guest} />
+              </div>
+              <RowActions
+                label={`Acciones de ${guest.fullName}`}
+                disabled={false}
+                onEdit={() => edit({ kind: "guest", id: guest.id })}
+                onDelete={() => edit({ kind: "delete-guest", id: guest.id })}
+              />
+            </li>
+          ))}
+        </ul>
+      )}
+    </section>
   );
 }
 
@@ -193,91 +256,4 @@ function StayOutcomeAlert({ detail }: { detail: ReservationDetail }) {
       )}
     </Alert>
   );
-}
-
-function NotesSummary({ detail, edit }: Model) {
-  return (
-    <Card className="min-w-0" role="region" aria-label="Notas de la reserva">
-      <CardHeader>
-        <CardTitle>
-          <h2>Notas</h2>
-        </CardTitle>
-        <CardAction>
-          <Button variant="outline" size="sm" onClick={() => edit({ kind: "notes" })}>
-            <PencilIcon data-icon="inline-start" />
-            {detail.notes ? "Editar notas" : "Agregar notas"}
-          </Button>
-        </CardAction>
-      </CardHeader>
-      <CardContent>
-        {detail.notes ? (
-          <p className="whitespace-pre-wrap wrap-anywhere">{detail.notes}</p>
-        ) : (
-          <p className="text-muted-foreground">
-            Sin notas. Anota lo que el equipo debe saber sobre esta reserva.
-          </p>
-        )}
-      </CardContent>
-    </Card>
-  );
-}
-
-function ContactSummary({ detail, edit }: Model) {
-  const contact = detail.guest;
-  return (
-    <Card className="min-w-0" role="region" aria-label="Contacto principal">
-      <CardHeader>
-        <CardTitle>
-          <h2>Contacto principal</h2>
-        </CardTitle>
-        <CardAction>
-          <Button variant="outline" size="sm" onClick={() => edit({ kind: "contact" })}>
-            <PencilIcon data-icon="inline-start" />
-            Editar contacto
-          </Button>
-        </CardAction>
-      </CardHeader>
-      <CardContent>
-        <dl className="flex flex-col">
-          <ReservationDatum icon={UserRoundIcon} label="Nombre completo">
-            {contact.fullName}
-          </ReservationDatum>
-          <ReservationDatum icon={PhoneIcon} label="Teléfono">
-            <ContactPhone phone={contact.phone} />
-          </ReservationDatum>
-          <ReservationDatum icon={MailIcon} label="Correo electrónico">
-            {contact.email ? <a href={`mailto:${contact.email}`}>{contact.email}</a> : "Sin correo"}
-          </ReservationDatum>
-        </dl>
-      </CardContent>
-    </Card>
-  );
-}
-
-function ReservationDatum({
-  icon: Icon,
-  label,
-  children,
-}: {
-  icon: LucideIcon;
-  label: string;
-  children: ReactNode;
-}) {
-  return (
-    <div className="flex flex-wrap items-start justify-between gap-x-3 gap-y-1 py-2 first:pt-0 last:pb-0">
-      <dt className="flex items-center gap-2 text-xs text-muted-foreground">
-        <Icon aria-hidden="true" className="size-4 shrink-0" />
-        {label}
-      </dt>
-      <dd className="ml-auto max-w-full min-w-0 text-right text-xs font-medium wrap-anywhere">
-        {children}
-      </dd>
-    </div>
-  );
-}
-
-function ContactPhone({ phone }: { phone: string | null }) {
-  if (!phone) return "Sin teléfono";
-  const display = phoneDisplay(phone);
-  return <a href={display.href}>{display.text}</a>;
 }

@@ -12,7 +12,7 @@ import {
   BreadcrumbSeparator,
 } from "@/components/ui/breadcrumb";
 import { PageTitle } from "@/components/page-title";
-import { Skeleton } from "@/components/ui/skeleton";
+import { ReservationOverviewSkeleton } from "@/components/reservation-overview-skeleton";
 import { PageError, StaleDataNotice } from "@/components/page-error";
 import { useReservation } from "@/lib/queries";
 import { useReservationCommands } from "@/lib/reservation-commands";
@@ -86,7 +86,7 @@ function ReservationPageContent({ id, backSearch, onBack }: PageProps) {
         </Breadcrumb>
       </PageTitle>
       <div className="flex w-full flex-col gap-4 p-4 lg:p-6">
-        {query.isPending && <Skeleton className="h-80 w-full" />}
+        {query.isPending && <ReservationOverviewSkeleton />}
         {query.error &&
           (query.data ? (
             <StaleDataNotice error={query.error} onRetry={() => void query.refetch()} />
