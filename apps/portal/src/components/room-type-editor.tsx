@@ -387,8 +387,8 @@ export function RoomTypeEditor({
       </section>
       {saveError && <FieldError role="alert">{saveError}</FieldError>}
       <Separator />
-      <footer className="flex flex-wrap items-center justify-end gap-2">
-        <p className="mr-auto text-xs text-muted-foreground">
+      <footer className="flex flex-wrap items-center justify-end gap-2 max-sm:[&>button]:flex-1">
+        <p className="mr-auto text-xs text-muted-foreground max-sm:w-full">
           {dirty ? "Cambios sin guardar" : "Sin cambios"}
         </p>
         <Button

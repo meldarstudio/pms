@@ -31,8 +31,8 @@ export function ReservationOverview({
   const lifecycle = useLifecycleAction(detail, lifecycleBlocked || disabled);
   return (
     <fieldset disabled={disabled} aria-busy={disabled} className="min-w-0">
-      <div className="grid min-w-0 gap-6 lg:-my-6 lg:-mr-6 lg:grid-cols-[minmax(0,1fr)_24rem] lg:grid-rows-[auto_1fr]">
-        <div className="flex min-w-0 flex-col gap-6 lg:pt-6">
+      <div className="grid min-w-0 gap-6 xl:-my-6 xl:-mr-6 xl:grid-cols-[minmax(0,1fr)_24rem] xl:grid-rows-[auto_1fr]">
+        <div className="flex min-w-0 flex-col gap-6 xl:pt-6">
           <header className="grid min-w-0 grid-cols-[minmax(0,1fr)_auto] items-start gap-3 md:gap-x-4">
             <div className="flex min-w-0 flex-col gap-1.5">
               <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5">
@@ -70,9 +70,9 @@ export function ReservationOverview({
         </div>
         <aside
           aria-label="Cuenta y huéspedes"
-          className="contents lg:sticky lg:top-0 lg:col-start-2 lg:row-span-2 lg:row-start-1 lg:flex lg:h-[calc(100svh-3rem-1px)] lg:min-w-0 lg:flex-col lg:overflow-y-auto lg:border-l lg:bg-muted/40"
+          className="contents xl:sticky xl:top-0 xl:col-start-2 xl:row-span-2 xl:row-start-1 xl:flex xl:h-[calc(100svh-3rem-1px)] xl:min-w-0 xl:flex-col xl:overflow-y-auto xl:border-l xl:bg-muted/40"
         >
-          <div className="-mx-4 min-w-0 bg-muted/40 lg:mx-0 lg:bg-transparent">
+          <div className="-mx-4 min-w-0 bg-muted/40 xl:mx-0 xl:bg-transparent">
             <AccountPanel
               detail={detail}
               edit={edit}
@@ -81,7 +81,7 @@ export function ReservationOverview({
           </div>
           <GuestsPanel detail={detail} edit={edit} />
         </aside>
-        <div className="flex min-w-0 flex-col gap-10 lg:pb-6">
+        <div className="flex min-w-0 flex-col gap-10 xl:pb-6">
           <StaySection detail={detail} edit={edit} />
           <MovementsSection detail={detail} edit={edit} />
         </div>
@@ -102,7 +102,10 @@ function ContactLine({ detail, edit }: Model) {
       <span className="inline-flex items-center gap-1.5">
         <PhoneIcon aria-label="Teléfono" className="size-3.5" />
         {shown ? (
-          <a className="text-foreground" href={shown.href}>
+          <a
+            className="relative pointer-coarse:after:absolute pointer-coarse:after:inset-x-0 pointer-coarse:after:-inset-y-2.5 text-foreground"
+            href={shown.href}
+          >
             {shown.text}
           </a>
         ) : (
@@ -112,7 +115,10 @@ function ContactLine({ detail, edit }: Model) {
       <span className="inline-flex min-w-0 items-center gap-1.5">
         <MailIcon aria-label="Correo electrónico" className="size-3.5" />
         {email ? (
-          <a className="wrap-anywhere text-foreground" href={`mailto:${email}`}>
+          <a
+            className="relative pointer-coarse:after:absolute pointer-coarse:after:inset-x-0 pointer-coarse:after:-inset-y-2.5 wrap-anywhere text-foreground"
+            href={`mailto:${email}`}
+          >
             {email}
           </a>
         ) : (
@@ -140,7 +146,7 @@ function NotesLine({ detail, edit }: Model) {
       {notes ? (
         <div className="flex min-w-0 flex-1 items-start gap-2 border-l-2 border-warning-foreground/50 bg-warning py-2 pr-2 pl-3 text-xs text-warning-foreground">
           <div className="flex min-w-0 flex-1 flex-col gap-0.5">
-            <span className="text-[0.65rem] font-semibold tracking-widest uppercase opacity-80">
+            <span className="text-2xs font-semibold tracking-widest uppercase opacity-80">
               Notas
             </span>
             <p className="whitespace-pre-wrap wrap-anywhere">{notes}</p>
@@ -184,7 +190,7 @@ function GuestsPanel({ detail, edit }: Model) {
     <section
       role="region"
       aria-label="Huéspedes"
-      className="-mx-4 flex flex-col gap-3 px-4 max-lg:order-last lg:mx-0 lg:border-t lg:py-4"
+      className="-mx-4 flex flex-col gap-3 px-4 max-xl:order-last xl:mx-0 xl:border-t xl:py-4"
     >
       <SectionHeading
         title="Huéspedes"
@@ -206,7 +212,7 @@ function GuestsPanel({ detail, edit }: Model) {
             >
               <span
                 aria-hidden
-                className="flex size-7 shrink-0 items-center justify-center rounded-full bg-background text-[0.65rem] font-medium ring-1 ring-border"
+                className="flex size-(--control-h-sm) shrink-0 items-center justify-center rounded-full bg-background text-2xs font-medium ring-1 ring-border"
               >
                 {initials(guest.fullName)}
               </span>

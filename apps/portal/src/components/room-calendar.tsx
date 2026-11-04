@@ -400,7 +400,7 @@ export function RoomCalendar({
 }) {
   const { today } = usePropertyCalendar();
   const isMobile = useIsMobile();
-  const roomColumnWidth = isMobile ? 8 : 10;
+  const roomColumnWidth = isMobile ? 9.5 : 10;
   const queryClient = useQueryClient();
   const [pickerOpen, setPickerOpen] = useState(false);
   const [closureTarget, setClosureTarget] = useState<ClosureTarget | null>(null);
@@ -572,7 +572,7 @@ export function RoomCalendar({
         <Badge
           variant="default"
           aria-hidden="true"
-          className="pointer-events-none absolute -top-1.5 -right-1.5 h-4 min-w-4 px-1"
+          className="pointer-events-none absolute -top-1.5 -right-1.5 h-(--badge-h-sm) min-w-(--badge-h-sm) px-1 pointer-coarse:-top-2.5 pointer-coarse:-right-2"
         >
           {unassigned.length}
         </Badge>

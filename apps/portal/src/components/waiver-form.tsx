@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { useSelector } from "@tanstack/react-form";
 import { OutcomeCommandPreview, outcomeSaveError } from "@/components/outcome-command-preview";
 import { CommandRecovery } from "@/components/command-recovery";
+import { DialogFooter } from "@/components/ui/dialog";
 import { Alert, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { FieldGroup } from "@/components/ui/field";
@@ -129,14 +130,14 @@ export function WaiverForm({
           <AlertTitle>No se puede deshacer.</AlertTitle>
         </Alert>
       </div>
-      <div className="flex shrink-0 flex-wrap justify-end gap-2">
+      <DialogFooter className="shrink-0">
         <Button type="button" variant="outline" disabled={saving} onClick={onCancel}>
           Cerrar
         </Button>
         <Button type="submit" disabled={saving || !ready}>
           {saving ? "Guardando…" : "Perdonar cargo"}
         </Button>
-      </div>
+      </DialogFooter>
     </form>
   );
 }

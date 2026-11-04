@@ -59,7 +59,9 @@ export function ReservationRoomRow({
       <FieldGroup
         className={cn(
           "grid gap-3",
-          stacked ? "grid-cols-2" : "grid-cols-3 md:grid-cols-[minmax(0,1fr)_7rem_4rem_4rem]",
+          stacked
+            ? "grid-cols-2"
+            : "grid-cols-3 max-md:pointer-coarse:grid-cols-[minmax(0,1.6fr)_minmax(0,1fr)_minmax(0,1fr)] md:grid-cols-[minmax(0,1fr)_7rem_4rem_4rem] md:pointer-coarse:grid-cols-[minmax(0,1fr)_9rem_5rem_5rem]",
         )}
       >
         <div className={cn("col-span-full min-w-0", !stacked && "md:col-span-1")}>{typeField}</div>

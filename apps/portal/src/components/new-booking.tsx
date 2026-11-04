@@ -307,7 +307,7 @@ export function NewBooking({
               </FieldGroup>
             </FieldSet>
             <section className="flex flex-col gap-3" aria-label="Habitaciones">
-              <h3 className="font-medium">Habitaciones</h3>
+              <h3 className="text-sm font-medium">Habitaciones</h3>
               {noAvailability ? (
                 <Empty variant="input" role="status">
                   <EmptyHeader>

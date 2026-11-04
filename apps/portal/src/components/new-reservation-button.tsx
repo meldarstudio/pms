@@ -28,7 +28,7 @@ export function NewReservationButton({
     <Button
       disabled={disabled}
       title="Nueva reserva"
-      className="@max-3xl/toolbar:w-8 @max-3xl/toolbar:px-0!"
+      className="@max-3xl/toolbar:w-(--control-h) @max-3xl/toolbar:px-0!"
       onClick={onClick}
     >
       <PlusIcon data-icon="inline-start" />

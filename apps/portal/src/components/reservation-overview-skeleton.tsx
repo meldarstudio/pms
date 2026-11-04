@@ -20,7 +20,7 @@ function TextBar({ className, width }: { className?: string; width: string }) {
   );
 }
 
-const factLabel = "text-[0.65rem] font-semibold tracking-widest text-muted-foreground uppercase";
+const factLabel = "text-2xs font-semibold tracking-widest text-muted-foreground uppercase";
 
 export function ReservationOverviewSkeleton() {
   return (
@@ -30,9 +30,9 @@ export function ReservationOverviewSkeleton() {
       </p>
       <div
         aria-hidden
-        className="grid min-w-0 gap-6 lg:-my-6 lg:-mr-6 lg:grid-cols-[minmax(0,1fr)_24rem] lg:grid-rows-[auto_1fr]"
+        className="grid min-w-0 gap-6 xl:-my-6 xl:-mr-6 xl:grid-cols-[minmax(0,1fr)_24rem] xl:grid-rows-[auto_1fr]"
       >
-        <div className="flex min-w-0 flex-col gap-6 lg:pt-6">
+        <div className="flex min-w-0 flex-col gap-6 xl:pt-6">
           <div className="grid min-w-0 grid-cols-[minmax(0,1fr)_auto] items-start gap-3 md:gap-x-4">
             <div className="flex min-w-0 flex-col gap-1.5">
               <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5">
@@ -42,29 +42,29 @@ export function ReservationOverviewSkeleton() {
               <TextBar className="text-2xl" width="w-56" />
             </div>
             <div className="col-start-2 row-start-1 md:col-start-3">
-              <Skeleton className="size-7" />
+              <Skeleton className="size-(--control-h-sm)" />
             </div>
-            <Skeleton className="col-span-full h-8 w-full md:col-span-1 md:col-start-2 md:row-start-1 md:w-28" />
+            <Skeleton className="col-span-full h-(--control-h) w-full md:col-span-1 md:col-start-2 md:row-start-1 md:w-28" />
           </div>
           <div className="-mt-3 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs">
             <TextBar width="w-28" />
             <TextBar width="w-40" />
-            <span className="size-6 max-md:hidden" />
+            <span className="size-(--control-h-xs) max-md:hidden" />
           </div>
           <div className="flex flex-col gap-0.5 border-l-2 py-2 pr-2 pl-3 text-xs">
-            <TextBar className="text-[0.65rem]" width="w-10" />
+            <TextBar className="text-2xs" width="w-10" />
             <div>
               <TextBar width="w-3/4" />
               <TextBar className="sm:hidden" width="w-1/2" />
             </div>
           </div>
         </div>
-        <div className="contents lg:sticky lg:top-0 lg:col-start-2 lg:row-span-2 lg:row-start-1 lg:flex lg:h-[calc(100svh-3rem-1px)] lg:min-w-0 lg:flex-col lg:overflow-y-auto lg:border-l lg:bg-muted/40">
-          <div className="-mx-4 min-w-0 bg-muted/40 lg:mx-0 lg:bg-transparent">
+        <div className="contents xl:sticky xl:top-0 xl:col-start-2 xl:row-span-2 xl:row-start-1 xl:flex xl:h-[calc(100svh-3rem-1px)] xl:min-w-0 xl:flex-col xl:overflow-y-auto xl:border-l xl:bg-muted/40">
+          <div className="-mx-4 min-w-0 bg-muted/40 xl:mx-0 xl:bg-transparent">
             <div className="flex flex-col gap-1 px-4 py-6">
               <TextBar className="text-xs" width="w-24" />
               <TextBar className="text-3xl" width="w-32" />
-              <Skeleton className="mt-2 h-8 w-full" />
+              <Skeleton className="mt-2 h-(--control-h) w-full" />
             </div>
             <div className="flex min-w-0 flex-col gap-3 p-4">
               <SectionHeading title="Cuenta" />
@@ -83,7 +83,7 @@ export function ReservationOverviewSkeleton() {
               </dl>
             </div>
           </div>
-          <div className="-mx-4 flex flex-col gap-3 px-4 max-lg:order-last lg:mx-0 lg:border-t lg:py-4">
+          <div className="-mx-4 flex flex-col gap-3 px-4 max-xl:order-last xl:mx-0 xl:border-t xl:py-4">
             <SectionHeading
               title="Huéspedes"
               action={
@@ -102,7 +102,7 @@ export function ReservationOverviewSkeleton() {
             </div>
           </div>
         </div>
-        <div className="flex min-w-0 flex-col gap-10 lg:pb-6">
+        <div className="flex min-w-0 flex-col gap-10 xl:pb-6">
           <div className="flex min-w-0 flex-col gap-3">
             <SectionHeading
               title="Estadía"
@@ -191,7 +191,7 @@ export function ReservationOverviewSkeleton() {
                     <Skeleton className="inline-block h-lh w-14 align-top" />
                   </TableCell>
                   <TableCell>
-                    <span className="block size-7" />
+                    <span className="block size-(--control-h-sm)" />
                   </TableCell>
                 </TableRow>
               </TableBody>

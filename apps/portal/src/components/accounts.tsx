@@ -265,7 +265,7 @@ function AccountPasswordEditor({
           </p>
         )}
         <Separator />
-        <footer className="flex justify-end">
+        <footer className="flex justify-end max-sm:[&>button]:flex-1">
           <Button type="submit" disabled={saving || !dirty}>
             {saving && <Spinner data-icon="inline-start" />}
             {copy.submit}

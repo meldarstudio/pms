@@ -16,6 +16,10 @@
 @custom-variant dark (&:is(.dark *));
 @custom-variant can-hover (@media (hover: hover));
 
+@theme {
+  --text-2xs: 0.625rem;
+}
+
 @theme inline {
   --font-heading: var(--font-sans);
   --font-sans: "Inter Variable", sans-serif;
@@ -182,6 +186,36 @@
 }
 
 @layer base {
+  :root {
+    --control-h-xs: 1.5rem;
+    --control-h-sm: 1.75rem;
+    --control-h: 2rem;
+    --control-h-lg: 2.25rem;
+    --control-px: 0.625rem;
+    --popover-p: 0.625rem;
+    --badge-h-sm: 1rem;
+    --badge-h: 1.25rem;
+  }
+  /* Touch tier. Tailwind reads its text sizes from these tokens, so every
+     text-xs and text-sm follows. Fields use text-base because iOS zooms into a
+     focused field whose text is under 16px. */
+  @media (pointer: coarse) {
+    :root {
+      --control-h-xs: 2rem;
+      --control-h-sm: 2.25rem;
+      --control-h: 2.5rem;
+      --control-h-lg: 2.75rem;
+      --control-px: 0.75rem;
+      --popover-p: 0.75rem;
+      --badge-h-sm: 1.25rem;
+      --badge-h: 1.5rem;
+      --text-2xs: 0.75rem;
+      --text-xs: 0.875rem;
+      --text-xs--line-height: calc(1.25 / 0.875);
+      --text-sm: 1rem;
+      --text-sm--line-height: calc(1.5 / 1);
+    }
+  }
   * {
     @apply border-border outline-ring/50;
   }

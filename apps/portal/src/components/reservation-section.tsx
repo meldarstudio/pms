@@ -3,7 +3,7 @@ import { cn } from "cn";
 
 export function SectionHeading({ title, action }: { title: string; action?: ReactNode }) {
   return (
-    <div className="flex min-h-7 flex-wrap items-center justify-between gap-2">
+    <div className="flex min-h-(--control-h-sm) flex-wrap items-center justify-between gap-2">
       <h2 className="text-xs font-semibold tracking-widest text-muted-foreground uppercase">
         {title}
       </h2>

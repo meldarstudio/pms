@@ -96,7 +96,7 @@ beforeAll(async () => {
 
 beforeEach(() => {
   window.localStorage.clear();
-  window.happyDOM.setWindowSize({ width: 1024, height: 768 });
+  window.happyDOM.setWindowSize({ width: 1440, height: 900 });
   calendar.configurePropertyCalendar("America/Lima");
   vi.spyOn(Date, "now").mockReturnValue(new Date("2026-11-01T01:00:00Z").getTime());
   page = browser.createPage();

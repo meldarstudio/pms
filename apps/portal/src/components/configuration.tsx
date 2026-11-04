@@ -127,8 +127,8 @@ export function Configuration({ section }: { section: ConfigurationSection }) {
           </BreadcrumbList>
         </Breadcrumb>
       </PageTitle>
-      <div className="mx-auto grid w-full max-w-6xl min-w-0 gap-8 pt-2 md:grid-cols-[13rem_minmax(0,1fr)] md:gap-12 md:pt-6 xl:gap-20">
-        <aside className="hidden flex-col gap-5 md:flex">
+      <div className="mx-auto grid w-full max-w-6xl min-w-0 gap-8 pt-2 md:pt-6 lg:grid-cols-[13rem_minmax(0,1fr)] lg:gap-12 xl:gap-20">
+        <aside className="hidden flex-col gap-5 lg:flex">
           <p className="text-sm font-medium">Configuración</p>
           <nav aria-label="Secciones de configuración" className="flex flex-col gap-1">
             {visibleSections.map(({ id, title, icon: Icon }) => (
@@ -186,7 +186,7 @@ export function Configuration({ section }: { section: ConfigurationSection }) {
             >
               <SelectTrigger
                 aria-label="Secciones de configuración"
-                className="w-36 shrink-0 md:hidden"
+                className="w-36 shrink-0 lg:hidden"
               >
                 <SelectValue>{active.title}</SelectValue>
               </SelectTrigger>

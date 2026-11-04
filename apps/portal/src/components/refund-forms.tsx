@@ -8,6 +8,7 @@ import { PageError } from "@/components/page-error";
 import { outcomeSaveError } from "@/components/outcome-command-preview";
 import { CommandRecovery } from "@/components/command-recovery";
 import { paymentMethods } from "@/components/reservation-entry-forms";
+import { DialogFooter } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Field, FieldDescription, FieldGroup, FieldLabel } from "@/components/ui/field";
@@ -115,7 +116,7 @@ function RefundFormLayout({
           <FieldGroup>{children}</FieldGroup>
         </fieldset>
       </div>
-      <div className="flex shrink-0 flex-wrap justify-end gap-2">{actions}</div>
+      <DialogFooter className="shrink-0">{actions}</DialogFooter>
     </form>
   );
 }
@@ -570,7 +571,7 @@ export function CouponIssued({
           · No canjeable por dinero
         </p>
       </div>
-      <div className="flex flex-wrap justify-end gap-2">
+      <DialogFooter>
         <Button
           type="button"
           variant="outline"
@@ -582,7 +583,7 @@ export function CouponIssued({
         <Button type="button" onClick={onDone}>
           Listo
         </Button>
-      </div>
+      </DialogFooter>
     </div>
   );
 }

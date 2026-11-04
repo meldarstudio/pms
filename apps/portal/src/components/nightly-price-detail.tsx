@@ -28,7 +28,7 @@ export function NightlyPriceDetail({
     return null;
   return (
     <Collapsible open={open} onOpenChange={setOpen} className="flex flex-col gap-2">
-      <CollapsibleTrigger className="group/detail flex h-8 w-full items-center justify-between gap-2 rounded-none border border-input bg-transparent px-2.5 text-left text-xs outline-none focus-visible:border-ring focus-visible:ring-1 focus-visible:ring-ring/50 dark:bg-input/30">
+      <CollapsibleTrigger className="group/detail flex h-(--control-h) w-full items-center justify-between gap-2 rounded-none border border-input bg-transparent px-2.5 text-left text-xs outline-none focus-visible:border-ring focus-visible:ring-1 focus-visible:ring-ring/50 dark:bg-input/30">
         Ver detalle
         <ChevronDownIcon
           aria-hidden

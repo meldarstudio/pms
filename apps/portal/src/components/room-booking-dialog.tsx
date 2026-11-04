@@ -16,6 +16,7 @@ import {
   DialogClose,
   DialogContent,
   DialogDescription,
+  DialogFooter,
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
@@ -316,7 +317,7 @@ function BookingEditorSkeleton() {
           <Skeleton className="h-5 w-52" />
           <Skeleton className="h-5 w-36" />
         </div>
-        <div className="flex h-8 shrink-0 items-center justify-around border-b">
+        <div className="flex h-(--control-h) shrink-0 items-center justify-around border-b">
           {[0, 1, 2].map((tab) => (
             <Skeleton key={tab} className="h-4 w-16" />
           ))}
@@ -331,16 +332,16 @@ function BookingEditorSkeleton() {
             {[0, 1, 2, 3].map((field) => (
               <Skeleton key={field} className="h-14" />
             ))}
-            <Skeleton className="h-8 w-38" />
+            <Skeleton className="h-(--control-h) w-38" />
           </div>
           <Skeleton className="h-22.25 shrink-0" />
         </div>
         <div className="shrink-0 pt-3 pb-px safe-area-padding-x">
-          <Skeleton className="h-8" />
+          <Skeleton className="h-(--control-h)" />
         </div>
         <div className="flex shrink-0 gap-2 py-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] safe-area-padding-x">
-          <Skeleton className="h-8 flex-1" />
-          <Skeleton className="h-8 flex-1" />
+          <Skeleton className="h-(--control-h) flex-1" />
+          <Skeleton className="h-(--control-h) flex-1" />
         </div>
       </div>
     );
@@ -357,11 +358,11 @@ function BookingEditorSkeleton() {
           <Skeleton className="h-4 w-36" />
           <Skeleton className="h-5 w-24" />
         </div>
-        <Skeleton className="h-8 w-60" />
+        <Skeleton className="h-(--control-h) w-60" />
         <Skeleton className="h-5 w-36" />
       </div>
       <div className="flex flex-col gap-4">
-        <Skeleton className="h-8 w-52" />
+        <Skeleton className="h-(--control-h) w-52" />
         <div className="grid min-w-0 gap-6 p-px lg:grid-cols-[minmax(0,1fr)_280px]">
           <div className="flex min-w-0 flex-col gap-5">
             <div className="grid grid-cols-2 gap-3">
@@ -371,7 +372,7 @@ function BookingEditorSkeleton() {
             <div className="flex flex-col gap-3">
               <Skeleton className="h-5 w-28" />
               <Skeleton className="h-14" />
-              <Skeleton className="h-8 w-38" />
+              <Skeleton className="h-(--control-h) w-38" />
             </div>
             <Skeleton className="h-22.25" />
           </div>
@@ -379,8 +380,8 @@ function BookingEditorSkeleton() {
         </div>
       </div>
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <Skeleton className="h-8 w-40" />
-        <Skeleton className="h-8 w-64" />
+        <Skeleton className="h-(--control-h) w-40" />
+        <Skeleton className="h-(--control-h) w-64" />
       </div>
     </div>
   );
@@ -940,12 +941,12 @@ export function BookingEditor({
             </div>
           ))}
         {stayOnly && (
-          <div className="flex flex-wrap justify-end gap-2">
+          <DialogFooter>
             <Button type="button" variant="outline" disabled={busy} onClick={onCancel}>
               Cancelar
             </Button>
             {saveDetails}
-          </div>
+          </DialogFooter>
         )}
       </div>
       {intent && (
@@ -1326,7 +1327,7 @@ function ActionForm({
   const Header = deleting ? AlertDialogHeader : DialogHeader;
   const Title = deleting ? AlertDialogTitle : DialogTitle;
   const Description = deleting ? AlertDialogDescription : DialogDescription;
-  const Footer = deleting ? AlertDialogFooter : "div";
+  const Footer = deleting ? AlertDialogFooter : DialogFooter;
   const CancelButton = deleting ? AlertDialogCancel : Button;
   const ConfirmButton = deleting ? AlertDialogAction : Button;
   return (
@@ -1370,7 +1371,7 @@ function ActionForm({
               </fieldset>
             )}
           </form>
-          <Footer className="flex justify-end gap-2">
+          <Footer>
             <CancelButton type="button" variant="outline" disabled={saving} onClick={close}>
               Volver
             </CancelButton>
@@ -1410,14 +1411,14 @@ export function DiscardChanges({
               : "Si sales ahora, se descartarán tus cambios en esta reserva."}
           </DialogDescription>
         </DialogHeader>
-        <div className="flex shrink-0 flex-wrap justify-end gap-2">
+        <DialogFooter className="shrink-0">
           <Button type="button" variant="outline" onClick={onStay}>
             Seguir editando
           </Button>
           <Button type="button" variant="destructive" disabled={saving} onClick={onLeave}>
             Descartar y salir
           </Button>
-        </div>
+        </DialogFooter>
       </DialogContent>
     </Dialog>
   );

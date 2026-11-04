@@ -52,7 +52,7 @@ export function DateField({
               id={id}
               type="button"
               variant="outline"
-              className="w-full justify-between font-normal"
+              className="w-full justify-between font-normal pointer-coarse:text-base"
               disabled={locked}
               aria-invalid={Boolean(error) || undefined}
               aria-describedby={error ? `${id}-error` : undefined}
@@ -62,7 +62,9 @@ export function DateField({
             />
           }
         >
-          {value ? format(value, "d MMM yyyy") : "Seleccionar fecha"}
+          <span className="truncate">
+            {value ? format(value, "d MMM yyyy") : "Seleccionar fecha"}
+          </span>
           <CalendarIcon data-icon="inline-end" />
         </PopoverTrigger>
         <PopoverContent className="w-auto gap-0 p-0" align="start">

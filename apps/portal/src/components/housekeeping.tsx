@@ -301,12 +301,12 @@ function DesktopRow({
           onClick={(event) => selection.toggle(room.id, event.shiftKey)}
         />
       </TableCell>
-      <TableCell className="w-28 font-medium tabular-nums">{room.number}</TableCell>
+      <TableCell className="font-medium tabular-nums lg:w-28">{room.number}</TableCell>
       <TableCell className="text-muted-foreground">{room.roomTypeName}</TableCell>
       <TableCell>
         <StayBadges room={room} />
       </TableCell>
-      <TableCell className="text-muted-foreground tabular-nums">
+      <TableCell className="text-muted-foreground tabular-nums max-lg:hidden">
         {markedLabel(room.housekeepingChangedAt, today)}
       </TableCell>
       <TableCell>
@@ -361,7 +361,7 @@ function SelectionActions({
             Marcar como
             <ChevronDownIcon data-icon="inline-end" />
           </DropdownMenuTrigger>
-          <DropdownMenuContent align="end" className="min-w-32">
+          <DropdownMenuContent align="end">
             {statuses.map((status) => (
               <DropdownMenuItem key={status} onClick={() => markSelected(status)}>
                 {bulkMenuLabel[status]}
@@ -444,7 +444,9 @@ function ColumnHeadings({ view }: { view: HousekeepingView }) {
       <TableHead scope="col">Habitación</TableHead>
       <TableHead scope="col">Tipo</TableHead>
       <TableHead scope="col">Hoy</TableHead>
-      <TableHead scope="col">Marcada</TableHead>
+      <TableHead scope="col" className="max-lg:hidden">
+        Marcada
+      </TableHead>
       <TableHead scope="col" className="text-right">
         {views[view].actionHeading}
       </TableHead>
@@ -456,7 +458,11 @@ function RoomListSkeleton({ view }: { view: HousekeepingView }) {
   const phone = useIsMobile();
   const rows = Array.from({ length: 8 }, (_, index) => index);
   const action =
-    view === "to-clean" ? <Skeleton className="h-7 w-12" /> : <Skeleton className="h-7 w-26" />;
+    view === "to-clean" ? (
+      <Skeleton className="h-(--control-h-sm) w-12" />
+    ) : (
+      <Skeleton className="h-(--control-h-sm) w-26" />
+    );
   if (phone) {
     return (
       <ul aria-label="Cargando habitaciones" aria-busy className="border">
@@ -478,7 +484,7 @@ function RoomListSkeleton({ view }: { view: HousekeepingView }) {
         <TableHeader>
           <TableRow>
             <TableHead className="w-10">
-              <Skeleton className="size-4" />
+              <Skeleton className="size-4 pointer-coarse:size-5" />
             </TableHead>
             <ColumnHeadings view={view} />
           </TableRow>
@@ -487,9 +493,9 @@ function RoomListSkeleton({ view }: { view: HousekeepingView }) {
           {rows.map((index) => (
             <TableRow key={index}>
               <TableCell className="w-10">
-                <Skeleton className="size-4" />
+                <Skeleton className="size-4 pointer-coarse:size-5" />
               </TableCell>
-              <TableCell className="w-28">
+              <TableCell className="lg:w-28">
                 <Skeleton className="h-4 w-8" />
               </TableCell>
               <TableCell>
@@ -498,7 +504,7 @@ function RoomListSkeleton({ view }: { view: HousekeepingView }) {
               <TableCell>
                 <Skeleton className="h-5 w-36" />
               </TableCell>
-              <TableCell>
+              <TableCell className="max-lg:hidden">
                 <Skeleton className="h-4 w-10" />
               </TableCell>
               <TableCell>
