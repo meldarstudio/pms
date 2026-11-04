@@ -34,6 +34,9 @@ function DialogOverlay({ className, ...props }: DialogPrimitive.Backdrop.Props) 
   );
 }
 
+const wideDialogContent =
+  "sm:max-w-[min(56rem,calc(100%-2rem-env(safe-area-inset-left)-env(safe-area-inset-right)))]";
+
 function DialogContent({
   className,
   children,
@@ -127,6 +130,7 @@ function DialogDescription({ className, ...props }: DialogPrimitive.Description.
 }
 
 export {
+  wideDialogContent,
   Dialog,
   DialogClose,
   DialogContent,

@@ -38,11 +38,7 @@ export function App() {
       open={sidebarOpen}
       onOpenChange={handleSidebarOpenChange}
       className="fixed inset-0 h-dvh min-h-0 overflow-hidden bg-background"
-      style={
-        {
-          "--sidebar-width": "calc(14rem + env(safe-area-inset-left) + env(safe-area-inset-right))",
-        } as CSSProperties
-      }
+      style={{ "--sidebar-width": "14rem" } as CSSProperties}
     >
       <AppSidebar />
       <SidebarInset className="min-h-0 min-w-0 overflow-hidden pr-[env(safe-area-inset-right)] pb-[env(safe-area-inset-bottom)] pl-[env(safe-area-inset-left)]">
@@ -61,7 +57,7 @@ export function App() {
           className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden"
           style={
             {
-              "--primary-action-clearance": "calc(5rem + env(safe-area-inset-bottom))",
+              "--primary-action-clearance": "5rem",
             } as CSSProperties
           }
         >

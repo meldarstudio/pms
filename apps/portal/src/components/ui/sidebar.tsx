@@ -22,7 +22,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip
 import { PanelLeftIcon } from "lucide-react";
 
 const SIDEBAR_WIDTH = "16rem";
-const SIDEBAR_WIDTH_MOBILE = "calc(18rem + env(safe-area-inset-left) + env(safe-area-inset-right))";
+const SIDEBAR_WIDTH_MOBILE = "calc(18rem + env(safe-area-inset-left))";
 const SIDEBAR_WIDTH_ICON = "3rem";
 
 type SidebarContextProps = {
@@ -160,7 +160,7 @@ function Sidebar({
           data-sidebar="sidebar"
           data-slot="sidebar"
           data-mobile="true"
-          className="data-[side=left]:w-(--sidebar-width) max-w-[calc(100vw-2rem)] bg-sidebar p-0 text-sidebar-foreground [&>[data-slot=sheet-close]]:top-[max(0.75rem,env(safe-area-inset-top))] [&>[data-slot=sheet-close]]:right-[max(0.75rem,env(safe-area-inset-right))]"
+          className="data-[side=left]:w-(--sidebar-width) max-w-[calc(100vw-2rem)] bg-sidebar p-0 text-sidebar-foreground [&>[data-slot=sheet-close]]:top-[max(0.75rem,env(safe-area-inset-top))]"
           style={
             {
               "--sidebar-width": SIDEBAR_WIDTH_MOBILE,

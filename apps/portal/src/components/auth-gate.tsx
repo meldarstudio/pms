@@ -28,7 +28,7 @@ export function AuthGate({ children }: { children: ReactNode }) {
   }
   if (session.isError) {
     return (
-      <main className="flex h-svh flex-col items-center justify-center gap-3 p-8 text-center">
+      <main className="flex h-svh flex-col items-center justify-center gap-3 px-[max(2rem,env(safe-area-inset-left),env(safe-area-inset-right))] py-8 text-center">
         <p className="text-sm">{session.error.message}</p>
         <Button variant="outline" onClick={() => void session.refetch()}>
           Reintentar

@@ -230,6 +230,5 @@
   }
   html {
     @apply bg-background font-sans;
-    -webkit-text-size-adjust: 100%;
   }
 }

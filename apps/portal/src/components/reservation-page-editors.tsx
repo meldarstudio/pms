@@ -19,6 +19,7 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
+  wideDialogContent,
 } from "@/components/ui/dialog";
 import {
   Sheet,
@@ -355,7 +356,7 @@ export function ReservationPageEditor({
               "flex max-h-[90svh] flex-col overflow-hidden sm:max-w-lg max-sm:top-[calc(var(--reservation-viewport-top,0px)+var(--reservation-viewport-height,100dvh)/2)] max-sm:max-h-[calc(var(--reservation-viewport-height,100dvh)-2rem)]",
               fullScreen &&
                 "max-sm:top-(--reservation-viewport-top,0px) max-sm:left-0 max-sm:h-(--reservation-viewport-height,100dvh) max-sm:max-h-(--reservation-viewport-height,100dvh) max-sm:max-w-full max-sm:translate-x-0 max-sm:translate-y-0 max-sm:pt-[max(1rem,env(safe-area-inset-top))] max-sm:pb-[max(1rem,env(safe-area-inset-bottom))] max-sm:safe-area-padding-x max-sm:transition-none",
-              target.kind === "stay" && "sm:max-w-4xl",
+              target.kind === "stay" && wideDialogContent,
             )}
           >
             <DialogHeader className="shrink-0">

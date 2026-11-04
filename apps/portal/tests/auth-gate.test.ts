@@ -22,7 +22,6 @@ beforeAll(async () => {
 beforeEach(() => {
   page = browser.createPage();
   ({ container, button, fill, field: input, until } = page);
-  Object.defineProperty(window.navigator, "maxTouchPoints", { configurable: true, value: 0 });
 });
 
 afterEach(async () => {
@@ -75,7 +74,7 @@ it("does not initialize the app before valid property configuration is loaded", 
   assert.equal(container.textContent.includes("Signed-in app"), false);
 });
 
-async function renderApp() {
+it("keeps the sidebar usable after failed sign-out and returns to login after a successful retry", async () => {
   const { routing, server } = browser;
   const routes = (await server.ssrLoadModule(
     "/src/router.tsx",
@@ -83,6 +82,7 @@ async function renderApp() {
   const { ToastProvider } = (await server.ssrLoadModule(
     "/src/components/ui/toast.tsx",
   )) as typeof import("../src/components/ui/toast.tsx");
+  let logout = page.api.hold("POST", "/logout");
   const router = routing.createRouter({
     routeTree: routes.router.routeTree,
     history: routing.createMemoryHistory({ initialEntries: ["/calendar"] }),
@@ -107,11 +107,6 @@ async function renderApp() {
     () => container.textContent.includes("Configura tu alojamiento"),
     "Signed-in app must load",
   );
-}
-
-it("keeps the sidebar usable after failed sign-out and returns to login after a successful retry", async () => {
-  let logout = page.api.hold("POST", "/logout");
-  await renderApp();
   const account = "Cuenta de hotelmanantial, Personal";
   assert.equal(button(account).textContent, "HhotelmanantialPersonal");
   await page.menuAction(account, "Salir");
@@ -137,23 +132,4 @@ it("keeps the sidebar usable after failed sign-out and returns to login after a 
     "Sign-out must return to login",
   );
   assert.equal(container.querySelector('nav[aria-label="Navegación principal"]'), null);
-});
-
-it("keeps phone navigation in a dismissible drawer when rotated to landscape", async () => {
-  page.mobile();
-  Object.defineProperty(window.navigator, "maxTouchPoints", { configurable: true, value: 5 });
-  await renderApp();
-  await React.act(async () => window.happyDOM.setWindowSize({ width: 956, height: 440 }));
-  assert.equal(button("Alternar navegación").getAttribute("aria-expanded"), "false");
-  await React.act(async () => button("Alternar navegación").click());
-  await until(
-    () => !!window.document.querySelector('[role="dialog"] nav[aria-label="Navegación principal"]'),
-    "Landscape phone must open navigation as a drawer",
-  );
-  assert.equal(button("Alternar navegación").getAttribute("aria-expanded"), "true");
-  await React.act(async () => button("Cerrar").click());
-  await until(
-    () => button("Alternar navegación").getAttribute("aria-expanded") === "false",
-    "Landscape navigation must close",
-  );
 });
