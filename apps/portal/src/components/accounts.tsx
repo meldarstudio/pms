@@ -13,6 +13,7 @@ import { Input } from "@/components/ui/input";
 import { Separator } from "@/components/ui/separator";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Spinner } from "@/components/ui/spinner";
+import { accountRoleTitles } from "@/lib/account-roles";
 import type { Account, AccountRole } from "@/lib/api";
 import { ApiError } from "@/lib/api-error";
 import { useAccounts, useChangeOwnPassword, useSetAccountPassword } from "@/lib/queries";
@@ -33,7 +34,7 @@ const roleCopy: Record<
   }
 > = {
   owner: {
-    title: "Propietario",
+    title: accountRoleTitles.owner,
     description: "Operación y administración de cuentas",
     label: "propietario",
     heading: "Tu contraseña",
@@ -42,7 +43,7 @@ const roleCopy: Record<
     saved: "Contraseña cambiada.",
   },
   staff: {
-    title: "Personal",
+    title: accountRoleTitles.staff,
     description: "Acceso compartido para la operación",
     label: "personal",
     heading: "Cuenta del personal",
