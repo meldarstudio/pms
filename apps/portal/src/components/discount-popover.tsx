@@ -61,7 +61,7 @@ export function DiscountPopover({
           <Button
             type="button"
             variant="ghost"
-            className="h-auto w-full justify-between px-0 py-0 font-normal underline-offset-4 hover:bg-transparent hover:underline aria-expanded:bg-transparent aria-expanded:underline dark:hover:bg-transparent"
+            className="h-auto w-full justify-between border-0 px-0 py-0 font-normal pointer-coarse:min-h-(--control-h-xs) underline-offset-4 hover:bg-transparent hover:underline aria-expanded:bg-transparent aria-expanded:underline dark:hover:bg-transparent"
           />
         }
       >

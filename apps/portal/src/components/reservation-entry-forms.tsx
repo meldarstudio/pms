@@ -154,7 +154,12 @@ export function GuestEntryForm({
             </form.AppField>
           </FieldGroup>
         </FieldGroup>
-        <div className={cn("flex shrink-0 items-center gap-2", onCancel && "justify-end")}>
+        <div
+          className={cn(
+            "flex shrink-0 items-center gap-2",
+            onCancel && "justify-end max-sm:[&>button]:flex-1",
+          )}
+        >
           {onCancel && (
             <Button type="button" variant="outline" onClick={onCancel}>
               Cancelar
@@ -370,7 +375,12 @@ export function PaymentForm({
             </>
           )}
         </FieldGroup>
-        <div className={cn("flex shrink-0 gap-2", scrollable && "justify-end")}>
+        <div
+          className={cn(
+            "flex shrink-0 gap-2",
+            scrollable && "justify-end max-sm:[&>button]:flex-1",
+          )}
+        >
           {onCancel && (
             <Button
               type="button"

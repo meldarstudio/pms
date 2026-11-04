@@ -1,4 +1,5 @@
 import { OutcomeCommandPreview, outcomeSaveError } from "@/components/outcome-command-preview";
+import { DialogFooter } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import type { ReservationDetail, WorkflowAction } from "@/lib/api";
 import { useReservationPreview, type ReservationCommandResult } from "@/lib/reservation-commands";
@@ -46,14 +47,14 @@ export function RestoreReservationForm({
           <OutcomeCommandPreview preview={preview} detail={detail} today={today} />
         )}
       </div>
-      <div className="flex shrink-0 flex-wrap justify-end gap-2">
+      <DialogFooter className="shrink-0">
         <Button type="button" variant="outline" disabled={disabled} onClick={onCancel}>
           Cerrar
         </Button>
         <Button type="submit" disabled={disabled || !ready}>
           {disabled ? "Guardando…" : "Restaurar reserva"}
         </Button>
-      </div>
+      </DialogFooter>
     </form>
   );
 }

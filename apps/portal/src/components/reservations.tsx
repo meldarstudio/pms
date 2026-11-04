@@ -25,7 +25,7 @@ import { DateField } from "@/components/date-field";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { ReservationListFilters } from "@/components/reservation-list-filters";
-import { useIsMobile } from "@/hooks/use-mobile";
+import { useIsCompact, useIsMobile } from "@/hooks/use-mobile";
 import { ReservationStatusBadge } from "@/components/reservation-status-badge";
 import { Empty, EmptyHeader, EmptyTitle, EmptyDescription } from "@/components/ui/empty";
 import { Field, FieldGroup, FieldLabel } from "@/components/ui/field";
@@ -153,7 +153,7 @@ function ReservationBalance({
       <span
         className={cn(
           "inline-flex items-center justify-end gap-1",
-          inline ? "text-xs" : "text-[10px]",
+          inline ? "text-xs" : "text-2xs",
           labelColor,
         )}
       >
@@ -255,6 +255,7 @@ export function Reservations({
   }
   const cardsId = useId();
   const mobile = useIsMobile();
+  const compact = useIsCompact();
   const mainRef = useRef<HTMLElement>(null);
   const resultsRef = useRef<HTMLDivElement>(null);
   const scrollToPage = useRef<number | null>(null);
@@ -344,7 +345,7 @@ export function Reservations({
   }
 
   function changePage(page: number) {
-    if (mobile) scrollToPage.current = page;
+    if (compact) scrollToPage.current = page;
     onSearchChange({ page });
   }
 
@@ -428,7 +429,7 @@ export function Reservations({
         >
           <TabsList
             aria-label="Vista de reservas"
-            className="grid w-full max-w-full auto-rows-7 grid-cols-2 justify-start gap-1 group-data-horizontal/tabs:h-auto md:inline-flex md:w-fit md:gap-0 md:group-data-horizontal/tabs:h-8 md:overflow-x-auto"
+            className="grid w-full max-w-full auto-rows-(--control-h-sm) grid-cols-2 justify-start gap-1 group-data-horizontal/tabs:h-auto md:inline-flex md:w-fit md:gap-0 md:group-data-horizontal/tabs:h-(--control-h) md:overflow-x-auto"
           >
             {views.map(({ value, label, icon: Icon }) => (
               <TabsTrigger
@@ -503,7 +504,7 @@ export function Reservations({
               </InputGroupAddon>
               <InputGroupInput
                 id={guestId}
-                placeholder="Buscar contacto principal o código…"
+                placeholder="Buscar contacto o código…"
                 enterKeyHint="search"
                 value={draftQ}
                 onChange={(event) => setDraftQ(event.target.value)}
@@ -577,7 +578,7 @@ export function Reservations({
       </div>
       <div ref={resultsRef} className="flex shrink-0 flex-col gap-4">
         {query.isPending ? (
-          mobile ? (
+          compact ? (
             <ReservationCardsSkeleton />
           ) : (
             <div className="border">
@@ -607,7 +608,7 @@ export function Reservations({
                 </EmptyHeader>
               </Empty>
             ) : rows.length > 0 ? (
-              mobile ? (
+              compact ? (
                 <ul
                   className={cn("flex flex-col gap-3", busy && "opacity-60")}
                   aria-label="Reservas"
@@ -752,7 +753,7 @@ export function Reservations({
           {rangeLabel}
         </p>
         <div className="flex w-full flex-wrap items-center gap-2 md:w-auto">
-          <div className="w-24">
+          <div className="w-24 pointer-coarse:w-32">
             <ChoiceField
               label="Reservas por página"
               hideLabel
@@ -764,14 +765,14 @@ export function Reservations({
               ]}
               onChange={(size) => {
                 refine({ size: Number(size) as ReservationsSearch["size"] });
-                if (mobile) scrollToPage.current = 0;
+                if (compact) scrollToPage.current = 0;
               }}
             />
           </div>
           <Button
             variant="outline"
             size="icon"
-            className="w-auto flex-1 px-2.5 md:w-8 md:flex-none md:px-0"
+            className="w-auto flex-1 px-2.5 md:w-(--control-h) md:flex-none md:px-0"
             aria-label="Anterior"
             disabled={search.page === 0 || query.isFetching}
             onClick={() => changePage(search.page - 1)}
@@ -782,7 +783,7 @@ export function Reservations({
           <Button
             variant="outline"
             size="icon"
-            className="w-auto flex-1 px-2.5 md:w-8 md:flex-none md:px-0"
+            className="w-auto flex-1 px-2.5 md:w-(--control-h) md:flex-none md:px-0"
             aria-label="Siguiente"
             disabled={!query.data || offset + rows.length >= total || busy || query.isError}
             onClick={() => changePage(search.page + 1)}

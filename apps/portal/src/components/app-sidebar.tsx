@@ -5,12 +5,19 @@ import {
   BroomIcon,
   CalendarDaysIcon,
   ClipboardListIcon,
+  EllipsisVerticalIcon,
   LogOutIcon,
-  Settings2Icon,
+  SettingsIcon,
 } from "lucide-react";
 import { HotelLogo } from "@/components/hotel-logo";
 import { IphoneInstall } from "@/components/iphone-install";
-import { Separator } from "@/components/ui/separator";
+import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import {
   Sidebar,
   SidebarContent,
@@ -23,7 +30,9 @@ import {
   SidebarMenuItem,
   useSidebar,
 } from "@/components/ui/sidebar";
-import { useLogout } from "@/lib/queries";
+import { accountRoleTitles } from "@/lib/account-roles";
+import type { Session } from "@/lib/api";
+import { useLogout, useSession } from "@/lib/queries";
 import { activeNavigation, appNavigation } from "@/lib/navigation";
 import {
   calendarSearch,
@@ -40,7 +49,7 @@ import { usePropertyCalendar } from "@/lib/use-property-calendar";
 export function AppSidebar() {
   const location = useRouterState({ select: (state) => state.location });
   const { setOpenMobile } = useSidebar();
-  const logout = useLogout();
+  const session = useSession().data;
   const { today } = usePropertyCalendar();
   const activeDestination = activeNavigation(location.pathname);
   const destinations = [
@@ -116,7 +125,7 @@ export function AppSidebar() {
             </SidebarGroupContent>
           </SidebarGroup>
         </SidebarContent>
-        <SidebarFooter className="gap-3 p-3">
+        <SidebarFooter className="gap-3">
           <SidebarMenu>
             <IphoneInstall />
             <SidebarMenuItem>
@@ -124,29 +133,59 @@ export function AppSidebar() {
                 isActive={activeDestination?.to === appNavigation.setup.to}
                 render={<Link to={appNavigation.setup.to} onClick={closeMobileNavigation} />}
               >
-                <Settings2Icon />
+                <SettingsIcon />
                 <span>{appNavigation.setup.label}</span>
               </SidebarMenuButton>
             </SidebarMenuItem>
           </SidebarMenu>
-          <Separator />
-          <SidebarMenu>
-            <SidebarMenuItem>
-              <SidebarMenuButton
-                disabled={logout.isPending}
-                onClick={() =>
-                  logout.mutate(undefined, {
-                    onError: (cause) => toastError("No se pudo cerrar la sesión", cause),
-                  })
-                }
-              >
-                <LogOutIcon />
-                <span>Salir</span>
-              </SidebarMenuButton>
-            </SidebarMenuItem>
-          </SidebarMenu>
+          {session && <AccountMenu username={session.username} role={session.role} />}
         </SidebarFooter>
       </nav>
     </Sidebar>
+  );
+}
+
+function AccountMenu({ username, role }: Pick<Session, "username" | "role">) {
+  const { isMobile } = useSidebar();
+  const logout = useLogout();
+  const roleTitle = accountRoleTitles[role];
+  return (
+    <SidebarMenu>
+      <SidebarMenuItem>
+        <DropdownMenu>
+          <DropdownMenuTrigger
+            disabled={logout.isPending}
+            aria-label={`Cuenta de ${username}, ${roleTitle}`}
+            render={
+              <SidebarMenuButton
+                size="lg"
+                className="data-popup-open:bg-sidebar-accent data-popup-open:text-sidebar-accent-foreground"
+              />
+            }
+          >
+            <Avatar>
+              <AvatarFallback>{username.charAt(0).toUpperCase()}</AvatarFallback>
+            </Avatar>
+            <div className="grid min-w-0 flex-1 leading-tight">
+              <span className="truncate font-medium">{username}</span>
+              <span className="truncate text-muted-foreground">{roleTitle}</span>
+            </div>
+            <EllipsisVerticalIcon />
+          </DropdownMenuTrigger>
+          <DropdownMenuContent side={isMobile ? "top" : "right"} align="end">
+            <DropdownMenuItem
+              onClick={() =>
+                logout.mutate(undefined, {
+                  onError: (cause) => toastError("No se pudo cerrar la sesión", cause),
+                })
+              }
+            >
+              <LogOutIcon />
+              Salir
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
+      </SidebarMenuItem>
+    </SidebarMenu>
   );
 }

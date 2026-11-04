@@ -345,7 +345,7 @@ export function ChoiceCardsSkeleton({
                     <span
                       key={lineIndex}
                       data-slot="skeleton"
-                      className={cn("h-lh animate-pulse bg-muted align-top", line)}
+                      className={cn("h-lh bg-muted align-top", line)}
                     />
                   ))}
                 </FieldDescription>

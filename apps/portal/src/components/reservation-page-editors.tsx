@@ -15,9 +15,10 @@ import { Button } from "@/components/ui/button";
 import {
   Dialog,
   DialogContent,
+  DialogDescription,
+  DialogFooter,
   DialogHeader,
   DialogTitle,
-  DialogDescription,
 } from "@/components/ui/dialog";
 import {
   Sheet,
@@ -667,7 +668,7 @@ function ReservationActionForm({
           </section>
         )}
       </div>
-      <div className="flex shrink-0 flex-wrap justify-end gap-2">
+      <DialogFooter className="shrink-0">
         <Button type="button" variant="outline" disabled={saving} onClick={onCancel}>
           {target.kind === "contact" ? "Cancelar" : "Cerrar"}
         </Button>
@@ -678,7 +679,7 @@ function ReservationActionForm({
         >
           {saving ? "Guardando…" : destructive ? "Confirmar" : "Guardar cambios"}
         </Button>
-      </div>
+      </DialogFooter>
     </form>
   );
 }

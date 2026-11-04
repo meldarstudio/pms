@@ -55,7 +55,7 @@ export function PagePrimaryAction({
       <span className="flex h-full aspect-square shrink-0 items-center justify-center">{icon}</span>
       <span
         className={cn(
-          "grid transition-[grid-template-columns,opacity] duration-300 ease-out motion-reduce:transition-none",
+          "grid",
           collapsed ? "grid-cols-[0fr] opacity-0" : "grid-cols-[1fr] opacity-100",
         )}
       >

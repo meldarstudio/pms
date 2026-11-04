@@ -88,7 +88,7 @@ function StayFact({
 }) {
   return (
     <div className={cn("flex min-w-0 flex-col gap-0.5", className)}>
-      <dt className="text-[0.65rem] font-semibold tracking-widest text-muted-foreground uppercase">
+      <dt className="text-2xs font-semibold tracking-widest text-muted-foreground uppercase">
         {label}
       </dt>
       <dd className="text-sm font-medium">{value}</dd>

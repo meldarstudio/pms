@@ -94,6 +94,7 @@ export function NewBooking({
     };
   });
   const [error, setError] = useState("");
+  const [revealingRoomId, setRevealingRoomId] = useState<string | null>(null);
   const [rejected, setRejected] = useState<{
     rooms: NewBookingValues["rooms"];
     fields: Record<string, string>;
@@ -307,7 +308,7 @@ export function NewBooking({
               </FieldGroup>
             </FieldSet>
             <section className="flex flex-col gap-3" aria-label="Habitaciones">
-              <h3 className="font-medium">Habitaciones</h3>
+              <h3 className="text-sm font-medium">Habitaciones</h3>
               {noAvailability ? (
                 <Empty variant="input" role="status">
                   <EmptyHeader>
@@ -334,6 +335,7 @@ export function NewBooking({
                         return (
                           <ReservationRoomRow
                             key={draft.id}
+                            reveal={draft.id === revealingRoomId}
                             index={index}
                             count={values.rooms.length}
                             onRemove={() => form.removeFieldValue("rooms", index)}
@@ -438,7 +440,7 @@ export function NewBooking({
                     variant="outline"
                     className="w-fit"
                     disabled={!availabilityReady || !selection.canAdd}
-                    onClick={() => {
+                    onClick={(event) => {
                       const lastRoom = values.rooms[values.rooms.length - 1].room;
                       const type = availability.data?.roomTypes.find(
                         (type) => type.id === lastRoom.roomTypeId,
@@ -446,8 +448,10 @@ export function NewBooking({
                       const used = values.rooms.filter(
                         (draft) => draft.room.roomTypeId === lastRoom.roomTypeId,
                       ).length;
+                      const id = crypto.randomUUID();
+                      setRevealingRoomId(event.detail > 0 ? id : null);
                       form.pushFieldValue("rooms", {
-                        id: crypto.randomUUID(),
+                        id,
                         removed: false,
                         room: {
                           ...lastRoom,

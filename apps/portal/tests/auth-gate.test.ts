@@ -112,9 +112,11 @@ async function renderApp() {
 it("keeps the sidebar usable after failed sign-out and returns to login after a successful retry", async () => {
   let logout = page.api.hold("POST", "/logout");
   await renderApp();
-  await React.act(async () => button("Salir").click());
+  const account = "Cuenta de hotelmanantial, Personal";
+  assert.equal(button(account).textContent, "HhotelmanantialPersonal");
+  await page.menuAction(account, "Salir");
   await until(
-    () => !!logout.request && button("Salir").disabled,
+    () => !!logout.request && button(account).disabled,
     "Sign-out must disable repeat submissions",
   );
   await React.act(async () =>
@@ -124,10 +126,10 @@ it("keeps the sidebar usable after failed sign-out and returns to login after a 
     () => window.document.body.textContent.includes("No se pudo cerrar la sesión"),
     "Failed sign-out must be visible",
   );
-  assert.equal(button("Salir").disabled, false);
+  assert.equal(button(account).disabled, false);
   assert.ok(container.querySelector('nav[aria-label="Navegación principal"]'));
   logout = page.api.hold("POST", "/logout");
-  await React.act(async () => button("Salir").click());
+  await page.menuAction(account, "Salir");
   await until(() => !!logout.request, "Sign-out must be retryable");
   await React.act(async () => logout.release(Response.json({ ok: true })));
   await until(

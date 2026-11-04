@@ -227,7 +227,7 @@ function ClosureForm({
       </DialogHeader>
       <FieldGroup>
         <FieldGroup>
-          <FieldGroup className="grid grid-cols-2 gap-2">
+          <FieldGroup className="grid grid-cols-2 gap-3 max-sm:pointer-coarse:grid-cols-1">
             <form.Field name="starts">
               {(field) => (
                 <DateField
