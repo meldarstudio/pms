@@ -5,6 +5,7 @@ import {
   DropdownMenuContent,
   DropdownMenuGroup,
   DropdownMenuItem,
+  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import type { ReservationEditorTarget } from "@/components/reservation-page-editors";
@@ -21,7 +22,6 @@ export function ReservationStatusMenu({
   edit: (target: ReservationEditorTarget) => void;
 }) {
   const { today } = usePropertyCalendar();
-  if (detail.status === "unfulfilled") return null;
   const cancelled = detail.status === "cancelled";
   const noShow = detail.status === "no_show";
   const restoreBlocked =
@@ -42,7 +42,13 @@ export function ReservationStatusMenu({
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end">
         <DropdownMenuGroup>
-          {cancelled || noShow ? (
+          <DropdownMenuItem onClick={() => edit({ kind: "contact" })}>
+            Editar contacto
+          </DropdownMenuItem>
+        </DropdownMenuGroup>
+        {detail.status !== "unfulfilled" && <DropdownMenuSeparator />}
+        <DropdownMenuGroup>
+          {detail.status === "unfulfilled" ? null : cancelled || noShow ? (
             <>
               <DropdownMenuItem
                 disabled={restoreBlocked}

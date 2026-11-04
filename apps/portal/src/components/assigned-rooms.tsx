@@ -1,18 +1,8 @@
-import { Fragment } from "react";
 import { CircleAlertIcon, XIcon } from "lucide-react";
 import { cn } from "cn";
 import { RoomAssignmentSteps } from "@/components/room-assignment-flow";
 import { DirtyRoomBadge } from "@/components/dirty-room-badge";
 import { Button } from "@/components/ui/button";
-import {
-  Item,
-  ItemActions,
-  ItemContent,
-  ItemGroup,
-  ItemMedia,
-  ItemSeparator,
-  ItemTitle,
-} from "@/components/ui/item";
 import {
   Sheet,
   SheetClose,
@@ -25,10 +15,13 @@ import { useIsMobile } from "@/hooks/use-mobile";
 import type { ReservationDetail } from "@/lib/api";
 import type { ReservationStay } from "@/lib/assignment-availability";
 import { useHousekeeping } from "@/lib/queries";
+import { formatMoney } from "@/lib/money";
 import { occupantsLabel } from "@/lib/reservation-list";
 import { useRoomAssignment } from "@/lib/use-room-assignment";
 
 type Line = ReservationDetail["rooms"][number];
+
+const nightsLabel = (count: number) => `${count} ${count === 1 ? "noche" : "noches"}`;
 
 function typeName(line: Line) {
   return line.roomTypeName || "Habitación";
@@ -142,85 +135,66 @@ function RoomList({
   stays: ReservationStay[];
   onAssign?: (stay: ReservationStay) => void;
 }) {
+  const money = (cents: number) => formatMoney(cents, detail.currency);
   const lines = detail.rooms.toSorted((a, b) =>
     a.roomNumber === null || b.roomNumber === null
       ? Number(a.roomNumber === null) - Number(b.roomNumber === null)
       : a.roomNumber.localeCompare(b.roomNumber, "es", { numeric: true }),
   );
   return (
-    <section
-      aria-label="Habitaciones asignadas"
-      className="flex min-h-0 min-w-0 flex-1 flex-col gap-3"
-    >
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <h3 className="font-medium">Habitaciones asignadas</h3>
-        <p className="text-xs text-muted-foreground">
-          {lines.length} {lines.length === 1 ? "habitación" : "habitaciones"}
-          {stays.length > 0 && (
-            <span className="font-medium text-warning-foreground">
-              {" "}
-              · {stays.length} sin asignar
-            </span>
-          )}
-        </p>
-      </div>
-      <ItemGroup className="min-h-0 gap-0 overflow-y-auto border">
-        {lines.map((line, index) => {
-          const stay = stays.find((item) => item.id === line.id);
-          return (
-            <Fragment key={line.id}>
-              {index > 0 && <ItemSeparator className="my-0" />}
-              <Item
-                role="listitem"
-                className={cn("flex-nowrap", stay && "bg-warning text-warning-foreground")}
-              >
-                <ItemMedia
-                  className={cn(
-                    "h-7 min-w-10 border px-1.5 font-mono text-sm font-semibold",
-                    line.roomNumber
-                      ? "bg-muted"
-                      : stay
-                        ? "border-dashed border-warning-foreground/60"
-                        : "border-dashed text-muted-foreground",
-                  )}
-                >
-                  {line.roomNumber ?? <CircleAlertIcon className="size-3.5" aria-hidden="true" />}
-                </ItemMedia>
-                <ItemContent className="min-w-0">
-                  <ItemTitle className="w-full min-w-0">
-                    <span className="truncate">
-                      {!line.roomNumber && <span className="sr-only">Sin asignar · </span>}
-                      {typeName(line)}
-                      <span
-                        className={cn(
-                          "font-normal",
-                          stay ? "text-warning-foreground/90" : "text-muted-foreground",
-                        )}
-                      >
-                        {" "}
-                        · {occupantsLabel([line])}
-                      </span>
-                    </span>
-                  </ItemTitle>
-                </ItemContent>
-                {stay && onAssign ? (
-                  <ItemActions>
-                    <Button variant="outline" size="xs" onClick={() => onAssign(stay)}>
-                      Asignar
-                    </Button>
-                  </ItemActions>
+    <ul aria-label="Habitaciones" className="flex flex-col gap-2">
+      {lines.map((line) => {
+        const stay = stays.find((item) => item.id === line.id);
+        return (
+          <li
+            key={line.id}
+            className={cn(
+              "flex min-w-0 border",
+              stay && "border-warning-foreground/30 bg-warning text-warning-foreground",
+            )}
+          >
+            <div
+              className={cn(
+                "flex w-20 shrink-0 items-center justify-center border-r border-dashed font-mono text-xl font-semibold sm:w-24 sm:text-2xl",
+                stay ? "border-warning-foreground/40" : "bg-muted/40",
+              )}
+            >
+              {line.roomNumber ??
+                (stay && onAssign ? (
+                  <Button
+                    variant="outline"
+                    size="xs"
+                    className="font-sans"
+                    aria-label={`Asignar ${typeName(line)}`}
+                    onClick={() => onAssign(stay)}
+                  >
+                    Asignar
+                  </Button>
                 ) : (
-                  line.housekeepingStatus === "dirty" && (
-                    <ItemActions>
-                      <DirtyRoomBadge />
-                    </ItemActions>
-                  )
-                )}
-              </Item>
-            </Fragment>
-          );
-        })}
-      </ItemGroup>
-    </section>
+                  <>
+                    <CircleAlertIcon aria-hidden className="size-4 text-muted-foreground" />
+                    <span className="sr-only">Sin asignar</span>
+                  </>
+                ))}
+            </div>
+            <div className="flex min-w-0 flex-1 items-center justify-between gap-3 px-4 py-3">
+              <div className="flex min-w-0 flex-col">
+                <span className="flex flex-wrap items-center gap-x-2 text-sm font-medium">
+                  {typeName(line)}
+                  {stay && <span className="text-xs font-normal">Sin asignar</span>}
+                  {line.housekeepingStatus === "dirty" && <DirtyRoomBadge />}
+                </span>
+                <span className={cn("text-xs", stay ? "opacity-80" : "text-muted-foreground")}>
+                  {occupantsLabel([line])} · {nightsLabel(line.nights.length)}
+                </span>
+              </div>
+              <span className="shrink-0 text-sm font-medium whitespace-nowrap tabular-nums">
+                {money(line.subtotalCents)}
+              </span>
+            </div>
+          </li>
+        );
+      })}
+    </ul>
   );
 }

@@ -1,16 +1,23 @@
 import type { ReactNode } from "react";
-import { CreditCardIcon, LockIcon, PencilIcon, Undo2Icon } from "lucide-react";
+import { CreditCardIcon, LockIcon, PencilIcon, ReceiptIcon, Undo2Icon } from "lucide-react";
 import { cn } from "cn";
 import { parseISO } from "date-fns";
-import { AccountStatusBanner, SummaryRow, accountStatus } from "@/components/balance-status";
+import { SummaryRow, accountStatus } from "@/components/balance-status";
 import { DiscountPopover } from "@/components/discount-popover";
 import { culqiPendingLine } from "@/components/refund-forms";
 import { paymentMethods } from "@/components/reservation-entry-forms";
 import { RowActions } from "@/components/reservation-records";
+import { ReservationSection, SectionHeading } from "@/components/reservation-section";
 import type { ReservationEditorTarget } from "@/components/reservation-page-editors";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+  Empty,
+  EmptyDescription,
+  EmptyHeader,
+  EmptyMedia,
+  EmptyTitle,
+} from "@/components/ui/empty";
 import {
   Table,
   TableBody,
@@ -38,55 +45,57 @@ const shortDate = (day: string) => format(parseISO(day), "d MMM yyyy");
 const methodLabel = (method: string) =>
   paymentMethods.find((entry) => entry.value === method)?.label ?? method;
 
-export function AccountCard({
+export function AccountPanel({
   detail,
   edit,
   onDiscountDraftChange,
 }: Props & { onDiscountDraftChange?: (changed: boolean) => void }) {
-  const money = (cents: number) => formatMoney(cents, detail.currency);
-  const status = accountStatus(detail);
-  const owing = status.state === "owing";
   return (
-    <Card className="min-w-0" role="region" aria-label="Cuenta">
-      <CardHeader>
-        <CardTitle>
-          <h2>Cuenta</h2>
-        </CardTitle>
-      </CardHeader>
-      <CardContent className="flex min-w-0 flex-col gap-4">
+    <section role="region" aria-label="Cuenta" className="flex min-w-0 flex-col">
+      <AccountBalance detail={detail} edit={edit} />
+      <div className="flex min-w-0 flex-col gap-3 p-4">
+        <SectionHeading title="Cuenta" />
         <AccountSummary detail={detail} edit={edit} onDiscountDraftChange={onDiscountDraftChange} />
-        <section aria-label="Estado de la cuenta" className="flex flex-col gap-3">
-          <AccountStatusBanner status={status} amount={money(status.cents)} />
-          {owing && (
-            <Button className="w-full" onClick={() => edit({ kind: "payment" })}>
-              <CreditCardIcon data-icon="inline-start" />
-              Registrar pago
-            </Button>
-          )}
-          {status.state === "owed-back" && (
-            <Button className="w-full" onClick={() => edit({ kind: "refund" })}>
-              <Undo2Icon data-icon="inline-start" />
-              Devolver…
-            </Button>
-          )}
-        </section>
-      </CardContent>
-    </Card>
+      </div>
+    </section>
   );
 }
 
-export function MovementsCard({ detail, edit }: Props) {
+function AccountBalance({ detail, edit }: Props) {
+  const status = accountStatus(detail);
   return (
-    <Card className="@container/mov min-w-0" role="region" aria-label="Movimientos">
-      <CardHeader>
-        <CardTitle>
-          <h2>Movimientos</h2>
-        </CardTitle>
-      </CardHeader>
-      <CardContent className="min-w-0">
-        <Movements detail={detail} edit={edit} resolveRefunds />
-      </CardContent>
-    </Card>
+    <section
+      aria-label="Estado de la cuenta"
+      className={cn("flex flex-col gap-1 px-4 py-6", status.tone)}
+    >
+      <p className="flex items-center gap-1.5 text-xs font-medium">
+        <status.Icon aria-hidden className="size-3.5" />
+        {status.label}
+      </p>
+      <p className="text-3xl font-semibold tracking-tight tabular-nums">
+        {formatMoney(status.cents, detail.currency)}
+      </p>
+      {status.state === "owing" && (
+        <Button className="mt-2 w-full" onClick={() => edit({ kind: "payment" })}>
+          <CreditCardIcon data-icon="inline-start" />
+          Registrar pago
+        </Button>
+      )}
+      {status.state === "owed-back" && (
+        <Button className="mt-2 w-full" onClick={() => edit({ kind: "refund" })}>
+          <Undo2Icon data-icon="inline-start" />
+          Devolver…
+        </Button>
+      )}
+    </section>
+  );
+}
+
+export function MovementsSection({ detail, edit }: Props) {
+  return (
+    <ReservationSection title="Movimientos" className="@container/mov">
+      <Movements detail={detail} edit={edit} resolveRefunds />
+    </ReservationSection>
   );
 }
 
@@ -113,7 +122,7 @@ function AccountSummary({
     return false;
   }
   return (
-    <dl aria-label="Resumen de la cuenta" className="flex flex-col gap-2">
+    <dl aria-label="Resumen de la cuenta" className="flex flex-col gap-2 text-xs">
       {isReleased(detail.status) ? (
         <>
           <SummaryRow
@@ -158,10 +167,7 @@ function AccountSummary({
           </div>
         </>
       )}
-      <SummaryRow
-        label={<span className="font-medium">Total</span>}
-        value={money(detail.totalCents)}
-      />
+      <SummaryRow className="font-medium" label="Total" value={money(detail.totalCents)} />
       <SummaryRow label="Pagado" value={money(detail.paidCents)} />
       {detail.couponAppliedCents > 0 && (
         <SummaryRow label="Pagado con cupón" value={money(detail.couponAppliedCents)} />
@@ -299,7 +305,18 @@ export function Movements({
   resolveRefunds = false,
 }: Props & { disabled?: boolean; resolveRefunds?: boolean }) {
   const rows = movements(detail, edit, disabled, resolveRefunds);
-  if (!rows.length) return <p className="py-3 text-muted-foreground">Sin movimientos todavía.</p>;
+  if (!rows.length)
+    return (
+      <Empty className="border">
+        <EmptyHeader>
+          <EmptyMedia variant="icon">
+            <ReceiptIcon />
+          </EmptyMedia>
+          <EmptyTitle>Sin movimientos todavía</EmptyTitle>
+          <EmptyDescription>Los pagos, reembolsos y cupones aparecerán aquí.</EmptyDescription>
+        </EmptyHeader>
+      </Empty>
+    );
   return (
     <Table aria-label="Movimientos">
       <TableHeader>
