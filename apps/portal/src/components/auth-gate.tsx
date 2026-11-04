@@ -53,7 +53,7 @@ function LoginPage() {
   }
 
   return (
-    <main className="bg-muted/30 flex min-h-svh items-center justify-center p-4">
+    <main className="bg-muted/30 flex min-h-svh items-center justify-center pt-[max(1rem,env(safe-area-inset-top))] pb-[max(1rem,env(safe-area-inset-bottom))] safe-area-padding-x">
       <Card className="w-full max-w-sm">
         <CardHeader className="justify-items-center py-2">
           <CardTitle>

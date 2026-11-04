@@ -193,6 +193,7 @@
     cursor: pointer;
   }
   html {
-    @apply font-sans;
+    @apply bg-background font-sans;
+    -webkit-text-size-adjust: 100%;
   }
 }

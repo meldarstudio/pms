@@ -20,7 +20,7 @@ import {
 
 const DISMISSED_UPDATE_KEY = "manantial-dismissed-update";
 const floatingNotice =
-  "fixed right-4 bottom-[max(1rem,env(safe-area-inset-bottom))] left-4 z-[100] shadow-xl sm:left-auto sm:w-80";
+  "fixed right-[max(1rem,env(safe-area-inset-right))] bottom-[max(1rem,env(safe-area-inset-bottom))] left-[max(1rem,env(safe-area-inset-left))] z-[100] shadow-xl sm:left-auto sm:w-80";
 
 export function PwaStatus({ children }: { children: ReactNode }) {
   const [online, setOnline] = useState(() => navigator.onLine);
@@ -85,7 +85,10 @@ export function PwaStatus({ children }: { children: ReactNode }) {
         {children}
       </div>
       {!online && (
-        <div role="status" className="fixed inset-0 z-[100] flex bg-background p-6">
+        <div
+          role="status"
+          className="fixed inset-0 z-[100] flex bg-background pt-[max(1.5rem,env(safe-area-inset-top))] pr-[max(1.5rem,env(safe-area-inset-right))] pb-[max(1.5rem,env(safe-area-inset-bottom))] pl-[max(1.5rem,env(safe-area-inset-left))]"
+        >
           <Empty className="m-auto max-w-md border">
             <EmptyHeader>
               <EmptyMedia variant="icon">
