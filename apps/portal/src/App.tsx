@@ -37,12 +37,12 @@ export function App() {
     <SidebarProvider
       open={sidebarOpen}
       onOpenChange={handleSidebarOpenChange}
-      className="h-svh min-h-0 overflow-hidden"
+      className="fixed inset-0 h-dvh min-h-0 overflow-hidden bg-background"
       style={{ "--sidebar-width": "14rem" } as CSSProperties}
     >
       <AppSidebar />
-      <SidebarInset className="min-h-0 min-w-0 overflow-hidden">
-        <header className="flex h-12 shrink-0 items-center gap-3 border-b px-2.5">
+      <SidebarInset className="min-h-0 min-w-0 overflow-hidden pr-[env(safe-area-inset-right)] pb-[env(safe-area-inset-bottom)] pl-[env(safe-area-inset-left)]">
+        <header className="sticky top-0 z-10 flex h-[calc(3rem+env(safe-area-inset-top))] shrink-0 items-center gap-3 border-b bg-background px-2.5 pt-[env(safe-area-inset-top)]">
           <SidebarTrigger />
           <Separator
             orientation="vertical"
@@ -57,7 +57,7 @@ export function App() {
           className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden"
           style={
             {
-              "--primary-action-clearance": "calc(5rem + env(safe-area-inset-bottom))",
+              "--primary-action-clearance": "5rem",
             } as CSSProperties
           }
         >

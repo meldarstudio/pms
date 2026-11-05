@@ -91,7 +91,10 @@ export function AppSidebar() {
 
   return (
     <Sidebar collapsible="offcanvas">
-      <nav aria-label="Navegación principal" className="flex min-h-0 flex-1 flex-col">
+      <nav
+        aria-label="Navegación principal"
+        className="flex min-h-0 flex-1 flex-col pt-[env(safe-area-inset-top)] pb-[env(safe-area-inset-bottom)] pl-[env(safe-area-inset-left)]"
+      >
         <SidebarHeader className="items-center py-6">
           <HotelLogo className="h-7 w-28 text-sidebar-foreground" />
         </SidebarHeader>

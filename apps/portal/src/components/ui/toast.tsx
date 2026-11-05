@@ -13,7 +13,7 @@ function ToastList() {
 
   return (
     <ToastPrimitive.Portal>
-      <ToastPrimitive.Viewport className="fixed inset-x-4 top-[calc(env(safe-area-inset-top)+1rem)] z-60 mx-auto flex w-80 max-w-[calc(100vw-2rem)] flex-col gap-2 outline-none md:inset-x-auto md:top-auto md:right-4 md:bottom-4">
+      <ToastPrimitive.Viewport className="fixed inset-x-4 top-[calc(env(safe-area-inset-top)+1rem)] z-60 mx-auto flex w-80 max-w-[calc(100vw-2rem)] flex-col gap-2 outline-none md:inset-x-auto md:top-auto md:right-[max(1rem,env(safe-area-inset-right))] md:bottom-[max(1rem,env(safe-area-inset-bottom))]">
         {toasts.map((item) => (
           <ToastPrimitive.Root
             key={item.id}
