@@ -1,3 +1,5 @@
+import { adjustedPriceCents } from "./pricing";
+import { ratePlans, type RatePlanCode } from "./rate-plans";
 import { holdsInventory } from "./statuses";
 
 export type GridStay = {
@@ -40,6 +42,16 @@ function nightLoad(date: string, stays: GridStay[], closures: GridClosure[]) {
       .map((closure) => closure.roomId),
   ).size;
   return { booked, closed };
+}
+
+function planPrices(ordinaryCents: number): Record<RatePlanCode, number> {
+  return {
+    flexible: adjustedPriceCents(ordinaryCents, ratePlans.flexible.priceAdjustmentPercent),
+    non_refundable: adjustedPriceCents(
+      ordinaryCents,
+      ratePlans.non_refundable.priceAdjustmentPercent,
+    ),
+  };
 }
 
 export function peakOccupied(dates: string[], stays: GridStay[], closures: GridClosure[]) {
@@ -96,13 +108,15 @@ export function inventoryGrid(
         nights: dates.map((date) => {
           const { booked, closed } = nightLoad(date, typeStays, typeClosures);
           const override = overrides?.get(date);
+          const priceCents = override ?? type.baseRateCents;
           return {
             date,
             booked,
             closed,
             free: Math.max(0, rooms - booked - closed),
-            priceCents: override ?? type.baseRateCents,
+            priceCents,
             override: override !== undefined,
+            planPrices: planPrices(priceCents),
           };
         }),
       };

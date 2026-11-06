@@ -8,6 +8,7 @@ import { currency, validate } from "../http";
 import { loadRoomTypes, ratesBetween, roomCounts } from "../inventory";
 import { addDays } from "../lib/dates";
 import { inventoryGrid } from "../lib/inventory-grid";
+import { ratePlans } from "../lib/rate-plans";
 import { requireInclusiveRange } from "../rules";
 
 export const inventoryRoutes = new Hono<Env>();
@@ -51,6 +52,7 @@ inventoryRoutes.get("/", validate("query", rateRangeQuerySchema), async (c) => {
     from,
     to,
     currency: currency(c),
+    ratePlans: Object.values(ratePlans),
     roomTypes: inventoryGrid(dates, types, capacity, stays, closures, rates),
   });
 });

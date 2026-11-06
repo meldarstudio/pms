@@ -15,12 +15,19 @@ export function formatMajor(cents: number) {
   return `${whole}.${String(frac).padStart(2, "0")}`;
 }
 
+function centDigits(cents: number) {
+  const digits = cents % 100 !== 0 ? 2 : 0;
+  return { minimumFractionDigits: digits, maximumFractionDigits: digits };
+}
+
 export function formatMoney(cents: number, currency = CURRENCY) {
-  const hasCents = cents % 100 !== 0;
   return new Intl.NumberFormat("es-PE", {
     style: "currency",
     currency,
-    minimumFractionDigits: hasCents ? 2 : 0,
-    maximumFractionDigits: hasCents ? 2 : 0,
+    ...centDigits(cents),
   }).format(cents / 100);
+}
+
+export function formatAmount(cents: number) {
+  return new Intl.NumberFormat("es-PE", centDigits(cents)).format(cents / 100);
 }

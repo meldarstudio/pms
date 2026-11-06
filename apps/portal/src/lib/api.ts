@@ -55,6 +55,7 @@ export type InventoryNight = {
   closed: number;
   priceCents: number;
   override: boolean;
+  planPrices: Record<RatePlanCode, number>;
 };
 
 export type InventoryRoomType = {
@@ -71,6 +72,7 @@ export type Inventory = {
   from: string;
   to: string;
   currency: string;
+  ratePlans: RatePlanTerms[];
   roomTypes: InventoryRoomType[];
 };
 

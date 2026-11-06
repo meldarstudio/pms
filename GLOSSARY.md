@@ -172,6 +172,18 @@ _Avoid_: Registered guest count, booked room count
 An offer combining a price adjustment, cancellation policy, and payment schedule.
 _Avoid_: Room type, price rule
 
+**Ordinary nightly price**:
+A room type's price for a date: its rate override, otherwise its base rate.
+_Avoid_: Saved nightly price, flat nightly rate
+
+**Flexible**:
+The default rate plan, charging the ordinary nightly price without adjustment.
+
+**Derived rate plan**:
+A rate plan whose nightly prices follow the ordinary nightly price through a price
+adjustment, such as Non-refundable, and are never set independently.
+_Avoid_: Independent rate, rate override
+
 **Price adjustment**:
 A rate plan's percentage change to ordinary nightly prices.
 _Avoid_: Discount, rate override
