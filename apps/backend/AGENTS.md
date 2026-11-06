@@ -8,7 +8,7 @@ Paths below are relative to `apps/backend` unless stated otherwise.
 - Use `validate` and `HttpError` from `src/http.ts`. Error JSON is `{ error: string }`; field-specific errors use the CORS-exposed `X-Error-Field` header. `rethrowConflict` maps database conflicts to public errors.
 - Keep new routes behind `src/session.ts` and use the real login route in tests, without a bypass.
 - `pnpm check` regenerates Worker types into git-ignored `.cloudflare/types`; refresh them alone with `pnpm --filter @pms/backend cf-typegen`.
-- `cf d1` commands reach production unless given `--local`, and `cf --local` defaults to a directory the dev server never reads. Run D1 commands through `scripts/d1.mjs`, which targets the `.wrangler/state` that `cf dev` uses. Production backups use `wrangler d1 export` because `cf` has no D1 export.
+- `cf d1` commands reach production unless given `--local`, and `cf --local` defaults to a directory the dev server never reads. Run D1 commands through `scripts/d1.mjs`, which targets the `.wrangler/state` that `cf dev` uses.
 
 ## Reservation workflow
 
@@ -28,5 +28,3 @@ Paths below are relative to `apps/backend` unless stated otherwise.
 Colocated `.test.ts` and `.test.mjs` suites use `vite-plus/test` and registered
 migrations against in-memory `node:sqlite`; no running Worker is needed.
 Like D1, the test database rejects statements with more than 100 bound parameters.
-Migration CLI tests also need Python 3's standard-library PTY for simulated
-`cf` and Wrangler commands and a private home directory.

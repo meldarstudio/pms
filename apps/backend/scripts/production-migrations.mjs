@@ -48,7 +48,7 @@ export function validateMigrationManifest(journal, files) {
 }
 
 export function readMigrationManifest(migrationsDir) {
-  const journalText = readFileSync(join(migrationsDir, "meta/_journal.json"), "utf8");
+  const journal = JSON.parse(readFileSync(join(migrationsDir, "meta/_journal.json"), "utf8"));
   const files = readdirSync(migrationsDir)
     .filter((name) => name.endsWith(".sql"))
     .map((name) => {
@@ -56,6 +56,6 @@ export function readMigrationManifest(migrationsDir) {
       const regular = lstatSync(path).isFile();
       return { name, regular, sql: regular ? readFileSync(path, "utf8") : "" };
     });
-  const ordered = validateMigrationManifest(JSON.parse(journalText), files);
-  return { journalText, files: ordered, names: ordered.map((file) => file.name) };
+  const ordered = validateMigrationManifest(journal, files);
+  return { files: ordered, names: ordered.map((file) => file.name) };
 }
