@@ -1,4 +1,4 @@
-import { useForm, useSelector } from "@tanstack/react-form";
+import { defaultValidationLogic, useForm, useSelector } from "@tanstack/react-form";
 
 import { Button } from "@/components/ui/button";
 import {
@@ -22,7 +22,11 @@ import {
 } from "@/components/ui/select";
 import { Spinner } from "@/components/ui/spinner";
 import { usePatchRoom, useRoomTypes } from "@/lib/queries";
-import { fieldErrors, setServerErrors } from "@/lib/form-errors";
+import {
+  clearServerErrorsOnlyOnOwnChangeOrSubmit,
+  fieldErrors,
+  setServerErrors,
+} from "@/lib/form-errors";
 import { roomEditSchema, roomFieldErrors, roomPatch } from "@/lib/room-form";
 import { toast, toastError } from "@/lib/toast";
 
@@ -88,6 +92,7 @@ function RoomEditForm({
         ...types.map((type) => ({ value: type.id, label: type.name })),
       ];
   const form = useForm({
+    validationLogic: clearServerErrorsOnlyOnOwnChangeOrSubmit(defaultValidationLogic),
     defaultValues: {
       number: target.number,
       roomTypeId: target.roomTypeId,

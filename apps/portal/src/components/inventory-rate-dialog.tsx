@@ -1,4 +1,4 @@
-import { useForm, useSelector } from "@tanstack/react-form";
+import { defaultValidationLogic, useForm, useSelector } from "@tanstack/react-form";
 
 import { Button } from "@/components/ui/button";
 import {
@@ -14,7 +14,11 @@ import { Field, FieldError, FieldGroup, FieldLabel } from "@/components/ui/field
 import { Input } from "@/components/ui/input";
 import { Spinner } from "@/components/ui/spinner";
 import type { InventoryNight } from "@/lib/api";
-import { fieldErrors, setServerErrors } from "@/lib/form-errors";
+import {
+  clearServerErrorsOnlyOnOwnChangeOrSubmit,
+  fieldErrors,
+  setServerErrors,
+} from "@/lib/form-errors";
 import {
   inventoryRateSchema,
   overrideClearDates,
@@ -104,6 +108,7 @@ function RateForm({
   onClear: (ranges: { from: string; to: string }[]) => Promise<void>;
 }) {
   const form = useForm({
+    validationLogic: clearServerErrorsOnlyOnOwnChangeOrSubmit(defaultValidationLogic),
     defaultValues: {
       price: sharedRatePrice(target.nights),
     },

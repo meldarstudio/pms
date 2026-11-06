@@ -151,8 +151,7 @@ export function useStayDraft({
     ],
   );
   useEffect(() => {
-    if (previewFields) setServerErrors(form, previewFields);
-    else form.setErrorMap({ onServer: undefined });
+    setServerErrors(form, previewFields ?? {});
   }, [form, previewFields]);
   const billing = billingDirty ? (pricingValid ? quote.data : undefined) : detail;
 
