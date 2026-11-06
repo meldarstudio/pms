@@ -7,7 +7,7 @@ worker or heap limits; follow the root [frontend testing policy](../../CODING_ST
 ## Navigation and data
 
 - Code-based TanStack Router routes live in `src/router.tsx`; `src/App.tsx` owns the shell and `src/components/app-sidebar.tsx` owns navigation. Calendar bars open `RoomBookingDialog` in edit mode; the Reservations list and the dialog's **Ver reserva completa** action open `ReservationPage`. `RoomBookingDialog` also handles creation.
-- Fetch helpers and response types are hand-written in `src/lib/api.ts`; query hooks live in `src/lib/queries.ts`. Saves and bill previews for an existing reservation go through `src/lib/reservation-commands.ts`. The portal does not depend on `@pms/shared`.
+- Fetch helpers, response types, and query-string types are hand-written in `src/lib/api.ts`, which re-exports request body types from `@pms/shared`; query hooks live in `src/lib/queries.ts`. Saves and bill previews for an existing reservation go through `src/lib/reservation-commands.ts`. Import only types from `@pms/shared`, using `import type`, never runtime code.
 - Portal-local reservation schemas live in `src/lib/reservation-form-schemas.ts`.
 
 ## API environment

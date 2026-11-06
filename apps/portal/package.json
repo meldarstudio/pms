@@ -32,6 +32,7 @@
     "zod": "catalog:"
   },
   "devDependencies": {
+    "@pms/shared": "workspace:*",
     "@types/node": "^24",
     "@types/react": "^19",
     "@types/react-dom": "^19",
