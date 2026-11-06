@@ -147,6 +147,16 @@ async function execute(db: Db, id: string, command: WorkflowCommand, context: Co
   throw new HttpError(409, "reservation changed while saving; please try again");
 }
 
+function suspendRoomGuardsUntilFinalStatus(db: Db, id: string, expectedRevision: number) {
+  return db
+    .update(reservations)
+    .set({
+      status: "cancelled",
+      revision: claimRevision(reservations.revision, expectedRevision),
+    })
+    .where(eq(reservations.id, id));
+}
+
 async function executeAttempt(
   db: Db,
   id: string,
@@ -184,13 +194,7 @@ async function executeAttempt(
         payload,
         createdAt: now,
       }),
-      db
-        .update(reservations)
-        .set({
-          status: "cancelled",
-          revision: claimRevision(reservations.revision, original.reservation.revision),
-        })
-        .where(eq(reservations.id, id)),
+      suspendRoomGuardsUntilFinalStatus(db, id, original.reservation.revision),
       ...(guestsChanged
         ? [db.delete(reservationGuests).where(eq(reservationGuests.reservationId, id))]
         : []),

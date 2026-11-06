@@ -66,6 +66,8 @@ and `GLOSSARY.md`. During review:
   config. Verify repository links and code paths they mention.
 - Keep business vocabulary aligned with the glossary; update it in the same change
   when a term's meaning changes.
-- Comments explain non-obvious reasons and hazards, not what the code already says.
+- Linted code has no comments except tool directives. `pms/no-comments` enforces
+  this. Put non-obvious reasons and hazards in names, types, and tests. During
+  review, flag hazards that the code doesn't make visible this way.
 
 Run the affected tests and `pnpm check` for code changes.
