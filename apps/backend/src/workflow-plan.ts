@@ -183,7 +183,7 @@ const handlers: Handlers = {
         .length
     )
       fail("guest belongs to another reservation");
-    state.stayingGuests = action.guests.map(({ reservationRoomId: _room, ...guest }) => {
+    state.stayingGuests = action.guests.map((guest) => {
       const saved = original.stayingGuests.find((g) => g.id === guest.id);
       return {
         ...guest,

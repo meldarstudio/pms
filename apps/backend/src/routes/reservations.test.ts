@@ -380,9 +380,8 @@ async function bookingAfterCapacityReduction(roomCount = 1) {
   return saved;
 }
 
-const guest = (reservationRoomId: string | null) => ({
+const guest = () => ({
   id: crypto.randomUUID(),
-  reservationRoomId,
   fullName: "Ana García",
   email: null,
   phone: null,
@@ -1883,7 +1882,7 @@ describe("concurrent reservation commands", () => {
     let d = await create(2);
     d = await command(d, [roomEdit(d), roomEdit(d, 1, { adults: 2 })]);
     d = await command(d, [
-      { type: "set-guests", guests: [guest(d.rooms[1].id)] },
+      { type: "set-guests", guests: [guest()] },
       { type: "set-status", status: "cancelled" },
     ]);
     const snapshot = () =>
@@ -2055,15 +2054,14 @@ describe("concurrent reservation commands", () => {
 
   it("preserves newly saved staying guests when a concurrent payment retries", async () => {
     const d = await create();
-    const person = guest(d.rooms[0].id);
+    const person = guest();
     const paused = pauseNextCommit();
     const pending = command(d, [pay(1000)]);
     await paused.ready;
     await command(d, [{ type: "set-guests", guests: [person] }]);
     paused.resume();
     const saved = await pending;
-    const { reservationRoomId: _room, ...expected } = person;
-    expect(saved.stayingGuests).toMatchObject([expected]);
+    expect(saved.stayingGuests).toMatchObject([person]);
     expect(saved.paidCents).toBe(1000);
     expect(saved.payments).toHaveLength(1);
   });
@@ -2632,8 +2630,8 @@ describe("reservation workflow", () => {
   );
   it("keeps staying guests through saves that do not change them, without rewriting their rows", async () => {
     let d = await create();
-    const kept = guest(null);
-    d = await command(d, [{ type: "set-guests", guests: [guest(null), kept] }]);
+    const kept = guest();
+    d = await command(d, [{ type: "set-guests", guests: [guest(), kept] }]);
     const staying = d.stayingGuests;
     expect(staying).toHaveLength(2);
     db.sqlite.exec(`
@@ -2673,45 +2671,31 @@ describe("reservation workflow", () => {
       d.checkOut,
     );
   });
-  it.each([undefined, null, "another-room"])(
-    "saves guests while ignoring legacy submitted room %s",
-    async (reservationRoomId) => {
-      const d = await create(2);
-      const first = guest(null),
-        second = guest(null),
-        added = guest("foreign-room");
-      await command(d, [{ type: "set-guests", guests: [first, second] }]);
-      const actions: WorkflowAction[] = [
-        {
-          type: "set-guests",
-          guests: [second, first, added].map((person) => ({ ...person, reservationRoomId })),
-        },
-      ];
-      const before = await (await request(`/reservations/${d.id}`)).json();
-      const proposed = await previewCommand(d, actions);
-      expect(await (await request(`/reservations/${d.id}`)).json()).toEqual(before);
-      const saved = await command(d, actions);
-      for (const detail of [
-        proposed.billing,
-        saved,
-        (await (await request(`/reservations/${d.id}`)).json()) as Detail,
-      ]) {
-        expect(detail.stayingGuests.map((person) => person.id)).toEqual([
-          second.id,
-          first.id,
-          added.id,
-        ]);
-        for (const person of detail.stayingGuests)
-          expect(person).not.toHaveProperty("reservationRoomId");
-      }
-    },
-  );
+  it("previews and saves guest additions and reordering without changing data during preview", async () => {
+    const d = await create(2);
+    const first = guest(),
+      second = guest(),
+      added = guest();
+    await command(d, [{ type: "set-guests", guests: [first, second] }]);
+    const actions: WorkflowAction[] = [{ type: "set-guests", guests: [second, first, added] }];
+    const before = await (await request(`/reservations/${d.id}`)).json();
+    const proposed = await previewCommand(d, actions);
+    expect(await (await request(`/reservations/${d.id}`)).json()).toEqual(before);
+    const saved = await command(d, actions);
+    for (const detail of [
+      proposed.billing,
+      saved,
+      (await (await request(`/reservations/${d.id}`)).json()) as Detail,
+    ]) {
+      expect(detail.stayingGuests).toMatchObject([second, first, added]);
+    }
+  });
   it("saves contact changes and staying guests atomically, separate from the booking contact", async () => {
     let d = await create(2);
-    const person = guest(d.rooms[0].id);
+    const person = guest();
     const actions: WorkflowAction[] = [
       { type: "contact", contact: { fullName: "Booker Company", email: null, phone: null } },
-      { type: "set-guests", guests: [person, guest(null)] },
+      { type: "set-guests", guests: [person, guest()] },
     ];
     await previewCommand(d, actions);
     expect(
@@ -2720,11 +2704,10 @@ describe("reservation workflow", () => {
     d = await command(d, actions);
     expect(d.guest.fullName).toBe("Booker Company");
     expect(d.stayingGuests).toHaveLength(2);
-    const { reservationRoomId: _room, ...expected } = person;
-    expect(d.stayingGuests[0]).toMatchObject(expected);
+    expect(d.stayingGuests[0]).toMatchObject(person);
     d = await arrive(d);
     d = await command(d, [roomEdit(d, 0, { roomId: "room-103" })]);
-    expect(d.stayingGuests[0]).toMatchObject(expected);
+    expect(d.stayingGuests[0]).toMatchObject(person);
     expect(d.rooms[0].roomId).toBe("room-103");
     d = await command(d, [{ type: "set-guests", guests: [] }]);
     expect(d.stayingGuests).toEqual([]);
@@ -2732,7 +2715,7 @@ describe("reservation workflow", () => {
   it("rejects foreign guests and leaves contact and guests unchanged on failure", async () => {
     const d = await create(),
       other = await create();
-    const person = guest(null);
+    const person = guest();
     await command(other, [{ type: "set-guests", guests: [person] }]);
     await command(
       d,
@@ -2747,7 +2730,7 @@ describe("reservation workflow", () => {
     expect(fresh.stayingGuests).toEqual([]);
     await command(
       d,
-      [{ type: "set-guests", guests: [guest(null), guest(null)].map((g) => ({ ...g, id: d.id })) }],
+      [{ type: "set-guests", guests: [guest(), guest()].map((g) => ({ ...g, id: d.id })) }],
       400,
     );
   });
@@ -2964,7 +2947,7 @@ describe("contact phones", () => {
     d = await command(d, [
       { type: "contact", contact: { fullName: "Ada", email: null, phone: "987654321" } },
     ]);
-    const person = { ...guest(null), phone: "987 654 321" };
+    const person = { ...guest(), phone: "987 654 321" };
     d = await command(d, [{ type: "set-guests", guests: [person] }]);
     expect(d.stayingGuests[0].phone).toBe("+51987654321");
     expect(d.guest.phone).toBe("+51987654321");
@@ -2977,11 +2960,7 @@ describe("contact phones", () => {
     ]);
     expect(d.stayingGuests[0]).toMatchObject({ fullName: "Ana Ruiz", phone: "ask at desk" });
     await command(d, [{ type: "set-guests", guests: [{ ...person, phone: "234 5678" }] }], 400);
-    await command(
-      d,
-      [{ type: "set-guests", guests: [{ ...guest(null), phone: "ask at desk" }] }],
-      400,
-    );
+    await command(d, [{ type: "set-guests", guests: [{ ...guest(), phone: "ask at desk" }] }], 400);
     d = await command(d, [{ type: "set-guests", guests: [{ ...person, phone: null }] }]);
     expect(d.stayingGuests[0].phone).toBeNull();
     expect(d.guest.phone).toBe("+51987654321");
@@ -3218,7 +3197,7 @@ describe("reservation dates and lifecycle", () => {
     const removed = d.rooms[0].id;
     const retained = d.rooms[1];
     d = await command(d, [
-      { type: "set-guests", guests: [guest(removed)] },
+      { type: "set-guests", guests: [guest()] },
       setDiscount(5000),
       pay(35000),
     ]);
@@ -3426,7 +3405,7 @@ describe("paginated reservation operations", () => {
       { type: "notes", notes: "ReservationNoteOnly" },
       {
         type: "set-guests",
-        guests: [{ ...guest(reservation.rooms[0].id), fullName: "StayingOnly" }],
+        guests: [{ ...guest(), fullName: "StayingOnly" }],
       },
     ]);
     expect(

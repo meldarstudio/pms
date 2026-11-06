@@ -115,7 +115,6 @@ describe("loading reservations", () => {
             fullName: "Grace Hopper",
             email: null,
             phone: null,
-            reservationRoomId: family.rooms[1].id,
           },
         ],
       },
