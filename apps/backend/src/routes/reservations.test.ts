@@ -2628,6 +2628,48 @@ describe("reservation workflow", () => {
       if (!issue) expect(saved).toMatchObject({ checkIn, checkOut });
     },
   );
+  it.each([
+    [
+      "on a night stays fill the type's other rooms",
+      "room-103",
+      "2026-10-22",
+      [{ code: "no availability", roomIndex: 0, field: "roomTypeId" }],
+    ],
+    ["on a night the other stays have left", "room-103", "2026-10-21", []],
+    ["on a different room type", "room-other", "2026-10-22", []],
+  ])(
+    "previews a room type's capacity with a closure %s",
+    async (_, roomId, othersLeave, issues) => {
+      seedRoomType(db.sqlite, { id: "other", name: "Twin", maxAdults: 3, baseRateCents: 20000 });
+      seedRooms(db.sqlite, "other", { "room-other": "201" });
+      const d = await create();
+      await create(2, { checkIn: "2026-10-20", checkOut: othersLeave });
+      db.sqlite.exec(
+        `INSERT INTO room_closures (id, room_id, starts, ends, reason, created_at) VALUES ('closed', '${roomId}', '2026-10-21', '2026-10-22', NULL, '2026-10-10')`,
+      );
+      const preview = await previewCommand(d, [
+        { type: "dates", checkIn: "2026-10-20", checkOut: "2026-10-22" },
+      ]);
+      expect(preview.validation.issues).toEqual(issues);
+    },
+  );
+  it("lists a room's capacity issue before its assignment and closure issues", async () => {
+    let d = await create();
+    d = await command(d, [roomEdit(d, 0, { roomId: "room-103" })]);
+    const other = await create(3, { checkIn: "2026-10-20", checkOut: "2026-10-21" });
+    await command(other, [roomEdit(other, 0, { roomId: "room-103" })]);
+    db.sqlite.exec(
+      "INSERT INTO room_closures (id, room_id, starts, ends, reason, created_at) VALUES ('closed', 'room-103', '2026-10-21', '2026-10-22', NULL, '2026-10-10')",
+    );
+    const preview = await previewCommand(d, [
+      { type: "dates", checkIn: "2026-10-20", checkOut: "2026-10-22" },
+    ]);
+    expect(preview.validation.issues).toEqual([
+      { code: "no availability", roomIndex: 0, field: "roomTypeId" },
+      { code: "room is already assigned for those dates", roomIndex: 0, field: "roomId" },
+      { code: "room is closed for those dates", roomIndex: 0, field: "roomId" },
+    ]);
+  });
   it("keeps staying guests through saves that do not change them, without rewriting their rows", async () => {
     let d = await create();
     const kept = guest();
