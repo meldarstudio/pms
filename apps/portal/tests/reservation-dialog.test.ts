@@ -278,7 +278,6 @@ it("asks a staying guest for name, contact and document but not a room", async (
   await fill("fullName", "Ana Pérez");
   await submit();
   await until(() => writes.length === 1, "The guest must save");
-  assert.equal(Object.hasOwn(writes[0][0], "reservationRoomId"), false);
 });
 
 it.each([

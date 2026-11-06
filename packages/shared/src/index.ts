@@ -227,7 +227,6 @@ export const contactSchema = guestFields
   .strict();
 export const stayingGuestSchema = contactSchema.extend({
   id: z.uuid(),
-  reservationRoomId: z.string().min(1).nullable().optional(),
 });
 export const couponCodeSchema = z
   .string()
