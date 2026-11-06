@@ -164,7 +164,7 @@ export function RoomTypeEditor({
   const submitting = useSelector(form.store, (state) => state.isSubmitting);
   useReportEditorState(events, dirty, submitting);
   function clearServerErrors() {
-    form.setErrorMap({ onServer: undefined });
+    setServerErrors(form, {});
     setSaveError(undefined);
   }
   const number = values.roomNumber.trim();

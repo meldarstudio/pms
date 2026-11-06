@@ -1151,6 +1151,44 @@ it("keeps a server phone rejection on the contact field until the phone changes"
   assert.equal(saved.guest.phone, "+51987654322");
 });
 
+it("keeps a rejected payment amount's error until the amount changes or the form is resubmitted", async () => {
+  const rejection = /El importe debe ser distinto de cero/;
+  const amountRejected = () =>
+    field("amount").getAttribute("aria-invalid") === "true" && rejection.test(popup()!.textContent);
+  mockApi({
+    write: () =>
+      writes.length <= 2
+        ? Response.json({ error: "amount cannot be zero" }, { status: 400 })
+        : undefined,
+  });
+  await render();
+  await click("Registrar pago");
+  await fill("amount", "100");
+  await fill("reference", "op-123");
+  await React.act(async () => field("reference").focus());
+  await submit();
+  await page.until(() => window.document.activeElement === field("amount"));
+  assert.ok(amountRejected(), "Focus moving to the rejected field must keep its error");
+
+  await React.act(async () => field("reference").focus());
+  assert.ok(amountRejected(), "Leaving the rejected field must keep its error");
+  await React.act(async () => field("reference").blur());
+  assert.ok(amountRejected(), "Leaving another field must keep the error");
+  await fill("reference", "op-124");
+  assert.ok(amountRejected(), "Editing another field must keep the error");
+
+  await submit();
+  await page.until(() => writes.length === 2);
+  await page.until(amountRejected);
+
+  await fill("amount", "200");
+  await page.until(() => field("amount").getAttribute("aria-invalid") !== "true");
+  assert.doesNotMatch(popup()!.textContent, rejection);
+  await submit();
+  await page.until(() => !popup());
+  assert.equal(writes.length, 3);
+});
+
 for (const balance of [-10000]) {
   it(`keeps a checked-out reservation editable with balance ${balance}`, async () => {
     saved = { ...saved, status: "checked_out", balanceCents: balance };

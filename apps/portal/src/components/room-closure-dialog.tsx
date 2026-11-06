@@ -1,4 +1,4 @@
-import { useForm, useSelector } from "@tanstack/react-form";
+import { defaultValidationLogic, useForm, useSelector } from "@tanstack/react-form";
 import { addDays, parseISO } from "date-fns";
 import { EllipsisIcon } from "lucide-react";
 
@@ -27,7 +27,11 @@ import { Spinner } from "@/components/ui/spinner";
 import { type HousekeepingStatus, type RoomClosure } from "@/lib/api";
 import { useDeleteRoomClosure, useSaveRoomClosure } from "@/lib/queries";
 import { format } from "@/lib/dates";
-import { errorMessage, setServerErrors } from "@/lib/form-errors";
+import {
+  clearServerErrorsOnlyOnOwnChangeOrSubmit,
+  errorMessage,
+  setServerErrors,
+} from "@/lib/form-errors";
 import {
   closureFieldErrors,
   closureNights,
@@ -170,6 +174,7 @@ function ClosureForm({
   onRemove: (id: string) => Promise<void>;
 }) {
   const form = useForm({
+    validationLogic: clearServerErrorsOnlyOnOwnChangeOrSubmit(defaultValidationLogic),
     defaultValues: {
       starts: target.mode === "edit" ? target.closure.starts : "",
       ends: target.mode === "edit" ? target.closure.ends : "",
