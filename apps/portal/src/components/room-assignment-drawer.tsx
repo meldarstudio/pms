@@ -3,20 +3,20 @@ import { ArrowLeftIcon, XIcon } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import {
-  Sheet,
-  SheetClose,
-  SheetContent,
-  SheetDescription,
-  SheetHeader,
-  SheetTitle,
-} from "@/components/ui/sheet";
+  Drawer,
+  DrawerClose,
+  DrawerContent,
+  DrawerDescription,
+  DrawerHeader,
+  DrawerTitle,
+} from "@/components/ui/drawer";
 import {
   assignmentTitle,
   RoomAssignmentSteps,
   type RoomAssignmentStepsProps,
 } from "@/components/room-assignment-flow";
 
-export function RoomAssignmentSheet({
+export function RoomAssignmentDrawer({
   open,
   onOpenChange,
   returnFocusRef,
@@ -36,7 +36,8 @@ export function RoomAssignmentSheet({
   }, [open, target?.id]);
 
   return (
-    <Sheet
+    <Drawer
+      showSwipeHandle
       open={open}
       onOpenChange={(next, details) => {
         if (pending) {
@@ -52,14 +53,12 @@ export function RoomAssignmentSheet({
         onOpenChange(next);
       }}
     >
-      <SheetContent
-        side="bottom"
-        showCloseButton={false}
+      <DrawerContent
         initialFocus={heading}
         finalFocus={returnFocusRef}
-        className="max-h-[85dvh] overflow-hidden pb-[env(safe-area-inset-bottom)]"
+        className="data-[swipe-axis=y]:max-h-[85dvh] pb-[env(safe-area-inset-bottom)]"
       >
-        <SheetHeader className="shrink-0 border-b">
+        <DrawerHeader className="shrink-0 border-b pb-4">
           <div className="flex items-center gap-2">
             {target && (
               <Button
@@ -73,27 +72,27 @@ export function RoomAssignmentSheet({
               </Button>
             )}
             <div className="flex min-w-0 flex-1 flex-col gap-0.5">
-              <SheetTitle ref={heading} tabIndex={-1}>
+              <DrawerTitle ref={heading} tabIndex={-1}>
                 {assignmentTitle(target, steps.loading, steps.stays.length)}
-              </SheetTitle>
-              <SheetDescription>
+              </DrawerTitle>
+              <DrawerDescription>
                 {target
                   ? "Toca una habitación disponible para asignarla a toda la estancia."
                   : `Estancias entre ${rangeLabel}`}
-              </SheetDescription>
+              </DrawerDescription>
             </div>
-            <SheetClose
+            <DrawerClose
               render={<Button variant="ghost" size="icon-sm" disabled={pending} />}
               aria-label="Cerrar habitaciones reservadas sin asignar"
             >
               <XIcon />
-            </SheetClose>
+            </DrawerClose>
           </div>
-        </SheetHeader>
+        </DrawerHeader>
         <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain p-4">
           <RoomAssignmentSteps {...steps} />
         </div>
-      </SheetContent>
-    </Sheet>
+      </DrawerContent>
+    </Drawer>
   );
 }

@@ -4,6 +4,14 @@ import { RoomAssignmentSteps } from "@/components/room-assignment-flow";
 import { DirtyRoomBadge } from "@/components/dirty-room-badge";
 import { Button } from "@/components/ui/button";
 import {
+  Drawer,
+  DrawerClose,
+  DrawerContent,
+  DrawerDescription,
+  DrawerHeader,
+  DrawerTitle,
+} from "@/components/ui/drawer";
+import {
   Sheet,
   SheetClose,
   SheetContent,
@@ -66,6 +74,12 @@ function AssignableRooms({
   stays: ReservationStay[];
 }) {
   const isMobile = useIsMobile();
+  const Panel = isMobile ? Drawer : Sheet;
+  const PanelContent = isMobile ? DrawerContent : SheetContent;
+  const PanelHeader = isMobile ? DrawerHeader : SheetHeader;
+  const PanelTitle = isMobile ? DrawerTitle : SheetTitle;
+  const PanelDescription = isMobile ? DrawerDescription : SheetDescription;
+  const PanelClose = isMobile ? DrawerClose : SheetClose;
   const housekeeping = useHousekeeping();
   const rooms = housekeeping.data?.rooms ?? null;
   const assignment = useRoomAssignment(rooms, stays);
@@ -73,7 +87,8 @@ function AssignableRooms({
   return (
     <>
       <RoomList detail={detail} stays={stays} onAssign={assignment.selectStay} />
-      <Sheet
+      <Panel
+        {...(isMobile ? { showSwipeHandle: true } : {})}
         open={assignment.target !== null}
         onOpenChange={(open, details) => {
           if (assignment.pending) {
@@ -83,30 +98,29 @@ function AssignableRooms({
           if (!open) assignment.cancel();
         }}
       >
-        <SheetContent
-          side={isMobile ? "bottom" : "right"}
-          showCloseButton={false}
+        <PanelContent
+          {...(isMobile ? {} : { showCloseButton: false })}
           className={cn(
-            "overflow-hidden",
-            isMobile && "max-h-[85dvh] pb-[env(safe-area-inset-bottom)]",
+            !isMobile && "overflow-hidden",
+            isMobile && "data-[swipe-axis=y]:max-h-[85dvh] pb-[env(safe-area-inset-bottom)]",
           )}
         >
-          <SheetHeader className="shrink-0 border-b">
+          <PanelHeader className="shrink-0 border-b pb-4">
             <div className="flex items-center gap-2">
               <div className="flex min-w-0 flex-1 flex-col gap-0.5">
-                <SheetTitle>Elegir habitación</SheetTitle>
-                <SheetDescription>
+                <PanelTitle>Elegir habitación</PanelTitle>
+                <PanelDescription>
                   Toca una habitación disponible para asignarla a toda la estancia.
-                </SheetDescription>
+                </PanelDescription>
               </div>
-              <SheetClose
+              <PanelClose
                 render={<Button variant="ghost" size="icon-sm" disabled={assignment.pending} />}
                 aria-label="Cerrar"
               >
                 <XIcon />
-              </SheetClose>
+              </PanelClose>
             </div>
-          </SheetHeader>
+          </PanelHeader>
           <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain p-4">
             <RoomAssignmentSteps
               stays={stays}
@@ -120,8 +134,8 @@ function AssignableRooms({
               onRetryAssignment={() => void housekeeping.refetch()}
             />
           </div>
-        </SheetContent>
-      </Sheet>
+        </PanelContent>
+      </Panel>
     </>
   );
 }

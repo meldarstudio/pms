@@ -13,14 +13,14 @@ import {
   PopoverTrigger,
 } from "@/components/ui/popover";
 import {
-  Sheet,
-  SheetClose,
-  SheetContent,
-  SheetFooter,
-  SheetHeader,
-  SheetTitle,
-  SheetTrigger,
-} from "@/components/ui/sheet";
+  Drawer,
+  DrawerClose,
+  DrawerContent,
+  DrawerFooter,
+  DrawerHeader,
+  DrawerTitle,
+  DrawerTrigger,
+} from "@/components/ui/drawer";
 import { ChoiceField } from "@/components/workflow-fields";
 import { reservationStatusLabel } from "@/lib/reservation-list";
 import {
@@ -139,24 +139,24 @@ export function ReservationListFilters({
   return (
     <>
       {mobile ? (
-        <Sheet>
-          <SheetTrigger render={trigger}>{triggerContent}</SheetTrigger>
-          <SheetContent
-            side="bottom"
-            showCloseButton={false}
+        <Drawer showSwipeHandle>
+          <DrawerTrigger render={trigger}>{triggerContent}</DrawerTrigger>
+          <DrawerContent
             aria-describedby={undefined}
-            className="max-h-[calc(100dvh-1rem)]"
+            className="data-[swipe-axis=y]:max-h-[calc(100dvh-1rem)]"
           >
-            <SheetHeader className="shrink-0 flex-row items-center justify-between gap-2">
-              <SheetTitle>Filtros de reservas</SheetTitle>
+            <DrawerHeader className="shrink-0 flex-row items-center justify-between gap-2 pb-4">
+              <DrawerTitle>Filtros de reservas</DrawerTitle>
               {reset}
-            </SheetHeader>
-            <div className="flex min-h-0 flex-col gap-4 overflow-y-auto px-4 pb-4">{controls}</div>
-            <SheetFooter className="shrink-0 pb-[max(1rem,env(safe-area-inset-bottom))]">
-              <SheetClose render={<Button />}>Listo</SheetClose>
-            </SheetFooter>
-          </SheetContent>
-        </Sheet>
+            </DrawerHeader>
+            <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto px-4 pb-4">
+              {controls}
+            </div>
+            <DrawerFooter className="shrink-0 pb-[max(1rem,env(safe-area-inset-bottom))]">
+              <DrawerClose render={<Button />}>Listo</DrawerClose>
+            </DrawerFooter>
+          </DrawerContent>
+        </Drawer>
       ) : (
         <Popover>
           <PopoverTrigger render={trigger}>{triggerContent}</PopoverTrigger>

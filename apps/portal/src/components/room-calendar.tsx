@@ -21,7 +21,7 @@ import { RoomEditDialog, type RoomEditTarget } from "@/components/room-edit-dial
 import { RoomBookingDialog, type BookingTarget } from "@/components/room-booking-dialog";
 import { groupRoomLabel } from "@/components/room-assignment-flow";
 import { RoomAssignmentPanel } from "@/components/room-assignment-panel";
-import { RoomAssignmentSheet } from "@/components/room-assignment-sheet";
+import { RoomAssignmentDrawer } from "@/components/room-assignment-drawer";
 import { NewReservationButton } from "@/components/new-reservation-button";
 import { primaryActionClearance } from "@/components/page-primary-action";
 import { Tooltip, TooltipTrigger, TooltipContent } from "@/components/ui/tooltip";
@@ -716,7 +716,7 @@ export function RoomCalendar({
         {isMobile ? (
           <>
             {assignmentTrigger}
-            <RoomAssignmentSheet
+            <RoomAssignmentDrawer
               open={unassignedOpen}
               onOpenChange={setUnassignedOpen}
               returnFocusRef={assignmentTriggerRef}
