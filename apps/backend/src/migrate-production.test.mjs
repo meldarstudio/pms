@@ -1,10 +1,9 @@
-import { spawn, spawnSync } from "node:child_process";
+import { spawnSync } from "node:child_process";
 import {
   cpSync,
   mkdtempSync,
   mkdirSync,
   readFileSync,
-  readdirSync,
   rmSync,
   symlinkSync,
   writeFileSync,
@@ -15,12 +14,13 @@ import { fileURLToPath } from "node:url";
 import { afterEach, expect, it } from "vite-plus/test";
 
 const repo = fileURLToPath(new URL("../../../", import.meta.url));
+const attachedTerminal = "data:text/javascript,process.stdin.isTTY=true;process.stdout.isTTY=true";
 const temporaryDirs = [];
 afterEach(() => {
   for (const directory of temporaryDirs.splice(0)) rmSync(directory, { recursive: true });
 });
 
-function fixture() {
+function fixture({ pending = 2, stub = {} } = {}) {
   const directory = mkdtempSync(join(tmpdir(), "pms-migration-test-"));
   temporaryDirs.push(directory);
   const backend = join(directory, "backend");
@@ -33,30 +33,35 @@ function fixture() {
   ).entries.map(({ tag }) => `${tag}.sql`);
   const bin = join(directory, "bin");
   mkdirSync(bin);
-  const log = join(directory, "commands.jsonl");
-  const state = join(directory, "history.json");
+  const log = join(directory, "commands.log");
+  const history = join(directory, "history.json");
   writeFileSync(log, "");
-  writeFileSync(state, JSON.stringify(names.slice(0, -1)));
+  writeFileSync(history, JSON.stringify(names.slice(0, names.length - pending)));
   writeFileSync(
     join(bin, "pnpm"),
     `#!/usr/bin/env node
-const { readFileSync, writeFileSync, readdirSync, appendFileSync } = require('node:fs');
-const { join } = require('node:path');
+const { appendFileSync, readFileSync, writeFileSync } = require('node:fs');
 const args = process.argv.slice(2);
-const config = JSON.parse(readFileSync(args[args.indexOf('--config') + 1], 'utf8'));
-const snapshot = config.d1_databases[0].migrations_dir;
-const files = readdirSync(snapshot).map(name => ({ name, sql: readFileSync(join(snapshot, name), 'utf8') }));
-appendFileSync(process.env.COMMAND_LOG, JSON.stringify({ args, config, files }) + '\\n');
-if (args[0] !== 'exec' || args[1] !== 'wrangler' || args[2] !== 'd1' || !args.includes('--remote')) process.exit(91);
-const history = JSON.parse(readFileSync(process.env.HISTORY, 'utf8'));
-if (args[3] === 'execute') {
-  const sql = args[args.indexOf('--command') + 1];
-  const results = sql.includes('sqlite_master') ? [{ name: 'd1_migrations' }] : history.map(name => ({ name }));
-  process.stdout.write(JSON.stringify([{ success: true, results }]));
-} else if (args[3] === 'export') {
-  writeFileSync(args[args.indexOf('--output') + 1], '-- simulated production export\\n');
-} else if (args[3] === 'migrations' && args[4] === 'apply' && files.length === 1) {
-  writeFileSync(process.env.HISTORY, JSON.stringify([...history, files[0].name]));
+appendFileSync(process.env.COMMAND_LOG, args.slice(3, 6).join(' ') + '\\n');
+if (args[0] !== 'exec' || args[1] !== 'wrangler' || args[2] !== 'd1') process.exit(91);
+const stub = JSON.parse(process.env.STUB);
+const names = JSON.parse(process.env.NAMES);
+const applied = JSON.parse(readFileSync(process.env.HISTORY, 'utf8'));
+if (args[3] === 'execute' && args.includes('--remote')) {
+  process.stdout.write(JSON.stringify([{ success: true, results: applied.map((name) => ({ name })) }]));
+} else if (args[3] === 'time-travel' && args[4] === 'info' && !args.includes('--remote')) {
+  if (stub.bookmark === 'fails') process.exit(1);
+  process.stdout.write(JSON.stringify(stub.bookmark === 'missing' ? {} : { bookmark: 'before-migration' }));
+} else if (args[3] === 'migrations' && args[4] === 'apply' && args.includes('--remote')) {
+  if (stub.apply === 'first-then-fails') {
+    writeFileSync(process.env.HISTORY, JSON.stringify(names.slice(0, applied.length + 1)));
+    process.exit(1);
+  }
+  if (stub.apply === 'fails-and-loses-ledger') {
+    writeFileSync(process.env.HISTORY, 'unreadable');
+    process.exit(1);
+  }
+  writeFileSync(process.env.HISTORY, JSON.stringify(names));
 } else process.exit(92);
 `,
     { mode: 0o755 },
@@ -66,132 +71,123 @@ if (args[3] === 'execute') {
     backend,
     names,
     log,
+    history,
     env: {
       PATH: `${bin}:${process.env.PATH}`,
       HOME: directory,
       CI: "false",
       COMMAND_LOG: log,
-      HISTORY: state,
-      TERM: "dumb",
+      HISTORY: history,
+      NAMES: JSON.stringify(names),
+      STUB: JSON.stringify(stub),
     },
   };
 }
 
-function commands(f) {
-  return readFileSync(f.log, "utf8")
-    .trim()
-    .split("\n")
-    .filter(Boolean)
-    .map((line) => JSON.parse(line));
-}
-
-async function interactive(f, approve = () => "pms-production") {
+function migrate(f, { terminal = true, answer = "pms-production" } = {}) {
   const script = join(f.backend, "scripts/migrate-production.mjs");
-  const terminal = `
-import errno, os, pty, select, sys
-pid, fd = pty.fork()
-if pid == 0:
-    os.execv(sys.argv[1], sys.argv[1:])
-while True:
-    ready, _, _ = select.select([fd, sys.stdin], [], [])
-    if fd in ready:
-        try:
-            data = os.read(fd, 65536)
-        except OSError as error:
-            if error.errno != errno.EIO: raise
-            break
-        if not data: break
-        os.write(sys.stdout.fileno(), data)
-    if sys.stdin in ready:
-        data = os.read(sys.stdin.fileno(), 65536)
-        if data: os.write(fd, data)
-_, status = os.waitpid(pid, 0)
-sys.exit(os.waitstatus_to_exitcode(status))
-`;
-  return await new Promise((resolve, reject) => {
-    const child = spawn("python3", ["-c", terminal, process.execPath, script], {
-      env: f.env,
-      stdio: ["pipe", "pipe", "pipe"],
-    });
-    let output = "";
-    let answered = false;
-    const timer = setTimeout(() => {
-      child.kill("SIGKILL");
-      reject(new Error(`Migration test timed out: ${output}`));
-    }, 15000);
-    child.on("error", reject);
-    const collect = (chunk) => {
-      output += chunk;
-      if (!answered && output.includes("to approve this SQL, the backup, and downtime:")) {
-        answered = true;
-        child.stdin.write(`${approve()}\n`);
-      }
-    };
-    child.stdout.on("data", collect);
-    child.stderr.on("data", collect);
-    child.on("close", (status) => {
-      clearTimeout(timer);
-      resolve({ status, output });
-    });
-  });
+  const result = spawnSync(
+    process.execPath,
+    [...(terminal ? ["--import", attachedTerminal] : []), script],
+    { env: f.env, encoding: "utf8", input: `${answer}\n`, timeout: 15000 },
+  );
+  return { status: result.status, output: result.stdout + result.stderr };
 }
 
-it("refuses noninteractive production migrations before invoking any external tool", () => {
-  const f = fixture();
-  const result = spawnSync(process.execPath, [join(f.backend, "scripts/migrate-production.mjs")], {
-    env: f.env,
-    encoding: "utf8",
-  });
-  expect(result.status).toBe(1);
-  expect(result.stderr).toContain("require an interactive terminal outside CI");
-  expect(commands(f)).toEqual([]);
-});
+function commands(f) {
+  return readFileSync(f.log, "utf8").trim().split("\n").filter(Boolean);
+}
 
-it("refuses production migration in CI even with a terminal", async () => {
+const readLedger = "execute pms-production --remote";
+const readBookmark = "time-travel info pms-production";
+const applyMigrations = "migrations apply pms-production";
+
+it("refuses to run without a terminal before invoking any external tool", () => {
   const f = fixture();
-  f.env.CI = "true";
-  const result = await interactive(f);
-  expect(result.status, result.output).toBe(1);
+  const result = migrate(f, { terminal: false });
+  expect(result.status).toBe(1);
   expect(result.output).toContain("require an interactive terminal outside CI");
   expect(commands(f)).toEqual([]);
 });
 
-it("keeps approved SQL hashes, private snapshots and export/report behavior", async () => {
+it("refuses to run in CI even with a terminal", () => {
   const f = fixture();
-  const name = f.names.at(-1);
-  const sql = "SELECT 1;\n";
-  writeFileSync(join(f.backend, "drizzle", name), sql);
-  const result = await interactive(f);
-  expect(result.status, result.output).toBe(0);
-  const calls = commands(f);
-  const apply = calls.find(({ args }) => args[3] === "migrations");
-  expect(apply.files).toEqual([{ name, sql }]);
-  expect(apply.config.d1_databases[0].migrations_dir).not.toBe(join(f.backend, "drizzle"));
-  const root = join(f.directory, ".pms-production-backups");
-  const report = JSON.parse(readFileSync(join(root, readdirSync(root)[0], "report.json"), "utf8"));
-  expect(report.status).toBe("succeeded");
-  expect(report.planned).toEqual([
-    { name, sha256: "b4e0497804e46e0a0b0b8c31975b062152d551bac49c3c2e80932567b4085dcd" },
-  ]);
-  expect(result.output).toContain(report.planned[0].sha256);
-  expect(report.backup.sha256).toBe(
-    "23b8c565ccd839c203eddcbdadcf88c89953e4a0c4b5e1d367cdefa2d5049931",
-  );
-  expect(report.applied).toEqual([name]);
-  expect(calls.findIndex(({ args }) => args[3] === "export")).toBeLessThan(calls.indexOf(apply));
+  f.env.CI = "true";
+  const result = migrate(f);
+  expect(result.status).toBe(1);
+  expect(result.output).toContain("require an interactive terminal outside CI");
+  expect(commands(f)).toEqual([]);
 });
 
-it.each(["SQL", "configuration"])(
-  "stops if approved %s changes before export or migration",
-  async (kind) => {
-    const f = fixture();
-    const path = join(f.backend, kind === "SQL" ? `drizzle/${f.names.at(-1)}` : "wrangler.jsonc");
-    const result = await interactive(f, () => {
-      writeFileSync(path, readFileSync(path, "utf8") + "\n");
-      return "pms-production";
-    });
-    expect(result.status, result.output).toBe(1);
-    expect(result.output).toContain("changed; review and approve a new run");
-    expect(commands(f).every(({ args }) => args[3] === "execute")).toBe(true);
-  },
-);
+it("stops without a bookmark or migration when nothing is pending", () => {
+  const f = fixture({ pending: 0 });
+  const result = migrate(f);
+  expect(result.status, result.output).toBe(0);
+  expect(result.output).toContain("No pending production migrations");
+  expect(commands(f)).toEqual([readLedger]);
+});
+
+it.each([
+  ["an empty ledger", () => []],
+  ["a renamed migration", (names) => ["0000_other.sql", ...names.slice(1)]],
+  ["history newer than this commit", (names) => [...names, "9999_future.sql"]],
+])("refuses %s before asking for approval", (_, ledger) => {
+  const f = fixture();
+  writeFileSync(f.history, JSON.stringify(ledger(f.names)));
+  const result = migrate(f);
+  expect(result.status).toBe(1);
+  expect(result.output).toContain("not a prefix");
+  expect(commands(f)).toEqual([readLedger]);
+});
+
+it("shows the pending SQL and changes nothing when approval does not match", () => {
+  const f = fixture();
+  const sql = "SELECT 'pending migration under review';";
+  writeFileSync(join(f.backend, "drizzle", f.names.at(-1)), sql);
+  const result = migrate(f, { answer: "yes" });
+  expect(result.status).toBe(1);
+  expect(result.output).toContain(sql);
+  expect(result.output).toContain("Approval did not match");
+  expect(commands(f)).toEqual([readLedger]);
+});
+
+it("records a restore point before applying, then prints the resulting ledger", () => {
+  const f = fixture();
+  const result = migrate(f);
+  expect(result.status, result.output).toBe(0);
+  expect(commands(f)).toEqual([readLedger, readBookmark, applyMigrations, readLedger]);
+  expect(result.output).toContain(
+    "wrangler d1 time-travel restore pms-production --bookmark=before-migration",
+  );
+  expect(result.output).toContain(
+    `Ledger records these new migrations: ${f.names.slice(-2).join(", ")}`,
+  );
+});
+
+it.each([
+  ["cannot be read", "fails", /wrangler d1 time-travel failed/],
+  ["is missing", "missing", /No Time Travel bookmark/],
+])("applies nothing when the bookmark %s", (_, bookmark, message) => {
+  const f = fixture({ stub: { bookmark } });
+  const result = migrate(f);
+  expect(result.status).toBe(1);
+  expect(result.output).toMatch(message);
+  expect(commands(f)).toEqual([readLedger, readBookmark]);
+});
+
+it("stops on a failed migration and prints what the ledger recorded", () => {
+  const f = fixture({ stub: { apply: "first-then-fails" } });
+  const result = migrate(f);
+  expect(result.status).toBe(1);
+  expect(result.output).toContain(`Ledger records these new migrations: ${f.names.at(-2)}`);
+  expect(result.output).not.toContain(f.names.at(-1) + ",");
+  expect(result.output).toContain("wrangler d1 migrations failed");
+});
+
+it("warns that state is unknown when a failed migration leaves the ledger unreadable", () => {
+  const f = fixture({ stub: { apply: "fails-and-loses-ledger" } });
+  const result = migrate(f);
+  expect(result.status).toBe(1);
+  expect(result.output).toContain("database state is unknown");
+  expect(result.output).toContain("wrangler d1 migrations failed");
+});

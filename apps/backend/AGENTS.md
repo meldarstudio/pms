@@ -27,5 +27,3 @@ Paths below are relative to `apps/backend` unless stated otherwise.
 Colocated `.test.ts` and `.test.mjs` suites use `vite-plus/test` and registered
 migrations against in-memory `node:sqlite`; no running Worker is needed.
 Like D1, the test database rejects statements with more than 100 bound parameters.
-Migration CLI tests also need Python 3's standard-library PTY for simulated
-Wrangler commands and a private home directory.
