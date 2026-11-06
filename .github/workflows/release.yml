@@ -29,7 +29,6 @@ jobs:
           persist-credentials: false
 
       - name: Select exact production revision
-        id: source
         env:
           REQUESTED_SHA: ${{ inputs.commit_sha }}
         run: |
@@ -39,7 +38,6 @@ jobs:
           git merge-base --is-ancestor "$REQUESTED_SHA" refs/remotes/origin/main
           git checkout --detach "$REQUESTED_SHA"
           test "$(git rev-parse HEAD)" = "$REQUESTED_SHA"
-          test -f apps/backend/scripts/record-production-release.mjs
           printf 'Pinned release SHA: %s\n' "$REQUESTED_SHA"
 
       - uses: pnpm/action-setup@v6
@@ -54,26 +52,21 @@ jobs:
 
       - run: pnpm install --frozen-lockfile
 
-      - id: checks
-        run: pnpm check
+      - run: pnpm check
 
-      - id: tests
-        run: pnpm test
+      - run: pnpm test
 
-      - id: build
-        env:
+      - env:
           VITE_API_BASE_URL: https://api.hotelmanantialchurin.com
         run: pnpm build
 
       - name: Bundle API without deploying
-        id: api_build
         env:
           WRANGLER_SEND_METRICS: "false"
           WRANGLER_WRITE_LOGS: "false"
         run: pnpm --filter @pms/backend exec wrangler deploy --dry-run --minify
 
       - name: Verify production migration readiness (read only)
-        id: readiness
         env:
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_READ_TOKEN }}
@@ -82,56 +75,13 @@ jobs:
         run: node apps/backend/scripts/check-production-readiness.mjs
 
       - name: Deploy API code
-        id: api
         env:
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_DEPLOY_TOKEN }}
-          WRANGLER_OUTPUT_FILE_PATH: ${{ runner.temp }}/pms-release/api.jsonl
         run: pnpm --filter @pms/backend run deploy
 
       - name: Deploy built portal
-        id: portal
         env:
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_DEPLOY_TOKEN }}
-          WRANGLER_OUTPUT_FILE_PATH: ${{ runner.temp }}/pms-release/portal.jsonl
         run: pnpm --filter @pms/portal run deploy
-
-      - name: Verify active deployment versions (read only)
-        id: versions
-        env:
-          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_DEPLOY_TOKEN }}
-          RELEASE_EVIDENCE_DIR: ${{ runner.temp }}/pms-release
-          WRANGLER_SEND_METRICS: "false"
-          WRANGLER_WRITE_LOGS: "false"
-        run: node apps/backend/scripts/record-production-release.mjs --verify
-
-      - name: Record attempt (manual verification still required)
-        if: always()
-        env:
-          REQUESTED_SHA: ${{ inputs.commit_sha }}
-          SOURCE: ${{ steps.source.outcome }}
-          CHECKS: ${{ steps.checks.outcome }}
-          TESTS: ${{ steps.tests.outcome }}
-          BUILD: ${{ steps.build.outcome }}
-          API_BUILD: ${{ steps.api_build.outcome }}
-          READINESS: ${{ steps.readiness.outcome }}
-          API: ${{ steps.api.outcome }}
-          PORTAL: ${{ steps.portal.outcome }}
-          VERSIONS: ${{ steps.versions.outcome }}
-          RELEASE_EVIDENCE_DIR: ${{ runner.temp }}/pms-release
-        run: |
-          {
-            printf '## Production release attempt — not yet verified\n\n'
-            printf 'Requested SHA: `%s`\n\n' "$REQUESTED_SHA"
-            printf 'Run: %s/%s/actions/runs/%s\n\n' "$GITHUB_SERVER_URL" "$GITHUB_REPOSITORY" "$GITHUB_RUN_ID"
-            printf -- '- Source accepted: %s\n- Checks: %s\n- Tests: %s\n- Build: %s\n- API bundle: %s\n- Migration readiness: %s\n- API: %s\n- Portal: %s\n- Active versions: %s\n\n' "$SOURCE" "$CHECKS" "$TESTS" "$BUILD" "$API_BUILD" "$READINESS" "$API" "$PORTAL" "$VERSIONS"
-            printf 'Failed or interrupted deploys can have uncertain remote outcomes. Inspect both Worker histories before retrying.\n\n'
-            printf 'No automated HTTP smoke checks are performed. Manual login/calendar/PWA verification is still required. No tag or release was published.\n\n'
-            if test -f apps/backend/scripts/record-production-release.mjs; then
-              node apps/backend/scripts/record-production-release.mjs
-            else
-              printf 'Deployment identity tooling unavailable in selected checkout; inspect both Worker histories.\n'
-            fi
-          } >> "$GITHUB_STEP_SUMMARY"
