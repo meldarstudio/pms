@@ -101,7 +101,7 @@ function AssignableRooms({
         <PanelContent
           {...(isMobile ? {} : { showCloseButton: false })}
           className={cn(
-            "overflow-hidden",
+            !isMobile && "overflow-hidden",
             isMobile && "data-[swipe-axis=y]:max-h-[85dvh] pb-[env(safe-area-inset-bottom)]",
           )}
         >

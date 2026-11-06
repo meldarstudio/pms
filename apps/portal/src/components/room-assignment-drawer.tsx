@@ -56,7 +56,7 @@ export function RoomAssignmentDrawer({
       <DrawerContent
         initialFocus={heading}
         finalFocus={returnFocusRef}
-        className="data-[swipe-axis=y]:max-h-[85dvh] overflow-hidden pb-[env(safe-area-inset-bottom)]"
+        className="data-[swipe-axis=y]:max-h-[85dvh] pb-[env(safe-area-inset-bottom)]"
       >
         <DrawerHeader className="shrink-0 border-b pb-4">
           <div className="flex items-center gap-2">
