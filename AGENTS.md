@@ -28,7 +28,7 @@ Sign in to the local portal as owner `kevin` with password `owner horse battery 
 
 - **Backend/API:** [apps/backend/AGENTS.md](apps/backend/AGENTS.md).
 - **Portal/UI:** [apps/portal/AGENTS.md](apps/portal/AGENTS.md).
-- **Shared schemas:** `packages/shared` (`@pms/shared`) supplies backend request schemas. The portal maintains its own schemas and API types; check both sides when changing a contract.
+- **Shared schemas:** `packages/shared` (`@pms/shared`) supplies backend request schemas and `z.input` request body types. The portal imports those types but no runtime code from it, and maintains its own form schemas and response types; check both sides when changing a contract.
 - **Domain/architecture:** [docs/agents/domain.md](docs/agents/domain.md); terms live in [GLOSSARY.md](GLOSSARY.md).
 - **Issues/specs:** [docs/agents/issue-tracker.md](docs/agents/issue-tracker.md). Use GitHub Issues in `meldarstudio/pms`.
 - **Triage:** [docs/agents/triage-labels.md](docs/agents/triage-labels.md).
@@ -42,4 +42,4 @@ Code is the docs. Don't add prose guides; put knowledge in names, types, and tes
 - Business dates are timezone-free `YYYY-MM-DD` labels; UTC calendar arithmetic preserves those labels. Operational today comes from the backend's `PROPERTY_TIME_ZONE`, supplied to the portal by login/session metadata. Stay nights and room closures use `[start, end)`; rate ranges include both ends. A stay cannot exceed 60 nights.
 - Money is integer cents. Currency comes from the Worker's `CURRENCY` var (`PEN`).
 - Backend error messages stay English. Add each new message's Spanish translation to `apps/portal/src/lib/errors.ts`, including authentication and database-conflict errors.
-- API request or response changes must update the portal's hand-written types and fetch helpers in `apps/portal/src/lib/api.ts` and affected query hooks in `apps/portal/src/lib/queries.ts`.
+- API response and query-string changes must update the portal's hand-written types in `apps/portal/src/lib/api.ts`. Request body types come from `@pms/shared`. Any API change must also update affected fetch helpers in `api.ts` and query hooks in `apps/portal/src/lib/queries.ts`.

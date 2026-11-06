@@ -1,7 +1,32 @@
+import type {
+  HousekeepingMarksRequest,
+  LoginRequest,
+  OwnPasswordRequest,
+  PatchRoomClosureRequest,
+  PatchRoomRequest,
+  PaymentRequest as PaymentInput,
+  PropertySetupRequest as PropertySetupInput,
+  RateWriteRequest,
+  RoomClosureRequest,
+  WorkflowActionRequest as WorkflowAction,
+  WorkflowCommandRequest as WorkflowCommand,
+  WorkflowCreatePreviewRequest as CreationPreviewInput,
+  WorkflowCreateRequest,
+  WorkflowRoomRequest as WorkflowRoom,
+} from "@pms/shared";
 import { ApiError, NetworkError } from "./api-error";
 import { targetProblem, type ReservationStay } from "./assignment-availability";
 import { configurePropertyCalendar } from "./property-calendar";
 import type { InventoryStatus } from "./reservation-statuses";
+
+export type {
+  CreationPreviewInput,
+  PaymentInput,
+  PropertySetupInput,
+  WorkflowAction,
+  WorkflowCommand,
+  WorkflowRoom,
+};
 
 export type Room = {
   id: string;
@@ -15,15 +40,6 @@ export type RoomType = {
   maxAdults: number;
   maxChildren: number;
   baseRateCents: number;
-};
-
-export type PropertySetupInput = {
-  roomTypeId?: string;
-  name: string;
-  maxAdults: number;
-  maxChildren: number;
-  baseRateCents: number;
-  rooms: { id?: string; number: string }[];
 };
 
 export type PropertySetupResult = { roomType: RoomType; rooms: Room[] };
@@ -113,7 +129,7 @@ export type HousekeepingMark = Pick<
   "housekeepingStatus" | "housekeepingChangedAt"
 >;
 
-export type HousekeepingMarkInput = { roomId: string; status: HousekeepingStatus };
+export type HousekeepingMarkInput = HousekeepingMarksRequest["marks"][number];
 
 export type MarkedRoom = { id: string } & HousekeepingMark;
 
@@ -188,14 +204,6 @@ export type StayingGuest = BookingContact & {
 };
 
 export type PaymentMethod = "cash" | "card" | "transfer" | "yape" | "plin" | "other";
-
-export type PaymentInput = {
-  amountCents: number;
-  method: PaymentMethod;
-  paymentDate: string;
-  reference?: string;
-  notes?: string;
-};
 
 export type ReservationPayment = {
   id: string;
@@ -427,7 +435,7 @@ export async function getSession(signal?: AbortSignal): Promise<Session | null> 
   return calendarSession((await response.json()) as Session);
 }
 
-export async function login(input: { username: string; password: string }) {
+export async function login(input: LoginRequest) {
   return calendarSession(await writeJson<Session>("/login", "POST", input));
 }
 
@@ -443,7 +451,7 @@ export function setAccountPassword(id: string, password: string) {
   return writeJson<{ ok: true }>(`/accounts/${id}/password`, "PUT", { password });
 }
 
-export function changeOwnPassword(input: { currentPassword: string; newPassword: string }) {
+export function changeOwnPassword(input: OwnPasswordRequest) {
   return writeJson<{ ok: true }>("/account/password", "PUT", input);
 }
 
@@ -451,7 +459,7 @@ export function listRooms(signal?: AbortSignal) {
   return getJson<Room[]>("/rooms", signal);
 }
 
-export function patchRoom(id: string, body: { number?: string; roomTypeId?: string }) {
+export function patchRoom(id: string, body: PatchRoomRequest) {
   return writeJson<Room>(`/rooms/${id}`, "PATCH", body);
 }
 
@@ -473,10 +481,7 @@ export function getInventory(from: string, to: string, signal?: AbortSignal) {
   return getJson<Inventory>(`/inventory?from=${from}&to=${to}`, signal);
 }
 
-export function putRoomTypeRates(
-  id: string,
-  body: { from: string; to: string; priceCents: number; weekdays?: number[] },
-) {
+export function putRoomTypeRates(id: string, body: RateWriteRequest) {
   return writeJson<{ updated: number }>(`/room-types/${id}/rates`, "PUT", body);
 }
 
@@ -552,19 +557,11 @@ export function markHousekeeping(marks: HousekeepingMarkInput[]) {
   return writeJson<{ rooms: MarkedRoom[] }>("/housekeeping", "PUT", { marks });
 }
 
-export function createRoomClosure(body: {
-  roomId: string;
-  starts: string;
-  ends: string;
-  reason?: string;
-}) {
+export function createRoomClosure(body: RoomClosureRequest) {
   return writeJson<RoomClosure>("/room-closures", "POST", body);
 }
 
-export function patchRoomClosure(
-  id: string,
-  body: { starts: string; ends: string; reason: string | null },
-) {
+export function patchRoomClosure(id: string, body: PatchRoomClosureRequest) {
   return writeJson<RoomClosure>(`/room-closures/${id}`, "PATCH", body);
 }
 
@@ -587,50 +584,6 @@ export async function listReservations(from: string, to: string, signal?: AbortS
   }
 }
 
-export type WorkflowRoom = {
-  roomTypeId: string;
-  roomId: string | null;
-  adults: number;
-  children: number;
-  nightlyRateCents?: number;
-};
-export type WorkflowAction =
-  | { type: "contact"; contact: BookingContact }
-  | { type: "set-guests"; guests: StayingGuest[] }
-  | { type: "edit-room"; lineId: string; room: Omit<WorkflowRoom, "nightlyRateCents"> }
-  | { type: "add-room"; room: WorkflowRoom }
-  | { type: "dates"; checkIn: string; checkOut: string }
-  | { type: "remove-room"; lineId: string }
-  | { type: "set-discount"; amountCents: number }
-  | { type: "add-payment"; payment: PaymentInput }
-  | {
-      type: "set-status";
-      reason?: string;
-      status: "confirmed" | "checked_in" | "checked_out" | "cancelled" | "no_show";
-    }
-  | { type: "edit-payment"; paymentId: string; payment: PaymentInput }
-  | { type: "delete-payment"; paymentId: string }
-  | { type: "waive-cancellation-charge"; amountCents: number; reason: string }
-  | {
-      type: "request-refund";
-      paymentId: string;
-      amountCents: number;
-      method: PaymentMethod;
-      reference?: string;
-      reason: string;
-      completed?: RefundCompletion;
-    }
-  | { type: "request-culqi-refund"; paymentId: string; amountCents: number; reason: string }
-  | ({ type: "complete-refund"; refundId: string } & RefundCompletion)
-  | { type: "fail-refund"; refundId: string; reason: string }
-  | { type: "issue-coupon"; amountCents: number; guestAccepted: true }
-  | { type: "redeem-coupon"; code: string; amountCents: number }
-  | { type: "notes"; notes: string };
-export type RefundCompletion = { refundDate: string; reference?: string };
-export type WorkflowCommand = {
-  requestId: string;
-  actions: WorkflowAction[];
-};
 export type WorkflowBilling = Pick<
   ReservationDetail,
   | "status"
@@ -676,32 +629,9 @@ export function sendWorkflow(id: string, body: WorkflowCommand) {
 export function previewWorkflow(id: string, body: WorkflowCommand) {
   return writeJson<WorkflowPreview>(`/reservations/${id}/preview`, "POST", body);
 }
-export function createWorkflowBooking(body: {
-  checkIn: string;
-  checkOut: string;
-  requestId: string;
-  guest: {
-    fullName: string;
-    email?: string;
-    phone?: string;
-    documentType?: string;
-    documentNumber?: string;
-    notes?: string;
-  };
-  rooms: WorkflowRoom[];
-  notes?: string;
-  discountCents?: number;
-  ratePlan?: RatePlanCode;
-}) {
+export function createWorkflowBooking(body: WorkflowCreateRequest) {
   return writeJson<ReservationDetail>("/reservations", "POST", body);
 }
-export type CreationPreviewInput = {
-  checkIn: string;
-  checkOut: string;
-  rooms: Pick<WorkflowRoom, "roomTypeId" | "nightlyRateCents">[];
-  discountCents?: number;
-  ratePlan?: RatePlanCode;
-};
 export type CreationPreview = {
   billing: Pick<
     ReservationDetail,

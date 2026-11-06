@@ -188,6 +188,15 @@ export type RateWriteInput = z.infer<typeof rateWriteSchema>;
 export type RoomClosureInput = z.infer<typeof roomClosureSchema>;
 export type PatchRoomClosureInput = z.infer<typeof patchRoomClosureSchema>;
 
+export type PropertySetupRequest = z.input<typeof propertySetupSchema>;
+export type PatchRoomRequest = z.input<typeof patchRoomSchema>;
+export type HousekeepingMarksRequest = z.input<typeof housekeepingMarksSchema>;
+export type RateWriteRequest = z.input<typeof rateWriteSchema>;
+export type LoginRequest = z.input<typeof loginSchema>;
+export type OwnPasswordRequest = z.input<typeof ownPasswordSchema>;
+export type RoomClosureRequest = z.input<typeof roomClosureSchema>;
+export type PatchRoomClosureRequest = z.input<typeof patchRoomClosureSchema>;
+
 const cents = z.number().int().min(1).max(1000000000);
 export const paymentInputSchema = z
   .object({
@@ -352,6 +361,12 @@ export type WorkflowCommand = z.infer<typeof workflowCommandSchema>;
 export type WorkflowCreate = z.infer<typeof workflowCreateSchema>;
 export type WorkflowCreatePreview = z.infer<typeof workflowCreatePreviewSchema>;
 export type QuoteCreate = z.infer<typeof quoteCreateSchema>;
+export type PaymentRequest = z.input<typeof paymentInputSchema>;
+export type WorkflowRoomRequest = z.input<typeof workflowRoom>;
+export type WorkflowActionRequest = z.input<typeof workflowActionSchema>;
+export type WorkflowCommandRequest = z.input<typeof workflowCommandSchema>;
+export type WorkflowCreateRequest = z.input<typeof workflowCreateSchema>;
+export type WorkflowCreatePreviewRequest = z.input<typeof workflowCreatePreviewSchema>;
 export const paymentAttemptCreateSchema = z
   .object({
     quoteId: z.uuid(),
