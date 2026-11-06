@@ -212,6 +212,7 @@ describe("cross-origin access", () => {
     expect(response.status).toBe(204);
     expect(response.headers.get("access-control-allow-origin")).toBe(PORTAL_ORIGIN);
     expect(response.headers.get("access-control-allow-credentials")).toBe("true");
+    expect(response.headers.get("access-control-max-age")).toBe("7200");
   });
 
   it("lets the portal read a 401 response", async () => {

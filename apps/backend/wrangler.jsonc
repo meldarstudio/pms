@@ -29,7 +29,8 @@
     },
   ],
   // Resolves Culqi payment attempts whose response was lost and retries unsaved paid quotes.
-  "triggers": { "crons": ["* * * * *"] },
+  // A backstop: attempts also get a lookup shortly after the charge and on each status check.
+  "triggers": { "crons": ["*/5 * * * *"] },
   "observability": {
     "logs": {
       "enabled": true,
