@@ -21,6 +21,7 @@ import {
   roomTypes,
 } from "./db/schema";
 import { HttpError, rethrowConflict } from "./http";
+import { peakOccupied, type GridClosure, type GridStay } from "./lib/inventory-grid";
 import { holdsInventory, inventoryStatuses } from "./lib/statuses";
 import { ratePlans, termColumns } from "./lib/rate-plans";
 import { acceptPhone, requireStay } from "./rules";
@@ -38,11 +39,7 @@ import {
 
 type RoomType = typeof roomTypes.$inferSelect;
 type Room = typeof rooms.$inferSelect;
-type OccupiedRoom = Pick<Stay, "id" | "roomTypeId" | "roomId"> & {
-  checkIn: string;
-  checkOut: string;
-};
-type RoomClosure = typeof roomClosures.$inferSelect;
+type OccupiedRoom = Pick<Stay, "id" | "roomId"> & GridStay;
 import { plan, priceRooms, stayLine } from "./workflow-plan";
 
 export type CommandContext = {
@@ -108,6 +105,7 @@ export async function previewCommand(
         id: reservationRooms.id,
         roomTypeId: reservationRooms.roomTypeId,
         roomId: reservationRooms.roomId,
+        status: reservations.status,
         checkIn: reservations.checkIn,
         checkOut: reservations.checkOut,
       })
@@ -122,8 +120,14 @@ export async function previewCommand(
         ),
       ),
     db
-      .select()
+      .select({
+        roomId: roomClosures.roomId,
+        roomTypeId: rooms.roomTypeId,
+        starts: roomClosures.starts,
+        ends: roomClosures.ends,
+      })
       .from(roomClosures)
+      .innerJoin(rooms, eq(rooms.id, roomClosures.roomId))
       .where(and(lt(roomClosures.starts, checkOut), gt(roomClosures.ends, checkIn))),
   ]);
   const issues = [
@@ -452,41 +456,27 @@ function availabilityIssues(
   state: State,
   physical: Room[],
   otherLines: OccupiedRoom[],
-  closures: RoomClosure[],
+  closures: GridClosure[],
 ) {
   const issues: WorkflowIssue[] = [];
-  const { checkIn, checkOut } = state.reservation;
+  const { checkIn, checkOut, status } = state.reservation;
   const lines: OccupiedRoom[] = [
     ...otherLines,
     ...state.lines.map(({ id, roomTypeId, roomId }) => ({
       id,
       roomTypeId,
       roomId,
+      status,
       checkIn,
       checkOut,
     })),
   ];
+  const peaks = peakOccupied(requireStay(checkIn, checkOut), lines, closures);
   const overlap = (a: string, b: string, c: string, d: string) => a < d && b > c;
   for (const [roomIndex, line] of state.lines.entries()) {
-    for (const date of requireStay(checkIn, checkOut)) {
-      const count = lines.filter(
-        (l) => l.roomTypeId === line.roomTypeId && l.checkIn <= date && l.checkOut > date,
-      ).length;
-      const closed = new Set(
-        closures
-          .filter(
-            (c) =>
-              c.starts <= date &&
-              c.ends > date &&
-              physical.some((r) => r.id === c.roomId && r.roomTypeId === line.roomTypeId),
-          )
-          .map((c) => c.roomId),
-      ).size;
-      if (count + closed > physical.filter((r) => r.roomTypeId === line.roomTypeId).length) {
-        issues.push({ code: "no availability", roomIndex, field: "roomTypeId" });
-        break;
-      }
-    }
+    const capacity = physical.filter((r) => r.roomTypeId === line.roomTypeId).length;
+    if ((peaks.get(line.roomTypeId) ?? 0) > capacity)
+      issues.push({ code: "no availability", roomIndex, field: "roomTypeId" });
     if (!line.roomId) continue;
     if (
       lines.some(
