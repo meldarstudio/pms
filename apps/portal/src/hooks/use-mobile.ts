@@ -21,6 +21,12 @@ export function useIsMobile() {
   return useMediaQuery("(max-width: 767px)");
 }
 
+export function useIsMobileSidebar() {
+  const narrow = useIsMobile();
+  const shortTouch = useMediaQuery("(pointer: coarse) and (max-height: 500px)");
+  return narrow || shortTouch;
+}
+
 export function useIsCompact() {
   const narrow = useMediaQuery("(max-width: 1279px)");
   const touch = useMediaQuery("(pointer: coarse) and (max-width: 1535px)");

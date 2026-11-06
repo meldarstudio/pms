@@ -28,6 +28,7 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
+  wideDialogContent,
 } from "@/components/ui/dialog";
 import {
   AlertDialog,
@@ -196,9 +197,8 @@ export function RoomBookingDialog({
         showCloseButton={false}
         className={cn(
           "max-h-[94svh] max-md:top-(--reservation-viewport-top,0px) max-md:left-0 max-md:flex max-md:h-(--reservation-viewport-height,100dvh) max-md:max-h-(--reservation-viewport-height,100dvh) max-md:max-w-full max-md:translate-x-0 max-md:translate-y-0 max-md:flex-col max-md:gap-0 max-md:overflow-hidden max-md:p-0 max-md:transition-none",
-          target?.mode === "edit"
-            ? "flex flex-col overflow-hidden sm:max-w-4xl"
-            : "overflow-y-auto sm:max-w-4xl",
+          wideDialogContent,
+          target?.mode === "edit" ? "flex flex-col overflow-hidden" : "overflow-y-auto",
         )}
       >
         <DialogHeader
