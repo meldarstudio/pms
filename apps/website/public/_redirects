@@ -1,0 +1,11 @@
+# Cloudflare answers these with a 307 by default. Search engines need a 301 to
+# consolidate each page on its canonical trailing-slash URL.
+/en /en/ 301
+/habitaciones /habitaciones/ 301
+/en/habitaciones /en/habitaciones/ 301
+/churin /churin/ 301
+/en/churin /en/churin/ 301
+
+# Retired URL reported in Search Console (#73); send visitors to the homepage.
+/nosotros / 301
+/nosotros/ / 301

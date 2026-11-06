@@ -40,3 +40,28 @@ jobs:
         env:
           WRANGLER_WRITE_LOGS: "false"
         run: pnpm --filter @pms/backend exec cf deploy --dry-run
+
+  website:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - uses: pnpm/action-setup@v6
+        with:
+          run_install: false
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .node-version
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      - run: pnpm --filter @pms/website exec playwright install --with-deps chromium
+
+      - run: pnpm test:website
+
+      - run: pnpm --filter @pms/website exec node scripts/check-links.mjs

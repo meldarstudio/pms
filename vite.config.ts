@@ -3,6 +3,7 @@ import { defineConfig } from "vite-plus";
 export default defineConfig({
   defaultPackage: "./apps/portal",
   fmt: {
+    astro: true,
     ignorePatterns: [
       "pnpm-lock.yaml",
       "skills-lock.json",
