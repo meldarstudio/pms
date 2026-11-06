@@ -97,21 +97,19 @@ describe("production readiness rules", () => {
   });
 
   const id = "00000000-0000-4000-8000-000000000000";
-  const production = { binding: "DB", database_name: "pms-production", database_id: id };
-  const config = (...databases) => ({ name: "pms-api", d1_databases: databases });
+  const production = { type: "d1", name: "pms-production", id };
+  const config = (env) => ({ worker: { name: "pms-api", env } });
 
   it("accepts the single production database bound as DB", () => {
-    expect(productionTarget(config(production))).toBe(production);
+    expect(productionTarget(config({ DB: production }))).toBe(production);
   });
 
   it.each([
-    ["malformed database identity", config({ ...production, database_id: "not-a-uuid" })],
-    [
-      "second binding to the production database",
-      config({ ...production, binding: "OTHER" }, production),
-    ],
-    ["DB bound to another database", config({ ...production, database_name: "other" }, production)],
-  ])("rejects a production target with %s", (_, wranglerConfig) => {
-    expect(() => productionTarget(wranglerConfig)).toThrow(/Unexpected production configuration/);
+    ["malformed database identity", config({ DB: { ...production, id: "not-a-uuid" } })],
+    ["second binding to the production database", config({ DB: production, OTHER: production })],
+    ["DB bound to another database", config({ DB: { ...production, name: "other" } })],
+    ["no database binding", config({})],
+  ])("rejects a production target with %s", (_, cloudflareConfig) => {
+    expect(() => productionTarget(cloudflareConfig)).toThrow(/Unexpected production configuration/);
   });
 });

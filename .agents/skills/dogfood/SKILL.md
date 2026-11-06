@@ -7,7 +7,7 @@ description: Watch a live portal session and note issues from what the user does
 
 A **session** is the user using the local portal while you watch the API log and take notes. You do not fix unless they ask.
 
-Serve a production portal preview, not the Vite dev server. React StrictMode there double-fetches, and the log lies. The local API is still the backend dev script: that process is Wrangler, not React.
+Serve a production portal preview, not the Vite dev server. React StrictMode there double-fetches, and the log lies. The local API is still the backend dev script: that process is `cf dev`, not React.
 
 ## Serve
 
@@ -38,7 +38,7 @@ Each thing they call out gets a note, tied to a log line or marked client-only.
 - A request per keystroke is a finding.
 - Phone and other client checks never hit the API. Say that, then read the form only if they want the cause.
 - An unexplained 4xx is a note. Chase it only if they ask.
-- Identical paired GETs on this server are real. Wrangler's typegen warning and the local scheduled-worker warning are noise.
+- Identical paired GETs on this server are real. `cf dev`'s lock-file, typegen, and Docker notices and the local scheduled-worker warning are noise.
 - Do not quote `.dev.vars` or hidden bindings.
 
 **Done when:** every call-out has that note.

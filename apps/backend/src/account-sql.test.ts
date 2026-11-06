@@ -27,8 +27,12 @@ async function runAccountScript(password: string) {
   writeFileSync(
     join(directory, "pnpm"),
     `#!/usr/bin/env node
-const { copyFileSync } = require('node:fs');
-copyFileSync(process.argv[process.argv.indexOf('--file') + 1], process.env.ACCOUNT_SQL_PATH);
+const { readFileSync, writeFileSync } = require('node:fs');
+const args = process.argv.slice(2);
+if (!args.includes('--local')) process.exit(91);
+const body = JSON.parse(readFileSync(args[args.indexOf('--body') + 1].slice(1), 'utf8'));
+writeFileSync(process.env.ACCOUNT_SQL_PATH, body.batch.map(({ sql }) => sql + ';').join('\\n'));
+process.stdout.write(JSON.stringify([{ success: true }]));
 `,
     { mode: 0o755 },
   );

@@ -15,6 +15,7 @@ import { afterEach, expect, it } from "vite-plus/test";
 
 const repo = fileURLToPath(new URL("../../../", import.meta.url));
 const attachedTerminal = "data:text/javascript,process.stdin.isTTY=true;process.stdout.isTTY=true";
+const databaseId = "17e838dd-b2f9-4783-ad9b-f5d837701428";
 const temporaryDirs = [];
 afterEach(() => {
   for (const directory of temporaryDirs.splice(0)) rmSync(directory, { recursive: true });
@@ -25,7 +26,7 @@ function fixture({ pending = 2, stub = {} } = {}) {
   temporaryDirs.push(directory);
   const backend = join(directory, "backend");
   mkdirSync(backend);
-  for (const name of ["scripts", "drizzle", "wrangler.jsonc"])
+  for (const name of ["scripts", "drizzle", "cloudflare.config.ts"])
     cpSync(join(repo, "apps/backend", name), join(backend, name), { recursive: true });
   symlinkSync(join(repo, "apps/backend/node_modules"), join(backend, "node_modules"));
   const names = JSON.parse(
@@ -43,16 +44,16 @@ function fixture({ pending = 2, stub = {} } = {}) {
 const { appendFileSync, readFileSync, writeFileSync } = require('node:fs');
 const args = process.argv.slice(2);
 appendFileSync(process.env.COMMAND_LOG, args.slice(3, 6).join(' ') + '\\n');
-if (args[0] !== 'exec' || args[1] !== 'wrangler' || args[2] !== 'd1') process.exit(91);
+if (args[0] !== 'exec' || args[1] !== 'cf' || args[2] !== 'd1' || args.includes('--local')) process.exit(91);
 const stub = JSON.parse(process.env.STUB);
 const names = JSON.parse(process.env.NAMES);
 const applied = JSON.parse(readFileSync(process.env.HISTORY, 'utf8'));
-if (args[3] === 'execute' && args.includes('--remote')) {
+if (args[3] === 'query') {
   process.stdout.write(JSON.stringify([{ success: true, results: applied.map((name) => ({ name })) }]));
-} else if (args[3] === 'time-travel' && args[4] === 'info' && !args.includes('--remote')) {
+} else if (args[3] === 'time-travel' && args[4] === 'get-bookmark') {
   if (stub.bookmark === 'fails') process.exit(1);
   process.stdout.write(JSON.stringify(stub.bookmark === 'missing' ? {} : { bookmark: 'before-migration' }));
-} else if (args[3] === 'migrations' && args[4] === 'apply' && args.includes('--remote')) {
+} else if (args[3] === 'migrations' && args[4] === 'apply' && args[args.indexOf('--dir') + 1] === 'drizzle') {
   if (stub.apply === 'first-then-fails') {
     writeFileSync(process.env.HISTORY, JSON.stringify(names.slice(0, applied.length + 1)));
     process.exit(1);
@@ -98,9 +99,9 @@ function commands(f) {
   return readFileSync(f.log, "utf8").trim().split("\n").filter(Boolean);
 }
 
-const readLedger = "execute pms-production --remote";
-const readBookmark = "time-travel info pms-production";
-const applyMigrations = "migrations apply pms-production";
+const readLedger = `query ${databaseId} --sql`;
+const readBookmark = `time-travel get-bookmark ${databaseId}`;
+const applyMigrations = `migrations apply ${databaseId}`;
 
 it("refuses to run without a terminal before invoking any external tool", () => {
   const f = fixture();
@@ -157,7 +158,7 @@ it("records a restore point before applying, then prints the resulting ledger", 
   expect(result.status, result.output).toBe(0);
   expect(commands(f)).toEqual([readLedger, readBookmark, applyMigrations, readLedger]);
   expect(result.output).toContain(
-    "wrangler d1 time-travel restore pms-production --bookmark=before-migration",
+    `cf d1 time-travel restore ${databaseId} --bookmark=before-migration`,
   );
   expect(result.output).toContain(
     `Ledger records these new migrations: ${f.names.slice(-2).join(", ")}`,
@@ -165,7 +166,7 @@ it("records a restore point before applying, then prints the resulting ledger", 
 });
 
 it.each([
-  ["cannot be read", "fails", /wrangler d1 time-travel failed/],
+  ["cannot be read", "fails", /cf d1 time-travel failed/],
   ["is missing", "missing", /No Time Travel bookmark/],
 ])("applies nothing when the bookmark %s", (_, bookmark, message) => {
   const f = fixture({ stub: { bookmark } });
@@ -181,7 +182,7 @@ it("stops on a failed migration and prints what the ledger recorded", () => {
   expect(result.status).toBe(1);
   expect(result.output).toContain(`Ledger records these new migrations: ${f.names.at(-2)}`);
   expect(result.output).not.toContain(f.names.at(-1) + ",");
-  expect(result.output).toContain("wrangler d1 migrations failed");
+  expect(result.output).toContain("cf d1 migrations failed");
 });
 
 it("warns that state is unknown when a failed migration leaves the ledger unreadable", () => {
@@ -189,5 +190,5 @@ it("warns that state is unknown when a failed migration leaves the ledger unread
   const result = migrate(f);
   expect(result.status).toBe(1);
   expect(result.output).toContain("database state is unknown");
-  expect(result.output).toContain("wrangler d1 migrations failed");
+  expect(result.output).toContain("cf d1 migrations failed");
 });

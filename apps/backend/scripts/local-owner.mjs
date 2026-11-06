@@ -1,4 +1,5 @@
 import { saveAccount } from "./account.mjs";
+import { localDatabase } from "./d1.mjs";
 
 export const localOwner = {
   username: "kevin",
@@ -11,6 +12,6 @@ export function seedLocalOwner(persistTo) {
     username: localOwner.username,
     role: localOwner.role,
     password: localOwner.password,
-    target: ["--local", ...(persistTo ? ["--persist-to", persistTo] : [])],
+    target: localDatabase(persistTo),
   });
 }

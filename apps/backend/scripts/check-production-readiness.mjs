@@ -2,7 +2,11 @@ import { spawnSync } from "node:child_process";
 import { realpathSync } from "node:fs";
 import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { productionTarget, readMigrationManifest } from "./production-migrations.mjs";
+import {
+  MIGRATIONS_DIR,
+  productionTarget,
+  readMigrationManifest,
+} from "./production-migrations.mjs";
 
 export function checkLedger(names, response) {
   if (
@@ -21,15 +25,9 @@ export function checkLedger(names, response) {
 async function main() {
   const repo = fileURLToPath(new URL("../../../", import.meta.url));
   try {
-    const { unstable_readConfig: readConfig } = await import("wrangler");
-    const backend = resolve(repo, "apps/backend");
-    const config = readConfig(
-      { config: resolve(backend, "wrangler.jsonc") },
-      { hideWarnings: true },
-    );
+    const { default: config } = await import("../cloudflare.config.ts");
     const database = productionTarget(config);
-    const migrations = resolve(backend, database.migrations_dir ?? "migrations");
-    const { names } = readMigrationManifest(migrations);
+    const { names } = readMigrationManifest(resolve(repo, "apps/backend", MIGRATIONS_DIR));
     if (!process.env.CLOUDFLARE_ACCOUNT_ID || !process.env.CLOUDFLARE_API_TOKEN) {
       throw new Error("Cloudflare readiness credentials are missing");
     }
@@ -39,16 +37,12 @@ async function main() {
         "--filter",
         "@pms/backend",
         "exec",
-        "wrangler",
+        "cf",
         "d1",
-        "execute",
-        "DB",
-        "--remote",
-        "--json",
-        "--command",
+        "query",
+        database.id,
+        "--sql",
         "SELECT id, name FROM d1_migrations ORDER BY id",
-        "--config",
-        "wrangler.jsonc",
       ],
       { cwd: repo, encoding: "utf8", maxBuffer: 1024 * 1024 },
     );

@@ -1,4 +1,4 @@
-# Copy to .dev.vars. Wrangler reads it for `wrangler dev`; it is git-ignored.
+# Copy to .dev.vars. `cf dev` reads it; it is git-ignored.
 # Generate with: pnpm auth:secret. Accounts live in the local database; see pnpm auth:account.
 SESSION_SECRET=
 PROPERTY_TIME_ZONE=America/Lima

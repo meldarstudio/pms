@@ -2,6 +2,7 @@ node_modules/
 dist/
 dist-ssr/
 .wrangler/
+.cloudflare/
 .env
 .env.production
 .dev.vars
