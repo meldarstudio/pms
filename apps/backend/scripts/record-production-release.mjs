@@ -41,7 +41,19 @@ try {
         const expected = uploadedVersion(directory, worker);
         const result = spawnSync(
           "pnpm",
-          ["--filter", worker.package, "exec", "wrangler", "deployments", "status", "--json"],
+          [
+            "--filter",
+            worker.package,
+            "exec",
+            "cf",
+            "workers",
+            "deployments",
+            "list",
+            "--worker",
+            worker.name,
+            "--per-page",
+            "1",
+          ],
           {
             cwd: repo,
             encoding: "utf8",
@@ -51,7 +63,7 @@ try {
         );
         if (result.error || result.status !== 0)
           throw new Error(`Could not read deployment status for ${worker.name}`);
-        const deployment = JSON.parse(result.stdout);
+        const [deployment] = JSON.parse(result.stdout).deployments;
         if (
           !uuid.test(deployment.id) ||
           !Array.isArray(deployment.versions) ||

@@ -1,19 +1,21 @@
 import { lstatSync, readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 
+export const MIGRATIONS_DIR = "drizzle";
+
 export function productionTarget(config) {
-  const databases = config.d1_databases.filter(
-    (database) => database.database_name === "pms-production" || database.binding === "DB",
+  const databases = Object.entries(config.worker.env).filter(
+    ([binding, value]) =>
+      binding === "DB" || (value.type === "d1" && value.name === "pms-production"),
   );
-  const database = databases[0];
+  const [binding, database] = databases[0] ?? [];
   if (
-    config.name !== "pms-api" ||
+    config.worker.name !== "pms-api" ||
     databases.length !== 1 ||
-    database.database_name !== "pms-production" ||
-    database.binding !== "DB" ||
-    !/^[a-f0-9]{8}-(?:[a-f0-9]{4}-){3}[a-f0-9]{12}$/i.test(database.database_id ?? "") ||
-    (database.migrations_table && database.migrations_table !== "d1_migrations") ||
-    database.migrations_pattern
+    binding !== "DB" ||
+    database.type !== "d1" ||
+    database.name !== "pms-production" ||
+    !/^[a-f0-9]{8}-(?:[a-f0-9]{4}-){3}[a-f0-9]{12}$/i.test(database.id ?? "")
   ) {
     throw new Error("Unexpected production configuration; review the target before proceeding");
   }

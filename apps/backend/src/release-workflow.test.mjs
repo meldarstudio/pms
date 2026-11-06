@@ -115,22 +115,20 @@ describe("production readiness rules", () => {
   });
 
   const id = "00000000-0000-4000-8000-000000000000";
-  const production = { binding: "DB", database_name: "pms-production", database_id: id };
-  const config = (...databases) => ({ name: "pms-api", d1_databases: databases });
+  const production = { type: "d1", name: "pms-production", id };
+  const config = (env) => ({ worker: { name: "pms-api", env } });
 
   it("accepts the single production database bound as DB", () => {
-    expect(productionTarget(config(production))).toBe(production);
+    expect(productionTarget(config({ DB: production }))).toBe(production);
   });
 
   it.each([
-    ["malformed database identity", config({ ...production, database_id: "not-a-uuid" })],
-    [
-      "second binding to the production database",
-      config({ ...production, binding: "OTHER" }, production),
-    ],
-    ["DB bound to another database", config({ ...production, database_name: "other" }, production)],
-  ])("rejects a production target with %s", (_, wranglerConfig) => {
-    expect(() => productionTarget(wranglerConfig)).toThrow(/Unexpected production configuration/);
+    ["malformed database identity", config({ DB: { ...production, id: "not-a-uuid" } })],
+    ["second binding to the production database", config({ DB: production, OTHER: production })],
+    ["DB bound to another database", config({ DB: { ...production, name: "other" } })],
+    ["no database binding", config({})],
+  ])("rejects a production target with %s", (_, cloudflareConfig) => {
+    expect(() => productionTarget(cloudflareConfig)).toThrow(/Unexpected production configuration/);
   });
 });
 
@@ -160,10 +158,10 @@ const validationCommands = [
   "check",
   "test",
   "build",
-  "--filter @pms/backend exec wrangler deploy --dry-run --minify",
+  "--filter @pms/backend exec cf deploy --dry-run",
 ];
 const ledgerQuery =
-  "--filter @pms/backend exec wrangler d1 execute DB --remote --json --command SELECT id, name FROM d1_migrations ORDER BY id --config wrangler.jsonc";
+  "--filter @pms/backend exec cf d1 query 17e838dd-b2f9-4783-ad9b-f5d837701428 --sql SELECT id, name FROM d1_migrations ORDER BY id";
 const apiDeploy = "--filter @pms/backend run deploy";
 const portalDeploy = "--filter @pms/portal run deploy";
 const temporaryDirs = [];
@@ -183,7 +181,7 @@ function fixture() {
   temporaryDirs.push(directory);
   const cwd = join(directory, "checkout");
   mkdirSync(join(cwd, "apps/backend"), { recursive: true });
-  for (const name of ["scripts", "drizzle", "wrangler.jsonc"]) {
+  for (const name of ["scripts", "drizzle", "cloudflare.config.ts"]) {
     cpSync(join(repo, "apps/backend", name), join(cwd, "apps/backend", name), { recursive: true });
   }
   writeFileSync(

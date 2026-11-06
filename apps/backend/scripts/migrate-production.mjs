@@ -16,10 +16,14 @@ import { homedir, hostname, tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { createInterface } from "node:readline/promises";
 import { fileURLToPath } from "node:url";
-import { productionTarget, readMigrationManifest } from "./production-migrations.mjs";
+import {
+  MIGRATIONS_DIR,
+  productionTarget,
+  readMigrationManifest,
+} from "./production-migrations.mjs";
 
 const backendDir = fileURLToPath(new URL("..", import.meta.url));
-const configPath = join(backendDir, "wrangler.jsonc");
+const configPath = join(backendDir, "cloudflare.config.ts");
 const productionName = "pms-production";
 const backupRoot = join(homedir(), ".pms-production-backups");
 const lockPath = join(backupRoot, "migration.lock");
@@ -51,17 +55,18 @@ function stopChild(signal) {
   }
 }
 
-async function wrangler(args, snapshotConfig, quiet = false) {
+async function run(tool, args, quiet = false) {
   checkInterrupted();
   const result = await new Promise((resolveResult) => {
     let stdout = "";
     let stderr = "";
     let failure;
-    child = spawn("pnpm", ["exec", "wrangler", ...args, "--config", snapshotConfig], {
+    child = spawn("pnpm", ["exec", tool, ...args], {
       cwd: backendDir,
       env: {
         ...process.env,
         CI: "true",
+        CF_SEND_TELEMETRY: "false",
         WRANGLER_WRITE_LOGS: "false",
         WRANGLER_SEND_METRICS: "false",
         WRANGLER_LOG_SANITIZE: "true",
@@ -75,7 +80,7 @@ async function wrangler(args, snapshotConfig, quiet = false) {
       if (stream === "stdout") stdout += chunk;
       else stderr += chunk;
       if (stdout.length + stderr.length > 16 * 1024 * 1024) {
-        failure = new Error("Wrangler output exceeded the safety limit");
+        failure = new Error(`${tool} output exceeded the safety limit`);
         stopChild("SIGTERM");
       }
     }
@@ -89,10 +94,10 @@ async function wrangler(args, snapshotConfig, quiet = false) {
       resolveResult({ stdout, stderr, status, signal, failure });
     });
   });
-  const isQuery = args[1] === "execute";
+  const isQuery = args[1] === "query";
   if (report) {
     report.diagnostics.push({
-      command: args.slice(0, 2).join(" "),
+      command: [tool, ...args.slice(0, 2)].join(" "),
       status: result.status,
       signal: result.signal,
       stderr: redact(result.stderr),
@@ -107,22 +112,19 @@ async function wrangler(args, snapshotConfig, quiet = false) {
     if (isQuery && result.stdout) process.stderr.write(redact(result.stdout));
     throw new Error(
       result.failure?.message ??
-        `Wrangler failed with ${result.signal ? `signal ${result.signal}` : `exit code ${result.status}`}`,
+        `${tool} failed with ${result.signal ? `signal ${result.signal}` : `exit code ${result.status}`}`,
     );
   }
   return result.stdout;
 }
 
-async function query(sql, snapshotConfig) {
-  const output = await wrangler(
-    ["d1", "execute", productionName, "--remote", "--json", "--command", sql],
-    snapshotConfig,
-  );
+async function query(databaseId, sql) {
+  const output = await run("cf", ["d1", "query", databaseId, "--sql", sql]);
   let results;
   try {
     results = JSON.parse(output);
   } catch {
-    throw new Error("Wrangler returned invalid query JSON; database state is unknown");
+    throw new Error("cf returned invalid query JSON; database state is unknown");
   }
   if (
     !Array.isArray(results) ||
@@ -135,14 +137,14 @@ async function query(sql, snapshotConfig) {
   return results[0].results;
 }
 
-async function readHistory(snapshotConfig) {
+async function readHistory(databaseId) {
   const tables = await query(
+    databaseId,
     "SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'd1_migrations'",
-    snapshotConfig,
   );
   if (tables.length !== 1)
     throw new Error("Missing migration ledger; bootstrap is a separate operation");
-  const rows = await query("SELECT name FROM d1_migrations ORDER BY id", snapshotConfig);
+  const rows = await query(databaseId, "SELECT name FROM d1_migrations ORDER BY id");
   if (!rows.length || rows.some((row) => typeof row.name !== "string")) {
     throw new Error("Empty or invalid migration ledger; history repair is a separate operation");
   }
@@ -189,12 +191,9 @@ async function main() {
     throw new Error("Production migrations require an interactive terminal outside CI");
   }
   process.umask(0o077);
-  process.env.WRANGLER_WRITE_LOGS = "false";
-  process.env.WRANGLER_SEND_METRICS = "false";
-  const { unstable_readConfig: readConfig } = await import("wrangler");
-  const config = readConfig({ config: configPath }, { hideWarnings: true });
+  const { default: config } = await import("../cloudflare.config.ts");
   const database = productionTarget(config);
-  const migrationsDir = resolve(backendDir, database.migrations_dir ?? "migrations");
+  const migrationsDir = resolve(backendDir, MIGRATIONS_DIR);
   const plan = readPlan(migrationsDir);
   mkdirSync(backupRoot, { recursive: true, mode: 0o700 });
   const rootStat = lstatSync(backupRoot);
@@ -227,26 +226,26 @@ async function main() {
     temporaryDir = mkdtempSync(join(tmpdir(), "pms-migrate-"));
     const snapshotDir = join(temporaryDir, "migrations");
     mkdirSync(snapshotDir, { mode: 0o700 });
-    const snapshotConfig = join(temporaryDir, "wrangler.json");
+    const wranglerExportConfig = join(temporaryDir, "wrangler.json");
     writeFileSync(
-      snapshotConfig,
+      wranglerExportConfig,
       JSON.stringify({
-        name: config.name,
-        account_id: config.account_id,
-        compatibility_date: config.compatibility_date,
-        d1_databases: [{ ...database, migrations_dir: snapshotDir }],
+        name: config.worker.name,
+        account_id: config.accountId,
+        compatibility_date: config.worker.compatibilityDate,
+        d1_databases: [{ binding: "DB", database_name: database.name, database_id: database.id }],
       }),
       { mode: 0o600 },
     );
-    const before = await readHistory(snapshotConfig);
+    const before = await readHistory(database.id);
     validateHistory(before, plan.names);
     const pending = plan.files.slice(before.length);
     if (!pending.length) {
       console.log("No pending production migrations. No backup or database changes performed.");
       return;
     }
-    console.log(`Target: ${productionName} (${database.database_id})`);
-    console.log(`Account: ${config.account_id ?? "Wrangler authenticated account"}`);
+    console.log(`Target: ${productionName} (${database.id})`);
+    console.log(`Account: ${config.accountId ?? "cf authenticated account"}`);
     for (const file of pending)
       console.log(`\n--- ${file.name} | SHA-256 ${file.sha256} ---\n${file.sql}`);
     console.log("\nExport will interrupt database access; migration may also interrupt requests.");
@@ -277,7 +276,7 @@ async function main() {
       }
     };
     const assertHistoryUnchanged = async (expected) => {
-      const actual = await readHistory(snapshotConfig);
+      const actual = await readHistory(database.id);
       if (JSON.stringify(actual) !== JSON.stringify(expected)) {
         throw new Error("Remote migration history changed; stop and investigate before a new run");
       }
@@ -291,7 +290,7 @@ async function main() {
     const backupPath = join(backupDir, "database.sql");
     reportPath = join(backupDir, "report.json");
     report = {
-      target: { name: productionName, id: database.database_id, account: config.account_id },
+      target: { name: productionName, id: database.id, account: config.accountId },
       started: new Date().toISOString(),
       status: "exporting",
       before,
@@ -302,9 +301,19 @@ async function main() {
     saveReport();
     console.log(`Private backup and report: ${backupDir}`);
     writeFileSync(backupPath, "", { flag: "wx", mode: 0o600 });
-    await wrangler(
-      ["d1", "export", productionName, "--remote", "--output", backupPath, "--skip-confirmation"],
-      snapshotConfig,
+    await run(
+      "wrangler",
+      [
+        "d1",
+        "export",
+        productionName,
+        "--remote",
+        "--output",
+        backupPath,
+        "--skip-confirmation",
+        "--config",
+        wranglerExportConfig,
+      ],
       true,
     );
     if (!lstatSync(backupPath).isFile() || lstatSync(backupPath).size === 0) {
@@ -325,14 +334,14 @@ async function main() {
         report.status = "applying";
         report.attempting = file.name;
         saveReport();
-        await wrangler(["d1", "migrations", "apply", productionName, "--remote"], snapshotConfig);
+        await run("cf", ["d1", "migrations", "apply", database.id, "--dir", snapshotDir]);
         expected = [...expected, file.name];
         report.after = await assertHistoryUnchanged(expected);
         saveReport();
       }
     } catch (error) {
       try {
-        report.after = await readHistory(snapshotConfig);
+        report.after = await readHistory(database.id);
         report.applied = report.after.filter((name) => !before.includes(name));
         report.status = "failed";
         console.error(

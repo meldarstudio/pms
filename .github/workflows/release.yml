@@ -11,6 +11,9 @@ on:
 permissions:
   contents: read
 
+env:
+  CF_SEND_TELEMETRY: "false"
+
 concurrency:
   group: pms-production-release
   cancel-in-progress: false
@@ -68,17 +71,14 @@ jobs:
       - name: Bundle API without deploying
         id: api_build
         env:
-          WRANGLER_SEND_METRICS: "false"
           WRANGLER_WRITE_LOGS: "false"
-        run: pnpm --filter @pms/backend exec wrangler deploy --dry-run --minify
+        run: pnpm --filter @pms/backend exec cf deploy --dry-run
 
       - name: Verify production migration readiness (read only)
         id: readiness
         env:
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_READ_TOKEN }}
-          WRANGLER_SEND_METRICS: "false"
-          WRANGLER_WRITE_LOGS: "false"
         run: node apps/backend/scripts/check-production-readiness.mjs
 
       - name: Deploy API code
@@ -103,8 +103,6 @@ jobs:
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_DEPLOY_TOKEN }}
           RELEASE_EVIDENCE_DIR: ${{ runner.temp }}/pms-release
-          WRANGLER_SEND_METRICS: "false"
-          WRANGLER_WRITE_LOGS: "false"
         run: node apps/backend/scripts/record-production-release.mjs --verify
 
       - name: Record attempt (manual verification still required)

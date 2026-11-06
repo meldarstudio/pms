@@ -7,7 +7,7 @@
     "dev": "vp dev",
     "build": "pnpm check && vp build",
     "check": "vp check --no-fmt .",
-    "deploy": "wrangler deploy",
+    "deploy": "cf deploy",
     "test": "vp test run",
     "preview": "vp preview"
   },
@@ -36,6 +36,7 @@
     "@types/react": "^19",
     "@types/react-dom": "^19",
     "@vitejs/plugin-react": "^6",
+    "cf": "1.0.0-beta.28",
     "happy-dom": "^21.0.1",
     "typescript": "catalog:",
     "vite": "catalog:",

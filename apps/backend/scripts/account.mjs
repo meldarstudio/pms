@@ -1,11 +1,8 @@
-import { spawnSync } from "node:child_process";
 import { randomUUID } from "node:crypto";
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join, resolve } from "node:path";
+import { resolve } from "node:path";
 import { createInterface } from "node:readline";
 import { Writable } from "node:stream";
-import { fileURLToPath, pathToFileURL } from "node:url";
+import { pathToFileURL } from "node:url";
 import { hashPassword } from "better-auth/crypto";
 import {
   accountSql,
@@ -13,8 +10,8 @@ import {
   MIN_PASSWORD_LENGTH,
   USERNAME_PATTERN,
 } from "../src/account-sql.ts";
+import { executeSql, localDatabase, productionDatabase } from "./d1.mjs";
 
-const backendDir = fileURLToPath(new URL("..", import.meta.url));
 const USAGE =
   "Usage: pnpm auth:account <username> --role=staff|owner (--local [--persist-to=PATH] | --remote)";
 
@@ -80,14 +77,7 @@ async function main() {
   }
   const { username, role, options } = parse(args);
   const remote = options.has("--remote");
-  const target = remote
-    ? ["--remote"]
-    : [
-        "--local",
-        ...(options.get("--persist-to")
-          ? ["--persist-to", resolve(options.get("--persist-to"))]
-          : []),
-      ];
+  const target = remote ? productionDatabase : localDatabase(options.get("--persist-to"));
 
   const prompt = createPrompt();
   let password;
@@ -125,22 +115,10 @@ export async function saveAccount({ username, role, password, target }) {
     id: randomUUID(),
     now: Date.now(),
   });
-  const temporaryDir = mkdtempSync(join(tmpdir(), "pms-account-"));
-  try {
-    const sqlPath = join(temporaryDir, "account.sql");
-    writeFileSync(sqlPath, sql);
-    const result = spawnSync(
-      "pnpm",
-      ["exec", "wrangler", "d1", "execute", "DB", ...target, "--file", sqlPath],
-      { cwd: backendDir, stdio: "inherit" },
-    );
-    if (result.error) throw result.error;
-    if (result.status !== 0) throw new Error(`Wrangler failed with exit code ${result.status}`);
-  } finally {
-    rmSync(temporaryDir, { recursive: true, force: true });
-  }
-  const remote = target.includes("--remote");
-  console.log(`Account "${username}" (${role}) saved ${remote ? "in production" : "locally"}.`);
+  executeSql(target, sql);
+  console.log(
+    `Account "${username}" (${role}) saved ${target === productionDatabase ? "in production" : "locally"}.`,
+  );
 }
 
 const entry = process.argv[1];

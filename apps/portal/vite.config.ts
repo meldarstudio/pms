@@ -22,7 +22,14 @@ export default defineConfig(({ command, mode }) => {
         { files: ["src/**/*.{ts,tsx}", "tests/**/*.{ts,tsx}"], env: { browser: true } },
         { files: ["*.config.ts", "tests/**/*.{ts,tsx}"], env: { node: true } },
       ],
-      ignorePatterns: ["public/**", "dist/**", "coverage/**", ".wrangler/**", "**/.pnpm-store/**"],
+      ignorePatterns: [
+        "public/**",
+        "dist/**",
+        "coverage/**",
+        ".wrangler/**",
+        ".cloudflare/**",
+        "**/.pnpm-store/**",
+      ],
     },
     define: {
       "import.meta.env.VITE_PWA_BUILD_ID": JSON.stringify(Date.now().toString()),

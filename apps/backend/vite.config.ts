@@ -12,11 +12,11 @@ export default defineConfig({
       },
     ],
     ignorePatterns: [
-      "worker-configuration.d.ts",
       "drizzle/**",
       "dist/**",
       "coverage/**",
       ".wrangler/**",
+      ".cloudflare/**",
       "**/.pnpm-store/**",
     ],
   },

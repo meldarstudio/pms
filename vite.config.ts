@@ -6,7 +6,6 @@ export default defineConfig({
     ignorePatterns: [
       "pnpm-lock.yaml",
       "skills-lock.json",
-      "apps/backend/worker-configuration.d.ts",
       "apps/backend/drizzle/meta/**",
       ".agents/skills/**",
       "**/coverage/**",
