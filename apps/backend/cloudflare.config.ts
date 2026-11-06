@@ -17,7 +17,7 @@ export default defineConfig({
     domains: ["api.hotelmanantialchurin.com"],
     triggers: [
       triggers.scheduled({
-        schedule: "* * * * *",
+        schedule: "*/5 * * * *",
       }),
     ],
     env: {
