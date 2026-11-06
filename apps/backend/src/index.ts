@@ -22,6 +22,8 @@ import { paymentContext, reconcilePaymentAttempts } from "./payment-attempts";
 import { requireSession } from "./session";
 import { propertyCalendar } from "./property-calendar";
 
+const CHROME_MAX_PREFLIGHT_CACHE_SECONDS = 2 * 60 * 60;
+
 export const app = new Hono<Env>();
 
 app.use(
@@ -36,6 +38,7 @@ app.use(
         : null,
     credentials: true,
     exposeHeaders: ["X-Error-Field"],
+    maxAge: CHROME_MAX_PREFLIGHT_CACHE_SECONDS,
   }),
 );
 
