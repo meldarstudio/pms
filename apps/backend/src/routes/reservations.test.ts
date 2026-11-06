@@ -797,6 +797,22 @@ describe("Non-refundable reservations", () => {
     expect(await (await request(`/reservations/${saved.id}`)).json()).toMatchObject(expected);
   });
 
+  it("shows the same Non-refundable night in inventory that a reservation charges", async () => {
+    db.sqlite.exec("UPDATE room_types SET base_rate_cents = 10005");
+    const response = await request("/inventory?from=2026-10-10&to=2026-10-10");
+    expect(await response.json()).toMatchObject({
+      ratePlans: [
+        { plan: "flexible", priceAdjustmentPercent: 0 },
+        { plan: "non_refundable", priceAdjustmentPercent: -10 },
+      ],
+      roomTypes: [{ nights: [{ planPrices: { flexible: 10005, non_refundable: 9005 } }] }],
+    });
+    const oneNight = body({}, { checkIn: "2026-10-10", checkOut: "2026-10-11" });
+    expect(await previewNew(oneNight)).toMatchObject({
+      rooms: [{ nights: [{ date: "2026-10-10", priceCents: 9005 }] }],
+    });
+  });
+
   it("previews Flexible when no plan is chosen, without reserving inventory", async () => {
     expect(await previewNew(body({}, { ratePlan: undefined }))).toMatchObject({
       ratePlan: { plan: "flexible" },

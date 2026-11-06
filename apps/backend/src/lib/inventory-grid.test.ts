@@ -29,9 +29,33 @@ describe("inventoryGrid", () => {
       [{ roomTypeId: "deluxe", date: "2026-12-25", priceCents: 20000 }],
     );
     expect(type?.nights).toEqual([
-      { date: "2026-12-24", booked: 1, closed: 0, free: 1, priceCents: 15000, override: false },
-      { date: "2026-12-25", booked: 1, closed: 0, free: 1, priceCents: 20000, override: true },
-      { date: "2026-12-26", booked: 0, closed: 0, free: 2, priceCents: 15000, override: false },
+      {
+        date: "2026-12-24",
+        booked: 1,
+        closed: 0,
+        free: 1,
+        priceCents: 15000,
+        override: false,
+        planPrices: { flexible: 15000, non_refundable: 13500 },
+      },
+      {
+        date: "2026-12-25",
+        booked: 1,
+        closed: 0,
+        free: 1,
+        priceCents: 20000,
+        override: true,
+        planPrices: { flexible: 20000, non_refundable: 18000 },
+      },
+      {
+        date: "2026-12-26",
+        booked: 0,
+        closed: 0,
+        free: 2,
+        priceCents: 15000,
+        override: false,
+        planPrices: { flexible: 15000, non_refundable: 13500 },
+      },
     ]);
   });
 

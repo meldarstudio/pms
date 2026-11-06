@@ -10,10 +10,10 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { Field, FieldError, FieldGroup, FieldLabel } from "@/components/ui/field";
+import { Field, FieldDescription, FieldError, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { Spinner } from "@/components/ui/spinner";
-import type { InventoryNight } from "@/lib/api";
+import type { InventoryNight, RatePlanTerms } from "@/lib/api";
 import {
   clearServerErrorsOnlyOnOwnChangeOrSubmit,
   fieldErrors,
@@ -28,6 +28,7 @@ import {
   sharedRatePrice,
 } from "@/lib/inventory-rate-form";
 import { useDeleteRoomTypeRates, usePutRoomTypeRates } from "@/lib/queries";
+import { priceAdjustmentSentence, ratePlanLabels } from "@/lib/rate-plans";
 import { contiguousRanges } from "@/lib/rate-ranges";
 
 export type RateTarget = {
@@ -36,6 +37,7 @@ export type RateTarget = {
   label: string;
   dates: string[];
   nights: InventoryNight[];
+  derivedPlans: RatePlanTerms[];
 };
 
 export function InventoryRateDialog({
@@ -158,7 +160,9 @@ function RateForm({
                 !field.state.meta.isValid);
             return (
               <Field data-invalid={showError || undefined} data-disabled={busy || undefined}>
-                <FieldLabel htmlFor={field.name}>Precio ({currency})</FieldLabel>
+                <FieldLabel htmlFor={field.name}>
+                  Precio {ratePlanLabels.flexible} ({currency})
+                </FieldLabel>
                 <Input
                   id={field.name}
                   name={field.name}
@@ -178,6 +182,12 @@ function RateForm({
                     field.handleChange(event.target.value);
                   }}
                 />
+                {target.derivedPlans.map((terms) => (
+                  <FieldDescription key={terms.plan}>
+                    {ratePlanLabels[terms.plan]} se actualiza automáticamente:{" "}
+                    {priceAdjustmentSentence(terms.priceAdjustmentPercent)}.
+                  </FieldDescription>
+                ))}
                 {showError && <FieldError errors={fieldErrors(field.state.meta.errors)} />}
               </Field>
             );

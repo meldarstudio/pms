@@ -1,5 +1,5 @@
 import { useQueryClient } from "@tanstack/react-query";
-import { useEffect, useRef, useState, type PointerEvent } from "react";
+import { Fragment, useEffect, useRef, useState, type PointerEvent, type ReactNode } from "react";
 import { cn } from "cn";
 import { addDays, eachDayOfInterval, parse, startOfDay } from "date-fns";
 import {
@@ -8,6 +8,7 @@ import {
   ChevronRightIcon,
   ChevronsLeftIcon,
   ChevronsRightIcon,
+  LinkIcon,
 } from "lucide-react";
 
 import { InventoryRateDialog, type RateTarget } from "@/components/inventory-rate-dialog";
@@ -32,16 +33,19 @@ import { PageError, StaleDataNotice } from "@/components/page-error";
 import { PickerTodayFooter } from "@/components/picker-today-footer";
 import { RefreshButton } from "@/components/refresh-button";
 import { useIsMobile } from "@/hooks/use-mobile";
-import type { InventoryNight, InventoryRoomType } from "@/lib/api";
-import { CURRENCY, formatMoney } from "@/lib/money";
+import type { InventoryNight, InventoryRoomType, RatePlanTerms } from "@/lib/api";
+import { CURRENCY, formatAmount, formatMoney } from "@/lib/money";
 import { format } from "@/lib/dates";
 import { useInventory } from "@/lib/queries";
+import { derivedRatePlans, priceAdjustmentBadge, ratePlanLabels } from "@/lib/rate-plans";
 import { datesBetween } from "@/lib/rate-ranges";
 
 const spans = [
   { label: "7 días", value: "7" },
   { label: "14 días", value: "14" },
 ];
+
+const RATE_OVERRIDE_LEGEND = "Precio modificado para esta fecha";
 
 type Selection = {
   roomTypeId: string;
@@ -165,7 +169,8 @@ export function Inventory({
     });
   }
 
-  const rateTarget = editor ? rateTargetFor(grid?.roomTypes ?? [], editor) : null;
+  const derivedPlans = derivedRatePlans(grid?.ratePlans ?? []);
+  const rateTarget = editor ? rateTargetFor(grid?.roomTypes ?? [], derivedPlans, editor) : null;
 
   if (grid?.roomTypes.length === 0) return <SetupRequired missing="types" />;
 
@@ -281,7 +286,14 @@ export function Inventory({
             </Button>
           )}
         </ButtonGroup>
-        <div />
+        {isMobile ? (
+          <div />
+        ) : (
+          <div className="flex items-center justify-end gap-1.5 text-xs text-muted-foreground">
+            <RateOverrideMark />
+            {RATE_OVERRIDE_LEGEND}
+          </div>
+        )}
       </div>
       {grid && inventory.error ? (
         <div className="border-b p-4">
@@ -297,7 +309,7 @@ export function Inventory({
           <div
             className="grid w-max min-w-full"
             style={{
-              gridTemplateColumns: `fit-content(${isMobile ? 10 : 13}rem) repeat(${span}, minmax(5rem, 1fr))`,
+              gridTemplateColumns: `fit-content(${isMobile ? 8.5 : 13}rem) repeat(${span}, minmax(5rem, 1fr))`,
             }}
           >
             <div className="sticky top-0 left-0 z-40 min-w-28 border-r border-b bg-background" />
@@ -337,24 +349,28 @@ export function Inventory({
             {loading
               ? Array.from({ length: 4 }, (_, index) => (
                   <div key={index} className="contents">
-                    <div className="sticky left-0 z-20 flex min-w-0 flex-col justify-center gap-1 border-r border-b bg-background px-2.5">
-                      <Skeleton className="h-4 w-16" />
-                      <Skeleton className="h-4 w-22.75" />
+                    <div className="sticky left-0 z-20 flex min-w-0 flex-col justify-center gap-0.5 border-r border-b bg-muted px-2.5 py-1.5">
+                      <span className="text-xs">
+                        <Skeleton className="inline-block h-lh w-16 bg-foreground/10 align-top" />
+                      </span>
+                      <span className="text-xs text-muted-foreground">Libres</span>
                     </div>
-                    <div
-                      className="border-b"
-                      style={{
-                        gridColumn: `2 / span ${span}`,
-                        minHeight: "4rem",
-                      }}
-                    />
+                    <div className="border-b bg-muted" style={{ gridColumn: `2 / span ${span}` }} />
+                    <RowLabel>{ratePlanLabels.flexible}</RowLabel>
+                    <div className="min-h-11 border-b" style={{ gridColumn: `2 / span ${span}` }} />
+                    <RowLabel className="flex-wrap gap-x-1.5">
+                      <Skeleton className="inline-block h-lh w-24 align-top" />
+                      <Skeleton className="inline-block h-lh w-12 align-top" />
+                    </RowLabel>
+                    <div className="min-h-9 border-b" style={{ gridColumn: `2 / span ${span}` }} />
                   </div>
                 ))
               : null}
             {grid?.roomTypes.map((type) => (
-              <TypeRow
+              <RoomTypeRows
                 key={type.id}
                 type={type}
+                derivedPlans={derivedPlans}
                 currency={CURRENCY}
                 days={days}
                 selected={selection?.roomTypeId === type.id ? selection.dates : []}
@@ -382,7 +398,11 @@ export function Inventory({
   );
 }
 
-function rateTargetFor(types: InventoryRoomType[], editor: Selection): RateTarget | null {
+function rateTargetFor(
+  types: InventoryRoomType[],
+  derivedPlans: RatePlanTerms[],
+  editor: Selection,
+): RateTarget | null {
   const type = types.find((item) => item.id === editor.roomTypeId);
   if (!type || editor.dates.length === 0) return null;
   const wanted = new Set(editor.dates);
@@ -394,11 +414,38 @@ function rateTargetFor(types: InventoryRoomType[], editor: Selection): RateTarge
     label: `${nightLabel(editor.dates)}. ${availabilityLabel(nights)}`,
     dates: editor.dates,
     nights,
+    derivedPlans,
   };
 }
 
-function TypeRow({
+function RateOverrideMark({ className }: { className?: string }) {
+  return (
+    <span
+      aria-hidden
+      className={cn(
+        "size-0 border-t-8 border-r-8 border-t-primary border-r-transparent",
+        className,
+      )}
+    />
+  );
+}
+
+function RowLabel({ className, children }: { className?: string; children: ReactNode }) {
+  return (
+    <div
+      className={cn(
+        "sticky left-0 z-20 flex min-w-0 items-center border-r border-b bg-background px-2.5 py-1 text-xs",
+        className,
+      )}
+    >
+      {children}
+    </div>
+  );
+}
+
+function RoomTypeRows({
   type,
+  derivedPlans,
   currency,
   days,
   selected,
@@ -407,6 +454,7 @@ function TypeRow({
   onOpen,
 }: {
   type: InventoryRoomType;
+  derivedPlans: RatePlanTerms[];
   currency: string;
   days: Date[];
   selected: string[];
@@ -416,33 +464,52 @@ function TypeRow({
 }) {
   const selectedDates = new Set(selected);
   const byDate = new Map(type.nights.map((night) => [night.date, night]));
+  const cellDays = days.map((day) => {
+    const date = format(day, "yyyy-MM-dd");
+    return {
+      date,
+      label: format(day, "d MMM yyyy"),
+      night: byDate.get(date),
+      weekend: day.getDay() === 0 || day.getDay() === 6,
+    };
+  });
 
   return (
     <div className="contents">
-      <div className="sticky left-0 z-20 flex min-w-0 flex-col justify-center gap-1 border-r border-b bg-background px-2.5 py-2">
-        <span className="truncate text-xs font-medium" title={type.name}>
+      <div className="sticky left-0 z-20 flex min-w-0 flex-col justify-center gap-0.5 border-r border-b bg-muted px-2.5 py-1.5">
+        <span className="line-clamp-2 text-xs font-medium wrap-break-word" title={type.name}>
           {type.name}
         </span>
-        <span className="text-xs text-muted-foreground">
-          {type.capacity} {type.capacity === 1 ? "habitación" : "habitaciones"}
-        </span>
+        <span className="text-xs text-muted-foreground">Libres</span>
       </div>
-      {days.map((day) => {
-        const date = format(day, "yyyy-MM-dd");
-        const night = byDate.get(date);
-        const weekend = day.getDay() === 0 || day.getDay() === 6;
+      {cellDays.map(({ date, label, night }) => (
+        <div
+          key={date}
+          className={cn(
+            "flex items-center justify-center border-r border-b bg-muted px-1 py-1 text-xs tabular-nums",
+          )}
+        >
+          {night ? (
+            <>
+              <span className="sr-only">{label}: </span>
+              <Badge variant={night.free === 0 ? "destructive" : "outline"}>{night.free}</Badge>
+              <span className="sr-only"> libres</span>
+            </>
+          ) : null}
+        </div>
+      ))}
+      <RowLabel>{ratePlanLabels.flexible}</RowLabel>
+      {cellDays.map(({ date, label, night, weekend }) => {
+        if (!night) return <div key={date} className="border-r border-b bg-muted/40" />;
         const isSelected = selectedDates.has(date);
-        if (!night) {
-          return <div key={date} className="border-r border-b bg-muted/40" />;
-        }
         return (
           <button
             key={date}
             type="button"
             aria-pressed={isSelected}
-            aria-label={`${type.name}, ${format(day, "d MMM yyyy")}, ${formatMoney(night.priceCents, currency)}, ${night.free} libres`}
+            aria-label={`${type.name}, ${label}, ${ratePlanLabels.flexible}, ${formatMoney(night.priceCents, currency)}, ${night.free} libres${night.override ? `, ${RATE_OVERRIDE_LEGEND.toLowerCase()}` : ""}`}
             className={cn(
-              "flex min-h-16 flex-col items-center justify-center gap-1 border-r border-b bg-background px-1 py-1.5 outline-none hover:bg-accent/60 focus-visible:ring-1 focus-visible:ring-ring focus-visible:ring-inset",
+              "relative flex min-h-11 items-center justify-center border-r border-b bg-background px-1 py-1 text-xs tabular-nums outline-none hover:bg-accent/60 focus-visible:ring-1 focus-visible:ring-ring focus-visible:ring-inset",
               weekend && "bg-muted/60",
               isSelected && "bg-accent ring-1 ring-ring ring-inset",
             )}
@@ -450,18 +517,43 @@ function TypeRow({
             onPointerEnter={() => onPointerEnter(type.id, date)}
             onClick={(event) => onOpen(date, event.detail === 0)}
           >
-            <span
-              className={cn(
-                "text-xs tabular-nums",
-                night.override ? "font-medium" : "text-muted-foreground",
-              )}
-            >
-              {formatMoney(night.priceCents, currency)}
-            </span>
-            <Badge variant={night.free === 0 ? "destructive" : "outline"}>{night.free}</Badge>
+            {night.override ? <RateOverrideMark className="absolute top-0 left-0" /> : null}
+            {formatAmount(night.priceCents)}
           </button>
         );
       })}
+      {derivedPlans.map((terms) => (
+        <Fragment key={terms.plan}>
+          <RowLabel className="flex-wrap gap-x-1.5 text-muted-foreground">
+            <span>{ratePlanLabels[terms.plan]}</span>
+            <span className="flex items-center gap-1">
+              <LinkIcon aria-hidden className="size-3 shrink-0" />
+              {priceAdjustmentBadge(terms.priceAdjustmentPercent)}
+            </span>
+          </RowLabel>
+          {cellDays.map(({ date, label, night, weekend }) => (
+            <div
+              key={date}
+              className={cn(
+                "flex min-h-9 items-center justify-center border-r border-b bg-background px-1 py-1 text-xs text-muted-foreground tabular-nums",
+                weekend && "bg-muted/60",
+              )}
+            >
+              {night ? (
+                <>
+                  <span className="sr-only">
+                    {ratePlanLabels[terms.plan]}, {label}:{" "}
+                  </span>
+                  <span aria-hidden>{formatAmount(night.planPrices[terms.plan])}</span>
+                  <span className="sr-only">
+                    {formatMoney(night.planPrices[terms.plan], currency)}
+                  </span>
+                </>
+              ) : null}
+            </div>
+          ))}
+        </Fragment>
+      ))}
     </div>
   );
 }

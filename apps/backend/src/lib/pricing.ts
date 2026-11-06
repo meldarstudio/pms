@@ -18,12 +18,12 @@ export function priceNights(stay: {
     if (stay.flatRateCents !== undefined)
       return { date, priceCents: stay.flatRateCents, adjustmentCents: 0, discountCents: 0 };
     const ordinary = stay.overrides.get(date) ?? stay.baseRateCents;
-    const priceCents = adjusted(ordinary, stay.terms.priceAdjustmentPercent);
+    const priceCents = adjustedPriceCents(ordinary, stay.terms.priceAdjustmentPercent);
     return { date, priceCents, adjustmentCents: priceCents - ordinary, discountCents: 0 };
   });
 }
 
-function adjusted(cents: number, percent: number): number {
+export function adjustedPriceCents(cents: number, percent: number): number {
   return Math.floor((cents * (100 + percent) + 50) / 100);
 }
 
