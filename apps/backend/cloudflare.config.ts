@@ -1,5 +1,7 @@
 import { bindings, defineConfig, triggers } from "cf/config";
 
+const paymentReconciliationBackstop = "*/5 * * * *";
+
 export default defineConfig({
   worker: {
     name: "pms-api",
@@ -17,7 +19,7 @@ export default defineConfig({
     domains: ["api.hotelmanantialchurin.com"],
     triggers: [
       triggers.scheduled({
-        schedule: "*/5 * * * *",
+        schedule: paymentReconciliationBackstop,
       }),
     ],
     env: {
