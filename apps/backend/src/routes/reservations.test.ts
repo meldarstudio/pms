@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import type { presentReservation } from "../present";
 import {
+  atBaseRate,
   createTestDb,
   seedReservation,
   seedRooms,
@@ -46,14 +47,16 @@ async function create(count = 1, dates = { checkIn: "2026-10-10", checkOut: "202
   expect(response.status).toBe(201);
   return response.json() as Promise<Detail>;
 }
-async function stay(checkIn: string, checkOut: string, nightlyRateCents: number) {
-  const response = await request("/reservations", "POST", {
-    requestId: crypto.randomUUID(),
-    checkIn,
-    checkOut,
-    guest: { fullName: "Ada Lovelace" },
-    rooms: [{ roomTypeId: "type", adults: 1, children: 0, nightlyRateCents }],
-  });
+async function stay(checkIn: string, checkOut: string, nightCents: number) {
+  const response = await atBaseRate(db.sqlite, "type", nightCents, () =>
+    request("/reservations", "POST", {
+      requestId: crypto.randomUUID(),
+      checkIn,
+      checkOut,
+      guest: { fullName: "Ada Lovelace" },
+      rooms: [{ roomTypeId: "type", adults: 1, children: 0 }],
+    }),
+  );
   expect(response.status).toBe(201);
   return response.json() as Promise<Detail>;
 }
@@ -216,14 +219,16 @@ describe("saved and applied reservation discounts", () => {
     { rate: 8000, saved: 10000, applied: 8000, total: 0 },
     { rate: 0, saved: 10000, applied: 0, total: 0 },
   ])("creates a bill with $rate charges and a $saved saved discount", async (example) => {
-    const response = await request("/reservations", "POST", {
-      requestId: crypto.randomUUID(),
-      checkIn: "2026-10-10",
-      checkOut: "2026-10-11",
-      guest: { fullName: "Booking Contact" },
-      rooms: [{ roomTypeId: "type", adults: 1, children: 0, nightlyRateCents: example.rate }],
-      discountCents: example.saved,
-    });
+    const response = await atBaseRate(db.sqlite, "type", example.rate, () =>
+      request("/reservations", "POST", {
+        requestId: crypto.randomUUID(),
+        checkIn: "2026-10-10",
+        checkOut: "2026-10-11",
+        guest: { fullName: "Booking Contact" },
+        rooms: [{ roomTypeId: "type", adults: 1, children: 0 }],
+        discountCents: example.saved,
+      }),
+    );
     expect(response.status).toBe(201);
     const created = (await response.json()) as Detail;
     const expected = {
@@ -667,11 +672,7 @@ describe("accepted rate-plan terms", () => {
 
 describe("Creation pricing", () => {
   const twoNights = { checkIn: "2026-10-10", checkOut: "2026-10-12" };
-  const rooms = [
-    { roomTypeId: "type" },
-    { roomTypeId: "suite" },
-    { roomTypeId: "type", nightlyRateCents: 8000 },
-  ];
+  const rooms = [{ roomTypeId: "type" }, { roomTypeId: "suite" }];
   const create = (priced: typeof rooms) =>
     request("/reservations", "POST", {
       requestId: crypto.randomUUID(),
@@ -692,13 +693,12 @@ describe("Creation pricing", () => {
     );
   });
 
-  it("prices each room from its own type's overrides and base rate, or its flat rate", async () => {
+  it("prices each room from its own type's overrides and base rate", async () => {
     const expected = {
-      totalCents: 93000,
+      totalCents: 77000,
       rooms: [
         { roomTypeId: "type", nights: [{ priceCents: 10000 }, { priceCents: 12000 }] },
         { roomTypeId: "suite", nights: [{ priceCents: 30000 }, { priceCents: 25000 }] },
-        { roomTypeId: "type", nights: [{ priceCents: 8000 }, { priceCents: 8000 }] },
       ],
     };
     const previewed = await preview(rooms);
@@ -767,13 +767,6 @@ describe("Non-refundable reservations", () => {
       input: body({}, { discountCents: 3000 }),
       nights: [9000, 9000],
       totalCents: 15000,
-    },
-    {
-      name: "keeps a flat nightly rate as the final price",
-      baseRateCents: 10000,
-      input: body({ nightlyRateCents: 15000 }),
-      nights: [15000, 15000],
-      totalCents: 30000,
     },
   ])("$name in the preview and the saved reservation", async (example) => {
     db.sqlite.exec(`UPDATE room_types SET base_rate_cents = ${example.baseRateCents}`);
@@ -1128,11 +1121,11 @@ describe("cancellation charges and waivers", () => {
     const d = await stay("2026-10-11", "2026-10-13", 20000);
     const addRoom: WorkflowAction = {
       type: "add-room",
-      room: { roomTypeId: "type", adults: 1, children: 0, nightlyRateCents: 15000 },
+      room: { roomTypeId: "type", adults: 1, children: 0 },
     };
     expect(await command(d, [cancel, addRoom])).toMatchObject({
-      totalCents: 35000,
-      cancellation: { policyChargeCents: 35000, finalChargeCents: 35000 },
+      totalCents: 30000,
+      cancellation: { policyChargeCents: 30000, finalChargeCents: 30000 },
     });
   });
 
@@ -1184,8 +1177,8 @@ describe("cancellation charges and waivers", () => {
 
 describe("no-show outcomes", () => {
   const noShow: WorkflowAction = { type: "set-status", status: "no_show" };
-  async function nonRefundable(checkIn: string, checkOut: string, nightlyRateCents: number) {
-    const d = await stay(checkIn, checkOut, nightlyRateCents);
+  async function nonRefundable(checkIn: string, checkOut: string, nightCents: number) {
+    const d = await stay(checkIn, checkOut, nightCents);
     db.sqlite
       .prepare(
         `UPDATE reservations SET rate_plan = 'non_refundable', cancellation_charge_basis = 'final_total',

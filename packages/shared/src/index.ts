@@ -213,7 +213,6 @@ const workflowRoom = z
     roomId: z.string().min(1).nullable().optional(),
     adults: z.number().int().min(1).max(100),
     children: z.number().int().min(0).max(100),
-    nightlyRateCents: z.number().int().min(0).max(1000000000).optional(),
   })
   .strict();
 export const contactSchema = guestFields
@@ -245,7 +244,7 @@ export const workflowActionSchema = z.discriminatedUnion("type", [
     .object({
       type: z.literal("edit-room"),
       lineId: z.string(),
-      room: workflowRoom.omit({ nightlyRateCents: true }),
+      room: workflowRoom,
     })
     .strict(),
   z.object({ type: z.literal("add-room"), room: workflowRoom }).strict(),
@@ -346,7 +345,7 @@ export const workflowCreatePreviewSchema = workflowCreateSchema
   .pick({ checkIn: true, checkOut: true, discountCents: true, ratePlan: true })
   .extend({
     rooms: z
-      .array(workflowRoom.pick({ roomTypeId: true, nightlyRateCents: true }))
+      .array(workflowRoom.pick({ roomTypeId: true }))
       .min(1)
       .max(60),
   })

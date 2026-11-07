@@ -47,7 +47,6 @@ const room = z.object({
     roomId: z.string().nullable(),
     adults: z.string(),
     children: z.string(),
-    nightlyRate: z.string().optional(),
   }),
 });
 export const capacityMessage = "La habitación no tiene capacidad para todos los huéspedes.";
@@ -118,17 +117,6 @@ export const detailsSchema = (
             message: children.error.issues[0].message,
           });
         const previous = saved?.rooms.find((room) => room.id === draft.id);
-        if (!previous && draft.room.nightlyRate !== undefined) {
-          const rate = money(false)
-            .refine((value) => value.trim() !== "", "Ingresa un precio por noche.")
-            .safeParse(draft.room.nightlyRate);
-          if (!rate.success)
-            ctx.addIssue({
-              code: "custom",
-              path: [...path, "nightlyRate"],
-              message: rate.error.issues[0].message,
-            });
-        }
         const changed =
           !previous ||
           draft.room.roomTypeId !== previous.roomTypeId ||
@@ -182,16 +170,9 @@ export function detailsDefaults(detail: ReservationDetail): DetailsValues {
   };
 }
 export function workflowDrafts(values: DetailsValues): RoomDraft[] {
-  return values.rooms.map(({ room: { nightlyRate, ...room }, ...draft }) => ({
+  return values.rooms.map(({ room, ...draft }) => ({
     ...draft,
-    room: {
-      ...room,
-      adults: Number(room.adults),
-      children: Number(room.children),
-      ...(nightlyRate !== undefined
-        ? { nightlyRateCents: parseMajorToCents(nightlyRate.trim()) ?? undefined }
-        : {}),
-    },
+    room: { ...room, adults: Number(room.adults), children: Number(room.children) },
   }));
 }
 

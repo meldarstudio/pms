@@ -57,19 +57,4 @@ describe("priceNights", () => {
     expect(price(10006)).toBe(9005);
     expect(price(1)).toBe(1);
   });
-
-  it("uses a flat rate as the final price without a plan adjustment", () => {
-    const nights = priceNights({
-      dates: dates.slice(0, 2),
-      baseRateCents: 10000,
-      overrides,
-      terms: nonRefundable,
-      flatRateCents: 15000,
-    });
-    expect(nights).toEqual([
-      { date: "2026-12-24", priceCents: 15000, adjustmentCents: 0, discountCents: 0 },
-      { date: "2026-12-25", priceCents: 15000, adjustmentCents: 0, discountCents: 0 },
-    ]);
-    expect(totalCents(nights)).toBe(30000);
-  });
 });

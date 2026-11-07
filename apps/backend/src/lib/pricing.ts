@@ -12,11 +12,8 @@ export function priceNights(stay: {
   baseRateCents: number;
   overrides: ReadonlyMap<string, number>;
   terms: Pick<RatePlanTerms, "priceAdjustmentPercent">;
-  flatRateCents?: number;
 }): PricedNight[] {
   return stay.dates.map((date) => {
-    if (stay.flatRateCents !== undefined)
-      return { date, priceCents: stay.flatRateCents, adjustmentCents: 0, discountCents: 0 };
     const ordinary = stay.overrides.get(date) ?? stay.baseRateCents;
     const priceCents = adjustedPriceCents(ordinary, stay.terms.priceAdjustmentPercent);
     return { date, priceCents, adjustmentCents: priceCents - ordinary, discountCents: 0 };

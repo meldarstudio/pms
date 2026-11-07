@@ -9,8 +9,6 @@ import {
 } from "@/components/workflow-fields";
 import type { PhoneValue } from "./phone";
 import { errorMessage } from "./form-errors";
-import { Button } from "@/components/ui/button";
-import { Undo2Icon } from "lucide-react";
 export { blurThenChange } from "./reservation-form-state";
 
 const { fieldContext, formContext, useFieldContext } = createFormHookContexts();
@@ -113,38 +111,6 @@ function FormChoiceCards(
   );
 }
 
-function FormNightlyPrice({ onUndo }: { onUndo?: () => void }) {
-  const control = useFormControl<string | undefined>();
-  const field = useFieldContext<string | undefined>();
-  if (control.value === undefined) return null;
-  return (
-    <div className="min-w-0 md:max-w-64">
-      <TextField
-        {...control}
-        value={control.value}
-        label="Precio por noche · S/"
-        inputMode="decimal"
-        action={
-          <Button
-            type="button"
-            variant="outline"
-            size="icon"
-            aria-label="Deshacer precio por noche"
-            title="Deshacer precio por noche"
-            onClick={() => {
-              control.onChange(undefined);
-              field.setMeta((meta) => ({ ...meta, isBlurred: false, errorMap: {} }));
-              onUndo?.();
-            }}
-          >
-            <Undo2Icon />
-          </Button>
-        }
-      />
-    </div>
-  );
-}
-
 function FormPhone(
   props: Omit<ComponentProps<typeof PhoneField>, "value" | "onChange" | "error" | "label">,
 ) {
@@ -161,7 +127,6 @@ export const { useAppForm: useReservationForm, withForm: withReservationForm } =
     Radio: FormRadio,
     ChoiceCards: FormChoiceCards,
     Phone: FormPhone,
-    NightlyPrice: FormNightlyPrice,
   },
   formComponents: {},
 });

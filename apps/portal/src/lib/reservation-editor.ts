@@ -145,7 +145,6 @@ export function billingPreviewKey(detail: ReservationDetail, actions: WorkflowAc
           return {
             type: action.type,
             roomTypeId: action.room.roomTypeId,
-            nightlyRateCents: action.room.nightlyRateCents,
           };
         case "edit-room":
           return {

@@ -145,6 +145,23 @@ export function seedRoomType(
     .run(type.id, type.name, type.maxAdults, type.baseRateCents);
 }
 
+export async function atBaseRate<T>(
+  sqlite: DatabaseSync,
+  roomTypeId: string,
+  baseRateCents: number,
+  run: () => Promise<T>,
+): Promise<T> {
+  const select = sqlite.prepare("SELECT base_rate_cents FROM room_types WHERE id = ?");
+  const update = sqlite.prepare("UPDATE room_types SET base_rate_cents = ? WHERE id = ?");
+  const { base_rate_cents: previous } = select.get(roomTypeId) as { base_rate_cents: number };
+  update.run(baseRateCents, roomTypeId);
+  try {
+    return await run();
+  } finally {
+    update.run(previous, roomTypeId);
+  }
+}
+
 export function seedRooms(sqlite: DatabaseSync, roomTypeId: string, rooms: Record<string, string>) {
   const insert = sqlite.prepare("INSERT INTO rooms (id, number, room_type_id) VALUES (?, ?, ?)");
   for (const [id, number] of Object.entries(rooms)) insert.run(id, number, roomTypeId);

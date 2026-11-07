@@ -694,7 +694,6 @@ export function BookingEditor({
                                 <CompactRoomFields
                                   form={form}
                                   roomIndex={roomIndex}
-                                  newRoom={!detail.rooms.some((room) => room.id === draft.id)}
                                   errors={errors}
                                   reservationId={detail.id}
                                   availableTypeIds={availableRoomTypeIds(
@@ -856,13 +855,11 @@ export function BookingEditor({
               ratePlan={ratePlanLabels[detail.ratePlan.plan]}
               showNightlyPrices={isMobile}
               message={
-                summary.invalidPrices
-                  ? "Revisa el precio por noche para ver el total."
-                  : summary.calculating
-                    ? "Calculando…"
-                    : mobileEditor && !billing
-                      ? "Importes no disponibles"
-                      : null
+                summary.calculating
+                  ? "Calculando…"
+                  : mobileEditor && !billing
+                    ? "Importes no disponibles"
+                    : null
               }
               error={
                 summary.error && (
@@ -1011,7 +1008,6 @@ const CompactRoomFields = withReservationForm({
   defaultValues: emptyDetails,
   props: {
     roomIndex: 0,
-    newRoom: false,
     reservationId: "",
     availableTypeIds: new Set<string>(),
     typesReady: false,
@@ -1028,7 +1024,6 @@ const CompactRoomFields = withReservationForm({
   render: function CompactRoomFields({
     form,
     roomIndex,
-    newRoom,
     reservationId,
     availableTypeIds,
     typesReady,
@@ -1164,19 +1159,6 @@ const CompactRoomFields = withReservationForm({
       <ReservationRoomRow
         {...row}
         stacked={stacked}
-        price={
-          newRoom
-            ? {
-                open: room.nightlyRate !== undefined,
-                onOpen: () => form.setFieldValue(`rooms[${roomIndex}].room.nightlyRate`, ""),
-                field: (onUndo) => (
-                  <form.AppField name={`rooms[${roomIndex}].room.nightlyRate`}>
-                    {(field) => <field.NightlyPrice onUndo={onUndo} />}
-                  </form.AppField>
-                ),
-              }
-            : null
-        }
         typeField={typeField}
         roomField={roomField}
         adultsField={adultsField}
