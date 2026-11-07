@@ -134,7 +134,7 @@ export function GuestEntryForm({
             </form.AppField>
             <form.AppField name="phone">{(field) => <field.Phone />}</form.AppField>
           </FieldGroup>
-          <FieldGroup className="grid grid-cols-[7.5rem_minmax(0,1fr)] gap-3 sm:grid-cols-2">
+          <FieldGroup className="grid grid-cols-1 gap-3 sm:grid-cols-2">
             <form.AppField name="documentType">
               {(field) => (
                 <field.Choice

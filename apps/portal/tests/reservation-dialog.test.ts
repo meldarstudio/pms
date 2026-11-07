@@ -1760,7 +1760,7 @@ it("creates a reservation with its contact, notes, room quote, and initial disco
   await fill("fullName", "  Ada Lovelace  ");
   await fill("email", "  ada@example.com  ");
   await fill("phone", "+51 999 888 777");
-  assert.equal(fieldTrigger("Nacionalidad · Opcional").textContent, "Perú");
+  assert.equal(fieldTrigger("Nacionalidad").textContent, "Perú");
   await fill("notes", "Llegada después de las 22:00");
   await React.act(async () => fieldTrigger("Check-out").click());
   const day = Array.from(
@@ -2998,6 +2998,7 @@ it("asks before Cerrar discards unsaved changes, like the close icon", async () 
 it("shows reservation context and offers saving a dirty details draft on phone", async () => {
   const saved = detail();
   saved.guest.phone = "+51987654321";
+  saved.guest.nationality = "CL";
   mockApi(async () => previewResponse(saved), { reservation: () => saved });
   page.mobile();
   await openEditDialog();
@@ -3011,6 +3012,11 @@ it("shows reservation context and offers saving a dirty details draft on phone",
     "The status badge sits beside the code",
   );
   assert.ok(lines.indexOf("Test Guest") > code, "The code sits above the guest name");
+  assert.equal(
+    header.querySelector('img[alt="Nacionalidad: Chile"]')?.nextElementSibling?.textContent,
+    "Test Guest",
+    "The nationality flag sits left of the guest name",
+  );
   const dates = lines.indexOf("14 oct – 16 oct 2026 · 2 noches");
   assert.ok(dates > code);
   const phone = header.querySelector('a[href^="tel:"]')!;
@@ -3020,6 +3026,19 @@ it("shows reservation context and offers saving a dirty details draft on phone",
   await fill("notes", "Llegada tarde");
   assert.ok(button("Guardar cambios"));
   assert.equal(hasButton("Descartar"), false);
+});
+
+it("shows the contact's nationality flag left of their name", async () => {
+  const saved = detail();
+  saved.guest.nationality = "CL";
+  mockApi(async () => previewResponse(saved), { reservation: () => saved });
+  await openEditDialog();
+  await until(() => window.document.querySelector('[name="notes"]') !== null);
+  const header = window.document.querySelector("header")!;
+  assert.equal(
+    header.querySelector('img[alt="Nacionalidad: Chile"]')?.nextElementSibling?.textContent,
+    "Test Guest",
+  );
 });
 
 async function openEditDialogWithToasts() {

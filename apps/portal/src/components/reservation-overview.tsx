@@ -12,8 +12,7 @@ import { ReservationStatusMenu } from "@/components/reservation-status-menu";
 import type { ReservationEditorTarget } from "@/components/reservation-page-editors";
 import type { ReservationDetail } from "@/lib/api";
 import { phoneDisplay } from "@/lib/phone";
-import { nationalityName } from "@/lib/countries";
-import { CountryFlag } from "@/components/workflow-fields";
+import { NationalityFlag } from "@/components/workflow-fields";
 import { format } from "@/lib/dates";
 import { propertyToday } from "@/lib/property-calendar";
 
@@ -43,9 +42,12 @@ export function ReservationOverview({
                 </p>
                 <ReservationStatusBadge status={detail.status} />
               </div>
-              <h1 className="text-2xl font-semibold tracking-tight wrap-anywhere">
-                {detail.guest.fullName}
-              </h1>
+              <div className="flex min-w-0 items-start gap-2.5">
+                <NationalityFlag nationality={detail.guest.nationality} className="mt-2 h-4 w-6" />
+                <h1 className="min-w-0 text-2xl font-semibold tracking-tight wrap-anywhere">
+                  {detail.guest.fullName}
+                </h1>
+              </div>
             </div>
             <div className="col-start-2 row-start-1 md:col-start-3">
               <ReservationStatusMenu
@@ -93,7 +95,7 @@ export function ReservationOverview({
 }
 
 function ContactLine({ detail, edit }: Model) {
-  const { phone, email, nationality } = detail.guest;
+  const { phone, email } = detail.guest;
   const shown = phone ? phoneDisplay(phone) : null;
   return (
     <section
@@ -127,13 +129,6 @@ function ContactLine({ detail, edit }: Model) {
           "Sin correo"
         )}
       </span>
-      {nationality && (
-        <span className="inline-flex items-center gap-1.5">
-          <span className="sr-only">Nacionalidad:</span>
-          <CountryFlag code={nationality} />
-          <span className="text-foreground">{nationalityName(nationality)}</span>
-        </span>
-      )}
       <Button
         variant="ghost"
         size="icon-xs"

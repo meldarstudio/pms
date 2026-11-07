@@ -7,7 +7,7 @@ const flagUrls = new Map(
   Object.entries(flagFiles).map(([path, url]) => [path.split("/").pop()!.replace(".svg", ""), url]),
 );
 const regionNames = new Intl.DisplayNames(["es"], { type: "region", fallback: "none" });
-const regionsWithoutNationals = new Set(["EU", "AC", "IC", "TA"]);
+const flagsWithoutNationals = new Set(["AC", "EU", "IC", "TA", "XA", "XC", "XO"]);
 
 export type Nationality = { code: string; name: string };
 
@@ -18,7 +18,7 @@ export const nationalityName = (code: string) => regionNames.of(code) ?? code;
 export const nationalities: Nationality[] = [...flagUrls.keys()]
   .flatMap((code) => {
     const name =
-      /^[A-Z]{2}$/.test(code) && !regionsWithoutNationals.has(code) && regionNames.of(code);
+      /^[A-Z]{2}$/.test(code) && !flagsWithoutNationals.has(code) && regionNames.of(code);
     return name ? [{ code, name }] : [];
   })
   .sort((a, b) => a.name.localeCompare(b.name, "es"));

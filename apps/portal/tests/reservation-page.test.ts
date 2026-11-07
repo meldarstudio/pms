@@ -913,7 +913,8 @@ it("validates and saves only contact changes without replacing guests or notes",
   await statusMenu("Editar contacto");
   assert.equal(popup()!.querySelector('[name="documentType"]') !== null, false);
   assert.equal(popup()!.querySelector('[name="documentNumber"]') !== null, false);
-  assert.equal(nationalityTrigger().textContent, "Sin indicar");
+  assert.equal(nationalityFlag(), null);
+  assert.equal(nationalityTrigger().textContent, "Selecciona un país");
   await chooseNationality("Chile");
   await fill("fullName", "Ana María Pérez");
   await fill("email", "incorrecto");
@@ -947,33 +948,36 @@ it("validates and saves only contact changes without replacing guests or notes",
     },
   ]);
   assert.equal(previews.length, 0);
-  assert.match(contactLine().textContent, /Nacionalidad:Chile/);
+  assert.equal(nationalityFlag()?.getAttribute("alt"), "Nacionalidad: Chile");
 });
 
-it("shows the contact's nationality and saves it cleared", async () => {
+it("shows the contact's nationality and keeps it on save", async () => {
   saved = { ...saved, guest: { ...saved.guest, nationality: "CL" } };
   mockApi();
   await render();
-  assert.match(contactLine().textContent, /Chile/);
+  assert.equal(nationalityFlag()?.getAttribute("alt"), "Nacionalidad: Chile");
+  assert.doesNotMatch(contactLine().textContent, /Chile/);
   await statusMenu("Editar contacto");
   assert.equal(nationalityTrigger().textContent, "Chile");
-  await click("Quitar nacionalidad");
-  assert.equal(nationalityTrigger().textContent, "Sin indicar");
+  assert.equal(popup()!.querySelector('[aria-label="Quitar nacionalidad"]'), null);
+  await chooseNationality("Perú");
   await submit();
   await page.until(() => !popup());
   assert.equal(
     writes[0].actions[0].type === "contact" && writes[0].actions[0].contact.nationality,
-    null,
+    "PE",
   );
-  assert.doesNotMatch(contactLine().textContent, /Chile|Nacionalidad/);
+  assert.equal(nationalityFlag()?.getAttribute("alt"), "Nacionalidad: Perú");
 });
+
+const nationalityFlag = () => header().querySelector('img[alt^="Nacionalidad"]');
 
 const contactLine = () =>
   page.container.querySelector('[role="region"][aria-label="Contacto principal"]')!;
 
 function nationalityTrigger() {
   const label = Array.from(window.document.querySelectorAll("label")).find(
-    (item) => item.textContent.trim() === "Nacionalidad · Opcional",
+    (item) => item.textContent.trim() === "Nacionalidad",
   );
   assert.ok(label, "Missing nationality field");
   const trigger = window.document.getElementById(label.htmlFor);

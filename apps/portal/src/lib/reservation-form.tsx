@@ -123,7 +123,7 @@ function FormNationality(
   props: Omit<ComponentProps<typeof NationalityField>, "value" | "onChange" | "error" | "label">,
 ) {
   const control = useFormControl<string | null>();
-  return <NationalityField {...props} {...control} label="Nacionalidad · Opcional" />;
+  return <NationalityField {...props} {...control} label="Nacionalidad" />;
 }
 
 export const { useAppForm: useReservationForm, withForm: withReservationForm } = createFormHook({

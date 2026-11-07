@@ -2965,6 +2965,10 @@ describe("contact nationality", () => {
     ["a country name", "Chile"],
     ["a lowercase code", "cl"],
     ["an unassigned code", "XX"],
+    ["a region that is not a country", "EU"],
+    ["an organization", "UN"],
+    ["the unknown region", "ZZ"],
+    ["a retired code", "SU"],
   ])("rejects %s without creating the booking", async (_case, nationality) => {
     const response = await book(nationality);
     expect(response.status).toBe(400);

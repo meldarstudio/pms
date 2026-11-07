@@ -1,5 +1,4 @@
 import { useId, useRef, type ReactNode } from "react";
-import { XIcon } from "lucide-react";
 import { format, parseISO } from "date-fns";
 import { DateField } from "@/components/date-field";
 import {
@@ -438,16 +437,42 @@ export function PhoneField({
   );
 }
 
-export function CountryFlag({ code }: { code: string }) {
+export function CountryFlag({
+  code,
+  label,
+  className,
+}: {
+  code: string;
+  label?: string;
+  className?: string;
+}) {
   const src = flagUrl(code);
   if (!src) return null;
   return (
     <img
       src={src}
-      alt=""
+      alt={label ?? ""}
+      title={label}
       loading="lazy"
       decoding="async"
-      className="h-3.5 w-5 shrink-0 rounded-[2px] object-cover ring-1 ring-foreground/15"
+      className={cn("h-3.5 w-5 shrink-0 rounded-[2px] object-cover", className)}
+    />
+  );
+}
+
+export function NationalityFlag({
+  nationality,
+  className,
+}: {
+  nationality: string | null;
+  className?: string;
+}) {
+  if (!nationality) return null;
+  return (
+    <CountryFlag
+      code={nationality}
+      label={`Nacionalidad: ${nationalityName(nationality)}`}
+      className={className}
     />
   );
 }
@@ -464,7 +489,7 @@ export function NationalityField({
 }: {
   label: string;
   value: string | null;
-  onChange: (value: string | null) => void;
+  onChange: (value: string) => void;
   disabled?: boolean;
   error?: string;
   id?: string;
@@ -477,63 +502,49 @@ export function NationalityField({
   return (
     <Field data-disabled={disabled} data-invalid={!!error}>
       <FieldLabel htmlFor={id}>{label}</FieldLabel>
-      <ButtonGroup className="w-full">
-        <Combobox<Nationality>
-          items={nationalities}
-          value={selected}
-          onValueChange={(next) => {
-            if (next) onChange(next.code);
-          }}
-          onOpenChange={(open) => {
-            if (!open) onBlur?.();
-          }}
-          itemToStringLabel={(item) => item.name}
-          isItemEqualToValue={(item, current) => item.code === current.code}
-          disabled={disabled}
+      <Combobox<Nationality>
+        items={nationalities}
+        value={selected}
+        onValueChange={(next) => {
+          if (next) onChange(next.code);
+        }}
+        onOpenChange={(open) => {
+          if (!open) onBlur?.();
+        }}
+        itemToStringLabel={(item) => item.name}
+        isItemEqualToValue={(item, current) => item.code === current.code}
+        disabled={disabled}
+      >
+        <ComboboxTrigger
+          id={id}
+          name={name}
+          render={<Button type="button" variant="outline" />}
+          className="w-full min-w-0 justify-start [&>svg:last-child]:ml-auto"
+          aria-invalid={!!error}
+          aria-describedby={error ? `${id}-error` : undefined}
         >
-          <ComboboxTrigger
-            id={id}
-            name={name}
-            render={<Button type="button" variant="outline" />}
-            className="min-w-0 flex-1 justify-start [&>svg:last-child]:ml-auto"
-            aria-invalid={!!error}
-            aria-describedby={error ? `${id}-error` : undefined}
-          >
-            {selected ? (
-              <>
-                <CountryFlag code={selected.code} />
-                <span className="truncate">{selected.name}</span>
-              </>
-            ) : (
-              <span className="text-muted-foreground">Sin indicar</span>
+          {selected ? (
+            <>
+              <CountryFlag code={selected.code} />
+              <span className="truncate">{selected.name}</span>
+            </>
+          ) : (
+            <span className="text-muted-foreground">Selecciona un país</span>
+          )}
+        </ComboboxTrigger>
+        <ComboboxContent className="w-64">
+          <ComboboxInput showTrigger={false} placeholder="Buscar país" aria-label="Buscar país" />
+          <ComboboxEmpty>No se encontró el país.</ComboboxEmpty>
+          <ComboboxList>
+            {(item: Nationality) => (
+              <ComboboxItem key={item.code} value={item}>
+                <CountryFlag code={item.code} />
+                {item.name}
+              </ComboboxItem>
             )}
-          </ComboboxTrigger>
-          <ComboboxContent className="w-64">
-            <ComboboxInput showTrigger={false} placeholder="Buscar país" aria-label="Buscar país" />
-            <ComboboxEmpty>No se encontró el país.</ComboboxEmpty>
-            <ComboboxList>
-              {(item: Nationality) => (
-                <ComboboxItem key={item.code} value={item}>
-                  <CountryFlag code={item.code} />
-                  {item.name}
-                </ComboboxItem>
-              )}
-            </ComboboxList>
-          </ComboboxContent>
-        </Combobox>
-        {selected && (
-          <Button
-            type="button"
-            variant="outline"
-            size="icon"
-            aria-label="Quitar nacionalidad"
-            disabled={disabled}
-            onClick={() => onChange(null)}
-          >
-            <XIcon />
-          </Button>
-        )}
-      </ButtonGroup>
+          </ComboboxList>
+        </ComboboxContent>
+      </Combobox>
       {error && <FieldError id={`${id}-error`}>{error}</FieldError>}
     </Field>
   );
