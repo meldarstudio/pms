@@ -1,5 +1,4 @@
 import assert from "node:assert/strict";
-import type { HTMLElement } from "happy-dom";
 import { afterAll, afterEach, beforeAll, beforeEach, it, vi } from "vite-plus/test";
 import type { PropertySetupInput } from "../src/lib/api.ts";
 import { createBrowserTest, type BrowserTest, type BrowserPage } from "./browser.ts";
@@ -104,18 +103,18 @@ async function click(label: string) {
   });
 }
 
-async function selectSection(label: string) {
-  const trigger = container.querySelector(
-    '[role="combobox"][aria-label="Secciones de configuración"]',
-  );
-  assert.ok(trigger);
-  await React.act(async () => (trigger as HTMLElement).click());
-  await until(() => !!window.document.querySelector('[role="option"]'));
-  const option = Array.from(window.document.querySelectorAll('[role="option"]')).find(
-    (element) => element.textContent.trim() === label,
-  );
-  assert.ok(option, `Section ${label} must be available`);
-  await React.act(async () => (option as HTMLElement).click());
+function sidebarLink(label: string) {
+  const link = Array.from(
+    window.document.querySelectorAll('nav[aria-label="Navegación principal"] a'),
+  ).find((element) => element.textContent.trim() === label);
+  assert.ok(link, `Sidebar must link to ${label}`);
+  return link;
+}
+
+async function clickMobileSidebarLink(label: string) {
+  await click("Alternar navegación");
+  sidebarLink(label);
+  await click(label);
 }
 
 it.each([
@@ -269,6 +268,17 @@ it("protects unsaved edits when closing the editor and supports staying or expli
   assert.equal(writes.length, 0);
 });
 
+it("returns a clean editor to the room-type list when the current sidebar section is clicked", async () => {
+  await render();
+  await openType();
+  assert.equal(sidebarLink("Habitaciones").getAttribute("aria-current"), "page");
+  await click("Habitaciones");
+  await until(() => !container.querySelector('input[name="name"]'), "Editor must close");
+  assert.equal(window.document.querySelector('[role="alertdialog"]'), null);
+  assert.ok(container.querySelector('[aria-label="Editar Suite"]'));
+  assert.equal(router.state.location.search.section, undefined);
+});
+
 it("saves before closing and prevents discarding or editing while that save is pending", async () => {
   const save = api.hold("POST", "/setup");
   await render();
@@ -280,12 +290,6 @@ it("saves before closing and prevents discarding or editing while that save is p
   assert.equal(input("name").value, "Doble");
   assert.equal(input("name").disabled, true);
   assert.equal(button("Agregar habitación").disabled, true);
-  assert.equal(
-    container
-      .querySelector('[role="combobox"][aria-label="Secciones de configuración"]')
-      ?.hasAttribute("disabled"),
-    true,
-  );
   await click("Reservas");
   await until(
     () => window.document.body.textContent.includes("Guardando cambios"),
@@ -527,28 +531,26 @@ it("retains pending text after a failed router save-and-continue and stays on a 
   assert.equal(router.state.location.pathname, "/setup");
 });
 
-it("protects a draft when the mobile section select changes sections", async () => {
+it("protects a draft when a mobile sidebar section link changes sections", async () => {
   page.mobile();
   await render();
   await openType();
   await fill("roomNumber", "204");
-  await selectSection("Apariencia");
+  await clickMobileSidebarLink("Apariencia");
   await until(() => !!window.document.querySelector('[role="alertdialog"]'));
   assert.equal(router.state.location.search.section, undefined);
   assert.equal(input("roomNumber").value, "204");
-  assert.ok(
-    container
-      .querySelector('[role="combobox"][aria-label="Secciones de configuración"]')
-      ?.textContent.includes("Habitaciones"),
-  );
   await click("Seguir editando");
   assert.equal(input("roomNumber").value, "204");
-  await selectSection("Apariencia");
+  await clickMobileSidebarLink("Apariencia");
   await until(() => !!window.document.querySelector('[role="alertdialog"]'));
   await click("Descartar cambios");
   await until(() => !!container.querySelector("#configuration-theme"));
   assert.equal(router.state.location.search.section, "appearance");
-  await selectSection("Habitaciones");
+  await click("Alternar navegación");
+  assert.equal(sidebarLink("Apariencia").getAttribute("aria-current"), "page");
+  assert.equal(sidebarLink("Habitaciones").hasAttribute("aria-current"), false);
+  await click("Habitaciones");
   await openType();
   assert.equal(input("roomNumber").value, "");
 });

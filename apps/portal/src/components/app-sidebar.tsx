@@ -5,9 +5,12 @@ import {
   BroomIcon,
   CalendarDaysIcon,
   ClipboardListIcon,
+  DoorOpenIcon,
   EllipsisVerticalIcon,
   LogOutIcon,
-  SettingsIcon,
+  PaletteIcon,
+  ShieldCheckIcon,
+  type LucideIcon,
 } from "lucide-react";
 import { HotelLogo } from "@/components/hotel-logo";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
@@ -23,6 +26,7 @@ import {
   SidebarFooter,
   SidebarGroup,
   SidebarGroupContent,
+  SidebarGroupLabel,
   SidebarHeader,
   SidebarMenu,
   SidebarMenuButton,
@@ -32,7 +36,16 @@ import {
 import { accountRoleTitles } from "@/lib/account-roles";
 import type { Session } from "@/lib/api";
 import { useLogout, useSession } from "@/lib/queries";
-import { activeNavigation, appNavigation } from "@/lib/navigation";
+import {
+  activeNavigation,
+  appNavigation,
+  activeConfigurationSection,
+  canOpenConfigurationSection,
+  configurationSearch,
+  configurationSections,
+  forceSameUrlNavigation,
+  type ConfigurationSection,
+} from "@/lib/navigation";
 import {
   calendarSearch,
   calendarStart,
@@ -44,6 +57,12 @@ import {
 } from "@/lib/route-search";
 import { toastError } from "@/lib/toast";
 import { usePropertyCalendar } from "@/lib/use-property-calendar";
+
+const configurationIcons = {
+  rooms: DoorOpenIcon,
+  appearance: PaletteIcon,
+  accounts: ShieldCheckIcon,
+} satisfies Record<ConfigurationSection, LucideIcon>;
 
 export function AppSidebar() {
   const location = useRouterState({ select: (state) => state.location });
@@ -75,6 +94,10 @@ export function AppSidebar() {
       search: inventorySearch({ from: today }),
     },
   ] as const;
+  const sections = configurationSections.filter(({ id }) =>
+    canOpenConfigurationSection(id, session?.role),
+  );
+  const activeSection = activeConfigurationSection(location);
 
   function closeMobileNavigation(event: MouseEvent) {
     if (
@@ -123,19 +146,39 @@ export function AppSidebar() {
               </SidebarMenu>
             </SidebarGroupContent>
           </SidebarGroup>
+          <SidebarGroup>
+            <SidebarGroupLabel>{appNavigation.setup.label}</SidebarGroupLabel>
+            <SidebarGroupContent>
+              <SidebarMenu className="gap-1">
+                {sections.map(({ id, title }) => {
+                  const Icon = configurationIcons[id];
+                  const isActive = activeSection === id;
+                  return (
+                    <SidebarMenuItem key={id}>
+                      <SidebarMenuButton
+                        isActive={isActive}
+                        render={
+                          <Link
+                            to={appNavigation.setup.to}
+                            search={configurationSearch(id)}
+                            replace={isActive}
+                            state={isActive ? forceSameUrlNavigation : undefined}
+                            activeOptions={{ exact: true }}
+                            onClick={closeMobileNavigation}
+                          />
+                        }
+                      >
+                        <Icon />
+                        <span>{title}</span>
+                      </SidebarMenuButton>
+                    </SidebarMenuItem>
+                  );
+                })}
+              </SidebarMenu>
+            </SidebarGroupContent>
+          </SidebarGroup>
         </SidebarContent>
         <SidebarFooter className="gap-3">
-          <SidebarMenu>
-            <SidebarMenuItem>
-              <SidebarMenuButton
-                isActive={activeDestination?.to === appNavigation.setup.to}
-                render={<Link to={appNavigation.setup.to} onClick={closeMobileNavigation} />}
-              >
-                <SettingsIcon />
-                <span>{appNavigation.setup.label}</span>
-              </SidebarMenuButton>
-            </SidebarMenuItem>
-          </SidebarMenu>
           {session && <AccountMenu username={session.username} role={session.role} />}
         </SidebarFooter>
       </nav>
