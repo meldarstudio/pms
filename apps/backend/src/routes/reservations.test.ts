@@ -3349,11 +3349,11 @@ describe("reservation list search", () => {
     const ada = await book("Ada Lovelace");
     await book("Grace Hopper", { checkIn: "2026-10-11", checkOut: "2026-10-13" });
     expect((await listed("?q=Ada%20Love")).map((row) => row.id)).toEqual([ada.id]);
-    expect(await listed("?q=ada%20hopper")).toEqual([]);
+    expect(await listed("?q=lovelace%20hopper")).toEqual([]);
     expect(
       (await listed(`?q=${encodeURIComponent(`${ada.code} Lovelace`)}`)).map((row) => row.id),
     ).toEqual([ada.id]);
-    expect(await listed(`?q=${encodeURIComponent("A_a Lovelace")}`)).toEqual([]);
+    expect(await listed(`?q=${encodeURIComponent("Lo_e")}`)).toEqual([]);
     expect((await listed("?q=Love%25lace")).map((row) => row.id)).toEqual([ada.id]);
   });
 });
