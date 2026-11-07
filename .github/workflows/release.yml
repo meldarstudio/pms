@@ -11,9 +11,6 @@ on:
 permissions:
   contents: read
 
-env:
-  CF_SEND_TELEMETRY: "false"
-
 concurrency:
   group: pms-production-release
   cancel-in-progress: false

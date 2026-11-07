@@ -13,7 +13,6 @@ const productionName = "pms-production";
 const envWithoutCfPrompts = {
   ...process.env,
   CI: "true",
-  CF_SEND_TELEMETRY: "false",
 };
 
 function cf(args, stdout = "inherit") {
