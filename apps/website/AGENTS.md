@@ -24,8 +24,9 @@ Run commands from the repository root with `pnpm --filter @pms/website`.
   Add `--internal-only` to skip external requests.
 - Install the test browser with `exec playwright install chromium` when needed.
 
-Website deployment is separate from the PMS production release workflow.
-Root production safety rules apply to this site's Cloudflare deployment too.
+Production website deployment stays in `meldarstudio/hotelmanantial` until an
+explicitly requested cutover. Do not deploy this directory before that cutover.
+Apply urgent production website fixes in both repositories to keep them aligned.
 
 `check` runs `astro sync` then `astro-check` directly. The workspace package
 extensions give the checker TypeScript 6 and its compatible WASM runtime;
@@ -43,9 +44,9 @@ URLs end in `/`. Add canonical slash redirects to `public/_redirects` when
 adding routes. Astro config redirects produce meta refresh pages; Cloudflare
 HTTP redirects belong in `_redirects`. Astro preview ignores that file.
 
-The site origin appears in `astro.config.mjs` and both scripts in `scripts/`;
-update all three when changing domains. The build hook copies the English
-404 page to `dist/en/404.html` for Cloudflare.
+The site origin appears in `astro.config.mjs`, both scripts in `scripts/`, and
+`public/robots.txt`; update all four when changing domains. The build hook copies
+the English 404 page to `dist/en/404.html` for Cloudflare.
 
 ## Source locations
 
