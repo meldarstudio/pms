@@ -1,0 +1,52 @@
+---
+import mapImage from "@/assets/map.webp";
+import { Image } from "astro:assets";
+import { mapsUrl } from "@/lib/constants";
+import { getLang, useTranslations } from "@/i18n/utils";
+
+const lang = getLang(Astro.currentLocale);
+const t = useTranslations(lang);
+---
+
+<section id="como-llegar" class="bg-accent-100 scroll-offset">
+  <div class="mx-auto grid max-w-7xl grid-cols-1 items-center gap-8 px-4 py-8 md:grid-cols-2 md:gap-12 md:px-8 md:py-16 lg:py-24">
+    <div class="min-w-0">
+      <h2 class="text-accent-950 text-2xl font-semibold text-pretty md:text-3xl lg:text-4xl">
+        {t("directions.title")}
+      </h2>
+      <div class="mt-4 max-w-md space-y-3 leading-relaxed text-pretty text-stone-600">
+        <p>
+          <strong class="font-semibold text-stone-900">{t("directions.carLabel")}</strong>{" "}
+          {t("directions.car")}
+        </p>
+        <p>
+          <strong class="font-semibold text-stone-900">{t("directions.busLabel")}</strong>{" "}
+          {t("directions.bus")}
+        </p>
+      </div>
+      <a
+        href={mapsUrl}
+        target="_blank"
+        rel="noopener noreferrer"
+        class="font-source-sans-3 hover:border-accent-500 hover:bg-accent-500 hover:text-accent-950 mt-6 inline-flex min-h-11 w-fit items-center border border-stone-900 px-5 text-sm font-medium tracking-widest text-stone-900 uppercase"
+      >
+        {t("location.cta")}
+      </a>
+    </div>
+    <a
+      class="block aspect-[4/3] w-full overflow-hidden"
+      href={mapsUrl}
+      target="_blank"
+      rel="noopener noreferrer"
+    >
+      <Image
+        class="h-full w-full object-cover object-bottom"
+        src={mapImage}
+        sizes="(min-width: 80rem) 608px, (min-width: 48rem) 50vw, 100vw"
+        layout="constrained"
+        loading="lazy"
+        alt={t("map.title")}
+      />
+    </a>
+  </div>
+</section>

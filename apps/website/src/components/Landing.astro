@@ -1,0 +1,70 @@
+---
+import backgroundImage from "@/assets/hero-image.webp";
+import portraitImage from "@/assets/hero-image-portrait.webp";
+import { Image, getImage } from "astro:assets";
+import Whatsapp from "@/icons/Whatsapp.svg";
+import { getWhatsAppLink } from "@/lib/constants";
+import { getRelativeLocaleUrl } from "astro:i18n";
+import { getLang, useTranslations } from "@/i18n/utils";
+
+const lang = getLang(Astro.currentLocale);
+const t = useTranslations(lang);
+const bookHref = getWhatsAppLink(t("whatsapp.prefill"));
+const roomsHref = getRelativeLocaleUrl(lang, "habitaciones");
+const portrait = await getImage({
+  src: portraitImage,
+  format: "webp",
+  widths: [640, 750, 828, portraitImage.width],
+});
+---
+
+<section class="relative border-b border-stone-200">
+  <picture class="absolute inset-0">
+    <source
+      media="(max-width: 767px) and (orientation: portrait)"
+      srcset={portrait.srcSet.attribute}
+      sizes="max(100vw, 56.25vh)"
+      type="image/webp"
+    />
+    <Image
+      class="absolute inset-0 h-full w-full object-cover object-center"
+      src={backgroundImage}
+      layout="full-width"
+      loading="eager"
+      fetchpriority="high"
+      alt={t("hero.imageAlt")}
+    />
+  </picture>
+  <div class="absolute inset-0 bg-linear-to-r from-stone-950/75 via-stone-950/40 to-transparent"></div>
+  <div class="absolute inset-0 bg-linear-to-b from-stone-950/50 to-transparent"></div>
+  <div class="relative mx-auto flex min-h-svh max-w-7xl items-end px-4 py-8 pb-[max(2rem,env(safe-area-inset-bottom))] md:px-8 lg:py-16 lg:pb-[max(4rem,env(safe-area-inset-bottom))]">
+    <article class="max-w-lg min-w-0">
+      <p class="font-source-sans-3 text-accent-300 text-xs font-medium tracking-widest uppercase">
+        {t("hero.eyebrow")}
+      </p>
+      <h1 class="mt-3 text-3xl font-semibold text-pretty text-white drop-shadow-sm sm:text-4xl md:text-5xl">
+        {t("hero.title")}
+      </h1>
+      <p class="mt-4 text-sm leading-relaxed text-pretty text-white/90 sm:text-base">
+        {t("hero.body")}
+      </p>
+      <div class="mt-8 flex flex-wrap items-center gap-4">
+        <a
+          href={bookHref}
+          target="_blank"
+          rel="noopener noreferrer"
+          class="font-source-sans-3 bg-accent-500 text-accent-950 hover:bg-accent-400 inline-flex min-h-11 items-center gap-2 px-5 text-sm font-medium tracking-widest uppercase focus-visible:outline-white"
+        >
+          <Whatsapp class="size-4 shrink-0" />
+          {t("hero.bookCta")}
+        </a>
+        <a
+          href={roomsHref}
+          class="font-source-sans-3 inline-flex min-h-11 items-center border border-white px-5 text-sm font-medium tracking-widest text-white uppercase hover:bg-white/10 focus-visible:outline-white"
+        >
+          {t("hero.roomsCta")}
+        </a>
+      </div>
+    </article>
+  </div>
+</section>

@@ -1,0 +1,122 @@
+---
+import Footer from "@/components/Footer.astro";
+import Menu from "@/components/Menu.astro";
+import "@/styles/global.css";
+import { defaultMeta } from "@/constants";
+import { Font } from "astro:assets";
+import { getAbsoluteLocaleUrl } from "astro:i18n";
+import { i18n } from "astro:config/client";
+import { getLang, getPathWithoutLocale, useTranslations } from "@/i18n/utils";
+
+interface Props {
+  title?: string;
+  description?: string;
+  ogImage?: {
+    src: string;
+    alt: string;
+    width?: number;
+    height?: number;
+    type?: string;
+  };
+  noIndex?: boolean;
+  noCanonical?: boolean;
+}
+
+const lang = getLang(Astro.currentLocale);
+const t = useTranslations(lang);
+const path = getPathWithoutLocale(Astro.url);
+const locales = (i18n?.locales ?? []).filter(
+  (locale): locale is string => typeof locale === "string",
+);
+
+const {
+  title = t("meta.title"),
+  description = t("meta.description"),
+  ogImage = {
+    ...defaultMeta.ogImage,
+    alt: t("meta.ogImageAlt"),
+  },
+  noIndex = false,
+  noCanonical = false,
+} = Astro.props;
+const ogImageURL = new URL(ogImage.src, Astro.site ?? Astro.url).href;
+const canonicalURL = getAbsoluteLocaleUrl(lang, path);
+const isHome = path === "";
+const ogLocale = lang === "en" ? "en_US" : "es_PE";
+const ogLocaleAlternate = lang === "en" ? "es_PE" : "en_US";
+---
+
+<html lang={lang}>
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <title>{title}</title>
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    {!noCanonical && <link rel="canonical" href={canonicalURL} />}
+    {locales.map((locale) => (
+      <link rel="alternate" hreflang={locale} href={getAbsoluteLocaleUrl(locale, path)} />
+    ))}
+    {i18n && (
+      <link
+        rel="alternate"
+        hreflang="x-default"
+        href={getAbsoluteLocaleUrl(i18n.defaultLocale, path)}
+      />
+    )}
+    <Font cssVariable="--font-lora" preload />
+    <Font cssVariable="--font-source-sans-3" />
+    <meta name="title" content={title} />
+    <meta name="description" content={description} />
+    <meta property="og:type" content="website" />
+    <meta property="og:url" content={canonicalURL} />
+    <meta property="og:title" content={title} />
+    <meta property="og:description" content={description} />
+    <meta property="og:image" content={ogImageURL} />
+    {ogImage.type && <meta property="og:image:type" content={ogImage.type} />}
+    {ogImage.width && <meta property="og:image:width" content={String(ogImage.width)} />}
+    {ogImage.height && <meta property="og:image:height" content={String(ogImage.height)} />}
+    <meta property="og:image:alt" content={ogImage.alt} />
+    <meta property="og:site_name" content={defaultMeta.author} />
+    <meta property="og:locale" content={ogLocale} />
+    <meta property="og:locale:alternate" content={ogLocaleAlternate} />
+    <meta property="twitter:card" content="summary_large_image" />
+    <meta property="twitter:url" content={canonicalURL} />
+    <meta property="twitter:title" content={title} />
+    <meta property="twitter:description" content={description} />
+    <meta property="twitter:image" content={ogImageURL} />
+    <meta property="twitter:image:alt" content={ogImage.alt} />
+    <meta name="generator" content={Astro.generator} />
+    {noIndex ? (
+      <Fragment>
+        <meta name="robots" content="noindex, nofollow" />
+        <meta name="googlebot" content="noindex, nofollow" />
+      </Fragment>
+    ) : (
+      <Fragment>
+        <meta name="robots" content="follow, index" />
+        <link rel="sitemap" href="/sitemap-index.xml" />
+        <meta
+          name="googlebot"
+          content="index, follow, max-snippet:-1, max-image-preview:large, max-video-preview:-1"
+        />
+      </Fragment>
+    )}
+    <meta name="author" content={defaultMeta.author} />
+    <meta name="theme-color" content={isHome ? "#0a0a0a" : "#ffffff"} />
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+    <slot name="head" />
+  </head>
+  <body class="font-lora selection:bg-accent-500 selection:text-accent-100 antialiased">
+    <a
+      href="#main-content"
+      class="focus:bg-accent-500 focus:text-accent-950 focus:outline-accent-700 sr-only font-medium focus:not-sr-only focus:absolute focus:top-[max(2rem,env(safe-area-inset-top))] focus:left-[max(2rem,env(safe-area-inset-left))] focus:z-90 focus:px-4 focus:py-2 focus:outline-2 focus:outline-offset-2"
+    >
+      {t("skipToContent")}
+    </a>
+    <Menu />
+    <main id="main-content" tabindex="-1" class="scroll-offset">
+      <slot />
+    </main>
+    <Footer />
+  </body>
+</html>

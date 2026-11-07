@@ -1,0 +1,359 @@
+---
+import { Image, getImage } from "astro:assets";
+import Whatsapp from "@/icons/Whatsapp.svg";
+import { getWhatsAppLink } from "@/lib/constants";
+import { rooms } from "@/lib/rooms";
+import { getLang, useTranslations } from "@/i18n/utils";
+
+const lang = getLang(Astro.currentLocale);
+const t = useTranslations(lang);
+const lightboxImages = await Promise.all(
+  rooms.map((room) =>
+    Promise.all(
+      room.gallery.map((image) =>
+        getImage({
+          src: image.src,
+          width: Math.min(image.src.width, 2400),
+          format: "webp",
+          quality: 85,
+        }),
+      ),
+    ),
+  ),
+);
+const primaryCta =
+  "font-source-sans-3 mt-8 inline-flex min-h-11 w-fit items-center gap-2 bg-accent-500 px-5 text-sm font-medium tracking-widest text-accent-950 uppercase hover:bg-accent-400";
+---
+
+<section class="bg-white">
+  <div class="mx-auto flex max-w-7xl flex-col gap-16 px-4 py-8 md:gap-32 md:px-8 md:py-16 lg:gap-48 lg:py-24">
+    {rooms.map((room, index) => {
+      const reverse = index % 2 === 1;
+      const specs = [
+        { label: t("rooms.spec.beds"), value: t(room.bedsKey) },
+        { label: t("rooms.spec.area"), value: t(room.areaKey) },
+        { label: t("rooms.spec.price"), value: t(room.priceKey) },
+      ];
+      return (
+        <article class="grid grid-cols-1 lg:grid-cols-12">
+          <figure class:list={["lg:col-span-6", { "lg:col-start-7 lg:row-start-1": reverse }]}>
+            <div data-room-gallery>
+              <div class="lg:hidden">
+                <div class="relative aspect-4/3 overflow-hidden">
+                  {room.gallery.map((image, imageIndex) => (
+                    <button
+                      type="button"
+                      class:list={[
+                        "absolute inset-0 h-full w-full cursor-zoom-in",
+                        { hidden: imageIndex !== 0 },
+                      ]}
+                      data-gallery-main
+                      data-gallery-index={imageIndex}
+                      aria-label={`${t(room.nameKey)}: ${t("rooms.gallery.open")} ${imageIndex + 1} ${t("rooms.gallery.of")} ${room.gallery.length}`}
+                    >
+                      <Image
+                        class="h-full w-full object-cover object-center"
+                        src={image.src}
+                        width={960}
+                        height={720}
+                        layout="constrained"
+                        alt={t(image.altKey)}
+                      />
+                    </button>
+                  ))}
+                </div>
+                <div class="mt-2 grid grid-cols-3 gap-2">
+                  {room.gallery.map((image, imageIndex) => (
+                    <button
+                      type="button"
+                      class="aspect-4/3 cursor-pointer overflow-hidden opacity-50 transition-opacity aria-pressed:opacity-100"
+                      data-gallery-thumbnail
+                      data-gallery-index={imageIndex}
+                      aria-label={`${t(room.nameKey)}: ${t("rooms.gallery.select")} ${imageIndex + 1} ${t("rooms.gallery.of")} ${room.gallery.length}`}
+                      aria-pressed={imageIndex === 0 ? "true" : "false"}
+                    >
+                      <Image
+                        class="h-full w-full object-cover object-center"
+                        src={image.src}
+                        layout="full-width"
+                        sizes="30vw"
+                        alt=""
+                      />
+                    </button>
+                  ))}
+                </div>
+              </div>
+              <div class="hidden grid-cols-2 gap-3 lg:grid">
+                {room.gallery.map((image, imageIndex) => (
+                  <button
+                    type="button"
+                    class:list={[
+                      "relative cursor-zoom-in overflow-hidden",
+                      imageIndex === 0 ? "col-span-2 aspect-16/10" : "aspect-4/3",
+                    ]}
+                    data-gallery-open
+                    data-gallery-index={imageIndex}
+                    aria-label={`${t(room.nameKey)}: ${t("rooms.gallery.open")} ${imageIndex + 1} ${t("rooms.gallery.of")} ${room.gallery.length}`}
+                  >
+                    <Image
+                      class="absolute inset-0 h-full w-full object-cover object-center transition-transform duration-300 hover:scale-[1.02] motion-reduce:transition-none"
+                      src={image.src}
+                      layout="constrained"
+                      sizes={
+                        imageIndex === 0
+                          ? "(min-width: 80rem) 38rem, (min-width: 64rem) calc((100vw - 4rem) / 2)"
+                          : "(min-width: 80rem) 18.625rem, (min-width: 64rem) calc((100vw - 5.5rem) / 4)"
+                      }
+                      alt={t(image.altKey)}
+                    />
+                  </button>
+                ))}
+              </div>
+              <dialog
+                class="fixed inset-0 m-0 h-dvh max-h-none w-screen max-w-none overscroll-contain bg-stone-950 p-0 text-white"
+                data-gallery-dialog
+                aria-label={t(room.nameKey)}
+                data-gallery-of={t("rooms.gallery.of")}
+              >
+                <div class="relative flex h-full w-full items-center justify-center pt-[max(4rem,env(safe-area-inset-top))] pr-[max(1rem,env(safe-area-inset-right))] pb-[max(4rem,env(safe-area-inset-bottom))] pl-[max(1rem,env(safe-area-inset-left))] md:px-20">
+                  <button
+                    type="button"
+                    class="font-source-sans-3 absolute top-[max(1rem,env(safe-area-inset-top))] right-[max(1rem,env(safe-area-inset-right))] z-10 flex h-11 min-w-11 cursor-pointer items-center justify-center bg-white/10 px-3 text-sm tracking-widest uppercase hover:bg-white/20 focus-visible:outline-white"
+                    data-gallery-close
+                  >
+                    {t("rooms.gallery.close")}
+                  </button>
+                  <div class="h-full w-full" data-gallery-slides>
+                    {room.gallery.map((image, imageIndex) => (
+                      <div
+                        class:list={["h-full w-full", { hidden: imageIndex !== 0 }]}
+                        data-gallery-slide
+                        data-gallery-index={imageIndex}
+                      >
+                        <img
+                          class="h-full w-full object-contain"
+                          data-gallery-src={lightboxImages[index][imageIndex].src}
+                          width={image.src.width}
+                          height={image.src.height}
+                          alt={t(image.altKey)}
+                        />
+                      </div>
+                    ))}
+                  </div>
+                  <button
+                    type="button"
+                    class="absolute top-1/2 left-[max(0.75rem,env(safe-area-inset-left))] flex h-12 w-12 -translate-y-1/2 cursor-pointer items-center justify-center bg-black/50 hover:bg-black/70 focus-visible:outline-white md:left-6"
+                    data-gallery-previous
+                    aria-label={t("rooms.gallery.previous")}
+                  >
+                    <svg viewBox="0 0 24 24" class="h-6 w-6" aria-hidden="true">
+                      <path d="m15 18-6-6 6-6" fill="none" stroke="currentColor" stroke-width="2" />
+                    </svg>
+                  </button>
+                  <button
+                    type="button"
+                    class="absolute top-1/2 right-[max(0.75rem,env(safe-area-inset-right))] flex h-12 w-12 -translate-y-1/2 cursor-pointer items-center justify-center bg-black/50 hover:bg-black/70 focus-visible:outline-white md:right-6"
+                    data-gallery-next
+                    aria-label={t("rooms.gallery.next")}
+                  >
+                    <svg viewBox="0 0 24 24" class="h-6 w-6" aria-hidden="true">
+                      <path d="m9 6 6 6-6 6" fill="none" stroke="currentColor" stroke-width="2" />
+                    </svg>
+                  </button>
+                  <p
+                    class="font-source-sans-3 absolute bottom-[max(1.25rem,env(safe-area-inset-bottom))] left-1/2 -translate-x-1/2 text-xs tracking-widest text-white/80"
+                    data-gallery-counter
+                  >
+                    1 / {room.gallery.length}
+                  </p>
+                  <p
+                    class="sr-only"
+                    data-gallery-announcement
+                    aria-live="polite"
+                    aria-atomic="true"
+                  />
+                </div>
+              </dialog>
+            </div>
+          </figure>
+          <div
+            class:list={[
+              "mt-6 lg:col-span-6 lg:mt-0",
+              {
+                "lg:col-start-1 lg:row-start-1 lg:pr-10 xl:pr-14": reverse,
+                "lg:pl-10 xl:pl-14": !reverse,
+              },
+            ]}
+          >
+            <div>
+              <p class="font-source-sans-3 text-accent-700 text-xs font-medium tracking-widest uppercase">
+                {t(room.bestForKey)}
+              </p>
+              <h2 class="mt-4 text-2xl font-semibold text-pretty text-stone-900 md:text-3xl lg:text-4xl">
+                {t(room.nameKey)}
+              </h2>
+              <p class="mt-5 leading-relaxed text-pretty text-stone-600">{t(room.leadKey)}</p>
+            </div>
+            <div>
+              <dl class="mt-10 divide-y divide-stone-300 border-y border-stone-300">
+                {specs.map((spec) => (
+                  <div class="flex items-baseline justify-between gap-4 py-3">
+                    <dt class="font-source-sans-3 text-xs font-medium tracking-widest text-stone-500 uppercase">
+                      {spec.label}
+                    </dt>
+                    <dd class="text-right text-stone-900">{spec.value}</dd>
+                  </div>
+                ))}
+              </dl>
+              <a
+                href={getWhatsAppLink(t(room.prefillKey))}
+                target="_blank"
+                rel="noopener noreferrer"
+                class={primaryCta}
+              >
+                <Whatsapp class="size-4 shrink-0" />
+                {t(room.ctaKey)}
+              </a>
+            </div>
+          </div>
+        </article>
+      );
+    })}
+  </div>
+</section>
+
+<script>
+  document.querySelectorAll<HTMLElement>("[data-room-gallery]").forEach((gallery) => {
+    const dialog = gallery.querySelector<HTMLDialogElement>("[data-gallery-dialog]");
+    const mainImages = Array.from(gallery.querySelectorAll<HTMLElement>("[data-gallery-main]"));
+    const thumbnails = Array.from(
+      gallery.querySelectorAll<HTMLButtonElement>("[data-gallery-thumbnail]"),
+    );
+    const desktopImages = Array.from(
+      gallery.querySelectorAll<HTMLButtonElement>("[data-gallery-open]"),
+    );
+    const slides = Array.from(gallery.querySelectorAll<HTMLElement>("[data-gallery-slide]"));
+    const closeButton = gallery.querySelector<HTMLButtonElement>("[data-gallery-close]");
+    const previousButton = gallery.querySelector<HTMLButtonElement>("[data-gallery-previous]");
+    const nextButton = gallery.querySelector<HTMLButtonElement>("[data-gallery-next]");
+    const counter = gallery.querySelector<HTMLElement>("[data-gallery-counter]");
+    const announcement = gallery.querySelector<HTMLElement>("[data-gallery-announcement]");
+
+    if (!dialog || slides.length === 0) return;
+
+    let currentIndex = 0;
+    let lastTrigger: HTMLElement | null = null;
+    let touchStartX = 0;
+
+    const showMobileImage = (index: number) => {
+      mainImages.forEach((image, imageIndex) => {
+        image.classList.toggle("hidden", imageIndex !== index);
+      });
+      thumbnails.forEach((thumbnail, thumbnailIndex) => {
+        thumbnail.setAttribute("aria-pressed", String(thumbnailIndex === index));
+      });
+    };
+
+    const showLightboxImage = (index: number) => {
+      currentIndex = (index + slides.length) % slides.length;
+      const activeImage = slides[currentIndex]?.querySelector("img");
+      if (activeImage?.dataset.gallerySrc && !activeImage.src) {
+        activeImage.src = activeImage.dataset.gallerySrc;
+      }
+      slides.forEach((slide, slideIndex) => {
+        slide.classList.toggle("hidden", slideIndex !== currentIndex);
+      });
+      if (counter) counter.textContent = `${currentIndex + 1} / ${slides.length}`;
+      if (announcement && activeImage) {
+        announcement.textContent = `${dialog.getAttribute("aria-label")}: ${activeImage.alt}, ${currentIndex + 1} ${dialog.dataset.galleryOf} ${slides.length}`;
+      }
+    };
+
+    const openLightbox = (index: number, trigger: HTMLElement) => {
+      lastTrigger = trigger;
+      dialog.showModal();
+      showLightboxImage(index);
+    };
+
+    thumbnails.forEach((thumbnail, index) => {
+      thumbnail.addEventListener("click", () => showMobileImage(index));
+    });
+
+    mainImages.forEach((image, index) => {
+      image.addEventListener("click", () => openLightbox(index, image));
+    });
+
+    desktopImages.forEach((image, index) => {
+      image.addEventListener("click", () => openLightbox(index, image));
+    });
+
+    closeButton?.addEventListener("click", () => dialog.close());
+    previousButton?.addEventListener("click", () => showLightboxImage(currentIndex - 1));
+    nextButton?.addEventListener("click", () => showLightboxImage(currentIndex + 1));
+
+    dialog.addEventListener("keydown", (event) => {
+      if (event.key === "ArrowLeft") showLightboxImage(currentIndex - 1);
+      if (event.key === "ArrowRight") showLightboxImage(currentIndex + 1);
+    });
+
+    dialog.addEventListener("click", (event) => {
+      const target = event.target;
+      if (
+        target instanceof Element &&
+        target.closest("[data-gallery-close], [data-gallery-previous], [data-gallery-next]")
+      ) {
+        return;
+      }
+
+      const image = slides[currentIndex]?.querySelector("img");
+      if (!image || image.naturalWidth === 0 || image.naturalHeight === 0) return;
+
+      const bounds = image.getBoundingClientRect();
+      const scale = Math.min(
+        bounds.width / image.naturalWidth,
+        bounds.height / image.naturalHeight,
+      );
+      const displayedWidth = image.naturalWidth * scale;
+      const displayedHeight = image.naturalHeight * scale;
+      const left = bounds.left + (bounds.width - displayedWidth) / 2;
+      const right = left + displayedWidth;
+      const top = bounds.top + (bounds.height - displayedHeight) / 2;
+      const bottom = top + displayedHeight;
+
+      if (
+        event.clientX < left ||
+        event.clientX > right ||
+        event.clientY < top ||
+        event.clientY > bottom
+      ) {
+        dialog.close();
+      }
+    });
+
+    dialog.addEventListener(
+      "touchstart",
+      (event) => {
+        touchStartX = event.changedTouches[0]?.clientX ?? 0;
+      },
+      { passive: true },
+    );
+    dialog.addEventListener(
+      "touchend",
+      (event) => {
+        const touchEndX = event.changedTouches[0]?.clientX ?? touchStartX;
+        const distance = touchEndX - touchStartX;
+        if (Math.abs(distance) < 50) return;
+        showLightboxImage(currentIndex + (distance < 0 ? 1 : -1));
+      },
+      { passive: true },
+    );
+
+    dialog.addEventListener("close", () => lastTrigger?.focus());
+  });
+</script>
+
+<style>
+  dialog::backdrop {
+    background: rgb(0 0 0 / 0.85);
+  }
+</style>

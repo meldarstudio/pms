@@ -27,6 +27,7 @@ Sign in to the local portal as owner `kevin` with password `owner horse battery 
 ## Task-specific context
 
 - **Backend/API:** [apps/backend/AGENTS.md](apps/backend/AGENTS.md).
+- **Public website:** [apps/website/AGENTS.md](apps/website/AGENTS.md).
 - **Portal/UI:** [apps/portal/AGENTS.md](apps/portal/AGENTS.md).
 - **Shared schemas:** `packages/shared` (`@pms/shared`) supplies backend request schemas and `z.input` request body types. The portal imports those types but no runtime code from it, and maintains its own form schemas and response types; check both sides when changing a contract.
 - **Domain/architecture:** [docs/agents/domain.md](docs/agents/domain.md); terms live in [GLOSSARY.md](GLOSSARY.md).

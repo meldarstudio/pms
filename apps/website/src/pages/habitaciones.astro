@@ -1,0 +1,44 @@
+---
+import Layout from "@/layouts/Layout.astro";
+import RoomsBooking from "@/components/RoomsBooking.astro";
+import RoomsCatalog from "@/components/RoomsCatalog.astro";
+import RoomsIncluded from "@/components/RoomsIncluded.astro";
+import RoomsIntro from "@/components/RoomsIntro.astro";
+import RoomsPolicies from "@/components/RoomsPolicies.astro";
+import { getLang, useTranslations } from "@/i18n/utils";
+import { rooms } from "@/lib/rooms";
+import { getRoomsStructuredData } from "@/lib/structured-data";
+import { getAbsoluteLocaleUrl } from "astro:i18n";
+
+const lang = getLang(Astro.currentLocale);
+const t = useTranslations(lang);
+const roomsStructuredData = getRoomsStructuredData({
+  pageUrl: getAbsoluteLocaleUrl(lang, "habitaciones"),
+  homeUrl: getAbsoluteLocaleUrl(lang, ""),
+  homeName: t("nav.home"),
+  pageName: t("nav.rooms"),
+  nightUnit: t("rooms.structuredData.night"),
+  rooms: rooms.map((room) => ({
+    id: room.id,
+    name: t(room.nameKey),
+    description: t(room.leadKey),
+    bed: t(room.bedsKey),
+    areaSqm: room.areaSqm,
+    priceFrom: room.priceFrom,
+  })),
+});
+---
+
+<Layout title={t("meta.rooms.title")} description={t("meta.rooms.description")}>
+  <script
+    slot="head"
+    type="application/ld+json"
+    is:inline
+    set:html={JSON.stringify(roomsStructuredData).replace(/</g, "\\u003c")}
+  />
+  <RoomsIntro />
+  <RoomsCatalog />
+  <RoomsIncluded />
+  <RoomsPolicies />
+  <RoomsBooking />
+</Layout>

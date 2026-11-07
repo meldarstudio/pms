@@ -1,0 +1,54 @@
+---
+import { i18n } from "astro:config/client";
+import { getLang, getLocalizedPath, useTranslations } from "@/i18n/utils";
+
+const lang = getLang(Astro.currentLocale);
+const t = useTranslations(lang);
+const locales = (i18n?.locales ?? []).filter(
+  (locale): locale is string => typeof locale === "string",
+);
+---
+
+<lang-select>
+  <label for="lang-select" class="inline-flex min-h-11 items-center">
+    <span class="sr-only">{t("languageSelect.accessibleLabel")}</span>
+    <select
+      id="lang-select"
+      name="language"
+      autocomplete="off"
+      class="min-h-11 bg-transparent font-medium tracking-widest text-current uppercase scheme-light"
+    >
+      {locales.map((code) => (
+        <option value={getLocalizedPath(Astro.url, code)} selected={lang === code}>
+          {code === "en" ? "English" : "Español"}
+        </option>
+      ))}
+    </select>
+  </label>
+</lang-select>
+<script>
+  class LanguageSelect extends HTMLElement {
+    constructor() {
+      super();
+      const select = this.querySelector("select");
+      if (select) {
+        select.addEventListener("change", (e) => {
+          if (e.currentTarget instanceof HTMLSelectElement) {
+            window.location.pathname = e.currentTarget.value;
+          }
+        });
+        window.addEventListener("pageshow", (event) => {
+          if (!event.persisted) return;
+          // If the page was loaded from a cache, the language select selected index might not be
+          // in sync with the current page.
+          const markupSelectedIndex =
+            select.querySelector<HTMLOptionElement>("option[selected]")?.index;
+          if (markupSelectedIndex !== select.selectedIndex) {
+            select.selectedIndex = markupSelectedIndex ?? 0;
+          }
+        });
+      }
+    }
+  }
+  customElements.define("lang-select", LanguageSelect);
+</script>

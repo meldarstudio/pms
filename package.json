@@ -16,9 +16,14 @@
     "auth:secret": "pnpm --filter @pms/backend auth:secret",
     "culqi:sandbox": "pnpm --filter @pms/backend culqi:sandbox",
     "check": "vp fmt --check . && pnpm -r --workspace-concurrency=1 check",
-    "format": "vp fmt ."
+    "format": "vp fmt .",
+    "dev:website": "pnpm --filter @pms/website dev",
+    "build:website": "pnpm --filter @pms/website build",
+    "verify:website": "pnpm --filter @pms/website verify:build",
+    "test:website": "pnpm --filter @pms/website test:smoke && pnpm --filter @pms/website exec playwright test --project=a11y"
   },
   "devDependencies": {
+    "@astrojs/compiler-rs": "^0.5.2",
     "vite-plus": "catalog:"
   },
   "devEngines": {

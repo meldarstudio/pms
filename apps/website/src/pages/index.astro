@@ -1,0 +1,29 @@
+---
+import Landing from "@/components/Landing.astro";
+import Layout from "@/layouts/Layout.astro";
+import Highlights from "@/components/Highlights.astro";
+import GettingThere from "@/components/GettingThere.astro";
+import GuestReviews from "@/components/GuestReviews.astro";
+import BookingBand from "@/components/BookingBand.astro";
+import { getLang, useTranslations } from "@/i18n/utils";
+import { getHotelStructuredData } from "@/lib/structured-data";
+import { getAbsoluteLocaleUrl } from "astro:i18n";
+
+const lang = getLang(Astro.currentLocale);
+const t = useTranslations(lang);
+const hotelStructuredData = getHotelStructuredData(getAbsoluteLocaleUrl(lang, ""));
+---
+
+<Layout title={t("meta.home.title")} description={t("meta.home.description")}>
+  <script
+    slot="head"
+    type="application/ld+json"
+    is:inline
+    set:html={JSON.stringify(hotelStructuredData).replace(/</g, "\\u003c")}
+  />
+  <Landing />
+  <Highlights />
+  <GettingThere />
+  <GuestReviews />
+  <BookingBand kicker={false} />
+</Layout>

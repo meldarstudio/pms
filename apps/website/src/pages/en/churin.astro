@@ -1,0 +1,32 @@
+---
+import Churin from "@/components/Churin.astro";
+import Layout from "@/layouts/Layout.astro";
+import { getLang, useTranslations } from "@/i18n/utils";
+import { attractions } from "@/lib/attractions";
+import { getChurinStructuredData } from "@/lib/structured-data";
+import { getAbsoluteLocaleUrl } from "astro:i18n";
+
+const lang = getLang(Astro.currentLocale);
+const t = useTranslations(lang);
+const churinStructuredData = getChurinStructuredData({
+  pageUrl: getAbsoluteLocaleUrl(lang, "churin"),
+  homeUrl: getAbsoluteLocaleUrl(lang, ""),
+  homeName: t("nav.home"),
+  pageName: t("nav.churin"),
+  attractions: attractions.map((pool) => ({
+    id: pool.id,
+    name: pool.name,
+    description: t(pool.bodyKey),
+  })),
+});
+---
+
+<Layout title={t("meta.churin.title")} description={t("meta.churin.description")}>
+  <script
+    slot="head"
+    type="application/ld+json"
+    is:inline
+    set:html={JSON.stringify(churinStructuredData).replace(/</g, "\\u003c")}
+  />
+  <Churin />
+</Layout>

@@ -1,0 +1,74 @@
+@import "tailwindcss";
+
+@theme inline {
+  --font-lora: var(--font-lora);
+  --font-source-sans-3: var(--font-source-sans-3);
+}
+
+@theme {
+  /* Logo orange (#f27b00) */
+  --color-accent-50: oklch(98.4% 0.015 69.636);
+  --color-accent-100: oklch(95.8% 0.038 71.056);
+  --color-accent-200: oklch(90.8% 0.08 68.022);
+  --color-accent-300: oklch(84.8% 0.125 64.391);
+  --color-accent-400: oklch(80.2% 0.152 59.932);
+  --color-accent-500: oklch(70.6% 0.177 53.812);
+  --color-accent-600: oklch(64.9% 0.169 46.777);
+  --color-accent-700: oklch(53% 0.136 45.615);
+  --color-accent-800: oklch(43.4% 0.11 43.907);
+  --color-accent-900: oklch(36% 0.086 43.55);
+  --color-accent-950: oklch(25% 0.054 43.103);
+}
+
+.scroll-offset {
+  scroll-margin-top: calc(8rem + env(safe-area-inset-top));
+}
+
+html {
+  color-scheme: light;
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: var(--color-accent-700);
+}
+
+body[data-menu-expanded] #menu-icon-hamburger,
+body:not([data-menu-expanded]) #menu-icon-close,
+body:not([data-menu-expanded]) #mobile-menu {
+  display: none;
+}
+
+body[data-menu-expanded] #mobile-menu {
+  display: flex;
+  overscroll-behavior: contain;
+}
+
+@media (width < 48rem) {
+  body[data-menu-expanded] navigation-menu {
+    display: flex;
+    height: 100dvh;
+    flex-direction: column;
+  }
+}
+
+/* Hide mobile menu on desktop screens, html added to increase specificity */
+@media (width >= 48rem) {
+  html body[data-menu-expanded] #mobile-menu,
+  html body:not([data-menu-expanded]) #mobile-menu {
+    display: none;
+  }
+}
+
+/* Lock screens only on small screens */
+@media (width < 48rem) {
+  body[data-menu-expanded] {
+    overflow: hidden;
+    touch-action: none;
+  }
+}
+
+@layer base {
+  /* Default focus ring. Override color only on dark surfaces (e.g. outline-white). */
+  :where(a, button, select):focus-visible {
+    outline: 2px solid var(--color-accent-700);
+    outline-offset: 2px;
+  }
+}
