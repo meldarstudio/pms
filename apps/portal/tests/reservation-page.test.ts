@@ -1836,7 +1836,7 @@ it("shows each room ticket with its subtotal and assigns an unassigned room from
   await page.until(() => popup()?.textContent.includes("Elegir habitación") ?? false);
 });
 
-it("saves an agreed nightly price only for a new room in the stay editor", async () => {
+it("adds a room in the stay editor and later edits it as a saved room", async () => {
   page.api.catalog.rooms.push({ id: "room-2", number: "102", roomTypeId: "double" });
   const added = {
     ...saved.rooms[0],
@@ -1881,8 +1881,6 @@ it("saves an agreed nightly price only for a new room in the stay editor", async
   );
   await page.until(() => !button("Agregar habitación").disabled);
   await click("Agregar habitación");
-  await page.menuAction("Acciones de la habitación 2", "Cambiar precio por noche");
-  await fill("rooms[1].room.nightlyRate", "120.25");
   await page.until(() => !button("Guardar cambios").disabled);
   assert.match(popup()!.textContent.replace(/\s/g, ""), /S\/540\.50/);
   await click("Guardar cambios");
@@ -1895,17 +1893,10 @@ it("saves an agreed nightly price only for a new room in the stay editor", async
         roomId: null,
         adults: 2,
         children: 0,
-        nightlyRateCents: 12025,
       },
     },
   ]);
   await click("Editar estadía");
-  assert.doesNotMatch(popup()!.textContent, /Precio por noche · S\//);
-  assert.deepEqual(
-    (await page.openMenu("Acciones de la habitación 2")).map((item) => item.textContent.trim()),
-    ["Quitar habitación"],
-    "A saved added room cannot be repriced",
-  );
   await fill("rooms[1].room.adults", "1");
   await page.until(() => !button("Guardar cambios").disabled);
   await click("Guardar cambios");
@@ -1916,37 +1907,6 @@ it("saves an agreed nightly price only for a new room in the stay editor", async
       lineId: "line-2",
       room: { roomTypeId: "double", roomId: null, adults: 1, children: 0 },
     },
-  ]);
-});
-
-it("blocks new-room price previews and saves until an empty or invalid override is undone", async () => {
-  page.mobile();
-  page.api.catalog.rooms.push({ id: "room-2", number: "102", roomTypeId: "double" });
-  mockApi();
-  await render();
-  await click("Editar estadía");
-  await page.until(() => !button("Agregar habitación").disabled);
-  await click("Agregar habitación");
-  await page.until(() => !button("Guardar cambios").disabled);
-  const quoted = previews.length;
-  await page.menuAction("Acciones de la habitación 2", "Cambiar precio por noche");
-  for (const value of ["", "-1"]) {
-    await fill("rooms[1].room.nightlyRate", value);
-    await submit();
-    await page.flush(350);
-    assert.equal(field("rooms[1].room.nightlyRate").getAttribute("aria-invalid"), "true");
-    assert.equal(button("Guardar cambios").disabled, true);
-    assert.equal(previews.length, quoted);
-    assert.equal(writes.length, 0);
-    assert.match(popup()!.textContent, /Revisa el precio por noche/);
-  }
-  await click("Deshacer precio por noche");
-  await page.until(() => !button("Guardar cambios").disabled);
-  assert.ok(!popup()!.querySelector('[aria-invalid="true"]'));
-  await click("Guardar cambios");
-  await page.until(() => writes.length === 1);
-  assert.deepEqual(writes[0].actions, [
-    { type: "add-room", room: { roomTypeId: "double", roomId: null, adults: 2, children: 0 } },
   ]);
 });
 

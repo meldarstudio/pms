@@ -57,7 +57,7 @@ const fail = (message: string): never => {
   throw new HttpError(400, message);
 };
 
-type PricedRoom = { roomTypeId: string; nightlyRateCents?: number };
+type PricedRoom = { roomTypeId: string };
 
 export async function priceRooms(
   db: Db,
@@ -80,7 +80,6 @@ export async function priceRooms(
       baseRateCents: type.baseRateCents,
       overrides: overridesFor(rates, type.id),
       terms,
-      flatRateCents: room.nightlyRateCents,
     });
   });
 }

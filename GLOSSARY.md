@@ -179,7 +179,7 @@ _Avoid_: Room type, price rule
 
 **Ordinary nightly price**:
 A room type's price for a date: its rate override, otherwise its base rate.
-_Avoid_: Saved nightly price, flat nightly rate
+_Avoid_: Saved nightly price
 
 **Flexible**:
 The default rate plan, charging the ordinary nightly price without adjustment.
@@ -216,11 +216,6 @@ _Avoid_: Balance, amount owed
 **Base rate / rate override**:
 A type's default room-night price / a date-specific replacement for that price.
 _Avoid_: Per-person price, reservation-specific rate
-
-**Flat nightly rate**:
-A reservation-specific price replacing ordinary rates on every initial night of a
-newly reserved room.
-_Avoid_: Rate override, total stay price
 
 **Saved nightly price**:
 The agreed price retained for a reserved room/night while that night and type remain.

@@ -1,19 +1,12 @@
-import { useId, useRef, useState, type ReactNode } from "react";
+import { useId, useState, type ReactNode } from "react";
 import { cn } from "cn";
 import { RoomActionsMenu } from "@/components/room-actions-menu";
 import { FieldGroup } from "@/components/ui/field";
-
-export type RoomRowPrice = {
-  open: boolean;
-  onOpen: () => void;
-  field: (onUndo: () => void) => ReactNode;
-};
 
 export function ReservationRoomRow({
   index,
   count,
   onRemove,
-  price,
   stacked = false,
   typeField,
   roomField,
@@ -25,7 +18,6 @@ export function ReservationRoomRow({
   index: number;
   count: number;
   onRemove: () => void;
-  price?: RoomRowPrice | null;
   stacked?: boolean;
   typeField: ReactNode;
   roomField: ReactNode;
@@ -35,8 +27,6 @@ export function ReservationRoomRow({
   reveal?: boolean;
 }) {
   const titleId = useId();
-  const [menu, setMenu] = useState<HTMLButtonElement | null>(null);
-  const priceSlot = useRef<HTMLDivElement>(null);
   const [revealing, setRevealing] = useState(reveal);
   return (
     <section
@@ -58,15 +48,6 @@ export function ReservationRoomRow({
         <RoomActionsMenu
           index={index}
           size={stacked ? "icon" : "icon-sm"}
-          triggerRef={setMenu}
-          onReprice={
-            price && !price.open
-              ? () => {
-                  price.onOpen();
-                  requestAnimationFrame(() => priceSlot.current?.querySelector("input")?.focus());
-                }
-              : undefined
-          }
           onRemove={count > 1 ? onRemove : undefined}
         />
       </div>
@@ -84,11 +65,6 @@ export function ReservationRoomRow({
         <div className="min-w-0">{childrenField}</div>
         {feedback && <div className="col-span-full flex flex-col gap-1">{feedback}</div>}
       </FieldGroup>
-      {price?.open && (
-        <div ref={priceSlot} className="min-w-0">
-          {price.field(() => requestAnimationFrame(() => menu?.focus()))}
-        </div>
-      )}
     </section>
   );
 }

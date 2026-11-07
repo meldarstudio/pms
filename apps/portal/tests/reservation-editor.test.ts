@@ -123,10 +123,6 @@ describe("billing changes versus validation", () => {
       ]),
       added,
     );
-    assert.notEqual(
-      billingPreviewKey(saved, [{ type: "add-room", room: { ...room, nightlyRateCents: 1000 } }]),
-      added,
-    );
     const repriced = { ...room, roomTypeId: "single" };
     assert.equal(
       billingPreviewKey(saved, [{ type: "edit-room", lineId: "101", room: repriced }]),

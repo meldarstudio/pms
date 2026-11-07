@@ -19,7 +19,7 @@ Paths below are relative to `apps/backend` unless stated otherwise.
 
 - Use the [shared glossary](../../GLOSSARY.md) for statuses, billing, and room-inventory semantics.
 - Saving and check-in allow unassigned reserved rooms; these still consume room-type inventory.
-- Retained nights keep saved prices. Added nights use current rates; changing room type reprices that reserved room. Initial pricing uses a flat nightly rate when supplied, otherwise the date's override, otherwise the base rate.
+- Retained nights keep saved prices. Added nights use current rates; changing room type reprices that reserved room. Initial pricing uses the date's override, otherwise the base rate.
 - Guests use `fullName`. Dated closures block rooms and reduce room-type availability. A room's housekeeping status is set only by staff; it never blocks check-in, availability, or assignment, and reservation workflows must not change it.
 - Drizzle does not generate the business-rule triggers (originally `drizzle/0001_overlap_triggers.sql`). New migrations must preserve or deliberately replace their capacity, overlap, assignment, closure, and staying-guest guards. Keep `rethrowConflict` and portal error translations aligned with trigger abort messages.
 

@@ -185,20 +185,14 @@ export function NewBooking({
     availability.data.roomTypes.every((type) => type.free === 0);
   const errors = schemaErrors(schema.safeParse(values));
   const discountCents = parseMajorToCents(values.discount.trim() || "0") ?? 0;
-  const validPrices = !Object.keys(errors).some((name) => name.endsWith(".nightlyRate"));
   const previewInput: CreationPreviewInput | null =
-    validStay && validPrices && values.rooms.every((draft) => draft.room.roomTypeId)
+    validStay && values.rooms.every((draft) => draft.room.roomTypeId)
       ? {
           checkIn: values.checkIn,
           checkOut: values.checkOut,
           ratePlan: values.ratePlan,
           discountCents,
-          rooms: workflowDrafts(values).map(({ room }) => ({
-            roomTypeId: room.roomTypeId,
-            ...(room.nightlyRateCents !== undefined
-              ? { nightlyRateCents: room.nightlyRateCents }
-              : {}),
-          })),
+          rooms: workflowDrafts(values).map(({ room }) => ({ roomTypeId: room.roomTypeId })),
         }
       : null;
   const preview = useCreationPreview(previewInput);
@@ -339,16 +333,6 @@ export function NewBooking({
                             index={index}
                             count={values.rooms.length}
                             onRemove={() => form.removeFieldValue("rooms", index)}
-                            price={{
-                              open: draft.room.nightlyRate !== undefined,
-                              onOpen: () =>
-                                form.setFieldValue(`rooms[${index}].room.nightlyRate`, ""),
-                              field: (onUndo) => (
-                                <form.AppField name={`rooms[${index}].room.nightlyRate`}>
-                                  {(field) => <field.NightlyPrice onUndo={onUndo} />}
-                                </form.AppField>
-                              ),
-                            }}
                             typeField={
                               <form.AppField name={`rooms[${index}].room.roomTypeId`}>
                                 {(field) => (
@@ -457,7 +441,6 @@ export function NewBooking({
                           ...lastRoom,
                           roomTypeId: type && type.free > used ? lastRoom.roomTypeId : "",
                           roomId: null,
-                          nightlyRate: undefined,
                         },
                       });
                     }}
@@ -523,11 +506,9 @@ export function NewBooking({
               message={
                 !validStay
                   ? "Indica una estancia de 1 a 60 noches."
-                  : !validPrices
-                    ? "Revisa el precio por noche para ver el total."
-                    : !previewInput
-                      ? "Selecciona los tipos de habitación para ver el total."
-                      : null
+                  : !previewInput
+                    ? "Selecciona los tipos de habitación para ver el total."
+                    : null
               }
               error={summaryError}
               discount={

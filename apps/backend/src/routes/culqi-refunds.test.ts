@@ -32,7 +32,7 @@ async function paidOnline(amountCents = 30000) {
     checkIn: "2026-10-20",
     checkOut: "2026-10-22",
     guest: { fullName: "Ana Torres", email: "ana@example.com" },
-    rooms: [{ roomTypeId: "type", adults: 2, children: 0, nightlyRateCents: 10000 }],
+    rooms: [{ roomTypeId: "type", adults: 2, children: 0 }],
   });
   expect(response.status).toBe(201);
   const { id } = (await response.json()) as Detail;

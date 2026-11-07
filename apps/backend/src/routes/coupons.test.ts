@@ -2,6 +2,7 @@ import type { WorkflowAction } from "@pms/shared";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import type { presentReservation } from "../present";
 import {
+  atBaseRate,
   createTestDb,
   seedReservation,
   seedRooms,
@@ -26,14 +27,16 @@ afterEach(() => {
   vi.useRealTimers();
 });
 
-async function stay(checkIn: string, checkOut: string, nightlyRateCents = 10000) {
-  const response = await db.request("/reservations", "POST", {
-    requestId: crypto.randomUUID(),
-    checkIn,
-    checkOut,
-    guest: { fullName: "Ada Lovelace" },
-    rooms: [{ roomTypeId: "type", adults: 1, children: 0, nightlyRateCents }],
-  });
+async function stay(checkIn: string, checkOut: string, nightCents = 10000) {
+  const response = await atBaseRate(db.sqlite, "type", nightCents, () =>
+    db.request("/reservations", "POST", {
+      requestId: crypto.randomUUID(),
+      checkIn,
+      checkOut,
+      guest: { fullName: "Ada Lovelace" },
+      rooms: [{ roomTypeId: "type", adults: 1, children: 0 }],
+    }),
+  );
   expect(response.status).toBe(201);
   return response.json() as Promise<Detail>;
 }

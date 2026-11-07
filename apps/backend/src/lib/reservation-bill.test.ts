@@ -3,7 +3,7 @@ import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 import { getDb } from "../db";
 import { reservations } from "../db/schema";
 import type { presentReservation } from "../present";
-import { createTestDb, seedRooms, seedRoomType, type TestDb } from "../test-support/d1";
+import { atBaseRate, createTestDb, seedRooms, seedRoomType, type TestDb } from "../test-support/d1";
 import {
   balanceCentsSql,
   quoteBill,
@@ -248,14 +248,16 @@ describe("SQL balance", () => {
     vi.useRealTimers();
   });
 
-  async function stay(checkIn: string, checkOut: string, nightlyRateCents: number) {
-    const response = await db.request("/reservations", "POST", {
-      requestId: crypto.randomUUID(),
-      checkIn,
-      checkOut,
-      guest: { fullName: "Ada Lovelace" },
-      rooms: [{ roomTypeId: "type", adults: 1, children: 0, nightlyRateCents }],
-    });
+  async function stay(checkIn: string, checkOut: string, nightCents: number) {
+    const response = await atBaseRate(db.sqlite, "type", nightCents, () =>
+      db.request("/reservations", "POST", {
+        requestId: crypto.randomUUID(),
+        checkIn,
+        checkOut,
+        guest: { fullName: "Ada Lovelace" },
+        rooms: [{ roomTypeId: "type", adults: 1, children: 0 }],
+      }),
+    );
     expect(response.status).toBe(201);
     return response.json() as Promise<Detail>;
   }
