@@ -10,7 +10,6 @@
     "test": "pnpm --filter @pms/backend test && pnpm --filter @pms/portal test",
     "db:generate": "pnpm --filter @pms/backend db:generate",
     "db:migrate:local": "pnpm --filter @pms/backend db:migrate:local",
-    "db:seed:local": "pnpm --filter @pms/backend db:seed:local",
     "db:reset:local": "pnpm --filter @pms/backend db:reset:local",
     "auth:account": "pnpm --filter @pms/backend auth:account",
     "auth:secret": "pnpm --filter @pms/backend auth:secret",

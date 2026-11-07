@@ -192,7 +192,6 @@ describe("local dummy data reset", () => {
   it.each([
     ["db:reset:local", "scripts/seed-reset.mjs", ["--rebuild-schema"]],
     ["db:migrate:local", "scripts/migrate-local.mjs", []],
-    ["db:seed:local", "scripts/seed-local.mjs", []],
   ])("%s never reaches the production database", (_, script, args) => {
     const directory = mkdtempSync(join(tmpdir(), "pms-local-d1-test-"));
     try {
