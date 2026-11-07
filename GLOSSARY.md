@@ -25,6 +25,11 @@ The shared day-to-day login with the staff role; it does not identify an individ
 The owner's personal login, allowed to do everything staff can and manage accounts.
 _Avoid_: Admin account, superuser
 
+**Reservation access link**:
+A private link granting its holder read-only access to one reservation's guest-facing
+status and payment summary.
+_Avoid_: Reservation code, guest account, payment link
+
 ### Reservations and dates
 
 **Reservation**:
