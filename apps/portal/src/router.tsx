@@ -6,6 +6,7 @@ import {
   Navigate,
   redirect,
   stripSearchParams,
+  useRouterState,
 } from "@tanstack/react-router";
 import { useEffect } from "react";
 import { format, parseISO } from "date-fns";
@@ -17,11 +18,12 @@ import { Reservations } from "@/components/reservations";
 import { RoomCalendar } from "@/components/room-calendar";
 import { Housekeeping } from "@/components/housekeeping";
 import { Inventory } from "@/components/inventory";
+import { Configuration } from "@/components/configuration";
 import {
-  Configuration,
+  canOpenConfigurationSection,
   configurationSearch,
   parseConfigurationSearch,
-} from "@/components/configuration";
+} from "@/lib/navigation";
 import { useSession } from "@/lib/queries";
 import {
   calendarSearch,
@@ -230,10 +232,11 @@ const setupRoute = createRoute({
 
 function SetupRoute() {
   const { section = "rooms" } = setupRoute.useSearch();
+  const historyEntryKey = useRouterState({ select: (state) => state.location.state.__TSR_key });
   const role = useSession().data?.role;
-  if (section === "accounts" && role !== "owner")
+  if (!canOpenConfigurationSection(section, role))
     return role ? <Navigate to="/setup" search={configurationSearch("rooms")} replace /> : null;
-  return <Configuration key={section} section={section} />;
+  return <Configuration key={`${section}:${historyEntryKey}`} section={section} />;
 }
 
 const accountsRoute = createRoute({

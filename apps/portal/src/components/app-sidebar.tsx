@@ -1,13 +1,18 @@
 import { Link, useRouterState } from "@tanstack/react-router";
-import type { MouseEvent } from "react";
+import { useState, type MouseEvent } from "react";
 import {
+  ArrowLeftIcon,
   BedDoubleIcon,
   BroomIcon,
   CalendarDaysIcon,
   ClipboardListIcon,
+  DoorOpenIcon,
   EllipsisVerticalIcon,
   LogOutIcon,
+  PaletteIcon,
   SettingsIcon,
+  ShieldCheckIcon,
+  type LucideIcon,
 } from "lucide-react";
 import { HotelLogo } from "@/components/hotel-logo";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
@@ -32,7 +37,16 @@ import {
 import { accountRoleTitles } from "@/lib/account-roles";
 import type { Session } from "@/lib/api";
 import { useLogout, useSession } from "@/lib/queries";
-import { activeNavigation, appNavigation } from "@/lib/navigation";
+import {
+  activeNavigation,
+  appNavigation,
+  activeConfigurationSection,
+  canOpenConfigurationSection,
+  configurationSearch,
+  configurationSections,
+  forceSameUrlNavigation,
+  type ConfigurationSection,
+} from "@/lib/navigation";
 import {
   calendarSearch,
   calendarStart,
@@ -44,6 +58,12 @@ import {
 } from "@/lib/route-search";
 import { toastError } from "@/lib/toast";
 import { usePropertyCalendar } from "@/lib/use-property-calendar";
+
+const configurationIcons = {
+  rooms: DoorOpenIcon,
+  appearance: PaletteIcon,
+  accounts: ShieldCheckIcon,
+} satisfies Record<ConfigurationSection, LucideIcon>;
 
 export function AppSidebar() {
   const location = useRouterState({ select: (state) => state.location });
@@ -75,6 +95,18 @@ export function AppSidebar() {
       search: inventorySearch({ from: today }),
     },
   ] as const;
+  const sections = configurationSections.filter(({ id }) =>
+    canOpenConfigurationSection(id, session?.role),
+  );
+  const activeSection = activeConfigurationSection(location);
+  const [returnDestination, setReturnDestination] = useState<(typeof destinations)[number]["to"]>(
+    appNavigation.reservations.to,
+  );
+  const appDestination = destinations.find(({ to }) => to === activeDestination?.to)?.to;
+  if (appDestination && appDestination !== returnDestination) {
+    setReturnDestination(appDestination);
+  }
+  const back = destinations.find(({ to }) => to === returnDestination) ?? destinations[0];
 
   function closeMobileNavigation(event: MouseEvent) {
     if (
@@ -98,44 +130,96 @@ export function AppSidebar() {
         <SidebarHeader className="items-center py-6">
           <HotelLogo className="h-7 w-28 text-sidebar-foreground" />
         </SidebarHeader>
-        <SidebarContent>
-          <SidebarGroup>
-            <SidebarGroupContent>
-              <SidebarMenu className="gap-1">
-                {destinations.map(({ to, label, icon: Icon, search }) => (
-                  <SidebarMenuItem key={to}>
+        {activeSection ? (
+          <SidebarContent>
+            <SidebarGroup>
+              <SidebarGroupContent>
+                <SidebarMenu>
+                  <SidebarMenuItem>
                     <SidebarMenuButton
-                      isActive={activeDestination?.to === to}
                       render={
-                        <Link
-                          to={to}
-                          search={search}
-                          activeOptions={{ includeSearch: false }}
-                          onClick={closeMobileNavigation}
-                        />
+                        <Link to={back.to} search={back.search} onClick={closeMobileNavigation} />
                       }
                     >
-                      <Icon />
-                      <span>{label}</span>
+                      <ArrowLeftIcon />
+                      <span>Volver</span>
                     </SidebarMenuButton>
                   </SidebarMenuItem>
-                ))}
-              </SidebarMenu>
-            </SidebarGroupContent>
-          </SidebarGroup>
-        </SidebarContent>
+                </SidebarMenu>
+              </SidebarGroupContent>
+            </SidebarGroup>
+            <SidebarGroup>
+              <SidebarGroupContent>
+                <SidebarMenu className="gap-1">
+                  {sections.map(({ id, title }) => {
+                    const Icon = configurationIcons[id];
+                    const isActive = activeSection === id;
+                    return (
+                      <SidebarMenuItem key={id}>
+                        <SidebarMenuButton
+                          isActive={isActive}
+                          render={
+                            <Link
+                              to={appNavigation.setup.to}
+                              search={configurationSearch(id)}
+                              replace={isActive}
+                              state={isActive ? forceSameUrlNavigation : undefined}
+                              activeOptions={{ exact: true }}
+                              onClick={closeMobileNavigation}
+                            />
+                          }
+                        >
+                          <Icon />
+                          <span>{title}</span>
+                        </SidebarMenuButton>
+                      </SidebarMenuItem>
+                    );
+                  })}
+                </SidebarMenu>
+              </SidebarGroupContent>
+            </SidebarGroup>
+          </SidebarContent>
+        ) : (
+          <SidebarContent>
+            <SidebarGroup>
+              <SidebarGroupContent>
+                <SidebarMenu className="gap-1">
+                  {destinations.map(({ to, label, icon: Icon, search }) => (
+                    <SidebarMenuItem key={to}>
+                      <SidebarMenuButton
+                        isActive={activeDestination?.to === to}
+                        render={
+                          <Link
+                            to={to}
+                            search={search}
+                            activeOptions={{ includeSearch: false }}
+                            onClick={closeMobileNavigation}
+                          />
+                        }
+                      >
+                        <Icon />
+                        <span>{label}</span>
+                      </SidebarMenuButton>
+                    </SidebarMenuItem>
+                  ))}
+                </SidebarMenu>
+              </SidebarGroupContent>
+            </SidebarGroup>
+          </SidebarContent>
+        )}
         <SidebarFooter className="gap-3">
-          <SidebarMenu>
-            <SidebarMenuItem>
-              <SidebarMenuButton
-                isActive={activeDestination?.to === appNavigation.setup.to}
-                render={<Link to={appNavigation.setup.to} onClick={closeMobileNavigation} />}
-              >
-                <SettingsIcon />
-                <span>{appNavigation.setup.label}</span>
-              </SidebarMenuButton>
-            </SidebarMenuItem>
-          </SidebarMenu>
+          {!activeSection && (
+            <SidebarMenu>
+              <SidebarMenuItem>
+                <SidebarMenuButton
+                  render={<Link to={appNavigation.setup.to} onClick={closeMobileNavigation} />}
+                >
+                  <SettingsIcon />
+                  <span>{appNavigation.setup.label}</span>
+                </SidebarMenuButton>
+              </SidebarMenuItem>
+            </SidebarMenu>
+          )}
           {session && <AccountMenu username={session.username} role={session.role} />}
         </SidebarFooter>
       </nav>

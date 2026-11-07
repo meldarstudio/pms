@@ -1,5 +1,4 @@
 import assert from "node:assert/strict";
-import type { HTMLElement } from "happy-dom";
 import { afterAll, afterEach, beforeAll, beforeEach, it, vi } from "vite-plus/test";
 import { createBrowserTest, type BrowserPage, type BrowserTest } from "./browser.ts";
 import { reservationsSearch } from "../src/lib/route-search.ts";
@@ -57,14 +56,13 @@ async function renderPassword(kind: "personal" | "propietario" = "personal") {
   return router;
 }
 
-async function sectionOptions() {
-  const trigger = page.container.querySelector(
-    '[role="combobox"][aria-label="Secciones de configuración"]',
+async function configurationLinks() {
+  await page.click("Alternar navegación");
+  return Array.from(
+    browser.window.document.querySelectorAll(
+      'nav[aria-label="Navegación principal"] a[href^="/setup"]',
+    ),
   );
-  assert.ok(trigger);
-  await browser.React.act(async () => (trigger as HTMLElement).click());
-  await page.until(() => !!browser.window.document.querySelector('[role="option"]'));
-  return Array.from(browser.window.document.querySelectorAll('[role="option"]'));
 }
 
 it("lets the owner set the staff password after confirming it", async () => {
@@ -147,6 +145,19 @@ it("translates a wrong current password when the owner changes their own", async
   assert.equal(page.field("newPassword").value, "a new owner password");
 });
 
+it("lists Cuentas among the owner's sidebar configuration sections", async () => {
+  page.mobile();
+  signedInAs("owner");
+  await render("/accounts");
+  await page.until(() => page.container.textContent.includes("hotelmanantial"));
+  const links = await configurationLinks();
+  assert.deepEqual(
+    links.map((link) => link.textContent.trim()),
+    ["Habitaciones", "Apariencia", "Cuentas"],
+  );
+  assert.equal(links[2].getAttribute("aria-current"), "page");
+});
+
 it("sends the staff account from account management to Habitaciones", async () => {
   page.mobile();
   signedInAs("staff");
@@ -156,9 +167,9 @@ it("sends the staff account from account management to Habitaciones", async () =
     "Staff land on a section they can use",
   );
   assert.equal(router.state.location.search.section, undefined);
-  const options = await sectionOptions();
+  const links = await configurationLinks();
   assert.deepEqual(
-    options.map((option) => option.textContent.trim()),
+    links.map((link) => link.textContent.trim()),
     ["Habitaciones", "Apariencia"],
   );
   assert.equal(page.api.requests("GET", "/accounts").length, 0);
