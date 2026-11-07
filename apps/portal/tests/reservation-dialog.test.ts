@@ -126,6 +126,7 @@ function detail(): ReservationDetail {
       phone: null,
       email: null,
       notes: null,
+      nationality: null,
     },
     stayingGuests: [],
     checkIn: "2026-10-14",
@@ -326,7 +327,7 @@ it.each([
     await fill("fullName", "Ana Pérez");
     await fill("email", "ana@example.com");
     await fill("phone", "987654321");
-    await choose("Documento", "DNI");
+    await choose("Documento", "Carné de extranjería");
     await fill("documentNumber", "12345678");
     const nameInput = control("fullName");
     saved = { ...saved, rooms: roomIds.map((id) => ({ ...saved.rooms[0], id })) };
@@ -345,7 +346,7 @@ it.each([
       fullName: "Ana Pérez",
       email: "ana@example.com",
       phone: "+51987654321",
-      documentType: "DNI",
+      documentType: "Carné de extranjería",
       documentNumber: "12345678",
     });
   },
@@ -1759,6 +1760,7 @@ it("creates a reservation with its contact, notes, room quote, and initial disco
   await fill("fullName", "  Ada Lovelace  ");
   await fill("email", "  ada@example.com  ");
   await fill("phone", "+51 999 888 777");
+  assert.equal(fieldTrigger("Nacionalidad · Opcional").textContent, "Perú");
   await fill("notes", "Llegada después de las 22:00");
   await React.act(async () => fieldTrigger("Check-out").click());
   const day = Array.from(
@@ -1788,6 +1790,7 @@ it("creates a reservation with its contact, notes, room quote, and initial disco
     fullName: "Ada Lovelace",
     email: "ada@example.com",
     phone: "+51999888777",
+    nationality: "PE",
   });
   assert.equal(writes[0].notes, "Llegada después de las 22:00");
   assert.equal(writes[0].discountCents, 3000);

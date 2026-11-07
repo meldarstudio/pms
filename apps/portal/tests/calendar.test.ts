@@ -685,6 +685,7 @@ function createdReservation(): ReservationDetail {
       email: null,
       phone: null,
       notes: null,
+      nationality: null,
     },
     stayingGuests: [],
     checkIn: "2026-10-22",
@@ -2279,6 +2280,7 @@ it("bulk marks the selected Todas rooms dirty in one request, holding the select
     () => page.button("Marcar habitación 102 como sucia").getAttribute("aria-pressed") === "true",
     "The marked rooms must show Sucia",
   );
+  assert.match(limpiezaTableRows()[0]![3]!, /^10:00\sa\.\sm\.$/);
 
   await click("Deshacer");
   await until(() => writes.length === 1, "Undo must send one request");

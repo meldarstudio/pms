@@ -1,0 +1,1 @@
+ALTER TABLE `guests` ADD `nationality` text;

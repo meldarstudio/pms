@@ -143,6 +143,7 @@ export function GuestEntryForm({
                   options={[
                     { value: "none", label: "Sin indicar" },
                     { value: "DNI", label: "DNI" },
+                    { value: "Carné de extranjería", label: "Carné de extranjería" },
                     { value: "Pasaporte", label: "Pasaporte" },
                     { value: "Otro", label: "Otro" },
                   ]}

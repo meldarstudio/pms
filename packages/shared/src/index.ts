@@ -4,6 +4,13 @@ export { normalizePhone, phoneErrors } from "./phone";
 export const dateSchema = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "date must be YYYY-MM-DD");
 
 const text = (max: number) => z.string().trim().min(1).max(max);
+const regionNames = new Intl.DisplayNames(["en"], { type: "region", fallback: "none" });
+const nationality = z
+  .string()
+  .refine(
+    (code) => /^[A-Z]{2}$/.test(code) && regionNames.of(code) !== undefined,
+    "invalid nationality",
+  );
 
 export const guestFields = z.object({
   fullName: text(200),
@@ -15,6 +22,7 @@ export const guestFields = z.object({
   phone: text(40).optional(),
   documentType: text(40).optional(),
   documentNumber: text(60).optional(),
+  nationality: nationality.optional(),
   notes: text(2000).optional(),
 });
 
@@ -221,10 +229,11 @@ export const contactSchema = guestFields
     phone: text(40).nullable(),
     documentType: text(40).nullable().optional(),
     documentNumber: text(60).nullable().optional(),
+    nationality: nationality.nullable().optional(),
   })
   .omit({ notes: true })
   .strict();
-export const stayingGuestSchema = contactSchema.extend({
+export const stayingGuestSchema = contactSchema.omit({ nationality: true }).extend({
   id: z.uuid(),
 });
 export const couponCodeSchema = z

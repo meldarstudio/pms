@@ -4,6 +4,7 @@ import {
   TextField,
   ChoiceCardField,
   ChoiceField,
+  NationalityField,
   PhoneField,
   RadioField,
 } from "@/components/workflow-fields";
@@ -118,6 +119,13 @@ function FormPhone(
   return <PhoneField {...props} {...control} label="Teléfono · Opcional" />;
 }
 
+function FormNationality(
+  props: Omit<ComponentProps<typeof NationalityField>, "value" | "onChange" | "error" | "label">,
+) {
+  const control = useFormControl<string | null>();
+  return <NationalityField {...props} {...control} label="Nacionalidad · Opcional" />;
+}
+
 export const { useAppForm: useReservationForm, withForm: withReservationForm } = createFormHook({
   fieldContext,
   formContext,
@@ -127,6 +135,7 @@ export const { useAppForm: useReservationForm, withForm: withReservationForm } =
     Radio: FormRadio,
     ChoiceCards: FormChoiceCards,
     Phone: FormPhone,
+    Nationality: FormNationality,
   },
   formComponents: {},
 });

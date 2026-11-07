@@ -47,6 +47,7 @@ guestRoutes.post("/", validate("json", guestFields), async (c) => {
     phone: acceptPhone(body.phone) ?? null,
     documentType: body.documentType ?? null,
     documentNumber: body.documentNumber ?? null,
+    nationality: body.nationality ?? null,
     notes: body.notes ?? null,
     createdAt: new Date().toISOString(),
   };

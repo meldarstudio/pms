@@ -1,4 +1,5 @@
 import { useId, useRef, type ReactNode } from "react";
+import { XIcon } from "lucide-react";
 import { format, parseISO } from "date-fns";
 import { DateField } from "@/components/date-field";
 import {
@@ -28,6 +29,7 @@ import {
   ComboboxTrigger,
 } from "@/components/ui/combobox";
 import { choosePhoneCountry, phoneCountries, phoneCountry, type PhoneValue } from "@/lib/phone";
+import { flagUrl, nationalities, nationalityName, type Nationality } from "@/lib/countries";
 import { Textarea } from "@/components/ui/textarea";
 import {
   Select,
@@ -404,7 +406,8 @@ export function PhoneField({
             render={<Button type="button" variant="outline" />}
             aria-label={`País del teléfono: ${country.name} ${country.callingCode}`}
           >
-            {country.code} {country.callingCode}
+            <CountryFlag code={country.code} />
+            {country.callingCode}
           </ComboboxTrigger>
           <ComboboxContent className="w-64">
             <ComboboxInput showTrigger={false} placeholder="Buscar país" aria-label="Buscar país" />
@@ -412,6 +415,7 @@ export function PhoneField({
             <ComboboxList>
               {(item: PhoneCountry) => (
                 <ComboboxItem key={item.code} value={item}>
+                  <CountryFlag code={item.code} />
                   {item.name} {item.callingCode}
                 </ComboboxItem>
               )}
@@ -428,6 +432,107 @@ export function PhoneField({
           aria-describedby={error ? `${id}-error` : undefined}
           onChange={onChange}
         />
+      </ButtonGroup>
+      {error && <FieldError id={`${id}-error`}>{error}</FieldError>}
+    </Field>
+  );
+}
+
+export function CountryFlag({ code }: { code: string }) {
+  const src = flagUrl(code);
+  if (!src) return null;
+  return (
+    <img
+      src={src}
+      alt=""
+      loading="lazy"
+      decoding="async"
+      className="h-3.5 w-5 shrink-0 rounded-[2px] object-cover ring-1 ring-foreground/15"
+    />
+  );
+}
+
+export function NationalityField({
+  label,
+  value,
+  onChange,
+  disabled = false,
+  error,
+  id: providedId,
+  name,
+  onBlur,
+}: {
+  label: string;
+  value: string | null;
+  onChange: (value: string | null) => void;
+  disabled?: boolean;
+  error?: string;
+  id?: string;
+  name?: string;
+  onBlur?: () => void;
+}) {
+  const generatedId = useId();
+  const id = providedId ?? generatedId;
+  const selected = value ? { code: value, name: nationalityName(value) } : null;
+  return (
+    <Field data-disabled={disabled} data-invalid={!!error}>
+      <FieldLabel htmlFor={id}>{label}</FieldLabel>
+      <ButtonGroup className="w-full">
+        <Combobox<Nationality>
+          items={nationalities}
+          value={selected}
+          onValueChange={(next) => {
+            if (next) onChange(next.code);
+          }}
+          onOpenChange={(open) => {
+            if (!open) onBlur?.();
+          }}
+          itemToStringLabel={(item) => item.name}
+          isItemEqualToValue={(item, current) => item.code === current.code}
+          disabled={disabled}
+        >
+          <ComboboxTrigger
+            id={id}
+            name={name}
+            render={<Button type="button" variant="outline" />}
+            className="min-w-0 flex-1 justify-start [&>svg:last-child]:ml-auto"
+            aria-invalid={!!error}
+            aria-describedby={error ? `${id}-error` : undefined}
+          >
+            {selected ? (
+              <>
+                <CountryFlag code={selected.code} />
+                <span className="truncate">{selected.name}</span>
+              </>
+            ) : (
+              <span className="text-muted-foreground">Sin indicar</span>
+            )}
+          </ComboboxTrigger>
+          <ComboboxContent className="w-64">
+            <ComboboxInput showTrigger={false} placeholder="Buscar país" aria-label="Buscar país" />
+            <ComboboxEmpty>No se encontró el país.</ComboboxEmpty>
+            <ComboboxList>
+              {(item: Nationality) => (
+                <ComboboxItem key={item.code} value={item}>
+                  <CountryFlag code={item.code} />
+                  {item.name}
+                </ComboboxItem>
+              )}
+            </ComboboxList>
+          </ComboboxContent>
+        </Combobox>
+        {selected && (
+          <Button
+            type="button"
+            variant="outline"
+            size="icon"
+            aria-label="Quitar nacionalidad"
+            disabled={disabled}
+            onClick={() => onChange(null)}
+          >
+            <XIcon />
+          </Button>
+        )}
       </ButtonGroup>
       {error && <FieldError id={`${id}-error`}>{error}</FieldError>}
     </Field>

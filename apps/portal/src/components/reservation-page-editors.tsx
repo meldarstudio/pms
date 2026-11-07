@@ -554,6 +554,7 @@ function ReservationActionForm({
                   {(field) => <field.Text label="Correo electrónico" type="email" max={320} />}
                 </form.AppField>
                 <form.AppField name="phone">{(field) => <field.Phone />}</form.AppField>
+                <form.AppField name="nationality">{(field) => <field.Nationality />}</form.AppField>
               </>
             )}
             {target.kind === "notes" && (

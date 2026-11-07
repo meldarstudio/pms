@@ -12,6 +12,8 @@ import { ReservationStatusMenu } from "@/components/reservation-status-menu";
 import type { ReservationEditorTarget } from "@/components/reservation-page-editors";
 import type { ReservationDetail } from "@/lib/api";
 import { phoneDisplay } from "@/lib/phone";
+import { nationalityName } from "@/lib/countries";
+import { CountryFlag } from "@/components/workflow-fields";
 import { format } from "@/lib/dates";
 import { propertyToday } from "@/lib/property-calendar";
 
@@ -91,7 +93,7 @@ export function ReservationOverview({
 }
 
 function ContactLine({ detail, edit }: Model) {
-  const { phone, email } = detail.guest;
+  const { phone, email, nationality } = detail.guest;
   const shown = phone ? phoneDisplay(phone) : null;
   return (
     <section
@@ -125,6 +127,13 @@ function ContactLine({ detail, edit }: Model) {
           "Sin correo"
         )}
       </span>
+      {nationality && (
+        <span className="inline-flex items-center gap-1.5">
+          <span className="sr-only">Nacionalidad:</span>
+          <CountryFlag code={nationality} />
+          <span className="text-foreground">{nationalityName(nationality)}</span>
+        </span>
+      )}
       <Button
         variant="ghost"
         size="icon-xs"
