@@ -7,11 +7,11 @@
     "dev": "astro dev",
     "build": "astro build",
     "check": "astro sync && astro-check",
-    "test:smoke": "PUBLIC_PMS_API_URL=http://127.0.0.1:43988 pnpm verify:build && playwright test --project=smoke",
+    "test:smoke": "node scripts/build-for-local-api.mjs && playwright test --project=smoke",
     "verify:build": "pnpm build && node scripts/verify-build.mjs",
     "test:links": "pnpm build && node scripts/check-links.mjs",
     "preview": "astro preview",
-    "test:a11y": "PUBLIC_PMS_API_URL=http://127.0.0.1:43988 pnpm verify:build && playwright test --project=a11y"
+    "test:a11y": "node scripts/build-for-local-api.mjs && playwright test --project=a11y"
   },
   "dependencies": {
     "@astrojs/sitemap": "3.7.4",

@@ -1,3 +1,5 @@
+import { addDays } from "../../src/lib/reservation/search.ts";
+
 export const WEBSITE_URL = "http://127.0.0.1:43987";
 export const LOCAL_API_URL = "http://127.0.0.1:43988";
 
@@ -12,11 +14,7 @@ export function propertyToday(now = new Date()) {
   }).format(now);
 }
 
-export function daysFromToday(days: number, today = propertyToday()) {
-  const date = new Date(`${today}T00:00:00Z`);
-  date.setUTCDate(date.getUTCDate() + days);
-  return date.toISOString().slice(0, 10);
-}
+export const daysFromToday = (days: number) => addDays(propertyToday(), days);
 
 export const openStay = () => ({ checkIn: daysFromToday(120), checkOut: daysFromToday(122) });
 
