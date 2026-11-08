@@ -369,6 +369,31 @@ export const quoteCreateSchema = workflowRoom
   .pick({ roomTypeId: true, adults: true, children: true })
   .extend({ checkIn: dateSchema, checkOut: dateSchema, ratePlan: ratePlanCodeSchema })
   .strict();
+export const checkoutLanguageSchema = z.enum(["es", "en"], { error: "unknown language" });
+export const publicCheckoutCreateSchema = quoteCreateSchema
+  .extend({ language: checkoutLanguageSchema })
+  .strict();
+export const bookingContactSchema = z
+  .object({
+    fullName: guestFields.shape.fullName,
+    email: guestFields.shape.email.unwrap(),
+    phone: guestFields.shape.phone.unwrap(),
+  })
+  .strict();
+export const checkoutAcceptanceSchema = z
+  .object({
+    quoteId: z.uuid(),
+    language: checkoutLanguageSchema,
+    contact: bookingContactSchema,
+    agreed: z.literal(true, { error: "agreement must be accepted" }),
+  })
+  .strict();
+export type CheckoutLanguage = z.infer<typeof checkoutLanguageSchema>;
+export type PublicCheckoutCreate = z.infer<typeof publicCheckoutCreateSchema>;
+export type PublicCheckoutCreateRequest = z.input<typeof publicCheckoutCreateSchema>;
+export type BookingContact = z.infer<typeof bookingContactSchema>;
+export type CheckoutAcceptance = z.infer<typeof checkoutAcceptanceSchema>;
+export type CheckoutAcceptanceRequest = z.input<typeof checkoutAcceptanceSchema>;
 export type WorkflowAction = z.infer<typeof workflowActionSchema>;
 export type WorkflowCommand = z.infer<typeof workflowCommandSchema>;
 export type WorkflowCreate = z.infer<typeof workflowCreateSchema>;

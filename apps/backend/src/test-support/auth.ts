@@ -42,6 +42,7 @@ export function authEnv(DB: D1Database, overrides: Partial<Env["Bindings"]> = {}
     PUBLISHED_ROOM_TYPE_IDS: "",
     LOGIN_LIMITER: { limit: async () => ({ success: true }) },
     SEARCH_LIMITER: { limit: async () => ({ success: true }) },
+    QUOTE_LIMITER: { limit: async () => ({ success: true }) },
     ...overrides,
   };
 }

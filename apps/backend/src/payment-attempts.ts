@@ -14,7 +14,7 @@ import { HttpError, PAYMENT_PENDING, rethrowConflict } from "./http";
 import { quoteBill } from "./lib/reservation-bill";
 import { inventoryStatuses } from "./lib/statuses";
 import { propertyCalendar } from "./property-calendar";
-import { saveQuote } from "./quotes";
+import { quoteExpired, saveQuote } from "./quotes";
 import { acceptPhone } from "./rules";
 
 type Attempt = typeof paymentAttempts.$inferSelect;
@@ -291,7 +291,7 @@ function requireCulqi(context: PaymentContext) {
 }
 
 function requireValid(quote: Quote, now: Date) {
-  if (Date.parse(quote.expiresAt) <= now.getTime()) throw new HttpError(400, "quote has expired");
+  if (quoteExpired(quote, now)) throw new HttpError(400, "quote has expired");
 }
 
 function initialPaymentCents(quote: Quote) {

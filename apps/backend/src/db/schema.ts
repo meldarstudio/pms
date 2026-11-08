@@ -1,8 +1,8 @@
 import { sql } from "drizzle-orm";
 import { check, index, integer, sqliteTable, text, uniqueIndex } from "drizzle-orm/sqlite-core";
-import type { GuestInput } from "@pms/shared";
+import type { CheckoutLanguage, GuestInput } from "@pms/shared";
 import type { PricedNight } from "../lib/pricing";
-import type { RatePlanTerms } from "../lib/rate-plans";
+import type { RatePlanCode, RatePlanTerms } from "../lib/rate-plans";
 
 export const propertyWriteContext = sqliteTable(
   "property_write_context",
@@ -60,18 +60,57 @@ export const guests = sqliteTable("guests", {
   createdAt: text("created_at").notNull(),
 });
 
-export const quotes = sqliteTable("quotes", {
+export const publicCheckouts = sqliteTable("public_checkouts", {
   id: text("id").primaryKey(),
-  roomTypeId: text("room_type_id").notNull(),
+  tokenHash: text("token_hash").notNull().unique(),
+  roomTypeId: text("room_type_id")
+    .notNull()
+    .references(() => roomTypes.id),
   checkIn: text("check_in").notNull(),
   checkOut: text("check_out").notNull(),
   adults: integer("adults").notNull(),
   children: integer("children").notNull(),
-  nights: text("nights", { mode: "json" }).$type<PricedNight[]>().notNull(),
-  terms: text("terms", { mode: "json" }).$type<RatePlanTerms>().notNull(),
+  ratePlan: text("rate_plan").$type<RatePlanCode>().notNull(),
+  language: text("language").$type<CheckoutLanguage>().notNull(),
   createdAt: text("created_at").notNull(),
-  expiresAt: text("expires_at").notNull(),
 });
+
+export const quotes = sqliteTable(
+  "quotes",
+  {
+    id: text("id").primaryKey(),
+    roomTypeId: text("room_type_id").notNull(),
+    checkIn: text("check_in").notNull(),
+    checkOut: text("check_out").notNull(),
+    adults: integer("adults").notNull(),
+    children: integer("children").notNull(),
+    nights: text("nights", { mode: "json" }).$type<PricedNight[]>().notNull(),
+    terms: text("terms", { mode: "json" }).$type<RatePlanTerms>().notNull(),
+    createdAt: text("created_at").notNull(),
+    expiresAt: text("expires_at").notNull(),
+    checkoutId: text("checkout_id").references(() => publicCheckouts.id),
+  },
+  (table) => [index("quotes_checkout").on(table.checkoutId, table.createdAt)],
+);
+
+export const checkoutAcceptances = sqliteTable(
+  "checkout_acceptances",
+  {
+    id: text("id").primaryKey(),
+    checkoutId: text("checkout_id")
+      .notNull()
+      .references(() => publicCheckouts.id),
+    quoteId: text("quote_id")
+      .notNull()
+      .references(() => quotes.id),
+    fullName: text("full_name").notNull(),
+    email: text("email").notNull(),
+    phone: text("phone").notNull(),
+    language: text("language").$type<CheckoutLanguage>().notNull(),
+    acceptedAt: text("accepted_at").notNull(),
+  },
+  (table) => [index("checkout_acceptances_checkout").on(table.checkoutId, table.acceptedAt)],
+);
 
 export const reservations = sqliteTable(
   "reservations",

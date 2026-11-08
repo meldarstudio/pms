@@ -7,7 +7,7 @@ Paths below are relative to `apps/backend` unless stated otherwise.
 - `src/index.ts` mounts Hono routes. Use `Env` from `src/env.ts`; D1 is bound as `DB`. Request schemas come from `@pms/shared`.
 - Use `validate` and `HttpError` from `src/http.ts`. Error JSON is `{ error: string }`; field-specific errors use the CORS-exposed `X-Error-Field` header. `rethrowConflict` maps database conflicts to public errors.
 - Keep staff routes behind `src/session.ts` and use the real login route in tests, without a bypass.
-- Guest routes live only under `/public` (`src/routes/public.ts`): no session, non-credentialed CORS for `PUBLIC_ALLOWED_ORIGINS`, guest-safe projections only, and per-IP limits keyed by `cf-connecting-ip` (`src/rate-limit.ts`). Offer only room types listed in `PUBLISHED_ROOM_TYPE_IDS`.
+- Guest routes live only under `/public` (`src/routes/public.ts`): no session, non-credentialed CORS for `PUBLIC_ALLOWED_ORIGINS`, guest-safe projections only, and per-IP limits keyed by `cf-connecting-ip` (`src/rate-limit.ts`). Offer only room types listed in `PUBLISHED_ROOM_TYPE_IDS`. Public checkout routes (`src/public-checkouts.ts`) authorize only with the checkout's `Authorization: Bearer` token, stored as a SHA-256 hash; quote, reservation, and contact identifiers never grant access.
 - `pnpm check` regenerates Worker types into git-ignored `.cloudflare/types`; refresh them alone with `pnpm --filter @pms/backend cf-typegen`.
 - `cf d1` commands reach production unless given `--local`, and `cf --local` defaults to a directory the dev server never reads. Run D1 commands through `scripts/d1.mjs`, which targets the `.wrangler/state` that `cf dev` uses.
 

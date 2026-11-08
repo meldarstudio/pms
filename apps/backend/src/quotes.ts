@@ -13,13 +13,23 @@ import { price } from "./workflow-plan";
 
 const QUOTE_MINUTES = 10;
 
-type Quote = typeof quotes.$inferSelect;
+export type Quote = typeof quotes.$inferSelect;
 
 export async function createQuote(
   db: Db,
   input: QuoteCreate,
   context: { today: string; now: Date },
 ) {
+  const { quote, available } = await priceQuote(db, input, { ...context, checkoutId: null });
+  await db.insert(quotes).values(quote);
+  return presentQuote(quote, available);
+}
+
+export async function priceQuote(
+  db: Db,
+  input: QuoteCreate,
+  context: { today: string; now: Date; checkoutId: string | null },
+): Promise<{ quote: Quote; available: boolean }> {
   requireStay(input.checkIn, input.checkOut);
   requireOnlineArrival(input.checkIn, context.today);
   const [type] = await db.select().from(roomTypes).where(eq(roomTypes.id, input.roomTypeId));
@@ -40,10 +50,13 @@ export async function createQuote(
     terms,
     createdAt: context.now.toISOString(),
     expiresAt: new Date(context.now.getTime() + QUOTE_MINUTES * 60_000).toISOString(),
+    checkoutId: context.checkoutId,
   };
-  await db.insert(quotes).values(quote);
-  return presentQuote(quote, (occupied.get(type.id) ?? 0) < (counts.get(type.id) ?? 0));
+  return { quote, available: (occupied.get(type.id) ?? 0) < (counts.get(type.id) ?? 0) };
 }
+
+export const quoteExpired = (quote: Pick<Quote, "expiresAt">, now: Date) =>
+  Date.parse(quote.expiresAt) <= now.getTime();
 
 function presentQuote(quote: Quote, available: boolean) {
   const bill = quoteBill(quote);

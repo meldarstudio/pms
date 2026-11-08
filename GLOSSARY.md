@@ -284,6 +284,17 @@ An online price, rate plan, and amount-to-pay offer valid for 10 minutes, withou
 holding inventory.
 _Avoid_: Hold, preview, reservation
 
+**Public checkout**:
+A guest's private online review of one selected stay, room type, occupancy, and rate plan,
+reachable only with its secret token. It holds that selection's quotes and agreement
+acceptances.
+_Avoid_: Cart, session, reservation
+
+**Agreement acceptance**:
+A booking contact's explicit acceptance of one unexpired quote's terms within a public
+checkout, recorded before any payment.
+_Avoid_: Payment, confirmation, reservation
+
 **Payment attempt**:
 A request to charge for a quote, recorded before contacting the provider. An unknown
 result is resolved by provider lookup, not another charge.

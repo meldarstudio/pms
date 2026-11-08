@@ -1,8 +1,14 @@
 import type { Auth, SignedInAccount } from "./auth";
+import type { PublicCheckout } from "./public-checkouts";
 import type { PropertyCalendar } from "./property-calendar";
 
 export type Env = {
-  Variables: { propertyCalendar: PropertyCalendar; auth: Auth; account: SignedInAccount };
+  Variables: {
+    propertyCalendar: PropertyCalendar;
+    auth: Auth;
+    account: SignedInAccount;
+    checkout: PublicCheckout;
+  };
   Bindings: {
     DB: D1Database;
     CURRENCY: string;
@@ -13,6 +19,7 @@ export type Env = {
     PUBLISHED_ROOM_TYPE_IDS: string;
     LOGIN_LIMITER: RateLimit;
     SEARCH_LIMITER: RateLimit;
+    QUOTE_LIMITER: RateLimit;
     CULQI_SECRET_KEY?: string;
   };
 };

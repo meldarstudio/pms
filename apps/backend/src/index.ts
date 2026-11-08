@@ -45,7 +45,8 @@ const staffCors = cors({
 const guestCors = cors({
   origin: (origin, c: Context<Env>) => exactOrigin(c.env.PUBLIC_ALLOWED_ORIGINS, origin),
   credentials: false,
-  allowMethods: ["GET"],
+  allowMethods: ["GET", "POST"],
+  allowHeaders: ["Content-Type", "Authorization"],
   exposeHeaders: ["X-Error-Field", "Retry-After"],
   maxAge: CHROME_MAX_PREFLIGHT_CACHE_SECONDS,
 });
