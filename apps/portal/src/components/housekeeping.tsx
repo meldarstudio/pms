@@ -1,5 +1,4 @@
-import { useEffect, useState, type ReactNode } from "react";
-import { createPortal, flushSync } from "react-dom";
+import { useState, type ReactNode } from "react";
 import { ChevronDownIcon, PrinterIcon, SparklesIcon } from "lucide-react";
 import { PageHeaderActions } from "@/components/page-header-actions";
 import { SetupRequired } from "@/components/setup-required";
@@ -34,8 +33,14 @@ import {
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { useIsMobile } from "@/hooks/use-mobile";
+import {
+  PrintSheet,
+  longPropertyDate,
+  propertyTime,
+  useStampedAtPrint,
+} from "@/components/print-sheet";
 import type { HousekeepingRoom, HousekeepingStatus } from "@/lib/api";
-import { propertyTimeZone, propertyToday } from "@/lib/property-calendar";
+import { propertyToday } from "@/lib/property-calendar";
 import { useHousekeeping, useMissingSetup } from "@/lib/queries";
 import type { HousekeepingView } from "@/lib/route-search";
 import { useMarkRooms, type MarkRooms } from "@/lib/use-mark-rooms";
@@ -250,15 +255,6 @@ function PhoneRow({ view, room, mark }: RoomRowProps) {
       <RoomAction view={view} room={room} pending={pending} run={run} />
     </li>
   );
-}
-
-function propertyTime(instant: Date) {
-  return new Intl.DateTimeFormat("es-PE", {
-    timeZone: propertyTimeZone(),
-    hour: "numeric",
-    minute: "2-digit",
-    hour12: true,
-  }).format(instant);
 }
 
 function markedLabel(changedAt: string | null, today: string) {
@@ -521,27 +517,7 @@ function RoomListSkeleton({ view }: { view: HousekeepingView }) {
   );
 }
 
-function useStampedAtPrint() {
-  const [printedAt, setPrintedAt] = useState(() => new Date());
-  useEffect(() => {
-    const stamp = () => flushSync(() => setPrintedAt(new Date()));
-    window.addEventListener("beforeprint", stamp);
-    return () => window.removeEventListener("beforeprint", stamp);
-  }, []);
-  return printedAt;
-}
-
-function longPropertyDate(date: string) {
-  return new Intl.DateTimeFormat("es-PE", {
-    timeZone: "UTC",
-    weekday: "long",
-    day: "numeric",
-    month: "long",
-    year: "numeric",
-  }).format(new Date(`${date}T00:00:00Z`));
-}
-
-function PrintSheet({
+function ListPrintSheet({
   view,
   rooms,
   today,
@@ -551,11 +527,8 @@ function PrintSheet({
   today: string;
 }) {
   const printedAt = useStampedAtPrint();
-  return createPortal(
-    <section
-      data-print-sheet
-      className="hidden bg-background p-2 text-foreground [print-color-adjust:exact] print:block"
-    >
+  return (
+    <PrintSheet>
       <header className="mb-4 flex items-baseline justify-between gap-4">
         <h1 className="text-xl font-semibold">{views[view].listLabel}</h1>
         <p className="text-sm">
@@ -590,8 +563,7 @@ function PrintSheet({
           ))}
         </TableBody>
       </Table>
-    </section>,
-    document.body,
+    </PrintSheet>
   );
 }
 
@@ -705,7 +677,7 @@ export function Housekeeping({
             today={list.date}
             bulk={{ selection, pending: bulkPending, markSelected }}
           />
-          <PrintSheet view={view} rooms={visible} today={list.date} />
+          <ListPrintSheet view={view} rooms={visible} today={list.date} />
         </>
       )}
     </main>

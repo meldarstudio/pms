@@ -256,6 +256,11 @@ balance. Cancellation replaces room charges and discount with the final cancella
 charge.
 _Avoid_: Invoice, payment receipt
 
+**Reservation summary / Resumen de reserva**:
+A guest-facing copy of a reservation's stay, rooms, and reservation bill; informational,
+not a tax receipt.
+_Avoid_: Receipt, comprobante, invoice
+
 **Subtotal / total**:
 Room charges before discount / after the capped discount, before payments or coupon
 settlement. A cancelled reservation's total is its cancellation charge after waivers.

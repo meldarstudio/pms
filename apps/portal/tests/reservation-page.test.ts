@@ -801,6 +801,39 @@ it("offers the shared coupon method from Registrar pago and prefills the already
   );
 });
 
+it("prints a guest summary without staff notes, identity documents, or failed refunds", async () => {
+  owesBack({
+    payments: [payment({ amountCents: 30000, reference: "OP-778" })],
+    refunds: [refund({ status: "failed", failureReason: "Cuenta cerrada" })],
+    stayingGuests: [
+      {
+        id: "8d0f1b5e-2c4a-4f6e-9b7d-3a1c5e7f9b2d",
+        fullName: "Luis Gómez",
+        email: "luis@example.com",
+        phone: "+51987654321",
+        documentType: "DNI",
+        documentNumber: "12345678",
+      },
+    ],
+  });
+  mockApi();
+  await render();
+  const sheet = window.document.querySelector("[data-print-sheet]")!;
+  assert.match(sheet.textContent, /Resumen de reserva.*#TEST0001/);
+  assert.match(sheet.textContent, /Luis Gómez/);
+  for (const hidden of ["Llegada por la tarde", "Contacto compartido", "12345678", "OP-778"])
+    assert.equal(sheet.textContent.includes(hidden), false, `The guest must not see ${hidden}`);
+  const movements = sheet.querySelector('[aria-label="Movimientos"] tbody')!;
+  assert.deepEqual(
+    [...movements.querySelectorAll("tr")].map(text),
+    ["19 oct 2026 Pago Efectivo S/ 300"],
+    "A failed refund returned no money, so the guest's copy leaves it out",
+  );
+  const bill = [...sheet.querySelectorAll('[aria-label="Cuenta"] > div')];
+  assert.equal(text(bill.at(-1)!), "Por devolver S/ 100");
+  assert.match(sheet.textContent, /no es comprobante de pago/);
+});
+
 it("offers to add notes when the reservation has none", async () => {
   saved = { ...saved, notes: null };
   mockApi();
