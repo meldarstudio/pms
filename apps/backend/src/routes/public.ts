@@ -6,6 +6,11 @@ import { currency, validate } from "../http";
 import { publishedRoomTypeIds, searchOffers } from "../public-offers";
 import { limitBySourceIp } from "../rate-limit";
 
+export const GUEST_PREFIX = "/public";
+
+export const isGuestPath = (path: string) =>
+  path === GUEST_PREFIX || path.startsWith(`${GUEST_PREFIX}/`);
+
 export const publicRoutes = new Hono<Env>();
 
 publicRoutes.use("*", async (c, next) => {

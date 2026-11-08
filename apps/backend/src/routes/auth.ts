@@ -4,31 +4,34 @@ import { Hono, type Context } from "hono";
 import type { SignedInAccount } from "../auth";
 import type { Env } from "../env";
 import { HttpError, validate } from "../http";
-import { trustedSourceIp } from "../rate-limit";
+import { limitBySourceIp } from "../rate-limit";
 import { authConfigured, forwardCookies, toAccount } from "../session";
 
 export const authRoutes = new Hono<Env>();
 
-authRoutes.post("/login", validate("json", loginSchema), async (c) => {
-  const { success } = await c.env.LOGIN_LIMITER.limit({ key: trustedSourceIp(c) });
-  if (!success) throw new HttpError(429, "too many login attempts");
-  if (!authConfigured(c)) throw new HttpError(401, "invalid credentials");
+authRoutes.post(
+  "/login",
+  validate("json", loginSchema),
+  limitBySourceIp("LOGIN_LIMITER", "too many login attempts"),
+  async (c) => {
+    if (!authConfigured(c)) throw new HttpError(401, "invalid credentials");
 
-  const { username, password } = c.req.valid("json");
-  try {
-    const { headers, response } = await c.var.auth.api.signInUsername({
-      body: { username, password },
-      headers: c.req.raw.headers,
-      returnHeaders: true,
-    });
-    if (!response) throw new HttpError(401, "invalid credentials");
-    forwardCookies(c, headers);
-    return c.json(sessionBody(c, toAccount(response.user)));
-  } catch (error) {
-    if (error instanceof APIError) throw new HttpError(401, "invalid credentials");
-    throw error;
-  }
-});
+    const { username, password } = c.req.valid("json");
+    try {
+      const { headers, response } = await c.var.auth.api.signInUsername({
+        body: { username, password },
+        headers: c.req.raw.headers,
+        returnHeaders: true,
+      });
+      if (!response) throw new HttpError(401, "invalid credentials");
+      forwardCookies(c, headers);
+      return c.json(sessionBody(c, toAccount(response.user)));
+    } catch (error) {
+      if (error instanceof APIError) throw new HttpError(401, "invalid credentials");
+      throw error;
+    }
+  },
+);
 
 authRoutes.post("/logout", async (c) => {
   const { headers } = await c.var.auth.api.signOut({

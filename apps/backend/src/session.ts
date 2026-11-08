@@ -3,10 +3,9 @@ import { createMiddleware } from "hono/factory";
 import { createAuth, type SignedInAccount } from "./auth";
 import type { Env } from "./env";
 import { HttpError } from "./http";
+import { isGuestPath } from "./routes/public";
 
 const PUBLIC_ROUTES = new Set(["GET /", "POST /login"]);
-
-export const isGuestPath = (path: string) => path === "/public" || path.startsWith("/public/");
 
 export function authConfigured(c: Context<Env>): boolean {
   if (c.env.SESSION_SECRET) return true;

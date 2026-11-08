@@ -129,27 +129,30 @@ describe("public offer search", () => {
   });
 
   it.each([
-    ["confirmed", "sold_out"],
-    ["checked_in", "sold_out"],
-    ["cancelled", "available"],
-    ["unfulfilled", "available"],
-  ])("treats the last room held by a %s stay on one night as %s", async (status, availability) => {
-    seedReservation(db.sqlite, {
-      id: "res",
-      code: "ABC123",
-      guestName: "Ana Torres",
-      checkIn: "2026-10-21",
-      checkOut: "2026-10-23",
-      createdAt: "2026-10-01",
-      roomTypeId: "type-king",
-      status,
-    });
+    ["confirmed", "sold_out", 0],
+    ["checked_in", "sold_out", 0],
+    ["cancelled", "available", 2],
+    ["unfulfilled", "available", 2],
+  ])(
+    "treats the last room held by a %s stay on one night as %s",
+    async (status, availability, offerCount) => {
+      seedReservation(db.sqlite, {
+        id: "res",
+        code: "ABC123",
+        guestName: "Ana Torres",
+        checkIn: "2026-10-21",
+        checkOut: "2026-10-23",
+        createdAt: "2026-10-01",
+        roomTypeId: "type-king",
+        status,
+      });
 
-    const [king] = (await offers()).roomTypes;
+      const [king] = (await offers()).roomTypes;
 
-    expect(king!.availability).toBe(availability);
-    expect(king!.offers.length).toBe(availability === "available" ? 2 : 0);
-  });
+      expect(king!.availability).toBe(availability);
+      expect(king!.offers.length).toBe(offerCount);
+    },
+  );
 
   it("is sold out when the only room is closed, and available on the departure day", async () => {
     db.sqlite.exec(
@@ -232,11 +235,54 @@ describe("public offer search", () => {
     });
 
     const response = await search({}, { cookie: "session=forged" });
-    const body = await response.text();
+    const keys = new Set<string>();
+    const strings: string[] = [];
+    const walk = (value: unknown) => {
+      if (typeof value === "string") strings.push(value);
+      if (typeof value !== "object" || value === null) return;
+      for (const [key, child] of Object.entries(value)) {
+        if (!Array.isArray(value)) keys.add(key);
+        walk(child);
+      }
+    };
+    walk(await response.json());
 
     expect(response.status).toBe(200);
-    for (const secret of ["room-101", "room-102", "101", "SECRET", "Ana", "King", "freeRoomIds"])
-      expect(body).not.toContain(secret);
+    expect([...keys].sort()).toEqual([
+      "adults",
+      "availability",
+      "cancellation",
+      "chargeCents",
+      "checkIn",
+      "checkOut",
+      "children",
+      "currency",
+      "freeCancellation",
+      "freeUntil",
+      "id",
+      "maxAdults",
+      "maxChildren",
+      "nights",
+      "offers",
+      "ratePlan",
+      "remainingScheduledCents",
+      "requiredInitialPaymentCents",
+      "roomTypes",
+      "savingCents",
+      "totalCents",
+    ]);
+    expect(strings.sort()).toEqual([
+      "2026-10-18",
+      "2026-10-20",
+      "2026-10-22",
+      "PEN",
+      "available",
+      "available",
+      "flexible",
+      "non_refundable",
+      "none",
+      "type-king",
+    ]);
     expect(response.headers.getSetCookie()).toEqual([]);
     expect(response.headers.get("cache-control")).toBe("no-store");
   });

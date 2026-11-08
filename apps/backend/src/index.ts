@@ -11,7 +11,7 @@ import { inventoryRoutes } from "./routes/inventory";
 import { guestRoutes } from "./routes/guests";
 import { housekeepingRoutes } from "./routes/housekeeping";
 import { paymentRoutes } from "./routes/payments";
-import { publicRoutes } from "./routes/public";
+import { GUEST_PREFIX, isGuestPath, publicRoutes } from "./routes/public";
 import { ratePlanRoutes } from "./routes/rate-plans";
 import { reservationRoutes } from "./routes/reservations";
 import { roomTypeRoutes } from "./routes/room-types";
@@ -20,7 +20,7 @@ import { roomRoutes } from "./routes/rooms";
 import { setupRoutes } from "./routes/setup";
 import { getDb } from "./db";
 import { paymentContext, reconcilePaymentAttempts } from "./payment-attempts";
-import { isGuestPath, requireSession } from "./session";
+import { requireSession } from "./session";
 import { propertyCalendar } from "./property-calendar";
 
 const CHROME_MAX_PREFLIGHT_CACHE_SECONDS = 2 * 60 * 60;
@@ -86,7 +86,7 @@ app.route("/reservations", reservationRoutes);
 app.route("/payments", paymentRoutes);
 app.route("/rate-plans", ratePlanRoutes);
 app.route("/coupons", couponRoutes);
-app.route("/public", publicRoutes);
+app.route(GUEST_PREFIX, publicRoutes);
 
 export default {
   fetch: app.fetch,
