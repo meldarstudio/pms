@@ -1,5 +1,6 @@
 import { AxeBuilder } from "@axe-core/playwright";
 import { expect, test, type Page } from "@playwright/test";
+import { LOCAL_API_URL, doubleSoldOutStay, openStay } from "../support/local-api";
 
 const pages = [
   "/",
@@ -10,6 +11,8 @@ const pages = [
   "/en/habitaciones/",
   "/en/churin/",
   "/en/404",
+  "/reservar/",
+  "/en/reservar/",
 ] as const;
 
 function formatViolation(
@@ -53,5 +56,22 @@ for (const path of pages) {
     const response = await page.goto(path);
     expect(response?.ok() || response?.status() === 404).toBeTruthy();
     await runAxe(page, path);
+  });
+}
+
+for (const lang of ["", "/en"]) {
+  test(`a11y: ${lang}/reservar/habitacion/ with offers and a choice`, async ({ page }) => {
+    const params = new URLSearchParams({ ...doubleSoldOutStay(), adults: "2", children: "0" });
+    await page.goto(`${lang}/reservar/habitacion/?${params.toString()}&room=king&plan=flexible`);
+    await expect(page.locator("[data-choice]")).toBeVisible();
+    await runAxe(page, `${lang}/reservar/habitacion/`);
+  });
+
+  test(`a11y: ${lang}/reservar/habitacion/ when the search service fails`, async ({ page }) => {
+    await page.route(`${LOCAL_API_URL}/public/offers*`, (route) => route.abort());
+    const params = new URLSearchParams({ ...openStay(), adults: "2", children: "0" });
+    await page.goto(`${lang}/reservar/habitacion/?${params.toString()}`);
+    await expect(page.locator("[data-problem]")).toBeVisible();
+    await runAxe(page, `${lang}/reservar/habitacion/ (failure)`);
   });
 }

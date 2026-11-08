@@ -21,15 +21,15 @@ export const ui = {
       "Stay at Hotel Manantial in Churín, Peru, 5 minutes from the thermal baths of Mamahuarmi and La Juventud.",
     "meta.home.title": "Hotel in Churín with Parking, near the Hot Springs | Hotel Manantial",
     "meta.home.description":
-      "Hotel in Churín, 5 min from the Mamahuarmi and La Juventud hot springs. Free parking, private bath, 24-h front desk. From S/100. Book on WhatsApp.",
-    "meta.rooms.title": "Rooms & Rates in Churín from S/100 | Hotel Manantial",
+      "Hotel in Churín, 5 min from the Mamahuarmi and La Juventud hot springs. Free parking, private bath, 24-h front desk. Check prices for your dates and book direct.",
+    "meta.rooms.title": "Rooms & Rates in Churín | Hotel Manantial",
     "meta.rooms.description":
-      'King room, premium double and family suite in Churín from S/100, taxes included. 55" Smart TV, 24-h front desk, free parking. Book on WhatsApp.',
+      'King room, premium double and family suite in Churín, priced per room with taxes included. 55" Smart TV, 24-h front desk, free parking. Check prices for your dates.',
     "meta.churin.title": "Churín Hot Springs Guide & How to Get There | Hotel Manantial",
     "meta.churin.description":
       "Guide to Mamahuarmi, La Juventud and Tingo, and how to reach Churín from Lima (≈ 4 h). Hotel Manantial: walk to the springs, 3 min to the plaza.",
     "meta.ogImageAlt": "Hotel Manantial, Churín, Peru. King room on a higher floor with a balcony.",
-    "hero.eyebrow": "Churín, Peru · From S/100 per night, taxes included",
+    "hero.eyebrow": "Churín, Peru · Priced per room, taxes included",
     "hero.title": "Hotel in Churín, 5 minutes from the hot springs",
     "hero.body":
       'Our hotel in Churín has a private bathroom, hot water and a 55" Smart TV in every room.',
@@ -43,7 +43,7 @@ export const ui = {
     "rooms.imageAlt": "King room at Hotel Manantial",
     "rooms.pageTitle": "Rooms in Churín",
     "rooms.pageBody":
-      'Three room types, all with a private bathroom, hot water and a 55" 4K Smart TV. Priced per room, taxes included: from S/100 a night.',
+      'Three room types, all with a private bathroom, hot water and a 55" 4K Smart TV. Priced per room, taxes included: check the price for your dates.',
     "rooms.intro.cta": "Check availability",
     "rooms.intro.direct": "Book direct and pay less than on booking sites: no commissions.",
     "rooms.king.name": "King room",
@@ -52,7 +52,6 @@ export const ui = {
       "For couples, or parents with a young child. One king bed in 194 sq ft. A few rooms on higher floors have a balcony at the same price: just ask when you book.",
     "rooms.king.cta": "Ask about the King room",
     "rooms.king.beds": "1 king bed",
-    "rooms.king.price": "From S/100 per night",
     "rooms.photo.king": "King room with a smart TV and balcony at Hotel Manantial, Churín",
     "rooms.king.prefill":
       "Hello, I would like to check availability for a king room at Hotel Manantial. Dates: ___ Guests: ___",
@@ -61,7 +60,6 @@ export const ui = {
     "rooms.double.lead": "Two full-size beds: share the room, not the bed. 215 sq ft.",
     "rooms.double.cta": "Ask about the Premium double",
     "rooms.double.beds": "2 full-size beds",
-    "rooms.double.price": "From S/120 per night",
     "rooms.king.area": "194 sq ft",
     "rooms.double.area": "215 sq ft",
     "rooms.family.area": "237 sq ft",
@@ -81,7 +79,6 @@ export const ui = {
       "A king plus a single bed, ideal for parents traveling with an older child. 237 sq ft, our largest room.",
     "rooms.family.cta": "Ask about the Family suite",
     "rooms.family.beds": "1 king bed and 1 twin",
-    "rooms.family.price": "From S/120 per night",
     "rooms.photo.familyFront":
       "King bed and single bed in the family suite at Hotel Manantial, Churín",
     "rooms.photo.familySide":
@@ -101,7 +98,6 @@ export const ui = {
     "rooms.gallery.previous": "Previous photo",
     "rooms.gallery.next": "Next photo",
     "rooms.gallery.close": "Close",
-    "rooms.structuredData.night": "night",
     "rooms.included.title": "In your room",
     "rooms.included.bathroom": "Private bathroom with hot water",
     "rooms.included.tv": '55" 4K Smart TV',
@@ -128,12 +124,12 @@ export const ui = {
     "rooms.policies.payment": "Payment",
     "rooms.policies.paymentValue": "Cash, cards, Yape, or transfer",
     "rooms.policies.deposit": "Deposit",
-    "rooms.policies.depositValue": "At least one night",
+    "rooms.policies.depositValue": "Flexible: first night. Non-refundable: full stay",
     "rooms.policies.breakfast": "Breakfast",
     "rooms.policies.breakfastValue": "Not included. Municipal market next door.",
-    "rooms.policies.cancelTitle": "Flexible cancellation",
+    "rooms.policies.cancelTitle": "Cancellation",
     "rooms.policies.cancelBody":
-      "We refund your deposit if you cancel at least 24 hours before check-in. Within 24 hours, the deposit is non-refundable.",
+      "Flexible rate: cancel free through two calendar days before arrival, Peru time. For a November 10 arrival, that is through November 8. After that, or if you don't arrive, the first night is charged. Non-refundable rate: 10% less, paid in full when you book; cancelling or not arriving is charged the full stay.",
     "rooms.policies.petsTitle": "Pets",
     "rooms.policies.petsBody": "Welcome. Let us know when you book.",
     "churin.title": "The springs and town center, on foot",
@@ -182,7 +178,7 @@ export const ui = {
       "Past the Tingo bridge on the right bank of the Huaura. The water comes out of the rock hot and fills pools at different temperatures, perfect for a long soak. There are private pools, a mud pool and an outdoor pool.",
     "churin.booking.title": "Hot springs by day, a good night's rest",
     "churin.booking.body":
-      "Rooms from S/100 a night, taxes included. Check-in from 2:00 p.m., check-out by 11:00 a.m.",
+      "Priced per room, taxes included: check the price for your dates. Check-in from 2:00 p.m., check-out by 11:00 a.m.",
     "churin.booking.cta": "Message us on WhatsApp",
     "parking.title": "Free private parking",
     "parking.body":
@@ -206,7 +202,7 @@ export const ui = {
     "directions.car": "Panamericana Norte to Huacho, then via Sayán.",
     "directions.busLabel": "By bus:",
     "directions.bus": "several companies leave from Plaza Norte in Lima.",
-    "booking.kicker": "From S/100 per night",
+    "booking.kicker": "Prices for your dates",
     "booking.title": "Book direct, no fees",
     "booking.body":
       "Send us your dates on WhatsApp and we'll confirm availability and your rate. Booking direct costs less than on booking sites.",
@@ -226,6 +222,112 @@ export const ui = {
     "footer.socials": "Social",
     "footer.explore": "Explore",
     "footer.rights": "All rights reserved",
+    "rooms.spec.priceValue": "Varies by date, taxes included",
+    "reservation.cta": "See prices for your dates",
+    "reservation.roomCta": "See prices and availability",
+    "reservation.whatsappSecondary": "Or message us on WhatsApp",
+    "reservation.meta.searchTitle": "Check availability | Hotel Manantial",
+    "reservation.meta.searchDescription":
+      "Choose your dates and guests to see live prices and availability at Hotel Manantial, Churín.",
+    "reservation.meta.chooseTitle": "Choose your room and rate | Hotel Manantial",
+    "reservation.meta.chooseDescription":
+      "Compare the Flexible and Non-refundable rates for your dates at Hotel Manantial, Churín.",
+    "reservation.steps": "Reservation steps",
+    "reservation.step.search": "Dates and guests",
+    "reservation.step.choose": "Room and rate",
+    "reservation.search.title": "Check availability",
+    "reservation.search.lead": "Choose your dates and guests to see today's prices for each room.",
+    "reservation.search.checkIn": "Arrival",
+    "reservation.search.checkOut": "Departure",
+    "reservation.search.adults": "Adults",
+    "reservation.search.children": "Children",
+    "reservation.search.nightsEmpty": "Choose arrival and departure to see the number of nights.",
+    "reservation.search.submit": "See rooms and prices",
+    "reservation.search.limits":
+      "Online reservations are for one room, start tomorrow at the earliest (Peru time) and last 1 to 60 nights.",
+    "reservation.search.preference":
+      "Preferred room: {room}. We'll show it first if it fits your search.",
+    "reservation.search.clearPreference": "Show all rooms equally",
+    "reservation.nights.one": "1 night",
+    "reservation.nights.other": "{count} nights",
+    "reservation.adults.one": "1 adult",
+    "reservation.adults.other": "{count} adults",
+    "reservation.children.one": "1 child",
+    "reservation.children.other": "{count} children",
+    "reservation.problem.checkInRequired": "Choose your arrival date.",
+    "reservation.problem.checkOutRequired": "Choose your departure date.",
+    "reservation.problem.checkInTooSoon":
+      "Online reservations start tomorrow, Peru time. To arrive today, message us on WhatsApp.",
+    "reservation.problem.checkOutBeforeCheckIn":
+      "Departure must be at least one night after arrival.",
+    "reservation.problem.tooManyNights": "Online stays can last up to 60 nights.",
+    "reservation.problem.invalidDate": "One of the dates isn't valid.",
+    "reservation.problem.invalidSearch":
+      "We couldn't use this search. Please change it and try again.",
+    "reservation.offline.title": "Online reservations aren't available yet",
+    "reservation.offline.body":
+      "Message us on WhatsApp with your dates and guests and we'll confirm availability and your rate.",
+    "reservation.helpPrompt": "Questions? We're happy to help.",
+    "reservation.choose.title": "Choose your room and rate",
+    "reservation.choose.change": "Change search",
+    "reservation.choose.loading": "Checking live availability…",
+    "reservation.choose.loaded": "Showing rooms for your search.",
+    "reservation.choose.missing.title": "Choose your dates first",
+    "reservation.choose.missing.body":
+      "Tell us when you're arriving and leaving to see rooms and prices.",
+    "reservation.choose.missing.action": "Choose dates",
+    "reservation.choose.unavailable.title": "We couldn't check availability right now",
+    "reservation.choose.unavailable.body":
+      "This is a problem on our side, not a lack of rooms. Your search is kept: try again in a moment, or message us on WhatsApp.",
+    "reservation.choose.throttled.title": "Too many searches from your connection",
+    "reservation.choose.throttled.body":
+      "Everyone on a shared connection shares this limit. Your search is kept: wait a minute and try again, or message us on WhatsApp.",
+    "reservation.choose.invalid.title": "Please change your search",
+    "reservation.choose.retry": "Try again",
+    "reservation.choose.soldOut.title": "No rooms are available for these dates",
+    "reservation.choose.soldOut.body":
+      "Try other dates, or message us on WhatsApp and we'll help you find an option.",
+    "reservation.choose.noneFit.title": "No single room fits your group",
+    "reservation.choose.noneFit.body":
+      "Online reservations are for one room. Change the number of guests, or message us on WhatsApp to book more than one room.",
+    "reservation.room.soldOut": "Sold out for these dates.",
+    "reservation.room.tooManyGuests":
+      "This room fits up to {adults} adults and {children} children.",
+    "reservation.room.offline":
+      "This room can't be reserved online. Message us on WhatsApp to book it.",
+    "reservation.room.preferred": "Your preferred room",
+    "reservation.room.preferredUnavailable":
+      "Your preferred room, the {room}, isn't available for this search. We haven't chosen another room for you: pick one below or change your search.",
+    "reservation.room.capacity": "Guests",
+    "reservation.room.capacityValue": "Up to {adults} adults and {children} children",
+    "reservation.plans.legend": "Rate for the {room}",
+    "reservation.plan.flexible": "Flexible",
+    "reservation.plan.flexibleLead": "Pay the first night now and the rest at the hotel.",
+    "reservation.plan.non_refundable": "Non-refundable",
+    "reservation.plan.non_refundableLead": "10% less. Pay the whole stay now.",
+    "reservation.offer.total": "Stay total",
+    "reservation.offer.now": "Pay now",
+    "reservation.offer.remaining": "Pay at the hotel",
+    "reservation.offer.saving": "You save {amount} compared with Flexible.",
+    "reservation.offer.taxes": "Prices in {currency}, taxes included.",
+    "reservation.cancel.available":
+      "Free cancellation through {date}, inclusive (Peru time). After that, cancelling or not arriving costs the first night: {amount}.",
+    "reservation.cancel.ended":
+      "Free cancellation has already ended for these dates. Cancelling or not arriving costs the first night: {amount}.",
+    "reservation.cancel.none":
+      "No free cancellation. Cancelling or not arriving is charged the full stay, {amount}, with no other penalty.",
+    "reservation.cancel.settlement":
+      "Late-cancellation and no-show charges come out of what you paid. Any amount owed back to you is arranged with the hotel: a refund or, if you agree, credit for a future stay.",
+    "reservation.choose.select": "Choose this room",
+    "reservation.choice.title": "Your choice",
+    "reservation.choice.summary": "{room} · {plan} rate",
+    "reservation.choice.next":
+      "Online payment isn't available yet. Send us this choice on WhatsApp and we'll complete your reservation with you.",
+    "reservation.choice.whatsapp": "Send my choice on WhatsApp",
+    "reservation.choice.prefill":
+      "Hello, I would like to book. Dates: {checkIn} to {checkOut} ({nights}) Guests: {guests} Room: {room} Rate: {plan} Total: {total}",
+    "reservation.choice.lost":
+      "Your earlier choice, the {room}, isn't available for this search. Please choose again.",
   },
   es: {
     "nav.home": "Inicio",
@@ -245,16 +347,16 @@ export const ui = {
       "Hospédese en Hotel Manantial en Churín, Perú, a 5 minutos de las aguas termales de Mamahuarmi y La Juventud.",
     "meta.home.title": "Hotel en Churín con cochera, cerca de las termas | Hotel Manantial",
     "meta.home.description":
-      "Hotel en Churín a 5 min de las termas de Mamahuarmi y La Juventud. Cochera gratis, baño privado, recepción 24 h. Desde S/100. Reserve por WhatsApp.",
-    "meta.rooms.title": "Habitaciones en Churín desde S/100 | Hotel Manantial",
+      "Hotel en Churín a 5 min de las termas de Mamahuarmi y La Juventud. Cochera gratis, baño privado, recepción 24 h. Consulte el precio para sus fechas y reserve directo.",
+    "meta.rooms.title": "Habitaciones en Churín | Hotel Manantial",
     "meta.rooms.description":
-      'Suite matrimonial, doble premium y suite familiar en Churín desde S/100, impuestos incluidos. Smart TV 55", recepción 24 h y cochera gratis.',
+      'Suite matrimonial, doble premium y suite familiar en Churín, con precio por habitación e impuestos incluidos. Smart TV 55", recepción 24 h y cochera gratis.',
     "meta.churin.title": "Termas de Churín: guía y cómo llegar | Hotel Manantial",
     "meta.churin.description":
       "Guía de Mamahuarmi, La Juventud y Tingo y cómo llegar a Churín desde Lima (≈ 4 h). Hotel Manantial: termas a pie y la plaza a 3 min.",
     "meta.ogImageAlt":
       "Hotel Manantial, Churín, Perú. Suite Matrimonial con cama king, en un piso alto con balcón.",
-    "hero.eyebrow": "Churín, Perú · Desde S/100 por noche, impuestos incluidos",
+    "hero.eyebrow": "Churín, Perú · Precio por habitación, impuestos incluidos",
     "hero.title": "Hotel en Churín a 5 minutos de las termas",
     "hero.body":
       'Nuestro hotel en Churín tiene baño privado, agua caliente y Smart TV de 55" en cada habitación.',
@@ -268,7 +370,7 @@ export const ui = {
     "rooms.imageAlt": "Suite matrimonial del Hotel Manantial",
     "rooms.pageTitle": "Habitaciones en Churín",
     "rooms.pageBody":
-      'Tres tipos de habitación, todas con baño privado, agua caliente y Smart TV 55" 4K. Precio por habitación, impuestos incluidos: desde S/100 por noche.',
+      'Tres tipos de habitación, todas con baño privado, agua caliente y Smart TV 55" 4K. Precio por habitación, impuestos incluidos: consulte el precio para sus fechas.',
     "rooms.intro.cta": "Consultar disponibilidad",
     "rooms.intro.direct":
       "Reservando directo paga menos que en las plataformas de reserva: sin comisiones.",
@@ -278,7 +380,6 @@ export const ui = {
       "Para parejas, o para padres con un niño pequeño. Una cama king en 18 m². Algunas habitaciones en pisos altos tienen balcón, al mismo precio: pregúntenos al reservar.",
     "rooms.king.cta": "Consultar la Suite Matrimonial",
     "rooms.king.beds": "1 cama king",
-    "rooms.king.price": "Desde S/100 por noche",
     "rooms.photo.king": "Habitación con cama king, Smart TV y balcón en Hotel Manantial, Churín",
     "rooms.king.prefill":
       "Hola, quisiera consultar disponibilidad de una suite matrimonial en Hotel Manantial. Fechas: ___ Personas: ___",
@@ -288,7 +389,6 @@ export const ui = {
       "Dos camas de 2 plazas para compartir habitación sin compartir cama. 20 m².",
     "rooms.double.cta": "Consultar la Doble Premium",
     "rooms.double.beds": "2 camas de 2 plazas",
-    "rooms.double.price": "Desde S/120 por noche",
     "rooms.king.area": "18 m²",
     "rooms.double.area": "20 m²",
     "rooms.family.area": "22 m²",
@@ -308,7 +408,6 @@ export const ui = {
       "Cama king más una individual: ideal para padres que viajan con un hijo mayor. 22 m², la habitación más amplia del hotel.",
     "rooms.family.cta": "Consultar la Suite Familiar",
     "rooms.family.beds": "1 cama king y 1 individual",
-    "rooms.family.price": "Desde S/120 por noche",
     "rooms.photo.familyFront":
       "Cama king y cama individual en la suite familiar del Hotel Manantial, Churín",
     "rooms.photo.familySide":
@@ -328,7 +427,6 @@ export const ui = {
     "rooms.gallery.previous": "Foto anterior",
     "rooms.gallery.next": "Foto siguiente",
     "rooms.gallery.close": "Cerrar",
-    "rooms.structuredData.night": "noche",
     "rooms.included.title": "En su habitación",
     "rooms.included.bathroom": "Baño privado con agua caliente",
     "rooms.included.tv": 'Smart TV 55" 4K',
@@ -355,12 +453,12 @@ export const ui = {
     "rooms.policies.payment": "Pago",
     "rooms.policies.paymentValue": "Efectivo, tarjetas, Yape o transferencia",
     "rooms.policies.deposit": "Adelanto",
-    "rooms.policies.depositValue": "Mínimo una noche",
+    "rooms.policies.depositValue": "Flexible: primera noche. No reembolsable: toda la estadía",
     "rooms.policies.breakfast": "Desayuno",
     "rooms.policies.breakfastValue": "No incluido. Mercado municipal al lado.",
-    "rooms.policies.cancelTitle": "Cancelación flexible",
+    "rooms.policies.cancelTitle": "Cancelación",
     "rooms.policies.cancelBody":
-      "Le devolvemos el adelanto si cancela hasta 24 horas antes del check-in. Con menos de 24 horas, el adelanto no es reembolsable.",
+      "Tarifa Flexible: cancele gratis hasta dos días calendario antes de su llegada, hora de Perú. Para una llegada el 10 de noviembre, hasta el 8 de noviembre inclusive. Después, o si no llega, se cobra la primera noche. Tarifa No reembolsable: 10 % menos, se paga completa al reservar; si cancela o no llega, se cobra toda la estadía.",
     "rooms.policies.petsTitle": "Mascotas",
     "rooms.policies.petsBody": "Bienvenidas. Avísenos al reservar.",
     "churin.title": "Las termas y el centro, a pie",
@@ -409,7 +507,7 @@ export const ui = {
       "Pasando el puente Tingo, en la margen derecha del Huaura. El agua brota caliente de la roca y llena pozas a distintas temperaturas, para quedarse un buen rato. Hay pozas privadas, pozo de lodo y piscina al aire libre.",
     "churin.booking.title": "Termas de día, buen descanso de noche",
     "churin.booking.body":
-      "Habitaciones desde S/100 por noche, impuestos incluidos. Check-in desde las 2:00 p. m. y check-out hasta las 11:00 a. m.",
+      "Precio por habitación, impuestos incluidos: consulte el precio para sus fechas. Check-in desde las 2:00 p. m. y check-out hasta las 11:00 a. m.",
     "churin.booking.cta": "Escribir por WhatsApp",
     "parking.title": "Cochera privada y gratuita",
     "parking.body":
@@ -433,7 +531,7 @@ export const ui = {
     "directions.car": "Panamericana Norte hasta Huacho y luego por Sayán.",
     "directions.busLabel": "En bus:",
     "directions.bus": "varias empresas salen desde Plaza Norte, en Lima.",
-    "booking.kicker": "Desde S/100 por noche",
+    "booking.kicker": "Precios para sus fechas",
     "booking.title": "Reserve directo y sin comisiones",
     "booking.body":
       "Envíenos sus fechas por WhatsApp y le confirmamos disponibilidad y tarifa. Reservar directo cuesta menos que en las plataformas.",
@@ -453,6 +551,114 @@ export const ui = {
     "footer.socials": "Redes",
     "footer.explore": "Explorar",
     "footer.rights": "Todos los derechos reservados",
+    "rooms.spec.priceValue": "Varía según la fecha, impuestos incluidos",
+    "reservation.cta": "Ver precios para sus fechas",
+    "reservation.roomCta": "Ver precios y disponibilidad",
+    "reservation.whatsappSecondary": "O escríbanos por WhatsApp",
+    "reservation.meta.searchTitle": "Consultar disponibilidad | Hotel Manantial",
+    "reservation.meta.searchDescription":
+      "Elija sus fechas y huéspedes para ver precios y disponibilidad en Hotel Manantial, Churín.",
+    "reservation.meta.chooseTitle": "Elija habitación y tarifa | Hotel Manantial",
+    "reservation.meta.chooseDescription":
+      "Compare las tarifas Flexible y No reembolsable para sus fechas en Hotel Manantial, Churín.",
+    "reservation.steps": "Pasos de la reserva",
+    "reservation.step.search": "Fechas y huéspedes",
+    "reservation.step.choose": "Habitación y tarifa",
+    "reservation.search.title": "Consulte disponibilidad",
+    "reservation.search.lead":
+      "Elija sus fechas y huéspedes para ver el precio de hoy de cada habitación.",
+    "reservation.search.checkIn": "Llegada",
+    "reservation.search.checkOut": "Salida",
+    "reservation.search.adults": "Adultos",
+    "reservation.search.children": "Niños",
+    "reservation.search.nightsEmpty": "Elija llegada y salida para ver el número de noches.",
+    "reservation.search.submit": "Ver habitaciones y precios",
+    "reservation.search.limits":
+      "Las reservas en línea son para una habitación, empiezan desde mañana (hora de Perú) y duran de 1 a 60 noches.",
+    "reservation.search.preference":
+      "Habitación preferida: {room}. La mostraremos primero si se ajusta a su búsqueda.",
+    "reservation.search.clearPreference": "Mostrar todas por igual",
+    "reservation.nights.one": "1 noche",
+    "reservation.nights.other": "{count} noches",
+    "reservation.adults.one": "1 adulto",
+    "reservation.adults.other": "{count} adultos",
+    "reservation.children.one": "1 niño",
+    "reservation.children.other": "{count} niños",
+    "reservation.problem.checkInRequired": "Elija su fecha de llegada.",
+    "reservation.problem.checkOutRequired": "Elija su fecha de salida.",
+    "reservation.problem.checkInTooSoon":
+      "Las reservas en línea empiezan desde mañana, hora de Perú. Para llegar hoy, escríbanos por WhatsApp.",
+    "reservation.problem.checkOutBeforeCheckIn":
+      "La salida debe ser al menos una noche después de la llegada.",
+    "reservation.problem.tooManyNights": "Las estadías en línea pueden durar hasta 60 noches.",
+    "reservation.problem.invalidDate": "Una de las fechas no es válida.",
+    "reservation.problem.invalidSearch":
+      "No pudimos usar esta búsqueda. Cámbiela e intente de nuevo.",
+    "reservation.offline.title": "La reserva en línea aún no está disponible",
+    "reservation.offline.body":
+      "Escríbanos por WhatsApp con sus fechas y huéspedes y le confirmamos disponibilidad y tarifa.",
+    "reservation.helpPrompt": "¿Dudas? Con gusto le ayudamos.",
+    "reservation.choose.title": "Elija habitación y tarifa",
+    "reservation.choose.change": "Cambiar búsqueda",
+    "reservation.choose.loading": "Consultando disponibilidad…",
+    "reservation.choose.loaded": "Mostrando habitaciones para su búsqueda.",
+    "reservation.choose.missing.title": "Primero elija sus fechas",
+    "reservation.choose.missing.body":
+      "Indíquenos cuándo llega y cuándo se va para ver habitaciones y precios.",
+    "reservation.choose.missing.action": "Elegir fechas",
+    "reservation.choose.unavailable.title":
+      "No pudimos consultar la disponibilidad en este momento",
+    "reservation.choose.unavailable.body":
+      "Es un problema de nuestro sistema, no falta de habitaciones. Su búsqueda se conserva: intente de nuevo en un momento o escríbanos por WhatsApp.",
+    "reservation.choose.throttled.title": "Demasiadas búsquedas desde su conexión",
+    "reservation.choose.throttled.body":
+      "Quienes comparten una conexión comparten este límite. Su búsqueda se conserva: espere un minuto e intente de nuevo, o escríbanos por WhatsApp.",
+    "reservation.choose.invalid.title": "Revise su búsqueda",
+    "reservation.choose.retry": "Intentar de nuevo",
+    "reservation.choose.soldOut.title": "No hay habitaciones disponibles para estas fechas",
+    "reservation.choose.soldOut.body":
+      "Pruebe otras fechas o escríbanos por WhatsApp y le ayudamos a encontrar una opción.",
+    "reservation.choose.noneFit.title": "Ninguna habitación sola admite a su grupo",
+    "reservation.choose.noneFit.body":
+      "Las reservas en línea son para una habitación. Cambie el número de huéspedes o escríbanos por WhatsApp para reservar más de una.",
+    "reservation.room.soldOut": "Agotada para estas fechas.",
+    "reservation.room.tooManyGuests":
+      "Esta habitación admite hasta {adults} adultos y {children} niños.",
+    "reservation.room.offline":
+      "Esta habitación no se puede reservar en línea. Escríbanos por WhatsApp para reservarla.",
+    "reservation.room.preferred": "Su habitación preferida",
+    "reservation.room.preferredUnavailable":
+      "Su habitación preferida, {room}, no está disponible para esta búsqueda. No elegimos otra por usted: elija una abajo o cambie su búsqueda.",
+    "reservation.room.capacity": "Huéspedes",
+    "reservation.room.capacityValue": "Hasta {adults} adultos y {children} niños",
+    "reservation.plans.legend": "Tarifa para {room}",
+    "reservation.plan.flexible": "Flexible",
+    "reservation.plan.flexibleLead": "Pague la primera noche ahora y el resto en el hotel.",
+    "reservation.plan.non_refundable": "No reembolsable",
+    "reservation.plan.non_refundableLead": "10 % menos. Pague toda la estadía ahora.",
+    "reservation.offer.total": "Total de la estadía",
+    "reservation.offer.now": "Pago ahora",
+    "reservation.offer.remaining": "Pago en el hotel",
+    "reservation.offer.saving": "Ahorra {amount} frente a la tarifa Flexible.",
+    "reservation.offer.taxes": "Precios en {currency}, impuestos incluidos.",
+    "reservation.cancel.available":
+      "Cancelación gratuita hasta el {date} inclusive (hora de Perú). Después, si cancela o no llega, se cobra la primera noche: {amount}.",
+    "reservation.cancel.ended":
+      "Para estas fechas ya no hay cancelación gratuita. Si cancela o no llega, se cobra la primera noche: {amount}.",
+    "reservation.cancel.none":
+      "Sin cancelación gratuita. Si cancela o no llega, se cobra toda la estadía, {amount}, sin otra penalidad.",
+    "reservation.cancel.settlement":
+      "Los cargos por cancelación tardía o por no llegar se descuentan de lo pagado. Cualquier saldo a su favor se coordina con el hotel: un reembolso o, si usted acepta, un crédito para una estadía futura.",
+    "reservation.choose.select": "Elegir esta habitación",
+    "reservation.choice.title": "Su elección",
+    "reservation.choice.summary": "{room} · tarifa {plan}",
+    "reservation.choice.next":
+      "El pago en línea aún no está disponible. Envíenos esta elección por WhatsApp y completamos su reserva con usted.",
+    "reservation.choice.whatsapp": "Enviar mi elección por WhatsApp",
+    "reservation.choice.prefill":
+      "Hola, quisiera reservar. Fechas: {checkIn} al {checkOut} ({nights}) Personas: {guests} Habitación: {room} Tarifa: {plan} Total: {total}",
+    "reservation.choice.lost":
+      "Su elección anterior, {room}, no está disponible para esta búsqueda. Elija de nuevo.",
   },
 } as const;
 

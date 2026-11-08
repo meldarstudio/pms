@@ -5,6 +5,10 @@
 /en/habitaciones /en/habitaciones/ 301
 /churin /churin/ 301
 /en/churin /en/churin/ 301
+/reservar /reservar/ 301
+/en/reservar /en/reservar/ 301
+/reservar/habitacion /reservar/habitacion/ 301
+/en/reservar/habitacion /en/reservar/habitacion/ 301
 
 # Retired URL reported in Search Console (#73); send visitors to the homepage.
 /nosotros / 301

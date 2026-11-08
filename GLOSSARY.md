@@ -131,6 +131,16 @@ _Avoid_: Reserved room
 **Room type**:
 A category with shared adult/child limits and a base rate.
 
+**Published room type**:
+A room type explicitly listed by stable ID for online offers; names never publish a type,
+and new types stay unpublished until listed.
+_Avoid_: Online room, public room
+
+**Offer**:
+A published room type's price and terms under one rate plan for searched dates and
+guests, shown before a quote is created.
+_Avoid_: Quote, availability
+
 **Room-type draft**:
 Unsaved proposed name, occupancy limits, base rate, and room numbers/additions for a type.
 

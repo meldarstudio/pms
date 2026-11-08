@@ -23,7 +23,6 @@ export function getHotelStructuredData(url: string) {
     legalName,
     taxID: taxId,
     foundingDate: "2005",
-    priceRange: "S/100–S/120",
     checkinTime: "14:00",
     checkoutTime: "11:00",
     petsAllowed: true,
@@ -103,22 +102,16 @@ export function getChurinStructuredData({
 }
 
 interface RoomsStructuredDataOptions extends BreadcrumbOptions {
-  nightUnit: string;
   rooms: {
     id: string;
     name: string;
     description: string;
     bed: string;
     areaSqm: number;
-    priceFrom: number;
   }[];
 }
 
-export function getRoomsStructuredData({
-  nightUnit,
-  rooms,
-  ...breadcrumb
-}: RoomsStructuredDataOptions) {
+export function getRoomsStructuredData({ rooms, ...breadcrumb }: RoomsStructuredDataOptions) {
   const { pageUrl, homeUrl } = breadcrumb;
   const hotel = { "@id": `${homeUrl}#hotel` };
 
@@ -126,32 +119,18 @@ export function getRoomsStructuredData({
     "@context": "https://schema.org",
     "@graph": [
       getBreadcrumb(breadcrumb),
-      ...rooms.map(({ id, name, description, bed, areaSqm, priceFrom }) => ({
-        "@type": "Offer",
-        "@id": `${pageUrl}#offer-${id}`,
-        url: pageUrl,
-        offeredBy: hotel,
-        priceCurrency: "PEN",
-        priceSpecification: {
-          "@type": "UnitPriceSpecification",
-          minPrice: priceFrom,
-          priceCurrency: "PEN",
-          unitText: nightUnit,
-          valueAddedTaxIncluded: true,
+      ...rooms.map(({ id, name, description, bed, areaSqm }) => ({
+        "@type": "HotelRoom",
+        "@id": `${pageUrl}#room-${id}`,
+        name,
+        description,
+        bed,
+        floorSize: {
+          "@type": "QuantitativeValue",
+          value: areaSqm,
+          unitCode: "MTK",
         },
-        itemOffered: {
-          "@type": "HotelRoom",
-          "@id": `${pageUrl}#room-${id}`,
-          name,
-          description,
-          bed,
-          floorSize: {
-            "@type": "QuantitativeValue",
-            value: areaSqm,
-            unitCode: "MTK",
-          },
-          containedInPlace: hotel,
-        },
+        containedInPlace: hotel,
       })),
     ],
   };

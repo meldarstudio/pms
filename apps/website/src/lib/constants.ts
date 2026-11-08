@@ -1,4 +1,5 @@
 export const phoneNumber = "+51992755015";
+export const propertyTimeZone = "America/Lima";
 export const whatsappUrl = `https://wa.me/${phoneNumber.replace(/\D/g, "")}`;
 export const mapsUrl = "https://maps.app.goo.gl/VRMLhAwTrUtkv7tD9";
 export const address = "Av. Víctor Larco Herrera N°138, Churín";

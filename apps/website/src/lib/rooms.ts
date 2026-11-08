@@ -17,21 +17,21 @@ export type RoomPhoto = {
   altKey: UiKey;
 };
 
+export type RoomId = "king" | "double" | "family";
+
 export type Room = {
-  id: "king" | "double" | "family";
+  id: RoomId;
+  pmsRoomTypeId?: string;
   gallery: RoomPhoto[];
   nameKey: UiKey;
   bestForKey: UiKey;
   leadKey: UiKey;
   bedsKey: UiKey;
   areaKey: UiKey;
-  priceKey: UiKey;
   prefillKey: UiKey;
   ctaKey: UiKey;
   /** Floor area in square meters, for structured data. */
   areaSqm: number;
-  /** Lowest nightly rate in PEN, taxes included, for structured data. */
-  priceFrom: number;
 };
 
 const kingPhoto: RoomPhoto = {
@@ -74,44 +74,41 @@ const kingBalconyPhoto: RoomPhoto = {
 export const rooms: Room[] = [
   {
     id: "king",
+    pmsRoomTypeId: "type-suite-matrimonial",
     gallery: [kingBalconyPhoto, kingFrontViewPhoto, kingPhoto],
     nameKey: "rooms.king.name",
     bestForKey: "rooms.king.bestFor",
     leadKey: "rooms.king.lead",
     bedsKey: "rooms.king.beds",
     areaKey: "rooms.king.area",
-    priceKey: "rooms.king.price",
     prefillKey: "rooms.king.prefill",
     ctaKey: "rooms.king.cta",
     areaSqm: 18,
-    priceFrom: 100,
   },
   {
     id: "double",
+    pmsRoomTypeId: "type-doble-premium",
     gallery: [doubleSidePhoto, doubleTopPhoto, doubleClosePhoto],
     nameKey: "rooms.double.name",
     bestForKey: "rooms.double.bestFor",
     leadKey: "rooms.double.lead",
     bedsKey: "rooms.double.beds",
     areaKey: "rooms.double.area",
-    priceKey: "rooms.double.price",
     prefillKey: "rooms.double.prefill",
     ctaKey: "rooms.double.cta",
     areaSqm: 20,
-    priceFrom: 120,
   },
   {
     id: "family",
+    pmsRoomTypeId: "type-suite-familiar",
     gallery: [familyFrontPhoto, familySidePhoto, familyClosePhoto],
     nameKey: "rooms.family.name",
     bestForKey: "rooms.family.bestFor",
     leadKey: "rooms.family.lead",
     bedsKey: "rooms.family.beds",
     areaKey: "rooms.family.area",
-    priceKey: "rooms.family.price",
     prefillKey: "rooms.family.prefill",
     ctaKey: "rooms.family.cta",
     areaSqm: 22,
-    priceFrom: 120,
   },
 ];

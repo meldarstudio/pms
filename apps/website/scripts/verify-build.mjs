@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { readFile, readdir, stat } from "node:fs/promises";
 
 const site = "https://www.hotelmanantialchurin.com";
+const onlineReservations = Boolean(process.env.PUBLIC_PMS_API_URL);
 const root = new URL("../", import.meta.url);
 const dist = new URL("../dist/", import.meta.url);
 
@@ -49,8 +50,8 @@ function checkPage(html, lang, urls, is404 = false) {
 }
 
 const pageFiles = async (locale) =>
-  (await readdir(new URL(`src/pages/${locale}`, root)))
-    .filter((file) => file.endsWith(".astro"))
+  (await readdir(new URL(`src/pages/${locale}`, root), { recursive: true }))
+    .filter((file) => file.endsWith(".astro") && (locale !== "" || !file.startsWith("en/")))
     .sort();
 
 const spanishPages = await pageFiles("");
@@ -63,7 +64,7 @@ const sitemapUrls = new Set();
 const expectedRedirects = ["/nosotros / 301", "/nosotros/ / 301"];
 for (const file of spanishPages) {
   const slug = file.replace(/\.astro$/, "");
-  const path = slug === "index" ? "" : `${slug}/`;
+  const path = slug === "index" ? "" : `${slug.replace(/(^|\/)index$/, "")}/`;
   const urls = {
     es: `${site}/${path}`,
     en: `${site}/en/${path}`,
@@ -79,6 +80,12 @@ for (const file of spanishPages) {
         new URL(href, site).pathname.endsWith("/"),
         `Internal link needs a trailing slash: ${href} in ${lang} ${slug}`,
       );
+      if (!onlineReservations && !slug.startsWith("reservar/")) {
+        assert.ok(
+          !/^\/(en\/)?reservar\//.test(new URL(href, site).pathname),
+          `Online reservation is off, so ${lang} ${slug} must not link to ${href}`,
+        );
+      }
     }
     const pathname = new URL(urls[lang]).pathname;
     if (slug !== "404" && pathname !== "/") {
@@ -144,6 +151,20 @@ assert.deepEqual(
   [...sitemapUrls].sort(),
   "Sitemap routes must match generated non-404 pages",
 );
+
+for (const lang of ["es", "en"]) {
+  const rooms = await read(dist, `${lang === "en" ? "en/" : ""}habitaciones/index.html`);
+  assert.equal(
+    rooms.includes(`href="/${lang === "en" ? "en/" : ""}reservar/?room=king"`),
+    onlineReservations,
+    `The ${lang} King room ${onlineReservations ? "needs" : "must not have"} an online search link`,
+  );
+  assert.doesNotMatch(
+    rooms,
+    /minPrice|priceRange|S\/\s?\d/,
+    `${lang} rooms page must not state fixed prices`,
+  );
+}
 
 const ogImage = await stat(new URL("og.jpg", dist));
 assert.ok(ogImage.size > 0 && ogImage.size < 300_000, "og.jpg must stay under 300KB");
