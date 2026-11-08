@@ -20,7 +20,6 @@ import {
 
 const DISMISSED_UPDATE_KEY = "manantial-dismissed-update";
 const RUNNING_BUILD_ID = import.meta.env.VITE_PWA_BUILD_ID;
-const DEPLOYMENT_CHECK_INTERVAL_MS = 5 * 60 * 1000;
 const floatingNotice =
   "fixed right-[max(1rem,env(safe-area-inset-right))] bottom-[max(1rem,env(safe-area-inset-bottom))] left-[max(1rem,env(safe-area-inset-left))] z-[100] shadow-xl sm:left-auto sm:w-80";
 
@@ -83,12 +82,12 @@ export function PwaStatus({ children }: { children: ReactNode }) {
         () => {},
       );
     };
-    const interval = window.setInterval(checkForNewerDeployment, DEPLOYMENT_CHECK_INTERVAL_MS);
     document.addEventListener("visibilitychange", checkForNewerDeployment);
+    window.addEventListener("focus", checkForNewerDeployment);
     window.addEventListener("online", checkForNewerDeployment);
     return () => {
-      window.clearInterval(interval);
       document.removeEventListener("visibilitychange", checkForNewerDeployment);
+      window.removeEventListener("focus", checkForNewerDeployment);
       window.removeEventListener("online", checkForNewerDeployment);
     };
   }, []);
