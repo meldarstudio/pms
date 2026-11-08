@@ -19,12 +19,24 @@ import {
 } from "@/components/ui/empty";
 
 const DISMISSED_UPDATE_KEY = "manantial-dismissed-update";
+const RUNNING_BUILD_ID = import.meta.env.VITE_PWA_BUILD_ID;
 const floatingNotice =
   "fixed right-[max(1rem,env(safe-area-inset-right))] bottom-[max(1rem,env(safe-area-inset-bottom))] left-[max(1rem,env(safe-area-inset-left))] z-[100] shadow-xl sm:left-auto sm:w-80";
 
+async function fetchDeployedBuildId() {
+  const response = await fetch("/", { cache: "no-store" });
+  if (!response.ok) return null;
+  const html = await response.text();
+  return (
+    new DOMParser()
+      .parseFromString(html, "text/html")
+      .querySelector<HTMLMetaElement>('meta[name="pwa-build-id"]')?.content ?? null
+  );
+}
+
 export function PwaStatus({ children }: { children: ReactNode }) {
   const [online, setOnline] = useState(() => navigator.onLine);
-  const [waitingWorker, setWaitingWorker] = useState<ServiceWorker | null>(null);
+  const [newerBuildId, setNewerBuildId] = useState<string | null>(null);
   const [dismissedUpdate, setDismissedUpdate] = useState(() => {
     try {
       return window.sessionStorage.getItem(DISMISSED_UPDATE_KEY);
@@ -32,50 +44,51 @@ export function PwaStatus({ children }: { children: ReactNode }) {
       return null;
     }
   });
-  const showUpdate = online && waitingWorker && dismissedUpdate !== waitingWorker.scriptURL;
+  const showUpdate = online && newerBuildId && dismissedUpdate !== newerBuildId;
 
   function dismissUpdate() {
-    if (!waitingWorker) return;
-    setDismissedUpdate(waitingWorker.scriptURL);
+    if (!newerBuildId) return;
+    setDismissedUpdate(newerBuildId);
     try {
-      window.sessionStorage.setItem(DISMISSED_UPDATE_KEY, waitingWorker.scriptURL);
+      window.sessionStorage.setItem(DISMISSED_UPDATE_KEY, newerBuildId);
     } catch {}
   }
 
   useEffect(() => {
     const wentOnline = () => setOnline(true);
     const wentOffline = () => setOnline(false);
-    const updateActivated = (event: MessageEvent) => {
-      if (event.data === "UPDATE_ACTIVATED") window.location.reload();
-    };
     window.addEventListener("online", wentOnline);
     window.addEventListener("offline", wentOffline);
-    if ("serviceWorker" in navigator) {
-      navigator.serviceWorker.addEventListener("message", updateActivated);
-    }
-
-    if (import.meta.env.PROD && "serviceWorker" in navigator) {
-      void navigator.serviceWorker
-        .register(`/sw.js?build=${import.meta.env.VITE_PWA_BUILD_ID}`)
-        .then((registration) => {
-          if (registration.waiting) setWaitingWorker(registration.waiting);
-          registration.addEventListener("updatefound", () => {
-            const installing = registration.installing;
-            installing?.addEventListener("statechange", () => {
-              if (installing.state === "installed" && navigator.serviceWorker.controller) {
-                setWaitingWorker(registration.waiting);
-              }
-            });
-          });
-        });
-    }
-
     return () => {
       window.removeEventListener("online", wentOnline);
       window.removeEventListener("offline", wentOffline);
-      if ("serviceWorker" in navigator) {
-        navigator.serviceWorker.removeEventListener("message", updateActivated);
-      }
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!import.meta.env.PROD) return;
+    if ("serviceWorker" in navigator) {
+      void navigator.serviceWorker.register(`/sw.js?build=${RUNNING_BUILD_ID}`);
+    }
+
+    const checkForNewerDeployment = () => {
+      if (document.visibilityState !== "visible" || !navigator.onLine) return;
+      fetchDeployedBuildId().then(
+        (deployedBuildId) => {
+          if (deployedBuildId && deployedBuildId !== RUNNING_BUILD_ID) {
+            setNewerBuildId(deployedBuildId);
+          }
+        },
+        () => {},
+      );
+    };
+    document.addEventListener("visibilitychange", checkForNewerDeployment);
+    window.addEventListener("focus", checkForNewerDeployment);
+    window.addEventListener("online", checkForNewerDeployment);
+    return () => {
+      document.removeEventListener("visibilitychange", checkForNewerDeployment);
+      window.removeEventListener("focus", checkForNewerDeployment);
+      window.removeEventListener("online", checkForNewerDeployment);
     };
   }, []);
 
@@ -129,7 +142,7 @@ export function PwaStatus({ children }: { children: ReactNode }) {
             Guarda tus cambios antes de continuar. Solo se recargará esta ventana.
           </CardContent>
           <CardFooter className="flex-col items-stretch gap-2">
-            <Button onClick={() => waitingWorker?.postMessage("ACTIVATE_UPDATE")}>
+            <Button onClick={() => window.location.reload()}>
               <RefreshCwIcon data-icon="inline-start" />
               Actualizar ahora
             </Button>

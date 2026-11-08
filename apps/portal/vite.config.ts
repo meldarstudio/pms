@@ -9,6 +9,7 @@ export default defineConfig(({ command, mode }) => {
   if (command === "build" && !env.VITE_API_BASE_URL) {
     throw new Error("VITE_API_BASE_URL is required to build the portal.");
   }
+  const buildId = Date.now().toString();
 
   return {
     lint: {
@@ -32,7 +33,7 @@ export default defineConfig(({ command, mode }) => {
       ],
     },
     define: {
-      "import.meta.env.VITE_PWA_BUILD_ID": JSON.stringify(Date.now().toString()),
+      "import.meta.env.VITE_PWA_BUILD_ID": JSON.stringify(buildId),
     },
     test: {
       name: "portal",
@@ -42,7 +43,16 @@ export default defineConfig(({ command, mode }) => {
       pool: "forks",
       execArgv: ["--max-old-space-size=1536"],
     },
-    plugins: lazyPlugins(() => [react(), tailwindcss()]),
+    plugins: lazyPlugins(() => [
+      react(),
+      tailwindcss(),
+      {
+        name: "pwa-build-id-meta",
+        transformIndexHtml: () => [
+          { tag: "meta", attrs: { name: "pwa-build-id", content: buildId }, injectTo: "head" },
+        ],
+      },
+    ]),
     resolve: {
       alias: {
         "@": resolve(import.meta.dirname, "./src"),
