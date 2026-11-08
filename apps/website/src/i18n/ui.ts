@@ -284,12 +284,6 @@ export const ui = {
       "Everyone on a shared connection shares this limit. Your search is kept: wait a minute and try again, or message us on WhatsApp.",
     "reservation.choose.invalid.title": "Please change your search",
     "reservation.choose.retry": "Try again",
-    "reservation.choose.soldOut.title": "No rooms are available for these dates",
-    "reservation.choose.soldOut.body":
-      "Try other dates, or message us on WhatsApp and we'll help you find an option.",
-    "reservation.choose.noneFit.title": "No single room fits your group",
-    "reservation.choose.noneFit.body":
-      "Online reservations are for one room. Change the number of guests, or message us on WhatsApp to book more than one room.",
     "reservation.room.soldOut": "Sold out for these dates.",
     "reservation.room.tooManyGuests":
       "This room fits up to {adults} adults and {children} children.",
@@ -321,13 +315,16 @@ export const ui = {
     "reservation.choose.select": "Choose this room",
     "reservation.choice.title": "Your choice",
     "reservation.choice.summary": "{room} · {plan} rate",
-    "reservation.choice.next":
-      "Online payment isn't available yet. Send us this choice on WhatsApp and we'll complete your reservation with you.",
-    "reservation.choice.whatsapp": "Send my choice on WhatsApp",
-    "reservation.choice.prefill":
-      "Hello, I would like to book. Dates: {checkIn} to {checkOut} ({nights}) Guests: {guests} Room: {room} Rate: {plan} Total: {total}",
     "reservation.choice.lost":
       "Your earlier choice, the {room}, isn't available for this search. Please choose again.",
+    "reservation.choose.noOffers.title": "No room can be reserved online for this search",
+    "reservation.choose.reason.sold_out": "{rooms}: sold out for these dates. Try other dates.",
+    "reservation.choose.reason.too_many_guests":
+      "{rooms}: not enough room for your group. Change the number of guests; online reservations are for one room.",
+    "reservation.choose.reason.offline":
+      "{rooms}: not bookable online. Message us on WhatsApp to book.",
+    "reservation.choice.next":
+      "Online review and payment aren't available yet, so this choice can't be reserved online for now. It stays saved on this page.",
   },
   es: {
     "nav.home": "Inicio",
@@ -615,12 +612,6 @@ export const ui = {
       "Quienes comparten una conexión comparten este límite. Su búsqueda se conserva: espere un minuto e intente de nuevo, o escríbanos por WhatsApp.",
     "reservation.choose.invalid.title": "Revise su búsqueda",
     "reservation.choose.retry": "Intentar de nuevo",
-    "reservation.choose.soldOut.title": "No hay habitaciones disponibles para estas fechas",
-    "reservation.choose.soldOut.body":
-      "Pruebe otras fechas o escríbanos por WhatsApp y le ayudamos a encontrar una opción.",
-    "reservation.choose.noneFit.title": "Ninguna habitación sola admite a su grupo",
-    "reservation.choose.noneFit.body":
-      "Las reservas en línea son para una habitación. Cambie el número de huéspedes o escríbanos por WhatsApp para reservar más de una.",
     "reservation.room.soldOut": "Agotada para estas fechas.",
     "reservation.room.tooManyGuests":
       "Esta habitación admite hasta {adults} adultos y {children} niños.",
@@ -652,13 +643,18 @@ export const ui = {
     "reservation.choose.select": "Elegir esta habitación",
     "reservation.choice.title": "Su elección",
     "reservation.choice.summary": "{room} · tarifa {plan}",
-    "reservation.choice.next":
-      "El pago en línea aún no está disponible. Envíenos esta elección por WhatsApp y completamos su reserva con usted.",
-    "reservation.choice.whatsapp": "Enviar mi elección por WhatsApp",
-    "reservation.choice.prefill":
-      "Hola, quisiera reservar. Fechas: {checkIn} al {checkOut} ({nights}) Personas: {guests} Habitación: {room} Tarifa: {plan} Total: {total}",
     "reservation.choice.lost":
       "Su elección anterior, {room}, no está disponible para esta búsqueda. Elija de nuevo.",
+    "reservation.choose.noOffers.title":
+      "Ninguna habitación se puede reservar en línea para esta búsqueda",
+    "reservation.choose.reason.sold_out":
+      "{rooms}: sin disponibilidad para estas fechas. Pruebe otras fechas.",
+    "reservation.choose.reason.too_many_guests":
+      "{rooms}: sin capacidad para su grupo. Cambie el número de huéspedes; las reservas en línea son para una habitación.",
+    "reservation.choose.reason.offline":
+      "{rooms}: sin reserva en línea. Escríbanos por WhatsApp para reservar.",
+    "reservation.choice.next":
+      "La revisión y el pago en línea aún no están disponibles, así que por ahora esta elección no se puede reservar en línea. Queda guardada en esta página.",
   },
 } as const;
 

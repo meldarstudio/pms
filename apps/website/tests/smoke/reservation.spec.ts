@@ -9,15 +9,6 @@ import {
 
 const offersRoute = `${LOCAL_API_URL}/public/offers*`;
 
-const longDate = (label: string, locale: string) =>
-  new Intl.DateTimeFormat(locale, {
-    timeZone: "UTC",
-    weekday: "short",
-    day: "numeric",
-    month: "short",
-    year: "numeric",
-  }).format(new Date(`${label}T00:00:00Z`));
-
 function choosePath(
   stay: { checkIn: string; checkOut: string },
   extra: Record<string, string> = {},
@@ -58,8 +49,12 @@ test("a room-specific entry searches live prices and compares both plans", async
   await expect(flexible.locator('[data-amount="total"]')).toHaveText(/S\/\s200\.00/);
   await expect(flexible.locator('[data-amount="now"]')).toHaveText(/S\/\s100\.00/);
   await expect(flexible.locator('[data-amount="remaining"]')).toHaveText(/S\/\s100\.00/);
-  await expect(flexible).toContainText(
-    `Cancelación gratuita hasta el ${longDate(daysFromToday(118), "es-PE")} inclusive`,
+  await expect(flexible.locator("[data-cancellation]")).toContainText(
+    /^Cancelación gratuita hasta el .+ inclusive/,
+  );
+  await expect(flexible.locator("[data-cancellation] time")).toHaveAttribute(
+    "datetime",
+    daysFromToday(118),
   );
   const nonRefundable = king.locator('[data-plan="non_refundable"]');
   await expect(nonRefundable.locator('[data-amount="total"]')).toHaveText(/S\/\s180\.00/);
@@ -79,14 +74,10 @@ test("a room-specific entry searches live prices and compares both plans", async
   await expect(choice).toBeFocused();
   await expect(choice).toContainText("Suite Matrimonial · tarifa No reembolsable");
   await expect(page).toHaveURL(/room=king&plan=non_refundable/);
-  const whatsapp = new URL(
-    (await choice
-      .getByRole("link", { name: "Enviar mi elección por WhatsApp" })
-      .getAttribute("href"))!,
-  );
-  expect(whatsapp.searchParams.get("text")).toMatch(
-    /Fechas: .+ \(2 noches\) Personas: 2 adultos Habitación: Suite Matrimonial Tarifa: No reembolsable Total: S\/\s180\.00/,
-  );
+  await expect(choice).toContainText("La revisión y el pago en línea aún no están disponibles");
+  const support = choice.getByRole("link", { name: "Escribir por WhatsApp" });
+  const supportText = new URL((await support.getAttribute("href"))!).searchParams.get("text");
+  expect(supportText).not.toMatch(/Tarifa|Total|Suite Matrimonial/);
 });
 
 test("language changes and back navigation keep the search and choice", async ({ page }) => {
@@ -131,7 +122,9 @@ test("language changes and back navigation keep the search and choice", async ({
   await expect(page.getByLabel("Niños")).toHaveValue("1");
 });
 
-test("the search form explains invalid stays before searching", async ({ page }) => {
+test("the search form checks the stay's shape and leaves arrival to the hotel calendar", async ({
+  page,
+}) => {
   await page.goto("/reservar/");
   await page.getByRole("button", { name: "Ver habitaciones y precios" }).click();
   await expect(page.getByLabel("Llegada")).toBeFocused();
@@ -141,14 +134,12 @@ test("the search form explains invalid stays before searching", async ({ page })
   await page.getByLabel("Llegada").fill(daysFromToday(0));
   await page.getByLabel("Salida").fill(daysFromToday(62));
   await page.getByRole("button", { name: "Ver habitaciones y precios" }).click();
-  await expect(page.getByText(/Las reservas en línea empiezan desde mañana/)).toBeVisible();
   await expect(page.getByText("Las estadías en línea pueden durar hasta 60 noches.")).toBeVisible();
   await expect(page).toHaveURL(/\/reservar\/$/);
-});
 
-test("the API rejects an arrival today even when the page is opened directly", async ({ page }) => {
-  await page.goto(choosePath({ checkIn: daysFromToday(0), checkOut: daysFromToday(2) }));
-
+  await page.getByLabel("Salida").fill(daysFromToday(2));
+  await page.getByRole("button", { name: "Ver habitaciones y precios" }).click();
+  await expect(page).toHaveURL(/\/reservar\/habitacion\/\?/);
   await expect(page.getByRole("heading", { name: "Revise su búsqueda" })).toBeFocused();
   await expect(page.getByText(/Las reservas en línea empiezan desde mañana/)).toBeVisible();
 });
@@ -162,8 +153,29 @@ test("sold-out rooms are shown as sold out, not as a service failure", async ({ 
   ).toBeChecked();
 
   await page.goto(choosePath(allSoldOutStay(), { room: "double" }));
-  await expect(page.getByText(/No hay habitaciones disponibles para estas fechas/)).toBeVisible();
+  const notice = page.locator("[data-notice]");
+  await expect(notice).toContainText(
+    "Ninguna habitación se puede reservar en línea para esta búsqueda",
+  );
+  await expect(notice).toContainText(
+    "Suite Matrimonial y Doble Premium: sin disponibilidad para estas fechas. Pruebe otras fechas.",
+  );
+  await expect(notice).toContainText(
+    "Suite Familiar: sin reserva en línea. Escríbanos por WhatsApp para reservar.",
+  );
+  await expect(notice).not.toContainText("huéspedes");
   await expect(page.getByText("No pudimos consultar la disponibilidad")).toBeHidden();
+});
+
+test("a group no single room fits is told to change guests, not dates", async ({ page }) => {
+  await page.goto(choosePath(openStay(), { adults: "5" }));
+
+  const notice = page.locator("[data-notice]");
+  await expect(notice).toContainText(
+    "Suite Matrimonial y Doble Premium: sin capacidad para su grupo. Cambie el número de huéspedes; las reservas en línea son para una habitación.",
+  );
+  await expect(notice).toContainText("Suite Familiar: sin reserva en línea.");
+  await expect(notice).not.toContainText("fechas");
 });
 
 test("a preferred room that doesn't fit is never swapped for another", async ({ page }) => {

@@ -1,4 +1,3 @@
-import { propertyTimeZone } from "@/lib/constants";
 import type { RoomId } from "@/lib/rooms";
 
 export const ratePlanCodes = ["flexible", "non_refundable"] as const;
@@ -22,7 +21,6 @@ export type StaySearch = {
 export type SearchProblem =
   | "checkInRequired"
   | "checkOutRequired"
-  | "checkInTooSoon"
   | "checkOutBeforeCheckIn"
   | "tooManyNights";
 
@@ -81,19 +79,9 @@ export function addDays(label: string, days: number) {
   return date.toISOString().slice(0, 10);
 }
 
-export function propertyToday(now = new Date()) {
-  return new Intl.DateTimeFormat("en-CA", {
-    timeZone: propertyTimeZone,
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-  }).format(now);
-}
-
-export function searchProblems(search: StaySearch, today = propertyToday()) {
+export function searchProblems(search: StaySearch) {
   const problems: { field: "checkIn" | "checkOut"; problem: SearchProblem }[] = [];
   if (!search.checkIn) problems.push({ field: "checkIn", problem: "checkInRequired" });
-  else if (search.checkIn <= today) problems.push({ field: "checkIn", problem: "checkInTooSoon" });
   if (!search.checkOut) problems.push({ field: "checkOut", problem: "checkOutRequired" });
   else if (search.checkIn) {
     const nights = nightsBetween(search.checkIn, search.checkOut) ?? 0;

@@ -77,11 +77,14 @@ const amountRow = "flex items-baseline justify-between gap-4 py-2";
             </a>
           </div>
         </div>
-        <p
+        <div
           class="mt-6 border-l-4 border-amber-600 bg-white p-4 text-stone-800"
           data-notice
           hidden
-        />
+        >
+          <p class="font-semibold" data-notice-title />
+          <ul class="mt-2 list-disc pl-5" data-notice-reasons />
+        </div>
         <ul class="mt-6 flex flex-col gap-8" data-results hidden>
           {rooms.map((room) => (
             <li data-room={room.id} hidden>
@@ -235,17 +238,21 @@ const amountRow = "flex items-baseline justify-between gap-4 py-2";
           </dl>
           <p class="mt-3 text-sm leading-relaxed text-stone-700" data-choice-cancellation />
           <div data-review-step>
-            <p class="mt-6 leading-relaxed text-stone-800">{t("reservation.choice.next")}</p>
-            <a
-              href={getWhatsAppLink(t("whatsapp.prefill"))}
-              target="_blank"
-              rel="noopener noreferrer"
-              class={`mt-4 ${primary}`}
-              data-choice-whatsapp
-            >
-              <Whatsapp class="size-4 shrink-0" />
-              {t("reservation.choice.whatsapp")}
-            </a>
+            <p class="mt-6 leading-relaxed font-semibold text-stone-900">
+              {t("reservation.choice.next")}
+            </p>
+            <p class="mt-3 text-stone-700">
+              {t("reservation.helpPrompt")}
+              <a
+                href={getWhatsAppLink(t("whatsapp.prefill"))}
+                target="_blank"
+                rel="noopener noreferrer"
+                class="text-accent-800 inline-flex min-h-11 items-center gap-2 font-medium underline underline-offset-4"
+              >
+                <Whatsapp class="size-4 shrink-0" />
+                {t("booking.cta")}
+              </a>
+            </p>
           </div>
         </section>
       </reservation-choose>
@@ -257,8 +264,14 @@ const amountRow = "flex items-baseline justify-between gap-4 py-2";
 </section>
 
 <script>
-  import { getWhatsAppLink } from "@/lib/constants";
-  import { fill, formatDate, formatMoney } from "@/lib/reservation/format";
+  import {
+    dateElement,
+    fill,
+    fillNodes,
+    formatDate,
+    formatList,
+    formatMoney,
+  } from "@/lib/reservation/format";
   import {
     fetchOffers,
     type OfferSearchResult,
@@ -288,6 +301,8 @@ const amountRow = "flex items-baseline justify-between gap-4 py-2";
     "stay cannot be longer than 60 nights": "reservation.problem.tooManyNights",
     "invalid date": "reservation.problem.invalidDate",
   };
+
+  const unavailableReasons = ["sold_out", "too_many_guests", "offline"] as const;
 
   class ReservationChoose extends HTMLElement {
     private copy!: Copy;
@@ -431,21 +446,33 @@ const amountRow = "flex items-baseline justify-between gap-4 py-2";
       list.hidden = false;
       this.el("[data-status]").textContent = this.text("reservation.choose.loaded");
 
-      const notice = this.el("[data-notice]");
-      notice.hidden = true;
+      const stateOf = new Map(items.map((item, index) => [item.dataset.room!, states[index]!]));
       if (!states.includes("available")) {
-        const soldOut = states.includes("sold_out");
-        notice.textContent = `${this.text(soldOut ? "reservation.choose.soldOut.title" : "reservation.choose.noneFit.title")}. ${this.text(soldOut ? "reservation.choose.soldOut.body" : "reservation.choose.noneFit.body")}`;
-        notice.hidden = false;
-      } else if (
-        preferred &&
-        states[items.findIndex((item) => item.dataset.room === preferred)] !== "available"
-      ) {
-        notice.textContent = this.text(
-          this.search.plan ? "reservation.choice.lost" : "reservation.room.preferredUnavailable",
-          { room: this.copy.rooms[preferred]!.name },
+        this.showNotice(
+          this.text("reservation.choose.noOffers.title"),
+          unavailableReasons.flatMap((state) => {
+            const names = Object.keys(this.copy.rooms)
+              .filter((roomId) => stateOf.get(roomId) === state)
+              .map((roomId) => this.copy.rooms[roomId]!.name);
+            return names.length
+              ? [
+                  this.text(`reservation.choose.reason.${state}`, {
+                    rooms: formatList(names, this.copy.lang),
+                  }),
+                ]
+              : [];
+          }),
         );
-        notice.hidden = false;
+      } else if (preferred && stateOf.get(preferred) !== "available") {
+        this.showNotice(
+          this.text(
+            this.search.plan ? "reservation.choice.lost" : "reservation.room.preferredUnavailable",
+            { room: this.copy.rooms[preferred]!.name },
+          ),
+          [],
+        );
+      } else {
+        this.el("[data-notice]").hidden = true;
       }
 
       const chosen =
@@ -459,6 +486,17 @@ const amountRow = "flex items-baseline justify-between gap-4 py-2";
       } else {
         this.el("[data-choice]").hidden = true;
       }
+    }
+
+    private showNotice(title: string, reasons: string[]) {
+      const notice = this.el("[data-notice]");
+      this.el("[data-notice-title]", notice).textContent = title;
+      this.el("[data-notice-reasons]", notice).replaceChildren(
+        ...reasons.map((reason) =>
+          Object.assign(document.createElement("li"), { textContent: reason }),
+        ),
+      );
+      notice.hidden = false;
     }
 
     private renderRoom(item: HTMLElement, roomId: string, preferred: boolean) {
@@ -505,14 +543,16 @@ const amountRow = "flex items-baseline justify-between gap-4 py-2";
       const amount = this.money(offer.cancellation.chargeCents);
       const { freeCancellation, freeUntil } = offer.cancellation;
       if (freeCancellation === "available" && freeUntil)
-        return this.text("reservation.cancel.available", {
-          date: formatDate(freeUntil, this.copy.lang),
+        return fillNodes(this.text("reservation.cancel.available"), {
+          date: dateElement(freeUntil, this.copy.lang),
           amount,
         });
-      return this.text(
-        freeCancellation === "ended" ? "reservation.cancel.ended" : "reservation.cancel.none",
-        { amount },
-      );
+      return [
+        this.text(
+          freeCancellation === "ended" ? "reservation.cancel.ended" : "reservation.cancel.none",
+          { amount },
+        ),
+      ];
     }
 
     private renderOffer(container: HTMLElement, offer: PlanOffer) {
@@ -529,7 +569,7 @@ const amountRow = "flex items-baseline justify-between gap-4 py-2";
         offer.savingCents > 0
           ? this.text("reservation.offer.saving", { amount: this.money(offer.savingCents) })
           : "";
-      this.el("[data-cancellation]", container).textContent = this.cancellation(offer);
+      this.el("[data-cancellation]", container).replaceChildren(...this.cancellation(offer));
     }
 
     private choose(roomId: string, plan: RatePlanCode, focus = true) {
@@ -558,18 +598,7 @@ const amountRow = "flex items-baseline justify-between gap-4 py-2";
       this.el('[data-choice-amount="remaining"]', choice).textContent = this.money(
         offer.remainingScheduledCents,
       );
-      this.el("[data-choice-cancellation]", choice).textContent = this.cancellation(offer);
-      this.el<HTMLAnchorElement>("[data-choice-whatsapp]", choice).href = getWhatsAppLink(
-        this.text("reservation.choice.prefill", {
-          checkIn: formatDate(this.result.checkIn, this.copy.lang),
-          checkOut: formatDate(this.result.checkOut, this.copy.lang),
-          nights: this.count("reservation.nights", this.result.nights),
-          guests: this.guests(),
-          room,
-          plan: planName,
-          total: this.money(offer.totalCents),
-        }),
-      );
+      this.el("[data-choice-cancellation]", choice).replaceChildren(...this.cancellation(offer));
       choice.hidden = false;
       if (focus) choice.focus();
     }

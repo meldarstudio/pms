@@ -23,7 +23,6 @@ const copy = {
   problems: {
     checkInRequired: t("reservation.problem.checkInRequired"),
     checkOutRequired: t("reservation.problem.checkOutRequired"),
-    checkInTooSoon: t("reservation.problem.checkInTooSoon"),
     checkOutBeforeCheckIn: t("reservation.problem.checkOutBeforeCheckIn"),
     tooManyNights: t("reservation.problem.tooManyNights"),
   },
@@ -151,7 +150,6 @@ const error = "mt-2 text-sm font-medium text-red-800";
   import {
     addDays,
     nightsBetween,
-    propertyToday,
     readSearch,
     searchParams,
     searchProblems,
@@ -233,17 +231,16 @@ const error = "mt-2 text-sm font-medium text-red-800";
       ensureOption(adults, saved.adults);
       ensureOption(children, saved.children);
       room.value = saved.room ?? "";
-      const tomorrow = addDays(propertyToday(), 1);
-      checkIn.min = tomorrow;
-      checkOut.min = addDays(
-        checkIn.value && checkIn.value > tomorrow ? checkIn.value : tomorrow,
-        1,
-      );
+      const limitDeparture = () => {
+        if (checkIn.value) checkOut.min = addDays(checkIn.value, 1);
+        else checkOut.removeAttribute("min");
+      };
+      limitDeparture();
       showPreference();
       showNights();
 
       checkIn.addEventListener("change", () => {
-        checkOut.min = addDays(checkIn.value || tomorrow, 1);
+        limitDeparture();
         showNights();
       });
       checkOut.addEventListener("change", showNights);
