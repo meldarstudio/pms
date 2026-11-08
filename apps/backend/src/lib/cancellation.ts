@@ -1,7 +1,7 @@
 import type { cancellationWaivers, reservationCancellations } from "../db/schema";
 import { propertyCalendar } from "../property-calendar";
 import { addDays } from "./dates";
-import type { RatePlanTerms } from "./rate-plans";
+import type { CancellationPolicy, RatePlanTerms } from "./rate-plans";
 import { cancellationCharge, stayBill } from "./reservation-bill";
 
 export type Waiver = typeof cancellationWaivers.$inferSelect & { recordedBy: string | null };
@@ -57,21 +57,29 @@ export function policyCharge(input: {
 }) {
   const { cancellationPolicy: policy } = input.terms;
   const freeUntil =
-    input.outcome === "no_show" || policy.freeUntilDaysBeforeCheckIn === null
-      ? null
-      : addDays(input.checkIn, -policy.freeUntilDaysBeforeCheckIn);
+    input.outcome === "no_show" ? null : freeCancellationUntil(policy, input.checkIn);
   if (
     freeUntil !== null &&
     propertyCalendar(input.timeZone, new Date(input.now)).today <= freeUntil
   )
     return { freeUntil, policyChargeCents: 0 };
-  const stay = stayBill(input.rooms, {
-    discountCents: input.discountCents,
-    paymentSchedule: "first_night_deposit",
-  });
   return {
     freeUntil,
-    policyChargeCents:
-      policy.chargeBasis === "final_total" ? stay.totalCents : stay.requiredInitialPaymentCents,
+    policyChargeCents: chargeableCents(policy, input.rooms, input.discountCents),
   };
+}
+
+export function freeCancellationUntil(policy: CancellationPolicy, checkIn: string) {
+  return policy.freeUntilDaysBeforeCheckIn === null
+    ? null
+    : addDays(checkIn, -policy.freeUntilDaysBeforeCheckIn);
+}
+
+export function chargeableCents(
+  policy: CancellationPolicy,
+  rooms: BillableRoom[],
+  discountCents: number,
+) {
+  const stay = stayBill(rooms, { discountCents, paymentSchedule: "first_night_deposit" });
+  return policy.chargeBasis === "final_total" ? stay.totalCents : stay.requiredInitialPaymentCents;
 }

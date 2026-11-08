@@ -26,6 +26,10 @@ export default defineConfig({
       CURRENCY: bindings.text("PEN"),
       PROPERTY_TIME_ZONE: bindings.text("America/Lima"),
       ALLOWED_ORIGINS: bindings.text("https://app.hotelmanantialchurin.com"),
+      PUBLIC_ALLOWED_ORIGINS: bindings.text("https://www.hotelmanantialchurin.com"),
+      PUBLISHED_ROOM_TYPE_IDS: bindings.text(
+        "type-suite-matrimonial,type-doble-premium,type-suite-familiar",
+      ),
       DB: bindings.d1({
         name: "pms-production",
         id: "17e838dd-b2f9-4783-ad9b-f5d837701428",
@@ -34,6 +38,13 @@ export default defineConfig({
         namespace: "1001",
         simple: {
           limit: 5,
+          period: 60,
+        },
+      }),
+      SEARCH_LIMITER: bindings.rateLimit({
+        namespace: "1002",
+        simple: {
+          limit: 60,
           period: 60,
         },
       }),

@@ -13,6 +13,10 @@ export function requireStay(checkIn: string, checkOut: string): string[] {
   return nights;
 }
 
+export function requireOnlineArrival(checkIn: string, today: string) {
+  if (checkIn <= today) throw new HttpError(400, "online check-in must be after today", "checkIn");
+}
+
 export function requireInclusiveRange(from: string, to: string, maxDays: number): string[] {
   if (!isValidDate(from) || !isValidDate(to)) throw new HttpError(400, "invalid date");
   const dates = inclusiveDates(from, to);

@@ -7,6 +7,7 @@ const messages: Record<string, string> = {
     "El servidor necesita el contexto de fecha de la propiedad. Actualiza el backend antes de cambiar el tipo de habitación.",
   "invalid credentials": "Usuario o contraseña incorrectos.",
   "too many login attempts": "Demasiados intentos. Espera un minuto e inténtalo de nuevo.",
+  "too many searches": "Demasiadas búsquedas. Espera un minuto e inténtalo de nuevo.",
   unauthorized: "Tu sesión terminó. Inicia sesión de nuevo.",
   "owner account required": "Solo la cuenta del propietario puede hacer esto.",
   "account not found": "No se encontró la cuenta. Recarga la página.",

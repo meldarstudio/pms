@@ -9,7 +9,10 @@ export type Env = {
     PROPERTY_TIME_ZONE: string;
     SESSION_SECRET: string;
     ALLOWED_ORIGINS: string;
+    PUBLIC_ALLOWED_ORIGINS: string;
+    PUBLISHED_ROOM_TYPE_IDS: string;
     LOGIN_LIMITER: RateLimit;
+    SEARCH_LIMITER: RateLimit;
     CULQI_SECRET_KEY?: string;
   };
 };

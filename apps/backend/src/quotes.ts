@@ -7,7 +7,7 @@ import { occupiedCounts, roomCounts } from "./inventory";
 import { confirmationCode } from "./lib/codes";
 import { ratePlans, termColumns } from "./lib/rate-plans";
 import { quoteBill } from "./lib/reservation-bill";
-import { acceptPhone, requireStay } from "./rules";
+import { acceptPhone, requireOnlineArrival, requireStay } from "./rules";
 import { lineWrites } from "./workflow";
 import { price } from "./workflow-plan";
 
@@ -21,8 +21,7 @@ export async function createQuote(
   context: { today: string; now: Date },
 ) {
   requireStay(input.checkIn, input.checkOut);
-  if (input.checkIn <= context.today)
-    throw new HttpError(400, "online check-in must be after today", "checkIn");
+  requireOnlineArrival(input.checkIn, context.today);
   const [type] = await db.select().from(roomTypes).where(eq(roomTypes.id, input.roomTypeId));
   if (!type) throw new HttpError(404, "room type not found");
   if (input.adults > type.maxAdults || input.children > type.maxChildren)

@@ -6,6 +6,8 @@ import { HttpError } from "./http";
 
 const PUBLIC_ROUTES = new Set(["GET /", "POST /login"]);
 
+export const isGuestPath = (path: string) => path === "/public" || path.startsWith("/public/");
+
 export function authConfigured(c: Context<Env>): boolean {
   if (c.env.SESSION_SECRET) return true;
   console.error("Sign-in is not configured: set SESSION_SECRET");
@@ -26,6 +28,7 @@ export function toAccount(user: { id: string; username?: string | null; role?: u
 }
 
 export const requireSession = createMiddleware<Env>(async (c, next) => {
+  if (isGuestPath(c.req.path)) return next();
   const isPublic = PUBLIC_ROUTES.has(`${c.req.method} ${c.req.path}`);
   const configured = authConfigured(c);
   if (!isPublic && !configured) throw new HttpError(401, "unauthorized");

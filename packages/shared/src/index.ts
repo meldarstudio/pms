@@ -116,6 +116,13 @@ export const availabilityQuerySchema = z.object({
   excludeReservationId: z.string().min(1).optional(),
 });
 
+export const publicOfferSearchSchema = z.object({
+  checkIn: dateSchema,
+  checkOut: dateSchema,
+  adults: z.coerce.number().int().min(1).max(100),
+  children: z.coerce.number().int().min(0).max(100),
+});
+
 export const paymentListQuerySchema = z.object({
   from: dateSchema,
   to: dateSchema,

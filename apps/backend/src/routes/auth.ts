@@ -4,14 +4,13 @@ import { Hono, type Context } from "hono";
 import type { SignedInAccount } from "../auth";
 import type { Env } from "../env";
 import { HttpError, validate } from "../http";
+import { trustedSourceIp } from "../rate-limit";
 import { authConfigured, forwardCookies, toAccount } from "../session";
 
 export const authRoutes = new Hono<Env>();
 
 authRoutes.post("/login", validate("json", loginSchema), async (c) => {
-  const { success } = await c.env.LOGIN_LIMITER.limit({
-    key: c.req.header("cf-connecting-ip") ?? "unknown",
-  });
+  const { success } = await c.env.LOGIN_LIMITER.limit({ key: trustedSourceIp(c) });
   if (!success) throw new HttpError(429, "too many login attempts");
   if (!authConfigured(c)) throw new HttpError(401, "invalid credentials");
 

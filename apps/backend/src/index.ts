@@ -11,6 +11,7 @@ import { inventoryRoutes } from "./routes/inventory";
 import { guestRoutes } from "./routes/guests";
 import { housekeepingRoutes } from "./routes/housekeeping";
 import { paymentRoutes } from "./routes/payments";
+import { publicRoutes } from "./routes/public";
 import { ratePlanRoutes } from "./routes/rate-plans";
 import { reservationRoutes } from "./routes/reservations";
 import { roomTypeRoutes } from "./routes/room-types";
@@ -19,28 +20,37 @@ import { roomRoutes } from "./routes/rooms";
 import { setupRoutes } from "./routes/setup";
 import { getDb } from "./db";
 import { paymentContext, reconcilePaymentAttempts } from "./payment-attempts";
-import { requireSession } from "./session";
+import { isGuestPath, requireSession } from "./session";
 import { propertyCalendar } from "./property-calendar";
 
 const CHROME_MAX_PREFLIGHT_CACHE_SECONDS = 2 * 60 * 60;
 
 export const app = new Hono<Env>();
 
-app.use(
-  "*",
-  cors({
-    origin: (origin, c: Context<Env>) =>
-      (c.env.ALLOWED_ORIGINS ?? "")
-        .split(",")
-        .map((allowed) => allowed.trim())
-        .includes(origin)
-        ? origin
-        : null,
-    credentials: true,
-    exposeHeaders: ["X-Error-Field"],
-    maxAge: CHROME_MAX_PREFLIGHT_CACHE_SECONDS,
-  }),
-);
+const exactOrigin = (setting: string | undefined, origin: string) =>
+  (setting ?? "")
+    .split(",")
+    .map((allowed) => allowed.trim())
+    .includes(origin)
+    ? origin
+    : null;
+
+const staffCors = cors({
+  origin: (origin, c: Context<Env>) => exactOrigin(c.env.ALLOWED_ORIGINS, origin),
+  credentials: true,
+  exposeHeaders: ["X-Error-Field"],
+  maxAge: CHROME_MAX_PREFLIGHT_CACHE_SECONDS,
+});
+
+const guestCors = cors({
+  origin: (origin, c: Context<Env>) => exactOrigin(c.env.PUBLIC_ALLOWED_ORIGINS, origin),
+  credentials: false,
+  allowMethods: ["GET"],
+  exposeHeaders: ["X-Error-Field", "Retry-After"],
+  maxAge: CHROME_MAX_PREFLIGHT_CACHE_SECONDS,
+});
+
+app.use("*", (c, next) => (isGuestPath(c.req.path) ? guestCors(c, next) : staffCors(c, next)));
 
 app.use("*", requireSession);
 app.use("*", async (c, next) => {
@@ -76,6 +86,7 @@ app.route("/reservations", reservationRoutes);
 app.route("/payments", paymentRoutes);
 app.route("/rate-plans", ratePlanRoutes);
 app.route("/coupons", couponRoutes);
+app.route("/public", publicRoutes);
 
 export default {
   fetch: app.fetch,
