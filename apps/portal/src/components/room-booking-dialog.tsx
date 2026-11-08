@@ -50,6 +50,7 @@ import { NewBooking } from "@/components/new-booking";
 import { StayingGuestList } from "@/components/reservation-records";
 import { Movements } from "@/components/reservation-account";
 import { GuestEntryForm, PaymentForm, paymentMethods } from "@/components/reservation-entry-forms";
+import { NationalityFlag } from "@/components/workflow-fields";
 import { format } from "@/lib/dates";
 import { isValid, parseISO } from "date-fns";
 import {
@@ -556,9 +557,12 @@ export function BookingEditor({
               </span>
               <ReservationStatusBadge status={detail.status} />
             </div>
-            <span className="min-w-0 truncate text-lg/tight font-semibold tracking-tight">
-              {contact.fullName.trim()}
-            </span>
+            <div className="flex min-w-0 items-center gap-2">
+              <NationalityFlag nationality={contact.nationality} />
+              <span className="min-w-0 truncate text-lg/tight font-semibold tracking-tight">
+                {contact.fullName.trim()}
+              </span>
+            </div>
             <span className="text-sm text-muted-foreground">
               {stayRange(detail.checkIn, detail.checkOut)}
             </span>
@@ -575,9 +579,12 @@ export function BookingEditor({
             </p>
             <ReservationStatusBadge status={detail.status} />
           </div>
-          <span className="text-2xl font-semibold tracking-tight wrap-anywhere">
-            {contact.fullName.trim()}
-          </span>
+          <div className="flex min-w-0 items-start gap-2.5">
+            <NationalityFlag nationality={contact.nationality} className="mt-2 h-4 w-6" />
+            <span className="min-w-0 text-2xl font-semibold tracking-tight wrap-anywhere">
+              {contact.fullName.trim()}
+            </span>
+          </div>
           {viewReservation && <div className="absolute top-2 right-10">{viewReservation}</div>}
           {contact.phone && <ContactPhone phone={contact.phone} className="text-sm" />}
         </header>

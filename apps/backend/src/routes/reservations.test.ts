@@ -2933,6 +2933,58 @@ describe("reservation workflow", () => {
     expect(d.balanceCents).toBe(30000);
   });
 });
+describe("contact nationality", () => {
+  const book = (nationality: string) =>
+    request("/reservations", "POST", {
+      requestId: crypto.randomUUID(),
+      guest: { fullName: "Ada Lovelace", nationality },
+      checkIn: "2026-10-10",
+      checkOut: "2026-10-11",
+      rooms: [{ roomTypeId: "type", adults: 1, children: 0 }],
+    });
+  const contact = (nationality?: string | null): WorkflowAction => ({
+    type: "contact",
+    contact: { fullName: "Ada Lovelace", email: null, phone: null, nationality },
+  });
+
+  it("saves the booking contact's nationality, keeps it when an edit omits it, and clears it", async () => {
+    const response = await book("CL");
+    expect(response.status).toBe(201);
+    let d = (await response.json()) as Detail;
+    expect(d.guest.nationality).toBe("CL");
+
+    d = await command(d, [contact()]);
+    expect(d.guest.nationality).toBe("CL");
+    d = await command(d, [contact("PE")]);
+    expect(d.guest.nationality).toBe("PE");
+    d = await command(d, [contact(null)]);
+    expect(d.guest.nationality).toBeNull();
+  });
+
+  it.each([
+    ["a country name", "Chile"],
+    ["a lowercase code", "cl"],
+    ["an unassigned code", "XX"],
+    ["a region that is not a country", "EU"],
+    ["an organization", "UN"],
+    ["the unknown region", "ZZ"],
+    ["a retired code", "SU"],
+  ])("rejects %s without creating the booking", async (_case, nationality) => {
+    const response = await book(nationality);
+    expect(response.status).toBe(400);
+    expect(await response.json()).toEqual({ error: "invalid nationality" });
+    expect(db.sqlite.prepare("SELECT count(*) AS n FROM reservations").get()?.n).toBe(0);
+  });
+
+  it("does not record a nationality for staying guests", async () => {
+    const d = await create();
+    const body = {
+      requestId: crypto.randomUUID(),
+      actions: [{ type: "set-guests", guests: [{ ...guest(), nationality: "PE" }] }],
+    };
+    expect((await request(`/reservations/${d.id}/commands`, "POST", body)).status).toBe(400);
+  });
+});
 describe("contact phones", () => {
   const book = (phone: string) =>
     request("/reservations", "POST", {

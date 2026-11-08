@@ -191,6 +191,7 @@ export type ReservationGuest = {
   notes: string | null;
   documentType?: string | null;
   documentNumber?: string | null;
+  nationality: string | null;
 };
 
 export type BookingContact = {

@@ -55,6 +55,7 @@ export const guests = sqliteTable("guests", {
   phone: text("phone"),
   documentType: text("document_type"),
   documentNumber: text("document_number"),
+  nationality: text("nationality"),
   notes: text("notes"),
   createdAt: text("created_at").notNull(),
 });

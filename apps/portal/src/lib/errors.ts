@@ -111,6 +111,7 @@ const messages: Record<string, string> = {
   "stay must be at least one night": "La estancia debe tener al menos una noche.",
   "invalid email": "Ingresa un correo válido.",
   "invalid phone number": "Ingresa un teléfono válido para el país seleccionado.",
+  "invalid nationality": "Selecciona una nacionalidad de la lista.",
   "phone number is too short":
     "El número está incompleto. Si es un teléfono fijo, incluye el código de área.",
   "phone number is too long": "El número tiene demasiados dígitos para el país seleccionado.",

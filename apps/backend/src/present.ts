@@ -30,6 +30,7 @@ export function presentGuest(guest: Omit<Guest, "revision">) {
     phone: guest.phone,
     documentType: guest.documentType,
     documentNumber: guest.documentNumber,
+    nationality: guest.nationality,
     notes: guest.notes,
     createdAt: guest.createdAt,
   };

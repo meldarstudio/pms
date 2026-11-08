@@ -77,6 +77,7 @@ export function NewBooking({
       fullName: "",
       email: "",
       phone: phoneDraft(null),
+      nationality: "PE",
       notes: "",
       discount: "0",
       rooms: [
@@ -116,6 +117,7 @@ export function NewBooking({
           fullName: parsed.fullName,
           ...(phone ? { phone } : {}),
           ...(parsed.email ? { email: parsed.email } : {}),
+          ...(parsed.nationality ? { nationality: parsed.nationality } : {}),
         },
         checkIn: parsed.checkIn,
         checkOut: parsed.checkOut,
@@ -476,6 +478,9 @@ export function NewBooking({
                     )}
                   </form.AppField>
                   <form.AppField name="phone">{(field) => <field.Phone />}</form.AppField>
+                  <form.AppField name="nationality">
+                    {(field) => <field.Nationality />}
+                  </form.AppField>
                 </FieldGroup>
               </FieldGroup>
             </FieldSet>

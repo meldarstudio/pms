@@ -219,12 +219,15 @@ export const guestSchema = z.object({
   documentNumber: optionalText(60),
 });
 export type GuestValues = z.input<typeof guestSchema>;
-export const contactSchema = guestSchema.pick({ fullName: true, phone: true, email: true });
+export const contactSchema = guestSchema
+  .pick({ fullName: true, phone: true, email: true })
+  .extend({ nationality: z.string().nullable() });
 export function contactDefaults(detail: ReservationDetail) {
   return {
     fullName: detail.guest.fullName,
     phone: phoneDraft(detail.guest.phone),
     email: detail.guest.email ?? "",
+    nationality: detail.guest.nationality ?? null,
   };
 }
 export function contactPayload(values: z.input<typeof contactSchema>) {
@@ -375,7 +378,7 @@ export const discountSchema = z.object({ amount: money(false) });
 export const newBookingSchema = (types: RoomType[]) =>
   z.intersection(
     detailsSchema(types),
-    guestSchema.pick({ fullName: true, email: true, phone: true }).extend({
+    contactSchema.extend({
       discount: discountSchema.shape.amount,
       ratePlan: z.enum(["flexible", "non_refundable"] satisfies RatePlanCode[]),
     }),

@@ -258,9 +258,9 @@ function markedLabel(changedAt: string | null, today: string) {
   if (date === today) {
     return new Intl.DateTimeFormat("es-PE", {
       timeZone: propertyTimeZone(),
-      hour: "2-digit",
+      hour: "numeric",
       minute: "2-digit",
-      hourCycle: "h23",
+      hour12: true,
     }).format(instant);
   }
   const [, month, day] = date.split("-").map(Number);

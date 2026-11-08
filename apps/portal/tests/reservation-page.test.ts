@@ -89,6 +89,7 @@ beforeEach(() => {
       phone: "999111222",
       email: "ana@example.com",
       notes: "Contacto compartido",
+      nationality: null,
     },
     stayingGuests: [],
     checkIn: "2026-10-19",
@@ -912,6 +913,9 @@ it("validates and saves only contact changes without replacing guests or notes",
   await statusMenu("Editar contacto");
   assert.equal(popup()!.querySelector('[name="documentType"]') !== null, false);
   assert.equal(popup()!.querySelector('[name="documentNumber"]') !== null, false);
+  assert.equal(nationalityFlag(), null);
+  assert.equal(nationalityTrigger().textContent, "Selecciona un país");
+  await chooseNationality("Chile");
   await fill("fullName", "Ana María Pérez");
   await fill("email", "incorrecto");
   await submit();
@@ -939,11 +943,56 @@ it("validates and saves only contact changes without replacing guests or notes",
         fullName: "Ana María Pérez",
         email: null,
         phone: "999111222",
+        nationality: "CL",
       },
     },
   ]);
   assert.equal(previews.length, 0);
+  assert.equal(nationalityFlag()?.getAttribute("alt"), "Nacionalidad: Chile");
 });
+
+it("shows the contact's nationality and keeps it on save", async () => {
+  saved = { ...saved, guest: { ...saved.guest, nationality: "CL" } };
+  mockApi();
+  await render();
+  assert.equal(nationalityFlag()?.getAttribute("alt"), "Nacionalidad: Chile");
+  assert.doesNotMatch(contactLine().textContent, /Chile/);
+  await statusMenu("Editar contacto");
+  assert.equal(nationalityTrigger().textContent, "Chile");
+  assert.equal(popup()!.querySelector('[aria-label="Quitar nacionalidad"]'), null);
+  await chooseNationality("Perú");
+  await submit();
+  await page.until(() => !popup());
+  assert.equal(
+    writes[0].actions[0].type === "contact" && writes[0].actions[0].contact.nationality,
+    "PE",
+  );
+  assert.equal(nationalityFlag()?.getAttribute("alt"), "Nacionalidad: Perú");
+});
+
+const nationalityFlag = () => header().querySelector('img[alt^="Nacionalidad"]');
+
+const contactLine = () =>
+  page.container.querySelector('[role="region"][aria-label="Contacto principal"]')!;
+
+function nationalityTrigger() {
+  const label = Array.from(window.document.querySelectorAll("label")).find(
+    (item) => item.textContent.trim() === "Nacionalidad",
+  );
+  assert.ok(label, "Missing nationality field");
+  const trigger = window.document.getElementById(label.htmlFor);
+  assert.ok(trigger, "Missing nationality picker");
+  return trigger;
+}
+
+async function chooseNationality(name: string) {
+  await React.act(async () => (nationalityTrigger() as HTMLElement).click());
+  const option = Array.from(window.document.querySelectorAll('[role="option"]')).find(
+    (item) => item.textContent.trim() === name,
+  );
+  assert.ok(option, `Missing nationality ${name}`);
+  await React.act(async () => (option as HTMLElement).click());
+}
 
 function discountTrigger() {
   return Array.from(account().querySelectorAll<HTMLElement>("button")).find((item) =>
@@ -1115,7 +1164,7 @@ it.each([
   assert.deepEqual(writes[0].actions, [
     {
       type: "contact",
-      contact: { fullName: "Ana Pérez", email: "ana@example.com", phone: null },
+      contact: { fullName: "Ana Pérez", email: "ana@example.com", phone: null, nationality: null },
     },
   ]);
   assert.match(page.container.textContent, /Sin teléfono/);

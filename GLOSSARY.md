@@ -50,9 +50,19 @@ _Avoid_: Reservation cancellation
 The reservation's primary contact, who need not be staying at the property.
 _Avoid_: Guest when only the contact is meant, payer
 
+**Nationality**:
+A booking contact's country of citizenship, independent of where they live or their
+contact phone's country.
+_Avoid_: Origin, country of residence
+
 **Staying guest**:
 A named person staying under a reservation.
 _Avoid_: Booking contact, occupant count
+
+**Identity document**:
+The document type and number identifying a staying guest: DNI, carné de extranjería,
+passport, or another document.
+_Avoid_: ID
 
 **Contact phone**:
 A contact number, possibly shared; its format does not establish identity,

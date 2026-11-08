@@ -9,7 +9,7 @@
 
 ## Local sign-in
 
-Sign in to the local portal as owner `kevin` with password `owner horse battery staple`. `pnpm db:reset:local` and `pnpm db:seed:local` create that account in the local database. Use this login for local dev.
+Sign in to the local portal as owner `kevin` with password `owner horse battery staple`. `pnpm db:reset:local` migrates the local database, replaces its data with sample reservations, and creates that account. Use this login for local dev.
 
 ## Toolchain and validation
 
