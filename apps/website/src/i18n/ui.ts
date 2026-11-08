@@ -363,7 +363,7 @@ export const ui = {
       "Online card payment isn't available yet, so nothing is charged on this page.",
     "reservation.review.accepted.title": "Terms accepted",
     "reservation.review.accepted.body":
-      "Your acceptance is saved, but the reservation isn't made until it's paid. To finish it, message us on WhatsApp.",
+      "Your acceptance of these terms is saved. Online card payment isn't available yet, so this reservation isn't made and nothing has been charged.",
     "reservation.review.changed":
       "The price or terms for your stay changed. Review them and accept again.",
     "reservation.review.error.fullName": "Enter the booking contact's full name.",
@@ -372,6 +372,10 @@ export const ui = {
     "reservation.review.error.phoneInvalid":
       "This phone number isn't valid. Include the country code if it isn't Peruvian.",
     "reservation.review.error.agree": "Check the box to accept the terms.",
+    "reservation.review.error.invalid": "We couldn't save these details. Check them and try again.",
+    "reservation.review.limited.title": "This review was changed too many times",
+    "reservation.review.limited.body":
+      "Your details are kept. Try again to start a fresh review of the same choice, or message us on WhatsApp.",
     "reservation.review.error.throttled":
       "Too many attempts from your connection. Your details are kept: wait a minute and try again.",
     "reservation.review.error.unavailable":
@@ -760,7 +764,7 @@ export const ui = {
       "El pago con tarjeta en línea aún no está disponible, así que en esta página no se cobra nada.",
     "reservation.review.accepted.title": "Condiciones aceptadas",
     "reservation.review.accepted.body":
-      "Su aceptación quedó guardada, pero la reserva no está hecha hasta que se pague. Para completarla, escríbanos por WhatsApp.",
+      "Su aceptación de estas condiciones quedó guardada. El pago con tarjeta en línea aún no está disponible, así que esta reserva no está hecha y no se ha cobrado nada.",
     "reservation.review.changed":
       "El precio o las condiciones de su estadía cambiaron. Revíselos y acepte de nuevo.",
     "reservation.review.error.fullName": "Ingrese el nombre completo del contacto.",
@@ -769,6 +773,11 @@ export const ui = {
     "reservation.review.error.phoneInvalid":
       "Este número de teléfono no es válido. Incluya el código de país si no es peruano.",
     "reservation.review.error.agree": "Marque la casilla para aceptar las condiciones.",
+    "reservation.review.error.invalid":
+      "No pudimos guardar estos datos. Revíselos e intente de nuevo.",
+    "reservation.review.limited.title": "Esta revisión se modificó demasiadas veces",
+    "reservation.review.limited.body":
+      "Sus datos se conservan. Intente de nuevo para empezar una revisión nueva de la misma elección, o escríbanos por WhatsApp.",
     "reservation.review.error.throttled":
       "Demasiados intentos desde su conexión. Sus datos se conservan: espere un minuto e intente de nuevo.",
     "reservation.review.error.unavailable":

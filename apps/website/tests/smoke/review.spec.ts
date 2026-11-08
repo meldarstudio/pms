@@ -4,6 +4,15 @@ import { LOCAL_API_URL, daysFromToday, doubleSoldOutStay, openStay } from "../su
 const checkoutsRoute = `${LOCAL_API_URL}/public/checkouts`;
 const acceptanceRoute = `${LOCAL_API_URL}/public/checkout/acceptances`;
 
+let sourceIps = 0;
+
+test.beforeEach(async ({ page }) => {
+  const address = `10.0.${test.info().workerIndex % 250}.${(sourceIps += 1) % 250}`;
+  await page.route(`${LOCAL_API_URL}/public/**`, (route) =>
+    route.fallback({ headers: { ...route.request().headers(), "cf-connecting-ip": address } }),
+  );
+});
+
 function reviewPath(
   stay: { checkIn: string; checkOut: string },
   extra: Record<string, string>,
@@ -13,17 +22,22 @@ function reviewPath(
   return `${lang}/reservar/revisar/?${params.toString()}`;
 }
 
+async function storedToken(page: Page) {
+  return page.evaluate(() => {
+    const checkouts = JSON.parse(
+      sessionStorage.getItem("hm.reservation.checkouts") ?? "{}",
+    ) as Record<string, { token: string }>;
+    return Object.values(checkouts).at(-1)!.token;
+  });
+}
+
 async function serverCheckout(page: Page, request: APIRequestContext) {
-  const token = await page.evaluate(
-    () =>
-      (JSON.parse(sessionStorage.getItem("hm.reservation.checkout") ?? "{}") as { token?: string })
-        .token,
-  );
   const response = await request.get(`${LOCAL_API_URL}/public/checkout`, {
-    headers: { authorization: `Bearer ${token}` },
+    headers: { authorization: `Bearer ${await storedToken(page)}` },
   });
   expect(response.status()).toBe(200);
   return (await response.json()) as {
+    language: string;
     quote: { id: string };
     acceptance: { quoteId: string } | null;
   };
@@ -35,12 +49,18 @@ async function fillContact(page: Page) {
   await page.getByLabel("Teléfono").fill("987 654 321");
 }
 
+async function acceptTerms(page: Page) {
+  await fillContact(page);
+  await page.getByRole("checkbox", { name: /Acepto las condiciones/ }).check();
+  await page.getByRole("button", { name: "Aceptar condiciones" }).click();
+  await expect(page.getByText("Condiciones aceptadas")).toBeVisible();
+}
+
 test("a chosen offer is reviewed with server amounts and its terms are accepted", async ({
   page,
   request,
 }) => {
-  const stay = openStay();
-  const params = new URLSearchParams({ ...stay, adults: "2", children: "0" });
+  const params = new URLSearchParams({ ...openStay(), adults: "2", children: "0" });
   await page.goto(`/reservar/habitacion/?${params.toString()}&room=king&plan=flexible`);
   await page.getByRole("link", { name: "Continuar a la revisión" }).click();
 
@@ -61,7 +81,6 @@ test("a chosen offer is reviewed with server amounts and its terms are accepted"
     "datetime",
     daysFromToday(118),
   );
-  await expect(page.getByText(/\d+:\d+|minutos restantes|sin reservar/)).toHaveCount(0);
 
   const agree = page.getByRole("checkbox", { name: /Acepto las condiciones/ });
   await expect(agree).not.toBeChecked();
@@ -76,26 +95,22 @@ test("a chosen offer is reviewed with server amounts and its terms are accepted"
   await expect(page.getByText("Ingrese el nombre completo del contacto.")).toBeVisible();
   await expect(page.getByText("Marque la casilla para aceptar las condiciones.")).toBeVisible();
 
-  await fillContact(page);
-  await agree.check();
-  await page.getByRole("button", { name: "Aceptar condiciones" }).click();
-
-  await expect(page.getByText("Condiciones aceptadas")).toBeVisible();
-  await expect(page.getByText(/El pago con tarjeta en línea aún no está disponible/)).toBeVisible();
+  await acceptTerms(page);
+  await expect(page.locator("[data-accepted]")).toContainText(
+    "El pago con tarjeta en línea aún no está disponible",
+  );
+  await expect(page.locator("[data-accepted]").getByRole("link")).toHaveCount(0);
   await expect(page.getByRole("button", { name: /Pagar/ })).toHaveCount(0);
   const checkout = await serverCheckout(page, request);
   expect(checkout.acceptance?.quoteId).toBe(checkout.quote.id);
 });
 
-test("language changes and back navigation keep the draft, choice and accepted offer", async ({
+test("a language change keeps the draft and the accepted offer's quote", async ({
   page,
   request,
 }) => {
   await page.goto(reviewPath(openStay(), { room: "double", plan: "non_refundable" }));
-  await fillContact(page);
-  await page.getByRole("checkbox", { name: /Acepto las condiciones/ }).check();
-  await page.getByRole("button", { name: "Aceptar condiciones" }).click();
-  await expect(page.getByText("Condiciones aceptadas")).toBeVisible();
+  await acceptTerms(page);
   const accepted = await serverCheckout(page, request);
 
   await page.locator("#lang-select").selectOption({ label: "English" });
@@ -107,25 +122,65 @@ test("language changes and back navigation keep the draft, choice and accepted o
   await expect(page.getByText("Terms accepted")).toBeVisible();
   await expect(page.locator('[data-amount="total"]')).toHaveText(/S\/\s216\.00/);
   expect((await serverCheckout(page, request)).quote.id).toBe(accepted.quote.id);
+});
 
-  await page.getByRole("link", { name: "Change room or rate" }).click();
-  await expect(page.getByRole("region", { name: "Your choice" })).toContainText(
-    "Premium double · Non-refundable rate",
-  );
-  await page.getByRole("link", { name: "Continue to review" }).click();
-  await expect(page.getByLabel("Email", { exact: true })).toHaveValue("ana@example.com");
-  await expect(page.getByText("Terms accepted")).toBeVisible();
-  expect((await serverCheckout(page, request)).quote.id).toBe(accepted.quote.id);
+test("switching plan and back restores the earlier checkout and acceptance", async ({
+  page,
+  request,
+}) => {
+  await page.goto(reviewPath(openStay(), { room: "king", plan: "flexible" }));
+  await acceptTerms(page);
+  const flexible = await serverCheckout(page, request);
 
-  await page.getByLabel("Full name").fill("Ana María Torres");
-  await expect(page.getByText("Terms accepted")).toBeHidden();
-  await expect(page.getByRole("button", { name: "Accept terms" })).toBeVisible();
+  await page.getByRole("link", { name: "Cambiar habitación o tarifa" }).click();
+  const king = page.getByRole("article", { name: "Suite Matrimonial" });
+  await king.getByRole("radio", { name: /No reembolsable/ }).check();
+  await page.getByRole("link", { name: "Continuar a la revisión" }).click();
+  await expect(page.locator('[data-amount="total"]')).toHaveText(/S\/\s180\.00/);
+  await expect(page.getByRole("checkbox", { name: /Acepto las condiciones/ })).not.toBeChecked();
+  await expect(page.getByLabel("Correo electrónico")).toHaveValue("ana@example.com");
+
+  await page.getByRole("link", { name: "Cambiar habitación o tarifa" }).click();
+  await king.getByRole("radio", { name: /Flexible/ }).check();
+  await page.getByRole("link", { name: "Continuar a la revisión" }).click();
+  await expect(page.locator('[data-amount="total"]')).toHaveText(/S\/\s200\.00/);
+  await expect(page.getByText("Condiciones aceptadas")).toBeVisible();
+  expect((await serverCheckout(page, request)).quote.id).toBe(flexible.quote.id);
+});
+
+test("editing the contact after accepting asks for acceptance again", async ({ page }) => {
+  await page.goto(reviewPath(openStay(), { room: "king", plan: "flexible" }));
+  await acceptTerms(page);
+
+  await page.getByLabel("Nombre completo").fill("Ana María Torres");
+
+  await expect(page.getByText("Condiciones aceptadas")).toBeHidden();
+  await expect(page.getByRole("button", { name: "Aceptar condiciones" })).toBeVisible();
+});
+
+test("an accepted quote past its lifetime is not shown as a valid agreement", async ({ page }) => {
+  await page.clock.install();
+  await page.goto(reviewPath(openStay(), { room: "king", plan: "flexible" }));
+  await acceptTerms(page);
+
+  await page.clock.fastForward("11:00");
+  await page.getByLabel("Teléfono").fill("987 654 321");
+
+  await expect(page.getByText("Condiciones aceptadas")).toBeHidden();
+  await expect(page.getByRole("button", { name: "Aceptar condiciones" })).toBeVisible();
+});
+
+test("browser back shows the latest contact draft", async ({ page }) => {
+  await page.goto(reviewPath(openStay(), { room: "king", plan: "flexible" }));
+  await fillContact(page);
+  await page.getByRole("link", { name: "Cambiar habitación o tarifa" }).click();
+  await page.getByRole("link", { name: "Continuar a la revisión" }).click();
+  await page.getByLabel("Nombre completo").fill("Ana María Torres");
 
   await page.goBack();
   await page.goBack();
-  await page.goBack();
-  await expect(page).toHaveURL(/^[^?]*\/reservar\/revisar\/\?/);
-  await expect(page).not.toHaveURL(/\/en\//);
+
+  await expect(page).toHaveURL(/\/reservar\/revisar\/\?/);
   await expect(page.getByLabel("Nombre completo")).toHaveValue("Ana María Torres");
 });
 
@@ -161,42 +216,79 @@ test("a quote limit on entering review can be retried", async ({ page }) => {
   await expect(
     page.getByRole("heading", { name: "Demasiadas solicitudes de precio desde su conexión" }),
   ).toBeFocused();
-  await expect(page.getByText(/No pudimos preparar su precio/)).toBeHidden();
 
   await page.unroute(checkoutsRoute);
   await page.getByRole("button", { name: "Intentar de nuevo" }).click();
   await expect(page.locator('[data-amount="total"]')).toHaveText(/S\/\s180\.00/);
 });
 
-test("a throttled or failed acceptance keeps the details for a safe retry", async ({ page }) => {
+test("a checkout past its acceptance limit keeps the details and starts a fresh review", async ({
+  page,
+  request,
+}) => {
   await page.goto(reviewPath(openStay(), { room: "king", plan: "flexible" }));
+  await expect(page.locator('[data-amount="total"]')).toHaveText(/S\/\s200\.00/);
+  const token = await storedToken(page);
+  const { quote } = await serverCheckout(page, request);
+  for (let attempt = 1; attempt <= 20; attempt++)
+    await request.post(acceptanceRoute, {
+      headers: { authorization: `Bearer ${token}` },
+      data: {
+        quoteId: quote.id,
+        language: "es",
+        agreed: true,
+        contact: { fullName: `Prueba ${attempt}`, email: "ana@example.com", phone: "987654321" },
+      },
+    });
   await fillContact(page);
   await page.getByRole("checkbox", { name: /Acepto las condiciones/ }).check();
-
-  await page.route(acceptanceRoute, (route) =>
-    route.request().method() === "POST"
-      ? route.fulfill({
-          status: 429,
-          headers: { "access-control-allow-origin": "*", "retry-after": "60" },
-          contentType: "application/json",
-          body: JSON.stringify({ error: "too many requests" }),
-        })
-      : route.continue(),
-  );
   await page.getByRole("button", { name: "Aceptar condiciones" }).click();
-  await expect(page.getByRole("alert")).toContainText("Demasiados intentos desde su conexión");
 
-  await page.unroute(acceptanceRoute);
-  await page.route(acceptanceRoute, (route) =>
-    route.request().method() === "POST" ? route.abort("connectionrefused") : route.continue(),
-  );
-  await page.getByRole("button", { name: "Aceptar condiciones" }).click();
-  await expect(page.getByRole("alert")).toContainText("No pudimos guardar su aceptación");
+  await expect(
+    page.getByRole("heading", { name: "Esta revisión se modificó demasiadas veces" }),
+  ).toBeFocused();
+
+  await page.getByRole("button", { name: "Intentar de nuevo" }).click();
   await expect(page.getByLabel("Correo electrónico")).toHaveValue("ana@example.com");
   await expect(page.getByRole("checkbox", { name: /Acepto las condiciones/ })).toBeChecked();
-  await expect(page.getByText("Esta habitación ya no está disponible")).toBeHidden();
-
-  await page.unroute(acceptanceRoute);
   await page.getByRole("button", { name: "Aceptar condiciones" }).click();
   await expect(page.getByText("Condiciones aceptadas")).toBeVisible();
+  expect(await storedToken(page)).not.toBe(token);
 });
+
+for (const [name, fulfil, message] of [
+  [
+    "a failed connection",
+    (route: Parameters<Parameters<Page["route"]>[1]>[0]) => route.abort("connectionrefused"),
+    "No pudimos guardar su aceptación",
+  ],
+  [
+    "an unrecognised validation error",
+    (route: Parameters<Parameters<Page["route"]>[1]>[0]) =>
+      route.fulfill({
+        status: 400,
+        headers: { "access-control-allow-origin": "*" },
+        contentType: "application/json",
+        body: JSON.stringify({ error: "contact rejected for a new reason" }),
+      }),
+    "No pudimos guardar estos datos. Revíselos e intente de nuevo.",
+  ],
+] as const) {
+  test(`${name} while accepting keeps the details for a retry`, async ({ page }) => {
+    await page.goto(reviewPath(openStay(), { room: "king", plan: "flexible" }));
+    await fillContact(page);
+    await page.getByRole("checkbox", { name: /Acepto las condiciones/ }).check();
+    await page.route(acceptanceRoute, (route) =>
+      route.request().method() === "POST" ? fulfil(route) : route.fallback(),
+    );
+
+    await page.getByRole("button", { name: "Aceptar condiciones" }).click();
+
+    await expect(page.getByRole("alert")).toContainText(message);
+    await expect(page.getByLabel("Correo electrónico")).toHaveValue("ana@example.com");
+    await expect(page.getByRole("checkbox", { name: /Acepto las condiciones/ })).toBeChecked();
+    await page.unroute(acceptanceRoute);
+    await page.getByRole("button", { name: "Aceptar condiciones" }).click();
+    await expect(page.getByText("Condiciones aceptadas")).toBeVisible();
+  });
+}

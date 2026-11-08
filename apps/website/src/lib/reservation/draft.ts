@@ -1,24 +1,14 @@
-import type { BookingContact, CheckoutSelection } from "./checkout";
+import type { BookingContact } from "./checkout";
 
-const CHECKOUT_KEY = "hm.reservation.checkout";
+const CHECKOUTS_KEY = "hm.reservation.checkouts";
 const CONTACT_KEY = "hm.reservation.contact";
+const MAX_STORED_CHECKOUTS = 10;
 
 export type StoredCheckout = {
-  selection: string;
   token: string;
   agreedOffer: string | null;
   accepted: { quoteId: string; contact: string } | null;
 };
-
-export const selectionKey = (selection: CheckoutSelection) =>
-  JSON.stringify([
-    selection.roomTypeId,
-    selection.checkIn,
-    selection.checkOut,
-    selection.adults,
-    selection.children,
-    selection.ratePlan,
-  ]);
 
 export const contactKey = (contact: BookingContact) =>
   JSON.stringify([contact.fullName.trim(), contact.email.trim(), contact.phone.trim()]);
@@ -34,19 +24,25 @@ function read<T>(key: string): T | null {
 
 function write(key: string, value: unknown) {
   try {
-    if (value === null) sessionStorage.removeItem(key);
-    else sessionStorage.setItem(key, JSON.stringify(value));
+    sessionStorage.setItem(key, JSON.stringify(value));
   } catch {
     return;
   }
 }
 
+const storedCheckouts = () => read<Record<string, StoredCheckout>>(CHECKOUTS_KEY) ?? {};
+
 export function storedCheckout(selection: string) {
-  const stored = read<StoredCheckout>(CHECKOUT_KEY);
-  return stored?.selection === selection && typeof stored.token === "string" ? stored : null;
+  const stored = storedCheckouts()[selection];
+  return typeof stored?.token === "string" ? stored : null;
 }
 
-export const storeCheckout = (checkout: StoredCheckout | null) => write(CHECKOUT_KEY, checkout);
+export function storeCheckout(selection: string, checkout: StoredCheckout) {
+  const others = storedCheckouts();
+  delete others[selection];
+  const kept = Object.entries(others).slice(1 - MAX_STORED_CHECKOUTS);
+  write(CHECKOUTS_KEY, Object.fromEntries([...kept, [selection, checkout]]));
+}
 
 export function storedContact(): BookingContact {
   const stored = read<Partial<BookingContact>>(CONTACT_KEY);

@@ -525,14 +525,6 @@ const amountRow = "flex items-baseline justify-between gap-4 py-2";
       return state;
     }
 
-    private cancellation(offer: PlanOffer) {
-      return cancellationNodes(offer.cancellation, {
-        text: (key, values) => this.text(key, values),
-        amount: this.money(offer.cancellation.chargeCents),
-        lang: this.copy.lang,
-      });
-    }
-
     private renderOffer(container: HTMLElement, offer: PlanOffer) {
       this.el('[data-amount="total"]', container).textContent = this.money(offer.totalCents);
       this.el('[data-amount="now"]', container).textContent = this.money(
@@ -547,7 +539,13 @@ const amountRow = "flex items-baseline justify-between gap-4 py-2";
         offer.savingCents > 0
           ? this.text("reservation.offer.saving", { amount: this.money(offer.savingCents) })
           : "";
-      this.el("[data-cancellation]", container).replaceChildren(...this.cancellation(offer));
+      this.el("[data-cancellation]", container).replaceChildren(
+        ...cancellationNodes(offer.cancellation, {
+          text: (key, values) => this.text(key, values),
+          amount: this.money(offer.cancellation.chargeCents),
+          lang: this.copy.lang,
+        }),
+      );
     }
 
     private choose(roomId: string, plan: RatePlanCode, focus = true) {
@@ -576,7 +574,13 @@ const amountRow = "flex items-baseline justify-between gap-4 py-2";
       this.el('[data-choice-amount="remaining"]', choice).textContent = this.money(
         offer.remainingScheduledCents,
       );
-      this.el("[data-choice-cancellation]", choice).replaceChildren(...this.cancellation(offer));
+      this.el("[data-choice-cancellation]", choice).replaceChildren(
+        ...cancellationNodes(offer.cancellation, {
+          text: (key, values) => this.text(key, values),
+          amount: this.money(offer.cancellation.chargeCents),
+          lang: this.copy.lang,
+        }),
+      );
       this.el<HTMLAnchorElement>("[data-review-link]", choice).href =
         `${this.copy.reviewHref}?${searchParams(this.search).toString()}`;
       choice.hidden = false;

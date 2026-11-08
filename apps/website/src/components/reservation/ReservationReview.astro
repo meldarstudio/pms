@@ -1,12 +1,10 @@
 ---
 import { PUBLIC_PMS_API_URL } from "astro:env/client";
-import Whatsapp from "@/icons/Whatsapp.svg";
 import ReservationHelp from "@/components/reservation/ReservationHelp.astro";
 import ReservationOffline from "@/components/reservation/ReservationOffline.astro";
 import ReservationSteps from "@/components/reservation/ReservationSteps.astro";
 import { ui } from "@/i18n/ui";
 import { getLang, useTranslations } from "@/i18n/utils";
-import { getWhatsAppLink } from "@/lib/constants";
 import { chooseStepHref, onlineReservations, searchStepHref } from "@/lib/reservation/links";
 import { rooms } from "@/lib/rooms";
 
@@ -251,15 +249,6 @@ const contactFields = [
               <p class="mt-2 leading-relaxed text-stone-700">
                 {t("reservation.review.accepted.body")}
               </p>
-              <a
-                href={getWhatsAppLink(t("whatsapp.prefill"))}
-                target="_blank"
-                rel="noopener noreferrer"
-                class={`mt-4 ${secondary}`}
-              >
-                <Whatsapp class="size-4 shrink-0" />
-                {t("booking.cta")}
-              </a>
             </div>
           </section>
         </div>
@@ -276,8 +265,10 @@ const contactFields = [
   import {
     acceptQuote,
     offerKey,
+    quoteStillValid,
     readCheckout,
     refreshQuote,
+    selectionKey,
     startCheckout,
     type BookingContact,
     type CheckoutOutcome,
@@ -286,7 +277,6 @@ const contactFields = [
   } from "@/lib/reservation/checkout";
   import {
     contactKey,
-    selectionKey,
     storeCheckout,
     storeContact,
     storedCheckout,
@@ -305,12 +295,67 @@ const contactFields = [
     rooms: Record<string, { name: string; pmsRoomTypeId: string | null }>;
   };
 
-  type Problem = Exclude<CheckoutOutcome, { kind: "ready" }> | { kind: "missing" };
+  type Ready = Extract<CheckoutOutcome, { kind: "ready" }>;
+  type Problem = Exclude<CheckoutOutcome, Ready> | { kind: "missing" };
 
   const contactFields = ["fullName", "email", "phone"] as const;
   type ContactField = (typeof contactFields)[number];
 
   const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+  const problemCopy: Record<Problem["kind"], { title: string; body: string; retry: boolean }> = {
+    missing: {
+      title: "reservation.review.missing.title",
+      body: "reservation.review.missing.body",
+      retry: false,
+    },
+    sold_out: {
+      title: "reservation.review.soldOut.title",
+      body: "reservation.review.soldOut.body",
+      retry: false,
+    },
+    invalid: {
+      title: "reservation.review.invalid.title",
+      body: "reservation.problem.invalidSearch",
+      retry: false,
+    },
+    throttled: {
+      title: "reservation.review.throttled.title",
+      body: "reservation.review.throttled.body",
+      retry: true,
+    },
+    limited: {
+      title: "reservation.review.limited.title",
+      body: "reservation.review.limited.body",
+      retry: true,
+    },
+    unavailable: {
+      title: "reservation.review.unavailable.title",
+      body: "reservation.review.unavailable.body",
+      retry: true,
+    },
+    expired: {
+      title: "reservation.review.unavailable.title",
+      body: "reservation.review.unavailable.body",
+      retry: true,
+    },
+    replaced: {
+      title: "reservation.review.unavailable.title",
+      body: "reservation.review.unavailable.body",
+      retry: true,
+    },
+    denied: {
+      title: "reservation.review.unavailable.title",
+      body: "reservation.review.unavailable.body",
+      retry: true,
+    },
+  };
+
+  const formErrorCopy: Partial<Record<Problem["kind"], string>> = {
+    invalid: "reservation.review.error.invalid",
+    throttled: "reservation.review.error.throttled",
+    unavailable: "reservation.review.error.unavailable",
+  };
 
   const backendProblems: Record<string, string> = {
     "online check-in must be after today": "reservation.problem.checkInTooSoon",
@@ -322,7 +367,10 @@ const contactFields = [
   };
 
   const contactProblems: Record<string, [ContactField, string]> = {
+    "full name is required": ["fullName", "reservation.review.error.fullName"],
+    "email is required": ["email", "reservation.review.error.email"],
     "invalid email": ["email", "reservation.review.error.email"],
+    "phone is required": ["phone", "reservation.review.error.phone"],
     "invalid phone number": ["phone", "reservation.review.error.phoneInvalid"],
     "phone number is too short": ["phone", "reservation.review.error.phoneInvalid"],
     "phone number is too long": ["phone", "reservation.review.error.phoneInvalid"],
@@ -366,6 +414,10 @@ const contactFields = [
       };
     }
 
+    private stored() {
+      return storedCheckout(this.key);
+    }
+
     connectedCallback() {
       this.copy = JSON.parse(this.el("[data-copy]").textContent ?? "{}") as Copy;
       this.search = readSearch(
@@ -390,8 +442,7 @@ const contactFields = [
         else this.showAccepted();
       });
       for (const id of contactFields) {
-        const input = this.input(id);
-        input.addEventListener("input", () => {
+        this.input(id).addEventListener("input", () => {
           storeContact({
             fullName: this.input("fullName").value,
             email: this.input("email").value,
@@ -432,7 +483,7 @@ const contactFields = [
       const draft = storedContact();
       for (const id of contactFields) this.input(id).value = draft[id];
       this.input("agree").checked = Boolean(
-        this.view && storedCheckout(this.key)?.agreedOffer === offerKey(this.view),
+        this.view && this.stored()?.agreedOffer === offerKey(this.view),
       );
     }
 
@@ -445,31 +496,24 @@ const contactFields = [
     }
 
     private async currentQuote(): Promise<CheckoutOutcome> {
-      const stored = storedCheckout(this.key);
-      if (stored) {
+      const stored = this.stored();
+      if (stored?.token) {
         const outcome = await readCheckout(this.copy.apiBase, stored.token);
-        if (outcome.kind === "ready" && outcome.view.quote.expired)
-          return this.replacementQuote(stored.token);
-        if (outcome.kind !== "denied") return outcome;
+        if (outcome.kind === "ready" && outcome.view.quote.expired) {
+          const replacement = await refreshQuote(this.copy.apiBase, stored.token);
+          if (replacement.kind !== "denied") return replacement;
+        } else if (outcome.kind !== "denied") return outcome;
       }
       return startCheckout(this.copy.apiBase, this.selection, this.copy.lang);
     }
 
-    private async replacementQuote(token: string): Promise<CheckoutOutcome> {
-      const outcome = await refreshQuote(this.copy.apiBase, token);
-      return outcome.kind === "denied"
-        ? startCheckout(this.copy.apiBase, this.selection, this.copy.lang)
-        : outcome;
-    }
-
-    private ready(outcome: Extract<CheckoutOutcome, { kind: "ready" }>) {
-      const previous = storedCheckout(this.key);
+    private ready(outcome: Ready) {
+      const previous = this.stored();
       const offer = offerKey(outcome.view);
       const agreed = previous?.agreedOffer === offer;
       this.token = outcome.token;
       this.view = outcome.view;
-      storeCheckout({
-        selection: this.key,
+      storeCheckout(this.key, {
         token: outcome.token,
         agreedOffer: agreed ? offer : null,
         accepted: previous?.token === outcome.token ? previous.accepted : null,
@@ -533,22 +577,23 @@ const contactFields = [
     }
 
     private rememberAgreement() {
-      const stored = storedCheckout(this.key);
+      const stored = this.stored();
       if (!stored || !this.view) return;
-      storeCheckout({
+      storeCheckout(this.key, {
         ...stored,
         agreedOffer: this.input("agree").checked ? offerKey(this.view) : null,
       });
     }
 
     private isAccepted() {
-      const stored = storedCheckout(this.key);
-      const quoteId = this.view?.quote.id;
+      const view = this.view;
+      const accepted = this.stored()?.accepted;
       return Boolean(
-        quoteId &&
-        this.view?.acceptance?.quoteId === quoteId &&
-        stored?.accepted?.quoteId === quoteId &&
-        stored.accepted.contact === contactKey(this.contact()) &&
+        view &&
+        quoteStillValid(view) &&
+        view.acceptance?.quoteId === view.quote.id &&
+        accepted?.quoteId === view.quote.id &&
+        accepted.contact === contactKey(this.contact()) &&
         this.input("agree").checked,
       );
     }
@@ -593,6 +638,18 @@ const contactFields = [
       });
     }
 
+    private async acceptCurrentOffer(): Promise<CheckoutOutcome | null> {
+      const outcome = await this.accept();
+      if (!["expired", "replaced", "denied"].includes(outcome.kind)) return outcome;
+      const before = offerKey(this.view!);
+      const current = await this.currentQuote();
+      if (current.kind !== "ready") return current;
+      this.ready(current);
+      if (offerKey(current.view) === before) return this.accept();
+      this.el("[data-changed]").focus();
+      return null;
+    }
+
     private async submit() {
       if (this.busy || !this.view || !this.validate()) return;
       this.busy = true;
@@ -602,77 +659,54 @@ const contactFields = [
       submit.setAttribute("aria-disabled", "true");
       this.el("[data-status]").textContent = this.text("reservation.review.saving");
       try {
-        let outcome = await this.accept();
-        if (outcome.kind === "expired" || outcome.kind === "denied") {
-          const before = offerKey(this.view);
-          const replacement =
-            outcome.kind === "expired"
-              ? await this.replacementQuote(this.token)
-              : await startCheckout(this.copy.apiBase, this.selection, this.copy.lang);
-          if (replacement.kind !== "ready") outcome = replacement;
-          else {
-            this.ready(replacement);
-            if (offerKey(replacement.view) !== before) {
-              this.el("[data-changed]").focus();
-              return;
-            }
-            outcome = await this.accept();
-          }
-        }
-        this.el("[data-status]").textContent = "";
-        if (outcome.kind === "ready") {
-          this.view = outcome.view;
-          const stored = storedCheckout(this.key);
-          if (stored)
-            storeCheckout({
-              ...stored,
-              accepted: { quoteId: outcome.view.quote.id, contact: contactKey(this.contact()) },
-            });
-          this.showAccepted(true);
-        } else if (outcome.kind === "sold_out") {
-          this.showProblem(outcome);
-        } else if (outcome.kind === "invalid" && contactProblems[outcome.error]) {
-          const [field, key] = contactProblems[outcome.error]!;
-          this.showFieldError(field, this.text(key));
-          this.input(field).focus();
-        } else {
-          formError.textContent = this.text(
-            outcome.kind === "throttled"
-              ? "reservation.review.error.throttled"
-              : "reservation.review.error.unavailable",
-          );
-        }
+        const outcome = await this.acceptCurrentOffer();
+        if (outcome) this.settle(outcome);
       } finally {
         this.busy = false;
         submit.removeAttribute("aria-disabled");
       }
     }
 
+    private settle(outcome: CheckoutOutcome) {
+      this.el("[data-status]").textContent = "";
+      if (outcome.kind === "ready") {
+        this.view = outcome.view;
+        const stored = this.stored();
+        if (stored)
+          storeCheckout(this.key, {
+            ...stored,
+            accepted: { quoteId: outcome.view.quote.id, contact: contactKey(this.contact()) },
+          });
+        return this.showAccepted(true);
+      }
+      if (outcome.kind === "invalid" && contactProblems[outcome.error]) {
+        const [field, key] = contactProblems[outcome.error]!;
+        this.showFieldError(field, this.text(key));
+        return this.input(field).focus();
+      }
+      if (outcome.kind === "invalid" && backendProblems[outcome.error])
+        return this.showProblem(outcome);
+      const formError = formErrorCopy[outcome.kind];
+      if (formError) {
+        this.el("[data-form-error]").textContent = this.text(formError);
+        return;
+      }
+      const stored = this.stored();
+      if (outcome.kind === "limited" && stored)
+        storeCheckout(this.key, { ...stored, token: "", accepted: null });
+      this.showProblem(outcome);
+    }
+
     private showProblem(problem: Problem) {
-      const [title, body, retry] =
-        problem.kind === "missing"
-          ? ["reservation.review.missing.title", "reservation.review.missing.body", false]
-          : problem.kind === "sold_out"
-            ? ["reservation.review.soldOut.title", "reservation.review.soldOut.body", false]
-            : problem.kind === "throttled"
-              ? ["reservation.review.throttled.title", "reservation.review.throttled.body", true]
-              : problem.kind === "invalid"
-                ? [
-                    "reservation.review.invalid.title",
-                    backendProblems[problem.error] ?? "reservation.problem.invalidSearch",
-                    false,
-                  ]
-                : [
-                    "reservation.review.unavailable.title",
-                    "reservation.review.unavailable.body",
-                    true,
-                  ];
+      const copy = problemCopy[problem.kind];
+      const body =
+        problem.kind === "invalid" ? (backendProblems[problem.error] ?? copy.body) : copy.body;
       this.el("[data-status]").textContent = "";
       this.el("[data-review]").hidden = true;
       this.el("[data-problem]").hidden = false;
-      this.el("[data-problem-title]").textContent = this.text(title);
+      this.el("[data-problem-title]").textContent = this.text(copy.title);
       this.el("[data-problem-body]").textContent = this.text(body);
-      this.el("[data-retry]").hidden = !retry;
+      this.el("[data-retry]").hidden = !copy.retry;
       this.el("[data-problem-title]").focus();
     }
   }

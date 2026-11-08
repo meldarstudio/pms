@@ -11,6 +11,15 @@ export type CheckoutSelection = {
   ratePlan: RatePlanCode;
 };
 
+const selectionFields = [
+  "roomTypeId",
+  "checkIn",
+  "checkOut",
+  "adults",
+  "children",
+  "ratePlan",
+] as const satisfies readonly (keyof CheckoutSelection)[];
+
 export type BookingContact = { fullName: string; email: string; phone: string };
 
 export type CheckoutView = CheckoutSelection & {
@@ -20,6 +29,7 @@ export type CheckoutView = CheckoutSelection & {
   quote: {
     id: string;
     expired: boolean;
+    expiresAt: string;
     nights: { date: string; priceCents: number }[];
     totalCents: number;
     requiredInitialPaymentCents: number;
@@ -36,10 +46,12 @@ export type CheckoutView = CheckoutSelection & {
 export type CheckoutOutcome =
   | { kind: "ready"; view: CheckoutView; token: string }
   | { kind: "expired" }
+  | { kind: "replaced" }
   | { kind: "sold_out" }
   | { kind: "invalid"; error: string }
   | { kind: "denied" }
   | { kind: "throttled" }
+  | { kind: "limited" }
   | { kind: "unavailable" };
 
 function isView(value: unknown): value is CheckoutView {
@@ -70,10 +82,13 @@ async function call(
   } catch {
     return { kind: "unavailable" };
   }
-  if (response.status === 429) return { kind: "throttled" };
   if (response.status === 401) return { kind: "denied" };
   const body: unknown = await response.json().catch(() => null);
   const error = (body as { error?: unknown } | null)?.error;
+  if (response.status === 429)
+    return { kind: error === "too many acceptances for this checkout" ? "limited" : "throttled" };
+  if (response.status === 409 && error === "quote was replaced by a newer quote")
+    return { kind: "replaced" };
   if (response.status === 409 && error === "no availability") return { kind: "sold_out" };
   if (error === "quote has expired" || error === "quote not found") return { kind: "expired" };
   if (response.status === 400 || response.status === 404)
@@ -103,20 +118,19 @@ export const acceptQuote = (
     body: { ...acceptance, agreed: true },
   });
 
-export function offerKey(view: CheckoutView) {
-  const { quote } = view;
-  return JSON.stringify([
-    view.roomTypeId,
-    view.checkIn,
-    view.checkOut,
-    view.adults,
-    view.children,
-    view.ratePlan,
+export const selectionKey = (selection: CheckoutSelection) =>
+  JSON.stringify(selectionFields.map((field) => selection[field]));
+
+export const offerKey = (view: CheckoutView) =>
+  JSON.stringify([
+    selectionKey(view),
     view.currency,
-    quote.nights,
-    quote.totalCents,
-    quote.requiredInitialPaymentCents,
-    quote.remainingScheduledCents,
-    quote.cancellation,
+    view.quote.nights,
+    view.quote.totalCents,
+    view.quote.requiredInitialPaymentCents,
+    view.quote.remainingScheduledCents,
+    view.quote.cancellation,
   ]);
-}
+
+export const quoteStillValid = (view: CheckoutView, now = Date.now()) =>
+  !view.quote.expired && Date.parse(view.quote.expiresAt) > now;
