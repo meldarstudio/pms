@@ -1,7 +1,6 @@
 const BUILD_ID = new URL(self.location.href).searchParams.get("build") ?? "development";
 const CACHE_NAME = `manantial-shell-${BUILD_ID}`;
 const OFFLINE_URL = "/offline.html";
-let updateClientId;
 const SHELL_URLS = [
   "/",
   OFFLINE_URL,
@@ -13,6 +12,7 @@ const SHELL_URLS = [
 ];
 
 self.addEventListener("install", (event) => {
+  self.skipWaiting();
   event.waitUntil(
     (async () => {
       const cache = await caches.open(CACHE_NAME);
@@ -47,19 +47,8 @@ self.addEventListener("activate", (event) => {
           .filter((key) => key.startsWith("manantial-shell-") && key !== CACHE_NAME)
           .map((key) => caches.delete(key)),
       );
-      if (updateClientId) {
-        const client = await self.clients.get(updateClientId);
-        client?.postMessage("UPDATE_ACTIVATED");
-      }
     })(),
   );
-});
-
-self.addEventListener("message", (event) => {
-  if (event.data === "ACTIVATE_UPDATE") {
-    updateClientId = event.source?.id;
-    self.skipWaiting();
-  }
 });
 
 self.addEventListener("fetch", (event) => {
