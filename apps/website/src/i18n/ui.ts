@@ -323,8 +323,75 @@ export const ui = {
       "{rooms}: not enough room for your group. Change the number of guests; online reservations are for one room.",
     "reservation.choose.reason.offline":
       "{rooms}: not bookable online. Message us on WhatsApp to book.",
-    "reservation.choice.next":
-      "Online review and payment aren't available yet, so this choice can't be reserved online for now. It stays saved on this page.",
+    "reservation.choice.review": "Continue to review",
+    "reservation.meta.reviewTitle": "Review your reservation | Hotel Manantial",
+    "reservation.meta.reviewDescription":
+      "Check your stay, price and terms, and add the booking contact's details.",
+    "reservation.step.review": "Review and pay",
+    "reservation.review.title": "Review your reservation",
+    "reservation.review.loading": "Preparing your price…",
+    "reservation.review.loaded": "Your price and terms are ready.",
+    "reservation.review.stay": "Your stay",
+    "reservation.review.room": "Room",
+    "reservation.review.dates": "Dates",
+    "reservation.review.guests": "Guests",
+    "reservation.review.plan": "Rate",
+    "reservation.review.changeChoice": "Change room or rate",
+    "reservation.review.changeSearch": "Change dates or guests",
+    "reservation.review.price": "Price and terms",
+    "reservation.review.contact": "Booking contact",
+    "reservation.review.contactLead":
+      "The hotel uses these details to contact you about this reservation. No account is needed, and the contact doesn't have to be one of the guests.",
+    "reservation.review.fullName": "Full name",
+    "reservation.review.email": "Email",
+    "reservation.review.phone": "Phone",
+    "reservation.review.phoneHint": "Include the country code if it isn't a Peruvian number.",
+    "reservation.review.terms": "Full reservation terms",
+    "reservation.review.nightly": "Price per night",
+    "reservation.review.schedule.flexible":
+      "Payment: the first night, {now}, is paid online; the remaining {remaining} is paid at the hotel.",
+    "reservation.review.schedule.non_refundable":
+      "Payment: the whole stay, {now}, is paid online; nothing is left to pay at the hotel.",
+    "reservation.review.lifecycle":
+      "This price was calculated when you opened this page and is kept for a few minutes. If it needs updating before payment, you'll see the new terms before anything is charged. The room is reserved only once payment is confirmed and the reservation is saved.",
+    "reservation.review.agree":
+      "I accept the reservation terms on this page, including the cancellation and no-show conditions.",
+    "reservation.review.submit": "Accept terms",
+    "reservation.review.saving": "Saving your acceptance…",
+    "reservation.review.payment": "Payment",
+    "reservation.review.paymentUnavailable":
+      "Online card payment isn't available yet, so nothing is charged on this page.",
+    "reservation.review.accepted.title": "Terms accepted",
+    "reservation.review.accepted.body":
+      "Your acceptance is saved, but the reservation isn't made until it's paid. To finish it, message us on WhatsApp.",
+    "reservation.review.changed":
+      "The price or terms for your stay changed. Review them and accept again.",
+    "reservation.review.error.fullName": "Enter the booking contact's full name.",
+    "reservation.review.error.email": "Enter a valid email, like name@example.com.",
+    "reservation.review.error.phone": "Enter a phone number.",
+    "reservation.review.error.phoneInvalid":
+      "This phone number isn't valid. Include the country code if it isn't Peruvian.",
+    "reservation.review.error.agree": "Check the box to accept the terms.",
+    "reservation.review.error.throttled":
+      "Too many attempts from your connection. Your details are kept: wait a minute and try again.",
+    "reservation.review.error.unavailable":
+      "We couldn't save your acceptance right now. Your details are kept: please try again.",
+    "reservation.review.missing.title": "Choose a room and rate first",
+    "reservation.review.missing.body":
+      "We couldn't find your choice. Go back and choose a room and rate for your dates.",
+    "reservation.review.soldOut.title": "This room is no longer available for these dates",
+    "reservation.review.soldOut.body":
+      "Your search and details are kept. Go back to see which rooms are still available; we won't pick another one for you.",
+    "reservation.review.backToRooms": "Back to rooms",
+    "reservation.review.throttled.title": "Too many price requests from your connection",
+    "reservation.review.throttled.body":
+      "Everyone on a shared connection shares this limit. Your choice and details are kept: wait a minute and try again, or message us on WhatsApp.",
+    "reservation.review.unavailable.title": "We couldn't prepare your price right now",
+    "reservation.review.unavailable.body":
+      "This is a problem on our side. Your choice and details are kept: try again in a moment, or message us on WhatsApp.",
+    "reservation.review.invalid.title": "This choice can't be reserved online",
+    "reservation.review.problem.tooManyGuests":
+      "This room doesn't fit your group. Go back and choose another room or change the guests.",
   },
   es: {
     "nav.home": "Inicio",
@@ -653,8 +720,75 @@ export const ui = {
       "{rooms}: sin capacidad para su grupo. Cambie el número de huéspedes; las reservas en línea son para una habitación.",
     "reservation.choose.reason.offline":
       "{rooms}: sin reserva en línea. Escríbanos por WhatsApp para reservar.",
-    "reservation.choice.next":
-      "La revisión y el pago en línea aún no están disponibles, así que por ahora esta elección no se puede reservar en línea. Queda guardada en esta página.",
+    "reservation.choice.review": "Continuar a la revisión",
+    "reservation.meta.reviewTitle": "Revise su reserva | Hotel Manantial",
+    "reservation.meta.reviewDescription":
+      "Revise su estadía, el precio y las condiciones, y añada los datos del contacto de la reserva.",
+    "reservation.step.review": "Revisar y pagar",
+    "reservation.review.title": "Revise su reserva",
+    "reservation.review.loading": "Preparando su precio…",
+    "reservation.review.loaded": "Su precio y sus condiciones están listos.",
+    "reservation.review.stay": "Su estadía",
+    "reservation.review.room": "Habitación",
+    "reservation.review.dates": "Fechas",
+    "reservation.review.guests": "Huéspedes",
+    "reservation.review.plan": "Tarifa",
+    "reservation.review.changeChoice": "Cambiar habitación o tarifa",
+    "reservation.review.changeSearch": "Cambiar fechas o huéspedes",
+    "reservation.review.price": "Precio y condiciones",
+    "reservation.review.contact": "Contacto de la reserva",
+    "reservation.review.contactLead":
+      "El hotel usa estos datos para comunicarse con usted sobre esta reserva. No necesita una cuenta, y el contacto no tiene que ser uno de los huéspedes.",
+    "reservation.review.fullName": "Nombre completo",
+    "reservation.review.email": "Correo electrónico",
+    "reservation.review.phone": "Teléfono",
+    "reservation.review.phoneHint": "Incluya el código de país si no es un número peruano.",
+    "reservation.review.terms": "Condiciones completas de la reserva",
+    "reservation.review.nightly": "Precio por noche",
+    "reservation.review.schedule.flexible":
+      "Pago: la primera noche, {now}, se paga en línea; el resto, {remaining}, se paga en el hotel.",
+    "reservation.review.schedule.non_refundable":
+      "Pago: toda la estadía, {now}, se paga en línea; no queda nada por pagar en el hotel.",
+    "reservation.review.lifecycle":
+      "Este precio se calculó al abrir esta página y se mantiene por unos minutos. Si hay que actualizarlo antes del pago, verá las nuevas condiciones antes de cualquier cobro. La habitación queda reservada solo cuando el pago se confirma y la reserva se guarda.",
+    "reservation.review.agree":
+      "Acepto las condiciones de la reserva de esta página, incluidas las de cancelación y no presentación.",
+    "reservation.review.submit": "Aceptar condiciones",
+    "reservation.review.saving": "Guardando su aceptación…",
+    "reservation.review.payment": "Pago",
+    "reservation.review.paymentUnavailable":
+      "El pago con tarjeta en línea aún no está disponible, así que en esta página no se cobra nada.",
+    "reservation.review.accepted.title": "Condiciones aceptadas",
+    "reservation.review.accepted.body":
+      "Su aceptación quedó guardada, pero la reserva no está hecha hasta que se pague. Para completarla, escríbanos por WhatsApp.",
+    "reservation.review.changed":
+      "El precio o las condiciones de su estadía cambiaron. Revíselos y acepte de nuevo.",
+    "reservation.review.error.fullName": "Ingrese el nombre completo del contacto.",
+    "reservation.review.error.email": "Ingrese un correo válido, por ejemplo nombre@ejemplo.com.",
+    "reservation.review.error.phone": "Ingrese un número de teléfono.",
+    "reservation.review.error.phoneInvalid":
+      "Este número de teléfono no es válido. Incluya el código de país si no es peruano.",
+    "reservation.review.error.agree": "Marque la casilla para aceptar las condiciones.",
+    "reservation.review.error.throttled":
+      "Demasiados intentos desde su conexión. Sus datos se conservan: espere un minuto e intente de nuevo.",
+    "reservation.review.error.unavailable":
+      "No pudimos guardar su aceptación en este momento. Sus datos se conservan: intente de nuevo.",
+    "reservation.review.missing.title": "Primero elija habitación y tarifa",
+    "reservation.review.missing.body":
+      "No encontramos su elección. Vuelva y elija una habitación y una tarifa para sus fechas.",
+    "reservation.review.soldOut.title": "Esta habitación ya no está disponible para estas fechas",
+    "reservation.review.soldOut.body":
+      "Su búsqueda y sus datos se conservan. Vuelva para ver qué habitaciones siguen disponibles; no elegiremos otra por usted.",
+    "reservation.review.backToRooms": "Volver a las habitaciones",
+    "reservation.review.throttled.title": "Demasiadas solicitudes de precio desde su conexión",
+    "reservation.review.throttled.body":
+      "Quienes comparten una conexión comparten este límite. Su elección y sus datos se conservan: espere un minuto e intente de nuevo, o escríbanos por WhatsApp.",
+    "reservation.review.unavailable.title": "No pudimos preparar su precio en este momento",
+    "reservation.review.unavailable.body":
+      "Es un problema de nuestro sistema. Su elección y sus datos se conservan: intente de nuevo en un momento o escríbanos por WhatsApp.",
+    "reservation.review.invalid.title": "Esta elección no se puede reservar en línea",
+    "reservation.review.problem.tooManyGuests":
+      "Esta habitación no admite a su grupo. Vuelva y elija otra habitación o cambie los huéspedes.",
   },
 } as const;
 

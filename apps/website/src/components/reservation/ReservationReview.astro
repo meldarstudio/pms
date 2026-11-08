@@ -1,0 +1,680 @@
+---
+import { PUBLIC_PMS_API_URL } from "astro:env/client";
+import Whatsapp from "@/icons/Whatsapp.svg";
+import ReservationHelp from "@/components/reservation/ReservationHelp.astro";
+import ReservationOffline from "@/components/reservation/ReservationOffline.astro";
+import ReservationSteps from "@/components/reservation/ReservationSteps.astro";
+import { ui } from "@/i18n/ui";
+import { getLang, useTranslations } from "@/i18n/utils";
+import { getWhatsAppLink } from "@/lib/constants";
+import { chooseStepHref, onlineReservations, searchStepHref } from "@/lib/reservation/links";
+import { rooms } from "@/lib/rooms";
+
+const lang = getLang(Astro.currentLocale);
+const t = useTranslations(lang);
+const copy = {
+  lang,
+  apiBase: PUBLIC_PMS_API_URL ?? "",
+  searchHref: searchStepHref(lang),
+  chooseHref: chooseStepHref(lang),
+  text: Object.fromEntries(
+    (Object.keys(ui[lang]) as (keyof (typeof ui)[typeof lang])[])
+      .filter((key) => key.startsWith("reservation."))
+      .map((key) => [key, t(key)]),
+  ),
+  rooms: Object.fromEntries(
+    rooms.map((room) => [
+      room.id,
+      { name: t(room.nameKey), pmsRoomTypeId: room.pmsRoomTypeId ?? null },
+    ]),
+  ),
+};
+const panel = "border border-stone-300 bg-white p-5 md:p-8";
+const primary =
+  "font-source-sans-3 bg-accent-500 text-accent-950 hover:bg-accent-400 inline-flex min-h-12 cursor-pointer items-center justify-center gap-2 px-6 text-sm font-semibold tracking-widest uppercase";
+const secondary =
+  "font-source-sans-3 inline-flex min-h-12 cursor-pointer items-center justify-center gap-2 border border-stone-900 px-6 text-sm font-semibold tracking-widest text-stone-900 uppercase hover:bg-stone-100";
+const link =
+  "text-accent-800 inline-flex min-h-11 items-center font-medium underline underline-offset-4";
+const row = "flex items-baseline justify-between gap-4 py-2";
+const field =
+  "mt-2 block min-h-12 w-full border border-stone-400 bg-white px-3 text-base text-stone-900 aria-invalid:border-red-700";
+const label = "font-source-sans-3 text-sm font-semibold tracking-wide text-stone-800";
+const error = "mt-2 text-sm font-medium text-red-800";
+const contactFields = [
+  {
+    id: "fullName",
+    type: "text",
+    autocomplete: "name",
+    inputmode: "text",
+    autocapitalize: "words",
+    spellcheck: "false",
+  },
+  {
+    id: "email",
+    type: "email",
+    autocomplete: "email",
+    inputmode: "email",
+    autocapitalize: "off",
+    spellcheck: "false",
+  },
+  {
+    id: "phone",
+    type: "tel",
+    autocomplete: "tel",
+    inputmode: "tel",
+    autocapitalize: "off",
+    spellcheck: "false",
+  },
+] as const;
+---
+
+<section class="bg-stone-100">
+  <div class="mx-auto max-w-2xl px-4 py-8 md:px-8 md:py-16">
+    <ReservationSteps current="review" />
+    <h1 class="mt-8 text-3xl font-semibold text-pretty text-stone-900 sm:text-4xl">
+      {t("reservation.review.title")}
+    </h1>
+    {onlineReservations ? (
+      <reservation-review class="block">
+        <script
+          type="application/json"
+          is:inline
+          data-copy
+          set:html={JSON.stringify(copy).replace(/</g, "\\u003c")}
+        />
+        <p class="mt-6 text-stone-700" role="status" data-status>
+          {t("reservation.review.loading")}
+        </p>
+        <div class={`mt-6 ${panel}`} data-problem hidden>
+          <h2 class="text-xl font-semibold text-stone-900" tabindex="-1" data-problem-title />
+          <p class="mt-3 leading-relaxed text-stone-700" data-problem-body />
+          <div class="mt-6 flex flex-wrap gap-3">
+            <button type="button" class={primary} data-retry hidden>
+              {t("reservation.choose.retry")}
+            </button>
+            <a href={chooseStepHref(lang)} class={secondary} data-problem-back>
+              {t("reservation.review.backToRooms")}
+            </a>
+            <a href={searchStepHref(lang)} class={secondary} data-problem-change>
+              {t("reservation.review.changeSearch")}
+            </a>
+          </div>
+        </div>
+        <div class="mt-6 flex flex-col gap-8" data-review hidden>
+          <section class={panel} aria-labelledby="review-stay">
+            <h2 id="review-stay" class="text-2xl font-semibold text-stone-900">
+              {t("reservation.review.stay")}
+            </h2>
+            <dl class="mt-4 divide-y divide-stone-200">
+              <div class={row}>
+                <dt class="text-stone-700">{t("reservation.review.room")}</dt>
+                <dd class="text-right font-semibold text-stone-900" data-stay="room" />
+              </div>
+              <div class={row}>
+                <dt class="text-stone-700">{t("reservation.review.dates")}</dt>
+                <dd class="text-right font-semibold text-stone-900" data-stay="dates" />
+              </div>
+              <div class={row}>
+                <dt class="text-stone-700">{t("reservation.review.guests")}</dt>
+                <dd class="text-right font-semibold text-stone-900" data-stay="guests" />
+              </div>
+              <div class={row}>
+                <dt class="text-stone-700">{t("reservation.review.plan")}</dt>
+                <dd class="text-right font-semibold text-stone-900" data-stay="plan" />
+              </div>
+            </dl>
+            <div class="mt-4 flex flex-wrap gap-x-6 gap-y-1">
+              <a href={chooseStepHref(lang)} class={link} data-change-choice>
+                {t("reservation.review.changeChoice")}
+              </a>
+              <a href={searchStepHref(lang)} class={link} data-change-search>
+                {t("reservation.review.changeSearch")}
+              </a>
+            </div>
+          </section>
+          <section class={panel} aria-labelledby="review-price">
+            <h2 id="review-price" class="text-2xl font-semibold text-stone-900">
+              {t("reservation.review.price")}
+            </h2>
+            <p
+              class="mt-4 border-l-4 border-amber-600 bg-amber-50 p-4 font-semibold text-stone-900"
+              tabindex="-1"
+              data-changed
+              hidden
+            >
+              {t("reservation.review.changed")}
+            </p>
+            <dl class="mt-4 divide-y divide-stone-200">
+              <div class={row}>
+                <dt class="text-stone-700">{t("reservation.offer.total")}</dt>
+                <dd class="text-lg font-semibold text-stone-900" data-amount="total" />
+              </div>
+              <div class={row}>
+                <dt class="text-stone-700">{t("reservation.offer.now")}</dt>
+                <dd class="font-semibold text-stone-900" data-amount="now" />
+              </div>
+              <div class={row}>
+                <dt class="text-stone-700">{t("reservation.offer.remaining")}</dt>
+                <dd class="font-semibold text-stone-900" data-amount="remaining" />
+              </div>
+            </dl>
+            <p class="mt-3 leading-relaxed text-stone-700" data-cancellation />
+            <p class="mt-3 text-sm text-stone-600" data-taxes />
+            <details class="mt-5 border-t border-stone-200 pt-4">
+              <summary class="text-accent-800 flex min-h-11 cursor-pointer items-center font-medium underline underline-offset-4">
+                {t("reservation.review.terms")}
+              </summary>
+              <h3 class="mt-3 font-semibold text-stone-900">{t("reservation.review.nightly")}</h3>
+              <ul class="mt-2 divide-y divide-stone-200 text-stone-800" data-nightly />
+              <p class="mt-4 leading-relaxed text-stone-700" data-schedule />
+              <p class="mt-3 leading-relaxed text-stone-700" data-terms-cancellation />
+              <p class="mt-3 leading-relaxed text-stone-700">
+                {t("reservation.cancel.settlement")}
+              </p>
+              <p class="mt-3 leading-relaxed text-stone-700">{t("reservation.review.lifecycle")}</p>
+            </details>
+          </section>
+          <form class={panel} novalidate aria-labelledby="review-contact" data-contact-form>
+            <h2 id="review-contact" class="text-2xl font-semibold text-stone-900">
+              {t("reservation.review.contact")}
+            </h2>
+            <p class="mt-2 leading-relaxed text-stone-700">{t("reservation.review.contactLead")}</p>
+            <div class="mt-6 flex flex-col gap-5">
+              {contactFields.map((input) => (
+                <div>
+                  <label for={input.id} class={label}>
+                    {t(`reservation.review.${input.id}`)}
+                  </label>
+                  {input.id === "phone" && (
+                    <p id="phone-hint" class="mt-1 text-sm text-stone-600">
+                      {t("reservation.review.phoneHint")}
+                    </p>
+                  )}
+                  <input
+                    id={input.id}
+                    name={input.id}
+                    type={input.type}
+                    autocomplete={input.autocomplete}
+                    inputmode={input.inputmode}
+                    autocapitalize={input.autocapitalize}
+                    spellcheck={input.spellcheck}
+                    required
+                    maxlength={input.id === "phone" ? 40 : 200}
+                    class={field}
+                    aria-describedby={
+                      input.id === "phone" ? "phone-hint phone-error" : `${input.id}-error`
+                    }
+                  />
+                  <p id={`${input.id}-error`} class={error} hidden />
+                </div>
+              ))}
+              <div>
+                <div class="flex items-start gap-3">
+                  <input
+                    id="agree"
+                    name="agree"
+                    type="checkbox"
+                    required
+                    class="accent-accent-700 mt-0.5 size-6 shrink-0"
+                    aria-describedby="agree-error"
+                  />
+                  <label
+                    for="agree"
+                    class="cursor-pointer text-base leading-relaxed text-stone-900"
+                  >
+                    {t("reservation.review.agree")}
+                  </label>
+                </div>
+                <p id="agree-error" class={error} hidden />
+              </div>
+            </div>
+            <p class="mt-5 font-medium text-red-800" role="alert" data-form-error />
+            <button type="submit" class={`mt-6 w-full sm:w-auto ${primary}`} data-submit>
+              {t("reservation.review.submit")}
+            </button>
+          </form>
+          <section class={panel} aria-labelledby="review-payment" data-payment-step>
+            <h2 id="review-payment" class="text-2xl font-semibold text-stone-900">
+              {t("reservation.review.payment")}
+            </h2>
+            <p class="mt-2 leading-relaxed text-stone-700">
+              {t("reservation.review.paymentUnavailable")}
+            </p>
+            <div
+              class="border-accent-700 mt-4 border-l-4 bg-stone-50 p-4"
+              tabindex="-1"
+              data-accepted
+              hidden
+            >
+              <p class="font-semibold text-stone-900">{t("reservation.review.accepted.title")}</p>
+              <p class="mt-2 leading-relaxed text-stone-700">
+                {t("reservation.review.accepted.body")}
+              </p>
+              <a
+                href={getWhatsAppLink(t("whatsapp.prefill"))}
+                target="_blank"
+                rel="noopener noreferrer"
+                class={`mt-4 ${secondary}`}
+              >
+                <Whatsapp class="size-4 shrink-0" />
+                {t("booking.cta")}
+              </a>
+            </div>
+          </section>
+        </div>
+      </reservation-review>
+    ) : (
+      <ReservationOffline />
+    )}
+    <ReservationHelp />
+  </div>
+</section>
+
+<script>
+  import type { Lang } from "@/i18n/utils";
+  import {
+    acceptQuote,
+    offerKey,
+    readCheckout,
+    refreshQuote,
+    startCheckout,
+    type BookingContact,
+    type CheckoutOutcome,
+    type CheckoutSelection,
+    type CheckoutView,
+  } from "@/lib/reservation/checkout";
+  import {
+    contactKey,
+    selectionKey,
+    storeCheckout,
+    storeContact,
+    storedCheckout,
+    storedContact,
+  } from "@/lib/reservation/draft";
+  import { fill, formatDate, formatMoney } from "@/lib/reservation/format";
+  import { readSearch, searchParams, type StaySearch } from "@/lib/reservation/search";
+  import { cancellationNodes } from "@/lib/reservation/terms";
+
+  type Copy = {
+    lang: Lang;
+    apiBase: string;
+    searchHref: string;
+    chooseHref: string;
+    text: Record<string, string>;
+    rooms: Record<string, { name: string; pmsRoomTypeId: string | null }>;
+  };
+
+  type Problem = Exclude<CheckoutOutcome, { kind: "ready" }> | { kind: "missing" };
+
+  const contactFields = ["fullName", "email", "phone"] as const;
+  type ContactField = (typeof contactFields)[number];
+
+  const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+  const backendProblems: Record<string, string> = {
+    "online check-in must be after today": "reservation.problem.checkInTooSoon",
+    "too many guests for this room type": "reservation.review.problem.tooManyGuests",
+    "room type not found": "reservation.room.offline",
+    "stay must be at least one night": "reservation.problem.checkOutBeforeCheckIn",
+    "stay cannot be longer than 60 nights": "reservation.problem.tooManyNights",
+    "invalid date": "reservation.problem.invalidDate",
+  };
+
+  const contactProblems: Record<string, [ContactField, string]> = {
+    "invalid email": ["email", "reservation.review.error.email"],
+    "invalid phone number": ["phone", "reservation.review.error.phoneInvalid"],
+    "phone number is too short": ["phone", "reservation.review.error.phoneInvalid"],
+    "phone number is too long": ["phone", "reservation.review.error.phoneInvalid"],
+    "phone extensions are not supported": ["phone", "reservation.review.error.phoneInvalid"],
+  };
+
+  class ReservationReview extends HTMLElement {
+    private copy!: Copy;
+    private search!: StaySearch;
+    private selection!: CheckoutSelection;
+    private key = "";
+    private token = "";
+    private view: CheckoutView | null = null;
+    private busy = false;
+
+    private text(key: string, values: Record<string, string | number> = {}) {
+      return fill(this.copy.text[key] ?? key, values);
+    }
+
+    private el<T extends HTMLElement = HTMLElement>(selector: string, root: ParentNode = this) {
+      return root.querySelector<T>(selector)!;
+    }
+
+    private input(id: ContactField | "agree") {
+      return this.el<HTMLInputElement>(`#${id}`);
+    }
+
+    private money(cents: number) {
+      return formatMoney(cents, this.view?.currency ?? "PEN");
+    }
+
+    private count(key: string, count: number) {
+      return this.text(`${key}.${count === 1 ? "one" : "other"}`, { count });
+    }
+
+    private contact(): BookingContact {
+      return {
+        fullName: this.input("fullName").value.trim(),
+        email: this.input("email").value.trim(),
+        phone: this.input("phone").value.trim(),
+      };
+    }
+
+    connectedCallback() {
+      this.copy = JSON.parse(this.el("[data-copy]").textContent ?? "{}") as Copy;
+      this.search = readSearch(
+        new URLSearchParams(window.location.search),
+        Object.keys(this.copy.rooms),
+      );
+      const choiceHref = `${this.copy.chooseHref}?${searchParams(this.search).toString()}`;
+      const searchHref = `${this.copy.searchHref}?${searchParams(this.search, { withChoice: false }).toString()}`;
+      for (const anchor of this.querySelectorAll<HTMLAnchorElement>(
+        "[data-change-choice], [data-problem-back]",
+      ))
+        anchor.href = choiceHref;
+      for (const anchor of this.querySelectorAll<HTMLAnchorElement>(
+        "[data-change-search], [data-problem-change]",
+      ))
+        anchor.href = searchHref;
+
+      this.restoreDraft();
+      window.addEventListener("pageshow", (event) => {
+        this.restoreDraft();
+        if (event.persisted && this.key) void this.load();
+        else this.showAccepted();
+      });
+      for (const id of contactFields) {
+        const input = this.input(id);
+        input.addEventListener("input", () => {
+          storeContact({
+            fullName: this.input("fullName").value,
+            email: this.input("email").value,
+            phone: this.input("phone").value,
+          });
+          this.showFieldError(id, "");
+          this.showAccepted();
+        });
+      }
+      this.input("agree").addEventListener("change", () => {
+        this.rememberAgreement();
+        this.showFieldError("agree", "");
+        this.showAccepted();
+      });
+      this.el("[data-retry]").addEventListener("click", () => void this.load());
+      this.el<HTMLFormElement>("[data-contact-form]").addEventListener("submit", (event) => {
+        event.preventDefault();
+        void this.submit();
+      });
+
+      const { room, plan, checkIn, checkOut } = this.search;
+      const roomTypeId = room ? this.copy.rooms[room]?.pmsRoomTypeId : null;
+      if (!room || !plan || !checkIn || !checkOut || !roomTypeId)
+        return this.showProblem({ kind: "missing" });
+      this.selection = {
+        roomTypeId,
+        checkIn,
+        checkOut,
+        adults: this.search.adults,
+        children: this.search.children,
+        ratePlan: plan,
+      };
+      this.key = selectionKey(this.selection);
+      void this.load();
+    }
+
+    private restoreDraft() {
+      const draft = storedContact();
+      for (const id of contactFields) this.input(id).value = draft[id];
+      this.input("agree").checked = Boolean(
+        this.view && storedCheckout(this.key)?.agreedOffer === offerKey(this.view),
+      );
+    }
+
+    private async load() {
+      this.el("[data-problem]").hidden = true;
+      this.el("[data-status]").textContent = this.text("reservation.review.loading");
+      const outcome = await this.currentQuote();
+      if (outcome.kind === "ready") this.ready(outcome);
+      else this.showProblem(outcome);
+    }
+
+    private async currentQuote(): Promise<CheckoutOutcome> {
+      const stored = storedCheckout(this.key);
+      if (stored) {
+        const outcome = await readCheckout(this.copy.apiBase, stored.token);
+        if (outcome.kind === "ready" && outcome.view.quote.expired)
+          return this.replacementQuote(stored.token);
+        if (outcome.kind !== "denied") return outcome;
+      }
+      return startCheckout(this.copy.apiBase, this.selection, this.copy.lang);
+    }
+
+    private async replacementQuote(token: string): Promise<CheckoutOutcome> {
+      const outcome = await refreshQuote(this.copy.apiBase, token);
+      return outcome.kind === "denied"
+        ? startCheckout(this.copy.apiBase, this.selection, this.copy.lang)
+        : outcome;
+    }
+
+    private ready(outcome: Extract<CheckoutOutcome, { kind: "ready" }>) {
+      const previous = storedCheckout(this.key);
+      const offer = offerKey(outcome.view);
+      const agreed = previous?.agreedOffer === offer;
+      this.token = outcome.token;
+      this.view = outcome.view;
+      storeCheckout({
+        selection: this.key,
+        token: outcome.token,
+        agreedOffer: agreed ? offer : null,
+        accepted: previous?.token === outcome.token ? previous.accepted : null,
+      });
+      this.input("agree").checked = agreed;
+      this.el("[data-changed]").hidden = !previous?.agreedOffer || agreed;
+      this.render(outcome.view);
+      this.el("[data-review]").hidden = false;
+      this.el("[data-status]").textContent = this.text("reservation.review.loaded");
+      this.showAccepted();
+    }
+
+    private render(view: CheckoutView) {
+      const { quote } = view;
+      const set = (selector: string, value: string) => {
+        this.el(selector).textContent = value;
+      };
+      set('[data-stay="room"]', this.copy.rooms[this.search.room!]!.name);
+      set(
+        '[data-stay="dates"]',
+        `${formatDate(view.checkIn, this.copy.lang)} – ${formatDate(view.checkOut, this.copy.lang)} · ${this.count("reservation.nights", view.nights)}`,
+      );
+      const adults = this.count("reservation.adults", view.adults);
+      set(
+        '[data-stay="guests"]',
+        view.children ? `${adults}, ${this.count("reservation.children", view.children)}` : adults,
+      );
+      set('[data-stay="plan"]', this.text(`reservation.plan.${view.ratePlan}`));
+      set('[data-amount="total"]', this.money(quote.totalCents));
+      set('[data-amount="now"]', this.money(quote.requiredInitialPaymentCents));
+      set('[data-amount="remaining"]', this.money(quote.remainingScheduledCents));
+      set("[data-taxes]", this.text("reservation.offer.taxes", { currency: view.currency }));
+      set(
+        "[data-schedule]",
+        this.text(`reservation.review.schedule.${view.ratePlan}`, {
+          now: this.money(quote.requiredInitialPaymentCents),
+          remaining: this.money(quote.remainingScheduledCents),
+        }),
+      );
+      const cancellation = () =>
+        cancellationNodes(quote.cancellation, {
+          text: (key, values) => this.text(key, values),
+          amount: this.money(quote.cancellation.chargeCents),
+          lang: this.copy.lang,
+        });
+      this.el("[data-cancellation]").replaceChildren(...cancellation());
+      this.el("[data-terms-cancellation]").replaceChildren(...cancellation());
+      this.el("[data-nightly]").replaceChildren(
+        ...quote.nights.map((night) => {
+          const item = document.createElement("li");
+          item.className = "flex justify-between gap-4 py-2";
+          const date = document.createElement("time");
+          date.dateTime = night.date;
+          date.textContent = formatDate(night.date, this.copy.lang);
+          const price = document.createElement("span");
+          price.textContent = this.money(night.priceCents);
+          item.append(date, price);
+          return item;
+        }),
+      );
+    }
+
+    private rememberAgreement() {
+      const stored = storedCheckout(this.key);
+      if (!stored || !this.view) return;
+      storeCheckout({
+        ...stored,
+        agreedOffer: this.input("agree").checked ? offerKey(this.view) : null,
+      });
+    }
+
+    private isAccepted() {
+      const stored = storedCheckout(this.key);
+      const quoteId = this.view?.quote.id;
+      return Boolean(
+        quoteId &&
+        this.view?.acceptance?.quoteId === quoteId &&
+        stored?.accepted?.quoteId === quoteId &&
+        stored.accepted.contact === contactKey(this.contact()) &&
+        this.input("agree").checked,
+      );
+    }
+
+    private showAccepted(focus = false) {
+      const accepted = this.isAccepted();
+      const panel = this.el("[data-accepted]");
+      panel.hidden = !accepted;
+      this.el("[data-submit]").hidden = accepted;
+      if (accepted && focus) panel.focus();
+    }
+
+    private showFieldError(id: ContactField | "agree", message: string) {
+      const input = this.input(id);
+      const error = this.el(`#${id}-error`);
+      error.textContent = message;
+      error.hidden = !message;
+      if (message) input.setAttribute("aria-invalid", "true");
+      else input.removeAttribute("aria-invalid");
+    }
+
+    private validate() {
+      const contact = this.contact();
+      const problems: [ContactField | "agree", string][] = [];
+      if (!contact.fullName) problems.push(["fullName", "reservation.review.error.fullName"]);
+      if (!EMAIL.test(contact.email)) problems.push(["email", "reservation.review.error.email"]);
+      if (!contact.phone) problems.push(["phone", "reservation.review.error.phone"]);
+      if (!this.input("agree").checked) problems.push(["agree", "reservation.review.error.agree"]);
+      for (const id of [...contactFields, "agree"] as const) {
+        const problem = problems.find(([field]) => field === id);
+        this.showFieldError(id, problem ? this.text(problem[1]) : "");
+      }
+      if (problems.length) this.input(problems[0]![0]).focus();
+      return problems.length === 0;
+    }
+
+    private accept() {
+      return acceptQuote(this.copy.apiBase, this.token, {
+        quoteId: this.view!.quote.id,
+        language: this.copy.lang,
+        contact: this.contact(),
+      });
+    }
+
+    private async submit() {
+      if (this.busy || !this.view || !this.validate()) return;
+      this.busy = true;
+      const submit = this.el<HTMLButtonElement>("[data-submit]");
+      const formError = this.el("[data-form-error]");
+      formError.textContent = "";
+      submit.setAttribute("aria-disabled", "true");
+      this.el("[data-status]").textContent = this.text("reservation.review.saving");
+      try {
+        let outcome = await this.accept();
+        if (outcome.kind === "expired" || outcome.kind === "denied") {
+          const before = offerKey(this.view);
+          const replacement =
+            outcome.kind === "expired"
+              ? await this.replacementQuote(this.token)
+              : await startCheckout(this.copy.apiBase, this.selection, this.copy.lang);
+          if (replacement.kind !== "ready") outcome = replacement;
+          else {
+            this.ready(replacement);
+            if (offerKey(replacement.view) !== before) {
+              this.el("[data-changed]").focus();
+              return;
+            }
+            outcome = await this.accept();
+          }
+        }
+        this.el("[data-status]").textContent = "";
+        if (outcome.kind === "ready") {
+          this.view = outcome.view;
+          const stored = storedCheckout(this.key);
+          if (stored)
+            storeCheckout({
+              ...stored,
+              accepted: { quoteId: outcome.view.quote.id, contact: contactKey(this.contact()) },
+            });
+          this.showAccepted(true);
+        } else if (outcome.kind === "sold_out") {
+          this.showProblem(outcome);
+        } else if (outcome.kind === "invalid" && contactProblems[outcome.error]) {
+          const [field, key] = contactProblems[outcome.error]!;
+          this.showFieldError(field, this.text(key));
+          this.input(field).focus();
+        } else {
+          formError.textContent = this.text(
+            outcome.kind === "throttled"
+              ? "reservation.review.error.throttled"
+              : "reservation.review.error.unavailable",
+          );
+        }
+      } finally {
+        this.busy = false;
+        submit.removeAttribute("aria-disabled");
+      }
+    }
+
+    private showProblem(problem: Problem) {
+      const [title, body, retry] =
+        problem.kind === "missing"
+          ? ["reservation.review.missing.title", "reservation.review.missing.body", false]
+          : problem.kind === "sold_out"
+            ? ["reservation.review.soldOut.title", "reservation.review.soldOut.body", false]
+            : problem.kind === "throttled"
+              ? ["reservation.review.throttled.title", "reservation.review.throttled.body", true]
+              : problem.kind === "invalid"
+                ? [
+                    "reservation.review.invalid.title",
+                    backendProblems[problem.error] ?? "reservation.problem.invalidSearch",
+                    false,
+                  ]
+                : [
+                    "reservation.review.unavailable.title",
+                    "reservation.review.unavailable.body",
+                    true,
+                  ];
+      this.el("[data-status]").textContent = "";
+      this.el("[data-review]").hidden = true;
+      this.el("[data-problem]").hidden = false;
+      this.el("[data-problem-title]").textContent = this.text(title);
+      this.el("[data-problem-body]").textContent = this.text(body);
+      this.el("[data-retry]").hidden = !retry;
+      this.el("[data-problem-title]").focus();
+    }
+  }
+  customElements.define("reservation-review", ReservationReview);
+</script>

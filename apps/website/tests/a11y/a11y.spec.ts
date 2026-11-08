@@ -67,6 +67,23 @@ for (const lang of ["", "/en"]) {
     await runAxe(page, `${lang}/reservar/habitacion/`);
   });
 
+  test(`a11y: ${lang}/reservar/revisar/ with a quote and contact errors`, async ({ page }) => {
+    const params = new URLSearchParams({ ...openStay(), adults: "2", children: "1" });
+    await page.goto(`${lang}/reservar/revisar/?${params.toString()}&room=king&plan=flexible`);
+    await expect(page.locator('[data-amount="total"]')).toHaveText(/S\//);
+    await page.locator("[data-submit]").click();
+    await expect(page.locator("#fullName")).toHaveAttribute("aria-invalid", "true");
+    await page.locator("details summary").click();
+    await runAxe(page, `${lang}/reservar/revisar/`);
+  });
+
+  test(`a11y: ${lang}/reservar/revisar/ when the room was lost`, async ({ page }) => {
+    const params = new URLSearchParams({ ...doubleSoldOutStay(), adults: "2", children: "0" });
+    await page.goto(`${lang}/reservar/revisar/?${params.toString()}&room=double&plan=flexible`);
+    await expect(page.locator("[data-problem]")).toBeVisible();
+    await runAxe(page, `${lang}/reservar/revisar/ (lost)`);
+  });
+
   test(`a11y: ${lang}/reservar/habitacion/ when the search service fails`, async ({ page }) => {
     await page.route(`${LOCAL_API_URL}/public/offers*`, (route) => route.abort());
     const params = new URLSearchParams({ ...openStay(), adults: "2", children: "0" });

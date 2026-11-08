@@ -14,3 +14,5 @@ export function searchStepHref(lang: Lang, room?: Room["id"]) {
 }
 
 export const chooseStepHref = (lang: Lang) => getRelativeLocaleUrl(lang, "reservar/habitacion");
+
+export const reviewStepHref = (lang: Lang) => getRelativeLocaleUrl(lang, "reservar/revisar");
