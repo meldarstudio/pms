@@ -150,6 +150,11 @@ _Avoid_: Room status, occupancy
 Needs cleaning before the next guest / ready for the next guest.
 _Avoid_: Occupied/vacant, closed/available
 
+**To-clean list**:
+Dirty rooms to clean today: no guest staying tonight, and not closed unless a guest arrives
+today.
+_Avoid_: Cleaning schedule, room status
+
 **Room inventory**:
 The physical room supply per type, measured in rooms, not people.
 _Avoid_: Guest capacity

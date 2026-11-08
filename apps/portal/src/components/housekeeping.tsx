@@ -1,5 +1,6 @@
-import { useState, type ReactNode } from "react";
-import { ChevronDownIcon, SparklesIcon } from "lucide-react";
+import { useEffect, useState, type ReactNode } from "react";
+import { createPortal, flushSync } from "react-dom";
+import { ChevronDownIcon, PrinterIcon, SparklesIcon } from "lucide-react";
 import { PageHeaderActions } from "@/components/page-header-actions";
 import { SetupRequired } from "@/components/setup-required";
 import { Badge } from "@/components/ui/badge";
@@ -251,18 +252,20 @@ function PhoneRow({ view, room, mark }: RoomRowProps) {
   );
 }
 
+function propertyTime(instant: Date) {
+  return new Intl.DateTimeFormat("es-PE", {
+    timeZone: propertyTimeZone(),
+    hour: "numeric",
+    minute: "2-digit",
+    hour12: true,
+  }).format(instant);
+}
+
 function markedLabel(changedAt: string | null, today: string) {
   if (!changedAt) return "—";
   const instant = new Date(changedAt);
   const date = propertyToday(instant);
-  if (date === today) {
-    return new Intl.DateTimeFormat("es-PE", {
-      timeZone: propertyTimeZone(),
-      hour: "numeric",
-      minute: "2-digit",
-      hour12: true,
-    }).format(instant);
-  }
+  if (date === today) return propertyTime(instant);
   const [, month, day] = date.split("-").map(Number);
   return `${day} ${shortMonths[month! - 1]}`;
 }
@@ -518,6 +521,80 @@ function RoomListSkeleton({ view }: { view: HousekeepingView }) {
   );
 }
 
+function useStampedAtPrint() {
+  const [printedAt, setPrintedAt] = useState(() => new Date());
+  useEffect(() => {
+    const stamp = () => flushSync(() => setPrintedAt(new Date()));
+    window.addEventListener("beforeprint", stamp);
+    return () => window.removeEventListener("beforeprint", stamp);
+  }, []);
+  return printedAt;
+}
+
+function longPropertyDate(date: string) {
+  return new Intl.DateTimeFormat("es-PE", {
+    timeZone: "UTC",
+    weekday: "long",
+    day: "numeric",
+    month: "long",
+    year: "numeric",
+  }).format(new Date(`${date}T00:00:00Z`));
+}
+
+function PrintSheet({
+  view,
+  rooms,
+  today,
+}: {
+  view: HousekeepingView;
+  rooms: HousekeepingRoom[];
+  today: string;
+}) {
+  const printedAt = useStampedAtPrint();
+  return createPortal(
+    <section
+      data-print-sheet
+      className="hidden bg-background p-2 text-foreground [print-color-adjust:exact] print:block"
+    >
+      <header className="mb-4 flex items-baseline justify-between gap-4">
+        <h1 className="text-xl font-semibold">{views[view].listLabel}</h1>
+        <p className="text-sm">
+          <span className="inline-block first-letter:uppercase">{longPropertyDate(today)}</span>
+          {" · Impreso "}
+          {propertyTime(printedAt)}
+        </p>
+      </header>
+      <Table aria-label={views[view].listLabel} className="border">
+        <TableHeader>
+          <TableRow>
+            <TableHead scope="col">Habitación</TableHead>
+            <TableHead scope="col">Tipo</TableHead>
+            <TableHead scope="col">Hoy</TableHead>
+            <TableHead scope="col" className="w-12 text-center">
+              ✓
+            </TableHead>
+          </TableRow>
+        </TableHeader>
+        <TableBody>
+          {rooms.map((room) => (
+            <TableRow key={room.id} className="break-inside-avoid">
+              <TableCell className="text-lg font-semibold tabular-nums">{room.number}</TableCell>
+              <TableCell>{room.roomTypeName}</TableCell>
+              <TableCell>
+                <StayBadges room={room} />
+              </TableCell>
+              <TableCell>
+                <div className="mx-auto size-5 border-2 border-foreground" />
+              </TableCell>
+            </TableRow>
+          ))}
+        </TableBody>
+      </Table>
+    </section>,
+    document.body,
+  );
+}
+
 function AllClean() {
   return (
     <Empty className="border">
@@ -539,6 +616,7 @@ export function Housekeeping({
   view: HousekeepingView;
   onViewChange: (view: HousekeepingView) => void;
 }) {
+  const phone = useIsMobile();
   const query = useHousekeeping();
   const missingSetup = useMissingSetup();
   const mark = useMarkRooms();
@@ -573,28 +651,42 @@ export function Housekeeping({
           onRefresh={() => void query.refetch()}
         />
       </PageHeaderActions>
-      <Tabs
-        className="w-full md:w-auto"
-        value={view}
-        onValueChange={(value) => onViewChange(value as HousekeepingView)}
-      >
-        <TabsList aria-label="Vista de limpieza" className="w-full md:w-fit">
-          <TabsTrigger value="to-clean">
-            Por limpiar
-            {list ? (
-              <Badge
-                variant={toClean.length ? "default" : "secondary"}
-                className="h-5 min-w-5 border-0 px-1 tabular-nums"
-              >
-                {toClean.length}
-              </Badge>
-            ) : (
-              <Skeleton className="size-5" />
-            )}
-          </TabsTrigger>
-          <TabsTrigger value="all">Todas</TabsTrigger>
-        </TabsList>
-      </Tabs>
+      <div className="flex items-center gap-2">
+        <Tabs
+          className="w-full md:w-auto"
+          value={view}
+          onValueChange={(value) => onViewChange(value as HousekeepingView)}
+        >
+          <TabsList aria-label="Vista de limpieza" className="w-full md:w-fit">
+            <TabsTrigger value="to-clean">
+              Por limpiar
+              {list ? (
+                <Badge
+                  variant={toClean.length ? "default" : "secondary"}
+                  className="h-5 min-w-5 border-0 px-1 tabular-nums"
+                >
+                  {toClean.length}
+                </Badge>
+              ) : (
+                <Skeleton className="size-5" />
+              )}
+            </TabsTrigger>
+            <TabsTrigger value="all">Todas</TabsTrigger>
+          </TabsList>
+        </Tabs>
+        {!phone && (
+          <Button
+            className="ml-auto"
+            variant="outline"
+            size="sm"
+            disabled={!visible?.length}
+            onClick={() => window.print()}
+          >
+            <PrinterIcon data-icon="inline-start" />
+            Imprimir
+          </Button>
+        )}
+      </div>
       {query.isError && list ? (
         <StaleDataNotice error={query.error} onRetry={() => void query.refetch()} />
       ) : null}
@@ -605,13 +697,16 @@ export function Housekeeping({
       ) : !visible?.length ? (
         <AllClean />
       ) : (
-        <RoomList
-          view={view}
-          rooms={visible}
-          mark={mark}
-          today={list.date}
-          bulk={{ selection, pending: bulkPending, markSelected }}
-        />
+        <>
+          <RoomList
+            view={view}
+            rooms={visible}
+            mark={mark}
+            today={list.date}
+            bulk={{ selection, pending: bulkPending, markSelected }}
+          />
+          <PrintSheet view={view} rooms={visible} today={list.date} />
+        </>
       )}
     </main>
   );
