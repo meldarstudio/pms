@@ -23,7 +23,7 @@ const examples = [
     status: "checked_out",
     payment: "deposit",
     method: "cash",
-    rooms: [{ type: "standard", room: "101", adults: 2 }],
+    rooms: [{ type: "suite-matrimonial", room: "102", adults: 2 }],
   },
   {
     id: "in-house",
@@ -32,7 +32,7 @@ const examples = [
     nights: 4,
     status: "checked_in",
     payment: "deposit",
-    rooms: [{ type: "standard", room: "101", adults: 2, discountCents: 2000 }],
+    rooms: [{ type: "suite-matrimonial", room: "102", adults: 2, discountCents: 2000 }],
   },
   {
     id: "turnover",
@@ -40,14 +40,14 @@ const examples = [
     arrival: 2,
     nights: 3,
     payment: "deposit",
-    rooms: [{ type: "standard", room: "101", adults: 1 }],
+    rooms: [{ type: "suite-matrimonial", room: "102", adults: 1 }],
   },
   {
     id: "arrival",
     name: ["Camila", "O'Brien"],
     arrival: 0,
     nights: 3,
-    rooms: [{ type: "standard", room: "102", adults: 2, discountCents: 1500 }],
+    rooms: [{ type: "suite-matrimonial", room: "103", adults: 2, discountCents: 1500 }],
   },
   {
     id: "upcoming",
@@ -55,21 +55,21 @@ const examples = [
     arrival: 4,
     nights: 4,
     payment: "deposit",
-    rooms: [{ type: "standard", room: "103", adults: 1 }],
+    rooms: [{ type: "suite-matrimonial", room: "104", adults: 1 }],
   },
   {
     id: "alex",
     name: ["Alejandro", "Demo"],
     arrival: 0,
     nights: 1,
-    rooms: [{ type: "standard", adults: 1 }],
+    rooms: [{ type: "suite-matrimonial", adults: 1 }],
   },
   {
     id: "sam",
     name: ["Sofía", "Demo"],
     arrival: 1,
     nights: 3,
-    rooms: [{ type: "deluxe", adults: 2 }],
+    rooms: [{ type: "doble-premium", adults: 2 }],
   },
   {
     id: "jamie",
@@ -78,8 +78,8 @@ const examples = [
     nights: 9,
     payment: "deposit",
     rooms: [
-      { type: "standard", adults: 2, discountCents: 9000 },
-      { type: "suite", adults: 2, children: 2, discountCents: 12000 },
+      { type: "suite-matrimonial", adults: 2, discountCents: 9000 },
+      { type: "suite-familiar", adults: 2, children: 2, discountCents: 12000 },
     ],
   },
   {
@@ -89,7 +89,7 @@ const examples = [
     nights: 2,
     status: "cancelled",
     payment: "deposit",
-    rooms: [{ type: "deluxe", adults: 2, discountCents: 4000 }],
+    rooms: [{ type: "doble-premium", adults: 2, discountCents: 4000 }],
   },
   {
     id: "staff-cancelled",
@@ -97,7 +97,7 @@ const examples = [
     arrival: -1,
     nights: 2,
     status: "cancelled",
-    rooms: [{ type: "standard", adults: 1 }],
+    rooms: [{ type: "suite-matrimonial", adults: 1 }],
   },
   {
     id: "family",
@@ -105,7 +105,7 @@ const examples = [
     arrival: 0,
     nights: 4,
     payment: "full",
-    rooms: [{ type: "suite", room: "301", adults: 2, children: 2, discountCents: 10000 }],
+    rooms: [{ type: "suite-familiar", room: "306", adults: 2, children: 2, discountCents: 10000 }],
   },
   {
     id: "group",
@@ -114,8 +114,8 @@ const examples = [
     nights: 3,
     payment: "deposit",
     rooms: [
-      { type: "deluxe", room: "201", adults: 2, discountCents: 3000 },
-      { type: "deluxe", room: "202", adults: 2, children: 1, discountCents: 5000 },
+      { type: "doble-premium", room: "108", adults: 2, discountCents: 3000 },
+      { type: "doble-premium", room: "201", adults: 2, children: 1, discountCents: 5000 },
     ],
   },
   {
@@ -125,14 +125,22 @@ const examples = [
     nights: 10,
     status: "checked_in",
     payment: "deposit",
-    rooms: [{ type: "standard", room: "105", adults: 1, flatRateCents: 9500, discountCents: 4500 }],
+    rooms: [
+      {
+        type: "suite-matrimonial",
+        room: "106",
+        adults: 1,
+        flatRateCents: 9500,
+        discountCents: 4500,
+      },
+    ],
   },
   {
     id: "next-week",
     name: ["Paola", "Mendoza"],
     arrival: 7,
     nights: 4,
-    rooms: [{ type: "standard", room: "106", adults: 2 }],
+    rooms: [{ type: "suite-matrimonial", room: "107", adults: 2 }],
   },
   {
     id: "suite",
@@ -140,7 +148,7 @@ const examples = [
     arrival: 2,
     nights: 3,
     payment: "full",
-    rooms: [{ type: "suite", room: "302", adults: 2 }],
+    rooms: [{ type: "suite-familiar", room: "309", adults: 2 }],
   },
   {
     id: "departure",
@@ -150,7 +158,7 @@ const examples = [
     status: "checked_in",
     payment: "full",
     method: "other",
-    rooms: [{ type: "deluxe", room: "203", adults: 2 }],
+    rooms: [{ type: "doble-premium", room: "204", adults: 2 }],
   },
   {
     id: "early-departure",
@@ -159,14 +167,14 @@ const examples = [
     nights: 1,
     status: "checked_out",
     payment: "credit",
-    rooms: [{ type: "standard", room: "107", adults: 1, discountCents: 2500 }],
+    rooms: [{ type: "suite-matrimonial", room: "202", adults: 1, discountCents: 2500 }],
   },
   {
     id: "reused-room",
     name: ["Rodrigo", "Soto"],
     arrival: 0,
     nights: 2,
-    rooms: [{ type: "standard", room: "107", adults: 2 }],
+    rooms: [{ type: "suite-matrimonial", room: "202", adults: 2 }],
   },
   {
     id: "split-departure",
@@ -177,12 +185,12 @@ const examples = [
     payment: "deposit",
     rooms: [
       {
-        type: "standard",
-        room: "108",
+        type: "suite-matrimonial",
+        room: "203",
         adults: 1,
         discountCents: 1000,
       },
-      { type: "standard", room: "109", adults: 2, discountCents: 3000 },
+      { type: "suite-matrimonial", room: "206", adults: 2, discountCents: 3000 },
     ],
   },
   {
@@ -190,7 +198,7 @@ const examples = [
     name: ["Ana", "Gutiérrez"],
     arrival: 1,
     nights: 2,
-    rooms: [{ type: "standard", room: "104", adults: 1, fullDiscount: true }],
+    rooms: [{ type: "suite-matrimonial", room: "105", adults: 1, fullDiscount: true }],
   },
   {
     id: "installments",
@@ -199,7 +207,7 @@ const examples = [
     nights: 3,
     status: "checked_in",
     payment: "installments",
-    rooms: [{ type: "deluxe", room: "204", adults: 2, discountCents: 5000 }],
+    rooms: [{ type: "doble-premium", room: "205", adults: 2, discountCents: 5000 }],
   },
   {
     id: "no-show",
@@ -209,7 +217,7 @@ const examples = [
     status: "no_show",
     payments: [{ amount: "first-night", method: "yape" }],
     cancellation: { recorded: 0 },
-    rooms: [{ type: "deluxe", room: "205", adults: 2 }],
+    rooms: [{ type: "doble-premium", room: "207", adults: 2 }],
   },
   {
     id: "no-show-rebooked",
@@ -219,7 +227,7 @@ const examples = [
     status: "no_show",
     payments: [{ amount: "first-night", method: "card" }],
     cancellation: { recorded: 0 },
-    rooms: [{ type: "deluxe", room: "206", adults: 2 }],
+    rooms: [{ type: "doble-premium", room: "208", adults: 2 }],
   },
   {
     id: "rebooked-room",
@@ -227,7 +235,7 @@ const examples = [
     arrival: 0,
     nights: 2,
     payment: "deposit",
-    rooms: [{ type: "deluxe", room: "206", adults: 1 }],
+    rooms: [{ type: "doble-premium", room: "208", adults: 1 }],
   },
   {
     id: "no-show-waived",
@@ -242,7 +250,7 @@ const examples = [
       waivers: [{ amountCents: 15000, reason: "Vuelo cancelado; se acordó devolver una noche." }],
     },
     refunds: [{ amountCents: 15000, method: "transfer", status: "requested" }],
-    rooms: [{ type: "standard", room: "111", adults: 1 }],
+    rooms: [{ type: "suite-matrimonial", room: "210", adults: 1 }],
   },
   {
     id: "no-show-unpaid",
@@ -252,7 +260,7 @@ const examples = [
     nights: 2,
     status: "no_show",
     cancellation: { recorded: -2 },
-    rooms: [{ type: "standard", adults: 1 }],
+    rooms: [{ type: "suite-matrimonial", adults: 1 }],
   },
   {
     id: "cancel-free",
@@ -264,7 +272,7 @@ const examples = [
     payments: [{ amount: "first-night", method: "transfer" }],
     cancellation: { recorded: 0, chargeCents: 0, freeUntil: 8 },
     refunds: [{ amount: "first-night", method: "transfer", status: "requested" }],
-    rooms: [{ type: "standard", adults: 2 }],
+    rooms: [{ type: "suite-matrimonial", adults: 2 }],
   },
   {
     id: "cancel-late-waived",
@@ -280,7 +288,7 @@ const examples = [
       waivers: [{ amountCents: 5000, reason: "Cliente frecuente." }],
     },
     refunds: [{ amountCents: 5000, method: "cash", status: "completed", reference: "CAJA-12" }],
-    rooms: [{ type: "deluxe", adults: 2 }],
+    rooms: [{ type: "doble-premium", adults: 2 }],
   },
   {
     id: "cancel-refund-failed",
@@ -298,7 +306,7 @@ const examples = [
         failure: "La tarjeta del huésped está vencida.",
       },
     ],
-    rooms: [{ type: "deluxe", adults: 1, children: 2 }],
+    rooms: [{ type: "doble-premium", adults: 1, children: 2 }],
   },
   {
     id: "cancel-coupon",
@@ -310,14 +318,14 @@ const examples = [
     payments: [{ amount: "total", method: "plin" }],
     cancellation: { recorded: -3, chargeCents: 0, freeUntil: 4 },
     coupon: { code: "DEMOVALE2026", issued: -3, redeemCents: 10000, redeemedBy: "coupon-redeemer" },
-    rooms: [{ type: "standard", adults: 2 }],
+    rooms: [{ type: "suite-matrimonial", adults: 2 }],
   },
   {
     id: "coupon-redeemer",
     name: ["Teresa", "Cáceres"],
     arrival: 14,
     nights: 2,
-    rooms: [{ type: "standard", adults: 1 }],
+    rooms: [{ type: "suite-matrimonial", adults: 1 }],
   },
   {
     id: "coupon-expired",
@@ -329,7 +337,7 @@ const examples = [
     payments: [{ amount: "first-night", method: "cash", day: -410 }],
     cancellation: { recorded: -403, chargeCents: 0, freeUntil: -402 },
     coupon: { code: "DEMOVENCIDO", issued: -403 },
-    rooms: [{ type: "standard", adults: 1 }],
+    rooms: [{ type: "suite-matrimonial", adults: 1 }],
   },
   {
     id: "restored",
@@ -343,7 +351,7 @@ const examples = [
       freeUntil: 3,
       chargeCents: 0,
     },
-    rooms: [{ type: "standard", room: "112", adults: 2 }],
+    rooms: [{ type: "suite-matrimonial", room: "211", adults: 2 }],
   },
   {
     id: "unfulfilled",
@@ -354,7 +362,7 @@ const examples = [
     status: "unfulfilled",
     plan: "non_refundable",
     payments: [{ amount: "total", method: "card", culqi: "chr_test_demo_unfulfilled" }],
-    rooms: [{ type: "suite", adults: 2, children: 1 }],
+    rooms: [{ type: "suite-familiar", adults: 2, children: 1 }],
   },
   {
     id: "online-prepaid",
@@ -364,7 +372,7 @@ const examples = [
     nights: 2,
     plan: "non_refundable",
     payments: [{ amount: "total", method: "card", culqi: "chr_test_demo_prepaid" }],
-    rooms: [{ type: "deluxe", adults: 1, children: 2 }],
+    rooms: [{ type: "doble-premium", adults: 1, children: 2 }],
   },
   {
     id: "overdue-arrival",
@@ -372,7 +380,7 @@ const examples = [
     arrival: -1,
     nights: 3,
     payment: "deposit",
-    rooms: [{ type: "standard", room: "103", adults: 2 }],
+    rooms: [{ type: "suite-matrimonial", room: "104", adults: 2 }],
   },
   {
     id: "overdue-departure",
@@ -381,7 +389,7 @@ const examples = [
     nights: 2,
     status: "checked_in",
     payment: "deposit",
-    rooms: [{ type: "deluxe", room: "206", adults: 2 }],
+    rooms: [{ type: "doble-premium", room: "208", adults: 2 }],
   },
   {
     id: "in-house-unassigned",
@@ -390,7 +398,7 @@ const examples = [
     nights: 2,
     status: "checked_in",
     payment: "full",
-    rooms: [{ type: "deluxe", adults: 3 }],
+    rooms: [{ type: "doble-premium", adults: 3 }],
   },
   {
     id: "departed-unpaid",
@@ -398,7 +406,7 @@ const examples = [
     arrival: -6,
     nights: 3,
     status: "checked_out",
-    rooms: [{ type: "standard", room: "112", adults: 1 }],
+    rooms: [{ type: "suite-matrimonial", room: "211", adults: 1 }],
   },
   {
     id: "max-stay",
@@ -407,11 +415,11 @@ const examples = [
     arrival: 20,
     nights: 60,
     payment: "deposit",
-    rooms: [{ type: "standard", adults: 1 }],
+    rooms: [{ type: "suite-matrimonial", adults: 1 }],
   },
 ];
 
-const dirtyRooms = ["107", "203", "206"];
+const dirtyRooms = ["202", "204", "208"];
 
 const stayingGuests = {
   "in-house": [
@@ -425,9 +433,9 @@ const inventoryStatuses = ["confirmed", "checked_in", "checked_out"];
 const holdsInventory = (status = "confirmed") => inventoryStatuses.includes(status);
 
 const closures = [
-  { room: "110", starts: -1, ends: 3, reason: "Reparación del baño" },
-  { room: "208", starts: 4, ends: 7, reason: "Mantenimiento del aire acondicionado" },
-  { room: "304", starts: 1, ends: 4, reason: "Cambio de alfombra" },
+  { room: "209", starts: -1, ends: 3, reason: "Reparación del baño" },
+  { room: "301", starts: 4, ends: 7, reason: "Mantenimiento del aire acondicionado" },
+  { room: "409", starts: 1, ends: 4, reason: "Cambio de alfombra" },
 ];
 
 function busyExamples() {
@@ -644,10 +652,13 @@ export function buildResetSql(value) {
     baseRates.set(match[1], Number(match[2]));
   }
   const overrides = new Map();
+  const fridayAndSaturday = [5, 6];
+  const weekendSurchargeCents = 4000;
   for (const [type, baseRate] of baseRates) {
-    for (const offset of [4, 5, 11, 12]) {
+    for (let offset = -60; offset < 90; offset++) {
       const day = date(offset);
-      const price = baseRate + 2000;
+      if (!fridayAndSaturday.includes(new Date(`${day}T00:00:00.000Z`).getUTCDay())) continue;
+      const price = baseRate + weekendSurchargeCents;
       overrides.set(`${type}:${day}`, price);
       statements.push(
         insert("room_type_rates", {
