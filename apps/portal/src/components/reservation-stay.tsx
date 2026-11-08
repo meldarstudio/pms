@@ -6,11 +6,9 @@ import type { ReservationEditorTarget } from "@/components/reservation-page-edit
 import { ReservationSection } from "@/components/reservation-section";
 import { Button } from "@/components/ui/button";
 import type { ReservationDetail } from "@/lib/api";
-import { format, nightsBetween } from "@/lib/dates";
+import { format, nightsBetween, nightsLabel } from "@/lib/dates";
 import { ratePlanLabels } from "@/lib/rate-plans";
 import { occupantsLabel } from "@/lib/reservation-list";
-
-const nightsLabel = (count: number) => `${count} ${count === 1 ? "noche" : "noches"}`;
 
 export function StaySection({
   detail,

@@ -22,3 +22,5 @@ export const longDate = (day: string) =>
     year: "numeric",
     timeZone: "UTC",
   }).format(new Date(`${day}T12:00:00Z`));
+
+export const nightsLabel = (count: number) => `${count} ${count === 1 ? "noche" : "noches"}`;

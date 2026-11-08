@@ -19,6 +19,7 @@ import {
   SheetHeader,
   SheetTitle,
 } from "@/components/ui/sheet";
+import { nightsLabel } from "@/lib/dates";
 import { useIsMobile } from "@/hooks/use-mobile";
 import type { ReservationDetail } from "@/lib/api";
 import type { ReservationStay } from "@/lib/assignment-availability";
@@ -28,8 +29,6 @@ import { occupantsLabel } from "@/lib/reservation-list";
 import { useRoomAssignment } from "@/lib/use-room-assignment";
 
 type Line = ReservationDetail["rooms"][number];
-
-const nightsLabel = (count: number) => `${count} ${count === 1 ? "noche" : "noches"}`;
 
 function typeName(line: Line) {
   return line.roomTypeName || "Habitación";

@@ -39,7 +39,7 @@ export function ReservationOverview({
   onDiscountDraftChange?: (changed: boolean) => void;
 }) {
   const lifecycle = useLifecycleAction(detail, lifecycleBlocked || disabled);
-  const phone = useIsMobile();
+  const isMobile = useIsMobile();
   return (
     <fieldset disabled={disabled} aria-busy={disabled} className="min-w-0">
       <div className="grid min-w-0 gap-6 xl:-my-6 xl:-mr-6 xl:grid-cols-[minmax(0,1fr)_24rem] xl:grid-rows-[auto_1fr]">
@@ -60,7 +60,7 @@ export function ReservationOverview({
               </div>
             </div>
             <div className="col-start-2 row-start-1 flex items-center gap-2 md:col-start-3">
-              {!phone && (
+              {!isMobile && (
                 <Button variant="outline" size="sm" onClick={() => window.print()}>
                   <PrinterIcon data-icon="inline-start" />
                   Imprimir

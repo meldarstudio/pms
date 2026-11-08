@@ -19,14 +19,13 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import type { ReservationDetail } from "@/lib/api";
-import { format, nightsBetween } from "@/lib/dates";
+import { format, nightsBetween, nightsLabel } from "@/lib/dates";
 import { formatMoney } from "@/lib/money";
 import { phoneDisplay } from "@/lib/phone";
 import { propertyToday } from "@/lib/property-calendar";
 import { ratePlanLabels } from "@/lib/rate-plans";
 import { occupantsLabel, reservationStatusLabel } from "@/lib/reservation-list";
 
-const nightsLabel = (count: number) => `${count} ${count === 1 ? "noche" : "noches"}`;
 const shortDate = (day: string) => format(parseISO(day), "d MMM yyyy");
 const methodLabel = (method: string) =>
   paymentMethods.find((entry) => entry.value === method)?.label ?? method;
