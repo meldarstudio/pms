@@ -11,6 +11,13 @@ const messages: Record<string, string> = {
   "too many quotes": "Demasiadas cotizaciones. Espera un minuto e inténtalo de nuevo.",
   "invalid checkout token": "No se pudo verificar la reserva en curso. Vuelve a empezar.",
   "agreement must be accepted": "Debes aceptar las condiciones de la reserva.",
+  "too many acceptances for this checkout":
+    "Esta reserva en curso se modificó demasiadas veces. Vuelve a empezar.",
+  "quote was replaced by a newer quote":
+    "Esta cotización fue reemplazada por una más reciente. Revisa el precio actual.",
+  "full name is required": "Ingresa el nombre completo.",
+  "email is required": "Ingresa el correo electrónico.",
+  "phone is required": "Ingresa el teléfono.",
   "unknown language": "Idioma no admitido.",
   unauthorized: "Tu sesión terminó. Inicia sesión de nuevo.",
   "owner account required": "Solo la cuenta del propietario puede hacer esto.",

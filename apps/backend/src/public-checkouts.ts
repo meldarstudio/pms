@@ -1,18 +1,24 @@
 import type { CheckoutAcceptance, PublicCheckoutCreate } from "@pms/shared";
-import { and, desc, eq, sql } from "drizzle-orm";
+import { and, count, desc, eq, sql } from "drizzle-orm";
 import { runBatch, type Db } from "./db";
 import { checkoutAcceptances, publicCheckouts, quotes } from "./db/schema";
 import { HttpError } from "./http";
-import { nightsBetween } from "./lib/dates";
+import { addDays, nightsBetween } from "./lib/dates";
 import { offerAmounts } from "./public-offers";
 import { priceQuote, quoteExpired, type Quote } from "./quotes";
-import { acceptPhone } from "./rules";
+import { acceptPhone, requireOnlineArrival } from "./rules";
 
 export type PublicCheckout = typeof publicCheckouts.$inferSelect;
+
+type CheckoutAcceptanceRow = typeof checkoutAcceptances.$inferSelect;
 
 type CheckoutContext = { today: string; now: Date; published: string[] };
 
 const TOKEN_BYTES = 32;
+const TOKEN_LENGTH = Math.ceil((TOKEN_BYTES * 4) / 3);
+const BEARER_TOKEN = new RegExp(`^bearer ([\\w-]{${TOKEN_LENGTH}})$`, "i");
+const ACCESS_DAYS_AFTER_CHECKOUT = 30;
+const MAX_ACCEPTANCES_PER_CHECKOUT = 20;
 
 function newToken() {
   const bytes = crypto.getRandomValues(new Uint8Array(TOKEN_BYTES));
@@ -26,6 +32,9 @@ async function tokenHash(token: string) {
   const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(token));
   return [...new Uint8Array(digest)].map((byte) => byte.toString(16).padStart(2, "0")).join("");
 }
+
+const accessUntil = (checkout: Pick<PublicCheckout, "checkOut">) =>
+  addDays(checkout.checkOut, ACCESS_DAYS_AFTER_CHECKOUT);
 
 async function availableQuote(db: Db, checkout: PublicCheckout, context: CheckoutContext) {
   if (!context.published.includes(checkout.roomTypeId))
@@ -62,15 +71,20 @@ export async function startCheckout(db: Db, input: PublicCheckoutCreate, context
   return { token, view: presentCheckout(checkout, quote, null, context) };
 }
 
-export async function checkoutForToken(db: Db, authorization: string | undefined) {
-  const token = /^Bearer ([\w-]{43})$/.exec(authorization ?? "")?.[1];
+export async function checkoutForToken(
+  db: Db,
+  authorization: string | undefined,
+  context: Pick<CheckoutContext, "today">,
+) {
+  const token = BEARER_TOKEN.exec(authorization ?? "")?.[1];
   const [checkout] = token
     ? await db
         .select()
         .from(publicCheckouts)
         .where(eq(publicCheckouts.tokenHash, await tokenHash(token)))
     : [];
-  if (!checkout) throw new HttpError(401, "invalid checkout token");
+  if (!checkout || context.today > accessUntil(checkout))
+    throw new HttpError(401, "invalid checkout token");
   return checkout;
 }
 
@@ -86,24 +100,51 @@ export async function acceptCheckoutQuote(
   input: CheckoutAcceptance,
   context: CheckoutContext,
 ) {
-  const [quote] = await db
-    .select()
-    .from(quotes)
-    .where(and(eq(quotes.id, input.quoteId), eq(quotes.checkoutId, checkout.id)));
-  if (!quote) throw new HttpError(404, "quote not found");
+  requireOnlineArrival(checkout.checkIn, context.today);
+  const quote = await latestQuote(db, checkout.id);
+  if (quote.id !== input.quoteId) {
+    const [older] = await db
+      .select({ id: quotes.id })
+      .from(quotes)
+      .where(and(eq(quotes.id, input.quoteId), eq(quotes.checkoutId, checkout.id)));
+    if (!older) throw new HttpError(404, "quote not found");
+    throw new HttpError(409, "quote was replaced by a newer quote");
+  }
   if (quoteExpired(quote, context.now)) throw new HttpError(400, "quote has expired");
-  const acceptance = {
-    id: crypto.randomUUID(),
-    checkoutId: checkout.id,
+  const terms = {
     quoteId: quote.id,
     ...input.contact,
     phone: acceptPhone(input.contact.phone),
     language: input.language,
+  };
+  const previous = await latestAcceptance(db, checkout.id);
+  if (previous && sameAcceptance(previous, terms))
+    return presentCheckout(checkout, quote, previous, context);
+  const [{ accepted }] = await db
+    .select({ accepted: count() })
+    .from(checkoutAcceptances)
+    .where(eq(checkoutAcceptances.checkoutId, checkout.id));
+  if (accepted >= MAX_ACCEPTANCES_PER_CHECKOUT)
+    throw new HttpError(429, "too many acceptances for this checkout");
+  const acceptance: CheckoutAcceptanceRow = {
+    id: crypto.randomUUID(),
+    checkoutId: checkout.id,
+    ...terms,
     acceptedAt: context.now.toISOString(),
   };
   await db.insert(checkoutAcceptances).values(acceptance);
-  return presentCheckout(checkout, await latestQuote(db, checkout.id), acceptance, context);
+  return presentCheckout(checkout, quote, acceptance, context);
 }
+
+const sameAcceptance = (
+  previous: CheckoutAcceptanceRow,
+  next: Pick<CheckoutAcceptanceRow, "quoteId" | "fullName" | "email" | "phone" | "language">,
+) =>
+  previous.quoteId === next.quoteId &&
+  previous.fullName === next.fullName &&
+  previous.email === next.email &&
+  previous.phone === next.phone &&
+  previous.language === next.language;
 
 export async function readCheckout(db: Db, checkout: PublicCheckout, context: CheckoutContext) {
   const [quote, acceptance] = await Promise.all([
@@ -120,10 +161,11 @@ async function latestQuote(db: Db, checkoutId: string) {
     .where(eq(quotes.checkoutId, checkoutId))
     .orderBy(desc(quotes.createdAt), desc(sql`rowid`))
     .limit(1);
-  return quote!;
+  if (!quote) throw new Error(`public checkout ${checkoutId} has no quote`);
+  return quote;
 }
 
-export async function latestAcceptance(db: Db, checkoutId: string) {
+async function latestAcceptance(db: Db, checkoutId: string) {
   const [acceptance] = await db
     .select()
     .from(checkoutAcceptances)
@@ -136,7 +178,7 @@ export async function latestAcceptance(db: Db, checkoutId: string) {
 function presentCheckout(
   checkout: PublicCheckout,
   quote: Quote,
-  acceptance: { quoteId: string; acceptedAt: string } | null,
+  acceptance: CheckoutAcceptanceRow | null,
   context: Pick<CheckoutContext, "today" | "now">,
 ) {
   return {
@@ -147,10 +189,11 @@ function presentCheckout(
     adults: checkout.adults,
     children: checkout.children,
     ratePlan: checkout.ratePlan,
-    language: checkout.language,
+    language: acceptance?.language ?? checkout.language,
     quote: {
       id: quote.id,
       expired: quoteExpired(quote, context.now),
+      expiresAt: quote.expiresAt,
       nights: quote.nights.map(({ date, priceCents }) => ({ date, priceCents })),
       ...offerAmounts(quote, context.today),
     },

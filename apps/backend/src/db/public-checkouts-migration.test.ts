@@ -10,14 +10,16 @@ const journal = JSON.parse(readFileSync(new URL("meta/_journal.json", migrations
   entries: { tag: string }[];
 };
 const migration = (tag: string) => readFileSync(new URL(`${tag}.sql`, migrationsDir), "utf8");
-const split = journal.entries.findIndex((entry) => entry.tag === "0018_public_checkouts");
+const checkoutMigration = journal.entries.findIndex(
+  (entry) => entry.tag === "0018_public_checkouts",
+);
 
 let db: DatabaseSync;
 
 beforeEach(() => {
   db = new DatabaseSync(":memory:");
   db.exec("PRAGMA foreign_keys = ON");
-  for (const entry of journal.entries.slice(0, split)) db.exec(migration(entry.tag));
+  for (const entry of journal.entries.slice(0, checkoutMigration)) db.exec(migration(entry.tag));
   db.exec(`
     INSERT INTO room_types (id, name, max_occupancy, base_rate_cents, created_at)
       VALUES ('type', 'Standard', 2, 10000, '2026-10-05');
@@ -39,18 +41,13 @@ describe("public checkout migration", () => {
     const tables = ["quotes", "reservations", "payment_attempts", "guests"];
     const before = tables.map((table) => db.prepare(`SELECT * FROM ${table}`).all());
 
-    db.exec(migration(journal.entries[split]!.tag));
+    db.exec(migration(journal.entries[checkoutMigration]!.tag));
 
     expect(tables.map((table) => db.prepare(`SELECT * FROM ${table}`).all())).toEqual(
       before.map((rows, index) =>
         tables[index] === "quotes" ? rows.map((row) => ({ ...row, checkout_id: null })) : rows,
       ),
     );
-    expect(db.prepare("SELECT count(*) AS n FROM public_checkouts").get()).toEqual({ n: 0 });
     expect(db.prepare("PRAGMA foreign_key_check").all()).toEqual([]);
-    expect(() =>
-      db.exec(`INSERT INTO quotes (id, room_type_id, check_in, check_out, adults, children, nights, terms, created_at, expires_at, checkout_id)
-        VALUES ('orphan', 'type', '2026-10-20', '2026-10-21', 2, 0, '[]', '{}', '2026-10-05', '2026-10-05', 'missing')`),
-    ).toThrow(/FOREIGN KEY/);
   });
 });

@@ -39,7 +39,10 @@ const guestContext = (c: Context<Env>) => ({
 const limitNewQuotes = limitBySourceIp("QUOTE_LIMITER", "too many quotes");
 
 const requireCheckout = createMiddleware<Env>(async (c, next) => {
-  c.set("checkout", await checkoutForToken(getDb(c.env.DB), c.req.header("authorization")));
+  c.set(
+    "checkout",
+    await checkoutForToken(getDb(c.env.DB), c.req.header("authorization"), guestContext(c)),
+  );
   return next();
 });
 

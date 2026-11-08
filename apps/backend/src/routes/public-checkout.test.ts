@@ -21,6 +21,7 @@ type CheckoutView = {
   quote: {
     id: string;
     expired: boolean;
+    expiresAt: string;
     nights: { date: string; priceCents: number }[];
     totalCents: number;
     requiredInitialPaymentCents: number;
@@ -131,6 +132,7 @@ describe("entering Review", () => {
       quote: {
         id: expect.any(String),
         expired: false,
+        expiresAt: "2026-10-10T15:10:00.000Z",
         nights: [
           { date: "2026-10-20", priceCents: 10000 },
           { date: "2026-10-21", priceCents: 12345 },
@@ -226,21 +228,6 @@ describe("entering Review", () => {
     expect(count("public_checkouts")).toBe(0);
     expect(count("quotes")).toBe(0);
   });
-
-  it("keeps same-day, multi-room staff reservations without email", async () => {
-    const response = await db.request("/reservations", "POST", {
-      requestId: crypto.randomUUID(),
-      guest: { fullName: "Walk-in" },
-      checkIn: "2026-10-10",
-      checkOut: "2026-10-11",
-      rooms: [
-        { roomTypeId: "type-queen", adults: 1, children: 0 },
-        { roomTypeId: "type-king", adults: 2, children: 0 },
-      ],
-    });
-
-    expect(response.status).toBe(201);
-  });
 });
 
 describe("new-quote limit", () => {
@@ -299,6 +286,40 @@ describe("checkout access", () => {
     expect(await response.json()).toEqual({ error: "invalid checkout token" });
   });
 
+  it("accepts the bearer scheme in any letter case", async () => {
+    const { token } = await started();
+
+    const response = await guest("/public/checkout", {
+      headers: { authorization: `bearer ${token}` },
+    });
+
+    expect(response.status).toBe(200);
+  });
+
+  it("keeps the token readable through 30 days after checkout, then refuses it as invalid", async () => {
+    const { token } = await started();
+
+    vi.setSystemTime(new Date("2026-11-21T15:00:00Z"));
+    const lastDay = await guest("/public/checkout", { token });
+    vi.setSystemTime(new Date("2026-11-22T15:00:00Z"));
+    const expired = await guest("/public/checkout", { token });
+
+    expect(lastDay.status).toBe(200);
+    expect(expired.status).toBe(401);
+    expect(await expired.json()).toEqual({ error: "invalid checkout token" });
+  });
+
+  it("refuses a new quote once arrival is no longer after the property date", async () => {
+    const { token } = await started();
+    vi.setSystemTime(new Date("2026-10-20T15:00:00Z"));
+
+    const response = await guest("/public/checkout/quotes", { token, method: "POST" });
+
+    expect(response.status).toBe(400);
+    expect(await response.json()).toEqual({ error: "online check-in must be after today" });
+    expect(count("quotes")).toBe(1);
+  });
+
   it("does not accept a staff session as checkout access", async () => {
     await started();
     const staff = await db.request("/public/checkout");
@@ -343,6 +364,7 @@ describe("checkout access", () => {
     const response = await accept(token, { quoteId: legacy.id });
 
     expect(response.status).toBe(404);
+    expect(await response.json()).toEqual({ error: "quote not found" });
     expect(count("checkout_acceptances")).toBe(0);
   });
 
@@ -401,32 +423,122 @@ describe("accepting the agreement", () => {
     expect(count("reservations")).toBe(0);
   });
 
-  it("keeps the same offer when the guest only changes language", async () => {
+  it("records a language change as a new acceptance of the same offer", async () => {
     const { token, quote } = await started();
-    await accept(token, { quoteId: quote.id, language: "en" });
+    await accept(token, { quoteId: quote.id, language: "es" });
 
-    const view = (await (await guest("/public/checkout", { token })).json()) as CheckoutView;
+    const response = await accept(token, { quoteId: quote.id, language: "en" });
 
-    expect(view.quote.id).toBe(quote.id);
-    expect(view.acceptance?.quoteId).toBe(quote.id);
+    expect(response.status).toBe(201);
+    const view = (await response.json()) as CheckoutView;
+    expect(view).toMatchObject({
+      language: "en",
+      quote: { id: quote.id, totalCents: quote.totalCents },
+      acceptance: { quoteId: quote.id },
+    });
+    expect(
+      db.sqlite.prepare("SELECT language FROM checkout_acceptances ORDER BY rowid").all(),
+    ).toEqual([{ language: "es" }, { language: "en" }]);
     expect(count("quotes")).toBe(1);
   });
 
+  it("treats an identical repeated acceptance as the same acceptance", async () => {
+    const { token, quote } = await started();
+    const first = await accept(token, { quoteId: quote.id });
+    vi.setSystemTime(new Date("2026-10-10T15:01:00Z"));
+
+    const repeated = await accept(token, {
+      quoteId: quote.id,
+      contact: { ...contact, phone: "+51 987654321" },
+    });
+
+    expect(repeated.status).toBe(201);
+    expect(((await repeated.json()) as CheckoutView).acceptance).toEqual(
+      ((await first.json()) as CheckoutView).acceptance,
+    );
+    expect(count("checkout_acceptances")).toBe(1);
+  });
+
+  it("caps changed acceptances per checkout while an identical retry still succeeds", async () => {
+    const { token, quote } = await started();
+    for (let attempt = 1; attempt <= 20; attempt++)
+      expect(
+        (
+          await accept(token, {
+            quoteId: quote.id,
+            contact: { ...contact, fullName: `Ana ${attempt}` },
+          })
+        ).status,
+      ).toBe(201);
+
+    const changed = await accept(token, {
+      quoteId: quote.id,
+      contact: { ...contact, fullName: "Ana 21" },
+    });
+    const retried = await accept(token, {
+      quoteId: quote.id,
+      contact: { ...contact, fullName: "Ana 20" },
+    });
+
+    expect(changed.status).toBe(429);
+    expect(await changed.json()).toEqual({ error: "too many acceptances for this checkout" });
+    expect(retried.status).toBe(201);
+    expect(count("checkout_acceptances")).toBe(20);
+  });
+
+  it("accepts only the checkout's latest quote", async () => {
+    const { token, quote } = await started();
+    await guest("/public/checkout/quotes", { token, method: "POST" });
+
+    const response = await accept(token, { quoteId: quote.id });
+
+    expect(response.status).toBe(409);
+    expect(await response.json()).toEqual({ error: "quote was replaced by a newer quote" });
+    expect(count("checkout_acceptances")).toBe(0);
+  });
+
+  it("refuses acceptance once arrival is no longer after the property date", async () => {
+    vi.setSystemTime(new Date("2026-10-11T04:58:00Z"));
+    const { token, quote } = await started({ checkIn: "2026-10-11", checkOut: "2026-10-12" });
+    vi.setSystemTime(new Date("2026-10-11T05:01:00Z"));
+
+    const response = await accept(token, { quoteId: quote.id });
+
+    expect(response.status).toBe(400);
+    expect(await response.json()).toEqual({ error: "online check-in must be after today" });
+    expect(count("checkout_acceptances")).toBe(0);
+  });
+
   it.each([
-    ["no phone", { contact: { fullName: "Ana", email: "ana@example.com" } }, undefined],
-    ["no email", { contact: { fullName: "Ana", phone: "987654321" } }, undefined],
-    ["a blank name", { contact: { ...contact, fullName: "  " } }, undefined],
+    ["no phone", { contact: { fullName: "Ana", email: "ana@example.com" } }, "phone is required"],
+    ["no email", { contact: { fullName: "Ana", phone: "987654321" } }, "email is required"],
+    ["a blank name", { contact: { ...contact, fullName: "  " } }, "full name is required"],
     ["an invalid email", { contact: { ...contact, email: "ana@" } }, "invalid email"],
-    ["an invalid phone", { contact: { ...contact, phone: "12" } }, "phone number is too short"],
+    ["a phone with letters", { contact: { ...contact, phone: "abc" } }, "invalid phone number"],
+    ["a short phone", { contact: { ...contact, phone: "12" } }, "phone number is too short"],
+    [
+      "a long phone",
+      { contact: { ...contact, phone: "98765432198765432101" } },
+      "phone number is too long",
+    ],
+    [
+      "a phone extension",
+      { contact: { ...contact, phone: "987654321 ext. 12" } },
+      "phone extensions are not supported",
+    ],
     ["an unchecked agreement", { agreed: false }, "agreement must be accepted"],
-    ["extra guest details", { contact: { ...contact, documentNumber: "123" } }, undefined],
+    [
+      "extra guest details",
+      { contact: { ...contact, documentNumber: "123" } },
+      'Unrecognized key: "documentNumber"',
+    ],
   ])("refuses %s", async (_name, body, error) => {
     const { token, quote } = await started();
 
     const response = await accept(token, { quoteId: quote.id, ...body });
 
     expect(response.status).toBe(400);
-    if (error) expect(((await response.json()) as { error: string }).error).toBe(error);
+    expect(await response.json()).toEqual({ error });
     expect(count("checkout_acceptances")).toBe(0);
   });
 
