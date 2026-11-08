@@ -1,4 +1,6 @@
+import type { Env } from "./env";
 import { HttpError } from "./http";
+import { loopbackUrl } from "./loopback";
 
 const API = "https://api.culqi.com/v2";
 const TIMEOUT_MS = 20_000;
@@ -68,12 +70,14 @@ function antifraudDetails(request: ChargeRequest) {
 
 export function culqiClient(options: {
   secretKey: string | undefined;
+  localApiUrl?: string;
   fetch?: typeof globalThis.fetch;
 }): Culqi {
   const send = options.fetch ?? ((...args) => globalThis.fetch(...args));
+  const api = loopbackUrl(options.localApiUrl) ?? API;
   async function call(method: string, path: string, body?: unknown): Promise<Response> {
     if (!options.secretKey) throw new HttpError(503, "Culqi is not configured");
-    const response = await send(`${API}${path}`, {
+    const response = await send(`${api}${path}`, {
       method,
       headers: {
         authorization: `Bearer ${options.secretKey}`,
@@ -165,3 +169,6 @@ export function culqiClient(options: {
     },
   };
 }
+
+export const culqiForEnv = (env: Pick<Env["Bindings"], "CULQI_SECRET_KEY" | "CULQI_API_URL">) =>
+  culqiClient({ secretKey: env.CULQI_SECRET_KEY, localApiUrl: env.CULQI_API_URL });

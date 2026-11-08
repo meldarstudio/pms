@@ -1,7 +1,7 @@
 import type { PaymentAttemptCreate, PaymentAuthentication } from "@pms/shared";
-import { and, eq, gt, inArray, lt, lte, ne, or, sql } from "drizzle-orm";
+import { and, desc, eq, gt, inArray, lt, lte, ne, or, sql } from "drizzle-orm";
 import {
-  culqiClient,
+  culqiForEnv,
   isSuccessfulCharge,
   type ChargeResult,
   type Culqi,
@@ -17,8 +17,10 @@ import { propertyCalendar } from "./property-calendar";
 import { quoteExpired, saveQuote } from "./quotes";
 import { acceptPhone } from "./rules";
 
-type Attempt = typeof paymentAttempts.$inferSelect;
+export type Attempt = typeof paymentAttempts.$inferSelect;
 type Quote = typeof quotes.$inferSelect;
+
+export type PublicCheckoutProvenance = Pick<Attempt, "checkoutId" | "acceptanceId" | "language">;
 
 export type PaymentContext = {
   culqi: Culqi;
@@ -34,11 +36,35 @@ const LOOKUP_SLACK = MINUTE;
 export const LOOKUP_DELAY_MS = 10_000;
 
 const PAID: AttemptStatus[] = ["succeeded", "saved"];
+const OPEN: AttemptStatus[] = ["unknown", "review", ...PAID];
+
+export const paymentDelayed = (attempt: Pick<Attempt, "status" | "calledAt">) =>
+  attempt.status === "unknown" && Date.now() - Date.parse(attempt.calledAt) > DELAYED_AFTER;
+
+export async function latestCheckoutAttempt(
+  db: Db,
+  checkoutId: string,
+  options: { open?: boolean } = {},
+) {
+  const [attempt] = await db
+    .select()
+    .from(paymentAttempts)
+    .where(
+      and(
+        eq(paymentAttempts.checkoutId, checkoutId),
+        options.open ? inArray(paymentAttempts.status, OPEN) : undefined,
+      ),
+    )
+    .orderBy(desc(paymentAttempts.createdAt), desc(sql`rowid`))
+    .limit(1);
+  return attempt ?? null;
+}
 
 export async function startPaymentAttempt(
   db: Db,
   input: PaymentAttemptCreate,
   context: PaymentContext,
+  publicCheckout?: PublicCheckoutProvenance,
 ) {
   const quote = await findQuote(db, input.quoteId);
   const now = new Date();
@@ -51,7 +77,11 @@ export async function startPaymentAttempt(
     .where(eq(paymentAttempts.quoteId, quote.id));
   if (previous.some((attempt) => PAID.includes(attempt.status)))
     throw new HttpError(409, "quote is already paid");
-  if (previous.some((attempt) => attempt.status === "unknown"))
+  if (
+    previous.some(
+      (attempt) => attempt.status === "unknown" || (publicCheckout && attempt.status === "review"),
+    )
+  )
     throw new HttpError(409, PAYMENT_PENDING);
   await db
     .update(paymentAttempts)
@@ -74,6 +104,10 @@ export async function startPaymentAttempt(
     failureMessage: null,
     culqiChargeId: null,
     reservationId: null,
+    checkoutId: publicCheckout?.checkoutId ?? null,
+    acceptanceId: publicCheckout?.acceptanceId ?? null,
+    language: publicCheckout?.language ?? null,
+    confirmationEmailEligible: publicCheckout !== undefined,
   };
   try {
     await db.insert(paymentAttempts).values(attempt);
@@ -111,13 +145,17 @@ export async function authenticatePaymentAttempt(
 }
 
 export async function paymentAttemptStatus(db: Db, attemptId: string, context: PaymentContext) {
+  return present(db, await refreshPaymentAttempt(db, attemptId, context));
+}
+
+export async function refreshPaymentAttempt(db: Db, attemptId: string, context: PaymentContext) {
   await expireReviews(db, attemptId);
   const attempt = await findAttempt(db, attemptId);
   try {
-    return await present(db, await resolve(db, attempt, context));
+    return await resolve(db, attempt, context);
   } catch (error) {
     console.error("payment attempt", attempt.id, error);
-    return present(db, await findAttempt(db, attemptId));
+    return findAttempt(db, attemptId);
   }
 }
 
@@ -230,25 +268,26 @@ async function fulfill(db: Db, attempt: Attempt, context: PaymentContext): Promi
     culqiChargeId: attempt.culqiChargeId,
   };
   const unfulfilled = quote.checkIn < today || (await rebooked(db, quote, attempt.email));
+  const saved = { payment, publicCheckoutId: attempt.checkoutId };
   let reservationId: string;
   try {
     reservationId = await saveQuote(db, quote.id, attempt.guest, {
       status: unfulfilled ? "unfulfilled" : "confirmed",
-      payment,
+      ...saved,
     });
   } catch (error) {
     if (!(error instanceof HttpError && error.message === "no availability")) throw error;
     reservationId = await saveQuote(db, quote.id, attempt.guest, {
       status: "unfulfilled",
-      payment,
+      ...saved,
     });
   }
-  const [saved] = await db
+  const [recorded] = await db
     .update(paymentAttempts)
     .set({ status: "saved", reservationId })
     .where(and(eq(paymentAttempts.id, attempt.id), eq(paymentAttempts.status, "succeeded")))
     .returning();
-  return saved ?? findAttempt(db, attempt.id);
+  return recorded ?? findAttempt(db, attempt.id);
 }
 
 async function rebooked(db: Db, quote: Quote, email: string) {
@@ -304,7 +343,7 @@ async function findQuote(db: Db, id: string) {
   return quote;
 }
 
-async function findAttempt(db: Db, id: string) {
+export async function findAttempt(db: Db, id: string) {
   const [attempt] = await db.select().from(paymentAttempts).where(eq(paymentAttempts.id, id));
   if (!attempt) throw new HttpError(404, "payment attempt not found");
   return attempt;
@@ -323,8 +362,7 @@ async function present(db: Db, attempt: Attempt) {
     amountCents: attempt.amountCents,
     currency: attempt.currency,
     status: attempt.status,
-    delayed:
-      attempt.status === "unknown" && Date.now() - Date.parse(attempt.calledAt) > DELAYED_AFTER,
+    delayed: paymentDelayed(attempt),
     failure:
       attempt.status === "failed"
         ? { code: attempt.failureCode, message: attempt.failureMessage }
@@ -345,7 +383,7 @@ export const paymentContext = (
   env: Env["Bindings"],
   waitUntil?: (task: Promise<unknown>) => void,
 ): PaymentContext => ({
-  culqi: culqiClient({ secretKey: env.CULQI_SECRET_KEY }),
+  culqi: culqiForEnv(env),
   currency: env.CURRENCY || "PEN",
   timeZone: env.PROPERTY_TIME_ZONE,
   later: waitUntil && lookUpLater(waitUntil),

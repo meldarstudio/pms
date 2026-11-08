@@ -20,6 +20,11 @@ export type Env = {
     LOGIN_LIMITER: RateLimit;
     SEARCH_LIMITER: RateLimit;
     QUOTE_LIMITER: RateLimit;
+    PAYMENT_IP_LIMITER: RateLimit;
+    PAYMENT_CHECKOUT_LIMITER: RateLimit;
     CULQI_SECRET_KEY?: string;
+    CULQI_API_URL?: string;
+    TURNSTILE_SECRET_KEY?: string;
+    TURNSTILE_VERIFY_URL?: string;
   };
 };

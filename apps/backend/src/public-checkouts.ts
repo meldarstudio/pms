@@ -3,6 +3,7 @@ import { and, count, desc, eq, sql } from "drizzle-orm";
 import { runBatch, type Db } from "./db";
 import { checkoutAcceptances, publicCheckouts, quotes } from "./db/schema";
 import { HttpError } from "./http";
+import { latestCheckoutAttempt } from "./payment-attempts";
 import { addDays, nightsBetween } from "./lib/dates";
 import { offerAmounts } from "./public-offers";
 import { priceQuote, quoteExpired, type Quote } from "./quotes";
@@ -88,7 +89,11 @@ export async function checkoutForToken(
   return checkout;
 }
 
+export const CHECKOUT_HAS_PAYMENT = "checkout already has a payment";
+
 export async function requoteCheckout(db: Db, checkout: PublicCheckout, context: CheckoutContext) {
+  if (await latestCheckoutAttempt(db, checkout.id, { open: true }))
+    throw new HttpError(409, CHECKOUT_HAS_PAYMENT);
   const quote = await availableQuote(db, checkout, context);
   await db.insert(quotes).values(quote);
   return presentCheckout(checkout, quote, await latestAcceptance(db, checkout.id), context);
@@ -100,17 +105,7 @@ export async function acceptCheckoutQuote(
   input: CheckoutAcceptance,
   context: CheckoutContext,
 ) {
-  requireOnlineArrival(checkout.checkIn, context.today);
-  const quote = await latestQuote(db, checkout.id);
-  if (quote.id !== input.quoteId) {
-    const [older] = await db
-      .select({ id: quotes.id })
-      .from(quotes)
-      .where(and(eq(quotes.id, input.quoteId), eq(quotes.checkoutId, checkout.id)));
-    if (!older) throw new HttpError(404, "quote not found");
-    throw new HttpError(409, "quote was replaced by a newer quote");
-  }
-  if (quoteExpired(quote, context.now)) throw new HttpError(400, "quote has expired");
+  const quote = await requireCurrentQuote(db, checkout, input.quoteId, context);
   const terms = {
     quoteId: quote.id,
     ...input.contact,
@@ -136,6 +131,26 @@ export async function acceptCheckoutQuote(
   return presentCheckout(checkout, quote, acceptance, context);
 }
 
+export async function requireCurrentQuote(
+  db: Db,
+  checkout: PublicCheckout,
+  quoteId: string,
+  context: Pick<CheckoutContext, "today" | "now">,
+) {
+  requireOnlineArrival(checkout.checkIn, context.today);
+  const quote = await latestQuote(db, checkout.id);
+  if (quote.id !== quoteId) {
+    const [older] = await db
+      .select({ id: quotes.id })
+      .from(quotes)
+      .where(and(eq(quotes.id, quoteId), eq(quotes.checkoutId, checkout.id)));
+    if (!older) throw new HttpError(404, "quote not found");
+    throw new HttpError(409, "quote was replaced by a newer quote");
+  }
+  if (quoteExpired(quote, context.now)) throw new HttpError(400, "quote has expired");
+  return quote;
+}
+
 const sameAcceptance = (
   previous: CheckoutAcceptanceRow,
   next: Pick<CheckoutAcceptanceRow, "quoteId" | "fullName" | "email" | "phone" | "language">,
@@ -154,7 +169,7 @@ export async function readCheckout(db: Db, checkout: PublicCheckout, context: Ch
   return presentCheckout(checkout, quote, acceptance, context);
 }
 
-async function latestQuote(db: Db, checkoutId: string) {
+export async function latestQuote(db: Db, checkoutId: string) {
   const [quote] = await db
     .select()
     .from(quotes)
@@ -165,7 +180,7 @@ async function latestQuote(db: Db, checkoutId: string) {
   return quote;
 }
 
-async function latestAcceptance(db: Db, checkoutId: string) {
+export async function latestAcceptance(db: Db, checkoutId: string) {
   const [acceptance] = await db
     .select()
     .from(checkoutAcceptances)

@@ -19,6 +19,18 @@ const messages: Record<string, string> = {
   "email is required": "Ingresa el correo electrónico.",
   "phone is required": "Ingresa el teléfono.",
   "unknown language": "Idioma no admitido.",
+  "online payments are paused":
+    "Los pagos en línea están en pausa. La reserva en curso se conserva; inténtalo más tarde o contacta al hotel.",
+  "too many payment attempts":
+    "Demasiados intentos de pago. Espera un minuto e inténtalo de nuevo.",
+  "payment security check failed": "No se pudo completar la verificación de seguridad del pago.",
+  "payment security check is unavailable":
+    "La verificación de seguridad del pago no está disponible. No se hizo ningún cargo; inténtalo más tarde.",
+  "payment security check is required": "Completa la verificación de seguridad antes de pagar.",
+  "only card payments are accepted": "Solo se aceptan pagos con tarjeta.",
+  "quote has not been accepted": "Acepta las condiciones de esta cotización antes de pagar.",
+  "checkout already has a payment":
+    "Esta reserva en curso ya tiene un pago. Revisa su estado antes de pedir otro precio.",
   unauthorized: "Tu sesión terminó. Inicia sesión de nuevo.",
   "owner account required": "Solo la cuenta del propietario puede hacer esto.",
   "account not found": "No se encontró la cuenta. Recarga la página.",

@@ -6,6 +6,7 @@ import type {
   PatchRoomRequest,
   PaymentRequest as PaymentInput,
   PropertySetupRequest as PropertySetupInput,
+  PublicPaymentAdmissionRequest,
   RateWriteRequest,
   RoomClosureRequest,
   WorkflowActionRequest as WorkflowAction,
@@ -456,6 +457,16 @@ export function setAccountPassword(id: string, password: string) {
 
 export function changeOwnPassword(input: OwnPasswordRequest) {
   return writeJson<{ ok: true }>("/account/password", "PUT", input);
+}
+
+export type PublicPaymentAdmission = { admitted: boolean; updatedAt: string | null };
+
+export function getPublicPaymentAdmission(signal?: AbortSignal) {
+  return getJson<PublicPaymentAdmission>("/controls/public-payments", signal);
+}
+
+export function setPublicPaymentAdmission(input: PublicPaymentAdmissionRequest) {
+  return writeJson<PublicPaymentAdmission>("/controls/public-payments", "PUT", input);
 }
 
 export function listRooms(signal?: AbortSignal) {

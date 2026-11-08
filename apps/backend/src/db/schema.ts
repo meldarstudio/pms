@@ -13,6 +13,19 @@ export const propertyWriteContext = sqliteTable(
   (table) => [check("property_write_singleton", sql`${table.id} = 1`)],
 );
 
+export const operationControls = sqliteTable(
+  "operation_controls",
+  {
+    id: integer("id").primaryKey(),
+    publicPaymentsAdmitted: integer("public_payments_admitted", { mode: "boolean" })
+      .notNull()
+      .default(false),
+    updatedAt: text("updated_at").notNull(),
+    updatedBy: text("updated_by").notNull(),
+  },
+  (table) => [check("operation_controls_singleton", sql`${table.id} = 1`)],
+);
+
 export const roomTypes = sqliteTable("room_types", {
   id: text("id").primaryKey(),
   name: text("name").notNull().unique(),
@@ -138,6 +151,7 @@ export const reservations = sqliteTable(
     paymentSchedule: text("payment_schedule").notNull().default("first_night_deposit"),
     priceAdjustmentPercent: integer("price_adjustment_percent").notNull().default(0),
     quoteId: text("quote_id").references(() => quotes.id),
+    publicCheckoutId: text("public_checkout_id").references(() => publicCheckouts.id),
   },
   (table) => [
     index("reservations_dates").on(table.checkIn, table.checkOut),
@@ -246,9 +260,16 @@ export const paymentAttempts = sqliteTable(
     failureMessage: text("failure_message"),
     culqiChargeId: text("culqi_charge_id"),
     reservationId: text("reservation_id").references(() => reservations.id),
+    checkoutId: text("checkout_id").references(() => publicCheckouts.id),
+    acceptanceId: text("acceptance_id").references(() => checkoutAcceptances.id),
+    language: text("language").$type<CheckoutLanguage>(),
+    confirmationEmailEligible: integer("confirmation_email_eligible", { mode: "boolean" })
+      .notNull()
+      .default(false),
   },
   (table) => [
     index("payment_attempts_status").on(table.status, table.calledAt),
+    index("payment_attempts_checkout").on(table.checkoutId, table.createdAt),
     uniqueIndex("payment_attempts_open")
       .on(table.quoteId)
       .where(sql`${table.status} IN ('unknown', 'review', 'succeeded', 'saved')`),

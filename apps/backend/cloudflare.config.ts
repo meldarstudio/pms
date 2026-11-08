@@ -55,6 +55,20 @@ export default defineConfig({
           period: 60,
         },
       }),
+      PAYMENT_IP_LIMITER: bindings.rateLimit({
+        namespace: "1004",
+        simple: {
+          limit: 5,
+          period: 60,
+        },
+      }),
+      PAYMENT_CHECKOUT_LIMITER: bindings.rateLimit({
+        namespace: "1005",
+        simple: {
+          limit: 5,
+          period: 60,
+        },
+      }),
     },
   },
 });

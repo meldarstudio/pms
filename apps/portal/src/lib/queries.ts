@@ -33,6 +33,8 @@ import {
   login,
   setAccountPassword,
   changeOwnPassword,
+  getPublicPaymentAdmission,
+  setPublicPaymentAdmission,
   logout,
   patchRoom,
   onUnauthorized,
@@ -115,6 +117,24 @@ export function useSetAccountPassword() {
 
 export function useChangeOwnPassword() {
   return useMutation({ mutationFn: changeOwnPassword });
+}
+
+const publicPaymentAdmissionKey = ["public-payment-admission"] as const;
+
+export function usePublicPaymentAdmission(enabled: boolean) {
+  return useQuery({
+    queryKey: publicPaymentAdmissionKey,
+    queryFn: ({ signal }) => getPublicPaymentAdmission(signal),
+    enabled,
+  });
+}
+
+export function useSetPublicPaymentAdmission() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: setPublicPaymentAdmission,
+    onSuccess: (admission) => queryClient.setQueryData(publicPaymentAdmissionKey, admission),
+  });
 }
 
 const holdDays = 7;

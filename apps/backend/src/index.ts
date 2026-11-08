@@ -5,6 +5,7 @@ import { HttpError } from "./http";
 import { accountRoutes } from "./routes/accounts";
 import { authRoutes } from "./routes/auth";
 import { calendarRoutes } from "./routes/calendar";
+import { controlRoutes } from "./routes/controls";
 import { couponRoutes } from "./routes/coupons";
 import { availabilityRoutes } from "./routes/availability";
 import { inventoryRoutes } from "./routes/inventory";
@@ -87,6 +88,7 @@ app.route("/reservations", reservationRoutes);
 app.route("/payments", paymentRoutes);
 app.route("/rate-plans", ratePlanRoutes);
 app.route("/coupons", couponRoutes);
+app.route("/controls", controlRoutes);
 app.route(GUEST_PREFIX, publicRoutes);
 
 export default {

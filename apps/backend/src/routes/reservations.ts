@@ -21,7 +21,7 @@ import {
   sql,
 } from "drizzle-orm";
 import { Hono, type Context } from "hono";
-import { culqiClient } from "../culqi";
+import { culqiForEnv } from "../culqi";
 import { getDb } from "../db";
 import { guests, refunds, reservationRooms, reservations } from "../db/schema";
 import type { Env } from "../env";
@@ -172,7 +172,7 @@ reservationRoutes.post("/:id/commands", validate("json", workflowCommandSchema),
       c.req.param("id"),
       c.req.valid("json"),
       commandContext(c),
-      { currency: currency(c), culqi: culqiClient({ secretKey: c.env.CULQI_SECRET_KEY }) },
+      { currency: currency(c), culqi: culqiForEnv(c.env) },
     ),
   );
 });

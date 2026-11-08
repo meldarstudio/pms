@@ -1,5 +1,6 @@
 import {
   checkoutAcceptanceSchema,
+  checkoutPaymentSchema,
   publicCheckoutCreateSchema,
   publicOfferSearchSchema,
 } from "@pms/shared";
@@ -15,8 +16,17 @@ import {
   requoteCheckout,
   startCheckout,
 } from "../public-checkouts";
+import { requirePublicPaymentAdmission } from "../operation-controls";
+import { paymentContext } from "../payment-attempts";
 import { publishedRoomTypeIds, searchOffers } from "../public-offers";
-import { limitBySourceIp } from "../rate-limit";
+import {
+  chargeCheckout,
+  checkoutPayment,
+  payableQuote,
+  TOO_MANY_PAYMENTS,
+} from "../public-payments";
+import { limitBySourceIp, requireWithinLimit, trustedSourceIp } from "../rate-limit";
+import { requireTurnstile } from "../turnstile";
 
 export const GUEST_PREFIX = "/public";
 
@@ -92,5 +102,32 @@ publicRoutes.post(
       guestContext(c),
     );
     return c.json({ ...view, currency: currency(c) }, 201);
+  },
+);
+
+publicRoutes.get("/checkout/payment", requireCheckout, async (c) =>
+  c.json({
+    payment: await checkoutPayment(getDb(c.env.DB), c.var.checkout, paymentContext(c.env)),
+  }),
+);
+
+publicRoutes.post(
+  "/checkout/payments",
+  requireCheckout,
+  validate("json", checkoutPaymentSchema),
+  async (c) => {
+    const db = getDb(c.env.DB);
+    const { checkout } = c.var;
+    const input = c.req.valid("json");
+    const context = paymentContext(c.env, c.executionCtx.waitUntil.bind(c.executionCtx));
+    const open = await checkoutPayment(db, checkout, context, { open: true });
+    if (open) return c.json({ payment: open });
+    await requirePublicPaymentAdmission(db);
+    const payable = await payableQuote(db, checkout, input.quoteId, guestContext(c));
+    await requireWithinLimit(c, "PAYMENT_IP_LIMITER", trustedSourceIp(c), TOO_MANY_PAYMENTS);
+    await requireWithinLimit(c, "PAYMENT_CHECKOUT_LIMITER", checkout.id, TOO_MANY_PAYMENTS);
+    await requireTurnstile(c.env, input.turnstileToken, trustedSourceIp(c));
+    const { created, payment } = await chargeCheckout(db, checkout, payable, input, context);
+    return c.json({ payment }, created ? 201 : 200);
   },
 );

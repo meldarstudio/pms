@@ -38,10 +38,9 @@ export async function priceQuote(
     throw new HttpError(400, "too many guests for this room type");
   const { ratePlan, ...stay } = input;
   const terms = ratePlans[ratePlan];
-  const [nights, occupied, counts] = await Promise.all([
+  const [nights, available] = await Promise.all([
     price(db, stay, terms),
-    occupiedCounts(db, stay.checkIn, stay.checkOut),
-    roomCounts(db),
+    quoteAvailable(db, input),
   ]);
   const quote: Quote = {
     id: crypto.randomUUID(),
@@ -52,7 +51,18 @@ export async function priceQuote(
     expiresAt: new Date(context.now.getTime() + QUOTE_MINUTES * 60_000).toISOString(),
     checkoutId: context.checkoutId,
   };
-  return { quote, available: (occupied.get(type.id) ?? 0) < (counts.get(type.id) ?? 0) };
+  return { quote, available };
+}
+
+export async function quoteAvailable(
+  db: Db,
+  stay: Pick<Quote, "roomTypeId" | "checkIn" | "checkOut">,
+) {
+  const [occupied, counts] = await Promise.all([
+    occupiedCounts(db, stay.checkIn, stay.checkOut),
+    roomCounts(db),
+  ]);
+  return (occupied.get(stay.roomTypeId) ?? 0) < (counts.get(stay.roomTypeId) ?? 0);
 }
 
 export const quoteExpired = (quote: Pick<Quote, "expiresAt">, now: Date) =>
@@ -86,7 +96,11 @@ export async function saveQuote(
   db: Db,
   quoteId: string,
   guest: GuestInput,
-  options: { status?: "confirmed" | "unfulfilled"; payment?: QuotePayment } = {},
+  options: {
+    status?: "confirmed" | "unfulfilled";
+    payment?: QuotePayment;
+    publicCheckoutId?: string | null;
+  } = {},
 ): Promise<string> {
   const [quote] = await db.select().from(quotes).where(eq(quotes.id, quoteId));
   if (!quote) throw new HttpError(404, "quote not found");
@@ -107,6 +121,7 @@ export async function saveQuote(
         checkOut: quote.checkOut,
         source: "online",
         quoteId,
+        publicCheckoutId: options.publicCheckoutId ?? null,
         status: options.status ?? "confirmed",
         createdAt: now,
         ...termColumns(quote.terms),

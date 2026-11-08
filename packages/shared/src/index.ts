@@ -391,10 +391,24 @@ export const checkoutAcceptanceSchema = z
     agreed: z.literal(true, { error: "agreement must be accepted" }),
   })
   .strict();
+export const checkoutPaymentSchema = z
+  .object({
+    quoteId: z.uuid(),
+    sourceId: z
+      .string()
+      .trim()
+      .regex(/^tkn_[\w-]{1,200}$/, "only card payments are accepted"),
+    deviceFingerprint: z.string().trim().min(1).max(200).optional(),
+    turnstileToken: requiredText(2048, "payment security check is required"),
+  })
+  .strict();
+export const publicPaymentAdmissionSchema = z.object({ admitted: z.boolean() }).strict();
 export type CheckoutLanguage = z.infer<typeof checkoutLanguageSchema>;
 export type PublicCheckoutCreate = z.infer<typeof publicCheckoutCreateSchema>;
 export type PublicCheckoutCreateRequest = z.input<typeof publicCheckoutCreateSchema>;
 export type CheckoutAcceptance = z.infer<typeof checkoutAcceptanceSchema>;
+export type CheckoutPayment = z.infer<typeof checkoutPaymentSchema>;
+export type PublicPaymentAdmissionRequest = z.input<typeof publicPaymentAdmissionSchema>;
 export type WorkflowAction = z.infer<typeof workflowActionSchema>;
 export type WorkflowCommand = z.infer<typeof workflowCommandSchema>;
 export type WorkflowCreate = z.infer<typeof workflowCreateSchema>;

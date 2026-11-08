@@ -295,6 +295,12 @@ A booking contact's explicit acceptance of one unexpired quote's terms within a 
 checkout, recorded before any payment.
 _Avoid_: Payment, confirmation, reservation
 
+**Public payment admission**:
+The owner's server-enforced switch for new public card payments, off by default. Pausing it
+stops new charges even in open public checkouts, but not status reads, staff work or recovery
+of earlier payment attempts.
+_Avoid_: Maintenance mode, closing sales
+
 **Payment attempt**:
 A request to charge for a quote, recorded before contacting the provider. An unknown
 result is resolved by provider lookup, not another charge.
