@@ -557,10 +557,12 @@ describe("accepting the agreement", () => {
     expect(await expired.json()).toEqual({ error: "quote has expired" });
     expect(read.quote).toMatchObject({ id: quote.id, expired: true });
     expect(refreshed.status).toBe(201);
-    const replacement = ((await refreshed.json()) as CheckoutView).quote;
-    expect(replacement).toMatchObject({ expired: false, totalCents: 25000 });
-    expect(replacement.id).not.toBe(quote.id);
-    expect((await accept(token, { quoteId: replacement.id })).status).toBe(201);
+    const view = (await refreshed.json()) as CheckoutView;
+    expect(view.quote).toMatchObject({ expired: false, totalCents: 25000 });
+    expect(view.quote.id).not.toBe(quote.id);
+    expect(view.acceptance).toBeNull();
+    expect(count("checkout_acceptances")).toBe(0);
+    expect((await accept(token, { quoteId: view.quote.id })).status).toBe(201);
   });
 
   it("reports availability loss when refreshing a quote for a sold-out stay", async () => {

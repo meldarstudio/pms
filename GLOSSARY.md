@@ -291,8 +291,10 @@ acceptances.
 _Avoid_: Cart, session, reservation
 
 **Agreement acceptance**:
-A booking contact's explicit acceptance of one unexpired quote's terms within a public
-checkout, recorded before any payment.
+A booking contact's acceptance of one quote's terms within a public checkout, recorded
+before any payment. A new acceptance is explicit and only of the checkout's latest
+unexpired quote. Refreshing a quote keeps that acceptance only when the replacement has
+the same room, stay, occupancy, nightly prices and terms.
 _Avoid_: Payment, confirmation, reservation
 
 **Public payment admission**:

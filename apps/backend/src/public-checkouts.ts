@@ -95,8 +95,17 @@ export async function requoteCheckout(db: Db, checkout: PublicCheckout, context:
   if (await latestCheckoutAttempt(db, checkout.id, { open: true }))
     throw new HttpError(409, CHECKOUT_HAS_PAYMENT);
   const quote = await availableQuote(db, checkout, context);
-  await db.insert(quotes).values(quote);
-  return presentCheckout(checkout, quote, await latestAcceptance(db, checkout.id), context);
+  const previous = await latestAcceptance(db, checkout.id);
+  const accepted = previous ? await quoteForAcceptance(db, previous) : null;
+  const retain = previous && accepted && sameMaterialOffer(accepted, quote) ? previous : null;
+  if (retain && (await acceptanceCount(db, checkout.id)) >= MAX_ACCEPTANCES_PER_CHECKOUT)
+    throw new HttpError(429, "too many acceptances for this checkout");
+  const acceptance = retain ? retainedAcceptance(checkout, quote, retain, context) : null;
+  await runBatch(db, [
+    db.insert(quotes).values(quote),
+    ...(acceptance ? [db.insert(checkoutAcceptances).values(acceptance)] : []),
+  ]);
+  return presentCheckout(checkout, quote, acceptance ?? previous, context);
 }
 
 export async function acceptCheckoutQuote(
@@ -117,11 +126,7 @@ export async function acceptCheckoutQuote(
   const previous = await latestAcceptance(db, checkout.id);
   if (previous && sameAcceptance(previous, terms))
     return presentCheckout(checkout, quote, previous, context);
-  const [{ accepted }] = await db
-    .select({ accepted: count() })
-    .from(checkoutAcceptances)
-    .where(eq(checkoutAcceptances.checkoutId, checkout.id));
-  if (accepted >= MAX_ACCEPTANCES_PER_CHECKOUT)
+  if ((await acceptanceCount(db, checkout.id)) >= MAX_ACCEPTANCES_PER_CHECKOUT)
     throw new HttpError(429, "too many acceptances for this checkout");
   const acceptance: CheckoutAcceptanceRow = {
     id: crypto.randomUUID(),
@@ -151,6 +156,76 @@ export async function requireCurrentQuote(
   }
   if (quoteExpired(quote, context.now)) throw new HttpError(400, "quote has expired");
   return quote;
+}
+
+async function acceptanceCount(db: Db, checkoutId: string) {
+  const [{ accepted }] = await db
+    .select({ accepted: count() })
+    .from(checkoutAcceptances)
+    .where(eq(checkoutAcceptances.checkoutId, checkoutId));
+  return accepted;
+}
+
+async function quoteForAcceptance(db: Db, acceptance: CheckoutAcceptanceRow) {
+  const [quote] = await db.select().from(quotes).where(eq(quotes.id, acceptance.quoteId));
+  return quote ?? null;
+}
+
+function retainedAcceptance(
+  checkout: PublicCheckout,
+  quote: Quote,
+  previous: CheckoutAcceptanceRow,
+  context: CheckoutContext,
+): CheckoutAcceptanceRow {
+  return {
+    id: crypto.randomUUID(),
+    checkoutId: checkout.id,
+    quoteId: quote.id,
+    fullName: previous.fullName,
+    email: previous.email,
+    phone: previous.phone,
+    language: previous.language,
+    acceptedAt: context.now.toISOString(),
+  };
+}
+
+function sameMaterialOffer(accepted: Quote, next: Quote) {
+  return (
+    accepted.roomTypeId === next.roomTypeId &&
+    accepted.checkIn === next.checkIn &&
+    accepted.checkOut === next.checkOut &&
+    accepted.adults === next.adults &&
+    accepted.children === next.children &&
+    sameNights(accepted.nights, next.nights) &&
+    sameTerms(accepted.terms, next.terms)
+  );
+}
+
+function sameNights(accepted: Quote["nights"], next: Quote["nights"]) {
+  return (
+    accepted.length === next.length &&
+    accepted.every((night, index) => {
+      const other = next[index];
+      return (
+        other !== undefined &&
+        night.date === other.date &&
+        night.priceCents === other.priceCents &&
+        night.adjustmentCents === other.adjustmentCents &&
+        night.discountCents === other.discountCents
+      );
+    })
+  );
+}
+
+function sameTerms(accepted: Quote["terms"], next: Quote["terms"]) {
+  return (
+    accepted.plan === next.plan &&
+    accepted.paymentSchedule === next.paymentSchedule &&
+    accepted.priceAdjustmentPercent === next.priceAdjustmentPercent &&
+    accepted.cancellationPolicy.chargeBasis === next.cancellationPolicy.chargeBasis &&
+    accepted.cancellationPolicy.freeUntilDaysBeforeCheckIn ===
+      next.cancellationPolicy.freeUntilDaysBeforeCheckIn
+  );
 }
 
 const sameAcceptance = (

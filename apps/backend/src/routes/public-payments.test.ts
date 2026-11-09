@@ -147,6 +147,19 @@ const charges = () => culqi.requests.filter((request) => request.method === "POS
 
 const rows = <T>(sql: string) => db.sqlite.prepare(sql).all() as T[];
 
+const acceptances = () =>
+  rows<{ quote_id: string; full_name: string; email: string; phone: string; language: string }>(
+    "SELECT quote_id, full_name, email, phone, language FROM checkout_acceptances ORDER BY rowid",
+  );
+
+const acceptanceRow = (quoteId: string) => ({
+  quote_id: quoteId,
+  full_name: "Ana Torres",
+  email: "ana@example.com",
+  phone: "+51987654321",
+  language: "en",
+});
+
 describe("paying the accepted quote", () => {
   it("charges the Flexible first night and confirms the reservation with its outstanding balance", async () => {
     const checkout = await acceptedCheckout();
@@ -385,22 +398,171 @@ describe("what a payment can charge", () => {
     expect(charges()).toEqual([]);
   });
 
-  it("refuses a refreshed quote until its agreement is accepted", async () => {
+  it("keeps the agreement when an expired quote is refreshed unchanged, and charges that replacement once", async () => {
     const checkout = await acceptedCheckout();
     vi.advanceTimersByTime(10 * 60_000);
+
     const refreshed = await guest("/public/checkout/quotes", {
       token: checkout.token,
       method: "POST",
     });
-    const { quote } = (await refreshed.json()) as { quote: { id: string } };
-
+    const view = (await refreshed.json()) as {
+      quote: { id: string; requiredInitialPaymentCents: number };
+      acceptance: { quoteId: string } | null;
+    };
     const stale = await pay(checkout);
-    const unaccepted = await pay({ ...checkout, quoteId: quote.id });
+    const payment = await paid({ token: checkout.token, quoteId: view.quote.id });
 
+    expect(refreshed.status).toBe(201);
+    expect(view.quote.id).not.toBe(checkout.quoteId);
+    expect(view.quote.requiredInitialPaymentCents).toBe(10000);
+    expect(view.acceptance).toEqual({ quoteId: view.quote.id, acceptedAt: expect.any(String) });
+    expect(acceptances()).toEqual([acceptanceRow(checkout.quoteId), acceptanceRow(view.quote.id)]);
     expect(stale.status).toBe(409);
     expect(await stale.json()).toEqual({ error: "quote was replaced by a newer quote" });
-    expect(unaccepted.status).toBe(409);
-    expect(await unaccepted.json()).toEqual({ error: "quote has not been accepted" });
+    expect(payment).toMatchObject({ state: "confirmed", amountCents: 10000 });
+    expect(charges()).toHaveLength(1);
+    expect(charges()[0]!.body).toMatchObject({ amount: 10000, currency_code: "PEN" });
+  });
+
+  it("requires a new acceptance when a refreshed quote is cheaper, and charges only that accepted amount", async () => {
+    const checkout = await acceptedCheckout();
+    vi.advanceTimersByTime(10 * 60_000);
+    db.sqlite.exec(
+      "INSERT INTO room_type_rates (id, room_type_id, date, price_cents) VALUES ('rate', 'type-king', '2026-10-20', 8000)",
+    );
+
+    const refreshed = await guest("/public/checkout/quotes", {
+      token: checkout.token,
+      method: "POST",
+    });
+    const view = (await refreshed.json()) as {
+      quote: { id: string; totalCents: number; requiredInitialPaymentCents: number };
+      acceptance: { quoteId: string } | null;
+    };
+    const refused = await pay({ token: checkout.token, quoteId: view.quote.id });
+
+    expect(refreshed.status).toBe(201);
+    expect(view.quote).toMatchObject({ totalCents: 18000, requiredInitialPaymentCents: 8000 });
+    expect(view.acceptance).toMatchObject({ quoteId: checkout.quoteId });
+    expect(acceptances()).toEqual([acceptanceRow(checkout.quoteId)]);
+    expect(refused.status).toBe(409);
+    expect(await refused.json()).toEqual({ error: "quote has not been accepted" });
+    expect(charges()).toEqual([]);
+
+    const accepted = await guest("/public/checkout/acceptances", {
+      token: checkout.token,
+      body: { quoteId: view.quote.id, language: "en", contact, agreed: true },
+    });
+    expect(accepted.status).toBe(201);
+    const payment = await paid({ token: checkout.token, quoteId: view.quote.id });
+
+    expect(payment).toMatchObject({ state: "confirmed", amountCents: 8000 });
+    expect(charges()).toHaveLength(1);
+    expect(charges()[0]!.body).toMatchObject({ amount: 8000, currency_code: "PEN" });
+  });
+
+  it("does not keep acceptance when the refreshed quote's terms differ, and does not charge", async () => {
+    const checkout = await acceptedCheckout();
+    vi.advanceTimersByTime(10 * 60_000);
+    db.sqlite
+      .prepare(
+        "UPDATE quotes SET terms = json_set(terms, '$.paymentSchedule', 'full_upfront') WHERE id = ?",
+      )
+      .run(checkout.quoteId);
+
+    const refreshed = await guest("/public/checkout/quotes", {
+      token: checkout.token,
+      method: "POST",
+    });
+    const view = (await refreshed.json()) as {
+      quote: { id: string };
+      acceptance: { quoteId: string };
+    };
+    const refused = await pay({ token: checkout.token, quoteId: view.quote.id });
+
+    expect(refreshed.status).toBe(201);
+    expect(view.acceptance.quoteId).toBe(checkout.quoteId);
+    expect(acceptances()).toEqual([acceptanceRow(checkout.quoteId)]);
+    expect(refused.status).toBe(409);
+    expect(await refused.json()).toEqual({ error: "quote has not been accepted" });
+    expect(charges()).toEqual([]);
+  });
+
+  it("stores nothing and charges nothing when the stay sold out before refresh", async () => {
+    const checkout = await acceptedCheckout();
+    vi.advanceTimersByTime(10 * 60_000);
+    db.sqlite.exec(`INSERT INTO room_closures (id, room_id, starts, ends, created_at) VALUES
+      ('c1', 'room-101', '2026-10-20', '2026-10-21', '2026-10-01'),
+      ('c2', 'room-102', '2026-10-20', '2026-10-21', '2026-10-01')`);
+
+    const refreshed = await guest("/public/checkout/quotes", {
+      token: checkout.token,
+      method: "POST",
+    });
+    const response = await pay(checkout);
+
+    expect(refreshed.status).toBe(409);
+    expect(await refreshed.json()).toEqual({ error: "no availability" });
+    expect(rows("SELECT count(*) AS n FROM quotes")).toEqual([{ n: 1 }]);
+    expect(response.status).toBe(400);
+    expect(await response.json()).toEqual({ error: "quote has expired" });
+    expect(charges()).toEqual([]);
+  });
+
+  it.each([
+    ["an unknown payment", "timeout"],
+    ["a pending authentication", "tkn_test_3ds"],
+  ] as const)(
+    "does not refresh or charge again while %s is open, even after the quote expires",
+    async (_label, outcome) => {
+      const checkout = await acceptedCheckout();
+      if (outcome === "timeout") culqi.next("POST /charges", "timeout");
+      await paid(checkout, outcome === "timeout" ? {} : { sourceId: outcome });
+      vi.advanceTimersByTime(11 * 60_000);
+
+      const refreshed = await guest("/public/checkout/quotes", {
+        token: checkout.token,
+        method: "POST",
+      });
+      const again = await pay(checkout);
+
+      expect(refreshed.status).toBe(409);
+      expect(await refreshed.json()).toEqual({ error: "checkout already has a payment" });
+      expect(again.status).toBe(200);
+      expect(rows("SELECT count(*) AS n FROM quotes")).toEqual([{ n: 1 }]);
+      expect(charges()).toHaveLength(1);
+    },
+  );
+
+  it("refuses to carry an unchanged agreement onto a new quote once the checkout has 20 acceptances", async () => {
+    const checkout = await acceptedCheckout();
+    for (let attempt = 2; attempt <= 20; attempt++) {
+      const accepted = await guest("/public/checkout/acceptances", {
+        token: checkout.token,
+        body: {
+          quoteId: checkout.quoteId,
+          language: "en",
+          contact: { ...contact, fullName: `Ana ${attempt}` },
+          agreed: true,
+        },
+      });
+      expect(accepted.status).toBe(201);
+    }
+    vi.advanceTimersByTime(10 * 60_000);
+
+    const refreshed = await guest("/public/checkout/quotes", {
+      token: checkout.token,
+      method: "POST",
+    });
+    const response = await pay(checkout);
+
+    expect(refreshed.status).toBe(429);
+    expect(await refreshed.json()).toEqual({ error: "too many acceptances for this checkout" });
+    expect(rows("SELECT count(*) AS n FROM quotes")).toEqual([{ n: 1 }]);
+    expect(rows("SELECT count(*) AS n FROM checkout_acceptances")).toEqual([{ n: 20 }]);
+    expect(response.status).toBe(400);
+    expect(await response.json()).toEqual({ error: "quote has expired" });
     expect(charges()).toEqual([]);
   });
 
@@ -741,6 +903,31 @@ function duringFirstSecurityCheck(run: () => Promise<void>) {
 }
 
 describe("payments racing within one checkout", () => {
+  it("charges the refreshed quote once when refresh keeps the agreement during an earlier payment check", async () => {
+    const checkout = await acceptedCheckout();
+    let second: Response | undefined;
+    duringFirstSecurityCheck(async () => {
+      const refreshed = await guest("/public/checkout/quotes", {
+        token: checkout.token,
+        method: "POST",
+      });
+      const view = (await refreshed.json()) as {
+        quote: { id: string };
+        acceptance: { quoteId: string };
+      };
+      expect(view.acceptance.quoteId).toBe(view.quote.id);
+      second = await pay({ token: checkout.token, quoteId: view.quote.id });
+    });
+
+    const first = await pay(checkout);
+
+    expect(second?.status).toBe(201);
+    expect(first.status).toBe(409);
+    expect(await first.json()).toEqual({ error: "quote was replaced by a newer quote" });
+    expect(charges()).toHaveLength(1);
+    expect(rows("SELECT status FROM payment_attempts")).toEqual([{ status: "saved" }]);
+  });
+
   it("charges once when the quote is replaced, accepted and paid while an earlier payment is being verified", async () => {
     const checkout = await acceptedCheckout();
     let second: Response | undefined;
