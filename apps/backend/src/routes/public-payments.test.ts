@@ -1095,3 +1095,166 @@ describe("payment outcomes over time", () => {
     });
   });
 });
+
+const authentication = {
+  eci: "05",
+  xid: "02010000755f8c81a4db4c848b8c23f6b0196cfd",
+  cavv: "63617264696e616c636f6d6d6572636561757468",
+  protocolVersion: "2.2.0",
+  directoryServerTransactionId: "755f8c81-a4db-4c84-8b8c-23f6b0196cfd",
+};
+
+const continueAuthentication = (token: string, body: unknown = authentication) =>
+  guest("/public/checkout/payment/authentication", { token, body });
+
+describe("continuing bank authentication", () => {
+  it("charges the original attempt and source after the quote expires, and a repeat does not charge again", async () => {
+    const checkout = await acceptedCheckout();
+    await paid(checkout, { sourceId: "tkn_test_3ds", deviceFingerprint: "device-1" });
+    vi.advanceTimersByTime(11 * 60_000);
+
+    const continued = await continueAuthentication(checkout.token);
+    const again = await continueAuthentication(checkout.token);
+
+    expect(continued.status).toBe(200);
+    const payment = ((await continued.json()) as { payment: GuestPayment }).payment;
+    expect(payment).toMatchObject({
+      state: "confirmed",
+      amountCents: 10000,
+      currency: "PEN",
+      reservation: { paidCents: 10000, outstandingCents: 10000 },
+    });
+    expect(again.status).toBe(200);
+    expect(await again.json()).toEqual({ payment });
+    expect(charges()).toHaveLength(2);
+    const [{ id }] = rows<{ id: string }>("SELECT id FROM payment_attempts");
+    expect(charges()[1]!.body).toMatchObject({
+      amount: 10000,
+      currency_code: "PEN",
+      email: "ana@example.com",
+      source_id: "tkn_test_3ds",
+      capture: true,
+      metadata: { attempt_id: id },
+      authentication_3DS: authentication,
+      antifraud_details: { device_finger_print_id: "device-1" },
+    });
+    expect(rows("SELECT id, status FROM payment_attempts")).toEqual([{ id, status: "saved" }]);
+  });
+
+  it("charges once when authentication is continued twice at the same time", async () => {
+    const checkout = await acceptedCheckout();
+    await paid(checkout, { sourceId: "tkn_test_3ds" });
+
+    const responses = await Promise.all([
+      continueAuthentication(checkout.token),
+      continueAuthentication(checkout.token),
+    ]);
+
+    expect(responses.map((response) => response.status)).toEqual([200, 200]);
+    expect(charges()).toHaveLength(2);
+    expect(rows("SELECT status FROM payment_attempts")).toEqual([{ status: "saved" }]);
+    expect(await status(checkout.token)).toMatchObject({ state: "confirmed" });
+  });
+
+  it("rejects another checkout's token without continuing this attempt", async () => {
+    const pending = await acceptedCheckout();
+    await paid(pending, { sourceId: "tkn_test_3ds" });
+    const other = await acceptedCheckout({ checkIn: "2026-10-24", checkOut: "2026-10-25" });
+
+    const guessed = await continueAuthentication("a".repeat(43));
+    const foreign = await continueAuthentication(other.token);
+
+    expect(guessed.status).toBe(401);
+    expect(await guessed.json()).toEqual({ error: "invalid checkout token" });
+    expect(foreign.status).toBe(404);
+    expect(await foreign.json()).toEqual({ error: "payment attempt not found" });
+    expect(await status(pending.token)).toMatchObject({ state: "authentication_required" });
+    expect(await status(other.token)).toBeNull();
+    expect(charges()).toHaveLength(1);
+  });
+
+  it("rejects an incomplete authentication without charging or leaving review", async () => {
+    const checkout = await acceptedCheckout();
+    await paid(checkout, { sourceId: "tkn_test_3ds" });
+
+    const response = await continueAuthentication(checkout.token, { eci: "05" });
+
+    expect(response.status).toBe(400);
+    expect(await status(checkout.token)).toMatchObject({ state: "authentication_required" });
+    expect(rows("SELECT status FROM payment_attempts")).toEqual([{ status: "review" }]);
+    expect(charges()).toHaveLength(1);
+  });
+
+  it("does not fail the attempt when the client only reports a browser authentication error", async () => {
+    const checkout = await acceptedCheckout();
+    await paid(checkout, { sourceId: "tkn_test_3ds" });
+
+    const response = await continueAuthentication(checkout.token, {
+      error: "Ha fallado la autenticación",
+    });
+
+    expect(response.status).toBe(400);
+    expect(await status(checkout.token)).toMatchObject({ state: "authentication_required" });
+    expect(rows("SELECT status, failure_code FROM payment_attempts")).toEqual([
+      { status: "review", failure_code: null },
+    ]);
+    expect(charges()).toHaveLength(1);
+  });
+
+  it("continues while payments are paused, without a security check or payment allowance", async () => {
+    const checkout = await acceptedCheckout();
+    await paid(checkout, { sourceId: "tkn_test_3ds" });
+    const consumed: string[] = [];
+    const counting = {
+      limit: async ({ key }: { key: string }) => {
+        consumed.push(key);
+        return { success: false };
+      },
+    };
+    db.env.PAYMENT_IP_LIMITER = counting;
+    db.env.PAYMENT_CHECKOUT_LIMITER = counting;
+    await admitPayments(false);
+
+    const continued = await continueAuthentication(checkout.token);
+
+    expect(continued.status).toBe(200);
+    expect(await continued.json()).toMatchObject({ payment: { state: "confirmed" } });
+    expect(charges()).toHaveLength(2);
+    expect(turnstile.verifications).toHaveLength(1);
+    expect(consumed).toEqual([]);
+  });
+
+  it("allows another card after a declined continuation only through the normal payment gates", async () => {
+    const checkout = await acceptedCheckout();
+    await paid(checkout, { sourceId: "tkn_test_3ds" });
+    culqi.next("POST /charges", "decline");
+
+    const declined = await continueAuthentication(checkout.token);
+    expect(declined.status).toBe(200);
+    expect(await declined.json()).toMatchObject({
+      payment: { state: "declined", reservation: null },
+    });
+
+    await admitPayments(false);
+    const paused = await pay(checkout);
+    expect(paused.status).toBe(503);
+    expect(await paused.json()).toEqual({ error: "online payments are paused" });
+    expect(charges()).toHaveLength(2);
+
+    await admitPayments(true);
+    const unchecked = await pay(checkout, { turnstileToken: "forged" });
+    expect(unchecked.status).toBe(403);
+    expect(await unchecked.json()).toEqual({ error: "payment security check failed" });
+    expect(charges()).toHaveLength(2);
+
+    expect(await paid(checkout)).toMatchObject({ state: "confirmed" });
+    expect(charges()).toHaveLength(3);
+    expect(charges()[2]!.body).not.toHaveProperty("authentication_3DS");
+    expect(charges()[2]!.body?.source_id).not.toBe("tkn_test_3ds");
+    expect(turnstile.verifications).toHaveLength(3);
+    expect(rows("SELECT status FROM payment_attempts ORDER BY created_at")).toEqual([
+      { status: "failed" },
+      { status: "saved" },
+    ]);
+  });
+});

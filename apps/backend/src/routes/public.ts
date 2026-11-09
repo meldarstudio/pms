@@ -1,6 +1,7 @@
 import {
   checkoutAcceptanceSchema,
   checkoutPaymentSchema,
+  paymentAuthenticationSchema,
   publicCheckoutCreateSchema,
   publicOfferSearchSchema,
 } from "@pms/shared";
@@ -20,6 +21,7 @@ import { requirePublicPaymentAdmission } from "../operation-controls";
 import { paymentContext } from "../payment-attempts";
 import { publishedRoomTypeIds, searchOffers } from "../public-offers";
 import {
+  authenticateCheckout,
   chargeCheckout,
   checkoutPayment,
   payableQuote,
@@ -109,6 +111,21 @@ publicRoutes.get("/checkout/payment", requireCheckout, async (c) =>
   c.json({
     payment: await checkoutPayment(getDb(c.env.DB), c.var.checkout, paymentContext(c.env)),
   }),
+);
+
+publicRoutes.post(
+  "/checkout/payment/authentication",
+  requireCheckout,
+  validate("json", paymentAuthenticationSchema),
+  async (c) =>
+    c.json({
+      payment: await authenticateCheckout(
+        getDb(c.env.DB),
+        c.var.checkout,
+        c.req.valid("json"),
+        paymentContext(c.env, c.executionCtx.waitUntil.bind(c.executionCtx)),
+      ),
+    }),
 );
 
 publicRoutes.post(

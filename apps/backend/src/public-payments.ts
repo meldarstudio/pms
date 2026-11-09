@@ -1,9 +1,10 @@
-import type { CheckoutPayment } from "@pms/shared";
+import type { CheckoutPayment, PaymentAuthentication } from "@pms/shared";
 import type { Db } from "./db";
 import { HttpError, PAYMENT_PENDING } from "./http";
 import { reservationBill } from "./lib/reservation-bill";
 import { requirePublicPaymentAdmission } from "./operation-controls";
 import {
+  continuePublicAuthentication,
   findAttempt,
   latestCheckoutAttempt,
   PAYMENT_NOT_ADMITTED,
@@ -54,6 +55,23 @@ export async function payableQuote(
   const acceptance = await latestAcceptance(db, checkout.id);
   if (acceptance?.quoteId !== quote.id) throw new HttpError(409, QUOTE_NOT_ACCEPTED);
   return { quote, acceptance };
+}
+
+export async function authenticateCheckout(
+  db: Db,
+  checkout: PublicCheckout,
+  authentication: PaymentAuthentication,
+  context: PaymentContext,
+) {
+  const latest = await latestCheckoutAttempt(db, checkout.id);
+  if (!latest) throw new HttpError(404, "payment attempt not found");
+  if (latest.status === "review") {
+    const continued = await continuePublicAuthentication(db, latest, authentication, context);
+    if (continued) return presentGuestPayment(db, continued);
+  }
+  const current = await checkoutPayment(db, checkout, context);
+  if (!current) throw new HttpError(404, "payment attempt not found");
+  return current;
 }
 
 export async function chargeCheckout(

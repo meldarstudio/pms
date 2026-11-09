@@ -172,18 +172,41 @@ export async function authenticatePaymentAttempt(
   const quote = await findQuote(db, attempt.quoteId);
   const now = new Date();
   requireValid(quote, now);
+  const continued = await chargeAuthentication(db, attempt, authentication, context, now);
+  if (!continued) throw new HttpError(409, "payment is not waiting for authentication");
+  return present(db, continued);
+}
+
+export async function continuePublicAuthentication(
+  db: Db,
+  attempt: Attempt,
+  authentication: PaymentAuthentication,
+  context: PaymentContext,
+) {
+  if (attempt.checkoutId === null || attempt.status !== "review") return null;
+  return chargeAuthentication(db, attempt, authentication, context, new Date());
+}
+
+async function chargeAuthentication(
+  db: Db,
+  attempt: Attempt,
+  authentication: PaymentAuthentication,
+  context: PaymentContext,
+  now: Date,
+) {
   requireCulqi(context);
   const [claimed] = await db
     .update(paymentAttempts)
     .set({ status: "unknown", calledAt: now.toISOString() })
     .where(and(eq(paymentAttempts.id, attempt.id), eq(paymentAttempts.status, "review")))
     .returning();
-  if (!claimed) throw new HttpError(409, "payment is not waiting for authentication");
+  if (!claimed) return null;
   const result = await context.culqi.createCharge({
     ...chargeRequest(claimed),
     authentication3DS: authentication,
   });
-  return record(db, claimed, result, context);
+  await record(db, claimed, result, context);
+  return findAttempt(db, claimed.id);
 }
 
 export async function paymentAttemptStatus(db: Db, attemptId: string, context: PaymentContext) {

@@ -299,13 +299,14 @@ _Avoid_: Payment, confirmation, reservation
 
 **Public payment admission**:
 The owner's server-enforced switch for new public card payments, off by default. Pausing it
-stops new charges even in open public checkouts, but not status reads, staff work or recovery
-of earlier payment attempts.
+stops new charges even in open public checkouts, but not status reads, staff work, recovery
+of earlier payment attempts, or completing bank authentication already waiting on an attempt.
 _Avoid_: Maintenance mode, closing sales
 
 **Payment attempt**:
 A request to charge for a quote, recorded before contacting the provider. An unknown
-result is resolved by provider lookup, not another charge.
+result is resolved by provider lookup, not another charge. Bank authentication continues
+that same attempt and source; a public checkout may finish it after the quote expires.
 _Avoid_: Payment, retry
 
 **Refund**:
