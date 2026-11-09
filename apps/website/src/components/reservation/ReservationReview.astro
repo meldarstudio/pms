@@ -588,11 +588,7 @@ const contactFields = [
       const stored = this.stored();
       if (stored?.token) {
         const outcome = await readCheckout(this.copy.apiBase, stored.token);
-        if (outcome.kind === "ready" && outcome.view.quote.expired) {
-          const replacement = await refreshQuote(this.copy.apiBase, stored.token);
-          if (replacement.kind === "has_payment") return outcome;
-          if (replacement.kind !== "denied") return replacement;
-        } else if (outcome.kind !== "denied") return outcome;
+        if (outcome.kind !== "denied") return outcome;
       }
       return startCheckout(this.copy.apiBase, this.selection, this.copy.lang);
     }
@@ -681,12 +677,15 @@ const contactFields = [
       const accepted = this.stored()?.accepted;
       return Boolean(
         view &&
-        quoteStillValid(view) &&
         view.acceptance?.quoteId === view.quote.id &&
         accepted?.quoteId === view.quote.id &&
         accepted.contact === contactKey(this.contact()) &&
         this.input("agree").checked,
       );
+    }
+
+    private serverAccepted(view: CheckoutView) {
+      return quoteStillValid(view) && view.acceptance?.quoteId === view.quote.id;
     }
 
     private showAccepted(focus = false) {
@@ -726,41 +725,177 @@ const contactFields = [
 
     private async pay() {
       if (this.paying || !this.view || !this.copy.payments || !this.isAccepted()) return;
-      this.showPayError("");
-      const security = await this.securityCheck;
-      const turnstileToken = security?.token() ?? "";
-      if (!turnstileToken) return this.showPayError("reservation.pay.error.security");
-      let sourceId: string | null;
-      try {
-        sourceId = await openCardForm({
-          publicKey: this.copy.payments.culqiPublicKey,
-          title: this.copy.payments.title,
-          amountCents: this.view.quote.requiredInitialPaymentCents,
-          currency: this.view.currency,
-          email: this.contact().email,
-          lang: this.copy.lang,
-        });
-      } catch {
-        return this.showPayError("reservation.pay.error.card");
-      }
-      if (!sourceId || this.paying) return;
       this.paying = true;
-      const button = this.el<HTMLButtonElement>("[data-pay-button]");
-      button.disabled = true;
-      this.el("[data-status]").textContent = this.text("reservation.pay.sending");
-      this.markSubmitted(this.view.quote.id);
+      const button = this.querySelector<HTMLButtonElement>("[data-pay-button]");
+      if (button) button.disabled = true;
+      this.showPayError("");
+      this.el("[data-form-error]").textContent = "";
       try {
-        const outcome = await startPayment(this.copy.apiBase, this.token, {
-          quoteId: this.view.quote.id,
-          sourceId,
-          turnstileToken,
-        });
-        security?.reset();
-        await this.settlePayment(outcome);
+        if (!(await this.confirmNoOpenPayment())) return;
+        if (!(await this.ensureAcceptedQuote()) || !this.view || !this.copy.payments) return;
+        const security = await this.securityCheck;
+        const turnstileToken = security?.token() ?? "";
+        if (!turnstileToken) return this.showPayError("reservation.pay.error.security");
+        let sourceId: string | null;
+        try {
+          sourceId = await openCardForm({
+            publicKey: this.copy.payments.culqiPublicKey,
+            title: this.copy.payments.title,
+            amountCents: this.view.quote.requiredInitialPaymentCents,
+            currency: this.view.currency,
+            email: this.contact().email,
+            lang: this.copy.lang,
+          });
+        } catch {
+          return this.showPayError("reservation.pay.error.card");
+        }
+        if (!sourceId || !this.view) return;
+        await this.sendPayment(sourceId, turnstileToken, security);
       } finally {
         this.paying = false;
-        button.disabled = false;
+        if (button) button.disabled = false;
       }
+    }
+
+    private async confirmNoOpenPayment() {
+      const current = await readPayment(this.copy.apiBase, this.token);
+      if (current.kind === "payment") {
+        if (current.payment && !allowsNewPayment(current.payment)) {
+          this.markSubmitted(null);
+          this.showPayment(current.payment, true);
+          return false;
+        }
+        return true;
+      }
+      if (current.kind === "denied") {
+        await this.load();
+        return false;
+      }
+      this.showPayError(payErrorCopy[current.kind] ?? "reservation.pay.error.unavailable");
+      return false;
+    }
+
+    private async ensureAcceptedQuote() {
+      if (!this.view) return false;
+      if (quoteStillValid(this.view)) return this.serverAccepted(this.view);
+      return this.applyRefresh(await refreshQuote(this.copy.apiBase, this.token));
+    }
+
+    private async applyRefresh(outcome: CheckoutOutcome) {
+      if (outcome.kind === "has_payment") {
+        await this.syncPayment(true);
+        return false;
+      }
+      if (outcome.kind === "ready") {
+        if (this.serverAccepted(outcome.view)) {
+          this.keepRefreshedAgreement(outcome);
+          return true;
+        }
+        this.showChangedOffer(outcome);
+        return false;
+      }
+      this.settle(outcome);
+      return false;
+    }
+
+    private keepRefreshedAgreement(outcome: Ready) {
+      const stored = this.stored();
+      this.token = outcome.token || this.token;
+      this.view = outcome.view;
+      storeCheckout(this.key, {
+        token: this.token,
+        agreedOffer: offerKey(outcome.view),
+        accepted: {
+          quoteId: outcome.view.quote.id,
+          contact: stored?.accepted?.contact ?? contactKey(this.contact()),
+        },
+        submitted: stored?.submitted ?? null,
+      });
+      this.input("agree").checked = true;
+      this.el("[data-changed]").hidden = true;
+      this.el("[data-form-error]").textContent = "";
+      this.render(outcome.view);
+      this.el("[data-review]").hidden = false;
+      this.el("[data-problem]").hidden = true;
+      this.showAccepted();
+    }
+
+    private showChangedOffer(outcome: Ready) {
+      const stored = this.stored();
+      this.token = outcome.token || this.token;
+      this.view = outcome.view;
+      if (stored)
+        storeCheckout(this.key, {
+          ...stored,
+          token: this.token,
+          agreedOffer: null,
+          accepted: null,
+        });
+      this.input("agree").checked = false;
+      this.el("[data-changed]").hidden = false;
+      this.el("[data-form-error]").textContent = this.text("reservation.pay.changed");
+      this.render(outcome.view);
+      this.el("[data-review]").hidden = false;
+      this.el("[data-problem]").hidden = true;
+      this.showAccepted();
+      this.input("agree").focus();
+    }
+
+    private async sendPayment(
+      sourceId: string,
+      turnstileToken: string,
+      security: SecurityCheck | null,
+    ) {
+      this.el("[data-status]").textContent = this.text("reservation.pay.sending");
+      this.markSubmitted(this.view!.quote.id);
+      let outcome = await startPayment(this.copy.apiBase, this.token, {
+        quoteId: this.view!.quote.id,
+        sourceId,
+        turnstileToken,
+      });
+      if (outcome.kind === "expired" || outcome.kind === "replaced") {
+        const recovered = await this.recoverRejectedCharge(outcome, sourceId, turnstileToken);
+        if (!recovered) {
+          security?.reset();
+          return;
+        }
+        outcome = recovered;
+      }
+      security?.reset();
+      await this.settlePayment(outcome);
+    }
+
+    private async recoverRejectedCharge(
+      outcome: Extract<PaymentOutcome, { kind: "expired" | "replaced" }>,
+      sourceId: string,
+      turnstileToken: string,
+    ): Promise<PaymentOutcome | null> {
+      const current =
+        outcome.kind === "expired"
+          ? await refreshQuote(this.copy.apiBase, this.token)
+          : await readCheckout(this.copy.apiBase, this.token);
+      if (current.kind === "has_payment") return readPayment(this.copy.apiBase, this.token);
+      if (current.kind !== "ready") {
+        this.settle(current);
+        return null;
+      }
+      if (!this.serverAccepted(current.view)) {
+        this.showChangedOffer(current);
+        return null;
+      }
+      this.keepRefreshedAgreement(current);
+      const retried = await startPayment(this.copy.apiBase, this.token, {
+        quoteId: current.view.quote.id,
+        sourceId,
+        turnstileToken,
+      });
+      if (retried.kind !== "expired" && retried.kind !== "replaced") return retried;
+      const latest = await readCheckout(this.copy.apiBase, this.token);
+      if (latest.kind === "ready" && this.serverAccepted(latest.view))
+        this.keepRefreshedAgreement(latest);
+      else if (latest.kind === "ready") this.showChangedOffer(latest);
+      else this.settle(latest);
+      return null;
     }
 
     private markSubmitted(quoteId: string | null) {
@@ -796,9 +931,8 @@ const contactFields = [
       if (outcome.kind === "denied") return this.load();
       if (outcome.kind === "invalid" && backendProblems[outcome.error])
         return this.showProblem(outcome);
-      if (outcome.kind === "stale") {
-        await this.load();
-        this.el("[data-form-error]").textContent = this.text("reservation.pay.error.stale");
+      if (outcome.kind === "expired" || outcome.kind === "replaced") {
+        this.el("[data-form-error]").textContent = this.text("reservation.pay.changed");
         return;
       }
       this.showPayError(payErrorCopy[outcome.kind] ?? "reservation.pay.error.unavailable");
@@ -923,11 +1057,19 @@ const contactFields = [
       const outcome = await this.accept();
       if (!["expired", "replaced", "denied"].includes(outcome.kind)) return outcome;
       const before = offerKey(this.view!);
-      const current = await this.currentQuote();
+      const current =
+        outcome.kind === "expired"
+          ? await refreshQuote(this.copy.apiBase, this.token)
+          : await this.currentQuote();
+      if (current.kind === "has_payment") return current;
       if (current.kind !== "ready") return current;
       this.ready(current);
-      if (offerKey(current.view) === before) return this.accept();
-      this.el("[data-changed]").focus();
+      if (offerKey(current.view) === before && !this.serverAccepted(current.view))
+        return this.accept();
+      if (this.serverAccepted(current.view)) return current;
+      this.input("agree").checked = false;
+      this.el("[data-changed]").hidden = false;
+      this.input("agree").focus();
       return null;
     }
 
@@ -980,13 +1122,14 @@ const contactFields = [
 
     private showProblem(problem: Problem) {
       const copy = problemCopy[problem.kind];
+      const room = this.search.room ? (this.copy.rooms[this.search.room]?.name ?? "") : "";
       const body =
         problem.kind === "invalid" ? (backendProblems[problem.error] ?? copy.body) : copy.body;
       this.el("[data-status]").textContent = "";
       this.el("[data-review]").hidden = true;
       this.el("[data-problem]").hidden = false;
-      this.el("[data-problem-title]").textContent = this.text(copy.title);
-      this.el("[data-problem-body]").textContent = this.text(body);
+      this.el("[data-problem-title]").textContent = this.text(copy.title, { room });
+      this.el("[data-problem-body]").textContent = this.text(body, { room });
       this.el("[data-retry]").hidden = !copy.retry;
       this.el("[data-problem-title]").focus();
     }

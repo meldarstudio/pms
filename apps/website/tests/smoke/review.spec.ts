@@ -160,16 +160,24 @@ test("editing the contact after accepting asks for acceptance again", async ({ p
   await expect(page.getByRole("button", { name: "Aceptar condiciones" })).toBeVisible();
 });
 
-test("an accepted quote past its lifetime is not shown as a valid agreement", async ({ page }) => {
+test("an accepted quote past its lifetime stays payable and is not refreshed until the guest pays", async ({
+  page,
+}) => {
   await page.clock.install();
+  let refreshes = 0;
+  page.on("request", (request) => {
+    if (request.method() === "POST" && request.url().endsWith("/public/checkout/quotes"))
+      refreshes += 1;
+  });
   await page.goto(reviewPath(openStay(), { room: "king", plan: "flexible" }));
   await acceptTerms(page);
 
   await page.clock.fastForward("11:00");
   await page.getByLabel("Teléfono").fill("987 654 321");
 
-  await expect(page.getByText("Condiciones aceptadas")).toBeHidden();
-  await expect(page.getByRole("button", { name: "Aceptar condiciones" })).toBeVisible();
+  await expect(page.getByText("Condiciones aceptadas")).toBeVisible();
+  await expect(page.getByRole("button", { name: /^Pagar/ })).toBeVisible();
+  expect(refreshes).toBe(0);
 });
 
 test("browser back shows the latest contact draft", async ({ page }) => {
@@ -194,6 +202,7 @@ test("a room lost before review returns to the kept choice without picking anoth
   await expect(
     page.getByRole("heading", { name: "Esta habitación ya no está disponible para estas fechas" }),
   ).toBeFocused();
+  await expect(page.getByText(/Doble Premium ya no está disponible/)).toBeVisible();
   await expect(page.getByRole("form")).toBeHidden();
 
   await page.getByRole("link", { name: "Volver a las habitaciones" }).click();

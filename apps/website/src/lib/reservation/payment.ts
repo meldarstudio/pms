@@ -27,7 +27,8 @@ export type PaymentOutcome =
   | { kind: "throttled" }
   | { kind: "security_failed" }
   | { kind: "security_unavailable" }
-  | { kind: "stale" }
+  | { kind: "expired" }
+  | { kind: "replaced" }
   | { kind: "sold_out" }
   | { kind: "invalid"; error: string }
   | { kind: "denied" }
@@ -36,8 +37,7 @@ export type PaymentOutcome =
 export const allowsNewPayment = (payment: GuestPayment | null) =>
   !payment || payment.state === "declined";
 
-const STALE_QUOTE = new Set([
-  "quote has expired",
+const REPLACED_QUOTE = new Set([
   "quote was replaced by a newer quote",
   "quote has not been accepted",
   "quote not found",
@@ -88,7 +88,8 @@ async function call(
   if (error === "online payments are paused") return { kind: "paused" };
   if (error === "payment security check failed") return { kind: "security_failed" };
   if (SECURITY_UNAVAILABLE.has(error)) return { kind: "security_unavailable" };
-  if (STALE_QUOTE.has(error)) return { kind: "stale" };
+  if (error === "quote has expired") return { kind: "expired" };
+  if (REPLACED_QUOTE.has(error)) return { kind: "replaced" };
   if (response.status === 409 && error === "no availability") return { kind: "sold_out" };
   if (response.status === 400) return { kind: "invalid", error };
   return { kind: "unavailable" };

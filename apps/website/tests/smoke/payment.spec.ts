@@ -1,5 +1,7 @@
+import { fileURLToPath } from "node:url";
 import { expect, test, type APIRequestContext, type Page } from "@playwright/test";
-import { LOCAL_API_URL, openStay } from "../support/local-api";
+import { executeSql, localDatabase } from "../../../backend/scripts/d1.mjs";
+import { LOCAL_API_URL, daysFromToday, openStay } from "../support/local-api";
 import { nextCulqiCharge, stubPaymentScripts, useOwnSourceIp } from "../support/payment";
 
 declare global {
@@ -34,17 +36,52 @@ const payButton = (page: Page, amount: string) =>
 
 const outcome = (page: Page) => page.locator("[data-outcome]");
 
-async function serverPayment(page: Page, request: APIRequestContext) {
-  const token = await page.evaluate(() => {
+async function checkoutToken(page: Page) {
+  return page.evaluate(() => {
     const checkouts = JSON.parse(
       sessionStorage.getItem("hm.reservation.checkouts") ?? "{}",
     ) as Record<string, { token: string }>;
     return Object.values(checkouts).at(-1)!.token;
   });
+}
+
+async function serverCheckout(page: Page, request: APIRequestContext) {
+  const response = await request.get(`${LOCAL_API_URL}/public/checkout`, {
+    headers: { authorization: `Bearer ${await checkoutToken(page)}` },
+  });
+  expect(response.status()).toBe(200);
+  return (await response.json()) as {
+    quote: {
+      id: string;
+      expired: boolean;
+      totalCents: number;
+      requiredInitialPaymentCents: number;
+    };
+    acceptance: { quoteId: string } | null;
+  };
+}
+
+async function serverPayment(page: Page, request: APIRequestContext) {
   const response = await request.get(`${LOCAL_API_URL}/public/checkout/payment`, {
-    headers: { authorization: `Bearer ${token}` },
+    headers: { authorization: `Bearer ${await checkoutToken(page)}` },
   });
   return ((await response.json()) as { payment: { state: string } | null }).payment;
+}
+
+const localState = fileURLToPath(new URL("../../.local-api/state", import.meta.url));
+
+function expireQuote(quoteId: string, checkIn?: string) {
+  if (!/^[0-9a-f-]{36}$/i.test(quoteId)) throw new Error("unexpected quote id");
+  if (checkIn && !/^\d{4}-\d{2}-\d{2}$/.test(checkIn)) throw new Error("unexpected check-in");
+  const cheaper = checkIn
+    ? `DELETE FROM room_type_rates WHERE room_type_id = 'type-suite-matrimonial' AND date = '${checkIn}';
+       INSERT INTO room_type_rates (id, room_type_id, date, price_cents)
+         VALUES ('refresh-${quoteId}', 'type-suite-matrimonial', '${checkIn}', 8000);`
+    : "";
+  executeSql(
+    localDatabase(localState),
+    `${cheaper}UPDATE quotes SET expires_at = '2020-01-01T00:00:00.000Z' WHERE id = '${quoteId}';`,
+  );
 }
 
 test("paying the accepted Flexible quote confirms it with the paid amount and the balance", async ({
@@ -143,6 +180,76 @@ test("money received for dates the same contact already holds is shown as unconf
   await expect(outcome(page)).toContainText(/Recibido\s*S\/\s180\.00/);
   await expect(outcome(page)).toContainText(/Por resolver\s*S\/\s180\.00/);
   await expect(outcome(page)).not.toContainText("confirmada");
+});
+
+test("paying an expired unchanged quote refreshes it and charges once without asking again", async ({
+  page,
+  request,
+}) => {
+  await acceptTerms(page, "flexible", payerEmail());
+  const before = await serverCheckout(page, request);
+  let refreshes = 0;
+  page.on("request", (req) => {
+    if (req.method() === "POST" && req.url().endsWith("/public/checkout/quotes")) refreshes += 1;
+  });
+  expireQuote(before.quote.id);
+
+  await page.reload();
+  expect((await serverCheckout(page, request)).quote.id).toBe(before.quote.id);
+  expect(refreshes).toBe(0);
+
+  await payButton(page, "100.00").click();
+
+  await expect(page.getByRole("heading", { name: "Su reserva está confirmada" })).toBeVisible();
+  await expect(page.getByText("acéptelas de nuevo")).toHaveCount(0);
+  const after = await serverCheckout(page, request);
+  expect(after.quote.id).not.toBe(before.quote.id);
+  expect(after.acceptance?.quoteId).toBe(after.quote.id);
+  expect(after.quote.requiredInitialPaymentCents).toBe(10000);
+  expect(await serverPayment(page, request)).toMatchObject({ state: "confirmed" });
+  expect(refreshes).toBe(1);
+  expect(await page.evaluate(() => window.culqiConfigs)).toHaveLength(1);
+});
+
+test("a cheaper refreshed quote is shown for a new acceptance and is not charged until then", async ({
+  page,
+  request,
+}) => {
+  const stay = { checkIn: daysFromToday(200), checkOut: daysFromToday(202) };
+  await page.goto(
+    `/reservar/revisar/?${new URLSearchParams({ ...stay, adults: "2", children: "0", room: "king", plan: "flexible" }).toString()}`,
+  );
+  await page.getByLabel("Nombre completo").fill("Ana Torres");
+  await page.getByLabel("Correo electrónico").fill(payerEmail());
+  await page.getByLabel("Teléfono").fill("987 654 321");
+  await page.getByRole("checkbox", { name: /Acepto las condiciones/ }).check();
+  await page.getByRole("button", { name: "Aceptar condiciones" }).click();
+  await expect(page.getByText("Condiciones aceptadas")).toBeVisible();
+  const before = await serverCheckout(page, request);
+  expireQuote(before.quote.id, stay.checkIn);
+
+  await page.reload();
+  await payButton(page, "100.00").click();
+
+  await expect(page.getByText("así que no se cobró nada")).toBeVisible();
+  await expect(page.getByRole("checkbox", { name: /Acepto las condiciones/ })).not.toBeChecked();
+  await expect(page.getByRole("checkbox", { name: /Acepto las condiciones/ })).toBeFocused();
+  await expect(page.getByText(/S\/\s*180\.00/)).toBeVisible();
+  await expect(page.getByText(/S\/\s*80\.00/).first()).toBeVisible();
+  await expect(page.getByLabel("Nombre completo")).toHaveValue("Ana Torres");
+  expect(await serverPayment(page, request)).toBeNull();
+  const changed = await serverCheckout(page, request);
+  expect(changed.quote.id).not.toBe(before.quote.id);
+  expect(changed.acceptance?.quoteId).toBe(before.quote.id);
+  expect(changed.quote.requiredInitialPaymentCents).toBe(8000);
+  expect(await page.evaluate(() => window.culqiConfigs ?? [])).toEqual([]);
+
+  await page.getByRole("checkbox", { name: /Acepto las condiciones/ }).check();
+  await page.getByRole("button", { name: "Aceptar condiciones" }).click();
+  await expect(page.getByText("Condiciones aceptadas")).toBeVisible();
+  await payButton(page, "80.00").click();
+  await expect(page.getByRole("heading", { name: "Su reserva está confirmada" })).toBeVisible();
+  await expect(outcome(page)).toContainText(/Pagado\s*S\/\s80\.00/);
 });
 
 test("a lost payment response says the payment was sent and never invites paying again", async ({

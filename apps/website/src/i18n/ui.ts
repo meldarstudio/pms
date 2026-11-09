@@ -378,8 +378,8 @@ export const ui = {
       "Online payments are paused right now. Nothing was charged, and your details and accepted terms are kept on this page. Try again later, or message us on WhatsApp to reserve.",
     "reservation.pay.error.throttled":
       "Too many payment attempts from your connection or for this reservation. Nothing was charged and your details are kept: wait a minute and try again.",
-    "reservation.pay.error.stale":
-      "The price had to be checked again before charging, so nothing was charged. Review the terms and accept them again before paying.",
+    "reservation.pay.changed":
+      "The price or terms changed, so nothing was charged. Review them and accept again before paying.",
     "reservation.pay.error.card":
       "The card form couldn't open. Nothing was charged: check your connection and try again.",
     "reservation.pay.error.unavailable":
@@ -443,7 +443,7 @@ export const ui = {
       "We couldn't find your choice. Go back and choose a room and rate for your dates.",
     "reservation.review.soldOut.title": "This room is no longer available for these dates",
     "reservation.review.soldOut.body":
-      "Your search and details are kept. Go back to see which rooms are still available; we won't pick another one for you.",
+      "{room} is no longer available for these dates. Your search and details are kept. Go back to see which rooms are still available; we won't pick another one for you.",
     "reservation.review.backToRooms": "Back to rooms",
     "reservation.review.throttled.title": "Too many price requests from your connection",
     "reservation.review.throttled.body":
@@ -838,8 +838,8 @@ export const ui = {
       "Los pagos en línea están en pausa en este momento. No se cobró nada y sus datos y las condiciones aceptadas se conservan en esta página. Intente más tarde o escríbanos por WhatsApp para reservar.",
     "reservation.pay.error.throttled":
       "Demasiados intentos de pago desde su conexión o para esta reserva. No se cobró nada y sus datos se conservan: espere un minuto e intente de nuevo.",
-    "reservation.pay.error.stale":
-      "El precio tuvo que verificarse de nuevo antes del cobro, así que no se cobró nada. Revise las condiciones y acéptelas de nuevo antes de pagar.",
+    "reservation.pay.changed":
+      "El precio o las condiciones cambiaron, así que no se cobró nada. Revíselas y acéptelas de nuevo antes de pagar.",
     "reservation.pay.error.card":
       "No se pudo abrir el formulario de la tarjeta. No se cobró nada: revise su conexión e intente de nuevo.",
     "reservation.pay.error.unavailable":
@@ -902,7 +902,7 @@ export const ui = {
       "No encontramos su elección. Vuelva y elija una habitación y una tarifa para sus fechas.",
     "reservation.review.soldOut.title": "Esta habitación ya no está disponible para estas fechas",
     "reservation.review.soldOut.body":
-      "Su búsqueda y sus datos se conservan. Vuelva para ver qué habitaciones siguen disponibles; no elegiremos otra por usted.",
+      "{room} ya no está disponible para estas fechas. Su búsqueda y sus datos se conservan. Vuelva para ver qué habitaciones siguen disponibles; no elegiremos otra por usted.",
     "reservation.review.backToRooms": "Volver a las habitaciones",
     "reservation.review.throttled.title": "Demasiadas solicitudes de precio desde su conexión",
     "reservation.review.throttled.body":
