@@ -2,6 +2,7 @@ import type { BookingContact } from "./checkout";
 
 const CHECKOUTS_KEY = "hm.reservation.checkouts";
 const CONTACT_KEY = "hm.reservation.contact";
+const CARD_SOURCES_KEY = "hm.reservation.card-sources";
 const MAX_STORED_CHECKOUTS = 10;
 
 export type StoredCheckout = {
@@ -55,3 +56,22 @@ export function storedContact(): BookingContact {
 }
 
 export const storeContact = (contact: BookingContact) => write(CONTACT_KEY, contact);
+
+const CARD_SOURCE = /^tkn_[\w-]{1,200}$/;
+
+export function storedCardSource(selection: string) {
+  const source = read<Record<string, string>>(CARD_SOURCES_KEY)?.[selection];
+  return typeof source === "string" && CARD_SOURCE.test(source) ? source : null;
+}
+
+export function storeCardSource(selection: string, sourceId: string) {
+  if (!CARD_SOURCE.test(sourceId)) return;
+  const sources = read<Record<string, string>>(CARD_SOURCES_KEY) ?? {};
+  write(CARD_SOURCES_KEY, { ...sources, [selection]: sourceId });
+}
+
+export function clearCardSource(selection: string) {
+  const sources = read<Record<string, string>>(CARD_SOURCES_KEY) ?? {};
+  delete sources[selection];
+  write(CARD_SOURCES_KEY, sources);
+}

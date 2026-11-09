@@ -15,9 +15,14 @@ lives only in `sessionStorage` (`src/lib/reservation/draft.ts`), never in URLs.
 it publishes. Card payment on Review needs build-time `PUBLIC_CULQI_PUBLIC_KEY` and
 `PUBLIC_TURNSTILE_SITE_KEY`; without either, Review says payment isn't available. Payment
 status is read back from the checkout (`src/lib/reservation/payment.ts`), so reload, back
-and language changes show the existing attempt instead of paying again. Browser tests stub
-the Culqi and Turnstile scripts (`tests/support/payment.ts`), and the local API charges a
-fake Culqi and Turnstile served by `scripts/fake-payment-services.mjs`.
+and language changes show the existing attempt instead of paying again. Before the first
+charge, Review loads Culqi3DS and sends `generateDevice()` when it succeeds; a failure to
+load does not block a non-3DS card. A required bank check opens that library's modal with
+the stored card token from `sessionStorage` (`hm.reservation.card-sources`), never the URL.
+Parameters continue the same attempt; a browser error or closed window stays pending and
+can open the bank again, without another card. Browser tests stub the Culqi, Culqi3DS and
+Turnstile scripts (`tests/support/payment.ts`), and the local API charges a fake Culqi and
+Turnstile served by `scripts/fake-payment-services.mjs`.
 
 ## Content
 

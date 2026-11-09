@@ -286,6 +286,9 @@ const contactFields = [
                 <button type="button" class={primary} data-outcome-retry hidden>
                   {t("reservation.outcome.retry")}
                 </button>
+                <button type="button" class={secondary} data-outcome-bank hidden>
+                  {t("reservation.outcome.verifyBank")}
+                </button>
                 <button type="button" class={secondary} data-outcome-check hidden>
                   {t("reservation.outcome.check")}
                 </button>
@@ -317,23 +320,30 @@ const contactFields = [
     type CheckoutView,
   } from "@/lib/reservation/checkout";
   import {
+    clearCardSource,
     contactKey,
+    storeCardSource,
     storeCheckout,
     storeContact,
+    storedCardSource,
     storedCheckout,
     storedContact,
   } from "@/lib/reservation/draft";
   import { fill, formatDate, formatMoney } from "@/lib/reservation/format";
   import {
     allowsNewPayment,
+    continuePayment,
     readPayment,
     startPayment,
     type GuestPayment,
     type PaymentOutcome,
   } from "@/lib/reservation/payment";
   import {
+    deviceFingerprint,
+    openBankAuthentication,
     openCardForm,
     renderSecurityCheck,
+    type AuthenticationParameters,
     type SecurityCheck,
   } from "@/lib/reservation/providers";
   import { readSearch, searchParams, type StaySearch } from "@/lib/reservation/search";
@@ -468,6 +478,7 @@ const contactFields = [
     private busy = false;
     private payment: GuestPayment | null = null;
     private paying = false;
+    private openedBankFor: string | null = null;
     private securityCheck: Promise<SecurityCheck | null> | null = null;
     private poll: ReturnType<typeof setTimeout> | undefined;
 
@@ -545,6 +556,7 @@ const contactFields = [
       this.el("[data-retry]").addEventListener("click", () => void this.load());
       this.querySelector("[data-pay-button]")?.addEventListener("click", () => void this.pay());
       this.el("[data-outcome-retry]").addEventListener("click", () => this.payAgain());
+      this.el("[data-outcome-bank]").addEventListener("click", () => void this.openBank());
       this.el("[data-outcome-check]").addEventListener("click", () => void this.syncPayment(true));
       this.el<HTMLFormElement>("[data-contact-form]").addEventListener("submit", (event) => {
         event.preventDefault();
@@ -749,8 +761,14 @@ const contactFields = [
         } catch {
           return this.showPayError("reservation.pay.error.card");
         }
-        if (!sourceId || !this.view) return;
-        await this.sendPayment(sourceId, turnstileToken, security);
+        if (!sourceId || !this.view || !this.copy.payments) return;
+        const fingerprint = await deviceFingerprint({
+          publicKey: this.copy.payments.culqiPublicKey,
+          amountCents: this.view.quote.requiredInitialPaymentCents,
+          currency: this.view.currency,
+          email: this.contact().email,
+        });
+        await this.sendPayment(sourceId, turnstileToken, security, fingerprint);
       } finally {
         this.paying = false;
         if (button) button.disabled = false;
@@ -853,16 +871,24 @@ const contactFields = [
       sourceId: string,
       turnstileToken: string,
       security: SecurityCheck | null,
+      fingerprint: string | null,
     ) {
+      this.rememberCardSource(sourceId);
       this.el("[data-status]").textContent = this.text("reservation.pay.sending");
       this.markSubmitted(this.view!.quote.id);
       let outcome = await startPayment(this.copy.apiBase, this.token, {
         quoteId: this.view!.quote.id,
         sourceId,
         turnstileToken,
+        ...(fingerprint ? { deviceFingerprint: fingerprint } : {}),
       });
       if (outcome.kind === "expired" || outcome.kind === "replaced") {
-        const recovered = await this.recoverRejectedCharge(outcome, sourceId, turnstileToken);
+        const recovered = await this.recoverRejectedCharge(
+          outcome,
+          sourceId,
+          turnstileToken,
+          fingerprint,
+        );
         if (!recovered) {
           security?.reset();
           return;
@@ -877,6 +903,7 @@ const contactFields = [
       outcome: Extract<PaymentOutcome, { kind: "expired" | "replaced" }>,
       sourceId: string,
       turnstileToken: string,
+      fingerprint: string | null,
     ): Promise<PaymentOutcome | null> {
       const reviewed = this.view ? offerKey(this.view) : "";
       const current =
@@ -902,6 +929,7 @@ const contactFields = [
         quoteId: current.view.quote.id,
         sourceId,
         turnstileToken,
+        ...(fingerprint ? { deviceFingerprint: fingerprint } : {}),
       });
       if (retried.kind !== "expired" && retried.kind !== "replaced") return retried;
       const latest = await readCheckout(this.copy.apiBase, this.token);
@@ -915,6 +943,18 @@ const contactFields = [
 
     private sameAcceptedOffer(view: CheckoutView, reviewed: string) {
       return this.serverAccepted(view) && offerKey(view) === reviewed;
+    }
+
+    private rememberCardSource(sourceId: string) {
+      if (this.key) storeCardSource(this.key, sourceId);
+    }
+
+    private forgetCardSource() {
+      if (this.key) clearCardSource(this.key);
+    }
+
+    private cardSource() {
+      return this.key ? storedCardSource(this.key) : null;
     }
 
     private markSubmitted(quoteId: string | null) {
@@ -939,6 +979,7 @@ const contactFields = [
       if (outcome.kind === "unavailable") {
         const current = await readPayment(this.copy.apiBase, this.token);
         if (current.kind === "payment" && current.payment) this.markSubmitted(null);
+        if (current.kind === "payment" && !current.payment) this.forgetCardSource();
         return this.showPayment(
           current.kind === "payment" && current.payment ? current.payment : this.submittedPayment(),
           true,
@@ -966,6 +1007,7 @@ const contactFields = [
       if (announce) this.el("[data-status]").textContent = "";
       if (outcome.kind !== "payment") return;
       if (outcome.payment) this.markSubmitted(null);
+      else this.forgetCardSource();
       this.showPayment(outcome.payment ?? this.submittedPayment(), announce);
     }
 
@@ -980,10 +1022,83 @@ const contactFields = [
       const outcome = this.el("[data-outcome]");
       outcome.hidden = !payment;
       if (payment) this.renderOutcome(payment);
+      if (payment && payment.state !== "authentication_required" && payment.state !== "submitted")
+        this.forgetCardSource();
       this.showAccepted();
       if (payment && focus) this.el("[data-outcome-title]").focus();
+      if (payment?.state === "authentication_required") this.maybeOpenBank();
       if (payment && VERIFYING.includes(payment.state) && !payment.delayed)
         this.poll = setTimeout(() => void this.syncPayment(), PAYMENT_POLL_MS);
+    }
+
+    private maybeOpenBank() {
+      const source = this.cardSource();
+      if (!source || this.openedBankFor === source) return;
+      this.openedBankFor = source;
+      void this.openBank();
+    }
+
+    private async openBank() {
+      const sourceId = this.cardSource();
+      const payments = this.copy.payments;
+      const view = this.view;
+      if (!sourceId || !payments || !view) return;
+      try {
+        await openBankAuthentication({
+          publicKey: payments.culqiPublicKey,
+          amountCents: this.payment?.amountCents ?? view.quote.requiredInitialPaymentCents,
+          currency: view.currency,
+          email: this.contact().email,
+          sourceId,
+          onParameters: (parameters) => void this.finishAuthentication(parameters),
+          onIncomplete: () => this.showAuthenticationIncomplete(),
+        });
+      } catch {
+        this.showAuthenticationIncomplete();
+      }
+    }
+
+    private showAuthenticationIncomplete() {
+      if (
+        this.payment &&
+        this.payment.state !== "authentication_required" &&
+        this.payment.state !== "submitted"
+      )
+        return;
+      const pending =
+        this.payment?.state === "authentication_required" ? this.payment : this.waitingForBank();
+      if (!pending) return;
+      this.showPayment(pending, false);
+      this.el("[data-outcome-bank]").focus();
+    }
+
+    private waitingForBank(): GuestPayment | null {
+      const view = this.view;
+      if (!view) return null;
+      return {
+        state: "authentication_required",
+        amountCents: view.quote.requiredInitialPaymentCents,
+        currency: view.currency,
+        delayed: false,
+        reservation: null,
+      };
+    }
+
+    private async finishAuthentication(parameters: AuthenticationParameters) {
+      if (!this.view || !this.token) return;
+      this.markSubmitted(this.view.quote.id);
+      const outcome = await continuePayment(this.copy.apiBase, this.token, parameters);
+      if (outcome.kind === "payment" || outcome.kind === "unavailable") {
+        await this.settlePayment(outcome);
+        return;
+      }
+      const current = await readPayment(this.copy.apiBase, this.token);
+      if (current.kind === "payment" && current.payment) this.markSubmitted(null);
+      if (current.kind === "payment" && !current.payment) this.forgetCardSource();
+      this.showPayment(
+        current.kind === "payment" && current.payment ? current.payment : this.submittedPayment(),
+        true,
+      );
     }
 
     private renderOutcome(payment: GuestPayment) {
@@ -1033,6 +1148,8 @@ const contactFields = [
         }),
       );
       this.el("[data-outcome-retry]").hidden = !allowsNewPayment(payment) || !this.copy.payments;
+      this.el("[data-outcome-bank]").hidden =
+        payment.state !== "authentication_required" || !this.cardSource();
       this.el("[data-outcome-check]").hidden = !(
         payment.state === "submitted" ||
         payment.state === "authentication_required" ||

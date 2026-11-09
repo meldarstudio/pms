@@ -37,9 +37,36 @@ window.turnstile = {
 };
 `;
 
+const fakeCulqi3DS = `
+window.culqi3DS ??= { devices: [], authentications: [], parameters: null, error: null };
+window.culqi3DS.devices ??= [];
+window.culqi3DS.authentications ??= [];
+window.Culqi3DS = {
+  publicKey: "",
+  settings: null,
+  options: {},
+  reset() {},
+  async generateDevice() {
+    window.culqi3DS.devices.push(this.settings);
+    return "device-test";
+  },
+  initAuthentication(token) {
+    window.culqi3DS.authentications.push(token);
+    const { parameters, error } = window.culqi3DS;
+    setTimeout(() => {
+      if (parameters) window.postMessage({ parameters3DS: parameters }, window.location.origin);
+      else if (error) window.postMessage({ error }, window.location.origin);
+    }, 0);
+  },
+};
+`;
+
 export async function stubPaymentScripts(page: Page) {
   await page.route("https://js.culqi.com/**", (route) =>
     route.fulfill({ contentType: "text/javascript", body: fakeCulqiCheckout }),
+  );
+  await page.route("https://3ds.culqi.com/**", (route) =>
+    route.fulfill({ contentType: "text/javascript", body: fakeCulqi3DS }),
   );
   await page.route("https://challenges.cloudflare.com/**", (route) =>
     route.fulfill({ contentType: "text/javascript", body: fakeTurnstile }),

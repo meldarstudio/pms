@@ -397,7 +397,7 @@ export const ui = {
       "Nothing was charged. You can pay with another card; your details and accepted terms are kept.",
     "reservation.outcome.authentication_required.title": "Your bank needs to verify this payment",
     "reservation.outcome.authentication_required.body":
-      "This payment is waiting for your bank's verification. It hasn't been declined, so please don't pay again. Check the status here, or message us on WhatsApp for help.",
+      "This payment is waiting for your bank's verification. It has not been declined, so please don't pay again. If the bank window closed before finishing, open it again. You can also check the status here, or message us on WhatsApp for help.",
     "reservation.outcome.processing.title": "Confirming your payment",
     "reservation.outcome.processing.body":
       "We're verifying your payment with the card processor. Please don't pay again: verification continues even if you close this page.",
@@ -422,6 +422,7 @@ export const ui = {
     "reservation.outcome.outstanding": "Outstanding balance",
     "reservation.outcome.awaiting": "Awaiting resolution",
     "reservation.outcome.retry": "Pay with another card",
+    "reservation.outcome.verifyBank": "Open bank verification",
     "reservation.outcome.check": "Check status",
     "reservation.outcome.checking": "Checking your payment…",
     "reservation.review.changed":
@@ -859,7 +860,7 @@ export const ui = {
       "No se cobró nada. Puede pagar con otra tarjeta; sus datos y las condiciones aceptadas se conservan.",
     "reservation.outcome.authentication_required.title": "Su banco necesita verificar este pago",
     "reservation.outcome.authentication_required.body":
-      "Este pago espera la verificación de su banco. No fue rechazado, así que no pague de nuevo. Consulte el estado aquí o escríbanos por WhatsApp si necesita ayuda.",
+      "Este pago espera la verificación de su banco. No fue rechazado, así que no pague de nuevo. Si la ventana del banco se cerró antes de terminar, ábrala de nuevo. También puede consultar el estado aquí o escribirnos por WhatsApp si necesita ayuda.",
     "reservation.outcome.processing.title": "Confirmando su pago",
     "reservation.outcome.processing.body":
       "Estamos verificando su pago con el procesador de tarjetas. No pague de nuevo: la verificación continúa aunque cierre esta página.",
@@ -882,6 +883,7 @@ export const ui = {
     "reservation.outcome.outstanding": "Saldo pendiente",
     "reservation.outcome.awaiting": "Por resolver",
     "reservation.outcome.retry": "Pagar con otra tarjeta",
+    "reservation.outcome.verifyBank": "Abrir la verificación del banco",
     "reservation.outcome.check": "Consultar estado",
     "reservation.outcome.checking": "Consultando su pago…",
     "reservation.review.changed":

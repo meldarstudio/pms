@@ -101,5 +101,37 @@ export const readPayment = (apiBase: string, token: string) =>
 export const startPayment = (
   apiBase: string,
   token: string,
-  payment: { quoteId: string; sourceId: string; turnstileToken: string },
-) => call(apiBase, "public/checkout/payments", { method: "POST", token, body: payment });
+  payment: {
+    quoteId: string;
+    sourceId: string;
+    turnstileToken: string;
+    deviceFingerprint?: string;
+  },
+) =>
+  call(apiBase, "public/checkout/payments", {
+    method: "POST",
+    token,
+    body: {
+      quoteId: payment.quoteId,
+      sourceId: payment.sourceId,
+      turnstileToken: payment.turnstileToken,
+      ...(payment.deviceFingerprint ? { deviceFingerprint: payment.deviceFingerprint } : {}),
+    },
+  });
+
+export const continuePayment = (
+  apiBase: string,
+  token: string,
+  authentication: {
+    eci: string;
+    xid?: string;
+    cavv: string;
+    protocolVersion: string;
+    directoryServerTransactionId: string;
+  },
+) =>
+  call(apiBase, "public/checkout/payment/authentication", {
+    method: "POST",
+    token,
+    body: authentication,
+  });

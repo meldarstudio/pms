@@ -8,6 +8,12 @@ declare global {
   interface Window {
     culqiCards: string[];
     culqiConfigs: { settings: { amount: number }; options: { paymentMethods: object } }[];
+    culqi3DS?: {
+      devices: unknown[];
+      authentications: string[];
+      parameters: Record<string, string> | null;
+      error: string | null;
+    };
   }
 }
 
@@ -403,4 +409,98 @@ test("a lost payment response says the payment was sent and never invites paying
   await page.reload();
   await expect(sent).toBeVisible();
   await expect(page.getByRole("button", { name: /^Pagar/ })).toHaveCount(0);
+});
+
+const bankParameters = {
+  eci: "05",
+  xid: "02010000755f8c81a4db4c848b8c23f6b0196cfd",
+  cavv: "63617264696e616c636f6d6d6572636561757468",
+  protocolVersion: "2.2.0",
+  directoryServerTransactionId: "755f8c81-a4db-4c84-8b8c-23f6b0196cfd",
+};
+
+test("bank verification of the same card confirms the reservation once", async ({
+  page,
+  request,
+}) => {
+  const continuations: unknown[] = [];
+  const payments: { sourceId?: string; deviceFingerprint?: string }[] = [];
+  page.on("request", (req) => {
+    if (req.method() !== "POST") return;
+    if (req.url().endsWith("/public/checkout/payment/authentication"))
+      continuations.push(req.postDataJSON());
+    if (req.url().endsWith("/public/checkout/payments")) payments.push(req.postDataJSON());
+  });
+  const sourceId = `tkn_test_3ds_${crypto.randomUUID()}`;
+  await acceptTerms(page, "flexible", payerEmail());
+  await page.evaluate(
+    ({ parameters, sourceId }) => {
+      window.culqiCards = [sourceId];
+      window.culqi3DS = {
+        devices: [],
+        authentications: [],
+        parameters,
+        error: null,
+      };
+    },
+    { parameters: bankParameters, sourceId },
+  );
+
+  await payButton(page, "100.00").click();
+
+  await expect(page.getByRole("heading", { name: "Su reserva está confirmada" })).toBeFocused();
+  await expect(page.getByRole("button", { name: /^Pagar/ })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Abrir la verificación del banco" })).toHaveCount(
+    0,
+  );
+  expect(page.url()).not.toContain("tkn_");
+  expect(continuations).toEqual([bankParameters]);
+  expect(payments).toMatchObject([{ sourceId, deviceFingerprint: "device-test" }]);
+  expect(await serverPayment(page, request)).toMatchObject({ state: "confirmed" });
+  expect(await page.evaluate(() => window.culqi3DS?.authentications)).toEqual([sourceId]);
+});
+
+test("an unfinished bank window stays pending and can be opened again without paying again", async ({
+  page,
+  request,
+}) => {
+  const payments: string[] = [];
+  page.on("request", (req) => {
+    if (req.method() === "POST" && req.url().endsWith("/public/checkout/payments"))
+      payments.push(req.url());
+  });
+  const sourceId = `tkn_test_3ds_${crypto.randomUUID()}`;
+  await acceptTerms(page, "flexible", payerEmail());
+  await page.evaluate((sourceId) => {
+    window.culqiCards = [sourceId];
+    window.culqi3DS = {
+      devices: [],
+      authentications: [],
+      parameters: null,
+      error: "Ha fallado la autenticación",
+    };
+  }, sourceId);
+
+  await payButton(page, "100.00").click();
+
+  const bank = page.getByRole("button", { name: "Abrir la verificación del banco" });
+  await expect(
+    page.getByRole("heading", { name: "Su banco necesita verificar este pago" }),
+  ).toBeVisible();
+  await expect(outcome(page)).toContainText("No fue rechazado");
+  await expect(bank).toBeFocused();
+  await expect(page.getByRole("button", { name: "Pagar con otra tarjeta" })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: /^Pagar S\// })).toHaveCount(0);
+  expect(page.url()).not.toContain("tkn_");
+  expect(
+    await page.evaluate(() => sessionStorage.getItem("hm.reservation.card-sources")),
+  ).toContain(sourceId);
+  expect(await serverPayment(page, request)).toMatchObject({ state: "authentication_required" });
+
+  await bank.click();
+
+  await expect(bank).toBeFocused();
+  expect(payments).toHaveLength(1);
+  expect(await page.evaluate(() => window.culqi3DS?.authentications)).toEqual([sourceId, sourceId]);
+  expect(await serverPayment(page, request)).toMatchObject({ state: "authentication_required" });
 });
