@@ -1,6 +1,6 @@
 import { fileURLToPath } from "node:url";
 import { expect, test, type APIRequestContext, type Page } from "@playwright/test";
-import { executeSql, localDatabase } from "../../../backend/scripts/d1.mjs";
+import { executeSql, localDatabase, queryRows } from "../../../backend/scripts/d1.mjs";
 import { LOCAL_API_URL, daysFromToday, openStay } from "../support/local-api";
 import { nextCulqiCharge, stubPaymentScripts, useOwnSourceIp } from "../support/payment";
 
@@ -250,6 +250,37 @@ test("a cheaper refreshed quote is shown for a new acceptance and is not charged
   await payButton(page, "80.00").click();
   await expect(page.getByRole("heading", { name: "Su reserva está confirmada" })).toBeVisible();
   await expect(outcome(page)).toContainText(/Pagado\s*S\/\s80\.00/);
+});
+
+test("accepting an expired quote charges the contact just submitted, not the one refresh kept", async ({
+  page,
+  request,
+}) => {
+  const original = payerEmail();
+  const updated = payerEmail();
+  await acceptTerms(page, "flexible", original);
+  expireQuote((await serverCheckout(page, request)).quote.id);
+
+  await page.getByLabel("Nombre completo").fill("Eva Soto");
+  await page.getByLabel("Correo electrónico").fill(updated);
+  await page.getByRole("button", { name: "Aceptar condiciones" }).click();
+  await expect(page.getByText("Condiciones aceptadas")).toBeVisible();
+  await payButton(page, "100.00").click();
+  await expect(page.getByRole("heading", { name: "Su reserva está confirmada" })).toBeVisible();
+
+  const charged = queryRows(
+    localDatabase(localState),
+    `SELECT email, guest FROM payment_attempts WHERE email = '${updated}'`,
+  );
+  expect(charged).toHaveLength(1);
+  const guest = JSON.parse(String(charged[0]!.guest)) as { fullName: string; email: string };
+  expect(guest).toMatchObject({ fullName: "Eva Soto", email: updated });
+  expect(
+    queryRows(
+      localDatabase(localState),
+      `SELECT email FROM payment_attempts WHERE email = '${original}'`,
+    ),
+  ).toEqual([]);
 });
 
 test("a lost payment response says the payment was sent and never invites paying again", async ({

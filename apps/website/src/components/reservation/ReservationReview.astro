@@ -1064,9 +1064,7 @@ const contactFields = [
       if (current.kind === "has_payment") return current;
       if (current.kind !== "ready") return current;
       this.ready(current);
-      if (offerKey(current.view) === before && !this.serverAccepted(current.view))
-        return this.accept();
-      if (this.serverAccepted(current.view)) return current;
+      if (offerKey(current.view) === before) return this.accept();
       this.input("agree").checked = false;
       this.el("[data-changed]").hidden = false;
       this.input("agree").focus();

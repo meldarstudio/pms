@@ -425,6 +425,46 @@ describe("what a payment can charge", () => {
     expect(charges()[0]!.body).toMatchObject({ amount: 10000, currency_code: "PEN" });
   });
 
+  it("charges the contact accepted after an unchanged refresh, not the contact that refresh kept", async () => {
+    const checkout = await acceptedCheckout();
+    vi.advanceTimersByTime(10 * 60_000);
+    const refreshed = await guest("/public/checkout/quotes", {
+      token: checkout.token,
+      method: "POST",
+    });
+    const view = (await refreshed.json()) as {
+      quote: { id: string };
+      acceptance: { quoteId: string } | null;
+    };
+    const next = { fullName: "Eva Soto", email: "eva@example.com", phone: "912 345 678" };
+
+    const accepted = await guest("/public/checkout/acceptances", {
+      token: checkout.token,
+      body: { quoteId: view.quote.id, language: "es", contact: next, agreed: true },
+    });
+    expect(charges()).toEqual([]);
+    const payment = await paid({ token: checkout.token, quoteId: view.quote.id });
+
+    expect(refreshed.status).toBe(201);
+    expect(view.acceptance?.quoteId).toBe(view.quote.id);
+    expect(accepted.status).toBe(201);
+    expect(payment).toMatchObject({ state: "confirmed", amountCents: 10000 });
+    expect(charges()).toHaveLength(1);
+    expect(charges()[0]!.body).toMatchObject({ email: "eva@example.com", amount: 10000 });
+    const [attempt] = rows<{ email: string; language: string; guest: string }>(
+      "SELECT email, language, guest FROM payment_attempts",
+    );
+    expect(attempt).toMatchObject({ email: "eva@example.com", language: "es" });
+    expect(JSON.parse(attempt!.guest)).toEqual({
+      fullName: "Eva Soto",
+      email: "eva@example.com",
+      phone: "+51912345678",
+    });
+    expect(rows("SELECT full_name, email FROM guests")).toEqual([
+      { full_name: "Eva Soto", email: "eva@example.com" },
+    ]);
+  });
+
   it("requires a new acceptance when a refreshed quote is cheaper, and charges only that accepted amount", async () => {
     const checkout = await acceptedCheckout();
     vi.advanceTimersByTime(10 * 60_000);

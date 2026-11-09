@@ -5,10 +5,11 @@ Online reservation is built in only when `PUBLIC_PMS_API_URL` is set at build
 time; without it, reservation pages show WhatsApp contact and no page links to them.
 Search (`/reservar/`) and Choose (`/reservar/habitacion/`) read live offers from
 the PMS `/public` API. Review (`/reservar/revisar/`) opens a private checkout, shows
-its server Quote, and records the booking contact's acceptance. An expired quote is
-refreshed only when the guest clicks Pay: an unchanged offer keeps that acceptance and
-pays the new quote; a changed offer, including a lower price, is shown for a new
-acceptance and is not charged. The checkout token
+its server Quote, and records the booking contact's acceptance. Pay refreshes an
+expired quote and keeps that acceptance only when the guest is paying; an unchanged
+offer is charged, and a changed offer, including a lower price, is shown for a new
+acceptance and is not charged. Accepting an expired quote also refreshes, then records
+the contact and language just submitted. The checkout token
 lives only in `sessionStorage` (`src/lib/reservation/draft.ts`), never in URLs.
 `src/lib/rooms.ts` links each room to a PMS room-type ID; the API offers only types
 it publishes. Card payment on Review needs build-time `PUBLIC_CULQI_PUBLIC_KEY` and
