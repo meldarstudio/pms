@@ -1,0 +1,7 @@
+schema_version: "1.1"
+name: form-layout-choice
+expected_outcome: |
+  Separate straightforward hierarchy and visual-noise corrections from the layout decision.
+  Keep dates and dependent room fields connected, necessary labels legible, and errors distinguishable.
+  Offer an opt-in prototype comparison for the genuinely different layouts without building or choosing one.
+  Propose a fair comparison using matching data, state and viewport; keep the critique read-only.

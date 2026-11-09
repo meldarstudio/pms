@@ -1,11 +1,7 @@
-import { useId, useState, type ReactNode } from "react";
+import { useId, type ReactNode } from "react";
 import { cn } from "cn";
-import { ChevronUpIcon } from "lucide-react";
 import { accountStatus } from "@/components/balance-status";
-import { DiscountPopover } from "@/components/discount-popover";
 import { NightlyPriceDetail } from "@/components/nightly-price-detail";
-import { Button } from "@/components/ui/button";
-import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import {
   Card,
   CardContent,
@@ -17,8 +13,6 @@ import {
 import { Separator } from "@/components/ui/separator";
 import type { ReservationDetail, WorkflowBilling } from "@/lib/api";
 import { formatMoney } from "@/lib/money";
-import { unsavedMessage, type ReservationCommandResult } from "@/lib/reservation-commands";
-import { toastError } from "@/lib/toast";
 
 export type BookingSummaryRoom = {
   key: string;
@@ -42,13 +36,6 @@ export function BookingSummary({
   showNightlyPrices = false,
   message,
   error,
-  editableDiscountCents,
-  discountDisabled = false,
-  onDiscountSave,
-  onDiscountDirtyChange,
-  collapsible = false,
-  expanded = false,
-  onExpandedChange,
 }: {
   rooms: BookingSummaryRoom[];
   cancelled: boolean;
@@ -59,214 +46,102 @@ export function BookingSummary({
   showNightlyPrices?: boolean;
   message: string | null;
   error?: ReactNode;
-  editableDiscountCents: number;
-  discountDisabled?: boolean;
-  onDiscountSave?: (amountCents: number) => Promise<ReservationCommandResult>;
-  onDiscountDirtyChange?: (dirty: boolean) => void;
-  collapsible?: boolean;
-  expanded?: boolean;
-  onExpandedChange?: (expanded: boolean) => void;
 }) {
   const titleId = useId();
-  const panelId = useId();
-  const balanceId = useId();
-  const [pointerMotion, setPointerMotion] = useState(false);
   const status = summary ? accountStatus(summary) : null;
   const feedback = error || (!summary ? message : null);
-  const money = (cents: number) => formatMoney(cents, currency);
-  async function applyDiscount(amountCents: number) {
-    if (!onDiscountSave) return false;
-    const result = await onDiscountSave(amountCents);
-    if (result.status === "saved") return true;
-    toastError("No se pudo guardar el descuento", unsavedMessage(result));
-    return false;
-  }
-  const balance = (
-    <span
-      id={balanceId}
-      className="flex min-w-0 flex-1 flex-wrap items-center justify-between gap-2"
-    >
-      <span className="inline-flex items-center gap-1.5 font-medium">
-        {status && <status.Icon aria-hidden className="size-4 shrink-0" />}
-        {status?.label ?? "Saldo"}
-      </span>
-      <output aria-label={status?.label ?? "Saldo"} className="font-medium tabular-nums">
-        {status ? money(status.cents) : "—"}
-      </output>
-    </span>
-  );
   return (
-    <section
-      aria-labelledby={titleId}
-      className={cn("min-w-0", collapsible && "flex min-h-0 flex-col")}
-    >
-      <Collapsible
-        open={!collapsible || expanded}
-        onOpenChange={(open, details) => {
-          setPointerMotion(
-            details.reason === "trigger-press" &&
-              details.event.type === "click" &&
-              details.event.detail > 0,
-          );
-          onExpandedChange?.(open);
-        }}
-        render={<Card size="sm" className={cn(collapsible && "min-h-0 gap-0 py-0")} />}
-      >
-        <CollapsibleContent
-          id={panelId}
-          keepMounted
-          className={cn(
-            "flex min-h-0 flex-col gap-(--card-spacing) [&[hidden]]:hidden",
-            collapsible &&
-              "max-h-[min(22rem,calc(var(--reservation-viewport-height,100dvh)*0.45))] overflow-y-auto overscroll-contain py-3",
-            collapsible &&
-              pointerMotion &&
-              "transition-opacity duration-180 ease-ui-out data-ending-style:opacity-0 data-starting-style:opacity-0 motion-reduce:duration-120",
+    <section aria-labelledby={titleId} className="min-w-0">
+      <Card size="sm">
+        <CardHeader>
+          <CardTitle>
+            <h3 id={titleId}>Resumen de reserva</h3>
+          </CardTitle>
+          {(stayLabel || ratePlan) && (
+            <CardDescription className="flex flex-col">
+              {stayLabel && <span>{stayLabel}</span>}
+              {ratePlan && <span>Plan {ratePlan}</span>}
+            </CardDescription>
           )}
-          inert={collapsible && !expanded}
-        >
-          <CardHeader>
-            <CardTitle>
-              <h3 id={titleId}>Resumen de reserva</h3>
-            </CardTitle>
-            {(stayLabel || ratePlan) && (
-              <CardDescription className="flex flex-col">
-                {stayLabel && <span>{stayLabel}</span>}
-                {ratePlan && <span>Plan {ratePlan}</span>}
-              </CardDescription>
-            )}
-          </CardHeader>
-          <CardContent className="flex flex-col gap-3">
-            <div className="flex flex-col gap-3">
-              {(cancelled ? [] : rooms).map((room, index) => (
-                <RoomSummary
-                  key={room.key}
-                  room={room}
-                  index={index}
-                  currency={currency}
-                  showNightlyPrice={showNightlyPrices}
-                />
-              ))}
-            </div>
-            {showNightlyPrices && !cancelled && (
-              <NightlyPriceDetail
-                rooms={rooms.map((room) => ({ ...room, nights: room.nights ?? [] }))}
+        </CardHeader>
+        <CardContent className="flex flex-col gap-3">
+          <div className="flex flex-col gap-3">
+            {(cancelled ? [] : rooms).map((room, index) => (
+              <RoomSummary
+                key={room.key}
+                room={room}
+                index={index}
                 currency={currency}
+                showNightlyPrice={showNightlyPrices}
               />
+            ))}
+          </div>
+          {showNightlyPrices && !cancelled && (
+            <NightlyPriceDetail
+              rooms={rooms.map((room) => ({ ...room, nights: room.nights ?? [] }))}
+              currency={currency}
+            />
+          )}
+          <Separator />
+          <dl className="flex flex-col gap-2">
+            {!!summary?.discountCents && (
+              <SummaryRow label="Subtotal" cents={summary.subtotalCents} currency={currency} />
             )}
-            <Separator />
-            <dl className="flex flex-col gap-2">
-              {!!summary?.discountCents && (
-                <SummaryRow label="Subtotal" cents={summary.subtotalCents} currency={currency} />
-              )}
-              {!cancelled &&
-                (onDiscountSave ? (
-                  <div>
-                    <DiscountPopover
-                      appliedCents={editableDiscountCents}
-                      shownCents={summary?.discountCents ?? null}
-                      currency={currency}
-                      disabled={discountDisabled}
-                      onApply={applyDiscount}
-                      onBlockingChange={onDiscountDirtyChange}
-                    />
-                  </div>
-                ) : (
-                  <SummaryRow
-                    label="Descuento"
-                    cents={summary ? -summary.discountCents : null}
-                    currency={currency}
-                  />
-                ))}
+            {!cancelled && (
               <SummaryRow
-                label="Total"
-                cents={summary?.totalCents ?? null}
+                label="Descuento"
+                cents={summary ? -summary.discountCents : null}
                 currency={currency}
-                emphasis
               />
-              <SummaryRow label="Pagado" cents={summary?.paidCents ?? null} currency={currency} />
-              {!!summary?.couponAppliedCents && (
-                <SummaryRow
-                  label="Pagado con cupón"
-                  cents={summary.couponAppliedCents}
-                  currency={currency}
-                />
-              )}
-              {!!summary?.refundedCents && (
-                <SummaryRow
-                  label="Reembolsado"
-                  cents={-summary.refundedCents}
-                  currency={currency}
-                />
-              )}
-              {!!summary?.couponIssuedCents && (
-                <SummaryRow
-                  label="Pasado a cupón"
-                  cents={-summary.couponIssuedCents}
-                  currency={currency}
-                />
-              )}
-            </dl>
-            {feedback && !collapsible && (
-              <div role="status" className="text-muted-foreground">
-                {feedback}
-              </div>
             )}
-          </CardContent>
-        </CollapsibleContent>
+            <SummaryRow
+              label="Total"
+              cents={summary?.totalCents ?? null}
+              currency={currency}
+              emphasis
+            />
+            <SummaryRow label="Pagado" cents={summary?.paidCents ?? null} currency={currency} />
+            {!!summary?.couponAppliedCents && (
+              <SummaryRow
+                label="Pagado con cupón"
+                cents={summary.couponAppliedCents}
+                currency={currency}
+              />
+            )}
+            {!!summary?.refundedCents && (
+              <SummaryRow label="Reembolsado" cents={-summary.refundedCents} currency={currency} />
+            )}
+            {!!summary?.couponIssuedCents && (
+              <SummaryRow
+                label="Pasado a cupón"
+                cents={-summary.couponIssuedCents}
+                currency={currency}
+              />
+            )}
+          </dl>
+          {feedback && (
+            <div role="status" className="text-muted-foreground">
+              {feedback}
+            </div>
+          )}
+        </CardContent>
         <CardFooter
           aria-label="Importes de la reserva"
           aria-live="polite"
           aria-atomic
-          className={cn(
-            "shrink-0 flex-col items-stretch",
-            collapsible ? "gap-0 p-0" : status?.tone,
-            collapsible && !expanded && "border-t-0",
-          )}
+          className={cn("shrink-0 flex-col items-stretch", status?.tone)}
         >
-          {collapsible ? (
-            <>
-              {feedback && (
-                <div role="status" className="p-3">
-                  {feedback}
-                </div>
-              )}
-              <CollapsibleTrigger
-                aria-label={expanded ? "Ocultar desglose" : "Ver desglose"}
-                aria-describedby={balanceId}
-                aria-controls={panelId}
-                render={
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    className="h-auto w-full border-0 p-0 text-left whitespace-normal focus-visible:ring-2 focus-visible:ring-inset has-data-[icon=inline-end]:pr-0"
-                  />
-                }
-              >
-                <span
-                  className={cn(
-                    "flex w-full items-center gap-3 px-(--card-spacing) py-2",
-                    status?.tone,
-                  )}
-                >
-                  {balance}
-                  <ChevronUpIcon
-                    aria-hidden
-                    data-icon="inline-end"
-                    className={cn(
-                      expanded && "rotate-180",
-                      pointerMotion &&
-                        "transition-transform duration-150 ease-tab motion-reduce:transition-none",
-                    )}
-                  />
-                </span>
-              </CollapsibleTrigger>
-            </>
-          ) : (
-            balance
-          )}
+          <span className="flex min-w-0 flex-1 flex-wrap items-center justify-between gap-2">
+            <span className="inline-flex items-center gap-1.5 font-medium">
+              {status && <status.Icon aria-hidden className="size-4 shrink-0" />}
+              {status?.label ?? "Saldo"}
+            </span>
+            <output aria-label={status?.label ?? "Saldo"} className="font-medium tabular-nums">
+              {status ? formatMoney(status.cents, currency) : "—"}
+            </output>
+          </span>
         </CardFooter>
-      </Collapsible>
+      </Card>
     </section>
   );
 }

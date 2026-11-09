@@ -56,16 +56,18 @@ export function BalanceLabel({ balanceCents }: { balanceCents: number }) {
 export function AccountStatusBanner({
   status,
   amount,
+  showIcon = true,
 }: {
   status: ReturnType<typeof accountStatus>;
-  amount: string;
+  amount: ReactNode;
+  showIcon?: boolean;
 }) {
   return (
     <div
       className={cn("flex flex-wrap items-center justify-between gap-2 px-2.5 py-2", status.tone)}
     >
       <p className="flex items-center gap-2 font-medium">
-        <status.Icon aria-hidden className="size-4 shrink-0" />
+        {showIcon && <status.Icon aria-hidden className="size-4 shrink-0" />}
         {status.label}
       </p>
       <p className="ml-auto font-semibold tabular-nums">{amount}</p>

@@ -55,6 +55,8 @@ Before writing any code, list the set: a name and an axis for each. Names descri
 
 **Completion criterion:** every variant has a name and a stated axis, and no two variants share an axis position.
 
+Apply the task-dependent hierarchy and visual-noise pass in [presentation checks](../refine-ui/PRESENTATION-CHECKS.md) to every direction. These are shared clarity criteria, not a shared layout: distinct variants should each work well on their own.
+
 ### Phase 4 — Build the picker harness
 
 Two branches, by what exists:
@@ -67,6 +69,8 @@ The picker's markup, styles, keyboard wiring, and placement come from [PICKER.md
 ### Phase 5 — Verify and hand off
 
 Run the harness. Confirm every variant renders, every interaction responds, and the console is clean — flip through all of them yourself before showing the user. If browser tooling is available, screenshot each variant.
+
+Use the [before/after glance test](../refine-ui/PRESENTATION-CHECKS.md#beforeafter-glance-test) to compare directions at full size. Hold data, state, viewport and surrounding context constant, except for explicitly named interaction differences. When refining an existing UI, include its current presentation as a baseline, not as one of the divergent variants. Record each direction's task-related benefit and cost; passing functional checks alone does not establish clearer presentation.
 
 Then present the set and **stop — the choice belongs to the user**:
 

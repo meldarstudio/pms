@@ -238,7 +238,7 @@ async function back() {
   await browser.React.act(async () => link.click());
 }
 
-it("protects a discount draft when Back targets Reservations and allows explicit discard", async () => {
+it("protects a discount draft when returning to the calendar and allows explicit discard", async () => {
   await render("?origin=calendar&returnTo=from%3D2026-10-19%26span%3D14");
   await openDiscount();
   await page.fill(discountInput()!, "25");
@@ -255,5 +255,6 @@ it("protects a discount draft when Back targets Reservations and allows explicit
   assert.equal(discountInput()!.value, "25", "Staying must keep the discount draft");
   await back();
   await click("Descartar y salir");
-  await page.until(() => router.state.location.pathname === "/reservations");
+  await page.until(() => router.state.location.pathname === "/calendar");
+  assert.deepEqual({ ...router.state.location.search }, { from: "2026-10-19", span: 14 });
 });

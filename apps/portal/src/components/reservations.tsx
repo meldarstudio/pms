@@ -793,7 +793,7 @@ export function Reservations({
           </Button>
         </div>
       </nav>
-      <RoomBookingDialog target={target} onClose={() => setTarget(null)} onViewReservation={open} />
+      <RoomBookingDialog target={target} onClose={() => setTarget(null)} onCreated={open} />
     </main>
   );
 }

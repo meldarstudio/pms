@@ -54,7 +54,6 @@ export function GuestEntryForm({
   onDone,
   onCancel,
   scrollable = false,
-  undoable = false,
 }: {
   detail: ReservationDetail;
   guest?: StayingGuest;
@@ -64,7 +63,6 @@ export function GuestEntryForm({
   onDone?: () => void;
   onCancel?: () => void;
   scrollable?: boolean;
-  undoable?: boolean;
 }) {
   const [defaults, setDefaults] = useState<GuestValues>(() =>
     guest
@@ -166,7 +164,6 @@ export function GuestEntryForm({
               Cancelar
             </Button>
           )}
-          {undoable && <UndoChanges disabled={unchanged} onClick={() => form.reset(defaults)} />}
           <Button
             type="submit"
             disabled={disabled || submitting || (!guest && detail.stayingGuests.length >= 200)}
@@ -181,26 +178,20 @@ export function GuestEntryForm({
 
 export function PaymentForm({
   detail,
-  suggestedAmountCents,
   disabled,
   onReady,
   onDirtyChange,
-  onMethodChange,
   scrollable = false,
   onCancel,
   onSaved,
-  undoable = false,
 }: {
   detail: ReservationDetail;
-  suggestedAmountCents?: number;
   disabled: boolean;
   onReady: (title: string, actions: WorkflowAction[]) => Promise<ReservationCommandResult>;
   onDirtyChange: (dirty: boolean) => void;
-  onMethodChange?: (method: PaymentEntryValues["method"]) => void;
   scrollable?: boolean;
   onCancel?: () => void;
   onSaved?: (detail: ReservationDetail) => void;
-  undoable?: boolean;
 }) {
   const { today } = usePropertyCalendar();
   const { canReplay } = useReservationCommands(detail.id);
@@ -210,11 +201,11 @@ export function PaymentForm({
   const [savedDefaults, setSavedDefaults] = useState<PaymentValues | null>(null);
   const defaults = useMemo<PaymentEntryValues>(
     () => ({
-      ...(savedDefaults ?? paymentDefaults(suggestedAmountCents ?? detail.balanceCents)),
+      ...(savedDefaults ?? paymentDefaults(detail.balanceCents)),
       ...(owing ? {} : { method: "coupon" as const }),
       code: appliedCode,
     }),
-    [savedDefaults, suggestedAmountCents, detail.balanceCents, owing, appliedCode],
+    [savedDefaults, detail.balanceCents, owing, appliedCode],
   );
   const [submittedCode, setSubmittedCode] = useState<string | null>(null);
   const form = useReservationForm({
@@ -299,7 +290,6 @@ export function PaymentForm({
   const submittedCoupon =
     method === "coupon" && submittedCode === normalizedCode ? lookup.data : undefined;
   useEffect(() => onDirtyChange(!unchanged), [unchanged, onDirtyChange]);
-  useEffect(() => onMethodChange?.(method), [method, onMethodChange]);
   return (
     <form
       noValidate
@@ -392,7 +382,6 @@ export function PaymentForm({
               Cerrar
             </Button>
           )}
-          {undoable && <UndoChanges disabled={unchanged} onClick={() => form.reset(defaults)} />}
           <Button
             type="submit"
             className="w-fit"
@@ -409,13 +398,5 @@ export function PaymentForm({
         </div>
       </fieldset>
     </form>
-  );
-}
-
-function UndoChanges({ disabled, onClick }: { disabled: boolean; onClick: () => void }) {
-  return (
-    <Button type="button" variant="outline" disabled={disabled} onClick={onClick}>
-      Deshacer cambios
-    </Button>
   );
 }
