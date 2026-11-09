@@ -1,5 +1,6 @@
 import { expect, test, type APIRequestContext, type Page } from "@playwright/test";
 import { LOCAL_API_URL, daysFromToday, doubleSoldOutStay, openStay } from "../support/local-api";
+import { stubPaymentScripts } from "../support/payment";
 
 const checkoutsRoute = `${LOCAL_API_URL}/public/checkouts`;
 const acceptanceRoute = `${LOCAL_API_URL}/public/checkout/acceptances`;
@@ -7,6 +8,7 @@ const acceptanceRoute = `${LOCAL_API_URL}/public/checkout/acceptances`;
 let sourceIps = 0;
 
 test.beforeEach(async ({ page }) => {
+  await stubPaymentScripts(page);
   const address = `10.0.${test.info().workerIndex % 250}.${(sourceIps += 1) % 250}`;
   await page.route(`${LOCAL_API_URL}/public/**`, (route) =>
     route.fallback({ headers: { ...route.request().headers(), "cf-connecting-ip": address } }),
@@ -96,11 +98,11 @@ test("a chosen offer is reviewed with server amounts and its terms are accepted"
   await expect(page.getByText("Marque la casilla para aceptar las condiciones.")).toBeVisible();
 
   await acceptTerms(page);
-  await expect(page.locator("[data-accepted]")).toContainText(
-    "El pago con tarjeta en línea aún no está disponible",
-  );
+  await expect(page.locator("[data-accepted]")).toContainText("Todavía no se ha cobrado nada");
   await expect(page.locator("[data-accepted]").getByRole("link")).toHaveCount(0);
-  await expect(page.getByRole("button", { name: /Pagar/ })).toHaveCount(0);
+  await expect(
+    page.getByRole("button", { name: /^Pagar S\/\s100\.00 con tarjeta$/ }),
+  ).toBeVisible();
   const checkout = await serverCheckout(page, request);
   expect(checkout.acceptance?.quoteId).toBe(checkout.quote.id);
 });

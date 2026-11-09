@@ -52,6 +52,7 @@ export type CheckoutOutcome =
   | { kind: "denied" }
   | { kind: "throttled" }
   | { kind: "limited" }
+  | { kind: "has_payment" }
   | { kind: "unavailable" };
 
 function isView(value: unknown): value is CheckoutView {
@@ -90,6 +91,8 @@ async function call(
   if (response.status === 409 && error === "quote was replaced by a newer quote")
     return { kind: "replaced" };
   if (response.status === 409 && error === "no availability") return { kind: "sold_out" };
+  if (response.status === 409 && error === "checkout already has a payment")
+    return { kind: "has_payment" };
   if (error === "quote has expired" || error === "quote not found") return { kind: "expired" };
   if (response.status === 400 || response.status === 404)
     return { kind: "invalid", error: typeof error === "string" ? error : "" };

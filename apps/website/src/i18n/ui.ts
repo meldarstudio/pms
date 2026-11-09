@@ -363,7 +363,62 @@ export const ui = {
       "Online card payment isn't available yet, so nothing is charged on this page.",
     "reservation.review.accepted.title": "Terms accepted",
     "reservation.review.accepted.body":
-      "Your acceptance of these terms is saved. Online card payment isn't available yet, so this reservation isn't made and nothing has been charged.",
+      "Your acceptance of these terms is saved. Nothing has been charged yet.",
+    "reservation.pay.lead":
+      "Your room is reserved only once the card payment is confirmed and the reservation is saved.",
+    "reservation.pay.security": "Security check before payment",
+    "reservation.pay.button": "Pay {amount} by card",
+    "reservation.pay.sending": "Sending your payment… Please wait on this page.",
+    "reservation.pay.error.security": "Wait for the security check above to finish, then pay.",
+    "reservation.pay.error.securityFailed":
+      "The security check didn't pass and nothing was charged. Complete the check again, then pay.",
+    "reservation.pay.error.securityUnavailable":
+      "The payment security check isn't available right now. Nothing was charged and your details are kept: try again in a moment, or message us on WhatsApp.",
+    "reservation.pay.error.paused":
+      "Online payments are paused right now. Nothing was charged, and your details and accepted terms are kept on this page. Try again later, or message us on WhatsApp to reserve.",
+    "reservation.pay.error.throttled":
+      "Too many payment attempts from your connection or for this reservation. Nothing was charged and your details are kept: wait a minute and try again.",
+    "reservation.pay.error.stale":
+      "The price had to be checked again before charging, so nothing was charged. Review the terms and accept them again before paying.",
+    "reservation.pay.error.card":
+      "The card form couldn't open. Nothing was charged: check your connection and try again.",
+    "reservation.pay.error.unavailable":
+      "We couldn't send your payment and no payment was recorded. Your details are kept: try again in a moment, or message us on WhatsApp.",
+    "reservation.outcome.declined.title": "Your card was declined",
+    "reservation.outcome.declined.body":
+      "Nothing was charged. You can pay with another card; your details and accepted terms are kept.",
+    "reservation.outcome.authentication_expired.title": "The bank verification wasn't completed",
+    "reservation.outcome.authentication_expired.body":
+      "Nothing was charged for that attempt. You can pay again; your details are kept.",
+    "reservation.outcome.authentication_required.title": "Your bank needs to verify this payment",
+    "reservation.outcome.authentication_required.body":
+      "This payment is waiting for your bank's verification. It hasn't been declined, so please don't pay again. Check the status here, or message us on WhatsApp for help.",
+    "reservation.outcome.processing.title": "Confirming your payment",
+    "reservation.outcome.processing.body":
+      "We're verifying your payment with the card processor. Please don't pay again: verification continues even if you close this page.",
+    "reservation.outcome.processing.delayed":
+      "Verification is taking longer than usual. It continues even if you close this page, so please don't pay again. Check the status here later, or message us on WhatsApp or by email for help.",
+    "reservation.outcome.paid_awaiting_reservation.title":
+      "Payment received, saving your reservation",
+    "reservation.outcome.paid_awaiting_reservation.body":
+      "Your payment was received and we're saving your reservation. It isn't confirmed until it's saved, so please don't pay again.",
+    "reservation.outcome.unfulfilled.title":
+      "Payment received, but your reservation couldn't be confirmed",
+    "reservation.outcome.unfulfilled.body":
+      "We received your payment, but no room could be reserved for these dates, so you don't have a reservation. The amount awaiting resolution hasn't been refunded yet: message us on WhatsApp or by email with your support reference and the hotel will arrange it with you.",
+    "reservation.outcome.confirmed.title": "Your reservation is confirmed",
+    "reservation.outcome.confirmed.body":
+      "Keep your reference. Any outstanding balance is paid at the hotel.",
+    "reservation.outcome.reference": "Reference",
+    "reservation.outcome.supportReference": "Support reference",
+    "reservation.outcome.amount": "Payment amount",
+    "reservation.outcome.paid": "Paid",
+    "reservation.outcome.received": "Received",
+    "reservation.outcome.outstanding": "Outstanding balance",
+    "reservation.outcome.awaiting": "Awaiting resolution",
+    "reservation.outcome.retry": "Pay with another card",
+    "reservation.outcome.check": "Check status",
+    "reservation.outcome.checking": "Checking your payment…",
     "reservation.review.changed":
       "The price or terms for your stay changed. Review them and accept again.",
     "reservation.review.error.fullName": "Enter the booking contact's full name.",
@@ -764,7 +819,61 @@ export const ui = {
       "El pago con tarjeta en línea aún no está disponible, así que en esta página no se cobra nada.",
     "reservation.review.accepted.title": "Condiciones aceptadas",
     "reservation.review.accepted.body":
-      "Su aceptación de estas condiciones quedó guardada. El pago con tarjeta en línea aún no está disponible, así que esta reserva no está hecha y no se ha cobrado nada.",
+      "Su aceptación de estas condiciones quedó guardada. Todavía no se ha cobrado nada.",
+    "reservation.pay.lead":
+      "Su habitación queda reservada solo cuando el pago con tarjeta se confirma y la reserva se guarda.",
+    "reservation.pay.security": "Verificación de seguridad antes del pago",
+    "reservation.pay.button": "Pagar {amount} con tarjeta",
+    "reservation.pay.sending": "Enviando su pago… Espere en esta página.",
+    "reservation.pay.error.security":
+      "Espere a que termine la verificación de seguridad de arriba y luego pague.",
+    "reservation.pay.error.securityFailed":
+      "La verificación de seguridad no se superó y no se cobró nada. Complete la verificación de nuevo y luego pague.",
+    "reservation.pay.error.securityUnavailable":
+      "La verificación de seguridad del pago no está disponible en este momento. No se cobró nada y sus datos se conservan: intente de nuevo en un momento o escríbanos por WhatsApp.",
+    "reservation.pay.error.paused":
+      "Los pagos en línea están en pausa en este momento. No se cobró nada y sus datos y las condiciones aceptadas se conservan en esta página. Intente más tarde o escríbanos por WhatsApp para reservar.",
+    "reservation.pay.error.throttled":
+      "Demasiados intentos de pago desde su conexión o para esta reserva. No se cobró nada y sus datos se conservan: espere un minuto e intente de nuevo.",
+    "reservation.pay.error.stale":
+      "El precio tuvo que verificarse de nuevo antes del cobro, así que no se cobró nada. Revise las condiciones y acéptelas de nuevo antes de pagar.",
+    "reservation.pay.error.card":
+      "No se pudo abrir el formulario de la tarjeta. No se cobró nada: revise su conexión e intente de nuevo.",
+    "reservation.pay.error.unavailable":
+      "No pudimos enviar su pago y no se registró ningún pago. Sus datos se conservan: intente de nuevo en un momento o escríbanos por WhatsApp.",
+    "reservation.outcome.declined.title": "Su tarjeta fue rechazada",
+    "reservation.outcome.declined.body":
+      "No se cobró nada. Puede pagar con otra tarjeta; sus datos y las condiciones aceptadas se conservan.",
+    "reservation.outcome.authentication_expired.title": "La verificación del banco no se completó",
+    "reservation.outcome.authentication_expired.body":
+      "No se cobró nada por ese intento. Puede pagar de nuevo; sus datos se conservan.",
+    "reservation.outcome.authentication_required.title": "Su banco necesita verificar este pago",
+    "reservation.outcome.authentication_required.body":
+      "Este pago espera la verificación de su banco. No fue rechazado, así que no pague de nuevo. Consulte el estado aquí o escríbanos por WhatsApp si necesita ayuda.",
+    "reservation.outcome.processing.title": "Confirmando su pago",
+    "reservation.outcome.processing.body":
+      "Estamos verificando su pago con el procesador de tarjetas. No pague de nuevo: la verificación continúa aunque cierre esta página.",
+    "reservation.outcome.processing.delayed":
+      "La verificación está tardando más de lo habitual. Continúa aunque cierre esta página, así que no pague de nuevo. Consulte el estado aquí más tarde o escríbanos por WhatsApp o por correo si necesita ayuda.",
+    "reservation.outcome.paid_awaiting_reservation.title": "Pago recibido, guardando su reserva",
+    "reservation.outcome.paid_awaiting_reservation.body":
+      "Recibimos su pago y estamos guardando su reserva. No está confirmada hasta que se guarde, así que no pague de nuevo.",
+    "reservation.outcome.unfulfilled.title": "Pago recibido, pero su reserva no se pudo confirmar",
+    "reservation.outcome.unfulfilled.body":
+      "Recibimos su pago, pero no se pudo reservar una habitación para estas fechas, así que no tiene una reserva. El monto por resolver todavía no se ha devuelto: escríbanos por WhatsApp o por correo con su referencia de atención y el hotel lo coordinará con usted.",
+    "reservation.outcome.confirmed.title": "Su reserva está confirmada",
+    "reservation.outcome.confirmed.body":
+      "Guarde su referencia. El saldo pendiente, si lo hay, se paga en el hotel.",
+    "reservation.outcome.reference": "Referencia",
+    "reservation.outcome.supportReference": "Referencia de atención",
+    "reservation.outcome.amount": "Monto del pago",
+    "reservation.outcome.paid": "Pagado",
+    "reservation.outcome.received": "Recibido",
+    "reservation.outcome.outstanding": "Saldo pendiente",
+    "reservation.outcome.awaiting": "Por resolver",
+    "reservation.outcome.retry": "Pagar con otra tarjeta",
+    "reservation.outcome.check": "Consultar estado",
+    "reservation.outcome.checking": "Consultando su pago…",
     "reservation.review.changed":
       "El precio o las condiciones de su estadía cambiaron. Revíselos y acepte de nuevo.",
     "reservation.review.error.fullName": "Ingrese el nombre completo del contacto.",

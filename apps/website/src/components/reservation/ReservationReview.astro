@@ -1,6 +1,11 @@
 ---
-import { PUBLIC_PMS_API_URL } from "astro:env/client";
+import {
+  PUBLIC_CULQI_PUBLIC_KEY,
+  PUBLIC_PMS_API_URL,
+  PUBLIC_TURNSTILE_SITE_KEY,
+} from "astro:env/client";
 import ReservationHelp from "@/components/reservation/ReservationHelp.astro";
+import { BUSINESS_NAME } from "@/constants";
 import ReservationOffline from "@/components/reservation/ReservationOffline.astro";
 import ReservationSteps from "@/components/reservation/ReservationSteps.astro";
 import { ui } from "@/i18n/ui";
@@ -10,9 +15,17 @@ import { rooms } from "@/lib/rooms";
 
 const lang = getLang(Astro.currentLocale);
 const t = useTranslations(lang);
+const cardPayments = Boolean(PUBLIC_CULQI_PUBLIC_KEY && PUBLIC_TURNSTILE_SITE_KEY);
 const copy = {
   lang,
   apiBase: PUBLIC_PMS_API_URL ?? "",
+  payments: cardPayments
+    ? {
+        culqiPublicKey: PUBLIC_CULQI_PUBLIC_KEY!,
+        turnstileSiteKey: PUBLIC_TURNSTILE_SITE_KEY!,
+        title: BUSINESS_NAME,
+      }
+    : null,
   searchHref: searchStepHref(lang),
   chooseHref: chooseStepHref(lang),
   text: Object.fromEntries(
@@ -236,9 +249,11 @@ const contactFields = [
             <h2 id="review-payment" class="text-2xl font-semibold text-stone-900">
               {t("reservation.review.payment")}
             </h2>
-            <p class="mt-2 leading-relaxed text-stone-700">
-              {t("reservation.review.paymentUnavailable")}
-            </p>
+            {!cardPayments && (
+              <p class="mt-2 leading-relaxed text-stone-700">
+                {t("reservation.review.paymentUnavailable")}
+              </p>
+            )}
             <div
               class="border-accent-700 mt-4 border-l-4 bg-stone-50 p-4"
               tabindex="-1"
@@ -249,6 +264,32 @@ const contactFields = [
               <p class="mt-2 leading-relaxed text-stone-700">
                 {t("reservation.review.accepted.body")}
               </p>
+            </div>
+            {cardPayments && (
+              <div class="mt-6" data-pay hidden>
+                <p class="leading-relaxed text-stone-700">{t("reservation.pay.lead")}</p>
+                <div
+                  class="mt-4 min-h-16"
+                  role="group"
+                  aria-label={t("reservation.pay.security")}
+                  data-security-check
+                />
+                <p class="mt-4 font-medium text-red-800" role="alert" data-pay-error />
+                <button type="button" class={`mt-4 w-full sm:w-auto ${primary}`} data-pay-button />
+              </div>
+            )}
+            <div class="mt-6 border-l-4 bg-stone-50 p-4" data-outcome hidden>
+              <h3 class="text-xl font-semibold text-stone-900" tabindex="-1" data-outcome-title />
+              <p class="mt-2 leading-relaxed text-stone-700" data-outcome-body />
+              <dl class="mt-4 divide-y divide-stone-200" data-outcome-amounts />
+              <div class="mt-4 flex flex-wrap gap-3">
+                <button type="button" class={primary} data-outcome-retry hidden>
+                  {t("reservation.outcome.retry")}
+                </button>
+                <button type="button" class={secondary} data-outcome-check hidden>
+                  {t("reservation.outcome.check")}
+                </button>
+              </div>
             </div>
           </section>
         </div>
@@ -283,12 +324,25 @@ const contactFields = [
     storedContact,
   } from "@/lib/reservation/draft";
   import { fill, formatDate, formatMoney } from "@/lib/reservation/format";
+  import {
+    allowsNewPayment,
+    readPayment,
+    startPayment,
+    type GuestPayment,
+    type PaymentOutcome,
+  } from "@/lib/reservation/payment";
+  import {
+    openCardForm,
+    renderSecurityCheck,
+    type SecurityCheck,
+  } from "@/lib/reservation/providers";
   import { readSearch, searchParams, type StaySearch } from "@/lib/reservation/search";
   import { cancellationNodes } from "@/lib/reservation/terms";
 
   type Copy = {
     lang: Lang;
     apiBase: string;
+    payments: { culqiPublicKey: string; turnstileSiteKey: string; title: string } | null;
     searchHref: string;
     chooseHref: string;
     text: Record<string, string>;
@@ -349,6 +403,32 @@ const contactFields = [
       body: "reservation.review.unavailable.body",
       retry: true,
     },
+    has_payment: {
+      title: "reservation.review.unavailable.title",
+      body: "reservation.review.unavailable.body",
+      retry: true,
+    },
+  };
+
+  const payErrorCopy: Partial<Record<PaymentOutcome["kind"], string>> = {
+    paused: "reservation.pay.error.paused",
+    throttled: "reservation.pay.error.throttled",
+    security_failed: "reservation.pay.error.securityFailed",
+    security_unavailable: "reservation.pay.error.securityUnavailable",
+    unavailable: "reservation.pay.error.unavailable",
+  };
+
+  const PAYMENT_POLL_MS = 5_000;
+  const VERIFYING: readonly GuestPayment["state"][] = ["processing", "paid_awaiting_reservation"];
+
+  const outcomeTone: Record<GuestPayment["state"], string> = {
+    declined: "border-red-700",
+    authentication_expired: "border-red-700",
+    authentication_required: "border-amber-600",
+    processing: "border-amber-600",
+    paid_awaiting_reservation: "border-amber-600",
+    unfulfilled: "border-red-700",
+    confirmed: "border-accent-700",
   };
 
   const formErrorCopy: Partial<Record<Problem["kind"], string>> = {
@@ -385,6 +465,10 @@ const contactFields = [
     private token = "";
     private view: CheckoutView | null = null;
     private busy = false;
+    private payment: GuestPayment | null = null;
+    private paying = false;
+    private securityCheck: Promise<SecurityCheck | null> | null = null;
+    private poll: ReturnType<typeof setTimeout> | undefined;
 
     private text(key: string, values: Record<string, string | number> = {}) {
       return fill(this.copy.text[key] ?? key, values);
@@ -458,6 +542,9 @@ const contactFields = [
         this.showAccepted();
       });
       this.el("[data-retry]").addEventListener("click", () => void this.load());
+      this.querySelector("[data-pay-button]")?.addEventListener("click", () => void this.pay());
+      this.el("[data-outcome-retry]").addEventListener("click", () => this.payAgain());
+      this.el("[data-outcome-check]").addEventListener("click", () => void this.syncPayment(true));
       this.el<HTMLFormElement>("[data-contact-form]").addEventListener("submit", (event) => {
         event.preventDefault();
         void this.submit();
@@ -491,8 +578,9 @@ const contactFields = [
       this.el("[data-problem]").hidden = true;
       this.el("[data-status]").textContent = this.text("reservation.review.loading");
       const outcome = await this.currentQuote();
-      if (outcome.kind === "ready") this.ready(outcome);
-      else this.showProblem(outcome);
+      if (outcome.kind !== "ready") return this.showProblem(outcome);
+      this.ready(outcome);
+      await this.syncPayment();
     }
 
     private async currentQuote(): Promise<CheckoutOutcome> {
@@ -501,6 +589,7 @@ const contactFields = [
         const outcome = await readCheckout(this.copy.apiBase, stored.token);
         if (outcome.kind === "ready" && outcome.view.quote.expired) {
           const replacement = await refreshQuote(this.copy.apiBase, stored.token);
+          if (replacement.kind === "has_payment") return outcome;
           if (replacement.kind !== "denied") return replacement;
         } else if (outcome.kind !== "denied") return outcome;
       }
@@ -599,11 +688,171 @@ const contactFields = [
     }
 
     private showAccepted(focus = false) {
-      const accepted = this.isAccepted();
+      const locked = !allowsNewPayment(this.payment);
+      const accepted = !locked && this.isAccepted();
       const panel = this.el("[data-accepted]");
       panel.hidden = !accepted;
+      this.el("[data-contact-form]").hidden = locked;
       this.el("[data-submit]").hidden = accepted;
+      this.showPayAction(accepted && this.el("[data-outcome]").hidden === true);
       if (accepted && focus) panel.focus();
+    }
+
+    private showPayAction(visible: boolean) {
+      const pay = this.querySelector<HTMLElement>("[data-pay]");
+      if (!pay || !this.view || !this.copy.payments) return;
+      pay.hidden = !visible;
+      if (!visible) return;
+      this.el("[data-pay-button]").textContent = this.text("reservation.pay.button", {
+        amount: this.money(this.view.quote.requiredInitialPaymentCents),
+      });
+      this.securityCheck ??= renderSecurityCheck(this.el("[data-security-check]"), {
+        siteKey: this.copy.payments.turnstileSiteKey,
+        lang: this.copy.lang,
+        onError: () => this.showPayError("reservation.pay.error.securityUnavailable"),
+      }).catch(() => {
+        this.securityCheck = null;
+        this.showPayError("reservation.pay.error.securityUnavailable");
+        return null;
+      });
+    }
+
+    private showPayError(key: string) {
+      const error = this.querySelector("[data-pay-error]");
+      if (error) error.textContent = key ? this.text(key) : "";
+    }
+
+    private async pay() {
+      if (this.paying || !this.view || !this.copy.payments || !this.isAccepted()) return;
+      this.showPayError("");
+      const security = await this.securityCheck;
+      const turnstileToken = security?.token() ?? "";
+      if (!turnstileToken) return this.showPayError("reservation.pay.error.security");
+      let sourceId: string | null;
+      try {
+        sourceId = await openCardForm({
+          publicKey: this.copy.payments.culqiPublicKey,
+          title: this.copy.payments.title,
+          amountCents: this.view.quote.requiredInitialPaymentCents,
+          currency: this.view.currency,
+          email: this.contact().email,
+          lang: this.copy.lang,
+        });
+      } catch {
+        return this.showPayError("reservation.pay.error.card");
+      }
+      if (!sourceId || this.paying) return;
+      this.paying = true;
+      const button = this.el<HTMLButtonElement>("[data-pay-button]");
+      button.disabled = true;
+      this.el("[data-status]").textContent = this.text("reservation.pay.sending");
+      try {
+        const outcome = await startPayment(this.copy.apiBase, this.token, {
+          quoteId: this.view.quote.id,
+          sourceId,
+          turnstileToken,
+        });
+        security?.reset();
+        await this.settlePayment(outcome);
+      } finally {
+        this.paying = false;
+        button.disabled = false;
+      }
+    }
+
+    private async settlePayment(outcome: PaymentOutcome) {
+      this.el("[data-status]").textContent = "";
+      if (outcome.kind === "payment") return this.showPayment(outcome.payment, true);
+      if (outcome.kind === "sold_out") return this.showProblem({ kind: "sold_out" });
+      if (outcome.kind === "denied") return this.load();
+      if (outcome.kind === "invalid" && backendProblems[outcome.error])
+        return this.showProblem(outcome);
+      if (outcome.kind === "stale") {
+        await this.load();
+        this.el("[data-form-error]").textContent = this.text("reservation.pay.error.stale");
+        return;
+      }
+      if (outcome.kind === "unavailable") {
+        const current = await readPayment(this.copy.apiBase, this.token);
+        if (current.kind === "payment" && current.payment)
+          return this.showPayment(current.payment, true);
+      }
+      this.showPayError(payErrorCopy[outcome.kind] ?? "reservation.pay.error.unavailable");
+    }
+
+    private async syncPayment(announce = false) {
+      clearTimeout(this.poll);
+      if (!this.token) return;
+      if (announce)
+        this.el("[data-status]").textContent = this.text("reservation.outcome.checking");
+      const outcome = await readPayment(this.copy.apiBase, this.token);
+      if (announce) this.el("[data-status]").textContent = "";
+      if (outcome.kind === "payment") this.showPayment(outcome.payment, announce);
+    }
+
+    private payAgain() {
+      this.el("[data-outcome]").hidden = true;
+      this.showAccepted();
+      this.querySelector<HTMLElement>("[data-pay-button]")?.focus();
+    }
+
+    private showPayment(payment: GuestPayment | null, focus = false) {
+      this.payment = payment;
+      const outcome = this.el("[data-outcome]");
+      outcome.hidden = !payment;
+      if (payment) this.renderOutcome(payment);
+      this.showAccepted();
+      if (payment && focus) this.el("[data-outcome-title]").focus();
+      if (payment && VERIFYING.includes(payment.state) && !payment.delayed)
+        this.poll = setTimeout(() => void this.syncPayment(), PAYMENT_POLL_MS);
+    }
+
+    private renderOutcome(payment: GuestPayment) {
+      const outcome = this.el("[data-outcome]");
+      for (const tone of new Set(Object.values(outcomeTone))) outcome.classList.remove(tone);
+      outcome.classList.add(outcomeTone[payment.state]);
+      const key = `reservation.outcome.${payment.state}`;
+      this.el("[data-outcome-title]").textContent = this.text(`${key}.title`);
+      this.el("[data-outcome-body]").textContent = this.text(
+        payment.state === "processing" && payment.delayed
+          ? "reservation.outcome.processing.delayed"
+          : `${key}.body`,
+      );
+      const money = (cents: number) => formatMoney(cents, payment.currency);
+      const { reservation } = payment;
+      const rows: [string, string][] =
+        payment.state === "confirmed" && reservation
+          ? [
+              ["reservation.outcome.reference", reservation.code],
+              ["reservation.outcome.paid", money(reservation.paidCents)],
+              ["reservation.outcome.outstanding", money(reservation.outstandingCents)],
+            ]
+          : payment.state === "unfulfilled" && reservation
+            ? [
+                ["reservation.outcome.supportReference", reservation.code],
+                ["reservation.outcome.received", money(reservation.paidCents)],
+                ["reservation.outcome.awaiting", money(reservation.refundDueCents)],
+              ]
+            : [["reservation.outcome.amount", money(payment.amountCents)]];
+      this.el("[data-outcome-amounts]").replaceChildren(
+        ...rows.map(([label, value]) => {
+          const row = document.createElement("div");
+          row.className = "flex items-baseline justify-between gap-4 py-2";
+          const term = document.createElement("dt");
+          term.className = "text-stone-700";
+          term.textContent = this.text(label);
+          const detail = document.createElement("dd");
+          detail.className = "text-right font-semibold text-stone-900";
+          detail.textContent = value;
+          row.append(term, detail);
+          return row;
+        }),
+      );
+      this.el("[data-outcome-retry]").hidden = !allowsNewPayment(payment) || !this.copy.payments;
+      this.el("[data-outcome-check]").hidden = !(
+        payment.state === "authentication_required" ||
+        (VERIFYING.includes(payment.state) && payment.delayed)
+      );
     }
 
     private showFieldError(id: ContactField | "agree", message: string) {

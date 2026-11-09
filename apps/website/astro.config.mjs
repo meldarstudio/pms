@@ -26,6 +26,16 @@ export default defineConfig({
         optional: true,
         url: true,
       }),
+      PUBLIC_CULQI_PUBLIC_KEY: envField.string({
+        context: "client",
+        access: "public",
+        optional: true,
+      }),
+      PUBLIC_TURNSTILE_SITE_KEY: envField.string({
+        context: "client",
+        access: "public",
+        optional: true,
+      }),
     },
   },
   vite: {

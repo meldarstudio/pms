@@ -4,7 +4,11 @@ import { mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { executeSql, localDatabase } from "../../backend/scripts/d1.mjs";
+import { CULQI_TEST_KEY } from "../../backend/src/test-support/culqi.ts";
+import { TURNSTILE_TEST_SECRET } from "../../backend/src/test-support/turnstile.ts";
+import { startFakePaymentServices } from "./fake-payment-services.mjs";
 import {
+  FAKE_PAYMENT_SERVICES_URL,
   LOCAL_API_URL,
   PUBLISHED_ROOM_TYPE_IDS,
   WEBSITE_URL,
@@ -34,6 +38,8 @@ executeSql(
   [
     closeRooms("double-sold-out", doubleSoldOutStay(), ["type-doble-premium"]),
     closeRooms("all-sold-out", allSoldOutStay(), PUBLISHED_ROOM_TYPE_IDS),
+    `INSERT INTO operation_controls (id, public_payments_admitted, updated_at, updated_by)
+      VALUES (1, 1, '2026-01-01T00:00:00.000Z', 'website-tests');`,
   ].join("\n"),
 );
 
@@ -43,8 +49,14 @@ writeFileSync(
     `SESSION_SECRET=${randomBytes(32).toString("hex")}`,
     `PUBLIC_ALLOWED_ORIGINS=${WEBSITE_URL}`,
     `PUBLISHED_ROOM_TYPE_IDS=${PUBLISHED_ROOM_TYPE_IDS.join(",")}`,
+    `CULQI_SECRET_KEY=${CULQI_TEST_KEY}`,
+    `CULQI_API_URL=${FAKE_PAYMENT_SERVICES_URL}/v2`,
+    `TURNSTILE_SECRET_KEY=${TURNSTILE_TEST_SECRET}`,
+    `TURNSTILE_VERIFY_URL=${FAKE_PAYMENT_SERVICES_URL}/turnstile/v0/siteverify`,
   ].join("\n"),
 );
+
+const paymentServices = startFakePaymentServices(FAKE_PAYMENT_SERVICES_URL);
 
 const { hostname, port } = new URL(LOCAL_API_URL);
 const server = spawn(
@@ -73,4 +85,7 @@ const server = spawn(
   },
 );
 for (const signal of ["SIGINT", "SIGTERM"]) process.on(signal, () => server.kill(signal));
-server.on("exit", (code) => process.exit(code ?? 0));
+server.on("exit", (code) => {
+  paymentServices.close();
+  process.exit(code ?? 0);
+});
