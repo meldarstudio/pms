@@ -106,6 +106,8 @@ export async function acceptCheckoutQuote(
   context: CheckoutContext,
 ) {
   const quote = await requireCurrentQuote(db, checkout, input.quoteId, context);
+  if (await latestCheckoutAttempt(db, checkout.id, { open: true }))
+    throw new HttpError(409, CHECKOUT_HAS_PAYMENT);
   const terms = {
     quoteId: quote.id,
     ...input.contact,

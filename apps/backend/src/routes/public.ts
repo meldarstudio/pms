@@ -127,7 +127,10 @@ publicRoutes.post(
     await requireWithinLimit(c, "PAYMENT_IP_LIMITER", trustedSourceIp(c), TOO_MANY_PAYMENTS);
     await requireWithinLimit(c, "PAYMENT_CHECKOUT_LIMITER", checkout.id, TOO_MANY_PAYMENTS);
     await requireTurnstile(c.env, input.turnstileToken, trustedSourceIp(c));
-    const { created, payment } = await chargeCheckout(db, checkout, payable, input, context);
+    const { created, payment } = await chargeCheckout(db, checkout, payable, input, {
+      ...context,
+      ...guestContext(c),
+    });
     return c.json({ payment }, created ? 201 : 200);
   },
 );

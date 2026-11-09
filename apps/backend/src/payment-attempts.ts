@@ -1,5 +1,5 @@
 import type { PaymentAttemptCreate, PaymentAuthentication } from "@pms/shared";
-import { and, desc, eq, gt, inArray, lt, lte, ne, or, sql } from "drizzle-orm";
+import { and, desc, eq, gt, inArray, isNull, lt, lte, ne, or, sql } from "drizzle-orm";
 import {
   culqiForEnv,
   isSuccessfulCharge,
@@ -8,7 +8,15 @@ import {
   type CulqiCharge,
 } from "./culqi";
 import type { Db } from "./db";
-import { guests, paymentAttempts, quotes, reservations, type AttemptStatus } from "./db/schema";
+import {
+  checkoutAcceptances,
+  guests,
+  operationControls,
+  paymentAttempts,
+  quotes,
+  reservations,
+  type AttemptStatus,
+} from "./db/schema";
 import type { Env } from "./env";
 import { HttpError, PAYMENT_PENDING, rethrowConflict } from "./http";
 import { quoteBill } from "./lib/reservation-bill";
@@ -20,7 +28,13 @@ import { acceptPhone } from "./rules";
 export type Attempt = typeof paymentAttempts.$inferSelect;
 type Quote = typeof quotes.$inferSelect;
 
-export type PublicCheckoutProvenance = Pick<Attempt, "checkoutId" | "acceptanceId" | "language">;
+export type PublicCheckoutProvenance = {
+  checkoutId: string;
+  acceptanceId: string;
+  language: NonNullable<Attempt["language"]>;
+};
+
+export const PAYMENT_NOT_ADMITTED = "payment was not admitted";
 
 export type PaymentContext = {
   culqi: Culqi;
@@ -110,11 +124,39 @@ export async function startPaymentAttempt(
     confirmationEmailEligible: publicCheckout !== undefined,
   };
   try {
-    await db.insert(paymentAttempts).values(attempt);
+    if (publicCheckout) await insertAdmittedAttempt(db, attempt, publicCheckout);
+    else await db.insert(paymentAttempts).values(attempt);
   } catch (error) {
     rethrowConflict(error);
   }
   return record(db, attempt, await context.culqi.createCharge(chargeRequest(attempt)), context);
+}
+
+async function insertAdmittedAttempt(
+  db: Db,
+  attempt: Attempt,
+  { checkoutId, acceptanceId, language }: PublicCheckoutProvenance,
+) {
+  await db.run(sql`INSERT INTO ${paymentAttempts} (id, quote_id, amount_cents, currency, email,
+      guest, source_id, device_fingerprint, status, created_at, called_at, checkout_id,
+      acceptance_id, language, confirmation_email_eligible)
+    SELECT ${attempt.id}, ${attempt.quoteId}, ${attempt.amountCents}, ${attempt.currency},
+      ${attempt.email}, ${JSON.stringify(attempt.guest)}, ${attempt.sourceId},
+      ${attempt.deviceFingerprint}, ${attempt.status}, ${attempt.createdAt}, ${attempt.calledAt},
+      ${checkoutId}, ${acceptanceId}, ${language}, 1
+    WHERE EXISTS (SELECT 1 FROM ${operationControls}
+        WHERE ${operationControls.id} = 1 AND ${operationControls.publicPaymentsAdmitted} = 1)
+      AND ${attempt.quoteId} = (SELECT ${quotes.id} FROM ${quotes}
+        WHERE ${quotes.checkoutId} = ${checkoutId}
+        ORDER BY ${quotes.createdAt} DESC, ${quotes}.rowid DESC LIMIT 1)
+      AND ${acceptanceId} = (SELECT ${checkoutAcceptances.id} FROM ${checkoutAcceptances}
+        WHERE ${checkoutAcceptances.checkoutId} = ${checkoutId}
+        ORDER BY ${checkoutAcceptances.acceptedAt} DESC, ${checkoutAcceptances}.rowid DESC LIMIT 1)`);
+  const [inserted] = await db
+    .select({ id: paymentAttempts.id })
+    .from(paymentAttempts)
+    .where(eq(paymentAttempts.id, attempt.id));
+  if (!inserted) throw new HttpError(409, PAYMENT_NOT_ADMITTED);
 }
 
 export async function authenticatePaymentAttempt(
@@ -194,6 +236,7 @@ async function expireReviews(db: Db, attemptId?: string) {
     .where(
       and(
         eq(paymentAttempts.status, "review"),
+        isNull(paymentAttempts.checkoutId),
         attemptId ? eq(paymentAttempts.id, attemptId) : undefined,
         inArray(
           paymentAttempts.quoteId,

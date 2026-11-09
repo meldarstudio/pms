@@ -2,9 +2,11 @@ import type { CheckoutPayment } from "@pms/shared";
 import type { Db } from "./db";
 import { HttpError, PAYMENT_PENDING } from "./http";
 import { reservationBill } from "./lib/reservation-bill";
+import { requirePublicPaymentAdmission } from "./operation-controls";
 import {
   findAttempt,
   latestCheckoutAttempt,
+  PAYMENT_NOT_ADMITTED,
   paymentDelayed,
   refreshPaymentAttempt,
   startPaymentAttempt,
@@ -20,12 +22,12 @@ export const QUOTE_NOT_ACCEPTED = "quote has not been accepted";
 
 export type GuestPaymentState =
   | "authentication_required"
-  | "authentication_expired"
   | "declined"
   | "processing"
   | "paid_awaiting_reservation"
   | "unfulfilled"
-  | "confirmed";
+  | "confirmed"
+  | "reservation_changed";
 
 type PayableQuote = {
   quote: Quote;
@@ -59,7 +61,7 @@ export async function chargeCheckout(
   checkout: PublicCheckout,
   { quote, acceptance }: PayableQuote,
   input: CheckoutPayment,
-  context: PaymentContext,
+  context: PaymentContext & { today: string; now: Date },
 ) {
   if (!(await quoteAvailable(db, quote))) throw new HttpError(409, "no availability");
   try {
@@ -79,6 +81,11 @@ export async function chargeCheckout(
       payment: await presentGuestPayment(db, await findAttempt(db, started.id)),
     };
   } catch (error) {
+    if (error instanceof HttpError && error.message === PAYMENT_NOT_ADMITTED) {
+      await requirePublicPaymentAdmission(db);
+      await payableQuote(db, checkout, quote.id, context);
+      throw new HttpError(409, QUOTE_NOT_ACCEPTED);
+    }
     if (!(error instanceof HttpError && error.status === 409 && error.message === PAYMENT_PENDING))
       throw error;
     const open = await checkoutPayment(db, checkout, context, { open: true });
@@ -96,11 +103,11 @@ function guestState(attempt: Attempt, reservationStatus: string | null): GuestPa
     case "succeeded":
       return "paid_awaiting_reservation";
     case "failed":
-      return attempt.failureCode === "authentication_expired"
-        ? "authentication_expired"
-        : "declined";
+      return "declined";
     case "saved":
-      return reservationStatus === "unfulfilled" ? "unfulfilled" : "confirmed";
+      if (reservationStatus === "confirmed" || reservationStatus === "unfulfilled")
+        return reservationStatus;
+      return "reservation_changed";
   }
 }
 

@@ -270,6 +270,9 @@ export const paymentAttempts = sqliteTable(
   (table) => [
     index("payment_attempts_status").on(table.status, table.calledAt),
     index("payment_attempts_checkout").on(table.checkoutId, table.createdAt),
+    uniqueIndex("payment_attempts_checkout_open")
+      .on(table.checkoutId)
+      .where(sql`${table.status} IN ('unknown', 'review', 'succeeded', 'saved')`),
     uniqueIndex("payment_attempts_open")
       .on(table.quoteId)
       .where(sql`${table.status} IN ('unknown', 'review', 'succeeded', 'saved')`),

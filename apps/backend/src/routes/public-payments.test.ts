@@ -726,3 +726,100 @@ describe("local service overrides", () => {
     expect(charges()).toHaveLength(1);
   });
 });
+
+function duringFirstSecurityCheck(run: () => Promise<void>) {
+  const original = globalThis.fetch;
+  let pending = true;
+  vi.stubGlobal("fetch", (async (input: RequestInfo | URL, init?: RequestInit) => {
+    const url = new URL(input instanceof Request ? input.url : input);
+    if (pending && url.origin === "https://challenges.cloudflare.com") {
+      pending = false;
+      await run();
+    }
+    return original(input, init);
+  }) as typeof fetch);
+}
+
+describe("payments racing within one checkout", () => {
+  it("charges once when the quote is replaced, accepted and paid while an earlier payment is being verified", async () => {
+    const checkout = await acceptedCheckout();
+    let second: Response | undefined;
+    duringFirstSecurityCheck(async () => {
+      const refreshed = await guest("/public/checkout/quotes", {
+        token: checkout.token,
+        method: "POST",
+      });
+      const { quote } = (await refreshed.json()) as { quote: { id: string } };
+      await guest("/public/checkout/acceptances", {
+        token: checkout.token,
+        body: { quoteId: quote.id, language: "en", contact, agreed: true },
+      });
+      second = await pay({ token: checkout.token, quoteId: quote.id });
+    });
+
+    const first = await pay(checkout);
+
+    expect(second?.status).toBe(201);
+    expect(first.status).toBe(409);
+    expect(await first.json()).toEqual({ error: "quote was replaced by a newer quote" });
+    expect(charges()).toHaveLength(1);
+    expect(rows("SELECT status FROM payment_attempts")).toEqual([{ status: "saved" }]);
+  });
+
+  it("does not charge when payments are paused while the payment is being verified", async () => {
+    const checkout = await acceptedCheckout();
+    duringFirstSecurityCheck(() => admitPayments(false));
+
+    const response = await pay(checkout);
+
+    expect(response.status).toBe(503);
+    expect(await response.json()).toEqual({ error: "online payments are paused" });
+    expect(charges()).toEqual([]);
+    expect(rows("SELECT id FROM payment_attempts")).toEqual([]);
+  });
+
+  it("refuses a new acceptance while the checkout has a payment", async () => {
+    const checkout = await acceptedCheckout();
+    culqi.next("POST /charges", "timeout");
+    await paid(checkout);
+
+    const response = await guest("/public/checkout/acceptances", {
+      token: checkout.token,
+      body: { quoteId: checkout.quoteId, language: "es", contact, agreed: true },
+    });
+
+    expect(response.status).toBe(409);
+    expect(await response.json()).toEqual({ error: "checkout already has a payment" });
+  });
+});
+
+describe("payment outcomes over time", () => {
+  it("keeps a required authentication pending after its quote expires, without allowing another card", async () => {
+    const checkout = await acceptedCheckout();
+    await paid(checkout, { sourceId: "tkn_test_3ds" });
+    vi.advanceTimersByTime(11 * 60_000);
+    await reconcilePaymentAttempts(getDb(db.env.DB), paymentContext(db.env));
+
+    expect(await status(checkout.token)).toMatchObject({ state: "authentication_required" });
+    const again = await pay(checkout);
+    expect(again.status).toBe(200);
+    expect(await again.json()).toMatchObject({ payment: { state: "authentication_required" } });
+    expect(charges()).toHaveLength(1);
+  });
+
+  it("stops reporting a reservation as confirmed once staff cancel it", async () => {
+    const checkout = await acceptedCheckout();
+    await paid(checkout);
+    const [{ id }] = rows<{ id: string }>("SELECT id FROM reservations");
+    const cancelled = await db.request(`/reservations/${id}/commands`, "POST", {
+      requestId: crypto.randomUUID(),
+      actions: [{ type: "set-status", status: "cancelled", reason: "Guest asked" }],
+    });
+    expect(cancelled.status).toBe(200);
+
+    expect(await status(checkout.token)).toMatchObject({
+      state: "reservation_changed",
+      reservation: { code: expect.stringMatching(/^[A-Z0-9]{6}$/), paidCents: 10000 },
+    });
+  });
+});
