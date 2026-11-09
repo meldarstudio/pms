@@ -144,3 +144,21 @@ test("money received for dates the same contact already holds is shown as unconf
   await expect(outcome(page)).toContainText(/Por resolver\s*S\/\s180\.00/);
   await expect(outcome(page)).not.toContainText("confirmada");
 });
+
+test("a lost payment response says the payment was sent and never invites paying again", async ({
+  page,
+}) => {
+  await acceptTerms(page, "flexible", payerEmail());
+  await page.route(`${LOCAL_API_URL}/public/checkout/payments`, (route) => route.abort());
+
+  await payButton(page, "100.00").click();
+
+  const sent = page.getByRole("heading", { name: "Pago enviado, consultando su estado" });
+  await expect(sent).toBeFocused();
+  await expect(page.getByRole("button", { name: /^Pagar/ })).toHaveCount(0);
+  await page.getByRole("button", { name: "Consultar estado" }).click();
+  await expect(sent).toBeVisible();
+  await page.reload();
+  await expect(sent).toBeVisible();
+  await expect(page.getByRole("button", { name: /^Pagar/ })).toHaveCount(0);
+});

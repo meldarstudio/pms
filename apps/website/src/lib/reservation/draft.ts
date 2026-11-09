@@ -8,6 +8,7 @@ export type StoredCheckout = {
   token: string;
   agreedOffer: string | null;
   accepted: { quoteId: string; contact: string } | null;
+  submitted?: string | null;
 };
 
 export const contactKey = (contact: BookingContact) =>

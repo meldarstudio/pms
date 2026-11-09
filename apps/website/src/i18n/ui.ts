@@ -383,13 +383,16 @@ export const ui = {
     "reservation.pay.error.card":
       "The card form couldn't open. Nothing was charged: check your connection and try again.",
     "reservation.pay.error.unavailable":
-      "We couldn't send your payment and no payment was recorded. Your details are kept: try again in a moment, or message us on WhatsApp.",
+      "We couldn't send your payment and nothing was charged. Your details are kept: try again in a moment, or message us on WhatsApp.",
+    "reservation.outcome.submitted.title": "Payment sent, checking its status",
+    "reservation.outcome.submitted.body":
+      "We sent your payment but didn't receive an answer, so your card may have been charged. Please don't pay again: check its status here, or message us on WhatsApp or by email for help.",
+    "reservation.outcome.reservation_changed.title": "Your reservation was updated by the hotel",
+    "reservation.outcome.reservation_changed.body":
+      "Your payment was received, and the hotel has since changed this reservation. Message us on WhatsApp or by email with your reference to confirm its current status.",
     "reservation.outcome.declined.title": "Your card was declined",
     "reservation.outcome.declined.body":
       "Nothing was charged. You can pay with another card; your details and accepted terms are kept.",
-    "reservation.outcome.authentication_expired.title": "The bank verification wasn't completed",
-    "reservation.outcome.authentication_expired.body":
-      "Nothing was charged for that attempt. You can pay again; your details are kept.",
     "reservation.outcome.authentication_required.title": "Your bank needs to verify this payment",
     "reservation.outcome.authentication_required.body":
       "This payment is waiting for your bank's verification. It hasn't been declined, so please don't pay again. Check the status here, or message us on WhatsApp for help.",
@@ -840,13 +843,16 @@ export const ui = {
     "reservation.pay.error.card":
       "No se pudo abrir el formulario de la tarjeta. No se cobró nada: revise su conexión e intente de nuevo.",
     "reservation.pay.error.unavailable":
-      "No pudimos enviar su pago y no se registró ningún pago. Sus datos se conservan: intente de nuevo en un momento o escríbanos por WhatsApp.",
+      "No pudimos enviar su pago y no se cobró nada. Sus datos se conservan: intente de nuevo en un momento o escríbanos por WhatsApp.",
+    "reservation.outcome.submitted.title": "Pago enviado, consultando su estado",
+    "reservation.outcome.submitted.body":
+      "Enviamos su pago pero no recibimos respuesta, así que su tarjeta podría haberse cobrado. No pague de nuevo: consulte su estado aquí o escríbanos por WhatsApp o por correo si necesita ayuda.",
+    "reservation.outcome.reservation_changed.title": "El hotel actualizó su reserva",
+    "reservation.outcome.reservation_changed.body":
+      "Recibimos su pago y luego el hotel modificó esta reserva. Escríbanos por WhatsApp o por correo con su referencia para confirmar su estado actual.",
     "reservation.outcome.declined.title": "Su tarjeta fue rechazada",
     "reservation.outcome.declined.body":
       "No se cobró nada. Puede pagar con otra tarjeta; sus datos y las condiciones aceptadas se conservan.",
-    "reservation.outcome.authentication_expired.title": "La verificación del banco no se completó",
-    "reservation.outcome.authentication_expired.body":
-      "No se cobró nada por ese intento. Puede pagar de nuevo; sus datos se conservan.",
     "reservation.outcome.authentication_required.title": "Su banco necesita verificar este pago",
     "reservation.outcome.authentication_required.body":
       "Este pago espera la verificación de su banco. No fue rechazado, así que no pague de nuevo. Consulte el estado aquí o escríbanos por WhatsApp si necesita ayuda.",

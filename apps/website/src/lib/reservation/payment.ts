@@ -1,11 +1,12 @@
 export type PaymentState =
+  | "submitted"
   | "authentication_required"
-  | "authentication_expired"
   | "declined"
   | "processing"
   | "paid_awaiting_reservation"
   | "unfulfilled"
-  | "confirmed";
+  | "confirmed"
+  | "reservation_changed";
 
 export type GuestPayment = {
   state: PaymentState;
@@ -32,10 +33,8 @@ export type PaymentOutcome =
   | { kind: "denied" }
   | { kind: "unavailable" };
 
-const NEW_PAYMENT_ALLOWED: readonly PaymentState[] = ["declined", "authentication_expired"];
-
 export const allowsNewPayment = (payment: GuestPayment | null) =>
-  !payment || NEW_PAYMENT_ALLOWED.includes(payment.state);
+  !payment || payment.state === "declined";
 
 const STALE_QUOTE = new Set([
   "quote has expired",

@@ -423,12 +423,13 @@ const contactFields = [
 
   const outcomeTone: Record<GuestPayment["state"], string> = {
     declined: "border-red-700",
-    authentication_expired: "border-red-700",
+    submitted: "border-amber-600",
     authentication_required: "border-amber-600",
     processing: "border-amber-600",
     paid_awaiting_reservation: "border-amber-600",
     unfulfilled: "border-red-700",
     confirmed: "border-accent-700",
+    reservation_changed: "border-amber-600",
   };
 
   const formErrorCopy: Partial<Record<Problem["kind"], string>> = {
@@ -606,6 +607,7 @@ const contactFields = [
         token: outcome.token,
         agreedOffer: agreed ? offer : null,
         accepted: previous?.token === outcome.token ? previous.accepted : null,
+        submitted: previous?.token === outcome.token ? (previous.submitted ?? null) : null,
       });
       this.input("agree").checked = agreed;
       this.el("[data-changed]").hidden = !previous?.agreedOffer || agreed;
@@ -746,6 +748,7 @@ const contactFields = [
       const button = this.el<HTMLButtonElement>("[data-pay-button]");
       button.disabled = true;
       this.el("[data-status]").textContent = this.text("reservation.pay.sending");
+      this.markSubmitted(this.view.quote.id);
       try {
         const outcome = await startPayment(this.copy.apiBase, this.token, {
           quoteId: this.view.quote.id,
@@ -760,8 +763,34 @@ const contactFields = [
       }
     }
 
+    private markSubmitted(quoteId: string | null) {
+      const stored = this.stored();
+      if (stored) storeCheckout(this.key, { ...stored, submitted: quoteId });
+    }
+
+    private submittedPayment(): GuestPayment | null {
+      const view = this.view;
+      if (!view || this.stored()?.submitted !== view.quote.id) return null;
+      return {
+        state: "submitted",
+        amountCents: view.quote.requiredInitialPaymentCents,
+        currency: view.currency,
+        delayed: false,
+        reservation: null,
+      };
+    }
+
     private async settlePayment(outcome: PaymentOutcome) {
       this.el("[data-status]").textContent = "";
+      if (outcome.kind === "unavailable") {
+        const current = await readPayment(this.copy.apiBase, this.token);
+        if (current.kind === "payment" && current.payment) this.markSubmitted(null);
+        return this.showPayment(
+          current.kind === "payment" && current.payment ? current.payment : this.submittedPayment(),
+          true,
+        );
+      }
+      this.markSubmitted(null);
       if (outcome.kind === "payment") return this.showPayment(outcome.payment, true);
       if (outcome.kind === "sold_out") return this.showProblem({ kind: "sold_out" });
       if (outcome.kind === "denied") return this.load();
@@ -771,11 +800,6 @@ const contactFields = [
         await this.load();
         this.el("[data-form-error]").textContent = this.text("reservation.pay.error.stale");
         return;
-      }
-      if (outcome.kind === "unavailable") {
-        const current = await readPayment(this.copy.apiBase, this.token);
-        if (current.kind === "payment" && current.payment)
-          return this.showPayment(current.payment, true);
       }
       this.showPayError(payErrorCopy[outcome.kind] ?? "reservation.pay.error.unavailable");
     }
@@ -787,7 +811,9 @@ const contactFields = [
         this.el("[data-status]").textContent = this.text("reservation.outcome.checking");
       const outcome = await readPayment(this.copy.apiBase, this.token);
       if (announce) this.el("[data-status]").textContent = "";
-      if (outcome.kind === "payment") this.showPayment(outcome.payment, announce);
+      if (outcome.kind !== "payment") return;
+      if (outcome.payment) this.markSubmitted(null);
+      this.showPayment(outcome.payment ?? this.submittedPayment(), announce);
     }
 
     private payAgain() {
@@ -833,7 +859,12 @@ const contactFields = [
                 ["reservation.outcome.received", money(reservation.paidCents)],
                 ["reservation.outcome.awaiting", money(reservation.refundDueCents)],
               ]
-            : [["reservation.outcome.amount", money(payment.amountCents)]];
+            : reservation
+              ? [
+                  ["reservation.outcome.reference", reservation.code],
+                  ["reservation.outcome.paid", money(reservation.paidCents)],
+                ]
+              : [["reservation.outcome.amount", money(payment.amountCents)]];
       this.el("[data-outcome-amounts]").replaceChildren(
         ...rows.map(([label, value]) => {
           const row = document.createElement("div");
@@ -850,6 +881,7 @@ const contactFields = [
       );
       this.el("[data-outcome-retry]").hidden = !allowsNewPayment(payment) || !this.copy.payments;
       this.el("[data-outcome-check]").hidden = !(
+        payment.state === "submitted" ||
         payment.state === "authentication_required" ||
         (VERIFYING.includes(payment.state) && payment.delayed)
       );
