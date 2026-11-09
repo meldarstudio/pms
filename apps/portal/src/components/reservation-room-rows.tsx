@@ -7,7 +7,6 @@ export function ReservationRoomRow({
   index,
   count,
   onRemove,
-  stacked = false,
   typeField,
   roomField,
   adultsField,
@@ -18,7 +17,6 @@ export function ReservationRoomRow({
   index: number;
   count: number;
   onRemove: () => void;
-  stacked?: boolean;
   typeField: ReactNode;
   roomField: ReactNode;
   adultsField: ReactNode;
@@ -45,22 +43,11 @@ export function ReservationRoomRow({
         <h4 id={titleId} className="text-xs font-medium text-muted-foreground">
           Habitación {index + 1}
         </h4>
-        <RoomActionsMenu
-          index={index}
-          size={stacked ? "icon" : "icon-sm"}
-          onRemove={count > 1 ? onRemove : undefined}
-        />
+        <RoomActionsMenu index={index} size="icon-sm" onRemove={count > 1 ? onRemove : undefined} />
       </div>
-      <FieldGroup
-        className={cn(
-          "grid gap-3",
-          stacked
-            ? "grid-cols-2"
-            : "grid-cols-3 max-md:pointer-coarse:grid-cols-[minmax(0,1.6fr)_minmax(0,1fr)_minmax(0,1fr)] md:grid-cols-[minmax(0,1fr)_7rem_4rem_4rem] md:pointer-coarse:grid-cols-[minmax(0,1fr)_9rem_5rem_5rem]",
-        )}
-      >
-        <div className={cn("col-span-full min-w-0", !stacked && "md:col-span-1")}>{typeField}</div>
-        <div className={cn("min-w-0", stacked && "col-span-full")}>{roomField}</div>
+      <FieldGroup className="grid grid-cols-3 gap-3 max-md:pointer-coarse:grid-cols-[minmax(0,1.6fr)_minmax(0,1fr)_minmax(0,1fr)] md:grid-cols-[minmax(0,1fr)_7rem_4rem_4rem] md:pointer-coarse:grid-cols-[minmax(0,1fr)_9rem_5rem_5rem]">
+        <div className="col-span-full min-w-0 md:col-span-1">{typeField}</div>
+        <div className="min-w-0">{roomField}</div>
         <div className="min-w-0">{adultsField}</div>
         <div className="min-w-0">{childrenField}</div>
         {feedback && <div className="col-span-full flex flex-col gap-1">{feedback}</div>}

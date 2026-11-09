@@ -25,7 +25,6 @@ const types = [
 const details = (): DetailsValues => ({
   checkIn: "2026-01-01",
   checkOut: "2026-01-02",
-  notes: "",
   rooms: [
     {
       id: "line-1",

@@ -881,6 +881,32 @@ async function back() {
   await React.act(async () => link.click());
 }
 
+it("revalidates an edited payment date at property midnight without losing its draft", async () => {
+  vi.setSystemTime(new Date("2026-11-01T01:00:00Z"));
+  saved.payments = [payment({ paymentDate: "2026-11-01" })];
+  mockApi();
+  await render();
+  await chooseRowAction('[aria-label^="Acciones del pago"]', "Editar");
+  await fill("amount", "25");
+  await submit();
+  await page.until(() => popup()!.textContent.includes("La fecha del pago no puede ser futura."));
+  assert.equal(writes.length, 0);
+  vi.setSystemTime(new Date("2026-11-01T05:00:00Z"));
+  await React.act(async () => window.dispatchEvent(new window.Event("focus")));
+  await page.until(() => !popup()!.textContent.includes("La fecha del pago no puede ser futura."));
+  assert.equal(field("amount").value, "25");
+  assert.ok(button("1 nov 2026"));
+  await submit();
+  await page.until(() => writes.length === 1 && !popup());
+  assert.deepEqual(writes[0].actions, [
+    {
+      type: "edit-payment",
+      paymentId: saved.payments[0].id,
+      payment: { amountCents: 2500, method: "cash", paymentDate: "2026-11-01" },
+    },
+  ]);
+});
+
 async function chooseRowAction(selector: string, label: string) {
   const trigger = page.container.querySelector<HTMLElement>(selector);
   assert.ok(trigger, `Missing row actions ${selector}`);
@@ -1051,6 +1077,37 @@ it.each(["unopened", "open pristine", "closed pristine"])(
     assert.deepEqual(writes[0].actions, [{ type: "set-discount", amountCents: 9000 }]);
   },
 );
+
+it("preserves an above-subtotal saved discount while displaying the server-applied amount", async () => {
+  saved = {
+    ...saved,
+    savedDiscountCents: 10000,
+    subtotalCents: 8000,
+    discountCents: 8000,
+    totalCents: 0,
+    paidCents: 0,
+    balanceCents: 0,
+  };
+  mockApi({
+    write: (command) => {
+      assert.deepEqual(command.actions, [{ type: "set-discount", amountCents: 12000 }]);
+      saved = { ...saved, savedDiscountCents: 12000 };
+      return Response.json(saved);
+    },
+  });
+  await render();
+  assert.equal(text(discountTrigger()), "Descuento -S/ 80");
+  await React.act(async () => discountTrigger().click());
+  await page.until(() => !!discountInput());
+  assert.equal(discountInput()!.value, "100");
+  await page.fill(discountInput()!, "120");
+  await React.act(async () => discountButton("Aplicar")!.click());
+  await page.until(() => writes.length === 1 && !discountInput());
+  assert.deepEqual(summaryRows().slice(0, 3), ["Subtotal S/ 80", "Descuento -S/ 80", "Total S/ 0"]);
+  await React.act(async () => discountTrigger().click());
+  await page.until(() => !!discountInput());
+  assert.equal(discountInput()!.value, "120");
+});
 
 it("applies and removes the discount from the Cuenta summary, keeping a rejected amount", async () => {
   mockApi({
@@ -2086,7 +2143,8 @@ it("protects a stay draft from background refresh, router navigation and dirty d
   await click("Descartar y salir");
   await page.until(() => !popup());
   await back();
-  await page.until(() => router.state.location.pathname === "/reservations");
+  await page.until(() => router.state.location.pathname === "/calendar");
+  assert.deepEqual({ ...router.state.location.search }, { from: "2026-10-12", span: 14 });
 });
 
 it("announces the loading reservation until its detail arrives", async () => {

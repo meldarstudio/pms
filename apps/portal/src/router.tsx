@@ -13,7 +13,7 @@ import { format, parseISO } from "date-fns";
 import { useNavigate } from "@tanstack/react-router";
 import App from "@/App";
 import { RouteCrash } from "@/components/page-error";
-import { ReservationPage } from "@/components/reservation-page";
+import { ReservationPage, type ReservationBack } from "@/components/reservation-page";
 import { Reservations } from "@/components/reservations";
 import { RoomCalendar } from "@/components/room-calendar";
 import { Housekeeping } from "@/components/housekeeping";
@@ -160,17 +160,23 @@ function ReservationRoute() {
   const { reservationId } = reservationRoute.useParams();
   const { returnTo, origin } = reservationRoute.useSearch();
   const navigate = useNavigate();
-  const backSearch =
-    origin !== "calendar" && returnTo !== undefined
-      ? reservationsSearch(Object.fromEntries(new URLSearchParams(returnTo)))
-      : (lastReservationsSearch.current ?? reservationsSearch({}));
-  return (
-    <ReservationPage
-      id={reservationId}
-      backSearch={backSearch}
-      onBack={() => void navigate({ to: "/reservations", search: backSearch })}
-    />
-  );
+  const returned =
+    returnTo === undefined ? null : Object.fromEntries(new URLSearchParams(returnTo));
+  const back: ReservationBack =
+    origin === "calendar"
+      ? {
+          to: "/calendar",
+          search: returned
+            ? calendarSearch(returned)
+            : (lastCalendarSearch.current ?? calendarSearch({})),
+        }
+      : {
+          to: "/reservations",
+          search: returned
+            ? reservationsSearch(returned)
+            : (lastReservationsSearch.current ?? reservationsSearch({})),
+        };
+  return <ReservationPage id={reservationId} back={back} onBack={() => void navigate(back)} />;
 }
 
 function InventoryRoute() {

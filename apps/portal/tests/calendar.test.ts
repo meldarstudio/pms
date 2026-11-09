@@ -182,7 +182,7 @@ it.each([
       }),
     );
     await until(
-      () => !!container.querySelector('[aria-label="Editar reserva de Ada Lovelace · Confirmada"]'),
+      () => !!container.querySelector('[aria-label="Ver reserva de Ada Lovelace · Confirmada"]'),
       "Stay must appear with the calendar",
     );
 
@@ -274,18 +274,18 @@ it("draws a checkout on the first morning at the edge of the hold", async () => 
 
   await render(React.createElement(CalendarSession));
   await until(
-    () => !!container.querySelector('[aria-label="Editar reserva de Ada Lovelace · Confirmada"]'),
+    () => !!container.querySelector('[aria-label="Ver reserva de Ada Lovelace · Confirmada"]'),
     "Week must paint before stepping back to the hold edge",
   );
   assert.equal(
-    container.querySelector('[aria-label="Editar reserva de Hold Edge · Check-out"]'),
+    container.querySelector('[aria-label="Ver reserva de Hold Edge · Check-out"]'),
     null,
   );
   assert.equal(requests.length, 1);
 
   for (let step = 0; step < 7; step++) await click("Día anterior");
   await until(
-    () => !!container.querySelector('[aria-label="Editar reserva de Hold Edge · Check-out"]'),
+    () => !!container.querySelector('[aria-label="Ver reserva de Hold Edge · Check-out"]'),
     "Checkout on the hold's first morning must still draw",
   );
 
@@ -293,7 +293,7 @@ it("draws a checkout on the first morning at the edge of the hold", async () => 
   assert.ok(container.textContent.includes("13 oct 2026"));
   assert.equal(
     container
-      .querySelector('[aria-label="Editar reserva de Hold Edge · Check-out"]')
+      .querySelector('[aria-label="Ver reserva de Hold Edge · Check-out"]')
       ?.getAttribute("title"),
     "Hold Edge · Check-out, 2026-10-12 al 2026-10-13",
   );
@@ -383,9 +383,7 @@ it.each(["focus", "mobile refresh"] as const)(
     refresh.release(calendarResponse(refresh.request!.url, bookedElsewhere("Katherine Johnson")));
     await until(
       () =>
-        !!container.querySelector(
-          '[aria-label="Editar reserva de Katherine Johnson · Confirmada"]',
-        ),
+        !!container.querySelector('[aria-label="Ver reserva de Katherine Johnson · Confirmada"]'),
     );
     assert.equal(requests.length, before + 1);
     assert.ok(container.textContent.includes("20 oct 2026"));
@@ -395,7 +393,7 @@ it.each(["focus", "mobile refresh"] as const)(
 it("ignores a refresh that finishes after staff have left that day", async () => {
   await render(React.createElement(CalendarSession));
   await until(
-    () => !!container.querySelector('[aria-label="Editar reserva de Ada Lovelace · Confirmada"]'),
+    () => !!container.querySelector('[aria-label="Ver reserva de Ada Lovelace · Confirmada"]'),
     "Week must paint before refreshing",
   );
 
@@ -411,7 +409,7 @@ it("ignores a refresh that finishes after staff have left that day", async () =>
   );
   assert.equal(requests.length, 2);
   assert.ok(container.textContent.includes("101"));
-  assert.ok(container.querySelector('[aria-label="Editar reserva de Grace Hopper · Check-out"]'));
+  assert.ok(container.querySelector('[aria-label="Ver reserva de Grace Hopper · Check-out"]'));
   expectManualRefresh();
   assert.equal(container.querySelector('[aria-label="Cargando calendario"]'), null);
 
@@ -423,11 +421,11 @@ it("ignores a refresh that finishes after staff have left that day", async () =>
   assert.ok(container.textContent.includes("28 oct 2026"));
   assert.equal(container.textContent.includes("101"), false);
   assert.equal(
-    container.querySelector('[aria-label="Editar reserva de Ada Lovelace · Confirmada"]'),
+    container.querySelector('[aria-label="Ver reserva de Ada Lovelace · Confirmada"]'),
     null,
   );
   assert.equal(
-    container.querySelector('[aria-label="Editar reserva de Grace Hopper · Check-out"]'),
+    container.querySelector('[aria-label="Ver reserva de Grace Hopper · Check-out"]'),
     null,
   );
   assert.equal(container.querySelector('[aria-label="Actualizando…"]'), null);
@@ -443,11 +441,11 @@ it("ignores a refresh that finishes after staff have left that day", async () =>
   assert.equal(container.textContent.includes("20 oct 2026"), false);
   assert.equal(container.textContent.includes("101"), false);
   assert.equal(
-    container.querySelector('[aria-label="Editar reserva de Ada Lovelace · Confirmada"]'),
+    container.querySelector('[aria-label="Ver reserva de Ada Lovelace · Confirmada"]'),
     null,
   );
   assert.equal(
-    container.querySelector('[aria-label="Editar reserva de Katherine Johnson · Confirmada"]'),
+    container.querySelector('[aria-label="Ver reserva de Katherine Johnson · Confirmada"]'),
     null,
   );
   assert.equal(requests.length, 3);
@@ -458,7 +456,7 @@ it("ignores a refresh that finishes after staff have left that day", async () =>
 it("keeps the held window and shows one Spanish banner when a refresh fails", async () => {
   await render(React.createElement(CalendarSession));
   await until(
-    () => !!container.querySelector('[aria-label="Editar reserva de Ada Lovelace · Confirmada"]'),
+    () => !!container.querySelector('[aria-label="Ver reserva de Ada Lovelace · Confirmada"]'),
     "Week must paint before a failed refresh",
   );
   assert.ok(container.textContent.includes("Mantenimiento"));
@@ -474,7 +472,7 @@ it("keeps the held window and shows one Spanish banner when a refresh fails", as
 
   assert.equal(container.textContent.includes("calendar window is incomplete"), false);
   assert.ok(container.textContent.includes("Reintentar"));
-  assert.ok(container.querySelector('[aria-label="Editar reserva de Ada Lovelace · Confirmada"]'));
+  assert.ok(container.querySelector('[aria-label="Ver reserva de Ada Lovelace · Confirmada"]'));
   assert.ok(container.textContent.includes("101"));
   assert.ok(container.textContent.includes("Mantenimiento"));
   assert.ok(
@@ -553,7 +551,7 @@ it.each(["held grid", "empty unassigned panel"] as const)(
 );
 
 function adaBar() {
-  return container.querySelector('[aria-label="Editar reserva de Ada Lovelace · Confirmada"]');
+  return container.querySelector('[aria-label="Ver reserva de Ada Lovelace · Confirmada"]');
 }
 
 async function openRoomActions(number: string) {
@@ -768,15 +766,13 @@ it("shows a new reservation on its room without blanking the calendar", async ()
     before,
     whileHeld: () =>
       !!adaBar() &&
-      !container.querySelector('[aria-label="Editar reserva de Rosalind Franklin · Confirmada"]'),
+      !container.querySelector('[aria-label="Ver reserva de Rosalind Franklin · Confirmada"]'),
     next: stayOn("room-2", "Rosalind Franklin"),
     arrived: () =>
-      !!container.querySelector('[aria-label="Editar reserva de Rosalind Franklin · Confirmada"]'),
+      !!container.querySelector('[aria-label="Ver reserva de Rosalind Franklin · Confirmada"]'),
     after: () => {
       assert.ok(adaBar());
-      assert.ok(
-        container.querySelector('[aria-label="Editar reserva de Grace Hopper · Check-out"]'),
-      );
+      assert.ok(container.querySelector('[aria-label="Ver reserva de Grace Hopper · Check-out"]'));
       assert.ok(container.textContent.includes("101"));
       assert.ok(container.textContent.includes("Mantenimiento"));
     },
@@ -1177,7 +1173,7 @@ it("assigns a reserved room from the mobile sheet without selecting a calendar b
   );
   refresh.release(assignedWindow(refresh.request!.url));
   await until(
-    () => !!container.querySelector('[aria-label="Editar reserva de Mary Jackson · Confirmada"]'),
+    () => !!container.querySelector('[aria-label="Ver reserva de Mary Jackson · Confirmada"]'),
     "The assigned room must appear in the calendar",
   );
   await until(
@@ -1513,10 +1509,10 @@ it("moves a reserved room onto its room after assignment without blanking the ca
       container.textContent.includes("101") &&
       container.textContent.includes("Mantenimiento") &&
       !!container.querySelector('[aria-label="Mostrar habitaciones reservadas sin asignar, 1"]') &&
-      !container.querySelector('[aria-label="Editar reserva de Mary Jackson · Confirmada"]'),
+      !container.querySelector('[aria-label="Ver reserva de Mary Jackson · Confirmada"]'),
     next: assignedWindow,
     arrived: () =>
-      !!container.querySelector('[aria-label="Editar reserva de Mary Jackson · Confirmada"]'),
+      !!container.querySelector('[aria-label="Ver reserva de Mary Jackson · Confirmada"]'),
     after: () => {
       assert.ok(container.textContent.includes("Sin asignar · 0"));
       assert.ok(adaBar());
@@ -1565,7 +1561,7 @@ it("assigns a room to a checked-in reservation from the assignment backlog", asy
     }),
   );
   await until(
-    () => !!container.querySelector('[aria-label="Editar reserva de Mary Jackson · Check-in"]'),
+    () => !!container.querySelector('[aria-label="Ver reserva de Mary Jackson · Check-in"]'),
     "The checked-in stay must move onto room 2",
   );
   assert.ok(container.textContent.includes("Sin asignar · 0"));
@@ -1750,13 +1746,11 @@ it.each([
       dropsHold: true,
       next: stayOn("room-2", "Rosalind Franklin"),
       arrived: () =>
-        !!container.querySelector(
-          '[aria-label="Editar reserva de Rosalind Franklin · Confirmada"]',
-        ),
+        !!container.querySelector('[aria-label="Ver reserva de Rosalind Franklin · Confirmada"]'),
       after: () => {
         assert.ok(adaBar());
         assert.ok(
-          container.querySelector('[aria-label="Editar reserva de Grace Hopper · Check-out"]'),
+          container.querySelector('[aria-label="Ver reserva de Grace Hopper · Check-out"]'),
         );
         assert.ok(container.textContent.includes("101"));
         assert.ok(container.textContent.includes("Mantenimiento"));
@@ -1782,14 +1776,14 @@ it.each([
       dropsHold: true,
       whileHeld: () =>
         !!adaBar() &&
-        !container.querySelector('[aria-label="Editar reserva de Ada Byron · Confirmada"]'),
+        !container.querySelector('[aria-label="Ver reserva de Ada Byron · Confirmada"]'),
       next: (url) => renamedContact(url, "Ada Byron"),
       arrived: () =>
-        !!container.querySelector('[aria-label="Editar reserva de Ada Byron · Confirmada"]'),
+        !!container.querySelector('[aria-label="Ver reserva de Ada Byron · Confirmada"]'),
       after: () => {
         assert.equal(adaBar(), null);
         assert.ok(
-          container.querySelector('[aria-label="Editar reserva de Grace Hopper · Check-out"]'),
+          container.querySelector('[aria-label="Ver reserva de Grace Hopper · Check-out"]'),
         );
         assert.ok(container.textContent.includes("101"));
         assert.ok(container.textContent.includes("Mantenimiento"));

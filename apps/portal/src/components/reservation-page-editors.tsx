@@ -2,7 +2,8 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useSelector } from "@tanstack/react-form";
 import { XIcon } from "lucide-react";
 import { cn } from "cn";
-import { BookingEditor, DiscardChanges } from "@/components/room-booking-dialog";
+import { DiscardChanges } from "@/components/discard-changes";
+import { StayEditor } from "@/components/stay-editor";
 import { GuestEntryForm, PaymentForm, paymentMethods } from "@/components/reservation-entry-forms";
 import { CouponIssued, RefundForm, ResolveRefundForm } from "@/components/refund-forms";
 import { CancellationForm } from "@/components/cancellation-form";
@@ -188,13 +189,7 @@ export function ReservationPageEditor({
             : "Los cambios se guardan al confirmar.");
   const body =
     target.kind === "stay" ? (
-      <BookingEditor
-        detail={detail}
-        stayOnly
-        onCancel={close}
-        onDirtyChange={handleDirty}
-        onSaved={finish}
-      />
+      <StayEditor detail={detail} onCancel={close} onDirtyChange={handleDirty} onSaved={finish} />
     ) : target.kind === "guest" ? (
       <GuestEntryForm
         scrollable

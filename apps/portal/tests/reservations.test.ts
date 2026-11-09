@@ -383,7 +383,7 @@ it("refreshes cached operations and legacy calendar results after saving in rese
     return Response.json(saved ? checkedIn : ana);
   };
   await render("/calendar?from=2026-10-31");
-  assert.ok(button("Editar reserva de Ana Pérez · Confirmada"));
+  assert.ok(button("Ver reserva de Ana Pérez · Confirmada"));
   assert.equal(requests.length, 0);
   await React.act(async () =>
     router.navigate({ href: "/reservations?day=2026-10-31&statuses=confirmed" }),
@@ -400,11 +400,106 @@ it("refreshes cached operations and legacy calendar results after saving in rese
   assert.equal(params().get("statuses"), "confirmed");
   await React.act(async () => router.navigate({ href: "/calendar?from=2026-10-31" }));
   await until(
-    () => container.querySelector('[aria-label="Editar reserva de Ana Pérez · Check-in"]') !== null,
+    () => container.querySelector('[aria-label="Ver reserva de Ana Pérez · Check-in"]') !== null,
   );
   assert.equal(params().get("paginated"), "true");
   assert.equal(params().get("statuses"), "confirmed");
 });
+
+it.each(["desktop", "mobile"])(
+  "opens the clicked reservation summary, edits on its page, and returns to the calendar range on %s",
+  async (viewport) => {
+    if (viewport === "mobile") page.mobile();
+    let saved = ana;
+    calendarReservation = () => saved;
+    respondToDetail = (url, init) => {
+      if (url.pathname.endsWith("/commands")) {
+        assert.equal(init?.method, "POST");
+        assert.equal(typeof init?.body, "string");
+        assert.deepEqual(JSON.parse(init!.body as string).actions, [
+          { type: "notes", notes: "Llegada tarde" },
+        ]);
+        saved = { ...saved, notes: "Llegada tarde" };
+      }
+      return Response.json(saved);
+    };
+    await render("/calendar?from=2026-10-30&span=14");
+    const bar = button("Ver reserva de Ana Pérez · Confirmada");
+    await React.act(async () => bar.focus());
+    await click("Ver reserva de Ana Pérez · Confirmada");
+    const summary = () =>
+      window.document.querySelector(
+        '[role="dialog"]:is([data-slot="sheet-content"], [data-slot="drawer-popup"])',
+      );
+    await until(() => summary()?.textContent.includes("#ANA0001") ?? false);
+    assert.equal(router.state.location.pathname, "/calendar");
+    assert.match(summary()!.textContent, /Ana Pérez/);
+    const labelledBy = summary()!.getAttribute("aria-labelledby");
+    assert.ok(
+      labelledBy && window.document.getElementById(labelledBy)?.textContent.includes("Ana Pérez"),
+    );
+    await React.act(async () =>
+      summary()!.dispatchEvent(
+        new window.KeyboardEvent("keydown", { key: "Escape", bubbles: true }),
+      ),
+    );
+    await until(() => !summary());
+    await until(() => window.document.activeElement === bar);
+    await click("Ver reserva de Ana Pérez · Confirmada");
+    await until(() => summary()?.textContent.includes("#ANA0001") ?? false);
+    await click("Editar reserva");
+    await until(() => router.state.location.pathname === "/reservations/ana" && !summary());
+    await click("Agregar notas para el equipo");
+    await page.fill("notes", "Llegada tarde");
+    await click("Guardar cambios");
+    await until(
+      () =>
+        !window.document.querySelector('[role="dialog"]') &&
+        container.textContent.includes("Llegada tarde"),
+    );
+    assert.equal(
+      window.document.querySelector('nav[aria-label="breadcrumb"] a')?.textContent,
+      "Calendario",
+    );
+    await back();
+    await until(
+      () => !!container.querySelector('[aria-label="Ver reserva de Ana Pérez · Confirmada"]'),
+    );
+    assert.equal(router.state.location.pathname, "/calendar");
+    assert.deepEqual({ ...router.state.location.search }, { from: "2026-10-30", span: 14 });
+  },
+);
+
+it.each(["calendar", "reservations"] as const)(
+  "opens the new reservation page after creation from %s",
+  async (entry) => {
+    const created = { ...ana, id: "new-reservation", code: "NEW00001" };
+    page.api.on("GET", "/rate-plans", () => [{ ...ana.ratePlan, priceAdjustmentPercent: 0 }]);
+    page.api.on("POST", "/reservations/preview", () => ({ billing: ana }));
+    page.api.on("POST", "/reservations", () => Response.json(created, { status: 201 }));
+    page.api.on("GET", "/reservations/new-reservation", () => created);
+    await render(
+      entry === "calendar" ? "/calendar?from=2026-10-31&span=14" : "/reservations?view=all&q=Ana",
+    );
+    await click("Nueva reserva");
+    await until(() => !!window.document.querySelector('[name="fullName"]'));
+    await page.fill("fullName", "Ana Pérez");
+    await choose("Tipo", "Doble");
+    await until(() => !page.button("Crear reserva").disabled);
+    await click("Crear reserva");
+    await until(() => router.state.location.pathname === "/reservations/new-reservation");
+    await until(() => container.textContent.includes("#NEW00001"));
+    assert.equal(window.document.querySelector('[role="dialog"]'), null);
+    await back();
+    await until(() => router.state.location.pathname === `/${entry}`);
+    assert.deepEqual(
+      { ...router.state.location.search },
+      entry === "calendar"
+        ? { from: "2026-10-31", span: 14 }
+        : { ...router.state.location.search, view: "all", q: "Ana" },
+    );
+  },
+);
 
 it("sends sorting and page sizes to the full-result endpoint and resets the offset for every change", async () => {
   respond = (url) =>
