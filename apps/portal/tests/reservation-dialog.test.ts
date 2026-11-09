@@ -935,12 +935,15 @@ it("shows the room saved by the assignment panel when the summary reopens", asyn
     );
   }
   await render(React.createElement(AssignmentAndSummary));
-  await until(() => roomLines().join() === "Doble|Sin asignar", "Initial reservation must load");
-  await React.act(async () => footerButton("Cerrar").click());
+  await until(
+    () => roomLines().join() === "SinasignarDoble1adulto",
+    "Initial reservation must load",
+  );
+  await React.act(async () => summaryButton("Cerrar").click());
   await until(() => summary() === null, "Closing must unmount the summary");
   await React.act(async () => button("Assign room").click());
   await until(
-    () => roomLines().join() === "Doble|Hab. 101",
+    () => roomLines().join() === "Hab.101Doble1adulto",
     "The summary must show the saved room",
   );
   assert.equal(writes, 1);
@@ -2492,20 +2495,15 @@ function hasButton(label: string) {
 }
 
 function footerActions() {
-  const close = [...window.document.querySelectorAll<HTMLButtonElement>("button")].find(
-    (item) => item.textContent.trim() === "Cerrar" && !item.querySelector("svg"),
-  );
-  assert.ok(close, "Missing the footer Cerrar button");
-  return [...close.parentElement!.querySelectorAll("button")].map((item) =>
-    item.textContent.trim(),
-  );
+  const edit = summaryButton("Editar reserva");
+  return [...edit.parentElement!.querySelectorAll("button")].map((item) => item.textContent.trim());
 }
 
 it.each([
-  { status: "confirmed", actions: ["Cerrar", "Editar reserva", "Hacer check-in"] },
-  { status: "checked_in", actions: ["Cerrar", "Editar reserva", "Hacer check-out"] },
-  { status: "checked_out", actions: ["Cerrar", "Editar reserva"] },
-  { status: "cancelled", actions: ["Cerrar", "Editar reserva"] },
+  { status: "confirmed", actions: ["Editar reserva", "Hacer check-in"] },
+  { status: "checked_in", actions: ["Editar reserva", "Hacer check-out"] },
+  { status: "checked_out", actions: ["Editar reserva"] },
+  { status: "cancelled", actions: ["Editar reserva"] },
 ] as const)(
   "offers only the applicable lifecycle action for a $status reservation",
   async (scenario) => {
@@ -2521,12 +2519,23 @@ it.each([
 );
 
 it.each(["desktop", "phone"] as const)(
-  "summarizes the reservation's contact, shared stay and rooms without editors on %s",
+  "summarizes contact, rooms, occupancy, account and reservation notes without editors on %s",
   async (viewport) => {
     const saved = detail();
     saved.guest.phone = "+51987654321";
     saved.guest.nationality = "CL";
-    saved.rooms.push({ ...saved.rooms[0], id: "line-2", roomId: null, roomNumber: null });
+    saved.notes = "Llegada después de las 22:00.\nSolicita una cuna.";
+    saved.guest.notes = "Nota del contacto, no de la reserva";
+    saved.paidCents = 10000;
+    saved.balanceCents = 20000;
+    saved.rooms.push({
+      ...saved.rooms[0],
+      id: "line-2",
+      roomId: null,
+      roomNumber: null,
+      adults: 2,
+      children: 1,
+    });
     mockApi(
       async () => {
         throw new Error("Viewing a summary must not write");
@@ -2543,34 +2552,87 @@ it.each(["desktop", "phone"] as const)(
     );
     assert.match(popup.textContent, /14 oct – 16 oct 2026 · 2 noches/);
     assert.equal(popup.querySelector('a[href^="tel:"]')?.getAttribute("href"), "tel:+51987654321");
-    assert.deepEqual(roomLines(), ["Doble|Hab. 101", "Doble|Sin asignar"]);
+    assert.deepEqual(roomLines(), ["Hab.101Doble1adulto", "SinasignarDoble2adultos·1niño"]);
+    assert.deepEqual(summaryAmounts(), { Total: "S/300", Pagado: "S/100" });
     assert.equal(
       popup.querySelector('[aria-label="Saldo de la reserva"]')!.textContent.replace(/\s/g, ""),
-      "SaldopendienteS/300",
+      "SaldopendienteS/200",
     );
-    const scope = window.document.getElementById(
-      button("Hacer check-in").getAttribute("aria-describedby")!,
-    );
-    assert.equal(scope?.textContent, "El check-in se aplica a las 2 habitaciones de la reserva.");
+    const notes = popup.querySelector('[aria-labelledby$="-notes"]');
+    assert.equal(notes?.querySelector("h3")?.textContent, "Notas de la reserva");
+    assert.equal(notes?.querySelector("p")?.textContent, saved.notes);
+    assert.doesNotMatch(popup.textContent, /Nota del contacto/);
     assert.equal(popup.querySelector("input, textarea, select, [role='tab']"), null);
     for (const editor of ["Registrar pago", "Agregar huésped", "Editar estadía", "Cambiar estado"])
       assert.equal(hasButton(editor), false, `${editor} belongs on the reservation page`);
   },
 );
 
+it.each([null, "", " \n "])(
+  "omits the notes section when reservation notes are %j",
+  async (notes) => {
+    mockApi(async () => assert.fail("Viewing a summary must not write"), {
+      reservation: () => ({ ...detail(), notes }),
+    });
+    await openSummary();
+    assert.equal(summary()!.querySelector('[aria-labelledby$="-notes"]'), null);
+  },
+);
+
 it.each([
-  { scenario: "an outstanding", changes: { balanceCents: 30000 }, text: "SaldopendienteS/300" },
+  {
+    scenario: "an outstanding",
+    changes: { balanceCents: 30000 },
+    paid: "S/0",
+    text: "SaldopendienteS/300",
+  },
+  {
+    scenario: "a discounted",
+    changes: {
+      subtotalCents: 33000,
+      savedDiscountCents: 9000,
+      discountCents: 3000,
+      balanceCents: 30000,
+    },
+    paid: "S/0",
+    text: "SaldopendienteS/300",
+  },
   {
     scenario: "a settled",
     changes: { balanceCents: 0, paidCents: 30000 },
+    paid: "S/300",
     text: "CuentasaldadaS/0",
   },
   {
     scenario: "a credit",
     changes: { balanceCents: -5000, paidCents: 35000, refundDueCents: 5000 },
+    paid: "S/350",
     text: "PordevolverS/50",
   },
-])("reads $scenario balance without calling it money owed", async ({ changes, text }) => {
+  {
+    scenario: "a requested-refund",
+    changes: {
+      balanceCents: -5000,
+      paidCents: 35000,
+      refundDueCents: 5000,
+      pendingRefundCents: 5000,
+    },
+    paid: "S/350",
+    text: "ReembolsosolicitadoS/50",
+  },
+  {
+    scenario: "a coupon-and-refund adjusted",
+    changes: {
+      balanceCents: 0,
+      paidCents: 25000,
+      couponAppliedCents: 10000,
+      refundedCents: 3000,
+      couponIssuedCents: 2000,
+    },
+    paid: "S/250",
+    text: "CuentasaldadaS/0",
+  },
+])("reads $scenario balance without calling it money owed", async ({ changes, paid, text }) => {
   mockApi(
     async () => {
       throw new Error("Viewing a summary must not write");
@@ -2578,6 +2640,14 @@ it.each([
     { reservation: () => ({ ...detail(), ...changes }) },
   );
   await openSummary();
+  assert.deepEqual(summaryAmounts(), {
+    ...("discountCents" in changes ? { Subtotal: "S/330", Descuento: "-S/30" } : {}),
+    Total: "S/300",
+    Pagado: paid,
+    ...("couponAppliedCents" in changes
+      ? { "Pagado con cupón": "S/100", Reembolsado: "-S/30", "Pasado a cupón": "-S/20" }
+      : {}),
+  });
   assert.equal(
     summary()!.querySelector('[aria-label="Saldo de la reserva"]')!.textContent.replace(/\s/g, ""),
     text,
@@ -2593,7 +2663,7 @@ it("keeps loading summaries dismissible and requests the newly selected reservat
   await until(() => !!first.request);
   assert.ok(summary()?.querySelector('[aria-label="Cargando reserva"][aria-busy]'));
   assert.equal(hasButton("Editar reserva"), false);
-  await React.act(async () => footerButton("Cerrar").click());
+  await React.act(async () => summaryButton("Cerrar").click());
   assert.equal(closed, 1);
   await render(
     React.createElement(summaries.ReservationSummary, {
@@ -2637,7 +2707,7 @@ it("offers a retry and a way out when the summary cannot load", async () => {
   fail = false;
   await React.act(async () => button("Reintentar").click());
   await until(() => !!summary()?.textContent.includes("#TEST0001"), "Retrying must load it");
-  await React.act(async () => footerButton("Cerrar").click());
+  await React.act(async () => summaryButton("Cerrar").click());
   assert.equal(closed, 1);
 });
 
@@ -2651,13 +2721,22 @@ async function openSummaryWithToasts(handlers: Parameters<typeof summaryDialog>[
 
 function roomLines() {
   return [...(summary()?.querySelectorAll("li") ?? [])].map((item) =>
-    [...item.children].map((part) => part.textContent.trim()).join("|"),
+    item.textContent.replace(/\s/g, ""),
   );
 }
 
-function footerButton(label: string) {
+function summaryAmounts() {
+  return Object.fromEntries(
+    [...summary()!.querySelectorAll("dl dt")].map((label) => [
+      label.textContent,
+      label.nextElementSibling!.textContent.replace(/\s/g, ""),
+    ]),
+  );
+}
+
+function summaryButton(label: string) {
   const found = [...(summary()?.querySelectorAll<HTMLButtonElement>("button") ?? [])].find(
-    (item) => item.textContent.trim() === label,
+    (item) => (item.getAttribute("aria-label") ?? item.textContent.trim()) === label,
   );
   assert.ok(found, `Missing summary button ${label}`);
   return found;
@@ -2779,7 +2858,7 @@ it("confirms an outstanding balance before checking out from the summary", async
   await React.act(async () => alertButton("Hacer check-out").click());
   await until(() => bodyText().includes("Check-out registrado"));
   assert.deepEqual(writes[0].actions, [{ type: "set-status", status: "checked_out" }]);
-  assert.deepEqual(footerActions(), ["Cerrar", "Editar reserva"]);
+  assert.deepEqual(footerActions(), ["Editar reserva"]);
 });
 
 it("keeps confirmation, a pending check-in and its undo usable across viewport changes", async () => {
@@ -2810,9 +2889,9 @@ it("keeps confirmation, a pending check-in and its undo usable across viewport c
     /101 está sucia/,
   );
   await React.act(async () => alertButton("Hacer check-in").click());
-  await until(() => writes.length === 1 && footerButton("Editar reserva").disabled);
+  await until(() => writes.length === 1 && summaryButton("Editar reserva").disabled);
   await React.act(async () => window.happyDOM.setWindowSize({ width: 390, height: 844 }));
-  assert.equal(footerButton("Editar reserva").disabled, true);
+  assert.equal(summaryButton("Editar reserva").disabled, true);
   await React.act(async () => release());
   await until(() => bodyText().includes("Check-in registrado"));
   await React.act(async () => window.happyDOM.setWindowSize({ width: 1024, height: 768 }));
@@ -2947,9 +3026,9 @@ for (const succeeds of [true, false]) {
       });
       await React.act(async () => button("Hacer check-in").click());
       await until(() => requests === 1, "Check-in must begin");
-      await until(() => footerButton("Editar reserva").disabled, "A pending check-in must lock");
-      assert.equal(footerButton("Cerrar").disabled, true);
-      assert.equal(footerButton("Hacer check-in").disabled, true);
+      await until(() => summaryButton("Editar reserva").disabled, "A pending check-in must lock");
+      assert.equal(summaryButton("Cerrar").disabled, true);
+      assert.equal(summaryButton("Hacer check-in").disabled, true);
       const pendingUnload = new window.Event("beforeunload", { cancelable: true });
       await React.act(async () => window.dispatchEvent(pendingUnload));
       assert.equal(pendingUnload.defaultPrevented, true);
@@ -2957,7 +3036,7 @@ for (const succeeds of [true, false]) {
         summary()!.dispatchEvent(
           new window.KeyboardEvent("keydown", { key: "Escape", bubbles: true }),
         );
-        footerButton("Editar reserva").click();
+        summaryButton("Editar reserva").click();
       });
       assert.equal(closed, 0);
       assert.equal(edited, 0);
@@ -2968,7 +3047,7 @@ for (const succeeds of [true, false]) {
             : Response.json({ error: "Temporary save failure" }, { status: 503 }),
         ),
       );
-      await until(() => !footerButton("Editar reserva").disabled, "A finished save must unlock");
+      await until(() => !summaryButton("Editar reserva").disabled, "A finished save must unlock");
       const settledUnload = new window.Event("beforeunload", { cancelable: true });
       await React.act(async () => window.dispatchEvent(settledUnload));
       assert.equal(settledUnload.defaultPrevented, false);
@@ -2976,7 +3055,7 @@ for (const succeeds of [true, false]) {
         bodyText().includes(succeeds ? "Check-in registrado" : "No se pudo cambiar el estado"),
       );
       assert.deepEqual(footerActions().at(-1), succeeds ? "Hacer check-out" : "Hacer check-in");
-      await React.act(async () => footerButton("Cerrar").click());
+      await React.act(async () => summaryButton("Cerrar").click());
       assert.equal(closed, 1);
     } finally {
       if (finish) await React.act(async () => finish(Response.json(detail())));

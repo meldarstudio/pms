@@ -2,7 +2,7 @@ import { useEffect, useId, useState } from "react";
 import { LogInIcon, LogOutIcon, PencilIcon, PhoneIcon, XIcon } from "lucide-react";
 import { cn } from "cn";
 import { useIsMobile } from "@/hooks/use-mobile";
-import { AccountStatusBanner, accountStatus } from "@/components/balance-status";
+import { AccountStatusBanner, accountStatus, SummaryRow } from "@/components/balance-status";
 import { useLifecycleAction } from "@/components/lifecycle-action";
 import { StaleDataNotice } from "@/components/page-error";
 import { ReservationStatusBadge } from "@/components/reservation-status-badge";
@@ -28,6 +28,7 @@ import {
 } from "@/components/ui/drawer";
 import { FieldError } from "@/components/ui/field";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Separator } from "@/components/ui/separator";
 import { Spinner } from "@/components/ui/spinner";
 import type { ReservationDetail } from "@/lib/api";
 import { stayRange } from "@/lib/dates";
@@ -192,21 +193,42 @@ function LoadedSummary({
   const scopeId = useId();
   const roomCount = detail.rooms.length;
   const phone = detail.guest.phone ? phoneDisplay(detail.guest.phone) : null;
+  const notes = detail.notes?.trim();
   return (
     <>
       {lifecycle.dialogs}
-      <Header className="relative shrink-0 border-b pr-12 pb-4 group-data-[swipe-axis=y]/drawer-popup:text-left">
+      <Header className="relative shrink-0 gap-3 border-b p-5 pr-12 group-data-[swipe-axis=y]/drawer-popup:text-left">
         <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5">
-          <p className="font-mono text-xs tracking-widest wrap-anywhere text-muted-foreground uppercase">
+          <p className="font-mono text-xs wrap-anywhere text-muted-foreground">
             Reserva #{detail.code}
           </p>
           <ReservationStatusBadge status={detail.status} />
         </div>
-        <div className="flex min-w-0 items-start gap-2.5">
-          <NationalityFlag nationality={detail.guest.nationality} className="mt-1.5 h-4 w-6" />
-          <Title className="min-w-0 wrap-anywhere">{detail.guest.fullName.trim()}</Title>
+        <div className="flex min-w-0 flex-col gap-2">
+          <div className="flex min-w-0 items-start gap-2.5">
+            <NationalityFlag nationality={detail.guest.nationality} className="mt-1 h-4 w-6" />
+            <Title className="min-w-0 wrap-anywhere">
+              <span className="block text-xl/tight font-semibold tracking-tight">
+                {detail.guest.fullName.trim()}
+              </span>
+            </Title>
+          </div>
+          <section aria-label="Contacto principal" className="flex items-center gap-1.5">
+            <PhoneIcon aria-hidden className="size-3.5 shrink-0 text-muted-foreground" />
+            {phone ? (
+              <a
+                href={phone.href}
+                className="text-muted-foreground hover:text-foreground hover:underline"
+              >
+                <span className="sr-only">Llamar al </span>
+                {phone.text}
+              </a>
+            ) : (
+              <span className="text-muted-foreground">Sin teléfono</span>
+            )}
+          </section>
         </div>
-        <Description>{stayRange(detail.checkIn, detail.checkOut)}</Description>
+        <Description className="sr-only">Resumen de la reserva.</Description>
         <Close
           disabled={saving}
           render={
@@ -222,58 +244,102 @@ function LoadedSummary({
           <XIcon />
         </Close>
       </Header>
-      <div className="flex min-h-0 flex-col gap-4 overflow-y-auto overscroll-contain p-4">
+      <div className="flex min-h-0 flex-col gap-6 overflow-y-auto overscroll-contain p-5">
         {refreshError && <StaleDataNotice error={refreshError} onRetry={onRetry} />}
-        <section aria-label="Contacto principal" className="flex items-center gap-1.5">
-          <PhoneIcon aria-hidden className="size-3.5 shrink-0 text-muted-foreground" />
-          {phone ? (
-            <a href={phone.href} className="hover:underline">
-              <span className="sr-only">Llamar al </span>
-              {phone.text}
-            </a>
-          ) : (
-            <span className="text-muted-foreground">Sin teléfono</span>
-          )}
-        </section>
-        <section aria-labelledby={`${scopeId}-rooms`} className="flex flex-col gap-1.5">
-          <h3 id={`${scopeId}-rooms`} className="text-xs font-medium text-muted-foreground">
+        <section aria-labelledby={`${scopeId}-stay`} className="flex flex-col gap-3">
+          <div className="flex flex-col gap-1.5">
+            <h3 id={`${scopeId}-stay`} className="font-medium">
+              Estadía
+            </h3>
+            <p className="text-sm font-medium">{stayRange(detail.checkIn, detail.checkOut)}</p>
+          </div>
+          <h4 id={`${scopeId}-rooms`} className="text-muted-foreground">
             {roomCount === 1 ? "Habitación reservada" : `${roomCount} habitaciones reservadas`}
-          </h3>
-          <ul className="flex flex-col divide-y border-y">
+          </h4>
+          <ul aria-labelledby={`${scopeId}-rooms`} className="flex flex-col gap-3">
             {detail.rooms.map((room) => (
-              <li key={room.id} className="flex items-center justify-between gap-3 py-1.5">
-                <span className="min-w-0 wrap-anywhere">{room.roomTypeName || "Habitación"}</span>
-                {room.roomNumber ? (
-                  <span className="shrink-0 font-medium">Hab. {room.roomNumber}</span>
-                ) : (
-                  <span className="shrink-0 text-muted-foreground">Sin asignar</span>
-                )}
+              <li key={room.id} className="flex min-w-0 flex-col gap-1">
+                <div className="flex min-w-0 flex-wrap items-baseline gap-x-2">
+                  <span className="font-medium wrap-anywhere">
+                    {room.roomNumber ? `Hab. ${room.roomNumber}` : "Sin asignar"}
+                  </span>
+                  <span className="wrap-anywhere text-muted-foreground">
+                    {room.roomTypeName || "Habitación"}
+                  </span>
+                </div>
+                <p className="text-muted-foreground">
+                  {room.adults} {room.adults === 1 ? "adulto" : "adultos"}
+                  {room.children > 0 &&
+                    ` · ${room.children} ${room.children === 1 ? "niño" : "niños"}`}
+                </p>
               </li>
             ))}
           </ul>
         </section>
-        <section aria-label="Saldo de la reserva">
-          <AccountStatusBanner
-            status={status}
-            amount={formatMoney(status.cents, detail.currency)}
-          />
+        <Separator />
+        <section aria-labelledby={`${scopeId}-account`} className="flex flex-col gap-3">
+          <h3 id={`${scopeId}-account`} className="font-medium">
+            Cuenta
+          </h3>
+          <section aria-label="Saldo de la reserva" className="text-base">
+            <AccountStatusBanner
+              status={status}
+              showIcon={false}
+              amount={formatMoney(status.cents, detail.currency)}
+            />
+          </section>
+          <dl className="flex flex-col gap-2 text-muted-foreground">
+            {detail.discountCents > 0 && (
+              <>
+                <SummaryRow
+                  label="Subtotal"
+                  value={formatMoney(detail.subtotalCents, detail.currency)}
+                />
+                <SummaryRow
+                  label="Descuento"
+                  value={formatMoney(-detail.discountCents, detail.currency)}
+                />
+              </>
+            )}
+            <SummaryRow label="Total" value={formatMoney(detail.totalCents, detail.currency)} />
+            <SummaryRow label="Pagado" value={formatMoney(detail.paidCents, detail.currency)} />
+            {detail.couponAppliedCents > 0 && (
+              <SummaryRow
+                label="Pagado con cupón"
+                value={formatMoney(detail.couponAppliedCents, detail.currency)}
+              />
+            )}
+            {detail.refundedCents > 0 && (
+              <SummaryRow
+                label="Reembolsado"
+                value={formatMoney(-detail.refundedCents, detail.currency)}
+              />
+            )}
+            {detail.couponIssuedCents > 0 && (
+              <SummaryRow
+                label="Pasado a cupón"
+                value={formatMoney(-detail.couponIssuedCents, detail.currency)}
+              />
+            )}
+          </dl>
         </section>
-        {lifecycle.step && roomCount > 1 && (
-          <p id={`${scopeId}-scope`} className="text-muted-foreground">
-            {lifecycle.step.status === "checked_in" ? "El check-in" : "El check-out"} se aplica a
-            las {roomCount} habitaciones de la reserva.
-          </p>
+        {notes && (
+          <section aria-labelledby={`${scopeId}-notes`} className="flex min-w-0 flex-col gap-2">
+            <h3 id={`${scopeId}-notes`} className="font-medium">
+              Notas de la reserva
+            </h3>
+            <p className="leading-relaxed whitespace-pre-wrap wrap-anywhere text-muted-foreground">
+              {notes}
+            </p>
+          </section>
         )}
       </div>
-      <Footer className="shrink-0 border-t pt-4">
+      <Footer className="shrink-0 flex-row flex-wrap border-t p-5 [&>button]:flex-1">
         {lifecycle.running && (
-          <p role="status" className="mr-auto self-center text-muted-foreground">
+          <p role="status" className="w-full text-muted-foreground">
             Guardando estado…
           </p>
         )}
-        <Close disabled={saving} render={<Button type="button" variant="outline" />}>
-          Cerrar
-        </Close>
         <Button
           type="button"
           variant={lifecycle.step?.due ? "outline" : "default"}
@@ -287,7 +353,6 @@ function LoadedSummary({
           <Button
             type="button"
             variant={lifecycle.step.due ? "default" : "outline"}
-            aria-describedby={roomCount > 1 ? `${scopeId}-scope` : undefined}
             disabled={saving || lifecycle.running || refreshError !== null}
             onClick={() => void lifecycle.run()}
           >
