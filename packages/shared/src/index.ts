@@ -430,12 +430,16 @@ export const paymentAttemptCreateSchema = z
   .strict();
 export const paymentAuthenticationSchema = z
   .object({
-    eci: z.string().max(10),
-    xid: z.string().max(200).optional(),
-    cavv: z.string().max(200),
-    protocolVersion: z.string().max(20),
-    directoryServerTransactionId: z.string().max(200),
+    eci: text(10),
+    xid: text(200).optional(),
+    cavv: text(200),
+    protocolVersion: text(20),
+    directoryServerTransactionId: text(200),
   })
+  .strict();
+export const checkoutAuthenticationSchema = paymentAuthenticationSchema
+  .extend({ attemptId: z.uuid() })
   .strict();
 export type PaymentAttemptCreate = z.infer<typeof paymentAttemptCreateSchema>;
 export type PaymentAuthentication = z.infer<typeof paymentAuthenticationSchema>;
+export type CheckoutAuthentication = z.infer<typeof checkoutAuthenticationSchema>;

@@ -1,4 +1,4 @@
-import type { CheckoutPayment, PaymentAuthentication } from "@pms/shared";
+import type { CheckoutAuthentication, CheckoutPayment } from "@pms/shared";
 import type { Db } from "./db";
 import { HttpError, PAYMENT_PENDING } from "./http";
 import { reservationBill } from "./lib/reservation-bill";
@@ -60,12 +60,12 @@ export async function payableQuote(
 export async function authenticateCheckout(
   db: Db,
   checkout: PublicCheckout,
-  authentication: PaymentAuthentication,
+  { attemptId, ...authentication }: CheckoutAuthentication,
   context: PaymentContext,
 ) {
   const latest = await latestCheckoutAttempt(db, checkout.id);
   if (!latest) throw new HttpError(404, "payment attempt not found");
-  if (latest.status === "review") {
+  if (latest.id === attemptId && latest.status === "review") {
     const continued = await continuePublicAuthentication(db, latest, authentication, context);
     if (continued) return presentGuestPayment(db, continued);
   }
@@ -136,6 +136,7 @@ async function presentGuestPayment(db: Db, attempt: Attempt) {
       : null;
   const bill = saved && reservationBill(saved);
   return {
+    attemptId: attempt.id,
     state: guestState(attempt, saved?.reservation.status ?? null),
     amountCents: attempt.amountCents,
     currency: attempt.currency,

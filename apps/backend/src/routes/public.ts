@@ -1,7 +1,7 @@
 import {
   checkoutAcceptanceSchema,
+  checkoutAuthenticationSchema,
   checkoutPaymentSchema,
-  paymentAuthenticationSchema,
   publicCheckoutCreateSchema,
   publicOfferSearchSchema,
 } from "@pms/shared";
@@ -116,7 +116,7 @@ publicRoutes.get("/checkout/payment", requireCheckout, async (c) =>
 publicRoutes.post(
   "/checkout/payment/authentication",
   requireCheckout,
-  validate("json", paymentAuthenticationSchema),
+  validate("json", checkoutAuthenticationSchema),
   async (c) =>
     c.json({
       payment: await authenticateCheckout(

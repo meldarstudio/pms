@@ -168,6 +168,7 @@ describe("paying the accepted quote", () => {
     const payment = await paid(checkout);
 
     expect(payment).toEqual({
+      attemptId: expect.stringMatching(/^[0-9a-f-]{36}$/i),
       state: "confirmed",
       amountCents: 10000,
       currency: "PEN",
@@ -252,6 +253,7 @@ describe("payment outcomes", () => {
     expect(declined.status).toBe(201);
     expect(await declined.json()).toEqual({
       payment: {
+        attemptId: expect.stringMatching(/^[0-9a-f-]{36}$/i),
         state: "declined",
         amountCents: 10000,
         currency: "PEN",
@@ -354,6 +356,7 @@ describe("payment outcomes", () => {
     }
 
     expect(await status(checkout.token)).toEqual({
+      attemptId: expect.stringMatching(/^[0-9a-f-]{36}$/i),
       state: "unfulfilled",
       amountCents: 10000,
       currency: "PEN",
@@ -903,6 +906,7 @@ describe("payment access and privacy", () => {
       expect(text).not.toContain(secret);
     expect(Object.keys(JSON.parse(text).payment).toSorted()).toEqual([
       "amountCents",
+      "attemptId",
       "currency",
       "delayed",
       "reservation",
@@ -1104,8 +1108,16 @@ const authentication = {
   directoryServerTransactionId: "755f8c81-a4db-4c84-8b8c-23f6b0196cfd",
 };
 
-const continueAuthentication = (token: string, body: unknown = authentication) =>
-  guest("/public/checkout/payment/authentication", { token, body });
+const continueAuthentication = (token: string, body?: unknown) =>
+  guest("/public/checkout/payment/authentication", {
+    token,
+    body: body ?? {
+      ...authentication,
+      attemptId: rows<{ id: string }>(
+        "SELECT id FROM payment_attempts ORDER BY created_at DESC, rowid DESC",
+      )[0]?.id,
+    },
+  });
 
 describe("continuing bank authentication", () => {
   it("charges the original attempt and source after the quote expires, and a repeat does not charge again", async () => {
@@ -1170,6 +1182,71 @@ describe("continuing bank authentication", () => {
     expect(await foreign.json()).toEqual({ error: "payment attempt not found" });
     expect(await status(pending.token)).toMatchObject({ state: "authentication_required" });
     expect(await status(other.token)).toBeNull();
+    expect(charges()).toHaveLength(1);
+  });
+
+  it("continues only the named review attempt, not an earlier or foreign card", async () => {
+    const checkout = await acceptedCheckout();
+    await paid(checkout, { sourceId: "tkn_test_decline" });
+    await paid(checkout, { sourceId: "tkn_test_3ds_later" });
+    const attempts = rows<{ id: string; status: string; source_id: string }>(
+      "SELECT id, status, source_id FROM payment_attempts ORDER BY created_at, rowid",
+    );
+    const declined = attempts[0]!;
+    const review = attempts[1]!;
+
+    const replayed = await continueAuthentication(checkout.token, {
+      ...authentication,
+      attemptId: declined.id,
+    });
+    const foreign = await continueAuthentication(checkout.token, {
+      ...authentication,
+      attemptId: crypto.randomUUID(),
+    });
+
+    expect(replayed.status).toBe(200);
+    expect(await replayed.json()).toMatchObject({
+      payment: { state: "authentication_required", attemptId: review.id },
+    });
+    expect(foreign.status).toBe(200);
+    expect(await foreign.json()).toMatchObject({
+      payment: { state: "authentication_required", attemptId: review.id },
+    });
+    expect(charges()).toHaveLength(2);
+    expect(rows("SELECT id, status FROM payment_attempts ORDER BY created_at, rowid")).toEqual([
+      { id: declined.id, status: "failed" },
+      { id: review.id, status: "review" },
+    ]);
+
+    const continued = await continueAuthentication(checkout.token, {
+      ...authentication,
+      attemptId: review.id,
+    });
+
+    expect(continued.status).toBe(200);
+    expect(await continued.json()).toMatchObject({
+      payment: { state: "confirmed", attemptId: review.id },
+    });
+    expect(charges()).toHaveLength(3);
+    expect(charges()[2]!.body).toMatchObject({
+      source_id: "tkn_test_3ds_later",
+      authentication_3DS: authentication,
+    });
+  });
+
+  it("rejects an empty authentication field before claiming the attempt", async () => {
+    const checkout = await acceptedCheckout();
+    await paid(checkout, { sourceId: "tkn_test_3ds" });
+    const [{ id }] = rows<{ id: string }>("SELECT id FROM payment_attempts");
+
+    const response = await continueAuthentication(checkout.token, {
+      ...authentication,
+      attemptId: id,
+      eci: "   ",
+    });
+
+    expect(response.status).toBe(400);
+    expect(rows("SELECT status FROM payment_attempts")).toEqual([{ status: "review" }]);
     expect(charges()).toHaveLength(1);
   });
 
