@@ -9,7 +9,7 @@ import { Hono, type Context } from "hono";
 import { createMiddleware } from "hono/factory";
 import { getDb } from "../db";
 import type { Env } from "../env";
-import { currency, validate } from "../http";
+import { currency, HttpError, validate } from "../http";
 import {
   acceptCheckoutQuote,
   checkoutForToken,
@@ -20,6 +20,11 @@ import {
 import { requirePublicPaymentAdmission } from "../operation-controls";
 import { paymentContext } from "../payment-attempts";
 import { publishedRoomTypeIds, searchOffers } from "../public-offers";
+import {
+  checkoutReservationAccess,
+  reservationForAccessToken,
+  reservationSummary,
+} from "../reservation-access";
 import {
   authenticateCheckout,
   chargeCheckout,
@@ -106,6 +111,30 @@ publicRoutes.post(
     return c.json({ ...view, currency: currency(c) }, 201);
   },
 );
+
+publicRoutes.get("/checkout/access", requireCheckout, async (c) => {
+  try {
+    return c.json(await checkoutReservationAccess(getDb(c.env.DB), c.var.checkout.id));
+  } catch (error) {
+    if (!(error instanceof HttpError)) throw error;
+    return c.json({ error: error.message }, error.status);
+  }
+});
+
+publicRoutes.get("/reservation", async (c) => {
+  const db = getDb(c.env.DB);
+  const today = guestContext(c).today;
+  try {
+    const access = await reservationForAccessToken(db, c.req.header("authorization"), today);
+    return c.json({
+      ...(await reservationSummary(db, access.reservationId, today)),
+      currency: currency(c),
+    });
+  } catch (error) {
+    if (!(error instanceof HttpError)) throw error;
+    return c.json({ error: error.message }, error.status);
+  }
+});
 
 publicRoutes.get("/checkout/payment", requireCheckout, async (c) =>
   c.json({

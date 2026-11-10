@@ -10,6 +10,8 @@ const messages: Record<string, string> = {
   "too many searches": "Demasiadas búsquedas. Espera un minuto e inténtalo de nuevo.",
   "too many quotes": "Demasiadas cotizaciones. Espera un minuto e inténtalo de nuevo.",
   "invalid checkout token": "No se pudo verificar la reserva en curso. Vuelve a empezar.",
+  "invalid reservation access": "No se pudo abrir el resumen de la reserva.",
+  "reservation access was not established": "Esta reserva no tiene un enlace de resumen.",
   "agreement must be accepted": "Debes aceptar las condiciones de la reserva.",
   "too many acceptances for this checkout":
     "Esta reserva en curso se modificó demasiadas veces. Vuelve a empezar.",

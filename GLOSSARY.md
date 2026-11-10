@@ -26,9 +26,10 @@ The owner's personal login, allowed to do everything staff can and manage accoun
 _Avoid_: Admin account, superuser
 
 **Reservation access link**:
-A private link granting its holder read-only access to one reservation's guest-facing
-status and payment summary.
-_Avoid_: Reservation code, guest account, payment link
+The unguessable read-only link established once for a saved public reservation.
+It expires 30 days after the scheduled checkout and shows that reservation's
+guest-facing status and payment summary to whoever holds it.
+_Avoid_: Reservation code, guest account, payment link, checkout token
 
 ### Reservations and dates
 

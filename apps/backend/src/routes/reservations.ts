@@ -25,7 +25,7 @@ import { culqiForEnv } from "../culqi";
 import { getDb } from "../db";
 import { guests, refunds, reservationRooms, reservations } from "../db/schema";
 import type { Env } from "../env";
-import { currency, validate } from "../http";
+import { currency, HttpError, validate } from "../http";
 import {
   createWorkflow,
   executeCommand,
@@ -33,6 +33,7 @@ import {
   previewCreate,
   type CommandContext,
 } from "../workflow";
+import { staffReservationAccess } from "../reservation-access";
 import { loadReservations, presentReservations, readReservation } from "../reservation-read";
 import { presentNight, type presentReservation } from "../present";
 import { balanceCentsSql, roomCharges, stayBill, unresolvedBillSql } from "../lib/reservation-bill";
@@ -150,6 +151,22 @@ reservationRoutes.post("/preview", validate("json", workflowCreatePreviewSchema)
 reservationRoutes.get("/:id", async (c) =>
   c.json(await readReservation(getDb(c.env.DB), c.req.param("id"), currency(c))),
 );
+reservationRoutes.get("/:id/access", async (c) => {
+  c.header("Cache-Control", "private, no-store");
+  try {
+    return c.json(
+      await staffReservationAccess(
+        getDb(c.env.DB),
+        c.req.param("id"),
+        c.get("propertyCalendar").today,
+      ),
+    );
+  } catch (error) {
+    if (!(error instanceof HttpError)) throw error;
+    c.header("Cache-Control", "private, no-store");
+    return c.json({ error: error.message }, error.status);
+  }
+});
 const commandContext = (c: Context<Env>): CommandContext => {
   const { today, timeZone } = c.get("propertyCalendar");
   return { today, timeZone, account: c.var.account };

@@ -1,12 +1,13 @@
 import type { GuestInput, QuoteCreate } from "@pms/shared";
 import { eq } from "drizzle-orm";
 import { runBatch, type Db } from "./db";
-import { guests, payments, quotes, reservations, roomTypes } from "./db/schema";
+import { guests, payments, quotes, reservationAccess, reservations, roomTypes } from "./db/schema";
 import { HttpError, rethrowConflict } from "./http";
 import { occupiedCounts, roomCounts } from "./inventory";
 import { confirmationCode } from "./lib/codes";
 import { ratePlans, termColumns } from "./lib/rate-plans";
 import { quoteBill } from "./lib/reservation-bill";
+import { reservationAccessValues } from "./reservation-access";
 import { acceptPhone, requireOnlineArrival, requireStay } from "./rules";
 import { lineWrites } from "./workflow";
 import { price } from "./workflow-plan";
@@ -110,6 +111,11 @@ export async function saveQuote(
     id = crypto.randomUUID(),
     guestId = crypto.randomUUID();
   const phone = acceptPhone(guest.phone);
+  const accessRow =
+    options.publicCheckoutId != null
+      ? await reservationAccessValues(id, quote.checkOut, now)
+      : null;
+  const access = accessRow ? [db.insert(reservationAccess).values(accessRow)] : [];
   try {
     await runBatch(db, [
       db.insert(guests).values({ id: guestId, ...guest, phone, createdAt: now }),
@@ -150,13 +156,21 @@ export async function saveQuote(
         },
         false,
       ),
+      ...access,
     ]);
   } catch (error) {
     const saved = await savedReservation(db, quoteId);
     if (saved) return saved;
-    rethrowConflict(error);
+    rethrowConflict(accessRow ? redactToken(error, accessRow.token) : error);
   }
   return id;
+}
+
+function redactToken(error: unknown, token: string): unknown {
+  if (!(error instanceof Error)) return error;
+  return new Error(error.message.replaceAll(token, "[redacted]"), {
+    cause: error.cause === undefined ? undefined : redactToken(error.cause, token),
+  });
 }
 
 async function savedReservation(db: Db, quoteId: string) {

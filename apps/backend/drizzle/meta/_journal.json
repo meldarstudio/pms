@@ -148,6 +148,13 @@
       "when": 1794241102986,
       "tag": "0020_open_payment_per_checkout",
       "breakpoints": true
+    },
+    {
+      "idx": 21,
+      "version": "6",
+      "when": 1794274181802,
+      "tag": "0021_reservation_access",
+      "breakpoints": true
     }
   ]
 }

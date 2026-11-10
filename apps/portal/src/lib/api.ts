@@ -527,6 +527,12 @@ export function getReservation(id: string, signal?: AbortSignal) {
   return getJson<ReservationDetail>(`/reservations/${id}`, signal);
 }
 
+export type ReservationAccess = { token: string; expiresOn: string; expired: boolean };
+
+export function getReservationAccess(id: string, signal?: AbortSignal) {
+  return getJson<ReservationAccess>(`/reservations/${id}/access`, signal);
+}
+
 export async function assignRoom(target: ReservationStay, roomId: string) {
   const detail = await getReservation(target.reservationId);
   const line = detail.rooms.find((l) => l.id === target.id);
