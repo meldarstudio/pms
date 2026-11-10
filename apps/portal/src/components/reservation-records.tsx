@@ -15,8 +15,7 @@ import {
   EmptyMedia,
   EmptyTitle,
 } from "@/components/ui/empty";
-import { Separator } from "@/components/ui/separator";
-import type { ReservationDetail, StayingGuest } from "@/lib/api";
+import type { StayingGuest } from "@/lib/api";
 import { phoneDisplay } from "@/lib/phone";
 
 export function NoStayingGuests({ framed = false }: { framed?: boolean }) {
@@ -34,44 +33,6 @@ export function NoStayingGuests({ framed = false }: { framed?: boolean }) {
         </EmptyDescription>
       </EmptyHeader>
     </Empty>
-  );
-}
-
-export function StayingGuestList({
-  detail,
-  disabled,
-  onEdit,
-  onDelete,
-}: {
-  detail: ReservationDetail;
-  disabled: boolean;
-  onEdit: (guest: StayingGuest) => void;
-  onDelete: (guest: StayingGuest) => void;
-}) {
-  if (!detail.stayingGuests.length) return <NoStayingGuests />;
-  return (
-    <section className="flex flex-col gap-3">
-      <h3 className="font-medium">Huéspedes registrados</h3>
-      <ul aria-label="Huéspedes registrados" className="flex flex-col">
-        {detail.stayingGuests.map((guest, index) => (
-          <li key={guest.id}>
-            {index > 0 && <Separator />}
-            <div className="flex items-center justify-between gap-3 py-3">
-              <div className="flex min-w-0 flex-col gap-1">
-                <p className="font-medium wrap-anywhere">{guest.fullName}</p>
-                <GuestLine guest={guest} />
-              </div>
-              <RowActions
-                label={`Acciones de ${guest.fullName}`}
-                disabled={disabled}
-                onEdit={() => onEdit(guest)}
-                onDelete={() => onDelete(guest)}
-              />
-            </div>
-          </li>
-        ))}
-      </ul>
-    </section>
   );
 }
 

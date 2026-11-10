@@ -65,7 +65,6 @@ export const detailsSchema = (
       checkIn: date,
       checkOut: date,
       status: status.optional(),
-      notes: z.string().max(2000, "Máximo 2000 caracteres."),
       rooms: z.array(room),
     })
     .superRefine((value, ctx) => {
@@ -148,7 +147,6 @@ export type DetailsValues = z.input<ReturnType<typeof detailsSchema>>;
 export const emptyDetails: DetailsValues = {
   checkIn: "",
   checkOut: "",
-  notes: "",
   rooms: [],
 };
 export function detailsDefaults(detail: ReservationDetail): DetailsValues {
@@ -156,7 +154,6 @@ export function detailsDefaults(detail: ReservationDetail): DetailsValues {
     checkIn: detail.checkIn,
     checkOut: detail.checkOut,
     status: status.parse(detail.status),
-    notes: detail.notes ?? "",
     rooms: detail.rooms.map((room) => ({
       id: room.id,
       removed: false,
@@ -379,6 +376,7 @@ export const newBookingSchema = (types: RoomType[]) =>
   z.intersection(
     detailsSchema(types),
     contactSchema.extend({
+      notes: notesSchema.shape.notes,
       discount: discountSchema.shape.amount,
       ratePlan: z.enum(["flexible", "non_refundable"] satisfies RatePlanCode[]),
     }),

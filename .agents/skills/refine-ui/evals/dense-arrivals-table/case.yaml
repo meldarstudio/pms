@@ -1,0 +1,7 @@
+schema_version: "1.1"
+name: dense-arrivals-table
+expected_outcome: |
+  Keep the comparison-oriented table rather than imposing a card layout.
+  Choose the task's lookup reference and assignment exceptions as meaningful anchors.
+  Evaluate existing decoration while preserving readable labels and useful warnings.
+  Keep the critique read-only and distinguish recommendations from visual validation.

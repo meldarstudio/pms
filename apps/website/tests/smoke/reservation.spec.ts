@@ -74,10 +74,10 @@ test("a room-specific entry searches live prices and compares both plans", async
   await expect(choice).toBeFocused();
   await expect(choice).toContainText("Suite Matrimonial · tarifa No reembolsable");
   await expect(page).toHaveURL(/room=king&plan=non_refundable/);
-  await expect(choice).toContainText("La revisión y el pago en línea aún no están disponibles");
-  const support = choice.getByRole("link", { name: "Escribir por WhatsApp" });
-  const supportText = new URL((await support.getAttribute("href"))!).searchParams.get("text");
-  expect(supportText).not.toMatch(/Tarifa|Total|Suite Matrimonial/);
+  await expect(choice.getByRole("link", { name: "Continuar a la revisión" })).toHaveAttribute(
+    "href",
+    /^\/reservar\/revisar\/\?.*room=king&plan=non_refundable/,
+  );
 });
 
 test("language changes and back navigation keep the search and choice", async ({ page }) => {

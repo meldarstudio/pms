@@ -1,25 +1,45 @@
 import type { GuestInput, QuoteCreate } from "@pms/shared";
 import { eq } from "drizzle-orm";
 import { runBatch, type Db } from "./db";
-import { guests, payments, quotes, reservations, roomTypes } from "./db/schema";
+import { confirmationIntentValues, type ConfirmationProvenance } from "./confirmation-intents";
+import {
+  confirmationIntents,
+  guests,
+  payments,
+  quotes,
+  reservationAccess,
+  reservations,
+  roomTypes,
+} from "./db/schema";
 import { HttpError, rethrowConflict } from "./http";
 import { occupiedCounts, roomCounts } from "./inventory";
 import { confirmationCode } from "./lib/codes";
 import { ratePlans, termColumns } from "./lib/rate-plans";
 import { quoteBill } from "./lib/reservation-bill";
+import { reservationAccessValues } from "./reservation-access";
 import { acceptPhone, requireOnlineArrival, requireStay } from "./rules";
 import { lineWrites } from "./workflow";
 import { price } from "./workflow-plan";
 
 const QUOTE_MINUTES = 10;
 
-type Quote = typeof quotes.$inferSelect;
+export type Quote = typeof quotes.$inferSelect;
 
 export async function createQuote(
   db: Db,
   input: QuoteCreate,
   context: { today: string; now: Date },
 ) {
+  const { quote, available } = await priceQuote(db, input, { ...context, checkoutId: null });
+  await db.insert(quotes).values(quote);
+  return presentQuote(quote, available);
+}
+
+export async function priceQuote(
+  db: Db,
+  input: QuoteCreate,
+  context: { today: string; now: Date; checkoutId: string | null },
+): Promise<{ quote: Quote; available: boolean }> {
   requireStay(input.checkIn, input.checkOut);
   requireOnlineArrival(input.checkIn, context.today);
   const [type] = await db.select().from(roomTypes).where(eq(roomTypes.id, input.roomTypeId));
@@ -28,10 +48,9 @@ export async function createQuote(
     throw new HttpError(400, "too many guests for this room type");
   const { ratePlan, ...stay } = input;
   const terms = ratePlans[ratePlan];
-  const [nights, occupied, counts] = await Promise.all([
+  const [nights, available] = await Promise.all([
     price(db, stay, terms),
-    occupiedCounts(db, stay.checkIn, stay.checkOut),
-    roomCounts(db),
+    quoteAvailable(db, input),
   ]);
   const quote: Quote = {
     id: crypto.randomUUID(),
@@ -40,10 +59,34 @@ export async function createQuote(
     terms,
     createdAt: context.now.toISOString(),
     expiresAt: new Date(context.now.getTime() + QUOTE_MINUTES * 60_000).toISOString(),
+    checkoutId: context.checkoutId,
   };
-  await db.insert(quotes).values(quote);
-  return presentQuote(quote, (occupied.get(type.id) ?? 0) < (counts.get(type.id) ?? 0));
+  return { quote, available };
 }
+
+export async function quoteAvailable(
+  db: Db,
+  stay: Pick<Quote, "roomTypeId" | "checkIn" | "checkOut">,
+) {
+  const [occupied, counts] = await Promise.all([
+    occupiedCounts(db, stay.checkIn, stay.checkOut),
+    roomCounts(db),
+  ]);
+  return (occupied.get(stay.roomTypeId) ?? 0) < (counts.get(stay.roomTypeId) ?? 0);
+}
+
+export async function requireQuotedOccupancy(
+  db: Db,
+  quote: Pick<Quote, "roomTypeId" | "adults" | "children">,
+) {
+  const [type] = await db.select().from(roomTypes).where(eq(roomTypes.id, quote.roomTypeId));
+  if (!type) throw new HttpError(404, "room type not found");
+  if (quote.adults > type.maxAdults || quote.children > type.maxChildren)
+    throw new HttpError(400, "too many guests for this room type");
+}
+
+export const quoteExpired = (quote: Pick<Quote, "expiresAt">, now: Date) =>
+  Date.parse(quote.expiresAt) <= now.getTime();
 
 function presentQuote(quote: Quote, available: boolean) {
   const bill = quoteBill(quote);
@@ -73,7 +116,12 @@ export async function saveQuote(
   db: Db,
   quoteId: string,
   guest: GuestInput,
-  options: { status?: "confirmed" | "unfulfilled"; payment?: QuotePayment } = {},
+  options: {
+    status?: "confirmed" | "unfulfilled";
+    payment?: QuotePayment;
+    publicCheckoutId?: string | null;
+    confirmation?: ConfirmationProvenance | null;
+  } = {},
 ): Promise<string> {
   const [quote] = await db.select().from(quotes).where(eq(quotes.id, quoteId));
   if (!quote) throw new HttpError(404, "quote not found");
@@ -83,6 +131,16 @@ export async function saveQuote(
     id = crypto.randomUUID(),
     guestId = crypto.randomUUID();
   const phone = acceptPhone(guest.phone);
+  const status = options.status ?? "confirmed";
+  const provenance = status === "confirmed" ? (options.confirmation ?? null) : null;
+  const intent = provenance
+    ? db.insert(confirmationIntents).values(confirmationIntentValues(id, provenance, now))
+    : null;
+  const accessRow =
+    options.publicCheckoutId != null
+      ? await reservationAccessValues(id, quote.checkOut, now)
+      : null;
+  const access = accessRow ? [db.insert(reservationAccess).values(accessRow)] : [];
   try {
     await runBatch(db, [
       db.insert(guests).values({ id: guestId, ...guest, phone, createdAt: now }),
@@ -94,7 +152,9 @@ export async function saveQuote(
         checkOut: quote.checkOut,
         source: "online",
         quoteId,
-        status: options.status ?? "confirmed",
+        publicCheckoutId: options.publicCheckoutId ?? null,
+        confirmationOwed: provenance === null ? 0 : 1,
+        status,
         createdAt: now,
         ...termColumns(quote.terms),
       }),
@@ -122,6 +182,8 @@ export async function saveQuote(
         },
         false,
       ),
+      ...access,
+      ...(intent ? [intent] : []),
     ]);
   } catch (error) {
     const saved = await savedReservation(db, quoteId);

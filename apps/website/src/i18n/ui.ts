@@ -329,8 +329,177 @@ export const ui = {
       "{rooms}: not enough room for your group. Change the number of guests; online reservations are for one room.",
     "reservation.choose.reason.offline":
       "{rooms}: not bookable online. Message us on WhatsApp to book.",
-    "reservation.choice.next":
-      "Online review and payment aren't available yet, so this choice can't be reserved online for now. It stays saved on this page.",
+    "reservation.choice.review": "Continue to review",
+    "reservation.meta.reviewTitle": "Review your reservation | Hotel Manantial",
+    "reservation.meta.reviewDescription":
+      "Check your stay, price and terms, and add the booking contact's details.",
+    "reservation.step.review": "Review and pay",
+    "reservation.review.title": "Review your reservation",
+    "reservation.review.loading": "Preparing your price…",
+    "reservation.review.loaded": "Your price and terms are ready.",
+    "reservation.review.stay": "Your stay",
+    "reservation.review.room": "Room",
+    "reservation.review.dates": "Dates",
+    "reservation.review.guests": "Guests",
+    "reservation.review.plan": "Rate",
+    "reservation.review.changeChoice": "Change room or rate",
+    "reservation.review.changeSearch": "Change dates or guests",
+    "reservation.review.price": "Price and terms",
+    "reservation.review.contact": "Booking contact",
+    "reservation.review.contactLead":
+      "The hotel uses these details to contact you about this reservation. No account is needed, and the contact doesn't have to be one of the guests.",
+    "reservation.review.fullName": "Full name",
+    "reservation.review.email": "Email",
+    "reservation.review.phone": "Phone",
+    "reservation.review.phoneHint": "Include the country code if it isn't a Peruvian number.",
+    "reservation.review.terms": "Full reservation terms",
+    "reservation.review.nightly": "Price per night",
+    "reservation.review.schedule.flexible":
+      "Payment: the first night, {now}, is paid online; the remaining {remaining} is paid at the hotel.",
+    "reservation.review.schedule.non_refundable":
+      "Payment: the whole stay, {now}, is paid online; nothing is left to pay at the hotel.",
+    "reservation.review.lifecycle":
+      "This price was calculated when you opened this page and is kept for a few minutes. If it needs updating before payment, you'll see the new terms before anything is charged. The room is reserved only once payment is confirmed and the reservation is saved.",
+    "reservation.review.agree":
+      "I accept the reservation terms on this page, including the cancellation and no-show conditions.",
+    "reservation.review.submit": "Accept terms",
+    "reservation.review.saving": "Saving your acceptance…",
+    "reservation.review.payment": "Payment",
+    "reservation.review.paymentUnavailable":
+      "Online card payment isn't available yet, so nothing is charged on this page.",
+    "reservation.review.accepted.title": "Terms accepted",
+    "reservation.review.accepted.body":
+      "Your acceptance of these terms is saved. Nothing has been charged yet.",
+    "reservation.pay.lead":
+      "Your room is reserved only once the card payment is confirmed and the reservation is saved.",
+    "reservation.pay.security": "Security check before payment",
+    "reservation.pay.button": "Pay {amount} by card",
+    "reservation.pay.sending": "Sending your payment… Please wait on this page.",
+    "reservation.pay.error.security": "Wait for the security check above to finish, then pay.",
+    "reservation.pay.error.securityFailed":
+      "The security check didn't pass and nothing was charged. Complete the check again, then pay.",
+    "reservation.pay.error.securityUnavailable":
+      "The payment security check isn't available right now. Nothing was charged and your details are kept: try again in a moment, or message us on WhatsApp.",
+    "reservation.pay.error.paused":
+      "Online payments are paused right now. Nothing was charged, and your details and accepted terms are kept on this page. Try again later, or message us on WhatsApp to reserve.",
+    "reservation.pay.error.throttled":
+      "Too many payment attempts from your connection or for this reservation. Nothing was charged and your details are kept: wait a minute and try again.",
+    "reservation.pay.changed":
+      "The price or terms changed, so nothing was charged. Review them and accept again before paying.",
+    "reservation.pay.error.limited":
+      "This review can't record another agreement, so nothing was charged. Your details stay on this page. Message us on WhatsApp to reserve.",
+    "reservation.pay.error.card":
+      "The card form couldn't open. Nothing was charged: check your connection and try again.",
+    "reservation.pay.error.unavailable":
+      "We couldn't send your payment and nothing was charged. Your details are kept: try again in a moment, or message us on WhatsApp.",
+    "reservation.outcome.submitted.title": "Payment sent, checking its status",
+    "reservation.outcome.submitted.body":
+      "We sent your payment but didn't receive an answer, so your card may have been charged. Please don't pay again: check its status here, or message us on WhatsApp or by email for help.",
+    "reservation.outcome.reservation_changed.title": "Your reservation was updated by the hotel",
+    "reservation.outcome.reservation_changed.body":
+      "Your payment was received, and the hotel has since changed this reservation. Message us on WhatsApp or by email with your reference to confirm its current status.",
+    "reservation.outcome.declined.title": "Your card was declined",
+    "reservation.outcome.declined.body":
+      "Nothing was charged. You can pay with another card; your details and accepted terms are kept.",
+    "reservation.outcome.authentication_required.title": "Your bank needs to verify this payment",
+    "reservation.outcome.authentication_required.body":
+      "This payment is waiting for your bank's verification. It has not been declined, so please don't pay again. If the bank window closed before finishing, open it again. You can also check the status here, or message us on WhatsApp for help.",
+    "reservation.outcome.processing.title": "Confirming your payment",
+    "reservation.outcome.processing.body":
+      "We're verifying your payment with the card processor. Please don't pay again: verification continues even if you close this page.",
+    "reservation.outcome.processing.delayed":
+      "Verification is taking longer than usual. It continues even if you close this page, so please don't pay again. Check the status here later, or message us on WhatsApp or by email for help.",
+    "reservation.outcome.paid_awaiting_reservation.title":
+      "Payment received, saving your reservation",
+    "reservation.outcome.paid_awaiting_reservation.body":
+      "Your payment was received and we're saving your reservation. It isn't confirmed until it's saved, so please don't pay again.",
+    "reservation.outcome.unfulfilled.title":
+      "Payment received, but your reservation couldn't be confirmed",
+    "reservation.outcome.unfulfilled.body":
+      "We received your payment, but no room could be reserved for these dates, so you don't have a reservation. The amount awaiting resolution hasn't been refunded yet: message us on WhatsApp or by email with your support reference and the hotel will arrange it with you.",
+    "reservation.outcome.confirmed.title": "Your reservation is confirmed",
+    "reservation.outcome.confirmed.body":
+      "Keep your reference. Any outstanding balance is paid at the hotel.",
+    "reservation.outcome.reference": "Reference",
+    "reservation.outcome.supportReference": "Support reference",
+    "reservation.outcome.amount": "Payment amount",
+    "reservation.outcome.paid": "Paid",
+    "reservation.outcome.received": "Received",
+    "reservation.outcome.outstanding": "Outstanding balance",
+    "reservation.outcome.awaiting": "Awaiting resolution",
+    "reservation.outcome.retry": "Pay with another card",
+    "reservation.outcome.verifyBank": "Open bank verification",
+    "reservation.outcome.check": "Check status",
+    "reservation.outcome.checking": "Checking your payment…",
+    "reservation.meta.summaryTitle": "Reservation summary | Hotel Manantial",
+    "reservation.meta.summaryDescription":
+      "A private, limited summary of one reservation. Anyone holding the link can view it.",
+    "reservation.summary.title": "Reservation summary",
+    "reservation.summary.loading": "Opening the reservation summary…",
+    "reservation.summary.possession":
+      "Anyone holding this link can view this limited summary. Share it only with people who should see the stay.",
+    "reservation.summary.copy": "Copy link",
+    "reservation.summary.copied": "Link copied",
+    "reservation.summary.staff":
+      "Changes, cancellations and refunds are arranged with the hotel. This page cannot change the reservation, and it does not send an email.",
+    "reservation.summary.assistance.title": "The hotel can help with this reservation",
+    "reservation.summary.assistance.body":
+      "This link is invalid or has expired, so no reservation details are shown. Call, email or message the hotel and staff can help.",
+    "reservation.summary.phone": "Call the hotel",
+    "reservation.summary.email": "Email the hotel",
+    "reservation.summary.whatsapp": "WhatsApp",
+    "reservation.summary.whatsappPrefill": "Hello, I need help with a reservation.",
+    "reservation.summary.emailSubject": "Reservation help",
+    "reservation.summary.status": "Status",
+    "reservation.summary.status.confirmed": "Confirmed",
+    "reservation.summary.status.checked_in": "Checked in",
+    "reservation.summary.status.checked_out": "Checked out",
+    "reservation.summary.status.cancelled": "Cancelled",
+    "reservation.summary.status.no_show": "No-show",
+    "reservation.summary.status.unfulfilled": "Payment received, reservation not confirmed",
+    "reservation.summary.contact": "Booking contact",
+    "reservation.summary.nights": "Nights",
+    "reservation.summary.total": "Total",
+    "reservation.summary.refundDue": "Refund due",
+    "reservation.summary.refunded": "Refunded",
+    "reservation.summary.roomUnknown": "Room",
+    "reservation.summary.accepted.flexible":
+      "Accepted agreement: free cancellation was through {date}. The agreed charge after that date is {amount}.",
+    "reservation.summary.accepted.none":
+      "Accepted agreement: no free cancellation. The agreed charge is {amount}.",
+    "reservation.summary.planUnknown": "Rate",
+    "reservation.review.changed":
+      "The price or terms for your stay changed. Review them and accept again.",
+    "reservation.review.error.fullName": "Enter the booking contact's full name.",
+    "reservation.review.error.email": "Enter a valid email, like name@example.com.",
+    "reservation.review.error.phone": "Enter a phone number.",
+    "reservation.review.error.phoneInvalid":
+      "This phone number isn't valid. Include the country code if it isn't Peruvian.",
+    "reservation.review.error.agree": "Check the box to accept the terms.",
+    "reservation.review.error.invalid": "We couldn't save these details. Check them and try again.",
+    "reservation.review.limited.title": "This review was changed too many times",
+    "reservation.review.limited.body":
+      "Your details are kept. Try again to start a fresh review of the same choice, or message us on WhatsApp.",
+    "reservation.review.error.throttled":
+      "Too many attempts from your connection. Your details are kept: wait a minute and try again.",
+    "reservation.review.error.unavailable":
+      "We couldn't save your acceptance right now. Your details are kept: please try again.",
+    "reservation.review.missing.title": "Choose a room and rate first",
+    "reservation.review.missing.body":
+      "We couldn't find your choice. Go back and choose a room and rate for your dates.",
+    "reservation.review.soldOut.title": "This room is no longer available for these dates",
+    "reservation.review.soldOut.body":
+      "{room} is no longer available for these dates. Your search and details are kept. Go back to see which rooms are still available; we won't pick another one for you.",
+    "reservation.review.backToRooms": "Back to rooms",
+    "reservation.review.throttled.title": "Too many price requests from your connection",
+    "reservation.review.throttled.body":
+      "Everyone on a shared connection shares this limit. Your choice and details are kept: wait a minute and try again, or message us on WhatsApp.",
+    "reservation.review.unavailable.title": "We couldn't prepare your price right now",
+    "reservation.review.unavailable.body":
+      "This is a problem on our side. Your choice and details are kept: try again in a moment, or message us on WhatsApp.",
+    "reservation.review.invalid.title": "This choice can't be reserved online",
+    "reservation.review.problem.tooManyGuests":
+      "This room doesn't fit your group. Go back and choose another room or change the guests.",
   },
   es: {
     "nav.home": "Inicio",
@@ -665,8 +834,177 @@ export const ui = {
       "{rooms}: sin capacidad para su grupo. Cambie el número de huéspedes; las reservas en línea son para una habitación.",
     "reservation.choose.reason.offline":
       "{rooms}: sin reserva en línea. Escríbanos por WhatsApp para reservar.",
-    "reservation.choice.next":
-      "La revisión y el pago en línea aún no están disponibles, así que por ahora esta elección no se puede reservar en línea. Queda guardada en esta página.",
+    "reservation.choice.review": "Continuar a la revisión",
+    "reservation.meta.reviewTitle": "Revise su reserva | Hotel Manantial",
+    "reservation.meta.reviewDescription":
+      "Revise su estadía, el precio y las condiciones, y añada los datos del contacto de la reserva.",
+    "reservation.step.review": "Revisar y pagar",
+    "reservation.review.title": "Revise su reserva",
+    "reservation.review.loading": "Preparando su precio…",
+    "reservation.review.loaded": "Su precio y sus condiciones están listos.",
+    "reservation.review.stay": "Su estadía",
+    "reservation.review.room": "Habitación",
+    "reservation.review.dates": "Fechas",
+    "reservation.review.guests": "Huéspedes",
+    "reservation.review.plan": "Tarifa",
+    "reservation.review.changeChoice": "Cambiar habitación o tarifa",
+    "reservation.review.changeSearch": "Cambiar fechas o huéspedes",
+    "reservation.review.price": "Precio y condiciones",
+    "reservation.review.contact": "Contacto de la reserva",
+    "reservation.review.contactLead":
+      "El hotel usa estos datos para comunicarse con usted sobre esta reserva. No necesita una cuenta, y el contacto no tiene que ser uno de los huéspedes.",
+    "reservation.review.fullName": "Nombre completo",
+    "reservation.review.email": "Correo electrónico",
+    "reservation.review.phone": "Teléfono",
+    "reservation.review.phoneHint": "Incluya el código de país si no es un número peruano.",
+    "reservation.review.terms": "Condiciones completas de la reserva",
+    "reservation.review.nightly": "Precio por noche",
+    "reservation.review.schedule.flexible":
+      "Pago: la primera noche, {now}, se paga en línea; el resto, {remaining}, se paga en el hotel.",
+    "reservation.review.schedule.non_refundable":
+      "Pago: toda la estadía, {now}, se paga en línea; no queda nada por pagar en el hotel.",
+    "reservation.review.lifecycle":
+      "Este precio se calculó al abrir esta página y se mantiene por unos minutos. Si hay que actualizarlo antes del pago, verá las nuevas condiciones antes de cualquier cobro. La habitación queda reservada solo cuando el pago se confirma y la reserva se guarda.",
+    "reservation.review.agree":
+      "Acepto las condiciones de la reserva de esta página, incluidas las de cancelación y no presentación.",
+    "reservation.review.submit": "Aceptar condiciones",
+    "reservation.review.saving": "Guardando su aceptación…",
+    "reservation.review.payment": "Pago",
+    "reservation.review.paymentUnavailable":
+      "El pago con tarjeta en línea aún no está disponible, así que en esta página no se cobra nada.",
+    "reservation.review.accepted.title": "Condiciones aceptadas",
+    "reservation.review.accepted.body":
+      "Su aceptación de estas condiciones quedó guardada. Todavía no se ha cobrado nada.",
+    "reservation.pay.lead":
+      "Su habitación queda reservada solo cuando el pago con tarjeta se confirma y la reserva se guarda.",
+    "reservation.pay.security": "Verificación de seguridad antes del pago",
+    "reservation.pay.button": "Pagar {amount} con tarjeta",
+    "reservation.pay.sending": "Enviando su pago… Espere en esta página.",
+    "reservation.pay.error.security":
+      "Espere a que termine la verificación de seguridad de arriba y luego pague.",
+    "reservation.pay.error.securityFailed":
+      "La verificación de seguridad no se superó y no se cobró nada. Complete la verificación de nuevo y luego pague.",
+    "reservation.pay.error.securityUnavailable":
+      "La verificación de seguridad del pago no está disponible en este momento. No se cobró nada y sus datos se conservan: intente de nuevo en un momento o escríbanos por WhatsApp.",
+    "reservation.pay.error.paused":
+      "Los pagos en línea están en pausa en este momento. No se cobró nada y sus datos y las condiciones aceptadas se conservan en esta página. Intente más tarde o escríbanos por WhatsApp para reservar.",
+    "reservation.pay.error.throttled":
+      "Demasiados intentos de pago desde su conexión o para esta reserva. No se cobró nada y sus datos se conservan: espere un minuto e intente de nuevo.",
+    "reservation.pay.changed":
+      "El precio o las condiciones cambiaron, así que no se cobró nada. Revíselas y acéptelas de nuevo antes de pagar.",
+    "reservation.pay.error.limited":
+      "Esta revisión no puede registrar otro acuerdo, así que no se cobró nada. Sus datos siguen en esta página. Escríbanos por WhatsApp para reservar.",
+    "reservation.pay.error.card":
+      "No se pudo abrir el formulario de la tarjeta. No se cobró nada: revise su conexión e intente de nuevo.",
+    "reservation.pay.error.unavailable":
+      "No pudimos enviar su pago y no se cobró nada. Sus datos se conservan: intente de nuevo en un momento o escríbanos por WhatsApp.",
+    "reservation.outcome.submitted.title": "Pago enviado, consultando su estado",
+    "reservation.outcome.submitted.body":
+      "Enviamos su pago pero no recibimos respuesta, así que su tarjeta podría haberse cobrado. No pague de nuevo: consulte su estado aquí o escríbanos por WhatsApp o por correo si necesita ayuda.",
+    "reservation.outcome.reservation_changed.title": "El hotel actualizó su reserva",
+    "reservation.outcome.reservation_changed.body":
+      "Recibimos su pago y luego el hotel modificó esta reserva. Escríbanos por WhatsApp o por correo con su referencia para confirmar su estado actual.",
+    "reservation.outcome.declined.title": "Su tarjeta fue rechazada",
+    "reservation.outcome.declined.body":
+      "No se cobró nada. Puede pagar con otra tarjeta; sus datos y las condiciones aceptadas se conservan.",
+    "reservation.outcome.authentication_required.title": "Su banco necesita verificar este pago",
+    "reservation.outcome.authentication_required.body":
+      "Este pago espera la verificación de su banco. No fue rechazado, así que no pague de nuevo. Si la ventana del banco se cerró antes de terminar, ábrala de nuevo. También puede consultar el estado aquí o escribirnos por WhatsApp si necesita ayuda.",
+    "reservation.outcome.processing.title": "Confirmando su pago",
+    "reservation.outcome.processing.body":
+      "Estamos verificando su pago con el procesador de tarjetas. No pague de nuevo: la verificación continúa aunque cierre esta página.",
+    "reservation.outcome.processing.delayed":
+      "La verificación está tardando más de lo habitual. Continúa aunque cierre esta página, así que no pague de nuevo. Consulte el estado aquí más tarde o escríbanos por WhatsApp o por correo si necesita ayuda.",
+    "reservation.outcome.paid_awaiting_reservation.title": "Pago recibido, guardando su reserva",
+    "reservation.outcome.paid_awaiting_reservation.body":
+      "Recibimos su pago y estamos guardando su reserva. No está confirmada hasta que se guarde, así que no pague de nuevo.",
+    "reservation.outcome.unfulfilled.title": "Pago recibido, pero su reserva no se pudo confirmar",
+    "reservation.outcome.unfulfilled.body":
+      "Recibimos su pago, pero no se pudo reservar una habitación para estas fechas, así que no tiene una reserva. El monto por resolver todavía no se ha devuelto: escríbanos por WhatsApp o por correo con su referencia de atención y el hotel lo coordinará con usted.",
+    "reservation.outcome.confirmed.title": "Su reserva está confirmada",
+    "reservation.outcome.confirmed.body":
+      "Guarde su referencia. El saldo pendiente, si lo hay, se paga en el hotel.",
+    "reservation.outcome.reference": "Referencia",
+    "reservation.outcome.supportReference": "Referencia de atención",
+    "reservation.outcome.amount": "Monto del pago",
+    "reservation.outcome.paid": "Pagado",
+    "reservation.outcome.received": "Recibido",
+    "reservation.outcome.outstanding": "Saldo pendiente",
+    "reservation.outcome.awaiting": "Por resolver",
+    "reservation.outcome.retry": "Pagar con otra tarjeta",
+    "reservation.outcome.verifyBank": "Abrir la verificación del banco",
+    "reservation.outcome.check": "Consultar estado",
+    "reservation.outcome.checking": "Consultando su pago…",
+    "reservation.meta.summaryTitle": "Resumen de la reserva | Hotel Manantial",
+    "reservation.meta.summaryDescription":
+      "Un resumen privado y limitado de una reserva. Quien tenga el enlace puede verlo.",
+    "reservation.summary.title": "Resumen de la reserva",
+    "reservation.summary.loading": "Abriendo el resumen de la reserva…",
+    "reservation.summary.possession":
+      "Quien tenga este enlace puede ver este resumen limitado. Compártalo solo con quienes deban ver la estadía.",
+    "reservation.summary.copy": "Copiar enlace",
+    "reservation.summary.copied": "Enlace copiado",
+    "reservation.summary.staff":
+      "Los cambios, las cancelaciones y los reembolsos se coordinan con el hotel. Esta página no puede modificar la reserva ni envía un correo.",
+    "reservation.summary.assistance.title": "El hotel puede ayudarle con esta reserva",
+    "reservation.summary.assistance.body":
+      "Este enlace no es válido o ya venció, así que no se muestran datos de la reserva. Llame, escriba o envíe un mensaje al hotel y el personal le ayudará.",
+    "reservation.summary.phone": "Llamar al hotel",
+    "reservation.summary.email": "Escribir al hotel",
+    "reservation.summary.whatsapp": "WhatsApp",
+    "reservation.summary.whatsappPrefill": "Hola, necesito ayuda con una reserva.",
+    "reservation.summary.emailSubject": "Ayuda con una reserva",
+    "reservation.summary.status": "Estado",
+    "reservation.summary.status.confirmed": "Confirmada",
+    "reservation.summary.status.checked_in": "Hospedado",
+    "reservation.summary.status.checked_out": "Salida registrada",
+    "reservation.summary.status.cancelled": "Cancelada",
+    "reservation.summary.status.no_show": "No se presentó",
+    "reservation.summary.status.unfulfilled": "Pago recibido, reserva no confirmada",
+    "reservation.summary.contact": "Contacto de la reserva",
+    "reservation.summary.nights": "Noches",
+    "reservation.summary.total": "Total",
+    "reservation.summary.refundDue": "Reembolso pendiente",
+    "reservation.summary.refunded": "Reembolsado",
+    "reservation.summary.roomUnknown": "Habitación",
+    "reservation.summary.accepted.flexible":
+      "Acuerdo aceptado: la cancelación gratuita era hasta el {date}. El cargo acordado después de esa fecha es {amount}.",
+    "reservation.summary.accepted.none":
+      "Acuerdo aceptado: sin cancelación gratuita. El cargo acordado es {amount}.",
+    "reservation.summary.planUnknown": "Tarifa",
+    "reservation.review.changed":
+      "El precio o las condiciones de su estadía cambiaron. Revíselos y acepte de nuevo.",
+    "reservation.review.error.fullName": "Ingrese el nombre completo del contacto.",
+    "reservation.review.error.email": "Ingrese un correo válido, por ejemplo nombre@ejemplo.com.",
+    "reservation.review.error.phone": "Ingrese un número de teléfono.",
+    "reservation.review.error.phoneInvalid":
+      "Este número de teléfono no es válido. Incluya el código de país si no es peruano.",
+    "reservation.review.error.agree": "Marque la casilla para aceptar las condiciones.",
+    "reservation.review.error.invalid":
+      "No pudimos guardar estos datos. Revíselos e intente de nuevo.",
+    "reservation.review.limited.title": "Esta revisión se modificó demasiadas veces",
+    "reservation.review.limited.body":
+      "Sus datos se conservan. Intente de nuevo para empezar una revisión nueva de la misma elección, o escríbanos por WhatsApp.",
+    "reservation.review.error.throttled":
+      "Demasiados intentos desde su conexión. Sus datos se conservan: espere un minuto e intente de nuevo.",
+    "reservation.review.error.unavailable":
+      "No pudimos guardar su aceptación en este momento. Sus datos se conservan: intente de nuevo.",
+    "reservation.review.missing.title": "Primero elija habitación y tarifa",
+    "reservation.review.missing.body":
+      "No encontramos su elección. Vuelva y elija una habitación y una tarifa para sus fechas.",
+    "reservation.review.soldOut.title": "Esta habitación ya no está disponible para estas fechas",
+    "reservation.review.soldOut.body":
+      "{room} ya no está disponible para estas fechas. Su búsqueda y sus datos se conservan. Vuelva para ver qué habitaciones siguen disponibles; no elegiremos otra por usted.",
+    "reservation.review.backToRooms": "Volver a las habitaciones",
+    "reservation.review.throttled.title": "Demasiadas solicitudes de precio desde su conexión",
+    "reservation.review.throttled.body":
+      "Quienes comparten una conexión comparten este límite. Su elección y sus datos se conservan: espere un minuto e intente de nuevo, o escríbanos por WhatsApp.",
+    "reservation.review.unavailable.title": "No pudimos preparar su precio en este momento",
+    "reservation.review.unavailable.body":
+      "Es un problema de nuestro sistema. Su elección y sus datos se conservan: intente de nuevo en un momento o escríbanos por WhatsApp.",
+    "reservation.review.invalid.title": "Esta elección no se puede reservar en línea",
+    "reservation.review.problem.tooManyGuests":
+      "Esta habitación no admite a su grupo. Vuelva y elija otra habitación o cambie los huéspedes.",
   },
 } as const;
 

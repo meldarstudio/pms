@@ -11,7 +11,7 @@ import {
   type ReservationStay,
   type RoomProblem,
 } from "@/lib/assignment-availability";
-import { toast } from "@/lib/toast";
+import { toast } from "sonner";
 import { translateError } from "@/lib/errors";
 
 const conflictCopy = new Map([
@@ -131,11 +131,8 @@ export function useRoomAssignment(rooms: Room[] | null, unassigned: ReservationS
     setSaveError(null);
     const result = await assign(target, room.id);
     if (result.status === "saved") {
-      toast.add({
-        title: "Habitación asignada",
+      toast.success("Habitación asignada", {
         description: `${target.guestName} tiene asignada la habitación ${room.number}.`,
-        type: "success",
-        timeout: 5000,
       });
       assignedLines.current.add(target.id);
       const next = latestUnassigned.current.find(
@@ -149,12 +146,8 @@ export function useRoomAssignment(rooms: Room[] | null, unassigned: ReservationS
       result.status === "failed" ? result.message : "No se pudo asignar la habitación.";
     const code = result.status === "failed" ? result.code : undefined;
     setSaveError(message);
-    toast.add({
-      title: "No se pudo asignar la habitación",
+    toast.error("No se pudo asignar la habitación", {
       description: (code && conflictCopy.get(code)) ?? message,
-      type: "error",
-      priority: "high",
-      timeout: 7000,
     });
     await Promise.all([
       queryClient.invalidateQueries({ queryKey: ["reservations"] }),

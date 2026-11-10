@@ -92,7 +92,6 @@ export function useStayDraft({
   const changes = roomEdits(detail, drafts);
   if (stay.checkIn !== detail.checkIn || stay.checkOut !== detail.checkOut)
     changes.unshift({ type: "dates", ...stay });
-  if (values.notes !== (detail.notes ?? "")) changes.push({ type: "notes", notes: values.notes });
   const dirty = changes.length > 0 || (!validation.success && !unchanged);
   const previewActions = validationPreviewActions(changes);
   const validationNeeded = previewActions.length > 0;
@@ -206,7 +205,6 @@ export function useStayDraft({
       retry: editPreview.refetch,
     },
     reset,
-    discard: () => form.reset(defaults),
     rejectSave,
   };
 }

@@ -4,8 +4,31 @@ Static Astro site for Hotel Manantial in Churín, Peru. Cloudflare serves `dist/
 Online reservation is built in only when `PUBLIC_PMS_API_URL` is set at build
 time; without it, reservation pages show WhatsApp contact and no page links to them.
 Search (`/reservar/`) and Choose (`/reservar/habitacion/`) read live offers from
-the PMS `/public` API. `src/lib/rooms.ts` links each room to a PMS room-type ID;
-the API offers only types it publishes. Payment is not wired yet.
+the PMS `/public` API. Review (`/reservar/revisar/`) opens a private checkout, shows
+its server Quote, and records the booking contact's acceptance. Pay refreshes an
+expired quote and keeps that acceptance only when the guest is paying; an unchanged
+offer is charged, and a changed offer, including a lower price, is shown for a new
+acceptance and is not charged. Accepting an expired quote also refreshes, then records
+the contact and language just submitted. The checkout token
+lives only in `sessionStorage` (`src/lib/reservation/draft.ts`), never in URLs.
+The private summary (`/reservar/resumen/`) reads `GET /public/reservation` with the
+access token from the URL fragment only, sent as `Authorization: Bearer` with
+`referrerPolicy: "no-referrer"`. Review copies that link after the reservation is
+saved. It is not a fourth wizard step and marketing pages do not link to it.
+`src/lib/rooms.ts` links each room to a PMS room-type ID; the API offers only types
+it publishes. Card payment on Review needs build-time `PUBLIC_CULQI_PUBLIC_KEY` and
+`PUBLIC_TURNSTILE_SITE_KEY`; without either, Review says payment isn't available. Payment
+status is read back from the checkout (`src/lib/reservation/payment.ts`), so reload, back
+and language changes show the existing attempt instead of paying again. Before the first
+charge, Review loads Culqi3DS and sends `generateDevice()` when it succeeds; a failure to
+load does not block a non-3DS card. A required bank check opens that library's modal with
+the card token stored for the attempt this request created (`hm.reservation.card-sources`),
+never the URL, and only while that attempt id still matches. The token stays until the
+payment is declined, confirmed, unfulfilled, changed, or saved.
+Parameters continue the same attempt; a browser error or closed window stays pending and
+can open the bank again, without another card. Browser tests stub the Culqi, Culqi3DS and
+Turnstile scripts (`tests/support/payment.ts`), and the local API charges a fake Culqi and
+Turnstile served by `scripts/fake-payment-services.mjs`.
 
 ## Content
 

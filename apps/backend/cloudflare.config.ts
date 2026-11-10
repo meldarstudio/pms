@@ -1,6 +1,6 @@
 import { bindings, defineConfig, triggers } from "cf/config";
 
-const paymentReconciliationBackstop = "*/5 * * * *";
+const paymentReconciliationBackstop = "* * * * *";
 
 export default defineConfig({
   worker: {
@@ -45,6 +45,27 @@ export default defineConfig({
         namespace: "1002",
         simple: {
           limit: 60,
+          period: 60,
+        },
+      }),
+      QUOTE_LIMITER: bindings.rateLimit({
+        namespace: "1003",
+        simple: {
+          limit: 10,
+          period: 60,
+        },
+      }),
+      PAYMENT_IP_LIMITER: bindings.rateLimit({
+        namespace: "1004",
+        simple: {
+          limit: 5,
+          period: 60,
+        },
+      }),
+      PAYMENT_CHECKOUT_LIMITER: bindings.rateLimit({
+        namespace: "1005",
+        simple: {
+          limit: 5,
           period: 60,
         },
       }),

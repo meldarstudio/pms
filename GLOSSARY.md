@@ -26,9 +26,10 @@ The owner's personal login, allowed to do everything staff can and manage accoun
 _Avoid_: Admin account, superuser
 
 **Reservation access link**:
-A private link granting its holder read-only access to one reservation's guest-facing
-status and payment summary.
-_Avoid_: Reservation code, guest account, payment link
+The unguessable read-only link established once for a saved public reservation.
+It expires 30 days after the scheduled checkout and shows that reservation's
+guest-facing status and payment summary to whoever holds it.
+_Avoid_: Reservation code, guest account, payment link, checkout token
 
 ### Reservations and dates
 
@@ -284,10 +285,85 @@ An online price, rate plan, and amount-to-pay offer valid for 10 minutes, withou
 holding inventory.
 _Avoid_: Hold, preview, reservation
 
+**Public checkout**:
+A guest's private online review of one selected stay, room type, occupancy, and rate plan,
+reachable only with its secret token. It holds that selection's quotes and agreement
+acceptances.
+_Avoid_: Cart, session, reservation
+
+**Agreement acceptance**:
+A booking contact's acceptance of one quote's terms within a public checkout, recorded
+before any payment. A new acceptance is explicit and only of the checkout's latest
+unexpired quote. Refreshing a quote keeps that acceptance only when the replacement has
+the same room, stay, occupancy, nightly prices and terms.
+_Avoid_: Payment, confirmation, reservation
+
+**Public payment admission**:
+The owner's server-enforced switch for new public card payments, off by default. Pausing it
+stops new charges even in open public checkouts, but not status reads, staff work, recovery
+of earlier payment attempts, or completing bank authentication already waiting on an attempt.
+_Avoid_: Maintenance mode, closing sales
+
 **Payment attempt**:
 A request to charge for a quote, recorded before contacting the provider. An unknown
-result is resolved by provider lookup, not another charge.
+result is resolved by provider lookup, not another charge. Bank authentication continues
+that same attempt and source; a public checkout may finish it after the quote expires.
 _Avoid_: Payment, retry
+
+**Confirmation intent**:
+The one durable record that a saved Confirmed public reservation is owed an automatic
+confirmation. It keeps the booking-contact recipient and checkout language from the
+saving payment attempt, and is not itself a sent message.
+_Avoid_: Confirmation email, reservation access link, payment
+
+**Email submission admission**:
+The owner's switch for submitting confirmations and deliberate resends, off by default. Pausing it keeps
+confirmation intents and does not stop payment recovery. Resuming sends known-unsent work
+and does not give an uncertain submission a new key or window.
+_Avoid_: Public payment admission, maintenance mode
+
+**Confirmation submission**:
+The immutable provider request recorded for an automatic intent or deliberate resend before any send.
+Known-unsent work can retry that same request; possible acceptance limits automatic
+retries to 20 hours from its first possible submission, without resetting on pause.
+Cancellation stops further automatic submission without erasing established acceptance
+or delivery facts. Acceptance is not delivery, and a retry is not a deliberate resend.
+_Avoid_: Confirmation intent, delivery, resend
+
+**Deliberate confirmation resend**:
+A separately requested message to an explicitly chosen recipient, attributed to the
+authenticated account and retaining the original confirmation history. It summarizes
+the reservation's current status, agreement and bill rather than confirming a cancelled
+stay. It may duplicate an earlier uncertain delivery; it is not proof that earlier mail
+was absent and does not extend private-link access.
+_Avoid_: Automatic retry, safe recovery, contact update, staff notification
+
+**Confirmation report**:
+A provider observation about a confirmation submission, retaining its source and
+occurrence or observation time. An authenticated callback, submission response, or
+known-message lookup can establish evidence; missing evidence does not establish no send.
+_Avoid_: Confirmation intent, guest confirmation, latest status
+
+**Delivery fact**:
+An established acceptance, recipient-server delivery, delay, failure, bounce, complaint,
+or suppression fact. These coexist rather than replace one another. Delivered means the
+recipient's server accepted the message, not inbox placement or reading; older or incomplete
+observations cannot erase established facts.
+_Avoid_: Read receipt, inbox delivery, latest status
+
+**Recipient blocked**:
+An address excluded from automatic confirmation submission in its provider context because
+of permanent-bounce, complaint, or suppression evidence. The block applies across messages
+and categories, including evidence from unrelated messages, not only one reservation.
+It does not rewrite historical stop reasons or automatically disappear after later delivery.
+_Avoid_: Cancelled reservation, failed payment, automatic unsuppression
+
+**Unresolved possible acceptance count**:
+The number of confirmation submission attempts that may have reached the provider
+without a definitive result. A known refusal resolves only its own attempt;
+earlier or concurrent uncertainty remains. Before positive acceptance, zero means
+known-unsent, not accepted or delivered.
+_Avoid_: Acceptance flag, retry count
 
 **Refund**:
 Money returned against a received payment. Only a completed refund has returned money;

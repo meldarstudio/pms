@@ -9,6 +9,10 @@
 /en/reservar /en/reservar/ 301
 /reservar/habitacion /reservar/habitacion/ 301
 /en/reservar/habitacion /en/reservar/habitacion/ 301
+/reservar/revisar /reservar/revisar/ 301
+/en/reservar/revisar /en/reservar/revisar/ 301
+/reservar/resumen /reservar/resumen/ 301
+/en/reservar/resumen /en/reservar/resumen/ 301
 
 # Retired URL reported in Search Console (#73); send visitors to the homepage.
 /nosotros / 301

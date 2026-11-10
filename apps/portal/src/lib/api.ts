@@ -6,6 +6,9 @@ import type {
   PatchRoomRequest,
   PaymentRequest as PaymentInput,
   PropertySetupRequest as PropertySetupInput,
+  EmailSubmissionAdmissionRequest,
+  ConfirmationResendRequest,
+  PublicPaymentAdmissionRequest,
   RateWriteRequest,
   RoomClosureRequest,
   WorkflowActionRequest as WorkflowAction,
@@ -20,6 +23,7 @@ import { configurePropertyCalendar } from "./property-calendar";
 import type { InventoryStatus } from "./reservation-statuses";
 
 export type {
+  ConfirmationResendRequest,
   CreationPreviewInput,
   PaymentInput,
   PropertySetupInput,
@@ -458,6 +462,26 @@ export function changeOwnPassword(input: OwnPasswordRequest) {
   return writeJson<{ ok: true }>("/account/password", "PUT", input);
 }
 
+export type PublicPaymentAdmission = { admitted: boolean; updatedAt: string | null };
+
+export function getPublicPaymentAdmission(signal?: AbortSignal) {
+  return getJson<PublicPaymentAdmission>("/controls/public-payments", signal);
+}
+
+export function setPublicPaymentAdmission(input: PublicPaymentAdmissionRequest) {
+  return writeJson<PublicPaymentAdmission>("/controls/public-payments", "PUT", input);
+}
+
+export type EmailSubmissionAdmission = { admitted: boolean; updatedAt: string | null };
+
+export function getEmailSubmission(signal?: AbortSignal) {
+  return getJson<EmailSubmissionAdmission>("/controls/email-submission", signal);
+}
+
+export function setEmailSubmission(input: EmailSubmissionAdmissionRequest) {
+  return writeJson<EmailSubmissionAdmission>("/controls/email-submission", "PUT", input);
+}
+
 export function listRooms(signal?: AbortSignal) {
   return getJson<Room[]>("/rooms", signal);
 }
@@ -514,6 +538,127 @@ export function getAvailability(
 
 export function getReservation(id: string, signal?: AbortSignal) {
   return getJson<ReservationDetail>(`/reservations/${id}`, signal);
+}
+
+export type ReservationAccess = { token: string; expiresOn: string; expired: boolean };
+
+export function getReservationAccess(id: string, signal?: AbortSignal) {
+  return getJson<ReservationAccess>(`/reservations/${id}/access`, signal);
+}
+
+export type ConfirmationDelivery = {
+  accepted: boolean;
+  delivered: boolean;
+  delayed: boolean;
+  failed: boolean;
+  bounced: boolean;
+  permanentlyBounced: boolean;
+  complained: boolean;
+  suppressed: boolean;
+  uncertain: boolean;
+  conflict: boolean;
+  recipientBlocked: boolean;
+  history: {
+    eventId: string;
+    source: "callback" | "lookup" | "response";
+    type:
+      | "sent"
+      | "delivered"
+      | "delivery_delayed"
+      | "failed"
+      | "bounced"
+      | "complained"
+      | "suppressed";
+    providerMessageId: string;
+    messageId: string | null;
+    occurredAt: string | null;
+    observedAt: string;
+    conflict: boolean;
+    details: {
+      reason?: string;
+      bounceType?: string;
+      bounceSubType?: string;
+      permanent?: boolean;
+      suppressionType?: string;
+      eventIdConflict?: boolean;
+    } | null;
+  }[];
+};
+
+export type ConfirmationSubmission = {
+  id: string;
+  endpoint: string | null;
+  status: "uncertain" | "accepted" | "unsent" | "attention";
+  providerMessageId: string | null;
+  failureCode: string | null;
+  sendKey: string | null;
+  firstPossibleAt: string | null;
+  nextAttemptAt: string | null;
+  createdAt: string;
+  possiblyAcceptedPosts: number;
+  snapshotRevision: number | null;
+  linkExpiresOn: string | null;
+  attempts: {
+    id: string;
+    startedAt: string;
+    completedAt: string | null;
+    outcome: "accepted" | "uncertain" | "unsent" | "attention" | "not_posted" | null;
+    failureCode: string | null;
+    providerMessageId: string | null;
+  }[];
+  delivery: ConfirmationDelivery;
+};
+
+export type DeliberateConfirmationResend = {
+  id: string;
+  kind: "deliberate_resend";
+  recipientEmail: string;
+  language: "es" | "en";
+  createdAt: string;
+  requestedBy: { id: string; username: string; role: "staff" | "owner" };
+  mayDuplicateEarlierDelivery: true;
+  submission: ConfirmationSubmission | null;
+};
+
+export type ReservationConfirmation = {
+  id: string;
+  recipientEmail: string;
+  language: "es" | "en";
+  attemptId: string;
+  acceptanceId: string;
+  createdAt: string;
+  reservation: { id: string; code: string; status: string };
+  submission: ConfirmationSubmission | null;
+  history: (
+    | DeliberateConfirmationResend
+    | {
+        id: string;
+        kind: "automatic";
+        recipientEmail: string;
+        language: "es" | "en";
+        createdAt: string;
+        requestedBy: null;
+        mayDuplicateEarlierDelivery: false;
+        submission: ConfirmationSubmission | null;
+      }
+  )[];
+};
+
+export function getReservationConfirmation(id: string, signal?: AbortSignal) {
+  return getJson<ReservationConfirmation>(`/reservations/${id}/confirmation`, signal);
+}
+
+export type ConfirmationResendResult = {
+  work: DeliberateConfirmationResend;
+  mayDuplicateEarlierDelivery: true;
+};
+
+export function requestConfirmationResend(id: string, input: ConfirmationResendRequest) {
+  return writeJson<ConfirmationResendResult>(
+    `/reservations/${id}/confirmation/resends`,
+    "POST",
+    input,
+  );
 }
 
 export async function assignRoom(target: ReservationStay, roomId: string) {

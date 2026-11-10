@@ -39,7 +39,8 @@ import {
   closureUnchanged,
   roomClosureFormSchema,
 } from "@/lib/room-closure-form";
-import { toast, toastError } from "@/lib/toast";
+import { toast } from "sonner";
+import { toastError } from "@/lib/toast";
 
 export type ClosureTarget =
   | {
@@ -134,16 +135,13 @@ export function RoomClosureDialog({
             removePending={remove.isPending}
             onSave={async (input) => {
               await save.mutateAsync(input);
-              toast.add({
-                title: target.mode === "edit" ? "Cierre actualizado" : "Habitación cerrada",
-                type: "success",
-              });
+              toast.success(target.mode === "edit" ? "Cierre actualizado" : "Habitación cerrada");
               close();
             }}
             onRemove={async (id) => {
               try {
                 await remove.mutateAsync(id);
-                toast.add({ title: "Cierre eliminado", type: "success" });
+                toast.success("Cierre eliminado");
                 close();
               } catch (cause) {
                 toastError("No se pudo eliminar el cierre", cause);

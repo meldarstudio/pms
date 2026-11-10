@@ -60,7 +60,7 @@ export function fakeCulqi() {
       charge(body, { type: "venta_denegada", code: "card_declined" });
       return decline("card_declined", "Tu tarjeta fue rechazada.");
     }
-    if (token === "tkn_test_3ds" && !body.authentication_3DS)
+    if ((token === "tkn_test_3ds" || token.startsWith("tkn_test_3ds_")) && !body.authentication_3DS)
       return json(200, { action_code: "REVIEW", user_message: "Autenticación requerida." });
     usedTokens.add(token);
     return json(201, charge(body, { type: "venta_exitosa", code: "AUT0000" }));

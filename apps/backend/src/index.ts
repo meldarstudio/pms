@@ -5,6 +5,7 @@ import { HttpError } from "./http";
 import { accountRoutes } from "./routes/accounts";
 import { authRoutes } from "./routes/auth";
 import { calendarRoutes } from "./routes/calendar";
+import { controlRoutes } from "./routes/controls";
 import { couponRoutes } from "./routes/coupons";
 import { availabilityRoutes } from "./routes/availability";
 import { inventoryRoutes } from "./routes/inventory";
@@ -19,13 +20,19 @@ import { roomClosureRoutes } from "./routes/room-closures";
 import { roomRoutes } from "./routes/rooms";
 import { setupRoutes } from "./routes/setup";
 import { getDb } from "./db";
+import { repairConfirmationIntents } from "./confirmation-intents";
+import { sendConfirmationSubmissions } from "./confirmation-submissions";
 import { paymentContext, reconcilePaymentAttempts } from "./payment-attempts";
 import { requireSession } from "./session";
 import { propertyCalendar } from "./property-calendar";
+import { receiveConfirmationReport, reconcileConfirmationReports } from "./confirmation-reports";
+import { RESEND_REPORT_PATH } from "./resend-reports";
 
 const CHROME_MAX_PREFLIGHT_CACHE_SECONDS = 2 * 60 * 60;
 
 export const app = new Hono<Env>();
+
+app.post(RESEND_REPORT_PATH, receiveConfirmationReport);
 
 const exactOrigin = (setting: string | undefined, origin: string) =>
   (setting ?? "")
@@ -45,7 +52,8 @@ const staffCors = cors({
 const guestCors = cors({
   origin: (origin, c: Context<Env>) => exactOrigin(c.env.PUBLIC_ALLOWED_ORIGINS, origin),
   credentials: false,
-  allowMethods: ["GET"],
+  allowMethods: ["GET", "POST"],
+  allowHeaders: ["Content-Type", "Authorization"],
   exposeHeaders: ["X-Error-Field", "Retry-After"],
   maxAge: CHROME_MAX_PREFLIGHT_CACHE_SECONDS,
 });
@@ -64,7 +72,7 @@ app.onError((err, c) => {
     if (err.field) c.header("X-Error-Field", err.field);
     return c.json({ error: err.message }, err.status);
   }
-  console.error(err);
+  console.error("request failed");
   return c.json({ error: "internal error" }, 500);
 });
 
@@ -86,11 +94,19 @@ app.route("/reservations", reservationRoutes);
 app.route("/payments", paymentRoutes);
 app.route("/rate-plans", ratePlanRoutes);
 app.route("/coupons", couponRoutes);
+app.route("/controls", controlRoutes);
 app.route(GUEST_PREFIX, publicRoutes);
 
 export default {
   fetch: app.fetch,
   scheduled(_controller, env, ctx) {
-    ctx.waitUntil(reconcilePaymentAttempts(getDb(env.DB), paymentContext(env)));
+    const db = getDb(env.DB);
+    ctx.waitUntil(
+      reconcilePaymentAttempts(db, paymentContext(env))
+        .then(() => repairConfirmationIntents(db))
+        .then(() => sendConfirmationSubmissions(db, env))
+        .then(() => reconcileConfirmationReports(db, env))
+        .catch(() => console.error("scheduled recovery failed")),
+    );
   },
 } satisfies ExportedHandler<Env["Bindings"]>;

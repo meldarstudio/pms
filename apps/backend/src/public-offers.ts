@@ -93,23 +93,37 @@ function planOffers(
   const flexible = plans.find(({ terms }) => terms.plan === "flexible");
   const flexibleCents = flexible ? totalCents(flexible.nights) : 0;
   return plans.map(({ terms, nights }) => {
-    const bill = quoteBill({ nights, terms });
-    const freeUntil = freeCancellationUntil(terms.cancellationPolicy, checkIn);
-    const freeCancellation: FreeCancellation =
-      freeUntil === null ? "none" : today <= freeUntil ? "available" : "ended";
+    const amounts = offerAmounts({ checkIn, terms, nights }, today);
     return {
       ratePlan: terms.plan,
-      totalCents: bill.totalCents,
-      requiredInitialPaymentCents: bill.requiredInitialPaymentCents,
-      remainingScheduledCents: bill.remainingScheduledCents,
-      savingCents: Math.max(0, flexibleCents - bill.totalCents),
-      cancellation: {
-        freeCancellation,
-        freeUntil,
-        chargeCents: chargeableCents(terms.cancellationPolicy, [{ nights }], 0),
-      },
+      totalCents: amounts.totalCents,
+      requiredInitialPaymentCents: amounts.requiredInitialPaymentCents,
+      remainingScheduledCents: amounts.remainingScheduledCents,
+      savingCents: Math.max(0, flexibleCents - amounts.totalCents),
+      cancellation: amounts.cancellation,
     };
   });
+}
+
+export function offerAmounts(
+  offer: { checkIn: string; terms: RatePlanTerms; nights: PricedNight[] },
+  today: string,
+) {
+  const { terms, nights } = offer;
+  const bill = quoteBill({ nights, terms });
+  const freeUntil = freeCancellationUntil(terms.cancellationPolicy, offer.checkIn);
+  const freeCancellation: FreeCancellation =
+    freeUntil === null ? "none" : today <= freeUntil ? "available" : "ended";
+  return {
+    totalCents: bill.totalCents,
+    requiredInitialPaymentCents: bill.requiredInitialPaymentCents,
+    remainingScheduledCents: bill.remainingScheduledCents,
+    cancellation: {
+      freeCancellation,
+      freeUntil,
+      chargeCents: chargeableCents(terms.cancellationPolicy, [{ nights }], 0),
+    },
+  };
 }
 
 export type OfferSearchResult = Awaited<ReturnType<typeof searchOffers>>;

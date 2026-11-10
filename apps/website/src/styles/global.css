@@ -63,7 +63,7 @@
   --color-accent-950: oklch(25% 0.054 43.103);
 }
 
-:is(reservation-search, reservation-choose) [hidden] {
+:is(reservation-search, reservation-choose, reservation-review) [hidden] {
   display: none !important;
 }
 
@@ -114,7 +114,7 @@ body[data-menu-expanded] #mobile-menu {
 
 @layer base {
   /* Default focus ring. Override color only on dark surfaces (e.g. outline-white). */
-  :where(a, button, select):focus-visible {
+  :where(a, button, select, input, summary):focus-visible {
     outline: 2px solid var(--color-accent-700);
     outline-offset: 2px;
   }

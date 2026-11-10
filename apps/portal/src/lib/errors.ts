@@ -8,6 +8,36 @@ const messages: Record<string, string> = {
   "invalid credentials": "Usuario o contraseña incorrectos.",
   "too many login attempts": "Demasiados intentos. Espera un minuto e inténtalo de nuevo.",
   "too many searches": "Demasiadas búsquedas. Espera un minuto e inténtalo de nuevo.",
+  "too many quotes": "Demasiadas cotizaciones. Espera un minuto e inténtalo de nuevo.",
+  "invalid checkout token": "No se pudo verificar la reserva en curso. Vuelve a empezar.",
+  "invalid reservation access": "No se pudo abrir el resumen de la reserva.",
+  "reservation access was not established": "Esta reserva no tiene un enlace de resumen.",
+  "confirmation was not established":
+    "Esta reserva no tiene una confirmación automática registrada.",
+  "invalid email report": "No se pudo verificar el informe de entrega del correo.",
+  "deliberate resend may duplicate earlier delivery; acknowledgement is required":
+    "Debes aceptar que este nuevo correo podría duplicar una entrega anterior, aunque todavía sea incierta.",
+  "agreement must be accepted": "Debes aceptar las condiciones de la reserva.",
+  "too many acceptances for this checkout":
+    "Esta reserva en curso se modificó demasiadas veces. Vuelve a empezar.",
+  "quote was replaced by a newer quote":
+    "Esta cotización fue reemplazada por una más reciente. Revisa el precio actual.",
+  "full name is required": "Ingresa el nombre completo.",
+  "email is required": "Ingresa el correo electrónico.",
+  "phone is required": "Ingresa el teléfono.",
+  "unknown language": "Idioma no admitido.",
+  "online payments are paused":
+    "Los pagos en línea están en pausa. La reserva en curso se conserva; inténtalo más tarde o contacta al hotel.",
+  "too many payment attempts":
+    "Demasiados intentos de pago. Espera un minuto e inténtalo de nuevo.",
+  "payment security check failed": "No se pudo completar la verificación de seguridad del pago.",
+  "payment security check is unavailable":
+    "La verificación de seguridad del pago no está disponible. No se hizo ningún cargo; inténtalo más tarde.",
+  "payment security check is required": "Completa la verificación de seguridad antes de pagar.",
+  "only card payments are accepted": "Solo se aceptan pagos con tarjeta.",
+  "quote has not been accepted": "Acepta las condiciones de esta cotización antes de pagar.",
+  "checkout already has a payment":
+    "Esta reserva en curso ya tiene un pago. Revisa su estado antes de pedir otro precio.",
   unauthorized: "Tu sesión terminó. Inicia sesión de nuevo.",
   "owner account required": "Solo la cuenta del propietario puede hacer esto.",
   "account not found": "No se encontró la cuenta. Recarga la página.",

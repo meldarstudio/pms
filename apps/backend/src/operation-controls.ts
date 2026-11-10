@@ -1,0 +1,71 @@
+import { eq, sql } from "drizzle-orm";
+import type { Db } from "./db";
+import { operationControls } from "./db/schema";
+import { HttpError } from "./http";
+
+const CONTROLS_ID = 1;
+
+export const emailSubmissionAdmittedSql = sql<number>`EXISTS (SELECT 1 FROM ${operationControls} WHERE ${operationControls.id} = ${CONTROLS_ID} AND ${operationControls.emailSubmissionAdmitted} = 1)`;
+
+export const PUBLIC_PAYMENTS_PAUSED = "online payments are paused";
+
+export async function readPublicPaymentAdmission(db: Db) {
+  const [controls] = await db
+    .select()
+    .from(operationControls)
+    .where(eq(operationControls.id, CONTROLS_ID));
+  return {
+    admitted: controls?.publicPaymentsAdmitted ?? false,
+    updatedAt: controls?.updatedAt ?? null,
+  };
+}
+
+export async function setPublicPaymentAdmission(
+  db: Db,
+  admitted: boolean,
+  change: { accountId: string; now: Date },
+) {
+  const values = {
+    publicPaymentsAdmitted: admitted,
+    updatedAt: change.now.toISOString(),
+    updatedBy: change.accountId,
+  };
+  await db
+    .insert(operationControls)
+    .values({ id: CONTROLS_ID, ...values })
+    .onConflictDoUpdate({ target: operationControls.id, set: values });
+  return readPublicPaymentAdmission(db);
+}
+
+export async function requirePublicPaymentAdmission(db: Db) {
+  if (!(await readPublicPaymentAdmission(db)).admitted)
+    throw new HttpError(503, PUBLIC_PAYMENTS_PAUSED);
+}
+
+export async function readEmailSubmissionAdmission(db: Db) {
+  const [controls] = await db
+    .select()
+    .from(operationControls)
+    .where(eq(operationControls.id, CONTROLS_ID));
+  return {
+    admitted: controls?.emailSubmissionAdmitted ?? false,
+    updatedAt: controls?.updatedAt ?? null,
+  };
+}
+
+export async function setEmailSubmissionAdmission(
+  db: Db,
+  admitted: boolean,
+  change: { accountId: string; now: Date },
+) {
+  const values = {
+    emailSubmissionAdmitted: admitted,
+    updatedAt: change.now.toISOString(),
+    updatedBy: change.accountId,
+  };
+  await db
+    .insert(operationControls)
+    .values({ id: CONTROLS_ID, publicPaymentsAdmitted: false, ...values })
+    .onConflictDoUpdate({ target: operationControls.id, set: values });
+  return readEmailSubmissionAdmission(db);
+}

@@ -8,7 +8,7 @@ import ReservationSteps from "@/components/reservation/ReservationSteps.astro";
 import { ui } from "@/i18n/ui";
 import { getLang, useTranslations } from "@/i18n/utils";
 import { getWhatsAppLink } from "@/lib/constants";
-import { onlineReservations, searchStepHref } from "@/lib/reservation/links";
+import { onlineReservations, reviewStepHref, searchStepHref } from "@/lib/reservation/links";
 import { ratePlanCodes } from "@/lib/reservation/search";
 import { rooms } from "@/lib/rooms";
 
@@ -18,6 +18,7 @@ const copy = {
   lang,
   apiBase: PUBLIC_PMS_API_URL ?? "",
   searchHref: searchStepHref(lang),
+  reviewHref: reviewStepHref(lang),
   text: Object.fromEntries(
     (Object.keys(ui[lang]) as (keyof (typeof ui)[typeof lang])[])
       .filter((key) => key.startsWith("reservation."))
@@ -237,23 +238,13 @@ const amountRow = "flex items-baseline justify-between gap-4 py-2";
             </div>
           </dl>
           <p class="mt-3 text-sm leading-relaxed text-stone-700" data-choice-cancellation />
-          <div data-review-step>
-            <p class="mt-6 leading-relaxed font-semibold text-stone-900">
-              {t("reservation.choice.next")}
-            </p>
-            <p class="mt-3 text-stone-700">
-              {t("reservation.helpPrompt")}
-              <a
-                href={getWhatsAppLink(t("whatsapp.prefill"))}
-                target="_blank"
-                rel="noopener noreferrer"
-                class="text-accent-800 inline-flex min-h-11 items-center gap-2 font-medium underline underline-offset-4"
-              >
-                <Whatsapp class="size-4 shrink-0" />
-                {t("booking.cta")}
-              </a>
-            </p>
-          </div>
+          <a
+            href={reviewStepHref(lang)}
+            class={`mt-6 w-full sm:w-auto ${primary}`}
+            data-review-link
+          >
+            {t("reservation.choice.review")}
+          </a>
         </section>
       </reservation-choose>
     ) : (
@@ -264,14 +255,8 @@ const amountRow = "flex items-baseline justify-between gap-4 py-2";
 </section>
 
 <script>
-  import {
-    dateElement,
-    fill,
-    fillNodes,
-    formatDate,
-    formatList,
-    formatMoney,
-  } from "@/lib/reservation/format";
+  import { fill, formatDate, formatList, formatMoney } from "@/lib/reservation/format";
+  import { cancellationNodes } from "@/lib/reservation/terms";
   import {
     fetchOffers,
     type OfferSearchResult,
@@ -291,6 +276,7 @@ const amountRow = "flex items-baseline justify-between gap-4 py-2";
     lang: Lang;
     apiBase: string;
     searchHref: string;
+    reviewHref: string;
     text: Record<string, string>;
     rooms: Record<string, { name: string; pmsRoomTypeId: string | null }>;
   };
@@ -539,22 +525,6 @@ const amountRow = "flex items-baseline justify-between gap-4 py-2";
       return state;
     }
 
-    private cancellation(offer: PlanOffer) {
-      const amount = this.money(offer.cancellation.chargeCents);
-      const { freeCancellation, freeUntil } = offer.cancellation;
-      if (freeCancellation === "available" && freeUntil)
-        return fillNodes(this.text("reservation.cancel.available"), {
-          date: dateElement(freeUntil, this.copy.lang),
-          amount,
-        });
-      return [
-        this.text(
-          freeCancellation === "ended" ? "reservation.cancel.ended" : "reservation.cancel.none",
-          { amount },
-        ),
-      ];
-    }
-
     private renderOffer(container: HTMLElement, offer: PlanOffer) {
       this.el('[data-amount="total"]', container).textContent = this.money(offer.totalCents);
       this.el('[data-amount="now"]', container).textContent = this.money(
@@ -569,7 +539,13 @@ const amountRow = "flex items-baseline justify-between gap-4 py-2";
         offer.savingCents > 0
           ? this.text("reservation.offer.saving", { amount: this.money(offer.savingCents) })
           : "";
-      this.el("[data-cancellation]", container).replaceChildren(...this.cancellation(offer));
+      this.el("[data-cancellation]", container).replaceChildren(
+        ...cancellationNodes(offer.cancellation, {
+          text: (key, values) => this.text(key, values),
+          amount: this.money(offer.cancellation.chargeCents),
+          lang: this.copy.lang,
+        }),
+      );
     }
 
     private choose(roomId: string, plan: RatePlanCode, focus = true) {
@@ -598,7 +574,15 @@ const amountRow = "flex items-baseline justify-between gap-4 py-2";
       this.el('[data-choice-amount="remaining"]', choice).textContent = this.money(
         offer.remainingScheduledCents,
       );
-      this.el("[data-choice-cancellation]", choice).replaceChildren(...this.cancellation(offer));
+      this.el("[data-choice-cancellation]", choice).replaceChildren(
+        ...cancellationNodes(offer.cancellation, {
+          text: (key, values) => this.text(key, values),
+          amount: this.money(offer.cancellation.chargeCents),
+          lang: this.copy.lang,
+        }),
+      );
+      this.el<HTMLAnchorElement>("[data-review-link]", choice).href =
+        `${this.copy.reviewHref}?${searchParams(this.search).toString()}`;
       choice.hidden = false;
       if (focus) choice.focus();
     }

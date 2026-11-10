@@ -1,15 +1,7 @@
-import { Toast } from "@base-ui/react/toast";
-
-export const toast = Toast.createToastManager();
+import { toast } from "sonner";
 
 export function toastError(title: string, cause?: unknown) {
   const message =
     typeof cause === "string" ? cause : cause instanceof Error ? cause.message : undefined;
-  toast.add({
-    title,
-    description: message && message !== title ? message : undefined,
-    type: "error",
-    priority: "high",
-    timeout: 7000,
-  });
+  toast.error(title, { description: message && message !== title ? message : undefined });
 }

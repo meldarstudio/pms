@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Link, useBlocker } from "@tanstack/react-router";
 import { ArrowLeftIcon } from "lucide-react";
-import { DiscardChanges } from "@/components/room-booking-dialog";
+import { DiscardChanges } from "@/components/discard-changes";
 import { Button } from "@/components/ui/button";
 import {
   Breadcrumb,
@@ -22,15 +22,18 @@ import {
   type ReservationEditorTarget,
 } from "@/components/reservation-page-editors";
 import type { ReservationDetail } from "@/lib/api";
-import type { ReservationsSearch } from "@/lib/route-search";
+import type { CalendarSearch, ReservationsSearch } from "@/lib/route-search";
 
-type PageProps = { id: string; backSearch: ReservationsSearch; onBack: () => void };
+export type ReservationBack =
+  | { to: "/calendar"; search: CalendarSearch }
+  | { to: "/reservations"; search: ReservationsSearch };
+type PageProps = { id: string; back: ReservationBack; onBack: () => void };
 
 export function ReservationPage(props: PageProps) {
   return <ReservationPageContent key={props.id} {...props} />;
 }
 
-function ReservationPageContent({ id, backSearch, onBack }: PageProps) {
+function ReservationPageContent({ id, back, onBack }: PageProps) {
   const query = useReservation(id, { refetchOnReconnect: true });
   const { saving } = useReservationCommands(id);
   const dirty = useRef(false);
@@ -74,9 +77,15 @@ function ReservationPageContent({ id, backSearch, onBack }: PageProps) {
         <Breadcrumb className="min-w-0">
           <BreadcrumbList className="flex-nowrap">
             <BreadcrumbItem>
-              <BreadcrumbLink render={<Link to="/reservations" search={backSearch} />}>
-                Reservas
-              </BreadcrumbLink>
+              {back.to === "/calendar" ? (
+                <BreadcrumbLink render={<Link to="/calendar" search={back.search} />}>
+                  Calendario
+                </BreadcrumbLink>
+              ) : (
+                <BreadcrumbLink render={<Link to="/reservations" search={back.search} />}>
+                  Reservas
+                </BreadcrumbLink>
+              )}
             </BreadcrumbItem>
             <BreadcrumbSeparator />
             <BreadcrumbItem>
@@ -100,7 +109,7 @@ function ReservationPageContent({ id, backSearch, onBack }: PageProps) {
                 action: (
                   <Button variant="outline" onClick={onBack}>
                     <ArrowLeftIcon data-icon="inline-start" />
-                    Volver a reservas
+                    {back.to === "/calendar" ? "Volver al calendario" : "Volver a reservas"}
                   </Button>
                 ),
               }}

@@ -47,7 +47,7 @@ import {
   refundCapacityCents,
   splitRefund,
 } from "@/lib/refund-split";
-import { toast } from "@/lib/toast";
+import { toast } from "sonner";
 import { usePropertyCalendar } from "@/lib/use-property-calendar";
 
 type FormProps = {
@@ -88,7 +88,7 @@ async function finish(
   onDone: () => void,
 ) {
   if (result.status === "saved") {
-    toast.add({ title, type: "success" });
+    toast.success(title);
     onDone();
   } else if (result.status === "failed") outcomeSaveError(result);
   else setServerErrors(form, result.fields);
@@ -241,7 +241,7 @@ export function RefundForm({
       (entry) => !setup.couponIds.includes(entry.id) && entry.valueCents === amountCents,
     );
     if (coupons.length === 1) return onCouponIssued(coupons[0]);
-    toast.add({ title: "Cupón emitido", type: "success" });
+    toast.success("Cupón emitido");
     onDone();
   }
   async function returnToCard(value: RefundValues, paymentId: string) {
@@ -270,26 +270,16 @@ export function RefundForm({
         !setup.basis.refunds.some((earlier) => earlier.id === refund.id),
     );
     const returned = candidates.length === 1 ? candidates[0] : undefined;
-    toast.add(
-      returned?.status === "requested"
-        ? { title: "Reembolso solicitado", description: culqiPendingLine, priority: "high" }
-        : returned?.status === "completed"
-          ? { title: "Reembolso registrado", type: "success" }
-          : {
-              title: "Solicitud procesada",
-              description: "Revisa el resultado en Movimientos.",
-              priority: "high",
-            },
-    );
+    if (returned?.status === "requested")
+      toast("Reembolso solicitado", { description: culqiPendingLine });
+    else if (returned?.status === "completed") toast.success("Reembolso registrado");
+    else toast("Solicitud procesada", { description: "Revisa el resultado en Movimientos." });
     onDone();
   }
   function alreadyRecorded(result: ReservationCommandResult) {
     if (result.status !== "failed" || result.code !== earlierAttemptSaved) return false;
-    toast.add({
-      title: "Los cambios ya se habían guardado",
+    toast("Los cambios ya se habían guardado", {
       description: "Se guardó con los datos del primer intento. Revísalo en Movimientos.",
-      priority: "high",
-      timeout: 7000,
     });
     onDone();
     return true;
