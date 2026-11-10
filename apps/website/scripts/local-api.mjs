@@ -6,6 +6,7 @@ import { fileURLToPath } from "node:url";
 import { executeSql, localDatabase } from "../../backend/scripts/d1.mjs";
 import { CULQI_TEST_KEY } from "../../backend/src/test-support/culqi.ts";
 import { TURNSTILE_TEST_SECRET } from "../../backend/src/test-support/turnstile.ts";
+import { RESEND_TEST_KEY } from "../../backend/src/test-support/resend.ts";
 import { startFakePaymentServices } from "./fake-payment-services.mjs";
 import {
   FAKE_PAYMENT_SERVICES_URL,
@@ -53,6 +54,8 @@ writeFileSync(
     `CULQI_API_URL=${FAKE_PAYMENT_SERVICES_URL}/v2`,
     `TURNSTILE_SECRET_KEY=${TURNSTILE_TEST_SECRET}`,
     `TURNSTILE_VERIFY_URL=${FAKE_PAYMENT_SERVICES_URL}/turnstile/v0/siteverify`,
+    `RESEND_API_KEY=${RESEND_TEST_KEY}`,
+    `RESEND_API_URL=${FAKE_PAYMENT_SERVICES_URL}`,
   ].join("\n"),
 );
 

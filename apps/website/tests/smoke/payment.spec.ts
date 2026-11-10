@@ -1,7 +1,13 @@
 import { fileURLToPath } from "node:url";
 import { expect, test, type APIRequestContext, type Page } from "@playwright/test";
 import { executeSql, localDatabase, queryRows } from "../../../backend/scripts/d1.mjs";
-import { LOCAL_API_URL, daysFromToday, openStay } from "../support/local-api";
+import {
+  FAKE_PAYMENT_SERVICES_URL,
+  LOCAL_API_URL,
+  daysFromToday,
+  openStay,
+  WEBSITE_URL,
+} from "../support/local-api";
 import { nextCulqiCharge, stubPaymentScripts, useOwnSourceIp } from "../support/payment";
 
 declare global {
@@ -79,6 +85,152 @@ async function serverPayment(page: Page, request: APIRequestContext) {
 }
 
 const localState = fileURLToPath(new URL("../../.local-api/state", import.meta.url));
+
+for (const [language, plan, offset] of [
+  ["es", "flexible", 240],
+  ["en", "non_refundable", 250],
+] as const) {
+  test(`the complete ${language} ${plan} journey sends its saved confirmation and opens the same private summary`, async ({
+    page,
+    request,
+    browser,
+  }) => {
+    await page.context().grantPermissions(["clipboard-read", "clipboard-write"]);
+    const en = language === "en";
+    const base = en ? "/en" : "";
+    const email = payerEmail();
+    const total = en ? "180.00" : "200.00";
+    const paidAmount = en ? "180.00" : "100.00";
+    await page.goto(`${base}/reservar/`);
+    await page.getByLabel(en ? "Arrival" : "Llegada").fill(daysFromToday(offset));
+    await page.getByLabel(en ? "Departure" : "Salida").fill(daysFromToday(offset + 2));
+    await page
+      .getByRole("button", { name: en ? "See rooms and prices" : "Ver habitaciones y precios" })
+      .click();
+    const king = page.getByRole("article", { name: en ? "King room" : "Suite Matrimonial" });
+    if (en) await king.getByRole("radio", { name: /Non-refundable/ }).check();
+    await king.getByRole("button", { name: /Choose this room|Elegir esta habitación/ }).click();
+    await page
+      .getByRole("link", { name: en ? "Continue to review" : "Continuar a la revisión" })
+      .click();
+    await expect(page.locator('[data-amount="total"]')).toHaveText(new RegExp(`S/\\s${total}`));
+    await expect(page.locator('[data-amount="now"]')).toHaveText(new RegExp(`S/\\s${paidAmount}`));
+    if (!en)
+      await expect(page.locator("[data-cancellation] time")).toHaveAttribute(
+        "datetime",
+        daysFromToday(offset - 2),
+      );
+    await page.getByLabel(en ? "Full name" : "Nombre completo").fill("Ana Torres");
+    await page.getByLabel(en ? "Email" : "Correo electrónico", { exact: true }).fill(email);
+    await page.getByLabel(en ? "Phone" : "Teléfono", { exact: true }).fill("987 654 321");
+    await page.getByRole("checkbox", { name: /I accept|Acepto las condiciones/ }).check();
+    await page.getByRole("button", { name: en ? "Accept terms" : "Aceptar condiciones" }).click();
+    await page
+      .getByRole("button", {
+        name: new RegExp(
+          `^${en ? "Pay" : "Pagar"} S/\\s${paidAmount} ${en ? "by card" : "con tarjeta"}$`,
+        ),
+      })
+      .click();
+    await expect(
+      page.getByRole("heading", {
+        name: en ? "Your reservation is confirmed" : "Su reserva está confirmada",
+      }),
+    ).toBeVisible();
+    const reference = (await outcome(page).innerText()).match(
+      /(?:Reference|Referencia)\s*([A-Z0-9]{6})/,
+    )?.[1];
+    expect(reference).toBeTruthy();
+    await page.getByRole("button", { name: en ? "Copy link" : "Copiar enlace" }).click();
+    await expect(page.getByText(en ? "Link copied" : "Enlace copiado")).toBeVisible();
+    const copied = new URL(await page.evaluate(() => navigator.clipboard.readText()));
+
+    const login = await request.post(`${LOCAL_API_URL}/login`, {
+      headers: { origin: "https://app.hotelmanantialchurin.com" },
+      data: { username: "kevin", password: "owner horse battery staple" },
+    });
+    expect(login.status()).toBe(200);
+    const cookie = login
+      .headersArray()
+      .filter(({ name }) => name.toLowerCase() === "set-cookie")
+      .map(({ value }) => value.split(";")[0])
+      .join("; ");
+    const headers = { cookie, origin: "https://app.hotelmanantialchurin.com" };
+    expect(
+      (
+        await request.put(`${LOCAL_API_URL}/controls/email-submission`, {
+          headers,
+          data: { admitted: true },
+        })
+      ).status(),
+    ).toBe(200);
+    let message: { text: string; subject: string; to: string[] } | undefined;
+    try {
+      await expect
+        .poll(async () => {
+          expect((await request.get(`${LOCAL_API_URL}/cdn-cgi/local/scheduled`)).status()).toBe(
+            200,
+          );
+          const sent = await request.get(
+            `${FAKE_PAYMENT_SERVICES_URL}/__resend/emails?recipient=${encodeURIComponent(email)}`,
+          );
+          expect(sent.status()).toBe(200);
+          const messages = (await sent.json()) as { text: string; subject: string; to: string[] }[];
+          message = messages[0];
+          return messages.length;
+        })
+        .toBe(1);
+    } finally {
+      expect(
+        (
+          await request.put(`${LOCAL_API_URL}/controls/email-submission`, {
+            headers,
+            data: { admitted: false },
+          })
+        ).status(),
+      ).toBe(200);
+    }
+    expect(message!.to).toEqual([email]);
+    expect(message!.subject).toContain(en ? "Reservation confirmation" : "Confirmación de reserva");
+    expect(message!.text).toContain(reference!);
+    expect(message!.text).toContain(`Total: PEN ${total}`);
+    expect(message!.text).toContain(`${en ? "Paid" : "Pagado"}: PEN ${paidAmount}`);
+    const mailed = new URL(
+      message!.text.match(/https:\/\/www\.hotelmanantialchurin\.com\/\S+/)![0],
+    );
+    expect(mailed.pathname).toBe(copied.pathname);
+    expect(mailed.hash === copied.hash).toBe(true);
+    const fresh = await browser.newContext();
+    try {
+      const summary = await fresh.newPage();
+      await summary.goto(`${WEBSITE_URL}${mailed.pathname}${mailed.hash}`);
+      await expect(
+        summary.getByRole("heading", {
+          name: en ? "Reservation summary" : "Resumen de la reserva",
+        }),
+      ).toBeVisible();
+      await expect(summary.getByText(reference!)).toBeVisible();
+      await expect(summary.locator("[data-summary]")).toContainText(
+        new RegExp(`S/\\s${paidAmount}`),
+      );
+      await expect(summary.locator("[data-summary]")).not.toContainText(email);
+      if (en) {
+        executeSql(
+          localDatabase(localState),
+          `UPDATE reservation_access SET expires_on = '${daysFromToday(-1)}' WHERE reservation_id = (SELECT id FROM reservations WHERE code = '${reference!}');`,
+        );
+        await summary.reload();
+        await expect(
+          summary.getByRole("heading", { name: "The hotel can help with this reservation" }),
+        ).toBeVisible();
+        await expect(summary.locator("[data-summary]")).toBeHidden();
+        await expect(summary.getByText(reference!)).toHaveCount(0);
+      }
+    } finally {
+      await fresh.close();
+    }
+  });
+}
 
 function expireQuote(quoteId: string, checkIn?: string) {
   if (!/^[0-9a-f-]{36}$/i.test(quoteId)) throw new Error("unexpected quote id");
@@ -280,6 +432,36 @@ test("a payment pause keeps the draft and charges nothing", async ({ page, reque
   await expect(page.getByLabel("Correo electrónico")).not.toHaveValue("");
   await expect(payButton(page, "100.00")).toBeEnabled();
   expect(await serverPayment(page, request)).toBeNull();
+});
+
+test("a real Turnstile refusal stays distinct from sold-out or an uncertain charge and preserves the accepted draft for retry", async ({
+  page,
+  request,
+}) => {
+  const email = payerEmail();
+  await acceptTerms(page, "flexible", email);
+  await page.route(`${LOCAL_API_URL}/public/checkout/payments`, async (route) => {
+    await route.fallback({
+      postData: JSON.stringify({
+        ...route.request().postDataJSON(),
+        turnstileToken: "invalid-test-challenge",
+      }),
+    });
+  });
+
+  await payButton(page, "100.00").click();
+
+  await expect(
+    page
+      .getByRole("alert")
+      .filter({ hasText: "La verificación de seguridad no se superó y no se cobró nada" }),
+  ).toBeVisible();
+  await expect(page.getByLabel("Correo electrónico")).toHaveValue(email);
+  await expect(page.getByRole("checkbox", { name: /Acepto las condiciones/ })).toBeChecked();
+  expect(await serverPayment(page, request)).toBeNull();
+  await page.unroute(`${LOCAL_API_URL}/public/checkout/payments`);
+  await payButton(page, "100.00").click();
+  await expect(page.getByRole("heading", { name: "Su reserva está confirmada" })).toBeVisible();
 });
 
 test("money received for dates the same contact already holds is shown as unconfirmed, not reserved", async ({
