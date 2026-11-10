@@ -1541,6 +1541,8 @@ describe("recovering an interrupted payment", () => {
 
     expect(rows("SELECT status FROM reservations")).toEqual([{ status: "confirmed" }]);
     expect(rows("SELECT status FROM payment_attempts")).toEqual([{ status: "saved" }]);
+    expect(rows("SELECT id FROM payments")).toHaveLength(1);
+    expect(rows("SELECT id FROM confirmation_intents")).toHaveLength(1);
     expect(charges()).toHaveLength(1);
     expect(await status(checkout.token)).toMatchObject({ state: "confirmed" });
   });

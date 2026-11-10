@@ -15,28 +15,6 @@ export type ConfirmationProvenance = {
   language: CheckoutLanguage | null;
 };
 
-let skipIntent = false;
-let beforeRepairInsert: (() => Promise<void>) | null = null;
-
-export function skipNextConfirmationIntent() {
-  skipIntent = true;
-}
-
-export function whenRepairingConfirmation(hook: (() => Promise<void>) | null) {
-  beforeRepairInsert = hook;
-}
-
-export function resetConfirmationHooks() {
-  skipIntent = false;
-  beforeRepairInsert = null;
-}
-
-export function consumeSkippedIntent() {
-  const skip = skipIntent;
-  skipIntent = false;
-  return skip;
-}
-
 export function confirmationLanguage(
   language: CheckoutLanguage | null | undefined,
 ): CheckoutLanguage {
@@ -90,7 +68,6 @@ async function insertOwedIntent(db: Db, reservationId: string, checkoutId: strin
     )
     .limit(1);
   if (!attempt?.checkoutId || !attempt.acceptanceId) return;
-  await beforeRepairInsert?.();
   await db
     .insert(confirmationIntents)
     .values(

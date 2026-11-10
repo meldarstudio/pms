@@ -1,11 +1,7 @@
 import type { GuestInput, QuoteCreate } from "@pms/shared";
 import { eq } from "drizzle-orm";
 import { runBatch, type Db } from "./db";
-import {
-  confirmationIntentValues,
-  consumeSkippedIntent,
-  type ConfirmationProvenance,
-} from "./confirmation-intents";
+import { confirmationIntentValues, type ConfirmationProvenance } from "./confirmation-intents";
 import {
   confirmationIntents,
   guests,
@@ -127,11 +123,9 @@ export async function saveQuote(
   const phone = acceptPhone(guest.phone);
   const status = options.status ?? "confirmed";
   const provenance = status === "confirmed" ? (options.confirmation ?? null) : null;
-  const skipIntent = provenance !== null && consumeSkippedIntent();
-  const intent =
-    provenance !== null && !skipIntent
-      ? db.insert(confirmationIntents).values(confirmationIntentValues(id, provenance, now))
-      : null;
+  const intent = provenance
+    ? db.insert(confirmationIntents).values(confirmationIntentValues(id, provenance, now))
+    : null;
   const accessRow =
     options.publicCheckoutId != null
       ? await reservationAccessValues(id, quote.checkOut, now)

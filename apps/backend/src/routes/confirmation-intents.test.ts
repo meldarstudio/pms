@@ -1,9 +1,4 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
-import {
-  resetConfirmationHooks,
-  skipNextConfirmationIntent,
-  whenRepairingConfirmation,
-} from "../confirmation-intents";
 import worker, { app } from "../index";
 import { PORTAL_ORIGIN, WEBSITE_ORIGIN } from "../test-support/auth";
 import { CULQI_TEST_KEY, fakeCulqi, type FakeCulqi } from "../test-support/culqi";
@@ -36,7 +31,6 @@ beforeEach(async () => {
 });
 
 afterEach(() => {
-  resetConfirmationHooks();
   db.close();
   vi.unstubAllGlobals();
   vi.useRealTimers();
@@ -308,84 +302,142 @@ describe("confirmation intents", () => {
     expect(listed()).toEqual([]);
   });
 
-  it("does not add an intent when staff cancel, restore, refund, or issue a coupon", async () => {
-    const stay = await acceptedCheckout();
-    await paid(stay);
-    const id = (await reservationFor(stay.token))!.id;
-    await command(id, [{ type: "set-status", status: "cancelled" }]);
-    await command(id, [{ type: "set-status", status: "confirmed" }]);
-
-    const refunded = await acceptedCheckout({ checkIn: "2026-11-01", checkOut: "2026-11-03" });
-    await paid(refunded);
-    const refundId = (await reservationFor(refunded.token))!.id;
-    const detail = (await (await db.request(`/reservations/${refundId}`)).json()) as {
-      payments: { id: string }[];
-    };
-    await command(refundId, [{ type: "set-status", status: "cancelled" }]);
-    await command(refundId, [
-      {
-        type: "request-refund",
-        paymentId: detail.payments[0]!.id,
-        amountCents: 10000,
-        method: "transfer",
-        reason: "Guest asked",
+  it.each([
+    [
+      "cancellation",
+      async (id: string) => {
+        await command(id, [{ type: "set-status", status: "cancelled" }]);
       },
-    ]);
-
-    const source = await db.request("/reservations", "POST", {
-      requestId: crypto.randomUUID(),
-      checkIn: "2026-11-10",
-      checkOut: "2026-11-11",
-      guest: { fullName: "Coupon Source" },
-      rooms: [{ roomTypeId: "type-king", adults: 1, children: 0 }],
-    });
-    expect(source.status).toBe(201);
-    const sourceId = ((await source.json()) as { id: string }).id;
-    await command(sourceId, [
-      {
-        type: "add-payment",
-        payment: { amountCents: 10000, method: "cash", paymentDate: "2026-10-10" },
+    ],
+    [
+      "restoration",
+      async (id: string) => {
+        await command(id, [{ type: "set-status", status: "cancelled" }]);
+        await command(id, [{ type: "set-status", status: "confirmed" }]);
       },
-      { type: "set-status", status: "cancelled" },
-    ]);
-    const issued = await command(sourceId, [
-      { type: "issue-coupon", amountCents: 10000, guestAccepted: true },
-    ]);
-    const later = await acceptedCheckout({ checkIn: "2026-12-01", checkOut: "2026-12-03" });
-    await paid(later);
-    await command((await reservationFor(later.token))!.id, [
-      { type: "redeem-coupon", code: issued.coupons[0]!.code, amountCents: 10000 },
-    ]);
+    ],
+    [
+      "a refund",
+      async (id: string) => {
+        const detail = (await (await db.request(`/reservations/${id}`)).json()) as {
+          payments: { id: string }[];
+        };
+        await command(id, [{ type: "set-status", status: "cancelled" }]);
+        await command(id, [
+          {
+            type: "request-refund",
+            paymentId: detail.payments[0]!.id,
+            amountCents: 10000,
+            method: "transfer",
+            reason: "Guest asked",
+          },
+        ]);
+      },
+    ],
+    [
+      "a coupon",
+      async (id: string) => {
+        const source = await db.request("/reservations", "POST", {
+          requestId: crypto.randomUUID(),
+          checkIn: "2026-11-10",
+          checkOut: "2026-11-11",
+          guest: { fullName: "Coupon Source" },
+          rooms: [{ roomTypeId: "type-king", adults: 1, children: 0 }],
+        });
+        expect(source.status).toBe(201);
+        const sourceId = ((await source.json()) as { id: string }).id;
+        await command(sourceId, [
+          {
+            type: "add-payment",
+            payment: { amountCents: 10000, method: "cash", paymentDate: "2026-10-10" },
+          },
+          { type: "set-status", status: "cancelled" },
+        ]);
+        const issued = await command(sourceId, [
+          { type: "issue-coupon", amountCents: 10000, guestAccepted: true },
+        ]);
+        await command(id, [
+          { type: "redeem-coupon", code: issued.coupons[0]!.code, amountCents: 10000 },
+        ]);
+      },
+    ],
+  ] as const)("leaves the original confirmation intent unchanged on %s", async (_event, act) => {
+    const checkout = await acceptedCheckout();
+    await paid(checkout);
+    const id = (await reservationFor(checkout.token)).id;
+    const [original] = intents();
 
-    expect(intents()).toHaveLength(3);
-    expect(
-      rows<{ source: string; n: number }>(
-        "SELECT r.source, count(i.id) AS n FROM reservations r LEFT JOIN confirmation_intents i ON i.reservation_id = r.id GROUP BY r.source ORDER BY r.source",
-      ),
-    ).toEqual([
-      { source: "desk", n: 0 },
-      { source: "online", n: 3 },
-    ]);
+    await act(id);
+
+    expect(intents()).toEqual([original]);
   });
 
-  it("repairs one skipped intent after the reservation and attempt are already saved, without another payment", async () => {
+  it("rolls the reservation and payment back when the intent insert fails, then one retry saves one of each", async () => {
     const checkout = await acceptedCheckout();
-    skipNextConfirmationIntent();
-    await paid(checkout);
+    db.beforeCommit(() => {
+      db.sqlite.exec(`
+        CREATE TRIGGER fail_intent_insert BEFORE INSERT ON confirmation_intents
+        BEGIN
+          SELECT RAISE(ABORT, 'intent insert failed');
+        END;
+      `);
+    });
+
+    const response = await pay(checkout);
+    expect(response.status).toBe(201);
+    expect(await response.json()).toMatchObject({
+      payment: { state: "paid_awaiting_reservation", reservation: null },
+    });
+    expect(rows("SELECT id FROM reservations")).toEqual([]);
+    expect(rows("SELECT id FROM payments")).toEqual([]);
     expect(intents()).toEqual([]);
+    expect(rows("SELECT status FROM payment_attempts")).toEqual([{ status: "succeeded" }]);
+    db.sqlite.exec("DROP TRIGGER fail_intent_insert");
+
+    await runScheduled();
+    await runScheduled();
+
     expect(rows("SELECT status, confirmation_owed FROM reservations")).toEqual([
       { status: "confirmed", confirmation_owed: 1 },
     ]);
+    expect(rows("SELECT id FROM payments")).toHaveLength(1);
+    expect(intents()).toEqual([
+      expect.objectContaining({ recipient_email: "ana@example.com", language: "en" }),
+    ]);
     expect(rows("SELECT status FROM payment_attempts")).toEqual([{ status: "saved" }]);
+    expect(charges()).toHaveLength(1);
+  });
+
+  it("finishes a committed confirmation whose attempt is not yet saved, without a second charge", async () => {
+    const checkout = await acceptedCheckout();
+    await paid(checkout);
+    const [payment] = rows<{ id: string }>("SELECT id FROM payments");
+    db.sqlite.exec("DELETE FROM confirmation_intents");
+    db.sqlite.exec("UPDATE payment_attempts SET status = 'succeeded'");
+
+    await runScheduled();
+
+    expect(intents()).toEqual([
+      expect.objectContaining({ recipient_email: "ana@example.com", language: "en" }),
+    ]);
+    expect(rows("SELECT id FROM payments")).toEqual([payment]);
+    expect(rows("SELECT status FROM payment_attempts")).toEqual([{ status: "saved" }]);
+    expect(rows("SELECT status FROM reservations")).toEqual([{ status: "confirmed" }]);
+    expect(charges()).toHaveLength(1);
+    expect(listed()).toEqual([]);
+  });
+
+  it("repairs a saved confirmation whose intent row is missing, without another payment", async () => {
+    const checkout = await acceptedCheckout();
+    await paid(checkout);
+    const [payment] = rows<{ id: string }>("SELECT id FROM payments");
+    db.sqlite.exec("DELETE FROM confirmation_intents");
     db.sqlite.exec("UPDATE guests SET email = 'later@example.com'");
-    const listedBefore = listed().length;
 
     await runScheduled();
     const [intent] = intents();
     await runScheduled();
     const replay = await pay(checkout);
-    db.sqlite.exec("UPDATE payment_attempts SET status = 'succeeded'");
-    await runScheduled();
 
     expect(replay.status).toBe(200);
     expect(intents()).toEqual([
@@ -395,33 +447,10 @@ describe("confirmation intents", () => {
         language: "en",
       },
     ]);
-    expect(rows("SELECT id FROM payments")).toHaveLength(1);
+    expect(rows("SELECT id FROM payments")).toEqual([payment]);
     expect(rows("SELECT status FROM payment_attempts")).toEqual([{ status: "saved" }]);
     expect(charges()).toHaveLength(1);
-    expect(listed()).toHaveLength(listedBefore);
-  });
-
-  it("inserts one row when two repairs overlap", async () => {
-    const checkout = await acceptedCheckout();
-    skipNextConfirmationIntent();
-    await paid(checkout);
-    let entered = 0;
-    let release: () => void = () => {};
-    const both = new Promise<void>((resolve) => {
-      release = resolve;
-    });
-    whenRepairingConfirmation(async () => {
-      entered += 1;
-      if (entered === 2) release();
-      await both;
-    });
-
-    await Promise.all([runScheduled(), runScheduled()]);
-
-    expect(entered).toBe(2);
-    expect(intents()).toHaveLength(1);
-    expect(rows("SELECT id FROM payments")).toHaveLength(1);
-    expect(charges()).toHaveLength(1);
+    expect(listed()).toEqual([]);
   });
 
   it("shows the intent to staff and the owner, and hides it from guests and bearers", async () => {
