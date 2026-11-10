@@ -544,6 +544,45 @@ export function getReservationAccess(id: string, signal?: AbortSignal) {
   return getJson<ReservationAccess>(`/reservations/${id}/access`, signal);
 }
 
+export type ConfirmationDelivery = {
+  accepted: boolean;
+  delivered: boolean;
+  delayed: boolean;
+  failed: boolean;
+  bounced: boolean;
+  permanentlyBounced: boolean;
+  complained: boolean;
+  suppressed: boolean;
+  uncertain: boolean;
+  conflict: boolean;
+  recipientBlocked: boolean;
+  history: {
+    eventId: string;
+    source: "callback" | "lookup" | "response";
+    type:
+      | "sent"
+      | "delivered"
+      | "delivery_delayed"
+      | "failed"
+      | "bounced"
+      | "complained"
+      | "suppressed";
+    providerMessageId: string;
+    messageId: string | null;
+    occurredAt: string | null;
+    observedAt: string;
+    conflict: boolean;
+    details: {
+      reason?: string;
+      bounceType?: string;
+      bounceSubType?: string;
+      permanent?: boolean;
+      suppressionType?: string;
+      eventIdConflict?: boolean;
+    } | null;
+  }[];
+};
+
 export type ReservationConfirmation = {
   id: string;
   recipientEmail: string;
@@ -560,6 +599,7 @@ export type ReservationConfirmation = {
     firstPossibleAt: string | null;
     nextAttemptAt: string | null;
     createdAt: string;
+    delivery: ConfirmationDelivery;
   } | null;
 };
 
