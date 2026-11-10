@@ -14,7 +14,8 @@ import { useIsMobile } from "@/hooks/use-mobile";
 import type { ReservationDetail } from "@/lib/api";
 import { useAvailability, useRooms, useRoomTypes } from "@/lib/queries";
 import { useReservationCommands } from "@/lib/reservation-commands";
-import { toast, toastError } from "@/lib/toast";
+import { toast } from "sonner";
+import { toastError } from "@/lib/toast";
 import { withReservationForm, submitForm } from "@/lib/reservation-form";
 import { emptyDetails } from "@/lib/reservation-form-schemas";
 import { ratePlanLabels } from "@/lib/rate-plans";
@@ -84,7 +85,7 @@ export function StayEditor({
     const result = await send(stayDraft.submission.command.actions);
     if (result.status === "saved") {
       resetDetails(result.reservation);
-      toast.add({ title: "Detalles guardados", type: "success" });
+      toast.success("Detalles guardados");
       onSaved();
     } else if (result.status === "rejected") stayDraft.rejectSave(result.fields);
     else toastError("No se pudo guardar", result.message);

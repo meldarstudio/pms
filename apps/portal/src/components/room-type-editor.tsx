@@ -32,7 +32,8 @@ import { parseMajorToCents } from "@/lib/money";
 import { useSavePropertySetup } from "@/lib/queries";
 import { blurThenChange } from "@/lib/reservation-form-state";
 import { setupDefaults, setupFormSchema, type SetupValues } from "@/lib/setup-form";
-import { toast, toastError } from "@/lib/toast";
+import { toast } from "sonner";
+import { toastError } from "@/lib/toast";
 
 type RoomTypeDraft = SetupValues & { roomNumber: string };
 
@@ -139,7 +140,7 @@ export function RoomTypeEditor({
         form.reset({ ...setupDefaults(result.roomType, result.rooms), roomNumber: "" });
         onTypeSaved(result.roomType, result.rooms);
         events.onSaved();
-        toast.add({ title: "Configuración guardada", type: "success" });
+        toast.success("Configuración guardada");
       } catch (error) {
         if (error instanceof ApiError && error.code === "room type already exists")
           setServerErrors(form, { name: error.message });

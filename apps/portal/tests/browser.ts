@@ -56,12 +56,25 @@ export async function createBrowserTest() {
   const { createRoot } = await import("react-dom/client");
   const query = await import("@tanstack/react-query");
   const routing = await import("@tanstack/react-router");
+  const sonner = await import("sonner");
   const server = await createServer({
     root: fileURLToPath(new URL("../", import.meta.url)),
     configFile: fileURLToPath(new URL("../vite.config.ts", import.meta.url)),
     server: { middlewareMode: true, hmr: false, ws: false, watch: null },
     mode: "development",
   });
+
+  async function withToasts(element: React.ReactNode) {
+    const [{ ThemeProvider }, { Toaster }] = await Promise.all([
+      server.ssrLoadModule("/src/components/theme-provider.tsx") as Promise<
+        typeof import("../src/components/theme-provider.tsx")
+      >,
+      server.ssrLoadModule("/src/components/ui/sonner.tsx") as Promise<
+        typeof import("../src/components/ui/sonner.tsx")
+      >,
+    ]);
+    return React.createElement(ThemeProvider, null, element, React.createElement(Toaster));
+  }
 
   function createPage() {
     const api = createFakeBackend();
@@ -129,6 +142,12 @@ export async function createBrowserTest() {
       await React.act(async () => item.click());
     }
 
+    function notifications() {
+      return (
+        window.document.querySelector('section[aria-label^="Notificaciones"]')?.textContent ?? ""
+      );
+    }
+
     function field(name: string) {
       const element = window.document.querySelector<HTMLInputElement | HTMLTextAreaElement>(
         `[name="${name}"]`,
@@ -157,6 +176,7 @@ export async function createBrowserTest() {
 
     async function cleanup() {
       await React.act(async () => root.unmount());
+      sonner.toast.dismiss();
       client.clear();
       container.remove();
       globalThis.fetch = originalFetch;
@@ -177,6 +197,7 @@ export async function createBrowserTest() {
       click,
       openMenu,
       menuAction,
+      notifications,
       field,
       fill,
       mobile,
@@ -189,7 +210,7 @@ export async function createBrowserTest() {
     await window.happyDOM.close();
   }
 
-  return { window, React, query, routing, server, createPage, close };
+  return { window, React, query, routing, server, withToasts, createPage, close };
 }
 
 export type BrowserTest = Awaited<ReturnType<typeof createBrowserTest>>;

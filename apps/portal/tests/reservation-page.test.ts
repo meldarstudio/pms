@@ -351,14 +351,9 @@ async function render(search = "", waitForDetail = true, withToasts = false) {
     }),
   });
   if (withToasts) {
-    const { ToastProvider } = await browser.server.ssrLoadModule("/src/components/ui/toast.tsx");
     await React.act(async () => router.load());
     await page.render(
-      React.createElement(
-        ToastProvider,
-        null,
-        React.createElement(browser.routing.RouterProvider, { router }),
-      ),
+      await browser.withToasts(React.createElement(browser.routing.RouterProvider, { router })),
     );
   } else await page.renderRouter(router);
   if (waitForDetail) await page.until(() => page.container.textContent.includes("#TEST0001"));
@@ -547,6 +542,7 @@ it("confirms the page check-out balance, sends nothing on Volver, and offers und
   await React.act(async () => confirm.click());
   await page.until(() => window.document.body.textContent.includes("Check-out registrado"));
   assert.deepEqual(writes[0].actions, [{ type: "set-status", status: "checked_out" }]);
+  await page.until(() => !button("Deshacer").disabled);
   await click("Deshacer");
   await page.until(() => window.document.body.textContent.includes("Check-out deshecho"));
   assert.deepEqual(writes[1].actions, [{ type: "set-status", status: "checked_in" }]);
@@ -576,6 +572,7 @@ it("warns about a dirty room before the page check-in and undoes the successful 
   await React.act(async () => confirm.click());
   await page.until(() => window.document.body.textContent.includes("Check-in registrado"));
   assert.deepEqual(writes[0].actions, [{ type: "set-status", status: "checked_in" }]);
+  await page.until(() => !button("Deshacer").disabled);
   await click("Deshacer");
   await page.until(() => window.document.body.textContent.includes("Check-in deshecho"));
   assert.deepEqual(writes[1].actions, [{ type: "set-status", status: "confirmed" }]);
@@ -619,10 +616,10 @@ it.each(["discount", "editor"])(
       await page.fill(discountInput()!, "50");
     } else {
       await click("Editar notas");
-      assert.equal(undo.disabled, true, "Even a pristine open page editor blocks undo");
+      await page.until(() => undo.disabled, "Even a pristine open page editor blocks undo");
       await fill("notes", "Borrador protegido");
     }
-    assert.equal(undo.disabled, true);
+    await page.until(() => undo.disabled, "A page draft must disable undo");
     await React.act(async () => undo.click());
     assert.equal(writes.length, 1);
     assert.equal(saved.status, "checked_in");
@@ -635,11 +632,37 @@ it.each(["discount", "editor"])(
       await click("Descartar y salir");
     }
     await page.until(() => !undo.disabled);
+    assert.equal(
+      page.notifications().split("Check-in registrado").length,
+      2,
+      "Blocking and unblocking must update the one undo notice",
+    );
     await React.act(async () => undo.click());
     await page.until(() => saved.status === "confirmed");
     assert.deepEqual(writes[1].actions, [{ type: "set-status", status: "confirmed" }]);
   },
 );
+
+it("retires an expired lifecycle undo so a later draft cannot revive it", async () => {
+  vi.useFakeTimers({ toFake: ["Date", "setTimeout", "clearTimeout"], shouldAdvanceTime: true });
+  vi.setSystemTime(new Date("2026-10-19T15:00:00Z"));
+  mockApi();
+  await render("", true, true);
+  await click("Hacer check-in");
+  await page.until(() => page.notifications().includes("Check-in registrado"));
+  const undo = button("Deshacer");
+  await React.act(async () => vi.advanceTimersByTime(4000));
+  await page.until(
+    () => !page.notifications().includes("Check-in registrado"),
+    "The undo notice must close after the default duration",
+  );
+  await click("Editar notas");
+  await page.flush(50);
+  assert.equal(page.notifications().includes("Check-in registrado"), false);
+  await React.act(async () => undo.click());
+  assert.equal(writes.length, 1);
+  assert.equal(saved.status, "checked_in");
+});
 
 it("does not queue an old undo behind a running lifecycle save", async () => {
   saved = { ...saved, paidCents: 30000, balanceCents: 0 };
@@ -657,8 +680,7 @@ it("does not queue an old undo behind a running lifecycle save", async () => {
   await page.until(() => window.document.body.textContent.includes("Check-in registrado"));
   const undo = button("Deshacer");
   await click("Hacer check-out");
-  await page.until(() => writes.length === 2);
-  assert.equal(undo.disabled, true);
+  await page.until(() => writes.length === 2 && undo.disabled);
   await React.act(async () => undo.click());
   assert.equal(writes.length, 2);
   await React.act(async () => {
@@ -1833,7 +1855,7 @@ it("retries a failed cancellation preview and keeps the reason after a failed sa
     "A failed cancellation save must allow retrying",
   );
   assert.equal(field("reason").value, reason);
-  assert.match(text(window.document.body), /No se pudieron guardar los cambios/);
+  await page.until(() => page.notifications().includes("No se pudieron guardar los cambios"));
   assert.doesNotMatch(text(window.document.body), /Temporary cancellation save failure/);
   assert.ok(log.mock.calls.length >= 2);
   assert.equal(saved.status, "confirmed");
@@ -3065,13 +3087,12 @@ it.each(["manual", "provider"] as const)(
     await fill("reason", "Sobrepago");
     await submit();
     await page.until(() => !popup());
-    const notice = window.document.querySelector('[data-slot="toast"]')!;
-    assert.ok(notice);
-    assert.match(
-      text(notice),
-      concurrent === "manual" ? /Reembolso registrado/ : /Solicitud procesada/,
+    const expected = concurrent === "manual" ? "Reembolso registrado" : "Solicitud procesada";
+    await page.until(() => page.notifications().includes(expected));
+    assert.doesNotMatch(
+      page.notifications(),
+      /Reembolso solicitado|Comprueba el resultado en Culqi/,
     );
-    assert.doesNotMatch(text(notice), /Reembolso solicitado|Comprueba el resultado en Culqi/);
   },
 );
 
@@ -3490,12 +3511,9 @@ it.each(["coupon", "money"] as const)(
     assert.equal(saved.coupons.length, original === "coupon" ? 1 : 0);
     assert.equal(saved.refunds.length, original === "money" ? 1 : 0);
     assert.equal(text(accountStatusLine()), "Por devolver S/ 40 Devolver…");
-    const notices = Array.from(window.document.querySelectorAll('[data-slot="toast"]'))
-      .map(text)
-      .join(" ");
-    assert.match(notices, /Los cambios ya se habían guardado/);
+    await page.until(() => page.notifications().includes("Los cambios ya se habían guardado"));
     assert.doesNotMatch(
-      notices,
+      page.notifications(),
       /Este reembolso ya se había registrado|Este cupón ya se había emitido/,
     );
   },

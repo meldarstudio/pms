@@ -2,7 +2,8 @@ import { Button } from "@/components/ui/button";
 import { FieldDescription } from "@/components/ui/field";
 import { outcomeSaveError } from "@/components/outcome-command-preview";
 import { earlierAttemptSaved, useReservationCommands } from "@/lib/reservation-commands";
-import { toast, toastError } from "@/lib/toast";
+import { toast } from "sonner";
+import { toastError } from "@/lib/toast";
 
 export function CommandRecovery({
   reservationId,
@@ -33,10 +34,8 @@ export function CommandRecovery({
             result.status === "saved" ||
             (result.status === "failed" && result.code === earlierAttemptSaved)
           ) {
-            toast.add({
-              title: "Intento anterior comprobado",
+            toast.success("Intento anterior comprobado", {
               description: "Revisa los cambios guardados en Movimientos.",
-              type: "success",
             });
             onDone();
           } else if (result.status === "failed") outcomeSaveError(result);

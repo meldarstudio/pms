@@ -4,7 +4,7 @@ import { Button } from "@/components/ui/button";
 import type { ReservationDetail, WorkflowAction } from "@/lib/api";
 import { useReservationPreview, type ReservationCommandResult } from "@/lib/reservation-commands";
 import { submitForm } from "@/lib/reservation-form";
-import { toast } from "@/lib/toast";
+import { toast } from "sonner";
 import { usePropertyCalendar } from "@/lib/use-property-calendar";
 
 export function RestoreReservationForm({
@@ -31,7 +31,7 @@ export function RestoreReservationForm({
     if (disabled || !ready) return;
     const result = await onSave(actions);
     if (result.status === "saved") {
-      toast.add({ title: "Cambios guardados", type: "success" });
+      toast.success("Cambios guardados");
       onDone();
     } else if (result.status === "failed") outcomeSaveError(result);
   }

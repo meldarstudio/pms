@@ -14,7 +14,7 @@ import {
 } from "@/components/ui/dialog";
 import { DiscardChanges } from "@/components/discard-changes";
 import { NewBooking } from "@/components/new-booking";
-import { toast } from "@/lib/toast";
+import { toast } from "sonner";
 
 export type BookingTarget =
   | {
@@ -109,7 +109,7 @@ export function RoomBookingDialog({
             key={target.mode === "create" ? target.roomId + target.checkIn : "new"}
             target={target}
             onCreated={(reservation) => {
-              toast.add({ title: "Reserva creada", type: "success" });
+              toast.success("Reserva creada");
               client.setQueryData(["reservation", reservation.id], reservation);
               dirty.current = false;
               onCreated(reservation.id);
