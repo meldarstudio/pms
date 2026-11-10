@@ -250,6 +250,7 @@ describe("private reservation summary", () => {
       rooms: [
         {
           roomTypeId: "type-king",
+          name: "King",
           adults: 2,
           children: 0,
           nights: [
@@ -306,6 +307,7 @@ describe("private reservation summary", () => {
     expect(edited.rooms).toEqual([
       {
         roomTypeId: "type-twin",
+        name: "Twin",
         adults: 2,
         children: 0,
         nights: [
@@ -320,7 +322,14 @@ describe("private reservation summary", () => {
       outstandingCents: 20000,
       cancellation: { chargeCents: 15000, freeUntil: "2026-10-18" },
     });
-    hidden(edited, ["VIP arrival", "Secret Guest", "secret@example.com", link.token]);
+    hidden(edited, [
+      "VIP arrival",
+      "Secret Guest",
+      "secret@example.com",
+      link.token,
+      "201",
+      "room-201",
+    ]);
     expect(accessRows()).toHaveLength(1);
   });
 
@@ -341,16 +350,21 @@ describe("private reservation summary", () => {
       },
     ]);
 
-    expect(await summary(link.token)).toMatchObject({
+    db.sqlite.exec("UPDATE room_types SET base_rate_cents = 99999 WHERE id = 'type-king'");
+    const cancelled = await summary(link.token);
+    expect(cancelled).toMatchObject({
       status: "cancelled",
+      ratePlan: "flexible",
       paidCents: 10000,
       refundedCents: 0,
       refundDueCents: 10000,
       outstandingCents: 0,
       totalCents: 0,
+      cancellation: { freeUntil: "2026-10-18", chargeCents: 10000 },
     });
-    expect(await summary(link.token)).not.toHaveProperty("cancellation");
-    hidden(await summary(link.token), ["Guest asked"]);
+    expect(cancelled.cancellation?.freeCancellation).not.toBe("available");
+    hidden(cancelled, ["Guest asked"]);
+    db.sqlite.exec("UPDATE room_types SET base_rate_cents = 10000 WHERE id = 'type-king'");
 
     await command(id, [
       {
@@ -611,7 +625,8 @@ describe("private reservation summary", () => {
       refundedCents: 0,
       totalCents: 0,
     });
-    expect(body).not.toHaveProperty("cancellation");
+    expect(body.cancellation).toEqual({ freeUntil: "2026-10-18", chargeCents: 10000 });
+    expect(body.cancellation?.freeCancellation).not.toBe("available");
     expect((await guest("/public/checkout/payment", { token: checkout.token })).status).toBe(200);
     expect(consumed).toEqual([]);
     expect(culqi.requests.filter((request) => request.method === "POST")).toHaveLength(1);

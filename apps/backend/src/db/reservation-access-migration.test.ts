@@ -45,18 +45,27 @@ describe("reservation access migration", () => {
     expect(db.prepare("PRAGMA foreign_key_check").all()).toEqual([]);
   });
 
-  it("creates the access table on a fresh install", () => {
-    for (const entry of journal.entries) db.exec(migration(entry.tag));
+  it("lets a reservation saved after the upgrade store access without granting it to older stays", () => {
+    expect(accessMigration).toBeGreaterThan(0);
+    for (const entry of journal.entries.slice(0, accessMigration)) db.exec(migration(entry.tag));
+    db.exec(`
+      INSERT INTO room_types (id, name, max_occupancy, base_rate_cents, created_at)
+        VALUES ('type', 'Standard', 2, 10000, '2026-10-05');
+      INSERT INTO guests (id, full_name, created_at) VALUES ('contact', 'Ana', '2026-10-05');
+      INSERT INTO reservations (id, code, guest_id, check_in, check_out, source, created_at)
+        VALUES ('legacy', 'LEGACY', 'contact', '2026-10-20', '2026-10-21', 'online', '2026-10-05');
+    `);
+
+    db.exec(migration(journal.entries[accessMigration]!.tag));
+    db.exec(`
+      INSERT INTO reservations (id, code, guest_id, check_in, check_out, source, created_at)
+        VALUES ('later', 'LATER1', 'contact', '2026-11-01', '2026-11-02', 'online', '2026-11-01');
+      INSERT INTO reservation_access (reservation_id, token_hash, token, expires_on, created_at)
+        VALUES ('later', 'hash', 'later-token', '2026-12-01', '2026-11-01');
+    `);
 
     expect(
-      db.prepare("SELECT name FROM pragma_table_info('reservation_access') ORDER BY name").all(),
-    ).toEqual([
-      { name: "created_at" },
-      { name: "expires_on" },
-      { name: "reservation_id" },
-      { name: "token" },
-      { name: "token_hash" },
-    ]);
-    expect(db.prepare("SELECT * FROM reservation_access").all()).toEqual([]);
+      db.prepare("SELECT reservation_id FROM reservation_access ORDER BY reservation_id").all(),
+    ).toEqual([{ reservation_id: "later" }]);
   });
 });

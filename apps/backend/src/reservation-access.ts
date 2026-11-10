@@ -1,6 +1,6 @@
-import { asc, eq } from "drizzle-orm";
+import { asc, eq, inArray } from "drizzle-orm";
 import type { Db } from "./db";
-import { reservationAccess, reservations } from "./db/schema";
+import { reservationAccess, reservations, roomTypes } from "./db/schema";
 import { HttpError } from "./http";
 import { freeCancellationUntil, chargeableCents } from "./lib/cancellation";
 import { addDays, nightsBetween } from "./lib/dates";
@@ -67,6 +67,16 @@ export async function reservationSummary(db: Db, reservationId: string, today: s
   const bill = reservationBill(state);
   const terms = acceptedTerms(reservation);
   const freeUntil = freeCancellationUntil(terms.cancellationPolicy, reservation.checkIn);
+  const typeIds = [...new Set(lines.map((line) => line.roomTypeId))];
+  const types = typeIds.length
+    ? await db
+        .select({ id: roomTypes.id, name: roomTypes.name })
+        .from(roomTypes)
+        .where(inArray(roomTypes.id, typeIds))
+    : [];
+  const names = new Map(types.map((type) => [type.id, type.name]));
+  const open = holdsInventory(reservation.status);
+  const freeCancellation = freeUntil === null ? "none" : today <= freeUntil ? "available" : "ended";
   return {
     status: reservation.status,
     code: reservation.code,
@@ -76,6 +86,7 @@ export async function reservationSummary(db: Db, reservationId: string, today: s
     fullName: contact.fullName,
     rooms: lines.map((line) => ({
       roomTypeId: line.roomTypeId,
+      name: names.get(line.roomTypeId) ?? "",
       adults: line.adults,
       children: line.children,
       nights: line.nights
@@ -83,20 +94,11 @@ export async function reservationSummary(db: Db, reservationId: string, today: s
         .map(({ date, priceCents }) => ({ date, priceCents })),
     })),
     ratePlan: terms.plan,
-    ...(holdsInventory(reservation.status)
-      ? {
-          cancellation: {
-            freeCancellation:
-              freeUntil === null ? "none" : today <= freeUntil ? "available" : "ended",
-            freeUntil,
-            chargeCents: chargeableCents(
-              terms.cancellationPolicy,
-              lines,
-              reservation.discountCents,
-            ),
-          },
-        }
-      : {}),
+    cancellation: {
+      ...(open ? { freeCancellation } : {}),
+      freeUntil,
+      chargeCents: chargeableCents(terms.cancellationPolicy, lines, reservation.discountCents),
+    },
     totalCents: bill.totalCents,
     paidCents: bill.paidCents,
     outstandingCents: Math.max(0, bill.balanceCents),
