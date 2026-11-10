@@ -283,6 +283,110 @@ test("accepting an expired quote charges the contact just submitted, not the one
   ).toEqual([]);
 });
 
+test("a replaced quote with different terms is not charged from the card form already open", async ({
+  page,
+}) => {
+  await acceptTerms(page, "flexible", payerEmail());
+  let payments = 0;
+  await page.route(`${LOCAL_API_URL}/public/checkout/payments`, async (route) => {
+    payments += 1;
+    await route.fulfill({
+      status: 409,
+      contentType: "application/json",
+      body: JSON.stringify({ error: "quote was replaced by a newer quote" }),
+    });
+  });
+  await page.route(`${LOCAL_API_URL}/public/checkout`, async (route) => {
+    if (payments === 0) return route.fallback();
+    const response = await route.fetch();
+    const view = (await response.json()) as {
+      quote: {
+        id: string;
+        totalCents: number;
+        requiredInitialPaymentCents: number;
+        nights: { priceCents: number }[];
+      };
+      acceptance: { quoteId: string; acceptedAt: string } | null;
+    };
+    view.quote = {
+      ...view.quote,
+      id: crypto.randomUUID(),
+      totalCents: 5000,
+      requiredInitialPaymentCents: 5000,
+      nights: view.quote.nights.map((night) => ({ ...night, priceCents: 2500 })),
+    };
+    view.acceptance = { quoteId: view.quote.id, acceptedAt: "2026-11-09T00:00:00.000Z" };
+    await route.fulfill({ json: view });
+  });
+
+  await payButton(page, "100.00").click();
+
+  await expect(page.getByText("así que no se cobró nada")).toBeVisible();
+  await expect(page.getByRole("checkbox", { name: /Acepto las condiciones/ })).not.toBeChecked();
+  await expect(page.getByText(/S\/\s*50\.00/).first()).toBeVisible();
+  expect(payments).toBe(1);
+});
+
+test("a lost retry of a replaced expired quote stays pending and does not offer Pay again", async ({
+  page,
+  request,
+}) => {
+  await acceptTerms(page, "flexible", payerEmail());
+  expireQuote((await serverCheckout(page, request)).quote.id);
+  await page.reload();
+  let payments = 0;
+  await page.route(`${LOCAL_API_URL}/public/checkout/payments`, async (route) => {
+    payments += 1;
+    if (payments === 1) {
+      await route.fulfill({
+        status: 400,
+        contentType: "application/json",
+        body: JSON.stringify({ error: "quote has expired" }),
+      });
+      return;
+    }
+    await route.abort();
+  });
+
+  await payButton(page, "100.00").click();
+
+  const sent = page.getByRole("heading", { name: "Pago enviado, consultando su estado" });
+  await expect(sent).toBeVisible();
+  await expect(page.getByRole("button", { name: /^Pagar/ })).toHaveCount(0);
+  expect(payments).toBe(2);
+  await page.reload();
+  await expect(sent).toBeVisible();
+  await expect(page.getByRole("button", { name: /^Pagar/ })).toHaveCount(0);
+});
+
+test("a pay refresh that cannot record another agreement keeps this checkout", async ({
+  page,
+  request,
+}) => {
+  await acceptTerms(page, "flexible", payerEmail());
+  const token = await checkoutToken(page);
+  expireQuote((await serverCheckout(page, request)).quote.id);
+  await page.reload();
+  let freshCheckouts = 0;
+  page.on("request", (req) => {
+    if (req.method() === "POST" && req.url().endsWith("/public/checkouts")) freshCheckouts += 1;
+  });
+  await page.route(`${LOCAL_API_URL}/public/checkout/quotes`, (route) =>
+    route.fulfill({
+      status: 429,
+      contentType: "application/json",
+      body: JSON.stringify({ error: "too many acceptances for this checkout" }),
+    }),
+  );
+
+  await payButton(page, "100.00").click();
+
+  await expect(page.getByText("no puede registrar otro acuerdo")).toBeVisible();
+  await expect(page.getByText(/no se cobró nada/i)).toBeVisible();
+  expect(await checkoutToken(page)).toBe(token);
+  expect(freshCheckouts).toBe(0);
+});
+
 test("a lost payment response says the payment was sent and never invites paying again", async ({
   page,
 }) => {

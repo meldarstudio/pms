@@ -380,6 +380,8 @@ export const ui = {
       "Too many payment attempts from your connection or for this reservation. Nothing was charged and your details are kept: wait a minute and try again.",
     "reservation.pay.changed":
       "The price or terms changed, so nothing was charged. Review them and accept again before paying.",
+    "reservation.pay.error.limited":
+      "This review can't record another agreement, so nothing was charged. Your details stay on this page. Message us on WhatsApp to reserve.",
     "reservation.pay.error.card":
       "The card form couldn't open. Nothing was charged: check your connection and try again.",
     "reservation.pay.error.unavailable":
@@ -840,6 +842,8 @@ export const ui = {
       "Demasiados intentos de pago desde su conexión o para esta reserva. No se cobró nada y sus datos se conservan: espere un minuto e intente de nuevo.",
     "reservation.pay.changed":
       "El precio o las condiciones cambiaron, así que no se cobró nada. Revíselas y acéptelas de nuevo antes de pagar.",
+    "reservation.pay.error.limited":
+      "Esta revisión no puede registrar otro acuerdo, así que no se cobró nada. Sus datos siguen en esta página. Escríbanos por WhatsApp para reservar.",
     "reservation.pay.error.card":
       "No se pudo abrir el formulario de la tarjeta. No se cobró nada: revise su conexión e intente de nuevo.",
     "reservation.pay.error.unavailable":

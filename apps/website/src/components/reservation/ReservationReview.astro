@@ -786,6 +786,7 @@ const contactFields = [
         await this.syncPayment(true);
         return false;
       }
+      if (outcome.kind === "limited") return this.keepCheckoutAtAgreementCap();
       if (outcome.kind === "ready") {
         if (this.serverAccepted(outcome.view)) {
           this.keepRefreshedAgreement(outcome);
@@ -798,10 +799,17 @@ const contactFields = [
       return false;
     }
 
-    private keepRefreshedAgreement(outcome: Ready) {
-      const stored = this.stored();
+    private installRefreshedQuote(outcome: Ready) {
       this.token = outcome.token || this.token;
       this.view = outcome.view;
+      this.render(outcome.view);
+      this.el("[data-review]").hidden = false;
+      this.el("[data-problem]").hidden = true;
+    }
+
+    private keepRefreshedAgreement(outcome: Ready) {
+      const stored = this.stored();
+      this.installRefreshedQuote(outcome);
       storeCheckout(this.key, {
         token: this.token,
         agreedOffer: offerKey(outcome.view),
@@ -814,16 +822,12 @@ const contactFields = [
       this.input("agree").checked = true;
       this.el("[data-changed]").hidden = true;
       this.el("[data-form-error]").textContent = "";
-      this.render(outcome.view);
-      this.el("[data-review]").hidden = false;
-      this.el("[data-problem]").hidden = true;
       this.showAccepted();
     }
 
     private showChangedOffer(outcome: Ready) {
       const stored = this.stored();
-      this.token = outcome.token || this.token;
-      this.view = outcome.view;
+      this.installRefreshedQuote(outcome);
       if (stored)
         storeCheckout(this.key, {
           ...stored,
@@ -834,11 +838,15 @@ const contactFields = [
       this.input("agree").checked = false;
       this.el("[data-changed]").hidden = false;
       this.el("[data-form-error]").textContent = this.text("reservation.pay.changed");
-      this.render(outcome.view);
-      this.el("[data-review]").hidden = false;
-      this.el("[data-problem]").hidden = true;
       this.showAccepted();
       this.input("agree").focus();
+    }
+
+    private keepCheckoutAtAgreementCap() {
+      this.el("[data-review]").hidden = false;
+      this.el("[data-problem]").hidden = true;
+      this.el("[data-form-error]").textContent = this.text("reservation.pay.error.limited");
+      return false;
     }
 
     private async sendPayment(
@@ -870,20 +878,26 @@ const contactFields = [
       sourceId: string,
       turnstileToken: string,
     ): Promise<PaymentOutcome | null> {
+      const reviewed = this.view ? offerKey(this.view) : "";
       const current =
         outcome.kind === "expired"
           ? await refreshQuote(this.copy.apiBase, this.token)
           : await readCheckout(this.copy.apiBase, this.token);
       if (current.kind === "has_payment") return readPayment(this.copy.apiBase, this.token);
+      if (current.kind === "limited") {
+        this.keepCheckoutAtAgreementCap();
+        return null;
+      }
       if (current.kind !== "ready") {
         this.settle(current);
         return null;
       }
-      if (!this.serverAccepted(current.view)) {
+      if (!this.sameAcceptedOffer(current.view, reviewed)) {
         this.showChangedOffer(current);
         return null;
       }
       this.keepRefreshedAgreement(current);
+      this.markSubmitted(current.view.quote.id);
       const retried = await startPayment(this.copy.apiBase, this.token, {
         quoteId: current.view.quote.id,
         sourceId,
@@ -891,11 +905,16 @@ const contactFields = [
       });
       if (retried.kind !== "expired" && retried.kind !== "replaced") return retried;
       const latest = await readCheckout(this.copy.apiBase, this.token);
-      if (latest.kind === "ready" && this.serverAccepted(latest.view))
+      if (latest.kind === "ready" && this.sameAcceptedOffer(latest.view, reviewed))
         this.keepRefreshedAgreement(latest);
       else if (latest.kind === "ready") this.showChangedOffer(latest);
+      else if (latest.kind === "limited") this.keepCheckoutAtAgreementCap();
       else this.settle(latest);
       return null;
+    }
+
+    private sameAcceptedOffer(view: CheckoutView, reviewed: string) {
+      return this.serverAccepted(view) && offerKey(view) === reviewed;
     }
 
     private markSubmitted(quoteId: string | null) {
