@@ -1,4 +1,14 @@
-import { expect, test } from "@playwright/test";
+import { expect, test, type Page } from "@playwright/test";
+import { daysFromToday, openStay } from "../support/local-api";
+
+async function pickLandingDate(page: Page, name: string, label: string) {
+  const [year, month] = label.split("-");
+  await page.getByLabel(name).click();
+  const popup = page.locator("[data-slot=popover-content]").last();
+  await popup.getByLabel("Elegir el año").selectOption(year!);
+  await popup.getByLabel("Elegir el mes").selectOption(String(Number(month) - 1));
+  await popup.locator(`[data-date="${label}"]`).click();
+}
 
 for (const [path, lang, heading] of [
   ["/", "es", /hotel/i],
@@ -128,3 +138,143 @@ for (const [path, bookingLabel] of [
     );
   });
 }
+
+for (const [path, availability, guests, adults, sentence, body, prices, rooms, whatsapp] of [
+  [
+    "/",
+    "Consultar disponibilidad",
+    "Huéspedes",
+    "2 adultos",
+    "baño privado",
+    "Para una consulta, o una habitación que no se puede reservar en línea, escríbanos.",
+    "Ver precios para sus fechas",
+    "Ver habitaciones y precios",
+    "Escribir por WhatsApp",
+  ],
+  [
+    "/en/",
+    "Check availability",
+    "Guests",
+    "2 adults",
+    "private bathroom",
+    "For a question, or a room that cannot be booked online, write to us.",
+    "See prices for your dates",
+    "See rooms and rates",
+    "Message us on WhatsApp",
+  ],
+] as const) {
+  test(`${path} landing searches from the hero`, async ({ page }) => {
+    await page.goto(path);
+    const card = page.locator("#availability");
+    const hero = card.locator("xpath=ancestor::section[1]");
+
+    await expect(
+      page.getByRole("banner").getByRole("link", { name: availability }),
+    ).toHaveAttribute("href", "#availability");
+    await expect(card.getByLabel(/llegada|arrival/i)).not.toContainText(/\d/);
+    await expect(card.getByLabel(/salida|departure/i)).not.toContainText(/\d/);
+    await expect(card.getByRole("button", { name: new RegExp(guests) })).toContainText(adults);
+    await expect(card.getByRole("button", { name: availability })).toBeVisible();
+    await expect(hero.getByRole("link", { name: rooms })).toHaveCount(0);
+    await expect(hero.locator('a[href*="wa.me"]')).toHaveCount(0);
+    await expect(hero.getByText(sentence)).toHaveCount(0);
+    await expect(page.getByText(sentence)).toBeVisible();
+    await expect(page.getByText(body)).toBeVisible();
+    await expect(page.getByRole("link", { name: prices })).toHaveCount(0);
+    await expect(page.getByRole("link", { name: whatsapp, exact: true })).toBeVisible();
+  });
+}
+
+for (const [path, label] of [
+  ["/habitaciones/", "Reservar por WhatsApp"],
+  ["/en/habitaciones/", "Book on WhatsApp"],
+] as const) {
+  test(`${path} header still opens WhatsApp`, async ({ page }) => {
+    await page.goto(path);
+    const link = page.getByRole("banner").getByRole("link", { name: label });
+    await expect(link).toHaveAttribute("href", /wa\.me/);
+    await expect(link).toHaveAttribute("target", "_blank");
+  });
+}
+
+test("homepage header scrolls to the search card", async ({ page }) => {
+  await page.goto("/");
+  await page.evaluate(() => window.scrollTo(0, document.body.scrollHeight));
+  await page.getByRole("banner").getByRole("link", { name: "Consultar disponibilidad" }).click();
+  await expect(page).toHaveURL(/#availability$/);
+  await expect(page.locator("#availability")).toBeInViewport();
+});
+
+test("mobile homepage menu scrolls to the search card", async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto("/");
+  await page.evaluate(() => window.scrollTo(0, document.body.scrollHeight));
+  await page.locator("#menu-toggle").click();
+  await page
+    .locator("#mobile-menu")
+    .getByRole("link", { name: "Consultar disponibilidad" })
+    .click();
+  await expect(page).toHaveURL(/#availability$/);
+  await expect(page.locator("#availability")).toBeInViewport();
+  await expect(page.locator("#menu-toggle")).toHaveAttribute("aria-expanded", "false");
+});
+
+test("homepage search keeps an empty stay on the page", async ({ page }) => {
+  await page.goto("/");
+  await page
+    .locator("#availability")
+    .getByRole("button", { name: "Consultar disponibilidad" })
+    .click();
+  await expect(page).toHaveURL(/\/$/);
+  await expect(page.getByText("Elija su fecha de llegada.")).toBeVisible();
+  await expect(page.getByLabel("Llegada")).toBeFocused();
+  await expect(page.getByLabel("Llegada")).toHaveAttribute("aria-invalid", "true");
+});
+
+test("homepage search keeps a departure before arrival on the page", async ({ page }) => {
+  const day = daysFromToday(40);
+  await page.goto("/");
+  await pickLandingDate(page, "Salida", day);
+  await pickLandingDate(page, "Llegada", day);
+  await page
+    .locator("#availability")
+    .getByRole("button", { name: "Consultar disponibilidad" })
+    .click();
+  await expect(page).toHaveURL(/\/$/);
+  await expect(
+    page.getByText("La salida debe ser al menos una noche después de la llegada."),
+  ).toBeVisible();
+  await expect(page.getByLabel("Salida")).toBeFocused();
+});
+
+test("homepage search card opens choose for the chosen stay", async ({ page }) => {
+  const stay = openStay();
+  await page.goto("/");
+  await pickLandingDate(page, "Llegada", stay.checkIn);
+  await pickLandingDate(page, "Salida", stay.checkOut);
+  await page.getByRole("button", { name: /Huéspedes/ }).click();
+  await page.getByRole("button", { name: "Aumentar niños" }).click();
+  await expect(page.getByRole("button", { name: /Huéspedes/ })).toContainText("2 adultos, 1 niño");
+  await page
+    .locator("#availability")
+    .getByRole("button", { name: "Consultar disponibilidad" })
+    .click();
+
+  const params = new URLSearchParams({
+    checkIn: stay.checkIn,
+    checkOut: stay.checkOut,
+    adults: "2",
+    children: "1",
+  });
+  await expect(page).toHaveURL(new RegExp(`/reservar/habitacion/\\?${params.toString()}$`));
+  await expect(page).not.toHaveURL(/room=/);
+  await expect(page.getByText(/2 noches · 2 adultos, 1 niño/)).toBeVisible();
+});
+
+test("churin band still links to prices", async ({ page }) => {
+  await page.goto("/churin/");
+  await expect(page.getByRole("link", { name: "Ver precios para sus fechas" })).toHaveAttribute(
+    "href",
+    /\/reservar\/$/,
+  );
+});

@@ -8,6 +8,7 @@ interface Props {
   title?: string;
   body?: string;
   cta?: string;
+  search?: boolean;
 }
 
 const lang = getLang(Astro.currentLocale);
@@ -17,8 +18,10 @@ const {
   title = t("booking.title"),
   body = t("booking.body"),
   cta = t("booking.cta"),
+  search = true,
 } = Astro.props;
 const bookHref = getWhatsAppLink(t("whatsapp.prefill"));
+const showSearch = onlineReservations && search;
 ---
 
 <section class="bg-stone-100">
@@ -38,7 +41,7 @@ const bookHref = getWhatsAppLink(t("whatsapp.prefill"));
         </div>
 
         <div class="flex shrink-0 flex-col items-start gap-3">
-          {onlineReservations && (
+          {showSearch && (
             <a
               href={searchStepHref(lang)}
               class="font-source-sans-3 bg-accent-500 text-accent-950 hover:bg-accent-400 inline-flex min-h-11 w-fit items-center px-8 text-sm font-medium tracking-widest uppercase"
@@ -52,7 +55,7 @@ const bookHref = getWhatsAppLink(t("whatsapp.prefill"));
             rel="noopener noreferrer"
             class:list={[
               "font-source-sans-3 inline-flex min-h-11 w-fit items-center px-8 text-sm font-medium tracking-widest uppercase",
-              onlineReservations
+              showSearch
                 ? "border border-stone-900 text-stone-900 hover:bg-stone-100"
                 : "bg-accent-500 text-accent-950 hover:bg-accent-400",
             ]}

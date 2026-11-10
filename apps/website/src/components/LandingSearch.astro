@@ -1,0 +1,35 @@
+---
+import LandingSearchForm from "@/components/LandingSearchForm";
+import { getLang, useTranslations } from "@/i18n/utils";
+import { chooseStepHref } from "@/lib/reservation/links";
+
+const lang = getLang(Astro.currentLocale);
+const t = useTranslations(lang);
+const copy = {
+  chooseDate: t("landing.chooseDate"),
+  checkIn: t("reservation.search.checkIn"),
+  checkOut: t("reservation.search.checkOut"),
+  guests: t("landing.guests"),
+  adults: t("reservation.search.adults"),
+  children: t("reservation.search.children"),
+  submit: t("hero.bookCta"),
+  decreaseAdults: t("landing.decreaseAdults"),
+  increaseAdults: t("landing.increaseAdults"),
+  decreaseChildren: t("landing.decreaseChildren"),
+  increaseChildren: t("landing.increaseChildren"),
+  adultsOne: t("reservation.adults.one"),
+  adultsOther: t("reservation.adults.other"),
+  childrenOne: t("reservation.children.one"),
+  childrenOther: t("reservation.children.other"),
+  problems: {
+    checkInRequired: t("reservation.problem.checkInRequired"),
+    checkOutRequired: t("reservation.problem.checkOutRequired"),
+    checkOutBeforeCheckIn: t("reservation.problem.checkOutBeforeCheckIn"),
+    tooManyNights: t("reservation.problem.tooManyNights"),
+  },
+};
+---
+
+<div id="availability" class="scroll-offset">
+  <LandingSearchForm client:load action={chooseStepHref(lang)} lang={lang} copy={copy} />
+</div>
