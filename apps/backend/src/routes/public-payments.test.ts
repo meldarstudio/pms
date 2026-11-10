@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test"
 import { getDb } from "../db";
 import worker, { app } from "../index";
 import { paymentContext, reconcilePaymentAttempts, startPaymentAttempt } from "../payment-attempts";
+import { whenReplacementIsPriced } from "../public-checkouts";
 import { createQuote } from "../quotes";
 import { CULQI_TEST_KEY, fakeCulqi, type FakeCulqi } from "../test-support/culqi";
 import { WEBSITE_ORIGIN } from "../test-support/auth";
@@ -550,6 +551,42 @@ describe("what a payment can charge", () => {
     expect(charges()).toEqual([]);
   });
 
+  it("stores no quote when a payment is admitted while the replacement is being priced", async () => {
+    const checkout = await acceptedCheckout();
+    const before = rows<{ n: number }>("SELECT count(*) AS n FROM quotes");
+    whenReplacementIsPriced(async () => {
+      const [{ checkout_id }] = rows<{ checkout_id: string }>(
+        `SELECT checkout_id FROM quotes WHERE id = '${checkout.quoteId}'`,
+      );
+      db.sqlite
+        .prepare(
+          `INSERT INTO payment_attempts (
+            id, quote_id, amount_cents, currency, email, guest, source_id, status, created_at, called_at,
+            checkout_id, confirmation_email_eligible
+          ) VALUES (?, ?, 10000, 'PEN', 'ana@example.com', '{}', 'tkn_test_gap', 'unknown', ?, ?, ?, 0)`,
+        )
+        .run(
+          crypto.randomUUID(),
+          checkout.quoteId,
+          new Date().toISOString(),
+          new Date().toISOString(),
+          checkout_id,
+        );
+    });
+
+    const refreshed = await guest("/public/checkout/quotes", {
+      token: checkout.token,
+      method: "POST",
+    });
+
+    expect(refreshed.status).toBe(409);
+    expect(await refreshed.json()).toEqual({ error: "checkout already has a payment" });
+    expect(rows("SELECT count(*) AS n FROM quotes")).toEqual(before);
+    expect(rows("SELECT count(*) AS n FROM checkout_acceptances")).toEqual([{ n: 1 }]);
+    expect(charges()).toEqual([]);
+    whenReplacementIsPriced(null);
+  });
+
   it.each([
     ["an unknown payment", "timeout"],
     ["a pending authentication", "tkn_test_3ds"],
@@ -968,20 +1005,27 @@ describe("payments racing within one checkout", () => {
     expect(rows("SELECT status FROM payment_attempts")).toEqual([{ status: "saved" }]);
   });
 
-  it("charges once when the quote is replaced, accepted and paid while an earlier payment is being verified", async () => {
+  it("does not charge a changed offer from a payment already being verified", async () => {
     const checkout = await acceptedCheckout();
     let second: Response | undefined;
     duringFirstSecurityCheck(async () => {
+      db.sqlite.exec(
+        "INSERT INTO room_type_rates (id, room_type_id, date, price_cents) VALUES ('rate-race', 'type-king', '2026-10-20', 8000)",
+      );
       const refreshed = await guest("/public/checkout/quotes", {
         token: checkout.token,
         method: "POST",
       });
-      const { quote } = (await refreshed.json()) as { quote: { id: string } };
+      const view = (await refreshed.json()) as {
+        quote: { id: string };
+        acceptance: { quoteId: string } | null;
+      };
+      expect(view.acceptance?.quoteId).not.toBe(view.quote.id);
       await guest("/public/checkout/acceptances", {
         token: checkout.token,
-        body: { quoteId: quote.id, language: "en", contact, agreed: true },
+        body: { quoteId: view.quote.id, language: "en", contact, agreed: true },
       });
-      second = await pay({ token: checkout.token, quoteId: quote.id });
+      second = await pay({ token: checkout.token, quoteId: view.quote.id });
     });
 
     const first = await pay(checkout);
@@ -990,6 +1034,7 @@ describe("payments racing within one checkout", () => {
     expect(first.status).toBe(409);
     expect(await first.json()).toEqual({ error: "quote was replaced by a newer quote" });
     expect(charges()).toHaveLength(1);
+    expect(charges()[0]!.body).toMatchObject({ amount: 8000 });
     expect(rows("SELECT status FROM payment_attempts")).toEqual([{ status: "saved" }]);
   });
 

@@ -1,7 +1,7 @@
 import type { CheckoutAcceptance, PublicCheckoutCreate } from "@pms/shared";
 import { and, count, desc, eq, sql } from "drizzle-orm";
 import { runBatch, type Db } from "./db";
-import { checkoutAcceptances, publicCheckouts, quotes } from "./db/schema";
+import { checkoutAcceptances, paymentAttempts, publicCheckouts, quotes } from "./db/schema";
 import { HttpError } from "./http";
 import { latestCheckoutAttempt } from "./payment-attempts";
 import { addDays, nightsBetween } from "./lib/dates";
@@ -91,21 +91,46 @@ export async function checkoutForToken(
 
 export const CHECKOUT_HAS_PAYMENT = "checkout already has a payment";
 
+let afterReplacementPriced: (() => Promise<void>) | null = null;
+
+export function whenReplacementIsPriced(hook: (() => Promise<void>) | null) {
+  afterReplacementPriced = hook;
+}
+
 export async function requoteCheckout(db: Db, checkout: PublicCheckout, context: CheckoutContext) {
   if (await latestCheckoutAttempt(db, checkout.id, { open: true }))
     throw new HttpError(409, CHECKOUT_HAS_PAYMENT);
   const quote = await availableQuote(db, checkout, context);
+  const priced = afterReplacementPriced;
+  afterReplacementPriced = null;
+  if (priced) await priced();
   const previous = await latestAcceptance(db, checkout.id);
   const accepted = previous ? await quoteForAcceptance(db, previous) : null;
   const retain = previous && accepted && sameMaterialOffer(accepted, quote) ? previous : null;
   if (retain && (await acceptanceCount(db, checkout.id)) >= MAX_ACCEPTANCES_PER_CHECKOUT)
     throw new HttpError(429, "too many acceptances for this checkout");
   const acceptance = retain ? retainedAcceptance(checkout, quote, retain, context) : null;
-  await runBatch(db, [
-    db.insert(quotes).values(quote),
-    ...(acceptance ? [db.insert(checkoutAcceptances).values(acceptance)] : []),
-  ]);
+  if (!(await insertQuoteUnlessOpenPayment(db, quote)))
+    throw new HttpError(409, CHECKOUT_HAS_PAYMENT);
+  if (acceptance) await db.insert(checkoutAcceptances).values(acceptance);
   return presentCheckout(checkout, quote, acceptance ?? previous, context);
+}
+
+async function insertQuoteUnlessOpenPayment(db: Db, quote: Quote) {
+  await db.run(sql`INSERT INTO ${quotes} (
+      id, room_type_id, check_in, check_out, adults, children, nights, terms, created_at, expires_at,
+      checkout_id
+    )
+    SELECT ${quote.id}, ${quote.roomTypeId}, ${quote.checkIn}, ${quote.checkOut}, ${quote.adults},
+      ${quote.children}, ${JSON.stringify(quote.nights)}, ${JSON.stringify(quote.terms)},
+      ${quote.createdAt}, ${quote.expiresAt}, ${quote.checkoutId}
+    WHERE NOT EXISTS (
+      SELECT 1 FROM ${paymentAttempts}
+      WHERE ${paymentAttempts.checkoutId} = ${quote.checkoutId}
+        AND ${paymentAttempts.status} IN ('unknown', 'review', 'succeeded', 'saved')
+    )`);
+  const [inserted] = await db.select({ id: quotes.id }).from(quotes).where(eq(quotes.id, quote.id));
+  return Boolean(inserted);
 }
 
 export async function acceptCheckoutQuote(
