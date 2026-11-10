@@ -1,9 +1,11 @@
-import { eq } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 import type { Db } from "./db";
 import { operationControls } from "./db/schema";
 import { HttpError } from "./http";
 
 const CONTROLS_ID = 1;
+
+export const emailSubmissionAdmittedSql = sql<number>`EXISTS (SELECT 1 FROM ${operationControls} WHERE ${operationControls.id} = ${CONTROLS_ID} AND ${operationControls.emailSubmissionAdmitted} = 1)`;
 
 export const PUBLIC_PAYMENTS_PAUSED = "online payments are paused";
 

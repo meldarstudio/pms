@@ -327,6 +327,13 @@ The one provider request recorded for a confirmation intent before any send, ret
 the same key, endpoint, and bytes until accepted or the send window ends.
 _Avoid_: Confirmation intent, delivery, resend
 
+**Unresolved possible acceptance count**:
+The number of confirmation submission attempts that may have reached the provider
+without a definitive result. A known refusal resolves only its own attempt;
+earlier or concurrent uncertainty remains. Before positive acceptance, zero means
+known-unsent, not accepted or delivered.
+_Avoid_: Acceptance flag, retry count
+
 **Refund**:
 Money returned against a received payment. Only a completed refund has returned money;
 a requested or failed refund has not.

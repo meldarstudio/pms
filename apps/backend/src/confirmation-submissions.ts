@@ -1,19 +1,25 @@
-import { and, asc, eq, gt, inArray, isNull, lte, or, sql } from "drizzle-orm";
+import { and, asc, eq, gt, inArray, isNotNull, isNull, lte, or, sql } from "drizzle-orm";
 import type { Db } from "./db";
 import {
   confirmationIntents,
   confirmationSubmissions,
-  operationControls,
   reservationAccess,
+  reservations,
   roomTypes,
 } from "./db/schema";
 import type { Env } from "./env";
 import { chargeableCents, freeCancellationUntil } from "./lib/cancellation";
 import { acceptedTerms, type RatePlanCode } from "./lib/rate-plans";
 import { reservationBill } from "./lib/reservation-bill";
-import { readEmailSubmissionAdmission } from "./operation-controls";
+import { emailSubmissionAdmittedSql, readEmailSubmissionAdmission } from "./operation-controls";
 import { loadReservation, type State } from "./reservation-read";
-import { QUOTA_BACKOFF_MS, resendForEnv, type Resend, type ResendSendResult } from "./resend";
+import {
+  QUOTA_BACKOFF_MS,
+  resendForEnv,
+  type Resend,
+  type ResendFailureCode,
+  type ResendSendResult,
+} from "./resend";
 
 export const SUBMISSION_WINDOW_MS = 20 * 60 * 60 * 1000;
 
@@ -31,6 +37,10 @@ const PLAN_NAME: Record<"es" | "en", Record<RatePlanCode, string>> = {
 
 type Intent = typeof confirmationIntents.$inferSelect;
 type Submission = typeof confirmationSubmissions.$inferSelect;
+
+const reservationIsConfirmedSql = sql<number>`EXISTS (SELECT 1 FROM ${confirmationIntents}
+  INNER JOIN ${reservations} ON ${reservations.id} = ${confirmationIntents.reservationId}
+  WHERE ${confirmationIntents.id} = ${confirmationSubmissions.intentId} AND ${reservations.status} = 'confirmed')`;
 
 export async function sendConfirmationSubmissions(
   db: Db,
@@ -98,7 +108,7 @@ async function dueSubmissions(db: Db, now: string, limit: number) {
         or(
           lte(confirmationSubmissions.nextAttemptAt, now),
           and(
-            gt(confirmationSubmissions.acceptancePossible, 0),
+            gt(confirmationSubmissions.possiblyAcceptedPosts, 0),
             lte(
               confirmationSubmissions.firstPossibleAt,
               new Date(Date.parse(now) - SUBMISSION_WINDOW_MS).toISOString(),
@@ -123,6 +133,7 @@ async function freshIntents(db: Db, limit: number) {
 }
 
 async function retrySubmission(db: Db, resend: Resend, row: Submission, now: Date) {
+  if (await stopNotConfirmed(db, row.id, now)) return;
   if (
     !row.credentialFingerprint ||
     row.credentialFingerprint !== (await resend.credentialFingerprint())
@@ -131,28 +142,11 @@ async function retrySubmission(db: Db, resend: Resend, row: Submission, now: Dat
     return;
   }
   if (
-    row.acceptancePossible > 0 &&
+    row.possiblyAcceptedPosts > 0 &&
     (!row.firstPossibleAt ||
       now.getTime() >= Date.parse(row.firstPossibleAt) + SUBMISSION_WINDOW_MS)
   ) {
     await markAttention(db, row.id, now);
-    return;
-  }
-  if (row.providerMessageId) {
-    if (!(await readEmailSubmissionAdmission(db)).admitted) return;
-    if (!row.endpoint) {
-      await markAttention(db, row.id, now);
-      return;
-    }
-    const found = await resend.getEmail(row.endpoint, row.providerMessageId);
-    if (found) await markAccepted(db, row.id, found.id, now);
-    else
-      await scheduleRetry(
-        db,
-        row,
-        { kind: "uncertain", failureCode: null, minimumBackoffMs: 0 },
-        now,
-      );
     return;
   }
   if (!row.endpoint || !row.sendKey || row.requestJson === null) {
@@ -168,7 +162,7 @@ async function postSubmission(db: Db, resend: Resend, row: Submission) {
   const [started] = await db
     .update(confirmationSubmissions)
     .set({
-      acceptancePossible: sql`${confirmationSubmissions.acceptancePossible} + 1`,
+      possiblyAcceptedPosts: sql`${confirmationSubmissions.possiblyAcceptedPosts} + 1`,
       firstPossibleAt: sql`coalesce(${confirmationSubmissions.firstPossibleAt}, ${now.toISOString()})`,
       status: "uncertain",
     })
@@ -176,23 +170,40 @@ async function postSubmission(db: Db, resend: Resend, row: Submission) {
       and(
         eq(confirmationSubmissions.id, row.id),
         inArray(confirmationSubmissions.status, ["uncertain", "unsent"]),
-        sql`EXISTS (SELECT 1 FROM ${operationControls} WHERE ${operationControls.id} = 1 AND ${operationControls.emailSubmissionAdmitted} = 1)`,
-        sql`(${confirmationSubmissions.acceptancePossible} = 0 OR ${confirmationSubmissions.firstPossibleAt} > ${new Date(now.getTime() - SUBMISSION_WINDOW_MS).toISOString()})`,
+        isNotNull(confirmationSubmissions.nextAttemptAt),
+        emailSubmissionAdmittedSql,
+        reservationIsConfirmedSql,
+        sql`(${confirmationSubmissions.possiblyAcceptedPosts} = 0 OR ${confirmationSubmissions.firstPossibleAt} > ${new Date(now.getTime() - SUBMISSION_WINDOW_MS).toISOString()})`,
       ),
     )
     .returning();
-  if (!started) return;
-  if (!(await readEmailSubmissionAdmission(db)).admitted) {
-    await scheduleRetry(
-      db,
-      started,
-      { kind: "unsent", failureCode: null, minimumBackoffMs: 0 },
-      new Date(),
-    );
+  if (!started) {
+    await stopNotConfirmed(db, row.id, new Date());
+    return;
+  }
+  const [ready] = await db
+    .select({
+      admitted: emailSubmissionAdmittedSql,
+      confirmed: sql<number>`${reservations.status} = 'confirmed'`,
+      status: confirmationSubmissions.status,
+      nextAttemptAt: confirmationSubmissions.nextAttemptAt,
+    })
+    .from(confirmationSubmissions)
+    .innerJoin(confirmationIntents, eq(confirmationIntents.id, confirmationSubmissions.intentId))
+    .innerJoin(reservations, eq(reservations.id, confirmationIntents.reservationId))
+    .where(eq(confirmationSubmissions.id, started.id));
+  if (!ready) return;
+  if (!ready.confirmed) {
+    await stopNotConfirmed(db, started.id, new Date(), 1);
+    return;
+  }
+  if (!ready.nextAttemptAt || !["uncertain", "unsent"].includes(ready.status)) return;
+  if (!ready.admitted) {
+    await scheduleRetry(db, started, { kind: "unsent", minimumBackoffMs: 0 }, new Date());
     return;
   }
   if (
-    started.acceptancePossible > 1 &&
+    started.possiblyAcceptedPosts > 1 &&
     Date.now() >= Date.parse(started.firstPossibleAt!) + SUBMISSION_WINDOW_MS
   ) {
     await markAttention(db, started.id, new Date());
@@ -210,31 +221,58 @@ async function postSubmission(db: Db, resend: Resend, row: Submission) {
   );
 }
 
+async function stopNotConfirmed(db: Db, id: string, now: Date, unpostedAttempt = 0) {
+  const stopped = await db
+    .update(confirmationSubmissions)
+    .set({
+      possiblyAcceptedPosts: sql`max(0, ${confirmationSubmissions.possiblyAcceptedPosts} - ${unpostedAttempt})`,
+      status: sql`CASE WHEN ${confirmationSubmissions.possiblyAcceptedPosts} <= ${unpostedAttempt} THEN 'unsent' ELSE 'attention' END`,
+      failureCode: "not_confirmed",
+      nextAttemptAt: null,
+      updatedAt: now.toISOString(),
+    })
+    .where(
+      and(
+        eq(confirmationSubmissions.id, id),
+        inArray(confirmationSubmissions.status, ["uncertain", "unsent"]),
+        sql`NOT ${reservationIsConfirmedSql}`,
+      ),
+    )
+    .returning({ id: confirmationSubmissions.id });
+  return stopped.length > 0;
+}
+
 async function openSubmission(db: Db, resend: Resend, intent: Intent, now: Date, currency: string) {
+  const state = await loadReservation(db, intent.reservationId);
+  if (state.reservation.status !== "confirmed") {
+    await insertTerminalSubmission(db, intent, now, "unsent", "not_confirmed");
+    return;
+  }
   const [access] = await db
     .select()
     .from(reservationAccess)
     .where(eq(reservationAccess.reservationId, intent.reservationId));
   if (!access) {
-    console.error("confirmation submission", intent.reservationId);
+    await insertTerminalSubmission(db, intent, now, "attention", "missing_access");
     return;
   }
-  const state = await loadReservation(db, intent.reservationId);
-  if (state.reservation.status !== "confirmed") {
-    await insertUnsent(db, intent, now);
+  const room = await roomTypeNames(db, state);
+  let requestJson: string;
+  try {
+    requestJson = JSON.stringify(confirmationRequest(state, intent, access.token, currency, room));
+  } catch {
+    await insertTerminalSubmission(db, intent, now, "attention", "snapshot_failed");
     return;
   }
   const nowIso = now.toISOString();
-  const row = {
+  const row: Submission = {
     id: crypto.randomUUID(),
     intentId: intent.id,
     sendKey: `confirmation/${intent.id}`,
     endpoint: resend.emailsUrl,
     credentialFingerprint: await resend.credentialFingerprint(),
-    acceptancePossible: 0,
-    requestJson: JSON.stringify(
-      await confirmationRequest(db, state, intent, access.token, currency),
-    ),
+    possiblyAcceptedPosts: 0,
+    requestJson,
     recipientEmail: intent.recipientEmail,
     language: intent.language,
     firstPossibleAt: null,
@@ -255,7 +293,13 @@ async function openSubmission(db: Db, resend: Resend, intent: Intent, now: Date,
   await postSubmission(db, resend, row);
 }
 
-async function insertUnsent(db: Db, intent: Intent, now: Date) {
+async function insertTerminalSubmission(
+  db: Db,
+  intent: Intent,
+  now: Date,
+  status: "unsent" | "attention",
+  failureCode: string,
+) {
   const nowIso = now.toISOString();
   try {
     if (!(await readEmailSubmissionAdmission(db)).admitted) return;
@@ -264,9 +308,9 @@ async function insertUnsent(db: Db, intent: Intent, now: Date) {
       intentId: intent.id,
       recipientEmail: intent.recipientEmail,
       language: intent.language,
-      status: "unsent",
-      acceptancePossible: 0,
-      failureCode: "not_confirmed",
+      status,
+      possiblyAcceptedPosts: 0,
+      failureCode,
       createdAt: nowIso,
       updatedAt: nowIso,
     });
@@ -276,12 +320,12 @@ async function insertUnsent(db: Db, intent: Intent, now: Date) {
   }
 }
 
-async function confirmationRequest(
-  db: Db,
+function confirmationRequest(
   state: State,
   intent: Intent,
   token: string,
   currency: string,
+  room: string,
 ) {
   const language = intent.language === "en" ? "en" : "es";
   const bill = reservationBill(state);
@@ -294,7 +338,7 @@ async function confirmationRequest(
     code: state.reservation.code,
     checkIn: state.reservation.checkIn,
     checkOut: state.reservation.checkOut,
-    room: await roomTypeNames(db, state),
+    room,
     plan: PLAN_NAME[language][terms.plan],
     freeUntil: freeCancellationUntil(terms.cancellationPolicy, state.reservation.checkIn),
     chargeCents: chargeableCents(
@@ -433,7 +477,11 @@ async function applyResult(
 async function scheduleRetry(
   db: Db,
   row: Pick<Submission, "id" | "nextAttemptAt" | "updatedAt">,
-  result: Extract<ResendSendResult, { kind: "uncertain" | "unsent" }>,
+  result: {
+    kind: "uncertain" | "unsent";
+    failureCode?: ResendFailureCode | null;
+    minimumBackoffMs: number;
+  },
   now: Date,
 ) {
   const minimum = Math.max(
@@ -443,13 +491,13 @@ async function scheduleRetry(
   await db
     .update(confirmationSubmissions)
     .set({
-      acceptancePossible:
+      possiblyAcceptedPosts:
         result.kind === "unsent"
-          ? sql`max(0, ${confirmationSubmissions.acceptancePossible} - 1)`
+          ? sql`max(0, ${confirmationSubmissions.possiblyAcceptedPosts} - 1)`
           : undefined,
       status:
         result.kind === "unsent"
-          ? sql`CASE WHEN ${confirmationSubmissions.acceptancePossible} <= 1 THEN 'unsent' ELSE 'uncertain' END`
+          ? sql`CASE WHEN ${confirmationSubmissions.possiblyAcceptedPosts} <= 1 THEN 'unsent' ELSE 'uncertain' END`
           : "uncertain",
       failureCode: result.failureCode,
       nextAttemptAt: sql`max(coalesce(${confirmationSubmissions.nextAttemptAt}, ${now.toISOString()}), ${new Date(now.getTime() + nextDelayMs(row, minimum)).toISOString()})`,

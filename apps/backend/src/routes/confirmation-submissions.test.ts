@@ -501,6 +501,41 @@ describe("confirmation submissions", () => {
     expect(submissions()[0]!.status).toBe("unsent");
   });
 
+  it.each([429, "timeout", "accepted"] as const)(
+    "does not retry a %s confirmation after staff cancel the reservation",
+    async (outcome) => {
+      const { saved } = await confirmed();
+      configureResend();
+      await admitEmail(true);
+      if (outcome !== "accepted") resend.next(outcome);
+      await runScheduled();
+      const stored = submissions()[0]!;
+      await command(saved.id, [{ type: "set-status", status: "cancelled" }]);
+      vi.setSystemTime(new Date(Date.now() + 15 * 60_000));
+
+      await runScheduled();
+
+      expect(posts()).toHaveLength(1);
+      expect(submissions()).toEqual([
+        expect.objectContaining({
+          id: stored.id,
+          status:
+            outcome === "accepted" ? "accepted" : outcome === "timeout" ? "attention" : "unsent",
+          failure_code: outcome === "accepted" ? null : "not_confirmed",
+          next_attempt_at: null,
+          acceptance_possible: stored.acceptance_possible,
+          provider_message_id: stored.provider_message_id,
+          send_key: stored.send_key,
+          request_json: stored.request_json,
+          first_possible_at: stored.first_possible_at,
+        }),
+      ]);
+      await command(saved.id, [{ type: "set-status", status: "confirmed" }]);
+      await runScheduled();
+      expect(posts()).toHaveLength(1);
+    },
+  );
+
   it("does not send for a desk reservation or a historical reservation with no intent", async () => {
     const legacy = await confirmed();
     db.sqlite.exec("DELETE FROM confirmation_intents");
@@ -534,14 +569,74 @@ describe("confirmation submissions", () => {
     await runScheduled();
 
     expect(posts()).toEqual([]);
-    expect(submissions()).toEqual([]);
+    expect(submissions()).toEqual([
+      expect.objectContaining({
+        status: "attention",
+        failure_code: "missing_access",
+        send_key: null,
+        request_json: null,
+        first_possible_at: null,
+        next_attempt_at: null,
+        acceptance_possible: 0,
+      }),
+    ]);
     expect(rows("SELECT reservation_id FROM reservation_access")).toEqual([]);
     expect(rows("SELECT id FROM confirmation_intents")).toHaveLength(1);
-    expect(JSON.stringify(error.mock.calls)).toContain(saved.id);
+    const inspected = await db.request(`/reservations/${saved.id}/confirmation`);
+    expect(inspected.status).toBe(200);
+    expect(await inspected.json()).toMatchObject({
+      submission: { status: "attention", failureCode: "missing_access" },
+    });
     expect(JSON.stringify(error.mock.calls)).not.toContain(saved.token);
     expect(JSON.stringify(error.mock.calls)).not.toContain("ana@example.com");
     error.mockRestore();
   });
+
+  it.each(["missing_access", "snapshot_failed"] as const)(
+    "progresses beyond a full batch of %s intents without sending malformed work",
+    async (failureCode) => {
+      const malformed: string[] = [];
+      for (let day = 1; day <= 11; day++) {
+        const { saved } = await confirmed("en", {
+          checkIn: `2026-11-${String(day).padStart(2, "0")}`,
+          checkOut: `2026-11-${String(day + 1).padStart(2, "0")}`,
+        });
+        malformed.push(saved.id);
+        vi.setSystemTime(new Date(Date.now() + 1_000));
+      }
+      if (failureCode === "missing_access") db.sqlite.exec("DELETE FROM reservation_access");
+      else db.sqlite.exec("UPDATE reservations SET free_cancellation_days = 1000000000000000");
+      const valid = await confirmed();
+      configureResend();
+      await admitEmail(true);
+
+      await runScheduled();
+      await runScheduled();
+
+      expect(posts()).toHaveLength(1);
+      expect(posts()[0]!.body).toContain(valid.saved.code);
+      expect(submissions()).toHaveLength(12);
+      for (const id of malformed) {
+        const inspected = await db.request(`/reservations/${id}/confirmation`);
+        expect(inspected.status).toBe(200);
+        expect(await inspected.json()).toMatchObject({
+          submission: {
+            status: "attention",
+            failureCode,
+            sendKey: null,
+            firstPossibleAt: null,
+            nextAttemptAt: null,
+          },
+        });
+      }
+      await runScheduled();
+      expect(posts()).toHaveLength(1);
+      if (failureCode === "missing_access")
+        expect(rows("SELECT reservation_id FROM reservation_access")).toEqual([
+          { reservation_id: valid.saved.id },
+        ]);
+    },
+  );
 
   it("shows accepted, uncertain, and attention to staff without the body, link, or token", async () => {
     const acceptedStay = await confirmed("en");
@@ -648,6 +743,29 @@ describe("confirmation submissions", () => {
     expect(logged).not.toContain(RESEND_TEST_KEY);
     expect(error.mock.calls).toEqual([["confirmation submission failed", saved.id]]);
     error.mockRestore();
+  });
+
+  it("keeps a transient snapshot database failure pending, without inventing a terminal context", async () => {
+    const { saved } = await confirmed();
+    configureResend();
+    await admitEmail(true);
+    const error = vi.spyOn(console, "error").mockImplementation(() => {});
+    const prepare = db.env.DB.prepare.bind(db.env.DB);
+    const failure = vi.spyOn(db.env.DB, "prepare").mockImplementation((query) => {
+      if (query.includes('from "room_types"'))
+        throw new Error(`database unavailable ${saved.token}`);
+      return prepare(query);
+    });
+
+    await runScheduled();
+
+    expect(posts()).toEqual([]);
+    expect(submissions()).toEqual([]);
+    expect(error.mock.calls).toEqual([["confirmation submission failed", saved.id]]);
+    failure.mockRestore();
+    await runScheduled();
+    expect(posts()).toHaveLength(1);
+    expect(submissions()[0]!.status).toBe("accepted");
   });
 
   it("commits the submission before posting, then records a lost acceptance on the next tick", async () => {
@@ -885,40 +1003,35 @@ describe("confirmation submissions", () => {
     });
   });
 
-  it.each([false, true])(
-    "stops remaining due work when the first request pauses admission (lookup: %s)",
-    async (lookup) => {
-      await confirmed();
-      await confirmed("en", { checkIn: "2026-11-02", checkOut: "2026-11-04" });
-      configureResend();
-      await admitEmail(true);
-      resend.next("timeout", "timeout");
-      await runScheduled();
-      const stored = submissions();
-      if (lookup)
-        db.sqlite.exec("UPDATE confirmation_submissions SET provider_message_id = 'email_missing'");
-      vi.setSystemTime(new Date(Date.now() + 60_000));
-      resend.duringNext(async () => {
-        await admitEmail(false);
-      });
-      const before = resend.requests.length;
+  it("stops remaining due work when the first retry pauses admission", async () => {
+    await confirmed();
+    await confirmed("en", { checkIn: "2026-11-02", checkOut: "2026-11-04" });
+    configureResend();
+    await admitEmail(true);
+    resend.next("timeout", "timeout");
+    await runScheduled();
+    const stored = submissions();
+    vi.setSystemTime(new Date(Date.now() + 60_000));
+    resend.duringNext(async () => {
+      await admitEmail(false);
+    });
+    const before = resend.requests.length;
 
-      await runScheduled();
+    await runScheduled();
 
-      expect(resend.requests).toHaveLength(before + 1);
-      expect(resend.requests.at(-1)!.method).toBe(lookup ? "GET" : "POST");
-      expect(submissions()).toHaveLength(2);
-      for (const row of stored)
-        expect(submissions()).toContainEqual(
-          expect.objectContaining({
-            id: row.id,
-            send_key: row.send_key,
-            first_possible_at: row.first_possible_at,
-            request_json: row.request_json,
-          }),
-        );
-    },
-  );
+    expect(resend.requests).toHaveLength(before + 1);
+    expect(resend.requests.at(-1)!.method).toBe("POST");
+    expect(submissions()).toHaveLength(2);
+    for (const row of stored)
+      expect(submissions()).toContainEqual(
+        expect.objectContaining({
+          id: row.id,
+          send_key: row.send_key,
+          first_possible_at: row.first_possible_at,
+          request_json: row.request_json,
+        }),
+      );
+  });
 
   it.each(["pause", "expiry"] as const)(
     "rechecks %s after the possible-acceptance write, before POST",
@@ -954,6 +1067,98 @@ describe("confirmation submissions", () => {
       if (change === "pause") expect(submissions()[0]!.acceptance_possible).toBe(1);
     },
   );
+
+  it.each([401, 429] as const)(
+    "preserves the previous %s failure when submission pauses before the retry reaches the network",
+    async (status) => {
+      await confirmed();
+      configureResend();
+      await admitEmail(true);
+      resend.next(status);
+      await runScheduled();
+      const stored = submissions()[0]!;
+      vi.setSystemTime(new Date(stored.next_attempt_at!));
+      db.sqlite.exec(`
+        CREATE TRIGGER pause_retry AFTER UPDATE ON confirmation_submissions
+        WHEN NEW.acceptance_possible > OLD.acceptance_possible
+        BEGIN
+          UPDATE operation_controls SET email_submission_admitted = 0 WHERE id = 1;
+        END;
+      `);
+
+      await runScheduled();
+
+      expect(posts()).toHaveLength(1);
+      expect(submissions()[0]).toMatchObject({
+        status: "unsent",
+        failure_code: stored.failure_code,
+        acceptance_possible: 0,
+        send_key: stored.send_key,
+        request_json: stored.request_json,
+        first_possible_at: stored.first_possible_at,
+      });
+    },
+  );
+
+  it.each(["snapshot", 429, "timeout"] as const)(
+    "rechecks cancellation at the pre-POST boundary after %s commits",
+    async (boundary) => {
+      const { saved } = await confirmed();
+      configureResend();
+      await admitEmail(true);
+      if (boundary !== "snapshot") {
+        resend.next(boundary);
+        await runScheduled();
+        vi.setSystemTime(new Date(submissions()[0]!.next_attempt_at!));
+      }
+      const before = submissions()[0];
+      db.sqlite.exec(`
+        CREATE TRIGGER cancel_before_post AFTER ${boundary === "snapshot" ? "INSERT" : "UPDATE"} ON confirmation_submissions
+        ${boundary === "snapshot" ? "" : "WHEN NEW.acceptance_possible > OLD.acceptance_possible"}
+        BEGIN
+          UPDATE reservations SET status = 'cancelled' WHERE id = '${saved.id}';
+        END;
+      `);
+
+      await runScheduled();
+
+      expect(posts()).toHaveLength(boundary === "snapshot" ? 0 : 1);
+      expect(submissions()[0]).toMatchObject({
+        status: boundary === "timeout" ? "attention" : "unsent",
+        failure_code: "not_confirmed",
+        next_attempt_at: null,
+        acceptance_possible: before?.acceptance_possible ?? 0,
+        first_possible_at: before?.first_possible_at ?? null,
+      });
+      if (before)
+        expect(submissions()[0]).toMatchObject({
+          send_key: before.send_key,
+          request_json: before.request_json,
+        });
+    },
+  );
+
+  it("records positive acceptance even when cancellation stops a concurrent retry", async () => {
+    const { saved } = await confirmed();
+    configureResend();
+    await admitEmail(true);
+    resend.duringNext(async () => {
+      await command(saved.id, [{ type: "set-status", status: "cancelled" }]);
+      await runScheduled();
+      expect(submissions()[0]!.status).toBe("attention");
+    });
+
+    await runScheduled();
+    await runScheduled();
+
+    expect(posts()).toHaveLength(1);
+    expect(submissions()[0]).toMatchObject({
+      status: "accepted",
+      provider_message_id: "email_1",
+      failure_code: null,
+      next_attempt_at: null,
+    });
+  });
 
   it("does not let a late known-unsent response clear another concurrent timeout", async () => {
     await confirmed();
@@ -1008,48 +1213,41 @@ describe("confirmation submissions", () => {
     expect(posts()).toHaveLength(3);
   });
 
-  it.each([false, true])(
-    "does not retry or look up a submission after the Resend key changes (message ID: %s)",
-    async (hasMessageId) => {
-      const { saved } = await confirmed();
-      configureResend();
-      await admitEmail(true);
-      resend.next("timeout");
-      await runScheduled();
-      if (hasMessageId)
-        db.sqlite
-          .prepare("UPDATE confirmation_submissions SET provider_message_id = 'email_stored'")
-          .run();
-      const fingerprint = [
-        ...new Uint8Array(
-          await crypto.subtle.digest("SHA-256", new TextEncoder().encode(RESEND_TEST_KEY)),
-        ),
-      ]
-        .map((byte) => byte.toString(16).padStart(2, "0"))
-        .join("");
-      expect(
-        db.sqlite.prepare("SELECT credential_fingerprint FROM confirmation_submissions").get(),
-      ).toEqual({ credential_fingerprint: fingerprint });
-      db.env.RESEND_API_KEY = "re_test_other";
-      vi.setSystemTime(new Date(Date.now() + 60_000));
+  it("does not retry a submission after the Resend key changes", async () => {
+    const { saved } = await confirmed();
+    configureResend();
+    await admitEmail(true);
+    resend.next("timeout");
+    await runScheduled();
+    const fingerprint = [
+      ...new Uint8Array(
+        await crypto.subtle.digest("SHA-256", new TextEncoder().encode(RESEND_TEST_KEY)),
+      ),
+    ]
+      .map((byte) => byte.toString(16).padStart(2, "0"))
+      .join("");
+    expect(
+      db.sqlite.prepare("SELECT credential_fingerprint FROM confirmation_submissions").get(),
+    ).toEqual({ credential_fingerprint: fingerprint });
+    db.env.RESEND_API_KEY = "re_test_other";
+    vi.setSystemTime(new Date(Date.now() + 60_000));
 
-      await runScheduled();
+    await runScheduled();
 
-      expect(posts()).toHaveLength(1);
-      expect(resend.requests.filter((request) => request.method === "GET")).toEqual([]);
-      expect(submissions()[0]).toMatchObject({
-        status: "attention",
-        failure_code: "credential_changed",
-        send_key: `confirmation/${submissions()[0]!.intent_id}`,
-      });
-      const response = await db.request(`/reservations/${saved.id}/confirmation`);
-      const text = JSON.stringify(await response.json());
-      expect(text).toContain("credential_changed");
-      expect(text).not.toContain(RESEND_TEST_KEY);
-      expect(text).not.toContain("re_test_other");
-      expect(text).not.toContain(fingerprint);
-    },
-  );
+    expect(posts()).toHaveLength(1);
+    expect(resend.requests.filter((request) => request.method === "GET")).toEqual([]);
+    expect(submissions()[0]).toMatchObject({
+      status: "attention",
+      failure_code: "credential_changed",
+      send_key: `confirmation/${submissions()[0]!.intent_id}`,
+    });
+    const response = await db.request(`/reservations/${saved.id}/confirmation`);
+    const text = JSON.stringify(await response.json());
+    expect(text).toContain("credential_changed");
+    expect(text).not.toContain(RESEND_TEST_KEY);
+    expect(text).not.toContain("re_test_other");
+    expect(text).not.toContain(fingerprint);
+  });
 
   it("retains legacy submissions without inventing the credential that opened them", async () => {
     await confirmed();
@@ -1074,26 +1272,6 @@ describe("confirmation submissions", () => {
     expect(
       db.sqlite.prepare("SELECT credential_fingerprint FROM confirmation_submissions").get(),
     ).toEqual({ credential_fingerprint: null });
-  });
-
-  it("looks up positive acceptance at the original endpoint without another POST", async () => {
-    await confirmed();
-    configureResend();
-    await admitEmail(true);
-    resend.next("lose");
-    await runScheduled();
-    const stored = submissions()[0]!;
-    db.sqlite.exec("UPDATE confirmation_submissions SET provider_message_id = 'email_1'");
-    db.env.RESEND_API_URL = "http://127.0.0.1:8";
-    vi.setSystemTime(new Date(Date.now() + 60_000));
-
-    await runScheduled();
-
-    expect(posts()).toHaveLength(1);
-    expect(
-      resend.requests.filter((request) => request.method === "GET").map((request) => request.url),
-    ).toEqual([`${stored.endpoint}/email_1`]);
-    expect(submissions()[0]).toMatchObject({ status: "accepted", provider_message_id: "email_1" });
   });
 
   it("sends a not-yet-opened intent with the current key", async () => {
