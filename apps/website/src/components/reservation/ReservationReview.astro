@@ -10,7 +10,12 @@ import ReservationOffline from "@/components/reservation/ReservationOffline.astr
 import ReservationSteps from "@/components/reservation/ReservationSteps.astro";
 import { ui } from "@/i18n/ui";
 import { getLang, useTranslations } from "@/i18n/utils";
-import { chooseStepHref, onlineReservations, searchStepHref } from "@/lib/reservation/links";
+import {
+  chooseStepHref,
+  onlineReservations,
+  searchStepHref,
+  summaryStepHref,
+} from "@/lib/reservation/links";
 import { rooms } from "@/lib/rooms";
 
 const lang = getLang(Astro.currentLocale);
@@ -28,6 +33,7 @@ const copy = {
     : null,
   searchHref: searchStepHref(lang),
   chooseHref: chooseStepHref(lang),
+  summaryHref: summaryStepHref(lang),
   text: Object.fromEntries(
     (Object.keys(ui[lang]) as (keyof (typeof ui)[typeof lang])[])
       .filter((key) => key.startsWith("reservation."))
@@ -293,6 +299,16 @@ const contactFields = [
                   {t("reservation.outcome.check")}
                 </button>
               </div>
+              <div class="mt-4 border border-stone-300 bg-white p-4" data-access hidden>
+                <p class="leading-relaxed text-stone-700">{t("reservation.summary.possession")}</p>
+                <p class="mt-2 leading-relaxed text-stone-700">{t("reservation.summary.staff")}</p>
+                <button type="button" class={`mt-4 ${secondary}`} data-access-copy>
+                  {t("reservation.summary.copy")}
+                </button>
+                <p class="mt-2 font-medium text-stone-900" role="status" data-access-copied hidden>
+                  {t("reservation.summary.copied")}
+                </p>
+              </div>
             </div>
           </section>
         </div>
@@ -347,6 +363,7 @@ const contactFields = [
     type SecurityCheck,
   } from "@/lib/reservation/providers";
   import { readSearch, searchParams, type StaySearch } from "@/lib/reservation/search";
+  import { readCheckoutAccess, summaryLink } from "@/lib/reservation/summary";
   import { cancellationNodes } from "@/lib/reservation/terms";
 
   type Copy = {
@@ -355,6 +372,7 @@ const contactFields = [
     payments: { culqiPublicKey: string; turnstileSiteKey: string; title: string } | null;
     searchHref: string;
     chooseHref: string;
+    summaryHref: string;
     text: Record<string, string>;
     rooms: Record<string, { name: string; pmsRoomTypeId: string | null }>;
   };
@@ -481,6 +499,8 @@ const contactFields = [
     private openedBankFor: string | null = null;
     private securityCheck: Promise<SecurityCheck | null> | null = null;
     private poll: ReturnType<typeof setTimeout> | undefined;
+    private accessToken: string | null = null;
+    private accessRequest = 0;
 
     private text(key: string, values: Record<string, string | number> = {}) {
       return fill(this.copy.text[key] ?? key, values);
@@ -561,6 +581,7 @@ const contactFields = [
       this.el("[data-outcome-retry]").addEventListener("click", () => this.payAgain());
       this.el("[data-outcome-bank]").addEventListener("click", () => void this.openBank());
       this.el("[data-outcome-check]").addEventListener("click", () => void this.syncPayment(true));
+      this.el("[data-access-copy]").addEventListener("click", () => void this.copyAccessLink());
       this.el<HTMLFormElement>("[data-contact-form]").addEventListener("submit", (event) => {
         event.preventDefault();
         void this.submit();
@@ -1057,6 +1078,7 @@ const contactFields = [
       const outcome = this.el("[data-outcome]");
       outcome.hidden = !payment;
       if (payment) this.renderOutcome(payment);
+      void this.showAccess(payment);
       if (
         payment &&
         (payment.state === "declined" ||
@@ -1196,11 +1218,41 @@ const contactFields = [
       this.el("[data-outcome-retry]").hidden = !allowsNewPayment(payment) || !this.copy.payments;
       this.el("[data-outcome-bank]").hidden =
         payment.state !== "authentication_required" || !this.cardFor(payment);
+      this.el("[data-access]").hidden = true;
       this.el("[data-outcome-check]").hidden = !(
         payment.state === "submitted" ||
         payment.state === "authentication_required" ||
         (VERIFYING.includes(payment.state) && payment.delayed)
       );
+    }
+
+    private async showAccess(payment: GuestPayment | null) {
+      const panel = this.el("[data-access]");
+      const saved =
+        payment?.state === "confirmed" ||
+        payment?.state === "unfulfilled" ||
+        payment?.state === "reservation_changed";
+      const request = ++this.accessRequest;
+      this.accessToken = null;
+      panel.hidden = true;
+      this.el("[data-access-copied]").hidden = true;
+      if (!saved || !this.token) return;
+      const access = await readCheckoutAccess(this.copy.apiBase, this.token);
+      if (request !== this.accessRequest) return;
+      if (!access) return;
+      this.accessToken = access.token;
+      panel.hidden = false;
+    }
+
+    private async copyAccessLink() {
+      if (!this.accessToken) return;
+      const feedback = this.el("[data-access-copied]");
+      try {
+        await navigator.clipboard.writeText(summaryLink(this.copy.summaryHref, this.accessToken));
+        feedback.hidden = false;
+      } catch {
+        feedback.hidden = true;
+      }
     }
 
     private showFieldError(id: ContactField | "agree", message: string) {

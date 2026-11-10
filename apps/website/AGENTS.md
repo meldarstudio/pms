@@ -11,6 +11,10 @@ offer is charged, and a changed offer, including a lower price, is shown for a n
 acceptance and is not charged. Accepting an expired quote also refreshes, then records
 the contact and language just submitted. The checkout token
 lives only in `sessionStorage` (`src/lib/reservation/draft.ts`), never in URLs.
+The private summary (`/reservar/resumen/`) reads `GET /public/reservation` with the
+access token from the URL fragment only, sent as `Authorization: Bearer` with
+`referrerPolicy: "no-referrer"`. Review copies that link after the reservation is
+saved. It is not a fourth wizard step and marketing pages do not link to it.
 `src/lib/rooms.ts` links each room to a PMS room-type ID; the API offers only types
 it publishes. Card payment on Review needs build-time `PUBLIC_CULQI_PUBLIC_KEY` and
 `PUBLIC_TURNSTILE_SITE_KEY`; without either, Review says payment isn't available. Payment

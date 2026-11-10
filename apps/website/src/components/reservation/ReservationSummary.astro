@@ -1,0 +1,276 @@
+---
+import { PUBLIC_PMS_API_URL } from "astro:env/client";
+import { ui } from "@/i18n/ui";
+import { getLang, useTranslations } from "@/i18n/utils";
+import { email, getWhatsAppLink, phoneNumber } from "@/lib/constants";
+import { rooms } from "@/lib/rooms";
+import { formatPhoneNumber } from "@/lib/utils";
+
+const lang = getLang(Astro.currentLocale);
+const t = useTranslations(lang);
+const phoneLabel = formatPhoneNumber(phoneNumber);
+const whatsapp = getWhatsAppLink(t("reservation.summary.whatsappPrefill"));
+const mailto = `mailto:${email}?subject=${encodeURIComponent(t("reservation.summary.emailSubject"))}`;
+const copy = {
+  lang,
+  apiBase: PUBLIC_PMS_API_URL ?? "",
+  text: Object.fromEntries(
+    (Object.keys(ui[lang]) as (keyof (typeof ui)[typeof lang])[])
+      .filter((key) => key.startsWith("reservation."))
+      .map((key) => [key, t(key)]),
+  ),
+  rooms: Object.fromEntries(
+    rooms.flatMap((room) => (room.pmsRoomTypeId ? [[room.pmsRoomTypeId, t(room.nameKey)]] : [])),
+  ),
+};
+const panel = "border border-stone-300 bg-white p-5 md:p-8";
+const secondary =
+  "font-source-sans-3 inline-flex min-h-12 cursor-pointer items-center justify-center gap-2 border border-stone-900 px-6 text-sm font-semibold tracking-widest text-stone-900 uppercase hover:bg-stone-100";
+const link =
+  "text-accent-800 inline-flex min-h-11 items-center font-medium underline underline-offset-4";
+---
+
+<section class="bg-stone-100">
+  <div class="mx-auto max-w-2xl px-4 py-8 md:px-8 md:py-16">
+    <reservation-summary class="block">
+      <script
+        type="application/json"
+        is:inline
+        data-copy
+        set:html={JSON.stringify(copy).replace(/</g, "\\u003c")}
+      ></script>
+      <p class="text-stone-700" role="status" data-loading>
+        {t("reservation.summary.loading")}
+      </p>
+      <div data-summary hidden>
+        <h1 class="text-3xl font-semibold text-pretty text-stone-900 sm:text-4xl" tabindex="-1">
+          {t("reservation.summary.title")}
+        </h1>
+        <p class="mt-4 leading-relaxed text-stone-700">{t("reservation.summary.possession")}</p>
+        <button type="button" class={`mt-4 ${secondary}`} data-copy-link>
+          {t("reservation.summary.copy")}
+        </button>
+        <p class="mt-2 font-medium text-stone-900" role="status" data-copied hidden>
+          {t("reservation.summary.copied")}
+        </p>
+        <dl class={`mt-6 divide-y divide-stone-200 ${panel}`} data-facts></dl>
+        <div class="mt-6 space-y-4" data-rooms></div>
+        <div class={`mt-6 ${panel}`} data-terms hidden>
+          <h2 class="text-xl font-semibold text-stone-900">{t("reservation.review.plan")}</h2>
+          <p class="mt-2 font-medium text-stone-900" data-plan></p>
+          <div class="mt-3 leading-relaxed text-stone-700" data-cancellation></div>
+        </div>
+        <p class="mt-6 leading-relaxed text-stone-700">{t("reservation.summary.staff")}</p>
+        <div class="mt-6 flex flex-col gap-2" data-summary-help>
+          <a class={link} href={`tel:${phoneNumber}`}>
+            {phoneLabel}
+          </a>
+          <a class={link} href={mailto} data-summary-email>
+            {email}
+          </a>
+          <a
+            class={link}
+            href={whatsapp}
+            target="_blank"
+            rel="noopener noreferrer"
+            data-summary-whatsapp
+          >
+            {t("reservation.summary.whatsapp")}
+          </a>
+        </div>
+      </div>
+      <div data-assistance hidden>
+        <h1 class="text-3xl font-semibold text-pretty text-stone-900 sm:text-4xl">
+          {t("reservation.summary.assistance.title")}
+        </h1>
+        <p class="mt-4 leading-relaxed text-stone-700">
+          {t("reservation.summary.assistance.body")}
+        </p>
+        <div class="mt-6 flex flex-col gap-2">
+          <a class={link} href={`tel:${phoneNumber}`}>
+            {phoneLabel}
+          </a>
+          <a class={link} href={mailto} data-summary-email>
+            {email}
+          </a>
+          <a
+            class={link}
+            href={whatsapp}
+            target="_blank"
+            rel="noopener noreferrer"
+            data-summary-whatsapp
+          >
+            {t("reservation.summary.whatsapp")}
+          </a>
+        </div>
+      </div>
+    </reservation-summary>
+  </div>
+</section>
+
+<script>
+  import type { Lang } from "@/i18n/utils";
+  import { fill, formatDate, formatMoney } from "@/lib/reservation/format";
+  import { readReservationSummary, type GuestReservationSummary } from "@/lib/reservation/summary";
+  import { cancellationNodes } from "@/lib/reservation/terms";
+
+  type Copy = {
+    lang: Lang;
+    apiBase: string;
+    text: Record<string, string>;
+    rooms: Record<string, string>;
+  };
+
+  const statuses = new Set([
+    "confirmed",
+    "checked_in",
+    "checked_out",
+    "cancelled",
+    "no_show",
+    "unfulfilled",
+  ]);
+
+  class ReservationSummary extends HTMLElement {
+    private copy!: Copy;
+
+    connectedCallback() {
+      this.copy = JSON.parse(this.querySelector("[data-copy]")?.textContent ?? "{}") as Copy;
+      this.querySelector("[data-copy-link]")?.addEventListener("click", () => void this.copyLink());
+      window.addEventListener("pageshow", () => void this.open());
+      window.addEventListener("hashchange", () => void this.open());
+      void this.open();
+    }
+
+    private text(key: string, values: Record<string, string | number> = {}) {
+      return fill(this.copy.text[key] ?? key, values);
+    }
+
+    private count(key: string, count: number) {
+      return this.text(`${key}.${count === 1 ? "one" : "other"}`, { count });
+    }
+
+    private async open() {
+      const token = window.location.hash.slice(1);
+      const summary = this.copy.apiBase
+        ? await readReservationSummary(this.copy.apiBase, token)
+        : null;
+      const loading = this.querySelector<HTMLElement>("[data-loading]");
+      const ready = this.querySelector<HTMLElement>("[data-summary]");
+      const assistance = this.querySelector<HTMLElement>("[data-assistance]");
+      if (loading) loading.hidden = true;
+      if (ready) ready.hidden = !summary;
+      if (assistance) assistance.hidden = Boolean(summary);
+      if (summary) this.render(summary);
+    }
+
+    private render(summary: GuestReservationSummary) {
+      const money = (cents: number) => formatMoney(cents, summary.currency);
+      const rows: [string, string][] = [
+        [
+          "reservation.summary.status",
+          statuses.has(summary.status)
+            ? this.text(`reservation.summary.status.${summary.status}`)
+            : this.text("reservation.summary.planUnknown"),
+        ],
+        ["reservation.outcome.reference", summary.code],
+        ["reservation.summary.contact", summary.fullName],
+        [
+          "reservation.review.dates",
+          `${formatDate(summary.checkIn, this.copy.lang)} – ${formatDate(summary.checkOut, this.copy.lang)}`,
+        ],
+        ["reservation.summary.nights", this.count("reservation.nights", summary.nights)],
+        ["reservation.summary.total", money(summary.totalCents)],
+        ["reservation.outcome.paid", money(summary.paidCents)],
+        ["reservation.outcome.outstanding", money(summary.outstandingCents)],
+      ];
+      if (summary.refundDueCents > 0)
+        rows.push(["reservation.summary.refundDue", money(summary.refundDueCents)]);
+      if (summary.refundedCents > 0)
+        rows.push(["reservation.summary.refunded", money(summary.refundedCents)]);
+      this.querySelector("[data-facts]")?.replaceChildren(
+        ...rows.map(([label, value]) => this.fact(this.text(label), value)),
+      );
+      this.querySelector("[data-rooms]")?.replaceChildren(
+        ...summary.rooms.map((room) => this.room(room, summary.currency)),
+      );
+      const terms = this.querySelector<HTMLElement>("[data-terms]");
+      const plan = this.querySelector("[data-plan]");
+      const cancellation = this.querySelector("[data-cancellation]");
+      if (plan)
+        plan.textContent = this.text(
+          summary.ratePlan === "flexible" || summary.ratePlan === "non_refundable"
+            ? `reservation.plan.${summary.ratePlan}`
+            : "reservation.summary.planUnknown",
+        );
+      if (cancellation)
+        cancellation.replaceChildren(
+          ...(summary.cancellation
+            ? cancellationNodes(summary.cancellation, {
+                text: (key, values) => this.text(key, values),
+                amount: money(summary.cancellation.chargeCents),
+                lang: this.copy.lang,
+              })
+            : []),
+        );
+      if (terms) terms.hidden = false;
+    }
+
+    private fact(label: string, value: string) {
+      const row = document.createElement("div");
+      row.className = "flex items-baseline justify-between gap-4 py-2";
+      const term = document.createElement("dt");
+      term.className = "text-stone-700";
+      term.textContent = label;
+      const detail = document.createElement("dd");
+      detail.className = "text-right font-semibold text-stone-900";
+      detail.textContent = value;
+      row.append(term, detail);
+      return row;
+    }
+
+    private room(room: GuestReservationSummary["rooms"][number], currency: string) {
+      const article = document.createElement("article");
+      article.className = "border border-stone-300 bg-white p-5";
+      const title = document.createElement("h2");
+      title.className = "text-xl font-semibold text-stone-900";
+      title.textContent =
+        this.copy.rooms[room.roomTypeId] ?? this.text("reservation.summary.roomUnknown");
+      const guests = document.createElement("p");
+      guests.className = "mt-2 text-stone-700";
+      guests.textContent = [
+        this.count("reservation.adults", room.adults),
+        room.children ? this.count("reservation.children", room.children) : "",
+      ]
+        .filter(Boolean)
+        .join(", ");
+      const nights = document.createElement("ul");
+      nights.className = "mt-3 divide-y divide-stone-200";
+      for (const night of room.nights) {
+        const item = document.createElement("li");
+        item.className = "flex items-baseline justify-between gap-4 py-2";
+        const date = document.createElement("time");
+        date.dateTime = night.date;
+        date.textContent = formatDate(night.date, this.copy.lang);
+        const price = document.createElement("span");
+        price.className = "font-semibold text-stone-900";
+        price.textContent = formatMoney(night.priceCents, currency);
+        item.append(date, price);
+        nights.append(item);
+      }
+      article.append(title, guests, nights);
+      return article;
+    }
+
+    private async copyLink() {
+      const feedback = this.querySelector<HTMLElement>("[data-copied]");
+      try {
+        await navigator.clipboard.writeText(window.location.href);
+        if (feedback) feedback.hidden = false;
+      } catch {
+        if (feedback) feedback.hidden = true;
+      }
+    }
+  }
+
+  customElements.define("reservation-summary", ReservationSummary);
+</script>

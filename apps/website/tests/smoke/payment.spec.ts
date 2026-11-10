@@ -251,6 +251,7 @@ test("a payment that is still being verified after two minutes explains that and
     "La verificación está tardando más de lo habitual. Continúa aunque cierre esta página, así que no pague de nuevo. Consulte el estado aquí más tarde o escríbanos por WhatsApp o por correo si necesita ayuda.",
   );
   await expect(page.getByRole("button", { name: "Consultar estado" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Copiar enlace" })).toHaveCount(0);
   await expect(page.getByRole("button", { name: /^Pagar/ })).toHaveCount(0);
   expect(payments).toBe(1);
   expect(await page.evaluate(() => sessionStorage.getItem("hm.reservation.contact"))).toContain(
@@ -299,6 +300,7 @@ test("money received for dates the same contact already holds is shown as unconf
   await expect(outcome(page)).toContainText(/Recibido\s*S\/\s180\.00/);
   await expect(outcome(page)).toContainText(/Por resolver\s*S\/\s180\.00/);
   await expect(outcome(page)).not.toContainText("confirmada");
+  await expect(page.getByRole("button", { name: "Copiar enlace" })).toBeVisible();
 });
 
 test("paying an expired unchanged quote refreshes it and charges once without asking again", async ({
@@ -730,4 +732,67 @@ test("a lost payment keeps the stored card, and bank verification can open after
   await expect
     .poll(() => page.evaluate(() => window.culqi3DS?.authentications ?? []))
     .toEqual([sourceId]);
+});
+
+test("a saved reservation link can be copied and opened without putting the token in support links", async ({
+  page,
+  browser,
+}) => {
+  await page.context().grantPermissions(["clipboard-read", "clipboard-write"]);
+  await acceptTerms(page, "flexible", payerEmail());
+  await payButton(page, "100.00").click();
+  await expect(page.getByRole("heading", { name: "Su reserva está confirmada" })).toBeVisible();
+  const reference = (await outcome(page).innerText()).match(/Referencia\s*([A-Z0-9]{6})/)?.[1];
+  expect(reference).toBeTruthy();
+  await expect(
+    page.getByText("Quien tenga este enlace puede ver este resumen limitado"),
+  ).toBeVisible();
+  await page.getByRole("button", { name: "Copiar enlace" }).click();
+  await expect(page.getByText("Enlace copiado")).toBeVisible();
+
+  const copied = new URL(await page.evaluate(() => navigator.clipboard.readText()));
+  expect(copied.pathname).toBe("/reservar/resumen/");
+  expect(copied.search).toBe("");
+  expect(copied.hash).toMatch(/^#[\w-]{43}$/);
+  const token = copied.hash.slice(1);
+  expect(copied.href.replace(copied.hash, "")).not.toContain(token);
+  expect(page.url()).not.toContain(token);
+
+  const fresh = await browser.newContext();
+  const summary = await fresh.newPage();
+  await summary.goto(copied.href);
+  await expect(summary.getByRole("heading", { name: "Resumen de la reserva" })).toBeVisible();
+  await expect(summary.getByText(reference!)).toBeVisible();
+  await expect(summary.getByText(/Pagado\s*S\/\s100\.00/)).toBeVisible();
+  const hrefs = await summary
+    .locator("[data-summary-whatsapp], [data-summary-email]")
+    .evaluateAll((links) => links.map((link) => link.getAttribute("href") ?? ""));
+  expect(hrefs.length).toBeGreaterThan(0);
+  for (const href of hrefs) {
+    expect(href).not.toContain(token);
+    expect(href).not.toContain(reference!);
+  }
+  expect(summary.url()).toContain(copied.hash);
+
+  await summary.locator("#lang-select").selectOption({ label: "English" });
+  await expect(summary.getByRole("heading", { name: "Reservation summary" })).toBeVisible();
+  await expect(summary.getByText(reference!)).toBeVisible();
+  expect(summary.url()).toContain(`/en/reservar/resumen/${copied.hash}`);
+  await summary.goBack();
+  await expect(summary.getByRole("heading", { name: "Resumen de la reserva" })).toBeVisible();
+  await expect(summary.getByText(reference!)).toBeVisible();
+  await fresh.close();
+});
+
+test("an invalid reservation link shows hotel assistance and no reservation details", async ({
+  page,
+}) => {
+  await page.goto(`/reservar/resumen/#${"a".repeat(43)}`);
+  await expect(
+    page.getByRole("heading", { name: "El hotel puede ayudarle con esta reserva" }),
+  ).toBeVisible();
+  await expect(page.getByText("no se muestran datos de la reserva")).toBeVisible();
+  await expect(page.locator("[data-assistance]").getByText(/992\s*755\s*015/)).toBeVisible();
+  await expect(page.locator("[data-summary]")).toBeHidden();
+  await expect(page.getByText(/Referencia\s*[A-Z0-9]{6}/)).toHaveCount(0);
 });
