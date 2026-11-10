@@ -36,6 +36,12 @@ export const ui = {
     "hero.bookCta": "Check availability",
     "hero.roomsCta": "See rooms and rates",
     "hero.imageAlt": "Room at Hotel Manantial in Churín",
+    "landing.chooseDate": "Choose date",
+    "landing.guests": "Guests",
+    "landing.decreaseAdults": "Decrease adults",
+    "landing.increaseAdults": "Increase adults",
+    "landing.decreaseChildren": "Decrease children",
+    "landing.increaseChildren": "Increase children",
     "rooms.title": "A room for every kind of trip",
     "rooms.body":
       "The King room for couples, the Premium double for friends and the Family suite for families. Wi-Fi, an elevator, and rates per room, not per person.",
@@ -205,7 +211,7 @@ export const ui = {
     "booking.kicker": "Prices for your dates",
     "booking.title": "Book direct, no fees",
     "booking.body":
-      "Send us your dates on WhatsApp and we'll confirm availability and your rate. Booking direct costs less than on booking sites.",
+      "For a question, or a room that cannot be booked online, write to us. Booking direct costs less than on booking sites.",
     "booking.cta": "Message us on WhatsApp",
     "whatsapp.prefill": "Hello, I would like to book. Dates: ___ Guests: ___ Room: ___",
     "notFound.metaTitle": "Page not found — Hotel Manantial",
@@ -529,6 +535,12 @@ export const ui = {
     "hero.bookCta": "Consultar disponibilidad",
     "hero.roomsCta": "Ver habitaciones y precios",
     "hero.imageAlt": "Habitación del Hotel Manantial en Churín",
+    "landing.chooseDate": "Elegir fecha",
+    "landing.guests": "Huéspedes",
+    "landing.decreaseAdults": "Reducir adultos",
+    "landing.increaseAdults": "Aumentar adultos",
+    "landing.decreaseChildren": "Reducir niños",
+    "landing.increaseChildren": "Aumentar niños",
     "rooms.title": "Una habitación para cada tipo de viaje",
     "rooms.body":
       "Suite Matrimonial para parejas, Doble Premium para amigos y Suite Familiar para familias. Wi-Fi, ascensor y precio por habitación, no por persona.",
@@ -700,7 +712,7 @@ export const ui = {
     "booking.kicker": "Precios para sus fechas",
     "booking.title": "Reserve directo y sin comisiones",
     "booking.body":
-      "Envíenos sus fechas por WhatsApp y le confirmamos disponibilidad y tarifa. Reservar directo cuesta menos que en las plataformas.",
+      "Para una consulta, o una habitación que no se puede reservar en línea, escríbanos. Reservar directo cuesta menos que en las plataformas.",
     "booking.cta": "Escribir por WhatsApp",
     "whatsapp.prefill": "Hola, quisiera reservar. Fechas: ___ Personas: ___ Habitación: ___",
     "notFound.metaTitle": "Página no encontrada — Hotel Manantial",

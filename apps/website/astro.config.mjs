@@ -1,5 +1,6 @@
 import { copyFile } from "node:fs/promises";
 import { defineConfig, envField, fontProviders } from "astro/config";
+import react from "@astrojs/react";
 import tailwindcss from "@tailwindcss/vite";
 import sitemap from "@astrojs/sitemap";
 
@@ -46,6 +47,7 @@ export default defineConfig({
     defaultLocale: "es",
   },
   integrations: [
+    react(),
     sitemap({
       filter: (page) => !/^\/(en\/)?reservar\//.test(new URL(page).pathname),
       i18n: {
