@@ -1,10 +1,14 @@
-import { and, asc, eq, isNotNull, sql } from "drizzle-orm";
+import { and, asc, eq, isNotNull, sql, type SQL } from "drizzle-orm";
 import type { Context } from "hono";
 import { getDb, runBatch, type Db } from "./db";
 import { confirmationReports, confirmationSubmissions } from "./db/schema";
 import type { Env } from "./env";
 import { resendEmailsUrl, resendForEnv } from "./resend";
-import { authenticateResendReport, decodeResendReport } from "./resend-reports";
+import {
+  prepareResendReportVerification,
+  decodeResendReport,
+  foldRecipientAsciiCase,
+} from "./resend-reports";
 
 type Submission = typeof confirmationSubmissions.$inferSelect;
 
@@ -17,15 +21,23 @@ const conflictAttention = {
 
 export async function receiveConfirmationReport(c: Context<Env>) {
   c.header("Cache-Control", "no-store");
-  const body = new Uint8Array(await c.req.raw.arrayBuffer());
-  const eventId = await authenticateResendReport(
-    body,
+  const verify = await prepareResendReportVerification(
     c.req.raw.headers,
     c.env.RESEND_WEBHOOK_SECRET,
   );
+  if (!verify) return c.json({ error: "invalid email report" }, 401);
+  let body: Uint8Array<ArrayBuffer> | null;
+  try {
+    body = await boundedReportBody(c.req.raw);
+  } catch {
+    return c.json({ error: "invalid email report" }, 400);
+  }
+  if (!body) return c.json({ error: "invalid email report" }, 413);
+  const eventId = await verify(body);
   if (!eventId) return c.json({ error: "invalid email report" }, 401);
   const report = decodeResendReport(body);
   if (!report) return c.json({ error: "invalid email report" }, 400);
+  if (report === "ignored") return c.json({ received: true });
   const digest = await crypto.subtle.digest("SHA-256", body);
   const bodyDigest = [...new Uint8Array(digest)]
     .map((byte) => byte.toString(16).padStart(2, "0"))
@@ -74,13 +86,50 @@ export async function receiveConfirmationReport(c: Context<Env>) {
   }
 }
 
+async function boundedReportBody(request: Request) {
+  const maximumBytes = 64 * 1024;
+  const reader = request.body?.getReader();
+  if (!reader) return new Uint8Array(0);
+  const chunks: Uint8Array[] = [];
+  let length = 0;
+  try {
+    while (true) {
+      const chunk = await reader.read();
+      if (chunk.done) break;
+      length += chunk.value.byteLength;
+      if (length > maximumBytes) {
+        void reader.cancel().catch(() => {});
+        return null;
+      }
+      chunks.push(chunk.value);
+    }
+  } finally {
+    reader.releaseLock();
+  }
+  const body = new Uint8Array(length);
+  let offset = 0;
+  for (const chunk of chunks) {
+    body.set(chunk, offset);
+    offset += chunk.byteLength;
+  }
+  return body;
+}
+
 const positiveTypesSql = sql`('sent', 'delivered', 'delivery_delayed', 'bounced', 'complained')`;
 const LOOKUP_INTERVAL_MS = 15 * 60_000;
+const terminalDeliveryFactSql = sql`EXISTS (SELECT 1 FROM confirmation_reports terminal
+  WHERE terminal.submission_id = confirmation_submissions.id AND terminal.conflict = 0
+  AND terminal.type IN ('delivered', 'failed', 'bounced', 'complained', 'suppressed'))`;
+
+function recipientBlockingFactSql(type: SQL, details: SQL) {
+  return sql`(${type} IN ('complained', 'suppressed') OR (${type} = 'bounced' AND json_extract(${details}, '$.permanent') = 1))`;
+}
 
 function associationStatements(db: Db, context: string, providerMessageId: string) {
   const scope = sql`context = ${context} AND provider_message_id = ${providerMessageId}`;
   const savedFrom = sql`json_extract(s.request_json, '$.from')`;
   const savedMailbox = sql`lower(trim(CASE WHEN instr(${savedFrom}, '<') > 0 THEN substr(${savedFrom}, instr(${savedFrom}, '<') + 1, instr(${savedFrom}, '>') - instr(${savedFrom}, '<') - 1) ELSE ${savedFrom} END))`;
+  const positiveEvidence = sql`EXISTS (SELECT 1 FROM confirmation_reports r WHERE r.context = ${context} AND r.provider_message_id = ${providerMessageId} AND r.submission_id = confirmation_submissions.id AND r.conflict = 0 AND r.type IN ${positiveTypesSql})`;
   return [
     db
       .update(confirmationReports)
@@ -119,11 +168,11 @@ function associationStatements(db: Db, context: string, providerMessageId: strin
       .update(confirmationSubmissions)
       .set({
         providerMessageId: sql`coalesce(provider_message_id, ${providerMessageId})`,
-        status: sql`CASE WHEN status = 'accepted' OR EXISTS (SELECT 1 FROM confirmation_reports r WHERE r.context = ${context} AND r.provider_message_id = ${providerMessageId} AND r.submission_id = confirmation_submissions.id AND r.conflict = 0 AND r.type IN ${positiveTypesSql}) THEN 'accepted' ELSE 'attention' END`,
-        possiblyAcceptedPosts: sql`CASE WHEN EXISTS (SELECT 1 FROM confirmation_reports r WHERE r.context = ${context} AND r.provider_message_id = ${providerMessageId} AND r.submission_id = confirmation_submissions.id AND r.conflict = 0 AND r.type IN ${positiveTypesSql}) THEN 0 ELSE acceptance_possible END`,
+        status: sql`CASE WHEN status = 'accepted' OR ${positiveEvidence} THEN 'accepted' ELSE 'attention' END`,
+        possiblyAcceptedPosts: sql`CASE WHEN ${positiveEvidence} THEN 0 ELSE acceptance_possible END`,
         nextAttemptAt: null,
-        failureCode: sql`CASE WHEN EXISTS (SELECT 1 FROM confirmation_reports r WHERE r.context = ${context} AND r.provider_message_id = ${providerMessageId} AND r.submission_id = confirmation_submissions.id AND r.conflict = 0 AND r.type IN ${positiveTypesSql}) THEN NULL ELSE failure_code END`,
-        nextLookupAt: sql`coalesce(next_lookup_at, ${new Date(Date.now() + LOOKUP_INTERVAL_MS).toISOString()})`,
+        failureCode: sql`CASE WHEN ${positiveEvidence} THEN NULL ELSE failure_code END`,
+        nextLookupAt: sql`CASE WHEN ${terminalDeliveryFactSql} THEN NULL ELSE coalesce(next_lookup_at, ${new Date(Date.now() + LOOKUP_INTERVAL_MS).toISOString()}) END`,
       })
       .where(
         sql`id IN (SELECT submission_id FROM confirmation_reports WHERE ${scope} AND conflict = 0)`,
@@ -131,14 +180,16 @@ function associationStatements(db: Db, context: string, providerMessageId: strin
     db
       .update(confirmationSubmissions)
       .set({ status: "attention", failureCode: "recipient_blocked", nextAttemptAt: null })
-      .where(sql`status IN ('unsent', 'uncertain') AND ${recipientBlockedSql()}`),
+      .where(
+        sql`status IN ('unsent', 'uncertain') AND next_attempt_at IS NOT NULL AND ${recipientBlockedSql()}`,
+      ),
   ];
 }
 
 export function recipientBlockedSql() {
   return sql`EXISTS (SELECT 1 FROM confirmation_reports blocked
     WHERE blocked.context = confirmation_submissions.endpoint AND blocked.recipient_email = lower(confirmation_submissions.recipient_email)
-    AND (blocked.type IN ('complained', 'suppressed') OR (blocked.type = 'bounced' AND json_extract(blocked.details, '$.permanent') = 1)))`;
+    AND ${recipientBlockingFactSql(sql`blocked.type`, sql`blocked.details`)})`;
 }
 
 export async function recipientIsBlocked(db: Db, endpoint: string, recipientEmail: string) {
@@ -148,8 +199,11 @@ export async function recipientIsBlocked(db: Db, endpoint: string, recipientEmai
     .where(
       and(
         eq(confirmationReports.context, endpoint),
-        eq(confirmationReports.recipientEmail, recipientEmail.toLowerCase()),
-        sql`(${confirmationReports.type} IN ('complained', 'suppressed') OR (${confirmationReports.type} = 'bounced' AND json_extract(${confirmationReports.details}, '$.permanent') = 1))`,
+        eq(confirmationReports.recipientEmail, foldRecipientAsciiCase(recipientEmail)),
+        recipientBlockingFactSql(
+          sql`${confirmationReports.type}`,
+          sql`${confirmationReports.details}`,
+        ),
       ),
     )
     .limit(1);
@@ -166,7 +220,8 @@ export async function recordSubmissionAcceptance(
     .select()
     .from(confirmationSubmissions)
     .where(eq(confirmationSubmissions.id, submissionId));
-  if (!row?.endpoint) return;
+  if (!row?.endpoint)
+    throw new Error("accepted confirmation requires a persisted submission endpoint");
   await runBatch(db, [
     db
       .insert(confirmationReports)
@@ -179,7 +234,7 @@ export async function recordSubmissionAcceptance(
         providerMessageId,
         submissionId: row.id,
         observedAt: now.toISOString(),
-        recipientEmail: row.recipientEmail.toLowerCase(),
+        recipientEmail: foldRecipientAsciiCase(row.recipientEmail),
       })
       .onConflictDoNothing(),
     ...associationStatements(db, row.endpoint, providerMessageId),
@@ -207,10 +262,11 @@ export async function reconcileConfirmationReports(
           eq(confirmationSubmissions.credentialFingerprint, fingerprint),
           sql`first_possible_at >= ${new Date(now.getTime() - 30 * 24 * 60 * 60_000).toISOString()}`,
           due,
+          sql`NOT ${terminalDeliveryFactSql}`,
         ),
       )
       .orderBy(asc(confirmationSubmissions.nextLookupAt))
-      .limit(10);
+      .limit(2);
     for (const row of rows) {
       try {
         if (
@@ -222,7 +278,9 @@ export async function reconcileConfirmationReports(
         const claimed = await db
           .update(confirmationSubmissions)
           .set({ nextLookupAt: new Date(now.getTime() + LOOKUP_INTERVAL_MS).toISOString() })
-          .where(and(eq(confirmationSubmissions.id, row.id), due))
+          .where(
+            and(eq(confirmationSubmissions.id, row.id), due, sql`NOT ${terminalDeliveryFactSql}`),
+          )
           .returning({ id: confirmationSubmissions.id });
         if (claimed.length === 0) continue;
         const evidence = await resend.getEmail(row.endpoint, row.providerMessageId!);

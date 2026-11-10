@@ -97,6 +97,7 @@ function configureResend() {
 async function acceptedCheckout(
   language: "es" | "en" = "en",
   selection: Record<string, unknown> = {},
+  bookingContact = contact,
 ) {
   const created = await guest("/public/checkouts", {
     body: {
@@ -114,7 +115,7 @@ async function acceptedCheckout(
   const { token, quote } = (await created.json()) as { token: string; quote: { id: string } };
   const accepted = await guest("/public/checkout/acceptances", {
     token,
-    body: { quoteId: quote.id, language, contact, agreed: true },
+    body: { quoteId: quote.id, language, contact: bookingContact, agreed: true },
   });
   expect(accepted.status).toBe(201);
   return { token, quoteId: quote.id };
@@ -243,6 +244,414 @@ async function inspection(id: string) {
 }
 
 describe("authenticated delivery reports", () => {
+  it("keeps terminal callbacks received during an older lookup and does not reopen polling", async () => {
+    const { saved } = await confirmed();
+    configureResend();
+    db.env.RESEND_WEBHOOK_SECRET = REPORT_SECRET;
+    await admitEmail(true);
+    await runScheduled();
+    await admitEmail(false);
+    const callbackStatuses: number[] = [];
+    resend.lookup({ id: "email_1", last_event: "sent", from: FROM, to: [contact.email] });
+    resend.duringNextLookup(async () => {
+      callbackStatuses.push((await callback(reportBody("email.delivered"))).status);
+      callbackStatuses.push((await callback(reportBody("email.complained"))).status);
+    });
+    vi.setSystemTime(Date.now() + 15 * 60_000);
+    await runScheduled();
+    expect(callbackStatuses).toEqual([200, 200]);
+    const view = await inspection(saved.id);
+    expect(view.submission.delivery).toMatchObject({
+      delivered: true,
+      complained: true,
+      recipientBlocked: true,
+    });
+    expect(view.submission.delivery.history).toContainEqual(
+      expect.objectContaining({ source: "lookup", type: "sent" }),
+    );
+    vi.setSystemTime(Date.now() + 15 * 60_000);
+    await runScheduled();
+    expect(resend.requests.filter((request) => request.method === "GET")).toHaveLength(1);
+    expect(posts()).toHaveLength(1);
+  });
+
+  it("bounds a stalled provider lookup to a small tick budget and retains its next safe observation without another send", async () => {
+    const { saved } = await confirmed();
+    configureResend();
+    await admitEmail(true);
+    await runScheduled();
+    await admitEmail(false);
+    vi.spyOn(AbortSignal, "timeout").mockImplementation((delay) => {
+      const controller = new AbortController();
+      setTimeout(
+        () => controller.abort(new DOMException("Synthetic timeout", "TimeoutError")),
+        delay,
+      );
+      return controller.signal;
+    });
+    const transport = globalThis.fetch;
+    let gets = 0;
+    let started!: () => void;
+    const lookupStarted = new Promise<void>((resolve) => {
+      started = resolve;
+    });
+    vi.stubGlobal("fetch", (async (input: RequestInfo | URL, init?: RequestInit) => {
+      if (init?.method !== "GET") return transport(input, init);
+      gets++;
+      started();
+      const signal = init.signal!;
+      return new Promise<Response>((_resolve, reject) => {
+        signal.addEventListener("abort", () => reject(signal.reason), { once: true });
+      });
+    }) as typeof fetch);
+    vi.setSystemTime(Date.now() + 15 * 60_000);
+    let completed = false;
+    const tick = runScheduled().then(() => {
+      completed = true;
+    });
+    await lookupStarted;
+    await vi.advanceTimersByTimeAsync(10_000);
+    const completedWithinBudget = completed;
+    await vi.advanceTimersByTimeAsync(20_000);
+    await tick;
+    expect(completedWithinBudget).toBe(true);
+    expect((await inspection(saved.id)).submission.delivery).toMatchObject({
+      accepted: true,
+      delivered: false,
+    });
+    await runScheduled();
+    expect(gets).toBe(1);
+    expect(posts()).toHaveLength(1);
+  });
+
+  it("logs a safe failure instead of silently discarding an accepted POST whose persisted endpoint was lost", async () => {
+    const { saved } = await confirmed();
+    configureResend();
+    await admitEmail(true);
+    const log = vi.spyOn(console, "error").mockImplementation(() => {});
+    resend.duringNext(() => {
+      db.sqlite.exec("UPDATE confirmation_submissions SET endpoint = NULL");
+    });
+    await runScheduled();
+    expect(posts()).toHaveLength(1);
+    expect(log.mock.calls).toEqual([["confirmation submission failed", saved.id]]);
+    expect((await inspection(saved.id)).submission).toMatchObject({
+      status: "uncertain",
+      providerMessageId: null,
+    });
+  });
+
+  it("sends queued confirmations before a stalled lookup and bounds lookup calls without losing older known-ID recovery", async () => {
+    await confirmed();
+    vi.setSystemTime(Date.now() + 1_000);
+    await confirmed("en", { checkIn: "2026-10-23", checkOut: "2026-10-24" });
+    vi.setSystemTime(Date.now() + 1_000);
+    await confirmed("en", { checkIn: "2026-10-25", checkOut: "2026-10-26" });
+    configureResend();
+    await admitEmail(true);
+    await runScheduled();
+    db.sqlite.exec(
+      "DELETE FROM confirmation_reports WHERE source = 'response'; UPDATE confirmation_submissions SET next_lookup_at = NULL;",
+    );
+    await confirmed("en", { checkIn: "2026-10-27", checkOut: "2026-10-28" });
+    let release!: () => void;
+    let started!: () => void;
+    const stalled = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const lookupStarted = new Promise<void>((resolve) => {
+      started = resolve;
+    });
+    resend.duringNextLookup(async () => {
+      started();
+      await stalled;
+    });
+    const tick = runScheduled();
+    await lookupStarted;
+    const postedBeforeLookupCompleted = posts().length;
+    release();
+    await tick;
+    expect(postedBeforeLookupCompleted).toBe(4);
+    expect(resend.requests.filter((request) => request.method === "GET")).toHaveLength(2);
+    await runScheduled();
+    expect(resend.requests.filter((request) => request.method === "GET")).toHaveLength(3);
+    expect(posts()).toHaveLength(4);
+  });
+
+  it.each([
+    "email.delivered",
+    "email.failed",
+    "email.bounced",
+    "email.complained",
+    "email.suppressed",
+  ])(
+    "stops known-ID polling after authoritative %s facts without disabling later callbacks",
+    async (type) => {
+      const { saved } = await confirmed();
+      configureResend();
+      db.env.RESEND_WEBHOOK_SECRET = REPORT_SECRET;
+      await admitEmail(true);
+      await runScheduled();
+      expect(
+        (
+          await callback(
+            reportBody(type, {
+              bounce:
+                type === "email.bounced" ? { type: "Permanent", subType: "General" } : undefined,
+            }),
+          )
+        ).status,
+      ).toBe(200);
+      await admitEmail(false);
+      vi.setSystemTime(Date.now() + 15 * 60_000);
+      await runScheduled();
+      vi.setSystemTime(Date.now() + 24 * 60 * 60_000);
+      await runScheduled();
+      expect(resend.requests.filter((request) => request.method === "GET")).toHaveLength(0);
+      expect((await callback(reportBody("email.complained"))).status).toBe(200);
+      expect((await inspection(saved.id)).submission.delivery.complained).toBe(true);
+      expect(posts()).toHaveLength(1);
+    },
+  );
+
+  it("rejects missing verification configuration or headers without consuming an anonymous request stream", async () => {
+    for (const mode of ["missing_secret", "malformed_secret", "missing_headers"]) {
+      db.env.RESEND_WEBHOOK_SECRET =
+        mode === "missing_secret"
+          ? undefined
+          : mode === "malformed_secret"
+            ? "whsec_!"
+            : REPORT_SECRET;
+      let pulls = 0;
+      const stream = new ReadableStream<Uint8Array>(
+        {
+          pull(controller) {
+            pulls++;
+            controller.enqueue(new TextEncoder().encode("anonymous private body"));
+            controller.close();
+          },
+        },
+        { highWaterMark: 0 },
+      );
+      const request = new Request("http://localhost/callbacks/resend", {
+        method: "POST",
+        body: stream,
+        duplex: "half",
+        headers:
+          mode === "missing_headers"
+            ? {}
+            : {
+                "svix-id": "msg_test",
+                "svix-timestamp": String(Math.floor(Date.now() / 1000)),
+                "svix-signature": `v1,${Buffer.alloc(32).toString("base64")}`,
+              },
+      } as RequestInit);
+      const response = await app.fetch(request, db.env);
+      expect(response.status).toBe(401);
+      expect(pulls).toBe(0);
+      expect(request.bodyUsed).toBe(false);
+    }
+  });
+
+  it("enforces the raw streaming byte cap even without a trustworthy Content-Length", async () => {
+    db.env.RESEND_WEBHOOK_SECRET = REPORT_SECRET;
+    const raw = JSON.stringify({
+      type: "email.opened",
+      created_at: "2026-10-10T15:00:00Z",
+      data: { private: "x".repeat(512 * 1024) },
+    });
+    for (const contentLength of [undefined, "1"]) {
+      const eventId = crypto.randomUUID();
+      const timestamp = String(Math.floor(Date.now() / 1000));
+      const signature = createHmac("sha256", Buffer.from(REPORT_SECRET.slice(6), "base64"))
+        .update(`${eventId}.${timestamp}.${raw}`)
+        .digest("base64");
+      const bytes = new TextEncoder().encode(raw);
+      let offset = 0;
+      let cancelled = false;
+      const stream = new ReadableStream<Uint8Array>(
+        {
+          pull(controller) {
+            const chunk = bytes.slice(offset, offset + 32 * 1024);
+            offset += chunk.length;
+            controller.enqueue(chunk);
+            if (offset === bytes.length) controller.close();
+          },
+          cancel() {
+            cancelled = true;
+          },
+        },
+        { highWaterMark: 0 },
+      );
+      const response = await app.fetch(
+        new Request("http://localhost/callbacks/resend", {
+          method: "POST",
+          duplex: "half",
+          body: stream,
+          headers: {
+            "svix-id": eventId,
+            "svix-timestamp": timestamp,
+            "svix-signature": `v1,${signature}`,
+            ...(contentLength ? { "content-length": contentLength } : {}),
+          },
+        } as RequestInit),
+        db.env,
+      );
+      expect(response.status).toBe(413);
+      expect(await response.json()).toEqual({ error: "invalid email report" });
+      expect(offset).toBeLessThan(bytes.length);
+      expect(cancelled).toBe(true);
+    }
+  });
+
+  it("acknowledges authenticated unsupported envelopes without persisting incidental data or handling their semantics", async () => {
+    const { saved } = await confirmed();
+    configureResend();
+    db.env.RESEND_WEBHOOK_SECRET = REPORT_SECRET;
+    await admitEmail(true);
+    await runScheduled();
+    const before = await inspection(saved.id);
+    db.sqlite.exec(
+      "CREATE TRIGGER reject_ignored_report BEFORE INSERT ON confirmation_reports BEGIN SELECT RAISE(ABORT, 'unsupported event must not persist'); END;",
+    );
+    for (const type of [
+      "email.scheduled",
+      "email.opened",
+      "email.clicked",
+      "suppression.added",
+      "suppression.removed",
+      "domain.updated",
+    ]) {
+      const envelope = { type, created_at: "2026-10-10T15:00:00Z", data: { private: saved.token } };
+      expect((await callback(envelope, crypto.randomUUID(), { signature: "v1,AAAA" })).status).toBe(
+        401,
+      );
+      expect((await callback(envelope)).status).toBe(200);
+    }
+    expect(
+      (await callback({ type: "email.delivered", created_at: "2026-10-10T15:00:00Z", data: {} }))
+        .status,
+    ).toBe(400);
+    expect((await callback({ type: "email.opened", created_at: "invalid", data: {} })).status).toBe(
+      400,
+    );
+    expect(await inspection(saved.id)).toEqual(before);
+    await runScheduled();
+    expect(posts()).toHaveLength(1);
+  });
+
+  it.each([
+    ["a&b@Example.COM", "a&b@example.com"],
+    ["José@Ejemplo.COM", "josé@ejemplo.com"],
+    ["用户@例子.测试", "用户@例子.测试"],
+    ["ana@XN--BCHER-KVA.EXAMPLE", "ana@xn--bcher-kva.example"],
+  ])(
+    "reconciles callback and lookup for the writer-accepted address %s",
+    async (email, normalized) => {
+      const checkout = await acceptedCheckout("en", {}, { ...contact, email });
+      await paid(checkout);
+      const saved = await reservationFor(checkout.token);
+      configureResend();
+      db.env.RESEND_WEBHOOK_SECRET = REPORT_SECRET;
+      await admitEmail(true);
+      await runScheduled();
+      expect((await callback(reportBody("email.sent", { to: [normalized] }))).status).toBe(200);
+      expect((await inspection(saved.id)).submission.delivery).toMatchObject({
+        accepted: true,
+        conflict: false,
+      });
+      await admitEmail(false);
+      resend.lookup({ id: "email_1", last_event: "delivered", from: FROM, to: [normalized] });
+      vi.setSystemTime(Date.now() + 15 * 60_000);
+      await runScheduled();
+      expect((await inspection(saved.id)).submission.delivery).toMatchObject({
+        delivered: true,
+        conflict: false,
+      });
+      expect(posts()).toHaveLength(1);
+      expect(
+        (
+          await callback(
+            reportBody("email.suppressed", {
+              email_id: "unrelated",
+              to: ["odd&local@例子.测试"],
+              tags: undefined,
+            }),
+          )
+        ).status,
+      ).toBe(200);
+    },
+  );
+  it("preserves a staff-cancelled terminal submission when later recipient suppression is reported", async () => {
+    const { saved } = await confirmed();
+    configureResend();
+    db.env.RESEND_WEBHOOK_SECRET = REPORT_SECRET;
+    await admitEmail(true);
+    resend.next(429);
+    await runScheduled();
+    await command(saved.id, [{ type: "set-status", status: "cancelled" }]);
+    vi.setSystemTime(Date.now() + 15 * 60_000);
+    await runScheduled();
+    const terminal = submissions()[0]!;
+    expect(terminal).toMatchObject({
+      status: "unsent",
+      failure_code: "not_confirmed",
+      next_attempt_at: null,
+    });
+    expect(
+      (
+        await callback(
+          reportBody("email.suppressed", { email_id: "outside_application", tags: undefined }),
+        )
+      ).status,
+    ).toBe(200);
+    expect(submissions()[0]).toEqual(terminal);
+    expect((await inspection(saved.id)).submission).toMatchObject({
+      status: "unsent",
+      failureCode: "not_confirmed",
+      delivery: { recipientBlocked: true },
+    });
+    expect(posts()).toHaveLength(1);
+  });
+
+  it("does not overwrite cancellation when stale selected work is restored after recipient blocking", async () => {
+    await confirmed();
+    vi.setSystemTime(Date.now() + 1_000);
+    const second = await confirmed("en", { checkIn: "2026-10-23", checkOut: "2026-10-24" });
+    configureResend();
+    db.env.RESEND_WEBHOOK_SECRET = REPORT_SECRET;
+    await admitEmail(true);
+    resend.next(429, 429);
+    await runScheduled();
+    vi.setSystemTime(Date.now() + 15 * 60_000);
+    let terminal: SubmissionRow | undefined;
+    resend.duringNext(async () => {
+      await command(second.saved.id, [{ type: "set-status", status: "cancelled" }]);
+      await runScheduled();
+      terminal = submissions()[1]!;
+      expect(terminal).toMatchObject({
+        status: "unsent",
+        failure_code: "not_confirmed",
+        next_attempt_at: null,
+      });
+      expect(
+        (
+          await callback(
+            reportBody("email.suppressed", { email_id: "outside_application", tags: undefined }),
+          )
+        ).status,
+      ).toBe(200);
+      await command(second.saved.id, [{ type: "set-status", status: "confirmed" }]);
+    });
+    await runScheduled();
+    expect(terminal).toBeDefined();
+    expect(submissions()[1]).toEqual(terminal);
+    expect((await inspection(second.saved.id)).submission).toMatchObject({
+      status: "unsent",
+      failureCode: "not_confirmed",
+    });
+  });
+
   it("verifies the exact non-ASCII HTTP bytes, not parsed JSON, and accepts a valid second rotation signature", async () => {
     const { saved } = await confirmed();
     configureResend();
@@ -545,14 +954,11 @@ describe("authenticated delivery reports", () => {
     await admitEmail(true);
     resend.next("lose");
     await runScheduled();
-    expect(
-      (await callback(reportBody("email.failed", { failed: { reason: "reached_daily_quota" } })))
-        .status,
-    ).toBe(200);
+    expect((await callback(reportBody("email.delivery_delayed"))).status).toBe(200);
     expect((await inspection(saved.id)).submission).toMatchObject({
-      status: "attention",
+      status: "accepted",
       providerMessageId: "email_1",
-      delivery: { failed: true, delivered: false },
+      delivery: { delayed: true, delivered: false },
     });
     await admitEmail(false);
     resend.lookup({
@@ -570,7 +976,7 @@ describe("authenticated delivery reports", () => {
     expect(view.submission.delivery).toMatchObject({
       accepted: true,
       delivered: true,
-      failed: true,
+      delayed: true,
       uncertain: false,
     });
     expect(view.submission.delivery.history).toContainEqual(
@@ -591,10 +997,11 @@ describe("authenticated delivery reports", () => {
     await runScheduled();
     expect((await inspection(saved.id)).submission.delivery).toMatchObject({
       delivered: true,
-      failed: true,
+      delayed: true,
       complained: true,
       recipientBlocked: true,
     });
+    expect(resend.requests.filter((request) => request.method === "GET")).toHaveLength(1);
     expect(posts()).toHaveLength(1);
   });
 
@@ -605,10 +1012,7 @@ describe("authenticated delivery reports", () => {
     await admitEmail(true);
     resend.next("lose");
     await runScheduled();
-    expect(
-      (await callback(reportBody("email.failed", { failed: { reason: "provider_configuration" } })))
-        .status,
-    ).toBe(200);
+    expect((await callback(reportBody("email.sent"))).status).toBe(200);
     await admitEmail(false);
     const original = submissions()[0]!;
     for (const [body, status] of [
@@ -624,8 +1028,8 @@ describe("authenticated delivery reports", () => {
       vi.setSystemTime(Date.now() + 15 * 60_000);
       await runScheduled();
       expect((await inspection(saved.id)).submission.delivery).toMatchObject({
-        accepted: false,
-        failed: true,
+        accepted: true,
+        failed: false,
         delivered: false,
       });
     }
@@ -642,7 +1046,7 @@ describe("authenticated delivery reports", () => {
     expect((await inspection(saved.id)).submission.delivery).toMatchObject({
       accepted: true,
       delayed: true,
-      failed: true,
+      failed: false,
       delivered: false,
     });
     const before = resend.requests.length;

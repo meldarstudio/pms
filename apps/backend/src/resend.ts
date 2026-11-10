@@ -4,6 +4,7 @@ import { decodeResendLookup, type ResendLookup } from "./resend-reports";
 
 const API = "https://api.resend.com";
 const TIMEOUT_MS = 20_000;
+const LOOKUP_TIMEOUT_MS = 5_000;
 
 export const QUOTA_BACKOFF_MS = 15 * 60 * 1000;
 
@@ -49,6 +50,7 @@ export function resendClient(options: {
     url: string,
     body?: string,
     idempotencyKey?: string,
+    timeoutMs = TIMEOUT_MS,
   ): Promise<CallResult | null> {
     if (!options.secretKey) return null;
     const response = await send(url, {
@@ -59,7 +61,7 @@ export function resendClient(options: {
         ...(idempotencyKey === undefined ? {} : { "Idempotency-Key": idempotencyKey }),
       },
       body,
-      signal: AbortSignal.timeout(TIMEOUT_MS),
+      signal: AbortSignal.timeout(timeoutMs),
     });
     const raw = await response.text();
     let parsed: Record<string, unknown> | null = null;
@@ -101,7 +103,13 @@ export function resendClient(options: {
     },
     async getEmail(endpoint, id) {
       try {
-        const response = await call("GET", `${endpoint}/${encodeURIComponent(id)}`);
+        const response = await call(
+          "GET",
+          `${endpoint}/${encodeURIComponent(id)}`,
+          undefined,
+          undefined,
+          LOOKUP_TIMEOUT_MS,
+        );
         const messageId = present(response?.body?.id);
         if (!response || response.status < 200 || response.status >= 300 || messageId !== id)
           return null;

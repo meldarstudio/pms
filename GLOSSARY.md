@@ -323,9 +323,32 @@ and does not give an uncertain submission a new key or window.
 _Avoid_: Public payment admission, maintenance mode
 
 **Confirmation submission**:
-The one provider request recorded for a confirmation intent before any send, retried with
-the same key, endpoint, and bytes until accepted or the send window ends.
+The immutable provider request recorded for a confirmation intent before any send.
+Known-unsent work can retry that same request; possible acceptance limits automatic
+retries to 20 hours from its first possible submission, without resetting on pause.
+Cancellation stops further automatic submission without erasing established acceptance
+or delivery facts. Acceptance is not delivery, and a retry is not a deliberate resend.
 _Avoid_: Confirmation intent, delivery, resend
+
+**Confirmation report**:
+A provider observation about a confirmation submission, retaining its source and
+occurrence or observation time. An authenticated callback, submission response, or
+known-message lookup can establish evidence; missing evidence does not establish no send.
+_Avoid_: Confirmation intent, guest confirmation, latest status
+
+**Delivery fact**:
+An established acceptance, recipient-server delivery, delay, failure, bounce, complaint,
+or suppression fact. These coexist rather than replace one another. Delivered means the
+recipient's server accepted the message, not inbox placement or reading; older or incomplete
+observations cannot erase established facts.
+_Avoid_: Read receipt, inbox delivery, latest status
+
+**Recipient blocked**:
+An address excluded from automatic confirmation submission in its provider context because
+of permanent-bounce, complaint, or suppression evidence. The block applies across messages
+and categories, including evidence from unrelated messages, not only one reservation.
+It does not rewrite historical stop reasons or automatically disappear after later delivery.
+_Avoid_: Cancelled reservation, failed payment, automatic unsuppression
 
 **Unresolved possible acceptance count**:
 The number of confirmation submission attempts that may have reached the provider

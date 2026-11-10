@@ -330,6 +330,7 @@ async function stopBlocked(db: Db, id: string, unpostedAttempt = 0) {
       and(
         eq(confirmationSubmissions.id, id),
         inArray(confirmationSubmissions.status, ["unsent", "uncertain"]),
+        isNotNull(confirmationSubmissions.nextAttemptAt),
         recipientBlockedSql(),
       ),
     )

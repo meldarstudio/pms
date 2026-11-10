@@ -1,0 +1,1 @@
+CREATE INDEX `confirmation_submission_lookup_candidates` ON `confirmation_submissions` (`credential_fingerprint`,`first_possible_at`) WHERE "confirmation_submissions"."provider_message_id" IS NOT NULL;

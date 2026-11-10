@@ -14,6 +14,15 @@ export const deliveryTypes = [
 export type DeliveryType = (typeof deliveryTypes)[number];
 
 const identifier = z.string().regex(/^[A-Za-z0-9_-]{1,256}$/);
+const recipient = z.string().min(1).max(512);
+const envelopeSchema = z.object({
+  type: z.string().min(1).max(128),
+  created_at: z.iso.datetime({ offset: true }),
+  data: z.record(z.string(), z.unknown()),
+});
+
+export const foldRecipientAsciiCase = (value: string) =>
+  value.replace(/[A-Z]/g, (character) => character.toLowerCase());
 const reportSchema = z.object({
   type: z.enum(deliveryTypes.map((type) => `email.${type}` as const)),
   created_at: z.iso.datetime({ offset: true }),
@@ -21,7 +30,7 @@ const reportSchema = z.object({
     email_id: identifier,
     message_id: z.string().max(512).optional(),
     from: z.string().max(512),
-    to: z.array(z.email()).max(100),
+    to: z.array(recipient).max(100),
     tags: z
       .record(
         z.string().max(256),
@@ -50,7 +59,7 @@ const lookupSchema = z.object({
   id: identifier,
   last_event: z.enum(deliveryTypes),
   from: z.string().max(512),
-  to: z.array(z.email()).max(100),
+  to: z.array(recipient).max(100),
   message_id: z.string().max(512).nullish(),
   tags: z
     .array(
@@ -74,7 +83,7 @@ export function decodeResendLookup(value: unknown) {
     id: data.id,
     type: data.last_event,
     sender: senderMailbox(data.from),
-    recipientEmail: data.to.length === 1 ? data.to[0]!.toLowerCase() : null,
+    recipientEmail: data.to.length === 1 ? foldRecipientAsciiCase(data.to[0]!) : null,
     messageId: data.message_id ?? null,
     submissionTag: data.tags?.find((tag) => tag.name === "submission_id")?.value ?? null,
     category: data.tags?.find((tag) => tag.name === "category")?.value ?? null,
@@ -85,9 +94,12 @@ export type ResendLookup = NonNullable<ReturnType<typeof decodeResendLookup>>;
 
 export function decodeResendReport(body: Uint8Array) {
   try {
-    const parsed = reportSchema.safeParse(
+    const envelope = envelopeSchema.safeParse(
       JSON.parse(new TextDecoder("utf-8", { fatal: true, ignoreBOM: false }).decode(body)),
     );
+    if (!envelope.success) return null;
+    if (!deliveryTypes.some((type) => envelope.data.type === `email.${type}`)) return "ignored";
+    const parsed = reportSchema.safeParse(envelope.data);
     if (!parsed.success) return null;
     const { data, type, created_at } = parsed.data;
     return {
@@ -95,7 +107,7 @@ export function decodeResendReport(body: Uint8Array) {
       providerMessageId: data.email_id,
       messageId: data.message_id ?? null,
       sender: senderMailbox(data.from),
-      recipientEmail: data.to.length === 1 ? data.to[0]!.toLowerCase() : null,
+      recipientEmail: data.to.length === 1 ? foldRecipientAsciiCase(data.to[0]!) : null,
       submissionTag: data.tags?.submission_id ?? null,
       category: data.tags?.category ?? null,
       occurredAt: new Date(created_at).toISOString(),
@@ -117,10 +129,25 @@ export async function authenticateResendReport(
   headers: Headers,
   secret: string | undefined,
 ): Promise<string | null> {
+  const verify = await prepareResendReportVerification(headers, secret);
+  return verify ? verify(body) : null;
+}
+
+export async function prepareResendReportVerification(
+  headers: Headers,
+  secret: string | undefined,
+) {
   const id = headers.get("svix-id");
   const timestamp = headers.get("svix-timestamp");
   const signatures = headers.get("svix-signature");
-  if (!id || !/^[A-Za-z0-9_-]{1,256}$/.test(id) || !timestamp || !signatures) return null;
+  if (
+    !id ||
+    !/^[A-Za-z0-9_-]{1,256}$/.test(id) ||
+    !timestamp ||
+    !signatures ||
+    signatures.length > 8192
+  )
+    return null;
   if (!/^(0|[1-9][0-9]*)$/.test(timestamp)) return null;
   const seconds = Number(timestamp);
   if (!Number.isSafeInteger(seconds) || Math.abs(Math.floor(Date.now() / 1000) - seconds) > 300)
@@ -128,6 +155,12 @@ export async function authenticateResendReport(
   if (!secret?.startsWith("whsec_")) return null;
   const keyBytes = base64(secret.slice(6));
   if (!keyBytes?.length) return null;
+  const candidates = signatures
+    .split(" ")
+    .filter((signature) => signature.startsWith("v1,"))
+    .map((signature) => base64(signature.slice(3)))
+    .filter((mac): mac is Uint8Array<ArrayBuffer> => mac?.length === 32);
+  if (candidates.length === 0) return null;
   const key = await crypto.subtle.importKey(
     "raw",
     keyBytes,
@@ -136,15 +169,15 @@ export async function authenticateResendReport(
     ["verify"],
   );
   const prefix = new TextEncoder().encode(`${id}.${timestamp}.`);
-  const signed = new Uint8Array(prefix.length + body.length);
-  signed.set(prefix);
-  signed.set(body, prefix.length);
-  for (const signature of signatures.split(" ")) {
-    if (!signature.startsWith("v1,")) continue;
-    const mac = base64(signature.slice(3));
-    if (mac?.length === 32 && (await crypto.subtle.verify("HMAC", key, mac, signed))) return id;
-  }
-  return null;
+  return async (body: Uint8Array): Promise<string | null> => {
+    const signed = new Uint8Array(prefix.length + body.length);
+    signed.set(prefix);
+    signed.set(body, prefix.length);
+    for (const mac of candidates) {
+      if (await crypto.subtle.verify("HMAC", key, mac, signed)) return id;
+    }
+    return null;
+  };
 }
 
 function base64(value: string): Uint8Array<ArrayBuffer> | null {

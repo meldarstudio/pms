@@ -27,6 +27,7 @@ export function fakeResend() {
   const befores: Array<() => unknown> = [];
   const retryAfters: Array<string | undefined> = [];
   const lookups: { body: unknown; status: number }[] = [];
+  const lookupBefores: Array<() => unknown> = [];
   let sequence = 0;
 
   const json = (status: number, body: unknown, retryAfter?: string) =>
@@ -53,6 +54,9 @@ export function fakeResend() {
     lookup(body: unknown, status = 200) {
       lookups.push({ body, status });
     },
+    duringNextLookup(run: () => unknown) {
+      lookupBefores.push(run);
+    },
     fetch: (async (input: RequestInfo | URL, init?: RequestInit) => {
       const url = new URL(input instanceof Request ? input.url : String(input));
       const method = init?.method ?? "GET";
@@ -62,6 +66,7 @@ export function fakeResend() {
         throw new Error(`unexpected request to ${url.href}`);
       requests.push({ method, url: url.href, headers, body });
       if (method === "GET") {
+        await lookupBefores.shift()?.();
         const scripted = lookups.shift();
         if (scripted) return json(scripted.status, scripted.body);
         const email = emails.find((item) => url.pathname === `/emails/${item.id}`);

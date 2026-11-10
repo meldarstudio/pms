@@ -104,8 +104,8 @@ export default {
     ctx.waitUntil(
       reconcilePaymentAttempts(db, paymentContext(env))
         .then(() => repairConfirmationIntents(db))
-        .then(() => reconcileConfirmationReports(db, env))
-        .then(() => sendConfirmationSubmissions(db, env)),
+        .then(() => sendConfirmationSubmissions(db, env))
+        .then(() => reconcileConfirmationReports(db, env)),
     );
   },
 } satisfies ExportedHandler<Env["Bindings"]>;

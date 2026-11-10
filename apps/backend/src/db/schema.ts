@@ -3,6 +3,7 @@ import { check, index, integer, sqliteTable, text, uniqueIndex } from "drizzle-o
 import type { CheckoutLanguage, GuestInput } from "@pms/shared";
 import type { PricedNight } from "../lib/pricing";
 import type { RatePlanCode, RatePlanTerms } from "../lib/rate-plans";
+import type { DeliveryType } from "../resend-reports";
 
 export const propertyWriteContext = sqliteTable(
   "property_write_context",
@@ -345,6 +346,9 @@ export const confirmationSubmissions = sqliteTable(
       "confirmation_submission_status",
       sql`${table.status} in ('uncertain', 'accepted', 'unsent', 'attention')`,
     ),
+    index("confirmation_submission_lookup_candidates")
+      .on(table.credentialFingerprint, table.firstPossibleAt)
+      .where(sql`${table.providerMessageId} IS NOT NULL`),
   ],
 );
 
@@ -356,7 +360,7 @@ export const confirmationReports = sqliteTable(
     eventId: text("event_id").notNull(),
     bodyDigest: text("body_digest"),
     source: text("source").$type<"callback" | "lookup" | "response">().notNull(),
-    type: text("type").notNull(),
+    type: text("type").$type<DeliveryType>().notNull(),
     providerMessageId: text("provider_message_id").notNull(),
     messageId: text("message_id"),
     submissionTag: text("submission_tag"),
