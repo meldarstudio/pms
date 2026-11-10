@@ -270,9 +270,6 @@ export const ui = {
     "reservation.problem.invalidDate": "One of the dates isn't valid.",
     "reservation.problem.invalidSearch":
       "We couldn't use this search. Please change it and try again.",
-    "reservation.offline.title": "Online reservations aren't available yet",
-    "reservation.offline.body":
-      "Message us on WhatsApp with your dates and guests and we'll confirm availability and your rate.",
     "reservation.helpPrompt": "Questions? We're happy to help.",
     "reservation.choose.title": "Choose your room and rate",
     "reservation.choose.change": "Change search",
@@ -772,9 +769,6 @@ export const ui = {
     "reservation.problem.invalidDate": "Una de las fechas no es válida.",
     "reservation.problem.invalidSearch":
       "No pudimos usar esta búsqueda. Cámbiela e intente de nuevo.",
-    "reservation.offline.title": "La reserva en línea aún no está disponible",
-    "reservation.offline.body":
-      "Escríbanos por WhatsApp con sus fechas y huéspedes y le confirmamos disponibilidad y tarifa.",
     "reservation.helpPrompt": "¿Dudas? Con gusto le ayudamos.",
     "reservation.choose.title": "Elija habitación y tarifa",
     "reservation.choose.change": "Cambiar búsqueda",

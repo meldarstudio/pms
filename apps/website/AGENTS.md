@@ -1,8 +1,8 @@
 # Website
 
 Static Astro site for Hotel Manantial in Churín, Peru. Cloudflare serves `dist/`.
-Online reservation is built in only when `PUBLIC_PMS_API_URL` is set at build
-time; without it, reservation pages show WhatsApp contact and no page links to them.
+Reservation search is always visible. `PUBLIC_PMS_API_URL` overrides the API URL;
+development defaults to the local backend and builds to the production API.
 Search (`/reservar/`) and Choose (`/reservar/habitacion/`) read live offers from
 the PMS `/public` API. Review (`/reservar/revisar/`) opens a private checkout, shows
 its server Quote, and records the booking contact's acceptance. Pay refreshes an

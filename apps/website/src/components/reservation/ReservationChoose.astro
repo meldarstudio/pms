@@ -1,14 +1,13 @@
 ---
 import { Image } from "astro:assets";
-import { PUBLIC_PMS_API_URL } from "astro:env/client";
 import Whatsapp from "@/icons/Whatsapp.svg";
 import ReservationHelp from "@/components/reservation/ReservationHelp.astro";
-import ReservationOffline from "@/components/reservation/ReservationOffline.astro";
 import ReservationSteps from "@/components/reservation/ReservationSteps.astro";
 import { ui } from "@/i18n/ui";
 import { getLang, useTranslations } from "@/i18n/utils";
 import { getWhatsAppLink } from "@/lib/constants";
-import { onlineReservations, reviewStepHref, searchStepHref } from "@/lib/reservation/links";
+import { reservationApiUrl } from "@/lib/reservation/api";
+import { reviewStepHref, searchStepHref } from "@/lib/reservation/links";
 import { ratePlanCodes } from "@/lib/reservation/search";
 import { rooms } from "@/lib/rooms";
 
@@ -16,7 +15,7 @@ const lang = getLang(Astro.currentLocale);
 const t = useTranslations(lang);
 const copy = {
   lang,
-  apiBase: PUBLIC_PMS_API_URL ?? "",
+  apiBase: reservationApiUrl,
   searchHref: searchStepHref(lang),
   reviewHref: reviewStepHref(lang),
   text: Object.fromEntries(
@@ -45,211 +44,193 @@ const amountRow = "flex items-baseline justify-between gap-4 py-2";
     <h1 class="mt-8 text-3xl font-semibold text-pretty text-stone-900 sm:text-4xl">
       {t("reservation.choose.title")}
     </h1>
-    {onlineReservations ? (
-      <reservation-choose class="block">
-        <script
-          type="application/json"
-          is:inline
-          data-copy
-          set:html={JSON.stringify(copy).replace(/</g, "\\u003c")}
-        />
-        <div class="mt-4 flex flex-wrap items-center gap-x-4 gap-y-2" data-summary hidden>
-          <p class="font-semibold text-stone-900" data-summary-text />
-          <a
-            href={searchStepHref(lang)}
-            class="text-accent-800 inline-flex min-h-11 items-center font-medium underline underline-offset-4"
-            data-change-search
-          >
+    <reservation-choose class="block">
+      <script
+        type="application/json"
+        is:inline
+        data-copy
+        set:html={JSON.stringify(copy).replace(/</g, "\\u003c")}
+      />
+      <div class="mt-4 flex flex-wrap items-center gap-x-4 gap-y-2" data-summary hidden>
+        <p class="font-semibold text-stone-900" data-summary-text />
+        <a
+          href={searchStepHref(lang)}
+          class="text-accent-800 inline-flex min-h-11 items-center font-medium underline underline-offset-4"
+          data-change-search
+        >
+          {t("reservation.choose.change")}
+        </a>
+      </div>
+      <p class="mt-6 text-stone-700" role="status" data-status>
+        {t("reservation.choose.loading")}
+      </p>
+      <div class={`mt-6 ${panel}`} data-problem hidden>
+        <h2 class="text-xl font-semibold text-stone-900" tabindex="-1" data-problem-title />
+        <p class="mt-3 leading-relaxed text-stone-700" data-problem-body />
+        <div class="mt-6 flex flex-wrap gap-3">
+          <button type="button" class={primary} data-retry hidden>
+            {t("reservation.choose.retry")}
+          </button>
+          <a href={searchStepHref(lang)} class={secondary} data-problem-change>
             {t("reservation.choose.change")}
           </a>
         </div>
-        <p class="mt-6 text-stone-700" role="status" data-status>
-          {t("reservation.choose.loading")}
-        </p>
-        <div class={`mt-6 ${panel}`} data-problem hidden>
-          <h2 class="text-xl font-semibold text-stone-900" tabindex="-1" data-problem-title />
-          <p class="mt-3 leading-relaxed text-stone-700" data-problem-body />
-          <div class="mt-6 flex flex-wrap gap-3">
-            <button type="button" class={primary} data-retry hidden>
-              {t("reservation.choose.retry")}
-            </button>
-            <a href={searchStepHref(lang)} class={secondary} data-problem-change>
-              {t("reservation.choose.change")}
-            </a>
-          </div>
-        </div>
-        <div
-          class="mt-6 border-l-4 border-amber-600 bg-white p-4 text-stone-800"
-          data-notice
-          hidden
-        >
-          <p class="font-semibold" data-notice-title />
-          <ul class="mt-2 list-disc pl-5" data-notice-reasons />
-        </div>
-        <ul class="mt-6 flex flex-col gap-8" data-results hidden>
-          {rooms.map((room) => (
-            <li data-room={room.id} hidden>
-              <article class={panel} aria-labelledby={`room-${room.id}-name`}>
-                <div class="grid gap-5 sm:grid-cols-[minmax(0,2fr)_minmax(0,3fr)]">
-                  <Image
-                    class="aspect-4/3 w-full object-cover"
-                    src={room.gallery[0]!.src}
-                    width={640}
-                    height={480}
-                    layout="constrained"
-                    alt={t(room.gallery[0]!.altKey)}
-                  />
-                  <div>
-                    <p
-                      class="font-source-sans-3 text-accent-800 text-xs font-semibold tracking-widest uppercase"
-                      data-preferred
-                      hidden
-                    >
-                      {t("reservation.room.preferred")}
-                    </p>
-                    <h2 id={`room-${room.id}-name`} class="text-2xl font-semibold text-stone-900">
-                      {t(room.nameKey)}
-                    </h2>
-                    <dl class="mt-3 divide-y divide-stone-200 text-sm">
-                      <div class="flex justify-between gap-4 py-2">
-                        <dt class="text-stone-600">{t("rooms.spec.beds")}</dt>
-                        <dd class="text-right text-stone-900">{t(room.bedsKey)}</dd>
-                      </div>
-                      <div class="flex justify-between gap-4 py-2">
-                        <dt class="text-stone-600">{t("rooms.spec.area")}</dt>
-                        <dd class="text-right text-stone-900">{t(room.areaKey)}</dd>
-                      </div>
-                      <div class="flex justify-between gap-4 py-2" data-capacity hidden>
-                        <dt class="text-stone-600">{t("reservation.room.capacity")}</dt>
-                        <dd class="text-right text-stone-900" data-capacity-value />
-                      </div>
-                    </dl>
-                  </div>
-                </div>
-                <p class="mt-5 font-semibold text-stone-900" data-room-note hidden />
-                <a
-                  href={getWhatsAppLink(t(room.prefillKey))}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  class={`mt-4 ${secondary}`}
-                  data-room-contact
-                  hidden
-                >
-                  <Whatsapp class="size-4 shrink-0" />
-                  {t("booking.cta")}
-                </a>
-                <fieldset class="mt-6" data-plans hidden>
-                  <legend class="font-source-sans-3 text-sm font-semibold tracking-wide text-stone-800">
-                    {t("reservation.plans.legend").replace("{room}", t(room.nameKey))}
-                  </legend>
-                  <div class="mt-3 flex flex-col gap-4">
-                    {ratePlanCodes.map((plan) => (
-                      <div
-                        class="has-checked:border-accent-700 has-checked:bg-accent-50 border-2 border-stone-300 p-4"
-                        data-plan={plan}
-                      >
-                        <div class="flex items-start gap-3">
-                          <input
-                            id={`plan-${room.id}-${plan}`}
-                            type="radio"
-                            name={`plan-${room.id}`}
-                            value={plan}
-                            checked={plan === "flexible"}
-                            class="accent-accent-700 mt-1 size-5 shrink-0"
-                            aria-describedby={`plan-${room.id}-${plan}-details`}
-                          />
-                          <label for={`plan-${room.id}-${plan}`} class="flex-1 cursor-pointer">
-                            <span class="block text-lg font-semibold text-stone-900">
-                              {t(`reservation.plan.${plan}`)}
-                            </span>
-                            <span class="block text-sm text-stone-700">
-                              {t(`reservation.plan.${plan}Lead`)}
-                            </span>
-                          </label>
-                        </div>
-                        <div id={`plan-${room.id}-${plan}-details`} class="mt-3 pl-8">
-                          <dl class="divide-y divide-stone-200">
-                            <div class={amountRow}>
-                              <dt class="text-stone-700">{t("reservation.offer.total")}</dt>
-                              <dd
-                                class="text-lg font-semibold text-stone-900"
-                                data-amount="total"
-                              />
-                            </div>
-                            <div class={amountRow}>
-                              <dt class="text-stone-700">{t("reservation.offer.now")}</dt>
-                              <dd class="font-semibold text-stone-900" data-amount="now" />
-                            </div>
-                            <div class={amountRow}>
-                              <dt class="text-stone-700">{t("reservation.offer.remaining")}</dt>
-                              <dd class="font-semibold text-stone-900" data-amount="remaining" />
-                            </div>
-                          </dl>
-                          <p class="mt-2 font-semibold text-green-800" data-saving hidden />
-                          <p
-                            class="mt-2 text-sm leading-relaxed text-stone-700"
-                            data-cancellation
-                          />
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                  <p class="mt-3 text-sm text-stone-600" data-taxes />
-                  <p class="mt-2 text-sm leading-relaxed text-stone-600">
-                    {t("reservation.cancel.settlement")}
+      </div>
+      <div class="mt-6 border-l-4 border-amber-600 bg-white p-4 text-stone-800" data-notice hidden>
+        <p class="font-semibold" data-notice-title />
+        <ul class="mt-2 list-disc pl-5" data-notice-reasons />
+      </div>
+      <ul class="mt-6 flex flex-col gap-8" data-results hidden>
+        {rooms.map((room) => (
+          <li data-room={room.id} hidden>
+            <article class={panel} aria-labelledby={`room-${room.id}-name`}>
+              <div class="grid gap-5 sm:grid-cols-[minmax(0,2fr)_minmax(0,3fr)]">
+                <Image
+                  class="aspect-4/3 w-full object-cover"
+                  src={room.gallery[0]!.src}
+                  width={640}
+                  height={480}
+                  layout="constrained"
+                  alt={t(room.gallery[0]!.altKey)}
+                />
+                <div>
+                  <p
+                    class="font-source-sans-3 text-accent-800 text-xs font-semibold tracking-widest uppercase"
+                    data-preferred
+                    hidden
+                  >
+                    {t("reservation.room.preferred")}
                   </p>
-                </fieldset>
-                <button
-                  type="button"
-                  class={`mt-6 w-full sm:w-auto ${primary}`}
-                  aria-label={`${t("reservation.choose.select")}: ${t(room.nameKey)}`}
-                  data-choose
-                  hidden
-                >
-                  {t("reservation.choose.select")}
-                </button>
-              </article>
-            </li>
-          ))}
-        </ul>
-        <section
-          class={`border-accent-700 mt-8 border-2 ${panel}`}
-          aria-labelledby="choice-title"
-          tabindex="-1"
-          data-choice
-          hidden
-        >
-          <h2 id="choice-title" class="text-2xl font-semibold text-stone-900">
-            {t("reservation.choice.title")}
-          </h2>
-          <p class="mt-2 text-lg text-stone-900" data-choice-summary />
-          <dl class="mt-4 divide-y divide-stone-200">
-            <div class={amountRow}>
-              <dt class="text-stone-700">{t("reservation.offer.total")}</dt>
-              <dd class="text-lg font-semibold text-stone-900" data-choice-amount="total" />
-            </div>
-            <div class={amountRow}>
-              <dt class="text-stone-700">{t("reservation.offer.now")}</dt>
-              <dd class="font-semibold text-stone-900" data-choice-amount="now" />
-            </div>
-            <div class={amountRow}>
-              <dt class="text-stone-700">{t("reservation.offer.remaining")}</dt>
-              <dd class="font-semibold text-stone-900" data-choice-amount="remaining" />
-            </div>
-          </dl>
-          <p class="mt-3 text-sm leading-relaxed text-stone-700" data-choice-cancellation />
-          <a
-            href={reviewStepHref(lang)}
-            class={`mt-6 w-full sm:w-auto ${primary}`}
-            data-review-link
-          >
-            {t("reservation.choice.review")}
-          </a>
-        </section>
-      </reservation-choose>
-    ) : (
-      <ReservationOffline />
-    )}
+                  <h2 id={`room-${room.id}-name`} class="text-2xl font-semibold text-stone-900">
+                    {t(room.nameKey)}
+                  </h2>
+                  <dl class="mt-3 divide-y divide-stone-200 text-sm">
+                    <div class="flex justify-between gap-4 py-2">
+                      <dt class="text-stone-600">{t("rooms.spec.beds")}</dt>
+                      <dd class="text-right text-stone-900">{t(room.bedsKey)}</dd>
+                    </div>
+                    <div class="flex justify-between gap-4 py-2">
+                      <dt class="text-stone-600">{t("rooms.spec.area")}</dt>
+                      <dd class="text-right text-stone-900">{t(room.areaKey)}</dd>
+                    </div>
+                    <div class="flex justify-between gap-4 py-2" data-capacity hidden>
+                      <dt class="text-stone-600">{t("reservation.room.capacity")}</dt>
+                      <dd class="text-right text-stone-900" data-capacity-value />
+                    </div>
+                  </dl>
+                </div>
+              </div>
+              <p class="mt-5 font-semibold text-stone-900" data-room-note hidden />
+              <a
+                href={getWhatsAppLink(t(room.prefillKey))}
+                target="_blank"
+                rel="noopener noreferrer"
+                class={`mt-4 ${secondary}`}
+                data-room-contact
+                hidden
+              >
+                <Whatsapp class="size-4 shrink-0" />
+                {t("booking.cta")}
+              </a>
+              <fieldset class="mt-6" data-plans hidden>
+                <legend class="font-source-sans-3 text-sm font-semibold tracking-wide text-stone-800">
+                  {t("reservation.plans.legend").replace("{room}", t(room.nameKey))}
+                </legend>
+                <div class="mt-3 flex flex-col gap-4">
+                  {ratePlanCodes.map((plan) => (
+                    <div
+                      class="has-checked:border-accent-700 has-checked:bg-accent-50 border-2 border-stone-300 p-4"
+                      data-plan={plan}
+                    >
+                      <div class="flex items-start gap-3">
+                        <input
+                          id={`plan-${room.id}-${plan}`}
+                          type="radio"
+                          name={`plan-${room.id}`}
+                          value={plan}
+                          checked={plan === "flexible"}
+                          class="accent-accent-700 mt-1 size-5 shrink-0"
+                          aria-describedby={`plan-${room.id}-${plan}-details`}
+                        />
+                        <label for={`plan-${room.id}-${plan}`} class="flex-1 cursor-pointer">
+                          <span class="block text-lg font-semibold text-stone-900">
+                            {t(`reservation.plan.${plan}`)}
+                          </span>
+                          <span class="block text-sm text-stone-700">
+                            {t(`reservation.plan.${plan}Lead`)}
+                          </span>
+                        </label>
+                      </div>
+                      <div id={`plan-${room.id}-${plan}-details`} class="mt-3 pl-8">
+                        <dl class="divide-y divide-stone-200">
+                          <div class={amountRow}>
+                            <dt class="text-stone-700">{t("reservation.offer.total")}</dt>
+                            <dd class="text-lg font-semibold text-stone-900" data-amount="total" />
+                          </div>
+                          <div class={amountRow}>
+                            <dt class="text-stone-700">{t("reservation.offer.now")}</dt>
+                            <dd class="font-semibold text-stone-900" data-amount="now" />
+                          </div>
+                          <div class={amountRow}>
+                            <dt class="text-stone-700">{t("reservation.offer.remaining")}</dt>
+                            <dd class="font-semibold text-stone-900" data-amount="remaining" />
+                          </div>
+                        </dl>
+                        <p class="mt-2 font-semibold text-green-800" data-saving hidden />
+                        <p class="mt-2 text-sm leading-relaxed text-stone-700" data-cancellation />
+                      </div>
+                    </div>
+                  ))}
+                </div>
+                <p class="mt-3 text-sm text-stone-600" data-taxes />
+                <p class="mt-2 text-sm leading-relaxed text-stone-600">
+                  {t("reservation.cancel.settlement")}
+                </p>
+              </fieldset>
+              <button
+                type="button"
+                class={`mt-6 w-full sm:w-auto ${primary}`}
+                aria-label={`${t("reservation.choose.select")}: ${t(room.nameKey)}`}
+                data-choose
+                hidden
+              >
+                {t("reservation.choose.select")}
+              </button>
+            </article>
+          </li>
+        ))}
+      </ul>
+      <section
+        class={`border-accent-700 mt-8 border-2 ${panel}`}
+        aria-labelledby="choice-title"
+        tabindex="-1"
+        data-choice
+        hidden
+      >
+        <h2 id="choice-title" class="text-2xl font-semibold text-stone-900">
+          {t("reservation.choice.title")}
+        </h2>
+        <p class="mt-2 text-lg text-stone-900" data-choice-summary />
+        <dl class="mt-4 divide-y divide-stone-200">
+          <div class={amountRow}>
+            <dt class="text-stone-700">{t("reservation.offer.total")}</dt>
+            <dd class="text-lg font-semibold text-stone-900" data-choice-amount="total" />
+          </div>
+          <div class={amountRow}>
+            <dt class="text-stone-700">{t("reservation.offer.now")}</dt>
+            <dd class="font-semibold text-stone-900" data-choice-amount="now" />
+          </div>
+          <div class={amountRow}>
+            <dt class="text-stone-700">{t("reservation.offer.remaining")}</dt>
+            <dd class="font-semibold text-stone-900" data-choice-amount="remaining" />
+          </div>
+        </dl>
+        <p class="mt-3 text-sm leading-relaxed text-stone-700" data-choice-cancellation />
+        <a href={reviewStepHref(lang)} class={`mt-6 w-full sm:w-auto ${primary}`} data-review-link>
+          {t("reservation.choice.review")}
+        </a>
+      </section>
+    </reservation-choose>
     <ReservationHelp />
   </div>
 </section>

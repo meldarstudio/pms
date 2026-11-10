@@ -2,7 +2,6 @@
 import Logo from "@/assets/manantial-logo.svg";
 import { phoneNumber, mapsUrl, address, getWhatsAppLink } from "@/lib/constants";
 import LangSelect from "@/components/LangSelect.astro";
-import { onlineReservations } from "@/lib/reservation/links";
 import { getRelativeLocaleUrl } from "astro:i18n";
 import { getLang, useTranslations } from "@/i18n/utils";
 import { formatPhoneNumber } from "@/lib/utils";
@@ -11,7 +10,7 @@ const lang = getLang(Astro.currentLocale);
 const t = useTranslations(lang);
 const homeHref = getRelativeLocaleUrl(lang);
 const overlay = Astro.url.pathname.replace(/\/$/, "") === homeHref.replace(/\/$/, "");
-const bookOnPage = overlay && onlineReservations;
+const bookOnPage = overlay;
 const bookHref = bookOnPage ? "#availability" : getWhatsAppLink(t("whatsapp.prefill"));
 const bookLabel = bookOnPage ? t("hero.bookCta") : t("nav.book");
 

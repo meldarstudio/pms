@@ -2,7 +2,6 @@ import assert from "node:assert/strict";
 import { readFile, readdir, stat } from "node:fs/promises";
 
 const site = "https://www.hotelmanantialchurin.com";
-const onlineReservations = Boolean(process.env.PUBLIC_PMS_API_URL);
 const root = new URL("../", import.meta.url);
 const dist = new URL("../dist/", import.meta.url);
 
@@ -80,12 +79,6 @@ for (const file of spanishPages) {
         new URL(href, site).pathname.endsWith("/"),
         `Internal link needs a trailing slash: ${href} in ${lang} ${slug}`,
       );
-      if (!onlineReservations && !slug.startsWith("reservar/")) {
-        assert.ok(
-          !/^\/(en\/)?reservar\//.test(new URL(href, site).pathname),
-          `Online reservation is off, so ${lang} ${slug} must not link to ${href}`,
-        );
-      }
     }
     const pathname = new URL(urls[lang]).pathname;
     if (slug !== "404" && pathname !== "/") {
@@ -153,11 +146,28 @@ assert.deepEqual(
 );
 
 for (const lang of ["es", "en"]) {
-  const rooms = await read(dist, `${lang === "en" ? "en/" : ""}habitaciones/index.html`);
-  assert.equal(
-    rooms.includes(`href="/${lang === "en" ? "en/" : ""}reservar/?room=king"`),
-    onlineReservations,
-    `The ${lang} King room ${onlineReservations ? "needs" : "must not have"} an online search link`,
+  const prefix = lang === "en" ? "en/" : "";
+  const home = await read(dist, `${prefix}index.html`);
+  assert.ok(home.includes('id="availability"'), `The ${lang} homepage needs its date search`);
+  const search = await read(dist, `${prefix}reservar/index.html`);
+  assert.ok(
+    search.includes("data-search-form"),
+    `The ${lang} search form must always be available`,
+  );
+  for (const [step, element] of [
+    ["habitacion", "reservation-choose"],
+    ["revisar", "reservation-review"],
+    ["resumen", "reservation-summary"],
+  ]) {
+    const html = await read(dist, `${prefix}reservar/${step}/index.html`);
+    assert.ok(html.includes(`<${element}`), `The ${lang} ${step} step must always be available`);
+    const copy = JSON.parse(html.match(/<script[^>]*data-copy[^>]*>(.*?)<\/script>/s)?.[1] ?? "{}");
+    assert.ok(URL.canParse(copy.apiBase), `The ${lang} ${step} step needs an absolute API URL`);
+  }
+  const rooms = await read(dist, `${prefix}habitaciones/index.html`);
+  assert.ok(
+    rooms.includes(`href="/${prefix}reservar/?room=king"`),
+    `The ${lang} King room needs an online search link`,
   );
   assert.doesNotMatch(
     rooms,
