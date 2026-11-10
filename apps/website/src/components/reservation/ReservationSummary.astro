@@ -151,16 +151,35 @@ const link =
 
     private async open() {
       const token = window.location.hash.slice(1);
+      if (!/^[\w-]{43}$/.test(token)) {
+        this.clearPrivate();
+        this.show(null);
+        return;
+      }
       const summary = this.copy.apiBase
         ? await readReservationSummary(this.copy.apiBase, token)
         : null;
+      if (window.location.hash.slice(1) !== token) return;
+      if (!summary) this.clearPrivate();
+      this.show(summary);
+      if (summary) this.render(summary);
+    }
+
+    private show(summary: GuestReservationSummary | null) {
       const loading = this.querySelector<HTMLElement>("[data-loading]");
       const ready = this.querySelector<HTMLElement>("[data-summary]");
       const assistance = this.querySelector<HTMLElement>("[data-assistance]");
       if (loading) loading.hidden = true;
       if (ready) ready.hidden = !summary;
       if (assistance) assistance.hidden = Boolean(summary);
-      if (summary) this.render(summary);
+    }
+
+    private clearPrivate() {
+      this.querySelector("[data-facts]")?.replaceChildren();
+      this.querySelector("[data-rooms]")?.replaceChildren();
+      this.querySelector("[data-cancellation]")?.replaceChildren();
+      const plan = this.querySelector("[data-plan]");
+      if (plan) plan.textContent = "";
     }
 
     private render(summary: GuestReservationSummary) {
@@ -202,17 +221,34 @@ const link =
             ? `reservation.plan.${summary.ratePlan}`
             : "reservation.summary.planUnknown",
         );
-      if (cancellation)
-        cancellation.replaceChildren(
-          ...(summary.cancellation
-            ? cancellationNodes(summary.cancellation, {
-                text: (key, values) => this.text(key, values),
-                amount: money(summary.cancellation.chargeCents),
-                lang: this.copy.lang,
-              })
-            : []),
-        );
+      if (cancellation) cancellation.replaceChildren(...this.terms(summary, money));
       if (terms) terms.hidden = false;
+    }
+
+    private terms(summary: GuestReservationSummary, money: (cents: number) => string) {
+      const cancellation = summary.cancellation;
+      if (!cancellation) return [];
+      const closed = ["cancelled", "no_show", "unfulfilled"].includes(summary.status);
+      if (!closed && cancellation.freeCancellation)
+        return cancellationNodes(
+          { ...cancellation, freeCancellation: cancellation.freeCancellation },
+          {
+            text: (key, values) => this.text(key, values),
+            amount: money(cancellation.chargeCents),
+            lang: this.copy.lang,
+          },
+        );
+      return [
+        this.text(
+          cancellation.freeUntil
+            ? "reservation.summary.accepted.flexible"
+            : "reservation.summary.accepted.none",
+          {
+            date: cancellation.freeUntil ? formatDate(cancellation.freeUntil, this.copy.lang) : "",
+            amount: money(cancellation.chargeCents),
+          },
+        ),
+      ];
     }
 
     private fact(label: string, value: string) {
@@ -234,7 +270,9 @@ const link =
       const title = document.createElement("h2");
       title.className = "text-xl font-semibold text-stone-900";
       title.textContent =
-        this.copy.rooms[room.roomTypeId] ?? this.text("reservation.summary.roomUnknown");
+        this.copy.rooms[room.roomTypeId] ||
+        room.name ||
+        this.text("reservation.summary.roomUnknown");
       const guests = document.createElement("p");
       guests.className = "mt-2 text-stone-700";
       guests.textContent = [

@@ -776,11 +776,30 @@ test("a saved reservation link can be copied and opened without putting the toke
 
   await summary.locator("#lang-select").selectOption({ label: "English" });
   await expect(summary.getByRole("heading", { name: "Reservation summary" })).toBeVisible();
+  await expect(summary.getByRole("heading", { name: "King room" })).toBeVisible();
   await expect(summary.getByText(reference!)).toBeVisible();
   expect(summary.url()).toContain(`/en/reservar/resumen/${copied.hash}`);
   await summary.goBack();
   await expect(summary.getByRole("heading", { name: "Resumen de la reserva" })).toBeVisible();
   await expect(summary.getByText(reference!)).toBeVisible();
+
+  await summary.keyboard.press("Tab");
+  await expect(summary.getByRole("link", { name: "Saltar al contenido principal" })).toBeFocused();
+  await summary.keyboard.press("Enter");
+  expect(summary.url()).toContain(copied.hash);
+  expect(summary.url()).not.toContain("main-content");
+  expect(new URL(summary.url()).search).toBe("");
+  await expect(summary.getByText(reference!)).toBeVisible();
+  await expect(
+    summary.getByRole("heading", { name: "El hotel puede ayudarle con esta reserva" }),
+  ).toHaveCount(0);
+  await summary.evaluate(() => {
+    location.hash = "not-a-token";
+  });
+  await expect(
+    summary.getByRole("heading", { name: "El hotel puede ayudarle con esta reserva" }),
+  ).toBeVisible();
+  await expect(summary.getByText(reference!)).toHaveCount(0);
   await fresh.close();
 });
 

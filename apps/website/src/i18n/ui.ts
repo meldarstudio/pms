@@ -457,6 +457,10 @@ export const ui = {
     "reservation.summary.refundDue": "Refund due",
     "reservation.summary.refunded": "Refunded",
     "reservation.summary.roomUnknown": "Room",
+    "reservation.summary.accepted.flexible":
+      "Accepted agreement: free cancellation was through {date}. The agreed charge after that date is {amount}.",
+    "reservation.summary.accepted.none":
+      "Accepted agreement: no free cancellation. The agreed charge is {amount}.",
     "reservation.summary.planUnknown": "Rate",
     "reservation.review.changed":
       "The price or terms for your stay changed. Review them and accept again.",
@@ -951,6 +955,10 @@ export const ui = {
     "reservation.summary.refundDue": "Reembolso pendiente",
     "reservation.summary.refunded": "Reembolsado",
     "reservation.summary.roomUnknown": "Habitación",
+    "reservation.summary.accepted.flexible":
+      "Acuerdo aceptado: la cancelación gratuita era hasta el {date}. El cargo acordado después de esa fecha es {amount}.",
+    "reservation.summary.accepted.none":
+      "Acuerdo aceptado: sin cancelación gratuita. El cargo acordado es {amount}.",
     "reservation.summary.planUnknown": "Tarifa",
     "reservation.review.changed":
       "El precio o las condiciones de su estadía cambiaron. Revíselos y acepte de nuevo.",

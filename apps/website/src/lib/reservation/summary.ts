@@ -12,12 +12,15 @@ export type GuestReservationSummary = {
   fullName: string;
   rooms: {
     roomTypeId: string;
+    name: string;
     adults: number;
     children: number;
     nights: { date: string; priceCents: number }[];
   }[];
   ratePlan: string;
-  cancellation?: PlanOffer["cancellation"];
+  cancellation?: Omit<PlanOffer["cancellation"], "freeCancellation"> & {
+    freeCancellation?: PlanOffer["cancellation"]["freeCancellation"];
+  };
   totalCents: number;
   paidCents: number;
   outstandingCents: number;
