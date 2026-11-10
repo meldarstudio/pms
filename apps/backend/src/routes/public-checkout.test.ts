@@ -46,6 +46,7 @@ beforeEach(async () => {
 
 afterEach(() => {
   db.close();
+  vi.restoreAllMocks();
   vi.useRealTimers();
 });
 
@@ -392,6 +393,24 @@ describe("checkout access", () => {
 });
 
 describe("accepting the agreement", () => {
+  it("keeps a failed acceptance private in HTTP and routine logs, then accepts the same draft after recovery", async () => {
+    const checkout = await started();
+    const log = vi.spyOn(console, "error").mockImplementation(() => {});
+    db.sqlite.exec(
+      "CREATE TRIGGER fail_acceptance BEFORE INSERT ON checkout_acceptances BEGIN SELECT RAISE(ABORT, 'private-fault-sentinel'); END",
+    );
+
+    const failed = await accept(checkout.token, { quoteId: checkout.quote.id });
+
+    expect(failed.status).toBe(500);
+    expect(await failed.json()).toEqual({ error: "internal error" });
+    expect(log.mock.calls).toEqual([["request failed"]]);
+    expect(count("checkout_acceptances")).toBe(0);
+    db.sqlite.exec("DROP TRIGGER fail_acceptance");
+    expect((await accept(checkout.token, { quoteId: checkout.quote.id })).status).toBe(201);
+    expect(count("checkout_acceptances")).toBe(1);
+  });
+
   it("records the booking contact and acceptance for the reviewed quote", async () => {
     db.sqlite.exec(`INSERT INTO guests (id, full_name, email, phone, notes, created_at)
       VALUES ('existing', 'Ana Private', 'ana@example.com', '+51911111111', 'VIP notes', '2026-01-01')`);

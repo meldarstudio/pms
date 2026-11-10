@@ -51,6 +51,7 @@ beforeEach(async () => {
 
 afterEach(() => {
   db.close();
+  vi.restoreAllMocks();
   vi.unstubAllGlobals();
   vi.useRealTimers();
 });
@@ -269,6 +270,72 @@ describe("paying the accepted quote", () => {
 });
 
 describe("payment outcomes", () => {
+  it("does not log the contact, card source or fingerprint when recording a new payment fails before Culqi", async () => {
+    const checkout = await acceptedCheckout();
+    const log = vi.spyOn(console, "error").mockImplementation(() => {});
+    db.sqlite.exec(
+      "CREATE TRIGGER fail_attempt BEFORE INSERT ON payment_attempts BEGIN SELECT RAISE(ABORT, 'private-fault-sentinel'); END",
+    );
+
+    const failed = await pay(checkout, {
+      sourceId: "tkn_test_private_source",
+      deviceFingerprint: "private-device-sentinel",
+    });
+
+    expect(failed.status).toBe(500);
+    expect(await failed.json()).toEqual({ error: "internal error" });
+    expect(log.mock.calls).toEqual([["request failed"]]);
+    expect(charges()).toEqual([]);
+    expect(await status(checkout.token)).toBeNull();
+    db.sqlite.exec("DROP TRIGGER fail_attempt");
+    expect(await paid(checkout)).toMatchObject({ state: "confirmed" });
+    expect(charges()).toHaveLength(1);
+  });
+
+  it.each(["save", "status", "scheduled", "delayed lookup"] as const)(
+    "logs only a safe category and operation identity on a %s database failure, retaining financial recovery",
+    async (boundary) => {
+      const checkout = await acceptedCheckout();
+      const log = vi.spyOn(console, "error").mockImplementation(() => {});
+      if (boundary === "save") {
+        db.sqlite.exec(
+          "CREATE TRIGGER fail_recovery BEFORE INSERT ON guests BEGIN SELECT RAISE(ABORT, 'private-fault-sentinel'); END",
+        );
+        expect(await paid(checkout)).toMatchObject({ state: "paid_awaiting_reservation" });
+      } else {
+        culqi.next("POST /charges", "lose");
+        expect(await paid(checkout)).toMatchObject({ state: "processing" });
+        db.sqlite.exec(
+          "CREATE TRIGGER fail_recovery BEFORE UPDATE ON payment_attempts WHEN NEW.status = 'succeeded' BEGIN SELECT RAISE(ABORT, 'private-fault-sentinel'); END",
+        );
+        if (boundary === "status")
+          expect(await status(checkout.token)).toMatchObject({ state: "processing" });
+        if (boundary === "scheduled") await runScheduled();
+        if (boundary === "delayed lookup") {
+          await vi.advanceTimersByTimeAsync(10_000);
+          await Promise.all(tasks);
+        }
+      }
+      expect(log.mock.calls).toEqual([
+        boundary === "delayed lookup"
+          ? ["payment attempt lookup failed"]
+          : [
+              boundary === "save"
+                ? "payment attempt save failed"
+                : "payment attempt recovery failed",
+              expect.stringMatching(/^[0-9a-f-]{36}$/i),
+            ],
+      ]);
+      expect(charges()).toHaveLength(1);
+      expect(rows("SELECT count(*) AS n FROM payments")).toEqual([{ n: 0 }]);
+      db.sqlite.exec("DROP TRIGGER fail_recovery");
+      await runScheduled();
+      expect(await status(checkout.token)).toMatchObject({ state: "confirmed" });
+      expect(charges()).toHaveLength(1);
+      expect(rows("SELECT count(*) AS n FROM payments")).toEqual([{ n: 1 }]);
+    },
+  );
+
   it("lets the guest pay with another card after a definitive decline, under a fresh security check", async () => {
     const checkout = await acceptedCheckout();
 
@@ -409,6 +476,57 @@ describe("payment outcomes", () => {
     expect(response.status).toBe(409);
     expect(await response.json()).toEqual({ error: "no availability" });
     expect(charges()).toEqual([]);
+  });
+
+  it("refuses to charge an accepted stay after staff reduce its room type's occupancy limit", async () => {
+    const checkout = await acceptedCheckout();
+    expect((await db.request("/room-types/type-king", "PATCH", { maxAdults: 1 })).status).toBe(200);
+
+    const response = await pay(checkout);
+
+    expect(response.status).toBe(400);
+    expect(await response.json()).toEqual({ error: "too many guests for this room type" });
+    expect(charges()).toEqual([]);
+  });
+
+  it("saves verified money as Unfulfilled when staff reduce occupancy after the charge, without holding inventory or sending confirmation", async () => {
+    const checkout = await acceptedCheckout();
+    db.beforeCommit(async () => {
+      expect((await db.request("/room-types/type-king", "PATCH", { maxAdults: 1 })).status).toBe(
+        200,
+      );
+    });
+
+    expect(await paid(checkout)).toMatchObject({
+      state: "unfulfilled",
+      reservation: { paidCents: 10000, refundDueCents: 10000, outstandingCents: 0 },
+    });
+    await runScheduled();
+    expect(charges()).toHaveLength(1);
+    expect(rows("SELECT status FROM reservations")).toEqual([{ status: "unfulfilled" }]);
+    expect(rows("SELECT adults FROM reservation_rooms")).toEqual([{ adults: 2 }]);
+    expect(rows("SELECT id FROM confirmation_intents")).toEqual([]);
+    expect(rows("SELECT id FROM refunds")).toEqual([]);
+    const [saved] = rows<{ id: string }>("SELECT id FROM reservations");
+    expect(
+      (
+        await db.request(`/reservations/${saved!.id}/commands`, "POST", {
+          requestId: crypto.randomUUID(),
+          actions: [{ type: "set-status", status: "confirmed" }],
+        })
+      ).status,
+    ).toBe(400);
+    const desk = await db.request("/reservations", "POST", {
+      requestId: crypto.randomUUID(),
+      checkIn: "2026-10-20",
+      checkOut: "2026-10-22",
+      guest: { fullName: "Desk contact" },
+      rooms: [
+        { roomTypeId: "type-king", adults: 1, children: 0 },
+        { roomTypeId: "type-king", adults: 1, children: 0 },
+      ],
+    });
+    expect(desk.status).toBe(201);
   });
 });
 
@@ -1360,6 +1478,23 @@ describe("continuing bank authentication", () => {
 });
 
 describe("recovering an interrupted payment", () => {
+  it("logs a safe scheduled failure when the recovery scan fails and recovers the charge on a later tick", async () => {
+    const checkout = await acceptedCheckout();
+    culqi.next("POST /charges", "lose");
+    expect(await paid(checkout)).toMatchObject({ state: "processing" });
+    const log = vi.spyOn(console, "error").mockImplementation(() => {});
+    db.sqlite.exec("ALTER TABLE payment_attempts RENAME TO unavailable_attempts");
+
+    await runScheduled();
+
+    expect(log.mock.calls).toEqual([["scheduled recovery failed"]]);
+    db.sqlite.exec("ALTER TABLE unavailable_attempts RENAME TO payment_attempts");
+    await runScheduled();
+    expect(await status(checkout.token)).toMatchObject({ state: "confirmed" });
+    expect(charges()).toHaveLength(1);
+    expect(rows("SELECT count(*) AS n FROM payments")).toEqual([{ n: 1 }]);
+  });
+
   it("keeps bank verification pending after the quote expires and the 48-hour horizon, and the guest can still finish it", async () => {
     const checkout = await acceptedCheckout();
     await paid(checkout, { sourceId: "tkn_test_3ds" });

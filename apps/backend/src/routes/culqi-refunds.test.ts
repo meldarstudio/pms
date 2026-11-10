@@ -305,7 +305,9 @@ describe("staff Culqi refunds", () => {
       const url = new URL(input instanceof Request ? input.url : input);
       if (url.pathname === "/v2/refunds")
         db.beforeCommit(() => {
-          throw new Error("Database unavailable while recording refund completion");
+          db.sqlite.exec(
+            "CREATE TRIGGER fail_refund_completion BEFORE UPDATE ON refunds BEGIN SELECT RAISE(ABORT, 'private-refund-sentinel'); END",
+          );
         });
       return response;
     });
@@ -323,6 +325,9 @@ describe("staff Culqi refunds", () => {
       expect(replayed.status).toBe(200);
       expect(replayed.body.refunds).toEqual(saved.body.refunds);
       expect(culqi.refunds).toHaveLength(1);
+      expect(errorLog.mock.calls).toEqual([
+        ["Culqi refund completion failed", saved.body.refunds[0]!.id],
+      ]);
     } finally {
       errorLog.mockRestore();
     }

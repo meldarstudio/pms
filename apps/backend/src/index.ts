@@ -72,7 +72,7 @@ app.onError((err, c) => {
     if (err.field) c.header("X-Error-Field", err.field);
     return c.json({ error: err.message }, err.status);
   }
-  console.error(err);
+  console.error("request failed");
   return c.json({ error: "internal error" }, 500);
 });
 
@@ -105,7 +105,8 @@ export default {
       reconcilePaymentAttempts(db, paymentContext(env))
         .then(() => repairConfirmationIntents(db))
         .then(() => sendConfirmationSubmissions(db, env))
-        .then(() => reconcileConfirmationReports(db, env)),
+        .then(() => reconcileConfirmationReports(db, env))
+        .catch(() => console.error("scheduled recovery failed")),
     );
   },
 } satisfies ExportedHandler<Env["Bindings"]>;

@@ -49,8 +49,8 @@ export async function repairConfirmationIntents(db: Db) {
   for (const reservation of owed) {
     try {
       await insertOwedIntent(db, reservation.id, reservation.checkoutId);
-    } catch (error) {
-      console.error("confirmation intent", reservation.id, redactAddresses(error));
+    } catch {
+      console.error("confirmation intent repair failed", reservation.id);
     }
   }
 }
@@ -91,13 +91,6 @@ async function insertOwedIntent(db: Db, reservationId: string, checkoutId: strin
     .from(confirmationIntents)
     .where(eq(confirmationIntents.reservationId, reservationId));
   return existing;
-}
-
-function redactAddresses(error: unknown): unknown {
-  if (!(error instanceof Error)) return error;
-  return new Error(error.message.replace(/[\w.+-]+@[\w.-]+/g, "[redacted]"), {
-    cause: error.cause === undefined ? undefined : redactAddresses(error.cause),
-  });
 }
 
 export async function staffConfirmationIntent(db: Db, reservationId: string) {

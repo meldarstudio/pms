@@ -75,6 +75,16 @@ export async function quoteAvailable(
   return (occupied.get(stay.roomTypeId) ?? 0) < (counts.get(stay.roomTypeId) ?? 0);
 }
 
+export async function requireQuotedOccupancy(
+  db: Db,
+  quote: Pick<Quote, "roomTypeId" | "adults" | "children">,
+) {
+  const [type] = await db.select().from(roomTypes).where(eq(roomTypes.id, quote.roomTypeId));
+  if (!type) throw new HttpError(404, "room type not found");
+  if (quote.adults > type.maxAdults || quote.children > type.maxChildren)
+    throw new HttpError(400, "too many guests for this room type");
+}
+
 export const quoteExpired = (quote: Pick<Quote, "expiresAt">, now: Date) =>
   Date.parse(quote.expiresAt) <= now.getTime();
 
@@ -178,21 +188,9 @@ export async function saveQuote(
   } catch (error) {
     const saved = await savedReservation(db, quoteId);
     if (saved) return saved;
-    rethrowConflict(redactSecrets(error, [accessRow?.token, options.confirmation?.recipientEmail]));
+    rethrowConflict(error);
   }
   return id;
-}
-
-function redactSecrets(error: unknown, secrets: Array<string | null | undefined>): unknown {
-  const hidden = secrets.filter((secret): secret is string => Boolean(secret));
-  if (!(error instanceof Error) || hidden.length === 0) return error;
-  const message = hidden.reduce(
-    (text, secret) => text.replaceAll(secret, "[redacted]"),
-    error.message,
-  );
-  return new Error(message, {
-    cause: error.cause === undefined ? undefined : redactSecrets(error.cause, hidden),
-  });
 }
 
 async function savedReservation(db: Db, quoteId: string) {

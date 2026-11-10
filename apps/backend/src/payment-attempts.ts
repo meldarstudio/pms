@@ -219,8 +219,8 @@ export async function refreshPaymentAttempt(db: Db, attemptId: string, context: 
   const attempt = await findAttempt(db, attemptId);
   try {
     return await resolve(db, attempt, context);
-  } catch (error) {
-    console.error("payment attempt", attempt.id, error);
+  } catch {
+    console.error("payment attempt recovery failed", attempt.id);
     return findAttempt(db, attemptId);
   }
 }
@@ -243,8 +243,8 @@ export async function reconcilePaymentAttempts(db: Db, context: PaymentContext) 
   for (const attempt of pending) {
     try {
       await resolve(db, attempt, context);
-    } catch (error) {
-      console.error("payment attempt", attempt.id, error);
+    } catch {
+      console.error("payment attempt recovery failed", attempt.id);
     }
   }
 }
@@ -341,8 +341,8 @@ async function succeed(db: Db, attempt: Attempt, paid: CulqiCharge, context: Pay
   if (current.status !== "succeeded") return current;
   try {
     return await fulfill(db, current, context);
-  } catch (error) {
-    console.error("payment attempt save", current.id, error);
+  } catch {
+    console.error("payment attempt save failed", current.id);
     return current;
   }
 }
@@ -370,7 +370,14 @@ async function fulfill(db: Db, attempt: Attempt, context: PaymentContext): Promi
       ...saved,
     });
   } catch (error) {
-    if (!(error instanceof HttpError && error.message === "no availability")) throw error;
+    if (
+      !(
+        error instanceof HttpError &&
+        (error.message === "no availability" ||
+          error.message === "too many guests for this room type")
+      )
+    )
+      throw error;
     reservationId = await saveQuote(db, quote.id, attempt.guest, {
       status: "unfulfilled",
       ...saved,
@@ -483,7 +490,7 @@ export const lookUpLater =
     waitUntil(
       new Promise((done) => setTimeout(done, LOOKUP_DELAY_MS))
         .then(lookup)
-        .catch((error: unknown) => console.error("payment attempt lookup", error)),
+        .catch(() => console.error("payment attempt lookup failed")),
     );
 
 export const paymentContext = (

@@ -453,6 +453,28 @@ describe("confirmation intents", () => {
     expect(listed()).toEqual([]);
   });
 
+  it("logs only the reservation identity when durable intent repair fails, then repairs it without another charge", async () => {
+    const checkout = await acceptedCheckout();
+    await paid(checkout);
+    const reservation = (await reservationFor(checkout.token))!;
+    db.sqlite.exec(
+      "DELETE FROM confirmation_intents; CREATE TRIGGER fail_repair BEFORE INSERT ON confirmation_intents BEGIN SELECT RAISE(ABORT, 'private-intent-sentinel'); END",
+    );
+    const log = vi.spyOn(console, "error").mockImplementation(() => {});
+    try {
+      await runScheduled();
+      expect(log.mock.calls).toEqual([["confirmation intent repair failed", reservation.id]]);
+      expect(intents()).toEqual([]);
+      db.sqlite.exec("DROP TRIGGER fail_repair");
+      await runScheduled();
+      expect(intents()).toHaveLength(1);
+      expect(charges()).toHaveLength(1);
+      expect(rows("SELECT id FROM payments")).toHaveLength(1);
+    } finally {
+      log.mockRestore();
+    }
+  });
+
   it("shows the intent to staff and the owner, and hides it from guests and bearers", async () => {
     const checkout = await acceptedCheckout();
     await paid(checkout);
