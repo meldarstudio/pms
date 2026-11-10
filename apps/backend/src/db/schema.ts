@@ -322,8 +322,12 @@ export const confirmationSubmissions = sqliteTable(
     id: text("id").primaryKey(),
     intentId: text("intent_id")
       .notNull()
-      .unique()
       .references(() => confirmationIntents.id),
+    deliberateWorkId: text("deliberate_work_id")
+      .unique()
+      .references(() => confirmationResends.id),
+    snapshotRevision: integer("snapshot_revision"),
+    linkExpiresOn: text("link_expires_on"),
     sendKey: text("send_key").unique(),
     endpoint: text("endpoint"),
     credentialFingerprint: text("credential_fingerprint"),
@@ -342,6 +346,9 @@ export const confirmationSubmissions = sqliteTable(
     updatedAt: text("updated_at").notNull(),
   },
   (table) => [
+    uniqueIndex("confirmation_submission_original")
+      .on(table.intentId)
+      .where(sql`${table.deliberateWorkId} IS NULL`),
     check(
       "confirmation_submission_status",
       sql`${table.status} in ('uncertain', 'accepted', 'unsent', 'attention')`,
@@ -349,6 +356,47 @@ export const confirmationSubmissions = sqliteTable(
     index("confirmation_submission_lookup_candidates")
       .on(table.credentialFingerprint, table.firstPossibleAt)
       .where(sql`${table.providerMessageId} IS NOT NULL`),
+  ],
+);
+
+export const confirmationResends = sqliteTable(
+  "confirmation_resends",
+  {
+    id: text("id")
+      .primaryKey()
+      .references(() => reservationRequests.id),
+    intentId: text("intent_id")
+      .notNull()
+      .references(() => confirmationIntents.id),
+    recipientEmail: text("recipient_email").notNull(),
+    language: text("language").$type<CheckoutLanguage>().notNull(),
+    accountId: text("account_id")
+      .notNull()
+      .references(() => user.id),
+    accountUsername: text("account_username").notNull(),
+    accountRole: text("account_role").$type<"staff" | "owner">().notNull(),
+    createdAt: text("created_at").notNull(),
+  },
+  (table) => [index("confirmation_resends_intent").on(table.intentId, table.createdAt)],
+);
+
+export const confirmationSubmissionAttempts = sqliteTable(
+  "confirmation_submission_attempts",
+  {
+    id: text("id").primaryKey(),
+    submissionId: text("submission_id")
+      .notNull()
+      .references(() => confirmationSubmissions.id),
+    startedAt: text("started_at").notNull(),
+    completedAt: text("completed_at"),
+    outcome: text("outcome").$type<
+      "accepted" | "uncertain" | "unsent" | "attention" | "not_posted"
+    >(),
+    failureCode: text("failure_code"),
+    providerMessageId: text("provider_message_id"),
+  },
+  (table) => [
+    index("confirmation_submission_attempts_submission").on(table.submissionId, table.startedAt),
   ],
 );
 

@@ -404,6 +404,17 @@ export const checkoutPaymentSchema = z
   .strict();
 export const publicPaymentAdmissionSchema = z.object({ admitted: z.boolean() }).strict();
 export const emailSubmissionAdmissionSchema = z.object({ admitted: z.boolean() }).strict();
+export const confirmationResendSchema = z
+  .object({
+    requestId: z.uuid(),
+    recipientEmail: bookingContactSchema.shape.email,
+    acknowledgePossibleDuplicate: z.literal(true, {
+      error: "deliberate resend may duplicate earlier delivery; acknowledgement is required",
+    }),
+  })
+  .strict();
+export type ConfirmationResend = z.infer<typeof confirmationResendSchema>;
+export type ConfirmationResendRequest = z.input<typeof confirmationResendSchema>;
 export type CheckoutLanguage = z.infer<typeof checkoutLanguageSchema>;
 export type PublicCheckoutCreate = z.infer<typeof publicCheckoutCreateSchema>;
 export type PublicCheckoutCreateRequest = z.input<typeof publicCheckoutCreateSchema>;

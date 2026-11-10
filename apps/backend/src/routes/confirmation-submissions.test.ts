@@ -1253,6 +1253,641 @@ async function command(id: string, actions: unknown[]) {
   expect(response.status, await response.clone().text()).toBe(200);
 }
 
+describe("deliberate confirmation resends", () => {
+  it("does not retry an expired private link from a pre-upgrade immutable request with no new expiry metadata", async () => {
+    const { saved } = await confirmed();
+    configureResend();
+    await admitEmail(true);
+    resend.next(429);
+    await runScheduled();
+    const frozen = submissions()[0]!;
+    db.sqlite.exec("UPDATE confirmation_submissions SET link_expires_on = NULL");
+    vi.setSystemTime(new Date("2026-11-22T15:00:00Z"));
+    await runScheduled();
+    expect(posts()).toHaveLength(1);
+    expect(submissions()[0]).toMatchObject({
+      status: "unsent",
+      failure_code: "access_expired",
+      request_json: frozen.request_json,
+      send_key: frozen.send_key,
+      first_possible_at: frozen.first_possible_at,
+    });
+    expect(frozen.request_json).toContain(saved.token);
+  });
+
+  it("requires explicit duplicate acknowledgement and keeps two independent queued messages for the same reservation distinct", async () => {
+    const { saved } = await confirmed();
+    const path = `/reservations/${saved.id}/confirmation/resends`;
+    const first = { requestId: crypto.randomUUID(), recipientEmail: "first@example.com" };
+    const refused = await db.request(path, "POST", first);
+    expect(refused.status).toBe(400);
+    expect(await refused.json()).toEqual({
+      error: "deliberate resend may duplicate earlier delivery; acknowledgement is required",
+    });
+    expect(
+      (await db.request(path, "POST", { ...first, acknowledgePossibleDuplicate: true })).status,
+    ).toBe(201);
+    expect(
+      (
+        await db.request(path, "POST", {
+          ...first,
+          requestId: crypto.randomUUID(),
+          recipientEmail: "second@example.com",
+          acknowledgePossibleDuplicate: true,
+        })
+      ).status,
+    ).toBe(201);
+    configureResend();
+    await admitEmail(true);
+    await runScheduled();
+    expect(posts()).toHaveLength(3);
+    expect(
+      posts()
+        .map((post) => JSON.parse(post.body).to[0])
+        .sort((a: string, b: string) => a.localeCompare(b)),
+    ).toEqual([contact.email, "first@example.com", "second@example.com"]);
+    await runScheduled();
+    expect(posts()).toHaveLength(3);
+  });
+
+  it.each(["snapshot", "marker"] as const)(
+    "rechecks deliberate stay drift after the %s commits and before network",
+    async (boundary) => {
+      const { saved } = await confirmed();
+      configureResend();
+      await admitEmail(true);
+      await runScheduled();
+      const input = {
+        requestId: crypto.randomUUID(),
+        recipientEmail: contact.email,
+        acknowledgePossibleDuplicate: true,
+      };
+      expect(
+        (await db.request(`/reservations/${saved.id}/confirmation/resends`, "POST", input)).status,
+      ).toBe(201);
+      db.sqlite
+        .exec(`CREATE TRIGGER edit_during_snapshot AFTER ${boundary === "snapshot" ? "INSERT" : "UPDATE"} ON confirmation_submissions
+      WHEN NEW.deliberate_work_id IS NOT NULL ${boundary === "marker" ? "AND NEW.acceptance_possible > OLD.acceptance_possible" : ""}
+      BEGIN UPDATE reservations SET revision = revision + 1, check_out = '2026-10-23' WHERE id = '${saved.id}'; END;`);
+      await runScheduled();
+      expect(posts()).toHaveLength(1);
+      expect(submissions()[1]).toMatchObject({
+        status: "unsent",
+        failure_code: "snapshot_changed",
+        acceptance_possible: 0,
+        next_attempt_at: null,
+      });
+    },
+  );
+
+  it("cannot open a possible-acceptance clock or POST when durable attempt recording fails", async () => {
+    const { saved } = await confirmed();
+    configureResend();
+    await admitEmail(true);
+    await runScheduled();
+    const input = {
+      requestId: crypto.randomUUID(),
+      recipientEmail: contact.email,
+      acknowledgePossibleDuplicate: true,
+    };
+    expect(
+      (await db.request(`/reservations/${saved.id}/confirmation/resends`, "POST", input)).status,
+    ).toBe(201);
+    const log = vi.spyOn(console, "error").mockImplementation(() => {});
+    db.sqlite.exec(
+      "CREATE TRIGGER fail_attempt BEFORE INSERT ON confirmation_submission_attempts BEGIN SELECT RAISE(ABORT, 'synthetic attempt failure'); END;",
+    );
+    await runScheduled();
+    const frozen = submissions()[1]!;
+    expect(frozen).toMatchObject({
+      status: "unsent",
+      first_possible_at: null,
+      acceptance_possible: 0,
+    });
+    expect(posts()).toHaveLength(1);
+    expect(log.mock.calls).toEqual([["confirmation submission failed", saved.id]]);
+    db.sqlite.exec("DROP TRIGGER fail_attempt");
+    await runScheduled();
+    expect(posts()).toHaveLength(2);
+    expect(posts()[1]!.body).toBe(frozen.request_json);
+    expect(posts()[1]!.headers.get("idempotency-key")).toBe(frozen.send_key);
+  });
+
+  it.each(["lose", 429] as const)(
+    "keeps the independent deliberate retry context across a pause beyond twenty hours after %s",
+    async (outcome) => {
+      const { saved } = await confirmed();
+      configureResend();
+      await admitEmail(true);
+      await runScheduled();
+      const input = {
+        requestId: crypto.randomUUID(),
+        recipientEmail: contact.email,
+        acknowledgePossibleDuplicate: true,
+      };
+      const path = `/reservations/${saved.id}/confirmation/resends`;
+      expect((await db.request(path, "POST", input)).status).toBe(201);
+      resend.next(outcome);
+      await runScheduled();
+      const frozen = submissions()[1]!;
+      await admitEmail(false);
+      vi.setSystemTime(Date.now() + WINDOW_MS + 60_000);
+      await runScheduled();
+      expect(posts()).toHaveLength(2);
+      await admitEmail(true);
+      await runScheduled();
+      expect(posts()).toHaveLength(outcome === "lose" ? 2 : 3);
+      expect(submissions()[1]).toMatchObject({
+        request_json: frozen.request_json,
+        send_key: frozen.send_key,
+        first_possible_at: frozen.first_possible_at,
+        status: outcome === "lose" ? "attention" : "accepted",
+      });
+      if (outcome === 429) {
+        expect(posts()[2]!.body).toBe(frozen.request_json);
+        expect(posts()[2]!.headers.get("idempotency-key")).toBe(frozen.send_key);
+      }
+      expect((await db.request(path, "POST", input)).status).toBe(200);
+      expect(submissions()).toHaveLength(2);
+    },
+  );
+
+  it("refuses non-established desk, unfulfilled and missing-access work without creating mail or credentials", async () => {
+    const first = await confirmed();
+    const unfulfilled = await confirmed();
+    const desk = await db.request("/reservations", "POST", {
+      requestId: crypto.randomUUID(),
+      guest: { fullName: "Desk guest" },
+      checkIn: "2026-11-01",
+      checkOut: "2026-11-02",
+      rooms: [{ roomTypeId: "type-king", adults: 1, children: 0 }],
+    });
+    expect(desk.status).toBe(201);
+    const { id: deskId } = (await desk.json()) as { id: string };
+    for (const id of [deskId, unfulfilled.saved.id]) {
+      const response = await db.request(`/reservations/${id}/confirmation/resends`, "POST", {
+        requestId: crypto.randomUUID(),
+        recipientEmail: contact.email,
+        acknowledgePossibleDuplicate: true,
+      });
+      expect(response.status).toBe(404);
+      expect(await response.json()).toEqual({ error: "confirmation was not established" });
+    }
+    db.sqlite
+      .prepare("DELETE FROM reservation_access WHERE reservation_id = ?")
+      .run(first.saved.id);
+    const missing = await db.request(
+      `/reservations/${first.saved.id}/confirmation/resends`,
+      "POST",
+      {
+        requestId: crypto.randomUUID(),
+        recipientEmail: contact.email,
+        acknowledgePossibleDuplicate: true,
+      },
+    );
+    expect(missing.status).toBe(404);
+    expect(await missing.json()).toEqual({ error: "reservation access was not established" });
+    expect(rows("SELECT id FROM confirmation_resends")).toEqual([]);
+    expect(rows("SELECT reservation_id FROM reservation_access")).toEqual([
+      { reservation_id: unfulfilled.saved.id },
+    ]);
+    expect(posts()).toHaveLength(0);
+  });
+
+  it("rolls back the command receipt and audit together on a real database failure without posting or logging private SQL", async () => {
+    const { saved } = await confirmed();
+    configureResend();
+    await admitEmail(true);
+    await runScheduled();
+    const input = {
+      requestId: crypto.randomUUID(),
+      recipientEmail: "corrected@example.com",
+      acknowledgePossibleDuplicate: true,
+    };
+    const path = `/reservations/${saved.id}/confirmation/resends`;
+    const log = vi.spyOn(console, "error").mockImplementation(() => {});
+    db.sqlite.exec(
+      "CREATE TRIGGER fail_resend BEFORE INSERT ON confirmation_resends BEGIN SELECT RAISE(ABORT, 'synthetic resend failure'); END;",
+    );
+    db.beforeCommit(async () => {
+      await runScheduled();
+      expect(posts()).toHaveLength(1);
+    });
+    const failed = await db.request(path, "POST", input);
+    expect(failed.status).toBe(500);
+    expect(rows("SELECT id FROM reservation_requests")).toEqual([]);
+    expect(rows("SELECT id FROM confirmation_resends")).toEqual([]);
+    await runScheduled();
+    expect(posts()).toHaveLength(1);
+    expect(log.mock.calls).toEqual([["confirmation resend command failed", saved.id]]);
+    db.sqlite.exec("DROP TRIGGER fail_resend");
+    const responses = await Promise.all([
+      db.request(path, "POST", input),
+      db.request(path, "POST", input),
+    ]);
+    expect(responses.map((response) => response.status).sort((a, b) => a - b)).toEqual([200, 201]);
+    expect(rows("SELECT id FROM confirmation_resends")).toEqual([{ id: input.requestId }]);
+    await runScheduled();
+    expect(posts()).toHaveLength(2);
+    const replay = await db.request(path, "POST", input);
+    expect(replay.status).toBe(200);
+    expect(await replay.json()).toMatchObject({
+      work: { id: input.requestId, submission: { providerMessageId: "email_2" } },
+    });
+    await runScheduled();
+    expect(posts()).toHaveLength(2);
+  });
+
+  it("keeps suppression on the original address and allows only an explicitly corrected recipient", async () => {
+    const { saved } = await confirmed();
+    configureResend();
+    db.env.RESEND_WEBHOOK_SECRET = REPORT_SECRET;
+    await admitEmail(true);
+    await runScheduled();
+    expect((await callback(reportBody("email.complained"))).status).toBe(200);
+    const path = `/reservations/${saved.id}/confirmation/resends`;
+    const input = {
+      requestId: crypto.randomUUID(),
+      recipientEmail: contact.email,
+      acknowledgePossibleDuplicate: true,
+    };
+    expect((await db.request(path, "POST", input)).status).toBe(201);
+    await runScheduled();
+    expect(posts()).toHaveLength(1);
+    expect(submissions()[1]).toMatchObject({
+      status: "attention",
+      failure_code: "recipient_blocked",
+      first_possible_at: null,
+    });
+    vi.setSystemTime(Date.now() + 1_000);
+    await db.signIn("owner");
+    expect(
+      (
+        await db.request(path, "POST", {
+          ...input,
+          requestId: crypto.randomUUID(),
+          recipientEmail: "corrected@example.com",
+        })
+      ).status,
+    ).toBe(201);
+    await runScheduled();
+    expect(posts()).toHaveLength(2);
+    expect(JSON.parse(posts()[1]!.body).to).toEqual(["corrected@example.com"]);
+    const view = (await (await db.request(`/reservations/${saved.id}/confirmation`)).json()) as {
+      history: { requestedBy: unknown; submission: unknown }[];
+    };
+    expect(view.history[0]!.submission).toMatchObject({
+      delivery: { accepted: true, complained: true, recipientBlocked: true },
+    });
+    expect(view.history[1]!.submission).toMatchObject({
+      failureCode: "recipient_blocked",
+      delivery: { recipientBlocked: true },
+    });
+    expect(view.history[2]).toMatchObject({
+      requestedBy: { role: "owner", username: "duena" },
+      submission: { delivery: { accepted: true, recipientBlocked: false } },
+    });
+  });
+
+  it.each(["unsent", "uncertain"] as const)(
+    "stops a frozen deliberate %s summary after staff changes rather than altering its body, key or clock",
+    async (outcome) => {
+      const { saved } = await confirmed();
+      configureResend();
+      await admitEmail(true);
+      await runScheduled();
+      expect(
+        (
+          await db.request(`/reservations/${saved.id}/confirmation/resends`, "POST", {
+            requestId: crypto.randomUUID(),
+            recipientEmail: contact.email,
+            acknowledgePossibleDuplicate: true,
+          })
+        ).status,
+      ).toBe(201);
+      resend.next(outcome === "unsent" ? 429 : "lose");
+      await runScheduled();
+      const frozen = submissions()[1]!;
+      expect(posts()).toHaveLength(2);
+      await command(saved.id, [{ type: "set-status", status: "cancelled" }]);
+      vi.setSystemTime(Date.now() + 15 * 60_000);
+      await runScheduled();
+      expect(posts()).toHaveLength(2);
+      expect(submissions()[1]).toMatchObject({
+        status: outcome === "unsent" ? "unsent" : "attention",
+        failure_code: "snapshot_changed",
+        request_json: frozen.request_json,
+        send_key: frozen.send_key,
+        first_possible_at: frozen.first_possible_at,
+        next_attempt_at: null,
+      });
+      await command(saved.id, [{ type: "set-status", status: "confirmed" }]);
+      await runScheduled();
+      expect(posts()).toHaveLength(2);
+    },
+  );
+
+  it("stops a still-frozen usable link when property-calendar expiry passes without rewriting the request", async () => {
+    const { saved } = await confirmed();
+    configureResend();
+    await admitEmail(true);
+    await runScheduled();
+    vi.setSystemTime(new Date("2026-11-22T04:59:00Z"));
+    await db.signIn("staff");
+    expect(
+      (
+        await db.request(`/reservations/${saved.id}/confirmation/resends`, "POST", {
+          requestId: crypto.randomUUID(),
+          recipientEmail: contact.email,
+          acknowledgePossibleDuplicate: true,
+        })
+      ).status,
+    ).toBe(201);
+    resend.next("lose");
+    await runScheduled();
+    const frozen = submissions()[1]!;
+    expect(frozen.request_json).toContain(saved.token);
+    vi.setSystemTime(new Date("2026-11-22T05:00:00Z"));
+    await runScheduled();
+    expect(posts()).toHaveLength(2);
+    expect(submissions()[1]).toMatchObject({
+      status: "attention",
+      failure_code: "access_expired",
+      request_json: frozen.request_json,
+      send_key: frozen.send_key,
+      first_possible_at: frozen.first_possible_at,
+    });
+  });
+
+  it("snapshots current cancelled money after real edits, refund and coupon work while the command was paused", async () => {
+    const { saved } = await confirmed();
+    const originalAccess = await (await db.request(`/reservations/${saved.id}/access`)).json();
+    const input = {
+      requestId: crypto.randomUUID(),
+      recipientEmail: contact.email,
+      acknowledgePossibleDuplicate: true,
+    };
+    expect(
+      (await db.request(`/reservations/${saved.id}/confirmation/resends`, "POST", input)).status,
+    ).toBe(201);
+    await command(saved.id, [{ type: "dates", checkIn: "2026-10-24", checkOut: "2026-10-27" }]);
+    await command(saved.id, [{ type: "set-status", status: "cancelled" }]);
+    const detail = (await (await db.request(`/reservations/${saved.id}`)).json()) as {
+      payments: { id: string }[];
+    };
+    await command(saved.id, [
+      {
+        type: "request-refund",
+        paymentId: detail.payments[0]!.id,
+        amountCents: 3000,
+        method: "transfer",
+        reason: "Agreed bank transfer",
+        completed: { refundDate: "2026-10-10" },
+      },
+    ]);
+    await command(saved.id, [{ type: "issue-coupon", amountCents: 2000, guestAccepted: true }]);
+    await command(saved.id, [
+      {
+        type: "request-refund",
+        paymentId: detail.payments[0]!.id,
+        amountCents: 1000,
+        method: "transfer",
+        reason: "Remaining transfer",
+      },
+    ]);
+    const moneyBeforeSend = await (await db.request(`/reservations/${saved.id}`)).json();
+    configureResend();
+    await admitEmail(true);
+    await runScheduled();
+    expect(posts()).toHaveLength(1);
+    const message = JSON.parse(posts()[0]!.body) as { text: string; html: string; subject: string };
+    for (const part of [message.text, message.html]) {
+      for (const fact of [
+        "Status: Cancelled",
+        "2026-10-24",
+        "2026-10-27",
+        "Total: PEN 0.00",
+        "Paid: PEN 100.00",
+        "Outstanding balance: PEN 0.00",
+        "Refund due: PEN 50.00",
+        "Completed refunds: PEN 30.00",
+        "Pending refunds (not returned): PEN 10.00",
+        "Coupon settlement (not cash): PEN 0.00",
+        "Converted into coupons (not refunded): PEN 20.00",
+        "Accepted free-cancellation deadline: 2026-10-22",
+        summaryLink("en", saved.token),
+      ])
+        expect(part).toContain(fact);
+      expect(part).not.toContain("Paid in full");
+      expect(part).not.toContain("Free cancellation until");
+    }
+    expect(message.subject).not.toContain("confirmation");
+    expect(await (await db.request(`/reservations/${saved.id}`)).json()).toEqual(moneyBeforeSend);
+    expect(await (await db.request(`/reservations/${saved.id}/access`)).json()).toEqual(
+      originalAccess,
+    );
+    expect(submissions().find((row) => row.failure_code === "not_confirmed")?.send_key).toBeNull();
+  });
+
+  it("uses assistance after fixed access expiry rather than emailing an expired or renewed link", async () => {
+    const { saved } = await confirmed();
+    configureResend();
+    await admitEmail(true);
+    await runScheduled();
+    await admitEmail(false);
+    const originalAccess = (await (
+      await db.request(`/reservations/${saved.id}/access`)
+    ).json()) as { token: string; expiresOn: string };
+    vi.setSystemTime(new Date("2026-11-22T15:00:00Z"));
+    await db.signIn("staff");
+    expect(
+      (
+        await db.request(`/reservations/${saved.id}/confirmation/resends`, "POST", {
+          requestId: crypto.randomUUID(),
+          recipientEmail: contact.email,
+          acknowledgePossibleDuplicate: true,
+        })
+      ).status,
+    ).toBe(201);
+    await admitEmail(true);
+    await runScheduled();
+    expect(posts()).toHaveLength(2);
+    const message = JSON.parse(posts()[1]!.body) as { html: string; text: string };
+    for (const part of [message.html, message.text]) {
+      expect(part).not.toContain(saved.token);
+      expect(part).not.toContain("/reservar/resumen/");
+      expect(part).toContain(
+        "Online access expired on 2026-11-21. Contact the hotel for assistance.",
+      );
+      expect(part).toContain(PHONE);
+    }
+    expect(await (await db.request(`/reservations/${saved.id}/access`)).json()).toEqual({
+      ...originalAccess,
+      expired: true,
+    });
+    expect((await guest("/public/reservation", { token: saved.token })).status).toBe(401);
+  });
+
+  it("sends deliberate corrected work independently without rewriting an uncertain original and exposes safe full history", async () => {
+    const { saved } = await confirmed();
+    configureResend();
+    await admitEmail(true);
+    resend.next("lose");
+    await runScheduled();
+    const original = submissions()[0]!;
+    const input = {
+      requestId: crypto.randomUUID(),
+      recipientEmail: "corrected@example.com",
+      acknowledgePossibleDuplicate: true,
+    };
+    const requested = await db.request(
+      `/reservations/${saved.id}/confirmation/resends`,
+      "POST",
+      input,
+    );
+    expect(requested.status).toBe(201);
+    expect(posts()).toHaveLength(1);
+    await runScheduled();
+    expect(posts()).toHaveLength(2);
+    const corrected = JSON.parse(posts()[1]!.body) as {
+      to: string[];
+      subject: string;
+      text: string;
+      html: string;
+      tags: unknown;
+    };
+    expect(corrected.to).toEqual([input.recipientEmail]);
+    expect(corrected.subject).toBe(`Reservation summary ${saved.code}`);
+    expect(corrected.text).toContain("Status: Confirmed");
+    expect(corrected.text).toContain("Summary as of 2026-10-10T15:00:00.000Z");
+    expect(corrected.text).toContain("Outstanding balance: PEN 100.00");
+    expect(corrected.text).toContain(summaryLink("en", saved.token));
+    expect(posts()[1]!.headers.get("idempotency-key")).not.toBe(original.send_key);
+    expect(submissions()[0]).toEqual(original);
+    db.env.RESEND_WEBHOOK_SECRET = REPORT_SECRET;
+    expect(
+      (
+        await callback(
+          reportBody("email.delivered", {
+            email_id: "email_2",
+            to: [input.recipientEmail],
+            tags: Object.fromEntries(
+              (corrected.tags as { name: string; value: string }[]).map((tag) => [
+                tag.name,
+                tag.value,
+              ]),
+            ),
+          }),
+        )
+      ).status,
+    ).toBe(200);
+    expect(submissions()[0]).toEqual(original);
+    const response = await db.request(`/reservations/${saved.id}/confirmation`);
+    const safe = await response.text();
+    const view = JSON.parse(safe) as {
+      history: {
+        submission: {
+          id: string;
+          endpoint: string;
+          attempts: unknown[];
+          firstPossibleAt: string;
+          delivery: unknown;
+        };
+      }[];
+    };
+    expect(view.history).toHaveLength(2);
+    expect(view.history[0]!.submission).toMatchObject({
+      id: original.id,
+      firstPossibleAt: original.first_possible_at,
+      delivery: { uncertain: true },
+      attempts: [{ outcome: "uncertain", startedAt: "2026-10-10T15:00:00.000Z" }],
+    });
+    expect(view.history[1]!.submission).toMatchObject({
+      endpoint: `${RESEND_LOOPBACK}/emails`,
+      providerMessageId: "email_2",
+      delivery: {
+        accepted: true,
+        delivered: true,
+        history: expect.arrayContaining([
+          expect.objectContaining({ messageId: "<synthetic@example.com>" }),
+        ]),
+      },
+      attempts: [{ outcome: "accepted", providerMessageId: "email_2" }],
+    });
+    for (const secret of [
+      saved.token,
+      RESEND_TEST_KEY,
+      "requestJson",
+      "credentialFingerprint",
+      "request_json",
+      "tokenHash",
+      "bodyDigest",
+    ])
+      expect(safe).not.toContain(secret);
+    expect(corrected.html.replace(`href="${summaryLink("en", saved.token)}"`, "")).not.toContain(
+      saved.token,
+    );
+    expect(
+      JSON.stringify([
+        corrected.subject,
+        corrected.tags,
+        posts()[1]!.headers.get("idempotency-key"),
+      ]),
+    ).not.toContain(saved.token);
+    expect(await (await db.request(`/reservations/${saved.id}`)).json()).toMatchObject({
+      guest: { email: contact.email },
+    });
+  });
+
+  it("records account-attributed separate work while paused and replays the committed command before revalidating current state", async () => {
+    const { saved, checkout } = await confirmed();
+    const path = `/reservations/${saved.id}/confirmation/resends`;
+    const input = {
+      requestId: crypto.randomUUID(),
+      recipientEmail: "corrected@example.com",
+      acknowledgePossibleDuplicate: true,
+    };
+    for (const token of [undefined, checkout.token, saved.token]) {
+      expect((await guest(path, { token, body: input })).status).toBe(401);
+    }
+    const requested = await db.request(path, "POST", input);
+    expect(requested.status).toBe(201);
+    expect(requested.headers.get("cache-control")).toBe("private, no-store");
+    const result = await requested.json();
+    expect(result).toMatchObject({
+      mayDuplicateEarlierDelivery: true,
+      work: {
+        id: input.requestId,
+        kind: "deliberate_resend",
+        recipientEmail: input.recipientEmail,
+        requestedBy: { username: "hotelmanantial", role: "staff" },
+        submission: null,
+      },
+    });
+    await command(saved.id, [{ type: "set-status", status: "cancelled" }]);
+    vi.setSystemTime(Date.now() + 60_000);
+    await db.signIn("owner");
+    const replay = await db.request(path, "POST", input);
+    expect(replay.status).toBe(200);
+    expect(await replay.json()).toEqual(result);
+    const changed = await db.request(path, "POST", {
+      ...input,
+      recipientEmail: "different@example.com",
+    });
+    expect(changed.status).toBe(409);
+    expect(await changed.json()).toEqual({ error: "request ID reused with a different payload" });
+    const inspected = await db.request(`/reservations/${saved.id}/confirmation`);
+    expect(await inspected.json()).toMatchObject({
+      recipientEmail: contact.email,
+      history: [
+        { kind: "automatic", recipientEmail: contact.email },
+        { kind: "deliberate_resend", recipientEmail: input.recipientEmail },
+      ],
+    });
+    expect(posts()).toHaveLength(0);
+  });
+});
+
 function summaryLink(language: "es" | "en", token: string) {
   const path = language === "en" ? "/en/reservar/resumen/" : "/reservar/resumen/";
   return `https://www.hotelmanantialchurin.com${path}#${token}`;

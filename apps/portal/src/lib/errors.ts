@@ -15,6 +15,8 @@ const messages: Record<string, string> = {
   "confirmation was not established":
     "Esta reserva no tiene una confirmación automática registrada.",
   "invalid email report": "No se pudo verificar el informe de entrega del correo.",
+  "deliberate resend may duplicate earlier delivery; acknowledgement is required":
+    "Debes aceptar que este nuevo correo podría duplicar una entrega anterior, aunque todavía sea incierta.",
   "agreement must be accepted": "Debes aceptar las condiciones de la reserva.",
   "too many acceptances for this checkout":
     "Esta reserva en curso se modificó demasiadas veces. Vuelve a empezar.",

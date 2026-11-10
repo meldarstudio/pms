@@ -470,6 +470,18 @@ describe("confirmation intents", () => {
       createdAt: "2026-10-10T15:00:00.000Z",
       reservation: { id: saved.id, code: saved.code, status: "confirmed" },
       submission: null,
+      history: [
+        {
+          id: intent!.id,
+          kind: "automatic",
+          recipientEmail: "ana@example.com",
+          language: "en",
+          createdAt: "2026-10-10T15:00:00.000Z",
+          requestedBy: null,
+          mayDuplicateEarlierDelivery: false,
+          submission: null,
+        },
+      ],
     };
 
     const staff = await db.request(`/reservations/${saved.id}/confirmation`);

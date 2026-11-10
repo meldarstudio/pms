@@ -317,18 +317,26 @@ saving payment attempt, and is not itself a sent message.
 _Avoid_: Confirmation email, reservation access link, payment
 
 **Email submission admission**:
-The owner's switch for sending automatic confirmations, off by default. Pausing it keeps
+The owner's switch for submitting confirmations and deliberate resends, off by default. Pausing it keeps
 confirmation intents and does not stop payment recovery. Resuming sends known-unsent work
 and does not give an uncertain submission a new key or window.
 _Avoid_: Public payment admission, maintenance mode
 
 **Confirmation submission**:
-The immutable provider request recorded for a confirmation intent before any send.
+The immutable provider request recorded for an automatic intent or deliberate resend before any send.
 Known-unsent work can retry that same request; possible acceptance limits automatic
 retries to 20 hours from its first possible submission, without resetting on pause.
 Cancellation stops further automatic submission without erasing established acceptance
 or delivery facts. Acceptance is not delivery, and a retry is not a deliberate resend.
 _Avoid_: Confirmation intent, delivery, resend
+
+**Deliberate confirmation resend**:
+A separately requested message to an explicitly chosen recipient, attributed to the
+authenticated account and retaining the original confirmation history. It summarizes
+the reservation's current status, agreement and bill rather than confirming a cancelled
+stay. It may duplicate an earlier uncertain delivery; it is not proof that earlier mail
+was absent and does not extend private-link access.
+_Avoid_: Automatic retry, safe recovery, contact update, staff notification
 
 **Confirmation report**:
 A provider observation about a confirmation submission, retaining its source and

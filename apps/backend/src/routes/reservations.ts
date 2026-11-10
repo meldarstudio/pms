@@ -1,5 +1,6 @@
 import {
   reservationListQuerySchema,
+  confirmationResendSchema,
   workflowCommandSchema,
   workflowCreatePreviewSchema,
   workflowCreateSchema,
@@ -34,6 +35,7 @@ import {
   type CommandContext,
 } from "../workflow";
 import { staffConfirmationIntent } from "../confirmation-intents";
+import { requestConfirmationResend } from "../confirmation-resends";
 import { staffReservationAccess } from "../reservation-access";
 import { loadReservations, presentReservations, readReservation } from "../reservation-read";
 import { presentNight, type presentReservation } from "../present";
@@ -178,6 +180,33 @@ reservationRoutes.get("/:id/access", async (c) => {
     return c.json({ error: error.message }, error.status);
   }
 });
+reservationRoutes.post(
+  "/:id/confirmation/resends",
+  async (c, next) => {
+    c.header("Cache-Control", "private, no-store");
+    await next();
+  },
+  validate("json", confirmationResendSchema),
+  async (c) => {
+    try {
+      const result = await requestConfirmationResend(
+        getDb(c.env.DB),
+        c.req.param("id"),
+        c.req.valid("json"),
+        c.var.account,
+        c.get("propertyCalendar").today,
+      );
+      return c.json(
+        { work: result.work, mayDuplicateEarlierDelivery: true },
+        result.replayed ? 200 : 201,
+      );
+    } catch (error) {
+      if (error instanceof HttpError) return c.json({ error: error.message }, error.status);
+      console.error("confirmation resend command failed", c.req.param("id"));
+      return c.json({ error: "internal error" }, 500);
+    }
+  },
+);
 const commandContext = (c: Context<Env>): CommandContext => {
   const { today, timeZone } = c.get("propertyCalendar");
   return { today, timeZone, account: c.var.account };

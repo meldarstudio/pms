@@ -2,6 +2,8 @@ import { and, asc, eq, gt, inArray, isNotNull, isNull, lte, or, sql } from "driz
 import type { Db } from "./db";
 import {
   confirmationIntents,
+  confirmationResends,
+  confirmationSubmissionAttempts,
   confirmationSubmissions,
   reservationAccess,
   reservations,
@@ -19,6 +21,7 @@ import { acceptedTerms, type RatePlanCode } from "./lib/rate-plans";
 import { reservationBill } from "./lib/reservation-bill";
 import { emailSubmissionAdmittedSql, readEmailSubmissionAdmission } from "./operation-controls";
 import { loadReservation, type State } from "./reservation-read";
+import { propertyCalendar } from "./property-calendar";
 import {
   QUOTA_BACKOFF_MS,
   resendForEnv,
@@ -41,31 +44,62 @@ const PLAN_NAME: Record<"es" | "en", Record<RatePlanCode, string>> = {
   en: { flexible: "Flexible", non_refundable: "Non-refundable" },
 };
 
-type Intent = typeof confirmationIntents.$inferSelect;
+type Intent = typeof confirmationIntents.$inferSelect & { deliberateWorkId?: string };
 type Submission = typeof confirmationSubmissions.$inferSelect;
 
-const reservationIsConfirmedSql = sql<number>`EXISTS (SELECT 1 FROM ${confirmationIntents}
+function submissionLinkExpiredSql(today: string) {
+  return sql<number>`(coalesce(${confirmationSubmissions.linkExpiresOn} < ${today}, 0) OR EXISTS (
+    SELECT 1 FROM ${reservationAccess}
+    INNER JOIN ${confirmationIntents} ON ${confirmationIntents.reservationId} = ${reservationAccess.reservationId}
+    WHERE ${confirmationIntents.id} = ${confirmationSubmissions.intentId}
+      AND ${reservationAccess.expiresOn} < ${today}
+      AND instr(${confirmationSubmissions.requestJson}, ${reservationAccess.token}) > 0
+  ))`;
+}
+
+function submissionTruthCurrentSql(today: string) {
+  return sql<number>`EXISTS (SELECT 1 FROM ${confirmationIntents}
   INNER JOIN ${reservations} ON ${reservations.id} = ${confirmationIntents.reservationId}
-  WHERE ${confirmationIntents.id} = ${confirmationSubmissions.intentId} AND ${reservations.status} = 'confirmed')`;
+  WHERE ${confirmationIntents.id} = ${confirmationSubmissions.intentId}
+  AND ((${confirmationSubmissions.deliberateWorkId} IS NULL AND ${reservations.status} = 'confirmed')
+    OR (${confirmationSubmissions.deliberateWorkId} IS NOT NULL AND ${reservations.revision} = ${confirmationSubmissions.snapshotRevision}))
+  AND NOT ${submissionLinkExpiredSql(today)})`;
+}
 
 export async function sendConfirmationSubmissions(
   db: Db,
-  env: Pick<Env["Bindings"], "RESEND_API_KEY" | "RESEND_API_URL" | "CURRENCY">,
+  env: Pick<
+    Env["Bindings"],
+    "RESEND_API_KEY" | "RESEND_API_URL" | "CURRENCY" | "PROPERTY_TIME_ZONE"
+  >,
 ) {
   try {
-    await deliverConfirmations(db, resendForEnv(env), env.CURRENCY);
+    await deliverConfirmations(db, resendForEnv(env), env.CURRENCY, env.PROPERTY_TIME_ZONE);
   } catch {
     console.error("confirmation submission scan failed");
   }
 }
 
-export async function confirmationSubmissionView(db: Db, intentId: string) {
+export async function confirmationSubmissionView(
+  db: Db,
+  intentId: string,
+  deliberateWorkId: string | null = null,
+) {
   const [row] = await db
     .select()
     .from(confirmationSubmissions)
-    .where(eq(confirmationSubmissions.intentId, intentId));
+    .where(
+      and(
+        eq(confirmationSubmissions.intentId, intentId),
+        deliberateWorkId === null
+          ? isNull(confirmationSubmissions.deliberateWorkId)
+          : eq(confirmationSubmissions.deliberateWorkId, deliberateWorkId),
+      ),
+    );
   if (!row) return null;
   return {
+    id: row.id,
+    endpoint: row.endpoint,
     status: row.status,
     providerMessageId: row.providerMessageId,
     failureCode: row.failureCode,
@@ -73,30 +107,49 @@ export async function confirmationSubmissionView(db: Db, intentId: string) {
     firstPossibleAt: row.firstPossibleAt,
     nextAttemptAt: row.nextAttemptAt,
     createdAt: row.createdAt,
+    possiblyAcceptedPosts: row.possiblyAcceptedPosts,
+    snapshotRevision: row.snapshotRevision,
+    linkExpiresOn: row.linkExpiresOn,
+    attempts: await db
+      .select({
+        id: confirmationSubmissionAttempts.id,
+        startedAt: confirmationSubmissionAttempts.startedAt,
+        completedAt: confirmationSubmissionAttempts.completedAt,
+        outcome: confirmationSubmissionAttempts.outcome,
+        failureCode: confirmationSubmissionAttempts.failureCode,
+        providerMessageId: confirmationSubmissionAttempts.providerMessageId,
+      })
+      .from(confirmationSubmissionAttempts)
+      .where(eq(confirmationSubmissionAttempts.submissionId, row.id))
+      .orderBy(
+        asc(confirmationSubmissionAttempts.startedAt),
+        asc(confirmationSubmissionAttempts.id),
+      ),
     delivery: await confirmationDeliveryView(db, row),
   };
 }
 
-async function deliverConfirmations(db: Db, resend: Resend, currency: string) {
+async function deliverConfirmations(db: Db, resend: Resend, currency: string, timeZone: string) {
   if (!(await readEmailSubmissionAdmission(db)).admitted || !resend.configured) return;
   const now = new Date();
   const due = await dueSubmissions(db, now.toISOString(), ATTEMPTS_PER_TICK);
   const fresh =
     due.length < ATTEMPTS_PER_TICK ? await freshIntents(db, ATTEMPTS_PER_TICK - due.length) : [];
-  for (const reservationId of [
-    ...due.map((row) => row.reservationId),
-    ...fresh.map((row) => row.reservationId),
+  for (const item of [
+    ...due.map((row) => ({
+      reservationId: row.reservationId,
+      submission: row.submission,
+      intent: null,
+    })),
+    ...fresh.map((intent) => ({ reservationId: intent.reservationId, submission: null, intent })),
   ]) {
     try {
       if (!(await readEmailSubmissionAdmission(db)).admitted) break;
-      const dueRow = due.find((row) => row.reservationId === reservationId);
-      if (dueRow) await retrySubmission(db, resend, dueRow.submission, new Date());
-      else {
-        const intent = fresh.find((row) => row.reservationId === reservationId);
-        if (intent) await openSubmission(db, resend, intent, new Date(), currency);
-      }
+      if (item.submission) await retrySubmission(db, resend, item.submission, new Date(), timeZone);
+      else if (item.intent)
+        await openSubmission(db, resend, item.intent, new Date(), currency, timeZone);
     } catch {
-      console.error("confirmation submission failed", reservationId);
+      console.error("confirmation submission failed", item.reservationId);
     }
   }
 }
@@ -129,18 +182,51 @@ async function dueSubmissions(db: Db, now: string, limit: number) {
 }
 
 async function freshIntents(db: Db, limit: number) {
-  return db
+  const originals = await db
     .select({ intent: confirmationIntents, reservationId: confirmationIntents.reservationId })
     .from(confirmationIntents)
-    .leftJoin(confirmationSubmissions, eq(confirmationSubmissions.intentId, confirmationIntents.id))
+    .leftJoin(
+      confirmationSubmissions,
+      and(
+        eq(confirmationSubmissions.intentId, confirmationIntents.id),
+        isNull(confirmationSubmissions.deliberateWorkId),
+      ),
+    )
     .where(isNull(confirmationSubmissions.id))
     .orderBy(asc(confirmationIntents.createdAt), asc(confirmationIntents.id))
     .limit(limit)
     .then((rows) => rows.map((row) => row.intent));
+  if (originals.length === limit) return originals;
+  const deliberate = await db
+    .select({ intent: confirmationIntents, work: confirmationResends })
+    .from(confirmationResends)
+    .innerJoin(confirmationIntents, eq(confirmationIntents.id, confirmationResends.intentId))
+    .leftJoin(
+      confirmationSubmissions,
+      eq(confirmationSubmissions.deliberateWorkId, confirmationResends.id),
+    )
+    .where(isNull(confirmationSubmissions.id))
+    .orderBy(asc(confirmationResends.createdAt), asc(confirmationResends.id))
+    .limit(limit - originals.length);
+  return [
+    ...originals,
+    ...deliberate.map(({ intent, work }) => ({
+      ...intent,
+      deliberateWorkId: work.id,
+      recipientEmail: work.recipientEmail,
+      language: work.language,
+    })),
+  ];
 }
 
-async function retrySubmission(db: Db, resend: Resend, row: Submission, now: Date) {
-  if (await stopNotConfirmed(db, row.id, now)) return;
+async function retrySubmission(
+  db: Db,
+  resend: Resend,
+  row: Submission,
+  now: Date,
+  timeZone: string,
+) {
+  if (await stopChangedTruth(db, row.id, now, propertyCalendar(timeZone).today)) return;
   if (await stopBlocked(db, row.id)) return;
   if (
     !row.credentialFingerprint ||
@@ -161,40 +247,64 @@ async function retrySubmission(db: Db, resend: Resend, row: Submission, now: Dat
     await markAttention(db, row.id, now);
     return;
   }
-  await postSubmission(db, resend, row);
+  await postSubmission(db, resend, row, timeZone);
 }
 
-async function postSubmission(db: Db, resend: Resend, row: Submission) {
+async function postSubmission(db: Db, resend: Resend, row: Submission, timeZone: string) {
   if (!(await readEmailSubmissionAdmission(db)).admitted) return;
   const now = new Date();
-  const [started] = await db
-    .update(confirmationSubmissions)
-    .set({
-      possiblyAcceptedPosts: sql`${confirmationSubmissions.possiblyAcceptedPosts} + 1`,
-      firstPossibleAt: sql`coalesce(${confirmationSubmissions.firstPossibleAt}, ${now.toISOString()})`,
-      status: "uncertain",
-    })
-    .where(
-      and(
-        eq(confirmationSubmissions.id, row.id),
-        inArray(confirmationSubmissions.status, ["uncertain", "unsent"]),
-        isNotNull(confirmationSubmissions.nextAttemptAt),
-        emailSubmissionAdmittedSql,
-        reservationIsConfirmedSql,
-        sql`NOT ${recipientBlockedSql()}`,
-        sql`(${confirmationSubmissions.possiblyAcceptedPosts} = 0 OR ${confirmationSubmissions.firstPossibleAt} > ${new Date(now.getTime() - SUBMISSION_WINDOW_MS).toISOString()})`,
-      ),
-    )
-    .returning();
+  const attemptId = crypto.randomUUID();
+  const [, startedRows] = await db.batch([
+    db.insert(confirmationSubmissionAttempts).select(
+      db
+        .select({
+          id: sql<string>`${attemptId}`.as("attempt_id"),
+          submissionId: confirmationSubmissions.id,
+          startedAt: sql<string>`${now.toISOString()}`.as("started_at"),
+          completedAt: sql<null>`NULL`.as("completed_at"),
+          outcome: sql<null>`NULL`.as("outcome"),
+          failureCode: sql<null>`NULL`.as("failure_code"),
+          providerMessageId: sql<null>`NULL`.as("provider_message_id"),
+        })
+        .from(confirmationSubmissions)
+        .where(
+          and(
+            eq(confirmationSubmissions.id, row.id),
+            inArray(confirmationSubmissions.status, ["uncertain", "unsent"]),
+            isNotNull(confirmationSubmissions.nextAttemptAt),
+            emailSubmissionAdmittedSql,
+            submissionTruthCurrentSql(propertyCalendar(timeZone).today),
+            sql`NOT ${recipientBlockedSql()}`,
+            sql`(${confirmationSubmissions.possiblyAcceptedPosts} = 0 OR ${confirmationSubmissions.firstPossibleAt} > ${new Date(now.getTime() - SUBMISSION_WINDOW_MS).toISOString()})`,
+          ),
+        ),
+    ),
+    db
+      .update(confirmationSubmissions)
+      .set({
+        possiblyAcceptedPosts: sql`${confirmationSubmissions.possiblyAcceptedPosts} + 1`,
+        firstPossibleAt: sql`coalesce(${confirmationSubmissions.firstPossibleAt}, ${now.toISOString()})`,
+        status: "uncertain",
+      })
+      .where(
+        and(
+          eq(confirmationSubmissions.id, row.id),
+          sql`EXISTS (SELECT 1 FROM ${confirmationSubmissionAttempts} WHERE ${confirmationSubmissionAttempts.id} = ${attemptId})`,
+        ),
+      )
+      .returning(),
+  ]);
+  const [started] = startedRows;
   if (!started) {
-    await stopNotConfirmed(db, row.id, new Date());
+    await stopChangedTruth(db, row.id, new Date(), propertyCalendar(timeZone).today);
     await stopBlocked(db, row.id);
     return;
   }
   const [ready] = await db
     .select({
       admitted: emailSubmissionAdmittedSql,
-      confirmed: sql<number>`${reservations.status} = 'confirmed'`,
+      current: submissionTruthCurrentSql(propertyCalendar(timeZone).today),
+      expired: submissionLinkExpiredSql(propertyCalendar(timeZone).today),
       status: confirmationSubmissions.status,
       nextAttemptAt: confirmationSubmissions.nextAttemptAt,
       blocked: recipientBlockedSql(),
@@ -206,15 +316,30 @@ async function postSubmission(db: Db, resend: Resend, row: Submission) {
   if (!ready) return;
   if (ready.blocked) {
     await stopBlocked(db, started.id, 1);
+    await finishAttempt(db, attemptId, "not_posted", "recipient_blocked");
     return;
   }
-  if (!ready.confirmed) {
-    await stopNotConfirmed(db, started.id, new Date(), 1);
+  if (!ready.current) {
+    await stopChangedTruth(db, started.id, new Date(), propertyCalendar(timeZone).today, 1);
+    await finishAttempt(
+      db,
+      attemptId,
+      "not_posted",
+      ready.expired
+        ? "access_expired"
+        : started.deliberateWorkId
+          ? "snapshot_changed"
+          : "not_confirmed",
+    );
     return;
   }
-  if (!ready.nextAttemptAt || !["uncertain", "unsent"].includes(ready.status)) return;
+  if (!ready.nextAttemptAt || !["uncertain", "unsent"].includes(ready.status)) {
+    await finishAttempt(db, attemptId, "not_posted");
+    return;
+  }
   if (!ready.admitted) {
     await scheduleRetry(db, started, { kind: "unsent", minimumBackoffMs: 0 }, new Date());
+    await finishAttempt(db, attemptId, "not_posted");
     return;
   }
   if (
@@ -222,27 +347,44 @@ async function postSubmission(db: Db, resend: Resend, row: Submission) {
     Date.now() >= Date.parse(started.firstPossibleAt!) + SUBMISSION_WINDOW_MS
   ) {
     await markAttention(db, started.id, new Date());
+    await finishAttempt(db, attemptId, "not_posted");
     return;
   }
-  await applyResult(
+  const result = await resend.send({
+    endpoint: started.endpoint!,
+    idempotencyKey: started.sendKey!,
+    body: started.requestJson!,
+  });
+  await applyResult(db, started, result, new Date());
+  await finishAttempt(
     db,
-    started,
-    await resend.send({
-      endpoint: started.endpoint!,
-      idempotencyKey: started.sendKey!,
-      body: started.requestJson!,
-    }),
-    new Date(),
+    attemptId,
+    result.kind,
+    result.kind === "accepted" ? null : result.failureCode,
+    result.kind === "accepted" ? result.id : null,
   );
 }
 
-async function stopNotConfirmed(db: Db, id: string, now: Date, unpostedAttempt = 0) {
+async function finishAttempt(
+  db: Db,
+  id: string,
+  outcome: NonNullable<(typeof confirmationSubmissionAttempts.$inferSelect)["outcome"]>,
+  failureCode?: string | null,
+  providerMessageId: string | null = null,
+) {
+  await db
+    .update(confirmationSubmissionAttempts)
+    .set({ completedAt: new Date().toISOString(), outcome, failureCode, providerMessageId })
+    .where(eq(confirmationSubmissionAttempts.id, id));
+}
+
+async function stopChangedTruth(db: Db, id: string, now: Date, today: string, unpostedAttempt = 0) {
   const stopped = await db
     .update(confirmationSubmissions)
     .set({
       possiblyAcceptedPosts: sql`max(0, ${confirmationSubmissions.possiblyAcceptedPosts} - ${unpostedAttempt})`,
       status: sql`CASE WHEN ${confirmationSubmissions.possiblyAcceptedPosts} <= ${unpostedAttempt} THEN 'unsent' ELSE 'attention' END`,
-      failureCode: "not_confirmed",
+      failureCode: sql`CASE WHEN ${submissionLinkExpiredSql(today)} THEN 'access_expired' WHEN ${confirmationSubmissions.deliberateWorkId} IS NOT NULL THEN 'snapshot_changed' ELSE 'not_confirmed' END`,
       nextAttemptAt: null,
       updatedAt: now.toISOString(),
     })
@@ -250,20 +392,29 @@ async function stopNotConfirmed(db: Db, id: string, now: Date, unpostedAttempt =
       and(
         eq(confirmationSubmissions.id, id),
         inArray(confirmationSubmissions.status, ["uncertain", "unsent"]),
-        sql`NOT ${reservationIsConfirmedSql}`,
+        isNotNull(confirmationSubmissions.nextAttemptAt),
+        sql`NOT ${submissionTruthCurrentSql(today)}`,
       ),
     )
     .returning({ id: confirmationSubmissions.id });
   return stopped.length > 0;
 }
 
-async function openSubmission(db: Db, resend: Resend, intent: Intent, now: Date, currency: string) {
+async function openSubmission(
+  db: Db,
+  resend: Resend,
+  intent: Intent,
+  now: Date,
+  currency: string,
+  timeZone: string,
+) {
+  const today = propertyCalendar(timeZone).today;
   if (await recipientIsBlocked(db, resend.emailsUrl, intent.recipientEmail)) {
     await insertTerminalSubmission(db, intent, now, "attention", "recipient_blocked");
     return;
   }
   const state = await loadReservation(db, intent.reservationId);
-  if (state.reservation.status !== "confirmed") {
+  if (!intent.deliberateWorkId && state.reservation.status !== "confirmed") {
     await insertTerminalSubmission(db, intent, now, "unsent", "not_confirmed");
     return;
   }
@@ -279,8 +430,20 @@ async function openSubmission(db: Db, resend: Resend, intent: Intent, now: Date,
   const submissionId = crypto.randomUUID();
   let requestJson: string;
   try {
+    const token = today <= access.expiresOn ? access.token : null;
     requestJson = JSON.stringify(
-      confirmationRequest(state, intent, access.token, currency, room, submissionId),
+      intent.deliberateWorkId
+        ? deliberateRequest(
+            state,
+            intent,
+            token,
+            currency,
+            room,
+            submissionId,
+            now.toISOString(),
+            access.expiresOn,
+          )
+        : confirmationRequest(state, intent, token, currency, room, submissionId, access.expiresOn),
     );
   } catch {
     await insertTerminalSubmission(db, intent, now, "attention", "snapshot_failed");
@@ -290,7 +453,12 @@ async function openSubmission(db: Db, resend: Resend, intent: Intent, now: Date,
   const row: Submission = {
     id: submissionId,
     intentId: intent.id,
-    sendKey: `confirmation/${intent.id}`,
+    deliberateWorkId: intent.deliberateWorkId ?? null,
+    snapshotRevision: intent.deliberateWorkId ? state.reservation.revision : null,
+    linkExpiresOn: today <= access.expiresOn ? access.expiresOn : null,
+    sendKey: intent.deliberateWorkId
+      ? `confirmation-resend/${intent.deliberateWorkId}`
+      : `confirmation/${intent.id}`,
     endpoint: resend.emailsUrl,
     credentialFingerprint: await resend.credentialFingerprint(),
     possiblyAcceptedPosts: 0,
@@ -314,7 +482,7 @@ async function openSubmission(db: Db, resend: Resend, intent: Intent, now: Date,
     if (isUnique(error)) return;
     throw error;
   }
-  await postSubmission(db, resend, row);
+  await postSubmission(db, resend, row, timeZone);
 }
 
 async function stopBlocked(db: Db, id: string, unpostedAttempt = 0) {
@@ -351,6 +519,7 @@ async function insertTerminalSubmission(
     await db.insert(confirmationSubmissions).values({
       id: crypto.randomUUID(),
       intentId: intent.id,
+      deliberateWorkId: intent.deliberateWorkId ?? null,
       recipientEmail: intent.recipientEmail,
       language: intent.language,
       status,
@@ -368,16 +537,16 @@ async function insertTerminalSubmission(
 function confirmationRequest(
   state: State,
   intent: Intent,
-  token: string,
+  token: string | null,
   currency: string,
   room: string,
   submissionId: string,
+  expiresOn: string,
 ) {
   const language = intent.language === "en" ? "en" : "es";
   const bill = reservationBill(state);
   const terms = acceptedTerms(state.reservation);
   const outstandingCents = Math.max(0, bill.balanceCents);
-  const link = summaryLink(language, token);
   const facts = messageFacts({
     currency,
     language,
@@ -396,22 +565,119 @@ function confirmationRequest(
     paidCents: bill.paidCents,
     outstandingCents,
   });
+  return emailRequest(intent, submissionId, state.reservation.code, facts, token, expiresOn);
+}
+
+function emailRequest(
+  intent: Intent,
+  submissionId: string,
+  code: string,
+  facts: string[],
+  token: string | null,
+  expiresOn: string,
+) {
+  const language = intent.language === "en" ? "en" : "es";
+  const link = token ? summaryLink(language, token) : null;
+  const assistance =
+    language === "en"
+      ? `Online access expired on ${expiresOn}. Contact the hotel for assistance.`
+      : `El acceso en línea venció el ${expiresOn}. Contacte al hotel para obtener asistencia.`;
   return {
     from: FROM,
     to: [intent.recipientEmail],
     reply_to: REPLY_TO,
     subject:
-      language === "en"
-        ? `Reservation confirmation ${state.reservation.code}`
-        : `Confirmación de reserva ${state.reservation.code}`,
-    html: `<p>${facts.map(escapeHtml).join("<br>\n")}</p>\n<p><a href="${escapeHtml(link)}">${
-      language === "en" ? "View your reservation" : "Ver su reserva"
-    }</a></p>`,
-    text: [...facts, link].join("\n"),
+      language === "en" ? `Reservation confirmation ${code}` : `Confirmación de reserva ${code}`,
+    html: `<p>${facts.map(escapeHtml).join("<br>\n")}</p>\n${
+      link
+        ? `<p><a href="${escapeHtml(link)}">${
+            language === "en" ? "View your reservation" : "Ver su reserva"
+          }</a></p>`
+        : `<p>${escapeHtml(assistance)}</p>`
+    }`,
+    text: [...facts, link ?? assistance].join("\n"),
     tags: [
       { name: "category", value: "confirmation" },
       { name: "submission_id", value: submissionId },
     ],
+  };
+}
+
+function deliberateRequest(
+  state: State,
+  intent: Intent,
+  token: string | null,
+  currency: string,
+  room: string,
+  submissionId: string,
+  snapshotAt: string,
+  expiresOn: string,
+) {
+  const language = intent.language === "en" ? "en" : "es";
+  const bill = reservationBill(state);
+  const amount = (cents: number) => money(cents, currency);
+  const statuses: Record<string, { en: string; es: string }> = {
+    confirmed: { en: "Confirmed", es: "Confirmada" },
+    checked_in: { en: "Checked in", es: "Hospedada" },
+    checked_out: { en: "Checked out", es: "Finalizada" },
+    cancelled: { en: "Cancelled", es: "Cancelada" },
+    no_show: { en: "No-show", es: "No se presentó" },
+    unfulfilled: { en: "Unfulfilled — not confirmed", es: "Sin disponibilidad — no confirmada" },
+  };
+  const status = statuses[state.reservation.status]?.[language];
+  if (!status) throw new Error("unknown reservation status");
+  const facts = [
+    language === "en"
+      ? `Summary as of ${snapshotAt}. This is not a new confirmation.`
+      : `Resumen al ${snapshotAt}. No es una nueva confirmación.`,
+    language === "en" ? `Status: ${status}` : `Estado: ${status}`,
+    language === "en"
+      ? `Reference: ${state.reservation.code}`
+      : `Reserva: ${state.reservation.code}`,
+    language === "en"
+      ? `Check-in: ${state.reservation.checkIn}`
+      : `Llegada: ${state.reservation.checkIn}`,
+    language === "en"
+      ? `Check-out: ${state.reservation.checkOut}`
+      : `Salida: ${state.reservation.checkOut}`,
+    language === "en" ? `Room: ${room}` : `Habitación: ${room}`,
+    `Plan: ${PLAN_NAME[language][acceptedTerms(state.reservation).plan]}`,
+    language === "en"
+      ? `Accepted free-cancellation deadline: ${freeCancellationUntil(acceptedTerms(state.reservation).cancellationPolicy, state.reservation.checkIn) ?? "none"}`
+      : `Fecha límite de cancelación gratuita aceptada: ${freeCancellationUntil(acceptedTerms(state.reservation).cancellationPolicy, state.reservation.checkIn) ?? "ninguna"}`,
+    language === "en"
+      ? `Accepted policy charge: ${amount(chargeableCents(acceptedTerms(state.reservation).cancellationPolicy, state.lines, state.reservation.discountCents))}`
+      : `Cargo según la política aceptada: ${amount(chargeableCents(acceptedTerms(state.reservation).cancellationPolicy, state.lines, state.reservation.discountCents))}`,
+    `Total: ${amount(bill.totalCents)}`,
+    language === "en" ? `Paid: ${amount(bill.paidCents)}` : `Pagado: ${amount(bill.paidCents)}`,
+    language === "en"
+      ? `Outstanding balance: ${amount(Math.max(0, bill.balanceCents))}`
+      : `Saldo pendiente: ${amount(Math.max(0, bill.balanceCents))}`,
+    language === "en"
+      ? `Refund due: ${amount(bill.refundDueCents)}`
+      : `Por devolver: ${amount(bill.refundDueCents)}`,
+    language === "en"
+      ? `Completed refunds: ${amount(bill.refundedCents)}`
+      : `Devoluciones completadas: ${amount(bill.refundedCents)}`,
+    language === "en"
+      ? `Pending refunds (not returned): ${amount(bill.pendingRefundCents)}`
+      : `Devoluciones pendientes (no devueltas): ${amount(bill.pendingRefundCents)}`,
+    language === "en"
+      ? `Coupon settlement (not cash): ${amount(bill.couponAppliedCents)}`
+      : `Pagado con cupón (no efectivo): ${amount(bill.couponAppliedCents)}`,
+    language === "en"
+      ? `Converted into coupons (not refunded): ${amount(bill.couponIssuedCents)}`
+      : `Pasado a cupón (no devuelto): ${amount(bill.couponIssuedCents)}`,
+    language === "en"
+      ? `For current information and assistance, contact the hotel. Phone: ${PHONE}. Email: ${REPLY_TO}`
+      : `Para información actual y asistencia, contacte al hotel. Teléfono: ${PHONE}. Correo: ${REPLY_TO}`,
+  ];
+  return {
+    ...emailRequest(intent, submissionId, state.reservation.code, facts, token, expiresOn),
+    subject:
+      language === "en"
+        ? `Reservation summary ${state.reservation.code}`
+        : `Resumen de reserva ${state.reservation.code}`,
   };
 }
 

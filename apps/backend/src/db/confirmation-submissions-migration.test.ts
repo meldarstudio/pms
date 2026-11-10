@@ -54,7 +54,12 @@ describe("confirmation submission migration", () => {
       "SELECT id, intent_id, send_key, endpoint, request_json, recipient_email, language, first_possible_at, status, next_attempt_at, created_at, updated_at FROM confirmation_submissions";
     const before = db.prepare(context).all();
 
-    for (const entry of journal.entries.slice(fingerprintMigration)) db.exec(migration(entry.tag));
+    const resendMigration = journal.entries.findIndex((entry) =>
+      migration(entry.tag).includes("CREATE TABLE `confirmation_resends`"),
+    );
+    expect(resendMigration).toBeGreaterThan(fingerprintMigration);
+    for (const entry of journal.entries.slice(fingerprintMigration, resendMigration))
+      db.exec(migration(entry.tag));
 
     expect(db.prepare(context).all()).toEqual(before);
     expect(
@@ -66,6 +71,34 @@ describe("confirmation submission migration", () => {
         .prepare("SELECT credential_fingerprint, acceptance_possible FROM confirmation_submissions")
         .all(),
     ).toEqual([{ credential_fingerprint: null, acceptance_possible: 1 }]);
+    const oldPayload = '{"requestId":"old-request","actions":[{"type":"notes","notes":"kept"}]}';
+    db.prepare(
+      "INSERT INTO reservation_requests VALUES ('old-request', 'reservation', ?, '2026-10-05')",
+    ).run(oldPayload);
+    db.exec(`INSERT INTO confirmation_reports (id, context, event_id, source, type, provider_message_id, observed_at, submission_id)
+      VALUES ('report', 'https://api.resend.com/emails', 'event', 'callback', 'delivered', 'provider-id', '2026-10-05', 'submission')`);
+    const reportsBefore = db.prepare("SELECT * FROM confirmation_reports").all();
+    for (const entry of journal.entries.slice(resendMigration)) db.exec(migration(entry.tag));
+    expect(db.prepare(context).all()).toEqual(before);
+    expect(db.prepare("SELECT * FROM confirmation_reports").all()).toEqual(reportsBefore);
+    expect(db.prepare("SELECT payload FROM reservation_requests").all()).toEqual([
+      { payload: oldPayload },
+    ]);
+    expect(db.prepare("SELECT count(*) AS n FROM confirmation_resends").all()).toEqual([{ n: 0 }]);
+    expect(db.prepare("SELECT count(*) AS n FROM confirmation_submission_attempts").all()).toEqual([
+      { n: 0 },
+    ]);
+    expect(
+      db
+        .prepare(
+          "SELECT deliberate_work_id, snapshot_revision, link_expires_on FROM confirmation_submissions",
+        )
+        .all(),
+    ).toEqual([{ deliberate_work_id: null, snapshot_revision: null, link_expires_on: null }]);
+    expect(() =>
+      db.exec(`INSERT INTO confirmation_submissions (id, intent_id, recipient_email, language, status, created_at, updated_at)
+      VALUES ('old-writer-duplicate', 'intent', 'ana@example.com', 'en', 'unsent', '2026-10-06', '2026-10-06')`),
+    ).toThrow(/UNIQUE/);
     expect(db.prepare("PRAGMA foreign_key_check").all()).toEqual([]);
   });
 
@@ -109,6 +142,10 @@ describe("confirmation submission migration", () => {
       { n: 0 },
     ]);
     expect(db.prepare("SELECT count(*) AS n FROM confirmation_reports").all()).toEqual([{ n: 0 }]);
+    expect(db.prepare("SELECT count(*) AS n FROM confirmation_resends").all()).toEqual([{ n: 0 }]);
+    expect(db.prepare("SELECT count(*) AS n FROM confirmation_submission_attempts").all()).toEqual([
+      { n: 0 },
+    ]);
     db.exec(`
       INSERT INTO operation_controls (id, public_payments_admitted, updated_at, updated_by)
         VALUES (1, 0, '2026-11-01', 'owner-account');

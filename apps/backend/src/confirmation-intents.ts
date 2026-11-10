@@ -5,6 +5,7 @@ import { confirmationIntents, paymentAttempts, reservations } from "./db/schema"
 import { HttpError } from "./http";
 import { confirmationSubmissionView } from "./confirmation-submissions";
 import { loadReservation } from "./reservation-read";
+import { confirmationResendHistory } from "./confirmation-resends";
 
 export const CONFIRMATION_NOT_ESTABLISHED = "confirmation was not established";
 
@@ -106,6 +107,7 @@ export async function staffConfirmationIntent(db: Db, reservationId: string) {
     .from(confirmationIntents)
     .where(eq(confirmationIntents.reservationId, reservationId));
   if (!intent) throw new HttpError(404, CONFIRMATION_NOT_ESTABLISHED);
+  const submission = await confirmationSubmissionView(db, intent.id);
   return {
     id: intent.id,
     recipientEmail: intent.recipientEmail,
@@ -118,6 +120,19 @@ export async function staffConfirmationIntent(db: Db, reservationId: string) {
       code: state.reservation.code,
       status: state.reservation.status,
     },
-    submission: await confirmationSubmissionView(db, intent.id),
+    submission,
+    history: [
+      {
+        id: intent.id,
+        kind: "automatic" as const,
+        recipientEmail: intent.recipientEmail,
+        language: intent.language,
+        createdAt: intent.createdAt,
+        requestedBy: null,
+        mayDuplicateEarlierDelivery: false,
+        submission,
+      },
+      ...(await confirmationResendHistory(db, intent.id)),
+    ],
   };
 }
