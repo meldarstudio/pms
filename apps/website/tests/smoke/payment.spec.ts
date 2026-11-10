@@ -154,6 +154,71 @@ test("an uncertain charge stays processing across reload and language change wit
   expect(await serverPayment(page, request)).toMatchObject({ state: "processing" });
 });
 
+test("a dropped status check resumes the same payment when the connection returns", async ({
+  page,
+  request,
+}) => {
+  await acceptTerms(page, "flexible", payerEmail());
+  await nextCulqiCharge(request, "timeout");
+  let payments = 0;
+  await page.route(`${LOCAL_API_URL}/public/checkout/payments`, async (route) => {
+    payments += 1;
+    await route.fallback();
+  });
+  await payButton(page, "100.00").click();
+  await expect(page.getByRole("heading", { name: "Confirmando su pago" })).toBeVisible();
+  const pending = await serverPayment(page, request);
+
+  let reads = 0;
+  let failNext = true;
+  await page.route(`${LOCAL_API_URL}/public/checkout/payment`, async (route) => {
+    if (!route.request().url().endsWith("/public/checkout/payment")) return route.fallback();
+    reads += 1;
+    if (failNext) {
+      failNext = false;
+      return route.abort();
+    }
+    return route.fallback();
+  });
+  await page.waitForRequest(
+    (req) => req.url().endsWith("/public/checkout/payment") && req.method() === "GET",
+    { timeout: 8_000 },
+  );
+  const afterFailure = reads;
+  await page.evaluate(() => window.dispatchEvent(new Event("online")));
+  await expect.poll(() => reads).toBeGreaterThan(afterFailure);
+  await expect(page.getByRole("heading", { name: "Confirmando su pago" })).toBeVisible();
+  expect(payments).toBe(1);
+  expect(await serverPayment(page, request)).toMatchObject({
+    attemptId: pending?.attemptId,
+    state: "processing",
+  });
+});
+
+test("back to review shows the same payment and does not pay again", async ({ page, request }) => {
+  await acceptTerms(page, "flexible", payerEmail());
+  await nextCulqiCharge(request, "timeout");
+  let payments = 0;
+  await page.route(`${LOCAL_API_URL}/public/checkout/payments`, async (route) => {
+    payments += 1;
+    await route.fallback();
+  });
+  await payButton(page, "100.00").click();
+  await expect(page.getByRole("heading", { name: "Confirmando su pago" })).toBeVisible();
+  const pending = await serverPayment(page, request);
+
+  await page.getByRole("link", { name: "Cambiar habitación o tarifa" }).click();
+  await expect(page).toHaveURL(/habitacion/);
+  await page.goBack();
+
+  await expect(page.getByRole("heading", { name: "Confirmando su pago" })).toBeVisible();
+  expect(payments).toBe(1);
+  expect(await serverPayment(page, request)).toMatchObject({
+    attemptId: pending?.attemptId,
+    state: "processing",
+  });
+});
+
 test("a payment that is still being verified after two minutes explains that and does not offer to pay again", async ({
   page,
   request,

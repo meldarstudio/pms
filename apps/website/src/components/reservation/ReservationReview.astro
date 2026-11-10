@@ -537,6 +537,9 @@ const contactFields = [
         if (event.persisted && this.key) void this.load();
         else this.showAccepted();
       });
+      window.addEventListener("online", () => {
+        if (this.awaitingStatus()) void this.syncPayment();
+      });
       for (const id of contactFields) {
         this.input(id).addEventListener("input", () => {
           storeContact({
@@ -1011,6 +1014,23 @@ const contactFields = [
       this.showPayError(payErrorCopy[outcome.kind] ?? "reservation.pay.error.unavailable");
     }
 
+    private awaitingStatus() {
+      const state = this.payment?.state;
+      return (
+        state === "processing" ||
+        state === "authentication_required" ||
+        state === "paid_awaiting_reservation" ||
+        state === "submitted" ||
+        this.stored()?.submitted != null
+      );
+    }
+
+    private scheduleStatusPoll() {
+      clearTimeout(this.poll);
+      if (this.awaitingStatus())
+        this.poll = setTimeout(() => void this.syncPayment(), PAYMENT_POLL_MS);
+    }
+
     private async syncPayment(announce = false) {
       clearTimeout(this.poll);
       if (!this.token) return;
@@ -1018,7 +1038,10 @@ const contactFields = [
         this.el("[data-status]").textContent = this.text("reservation.outcome.checking");
       const outcome = await readPayment(this.copy.apiBase, this.token);
       if (announce) this.el("[data-status]").textContent = "";
-      if (outcome.kind !== "payment") return;
+      if (outcome.kind !== "payment") {
+        this.scheduleStatusPoll();
+        return;
+      }
       if (outcome.payment) this.markSubmitted(null);
       this.showPayment(outcome.payment ?? this.submittedPayment(), announce);
     }
