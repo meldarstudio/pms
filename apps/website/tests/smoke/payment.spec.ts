@@ -71,7 +71,11 @@ async function serverPayment(page: Page, request: APIRequestContext) {
   const response = await request.get(`${LOCAL_API_URL}/public/checkout/payment`, {
     headers: { authorization: `Bearer ${await checkoutToken(page)}` },
   });
-  return ((await response.json()) as { payment: { state: string } | null }).payment;
+  return (
+    (await response.json()) as {
+      payment: { attemptId: string; state: string; delayed: boolean } | null;
+    }
+  ).payment;
 }
 
 const localState = fileURLToPath(new URL("../../.local-api/state", import.meta.url));
@@ -148,6 +152,50 @@ test("an uncertain charge stays processing across reload and language change wit
   await expect(page.getByRole("heading", { name: "Confirming your payment" })).toBeVisible();
   await expect(page.getByRole("button", { name: /^Pay/ })).toHaveCount(0);
   expect(await serverPayment(page, request)).toMatchObject({ state: "processing" });
+});
+
+test("a payment that is still being verified after two minutes explains that and does not offer to pay again", async ({
+  page,
+  request,
+}) => {
+  const email = payerEmail();
+  await acceptTerms(page, "flexible", email);
+  await nextCulqiCharge(request, "timeout");
+  let payments = 0;
+  await page.route(`${LOCAL_API_URL}/public/checkout/payments`, async (route) => {
+    payments += 1;
+    await route.fallback();
+  });
+  await payButton(page, "100.00").click();
+  await expect(page.getByRole("heading", { name: "Confirmando su pago" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Consultar estado" })).toHaveCount(0);
+  const pending = await serverPayment(page, request);
+  expect(pending).toMatchObject({ state: "processing", delayed: false });
+
+  await page.route(`${LOCAL_API_URL}/public/checkout/payment`, (route) => {
+    if (!route.request().url().endsWith("/public/checkout/payment")) return route.fallback();
+    return route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({ payment: { ...pending, delayed: true } }),
+    });
+  });
+  await page.reload();
+
+  await expect(page.getByRole("heading", { name: "Confirmando su pago" })).toBeVisible();
+  await expect(outcome(page)).toContainText(
+    "La verificación está tardando más de lo habitual. Continúa aunque cierre esta página, así que no pague de nuevo. Consulte el estado aquí más tarde o escríbanos por WhatsApp o por correo si necesita ayuda.",
+  );
+  await expect(page.getByRole("button", { name: "Consultar estado" })).toBeVisible();
+  await expect(page.getByRole("button", { name: /^Pagar/ })).toHaveCount(0);
+  expect(payments).toBe(1);
+  expect(await page.evaluate(() => sessionStorage.getItem("hm.reservation.contact"))).toContain(
+    email,
+  );
+  await page.unroute(`${LOCAL_API_URL}/public/checkout/payment`);
+  expect(await serverPayment(page, request)).toMatchObject({
+    attemptId: pending?.attemptId,
+    state: "processing",
+  });
 });
 
 test("a payment pause keeps the draft and charges nothing", async ({ page, request }) => {
