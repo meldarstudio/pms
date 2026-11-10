@@ -22,6 +22,9 @@ import {
   getHousekeeping,
   getInventory,
   getReservation,
+  getReservationConfirmation,
+  requestConfirmationResend,
+  type ConfirmationResendRequest,
   getSession,
   listReservations,
   listRoomClosures,
@@ -401,6 +404,27 @@ export function useReservation(
     enabled: id !== null,
     refetchOnWindowFocus: false,
     refetchOnReconnect,
+  });
+}
+
+export function useReservationConfirmation(id: string | null) {
+  return useQuery({
+    queryKey: ["reservation", id, "confirmation"],
+    queryFn: ({ signal }) => getReservationConfirmation(id!, signal),
+    enabled: id !== null,
+    refetchOnWindowFocus: false,
+    refetchOnReconnect: false,
+  });
+}
+
+export function useRequestConfirmationResend() {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, input }: { id: string; input: ConfirmationResendRequest }) =>
+      requestConfirmationResend(id, input),
+    retry: false,
+    onSettled: (_result, _error, { id }) =>
+      client.invalidateQueries({ queryKey: ["reservation", id, "confirmation"] }),
   });
 }
 

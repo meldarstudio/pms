@@ -7,6 +7,7 @@ import type {
   PaymentRequest as PaymentInput,
   PropertySetupRequest as PropertySetupInput,
   EmailSubmissionAdmissionRequest,
+  ConfirmationResendRequest,
   PublicPaymentAdmissionRequest,
   RateWriteRequest,
   RoomClosureRequest,
@@ -22,6 +23,7 @@ import { configurePropertyCalendar } from "./property-calendar";
 import type { InventoryStatus } from "./reservation-statuses";
 
 export type {
+  ConfirmationResendRequest,
   CreationPreviewInput,
   PaymentInput,
   PropertySetupInput,
@@ -583,6 +585,41 @@ export type ConfirmationDelivery = {
   }[];
 };
 
+export type ConfirmationSubmission = {
+  id: string;
+  endpoint: string | null;
+  status: "uncertain" | "accepted" | "unsent" | "attention";
+  providerMessageId: string | null;
+  failureCode: string | null;
+  sendKey: string | null;
+  firstPossibleAt: string | null;
+  nextAttemptAt: string | null;
+  createdAt: string;
+  possiblyAcceptedPosts: number;
+  snapshotRevision: number | null;
+  linkExpiresOn: string | null;
+  attempts: {
+    id: string;
+    startedAt: string;
+    completedAt: string | null;
+    outcome: "accepted" | "uncertain" | "unsent" | "attention" | "not_posted" | null;
+    failureCode: string | null;
+    providerMessageId: string | null;
+  }[];
+  delivery: ConfirmationDelivery;
+};
+
+export type DeliberateConfirmationResend = {
+  id: string;
+  kind: "deliberate_resend";
+  recipientEmail: string;
+  language: "es" | "en";
+  createdAt: string;
+  requestedBy: { id: string; username: string; role: "staff" | "owner" };
+  mayDuplicateEarlierDelivery: true;
+  submission: ConfirmationSubmission | null;
+};
+
 export type ReservationConfirmation = {
   id: string;
   recipientEmail: string;
@@ -591,20 +628,37 @@ export type ReservationConfirmation = {
   acceptanceId: string;
   createdAt: string;
   reservation: { id: string; code: string; status: string };
-  submission: {
-    status: "uncertain" | "accepted" | "unsent" | "attention";
-    providerMessageId: string | null;
-    failureCode: string | null;
-    sendKey: string | null;
-    firstPossibleAt: string | null;
-    nextAttemptAt: string | null;
-    createdAt: string;
-    delivery: ConfirmationDelivery;
-  } | null;
+  submission: ConfirmationSubmission | null;
+  history: (
+    | DeliberateConfirmationResend
+    | {
+        id: string;
+        kind: "automatic";
+        recipientEmail: string;
+        language: "es" | "en";
+        createdAt: string;
+        requestedBy: null;
+        mayDuplicateEarlierDelivery: false;
+        submission: ConfirmationSubmission | null;
+      }
+  )[];
 };
 
 export function getReservationConfirmation(id: string, signal?: AbortSignal) {
   return getJson<ReservationConfirmation>(`/reservations/${id}/confirmation`, signal);
+}
+
+export type ConfirmationResendResult = {
+  work: DeliberateConfirmationResend;
+  mayDuplicateEarlierDelivery: true;
+};
+
+export function requestConfirmationResend(id: string, input: ConfirmationResendRequest) {
+  return writeJson<ConfirmationResendResult>(
+    `/reservations/${id}/confirmation/resends`,
+    "POST",
+    input,
+  );
 }
 
 export async function assignRoom(target: ReservationStay, roomId: string) {

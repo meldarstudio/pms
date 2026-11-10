@@ -125,6 +125,7 @@ async function refresh(client: QueryClient, saved: ReservationDetail, actions: W
   await client.cancelQueries({ queryKey: [previewScope, saved.id] });
   await Promise.all([
     ...dependentReads.map((key) => client.invalidateQueries({ queryKey: [key] })),
+    client.invalidateQueries({ queryKey: ["reservation", saved.id, "confirmation"] }),
     client.invalidateQueries({ queryKey: [previewScope, saved.id] }),
     actions.some((action) => action.type === "contact") &&
       client.invalidateQueries({
