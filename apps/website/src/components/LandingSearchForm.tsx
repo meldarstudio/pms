@@ -183,7 +183,7 @@ function DateField({
               type="button"
               variant="outline"
               className={fieldButton}
-              aria-labelledby={value ? `${labelId} ${valueId}` : labelId}
+              aria-labelledby={`${labelId} ${valueId}`}
               aria-invalid={error ? true : undefined}
               aria-describedby={error ? errorId : undefined}
             />
