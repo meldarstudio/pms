@@ -1429,7 +1429,12 @@ describe("recovering an interrupted payment", () => {
     culqi.next("GET /charges", 500);
     await paid(checkout);
     expect(culqi.charges).toHaveLength(1);
+    const [{ source_id, called_at }] = rows<{ source_id: string; called_at: string }>(
+      "SELECT source_id, called_at FROM payment_attempts",
+    );
     culqi.charges[0]!.metadata = null;
+    culqi.charges[0]!.source_id = source_id;
+    culqi.charges[0]!.creation_date = Date.parse(called_at);
     await vi.advanceTimersByTimeAsync(11 * 60_000);
     await Promise.all(tasks);
     await admitPayments(false);
@@ -1458,5 +1463,107 @@ describe("recovering an interrupted payment", () => {
     expect(await status(checkout.token)).toMatchObject({ state: "confirmed" });
     expect(charges()).toHaveLength(1);
     expect(rows("SELECT id FROM reservations")).toHaveLength(1);
+  });
+
+  it("does not confirm an unrelated charge for the same email and amount", async () => {
+    const checkout = await acceptedCheckout();
+    culqi.next("POST /charges", "timeout");
+    await paid(checkout);
+    await vi.advanceTimersByTimeAsync(10_000);
+    await Promise.all(tasks);
+    const [{ source_id, called_at }] = rows<{ source_id: string; called_at: string }>(
+      "SELECT source_id, called_at FROM payment_attempts",
+    );
+    culqi.charges.push({
+      object: "charge",
+      id: "chr_test_other",
+      amount: 10000,
+      currency_code: "PEN",
+      email: "ana@example.com",
+      source_id: "tkn_test_other",
+      creation_date: Date.parse(called_at),
+      outcome: { type: "venta_exitosa", code: "AUT0000" },
+      metadata: null,
+      amount_refunded: 0,
+    });
+
+    await runScheduled();
+
+    expect(source_id).not.toBe("tkn_test_other");
+    expect(await status(checkout.token)).toMatchObject({ state: "processing", reservation: null });
+    expect(rows("SELECT status FROM payment_attempts")).toEqual([{ status: "unknown" }]);
+    expect(rows("SELECT id FROM reservations")).toEqual([]);
+    expect(charges()).toHaveLength(1);
+  });
+
+  it.each([
+    ["two unlabeled charges for this card", 2, 0],
+    ["an unlabeled charge outside the lookup window", 1, 2 * 60_000],
+  ])("stays unresolved when lookup finds %s", async (_case, copies, skew) => {
+    const checkout = await acceptedCheckout();
+    culqi.next("POST /charges", "timeout");
+    await paid(checkout);
+    await vi.advanceTimersByTimeAsync(10_000);
+    await Promise.all(tasks);
+    const [{ source_id, called_at }] = rows<{ source_id: string; called_at: string }>(
+      "SELECT source_id, called_at FROM payment_attempts",
+    );
+    for (let index = 0; index < copies; index += 1)
+      culqi.charges.push({
+        object: "charge",
+        id: `chr_test_unlabeled_${index}`,
+        amount: 10000,
+        currency_code: "PEN",
+        email: "ana@example.com",
+        source_id,
+        creation_date: Date.parse(called_at) + skew,
+        outcome: { type: "venta_exitosa", code: "AUT0000" },
+        metadata: null,
+        amount_refunded: 0,
+      });
+
+    await runScheduled();
+
+    expect(await status(checkout.token)).toMatchObject({ state: "processing", reservation: null });
+    expect(rows("SELECT id FROM reservations")).toEqual([]);
+  });
+
+  it("confirms one reservation when a status read and the scheduled run find the same lost charge", async () => {
+    const checkout = await acceptedCheckout();
+    culqi.next("POST /charges", "lose");
+    culqi.next("GET /charges", 500);
+    await paid(checkout);
+    await vi.advanceTimersByTimeAsync(10_000);
+    await Promise.all(tasks);
+    expect(rows("SELECT status FROM payment_attempts")).toEqual([{ status: "unknown" }]);
+
+    await Promise.all([status(checkout.token), runScheduled()]);
+
+    expect(rows("SELECT status FROM reservations")).toEqual([{ status: "confirmed" }]);
+    expect(rows("SELECT status FROM payment_attempts")).toEqual([{ status: "saved" }]);
+    expect(charges()).toHaveLength(1);
+    expect(await status(checkout.token)).toMatchObject({ state: "confirmed" });
+  });
+
+  it("keeps a saved charge awaiting its reservation when saving fails, then the scheduled run saves it once", async () => {
+    const checkout = await acceptedCheckout();
+    db.beforeCommit(() => {
+      throw new Error("D1 is unavailable");
+    });
+
+    expect(await paid(checkout)).toMatchObject({
+      state: "paid_awaiting_reservation",
+      reservation: null,
+    });
+    expect(rows("SELECT status FROM payment_attempts")).toEqual([{ status: "succeeded" }]);
+    expect(rows("SELECT id FROM reservations")).toEqual([]);
+
+    await runScheduled();
+    await runScheduled();
+
+    expect(rows("SELECT status FROM reservations")).toEqual([{ status: "confirmed" }]);
+    expect(rows("SELECT status FROM payment_attempts")).toEqual([{ status: "saved" }]);
+    expect(charges()).toHaveLength(1);
+    expect(await status(checkout.token)).toMatchObject({ state: "confirmed" });
   });
 });

@@ -294,10 +294,21 @@ function chargeForAttempt(attempt: Attempt, listed: CulqiCharge[]) {
   const unlabeled = listed.filter(
     (listedCharge) =>
       listedCharge.metadata?.attempt_id == null &&
-      listedCharge.email === attempt.email &&
+      listedCharge.source_id === attempt.sourceId &&
+      listedWithin(attempt, listedCharge) &&
       matches(attempt, listedCharge),
   );
   return unlabeled.length === 1 ? unlabeled[0] : undefined;
+}
+
+function listedWithin(attempt: Attempt, listedCharge: CulqiCharge) {
+  const created = chargeInstant(listedCharge.creation_date);
+  const called = Date.parse(attempt.calledAt);
+  return created >= called - LOOKUP_SLACK && created <= called + LOOKUP_SLACK;
+}
+
+function chargeInstant(creationDate: number) {
+  return creationDate < 1e12 ? creationDate * 1000 : creationDate;
 }
 
 async function record(db: Db, attempt: Attempt, result: ChargeResult, context: PaymentContext) {
@@ -390,7 +401,8 @@ async function rebooked(db: Db, quote: Quote, email: string) {
 const matches = (attempt: Attempt, culqiCharge: CulqiCharge) =>
   isSuccessfulCharge(culqiCharge) &&
   culqiCharge.amount === attempt.amountCents &&
-  culqiCharge.currency_code === attempt.currency;
+  culqiCharge.currency_code === attempt.currency &&
+  culqiCharge.email === attempt.email;
 
 const chargeRequest = (attempt: Attempt) => ({
   attemptId: attempt.id,

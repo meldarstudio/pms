@@ -14,6 +14,7 @@ export type CulqiCharge = {
   amount: number;
   currency_code: string;
   email: string;
+  source_id?: string;
   creation_date: number;
   outcome?: { type?: string; code?: string };
   metadata?: Record<string, string> | null;
