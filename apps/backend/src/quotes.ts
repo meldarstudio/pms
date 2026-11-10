@@ -1,7 +1,20 @@
 import type { GuestInput, QuoteCreate } from "@pms/shared";
 import { eq } from "drizzle-orm";
 import { runBatch, type Db } from "./db";
-import { guests, payments, quotes, reservationAccess, reservations, roomTypes } from "./db/schema";
+import {
+  confirmationIntentValues,
+  consumeSkippedIntent,
+  type ConfirmationProvenance,
+} from "./confirmation-intents";
+import {
+  confirmationIntents,
+  guests,
+  payments,
+  quotes,
+  reservationAccess,
+  reservations,
+  roomTypes,
+} from "./db/schema";
 import { HttpError, rethrowConflict } from "./http";
 import { occupiedCounts, roomCounts } from "./inventory";
 import { confirmationCode } from "./lib/codes";
@@ -101,6 +114,7 @@ export async function saveQuote(
     status?: "confirmed" | "unfulfilled";
     payment?: QuotePayment;
     publicCheckoutId?: string | null;
+    confirmation?: ConfirmationProvenance | null;
   } = {},
 ): Promise<string> {
   const [quote] = await db.select().from(quotes).where(eq(quotes.id, quoteId));
@@ -111,6 +125,13 @@ export async function saveQuote(
     id = crypto.randomUUID(),
     guestId = crypto.randomUUID();
   const phone = acceptPhone(guest.phone);
+  const status = options.status ?? "confirmed";
+  const provenance = status === "confirmed" ? (options.confirmation ?? null) : null;
+  const skipIntent = provenance !== null && consumeSkippedIntent();
+  const intent =
+    provenance !== null && !skipIntent
+      ? db.insert(confirmationIntents).values(confirmationIntentValues(id, provenance, now))
+      : null;
   const accessRow =
     options.publicCheckoutId != null
       ? await reservationAccessValues(id, quote.checkOut, now)
@@ -128,7 +149,8 @@ export async function saveQuote(
         source: "online",
         quoteId,
         publicCheckoutId: options.publicCheckoutId ?? null,
-        status: options.status ?? "confirmed",
+        confirmationOwed: provenance === null ? 0 : 1,
+        status,
         createdAt: now,
         ...termColumns(quote.terms),
       }),
@@ -157,19 +179,25 @@ export async function saveQuote(
         false,
       ),
       ...access,
+      ...(intent ? [intent] : []),
     ]);
   } catch (error) {
     const saved = await savedReservation(db, quoteId);
     if (saved) return saved;
-    rethrowConflict(accessRow ? redactToken(error, accessRow.token) : error);
+    rethrowConflict(redactSecrets(error, [accessRow?.token, options.confirmation?.recipientEmail]));
   }
   return id;
 }
 
-function redactToken(error: unknown, token: string): unknown {
-  if (!(error instanceof Error)) return error;
-  return new Error(error.message.replaceAll(token, "[redacted]"), {
-    cause: error.cause === undefined ? undefined : redactToken(error.cause, token),
+function redactSecrets(error: unknown, secrets: Array<string | null | undefined>): unknown {
+  const hidden = secrets.filter((secret): secret is string => Boolean(secret));
+  if (!(error instanceof Error) || hidden.length === 0) return error;
+  const message = hidden.reduce(
+    (text, secret) => text.replaceAll(secret, "[redacted]"),
+    error.message,
+  );
+  return new Error(message, {
+    cause: error.cause === undefined ? undefined : redactSecrets(error.cause, hidden),
   });
 }
 

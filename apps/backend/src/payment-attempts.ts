@@ -22,6 +22,7 @@ import { HttpError, PAYMENT_PENDING, rethrowConflict } from "./http";
 import { quoteBill } from "./lib/reservation-bill";
 import { inventoryStatuses } from "./lib/statuses";
 import { propertyCalendar } from "./property-calendar";
+import type { ConfirmationProvenance } from "./confirmation-intents";
 import { quoteExpired, saveQuote } from "./quotes";
 import { acceptPhone } from "./rules";
 
@@ -357,7 +358,11 @@ async function fulfill(db: Db, attempt: Attempt, context: PaymentContext): Promi
     culqiChargeId: attempt.culqiChargeId,
   };
   const unfulfilled = quote.checkIn < today || (await rebooked(db, quote, attempt.email));
-  const saved = { payment, publicCheckoutId: attempt.checkoutId };
+  const saved = {
+    payment,
+    publicCheckoutId: attempt.checkoutId,
+    confirmation: confirmationProvenance(attempt),
+  };
   let reservationId: string;
   try {
     reservationId = await saveQuote(db, quote.id, attempt.guest, {
@@ -377,6 +382,18 @@ async function fulfill(db: Db, attempt: Attempt, context: PaymentContext): Promi
     .where(and(eq(paymentAttempts.id, attempt.id), eq(paymentAttempts.status, "succeeded")))
     .returning();
   return recorded ?? findAttempt(db, attempt.id);
+}
+
+function confirmationProvenance(attempt: Attempt): ConfirmationProvenance | null {
+  if (!attempt.confirmationEmailEligible || !attempt.checkoutId || !attempt.acceptanceId)
+    return null;
+  return {
+    attemptId: attempt.id,
+    checkoutId: attempt.checkoutId,
+    acceptanceId: attempt.acceptanceId,
+    recipientEmail: attempt.email,
+    language: attempt.language,
+  };
 }
 
 async function rebooked(db: Db, quote: Quote, email: string) {

@@ -310,6 +310,12 @@ result is resolved by provider lookup, not another charge. Bank authentication c
 that same attempt and source; a public checkout may finish it after the quote expires.
 _Avoid_: Payment, retry
 
+**Confirmation intent**:
+The one durable record that a saved Confirmed public reservation is owed an automatic
+confirmation. It keeps the booking-contact recipient and checkout language from the
+saving payment attempt, and is not itself a sent message.
+_Avoid_: Confirmation email, reservation access link, payment
+
 **Refund**:
 Money returned against a received payment. Only a completed refund has returned money;
 a requested or failed refund has not.

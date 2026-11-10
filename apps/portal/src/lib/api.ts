@@ -533,6 +533,20 @@ export function getReservationAccess(id: string, signal?: AbortSignal) {
   return getJson<ReservationAccess>(`/reservations/${id}/access`, signal);
 }
 
+export type ReservationConfirmation = {
+  id: string;
+  recipientEmail: string;
+  language: "es" | "en";
+  attemptId: string;
+  acceptanceId: string;
+  createdAt: string;
+  reservation: { id: string; code: string; status: string };
+};
+
+export function getReservationConfirmation(id: string, signal?: AbortSignal) {
+  return getJson<ReservationConfirmation>(`/reservations/${id}/confirmation`, signal);
+}
+
 export async function assignRoom(target: ReservationStay, roomId: string) {
   const detail = await getReservation(target.reservationId);
   const line = detail.rooms.find((l) => l.id === target.id);

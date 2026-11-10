@@ -152,6 +152,7 @@ export const reservations = sqliteTable(
     priceAdjustmentPercent: integer("price_adjustment_percent").notNull().default(0),
     quoteId: text("quote_id").references(() => quotes.id),
     publicCheckoutId: text("public_checkout_id").references(() => publicCheckouts.id),
+    confirmationOwed: integer("confirmation_owed").notNull().default(0),
   },
   (table) => [
     index("reservations_dates").on(table.checkIn, table.checkOut),
@@ -289,6 +290,27 @@ export const paymentAttempts = sqliteTable(
     uniqueIndex("payment_attempts_charge").on(table.culqiChargeId),
   ],
 );
+
+export const confirmationIntents = sqliteTable("confirmation_intents", {
+  id: text("id").primaryKey(),
+  reservationId: text("reservation_id")
+    .notNull()
+    .unique()
+    .references(() => reservations.id),
+  attemptId: text("attempt_id")
+    .notNull()
+    .unique()
+    .references(() => paymentAttempts.id),
+  checkoutId: text("checkout_id")
+    .notNull()
+    .references(() => publicCheckouts.id),
+  acceptanceId: text("acceptance_id")
+    .notNull()
+    .references(() => checkoutAcceptances.id),
+  recipientEmail: text("recipient_email").notNull(),
+  language: text("language").$type<CheckoutLanguage>().notNull(),
+  createdAt: text("created_at").notNull(),
+});
 
 export const roomTypeRates = sqliteTable(
   "room_type_rates",

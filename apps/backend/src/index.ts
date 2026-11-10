@@ -20,6 +20,7 @@ import { roomClosureRoutes } from "./routes/room-closures";
 import { roomRoutes } from "./routes/rooms";
 import { setupRoutes } from "./routes/setup";
 import { getDb } from "./db";
+import { repairConfirmationIntents } from "./confirmation-intents";
 import { paymentContext, reconcilePaymentAttempts } from "./payment-attempts";
 import { requireSession } from "./session";
 import { propertyCalendar } from "./property-calendar";
@@ -94,6 +95,9 @@ app.route(GUEST_PREFIX, publicRoutes);
 export default {
   fetch: app.fetch,
   scheduled(_controller, env, ctx) {
-    ctx.waitUntil(reconcilePaymentAttempts(getDb(env.DB), paymentContext(env)));
+    const db = getDb(env.DB);
+    ctx.waitUntil(
+      reconcilePaymentAttempts(db, paymentContext(env)).then(() => repairConfirmationIntents(db)),
+    );
   },
 } satisfies ExportedHandler<Env["Bindings"]>;

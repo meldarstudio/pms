@@ -12,6 +12,8 @@ const messages: Record<string, string> = {
   "invalid checkout token": "No se pudo verificar la reserva en curso. Vuelve a empezar.",
   "invalid reservation access": "No se pudo abrir el resumen de la reserva.",
   "reservation access was not established": "Esta reserva no tiene un enlace de resumen.",
+  "confirmation was not established":
+    "Esta reserva no tiene una confirmación automática registrada.",
   "agreement must be accepted": "Debes aceptar las condiciones de la reserva.",
   "too many acceptances for this checkout":
     "Esta reserva en curso se modificó demasiadas veces. Vuelve a empezar.",
