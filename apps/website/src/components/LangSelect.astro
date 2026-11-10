@@ -34,7 +34,9 @@ const locales = (i18n?.locales ?? []).filter(
       if (select) {
         select.addEventListener("change", (e) => {
           if (e.currentTarget instanceof HTMLSelectElement) {
-            window.location.pathname = e.currentTarget.value;
+            window.location.assign(
+              `${e.currentTarget.value}${window.location.search}${window.location.hash}`,
+            );
           }
         });
         window.addEventListener("pageshow", (event) => {

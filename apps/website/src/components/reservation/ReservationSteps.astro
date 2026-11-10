@@ -1,0 +1,43 @@
+---
+import { getLang, useTranslations } from "@/i18n/utils";
+
+interface Props {
+  current: "search" | "choose" | "review";
+}
+
+const lang = getLang(Astro.currentLocale);
+const t = useTranslations(lang);
+const steps = [
+  { id: "search", label: t("reservation.step.search") },
+  { id: "choose", label: t("reservation.step.choose") },
+  { id: "review", label: t("reservation.step.review") },
+] as const;
+const { current } = Astro.props;
+---
+
+<nav aria-label={t("reservation.steps")}>
+  <ol class="font-source-sans-3 flex flex-wrap gap-x-6 gap-y-2 text-sm">
+    {steps.map((step, index) => (
+      <li
+        class:list={[
+          "flex items-center gap-2",
+          step.id === current ? "font-semibold text-stone-900" : "text-stone-600",
+        ]}
+        aria-current={step.id === current ? "step" : undefined}
+      >
+        <span
+          class:list={[
+            "flex size-7 shrink-0 items-center justify-center border text-xs",
+            step.id === current
+              ? "border-accent-700 bg-accent-500 text-accent-950"
+              : "border-stone-300 bg-white",
+          ]}
+          aria-hidden="true"
+        >
+          {index + 1}
+        </span>
+        {step.label}
+      </li>
+    ))}
+  </ol>
+</nav>

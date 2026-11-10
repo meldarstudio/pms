@@ -1,0 +1,1 @@
+ALTER TABLE `confirmation_submissions` ADD `acceptance_possible` integer DEFAULT 1 NOT NULL;

@@ -19,6 +19,7 @@ export type TestDb = {
   ): Promise<Response>;
   signIn(role?: AccountRole): Promise<void>;
   beforeCommit(hook: () => unknown, options?: { times?: number }): () => void;
+  migrate(): void;
   close(): void;
 };
 
@@ -54,14 +55,28 @@ function statement(sqlite: DatabaseSync, sql: string, params: SQLInputValue[] = 
   };
 }
 
-export async function createTestDb(): Promise<TestDb> {
+export async function createTestDb({
+  migrateThrough,
+}: { migrateThrough?: string } = {}): Promise<TestDb> {
   const sqlite = new DatabaseSync(":memory:");
   sqlite.exec("PRAGMA foreign_keys = ON");
   const journal = JSON.parse(readFileSync(new URL("meta/_journal.json", migrations), "utf8")) as {
     entries: { tag: string }[];
   };
-  for (const { tag } of journal.entries)
-    sqlite.exec(readFileSync(new URL(`${tag}.sql`, migrations), "utf8"));
+  let applied = 0;
+  const migrate = (through?: string) => {
+    const end =
+      through === undefined
+        ? journal.entries.length
+        : journal.entries.findIndex(({ tag }) => tag === through) + 1;
+    if (end === 0) throw new Error(`unregistered test migration: ${through}`);
+    while (applied < end) {
+      const { tag } = journal.entries[applied]!;
+      sqlite.exec(readFileSync(new URL(`${tag}.sql`, migrations), "utf8"));
+      applied += 1;
+    }
+  };
+  migrate(migrateThrough);
 
   const hooks: { run: () => unknown; times: number }[] = [];
   let hookRunning = false;
@@ -130,6 +145,7 @@ export async function createTestDb(): Promise<TestDb> {
         if (index >= 0) hooks.splice(index, 1);
       };
     },
+    migrate: () => migrate(),
     close: () => sqlite.close(),
   };
 }

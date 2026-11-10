@@ -1,0 +1,15 @@
+---
+import Layout from "@/layouts/Layout.astro";
+import ReservationReview from "@/components/reservation/ReservationReview.astro";
+import { getLang, useTranslations } from "@/i18n/utils";
+
+const t = useTranslations(getLang(Astro.currentLocale));
+---
+
+<Layout
+  title={t("reservation.meta.reviewTitle")}
+  description={t("reservation.meta.reviewDescription")}
+  noIndex
+>
+  <ReservationReview />
+</Layout>

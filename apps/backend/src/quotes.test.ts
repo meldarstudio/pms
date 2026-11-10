@@ -80,6 +80,9 @@ describe("quotes", () => {
       rooms: [{ roomTypeId: "type", roomId: null, adults: 2, children: 0 }],
     });
     expect(saved.rooms[0]!.nights.map((night) => night.priceCents)).toEqual([9000, 9000]);
+    expect(db.sqlite.prepare("SELECT count(*) AS n FROM reservation_access").get()).toEqual({
+      n: 0,
+    });
   });
 
   it.each([

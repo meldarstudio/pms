@@ -1,0 +1,22 @@
+---
+import Whatsapp from "@/icons/Whatsapp.svg";
+import { getWhatsAppLink } from "@/lib/constants";
+import { getLang, useTranslations } from "@/i18n/utils";
+
+const lang = getLang(Astro.currentLocale);
+const t = useTranslations(lang);
+---
+
+<p class="mt-10 border-t border-stone-300 pt-6 text-stone-700">
+  {t("reservation.helpPrompt")}
+  <a
+    href={getWhatsAppLink(t("whatsapp.prefill"))}
+    target="_blank"
+    rel="noopener noreferrer"
+    class="text-accent-800 inline-flex min-h-11 items-center gap-2 font-medium underline underline-offset-4"
+    data-reservation-help
+  >
+    <Whatsapp class="size-4 shrink-0" />
+    {t("booking.cta")}
+  </a>
+</p>

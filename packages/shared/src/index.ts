@@ -4,6 +4,13 @@ export { normalizePhone, phoneErrors } from "./phone";
 export const dateSchema = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "date must be YYYY-MM-DD");
 
 const text = (max: number) => z.string().trim().min(1).max(max);
+const EMAIL_ADDRESS = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+const requiredText = (max: number, message: string) =>
+  z
+    .string({ error: (issue) => (issue.input === undefined ? message : undefined) })
+    .trim()
+    .min(1, message)
+    .max(max);
 export const nationalityCodes: ReadonlySet<string> = new Set(
   "AD AE AF AG AI AL AM AO AQ AR AS AT AU AW AX AZ BA BB BD BE BF BG BH BI BJ BL BM BN BO BQ BR BS BT BV BW BY BZ CA CC CD CF CG CH CI CK CL CM CN CO CR CU CV CW CX CY CZ DE DJ DK DM DO DZ EC EE EG EH ER ES ET FI FJ FK FM FO FR GA GB GD GE GF GG GH GI GL GM GN GP GQ GR GS GT GU GW GY HK HM HN HR HT HU ID IE IL IM IN IO IQ IR IS IT JE JM JO JP KE KG KH KI KM KN KP KR KW KY KZ LA LB LC LI LK LR LS LT LU LV LY MA MC MD ME MF MG MH MK ML MM MN MO MP MQ MR MS MT MU MV MW MX MY MZ NA NC NE NF NG NI NL NO NP NR NU NZ OM PA PE PF PG PH PK PL PM PN PR PS PT PW PY QA RE RO RS RU RW SA SB SC SD SE SG SH SI SJ SK SL SM SN SO SR SS ST SV SX SY SZ TC TD TF TG TH TJ TK TL TM TN TO TR TT TV TW TZ UA UG UM US UY UZ VA VC VE VG VI VN VU WF WS XK YE YT ZA ZM ZW".split(
     " ",
@@ -13,11 +20,7 @@ const nationality = z.string().refine((code) => nationalityCodes.has(code), "inv
 
 export const guestFields = z.object({
   fullName: text(200),
-  email: z
-    .string()
-    .trim()
-    .regex(/^[^\s@]+@[^\s@]+\.[^\s@]+$/, "invalid email")
-    .optional(),
+  email: z.string().trim().regex(EMAIL_ADDRESS, "invalid email").optional(),
   phone: text(40).optional(),
   documentType: text(40).optional(),
   documentNumber: text(60).optional(),
@@ -114,6 +117,13 @@ export const availabilityQuerySchema = z.object({
   adults: z.coerce.number().int().min(1).max(100).optional(),
   children: z.coerce.number().int().min(0).max(100).optional(),
   excludeReservationId: z.string().min(1).optional(),
+});
+
+export const publicOfferSearchSchema = z.object({
+  checkIn: dateSchema,
+  checkOut: dateSchema,
+  adults: z.coerce.number().int().min(1).max(100),
+  children: z.coerce.number().int().min(0).max(100),
 });
 
 export const paymentListQuerySchema = z.object({
@@ -362,6 +372,56 @@ export const quoteCreateSchema = workflowRoom
   .pick({ roomTypeId: true, adults: true, children: true })
   .extend({ checkIn: dateSchema, checkOut: dateSchema, ratePlan: ratePlanCodeSchema })
   .strict();
+export const checkoutLanguageSchema = z.enum(["es", "en"], { error: "unknown language" });
+export const publicCheckoutCreateSchema = quoteCreateSchema
+  .extend({ language: checkoutLanguageSchema })
+  .strict();
+const bookingContactSchema = z
+  .object({
+    fullName: requiredText(200, "full name is required"),
+    email: requiredText(200, "email is required").regex(EMAIL_ADDRESS, "invalid email"),
+    phone: requiredText(40, "phone is required"),
+  })
+  .strict();
+export const checkoutAcceptanceSchema = z
+  .object({
+    quoteId: z.uuid(),
+    language: checkoutLanguageSchema,
+    contact: bookingContactSchema,
+    agreed: z.literal(true, { error: "agreement must be accepted" }),
+  })
+  .strict();
+export const checkoutPaymentSchema = z
+  .object({
+    quoteId: z.uuid(),
+    sourceId: z
+      .string()
+      .trim()
+      .regex(/^tkn_[\w-]{1,200}$/, "only card payments are accepted"),
+    deviceFingerprint: z.string().trim().min(1).max(200).optional(),
+    turnstileToken: requiredText(2048, "payment security check is required"),
+  })
+  .strict();
+export const publicPaymentAdmissionSchema = z.object({ admitted: z.boolean() }).strict();
+export const emailSubmissionAdmissionSchema = z.object({ admitted: z.boolean() }).strict();
+export const confirmationResendSchema = z
+  .object({
+    requestId: z.uuid(),
+    recipientEmail: bookingContactSchema.shape.email,
+    acknowledgePossibleDuplicate: z.literal(true, {
+      error: "deliberate resend may duplicate earlier delivery; acknowledgement is required",
+    }),
+  })
+  .strict();
+export type ConfirmationResend = z.infer<typeof confirmationResendSchema>;
+export type ConfirmationResendRequest = z.input<typeof confirmationResendSchema>;
+export type CheckoutLanguage = z.infer<typeof checkoutLanguageSchema>;
+export type PublicCheckoutCreate = z.infer<typeof publicCheckoutCreateSchema>;
+export type PublicCheckoutCreateRequest = z.input<typeof publicCheckoutCreateSchema>;
+export type CheckoutAcceptance = z.infer<typeof checkoutAcceptanceSchema>;
+export type CheckoutPayment = z.infer<typeof checkoutPaymentSchema>;
+export type PublicPaymentAdmissionRequest = z.input<typeof publicPaymentAdmissionSchema>;
+export type EmailSubmissionAdmissionRequest = z.input<typeof emailSubmissionAdmissionSchema>;
 export type WorkflowAction = z.infer<typeof workflowActionSchema>;
 export type WorkflowCommand = z.infer<typeof workflowCommandSchema>;
 export type WorkflowCreate = z.infer<typeof workflowCreateSchema>;
@@ -383,12 +443,16 @@ export const paymentAttemptCreateSchema = z
   .strict();
 export const paymentAuthenticationSchema = z
   .object({
-    eci: z.string().max(10),
-    xid: z.string().max(200).optional(),
-    cavv: z.string().max(200),
-    protocolVersion: z.string().max(20),
-    directoryServerTransactionId: z.string().max(200),
+    eci: text(10),
+    xid: text(200).optional(),
+    cavv: text(200),
+    protocolVersion: text(20),
+    directoryServerTransactionId: text(200),
   })
+  .strict();
+export const checkoutAuthenticationSchema = paymentAuthenticationSchema
+  .extend({ attemptId: z.uuid() })
   .strict();
 export type PaymentAttemptCreate = z.infer<typeof paymentAttemptCreateSchema>;
 export type PaymentAuthentication = z.infer<typeof paymentAuthenticationSchema>;
+export type CheckoutAuthentication = z.infer<typeof checkoutAuthenticationSchema>;

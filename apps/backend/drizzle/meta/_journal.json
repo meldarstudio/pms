@@ -127,6 +127,104 @@
       "when": 1794091721501,
       "tag": "0017_contact_nationality",
       "breakpoints": true
+    },
+    {
+      "idx": 18,
+      "version": "6",
+      "when": 1794179921380,
+      "tag": "0018_public_checkouts",
+      "breakpoints": true
+    },
+    {
+      "idx": 19,
+      "version": "6",
+      "when": 1794181747967,
+      "tag": "0019_public_payments",
+      "breakpoints": true
+    },
+    {
+      "idx": 20,
+      "version": "6",
+      "when": 1794241102986,
+      "tag": "0020_open_payment_per_checkout",
+      "breakpoints": true
+    },
+    {
+      "idx": 21,
+      "version": "6",
+      "when": 1794274181802,
+      "tag": "0021_reservation_access",
+      "breakpoints": true
+    },
+    {
+      "idx": 22,
+      "version": "6",
+      "when": 1794278260482,
+      "tag": "0022_confirmation_intents",
+      "breakpoints": true
+    },
+    {
+      "idx": 23,
+      "version": "6",
+      "when": 1794280307463,
+      "tag": "0023_confirmation_submissions",
+      "breakpoints": true
+    },
+    {
+      "idx": 24,
+      "version": "6",
+      "when": 1794282441441,
+      "tag": "0024_true_crusher_hogan",
+      "breakpoints": true
+    },
+    {
+      "idx": 25,
+      "version": "6",
+      "when": 1794282535540,
+      "tag": "0025_mysterious_iron_patriot",
+      "breakpoints": true
+    },
+    {
+      "idx": 26,
+      "version": "6",
+      "when": 1794285117371,
+      "tag": "0026_familiar_genesis",
+      "breakpoints": true
+    },
+    {
+      "idx": 27,
+      "version": "6",
+      "when": 1794287505715,
+      "tag": "0027_green_boomer",
+      "breakpoints": true
+    },
+    {
+      "idx": 28,
+      "version": "6",
+      "when": 1794323327102,
+      "tag": "0028_loose_speed",
+      "breakpoints": true
+    },
+    {
+      "idx": 29,
+      "version": "6",
+      "when": 1794323519486,
+      "tag": "0029_serious_nehzno",
+      "breakpoints": true
+    },
+    {
+      "idx": 30,
+      "version": "6",
+      "when": 1794323790844,
+      "tag": "0030_gorgeous_brother_voodoo",
+      "breakpoints": true
+    },
+    {
+      "idx": 31,
+      "version": "6",
+      "when": 1794326400000,
+      "tag": "0031_unfulfilled_occupancy",
+      "breakpoints": true
     }
   ]
 }

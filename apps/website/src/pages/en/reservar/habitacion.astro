@@ -1,0 +1,15 @@
+---
+import Layout from "@/layouts/Layout.astro";
+import ReservationChoose from "@/components/reservation/ReservationChoose.astro";
+import { getLang, useTranslations } from "@/i18n/utils";
+
+const t = useTranslations(getLang(Astro.currentLocale));
+---
+
+<Layout
+  title={t("reservation.meta.chooseTitle")}
+  description={t("reservation.meta.chooseDescription")}
+  noIndex
+>
+  <ReservationChoose />
+</Layout>

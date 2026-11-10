@@ -22,6 +22,9 @@ import {
   getHousekeeping,
   getInventory,
   getReservation,
+  getReservationConfirmation,
+  requestConfirmationResend,
+  type ConfirmationResendRequest,
   getSession,
   listReservations,
   listRoomClosures,
@@ -33,6 +36,8 @@ import {
   login,
   setAccountPassword,
   changeOwnPassword,
+  getPublicPaymentAdmission,
+  setPublicPaymentAdmission,
   logout,
   patchRoom,
   onUnauthorized,
@@ -115,6 +120,24 @@ export function useSetAccountPassword() {
 
 export function useChangeOwnPassword() {
   return useMutation({ mutationFn: changeOwnPassword });
+}
+
+const publicPaymentAdmissionKey = ["public-payment-admission"] as const;
+
+export function usePublicPaymentAdmission(enabled: boolean) {
+  return useQuery({
+    queryKey: publicPaymentAdmissionKey,
+    queryFn: ({ signal }) => getPublicPaymentAdmission(signal),
+    enabled,
+  });
+}
+
+export function useSetPublicPaymentAdmission() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: setPublicPaymentAdmission,
+    onSuccess: (admission) => queryClient.setQueryData(publicPaymentAdmissionKey, admission),
+  });
 }
 
 const holdDays = 7;
@@ -381,6 +404,27 @@ export function useReservation(
     enabled: id !== null,
     refetchOnWindowFocus: false,
     refetchOnReconnect,
+  });
+}
+
+export function useReservationConfirmation(id: string | null) {
+  return useQuery({
+    queryKey: ["reservation", id, "confirmation"],
+    queryFn: ({ signal }) => getReservationConfirmation(id!, signal),
+    enabled: id !== null,
+    refetchOnWindowFocus: false,
+    refetchOnReconnect: false,
+  });
+}
+
+export function useRequestConfirmationResend() {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, input }: { id: string; input: ConfirmationResendRequest }) =>
+      requestConfirmationResend(id, input),
+    retry: false,
+    onSettled: (_result, _error, { id }) =>
+      client.invalidateQueries({ queryKey: ["reservation", id, "confirmation"] }),
   });
 }
 

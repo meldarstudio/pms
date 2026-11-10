@@ -138,6 +138,81 @@ type ApiOptions = {
     command: WorkflowCommand,
   ) => WorkflowPreview | Response | Promise<WorkflowPreview | Response>;
 };
+
+it("keeps the caller's deliberate confirmation request identity on a lost-response retry and uses session credentials", async () => {
+  const api = (await browser.server.ssrLoadModule(
+    "/src/lib/api.ts",
+  )) as typeof import("../src/lib/api.ts");
+  const path = `/reservations/${saved.id}/confirmation/resends`;
+  const command = {
+    requestId: "936b2490-b2c5-488a-9da6-586b5361bcfe",
+    recipientEmail: "corrected@example.com",
+    acknowledgePossibleDuplicate: true as const,
+  };
+  const response = {
+    work: {
+      id: command.requestId,
+      kind: "deliberate_resend",
+      recipientEmail: command.recipientEmail,
+    },
+    mayDuplicateEarlierDelivery: true,
+  };
+  page.api.on("POST", path, ({ init }) => {
+    assert.equal(init?.credentials, "include");
+    return response;
+  });
+  page.api.once("POST", path, () => {
+    throw new TypeError("Synthetic lost response");
+  });
+  await assert.rejects(api.requestConfirmationResend(saved.id, command));
+  assert.deepEqual(await api.requestConfirmationResend(saved.id, command), response);
+  assert.deepEqual(page.api.bodies("POST", path), [command, command]);
+  assert.equal(writes.length, 0);
+});
+
+it("refreshes confirmation inspection after an uncertain resend without automatically requesting another message", async () => {
+  const queries = (await browser.server.ssrLoadModule(
+    "/src/lib/queries.ts",
+  )) as typeof import("../src/lib/queries.ts");
+  const inspectionPath = `/reservations/${saved.id}/confirmation`;
+  const resendPath = `${inspectionPath}/resends`;
+  let committed = false;
+  page.api.on("GET", inspectionPath, () => ({
+    history: committed
+      ? [{ kind: "automatic" }, { kind: "deliberate_resend" }]
+      : [{ kind: "automatic" }],
+  }));
+  page.api.on("POST", resendPath, () => {
+    committed = true;
+    throw new TypeError("Synthetic lost response after commitment");
+  });
+  let send!: ReturnType<typeof queries.useRequestConfirmationResend>["mutateAsync"];
+  function Callers() {
+    const inspection = queries.useReservationConfirmation(saved.id);
+    send = queries.useRequestConfirmationResend().mutateAsync;
+    return React.createElement("span", null, String(inspection.data?.history.length ?? 0));
+  }
+  await page.render(React.createElement(Callers));
+  await page.until(() => page.container.textContent === "1");
+  await React.act(async () => {
+    await assert.rejects(
+      send({
+        id: saved.id,
+        input: {
+          requestId: "6e7224c6-18d6-49f8-8e1b-9d4658d8a0f5",
+          recipientEmail: "corrected@example.com",
+          acknowledgePossibleDuplicate: true,
+        },
+      }),
+    );
+  });
+  await page.until(
+    () => page.container.textContent === "2",
+    "Committed work becomes inspectable after a lost response",
+  );
+  assert.equal(page.api.requests("POST", resendPath).length, 1);
+});
+
 function mockApi(options: ApiOptions = {}) {
   page.api.on<WorkflowCommand>(
     "POST",

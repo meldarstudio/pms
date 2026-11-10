@@ -1,6 +1,7 @@
 ---
 import Whatsapp from "@/icons/Whatsapp.svg";
 import { getWhatsAppLink } from "@/lib/constants";
+import { onlineReservations, searchStepHref } from "@/lib/reservation/links";
 import { getLang, useTranslations } from "@/i18n/utils";
 
 const lang = getLang(Astro.currentLocale);
@@ -18,16 +19,32 @@ const bookHref = getWhatsAppLink(t("whatsapp.prefill"));
     </h1>
     <span class="bg-accent-500 mt-6 block h-1 w-16" aria-hidden="true"></span>
     <p class="mt-6 max-w-xl leading-relaxed text-pretty text-stone-600">{t("rooms.pageBody")}</p>
-    <a
-      href={bookHref}
-      target="_blank"
-      rel="noopener noreferrer"
-      class="font-source-sans-3 bg-accent-500 text-accent-950 hover:bg-accent-400 mt-8 inline-flex min-h-11 w-fit items-center gap-2 px-5 text-sm font-medium tracking-widest uppercase"
-      data-rooms-intro-booking
-    >
-      <Whatsapp class="size-4 shrink-0" />
-      {t("rooms.intro.cta")}
-    </a>
+    <div class="mt-8 flex flex-wrap items-center gap-x-6 gap-y-3">
+      {onlineReservations && (
+        <a
+          href={searchStepHref(lang)}
+          class="font-source-sans-3 bg-accent-500 text-accent-950 hover:bg-accent-400 inline-flex min-h-11 w-fit items-center px-5 text-sm font-medium tracking-widest uppercase"
+          data-rooms-intro-search
+        >
+          {t("reservation.cta")}
+        </a>
+      )}
+      <a
+        href={bookHref}
+        target="_blank"
+        rel="noopener noreferrer"
+        class:list={[
+          "font-source-sans-3 inline-flex min-h-11 w-fit items-center gap-2 px-5 text-sm font-medium tracking-widest uppercase",
+          onlineReservations
+            ? "border border-stone-900 text-stone-900 hover:bg-white"
+            : "bg-accent-500 text-accent-950 hover:bg-accent-400",
+        ]}
+        data-rooms-intro-booking
+      >
+        <Whatsapp class="size-4 shrink-0" />
+        {onlineReservations ? t("booking.cta") : t("rooms.intro.cta")}
+      </a>
+    </div>
     <p class="mt-3 max-w-xl text-sm leading-relaxed text-pretty text-stone-600">
       {t("rooms.intro.direct")}
     </p>

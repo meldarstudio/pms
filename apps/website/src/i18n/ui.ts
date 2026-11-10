@@ -21,15 +21,15 @@ export const ui = {
       "Stay at Hotel Manantial in Churín, Peru, 5 minutes from the thermal baths of Mamahuarmi and La Juventud.",
     "meta.home.title": "Hotel in Churín with Parking, near the Hot Springs | Hotel Manantial",
     "meta.home.description":
-      "Hotel in Churín, 5 min from the Mamahuarmi and La Juventud hot springs. Free parking, private bath, 24-h front desk. From S/100. Book on WhatsApp.",
-    "meta.rooms.title": "Rooms & Rates in Churín from S/100 | Hotel Manantial",
+      "Hotel in Churín, 5 min from the Mamahuarmi and La Juventud hot springs. Free parking, private bath, 24-h front desk. Check prices for your dates and book direct.",
+    "meta.rooms.title": "Rooms & Rates in Churín | Hotel Manantial",
     "meta.rooms.description":
-      'King room, premium double and family suite in Churín from S/100, taxes included. 55" Smart TV, 24-h front desk, free parking. Book on WhatsApp.',
+      'King room, premium double and family suite in Churín, priced per room with taxes included. 55" Smart TV, 24-h front desk, free parking. Check prices for your dates.',
     "meta.churin.title": "Churín Hot Springs Guide & How to Get There | Hotel Manantial",
     "meta.churin.description":
       "Guide to Mamahuarmi, La Juventud and Tingo, and how to reach Churín from Lima (≈ 4 h). Hotel Manantial: walk to the springs, 3 min to the plaza.",
     "meta.ogImageAlt": "Hotel Manantial, Churín, Peru. King room on a higher floor with a balcony.",
-    "hero.eyebrow": "Churín, Peru · From S/100 per night, taxes included",
+    "hero.eyebrow": "Churín, Peru · Priced per room, taxes included",
     "hero.title": "Hotel in Churín, 5 minutes from the hot springs",
     "hero.body":
       'Our hotel in Churín has a private bathroom, hot water and a 55" Smart TV in every room.',
@@ -43,7 +43,7 @@ export const ui = {
     "rooms.imageAlt": "King room at Hotel Manantial",
     "rooms.pageTitle": "Rooms in Churín",
     "rooms.pageBody":
-      'Three room types, all with a private bathroom, hot water and a 55" 4K Smart TV. Priced per room, taxes included: from S/100 a night.',
+      'Three room types, all with a private bathroom, hot water and a 55" 4K Smart TV. Priced per room, taxes included: check the price for your dates.',
     "rooms.intro.cta": "Check availability",
     "rooms.intro.direct": "Book direct and pay less than on booking sites: no commissions.",
     "rooms.king.name": "King room",
@@ -52,7 +52,6 @@ export const ui = {
       "For couples, or parents with a young child. One king bed in 194 sq ft. A few rooms on higher floors have a balcony at the same price: just ask when you book.",
     "rooms.king.cta": "Ask about the King room",
     "rooms.king.beds": "1 king bed",
-    "rooms.king.price": "From S/100 per night",
     "rooms.photo.king": "King room with a smart TV and balcony at Hotel Manantial, Churín",
     "rooms.king.prefill":
       "Hello, I would like to check availability for a king room at Hotel Manantial. Dates: ___ Guests: ___",
@@ -61,7 +60,6 @@ export const ui = {
     "rooms.double.lead": "Two full-size beds: share the room, not the bed. 215 sq ft.",
     "rooms.double.cta": "Ask about the Premium double",
     "rooms.double.beds": "2 full-size beds",
-    "rooms.double.price": "From S/120 per night",
     "rooms.king.area": "194 sq ft",
     "rooms.double.area": "215 sq ft",
     "rooms.family.area": "237 sq ft",
@@ -81,7 +79,6 @@ export const ui = {
       "A king plus a single bed, ideal for parents traveling with an older child. 237 sq ft, our largest room.",
     "rooms.family.cta": "Ask about the Family suite",
     "rooms.family.beds": "1 king bed and 1 twin",
-    "rooms.family.price": "From S/120 per night",
     "rooms.photo.familyFront":
       "King bed and single bed in the family suite at Hotel Manantial, Churín",
     "rooms.photo.familySide":
@@ -101,7 +98,6 @@ export const ui = {
     "rooms.gallery.previous": "Previous photo",
     "rooms.gallery.next": "Next photo",
     "rooms.gallery.close": "Close",
-    "rooms.structuredData.night": "night",
     "rooms.included.title": "In your room",
     "rooms.included.bathroom": "Private bathroom with hot water",
     "rooms.included.tv": '55" 4K Smart TV',
@@ -128,12 +124,12 @@ export const ui = {
     "rooms.policies.payment": "Payment",
     "rooms.policies.paymentValue": "Cash, cards, Yape, or transfer",
     "rooms.policies.deposit": "Deposit",
-    "rooms.policies.depositValue": "At least one night",
+    "rooms.policies.depositValue": "Flexible: first night. Non-refundable: full stay",
     "rooms.policies.breakfast": "Breakfast",
     "rooms.policies.breakfastValue": "Not included. Municipal market next door.",
-    "rooms.policies.cancelTitle": "Flexible cancellation",
+    "rooms.policies.cancelTitle": "Cancellation",
     "rooms.policies.cancelBody":
-      "We refund your deposit if you cancel at least 24 hours before check-in. Within 24 hours, the deposit is non-refundable.",
+      "Flexible rate: cancel free through two calendar days before arrival, Peru time. For a November 10 arrival, that is through November 8. After that, or if you don't arrive, the first night is charged. Non-refundable rate: 10% less, paid in full when you book; cancelling or not arriving is charged the full stay.",
     "rooms.policies.petsTitle": "Pets",
     "rooms.policies.petsBody": "Welcome. Let us know when you book.",
     "churin.title": "The springs and town center, on foot",
@@ -182,7 +178,7 @@ export const ui = {
       "Past the Tingo bridge on the right bank of the Huaura. The water comes out of the rock hot and fills pools at different temperatures, perfect for a long soak. There are private pools, a mud pool and an outdoor pool.",
     "churin.booking.title": "Hot springs by day, a good night's rest",
     "churin.booking.body":
-      "Rooms from S/100 a night, taxes included. Check-in from 2:00 p.m., check-out by 11:00 a.m.",
+      "Priced per room, taxes included: check the price for your dates. Check-in from 2:00 p.m., check-out by 11:00 a.m.",
     "churin.booking.cta": "Message us on WhatsApp",
     "parking.title": "Free private parking",
     "parking.body":
@@ -206,7 +202,7 @@ export const ui = {
     "directions.car": "Panamericana Norte to Huacho, then via Sayán.",
     "directions.busLabel": "By bus:",
     "directions.bus": "several companies leave from Plaza Norte in Lima.",
-    "booking.kicker": "From S/100 per night",
+    "booking.kicker": "Prices for your dates",
     "booking.title": "Book direct, no fees",
     "booking.body":
       "Send us your dates on WhatsApp and we'll confirm availability and your rate. Booking direct costs less than on booking sites.",
@@ -226,6 +222,278 @@ export const ui = {
     "footer.socials": "Social",
     "footer.explore": "Explore",
     "footer.rights": "All rights reserved",
+    "rooms.spec.priceValue": "Varies by date, taxes included",
+    "reservation.cta": "See prices for your dates",
+    "reservation.roomCta": "See prices and availability",
+    "reservation.whatsappSecondary": "Or message us on WhatsApp",
+    "reservation.meta.searchTitle": "Check availability | Hotel Manantial",
+    "reservation.meta.searchDescription":
+      "Choose your dates and guests to see live prices and availability at Hotel Manantial, Churín.",
+    "reservation.meta.chooseTitle": "Choose your room and rate | Hotel Manantial",
+    "reservation.meta.chooseDescription":
+      "Compare the Flexible and Non-refundable rates for your dates at Hotel Manantial, Churín.",
+    "reservation.steps": "Reservation steps",
+    "reservation.step.search": "Dates and guests",
+    "reservation.step.choose": "Room and rate",
+    "reservation.search.title": "Check availability",
+    "reservation.search.lead": "Choose your dates and guests to see today's prices for each room.",
+    "reservation.search.checkIn": "Arrival",
+    "reservation.search.checkOut": "Departure",
+    "reservation.search.adults": "Adults",
+    "reservation.search.children": "Children",
+    "reservation.search.nightsEmpty": "Choose arrival and departure to see the number of nights.",
+    "reservation.search.submit": "See rooms and prices",
+    "reservation.search.limits":
+      "Online reservations are for one room, start tomorrow at the earliest (Peru time) and last 1 to 60 nights.",
+    "reservation.search.preference":
+      "Preferred room: {room}. We'll show it first if it fits your search.",
+    "reservation.search.clearPreference": "Show all rooms equally",
+    "reservation.nights.one": "1 night",
+    "reservation.nights.other": "{count} nights",
+    "reservation.adults.one": "1 adult",
+    "reservation.adults.other": "{count} adults",
+    "reservation.children.one": "1 child",
+    "reservation.children.other": "{count} children",
+    "reservation.problem.checkInRequired": "Choose your arrival date.",
+    "reservation.problem.checkOutRequired": "Choose your departure date.",
+    "reservation.problem.checkInTooSoon":
+      "Online reservations start tomorrow, Peru time. To arrive today, message us on WhatsApp.",
+    "reservation.problem.checkOutBeforeCheckIn":
+      "Departure must be at least one night after arrival.",
+    "reservation.problem.tooManyNights": "Online stays can last up to 60 nights.",
+    "reservation.problem.invalidDate": "One of the dates isn't valid.",
+    "reservation.problem.invalidSearch":
+      "We couldn't use this search. Please change it and try again.",
+    "reservation.offline.title": "Online reservations aren't available yet",
+    "reservation.offline.body":
+      "Message us on WhatsApp with your dates and guests and we'll confirm availability and your rate.",
+    "reservation.helpPrompt": "Questions? We're happy to help.",
+    "reservation.choose.title": "Choose your room and rate",
+    "reservation.choose.change": "Change search",
+    "reservation.choose.loading": "Checking live availability…",
+    "reservation.choose.loaded": "Showing rooms for your search.",
+    "reservation.choose.missing.title": "Choose your dates first",
+    "reservation.choose.missing.body":
+      "Tell us when you're arriving and leaving to see rooms and prices.",
+    "reservation.choose.missing.action": "Choose dates",
+    "reservation.choose.unavailable.title": "We couldn't check availability right now",
+    "reservation.choose.unavailable.body":
+      "This is a problem on our side, not a lack of rooms. Your search is kept: try again in a moment, or message us on WhatsApp.",
+    "reservation.choose.throttled.title": "Too many searches from your connection",
+    "reservation.choose.throttled.body":
+      "Everyone on a shared connection shares this limit. Your search is kept: wait a minute and try again, or message us on WhatsApp.",
+    "reservation.choose.invalid.title": "Please change your search",
+    "reservation.choose.retry": "Try again",
+    "reservation.room.soldOut": "Sold out for these dates.",
+    "reservation.room.tooManyGuests":
+      "This room fits up to {adults} adults and {children} children.",
+    "reservation.room.offline":
+      "This room can't be reserved online. Message us on WhatsApp to book it.",
+    "reservation.room.preferred": "Your preferred room",
+    "reservation.room.preferredUnavailable":
+      "Your preferred room, the {room}, isn't available for this search. We haven't chosen another room for you: pick one below or change your search.",
+    "reservation.room.capacity": "Guests",
+    "reservation.room.capacityValue": "Up to {adults} adults and {children} children",
+    "reservation.plans.legend": "Rate for the {room}",
+    "reservation.plan.flexible": "Flexible",
+    "reservation.plan.flexibleLead": "Pay the first night now and the rest at the hotel.",
+    "reservation.plan.non_refundable": "Non-refundable",
+    "reservation.plan.non_refundableLead": "10% less. Pay the whole stay now.",
+    "reservation.offer.total": "Stay total",
+    "reservation.offer.now": "Pay now",
+    "reservation.offer.remaining": "Pay at the hotel",
+    "reservation.offer.saving": "You save {amount} compared with Flexible.",
+    "reservation.offer.taxes": "Prices in {currency}, taxes included.",
+    "reservation.cancel.available":
+      "Free cancellation through {date}, inclusive (Peru time). After that, cancelling or not arriving costs the first night: {amount}.",
+    "reservation.cancel.ended":
+      "Free cancellation has already ended for these dates. Cancelling or not arriving costs the first night: {amount}.",
+    "reservation.cancel.none":
+      "No free cancellation. Cancelling or not arriving is charged the full stay, {amount}, with no other penalty.",
+    "reservation.cancel.settlement":
+      "Late-cancellation and no-show charges come out of what you paid. Any amount owed back to you is arranged with the hotel: a refund or, if you agree, credit for a future stay.",
+    "reservation.choose.select": "Choose this room",
+    "reservation.choice.title": "Your choice",
+    "reservation.choice.summary": "{room} · {plan} rate",
+    "reservation.choice.lost":
+      "Your earlier choice, the {room}, isn't available for this search. Please choose again.",
+    "reservation.choose.noOffers.title": "No room can be reserved online for this search",
+    "reservation.choose.reason.sold_out": "{rooms}: sold out for these dates. Try other dates.",
+    "reservation.choose.reason.too_many_guests":
+      "{rooms}: not enough room for your group. Change the number of guests; online reservations are for one room.",
+    "reservation.choose.reason.offline":
+      "{rooms}: not bookable online. Message us on WhatsApp to book.",
+    "reservation.choice.review": "Continue to review",
+    "reservation.meta.reviewTitle": "Review your reservation | Hotel Manantial",
+    "reservation.meta.reviewDescription":
+      "Check your stay, price and terms, and add the booking contact's details.",
+    "reservation.step.review": "Review and pay",
+    "reservation.review.title": "Review your reservation",
+    "reservation.review.loading": "Preparing your price…",
+    "reservation.review.loaded": "Your price and terms are ready.",
+    "reservation.review.stay": "Your stay",
+    "reservation.review.room": "Room",
+    "reservation.review.dates": "Dates",
+    "reservation.review.guests": "Guests",
+    "reservation.review.plan": "Rate",
+    "reservation.review.changeChoice": "Change room or rate",
+    "reservation.review.changeSearch": "Change dates or guests",
+    "reservation.review.price": "Price and terms",
+    "reservation.review.contact": "Booking contact",
+    "reservation.review.contactLead":
+      "The hotel uses these details to contact you about this reservation. No account is needed, and the contact doesn't have to be one of the guests.",
+    "reservation.review.fullName": "Full name",
+    "reservation.review.email": "Email",
+    "reservation.review.phone": "Phone",
+    "reservation.review.phoneHint": "Include the country code if it isn't a Peruvian number.",
+    "reservation.review.terms": "Full reservation terms",
+    "reservation.review.nightly": "Price per night",
+    "reservation.review.schedule.flexible":
+      "Payment: the first night, {now}, is paid online; the remaining {remaining} is paid at the hotel.",
+    "reservation.review.schedule.non_refundable":
+      "Payment: the whole stay, {now}, is paid online; nothing is left to pay at the hotel.",
+    "reservation.review.lifecycle":
+      "This price was calculated when you opened this page and is kept for a few minutes. If it needs updating before payment, you'll see the new terms before anything is charged. The room is reserved only once payment is confirmed and the reservation is saved.",
+    "reservation.review.agree":
+      "I accept the reservation terms on this page, including the cancellation and no-show conditions.",
+    "reservation.review.submit": "Accept terms",
+    "reservation.review.saving": "Saving your acceptance…",
+    "reservation.review.payment": "Payment",
+    "reservation.review.paymentUnavailable":
+      "Online card payment isn't available yet, so nothing is charged on this page.",
+    "reservation.review.accepted.title": "Terms accepted",
+    "reservation.review.accepted.body":
+      "Your acceptance of these terms is saved. Nothing has been charged yet.",
+    "reservation.pay.lead":
+      "Your room is reserved only once the card payment is confirmed and the reservation is saved.",
+    "reservation.pay.security": "Security check before payment",
+    "reservation.pay.button": "Pay {amount} by card",
+    "reservation.pay.sending": "Sending your payment… Please wait on this page.",
+    "reservation.pay.error.security": "Wait for the security check above to finish, then pay.",
+    "reservation.pay.error.securityFailed":
+      "The security check didn't pass and nothing was charged. Complete the check again, then pay.",
+    "reservation.pay.error.securityUnavailable":
+      "The payment security check isn't available right now. Nothing was charged and your details are kept: try again in a moment, or message us on WhatsApp.",
+    "reservation.pay.error.paused":
+      "Online payments are paused right now. Nothing was charged, and your details and accepted terms are kept on this page. Try again later, or message us on WhatsApp to reserve.",
+    "reservation.pay.error.throttled":
+      "Too many payment attempts from your connection or for this reservation. Nothing was charged and your details are kept: wait a minute and try again.",
+    "reservation.pay.changed":
+      "The price or terms changed, so nothing was charged. Review them and accept again before paying.",
+    "reservation.pay.error.limited":
+      "This review can't record another agreement, so nothing was charged. Your details stay on this page. Message us on WhatsApp to reserve.",
+    "reservation.pay.error.card":
+      "The card form couldn't open. Nothing was charged: check your connection and try again.",
+    "reservation.pay.error.unavailable":
+      "We couldn't send your payment and nothing was charged. Your details are kept: try again in a moment, or message us on WhatsApp.",
+    "reservation.outcome.submitted.title": "Payment sent, checking its status",
+    "reservation.outcome.submitted.body":
+      "We sent your payment but didn't receive an answer, so your card may have been charged. Please don't pay again: check its status here, or message us on WhatsApp or by email for help.",
+    "reservation.outcome.reservation_changed.title": "Your reservation was updated by the hotel",
+    "reservation.outcome.reservation_changed.body":
+      "Your payment was received, and the hotel has since changed this reservation. Message us on WhatsApp or by email with your reference to confirm its current status.",
+    "reservation.outcome.declined.title": "Your card was declined",
+    "reservation.outcome.declined.body":
+      "Nothing was charged. You can pay with another card; your details and accepted terms are kept.",
+    "reservation.outcome.authentication_required.title": "Your bank needs to verify this payment",
+    "reservation.outcome.authentication_required.body":
+      "This payment is waiting for your bank's verification. It has not been declined, so please don't pay again. If the bank window closed before finishing, open it again. You can also check the status here, or message us on WhatsApp for help.",
+    "reservation.outcome.processing.title": "Confirming your payment",
+    "reservation.outcome.processing.body":
+      "We're verifying your payment with the card processor. Please don't pay again: verification continues even if you close this page.",
+    "reservation.outcome.processing.delayed":
+      "Verification is taking longer than usual. It continues even if you close this page, so please don't pay again. Check the status here later, or message us on WhatsApp or by email for help.",
+    "reservation.outcome.paid_awaiting_reservation.title":
+      "Payment received, saving your reservation",
+    "reservation.outcome.paid_awaiting_reservation.body":
+      "Your payment was received and we're saving your reservation. It isn't confirmed until it's saved, so please don't pay again.",
+    "reservation.outcome.unfulfilled.title":
+      "Payment received, but your reservation couldn't be confirmed",
+    "reservation.outcome.unfulfilled.body":
+      "We received your payment, but no room could be reserved for these dates, so you don't have a reservation. The amount awaiting resolution hasn't been refunded yet: message us on WhatsApp or by email with your support reference and the hotel will arrange it with you.",
+    "reservation.outcome.confirmed.title": "Your reservation is confirmed",
+    "reservation.outcome.confirmed.body":
+      "Keep your reference. Any outstanding balance is paid at the hotel.",
+    "reservation.outcome.reference": "Reference",
+    "reservation.outcome.supportReference": "Support reference",
+    "reservation.outcome.amount": "Payment amount",
+    "reservation.outcome.paid": "Paid",
+    "reservation.outcome.received": "Received",
+    "reservation.outcome.outstanding": "Outstanding balance",
+    "reservation.outcome.awaiting": "Awaiting resolution",
+    "reservation.outcome.retry": "Pay with another card",
+    "reservation.outcome.verifyBank": "Open bank verification",
+    "reservation.outcome.check": "Check status",
+    "reservation.outcome.checking": "Checking your payment…",
+    "reservation.meta.summaryTitle": "Reservation summary | Hotel Manantial",
+    "reservation.meta.summaryDescription":
+      "A private, limited summary of one reservation. Anyone holding the link can view it.",
+    "reservation.summary.title": "Reservation summary",
+    "reservation.summary.loading": "Opening the reservation summary…",
+    "reservation.summary.possession":
+      "Anyone holding this link can view this limited summary. Share it only with people who should see the stay.",
+    "reservation.summary.copy": "Copy link",
+    "reservation.summary.copied": "Link copied",
+    "reservation.summary.staff":
+      "Changes, cancellations and refunds are arranged with the hotel. This page cannot change the reservation, and it does not send an email.",
+    "reservation.summary.assistance.title": "The hotel can help with this reservation",
+    "reservation.summary.assistance.body":
+      "This link is invalid or has expired, so no reservation details are shown. Call, email or message the hotel and staff can help.",
+    "reservation.summary.phone": "Call the hotel",
+    "reservation.summary.email": "Email the hotel",
+    "reservation.summary.whatsapp": "WhatsApp",
+    "reservation.summary.whatsappPrefill": "Hello, I need help with a reservation.",
+    "reservation.summary.emailSubject": "Reservation help",
+    "reservation.summary.status": "Status",
+    "reservation.summary.status.confirmed": "Confirmed",
+    "reservation.summary.status.checked_in": "Checked in",
+    "reservation.summary.status.checked_out": "Checked out",
+    "reservation.summary.status.cancelled": "Cancelled",
+    "reservation.summary.status.no_show": "No-show",
+    "reservation.summary.status.unfulfilled": "Payment received, reservation not confirmed",
+    "reservation.summary.contact": "Booking contact",
+    "reservation.summary.nights": "Nights",
+    "reservation.summary.total": "Total",
+    "reservation.summary.refundDue": "Refund due",
+    "reservation.summary.refunded": "Refunded",
+    "reservation.summary.roomUnknown": "Room",
+    "reservation.summary.accepted.flexible":
+      "Accepted agreement: free cancellation was through {date}. The agreed charge after that date is {amount}.",
+    "reservation.summary.accepted.none":
+      "Accepted agreement: no free cancellation. The agreed charge is {amount}.",
+    "reservation.summary.planUnknown": "Rate",
+    "reservation.review.changed":
+      "The price or terms for your stay changed. Review them and accept again.",
+    "reservation.review.error.fullName": "Enter the booking contact's full name.",
+    "reservation.review.error.email": "Enter a valid email, like name@example.com.",
+    "reservation.review.error.phone": "Enter a phone number.",
+    "reservation.review.error.phoneInvalid":
+      "This phone number isn't valid. Include the country code if it isn't Peruvian.",
+    "reservation.review.error.agree": "Check the box to accept the terms.",
+    "reservation.review.error.invalid": "We couldn't save these details. Check them and try again.",
+    "reservation.review.limited.title": "This review was changed too many times",
+    "reservation.review.limited.body":
+      "Your details are kept. Try again to start a fresh review of the same choice, or message us on WhatsApp.",
+    "reservation.review.error.throttled":
+      "Too many attempts from your connection. Your details are kept: wait a minute and try again.",
+    "reservation.review.error.unavailable":
+      "We couldn't save your acceptance right now. Your details are kept: please try again.",
+    "reservation.review.missing.title": "Choose a room and rate first",
+    "reservation.review.missing.body":
+      "We couldn't find your choice. Go back and choose a room and rate for your dates.",
+    "reservation.review.soldOut.title": "This room is no longer available for these dates",
+    "reservation.review.soldOut.body":
+      "{room} is no longer available for these dates. Your search and details are kept. Go back to see which rooms are still available; we won't pick another one for you.",
+    "reservation.review.backToRooms": "Back to rooms",
+    "reservation.review.throttled.title": "Too many price requests from your connection",
+    "reservation.review.throttled.body":
+      "Everyone on a shared connection shares this limit. Your choice and details are kept: wait a minute and try again, or message us on WhatsApp.",
+    "reservation.review.unavailable.title": "We couldn't prepare your price right now",
+    "reservation.review.unavailable.body":
+      "This is a problem on our side. Your choice and details are kept: try again in a moment, or message us on WhatsApp.",
+    "reservation.review.invalid.title": "This choice can't be reserved online",
+    "reservation.review.problem.tooManyGuests":
+      "This room doesn't fit your group. Go back and choose another room or change the guests.",
   },
   es: {
     "nav.home": "Inicio",
@@ -245,16 +513,16 @@ export const ui = {
       "Hospédese en Hotel Manantial en Churín, Perú, a 5 minutos de las aguas termales de Mamahuarmi y La Juventud.",
     "meta.home.title": "Hotel en Churín con cochera, cerca de las termas | Hotel Manantial",
     "meta.home.description":
-      "Hotel en Churín a 5 min de las termas de Mamahuarmi y La Juventud. Cochera gratis, baño privado, recepción 24 h. Desde S/100. Reserve por WhatsApp.",
-    "meta.rooms.title": "Habitaciones en Churín desde S/100 | Hotel Manantial",
+      "Hotel en Churín a 5 min de las termas de Mamahuarmi y La Juventud. Cochera gratis, baño privado, recepción 24 h. Consulte el precio para sus fechas y reserve directo.",
+    "meta.rooms.title": "Habitaciones en Churín | Hotel Manantial",
     "meta.rooms.description":
-      'Suite matrimonial, doble premium y suite familiar en Churín desde S/100, impuestos incluidos. Smart TV 55", recepción 24 h y cochera gratis.',
+      'Suite matrimonial, doble premium y suite familiar en Churín, con precio por habitación e impuestos incluidos. Smart TV 55", recepción 24 h y cochera gratis.',
     "meta.churin.title": "Termas de Churín: guía y cómo llegar | Hotel Manantial",
     "meta.churin.description":
       "Guía de Mamahuarmi, La Juventud y Tingo y cómo llegar a Churín desde Lima (≈ 4 h). Hotel Manantial: termas a pie y la plaza a 3 min.",
     "meta.ogImageAlt":
       "Hotel Manantial, Churín, Perú. Suite Matrimonial con cama king, en un piso alto con balcón.",
-    "hero.eyebrow": "Churín, Perú · Desde S/100 por noche, impuestos incluidos",
+    "hero.eyebrow": "Churín, Perú · Precio por habitación, impuestos incluidos",
     "hero.title": "Hotel en Churín a 5 minutos de las termas",
     "hero.body":
       'Nuestro hotel en Churín tiene baño privado, agua caliente y Smart TV de 55" en cada habitación.',
@@ -268,7 +536,7 @@ export const ui = {
     "rooms.imageAlt": "Suite matrimonial del Hotel Manantial",
     "rooms.pageTitle": "Habitaciones en Churín",
     "rooms.pageBody":
-      'Tres tipos de habitación, todas con baño privado, agua caliente y Smart TV 55" 4K. Precio por habitación, impuestos incluidos: desde S/100 por noche.',
+      'Tres tipos de habitación, todas con baño privado, agua caliente y Smart TV 55" 4K. Precio por habitación, impuestos incluidos: consulte el precio para sus fechas.',
     "rooms.intro.cta": "Consultar disponibilidad",
     "rooms.intro.direct":
       "Reservando directo paga menos que en las plataformas de reserva: sin comisiones.",
@@ -278,7 +546,6 @@ export const ui = {
       "Para parejas, o para padres con un niño pequeño. Una cama king en 18 m². Algunas habitaciones en pisos altos tienen balcón, al mismo precio: pregúntenos al reservar.",
     "rooms.king.cta": "Consultar la Suite Matrimonial",
     "rooms.king.beds": "1 cama king",
-    "rooms.king.price": "Desde S/100 por noche",
     "rooms.photo.king": "Habitación con cama king, Smart TV y balcón en Hotel Manantial, Churín",
     "rooms.king.prefill":
       "Hola, quisiera consultar disponibilidad de una suite matrimonial en Hotel Manantial. Fechas: ___ Personas: ___",
@@ -288,7 +555,6 @@ export const ui = {
       "Dos camas de 2 plazas para compartir habitación sin compartir cama. 20 m².",
     "rooms.double.cta": "Consultar la Doble Premium",
     "rooms.double.beds": "2 camas de 2 plazas",
-    "rooms.double.price": "Desde S/120 por noche",
     "rooms.king.area": "18 m²",
     "rooms.double.area": "20 m²",
     "rooms.family.area": "22 m²",
@@ -308,7 +574,6 @@ export const ui = {
       "Cama king más una individual: ideal para padres que viajan con un hijo mayor. 22 m², la habitación más amplia del hotel.",
     "rooms.family.cta": "Consultar la Suite Familiar",
     "rooms.family.beds": "1 cama king y 1 individual",
-    "rooms.family.price": "Desde S/120 por noche",
     "rooms.photo.familyFront":
       "Cama king y cama individual en la suite familiar del Hotel Manantial, Churín",
     "rooms.photo.familySide":
@@ -328,7 +593,6 @@ export const ui = {
     "rooms.gallery.previous": "Foto anterior",
     "rooms.gallery.next": "Foto siguiente",
     "rooms.gallery.close": "Cerrar",
-    "rooms.structuredData.night": "noche",
     "rooms.included.title": "En su habitación",
     "rooms.included.bathroom": "Baño privado con agua caliente",
     "rooms.included.tv": 'Smart TV 55" 4K',
@@ -355,12 +619,12 @@ export const ui = {
     "rooms.policies.payment": "Pago",
     "rooms.policies.paymentValue": "Efectivo, tarjetas, Yape o transferencia",
     "rooms.policies.deposit": "Adelanto",
-    "rooms.policies.depositValue": "Mínimo una noche",
+    "rooms.policies.depositValue": "Flexible: primera noche. No reembolsable: toda la estadía",
     "rooms.policies.breakfast": "Desayuno",
     "rooms.policies.breakfastValue": "No incluido. Mercado municipal al lado.",
-    "rooms.policies.cancelTitle": "Cancelación flexible",
+    "rooms.policies.cancelTitle": "Cancelación",
     "rooms.policies.cancelBody":
-      "Le devolvemos el adelanto si cancela hasta 24 horas antes del check-in. Con menos de 24 horas, el adelanto no es reembolsable.",
+      "Tarifa Flexible: cancele gratis hasta dos días calendario antes de su llegada, hora de Perú. Para una llegada el 10 de noviembre, hasta el 8 de noviembre inclusive. Después, o si no llega, se cobra la primera noche. Tarifa No reembolsable: 10 % menos, se paga completa al reservar; si cancela o no llega, se cobra toda la estadía.",
     "rooms.policies.petsTitle": "Mascotas",
     "rooms.policies.petsBody": "Bienvenidas. Avísenos al reservar.",
     "churin.title": "Las termas y el centro, a pie",
@@ -409,7 +673,7 @@ export const ui = {
       "Pasando el puente Tingo, en la margen derecha del Huaura. El agua brota caliente de la roca y llena pozas a distintas temperaturas, para quedarse un buen rato. Hay pozas privadas, pozo de lodo y piscina al aire libre.",
     "churin.booking.title": "Termas de día, buen descanso de noche",
     "churin.booking.body":
-      "Habitaciones desde S/100 por noche, impuestos incluidos. Check-in desde las 2:00 p. m. y check-out hasta las 11:00 a. m.",
+      "Precio por habitación, impuestos incluidos: consulte el precio para sus fechas. Check-in desde las 2:00 p. m. y check-out hasta las 11:00 a. m.",
     "churin.booking.cta": "Escribir por WhatsApp",
     "parking.title": "Cochera privada y gratuita",
     "parking.body":
@@ -433,7 +697,7 @@ export const ui = {
     "directions.car": "Panamericana Norte hasta Huacho y luego por Sayán.",
     "directions.busLabel": "En bus:",
     "directions.bus": "varias empresas salen desde Plaza Norte, en Lima.",
-    "booking.kicker": "Desde S/100 por noche",
+    "booking.kicker": "Precios para sus fechas",
     "booking.title": "Reserve directo y sin comisiones",
     "booking.body":
       "Envíenos sus fechas por WhatsApp y le confirmamos disponibilidad y tarifa. Reservar directo cuesta menos que en las plataformas.",
@@ -453,6 +717,282 @@ export const ui = {
     "footer.socials": "Redes",
     "footer.explore": "Explorar",
     "footer.rights": "Todos los derechos reservados",
+    "rooms.spec.priceValue": "Varía según la fecha, impuestos incluidos",
+    "reservation.cta": "Ver precios para sus fechas",
+    "reservation.roomCta": "Ver precios y disponibilidad",
+    "reservation.whatsappSecondary": "O escríbanos por WhatsApp",
+    "reservation.meta.searchTitle": "Consultar disponibilidad | Hotel Manantial",
+    "reservation.meta.searchDescription":
+      "Elija sus fechas y huéspedes para ver precios y disponibilidad en Hotel Manantial, Churín.",
+    "reservation.meta.chooseTitle": "Elija habitación y tarifa | Hotel Manantial",
+    "reservation.meta.chooseDescription":
+      "Compare las tarifas Flexible y No reembolsable para sus fechas en Hotel Manantial, Churín.",
+    "reservation.steps": "Pasos de la reserva",
+    "reservation.step.search": "Fechas y huéspedes",
+    "reservation.step.choose": "Habitación y tarifa",
+    "reservation.search.title": "Consulte disponibilidad",
+    "reservation.search.lead":
+      "Elija sus fechas y huéspedes para ver el precio de hoy de cada habitación.",
+    "reservation.search.checkIn": "Llegada",
+    "reservation.search.checkOut": "Salida",
+    "reservation.search.adults": "Adultos",
+    "reservation.search.children": "Niños",
+    "reservation.search.nightsEmpty": "Elija llegada y salida para ver el número de noches.",
+    "reservation.search.submit": "Ver habitaciones y precios",
+    "reservation.search.limits":
+      "Las reservas en línea son para una habitación, empiezan desde mañana (hora de Perú) y duran de 1 a 60 noches.",
+    "reservation.search.preference":
+      "Habitación preferida: {room}. La mostraremos primero si se ajusta a su búsqueda.",
+    "reservation.search.clearPreference": "Mostrar todas por igual",
+    "reservation.nights.one": "1 noche",
+    "reservation.nights.other": "{count} noches",
+    "reservation.adults.one": "1 adulto",
+    "reservation.adults.other": "{count} adultos",
+    "reservation.children.one": "1 niño",
+    "reservation.children.other": "{count} niños",
+    "reservation.problem.checkInRequired": "Elija su fecha de llegada.",
+    "reservation.problem.checkOutRequired": "Elija su fecha de salida.",
+    "reservation.problem.checkInTooSoon":
+      "Las reservas en línea empiezan desde mañana, hora de Perú. Para llegar hoy, escríbanos por WhatsApp.",
+    "reservation.problem.checkOutBeforeCheckIn":
+      "La salida debe ser al menos una noche después de la llegada.",
+    "reservation.problem.tooManyNights": "Las estadías en línea pueden durar hasta 60 noches.",
+    "reservation.problem.invalidDate": "Una de las fechas no es válida.",
+    "reservation.problem.invalidSearch":
+      "No pudimos usar esta búsqueda. Cámbiela e intente de nuevo.",
+    "reservation.offline.title": "La reserva en línea aún no está disponible",
+    "reservation.offline.body":
+      "Escríbanos por WhatsApp con sus fechas y huéspedes y le confirmamos disponibilidad y tarifa.",
+    "reservation.helpPrompt": "¿Dudas? Con gusto le ayudamos.",
+    "reservation.choose.title": "Elija habitación y tarifa",
+    "reservation.choose.change": "Cambiar búsqueda",
+    "reservation.choose.loading": "Consultando disponibilidad…",
+    "reservation.choose.loaded": "Mostrando habitaciones para su búsqueda.",
+    "reservation.choose.missing.title": "Primero elija sus fechas",
+    "reservation.choose.missing.body":
+      "Indíquenos cuándo llega y cuándo se va para ver habitaciones y precios.",
+    "reservation.choose.missing.action": "Elegir fechas",
+    "reservation.choose.unavailable.title":
+      "No pudimos consultar la disponibilidad en este momento",
+    "reservation.choose.unavailable.body":
+      "Es un problema de nuestro sistema, no falta de habitaciones. Su búsqueda se conserva: intente de nuevo en un momento o escríbanos por WhatsApp.",
+    "reservation.choose.throttled.title": "Demasiadas búsquedas desde su conexión",
+    "reservation.choose.throttled.body":
+      "Quienes comparten una conexión comparten este límite. Su búsqueda se conserva: espere un minuto e intente de nuevo, o escríbanos por WhatsApp.",
+    "reservation.choose.invalid.title": "Revise su búsqueda",
+    "reservation.choose.retry": "Intentar de nuevo",
+    "reservation.room.soldOut": "Agotada para estas fechas.",
+    "reservation.room.tooManyGuests":
+      "Esta habitación admite hasta {adults} adultos y {children} niños.",
+    "reservation.room.offline":
+      "Esta habitación no se puede reservar en línea. Escríbanos por WhatsApp para reservarla.",
+    "reservation.room.preferred": "Su habitación preferida",
+    "reservation.room.preferredUnavailable":
+      "Su habitación preferida, {room}, no está disponible para esta búsqueda. No elegimos otra por usted: elija una abajo o cambie su búsqueda.",
+    "reservation.room.capacity": "Huéspedes",
+    "reservation.room.capacityValue": "Hasta {adults} adultos y {children} niños",
+    "reservation.plans.legend": "Tarifa para {room}",
+    "reservation.plan.flexible": "Flexible",
+    "reservation.plan.flexibleLead": "Pague la primera noche ahora y el resto en el hotel.",
+    "reservation.plan.non_refundable": "No reembolsable",
+    "reservation.plan.non_refundableLead": "10 % menos. Pague toda la estadía ahora.",
+    "reservation.offer.total": "Total de la estadía",
+    "reservation.offer.now": "Pago ahora",
+    "reservation.offer.remaining": "Pago en el hotel",
+    "reservation.offer.saving": "Ahorra {amount} frente a la tarifa Flexible.",
+    "reservation.offer.taxes": "Precios en {currency}, impuestos incluidos.",
+    "reservation.cancel.available":
+      "Cancelación gratuita hasta el {date} inclusive (hora de Perú). Después, si cancela o no llega, se cobra la primera noche: {amount}.",
+    "reservation.cancel.ended":
+      "Para estas fechas ya no hay cancelación gratuita. Si cancela o no llega, se cobra la primera noche: {amount}.",
+    "reservation.cancel.none":
+      "Sin cancelación gratuita. Si cancela o no llega, se cobra toda la estadía, {amount}, sin otra penalidad.",
+    "reservation.cancel.settlement":
+      "Los cargos por cancelación tardía o por no llegar se descuentan de lo pagado. Cualquier saldo a su favor se coordina con el hotel: un reembolso o, si usted acepta, un crédito para una estadía futura.",
+    "reservation.choose.select": "Elegir esta habitación",
+    "reservation.choice.title": "Su elección",
+    "reservation.choice.summary": "{room} · tarifa {plan}",
+    "reservation.choice.lost":
+      "Su elección anterior, {room}, no está disponible para esta búsqueda. Elija de nuevo.",
+    "reservation.choose.noOffers.title":
+      "Ninguna habitación se puede reservar en línea para esta búsqueda",
+    "reservation.choose.reason.sold_out":
+      "{rooms}: sin disponibilidad para estas fechas. Pruebe otras fechas.",
+    "reservation.choose.reason.too_many_guests":
+      "{rooms}: sin capacidad para su grupo. Cambie el número de huéspedes; las reservas en línea son para una habitación.",
+    "reservation.choose.reason.offline":
+      "{rooms}: sin reserva en línea. Escríbanos por WhatsApp para reservar.",
+    "reservation.choice.review": "Continuar a la revisión",
+    "reservation.meta.reviewTitle": "Revise su reserva | Hotel Manantial",
+    "reservation.meta.reviewDescription":
+      "Revise su estadía, el precio y las condiciones, y añada los datos del contacto de la reserva.",
+    "reservation.step.review": "Revisar y pagar",
+    "reservation.review.title": "Revise su reserva",
+    "reservation.review.loading": "Preparando su precio…",
+    "reservation.review.loaded": "Su precio y sus condiciones están listos.",
+    "reservation.review.stay": "Su estadía",
+    "reservation.review.room": "Habitación",
+    "reservation.review.dates": "Fechas",
+    "reservation.review.guests": "Huéspedes",
+    "reservation.review.plan": "Tarifa",
+    "reservation.review.changeChoice": "Cambiar habitación o tarifa",
+    "reservation.review.changeSearch": "Cambiar fechas o huéspedes",
+    "reservation.review.price": "Precio y condiciones",
+    "reservation.review.contact": "Contacto de la reserva",
+    "reservation.review.contactLead":
+      "El hotel usa estos datos para comunicarse con usted sobre esta reserva. No necesita una cuenta, y el contacto no tiene que ser uno de los huéspedes.",
+    "reservation.review.fullName": "Nombre completo",
+    "reservation.review.email": "Correo electrónico",
+    "reservation.review.phone": "Teléfono",
+    "reservation.review.phoneHint": "Incluya el código de país si no es un número peruano.",
+    "reservation.review.terms": "Condiciones completas de la reserva",
+    "reservation.review.nightly": "Precio por noche",
+    "reservation.review.schedule.flexible":
+      "Pago: la primera noche, {now}, se paga en línea; el resto, {remaining}, se paga en el hotel.",
+    "reservation.review.schedule.non_refundable":
+      "Pago: toda la estadía, {now}, se paga en línea; no queda nada por pagar en el hotel.",
+    "reservation.review.lifecycle":
+      "Este precio se calculó al abrir esta página y se mantiene por unos minutos. Si hay que actualizarlo antes del pago, verá las nuevas condiciones antes de cualquier cobro. La habitación queda reservada solo cuando el pago se confirma y la reserva se guarda.",
+    "reservation.review.agree":
+      "Acepto las condiciones de la reserva de esta página, incluidas las de cancelación y no presentación.",
+    "reservation.review.submit": "Aceptar condiciones",
+    "reservation.review.saving": "Guardando su aceptación…",
+    "reservation.review.payment": "Pago",
+    "reservation.review.paymentUnavailable":
+      "El pago con tarjeta en línea aún no está disponible, así que en esta página no se cobra nada.",
+    "reservation.review.accepted.title": "Condiciones aceptadas",
+    "reservation.review.accepted.body":
+      "Su aceptación de estas condiciones quedó guardada. Todavía no se ha cobrado nada.",
+    "reservation.pay.lead":
+      "Su habitación queda reservada solo cuando el pago con tarjeta se confirma y la reserva se guarda.",
+    "reservation.pay.security": "Verificación de seguridad antes del pago",
+    "reservation.pay.button": "Pagar {amount} con tarjeta",
+    "reservation.pay.sending": "Enviando su pago… Espere en esta página.",
+    "reservation.pay.error.security":
+      "Espere a que termine la verificación de seguridad de arriba y luego pague.",
+    "reservation.pay.error.securityFailed":
+      "La verificación de seguridad no se superó y no se cobró nada. Complete la verificación de nuevo y luego pague.",
+    "reservation.pay.error.securityUnavailable":
+      "La verificación de seguridad del pago no está disponible en este momento. No se cobró nada y sus datos se conservan: intente de nuevo en un momento o escríbanos por WhatsApp.",
+    "reservation.pay.error.paused":
+      "Los pagos en línea están en pausa en este momento. No se cobró nada y sus datos y las condiciones aceptadas se conservan en esta página. Intente más tarde o escríbanos por WhatsApp para reservar.",
+    "reservation.pay.error.throttled":
+      "Demasiados intentos de pago desde su conexión o para esta reserva. No se cobró nada y sus datos se conservan: espere un minuto e intente de nuevo.",
+    "reservation.pay.changed":
+      "El precio o las condiciones cambiaron, así que no se cobró nada. Revíselas y acéptelas de nuevo antes de pagar.",
+    "reservation.pay.error.limited":
+      "Esta revisión no puede registrar otro acuerdo, así que no se cobró nada. Sus datos siguen en esta página. Escríbanos por WhatsApp para reservar.",
+    "reservation.pay.error.card":
+      "No se pudo abrir el formulario de la tarjeta. No se cobró nada: revise su conexión e intente de nuevo.",
+    "reservation.pay.error.unavailable":
+      "No pudimos enviar su pago y no se cobró nada. Sus datos se conservan: intente de nuevo en un momento o escríbanos por WhatsApp.",
+    "reservation.outcome.submitted.title": "Pago enviado, consultando su estado",
+    "reservation.outcome.submitted.body":
+      "Enviamos su pago pero no recibimos respuesta, así que su tarjeta podría haberse cobrado. No pague de nuevo: consulte su estado aquí o escríbanos por WhatsApp o por correo si necesita ayuda.",
+    "reservation.outcome.reservation_changed.title": "El hotel actualizó su reserva",
+    "reservation.outcome.reservation_changed.body":
+      "Recibimos su pago y luego el hotel modificó esta reserva. Escríbanos por WhatsApp o por correo con su referencia para confirmar su estado actual.",
+    "reservation.outcome.declined.title": "Su tarjeta fue rechazada",
+    "reservation.outcome.declined.body":
+      "No se cobró nada. Puede pagar con otra tarjeta; sus datos y las condiciones aceptadas se conservan.",
+    "reservation.outcome.authentication_required.title": "Su banco necesita verificar este pago",
+    "reservation.outcome.authentication_required.body":
+      "Este pago espera la verificación de su banco. No fue rechazado, así que no pague de nuevo. Si la ventana del banco se cerró antes de terminar, ábrala de nuevo. También puede consultar el estado aquí o escribirnos por WhatsApp si necesita ayuda.",
+    "reservation.outcome.processing.title": "Confirmando su pago",
+    "reservation.outcome.processing.body":
+      "Estamos verificando su pago con el procesador de tarjetas. No pague de nuevo: la verificación continúa aunque cierre esta página.",
+    "reservation.outcome.processing.delayed":
+      "La verificación está tardando más de lo habitual. Continúa aunque cierre esta página, así que no pague de nuevo. Consulte el estado aquí más tarde o escríbanos por WhatsApp o por correo si necesita ayuda.",
+    "reservation.outcome.paid_awaiting_reservation.title": "Pago recibido, guardando su reserva",
+    "reservation.outcome.paid_awaiting_reservation.body":
+      "Recibimos su pago y estamos guardando su reserva. No está confirmada hasta que se guarde, así que no pague de nuevo.",
+    "reservation.outcome.unfulfilled.title": "Pago recibido, pero su reserva no se pudo confirmar",
+    "reservation.outcome.unfulfilled.body":
+      "Recibimos su pago, pero no se pudo reservar una habitación para estas fechas, así que no tiene una reserva. El monto por resolver todavía no se ha devuelto: escríbanos por WhatsApp o por correo con su referencia de atención y el hotel lo coordinará con usted.",
+    "reservation.outcome.confirmed.title": "Su reserva está confirmada",
+    "reservation.outcome.confirmed.body":
+      "Guarde su referencia. El saldo pendiente, si lo hay, se paga en el hotel.",
+    "reservation.outcome.reference": "Referencia",
+    "reservation.outcome.supportReference": "Referencia de atención",
+    "reservation.outcome.amount": "Monto del pago",
+    "reservation.outcome.paid": "Pagado",
+    "reservation.outcome.received": "Recibido",
+    "reservation.outcome.outstanding": "Saldo pendiente",
+    "reservation.outcome.awaiting": "Por resolver",
+    "reservation.outcome.retry": "Pagar con otra tarjeta",
+    "reservation.outcome.verifyBank": "Abrir la verificación del banco",
+    "reservation.outcome.check": "Consultar estado",
+    "reservation.outcome.checking": "Consultando su pago…",
+    "reservation.meta.summaryTitle": "Resumen de la reserva | Hotel Manantial",
+    "reservation.meta.summaryDescription":
+      "Un resumen privado y limitado de una reserva. Quien tenga el enlace puede verlo.",
+    "reservation.summary.title": "Resumen de la reserva",
+    "reservation.summary.loading": "Abriendo el resumen de la reserva…",
+    "reservation.summary.possession":
+      "Quien tenga este enlace puede ver este resumen limitado. Compártalo solo con quienes deban ver la estadía.",
+    "reservation.summary.copy": "Copiar enlace",
+    "reservation.summary.copied": "Enlace copiado",
+    "reservation.summary.staff":
+      "Los cambios, las cancelaciones y los reembolsos se coordinan con el hotel. Esta página no puede modificar la reserva ni envía un correo.",
+    "reservation.summary.assistance.title": "El hotel puede ayudarle con esta reserva",
+    "reservation.summary.assistance.body":
+      "Este enlace no es válido o ya venció, así que no se muestran datos de la reserva. Llame, escriba o envíe un mensaje al hotel y el personal le ayudará.",
+    "reservation.summary.phone": "Llamar al hotel",
+    "reservation.summary.email": "Escribir al hotel",
+    "reservation.summary.whatsapp": "WhatsApp",
+    "reservation.summary.whatsappPrefill": "Hola, necesito ayuda con una reserva.",
+    "reservation.summary.emailSubject": "Ayuda con una reserva",
+    "reservation.summary.status": "Estado",
+    "reservation.summary.status.confirmed": "Confirmada",
+    "reservation.summary.status.checked_in": "Hospedado",
+    "reservation.summary.status.checked_out": "Salida registrada",
+    "reservation.summary.status.cancelled": "Cancelada",
+    "reservation.summary.status.no_show": "No se presentó",
+    "reservation.summary.status.unfulfilled": "Pago recibido, reserva no confirmada",
+    "reservation.summary.contact": "Contacto de la reserva",
+    "reservation.summary.nights": "Noches",
+    "reservation.summary.total": "Total",
+    "reservation.summary.refundDue": "Reembolso pendiente",
+    "reservation.summary.refunded": "Reembolsado",
+    "reservation.summary.roomUnknown": "Habitación",
+    "reservation.summary.accepted.flexible":
+      "Acuerdo aceptado: la cancelación gratuita era hasta el {date}. El cargo acordado después de esa fecha es {amount}.",
+    "reservation.summary.accepted.none":
+      "Acuerdo aceptado: sin cancelación gratuita. El cargo acordado es {amount}.",
+    "reservation.summary.planUnknown": "Tarifa",
+    "reservation.review.changed":
+      "El precio o las condiciones de su estadía cambiaron. Revíselos y acepte de nuevo.",
+    "reservation.review.error.fullName": "Ingrese el nombre completo del contacto.",
+    "reservation.review.error.email": "Ingrese un correo válido, por ejemplo nombre@ejemplo.com.",
+    "reservation.review.error.phone": "Ingrese un número de teléfono.",
+    "reservation.review.error.phoneInvalid":
+      "Este número de teléfono no es válido. Incluya el código de país si no es peruano.",
+    "reservation.review.error.agree": "Marque la casilla para aceptar las condiciones.",
+    "reservation.review.error.invalid":
+      "No pudimos guardar estos datos. Revíselos e intente de nuevo.",
+    "reservation.review.limited.title": "Esta revisión se modificó demasiadas veces",
+    "reservation.review.limited.body":
+      "Sus datos se conservan. Intente de nuevo para empezar una revisión nueva de la misma elección, o escríbanos por WhatsApp.",
+    "reservation.review.error.throttled":
+      "Demasiados intentos desde su conexión. Sus datos se conservan: espere un minuto e intente de nuevo.",
+    "reservation.review.error.unavailable":
+      "No pudimos guardar su aceptación en este momento. Sus datos se conservan: intente de nuevo.",
+    "reservation.review.missing.title": "Primero elija habitación y tarifa",
+    "reservation.review.missing.body":
+      "No encontramos su elección. Vuelva y elija una habitación y una tarifa para sus fechas.",
+    "reservation.review.soldOut.title": "Esta habitación ya no está disponible para estas fechas",
+    "reservation.review.soldOut.body":
+      "{room} ya no está disponible para estas fechas. Su búsqueda y sus datos se conservan. Vuelva para ver qué habitaciones siguen disponibles; no elegiremos otra por usted.",
+    "reservation.review.backToRooms": "Volver a las habitaciones",
+    "reservation.review.throttled.title": "Demasiadas solicitudes de precio desde su conexión",
+    "reservation.review.throttled.body":
+      "Quienes comparten una conexión comparten este límite. Su elección y sus datos se conservan: espere un minuto e intente de nuevo, o escríbanos por WhatsApp.",
+    "reservation.review.unavailable.title": "No pudimos preparar su precio en este momento",
+    "reservation.review.unavailable.body":
+      "Es un problema de nuestro sistema. Su elección y sus datos se conservan: intente de nuevo en un momento o escríbanos por WhatsApp.",
+    "reservation.review.invalid.title": "Esta elección no se puede reservar en línea",
+    "reservation.review.problem.tooManyGuests":
+      "Esta habitación no admite a su grupo. Vuelva y elija otra habitación o cambie los huéspedes.",
   },
 } as const;
 

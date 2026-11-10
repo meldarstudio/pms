@@ -1,0 +1,591 @@
+---
+import { Image } from "astro:assets";
+import { PUBLIC_PMS_API_URL } from "astro:env/client";
+import Whatsapp from "@/icons/Whatsapp.svg";
+import ReservationHelp from "@/components/reservation/ReservationHelp.astro";
+import ReservationOffline from "@/components/reservation/ReservationOffline.astro";
+import ReservationSteps from "@/components/reservation/ReservationSteps.astro";
+import { ui } from "@/i18n/ui";
+import { getLang, useTranslations } from "@/i18n/utils";
+import { getWhatsAppLink } from "@/lib/constants";
+import { onlineReservations, reviewStepHref, searchStepHref } from "@/lib/reservation/links";
+import { ratePlanCodes } from "@/lib/reservation/search";
+import { rooms } from "@/lib/rooms";
+
+const lang = getLang(Astro.currentLocale);
+const t = useTranslations(lang);
+const copy = {
+  lang,
+  apiBase: PUBLIC_PMS_API_URL ?? "",
+  searchHref: searchStepHref(lang),
+  reviewHref: reviewStepHref(lang),
+  text: Object.fromEntries(
+    (Object.keys(ui[lang]) as (keyof (typeof ui)[typeof lang])[])
+      .filter((key) => key.startsWith("reservation."))
+      .map((key) => [key, t(key)]),
+  ),
+  rooms: Object.fromEntries(
+    rooms.map((room) => [
+      room.id,
+      { name: t(room.nameKey), pmsRoomTypeId: room.pmsRoomTypeId ?? null },
+    ]),
+  ),
+};
+const panel = "border border-stone-300 bg-white p-5 md:p-8";
+const primary =
+  "font-source-sans-3 bg-accent-500 text-accent-950 hover:bg-accent-400 inline-flex min-h-12 cursor-pointer items-center justify-center gap-2 px-6 text-sm font-semibold tracking-widest uppercase";
+const secondary =
+  "font-source-sans-3 inline-flex min-h-12 cursor-pointer items-center justify-center gap-2 border border-stone-900 px-6 text-sm font-semibold tracking-widest text-stone-900 uppercase hover:bg-stone-100";
+const amountRow = "flex items-baseline justify-between gap-4 py-2";
+---
+
+<section class="bg-stone-100">
+  <div class="mx-auto max-w-3xl px-4 py-8 md:px-8 md:py-16">
+    <ReservationSteps current="choose" />
+    <h1 class="mt-8 text-3xl font-semibold text-pretty text-stone-900 sm:text-4xl">
+      {t("reservation.choose.title")}
+    </h1>
+    {onlineReservations ? (
+      <reservation-choose class="block">
+        <script
+          type="application/json"
+          is:inline
+          data-copy
+          set:html={JSON.stringify(copy).replace(/</g, "\\u003c")}
+        />
+        <div class="mt-4 flex flex-wrap items-center gap-x-4 gap-y-2" data-summary hidden>
+          <p class="font-semibold text-stone-900" data-summary-text />
+          <a
+            href={searchStepHref(lang)}
+            class="text-accent-800 inline-flex min-h-11 items-center font-medium underline underline-offset-4"
+            data-change-search
+          >
+            {t("reservation.choose.change")}
+          </a>
+        </div>
+        <p class="mt-6 text-stone-700" role="status" data-status>
+          {t("reservation.choose.loading")}
+        </p>
+        <div class={`mt-6 ${panel}`} data-problem hidden>
+          <h2 class="text-xl font-semibold text-stone-900" tabindex="-1" data-problem-title />
+          <p class="mt-3 leading-relaxed text-stone-700" data-problem-body />
+          <div class="mt-6 flex flex-wrap gap-3">
+            <button type="button" class={primary} data-retry hidden>
+              {t("reservation.choose.retry")}
+            </button>
+            <a href={searchStepHref(lang)} class={secondary} data-problem-change>
+              {t("reservation.choose.change")}
+            </a>
+          </div>
+        </div>
+        <div
+          class="mt-6 border-l-4 border-amber-600 bg-white p-4 text-stone-800"
+          data-notice
+          hidden
+        >
+          <p class="font-semibold" data-notice-title />
+          <ul class="mt-2 list-disc pl-5" data-notice-reasons />
+        </div>
+        <ul class="mt-6 flex flex-col gap-8" data-results hidden>
+          {rooms.map((room) => (
+            <li data-room={room.id} hidden>
+              <article class={panel} aria-labelledby={`room-${room.id}-name`}>
+                <div class="grid gap-5 sm:grid-cols-[minmax(0,2fr)_minmax(0,3fr)]">
+                  <Image
+                    class="aspect-4/3 w-full object-cover"
+                    src={room.gallery[0]!.src}
+                    width={640}
+                    height={480}
+                    layout="constrained"
+                    alt={t(room.gallery[0]!.altKey)}
+                  />
+                  <div>
+                    <p
+                      class="font-source-sans-3 text-accent-800 text-xs font-semibold tracking-widest uppercase"
+                      data-preferred
+                      hidden
+                    >
+                      {t("reservation.room.preferred")}
+                    </p>
+                    <h2 id={`room-${room.id}-name`} class="text-2xl font-semibold text-stone-900">
+                      {t(room.nameKey)}
+                    </h2>
+                    <dl class="mt-3 divide-y divide-stone-200 text-sm">
+                      <div class="flex justify-between gap-4 py-2">
+                        <dt class="text-stone-600">{t("rooms.spec.beds")}</dt>
+                        <dd class="text-right text-stone-900">{t(room.bedsKey)}</dd>
+                      </div>
+                      <div class="flex justify-between gap-4 py-2">
+                        <dt class="text-stone-600">{t("rooms.spec.area")}</dt>
+                        <dd class="text-right text-stone-900">{t(room.areaKey)}</dd>
+                      </div>
+                      <div class="flex justify-between gap-4 py-2" data-capacity hidden>
+                        <dt class="text-stone-600">{t("reservation.room.capacity")}</dt>
+                        <dd class="text-right text-stone-900" data-capacity-value />
+                      </div>
+                    </dl>
+                  </div>
+                </div>
+                <p class="mt-5 font-semibold text-stone-900" data-room-note hidden />
+                <a
+                  href={getWhatsAppLink(t(room.prefillKey))}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  class={`mt-4 ${secondary}`}
+                  data-room-contact
+                  hidden
+                >
+                  <Whatsapp class="size-4 shrink-0" />
+                  {t("booking.cta")}
+                </a>
+                <fieldset class="mt-6" data-plans hidden>
+                  <legend class="font-source-sans-3 text-sm font-semibold tracking-wide text-stone-800">
+                    {t("reservation.plans.legend").replace("{room}", t(room.nameKey))}
+                  </legend>
+                  <div class="mt-3 flex flex-col gap-4">
+                    {ratePlanCodes.map((plan) => (
+                      <div
+                        class="has-checked:border-accent-700 has-checked:bg-accent-50 border-2 border-stone-300 p-4"
+                        data-plan={plan}
+                      >
+                        <div class="flex items-start gap-3">
+                          <input
+                            id={`plan-${room.id}-${plan}`}
+                            type="radio"
+                            name={`plan-${room.id}`}
+                            value={plan}
+                            checked={plan === "flexible"}
+                            class="accent-accent-700 mt-1 size-5 shrink-0"
+                            aria-describedby={`plan-${room.id}-${plan}-details`}
+                          />
+                          <label for={`plan-${room.id}-${plan}`} class="flex-1 cursor-pointer">
+                            <span class="block text-lg font-semibold text-stone-900">
+                              {t(`reservation.plan.${plan}`)}
+                            </span>
+                            <span class="block text-sm text-stone-700">
+                              {t(`reservation.plan.${plan}Lead`)}
+                            </span>
+                          </label>
+                        </div>
+                        <div id={`plan-${room.id}-${plan}-details`} class="mt-3 pl-8">
+                          <dl class="divide-y divide-stone-200">
+                            <div class={amountRow}>
+                              <dt class="text-stone-700">{t("reservation.offer.total")}</dt>
+                              <dd
+                                class="text-lg font-semibold text-stone-900"
+                                data-amount="total"
+                              />
+                            </div>
+                            <div class={amountRow}>
+                              <dt class="text-stone-700">{t("reservation.offer.now")}</dt>
+                              <dd class="font-semibold text-stone-900" data-amount="now" />
+                            </div>
+                            <div class={amountRow}>
+                              <dt class="text-stone-700">{t("reservation.offer.remaining")}</dt>
+                              <dd class="font-semibold text-stone-900" data-amount="remaining" />
+                            </div>
+                          </dl>
+                          <p class="mt-2 font-semibold text-green-800" data-saving hidden />
+                          <p
+                            class="mt-2 text-sm leading-relaxed text-stone-700"
+                            data-cancellation
+                          />
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                  <p class="mt-3 text-sm text-stone-600" data-taxes />
+                  <p class="mt-2 text-sm leading-relaxed text-stone-600">
+                    {t("reservation.cancel.settlement")}
+                  </p>
+                </fieldset>
+                <button
+                  type="button"
+                  class={`mt-6 w-full sm:w-auto ${primary}`}
+                  aria-label={`${t("reservation.choose.select")}: ${t(room.nameKey)}`}
+                  data-choose
+                  hidden
+                >
+                  {t("reservation.choose.select")}
+                </button>
+              </article>
+            </li>
+          ))}
+        </ul>
+        <section
+          class={`border-accent-700 mt-8 border-2 ${panel}`}
+          aria-labelledby="choice-title"
+          tabindex="-1"
+          data-choice
+          hidden
+        >
+          <h2 id="choice-title" class="text-2xl font-semibold text-stone-900">
+            {t("reservation.choice.title")}
+          </h2>
+          <p class="mt-2 text-lg text-stone-900" data-choice-summary />
+          <dl class="mt-4 divide-y divide-stone-200">
+            <div class={amountRow}>
+              <dt class="text-stone-700">{t("reservation.offer.total")}</dt>
+              <dd class="text-lg font-semibold text-stone-900" data-choice-amount="total" />
+            </div>
+            <div class={amountRow}>
+              <dt class="text-stone-700">{t("reservation.offer.now")}</dt>
+              <dd class="font-semibold text-stone-900" data-choice-amount="now" />
+            </div>
+            <div class={amountRow}>
+              <dt class="text-stone-700">{t("reservation.offer.remaining")}</dt>
+              <dd class="font-semibold text-stone-900" data-choice-amount="remaining" />
+            </div>
+          </dl>
+          <p class="mt-3 text-sm leading-relaxed text-stone-700" data-choice-cancellation />
+          <a
+            href={reviewStepHref(lang)}
+            class={`mt-6 w-full sm:w-auto ${primary}`}
+            data-review-link
+          >
+            {t("reservation.choice.review")}
+          </a>
+        </section>
+      </reservation-choose>
+    ) : (
+      <ReservationOffline />
+    )}
+    <ReservationHelp />
+  </div>
+</section>
+
+<script>
+  import { fill, formatDate, formatList, formatMoney } from "@/lib/reservation/format";
+  import { cancellationNodes } from "@/lib/reservation/terms";
+  import {
+    fetchOffers,
+    type OfferSearchResult,
+    type PlanOffer,
+    type RoomTypeOffers,
+  } from "@/lib/reservation/offers";
+  import {
+    nightsBetween,
+    readSearch,
+    searchParams,
+    type RatePlanCode,
+    type StaySearch,
+  } from "@/lib/reservation/search";
+  import type { Lang } from "@/i18n/utils";
+
+  type Copy = {
+    lang: Lang;
+    apiBase: string;
+    searchHref: string;
+    reviewHref: string;
+    text: Record<string, string>;
+    rooms: Record<string, { name: string; pmsRoomTypeId: string | null }>;
+  };
+
+  const backendProblems: Record<string, string> = {
+    "online check-in must be after today": "reservation.problem.checkInTooSoon",
+    "stay must be at least one night": "reservation.problem.checkOutBeforeCheckIn",
+    "stay cannot be longer than 60 nights": "reservation.problem.tooManyNights",
+    "invalid date": "reservation.problem.invalidDate",
+  };
+
+  const unavailableReasons = ["sold_out", "too_many_guests", "offline"] as const;
+
+  class ReservationChoose extends HTMLElement {
+    private copy!: Copy;
+    private search!: StaySearch;
+    private result: OfferSearchResult | null = null;
+    private controller: AbortController | null = null;
+
+    private text(key: string, values: Record<string, string | number> = {}) {
+      return fill(this.copy.text[key] ?? key, values);
+    }
+
+    private el<T extends HTMLElement = HTMLElement>(selector: string, root: ParentNode = this) {
+      return root.querySelector<T>(selector)!;
+    }
+
+    private money(cents: number) {
+      return formatMoney(cents, this.result?.currency ?? "PEN");
+    }
+
+    private count(key: string, count: number) {
+      return this.text(`${key}.${count === 1 ? "one" : "other"}`, { count });
+    }
+
+    private guests() {
+      const adults = this.count("reservation.adults", this.search.adults);
+      return this.search.children
+        ? `${adults}, ${this.count("reservation.children", this.search.children)}`
+        : adults;
+    }
+
+    connectedCallback() {
+      this.copy = JSON.parse(this.el("[data-copy]").textContent ?? "{}") as Copy;
+      this.search = readSearch(
+        new URLSearchParams(window.location.search),
+        Object.keys(this.copy.rooms),
+      );
+      const changeHref = `${this.copy.searchHref}?${searchParams(this.search, { withChoice: false }).toString()}`;
+      for (const link of this.querySelectorAll<HTMLAnchorElement>(
+        "[data-change-search], [data-problem-change]",
+      ))
+        link.href = changeHref;
+      this.el("[data-retry]").addEventListener("click", () => void this.load());
+      for (const item of this.querySelectorAll<HTMLElement>("[data-room]")) {
+        const roomId = item.dataset.room!;
+        this.el("[data-choose]", item).addEventListener("click", () =>
+          this.choose(roomId, this.checkedPlan(item)),
+        );
+        for (const radio of item.querySelectorAll<HTMLInputElement>('input[type="radio"]'))
+          radio.addEventListener("change", () => {
+            if (this.search.room === roomId && this.search.plan)
+              this.choose(roomId, radio.value as RatePlanCode, false);
+          });
+      }
+
+      if (!this.search.checkIn || !this.search.checkOut) {
+        this.showProblem(
+          "reservation.choose.missing.title",
+          this.text("reservation.choose.missing.body"),
+          false,
+        );
+        return;
+      }
+      const nights = nightsBetween(this.search.checkIn, this.search.checkOut);
+      this.el("[data-summary-text]").textContent = [
+        `${formatDate(this.search.checkIn, this.copy.lang)} – ${formatDate(this.search.checkOut, this.copy.lang)}`,
+        ...(nights !== null && nights > 0 ? [this.count("reservation.nights", nights)] : []),
+        this.guests(),
+      ].join(" · ");
+      this.el("[data-summary]").hidden = false;
+      void this.load();
+    }
+
+    private checkedPlan(item: HTMLElement) {
+      return (item.querySelector<HTMLInputElement>('input[type="radio"]:checked')?.value ??
+        "flexible") as RatePlanCode;
+    }
+
+    private showProblem(titleKey: string, body: string, retry: boolean) {
+      this.el("[data-status]").textContent = "";
+      this.el("[data-results]").hidden = true;
+      this.el("[data-choice]").hidden = true;
+      this.el("[data-notice]").hidden = true;
+      const problem = this.el("[data-problem]");
+      problem.hidden = false;
+      this.el("[data-problem-title]").textContent = this.text(titleKey);
+      this.el("[data-problem-body]").textContent = body;
+      this.el("[data-retry]").hidden = !retry;
+      this.el("[data-problem-title]").focus();
+    }
+
+    private async load() {
+      this.controller?.abort();
+      this.controller = new AbortController();
+      this.el("[data-problem]").hidden = true;
+      this.el("[data-status]").textContent = this.text("reservation.choose.loading");
+      const outcome = await fetchOffers(
+        this.copy.apiBase,
+        this.search,
+        this.controller.signal,
+      ).catch(() => null);
+      if (!outcome) return;
+      if (outcome.kind === "throttled")
+        return this.showProblem(
+          "reservation.choose.throttled.title",
+          this.text("reservation.choose.throttled.body"),
+          true,
+        );
+      if (outcome.kind === "unavailable")
+        return this.showProblem(
+          "reservation.choose.unavailable.title",
+          this.text("reservation.choose.unavailable.body"),
+          true,
+        );
+      if (outcome.kind === "invalid")
+        return this.showProblem(
+          "reservation.choose.invalid.title",
+          this.text(backendProblems[outcome.error] ?? "reservation.problem.invalidSearch"),
+          false,
+        );
+      this.result = outcome.result;
+      this.render();
+    }
+
+    private offersFor(pmsRoomTypeId: string | null): RoomTypeOffers | undefined {
+      return pmsRoomTypeId
+        ? this.result?.roomTypes.find((type) => type.id === pmsRoomTypeId)
+        : undefined;
+    }
+
+    private render() {
+      const list = this.el("[data-results]");
+      const items = [...list.querySelectorAll<HTMLElement>("[data-room]")];
+      const preferred = this.search.room;
+      if (preferred) {
+        const item = items.find((candidate) => candidate.dataset.room === preferred);
+        if (item) list.prepend(item);
+      }
+      const states = items.map((item) =>
+        this.renderRoom(item, item.dataset.room!, item.dataset.room === preferred),
+      );
+      list.hidden = false;
+      this.el("[data-status]").textContent = this.text("reservation.choose.loaded");
+
+      const stateOf = new Map(items.map((item, index) => [item.dataset.room!, states[index]!]));
+      if (!states.includes("available")) {
+        this.showNotice(
+          this.text("reservation.choose.noOffers.title"),
+          unavailableReasons.flatMap((state) => {
+            const names = Object.keys(this.copy.rooms)
+              .filter((roomId) => stateOf.get(roomId) === state)
+              .map((roomId) => this.copy.rooms[roomId]!.name);
+            return names.length
+              ? [
+                  this.text(`reservation.choose.reason.${state}`, {
+                    rooms: formatList(names, this.copy.lang),
+                  }),
+                ]
+              : [];
+          }),
+        );
+      } else if (preferred && stateOf.get(preferred) !== "available") {
+        this.showNotice(
+          this.text(
+            this.search.plan ? "reservation.choice.lost" : "reservation.room.preferredUnavailable",
+            { room: this.copy.rooms[preferred]!.name },
+          ),
+          [],
+        );
+      } else {
+        this.el("[data-notice]").hidden = true;
+      }
+
+      const chosen =
+        preferred && this.search.plan
+          ? this.offersFor(this.copy.rooms[preferred]!.pmsRoomTypeId)
+          : undefined;
+      if (chosen?.availability === "available" && preferred && this.search.plan) {
+        const item = items.find((candidate) => candidate.dataset.room === preferred)!;
+        this.el<HTMLInputElement>(`input[value="${this.search.plan}"]`, item).checked = true;
+        this.showChoice(preferred, this.search.plan, false);
+      } else {
+        this.el("[data-choice]").hidden = true;
+      }
+    }
+
+    private showNotice(title: string, reasons: string[]) {
+      const notice = this.el("[data-notice]");
+      this.el("[data-notice-title]", notice).textContent = title;
+      this.el("[data-notice-reasons]", notice).replaceChildren(
+        ...reasons.map((reason) =>
+          Object.assign(document.createElement("li"), { textContent: reason }),
+        ),
+      );
+      notice.hidden = false;
+    }
+
+    private renderRoom(item: HTMLElement, roomId: string, preferred: boolean) {
+      const offers = this.offersFor(this.copy.rooms[roomId]!.pmsRoomTypeId);
+      const state = offers?.availability ?? "offline";
+      item.hidden = false;
+      this.el("[data-preferred]", item).hidden = !preferred;
+      const note = this.el("[data-room-note]", item);
+      note.hidden = state === "available";
+      note.textContent =
+        state === "sold_out"
+          ? this.text("reservation.room.soldOut")
+          : state === "too_many_guests"
+            ? this.text("reservation.room.tooManyGuests", {
+                adults: offers!.maxAdults,
+                children: offers!.maxChildren,
+              })
+            : state === "offline"
+              ? this.text("reservation.room.offline")
+              : "";
+      this.el("[data-room-contact]", item).hidden = state !== "offline";
+      this.el("[data-capacity]", item).hidden = !offers;
+      if (offers)
+        this.el("[data-capacity-value]", item).textContent = this.text(
+          "reservation.room.capacityValue",
+          {
+            adults: offers.maxAdults,
+            children: offers.maxChildren,
+          },
+        );
+      this.el("[data-plans]", item).hidden = state !== "available";
+      this.el("[data-choose]", item).hidden = state !== "available";
+      if (state === "available") {
+        for (const offer of offers!.offers)
+          this.renderOffer(this.el(`[data-plan="${offer.ratePlan}"]`, item), offer);
+        this.el("[data-taxes]", item).textContent = this.text("reservation.offer.taxes", {
+          currency: this.result!.currency,
+        });
+      }
+      return state;
+    }
+
+    private renderOffer(container: HTMLElement, offer: PlanOffer) {
+      this.el('[data-amount="total"]', container).textContent = this.money(offer.totalCents);
+      this.el('[data-amount="now"]', container).textContent = this.money(
+        offer.requiredInitialPaymentCents,
+      );
+      this.el('[data-amount="remaining"]', container).textContent = this.money(
+        offer.remainingScheduledCents,
+      );
+      const saving = this.el("[data-saving]", container);
+      saving.hidden = offer.savingCents <= 0;
+      saving.textContent =
+        offer.savingCents > 0
+          ? this.text("reservation.offer.saving", { amount: this.money(offer.savingCents) })
+          : "";
+      this.el("[data-cancellation]", container).replaceChildren(
+        ...cancellationNodes(offer.cancellation, {
+          text: (key, values) => this.text(key, values),
+          amount: this.money(offer.cancellation.chargeCents),
+          lang: this.copy.lang,
+        }),
+      );
+    }
+
+    private choose(roomId: string, plan: RatePlanCode, focus = true) {
+      this.search = { ...this.search, room: roomId as StaySearch["room"], plan };
+      history.replaceState(history.state, "", `?${searchParams(this.search).toString()}`);
+      this.el("[data-notice]").hidden = true;
+      this.showChoice(roomId, plan, focus);
+    }
+
+    private showChoice(roomId: string, plan: RatePlanCode, focus: boolean) {
+      const offer = this.offersFor(this.copy.rooms[roomId]!.pmsRoomTypeId)?.offers.find(
+        (candidate) => candidate.ratePlan === plan,
+      );
+      if (!offer || !this.result) return;
+      const room = this.copy.rooms[roomId]!.name;
+      const planName = this.text(`reservation.plan.${plan}`);
+      const choice = this.el("[data-choice]");
+      this.el("[data-choice-summary]", choice).textContent = this.text(
+        "reservation.choice.summary",
+        { room, plan: planName },
+      );
+      this.el('[data-choice-amount="total"]', choice).textContent = this.money(offer.totalCents);
+      this.el('[data-choice-amount="now"]', choice).textContent = this.money(
+        offer.requiredInitialPaymentCents,
+      );
+      this.el('[data-choice-amount="remaining"]', choice).textContent = this.money(
+        offer.remainingScheduledCents,
+      );
+      this.el("[data-choice-cancellation]", choice).replaceChildren(
+        ...cancellationNodes(offer.cancellation, {
+          text: (key, values) => this.text(key, values),
+          amount: this.money(offer.cancellation.chargeCents),
+          lang: this.copy.lang,
+        }),
+      );
+      this.el<HTMLAnchorElement>("[data-review-link]", choice).href =
+        `${this.copy.reviewHref}?${searchParams(this.search).toString()}`;
+      choice.hidden = false;
+      if (focus) choice.focus();
+    }
+  }
+  customElements.define("reservation-choose", ReservationChoose);
+</script>

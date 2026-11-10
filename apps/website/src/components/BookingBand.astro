@@ -1,5 +1,6 @@
 ---
 import { getWhatsAppLink } from "@/lib/constants";
+import { onlineReservations, searchStepHref } from "@/lib/reservation/links";
 import { getLang, useTranslations } from "@/i18n/utils";
 
 interface Props {
@@ -36,14 +37,29 @@ const bookHref = getWhatsAppLink(t("whatsapp.prefill"));
           <p class="mt-4 text-base leading-relaxed text-pretty text-stone-600">{body}</p>
         </div>
 
-        <a
-          href={bookHref}
-          target="_blank"
-          rel="noopener noreferrer"
-          class="font-source-sans-3 bg-accent-500 text-accent-950 hover:bg-accent-400 inline-flex min-h-11 w-fit shrink-0 items-center px-8 text-sm font-medium tracking-widest uppercase"
-        >
-          {cta}
-        </a>
+        <div class="flex shrink-0 flex-col items-start gap-3">
+          {onlineReservations && (
+            <a
+              href={searchStepHref(lang)}
+              class="font-source-sans-3 bg-accent-500 text-accent-950 hover:bg-accent-400 inline-flex min-h-11 w-fit items-center px-8 text-sm font-medium tracking-widest uppercase"
+            >
+              {t("reservation.cta")}
+            </a>
+          )}
+          <a
+            href={bookHref}
+            target="_blank"
+            rel="noopener noreferrer"
+            class:list={[
+              "font-source-sans-3 inline-flex min-h-11 w-fit items-center px-8 text-sm font-medium tracking-widest uppercase",
+              onlineReservations
+                ? "border border-stone-900 text-stone-900 hover:bg-stone-100"
+                : "bg-accent-500 text-accent-950 hover:bg-accent-400",
+            ]}
+          >
+            {cta}
+          </a>
+        </div>
       </div>
     </div>
   </div>

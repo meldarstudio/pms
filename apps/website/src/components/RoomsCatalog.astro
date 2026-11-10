@@ -2,6 +2,7 @@
 import { Image, getImage } from "astro:assets";
 import Whatsapp from "@/icons/Whatsapp.svg";
 import { getWhatsAppLink } from "@/lib/constants";
+import { reservesOnline, searchStepHref } from "@/lib/reservation/links";
 import { rooms } from "@/lib/rooms";
 import { getLang, useTranslations } from "@/i18n/utils";
 
@@ -32,7 +33,7 @@ const primaryCta =
       const specs = [
         { label: t("rooms.spec.beds"), value: t(room.bedsKey) },
         { label: t("rooms.spec.area"), value: t(room.areaKey) },
-        { label: t("rooms.spec.price"), value: t(room.priceKey) },
+        { label: t("rooms.spec.price"), value: t("rooms.spec.priceValue") },
       ];
       return (
         <article class="grid grid-cols-1 lg:grid-cols-12">
@@ -205,15 +206,37 @@ const primaryCta =
                   </div>
                 ))}
               </dl>
-              <a
-                href={getWhatsAppLink(t(room.prefillKey))}
-                target="_blank"
-                rel="noopener noreferrer"
-                class={primaryCta}
-              >
-                <Whatsapp class="size-4 shrink-0" />
-                {t(room.ctaKey)}
-              </a>
+              {reservesOnline(room) ? (
+                <div class="mt-8 flex flex-col items-start gap-3">
+                  <a
+                    href={searchStepHref(lang, room.id)}
+                    class={primaryCta.replace("mt-8 ", "")}
+                    data-room-search={room.id}
+                    aria-label={`${t("reservation.roomCta")}: ${t(room.nameKey)}`}
+                  >
+                    {t("reservation.roomCta")}
+                  </a>
+                  <a
+                    href={getWhatsAppLink(t(room.prefillKey))}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    class="text-accent-800 inline-flex min-h-11 items-center gap-2 font-medium underline underline-offset-4"
+                  >
+                    <Whatsapp class="size-4 shrink-0" />
+                    {t("reservation.whatsappSecondary")}
+                  </a>
+                </div>
+              ) : (
+                <a
+                  href={getWhatsAppLink(t(room.prefillKey))}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  class={primaryCta}
+                >
+                  <Whatsapp class="size-4 shrink-0" />
+                  {t(room.ctaKey)}
+                </a>
+              )}
             </div>
           </div>
         </article>

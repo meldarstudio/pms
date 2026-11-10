@@ -1,0 +1,269 @@
+---
+import ReservationHelp from "@/components/reservation/ReservationHelp.astro";
+import ReservationOffline from "@/components/reservation/ReservationOffline.astro";
+import ReservationSteps from "@/components/reservation/ReservationSteps.astro";
+import { getLang, useTranslations } from "@/i18n/utils";
+import { chooseStepHref, onlineReservations } from "@/lib/reservation/links";
+import {
+  DEFAULT_ADULTS,
+  DEFAULT_CHILDREN,
+  MAX_ADULTS_CHOICE,
+  MAX_CHILDREN_CHOICE,
+} from "@/lib/reservation/search";
+import { rooms } from "@/lib/rooms";
+
+const lang = getLang(Astro.currentLocale);
+const t = useTranslations(lang);
+const copy = {
+  lang,
+  nightsEmpty: t("reservation.search.nightsEmpty"),
+  nightsOne: t("reservation.nights.one"),
+  nightsOther: t("reservation.nights.other"),
+  roomNames: Object.fromEntries(rooms.map((room) => [room.id, t(room.nameKey)])),
+  problems: {
+    checkInRequired: t("reservation.problem.checkInRequired"),
+    checkOutRequired: t("reservation.problem.checkOutRequired"),
+    checkOutBeforeCheckIn: t("reservation.problem.checkOutBeforeCheckIn"),
+    tooManyNights: t("reservation.problem.tooManyNights"),
+  },
+  preference: t("reservation.search.preference"),
+};
+const field =
+  "mt-2 block min-h-12 w-full border border-stone-400 bg-white px-3 text-base text-stone-900 aria-invalid:border-red-700";
+const label = "font-source-sans-3 text-sm font-semibold tracking-wide text-stone-800";
+const error = "mt-2 text-sm font-medium text-red-800";
+---
+
+<section class="bg-stone-100">
+  <div class="mx-auto max-w-2xl px-4 py-8 md:px-8 md:py-16">
+    <ReservationSteps current="search" />
+    <h1 class="mt-8 text-3xl font-semibold text-pretty text-stone-900 sm:text-4xl">
+      {t("reservation.search.title")}
+    </h1>
+    {onlineReservations ? (
+      <reservation-search class="block">
+        <script type="application/json" is:inline data-copy set:html={JSON.stringify(copy)} />
+        <p class="mt-4 leading-relaxed text-pretty text-stone-700">
+          {t("reservation.search.lead")}
+        </p>
+        <form
+          class="mt-8 border border-stone-300 bg-white p-5 md:p-8"
+          action={chooseStepHref(lang)}
+          method="get"
+          novalidate
+          data-search-form
+        >
+          <p class="mb-4 hidden bg-stone-100 p-4 text-stone-800" data-preference>
+            <span data-preference-text />
+            <button
+              type="button"
+              class="text-accent-800 ml-1 inline-flex min-h-11 cursor-pointer items-center font-medium underline underline-offset-4"
+              data-clear-preference
+            >
+              {t("reservation.search.clearPreference")}
+            </button>
+          </p>
+          <input type="hidden" name="room" value="" disabled data-room />
+          <div class="grid gap-5 sm:grid-cols-2">
+            <div>
+              <label for="checkIn" class={label}>
+                {t("reservation.search.checkIn")}
+              </label>
+              <input
+                id="checkIn"
+                name="checkIn"
+                type="date"
+                required
+                autocomplete="off"
+                class={field}
+                aria-describedby="checkIn-error"
+              />
+              <p id="checkIn-error" class={error} hidden />
+            </div>
+            <div>
+              <label for="checkOut" class={label}>
+                {t("reservation.search.checkOut")}
+              </label>
+              <input
+                id="checkOut"
+                name="checkOut"
+                type="date"
+                required
+                autocomplete="off"
+                class={field}
+                aria-describedby="checkOut-error"
+              />
+              <p id="checkOut-error" class={error} hidden />
+            </div>
+          </div>
+          <p class="mt-4 font-semibold text-stone-900" aria-live="polite" data-nights>
+            {t("reservation.search.nightsEmpty")}
+          </p>
+          <div class="mt-6 grid grid-cols-2 gap-5">
+            <div>
+              <label for="adults" class={label}>
+                {t("reservation.search.adults")}
+              </label>
+              <select id="adults" name="adults" class={field}>
+                {Array.from({ length: MAX_ADULTS_CHOICE }, (_, index) => index + 1).map((value) => (
+                  <option value={value} selected={value === DEFAULT_ADULTS}>
+                    {value}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label for="children" class={label}>
+                {t("reservation.search.children")}
+              </label>
+              <select id="children" name="children" class={field}>
+                {Array.from({ length: MAX_CHILDREN_CHOICE + 1 }, (_, index) => index).map(
+                  (value) => (
+                    <option value={value} selected={value === DEFAULT_CHILDREN}>
+                      {value}
+                    </option>
+                  ),
+                )}
+              </select>
+            </div>
+          </div>
+          <p class="mt-6 text-sm leading-relaxed text-stone-600">
+            {t("reservation.search.limits")}
+          </p>
+          <button
+            type="submit"
+            class="font-source-sans-3 bg-accent-500 text-accent-950 hover:bg-accent-400 mt-6 inline-flex min-h-12 w-full cursor-pointer items-center justify-center px-6 text-sm font-semibold tracking-widest uppercase sm:w-auto"
+          >
+            {t("reservation.search.submit")}
+          </button>
+        </form>
+      </reservation-search>
+    ) : (
+      <ReservationOffline />
+    )}
+    <ReservationHelp />
+  </div>
+</section>
+
+<script>
+  import { fill } from "@/lib/reservation/format";
+  import {
+    addDays,
+    nightsBetween,
+    readSearch,
+    searchParams,
+    searchProblems,
+    type SearchProblem,
+    type StaySearch,
+  } from "@/lib/reservation/search";
+
+  type Copy = {
+    nightsEmpty: string;
+    nightsOne: string;
+    nightsOther: string;
+    roomNames: Record<string, string>;
+    problems: Record<SearchProblem, string>;
+    preference: string;
+  };
+
+  class ReservationSearch extends HTMLElement {
+    connectedCallback() {
+      const copy = JSON.parse(this.querySelector("[data-copy]")?.textContent ?? "{}") as Copy;
+      const form = this.querySelector<HTMLFormElement>("[data-search-form]")!;
+      const checkIn = form.querySelector<HTMLInputElement>("#checkIn")!;
+      const checkOut = form.querySelector<HTMLInputElement>("#checkOut")!;
+      const adults = form.querySelector<HTMLSelectElement>("#adults")!;
+      const children = form.querySelector<HTMLSelectElement>("#children")!;
+      const room = form.querySelector<HTMLInputElement>("[data-room]")!;
+      const nights = form.querySelector<HTMLElement>("[data-nights]")!;
+      const preference = form.querySelector<HTMLElement>("[data-preference]")!;
+      const roomIds = Object.keys(copy.roomNames);
+
+      const ensureOption = (select: HTMLSelectElement, value: number) => {
+        if (![...select.options].some((option) => option.value === String(value)))
+          select.add(new Option(String(value), String(value)));
+        select.value = String(value);
+      };
+
+      const showPreference = () => {
+        const name = room.value ? copy.roomNames[room.value] : undefined;
+        preference.classList.toggle("hidden", !name);
+        room.disabled = !name;
+        if (name)
+          preference.querySelector("[data-preference-text]")!.textContent = fill(copy.preference, {
+            room: name,
+          });
+      };
+
+      const showNights = () => {
+        const count = nightsBetween(checkIn.value, checkOut.value);
+        nights.textContent =
+          count === null || count < 1
+            ? copy.nightsEmpty
+            : count === 1
+              ? copy.nightsOne
+              : fill(copy.nightsOther, { count });
+      };
+
+      const current = (): StaySearch => ({
+        checkIn: checkIn.value,
+        checkOut: checkOut.value,
+        adults: Number(adults.value),
+        children: Number(children.value),
+        room: room.disabled ? null : (room.value as StaySearch["room"]),
+        plan: null,
+      });
+
+      const showProblems = (problems: ReturnType<typeof searchProblems>) => {
+        for (const input of [checkIn, checkOut]) {
+          const problem = problems.find(({ field }) => field === input.id);
+          const message = this.querySelector<HTMLElement>(`#${input.id}-error`)!;
+          message.hidden = !problem;
+          message.textContent = problem ? copy.problems[problem.problem] : "";
+          if (problem) input.setAttribute("aria-invalid", "true");
+          else input.removeAttribute("aria-invalid");
+        }
+      };
+
+      const saved = readSearch(new URLSearchParams(window.location.search), roomIds);
+      checkIn.value = saved.checkIn;
+      checkOut.value = saved.checkOut;
+      ensureOption(adults, saved.adults);
+      ensureOption(children, saved.children);
+      room.value = saved.room ?? "";
+      const limitDeparture = () => {
+        if (checkIn.value) checkOut.min = addDays(checkIn.value, 1);
+        else checkOut.removeAttribute("min");
+      };
+      limitDeparture();
+      showPreference();
+      showNights();
+
+      checkIn.addEventListener("change", () => {
+        limitDeparture();
+        showNights();
+      });
+      checkOut.addEventListener("change", showNights);
+      this.querySelector("[data-clear-preference]")?.addEventListener("click", () => {
+        room.value = "";
+        showPreference();
+        adults.focus();
+      });
+
+      form.addEventListener("submit", (event) => {
+        event.preventDefault();
+        const search = current();
+        const problems = searchProblems(search);
+        showProblems(problems);
+        if (problems.length) {
+          this.querySelector<HTMLInputElement>(`#${problems[0]!.field}`)?.focus();
+          return;
+        }
+        const params = searchParams(search).toString();
+        history.replaceState(history.state, "", `?${params}`);
+        window.location.assign(`${form.action}?${params}`);
+      });
+    }
+  }
+  customElements.define("reservation-search", ReservationSearch);
+</script>
