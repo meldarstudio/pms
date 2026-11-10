@@ -39,3 +39,31 @@ export async function requirePublicPaymentAdmission(db: Db) {
   if (!(await readPublicPaymentAdmission(db)).admitted)
     throw new HttpError(503, PUBLIC_PAYMENTS_PAUSED);
 }
+
+export async function readEmailSubmissionAdmission(db: Db) {
+  const [controls] = await db
+    .select()
+    .from(operationControls)
+    .where(eq(operationControls.id, CONTROLS_ID));
+  return {
+    admitted: controls?.emailSubmissionAdmitted ?? false,
+    updatedAt: controls?.updatedAt ?? null,
+  };
+}
+
+export async function setEmailSubmissionAdmission(
+  db: Db,
+  admitted: boolean,
+  change: { accountId: string; now: Date },
+) {
+  const values = {
+    emailSubmissionAdmitted: admitted,
+    updatedAt: change.now.toISOString(),
+    updatedBy: change.accountId,
+  };
+  await db
+    .insert(operationControls)
+    .values({ id: CONTROLS_ID, publicPaymentsAdmitted: false, ...values })
+    .onConflictDoUpdate({ target: operationControls.id, set: values });
+  return readEmailSubmissionAdmission(db);
+}

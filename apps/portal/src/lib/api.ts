@@ -6,6 +6,7 @@ import type {
   PatchRoomRequest,
   PaymentRequest as PaymentInput,
   PropertySetupRequest as PropertySetupInput,
+  EmailSubmissionAdmissionRequest,
   PublicPaymentAdmissionRequest,
   RateWriteRequest,
   RoomClosureRequest,
@@ -469,6 +470,16 @@ export function setPublicPaymentAdmission(input: PublicPaymentAdmissionRequest) 
   return writeJson<PublicPaymentAdmission>("/controls/public-payments", "PUT", input);
 }
 
+export type EmailSubmissionAdmission = { admitted: boolean; updatedAt: string | null };
+
+export function getEmailSubmission(signal?: AbortSignal) {
+  return getJson<EmailSubmissionAdmission>("/controls/email-submission", signal);
+}
+
+export function setEmailSubmission(input: EmailSubmissionAdmissionRequest) {
+  return writeJson<EmailSubmissionAdmission>("/controls/email-submission", "PUT", input);
+}
+
 export function listRooms(signal?: AbortSignal) {
   return getJson<Room[]>("/rooms", signal);
 }
@@ -541,6 +552,15 @@ export type ReservationConfirmation = {
   acceptanceId: string;
   createdAt: string;
   reservation: { id: string; code: string; status: string };
+  submission: {
+    status: "uncertain" | "accepted" | "unsent" | "attention";
+    providerMessageId: string | null;
+    failureCode: string | null;
+    sendKey: string | null;
+    firstPossibleAt: string | null;
+    nextAttemptAt: string | null;
+    createdAt: string;
+  } | null;
 };
 
 export function getReservationConfirmation(id: string, signal?: AbortSignal) {

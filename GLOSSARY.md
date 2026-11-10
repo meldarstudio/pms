@@ -316,6 +316,17 @@ confirmation. It keeps the booking-contact recipient and checkout language from 
 saving payment attempt, and is not itself a sent message.
 _Avoid_: Confirmation email, reservation access link, payment
 
+**Email submission admission**:
+The owner's switch for sending automatic confirmations, off by default. Pausing it keeps
+confirmation intents and does not stop payment recovery. Resuming sends known-unsent work
+and does not give an uncertain submission a new key or window.
+_Avoid_: Public payment admission, maintenance mode
+
+**Confirmation submission**:
+The one provider request recorded for a confirmation intent before any send, retried with
+the same key, endpoint, and bytes until accepted or the send window ends.
+_Avoid_: Confirmation intent, delivery, resend
+
 **Refund**:
 Money returned against a received payment. Only a completed refund has returned money;
 a requested or failed refund has not.

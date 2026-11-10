@@ -24,6 +24,8 @@ export type Env = {
     PAYMENT_CHECKOUT_LIMITER: RateLimit;
     CULQI_SECRET_KEY?: string;
     CULQI_API_URL?: string;
+    RESEND_API_KEY?: string;
+    RESEND_API_URL?: string;
     TURNSTILE_SECRET_KEY?: string;
     TURNSTILE_VERIFY_URL?: string;
   };

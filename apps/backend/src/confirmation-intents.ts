@@ -3,6 +3,7 @@ import { and, eq, isNotNull, isNull } from "drizzle-orm";
 import type { Db } from "./db";
 import { confirmationIntents, paymentAttempts, reservations } from "./db/schema";
 import { HttpError } from "./http";
+import { confirmationSubmissionView } from "./confirmation-submissions";
 import { loadReservation } from "./reservation-read";
 
 export const CONFIRMATION_NOT_ESTABLISHED = "confirmation was not established";
@@ -117,5 +118,6 @@ export async function staffConfirmationIntent(db: Db, reservationId: string) {
       code: state.reservation.code,
       status: state.reservation.status,
     },
+    submission: await confirmationSubmissionView(db, intent.id),
   };
 }

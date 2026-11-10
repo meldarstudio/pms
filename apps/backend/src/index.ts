@@ -21,6 +21,7 @@ import { roomRoutes } from "./routes/rooms";
 import { setupRoutes } from "./routes/setup";
 import { getDb } from "./db";
 import { repairConfirmationIntents } from "./confirmation-intents";
+import { sendConfirmationSubmissions } from "./confirmation-submissions";
 import { paymentContext, reconcilePaymentAttempts } from "./payment-attempts";
 import { requireSession } from "./session";
 import { propertyCalendar } from "./property-calendar";
@@ -97,7 +98,9 @@ export default {
   scheduled(_controller, env, ctx) {
     const db = getDb(env.DB);
     ctx.waitUntil(
-      reconcilePaymentAttempts(db, paymentContext(env)).then(() => repairConfirmationIntents(db)),
+      reconcilePaymentAttempts(db, paymentContext(env))
+        .then(() => repairConfirmationIntents(db))
+        .then(() => sendConfirmationSubmissions(db, env)),
     );
   },
 } satisfies ExportedHandler<Env["Bindings"]>;

@@ -20,6 +20,9 @@ export const operationControls = sqliteTable(
     publicPaymentsAdmitted: integer("public_payments_admitted", { mode: "boolean" })
       .notNull()
       .default(false),
+    emailSubmissionAdmitted: integer("email_submission_admitted", { mode: "boolean" })
+      .notNull()
+      .default(false),
     updatedAt: text("updated_at").notNull(),
     updatedBy: text("updated_by").notNull(),
   },
@@ -311,6 +314,35 @@ export const confirmationIntents = sqliteTable("confirmation_intents", {
   language: text("language").$type<CheckoutLanguage>().notNull(),
   createdAt: text("created_at").notNull(),
 });
+
+export const confirmationSubmissions = sqliteTable(
+  "confirmation_submissions",
+  {
+    id: text("id").primaryKey(),
+    intentId: text("intent_id")
+      .notNull()
+      .unique()
+      .references(() => confirmationIntents.id),
+    sendKey: text("send_key").unique(),
+    endpoint: text("endpoint"),
+    requestJson: text("request_json"),
+    recipientEmail: text("recipient_email").notNull(),
+    language: text("language").$type<CheckoutLanguage>().notNull(),
+    firstPossibleAt: text("first_possible_at"),
+    status: text("status").notNull(),
+    providerMessageId: text("provider_message_id"),
+    failureCode: text("failure_code"),
+    nextAttemptAt: text("next_attempt_at"),
+    createdAt: text("created_at").notNull(),
+    updatedAt: text("updated_at").notNull(),
+  },
+  (table) => [
+    check(
+      "confirmation_submission_status",
+      sql`${table.status} in ('uncertain', 'accepted', 'unsent', 'attention')`,
+    ),
+  ],
+);
 
 export const roomTypeRates = sqliteTable(
   "room_type_rates",

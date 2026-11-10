@@ -13,3 +13,6 @@ CULQI_PUBLIC_KEY=
 # Turnstile secret for the website's payment challenge. Cloudflare's always-passing test
 # secret is 1x0000000000000000000000000000000AA.
 TURNSTILE_SECRET_KEY=
+# Optional. Unset leaves confirmation email unsent. RESEND_API_URL is ignored unless it is a loopback address.
+RESEND_API_KEY=
+RESEND_API_URL=

@@ -403,12 +403,14 @@ export const checkoutPaymentSchema = z
   })
   .strict();
 export const publicPaymentAdmissionSchema = z.object({ admitted: z.boolean() }).strict();
+export const emailSubmissionAdmissionSchema = z.object({ admitted: z.boolean() }).strict();
 export type CheckoutLanguage = z.infer<typeof checkoutLanguageSchema>;
 export type PublicCheckoutCreate = z.infer<typeof publicCheckoutCreateSchema>;
 export type PublicCheckoutCreateRequest = z.input<typeof publicCheckoutCreateSchema>;
 export type CheckoutAcceptance = z.infer<typeof checkoutAcceptanceSchema>;
 export type CheckoutPayment = z.infer<typeof checkoutPaymentSchema>;
 export type PublicPaymentAdmissionRequest = z.input<typeof publicPaymentAdmissionSchema>;
+export type EmailSubmissionAdmissionRequest = z.input<typeof emailSubmissionAdmissionSchema>;
 export type WorkflowAction = z.infer<typeof workflowActionSchema>;
 export type WorkflowCommand = z.infer<typeof workflowCommandSchema>;
 export type WorkflowCreate = z.infer<typeof workflowCreateSchema>;
