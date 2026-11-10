@@ -325,6 +325,8 @@ export const confirmationSubmissions = sqliteTable(
       .references(() => confirmationIntents.id),
     sendKey: text("send_key").unique(),
     endpoint: text("endpoint"),
+    credentialFingerprint: text("credential_fingerprint"),
+    acceptancePossible: integer("acceptance_possible").notNull().default(1),
     requestJson: text("request_json"),
     recipientEmail: text("recipient_email").notNull(),
     language: text("language").$type<CheckoutLanguage>().notNull(),

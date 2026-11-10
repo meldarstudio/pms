@@ -24,12 +24,17 @@ export function fakeResend() {
   const emails: { id: string; key: string; body: string }[] = [];
   const requests: ResendRequest[] = [];
   const scripts: Scripted[] = [];
+  const befores: Array<() => unknown> = [];
+  const retryAfters: Array<string | undefined> = [];
   let sequence = 0;
 
-  const json = (status: number, body: unknown) =>
+  const json = (status: number, body: unknown, retryAfter?: string) =>
     new Response(JSON.stringify(body), {
       status,
-      headers: { "content-type": "application/json" },
+      headers: {
+        "content-type": "application/json",
+        ...(retryAfter === undefined ? {} : { "retry-after": retryAfter }),
+      },
     });
 
   return {
@@ -37,6 +42,12 @@ export function fakeResend() {
     requests,
     next(...outcomes: Scripted[]) {
       scripts.push(...outcomes);
+    },
+    duringNext(run: () => unknown) {
+      befores.push(run);
+    },
+    retryAfter(value: string) {
+      retryAfters.push(value);
     },
     fetch: (async (input: RequestInfo | URL, init?: RequestInit) => {
       const url = new URL(input instanceof Request ? input.url : String(input));
@@ -47,6 +58,12 @@ export function fakeResend() {
         throw new Error(`unexpected request to ${url.href}`);
       requests.push({ method, url: url.href, headers, body });
       const scripted = scripts.shift();
+      const retryAfter = retryAfters.shift();
+      await befores.shift()?.();
+      if (method === "GET") {
+        const email = emails.find((item) => url.pathname === `/emails/${item.id}`);
+        return email ? json(200, { id: email.id }) : json(404, { name: "not_found" });
+      }
       const key = headers.get("idempotency-key") ?? "";
       if (scripted === "timeout")
         throw new DOMException("The operation was aborted due to timeout", "TimeoutError");
@@ -57,7 +74,11 @@ export function fakeResend() {
         scripted === 401 ||
         scripted === 403
       )
-        return json(scripted, { name: scripted === 429 ? "rate_limit_exceeded" : "api_error" });
+        return json(
+          scripted,
+          { name: scripted === 429 ? "rate_limit_exceeded" : "api_error" },
+          retryAfter,
+        );
       if (scripted === "empty") return new Response("", { status: 200 });
       if (scripted === "concurrent")
         return json(409, { name: "concurrent_idempotent_requests", message: "in progress" });

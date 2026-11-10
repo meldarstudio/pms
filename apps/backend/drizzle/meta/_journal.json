@@ -169,6 +169,20 @@
       "when": 1794280307463,
       "tag": "0023_confirmation_submissions",
       "breakpoints": true
+    },
+    {
+      "idx": 24,
+      "version": "6",
+      "when": 1794282441441,
+      "tag": "0024_true_crusher_hogan",
+      "breakpoints": true
+    },
+    {
+      "idx": 25,
+      "version": "6",
+      "when": 1794282535540,
+      "tag": "0025_mysterious_iron_patriot",
+      "breakpoints": true
     }
   ]
 }

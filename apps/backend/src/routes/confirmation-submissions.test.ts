@@ -44,6 +44,7 @@ beforeEach(async () => {
 
 afterEach(() => {
   db.close();
+  vi.restoreAllMocks();
   vi.unstubAllGlobals();
   vi.useRealTimers();
 });
@@ -153,11 +154,12 @@ type SubmissionRow = {
   next_attempt_at: string | null;
   recipient_email: string;
   language: string;
+  acceptance_possible: number;
 };
 
 const submissions = () =>
   rows<SubmissionRow>(
-    "SELECT id, intent_id, send_key, endpoint, request_json, status, provider_message_id, failure_code, first_possible_at, next_attempt_at, recipient_email, language FROM confirmation_submissions ORDER BY created_at",
+    "SELECT id, intent_id, send_key, endpoint, request_json, status, provider_message_id, failure_code, first_possible_at, next_attempt_at, recipient_email, language, acceptance_possible FROM confirmation_submissions ORDER BY created_at",
   );
 
 const posts = () => resend.requests.filter((request) => request.method === "POST");
@@ -231,8 +233,8 @@ function expectMessage(
     expect(part).toContain("King");
     expect(part).toContain("Flexible");
     expect(part).toContain("2026-10-18");
-    expect(part).toContain("S/ 200.00");
-    expect(part).toContain("S/ 100.00");
+    expect(part).toContain("PEN 200.00");
+    expect(part).toContain("PEN 100.00");
     expect(part).toContain(PHONE);
     expect(part).toContain(REPLY_TO);
     expect(part).toContain(link);
@@ -283,8 +285,8 @@ describe("confirmation submissions", () => {
 
     await runScheduled();
     const first = posts()[0]!.body;
-    expect(first).toContain("S/ 200.00");
-    expect(first).not.toContain("S/ 150.00");
+    expect(first).toContain("PEN 200.00");
+    expect(first).not.toContain("PEN 150.00");
     vi.setSystemTime(new Date(Date.now() + 60_000));
     const rates = await db.request("/room-types/type-king/rates", "PUT", {
       from: "2026-10-20",
@@ -302,8 +304,8 @@ describe("confirmation submissions", () => {
       posts()[0]!.headers.get("idempotency-key"),
     );
     expect(posts()[1]!.url).toBe(posts()[0]!.url);
-    expect(posts()[1]!.body).not.toContain("S/ 150.00");
-    expect(posts()[1]!.body).not.toContain("S/ 999.00");
+    expect(posts()[1]!.body).not.toContain("PEN 150.00");
+    expect(posts()[1]!.body).not.toContain("PEN 999.00");
     expect(submissions()).toHaveLength(1);
     expect(submissions()[0]!.request_json).toBe(first);
   });
@@ -440,10 +442,11 @@ describe("confirmation submissions", () => {
 
     expect(posts()).toHaveLength(1);
     expect(submissions()[0]).toMatchObject({
-      status: "uncertain",
+      status: "unsent",
       failure_code: "quota",
       send_key: `confirmation/${submissions()[0]!.intent_id}`,
       provider_message_id: null,
+      acceptance_possible: 0,
     });
     expect(Date.parse(submissions()[0]!.next_attempt_at!) - Date.now()).toBeGreaterThanOrEqual(
       15 * 60 * 1000,
@@ -620,6 +623,545 @@ describe("confirmation submissions", () => {
     expect(seen).toEqual(["https://api.resend.com/emails"]);
     expect(submissions()[0]!.endpoint).toBe("https://api.resend.com/emails");
     expect(submissions()[0]!.status).toBe("accepted");
+  });
+
+  it("does not post or log the access token when the submission insert fails", async () => {
+    const { saved } = await confirmed();
+    configureResend();
+    await admitEmail(true);
+    db.sqlite.exec(`
+      CREATE TRIGGER fail_submission_insert BEFORE INSERT ON confirmation_submissions
+      BEGIN
+        SELECT RAISE(ABORT, 'submission insert failed');
+      END;
+    `);
+    const error = vi.spyOn(console, "error").mockImplementation(() => {});
+
+    await runScheduled();
+
+    expect(posts()).toEqual([]);
+    expect(submissions()).toEqual([]);
+    const logged = error.mock.calls.map((call) => call.map(String).join(" ")).join("\n");
+    expect(logged).toContain(saved.id);
+    expect(logged).not.toContain(saved.token);
+    expect(logged).not.toContain("Failed query");
+    expect(logged).not.toContain(RESEND_TEST_KEY);
+    expect(error.mock.calls).toEqual([["confirmation submission failed", saved.id]]);
+    error.mockRestore();
+  });
+
+  it("commits the submission before posting, then records a lost acceptance on the next tick", async () => {
+    const { saved } = await confirmed();
+    configureResend();
+    await admitEmail(true);
+    const error = vi.spyOn(console, "error").mockImplementation(() => {});
+    db.sqlite.exec(`
+      CREATE TRIGGER fail_acceptance_update BEFORE UPDATE ON confirmation_submissions
+      WHEN NEW.status = 'accepted'
+      BEGIN
+        SELECT RAISE(ABORT, 'acceptance update failed');
+      END;
+    `);
+    resend.duringNext(() => {
+      const posted = resend.requests.at(-1)!;
+      const row = db.sqlite
+        .prepare(
+          "SELECT send_key, request_json, status, acceptance_possible, first_possible_at FROM confirmation_submissions",
+        )
+        .get() as {
+        send_key: string;
+        request_json: string;
+        status: string;
+        acceptance_possible: number;
+        first_possible_at: string;
+      };
+      expect(row.status).toBe("uncertain");
+      expect(row.acceptance_possible).toBe(1);
+      expect(row.first_possible_at).toBe(new Date().toISOString());
+      expect(row.send_key).toBe(posted.headers.get("idempotency-key"));
+      expect(row.request_json).toBe(posted.body);
+      expect(row.request_json).toContain(saved.code);
+    });
+
+    await runScheduled();
+
+    const stored = submissions()[0]!;
+    expect(stored.status).not.toBe("accepted");
+    expect(stored.provider_message_id).toBeNull();
+    expect(posts()).toHaveLength(1);
+    expect(error.mock.calls).toEqual([["confirmation submission failed", saved.id]]);
+    db.sqlite.exec("DROP TRIGGER fail_acceptance_update");
+
+    await runScheduled();
+
+    expect(posts()).toHaveLength(2);
+    expect(posts()[1]!.headers.get("idempotency-key")).toBe(stored.send_key);
+    expect(posts()[1]!.body).toBe(stored.request_json);
+    expect(submissions()).toEqual([
+      expect.objectContaining({
+        id: stored.id,
+        send_key: stored.send_key,
+        status: "accepted",
+        provider_message_id: "email_1",
+      }),
+    ]);
+  });
+
+  it.each([401, 403, 422, 429] as const)(
+    "retries a received %s as known-unsent beyond 20 hours with the same key",
+    async (status) => {
+      await confirmed();
+      configureResend();
+      await admitEmail(true);
+      resend.next(status);
+
+      await runScheduled();
+
+      const stored = submissions()[0]!;
+      expect(stored).toMatchObject({
+        status: "unsent",
+        failure_code: status === 429 ? "quota" : status === 422 ? "rejected" : "configuration",
+        acceptance_possible: 0,
+        provider_message_id: null,
+      });
+      expect(stored.send_key).toBe(`confirmation/${stored.intent_id}`);
+      expect(stored.first_possible_at).toEqual(expect.any(String));
+      vi.setSystemTime(new Date(Date.parse(stored.first_possible_at!) + WINDOW_MS + 60_000));
+
+      await runScheduled();
+
+      expect(posts()).toHaveLength(2);
+      expect(posts()[1]!.headers.get("idempotency-key")).toBe(stored.send_key);
+      expect(posts()[1]!.body).toBe(stored.request_json);
+      expect(submissions()[0]).toMatchObject({
+        status: "accepted",
+        send_key: stored.send_key,
+        first_possible_at: stored.first_possible_at,
+      });
+    },
+  );
+
+  it("keeps a 401 after a timeout uncertain and stops at the window", async () => {
+    await confirmed();
+    configureResend();
+    await admitEmail(true);
+    resend.next("timeout");
+    await runScheduled();
+    vi.setSystemTime(new Date(Date.now() + 60_000));
+    resend.next(401);
+
+    await runScheduled();
+
+    expect(submissions()[0]).toMatchObject({
+      status: "uncertain",
+      failure_code: "configuration",
+      acceptance_possible: 1,
+    });
+    const stored = submissions()[0]!;
+    vi.setSystemTime(new Date(Date.parse(stored.first_possible_at!) + WINDOW_MS));
+
+    await runScheduled();
+
+    expect(posts()).toHaveLength(2);
+    expect(submissions()[0]).toMatchObject({ status: "attention", send_key: stored.send_key });
+  });
+
+  it("does not send an uncertain submission after the window when Retry-After is longer", async () => {
+    await confirmed();
+    configureResend();
+    await admitEmail(true);
+    resend.next("timeout");
+    await runScheduled();
+    vi.setSystemTime(new Date(Date.now() + 60_000));
+    resend.retryAfter("90000");
+    resend.next(429);
+
+    await runScheduled();
+
+    expect(submissions()[0]).toMatchObject({ status: "uncertain", acceptance_possible: 1 });
+    const stored = submissions()[0]!;
+    expect(Date.parse(stored.next_attempt_at!) - Date.now()).toBe(90_000_000);
+    vi.setSystemTime(new Date(Date.parse(stored.first_possible_at!) + WINDOW_MS));
+    await runScheduled();
+    expect(posts()).toHaveLength(2);
+    expect(submissions()[0]!.status).toBe("attention");
+    vi.setSystemTime(new Date(Date.parse(stored.next_attempt_at!)));
+
+    await runScheduled();
+
+    expect(posts()).toHaveLength(2);
+    expect(submissions()[0]).toMatchObject({
+      status: "attention",
+      send_key: stored.send_key,
+      first_possible_at: stored.first_possible_at,
+    });
+  });
+
+  it("waits at least Retry-After seconds before retrying a 429", async () => {
+    await confirmed();
+    configureResend();
+    await admitEmail(true);
+    resend.retryAfter("1200");
+    resend.next(429);
+
+    await runScheduled();
+
+    const stored = submissions()[0]!;
+    expect(stored.status).toBe("unsent");
+    expect(Date.parse(stored.next_attempt_at!) - Date.now()).toBeGreaterThanOrEqual(1200 * 1000);
+    await runScheduled();
+    expect(posts()).toHaveLength(1);
+    vi.setSystemTime(new Date(Date.parse(stored.next_attempt_at!) - 1));
+    await runScheduled();
+    expect(posts()).toHaveLength(1);
+    vi.setSystemTime(new Date(Date.parse(stored.next_attempt_at!)));
+    resend.next("timeout");
+    await runScheduled();
+    expect(posts()).toHaveLength(2);
+    expect(Date.parse(submissions()[0]!.next_attempt_at!) - Date.now()).toBe(60 * 60_000);
+    expect(submissions()[0]!.first_possible_at).toBe(stored.first_possible_at);
+  });
+
+  it("waits for a Retry-After HTTP-date", async () => {
+    await confirmed();
+    configureResend();
+    await admitEmail(true);
+    resend.retryAfter("Sat, 10 Oct 2026 15:25:00 GMT");
+    resend.next(429);
+
+    await runScheduled();
+
+    expect(Date.parse(submissions()[0]!.next_attempt_at!)).toBeGreaterThanOrEqual(
+      Date.parse("2026-10-10T15:25:00.000Z"),
+    );
+  });
+
+  it("stops before the next intent when the first send pauses submission", async () => {
+    await confirmed();
+    await confirmed("en", { checkIn: "2026-11-02", checkOut: "2026-11-04" });
+    configureResend();
+    await admitEmail(true);
+    resend.duringNext(async () => {
+      await admitEmail(false);
+    });
+
+    await runScheduled();
+
+    expect(posts()).toHaveLength(1);
+    expect(submissions()).toHaveLength(1);
+    expect(rows("SELECT id FROM confirmation_intents")).toHaveLength(2);
+  });
+
+  it("does not open the send clock if admission pauses after the snapshot commits but before POST", async () => {
+    await confirmed();
+    configureResend();
+    await admitEmail(true);
+    db.sqlite.exec(`
+      CREATE TRIGGER pause_after_snapshot AFTER INSERT ON confirmation_submissions
+      BEGIN
+        UPDATE operation_controls SET email_submission_admitted = 0 WHERE id = 1;
+      END;
+    `);
+
+    await runScheduled();
+
+    expect(posts()).toEqual([]);
+    const stored = submissions()[0]!;
+    expect(stored).toMatchObject({
+      status: "unsent",
+      first_possible_at: null,
+      acceptance_possible: 0,
+    });
+    db.sqlite.exec("DROP TRIGGER pause_after_snapshot");
+    vi.setSystemTime(new Date(Date.now() + WINDOW_MS + 60_000));
+    await admitEmail(true);
+    await runScheduled();
+    expect(posts()).toHaveLength(1);
+    expect(posts()[0]!.body).toBe(stored.request_json);
+    expect(posts()[0]!.headers.get("idempotency-key")).toBe(stored.send_key);
+    expect(submissions()[0]).toMatchObject({
+      status: "accepted",
+      first_possible_at: new Date().toISOString(),
+    });
+  });
+
+  it.each([false, true])(
+    "stops remaining due work when the first request pauses admission (lookup: %s)",
+    async (lookup) => {
+      await confirmed();
+      await confirmed("en", { checkIn: "2026-11-02", checkOut: "2026-11-04" });
+      configureResend();
+      await admitEmail(true);
+      resend.next("timeout", "timeout");
+      await runScheduled();
+      const stored = submissions();
+      if (lookup)
+        db.sqlite.exec("UPDATE confirmation_submissions SET provider_message_id = 'email_missing'");
+      vi.setSystemTime(new Date(Date.now() + 60_000));
+      resend.duringNext(async () => {
+        await admitEmail(false);
+      });
+      const before = resend.requests.length;
+
+      await runScheduled();
+
+      expect(resend.requests).toHaveLength(before + 1);
+      expect(resend.requests.at(-1)!.method).toBe(lookup ? "GET" : "POST");
+      expect(submissions()).toHaveLength(2);
+      for (const row of stored)
+        expect(submissions()).toContainEqual(
+          expect.objectContaining({
+            id: row.id,
+            send_key: row.send_key,
+            first_possible_at: row.first_possible_at,
+            request_json: row.request_json,
+          }),
+        );
+    },
+  );
+
+  it.each(["pause", "expiry"] as const)(
+    "rechecks %s after the possible-acceptance write, before POST",
+    async (change) => {
+      await confirmed();
+      configureResend();
+      await admitEmail(true);
+      resend.next("timeout");
+      await runScheduled();
+      const stored = submissions()[0]!;
+      vi.setSystemTime(new Date(Date.parse(stored.first_possible_at!) + WINDOW_MS - 1_000));
+      db.sqlite.function("expire_send_window", () => {
+        vi.setSystemTime(new Date(Date.parse(stored.first_possible_at!) + WINDOW_MS));
+        return 1;
+      });
+      db.sqlite.exec(`
+      CREATE TRIGGER change_during_attempt AFTER UPDATE ON confirmation_submissions
+      WHEN NEW.acceptance_possible > OLD.acceptance_possible
+      BEGIN
+        ${change === "pause" ? "UPDATE operation_controls SET email_submission_admitted = 0 WHERE id = 1;" : "SELECT expire_send_window();"}
+      END;
+    `);
+
+      await runScheduled();
+
+      expect(posts()).toHaveLength(1);
+      expect(submissions()[0]).toMatchObject({
+        status: change === "pause" ? "uncertain" : "attention",
+        send_key: stored.send_key,
+        first_possible_at: stored.first_possible_at,
+        request_json: stored.request_json,
+      });
+      if (change === "pause") expect(submissions()[0]!.acceptance_possible).toBe(1);
+    },
+  );
+
+  it("does not let a late known-unsent response clear another concurrent timeout", async () => {
+    await confirmed();
+    configureResend();
+    await admitEmail(true);
+    resend.next(401);
+    await runScheduled();
+    const stored = submissions()[0]!;
+    vi.setSystemTime(new Date(Date.now() + 60_000));
+    resend.next(401, "timeout");
+    resend.duringNext(async () => {
+      await runScheduled();
+    });
+
+    await runScheduled();
+
+    expect(posts()).toHaveLength(3);
+    expect(submissions()[0]).toMatchObject({
+      status: "uncertain",
+      acceptance_possible: 1,
+      first_possible_at: stored.first_possible_at,
+    });
+    vi.setSystemTime(new Date(Date.parse(stored.first_possible_at!) + WINDOW_MS));
+    await runScheduled();
+    expect(posts()).toHaveLength(3);
+    expect(submissions()[0]!.status).toBe("attention");
+  });
+
+  it("does not shorten a concurrent Retry-After when an older timeout returns", async () => {
+    await confirmed();
+    configureResend();
+    await admitEmail(true);
+    resend.next(401);
+    await runScheduled();
+    vi.setSystemTime(new Date(Date.now() + 60_000));
+    resend.next("timeout", 429);
+    resend.retryAfter("0");
+    resend.retryAfter("1200");
+    resend.duringNext(async () => {
+      await runScheduled();
+    });
+
+    await runScheduled();
+
+    expect(posts()).toHaveLength(3);
+    expect(submissions()[0]).toMatchObject({ status: "uncertain", acceptance_possible: 1 });
+    expect(Date.parse(submissions()[0]!.next_attempt_at!) - Date.now()).toBeGreaterThanOrEqual(
+      1_200_000,
+    );
+    vi.setSystemTime(new Date(Date.now() + 1_199_999));
+    await runScheduled();
+    expect(posts()).toHaveLength(3);
+  });
+
+  it.each([false, true])(
+    "does not retry or look up a submission after the Resend key changes (message ID: %s)",
+    async (hasMessageId) => {
+      const { saved } = await confirmed();
+      configureResend();
+      await admitEmail(true);
+      resend.next("timeout");
+      await runScheduled();
+      if (hasMessageId)
+        db.sqlite
+          .prepare("UPDATE confirmation_submissions SET provider_message_id = 'email_stored'")
+          .run();
+      const fingerprint = [
+        ...new Uint8Array(
+          await crypto.subtle.digest("SHA-256", new TextEncoder().encode(RESEND_TEST_KEY)),
+        ),
+      ]
+        .map((byte) => byte.toString(16).padStart(2, "0"))
+        .join("");
+      expect(
+        db.sqlite.prepare("SELECT credential_fingerprint FROM confirmation_submissions").get(),
+      ).toEqual({ credential_fingerprint: fingerprint });
+      db.env.RESEND_API_KEY = "re_test_other";
+      vi.setSystemTime(new Date(Date.now() + 60_000));
+
+      await runScheduled();
+
+      expect(posts()).toHaveLength(1);
+      expect(resend.requests.filter((request) => request.method === "GET")).toEqual([]);
+      expect(submissions()[0]).toMatchObject({
+        status: "attention",
+        failure_code: "credential_changed",
+        send_key: `confirmation/${submissions()[0]!.intent_id}`,
+      });
+      const response = await db.request(`/reservations/${saved.id}/confirmation`);
+      const text = JSON.stringify(await response.json());
+      expect(text).toContain("credential_changed");
+      expect(text).not.toContain(RESEND_TEST_KEY);
+      expect(text).not.toContain("re_test_other");
+      expect(text).not.toContain(fingerprint);
+    },
+  );
+
+  it("retains legacy submissions without inventing the credential that opened them", async () => {
+    await confirmed();
+    configureResend();
+    await admitEmail(true);
+    resend.next("timeout");
+    await runScheduled();
+    const stored = submissions()[0]!;
+    db.sqlite.exec("UPDATE confirmation_submissions SET credential_fingerprint = NULL");
+    vi.setSystemTime(new Date(Date.now() + 60_000));
+
+    await runScheduled();
+
+    expect(posts()).toHaveLength(1);
+    expect(submissions()[0]).toMatchObject({
+      status: "attention",
+      failure_code: "credential_changed",
+      send_key: stored.send_key,
+      request_json: stored.request_json,
+      first_possible_at: stored.first_possible_at,
+    });
+    expect(
+      db.sqlite.prepare("SELECT credential_fingerprint FROM confirmation_submissions").get(),
+    ).toEqual({ credential_fingerprint: null });
+  });
+
+  it("looks up positive acceptance at the original endpoint without another POST", async () => {
+    await confirmed();
+    configureResend();
+    await admitEmail(true);
+    resend.next("lose");
+    await runScheduled();
+    const stored = submissions()[0]!;
+    db.sqlite.exec("UPDATE confirmation_submissions SET provider_message_id = 'email_1'");
+    db.env.RESEND_API_URL = "http://127.0.0.1:8";
+    vi.setSystemTime(new Date(Date.now() + 60_000));
+
+    await runScheduled();
+
+    expect(posts()).toHaveLength(1);
+    expect(
+      resend.requests.filter((request) => request.method === "GET").map((request) => request.url),
+    ).toEqual([`${stored.endpoint}/email_1`]);
+    expect(submissions()[0]).toMatchObject({ status: "accepted", provider_message_id: "email_1" });
+  });
+
+  it("sends a not-yet-opened intent with the current key", async () => {
+    await confirmed();
+    configureResend();
+    db.env.RESEND_API_KEY = "re_test_other";
+    await admitEmail(true);
+
+    await runScheduled();
+
+    expect(posts()).toHaveLength(1);
+    expect(submissions()[0]!.status).toBe("accepted");
+    expect(submissions()[0]!.failure_code).toBeNull();
+  });
+
+  it.each(["timeout", 401, "invalid"] as const)(
+    "does not let a late %s overwrite a concurrent scheduled acceptance near the window",
+    async (outcome) => {
+      await confirmed();
+      configureResend();
+      await admitEmail(true);
+      resend.next("timeout");
+      await runScheduled();
+      const stored = submissions()[0]!;
+      vi.setSystemTime(new Date(Date.parse(stored.first_possible_at!) + WINDOW_MS - 60_000));
+      resend.duringNext(async () => {
+        await runScheduled();
+        expect(submissions()[0]!.status).toBe("accepted");
+        vi.setSystemTime(new Date(Date.now() + 2 * 60_000));
+      });
+      resend.next(outcome);
+
+      await runScheduled();
+
+      expect(submissions()[0]).toMatchObject({
+        status: "accepted",
+        provider_message_id: "email_1",
+        send_key: stored.send_key,
+        first_possible_at: stored.first_possible_at,
+      });
+      expect(posts()).toHaveLength(3);
+      for (const posted of posts()) {
+        expect(posted.headers.get("idempotency-key")).toBe(stored.send_key);
+        expect(posted.body).toBe(stored.request_json);
+        expect(posted.url).toBe(stored.endpoint);
+      }
+      await runScheduled();
+      expect(posts()).toHaveLength(3);
+    },
+  );
+
+  it("freezes the configured currency in the stored body", async () => {
+    await confirmed();
+    configureResend();
+    await admitEmail(true);
+    db.env.CURRENCY = "USD";
+    resend.next("timeout");
+
+    await runScheduled();
+
+    expect(posts()[0]!.body).toContain("USD 200.00");
+    expect(posts()[0]!.body).not.toContain("S/ 200.00");
+    db.env.CURRENCY = "EUR";
+    vi.setSystemTime(new Date(Date.now() + 60_000));
+
+    await runScheduled();
+
+    expect(posts()[1]!.body).toBe(posts()[0]!.body);
   });
 });
 

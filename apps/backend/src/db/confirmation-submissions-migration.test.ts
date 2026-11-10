@@ -24,6 +24,47 @@ beforeEach(() => {
 afterEach(() => db.close());
 
 describe("confirmation submission migration", () => {
+  it("preserves populated submissions without inventing old credentials or assuming no acceptance", () => {
+    const fingerprintMigration = journal.entries.findIndex((entry) =>
+      migration(entry.tag).includes("ADD `credential_fingerprint`"),
+    );
+    expect(fingerprintMigration).toBeGreaterThan(submissionMigration);
+    for (const entry of journal.entries.slice(0, fingerprintMigration))
+      db.exec(migration(entry.tag));
+    db.exec(`
+      INSERT INTO room_types (id, name, max_occupancy, base_rate_cents, created_at)
+        VALUES ('type', 'Standard', 2, 10000, '2026-10-05');
+      INSERT INTO public_checkouts (id, token_hash, room_type_id, check_in, check_out, adults, children, rate_plan, language, created_at)
+        VALUES ('checkout', 'hash', 'type', '2026-10-20', '2026-10-21', 2, 0, 'flexible', 'en', '2026-10-05');
+      INSERT INTO quotes (id, room_type_id, check_in, check_out, adults, children, nights, terms, created_at, expires_at, checkout_id)
+        VALUES ('quote', 'type', '2026-10-20', '2026-10-21', 2, 0, '[]', '{}', '2026-10-05', '2026-10-05', 'checkout');
+      INSERT INTO checkout_acceptances (id, checkout_id, quote_id, full_name, email, phone, language, accepted_at)
+        VALUES ('accept', 'checkout', 'quote', 'Ana', 'ana@example.com', '+51987654321', 'en', '2026-10-05');
+      INSERT INTO guests (id, full_name, created_at) VALUES ('contact', 'Ana', '2026-10-05');
+      INSERT INTO reservations (id, code, guest_id, check_in, check_out, created_at)
+        VALUES ('reservation', 'ONLINE', 'contact', '2026-10-20', '2026-10-21', '2026-10-05');
+      INSERT INTO payment_attempts (id, quote_id, amount_cents, currency, email, guest, source_id, status, created_at, called_at)
+        VALUES ('attempt', 'quote', 10000, 'PEN', 'ana@example.com', '{}', 'tkn_a', 'saved', '2026-10-05', '2026-10-05');
+      INSERT INTO confirmation_intents (id, reservation_id, attempt_id, checkout_id, acceptance_id, recipient_email, language, created_at)
+        VALUES ('intent', 'reservation', 'attempt', 'checkout', 'accept', 'ana@example.com', 'en', '2026-10-05');
+      INSERT INTO confirmation_submissions (id, intent_id, send_key, endpoint, request_json, recipient_email, language, first_possible_at, status, next_attempt_at, created_at, updated_at)
+        VALUES ('submission', 'intent', 'confirmation/intent', 'https://api.resend.com/emails', '{"text":"saved message"}', 'ana@example.com', 'en', '2026-10-05T15:00:00.000Z', 'uncertain', '2026-10-05T15:01:00.000Z', '2026-10-05T15:00:00.000Z', '2026-10-05T15:00:00.000Z');
+    `);
+    const context =
+      "SELECT id, intent_id, send_key, endpoint, request_json, recipient_email, language, first_possible_at, status, next_attempt_at, created_at, updated_at FROM confirmation_submissions";
+    const before = db.prepare(context).all();
+
+    for (const entry of journal.entries.slice(fingerprintMigration)) db.exec(migration(entry.tag));
+
+    expect(db.prepare(context).all()).toEqual(before);
+    expect(
+      db
+        .prepare("SELECT credential_fingerprint, acceptance_possible FROM confirmation_submissions")
+        .all(),
+    ).toEqual([{ credential_fingerprint: null, acceptance_possible: 1 }]);
+    expect(db.prepare("PRAGMA foreign_key_check").all()).toEqual([]);
+  });
+
   it("leaves email submission off and creates no submission rows for existing records", () => {
     expect(submissionMigration).toBeGreaterThan(0);
     for (const entry of journal.entries.slice(0, submissionMigration))

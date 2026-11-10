@@ -1,8 +1,9 @@
-import { and, asc, eq, inArray, isNull, lte } from "drizzle-orm";
+import { and, asc, eq, gt, inArray, isNull, lte, or, sql } from "drizzle-orm";
 import type { Db } from "./db";
 import {
   confirmationIntents,
   confirmationSubmissions,
+  operationControls,
   reservationAccess,
   roomTypes,
 } from "./db/schema";
@@ -33,12 +34,12 @@ type Submission = typeof confirmationSubmissions.$inferSelect;
 
 export async function sendConfirmationSubmissions(
   db: Db,
-  env: Pick<Env["Bindings"], "RESEND_API_KEY" | "RESEND_API_URL">,
+  env: Pick<Env["Bindings"], "RESEND_API_KEY" | "RESEND_API_URL" | "CURRENCY">,
 ) {
   try {
-    await deliverConfirmations(db, resendForEnv(env));
-  } catch (error) {
-    console.error("confirmation submission", redactAddresses(error));
+    await deliverConfirmations(db, resendForEnv(env), env.CURRENCY);
+  } catch {
+    console.error("confirmation submission scan failed");
   }
 }
 
@@ -59,7 +60,7 @@ export async function confirmationSubmissionView(db: Db, intentId: string) {
   };
 }
 
-async function deliverConfirmations(db: Db, resend: Resend) {
+async function deliverConfirmations(db: Db, resend: Resend, currency: string) {
   if (!(await readEmailSubmissionAdmission(db)).admitted || !resend.configured) return;
   const now = new Date();
   const due = await dueSubmissions(db, now.toISOString(), ATTEMPTS_PER_TICK);
@@ -70,14 +71,15 @@ async function deliverConfirmations(db: Db, resend: Resend) {
     ...fresh.map((row) => row.reservationId),
   ]) {
     try {
+      if (!(await readEmailSubmissionAdmission(db)).admitted) break;
       const dueRow = due.find((row) => row.reservationId === reservationId);
-      if (dueRow) await retrySubmission(db, resend, dueRow.submission, now);
+      if (dueRow) await retrySubmission(db, resend, dueRow.submission, new Date());
       else {
         const intent = fresh.find((row) => row.reservationId === reservationId);
-        if (intent) await openSubmission(db, resend, intent, now);
+        if (intent) await openSubmission(db, resend, intent, new Date(), currency);
       }
-    } catch (error) {
-      console.error("confirmation submission", reservationId, redactAddresses(error));
+    } catch {
+      console.error("confirmation submission failed", reservationId);
     }
   }
 }
@@ -92,8 +94,17 @@ async function dueSubmissions(db: Db, now: string, limit: number) {
     .innerJoin(confirmationIntents, eq(confirmationIntents.id, confirmationSubmissions.intentId))
     .where(
       and(
-        eq(confirmationSubmissions.status, "uncertain"),
-        lte(confirmationSubmissions.nextAttemptAt, now),
+        inArray(confirmationSubmissions.status, ["uncertain", "unsent"]),
+        or(
+          lte(confirmationSubmissions.nextAttemptAt, now),
+          and(
+            gt(confirmationSubmissions.acceptancePossible, 0),
+            lte(
+              confirmationSubmissions.firstPossibleAt,
+              new Date(Date.parse(now) - SUBMISSION_WINDOW_MS).toISOString(),
+            ),
+          ),
+        ),
       ),
     )
     .orderBy(asc(confirmationSubmissions.nextAttemptAt), asc(confirmationSubmissions.createdAt))
@@ -113,14 +124,27 @@ async function freshIntents(db: Db, limit: number) {
 
 async function retrySubmission(db: Db, resend: Resend, row: Submission, now: Date) {
   if (
-    !row.firstPossibleAt ||
-    now.getTime() >= Date.parse(row.firstPossibleAt) + SUBMISSION_WINDOW_MS
+    !row.credentialFingerprint ||
+    row.credentialFingerprint !== (await resend.credentialFingerprint())
+  ) {
+    await markAttention(db, row.id, now, "credential_changed");
+    return;
+  }
+  if (
+    row.acceptancePossible > 0 &&
+    (!row.firstPossibleAt ||
+      now.getTime() >= Date.parse(row.firstPossibleAt) + SUBMISSION_WINDOW_MS)
   ) {
     await markAttention(db, row.id, now);
     return;
   }
   if (row.providerMessageId) {
-    const found = await resend.getEmail(row.providerMessageId);
+    if (!(await readEmailSubmissionAdmission(db)).admitted) return;
+    if (!row.endpoint) {
+      await markAttention(db, row.id, now);
+      return;
+    }
+    const found = await resend.getEmail(row.endpoint, row.providerMessageId);
     if (found) await markAccepted(db, row.id, found.id, now);
     else
       await scheduleRetry(
@@ -135,19 +159,58 @@ async function retrySubmission(db: Db, resend: Resend, row: Submission, now: Dat
     await markAttention(db, row.id, now);
     return;
   }
+  await postSubmission(db, resend, row);
+}
+
+async function postSubmission(db: Db, resend: Resend, row: Submission) {
+  if (!(await readEmailSubmissionAdmission(db)).admitted) return;
+  const now = new Date();
+  const [started] = await db
+    .update(confirmationSubmissions)
+    .set({
+      acceptancePossible: sql`${confirmationSubmissions.acceptancePossible} + 1`,
+      firstPossibleAt: sql`coalesce(${confirmationSubmissions.firstPossibleAt}, ${now.toISOString()})`,
+      status: "uncertain",
+    })
+    .where(
+      and(
+        eq(confirmationSubmissions.id, row.id),
+        inArray(confirmationSubmissions.status, ["uncertain", "unsent"]),
+        sql`EXISTS (SELECT 1 FROM ${operationControls} WHERE ${operationControls.id} = 1 AND ${operationControls.emailSubmissionAdmitted} = 1)`,
+        sql`(${confirmationSubmissions.acceptancePossible} = 0 OR ${confirmationSubmissions.firstPossibleAt} > ${new Date(now.getTime() - SUBMISSION_WINDOW_MS).toISOString()})`,
+      ),
+    )
+    .returning();
+  if (!started) return;
+  if (!(await readEmailSubmissionAdmission(db)).admitted) {
+    await scheduleRetry(
+      db,
+      started,
+      { kind: "unsent", failureCode: null, minimumBackoffMs: 0 },
+      new Date(),
+    );
+    return;
+  }
+  if (
+    started.acceptancePossible > 1 &&
+    Date.now() >= Date.parse(started.firstPossibleAt!) + SUBMISSION_WINDOW_MS
+  ) {
+    await markAttention(db, started.id, new Date());
+    return;
+  }
   await applyResult(
     db,
-    row,
+    started,
     await resend.send({
-      endpoint: row.endpoint,
-      idempotencyKey: row.sendKey,
-      body: row.requestJson,
+      endpoint: started.endpoint!,
+      idempotencyKey: started.sendKey!,
+      body: started.requestJson!,
     }),
-    now,
+    new Date(),
   );
 }
 
-async function openSubmission(db: Db, resend: Resend, intent: Intent, now: Date) {
+async function openSubmission(db: Db, resend: Resend, intent: Intent, now: Date, currency: string) {
   const [access] = await db
     .select()
     .from(reservationAccess)
@@ -167,42 +230,42 @@ async function openSubmission(db: Db, resend: Resend, intent: Intent, now: Date)
     intentId: intent.id,
     sendKey: `confirmation/${intent.id}`,
     endpoint: resend.emailsUrl,
-    requestJson: JSON.stringify(await confirmationRequest(db, state, intent, access.token)),
+    credentialFingerprint: await resend.credentialFingerprint(),
+    acceptancePossible: 0,
+    requestJson: JSON.stringify(
+      await confirmationRequest(db, state, intent, access.token, currency),
+    ),
     recipientEmail: intent.recipientEmail,
     language: intent.language,
-    firstPossibleAt: nowIso,
-    status: "uncertain",
+    firstPossibleAt: null,
+    status: "unsent",
+    providerMessageId: null,
+    failureCode: null,
     nextAttemptAt: nowIso,
     createdAt: nowIso,
     updatedAt: nowIso,
   };
   try {
+    if (!(await readEmailSubmissionAdmission(db)).admitted) return;
     await db.insert(confirmationSubmissions).values(row);
   } catch (error) {
     if (isUnique(error)) return;
     throw error;
   }
-  await applyResult(
-    db,
-    row,
-    await resend.send({
-      endpoint: row.endpoint,
-      idempotencyKey: row.sendKey,
-      body: row.requestJson,
-    }),
-    new Date(),
-  );
+  await postSubmission(db, resend, row);
 }
 
 async function insertUnsent(db: Db, intent: Intent, now: Date) {
   const nowIso = now.toISOString();
   try {
+    if (!(await readEmailSubmissionAdmission(db)).admitted) return;
     await db.insert(confirmationSubmissions).values({
       id: crypto.randomUUID(),
       intentId: intent.id,
       recipientEmail: intent.recipientEmail,
       language: intent.language,
       status: "unsent",
+      acceptancePossible: 0,
       failureCode: "not_confirmed",
       createdAt: nowIso,
       updatedAt: nowIso,
@@ -213,13 +276,20 @@ async function insertUnsent(db: Db, intent: Intent, now: Date) {
   }
 }
 
-async function confirmationRequest(db: Db, state: State, intent: Intent, token: string) {
+async function confirmationRequest(
+  db: Db,
+  state: State,
+  intent: Intent,
+  token: string,
+  currency: string,
+) {
   const language = intent.language === "en" ? "en" : "es";
   const bill = reservationBill(state);
   const terms = acceptedTerms(state.reservation);
   const outstandingCents = Math.max(0, bill.balanceCents);
   const link = summaryLink(language, token);
   const facts = messageFacts({
+    currency,
     language,
     code: state.reservation.code,
     checkIn: state.reservation.checkIn,
@@ -253,6 +323,7 @@ async function confirmationRequest(db: Db, state: State, intent: Intent, token: 
 }
 
 function messageFacts(input: {
+  currency: string;
   language: "es" | "en";
   code: string;
   checkIn: string;
@@ -265,7 +336,8 @@ function messageFacts(input: {
   paidCents: number;
   outstandingCents: number;
 }) {
-  const charge = soles(input.chargeCents);
+  const amount = (cents: number) => money(cents, input.currency);
+  const charge = amount(input.chargeCents);
   const cancellation =
     input.freeUntil === null
       ? input.language === "en"
@@ -287,13 +359,13 @@ function messageFacts(input: {
     input.language === "en" ? `Room: ${input.room}` : `Habitación: ${input.room}`,
     `Plan: ${input.plan}`,
     cancellation,
-    `Total: ${soles(input.totalCents)}`,
+    `Total: ${amount(input.totalCents)}`,
     input.language === "en"
-      ? `Paid: ${soles(input.paidCents)}`
-      : `Pagado: ${soles(input.paidCents)}`,
+      ? `Paid: ${amount(input.paidCents)}`
+      : `Pagado: ${amount(input.paidCents)}`,
     input.language === "en"
-      ? `Outstanding balance: ${soles(input.outstandingCents)}`
-      : `Saldo pendiente: ${soles(input.outstandingCents)}`,
+      ? `Outstanding balance: ${amount(input.outstandingCents)}`
+      : `Saldo pendiente: ${amount(input.outstandingCents)}`,
     ...(paidInFull ? [paidInFull] : []),
     input.language === "en" ? `Phone: ${PHONE}` : `Teléfono: ${PHONE}`,
     input.language === "en" ? `Email: ${REPLY_TO}` : `Correo: ${REPLY_TO}`,
@@ -319,10 +391,10 @@ async function roomTypeNames(db: Db, state: State) {
     .join(", ");
 }
 
-function soles(cents: number) {
+function money(cents: number, currency: string) {
   const negative = cents < 0;
   const absolute = Math.abs(cents);
-  return `${negative ? "-" : ""}S/ ${Math.floor(absolute / 100)}.${String(absolute % 100).padStart(2, "0")}`;
+  return `${negative ? "-" : ""}${currency} ${Math.floor(absolute / 100)}.${String(absolute % 100).padStart(2, "0")}`;
 }
 
 function escapeHtml(value: string) {
@@ -347,7 +419,12 @@ async function applyResult(
     await db
       .update(confirmationSubmissions)
       .set({ status: "attention", failureCode: result.failureCode, updatedAt: now.toISOString() })
-      .where(eq(confirmationSubmissions.id, row.id));
+      .where(
+        and(
+          eq(confirmationSubmissions.id, row.id),
+          inArray(confirmationSubmissions.status, ["uncertain", "unsent"]),
+        ),
+      );
     return;
   }
   await scheduleRetry(db, row, result, now);
@@ -356,7 +433,7 @@ async function applyResult(
 async function scheduleRetry(
   db: Db,
   row: Pick<Submission, "id" | "nextAttemptAt" | "updatedAt">,
-  result: Extract<ResendSendResult, { kind: "uncertain" }>,
+  result: Extract<ResendSendResult, { kind: "uncertain" | "unsent" }>,
   now: Date,
 ) {
   const minimum = Math.max(
@@ -366,18 +443,29 @@ async function scheduleRetry(
   await db
     .update(confirmationSubmissions)
     .set({
-      status: "uncertain",
+      acceptancePossible:
+        result.kind === "unsent"
+          ? sql`max(0, ${confirmationSubmissions.acceptancePossible} - 1)`
+          : undefined,
+      status:
+        result.kind === "unsent"
+          ? sql`CASE WHEN ${confirmationSubmissions.acceptancePossible} <= 1 THEN 'unsent' ELSE 'uncertain' END`
+          : "uncertain",
       failureCode: result.failureCode,
-      nextAttemptAt: new Date(now.getTime() + nextDelayMs(row, minimum)).toISOString(),
+      nextAttemptAt: sql`max(coalesce(${confirmationSubmissions.nextAttemptAt}, ${now.toISOString()}), ${new Date(now.getTime() + nextDelayMs(row, minimum)).toISOString()})`,
       updatedAt: now.toISOString(),
     })
-    .where(eq(confirmationSubmissions.id, row.id));
+    .where(
+      and(
+        eq(confirmationSubmissions.id, row.id),
+        inArray(confirmationSubmissions.status, ["uncertain", "unsent"]),
+      ),
+    );
 }
 
 function nextDelayMs(row: Pick<Submission, "nextAttemptAt" | "updatedAt">, minimumMs: number) {
   const last = row.nextAttemptAt ? Date.parse(row.nextAttemptAt) - Date.parse(row.updatedAt) : 0;
-  const index = BACKOFF_MS.findIndex((step) => Math.abs(step - last) < 1000);
-  const next = index < 0 ? BACKOFF_MS[0]! : BACKOFF_MS[Math.min(index + 1, BACKOFF_MS.length - 1)]!;
+  const next = BACKOFF_MS.find((step) => step > last + 1000) ?? BACKOFF_MS[BACKOFF_MS.length - 1]!;
   return Math.max(next, minimumMs);
 }
 
@@ -391,14 +479,25 @@ async function markAccepted(db: Db, id: string, providerMessageId: string, now: 
       nextAttemptAt: null,
       updatedAt: now.toISOString(),
     })
-    .where(eq(confirmationSubmissions.id, id));
+    .where(
+      and(eq(confirmationSubmissions.id, id), sql`${confirmationSubmissions.status} != 'accepted'`),
+    );
 }
 
-async function markAttention(db: Db, id: string, now: Date) {
+async function markAttention(db: Db, id: string, now: Date, failureCode?: string) {
   await db
     .update(confirmationSubmissions)
-    .set({ status: "attention", updatedAt: now.toISOString() })
-    .where(eq(confirmationSubmissions.id, id));
+    .set({
+      status: "attention",
+      updatedAt: now.toISOString(),
+      ...(failureCode ? { failureCode } : {}),
+    })
+    .where(
+      and(
+        eq(confirmationSubmissions.id, id),
+        inArray(confirmationSubmissions.status, ["uncertain", "unsent"]),
+      ),
+    );
 }
 
 function isUnique(error: unknown) {
@@ -407,11 +506,4 @@ function isUnique(error: unknown) {
     cause instanceof Error ? cause.message : ""
   }`;
   return text.includes("UNIQUE");
-}
-
-function redactAddresses(error: unknown): unknown {
-  if (!(error instanceof Error)) return error;
-  return new Error(error.message.replace(/[\w.+-]+@[\w.-]+/g, "[redacted]"), {
-    cause: error.cause === undefined ? undefined : redactAddresses(error.cause),
-  });
 }

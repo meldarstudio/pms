@@ -1,0 +1,1 @@
+ALTER TABLE `confirmation_submissions` ADD `credential_fingerprint` text;
