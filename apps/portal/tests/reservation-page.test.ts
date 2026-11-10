@@ -1780,7 +1780,7 @@ it("retries a failed cancellation preview and keeps the reason after a failed sa
     "A failed cancellation save must allow retrying",
   );
   assert.equal(field("reason").value, reason);
-  assert.match(text(window.document.body), /No se pudieron guardar los cambios/);
+  await page.until(() => page.notifications().includes("No se pudieron guardar los cambios"));
   assert.doesNotMatch(text(window.document.body), /Temporary cancellation save failure/);
   assert.ok(log.mock.calls.length >= 2);
   assert.equal(saved.status, "confirmed");
