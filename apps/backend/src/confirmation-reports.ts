@@ -8,6 +8,13 @@ import { authenticateResendReport, decodeResendReport } from "./resend-reports";
 
 type Submission = typeof confirmationSubmissions.$inferSelect;
 
+const conflictAttention = {
+  reportConflict: true,
+  status: sql`CASE WHEN status = 'accepted' THEN status ELSE 'attention' END`,
+  failureCode: sql`CASE WHEN status = 'accepted' THEN failure_code ELSE coalesce(failure_code, 'report_conflict') END`,
+  nextAttemptAt: null,
+};
+
 export async function receiveConfirmationReport(c: Context<Env>) {
   c.header("Cache-Control", "no-store");
   const body = new Uint8Array(await c.req.raw.arrayBuffer());
@@ -54,7 +61,7 @@ export async function receiveConfirmationReport(c: Context<Env>) {
         ),
       db
         .update(confirmationSubmissions)
-        .set({ reportConflict: true })
+        .set(conflictAttention)
         .where(
           sql`id IN (SELECT submission_id FROM confirmation_reports WHERE context = ${context} AND event_id = ${eventId} AND json_extract(details, '$.eventIdConflict') = 1)`,
         ),
@@ -105,7 +112,7 @@ function associationStatements(db: Db, context: string, providerMessageId: strin
       ))
       AND NOT EXISTS (SELECT 1 FROM confirmation_submissions other WHERE other.id != s.id AND other.endpoint = s.endpoint AND other.provider_message_id = confirmation_reports.provider_message_id)
     )`),
-    db.update(confirmationSubmissions).set({ reportConflict: true }).where(sql`id IN (
+    db.update(confirmationSubmissions).set(conflictAttention).where(sql`id IN (
       SELECT submission_id FROM confirmation_reports WHERE ${scope} AND (conflict = 1 OR json_extract(details, '$.eventIdConflict') = 1)
     )`),
     db

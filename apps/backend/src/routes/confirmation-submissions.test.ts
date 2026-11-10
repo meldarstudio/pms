@@ -802,6 +802,26 @@ describe("authenticated delivery reports", () => {
     await runScheduled();
     expect(posts()).toHaveLength(1);
   });
+
+  it("stops automatic retries on a signed correlation conflict without claiming acceptance or forgetting uncertainty", async () => {
+    const { saved } = await confirmed();
+    configureResend();
+    db.env.RESEND_WEBHOOK_SECRET = REPORT_SECRET;
+    await admitEmail(true);
+    resend.next("lose");
+    await runScheduled();
+    expect(
+      (await callback(reportBody("email.delivered", { to: ["other@example.com"] }))).status,
+    ).toBe(200);
+    vi.setSystemTime(Date.now() + 60_000);
+    await runScheduled();
+    expect(posts()).toHaveLength(1);
+    expect((await inspection(saved.id)).submission).toMatchObject({
+      status: "attention",
+      providerMessageId: null,
+      delivery: { accepted: false, delivered: false, uncertain: true, conflict: true },
+    });
+  });
 });
 
 async function reservationFor(checkoutToken: string) {
