@@ -954,10 +954,7 @@ it("marks a room from its calendar actions at once, undoes it, and restores a re
       })),
     };
   });
-  const { ToastProvider } = (await browser.server.ssrLoadModule(
-    "/src/components/ui/toast.tsx",
-  )) as typeof import("../src/components/ui/toast.tsx");
-  await render(React.createElement(ToastProvider, null, React.createElement(CalendarSession)));
+  await render(await browser.withToasts(React.createElement(CalendarSession)));
   await until(() => !!adaBar(), "The calendar must load");
   assert.ok(room2Cell().includes("Sucia"), "A dirty room must show its badge");
 
@@ -1214,10 +1211,7 @@ it("keeps the mobile picker open after an assignment conflict and offers another
         ]
       : undefined,
   );
-  const { ToastProvider } = (await browser.server.ssrLoadModule(
-    "/src/components/ui/toast.tsx",
-  )) as typeof import("../src/components/ui/toast.tsx");
-  await render(React.createElement(ToastProvider, null, React.createElement(CalendarSession)));
+  await render(await browser.withToasts(React.createElement(CalendarSession)));
   await until(() => !!adaBar(), "Calendar must load");
   await openMobileUnassigned(1);
   const mary = [...window.document.querySelectorAll<HTMLElement>('[role="dialog"] button')].find(
@@ -2019,23 +2013,22 @@ function limpiezaRoom(id: string, number: string, housekeepingStatus: "dirty" | 
 
 async function renderLimpieza(initial: "to-clean" | "all", { desktop = false } = {}) {
   if (!desktop) page.mobile();
-  const { ToastProvider } = (await browser.server.ssrLoadModule(
-    "/src/components/ui/toast.tsx",
-  )) as typeof import("../src/components/ui/toast.tsx");
   function Limpieza() {
     const [view, setView] = React.useState(initial);
     return React.createElement(housekeeping.Housekeeping, { view, onViewChange: setView });
   }
-  await render(React.createElement(ToastProvider, null, React.createElement(Limpieza)));
+  await render(await browser.withToasts(React.createElement(Limpieza)));
 }
 
 const limpiezaRows = () =>
-  Array.from(container.querySelectorAll("li")).map(
-    (row) =>
-      `${row.textContent.slice(0, 3)}:${
-        row.querySelector('[aria-pressed="true"]')?.textContent === "Sucia" ? "dirty" : "clean"
-      }`,
-  );
+  Array.from(container.querySelectorAll("li"))
+    .filter((row) => !row.closest('[aria-label^="Notificaciones"]'))
+    .map(
+      (row) =>
+        `${row.textContent.slice(0, 3)}:${
+          row.querySelector('[aria-pressed="true"]')?.textContent === "Sucia" ? "dirty" : "clean"
+        }`,
+    );
 
 it("keeps Todas in room order after a mark and restores a status the server rejects", async () => {
   const statuses: Record<string, "dirty" | "clean"> = { "101": "clean", "102": "dirty" };

@@ -25,7 +25,8 @@ import {
   type GuestValues,
   type PaymentValues,
 } from "@/lib/reservation-form-schemas";
-import { toast, toastError } from "@/lib/toast";
+import { toast } from "sonner";
+import { toastError } from "@/lib/toast";
 import { phoneDraft } from "@/lib/phone";
 import { useCoupon } from "@/lib/queries";
 import { formatMoney, parseMajorToCents } from "@/lib/money";
@@ -94,10 +95,7 @@ export function GuestEntryForm({
       const next = guest ? guestDefaults(payload) : { ...defaults, id: crypto.randomUUID() };
       setDefaults(next);
       form.reset(next);
-      toast.add({
-        title: guest ? "Huésped actualizado" : "Huésped agregado",
-        type: "success",
-      });
+      toast.success(guest ? "Huésped actualizado" : "Huésped agregado");
       onDone?.();
     },
   });

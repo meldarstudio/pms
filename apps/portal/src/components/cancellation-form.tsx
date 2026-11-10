@@ -21,7 +21,7 @@ import {
 } from "@/lib/reservation-commands";
 import { submitForm, useReservationForm } from "@/lib/reservation-form";
 import { cancellationOutcomeSchema } from "@/lib/reservation-form-schemas";
-import { toast } from "@/lib/toast";
+import { toast } from "sonner";
 import { usePropertyCalendar } from "@/lib/use-property-calendar";
 import { useWaiverValidation } from "@/lib/use-waiver-validation";
 
@@ -98,17 +98,16 @@ export function CancellationForm({
       if (disabled || !ready) return;
       const result = await onSave(actions(value), retryKey);
       if (result.status === "failed" && result.code === earlierAttemptSaved) {
-        toast.add({ title: "Los cambios ya se habían guardado", type: "success" });
+        toast.success("Los cambios ya se habían guardado");
         onDone();
         return;
       }
       if (result.status === "saved") {
         const title = outcome === "cancelled" ? "Reserva cancelada" : "Marcada como no presentada";
         const due = result.reservation.refundDueCents;
-        toast.add({
-          title: due > 0 ? `${title} · Por devolver ${formatMoney(due, detail.currency)}` : title,
-          type: "success",
-        });
+        toast.success(
+          due > 0 ? `${title} · Por devolver ${formatMoney(due, detail.currency)}` : title,
+        );
         onDone();
       } else if (result.status === "failed") outcomeSaveError(result);
       else {

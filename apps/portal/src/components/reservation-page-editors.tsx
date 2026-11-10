@@ -55,7 +55,8 @@ import { formatMajor, formatMoney } from "@/lib/money";
 import { reservationStatusLabel } from "@/lib/reservation-list";
 import { usePropertyCalendar } from "@/lib/use-property-calendar";
 import { translateError } from "@/lib/errors";
-import { toast, toastError } from "@/lib/toast";
+import { toast } from "sonner";
+import { toastError } from "@/lib/toast";
 
 export type ReservationEditorTarget =
   | { kind: "stay" }
@@ -211,7 +212,7 @@ export function ReservationPageEditor({
         onSaved={onSaved ?? finish}
         onReady={async (title, actions) => {
           const result = await send(actions);
-          if (result.status === "saved") toast.add({ title, type: "success" });
+          if (result.status === "saved") toast.success(title);
           return result;
         }}
       />
@@ -492,7 +493,7 @@ function ReservationActionForm({
       }
       const result = await onSave(actions);
       if (result.status === "saved") {
-        toast.add({ title: "Cambios guardados", type: "success" });
+        toast.success("Cambios guardados");
         onSaved(result.reservation);
       } else if (result.status === "failed") toastError("No se pudo guardar", result.message);
       else if (target.kind === "contact") {

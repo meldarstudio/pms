@@ -28,7 +28,8 @@ import {
   setServerErrors,
 } from "@/lib/form-errors";
 import { roomEditSchema, roomFieldErrors, roomPatch } from "@/lib/room-form";
-import { toast, toastError } from "@/lib/toast";
+import { toast } from "sonner";
+import { toastError } from "@/lib/toast";
 
 export type RoomEditTarget = {
   roomId: string;
@@ -66,7 +67,7 @@ export function RoomEditDialog({
             target={target}
             onSave={async (input) => {
               await save.mutateAsync(input);
-              toast.add({ title: "Habitación actualizada", type: "success" });
+              toast.success("Habitación actualizada");
               close();
             }}
           />

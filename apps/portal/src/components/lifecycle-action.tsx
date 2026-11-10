@@ -12,7 +12,8 @@ import { useDirtyRoomCheckIn } from "@/components/dirty-room-check-in";
 import type { ReservationDetail } from "@/lib/api";
 import { formatMoney } from "@/lib/money";
 import { unsavedMessage, useReservationCommands } from "@/lib/reservation-commands";
-import { toast, toastError } from "@/lib/toast";
+import { toast } from "sonner";
+import { toastError } from "@/lib/toast";
 import { usePropertyCalendar } from "@/lib/use-property-calendar";
 
 export type LifecycleStep = {
@@ -21,7 +22,34 @@ export type LifecycleStep = {
   due: boolean;
 };
 
-const undoTimeout = 8000;
+type UndoEntry = {
+  id: string;
+  status: ReservationDetail["status"];
+  title: string;
+  undo: () => void;
+  forget: () => void;
+};
+
+function showUndo(entry: UndoEntry, disabled: boolean) {
+  toast.success(entry.title, {
+    id: entry.id,
+    onDismiss: entry.forget,
+    onAutoClose: entry.forget,
+    action: (
+      <button
+        type="button"
+        data-button
+        data-action
+        data-disabled={disabled}
+        disabled={disabled}
+        className="disabled:opacity-50"
+        onClick={entry.undo}
+      >
+        Deshacer
+      </button>
+    ),
+  });
+}
 
 export function lifecycleStep(detail: ReservationDetail, today: string): LifecycleStep | null {
   if (detail.status === "confirmed")
@@ -44,25 +72,18 @@ export function useLifecycleAction(detail: ReservationDetail, blocked = false) {
   useLayoutEffect(() => {
     current.current = { status: detail.status, eligible };
   }, [detail.status, eligible]);
-  const undo = useRef<{ id: string; status: ReservationDetail["status"] } | null>(null);
+  const undo = useRef<UndoEntry | null>(null);
+  function dismissUndo() {
+    if (!undo.current) return;
+    const { id } = undo.current;
+    undo.current = null;
+    toast.dismiss(id);
+  }
   useEffect(() => {
-    if (undo.current && undo.current.status !== detail.status) {
-      const { id } = undo.current;
-      undo.current = null;
-      toast.close(id);
-    } else if (undo.current) {
-      toast.update(undo.current.id, (previous) => ({
-        actionProps: { ...previous.actionProps, disabled: !eligible },
-      }));
-    }
+    if (undo.current && undo.current.status !== detail.status) dismissUndo();
+    else if (undo.current) showUndo(undo.current, !eligible);
   }, [detail.status, eligible]);
-  useEffect(
-    () => () => {
-      if (undo.current) toast.close(undo.current.id);
-      undo.current = null;
-    },
-    [],
-  );
+  useEffect(() => dismissUndo, []);
 
   function confirmBalance() {
     if (detail.balanceCents <= 0) return Promise.resolve(true);
@@ -93,38 +114,30 @@ export function useLifecycleAction(detail: ReservationDetail, blocked = false) {
     if (result.status !== "saved")
       return toastError("No se pudo cambiar el estado", unsavedMessage(result));
     const checkIn = step.status === "checked_in";
-    if (undo.current) toast.close(undo.current.id);
-    const entry = { id: "", status: step.status };
-    entry.id = toast.add({
+    dismissUndo();
+    const entry: UndoEntry = {
+      id: crypto.randomUUID(),
+      status: step.status,
       title: checkIn ? "Check-in registrado" : "Check-out registrado",
-      type: "success",
-      timeout: undoTimeout,
-      onClose: () => {
+      undo: async () => {
+        if (
+          undo.current !== entry ||
+          current.current.status !== entry.status ||
+          !current.current.eligible
+        )
+          return;
+        dismissUndo();
+        const undone = await send([{ type: "set-status", status: previous }]);
+        if (undone.status === "saved")
+          toast.success(checkIn ? "Check-in deshecho" : "Check-out deshecho");
+        else toastError("No se pudo deshacer", unsavedMessage(undone));
+      },
+      forget: () => {
         if (undo.current === entry) undo.current = null;
       },
-      actionProps: {
-        children: "Deshacer",
-        disabled: !current.current.eligible,
-        onClick: async () => {
-          if (
-            undo.current !== entry ||
-            current.current.status !== entry.status ||
-            !current.current.eligible
-          )
-            return;
-          undo.current = null;
-          toast.close(entry.id);
-          const undone = await send([{ type: "set-status", status: previous }]);
-          if (undone.status === "saved")
-            toast.add({
-              title: checkIn ? "Check-in deshecho" : "Check-out deshecho",
-              type: "success",
-            });
-          else toastError("No se pudo deshacer", unsavedMessage(undone));
-        },
-      },
-    });
+    };
     undo.current = entry;
+    showUndo(entry, !current.current.eligible);
   }
 
   const dialogs = (

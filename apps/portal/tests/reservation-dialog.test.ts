@@ -2712,10 +2712,7 @@ it("offers a retry and a way out when the summary cannot load", async () => {
 });
 
 async function openSummaryWithToasts(handlers: Parameters<typeof summaryDialog>[0] = {}) {
-  const { ToastProvider } = (await browser.server.ssrLoadModule(
-    "/src/components/ui/toast.tsx",
-  )) as typeof import("../src/components/ui/toast.tsx");
-  await render(React.createElement(ToastProvider, null, summaryDialog(handlers)));
+  await render(await browser.withToasts(summaryDialog(handlers)));
   await until(() => !!summary()?.textContent.includes("#TEST0001"), "The summary must load");
 }
 
@@ -2788,12 +2785,40 @@ it.each([
     await React.act(async () => button(action).click());
     await until(() => bodyText().includes(done), "The success toast must appear");
     assert.notEqual(saved.status, from);
+    await until(() => !button("Deshacer").disabled);
     await React.act(async () => button("Deshacer").click());
     await until(() => bodyText().includes(outcome), "Undoing must report its outcome");
     assert.deepEqual(writes[1].actions, [{ type: "set-status", status: from }]);
     assert.equal(writes.length, 2);
   },
 );
+
+it("closes the undo notice when the reservation summary unmounts", async () => {
+  let saved = detail();
+  const writes: WorkflowCommand[] = [];
+  mockApi(
+    async (path, command) => {
+      if (path.endsWith("/preview")) return previewResponse(saved);
+      writes.push(command);
+      for (const action of command.actions)
+        if (action.type === "set-status") saved = { ...saved, status: action.status };
+      return Response.json(saved);
+    },
+    { reservation: () => saved },
+  );
+  await openSummaryWithToasts();
+  await React.act(async () => button("Hacer check-in").click());
+  await until(() => page.notifications().includes("Check-in registrado"));
+  const undo = button("Deshacer");
+  await render(await browser.withToasts(null));
+  await until(
+    () => !page.notifications().includes("Check-in registrado"),
+    "Closing the reservation must retire its undo",
+  );
+  await React.act(async () => undo.click());
+  assert.equal(writes.length, 1);
+  assert.equal(saved.status, "checked_in");
+});
 
 it("warns about a dirty room before checking in the whole reservation from the phone drawer", async () => {
   page.mobile();
