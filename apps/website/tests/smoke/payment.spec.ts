@@ -454,7 +454,9 @@ test("bank verification of the same card confirms the reservation once", async (
     0,
   );
   expect(page.url()).not.toContain("tkn_");
-  expect(continuations).toEqual([bankParameters]);
+  expect(continuations).toEqual([
+    { ...bankParameters, attemptId: expect.stringMatching(/^[0-9a-f-]{36}$/i) },
+  ]);
   expect(payments).toMatchObject([{ sourceId, deviceFingerprint: "device-test" }]);
   expect(await serverPayment(page, request)).toMatchObject({ state: "confirmed" });
   expect(await page.evaluate(() => window.culqi3DS?.authentications)).toEqual([sourceId]);
@@ -503,4 +505,116 @@ test("an unfinished bank window stays pending and can be opened again without pa
   expect(payments).toHaveLength(1);
   expect(await page.evaluate(() => window.culqi3DS?.authentications)).toEqual([sourceId, sourceId]);
   expect(await serverPayment(page, request)).toMatchObject({ state: "authentication_required" });
+});
+
+test("an existing payment is shown without replacing the card the server charged", async ({
+  page,
+}) => {
+  const first = `tkn_test_3ds_${crypto.randomUUID()}`;
+  const second = `tkn_test_${crypto.randomUUID()}`;
+  await acceptTerms(page, "flexible", payerEmail());
+  await page.evaluate((sourceId) => {
+    window.culqiCards = [sourceId];
+    window.culqi3DS = {
+      devices: [],
+      authentications: [],
+      parameters: null,
+      error: "Ha fallado la autenticación",
+    };
+  }, first);
+  await payButton(page, "100.00").click();
+  await expect(
+    page.getByRole("heading", { name: "Su banco necesita verificar este pago" }),
+  ).toBeVisible();
+
+  await page.route(`${LOCAL_API_URL}/public/checkout/payment`, (route) => {
+    if (!route.request().url().endsWith("/public/checkout/payment")) return route.fallback();
+    return route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({ payment: null }),
+    });
+  });
+  await page.reload();
+  await expect(payButton(page, "100.00")).toBeVisible();
+  expect(
+    await page.evaluate(() => sessionStorage.getItem("hm.reservation.card-sources")),
+  ).toContain(first);
+
+  await page.evaluate((sourceId) => {
+    window.culqiCards = [sourceId];
+  }, second);
+  await payButton(page, "100.00").click();
+
+  await expect(
+    page.getByRole("heading", { name: "Su banco necesita verificar este pago" }),
+  ).toBeVisible();
+  const stored = await page.evaluate(() => sessionStorage.getItem("hm.reservation.card-sources"));
+  expect(stored).toContain(first);
+  expect(stored).not.toContain(second);
+});
+
+test("a lost payment keeps the stored card, and bank verification can open after processing", async ({
+  page,
+  request,
+}) => {
+  const sourceId = `tkn_test_3ds_${crypto.randomUUID()}`;
+  await acceptTerms(page, "flexible", payerEmail());
+  await page.evaluate((card) => {
+    window.culqiCards = [card];
+    window.culqi3DS = {
+      devices: [],
+      authentications: [],
+      parameters: null,
+      error: "Ha fallado la autenticación",
+    };
+  }, sourceId);
+  await payButton(page, "100.00").click();
+  await expect(
+    page.getByRole("heading", { name: "Su banco necesita verificar este pago" }),
+  ).toBeVisible();
+  const attemptId = ((await serverPayment(page, request)) as { attemptId?: string } | null)
+    ?.attemptId;
+  expect(attemptId).toMatch(/^[0-9a-f-]{36}$/i);
+
+  const status: { payment: Record<string, unknown> | null } = { payment: null };
+  await page.route(`${LOCAL_API_URL}/public/checkout/payment`, (route) => {
+    if (!route.request().url().endsWith("/public/checkout/payment")) return route.fallback();
+    return route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify(status),
+    });
+  });
+  await page.route(`${LOCAL_API_URL}/public/checkout/payments`, (route) => route.abort());
+  await page.reload();
+  await payButton(page, "100.00").click();
+  await expect(
+    page.getByRole("heading", { name: "Pago enviado, consultando su estado" }),
+  ).toBeVisible();
+  expect(
+    await page.evaluate(() => sessionStorage.getItem("hm.reservation.card-sources")),
+  ).toContain(sourceId);
+
+  status.payment = {
+    attemptId: attemptId!,
+    state: "processing",
+    amountCents: 10000,
+    currency: "PEN",
+    delayed: false,
+    reservation: null,
+  };
+  await page.reload();
+  await expect(page.getByRole("heading", { name: "Confirmando su pago" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Abrir la verificación del banco" })).toHaveCount(
+    0,
+  );
+  expect(
+    await page.evaluate(() => sessionStorage.getItem("hm.reservation.card-sources")),
+  ).toContain(sourceId);
+
+  status.payment = { ...status.payment, state: "authentication_required" };
+  await page.reload();
+  await expect(page.getByRole("button", { name: "Abrir la verificación del banco" })).toBeVisible();
+  await expect
+    .poll(() => page.evaluate(() => window.culqi3DS?.authentications ?? []))
+    .toEqual([sourceId]);
 });

@@ -18,7 +18,9 @@ status is read back from the checkout (`src/lib/reservation/payment.ts`), so rel
 and language changes show the existing attempt instead of paying again. Before the first
 charge, Review loads Culqi3DS and sends `generateDevice()` when it succeeds; a failure to
 load does not block a non-3DS card. A required bank check opens that library's modal with
-the stored card token from `sessionStorage` (`hm.reservation.card-sources`), never the URL.
+the card token stored for the attempt this request created (`hm.reservation.card-sources`),
+never the URL, and only while that attempt id still matches. The token stays until the
+payment is declined, confirmed, unfulfilled, changed, or saved.
 Parameters continue the same attempt; a browser error or closed window stays pending and
 can open the bank again, without another card. Browser tests stub the Culqi, Culqi3DS and
 Turnstile scripts (`tests/support/payment.ts`), and the local API charges a fake Culqi and

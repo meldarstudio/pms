@@ -59,15 +59,25 @@ export const storeContact = (contact: BookingContact) => write(CONTACT_KEY, cont
 
 const CARD_SOURCE = /^tkn_[\w-]{1,200}$/;
 
-export function storedCardSource(selection: string) {
-  const source = read<Record<string, string>>(CARD_SOURCES_KEY)?.[selection];
-  return typeof source === "string" && CARD_SOURCE.test(source) ? source : null;
+export type StoredCard = { sourceId: string; attemptId: string };
+
+const ATTEMPT_ID = /^[0-9a-f-]{36}$/i;
+
+function isStoredCard(value: unknown): value is StoredCard {
+  if (typeof value !== "object" || value === null) return false;
+  const card = value as StoredCard;
+  return CARD_SOURCE.test(card.sourceId) && ATTEMPT_ID.test(card.attemptId);
 }
 
-export function storeCardSource(selection: string, sourceId: string) {
-  if (!CARD_SOURCE.test(sourceId)) return;
-  const sources = read<Record<string, string>>(CARD_SOURCES_KEY) ?? {};
-  write(CARD_SOURCES_KEY, { ...sources, [selection]: sourceId });
+export function storedCard(selection: string) {
+  const card = read<Record<string, unknown>>(CARD_SOURCES_KEY)?.[selection];
+  return isStoredCard(card) ? card : null;
+}
+
+export function storeCard(selection: string, card: StoredCard) {
+  if (!isStoredCard(card)) return;
+  const sources = read<Record<string, StoredCard>>(CARD_SOURCES_KEY) ?? {};
+  write(CARD_SOURCES_KEY, { ...sources, [selection]: card });
 }
 
 export function clearCardSource(selection: string) {

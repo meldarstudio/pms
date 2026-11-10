@@ -322,10 +322,10 @@ const contactFields = [
   import {
     clearCardSource,
     contactKey,
-    storeCardSource,
+    storeCard,
     storeCheckout,
     storeContact,
-    storedCardSource,
+    storedCard,
     storedCheckout,
     storedContact,
   } from "@/lib/reservation/draft";
@@ -873,7 +873,6 @@ const contactFields = [
       security: SecurityCheck | null,
       fingerprint: string | null,
     ) {
-      this.rememberCardSource(sourceId);
       this.el("[data-status]").textContent = this.text("reservation.pay.sending");
       this.markSubmitted(this.view!.quote.id);
       let outcome = await startPayment(this.copy.apiBase, this.token, {
@@ -896,6 +895,7 @@ const contactFields = [
         outcome = recovered;
       }
       security?.reset();
+      this.rememberCreatedCard(outcome, sourceId);
       await this.settlePayment(outcome);
     }
 
@@ -945,8 +945,15 @@ const contactFields = [
       return this.serverAccepted(view) && offerKey(view) === reviewed;
     }
 
-    private rememberCardSource(sourceId: string) {
-      if (this.key) storeCardSource(this.key, sourceId);
+    private rememberCreatedCard(outcome: PaymentOutcome, sourceId: string) {
+      if (
+        outcome.kind !== "payment" ||
+        !outcome.created ||
+        !outcome.payment?.attemptId ||
+        !this.key
+      )
+        return;
+      storeCard(this.key, { sourceId, attemptId: outcome.payment.attemptId });
     }
 
     private forgetCardSource() {
@@ -954,7 +961,13 @@ const contactFields = [
     }
 
     private cardSource() {
-      return this.key ? storedCardSource(this.key) : null;
+      return this.key ? storedCard(this.key) : null;
+    }
+
+    private cardFor(payment: GuestPayment | null) {
+      const stored = this.cardSource();
+      if (!stored || !payment?.attemptId || stored.attemptId !== payment.attemptId) return null;
+      return stored.sourceId;
     }
 
     private markSubmitted(quoteId: string | null) {
@@ -966,6 +979,7 @@ const contactFields = [
       const view = this.view;
       if (!view || this.stored()?.submitted !== view.quote.id) return null;
       return {
+        attemptId: this.cardSource()?.attemptId ?? "",
         state: "submitted",
         amountCents: view.quote.requiredInitialPaymentCents,
         currency: view.currency,
@@ -979,7 +993,6 @@ const contactFields = [
       if (outcome.kind === "unavailable") {
         const current = await readPayment(this.copy.apiBase, this.token);
         if (current.kind === "payment" && current.payment) this.markSubmitted(null);
-        if (current.kind === "payment" && !current.payment) this.forgetCardSource();
         return this.showPayment(
           current.kind === "payment" && current.payment ? current.payment : this.submittedPayment(),
           true,
@@ -1007,7 +1020,6 @@ const contactFields = [
       if (announce) this.el("[data-status]").textContent = "";
       if (outcome.kind !== "payment") return;
       if (outcome.payment) this.markSubmitted(null);
-      else this.forgetCardSource();
       this.showPayment(outcome.payment ?? this.submittedPayment(), announce);
     }
 
@@ -1022,7 +1034,14 @@ const contactFields = [
       const outcome = this.el("[data-outcome]");
       outcome.hidden = !payment;
       if (payment) this.renderOutcome(payment);
-      if (payment && payment.state !== "authentication_required" && payment.state !== "submitted")
+      if (
+        payment &&
+        (payment.state === "declined" ||
+          payment.state === "confirmed" ||
+          payment.state === "unfulfilled" ||
+          payment.state === "reservation_changed" ||
+          payment.state === "paid_awaiting_reservation")
+      )
         this.forgetCardSource();
       this.showAccepted();
       if (payment && focus) this.el("[data-outcome-title]").focus();
@@ -1032,14 +1051,14 @@ const contactFields = [
     }
 
     private maybeOpenBank() {
-      const source = this.cardSource();
+      const source = this.cardFor(this.payment);
       if (!source || this.openedBankFor === source) return;
       this.openedBankFor = source;
       void this.openBank();
     }
 
     private async openBank() {
-      const sourceId = this.cardSource();
+      const sourceId = this.cardFor(this.payment);
       const payments = this.copy.payments;
       const view = this.view;
       if (!sourceId || !payments || !view) return;
@@ -1076,6 +1095,7 @@ const contactFields = [
       const view = this.view;
       if (!view) return null;
       return {
+        attemptId: this.cardSource()?.attemptId ?? "",
         state: "authentication_required",
         amountCents: view.quote.requiredInitialPaymentCents,
         currency: view.currency,
@@ -1085,16 +1105,19 @@ const contactFields = [
     }
 
     private async finishAuthentication(parameters: AuthenticationParameters) {
-      if (!this.view || !this.token) return;
+      const attemptId = this.cardFor(this.payment) ? this.payment?.attemptId : null;
+      if (!this.view || !this.token || !attemptId) return;
       this.markSubmitted(this.view.quote.id);
-      const outcome = await continuePayment(this.copy.apiBase, this.token, parameters);
+      const outcome = await continuePayment(this.copy.apiBase, this.token, {
+        ...parameters,
+        attemptId,
+      });
       if (outcome.kind === "payment" || outcome.kind === "unavailable") {
         await this.settlePayment(outcome);
         return;
       }
       const current = await readPayment(this.copy.apiBase, this.token);
       if (current.kind === "payment" && current.payment) this.markSubmitted(null);
-      if (current.kind === "payment" && !current.payment) this.forgetCardSource();
       this.showPayment(
         current.kind === "payment" && current.payment ? current.payment : this.submittedPayment(),
         true,
@@ -1149,7 +1172,7 @@ const contactFields = [
       );
       this.el("[data-outcome-retry]").hidden = !allowsNewPayment(payment) || !this.copy.payments;
       this.el("[data-outcome-bank]").hidden =
-        payment.state !== "authentication_required" || !this.cardSource();
+        payment.state !== "authentication_required" || !this.cardFor(payment);
       this.el("[data-outcome-check]").hidden = !(
         payment.state === "submitted" ||
         payment.state === "authentication_required" ||

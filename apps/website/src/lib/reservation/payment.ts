@@ -9,6 +9,7 @@ export type PaymentState =
   | "reservation_changed";
 
 export type GuestPayment = {
+  attemptId: string;
   state: PaymentState;
   amountCents: number;
   currency: string;
@@ -22,7 +23,7 @@ export type GuestPayment = {
 };
 
 export type PaymentOutcome =
-  | { kind: "payment"; payment: GuestPayment | null }
+  | { kind: "payment"; payment: GuestPayment | null; created: boolean }
   | { kind: "paused" }
   | { kind: "throttled" }
   | { kind: "security_failed" }
@@ -82,7 +83,8 @@ async function call(
   if (response.status === 401) return { kind: "denied" };
   const body: unknown = await response.json().catch(() => null);
   const error = (body as { error?: unknown } | null)?.error;
-  if (response.ok && isPaymentBody(body)) return { kind: "payment", payment: body.payment };
+  if (response.ok && isPaymentBody(body))
+    return { kind: "payment", payment: body.payment, created: response.status === 201 };
   if (response.status === 429) return { kind: "throttled" };
   if (typeof error !== "string") return { kind: "unavailable" };
   if (error === "online payments are paused") return { kind: "paused" };
@@ -123,6 +125,7 @@ export const continuePayment = (
   apiBase: string,
   token: string,
   authentication: {
+    attemptId: string;
     eci: string;
     xid?: string;
     cavv: string;
