@@ -281,11 +281,23 @@ async function resolve(db: Db, attempt: Attempt, context: PaymentContext): Promi
     email: attempt.email,
     from: new Date(Date.parse(attempt.calledAt) - LOOKUP_SLACK),
   });
-  const found = listed.find(
+  const found = chargeForAttempt(attempt, listed);
+  return found ? succeed(db, attempt, found, context) : attempt;
+}
+
+function chargeForAttempt(attempt: Attempt, listed: CulqiCharge[]) {
+  const labeled = listed.find(
     (listedCharge) =>
       listedCharge.metadata?.attempt_id === attempt.id && matches(attempt, listedCharge),
   );
-  return found ? succeed(db, attempt, found, context) : attempt;
+  if (labeled) return labeled;
+  const unlabeled = listed.filter(
+    (listedCharge) =>
+      listedCharge.metadata?.attempt_id == null &&
+      listedCharge.email === attempt.email &&
+      matches(attempt, listedCharge),
+  );
+  return unlabeled.length === 1 ? unlabeled[0] : undefined;
 }
 
 async function record(db: Db, attempt: Attempt, result: ChargeResult, context: PaymentContext) {

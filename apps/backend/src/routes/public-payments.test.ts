@@ -146,6 +146,29 @@ async function status(token: string) {
 
 const charges = () => culqi.requests.filter((request) => request.method === "POST");
 
+const listed = () => culqi.requests.filter((request) => request.method === "GET");
+
+async function runScheduled() {
+  const scheduled: Promise<unknown>[] = [];
+  worker.scheduled({} as ScheduledController, db.env, {
+    waitUntil: (task: Promise<unknown>) => scheduled.push(task),
+  } as unknown as ExecutionContext);
+  await Promise.all(scheduled);
+}
+
+function failingLimiters() {
+  const consumed: string[] = [];
+  const counting = {
+    limit: async ({ key }: { key: string }) => {
+      consumed.push(key);
+      return { success: false };
+    },
+  };
+  db.env.PAYMENT_IP_LIMITER = counting;
+  db.env.PAYMENT_CHECKOUT_LIMITER = counting;
+  return consumed;
+}
+
 const rows = <T>(sql: string) => db.sqlite.prepare(sql).all() as T[];
 
 const acceptances = () =>
@@ -1333,5 +1356,107 @@ describe("continuing bank authentication", () => {
       { status: "failed" },
       { status: "saved" },
     ]);
+  });
+});
+
+describe("recovering an interrupted payment", () => {
+  it("keeps bank verification pending after the quote expires and the 48-hour horizon, and the guest can still finish it", async () => {
+    const checkout = await acceptedCheckout();
+    await paid(checkout, { sourceId: "tkn_test_3ds" });
+    vi.advanceTimersByTime(48 * 60 * 60_000 + 1);
+    await admitPayments(false);
+    const consumed = failingLimiters();
+
+    await runScheduled();
+
+    expect(await status(checkout.token)).toMatchObject({ state: "authentication_required" });
+    expect(rows("SELECT status, failure_code FROM payment_attempts")).toEqual([
+      { status: "review", failure_code: null },
+    ]);
+    const again = await pay(checkout);
+    expect(again.status).toBe(200);
+    expect(await again.json()).toMatchObject({ payment: { state: "authentication_required" } });
+    expect(consumed).toEqual([]);
+    expect(charges()).toHaveLength(1);
+
+    const continued = await continueAuthentication(checkout.token);
+    expect(continued.status).toBe(200);
+    expect(await continued.json()).toMatchObject({ payment: { state: "confirmed" } });
+    expect(charges()).toHaveLength(2);
+    expect(consumed).toEqual([]);
+    expect(turnstile.verifications).toHaveLength(1);
+  });
+
+  it("keeps an unresolved payment blocking after lookup ends, without charging again", async () => {
+    const checkout = await acceptedCheckout();
+    culqi.next("POST /charges", "timeout");
+    await paid(checkout);
+    await vi.advanceTimersByTimeAsync(10_000);
+    await Promise.all(tasks);
+    vi.advanceTimersByTime(48 * 60 * 60_000);
+    const [{ id }] = rows<{ id: string }>("SELECT id FROM payment_attempts");
+    culqi.charges.push({
+      object: "charge",
+      id: "chr_test_late",
+      amount: 10000,
+      currency_code: "PEN",
+      email: "ana@example.com",
+      source_id: "tkn_test_late",
+      creation_date: Date.now(),
+      outcome: { type: "venta_exitosa", code: "AUT0000" },
+      metadata: { attempt_id: id },
+      amount_refunded: 0,
+    });
+    const lookups = listed().length;
+    const consumed = failingLimiters();
+
+    await runScheduled();
+    expect(await status(checkout.token)).toMatchObject({ state: "processing", delayed: true });
+    const again = await pay(checkout);
+
+    expect(again.status).toBe(200);
+    expect(await again.json()).toMatchObject({ payment: { state: "processing" } });
+    expect(listed()).toHaveLength(lookups);
+    expect(consumed).toEqual([]);
+    expect(charges()).toHaveLength(1);
+    expect(rows("SELECT status FROM payment_attempts")).toEqual([{ status: "unknown" }]);
+    expect(rows("SELECT id FROM reservations")).toEqual([]);
+  });
+
+  it("confirms a lost charge from the scheduled run after the quote expires and payments are paused, even without attempt metadata", async () => {
+    const checkout = await acceptedCheckout();
+    culqi.next("POST /charges", "lose");
+    culqi.next("GET /charges", 500);
+    await paid(checkout);
+    expect(culqi.charges).toHaveLength(1);
+    culqi.charges[0]!.metadata = null;
+    await vi.advanceTimersByTimeAsync(11 * 60_000);
+    await Promise.all(tasks);
+    await admitPayments(false);
+    expect(rows("SELECT status FROM payment_attempts")).toEqual([{ status: "unknown" }]);
+
+    await runScheduled();
+    await runScheduled();
+
+    const [{ id: checkoutId }] = rows<{ id: string }>("SELECT id FROM public_checkouts");
+    const [{ id: acceptanceId }] = rows<{ id: string }>("SELECT id FROM checkout_acceptances");
+    expect(
+      rows(
+        "SELECT a.status, a.checkout_id, a.acceptance_id, a.language, a.confirmation_email_eligible AS eligible, r.public_checkout_id, r.status AS reservation_status FROM payment_attempts a JOIN reservations r ON r.id = a.reservation_id",
+      ),
+    ).toEqual([
+      {
+        status: "saved",
+        checkout_id: checkoutId,
+        acceptance_id: acceptanceId,
+        language: "en",
+        eligible: 1,
+        public_checkout_id: checkoutId,
+        reservation_status: "confirmed",
+      },
+    ]);
+    expect(await status(checkout.token)).toMatchObject({ state: "confirmed" });
+    expect(charges()).toHaveLength(1);
+    expect(rows("SELECT id FROM reservations")).toHaveLength(1);
   });
 });

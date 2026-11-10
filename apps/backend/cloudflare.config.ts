@@ -1,6 +1,6 @@
 import { bindings, defineConfig, triggers } from "cf/config";
 
-const paymentReconciliationBackstop = "*/5 * * * *";
+const paymentReconciliationBackstop = "* * * * *";
 
 export default defineConfig({
   worker: {
