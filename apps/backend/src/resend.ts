@@ -1,5 +1,6 @@
 import type { Env } from "./env";
 import { loopbackUrl } from "./loopback";
+import { decodeResendLookup, type ResendLookup } from "./resend-reports";
 
 const API = "https://api.resend.com";
 const TIMEOUT_MS = 20_000;
@@ -23,7 +24,7 @@ export type Resend = {
     idempotencyKey: string;
     body: string;
   }): Promise<ResendSendResult>;
-  getEmail(endpoint: string, id: string): Promise<{ id: string } | null>;
+  getEmail(endpoint: string, id: string): Promise<ResendLookup | null>;
 };
 
 type CallResult = { status: number; body: Record<string, unknown> | null; retryAfterMs: number };
@@ -104,7 +105,7 @@ export function resendClient(options: {
         const messageId = present(response?.body?.id);
         if (!response || response.status < 200 || response.status >= 300 || messageId !== id)
           return null;
-        return { id: messageId };
+        return decodeResendLookup(response.body);
       } catch {
         return null;
       }
@@ -128,7 +129,8 @@ function mapSend(response: CallResult): ResendSendResult {
   if (response.status === 422) return { kind: "unsent", failureCode: "rejected", minimumBackoffMs };
   if (response.status >= 400 && response.status < 500 && response.status !== 409)
     return { kind: "uncertain", failureCode: "rejected", minimumBackoffMs };
-  const id = present(response.body?.id);
+  const candidateId = present(response.body?.id);
+  const id = candidateId && /^[A-Za-z0-9_-]{1,256}$/.test(candidateId) ? candidateId : undefined;
   if (response.status >= 200 && response.status < 300 && id) return { kind: "accepted", id };
   return { kind: "uncertain", failureCode: null, minimumBackoffMs };
 }

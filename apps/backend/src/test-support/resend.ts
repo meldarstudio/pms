@@ -26,6 +26,7 @@ export function fakeResend() {
   const scripts: Scripted[] = [];
   const befores: Array<() => unknown> = [];
   const retryAfters: Array<string | undefined> = [];
+  const lookups: { body: unknown; status: number }[] = [];
   let sequence = 0;
 
   const json = (status: number, body: unknown, retryAfter?: string) =>
@@ -49,6 +50,9 @@ export function fakeResend() {
     retryAfter(value: string) {
       retryAfters.push(value);
     },
+    lookup(body: unknown, status = 200) {
+      lookups.push({ body, status });
+    },
     fetch: (async (input: RequestInfo | URL, init?: RequestInit) => {
       const url = new URL(input instanceof Request ? input.url : String(input));
       const method = init?.method ?? "GET";
@@ -57,13 +61,15 @@ export function fakeResend() {
       if (url.hostname !== "127.0.0.1" || !headers.get("authorization")?.startsWith("Bearer "))
         throw new Error(`unexpected request to ${url.href}`);
       requests.push({ method, url: url.href, headers, body });
-      const scripted = scripts.shift();
-      const retryAfter = retryAfters.shift();
-      await befores.shift()?.();
       if (method === "GET") {
+        const scripted = lookups.shift();
+        if (scripted) return json(scripted.status, scripted.body);
         const email = emails.find((item) => url.pathname === `/emails/${item.id}`);
         return email ? json(200, { id: email.id }) : json(404, { name: "not_found" });
       }
+      const scripted = scripts.shift();
+      const retryAfter = retryAfters.shift();
+      await befores.shift()?.();
       const key = headers.get("idempotency-key") ?? "";
       if (scripted === "timeout")
         throw new DOMException("The operation was aborted due to timeout", "TimeoutError");

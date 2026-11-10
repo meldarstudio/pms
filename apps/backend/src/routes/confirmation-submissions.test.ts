@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
+import { createHmac } from "node:crypto";
 import worker, { app } from "../index";
 import { WEBSITE_ORIGIN } from "../test-support/auth";
 import { CULQI_TEST_KEY, fakeCulqi, type FakeCulqi } from "../test-support/culqi";
@@ -15,6 +16,7 @@ import {
 const FROM = "Hotel Manantial <reservas@notificaciones.hotelmanantialchurin.com>";
 const REPLY_TO = "hotelmanantialchurinperu@gmail.com";
 const PHONE = "+51 992 755 015";
+const REPORT_SECRET = "whsec_dGVzdC1yZXBvcnQtc2lnbmluZy1zZWNyZXQ=";
 const WINDOW_MS = 20 * 60 * 60 * 1000;
 
 let db: TestDb;
@@ -163,6 +165,644 @@ const submissions = () =>
   );
 
 const posts = () => resend.requests.filter((request) => request.method === "POST");
+
+function reportBody(type = "email.delivered", overrides: Record<string, unknown> = {}) {
+  const request = JSON.parse(posts()[0]!.body) as { tags: { name: string; value: string }[] };
+  return {
+    type,
+    created_at: "2026-10-09T12:00:00.000Z",
+    data: {
+      email_id: "email_1",
+      message_id: "<synthetic@example.com>",
+      from: FROM,
+      to: [contact.email],
+      tags: Object.fromEntries(request.tags.map((tag) => [tag.name, tag.value])),
+      ...overrides,
+    },
+  };
+}
+
+async function callback(
+  body: unknown,
+  id = crypto.randomUUID(),
+  options: { signature?: string; timestamp?: string; raw?: string } = {},
+) {
+  const raw = options.raw ?? JSON.stringify(body);
+  const timestamp = options.timestamp ?? String(Math.floor(Date.now() / 1000));
+  const signature = createHmac("sha256", Buffer.from(REPORT_SECRET.slice(6), "base64"))
+    .update(`${id}.${timestamp}.${raw}`)
+    .digest("base64");
+  return app.request(
+    "/callbacks/resend",
+    {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        "svix-id": id,
+        "svix-timestamp": timestamp,
+        "svix-signature": options.signature ?? `v1,${signature}`,
+      },
+      body: raw,
+    },
+    db.env,
+  );
+}
+
+async function inspection(id: string) {
+  const response = await db.request(`/reservations/${id}/confirmation`);
+  expect(response.status).toBe(200);
+  expect(response.headers.get("cache-control")).toBe("private, no-store");
+  return (await response.json()) as {
+    submission: {
+      status: string;
+      providerMessageId: string | null;
+      failureCode: string | null;
+      delivery: {
+        accepted: boolean;
+        delivered: boolean;
+        delayed: boolean;
+        failed: boolean;
+        bounced: boolean;
+        permanentlyBounced: boolean;
+        complained: boolean;
+        suppressed: boolean;
+        uncertain: boolean;
+        conflict: boolean;
+        recipientBlocked: boolean;
+        history: {
+          eventId: string;
+          type: string;
+          source: string;
+          providerMessageId: string;
+          messageId: string | null;
+          details: unknown;
+        }[];
+      };
+    };
+  };
+}
+
+describe("authenticated delivery reports", () => {
+  it("verifies the exact non-ASCII HTTP bytes, not parsed JSON, and accepts a valid second rotation signature", async () => {
+    const { saved } = await confirmed();
+    configureResend();
+    db.env.RESEND_WEBHOOK_SECRET = REPORT_SECRET;
+    await admitEmail(true);
+    await runScheduled();
+    const eventId = crypto.randomUUID();
+    const timestamp = String(Math.floor(Date.now() / 1000));
+    const raw = JSON.stringify({ ...reportBody(), subject: "Confirmación — Perú" }, null, 2);
+    const signature = createHmac("sha256", Buffer.from(REPORT_SECRET.slice(6), "base64"))
+      .update(`${eventId}.${timestamp}.${raw}`)
+      .digest("base64");
+    expect(
+      (
+        await callback({}, eventId, {
+          raw: raw.replace("Perú", "Peru"),
+          timestamp,
+          signature: `v1,${signature}`,
+        })
+      ).status,
+    ).toBe(401);
+    expect(
+      (await callback({}, eventId, { raw: `${raw}\n`, timestamp, signature: `v1,${signature}` }))
+        .status,
+    ).toBe(401);
+    expect((await inspection(saved.id)).submission.delivery.delivered).toBe(false);
+    expect(
+      (
+        await callback({}, eventId, {
+          raw,
+          timestamp,
+          signature: `v2,ignored v1,AAAA v1,${signature}`,
+        })
+      ).status,
+    ).toBe(200);
+    expect((await inspection(saved.id)).submission.delivery.delivered).toBe(true);
+  });
+
+  it("rejects anonymous forgeries and fails closed without the separate signing secret", async () => {
+    const { saved } = await confirmed();
+    configureResend();
+    await admitEmail(true);
+    await runScheduled();
+    const before = await inspection(saved.id);
+    const body = reportBody();
+    expect((await callback(body)).status).toBe(401);
+    db.env.RESEND_WEBHOOK_SECRET = RESEND_TEST_KEY;
+    expect((await callback(body)).status).toBe(401);
+    db.env.RESEND_WEBHOOK_SECRET = REPORT_SECRET;
+    for (const options of [
+      { signature: "v1,AAAA" },
+      { timestamp: String(Math.floor(Date.now() / 1000) - 301) },
+      { timestamp: "123oops" },
+    ])
+      expect((await callback(body, crypto.randomUUID(), options)).status).toBe(401);
+    const missing = await app.request(
+      "/callbacks/resend",
+      { method: "POST", body: JSON.stringify(body) },
+      db.env,
+    );
+    expect(missing.status).toBe(401);
+    expect(await missing.json()).toEqual({ error: "invalid email report" });
+    expect((await callback({}, crypto.randomUUID())).status).toBe(400);
+    expect(await inspection(saved.id)).toEqual(before);
+    for (const path of [
+      "/callbacks/resend",
+      "/callbacks/resend/other",
+      `/reservations/${saved.id}/confirmation`,
+    ])
+      expect((await app.request(path, {}, db.env)).status).toBe(401);
+  });
+
+  it("persists an old delivered event with a fresh attempt signature before the POST response, and deduplicates it durably", async () => {
+    const { saved } = await confirmed();
+    configureResend();
+    db.env.RESEND_WEBHOOK_SECRET = REPORT_SECRET;
+    await admitEmail(true);
+    const eventId = crypto.randomUUID();
+    resend.duringNext(async () => {
+      expect((await callback(reportBody(), eventId)).status).toBe(200);
+      const beforeResponse = await inspection(saved.id);
+      expect(beforeResponse.submission.status).toBe("accepted");
+      expect(beforeResponse.submission.delivery.delivered).toBe(true);
+    });
+    await runScheduled();
+    expect((await callback(reportBody(), eventId)).status).toBe(200);
+    const view = await inspection(saved.id);
+    expect(view.submission.providerMessageId).toBe("email_1");
+    expect(view.submission.delivery).toMatchObject({
+      accepted: true,
+      delivered: true,
+      uncertain: false,
+      conflict: false,
+    });
+    expect(
+      view.submission.delivery.history.filter((event) => event.eventId === eventId),
+    ).toHaveLength(1);
+    expect(view.submission.delivery.history).toContainEqual(
+      expect.objectContaining({ type: "delivered", messageId: "<synthetic@example.com>" }),
+    );
+    await runScheduled();
+    expect(posts()).toHaveLength(1);
+  });
+
+  it.each(["lose", 401, "invalid"] as const)(
+    "keeps a signed acceptance when the later POST response is %s",
+    async (outcome) => {
+      const { saved } = await confirmed();
+      configureResend();
+      db.env.RESEND_WEBHOOK_SECRET = REPORT_SECRET;
+      await admitEmail(true);
+      resend.next(outcome);
+      let callbackStatus = 0;
+      resend.duringNext(async () => {
+        callbackStatus = (await callback(reportBody("email.sent"))).status;
+      });
+      await runScheduled();
+      expect(callbackStatus).toBe(200);
+      const view = await inspection(saved.id);
+      expect(view.submission.status).toBe("accepted");
+      expect(view.submission.delivery).toMatchObject({
+        accepted: true,
+        delivered: false,
+        uncertain: false,
+      });
+      vi.setSystemTime(Date.now() + 21 * 60 * 60 * 1000);
+      await runScheduled();
+      expect(posts()).toHaveLength(1);
+    },
+  );
+
+  it("retains delivery, failure, permanent bounce and complaint/suppression despite reordered older facts, and blocks the recipient", async () => {
+    const { saved, checkout } = await confirmed();
+    configureResend();
+    db.env.RESEND_WEBHOOK_SECRET = REPORT_SECRET;
+    await admitEmail(true);
+    await runScheduled();
+    const beforeSummary = await (await guest("/public/reservation", { token: saved.token })).json();
+    const beforePayment = await (
+      await guest("/public/checkout/payment", { token: checkout.token })
+    ).json();
+    for (const [type, details] of [
+      ["email.delivered", {}],
+      [
+        "email.bounced",
+        { bounce: { type: "Permanent", subType: "General", message: `private ${saved.token}` } },
+      ],
+      ["email.complained", {}],
+      [
+        "email.suppressed",
+        { suppressed: { type: "OnAccountSuppressionList", message: `private ${saved.token}` } },
+      ],
+      ["email.failed", { failed: { reason: "reached_daily_quota" } }],
+      ["email.delivery_delayed", {}],
+      ["email.sent", {}],
+    ] as const)
+      expect((await callback(reportBody(type, details))).status).toBe(200);
+    const view = await inspection(saved.id);
+    expect(view.submission.delivery).toMatchObject({
+      accepted: true,
+      delivered: true,
+      delayed: true,
+      failed: true,
+      bounced: true,
+      permanentlyBounced: true,
+      complained: true,
+      suppressed: true,
+      uncertain: false,
+      recipientBlocked: true,
+    });
+    expect(view.submission.delivery.history).toContainEqual(
+      expect.objectContaining({
+        details: expect.objectContaining({
+          bounceType: "Permanent",
+          bounceSubType: "General",
+          permanent: true,
+        }),
+      }),
+    );
+    expect(JSON.stringify(view)).not.toContain(saved.token);
+    expect(JSON.stringify(view)).not.toContain("whsec_");
+    expect(JSON.stringify(view)).not.toContain(RESEND_TEST_KEY);
+    expect(await (await guest("/public/reservation", { token: saved.token })).json()).toEqual(
+      beforeSummary,
+    );
+    expect(
+      await (await guest("/public/checkout/payment", { token: checkout.token })).json(),
+    ).toEqual(beforePayment);
+    const next = await confirmed("es", { checkIn: "2026-10-23", checkOut: "2026-10-24" });
+    await runScheduled();
+    expect(posts()).toHaveLength(1);
+    expect((await inspection(next.saved.id)).submission).toMatchObject({
+      status: "attention",
+      failureCode: "recipient_blocked",
+      delivery: { recipientBlocked: true },
+    });
+  });
+
+  it("quarantines conflicting provider IDs, recipients and tags instead of replacing the accepted history", async () => {
+    const { saved } = await confirmed();
+    configureResend();
+    db.env.RESEND_WEBHOOK_SECRET = REPORT_SECRET;
+    await admitEmail(true);
+    let status = 0;
+    resend.duringNext(async () => {
+      status = (await callback(reportBody("email.delivered", { email_id: "email_other" }))).status;
+    });
+    await runScheduled();
+    expect(status).toBe(200);
+    for (const fields of [
+      { to: ["different@example.com"] },
+      { tags: { category: "other" } },
+      { tags: { submission_id: "other" } },
+    ])
+      expect(
+        (await callback(reportBody("email.delivered", { email_id: "email_other", ...fields })))
+          .status,
+      ).toBe(200);
+    const view = await inspection(saved.id);
+    expect(view.submission.providerMessageId).toBe("email_other");
+    expect(view.submission.delivery).toMatchObject({ delivered: true, conflict: true });
+    expect(view.submission.delivery.history).toContainEqual(
+      expect.objectContaining({ providerMessageId: "email_1", conflict: true }),
+    );
+  });
+
+  it.each(["respond", "lose"])(
+    "retains tagless legacy reports until a known provider ID can attach them (%s)",
+    async (outcome) => {
+      const { saved } = await confirmed();
+      db.sqlite.exec(
+        `CREATE TRIGGER legacy_writer AFTER INSERT ON confirmation_submissions BEGIN UPDATE confirmation_submissions SET request_json = json_remove(request_json, '$.tags[1]') WHERE id = NEW.id; END;`,
+      );
+      configureResend();
+      db.env.RESEND_WEBHOOK_SECRET = REPORT_SECRET;
+      await admitEmail(true);
+      if (outcome === "lose") resend.next("lose");
+      let beforeResponse: unknown;
+      resend.duringNext(async () => {
+        expect((await callback(reportBody())).status).toBe(200);
+        beforeResponse = (await inspection(saved.id)).submission.delivery;
+      });
+      await runScheduled();
+      expect(beforeResponse).toMatchObject({ delivered: false, uncertain: true });
+      const original = submissions()[0]!;
+      if (outcome === "lose") {
+        expect((await inspection(saved.id)).submission.delivery).toMatchObject({
+          delivered: false,
+          uncertain: true,
+        });
+        vi.setSystemTime(Date.now() + 60_000);
+        await runScheduled();
+        expect(posts()[1]!.body).toBe(posts()[0]!.body);
+        expect(submissions()[0]!.first_possible_at).toBe(original.first_possible_at);
+      }
+      expect((await inspection(saved.id)).submission.delivery).toMatchObject({
+        delivered: true,
+        uncertain: false,
+      });
+    },
+  );
+
+  it.each(["INSERT ON confirmation_reports", "UPDATE ON confirmation_submissions"])(
+    "rolls back failed %s without acknowledging or losing the retry, and detects reused IDs",
+    async (failure) => {
+      const { saved } = await confirmed();
+      configureResend();
+      db.env.RESEND_WEBHOOK_SECRET = REPORT_SECRET;
+      await admitEmail(true);
+      await runScheduled();
+      db.sqlite.exec(
+        `CREATE TRIGGER fail_report BEFORE ${failure} BEGIN SELECT RAISE(ABORT, 'synthetic persistence failure'); END;`,
+      );
+      const eventId = crypto.randomUUID();
+      const log = vi.spyOn(console, "error").mockImplementation(() => {});
+      expect((await callback(reportBody(), eventId)).status).toBe(500);
+      expect((await inspection(saved.id)).submission.delivery.delivered).toBe(false);
+      db.sqlite.exec("DROP TRIGGER fail_report");
+      const results = await Promise.all([
+        callback(reportBody(), eventId),
+        callback(reportBody(), eventId),
+      ]);
+      expect(results.map((result) => result.status)).toEqual([200, 200]);
+      expect(
+        (await inspection(saved.id)).submission.delivery.history.filter(
+          (event) => event.eventId === eventId,
+        ),
+      ).toHaveLength(1);
+      expect((await callback(reportBody("email.sent"), eventId)).status).toBe(200);
+      expect((await inspection(saved.id)).submission.delivery.conflict).toBe(true);
+      expect((await inspection(saved.id)).submission.delivery.delivered).toBe(true);
+      expect(log.mock.calls.flat()).toEqual(["confirmation report persistence failed"]);
+    },
+  );
+
+  it("recovers positive known-ID evidence while submission is paused, bounds lookup rate and preserves stronger report facts", async () => {
+    const { saved } = await confirmed();
+    configureResend();
+    db.env.RESEND_WEBHOOK_SECRET = REPORT_SECRET;
+    await admitEmail(true);
+    resend.next("lose");
+    await runScheduled();
+    expect(
+      (await callback(reportBody("email.failed", { failed: { reason: "reached_daily_quota" } })))
+        .status,
+    ).toBe(200);
+    expect((await inspection(saved.id)).submission).toMatchObject({
+      status: "attention",
+      providerMessageId: "email_1",
+      delivery: { failed: true, delivered: false },
+    });
+    await admitEmail(false);
+    resend.lookup({
+      id: "email_1",
+      last_event: "delivered",
+      to: [contact.email],
+      from: FROM,
+      message_id: "<retrieved@example.com>",
+      html: saved.token,
+      text: saved.token,
+    });
+    vi.setSystemTime(Date.now() + 15 * 60_000);
+    await runScheduled();
+    const view = await inspection(saved.id);
+    expect(view.submission.delivery).toMatchObject({
+      accepted: true,
+      delivered: true,
+      failed: true,
+      uncertain: false,
+    });
+    expect(view.submission.delivery.history).toContainEqual(
+      expect.objectContaining({
+        source: "lookup",
+        type: "delivered",
+        occurredAt: null,
+        messageId: "<retrieved@example.com>",
+      }),
+    );
+    expect(JSON.stringify(view)).not.toContain(saved.token);
+    await runScheduled();
+    expect(resend.requests.filter((request) => request.method === "GET")).toHaveLength(1);
+    expect(posts()).toHaveLength(1);
+    expect((await callback(reportBody("email.complained"))).status).toBe(200);
+    resend.lookup({ id: "email_1", last_event: "sent", to: [contact.email], from: FROM });
+    vi.setSystemTime(Date.now() + 15 * 60_000);
+    await runScheduled();
+    expect((await inspection(saved.id)).submission.delivery).toMatchObject({
+      delivered: true,
+      failed: true,
+      complained: true,
+      recipientBlocked: true,
+    });
+    expect(posts()).toHaveLength(1);
+  });
+
+  it("never treats absent, unavailable or mismatched lookup evidence as permission to send, and keeps the frozen lookup context", async () => {
+    const { saved } = await confirmed();
+    configureResend();
+    db.env.RESEND_WEBHOOK_SECRET = REPORT_SECRET;
+    await admitEmail(true);
+    resend.next("lose");
+    await runScheduled();
+    expect(
+      (await callback(reportBody("email.failed", { failed: { reason: "provider_configuration" } })))
+        .status,
+    ).toBe(200);
+    await admitEmail(false);
+    const original = submissions()[0]!;
+    for (const [body, status] of [
+      [null, 404],
+      [{ name: "restricted_api_key" }, 401],
+      [null, 429],
+      [null, 500],
+      [{ id: "different", last_event: "delivered", from: FROM, to: [contact.email] }, 200],
+      [{ id: "email_1", from: FROM, to: [contact.email] }, 200],
+      [{ id: "email_1", last_event: "future_status", from: FROM, to: [contact.email] }, 200],
+    ] as const) {
+      resend.lookup(body, status);
+      vi.setSystemTime(Date.now() + 15 * 60_000);
+      await runScheduled();
+      expect((await inspection(saved.id)).submission.delivery).toMatchObject({
+        accepted: false,
+        failed: true,
+        delivered: false,
+      });
+    }
+    db.env.RESEND_API_URL = "http://localhost:88";
+    resend.lookup({
+      id: "email_1",
+      last_event: "delivery_delayed",
+      from: FROM,
+      to: [contact.email],
+    });
+    vi.setSystemTime(Date.now() + 15 * 60_000);
+    await runScheduled();
+    expect(resend.requests.at(-1)!.url).toBe(`${RESEND_LOOPBACK}/emails/email_1`);
+    expect((await inspection(saved.id)).submission.delivery).toMatchObject({
+      accepted: true,
+      delayed: true,
+      failed: true,
+      delivered: false,
+    });
+    const before = resend.requests.length;
+    db.env.RESEND_API_KEY = "re_different_account";
+    vi.setSystemTime(Date.now() + 15 * 60_000);
+    await runScheduled();
+    expect(resend.requests).toHaveLength(before);
+    await admitEmail(true);
+    await runScheduled();
+    expect(posts()).toHaveLength(1);
+    expect(submissions()[0]).toMatchObject({
+      first_possible_at: original.first_possible_at,
+      send_key: original.send_key,
+      request_json: original.request_json,
+      endpoint: original.endpoint,
+    });
+  });
+
+  it("keeps uncorrelated lost-ID legacy work uncertain beyond the submission deadline and accepts reports without an API key while paused", async () => {
+    const { saved } = await confirmed();
+    db.sqlite.exec(
+      `CREATE TRIGGER legacy_writer AFTER INSERT ON confirmation_submissions BEGIN UPDATE confirmation_submissions SET request_json = json_remove(request_json, '$.tags[1]') WHERE id = NEW.id; END;`,
+    );
+    configureResend();
+    db.env.RESEND_WEBHOOK_SECRET = REPORT_SECRET;
+    await admitEmail(true);
+    resend.next("lose");
+    await runScheduled();
+    const body = reportBody();
+    await admitEmail(false);
+    delete db.env.RESEND_API_KEY;
+    vi.setSystemTime(Date.now() + 21 * 60 * 60_000);
+    expect((await callback(body)).status).toBe(200);
+    await runScheduled();
+    expect((await inspection(saved.id)).submission.delivery).toMatchObject({
+      accepted: false,
+      delivered: false,
+      uncertain: true,
+    });
+    configureResend();
+    await admitEmail(true);
+    await runScheduled();
+    expect((await inspection(saved.id)).submission).toMatchObject({
+      status: "attention",
+      providerMessageId: null,
+      delivery: { uncertain: true },
+    });
+    expect(posts()).toHaveLength(1);
+  });
+
+  it("blocks another queued recipient from an authenticated unmatched suppression report, including across pause/resume", async () => {
+    const { saved } = await confirmed();
+    configureResend();
+    db.env.RESEND_WEBHOOK_SECRET = REPORT_SECRET;
+    await admitEmail(true);
+    resend.next(429);
+    await runScheduled();
+    const original = submissions()[0]!;
+    await admitEmail(false);
+    expect(
+      (
+        await callback(
+          reportBody("email.suppressed", {
+            email_id: "outside_application",
+            tags: undefined,
+            message_id: undefined,
+            suppressed: { type: "OnAccountSuppressionList" },
+          }),
+        )
+      ).status,
+    ).toBe(200);
+    await admitEmail(true);
+    vi.setSystemTime(Date.now() + 15 * 60_000);
+    await runScheduled();
+    expect((await inspection(saved.id)).submission).toMatchObject({
+      status: "attention",
+      providerMessageId: null,
+      delivery: { recipientBlocked: true, delivered: false },
+    });
+    expect(submissions()[0]).toMatchObject({
+      request_json: original.request_json,
+      send_key: original.send_key,
+      first_possible_at: original.first_possible_at,
+    });
+    expect(posts()).toHaveLength(1);
+  });
+
+  it("matches the immutable sender mailbox rather than a provider-normalized display name", async () => {
+    const { saved } = await confirmed();
+    configureResend();
+    db.env.RESEND_WEBHOOK_SECRET = REPORT_SECRET;
+    await admitEmail(true);
+    resend.next("lose");
+    await runScheduled();
+    expect(
+      (
+        await callback(
+          reportBody("email.delivered", {
+            from: "reservas@notificaciones.hotelmanantialchurin.com",
+          }),
+        )
+      ).status,
+    ).toBe(200);
+    expect((await inspection(saved.id)).submission.delivery).toMatchObject({
+      delivered: true,
+      conflict: false,
+    });
+  });
+
+  it("resolves a lost response with signed delivery while paused and without an API credential, but quarantines another endpoint context", async () => {
+    const { saved } = await confirmed();
+    configureResend();
+    db.env.RESEND_WEBHOOK_SECRET = REPORT_SECRET;
+    await admitEmail(true);
+    resend.next("lose");
+    await runScheduled();
+    const original = submissions()[0]!;
+    await admitEmail(false);
+    delete db.env.RESEND_API_KEY;
+    db.env.RESEND_API_URL = "http://localhost:88";
+    expect((await callback(reportBody())).status).toBe(200);
+    expect((await inspection(saved.id)).submission).toMatchObject({
+      providerMessageId: null,
+      delivery: { delivered: false, uncertain: true, conflict: true },
+    });
+    db.env.RESEND_API_URL = RESEND_LOOPBACK;
+    expect((await callback(reportBody())).status).toBe(200);
+    await runScheduled();
+    expect((await inspection(saved.id)).submission).toMatchObject({
+      providerMessageId: "email_1",
+      delivery: { delivered: true, uncertain: false, conflict: true },
+    });
+    expect(submissions()[0]).toMatchObject({
+      request_json: original.request_json,
+      send_key: original.send_key,
+      first_possible_at: original.first_possible_at,
+    });
+    expect(posts()).toHaveLength(1);
+  });
+
+  it("preserves a positive suppression lookup without treating it as delivery or starting another POST", async () => {
+    const { saved } = await confirmed();
+    configureResend();
+    await admitEmail(true);
+    await runScheduled();
+    await admitEmail(false);
+    resend.lookup({ id: "email_1", last_event: "suppressed", from: FROM, to: [contact.email] });
+    vi.setSystemTime(Date.now() + 15 * 60_000);
+    await runScheduled();
+    expect((await inspection(saved.id)).submission.delivery).toMatchObject({
+      accepted: true,
+      delivered: false,
+      suppressed: true,
+      recipientBlocked: true,
+    });
+    await admitEmail(true);
+    await runScheduled();
+    expect(posts()).toHaveLength(1);
+  });
+});
 
 async function reservationFor(checkoutToken: string) {
   const access = await guest("/public/checkout/access", { token: checkoutToken });

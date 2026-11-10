@@ -333,6 +333,8 @@ export const confirmationSubmissions = sqliteTable(
     firstPossibleAt: text("first_possible_at"),
     status: text("status").$type<"uncertain" | "accepted" | "unsent" | "attention">().notNull(),
     providerMessageId: text("provider_message_id"),
+    reportConflict: integer("report_conflict", { mode: "boolean" }).notNull().default(false),
+    nextLookupAt: text("next_lookup_at"),
     failureCode: text("failure_code"),
     nextAttemptAt: text("next_attempt_at"),
     createdAt: text("created_at").notNull(),
@@ -343,6 +345,42 @@ export const confirmationSubmissions = sqliteTable(
       "confirmation_submission_status",
       sql`${table.status} in ('uncertain', 'accepted', 'unsent', 'attention')`,
     ),
+  ],
+);
+
+export const confirmationReports = sqliteTable(
+  "confirmation_reports",
+  {
+    id: text("id").primaryKey(),
+    context: text("context").notNull(),
+    eventId: text("event_id").notNull(),
+    bodyDigest: text("body_digest"),
+    source: text("source").$type<"callback" | "lookup" | "response">().notNull(),
+    type: text("type").notNull(),
+    providerMessageId: text("provider_message_id").notNull(),
+    messageId: text("message_id"),
+    submissionTag: text("submission_tag"),
+    recipientEmail: text("recipient_email"),
+    sender: text("sender"),
+    category: text("category"),
+    occurredAt: text("occurred_at"),
+    observedAt: text("observed_at").notNull(),
+    details: text("details", { mode: "json" }).$type<{
+      reason?: string;
+      bounceType?: string;
+      bounceSubType?: string;
+      permanent?: boolean;
+      suppressionType?: string;
+      eventIdConflict?: boolean;
+    }>(),
+    submissionId: text("submission_id").references(() => confirmationSubmissions.id),
+    conflict: integer("conflict", { mode: "boolean" }).notNull().default(false),
+  },
+  (table) => [
+    uniqueIndex("confirmation_reports_event").on(table.context, table.eventId),
+    index("confirmation_reports_message").on(table.context, table.providerMessageId),
+    index("confirmation_reports_submission").on(table.submissionId),
+    index("confirmation_reports_recipient").on(table.context, table.recipientEmail),
   ],
 );
 

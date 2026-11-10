@@ -25,10 +25,14 @@ import { sendConfirmationSubmissions } from "./confirmation-submissions";
 import { paymentContext, reconcilePaymentAttempts } from "./payment-attempts";
 import { requireSession } from "./session";
 import { propertyCalendar } from "./property-calendar";
+import { receiveConfirmationReport, reconcileConfirmationReports } from "./confirmation-reports";
+import { RESEND_REPORT_PATH } from "./resend-reports";
 
 const CHROME_MAX_PREFLIGHT_CACHE_SECONDS = 2 * 60 * 60;
 
 export const app = new Hono<Env>();
+
+app.post(RESEND_REPORT_PATH, receiveConfirmationReport);
 
 const exactOrigin = (setting: string | undefined, origin: string) =>
   (setting ?? "")
@@ -100,6 +104,7 @@ export default {
     ctx.waitUntil(
       reconcilePaymentAttempts(db, paymentContext(env))
         .then(() => repairConfirmationIntents(db))
+        .then(() => reconcileConfirmationReports(db, env))
         .then(() => sendConfirmationSubmissions(db, env)),
     );
   },

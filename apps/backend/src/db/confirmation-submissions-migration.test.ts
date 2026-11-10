@@ -58,6 +58,10 @@ describe("confirmation submission migration", () => {
 
     expect(db.prepare(context).all()).toEqual(before);
     expect(
+      db.prepare("SELECT report_conflict, next_lookup_at FROM confirmation_submissions").all(),
+    ).toEqual([{ report_conflict: 0, next_lookup_at: null }]);
+    expect(db.prepare("SELECT count(*) AS n FROM confirmation_reports").all()).toEqual([{ n: 0 }]);
+    expect(
       db
         .prepare("SELECT credential_fingerprint, acceptance_possible FROM confirmation_submissions")
         .all(),
@@ -104,6 +108,7 @@ describe("confirmation submission migration", () => {
     expect(db.prepare("SELECT count(*) AS n FROM confirmation_submissions").all()).toEqual([
       { n: 0 },
     ]);
+    expect(db.prepare("SELECT count(*) AS n FROM confirmation_reports").all()).toEqual([{ n: 0 }]);
     db.exec(`
       INSERT INTO operation_controls (id, public_payments_admitted, updated_at, updated_by)
         VALUES (1, 0, '2026-11-01', 'owner-account');

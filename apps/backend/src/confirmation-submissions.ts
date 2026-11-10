@@ -8,6 +8,12 @@ import {
   roomTypes,
 } from "./db/schema";
 import type { Env } from "./env";
+import {
+  confirmationDeliveryView,
+  recordSubmissionAcceptance,
+  recipientIsBlocked,
+  recipientBlockedSql,
+} from "./confirmation-reports";
 import { chargeableCents, freeCancellationUntil } from "./lib/cancellation";
 import { acceptedTerms, type RatePlanCode } from "./lib/rate-plans";
 import { reservationBill } from "./lib/reservation-bill";
@@ -67,6 +73,7 @@ export async function confirmationSubmissionView(db: Db, intentId: string) {
     firstPossibleAt: row.firstPossibleAt,
     nextAttemptAt: row.nextAttemptAt,
     createdAt: row.createdAt,
+    delivery: await confirmationDeliveryView(db, row),
   };
 }
 
@@ -134,6 +141,7 @@ async function freshIntents(db: Db, limit: number) {
 
 async function retrySubmission(db: Db, resend: Resend, row: Submission, now: Date) {
   if (await stopNotConfirmed(db, row.id, now)) return;
+  if (await stopBlocked(db, row.id)) return;
   if (
     !row.credentialFingerprint ||
     row.credentialFingerprint !== (await resend.credentialFingerprint())
@@ -173,12 +181,14 @@ async function postSubmission(db: Db, resend: Resend, row: Submission) {
         isNotNull(confirmationSubmissions.nextAttemptAt),
         emailSubmissionAdmittedSql,
         reservationIsConfirmedSql,
+        sql`NOT ${recipientBlockedSql()}`,
         sql`(${confirmationSubmissions.possiblyAcceptedPosts} = 0 OR ${confirmationSubmissions.firstPossibleAt} > ${new Date(now.getTime() - SUBMISSION_WINDOW_MS).toISOString()})`,
       ),
     )
     .returning();
   if (!started) {
     await stopNotConfirmed(db, row.id, new Date());
+    await stopBlocked(db, row.id);
     return;
   }
   const [ready] = await db
@@ -187,12 +197,17 @@ async function postSubmission(db: Db, resend: Resend, row: Submission) {
       confirmed: sql<number>`${reservations.status} = 'confirmed'`,
       status: confirmationSubmissions.status,
       nextAttemptAt: confirmationSubmissions.nextAttemptAt,
+      blocked: recipientBlockedSql(),
     })
     .from(confirmationSubmissions)
     .innerJoin(confirmationIntents, eq(confirmationIntents.id, confirmationSubmissions.intentId))
     .innerJoin(reservations, eq(reservations.id, confirmationIntents.reservationId))
     .where(eq(confirmationSubmissions.id, started.id));
   if (!ready) return;
+  if (ready.blocked) {
+    await stopBlocked(db, started.id, 1);
+    return;
+  }
   if (!ready.confirmed) {
     await stopNotConfirmed(db, started.id, new Date(), 1);
     return;
@@ -243,6 +258,10 @@ async function stopNotConfirmed(db: Db, id: string, now: Date, unpostedAttempt =
 }
 
 async function openSubmission(db: Db, resend: Resend, intent: Intent, now: Date, currency: string) {
+  if (await recipientIsBlocked(db, resend.emailsUrl, intent.recipientEmail)) {
+    await insertTerminalSubmission(db, intent, now, "attention", "recipient_blocked");
+    return;
+  }
   const state = await loadReservation(db, intent.reservationId);
   if (state.reservation.status !== "confirmed") {
     await insertTerminalSubmission(db, intent, now, "unsent", "not_confirmed");
@@ -257,16 +276,19 @@ async function openSubmission(db: Db, resend: Resend, intent: Intent, now: Date,
     return;
   }
   const room = await roomTypeNames(db, state);
+  const submissionId = crypto.randomUUID();
   let requestJson: string;
   try {
-    requestJson = JSON.stringify(confirmationRequest(state, intent, access.token, currency, room));
+    requestJson = JSON.stringify(
+      confirmationRequest(state, intent, access.token, currency, room, submissionId),
+    );
   } catch {
     await insertTerminalSubmission(db, intent, now, "attention", "snapshot_failed");
     return;
   }
   const nowIso = now.toISOString();
   const row: Submission = {
-    id: crypto.randomUUID(),
+    id: submissionId,
     intentId: intent.id,
     sendKey: `confirmation/${intent.id}`,
     endpoint: resend.emailsUrl,
@@ -278,6 +300,8 @@ async function openSubmission(db: Db, resend: Resend, intent: Intent, now: Date,
     firstPossibleAt: null,
     status: "unsent",
     providerMessageId: null,
+    reportConflict: false,
+    nextLookupAt: null,
     failureCode: null,
     nextAttemptAt: nowIso,
     createdAt: nowIso,
@@ -291,6 +315,26 @@ async function openSubmission(db: Db, resend: Resend, intent: Intent, now: Date,
     throw error;
   }
   await postSubmission(db, resend, row);
+}
+
+async function stopBlocked(db: Db, id: string, unpostedAttempt = 0) {
+  const stopped = await db
+    .update(confirmationSubmissions)
+    .set({
+      status: "attention",
+      failureCode: "recipient_blocked",
+      nextAttemptAt: null,
+      possiblyAcceptedPosts: sql`max(0, ${confirmationSubmissions.possiblyAcceptedPosts} - ${unpostedAttempt})`,
+    })
+    .where(
+      and(
+        eq(confirmationSubmissions.id, id),
+        inArray(confirmationSubmissions.status, ["unsent", "uncertain"]),
+        recipientBlockedSql(),
+      ),
+    )
+    .returning({ id: confirmationSubmissions.id });
+  return stopped.length > 0;
 }
 
 async function insertTerminalSubmission(
@@ -326,6 +370,7 @@ function confirmationRequest(
   token: string,
   currency: string,
   room: string,
+  submissionId: string,
 ) {
   const language = intent.language === "en" ? "en" : "es";
   const bill = reservationBill(state);
@@ -362,7 +407,10 @@ function confirmationRequest(
       language === "en" ? "View your reservation" : "Ver su reserva"
     }</a></p>`,
     text: [...facts, link].join("\n"),
-    tags: [{ name: "category", value: "confirmation" }],
+    tags: [
+      { name: "category", value: "confirmation" },
+      { name: "submission_id", value: submissionId },
+    ],
   };
 }
 
@@ -456,7 +504,7 @@ async function applyResult(
   now: Date,
 ) {
   if (result.kind === "accepted") {
-    await markAccepted(db, row.id, result.id, now);
+    await recordSubmissionAcceptance(db, row.id, result.id, now);
     return;
   }
   if (result.kind === "attention") {
@@ -515,21 +563,6 @@ function nextDelayMs(row: Pick<Submission, "nextAttemptAt" | "updatedAt">, minim
   const last = row.nextAttemptAt ? Date.parse(row.nextAttemptAt) - Date.parse(row.updatedAt) : 0;
   const next = BACKOFF_MS.find((step) => step > last + 1000) ?? BACKOFF_MS[BACKOFF_MS.length - 1]!;
   return Math.max(next, minimumMs);
-}
-
-async function markAccepted(db: Db, id: string, providerMessageId: string, now: Date) {
-  await db
-    .update(confirmationSubmissions)
-    .set({
-      status: "accepted",
-      providerMessageId,
-      failureCode: null,
-      nextAttemptAt: null,
-      updatedAt: now.toISOString(),
-    })
-    .where(
-      and(eq(confirmationSubmissions.id, id), sql`${confirmationSubmissions.status} != 'accepted'`),
-    );
 }
 
 async function markAttention(db: Db, id: string, now: Date, failureCode?: string) {
