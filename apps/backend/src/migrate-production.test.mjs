@@ -152,14 +152,19 @@ it("shows the pending SQL and changes nothing when approval does not match", () 
   expect(commands(f)).toEqual([readLedger]);
 });
 
-it("records a restore point before applying, then prints the resulting ledger", () => {
+it("records an emergency bookmark without authorizing destructive restore, then prints the resulting ledger", () => {
   const f = fixture();
   const result = migrate(f);
   expect(result.status, result.output).toBe(0);
   expect(commands(f)).toEqual([readLedger, readBookmark, applyMigrations, readLedger]);
+  expect(result.output).toContain("Emergency recovery reference: before-migration");
   expect(result.output).toContain(
-    `cf d1 time-travel restore ${databaseId} --bookmark=before-migration`,
+    "Prefer compatible code fallback or data-preserving forward correction",
   );
+  expect(result.output).toContain("discard later reservations and payments");
+  expect(result.output).toContain("separate explicit approval of the specific data loss");
+  expect(result.output).not.toContain("Recovery is a Time Travel restore");
+  expect(result.output).not.toContain("time-travel restore");
   expect(result.output).toContain(
     `Ledger records these new migrations: ${f.names.slice(-2).join(", ")}`,
   );

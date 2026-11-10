@@ -1,5 +1,5 @@
 import { useQueryClient } from "@tanstack/react-query";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { cn } from "cn";
 import { addDays, differenceInCalendarDays, eachDayOfInterval, parse, startOfDay } from "date-fns";
 import {
@@ -19,6 +19,7 @@ import {
 } from "@/components/room-closure-dialog";
 import { RoomEditDialog, type RoomEditTarget } from "@/components/room-edit-dialog";
 import { RoomBookingDialog, type BookingTarget } from "@/components/room-booking-dialog";
+import { ReservationSummary } from "@/components/reservation-summary";
 import { groupRoomLabel } from "@/components/room-assignment-flow";
 import { RoomAssignmentPanel } from "@/components/room-assignment-panel";
 import { RoomAssignmentDrawer } from "@/components/room-assignment-drawer";
@@ -33,7 +34,7 @@ import { RefreshButton } from "@/components/refresh-button";
 import { PropertyDatePicker } from "@/components/property-date-picker";
 import { dateOnlyCarrier } from "@/lib/property-calendar";
 import { usePropertyCalendar } from "@/lib/use-property-calendar";
-import { calendarStart } from "@/lib/route-search";
+import { calendarReturnScroll, calendarStart } from "@/lib/route-search";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import {
   Select,
@@ -236,7 +237,7 @@ function StayBar({
     <button
       type="button"
       title={stay.title}
-      aria-label={`Editar reserva de ${stay.label} · ${stayLabels[stayStatus(stay.status)]}`}
+      aria-label={`Ver reserva de ${stay.label} · ${stayLabels[stayStatus(stay.status)]}`}
       className={cn(
         className,
         "cursor-pointer outline-none focus-visible:ring-1 focus-visible:ring-ring",
@@ -406,6 +407,7 @@ export function RoomCalendar({
   const [closureTarget, setClosureTarget] = useState<ClosureTarget | null>(null);
   const [roomTarget, setRoomTarget] = useState<RoomEditTarget | null>(null);
   const [bookingTarget, setBookingTarget] = useState<BookingTarget | null>(null);
+  const [summaryId, setSummaryId] = useState<string | null>(null);
   const [unassignedOpen, setUnassignedOpen] = useState(false);
   const assignmentTriggerRef = useRef<HTMLButtonElement>(null);
   const gridScroller = useRef<HTMLDivElement>(null);
@@ -442,6 +444,25 @@ export function RoomCalendar({
     !isMobile && assignment.target
       ? placeStays([stayTrack(assignment.target)], start, span)[0]
       : undefined;
+
+  const roomsShown = !!rooms?.length;
+  useLayoutEffect(() => {
+    const saved = calendarReturnScroll.current;
+    const scroller = gridScroller.current;
+    if (!saved || !scroller || !roomsShown) return;
+    calendarReturnScroll.current = null;
+    if (saved.from !== from || saved.span !== span) return;
+    scroller.scrollTop = saved.top;
+    scroller.scrollLeft = saved.left;
+  }, [roomsShown, from, span]);
+
+  function openReservation(id: string) {
+    const scroller = gridScroller.current;
+    calendarReturnScroll.current = scroller
+      ? { from, span, top: scroller.scrollTop, left: scroller.scrollLeft }
+      : null;
+    onOpenReservation(id);
+  }
 
   function refreshCalendar() {
     return queryClient.invalidateQueries({ queryKey: ["calendar"] });
@@ -588,9 +609,17 @@ export function RoomCalendar({
       <RoomBookingDialog
         target={bookingTarget}
         onClose={() => setBookingTarget(null)}
-        onViewReservation={(id) => {
+        onCreated={(id) => {
           setBookingTarget(null);
-          onOpenReservation(id);
+          openReservation(id);
+        }}
+      />
+      <ReservationSummary
+        reservationId={summaryId}
+        onClose={() => setSummaryId(null)}
+        onEdit={(id) => {
+          setSummaryId(null);
+          openReservation(id);
         }}
       />
       <div className="flex flex-wrap items-center justify-between gap-2 border-b px-2.5 py-2">
@@ -917,18 +946,7 @@ export function RoomCalendar({
                           })
                       : undefined
                   }
-                  onOpenStay={
-                    assignment.target
-                      ? undefined
-                      : (reservationId) =>
-                          setBookingTarget({
-                            mode: "edit",
-                            reservationId,
-                            roomId: room.id,
-                            number: room.number,
-                            typeName: room.typeName,
-                          })
-                  }
+                  onOpenStay={assignment.target ? undefined : setSummaryId}
                   onOpenClosure={openClosure}
                   assignmentActive={assignment.target !== null}
                   assignmentReason={

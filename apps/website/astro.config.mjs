@@ -1,5 +1,5 @@
 import { copyFile } from "node:fs/promises";
-import { defineConfig, fontProviders } from "astro/config";
+import { defineConfig, envField, fontProviders } from "astro/config";
 import tailwindcss from "@tailwindcss/vite";
 import sitemap from "@astrojs/sitemap";
 
@@ -18,6 +18,26 @@ function copyEnglish404() {
 export default defineConfig({
   site: "https://www.hotelmanantialchurin.com",
   trailingSlash: "always",
+  env: {
+    schema: {
+      PUBLIC_PMS_API_URL: envField.string({
+        context: "client",
+        access: "public",
+        optional: true,
+        url: true,
+      }),
+      PUBLIC_CULQI_PUBLIC_KEY: envField.string({
+        context: "client",
+        access: "public",
+        optional: true,
+      }),
+      PUBLIC_TURNSTILE_SITE_KEY: envField.string({
+        context: "client",
+        access: "public",
+        optional: true,
+      }),
+    },
+  },
   vite: {
     plugins: [tailwindcss()],
   },
@@ -27,6 +47,7 @@ export default defineConfig({
   },
   integrations: [
     sitemap({
+      filter: (page) => !/^\/(en\/)?reservar\//.test(new URL(page).pathname),
       i18n: {
         defaultLocale: "es",
         locales: {

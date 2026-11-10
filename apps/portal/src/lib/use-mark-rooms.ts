@@ -1,6 +1,7 @@
+import { toast } from "sonner";
 import type { HousekeepingMarkInput, HousekeepingStatus } from "@/lib/api";
 import { useMarkHousekeeping } from "@/lib/queries";
-import { toast, toastError } from "@/lib/toast";
+import { toastError } from "@/lib/toast";
 
 export type MarkableRoom = { id: string; number: string; housekeepingStatus: HousekeepingStatus };
 
@@ -27,15 +28,8 @@ export function useMarkRooms(): MarkRooms {
   return async (rooms, status) => {
     const previous = rooms.map((room) => ({ roomId: room.id, status: room.housekeepingStatus }));
     if (!(await save(rooms.map((room) => ({ roomId: room.id, status }))))) return false;
-    const id = toast.add({
-      title: markedTitle(rooms, status),
-      actionProps: {
-        children: "Deshacer",
-        onClick: () => {
-          toast.close(id);
-          void save(previous);
-        },
-      },
+    toast(markedTitle(rooms, status), {
+      action: { label: "Deshacer", onClick: () => void save(previous) },
     });
     return true;
   };

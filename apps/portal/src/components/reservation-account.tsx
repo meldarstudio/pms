@@ -32,7 +32,8 @@ import { formatMoney } from "@/lib/money";
 import { propertyToday } from "@/lib/property-calendar";
 import { holdsInventory } from "@/lib/reservation-statuses";
 import { unsavedMessage, useReservationCommands } from "@/lib/reservation-commands";
-import { toast, toastError } from "@/lib/toast";
+import { toast } from "sonner";
+import { toastError } from "@/lib/toast";
 
 type Props = {
   detail: ReservationDetail;
@@ -115,7 +116,7 @@ function AccountSummary({
   async function applyDiscount(amountCents: number) {
     const result = await send([{ type: "set-discount", amountCents }]);
     if (result.status === "saved") {
-      toast.add({ title: "Cambios guardados", type: "success" });
+      toast.success("Cambios guardados");
       return true;
     }
     toastError("No se pudo guardar", unsavedMessage(result));

@@ -138,6 +138,81 @@ type ApiOptions = {
     command: WorkflowCommand,
   ) => WorkflowPreview | Response | Promise<WorkflowPreview | Response>;
 };
+
+it("keeps the caller's deliberate confirmation request identity on a lost-response retry and uses session credentials", async () => {
+  const api = (await browser.server.ssrLoadModule(
+    "/src/lib/api.ts",
+  )) as typeof import("../src/lib/api.ts");
+  const path = `/reservations/${saved.id}/confirmation/resends`;
+  const command = {
+    requestId: "936b2490-b2c5-488a-9da6-586b5361bcfe",
+    recipientEmail: "corrected@example.com",
+    acknowledgePossibleDuplicate: true as const,
+  };
+  const response = {
+    work: {
+      id: command.requestId,
+      kind: "deliberate_resend",
+      recipientEmail: command.recipientEmail,
+    },
+    mayDuplicateEarlierDelivery: true,
+  };
+  page.api.on("POST", path, ({ init }) => {
+    assert.equal(init?.credentials, "include");
+    return response;
+  });
+  page.api.once("POST", path, () => {
+    throw new TypeError("Synthetic lost response");
+  });
+  await assert.rejects(api.requestConfirmationResend(saved.id, command));
+  assert.deepEqual(await api.requestConfirmationResend(saved.id, command), response);
+  assert.deepEqual(page.api.bodies("POST", path), [command, command]);
+  assert.equal(writes.length, 0);
+});
+
+it("refreshes confirmation inspection after an uncertain resend without automatically requesting another message", async () => {
+  const queries = (await browser.server.ssrLoadModule(
+    "/src/lib/queries.ts",
+  )) as typeof import("../src/lib/queries.ts");
+  const inspectionPath = `/reservations/${saved.id}/confirmation`;
+  const resendPath = `${inspectionPath}/resends`;
+  let committed = false;
+  page.api.on("GET", inspectionPath, () => ({
+    history: committed
+      ? [{ kind: "automatic" }, { kind: "deliberate_resend" }]
+      : [{ kind: "automatic" }],
+  }));
+  page.api.on("POST", resendPath, () => {
+    committed = true;
+    throw new TypeError("Synthetic lost response after commitment");
+  });
+  let send!: ReturnType<typeof queries.useRequestConfirmationResend>["mutateAsync"];
+  function Callers() {
+    const inspection = queries.useReservationConfirmation(saved.id);
+    send = queries.useRequestConfirmationResend().mutateAsync;
+    return React.createElement("span", null, String(inspection.data?.history.length ?? 0));
+  }
+  await page.render(React.createElement(Callers));
+  await page.until(() => page.container.textContent === "1");
+  await React.act(async () => {
+    await assert.rejects(
+      send({
+        id: saved.id,
+        input: {
+          requestId: "6e7224c6-18d6-49f8-8e1b-9d4658d8a0f5",
+          recipientEmail: "corrected@example.com",
+          acknowledgePossibleDuplicate: true,
+        },
+      }),
+    );
+  });
+  await page.until(
+    () => page.container.textContent === "2",
+    "Committed work becomes inspectable after a lost response",
+  );
+  assert.equal(page.api.requests("POST", resendPath).length, 1);
+});
+
 function mockApi(options: ApiOptions = {}) {
   page.api.on<WorkflowCommand>(
     "POST",
@@ -276,14 +351,9 @@ async function render(search = "", waitForDetail = true, withToasts = false) {
     }),
   });
   if (withToasts) {
-    const { ToastProvider } = await browser.server.ssrLoadModule("/src/components/ui/toast.tsx");
     await React.act(async () => router.load());
     await page.render(
-      React.createElement(
-        ToastProvider,
-        null,
-        React.createElement(browser.routing.RouterProvider, { router }),
-      ),
+      await browser.withToasts(React.createElement(browser.routing.RouterProvider, { router })),
     );
   } else await page.renderRouter(router);
   if (waitForDetail) await page.until(() => page.container.textContent.includes("#TEST0001"));
@@ -472,6 +542,7 @@ it("confirms the page check-out balance, sends nothing on Volver, and offers und
   await React.act(async () => confirm.click());
   await page.until(() => window.document.body.textContent.includes("Check-out registrado"));
   assert.deepEqual(writes[0].actions, [{ type: "set-status", status: "checked_out" }]);
+  await page.until(() => !button("Deshacer").disabled);
   await click("Deshacer");
   await page.until(() => window.document.body.textContent.includes("Check-out deshecho"));
   assert.deepEqual(writes[1].actions, [{ type: "set-status", status: "checked_in" }]);
@@ -501,6 +572,7 @@ it("warns about a dirty room before the page check-in and undoes the successful 
   await React.act(async () => confirm.click());
   await page.until(() => window.document.body.textContent.includes("Check-in registrado"));
   assert.deepEqual(writes[0].actions, [{ type: "set-status", status: "checked_in" }]);
+  await page.until(() => !button("Deshacer").disabled);
   await click("Deshacer");
   await page.until(() => window.document.body.textContent.includes("Check-in deshecho"));
   assert.deepEqual(writes[1].actions, [{ type: "set-status", status: "confirmed" }]);
@@ -544,10 +616,10 @@ it.each(["discount", "editor"])(
       await page.fill(discountInput()!, "50");
     } else {
       await click("Editar notas");
-      assert.equal(undo.disabled, true, "Even a pristine open page editor blocks undo");
+      await page.until(() => undo.disabled, "Even a pristine open page editor blocks undo");
       await fill("notes", "Borrador protegido");
     }
-    assert.equal(undo.disabled, true);
+    await page.until(() => undo.disabled, "A page draft must disable undo");
     await React.act(async () => undo.click());
     assert.equal(writes.length, 1);
     assert.equal(saved.status, "checked_in");
@@ -560,11 +632,37 @@ it.each(["discount", "editor"])(
       await click("Descartar y salir");
     }
     await page.until(() => !undo.disabled);
+    assert.equal(
+      page.notifications().split("Check-in registrado").length,
+      2,
+      "Blocking and unblocking must update the one undo notice",
+    );
     await React.act(async () => undo.click());
     await page.until(() => saved.status === "confirmed");
     assert.deepEqual(writes[1].actions, [{ type: "set-status", status: "confirmed" }]);
   },
 );
+
+it("retires an expired lifecycle undo so a later draft cannot revive it", async () => {
+  vi.useFakeTimers({ toFake: ["Date", "setTimeout", "clearTimeout"], shouldAdvanceTime: true });
+  vi.setSystemTime(new Date("2026-10-19T15:00:00Z"));
+  mockApi();
+  await render("", true, true);
+  await click("Hacer check-in");
+  await page.until(() => page.notifications().includes("Check-in registrado"));
+  const undo = button("Deshacer");
+  await React.act(async () => vi.advanceTimersByTime(4000));
+  await page.until(
+    () => !page.notifications().includes("Check-in registrado"),
+    "The undo notice must close after the default duration",
+  );
+  await click("Editar notas");
+  await page.flush(50);
+  assert.equal(page.notifications().includes("Check-in registrado"), false);
+  await React.act(async () => undo.click());
+  assert.equal(writes.length, 1);
+  assert.equal(saved.status, "checked_in");
+});
 
 it("does not queue an old undo behind a running lifecycle save", async () => {
   saved = { ...saved, paidCents: 30000, balanceCents: 0 };
@@ -582,8 +680,7 @@ it("does not queue an old undo behind a running lifecycle save", async () => {
   await page.until(() => window.document.body.textContent.includes("Check-in registrado"));
   const undo = button("Deshacer");
   await click("Hacer check-out");
-  await page.until(() => writes.length === 2);
-  assert.equal(undo.disabled, true);
+  await page.until(() => writes.length === 2 && undo.disabled);
   await React.act(async () => undo.click());
   assert.equal(writes.length, 2);
   await React.act(async () => {
@@ -881,6 +978,32 @@ async function back() {
   await React.act(async () => link.click());
 }
 
+it("revalidates an edited payment date at property midnight without losing its draft", async () => {
+  vi.setSystemTime(new Date("2026-11-01T01:00:00Z"));
+  saved.payments = [payment({ paymentDate: "2026-11-01" })];
+  mockApi();
+  await render();
+  await chooseRowAction('[aria-label^="Acciones del pago"]', "Editar");
+  await fill("amount", "25");
+  await submit();
+  await page.until(() => popup()!.textContent.includes("La fecha del pago no puede ser futura."));
+  assert.equal(writes.length, 0);
+  vi.setSystemTime(new Date("2026-11-01T05:00:00Z"));
+  await React.act(async () => window.dispatchEvent(new window.Event("focus")));
+  await page.until(() => !popup()!.textContent.includes("La fecha del pago no puede ser futura."));
+  assert.equal(field("amount").value, "25");
+  assert.ok(button("1 nov 2026"));
+  await submit();
+  await page.until(() => writes.length === 1 && !popup());
+  assert.deepEqual(writes[0].actions, [
+    {
+      type: "edit-payment",
+      paymentId: saved.payments[0].id,
+      payment: { amountCents: 2500, method: "cash", paymentDate: "2026-11-01" },
+    },
+  ]);
+});
+
 async function chooseRowAction(selector: string, label: string) {
   const trigger = page.container.querySelector<HTMLElement>(selector);
   assert.ok(trigger, `Missing row actions ${selector}`);
@@ -1051,6 +1174,37 @@ it.each(["unopened", "open pristine", "closed pristine"])(
     assert.deepEqual(writes[0].actions, [{ type: "set-discount", amountCents: 9000 }]);
   },
 );
+
+it("preserves an above-subtotal saved discount while displaying the server-applied amount", async () => {
+  saved = {
+    ...saved,
+    savedDiscountCents: 10000,
+    subtotalCents: 8000,
+    discountCents: 8000,
+    totalCents: 0,
+    paidCents: 0,
+    balanceCents: 0,
+  };
+  mockApi({
+    write: (command) => {
+      assert.deepEqual(command.actions, [{ type: "set-discount", amountCents: 12000 }]);
+      saved = { ...saved, savedDiscountCents: 12000 };
+      return Response.json(saved);
+    },
+  });
+  await render();
+  assert.equal(text(discountTrigger()), "Descuento -S/ 80");
+  await React.act(async () => discountTrigger().click());
+  await page.until(() => !!discountInput());
+  assert.equal(discountInput()!.value, "100");
+  await page.fill(discountInput()!, "120");
+  await React.act(async () => discountButton("Aplicar")!.click());
+  await page.until(() => writes.length === 1 && !discountInput());
+  assert.deepEqual(summaryRows().slice(0, 3), ["Subtotal S/ 80", "Descuento -S/ 80", "Total S/ 0"]);
+  await React.act(async () => discountTrigger().click());
+  await page.until(() => !!discountInput());
+  assert.equal(discountInput()!.value, "120");
+});
 
 it("applies and removes the discount from the Cuenta summary, keeping a rejected amount", async () => {
   mockApi({
@@ -1701,7 +1855,7 @@ it("retries a failed cancellation preview and keeps the reason after a failed sa
     "A failed cancellation save must allow retrying",
   );
   assert.equal(field("reason").value, reason);
-  assert.match(text(window.document.body), /No se pudieron guardar los cambios/);
+  await page.until(() => page.notifications().includes("No se pudieron guardar los cambios"));
   assert.doesNotMatch(text(window.document.body), /Temporary cancellation save failure/);
   assert.ok(log.mock.calls.length >= 2);
   assert.equal(saved.status, "confirmed");
@@ -2086,7 +2240,8 @@ it("protects a stay draft from background refresh, router navigation and dirty d
   await click("Descartar y salir");
   await page.until(() => !popup());
   await back();
-  await page.until(() => router.state.location.pathname === "/reservations");
+  await page.until(() => router.state.location.pathname === "/calendar");
+  assert.deepEqual({ ...router.state.location.search }, { from: "2026-10-12", span: 14 });
 });
 
 it("announces the loading reservation until its detail arrives", async () => {
@@ -2932,13 +3087,12 @@ it.each(["manual", "provider"] as const)(
     await fill("reason", "Sobrepago");
     await submit();
     await page.until(() => !popup());
-    const notice = window.document.querySelector('[data-slot="toast"]')!;
-    assert.ok(notice);
-    assert.match(
-      text(notice),
-      concurrent === "manual" ? /Reembolso registrado/ : /Solicitud procesada/,
+    const expected = concurrent === "manual" ? "Reembolso registrado" : "Solicitud procesada";
+    await page.until(() => page.notifications().includes(expected));
+    assert.doesNotMatch(
+      page.notifications(),
+      /Reembolso solicitado|Comprueba el resultado en Culqi/,
     );
-    assert.doesNotMatch(text(notice), /Reembolso solicitado|Comprueba el resultado en Culqi/);
   },
 );
 
@@ -3357,12 +3511,9 @@ it.each(["coupon", "money"] as const)(
     assert.equal(saved.coupons.length, original === "coupon" ? 1 : 0);
     assert.equal(saved.refunds.length, original === "money" ? 1 : 0);
     assert.equal(text(accountStatusLine()), "Por devolver S/ 40 Devolver…");
-    const notices = Array.from(window.document.querySelectorAll('[data-slot="toast"]'))
-      .map(text)
-      .join(" ");
-    assert.match(notices, /Los cambios ya se habían guardado/);
+    await page.until(() => page.notifications().includes("Los cambios ya se habían guardado"));
     assert.doesNotMatch(
-      notices,
+      page.notifications(),
       /Este reembolso ya se había registrado|Este cupón ya se había emitido/,
     );
   },

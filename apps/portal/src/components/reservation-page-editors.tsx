@@ -2,7 +2,8 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useSelector } from "@tanstack/react-form";
 import { XIcon } from "lucide-react";
 import { cn } from "cn";
-import { BookingEditor, DiscardChanges } from "@/components/room-booking-dialog";
+import { DiscardChanges } from "@/components/discard-changes";
+import { StayEditor } from "@/components/stay-editor";
 import { GuestEntryForm, PaymentForm, paymentMethods } from "@/components/reservation-entry-forms";
 import { CouponIssued, RefundForm, ResolveRefundForm } from "@/components/refund-forms";
 import { CancellationForm } from "@/components/cancellation-form";
@@ -54,7 +55,8 @@ import { formatMajor, formatMoney } from "@/lib/money";
 import { reservationStatusLabel } from "@/lib/reservation-list";
 import { usePropertyCalendar } from "@/lib/use-property-calendar";
 import { translateError } from "@/lib/errors";
-import { toast, toastError } from "@/lib/toast";
+import { toast } from "sonner";
+import { toastError } from "@/lib/toast";
 
 export type ReservationEditorTarget =
   | { kind: "stay" }
@@ -188,13 +190,7 @@ export function ReservationPageEditor({
             : "Los cambios se guardan al confirmar.");
   const body =
     target.kind === "stay" ? (
-      <BookingEditor
-        detail={detail}
-        stayOnly
-        onCancel={close}
-        onDirtyChange={handleDirty}
-        onSaved={finish}
-      />
+      <StayEditor detail={detail} onCancel={close} onDirtyChange={handleDirty} onSaved={finish} />
     ) : target.kind === "guest" ? (
       <GuestEntryForm
         scrollable
@@ -216,7 +212,7 @@ export function ReservationPageEditor({
         onSaved={onSaved ?? finish}
         onReady={async (title, actions) => {
           const result = await send(actions);
-          if (result.status === "saved") toast.add({ title, type: "success" });
+          if (result.status === "saved") toast.success(title);
           return result;
         }}
       />
@@ -497,7 +493,7 @@ function ReservationActionForm({
       }
       const result = await onSave(actions);
       if (result.status === "saved") {
-        toast.add({ title: "Cambios guardados", type: "success" });
+        toast.success("Cambios guardados");
         onSaved(result.reservation);
       } else if (result.status === "failed") toastError("No se pudo guardar", result.message);
       else if (target.kind === "contact") {

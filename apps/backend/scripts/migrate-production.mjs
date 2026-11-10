@@ -50,7 +50,12 @@ async function main() {
 
   for (const { name, sql } of pending) console.log(`\n--- ${name} ---\n${sql}`);
   console.log(`\nTarget: ${productionName} (${database.id})`);
-  console.log("Migration may interrupt requests. Recovery is a Time Travel restore.");
+  console.log(
+    "Migration may interrupt requests. Prefer compatible code fallback or data-preserving forward correction.",
+  );
+  console.log(
+    "A Time Travel restore can discard later reservations and payments; it requires separate explicit approval of the specific data loss.",
+  );
   const terminal = createInterface({ input: process.stdin, output: process.stdout });
   const answer = await terminal.question(`Type ${productionName} to apply this SQL: `);
   terminal.close();
@@ -59,8 +64,9 @@ async function main() {
   const timeTravel = cf(["time-travel", "get-bookmark", database.id], "pipe");
   const { bookmark } = JSON.parse(timeTravel);
   if (!bookmark) throw new Error("No Time Travel bookmark; no migrations were applied");
-  const restore = `cf d1 time-travel restore ${database.id} --bookmark=${bookmark}`;
-  console.log(`Restore point: ${restore}`);
+  console.log(
+    `Emergency recovery reference: ${bookmark} (${database.id}); not restore authorization.`,
+  );
 
   const report = () => {
     const applied = readLedger(database.id).slice(ledger.length);

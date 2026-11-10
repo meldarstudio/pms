@@ -83,6 +83,7 @@ describe("sign-in", () => {
     const response = await login({ ...env, LOGIN_LIMITER: { limit } });
     expect(response.status).toBe(429);
     expect(await response.json()).toEqual({ error: "too many login attempts" });
+    expect(response.headers.get("retry-after")).toBe("60");
     expect(response.headers.getSetCookie()).toEqual([]);
   });
 

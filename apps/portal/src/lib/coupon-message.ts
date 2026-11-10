@@ -2,7 +2,8 @@ import { getCoupon, type ReservationCoupon } from "./api.ts";
 import { readErrorKind, readErrorMessage } from "./api-error.ts";
 import { longDate } from "./dates.ts";
 import { formatMoney } from "./money.ts";
-import { toast, toastError } from "./toast.ts";
+import { toast } from "sonner";
+import { toastError } from "./toast.ts";
 
 type CouponFacts = Pick<ReservationCoupon, "code" | "balanceCents" | "expiresOn">;
 
@@ -37,6 +38,6 @@ export async function copyCouponMessage(
     toastError("No se pudo copiar el mensaje", `Comparte el código ${coupon.code} manualmente.`);
     return false;
   }
-  if (announce) toast.add({ title: "Mensaje copiado", type: "success" });
+  if (announce) toast.success("Mensaje copiado");
   return true;
 }

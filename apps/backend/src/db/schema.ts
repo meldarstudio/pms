@@ -1,8 +1,9 @@
 import { sql } from "drizzle-orm";
 import { check, index, integer, sqliteTable, text, uniqueIndex } from "drizzle-orm/sqlite-core";
-import type { GuestInput } from "@pms/shared";
+import type { CheckoutLanguage, GuestInput } from "@pms/shared";
 import type { PricedNight } from "../lib/pricing";
-import type { RatePlanTerms } from "../lib/rate-plans";
+import type { RatePlanCode, RatePlanTerms } from "../lib/rate-plans";
+import type { DeliveryType } from "../resend-reports";
 
 export const propertyWriteContext = sqliteTable(
   "property_write_context",
@@ -11,6 +12,22 @@ export const propertyWriteContext = sqliteTable(
     propertyDate: text("property_date").notNull(),
   },
   (table) => [check("property_write_singleton", sql`${table.id} = 1`)],
+);
+
+export const operationControls = sqliteTable(
+  "operation_controls",
+  {
+    id: integer("id").primaryKey(),
+    publicPaymentsAdmitted: integer("public_payments_admitted", { mode: "boolean" })
+      .notNull()
+      .default(false),
+    emailSubmissionAdmitted: integer("email_submission_admitted", { mode: "boolean" })
+      .notNull()
+      .default(false),
+    updatedAt: text("updated_at").notNull(),
+    updatedBy: text("updated_by").notNull(),
+  },
+  (table) => [check("operation_controls_singleton", sql`${table.id} = 1`)],
 );
 
 export const roomTypes = sqliteTable("room_types", {
@@ -60,18 +77,57 @@ export const guests = sqliteTable("guests", {
   createdAt: text("created_at").notNull(),
 });
 
-export const quotes = sqliteTable("quotes", {
+export const publicCheckouts = sqliteTable("public_checkouts", {
   id: text("id").primaryKey(),
-  roomTypeId: text("room_type_id").notNull(),
+  tokenHash: text("token_hash").notNull().unique(),
+  roomTypeId: text("room_type_id")
+    .notNull()
+    .references(() => roomTypes.id),
   checkIn: text("check_in").notNull(),
   checkOut: text("check_out").notNull(),
   adults: integer("adults").notNull(),
   children: integer("children").notNull(),
-  nights: text("nights", { mode: "json" }).$type<PricedNight[]>().notNull(),
-  terms: text("terms", { mode: "json" }).$type<RatePlanTerms>().notNull(),
+  ratePlan: text("rate_plan").$type<RatePlanCode>().notNull(),
+  language: text("language").$type<CheckoutLanguage>().notNull(),
   createdAt: text("created_at").notNull(),
-  expiresAt: text("expires_at").notNull(),
 });
+
+export const quotes = sqliteTable(
+  "quotes",
+  {
+    id: text("id").primaryKey(),
+    roomTypeId: text("room_type_id").notNull(),
+    checkIn: text("check_in").notNull(),
+    checkOut: text("check_out").notNull(),
+    adults: integer("adults").notNull(),
+    children: integer("children").notNull(),
+    nights: text("nights", { mode: "json" }).$type<PricedNight[]>().notNull(),
+    terms: text("terms", { mode: "json" }).$type<RatePlanTerms>().notNull(),
+    createdAt: text("created_at").notNull(),
+    expiresAt: text("expires_at").notNull(),
+    checkoutId: text("checkout_id").references(() => publicCheckouts.id),
+  },
+  (table) => [index("quotes_checkout").on(table.checkoutId, table.createdAt)],
+);
+
+export const checkoutAcceptances = sqliteTable(
+  "checkout_acceptances",
+  {
+    id: text("id").primaryKey(),
+    checkoutId: text("checkout_id")
+      .notNull()
+      .references(() => publicCheckouts.id),
+    quoteId: text("quote_id")
+      .notNull()
+      .references(() => quotes.id),
+    fullName: text("full_name").notNull(),
+    email: text("email").notNull(),
+    phone: text("phone").notNull(),
+    language: text("language").$type<CheckoutLanguage>().notNull(),
+    acceptedAt: text("accepted_at").notNull(),
+  },
+  (table) => [index("checkout_acceptances_checkout").on(table.checkoutId, table.acceptedAt)],
+);
 
 export const reservations = sqliteTable(
   "reservations",
@@ -99,6 +155,8 @@ export const reservations = sqliteTable(
     paymentSchedule: text("payment_schedule").notNull().default("first_night_deposit"),
     priceAdjustmentPercent: integer("price_adjustment_percent").notNull().default(0),
     quoteId: text("quote_id").references(() => quotes.id),
+    publicCheckoutId: text("public_checkout_id").references(() => publicCheckouts.id),
+    confirmationOwed: integer("confirmation_owed").notNull().default(0),
   },
   (table) => [
     index("reservations_dates").on(table.checkIn, table.checkOut),
@@ -106,6 +164,16 @@ export const reservations = sqliteTable(
     uniqueIndex("reservations_quote").on(table.quoteId),
   ],
 );
+
+export const reservationAccess = sqliteTable("reservation_access", {
+  reservationId: text("reservation_id")
+    .primaryKey()
+    .references(() => reservations.id),
+  tokenHash: text("token_hash").notNull().unique(),
+  token: text("token").notNull().unique(),
+  expiresOn: text("expires_on").notNull(),
+  createdAt: text("created_at").notNull(),
+});
 
 export const reservationRooms = sqliteTable(
   "reservation_rooms",
@@ -207,13 +275,164 @@ export const paymentAttempts = sqliteTable(
     failureMessage: text("failure_message"),
     culqiChargeId: text("culqi_charge_id"),
     reservationId: text("reservation_id").references(() => reservations.id),
+    checkoutId: text("checkout_id").references(() => publicCheckouts.id),
+    acceptanceId: text("acceptance_id").references(() => checkoutAcceptances.id),
+    language: text("language").$type<CheckoutLanguage>(),
+    confirmationEmailEligible: integer("confirmation_email_eligible", { mode: "boolean" })
+      .notNull()
+      .default(false),
   },
   (table) => [
     index("payment_attempts_status").on(table.status, table.calledAt),
+    index("payment_attempts_checkout").on(table.checkoutId, table.createdAt),
+    uniqueIndex("payment_attempts_checkout_open")
+      .on(table.checkoutId)
+      .where(sql`${table.status} IN ('unknown', 'review', 'succeeded', 'saved')`),
     uniqueIndex("payment_attempts_open")
       .on(table.quoteId)
       .where(sql`${table.status} IN ('unknown', 'review', 'succeeded', 'saved')`),
     uniqueIndex("payment_attempts_charge").on(table.culqiChargeId),
+  ],
+);
+
+export const confirmationIntents = sqliteTable("confirmation_intents", {
+  id: text("id").primaryKey(),
+  reservationId: text("reservation_id")
+    .notNull()
+    .unique()
+    .references(() => reservations.id),
+  attemptId: text("attempt_id")
+    .notNull()
+    .unique()
+    .references(() => paymentAttempts.id),
+  checkoutId: text("checkout_id")
+    .notNull()
+    .references(() => publicCheckouts.id),
+  acceptanceId: text("acceptance_id")
+    .notNull()
+    .references(() => checkoutAcceptances.id),
+  recipientEmail: text("recipient_email").notNull(),
+  language: text("language").$type<CheckoutLanguage>().notNull(),
+  createdAt: text("created_at").notNull(),
+});
+
+export const confirmationSubmissions = sqliteTable(
+  "confirmation_submissions",
+  {
+    id: text("id").primaryKey(),
+    intentId: text("intent_id")
+      .notNull()
+      .references(() => confirmationIntents.id),
+    deliberateWorkId: text("deliberate_work_id")
+      .unique()
+      .references(() => confirmationResends.id),
+    snapshotRevision: integer("snapshot_revision"),
+    linkExpiresOn: text("link_expires_on"),
+    sendKey: text("send_key").unique(),
+    endpoint: text("endpoint"),
+    credentialFingerprint: text("credential_fingerprint"),
+    possiblyAcceptedPosts: integer("acceptance_possible").notNull().default(1),
+    requestJson: text("request_json"),
+    recipientEmail: text("recipient_email").notNull(),
+    language: text("language").$type<CheckoutLanguage>().notNull(),
+    firstPossibleAt: text("first_possible_at"),
+    status: text("status").$type<"uncertain" | "accepted" | "unsent" | "attention">().notNull(),
+    providerMessageId: text("provider_message_id"),
+    reportConflict: integer("report_conflict", { mode: "boolean" }).notNull().default(false),
+    nextLookupAt: text("next_lookup_at"),
+    failureCode: text("failure_code"),
+    nextAttemptAt: text("next_attempt_at"),
+    createdAt: text("created_at").notNull(),
+    updatedAt: text("updated_at").notNull(),
+  },
+  (table) => [
+    uniqueIndex("confirmation_submission_original")
+      .on(table.intentId)
+      .where(sql`${table.deliberateWorkId} IS NULL`),
+    check(
+      "confirmation_submission_status",
+      sql`${table.status} in ('uncertain', 'accepted', 'unsent', 'attention')`,
+    ),
+    index("confirmation_submission_lookup_candidates")
+      .on(table.credentialFingerprint, table.firstPossibleAt)
+      .where(sql`${table.providerMessageId} IS NOT NULL`),
+  ],
+);
+
+export const confirmationResends = sqliteTable(
+  "confirmation_resends",
+  {
+    id: text("id")
+      .primaryKey()
+      .references(() => reservationRequests.id),
+    intentId: text("intent_id")
+      .notNull()
+      .references(() => confirmationIntents.id),
+    recipientEmail: text("recipient_email").notNull(),
+    language: text("language").$type<CheckoutLanguage>().notNull(),
+    accountId: text("account_id")
+      .notNull()
+      .references(() => user.id),
+    accountUsername: text("account_username").notNull(),
+    accountRole: text("account_role").$type<"staff" | "owner">().notNull(),
+    createdAt: text("created_at").notNull(),
+  },
+  (table) => [index("confirmation_resends_intent").on(table.intentId, table.createdAt)],
+);
+
+export const confirmationSubmissionAttempts = sqliteTable(
+  "confirmation_submission_attempts",
+  {
+    id: text("id").primaryKey(),
+    submissionId: text("submission_id")
+      .notNull()
+      .references(() => confirmationSubmissions.id),
+    startedAt: text("started_at").notNull(),
+    completedAt: text("completed_at"),
+    outcome: text("outcome").$type<
+      "accepted" | "uncertain" | "unsent" | "attention" | "not_posted"
+    >(),
+    failureCode: text("failure_code"),
+    providerMessageId: text("provider_message_id"),
+  },
+  (table) => [
+    index("confirmation_submission_attempts_submission").on(table.submissionId, table.startedAt),
+  ],
+);
+
+export const confirmationReports = sqliteTable(
+  "confirmation_reports",
+  {
+    id: text("id").primaryKey(),
+    context: text("context").notNull(),
+    eventId: text("event_id").notNull(),
+    bodyDigest: text("body_digest"),
+    source: text("source").$type<"callback" | "lookup" | "response">().notNull(),
+    type: text("type").$type<DeliveryType>().notNull(),
+    providerMessageId: text("provider_message_id").notNull(),
+    messageId: text("message_id"),
+    submissionTag: text("submission_tag"),
+    recipientEmail: text("recipient_email"),
+    sender: text("sender"),
+    category: text("category"),
+    occurredAt: text("occurred_at"),
+    observedAt: text("observed_at").notNull(),
+    details: text("details", { mode: "json" }).$type<{
+      reason?: string;
+      bounceType?: string;
+      bounceSubType?: string;
+      permanent?: boolean;
+      suppressionType?: string;
+      eventIdConflict?: boolean;
+    }>(),
+    submissionId: text("submission_id").references(() => confirmationSubmissions.id),
+    conflict: integer("conflict", { mode: "boolean" }).notNull().default(false),
+  },
+  (table) => [
+    uniqueIndex("confirmation_reports_event").on(table.context, table.eventId),
+    index("confirmation_reports_message").on(table.context, table.providerMessageId),
+    index("confirmation_reports_submission").on(table.submissionId),
+    index("confirmation_reports_recipient").on(table.context, table.recipientEmail),
   ],
 );
 

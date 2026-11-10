@@ -3,6 +3,7 @@ import { createMiddleware } from "hono/factory";
 import { createAuth, type SignedInAccount } from "./auth";
 import type { Env } from "./env";
 import { HttpError } from "./http";
+import { isGuestPath } from "./routes/public";
 
 const PUBLIC_ROUTES = new Set(["GET /", "POST /login"]);
 
@@ -26,6 +27,7 @@ export function toAccount(user: { id: string; username?: string | null; role?: u
 }
 
 export const requireSession = createMiddleware<Env>(async (c, next) => {
+  if (isGuestPath(c.req.path)) return next();
   const isPublic = PUBLIC_ROUTES.has(`${c.req.method} ${c.req.path}`);
   const configured = authConfigured(c);
   if (!isPublic && !configured) throw new HttpError(401, "unauthorized");

@@ -39,8 +39,8 @@ export async function sendCulqiRefunds(
       ]);
       if (charge.amount_refunded === before!.cents + refund.amountCents)
         await complete(db, refund, context, { reference: chargeId, refundId: result.refundId });
-    } catch (error) {
-      console.error("Culqi refund", refund.id, error);
+    } catch {
+      console.error("Culqi refund completion failed", refund.id);
     }
   }
 }

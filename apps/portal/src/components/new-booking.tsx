@@ -56,7 +56,7 @@ export function NewBooking({
   onDirtyChange,
   onSavingChange,
 }: {
-  target: Exclude<BookingTarget, { mode: "edit" }>;
+  target: BookingTarget;
   onCreated: (reservation: ReservationDetail) => void;
   onCancel: () => void;
   onDirtyChange: (dirty: boolean) => void;

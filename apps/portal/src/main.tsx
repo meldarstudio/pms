@@ -7,8 +7,8 @@ import "./index.css";
 import { AuthGate } from "@/components/auth-gate";
 import { PwaStatus } from "@/components/pwa-status";
 import { ThemeProvider } from "@/components/theme-provider.tsx";
+import { Toaster } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
-import { ToastProvider } from "@/components/ui/toast";
 import { queryClient } from "@/lib/query-client";
 import { router } from "@/router";
 
@@ -17,13 +17,12 @@ createRoot(document.getElementById("root")!).render(
     <QueryClientProvider client={queryClient}>
       <ThemeProvider>
         <PwaStatus>
-          <ToastProvider>
-            <TooltipProvider>
-              <AuthGate>
-                <RouterProvider router={router} />
-              </AuthGate>
-            </TooltipProvider>
-          </ToastProvider>
+          <TooltipProvider>
+            <AuthGate>
+              <RouterProvider router={router} />
+            </AuthGate>
+          </TooltipProvider>
+          <Toaster />
         </PwaStatus>
       </ThemeProvider>
     </QueryClientProvider>

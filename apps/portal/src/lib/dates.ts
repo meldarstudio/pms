@@ -1,4 +1,4 @@
-import { differenceInCalendarDays, format as formatDate, parseISO } from "date-fns";
+import { differenceInCalendarDays, format as formatDate, isValid, parseISO } from "date-fns";
 import { es } from "date-fns/locale";
 
 export function format(date: Date | number | string, pattern: string) {
@@ -7,6 +7,16 @@ export function format(date: Date | number | string, pattern: string) {
 
 export function nightsBetween(start: string, end: string) {
   return differenceInCalendarDays(parseISO(end), parseISO(start));
+}
+
+export function stayRange(checkIn: string, checkOut: string) {
+  const day = (value: string, pattern: string) => {
+    const date = parseISO(value);
+    return isValid(date) ? format(date, pattern) : "—";
+  };
+  const range = `${day(checkIn, "d MMM")} – ${day(checkOut, "d MMM yyyy")}`;
+  const nights = nightsBetween(checkIn, checkOut);
+  return nights >= 1 ? `${range} · ${nights} ${nights === 1 ? "noche" : "noches"}` : range;
 }
 
 export function addDateLabelDays(day: string, days: number) {

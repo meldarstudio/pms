@@ -17,14 +17,12 @@ const roomsStructuredData = getRoomsStructuredData({
   homeUrl: getAbsoluteLocaleUrl(lang, ""),
   homeName: t("nav.home"),
   pageName: t("nav.rooms"),
-  nightUnit: t("rooms.structuredData.night"),
   rooms: rooms.map((room) => ({
     id: room.id,
     name: t(room.nameKey),
     description: t(room.leadKey),
     bed: t(room.bedsKey),
     areaSqm: room.areaSqm,
-    priceFrom: room.priceFrom,
   })),
 });
 ---

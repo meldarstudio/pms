@@ -1,0 +1,7 @@
+schema_version: "1.1"
+name: refund-summary-noise
+expected_outcome: |
+  Make the already-requested refund state the task's anchor rather than always leading with guest identity.
+  Simplify existing redundant signals instead of adding another icon.
+  Preserve the authoritative refund amount and requested state without presenting the negative balance as debt.
+  Keep total, paid, identity and contact available at supporting weights and avoid unverified visual claims.

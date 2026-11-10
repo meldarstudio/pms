@@ -5,12 +5,14 @@ import { HttpError } from "./http";
 import { accountRoutes } from "./routes/accounts";
 import { authRoutes } from "./routes/auth";
 import { calendarRoutes } from "./routes/calendar";
+import { controlRoutes } from "./routes/controls";
 import { couponRoutes } from "./routes/coupons";
 import { availabilityRoutes } from "./routes/availability";
 import { inventoryRoutes } from "./routes/inventory";
 import { guestRoutes } from "./routes/guests";
 import { housekeepingRoutes } from "./routes/housekeeping";
 import { paymentRoutes } from "./routes/payments";
+import { GUEST_PREFIX, isGuestPath, publicRoutes } from "./routes/public";
 import { ratePlanRoutes } from "./routes/rate-plans";
 import { reservationRoutes } from "./routes/reservations";
 import { roomTypeRoutes } from "./routes/room-types";
@@ -18,29 +20,45 @@ import { roomClosureRoutes } from "./routes/room-closures";
 import { roomRoutes } from "./routes/rooms";
 import { setupRoutes } from "./routes/setup";
 import { getDb } from "./db";
+import { repairConfirmationIntents } from "./confirmation-intents";
+import { sendConfirmationSubmissions } from "./confirmation-submissions";
 import { paymentContext, reconcilePaymentAttempts } from "./payment-attempts";
 import { requireSession } from "./session";
 import { propertyCalendar } from "./property-calendar";
+import { receiveConfirmationReport, reconcileConfirmationReports } from "./confirmation-reports";
+import { RESEND_REPORT_PATH } from "./resend-reports";
 
 const CHROME_MAX_PREFLIGHT_CACHE_SECONDS = 2 * 60 * 60;
 
 export const app = new Hono<Env>();
 
-app.use(
-  "*",
-  cors({
-    origin: (origin, c: Context<Env>) =>
-      (c.env.ALLOWED_ORIGINS ?? "")
-        .split(",")
-        .map((allowed) => allowed.trim())
-        .includes(origin)
-        ? origin
-        : null,
-    credentials: true,
-    exposeHeaders: ["X-Error-Field"],
-    maxAge: CHROME_MAX_PREFLIGHT_CACHE_SECONDS,
-  }),
-);
+app.post(RESEND_REPORT_PATH, receiveConfirmationReport);
+
+const exactOrigin = (setting: string | undefined, origin: string) =>
+  (setting ?? "")
+    .split(",")
+    .map((allowed) => allowed.trim())
+    .includes(origin)
+    ? origin
+    : null;
+
+const staffCors = cors({
+  origin: (origin, c: Context<Env>) => exactOrigin(c.env.ALLOWED_ORIGINS, origin),
+  credentials: true,
+  exposeHeaders: ["X-Error-Field"],
+  maxAge: CHROME_MAX_PREFLIGHT_CACHE_SECONDS,
+});
+
+const guestCors = cors({
+  origin: (origin, c: Context<Env>) => exactOrigin(c.env.PUBLIC_ALLOWED_ORIGINS, origin),
+  credentials: false,
+  allowMethods: ["GET", "POST"],
+  allowHeaders: ["Content-Type", "Authorization"],
+  exposeHeaders: ["X-Error-Field", "Retry-After"],
+  maxAge: CHROME_MAX_PREFLIGHT_CACHE_SECONDS,
+});
+
+app.use("*", (c, next) => (isGuestPath(c.req.path) ? guestCors(c, next) : staffCors(c, next)));
 
 app.use("*", requireSession);
 app.use("*", async (c, next) => {
@@ -54,7 +72,7 @@ app.onError((err, c) => {
     if (err.field) c.header("X-Error-Field", err.field);
     return c.json({ error: err.message }, err.status);
   }
-  console.error(err);
+  console.error("request failed");
   return c.json({ error: "internal error" }, 500);
 });
 
@@ -76,10 +94,19 @@ app.route("/reservations", reservationRoutes);
 app.route("/payments", paymentRoutes);
 app.route("/rate-plans", ratePlanRoutes);
 app.route("/coupons", couponRoutes);
+app.route("/controls", controlRoutes);
+app.route(GUEST_PREFIX, publicRoutes);
 
 export default {
   fetch: app.fetch,
   scheduled(_controller, env, ctx) {
-    ctx.waitUntil(reconcilePaymentAttempts(getDb(env.DB), paymentContext(env)));
+    const db = getDb(env.DB);
+    ctx.waitUntil(
+      reconcilePaymentAttempts(db, paymentContext(env))
+        .then(() => repairConfirmationIntents(db))
+        .then(() => sendConfirmationSubmissions(db, env))
+        .then(() => reconcileConfirmationReports(db, env))
+        .catch(() => console.error("scheduled recovery failed")),
+    );
   },
 } satisfies ExportedHandler<Env["Bindings"]>;

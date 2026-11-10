@@ -26,6 +26,8 @@ beforeEach(() => {
 
 afterEach(async () => {
   await page.cleanup();
+  window.localStorage.removeItem("theme");
+  window.happyDOM.settings.device.prefersColorScheme = "light";
 });
 
 afterAll(async () => {
@@ -43,6 +45,22 @@ async function render() {
   await until(
     () => !!container.querySelector("form"),
     "Login form appears for a signed-out session",
+  );
+}
+
+async function setSystemTheme(theme: "light" | "dark") {
+  await React.act(async () => {
+    window.happyDOM.settings.device.prefersColorScheme = theme;
+    window.dispatchEvent(new window.Event("resize"));
+  });
+}
+
+function assertNotificationTheme(theme: "light" | "dark") {
+  assert.ok(window.document.documentElement.classList.contains(theme));
+  assert.equal(
+    window.document.querySelector("[data-sonner-theme]")?.getAttribute("data-sonner-theme"),
+    theme,
+    "Notifications must follow the app's resolved theme",
   );
 }
 
@@ -79,9 +97,6 @@ it("keeps the sidebar usable after failed sign-out and returns to login after a 
   const routes = (await server.ssrLoadModule(
     "/src/router.tsx",
   )) as typeof import("../src/router.tsx");
-  const { ToastProvider } = (await server.ssrLoadModule(
-    "/src/components/ui/toast.tsx",
-  )) as typeof import("../src/components/ui/toast.tsx");
   let logout = page.api.hold("POST", "/logout");
   const router = routing.createRouter({
     routeTree: routes.router.routeTree,
@@ -91,9 +106,7 @@ it("keeps the sidebar usable after failed sign-out and returns to login after a 
     await router.load();
     page.root.render(
       page.withClient(
-        React.createElement(
-          ToastProvider,
-          null,
+        await browser.withToasts(
           React.createElement(
             auth.AuthGate,
             null,
@@ -118,9 +131,25 @@ it("keeps the sidebar usable after failed sign-out and returns to login after a 
     logout.release(Response.json({ error: "unavailable" }, { status: 503 })),
   );
   await until(
-    () => window.document.body.textContent.includes("No se pudo cerrar la sesión"),
+    () => page.notifications().includes("No se pudo cerrar la sesión"),
     "Failed sign-out must be visible",
   );
+  assertNotificationTheme("light");
+  await setSystemTheme("dark");
+  assertNotificationTheme("dark");
+  await React.act(async () =>
+    window.dispatchEvent(new window.KeyboardEvent("keydown", { key: "d" })),
+  );
+  assertNotificationTheme("light");
+  await setSystemTheme("light");
+  await setSystemTheme("dark");
+  assertNotificationTheme("light");
+  await React.act(async () =>
+    window.dispatchEvent(new window.KeyboardEvent("keydown", { key: "d" })),
+  );
+  assertNotificationTheme("dark");
+  await setSystemTheme("light");
+  assertNotificationTheme("dark");
   assert.equal(button(account).disabled, false);
   assert.ok(container.querySelector('nav[aria-label="Navegación principal"]'));
   logout = page.api.hold("POST", "/logout");

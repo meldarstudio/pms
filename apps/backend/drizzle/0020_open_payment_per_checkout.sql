@@ -1,0 +1,1 @@
+CREATE UNIQUE INDEX `payment_attempts_checkout_open` ON `payment_attempts` (`checkout_id`) WHERE "payment_attempts"."status" IN ('unknown', 'review', 'succeeded', 'saved');

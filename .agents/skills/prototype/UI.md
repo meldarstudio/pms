@@ -53,6 +53,8 @@ Draft each variant. Hold each one to:
 
 Variants must be **structurally different**: different layout, different information hierarchy, different primary affordance, not just different colours. Three slightly-tweaked card grids isn't a UI prototype, it's wallpaper. If two drafts come out too similar, redo one with explicit "do not use a card grid" guidance.
 
+Apply the task-dependent hierarchy and visual-noise pass in [presentation checks](../refine-ui/PRESENTATION-CHECKS.md) to every direction. These are shared clarity criteria, not a shared layout: distinct variants should each work well on their own.
+
 ### 3. Wire them together
 
 Create a single switcher component on the route:
@@ -92,6 +94,8 @@ Behaviour:
 Put the switcher in a single shared component so both sub-shapes can reuse it. Locate it wherever shared UI lives in the project.
 
 ### 5. Hand it over
+
+Use the [before/after glance test](../refine-ui/PRESENTATION-CHECKS.md#beforeafter-glance-test) to compare directions at full size. Hold data, state, viewport and surrounding context constant, except for explicitly named interaction differences. When refining an existing UI, include its current presentation as a baseline, not as one of the divergent variants. Record each direction's task-related benefit and cost; passing functional checks alone does not establish clearer presentation.
 
 Surface the URL (and the `?variant=` keys). The user will flip through whenever they get to it. The interesting feedback is usually **"I want the header from B with the sidebar from C"**, which is the actual design they want.
 

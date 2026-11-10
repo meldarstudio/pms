@@ -5,6 +5,7 @@ import type { Env } from "../env";
 import { accountSql, type AccountRole } from "../account-sql";
 
 export const PORTAL_ORIGIN = "https://app.hotelmanantialchurin.com";
+export const WEBSITE_ORIGIN = "https://www.hotelmanantialchurin.com";
 
 export const ACCOUNTS = {
   staff: { username: "hotelmanantial", password: "correct horse battery staple" },
@@ -37,7 +38,13 @@ export function authEnv(DB: D1Database, overrides: Partial<Env["Bindings"]> = {}
     PROPERTY_TIME_ZONE: "America/Lima",
     SESSION_SECRET: "test-session-secret-that-is-long-enough",
     ALLOWED_ORIGINS: PORTAL_ORIGIN,
+    PUBLIC_ALLOWED_ORIGINS: WEBSITE_ORIGIN,
+    PUBLISHED_ROOM_TYPE_IDS: "",
     LOGIN_LIMITER: { limit: async () => ({ success: true }) },
+    SEARCH_LIMITER: { limit: async () => ({ success: true }) },
+    QUOTE_LIMITER: { limit: async () => ({ success: true }) },
+    PAYMENT_IP_LIMITER: { limit: async () => ({ success: true }) },
+    PAYMENT_CHECKOUT_LIMITER: { limit: async () => ({ success: true }) },
     ...overrides,
   };
 }

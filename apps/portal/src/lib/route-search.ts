@@ -120,3 +120,7 @@ export const lastReservationsSearch: {
 export const lastCalendarSearch: { current: CalendarSearch | null } = {
   current: null,
 };
+
+export const calendarReturnScroll: {
+  current: (CalendarSearch & { top: number; left: number }) | null;
+} = { current: null };
