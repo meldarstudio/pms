@@ -31,23 +31,13 @@ const portrait = await getImage({
       alt={t("hero.imageAlt")}
     />
   </picture>
-  <div class="absolute inset-0 bg-linear-to-r from-stone-950/75 via-stone-950/40 to-transparent"></div>
-  <div class="absolute inset-0 bg-linear-to-b from-stone-950/50 to-transparent"></div>
-  <div class="absolute inset-x-0 bottom-0 h-1/2 bg-linear-to-t from-stone-950/40 to-transparent" />
-  <div class="relative mx-auto flex min-h-svh max-w-7xl flex-col justify-between gap-8 px-4 pt-[calc(10rem+env(safe-area-inset-top))] pb-[max(1.25rem,env(safe-area-inset-bottom))] md:px-8 md:pb-8">
-    <h1 class="max-w-lg text-3xl font-semibold text-pretty text-white drop-shadow-sm sm:text-4xl md:text-5xl">
+  <div class="absolute inset-0 bg-linear-to-r from-stone-950/70 via-stone-950/15 to-transparent"></div>
+  <div class="absolute inset-x-0 top-0 h-56 bg-linear-to-b from-stone-950/70 to-transparent"></div>
+  <div class="absolute inset-x-0 bottom-0 h-2/3 bg-linear-to-t from-stone-950/75 via-stone-950/30 to-transparent" />
+  <div class="relative mx-auto flex min-h-svh max-w-7xl flex-col justify-end gap-6 px-4 pt-[calc(10rem+env(safe-area-inset-top))] pb-[max(1.25rem,env(safe-area-inset-bottom))] md:gap-8 md:px-8 md:pb-8">
+    <h1 class="max-w-2xl text-3xl font-semibold text-pretty text-white drop-shadow-sm md:text-4xl">
       {t("hero.title")}
     </h1>
     <LandingSearch />
-  </div>
-</section>
-<section class="border-b border-stone-200 bg-white">
-  <div class="mx-auto max-w-7xl px-4 py-6 md:px-8 md:py-8">
-    <p class="font-source-sans-3 text-accent-700 text-xs font-medium tracking-widest uppercase">
-      {t("hero.eyebrow")}
-    </p>
-    <p class="mt-3 max-w-3xl text-base leading-relaxed text-pretty text-stone-700">
-      {t("hero.body")}
-    </p>
   </div>
 </section>

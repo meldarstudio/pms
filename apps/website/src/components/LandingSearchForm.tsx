@@ -1,5 +1,5 @@
-import { useRef, useState, type ComponentProps, type RefObject } from "react";
-import { CaretDownIcon, MinusIcon, PlusIcon } from "@phosphor-icons/react";
+import { useEffect, useRef, useState, type ComponentProps, type RefObject } from "react";
+import { CalendarBlankIcon, CaretDownIcon, MinusIcon, PlusIcon } from "@phosphor-icons/react";
 import { es, enUS } from "react-day-picker/locale";
 import { Button } from "@/components/ui/button";
 import { Calendar, CalendarDayButton } from "@/components/ui/calendar";
@@ -19,13 +19,17 @@ import {
   DEFAULT_ADULTS,
   MAX_ADULTS_CHOICE,
   MAX_CHILDREN_CHOICE,
+  MAX_NIGHTS,
   searchParams,
   searchProblems,
   type SearchProblem,
 } from "@/lib/reservation/search";
 
 export type LandingSearchCopy = {
-  chooseDate: string;
+  arrivalPlaceholder: string;
+  departurePlaceholder: string;
+  chooseArrival: string;
+  chooseDeparture: string;
   checkIn: string;
   checkOut: string;
   guests: string;
@@ -40,7 +44,7 @@ export type LandingSearchCopy = {
   adultsOther: string;
   childrenOne: string;
   childrenOther: string;
-  problems: Record<SearchProblem, string>;
+  problems: Record<SearchProblem | "checkInTooSoon", string>;
 };
 
 const limits = {
@@ -49,9 +53,6 @@ const limits = {
 } as const;
 
 const calendarLocales = { es, en: enUS } as const;
-const calendarYear = new Date().getFullYear();
-const calendarStart = new Date(calendarYear - 1, 0, 1);
-const calendarEnd = new Date(calendarYear + 2, 11, 1);
 
 const labelClass =
   "font-source-sans-3 text-xs font-medium tracking-widest text-stone-600 uppercase";
@@ -69,6 +70,16 @@ function dateLabel(date: Date) {
 function labelDate(label: string) {
   const [year, month, day] = label.split("-").map(Number);
   return new Date(year!, month! - 1, day!);
+}
+
+function earliestArrival() {
+  const today = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "America/Lima",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(new Date());
+  return addDays(today, 1);
 }
 
 function guestSummary(copy: LandingSearchCopy, adults: number, children: number) {
@@ -139,11 +150,9 @@ function DateField({
   placeholder,
   lang,
   value,
-  min,
   error,
   errorId,
   buttonRef,
-  onChange,
 }: {
   id: string;
   name: "checkIn" | "checkOut";
@@ -151,15 +160,10 @@ function DateField({
   placeholder: string;
   lang: Lang;
   value: string;
-  min?: string;
   error?: string;
   errorId: string;
   buttonRef: RefObject<HTMLButtonElement | null>;
-  onChange: (value: string) => void;
 }) {
-  const [open, setOpen] = useState(false);
-  const selected = value ? labelDate(value) : undefined;
-  const [month, setMonth] = useState<Date>(selected ?? (min ? labelDate(min) : new Date()));
   const labelId = `${id}-label`;
   const valueId = `${id}-value`;
 
@@ -168,64 +172,167 @@ function DateField({
       <FieldLabel id={labelId} htmlFor={id} className={labelClass}>
         {label}
       </FieldLabel>
-      <Popover
-        open={open}
-        onOpenChange={(next) => {
-          if (next) setMonth(selected ?? (min ? labelDate(min) : new Date()));
-          setOpen(next);
-        }}
+      <PopoverTrigger
+        id={id}
+        render={
+          <Button
+            ref={buttonRef}
+            type="button"
+            variant="outline"
+            className={fieldButton}
+            aria-labelledby={`${labelId} ${valueId}`}
+            aria-invalid={error ? true : undefined}
+            aria-describedby={error ? errorId : undefined}
+          />
+        }
       >
-        <PopoverTrigger
-          render={
-            <Button
-              ref={buttonRef}
-              id={id}
-              type="button"
-              variant="outline"
-              className={fieldButton}
-              aria-labelledby={`${labelId} ${valueId}`}
-              aria-invalid={error ? true : undefined}
-              aria-describedby={error ? errorId : undefined}
-            />
+        <span
+          id={valueId}
+          className={
+            value
+              ? "min-w-0 truncate"
+              : "min-w-0 text-left leading-tight whitespace-normal text-stone-500"
           }
         >
-          <span
-            id={valueId}
-            className={value ? "min-w-0 truncate" : "min-w-0 truncate text-stone-500"}
-          >
-            {value ? formatDate(value, lang) : placeholder}
-          </span>
-          <CaretDownIcon data-icon="inline-end" />
-        </PopoverTrigger>
-        <PopoverContent align="start" className={`${popoverSurface} w-auto gap-0 p-0`}>
-          <PopoverHeader className="sr-only">
-            <PopoverTitle>{label}</PopoverTitle>
-          </PopoverHeader>
-          <Calendar
-            mode="single"
-            locale={calendarLocales[lang]}
-            selected={selected}
-            month={month}
-            onMonthChange={setMonth}
-            startMonth={calendarStart}
-            endMonth={calendarEnd}
-            captionLayout="dropdown"
-            disabled={min ? { before: labelDate(min) } : undefined}
-            className="p-3 [--cell-size:2.75rem]"
-            components={{ DayButton: StayDayButton }}
-            onSelect={(date) => {
-              if (!date) return;
-              onChange(dateLabel(date));
-              setOpen(false);
-            }}
-          />
-        </PopoverContent>
-      </Popover>
+          {value ? formatDate(value, lang, { includeWeekday: false }) : placeholder}
+        </span>
+        <CalendarBlankIcon data-icon="inline-end" aria-hidden="true" />
+      </PopoverTrigger>
       <input type="hidden" name={name} value={value} />
       <FieldError id={errorId} className="text-sm font-medium text-red-800">
         {error}
       </FieldError>
     </Field>
+  );
+}
+
+function StayDateFields({
+  lang,
+  copy,
+  checkIn,
+  checkOut,
+  checkInRef,
+  checkOutRef,
+  checkInError,
+  checkOutError,
+  onChange,
+}: {
+  lang: Lang;
+  copy: LandingSearchCopy;
+  checkIn: string;
+  checkOut: string;
+  checkInRef: RefObject<HTMLButtonElement | null>;
+  checkOutRef: RefObject<HTMLButtonElement | null>;
+  checkInError?: string;
+  checkOutError?: string;
+  onChange: (checkIn: string, checkOut: string) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const [triggerId, setTriggerId] = useState<string | null>(null);
+  const [selecting, setSelecting] = useState<"checkIn" | "checkOut">("checkIn");
+  const [month, setMonth] = useState(() => new Date());
+  const [numberOfMonths, setNumberOfMonths] = useState(1);
+  const [firstArrival, setFirstArrival] = useState(earliestArrival);
+  const firstArrivalDate = labelDate(firstArrival);
+
+  useEffect(() => {
+    const media = window.matchMedia("(min-width: 48rem)");
+    const update = () => setNumberOfMonths(media.matches ? 2 : 1);
+    update();
+    media.addEventListener("change", update);
+    return () => media.removeEventListener("change", update);
+  }, []);
+
+  return (
+    <Popover
+      open={open}
+      triggerId={triggerId}
+      onOpenChange={(next, details) => {
+        if (next) {
+          const earliest = earliestArrival();
+          setFirstArrival(earliest);
+          const departure = details.trigger?.id === "landing-check-out" && Boolean(checkIn);
+          const date = departure ? checkOut || checkIn : checkIn;
+          setMonth(labelDate(date && date >= earliest ? date : earliest));
+          setSelecting(departure ? "checkOut" : "checkIn");
+          setTriggerId(details.trigger?.id ?? null);
+        }
+        setOpen(next);
+      }}
+    >
+      <DateField
+        id="landing-check-in"
+        name="checkIn"
+        label={copy.checkIn}
+        placeholder={copy.arrivalPlaceholder}
+        lang={lang}
+        value={checkIn}
+        error={checkInError}
+        errorId="landing-check-in-error"
+        buttonRef={checkInRef}
+      />
+      <DateField
+        id="landing-check-out"
+        name="checkOut"
+        label={copy.checkOut}
+        placeholder={copy.departurePlaceholder}
+        lang={lang}
+        value={checkOut}
+        error={checkOutError}
+        errorId="landing-check-out-error"
+        buttonRef={checkOutRef}
+      />
+      <PopoverContent
+        side="top"
+        align="start"
+        initialFocus={false}
+        className={`${popoverSurface} max-h-[calc(100dvh-1rem)] w-auto max-w-[calc(100vw-1rem)] gap-0 overflow-y-auto p-0`}
+      >
+        <PopoverHeader className="border-b border-stone-200 p-3">
+          <PopoverTitle aria-live="polite">
+            {selecting === "checkIn" ? copy.chooseArrival : copy.chooseDeparture}
+          </PopoverTitle>
+        </PopoverHeader>
+        <Calendar
+          autoFocus
+          mode="range"
+          locale={calendarLocales[lang]}
+          selected={{
+            from: checkIn ? labelDate(checkIn) : undefined,
+            to: checkOut ? labelDate(checkOut) : undefined,
+          }}
+          month={month}
+          onMonthChange={setMonth}
+          numberOfMonths={numberOfMonths}
+          showOutsideDays={numberOfMonths === 1}
+          startMonth={new Date(firstArrivalDate.getFullYear(), firstArrivalDate.getMonth(), 1)}
+          endMonth={new Date(firstArrivalDate.getFullYear() + 2, 11, 1)}
+          today={labelDate(addDays(firstArrival, -1))}
+          captionLayout="dropdown"
+          min={1}
+          max={MAX_NIGHTS}
+          disabled={[
+            { before: firstArrivalDate },
+            ...(selecting === "checkOut" && checkIn
+              ? [{ before: labelDate(checkIn) }, { after: labelDate(addDays(checkIn, MAX_NIGHTS)) }]
+              : []),
+          ]}
+          className="p-3 [--cell-size:clamp(2.25rem,calc((100vw-2.5rem)/7),2.75rem)]"
+          components={{ DayButton: StayDayButton }}
+          onSelect={(_, date) => {
+            if (dateLabel(date) < earliestArrival()) return;
+            if (selecting === "checkOut" && dateLabel(date) === checkIn) return;
+            if (selecting === "checkIn" || !checkIn) {
+              onChange(dateLabel(date), "");
+              setSelecting("checkOut");
+            } else {
+              onChange(checkIn, dateLabel(date));
+              setOpen(false);
+            }
+          }}
+        />
+      </PopoverContent>
+    </Popover>
   );
 }
 
@@ -245,7 +352,9 @@ export default function LandingSearchForm({
   const [adults, setAdults] = useState(DEFAULT_ADULTS);
   const [children, setChildren] = useState(0);
   const [open, setOpen] = useState(false);
-  const [problems, setProblems] = useState<ReturnType<typeof searchProblems>>([]);
+  const [problems, setProblems] = useState<
+    { field: "checkIn" | "checkOut"; problem: keyof LandingSearchCopy["problems"] }[]
+  >([]);
   const summary = guestSummary(copy, adults, children);
   const problemFor = (field: "checkIn" | "checkOut") => {
     const problem = problems.find((item) => item.field === field);
@@ -256,7 +365,10 @@ export default function LandingSearchForm({
     event.preventDefault();
     setOpen(false);
     const search = { checkIn, checkOut, adults, children, room: null, plan: null };
-    const next = searchProblems(search);
+    const next: typeof problems =
+      checkIn && checkIn < earliestArrival()
+        ? [{ field: "checkIn", problem: "checkInTooSoon" }]
+        : searchProblems(search);
     setProblems(next);
     if (next[0]?.field === "checkIn") checkInRef.current?.focus();
     else if (next[0]?.field === "checkOut") checkOutRef.current?.focus();
@@ -265,36 +377,25 @@ export default function LandingSearchForm({
   };
 
   return (
-    <Card className="landing-search overflow-visible border-stone-200 bg-white font-source-sans-3 text-stone-900 shadow-sm ring-0">
+    <Card className="landing-search overflow-visible border-stone-200 bg-white font-source-sans-3 text-stone-900 shadow-sm ring-0 lg:py-6">
       <CardContent>
         <form action={action} method="get" noValidate onSubmit={onSubmit}>
-          <FieldGroup className="grid grid-cols-2 items-end gap-3 md:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_minmax(0,14rem)_auto] md:gap-4">
-            <DateField
-              id="landing-check-in"
-              name="checkIn"
-              label={copy.checkIn}
-              placeholder={copy.chooseDate}
+          <FieldGroup className="grid grid-cols-2 items-end gap-3 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_minmax(0,14rem)_auto] lg:gap-4">
+            <StayDateFields
               lang={lang}
-              value={checkIn}
-              error={problemFor("checkIn")}
-              errorId="landing-check-in-error"
-              buttonRef={checkInRef}
-              onChange={setCheckIn}
+              copy={copy}
+              checkIn={checkIn}
+              checkOut={checkOut}
+              checkInError={problemFor("checkIn")}
+              checkOutError={problemFor("checkOut")}
+              checkInRef={checkInRef}
+              checkOutRef={checkOutRef}
+              onChange={(arrival, departure) => {
+                setCheckIn(arrival);
+                setCheckOut(departure);
+              }}
             />
-            <DateField
-              id="landing-check-out"
-              name="checkOut"
-              label={copy.checkOut}
-              placeholder={copy.chooseDate}
-              lang={lang}
-              value={checkOut}
-              min={checkIn ? addDays(checkIn, 1) : undefined}
-              error={problemFor("checkOut")}
-              errorId="landing-check-out-error"
-              buttonRef={checkOutRef}
-              onChange={setCheckOut}
-            />
-            <Field className="col-span-2 md:col-span-1">
+            <Field className="col-span-2 lg:col-span-1">
               <FieldLabel id="landing-guests-label" className={labelClass}>
                 {copy.guests}
               </FieldLabel>
@@ -343,7 +444,7 @@ export default function LandingSearchForm({
             </Field>
             <Button
               type="submit"
-              className="col-span-2 h-11 min-h-11 w-full bg-accent-500 px-5 font-source-sans-3 text-sm font-medium tracking-widest whitespace-normal text-accent-950 uppercase hover:bg-accent-400 md:col-span-1 md:w-auto md:whitespace-nowrap"
+              className="col-span-2 h-11 min-h-11 w-full bg-accent-500 px-5 font-source-sans-3 text-sm font-medium tracking-widest whitespace-normal text-accent-950 uppercase hover:bg-accent-400 lg:col-span-1 lg:w-auto lg:whitespace-nowrap"
             >
               {copy.submit}
             </Button>

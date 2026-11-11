@@ -6,7 +6,10 @@ import { chooseStepHref } from "@/lib/reservation/links";
 const lang = getLang(Astro.currentLocale);
 const t = useTranslations(lang);
 const copy = {
-  chooseDate: t("landing.chooseDate"),
+  arrivalPlaceholder: t("landing.arrivalPlaceholder"),
+  departurePlaceholder: t("landing.departurePlaceholder"),
+  chooseArrival: t("landing.chooseArrival"),
+  chooseDeparture: t("landing.chooseDeparture"),
   checkIn: t("reservation.search.checkIn"),
   checkOut: t("reservation.search.checkOut"),
   guests: t("landing.guests"),
@@ -23,6 +26,7 @@ const copy = {
   childrenOther: t("reservation.children.other"),
   problems: {
     checkInRequired: t("reservation.problem.checkInRequired"),
+    checkInTooSoon: t("reservation.problem.checkInTooSoon"),
     checkOutRequired: t("reservation.problem.checkOutRequired"),
     checkOutBeforeCheckIn: t("reservation.problem.checkOutBeforeCheckIn"),
     tooManyNights: t("reservation.problem.tooManyNights"),

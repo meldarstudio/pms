@@ -9,10 +9,10 @@ export function formatMoney(cents: number, currency: string) {
   );
 }
 
-export function formatDate(label: string, lang: Lang) {
+export function formatDate(label: string, lang: Lang, { includeWeekday = true } = {}) {
   return new Intl.DateTimeFormat(locales[lang], {
     timeZone: "UTC",
-    weekday: "short",
+    weekday: includeWeekday ? "short" : undefined,
     day: "numeric",
     month: "short",
     year: "numeric",
