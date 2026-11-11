@@ -88,6 +88,7 @@ export const ui = {
       "King bed beside the balcony in the king room at Hotel Manantial, Churín",
     "rooms.gallery.label": "{room} photos",
     "rooms.gallery.open": "Open photo",
+    "rooms.gallery.show": "Show photo {position}",
     "rooms.gallery.of": "of",
     "rooms.gallery.previous": "Previous photo",
     "rooms.gallery.next": "Next photo",
@@ -104,23 +105,27 @@ export const ui = {
     "rooms.hotel.parking": "Free private parking",
     "rooms.card.sleeps": "Sleeps {count}",
     "rooms.card.wifi": "Free Wi-Fi",
-    "rooms.card.freeUntil": "Free cancellation until {date}",
+    "rooms.card.freeUntil": "{plan}: free cancellation until {date}",
     "rooms.details.open": "Room details",
     "rooms.details.close": "Close room details",
+    "rooms.policies.checkInTitle": "Check-in and check-out",
     "rooms.policies.checkIn": "Check-in",
     "rooms.policies.checkInValue": "From 2:00 p.m.",
     "rooms.policies.checkOut": "Check-out",
     "rooms.policies.checkOutValue": "Until 11:00 a.m.",
     "rooms.policies.breakfast": "Breakfast",
-    "rooms.policies.breakfastValue": "We don't serve breakfast. The municipal market is next door.",
+    "rooms.policies.breakfastValue": "The hotel does not provide breakfast service.",
     "rooms.policies.cancelTitle": "Cancellation",
-    "rooms.policies.cancelBody":
-      "Flexible rate: cancel free through two calendar days before arrival, Peru time. For a November 10 arrival, that is through November 8. After that, or if you don't arrive, the first night is charged. Non-refundable rate: 10% less, paid in full when you book; cancelling or not arriving is charged the full stay.",
+    "rooms.policies.cancelFlexibleBody":
+      "Flexible rate: you may cancel free of charge up to and including two calendar days before your arrival date, Peru time. If you cancel after this deadline or do not arrive, the first night's accommodation will be charged.",
+    "rooms.policies.cancelNonRefundableBody":
+      "Non-refundable rate: full payment for the stay is required when booking. No refunds are provided in the event of cancellation or failure to arrive.",
     "rooms.policies.petsTitle": "Pets",
-    "rooms.policies.petsBody": "Welcome. Let us know when you book.",
+    "rooms.policies.petsBody":
+      "Pets are permitted. If you are travelling with a pet, please inform us when making your reservation.",
     "rooms.policies.paymentTitle": "Paying at the hotel",
     "rooms.policies.paymentBody":
-      "If your rate leaves a balance, pay it at the hotel by cash, card, Yape or bank transfer.",
+      "Any outstanding balance for your stay is due at check-in. We accept cash, cards, Yape and bank transfers. Payment at the hotel does not replace the initial payment required to confirm your reservation.",
     "churin.title": "The springs and town center, on foot",
     "churin.body":
       "The municipal market is next door and the Plaza de Armas is a 3-minute walk. La Juventud and Mamahuarmi are about 11 and 13 minutes away on foot.",
@@ -254,7 +259,7 @@ export const ui = {
     "reservation.room.tooManyGuests":
       "This room fits up to {adults} adults and {children} children.",
     "reservation.room.offline":
-      "This room can't be reserved online. Message us on WhatsApp to book it.",
+      "This room can't be reserved online. Message us on {whatsapp} to book it.",
     "reservation.room.chooseDates": "Choose dates",
     "reservation.room.preferred": "Your preferred room",
     "reservation.room.preferredUnavailable":
@@ -266,8 +271,9 @@ export const ui = {
     "reservation.rate.freeEnded": "No free cancellation for these dates",
     "reservation.rate.noFree": "No free cancellation",
     "reservation.rate.saving": "Save {amount}",
-    "reservation.rate.book": "Book",
-    "reservation.rate.bookLabel": "Book {room}, {plan} rate",
+    "reservation.rate.continue": "Continue",
+    "reservation.rate.continueLabel": "Continue with {room}, {plan} rate",
+    "reservation.rate.due": "Due when booking",
     "reservation.rate.from": "From",
     "reservation.rate.see": "See rates",
     "reservation.rate.choose": "Choose the rate",
@@ -547,6 +553,7 @@ export const ui = {
       "Cama king junto al balcón en una habitación del Hotel Manantial, Churín",
     "rooms.gallery.label": "Fotos de {room}",
     "rooms.gallery.open": "Abrir foto",
+    "rooms.gallery.show": "Mostrar foto {position}",
     "rooms.gallery.of": "de",
     "rooms.gallery.previous": "Foto anterior",
     "rooms.gallery.next": "Foto siguiente",
@@ -563,23 +570,27 @@ export const ui = {
     "rooms.hotel.parking": "Cochera privada gratis",
     "rooms.card.sleeps": "Hasta {count} personas",
     "rooms.card.wifi": "Wi-Fi gratis",
-    "rooms.card.freeUntil": "Cancelación gratis hasta el {date}",
+    "rooms.card.freeUntil": "{plan}: cancelación gratis hasta el {date}",
     "rooms.details.open": "Detalles de la habitación",
     "rooms.details.close": "Cerrar detalles de la habitación",
-    "rooms.policies.checkIn": "Check-in",
+    "rooms.policies.checkInTitle": "Entrada y salida",
+    "rooms.policies.checkIn": "Entrada (check-in)",
     "rooms.policies.checkInValue": "Desde las 2:00 p. m.",
-    "rooms.policies.checkOut": "Check-out",
+    "rooms.policies.checkOut": "Salida (check-out)",
     "rooms.policies.checkOutValue": "Hasta las 11:00 a. m.",
     "rooms.policies.breakfast": "Desayuno",
-    "rooms.policies.breakfastValue": "No ofrecemos desayuno. El mercado municipal está al lado.",
+    "rooms.policies.breakfastValue": "El hotel no ofrece servicio de desayuno.",
     "rooms.policies.cancelTitle": "Cancelación",
-    "rooms.policies.cancelBody":
-      "Tarifa Flexible: cancele gratis hasta dos días calendario antes de su llegada, hora de Perú. Para una llegada el 10 de noviembre, hasta el 8 de noviembre inclusive. Después, o si no llega, se cobra la primera noche. Tarifa No reembolsable: 10 % menos, se paga completa al reservar; si cancela o no llega, se cobra toda la estadía.",
+    "rooms.policies.cancelFlexibleBody":
+      "Tarifa Flexible: puede cancelar sin cargo hasta dos días calendario antes de su fecha de llegada, inclusive, según la hora de Perú. Si cancela después de este plazo o no se presenta, se cobrará el importe de la primera noche de alojamiento.",
+    "rooms.policies.cancelNonRefundableBody":
+      "Tarifa No reembolsable: el importe total de la estadía se abona al reservar. No se realizarán reembolsos en caso de cancelación o de no presentarse.",
     "rooms.policies.petsTitle": "Mascotas",
-    "rooms.policies.petsBody": "Bienvenidas. Avísenos al reservar.",
+    "rooms.policies.petsBody":
+      "Se admiten mascotas. Si viaja con una mascota, infórmenos al realizar su reserva.",
     "rooms.policies.paymentTitle": "Pago en el hotel",
     "rooms.policies.paymentBody":
-      "Si su tarifa deja un saldo, lo paga en el hotel en efectivo, con tarjeta, Yape o transferencia.",
+      "Si queda un saldo pendiente de su estadía, deberá abonarlo al realizar el check-in. Aceptamos efectivo, tarjetas, Yape y transferencias bancarias. El pago en el hotel no sustituye el pago inicial requerido para confirmar su reserva.",
     "churin.title": "Las termas y el centro, a pie",
     "churin.body":
       "El mercado municipal está al lado y la Plaza de Armas, a 3 minutos a pie. A La Juventud y Mamahuarmi se llega caminando en unos 11 y 13 minutos.",
@@ -714,7 +725,7 @@ export const ui = {
     "reservation.room.tooManyGuests":
       "Esta habitación admite hasta {adults} adultos y {children} niños.",
     "reservation.room.offline":
-      "Esta habitación no se puede reservar en línea. Escríbanos por WhatsApp para reservarla.",
+      "Esta habitación no se puede reservar en línea. Escríbanos por {whatsapp} para reservarla.",
     "reservation.room.chooseDates": "Elegir fechas",
     "reservation.room.preferred": "Su habitación preferida",
     "reservation.room.preferredUnavailable":
@@ -726,8 +737,9 @@ export const ui = {
     "reservation.rate.freeEnded": "Sin cancelación gratuita para estas fechas",
     "reservation.rate.noFree": "Sin cancelación gratuita",
     "reservation.rate.saving": "Ahorre {amount}",
-    "reservation.rate.book": "Reservar",
-    "reservation.rate.bookLabel": "Reservar {room}, tarifa {plan}",
+    "reservation.rate.continue": "Continuar",
+    "reservation.rate.continueLabel": "Continuar con {room}, tarifa {plan}",
+    "reservation.rate.due": "A pagar al reservar",
     "reservation.rate.from": "Desde",
     "reservation.rate.see": "Ver tarifas",
     "reservation.rate.choose": "Elija la tarifa",

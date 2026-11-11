@@ -186,7 +186,15 @@ it("edits a room type and adds staged and pending room numbers with one save", a
   await render();
   await openType();
   assert.equal(input("name").value, "Doble");
+  assert.equal(
+    container.querySelector('#property-setup-form [role="status"]')?.textContent,
+    "Sin cambios",
+  );
   await fill("name", "Doble superior");
+  assert.equal(
+    container.querySelector('#property-setup-form [role="status"]')?.textContent,
+    "Cambios sin guardar",
+  );
   await fill("baseRate", "175.50");
   await fill("maxAdults", "4");
   await fill("maxChildren", "0");
@@ -219,6 +227,10 @@ it("edits a room type and adds staged and pending room numbers with one save", a
   assert.equal(input("roomNumber").value, "");
   assert.equal(input("rooms[2].number").value, "201");
   assert.equal(container.textContent.includes("Nueva"), false);
+  assert.equal(
+    container.querySelector('#property-setup-form [role="status"]')?.textContent,
+    "Sin cambios",
+  );
 });
 
 it("keeps the draft and identifies a room-number conflict reported during saving, then allows correction", async () => {

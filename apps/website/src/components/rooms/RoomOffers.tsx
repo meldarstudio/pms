@@ -1,4 +1,5 @@
 import { Fragment, useEffect, useRef, useState, type ReactNode } from "react";
+import { CalendarBlankIcon } from "@phosphor-icons/react";
 import type { StaySearchCopy } from "@/components/StaySearchForm";
 import {
   Accordion,
@@ -9,6 +10,7 @@ import {
 import { BookingSteps } from "@/components/reservation/BookingSteps";
 import { Skeleton } from "@/components/ui/skeleton";
 import type { Lang } from "@/i18n/utils";
+import { getWhatsAppLink } from "@/lib/constants";
 import { fill, formatDate, formatMoney } from "@/lib/reservation/format";
 import type { PlanOffer, RoomTypeOffers } from "@/lib/reservation/offers";
 import { nightsBetween, searchParams, type RatePlanCode } from "@/lib/reservation/search";
@@ -19,6 +21,8 @@ import type { RoomsBookingKey, RoomsBookingText } from "./text";
 
 const primary =
   "font-source-sans-3 bg-accent-500 text-accent-950 hover:bg-accent-400 inline-flex min-h-12 cursor-pointer items-center justify-center gap-2 px-6 text-sm font-semibold tracking-widest uppercase";
+const secondary =
+  "font-source-sans-3 border border-stone-900 text-stone-900 hover:border-accent-500 hover:bg-accent-500 hover:text-accent-950 inline-flex min-h-12 cursor-pointer items-center justify-center gap-2 px-6 text-sm font-semibold tracking-widest uppercase";
 
 type Props = {
   lang: Lang;
@@ -27,11 +31,11 @@ type Props = {
   reviewHref: string;
   rooms: RoomView[];
   details: StayDetails;
-  phase: Exclude<Phase, { kind: "idle" }>;
+  phase: Phase;
   preferred: RoomId | null;
   offersFor: (room: RoomView) => RoomTypeOffers | undefined;
   stateOf: (room: RoomView) => RoomState;
-  status: string;
+  onChooseDates: () => void;
 };
 
 export function RoomOffers({
@@ -45,7 +49,7 @@ export function RoomOffers({
   preferred,
   offersFor,
   stateOf,
-  status,
+  onChooseDates,
 }: Props) {
   const [roomId, setRoomId] = useState<RoomId | null>(null);
   const [planCode, setPlanCode] = useState<RatePlanCode | null>(null);
@@ -135,7 +139,10 @@ export function RoomOffers({
             onPlan={setPlanCode}
           />
         ) : (
-          <ul className={`grid gap-6 ${roomGridColumns(rooms.length)}`}>
+          <ul
+            className={`grid gap-6 ${roomGridColumns(rooms.length)}`}
+            aria-busy={phase.kind === "loading"}
+          >
             {rooms.map((item) => (
               <RoomRow
                 key={item.id}
@@ -147,12 +154,11 @@ export function RoomOffers({
                 preferred={item.id === preferred}
                 offers={offersFor(item)}
                 state={stateOf(item)}
-                onOpen={() => openRoom(item.id)}
+                onOpen={phase.kind === "idle" ? onChooseDates : () => openRoom(item.id)}
               />
             ))}
           </ul>
         )}
-        {phase.kind === "loading" && <p className="sr-only">{status}</p>}
       </div>
     </section>
   );
@@ -173,7 +179,7 @@ function RoomRow({
   lang: Lang;
   text: RoomsBookingText;
   details: StayDetails;
-  phase: Exclude<Phase, { kind: "idle" }>;
+  phase: Phase;
   preferred: boolean;
   offers: RoomTypeOffers | undefined;
   state: RoomState;
@@ -192,11 +198,42 @@ function RoomRow({
         text={text}
         details={details}
         offers={offers}
+        loading={phase.kind === "loading"}
         preferred={preferred}
       >
         <div className="text-right">
-          {phase.kind === "loading" ? (
-            <Skeleton className="ml-auto h-16 w-40 bg-stone-200" />
+          {phase.kind === "idle" ? (
+            <button type="button" className={`w-full ${secondary}`} onClick={onOpen}>
+              <CalendarBlankIcon className="size-5 shrink-0" aria-hidden="true" />
+              {say("reservation.room.chooseDates")}
+            </button>
+          ) : phase.kind === "loading" ? (
+            phase.previous && state !== "available" ? (
+              <Skeleton
+                aria-hidden="true"
+                className="w-fit max-w-full bg-stone-200 text-left font-semibold text-transparent select-none motion-reduce:animate-none"
+              >
+                {unavailableLine(state, offers, text)}
+              </Skeleton>
+            ) : (
+              <>
+                <p className="text-sm text-stone-600">{say("reservation.rate.from")}</p>
+                <div className="text-3xl font-semibold">
+                  <Skeleton
+                    aria-hidden="true"
+                    className="ml-auto h-lh w-40 bg-stone-200 motion-reduce:animate-none"
+                  />
+                </div>
+                <p className="mt-1 text-sm text-stone-600">{totalLine(phase, text)}</p>
+                <button
+                  type="button"
+                  disabled
+                  className={`mt-4 w-full ${primary} disabled:opacity-50`}
+                >
+                  {say("reservation.rate.see")}
+                </button>
+              </>
+            )
           ) : available ? (
             <>
               <p className="text-sm text-stone-600">{say("reservation.rate.from")}</p>
@@ -216,7 +253,20 @@ function RoomRow({
           ) : (
             phase.kind === "found" && (
               <p className="text-left font-semibold text-stone-900">
-                {unavailableLine(state, offers, text)}
+                {state === "offline"
+                  ? fillParts(text["reservation.room.offline"], {
+                      whatsapp: (
+                        <a
+                          href={getWhatsAppLink(text["whatsapp.prefill"])}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="underline decoration-accent-500 decoration-2 underline-offset-4 hover:text-accent-800"
+                        >
+                          WhatsApp
+                        </a>
+                      ),
+                    })
+                  : unavailableLine(state, offers, text)}
               </p>
             )
           )}
@@ -269,7 +319,9 @@ function RateStep({
         >
           {say("reservation.rate.choose")}
         </h2>
-        <p className="mt-2 text-stone-600">{totalLine(phase, text)}</p>
+        <p className="mt-2 text-stone-600">
+          {room.name} · {nightsLabel} · {guests}
+        </p>
         <fieldset className="mt-6 flex flex-col gap-3">
           <legend className="sr-only">{say("reservation.rate.choose")}</legend>
           {rates.map((offer) => {
@@ -278,7 +330,7 @@ function RateStep({
             return (
               <label
                 key={offer.ratePlan}
-                className={`grid cursor-pointer grid-cols-[auto_minmax(0,1fr)_auto] gap-x-3 gap-y-1 border p-4 md:p-5 ${checked ? "border-accent-700 bg-accent-50" : "border-stone-300 bg-white"}`}
+                className={`grid cursor-pointer grid-cols-[auto_minmax(0,1fr)] gap-x-3 gap-y-2 border p-4 md:p-5 ${checked ? "border-accent-700 bg-accent-50" : "border-stone-300 bg-white"}`}
               >
                 <input
                   type="radio"
@@ -287,17 +339,17 @@ function RateStep({
                   checked={checked}
                   onChange={() => onPlan(offer.ratePlan)}
                 />
-                <span className="text-lg font-semibold text-stone-900">{plan}</span>
-                <span className="text-xl font-semibold text-stone-900">
-                  {money(offer.totalCents)}
+                <span className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
+                  <span className="text-lg font-semibold text-stone-900">{plan}</span>
+                  <span className="ml-auto text-xl font-semibold whitespace-nowrap text-stone-900">
+                    {money(offer.totalCents)}
+                  </span>
                 </span>
                 <span className="col-start-2 text-sm leading-relaxed text-stone-700">
                   <RateTerms offer={offer} lang={lang} text={text} money={money} />
                 </span>
-                <span className="col-start-2 text-sm text-stone-600">
-                  {say("reservation.offer.now")} {money(offer.requiredInitialPaymentCents)}
-                  {offer.remainingScheduledCents > 0 &&
-                    ` · ${say("reservation.offer.remaining")} ${money(offer.remainingScheduledCents)}`}
+                <span className="col-start-2">
+                  <RatePayments offer={offer} text={text} money={money} />
                 </span>
               </label>
             );
@@ -308,38 +360,38 @@ function RateStep({
         className="flex flex-col border border-stone-200 bg-white lg:sticky lg:top-36 lg:col-start-2 lg:row-span-2 lg:row-start-1"
         aria-labelledby="stay-summary"
       >
-        {room.photos[0] && (
-          <img
-            className="order-1 aspect-video w-full object-cover object-center lg:aspect-4/3"
-            src={room.photos[0].src}
-            srcSet={room.photos[0].srcSet}
-            sizes="(min-width: 64rem) 26rem, 100vw"
-            width={room.photos[0].width}
-            height={room.photos[0].height}
-            alt={room.photos[0].alt}
-          />
-        )}
-        <div className="order-2 p-5 md:p-6">
-          <h2
-            id="stay-summary"
-            className="font-source-sans-3 text-xs font-medium tracking-widest text-stone-600 uppercase"
-          >
-            {say("reservation.review.stay")}
-          </h2>
+        <div className="p-5 md:p-6">
+          <div className="flex items-start gap-4">
+            {room.photos[0] && (
+              <img
+                className="size-20 shrink-0 object-cover object-center"
+                src={room.photos[0].src}
+                srcSet={room.photos[0].srcSet}
+                sizes="5rem"
+                width={room.photos[0].width}
+                height={room.photos[0].height}
+                alt={room.photos[0].alt}
+              />
+            )}
+            <div className="min-w-0">
+              <h2
+                id="stay-summary"
+                className="font-source-sans-3 text-xs font-medium tracking-widest text-stone-600 uppercase"
+              >
+                {say("reservation.review.stay")}
+              </h2>
+              <p className="mt-2 text-xl font-semibold text-pretty text-stone-900">{room.name}</p>
+              <p className="mt-1 text-sm text-stone-600">
+                {room.beds} · {room.area}
+              </p>
+            </div>
+          </div>
           {preferred && (
-            <p className="mt-4 inline-block bg-accent-100 px-2 py-1 font-source-sans-3 text-xs font-semibold tracking-widest text-accent-900 uppercase">
+            <p className="mt-3 inline-block bg-accent-100 px-2 py-1 font-source-sans-3 text-xs font-semibold tracking-widest text-accent-900 uppercase">
               {say("reservation.room.preferred")}
             </p>
           )}
-          <p
-            className={`${preferred ? "mt-3" : "mt-4"} text-2xl font-semibold text-pretty text-stone-900`}
-          >
-            {room.name}
-          </p>
-          <p className="mt-2 text-sm text-stone-600">
-            {room.beds} · {room.area}
-          </p>
-          <dl className="mt-5 flex flex-col gap-2 text-sm">
+          <dl className="mt-4 flex flex-col gap-2 text-sm">
             <SummaryRow
               term={say("reservation.review.dates")}
               detail={`${dates} · ${nightsLabel}`}
@@ -350,23 +402,24 @@ function RateStep({
               detail={say(`reservation.plan.${selected.ratePlan}`)}
             />
           </dl>
-          <div className="mt-5 border-t border-stone-200 pt-5">
+          <div className="mt-4 border-t border-stone-200 pt-4">
             <p className="text-sm text-stone-600">{say("reservation.offer.total")}</p>
             <p className="text-3xl font-semibold text-stone-900">{money(selected.totalCents)}</p>
-            <p className="mt-2 text-sm text-stone-700">
-              {say("reservation.offer.now")} {money(selected.requiredInitialPaymentCents)}
-              {selected.remainingScheduledCents > 0 &&
-                ` · ${say("reservation.offer.remaining")} ${money(selected.remainingScheduledCents)}`}
+            <div className="mt-3">
+              <RatePayments offer={selected} text={text} money={money} />
+            </div>
+            <p className="mt-3 text-xs text-stone-600">
+              {say("reservation.offer.taxes", { currency: phase.result.currency })}
             </p>
             <a
-              className={`mt-5 w-full ${primary}`}
+              className={`mt-4 w-full ${primary}`}
               href={`${reviewHref}?${searchParams({ ...phase.search, room: room.id, plan: selected.ratePlan }).toString()}`}
-              aria-label={say("reservation.rate.bookLabel", {
+              aria-label={say("reservation.rate.continueLabel", {
                 room: room.name,
                 plan: say(`reservation.plan.${selected.ratePlan}`),
               })}
             >
-              {say("reservation.rate.book")}
+              {say("reservation.rate.continue")}
             </a>
           </div>
         </div>
@@ -375,13 +428,19 @@ function RateStep({
         <AccordionItem value="cancel">
           <AccordionTrigger>{text["rooms.policies.cancelTitle"]}</AccordionTrigger>
           <AccordionContent>
-            <p>{text["rooms.policies.cancelBody"]}</p>
+            <p>
+              {selected.ratePlan === "flexible"
+                ? text["rooms.policies.cancelFlexibleBody"]
+                : text["rooms.policies.cancelNonRefundableBody"]}
+            </p>
           </AccordionContent>
         </AccordionItem>
         <AccordionItem value="check-in">
-          <AccordionTrigger>{text["rooms.policies.checkIn"]}</AccordionTrigger>
+          <AccordionTrigger>{text["rooms.policies.checkInTitle"]}</AccordionTrigger>
           <AccordionContent>
-            <p>{text["rooms.policies.checkInValue"]}</p>
+            <p>
+              {text["rooms.policies.checkIn"]}: {text["rooms.policies.checkInValue"]}
+            </p>
             <p>
               {text["rooms.policies.checkOut"]}: {text["rooms.policies.checkOutValue"]}
             </p>
@@ -416,6 +475,33 @@ function SummaryRow({ term, detail }: { term: string; detail: string }) {
       <dt className="text-stone-600">{term}</dt>
       <dd className="text-right font-semibold text-stone-900">{detail}</dd>
     </div>
+  );
+}
+
+function RatePayments({
+  offer,
+  text,
+  money,
+}: {
+  offer: PlanOffer;
+  text: RoomsBookingText;
+  money: (cents: number) => string;
+}) {
+  return (
+    <span className="flex flex-col gap-1 text-sm text-stone-600">
+      <span className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
+        <span>{text["reservation.rate.due"]}</span>
+        <span className="ml-auto whitespace-nowrap">
+          {money(offer.requiredInitialPaymentCents)}
+        </span>
+      </span>
+      {offer.remainingScheduledCents > 0 && (
+        <span className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
+          <span>{text["reservation.offer.remaining"]}</span>
+          <span className="ml-auto whitespace-nowrap">{money(offer.remainingScheduledCents)}</span>
+        </span>
+      )}
+    </span>
   );
 }
 
@@ -471,12 +557,12 @@ function fillParts(template: string, values: Record<string, ReactNode>) {
     });
 }
 
-function nightsOf(phase: Extract<Phase, { kind: "found" }>, text: RoomsBookingText) {
+function nightsOf(phase: Extract<Phase, { kind: "found" | "loading" }>, text: RoomsBookingText) {
   const nights = nightsBetween(phase.search.checkIn, phase.search.checkOut) ?? 0;
   return fill(text[`reservation.nights.${nights === 1 ? "one" : "other"}`], { count: nights });
 }
 
-function totalLine(phase: Extract<Phase, { kind: "found" }>, text: RoomsBookingText) {
+function totalLine(phase: Extract<Phase, { kind: "found" | "loading" }>, text: RoomsBookingText) {
   return fill(text["reservation.rate.total"], { nights: nightsOf(phase, text) });
 }
 
@@ -499,7 +585,7 @@ function unavailableLine(
       children: offers.maxChildren,
     });
   }
-  return text["reservation.room.offline"];
+  return fill(text["reservation.room.offline"], { whatsapp: "WhatsApp" });
 }
 
 function guestLine(copy: StaySearchCopy, adults: number, children: number) {

@@ -66,7 +66,9 @@ test("a chosen offer is reviewed with server amounts and its terms are accepted"
   const params = new URLSearchParams({ ...openStay(), adults: "2", children: "0" });
   await page.goto(`/habitaciones/?${params.toString()}`);
   await selectRoomRate(page, "Suite Matrimonial", "Flexible");
-  await page.getByRole("link", { name: "Reservar Suite Matrimonial, tarifa Flexible" }).click();
+  await page
+    .getByRole("link", { name: "Continuar con Suite Matrimonial, tarifa Flexible" })
+    .click();
 
   await expect(page).toHaveURL(/\/reservar\/revisar\/\?/);
   expect([...new URL(page.url()).searchParams.keys()].toSorted()).toEqual(
@@ -139,7 +141,7 @@ test("switching plan and back restores the earlier checkout and acceptance", asy
   await page.getByRole("link", { name: "Cambiar fechas, habitación o tarifa" }).click();
   await selectRoomRate(page, "Suite Matrimonial", "No reembolsable");
   await page
-    .getByRole("link", { name: "Reservar Suite Matrimonial, tarifa No reembolsable" })
+    .getByRole("link", { name: "Continuar con Suite Matrimonial, tarifa No reembolsable" })
     .click();
   await expect(page.locator('[data-amount="total"]')).toHaveText(/S\/\s180\.00/);
   await expect(page.getByRole("checkbox", { name: /Acepto las condiciones/ })).not.toBeChecked();
@@ -147,7 +149,9 @@ test("switching plan and back restores the earlier checkout and acceptance", asy
 
   await page.getByRole("link", { name: "Cambiar fechas, habitación o tarifa" }).click();
   await selectRoomRate(page, "Suite Matrimonial", "Flexible");
-  await page.getByRole("link", { name: "Reservar Suite Matrimonial, tarifa Flexible" }).click();
+  await page
+    .getByRole("link", { name: "Continuar con Suite Matrimonial, tarifa Flexible" })
+    .click();
   await expect(page.locator('[data-amount="total"]')).toHaveText(/S\/\s200\.00/);
   await expect(page.getByText("Condiciones aceptadas")).toBeVisible();
   expect((await serverCheckout(page, request)).quote.id).toBe(flexible.quote.id);
@@ -188,7 +192,9 @@ test("browser back shows the latest contact draft", async ({ page }) => {
   await fillContact(page);
   await page.getByRole("link", { name: "Cambiar fechas, habitación o tarifa" }).click();
   await selectRoomRate(page, "Suite Matrimonial", "Flexible");
-  await page.getByRole("link", { name: "Reservar Suite Matrimonial, tarifa Flexible" }).click();
+  await page
+    .getByRole("link", { name: "Continuar con Suite Matrimonial, tarifa Flexible" })
+    .click();
   await page.getByLabel("Nombre completo").fill("Ana María Torres");
 
   await page.goBack();

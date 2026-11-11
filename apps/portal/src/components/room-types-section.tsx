@@ -66,29 +66,36 @@ export function RoomTypesSection({
         <PageError error={types.error ?? rooms.error} onRetry={retry} />
       ) : (
         <div className="min-w-0 border bg-muted/15">
-          {types.data.map((type, index) => (
-            <Fragment key={type.id}>
-              {index > 0 && <Separator />}
-              <SettingRow
-                title={type.name}
-                description={`${rooms.data.filter((room) => room.roomTypeId === type.id).length} habitaciones · hasta ${type.maxAdults} ${type.maxAdults === 1 ? "adulto" : "adultos"} y ${type.maxChildren} ${type.maxChildren === 1 ? "niño" : "niños"}`}
-              >
-                <div className="flex items-center gap-3">
-                  <span className="text-xs tabular-nums text-muted-foreground">
-                    {formatMoney(type.baseRateCents)} / noche
-                  </span>
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    aria-label={`Editar ${type.name}`}
-                    onClick={() => openType(type)}
+          {types.data.map((type, index) => {
+            const roomCount = rooms.data.filter((room) => room.roomTypeId === type.id).length;
+            return (
+              <Fragment key={type.id}>
+                {index > 0 && <Separator />}
+                <div className="relative transition-colors hover:bg-muted/50 has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-ring has-[:focus-visible]:ring-inset">
+                  <SettingRow
+                    title={type.name}
+                    description={`${roomCount} ${roomCount === 1 ? "habitación" : "habitaciones"} · hasta ${type.maxAdults} ${type.maxAdults === 1 ? "adulto" : "adultos"} y ${type.maxChildren} ${type.maxChildren === 1 ? "niño" : "niños"}`}
                   >
-                    <ChevronRightIcon />
-                  </Button>
+                    <div className="flex items-center gap-3">
+                      <span className="flex items-baseline gap-1 whitespace-nowrap text-xs tabular-nums">
+                        <span className="font-medium">{formatMoney(type.baseRateCents)}</span>
+                        <span className="text-muted-foreground">/ noche</span>
+                      </span>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="after:absolute after:inset-0"
+                        aria-label={`Editar ${type.name}`}
+                        onClick={() => openType(type)}
+                      >
+                        <ChevronRightIcon />
+                      </Button>
+                    </div>
+                  </SettingRow>
                 </div>
-              </SettingRow>
-            </Fragment>
-          ))}
+              </Fragment>
+            );
+          })}
           {types.data.length === 0 ? (
             <Empty>
               <EmptyHeader>

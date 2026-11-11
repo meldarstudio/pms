@@ -97,7 +97,7 @@ const labelClass =
 const fieldButton =
   "h-11 min-h-11 w-full justify-between border-stone-400 bg-white px-3 font-source-sans-3 text-sm font-normal text-stone-900 shadow-none hover:bg-white aria-expanded:bg-white aria-expanded:text-stone-900";
 const popoverSurface =
-  "stay-search border-stone-300 bg-white font-source-sans-3 text-sm text-stone-900 shadow-sm ring-0";
+  "stay-search border border-stone-200 bg-white font-source-sans-3 text-sm text-stone-900 shadow-none ring-0";
 
 function dateLabel(date: Date) {
   const month = String(date.getMonth() + 1).padStart(2, "0");
@@ -469,7 +469,7 @@ export default function StaySearchForm({
 
   return (
     <Card
-      className={`stay-search overflow-visible border-stone-200 bg-white font-source-sans-3 text-stone-900 shadow-sm ring-0 ${styles.card}`}
+      className={`stay-search overflow-visible border border-stone-200 bg-white font-source-sans-3 text-stone-900 shadow-none ring-0 ${styles.card}`}
     >
       <CardContent>
         <form action={action} method="get" noValidate onSubmit={onSubmit}>

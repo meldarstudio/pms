@@ -208,13 +208,13 @@ export function RoomTypeEditor({
                 {(field) => (
                   <Field
                     orientation="responsive"
-                    className="py-5"
+                    className="py-5 @md/field-group:gap-6"
                     data-invalid={!field.state.meta.isValid}
                     data-disabled={submitting}
                   >
-                    <FieldContent>
+                    <FieldContent className="min-w-0">
                       <FieldLabel htmlFor={`setup-${item.key}`}>{item.label}</FieldLabel>
-                      <FieldDescription id={`setup-${item.key}-help`}>
+                      <FieldDescription id={`setup-${item.key}-help`} className="max-w-md">
                         {item.detail}
                       </FieldDescription>
                       <FieldError
@@ -225,7 +225,7 @@ export function RoomTypeEditor({
                     <Input
                       id={`setup-${item.key}`}
                       name={field.name}
-                      className="w-full sm:w-48"
+                      className="w-full @md/field-group:basis-56 @md/field-group:shrink-0"
                       type={item.type}
                       inputMode={item.key === "baseRate" ? "decimal" : undefined}
                       min={"min" in item ? item.min : undefined}
@@ -389,7 +389,7 @@ export function RoomTypeEditor({
       {saveError && <FieldError role="alert">{saveError}</FieldError>}
       <Separator />
       <footer className="flex flex-wrap items-center justify-end gap-2 max-sm:[&>button]:flex-1">
-        <p className="mr-auto text-xs text-muted-foreground max-sm:w-full">
+        <p role="status" className="mr-auto text-xs text-muted-foreground max-sm:w-full">
           {dirty ? "Cambios sin guardar" : "Sin cambios"}
         </p>
         <Button

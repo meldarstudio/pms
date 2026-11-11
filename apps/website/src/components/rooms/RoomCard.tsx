@@ -16,6 +16,7 @@ import {
   XIcon,
 } from "@phosphor-icons/react";
 import { Button } from "@/components/ui/button";
+import { Skeleton } from "@/components/ui/skeleton";
 import {
   Dialog,
   DialogClose,
@@ -79,6 +80,7 @@ export function RoomCard({
   text,
   details,
   offers,
+  loading = false,
   preferred,
   children,
 }: {
@@ -88,13 +90,21 @@ export function RoomCard({
   details: StayDetails;
   /** The search's limits and rates for this room; absent before a search. */
   offers?: RoomTypeOffers;
+  loading?: boolean;
   preferred: boolean;
   children: ReactNode;
 }) {
   const nameId = `room-${room.id}-name`;
-  const freeUntil = offers?.offers.find(
+  const cancellable = offers?.offers.find(
     (offer) => offer.cancellation.freeCancellation === "available",
-  )?.cancellation.freeUntil;
+  );
+  const freeUntil = cancellable?.cancellation.freeUntil;
+  const freeUntilLabel = freeUntil
+    ? fill(text["rooms.card.freeUntil"], {
+        plan: text[`reservation.plan.${cancellable.ratePlan}`],
+        date: formatDate(freeUntil, lang, { includeWeekday: false }),
+      })
+    : null;
   const facts: Fact[] = [
     { icon: FrameCornersIcon, label: room.area },
     {
@@ -127,13 +137,19 @@ export function RoomCard({
           {room.name}
         </h2>
         <FactList facts={[...facts, { icon: WifiHighIcon, label: text["rooms.card.wifi"] }]} />
-        {freeUntil && (
-          <p className="mt-4 text-sm font-semibold text-green-800">
-            {fill(text["rooms.card.freeUntil"], {
-              date: formatDate(freeUntil, lang, { includeWeekday: false }),
-            })}
-          </p>
-        )}
+        {freeUntilLabel &&
+          (loading ? (
+            <Skeleton
+              aria-hidden="true"
+              className="mt-4 min-h-[2lh] w-fit max-w-full bg-stone-200 text-sm font-semibold text-transparent select-none motion-reduce:animate-none"
+            >
+              {freeUntilLabel}
+            </Skeleton>
+          ) : (
+            <p className="mt-4 min-h-[2lh] text-sm font-semibold text-green-800">
+              {freeUntilLabel}
+            </p>
+          ))}
         <RoomDetails room={room} facts={facts} text={text} details={details} />
         <div className="mt-auto pt-6">{children}</div>
       </div>
@@ -174,7 +190,7 @@ function DetailList({ title, items }: { title: string; items: StayDetail[] }) {
 }
 
 const detailsTrigger =
-  "mt-5 inline-flex cursor-pointer items-center gap-2 self-start font-source-sans-3 text-xs font-semibold tracking-widest text-stone-900 uppercase underline decoration-accent-500 decoration-2 underline-offset-[6px] hover:text-accent-800";
+  "mt-5 inline-flex min-h-11 cursor-pointer items-center gap-2 self-start font-source-sans-3 text-xs font-semibold tracking-widest text-stone-900 uppercase underline decoration-accent-500 decoration-2 underline-offset-[6px] hover:text-accent-800";
 
 /** The room's facts and what every room shares: a dialog, or a bottom drawer on phones. */
 function RoomDetails({

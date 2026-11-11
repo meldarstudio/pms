@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState, type MouseEvent } from "react";
+import { cn } from "cn";
 import {
   Carousel,
   CarouselContent,
@@ -6,6 +7,7 @@ import {
   CarouselNext,
   CarouselPrevious,
   type CarouselApi,
+  useCarousel,
 } from "@/components/ui/carousel";
 import { Dialog, DialogClose, DialogContent, DialogTitle } from "@/components/ui/dialog";
 import { fill } from "@/lib/reservation/format";
@@ -26,6 +28,7 @@ type GalleryText = Pick<
   RoomsBookingText,
   | "rooms.gallery.label"
   | "rooms.gallery.open"
+  | "rooms.gallery.show"
   | "rooms.gallery.of"
   | "rooms.gallery.previous"
   | "rooms.gallery.next"
@@ -49,6 +52,53 @@ function useSelectedSlide(api: CarouselApi) {
   return selected;
 }
 
+function GalleryDots({
+  photos,
+  text,
+  fullscreen = false,
+}: {
+  photos: RoomPhotoView[];
+  text: GalleryText;
+  fullscreen?: boolean;
+}) {
+  const { api } = useCarousel();
+  const selected = useSelectedSlide(api);
+
+  if (photos.length <= 1) return null;
+
+  return (
+    <div
+      className={cn(
+        "absolute left-1/2 flex -translate-x-1/2",
+        fullscreen ? "bottom-[max(0.75rem,env(safe-area-inset-bottom))]" : "bottom-2",
+      )}
+    >
+      {photos.map((photo, index) => (
+        <button
+          key={photo.src}
+          type="button"
+          className="group/dot flex size-8 cursor-pointer touch-manipulation items-center justify-center focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white"
+          aria-label={fill(text["rooms.gallery.show"], {
+            position: `${index + 1} ${text["rooms.gallery.of"]} ${photos.length}`,
+          })}
+          aria-current={selected === index ? "true" : undefined}
+          onClick={() => api?.scrollTo(index)}
+        >
+          <span
+            aria-hidden="true"
+            className={cn(
+              "size-2 border transition-colors motion-reduce:transition-none",
+              selected === index
+                ? "border-accent-500 bg-accent-500 group-hover/dot:border-accent-400 group-hover/dot:bg-accent-400"
+                : "border-white bg-black/40 group-hover/dot:bg-white",
+            )}
+          />
+        </button>
+      ))}
+    </div>
+  );
+}
+
 /** Swipeable room photos; each photo opens a full-screen lightbox at that photo. */
 export function RoomGallery({
   room,
@@ -60,7 +110,6 @@ export function RoomGallery({
   text: GalleryText;
 }) {
   const [api, setApi] = useState<CarouselApi>();
-  const selected = useSelectedSlide(api);
   const [lightbox, setLightbox] = useState<number | null>(null);
   const viewed = useRef(0);
   const photoButtons = useRef<(HTMLButtonElement | null)[]>([]);
@@ -112,14 +161,7 @@ export function RoomGallery({
           className={`right-3 ${overlayButton}`}
           aria-label={text["rooms.gallery.next"]}
         />
-        {photos.length > 1 && (
-          <p
-            className="pointer-events-none absolute right-3 bottom-3 bg-black/60 px-2 py-1 font-source-sans-3 text-xs tracking-widest text-white"
-            aria-hidden="true"
-          >
-            {selected + 1} / {photos.length}
-          </p>
-        )}
+        <GalleryDots photos={photos} text={text} />
       </Carousel>
       <Dialog
         open={lightbox !== null}
@@ -222,14 +264,7 @@ function Lightbox({
         className={`right-[max(0.75rem,env(safe-area-inset-right))] md:right-6 ${overlayButton} size-12`}
         aria-label={text["rooms.gallery.next"]}
       />
-      {photos.length > 1 && (
-        <p
-          className="pointer-events-none absolute bottom-[max(1.25rem,env(safe-area-inset-bottom))] left-1/2 -translate-x-1/2 font-source-sans-3 text-xs tracking-widest text-white/80"
-          aria-hidden="true"
-        >
-          {selected + 1} / {photos.length}
-        </p>
-      )}
+      <GalleryDots photos={photos} text={text} fullscreen />
       <p className="sr-only" aria-live="polite" aria-atomic="true">
         {`${room}: ${photo.alt}, ${position}`}
       </p>

@@ -1,5 +1,4 @@
 import { useEffect, useRef, useState } from "react";
-import { CalendarBlankIcon } from "@phosphor-icons/react";
 import StaySearchForm, { type StaySearchCopy } from "@/components/StaySearchForm";
 import type { Lang } from "@/i18n/utils";
 import { resumeSearch, storeSearch } from "@/lib/reservation/draft";
@@ -7,7 +6,7 @@ import { fill, formatList } from "@/lib/reservation/format";
 import { fetchOffers, type OfferSearchResult, type RoomTypeOffers } from "@/lib/reservation/offers";
 import { searchParams, type StaySearch } from "@/lib/reservation/search";
 import type { RoomId } from "@/lib/rooms";
-import { RoomCard, roomGridColumns, type StayDetails } from "./RoomCard";
+import type { StayDetails } from "./RoomCard";
 import type { RoomPhotoView } from "./RoomGallery";
 import { RoomOffers } from "./RoomOffers";
 import type { RoomsBookingKey, RoomsBookingText } from "./text";
@@ -34,7 +33,7 @@ type Props = {
 
 export type Phase =
   | { kind: "idle" }
-  | { kind: "loading" }
+  | { kind: "loading"; search: StaySearch; previous?: OfferSearchResult }
   | { kind: "problem"; title: RoomsBookingKey; body: RoomsBookingKey; retry: boolean }
   | { kind: "found"; search: StaySearch; result: OfferSearchResult };
 
@@ -52,8 +51,6 @@ const unavailableStates = ["sold_out", "too_many_guests", "offline"] as const;
 
 const primary =
   "font-source-sans-3 bg-accent-500 text-accent-950 hover:bg-accent-400 inline-flex min-h-12 cursor-pointer items-center justify-center gap-2 px-6 text-sm font-semibold tracking-widest uppercase";
-const secondary =
-  "font-source-sans-3 border border-stone-900 text-stone-900 hover:border-accent-500 hover:bg-accent-500 hover:text-accent-950 inline-flex min-h-12 cursor-pointer items-center justify-center gap-2 px-6 text-sm font-semibold tracking-widest uppercase";
 const panel = "border border-stone-300 bg-white p-5 md:p-8";
 
 /** Rooms page: the stay search, every room with its photos, and live rates for the search. */
@@ -77,7 +74,16 @@ export default function RoomsBooking({
   async function load(next: StaySearch) {
     request.current?.abort();
     const controller = (request.current = new AbortController());
-    setPhase({ kind: "loading" });
+    setPhase((current) => ({
+      kind: "loading",
+      search: next,
+      previous:
+        current.kind === "found"
+          ? current.result
+          : current.kind === "loading"
+            ? current.previous
+            : undefined,
+    }));
     const outcome = await fetchOffers(apiBase, next, controller.signal).catch(() => null);
     if (!outcome || controller.signal.aborted) return;
     if (outcome.kind === "found") setPhase({ kind: "found", search: next, result: outcome.result });
@@ -125,10 +131,10 @@ export default function RoomsBooking({
     if (phase.kind === "problem") problemTitle.current?.focus();
   }, [phase]);
 
+  const result =
+    phase.kind === "found" ? phase.result : phase.kind === "loading" ? phase.previous : undefined;
   const offersFor = (room: RoomView): RoomTypeOffers | undefined =>
-    phase.kind === "found" && room.pmsRoomTypeId
-      ? phase.result.roomTypes.find((type) => type.id === room.pmsRoomTypeId)
-      : undefined;
+    result?.roomTypes.find((type) => type.id === room.pmsRoomTypeId);
   const stateOf = (room: RoomView): RoomState => offersFor(room)?.availability ?? "offline";
   const ordered = preferred
     ? [...rooms].sort((a, b) => Number(b.id === preferred) - Number(a.id === preferred))
@@ -174,8 +180,13 @@ export default function RoomsBooking({
           <div id="availability" className="scroll-offset">
             <StaySearchForm lang={lang} copy={searchCopy} onSearch={onSearch} />
           </div>
-          <p className={phase.kind === "found" ? "sr-only" : "mt-4 text-stone-700"} role="status">
-            {status}
+          <p className="mt-4 text-stone-700" role="status">
+            <span className={phase.kind === "idle" ? undefined : "sr-only"}>{status}</span>
+            {phase.kind !== "idle" && (
+              <span aria-hidden="true" className="invisible">
+                {say("reservation.choose.missing")}
+              </span>
+            )}
           </p>
           {phase.kind === "problem" && (
             <div className={`mt-6 ${panel}`}>
@@ -213,44 +224,19 @@ export default function RoomsBooking({
           )}
         </div>
       </div>
-      {phase.kind === "idle" ? (
-        <section className="bg-stone-100">
-          <ul
-            className={`mx-auto grid max-w-7xl gap-6 px-4 pt-10 pb-16 md:px-8 md:pt-12 md:pb-24 ${roomGridColumns(ordered.length)}`}
-          >
-            {ordered.map((room) => (
-              <li key={room.id}>
-                <RoomCard
-                  room={room}
-                  lang={lang}
-                  text={text}
-                  details={details}
-                  preferred={room.id === preferred}
-                >
-                  <button type="button" className={`w-full ${secondary}`} onClick={chooseDates}>
-                    <CalendarBlankIcon className="size-5 shrink-0" aria-hidden="true" />
-                    {say("reservation.room.chooseDates")}
-                  </button>
-                </RoomCard>
-              </li>
-            ))}
-          </ul>
-        </section>
-      ) : (
-        <RoomOffers
-          lang={lang}
-          text={text}
-          searchCopy={searchCopy}
-          reviewHref={reviewHref}
-          rooms={ordered}
-          details={details}
-          phase={phase}
-          preferred={preferred}
-          offersFor={offersFor}
-          stateOf={stateOf}
-          status={status}
-        />
-      )}
+      <RoomOffers
+        lang={lang}
+        text={text}
+        searchCopy={searchCopy}
+        reviewHref={reviewHref}
+        rooms={ordered}
+        details={details}
+        phase={phase}
+        preferred={preferred}
+        offersFor={offersFor}
+        stateOf={stateOf}
+        onChooseDates={chooseDates}
+      />
     </>
   );
 }

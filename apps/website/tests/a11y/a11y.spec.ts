@@ -82,9 +82,15 @@ for (const lang of ["", "/en"]) {
     await expect(
       page
         .getByRole("main")
-        .getByRole("link", { name: /^(Reservar|Book) / })
+        .getByRole("link", { name: /^(Continuar con|Continue with) / })
         .first(),
     ).toBeVisible();
+    for (const title of en
+      ? ["Cancellation", "Check-in and check-out", "Breakfast", "Pets", "Paying at the hotel"]
+      : ["Cancelación", "Entrada y salida", "Desayuno", "Mascotas", "Pago en el hotel"]) {
+      await page.getByRole("button", { name: title, exact: true }).click();
+      await expect(page.getByRole("region", { name: title, exact: true })).toBeVisible();
+    }
     await runAxe(page, `${lang}/habitaciones/ (rates)`);
   });
 

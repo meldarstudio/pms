@@ -52,6 +52,18 @@ for (const width of [390, 1280]) {
     const gallery = page.getByRole("region", { name: "Fotos de Doble Premium" });
     await gallery.hover();
     await gallery.getByRole("button", { name: "Foto siguiente" }).click();
+    await expect(gallery.getByRole("button", { name: "Mostrar foto 2 de 3" })).toHaveAttribute(
+      "aria-current",
+      "true",
+    );
+    await gallery.getByRole("button", { name: "Mostrar foto 3 de 3" }).click();
+    await expect(
+      gallery.getByRole("button", { name: "Doble Premium: Abrir foto 3 de 3" }),
+    ).toBeInViewport();
+    const secondDot = gallery.getByRole("button", { name: "Mostrar foto 2 de 3" });
+    await secondDot.focus();
+    await page.keyboard.press("Enter");
+    await expect(secondDot).toHaveAttribute("aria-current", "true");
     const second = gallery.getByRole("button", { name: "Doble Premium: Abrir foto 2 de 3" });
     await expect(second).toBeInViewport();
     await expect(page.getByRole("dialog")).toHaveCount(0);
@@ -67,11 +79,21 @@ for (const width of [390, 1280]) {
       .toBeGreaterThan(0);
     await page.keyboard.press("ArrowRight");
     await expect(lightbox).toContainText(/, 3 de 3$/);
+    await expect(lightbox.getByRole("button", { name: "Mostrar foto 3 de 3" })).toHaveAttribute(
+      "aria-current",
+      "true",
+    );
+    await lightbox.getByRole("button", { name: "Mostrar foto 1 de 3" }).click();
+    await expect(lightbox).toContainText(/, 1 de 3$/);
     await page.keyboard.press("Escape");
     await expect(lightbox).toBeHidden();
     await expect(
-      gallery.getByRole("button", { name: "Doble Premium: Abrir foto 3 de 3" }),
+      gallery.getByRole("button", { name: "Doble Premium: Abrir foto 1 de 3" }),
     ).toBeFocused();
+    await expect(gallery.getByRole("button", { name: "Mostrar foto 1 de 3" })).toHaveAttribute(
+      "aria-current",
+      "true",
+    );
   });
 }
 

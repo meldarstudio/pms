@@ -117,8 +117,8 @@ for (const [language, plan, offset] of [
     await page
       .getByRole("link", {
         name: en
-          ? "Book King room, Non-refundable rate"
-          : "Reservar Suite Matrimonial, tarifa Flexible",
+          ? "Continue with King room, Non-refundable rate"
+          : "Continuar con Suite Matrimonial, tarifa Flexible",
       })
       .click();
     await expect(page.locator('[data-amount="total"]')).toHaveText(new RegExp(`S/\\s${total}`));
