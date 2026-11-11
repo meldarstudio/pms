@@ -2,13 +2,12 @@
 import { getLang, useTranslations } from "@/i18n/utils";
 
 interface Props {
-  current: "search" | "choose" | "review";
+  current: "choose" | "review";
 }
 
 const lang = getLang(Astro.currentLocale);
 const t = useTranslations(lang);
 const steps = [
-  { id: "search", label: t("reservation.step.search") },
   { id: "choose", label: t("reservation.step.choose") },
   { id: "review", label: t("reservation.step.review") },
 ] as const;

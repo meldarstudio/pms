@@ -18,10 +18,10 @@ export const ui = {
     skipToContent: "Skip to main content",
     "meta.title": "Hotel Manantial — Hotel in Churín, Peru",
     "meta.description":
-      "Stay at Hotel Manantial in Churín, Peru, 5 minutes from the thermal baths of Mamahuarmi and La Juventud.",
+      "Stay at Hotel Manantial in Churín, Peru, 5 minutes by car from the thermal baths of Mamahuarmi and La Juventud.",
     "meta.home.title": "Hotel in Churín with Parking, near the Hot Springs | Hotel Manantial",
     "meta.home.description":
-      "Hotel in Churín, 5 min from the Mamahuarmi and La Juventud hot springs. Free parking, private bath, 24-h front desk. Check prices for your dates and book direct.",
+      "Hotel in Churín, 5 min by car from the Mamahuarmi and La Juventud hot springs. Free parking, private bath, 24-h front desk. Check prices and book direct.",
     "meta.rooms.title": "Rooms & Rates in Churín | Hotel Manantial",
     "meta.rooms.description":
       'King room, premium double and family suite in Churín, priced per room with taxes included. 55" Smart TV, 24-h front desk, free parking. Check prices for your dates.',
@@ -29,7 +29,11 @@ export const ui = {
     "meta.churin.description":
       "Guide to Mamahuarmi, La Juventud and Tingo, and how to reach Churín from Lima (≈ 4 h). Hotel Manantial: walk to the springs, 3 min to the plaza.",
     "meta.ogImageAlt": "Hotel Manantial, Churín, Peru. King room on a higher floor with a balcony.",
-    "hero.title": "Hotel in Churín, 5 minutes from the hot springs",
+    "hero.title": "Hotel in Churín, 5 minutes by car from the hot springs",
+    "hero.benefits": "Hotel amenities",
+    "hero.parking": "Free parking",
+    "hero.bathroom": "Private bathroom",
+    "hero.reception": "24-hour front desk",
     "hero.bookCta": "Check availability",
     "hero.roomsCta": "See rooms and rates",
     "hero.imageAlt": "Room at Hotel Manantial in Churín",
@@ -37,15 +41,17 @@ export const ui = {
     "landing.departurePlaceholder": "Choose departure",
     "landing.chooseArrival": "Choose your arrival date",
     "landing.chooseDeparture": "Choose your departure date",
+    "landing.stayHint": "Choose your arrival and departure dates.",
+    "landing.closeCalendar": "Close calendar",
     "landing.guests": "Guests",
     "landing.decreaseAdults": "Decrease adults",
     "landing.increaseAdults": "Increase adults",
     "landing.decreaseChildren": "Decrease children",
     "landing.increaseChildren": "Increase children",
-    "rooms.title": "A room for every kind of trip",
+    "rooms.title": "King room",
     "rooms.body":
-      "The King room for couples, the Premium double for friends and the Family suite for families. Wi-Fi, an elevator, and rates per room, not per person.",
-    "rooms.cta": "See all 3 rooms",
+      "One king bed, a private bathroom and Wi-Fi. Also available: Premium double and Family suite. Rates are per room, not per person.",
+    "rooms.cta": "See all room types",
     "rooms.imageAlt": "King room at Hotel Manantial",
     "rooms.pageTitle": "Rooms in Churín",
     "rooms.pageBody":
@@ -209,9 +215,9 @@ export const ui = {
     "directions.busLabel": "By bus:",
     "directions.bus": "several companies leave from Plaza Norte in Lima.",
     "booking.kicker": "Prices for your dates",
-    "booking.title": "Book direct, no fees",
+    "booking.title": "Book directly with the hotel",
     "booking.body":
-      "For a question, or a room that cannot be booked online, write to us. Booking direct costs less than on booking sites.",
+      "Check availability and prices for your dates. For assistance with your reservation, contact us on WhatsApp.",
     "booking.cta": "Message us on WhatsApp",
     "whatsapp.prefill": "Hello, I would like to book. Dates: ___ Guests: ___ Room: ___",
     "notFound.metaTitle": "Page not found — Hotel Manantial",
@@ -232,28 +238,16 @@ export const ui = {
     "reservation.cta": "See prices for your dates",
     "reservation.roomCta": "See prices and availability",
     "reservation.whatsappSecondary": "Or message us on WhatsApp",
-    "reservation.meta.searchTitle": "Check availability | Hotel Manantial",
-    "reservation.meta.searchDescription":
-      "Choose your dates and guests to see live prices and availability at Hotel Manantial, Churín.",
     "reservation.meta.chooseTitle": "Choose your room and rate | Hotel Manantial",
     "reservation.meta.chooseDescription":
-      "Compare the Flexible and Non-refundable rates for your dates at Hotel Manantial, Churín.",
+      "Choose your dates and compare prices and rates for each room at Hotel Manantial, Churín.",
     "reservation.steps": "Reservation steps",
-    "reservation.step.search": "Dates and guests",
     "reservation.step.choose": "Room and rate",
-    "reservation.search.title": "Check availability",
-    "reservation.search.lead": "Choose your dates and guests to see today's prices for each room.",
     "reservation.search.checkIn": "Arrival",
     "reservation.search.checkOut": "Departure",
     "reservation.search.adults": "Adults",
     "reservation.search.children": "Children",
-    "reservation.search.nightsEmpty": "Choose arrival and departure to see the number of nights.",
-    "reservation.search.submit": "See rooms and prices",
-    "reservation.search.limits":
-      "Online reservations are for one room, start tomorrow at the earliest (Peru time) and last 1 to 60 nights.",
-    "reservation.search.preference":
-      "Preferred room: {room}. We'll show it first if it fits your search.",
-    "reservation.search.clearPreference": "Show all rooms equally",
+    "reservation.search.submit": "Search",
     "reservation.nights.one": "1 night",
     "reservation.nights.other": "{count} nights",
     "reservation.adults.one": "1 adult",
@@ -272,13 +266,9 @@ export const ui = {
       "We couldn't use this search. Please change it and try again.",
     "reservation.helpPrompt": "Questions? We're happy to help.",
     "reservation.choose.title": "Choose your room and rate",
-    "reservation.choose.change": "Change search",
     "reservation.choose.loading": "Checking live availability…",
     "reservation.choose.loaded": "Showing rooms for your search.",
-    "reservation.choose.missing.title": "Choose your dates first",
-    "reservation.choose.missing.body":
-      "Tell us when you're arriving and leaving to see rooms and prices.",
-    "reservation.choose.missing.action": "Choose dates",
+    "reservation.choose.missing": "Choose your dates to see rooms and prices.",
     "reservation.choose.unavailable.title": "We couldn't check availability right now",
     "reservation.choose.unavailable.body":
       "This is a problem on our side, not a lack of rooms. Your search is kept: try again in a moment, or message us on WhatsApp.",
@@ -295,17 +285,19 @@ export const ui = {
     "reservation.room.preferred": "Your preferred room",
     "reservation.room.preferredUnavailable":
       "Your preferred room, the {room}, isn't available for this search. We haven't chosen another room for you: pick one below or change your search.",
-    "reservation.room.capacity": "Guests",
-    "reservation.room.capacityValue": "Up to {adults} adults and {children} children",
-    "reservation.plans.legend": "Rate for the {room}",
+    "reservation.room.capacityValue": "up to {adults} adults and {children} children",
     "reservation.plan.flexible": "Flexible",
-    "reservation.plan.flexibleLead": "Pay the first night now and the rest at the hotel.",
     "reservation.plan.non_refundable": "Non-refundable",
-    "reservation.plan.non_refundableLead": "10% less. Pay the whole stay now.",
+    "reservation.rate.total": "Total for {nights}",
+    "reservation.rate.freeUntil": "Free cancellation until {date}",
+    "reservation.rate.freeEnded": "No free cancellation for these dates",
+    "reservation.rate.noFree": "No free cancellation",
+    "reservation.rate.saving": "Save {amount}",
+    "reservation.rate.book": "Book",
+    "reservation.rate.bookLabel": "Book {room}, {plan} rate",
     "reservation.offer.total": "Stay total",
     "reservation.offer.now": "Pay now",
     "reservation.offer.remaining": "Pay at the hotel",
-    "reservation.offer.saving": "You save {amount} compared with Flexible.",
     "reservation.offer.taxes": "Prices in {currency}, taxes included.",
     "reservation.cancel.available":
       "Free cancellation through {date}, inclusive (Peru time). After that, cancelling or not arriving costs the first night: {amount}.",
@@ -315,18 +307,12 @@ export const ui = {
       "No free cancellation. Cancelling or not arriving is charged the full stay, {amount}, with no other penalty.",
     "reservation.cancel.settlement":
       "Late-cancellation and no-show charges come out of what you paid. Any amount owed back to you is arranged with the hotel: a refund or, if you agree, credit for a future stay.",
-    "reservation.choose.select": "Choose this room",
-    "reservation.choice.title": "Your choice",
-    "reservation.choice.summary": "{room} · {plan} rate",
-    "reservation.choice.lost":
-      "Your earlier choice, the {room}, isn't available for this search. Please choose again.",
     "reservation.choose.noOffers.title": "No room can be reserved online for this search",
     "reservation.choose.reason.sold_out": "{rooms}: sold out for these dates. Try other dates.",
     "reservation.choose.reason.too_many_guests":
       "{rooms}: not enough room for your group. Change the number of guests; online reservations are for one room.",
     "reservation.choose.reason.offline":
       "{rooms}: not bookable online. Message us on WhatsApp to book.",
-    "reservation.choice.review": "Continue to review",
     "reservation.meta.reviewTitle": "Review your reservation | Hotel Manantial",
     "reservation.meta.reviewDescription":
       "Check your stay, price and terms, and add the booking contact's details.",
@@ -339,8 +325,7 @@ export const ui = {
     "reservation.review.dates": "Dates",
     "reservation.review.guests": "Guests",
     "reservation.review.plan": "Rate",
-    "reservation.review.changeChoice": "Change room or rate",
-    "reservation.review.changeSearch": "Change dates or guests",
+    "reservation.review.changeChoice": "Change dates, room or rate",
     "reservation.review.price": "Price and terms",
     "reservation.review.contact": "Booking contact",
     "reservation.review.contactLead":
@@ -513,10 +498,10 @@ export const ui = {
     skipToContent: "Saltar al contenido principal",
     "meta.title": "Hotel Manantial — Hotel en Churín, Perú",
     "meta.description":
-      "Hospédese en Hotel Manantial en Churín, Perú, a 5 minutos de las aguas termales de Mamahuarmi y La Juventud.",
+      "Hospédese en Hotel Manantial en Churín, Perú, a 5 minutos en auto de las aguas termales de Mamahuarmi y La Juventud.",
     "meta.home.title": "Hotel en Churín con cochera, cerca de las termas | Hotel Manantial",
     "meta.home.description":
-      "Hotel en Churín a 5 min de las termas de Mamahuarmi y La Juventud. Cochera gratis, baño privado, recepción 24 h. Consulte el precio para sus fechas y reserve directo.",
+      "Hotel en Churín a 5 min en auto de las termas de Mamahuarmi y La Juventud. Cochera gratis, baño privado y recepción 24 h. Consulte precios y reserve directo.",
     "meta.rooms.title": "Habitaciones en Churín | Hotel Manantial",
     "meta.rooms.description":
       'Suite matrimonial, doble premium y suite familiar en Churín, con precio por habitación e impuestos incluidos. Smart TV 55", recepción 24 h y cochera gratis.',
@@ -525,7 +510,11 @@ export const ui = {
       "Guía de Mamahuarmi, La Juventud y Tingo y cómo llegar a Churín desde Lima (≈ 4 h). Hotel Manantial: termas a pie y la plaza a 3 min.",
     "meta.ogImageAlt":
       "Hotel Manantial, Churín, Perú. Suite Matrimonial con cama king, en un piso alto con balcón.",
-    "hero.title": "Hotel en Churín a 5 minutos de las termas",
+    "hero.title": "Hotel en Churín a 5 minutos en auto de las termas",
+    "hero.benefits": "Servicios del hotel",
+    "hero.parking": "Cochera gratuita",
+    "hero.bathroom": "Baño privado",
+    "hero.reception": "Recepción 24 horas",
     "hero.bookCta": "Consultar disponibilidad",
     "hero.roomsCta": "Ver habitaciones y precios",
     "hero.imageAlt": "Habitación del Hotel Manantial en Churín",
@@ -533,15 +522,17 @@ export const ui = {
     "landing.departurePlaceholder": "Elegir salida",
     "landing.chooseArrival": "Elige tu fecha de llegada",
     "landing.chooseDeparture": "Elige tu fecha de salida",
+    "landing.stayHint": "Seleccione las fechas de llegada y salida.",
+    "landing.closeCalendar": "Cerrar calendario",
     "landing.guests": "Huéspedes",
     "landing.decreaseAdults": "Reducir adultos",
     "landing.increaseAdults": "Aumentar adultos",
     "landing.decreaseChildren": "Reducir niños",
     "landing.increaseChildren": "Aumentar niños",
-    "rooms.title": "Una habitación para cada tipo de viaje",
+    "rooms.title": "Suite Matrimonial",
     "rooms.body":
-      "Suite Matrimonial para parejas, Doble Premium para amigos y Suite Familiar para familias. Wi-Fi, ascensor y precio por habitación, no por persona.",
-    "rooms.cta": "Ver las 3 habitaciones",
+      "Cama king, baño privado y Wi-Fi. También contamos con Doble Premium y Suite Familiar. Precio por habitación, no por persona.",
+    "rooms.cta": "Ver todos los tipos de habitación",
     "rooms.imageAlt": "Suite matrimonial del Hotel Manantial",
     "rooms.pageTitle": "Habitaciones en Churín",
     "rooms.pageBody":
@@ -707,9 +698,9 @@ export const ui = {
     "directions.busLabel": "En bus:",
     "directions.bus": "varias empresas salen desde Plaza Norte, en Lima.",
     "booking.kicker": "Precios para sus fechas",
-    "booking.title": "Reserve directo y sin comisiones",
+    "booking.title": "Reserve directamente con el hotel",
     "booking.body":
-      "Para una consulta, o una habitación que no se puede reservar en línea, escríbanos. Reservar directo cuesta menos que en las plataformas.",
+      "Consulte disponibilidad y precios para sus fechas. Si necesita asistencia con su reserva, contáctenos por WhatsApp.",
     "booking.cta": "Escribir por WhatsApp",
     "whatsapp.prefill": "Hola, quisiera reservar. Fechas: ___ Personas: ___ Habitación: ___",
     "notFound.metaTitle": "Página no encontrada — Hotel Manantial",
@@ -730,29 +721,16 @@ export const ui = {
     "reservation.cta": "Ver precios para sus fechas",
     "reservation.roomCta": "Ver precios y disponibilidad",
     "reservation.whatsappSecondary": "O escríbanos por WhatsApp",
-    "reservation.meta.searchTitle": "Consultar disponibilidad | Hotel Manantial",
-    "reservation.meta.searchDescription":
-      "Elija sus fechas y huéspedes para ver precios y disponibilidad en Hotel Manantial, Churín.",
     "reservation.meta.chooseTitle": "Elija habitación y tarifa | Hotel Manantial",
     "reservation.meta.chooseDescription":
-      "Compare las tarifas Flexible y No reembolsable para sus fechas en Hotel Manantial, Churín.",
+      "Elija sus fechas y compare precios y tarifas de cada habitación en Hotel Manantial, Churín.",
     "reservation.steps": "Pasos de la reserva",
-    "reservation.step.search": "Fechas y huéspedes",
     "reservation.step.choose": "Habitación y tarifa",
-    "reservation.search.title": "Consulte disponibilidad",
-    "reservation.search.lead":
-      "Elija sus fechas y huéspedes para ver el precio de hoy de cada habitación.",
     "reservation.search.checkIn": "Llegada",
     "reservation.search.checkOut": "Salida",
     "reservation.search.adults": "Adultos",
     "reservation.search.children": "Niños",
-    "reservation.search.nightsEmpty": "Elija llegada y salida para ver el número de noches.",
-    "reservation.search.submit": "Ver habitaciones y precios",
-    "reservation.search.limits":
-      "Las reservas en línea son para una habitación, empiezan desde mañana (hora de Perú) y duran de 1 a 60 noches.",
-    "reservation.search.preference":
-      "Habitación preferida: {room}. La mostraremos primero si se ajusta a su búsqueda.",
-    "reservation.search.clearPreference": "Mostrar todas por igual",
+    "reservation.search.submit": "Buscar",
     "reservation.nights.one": "1 noche",
     "reservation.nights.other": "{count} noches",
     "reservation.adults.one": "1 adulto",
@@ -771,13 +749,9 @@ export const ui = {
       "No pudimos usar esta búsqueda. Cámbiela e intente de nuevo.",
     "reservation.helpPrompt": "¿Dudas? Con gusto le ayudamos.",
     "reservation.choose.title": "Elija habitación y tarifa",
-    "reservation.choose.change": "Cambiar búsqueda",
     "reservation.choose.loading": "Consultando disponibilidad…",
     "reservation.choose.loaded": "Mostrando habitaciones para su búsqueda.",
-    "reservation.choose.missing.title": "Primero elija sus fechas",
-    "reservation.choose.missing.body":
-      "Indíquenos cuándo llega y cuándo se va para ver habitaciones y precios.",
-    "reservation.choose.missing.action": "Elegir fechas",
+    "reservation.choose.missing": "Elija sus fechas para ver habitaciones y precios.",
     "reservation.choose.unavailable.title":
       "No pudimos consultar la disponibilidad en este momento",
     "reservation.choose.unavailable.body":
@@ -795,17 +769,19 @@ export const ui = {
     "reservation.room.preferred": "Su habitación preferida",
     "reservation.room.preferredUnavailable":
       "Su habitación preferida, {room}, no está disponible para esta búsqueda. No elegimos otra por usted: elija una abajo o cambie su búsqueda.",
-    "reservation.room.capacity": "Huéspedes",
-    "reservation.room.capacityValue": "Hasta {adults} adultos y {children} niños",
-    "reservation.plans.legend": "Tarifa para {room}",
+    "reservation.room.capacityValue": "hasta {adults} adultos y {children} niños",
     "reservation.plan.flexible": "Flexible",
-    "reservation.plan.flexibleLead": "Pague la primera noche ahora y el resto en el hotel.",
     "reservation.plan.non_refundable": "No reembolsable",
-    "reservation.plan.non_refundableLead": "10 % menos. Pague toda la estadía ahora.",
+    "reservation.rate.total": "Total por {nights}",
+    "reservation.rate.freeUntil": "Cancelación gratuita hasta el {date}",
+    "reservation.rate.freeEnded": "Sin cancelación gratuita para estas fechas",
+    "reservation.rate.noFree": "Sin cancelación gratuita",
+    "reservation.rate.saving": "Ahorra {amount}",
+    "reservation.rate.book": "Reservar",
+    "reservation.rate.bookLabel": "Reservar {room}, tarifa {plan}",
     "reservation.offer.total": "Total de la estadía",
     "reservation.offer.now": "Pago ahora",
     "reservation.offer.remaining": "Pago en el hotel",
-    "reservation.offer.saving": "Ahorra {amount} frente a la tarifa Flexible.",
     "reservation.offer.taxes": "Precios en {currency}, impuestos incluidos.",
     "reservation.cancel.available":
       "Cancelación gratuita hasta el {date} inclusive (hora de Perú). Después, si cancela o no llega, se cobra la primera noche: {amount}.",
@@ -815,11 +791,6 @@ export const ui = {
       "Sin cancelación gratuita. Si cancela o no llega, se cobra toda la estadía, {amount}, sin otra penalidad.",
     "reservation.cancel.settlement":
       "Los cargos por cancelación tardía o por no llegar se descuentan de lo pagado. Cualquier saldo a su favor se coordina con el hotel: un reembolso o, si usted acepta, un crédito para una estadía futura.",
-    "reservation.choose.select": "Elegir esta habitación",
-    "reservation.choice.title": "Su elección",
-    "reservation.choice.summary": "{room} · tarifa {plan}",
-    "reservation.choice.lost":
-      "Su elección anterior, {room}, no está disponible para esta búsqueda. Elija de nuevo.",
     "reservation.choose.noOffers.title":
       "Ninguna habitación se puede reservar en línea para esta búsqueda",
     "reservation.choose.reason.sold_out":
@@ -828,7 +799,6 @@ export const ui = {
       "{rooms}: sin capacidad para su grupo. Cambie el número de huéspedes; las reservas en línea son para una habitación.",
     "reservation.choose.reason.offline":
       "{rooms}: sin reserva en línea. Escríbanos por WhatsApp para reservar.",
-    "reservation.choice.review": "Continuar a la revisión",
     "reservation.meta.reviewTitle": "Revise su reserva | Hotel Manantial",
     "reservation.meta.reviewDescription":
       "Revise su estadía, el precio y las condiciones, y añada los datos del contacto de la reserva.",
@@ -841,8 +811,7 @@ export const ui = {
     "reservation.review.dates": "Fechas",
     "reservation.review.guests": "Huéspedes",
     "reservation.review.plan": "Tarifa",
-    "reservation.review.changeChoice": "Cambiar habitación o tarifa",
-    "reservation.review.changeSearch": "Cambiar fechas o huéspedes",
+    "reservation.review.changeChoice": "Cambiar fechas, habitación o tarifa",
     "reservation.review.price": "Precio y condiciones",
     "reservation.review.contact": "Contacto de la reserva",
     "reservation.review.contactLead":

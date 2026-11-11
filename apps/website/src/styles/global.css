@@ -77,6 +77,10 @@ html {
   -webkit-tap-highlight-color: var(--color-accent-700);
 }
 
+body {
+  position: relative;
+}
+
 body[data-menu-expanded] #menu-icon-hamburger,
 body:not([data-menu-expanded]) #menu-icon-close,
 body:not([data-menu-expanded]) #mobile-menu {
@@ -120,14 +124,14 @@ body[data-menu-expanded] #mobile-menu {
   }
 }
 
-.landing-search {
+.stay-search {
   --primary: var(--color-accent-500);
   --primary-foreground: var(--color-accent-950);
   --ring: var(--color-accent-700);
   --cell-radius: 0px;
 }
 
-.landing-search .rdp-weekday {
+.stay-search .rdp-weekday {
   letter-spacing: 0.08em;
   text-transform: uppercase;
 }

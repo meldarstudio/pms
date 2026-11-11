@@ -60,7 +60,14 @@ assert(spanishPages.includes("404.astro"), "Missing 404 page");
 assert(spanishPages.includes("index.astro"), "Missing homepage");
 
 const sitemapUrls = new Set();
-const expectedRedirects = ["/nosotros / 301", "/nosotros/ / 301"];
+const expectedRedirects = [
+  "/nosotros / 301",
+  "/nosotros/ / 301",
+  "/reservar/habitacion /reservar/ 301",
+  "/reservar/habitacion/ /reservar/ 301",
+  "/en/reservar/habitacion /en/reservar/ 301",
+  "/en/reservar/habitacion/ /en/reservar/ 301",
+];
 for (const file of spanishPages) {
   const slug = file.replace(/\.astro$/, "");
   const path = slug === "index" ? "" : `${slug.replace(/(^|\/)index$/, "")}/`;
@@ -149,20 +156,15 @@ for (const lang of ["es", "en"]) {
   const prefix = lang === "en" ? "en/" : "";
   const home = await read(dist, `${prefix}index.html`);
   assert.ok(home.includes('id="availability"'), `The ${lang} homepage needs its date search`);
-  const search = await read(dist, `${prefix}reservar/index.html`);
-  assert.ok(
-    search.includes("data-search-form"),
-    `The ${lang} search form must always be available`,
-  );
   for (const [step, element] of [
-    ["habitacion", "reservation-choose"],
-    ["revisar", "reservation-review"],
-    ["resumen", "reservation-summary"],
+    ["", "reservation-choose"],
+    ["revisar/", "reservation-review"],
+    ["resumen/", "reservation-summary"],
   ]) {
-    const html = await read(dist, `${prefix}reservar/${step}/index.html`);
-    assert.ok(html.includes(`<${element}`), `The ${lang} ${step} step must always be available`);
+    const html = await read(dist, `${prefix}reservar/${step}index.html`);
+    assert.ok(html.includes(`<${element}`), `The ${lang} ${element} step must always be available`);
     const copy = JSON.parse(html.match(/<script[^>]*data-copy[^>]*>(.*?)<\/script>/s)?.[1] ?? "{}");
-    assert.ok(URL.canParse(copy.apiBase), `The ${lang} ${step} step needs an absolute API URL`);
+    assert.ok(URL.canParse(copy.apiBase), `The ${lang} ${element} step needs an absolute API URL`);
   }
   const rooms = await read(dist, `${prefix}habitaciones/index.html`);
   assert.ok(

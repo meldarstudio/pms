@@ -1,39 +1,36 @@
 ---
-import LandingSearchForm from "@/components/LandingSearchForm";
+import StaySearch from "@/components/StaySearch.astro";
 import { getLang, useTranslations } from "@/i18n/utils";
 import { chooseStepHref } from "@/lib/reservation/links";
 
 const lang = getLang(Astro.currentLocale);
 const t = useTranslations(lang);
-const copy = {
-  arrivalPlaceholder: t("landing.arrivalPlaceholder"),
-  departurePlaceholder: t("landing.departurePlaceholder"),
-  chooseArrival: t("landing.chooseArrival"),
-  chooseDeparture: t("landing.chooseDeparture"),
-  checkIn: t("reservation.search.checkIn"),
-  checkOut: t("reservation.search.checkOut"),
-  guests: t("landing.guests"),
-  adults: t("reservation.search.adults"),
-  children: t("reservation.search.children"),
-  submit: t("hero.bookCta"),
-  decreaseAdults: t("landing.decreaseAdults"),
-  increaseAdults: t("landing.increaseAdults"),
-  decreaseChildren: t("landing.decreaseChildren"),
-  increaseChildren: t("landing.increaseChildren"),
-  adultsOne: t("reservation.adults.one"),
-  adultsOther: t("reservation.adults.other"),
-  childrenOne: t("reservation.children.one"),
-  childrenOther: t("reservation.children.other"),
-  problems: {
-    checkInRequired: t("reservation.problem.checkInRequired"),
-    checkInTooSoon: t("reservation.problem.checkInTooSoon"),
-    checkOutRequired: t("reservation.problem.checkOutRequired"),
-    checkOutBeforeCheckIn: t("reservation.problem.checkOutBeforeCheckIn"),
-    tooManyNights: t("reservation.problem.tooManyNights"),
-  },
-};
 ---
 
 <div id="availability" class="scroll-offset">
-  <LandingSearchForm client:load action={chooseStepHref(lang)} lang={lang} copy={copy} />
+  <StaySearch action={chooseStepHref(lang)} layout="hero" submit={t("hero.bookCta")} />
 </div>
+
+<script>
+  document.querySelectorAll<HTMLAnchorElement>('a[href="#availability"]').forEach((link) => {
+    link.addEventListener("click", (event) => {
+      if (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey)
+        return;
+      const availability = document.getElementById("availability");
+      if (!availability) return;
+      event.preventDefault();
+      requestAnimationFrame(() => {
+        if (window.location.hash !== "#availability") {
+          window.history.pushState(null, "", "#availability");
+        }
+        document.getElementById("stay-check-in")?.focus({ preventScroll: true });
+        availability.scrollIntoView({
+          behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches
+            ? "instant"
+            : "smooth",
+          block: "start",
+        });
+      });
+    });
+  });
+</script>

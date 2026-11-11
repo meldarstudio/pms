@@ -4,6 +4,7 @@ export const ratePlanCodes = ["flexible", "non_refundable"] as const;
 export type RatePlanCode = (typeof ratePlanCodes)[number];
 
 export const MAX_NIGHTS = 60;
+export const staySearchEvent = "stay-search";
 export const DEFAULT_ADULTS = 2;
 export const DEFAULT_CHILDREN = 0;
 export const MAX_ADULTS_CHOICE = 8;
@@ -77,6 +78,16 @@ export function addDays(label: string, days: number) {
   const date = new Date(`${label}T00:00:00Z`);
   date.setUTCDate(date.getUTCDate() + days);
   return date.toISOString().slice(0, 10);
+}
+
+export function firstOnlineArrival() {
+  const today = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "America/Lima",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(new Date());
+  return addDays(today, 1);
 }
 
 export function searchProblems(search: StaySearch) {

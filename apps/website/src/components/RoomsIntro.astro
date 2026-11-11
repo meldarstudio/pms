@@ -1,7 +1,7 @@
 ---
 import Whatsapp from "@/icons/Whatsapp.svg";
 import { getWhatsAppLink } from "@/lib/constants";
-import { searchStepHref } from "@/lib/reservation/links";
+import { chooseStepHref } from "@/lib/reservation/links";
 import { getLang, useTranslations } from "@/i18n/utils";
 
 const lang = getLang(Astro.currentLocale);
@@ -21,7 +21,7 @@ const bookHref = getWhatsAppLink(t("whatsapp.prefill"));
     <p class="mt-6 max-w-xl leading-relaxed text-pretty text-stone-600">{t("rooms.pageBody")}</p>
     <div class="mt-8 flex flex-wrap items-center gap-x-6 gap-y-3">
       <a
-        href={searchStepHref(lang)}
+        href={chooseStepHref(lang)}
         class="font-source-sans-3 bg-accent-500 text-accent-950 hover:bg-accent-400 inline-flex min-h-11 w-fit items-center px-5 text-sm font-medium tracking-widest uppercase"
         data-rooms-intro-search
       >

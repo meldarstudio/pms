@@ -1,10 +1,25 @@
 import { useEffect, useRef, useState, type ComponentProps, type RefObject } from "react";
-import { CalendarBlankIcon, CaretDownIcon, MinusIcon, PlusIcon } from "@phosphor-icons/react";
+import {
+  CalendarBlankIcon,
+  CaretDownIcon,
+  MinusIcon,
+  PlusIcon,
+  XIcon,
+} from "@phosphor-icons/react";
 import { es, enUS } from "react-day-picker/locale";
 import { Button } from "@/components/ui/button";
 import { Calendar, CalendarDayButton } from "@/components/ui/calendar";
 import { Card, CardContent } from "@/components/ui/card";
 import { Field, FieldError, FieldGroup, FieldLabel } from "@/components/ui/field";
+import {
+  Drawer,
+  DrawerClose,
+  DrawerContent,
+  DrawerDescription,
+  DrawerHeader,
+  DrawerTitle,
+  DrawerTrigger,
+} from "@/components/ui/drawer";
 import {
   Popover,
   PopoverContent,
@@ -13,23 +28,30 @@ import {
   PopoverTrigger,
 } from "@/components/ui/popover";
 import type { Lang } from "@/i18n/utils";
+import { resumeSearch, storeSearch } from "@/lib/reservation/draft";
 import { formatDate, fill } from "@/lib/reservation/format";
 import {
   addDays,
   DEFAULT_ADULTS,
+  DEFAULT_CHILDREN,
+  firstOnlineArrival,
   MAX_ADULTS_CHOICE,
   MAX_CHILDREN_CHOICE,
   MAX_NIGHTS,
   searchParams,
   searchProblems,
+  staySearchEvent,
   type SearchProblem,
+  type StaySearch,
 } from "@/lib/reservation/search";
 
-export type LandingSearchCopy = {
+export type StaySearchCopy = {
   arrivalPlaceholder: string;
   departurePlaceholder: string;
   chooseArrival: string;
   chooseDeparture: string;
+  stayHint: string;
+  closeCalendar: string;
   checkIn: string;
   checkOut: string;
   guests: string;
@@ -54,12 +76,29 @@ const limits = {
 
 const calendarLocales = { es, en: enUS } as const;
 
+const englishDayName = new Intl.DateTimeFormat("en-US", {
+  weekday: "long",
+  month: "long",
+  day: "numeric",
+  year: "numeric",
+});
+
+const calendarLabels = {
+  es: undefined,
+  en: {
+    labelDayButton: (date: Date, modifiers: { today?: boolean; selected?: boolean }) => {
+      const label = englishDayName.format(date);
+      return `${modifiers.today ? "Today, " : ""}${label}${modifiers.selected ? ", selected" : ""}`;
+    },
+  },
+} as const;
+
 const labelClass =
   "font-source-sans-3 text-xs font-medium tracking-widest text-stone-600 uppercase";
 const fieldButton =
   "h-11 min-h-11 w-full justify-between border-stone-400 bg-white px-3 font-source-sans-3 text-sm font-normal text-stone-900 shadow-none hover:bg-white aria-expanded:bg-white aria-expanded:text-stone-900";
 const popoverSurface =
-  "landing-search border-stone-300 bg-white font-source-sans-3 text-sm text-stone-900 shadow-sm ring-0";
+  "stay-search border-stone-300 bg-white font-source-sans-3 text-sm text-stone-900 shadow-sm ring-0";
 
 function dateLabel(date: Date) {
   const month = String(date.getMonth() + 1).padStart(2, "0");
@@ -72,17 +111,7 @@ function labelDate(label: string) {
   return new Date(year!, month! - 1, day!);
 }
 
-function earliestArrival() {
-  const today = new Intl.DateTimeFormat("en-CA", {
-    timeZone: "America/Lima",
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-  }).format(new Date());
-  return addDays(today, 1);
-}
-
-function guestSummary(copy: LandingSearchCopy, adults: number, children: number) {
+function guestSummary(copy: StaySearchCopy, adults: number, children: number) {
   const adultsLabel = adults === 1 ? copy.adultsOne : fill(copy.adultsOther, { count: adults });
   if (children < 1) return adultsLabel;
   const childrenLabel =
@@ -153,6 +182,7 @@ function DateField({
   error,
   errorId,
   buttonRef,
+  mobile,
 }: {
   id: string;
   name: "checkIn" | "checkOut";
@@ -163,16 +193,18 @@ function DateField({
   error?: string;
   errorId: string;
   buttonRef: RefObject<HTMLButtonElement | null>;
+  mobile: boolean;
 }) {
   const labelId = `${id}-label`;
   const valueId = `${id}-value`;
+  const Trigger = mobile ? DrawerTrigger : PopoverTrigger;
 
   return (
     <Field data-invalid={error ? true : undefined} className="data-[invalid=true]:text-stone-900">
       <FieldLabel id={labelId} htmlFor={id} className={labelClass}>
         {label}
       </FieldLabel>
-      <PopoverTrigger
+      <Trigger
         id={id}
         render={
           <Button
@@ -197,7 +229,7 @@ function DateField({
           {value ? formatDate(value, lang, { includeWeekday: false }) : placeholder}
         </span>
         <CalendarBlankIcon data-icon="inline-end" aria-hidden="true" />
-      </PopoverTrigger>
+      </Trigger>
       <input type="hidden" name={name} value={value} />
       <FieldError id={errorId} className="text-sm font-medium text-red-800">
         {error}
@@ -209,6 +241,7 @@ function DateField({
 function StayDateFields({
   lang,
   copy,
+  side,
   checkIn,
   checkOut,
   checkInRef,
@@ -218,7 +251,8 @@ function StayDateFields({
   onChange,
 }: {
   lang: Lang;
-  copy: LandingSearchCopy;
+  copy: StaySearchCopy;
+  side: "top" | "bottom";
   checkIn: string;
   checkOut: string;
   checkInRef: RefObject<HTMLButtonElement | null>;
@@ -231,27 +265,74 @@ function StayDateFields({
   const [triggerId, setTriggerId] = useState<string | null>(null);
   const [selecting, setSelecting] = useState<"checkIn" | "checkOut">("checkIn");
   const [month, setMonth] = useState(() => new Date());
-  const [numberOfMonths, setNumberOfMonths] = useState(1);
-  const [firstArrival, setFirstArrival] = useState(earliestArrival);
+  const [mobile, setMobile] = useState(false);
+  const [firstArrival, setFirstArrival] = useState(firstOnlineArrival);
   const firstArrivalDate = labelDate(firstArrival);
 
   useEffect(() => {
     const media = window.matchMedia("(min-width: 48rem)");
-    const update = () => setNumberOfMonths(media.matches ? 2 : 1);
-    update();
+    setMobile(!media.matches);
+    const update = () => {
+      setOpen(false);
+      setMobile(!media.matches);
+    };
     media.addEventListener("change", update);
     return () => media.removeEventListener("change", update);
   }, []);
 
+  const Root = mobile ? Drawer : Popover;
+  const title = selecting === "checkIn" ? copy.chooseArrival : copy.chooseDeparture;
+  const calendar = (
+    <Calendar
+      autoFocus
+      mode="range"
+      locale={calendarLocales[lang]}
+      labels={calendarLabels[lang]}
+      selected={{
+        from: checkIn ? labelDate(checkIn) : undefined,
+        to: checkOut ? labelDate(checkOut) : undefined,
+      }}
+      month={month}
+      onMonthChange={setMonth}
+      numberOfMonths={mobile ? 1 : 2}
+      showOutsideDays={mobile}
+      startMonth={new Date(firstArrivalDate.getFullYear(), firstArrivalDate.getMonth(), 1)}
+      endMonth={new Date(firstArrivalDate.getFullYear() + 2, 11, 1)}
+      today={labelDate(addDays(firstArrival, -1))}
+      captionLayout="dropdown"
+      min={1}
+      max={MAX_NIGHTS}
+      disabled={[
+        { before: firstArrivalDate },
+        ...(selecting === "checkOut" && checkIn
+          ? [{ before: labelDate(checkIn) }, { after: labelDate(addDays(checkIn, MAX_NIGHTS)) }]
+          : []),
+      ]}
+      className="mx-auto p-3 [--cell-size:clamp(2.25rem,calc((100vw-2.5rem)/7),2.75rem)]"
+      components={{ DayButton: StayDayButton }}
+      onSelect={(_, date) => {
+        if (dateLabel(date) < firstOnlineArrival()) return;
+        if (selecting === "checkOut" && dateLabel(date) === checkIn) return;
+        if (selecting === "checkIn" || !checkIn) {
+          onChange(dateLabel(date), "");
+          setSelecting("checkOut");
+        } else {
+          onChange(checkIn, dateLabel(date));
+          setOpen(false);
+        }
+      }}
+    />
+  );
+
   return (
-    <Popover
+    <Root
       open={open}
       triggerId={triggerId}
-      onOpenChange={(next, details) => {
+      onOpenChange={(next: boolean, details: { trigger?: Element | null }) => {
         if (next) {
-          const earliest = earliestArrival();
+          const earliest = firstOnlineArrival();
           setFirstArrival(earliest);
-          const departure = details.trigger?.id === "landing-check-out" && Boolean(checkIn);
+          const departure = details.trigger?.id === "stay-check-out" && Boolean(checkIn);
           const date = departure ? checkOut || checkIn : checkIn;
           setMonth(labelDate(date && date >= earliest ? date : earliest));
           setSelecting(departure ? "checkOut" : "checkIn");
@@ -259,101 +340,113 @@ function StayDateFields({
         }
         setOpen(next);
       }}
+      {...(mobile ? { showSwipeHandle: true } : {})}
     >
       <DateField
-        id="landing-check-in"
+        id="stay-check-in"
         name="checkIn"
         label={copy.checkIn}
         placeholder={copy.arrivalPlaceholder}
         lang={lang}
         value={checkIn}
         error={checkInError}
-        errorId="landing-check-in-error"
+        errorId="stay-check-in-error"
         buttonRef={checkInRef}
+        mobile={mobile}
       />
       <DateField
-        id="landing-check-out"
+        id="stay-check-out"
         name="checkOut"
         label={copy.checkOut}
         placeholder={copy.departurePlaceholder}
         lang={lang}
         value={checkOut}
         error={checkOutError}
-        errorId="landing-check-out-error"
+        errorId="stay-check-out-error"
         buttonRef={checkOutRef}
+        mobile={mobile}
       />
-      <PopoverContent
-        side="top"
-        align="start"
-        initialFocus={false}
-        className={`${popoverSurface} max-h-[calc(100dvh-1rem)] w-auto max-w-[calc(100vw-1rem)] gap-0 overflow-y-auto p-0`}
-      >
-        <PopoverHeader className="border-b border-stone-200 p-3">
-          <PopoverTitle aria-live="polite">
-            {selecting === "checkIn" ? copy.chooseArrival : copy.chooseDeparture}
-          </PopoverTitle>
-        </PopoverHeader>
-        <Calendar
-          autoFocus
-          mode="range"
-          locale={calendarLocales[lang]}
-          selected={{
-            from: checkIn ? labelDate(checkIn) : undefined,
-            to: checkOut ? labelDate(checkOut) : undefined,
-          }}
-          month={month}
-          onMonthChange={setMonth}
-          numberOfMonths={numberOfMonths}
-          showOutsideDays={numberOfMonths === 1}
-          startMonth={new Date(firstArrivalDate.getFullYear(), firstArrivalDate.getMonth(), 1)}
-          endMonth={new Date(firstArrivalDate.getFullYear() + 2, 11, 1)}
-          today={labelDate(addDays(firstArrival, -1))}
-          captionLayout="dropdown"
-          min={1}
-          max={MAX_NIGHTS}
-          disabled={[
-            { before: firstArrivalDate },
-            ...(selecting === "checkOut" && checkIn
-              ? [{ before: labelDate(checkIn) }, { after: labelDate(addDays(checkIn, MAX_NIGHTS)) }]
-              : []),
-          ]}
-          className="p-3 [--cell-size:clamp(2.25rem,calc((100vw-2.5rem)/7),2.75rem)]"
-          components={{ DayButton: StayDayButton }}
-          onSelect={(_, date) => {
-            if (dateLabel(date) < earliestArrival()) return;
-            if (selecting === "checkOut" && dateLabel(date) === checkIn) return;
-            if (selecting === "checkIn" || !checkIn) {
-              onChange(dateLabel(date), "");
-              setSelecting("checkOut");
-            } else {
-              onChange(checkIn, dateLabel(date));
-              setOpen(false);
-            }
-          }}
-        />
-      </PopoverContent>
-    </Popover>
+      {mobile ? (
+        <DrawerContent
+          initialFocus={false}
+          className="stay-search max-h-[calc(100dvh-1rem)] font-source-sans-3 motion-reduce:transition-none"
+        >
+          <DrawerHeader>
+            <div className="flex items-center justify-between gap-3">
+              <DrawerTitle aria-live="polite">{title}</DrawerTitle>
+              <DrawerClose
+                aria-label={copy.closeCalendar}
+                render={<Button variant="ghost" size="icon" className="size-11 shrink-0" />}
+              >
+                <XIcon />
+              </DrawerClose>
+            </div>
+            <DrawerDescription>
+              {checkIn
+                ? `${copy.checkIn}: ${formatDate(checkIn, lang, { includeWeekday: false })} · ${copy.checkOut}: ${checkOut ? formatDate(checkOut, lang, { includeWeekday: false }) : copy.departurePlaceholder}`
+                : copy.stayHint}
+            </DrawerDescription>
+          </DrawerHeader>
+          <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain pb-[max(1rem,env(safe-area-inset-bottom))]">
+            {calendar}
+          </div>
+        </DrawerContent>
+      ) : (
+        <PopoverContent
+          side={side}
+          align="start"
+          initialFocus={false}
+          className={`${popoverSurface} max-h-[calc(100dvh-1rem)] w-auto max-w-[calc(100vw-1rem)] gap-0 overflow-y-auto p-0`}
+        >
+          <PopoverHeader className="border-b border-stone-200 p-3">
+            <PopoverTitle aria-live="polite">{title}</PopoverTitle>
+          </PopoverHeader>
+          {calendar}
+        </PopoverContent>
+      )}
+    </Root>
   );
 }
 
-export default function LandingSearchForm({
+const layouts = {
+  hero: {
+    card: "lg:py-6",
+    grid: "lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_minmax(0,14rem)_auto] lg:gap-4",
+    guests: "lg:col-span-1",
+    submit: "lg:col-span-1 lg:w-auto lg:whitespace-nowrap",
+    side: "top",
+  },
+  bar: {
+    card: "",
+    grid: "md:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_minmax(0,1fr)_auto]",
+    guests: "md:col-span-1",
+    submit: "md:col-span-1 md:w-auto md:whitespace-nowrap",
+    side: "bottom",
+  },
+} as const;
+
+export default function StaySearchForm({
   action,
+  layout,
   lang,
   copy,
 }: {
-  action: string;
+  action?: string;
+  layout: keyof typeof layouts;
   lang: Lang;
-  copy: LandingSearchCopy;
+  copy: StaySearchCopy;
 }) {
+  const styles = layouts[layout];
+  const formRef = useRef<HTMLFormElement>(null);
   const checkInRef = useRef<HTMLButtonElement>(null);
   const checkOutRef = useRef<HTMLButtonElement>(null);
   const [checkIn, setCheckIn] = useState("");
   const [checkOut, setCheckOut] = useState("");
   const [adults, setAdults] = useState(DEFAULT_ADULTS);
-  const [children, setChildren] = useState(0);
+  const [children, setChildren] = useState(DEFAULT_CHILDREN);
   const [open, setOpen] = useState(false);
   const [problems, setProblems] = useState<
-    { field: "checkIn" | "checkOut"; problem: keyof LandingSearchCopy["problems"] }[]
+    { field: "checkIn" | "checkOut"; problem: keyof StaySearchCopy["problems"] }[]
   >([]);
   const summary = guestSummary(copy, adults, children);
   const problemFor = (field: "checkIn" | "checkOut") => {
@@ -361,29 +454,45 @@ export default function LandingSearchForm({
     return problem ? copy.problems[problem.problem] : undefined;
   };
 
+  useEffect(() => {
+    const resumed = resumeSearch(new URLSearchParams(window.location.search), []);
+    setCheckIn(resumed.checkIn);
+    setCheckOut(resumed.checkOut);
+    setAdults(Math.min(resumed.adults, limits.adults.max));
+    setChildren(Math.min(resumed.children, limits.children.max));
+  }, []);
+
   const onSubmit: ComponentProps<"form">["onSubmit"] = (event) => {
     event.preventDefault();
     setOpen(false);
-    const search = { checkIn, checkOut, adults, children, room: null, plan: null };
+    const search: StaySearch = { checkIn, checkOut, adults, children, room: null, plan: null };
     const next: typeof problems =
-      checkIn && checkIn < earliestArrival()
+      checkIn && checkIn < firstOnlineArrival()
         ? [{ field: "checkIn", problem: "checkInTooSoon" }]
         : searchProblems(search);
     setProblems(next);
     if (next[0]?.field === "checkIn") checkInRef.current?.focus();
     else if (next[0]?.field === "checkOut") checkOutRef.current?.focus();
     if (next.length) return;
-    window.location.assign(`${action}?${searchParams(search).toString()}`);
+    storeSearch(search);
+    if (action) window.location.assign(`${action}?${searchParams(search).toString()}`);
+    else
+      formRef.current?.dispatchEvent(
+        new CustomEvent<StaySearch>(staySearchEvent, { bubbles: true, detail: search }),
+      );
   };
 
   return (
-    <Card className="landing-search overflow-visible border-stone-200 bg-white font-source-sans-3 text-stone-900 shadow-sm ring-0 lg:py-6">
+    <Card
+      className={`stay-search overflow-visible border-stone-200 bg-white font-source-sans-3 text-stone-900 shadow-sm ring-0 ${styles.card}`}
+    >
       <CardContent>
-        <form action={action} method="get" noValidate onSubmit={onSubmit}>
-          <FieldGroup className="grid grid-cols-2 items-end gap-3 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_minmax(0,14rem)_auto] lg:gap-4">
+        <form ref={formRef} action={action} method="get" noValidate onSubmit={onSubmit}>
+          <FieldGroup className={`grid grid-cols-2 items-end gap-3 ${styles.grid}`}>
             <StayDateFields
               lang={lang}
               copy={copy}
+              side={styles.side}
               checkIn={checkIn}
               checkOut={checkOut}
               checkInError={problemFor("checkIn")}
@@ -395,8 +504,8 @@ export default function LandingSearchForm({
                 setCheckOut(departure);
               }}
             />
-            <Field className="col-span-2 lg:col-span-1">
-              <FieldLabel id="landing-guests-label" className={labelClass}>
+            <Field className={`col-span-2 ${styles.guests}`}>
+              <FieldLabel id="stay-guests-label" className={labelClass}>
                 {copy.guests}
               </FieldLabel>
               <Popover open={open} onOpenChange={setOpen}>
@@ -406,16 +515,16 @@ export default function LandingSearchForm({
                       type="button"
                       variant="outline"
                       className={fieldButton}
-                      aria-labelledby="landing-guests-label landing-guests-value"
+                      aria-labelledby="stay-guests-label stay-guests-value"
                     />
                   }
                 >
-                  <span id="landing-guests-value" className="min-w-0 truncate">
+                  <span id="stay-guests-value" className="min-w-0 truncate">
                     {summary}
                   </span>
                   <CaretDownIcon data-icon="inline-end" />
                 </PopoverTrigger>
-                <PopoverContent side="top" align="end" className={`${popoverSurface} w-80`}>
+                <PopoverContent side={styles.side} align="end" className={`${popoverSurface} w-80`}>
                   <PopoverHeader>
                     <PopoverTitle className={labelClass}>{copy.guests}</PopoverTitle>
                   </PopoverHeader>
@@ -444,7 +553,7 @@ export default function LandingSearchForm({
             </Field>
             <Button
               type="submit"
-              className="col-span-2 h-11 min-h-11 w-full bg-accent-500 px-5 font-source-sans-3 text-sm font-medium tracking-widest whitespace-normal text-accent-950 uppercase hover:bg-accent-400 lg:col-span-1 lg:w-auto lg:whitespace-nowrap"
+              className={`col-span-2 h-11 min-h-11 w-full bg-accent-500 px-5 font-source-sans-3 text-sm font-medium tracking-widest whitespace-normal text-accent-950 uppercase hover:bg-accent-400 ${styles.submit}`}
             >
               {copy.submit}
             </Button>

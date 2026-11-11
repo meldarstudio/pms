@@ -5,7 +5,7 @@ import { BUSINESS_NAME } from "@/constants";
 import ReservationSteps from "@/components/reservation/ReservationSteps.astro";
 import { ui } from "@/i18n/ui";
 import { getLang, useTranslations } from "@/i18n/utils";
-import { chooseStepHref, searchStepHref, summaryStepHref } from "@/lib/reservation/links";
+import { chooseStepHref, summaryStepHref } from "@/lib/reservation/links";
 import { reservationApiUrl } from "@/lib/reservation/api";
 import { rooms } from "@/lib/rooms";
 
@@ -22,7 +22,6 @@ const copy = {
         title: BUSINESS_NAME,
       }
     : null,
-  searchHref: searchStepHref(lang),
   chooseHref: chooseStepHref(lang),
   summaryHref: summaryStepHref(lang),
   text: Object.fromEntries(
@@ -103,9 +102,6 @@ const contactFields = [
           <a href={chooseStepHref(lang)} class={secondary} data-problem-back>
             {t("reservation.review.backToRooms")}
           </a>
-          <a href={searchStepHref(lang)} class={secondary} data-problem-change>
-            {t("reservation.review.changeSearch")}
-          </a>
         </div>
       </div>
       <div class="mt-6 flex flex-col gap-8" data-review hidden>
@@ -131,14 +127,9 @@ const contactFields = [
               <dd class="text-right font-semibold text-stone-900" data-stay="plan" />
             </div>
           </dl>
-          <div class="mt-4 flex flex-wrap gap-x-6 gap-y-1">
-            <a href={chooseStepHref(lang)} class={link} data-change-choice>
-              {t("reservation.review.changeChoice")}
-            </a>
-            <a href={searchStepHref(lang)} class={link} data-change-search>
-              {t("reservation.review.changeSearch")}
-            </a>
-          </div>
+          <a href={chooseStepHref(lang)} class={`mt-4 ${link}`} data-change-choice>
+            {t("reservation.review.changeChoice")}
+          </a>
         </section>
         <section class={panel} aria-labelledby="review-price">
           <h2 id="review-price" class="text-2xl font-semibold text-stone-900">
@@ -352,7 +343,6 @@ const contactFields = [
     lang: Lang;
     apiBase: string;
     payments: { culqiPublicKey: string; turnstileSiteKey: string; title: string } | null;
-    searchHref: string;
     chooseHref: string;
     summaryHref: string;
     text: Record<string, string>;
@@ -522,16 +512,11 @@ const contactFields = [
         new URLSearchParams(window.location.search),
         Object.keys(this.copy.rooms),
       );
-      const choiceHref = `${this.copy.chooseHref}?${searchParams(this.search).toString()}`;
-      const searchHref = `${this.copy.searchHref}?${searchParams(this.search, { withChoice: false }).toString()}`;
+      const choiceHref = `${this.copy.chooseHref}?${searchParams(this.search, { withChoice: false }).toString()}`;
       for (const anchor of this.querySelectorAll<HTMLAnchorElement>(
         "[data-change-choice], [data-problem-back]",
       ))
         anchor.href = choiceHref;
-      for (const anchor of this.querySelectorAll<HTMLAnchorElement>(
-        "[data-change-search], [data-problem-change]",
-      ))
-        anchor.href = searchHref;
 
       this.restoreDraft();
       window.addEventListener("pageshow", (event) => {

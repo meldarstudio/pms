@@ -101,17 +101,19 @@ for (const [language, plan, offset] of [
     const email = payerEmail();
     const total = en ? "180.00" : "200.00";
     const paidAmount = en ? "180.00" : "100.00";
-    await page.goto(`${base}/reservar/`);
-    await page.getByLabel(en ? "Arrival" : "Llegada").fill(daysFromToday(offset));
-    await page.getByLabel(en ? "Departure" : "Salida").fill(daysFromToday(offset + 2));
+    const stay = new URLSearchParams({
+      checkIn: daysFromToday(offset),
+      checkOut: daysFromToday(offset + 2),
+      adults: "2",
+      children: "0",
+    });
+    await page.goto(`${base}/reservar/?${stay.toString()}`);
     await page
-      .getByRole("button", { name: en ? "See rooms and prices" : "Ver habitaciones y precios" })
-      .click();
-    const king = page.getByRole("article", { name: en ? "King room" : "Suite Matrimonial" });
-    if (en) await king.getByRole("radio", { name: /Non-refundable/ }).check();
-    await king.getByRole("button", { name: /Choose this room|Elegir esta habitación/ }).click();
-    await page
-      .getByRole("link", { name: en ? "Continue to review" : "Continuar a la revisión" })
+      .getByRole("link", {
+        name: en
+          ? "Book King room, Non-refundable rate"
+          : "Reservar Suite Matrimonial, tarifa Flexible",
+      })
       .click();
     await expect(page.locator('[data-amount="total"]')).toHaveText(new RegExp(`S/\\s${total}`));
     await expect(page.locator('[data-amount="now"]')).toHaveText(new RegExp(`S/\\s${paidAmount}`));
@@ -359,8 +361,8 @@ test("back to review shows the same payment and does not pay again", async ({ pa
   await expect(page.getByRole("heading", { name: "Confirmando su pago" })).toBeVisible();
   const pending = await serverPayment(page, request);
 
-  await page.getByRole("link", { name: "Cambiar habitación o tarifa" }).click();
-  await expect(page).toHaveURL(/habitacion/);
+  await page.getByRole("link", { name: "Cambiar fechas, habitación o tarifa" }).click();
+  await expect(page).toHaveURL(/\/reservar\/\?/);
   await page.goBack();
 
   await expect(page.getByRole("heading", { name: "Confirmando su pago" })).toBeVisible();

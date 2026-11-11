@@ -1,8 +1,10 @@
 import type { BookingContact } from "./checkout";
+import { firstOnlineArrival, readSearch, searchParams, type StaySearch } from "./search";
 
 const CHECKOUTS_KEY = "hm.reservation.checkouts";
 const CONTACT_KEY = "hm.reservation.contact";
 const CARD_SOURCES_KEY = "hm.reservation.card-sources";
+const SEARCH_KEY = "hm.reservation.search";
 const MAX_STORED_CHECKOUTS = 10;
 
 export type StoredCheckout = {
@@ -84,4 +86,23 @@ export function clearCardSource(selection: string) {
   const sources = read<Record<string, string>>(CARD_SOURCES_KEY) ?? {};
   delete sources[selection];
   write(CARD_SOURCES_KEY, sources);
+}
+
+export function storeSearch(search: StaySearch) {
+  write(SEARCH_KEY, searchParams({ ...search, room: null, plan: null }).toString());
+}
+
+export function resumeSearch(params: URLSearchParams, roomIds: readonly string[]): StaySearch {
+  const requested = readSearch(params, roomIds);
+  const stored = read<unknown>(SEARCH_KEY);
+  if ((requested.checkIn && requested.checkOut) || typeof stored !== "string") return requested;
+  const kept = readSearch(new URLSearchParams(stored), []);
+  const datesStillBookable = Boolean(kept.checkIn) && kept.checkIn >= firstOnlineArrival();
+  return {
+    ...kept,
+    checkIn: datesStillBookable ? kept.checkIn : "",
+    checkOut: datesStillBookable ? kept.checkOut : "",
+    room: requested.room,
+    plan: null,
+  };
 }

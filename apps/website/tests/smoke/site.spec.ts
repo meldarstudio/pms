@@ -1,16 +1,6 @@
-import { expect, test, type Page } from "@playwright/test";
+import { expect, test } from "@playwright/test";
+import { pickRangeDate } from "../support/calendar";
 import { daysFromToday, openStay } from "../support/local-api";
-
-async function pickRangeDate(page: Page, label: string) {
-  const [year, month] = label.split("-");
-  const popup = page.locator("[data-slot=popover-content]").last();
-  await popup.getByLabel("Elegir el año").first().selectOption(year!);
-  await popup
-    .getByLabel("Elegir el mes")
-    .first()
-    .selectOption(String(Number(month) - 1));
-  await popup.locator(`[data-date="${label}"]`).first().click();
-}
 
 for (const [path, lang, heading] of [
   ["/", "es", /hotel/i],
@@ -147,7 +137,7 @@ for (const [path, availability, guests, adults, body, prices, rooms, whatsapp] o
     "Consultar disponibilidad",
     "Huéspedes",
     "2 adultos",
-    "Para una consulta, o una habitación que no se puede reservar en línea, escríbanos.",
+    "Consulte disponibilidad y precios para sus fechas.",
     "Ver precios para sus fechas",
     "Ver habitaciones y precios",
     "Escribir por WhatsApp",
@@ -157,7 +147,7 @@ for (const [path, availability, guests, adults, body, prices, rooms, whatsapp] o
     "Check availability",
     "Guests",
     "2 adults",
-    "For a question, or a room that cannot be booked online, write to us.",
+    "Check availability and prices for your dates.",
     "See prices for your dates",
     "See rooms and rates",
     "Message us on WhatsApp",
@@ -207,16 +197,57 @@ test("homepage header scrolls to the search card", async ({ page }) => {
   await expect(page.getByLabel("Llegada", { exact: false })).toBeFocused();
 });
 
-test("mobile homepage menu scrolls to the search card", async ({ page }) => {
+test("mobile header keeps booking beside the menu and closes the menu on booking", async ({
+  page,
+}) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto("/");
+  const banner = page.getByRole("banner");
+  const toggle = page.locator("#menu-toggle");
+  const home = banner.getByRole("link", { name: "Hotel Manantial", exact: true });
+  const book = banner.getByRole("link", { name: "Reservar", exact: true });
+  const [toggleBox, homeBox, bookBox] = await Promise.all(
+    [toggle, home, book].map((item) => item.boundingBox()),
+  );
+  expect(toggleBox!.x).toBeLessThan(homeBox!.x);
+  expect(homeBox!.x + homeBox!.width).toBeLessThan(bookBox!.x);
+  expect(Math.abs(homeBox!.x + homeBox!.width / 2 - 195)).toBeLessThan(2);
+  await expect(page.locator("#mobile-menu").getByRole("link", { name: "Reservar" })).toHaveCount(0);
+
   await page.evaluate(() => window.scrollTo(0, document.body.scrollHeight));
-  await page.locator("#menu-toggle").click();
-  await page.locator("#mobile-menu").getByRole("link", { name: "Reservar", exact: true }).click();
+  await toggle.click();
+  await book.click();
   await expect(page).toHaveURL(/#availability$/);
   await expect(page.locator("#availability")).toBeInViewport();
-  await expect(page.locator("#menu-toggle")).toHaveAttribute("aria-expanded", "false");
+  await expect(toggle).toHaveAttribute("aria-expanded", "false");
 });
+
+for (const [path, label] of [
+  ["/", "Consultar disponibilidad"],
+  ["/en/", "Check availability"],
+] as const) {
+  test(`${path} bottom booking action returns to the existing stay`, async ({ page }) => {
+    await page.emulateMedia({ reducedMotion: "reduce" });
+    await page.goto(path);
+    await page.locator("#availability astro-island:not([ssr])").waitFor();
+    await page.locator("#stay-check-in").click();
+    const popup = page.getByRole("dialog");
+    await popup.locator("button[data-date]:not([disabled])").first().click();
+    await page.keyboard.press("ArrowRight");
+    await page.keyboard.press("Enter");
+    await expect(popup).toBeHidden();
+    const arrival = await page.locator('#availability input[name="checkIn"]').inputValue();
+    const departure = await page.locator('#availability input[name="checkOut"]').inputValue();
+    const bottomAction = page.getByRole("link", { name: label, exact: true });
+    await expect(bottomAction).toHaveAttribute("href", "#availability");
+    await bottomAction.click();
+    await expect(page).toHaveURL(/#availability$/);
+    await expect(page.locator("#availability")).toBeInViewport();
+    await expect(page.locator("#stay-check-in")).toBeFocused();
+    await expect(page.locator('#availability input[name="checkIn"]')).toHaveValue(arrival);
+    await expect(page.locator('#availability input[name="checkOut"]')).toHaveValue(departure);
+  });
+}
 
 test("homepage search keeps an empty stay on the page", async ({ page }) => {
   await page.goto("/");
@@ -238,25 +269,25 @@ for (const [path, arrivalPlaceholder, departurePlaceholder, arrival, departure] 
     await page.clock.install({ time: new Date("2026-11-10T03:00:00Z") });
     await page.goto(path);
     await page.locator("#availability astro-island:not([ssr])").waitFor();
-    await expect(page.locator("#landing-check-in")).toHaveText(arrivalPlaceholder);
-    await expect(page.locator("#landing-check-out")).toHaveText(departurePlaceholder);
-    await page.locator("#landing-check-in").click();
+    await expect(page.locator("#stay-check-in")).toHaveText(arrivalPlaceholder);
+    await expect(page.locator("#stay-check-out")).toHaveText(departurePlaceholder);
+    await page.locator("#stay-check-in").click();
     const popup = page.getByRole("dialog");
     await expect(popup.locator('[data-date="2026-11-08"]').first()).toBeDisabled();
     await expect(popup.locator('[data-date="2026-11-09"]').first()).toBeDisabled();
     await popup.locator('[data-date="2026-11-10"]').first().click();
     await popup.locator('[data-date="2026-11-12"]').first().click();
     await expect(popup).toBeHidden();
-    await expect(page.locator("#landing-check-in")).toHaveText(arrival);
-    await expect(page.locator("#landing-check-out")).toHaveText(departure);
-    await page.locator("#landing-check-out").click();
+    await expect(page.locator("#stay-check-in")).toHaveText(arrival);
+    await expect(page.locator("#stay-check-out")).toHaveText(departure);
+    await page.locator("#stay-check-out").click();
     await expect(popup.locator('[data-date="2026-11-09"]').first()).toBeDisabled();
     await page.keyboard.press("Escape");
     await expect(popup).toBeHidden();
     await page.clock.setSystemTime(new Date("2026-11-10T05:01:00Z"));
     await page.locator('#availability button[type="submit"]').click();
-    await expect(page.locator("#landing-check-in")).toHaveAttribute("aria-invalid", "true");
-    await expect(page.locator("#landing-check-in")).toBeFocused();
+    await expect(page.locator("#stay-check-in")).toHaveAttribute("aria-invalid", "true");
+    await expect(page.locator("#stay-check-in")).toBeFocused();
     await expect(page).toHaveURL(path);
   });
 }
@@ -264,7 +295,8 @@ for (const [path, arrivalPlaceholder, departurePlaceholder, arrival, departure] 
 test("homepage range picker requires a departure after arrival", async ({ page }) => {
   const day = daysFromToday(40);
   await page.goto("/");
-  await page.getByLabel("Salida").click();
+  const form = page.locator("#availability");
+  await form.getByLabel("Salida").click();
   const popup = page.locator("[data-slot=popover-content]").last();
   await expect(popup.getByRole("heading")).toHaveText("Elige tu fecha de llegada");
   await pickRangeDate(page, day);
@@ -272,17 +304,48 @@ test("homepage range picker requires a departure after arrival", async ({ page }
   await popup.locator(`[data-date="${day}"]`).first().click();
   await expect(popup.getByRole("heading")).toHaveText("Elige tu fecha de salida");
   await page.keyboard.press("Escape");
-  await expect(page.getByLabel("Salida")).toBeFocused();
+  await expect(form.getByLabel("Salida")).toBeFocused();
   await page
     .locator("#availability")
     .getByRole("button", { name: "Consultar disponibilidad" })
     .click();
   await expect(page).toHaveURL(/\/$/);
   await expect(page.getByText("Elija su fecha de salida.")).toBeVisible();
-  await expect(page.getByLabel("Salida")).toBeFocused();
+  await expect(form.getByLabel("Salida")).toBeFocused();
 });
 
-test("homepage search card opens choose for the chosen stay", async ({ page }) => {
+test("mobile calendar drawer keeps the arrival when dismissed and restores focus", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 375, height: 667 });
+  await page.goto("/");
+  const form = page.locator("#availability");
+  await form.getByLabel("Llegada").click();
+  const drawer = page.getByRole("dialog");
+  await expect(drawer).toHaveAccessibleName("Elige tu fecha de llegada");
+  await pickRangeDate(page, daysFromToday(40));
+  await expect(drawer).toHaveAccessibleName("Elige tu fecha de salida");
+  await drawer.getByRole("button", { name: "Cerrar calendario" }).click();
+  await expect(drawer).toBeHidden();
+  await expect(form.getByLabel("Llegada")).toBeFocused();
+  await expect(page.locator('#availability input[name="checkIn"]')).toHaveValue(daysFromToday(40));
+
+  await form.getByLabel("Salida").click();
+  await expect(drawer).toHaveAccessibleName("Elige tu fecha de salida");
+  await pickRangeDate(page, daysFromToday(42));
+  await expect(drawer).toBeHidden();
+  await expect(form.getByLabel("Salida")).toBeFocused();
+  await expect(page.locator('#availability input[name="checkOut"]')).toHaveValue(daysFromToday(42));
+
+  await form.getByLabel("Salida").click();
+  await page.keyboard.press("Escape");
+  await expect(drawer).toBeHidden();
+  await expect(form.getByLabel("Salida")).toBeFocused();
+});
+
+test("homepage search opens the rooms for the chosen stay and keeps it on return", async ({
+  page,
+}) => {
   const stay = openStay();
   await page.goto("/");
   await page.getByLabel("Llegada").click();
@@ -302,9 +365,16 @@ test("homepage search card opens choose for the chosen stay", async ({ page }) =
     adults: "2",
     children: "1",
   });
-  await expect(page).toHaveURL(new RegExp(`/reservar/habitacion/\\?${params.toString()}$`));
-  await expect(page).not.toHaveURL(/room=/);
-  await expect(page.getByText(/2 noches · 2 adultos, 1 niño/)).toBeVisible();
+  await expect(page).toHaveURL(new RegExp(`/reservar/\\?${params.toString()}$`));
+  await expect(page.locator("#stay-guests-value")).toHaveText("2 adultos, 1 niño");
+  await expect(page.locator('input[name="checkOut"]')).toHaveValue(stay.checkOut);
+  await expect(page.getByRole("article", { name: "Suite Matrimonial" })).toBeVisible();
+
+  await page.goBack();
+  const form = page.locator("#availability");
+  await expect(form.locator('input[name="checkIn"]')).toHaveValue(stay.checkIn);
+  await expect(form.locator('input[name="checkOut"]')).toHaveValue(stay.checkOut);
+  await expect(form.locator("#stay-guests-value")).toHaveText("2 adultos, 1 niño");
 });
 
 for (const width of [390, 1280]) {

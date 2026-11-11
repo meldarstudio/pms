@@ -61,11 +61,19 @@ for (const path of pages) {
 }
 
 for (const lang of ["", "/en"]) {
-  test(`a11y: ${lang}/reservar/habitacion/ with offers and a choice`, async ({ page }) => {
+  test(`a11y: ${lang}/ with the mobile calendar drawer open`, async ({ page }) => {
+    await page.setViewportSize({ width: 375, height: 667 });
+    await page.goto(`${lang}/`);
+    await page.locator("#stay-check-in").click();
+    await expect(page.getByRole("dialog")).toBeVisible();
+    await runAxe(page, `${lang}/ (calendar drawer)`);
+  });
+
+  test(`a11y: ${lang}/reservar/ with offers`, async ({ page }) => {
     const params = new URLSearchParams({ ...doubleSoldOutStay(), adults: "2", children: "0" });
-    await page.goto(`${lang}/reservar/habitacion/?${params.toString()}&room=king&plan=flexible`);
-    await expect(page.locator("[data-choice]")).toBeVisible();
-    await runAxe(page, `${lang}/reservar/habitacion/`);
+    await page.goto(`${lang}/reservar/?${params.toString()}&room=king`);
+    await expect(page.locator("[data-book]").first()).toBeVisible();
+    await runAxe(page, `${lang}/reservar/ (offers)`);
   });
 
   test(`a11y: ${lang}/reservar/revisar/ with a quote and contact errors`, async ({ page }) => {
@@ -85,12 +93,12 @@ for (const lang of ["", "/en"]) {
     await runAxe(page, `${lang}/reservar/revisar/ (lost)`);
   });
 
-  test(`a11y: ${lang}/reservar/habitacion/ when the search service fails`, async ({ page }) => {
+  test(`a11y: ${lang}/reservar/ when the search service fails`, async ({ page }) => {
     await page.route(`${LOCAL_API_URL}/public/offers*`, (route) => route.abort());
     const params = new URLSearchParams({ ...openStay(), adults: "2", children: "0" });
-    await page.goto(`${lang}/reservar/habitacion/?${params.toString()}`);
+    await page.goto(`${lang}/reservar/?${params.toString()}`);
     await expect(page.locator("[data-problem]")).toBeVisible();
-    await runAxe(page, `${lang}/reservar/habitacion/ (failure)`);
+    await runAxe(page, `${lang}/reservar/ (failure)`);
   });
 
   test(`a11y: ${lang}/reservar/revisar/ ready to pay`, async ({ page }) => {

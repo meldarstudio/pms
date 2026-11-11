@@ -4,12 +4,10 @@ import type { Room } from "@/lib/rooms";
 
 export const reservesOnline = (room: Pick<Room, "pmsRoomTypeId">) => Boolean(room.pmsRoomTypeId);
 
-export function searchStepHref(lang: Lang, room?: Room["id"]) {
+export function chooseStepHref(lang: Lang, room?: Room["id"]) {
   const path = getRelativeLocaleUrl(lang, "reservar");
   return room ? `${path}?room=${room}` : path;
 }
-
-export const chooseStepHref = (lang: Lang) => getRelativeLocaleUrl(lang, "reservar/habitacion");
 
 export const reviewStepHref = (lang: Lang) => getRelativeLocaleUrl(lang, "reservar/revisar");
 

@@ -2,7 +2,7 @@
 import { Image, getImage } from "astro:assets";
 import Whatsapp from "@/icons/Whatsapp.svg";
 import { getWhatsAppLink } from "@/lib/constants";
-import { reservesOnline, searchStepHref } from "@/lib/reservation/links";
+import { reservesOnline, chooseStepHref } from "@/lib/reservation/links";
 import { rooms } from "@/lib/rooms";
 import { getLang, useTranslations } from "@/i18n/utils";
 
@@ -209,7 +209,7 @@ const primaryCta =
               {reservesOnline(room) ? (
                 <div class="mt-8 flex flex-col items-start gap-3">
                   <a
-                    href={searchStepHref(lang, room.id)}
+                    href={chooseStepHref(lang, room.id)}
                     class={primaryCta.replace("mt-8 ", "")}
                     data-room-search={room.id}
                     aria-label={`${t("reservation.roomCta")}: ${t(room.nameKey)}`}
