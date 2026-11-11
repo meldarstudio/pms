@@ -45,55 +45,47 @@ test("mobile menu opens, closes with Escape, and navigates", async ({ page }) =>
   await expect(page).toHaveURL(/\/habitaciones\/$/);
 });
 
-for (const [name, width, trigger] of [
-  ["mobile", 390, "[data-gallery-main]"],
-  ["desktop", 1280, "[data-gallery-open]"],
-] as const) {
-  test(`rooms gallery works on ${name}`, async ({ page }) => {
+for (const width of [390, 1280]) {
+  test(`room photos swipe inline and open a lightbox at ${width}px`, async ({ page }) => {
     await page.setViewportSize({ width, height: 844 });
     await page.goto("/habitaciones/");
-    const gallery = page.locator("[data-room-gallery]").first();
-    const photo = gallery.locator(trigger).first();
-    const dialog = gallery.locator("[data-gallery-dialog]");
+    const gallery = page.getByRole("region", { name: "Fotos de Doble Premium" });
+    await gallery.hover();
+    await gallery.getByRole("button", { name: "Foto siguiente" }).click();
+    const second = gallery.getByRole("button", { name: "Doble Premium: Abrir foto 2 de 3" });
+    await expect(second).toBeInViewport();
+    await expect(page.getByRole("dialog")).toHaveCount(0);
 
-    await photo.click();
-    await expect(dialog).toBeVisible();
-    await dialog.locator("[data-gallery-next]").click();
-    await expect(dialog.locator("[data-gallery-counter]")).toHaveText(/^2 \/ \d+$/);
+    await second.click();
+    const lightbox = page.getByRole("dialog", { name: "Doble Premium" });
+    await expect(lightbox.getByRole("button", { name: "Cerrar" })).toBeFocused();
+    await expect(lightbox).toContainText(/Doble Premium: .+, 2 de 3$/);
+    const photo = lightbox.getByRole("img", { name: /área de descanso/ });
+    await expect(photo).toHaveAttribute("src", /double-top-view.*\.webp/);
+    await expect
+      .poll(() => photo.evaluate((img) => (img as HTMLImageElement).naturalWidth))
+      .toBeGreaterThan(0);
+    await page.keyboard.press("ArrowRight");
+    await expect(lightbox).toContainText(/, 3 de 3$/);
     await page.keyboard.press("Escape");
-    await expect(dialog).not.toBeVisible();
-    await expect(photo).toBeFocused();
+    await expect(lightbox).toBeHidden();
+    await expect(
+      gallery.getByRole("button", { name: "Doble Premium: Abrir foto 3 de 3" }),
+    ).toBeFocused();
   });
 }
 
-test("double room lightbox loads full-size photos on demand", async ({ page }) => {
+test("room lightbox closes from outside the photo", async ({ page }) => {
   await page.setViewportSize({ width: 1280, height: 844 });
   await page.goto("/habitaciones/");
-  const gallery = page.locator("[data-room-gallery]").nth(1);
-  const dialog = gallery.locator("[data-gallery-dialog]");
-  const slides = dialog.locator("[data-gallery-slide] img");
-
-  await expect(slides.first()).not.toHaveAttribute("src");
-  await gallery.locator("[data-gallery-open]").first().click();
-  await expect(slides.first()).toHaveAttribute("src", /double-side-view.*\.webp/);
-  await expect
-    .poll(() => slides.first().evaluate((img) => (img as HTMLImageElement).naturalWidth))
-    .toBeGreaterThan(0);
-  await expect(slides.nth(1)).not.toHaveAttribute("src");
-
-  await dialog.locator("[data-gallery-next]").click();
-  await expect(slides.nth(1)).toHaveAttribute("src", /double-top-view.*\.webp/);
-  await expect(slides.nth(2)).not.toHaveAttribute("src");
+  await page.getByRole("button", { name: "Suite Familiar: Abrir foto 1 de 3" }).click();
+  const lightbox = page.getByRole("dialog", { name: "Suite Familiar" });
+  await expect(lightbox).toBeVisible();
+  await page.mouse.click(640, 30);
+  await expect(lightbox).toBeHidden();
 });
 
-for (const path of [
-  "/",
-  "/en/",
-  "/habitaciones/",
-  "/en/habitaciones/",
-  "/churin/",
-  "/en/churin/",
-]) {
+for (const path of ["/", "/en/", "/churin/", "/en/churin/"]) {
   test(`${path} has a valid booking link`, async ({ page }) => {
     await page.goto(path);
     const link = page.locator('main a[href*="wa.me/"]').first();
@@ -175,16 +167,18 @@ for (const [path, availability, guests, adults, body, prices, rooms, whatsapp] o
   });
 }
 
-for (const [path, label, bookingPath] of [
-  ["/habitaciones/", "Reservar", "/reservar/"],
-  ["/en/habitaciones/", "Book now", "/en/reservar/"],
+for (const [path, label] of [
+  ["/habitaciones/", "Reservar"],
+  ["/en/habitaciones/", "Book now"],
 ] as const) {
-  test(`${path} header opens booking search`, async ({ page }) => {
+  test(`${path} header scrolls to the stay search`, async ({ page }) => {
     await page.goto(path);
-    const link = page.getByRole("banner").getByRole("link", { name: label });
-    await expect(link).toHaveAttribute("href", bookingPath);
+    await page.evaluate(() => window.scrollTo(0, document.body.scrollHeight));
+    const link = page.getByRole("banner").getByRole("link", { name: label, exact: true });
+    await expect(link).toHaveAttribute("href", "#availability");
     await link.click();
-    await expect(page).toHaveURL(new RegExp(`${bookingPath}$`));
+    await expect(page.locator("#availability")).toBeInViewport();
+    await expect(page.locator("#stay-check-in")).toBeFocused();
   });
 }
 
@@ -298,11 +292,11 @@ test("homepage range picker requires a departure after arrival", async ({ page }
   const form = page.locator("#availability");
   await form.getByLabel("Salida").click();
   const popup = page.locator("[data-slot=popover-content]").last();
-  await expect(popup.getByRole("heading")).toHaveText("Elige tu fecha de llegada");
+  await expect(popup.getByRole("heading")).toHaveText("Elija su fecha de llegada");
   await pickRangeDate(page, day);
-  await expect(popup.getByRole("heading")).toHaveText("Elige tu fecha de salida");
+  await expect(popup.getByRole("heading")).toHaveText("Elija su fecha de salida");
   await popup.locator(`[data-date="${day}"]`).first().click();
-  await expect(popup.getByRole("heading")).toHaveText("Elige tu fecha de salida");
+  await expect(popup.getByRole("heading")).toHaveText("Elija su fecha de salida");
   await page.keyboard.press("Escape");
   await expect(form.getByLabel("Salida")).toBeFocused();
   await page
@@ -322,16 +316,16 @@ test("mobile calendar drawer keeps the arrival when dismissed and restores focus
   const form = page.locator("#availability");
   await form.getByLabel("Llegada").click();
   const drawer = page.getByRole("dialog");
-  await expect(drawer).toHaveAccessibleName("Elige tu fecha de llegada");
+  await expect(drawer).toHaveAccessibleName("Elija su fecha de llegada");
   await pickRangeDate(page, daysFromToday(40));
-  await expect(drawer).toHaveAccessibleName("Elige tu fecha de salida");
+  await expect(drawer).toHaveAccessibleName("Elija su fecha de salida");
   await drawer.getByRole("button", { name: "Cerrar calendario" }).click();
   await expect(drawer).toBeHidden();
   await expect(form.getByLabel("Llegada")).toBeFocused();
   await expect(page.locator('#availability input[name="checkIn"]')).toHaveValue(daysFromToday(40));
 
   await form.getByLabel("Salida").click();
-  await expect(drawer).toHaveAccessibleName("Elige tu fecha de salida");
+  await expect(drawer).toHaveAccessibleName("Elija su fecha de salida");
   await pickRangeDate(page, daysFromToday(42));
   await expect(drawer).toBeHidden();
   await expect(form.getByLabel("Salida")).toBeFocused();
@@ -365,7 +359,7 @@ test("homepage search opens the rooms for the chosen stay and keeps it on return
     adults: "2",
     children: "1",
   });
-  await expect(page).toHaveURL(new RegExp(`/reservar/\\?${params.toString()}$`));
+  await expect(page).toHaveURL(new RegExp(`/habitaciones/\\?${params.toString()}$`));
   await expect(page.locator("#stay-guests-value")).toHaveText("2 adultos, 1 niño");
   await expect(page.locator('input[name="checkOut"]')).toHaveValue(stay.checkOut);
   await expect(page.getByRole("article", { name: "Suite Matrimonial" })).toBeVisible();
@@ -412,6 +406,6 @@ test("churin band still links to prices", async ({ page }) => {
   await page.goto("/churin/");
   await expect(page.getByRole("link", { name: "Ver precios para sus fechas" })).toHaveAttribute(
     "href",
-    /\/reservar\/$/,
+    /\/habitaciones\/$/,
   );
 });

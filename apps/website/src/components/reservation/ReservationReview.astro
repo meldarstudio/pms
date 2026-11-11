@@ -2,10 +2,14 @@
 import { PUBLIC_CULQI_PUBLIC_KEY, PUBLIC_TURNSTILE_SITE_KEY } from "astro:env/client";
 import ReservationHelp from "@/components/reservation/ReservationHelp.astro";
 import { BUSINESS_NAME } from "@/constants";
-import ReservationSteps from "@/components/reservation/ReservationSteps.astro";
+import {
+  BookingSteps,
+  bookingStepsKeys,
+  type BookingStepsText,
+} from "@/components/reservation/BookingSteps";
 import { ui } from "@/i18n/ui";
 import { getLang, useTranslations } from "@/i18n/utils";
-import { chooseStepHref, summaryStepHref } from "@/lib/reservation/links";
+import { roomsHref, summaryStepHref } from "@/lib/reservation/links";
 import { reservationApiUrl } from "@/lib/reservation/api";
 import { rooms } from "@/lib/rooms";
 
@@ -22,7 +26,7 @@ const copy = {
         title: BUSINESS_NAME,
       }
     : null,
-  chooseHref: chooseStepHref(lang),
+  chooseHref: roomsHref(lang),
   summaryHref: summaryStepHref(lang),
   text: Object.fromEntries(
     (Object.keys(ui[lang]) as (keyof (typeof ui)[typeof lang])[])
@@ -78,7 +82,10 @@ const contactFields = [
 
 <section class="bg-stone-100">
   <div class="mx-auto max-w-2xl px-4 py-8 md:px-8 md:py-16">
-    <ReservationSteps current="review" />
+    <BookingSteps
+      current="review"
+      text={Object.fromEntries(bookingStepsKeys.map((key) => [key, t(key)])) as BookingStepsText}
+    />
     <h1 class="mt-8 text-3xl font-semibold text-pretty text-stone-900 sm:text-4xl">
       {t("reservation.review.title")}
     </h1>
@@ -99,7 +106,7 @@ const contactFields = [
           <button type="button" class={primary} data-retry hidden>
             {t("reservation.choose.retry")}
           </button>
-          <a href={chooseStepHref(lang)} class={secondary} data-problem-back>
+          <a href={roomsHref(lang)} class={secondary} data-problem-back>
             {t("reservation.review.backToRooms")}
           </a>
         </div>
@@ -127,7 +134,7 @@ const contactFields = [
               <dd class="text-right font-semibold text-stone-900" data-stay="plan" />
             </div>
           </dl>
-          <a href={chooseStepHref(lang)} class={`mt-4 ${link}`} data-change-choice>
+          <a href={roomsHref(lang)} class={`mt-4 ${link}`} data-change-choice>
             {t("reservation.review.changeChoice")}
           </a>
         </section>

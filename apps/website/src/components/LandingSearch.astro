@@ -1,36 +1,12 @@
 ---
 import StaySearch from "@/components/StaySearch.astro";
 import { getLang, useTranslations } from "@/i18n/utils";
-import { chooseStepHref } from "@/lib/reservation/links";
+import { roomsHref } from "@/lib/reservation/links";
 
 const lang = getLang(Astro.currentLocale);
 const t = useTranslations(lang);
 ---
 
 <div id="availability" class="scroll-offset">
-  <StaySearch action={chooseStepHref(lang)} layout="hero" submit={t("hero.bookCta")} />
+  <StaySearch action={roomsHref(lang)} submit={t("hero.bookCta")} />
 </div>
-
-<script>
-  document.querySelectorAll<HTMLAnchorElement>('a[href="#availability"]').forEach((link) => {
-    link.addEventListener("click", (event) => {
-      if (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey)
-        return;
-      const availability = document.getElementById("availability");
-      if (!availability) return;
-      event.preventDefault();
-      requestAnimationFrame(() => {
-        if (window.location.hash !== "#availability") {
-          window.history.pushState(null, "", "#availability");
-        }
-        document.getElementById("stay-check-in")?.focus({ preventScroll: true });
-        availability.scrollIntoView({
-          behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches
-            ? "instant"
-            : "smooth",
-          block: "start",
-        });
-      });
-    });
-  });
-</script>

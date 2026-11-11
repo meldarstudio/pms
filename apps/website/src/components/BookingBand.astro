@@ -1,6 +1,6 @@
 ---
 import { getWhatsAppLink } from "@/lib/constants";
-import { chooseStepHref } from "@/lib/reservation/links";
+import { roomsHref } from "@/lib/reservation/links";
 import { getLang, useTranslations } from "@/i18n/utils";
 
 interface Props {
@@ -21,7 +21,7 @@ const {
   body = t("booking.body"),
   cta = t("booking.cta"),
   search = true,
-  searchHref = chooseStepHref(lang),
+  searchHref = roomsHref(lang),
   searchLabel = t("reservation.cta"),
 } = Astro.props;
 const bookHref = getWhatsAppLink(t("whatsapp.prefill"));

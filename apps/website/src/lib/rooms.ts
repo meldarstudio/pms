@@ -24,14 +24,14 @@ export type Room = {
   pmsRoomTypeId?: string;
   gallery: RoomPhoto[];
   nameKey: UiKey;
-  bestForKey: UiKey;
+  /** Room description, for structured data; the room cards list facts instead. */
   leadKey: UiKey;
   bedsKey: UiKey;
   areaKey: UiKey;
-  prefillKey: UiKey;
-  ctaKey: UiKey;
   /** Floor area in square meters, for structured data. */
   areaSqm: number;
+  /** Guests the room sleeps, shown before a search; a search shows the PMS limit instead. */
+  sleeps: number;
 };
 
 const kingPhoto: RoomPhoto = {
@@ -77,38 +77,32 @@ export const rooms: Room[] = [
     pmsRoomTypeId: "type-suite-matrimonial",
     gallery: [kingBalconyPhoto, kingFrontViewPhoto, kingPhoto],
     nameKey: "rooms.king.name",
-    bestForKey: "rooms.king.bestFor",
     leadKey: "rooms.king.lead",
     bedsKey: "rooms.king.beds",
     areaKey: "rooms.king.area",
-    prefillKey: "rooms.king.prefill",
-    ctaKey: "rooms.king.cta",
     areaSqm: 18,
+    sleeps: 3,
   },
   {
     id: "double",
     pmsRoomTypeId: "type-doble-premium",
     gallery: [doubleSidePhoto, doubleTopPhoto, doubleClosePhoto],
     nameKey: "rooms.double.name",
-    bestForKey: "rooms.double.bestFor",
     leadKey: "rooms.double.lead",
     bedsKey: "rooms.double.beds",
     areaKey: "rooms.double.area",
-    prefillKey: "rooms.double.prefill",
-    ctaKey: "rooms.double.cta",
     areaSqm: 20,
+    sleeps: 4,
   },
   {
     id: "family",
     pmsRoomTypeId: "type-suite-familiar",
     gallery: [familyFrontPhoto, familySidePhoto, familyClosePhoto],
     nameKey: "rooms.family.name",
-    bestForKey: "rooms.family.bestFor",
     leadKey: "rooms.family.lead",
     bedsKey: "rooms.family.beds",
     areaKey: "rooms.family.area",
-    prefillKey: "rooms.family.prefill",
-    ctaKey: "rooms.family.cta",
     areaSqm: 22,
+    sleeps: 4,
   },
 ];

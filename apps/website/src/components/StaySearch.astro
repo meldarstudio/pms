@@ -1,45 +1,16 @@
 ---
 import StaySearchForm from "@/components/StaySearchForm";
 import { getLang, useTranslations } from "@/i18n/utils";
+import { staySearchCopy } from "@/lib/reservation/stay-copy";
 
 interface Props {
-  action?: string;
-  layout: "hero" | "bar";
+  action: string;
   submit: string;
 }
 
-const { action, layout, submit } = Astro.props;
+const { action, submit } = Astro.props;
 const lang = getLang(Astro.currentLocale);
-const t = useTranslations(lang);
-const copy = {
-  arrivalPlaceholder: t("landing.arrivalPlaceholder"),
-  departurePlaceholder: t("landing.departurePlaceholder"),
-  chooseArrival: t("landing.chooseArrival"),
-  chooseDeparture: t("landing.chooseDeparture"),
-  stayHint: t("landing.stayHint"),
-  closeCalendar: t("landing.closeCalendar"),
-  checkIn: t("reservation.search.checkIn"),
-  checkOut: t("reservation.search.checkOut"),
-  guests: t("landing.guests"),
-  adults: t("reservation.search.adults"),
-  children: t("reservation.search.children"),
-  submit,
-  decreaseAdults: t("landing.decreaseAdults"),
-  increaseAdults: t("landing.increaseAdults"),
-  decreaseChildren: t("landing.decreaseChildren"),
-  increaseChildren: t("landing.increaseChildren"),
-  adultsOne: t("reservation.adults.one"),
-  adultsOther: t("reservation.adults.other"),
-  childrenOne: t("reservation.children.one"),
-  childrenOther: t("reservation.children.other"),
-  problems: {
-    checkInRequired: t("reservation.problem.checkInRequired"),
-    checkInTooSoon: t("reservation.problem.checkInTooSoon"),
-    checkOutRequired: t("reservation.problem.checkOutRequired"),
-    checkOutBeforeCheckIn: t("reservation.problem.checkOutBeforeCheckIn"),
-    tooManyNights: t("reservation.problem.tooManyNights"),
-  },
-};
+const copy = staySearchCopy(useTranslations(lang), submit);
 ---
 
-<StaySearchForm client:load action={action} layout={layout} lang={lang} copy={copy} />
+<StaySearchForm client:load action={action} lang={lang} copy={copy} />

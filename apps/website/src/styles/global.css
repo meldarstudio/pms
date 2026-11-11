@@ -136,6 +136,48 @@ body[data-menu-expanded] #mobile-menu {
   text-transform: uppercase;
 }
 
+/* The stay is one orange band: solid check-in and check-out, tinted nights. Gray stays
+   for neutral states so nights never read as hover, today, or unavailable. */
+.stay-search :is(.rdp-range_start, .rdp-range_middle, .rdp-range_end),
+.stay-search :is(.rdp-range_start, .rdp-range_end)::after {
+  background-color: var(--color-accent-100);
+}
+
+.stay-search .rdp-day button[data-range-middle="true"] {
+  background-color: var(--color-accent-100);
+  color: var(--color-accent-900);
+}
+
+.stay-search .rdp-day button[data-range-middle="true"]:hover {
+  background-color: var(--color-accent-200);
+}
+
+.stay-search .rdp-day button:is([data-range-start="true"], [data-range-end="true"]):hover {
+  background-color: var(--color-accent-500);
+  color: var(--color-accent-950);
+}
+
+.stay-search
+  .rdp-day
+  button:not(
+    [data-range-start="true"],
+    [data-range-middle="true"],
+    [data-range-end="true"],
+    [data-selected-single="true"]
+  ):hover {
+  background-color: transparent;
+  box-shadow: inset 0 0 0 1px var(--color-accent-500);
+}
+
+.stay-search .rdp-today {
+  background-color: transparent;
+}
+
+.stay-search .rdp-today button {
+  text-decoration: underline;
+  text-underline-offset: 0.25em;
+}
+
 :root {
   --background: oklch(1 0 0);
   --foreground: oklch(0.145 0 0);

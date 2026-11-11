@@ -6,14 +6,16 @@ import LangSelect from "@/components/LangSelect.astro";
 import { getRelativeLocaleUrl } from "astro:i18n";
 import { getLang, useTranslations } from "@/i18n/utils";
 import { formatPhoneNumber } from "@/lib/utils";
-import { chooseStepHref } from "@/lib/reservation/links";
+import { roomsHref } from "@/lib/reservation/links";
 
 const lang = getLang(Astro.currentLocale);
 const t = useTranslations(lang);
 const homeHref = getRelativeLocaleUrl(lang);
-const overlay = Astro.url.pathname.replace(/\/$/, "") === homeHref.replace(/\/$/, "");
-const bookOnPage = overlay;
-const bookHref = bookOnPage ? "#availability" : chooseStepHref(lang);
+const pathname = Astro.url.pathname.replace(/\/$/, "");
+const overlay = pathname === homeHref.replace(/\/$/, "");
+const bookOnPage =
+  overlay || pathname === getRelativeLocaleUrl(lang, "habitaciones").replace(/\/$/, "");
+const bookHref = bookOnPage ? "#availability" : roomsHref(lang);
 const bookLabel = t("nav.book");
 
 const navLinks = [
@@ -349,3 +351,27 @@ const navLinks = [
     customElements.define("navigation-menu", NavigationMenu);
   </script>
 </navigation-menu>
+
+<script>
+  document.querySelectorAll<HTMLAnchorElement>('a[href="#availability"]').forEach((link) => {
+    link.addEventListener("click", (event) => {
+      if (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey)
+        return;
+      const availability = document.getElementById("availability");
+      if (!availability) return;
+      event.preventDefault();
+      requestAnimationFrame(() => {
+        if (window.location.hash !== "#availability") {
+          window.history.pushState(null, "", "#availability");
+        }
+        document.getElementById("stay-check-in")?.focus({ preventScroll: true });
+        availability.scrollIntoView({
+          behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches
+            ? "instant"
+            : "smooth",
+          block: "start",
+        });
+      });
+    });
+  });
+</script>

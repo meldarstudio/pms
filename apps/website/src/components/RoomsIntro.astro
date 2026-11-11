@@ -1,16 +1,12 @@
 ---
-import Whatsapp from "@/icons/Whatsapp.svg";
-import { getWhatsAppLink } from "@/lib/constants";
-import { chooseStepHref } from "@/lib/reservation/links";
 import { getLang, useTranslations } from "@/i18n/utils";
 
 const lang = getLang(Astro.currentLocale);
 const t = useTranslations(lang);
-const bookHref = getWhatsAppLink(t("whatsapp.prefill"));
 ---
 
 <section class="bg-stone-100 text-stone-900">
-  <div class="mx-auto max-w-7xl px-4 py-8 md:px-8 md:py-16 lg:py-24">
+  <div class="mx-auto max-w-7xl px-4 pt-8 pb-6 md:px-8 md:pt-16 md:pb-8 lg:pt-24">
     <p class="font-source-sans-3 text-xs font-medium tracking-widest text-stone-600 uppercase">
       {t("brand.subtitle")}
     </p>
@@ -18,28 +14,5 @@ const bookHref = getWhatsAppLink(t("whatsapp.prefill"));
       {t("rooms.pageTitle")}
     </h1>
     <span class="bg-accent-500 mt-6 block h-1 w-16" aria-hidden="true"></span>
-    <p class="mt-6 max-w-xl leading-relaxed text-pretty text-stone-600">{t("rooms.pageBody")}</p>
-    <div class="mt-8 flex flex-wrap items-center gap-x-6 gap-y-3">
-      <a
-        href={chooseStepHref(lang)}
-        class="font-source-sans-3 bg-accent-500 text-accent-950 hover:bg-accent-400 inline-flex min-h-11 w-fit items-center px-5 text-sm font-medium tracking-widest uppercase"
-        data-rooms-intro-search
-      >
-        {t("reservation.cta")}
-      </a>
-      <a
-        href={bookHref}
-        target="_blank"
-        rel="noopener noreferrer"
-        class="font-source-sans-3 inline-flex min-h-11 w-fit items-center gap-2 border border-stone-900 px-5 text-sm font-medium tracking-widest text-stone-900 uppercase hover:bg-white"
-        data-rooms-intro-booking
-      >
-        <Whatsapp class="size-4 shrink-0" />
-        {t("booking.cta")}
-      </a>
-    </div>
-    <p class="mt-3 max-w-xl text-sm leading-relaxed text-pretty text-stone-600">
-      {t("rooms.intro.direct")}
-    </p>
   </div>
 </section>

@@ -2,6 +2,7 @@ import { AxeBuilder } from "@axe-core/playwright";
 import { expect, test, type Page } from "@playwright/test";
 import { LOCAL_API_URL, doubleSoldOutStay, openStay } from "../support/local-api";
 import { stubPaymentScripts, useOwnSourceIp } from "../support/payment";
+import { selectRoomRate } from "../support/room-rate";
 
 const pages = [
   "/",
@@ -12,8 +13,6 @@ const pages = [
   "/en/habitaciones/",
   "/en/churin/",
   "/en/404",
-  "/reservar/",
-  "/en/reservar/",
 ] as const;
 
 function formatViolation(
@@ -69,11 +68,34 @@ for (const lang of ["", "/en"]) {
     await runAxe(page, `${lang}/ (calendar drawer)`);
   });
 
-  test(`a11y: ${lang}/reservar/ with offers`, async ({ page }) => {
+  test(`a11y: ${lang}/habitaciones/ with offers`, async ({ page }) => {
     const params = new URLSearchParams({ ...doubleSoldOutStay(), adults: "2", children: "0" });
-    await page.goto(`${lang}/reservar/?${params.toString()}&room=king`);
-    await expect(page.locator("[data-book]").first()).toBeVisible();
-    await runAxe(page, `${lang}/reservar/ (offers)`);
+    const en = lang === "/en";
+    await page.goto(`${lang}/habitaciones/?${params.toString()}&room=king`);
+    await expect(
+      page
+        .getByRole("article", { name: en ? "King room" : "Suite Matrimonial" })
+        .getByRole("button", { name: en ? /See rates/ : /Ver tarifas/ }),
+    ).toBeVisible();
+    await runAxe(page, `${lang}/habitaciones/ (offers)`);
+    await selectRoomRate(page, en ? "King room" : "Suite Matrimonial", "Flexible");
+    await expect(
+      page
+        .getByRole("main")
+        .getByRole("link", { name: /^(Reservar|Book) / })
+        .first(),
+    ).toBeVisible();
+    await runAxe(page, `${lang}/habitaciones/ (rates)`);
+  });
+
+  test(`a11y: ${lang}/habitaciones/ with the photo lightbox open`, async ({ page }) => {
+    await page.goto(`${lang}/habitaciones/`);
+    await page
+      .getByRole("button", { name: /: (Abrir|Open) .*2 / })
+      .first()
+      .click();
+    await expect(page.getByRole("dialog")).toBeVisible();
+    await runAxe(page, `${lang}/habitaciones/ (lightbox)`);
   });
 
   test(`a11y: ${lang}/reservar/revisar/ with a quote and contact errors`, async ({ page }) => {
@@ -93,12 +115,14 @@ for (const lang of ["", "/en"]) {
     await runAxe(page, `${lang}/reservar/revisar/ (lost)`);
   });
 
-  test(`a11y: ${lang}/reservar/ when the search service fails`, async ({ page }) => {
+  test(`a11y: ${lang}/habitaciones/ when the search service fails`, async ({ page }) => {
     await page.route(`${LOCAL_API_URL}/public/offers*`, (route) => route.abort());
     const params = new URLSearchParams({ ...openStay(), adults: "2", children: "0" });
-    await page.goto(`${lang}/reservar/?${params.toString()}`);
-    await expect(page.locator("[data-problem]")).toBeVisible();
-    await runAxe(page, `${lang}/reservar/ (failure)`);
+    await page.goto(`${lang}/habitaciones/?${params.toString()}`);
+    await expect(
+      page.getByRole("button", { name: /^(Intentar de nuevo|Try again)$/ }),
+    ).toBeVisible();
+    await runAxe(page, `${lang}/habitaciones/ (failure)`);
   });
 
   test(`a11y: ${lang}/reservar/revisar/ ready to pay`, async ({ page }) => {

@@ -9,6 +9,7 @@ import {
   WEBSITE_URL,
 } from "../support/local-api";
 import { nextCulqiCharge, stubPaymentScripts, useOwnSourceIp } from "../support/payment";
+import { selectRoomRate } from "../support/room-rate";
 
 declare global {
   interface Window {
@@ -107,7 +108,12 @@ for (const [language, plan, offset] of [
       adults: "2",
       children: "0",
     });
-    await page.goto(`${base}/reservar/?${stay.toString()}`);
+    await page.goto(`${base}/habitaciones/?${stay.toString()}`);
+    await selectRoomRate(
+      page,
+      en ? "King room" : "Suite Matrimonial",
+      en ? "Non-refundable" : "Flexible",
+    );
     await page
       .getByRole("link", {
         name: en
@@ -362,7 +368,7 @@ test("back to review shows the same payment and does not pay again", async ({ pa
   const pending = await serverPayment(page, request);
 
   await page.getByRole("link", { name: "Cambiar fechas, habitación o tarifa" }).click();
-  await expect(page).toHaveURL(/\/reservar\/\?/);
+  await expect(page).toHaveURL(/\/habitaciones\/\?/);
   await page.goBack();
 
   await expect(page.getByRole("heading", { name: "Confirmando su pago" })).toBeVisible();

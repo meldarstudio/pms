@@ -1,10 +1,7 @@
 ---
 import Layout from "@/layouts/Layout.astro";
 import RoomsBooking from "@/components/RoomsBooking.astro";
-import RoomsCatalog from "@/components/RoomsCatalog.astro";
-import RoomsIncluded from "@/components/RoomsIncluded.astro";
 import RoomsIntro from "@/components/RoomsIntro.astro";
-import RoomsPolicies from "@/components/RoomsPolicies.astro";
 import { getLang, useTranslations } from "@/i18n/utils";
 import { rooms } from "@/lib/rooms";
 import { getRoomsStructuredData } from "@/lib/structured-data";
@@ -35,8 +32,5 @@ const roomsStructuredData = getRoomsStructuredData({
     set:html={JSON.stringify(roomsStructuredData).replace(/</g, "\\u003c")}
   />
   <RoomsIntro />
-  <RoomsCatalog />
-  <RoomsIncluded />
-  <RoomsPolicies />
   <RoomsBooking />
 </Layout>

@@ -4,7 +4,6 @@ export const ratePlanCodes = ["flexible", "non_refundable"] as const;
 export type RatePlanCode = (typeof ratePlanCodes)[number];
 
 export const MAX_NIGHTS = 60;
-export const staySearchEvent = "stay-search";
 export const DEFAULT_ADULTS = 2;
 export const DEFAULT_CHILDREN = 0;
 export const MAX_ADULTS_CHOICE = 8;

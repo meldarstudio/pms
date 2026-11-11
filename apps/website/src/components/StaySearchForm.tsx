@@ -40,7 +40,6 @@ import {
   MAX_NIGHTS,
   searchParams,
   searchProblems,
-  staySearchEvent,
   type SearchProblem,
   type StaySearch,
 } from "@/lib/reservation/search";
@@ -308,7 +307,7 @@ function StayDateFields({
           ? [{ before: labelDate(checkIn) }, { after: labelDate(addDays(checkIn, MAX_NIGHTS)) }]
           : []),
       ]}
-      className="mx-auto p-3 [--cell-size:clamp(2.25rem,calc((100vw-2.5rem)/7),2.75rem)]"
+      className="mx-auto p-3 [--cell-size:clamp(2rem,calc((100vw-2.5rem)/7),2.25rem)]"
       components={{ DayButton: StayDayButton }}
       onSelect={(_, date) => {
         if (dateLabel(date) < firstOnlineArrival()) return;
@@ -408,36 +407,24 @@ function StayDateFields({
   );
 }
 
-const layouts = {
-  hero: {
-    card: "lg:py-6",
-    grid: "lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_minmax(0,14rem)_auto] lg:gap-4",
-    guests: "lg:col-span-1",
-    submit: "lg:col-span-1 lg:w-auto lg:whitespace-nowrap",
-    side: "top",
-  },
-  bar: {
-    card: "",
-    grid: "md:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_minmax(0,1fr)_auto]",
-    guests: "md:col-span-1",
-    submit: "md:col-span-1 md:w-auto md:whitespace-nowrap",
-    side: "bottom",
-  },
+const styles = {
+  card: "lg:py-6",
+  grid: "lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_minmax(0,14rem)_auto] lg:gap-4",
+  guests: "lg:col-span-1",
+  submit: "lg:col-span-1 lg:w-auto lg:whitespace-nowrap",
+  side: "top",
 } as const;
 
+/** Navigates to `action` with the search, or hands it to `onSearch` to show in place. */
 export default function StaySearchForm({
-  action,
-  layout,
   lang,
   copy,
+  ...target
 }: {
-  action?: string;
-  layout: keyof typeof layouts;
   lang: Lang;
   copy: StaySearchCopy;
-}) {
-  const styles = layouts[layout];
-  const formRef = useRef<HTMLFormElement>(null);
+} & ({ action: string } | { onSearch: (search: StaySearch) => void })) {
+  const action = "action" in target ? target.action : undefined;
   const checkInRef = useRef<HTMLButtonElement>(null);
   const checkOutRef = useRef<HTMLButtonElement>(null);
   const [checkIn, setCheckIn] = useState("");
@@ -475,11 +462,9 @@ export default function StaySearchForm({
     else if (next[0]?.field === "checkOut") checkOutRef.current?.focus();
     if (next.length) return;
     storeSearch(search);
-    if (action) window.location.assign(`${action}?${searchParams(search).toString()}`);
-    else
-      formRef.current?.dispatchEvent(
-        new CustomEvent<StaySearch>(staySearchEvent, { bubbles: true, detail: search }),
-      );
+    if ("action" in target)
+      window.location.assign(`${target.action}?${searchParams(search).toString()}`);
+    else target.onSearch(search);
   };
 
   return (
@@ -487,7 +472,7 @@ export default function StaySearchForm({
       className={`stay-search overflow-visible border-stone-200 bg-white font-source-sans-3 text-stone-900 shadow-sm ring-0 ${styles.card}`}
     >
       <CardContent>
-        <form ref={formRef} action={action} method="get" noValidate onSubmit={onSubmit}>
+        <form action={action} method="get" noValidate onSubmit={onSubmit}>
           <FieldGroup className={`grid grid-cols-2 items-end gap-3 ${styles.grid}`}>
             <StayDateFields
               lang={lang}

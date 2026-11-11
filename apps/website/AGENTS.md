@@ -3,10 +3,14 @@
 Static Astro site for Hotel Manantial in Churín, Peru. Cloudflare serves `dist/`.
 Reservation search is always visible. `PUBLIC_PMS_API_URL` overrides the API URL;
 development defaults to the local backend and builds to the production API.
-Choose (`/reservar/`) holds the dates-and-guests form, refreshes live offers from the
-PMS `/public` API in place, and links each rate straight to Review. The last search is
-kept in `sessionStorage` (`src/lib/reservation/draft.ts`) so the homepage and Choose
-prefill it; dates before the first online arrival are dropped. Review (`/reservar/revisar/`) opens a private checkout, shows
+Choose is the rooms page (`/habitaciones/`): one React island
+(`src/components/rooms/RoomsBooking.tsx`) with the dates-and-guests form and every
+room, prerendered for search engines. It refreshes live offers from the PMS `/public`
+API in place, never in the HTML. A searched stay lists each room at its lowest total;
+choosing a room replaces that list with the room's rate plans, lowest selected, and one
+Book link to Review. The last
+search is kept in `sessionStorage` (`src/lib/reservation/draft.ts`) so the homepage
+and Choose prefill it; dates before the first online arrival are dropped. Review (`/reservar/revisar/`) opens a private checkout, shows
 its server Quote, and records the booking contact's acceptance. Pay refreshes an
 expired quote and keeps that acceptance only when the guest is paying; an unchanged
 offer is charged, and a changed offer, including a lower price, is shown for a new
