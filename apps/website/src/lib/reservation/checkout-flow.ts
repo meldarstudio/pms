@@ -224,6 +224,7 @@ export type Effect =
   | { type: "storeCard"; key: string; card: StoredCard }
   | { type: "clearCardSource"; key: string }
   | { type: "storeContact"; contact: ContactDraft }
+  | { type: "clearContact" }
   | { type: "storeConfirmedReservation"; code: string }
   | { type: "schedulePoll" }
   | { type: "cancelPoll" }
@@ -464,6 +465,7 @@ function afterAccessRead(c: Ctx, request: number, access: CheckoutAccess | null)
   c.s.access = { ...c.s.access, token: access.token };
   const payment = c.s.payment;
   if (payment?.state === "confirmed" && payment.reservation) {
+    c.fx.push({ type: "clearContact" });
     c.fx.push({ type: "storeConfirmedReservation", code: payment.reservation.code });
     c.fx.push({ type: "redirectToSummary", token: access.token });
     return;

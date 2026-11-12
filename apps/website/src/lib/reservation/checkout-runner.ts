@@ -2,6 +2,7 @@ import { acceptQuote, readCheckout, refreshQuote, startCheckout } from "@/lib/re
 import type { Draft, Effect, Event, FocusTarget } from "@/lib/reservation/checkout-flow";
 import {
   clearCardSource,
+  clearContact,
   storeCard,
   storeCheckout,
   storeConfirmedReservation,
@@ -168,6 +169,8 @@ export function createCheckoutRunner(options: CheckoutRunnerOptions): CheckoutRu
         return clearCardSource(effect.key);
       case "storeContact":
         return storeContact(effect.contact);
+      case "clearContact":
+        return clearContact();
       case "storeConfirmedReservation":
         return storeConfirmedReservation(effect.code);
       case "schedulePoll":

@@ -67,6 +67,14 @@ export function storedContact(): ContactDraft {
 
 export const storeContact = (contact: ContactDraft) => write(CONTACT_KEY, contact);
 
+export function clearContact() {
+  try {
+    sessionStorage.removeItem(CONTACT_KEY);
+  } catch {
+    return;
+  }
+}
+
 const CARD_SOURCE = /^tkn_[\w-]{1,200}$/;
 
 export type StoredCard = { sourceId: string; attemptId: string };

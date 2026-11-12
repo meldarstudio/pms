@@ -886,6 +886,7 @@ describe("a saved payment outcome", () => {
     });
 
     expect(effects).toEqual([
+      { type: "clearContact" },
       { type: "storeConfirmedReservation", code: "HM-4821" },
       { type: "redirectToSummary", token: ACCESS_TOKEN },
     ]);

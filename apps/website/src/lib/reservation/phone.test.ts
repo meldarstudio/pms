@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vite-plus/test";
-import { contactKey, storedContact, storeContact } from "./draft";
+import { clearContact, contactKey, storedContact, storeContact } from "./draft";
 import { reviewProblems, trimmedContact } from "./checkout-form";
 import { editPhone, phoneClipboardText } from "./phone-mask";
 import { emptyPhone, phoneInputText, phoneResult, storedPhone, typePhone } from "./phone";
@@ -60,6 +60,7 @@ describe("contact validation and restoration", () => {
     vi.stubGlobal("sessionStorage", {
       getItem: (key: string) => values.get(key) ?? null,
       setItem: (key: string, value: string) => values.set(key, value),
+      removeItem: (key: string) => values.delete(key),
     });
     values.set("hm.reservation.contact", JSON.stringify({ ...contact, phone: "+44 20 7946 0018" }));
     expect(storedContact().phone).toEqual({ country: "GB", text: "02079460018" });
@@ -73,5 +74,12 @@ describe("contact validation and restoration", () => {
     storeContact(draft);
     expect(storedContact()).toEqual(draft);
     expect(contactKey(storedContact())).toBe(contactKey(draft));
+    clearContact();
+    expect(storedContact()).toEqual({
+      fullName: "",
+      email: "",
+      phone: { country: "PE", text: "" },
+      notes: "",
+    });
   });
 });
