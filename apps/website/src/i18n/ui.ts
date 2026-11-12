@@ -301,8 +301,7 @@ export const ui = {
       "Check your stay, price and terms, and add the booking contact's details.",
     "reservation.step.review": "Review and pay",
     "reservation.review.title": "Review your reservation",
-    "reservation.review.lead":
-      "Check your stay, enter your details and pay to confirm your reservation.",
+    "reservation.review.lead": "Confirm your stay, then enter your details to pay.",
     "reservation.review.unavailableLead": "Review the details of your stay below.",
     "reservation.review.backToRates": "Back to rates",
     "reservation.review.changeRate": "Change rate",
@@ -310,8 +309,6 @@ export const ui = {
     "reservation.review.checkOut": "Check-out",
     "reservation.review.dueNow": "Due today",
     "reservation.review.balance": "Balance at the hotel",
-    "reservation.review.showDetails": "View reservation details",
-    "reservation.review.hideDetails": "Hide reservation details",
     "reservation.review.whatsapp.title": "Let's finish on WhatsApp",
     "reservation.review.whatsapp.body":
       "Online payment is temporarily unavailable. Send us your stay details and we'll help you book, without filling out a form here.",
@@ -331,6 +328,9 @@ export const ui = {
     "reservation.review.changeChoice": "Change dates or room",
     "reservation.review.price": "Price and terms",
     "reservation.review.contact": "Booking contact",
+    "reservation.review.alternativeBooking": "Prefer to book by phone or WhatsApp?",
+    "reservation.review.call": "Call us",
+    "reservation.review.bookViaWhatsapp": "Book via WhatsApp",
     "reservation.review.contactLead":
       "We'll use these details to contact you about your reservation.",
     "reservation.review.fullName": "Full name",
@@ -339,9 +339,12 @@ export const ui = {
     "reservation.review.phoneCountry": "Country and calling code: {name} ({code})",
     "reservation.review.phoneCountrySearch": "Search countries",
     "reservation.review.phoneCountryEmpty": "No countries found.",
-    "reservation.review.notes": "Reservation notes (optional)",
-    "reservation.review.notesHint":
-      "Let us know your arrival time or any special requests. Up to 2000 characters.",
+    "reservation.review.cancellationEnded": "Free cancellation has ended",
+    "reservation.review.lateCancellationCharge":
+      "Cancellation or no-show costs the first night: {amount}.",
+    "reservation.review.nonRefundableCancellation":
+      "Cancellation or no-show: the full stay amount of {amount} is charged. No additional penalty.",
+    "reservation.review.notes": "Notes (optional)",
     "reservation.review.error.phoneTooShort":
       "The phone number is too short. For a landline, include the area code.",
     "reservation.review.error.phoneTooLong": "The phone number is too long.",
@@ -363,7 +366,7 @@ export const ui = {
     "reservation.review.payment": "Payment",
     "reservation.pay.provider": "Card payment is processed by Culqi.",
     "reservation.pay.security": "Security check before payment",
-    "reservation.pay.button": "Pay {amount} by card",
+    "reservation.pay.button": "Pay {amount}",
     "reservation.pay.sending": "Sending your payment… Please wait on this page.",
     "reservation.pay.error.security": "Wait for the security check above to finish, then pay.",
     "reservation.pay.error.securityFailed":
@@ -795,8 +798,7 @@ export const ui = {
       "Revise su estadía, el precio y las condiciones, y añada los datos del contacto de la reserva.",
     "reservation.step.review": "Revisar y pagar",
     "reservation.review.title": "Revise su reserva",
-    "reservation.review.lead":
-      "Revise su estadía, complete sus datos y pague para confirmar su reserva.",
+    "reservation.review.lead": "Revise su estadía y complete sus datos para pagar.",
     "reservation.review.unavailableLead": "Revise los detalles de su estadía a continuación.",
     "reservation.review.backToRates": "Volver a tarifas",
     "reservation.review.changeRate": "Cambiar tarifa",
@@ -804,8 +806,6 @@ export const ui = {
     "reservation.review.checkOut": "Salida",
     "reservation.review.dueNow": "A pagar ahora",
     "reservation.review.balance": "Saldo en el hotel",
-    "reservation.review.showDetails": "Ver detalle de la reserva",
-    "reservation.review.hideDetails": "Ocultar detalle de la reserva",
     "reservation.review.whatsapp.title": "Continuemos por WhatsApp",
     "reservation.review.whatsapp.body":
       "El pago en línea está desactivado temporalmente. Envíenos los detalles de su estadía y le ayudaremos a reservar, sin completar un formulario aquí.",
@@ -825,6 +825,9 @@ export const ui = {
     "reservation.review.changeChoice": "Cambiar fechas o habitación",
     "reservation.review.price": "Precio y condiciones",
     "reservation.review.contact": "Contacto de la reserva",
+    "reservation.review.alternativeBooking": "¿Prefiere reservar por teléfono o WhatsApp?",
+    "reservation.review.call": "Llámenos",
+    "reservation.review.bookViaWhatsapp": "Reservar por WhatsApp",
     "reservation.review.contactLead":
       "Usaremos estos datos para comunicarnos con usted sobre su reserva.",
     "reservation.review.fullName": "Nombre completo",
@@ -833,9 +836,12 @@ export const ui = {
     "reservation.review.phoneCountry": "País y código: {name} ({code})",
     "reservation.review.phoneCountrySearch": "Buscar país",
     "reservation.review.phoneCountryEmpty": "No se encontraron países.",
-    "reservation.review.notes": "Notas para su reserva (opcional)",
-    "reservation.review.notesHint":
-      "Cuéntenos su hora de llegada o si tiene alguna solicitud especial. Máximo 2000 caracteres.",
+    "reservation.review.cancellationEnded": "El plazo de cancelación gratuita terminó",
+    "reservation.review.lateCancellationCharge":
+      "Si cancela o no llega, se cobra la primera noche: {amount}.",
+    "reservation.review.nonRefundableCancellation":
+      "Si cancela o no llega, se cobra el total de la estadía: {amount}. Sin penalidad adicional.",
+    "reservation.review.notes": "Notas (opcional)",
     "reservation.review.error.phoneTooShort":
       "El número es muy corto. Si es un teléfono fijo, incluya el código de área.",
     "reservation.review.error.phoneTooLong": "El número de teléfono es muy largo.",
@@ -857,7 +863,7 @@ export const ui = {
     "reservation.review.payment": "Pago",
     "reservation.pay.provider": "El pago con tarjeta se procesa a través de Culqi.",
     "reservation.pay.security": "Verificación de seguridad antes del pago",
-    "reservation.pay.button": "Pagar {amount} con tarjeta",
+    "reservation.pay.button": "Pagar {amount}",
     "reservation.pay.sending": "Enviando su pago… Espere en esta página.",
     "reservation.pay.error.security":
       "Espere a que termine la verificación de seguridad de arriba y luego pague.",

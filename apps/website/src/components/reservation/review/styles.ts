@@ -7,7 +7,7 @@ export const quietLink =
   "font-source-sans-3 text-accent-800 inline-flex min-h-11 items-center text-sm font-medium underline-offset-4 hover:underline";
 export const eyebrow =
   "font-source-sans-3 text-xs font-medium tracking-widest text-stone-600 uppercase";
-export const card = "p-6 md:p-8";
+export const card = "p-5 md:p-8";
 export const cardTitle = "text-[1.375rem] leading-snug font-semibold text-stone-900";
 export const headline = "flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1";
 export const row = "flex items-baseline justify-between gap-4 py-0.5";

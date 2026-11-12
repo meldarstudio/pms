@@ -53,7 +53,9 @@ async function fillContact(page: Page) {
 }
 
 const payButton = (page: Page) =>
-  page.getByRole("button", { name: /^(Pagar|Pay) S\/\s[\d.]+ (con tarjeta|by card)$/ });
+  page.getByRole("button", {
+    name: /^(Pagar|Pay) S\/\s[\d.]+$/,
+  });
 
 async function acceptTerms(page: Page) {
   await fillContact(page);
@@ -106,7 +108,7 @@ test("a chosen offer is reviewed with server amounts and its terms are accepted"
   await expect(page.getByLabel("Teléfono")).toHaveAttribute("type", "tel");
   await expect(page.getByLabel("Teléfono")).toHaveAttribute("autocomplete", "tel");
 
-  await expect(payButton(page)).toHaveText(/^Pagar S\/\s100\.00 con tarjeta$/);
+  await expect(payButton(page)).toHaveText(/^Pagar S\/\s100\.00$/);
   await payButton(page).click();
   await expect(page.getByLabel("Nombre completo")).toBeFocused();
   await expect(page.getByText("Ingrese el nombre completo del contacto.")).toBeVisible();
@@ -138,7 +140,59 @@ test("a language change keeps the draft and the accepted offer's quote", async (
   expect((await serverCheckout(page, request)).quote.id).toBe(accepted.quote.id);
 });
 
+test("a restored overlong note opens and receives focus when paying with notes collapsed", async ({
+  page,
+}) => {
+  await page.addInitScript(() =>
+    sessionStorage.setItem(
+      "hm.reservation.contact",
+      JSON.stringify({
+        fullName: "Ana Torres",
+        email: "ana@example.com",
+        phone: { country: "PE", text: "987654321" },
+        notes: "a".repeat(2001),
+      }),
+    ),
+  );
+  await page.goto(reviewPath(openStay(), { room: "king", plan: "flexible" }));
+  const notes = page.locator("#notes");
+  await expect(notes).toHaveValue("a".repeat(2001));
+  await page.getByRole("button", { name: "Notas (opcional)", exact: true }).click();
+  await expect(notes).toBeHidden();
+  await page.getByRole("checkbox", { name: /Acepto las condiciones/ }).check();
+  const acceptances = countAcceptances(page);
+
+  await payButton(page).click();
+
+  await expect(notes).toBeVisible();
+  await expect(notes).toBeFocused();
+  await expect(notes).toHaveAttribute("aria-invalid", "true");
+  await expect(page.getByText("Las notas no pueden superar los 2000 caracteres.")).toBeVisible();
+  expect(acceptances.count).toBe(0);
+});
+
 for (const lang of ["", "/en"]) {
+  test(`the ${lang ? "English" : "Spanish"} Flexible checkout warns when free cancellation has ended`, async ({
+    page,
+  }) => {
+    await page.goto(
+      reviewPath(
+        { checkIn: daysFromToday(1), checkOut: daysFromToday(3) },
+        { room: "king", plan: "flexible" },
+        lang,
+      ),
+    );
+    const policy = page.locator("[data-cancellation]");
+    await expect(policy.locator("strong")).toHaveText(
+      lang ? "Free cancellation has ended" : "El plazo de cancelación gratuita terminó",
+    );
+    await expect(policy).toContainText(
+      lang
+        ? "Cancellation or no-show costs the first night:"
+        : "Si cancela o no llega, se cobra la primera noche:",
+    );
+  });
+
   test(`the ${lang ? "English" : "Spanish"} mobile review keeps the charge and cancellation visible and opens terms without losing contact details`, async ({
     page,
   }) => {
@@ -148,9 +202,6 @@ for (const lang of ["", "/en"]) {
     await page.goto(reviewPath(stay, { room: "king", plan: "flexible" }, lang));
     const summary = page.getByRole("complementary", { name: en ? "Your stay" : "Su estadía" });
     const payment = page.getByRole("region", { name: en ? "Payment" : "Pago", exact: true });
-    const toggle = page.getByRole("button", {
-      name: en ? /^(View|Hide) reservation details$/ : /^(Ver|Ocultar) detalle de la reserva$/,
-    });
     await expect(summary.getByRole("img")).toBeVisible();
     await expect(summary.locator('[data-amount="total"]')).toHaveText(/S\/\s200\.00/);
     await expect(payment.locator('[data-amount="now"]')).toHaveText(/S\/\s100\.00/);
@@ -159,13 +210,36 @@ for (const lang of ["", "/en"]) {
       "datetime",
       daysFromToday(118),
     );
-    await expect(toggle).toHaveAttribute("aria-expanded", "false");
-    await expect(summary.locator('[data-stay="checkIn"]')).toBeHidden();
+    await expect(summary.locator('[data-stay="compact-guests-rate"]')).toHaveText(
+      en ? "2 adults · Flexible" : "2 adultos · Flexible",
+    );
+    await expect(summary.locator("[data-back-to-rates]")).toBeVisible();
+    await expect(summary.locator("[data-change-choice]")).toBeVisible();
+    await expect(
+      page
+        .getByRole("banner")
+        .getByRole("link", { name: en ? "Book now" : "Reservar", exact: true }),
+    ).toHaveCount(0);
+    const helpHref = await page.locator("[data-reservation-help]").getAttribute("href");
+    await expect(page.locator("[data-reservation-help]")).toHaveText(
+      en ? "Book via WhatsApp" : "Reservar por WhatsApp",
+    );
+    await expect(
+      page.getByRole("link", { name: en ? "Call us" : "Llámenos", exact: true }),
+    ).toHaveAttribute("href", "tel:+51992755015");
+    const helpMessage = new URL(helpHref!).searchParams.get("text")!;
+    expect(helpMessage).toContain(en ? "Room: King room" : "Habitación: Suite Matrimonial");
+    expect(helpMessage).toContain(en ? "Guests: 2 adults" : "Huéspedes: 2 adultos");
+    expect(helpMessage).toContain("200.00");
+    expect(helpMessage).not.toContain("___");
 
     const fullName = page.getByLabel(en ? "Full name" : "Nombre completo");
     await fullName.fill("Ana María Torres");
-    await toggle.click();
-    await expect(toggle).toHaveAttribute("aria-expanded", "true");
+    await expect(summary.locator('[data-stay="compact"]')).toBeVisible();
+    await expect(summary.locator('[data-stay="compact-guests-rate"]')).toBeVisible();
+    await expect(
+      summary.getByRole("link", { name: en ? "Change rate" : "Cambiar tarifa", exact: true }),
+    ).toBeVisible();
     await expect(summary.locator('[data-stay="checkIn"]')).toHaveAttribute(
       "datetime",
       stay.checkIn,
@@ -174,7 +248,6 @@ for (const lang of ["", "/en"]) {
       "datetime",
       stay.checkOut,
     );
-    await toggle.click();
 
     const termsLink = page.getByRole("link", {
       name: en ? "reservation terms" : "condiciones de la reserva",
@@ -193,13 +266,14 @@ for (const lang of ["", "/en"]) {
     await expect(
       page.getByRole("checkbox", { name: en ? /I accept/ : /Acepto/ }),
     ).not.toBeChecked();
-    await expect(toggle).toHaveAttribute("aria-expanded", "false");
     await expect(fullName).toHaveValue("Ana María Torres");
 
     await page.setViewportSize({ width: 1440, height: 900 });
     await expect(summary.locator('[data-stay="checkIn"]')).toBeVisible();
+    await expect(summary.locator("[data-back-to-rates]")).toBeVisible();
     await page.setViewportSize({ width: 390, height: 844 });
-    await expect(toggle).toHaveAttribute("aria-expanded", "false");
+    await expect(summary.locator("[data-back-to-rates]")).toBeVisible();
+    await expect(summary.locator("[data-change-choice]")).toBeVisible();
     await expect(fullName).toHaveValue("Ana María Torres");
   });
 }

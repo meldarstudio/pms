@@ -43,11 +43,12 @@ Turnstile served by `scripts/fake-payment-services.mjs`.
 
 Review is one React island, `src/components/reservation/review/Review.tsx`, mounted by
 `ReservationReview.astro` with build-time copy (`review/text.ts`), rooms and payment keys.
-The step bar and help stay in Astro. `useCheckoutFlow.ts` runs `next` in a reducer whose
-state carries the pending effects; a layout effect hands them to one runner after React
-commits, so `focus` effects (mapped to refs by `focus.ts`) find rendered elements, and
-the runner is disposed on unmount. In development `?payments=on|off` previews both
-payment modes (`paymentsPreview.tsx`).
+The step bar stays in Astro; the phone and WhatsApp booking alternatives render in Review.
+`useCheckoutFlow.ts` runs `next` in a reducer whose state carries the pending effects;
+a layout effect hands them to one runner after React commits, so `focus` effects
+(mapped to refs by `focus.ts`) find rendered elements, and the runner is disposed on
+unmount. In development `?payments=on|off` previews both payment modes
+(`paymentsPreview.tsx`).
 
 ## Content
 

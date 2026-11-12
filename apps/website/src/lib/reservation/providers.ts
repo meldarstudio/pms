@@ -128,6 +128,7 @@ const cardAppearance = {
       background: "#ffffff",
       color: cardText,
       fontFamily: "var(--fontFamily)",
+      borderRadius: "0",
     },
     ".Culqi-ToolBanner > .cursor-pointer > span": {
       background: cardText,

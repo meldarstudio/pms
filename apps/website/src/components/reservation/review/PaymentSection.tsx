@@ -58,9 +58,29 @@ export function PaymentSection({
         </div>
       </dl>
       <p className="mt-4 text-sm leading-relaxed text-stone-700" data-cancellation>
-        {view && money && (
-          <Cancellation view={view} charge={money(view.quote.cancellation.chargeCents)} />
-        )}
+        {view &&
+          money &&
+          (view.quote.cancellation.freeCancellation === "ended" ? (
+            <>
+              <strong className="mb-1 block font-semibold text-amber-900">
+                {say("reservation.review.cancellationEnded")}
+              </strong>
+              {say("reservation.review.lateCancellationCharge", {
+                amount: money(view.quote.cancellation.chargeCents),
+              })}
+            </>
+          ) : view.ratePlan === "non_refundable" ? (
+            <>
+              <strong className="mb-1 block font-semibold text-stone-900">
+                {say("reservation.plan.non_refundable")}
+              </strong>
+              {say("reservation.review.nonRefundableCancellation", {
+                amount: money(view.quote.cancellation.chargeCents),
+              })}
+            </>
+          ) : (
+            <Cancellation view={view} charge={money(view.quote.cancellation.chargeCents)} />
+          ))}
       </p>
       <div className="mt-5 flex items-start gap-3">
         <input
@@ -97,7 +117,7 @@ export function PaymentSection({
         <button
           ref={focus.ref("payButton")}
           type="submit"
-          className={`mt-4 w-full ${primary}`}
+          className={`mt-4 w-full py-3 text-center ${primary}`}
           data-pay-button
           disabled={payBusy(state)}
         >

@@ -22,19 +22,28 @@ function AccordionItem({ className, ...props }: AccordionPrimitive.Item.Props) {
   );
 }
 
-function AccordionTrigger({ className, children, ...props }: AccordionPrimitive.Trigger.Props) {
+function AccordionTrigger({
+  className,
+  children,
+  variant = "default",
+  ...props
+}: AccordionPrimitive.Trigger.Props & { variant?: "default" | "compact" }) {
   return (
     <AccordionPrimitive.Header className="flex">
       <AccordionPrimitive.Trigger
         data-slot="accordion-trigger"
         className={cn(
-          "group/accordion-trigger flex min-h-12 flex-1 items-center justify-between gap-4 py-3 text-left font-medium text-stone-900 outline-none",
+          "group/accordion-trigger flex flex-1 cursor-pointer items-center justify-between gap-4 py-3 text-left outline-none",
+          variant === "compact"
+            ? "font-source-sans-3 min-h-11 text-sm font-semibold text-stone-800 hover:text-accent-800 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent-700"
+            : "min-h-12 font-medium text-stone-900",
           className,
         )}
         {...props}
       >
         {children}
         <CaretDownIcon
+          aria-hidden="true"
           data-slot="accordion-trigger-icon"
           className="pointer-events-none size-4 shrink-0 text-stone-500 transition-transform group-aria-expanded/accordion-trigger:rotate-180 motion-reduce:transition-none"
         />

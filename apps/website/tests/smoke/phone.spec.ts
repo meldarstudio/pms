@@ -49,7 +49,15 @@ for (const lang of ["", "/en"]) {
       const note = lang
         ? "Arriving around 9 pm. A quiet room, please."
         : "Llegamos alrededor de las 9 pm. Una habitación tranquila, por favor.";
+      const notesToggle = page.locator('[data-reservation-notes] [data-slot="accordion-trigger"]');
+      await expect(page.locator("#notes")).toBeHidden();
+      await notesToggle.click();
       await page.locator("#notes").fill(note);
+      await expect(page.locator("#notes")).toBeFocused();
+      await notesToggle.click();
+      await expect(page.locator("#notes")).toBeHidden();
+      await notesToggle.click();
+      await expect(page.locator("#notes")).toHaveValue(note);
       await page.reload();
       await expect(page.locator("#phone")).toHaveValue("06");
       await expect(page.locator("#notes")).toHaveValue(note);

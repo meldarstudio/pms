@@ -125,7 +125,7 @@ for (const lang of ["", "/en"]) {
     await page.keyboard.press("Escape");
     await expect(page.locator("[data-terms]")).toBeHidden();
     await page.setViewportSize({ width: 390, height: 844 });
-    await page.locator("[data-summary-toggle]").click();
+    await page.locator('[data-reservation-notes] [data-slot="accordion-trigger"]').click();
     await runAxe(page, `${lang}/reservar/revisar/ (mobile compact)`);
   });
 

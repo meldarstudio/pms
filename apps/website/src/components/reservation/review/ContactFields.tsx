@@ -1,3 +1,10 @@
+import { useState } from "react";
+import {
+  Accordion,
+  AccordionContent,
+  AccordionItem,
+  AccordionTrigger,
+} from "@/components/ui/accordion";
 import type { ContactDraft } from "@/lib/reservation/checkout";
 import type { FieldErrors } from "@/lib/reservation/checkout-form";
 import type { PhoneValue } from "@/lib/reservation/phone";
@@ -29,13 +36,14 @@ export function ContactFields({
   onEditPhone: (phone: PhoneValue) => void;
 }) {
   const { say } = useReview();
+  const [notesExpanded, setNotesExpanded] = useState<boolean | null>(null);
   return (
     <section className={card} aria-labelledby="review-contact">
       <h2 id="review-contact" className={cardTitle}>
         {say("reservation.review.contact")}
       </h2>
       <p className="mt-2 leading-relaxed text-stone-600">{say("reservation.review.contactLead")}</p>
-      <div className="mt-6 flex flex-col gap-5">
+      <div className="mt-4 flex flex-col gap-4 md:mt-6 md:gap-5">
         {textFields.map((id) => {
           const message = errors[id];
           return (
@@ -69,31 +77,40 @@ export function ContactFields({
           focus={focus}
           onEdit={onEditPhone}
         />
-        <div>
-          <label htmlFor="notes" className={label}>
-            {say("reservation.review.notes")}
-          </label>
-          <p id="notes-hint" className="mt-1 text-sm text-stone-600">
-            {say("reservation.review.notesHint")}
-          </p>
-          <textarea
-            ref={focus.ref("notes")}
-            id="notes"
-            name="notes"
-            rows={4}
-            autoComplete="off"
-            autoCapitalize="sentences"
-            maxLength={MAX_NOTES}
-            className={`${field} resize-y py-3`}
-            aria-describedby="notes-hint notes-error"
-            aria-invalid={errors.notes ? true : undefined}
-            value={contact.notes}
-            onChange={(event) => onEdit("notes", event.target.value)}
-          />
-          <p id="notes-error" className={error} hidden={!errors.notes}>
-            {errors.notes ? say(errors.notes) : ""}
-          </p>
-        </div>
+        <Accordion
+          className="border-t border-stone-200"
+          value={
+            Boolean(errors.notes) || (notesExpanded ?? Boolean(contact.notes)) ? ["notes"] : []
+          }
+          onValueChange={(value) => setNotesExpanded(value.includes("notes"))}
+          data-reservation-notes
+        >
+          <AccordionItem value="notes" className="border-b-0">
+            <AccordionTrigger variant="compact">{say("reservation.review.notes")}</AccordionTrigger>
+            <AccordionContent keepMounted className="px-1 pb-1">
+              <label htmlFor="notes" className="sr-only">
+                {say("reservation.review.notes")}
+              </label>
+              <textarea
+                ref={focus.ref("notes")}
+                id="notes"
+                name="notes"
+                rows={4}
+                autoComplete="off"
+                autoCapitalize="sentences"
+                maxLength={MAX_NOTES}
+                className={`${field} resize-y py-3`}
+                aria-describedby="notes-error"
+                aria-invalid={errors.notes ? true : undefined}
+                value={contact.notes}
+                onChange={(event) => onEdit("notes", event.target.value)}
+              />
+              <p id="notes-error" className={error} hidden={!errors.notes}>
+                {errors.notes ? say(errors.notes) : ""}
+              </p>
+            </AccordionContent>
+          </AccordionItem>
+        </Accordion>
       </div>
     </section>
   );

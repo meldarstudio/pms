@@ -1,7 +1,7 @@
 import { useMemo, useRef } from "react";
 import { ArrowLeftIcon } from "@phosphor-icons/react";
 import type { Lang } from "@/i18n/utils";
-import { getWhatsAppLink } from "@/lib/constants";
+import { getWhatsAppLink, phoneNumber } from "@/lib/constants";
 import type { CardPayments } from "@/lib/reservation/checkout-runner";
 import { formVisible, whatsappVisible } from "@/lib/reservation/checkout-selectors";
 import { searchParams } from "@/lib/reservation/search";
@@ -15,6 +15,7 @@ import { ProblemPanel } from "./ProblemPanel";
 import { ReviewSummary, type ReviewRoom } from "./ReviewSummary";
 import { stayLabels } from "./stay";
 import { sayFrom, type ReviewText } from "./text";
+import { quietLink } from "./styles";
 import { useCheckoutFlow } from "./useCheckoutFlow";
 import { WhatsAppFallback } from "./WhatsAppFallback";
 
@@ -85,7 +86,7 @@ export default function Review({
 
   return (
     <ReviewContext value={context}>
-      <div className="lg:mt-6">
+      <div className="md:mt-2">
         <a
           href={ratesHref}
           className="font-source-sans-3 hover:text-accent-800 inline-flex min-h-11 items-center gap-2 text-xs font-medium tracking-widest text-stone-900 uppercase"
@@ -94,7 +95,7 @@ export default function Review({
           <ArrowLeftIcon aria-hidden="true" className="size-4 shrink-0" />
           {say("reservation.review.backToRates")}
         </a>
-        <h1 className="mt-3 text-2xl font-semibold text-pretty text-stone-900 md:text-3xl">
+        <h1 className="mt-1 text-2xl font-semibold text-pretty text-stone-900 md:text-3xl">
           {say("reservation.review.title")}
         </h1>
         <p className="mt-2 max-w-xl leading-relaxed text-stone-600">
@@ -115,7 +116,7 @@ export default function Review({
           onRetry={() => dispatch({ type: "loadRequested" })}
         />
         <div
-          className="mt-6 grid items-start gap-6 [overflow-wrap:anywhere] lg:grid-cols-[minmax(0,1fr)_24rem] lg:gap-12"
+          className="mt-4 grid items-start gap-4 md:mt-6 md:gap-6 [overflow-wrap:anywhere] lg:grid-cols-[minmax(0,1fr)_24rem] lg:gap-12"
           data-review
           hidden={!state.reviewShown}
         >
@@ -158,6 +159,26 @@ export default function Review({
               onCheck={() => dispatch({ type: "statusCheckRequested" })}
               onCopy={() => dispatch({ type: "accessCopyRequested" })}
             />
+          </div>
+        </div>
+        <div
+          id="reservation-help"
+          className="mt-6 scroll-mt-24 border-t border-stone-300 pt-4 text-sm text-stone-700"
+        >
+          <p>{say("reservation.review.alternativeBooking")}</p>
+          <div className="flex flex-wrap gap-x-6">
+            <a href={`tel:${phoneNumber}`} className={quietLink} data-reservation-call>
+              {say("reservation.review.call")}
+            </a>
+            <a
+              href={whatsappLink}
+              target="_blank"
+              rel="noopener noreferrer"
+              className={quietLink}
+              data-reservation-help
+            >
+              {say("reservation.review.bookViaWhatsapp")}
+            </a>
           </div>
         </div>
         {import.meta.env.DEV && known && <PaymentsToggle lang={lang} on={Boolean(payments)} />}

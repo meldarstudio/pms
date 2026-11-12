@@ -1,7 +1,6 @@
 ---
 import { PUBLIC_CULQI_PUBLIC_KEY, PUBLIC_TURNSTILE_SITE_KEY } from "astro:env/client";
 import { getImage } from "astro:assets";
-import ReservationHelp from "@/components/reservation/ReservationHelp.astro";
 import Review from "@/components/reservation/review/Review";
 import { reviewText } from "@/components/reservation/review/text";
 import { getWhatsAppLink } from "@/lib/constants";
@@ -52,7 +51,7 @@ const roomViews = Object.fromEntries(
 ---
 
 <section class="bg-stone-100">
-  <div class="mx-auto max-w-7xl px-4 py-8 md:px-8 md:py-12">
+  <div class="mx-auto max-w-7xl px-4 py-4 md:px-8 md:py-8">
     <BookingSteps
       current="review"
       text={Object.fromEntries(bookingStepsKeys.map((key) => [key, t(key)])) as BookingStepsText}
@@ -69,6 +68,5 @@ const roomViews = Object.fromEntries(
       text={reviewText(t)}
       rooms={roomViews}
     />
-    <ReservationHelp />
   </div>
 </section>

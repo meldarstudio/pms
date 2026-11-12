@@ -1,5 +1,6 @@
 ---
 import Footer from "@/components/Footer.astro";
+import CheckoutHeader from "@/components/reservation/CheckoutHeader.astro";
 import Menu from "@/components/Menu.astro";
 import "@/styles/global.css";
 import { defaultMeta } from "@/constants";
@@ -18,6 +19,7 @@ interface Props {
     height?: number;
     type?: string;
   };
+  checkout?: boolean;
   noIndex?: boolean;
   noCanonical?: boolean;
 }
@@ -36,6 +38,7 @@ const {
     ...defaultMeta.ogImage,
     alt: t("meta.ogImageAlt"),
   },
+  checkout = false,
   noIndex = false,
   noCanonical = false,
 } = Astro.props;
@@ -123,7 +126,7 @@ const ogLocaleAlternate = lang === "en" ? "es_PE" : "en_US";
         main.scrollIntoView();
       });
     </script>
-    <Menu />
+    {checkout ? <CheckoutHeader /> : <Menu />}
     <main id="main-content" tabindex="-1" class="scroll-offset">
       <slot />
     </main>

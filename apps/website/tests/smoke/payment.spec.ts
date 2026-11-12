@@ -49,7 +49,7 @@ async function fillCheckout(page: Page, plan: string, email: string) {
 }
 
 const payButton = (page: Page, amount: string) =>
-  page.getByRole("button", { name: new RegExp(`^Pagar S/\\s${amount} con tarjeta$`) });
+  page.getByRole("button", { name: new RegExp(`^Pagar S/\\s${amount}$`) });
 
 async function acceptTerms(page: Page, email: string) {
   await fillCheckout(page, "flexible", email);
@@ -117,6 +117,7 @@ test("the chosen international phone and edited reservation note are accepted an
   await page.getByRole("option", { name: "Reino Unido +44", exact: true }).click();
   await page.locator("#phone").fill("02079460018");
   await expect(page.locator("#phone")).toHaveValue("020 7946 0018");
+  await page.locator('[data-reservation-notes] [data-slot="accordion-trigger"]').click();
   await page.locator("#notes").fill("  Arriving at 9 pm  ");
   await closeCardFormWithoutPaying(page, payButton(page, "100.00"));
   await page.locator("#notes").fill("  Arriving at 10 pm, quiet room please  ");
@@ -189,9 +190,7 @@ for (const [language, plan, offset] of [
     await page.getByRole("checkbox", { name: /I accept|Acepto las condiciones/ }).check();
     await page
       .getByRole("button", {
-        name: new RegExp(
-          `^${en ? "Pay" : "Pagar"} S/\\s${paidAmount} ${en ? "by card" : "con tarjeta"}$`,
-        ),
+        name: new RegExp(`^${en ? "Pay" : "Pagar"} S/\\s${paidAmount}$`),
       })
       .click();
     await expectConfirmed(page, base);
