@@ -77,6 +77,90 @@ function loadScript(src: string) {
   return loaded;
 }
 
+const cardAccent = "#f27b02";
+const cardAccentInk = "#37180a";
+const cardLink = "#813915";
+const cardFocus = "#a94d19";
+const cardText = "#1c1917";
+const cardBorder = "#a8a29e";
+
+const cardAppearance = {
+  theme: "default",
+  hiddenCulqiLogo: true,
+  hiddenBanner: false,
+  hiddenToolBarAmount: false,
+  hiddenEmail: false,
+  menuType: "default",
+  defaultStyle: {
+    bannerColor: "#ffffff",
+    buttonBackground: cardAccent,
+    menuColor: cardLink,
+    linksColor: cardLink,
+    buttonTextColor: cardAccentInk,
+    priceColor: cardText,
+  },
+  variables: {
+    fontFamily: '"Source Sans 3", sans-serif',
+    fontWeightNormal: "400",
+    borderRadius: "0",
+    colorBackground: "#ffffff",
+    colorPrimary: cardAccent,
+    colorPrimaryText: cardAccentInk,
+    colorText: cardText,
+    colorTextSecondary: "#57534e",
+    colorTextPlaceholder: "#78716c",
+    colorIconTab: cardText,
+    colorLogo: "dark",
+  },
+  rules: {
+    ".Culqi-Main-Container": {
+      background: "#ffffff",
+      color: cardText,
+      fontFamily: "var(--fontFamily)",
+    },
+    ".Culqi-ToolBanner": {
+      background: "#ffffff",
+      color: cardText,
+    },
+    ".Culqi-ToolBanner figure": {
+      display: "none",
+    },
+    ".Culqi-ToolBanner span": {
+      background: cardText,
+    },
+    ".Culqi-Toolbar-Price": {
+      color: cardText,
+    },
+    ".Culqi-Label": {
+      color: "#292524",
+    },
+    ".Culqi-Input": {
+      border: `1px solid ${cardBorder}`,
+      borderRadius: "0",
+      color: cardText,
+    },
+    ".Culqi-Input:focus": {
+      border: `2px solid ${cardFocus}`,
+    },
+    ".Culqi-Text-Link": {
+      color: cardLink,
+    },
+    ".Culqi-Button": {
+      background: cardAccent,
+      color: cardAccentInk,
+      borderRadius: "0",
+      fontWeight: "600",
+      letterSpacing: "0.1em",
+      textTransform: "uppercase",
+    },
+    ".Culqi-Button:disabled": {
+      background: "#f6d3a8",
+      color: cardAccentInk,
+      opacity: "1",
+    },
+  },
+} as const;
+
 export async function openCardForm(options: {
   publicKey: string;
   title: string;
@@ -109,6 +193,10 @@ export async function openCardForm(options: {
           cuotealo: false,
         },
         paymentMethodsSort: ["tarjeta"],
+      },
+      appearance: {
+        ...cardAppearance,
+        buttonCardPayText: options.lang === "en" ? "Pay by card" : "Pagar con tarjeta",
       },
     });
     checkout.culqi = () => {
