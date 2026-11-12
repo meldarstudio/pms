@@ -261,7 +261,6 @@ export const ui = {
     "reservation.room.offline":
       "This room can't be reserved online. Message us on {whatsapp} to book it.",
     "reservation.room.chooseDates": "Choose dates",
-    "reservation.room.preferred": "Your preferred room",
     "reservation.room.preferredUnavailable":
       "Your preferred room, the {room}, isn't available for this search. We haven't chosen another room for you: pick one below or change your search.",
     "reservation.plan.flexible": "Flexible",
@@ -302,6 +301,26 @@ export const ui = {
       "Check your stay, price and terms, and add the booking contact's details.",
     "reservation.step.review": "Review and pay",
     "reservation.review.title": "Review your reservation",
+    "reservation.review.lead":
+      "Check your stay, enter your details and pay to confirm your reservation.",
+    "reservation.review.unavailableLead": "Review the details of your stay below.",
+    "reservation.review.backToRates": "Back to rates",
+    "reservation.review.changeRate": "Change rate",
+    "reservation.review.checkIn": "Check-in",
+    "reservation.review.checkOut": "Check-out",
+    "reservation.review.dueNow": "Due today",
+    "reservation.review.balance": "Balance at the hotel",
+    "reservation.review.showDetails": "View reservation details",
+    "reservation.review.hideDetails": "Hide reservation details",
+    "reservation.review.whatsapp.title": "Let's finish on WhatsApp",
+    "reservation.review.whatsapp.body":
+      "Online payment is temporarily unavailable. Send us your stay details and we'll help you book, without filling out a form here.",
+    "reservation.review.whatsapp.button": "Continue on WhatsApp",
+    "reservation.review.whatsapp.newTab": "opens in a new tab",
+    "reservation.review.whatsapp.note":
+      "This page does not confirm a reservation. Confirm your booking and arrange payment with the hotel on WhatsApp.",
+    "reservation.review.whatsapp.message":
+      "Hello! I'd like to book this stay.\nRoom: {room}\nCheck-in: {checkIn}\nCheck-out: {checkOut}\nGuests: {guests}\nRate: {plan}\nStay total: {total}\nCan you confirm availability and payment arrangements?",
     "reservation.review.loading": "Preparing your price…",
     "reservation.review.loaded": "Your price and terms are ready.",
     "reservation.review.stay": "Your stay",
@@ -309,16 +328,18 @@ export const ui = {
     "reservation.review.dates": "Dates",
     "reservation.review.guests": "Guests",
     "reservation.review.plan": "Rate",
-    "reservation.review.changeChoice": "Change dates, room or rate",
+    "reservation.review.changeChoice": "Change dates or room",
     "reservation.review.price": "Price and terms",
     "reservation.review.contact": "Booking contact",
     "reservation.review.contactLead":
-      "The hotel uses these details to contact you about this reservation. No account is needed, and the contact doesn't have to be one of the guests.",
+      "We'll use these details to contact you about your reservation.",
     "reservation.review.fullName": "Full name",
     "reservation.review.email": "Email",
     "reservation.review.phone": "Phone",
     "reservation.review.phoneHint": "Include the country code if it isn't a Peruvian number.",
-    "reservation.review.terms": "Full reservation terms",
+    "reservation.review.terms": "Reservation terms",
+    "reservation.review.termsLink": "reservation terms",
+    "reservation.review.closeTerms": "Close",
     "reservation.review.nightly": "Price per night",
     "reservation.review.schedule.flexible":
       "Payment: the first night, {now}, is paid online; the remaining {remaining} is paid at the hotel.",
@@ -327,17 +348,10 @@ export const ui = {
     "reservation.review.lifecycle":
       "This price was calculated when you opened this page and is kept for a few minutes. If it needs updating before payment, you'll see the new terms before anything is charged. The room is reserved only once payment is confirmed and the reservation is saved.",
     "reservation.review.agree":
-      "I accept the reservation terms on this page, including the cancellation and no-show conditions.",
-    "reservation.review.submit": "Accept terms",
-    "reservation.review.saving": "Saving your acceptance…",
+      "I accept the {terms}, including the cancellation and no-show conditions.",
+    "reservation.review.saving": "Preparing your payment…",
     "reservation.review.payment": "Payment",
-    "reservation.review.paymentUnavailable":
-      "Online card payment isn't available yet, so nothing is charged on this page.",
-    "reservation.review.accepted.title": "Terms accepted",
-    "reservation.review.accepted.body":
-      "Your acceptance of these terms is saved. Nothing has been charged yet.",
-    "reservation.pay.lead":
-      "Your room is reserved only once the card payment is confirmed and the reservation is saved.",
+    "reservation.pay.provider": "Card payment is processed by Culqi.",
     "reservation.pay.security": "Security check before payment",
     "reservation.pay.button": "Pay {amount} by card",
     "reservation.pay.sending": "Sending your payment… Please wait on this page.",
@@ -727,7 +741,6 @@ export const ui = {
     "reservation.room.offline":
       "Esta habitación no se puede reservar en línea. Escríbanos por {whatsapp} para reservarla.",
     "reservation.room.chooseDates": "Elegir fechas",
-    "reservation.room.preferred": "Su habitación preferida",
     "reservation.room.preferredUnavailable":
       "Su habitación preferida, {room}, no está disponible para esta búsqueda. No elegimos otra por usted: elija una abajo o cambie su búsqueda.",
     "reservation.plan.flexible": "Flexible",
@@ -770,6 +783,26 @@ export const ui = {
       "Revise su estadía, el precio y las condiciones, y añada los datos del contacto de la reserva.",
     "reservation.step.review": "Revisar y pagar",
     "reservation.review.title": "Revise su reserva",
+    "reservation.review.lead":
+      "Revise su estadía, complete sus datos y pague para confirmar su reserva.",
+    "reservation.review.unavailableLead": "Revise los detalles de su estadía a continuación.",
+    "reservation.review.backToRates": "Volver a tarifas",
+    "reservation.review.changeRate": "Cambiar tarifa",
+    "reservation.review.checkIn": "Llegada",
+    "reservation.review.checkOut": "Salida",
+    "reservation.review.dueNow": "A pagar ahora",
+    "reservation.review.balance": "Saldo en el hotel",
+    "reservation.review.showDetails": "Ver detalle de la reserva",
+    "reservation.review.hideDetails": "Ocultar detalle de la reserva",
+    "reservation.review.whatsapp.title": "Continuemos por WhatsApp",
+    "reservation.review.whatsapp.body":
+      "El pago en línea está desactivado temporalmente. Envíenos los detalles de su estadía y le ayudaremos a reservar, sin completar un formulario aquí.",
+    "reservation.review.whatsapp.button": "Continuar por WhatsApp",
+    "reservation.review.whatsapp.newTab": "se abre en una pestaña nueva",
+    "reservation.review.whatsapp.note":
+      "Esta página no confirma una reserva. Confirme su reserva y coordine la forma de pago con el hotel por WhatsApp.",
+    "reservation.review.whatsapp.message":
+      "¡Hola! Quisiera reservar esta estadía.\nHabitación: {room}\nLlegada: {checkIn}\nSalida: {checkOut}\nHuéspedes: {guests}\nTarifa: {plan}\nTotal de la estadía: {total}\n¿Me confirman disponibilidad y forma de pago?",
     "reservation.review.loading": "Preparando su precio…",
     "reservation.review.loaded": "Su precio y sus condiciones están listos.",
     "reservation.review.stay": "Su estadía",
@@ -777,16 +810,18 @@ export const ui = {
     "reservation.review.dates": "Fechas",
     "reservation.review.guests": "Huéspedes",
     "reservation.review.plan": "Tarifa",
-    "reservation.review.changeChoice": "Cambiar fechas, habitación o tarifa",
+    "reservation.review.changeChoice": "Cambiar fechas o habitación",
     "reservation.review.price": "Precio y condiciones",
     "reservation.review.contact": "Contacto de la reserva",
     "reservation.review.contactLead":
-      "El hotel usa estos datos para comunicarse con usted sobre esta reserva. No necesita una cuenta, y el contacto no tiene que ser uno de los huéspedes.",
+      "Usaremos estos datos para comunicarnos con usted sobre su reserva.",
     "reservation.review.fullName": "Nombre completo",
     "reservation.review.email": "Correo electrónico",
     "reservation.review.phone": "Teléfono",
     "reservation.review.phoneHint": "Incluya el código de país si no es un número peruano.",
-    "reservation.review.terms": "Condiciones completas de la reserva",
+    "reservation.review.terms": "Condiciones de la reserva",
+    "reservation.review.termsLink": "condiciones de la reserva",
+    "reservation.review.closeTerms": "Cerrar",
     "reservation.review.nightly": "Precio por noche",
     "reservation.review.schedule.flexible":
       "Pago: la primera noche, {now}, se paga en línea; el resto, {remaining}, se paga en el hotel.",
@@ -795,17 +830,10 @@ export const ui = {
     "reservation.review.lifecycle":
       "Este precio se calculó al abrir esta página y se mantiene por unos minutos. Si hay que actualizarlo antes del pago, verá las nuevas condiciones antes de cualquier cobro. La habitación queda reservada solo cuando el pago se confirma y la reserva se guarda.",
     "reservation.review.agree":
-      "Acepto las condiciones de la reserva de esta página, incluidas las de cancelación y no presentación.",
-    "reservation.review.submit": "Aceptar condiciones",
-    "reservation.review.saving": "Guardando su aceptación…",
+      "Acepto las {terms}, incluidas las de cancelación y no presentación.",
+    "reservation.review.saving": "Preparando su pago…",
     "reservation.review.payment": "Pago",
-    "reservation.review.paymentUnavailable":
-      "El pago con tarjeta en línea aún no está disponible, así que en esta página no se cobra nada.",
-    "reservation.review.accepted.title": "Condiciones aceptadas",
-    "reservation.review.accepted.body":
-      "Su aceptación de estas condiciones quedó guardada. Todavía no se ha cobrado nada.",
-    "reservation.pay.lead":
-      "Su habitación queda reservada solo cuando el pago con tarjeta se confirma y la reserva se guarda.",
+    "reservation.pay.provider": "El pago con tarjeta se procesa a través de Culqi.",
     "reservation.pay.security": "Verificación de seguridad antes del pago",
     "reservation.pay.button": "Pagar {amount} con tarjeta",
     "reservation.pay.sending": "Enviando su pago… Espere en esta página.",

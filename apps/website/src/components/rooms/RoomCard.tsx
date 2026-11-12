@@ -81,7 +81,6 @@ export function RoomCard({
   details,
   offers,
   loading = false,
-  preferred,
   children,
 }: {
   room: RoomView;
@@ -91,7 +90,6 @@ export function RoomCard({
   /** The search's limits and rates for this room; absent before a search. */
   offers?: RoomTypeOffers;
   loading?: boolean;
-  preferred: boolean;
   children: ReactNode;
 }) {
   const nameId = `room-${room.id}-name`;
@@ -119,20 +117,8 @@ export function RoomCard({
       aria-labelledby={nameId}
       className="flex h-full flex-col border border-stone-200 bg-white"
     >
-      {/* The badge sits over the photo so every card's photo starts at the same height. */}
-      <div className="relative">
-        {preferred && (
-          <p className="absolute top-0 left-0 z-10 bg-accent-500 px-3 py-1.5 font-source-sans-3 text-xs font-semibold tracking-widest text-accent-950 uppercase">
-            {text["reservation.room.preferred"]}
-          </p>
-        )}
-        {room.photos.length > 0 && (
-          <RoomGallery room={room.name} photos={room.photos} text={text} />
-        )}
-      </div>
-      <div
-        className={`flex grow flex-col p-5 ${preferred && room.photos.length === 0 ? "pt-12" : ""}`}
-      >
+      {room.photos.length > 0 && <RoomGallery room={room.name} photos={room.photos} text={text} />}
+      <div className="flex grow flex-col p-5">
         <h2 id={nameId} className="text-xl font-semibold text-pretty text-stone-900">
           {room.name}
         </h2>

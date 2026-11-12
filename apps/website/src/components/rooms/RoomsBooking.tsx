@@ -65,6 +65,7 @@ export default function RoomsBooking({
 }: Props) {
   const [preferred, setPreferred] = useState<RoomId | null>(null);
   const [phase, setPhase] = useState<Phase>({ kind: "idle" });
+  const [searchReady, setSearchReady] = useState(false);
   const search = useRef<StaySearch | null>(null);
   const request = useRef<AbortController | null>(null);
   const problemTitle = useRef<HTMLHeadingElement>(null);
@@ -124,6 +125,7 @@ export default function RoomsBooking({
         rooms.map((room) => room.id),
       ),
     );
+    setSearchReady(true);
     return () => request.current?.abort();
   }, []);
 
@@ -232,7 +234,7 @@ export default function RoomsBooking({
         rooms={ordered}
         details={details}
         phase={phase}
-        preferred={preferred}
+        searchReady={searchReady}
         offersFor={offersFor}
         stateOf={stateOf}
         onChooseDates={chooseDates}

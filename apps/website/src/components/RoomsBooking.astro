@@ -7,6 +7,7 @@ import { getLang, useTranslations } from "@/i18n/utils";
 import { hotelServices, roomAmenities, type StayDetailId } from "@/lib/included";
 import { reservationApiUrl } from "@/lib/reservation/api";
 import { reviewStepHref } from "@/lib/reservation/links";
+import { ratePlanCodes } from "@/lib/reservation/search";
 import { staySearchCopy } from "@/lib/reservation/stay-copy";
 import { rooms } from "@/lib/rooms";
 
@@ -63,13 +64,40 @@ const details: StayDetails = {
 };
 ---
 
-<RoomsBookingIsland
-  client:load
-  lang={lang}
-  apiBase={reservationApiUrl}
-  reviewHref={reviewStepHref(lang)}
-  rooms={views}
-  details={details}
-  text={roomsBookingText(t)}
-  searchCopy={staySearchCopy(t, t("reservation.search.submit"))}
-/>
+<div data-rooms-booking>
+  <script is:inline define:vars={{ roomIds: rooms.map((room) => room.id), ratePlanCodes }}>
+    {
+      const params = new URLSearchParams(window.location.search);
+      if (
+        params.get("checkIn") &&
+        params.get("checkOut") &&
+        roomIds.includes(params.get("room")) &&
+        ratePlanCodes.includes(params.get("plan"))
+      ) {
+        document.currentScript.parentElement.setAttribute("data-resume-rates", "");
+      }
+    }
+  </script>
+  <RoomsBookingIsland
+    client:load
+    lang={lang}
+    apiBase={reservationApiUrl}
+    reviewHref={reviewStepHref(lang)}
+    rooms={views}
+    details={details}
+    text={roomsBookingText(t)}
+    searchCopy={staySearchCopy(t, t("reservation.search.submit"))}
+  />
+</div>
+
+<style is:global>
+  [data-rooms-booking][data-resume-rates] [data-room-step] {
+    display: none;
+  }
+  [data-rooms-booking][data-resume-rates] [data-rate-loading] {
+    display: block;
+  }
+  [data-rooms-booking][data-resume-rates] [role="status"] {
+    visibility: hidden;
+  }
+</style>

@@ -108,10 +108,17 @@ for (const lang of ["", "/en"]) {
     const params = new URLSearchParams({ ...openStay(), adults: "2", children: "1" });
     await page.goto(`${lang}/reservar/revisar/?${params.toString()}&room=king&plan=flexible`);
     await expect(page.locator('[data-amount="total"]')).toHaveText(/S\//);
-    await page.locator("[data-submit]").click();
+    await page.locator("[data-pay-button]").click();
     await expect(page.locator("#fullName")).toHaveAttribute("aria-invalid", "true");
-    await page.locator("details summary").click();
     await runAxe(page, `${lang}/reservar/revisar/`);
+    await page.locator("[data-open-terms]").click();
+    await expect(page.locator("[data-terms]")).toBeVisible();
+    await runAxe(page, `${lang}/reservar/revisar/ (terms)`);
+    await page.keyboard.press("Escape");
+    await expect(page.locator("[data-terms]")).toBeHidden();
+    await page.setViewportSize({ width: 390, height: 844 });
+    await page.locator("[data-summary-toggle]").click();
+    await runAxe(page, `${lang}/reservar/revisar/ (mobile compact)`);
   });
 
   test(`a11y: ${lang}/reservar/revisar/ when the room was lost`, async ({ page }) => {
@@ -140,8 +147,8 @@ for (const lang of ["", "/en"]) {
     await page.locator("#email").fill("ana@example.com");
     await page.locator("#phone").fill("987 654 321");
     await page.locator("#agree").check();
-    await page.locator("[data-submit]").click();
-    await expect(page.locator("[data-pay-button]")).toBeVisible();
+    await expect(page.locator("[data-pay-button]")).toBeEnabled();
+    await expect(page.locator("[data-security-check]")).toContainText("Security check complete");
     await runAxe(page, `${lang}/reservar/revisar/ (pay)`);
   });
 

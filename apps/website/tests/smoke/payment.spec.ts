@@ -8,7 +8,12 @@ import {
   openStay,
   WEBSITE_URL,
 } from "../support/local-api";
-import { nextCulqiCharge, stubPaymentScripts, useOwnSourceIp } from "../support/payment";
+import {
+  closeCardFormWithoutPaying,
+  nextCulqiCharge,
+  stubPaymentScripts,
+  useOwnSourceIp,
+} from "../support/payment";
 import { selectRoomRate } from "../support/room-rate";
 
 declare global {
@@ -34,18 +39,21 @@ const reviewPath = (plan: string, lang = "") =>
 
 const payerEmail = () => `payer-${crypto.randomUUID().slice(0, 8)}@example.com`;
 
-async function acceptTerms(page: Page, plan: string, email: string) {
+async function fillCheckout(page: Page, plan: string, email: string) {
   await page.goto(reviewPath(plan));
   await page.getByLabel("Nombre completo").fill("Ana Torres");
   await page.getByLabel("Correo electrónico").fill(email);
   await page.getByLabel("Teléfono").fill("987 654 321");
   await page.getByRole("checkbox", { name: /Acepto las condiciones/ }).check();
-  await page.getByRole("button", { name: "Aceptar condiciones" }).click();
-  await expect(page.getByText("Condiciones aceptadas")).toBeVisible();
 }
 
 const payButton = (page: Page, amount: string) =>
   page.getByRole("button", { name: new RegExp(`^Pagar S/\\s${amount} con tarjeta$`) });
+
+async function acceptTerms(page: Page, email: string) {
+  await fillCheckout(page, "flexible", email);
+  await closeCardFormWithoutPaying(page, payButton(page, "100.00"));
+}
 
 const outcome = (page: Page) => page.locator("[data-outcome]");
 
@@ -123,6 +131,7 @@ for (const [language, plan, offset] of [
       .click();
     await expect(page.locator('[data-amount="total"]')).toHaveText(new RegExp(`S/\\s${total}`));
     await expect(page.locator('[data-amount="now"]')).toHaveText(new RegExp(`S/\\s${paidAmount}`));
+    await expect(page.locator('[data-amount="remaining"]')).toBeVisible({ visible: !en });
     if (!en)
       await expect(page.locator("[data-cancellation] time")).toHaveAttribute(
         "datetime",
@@ -132,7 +141,6 @@ for (const [language, plan, offset] of [
     await page.getByLabel(en ? "Email" : "Correo electrónico", { exact: true }).fill(email);
     await page.getByLabel(en ? "Phone" : "Teléfono", { exact: true }).fill("987 654 321");
     await page.getByRole("checkbox", { name: /I accept|Acepto las condiciones/ }).check();
-    await page.getByRole("button", { name: en ? "Accept terms" : "Aceptar condiciones" }).click();
     await page
       .getByRole("button", {
         name: new RegExp(
@@ -257,7 +265,7 @@ function expireQuote(quoteId: string, checkIn?: string) {
 test("paying the accepted Flexible quote confirms it with the paid amount and the balance", async ({
   page,
 }) => {
-  await acceptTerms(page, "flexible", payerEmail());
+  await fillCheckout(page, "flexible", payerEmail());
 
   await payButton(page, "100.00").click();
 
@@ -280,7 +288,7 @@ test("paying the accepted Flexible quote confirms it with the paid amount and th
 test("a declined card lets the guest pay with another card without re-entering details", async ({
   page,
 }) => {
-  await acceptTerms(page, "flexible", payerEmail());
+  await fillCheckout(page, "flexible", payerEmail());
   await page.evaluate(() => {
     window.culqiCards = ["tkn_test_decline"];
   });
@@ -298,7 +306,7 @@ test("an uncertain charge stays processing across reload and language change wit
   page,
   request,
 }) => {
-  await acceptTerms(page, "flexible", payerEmail());
+  await fillCheckout(page, "flexible", payerEmail());
   await nextCulqiCharge(request, "timeout");
 
   await payButton(page, "100.00").click();
@@ -318,7 +326,7 @@ test("a dropped status check resumes the same payment when the connection return
   page,
   request,
 }) => {
-  await acceptTerms(page, "flexible", payerEmail());
+  await fillCheckout(page, "flexible", payerEmail());
   await nextCulqiCharge(request, "timeout");
   let payments = 0;
   await page.route(`${LOCAL_API_URL}/public/checkout/payments`, async (route) => {
@@ -356,7 +364,7 @@ test("a dropped status check resumes the same payment when the connection return
 });
 
 test("back to review shows the same payment and does not pay again", async ({ page, request }) => {
-  await acceptTerms(page, "flexible", payerEmail());
+  await fillCheckout(page, "flexible", payerEmail());
   await nextCulqiCharge(request, "timeout");
   let payments = 0;
   await page.route(`${LOCAL_API_URL}/public/checkout/payments`, async (route) => {
@@ -367,7 +375,7 @@ test("back to review shows the same payment and does not pay again", async ({ pa
   await expect(page.getByRole("heading", { name: "Confirmando su pago" })).toBeVisible();
   const pending = await serverPayment(page, request);
 
-  await page.getByRole("link", { name: "Cambiar fechas, habitación o tarifa" }).click();
+  await page.getByRole("link", { name: "Cambiar fechas o habitación" }).click();
   await expect(page).toHaveURL(/\/habitaciones\/\?/);
   await page.goBack();
 
@@ -384,7 +392,7 @@ test("a payment that is still being verified after two minutes explains that and
   request,
 }) => {
   const email = payerEmail();
-  await acceptTerms(page, "flexible", email);
+  await fillCheckout(page, "flexible", email);
   await nextCulqiCharge(request, "timeout");
   let payments = 0;
   await page.route(`${LOCAL_API_URL}/public/checkout/payments`, async (route) => {
@@ -425,7 +433,7 @@ test("a payment that is still being verified after two minutes explains that and
 });
 
 test("a payment pause keeps the draft and charges nothing", async ({ page, request }) => {
-  await acceptTerms(page, "flexible", payerEmail());
+  await fillCheckout(page, "flexible", payerEmail());
   await page.route(`${LOCAL_API_URL}/public/checkout/payments`, (route) =>
     route.fulfill({
       status: 503,
@@ -447,7 +455,7 @@ test("a real Turnstile refusal stays distinct from sold-out or an uncertain char
   request,
 }) => {
   const email = payerEmail();
-  await acceptTerms(page, "flexible", email);
+  await fillCheckout(page, "flexible", email);
   await page.route(`${LOCAL_API_URL}/public/checkout/payments`, async (route) => {
     await route.fallback({
       postData: JSON.stringify({
@@ -476,11 +484,11 @@ test("money received for dates the same contact already holds is shown as unconf
   page,
 }) => {
   const email = payerEmail();
-  await acceptTerms(page, "flexible", email);
+  await fillCheckout(page, "flexible", email);
   await payButton(page, "100.00").click();
   await expect(page.getByRole("heading", { name: "Su reserva está confirmada" })).toBeVisible();
 
-  await acceptTerms(page, "non_refundable", email);
+  await fillCheckout(page, "non_refundable", email);
   await payButton(page, "180.00").click();
 
   await expect(
@@ -497,7 +505,7 @@ test("paying an expired unchanged quote refreshes it and charges once without as
   page,
   request,
 }) => {
-  await acceptTerms(page, "flexible", payerEmail());
+  await acceptTerms(page, payerEmail());
   const before = await serverCheckout(page, request);
   let refreshes = 0;
   page.on("request", (req) => {
@@ -534,8 +542,7 @@ test("a cheaper refreshed quote is shown for a new acceptance and is not charged
   await page.getByLabel("Correo electrónico").fill(payerEmail());
   await page.getByLabel("Teléfono").fill("987 654 321");
   await page.getByRole("checkbox", { name: /Acepto las condiciones/ }).check();
-  await page.getByRole("button", { name: "Aceptar condiciones" }).click();
-  await expect(page.getByText("Condiciones aceptadas")).toBeVisible();
+  await closeCardFormWithoutPaying(page, payButton(page, "100.00"));
   const before = await serverCheckout(page, request);
   expireQuote(before.quote.id, stay.checkIn);
 
@@ -556,8 +563,6 @@ test("a cheaper refreshed quote is shown for a new acceptance and is not charged
   expect(await page.evaluate(() => window.culqiConfigs ?? [])).toEqual([]);
 
   await page.getByRole("checkbox", { name: /Acepto las condiciones/ }).check();
-  await page.getByRole("button", { name: "Aceptar condiciones" }).click();
-  await expect(page.getByText("Condiciones aceptadas")).toBeVisible();
   await payButton(page, "80.00").click();
   await expect(page.getByRole("heading", { name: "Su reserva está confirmada" })).toBeVisible();
   await expect(outcome(page)).toContainText(/Pagado\s*S\/\s80\.00/);
@@ -569,13 +574,11 @@ test("accepting an expired quote charges the contact just submitted, not the one
 }) => {
   const original = payerEmail();
   const updated = payerEmail();
-  await acceptTerms(page, "flexible", original);
+  await acceptTerms(page, original);
   expireQuote((await serverCheckout(page, request)).quote.id);
 
   await page.getByLabel("Nombre completo").fill("Eva Soto");
   await page.getByLabel("Correo electrónico").fill(updated);
-  await page.getByRole("button", { name: "Aceptar condiciones" }).click();
-  await expect(page.getByText("Condiciones aceptadas")).toBeVisible();
   await payButton(page, "100.00").click();
   await expect(page.getByRole("heading", { name: "Su reserva está confirmada" })).toBeVisible();
 
@@ -597,7 +600,7 @@ test("accepting an expired quote charges the contact just submitted, not the one
 test("a replaced quote with different terms is not charged from the card form already open", async ({
   page,
 }) => {
-  await acceptTerms(page, "flexible", payerEmail());
+  await fillCheckout(page, "flexible", payerEmail());
   let payments = 0;
   await page.route(`${LOCAL_API_URL}/public/checkout/payments`, async (route) => {
     payments += 1;
@@ -642,7 +645,7 @@ test("a lost retry of a replaced expired quote stays pending and does not offer 
   page,
   request,
 }) => {
-  await acceptTerms(page, "flexible", payerEmail());
+  await acceptTerms(page, payerEmail());
   expireQuote((await serverCheckout(page, request)).quote.id);
   await page.reload();
   let payments = 0;
@@ -674,7 +677,7 @@ test("a pay refresh that cannot record another agreement keeps this checkout", a
   page,
   request,
 }) => {
-  await acceptTerms(page, "flexible", payerEmail());
+  await acceptTerms(page, payerEmail());
   const token = await checkoutToken(page);
   expireQuote((await serverCheckout(page, request)).quote.id);
   await page.reload();
@@ -701,7 +704,7 @@ test("a pay refresh that cannot record another agreement keeps this checkout", a
 test("a lost payment response says the payment was sent and never invites paying again", async ({
   page,
 }) => {
-  await acceptTerms(page, "flexible", payerEmail());
+  await fillCheckout(page, "flexible", payerEmail());
   await page.route(`${LOCAL_API_URL}/public/checkout/payments`, (route) => route.abort());
 
   await payButton(page, "100.00").click();
@@ -737,7 +740,7 @@ test("bank verification of the same card confirms the reservation once", async (
     if (req.url().endsWith("/public/checkout/payments")) payments.push(req.postDataJSON());
   });
   const sourceId = `tkn_test_3ds_${crypto.randomUUID()}`;
-  await acceptTerms(page, "flexible", payerEmail());
+  await fillCheckout(page, "flexible", payerEmail());
   await page.evaluate(
     ({ parameters, sourceId }) => {
       window.culqiCards = [sourceId];
@@ -777,7 +780,7 @@ test("an unfinished bank window stays pending and can be opened again without pa
       payments.push(req.url());
   });
   const sourceId = `tkn_test_3ds_${crypto.randomUUID()}`;
-  await acceptTerms(page, "flexible", payerEmail());
+  await fillCheckout(page, "flexible", payerEmail());
   await page.evaluate((sourceId) => {
     window.culqiCards = [sourceId];
     window.culqi3DS = {
@@ -817,7 +820,7 @@ test("an existing payment is shown without replacing the card the server charged
 }) => {
   const first = `tkn_test_3ds_${crypto.randomUUID()}`;
   const second = `tkn_test_${crypto.randomUUID()}`;
-  await acceptTerms(page, "flexible", payerEmail());
+  await fillCheckout(page, "flexible", payerEmail());
   await page.evaluate((sourceId) => {
     window.culqiCards = [sourceId];
     window.culqi3DS = {
@@ -863,7 +866,7 @@ test("a lost payment keeps the stored card, and bank verification can open after
   request,
 }) => {
   const sourceId = `tkn_test_3ds_${crypto.randomUUID()}`;
-  await acceptTerms(page, "flexible", payerEmail());
+  await fillCheckout(page, "flexible", payerEmail());
   await page.evaluate((card) => {
     window.culqiCards = [card];
     window.culqi3DS = {
@@ -929,7 +932,7 @@ test("a saved reservation link can be copied and opened without putting the toke
   browser,
 }) => {
   await page.context().grantPermissions(["clipboard-read", "clipboard-write"]);
-  await acceptTerms(page, "flexible", payerEmail());
+  await fillCheckout(page, "flexible", payerEmail());
   await payButton(page, "100.00").click();
   await expect(page.getByRole("heading", { name: "Su reserva está confirmada" })).toBeVisible();
   const reference = (await outcome(page).innerText()).match(/Referencia\s*([A-Z0-9]{6})/)?.[1];

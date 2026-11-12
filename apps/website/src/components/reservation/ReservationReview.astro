@@ -1,6 +1,9 @@
 ---
 import { PUBLIC_CULQI_PUBLIC_KEY, PUBLIC_TURNSTILE_SITE_KEY } from "astro:env/client";
+import { getImage } from "astro:assets";
+import { ArrowLeftIcon, ArrowSquareOutIcon, XIcon } from "@phosphor-icons/react";
 import ReservationHelp from "@/components/reservation/ReservationHelp.astro";
+import { getWhatsAppLink } from "@/lib/constants";
 import { BUSINESS_NAME } from "@/constants";
 import {
   BookingSteps,
@@ -16,6 +19,11 @@ import { rooms } from "@/lib/rooms";
 const lang = getLang(Astro.currentLocale);
 const t = useTranslations(lang);
 const cardPayments = Boolean(PUBLIC_CULQI_PUBLIC_KEY && PUBLIC_TURNSTILE_SITE_KEY);
+const bothCheckoutsForPaymentsToggle = import.meta.env.DEV;
+const showOnline = cardPayments || bothCheckoutsForPaymentsToggle;
+const showOffline = !cardPayments || bothCheckoutsForPaymentsToggle;
+const onlineOnly = "group-data-[payments=off]/review:hidden";
+const offlineOnly = "group-data-[payments=on]/review:hidden";
 const copy = {
   lang,
   apiBase: reservationApiUrl,
@@ -23,6 +31,13 @@ const copy = {
     ? {
         culqiPublicKey: PUBLIC_CULQI_PUBLIC_KEY!,
         turnstileSiteKey: PUBLIC_TURNSTILE_SITE_KEY!,
+        title: BUSINESS_NAME,
+      }
+    : null,
+  devPayments: bothCheckoutsForPaymentsToggle
+    ? {
+        culqiPublicKey: PUBLIC_CULQI_PUBLIC_KEY ?? "pk_test_placeholder_culqi_rejects",
+        turnstileSiteKey: PUBLIC_TURNSTILE_SITE_KEY ?? "1x00000000000000000000AA",
         title: BUSINESS_NAME,
       }
     : null,
@@ -34,10 +49,20 @@ const copy = {
       .map((key) => [key, t(key)]),
   ),
   rooms: Object.fromEntries(
-    rooms.map((room) => [
-      room.id,
-      { name: t(room.nameKey), pmsRoomTypeId: room.pmsRoomTypeId ?? null },
-    ]),
+    await Promise.all(
+      rooms.map(async (room) => [
+        room.id,
+        {
+          name: t(room.nameKey),
+          beds: t(room.bedsKey),
+          pmsRoomTypeId: room.pmsRoomTypeId ?? null,
+          photo: {
+            src: (await getImage({ src: room.gallery[0]!.src, width: 160, format: "webp" })).src,
+            alt: t(room.gallery[0]!.altKey),
+          },
+        },
+      ]),
+    ),
   ),
 };
 const panel = "border border-stone-300 bg-white p-5 md:p-8";
@@ -45,13 +70,18 @@ const primary =
   "font-source-sans-3 bg-accent-500 text-accent-950 hover:bg-accent-400 inline-flex min-h-12 cursor-pointer items-center justify-center gap-2 px-6 text-sm font-semibold tracking-widest uppercase";
 const secondary =
   "font-source-sans-3 inline-flex min-h-12 cursor-pointer items-center justify-center gap-2 border border-stone-900 px-6 text-sm font-semibold tracking-widest text-stone-900 uppercase hover:bg-stone-100";
-const link =
-  "text-accent-800 inline-flex min-h-11 items-center font-medium underline underline-offset-4";
-const row = "flex items-baseline justify-between gap-4 py-2";
+const quietLink =
+  "font-source-sans-3 text-accent-800 inline-flex min-h-11 items-center text-sm font-medium underline-offset-4 hover:underline";
+const eyebrow = "font-source-sans-3 text-xs font-medium tracking-widest text-stone-600 uppercase";
+const card = "p-6 md:p-8";
+const cardTitle = "text-[1.375rem] leading-snug font-semibold text-stone-900";
+const headline = "flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1";
+const row = "flex items-baseline justify-between gap-4 py-0.5";
 const field =
   "mt-2 block min-h-12 w-full border border-stone-400 bg-white px-3 text-base text-stone-900 aria-invalid:border-red-700";
-const label = "font-source-sans-3 text-sm font-semibold tracking-wide text-stone-800";
+const label = "font-source-sans-3 text-sm font-semibold text-stone-800";
 const error = "mt-2 text-sm font-medium text-red-800";
+const [agreeBefore, agreeAfter] = t("reservation.review.agree").split("{terms}");
 const contactFields = [
   {
     id: "fullName",
@@ -81,22 +111,43 @@ const contactFields = [
 ---
 
 <section class="bg-stone-100">
-  <div class="mx-auto max-w-2xl px-4 py-8 md:px-8 md:py-16">
+  <div class="mx-auto max-w-7xl px-4 py-8 md:px-8 md:py-12">
     <BookingSteps
       current="review"
       text={Object.fromEntries(bookingStepsKeys.map((key) => [key, t(key)])) as BookingStepsText}
     />
-    <h1 class="mt-8 text-3xl font-semibold text-pretty text-stone-900 sm:text-4xl">
-      {t("reservation.review.title")}
-    </h1>
-    <reservation-review class="block">
+    <reservation-review
+      class="group/review block lg:mt-6"
+      data-payments={cardPayments ? "on" : "off"}
+    >
       <script
         type="application/json"
         is:inline
         data-copy
         set:html={JSON.stringify(copy).replace(/</g, "\\u003c")}
       />
-      <p class="mt-6 text-stone-700" role="status" data-status>
+      <a
+        href={roomsHref(lang)}
+        class="font-source-sans-3 hover:text-accent-800 inline-flex min-h-11 items-center gap-2 text-xs font-medium tracking-widest text-stone-900 uppercase"
+        data-back-to-rates
+      >
+        <ArrowLeftIcon aria-hidden="true" className="size-4 shrink-0" />
+        {t("reservation.review.backToRates")}
+      </a>
+      <h1 class="mt-3 text-2xl font-semibold text-pretty text-stone-900 md:text-3xl">
+        {t("reservation.review.title")}
+      </h1>
+      {showOnline && (
+        <p class={`mt-2 max-w-xl leading-relaxed text-stone-600 ${onlineOnly}`}>
+          {t("reservation.review.lead")}
+        </p>
+      )}
+      {showOffline && (
+        <p class={`mt-2 max-w-xl leading-relaxed text-stone-600 ${offlineOnly}`}>
+          {t("reservation.review.unavailableLead")}
+        </p>
+      )}
+      <p class="mt-6 text-stone-700 empty:hidden" role="status" data-status>
         {t("reservation.review.loading")}
       </p>
       <div class={`mt-6 ${panel}`} data-problem hidden>
@@ -111,109 +162,194 @@ const contactFields = [
           </a>
         </div>
       </div>
-      <div class="mt-6 flex flex-col gap-8" data-review hidden>
-        <section class={panel} aria-labelledby="review-stay">
-          <h2 id="review-stay" class="text-2xl font-semibold text-stone-900">
-            {t("reservation.review.stay")}
-          </h2>
-          <dl class="mt-4 divide-y divide-stone-200">
-            <div class={row}>
-              <dt class="text-stone-700">{t("reservation.review.room")}</dt>
-              <dd class="text-right font-semibold text-stone-900" data-stay="room" />
+      <div
+        class="mt-6 grid items-start gap-6 [overflow-wrap:anywhere] lg:grid-cols-[minmax(0,1fr)_24rem] lg:gap-12"
+        data-review
+        hidden
+      >
+        <aside
+          class="min-w-0 border border-stone-200 bg-white p-5 md:p-6 lg:sticky lg:top-36 lg:col-start-2 lg:row-start-1"
+          aria-labelledby="review-stay"
+        >
+          <div class="flex items-start gap-4">
+            <img
+              class="size-20 shrink-0 object-cover object-center"
+              width="80"
+              height="80"
+              data-room-photo
+              alt=""
+            />
+            <div class="min-w-0">
+              <h2 id="review-stay" class={eyebrow}>
+                {t("reservation.review.stay")}
+              </h2>
+              <p class="mt-2 text-xl font-semibold text-pretty text-stone-900" data-stay="room" />
+              <p class="mt-1 text-sm text-stone-600" data-stay="room-details" />
             </div>
-            <div class={row}>
-              <dt class="text-stone-700">{t("reservation.review.dates")}</dt>
-              <dd class="text-right font-semibold text-stone-900" data-stay="dates" />
-            </div>
-            <div class={row}>
-              <dt class="text-stone-700">{t("reservation.review.guests")}</dt>
-              <dd class="text-right font-semibold text-stone-900" data-stay="guests" />
-            </div>
-            <div class={row}>
-              <dt class="text-stone-700">{t("reservation.review.plan")}</dt>
-              <dd class="text-right font-semibold text-stone-900" data-stay="plan" />
+          </div>
+          <p class="mt-4 text-sm leading-relaxed text-stone-700 lg:hidden" data-stay="compact" />
+          <dl class="mt-5 border-t border-stone-200 pt-5">
+            <div class={headline}>
+              <dt class="text-sm font-medium text-stone-900">{t("reservation.offer.total")}</dt>
+              <dd
+                class="text-2xl font-semibold whitespace-nowrap text-stone-900"
+                data-amount="total"
+              />
             </div>
           </dl>
-          <a href={roomsHref(lang)} class={`mt-4 ${link}`} data-change-choice>
-            {t("reservation.review.changeChoice")}
-          </a>
-        </section>
-        <section class={panel} aria-labelledby="review-price">
-          <h2 id="review-price" class="text-2xl font-semibold text-stone-900">
-            {t("reservation.review.price")}
-          </h2>
-          <p
-            class="mt-4 border-l-4 border-amber-600 bg-amber-50 p-4 font-semibold text-stone-900"
-            tabindex="-1"
-            data-changed
-            hidden
+          <p class="mt-1 text-sm text-stone-600" data-taxes />
+          <button
+            type="button"
+            class={`${quietLink} mt-2 w-full justify-between lg:hidden`}
+            aria-expanded="false"
+            aria-controls="review-details"
+            data-summary-toggle
           >
-            {t("reservation.review.changed")}
-          </p>
-          <dl class="mt-4 divide-y divide-stone-200">
-            <div class={row}>
-              <dt class="text-stone-700">{t("reservation.offer.total")}</dt>
-              <dd class="text-lg font-semibold text-stone-900" data-amount="total" />
+            <span data-summary-toggle-label>{t("reservation.review.showDetails")}</span>
+            <span aria-hidden="true" data-summary-toggle-icon>
+              +
+            </span>
+          </button>
+          <div id="review-details" class="hidden lg:block">
+            <div class="mt-5 border-t border-stone-200 pt-5 text-sm">
+              <dl class="grid grid-cols-2 gap-4">
+                <div>
+                  <dt class="text-stone-600">{t("reservation.review.checkIn")}</dt>
+                  <dd class="mt-1 font-medium text-stone-900">
+                    <time data-stay="checkIn" />
+                  </dd>
+                </div>
+                <div>
+                  <dt class="text-stone-600">{t("reservation.review.checkOut")}</dt>
+                  <dd class="mt-1 font-medium text-stone-900">
+                    <time data-stay="checkOut" />
+                  </dd>
+                </div>
+              </dl>
+              <p class="mt-2 text-stone-600" data-stay="nights" />
+              <dl class="mt-4 grid grid-cols-2 gap-4">
+                <div>
+                  <dt class="text-stone-600">{t("reservation.review.guests")}</dt>
+                  <dd class="mt-1 font-medium text-stone-900" data-stay="guests" />
+                </div>
+                <div>
+                  <dt class="text-stone-600">{t("reservation.review.plan")}</dt>
+                  <dd class="mt-1 font-medium text-stone-900" data-stay="plan" />
+                </div>
+              </dl>
             </div>
-            <div class={row}>
-              <dt class="text-stone-700">{t("reservation.offer.now")}</dt>
-              <dd class="font-semibold text-stone-900" data-amount="now" />
+            <div class="mt-5 flex flex-wrap gap-x-4 border-t border-stone-200 pt-2">
+              <a href={roomsHref(lang)} class={quietLink} data-back-to-rates>
+                {t("reservation.review.changeRate")}
+              </a>
+              <a href={roomsHref(lang)} class={quietLink} data-change-choice>
+                {t("reservation.review.changeChoice")}
+              </a>
             </div>
-            <div class={row}>
-              <dt class="text-stone-700">{t("reservation.offer.remaining")}</dt>
-              <dd class="font-semibold text-stone-900" data-amount="remaining" />
-            </div>
-          </dl>
-          <p class="mt-3 leading-relaxed text-stone-700" data-cancellation />
-          <p class="mt-3 text-sm text-stone-600" data-taxes />
-          <details class="mt-5 border-t border-stone-200 pt-4">
-            <summary class="text-accent-800 flex min-h-11 cursor-pointer items-center font-medium underline underline-offset-4">
-              {t("reservation.review.terms")}
-            </summary>
-            <h3 class="mt-3 font-semibold text-stone-900">{t("reservation.review.nightly")}</h3>
-            <ul class="mt-2 divide-y divide-stone-200 text-stone-800" data-nightly />
-            <p class="mt-4 leading-relaxed text-stone-700" data-schedule />
-            <p class="mt-3 leading-relaxed text-stone-700" data-terms-cancellation />
-            <p class="mt-3 leading-relaxed text-stone-700">{t("reservation.cancel.settlement")}</p>
-            <p class="mt-3 leading-relaxed text-stone-700">{t("reservation.review.lifecycle")}</p>
-          </details>
-        </section>
-        <form class={panel} novalidate aria-labelledby="review-contact" data-contact-form>
-          <h2 id="review-contact" class="text-2xl font-semibold text-stone-900">
-            {t("reservation.review.contact")}
-          </h2>
-          <p class="mt-2 leading-relaxed text-stone-700">{t("reservation.review.contactLead")}</p>
-          <div class="mt-6 flex flex-col gap-5">
-            {contactFields.map((input) => (
-              <div>
-                <label for={input.id} class={label}>
-                  {t(`reservation.review.${input.id}`)}
-                </label>
-                {input.id === "phone" && (
-                  <p id="phone-hint" class="mt-1 text-sm text-stone-600">
-                    {t("reservation.review.phoneHint")}
-                  </p>
-                )}
-                <input
-                  id={input.id}
-                  name={input.id}
-                  type={input.type}
-                  autocomplete={input.autocomplete}
-                  inputmode={input.inputmode}
-                  autocapitalize={input.autocapitalize}
-                  spellcheck={input.spellcheck}
-                  required
-                  maxlength={input.id === "phone" ? 40 : 200}
-                  class={field}
-                  aria-describedby={
-                    input.id === "phone" ? "phone-hint phone-error" : `${input.id}-error`
-                  }
-                />
-                <p id={`${input.id}-error`} class={error} hidden />
+          </div>
+        </aside>
+        <div
+          class="min-w-0 border border-stone-200 bg-white lg:col-start-1 lg:row-start-1"
+          data-workflow
+        >
+          {showOffline && (
+            <section
+              class={`${card} ${offlineOnly}`}
+              aria-labelledby="review-whatsapp"
+              data-whatsapp
+            >
+              <h2 id="review-whatsapp" class={cardTitle}>
+                {t("reservation.review.whatsapp.title")}
+              </h2>
+              <p class="mt-4 leading-relaxed text-stone-700">
+                {t("reservation.review.whatsapp.body")}
+              </p>
+              <a
+                href={getWhatsAppLink(t("whatsapp.prefill"))}
+                target="_blank"
+                rel="noopener noreferrer"
+                class={`mt-6 w-full ${primary}`}
+                data-whatsapp-link
+              >
+                {t("reservation.review.whatsapp.button")}
+                <span class="sr-only">({t("reservation.review.whatsapp.newTab")})</span>
+                <ArrowSquareOutIcon aria-hidden="true" className="size-4.5 shrink-0" />
+              </a>
+              <p class="mt-4 text-sm text-stone-600">{t("reservation.review.whatsapp.note")}</p>
+            </section>
+          )}
+          <form
+            class="divide-y divide-stone-200"
+            novalidate
+            aria-labelledby="review-contact review-payment"
+            data-contact-form
+            hidden={!cardPayments}
+          >
+            <section class={card} aria-labelledby="review-contact">
+              <h2 id="review-contact" class={cardTitle}>
+                {t("reservation.review.contact")}
+              </h2>
+              <p class="mt-2 leading-relaxed text-stone-600">
+                {t("reservation.review.contactLead")}
+              </p>
+              <div class="mt-6 flex flex-col gap-5">
+                {contactFields.map((input) => (
+                  <div>
+                    <label for={input.id} class={label}>
+                      {t(`reservation.review.${input.id}`)}
+                    </label>
+                    {input.id === "phone" && (
+                      <p id="phone-hint" class="mt-1 text-sm text-stone-600">
+                        {t("reservation.review.phoneHint")}
+                      </p>
+                    )}
+                    <input
+                      id={input.id}
+                      name={input.id}
+                      type={input.type}
+                      autocomplete={input.autocomplete}
+                      inputmode={input.inputmode}
+                      autocapitalize={input.autocapitalize}
+                      spellcheck={input.spellcheck}
+                      required
+                      maxlength={input.id === "phone" ? 40 : 200}
+                      class={field}
+                      aria-describedby={
+                        input.id === "phone" ? "phone-hint phone-error" : `${input.id}-error`
+                      }
+                    />
+                    <p id={`${input.id}-error`} class={error} hidden />
+                  </div>
+                ))}
               </div>
-            ))}
-            <div>
-              <div class="flex items-start gap-3">
+            </section>
+            <section class={card} aria-labelledby="review-payment">
+              <h2 id="review-payment" class={cardTitle}>
+                {t("reservation.review.payment")}
+              </h2>
+              <p
+                class="mt-4 border-l-4 border-amber-600 bg-amber-50 p-4 font-semibold text-stone-900"
+                tabindex="-1"
+                data-changed
+                hidden
+              >
+                {t("reservation.review.changed")}
+              </p>
+              <dl class="mt-4 bg-stone-100 px-4 py-3">
+                <div class={headline}>
+                  <dt class="font-medium text-stone-900">{t("reservation.review.dueNow")}</dt>
+                  <dd
+                    class="text-2xl font-semibold whitespace-nowrap text-stone-900"
+                    data-amount="now"
+                  />
+                </div>
+                <div class={`${row} text-sm`} data-balance>
+                  <dt class="text-stone-600">{t("reservation.review.balance")}</dt>
+                  <dd class="text-stone-900" data-amount="remaining" />
+                </div>
+              </dl>
+              <p class="mt-4 text-sm leading-relaxed text-stone-700" data-cancellation />
+              <div class="mt-5 flex items-start gap-3">
                 <input
                   id="agree"
                   name="agree"
@@ -222,79 +358,105 @@ const contactFields = [
                   class="accent-accent-700 mt-0.5 size-6 shrink-0"
                   aria-describedby="agree-error"
                 />
-                <label for="agree" class="cursor-pointer text-base leading-relaxed text-stone-900">
-                  {t("reservation.review.agree")}
+                <label for="agree" class="cursor-pointer leading-relaxed text-stone-900">
+                  {agreeBefore}
+                  <a
+                    href="#review-terms"
+                    class="text-accent-800 decoration-accent-800/40 hover:decoration-accent-800 font-medium underline underline-offset-4"
+                    aria-haspopup="dialog"
+                    data-open-terms
+                  >
+                    {t("reservation.review.termsLink")}
+                  </a>
+                  {agreeAfter}
                 </label>
               </div>
               <p id="agree-error" class={error} hidden />
-            </div>
-          </div>
-          <p class="mt-5 font-medium text-red-800" role="alert" data-form-error />
-          <button type="submit" class={`mt-6 w-full sm:w-auto ${primary}`} data-submit>
-            {t("reservation.review.submit")}
-          </button>
-        </form>
-        <section class={panel} aria-labelledby="review-payment" data-payment-step>
-          <h2 id="review-payment" class="text-2xl font-semibold text-stone-900">
-            {t("reservation.review.payment")}
-          </h2>
-          {!cardPayments && (
-            <p class="mt-2 leading-relaxed text-stone-700">
-              {t("reservation.review.paymentUnavailable")}
-            </p>
-          )}
-          <div
-            class="border-accent-700 mt-4 border-l-4 bg-stone-50 p-4"
-            tabindex="-1"
-            data-accepted
+              <p class="mt-5 font-medium text-red-800 empty:mt-0" role="alert" data-form-error />
+              <div data-pay-action>
+                <div
+                  class="mt-5 min-h-16"
+                  role="group"
+                  aria-label={t("reservation.pay.security")}
+                  data-security-check
+                />
+                <button type="submit" class={`mt-4 w-full ${primary}`} data-pay-button />
+                <p class="mt-3 text-center text-sm text-stone-600">
+                  {t("reservation.pay.provider")}
+                </p>
+              </div>
+            </section>
+          </form>
+          <section
+            class={`${card} border-stone-200 [[data-contact-form]:not([hidden])+&]:border-t`}
+            aria-labelledby="review-outcome-title"
+            data-outcome
             hidden
           >
-            <p class="font-semibold text-stone-900">{t("reservation.review.accepted.title")}</p>
-            <p class="mt-2 leading-relaxed text-stone-700">
-              {t("reservation.review.accepted.body")}
-            </p>
-          </div>
-          {cardPayments && (
-            <div class="mt-6" data-pay hidden>
-              <p class="leading-relaxed text-stone-700">{t("reservation.pay.lead")}</p>
-              <div
-                class="mt-4 min-h-16"
-                role="group"
-                aria-label={t("reservation.pay.security")}
-                data-security-check
+            <div class="border-l-4 bg-stone-50 p-4" data-outcome-box>
+              <h2
+                id="review-outcome-title"
+                class="text-xl font-semibold text-stone-900"
+                tabindex="-1"
+                data-outcome-title
               />
-              <p class="mt-4 font-medium text-red-800" role="alert" data-pay-error />
-              <button type="button" class={`mt-4 w-full sm:w-auto ${primary}`} data-pay-button />
+              <p class="mt-2 leading-relaxed text-stone-700" data-outcome-body />
+              <dl class="mt-4 divide-y divide-stone-200" data-outcome-amounts />
+              <div class="mt-4 flex flex-wrap gap-3">
+                <button type="button" class={primary} data-outcome-retry hidden>
+                  {t("reservation.outcome.retry")}
+                </button>
+                <button type="button" class={secondary} data-outcome-bank hidden>
+                  {t("reservation.outcome.verifyBank")}
+                </button>
+                <button type="button" class={secondary} data-outcome-check hidden>
+                  {t("reservation.outcome.check")}
+                </button>
+              </div>
+              <div class="mt-4 border border-stone-300 bg-white p-4" data-access hidden>
+                <p class="leading-relaxed text-stone-700">{t("reservation.summary.possession")}</p>
+                <p class="mt-2 leading-relaxed text-stone-700">{t("reservation.summary.staff")}</p>
+                <button type="button" class={`mt-4 ${secondary}`} data-access-copy>
+                  {t("reservation.summary.copy")}
+                </button>
+                <p class="mt-2 font-medium text-stone-900" role="status" data-access-copied hidden>
+                  {t("reservation.summary.copied")}
+                </p>
+              </div>
             </div>
-          )}
-          <div class="mt-6 border-l-4 bg-stone-50 p-4" data-outcome hidden>
-            <h3 class="text-xl font-semibold text-stone-900" tabindex="-1" data-outcome-title />
-            <p class="mt-2 leading-relaxed text-stone-700" data-outcome-body />
-            <dl class="mt-4 divide-y divide-stone-200" data-outcome-amounts />
-            <div class="mt-4 flex flex-wrap gap-3">
-              <button type="button" class={primary} data-outcome-retry hidden>
-                {t("reservation.outcome.retry")}
-              </button>
-              <button type="button" class={secondary} data-outcome-bank hidden>
-                {t("reservation.outcome.verifyBank")}
-              </button>
-              <button type="button" class={secondary} data-outcome-check hidden>
-                {t("reservation.outcome.check")}
-              </button>
-            </div>
-            <div class="mt-4 border border-stone-300 bg-white p-4" data-access hidden>
-              <p class="leading-relaxed text-stone-700">{t("reservation.summary.possession")}</p>
-              <p class="mt-2 leading-relaxed text-stone-700">{t("reservation.summary.staff")}</p>
-              <button type="button" class={`mt-4 ${secondary}`} data-access-copy>
-                {t("reservation.summary.copy")}
-              </button>
-              <p class="mt-2 font-medium text-stone-900" role="status" data-access-copied hidden>
-                {t("reservation.summary.copied")}
-              </p>
-            </div>
-          </div>
-        </section>
+          </section>
+        </div>
       </div>
+      <dialog
+        id="review-terms"
+        class="m-auto max-h-[calc(100dvh-2rem)] w-[min(36rem,calc(100vw-2rem))] overflow-y-auto bg-white p-0 text-stone-900 backdrop:bg-stone-950/60"
+        aria-labelledby="review-terms-title"
+        data-terms
+      >
+        <div class="sticky top-0 flex items-center justify-between gap-4 border-b border-stone-200 bg-white py-2 pr-2 pl-6">
+          <h2 id="review-terms-title" class={cardTitle}>
+            {t("reservation.review.terms")}
+          </h2>
+          <button
+            type="button"
+            class="inline-flex size-11 shrink-0 cursor-pointer items-center justify-center text-stone-700 hover:bg-stone-100 hover:text-stone-900"
+            data-close-terms
+          >
+            <XIcon aria-hidden="true" className="size-5" />
+            <span class="sr-only">{t("reservation.review.closeTerms")}</span>
+          </button>
+        </div>
+        <div class="px-6 pt-5 pb-6">
+          <h3 class="font-semibold text-stone-900">{t("reservation.review.nightly")}</h3>
+          <ul class="mt-2 divide-y divide-stone-200 text-sm text-stone-800" data-nightly />
+          <div class="mt-5 flex flex-col gap-3 text-sm leading-relaxed text-stone-700">
+            <p data-schedule />
+            <p data-terms-cancellation />
+            <p>{t("reservation.cancel.settlement")}</p>
+            <p>{t("reservation.review.lifecycle")}</p>
+          </div>
+        </div>
+      </dialog>
     </reservation-review>
     <ReservationHelp />
   </div>
@@ -325,6 +487,7 @@ const contactFields = [
     storedCheckout,
     storedContact,
   } from "@/lib/reservation/draft";
+  import { getWhatsAppLink } from "@/lib/constants";
   import { fill, formatDate, formatMoney } from "@/lib/reservation/format";
   import {
     allowsNewPayment,
@@ -349,13 +512,23 @@ const contactFields = [
   type Copy = {
     lang: Lang;
     apiBase: string;
-    payments: { culqiPublicKey: string; turnstileSiteKey: string; title: string } | null;
+    payments: Payments | null;
+    devPayments: Payments | null;
     chooseHref: string;
     summaryHref: string;
     text: Record<string, string>;
-    rooms: Record<string, { name: string; pmsRoomTypeId: string | null }>;
+    rooms: Record<
+      string,
+      {
+        name: string;
+        beds: string;
+        pmsRoomTypeId: string | null;
+        photo: { src: string; alt: string };
+      }
+    >;
   };
 
+  type Payments = { culqiPublicKey: string; turnstileSiteKey: string; title: string };
   type Ready = Extract<CheckoutOutcome, { kind: "ready" }>;
   type Problem = Exclude<CheckoutOutcome, Ready> | { kind: "missing" };
 
@@ -465,6 +638,21 @@ const contactFields = [
     "phone extensions are not supported": ["phone", "reservation.review.error.phoneInvalid"],
   };
 
+  function previewPayments(host: HTMLElement, copy: Copy) {
+    const url = new URL(location.href);
+    const mode = url.searchParams.get("payments");
+    if (mode === "on") copy.payments = copy.devPayments;
+    if (mode === "off") copy.payments = null;
+    host.dataset.payments = copy.payments ? "on" : "off";
+    url.searchParams.set("payments", copy.payments ? "off" : "on");
+    const toggle = document.createElement("a");
+    toggle.href = url.href;
+    toggle.className =
+      "font-source-sans-3 fixed bottom-4 left-4 z-90 inline-flex min-h-11 items-center bg-stone-900 px-4 text-sm font-medium text-white shadow-lg hover:bg-stone-700";
+    toggle.textContent = `Dev · ${copy.lang === "en" ? "Online payments" : "Pagos en línea"}: ${copy.payments ? "ON" : "OFF"} ⇄`;
+    document.body.append(toggle);
+  }
+
   class ReservationReview extends HTMLElement {
     private copy!: Copy;
     private search!: StaySearch;
@@ -472,7 +660,6 @@ const contactFields = [
     private key = "";
     private token = "";
     private view: CheckoutView | null = null;
-    private busy = false;
     private payment: GuestPayment | null = null;
     private paying = false;
     private openedBankFor: string | null = null;
@@ -515,6 +702,7 @@ const contactFields = [
 
     connectedCallback() {
       this.copy = JSON.parse(this.el("[data-copy]").textContent ?? "{}") as Copy;
+      if (import.meta.env.DEV) previewPayments(this, this.copy);
       this.search = readSearch(
         new URLSearchParams(window.location.search),
         Object.keys(this.copy.rooms),
@@ -524,12 +712,29 @@ const contactFields = [
         "[data-change-choice], [data-problem-back]",
       ))
         anchor.href = choiceHref;
+      for (const anchor of this.querySelectorAll<HTMLAnchorElement>("[data-back-to-rates]"))
+        anchor.href = `${this.copy.chooseHref}?${searchParams(this.search).toString()}`;
+
+      this.el("[data-summary-toggle]").addEventListener("click", () => {
+        this.expandSummary(
+          this.el("[data-summary-toggle]").getAttribute("aria-expanded") !== "true",
+        );
+      });
+      const terms = this.el<HTMLDialogElement>("[data-terms]");
+      this.el("[data-open-terms]").addEventListener("click", (event) => {
+        event.preventDefault();
+        terms.showModal();
+      });
+      this.el("[data-close-terms]").addEventListener("click", () => terms.close());
+      terms.addEventListener("click", (event) => {
+        if (event.target === terms) terms.close();
+      });
 
       this.restoreDraft();
       window.addEventListener("pageshow", (event) => {
         this.restoreDraft();
         if (event.persisted && this.key) void this.load();
-        else this.showAccepted();
+        else this.showCheckout();
       });
       window.addEventListener("online", () => {
         if (this.awaitingStatus()) void this.syncPayment();
@@ -542,23 +747,22 @@ const contactFields = [
             phone: this.input("phone").value,
           });
           this.showFieldError(id, "");
-          this.showAccepted();
+          this.showCheckout();
         });
       }
       this.input("agree").addEventListener("change", () => {
         this.rememberAgreement();
         this.showFieldError("agree", "");
-        this.showAccepted();
+        this.showCheckout();
       });
       this.el("[data-retry]").addEventListener("click", () => void this.load());
-      this.querySelector("[data-pay-button]")?.addEventListener("click", () => void this.pay());
       this.el("[data-outcome-retry]").addEventListener("click", () => this.payAgain());
       this.el("[data-outcome-bank]").addEventListener("click", () => void this.openBank());
       this.el("[data-outcome-check]").addEventListener("click", () => void this.syncPayment(true));
       this.el("[data-access-copy]").addEventListener("click", () => void this.copyAccessLink());
       this.el<HTMLFormElement>("[data-contact-form]").addEventListener("submit", (event) => {
         event.preventDefault();
-        void this.submit();
+        void this.pay();
       });
 
       const { room, plan, checkIn, checkOut } = this.search;
@@ -585,8 +789,19 @@ const contactFields = [
       );
     }
 
+    private expandSummary(expanded: boolean) {
+      this.el("[data-summary-toggle]").setAttribute("aria-expanded", String(expanded));
+      this.el("#review-details").classList.toggle("hidden", !expanded);
+      this.el('[data-stay="compact"]').classList.toggle("hidden", expanded);
+      this.el("[data-summary-toggle-label]").textContent = this.text(
+        expanded ? "reservation.review.hideDetails" : "reservation.review.showDetails",
+      );
+      this.el("[data-summary-toggle-icon]").textContent = expanded ? "−" : "+";
+    }
+
     private async load() {
       this.el("[data-problem]").hidden = true;
+      this.el("[data-status]").classList.remove("sr-only");
       this.el("[data-status]").textContent = this.text("reservation.review.loading");
       const outcome = await this.currentQuote();
       if (outcome.kind !== "ready") return this.showProblem(outcome);
@@ -619,8 +834,9 @@ const contactFields = [
       this.el("[data-changed]").hidden = !previous?.agreedOffer || agreed;
       this.render(outcome.view);
       this.el("[data-review]").hidden = false;
+      this.el("[data-status]").classList.add("sr-only");
       this.el("[data-status]").textContent = this.text("reservation.review.loaded");
-      this.showAccepted();
+      this.showCheckout();
     }
 
     private render(view: CheckoutView) {
@@ -628,21 +844,55 @@ const contactFields = [
       const set = (selector: string, value: string) => {
         this.el(selector).textContent = value;
       };
-      set('[data-stay="room"]', this.copy.rooms[this.search.room!]!.name);
+      const room = this.copy.rooms[this.search.room!]!;
+      set('[data-stay="room"]', room.name);
+      set('[data-stay="room-details"]', room.beds);
+      const photo = this.el<HTMLImageElement>("[data-room-photo]");
+      photo.src = room.photo.src;
+      photo.alt = room.photo.alt;
+      const nights = this.count("reservation.nights", view.nights);
       set(
-        '[data-stay="dates"]',
-        `${formatDate(view.checkIn, this.copy.lang)} – ${formatDate(view.checkOut, this.copy.lang)} · ${this.count("reservation.nights", view.nights)}`,
+        '[data-stay="compact"]',
+        `${formatDate(view.checkIn, this.copy.lang, { includeWeekday: false })} – ${formatDate(view.checkOut, this.copy.lang, { includeWeekday: false })} · ${nights}`,
       );
+      for (const date of ["checkIn", "checkOut"] as const) {
+        const time = this.el<HTMLTimeElement>(`[data-stay="${date}"]`);
+        time.dateTime = view[date];
+        time.textContent = formatDate(view[date], this.copy.lang);
+      }
+      set('[data-stay="nights"]', nights);
       const adults = this.count("reservation.adults", view.adults);
-      set(
-        '[data-stay="guests"]',
-        view.children ? `${adults}, ${this.count("reservation.children", view.children)}` : adults,
-      );
-      set('[data-stay="plan"]', this.text(`reservation.plan.${view.ratePlan}`));
-      set('[data-amount="total"]', this.money(quote.totalCents));
-      set('[data-amount="now"]', this.money(quote.requiredInitialPaymentCents));
-      set('[data-amount="remaining"]', this.money(quote.remainingScheduledCents));
+      const guests = view.children
+        ? `${adults}, ${this.count("reservation.children", view.children)}`
+        : adults;
+      set('[data-stay="guests"]', guests);
+      const plan = this.text(`reservation.plan.${view.ratePlan}`);
+      set('[data-stay="plan"]', plan);
+      for (const total of this.querySelectorAll('[data-amount="total"]'))
+        total.textContent = this.money(quote.totalCents);
       set("[data-taxes]", this.text("reservation.offer.taxes", { currency: view.currency }));
+      if (!this.copy.payments) {
+        this.el<HTMLAnchorElement>("[data-whatsapp-link]").href = getWhatsAppLink(
+          this.text("reservation.review.whatsapp.message", {
+            room: room.name,
+            checkIn: formatDate(view.checkIn, this.copy.lang),
+            checkOut: formatDate(view.checkOut, this.copy.lang),
+            guests,
+            plan,
+            total: this.money(quote.totalCents),
+          }),
+        );
+        return;
+      }
+      set('[data-amount="now"]', this.money(quote.requiredInitialPaymentCents));
+      set(
+        "[data-pay-button]",
+        this.text("reservation.pay.button", {
+          amount: this.money(quote.requiredInitialPaymentCents),
+        }),
+      );
+      set('[data-amount="remaining"]', this.money(quote.remainingScheduledCents));
+      this.el("[data-balance]").hidden = quote.remainingScheduledCents === 0;
       set(
         "[data-schedule]",
         this.text(`reservation.review.schedule.${view.ratePlan}`, {
@@ -698,27 +948,20 @@ const contactFields = [
       return quoteStillValid(view) && view.acceptance?.quoteId === view.quote.id;
     }
 
-    private showAccepted(focus = false) {
+    private showCheckout() {
       const locked = !allowsNewPayment(this.payment);
-      const accepted = !locked && this.isAccepted();
-      const panel = this.el("[data-accepted]");
-      panel.hidden = !accepted;
-      this.el("[data-contact-form]").hidden = locked;
-      this.el("[data-submit]").hidden = accepted;
-      this.showPayAction(accepted && this.el("[data-outcome]").hidden === true);
-      if (accepted && focus) panel.focus();
+      this.querySelector("[data-whatsapp]")?.toggleAttribute("hidden", Boolean(this.payment));
+      const form = this.el("[data-contact-form]");
+      form.hidden = locked || !this.copy.payments;
+      this.el("[data-pay-action]").hidden = !this.el("[data-outcome]").hidden;
+      if (!form.hidden && this.view) this.startSecurityCheck();
     }
 
-    private showPayAction(visible: boolean) {
-      const pay = this.querySelector<HTMLElement>("[data-pay]");
-      if (!pay || !this.view || !this.copy.payments) return;
-      pay.hidden = !visible;
-      if (!visible) return;
-      this.el("[data-pay-button]").textContent = this.text("reservation.pay.button", {
-        amount: this.money(this.view.quote.requiredInitialPaymentCents),
-      });
+    private startSecurityCheck() {
+      const payments = this.copy.payments;
+      if (!payments) return;
       this.securityCheck ??= renderSecurityCheck(this.el("[data-security-check]"), {
-        siteKey: this.copy.payments.turnstileSiteKey,
+        siteKey: payments.turnstileSiteKey,
         lang: this.copy.lang,
         onError: () => this.showPayError("reservation.pay.error.securityUnavailable"),
       }).catch(() => {
@@ -729,18 +972,17 @@ const contactFields = [
     }
 
     private showPayError(key: string) {
-      const error = this.querySelector("[data-pay-error]");
-      if (error) error.textContent = key ? this.text(key) : "";
+      this.el("[data-form-error]").textContent = key ? this.text(key) : "";
     }
 
     private async pay() {
-      if (this.paying || !this.view || !this.copy.payments || !this.isAccepted()) return;
+      if (this.paying || !this.view || !this.copy.payments || !this.validate()) return;
       this.paying = true;
-      const button = this.querySelector<HTMLButtonElement>("[data-pay-button]");
-      if (button) button.disabled = true;
+      const button = this.el<HTMLButtonElement>("[data-pay-button]");
+      button.disabled = true;
       this.showPayError("");
-      this.el("[data-form-error]").textContent = "";
       try {
+        if (!(await this.acceptBeforePaying())) return;
         if (!(await this.confirmNoOpenPayment())) return;
         if (!(await this.ensureAcceptedQuote()) || !this.view || !this.copy.payments) return;
         const security = await this.securityCheck;
@@ -769,7 +1011,7 @@ const contactFields = [
         await this.sendPayment(sourceId, turnstileToken, security, fingerprint);
       } finally {
         this.paying = false;
-        if (button) button.disabled = false;
+        button.disabled = false;
       }
     }
 
@@ -838,7 +1080,7 @@ const contactFields = [
       this.input("agree").checked = true;
       this.el("[data-changed]").hidden = true;
       this.el("[data-form-error]").textContent = "";
-      this.showAccepted();
+      this.showCheckout();
     }
 
     private showChangedOffer(outcome: Ready) {
@@ -854,7 +1096,7 @@ const contactFields = [
       this.input("agree").checked = false;
       this.el("[data-changed]").hidden = false;
       this.el("[data-form-error]").textContent = this.text("reservation.pay.changed");
-      this.showAccepted();
+      this.showCheckout();
       this.input("agree").focus();
     }
 
@@ -1043,7 +1285,7 @@ const contactFields = [
 
     private payAgain() {
       this.el("[data-outcome]").hidden = true;
-      this.showAccepted();
+      this.showCheckout();
       this.querySelector<HTMLElement>("[data-pay-button]")?.focus();
     }
 
@@ -1062,7 +1304,7 @@ const contactFields = [
           payment.state === "paid_awaiting_reservation")
       )
         this.forgetCardSource();
-      this.showAccepted();
+      this.showCheckout();
       if (payment && focus) this.el("[data-outcome-title]").focus();
       if (payment?.state === "authentication_required") this.maybeOpenBank();
       if (payment && VERIFYING.includes(payment.state) && !payment.delayed)
@@ -1144,9 +1386,9 @@ const contactFields = [
     }
 
     private renderOutcome(payment: GuestPayment) {
-      const outcome = this.el("[data-outcome]");
-      for (const tone of new Set(Object.values(outcomeTone))) outcome.classList.remove(tone);
-      outcome.classList.add(outcomeTone[payment.state]);
+      const box = this.el("[data-outcome-box]");
+      for (const tone of new Set(Object.values(outcomeTone))) box.classList.remove(tone);
+      box.classList.add(outcomeTone[payment.state]);
       const key = `reservation.outcome.${payment.state}`;
       this.el("[data-outcome-title]").textContent = this.text(`${key}.title`);
       this.el("[data-outcome-body]").textContent = this.text(
@@ -1279,35 +1521,32 @@ const contactFields = [
       return null;
     }
 
-    private async submit() {
-      if (this.busy || !this.view || !this.validate()) return;
-      this.busy = true;
-      const submit = this.el<HTMLButtonElement>("[data-submit]");
-      const formError = this.el("[data-form-error]");
-      formError.textContent = "";
-      submit.setAttribute("aria-disabled", "true");
+    private async acceptBeforePaying() {
+      if (this.isAccepted()) return true;
       this.el("[data-status]").textContent = this.text("reservation.review.saving");
-      try {
-        const outcome = await this.acceptCurrentOffer();
-        if (outcome) this.settle(outcome);
-      } finally {
-        this.busy = false;
-        submit.removeAttribute("aria-disabled");
+      const outcome = await this.acceptCurrentOffer();
+      this.el("[data-status]").textContent = "";
+      if (!outcome) return false;
+      if (outcome.kind === "has_payment") {
+        await this.syncPayment(true);
+        return false;
       }
+      if (outcome.kind !== "ready") {
+        this.settle(outcome);
+        return false;
+      }
+      this.view = outcome.view;
+      const stored = this.stored();
+      if (stored)
+        storeCheckout(this.key, {
+          ...stored,
+          accepted: { quoteId: outcome.view.quote.id, contact: contactKey(this.contact()) },
+        });
+      return true;
     }
 
-    private settle(outcome: CheckoutOutcome) {
+    private settle(outcome: Exclude<CheckoutOutcome, Ready>) {
       this.el("[data-status]").textContent = "";
-      if (outcome.kind === "ready") {
-        this.view = outcome.view;
-        const stored = this.stored();
-        if (stored)
-          storeCheckout(this.key, {
-            ...stored,
-            accepted: { quoteId: outcome.view.quote.id, contact: contactKey(this.contact()) },
-          });
-        return this.showAccepted(true);
-      }
       if (outcome.kind === "invalid" && contactProblems[outcome.error]) {
         const [field, key] = contactProblems[outcome.error]!;
         this.showFieldError(field, this.text(key));

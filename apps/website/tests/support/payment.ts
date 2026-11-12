@@ -1,4 +1,4 @@
-import type { APIRequestContext, Page } from "@playwright/test";
+import { expect, type APIRequestContext, type Locator, type Page } from "@playwright/test";
 import { FAKE_PAYMENT_SERVICES_URL, LOCAL_API_URL } from "./local-api";
 
 const fakeCulqiCheckout = `
@@ -87,4 +87,20 @@ export async function nextCulqiCharge(request: APIRequestContext, outcome: "time
     data: { call: "POST /charges", outcome },
   });
   if (response.status() !== 204) throw new Error("could not script the fake Culqi");
+}
+
+export async function closeCardFormWithoutPaying(page: Page, payButton: Locator) {
+  await page.evaluate(() => {
+    (window as unknown as { culqiCards: string[] }).culqiCards = [""];
+  });
+  await payButton.click();
+  await expect
+    .poll(() =>
+      page.evaluate(() => (window as unknown as { culqiCards: string[] }).culqiCards.length),
+    )
+    .toBe(0);
+  await expect(payButton).toBeEnabled();
+  await page.evaluate(() => {
+    (window as unknown as { culqiConfigs: unknown[] }).culqiConfigs = [];
+  });
 }

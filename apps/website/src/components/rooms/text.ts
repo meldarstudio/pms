@@ -27,7 +27,6 @@ export const roomsBookingKeys = [
   "reservation.room.tooManyGuests",
   "reservation.room.offline",
   "whatsapp.prefill",
-  "reservation.room.preferred",
   "reservation.room.preferredUnavailable",
   "reservation.plan.flexible",
   "reservation.plan.non_refundable",

@@ -1,6 +1,6 @@
 import { expect, test, type APIRequestContext, type Page } from "@playwright/test";
 import { LOCAL_API_URL, daysFromToday, doubleSoldOutStay, openStay } from "../support/local-api";
-import { stubPaymentScripts } from "../support/payment";
+import { closeCardFormWithoutPaying, stubPaymentScripts } from "../support/payment";
 import { selectRoomRate } from "../support/room-rate";
 
 const checkoutsRoute = `${LOCAL_API_URL}/public/checkouts`;
@@ -52,11 +52,21 @@ async function fillContact(page: Page) {
   await page.getByLabel("Teléfono").fill("987 654 321");
 }
 
+const payButton = (page: Page) =>
+  page.getByRole("button", { name: /^(Pagar|Pay) S\/\s[\d.]+ (con tarjeta|by card)$/ });
+
 async function acceptTerms(page: Page) {
   await fillContact(page);
   await page.getByRole("checkbox", { name: /Acepto las condiciones/ }).check();
-  await page.getByRole("button", { name: "Aceptar condiciones" }).click();
-  await expect(page.getByText("Condiciones aceptadas")).toBeVisible();
+  await closeCardFormWithoutPaying(page, payButton(page));
+}
+
+function countAcceptances(page: Page) {
+  const sent = { count: 0 };
+  page.on("request", (request) => {
+    if (request.method() === "POST" && request.url() === acceptanceRoute) sent.count += 1;
+  });
+  return sent;
 }
 
 test("a chosen offer is reviewed with server amounts and its terms are accepted", async ({
@@ -74,16 +84,16 @@ test("a chosen offer is reviewed with server amounts and its terms are accepted"
   expect([...new URL(page.url()).searchParams.keys()].toSorted()).toEqual(
     ["adults", "checkIn", "checkOut", "children", "plan", "room"].toSorted(),
   );
-  const stayDetails = page.getByRole("region", { name: "Su estadía" });
+  const stayDetails = page.getByRole("complementary", { name: "Su estadía" });
   await expect(stayDetails).toContainText("Suite Matrimonial");
   await expect(stayDetails).toContainText("2 noches");
   await expect(stayDetails).toContainText("2 adultos");
   await expect(stayDetails).toContainText("Flexible");
-  const price = page.getByRole("region", { name: "Precio y condiciones" });
-  await expect(price.locator('[data-amount="total"]')).toHaveText(/S\/\s200\.00/);
-  await expect(price.locator('[data-amount="now"]')).toHaveText(/S\/\s100\.00/);
-  await expect(price.locator('[data-amount="remaining"]')).toHaveText(/S\/\s100\.00/);
-  await expect(price.locator("[data-cancellation] time")).toHaveAttribute(
+  const payment = page.getByRole("region", { name: "Pago", exact: true });
+  await expect(stayDetails.locator('[data-amount="total"]')).toHaveText(/S\/\s200\.00/);
+  await expect(payment.locator('[data-amount="now"]')).toHaveText(/S\/\s100\.00/);
+  await expect(payment.locator('[data-amount="remaining"]')).toHaveText(/S\/\s100\.00/);
+  await expect(payment.locator("[data-cancellation] time")).toHaveAttribute(
     "datetime",
     daysFromToday(118),
   );
@@ -96,17 +106,13 @@ test("a chosen offer is reviewed with server amounts and its terms are accepted"
   await expect(page.getByLabel("Teléfono")).toHaveAttribute("type", "tel");
   await expect(page.getByLabel("Teléfono")).toHaveAttribute("autocomplete", "tel");
 
-  await page.getByRole("button", { name: "Aceptar condiciones" }).click();
+  await expect(payButton(page)).toHaveText(/^Pagar S\/\s100\.00 con tarjeta$/);
+  await payButton(page).click();
   await expect(page.getByLabel("Nombre completo")).toBeFocused();
   await expect(page.getByText("Ingrese el nombre completo del contacto.")).toBeVisible();
   await expect(page.getByText("Marque la casilla para aceptar las condiciones.")).toBeVisible();
 
   await acceptTerms(page);
-  await expect(page.locator("[data-accepted]")).toContainText("Todavía no se ha cobrado nada");
-  await expect(page.locator("[data-accepted]").getByRole("link")).toHaveCount(0);
-  await expect(
-    page.getByRole("button", { name: /^Pagar S\/\s100\.00 con tarjeta$/ }),
-  ).toBeVisible();
   const checkout = await serverCheckout(page, request);
   expect(checkout.acceptance?.quoteId).toBe(checkout.quote.id);
 });
@@ -120,15 +126,83 @@ test("a language change keeps the draft and the accepted offer's quote", async (
   const accepted = await serverCheckout(page, request);
 
   await page.locator("#lang-select").selectOption({ label: "English" });
+  const acceptances = countAcceptances(page);
 
   await expect(page).toHaveURL(/\/en\/reservar\/revisar\/\?.*room=double&plan=non_refundable/);
   await expect(page.getByLabel("Full name")).toHaveValue("Ana Torres");
   await expect(page.getByLabel("Phone")).toHaveValue("987 654 321");
   await expect(page.getByRole("checkbox", { name: /I accept/ })).toBeChecked();
-  await expect(page.getByText("Terms accepted")).toBeVisible();
   await expect(page.locator('[data-amount="total"]')).toHaveText(/S\/\s216\.00/);
+  await closeCardFormWithoutPaying(page, payButton(page));
+  expect(acceptances.count).toBe(0);
   expect((await serverCheckout(page, request)).quote.id).toBe(accepted.quote.id);
 });
+
+for (const lang of ["", "/en"]) {
+  test(`the ${lang ? "English" : "Spanish"} mobile review keeps the charge and cancellation visible and opens terms without losing contact details`, async ({
+    page,
+  }) => {
+    const en = lang === "/en";
+    const stay = openStay();
+    await page.setViewportSize({ width: 390, height: 844 });
+    await page.goto(reviewPath(stay, { room: "king", plan: "flexible" }, lang));
+    const summary = page.getByRole("complementary", { name: en ? "Your stay" : "Su estadía" });
+    const payment = page.getByRole("region", { name: en ? "Payment" : "Pago", exact: true });
+    const toggle = page.getByRole("button", {
+      name: en ? /^(View|Hide) reservation details$/ : /^(Ver|Ocultar) detalle de la reserva$/,
+    });
+    await expect(summary.getByRole("img")).toBeVisible();
+    await expect(summary.locator('[data-amount="total"]')).toHaveText(/S\/\s200\.00/);
+    await expect(payment.locator('[data-amount="now"]')).toHaveText(/S\/\s100\.00/);
+    await expect(payment.locator('[data-amount="remaining"]')).toHaveText(/S\/\s100\.00/);
+    await expect(payment.locator("[data-cancellation] time")).toHaveAttribute(
+      "datetime",
+      daysFromToday(118),
+    );
+    await expect(toggle).toHaveAttribute("aria-expanded", "false");
+    await expect(summary.locator('[data-stay="checkIn"]')).toBeHidden();
+
+    const fullName = page.getByLabel(en ? "Full name" : "Nombre completo");
+    await fullName.fill("Ana María Torres");
+    await toggle.click();
+    await expect(toggle).toHaveAttribute("aria-expanded", "true");
+    await expect(summary.locator('[data-stay="checkIn"]')).toHaveAttribute(
+      "datetime",
+      stay.checkIn,
+    );
+    await expect(summary.locator('[data-stay="checkOut"]')).toHaveAttribute(
+      "datetime",
+      stay.checkOut,
+    );
+    await toggle.click();
+
+    const termsLink = page.getByRole("link", {
+      name: en ? "reservation terms" : "condiciones de la reserva",
+      exact: true,
+    });
+    await termsLink.click();
+    const terms = page.getByRole("dialog", {
+      name: en ? "Reservation terms" : "Condiciones de la reserva",
+    });
+    await expect(
+      terms.getByText(en ? "Price per night" : "Precio por noche", { exact: true }),
+    ).toBeVisible();
+    await page.keyboard.press("Escape");
+    await expect(terms).toBeHidden();
+    await expect(termsLink).toBeFocused();
+    await expect(
+      page.getByRole("checkbox", { name: en ? /I accept/ : /Acepto/ }),
+    ).not.toBeChecked();
+    await expect(toggle).toHaveAttribute("aria-expanded", "false");
+    await expect(fullName).toHaveValue("Ana María Torres");
+
+    await page.setViewportSize({ width: 1440, height: 900 });
+    await expect(summary.locator('[data-stay="checkIn"]')).toBeVisible();
+    await page.setViewportSize({ width: 390, height: 844 });
+    await expect(toggle).toHaveAttribute("aria-expanded", "false");
+    await expect(fullName).toHaveValue("Ana María Torres");
+  });
+}
 
 test("switching plan and back restores the earlier checkout and acceptance", async ({
   page,
@@ -138,8 +212,9 @@ test("switching plan and back restores the earlier checkout and acceptance", asy
   await acceptTerms(page);
   const flexible = await serverCheckout(page, request);
 
-  await page.getByRole("link", { name: "Cambiar fechas, habitación o tarifa" }).click();
-  await selectRoomRate(page, "Suite Matrimonial", "No reembolsable");
+  await page.getByRole("link", { name: "Volver a tarifas" }).click();
+  await expect(page.getByRole("radio", { name: /Flexible/ })).toBeChecked();
+  await page.getByRole("radio", { name: /No reembolsable/ }).check();
   await page
     .getByRole("link", { name: "Continuar con Suite Matrimonial, tarifa No reembolsable" })
     .click();
@@ -147,24 +222,33 @@ test("switching plan and back restores the earlier checkout and acceptance", asy
   await expect(page.getByRole("checkbox", { name: /Acepto las condiciones/ })).not.toBeChecked();
   await expect(page.getByLabel("Correo electrónico")).toHaveValue("ana@example.com");
 
-  await page.getByRole("link", { name: "Cambiar fechas, habitación o tarifa" }).click();
-  await selectRoomRate(page, "Suite Matrimonial", "Flexible");
+  await page.getByRole("link", { name: "Volver a tarifas" }).click();
+  await expect(page.getByRole("radio", { name: /No reembolsable/ })).toBeChecked();
+  await page.getByRole("radio", { name: /Flexible/ }).check();
   await page
     .getByRole("link", { name: "Continuar con Suite Matrimonial, tarifa Flexible" })
     .click();
   await expect(page.locator('[data-amount="total"]')).toHaveText(/S\/\s200\.00/);
-  await expect(page.getByText("Condiciones aceptadas")).toBeVisible();
+  await expect(page.getByRole("checkbox", { name: /Acepto las condiciones/ })).toBeChecked();
+  const acceptances = countAcceptances(page);
+  await closeCardFormWithoutPaying(page, payButton(page));
+  expect(acceptances.count).toBe(0);
   expect((await serverCheckout(page, request)).quote.id).toBe(flexible.quote.id);
 });
 
-test("editing the contact after accepting asks for acceptance again", async ({ page }) => {
+test("paying again records the acceptance again only after the contact changes", async ({
+  page,
+}) => {
   await page.goto(reviewPath(openStay(), { room: "king", plan: "flexible" }));
   await acceptTerms(page);
+  const acceptances = countAcceptances(page);
+
+  await closeCardFormWithoutPaying(page, payButton(page));
+  expect(acceptances.count).toBe(0);
 
   await page.getByLabel("Nombre completo").fill("Ana María Torres");
-
-  await expect(page.getByText("Condiciones aceptadas")).toBeHidden();
-  await expect(page.getByRole("button", { name: "Aceptar condiciones" })).toBeVisible();
+  await closeCardFormWithoutPaying(page, payButton(page));
+  expect(acceptances.count).toBe(1);
 });
 
 test("an accepted quote past its lifetime stays payable and is not refreshed until the guest pays", async ({
@@ -182,15 +266,15 @@ test("an accepted quote past its lifetime stays payable and is not refreshed unt
   await page.clock.fastForward("11:00");
   await page.getByLabel("Teléfono").fill("987 654 321");
 
-  await expect(page.getByText("Condiciones aceptadas")).toBeVisible();
-  await expect(page.getByRole("button", { name: /^Pagar/ })).toBeVisible();
+  await expect(page.getByRole("checkbox", { name: /Acepto las condiciones/ })).toBeChecked();
+  await expect(payButton(page)).toBeEnabled();
   expect(refreshes).toBe(0);
 });
 
 test("browser back shows the latest contact draft", async ({ page }) => {
   await page.goto(reviewPath(openStay(), { room: "king", plan: "flexible" }));
   await fillContact(page);
-  await page.getByRole("link", { name: "Cambiar fechas, habitación o tarifa" }).click();
+  await page.getByRole("link", { name: "Cambiar fechas o habitación" }).click();
   await selectRoomRate(page, "Suite Matrimonial", "Flexible");
   await page
     .getByRole("link", { name: "Continuar con Suite Matrimonial, tarifa Flexible" })
@@ -261,7 +345,7 @@ test("a checkout past its acceptance limit keeps the details and starts a fresh 
     });
   await fillContact(page);
   await page.getByRole("checkbox", { name: /Acepto las condiciones/ }).check();
-  await page.getByRole("button", { name: "Aceptar condiciones" }).click();
+  await payButton(page).click();
 
   await expect(
     page.getByRole("heading", { name: "Esta revisión se modificó demasiadas veces" }),
@@ -270,8 +354,9 @@ test("a checkout past its acceptance limit keeps the details and starts a fresh 
   await page.getByRole("button", { name: "Intentar de nuevo" }).click();
   await expect(page.getByLabel("Correo electrónico")).toHaveValue("ana@example.com");
   await expect(page.getByRole("checkbox", { name: /Acepto las condiciones/ })).toBeChecked();
-  await page.getByRole("button", { name: "Aceptar condiciones" }).click();
-  await expect(page.getByText("Condiciones aceptadas")).toBeVisible();
+  const acceptances = countAcceptances(page);
+  await closeCardFormWithoutPaying(page, payButton(page));
+  expect(acceptances.count).toBe(1);
   expect(await storedToken(page)).not.toBe(token);
 });
 
@@ -301,13 +386,14 @@ for (const [name, fulfil, message] of [
       route.request().method() === "POST" ? fulfil(route) : route.fallback(),
     );
 
-    await page.getByRole("button", { name: "Aceptar condiciones" }).click();
+    await payButton(page).click();
 
     await expect(page.getByRole("alert")).toContainText(message);
     await expect(page.getByLabel("Correo electrónico")).toHaveValue("ana@example.com");
     await expect(page.getByRole("checkbox", { name: /Acepto las condiciones/ })).toBeChecked();
     await page.unroute(acceptanceRoute);
-    await page.getByRole("button", { name: "Aceptar condiciones" }).click();
-    await expect(page.getByText("Condiciones aceptadas")).toBeVisible();
+    const acceptances = countAcceptances(page);
+    await closeCardFormWithoutPaying(page, payButton(page));
+    expect(acceptances.count).toBe(1);
   });
 }

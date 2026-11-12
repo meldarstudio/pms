@@ -1,5 +1,5 @@
 import { Fragment, useEffect, useRef, useState, type ReactNode } from "react";
-import { CalendarBlankIcon } from "@phosphor-icons/react";
+import { CalendarBlankIcon, CaretDownIcon } from "@phosphor-icons/react";
 import type { StaySearchCopy } from "@/components/StaySearchForm";
 import {
   Accordion,
@@ -32,7 +32,7 @@ type Props = {
   rooms: RoomView[];
   details: StayDetails;
   phase: Phase;
-  preferred: RoomId | null;
+  searchReady: boolean;
   offersFor: (room: RoomView) => RoomTypeOffers | undefined;
   stateOf: (room: RoomView) => RoomState;
   onChooseDates: () => void;
@@ -46,7 +46,7 @@ export function RoomOffers({
   rooms,
   details,
   phase,
-  preferred,
+  searchReady,
   offersFor,
   stateOf,
   onChooseDates,
@@ -54,7 +54,12 @@ export function RoomOffers({
   const [roomId, setRoomId] = useState<RoomId | null>(null);
   const [planCode, setPlanCode] = useState<RatePlanCode | null>(null);
   const previousRoom = useRef<RoomId | null>(null);
-  const restore = useRef<"pending" | "done">("pending");
+  const [restored, setRestored] = useState(false);
+  const section = useRef<HTMLElement>(null);
+  const restoringRates =
+    !restored &&
+    (phase.kind === "loading" || phase.kind === "found") &&
+    Boolean(phase.search.room && phase.search.plan);
   const room = rooms.find((item) => item.id === roomId);
   const offers = room ? offersFor(room) : undefined;
   const rates = [...(offers?.offers ?? [])].sort((a, b) => a.totalCents - b.totalCents);
@@ -64,6 +69,11 @@ export function RoomOffers({
     room !== undefined &&
     stateOf(room) === "available" &&
     selected !== undefined;
+
+  useEffect(() => {
+    if (searchReady)
+      section.current?.closest("[data-rooms-booking]")?.removeAttribute("data-resume-rates");
+  }, [searchReady]);
 
   useEffect(() => {
     if (phase.kind === "loading") setRoomId(null);
@@ -80,8 +90,8 @@ export function RoomOffers({
   }, [phase, roomId, rooms]);
 
   useEffect(() => {
-    if (restore.current === "done" || phase.kind !== "found") return;
-    restore.current = "done";
+    if (restored || phase.kind !== "found") return;
+    setRestored(true);
     const { room: roomToOpen, plan } = phase.search;
     if (!roomToOpen || !plan) return;
     const chosen = rooms.find((item) => item.id === roomToOpen);
@@ -96,7 +106,7 @@ export function RoomOffers({
       return;
     setPlanCode(plan);
     setRoomId(chosen.id);
-  }, [phase, rooms]);
+  }, [phase, rooms, restored]);
 
   useEffect(() => {
     const last = previousRoom.current;
@@ -116,51 +126,160 @@ export function RoomOffers({
   }
 
   return (
-    <section className="bg-stone-100">
+    <section ref={section} className="bg-stone-100">
       <div className="mx-auto flex max-w-7xl flex-col gap-10 px-4 py-8 md:px-8 md:py-12">
-        <BookingSteps
-          id="offer-steps"
-          className="scroll-mt-[calc(8rem+env(safe-area-inset-top))] md:scroll-mt-[calc(9.5rem+env(safe-area-inset-top))]"
-          text={text}
-          current={onRates ? "rate" : "room"}
-          onChangeRoom={() => setRoomId(null)}
-        />
-        {onRates && room && phase.kind === "found" && selected ? (
-          <RateStep
-            lang={lang}
-            text={text}
-            searchCopy={searchCopy}
-            reviewHref={reviewHref}
-            room={room}
-            phase={phase}
-            preferred={room.id === preferred}
-            rates={rates}
-            selected={selected}
-            onPlan={setPlanCode}
-          />
-        ) : (
-          <ul
-            className={`grid gap-6 ${roomGridColumns(rooms.length)}`}
-            aria-busy={phase.kind === "loading"}
-          >
-            {rooms.map((item) => (
-              <RoomRow
-                key={item.id}
-                room={item}
-                lang={lang}
-                text={text}
-                details={details}
-                phase={phase}
-                preferred={item.id === preferred}
-                offers={offersFor(item)}
-                state={stateOf(item)}
-                onOpen={phase.kind === "idle" ? onChooseDates : () => openRoom(item.id)}
-              />
-            ))}
-          </ul>
+        {(phase.kind === "idle" || restoringRates) && (
+          <div data-rate-loading className={restoringRates ? undefined : "hidden"}>
+            <BookingSteps text={text} current="rate" />
+            <div className="mt-10" aria-busy="true">
+              <RateStepLoading text={text} />
+            </div>
+          </div>
         )}
+        <div data-room-step hidden={restoringRates} className="flex flex-col gap-10">
+          <BookingSteps
+            id="offer-steps"
+            className="scroll-mt-[calc(8rem+env(safe-area-inset-top))] md:scroll-mt-[calc(9.5rem+env(safe-area-inset-top))]"
+            text={text}
+            current={onRates ? "rate" : "room"}
+            onChangeRoom={() => setRoomId(null)}
+          />
+          {onRates && room && phase.kind === "found" && selected ? (
+            <RateStep
+              lang={lang}
+              text={text}
+              searchCopy={searchCopy}
+              reviewHref={reviewHref}
+              room={room}
+              phase={phase}
+              rates={rates}
+              selected={selected}
+              onPlan={setPlanCode}
+            />
+          ) : (
+            <ul
+              className={`grid gap-6 ${roomGridColumns(rooms.length)}`}
+              aria-busy={phase.kind === "loading"}
+            >
+              {rooms.map((item) => (
+                <RoomRow
+                  key={item.id}
+                  room={item}
+                  lang={lang}
+                  text={text}
+                  details={details}
+                  phase={phase}
+                  offers={offersFor(item)}
+                  state={stateOf(item)}
+                  onOpen={phase.kind === "idle" ? onChooseDates : () => openRoom(item.id)}
+                />
+              ))}
+            </ul>
+          )}
+        </div>
       </div>
     </section>
+  );
+}
+
+function RateStepLoading({ text }: { text: RoomsBookingText }) {
+  return (
+    <div className="grid items-start gap-10 lg:grid-cols-[minmax(0,1fr)_26rem] lg:grid-rows-[auto_1fr] lg:gap-x-12 lg:gap-y-10">
+      <div className="lg:col-start-1">
+        <h2 className="text-2xl font-semibold text-pretty text-stone-900 md:text-3xl">
+          {text["reservation.rate.choose"]}
+        </h2>
+        <Skeleton
+          aria-hidden="true"
+          className="mt-2 h-6 w-80 max-w-full bg-stone-200 motion-reduce:animate-none"
+        />
+        <div aria-hidden="true" className="mt-6 flex flex-col gap-3">
+          {(["non_refundable", "flexible"] as const).map((plan) => (
+            <div
+              key={plan}
+              className="grid grid-cols-[auto_minmax(0,1fr)] gap-x-3 gap-y-2 border border-stone-300 bg-white p-4 md:p-5"
+            >
+              <Skeleton className="mt-1 size-5 motion-reduce:animate-none" />
+              <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
+                <span className="text-lg font-semibold text-stone-900">
+                  {text[`reservation.plan.${plan}`]}
+                </span>
+                <span className="ml-auto text-xl font-semibold">
+                  <Skeleton className="inline-block h-lh w-24 align-top motion-reduce:animate-none" />
+                </span>
+              </div>
+              <div className="col-start-2 text-sm leading-relaxed">
+                <Skeleton
+                  className={`h-lh w-full motion-reduce:animate-none ${plan === "flexible" ? "max-md:h-[2lh]" : ""}`}
+                />
+              </div>
+              <div className="col-start-2 flex flex-col gap-1 text-sm text-stone-600">
+                <div className="flex justify-between gap-4">
+                  <span>{text["reservation.rate.due"]}</span>
+                  <Skeleton className="h-lh w-20 motion-reduce:animate-none" />
+                </div>
+                {plan === "flexible" && (
+                  <div className="flex justify-between gap-4">
+                    <span>{text["reservation.offer.remaining"]}</span>
+                    <Skeleton className="h-lh w-20 motion-reduce:animate-none" />
+                  </div>
+                )}
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+      <div
+        aria-hidden="true"
+        className="flex flex-col border border-stone-200 bg-white lg:sticky lg:top-36 lg:col-start-2 lg:row-span-2 lg:row-start-1"
+      >
+        <div className="p-5 md:p-6">
+          <div className="flex items-start gap-4">
+            <Skeleton className="size-20 shrink-0 motion-reduce:animate-none" />
+            <div className="min-w-0 flex-1">
+              <p className="font-source-sans-3 text-xs font-medium tracking-widest text-stone-600 uppercase">
+                {text["reservation.review.stay"]}
+              </p>
+              <Skeleton className="mt-2 h-7 w-48 max-w-full motion-reduce:animate-none" />
+              <Skeleton className="mt-1 h-5 w-36 max-w-full motion-reduce:animate-none" />
+            </div>
+          </div>
+          <div className="mt-4 flex flex-col gap-2 text-sm">
+            {(["dates", "guests", "plan"] as const).map((key) => (
+              <div key={key} className="flex justify-between gap-4">
+                <span className="text-stone-600">{text[`reservation.review.${key}`]}</span>
+                <Skeleton className="h-lh w-40 max-w-full motion-reduce:animate-none" />
+              </div>
+            ))}
+          </div>
+          <div className="mt-4 border-t border-stone-200 pt-4">
+            <p className="text-sm text-stone-600">{text["reservation.offer.total"]}</p>
+            <Skeleton className="h-9 w-40 motion-reduce:animate-none" />
+            <div className="mt-3 flex flex-col gap-1 text-sm text-stone-600">
+              {["reservation.rate.due", "reservation.offer.remaining"].map((key) => (
+                <div key={key} className="flex justify-between gap-4">
+                  <span>{text[key as RoomsBookingKey]}</span>
+                  <Skeleton className="h-lh w-20 motion-reduce:animate-none" />
+                </div>
+              ))}
+            </div>
+            <Skeleton className="mt-3 h-4 w-60 max-w-full motion-reduce:animate-none" />
+            <Skeleton className="mt-4 h-12 w-full motion-reduce:animate-none" />
+          </div>
+        </div>
+      </div>
+      <div aria-hidden="true" className="border-t border-stone-200 lg:col-start-1">
+        {["cancelTitle", "checkInTitle", "breakfast", "petsTitle", "paymentTitle"].map((key) => (
+          <div
+            key={key}
+            className="flex min-h-12 items-center justify-between gap-4 border-b border-stone-200 py-3 font-medium text-stone-900"
+          >
+            {text[`rooms.policies.${key}` as RoomsBookingKey]}
+            <CaretDownIcon aria-hidden="true" className="size-4 shrink-0 text-stone-500" />
+          </div>
+        ))}
+      </div>
+    </div>
   );
 }
 
@@ -170,7 +289,6 @@ function RoomRow({
   text,
   details,
   phase,
-  preferred,
   offers,
   state,
   onOpen,
@@ -180,7 +298,6 @@ function RoomRow({
   text: RoomsBookingText;
   details: StayDetails;
   phase: Phase;
-  preferred: boolean;
   offers: RoomTypeOffers | undefined;
   state: RoomState;
   onOpen: () => void;
@@ -199,7 +316,6 @@ function RoomRow({
         details={details}
         offers={offers}
         loading={phase.kind === "loading"}
-        preferred={preferred}
       >
         <div className="text-right">
           {phase.kind === "idle" ? (
@@ -283,7 +399,6 @@ function RateStep({
   reviewHref,
   room,
   phase,
-  preferred,
   rates,
   selected,
   onPlan,
@@ -294,7 +409,6 @@ function RateStep({
   reviewHref: string;
   room: RoomView;
   phase: Extract<Phase, { kind: "found" }>;
-  preferred: boolean;
   rates: PlanOffer[];
   selected: PlanOffer;
   onPlan: (plan: RatePlanCode) => void;
@@ -386,11 +500,6 @@ function RateStep({
               </p>
             </div>
           </div>
-          {preferred && (
-            <p className="mt-3 inline-block bg-accent-100 px-2 py-1 font-source-sans-3 text-xs font-semibold tracking-widest text-accent-900 uppercase">
-              {say("reservation.room.preferred")}
-            </p>
-          )}
           <dl className="mt-4 flex flex-col gap-2 text-sm">
             <SummaryRow
               term={say("reservation.review.dates")}
