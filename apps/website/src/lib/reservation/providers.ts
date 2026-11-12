@@ -36,13 +36,18 @@ export type AuthenticationParameters = {
   directoryServerTransactionId: string;
 };
 
+type BankModalStyle = {
+  btnColor: string;
+  btnTextColor: string;
+};
+
 type Culqi3DS = {
   publicKey: string;
   settings: {
     charge: { totalAmount: number; returnUrl: string; currency?: string };
     card: { email: string };
   };
-  options?: { closeModalAction?: () => void };
+  options?: { closeModalAction?: () => void; style?: Partial<BankModalStyle> };
   generateDevice: () => Promise<string | null>;
   initAuthentication: (tokenId: string) => Promise<void>;
   reset: () => void;
@@ -126,6 +131,11 @@ type BankCharge = {
   amountCents: number;
   currency: string;
   email: string;
+};
+
+const bankModalStyle: BankModalStyle = {
+  btnColor: "#f27b02",
+  btnTextColor: "#37180a",
 };
 
 function configureBank(culqi3DS: Culqi3DS, options: BankCharge) {
@@ -216,7 +226,7 @@ export async function openBankAuthentication(
   configureBank(culqi3DS, options);
   ensureBankListener();
   bankHandler = { onParameters: options.onParameters, onIncomplete: options.onIncomplete };
-  culqi3DS.options = { closeModalAction: bankClosed };
+  culqi3DS.options = { closeModalAction: bankClosed, style: bankModalStyle };
   try {
     await culqi3DS.initAuthentication(options.sourceId);
   } catch {
