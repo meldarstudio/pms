@@ -4,6 +4,7 @@ import {
   quoteStillValid,
   selectionKey,
   type BookingContact,
+  type ContactDraft,
   type CheckoutOutcome,
   type CheckoutSelection,
   type CheckoutView,
@@ -29,6 +30,7 @@ import { allowsNewPayment, type GuestPayment, type PaymentOutcome } from "./paym
 import type { AuthenticationParameters } from "./providers";
 import type { StaySearch } from "./search";
 import type { CheckoutAccess } from "./summary";
+import { emptyPhone, type PhoneValue } from "./phone";
 
 export type FocusTarget =
   | ReviewField
@@ -79,7 +81,7 @@ export type State = {
   reviewShown: boolean;
   problem: Problem | null;
   status: StatusLine;
-  contact: BookingContact;
+  contact: ContactDraft;
   agreed: boolean;
   changed: boolean;
   fieldErrors: FieldErrors;
@@ -108,7 +110,7 @@ export const initialState: State = {
   reviewShown: false,
   problem: null,
   status: { key: LOADING_STATUS, visible: true },
-  contact: { fullName: "", email: "", phone: "" },
+  contact: { fullName: "", email: "", phone: emptyPhone, notes: "" },
   agreed: false,
   changed: false,
   fieldErrors: noFieldErrors,
@@ -125,7 +127,7 @@ export const initialState: State = {
 };
 
 export type Draft = {
-  contact: BookingContact;
+  contact: ContactDraft;
   checkout: StoredCheckout | null;
   card: StoredCard | null;
 };
@@ -167,7 +169,8 @@ export type Event =
     }
   | { type: "pageShown"; persisted: boolean; draft: Draft }
   | { type: "networkRestored" }
-  | { type: "contactEdited"; field: "fullName" | "email" | "phone"; value: string }
+  | { type: "contactEdited"; field: "fullName" | "email" | "notes"; value: string }
+  | { type: "phoneEdited"; phone: PhoneValue }
   | { type: "agreeToggled"; agreed: boolean }
   | { type: "payRequested" }
   | { type: "loadRequested" }
@@ -201,7 +204,7 @@ export type Effect =
   | {
       type: "acceptQuote";
       token: string;
-      acceptance: { quoteId: string; language: Lang; contact: BookingContact };
+      acceptance: { quoteId: string; language: Lang; contact: BookingContact; notes?: string };
     }
   | { type: "readPayment"; token: string; after: PaymentThen }
   | { type: "startPayment"; token: string; payment: PaymentRequest }
@@ -220,7 +223,7 @@ export type Effect =
   | { type: "storeCheckout"; key: string; checkout: StoredCheckout }
   | { type: "storeCard"; key: string; card: StoredCard }
   | { type: "clearCardSource"; key: string }
-  | { type: "storeContact"; contact: BookingContact }
+  | { type: "storeContact"; contact: ContactDraft }
   | { type: "storeConfirmedReservation"; code: string }
   | { type: "schedulePoll" }
   | { type: "cancelPoll" }
@@ -647,6 +650,7 @@ function acceptEffect(c: Ctx, view: CheckoutView): Effect {
       quoteId: view.quote.id,
       language: c.s.lang,
       contact: trimmedContact(c.s.contact),
+      ...(c.s.contact.notes.trim() ? { notes: c.s.contact.notes.trim() } : {}),
     },
   };
 }
@@ -952,6 +956,11 @@ function handle(c: Ctx, event: Event) {
       c.s.contact = { ...c.s.contact, [event.field]: event.value };
       c.fx.push({ type: "storeContact", contact: c.s.contact });
       fieldError(c, event.field, null);
+      return showCheckout(c);
+    case "phoneEdited":
+      c.s.contact = { ...c.s.contact, phone: event.phone };
+      c.fx.push({ type: "storeContact", contact: c.s.contact });
+      fieldError(c, "phone", null);
       return showCheckout(c);
     case "agreeToggled":
       c.s.agreed = event.agreed;

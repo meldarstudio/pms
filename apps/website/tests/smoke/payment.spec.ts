@@ -107,6 +107,40 @@ async function serverPayment(page: Page, request: APIRequestContext) {
 
 const localState = fileURLToPath(new URL("../../.local-api/state", import.meta.url));
 
+test("the chosen international phone and edited reservation note are accepted and saved", async ({
+  page,
+}) => {
+  const email = payerEmail();
+  await fillCheckout(page, "flexible", email);
+  await page.getByRole("combobox", { name: /^País y código:/ }).click();
+  await page.getByRole("combobox", { name: "Buscar país" }).fill("Reino Unido");
+  await page.getByRole("option", { name: "Reino Unido +44", exact: true }).click();
+  await page.locator("#phone").fill("02079460018");
+  await expect(page.locator("#phone")).toHaveValue("020 7946 0018");
+  await page.locator("#notes").fill("  Arriving at 9 pm  ");
+  await closeCardFormWithoutPaying(page, payButton(page, "100.00"));
+  await page.locator("#notes").fill("  Arriving at 10 pm, quiet room please  ");
+  await payButton(page, "100.00").click();
+  await expectConfirmed(page);
+  expect(
+    queryRows(
+      localDatabase(localState),
+      `SELECT a.phone, a.notes FROM checkout_acceptances a WHERE a.email = '${email}' ORDER BY a.rowid`,
+    ),
+  ).toEqual([
+    { phone: "+442079460018", notes: "Arriving at 9 pm" },
+    { phone: "+442079460018", notes: "Arriving at 10 pm, quiet room please" },
+  ]);
+  expect(
+    queryRows(
+      localDatabase(localState),
+      `SELECT r.notes, g.notes AS guest_notes, g.phone FROM reservations r JOIN guests g ON g.id = r.guest_id WHERE g.email = '${email}'`,
+    ),
+  ).toEqual([
+    { phone: "+442079460018", notes: "Arriving at 10 pm, quiet room please", guest_notes: null },
+  ]);
+});
+
 for (const [language, plan, offset] of [
   ["es", "flexible", 240],
   ["en", "non_refundable", 250],

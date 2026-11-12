@@ -1,5 +1,6 @@
 import type { Lang } from "@/i18n/utils";
 import type { FreeCancellation } from "./offers";
+import type { PhoneValue } from "./phone";
 import type { RatePlanCode } from "./search";
 
 export type CheckoutSelection = {
@@ -21,6 +22,13 @@ const selectionFields = [
 ] as const satisfies readonly (keyof CheckoutSelection)[];
 
 export type BookingContact = { fullName: string; email: string; phone: string };
+
+export type ContactDraft = {
+  fullName: string;
+  email: string;
+  phone: PhoneValue;
+  notes: string;
+};
 
 export type CheckoutView = CheckoutSelection & {
   nights: number;
@@ -113,7 +121,7 @@ export const refreshQuote = (apiBase: string, token: string) =>
 export const acceptQuote = (
   apiBase: string,
   token: string,
-  acceptance: { quoteId: string; language: Lang; contact: BookingContact },
+  acceptance: { quoteId: string; language: Lang; contact: BookingContact; notes?: string },
 ) =>
   call(apiBase, "public/checkout/acceptances", {
     method: "POST",

@@ -11,7 +11,8 @@ choosing a room replaces that list with the room's rate plans, lowest selected, 
 Book link to Review. The last
 search is kept in `sessionStorage` (`src/lib/reservation/draft.ts`) so the homepage
 and Choose prefill it; dates before the first online arrival are dropped. Review (`/reservar/revisar/`) opens a private checkout, shows
-its server Quote, and records the booking contact's acceptance. Pay refreshes an
+its server Quote, and records the booking contact's acceptance, including an
+optional note that the paid reservation keeps. Pay refreshes an
 expired quote and keeps that acceptance only when the guest is paying; an unchanged
 offer is charged, and a changed offer, including a lower price, is shown for a new
 acceptance and is not charged. Accepting an expired quote also refreshes, then records

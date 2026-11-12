@@ -88,9 +88,10 @@ export const contactProblems: Record<string, [ContactField, string]> = {
   "invalid email": ["email", "reservation.review.error.email"],
   "phone is required": ["phone", "reservation.review.error.phone"],
   "invalid phone number": ["phone", "reservation.review.error.phoneInvalid"],
-  "phone number is too short": ["phone", "reservation.review.error.phoneInvalid"],
-  "phone number is too long": ["phone", "reservation.review.error.phoneInvalid"],
-  "phone extensions are not supported": ["phone", "reservation.review.error.phoneInvalid"],
+  "phone number is too short": ["phone", "reservation.review.error.phoneTooShort"],
+  "phone number is too long": ["phone", "reservation.review.error.phoneTooLong"],
+  "phone extensions are not supported": ["phone", "reservation.review.error.phoneExtension"],
+  "notes are too long": ["notes", "reservation.review.error.notesTooLong"],
 };
 
 const outcomeTone: Record<GuestPayment["state"], string> = {

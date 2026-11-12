@@ -141,6 +141,7 @@ export default function Review({
                 errors={state.fieldErrors}
                 focus={focus}
                 onEdit={(field, value) => dispatch({ type: "contactEdited", field, value })}
+                onEditPhone={(phone) => dispatch({ type: "phoneEdited", phone })}
               />
               <PaymentSection
                 state={state}

@@ -11,7 +11,8 @@ export const card = "p-6 md:p-8";
 export const cardTitle = "text-[1.375rem] leading-snug font-semibold text-stone-900";
 export const headline = "flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1";
 export const row = "flex items-baseline justify-between gap-4 py-0.5";
-export const field =
-  "mt-2 block min-h-12 w-full border border-stone-400 bg-white px-3 text-base text-stone-900 aria-invalid:border-red-700";
+export const control =
+  "block min-h-12 w-full border border-stone-400 bg-white px-3 text-base text-stone-900 aria-invalid:border-red-700";
+export const field = `mt-2 ${control}`;
 export const label = "font-source-sans-3 text-sm font-semibold text-stone-800";
 export const error = "mt-2 text-sm font-medium text-red-800";

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vite-plus/test";
-import { offerKey, type CheckoutSelection, type CheckoutView } from "./checkout";
+import { offerKey, type ContactDraft, type CheckoutSelection, type CheckoutView } from "./checkout";
 import {
   initialState,
   next,
@@ -28,7 +28,12 @@ const selection: CheckoutSelection = {
   ratePlan: "flexible",
 };
 
-const contact = { fullName: "Ana Pérez", email: "ana@example.com", phone: "+51 999 888 777" };
+const contact: ContactDraft = {
+  fullName: "Ana Pérez",
+  email: "ana@example.com",
+  phone: { country: "PE", text: "999888777" },
+  notes: "",
+};
 
 function quoteView(
   options: { quoteId?: string; total?: number; accepted?: boolean; expiresAt?: string } = {},
@@ -174,7 +179,7 @@ describe("validating before paying", () => {
       state,
       { type: "contactEdited", field: "email", value: "ana@" },
       { type: "contactEdited", field: "fullName", value: "  " },
-      { type: "contactEdited", field: "phone", value: "" },
+      { type: "phoneEdited", phone: { country: "PE", text: "" } },
       { type: "agreeToggled", agreed: false },
     );
 
@@ -184,6 +189,7 @@ describe("validating before paying", () => {
       fullName: "reservation.review.error.fullName",
       email: "reservation.review.error.email",
       phone: "reservation.review.error.phone",
+      notes: null,
       agree: "reservation.review.error.agree",
     });
     expect(paid.effects).toEqual([{ type: "focus", target: "fullName" }]);
@@ -198,6 +204,7 @@ describe("validating before paying", () => {
       fullName: null,
       email: null,
       phone: null,
+      notes: null,
       agree: "reservation.review.error.agree",
     });
     expect(types(paid.effects)).not.toContain("acceptQuote");
@@ -217,6 +224,43 @@ describe("validating before paying", () => {
 });
 
 describe("recording the acceptance before paying", () => {
+  it("accepts an edited note as a trimmed top-level reservation note", () => {
+    const paid = drive(
+      openReview(),
+      { type: "contactEdited", field: "notes", value: "  Arriving at 9 pm  " },
+      { type: "payRequested" },
+    );
+    expect(ofType(paid.effects, "acceptQuote")[0]?.acceptance).toEqual({
+      quoteId: "quote-1",
+      language: "es",
+      contact: { fullName: "Ana Pérez", email: "ana@example.com", phone: "+51999888777" },
+      notes: "Arriving at 9 pm",
+    });
+    expect(ofType(paid.effects, "storeContact")[0]?.contact.notes).toBe("  Arriving at 9 pm  ");
+  });
+
+  it("does not accept again for phone formatting or blank note changes", () => {
+    const paid = drive(
+      openReview(),
+      { type: "phoneEdited", phone: { country: "PE", text: "+51 999 888 777" } },
+      { type: "contactEdited", field: "notes", value: "  " },
+      { type: "payRequested" },
+    );
+    expect(types(paid.effects)).not.toContain("acceptQuote");
+    expect(types(paid.effects)).toContain("readPayment");
+  });
+
+  it("focuses an overlong note before starting acceptance or payment", () => {
+    const paid = drive(
+      openReview(),
+      { type: "contactEdited", field: "notes", value: "x".repeat(2001) },
+      { type: "payRequested" },
+    );
+    expect(paid.state.fieldErrors.notes).toBe("reservation.review.error.notesTooLong");
+    expect(ofType(paid.effects, "focus")).toEqual([{ type: "focus", target: "notes" }]);
+    expect(types(paid.effects)).not.toContain("acceptQuote");
+    expect(types(paid.effects)).not.toContain("readPayment");
+  });
   it("sends no acceptance when the stored one matches the quote and contact", () => {
     const paid = drive(openReview(), { type: "payRequested" });
 
@@ -227,14 +271,16 @@ describe("recording the acceptance before paying", () => {
   it("accepts again with the current contact and language after the contact changed", () => {
     const state = openReview({ lang: "en" });
     const edited = drive(state, {
-      type: "contactEdited",
-      field: "phone",
-      value: "  +51 900 000 000 ",
+      type: "phoneEdited",
+      phone: { country: "PE", text: "900000000" },
     });
 
     const paid = drive(edited.state, { type: "payRequested" });
 
-    expect(ofType(edited.effects, "storeContact")[0]?.contact.phone).toBe("  +51 900 000 000 ");
+    expect(ofType(edited.effects, "storeContact")[0]?.contact.phone).toEqual({
+      country: "PE",
+      text: "900000000",
+    });
     expect(ofType(paid.effects, "acceptQuote")).toEqual([
       {
         type: "acceptQuote",
@@ -242,7 +288,7 @@ describe("recording the acceptance before paying", () => {
         acceptance: {
           quoteId: "quote-1",
           language: "en",
-          contact: { ...contact, phone: "+51 900 000 000" },
+          contact: { fullName: contact.fullName, email: contact.email, phone: "+51900000000" },
         },
       },
     ]);

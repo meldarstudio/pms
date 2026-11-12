@@ -336,7 +336,17 @@ export const ui = {
     "reservation.review.fullName": "Full name",
     "reservation.review.email": "Email",
     "reservation.review.phone": "Phone",
-    "reservation.review.phoneHint": "Include the country code if it isn't a Peruvian number.",
+    "reservation.review.phoneCountry": "Country and calling code: {name} ({code})",
+    "reservation.review.phoneCountrySearch": "Search countries",
+    "reservation.review.phoneCountryEmpty": "No countries found.",
+    "reservation.review.notes": "Reservation notes (optional)",
+    "reservation.review.notesHint":
+      "Let us know your arrival time or any special requests. Up to 2000 characters.",
+    "reservation.review.error.phoneTooShort":
+      "The phone number is too short. For a landline, include the area code.",
+    "reservation.review.error.phoneTooLong": "The phone number is too long.",
+    "reservation.review.error.phoneExtension": "Enter a phone number without an extension.",
+    "reservation.review.error.notesTooLong": "Keep your notes to 2000 characters or fewer.",
     "reservation.review.terms": "Reservation terms",
     "reservation.review.termsLink": "reservation terms",
     "reservation.review.closeTerms": "Close",
@@ -456,7 +466,7 @@ export const ui = {
     "reservation.review.error.email": "Enter a valid email, like name@example.com.",
     "reservation.review.error.phone": "Enter a phone number.",
     "reservation.review.error.phoneInvalid":
-      "This phone number isn't valid. Include the country code if it isn't Peruvian.",
+      "This phone number isn't valid for the selected country.",
     "reservation.review.error.agree": "Check the box to accept the terms.",
     "reservation.review.error.invalid": "We couldn't save these details. Check them and try again.",
     "reservation.review.limited.title": "This review was changed too many times",
@@ -820,7 +830,17 @@ export const ui = {
     "reservation.review.fullName": "Nombre completo",
     "reservation.review.email": "Correo electrónico",
     "reservation.review.phone": "Teléfono",
-    "reservation.review.phoneHint": "Incluya el código de país si no es un número peruano.",
+    "reservation.review.phoneCountry": "País y código: {name} ({code})",
+    "reservation.review.phoneCountrySearch": "Buscar país",
+    "reservation.review.phoneCountryEmpty": "No se encontraron países.",
+    "reservation.review.notes": "Notas para su reserva (opcional)",
+    "reservation.review.notesHint":
+      "Cuéntenos su hora de llegada o si tiene alguna solicitud especial. Máximo 2000 caracteres.",
+    "reservation.review.error.phoneTooShort":
+      "El número es muy corto. Si es un teléfono fijo, incluya el código de área.",
+    "reservation.review.error.phoneTooLong": "El número de teléfono es muy largo.",
+    "reservation.review.error.phoneExtension": "Ingrese un teléfono sin extensión.",
+    "reservation.review.error.notesTooLong": "Las notas no pueden superar los 2000 caracteres.",
     "reservation.review.terms": "Condiciones de la reserva",
     "reservation.review.termsLink": "condiciones de la reserva",
     "reservation.review.closeTerms": "Cerrar",
@@ -938,8 +958,7 @@ export const ui = {
     "reservation.review.error.fullName": "Ingrese el nombre completo del contacto.",
     "reservation.review.error.email": "Ingrese un correo válido, por ejemplo nombre@ejemplo.com.",
     "reservation.review.error.phone": "Ingrese un número de teléfono.",
-    "reservation.review.error.phoneInvalid":
-      "Este número de teléfono no es válido. Incluya el código de país si no es peruano.",
+    "reservation.review.error.phoneInvalid": "Este número no es válido para el país seleccionado.",
     "reservation.review.error.agree": "Marque la casilla para aceptar las condiciones.",
     "reservation.review.error.invalid":
       "No pudimos guardar estos datos. Revíselos e intente de nuevo.",

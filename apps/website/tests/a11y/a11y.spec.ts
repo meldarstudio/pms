@@ -158,6 +158,21 @@ for (const lang of ["", "/en"]) {
     await expect(page.locator("[data-pay-button]")).toBeEnabled();
     await expect(page.locator("[data-security-check]")).toContainText("Security check complete");
     await runAxe(page, `${lang}/reservar/revisar/ (pay)`);
+    await page
+      .getByRole("combobox", { name: /^(País y código|Country and calling code):/ })
+      .click();
+    await expect(
+      page.getByRole("combobox", { name: /^(Buscar país|Search countries)$/ }),
+    ).toBeVisible();
+    await page.evaluate(async () => {
+      await Promise.all(
+        document
+          .getAnimations()
+          .filter((animation) => animation.effect?.getComputedTiming().endTime !== Infinity)
+          .map((animation) => animation.finished),
+      );
+    });
+    await runAxe(page, `${lang}/reservar/revisar/ (phone country picker)`);
   });
 
   test(`a11y: ${lang}/reservar/revisar/ with money received but unconfirmed`, async ({ page }) => {

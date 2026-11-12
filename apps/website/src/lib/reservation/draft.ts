@@ -1,4 +1,5 @@
-import type { BookingContact } from "./checkout";
+import type { ContactDraft } from "./checkout";
+import { phoneKey, storedPhone } from "./phone";
 import { firstOnlineArrival, readSearch, searchParams, type StaySearch } from "./search";
 
 const CHECKOUTS_KEY = "hm.reservation.checkouts";
@@ -15,8 +16,13 @@ export type StoredCheckout = {
   submitted?: string | null;
 };
 
-export const contactKey = (contact: BookingContact) =>
-  JSON.stringify([contact.fullName.trim(), contact.email.trim(), contact.phone.trim()]);
+export const contactKey = (contact: ContactDraft) =>
+  JSON.stringify([
+    contact.fullName.trim(),
+    contact.email.trim(),
+    phoneKey(contact.phone),
+    contact.notes.trim(),
+  ]);
 
 function read<T>(key: string): T | null {
   try {
@@ -49,16 +55,17 @@ export function storeCheckout(selection: string, checkout: StoredCheckout) {
   write(CHECKOUTS_KEY, Object.fromEntries([...kept, [selection, checkout]]));
 }
 
-export function storedContact(): BookingContact {
-  const stored = read<Partial<BookingContact>>(CONTACT_KEY);
+export function storedContact(): ContactDraft {
+  const stored = read<Partial<ContactDraft>>(CONTACT_KEY);
   return {
     fullName: typeof stored?.fullName === "string" ? stored.fullName : "",
     email: typeof stored?.email === "string" ? stored.email : "",
-    phone: typeof stored?.phone === "string" ? stored.phone : "",
+    phone: storedPhone(stored?.phone),
+    notes: typeof stored?.notes === "string" ? stored.notes : "",
   };
 }
 
-export const storeContact = (contact: BookingContact) => write(CONTACT_KEY, contact);
+export const storeContact = (contact: ContactDraft) => write(CONTACT_KEY, contact);
 
 const CARD_SOURCE = /^tkn_[\w-]{1,200}$/;
 
