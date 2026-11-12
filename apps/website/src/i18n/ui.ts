@@ -372,6 +372,8 @@ export const ui = {
       "The card form couldn't open. Nothing was charged: check your connection and try again.",
     "reservation.pay.error.unavailable":
       "We couldn't send your payment and nothing was charged. Your details are kept: try again in a moment, or message us on WhatsApp.",
+    "reservation.pay.error.retry":
+      "The payment didn't go through and nothing was charged. Your details are kept on this page: please pay again.",
     "reservation.outcome.submitted.title": "Payment sent, checking its status",
     "reservation.outcome.submitted.body":
       "We sent your payment but didn't receive an answer, so your card may have been charged. Please don't pay again: check its status here, or message us on WhatsApp or by email for help.",
@@ -855,6 +857,8 @@ export const ui = {
       "No se pudo abrir el formulario de la tarjeta. No se cobró nada: revise su conexión e intente de nuevo.",
     "reservation.pay.error.unavailable":
       "No pudimos enviar su pago y no se cobró nada. Sus datos se conservan: intente de nuevo en un momento o escríbanos por WhatsApp.",
+    "reservation.pay.error.retry":
+      "El pago no se completó y no se cobró nada. Sus datos se conservan en esta página: vuelva a pagar.",
     "reservation.outcome.submitted.title": "Pago enviado, consultando su estado",
     "reservation.outcome.submitted.body":
       "Enviamos su pago pero no recibimos respuesta, así que su tarjeta podría haberse cobrado. No pague de nuevo: consulte su estado aquí o escríbanos por WhatsApp o por correo si necesita ayuda.",

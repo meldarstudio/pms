@@ -86,6 +86,7 @@ export type State = {
   formError: string;
   payment: GuestPayment | null;
   outcomeShown: boolean;
+  submittedPolls: number;
   stored: StoredCheckout | null;
   card: StoredCard | null;
   pay: PayStep;
@@ -95,6 +96,7 @@ export type State = {
 };
 
 export const LOADING_STATUS = "reservation.review.loading";
+export const SUBMITTED_POLLS = 12;
 
 export const initialState: State = {
   lang: "es",
@@ -113,6 +115,7 @@ export const initialState: State = {
   formError: "",
   payment: null,
   outcomeShown: false,
+  submittedPolls: 0,
   stored: null,
   card: null,
   pay: { kind: "idle" },
@@ -273,6 +276,7 @@ function writeCheckout(c: Ctx, checkout: StoredCheckout) {
 }
 
 function markSubmitted(c: Ctx, quoteId: string | null) {
+  if (quoteId) c.s.submittedPolls = 0;
   if (c.s.stored) writeCheckout(c, { ...c.s.stored, submitted: quoteId });
 }
 
@@ -349,6 +353,7 @@ function restoreDraft(c: Ctx, draft: Draft) {
 
 function load(c: Ctx, releasesPay: boolean) {
   c.s.problem = null;
+  c.s.submittedPolls = 0;
   c.s.status = { key: LOADING_STATUS, visible: true };
   if (releasesPay) c.s.pay = { kind: "reloading" };
   openCheckout(c, { kind: "load", releasesPay });
@@ -432,8 +437,12 @@ function showPayment(c: Ctx, payment: GuestPayment | null, focusOutcome: boolean
   showCheckout(c);
   if (payment && focusOutcome) focus(c, "outcomeTitle");
   if (payment?.state === "authentication_required") maybeOpenBank(c);
-  if (payment && VERIFYING.includes(payment.state) && !payment.delayed)
-    c.fx.push({ type: "schedulePoll" });
+  if (payment && pollsStatus(c.s, payment)) c.fx.push({ type: "schedulePoll" });
+}
+
+function pollsStatus(s: State, payment: GuestPayment) {
+  if (payment.state === "submitted") return s.submittedPolls < SUBMITTED_POLLS;
+  return VERIFYING.includes(payment.state) && !payment.delayed;
 }
 
 function showAccess(c: Ctx, payment: GuestPayment | null) {
@@ -719,7 +728,11 @@ function afterConfirm(c: Ctx, outcome: PaymentOutcome, now: number) {
 function ensureAcceptedQuote(c: Ctx, now: number) {
   const view = c.s.view;
   if (!view) return release(c);
-  if (quoteStillValid(view, now)) return serverAccepted(view, now) ? secure(c) : release(c);
+  if (quoteStillValid(view, now)) {
+    if (serverAccepted(view, now)) return secure(c);
+    c.s.formError = "reservation.pay.error.retry";
+    return release(c);
+  }
   c.s.pay = { kind: "refreshing" };
   c.fx.push({ type: "refreshQuote", token: c.s.token, after: { kind: "payRefresh" } });
 }
@@ -806,6 +819,7 @@ function finishCharge(c: Ctx, outcome: PaymentOutcome, charge: Charge) {
 }
 
 function abandonCharge(c: Ctx) {
+  setStatus(c, "");
   c.fx.push({ type: "resetSecurityCheck" });
   release(c);
 }
@@ -857,9 +871,10 @@ function afterRecover(c: Ctx, outcome: CheckoutOutcome, now: number) {
 function afterRecoverLatest(c: Ctx, outcome: CheckoutOutcome, now: number) {
   const step = c.s.pay;
   if (step.kind !== "rechecking") return;
-  if (outcome.kind === "ready" && sameAcceptedOffer(outcome.view, step.reviewed, now))
+  if (outcome.kind === "ready" && sameAcceptedOffer(outcome.view, step.reviewed, now)) {
     keepRefreshedAgreement(c, outcome);
-  else if (outcome.kind === "ready") showChangedOffer(c, outcome);
+    c.s.formError = "reservation.pay.error.retry";
+  } else if (outcome.kind === "ready") showChangedOffer(c, outcome);
   else if (outcome.kind === "limited") keepCheckoutAtAgreementCap(c);
   else settle(c, outcome);
   abandonCharge(c);
@@ -929,6 +944,7 @@ function handle(c: Ctx, event: Event) {
       if (awaitingStatus(c.s)) syncPayment(c, false, false);
       return;
     case "pollElapsed":
+      if (c.s.payment?.state === "submitted") c.s.submittedPolls += 1;
       return syncPayment(c, false, false);
     case "statusCheckRequested":
       return syncPayment(c, true, false);

@@ -77,6 +77,7 @@ export const reviewKeys = [
   "reservation.pay.error.limited",
   "reservation.pay.error.card",
   "reservation.pay.error.unavailable",
+  "reservation.pay.error.retry",
   "reservation.outcome.submitted.title",
   "reservation.outcome.submitted.body",
   "reservation.outcome.reservation_changed.title",

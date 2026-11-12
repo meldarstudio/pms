@@ -316,6 +316,23 @@ describe("recording the acceptance before paying", () => {
   });
 });
 
+describe("a valid quote the server has no acceptance for", () => {
+  it("asks to pay again and opens no card form", () => {
+    const view = quoteView({ accepted: false });
+    const { state, effects } = drive(
+      openReview({ view, draft: draftFor(view, { accepted: false }) }),
+      { type: "payRequested" },
+      { type: "quoteAccepted", outcome: ready(view), now: NOW },
+      confirmRead(null),
+    );
+
+    expect(state.formError).toBe("reservation.pay.error.retry");
+    expect(payBusy(state)).toBe(false);
+    for (const charge of ["readSecurityToken", "openCardForm", "startPayment"])
+      expect(types(effects)).not.toContain(charge);
+  });
+});
+
 describe("an open payment", () => {
   it("is shown instead of opening the card form when it blocks a new payment", () => {
     const { state, effects } = drive(
@@ -550,7 +567,31 @@ describe("a charge the server rejects as expired or replaced", () => {
     expect(state.agreed).toBe(false);
     expect(state.changed).toBe(true);
     expect(state.view?.quote.totalCents).toBe(36000);
+    expect(state.formError).toBe("reservation.pay.changed");
+    expect(state.status.key).toBe("");
     expect(types(effects)).toContain("resetSecurityCheck");
+    expect(payBusy(state)).toBe(false);
+  });
+
+  it("asks to pay again without charging when a second rejection finds the same accepted offer", () => {
+    const { state, effects } = drive(
+      charging(),
+      { type: "paymentStarted", outcome: { kind: "expired" }, now: NOW },
+      refreshed({ kind: "recover" }, renewed()),
+      { type: "paymentStarted", outcome: { kind: "replaced" }, now: NOW },
+      {
+        type: "checkoutRead",
+        after: { kind: "recoverLatest" },
+        outcome: ready(renewed()),
+        now: NOW,
+      },
+    );
+
+    expect(ofType(effects, "startPayment")).toHaveLength(1);
+    expect(state.agreed).toBe(true);
+    expect(state.changed).toBe(false);
+    expect(state.formError).toBe("reservation.pay.error.retry");
+    expect(state.status.key).toBe("");
     expect(payBusy(state)).toBe(false);
   });
 
@@ -563,8 +604,27 @@ describe("a charge the server rejects as expired or replaced", () => {
 
     expect(ofType(effects, "startPayment")).toEqual([]);
     expect(state.formError).toBe("reservation.pay.changed");
+    expect(state.status.key).toBe("");
     expect(state.agreed).toBe(false);
     expect(types(effects)).toContain("resetSecurityCheck");
+    expect(payBusy(state)).toBe(false);
+  });
+
+  it("stops saying the payment is being sent when recovery reaches the agreement limit", () => {
+    const { state, effects } = drive(
+      charging(),
+      { type: "paymentStarted", outcome: { kind: "expired" }, now: NOW },
+      {
+        type: "quoteRefreshed",
+        after: { kind: "recover" },
+        outcome: { kind: "limited" },
+        now: NOW,
+      },
+    );
+
+    expect(ofType(effects, "startPayment")).toEqual([]);
+    expect(state.formError).toBe("reservation.pay.error.limited");
+    expect(state.status.key).toBe("");
     expect(payBusy(state)).toBe(false);
   });
 
@@ -652,6 +712,44 @@ describe("a charge whose answer was lost", () => {
     );
 
     expect(types(effects)).toEqual(["cancelPoll", "readPayment", "cancelPoll", "schedulePoll"]);
+  });
+
+  it("keeps checking on its own for a minute while the server has no payment", () => {
+    let current = drive(unavailable().state, {
+      type: "paymentRead",
+      after: { kind: "settled", releasesPay: true },
+      outcome: paymentOutcome(null),
+      now: NOW,
+    });
+    let polls = 0;
+    while (types(current.effects).includes("schedulePoll") && polls < 20) {
+      polls += 1;
+      current = drive(current.state, { type: "pollElapsed" }, synced(null));
+    }
+
+    expect(polls).toBe(12);
+    expect(current.state.payment?.state).toBe("submitted");
+    expect(outcomeActions(current.state).check).toBe(true);
+  });
+
+  it("stops checking once a poll finds the declined payment", () => {
+    const placeholder = drive(unavailable().state, {
+      type: "paymentRead",
+      after: { kind: "settled", releasesPay: true },
+      outcome: paymentOutcome(null),
+      now: NOW,
+    });
+
+    const { state, effects } = drive(
+      placeholder.state,
+      { type: "pollElapsed" },
+      synced(payment({ state: "declined" })),
+    );
+
+    expect(types(placeholder.effects)).toContain("schedulePoll");
+    expect(state.payment?.state).toBe("declined");
+    expect(state.stored?.submitted).toBeNull();
+    expect(types(effects)).not.toContain("schedulePoll");
   });
 
   it("stops awaiting once the server reports the payment", () => {
