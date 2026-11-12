@@ -9,6 +9,7 @@ type CulqiInstance = {
   token?: { id: string };
   error?: unknown;
   culqi: () => void;
+  closeCheckout: () => void;
   open: () => void;
   close: () => void;
 };
@@ -115,6 +116,7 @@ export async function openCardForm(options: {
       checkout.close();
       resolve(token);
     };
+    checkout.closeCheckout = () => resolve(null);
     checkout.open();
   });
 }

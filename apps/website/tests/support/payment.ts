@@ -10,7 +10,13 @@ window.CulqiCheckout = class {
     sessionStorage.setItem("test.culqiConfigs", JSON.stringify(window.culqiConfigs));
   }
   open() {
-    const id = window.culqiCards.shift() ?? "tkn_test_" + crypto.randomUUID();
+    const id = window.culqiCards.length
+      ? window.culqiCards.shift()
+      : "tkn_test_" + crypto.randomUUID();
+    if (id === null) {
+      setTimeout(() => this.closeCheckout?.(), 0);
+      return;
+    }
     setTimeout(() => {
       this.token = { id };
       this.culqi();
@@ -96,12 +102,14 @@ export async function nextCulqiCharge(request: APIRequestContext, outcome: "time
 
 export async function closeCardFormWithoutPaying(page: Page, payButton: Locator) {
   await page.evaluate(() => {
-    (window as unknown as { culqiCards: string[] }).culqiCards = [""];
+    (window as unknown as { culqiCards: (string | null)[] }).culqiCards = [null];
   });
   await payButton.click();
   await expect
     .poll(() =>
-      page.evaluate(() => (window as unknown as { culqiCards: string[] }).culqiCards.length),
+      page.evaluate(
+        () => (window as unknown as { culqiCards: (string | null)[] }).culqiCards.length,
+      ),
     )
     .toBe(0);
   await expect(payButton).toBeEnabled();

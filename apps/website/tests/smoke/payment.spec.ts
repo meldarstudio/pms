@@ -19,7 +19,7 @@ import { selectRoomRate } from "../support/room-rate";
 
 declare global {
   interface Window {
-    culqiCards: string[];
+    culqiCards: (string | null)[];
     culqiConfigs: { settings: { amount: number }; options: { paymentMethods: object } }[];
     culqi3DS?: {
       devices: unknown[];
