@@ -91,6 +91,8 @@ const cardBorder = "#a8a29e";
 
 const cardAppearance = {
   theme: "default",
+  hiddenCulqiLogo: false,
+  hiddenBannerContent: false,
   hiddenBanner: false,
   hiddenToolBarAmount: false,
   hiddenEmail: false,
@@ -103,7 +105,7 @@ const cardAppearance = {
     priceColor: cardText,
   },
   variables: {
-    fontFamily: '"Source Sans 3", sans-serif',
+    fontFamily: '"DM Sans", sans-serif',
     fontWeightNormal: "400",
     borderRadius: "0",
     colorBackground: "#ffffff",
@@ -113,39 +115,60 @@ const cardAppearance = {
     colorTextSecondary: "#57534e",
     colorTextPlaceholder: "#78716c",
     colorIconTab: cardText,
+    colorLogo: "dark",
   },
   rules: {
     ".Culqi-Main-Container": {
       background: "#ffffff",
       color: cardText,
       fontFamily: "var(--fontFamily)",
+      borderRadius: "0",
+    },
+    ".Culqi-ToolBanner": {
+      background: "#ffffff",
+      color: cardText,
+      fontFamily: "var(--fontFamily)",
+    },
+    ".Culqi-ToolBanner > .cursor-pointer > span": {
+      background: cardText,
     },
     ".Culqi-Toolbar-Price": {
       color: cardText,
+      fontFamily: "var(--fontFamily)",
+    },
+    ".Culqi-Main-Method": {
+      background: "#ffffff",
+      fontFamily: "var(--fontFamily)",
     },
     ".Culqi-Label": {
       color: "#292524",
+      fontFamily: "var(--fontFamily)",
     },
     ".Culqi-Input": {
       border: `1px solid ${cardBorder}`,
       borderRadius: "0",
       color: cardText,
+      fontFamily: "var(--fontFamily)",
     },
     ".Culqi-Input:focus": {
       border: `2px solid ${cardFocus}`,
     },
     ".Culqi-Text-Link": {
       color: cardLink,
+      fontFamily: "var(--fontFamily)",
     },
     ".Culqi-Button": {
       background: cardAccent,
       color: cardAccentInk,
       borderRadius: "0",
       fontWeight: "600",
+      fontFamily: "var(--fontFamily)",
+      textTransform: "uppercase",
+      letterSpacing: "0.1em",
     },
     ".Culqi-Button:disabled": {
-      background: "#f6d3a8",
-      color: cardAccentInk,
+      background: "#e7e5e4",
+      color: "#57534e",
       opacity: "1",
     },
   },
