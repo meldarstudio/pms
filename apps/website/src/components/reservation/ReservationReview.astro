@@ -464,57 +464,45 @@ const contactFields = [
 
 <script>
   import type { Lang } from "@/i18n/utils";
+  import { selectionKey, type CheckoutView } from "@/lib/reservation/checkout";
   import {
-    acceptQuote,
-    offerKey,
-    quoteStillValid,
-    readCheckout,
-    refreshQuote,
-    selectionKey,
-    startCheckout,
-    type BookingContact,
-    type CheckoutOutcome,
-    type CheckoutSelection,
-    type CheckoutView,
-  } from "@/lib/reservation/checkout";
+    outcomePresentation,
+    outcomeTone,
+    problemPresentation,
+  } from "@/lib/reservation/checkout-copy";
+  import { contactFields, reviewFields, type ReviewField } from "@/lib/reservation/checkout-form";
   import {
-    clearCardSource,
-    contactKey,
-    storeCard,
-    storeCheckout,
-    storeConfirmedReservation,
-    storeContact,
-    storedCard,
-    storedCheckout,
-    storedContact,
-  } from "@/lib/reservation/draft";
+    checkoutSelection,
+    initialState,
+    next,
+    type Event as FlowEvent,
+    type FocusTarget,
+    type State,
+  } from "@/lib/reservation/checkout-flow";
+  import {
+    createCheckoutRunner,
+    readDraft,
+    type CardPayments,
+    type CheckoutRunner,
+  } from "@/lib/reservation/checkout-runner";
+  import {
+    formVisible,
+    outcomeActions,
+    payActionVisible,
+    payBusy,
+    whatsappVisible,
+  } from "@/lib/reservation/checkout-selectors";
   import { getWhatsAppLink } from "@/lib/constants";
   import { fill, formatDate, formatMoney } from "@/lib/reservation/format";
-  import {
-    allowsNewPayment,
-    continuePayment,
-    readPayment,
-    startPayment,
-    type GuestPayment,
-    type PaymentOutcome,
-  } from "@/lib/reservation/payment";
-  import {
-    deviceFingerprint,
-    openBankAuthentication,
-    openCardForm,
-    renderSecurityCheck,
-    type AuthenticationParameters,
-    type SecurityCheck,
-  } from "@/lib/reservation/providers";
+  import type { GuestPayment } from "@/lib/reservation/payment";
   import { readSearch, searchParams, type StaySearch } from "@/lib/reservation/search";
-  import { readCheckoutAccess, summaryLink } from "@/lib/reservation/summary";
   import { cancellationNodes } from "@/lib/reservation/terms";
 
   type Copy = {
     lang: Lang;
     apiBase: string;
-    payments: Payments | null;
-    devPayments: Payments | null;
+    payments: CardPayments | null;
+    devPayments: CardPayments | null;
     chooseHref: string;
     summaryHref: string;
     text: Record<string, string>;
@@ -527,116 +515,6 @@ const contactFields = [
         photo: { src: string; alt: string };
       }
     >;
-  };
-
-  type Payments = { culqiPublicKey: string; turnstileSiteKey: string; title: string };
-  type Ready = Extract<CheckoutOutcome, { kind: "ready" }>;
-  type Problem = Exclude<CheckoutOutcome, Ready> | { kind: "missing" };
-
-  const contactFields = ["fullName", "email", "phone"] as const;
-  type ContactField = (typeof contactFields)[number];
-
-  const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-
-  const problemCopy: Record<Problem["kind"], { title: string; body: string; retry: boolean }> = {
-    missing: {
-      title: "reservation.review.missing.title",
-      body: "reservation.review.missing.body",
-      retry: false,
-    },
-    sold_out: {
-      title: "reservation.review.soldOut.title",
-      body: "reservation.review.soldOut.body",
-      retry: false,
-    },
-    invalid: {
-      title: "reservation.review.invalid.title",
-      body: "reservation.problem.invalidSearch",
-      retry: false,
-    },
-    throttled: {
-      title: "reservation.review.throttled.title",
-      body: "reservation.review.throttled.body",
-      retry: true,
-    },
-    limited: {
-      title: "reservation.review.limited.title",
-      body: "reservation.review.limited.body",
-      retry: true,
-    },
-    unavailable: {
-      title: "reservation.review.unavailable.title",
-      body: "reservation.review.unavailable.body",
-      retry: true,
-    },
-    expired: {
-      title: "reservation.review.unavailable.title",
-      body: "reservation.review.unavailable.body",
-      retry: true,
-    },
-    replaced: {
-      title: "reservation.review.unavailable.title",
-      body: "reservation.review.unavailable.body",
-      retry: true,
-    },
-    denied: {
-      title: "reservation.review.unavailable.title",
-      body: "reservation.review.unavailable.body",
-      retry: true,
-    },
-    has_payment: {
-      title: "reservation.review.unavailable.title",
-      body: "reservation.review.unavailable.body",
-      retry: true,
-    },
-  };
-
-  const payErrorCopy: Partial<Record<PaymentOutcome["kind"], string>> = {
-    paused: "reservation.pay.error.paused",
-    throttled: "reservation.pay.error.throttled",
-    security_failed: "reservation.pay.error.securityFailed",
-    security_unavailable: "reservation.pay.error.securityUnavailable",
-    unavailable: "reservation.pay.error.unavailable",
-  };
-
-  const PAYMENT_POLL_MS = 5_000;
-  const VERIFYING: readonly GuestPayment["state"][] = ["processing", "paid_awaiting_reservation"];
-
-  const outcomeTone: Record<GuestPayment["state"], string> = {
-    declined: "border-red-700",
-    submitted: "border-amber-600",
-    authentication_required: "border-amber-600",
-    processing: "border-amber-600",
-    paid_awaiting_reservation: "border-amber-600",
-    unfulfilled: "border-red-700",
-    confirmed: "border-accent-700",
-    reservation_changed: "border-amber-600",
-  };
-
-  const formErrorCopy: Partial<Record<Problem["kind"], string>> = {
-    invalid: "reservation.review.error.invalid",
-    throttled: "reservation.review.error.throttled",
-    unavailable: "reservation.review.error.unavailable",
-  };
-
-  const backendProblems: Record<string, string> = {
-    "online check-in must be after today": "reservation.problem.checkInTooSoon",
-    "too many guests for this room type": "reservation.review.problem.tooManyGuests",
-    "room type not found": "reservation.room.offline",
-    "stay must be at least one night": "reservation.problem.checkOutBeforeCheckIn",
-    "stay cannot be longer than 60 nights": "reservation.problem.tooManyNights",
-    "invalid date": "reservation.problem.invalidDate",
-  };
-
-  const contactProblems: Record<string, [ContactField, string]> = {
-    "full name is required": ["fullName", "reservation.review.error.fullName"],
-    "email is required": ["email", "reservation.review.error.email"],
-    "invalid email": ["email", "reservation.review.error.email"],
-    "phone is required": ["phone", "reservation.review.error.phone"],
-    "invalid phone number": ["phone", "reservation.review.error.phoneInvalid"],
-    "phone number is too short": ["phone", "reservation.review.error.phoneInvalid"],
-    "phone number is too long": ["phone", "reservation.review.error.phoneInvalid"],
-    "phone extensions are not supported": ["phone", "reservation.review.error.phoneInvalid"],
   };
 
   function previewPayments(host: HTMLElement, copy: Copy) {
@@ -654,20 +532,21 @@ const contactFields = [
     document.body.append(toggle);
   }
 
+  const focusSelectors: Partial<Record<FocusTarget, string>> = {
+    problemTitle: "[data-problem-title]",
+    outcomeTitle: "[data-outcome-title]",
+    outcomeBank: "[data-outcome-bank]",
+    payButton: "[data-pay-button]",
+  };
+
   class ReservationReview extends HTMLElement {
     private copy!: Copy;
     private search!: StaySearch;
-    private selection!: CheckoutSelection;
-    private key = "";
-    private token = "";
-    private view: CheckoutView | null = null;
-    private payment: GuestPayment | null = null;
-    private paying = false;
-    private openedBankFor: string | null = null;
-    private securityCheck: Promise<SecurityCheck | null> | null = null;
-    private poll: ReturnType<typeof setTimeout> | undefined;
-    private accessToken: string | null = null;
-    private accessRequest = 0;
+    private state: State = initialState;
+    private runner: CheckoutRunner | null = null;
+    private lifetime: AbortController | null = null;
+    private renderedView: CheckoutView | null = null;
+    private renderedPayment: GuestPayment | null = null;
 
     private text(key: string, values: Record<string, string | number> = {}) {
       return fill(this.copy.text[key] ?? key, values);
@@ -677,29 +556,20 @@ const contactFields = [
       return root.querySelector<T>(selector)!;
     }
 
-    private input(id: ContactField | "agree") {
+    private input(id: ReviewField) {
       return this.el<HTMLInputElement>(`#${id}`);
-    }
-
-    private money(cents: number) {
-      return formatMoney(cents, this.view?.currency ?? "PEN");
     }
 
     private count(key: string, count: number) {
       return this.text(`${key}.${count === 1 ? "one" : "other"}`, { count });
     }
 
-    private contact(): BookingContact {
-      return {
-        fullName: this.input("fullName").value.trim(),
-        email: this.input("email").value.trim(),
-        phone: this.input("phone").value.trim(),
-      };
-    }
-
-    private stored() {
-      return storedCheckout(this.key);
-    }
+    private dispatch = (event: FlowEvent) => {
+      const { state, effects } = next(this.state, event);
+      this.state = state;
+      this.render();
+      this.runner?.run(effects);
+    };
 
     connectedCallback() {
       this.copy = JSON.parse(this.el("[data-copy]").textContent ?? "{}") as Copy;
@@ -716,78 +586,112 @@ const contactFields = [
       for (const anchor of this.querySelectorAll<HTMLAnchorElement>("[data-back-to-rates]"))
         anchor.href = `${this.copy.chooseHref}?${searchParams(this.search).toString()}`;
 
-      this.el("[data-summary-toggle]").addEventListener("click", () => {
-        this.expandSummary(
-          this.el("[data-summary-toggle]").getAttribute("aria-expanded") !== "true",
-        );
+      this.lifetime?.abort();
+      const lifetime = new AbortController();
+      this.lifetime = lifetime;
+      const { signal } = lifetime;
+      this.runner?.dispose();
+      this.runner = createCheckoutRunner({
+        apiBase: this.copy.apiBase,
+        summaryHref: this.copy.summaryHref,
+        payments: this.copy.payments,
+        dispatch: this.dispatch,
+        securityContainer: () => this.querySelector<HTMLElement>("[data-security-check]"),
+        focus: (target) => this.focusTarget(target),
       });
+
+      this.el("[data-summary-toggle]").addEventListener(
+        "click",
+        () => {
+          this.expandSummary(
+            this.el("[data-summary-toggle]").getAttribute("aria-expanded") !== "true",
+          );
+        },
+        { signal },
+      );
       const terms = this.el<HTMLDialogElement>("[data-terms]");
-      this.el("[data-open-terms]").addEventListener("click", (event) => {
-        event.preventDefault();
-        terms.showModal();
-      });
-      this.el("[data-close-terms]").addEventListener("click", () => terms.close());
-      terms.addEventListener("click", (event) => {
-        if (event.target === terms) terms.close();
-      });
+      this.el("[data-open-terms]").addEventListener(
+        "click",
+        (event) => {
+          event.preventDefault();
+          terms.showModal();
+        },
+        { signal },
+      );
+      this.el("[data-close-terms]").addEventListener("click", () => terms.close(), { signal });
+      terms.addEventListener(
+        "click",
+        (event) => {
+          if (event.target === terms) terms.close();
+        },
+        { signal },
+      );
 
-      this.restoreDraft();
-      window.addEventListener("pageshow", (event) => {
-        this.restoreDraft();
-        if (event.persisted && this.key) void this.load();
-        else this.showCheckout();
+      window.addEventListener(
+        "pageshow",
+        (event) =>
+          this.dispatch({
+            type: "pageShown",
+            persisted: event.persisted,
+            draft: readDraft(this.state.key),
+          }),
+        { signal },
+      );
+      window.addEventListener("online", () => this.dispatch({ type: "networkRestored" }), {
+        signal,
       });
-      window.addEventListener("online", () => {
-        if (this.awaitingStatus()) void this.syncPayment();
-      });
-      for (const id of contactFields) {
-        this.input(id).addEventListener("input", () => {
-          storeContact({
-            fullName: this.input("fullName").value,
-            email: this.input("email").value,
-            phone: this.input("phone").value,
-          });
-          this.showFieldError(id, "");
-          this.showCheckout();
-        });
+      for (const field of contactFields) {
+        this.input(field).addEventListener(
+          "input",
+          () => this.dispatch({ type: "contactEdited", field, value: this.input(field).value }),
+          { signal },
+        );
       }
-      this.input("agree").addEventListener("change", () => {
-        this.rememberAgreement();
-        this.showFieldError("agree", "");
-        this.showCheckout();
-      });
-      this.el("[data-retry]").addEventListener("click", () => void this.load());
-      this.el("[data-outcome-retry]").addEventListener("click", () => this.payAgain());
-      this.el("[data-outcome-bank]").addEventListener("click", () => void this.openBank());
-      this.el("[data-outcome-check]").addEventListener("click", () => void this.syncPayment(true));
-      this.el("[data-access-copy]").addEventListener("click", () => void this.copyAccessLink());
-      this.el<HTMLFormElement>("[data-contact-form]").addEventListener("submit", (event) => {
-        event.preventDefault();
-        void this.pay();
-      });
+      this.input("agree").addEventListener(
+        "change",
+        () => this.dispatch({ type: "agreeToggled", agreed: this.input("agree").checked }),
+        { signal },
+      );
+      const click = (selector: string, event: FlowEvent) =>
+        this.el(selector).addEventListener("click", () => this.dispatch(event), { signal });
+      click("[data-retry]", { type: "loadRequested" });
+      click("[data-outcome-retry]", { type: "payAgainRequested" });
+      click("[data-outcome-bank]", { type: "bankRequested" });
+      click("[data-outcome-check]", { type: "statusCheckRequested" });
+      click("[data-access-copy]", { type: "accessCopyRequested" });
+      this.el<HTMLFormElement>("[data-contact-form]").addEventListener(
+        "submit",
+        (event) => {
+          event.preventDefault();
+          this.dispatch({ type: "payRequested" });
+        },
+        { signal },
+      );
 
-      const { room, plan, checkIn, checkOut } = this.search;
-      const roomTypeId = room ? this.copy.rooms[room]?.pmsRoomTypeId : null;
-      if (!room || !plan || !checkIn || !checkOut || !roomTypeId)
-        return this.showProblem({ kind: "missing" });
-      this.selection = {
-        roomTypeId,
-        checkIn,
-        checkOut,
-        adults: this.search.adults,
-        children: this.search.children,
-        ratePlan: plan,
-      };
-      this.key = selectionKey(this.selection);
-      void this.load();
+      const { room } = this.search;
+      const selection = checkoutSelection(
+        this.search,
+        room ? this.copy.rooms[room]?.pmsRoomTypeId : null,
+      );
+      this.dispatch({
+        type: "started",
+        lang: this.copy.lang,
+        paymentsEnabled: Boolean(this.copy.payments),
+        selection,
+        draft: readDraft(selection ? selectionKey(selection) : ""),
+      });
     }
 
-    private restoreDraft() {
-      const draft = storedContact();
-      for (const id of contactFields) this.input(id).value = draft[id];
-      this.input("agree").checked = Boolean(
-        this.view && this.stored()?.agreedOffer === offerKey(this.view),
-      );
+    disconnectedCallback() {
+      this.lifetime?.abort();
+      this.runner?.dispose();
+      this.runner = null;
+    }
+
+    private focusTarget(target: FocusTarget) {
+      const selector = focusSelectors[target];
+      if (selector) this.el(selector).focus();
+      else this.input(target as ReviewField).focus();
     }
 
     private expandSummary(expanded: boolean) {
@@ -800,48 +704,67 @@ const contactFields = [
       this.el("[data-summary-toggle-icon]").textContent = expanded ? "−" : "+";
     }
 
-    private async load() {
-      this.el("[data-problem]").hidden = true;
-      this.el("[data-status]").classList.remove("sr-only");
-      this.el("[data-status]").textContent = this.text("reservation.review.loading");
-      const outcome = await this.currentQuote();
-      if (outcome.kind !== "ready") return this.showProblem(outcome);
-      this.ready(outcome);
-      await this.syncPayment();
+    private setText(selector: string, value: string) {
+      const target = this.el(selector);
+      if (target.textContent !== value) target.textContent = value;
     }
 
-    private async currentQuote(): Promise<CheckoutOutcome> {
-      const stored = this.stored();
-      if (stored?.token) {
-        const outcome = await readCheckout(this.copy.apiBase, stored.token);
-        if (outcome.kind !== "denied") return outcome;
+    private render() {
+      const state = this.state;
+      const status = this.el("[data-status]");
+      this.setText("[data-status]", state.status.key ? this.text(state.status.key) : "");
+      status.classList.toggle("sr-only", !state.status.visible);
+
+      this.el("[data-problem]").hidden = !state.problem;
+      if (state.problem) {
+        const problem = problemPresentation(state.problem);
+        const room = this.search.room ? (this.copy.rooms[this.search.room]?.name ?? "") : "";
+        this.setText("[data-problem-title]", this.text(problem.titleKey, { room }));
+        this.setText("[data-problem-body]", this.text(problem.bodyKey, { room }));
+        this.el("[data-retry]").hidden = !problem.retry;
       }
-      return startCheckout(this.copy.apiBase, this.selection, this.copy.lang);
+      this.el("[data-review]").hidden = !state.reviewShown;
+
+      if (state.view && state.view !== this.renderedView) this.renderQuote(state.view);
+      this.renderedView = state.view;
+
+      for (const field of contactFields) {
+        const input = this.input(field);
+        if (input.value !== state.contact[field]) input.value = state.contact[field];
+      }
+      const agree = this.input("agree");
+      if (agree.checked !== state.agreed) agree.checked = state.agreed;
+      for (const field of reviewFields) {
+        const message = state.fieldErrors[field];
+        const error = this.el(`#${field}-error`);
+        error.textContent = message ? this.text(message) : "";
+        error.hidden = !message;
+        if (message) this.input(field).setAttribute("aria-invalid", "true");
+        else this.input(field).removeAttribute("aria-invalid");
+      }
+      this.el("[data-changed]").hidden = !state.changed;
+      this.setText("[data-form-error]", state.formError ? this.text(state.formError) : "");
+
+      this.querySelector("[data-whatsapp]")?.toggleAttribute("hidden", !whatsappVisible(state));
+      this.el("[data-contact-form]").hidden = !formVisible(state);
+      this.el("[data-pay-action]").hidden = !payActionVisible(state);
+      this.el<HTMLButtonElement>("[data-pay-button]").disabled = payBusy(state);
+
+      this.el("[data-outcome]").hidden = !state.outcomeShown;
+      if (state.payment && state.payment !== this.renderedPayment)
+        this.renderOutcome(state.payment);
+      this.renderedPayment = state.payment;
+      const actions = outcomeActions(state);
+      this.el("[data-outcome-retry]").hidden = !actions.retry;
+      this.el("[data-outcome-bank]").hidden = !actions.bank;
+      this.el("[data-outcome-check]").hidden = !actions.check;
+      this.el("[data-access]").hidden = !state.access.panel;
+      this.el("[data-access-copied]").hidden = !state.access.copied;
     }
 
-    private ready(outcome: Ready) {
-      const previous = this.stored();
-      const offer = offerKey(outcome.view);
-      const agreed = previous?.agreedOffer === offer;
-      this.token = outcome.token;
-      this.view = outcome.view;
-      storeCheckout(this.key, {
-        token: outcome.token,
-        agreedOffer: agreed ? offer : null,
-        accepted: previous?.token === outcome.token ? previous.accepted : null,
-        submitted: previous?.token === outcome.token ? (previous.submitted ?? null) : null,
-      });
-      this.input("agree").checked = agreed;
-      this.el("[data-changed]").hidden = !previous?.agreedOffer || agreed;
-      this.render(outcome.view);
-      this.el("[data-review]").hidden = false;
-      this.el("[data-status]").classList.add("sr-only");
-      this.el("[data-status]").textContent = this.text("reservation.review.loaded");
-      this.showCheckout();
-    }
-
-    private render(view: CheckoutView) {
+    private renderQuote(view: CheckoutView) {
       const { quote } = view;
+      const money = (cents: number) => formatMoney(cents, view.currency);
       const set = (selector: string, value: string) => {
         this.el(selector).textContent = value;
       };
@@ -870,7 +793,7 @@ const contactFields = [
       const plan = this.text(`reservation.plan.${view.ratePlan}`);
       set('[data-stay="plan"]', plan);
       for (const total of this.querySelectorAll('[data-amount="total"]'))
-        total.textContent = this.money(quote.totalCents);
+        total.textContent = money(quote.totalCents);
       set("[data-taxes]", this.text("reservation.offer.taxes", { currency: view.currency }));
       if (!this.copy.payments) {
         this.el<HTMLAnchorElement>("[data-whatsapp-link]").href = getWhatsAppLink(
@@ -880,31 +803,31 @@ const contactFields = [
             checkOut: formatDate(view.checkOut, this.copy.lang),
             guests,
             plan,
-            total: this.money(quote.totalCents),
+            total: money(quote.totalCents),
           }),
         );
         return;
       }
-      set('[data-amount="now"]', this.money(quote.requiredInitialPaymentCents));
+      set('[data-amount="now"]', money(quote.requiredInitialPaymentCents));
       set(
         "[data-pay-button]",
         this.text("reservation.pay.button", {
-          amount: this.money(quote.requiredInitialPaymentCents),
+          amount: money(quote.requiredInitialPaymentCents),
         }),
       );
-      set('[data-amount="remaining"]', this.money(quote.remainingScheduledCents));
+      set('[data-amount="remaining"]', money(quote.remainingScheduledCents));
       this.el("[data-balance]").hidden = quote.remainingScheduledCents === 0;
       set(
         "[data-schedule]",
         this.text(`reservation.review.schedule.${view.ratePlan}`, {
-          now: this.money(quote.requiredInitialPaymentCents),
-          remaining: this.money(quote.remainingScheduledCents),
+          now: money(quote.requiredInitialPaymentCents),
+          remaining: money(quote.remainingScheduledCents),
         }),
       );
       const cancellation = () =>
         cancellationNodes(quote.cancellation, {
           text: (key, values) => this.text(key, values),
-          amount: this.money(quote.cancellation.chargeCents),
+          amount: money(quote.cancellation.chargeCents),
           lang: this.copy.lang,
         });
       this.el("[data-cancellation]").replaceChildren(...cancellation());
@@ -917,672 +840,35 @@ const contactFields = [
           date.dateTime = night.date;
           date.textContent = formatDate(night.date, this.copy.lang);
           const price = document.createElement("span");
-          price.textContent = this.money(night.priceCents);
+          price.textContent = money(night.priceCents);
           item.append(date, price);
           return item;
         }),
       );
     }
 
-    private rememberAgreement() {
-      const stored = this.stored();
-      if (!stored || !this.view) return;
-      storeCheckout(this.key, {
-        ...stored,
-        agreedOffer: this.input("agree").checked ? offerKey(this.view) : null,
-      });
-    }
-
-    private isAccepted() {
-      const view = this.view;
-      const accepted = this.stored()?.accepted;
-      return Boolean(
-        view &&
-        view.acceptance?.quoteId === view.quote.id &&
-        accepted?.quoteId === view.quote.id &&
-        accepted.contact === contactKey(this.contact()) &&
-        this.input("agree").checked,
-      );
-    }
-
-    private serverAccepted(view: CheckoutView) {
-      return quoteStillValid(view) && view.acceptance?.quoteId === view.quote.id;
-    }
-
-    private showCheckout() {
-      const locked = !allowsNewPayment(this.payment);
-      this.querySelector("[data-whatsapp]")?.toggleAttribute("hidden", Boolean(this.payment));
-      const form = this.el("[data-contact-form]");
-      form.hidden = locked || !this.copy.payments;
-      this.el("[data-pay-action]").hidden = !this.el("[data-outcome]").hidden;
-      if (!form.hidden && this.view) this.startSecurityCheck();
-    }
-
-    private startSecurityCheck() {
-      const payments = this.copy.payments;
-      if (!payments) return;
-      this.securityCheck ??= renderSecurityCheck(this.el("[data-security-check]"), {
-        siteKey: payments.turnstileSiteKey,
-        lang: this.copy.lang,
-        onError: () => this.showPayError("reservation.pay.error.securityUnavailable"),
-      }).catch(() => {
-        this.securityCheck = null;
-        this.showPayError("reservation.pay.error.securityUnavailable");
-        return null;
-      });
-    }
-
-    private showPayError(key: string) {
-      this.el("[data-form-error]").textContent = key ? this.text(key) : "";
-    }
-
-    private async pay() {
-      if (this.paying || !this.view || !this.copy.payments || !this.validate()) return;
-      this.paying = true;
-      const button = this.el<HTMLButtonElement>("[data-pay-button]");
-      button.disabled = true;
-      this.showPayError("");
-      try {
-        if (!(await this.acceptBeforePaying())) return;
-        if (!(await this.confirmNoOpenPayment())) return;
-        if (!(await this.ensureAcceptedQuote()) || !this.view || !this.copy.payments) return;
-        const security = await this.securityCheck;
-        const turnstileToken = security?.token() ?? "";
-        if (!turnstileToken) return this.showPayError("reservation.pay.error.security");
-        let sourceId: string | null;
-        try {
-          sourceId = await openCardForm({
-            publicKey: this.copy.payments.culqiPublicKey,
-            title: this.copy.payments.title,
-            amountCents: this.view.quote.requiredInitialPaymentCents,
-            currency: this.view.currency,
-            email: this.contact().email,
-            lang: this.copy.lang,
-          });
-        } catch {
-          return this.showPayError("reservation.pay.error.card");
-        }
-        if (!sourceId || !this.view || !this.copy.payments) return;
-        const fingerprint = await deviceFingerprint({
-          publicKey: this.copy.payments.culqiPublicKey,
-          amountCents: this.view.quote.requiredInitialPaymentCents,
-          currency: this.view.currency,
-          email: this.contact().email,
-        });
-        await this.sendPayment(sourceId, turnstileToken, security, fingerprint);
-      } finally {
-        this.paying = false;
-        button.disabled = false;
-      }
-    }
-
-    private async confirmNoOpenPayment() {
-      const current = await readPayment(this.copy.apiBase, this.token);
-      if (current.kind === "payment") {
-        if (current.payment && !allowsNewPayment(current.payment)) {
-          this.markSubmitted(null);
-          this.showPayment(current.payment, true);
-          return false;
-        }
-        return true;
-      }
-      if (current.kind === "denied") {
-        await this.load();
-        return false;
-      }
-      this.showPayError(payErrorCopy[current.kind] ?? "reservation.pay.error.unavailable");
-      return false;
-    }
-
-    private async ensureAcceptedQuote() {
-      if (!this.view) return false;
-      if (quoteStillValid(this.view)) return this.serverAccepted(this.view);
-      return this.applyRefresh(await refreshQuote(this.copy.apiBase, this.token));
-    }
-
-    private async applyRefresh(outcome: CheckoutOutcome) {
-      if (outcome.kind === "has_payment") {
-        await this.syncPayment(true);
-        return false;
-      }
-      if (outcome.kind === "limited") return this.keepCheckoutAtAgreementCap();
-      if (outcome.kind === "ready") {
-        if (this.serverAccepted(outcome.view)) {
-          this.keepRefreshedAgreement(outcome);
-          return true;
-        }
-        this.showChangedOffer(outcome);
-        return false;
-      }
-      this.settle(outcome);
-      return false;
-    }
-
-    private installRefreshedQuote(outcome: Ready) {
-      this.token = outcome.token || this.token;
-      this.view = outcome.view;
-      this.render(outcome.view);
-      this.el("[data-review]").hidden = false;
-      this.el("[data-problem]").hidden = true;
-    }
-
-    private keepRefreshedAgreement(outcome: Ready) {
-      const stored = this.stored();
-      this.installRefreshedQuote(outcome);
-      storeCheckout(this.key, {
-        token: this.token,
-        agreedOffer: offerKey(outcome.view),
-        accepted: {
-          quoteId: outcome.view.quote.id,
-          contact: stored?.accepted?.contact ?? contactKey(this.contact()),
-        },
-        submitted: stored?.submitted ?? null,
-      });
-      this.input("agree").checked = true;
-      this.el("[data-changed]").hidden = true;
-      this.el("[data-form-error]").textContent = "";
-      this.showCheckout();
-    }
-
-    private showChangedOffer(outcome: Ready) {
-      const stored = this.stored();
-      this.installRefreshedQuote(outcome);
-      if (stored)
-        storeCheckout(this.key, {
-          ...stored,
-          token: this.token,
-          agreedOffer: null,
-          accepted: null,
-        });
-      this.input("agree").checked = false;
-      this.el("[data-changed]").hidden = false;
-      this.el("[data-form-error]").textContent = this.text("reservation.pay.changed");
-      this.showCheckout();
-      this.input("agree").focus();
-    }
-
-    private keepCheckoutAtAgreementCap() {
-      this.el("[data-review]").hidden = false;
-      this.el("[data-problem]").hidden = true;
-      this.el("[data-form-error]").textContent = this.text("reservation.pay.error.limited");
-      return false;
-    }
-
-    private async sendPayment(
-      sourceId: string,
-      turnstileToken: string,
-      security: SecurityCheck | null,
-      fingerprint: string | null,
-    ) {
-      this.el("[data-status]").textContent = this.text("reservation.pay.sending");
-      this.markSubmitted(this.view!.quote.id);
-      let outcome = await startPayment(this.copy.apiBase, this.token, {
-        quoteId: this.view!.quote.id,
-        sourceId,
-        turnstileToken,
-        ...(fingerprint ? { deviceFingerprint: fingerprint } : {}),
-      });
-      if (outcome.kind === "expired" || outcome.kind === "replaced") {
-        const recovered = await this.recoverRejectedCharge(
-          outcome,
-          sourceId,
-          turnstileToken,
-          fingerprint,
-        );
-        if (!recovered) {
-          security?.reset();
-          return;
-        }
-        outcome = recovered;
-      }
-      security?.reset();
-      this.rememberCreatedCard(outcome, sourceId);
-      await this.settlePayment(outcome);
-    }
-
-    private async recoverRejectedCharge(
-      outcome: Extract<PaymentOutcome, { kind: "expired" | "replaced" }>,
-      sourceId: string,
-      turnstileToken: string,
-      fingerprint: string | null,
-    ): Promise<PaymentOutcome | null> {
-      const reviewed = this.view ? offerKey(this.view) : "";
-      const current =
-        outcome.kind === "expired"
-          ? await refreshQuote(this.copy.apiBase, this.token)
-          : await readCheckout(this.copy.apiBase, this.token);
-      if (current.kind === "has_payment") return readPayment(this.copy.apiBase, this.token);
-      if (current.kind === "limited") {
-        this.keepCheckoutAtAgreementCap();
-        return null;
-      }
-      if (current.kind !== "ready") {
-        this.settle(current);
-        return null;
-      }
-      if (!this.sameAcceptedOffer(current.view, reviewed)) {
-        this.showChangedOffer(current);
-        return null;
-      }
-      this.keepRefreshedAgreement(current);
-      this.markSubmitted(current.view.quote.id);
-      const retried = await startPayment(this.copy.apiBase, this.token, {
-        quoteId: current.view.quote.id,
-        sourceId,
-        turnstileToken,
-        ...(fingerprint ? { deviceFingerprint: fingerprint } : {}),
-      });
-      if (retried.kind !== "expired" && retried.kind !== "replaced") return retried;
-      const latest = await readCheckout(this.copy.apiBase, this.token);
-      if (latest.kind === "ready" && this.sameAcceptedOffer(latest.view, reviewed))
-        this.keepRefreshedAgreement(latest);
-      else if (latest.kind === "ready") this.showChangedOffer(latest);
-      else if (latest.kind === "limited") this.keepCheckoutAtAgreementCap();
-      else this.settle(latest);
-      return null;
-    }
-
-    private sameAcceptedOffer(view: CheckoutView, reviewed: string) {
-      return this.serverAccepted(view) && offerKey(view) === reviewed;
-    }
-
-    private rememberCreatedCard(outcome: PaymentOutcome, sourceId: string) {
-      if (
-        outcome.kind !== "payment" ||
-        !outcome.created ||
-        !outcome.payment?.attemptId ||
-        !this.key
-      )
-        return;
-      storeCard(this.key, { sourceId, attemptId: outcome.payment.attemptId });
-    }
-
-    private forgetCardSource() {
-      if (this.key) clearCardSource(this.key);
-    }
-
-    private cardSource() {
-      return this.key ? storedCard(this.key) : null;
-    }
-
-    private cardFor(payment: GuestPayment | null) {
-      const stored = this.cardSource();
-      if (!stored || !payment?.attemptId || stored.attemptId !== payment.attemptId) return null;
-      return stored.sourceId;
-    }
-
-    private markSubmitted(quoteId: string | null) {
-      const stored = this.stored();
-      if (stored) storeCheckout(this.key, { ...stored, submitted: quoteId });
-    }
-
-    private submittedPayment(): GuestPayment | null {
-      const view = this.view;
-      if (!view || this.stored()?.submitted !== view.quote.id) return null;
-      return {
-        attemptId: this.cardSource()?.attemptId ?? "",
-        state: "submitted",
-        amountCents: view.quote.requiredInitialPaymentCents,
-        currency: view.currency,
-        delayed: false,
-        reservation: null,
-      };
-    }
-
-    private async settlePayment(outcome: PaymentOutcome) {
-      this.el("[data-status]").textContent = "";
-      if (outcome.kind === "unavailable") {
-        const current = await readPayment(this.copy.apiBase, this.token);
-        if (current.kind === "payment" && current.payment) this.markSubmitted(null);
-        return this.showPayment(
-          current.kind === "payment" && current.payment ? current.payment : this.submittedPayment(),
-          true,
-        );
-      }
-      this.markSubmitted(null);
-      if (outcome.kind === "payment") return this.showPayment(outcome.payment, true);
-      if (outcome.kind === "sold_out") return this.showProblem({ kind: "sold_out" });
-      if (outcome.kind === "denied") return this.load();
-      if (outcome.kind === "invalid" && backendProblems[outcome.error])
-        return this.showProblem(outcome);
-      if (outcome.kind === "expired" || outcome.kind === "replaced") {
-        this.el("[data-form-error]").textContent = this.text("reservation.pay.changed");
-        return;
-      }
-      this.showPayError(payErrorCopy[outcome.kind] ?? "reservation.pay.error.unavailable");
-    }
-
-    private awaitingStatus() {
-      const state = this.payment?.state;
-      return (
-        state === "processing" ||
-        state === "authentication_required" ||
-        state === "paid_awaiting_reservation" ||
-        state === "submitted" ||
-        this.stored()?.submitted != null
-      );
-    }
-
-    private scheduleStatusPoll() {
-      clearTimeout(this.poll);
-      if (this.awaitingStatus())
-        this.poll = setTimeout(() => void this.syncPayment(), PAYMENT_POLL_MS);
-    }
-
-    private async syncPayment(announce = false) {
-      clearTimeout(this.poll);
-      if (!this.token) return;
-      if (announce)
-        this.el("[data-status]").textContent = this.text("reservation.outcome.checking");
-      const outcome = await readPayment(this.copy.apiBase, this.token);
-      if (announce) this.el("[data-status]").textContent = "";
-      if (outcome.kind !== "payment") {
-        this.scheduleStatusPoll();
-        return;
-      }
-      if (outcome.payment) this.markSubmitted(null);
-      this.showPayment(outcome.payment ?? this.submittedPayment(), announce);
-    }
-
-    private payAgain() {
-      this.el("[data-outcome]").hidden = true;
-      this.showCheckout();
-      this.querySelector<HTMLElement>("[data-pay-button]")?.focus();
-    }
-
-    private showPayment(payment: GuestPayment | null, focus = false) {
-      this.payment = payment;
-      const outcome = this.el("[data-outcome]");
-      outcome.hidden = !payment;
-      if (payment) this.renderOutcome(payment);
-      void this.showAccess(payment);
-      if (
-        payment &&
-        (payment.state === "declined" ||
-          payment.state === "confirmed" ||
-          payment.state === "unfulfilled" ||
-          payment.state === "reservation_changed" ||
-          payment.state === "paid_awaiting_reservation")
-      )
-        this.forgetCardSource();
-      this.showCheckout();
-      if (payment && focus) this.el("[data-outcome-title]").focus();
-      if (payment?.state === "authentication_required") this.maybeOpenBank();
-      if (payment && VERIFYING.includes(payment.state) && !payment.delayed)
-        this.poll = setTimeout(() => void this.syncPayment(), PAYMENT_POLL_MS);
-    }
-
-    private maybeOpenBank() {
-      const source = this.cardFor(this.payment);
-      if (!source || this.openedBankFor === source) return;
-      this.openedBankFor = source;
-      void this.openBank();
-    }
-
-    private async openBank() {
-      const sourceId = this.cardFor(this.payment);
-      const payments = this.copy.payments;
-      const view = this.view;
-      if (!sourceId || !payments || !view) return;
-      try {
-        await openBankAuthentication({
-          publicKey: payments.culqiPublicKey,
-          amountCents: this.payment?.amountCents ?? view.quote.requiredInitialPaymentCents,
-          currency: view.currency,
-          email: this.contact().email,
-          sourceId,
-          onParameters: (parameters) => void this.finishAuthentication(parameters),
-          onIncomplete: () => this.showAuthenticationIncomplete(),
-        });
-      } catch {
-        this.showAuthenticationIncomplete();
-      }
-    }
-
-    private showAuthenticationIncomplete() {
-      if (
-        this.payment &&
-        this.payment.state !== "authentication_required" &&
-        this.payment.state !== "submitted"
-      )
-        return;
-      const pending =
-        this.payment?.state === "authentication_required" ? this.payment : this.waitingForBank();
-      if (!pending) return;
-      this.showPayment(pending, false);
-      this.el("[data-outcome-bank]").focus();
-    }
-
-    private waitingForBank(): GuestPayment | null {
-      const view = this.view;
-      if (!view) return null;
-      return {
-        attemptId: this.cardSource()?.attemptId ?? "",
-        state: "authentication_required",
-        amountCents: view.quote.requiredInitialPaymentCents,
-        currency: view.currency,
-        delayed: false,
-        reservation: null,
-      };
-    }
-
-    private async finishAuthentication(parameters: AuthenticationParameters) {
-      const attemptId = this.cardFor(this.payment) ? this.payment?.attemptId : null;
-      if (!this.view || !this.token || !attemptId) return;
-      this.markSubmitted(this.view.quote.id);
-      const outcome = await continuePayment(this.copy.apiBase, this.token, {
-        ...parameters,
-        attemptId,
-      });
-      if (outcome.kind === "payment" || outcome.kind === "unavailable") {
-        await this.settlePayment(outcome);
-        return;
-      }
-      const current = await readPayment(this.copy.apiBase, this.token);
-      if (current.kind === "payment" && current.payment) this.markSubmitted(null);
-      this.showPayment(
-        current.kind === "payment" && current.payment ? current.payment : this.submittedPayment(),
-        true,
-      );
-    }
-
     private renderOutcome(payment: GuestPayment) {
+      const outcome = outcomePresentation(payment);
       const box = this.el("[data-outcome-box]");
       for (const tone of new Set(Object.values(outcomeTone))) box.classList.remove(tone);
-      box.classList.add(outcomeTone[payment.state]);
-      const key = `reservation.outcome.${payment.state}`;
-      this.el("[data-outcome-title]").textContent = this.text(`${key}.title`);
-      this.el("[data-outcome-body]").textContent = this.text(
-        payment.state === "processing" && payment.delayed
-          ? "reservation.outcome.processing.delayed"
-          : `${key}.body`,
-      );
-      const money = (cents: number) => formatMoney(cents, payment.currency);
-      const { reservation } = payment;
-      const rows: [string, string][] =
-        payment.state === "confirmed" && reservation
-          ? [
-              ["reservation.outcome.reference", reservation.code],
-              ["reservation.outcome.paid", money(reservation.paidCents)],
-              ["reservation.outcome.outstanding", money(reservation.outstandingCents)],
-            ]
-          : payment.state === "unfulfilled" && reservation
-            ? [
-                ["reservation.outcome.supportReference", reservation.code],
-                ["reservation.outcome.received", money(reservation.paidCents)],
-                ["reservation.outcome.awaiting", money(reservation.refundDueCents)],
-              ]
-            : reservation
-              ? [
-                  ["reservation.outcome.reference", reservation.code],
-                  ["reservation.outcome.paid", money(reservation.paidCents)],
-                ]
-              : [["reservation.outcome.amount", money(payment.amountCents)]];
+      box.classList.add(outcome.tone);
+      this.el("[data-outcome-title]").textContent = this.text(outcome.titleKey);
+      this.el("[data-outcome-body]").textContent = this.text(outcome.bodyKey);
       this.el("[data-outcome-amounts]").replaceChildren(
-        ...rows.map(([label, value]) => {
+        ...outcome.rows.map(({ labelKey, value }) => {
           const row = document.createElement("div");
           row.className = "flex items-baseline justify-between gap-4 py-2";
           const term = document.createElement("dt");
           term.className = "text-stone-700";
-          term.textContent = this.text(label);
+          term.textContent = this.text(labelKey);
           const detail = document.createElement("dd");
           detail.className = "text-right font-semibold text-stone-900";
-          detail.textContent = value;
+          detail.textContent =
+            typeof value === "string" ? value : formatMoney(value.cents, payment.currency);
           row.append(term, detail);
           return row;
         }),
       );
-      this.el("[data-outcome-retry]").hidden = !allowsNewPayment(payment) || !this.copy.payments;
-      this.el("[data-outcome-bank]").hidden =
-        payment.state !== "authentication_required" || !this.cardFor(payment);
-      this.el("[data-access]").hidden = true;
-      this.el("[data-outcome-check]").hidden = !(
-        payment.state === "submitted" ||
-        payment.state === "authentication_required" ||
-        (VERIFYING.includes(payment.state) && payment.delayed)
-      );
-    }
-
-    private async showAccess(payment: GuestPayment | null) {
-      const panel = this.el("[data-access]");
-      const saved =
-        payment?.state === "confirmed" ||
-        payment?.state === "unfulfilled" ||
-        payment?.state === "reservation_changed";
-      const request = ++this.accessRequest;
-      this.accessToken = null;
-      panel.hidden = true;
-      this.el("[data-access-copied]").hidden = true;
-      if (!saved || !this.token) return;
-      const access = await readCheckoutAccess(this.copy.apiBase, this.token);
-      if (request !== this.accessRequest) return;
-      if (!access) return;
-      this.accessToken = access.token;
-      if (payment.state === "confirmed" && payment.reservation) {
-        storeConfirmedReservation(payment.reservation.code);
-        window.location.replace(summaryLink(this.copy.summaryHref, access.token));
-        return;
-      }
-      panel.hidden = false;
-    }
-
-    private async copyAccessLink() {
-      if (!this.accessToken) return;
-      const feedback = this.el("[data-access-copied]");
-      try {
-        await navigator.clipboard.writeText(summaryLink(this.copy.summaryHref, this.accessToken));
-        feedback.hidden = false;
-      } catch {
-        feedback.hidden = true;
-      }
-    }
-
-    private showFieldError(id: ContactField | "agree", message: string) {
-      const input = this.input(id);
-      const error = this.el(`#${id}-error`);
-      error.textContent = message;
-      error.hidden = !message;
-      if (message) input.setAttribute("aria-invalid", "true");
-      else input.removeAttribute("aria-invalid");
-    }
-
-    private validate() {
-      const contact = this.contact();
-      const problems: [ContactField | "agree", string][] = [];
-      if (!contact.fullName) problems.push(["fullName", "reservation.review.error.fullName"]);
-      if (!EMAIL.test(contact.email)) problems.push(["email", "reservation.review.error.email"]);
-      if (!contact.phone) problems.push(["phone", "reservation.review.error.phone"]);
-      if (!this.input("agree").checked) problems.push(["agree", "reservation.review.error.agree"]);
-      for (const id of [...contactFields, "agree"] as const) {
-        const problem = problems.find(([field]) => field === id);
-        this.showFieldError(id, problem ? this.text(problem[1]) : "");
-      }
-      if (problems.length) this.input(problems[0]![0]).focus();
-      return problems.length === 0;
-    }
-
-    private accept() {
-      return acceptQuote(this.copy.apiBase, this.token, {
-        quoteId: this.view!.quote.id,
-        language: this.copy.lang,
-        contact: this.contact(),
-      });
-    }
-
-    private async acceptCurrentOffer(): Promise<CheckoutOutcome | null> {
-      const outcome = await this.accept();
-      if (!["expired", "replaced", "denied"].includes(outcome.kind)) return outcome;
-      const before = offerKey(this.view!);
-      const current =
-        outcome.kind === "expired"
-          ? await refreshQuote(this.copy.apiBase, this.token)
-          : await this.currentQuote();
-      if (current.kind === "has_payment") return current;
-      if (current.kind !== "ready") return current;
-      this.ready(current);
-      if (offerKey(current.view) === before) return this.accept();
-      this.input("agree").checked = false;
-      this.el("[data-changed]").hidden = false;
-      this.input("agree").focus();
-      return null;
-    }
-
-    private async acceptBeforePaying() {
-      if (this.isAccepted()) return true;
-      this.el("[data-status]").textContent = this.text("reservation.review.saving");
-      const outcome = await this.acceptCurrentOffer();
-      this.el("[data-status]").textContent = "";
-      if (!outcome) return false;
-      if (outcome.kind === "has_payment") {
-        await this.syncPayment(true);
-        return false;
-      }
-      if (outcome.kind !== "ready") {
-        this.settle(outcome);
-        return false;
-      }
-      this.view = outcome.view;
-      const stored = this.stored();
-      if (stored)
-        storeCheckout(this.key, {
-          ...stored,
-          accepted: { quoteId: outcome.view.quote.id, contact: contactKey(this.contact()) },
-        });
-      return true;
-    }
-
-    private settle(outcome: Exclude<CheckoutOutcome, Ready>) {
-      this.el("[data-status]").textContent = "";
-      if (outcome.kind === "invalid" && contactProblems[outcome.error]) {
-        const [field, key] = contactProblems[outcome.error]!;
-        this.showFieldError(field, this.text(key));
-        return this.input(field).focus();
-      }
-      if (outcome.kind === "invalid" && backendProblems[outcome.error])
-        return this.showProblem(outcome);
-      const formError = formErrorCopy[outcome.kind];
-      if (formError) {
-        this.el("[data-form-error]").textContent = this.text(formError);
-        return;
-      }
-      const stored = this.stored();
-      if (outcome.kind === "limited" && stored)
-        storeCheckout(this.key, { ...stored, token: "", accepted: null });
-      this.showProblem(outcome);
-    }
-
-    private showProblem(problem: Problem) {
-      const copy = problemCopy[problem.kind];
-      const room = this.search.room ? (this.copy.rooms[this.search.room]?.name ?? "") : "";
-      const body =
-        problem.kind === "invalid" ? (backendProblems[problem.error] ?? copy.body) : copy.body;
-      this.el("[data-status]").textContent = "";
-      this.el("[data-review]").hidden = true;
-      this.el("[data-problem]").hidden = false;
-      this.el("[data-problem-title]").textContent = this.text(copy.title, { room });
-      this.el("[data-problem-body]").textContent = this.text(body, { room });
-      this.el("[data-retry]").hidden = !copy.retry;
-      this.el("[data-problem-title]").focus();
     }
   }
   customElements.define("reservation-review", ReservationReview);

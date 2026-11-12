@@ -50,7 +50,11 @@ metadata, and structured data.
 
 Run commands from the repository root with `pnpm --filter @pms/website`.
 
-- Run `check` and root `pnpm check` for code changes.
+- Run `check` and root `pnpm check` for code changes, and `test` for the unit tests
+  (`vp test run`). Review's checkout and payment decisions live in the pure
+  `src/lib/reservation/checkout-flow.ts` (`next(state, event)` returns the next state
+  and effects); `checkout-runner.ts` performs the effects, and
+  `ReservationReview.astro` only renders state and forwards DOM events.
 - Run `verify:build` for pages, assets, configuration, or translations. It checks
   locale parity, canonical URLs, redirects, sitemap entries, and the share image.
 - Run `test:smoke` for routes, navigation, language selection, mobile menus,

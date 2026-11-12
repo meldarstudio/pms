@@ -7,6 +7,7 @@
     "dev": "astro dev",
     "build": "astro build",
     "check": "astro sync && astro-check",
+    "test": "vp test run",
     "test:smoke": "node scripts/build-for-local-api.mjs && playwright test --project=smoke",
     "verify:build": "pnpm build && node scripts/verify-build.mjs",
     "test:links": "pnpm build && node scripts/check-links.mjs",
@@ -38,6 +39,7 @@
     "@playwright/test": "1.64.1",
     "@types/react": "^19.3.0",
     "@types/react-dom": "^19.3.0",
+    "vite-plus": "catalog:",
     "wrangler": "4.156.2"
   }
 }

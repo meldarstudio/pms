@@ -15,6 +15,6 @@ export default defineConfig({
   },
   test: {
     fileParallelism: false,
-    projects: ["./apps/backend", "./apps/portal"],
+    projects: ["./apps/backend", "./apps/portal", "./apps/website"],
   },
 });

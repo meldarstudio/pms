@@ -7,7 +7,7 @@
     "dev:portal": "pnpm --filter @pms/portal dev",
     "dev:backend": "pnpm --filter @pms/backend dev",
     "build": "pnpm check && pnpm --filter @pms/portal exec vp build",
-    "test": "pnpm --filter @pms/backend test && pnpm --filter @pms/portal test",
+    "test": "pnpm --filter @pms/backend test && pnpm --filter @pms/portal test && pnpm --filter @pms/website test",
     "db:generate": "pnpm --filter @pms/backend db:generate",
     "db:migrate:local": "pnpm --filter @pms/backend db:migrate:local",
     "db:reset:local": "pnpm --filter @pms/backend db:reset:local",

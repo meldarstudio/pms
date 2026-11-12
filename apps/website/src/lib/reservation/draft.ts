@@ -66,7 +66,7 @@ export type StoredCard = { sourceId: string; attemptId: string };
 
 const ATTEMPT_ID = /^[0-9a-f-]{36}$/i;
 
-function isStoredCard(value: unknown): value is StoredCard {
+export function isStoredCard(value: unknown): value is StoredCard {
   if (typeof value !== "object" || value === null) return false;
   const card = value as StoredCard;
   return CARD_SOURCE.test(card.sourceId) && ATTEMPT_ID.test(card.attemptId);
