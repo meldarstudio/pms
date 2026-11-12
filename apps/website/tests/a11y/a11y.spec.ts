@@ -113,6 +113,14 @@ for (const lang of ["", "/en"]) {
     await runAxe(page, `${lang}/reservar/revisar/`);
     await page.locator("[data-open-terms]").click();
     await expect(page.locator("[data-terms]")).toBeVisible();
+    await page.evaluate(() =>
+      Promise.allSettled(
+        document
+          .getAnimations()
+          .filter((animation) => animation.effect?.getComputedTiming().endTime !== Infinity)
+          .map((animation) => animation.finished),
+      ),
+    );
     await runAxe(page, `${lang}/reservar/revisar/ (terms)`);
     await page.keyboard.press("Escape");
     await expect(page.locator("[data-terms]")).toBeHidden();
