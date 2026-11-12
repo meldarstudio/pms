@@ -1,0 +1,1 @@
+ALTER TABLE `checkout_acceptances` ADD `notes` text;

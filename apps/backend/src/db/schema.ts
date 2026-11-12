@@ -123,6 +123,7 @@ export const checkoutAcceptances = sqliteTable(
     fullName: text("full_name").notNull(),
     email: text("email").notNull(),
     phone: text("phone").notNull(),
+    notes: text("notes"),
     language: text("language").$type<CheckoutLanguage>().notNull(),
     acceptedAt: text("accepted_at").notNull(),
   },

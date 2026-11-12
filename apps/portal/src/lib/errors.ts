@@ -26,6 +26,7 @@ const messages: Record<string, string> = {
   "email is required": "Ingresa el correo electrónico.",
   "phone is required": "Ingresa el teléfono.",
   "unknown language": "Idioma no admitido.",
+  "notes are too long": "Las notas no pueden superar los 2000 caracteres.",
   "online payments are paused":
     "Los pagos en línea están en pausa. La reserva en curso se conserva; inténtalo más tarde o contacta al hotel.",
   "too many payment attempts":

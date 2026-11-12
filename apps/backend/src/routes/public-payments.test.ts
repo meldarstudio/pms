@@ -92,6 +92,7 @@ async function admitPayments(admitted: boolean) {
 
 async function acceptedCheckout(
   selection: Record<string, unknown> = {},
+  notes?: string,
 ): Promise<{ token: string; quoteId: string }> {
   const created = await guest("/public/checkouts", {
     body: {
@@ -109,7 +110,7 @@ async function acceptedCheckout(
   const { token, quote } = (await created.json()) as { token: string; quote: { id: string } };
   const accepted = await guest("/public/checkout/acceptances", {
     token,
-    body: { quoteId: quote.id, language: "en", contact, agreed: true },
+    body: { quoteId: quote.id, language: "en", contact, agreed: true, notes },
   });
   expect(accepted.status).toBe(201);
   return { token, quoteId: quote.id };
@@ -241,6 +242,36 @@ describe("paying the accepted quote", () => {
     expect(recorded).toEqual([
       { status: "unknown", checkout: 1, acceptance: 1, language: "en", eligible: 1 },
     ]);
+  });
+
+  it("saves the accepted note on the reservation and leaves the guest's notes empty", async () => {
+    db.sqlite.exec(`INSERT INTO guests (id, full_name, email, phone, notes, created_at)
+      VALUES ('existing', 'Ana Torres', 'ana@example.com', '+51987654321', 'VIP notes', '2026-01-01')`);
+    const checkout = await acceptedCheckout({}, "We arrive around 9 pm.");
+    await guest("/public/checkout/acceptances", {
+      token: checkout.token,
+      body: {
+        quoteId: checkout.quoteId,
+        language: "en",
+        contact,
+        agreed: true,
+        notes: "Arriving at 9 pm, quiet room please",
+      },
+    });
+
+    await paid(checkout);
+
+    expect(
+      rows(
+        "SELECT r.notes AS reservation_notes, g.notes AS guest_notes FROM reservations r JOIN guests g ON g.id = r.guest_id ORDER BY g.created_at DESC",
+      ),
+    ).toEqual([{ reservation_notes: "Arriving at 9 pm, quiet room please", guest_notes: null }]);
+  });
+
+  it("leaves the reservation's notes empty when the guest left none", async () => {
+    await paid(await acceptedCheckout());
+
+    expect(rows("SELECT notes FROM reservations")).toEqual([{ notes: null }]);
   });
 
   it("carries the public checkout onto the reservation saved after a delayed lookup", async () => {

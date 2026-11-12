@@ -146,6 +146,7 @@ export async function acceptCheckoutQuote(
     quoteId: quote.id,
     ...input.contact,
     phone: acceptPhone(input.contact.phone),
+    notes: input.notes || null,
     language: input.language,
   };
   const previous = await latestAcceptance(db, checkout.id);
@@ -209,6 +210,7 @@ function retainedAcceptance(
     fullName: previous.fullName,
     email: previous.email,
     phone: previous.phone,
+    notes: previous.notes,
     language: previous.language,
     acceptedAt: context.now.toISOString(),
   };
@@ -255,12 +257,16 @@ function sameTerms(accepted: Quote["terms"], next: Quote["terms"]) {
 
 const sameAcceptance = (
   previous: CheckoutAcceptanceRow,
-  next: Pick<CheckoutAcceptanceRow, "quoteId" | "fullName" | "email" | "phone" | "language">,
+  next: Pick<
+    CheckoutAcceptanceRow,
+    "quoteId" | "fullName" | "email" | "phone" | "notes" | "language"
+  >,
 ) =>
   previous.quoteId === next.quoteId &&
   previous.fullName === next.fullName &&
   previous.email === next.email &&
   previous.phone === next.phone &&
+  previous.notes === next.notes &&
   previous.language === next.language;
 
 export async function readCheckout(db: Db, checkout: PublicCheckout, context: CheckoutContext) {

@@ -388,6 +388,7 @@ export const checkoutAcceptanceSchema = z
     quoteId: z.uuid(),
     language: checkoutLanguageSchema,
     contact: bookingContactSchema,
+    notes: z.string().trim().max(2000, "notes are too long").optional(),
     agreed: z.literal(true, { error: "agreement must be accepted" }),
   })
   .strict();

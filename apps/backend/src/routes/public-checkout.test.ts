@@ -478,6 +478,48 @@ describe("accepting the agreement", () => {
     expect(count("checkout_acceptances")).toBe(1);
   });
 
+  it("stores the guest's note, trimmed, with the acceptance and none when it is blank", async () => {
+    const { token, quote } = await started();
+
+    await accept(token, { quoteId: quote.id });
+    await accept(token, { quoteId: quote.id, notes: "  We arrive around 9 pm.  " });
+    await accept(token, { quoteId: quote.id, notes: "   " });
+
+    expect(
+      db.sqlite.prepare("SELECT notes FROM checkout_acceptances ORDER BY rowid").all(),
+    ).toEqual([{ notes: null }, { notes: "We arrive around 9 pm." }, { notes: null }]);
+  });
+
+  it("reuses the acceptance for the same note and records a new one when the note changes", async () => {
+    const { token, quote } = await started();
+    const first = await accept(token, { quoteId: quote.id, notes: "Late arrival" });
+    vi.setSystemTime(new Date("2026-10-10T15:01:00Z"));
+
+    const repeated = await accept(token, { quoteId: quote.id, notes: " Late arrival " });
+    const changed = await accept(token, { quoteId: quote.id, notes: "Late arrival, quiet room" });
+
+    expect(((await repeated.json()) as CheckoutView).acceptance).toEqual(
+      ((await first.json()) as CheckoutView).acceptance,
+    );
+    expect(changed.status).toBe(201);
+    expect(
+      db.sqlite.prepare("SELECT notes FROM checkout_acceptances ORDER BY rowid").all(),
+    ).toEqual([{ notes: "Late arrival" }, { notes: "Late arrival, quiet room" }]);
+  });
+
+  it("keeps the note when an unchanged quote refresh carries the acceptance forward", async () => {
+    const { token, quote } = await started();
+    await accept(token, { quoteId: quote.id, notes: "Late arrival" });
+    vi.setSystemTime(new Date("2026-10-10T15:01:00Z"));
+
+    const refreshed = await guest("/public/checkout/quotes", { token, method: "POST" });
+
+    expect(((await refreshed.json()) as CheckoutView).acceptance).not.toBeNull();
+    expect(
+      db.sqlite.prepare("SELECT notes FROM checkout_acceptances ORDER BY rowid").all(),
+    ).toEqual([{ notes: "Late arrival" }, { notes: "Late arrival" }]);
+  });
+
   it("caps changed acceptances per checkout while an identical retry still succeeds", async () => {
     const { token, quote } = await started();
     for (let attempt = 1; attempt <= 20; attempt++)
@@ -546,6 +588,7 @@ describe("accepting the agreement", () => {
       "phone extensions are not supported",
     ],
     ["an unchecked agreement", { agreed: false }, "agreement must be accepted"],
+    ["a note over 2000 characters", { notes: "x".repeat(2001) }, "notes are too long"],
     [
       "extra guest details",
       { contact: { ...contact, documentNumber: "123" } },

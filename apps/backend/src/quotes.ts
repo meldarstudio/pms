@@ -121,6 +121,7 @@ export async function saveQuote(
     payment?: QuotePayment;
     publicCheckoutId?: string | null;
     confirmation?: ConfirmationProvenance | null;
+    notes?: string | null;
   } = {},
 ): Promise<string> {
   const [quote] = await db.select().from(quotes).where(eq(quotes.id, quoteId));
@@ -151,6 +152,7 @@ export async function saveQuote(
         checkIn: quote.checkIn,
         checkOut: quote.checkOut,
         source: "online",
+        notes: options.notes ?? null,
         quoteId,
         publicCheckoutId: options.publicCheckoutId ?? null,
         confirmationOwed: provenance === null ? 0 : 1,

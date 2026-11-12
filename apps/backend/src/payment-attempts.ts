@@ -362,6 +362,7 @@ async function fulfill(db: Db, attempt: Attempt, context: PaymentContext): Promi
     payment,
     publicCheckoutId: attempt.checkoutId,
     confirmation: confirmationProvenance(attempt),
+    notes: await acceptedNotes(db, attempt),
   };
   let reservationId: string;
   try {
@@ -389,6 +390,15 @@ async function fulfill(db: Db, attempt: Attempt, context: PaymentContext): Promi
     .where(and(eq(paymentAttempts.id, attempt.id), eq(paymentAttempts.status, "succeeded")))
     .returning();
   return recorded ?? findAttempt(db, attempt.id);
+}
+
+async function acceptedNotes(db: Db, attempt: Attempt) {
+  if (!attempt.acceptanceId) return null;
+  const [acceptance] = await db
+    .select({ notes: checkoutAcceptances.notes })
+    .from(checkoutAcceptances)
+    .where(eq(checkoutAcceptances.id, attempt.acceptanceId));
+  return acceptance?.notes ?? null;
 }
 
 function confirmationProvenance(attempt: Attempt): ConfirmationProvenance | null {
