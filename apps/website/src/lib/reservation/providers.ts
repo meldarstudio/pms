@@ -91,13 +91,11 @@ const cardBorder = "#a8a29e";
 
 const cardAppearance = {
   theme: "default",
-  hiddenCulqiLogo: true,
   hiddenBanner: false,
   hiddenToolBarAmount: false,
   hiddenEmail: false,
   menuType: "default",
   defaultStyle: {
-    bannerColor: "#ffffff",
     buttonBackground: cardAccent,
     menuColor: cardLink,
     linksColor: cardLink,
@@ -115,23 +113,12 @@ const cardAppearance = {
     colorTextSecondary: "#57534e",
     colorTextPlaceholder: "#78716c",
     colorIconTab: cardText,
-    colorLogo: "dark",
   },
   rules: {
     ".Culqi-Main-Container": {
       background: "#ffffff",
       color: cardText,
       fontFamily: "var(--fontFamily)",
-    },
-    ".Culqi-ToolBanner": {
-      background: "#ffffff",
-      color: cardText,
-    },
-    ".Culqi-ToolBanner figure": {
-      display: "none",
-    },
-    ".Culqi-ToolBanner span": {
-      background: cardText,
     },
     ".Culqi-Toolbar-Price": {
       color: cardText,
@@ -155,8 +142,6 @@ const cardAppearance = {
       color: cardAccentInk,
       borderRadius: "0",
       fontWeight: "600",
-      letterSpacing: "0.1em",
-      textTransform: "uppercase",
     },
     ".Culqi-Button:disabled": {
       background: "#f6d3a8",
@@ -201,7 +186,7 @@ export async function openCardForm(options: {
       },
       appearance: {
         ...cardAppearance,
-        buttonCardPayText: options.lang === "en" ? "Pay by card" : "Pagar con tarjeta",
+        buttonCardPayText: options.lang === "en" ? "Pay" : "Pagar",
       },
     });
     checkout.culqi = () => {
