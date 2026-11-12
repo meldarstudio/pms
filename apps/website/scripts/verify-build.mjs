@@ -149,15 +149,30 @@ for (const lang of ["es", "en"]) {
   const prefix = lang === "en" ? "en/" : "";
   const home = await read(dist, `${prefix}index.html`);
   assert.ok(home.includes('id="availability"'), `The ${lang} homepage needs its date search`);
-  for (const [step, element] of [
-    ["revisar/", "reservation-review"],
-    ["resumen/", "reservation-summary"],
-  ]) {
-    const html = await read(dist, `${prefix}reservar/${step}index.html`);
-    assert.ok(html.includes(`<${element}`), `The ${lang} ${element} step must always be available`);
-    const copy = JSON.parse(html.match(/<script[^>]*data-copy[^>]*>(.*?)<\/script>/s)?.[1] ?? "{}");
-    assert.ok(URL.canParse(copy.apiBase), `The ${lang} ${element} step needs an absolute API URL`);
-  }
+  const review = await read(dist, `${prefix}reservar/revisar/index.html`);
+  const reviewIsland = review.match(
+    /<astro-island[^>]*component-url="[^"]*\/Review\.[^"]*"[^>]*>/,
+  )?.[0];
+  assert.ok(reviewIsland, `The ${lang} review step must always be available`);
+  const reviewProps = JSON.parse(
+    reviewIsland.match(/props="([^"]*)"/)?.[1].replaceAll("&quot;", '"') ?? "{}",
+  );
+  assert.ok(
+    URL.canParse(reviewProps.apiBase?.[1]),
+    `The ${lang} review step needs an absolute API URL`,
+  );
+  const summary = await read(dist, `${prefix}reservar/resumen/index.html`);
+  assert.ok(
+    summary.includes("<reservation-summary"),
+    `The ${lang} reservation-summary step must always be available`,
+  );
+  const copy = JSON.parse(
+    summary.match(/<script[^>]*data-copy[^>]*>(.*?)<\/script>/s)?.[1] ?? "{}",
+  );
+  assert.ok(
+    URL.canParse(copy.apiBase),
+    `The ${lang} reservation-summary step needs an absolute API URL`,
+  );
   const rooms = await read(dist, `${prefix}habitaciones/index.html`);
   assert.ok(
     rooms.includes('id="availability"') && rooms.includes("<astro-island"),

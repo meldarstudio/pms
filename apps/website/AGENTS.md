@@ -40,6 +40,14 @@ can open the bank again, without another card. Browser tests stub the Culqi, Cul
 Turnstile scripts (`tests/support/payment.ts`), and the local API charges a fake Culqi and
 Turnstile served by `scripts/fake-payment-services.mjs`.
 
+Review is one React island, `src/components/reservation/review/Review.tsx`, mounted by
+`ReservationReview.astro` with build-time copy (`review/text.ts`), rooms and payment keys.
+The step bar and help stay in Astro. `useCheckoutFlow.ts` runs `next` in a reducer whose
+state carries the pending effects; a layout effect hands them to one runner after React
+commits, so `focus` effects (mapped to refs by `focus.ts`) find rendered elements, and
+the runner is disposed on unmount. In development `?payments=on|off` previews both
+payment modes (`paymentsPreview.tsx`).
+
 ## Content
 
 The hotel has no pool or hot springs on the property. Mamahuarmi, La Juventud,
@@ -53,8 +61,8 @@ Run commands from the repository root with `pnpm --filter @pms/website`.
 - Run `check` and root `pnpm check` for code changes, and `test` for the unit tests
   (`vp test run`). Review's checkout and payment decisions live in the pure
   `src/lib/reservation/checkout-flow.ts` (`next(state, event)` returns the next state
-  and effects); `checkout-runner.ts` performs the effects, and
-  `ReservationReview.astro` only renders state and forwards DOM events.
+  and effects); `checkout-runner.ts` performs the effects, and the React components in
+  `src/components/reservation/review/` render the state and forward events.
 - Run `verify:build` for pages, assets, configuration, or translations. It checks
   locale parity, canonical URLs, redirects, sitemap entries, and the share image.
 - Run `test:smoke` for routes, navigation, language selection, mobile menus,

@@ -93,7 +93,7 @@ export const contactProblems: Record<string, [ContactField, string]> = {
   "phone extensions are not supported": ["phone", "reservation.review.error.phoneInvalid"],
 };
 
-export const outcomeTone: Record<GuestPayment["state"], string> = {
+const outcomeTone: Record<GuestPayment["state"], string> = {
   declined: "border-red-700",
   submitted: "border-amber-600",
   authentication_required: "border-amber-600",

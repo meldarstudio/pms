@@ -63,7 +63,7 @@
   --color-accent-950: oklch(25% 0.054 43.103);
 }
 
-:is(reservation-search, reservation-choose, reservation-review) [hidden] {
+:is(reservation-search, reservation-choose) [hidden] {
   display: none !important;
 }
 
