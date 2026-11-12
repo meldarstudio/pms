@@ -8,6 +8,7 @@ import {
   type Event as FlowEvent,
   type State,
 } from "./checkout-flow";
+import { outcomePresentation } from "./checkout-copy";
 import { outcomeActions, payBusy } from "./checkout-selectors";
 import { contactKey } from "./draft";
 import type { GuestPayment, PaymentOutcome } from "./payment";
@@ -395,6 +396,33 @@ describe("an open payment", () => {
       expect(types(effects)).not.toContain(charge);
   });
 
+  it.each([
+    {
+      name: "keeps checking on its own while verification is on time",
+      delayed: false,
+      poll: true,
+      check: false,
+      body: "reservation.outcome.processing.body",
+    },
+    {
+      name: "stops checking and offers a status check once verification is delayed",
+      delayed: true,
+      poll: false,
+      check: true,
+      body: "reservation.outcome.processing.delayed",
+    },
+  ])("$name, without offering to pay again", ({ delayed, poll, check, body }) => {
+    const { state, effects } = drive(
+      openReview(),
+      synced(payment({ state: "processing", delayed })),
+    );
+
+    expect(types(effects).includes("schedulePoll")).toBe(poll);
+    expect(outcomeActions(state)).toEqual({ retry: false, bank: false, check });
+    expect(outcomePresentation(state.payment!).bodyKey).toBe(body);
+    expect(types(effects)).not.toContain("readCheckoutAccess");
+  });
+
   it("lets a declined payment be retried with the card form", () => {
     const { state, effects } = drive(
       openReview(),
@@ -551,6 +579,24 @@ describe("the card form", () => {
     ]);
     expect(state.status.key).toBe("reservation.pay.sending");
     expect(state.stored?.submitted).toBe("quote-1");
+  });
+});
+
+describe("paused online payments", () => {
+  it("keep the contact and acceptance, charge nothing, and free the pay button", () => {
+    const { state, effects } = drive(openReview(), ...toCharging, {
+      type: "paymentStarted",
+      outcome: { kind: "paused" },
+      now: NOW,
+    });
+
+    expect(state.formError).toBe("reservation.pay.error.paused");
+    expect(ofType(effects, "startPayment")).toHaveLength(1);
+    expect(state.payment).toBeNull();
+    expect(state.outcomeShown).toBe(false);
+    expect(state.contact).toEqual(contact);
+    expect(state.agreed).toBe(true);
+    expect(payBusy(state)).toBe(false);
   });
 });
 

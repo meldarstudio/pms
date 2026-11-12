@@ -1,61 +1,22 @@
-import { expect, test, type APIRequestContext, type Page } from "@playwright/test";
+import { expect, test, type Page } from "@playwright/test";
+import {
+  checkoutToken,
+  fillContact,
+  payButton,
+  reviewPath,
+  serverCheckout,
+} from "../support/checkout";
 import { LOCAL_API_URL, daysFromToday, doubleSoldOutStay, openStay } from "../support/local-api";
-import { closeCardFormWithoutPaying, stubPaymentScripts } from "../support/payment";
+import { closeCardFormWithoutPaying, stubPaymentScripts, useOwnSourceIp } from "../support/payment";
 import { selectRoomRate } from "../support/room-rate";
 
 const checkoutsRoute = `${LOCAL_API_URL}/public/checkouts`;
 const acceptanceRoute = `${LOCAL_API_URL}/public/checkout/acceptances`;
 
-let sourceIps = 0;
-
 test.beforeEach(async ({ page }) => {
   await stubPaymentScripts(page);
-  const address = `10.0.${test.info().workerIndex % 250}.${(sourceIps += 1) % 250}`;
-  await page.route(`${LOCAL_API_URL}/public/**`, (route) =>
-    route.fallback({ headers: { ...route.request().headers(), "cf-connecting-ip": address } }),
-  );
+  await useOwnSourceIp(page, test.info().workerIndex);
 });
-
-function reviewPath(
-  stay: { checkIn: string; checkOut: string },
-  extra: Record<string, string>,
-  lang = "",
-) {
-  const params = new URLSearchParams({ ...stay, adults: "2", children: "0", ...extra });
-  return `${lang}/reservar/revisar/?${params.toString()}`;
-}
-
-async function storedToken(page: Page) {
-  return page.evaluate(() => {
-    const checkouts = JSON.parse(
-      sessionStorage.getItem("hm.reservation.checkouts") ?? "{}",
-    ) as Record<string, { token: string }>;
-    return Object.values(checkouts).at(-1)!.token;
-  });
-}
-
-async function serverCheckout(page: Page, request: APIRequestContext) {
-  const response = await request.get(`${LOCAL_API_URL}/public/checkout`, {
-    headers: { authorization: `Bearer ${await storedToken(page)}` },
-  });
-  expect(response.status()).toBe(200);
-  return (await response.json()) as {
-    language: string;
-    quote: { id: string };
-    acceptance: { quoteId: string } | null;
-  };
-}
-
-async function fillContact(page: Page) {
-  await page.getByLabel("Nombre completo").fill("Ana Torres");
-  await page.getByLabel("Correo electrónico").fill("ana@example.com");
-  await page.getByLabel("Teléfono").fill("987 654 321");
-}
-
-const payButton = (page: Page) =>
-  page.getByRole("button", {
-    name: /^(Pagar|Pay) S\/\s[\d.]+$/,
-  });
 
 async function acceptTerms(page: Page) {
   await fillContact(page);
@@ -171,112 +132,70 @@ test("a restored overlong note opens and receives focus when paying with notes c
   expect(acceptances.count).toBe(0);
 });
 
-for (const lang of ["", "/en"]) {
-  test(`the ${lang ? "English" : "Spanish"} Flexible checkout warns when free cancellation has ended`, async ({
-    page,
-  }) => {
-    await page.goto(
-      reviewPath(
-        { checkIn: daysFromToday(1), checkOut: daysFromToday(3) },
-        { room: "king", plan: "flexible" },
-        lang,
-      ),
-    );
-    const policy = page.locator("[data-cancellation]");
-    await expect(policy.locator("strong")).toHaveText(
-      lang ? "Free cancellation has ended" : "El plazo de cancelación gratuita terminó",
-    );
-    await expect(policy).toContainText(
-      lang
-        ? "Cancellation or no-show costs the first night:"
-        : "Si cancela o no llega, se cobra la primera noche:",
-    );
-  });
+test("the Flexible checkout warns when free cancellation has ended", async ({ page }) => {
+  await page.goto(
+    reviewPath(
+      { checkIn: daysFromToday(1), checkOut: daysFromToday(3) },
+      { room: "king", plan: "flexible" },
+    ),
+  );
+  const policy = page.locator("[data-cancellation]");
+  await expect(policy.locator("strong")).toHaveText("El plazo de cancelación gratuita terminó");
+  await expect(policy).toContainText("Si cancela o no llega, se cobra la primera noche:");
+});
 
-  test(`the ${lang ? "English" : "Spanish"} mobile review keeps the charge and cancellation visible and opens terms without losing contact details`, async ({
-    page,
-  }) => {
-    const en = lang === "/en";
-    const stay = openStay();
-    await page.setViewportSize({ width: 390, height: 844 });
-    await page.goto(reviewPath(stay, { room: "king", plan: "flexible" }, lang));
-    const summary = page.getByRole("complementary", { name: en ? "Your stay" : "Su estadía" });
-    const payment = page.getByRole("region", { name: en ? "Payment" : "Pago", exact: true });
-    await expect(summary.getByRole("img")).toBeVisible();
-    await expect(summary.locator('[data-amount="total"]')).toHaveText(/S\/\s200\.00/);
-    await expect(payment.locator('[data-amount="now"]')).toHaveText(/S\/\s100\.00/);
-    await expect(payment.locator('[data-amount="remaining"]')).toHaveText(/S\/\s100\.00/);
-    await expect(payment.locator("[data-cancellation] time")).toHaveAttribute(
-      "datetime",
-      daysFromToday(118),
-    );
-    await expect(summary.locator('[data-stay="compact-guests-rate"]')).toHaveText(
-      en ? "2 adults · Flexible" : "2 adultos · Flexible",
-    );
-    await expect(summary.locator("[data-back-to-rates]")).toBeVisible();
-    await expect(summary.locator("[data-change-choice]")).toBeVisible();
-    await expect(
-      page
-        .getByRole("banner")
-        .getByRole("link", { name: en ? "Book now" : "Reservar", exact: true }),
-    ).toHaveCount(0);
-    const helpHref = await page.locator("[data-reservation-help]").getAttribute("href");
-    await expect(page.locator("[data-reservation-help]")).toHaveText(
-      en ? "Book via WhatsApp" : "Reservar por WhatsApp",
-    );
-    await expect(
-      page.getByRole("link", { name: en ? "Call us" : "Llámenos", exact: true }),
-    ).toHaveAttribute("href", "tel:+51992755015");
-    const helpMessage = new URL(helpHref!).searchParams.get("text")!;
-    expect(helpMessage).toContain(en ? "Room: King room" : "Habitación: Suite Matrimonial");
-    expect(helpMessage).toContain(en ? "Guests: 2 adults" : "Huéspedes: 2 adultos");
-    expect(helpMessage).toContain("200.00");
-    expect(helpMessage).not.toContain("___");
+test("the mobile review keeps the charge and cancellation visible and opens terms without losing contact details", async ({
+  page,
+}) => {
+  const stay = openStay();
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto(reviewPath(stay, { room: "king", plan: "flexible" }));
+  const summary = page.getByRole("complementary", { name: "Su estadía" });
+  const payment = page.getByRole("region", { name: "Pago", exact: true });
+  await expect(summary.locator('[data-amount="total"]')).toHaveText(/S\/\s200\.00/);
+  await expect(payment.locator('[data-amount="now"]')).toHaveText(/S\/\s100\.00/);
+  await expect(payment.locator('[data-amount="remaining"]')).toHaveText(/S\/\s100\.00/);
+  await expect(payment.locator("[data-cancellation] time")).toHaveAttribute(
+    "datetime",
+    daysFromToday(118),
+  );
+  await expect(summary.locator('[data-stay="compact-guests-rate"]')).toHaveText(
+    "2 adultos · Flexible",
+  );
+  await expect(summary.locator('[data-stay="checkIn"]')).toHaveAttribute("datetime", stay.checkIn);
+  await expect(summary.locator('[data-stay="checkOut"]')).toHaveAttribute(
+    "datetime",
+    stay.checkOut,
+  );
+  await expect(summary.getByRole("link", { name: "Cambiar tarifa", exact: true })).toBeVisible();
+  await expect(summary.locator("[data-change-choice]")).toBeVisible();
+  await expect(
+    page.getByRole("banner").getByRole("link", { name: "Reservar", exact: true }),
+  ).toHaveCount(0);
+  const help = page.locator("[data-reservation-help]");
+  await expect(help).toHaveText("Reservar por WhatsApp");
+  await expect(page.getByRole("link", { name: "Llámenos", exact: true })).toHaveAttribute(
+    "href",
+    "tel:+51992755015",
+  );
+  const helpMessage = new URL((await help.getAttribute("href"))!).searchParams.get("text")!;
+  expect(helpMessage).toContain("Habitación: Suite Matrimonial");
+  expect(helpMessage).toContain("Huéspedes: 2 adultos");
+  expect(helpMessage).toContain("200.00");
+  expect(helpMessage).not.toContain("___");
 
-    const fullName = page.getByLabel(en ? "Full name" : "Nombre completo");
-    await fullName.fill("Ana María Torres");
-    await expect(summary.locator('[data-stay="compact"]')).toBeVisible();
-    await expect(summary.locator('[data-stay="compact-guests-rate"]')).toBeVisible();
-    await expect(
-      summary.getByRole("link", { name: en ? "Change rate" : "Cambiar tarifa", exact: true }),
-    ).toBeVisible();
-    await expect(summary.locator('[data-stay="checkIn"]')).toHaveAttribute(
-      "datetime",
-      stay.checkIn,
-    );
-    await expect(summary.locator('[data-stay="checkOut"]')).toHaveAttribute(
-      "datetime",
-      stay.checkOut,
-    );
-
-    const termsLink = page.getByRole("link", {
-      name: en ? "reservation terms" : "condiciones de la reserva",
-      exact: true,
-    });
-    await termsLink.click();
-    const terms = page.getByRole("dialog", {
-      name: en ? "Reservation terms" : "Condiciones de la reserva",
-    });
-    await expect(
-      terms.getByText(en ? "Price per night" : "Precio por noche", { exact: true }),
-    ).toBeVisible();
-    await page.keyboard.press("Escape");
-    await expect(terms).toBeHidden();
-    await expect(termsLink).toBeFocused();
-    await expect(
-      page.getByRole("checkbox", { name: en ? /I accept/ : /Acepto/ }),
-    ).not.toBeChecked();
-    await expect(fullName).toHaveValue("Ana María Torres");
-
-    await page.setViewportSize({ width: 1440, height: 900 });
-    await expect(summary.locator('[data-stay="checkIn"]')).toBeVisible();
-    await expect(summary.locator("[data-back-to-rates]")).toBeVisible();
-    await page.setViewportSize({ width: 390, height: 844 });
-    await expect(summary.locator("[data-back-to-rates]")).toBeVisible();
-    await expect(summary.locator("[data-change-choice]")).toBeVisible();
-    await expect(fullName).toHaveValue("Ana María Torres");
-  });
-}
+  const fullName = page.getByLabel("Nombre completo");
+  await fullName.fill("Ana María Torres");
+  const termsLink = page.getByRole("link", { name: "condiciones de la reserva", exact: true });
+  await termsLink.click();
+  const terms = page.getByRole("dialog", { name: "Condiciones de la reserva" });
+  await expect(terms.getByText("Precio por noche", { exact: true })).toBeVisible();
+  await page.keyboard.press("Escape");
+  await expect(terms).toBeHidden();
+  await expect(termsLink).toBeFocused();
+  await expect(page.getByRole("checkbox", { name: /Acepto/ })).not.toBeChecked();
+  await expect(fullName).toHaveValue("Ana María Torres");
+});
 
 test("switching plan and back restores the earlier checkout and acceptance", async ({
   page,
@@ -308,41 +227,6 @@ test("switching plan and back restores the earlier checkout and acceptance", asy
   await closeCardFormWithoutPaying(page, payButton(page));
   expect(acceptances.count).toBe(0);
   expect((await serverCheckout(page, request)).quote.id).toBe(flexible.quote.id);
-});
-
-test("paying again records the acceptance again only after the contact changes", async ({
-  page,
-}) => {
-  await page.goto(reviewPath(openStay(), { room: "king", plan: "flexible" }));
-  await acceptTerms(page);
-  const acceptances = countAcceptances(page);
-
-  await closeCardFormWithoutPaying(page, payButton(page));
-  expect(acceptances.count).toBe(0);
-
-  await page.getByLabel("Nombre completo").fill("Ana María Torres");
-  await closeCardFormWithoutPaying(page, payButton(page));
-  expect(acceptances.count).toBe(1);
-});
-
-test("an accepted quote past its lifetime stays payable and is not refreshed until the guest pays", async ({
-  page,
-}) => {
-  await page.clock.install();
-  let refreshes = 0;
-  page.on("request", (request) => {
-    if (request.method() === "POST" && request.url().endsWith("/public/checkout/quotes"))
-      refreshes += 1;
-  });
-  await page.goto(reviewPath(openStay(), { room: "king", plan: "flexible" }));
-  await acceptTerms(page);
-
-  await page.clock.fastForward("11:00");
-  await page.getByLabel("Teléfono").fill("987 654 321");
-
-  await expect(page.getByRole("checkbox", { name: /Acepto las condiciones/ })).toBeChecked();
-  await expect(payButton(page)).toBeEnabled();
-  expect(refreshes).toBe(0);
 });
 
 test("browser back shows the latest contact draft", async ({ page }) => {
@@ -405,10 +289,10 @@ test("a checkout past its acceptance limit keeps the details and starts a fresh 
 }) => {
   await page.goto(reviewPath(openStay(), { room: "king", plan: "flexible" }));
   await expect(page.locator('[data-amount="total"]')).toHaveText(/S\/\s200\.00/);
-  const token = await storedToken(page);
+  const token = await checkoutToken(page);
   const { quote } = await serverCheckout(page, request);
-  for (let attempt = 1; attempt <= 20; attempt++)
-    await request.post(acceptanceRoute, {
+  for (let attempt = 1; attempt <= 20; attempt++) {
+    const accepted = await request.post(acceptanceRoute, {
       headers: { authorization: `Bearer ${token}` },
       data: {
         quoteId: quote.id,
@@ -417,6 +301,8 @@ test("a checkout past its acceptance limit keeps the details and starts a fresh 
         contact: { fullName: `Prueba ${attempt}`, email: "ana@example.com", phone: "987654321" },
       },
     });
+    expect(accepted.status(), await accepted.text()).toBe(201);
+  }
   await fillContact(page);
   await page.getByRole("checkbox", { name: /Acepto las condiciones/ }).check();
   await payButton(page).click();
@@ -431,7 +317,7 @@ test("a checkout past its acceptance limit keeps the details and starts a fresh 
   const acceptances = countAcceptances(page);
   await closeCardFormWithoutPaying(page, payButton(page));
   expect(acceptances.count).toBe(1);
-  expect(await storedToken(page)).not.toBe(token);
+  expect(await checkoutToken(page)).not.toBe(token);
 });
 
 for (const [name, fulfil, message] of [

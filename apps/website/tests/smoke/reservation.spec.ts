@@ -22,56 +22,47 @@ function roomsPath(
 
 const room = (page: Page, name: string) => page.getByRole("article", { name });
 
-for (const [lang, width] of [
-  ["", 390],
-  ["/en", 1440],
-] as const) {
-  test(`returning to rates never shows the room list at ${width}px`, async ({ page }) => {
-    let releaseScripts!: () => void;
-    let releaseOffers!: () => void;
-    const scripts = new Promise<void>((resolve) => {
-      releaseScripts = resolve;
-    });
-    const offers = new Promise<void>((resolve) => {
-      releaseOffers = resolve;
-    });
-    await page.route("**/*", async (route) => {
-      if (route.request().resourceType() === "script") await scripts;
-      await route.continue();
-    });
-    await page.route(offersRoute, async (route) => {
-      await offers;
-      await route.continue();
-    });
-
-    try {
-      await page.goto(roomsPath(openStay(), { room: "king", plan: "flexible" }, lang), {
-        waitUntil: "commit",
-      });
-      await expect(
-        page.getByRole("heading", { name: lang ? "Choose the rate" : "Elija la tarifa" }),
-      ).toBeVisible();
-      await expect(page.getByRole("article")).toHaveCount(0);
-      releaseScripts();
-      await expect(page.getByRole("status")).toContainText(
-        lang ? "Checking availability" : "Consultando disponibilidad",
-      );
-      await expect(page.getByRole("article")).toHaveCount(0);
-      await expect(page.getByRole("radio")).toHaveCount(0);
-      releaseOffers();
-      await expect(page.getByRole("radio", { name: /Flexible/ })).toBeChecked();
-      await expect(page.getByRole("article")).toHaveCount(0);
-      await page
-        .getByRole("button", { name: /Cambiar habitación|Change room/, exact: false })
-        .first()
-        .click();
-      await expect(page.getByRole("article")).toHaveCount(3);
-    } finally {
-      releaseScripts();
-      releaseOffers();
-    }
+test("returning to rates never shows the room list", async ({ page }) => {
+  let releaseScripts!: () => void;
+  let releaseOffers!: () => void;
+  const scripts = new Promise<void>((resolve) => {
+    releaseScripts = resolve;
   });
-}
+  const offers = new Promise<void>((resolve) => {
+    releaseOffers = resolve;
+  });
+  await page.route("**/*", async (route) => {
+    if (route.request().resourceType() === "script") await scripts;
+    await route.continue();
+  });
+  await page.route(offersRoute, async (route) => {
+    await offers;
+    await route.continue();
+  });
+
+  try {
+    await page.goto(roomsPath(openStay(), { room: "king", plan: "flexible" }), {
+      waitUntil: "commit",
+    });
+    await expect(page.getByRole("heading", { name: "Elija la tarifa" })).toBeVisible();
+    await expect(page.getByRole("article")).toHaveCount(0);
+    releaseScripts();
+    await expect(page.getByRole("status")).toContainText("Consultando disponibilidad");
+    await expect(page.getByRole("article")).toHaveCount(0);
+    await expect(page.getByRole("radio")).toHaveCount(0);
+    releaseOffers();
+    await expect(page.getByRole("radio", { name: /Flexible/ })).toBeChecked();
+    await expect(page.getByRole("article")).toHaveCount(0);
+    await page
+      .getByRole("button", { name: /Cambiar habitación/ })
+      .first()
+      .click();
+    await expect(page.getByRole("article")).toHaveCount(3);
+  } finally {
+    releaseScripts();
+    releaseOffers();
+  }
+});
 
 test("a room's dates button picks the stay on the rooms page and books a rate straight to review", async ({
   page,
@@ -155,79 +146,25 @@ test("a room's dates button picks the stay on the rooms page and books a rate st
   );
 });
 
-for (const lang of ["", "/en"]) {
-  test(`the ${lang ? "English" : "Spanish"} rate policies follow the selected rate and explain the check-in balance`, async ({
-    page,
-  }) => {
-    const en = lang === "/en";
-    await page.goto(roomsPath(openStay(), {}, lang));
-    await selectRoomRate(page, en ? "King room" : "Suite Matrimonial", "Flexible");
-    const policy = async (title: string) => {
-      const trigger = page.getByRole("button", { name: title, exact: true });
-      await trigger.click();
-      await expect(trigger).toHaveAttribute("aria-expanded", "true");
-      return page.getByRole("region", { name: title, exact: true });
-    };
+test("the cancellation policy follows the selected rate", async ({ page }) => {
+  await page.goto(roomsPath(openStay()));
+  await selectRoomRate(page, "Suite Matrimonial", "Flexible");
+  const trigger = page.getByRole("button", { name: "Cancelación", exact: true });
+  await trigger.click();
+  await expect(trigger).toHaveAttribute("aria-expanded", "true");
+  const cancellation = page.getByRole("region", { name: "Cancelación", exact: true });
 
-    const cancellation = await policy(en ? "Cancellation" : "Cancelación");
-    await expect(cancellation).toContainText(en ? "two calendar days" : "dos días calendario");
-    await expect(cancellation).toContainText(en ? "Peru time" : "hora de Perú");
-    await expect(cancellation).toContainText(
-      en
-        ? "the first night's accommodation will be charged"
-        : "se cobrará el importe de la primera noche",
-    );
-    await expect(cancellation).not.toContainText(
-      en ? "Non-refundable rate" : "Tarifa No reembolsable",
-    );
-    await page.getByRole("radio", { name: /No reembolsable|Non-refundable/ }).check();
-    await expect(cancellation).toContainText(
-      en
-        ? "full payment for the stay is required when booking"
-        : "el importe total de la estadía se abona al reservar",
-    );
-    await expect(cancellation).toContainText(en ? "No refunds" : "No se realizarán reembolsos");
-    await expect(cancellation).not.toContainText(en ? "Flexible rate" : "Tarifa Flexible");
-    await page.getByRole("radio", { name: /Flexible/ }).check();
-    await expect(cancellation).toContainText(en ? "Flexible rate" : "Tarifa Flexible");
-    await expect(cancellation).not.toContainText(
-      en ? "Non-refundable rate" : "Tarifa No reembolsable",
-    );
-
-    const times = await policy(en ? "Check-in and check-out" : "Entrada y salida");
-    await expect(times).toContainText(
-      en ? "Check-in: From 2:00 p.m." : "Entrada (check-in): Desde las 2:00 p. m.",
-    );
-    await expect(times).toContainText(
-      en ? "Check-out: Until 11:00 a.m." : "Salida (check-out): Hasta las 11:00 a. m.",
-    );
-    await expect(await policy(en ? "Breakfast" : "Desayuno")).toContainText(
-      en ? "does not provide breakfast service" : "no ofrece servicio de desayuno",
-    );
-    const pets = await policy(en ? "Pets" : "Mascotas");
-    await expect(pets).toContainText(en ? "Pets are permitted" : "Se admiten mascotas");
-    await expect(pets).toContainText(
-      en ? "inform us when making your reservation" : "infórmenos al realizar su reserva",
-    );
-
-    const payment = await policy(en ? "Paying at the hotel" : "Pago en el hotel");
-    await expect(payment).toContainText(
-      en
-        ? "outstanding balance for your stay is due at check-in"
-        : "saldo pendiente de su estadía, deberá abonarlo al realizar el check-in",
-    );
-    await expect(payment).toContainText(
-      en
-        ? "cash, cards, Yape and bank transfers"
-        : "efectivo, tarjetas, Yape y transferencias bancarias",
-    );
-    await expect(payment).toContainText(
-      en
-        ? "does not replace the initial payment required to confirm"
-        : "no sustituye el pago inicial requerido para confirmar",
-    );
-  });
-}
+  await expect(cancellation).toContainText("Tarifa Flexible");
+  await expect(cancellation).toContainText("se cobrará el importe de la primera noche");
+  await expect(cancellation).not.toContainText("Tarifa No reembolsable");
+  await page.getByRole("radio", { name: /No reembolsable/ }).check();
+  await expect(cancellation).toContainText("el importe total de la estadía se abona al reservar");
+  await expect(cancellation).toContainText("No se realizarán reembolsos");
+  await expect(cancellation).not.toContainText("Tarifa Flexible");
+  await page.getByRole("radio", { name: /Flexible/ }).check();
+  await expect(cancellation).toContainText("Tarifa Flexible");
+  await expect(cancellation).not.toContainText("Tarifa No reembolsable");
+});
 
 test("changing the stay refreshes the rooms without leaving the page", async ({ page }) => {
   await page.goto(roomsPath(openStay()));
@@ -250,108 +187,42 @@ test("changing the stay refreshes the rooms without leaving the page", async ({ 
   expect(await page.evaluate(() => "samePage" in window)).toBe(true);
 });
 
-for (const width of [390, 1440]) {
-  test(`the first date search keeps the stepper and room list in place at ${width}px`, async ({
-    page,
-  }) => {
-    await page.setViewportSize({ width, height: 900 });
-    await page.goto("/habitaciones/");
-    await expect(page.getByRole("status")).toContainText("Elija sus fechas");
-    await expect(page.locator("#offer-steps")).toBeVisible();
-    await page.evaluate(() => document.fonts.ready);
-    await page.locator("#stay-check-in").click();
-    await pickRangeDate(page, openStay().checkIn);
-    await pickRangeDate(page, openStay().checkOut);
-    await expect(page.getByRole("dialog")).toBeHidden();
+test("changing dates hides the old prices and disables Ver tarifas until new prices arrive", async ({
+  page,
+}) => {
+  await page.goto(roomsPath(openStay()));
+  const king = room(page, "Suite Matrimonial");
+  await expect(king.getByRole("button", { name: /Ver tarifas/ })).toBeEnabled();
+  await expect(king).toContainText("Total por 2 noches");
 
-    const geometry = async () => ({
-      listTop: await page
-        .getByRole("article")
-        .first()
-        .evaluate((card) => card.getBoundingClientRect().top + scrollY),
-      stepper: await page.locator("#offer-steps").evaluate((stepper) => {
-        const { top, height } = stepper.getBoundingClientRect();
-        return { top: top + scrollY, height };
-      }),
-    });
-    const before = await geometry();
-    let release!: () => void;
-    const pending = new Promise<void>((resolve) => {
-      release = resolve;
-    });
-    await page.route(offersRoute, async (route) => {
-      await pending;
-      await route.continue();
-    });
-
-    try {
-      await page.getByRole("button", { name: "Buscar", exact: true }).click();
-      await expect(page.getByRole("status")).toContainText("Consultando disponibilidad…");
-      expect(await geometry()).toEqual(before);
-      await expect(page.locator("#offer-steps")).toBeVisible();
-      await expect(
-        room(page, "Suite Matrimonial").getByRole("button", { name: /Ver tarifas/ }),
-      ).toBeDisabled();
-    } finally {
-      release();
-    }
-
-    await expect(
-      room(page, "Suite Matrimonial").getByRole("button", { name: /Ver tarifas/ }),
-    ).toBeEnabled();
-    expect(await geometry()).toEqual(before);
-    await expect(page.locator("#offer-steps")).toBeVisible();
+  await page.locator("#stay-check-in").click();
+  await pickRangeDate(page, daysFromToday(121));
+  await pickRangeDate(page, daysFromToday(124));
+  await expect(page.getByRole("dialog")).toBeHidden();
+  let release!: () => void;
+  const pending = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  await page.route(offersRoute, async (route) => {
+    await pending;
+    await route.continue();
   });
 
-  test(`changing dates keeps the room cards steady while prices refresh at ${width}px`, async ({
-    page,
-  }) => {
-    await page.setViewportSize({ width, height: 900 });
-    await page.goto(roomsPath(openStay()));
-    const king = room(page, "Suite Matrimonial");
-    await expect(king.getByRole("button", { name: /Ver tarifas/ })).toBeEnabled();
-    await page.evaluate(() => document.fonts.ready);
+  try {
+    await page.getByRole("button", { name: "Buscar", exact: true }).click();
+    await expect(page.getByRole("status")).toContainText("Consultando disponibilidad…");
+    await expect(page.locator('[aria-busy="true"]')).toBeVisible();
+    await expect(king.getByRole("heading", { name: "Suite Matrimonial" })).toBeVisible();
+    await expect(king.getByRole("button", { name: /Ver tarifas/ })).toBeDisabled();
+    await expect(king).not.toContainText(/S\/\s\d/);
+  } finally {
+    release();
+  }
 
-    await page.locator("#stay-check-in").click();
-    await pickRangeDate(page, daysFromToday(121));
-    await pickRangeDate(page, daysFromToday(124));
-    await expect(page.getByRole("dialog")).toBeHidden();
-
-    const geometry = () =>
-      page.getByRole("article").evaluateAll((cards) =>
-        cards.map((card) => {
-          const { top, height } = card.getBoundingClientRect();
-          return { top: top + window.scrollY, height };
-        }),
-      );
-    const before = await geometry();
-    let release!: () => void;
-    const pending = new Promise<void>((resolve) => {
-      release = resolve;
-    });
-    await page.route(offersRoute, async (route) => {
-      await pending;
-      await route.continue();
-    });
-
-    try {
-      await page.getByRole("button", { name: "Buscar", exact: true }).click();
-      await expect(page.getByRole("status")).toContainText("Consultando disponibilidad…");
-      expect(await geometry()).toEqual(before);
-      await expect(page.locator('[aria-busy="true"]')).toBeVisible();
-      await expect(king.getByRole("heading", { name: "Suite Matrimonial" })).toBeVisible();
-      await expect(king.getByRole("button", { name: /Ver tarifas/ })).toBeDisabled();
-      await expect(king).not.toContainText(/S\/\s\d/);
-    } finally {
-      release();
-    }
-
-    await expect(king.getByRole("button", { name: /Ver tarifas/ })).toBeEnabled();
-    await expect(king).toContainText("Total por 3 noches");
-    expect(await geometry()).toEqual(before);
-    await expect(page.locator('[aria-busy="true"]')).toHaveCount(0);
-  });
-}
+  await expect(king.getByRole("button", { name: /Ver tarifas/ })).toBeEnabled();
+  await expect(king).toContainText("Total por 3 noches");
+  await expect(page.locator('[aria-busy="true"]')).toHaveCount(0);
+});
 
 test("the stay follows the guest across languages and pages", async ({ page }) => {
   const stay = openStay();

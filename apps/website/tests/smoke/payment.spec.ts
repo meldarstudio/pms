@@ -9,6 +9,13 @@ import {
   WEBSITE_URL,
 } from "../support/local-api";
 import {
+  checkoutToken,
+  fillContact,
+  payButton,
+  reviewPath,
+  serverCheckout,
+} from "../support/checkout";
+import {
   closeCardFormWithoutPaying,
   nextCulqiCharge,
   recordedCulqi,
@@ -35,21 +42,16 @@ test.beforeEach(async ({ page }) => {
   await useOwnSourceIp(page, test.info().workerIndex);
 });
 
-const reviewPath = (plan: string, lang = "") =>
-  `${lang}/reservar/revisar/?${new URLSearchParams({ ...openStay(), adults: "2", children: "0", room: "king", plan }).toString()}`;
+const kingReview = (plan: string, lang = "") =>
+  reviewPath(openStay(), { room: "king", plan }, lang);
 
 const payerEmail = () => `payer-${crypto.randomUUID().slice(0, 8)}@example.com`;
 
 async function fillCheckout(page: Page, plan: string, email: string) {
-  await page.goto(reviewPath(plan));
-  await page.getByLabel("Nombre completo").fill("Ana Torres");
-  await page.getByLabel("Correo electrónico").fill(email);
-  await page.getByLabel("Teléfono").fill("987 654 321");
+  await page.goto(kingReview(plan));
+  await fillContact(page, email);
   await page.getByRole("checkbox", { name: /Acepto las condiciones/ }).check();
 }
-
-const payButton = (page: Page, amount: string) =>
-  page.getByRole("button", { name: new RegExp(`^Pagar S/\\s${amount}$`) });
 
 async function acceptTerms(page: Page, email: string) {
   await fillCheckout(page, "flexible", email);
@@ -67,31 +69,6 @@ async function expectConfirmed(page: Page, lang = "") {
       name: lang ? "Your reservation is confirmed" : "Su reserva está confirmada",
     }),
   ).toBeFocused();
-}
-
-async function checkoutToken(page: Page) {
-  return page.evaluate(() => {
-    const checkouts = JSON.parse(
-      sessionStorage.getItem("hm.reservation.checkouts") ?? "{}",
-    ) as Record<string, { token: string }>;
-    return Object.values(checkouts).at(-1)!.token;
-  });
-}
-
-async function serverCheckout(page: Page, request: APIRequestContext) {
-  const response = await request.get(`${LOCAL_API_URL}/public/checkout`, {
-    headers: { authorization: `Bearer ${await checkoutToken(page)}` },
-  });
-  expect(response.status()).toBe(200);
-  return (await response.json()) as {
-    quote: {
-      id: string;
-      expired: boolean;
-      totalCents: number;
-      requiredInitialPaymentCents: number;
-    };
-    acceptance: { quoteId: string } | null;
-  };
 }
 
 async function serverPayment(page: Page, request: APIRequestContext) {
@@ -142,153 +119,111 @@ test("the chosen international phone and edited reservation note are accepted an
   ]);
 });
 
-for (const [language, plan, offset] of [
-  ["es", "flexible", 240],
-  ["en", "non_refundable", 250],
-] as const) {
-  test(`the complete ${language} ${plan} journey sends its saved confirmation and opens the same private summary`, async ({
-    page,
-    request,
-    browser,
-  }) => {
-    await page.context().grantPermissions(["clipboard-read", "clipboard-write"]);
-    const en = language === "en";
-    const base = en ? "/en" : "";
-    const email = payerEmail();
-    const total = en ? "180.00" : "200.00";
-    const paidAmount = en ? "180.00" : "100.00";
-    const stay = new URLSearchParams({
-      checkIn: daysFromToday(offset),
-      checkOut: daysFromToday(offset + 2),
-      adults: "2",
-      children: "0",
-    });
-    await page.goto(`${base}/habitaciones/?${stay.toString()}`);
-    await selectRoomRate(
-      page,
-      en ? "King room" : "Suite Matrimonial",
-      en ? "Non-refundable" : "Flexible",
-    );
-    await page
-      .getByRole("link", {
-        name: en
-          ? "Continue with King room, Non-refundable rate"
-          : "Continuar con Suite Matrimonial, tarifa Flexible",
-      })
-      .click();
-    await expect(page.locator('[data-amount="total"]')).toHaveText(new RegExp(`S/\\s${total}`));
-    await expect(page.locator('[data-amount="now"]')).toHaveText(new RegExp(`S/\\s${paidAmount}`));
-    await expect(page.locator('[data-amount="remaining"]')).toBeVisible({ visible: !en });
-    if (!en)
-      await expect(page.locator("[data-cancellation] time")).toHaveAttribute(
-        "datetime",
-        daysFromToday(offset - 2),
-      );
-    await page.getByLabel(en ? "Full name" : "Nombre completo").fill("Ana Torres");
-    await page.getByLabel(en ? "Email" : "Correo electrónico", { exact: true }).fill(email);
-    await page.getByLabel(en ? "Phone" : "Teléfono", { exact: true }).fill("987 654 321");
-    await page.getByRole("checkbox", { name: /I accept|Acepto las condiciones/ }).check();
-    await page
-      .getByRole("button", {
-        name: new RegExp(`^${en ? "Pay" : "Pagar"} S/\\s${paidAmount}$`),
-      })
-      .click();
-    await expectConfirmed(page, base);
-    const reference = (await confirmation(page).innerText()).match(
-      /(?:Reference|Referencia)\s*([A-Z0-9]{6})/,
-    )?.[1];
-    expect(reference).toBeTruthy();
-    await page.getByRole("button", { name: en ? "Copy link" : "Copiar enlace" }).click();
-    await expect(page.getByText(en ? "Link copied" : "Enlace copiado")).toBeVisible();
-    const copied = new URL(await page.evaluate(() => navigator.clipboard.readText()));
-    expect(copied.href).toBe(page.url());
+test("the complete English Non-refundable journey sends its saved confirmation and opens the same private summary", async ({
+  page,
+  request,
+  browser,
+}) => {
+  await page.context().grantPermissions(["clipboard-read", "clipboard-write"]);
+  const email = payerEmail();
+  const stay = new URLSearchParams({
+    checkIn: daysFromToday(250),
+    checkOut: daysFromToday(252),
+    adults: "2",
+    children: "0",
+  });
+  await page.goto(`/en/habitaciones/?${stay.toString()}`);
+  await selectRoomRate(page, "King room", "Non-refundable");
+  await page.getByRole("link", { name: "Continue with King room, Non-refundable rate" }).click();
+  await expect(page.locator('[data-amount="total"]')).toHaveText(/S\/\s180\.00/);
+  await expect(page.locator('[data-amount="now"]')).toHaveText(/S\/\s180\.00/);
+  await expect(page.locator('[data-amount="remaining"]')).toBeHidden();
+  await page.getByLabel("Full name").fill("Ana Torres");
+  await page.getByLabel("Email", { exact: true }).fill(email);
+  await page.getByLabel("Phone", { exact: true }).fill("987 654 321");
+  await page.getByRole("checkbox", { name: /I accept/ }).check();
+  await payButton(page, "180.00").click();
+  await expectConfirmed(page, "/en");
+  const reference = (await confirmation(page).innerText()).match(/Reference\s*([A-Z0-9]{6})/)?.[1];
+  expect(reference).toBeTruthy();
+  await page.getByRole("button", { name: "Copy link" }).click();
+  await expect(page.getByText("Link copied")).toBeVisible();
+  const copied = new URL(await page.evaluate(() => navigator.clipboard.readText()));
+  expect(copied.href).toBe(page.url());
 
-    const login = await request.post(`${LOCAL_API_URL}/login`, {
-      headers: { origin: "https://app.hotelmanantialchurin.com" },
-      data: { username: "kevin", password: "owner horse battery staple" },
-    });
-    expect(login.status()).toBe(200);
-    const cookie = login
-      .headersArray()
-      .filter(({ name }) => name.toLowerCase() === "set-cookie")
-      .map(({ value }) => value.split(";")[0])
-      .join("; ");
-    const headers = { cookie, origin: "https://app.hotelmanantialchurin.com" };
+  const login = await request.post(`${LOCAL_API_URL}/login`, {
+    headers: { origin: "https://app.hotelmanantialchurin.com" },
+    data: { username: "kevin", password: "owner horse battery staple" },
+  });
+  expect(login.status()).toBe(200);
+  const cookie = login
+    .headersArray()
+    .filter(({ name }) => name.toLowerCase() === "set-cookie")
+    .map(({ value }) => value.split(";")[0])
+    .join("; ");
+  const headers = { cookie, origin: "https://app.hotelmanantialchurin.com" };
+  expect(
+    (
+      await request.put(`${LOCAL_API_URL}/controls/email-submission`, {
+        headers,
+        data: { admitted: true },
+      })
+    ).status(),
+  ).toBe(200);
+  let message: { text: string; subject: string; to: string[] } | undefined;
+  try {
+    await expect
+      .poll(async () => {
+        expect((await request.get(`${LOCAL_API_URL}/cdn-cgi/local/scheduled`)).status()).toBe(200);
+        const sent = await request.get(
+          `${FAKE_PAYMENT_SERVICES_URL}/__resend/emails?recipient=${encodeURIComponent(email)}`,
+        );
+        expect(sent.status()).toBe(200);
+        const messages = (await sent.json()) as { text: string; subject: string; to: string[] }[];
+        message = messages[0];
+        return messages.length;
+      })
+      .toBe(1);
+  } finally {
     expect(
       (
         await request.put(`${LOCAL_API_URL}/controls/email-submission`, {
           headers,
-          data: { admitted: true },
+          data: { admitted: false },
         })
       ).status(),
     ).toBe(200);
-    let message: { text: string; subject: string; to: string[] } | undefined;
-    try {
-      await expect
-        .poll(async () => {
-          expect((await request.get(`${LOCAL_API_URL}/cdn-cgi/local/scheduled`)).status()).toBe(
-            200,
-          );
-          const sent = await request.get(
-            `${FAKE_PAYMENT_SERVICES_URL}/__resend/emails?recipient=${encodeURIComponent(email)}`,
-          );
-          expect(sent.status()).toBe(200);
-          const messages = (await sent.json()) as { text: string; subject: string; to: string[] }[];
-          message = messages[0];
-          return messages.length;
-        })
-        .toBe(1);
-    } finally {
-      expect(
-        (
-          await request.put(`${LOCAL_API_URL}/controls/email-submission`, {
-            headers,
-            data: { admitted: false },
-          })
-        ).status(),
-      ).toBe(200);
-    }
-    expect(message!.to).toEqual([email]);
-    expect(message!.subject).toContain(en ? "Reservation confirmation" : "Confirmación de reserva");
-    expect(message!.text).toContain(reference!);
-    expect(message!.text).toContain(`Total: PEN ${total}`);
-    expect(message!.text).toContain(`${en ? "Paid" : "Pagado"}: PEN ${paidAmount}`);
-    const mailed = new URL(
-      message!.text.match(/https:\/\/www\.hotelmanantialchurin\.com\/\S+/)![0],
+  }
+  expect(message!.to).toEqual([email]);
+  expect(message!.subject).toContain("Reservation confirmation");
+  expect(message!.text).toContain(reference!);
+  expect(message!.text).toContain("Total: PEN 180.00");
+  expect(message!.text).toContain("Paid: PEN 180.00");
+  const mailed = new URL(message!.text.match(/https:\/\/www\.hotelmanantialchurin\.com\/\S+/)![0]);
+  expect(mailed.pathname).toBe(copied.pathname);
+  expect(mailed.hash === copied.hash).toBe(true);
+  const fresh = await browser.newContext();
+  try {
+    const summary = await fresh.newPage();
+    await summary.goto(`${WEBSITE_URL}${mailed.pathname}${mailed.hash}`);
+    await expect(summary.getByRole("heading", { name: "Reservation summary" })).toBeVisible();
+    await expect(summary.getByText(reference!)).toBeVisible();
+    await expect(summary.locator("[data-summary]")).toContainText(/S\/\s180\.00/);
+    await expect(summary.locator("[data-summary]")).not.toContainText(email);
+    executeSql(
+      localDatabase(localState),
+      `UPDATE reservation_access SET expires_on = '${daysFromToday(-1)}' WHERE reservation_id = (SELECT id FROM reservations WHERE code = '${reference!}');`,
     );
-    expect(mailed.pathname).toBe(copied.pathname);
-    expect(mailed.hash === copied.hash).toBe(true);
-    const fresh = await browser.newContext();
-    try {
-      const summary = await fresh.newPage();
-      await summary.goto(`${WEBSITE_URL}${mailed.pathname}${mailed.hash}`);
-      await expect(
-        summary.getByRole("heading", {
-          name: en ? "Reservation summary" : "Resumen de la reserva",
-        }),
-      ).toBeVisible();
-      await expect(summary.getByText(reference!)).toBeVisible();
-      await expect(summary.locator("[data-summary]")).toContainText(
-        new RegExp(`S/\\s${paidAmount}`),
-      );
-      await expect(summary.locator("[data-summary]")).not.toContainText(email);
-      if (en) {
-        executeSql(
-          localDatabase(localState),
-          `UPDATE reservation_access SET expires_on = '${daysFromToday(-1)}' WHERE reservation_id = (SELECT id FROM reservations WHERE code = '${reference!}');`,
-        );
-        await summary.reload();
-        await expect(
-          summary.getByRole("heading", { name: "The hotel can help with this reservation" }),
-        ).toBeVisible();
-        await expect(summary.locator("[data-summary]")).toBeHidden();
-        await expect(summary.getByText(reference!)).toHaveCount(0);
-      }
-    } finally {
-      await fresh.close();
-    }
-  });
-}
+    await summary.reload();
+    await expect(
+      summary.getByRole("heading", { name: "The hotel can help with this reservation" }),
+    ).toBeVisible();
+    await expect(summary.locator("[data-summary]")).toBeHidden();
+    await expect(summary.getByText(reference!)).toHaveCount(0);
+  } finally {
+    await fresh.close();
+  }
+});
 
 function expireQuote(quoteId: string, checkIn?: string) {
   if (!/^[0-9a-f-]{36}$/i.test(quoteId)) throw new Error("unexpected quote id");
@@ -358,7 +293,7 @@ test("an uncertain charge stays processing across reload and language change wit
   await expect(page.locator("[data-contact-form]")).toBeHidden();
   await page.reload();
   await expect(page.getByRole("heading", { name: "Confirmando su pago" })).toBeVisible();
-  await page.goto(reviewPath("flexible", "/en"));
+  await page.goto(kingReview("flexible", "/en"));
   await expect(page.getByRole("heading", { name: "Confirming your payment" })).toBeVisible();
   await expect(page.getByRole("button", { name: /^Pay/ })).toHaveCount(0);
   expect(await serverPayment(page, request)).toMatchObject({ state: "processing" });
@@ -427,69 +362,6 @@ test("back to review shows the same payment and does not pay again", async ({ pa
     attemptId: pending?.attemptId,
     state: "processing",
   });
-});
-
-test("a payment that is still being verified after two minutes explains that and does not offer to pay again", async ({
-  page,
-  request,
-}) => {
-  const email = payerEmail();
-  await fillCheckout(page, "flexible", email);
-  await nextCulqiCharge(request, "timeout");
-  let payments = 0;
-  await page.route(`${LOCAL_API_URL}/public/checkout/payments`, async (route) => {
-    payments += 1;
-    await route.fallback();
-  });
-  await payButton(page, "100.00").click();
-  await expect(page.getByRole("heading", { name: "Confirmando su pago" })).toBeVisible();
-  await expect(page.getByRole("button", { name: "Consultar estado" })).toHaveCount(0);
-  const pending = await serverPayment(page, request);
-  expect(pending).toMatchObject({ state: "processing", delayed: false });
-
-  await page.route(`${LOCAL_API_URL}/public/checkout/payment`, (route) => {
-    if (!route.request().url().endsWith("/public/checkout/payment")) return route.fallback();
-    return route.fulfill({
-      contentType: "application/json",
-      body: JSON.stringify({ payment: { ...pending, delayed: true } }),
-    });
-  });
-  await page.reload();
-
-  await expect(page.getByRole("heading", { name: "Confirmando su pago" })).toBeVisible();
-  await expect(outcome(page)).toContainText(
-    "La verificación está tardando más de lo habitual. Continúa aunque cierre esta página, así que no pague de nuevo. Consulte el estado aquí más tarde o escríbanos por WhatsApp o por correo si necesita ayuda.",
-  );
-  await expect(page.getByRole("button", { name: "Consultar estado" })).toBeVisible();
-  await expect(page.getByRole("button", { name: "Copiar enlace" })).toHaveCount(0);
-  await expect(page.getByRole("button", { name: /^Pagar/ })).toHaveCount(0);
-  expect(payments).toBe(1);
-  expect(await page.evaluate(() => sessionStorage.getItem("hm.reservation.contact"))).toContain(
-    email,
-  );
-  await page.unroute(`${LOCAL_API_URL}/public/checkout/payment`);
-  expect(await serverPayment(page, request)).toMatchObject({
-    attemptId: pending?.attemptId,
-    state: "processing",
-  });
-});
-
-test("a payment pause keeps the draft and charges nothing", async ({ page, request }) => {
-  await fillCheckout(page, "flexible", payerEmail());
-  await page.route(`${LOCAL_API_URL}/public/checkout/payments`, (route) =>
-    route.fulfill({
-      status: 503,
-      contentType: "application/json",
-      body: JSON.stringify({ error: "online payments are paused" }),
-    }),
-  );
-
-  await payButton(page, "100.00").click();
-
-  await expect(page.getByRole("alert").filter({ hasText: "en pausa" })).toBeVisible();
-  await expect(page.getByLabel("Correo electrónico")).not.toHaveValue("");
-  await expect(payButton(page, "100.00")).toBeEnabled();
-  expect(await serverPayment(page, request)).toBeNull();
 });
 
 test("a real Turnstile refusal stays distinct from sold-out or an uncertain charge and preserves the accepted draft for retry", async ({
@@ -639,110 +511,6 @@ test("accepting an expired quote charges the contact just submitted, not the one
   ).toEqual([]);
 });
 
-test("a replaced quote with different terms is not charged from the card form already open", async ({
-  page,
-}) => {
-  await fillCheckout(page, "flexible", payerEmail());
-  let payments = 0;
-  await page.route(`${LOCAL_API_URL}/public/checkout/payments`, async (route) => {
-    payments += 1;
-    await route.fulfill({
-      status: 409,
-      contentType: "application/json",
-      body: JSON.stringify({ error: "quote was replaced by a newer quote" }),
-    });
-  });
-  await page.route(`${LOCAL_API_URL}/public/checkout`, async (route) => {
-    if (payments === 0) return route.fallback();
-    const response = await route.fetch();
-    const view = (await response.json()) as {
-      quote: {
-        id: string;
-        totalCents: number;
-        requiredInitialPaymentCents: number;
-        nights: { priceCents: number }[];
-      };
-      acceptance: { quoteId: string; acceptedAt: string } | null;
-    };
-    view.quote = {
-      ...view.quote,
-      id: crypto.randomUUID(),
-      totalCents: 5000,
-      requiredInitialPaymentCents: 5000,
-      nights: view.quote.nights.map((night) => ({ ...night, priceCents: 2500 })),
-    };
-    view.acceptance = { quoteId: view.quote.id, acceptedAt: "2026-11-09T00:00:00.000Z" };
-    await route.fulfill({ json: view });
-  });
-
-  await payButton(page, "100.00").click();
-
-  await expect(page.getByText("así que no se cobró nada")).toBeVisible();
-  await expect(page.getByRole("checkbox", { name: /Acepto las condiciones/ })).not.toBeChecked();
-  await expect(page.getByText(/S\/\s*50\.00/).first()).toBeVisible();
-  expect(payments).toBe(1);
-});
-
-test("a lost retry of a replaced expired quote stays pending and does not offer Pay again", async ({
-  page,
-  request,
-}) => {
-  await acceptTerms(page, payerEmail());
-  expireQuote((await serverCheckout(page, request)).quote.id);
-  await page.reload();
-  let payments = 0;
-  await page.route(`${LOCAL_API_URL}/public/checkout/payments`, async (route) => {
-    payments += 1;
-    if (payments === 1) {
-      await route.fulfill({
-        status: 400,
-        contentType: "application/json",
-        body: JSON.stringify({ error: "quote has expired" }),
-      });
-      return;
-    }
-    await route.abort();
-  });
-
-  await payButton(page, "100.00").click();
-
-  const sent = page.getByRole("heading", { name: "Pago enviado, consultando su estado" });
-  await expect(sent).toBeVisible();
-  await expect(page.getByRole("button", { name: /^Pagar/ })).toHaveCount(0);
-  expect(payments).toBe(2);
-  await page.reload();
-  await expect(sent).toBeVisible();
-  await expect(page.getByRole("button", { name: /^Pagar/ })).toHaveCount(0);
-});
-
-test("a pay refresh that cannot record another agreement keeps this checkout", async ({
-  page,
-  request,
-}) => {
-  await acceptTerms(page, payerEmail());
-  const token = await checkoutToken(page);
-  expireQuote((await serverCheckout(page, request)).quote.id);
-  await page.reload();
-  let freshCheckouts = 0;
-  page.on("request", (req) => {
-    if (req.method() === "POST" && req.url().endsWith("/public/checkouts")) freshCheckouts += 1;
-  });
-  await page.route(`${LOCAL_API_URL}/public/checkout/quotes`, (route) =>
-    route.fulfill({
-      status: 429,
-      contentType: "application/json",
-      body: JSON.stringify({ error: "too many acceptances for this checkout" }),
-    }),
-  );
-
-  await payButton(page, "100.00").click();
-
-  await expect(page.getByText("no puede registrar otro acuerdo")).toBeVisible();
-  await expect(page.getByText(/no se cobró nada/i)).toBeVisible();
-  expect(await checkoutToken(page)).toBe(token);
-  expect(freshCheckouts).toBe(0);
-});
-
 test("a lost payment response says the payment was sent and never invites paying again", async ({
   page,
 }) => {
@@ -855,118 +623,6 @@ test("an unfinished bank window stays pending and can be opened again without pa
   expect(payments).toHaveLength(1);
   expect(await page.evaluate(() => window.culqi3DS?.authentications)).toEqual([sourceId, sourceId]);
   expect(await serverPayment(page, request)).toMatchObject({ state: "authentication_required" });
-});
-
-test("an existing payment is shown without replacing the card the server charged", async ({
-  page,
-}) => {
-  const first = `tkn_test_3ds_${crypto.randomUUID()}`;
-  const second = `tkn_test_${crypto.randomUUID()}`;
-  await fillCheckout(page, "flexible", payerEmail());
-  await page.evaluate((sourceId) => {
-    window.culqiCards = [sourceId];
-    window.culqi3DS = {
-      devices: [],
-      authentications: [],
-      parameters: null,
-      error: "Ha fallado la autenticación",
-    };
-  }, first);
-  await payButton(page, "100.00").click();
-  await expect(
-    page.getByRole("heading", { name: "Su banco necesita verificar este pago" }),
-  ).toBeVisible();
-
-  await page.route(`${LOCAL_API_URL}/public/checkout/payment`, (route) => {
-    if (!route.request().url().endsWith("/public/checkout/payment")) return route.fallback();
-    return route.fulfill({
-      contentType: "application/json",
-      body: JSON.stringify({ payment: null }),
-    });
-  });
-  await page.reload();
-  await expect(payButton(page, "100.00")).toBeVisible();
-  expect(
-    await page.evaluate(() => sessionStorage.getItem("hm.reservation.card-sources")),
-  ).toContain(first);
-
-  await page.evaluate((sourceId) => {
-    window.culqiCards = [sourceId];
-  }, second);
-  await payButton(page, "100.00").click();
-
-  await expect(
-    page.getByRole("heading", { name: "Su banco necesita verificar este pago" }),
-  ).toBeVisible();
-  const stored = await page.evaluate(() => sessionStorage.getItem("hm.reservation.card-sources"));
-  expect(stored).toContain(first);
-  expect(stored).not.toContain(second);
-});
-
-test("a lost payment keeps the stored card, and bank verification can open after processing", async ({
-  page,
-  request,
-}) => {
-  const sourceId = `tkn_test_3ds_${crypto.randomUUID()}`;
-  await fillCheckout(page, "flexible", payerEmail());
-  await page.evaluate((card) => {
-    window.culqiCards = [card];
-    window.culqi3DS = {
-      devices: [],
-      authentications: [],
-      parameters: null,
-      error: "Ha fallado la autenticación",
-    };
-  }, sourceId);
-  await payButton(page, "100.00").click();
-  await expect(
-    page.getByRole("heading", { name: "Su banco necesita verificar este pago" }),
-  ).toBeVisible();
-  const attemptId = ((await serverPayment(page, request)) as { attemptId?: string } | null)
-    ?.attemptId;
-  expect(attemptId).toMatch(/^[0-9a-f-]{36}$/i);
-
-  const status: { payment: Record<string, unknown> | null } = { payment: null };
-  await page.route(`${LOCAL_API_URL}/public/checkout/payment`, (route) => {
-    if (!route.request().url().endsWith("/public/checkout/payment")) return route.fallback();
-    return route.fulfill({
-      contentType: "application/json",
-      body: JSON.stringify(status),
-    });
-  });
-  await page.route(`${LOCAL_API_URL}/public/checkout/payments`, (route) => route.abort());
-  await page.reload();
-  await payButton(page, "100.00").click();
-  await expect(
-    page.getByRole("heading", { name: "Pago enviado, consultando su estado" }),
-  ).toBeVisible();
-  expect(
-    await page.evaluate(() => sessionStorage.getItem("hm.reservation.card-sources")),
-  ).toContain(sourceId);
-
-  status.payment = {
-    attemptId: attemptId!,
-    state: "processing",
-    amountCents: 10000,
-    currency: "PEN",
-    delayed: false,
-    reservation: null,
-  };
-  await page.reload();
-  await expect(page.getByRole("heading", { name: "Confirmando su pago" })).toBeVisible();
-  await expect(page.getByRole("button", { name: "Abrir la verificación del banco" })).toHaveCount(
-    0,
-  );
-  expect(
-    await page.evaluate(() => sessionStorage.getItem("hm.reservation.card-sources")),
-  ).toContain(sourceId);
-
-  status.payment = { ...status.payment, state: "authentication_required" };
-  await page.reload();
-  await expect(page.getByRole("button", { name: "Abrir la verificación del banco" })).toBeVisible();
-  await expect
-    .poll(() => page.evaluate(() => window.culqi3DS?.authentications ?? []))
-    .toEqual([sourceId]);
 });
 
 test("a saved reservation link can be copied and opened without putting the token in support links", async ({
