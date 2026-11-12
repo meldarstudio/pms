@@ -274,6 +274,26 @@ describe("paying the accepted quote", () => {
     expect(rows("SELECT notes FROM reservations")).toEqual([{ notes: null }]);
   });
 
+  it("reconciles a delayed charge with its exact accepted note, not a newer acceptance", async () => {
+    const checkout = await acceptedCheckout({}, "The note accepted before the charge");
+    culqi.next("POST /charges", "lose");
+    expect(await paid(checkout)).toMatchObject({ state: "processing", reservation: null });
+    db.sqlite.exec(`INSERT INTO checkout_acceptances
+      (id, checkout_id, quote_id, full_name, email, phone, notes, language, accepted_at)
+      SELECT 'later-acceptance', checkout_id, quote_id, full_name, email, phone,
+        'A newer note that was not charged', language, '2026-10-10T15:01:00.000Z'
+      FROM checkout_acceptances`);
+
+    await vi.advanceTimersByTimeAsync(10_000);
+    await Promise.all(tasks);
+
+    expect(await status(checkout.token)).toMatchObject({ state: "confirmed" });
+    expect(rows("SELECT notes FROM reservations")).toEqual([
+      { notes: "The note accepted before the charge" },
+    ]);
+    expect(charges()).toHaveLength(1);
+  });
+
   it("carries the public checkout onto the reservation saved after a delayed lookup", async () => {
     const checkout = await acceptedCheckout();
     culqi.next("POST /charges", "lose");
