@@ -11,6 +11,7 @@ import {
 import {
   closeCardFormWithoutPaying,
   nextCulqiCharge,
+  recordedCulqi,
   stubPaymentScripts,
   useOwnSourceIp,
 } from "../support/payment";
@@ -56,6 +57,17 @@ async function acceptTerms(page: Page, email: string) {
 }
 
 const outcome = (page: Page) => page.locator("[data-outcome]");
+
+const confirmation = (page: Page) => page.locator("[data-summary]");
+
+async function expectConfirmed(page: Page, lang = "") {
+  await expect(page).toHaveURL(new RegExp(`${lang}/reservar/resumen/#[\\w-]{43}$`));
+  await expect(
+    page.getByRole("heading", {
+      name: lang ? "Your reservation is confirmed" : "Su reserva está confirmada",
+    }),
+  ).toBeFocused();
+}
 
 async function checkoutToken(page: Page) {
   return page.evaluate(() => {
@@ -148,18 +160,15 @@ for (const [language, plan, offset] of [
         ),
       })
       .click();
-    await expect(
-      page.getByRole("heading", {
-        name: en ? "Your reservation is confirmed" : "Su reserva está confirmada",
-      }),
-    ).toBeVisible();
-    const reference = (await outcome(page).innerText()).match(
+    await expectConfirmed(page, base);
+    const reference = (await confirmation(page).innerText()).match(
       /(?:Reference|Referencia)\s*([A-Z0-9]{6})/,
     )?.[1];
     expect(reference).toBeTruthy();
     await page.getByRole("button", { name: en ? "Copy link" : "Copiar enlace" }).click();
     await expect(page.getByText(en ? "Link copied" : "Enlace copiado")).toBeVisible();
     const copied = new URL(await page.evaluate(() => navigator.clipboard.readText()));
+    expect(copied.href).toBe(page.url());
 
     const login = await request.post(`${LOCAL_API_URL}/login`, {
       headers: { origin: "https://app.hotelmanantialchurin.com" },
@@ -269,11 +278,11 @@ test("paying the accepted Flexible quote confirms it with the paid amount and th
 
   await payButton(page, "100.00").click();
 
-  await expect(page.getByRole("heading", { name: "Su reserva está confirmada" })).toBeFocused();
-  await expect(outcome(page)).toContainText(/Referencia\s*[A-Z0-9]{6}/);
-  await expect(outcome(page)).toContainText(/Pagado\s*S\/\s100\.00/);
-  await expect(outcome(page)).toContainText(/Saldo pendiente\s*S\/\s100\.00/);
-  expect(await page.evaluate(() => window.culqiConfigs)).toMatchObject([
+  await expectConfirmed(page);
+  await expect(confirmation(page)).toContainText(/Referencia\s*[A-Z0-9]{6}/);
+  await expect(confirmation(page)).toContainText(/Pagado\s*S\/\s100\.00/);
+  await expect(confirmation(page)).toContainText(/Saldo pendiente\s*S\/\s100\.00/);
+  expect((await recordedCulqi(page)).configs).toMatchObject([
     {
       settings: { amount: 10000, currency: "PEN" },
       options: { paymentMethods: { tarjeta: true, yape: false } },
@@ -281,7 +290,7 @@ test("paying the accepted Flexible quote confirms it with the paid amount and th
   ]);
 
   await page.reload();
-  await expect(page.getByRole("heading", { name: "Su reserva está confirmada" })).toBeVisible();
+  await expectConfirmed(page);
   await expect(page.getByRole("button", { name: /^Pagar/ })).toHaveCount(0);
 });
 
@@ -299,7 +308,7 @@ test("a declined card lets the guest pay with another card without re-entering d
   await expect(page.getByLabel("Nombre completo")).toHaveValue("Ana Torres");
   await page.getByRole("button", { name: "Pagar con otra tarjeta" }).click();
   await payButton(page, "100.00").click();
-  await expect(page.getByRole("heading", { name: "Su reserva está confirmada" })).toBeVisible();
+  await expectConfirmed(page);
 });
 
 test("an uncertain charge stays processing across reload and language change without paying again", async ({
@@ -477,7 +486,7 @@ test("a real Turnstile refusal stays distinct from sold-out or an uncertain char
   expect(await serverPayment(page, request)).toBeNull();
   await page.unroute(`${LOCAL_API_URL}/public/checkout/payments`);
   await payButton(page, "100.00").click();
-  await expect(page.getByRole("heading", { name: "Su reserva está confirmada" })).toBeVisible();
+  await expectConfirmed(page);
 });
 
 test("money received for dates the same contact already holds is shown as unconfirmed, not reserved", async ({
@@ -486,7 +495,7 @@ test("money received for dates the same contact already holds is shown as unconf
   const email = payerEmail();
   await fillCheckout(page, "flexible", email);
   await payButton(page, "100.00").click();
-  await expect(page.getByRole("heading", { name: "Su reserva está confirmada" })).toBeVisible();
+  await expectConfirmed(page);
 
   await fillCheckout(page, "non_refundable", email);
   await payButton(page, "180.00").click();
@@ -519,7 +528,7 @@ test("paying an expired unchanged quote refreshes it and charges once without as
 
   await payButton(page, "100.00").click();
 
-  await expect(page.getByRole("heading", { name: "Su reserva está confirmada" })).toBeVisible();
+  await expectConfirmed(page);
   await expect(page.getByText("acéptelas de nuevo")).toHaveCount(0);
   const after = await serverCheckout(page, request);
   expect(after.quote.id).not.toBe(before.quote.id);
@@ -527,7 +536,7 @@ test("paying an expired unchanged quote refreshes it and charges once without as
   expect(after.quote.requiredInitialPaymentCents).toBe(10000);
   expect(await serverPayment(page, request)).toMatchObject({ state: "confirmed" });
   expect(refreshes).toBe(1);
-  expect(await page.evaluate(() => window.culqiConfigs)).toHaveLength(1);
+  expect((await recordedCulqi(page)).configs).toHaveLength(1);
 });
 
 test("a cheaper refreshed quote is shown for a new acceptance and is not charged until then", async ({
@@ -564,8 +573,8 @@ test("a cheaper refreshed quote is shown for a new acceptance and is not charged
 
   await page.getByRole("checkbox", { name: /Acepto las condiciones/ }).check();
   await payButton(page, "80.00").click();
-  await expect(page.getByRole("heading", { name: "Su reserva está confirmada" })).toBeVisible();
-  await expect(outcome(page)).toContainText(/Pagado\s*S\/\s80\.00/);
+  await expectConfirmed(page);
+  await expect(confirmation(page)).toContainText(/Pagado\s*S\/\s80\.00/);
 });
 
 test("accepting an expired quote charges the contact just submitted, not the one refresh kept", async ({
@@ -580,7 +589,7 @@ test("accepting an expired quote charges the contact just submitted, not the one
   await page.getByLabel("Nombre completo").fill("Eva Soto");
   await page.getByLabel("Correo electrónico").fill(updated);
   await payButton(page, "100.00").click();
-  await expect(page.getByRole("heading", { name: "Su reserva está confirmada" })).toBeVisible();
+  await expectConfirmed(page);
 
   const charged = queryRows(
     localDatabase(localState),
@@ -756,7 +765,7 @@ test("bank verification of the same card confirms the reservation once", async (
 
   await payButton(page, "100.00").click();
 
-  await expect(page.getByRole("heading", { name: "Su reserva está confirmada" })).toBeFocused();
+  await expectConfirmed(page);
   await expect(page.getByRole("button", { name: /^Pagar/ })).toHaveCount(0);
   await expect(page.getByRole("button", { name: "Abrir la verificación del banco" })).toHaveCount(
     0,
@@ -767,7 +776,7 @@ test("bank verification of the same card confirms the reservation once", async (
   ]);
   expect(payments).toMatchObject([{ sourceId, deviceFingerprint: "device-test" }]);
   expect(await serverPayment(page, request)).toMatchObject({ state: "confirmed" });
-  expect(await page.evaluate(() => window.culqi3DS?.authentications)).toEqual([sourceId]);
+  expect((await recordedCulqi(page)).authentications).toEqual([sourceId]);
 });
 
 test("an unfinished bank window stays pending and can be opened again without paying again", async ({
@@ -934,8 +943,8 @@ test("a saved reservation link can be copied and opened without putting the toke
   await page.context().grantPermissions(["clipboard-read", "clipboard-write"]);
   await fillCheckout(page, "flexible", payerEmail());
   await payButton(page, "100.00").click();
-  await expect(page.getByRole("heading", { name: "Su reserva está confirmada" })).toBeVisible();
-  const reference = (await outcome(page).innerText()).match(/Referencia\s*([A-Z0-9]{6})/)?.[1];
+  await expectConfirmed(page);
+  const reference = (await confirmation(page).innerText()).match(/Referencia\s*([A-Z0-9]{6})/)?.[1];
   expect(reference).toBeTruthy();
   await expect(
     page.getByText("Quien tenga este enlace puede ver este resumen limitado"),
@@ -949,7 +958,7 @@ test("a saved reservation link can be copied and opened without putting the toke
   expect(copied.hash).toMatch(/^#[\w-]{43}$/);
   const token = copied.hash.slice(1);
   expect(copied.href.replace(copied.hash, "")).not.toContain(token);
-  expect(page.url()).not.toContain(token);
+  expect(page.url()).toBe(copied.href);
 
   const fresh = await browser.newContext();
   const summary = await fresh.newPage();

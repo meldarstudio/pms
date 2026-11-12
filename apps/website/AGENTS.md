@@ -19,8 +19,12 @@ the contact and language just submitted. The checkout token
 lives only in `sessionStorage` (`src/lib/reservation/draft.ts`), never in URLs.
 The private summary (`/reservar/resumen/`) reads `GET /public/reservation` with the
 access token from the URL fragment only, sent as `Authorization: Bearer` with
-`referrerPolicy: "no-referrer"`. Review copies that link after the reservation is
-saved. It is not a fourth wizard step and marketing pages do not link to it.
+`referrerPolicy: "no-referrer"`. When a payment confirms the reservation, Review
+replaces itself with that link (`location.replace`) and stores the reservation code
+in `sessionStorage`; the summary greets the stay as just confirmed only while that
+code matches a confirmed reservation, so a reopened or shared link shows the plain
+summary. Other saved outcomes stay on Review and offer to copy the link. The summary
+is not a wizard step and marketing pages do not link to it.
 `src/lib/rooms.ts` links each room to a PMS room-type ID; the API offers only types
 it publishes. Card payment on Review needs build-time `PUBLIC_CULQI_PUBLIC_KEY` and
 `PUBLIC_TURNSTILE_SITE_KEY`; without either, Review says payment isn't available. Payment

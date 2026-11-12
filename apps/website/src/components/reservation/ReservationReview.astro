@@ -482,6 +482,7 @@ const contactFields = [
     contactKey,
     storeCard,
     storeCheckout,
+    storeConfirmedReservation,
     storeContact,
     storedCard,
     storedCheckout,
@@ -1457,6 +1458,11 @@ const contactFields = [
       if (request !== this.accessRequest) return;
       if (!access) return;
       this.accessToken = access.token;
+      if (payment.state === "confirmed" && payment.reservation) {
+        storeConfirmedReservation(payment.reservation.code);
+        window.location.replace(summaryLink(this.copy.summaryHref, access.token));
+        return;
+      }
       panel.hidden = false;
     }
 

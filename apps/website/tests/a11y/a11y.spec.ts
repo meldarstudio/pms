@@ -1,6 +1,6 @@
 import { AxeBuilder } from "@axe-core/playwright";
 import { expect, test, type Page } from "@playwright/test";
-import { LOCAL_API_URL, doubleSoldOutStay, openStay } from "../support/local-api";
+import { LOCAL_API_URL, daysFromToday, doubleSoldOutStay, openStay } from "../support/local-api";
 import { stubPaymentScripts, useOwnSourceIp } from "../support/payment";
 import { selectRoomRate } from "../support/room-rate";
 
@@ -178,5 +178,51 @@ for (const lang of ["", "/en"]) {
     await page.goto(`${lang}/reservar/revisar/?${params.toString()}&room=king&plan=flexible`);
     await expect(page.locator("[data-outcome]")).toBeVisible();
     await runAxe(page, `${lang}/reservar/revisar/ (unfulfilled)`);
+  });
+
+  test(`a11y: ${lang}/reservar/resumen/ reopened and just confirmed`, async ({ page }) => {
+    const stay = openStay();
+    await page.route(`${LOCAL_API_URL}/public/reservation`, (route) =>
+      route.fulfill({
+        headers: { "access-control-allow-origin": "*" },
+        contentType: "application/json",
+        body: JSON.stringify({
+          status: "confirmed",
+          code: "AB12CD",
+          ...stay,
+          nights: 2,
+          currency: "PEN",
+          fullName: "Ana Torres",
+          rooms: [
+            {
+              roomTypeId: "type-suite-matrimonial",
+              name: "Suite Matrimonial",
+              adults: 2,
+              children: 0,
+              nights: [
+                { date: stay.checkIn, priceCents: 10000 },
+                { date: daysFromToday(121), priceCents: 10000 },
+              ],
+            },
+          ],
+          ratePlan: "flexible",
+          totalCents: 20000,
+          paidCents: 10000,
+          outstandingCents: 10000,
+          refundDueCents: 0,
+          refundedCents: 0,
+        }),
+      }),
+    );
+    const title = lang ? "Your reservation is confirmed" : "Su reserva está confirmada";
+    await page.goto(`${lang}/reservar/resumen/#${"a".repeat(43)}`);
+    await expect(page.getByText("AB12CD")).toBeVisible();
+    await expect(page.getByRole("heading", { name: title })).toHaveCount(0);
+    await runAxe(page, `${lang}/reservar/resumen/`);
+
+    await page.evaluate(() => sessionStorage.setItem("hm.reservation.confirmed", '"AB12CD"'));
+    await page.reload();
+    await expect(page.getByRole("heading", { name: title })).toBeFocused();
+    await runAxe(page, `${lang}/reservar/resumen/ (just confirmed)`);
   });
 }

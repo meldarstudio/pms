@@ -7,6 +7,7 @@ window.culqiCards ??= [];
 window.CulqiCheckout = class {
   constructor(publicKey, config) {
     window.culqiConfigs.push({ publicKey, ...config });
+    sessionStorage.setItem("test.culqiConfigs", JSON.stringify(window.culqiConfigs));
   }
   open() {
     const id = window.culqiCards.shift() ?? "tkn_test_" + crypto.randomUUID();
@@ -52,6 +53,10 @@ window.Culqi3DS = {
   },
   initAuthentication(token) {
     window.culqi3DS.authentications.push(token);
+    sessionStorage.setItem(
+      "test.culqi3DS.authentications",
+      JSON.stringify(window.culqi3DS.authentications),
+    );
     const { parameters, error } = window.culqi3DS;
     setTimeout(() => {
       if (parameters) window.postMessage({ parameters3DS: parameters }, window.location.origin);
@@ -102,5 +107,15 @@ export async function closeCardFormWithoutPaying(page: Page, payButton: Locator)
   await expect(payButton).toBeEnabled();
   await page.evaluate(() => {
     (window as unknown as { culqiConfigs: unknown[] }).culqiConfigs = [];
+    sessionStorage.removeItem("test.culqiConfigs");
   });
+}
+
+export async function recordedCulqi(page: Page) {
+  return page.evaluate(() => ({
+    configs: JSON.parse(sessionStorage.getItem("test.culqiConfigs") ?? "[]") as unknown[],
+    authentications: JSON.parse(
+      sessionStorage.getItem("test.culqi3DS.authentications") ?? "[]",
+    ) as string[],
+  }));
 }

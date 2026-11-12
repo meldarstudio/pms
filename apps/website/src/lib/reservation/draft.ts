@@ -5,6 +5,7 @@ const CHECKOUTS_KEY = "hm.reservation.checkouts";
 const CONTACT_KEY = "hm.reservation.contact";
 const CARD_SOURCES_KEY = "hm.reservation.card-sources";
 const SEARCH_KEY = "hm.reservation.search";
+const CONFIRMED_KEY = "hm.reservation.confirmed";
 const MAX_STORED_CHECKOUTS = 10;
 
 export type StoredCheckout = {
@@ -87,6 +88,10 @@ export function clearCardSource(selection: string) {
   delete sources[selection];
   write(CARD_SOURCES_KEY, sources);
 }
+
+export const storeConfirmedReservation = (code: string) => write(CONFIRMED_KEY, code);
+
+export const isJustConfirmed = (code: string) => read<unknown>(CONFIRMED_KEY) === code;
 
 export function storeSearch(search: StaySearch) {
   write(SEARCH_KEY, searchParams({ ...search, room: null, plan: null }).toString());
