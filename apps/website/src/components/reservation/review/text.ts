@@ -120,7 +120,6 @@ export const reviewKeys = [
   "reservation.outcome.checking",
   "reservation.summary.possession",
   "reservation.summary.copy",
-  "reservation.access.complete",
   "reservation.access.atHotel",
   "reservation.access.loading",
   "reservation.access.unavailable.confirmed",

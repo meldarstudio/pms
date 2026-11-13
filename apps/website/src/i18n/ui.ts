@@ -435,7 +435,6 @@ export const ui = {
     "reservation.summary.possession":
       "Anyone holding this link can view this limited summary. Share it only with people who should see the stay.",
     "reservation.summary.copy": "Copy link",
-    "reservation.access.complete": "Checkout complete",
     "reservation.access.atHotel": "The outstanding balance is payable at the hotel.",
     "reservation.access.loading": "Loading your reservation link…",
     "reservation.access.unavailable.confirmed":
@@ -962,7 +961,6 @@ export const ui = {
     "reservation.summary.possession":
       "Quien tenga este enlace puede ver este resumen limitado. Compártalo solo con quienes deban ver la estadía.",
     "reservation.summary.copy": "Copiar enlace",
-    "reservation.access.complete": "Reserva completada",
     "reservation.access.atHotel": "El saldo pendiente se paga en el hotel.",
     "reservation.access.loading": "Cargando el enlace de su reserva…",
     "reservation.access.unavailable.confirmed":

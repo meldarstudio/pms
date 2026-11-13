@@ -1008,19 +1008,54 @@ describe("a saved payment outcome", () => {
     },
   );
 
-  it("ignores an access answer that belongs to an outdated outcome", () => {
-    const first = drive(openReview(), synced(payment({ state: "confirmed", reservation })));
-    const staleRequest = ofType(first.effects, "readCheckoutAccess")[0]!.request;
-    const later = drive(first.state, synced(payment({ state: "processing" })));
+  it.each(["submitted", "processing", "paid_awaiting_reservation"] as const)(
+    "ignores an outdated access answer once the outcome is %s, without confirming or offering to pay",
+    (paymentState) => {
+      const first = drive(openReview(), synced(payment({ state: "confirmed", reservation })));
+      const staleRequest = ofType(first.effects, "readCheckoutAccess")[0]!.request;
+      const later = drive(first.state, synced(payment({ state: paymentState })));
 
-    const { effects } = drive(later.state, {
+      const { state, effects } = drive(later.state, {
+        type: "accessRead",
+        request: staleRequest,
+        access: { token: ACCESS_TOKEN, expiresOn: "2026-12-01" },
+      });
+
+      expect(effects).toEqual([]);
+      expect(state.access).toMatchObject({ kind: "idle", token: null, panel: false });
+      expect(outcomePresentation(state.payment!).titleKey).toBe(
+        `reservation.outcome.${paymentState}.title`,
+      );
+      expect(outcomeActions(state).retry).toBe(false);
+    },
+  );
+
+  it("keeps the unfulfilled assistance and offers no new payment while recovering access", () => {
+    const unfulfilled = payment({ state: "unfulfilled", reservation });
+    const saved = drive(openReview(), synced(unfulfilled));
+    const request = ofType(saved.effects, "readCheckoutAccess")[0]!.request;
+    const failed = drive(saved.state, { type: "accessRead", request, access: null });
+    const retry = drive(failed.state, { type: "accessRetryRequested" });
+    const recovered = drive(retry.state, {
       type: "accessRead",
-      request: staleRequest,
+      request: request + 1,
       access: { token: ACCESS_TOKEN, expiresOn: "2026-12-01" },
     });
 
-    expect(effects).toEqual([]);
-    expect(later.state.access.panel).toBe(false);
+    for (const { state } of [failed, retry, recovered]) {
+      expect(outcomePresentation(state.payment!)).toMatchObject({
+        titleKey: "reservation.outcome.unfulfilled.title",
+        bodyKey: "reservation.outcome.unfulfilled.body",
+        rows: [
+          { labelKey: "reservation.outcome.supportReference", value: "HM-4821" },
+          { labelKey: "reservation.outcome.received", value: { cents: 15000 } },
+          { labelKey: "reservation.outcome.awaiting", value: { cents: 0 } },
+        ],
+      });
+      expect(outcomeActions(state).retry).toBe(false);
+    }
+    for (const charge of ["readSecurityToken", "openCardForm", "startPayment"])
+      expect(types([...retry.effects, ...recovered.effects])).not.toContain(charge);
   });
 });
 

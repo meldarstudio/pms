@@ -177,8 +177,10 @@
   min-height: 6.75rem;
   margin-top: 1.25rem;
 }
-.confirmation-link-actions button:disabled {
+.confirmation-link-actions button[aria-disabled="true"] {
   cursor: wait;
+  background-color: var(--color-stone-200);
+  color: var(--color-stone-600);
 }
 .confirmation-welcome-access .confirmation-link-status {
   font-size: 0.9rem;

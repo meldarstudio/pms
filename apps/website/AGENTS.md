@@ -30,9 +30,7 @@ with explicit summary navigation and browser printing; other saved outcomes reta
 Link loading is announced to assistive technology, with explanatory copy visible only on failure.
 `review/PrintConfirmation.tsx` prints the saved agreement and backend reservation amounts,
 independently of access-link availability. Print styles exclude navigation, controls and private
-links. Phone and WhatsApp remain separate actions. Link reads never redirect. The summary always
-uses its ordinary greeting. The summary
-is not a wizard step and marketing pages do not link to it.
+links. The summary is not a wizard step and marketing pages do not link to it.
 `src/lib/rooms.ts` links each room to a PMS room-type ID; the API offers only types
 it publishes. Card payment on Review needs build-time `PUBLIC_CULQI_PUBLIC_KEY` and
 `PUBLIC_TURNSTILE_SITE_KEY`; without either, Review says payment isn't available. Payment

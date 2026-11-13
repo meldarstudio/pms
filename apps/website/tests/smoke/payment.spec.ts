@@ -270,11 +270,6 @@ test("paying the accepted Flexible quote confirms it with the paid amount and th
   await expect(printed).toContainText(/Pagado\s*S\/\s100\.00/);
   await expect(printed).toContainText(/Saldo pendiente\s*S\/\s100\.00/);
   await expect(page.locator("[data-access-view]")).toBeHidden();
-  await page.pdf({
-    path: test.info().outputPath("confirmation.pdf"),
-    format: "A4",
-    printBackground: false,
-  });
   await page.emulateMedia({ media: "screen" });
   expect((await recordedCulqi(page)).configs).toMatchObject([
     {
@@ -338,9 +333,12 @@ test("confirmation survives unavailable access, reload and manual retry without 
   await retry.click();
   await expect(page.locator("[data-access-status]")).toContainText("Cargando");
   await expect(retry).toHaveCount(0);
+  const loading = page.locator("[data-access-loading]");
+  await expect(loading).toBeFocused();
+  await page.keyboard.press("Enter");
   await expect.poll(() => release !== undefined).toBe(true);
   release!();
-  await expect(page.locator("[data-access-view]")).toBeVisible();
+  await expect(page.locator("[data-access-view]")).toBeFocused();
   await expect(page).toHaveURL(/\/reservar\/revisar\/\?/);
   expect(reads).toBe(3);
   expect(charges).toBe(1);
@@ -733,7 +731,6 @@ test("a confirmed reservation opens and prints without putting its token in supp
   expect(savedLink.hash).toMatch(/^#[\w-]{43}$/);
   const token = savedLink.hash.slice(1);
   expect(savedLink.href.replace(savedLink.hash, "")).not.toContain(token);
-  expect(await page.locator("[data-access-view]").getAttribute("href")).toBe(savedLink.href);
   await page.emulateMedia({ media: "print" });
   await expect(page.locator("[data-print-confirmation]")).toContainText(reference!);
   await expect(page.locator("[data-print-confirmation]")).not.toContainText(token);

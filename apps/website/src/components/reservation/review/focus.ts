@@ -25,3 +25,19 @@ export function createFocusRegistry() {
 export type FocusRegistry = ReturnType<typeof createFocusRegistry>;
 
 export const useFocusRegistry = () => useState(createFocusRegistry)[0];
+
+function createDroppedFocusRestore() {
+  let pending = false;
+  return {
+    expectReplacement() {
+      pending = true;
+    },
+    restore(element: HTMLElement | null) {
+      if (!element || !pending) return;
+      pending = false;
+      if (document.activeElement === document.body) element.focus();
+    },
+  };
+}
+
+export const useDroppedFocusRestore = () => useState(createDroppedFocusRestore)[0];

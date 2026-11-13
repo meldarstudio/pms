@@ -3,10 +3,9 @@ import type { RefCallback } from "react";
 import { outcomePresentation } from "@/lib/reservation/checkout-copy";
 import type { State } from "@/lib/reservation/checkout-flow";
 import { outcomeActions } from "@/lib/reservation/checkout-selectors";
-import { summaryLink } from "@/lib/reservation/summary";
 import { formatMoney } from "@/lib/reservation/format";
 import { useReview } from "./context";
-import type { FocusRegistry } from "./focus";
+import { useDroppedFocusRestore, type FocusRegistry } from "./focus";
 import { card, primary, secondary } from "./styles";
 
 export function Outcome({
@@ -17,7 +16,6 @@ export function Outcome({
   onCheck,
   onCopy,
   onAccessRetry,
-  summaryHref,
 }: {
   state: State;
   focus: FocusRegistry;
@@ -26,13 +24,13 @@ export function Outcome({
   onCheck: () => void;
   onCopy: () => void;
   onAccessRetry: () => void;
-  summaryHref: string;
 }) {
   const { say } = useReview();
   const { payment } = state;
   const presentation = payment ? outcomePresentation(payment) : null;
   const actions = outcomeActions(state);
   const titleRef: RefCallback<HTMLElement> = focus.ref("outcomeTitle");
+  const replacedRetry = useDroppedFocusRestore();
   return (
     <section
       className={`${card} border-stone-200 [[data-contact-form]:not([hidden])+&]:border-t`}
@@ -94,22 +92,24 @@ export function Outcome({
             {say("reservation.outcome.check")}
           </button>
         </div>
-        {payment?.state === "confirmed" && (
-          <p className="mt-3 text-stone-700">{say("reservation.access.atHotel")}</p>
-        )}
         <p className="mt-4 text-sm text-stone-700" role="status" data-access-status>
           {state.access.kind === "loading"
             ? say("reservation.access.loading")
             : state.access.kind === "unavailable"
-              ? say(
-                  payment?.state === "confirmed"
-                    ? "reservation.access.unavailable.confirmed"
-                    : "reservation.access.unavailable.saved",
-                )
+              ? say("reservation.access.unavailable.saved")
               : ""}
         </p>
         {state.access.kind === "unavailable" && (
-          <button type="button" className={secondary} data-access-retry onClick={onAccessRetry}>
+          <button
+            ref={replacedRetry.restore}
+            type="button"
+            className={secondary}
+            data-access-retry
+            onClick={() => {
+              replacedRetry.expectReplacement();
+              onAccessRetry();
+            }}
+          >
             {say("reservation.access.retry")}
           </button>
         )}
@@ -120,19 +120,17 @@ export function Outcome({
         >
           <p className="leading-relaxed text-stone-700">{say("reservation.summary.possession")}</p>
           <p className="mt-2 leading-relaxed text-stone-700">{say("reservation.summary.staff")}</p>
-          {payment?.state === "confirmed" && state.access.kind === "available" && (
-            <a
-              href={summaryLink(summaryHref, state.access.token)}
-              className={`mt-4 mr-3 ${primary}`}
-              referrerPolicy="no-referrer"
-              data-access-view
+          {state.access.kind === "available" && (
+            <button
+              ref={replacedRetry.restore}
+              type="button"
+              className={`mt-4 ${secondary}`}
+              data-access-copy
+              onClick={onCopy}
             >
-              {say("reservation.access.view")}
-            </a>
+              {say("reservation.summary.copy")}
+            </button>
           )}
-          <button type="button" className={`mt-4 ${secondary}`} data-access-copy onClick={onCopy}>
-            {say("reservation.summary.copy")}
-          </button>
           <p
             className="mt-2 font-medium text-stone-900"
             role="status"

@@ -1,4 +1,5 @@
 import logoUrl from "@/assets/manantial-logo.svg?url";
+import { BUSINESS_NAME } from "@/constants";
 import { address, email, phoneNumber } from "@/lib/constants";
 import type { CheckoutView } from "@/lib/reservation/checkout";
 import { formatMoney } from "@/lib/reservation/format";
@@ -27,7 +28,7 @@ export function PrintConfirmation({ view, room, reservation, currency }: SavedCo
       aria-label={say("reservation.confirmation.printLabel")}
     >
       <header className="confirmation-print-hotel">
-        <img src={logoUrl} alt="Hotel Manantial" width={192} height={48} />
+        <img src={logoUrl} alt={BUSINESS_NAME} width={192} height={48} />
         <div>
           <p>{address}</p>
           <p>{hotelPhone}</p>

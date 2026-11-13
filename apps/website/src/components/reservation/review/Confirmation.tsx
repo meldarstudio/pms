@@ -1,4 +1,4 @@
-import type { RefCallback } from "react";
+import { useEffect, useState, type RefCallback } from "react";
 import {
   CheckIcon,
   CircleNotchIcon,
@@ -7,11 +7,13 @@ import {
   WhatsappLogoIcon,
 } from "@phosphor-icons/react";
 import { Separator } from "@/components/ui/separator";
+import { BUSINESS_NAME } from "@/constants";
 import { address, phoneNumber, whatsappUrl } from "@/lib/constants";
 import type { AccessState } from "@/lib/reservation/checkout-flow";
 import { formatMoney } from "@/lib/reservation/format";
 import { summaryLink } from "@/lib/reservation/summary";
 import { useReview } from "./context";
+import { useDroppedFocusRestore } from "./focus";
 import { PrintConfirmation, type SavedConfirmation } from "./PrintConfirmation";
 import { stayLabels } from "./stay";
 import { primary, secondary } from "./styles";
@@ -33,11 +35,18 @@ export function Confirmation({
   onAccessRetry: () => void;
 }) {
   const { say, lang } = useReview();
+  const [statusRegionMounted, setStatusRegionMounted] = useState(false);
+  useEffect(() => setStatusRegionMounted(true), []);
+  const replacedAction = useDroppedFocusRestore();
+  const retryAccess = () => {
+    replacedAction.expectReplacement();
+    onAccessRetry();
+  };
   const stay = stayLabels(view, say, lang);
   const money = (cents: number) => formatMoney(cents, currency);
   const printConfirmation = () => {
     const title = document.title;
-    document.title = `${say("reservation.confirmation.printTitle")} ${reservation.code} · Hotel Manantial`;
+    document.title = `${say("reservation.confirmation.printTitle")} ${reservation.code} · ${BUSINESS_NAME}`;
     try {
       window.print();
     } finally {
@@ -107,7 +116,6 @@ export function Confirmation({
           <dd>{money(reservation.outstandingCents)}</dd>
         </div>
       </dl>
-      {reservation.outstandingCents > 0 && <p>{say("reservation.access.atHotel")}</p>}
       <p className="confirmation-tax">{say("reservation.offer.taxes", { currency })}</p>
     </section>
   );
@@ -116,12 +124,9 @@ export function Confirmation({
       <h2 id="confirmation-access-title">{say("reservation.confirmation.accessTitle")}</h2>
       <p>{say("reservation.confirmation.accessBody")}</p>
       <div className="confirmation-link-actions">
-        {access.kind === "unavailable" ? (
-          <button type="button" className={primary} onClick={onAccessRetry} data-access-retry>
-            {say("reservation.access.retry")}
-          </button>
-        ) : access.kind === "available" ? (
+        {access.kind === "available" ? (
           <a
+            ref={replacedAction.restore}
             className={primary}
             href={summaryLink(summaryHref, access.token)}
             referrerPolicy="no-referrer"
@@ -129,12 +134,22 @@ export function Confirmation({
           >
             {say("reservation.access.view")}
           </a>
-        ) : (
-          <button type="button" className={primary} disabled aria-busy="true" data-access-loading>
+        ) : access.kind === "unavailable" ? (
+          <button type="button" className={primary} onClick={retryAccess} data-access-retry>
+            {say("reservation.access.retry")}
+          </button>
+        ) : access.kind === "loading" ? (
+          <button
+            type="button"
+            className={primary}
+            aria-disabled="true"
+            aria-busy="true"
+            data-access-loading
+          >
             <CircleNotchIcon className="confirmation-spinner" aria-hidden="true" />
             {say("reservation.confirmation.preparing")}
           </button>
-        )}
+        ) : null}
         <button
           type="button"
           className={secondary}
@@ -150,11 +165,13 @@ export function Confirmation({
         role="status"
         data-access-status
       >
-        {access.kind === "unavailable"
-          ? say("reservation.access.unavailable.confirmed")
-          : access.kind === "loading" || access.kind === "idle"
-            ? say("reservation.access.loading")
-            : ""}
+        {!statusRegionMounted
+          ? ""
+          : access.kind === "unavailable"
+            ? say("reservation.access.unavailable.confirmed")
+            : access.kind === "loading"
+              ? say("reservation.access.loading")
+              : ""}
       </p>
     </section>
   );
