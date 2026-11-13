@@ -1,3 +1,5 @@
-export const inventoryStatuses = ["confirmed", "checked_in", "checked_out"];
+import type { ReservationStatus } from "../db/schema";
 
-export const holdsInventory = (status: string) => inventoryStatuses.includes(status);
+export const inventoryStatuses: ReservationStatus[] = ["confirmed", "checked_in", "checked_out"];
+
+export const holdsInventory = (status: ReservationStatus) => inventoryStatuses.includes(status);

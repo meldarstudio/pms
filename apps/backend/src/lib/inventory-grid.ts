@@ -1,10 +1,11 @@
+import type { ReservationStatus } from "../db/schema";
 import { adjustedPriceCents } from "./pricing";
 import { ratePlans, type RatePlanCode } from "./rate-plans";
 import { holdsInventory } from "./statuses";
 
 export type GridStay = {
   roomTypeId: string;
-  status: string;
+  status: ReservationStatus;
   checkIn: string;
   checkOut: string;
 };
