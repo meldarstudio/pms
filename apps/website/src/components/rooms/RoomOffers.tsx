@@ -51,8 +51,11 @@ export function RoomOffers({
   stateOf,
   onChooseDates,
 }: Props) {
-  const [roomId, setRoomId] = useState<RoomId | null>(null);
-  const [planCode, setPlanCode] = useState<RatePlanCode | null>(null);
+  const [selection, setSelection] = useState<
+    { kind: "rooms" } | { kind: "rates"; roomId: RoomId; planCode: RatePlanCode }
+  >({ kind: "rooms" });
+  const roomId = selection.kind === "rates" ? selection.roomId : null;
+  const planCode = selection.kind === "rates" ? selection.planCode : null;
   const previousRoom = useRef<RoomId | null>(null);
   const [restored, setRestored] = useState(false);
   const section = useRef<HTMLElement>(null);
@@ -76,7 +79,7 @@ export function RoomOffers({
   }, [searchReady]);
 
   useEffect(() => {
-    if (phase.kind === "loading") setRoomId(null);
+    if (phase.kind === "loading") setSelection({ kind: "rooms" });
   }, [phase]);
 
   useEffect(() => {
@@ -86,7 +89,7 @@ export function RoomOffers({
       phase.kind === "found" && chosen?.pmsRoomTypeId
         ? phase.result.roomTypes.find((type) => type.id === chosen.pmsRoomTypeId)
         : undefined;
-    if (!chosen || chosenOffers?.availability !== "available") setRoomId(null);
+    if (!chosen || chosenOffers?.availability !== "available") setSelection({ kind: "rooms" });
   }, [phase, roomId, rooms]);
 
   useEffect(() => {
@@ -104,8 +107,7 @@ export function RoomOffers({
       !chosenOffers.offers.some((offer) => offer.ratePlan === plan)
     )
       return;
-    setPlanCode(plan);
-    setRoomId(chosen.id);
+    setSelection({ kind: "rates", roomId: chosen.id, planCode: plan });
   }, [phase, rooms, restored]);
 
   useEffect(() => {
@@ -121,8 +123,9 @@ export function RoomOffers({
 
   function openRoom(id: RoomId) {
     const chosen = rooms.find((item) => item.id === id);
-    setPlanCode(lowestOffer(chosen ? offersFor(chosen) : undefined)?.ratePlan ?? null);
-    setRoomId(id);
+    const offer = lowestOffer(chosen ? offersFor(chosen) : undefined);
+    if (phase.kind !== "found" || !chosen || stateOf(chosen) !== "available" || !offer) return;
+    setSelection({ kind: "rates", roomId: id, planCode: offer.ratePlan });
   }
 
   return (
@@ -142,7 +145,7 @@ export function RoomOffers({
             className="scroll-mt-[calc(8rem+env(safe-area-inset-top))] md:scroll-mt-[calc(9.5rem+env(safe-area-inset-top))]"
             text={text}
             current={onRates ? "rate" : "room"}
-            onChangeRoom={() => setRoomId(null)}
+            onChangeRoom={() => setSelection({ kind: "rooms" })}
           />
           {onRates && room && phase.kind === "found" && selected ? (
             <RateStep
@@ -154,7 +157,11 @@ export function RoomOffers({
               phase={phase}
               rates={rates}
               selected={selected}
-              onPlan={setPlanCode}
+              onPlan={(planCode) =>
+                setSelection((current) =>
+                  current.kind === "rates" ? { ...current, planCode } : current,
+                )
+              }
             />
           ) : (
             <ul

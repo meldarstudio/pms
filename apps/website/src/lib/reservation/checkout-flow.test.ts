@@ -979,6 +979,39 @@ describe("a saved payment outcome", () => {
     },
   );
 
+  it("copies only an available link and ignores clipboard results from a previous outcome", () => {
+    const saved = drive(openReview(), synced(payment({ state: "unfulfilled", reservation })));
+    const request = ofType(saved.effects, "readCheckoutAccess")[0]!.request;
+    expect(drive(saved.state, { type: "accessCopyRequested" }).effects).toEqual([]);
+    const available = drive(saved.state, {
+      type: "accessRead",
+      request,
+      access: { token: ACCESS_TOKEN, expiresOn: "2026-12-01" },
+    });
+    const copying = drive(available.state, { type: "accessCopyRequested" });
+    expect(copying.effects).toEqual([{ type: "copyAccessLink", request, token: ACCESS_TOKEN }]);
+    expect(
+      drive(copying.state, { type: "accessCopied", request, copied: true }).state.access.copied,
+    ).toBe(true);
+    const later = drive(copying.state, synced(payment({ state: "processing" })));
+    const stale = drive(later.state, { type: "accessCopied", request, copied: true });
+    expect(stale.state.access.copied).toBe(false);
+    expect(stale.state.access.panel).toBe(false);
+  });
+
+  it("redirects a confirmed outcome only once when an access response is repeated", () => {
+    const confirmed = drive(openReview(), synced(payment({ state: "confirmed", reservation })));
+    const request = ofType(confirmed.effects, "readCheckoutAccess")[0]!.request;
+    const event: FlowEvent = {
+      type: "accessRead",
+      request,
+      access: { token: ACCESS_TOKEN, expiresOn: "2026-12-01" },
+    };
+    const redirected = drive(confirmed.state, event);
+    expect(ofType(redirected.effects, "redirectToSummary")).toHaveLength(1);
+    expect(drive(redirected.state, event, { type: "accessCopyRequested" }).effects).toEqual([]);
+  });
+
   it("ignores an access answer that belongs to an outdated outcome", () => {
     const first = drive(openReview(), synced(payment({ state: "confirmed", reservation })));
     const staleRequest = ofType(first.effects, "readCheckoutAccess")[0]!.request;

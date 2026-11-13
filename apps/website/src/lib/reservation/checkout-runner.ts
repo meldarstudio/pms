@@ -194,7 +194,7 @@ export function createCheckoutRunner(options: CheckoutRunnerOptions): CheckoutRu
         } catch {
           copied = false;
         }
-        return dispatch({ type: "accessCopied", copied });
+        return dispatch({ type: "accessCopied", request: effect.request, copied });
       }
       case "focus":
         return options.focus(effect.target);
