@@ -178,7 +178,7 @@ export type Event =
   | { type: "bankRequested" }
   | { type: "statusCheckRequested" }
   | { type: "accessCopyRequested" }
-  | { type: "accessCopied"; request: number; copied: boolean }
+  | { type: "accessCopied"; copied: boolean }
   | { type: "pollElapsed" }
   | { type: "checkoutRead"; after: CheckoutThen; outcome: CheckoutOutcome; now: number }
   | { type: "checkoutStarted"; after: CheckoutThen; outcome: CheckoutOutcome; now: number }
@@ -230,7 +230,7 @@ export type Effect =
   | { type: "schedulePoll" }
   | { type: "cancelPoll" }
   | { type: "redirectToSummary"; token: string }
-  | { type: "copyAccessLink"; request: number; token: string }
+  | { type: "copyAccessLink"; token: string }
   | { type: "focus"; target: FocusTarget };
 
 export type Transition = { state: State; effects: Effect[] };
@@ -987,11 +987,10 @@ function handle(c: Ctx, event: Event) {
       return openBank(c);
     case "accessCopyRequested":
       if (c.s.access.kind === "available")
-        c.fx.push({ type: "copyAccessLink", request: c.s.access.request, token: c.s.access.token });
+        c.fx.push({ type: "copyAccessLink", token: c.s.access.token });
       return;
     case "accessCopied":
-      if (c.s.access.kind === "available" && c.s.access.request === event.request)
-        c.s.access = { ...c.s.access, copied: event.copied };
+      if (c.s.access.kind === "available") c.s.access = { ...c.s.access, copied: event.copied };
       return;
     case "checkoutRead":
       return afterCheckout(c, "read", event.after, event.outcome, event.now);
