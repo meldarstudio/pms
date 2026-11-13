@@ -133,7 +133,25 @@ test("homepage bottom booking action returns to the existing stay", async ({ pag
 });
 
 test("homepage search keeps an empty stay on the page", async ({ page }) => {
-  await page.goto("/");
+  let loadSearch!: () => void;
+  const searchReady = new Promise<void>((resolve) => {
+    loadSearch = resolve;
+  });
+  await page.route("**/_astro/StaySearchForm.*.js", async (route) => {
+    await searchReady;
+    await route.continue();
+  });
+  await page.goto("/", { waitUntil: "commit" });
+  const form = page.locator("#availability");
+  await expect(form.getByLabel("Llegada")).toBeVisible();
+  try {
+    await expect(form.getByLabel("Llegada")).toBeDisabled();
+    await expect(form.getByLabel("Salida")).toBeDisabled();
+    await expect(form.getByRole("button", { name: /Huéspedes/ })).toBeDisabled();
+    await expect(form.getByRole("button", { name: "Consultar disponibilidad" })).toBeDisabled();
+  } finally {
+    loadSearch();
+  }
   await page
     .locator("#availability")
     .getByRole("button", { name: "Consultar disponibilidad" })

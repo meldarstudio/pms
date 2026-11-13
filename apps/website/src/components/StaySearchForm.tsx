@@ -10,7 +10,7 @@ import { es, enUS } from "react-day-picker/locale";
 import { Button } from "@/components/ui/button";
 import { Calendar, CalendarDayButton } from "@/components/ui/calendar";
 import { Card, CardContent } from "@/components/ui/card";
-import { Field, FieldError, FieldGroup, FieldLabel } from "@/components/ui/field";
+import { Field, FieldError, FieldGroup, FieldLabel, FieldSet } from "@/components/ui/field";
 import {
   Drawer,
   DrawerClose,
@@ -451,6 +451,7 @@ export default function StaySearchForm({
   const [children, setChildren] = useState(DEFAULT_CHILDREN);
   const [open, setOpen] = useState(false);
   const [problems, setProblems] = useState<StayProblem[]>([]);
+  const [ready, setReady] = useState(false);
   const summary = guestSummary(copy, adults, children);
   const problemFor = (field: "checkIn" | "checkOut") => {
     const problem = problems.find((item) => item.field === field);
@@ -463,6 +464,7 @@ export default function StaySearchForm({
     setCheckOut(resumed.checkOut);
     setAdults(Math.min(resumed.adults, limits.adults.max));
     setChildren(Math.min(resumed.children, limits.children.max));
+    setReady(true);
   }, []);
 
   const onSubmit: ComponentProps<"form">["onSubmit"] = (event) => {
@@ -486,79 +488,85 @@ export default function StaySearchForm({
     >
       <CardContent>
         <form action={action} method="get" noValidate onSubmit={onSubmit}>
-          <FieldGroup className={`grid grid-cols-2 items-end gap-3 ${styles.grid}`}>
-            <StayDateFields
-              lang={lang}
-              copy={copy}
-              side={styles.side}
-              checkIn={checkIn}
-              checkOut={checkOut}
-              checkInError={problemFor("checkIn")}
-              checkOutError={problemFor("checkOut")}
-              checkInRef={checkInRef}
-              checkOutRef={checkOutRef}
-              onChange={(arrival, departure) => {
-                setCheckIn(arrival);
-                setCheckOut(departure);
-                setProblems((shown) => (shown.length ? stayProblems(arrival, departure) : shown));
-              }}
-            />
-            <Field className={`col-span-2 ${styles.guests}`}>
-              <FieldLabel id="stay-guests-label" className={labelClass}>
-                {copy.guests}
-              </FieldLabel>
-              <Popover open={open} onOpenChange={setOpen}>
-                <PopoverTrigger
-                  render={
-                    <Button
-                      type="button"
-                      variant="outline"
-                      className={fieldButton}
-                      aria-labelledby="stay-guests-label stay-guests-value"
-                    />
-                  }
-                >
-                  <span id="stay-guests-value" className="min-w-0 truncate">
-                    {summary}
-                  </span>
-                  <CaretDownIcon data-icon="inline-end" />
-                </PopoverTrigger>
-                <PopoverContent side={styles.side} align="end" className={`${popoverSurface} w-80`}>
-                  <PopoverHeader>
-                    <PopoverTitle className={labelClass}>{copy.guests}</PopoverTitle>
-                  </PopoverHeader>
-                  <FieldGroup className="gap-3">
-                    <Stepper
-                      label={copy.adults}
-                      value={adults}
-                      min={limits.adults.min}
-                      max={limits.adults.max}
-                      decreaseLabel={copy.decreaseAdults}
-                      increaseLabel={copy.increaseAdults}
-                      onChange={setAdults}
-                    />
-                    <Stepper
-                      label={copy.children}
-                      value={children}
-                      min={limits.children.min}
-                      max={limits.children.max}
-                      decreaseLabel={copy.decreaseChildren}
-                      increaseLabel={copy.increaseChildren}
-                      onChange={setChildren}
-                    />
-                  </FieldGroup>
-                </PopoverContent>
-              </Popover>
-            </Field>
-            <Button
-              type="submit"
-              className={`col-span-2 h-11 min-h-11 w-full bg-accent-500 px-5 font-source-sans-3 text-sm font-medium tracking-widest whitespace-normal text-accent-950 uppercase hover:bg-accent-400 ${styles.submit}`}
-            >
-              {copy.submit}
-            </Button>
-            <input type="hidden" name="adults" value={adults} />
-            <input type="hidden" name="children" value={children} />
-          </FieldGroup>
+          <FieldSet disabled={!ready}>
+            <FieldGroup className={`grid grid-cols-2 items-end gap-3 ${styles.grid}`}>
+              <StayDateFields
+                lang={lang}
+                copy={copy}
+                side={styles.side}
+                checkIn={checkIn}
+                checkOut={checkOut}
+                checkInError={problemFor("checkIn")}
+                checkOutError={problemFor("checkOut")}
+                checkInRef={checkInRef}
+                checkOutRef={checkOutRef}
+                onChange={(arrival, departure) => {
+                  setCheckIn(arrival);
+                  setCheckOut(departure);
+                  setProblems((shown) => (shown.length ? stayProblems(arrival, departure) : shown));
+                }}
+              />
+              <Field className={`col-span-2 ${styles.guests}`}>
+                <FieldLabel id="stay-guests-label" className={labelClass}>
+                  {copy.guests}
+                </FieldLabel>
+                <Popover open={open} onOpenChange={setOpen}>
+                  <PopoverTrigger
+                    render={
+                      <Button
+                        type="button"
+                        variant="outline"
+                        className={fieldButton}
+                        aria-labelledby="stay-guests-label stay-guests-value"
+                      />
+                    }
+                  >
+                    <span id="stay-guests-value" className="min-w-0 truncate">
+                      {summary}
+                    </span>
+                    <CaretDownIcon data-icon="inline-end" />
+                  </PopoverTrigger>
+                  <PopoverContent
+                    side={styles.side}
+                    align="end"
+                    className={`${popoverSurface} w-80`}
+                  >
+                    <PopoverHeader>
+                      <PopoverTitle className={labelClass}>{copy.guests}</PopoverTitle>
+                    </PopoverHeader>
+                    <FieldGroup className="gap-3">
+                      <Stepper
+                        label={copy.adults}
+                        value={adults}
+                        min={limits.adults.min}
+                        max={limits.adults.max}
+                        decreaseLabel={copy.decreaseAdults}
+                        increaseLabel={copy.increaseAdults}
+                        onChange={setAdults}
+                      />
+                      <Stepper
+                        label={copy.children}
+                        value={children}
+                        min={limits.children.min}
+                        max={limits.children.max}
+                        decreaseLabel={copy.decreaseChildren}
+                        increaseLabel={copy.increaseChildren}
+                        onChange={setChildren}
+                      />
+                    </FieldGroup>
+                  </PopoverContent>
+                </Popover>
+              </Field>
+              <Button
+                type="submit"
+                className={`col-span-2 h-11 min-h-11 w-full bg-accent-500 px-5 font-source-sans-3 text-sm font-medium tracking-widest whitespace-normal text-accent-950 uppercase hover:bg-accent-400 ${styles.submit}`}
+              >
+                {copy.submit}
+              </Button>
+              <input type="hidden" name="adults" value={adults} />
+              <input type="hidden" name="children" value={children} />
+            </FieldGroup>
+          </FieldSet>
         </form>
       </CardContent>
     </Card>
