@@ -63,6 +63,7 @@ export async function startCheckout(db: Db, input: PublicCheckoutCreate, context
     tokenHash: await tokenHash(token),
     ...input,
     createdAt: context.now.toISOString(),
+    hasReservation: false,
   };
   const quote = await availableQuote(db, checkout, context);
   await runBatch(db, [

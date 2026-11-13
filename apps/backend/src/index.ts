@@ -20,6 +20,7 @@ import { roomClosureRoutes } from "./routes/room-closures";
 import { roomRoutes } from "./routes/rooms";
 import { setupRoutes } from "./routes/setup";
 import { getDb } from "./db";
+import { purgeAbandonedCheckouts } from "./abandoned-checkouts";
 import { sendConfirmationEmails } from "./confirmation-emails";
 import { paymentContext, reconcilePaymentAttempts } from "./payment-attempts";
 import { requireSession } from "./session";
@@ -104,6 +105,7 @@ export default {
           reconcilePaymentAttempts(db, paymentContext(env)),
         );
         await step("confirmation send", () => sendConfirmationEmails(db, env));
+        await step("abandoned checkout purge", () => purgeAbandonedCheckouts(db, new Date()));
       })(),
     );
   },

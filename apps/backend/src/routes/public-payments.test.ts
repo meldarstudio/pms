@@ -1495,7 +1495,10 @@ describe("recovering an interrupted payment", () => {
 
     await runScheduled();
 
-    expect(log.mock.calls).toEqual([["scheduled payment reconciliation failed"]]);
+    expect(log.mock.calls).toEqual([
+      ["scheduled payment reconciliation failed"],
+      ["scheduled abandoned checkout purge failed"],
+    ]);
     db.sqlite.exec("ALTER TABLE unavailable_attempts RENAME TO payment_attempts");
     await runScheduled();
     expect(await status(checkout.token)).toMatchObject({ state: "confirmed" });
