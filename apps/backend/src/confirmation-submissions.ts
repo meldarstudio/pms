@@ -11,6 +11,12 @@ import {
 } from "./db/schema";
 import type { Env } from "./env";
 import {
+  renderConfirmationEmail,
+  confirmationEmailText,
+  confirmationEmailAttachments,
+  type ConfirmationEmailSection,
+} from "./confirmation-email";
+import {
   confirmationDeliveryView,
   recordSubmissionAcceptance,
   recipientIsBlocked,
@@ -550,7 +556,6 @@ function confirmationRequest(
   const facts = messageFacts({
     currency,
     language,
-    code: state.reservation.code,
     checkIn: state.reservation.checkIn,
     checkOut: state.reservation.checkOut,
     room,
@@ -572,30 +577,30 @@ function emailRequest(
   intent: Intent,
   submissionId: string,
   code: string,
-  facts: string[],
+  sections: ConfirmationEmailSection[],
   token: string | null,
   expiresOn: string,
+  kind: "confirmation" | "summary" = "confirmation",
 ) {
   const language = intent.language === "en" ? "en" : "es";
   const link = token ? summaryLink(language, token) : null;
   const assistance =
     language === "en"
       ? `Online access expired on ${expiresOn}. Contact the hotel for assistance.`
-      : `El acceso en línea venció el ${expiresOn}. Contacte al hotel para obtener asistencia.`;
+      : `El acceso en línea venció el ${expiresOn}. Contacta al hotel para obtener asistencia.`;
   return {
     from: FROM,
     to: [intent.recipientEmail],
     reply_to: REPLY_TO,
     subject:
       language === "en" ? `Reservation confirmation ${code}` : `Confirmación de reserva ${code}`,
-    html: `<p>${facts.map(escapeHtml).join("<br>\n")}</p>\n${
-      link
-        ? `<p><a href="${escapeHtml(link)}">${
-            language === "en" ? "View your reservation" : "Ver su reserva"
-          }</a></p>`
-        : `<p>${escapeHtml(assistance)}</p>`
-    }`,
-    text: [...facts, link ?? assistance].join("\n"),
+    html: renderConfirmationEmail({ language, code, kind, sections, link, assistance }),
+    text: [
+      language === "en" ? `Reference: ${code}` : `Reserva: ${code}`,
+      ...sections.flatMap((section) => confirmationEmailText(section, language)),
+      link ?? assistance,
+    ].join("\n"),
+    attachments: confirmationEmailAttachments,
     tags: [
       { name: "category", value: "confirmation" },
       { name: "submission_id", value: submissionId },
@@ -626,54 +631,81 @@ function deliberateRequest(
   };
   const status = statuses[state.reservation.status]?.[language];
   if (!status) throw new Error("unknown reservation status");
-  const facts = [
-    language === "en"
-      ? `Summary as of ${snapshotAt}. This is not a new confirmation.`
-      : `Resumen al ${snapshotAt}. No es una nueva confirmación.`,
-    language === "en" ? `Status: ${status}` : `Estado: ${status}`,
-    language === "en"
-      ? `Reference: ${state.reservation.code}`
-      : `Reserva: ${state.reservation.code}`,
-    language === "en"
-      ? `Check-in: ${state.reservation.checkIn}`
-      : `Llegada: ${state.reservation.checkIn}`,
-    language === "en"
-      ? `Check-out: ${state.reservation.checkOut}`
-      : `Salida: ${state.reservation.checkOut}`,
-    language === "en" ? `Room: ${room}` : `Habitación: ${room}`,
-    `Plan: ${PLAN_NAME[language][acceptedTerms(state.reservation).plan]}`,
-    language === "en"
-      ? `Accepted free-cancellation deadline: ${freeCancellationUntil(acceptedTerms(state.reservation).cancellationPolicy, state.reservation.checkIn) ?? "none"}`
-      : `Fecha límite de cancelación gratuita aceptada: ${freeCancellationUntil(acceptedTerms(state.reservation).cancellationPolicy, state.reservation.checkIn) ?? "ninguna"}`,
-    language === "en"
-      ? `Accepted policy charge: ${amount(chargeableCents(acceptedTerms(state.reservation).cancellationPolicy, state.lines, state.reservation.discountCents))}`
-      : `Cargo según la política aceptada: ${amount(chargeableCents(acceptedTerms(state.reservation).cancellationPolicy, state.lines, state.reservation.discountCents))}`,
-    `Total: ${amount(bill.totalCents)}`,
-    language === "en" ? `Paid: ${amount(bill.paidCents)}` : `Pagado: ${amount(bill.paidCents)}`,
-    language === "en"
-      ? `Outstanding balance: ${amount(Math.max(0, bill.balanceCents))}`
-      : `Saldo pendiente: ${amount(Math.max(0, bill.balanceCents))}`,
-    language === "en"
-      ? `Refund due: ${amount(bill.refundDueCents)}`
-      : `Por devolver: ${amount(bill.refundDueCents)}`,
-    language === "en"
-      ? `Completed refunds: ${amount(bill.refundedCents)}`
-      : `Devoluciones completadas: ${amount(bill.refundedCents)}`,
-    language === "en"
-      ? `Pending refunds (not returned): ${amount(bill.pendingRefundCents)}`
-      : `Devoluciones pendientes (no devueltas): ${amount(bill.pendingRefundCents)}`,
-    language === "en"
-      ? `Coupon settlement (not cash): ${amount(bill.couponAppliedCents)}`
-      : `Pagado con cupón (no efectivo): ${amount(bill.couponAppliedCents)}`,
-    language === "en"
-      ? `Converted into coupons (not refunded): ${amount(bill.couponIssuedCents)}`
-      : `Pasado a cupón (no devuelto): ${amount(bill.couponIssuedCents)}`,
-    language === "en"
-      ? `For current information and assistance, contact the hotel. Phone: ${PHONE}. Email: ${REPLY_TO}`
-      : `Para información actual y asistencia, contacte al hotel. Teléfono: ${PHONE}. Correo: ${REPLY_TO}`,
+  const facts: ConfirmationEmailSection[] = [
+    {
+      title: language === "en" ? "Reservation status" : "Estado de la reserva",
+      lines: [
+        language === "en"
+          ? `Summary as of ${snapshotAt}. This is not a new confirmation.`
+          : `Resumen al ${snapshotAt}. No es una nueva confirmación.`,
+        language === "en" ? `Status: ${status}` : `Estado: ${status}`,
+      ],
+    },
+    {
+      stay: {
+        checkIn: state.reservation.checkIn,
+        checkOut: state.reservation.checkOut,
+        room,
+        plan: PLAN_NAME[language][acceptedTerms(state.reservation).plan],
+      },
+    },
+    {
+      title:
+        language === "en" ? "Accepted cancellation terms" : "Condiciones de cancelación aceptadas",
+      lines: [
+        language === "en"
+          ? `Accepted free-cancellation deadline: ${freeCancellationUntil(acceptedTerms(state.reservation).cancellationPolicy, state.reservation.checkIn) ?? "none"}`
+          : `Fecha límite de cancelación gratuita aceptada: ${freeCancellationUntil(acceptedTerms(state.reservation).cancellationPolicy, state.reservation.checkIn) ?? "ninguna"}`,
+        language === "en"
+          ? `Accepted policy charge: ${amount(chargeableCents(acceptedTerms(state.reservation).cancellationPolicy, state.lines, state.reservation.discountCents))}`
+          : `Cargo según la política aceptada: ${amount(chargeableCents(acceptedTerms(state.reservation).cancellationPolicy, state.lines, state.reservation.discountCents))}`,
+      ],
+    },
+    {
+      title: language === "en" ? "Payment and refunds" : "Pago y devoluciones",
+      lines: [
+        `Total: ${amount(bill.totalCents)}`,
+        language === "en" ? `Paid: ${amount(bill.paidCents)}` : `Pagado: ${amount(bill.paidCents)}`,
+        language === "en"
+          ? `Outstanding balance: ${amount(Math.max(0, bill.balanceCents))}`
+          : `Saldo pendiente: ${amount(Math.max(0, bill.balanceCents))}`,
+        language === "en"
+          ? `Refund due: ${amount(bill.refundDueCents)}`
+          : `Por devolver: ${amount(bill.refundDueCents)}`,
+        language === "en"
+          ? `Completed refunds: ${amount(bill.refundedCents)}`
+          : `Devoluciones completadas: ${amount(bill.refundedCents)}`,
+        language === "en"
+          ? `Pending refunds (not returned): ${amount(bill.pendingRefundCents)}`
+          : `Devoluciones pendientes (no devueltas): ${amount(bill.pendingRefundCents)}`,
+        language === "en"
+          ? `Coupon settlement (not cash): ${amount(bill.couponAppliedCents)}`
+          : `Pagado con cupón (no efectivo): ${amount(bill.couponAppliedCents)}`,
+        language === "en"
+          ? `Converted into coupons (not refunded): ${amount(bill.couponIssuedCents)}`
+          : `Pasado a cupón (no devuelto): ${amount(bill.couponIssuedCents)}`,
+      ],
+    },
+    { action: true },
+    {
+      title: language === "en" ? "Need help?" : "¿Necesitas ayuda?",
+      lines: [
+        language === "en"
+          ? `For current information and assistance, contact the hotel. Phone: ${PHONE}. Email: ${REPLY_TO}`
+          : `Para información actual y asistencia, contacta al hotel. Teléfono: ${PHONE}. Correo: ${REPLY_TO}`,
+      ],
+    },
   ];
   return {
-    ...emailRequest(intent, submissionId, state.reservation.code, facts, token, expiresOn),
+    ...emailRequest(
+      intent,
+      submissionId,
+      state.reservation.code,
+      facts,
+      token,
+      expiresOn,
+      "summary",
+    ),
     subject:
       language === "en"
         ? `Reservation summary ${state.reservation.code}`
@@ -684,7 +716,6 @@ function deliberateRequest(
 function messageFacts(input: {
   currency: string;
   language: "es" | "en";
-  code: string;
   checkIn: string;
   checkOut: string;
   room: string;
@@ -694,7 +725,7 @@ function messageFacts(input: {
   totalCents: number;
   paidCents: number;
   outstandingCents: number;
-}) {
+}): ConfirmationEmailSection[] {
   const amount = (cents: number) => money(cents, input.currency);
   const charge = amount(input.chargeCents);
   const cancellation =
@@ -712,22 +743,41 @@ function messageFacts(input: {
         : "Pagado en su totalidad."
       : null;
   return [
-    input.language === "en" ? `Reference: ${input.code}` : `Reserva: ${input.code}`,
-    input.language === "en" ? `Check-in: ${input.checkIn}` : `Llegada: ${input.checkIn}`,
-    input.language === "en" ? `Check-out: ${input.checkOut}` : `Salida: ${input.checkOut}`,
-    input.language === "en" ? `Room: ${input.room}` : `Habitación: ${input.room}`,
-    `Plan: ${input.plan}`,
-    cancellation,
-    `Total: ${amount(input.totalCents)}`,
-    input.language === "en"
-      ? `Paid: ${amount(input.paidCents)}`
-      : `Pagado: ${amount(input.paidCents)}`,
-    input.language === "en"
-      ? `Outstanding balance: ${amount(input.outstandingCents)}`
-      : `Saldo pendiente: ${amount(input.outstandingCents)}`,
-    ...(paidInFull ? [paidInFull] : []),
-    input.language === "en" ? `Phone: ${PHONE}` : `Teléfono: ${PHONE}`,
-    input.language === "en" ? `Email: ${REPLY_TO}` : `Correo: ${REPLY_TO}`,
+    {
+      stay: {
+        checkIn: input.checkIn,
+        checkOut: input.checkOut,
+        room: input.room,
+        plan: input.plan,
+      },
+    },
+    {
+      payment: [
+        { label: "Total", value: amount(input.totalCents) },
+        {
+          label: input.language === "en" ? "Paid" : "Pagado",
+          value: amount(input.paidCents),
+        },
+        {
+          label: input.language === "en" ? "Outstanding balance" : "Saldo pendiente",
+          value: amount(input.outstandingCents),
+          emphasis: true,
+        },
+      ],
+      note: paidInFull,
+    },
+    { action: true },
+    {
+      title: input.language === "en" ? "Cancellation" : "Cancelación",
+      lines: [cancellation],
+    },
+    {
+      title: input.language === "en" ? "Need help?" : "¿Necesitas ayuda?",
+      lines: [
+        input.language === "en" ? `Phone: ${PHONE}` : `Teléfono: ${PHONE}`,
+        input.language === "en" ? `Email: ${REPLY_TO}` : `Correo: ${REPLY_TO}`,
+      ],
+    },
   ];
 }
 
@@ -754,14 +804,6 @@ function money(cents: number, currency: string) {
   const negative = cents < 0;
   const absolute = Math.abs(cents);
   return `${negative ? "-" : ""}${currency} ${Math.floor(absolute / 100)}.${String(absolute % 100).padStart(2, "0")}`;
-}
-
-function escapeHtml(value: string) {
-  return value
-    .replaceAll("&", "&amp;")
-    .replaceAll("<", "&lt;")
-    .replaceAll(">", "&gt;")
-    .replaceAll('"', "&quot;");
 }
 
 async function applyResult(

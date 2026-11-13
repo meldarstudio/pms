@@ -1682,6 +1682,9 @@ describe("deliberate confirmation resends", () => {
       expect(part).not.toContain("Free cancellation until");
     }
     expect(message.subject).not.toContain("confirmation");
+    expect(message.html).toContain("Your reservation summary");
+    expect(message.html).not.toContain("Your reservation is confirmed");
+    expect(message.html).not.toContain("We look forward to welcoming you");
     expect(await (await db.request(`/reservations/${saved.id}`)).json()).toEqual(moneyBeforeSend);
     expect(await (await db.request(`/reservations/${saved.id}/access`)).json()).toEqual(
       originalAccess,
@@ -1908,6 +1911,7 @@ function expectMessage(
     cc?: unknown;
     bcc?: unknown;
     tags?: unknown;
+    attachments: { content: string; content_id: string; content_type: string }[];
   };
   const link = summaryLink(language, saved.token);
   expect(message.from).toBe(FROM);
@@ -1916,6 +1920,9 @@ function expectMessage(
   expect(message.cc).toBeUndefined();
   expect(message.bcc).toBeUndefined();
   expect(message.subject).toContain(saved.code);
+  expect(message.html).toContain(
+    language === "en" ? "Your reservation is confirmed" : "Tu reserva está confirmada",
+  );
   expect(posted.headers.get("idempotency-key")).toBe(`confirmation/${submissions()[0]?.intent_id}`);
   expect(posted.headers.get("authorization")).toBe(`Bearer ${RESEND_TEST_KEY}`);
   for (const hidden of [
@@ -1939,8 +1946,14 @@ function expectMessage(
     expect(part).toContain(link);
     expect(part.toLowerCase()).not.toContain("paid in full");
     expect(part.toLowerCase()).not.toContain("pagado en su totalidad");
-    expect(part).not.toContain("<img");
   }
+  expect(message.attachments).toHaveLength(1);
+  expect(message.attachments[0]?.content_type).toBe("image/png");
+  expect(Buffer.from(message.attachments[0]!.content, "base64").subarray(0, 8)).toEqual(
+    Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]),
+  );
+  expect(message.html).toContain(`src="cid:${message.attachments[0]!.content_id}"`);
+  expect(message.html.match(/<img\b/g)).toHaveLength(1);
   expect(message.html).toContain(`href="${link}"`);
   expect(message.html.replace(`href="${link}"`, "")).not.toContain(saved.token);
   expect(message.text.replace(link, "")).not.toContain(saved.token);
@@ -1948,6 +1961,23 @@ function expectMessage(
 }
 
 describe("confirmation submissions", () => {
+  it("escapes room names in HTML while preserving the plain-text booking details", async () => {
+    await confirmed();
+    db.sqlite
+      .prepare("UPDATE room_types SET name = ? WHERE id = 'type-king'")
+      .run('King & <img src="x" onerror="alert(1)">');
+    configureResend();
+    await admitEmail(true);
+
+    await runScheduled();
+
+    const message = JSON.parse(posts()[0]!.body) as { html: string; text: string };
+    expect(message.html).toContain("King &amp; &lt;img src=&quot;x&quot;");
+    expect(message.html).not.toContain('<img src="x"');
+    expect(message.html).not.toContain('onerror="alert(1)"');
+    expect(message.text).toContain('King & <img src="x" onerror="alert(1)">');
+  });
+
   it.each(["es", "en"] as const)(
     "sends one %s confirmation to the booking contact and does not post again once accepted",
     async (language) => {
