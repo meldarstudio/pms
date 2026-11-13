@@ -145,7 +145,7 @@ test("the complete English Non-refundable journey sends its saved confirmation a
   await page.getByRole("checkbox", { name: /I accept/ }).check();
   await payButton(page, "180.00").click();
   await expectConfirmed(page, "/en");
-  const reference = (await confirmation(page).innerText()).match(/Reference\s*([A-Z0-9]{6})/)?.[1];
+  const reference = await page.locator("[data-confirmation-reference]").innerText();
   expect(reference).toBeTruthy();
   await expect(page.locator("[data-access-view]")).toBeVisible();
   const savedLink = new URL((await page.locator("[data-access-view]").getAttribute("href"))!);
@@ -311,7 +311,7 @@ test("confirmation survives unavailable access, reload and manual retry without 
   await payButton(page, "100.00").click();
   await expectConfirmed(page);
   await expect(page.locator("[data-outcome-title]")).toBeFocused();
-  const reference = (await confirmation(page).innerText()).match(/Referencia\s*([A-Z0-9]{6})/)?.[1];
+  const reference = await page.locator("[data-confirmation-reference]").innerText();
   expect(reference).toBeTruthy();
   await expect(confirmation(page)).toContainText(/Pagado\s*S\/\s100\.00/);
   await expect(confirmation(page)).toContainText(/Saldo pendiente\s*S\/\s100\.00/);
@@ -724,7 +724,7 @@ test("a confirmed reservation opens and prints without putting its token in supp
   await fillCheckout(page, "flexible", payerEmail());
   await payButton(page, "100.00").click();
   await expectConfirmed(page);
-  const reference = (await confirmation(page).innerText()).match(/Referencia\s*([A-Z0-9]{6})/)?.[1];
+  const reference = await page.locator("[data-confirmation-reference]").innerText();
   expect(reference).toBeTruthy();
   await expect(page.locator("[data-access-view]")).toBeVisible();
   const savedLink = new URL((await page.locator("[data-access-view]").getAttribute("href"))!);
