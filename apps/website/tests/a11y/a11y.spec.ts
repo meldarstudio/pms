@@ -98,6 +98,17 @@ test(`a11y: /habitaciones/ with offers`, async ({ page }) => {
   await runAxe(page, `/habitaciones/ (rates)`);
 });
 
+test(`a11y: /habitaciones/ rates on a phone with the Continue bar`, async ({ page }) => {
+  await page.setViewportSize({ width: 375, height: 812 });
+  const params = new URLSearchParams({ ...openStay(), adults: "2", children: "0" });
+  await page.goto(`/habitaciones/?${params.toString()}&room=king&plan=flexible`);
+  await expect(page.getByRole("radio", { name: /Flexible/ })).toBeChecked();
+  await expect(
+    page.locator("[data-continue-bar]").getByRole("link", { name: /^Continuar con / }),
+  ).toBeInViewport();
+  await runAxe(page, `/habitaciones/ (phone rates)`);
+});
+
 test(`a11y: /habitaciones/ with the photo lightbox open`, async ({ page }) => {
   await page.goto(`/habitaciones/`);
   await page

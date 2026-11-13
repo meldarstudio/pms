@@ -8,7 +8,11 @@ Choose is the rooms page (`/habitaciones/`): one React island
 room, prerendered for search engines. It refreshes live offers from the PMS `/public`
 API in place, never in the HTML. A searched stay lists each room at its lowest total;
 choosing a room replaces that list with the room's rate plans, lowest selected, and one
-Book link to Review. The last
+Continue link to Review; phones repeat it with the total in a bottom bar while the summary's
+Continue is off screen. The address names the stay, the opened room and its rate plan:
+opening a room pushes history, choosing a plan or searching replaces it, and Back, Forward
+and reload show the step it names. A completed search scrolls its answer below the header
+without moving focus. The last
 search is kept in `sessionStorage` (`src/lib/reservation/draft.ts`) so the homepage
 and Choose prefill it; dates before the first online arrival are dropped. Review (`/reservar/revisar/`) opens a private checkout, shows
 its server Quote, and records the booking contact's acceptance, including an

@@ -77,3 +77,10 @@ export async function fetchOffers(
   if (!response.ok || !isResult(body)) return { kind: "unavailable" };
   return { kind: "found", result: body };
 }
+
+export function lowestOffer(offers: RoomTypeOffers | undefined) {
+  return offers?.offers.reduce<PlanOffer | undefined>(
+    (lowest, offer) => (!lowest || offer.totalCents < lowest.totalCents ? offer : lowest),
+    undefined,
+  );
+}

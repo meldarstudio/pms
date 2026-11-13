@@ -289,6 +289,24 @@ test("homepage search opens the rooms for the chosen stay and keeps it on return
   await expect(form.locator("#stay-guests-value")).toHaveText("2 adultos, 1 niño");
 });
 
+test("a phone homepage search lands with the first room in view", async ({ page }) => {
+  await page.setViewportSize({ width: 375, height: 812 });
+  const stay = openStay();
+  await page.goto("/");
+  await page.getByLabel("Llegada").click();
+  await pickRangeDate(page, stay.checkIn);
+  await pickRangeDate(page, stay.checkOut);
+  await page
+    .locator("#availability")
+    .getByRole("button", { name: "Consultar disponibilidad" })
+    .click();
+
+  await expect(page).toHaveURL(/\/habitaciones\/\?/);
+  const first = page.getByRole("article").first();
+  await expect(first.getByRole("heading", { name: "Suite Matrimonial" })).toBeInViewport();
+  await expect(first.getByRole("img").first()).toBeInViewport();
+});
+
 test("homepage range picker supports keyboard selection", async ({ page }) => {
   await page.setViewportSize({ width: 1280, height: 844 });
   await page.goto("/");

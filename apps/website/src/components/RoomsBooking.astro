@@ -68,13 +68,12 @@ const details: StayDetails = {
   <script is:inline define:vars={{ roomIds: rooms.map((room) => room.id), ratePlanCodes }}>
     {
       const params = new URLSearchParams(window.location.search);
-      if (
-        params.get("checkIn") &&
-        params.get("checkOut") &&
-        roomIds.includes(params.get("room")) &&
-        ratePlanCodes.includes(params.get("plan"))
-      ) {
-        document.currentScript.parentElement.setAttribute("data-resume-rates", "");
+      const booking = document.currentScript.parentElement;
+      if (params.get("checkIn") && params.get("checkOut")) {
+        booking.setAttribute("data-searched", "");
+        if (roomIds.includes(params.get("room")) && ratePlanCodes.includes(params.get("plan"))) {
+          booking.setAttribute("data-resume-rates", "");
+        }
       }
     }
   </script>
@@ -97,7 +96,18 @@ const details: StayDetails = {
   [data-rooms-booking][data-resume-rates] [data-rate-loading] {
     display: block;
   }
-  [data-rooms-booking][data-resume-rates] [role="status"] {
-    visibility: hidden;
+  [data-rooms-booking][data-searched] [data-search-status] {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    margin: -1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+  }
+  @media (width < 48rem) {
+    body[data-continue-bar-space] {
+      padding-bottom: calc(4.5rem + env(safe-area-inset-bottom));
+    }
   }
 </style>

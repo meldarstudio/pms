@@ -12,8 +12,13 @@ import { Skeleton } from "@/components/ui/skeleton";
 import type { Lang } from "@/i18n/utils";
 import { getWhatsAppLink } from "@/lib/constants";
 import { fill, formatDate, formatMoney } from "@/lib/reservation/format";
-import type { PlanOffer, RoomTypeOffers } from "@/lib/reservation/offers";
-import { nightsBetween, searchParams, type RatePlanCode } from "@/lib/reservation/search";
+import { lowestOffer, type PlanOffer, type RoomTypeOffers } from "@/lib/reservation/offers";
+import {
+  nightsBetween,
+  searchParams,
+  type RatePlanCode,
+  type StaySearch,
+} from "@/lib/reservation/search";
 import type { RoomId } from "@/lib/rooms";
 import { RoomCard, roomGridColumns, type StayDetails } from "./RoomCard";
 import type { Phase, RoomState, RoomView } from "./RoomsBooking";
@@ -24,6 +29,9 @@ const primary =
 const secondary =
   "font-source-sans-3 border border-stone-900 text-stone-900 hover:border-accent-500 hover:bg-accent-500 hover:text-accent-950 inline-flex min-h-12 cursor-pointer items-center justify-center gap-2 px-6 text-sm font-semibold tracking-widest uppercase";
 
+export const belowHeader =
+  "scroll-mt-[calc(8rem+env(safe-area-inset-top))] md:scroll-mt-[calc(9.5rem+env(safe-area-inset-top))]";
+
 type Props = {
   lang: Lang;
   text: RoomsBookingText;
@@ -32,10 +40,14 @@ type Props = {
   rooms: RoomView[];
   details: StayDetails;
   phase: Phase;
+  choice: StaySearch | null;
   searchReady: boolean;
   offersFor: (room: RoomView) => RoomTypeOffers | undefined;
   stateOf: (room: RoomView) => RoomState;
   onChooseDates: () => void;
+  onOpenRoom: (room: RoomId) => void;
+  onChangeRoom: () => void;
+  onPlan: (plan: RatePlanCode) => void;
 };
 
 export function RoomOffers({
@@ -46,27 +58,22 @@ export function RoomOffers({
   rooms,
   details,
   phase,
+  choice,
   searchReady,
   offersFor,
   stateOf,
   onChooseDates,
+  onOpenRoom,
+  onChangeRoom,
+  onPlan,
 }: Props) {
-  const [selection, setSelection] = useState<
-    { kind: "rooms" } | { kind: "rates"; roomId: RoomId; planCode: RatePlanCode }
-  >({ kind: "rooms" });
-  const roomId = selection.kind === "rates" ? selection.roomId : null;
-  const planCode = selection.kind === "rates" ? selection.planCode : null;
-  const previousRoom = useRef<RoomId | null>(null);
-  const [restored, setRestored] = useState(false);
   const section = useRef<HTMLElement>(null);
-  const restoringRates =
-    !restored &&
-    (phase.kind === "loading" || phase.kind === "found") &&
-    Boolean(phase.search.room && phase.search.plan);
+  const roomId = choice?.plan ? choice.room : null;
+  const ratesLoading = phase.kind === "loading" && roomId !== null;
   const room = rooms.find((item) => item.id === roomId);
   const offers = room ? offersFor(room) : undefined;
   const rates = [...(offers?.offers ?? [])].sort((a, b) => a.totalCents - b.totalCents);
-  const selected = rates.find((offer) => offer.ratePlan === planCode) ?? rates[0];
+  const selected = rates.find((offer) => offer.ratePlan === choice?.plan) ?? rates[0];
   const onRates =
     phase.kind === "found" &&
     room !== undefined &&
@@ -74,78 +81,30 @@ export function RoomOffers({
     selected !== undefined;
 
   useEffect(() => {
-    if (searchReady)
-      section.current?.closest("[data-rooms-booking]")?.removeAttribute("data-resume-rates");
+    if (!searchReady) return;
+    const booking = section.current?.closest("[data-rooms-booking]");
+    booking?.removeAttribute("data-resume-rates");
+    booking?.removeAttribute("data-searched");
   }, [searchReady]);
-
-  useEffect(() => {
-    if (phase.kind === "loading") setSelection({ kind: "rooms" });
-  }, [phase]);
-
-  useEffect(() => {
-    if (!roomId || phase.kind === "loading") return;
-    const chosen = rooms.find((item) => item.id === roomId);
-    const chosenOffers =
-      phase.kind === "found" && chosen?.pmsRoomTypeId
-        ? phase.result.roomTypes.find((type) => type.id === chosen.pmsRoomTypeId)
-        : undefined;
-    if (!chosen || chosenOffers?.availability !== "available") setSelection({ kind: "rooms" });
-  }, [phase, roomId, rooms]);
-
-  useEffect(() => {
-    if (restored || phase.kind !== "found") return;
-    setRestored(true);
-    const { room: roomToOpen, plan } = phase.search;
-    if (!roomToOpen || !plan) return;
-    const chosen = rooms.find((item) => item.id === roomToOpen);
-    const chosenOffers = chosen?.pmsRoomTypeId
-      ? phase.result.roomTypes.find((type) => type.id === chosen.pmsRoomTypeId)
-      : undefined;
-    if (
-      !chosen ||
-      chosenOffers?.availability !== "available" ||
-      !chosenOffers.offers.some((offer) => offer.ratePlan === plan)
-    )
-      return;
-    setSelection({ kind: "rates", roomId: chosen.id, planCode: plan });
-  }, [phase, rooms, restored]);
-
-  useEffect(() => {
-    const last = previousRoom.current;
-    previousRoom.current = roomId;
-    if (roomId) {
-      document.getElementById("offer-steps")?.scrollIntoView({ block: "start" });
-      document.getElementById("room-rates-title")?.focus({ preventScroll: true });
-      return;
-    }
-    if (last) document.getElementById(`room-rates-${last}`)?.focus();
-  }, [roomId]);
-
-  function openRoom(id: RoomId) {
-    const chosen = rooms.find((item) => item.id === id);
-    const offer = lowestOffer(chosen ? offersFor(chosen) : undefined);
-    if (phase.kind !== "found" || !chosen || stateOf(chosen) !== "available" || !offer) return;
-    setSelection({ kind: "rates", roomId: id, planCode: offer.ratePlan });
-  }
 
   return (
     <section ref={section} className="bg-stone-100">
       <div className="mx-auto flex max-w-7xl flex-col gap-10 px-4 py-8 md:px-8 md:py-12">
-        {(phase.kind === "idle" || restoringRates) && (
-          <div data-rate-loading className={restoringRates ? undefined : "hidden"}>
+        {(phase.kind === "idle" || ratesLoading) && (
+          <div data-rate-loading className={ratesLoading ? undefined : "hidden"}>
             <BookingSteps text={text} current="rate" />
             <div className="mt-10" aria-busy="true">
               <RateStepLoading text={text} />
             </div>
           </div>
         )}
-        <div data-room-step hidden={restoringRates} className="flex flex-col gap-10">
+        <div data-room-step hidden={ratesLoading} className="flex flex-col gap-10">
           <BookingSteps
             id="offer-steps"
-            className="scroll-mt-[calc(8rem+env(safe-area-inset-top))] md:scroll-mt-[calc(9.5rem+env(safe-area-inset-top))]"
+            className={belowHeader}
             text={text}
             current={onRates ? "rate" : "room"}
-            onChangeRoom={() => setSelection({ kind: "rooms" })}
+            onChangeRoom={onChangeRoom}
           />
           {onRates && room && phase.kind === "found" && selected ? (
             <RateStep
@@ -157,11 +116,7 @@ export function RoomOffers({
               phase={phase}
               rates={rates}
               selected={selected}
-              onPlan={(planCode) =>
-                setSelection((current) =>
-                  current.kind === "rates" ? { ...current, planCode } : current,
-                )
-              }
+              onPlan={onPlan}
             />
           ) : (
             <ul
@@ -178,7 +133,7 @@ export function RoomOffers({
                   phase={phase}
                   offers={offersFor(item)}
                   state={stateOf(item)}
-                  onOpen={phase.kind === "idle" ? onChooseDates : () => openRoom(item.id)}
+                  onOpen={phase.kind === "idle" ? onChooseDates : () => onOpenRoom(item.id)}
                 />
               ))}
             </ul>
@@ -426,6 +381,32 @@ function RateStep({
   const money = (cents: number) => formatMoney(cents, phase.result.currency);
   const guests = guestLine(searchCopy, phase.search.adults, phase.search.children);
   const dates = `${formatDate(phase.search.checkIn, lang, { includeWeekday: false })} – ${formatDate(phase.search.checkOut, lang, { includeWeekday: false })}`;
+  const continueHref = `${reviewHref}?${searchParams({ ...phase.search, room: room.id, plan: selected.ratePlan }).toString()}`;
+  const continueLabel = say("reservation.rate.continueLabel", {
+    room: room.name,
+    plan: say(`reservation.plan.${selected.ratePlan}`),
+  });
+  const summaryContinue = useRef<HTMLAnchorElement>(null);
+  const [summaryContinueInView, setSummaryContinueInView] = useState(false);
+
+  useEffect(() => {
+    const link = summaryContinue.current;
+    if (!link) return;
+    const header = document.querySelector("navigation-menu")?.getBoundingClientRect().height ?? 0;
+    const observer = new IntersectionObserver(
+      ([entry]) => {
+        const underHeader = entry && entry.boundingClientRect.top < (entry.rootBounds?.top ?? 0);
+        setSummaryContinueInView(Boolean(entry?.isIntersecting && !underHeader));
+      },
+      { rootMargin: `-${Math.ceil(header)}px 0px 0px 0px`, threshold: [0, 1] },
+    );
+    observer.observe(link);
+    document.body.toggleAttribute("data-continue-bar-space", true);
+    return () => {
+      observer.disconnect();
+      document.body.removeAttribute("data-continue-bar-space");
+    };
+  }, []);
 
   return (
     <div
@@ -528,12 +509,10 @@ function RateStep({
               {say("reservation.offer.taxes", { currency: phase.result.currency })}
             </p>
             <a
+              ref={summaryContinue}
               className={`mt-4 w-full ${primary}`}
-              href={`${reviewHref}?${searchParams({ ...phase.search, room: room.id, plan: selected.ratePlan }).toString()}`}
-              aria-label={say("reservation.rate.continueLabel", {
-                room: room.name,
-                plan: say(`reservation.plan.${selected.ratePlan}`),
-              })}
+              href={continueHref}
+              aria-label={continueLabel}
             >
               {say("reservation.rate.continue")}
             </a>
@@ -581,6 +560,21 @@ function RateStep({
           </AccordionContent>
         </AccordionItem>
       </Accordion>
+      <div
+        data-continue-bar
+        hidden={summaryContinueInView}
+        className="fixed inset-x-0 bottom-0 z-40 flex items-center justify-between gap-4 border-t border-stone-200 bg-white pt-3 pr-[max(1rem,env(safe-area-inset-right))] pb-[max(0.75rem,env(safe-area-inset-bottom))] pl-[max(1rem,env(safe-area-inset-left))] shadow-[0_-1px_6px_rgb(0_0_0/0.06)] md:hidden"
+      >
+        <div className="min-w-0">
+          <p className="text-xs text-stone-600">{say("reservation.offer.total")}</p>
+          <p className="text-xl font-semibold whitespace-nowrap text-stone-900">
+            {money(selected.totalCents)}
+          </p>
+        </div>
+        <a className={`shrink-0 ${primary}`} href={continueHref} aria-label={continueLabel}>
+          {say("reservation.rate.continue")}
+        </a>
+      </div>
     </div>
   );
 }
@@ -680,13 +674,6 @@ function nightsOf(phase: Extract<Phase, { kind: "found" | "loading" }>, text: Ro
 
 function totalLine(phase: Extract<Phase, { kind: "found" | "loading" }>, text: RoomsBookingText) {
   return fill(text["reservation.rate.total"], { nights: nightsOf(phase, text) });
-}
-
-function lowestOffer(offers: RoomTypeOffers | undefined) {
-  return offers?.offers.reduce<PlanOffer | undefined>(
-    (lowest, offer) => (!lowest || offer.totalCents < lowest.totalCents ? offer : lowest),
-    undefined,
-  );
 }
 
 function unavailableLine(
