@@ -1,7 +1,8 @@
 import { AxeBuilder } from "@axe-core/playwright";
 import { expect, test, type Page } from "@playwright/test";
-import { LOCAL_API_URL, daysFromToday, doubleSoldOutStay, openStay } from "../support/local-api";
+import { LOCAL_API_URL, doubleSoldOutStay, openStay } from "../support/local-api";
 import { stubPaymentScripts, useOwnSourceIp } from "../support/payment";
+import { reservationSummary } from "../support/summary";
 import { selectRoomRate } from "../support/room-rate";
 
 const pages = [
@@ -241,38 +242,8 @@ test("a11y: confirmed Review with unavailable and available access", async ({ pa
 });
 
 test(`a11y: /reservar/resumen/ ordinary summary`, async ({ page }) => {
-  const stay = openStay();
   await page.route(`${LOCAL_API_URL}/public/reservation`, (route) =>
-    route.fulfill({
-      headers: { "access-control-allow-origin": "*" },
-      contentType: "application/json",
-      body: JSON.stringify({
-        status: "confirmed",
-        code: "AB12CD",
-        ...stay,
-        nights: 2,
-        currency: "PEN",
-        fullName: "Ana Torres",
-        rooms: [
-          {
-            roomTypeId: "type-suite-matrimonial",
-            name: "Suite Matrimonial",
-            adults: 2,
-            children: 0,
-            nights: [
-              { date: stay.checkIn, priceCents: 10000 },
-              { date: daysFromToday(121), priceCents: 10000 },
-            ],
-          },
-        ],
-        ratePlan: "flexible",
-        totalCents: 20000,
-        paidCents: 10000,
-        outstandingCents: 10000,
-        refundDueCents: 0,
-        refundedCents: 0,
-      }),
-    }),
+    route.fulfill({ json: reservationSummary() }),
   );
   const title = "Su reserva está confirmada";
   await page.goto(`/reservar/resumen/#${"a".repeat(43)}`);
@@ -280,3 +251,23 @@ test(`a11y: /reservar/resumen/ ordinary summary`, async ({ page }) => {
   await expect(page.getByRole("heading", { name: title })).toHaveCount(0);
   await runAxe(page, `/reservar/resumen/`);
 });
+
+for (const locale of ["", "/en"]) {
+  test(`a11y: ${locale}/reservar/resumen/ unavailable and invalid`, async ({ page }) => {
+    await page.route(`${LOCAL_API_URL}/public/reservation`, (route) =>
+      route.fulfill({ status: 503, json: {} }),
+    );
+    await page.goto(`${locale}/reservar/resumen/#${"a".repeat(43)}`);
+    const retry = page.getByRole("button", { name: locale ? "Try again" : "Intentar de nuevo" });
+    await expect(retry).toBeVisible();
+    await retry.focus();
+    await expect(retry).toBeFocused();
+    await runAxe(page, `${locale}/reservar/resumen/ (unavailable)`);
+    await page.evaluate(() => {
+      location.hash = "invalid";
+    });
+    await expect(page.locator("[data-assistance]")).toBeVisible();
+    await expect(retry).toBeHidden();
+    await runAxe(page, `${locale}/reservar/resumen/ (invalid)`);
+  });
+}

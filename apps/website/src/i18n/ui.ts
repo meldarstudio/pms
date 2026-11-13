@@ -467,6 +467,12 @@ export const ui = {
     "reservation.summary.copied": "Link copied",
     "reservation.summary.staff":
       "Changes, cancellations and refunds are arranged with the hotel. This page cannot change the reservation, and it does not send an email.",
+    "reservation.summary.unavailable.title": "The reservation summary could not be loaded",
+    "reservation.summary.unavailable.body":
+      "We could not load your reservation right now. Try again or contact the hotel for help.",
+    "reservation.summary.unavailable.refresh":
+      "We could not refresh your reservation summary. Try again to see the current details, or contact the hotel for help.",
+    "reservation.summary.retry": "Try again",
     "reservation.summary.assistance.title": "The hotel can help with this reservation",
     "reservation.summary.assistance.body":
       "This link is invalid or has expired, so no reservation details are shown. Call, email or message the hotel and staff can help.",
@@ -994,6 +1000,12 @@ export const ui = {
     "reservation.summary.copied": "Enlace copiado",
     "reservation.summary.staff":
       "Los cambios, las cancelaciones y los reembolsos se coordinan con el hotel. Esta página no puede modificar la reserva ni envía un correo.",
+    "reservation.summary.unavailable.title": "No se pudo cargar el resumen de la reserva",
+    "reservation.summary.unavailable.body":
+      "No pudimos cargar su reserva en este momento. Inténtelo de nuevo o contacte al hotel para obtener ayuda.",
+    "reservation.summary.unavailable.refresh":
+      "No pudimos actualizar el resumen de su reserva. Inténtelo de nuevo para ver los datos actuales o contacte al hotel para obtener ayuda.",
+    "reservation.summary.retry": "Intentar de nuevo",
     "reservation.summary.assistance.title": "El hotel puede ayudarle con esta reserva",
     "reservation.summary.assistance.body":
       "Este enlace no es válido o ya venció, así que no se muestran datos de la reserva. Llame, escriba o envíe un mensaje al hotel y el personal le ayudará.",

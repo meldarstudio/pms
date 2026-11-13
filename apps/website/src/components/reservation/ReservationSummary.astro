@@ -39,9 +39,12 @@ const link =
         data-copy
         set:html={JSON.stringify(copy).replace(/</g, "\\u003c")}
       ></script>
-      <p class="text-stone-700" role="status" data-loading>
-        {t("reservation.summary.loading")}
-      </p>
+      <div role="status">
+        <p class="text-stone-700" data-loading>
+          {t("reservation.summary.loading")}
+        </p>
+        <p class="sr-only" data-announcement></p>
+      </div>
       <div data-summary hidden>
         <h1
           class="text-3xl font-semibold text-pretty text-stone-900 outline-none sm:text-4xl"
@@ -84,12 +87,18 @@ const link =
         </div>
       </div>
       <div data-assistance hidden>
-        <h1 class="text-3xl font-semibold text-pretty text-stone-900 sm:text-4xl">
+        <h1
+          class="text-3xl font-semibold text-pretty text-stone-900 sm:text-4xl"
+          data-failure-title
+        >
           {t("reservation.summary.assistance.title")}
         </h1>
-        <p class="mt-4 leading-relaxed text-stone-700">
+        <p class="mt-4 leading-relaxed text-stone-700" data-failure-body>
           {t("reservation.summary.assistance.body")}
         </p>
+        <button type="button" class={`mt-4 ${secondary}`} data-retry hidden>
+          {t("reservation.summary.retry")}
+        </button>
         <div class="mt-6 flex flex-col gap-2">
           <a class={link} href={`tel:${phoneNumber}`}>
             {phoneLabel}
@@ -137,12 +146,43 @@ const link =
   class ReservationSummary extends HTMLElement {
     private copy!: Copy;
 
+    private requestId = 0;
+    private pendingToken: string | null = null;
+    private lastFoundToken: string | null = null;
+    private unavailable = false;
+    private listeners?: AbortController;
+    private readonly openCurrent = () => void this.open();
+    private readonly pageShown = (event: PageTransitionEvent) => {
+      if (event.persisted) void this.open();
+    };
+    private readonly pageHidden = () => {
+      this.requestId++;
+      this.pendingToken = null;
+    };
+    private readonly online = () => {
+      if (this.unavailable) void this.open();
+    };
+
     connectedCallback() {
       this.copy = JSON.parse(this.querySelector("[data-copy]")?.textContent ?? "{}") as Copy;
-      this.querySelector("[data-copy-link]")?.addEventListener("click", () => void this.copyLink());
-      window.addEventListener("pageshow", () => void this.open());
-      window.addEventListener("hashchange", () => void this.open());
+      this.listeners = new AbortController();
+      const options = { signal: this.listeners.signal };
+      this.querySelector("[data-copy-link]")?.addEventListener(
+        "click",
+        () => void this.copyLink(),
+        options,
+      );
+      this.querySelector("[data-retry]")?.addEventListener("click", this.openCurrent, options);
+      window.addEventListener("pageshow", this.pageShown, options);
+      window.addEventListener("pagehide", this.pageHidden, options);
+      window.addEventListener("hashchange", this.openCurrent, options);
+      window.addEventListener("online", this.online, options);
       void this.open();
+    }
+
+    disconnectedCallback() {
+      this.listeners?.abort();
+      this.pageHidden();
     }
 
     private text(key: string, values: Record<string, string | number> = {}) {
@@ -155,25 +195,54 @@ const link =
 
     private async open() {
       const token = window.location.hash.slice(1);
-      if (!/^[\w-]{43}$/.test(token)) {
-        this.clearPrivate();
-        this.show(null);
+      if (this.pendingToken === token) return;
+      const requestId = ++this.requestId;
+      this.pendingToken = token;
+      if (this.lastFoundToken !== token) this.lastFoundToken = null;
+      this.clearPrivate();
+      this.show("loading");
+      const outcome = await readReservationSummary(this.copy.apiBase, token);
+      if (
+        !this.isConnected ||
+        requestId !== this.requestId ||
+        window.location.hash.slice(1) !== token
+      )
         return;
+      this.pendingToken = null;
+      if (outcome.kind === "found") {
+        this.render(outcome.summary);
+        this.lastFoundToken = token;
       }
-      const summary = await readReservationSummary(this.copy.apiBase, token);
-      if (window.location.hash.slice(1) !== token) return;
-      if (!summary) this.clearPrivate();
-      this.show(summary);
-      if (summary) this.render(summary);
+      this.show(outcome.kind);
     }
 
-    private show(summary: GuestReservationSummary | null) {
+    private show(state: "loading" | "found" | "invalid" | "unavailable") {
+      this.unavailable = state === "unavailable";
       const loading = this.querySelector<HTMLElement>("[data-loading]");
       const ready = this.querySelector<HTMLElement>("[data-summary]");
       const assistance = this.querySelector<HTMLElement>("[data-assistance]");
-      if (loading) loading.hidden = true;
-      if (ready) ready.hidden = !summary;
-      if (assistance) assistance.hidden = Boolean(summary);
+      const retry = this.querySelector<HTMLButtonElement>("[data-retry]");
+      const title = this.querySelector("[data-failure-title]");
+      const body = this.querySelector("[data-failure-body]");
+      if (loading) loading.hidden = state !== "loading";
+      if (ready) ready.hidden = state !== "found";
+      if (assistance) assistance.hidden = state !== "invalid" && state !== "unavailable";
+      if (retry) retry.hidden = state !== "unavailable";
+      if (title)
+        title.textContent = this.text(
+          `reservation.summary.${this.unavailable ? "unavailable" : "assistance"}.title`,
+        );
+      if (body)
+        body.textContent = this.text(
+          this.unavailable && this.lastFoundToken
+            ? "reservation.summary.unavailable.refresh"
+            : `reservation.summary.${this.unavailable ? "unavailable" : "assistance"}.body`,
+        );
+      const announcement = this.querySelector("[data-announcement]");
+      if (announcement)
+        announcement.textContent = state === "unavailable" ? (body?.textContent ?? "") : "";
+      const copied = this.querySelector<HTMLElement>("[data-copied]");
+      if (copied) copied.hidden = true;
     }
 
     private clearPrivate() {
