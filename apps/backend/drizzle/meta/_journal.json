@@ -232,6 +232,13 @@
       "when": 1794458267240,
       "tag": "0032_windy_phil_sheldon",
       "breakpoints": true
+    },
+    {
+      "idx": 33,
+      "version": "6",
+      "when": 1794604524704,
+      "tag": "0033_sudden_quentin_quire",
+      "breakpoints": true
     }
   ]
 }

@@ -25,21 +25,10 @@ function newToken() {
     .replace(/=+$/, "");
 }
 
-async function tokenHash(token: string) {
-  const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(token));
-  return [...new Uint8Array(digest)].map((byte) => byte.toString(16).padStart(2, "0")).join("");
-}
-
-export async function reservationAccessValues(
-  reservationId: string,
-  checkOut: string,
-  now: string,
-) {
-  const token = newToken();
+export function reservationAccessValues(reservationId: string, checkOut: string, now: string) {
   return {
     reservationId,
-    token,
-    tokenHash: await tokenHash(token),
+    token: newToken(),
     expiresOn: addDays(checkOut, ACCESS_DAYS_AFTER_CHECKOUT),
     createdAt: now,
   };
@@ -52,10 +41,7 @@ export async function reservationForAccessToken(
 ) {
   const token = BEARER_TOKEN.exec(authorization ?? "")?.[1];
   const [access] = token
-    ? await db
-        .select()
-        .from(reservationAccess)
-        .where(eq(reservationAccess.tokenHash, await tokenHash(token)))
+    ? await db.select().from(reservationAccess).where(eq(reservationAccess.token, token))
     : [];
   if (!access || today > access.expiresOn) throw new HttpError(401, INVALID_RESERVATION_ACCESS);
   return access;

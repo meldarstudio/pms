@@ -138,9 +138,7 @@ export async function saveQuote(
     ? db.insert(confirmationIntents).values(confirmationIntentValues(id, provenance, now))
     : null;
   const accessRow =
-    options.publicCheckoutId != null
-      ? await reservationAccessValues(id, quote.checkOut, now)
-      : null;
+    options.publicCheckoutId != null ? reservationAccessValues(id, quote.checkOut, now) : null;
   const access = accessRow ? [db.insert(reservationAccess).values(accessRow)] : [];
   try {
     await runBatch(db, [

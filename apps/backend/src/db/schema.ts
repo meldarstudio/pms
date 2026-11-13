@@ -170,7 +170,6 @@ export const reservationAccess = sqliteTable("reservation_access", {
   reservationId: text("reservation_id")
     .primaryKey()
     .references(() => reservations.id),
-  tokenHash: text("token_hash").notNull().unique(),
   token: text("token").notNull().unique(),
   expiresOn: text("expires_on").notNull(),
   createdAt: text("created_at").notNull(),
