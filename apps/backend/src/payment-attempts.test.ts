@@ -1,17 +1,25 @@
-import type { PaymentAttemptCreate, QuoteCreate } from "@pms/shared";
+import type { CheckoutPayment, PublicCheckoutCreate } from "@pms/shared";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { culqiClient } from "./culqi";
 import { getDb } from "./db";
 import worker from "./index";
+import { setPublicPaymentAdmission } from "./operation-controls";
 import {
-  authenticatePaymentAttempt,
+  continuePublicAuthentication,
+  findAttempt,
   paymentAttemptStatus,
   reconcilePaymentAttempts,
   startPaymentAttempt,
   type PaymentContext,
 } from "./payment-attempts";
 import type { presentReservation } from "./present";
-import { createQuote } from "./quotes";
+import {
+  acceptCheckoutQuote,
+  checkoutForToken,
+  latestAcceptance,
+  latestQuote,
+  startCheckout,
+} from "./public-checkouts";
 import { CULQI_TEST_KEY, fakeCulqi, type FakeCulqi } from "./test-support/culqi";
 import { createTestDb, seedRooms, seedRoomType, type TestDb } from "./test-support/d1";
 
@@ -29,6 +37,7 @@ beforeEach(async () => {
   seedRooms(db.sqlite, "type", { "room-101": "101" });
   culqi = fakeCulqi();
   lookups = [];
+  await setPublicPaymentAdmission(getDb(db.env.DB), true, { accountId: "owner", now: new Date() });
 });
 
 afterEach(() => {
@@ -37,15 +46,18 @@ afterEach(() => {
   vi.useRealTimers();
 });
 
-const stay: QuoteCreate = {
+const stay: PublicCheckoutCreate = {
   roomTypeId: "type",
   checkIn: "2026-10-20",
   checkOut: "2026-10-22",
   adults: 2,
   children: 0,
   ratePlan: "non_refundable",
+  language: "es",
 };
-const guest = { fullName: "Ana Torres", email: "ana@example.com" };
+const guest = { fullName: "Ana Torres", email: "ana@example.com", phone: "987 654 321" };
+
+type AcceptedQuote = { quoteId: string; checkoutId: string; acceptanceId: string };
 
 const context = (): PaymentContext => ({
   culqi: culqiClient({ secretKey: CULQI_TEST_KEY, fetch: culqi.fetch }),
@@ -53,19 +65,35 @@ const context = (): PaymentContext => ({
   timeZone: "America/Lima",
   later: (lookup) => lookups.push(lookup),
 });
-const quote = async (input: Partial<QuoteCreate> = {}) =>
-  (
-    await createQuote(
-      getDb(db.env.DB),
-      { ...stay, ...input },
-      { today: "2026-10-10", now: new Date() },
-    )
-  ).id;
-const pay = (quoteId: string, input: Partial<PaymentAttemptCreate> = {}) =>
+async function quote(
+  input: Partial<PublicCheckoutCreate> = {},
+  contact: typeof guest = guest,
+): Promise<AcceptedQuote> {
+  const checkoutContext = { today: "2026-10-10", now: new Date(), published: ["type"] };
+  const started = await startCheckout(getDb(db.env.DB), { ...stay, ...input }, checkoutContext);
+  const checkout = await checkoutForToken(getDb(db.env.DB), `Bearer ${started.token}`, {
+    today: "2026-10-10",
+  });
+  const { id: quoteId } = await latestQuote(getDb(db.env.DB), checkout.id);
+  await acceptCheckoutQuote(
+    getDb(db.env.DB),
+    checkout,
+    { quoteId, language: "es", contact, agreed: true },
+    checkoutContext,
+  );
+  const acceptance = await latestAcceptance(getDb(db.env.DB), checkout.id);
+  return { quoteId, checkoutId: checkout.id, acceptanceId: acceptance!.id };
+}
+const pay = (
+  accepted: AcceptedQuote,
+  input: Partial<Omit<CheckoutPayment, "turnstileToken">> = {},
+  paymentContext: PaymentContext = context(),
+) =>
   startPaymentAttempt(
     getDb(db.env.DB),
-    { quoteId, sourceId: `tkn_test_${crypto.randomUUID()}`, guest, ...input },
-    context(),
+    { quoteId: accepted.quoteId, sourceId: `tkn_test_${crypto.randomUUID()}`, ...input },
+    paymentContext,
+    { checkoutId: accepted.checkoutId, acceptanceId: accepted.acceptanceId, language: "es" },
   );
 
 const poll = (attemptId: string) => paymentAttemptStatus(getDb(db.env.DB), attemptId, context());
@@ -114,16 +142,16 @@ describe("payment attempts", () => {
   });
 
   it("fails a declined card and accepts another card for the same quote", async () => {
-    const quoteId = await quote();
+    const accepted = await quote();
 
-    const declined = await pay(quoteId, { sourceId: "tkn_test_decline" });
+    const declined = await pay(accepted, { sourceId: "tkn_test_decline" });
     expect(declined).toMatchObject({
       status: "failed",
       failure: { code: "card_declined", message: "Tu tarjeta fue rechazada." },
       reservation: null,
     });
 
-    const paid = await pay(quoteId);
+    const paid = await pay(accepted);
     expect(paid).toMatchObject({ status: "saved", reservation: { status: "confirmed" } });
     expect(culqi.charges.map((charge) => charge.outcome?.code)).toEqual([
       "card_declined",
@@ -138,14 +166,14 @@ describe("payment attempts", () => {
     });
     expect(attempt).toMatchObject({ status: "review", reservation: null });
 
-    const authenticated = await authenticatePaymentAttempt(
+    await continuePublicAuthentication(
       getDb(db.env.DB),
-      attempt.id,
+      await findAttempt(getDb(db.env.DB), attempt.id),
       { eci: "05", cavv: "cavv-1", protocolVersion: "2.1.0", directoryServerTransactionId: "ds-1" },
       context(),
     );
 
-    expect(authenticated).toMatchObject({
+    expect(await poll(attempt.id)).toMatchObject({
       id: attempt.id,
       status: "saved",
       reservation: { status: "confirmed" },
@@ -155,93 +183,19 @@ describe("payment attempts", () => {
       {
         source_id: "tkn_test_3ds",
         metadata: { attempt_id: attempt.id },
-        antifraud_details: { device_finger_print_id: "device-1" },
+        antifraud_details: {
+          first_name: "Ana",
+          last_name: "Torres",
+          phone_number: "51987654321",
+          device_finger_print_id: "device-1",
+        },
         authentication_3DS: { eci: "05", cavv: "cavv-1" },
       },
     ]);
   });
 
-  it.each(["poll", "scheduled Worker", "scheduled Worker without a Culqi key"])(
-    "expires an abandoned 3DS review at the quote deadline through the %s",
-    async (via) => {
-      const attempt = await pay(await quote(), { sourceId: "tkn_test_3ds" });
-      vi.advanceTimersByTime(10 * 60_000 - 1);
-      expect(await poll(attempt.id)).toMatchObject({ status: "review" });
-      vi.advanceTimersByTime(1);
-
-      if (via !== "poll") {
-        vi.stubGlobal("fetch", culqi.fetch);
-        const tasks: Promise<unknown>[] = [];
-        worker.scheduled(
-          {} as ScheduledController,
-          {
-            ...db.env,
-            CULQI_SECRET_KEY: via === "scheduled Worker" ? CULQI_TEST_KEY : undefined,
-          },
-          {
-            waitUntil: (task: Promise<unknown>) => tasks.push(task),
-          } as unknown as ExecutionContext,
-        );
-        await Promise.all(tasks);
-        expect(
-          db.sqlite.prepare("SELECT status FROM payment_attempts WHERE id = ?").get(attempt.id),
-        ).toMatchObject({ status: "failed" });
-      }
-
-      expect(await poll(attempt.id)).toMatchObject({
-        status: "failed",
-        failure: { code: "authentication_expired", message: "quote has expired" },
-        reservation: null,
-      });
-      expect(culqi.requests.filter((request) => request.method === "POST")).toHaveLength(1);
-    },
-  );
-
-  it("expires a late 3DS continuation before calling Culqi", async () => {
-    const attempt = await pay(await quote(), { sourceId: "tkn_test_3ds" });
-    vi.advanceTimersByTime(10 * 60_000);
-
-    await expect(
-      authenticatePaymentAttempt(
-        getDb(db.env.DB),
-        attempt.id,
-        {
-          eci: "05",
-          cavv: "cavv-1",
-          protocolVersion: "2.1.0",
-          directoryServerTransactionId: "ds-1",
-        },
-        context(),
-      ),
-    ).rejects.toMatchObject({ status: 409, message: "payment is not waiting for authentication" });
-    expect(await poll(attempt.id)).toMatchObject({
-      status: "failed",
-      failure: { code: "authentication_expired" },
-    });
-    expect(culqi.requests.filter((request) => request.method === "POST")).toHaveLength(1);
-  });
-
-  it("does not expire a 3DS continuation whose charge result is Unknown", async () => {
-    const attempt = await pay(await quote(), { sourceId: "tkn_test_3ds" });
-    culqi.next("POST /charges", 500);
-    const continued = await authenticatePaymentAttempt(
-      getDb(db.env.DB),
-      attempt.id,
-      { eci: "05", cavv: "cavv-1", protocolVersion: "2.1.0", directoryServerTransactionId: "ds-1" },
-      context(),
-    );
-    expect(continued.status).toBe("unknown");
-    vi.advanceTimersByTime(10 * 60_000);
-
-    await reconcile();
-
-    expect(await poll(attempt.id)).toMatchObject({ status: "unknown", delayed: true });
-    expect(culqi.requests.filter((request) => request.method === "POST")).toHaveLength(2);
-  });
-
-  it("sends the guest's name and phone to Culqi's fraud checks", async () => {
-    await pay(await quote(), {
-      guest: { ...guest, fullName: "Ana María Torres", phone: "999 777 666" },
+  it("sends the accepted contact's name and phone to Culqi's fraud checks", async () => {
+    await pay(await quote({}, { ...guest, fullName: "Ana María Torres", phone: "999 777 666" }), {
       deviceFingerprint: "device-1",
     });
 
@@ -254,30 +208,31 @@ describe("payment attempts", () => {
     });
   });
 
-  it("leaves out guest details outside Culqi's limits instead of risking a refusal", async () => {
-    const attempt = await pay(await quote(), {
-      guest: { ...guest, fullName: `A ${"Torres".repeat(9)}` },
-    });
+  it("leaves out a name outside Culqi's limits instead of risking a refusal", async () => {
+    const attempt = await pay(await quote({}, { ...guest, fullName: `A ${"Torres".repeat(9)}` }));
 
     expect(attempt).toMatchObject({ status: "saved" });
-    expect(culqi.requests[0]!.body).not.toHaveProperty("antifraud_details");
+    expect(culqi.requests[0]!.body?.antifraud_details).toEqual({ phone_number: "51987654321" });
   });
 
   it("refuses an expired quote before calling Culqi", async () => {
-    const quoteId = await quote();
+    const accepted = await quote();
     vi.advanceTimersByTime(10 * 60_000);
 
-    await expect(pay(quoteId)).rejects.toMatchObject({ status: 400, message: "quote has expired" });
+    await expect(pay(accepted)).rejects.toMatchObject({
+      status: 400,
+      message: "quote has expired",
+    });
     expect(culqi.requests).toEqual([]);
   });
 
   it("finds a charge whose response was lost and confirms it without charging again", async () => {
-    const quoteId = await quote();
+    const accepted = await quote();
     culqi.next("POST /charges", "lose");
 
-    const attempt = await pay(quoteId);
+    const attempt = await pay(accepted);
     expect(attempt).toMatchObject({ status: "unknown", delayed: false, reservation: null });
-    await expect(pay(quoteId)).rejects.toMatchObject({
+    await expect(pay(accepted)).rejects.toMatchObject({
       status: 409,
       message: "a payment for this quote is still being confirmed",
     });
@@ -307,9 +262,8 @@ describe("payment attempts", () => {
   );
 
   it("does not treat another attempt's charge or a denied charge as this attempt's", async () => {
-    const quoteId = await quote();
     culqi.next("POST /charges", "lose");
-    const attempt = await pay(quoteId, { sourceId: "tkn_test_decline" });
+    const attempt = await pay(await quote(), { sourceId: "tkn_test_decline" });
     expect(attempt.status).toBe("unknown");
     culqi.charges.push({
       ...culqi.charges[0]!,
@@ -322,10 +276,12 @@ describe("payment attempts", () => {
   });
 
   it("saves a charge for a room booked meanwhile as Unfulfilled with the payment due back", async () => {
-    const quoteId = await quote();
-    await pay(await quote(), { guest: { fullName: "Luis Rojas", email: "luis@example.com" } });
+    const accepted = await quote();
+    await pay(
+      await quote({}, { fullName: "Luis Rojas", email: "luis@example.com", phone: "912 345 678" }),
+    );
 
-    const attempt = await pay(quoteId);
+    const attempt = await pay(accepted);
 
     expect(attempt).toMatchObject({ status: "saved", reservation: { status: "unfulfilled" } });
     const detail = await reservation(attempt.reservation!.id);
@@ -344,9 +300,12 @@ describe("payment attempts", () => {
     const first = await quote();
     culqi.next("POST /charges", "lose");
     const lost = await pay(first);
-    const rebooked = await pay(await quote({ checkIn: "2026-10-21", checkOut: "2026-10-23" }), {
-      guest: { ...guest, email: "ANA@example.com" },
-    });
+    const rebooked = await pay(
+      await quote(
+        { checkIn: "2026-10-21", checkOut: "2026-10-23" },
+        { ...guest, email: "ANA@example.com" },
+      ),
+    );
     expect(rebooked.reservation?.status).toBe("confirmed");
 
     await reconcile();
@@ -378,11 +337,12 @@ describe("payment attempts", () => {
   });
 
   it("retries a failed reservation save into exactly one reservation", async () => {
+    const accepted = await quote();
     db.beforeCommit(() => {
       throw new Error("D1 is unavailable");
     });
 
-    const attempt = await pay(await quote());
+    const attempt = await pay(accepted);
     expect(attempt).toMatchObject({ status: "succeeded", reservation: null });
 
     await reconcile();
@@ -423,25 +383,15 @@ describe("payment attempts", () => {
     expect(lost.status).toBe("unknown");
   });
 
-  it("refuses an invalid phone before charging, since the reservation could not be saved", async () => {
-    await expect(pay(await quote(), { guest: { ...guest, phone: "12" } })).rejects.toMatchObject({
-      status: 400,
-    });
-    expect(culqi.requests).toEqual([]);
-  });
-
   it("refuses to start without a Culqi key and leaves the quote payable", async () => {
-    const quoteId = await quote();
+    const accepted = await quote();
     const unconfigured = { ...context(), culqi: culqiClient({ secretKey: undefined }) };
 
-    await expect(
-      startPaymentAttempt(
-        getDb(db.env.DB),
-        { quoteId, sourceId: "tkn_test_card", guest },
-        unconfigured,
-      ),
-    ).rejects.toMatchObject({ status: 503, message: "Culqi is not configured" });
-    expect(await pay(quoteId)).toMatchObject({ status: "saved" });
+    await expect(pay(accepted, {}, unconfigured)).rejects.toMatchObject({
+      status: 503,
+      message: "Culqi is not configured",
+    });
+    expect(await pay(accepted)).toMatchObject({ status: "saved" });
   });
 
   it("dates the payment by the charge call when it is found on a later day", async () => {

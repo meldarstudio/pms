@@ -90,7 +90,6 @@ export async function chargeCheckout(
         quoteId: quote.id,
         sourceId: input.sourceId,
         deviceFingerprint: input.deviceFingerprint,
-        guest: { fullName: acceptance.fullName, email: acceptance.email, phone: acceptance.phone },
       },
       context,
       { checkoutId: checkout.id, acceptanceId: acceptance.id, language: acceptance.language },

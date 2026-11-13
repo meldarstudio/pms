@@ -1,6 +1,6 @@
 import { sql } from "drizzle-orm";
 import { check, index, integer, sqliteTable, text, uniqueIndex } from "drizzle-orm/sqlite-core";
-import type { CheckoutLanguage, GuestInput } from "@pms/shared";
+import type { CheckoutLanguage } from "@pms/shared";
 import type { PricedNight } from "../lib/pricing";
 import type { RatePlanCode, RatePlanTerms } from "../lib/rate-plans";
 import type { DeliveryType } from "../resend-reports";
@@ -265,7 +265,6 @@ export const paymentAttempts = sqliteTable(
     amountCents: integer("amount_cents").notNull(),
     currency: text("currency").notNull(),
     email: text("email").notNull(),
-    guest: text("guest", { mode: "json" }).$type<GuestInput>().notNull(),
     sourceId: text("source_id").notNull(),
     deviceFingerprint: text("device_fingerprint"),
     status: text("status").$type<AttemptStatus>().notNull(),

@@ -1,5 +1,5 @@
-import type { PaymentAttemptCreate, PaymentAuthentication } from "@pms/shared";
-import { and, desc, eq, gt, gte, inArray, isNull, lt, lte, ne, or, sql } from "drizzle-orm";
+import type { CheckoutPayment, PaymentAuthentication } from "@pms/shared";
+import { and, desc, eq, gt, gte, inArray, lt, ne, or, sql } from "drizzle-orm";
 import {
   culqiForEnv,
   isSuccessfulCharge,
@@ -24,10 +24,11 @@ import { inventoryStatuses } from "./lib/statuses";
 import { propertyCalendar } from "./property-calendar";
 import type { ConfirmationProvenance } from "./confirmation-intents";
 import { quoteExpired, saveQuote } from "./quotes";
-import { acceptPhone } from "./rules";
 
 export type Attempt = typeof paymentAttempts.$inferSelect;
 type Quote = typeof quotes.$inferSelect;
+
+type PaymentStart = Omit<CheckoutPayment, "turnstileToken">;
 
 export type PublicCheckoutProvenance = {
   checkoutId: string;
@@ -77,39 +78,29 @@ export async function latestCheckoutAttempt(
 
 export async function startPaymentAttempt(
   db: Db,
-  input: PaymentAttemptCreate,
+  input: PaymentStart,
   context: PaymentContext,
-  publicCheckout?: PublicCheckoutProvenance,
+  publicCheckout: PublicCheckoutProvenance,
 ) {
   const quote = await findQuote(db, input.quoteId);
   const now = new Date();
   requireValid(quote, now);
   requireCulqi(context);
-  const phone = acceptPhone(input.guest.phone);
+  const contact = await acceptedContact(db, publicCheckout.acceptanceId);
   const previous = await db
     .select()
     .from(paymentAttempts)
     .where(eq(paymentAttempts.quoteId, quote.id));
   if (previous.some((attempt) => PAID.includes(attempt.status)))
     throw new HttpError(409, "quote is already paid");
-  if (
-    previous.some(
-      (attempt) => attempt.status === "unknown" || (publicCheckout && attempt.status === "review"),
-    )
-  )
+  if (previous.some((attempt) => attempt.status === "unknown" || attempt.status === "review"))
     throw new HttpError(409, PAYMENT_PENDING);
-  await db
-    .update(paymentAttempts)
-    .set({ status: "failed", failureCode: "superseded" })
-    .where(and(eq(paymentAttempts.quoteId, quote.id), eq(paymentAttempts.status, "review")));
-
   const attempt: Attempt = {
     id: crypto.randomUUID(),
     quoteId: quote.id,
     amountCents: initialPaymentCents(quote),
     currency: context.currency,
-    email: input.guest.email,
-    guest: { ...input.guest, phone },
+    email: contact.email,
     sourceId: input.sourceId,
     deviceFingerprint: input.deviceFingerprint ?? null,
     status: "unknown",
@@ -119,18 +110,22 @@ export async function startPaymentAttempt(
     failureMessage: null,
     culqiChargeId: null,
     reservationId: null,
-    checkoutId: publicCheckout?.checkoutId ?? null,
-    acceptanceId: publicCheckout?.acceptanceId ?? null,
-    language: publicCheckout?.language ?? null,
-    confirmationEmailEligible: publicCheckout !== undefined,
+    checkoutId: publicCheckout.checkoutId,
+    acceptanceId: publicCheckout.acceptanceId,
+    language: publicCheckout.language,
+    confirmationEmailEligible: true,
   };
   try {
-    if (publicCheckout) await insertAdmittedAttempt(db, attempt, publicCheckout);
-    else await db.insert(paymentAttempts).values(attempt);
+    await insertAdmittedAttempt(db, attempt, publicCheckout);
   } catch (error) {
     rethrowConflict(error);
   }
-  return record(db, attempt, await context.culqi.createCharge(chargeRequest(attempt)), context);
+  return record(
+    db,
+    attempt,
+    await context.culqi.createCharge(chargeRequest(attempt, contact)),
+    context,
+  );
 }
 
 async function insertAdmittedAttempt(
@@ -139,10 +134,10 @@ async function insertAdmittedAttempt(
   { checkoutId, acceptanceId, language }: PublicCheckoutProvenance,
 ) {
   await db.run(sql`INSERT INTO ${paymentAttempts} (id, quote_id, amount_cents, currency, email,
-      guest, source_id, device_fingerprint, status, created_at, called_at, checkout_id,
+      source_id, device_fingerprint, status, created_at, called_at, checkout_id,
       acceptance_id, language, confirmation_email_eligible)
     SELECT ${attempt.id}, ${attempt.quoteId}, ${attempt.amountCents}, ${attempt.currency},
-      ${attempt.email}, ${JSON.stringify(attempt.guest)}, ${attempt.sourceId},
+      ${attempt.email}, ${attempt.sourceId},
       ${attempt.deviceFingerprint}, ${attempt.status}, ${attempt.createdAt}, ${attempt.calledAt},
       ${checkoutId}, ${acceptanceId}, ${language}, 1
     WHERE EXISTS (SELECT 1 FROM ${operationControls}
@@ -160,31 +155,13 @@ async function insertAdmittedAttempt(
   if (!inserted) throw new HttpError(409, PAYMENT_NOT_ADMITTED);
 }
 
-export async function authenticatePaymentAttempt(
-  db: Db,
-  attemptId: string,
-  authentication: PaymentAuthentication,
-  context: PaymentContext,
-) {
-  await expireReviews(db, attemptId);
-  const attempt = await findAttempt(db, attemptId);
-  if (attempt.status !== "review")
-    throw new HttpError(409, "payment is not waiting for authentication");
-  const quote = await findQuote(db, attempt.quoteId);
-  const now = new Date();
-  requireValid(quote, now);
-  const continued = await chargeAuthentication(db, attempt, authentication, context, now);
-  if (!continued) throw new HttpError(409, "payment is not waiting for authentication");
-  return present(db, continued);
-}
-
 export async function continuePublicAuthentication(
   db: Db,
   attempt: Attempt,
   authentication: PaymentAuthentication,
   context: PaymentContext,
 ) {
-  if (attempt.checkoutId === null || attempt.status !== "review") return null;
+  if (attempt.status !== "review") return null;
   return chargeAuthentication(db, attempt, authentication, context, new Date());
 }
 
@@ -203,7 +180,7 @@ async function chargeAuthentication(
     .returning();
   if (!claimed) return null;
   const result = await context.culqi.createCharge({
-    ...chargeRequest(claimed),
+    ...chargeRequest(claimed, await acceptedContact(db, claimed.acceptanceId)),
     authentication3DS: authentication,
   });
   await record(db, claimed, result, context);
@@ -215,7 +192,6 @@ export async function paymentAttemptStatus(db: Db, attemptId: string, context: P
 }
 
 export async function refreshPaymentAttempt(db: Db, attemptId: string, context: PaymentContext) {
-  await expireReviews(db, attemptId);
   const attempt = await findAttempt(db, attemptId);
   try {
     return await resolve(db, attempt, context);
@@ -226,7 +202,6 @@ export async function refreshPaymentAttempt(db: Db, attemptId: string, context: 
 }
 
 export async function reconcilePaymentAttempts(db: Db, context: PaymentContext) {
-  await expireReviews(db);
   if (!context.culqi.configured) return;
   const since = new Date(Date.now() - LOOKUP_FOR).toISOString();
   const pending = await db
@@ -247,30 +222,6 @@ export async function reconcilePaymentAttempts(db: Db, context: PaymentContext) 
       console.error("payment attempt recovery failed", attempt.id);
     }
   }
-}
-
-async function expireReviews(db: Db, attemptId?: string) {
-  await db
-    .update(paymentAttempts)
-    .set({
-      status: "failed",
-      failureCode: "authentication_expired",
-      failureMessage: "quote has expired",
-    })
-    .where(
-      and(
-        eq(paymentAttempts.status, "review"),
-        isNull(paymentAttempts.checkoutId),
-        attemptId ? eq(paymentAttempts.id, attemptId) : undefined,
-        inArray(
-          paymentAttempts.quoteId,
-          db
-            .select({ id: quotes.id })
-            .from(quotes)
-            .where(lte(quotes.expiresAt, new Date().toISOString())),
-        ),
-      ),
-    );
 }
 
 async function resolve(db: Db, attempt: Attempt, context: PaymentContext): Promise<Attempt> {
@@ -358,15 +309,16 @@ async function fulfill(db: Db, attempt: Attempt, context: PaymentContext): Promi
     culqiChargeId: attempt.culqiChargeId,
   };
   const unfulfilled = quote.checkIn < today || (await rebookedSince(db, quote, attempt));
+  const { notes, ...contact } = await acceptedContact(db, attempt.acceptanceId);
   const saved = {
     payment,
     publicCheckoutId: attempt.checkoutId,
     confirmation: confirmationProvenance(attempt),
-    notes: await acceptedNotes(db, attempt),
+    notes,
   };
   let reservationId: string;
   try {
-    reservationId = await saveQuote(db, quote.id, attempt.guest, {
+    reservationId = await saveQuote(db, quote.id, contact, {
       status: unfulfilled ? "unfulfilled" : "confirmed",
       ...saved,
     });
@@ -379,7 +331,7 @@ async function fulfill(db: Db, attempt: Attempt, context: PaymentContext): Promi
       )
     )
       throw error;
-    reservationId = await saveQuote(db, quote.id, attempt.guest, {
+    reservationId = await saveQuote(db, quote.id, contact, {
       status: "unfulfilled",
       ...saved,
     });
@@ -392,14 +344,23 @@ async function fulfill(db: Db, attempt: Attempt, context: PaymentContext): Promi
   return recorded ?? findAttempt(db, attempt.id);
 }
 
-async function acceptedNotes(db: Db, attempt: Attempt) {
-  if (!attempt.acceptanceId) return null;
-  const [acceptance] = await db
-    .select({ notes: checkoutAcceptances.notes })
-    .from(checkoutAcceptances)
-    .where(eq(checkoutAcceptances.id, attempt.acceptanceId));
-  return acceptance?.notes ?? null;
+async function acceptedContact(db: Db, acceptanceId: string | null) {
+  const [contact] = acceptanceId
+    ? await db
+        .select({
+          fullName: checkoutAcceptances.fullName,
+          email: checkoutAcceptances.email,
+          phone: checkoutAcceptances.phone,
+          notes: checkoutAcceptances.notes,
+        })
+        .from(checkoutAcceptances)
+        .where(eq(checkoutAcceptances.id, acceptanceId))
+    : [];
+  if (!contact) throw new Error("payment attempt has no accepted contact");
+  return contact;
 }
+
+type Contact = Awaited<ReturnType<typeof acceptedContact>>;
 
 function confirmationProvenance(attempt: Attempt): ConfirmationProvenance | null {
   if (!attempt.confirmationEmailEligible || !attempt.checkoutId || !attempt.acceptanceId)
@@ -439,14 +400,14 @@ const matches = (attempt: Attempt, culqiCharge: CulqiCharge) =>
   culqiCharge.currency_code === attempt.currency &&
   culqiCharge.email === attempt.email;
 
-const chargeRequest = (attempt: Attempt) => ({
+const chargeRequest = (attempt: Attempt, contact: Pick<Contact, "fullName" | "phone">) => ({
   attemptId: attempt.id,
   amountCents: attempt.amountCents,
   currency: attempt.currency,
   email: attempt.email,
   sourceId: attempt.sourceId,
-  fullName: attempt.guest.fullName,
-  phone: attempt.guest.phone,
+  fullName: contact.fullName,
+  phone: contact.phone,
   deviceFingerprint: attempt.deviceFingerprint,
 });
 

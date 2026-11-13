@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { getDb } from "../db";
 import worker, { app } from "../index";
-import { paymentContext, reconcilePaymentAttempts, startPaymentAttempt } from "../payment-attempts";
+import { paymentContext, reconcilePaymentAttempts } from "../payment-attempts";
 import { whenReplacementIsPriced } from "../public-checkouts";
 import { createQuote } from "../quotes";
 import { CULQI_TEST_KEY, fakeCulqi, type FakeCulqi } from "../test-support/culqi";
@@ -619,6 +619,9 @@ describe("what a payment can charge", () => {
     expect(payment).toMatchObject({ state: "confirmed", amountCents: 10000 });
     expect(charges()).toHaveLength(1);
     expect(charges()[0]!.body).toMatchObject({ amount: 10000, currency_code: "PEN" });
+    expect(rows("SELECT full_name, email, phone FROM guests")).toEqual([
+      { full_name: "Ana Torres", email: "ana@example.com", phone: "+51987654321" },
+    ]);
   });
 
   it("charges the contact accepted after an unchanged refresh, not the contact that refresh kept", async () => {
@@ -646,18 +649,16 @@ describe("what a payment can charge", () => {
     expect(accepted.status).toBe(201);
     expect(payment).toMatchObject({ state: "confirmed", amountCents: 10000 });
     expect(charges()).toHaveLength(1);
-    expect(charges()[0]!.body).toMatchObject({ email: "eva@example.com", amount: 10000 });
-    const [attempt] = rows<{ email: string; language: string; guest: string }>(
-      "SELECT email, language, guest FROM payment_attempts",
-    );
-    expect(attempt).toMatchObject({ email: "eva@example.com", language: "es" });
-    expect(JSON.parse(attempt!.guest)).toEqual({
-      fullName: "Eva Soto",
+    expect(charges()[0]!.body).toMatchObject({
       email: "eva@example.com",
-      phone: "+51912345678",
+      amount: 10000,
+      antifraud_details: { first_name: "Eva", last_name: "Soto", phone_number: "51912345678" },
     });
-    expect(rows("SELECT full_name, email FROM guests")).toEqual([
-      { full_name: "Eva Soto", email: "eva@example.com" },
+    expect(rows("SELECT email, language FROM payment_attempts")).toEqual([
+      { email: "eva@example.com", language: "es" },
+    ]);
+    expect(rows("SELECT full_name, email, phone FROM guests")).toEqual([
+      { full_name: "Eva Soto", email: "eva@example.com", phone: "+51912345678" },
     ]);
   });
 
@@ -756,9 +757,9 @@ describe("what a payment can charge", () => {
       db.sqlite
         .prepare(
           `INSERT INTO payment_attempts (
-            id, quote_id, amount_cents, currency, email, guest, source_id, status, created_at, called_at,
+            id, quote_id, amount_cents, currency, email, source_id, status, created_at, called_at,
             checkout_id, confirmation_email_eligible
-          ) VALUES (?, ?, 10000, 'PEN', 'ana@example.com', '{}', 'tkn_test_gap', 'unknown', ?, ?, ?, 0)`,
+          ) VALUES (?, ?, 10000, 'PEN', 'ana@example.com', 'tkn_test_gap', 'unknown', ?, ?, ?, 0)`,
         )
         .run(
           crypto.randomUUID(),
@@ -1103,50 +1104,6 @@ describe("payment access and privacy", () => {
       "delayed",
       "reservation",
       "state",
-    ]);
-  });
-});
-
-describe("attempts started outside a public checkout", () => {
-  it("are still reconciled and saved, but carry no checkout or confirmation eligibility", async () => {
-    const quote = await createQuote(
-      getDb(db.env.DB),
-      {
-        roomTypeId: "type-king",
-        checkIn: "2026-10-20",
-        checkOut: "2026-10-21",
-        adults: 2,
-        children: 0,
-        ratePlan: "flexible",
-      },
-      { today: "2026-10-10", now: new Date() },
-    );
-    culqi.next("POST /charges", "lose");
-    await startPaymentAttempt(
-      getDb(db.env.DB),
-      {
-        quoteId: quote.id,
-        sourceId: card(),
-        guest: { fullName: "Luis Rojas", email: "luis@example.com" },
-      },
-      paymentContext(db.env),
-    );
-
-    await reconcilePaymentAttempts(getDb(db.env.DB), paymentContext(db.env));
-
-    expect(
-      rows(
-        "SELECT a.status, a.checkout_id, a.acceptance_id, a.language, a.confirmation_email_eligible AS eligible, r.public_checkout_id FROM payment_attempts a JOIN reservations r ON r.id = a.reservation_id",
-      ),
-    ).toEqual([
-      {
-        status: "saved",
-        checkout_id: null,
-        acceptance_id: null,
-        language: null,
-        eligible: 0,
-        public_checkout_id: null,
-      },
     ]);
   });
 });

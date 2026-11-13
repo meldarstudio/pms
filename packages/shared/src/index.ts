@@ -434,14 +434,6 @@ export type WorkflowActionRequest = z.input<typeof workflowActionSchema>;
 export type WorkflowCommandRequest = z.input<typeof workflowCommandSchema>;
 export type WorkflowCreateRequest = z.input<typeof workflowCreateSchema>;
 export type WorkflowCreatePreviewRequest = z.input<typeof workflowCreatePreviewSchema>;
-export const paymentAttemptCreateSchema = z
-  .object({
-    quoteId: z.uuid(),
-    sourceId: z.string().trim().min(1).max(200),
-    deviceFingerprint: z.string().trim().min(1).max(200).optional(),
-    guest: guestFields.omit({ notes: true }).extend({ email: guestFields.shape.email.unwrap() }),
-  })
-  .strict();
 export const paymentAuthenticationSchema = z
   .object({
     eci: text(10),
@@ -454,6 +446,5 @@ export const paymentAuthenticationSchema = z
 export const checkoutAuthenticationSchema = paymentAuthenticationSchema
   .extend({ attemptId: z.uuid() })
   .strict();
-export type PaymentAttemptCreate = z.infer<typeof paymentAttemptCreateSchema>;
 export type PaymentAuthentication = z.infer<typeof paymentAuthenticationSchema>;
 export type CheckoutAuthentication = z.infer<typeof checkoutAuthenticationSchema>;
