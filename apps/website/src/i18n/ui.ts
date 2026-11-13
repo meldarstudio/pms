@@ -435,6 +435,35 @@ export const ui = {
     "reservation.summary.possession":
       "Anyone holding this link can view this limited summary. Share it only with people who should see the stay.",
     "reservation.summary.copy": "Copy link",
+    "reservation.access.atHotel": "The outstanding balance is payable at the hotel.",
+    "reservation.access.loading": "Loading your reservation link…",
+    "reservation.access.unavailable.confirmed":
+      "Your reservation is confirmed. We couldn’t load the link; you can try again whenever you like.",
+    "reservation.access.unavailable.saved":
+      "This reservation outcome is saved, but its link could not be loaded. Try again or contact the hotel using your reference.",
+    "reservation.access.retry": "Try again",
+    "reservation.access.view": "View reservation",
+    "reservation.confirmation.paymentLabel": "Payment and balance",
+    "reservation.confirmation.welcome": "See you in Churín.",
+    "reservation.confirmation.accessTitle": "Your stay, close at hand",
+    "reservation.confirmation.accessBody":
+      "Keep your stay details handy and start looking forward to your trip.",
+    "reservation.confirmation.helpTitle": "We’re here to help",
+    "reservation.confirmation.helpBody": "Have a question or need a change? We’re happy to help.",
+    "reservation.confirmation.call": "Call the hotel",
+    "reservation.confirmation.whatsapp": "Message on WhatsApp",
+    "reservation.confirmation.printLabel": "Printable confirmation",
+    "reservation.confirmation.printStatus": "Reservation confirmed",
+    "reservation.confirmation.printTitle": "Reservation confirmation",
+    "reservation.confirmation.printWelcome": "We look forward to welcoming you to Churín.",
+    "reservation.confirmation.duration": "Duration",
+    "reservation.confirmation.payment": "Payment for your stay",
+    "reservation.confirmation.thanks": "Thank you for choosing Hotel Manantial.",
+    "reservation.confirmation.printHelp":
+      "We’re here to help with any questions or changes to your reservation.",
+    "reservation.confirmation.preparing": "Preparing…",
+    "reservation.confirmation.print": "Print confirmation",
+
     "reservation.summary.copied": "Link copied",
     "reservation.summary.staff":
       "Changes, cancellations and refunds are arranged with the hotel. This page cannot change the reservation, and it does not send an email.",
@@ -932,6 +961,36 @@ export const ui = {
     "reservation.summary.possession":
       "Quien tenga este enlace puede ver este resumen limitado. Compártalo solo con quienes deban ver la estadía.",
     "reservation.summary.copy": "Copiar enlace",
+    "reservation.access.atHotel": "El saldo pendiente se paga en el hotel.",
+    "reservation.access.loading": "Cargando el enlace de su reserva…",
+    "reservation.access.unavailable.confirmed":
+      "Su reserva está confirmada. No pudimos cargar el enlace; puede intentarlo de nuevo cuando quiera.",
+    "reservation.access.unavailable.saved":
+      "El resultado de esta reserva está guardado, pero no se pudo cargar su enlace. Inténtelo de nuevo o contacte al hotel con su referencia.",
+    "reservation.access.retry": "Intentar de nuevo",
+    "reservation.access.view": "Ver reserva",
+    "reservation.confirmation.paymentLabel": "Pago y saldo",
+    "reservation.confirmation.welcome": "Nos vemos en Churín.",
+    "reservation.confirmation.accessTitle": "Su reserva, a mano",
+    "reservation.confirmation.accessBody":
+      "Guarde los detalles de su estadía y empiece a disfrutar de su viaje.",
+    "reservation.confirmation.helpTitle": "Estamos para ayudarle",
+    "reservation.confirmation.helpBody":
+      "¿Tiene alguna pregunta o necesita un cambio? Con gusto le ayudamos.",
+    "reservation.confirmation.call": "Llamar al hotel",
+    "reservation.confirmation.whatsapp": "Escribir por WhatsApp",
+    "reservation.confirmation.printLabel": "Confirmación para imprimir",
+    "reservation.confirmation.printStatus": "Reserva confirmada",
+    "reservation.confirmation.printTitle": "Confirmación de reserva",
+    "reservation.confirmation.printWelcome": "Le esperamos en Churín.",
+    "reservation.confirmation.duration": "Duración",
+    "reservation.confirmation.payment": "Pago de su estadía",
+    "reservation.confirmation.thanks": "Gracias por elegir Hotel Manantial.",
+    "reservation.confirmation.printHelp":
+      "Para consultas o cambios en su reserva, estamos para ayudarle.",
+    "reservation.confirmation.preparing": "Preparando…",
+    "reservation.confirmation.print": "Imprimir confirmación",
+
     "reservation.summary.copied": "Enlace copiado",
     "reservation.summary.staff":
       "Los cambios, las cancelaciones y los reembolsos se coordinan con el hotel. Esta página no puede modificar la reserva ni envía un correo.",

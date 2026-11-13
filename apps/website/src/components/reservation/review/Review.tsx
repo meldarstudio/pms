@@ -18,6 +18,7 @@ import { sayFrom, type ReviewText } from "./text";
 import { quietLink } from "./styles";
 import { useCheckoutFlow } from "./useCheckoutFlow";
 import { WhatsAppFallback } from "./WhatsAppFallback";
+import { Confirmation } from "./Confirmation";
 
 type Props = {
   lang: Lang;
@@ -66,7 +67,8 @@ export default function Review({
   const choiceHref = search
     ? `${chooseHref}?${searchParams(search, { withChoice: false })}`
     : chooseHref;
-  const { view } = state;
+  const { view, payment } = state;
+  const confirmedReservation = payment?.state === "confirmed" ? payment.reservation : null;
   const whatsappLink =
     view && room
       ? (() => {
@@ -83,6 +85,23 @@ export default function Review({
           );
         })()
       : whatsappHref;
+
+  if (payment && confirmedReservation && view && room) {
+    return (
+      <ReviewContext value={context}>
+        <Confirmation
+          view={view}
+          room={room}
+          reservation={confirmedReservation}
+          currency={payment.currency}
+          access={state.access}
+          titleRef={focus.ref("outcomeTitle")}
+          summaryHref={summaryHref}
+          onAccessRetry={() => dispatch({ type: "accessRetryRequested" })}
+        />
+      </ReviewContext>
+    );
+  }
 
   return (
     <ReviewContext value={context}>
@@ -158,6 +177,7 @@ export default function Review({
               onBank={() => dispatch({ type: "bankRequested" })}
               onCheck={() => dispatch({ type: "statusCheckRequested" })}
               onCopy={() => dispatch({ type: "accessCopyRequested" })}
+              onAccessRetry={() => dispatch({ type: "accessRetryRequested" })}
             />
           </div>
         </div>

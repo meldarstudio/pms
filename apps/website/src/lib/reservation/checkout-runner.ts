@@ -5,7 +5,6 @@ import {
   clearContact,
   storeCard,
   storeCheckout,
-  storeConfirmedReservation,
   storeContact,
   storedCard,
   storedCheckout,
@@ -174,8 +173,6 @@ export function createCheckoutRunner(options: CheckoutRunnerOptions): CheckoutRu
         return storeContact(effect.contact);
       case "clearContact":
         return clearContact();
-      case "storeConfirmedReservation":
-        return storeConfirmedReservation(effect.code);
       case "schedulePoll":
         clearTimeout(poll);
         poll = setTimeout(() => dispatch({ type: "pollElapsed" }), PAYMENT_POLL_MS);
@@ -184,8 +181,6 @@ export function createCheckoutRunner(options: CheckoutRunnerOptions): CheckoutRu
         clearTimeout(poll);
         poll = undefined;
         return;
-      case "redirectToSummary":
-        return window.location.replace(summaryLink(summaryHref, effect.token));
       case "copyAccessLink": {
         let copied = false;
         try {

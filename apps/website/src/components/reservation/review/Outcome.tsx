@@ -5,7 +5,7 @@ import type { State } from "@/lib/reservation/checkout-flow";
 import { outcomeActions } from "@/lib/reservation/checkout-selectors";
 import { formatMoney } from "@/lib/reservation/format";
 import { useReview } from "./context";
-import type { FocusRegistry } from "./focus";
+import { useDroppedFocusRestore, type FocusRegistry } from "./focus";
 import { card, primary, secondary } from "./styles";
 
 export function Outcome({
@@ -15,6 +15,7 @@ export function Outcome({
   onBank,
   onCheck,
   onCopy,
+  onAccessRetry,
 }: {
   state: State;
   focus: FocusRegistry;
@@ -22,12 +23,14 @@ export function Outcome({
   onBank: () => void;
   onCheck: () => void;
   onCopy: () => void;
+  onAccessRetry: () => void;
 }) {
   const { say } = useReview();
   const { payment } = state;
   const presentation = payment ? outcomePresentation(payment) : null;
   const actions = outcomeActions(state);
   const titleRef: RefCallback<HTMLElement> = focus.ref("outcomeTitle");
+  const replacedRetry = useDroppedFocusRestore();
   return (
     <section
       className={`${card} border-stone-200 [[data-contact-form]:not([hidden])+&]:border-t`}
@@ -89,6 +92,27 @@ export function Outcome({
             {say("reservation.outcome.check")}
           </button>
         </div>
+        <p className="mt-4 text-sm text-stone-700" role="status" data-access-status>
+          {state.access.kind === "loading"
+            ? say("reservation.access.loading")
+            : state.access.kind === "unavailable"
+              ? say("reservation.access.unavailable.saved")
+              : ""}
+        </p>
+        {state.access.kind === "unavailable" && (
+          <button
+            ref={replacedRetry.restore}
+            type="button"
+            className={secondary}
+            data-access-retry
+            onClick={() => {
+              replacedRetry.expectReplacement();
+              onAccessRetry();
+            }}
+          >
+            {say("reservation.access.retry")}
+          </button>
+        )}
         <div
           className="mt-4 border border-stone-300 bg-white p-4"
           data-access
@@ -96,9 +120,17 @@ export function Outcome({
         >
           <p className="leading-relaxed text-stone-700">{say("reservation.summary.possession")}</p>
           <p className="mt-2 leading-relaxed text-stone-700">{say("reservation.summary.staff")}</p>
-          <button type="button" className={`mt-4 ${secondary}`} data-access-copy onClick={onCopy}>
-            {say("reservation.summary.copy")}
-          </button>
+          {state.access.kind === "available" && (
+            <button
+              ref={replacedRetry.restore}
+              type="button"
+              className={`mt-4 ${secondary}`}
+              data-access-copy
+              onClick={onCopy}
+            >
+              {say("reservation.summary.copy")}
+            </button>
+          )}
           <p
             className="mt-2 font-medium text-stone-900"
             role="status"

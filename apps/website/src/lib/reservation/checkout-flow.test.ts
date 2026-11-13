@@ -944,21 +944,21 @@ describe("a saved payment outcome", () => {
     refundDueCents: 0,
   };
 
-  it("stores the confirmed reservation code and then opens the private summary", () => {
+  it("clears the contact on confirmation and offers access without leaving Review", () => {
     const confirmed = drive(openReview(), synced(payment({ state: "confirmed", reservation })));
     const request = ofType(confirmed.effects, "readCheckoutAccess")[0]!.request;
 
-    const { effects } = drive(confirmed.state, {
+    const { state, effects } = drive(confirmed.state, {
       type: "accessRead",
       request,
       access: { token: ACCESS_TOKEN, expiresOn: "2026-12-01" },
     });
 
-    expect(effects).toEqual([
-      { type: "clearContact" },
-      { type: "storeConfirmedReservation", code: "HM-4821" },
-      { type: "redirectToSummary", token: ACCESS_TOKEN },
-    ]);
+    expect(confirmed.effects).toContainEqual({ type: "clearContact" });
+    expect(effects).toEqual([]);
+    expect(state.access.token).toBe(ACCESS_TOKEN);
+    expect(state.access.panel).toBe(true);
+    expect(state.outcomeShown).toBe(true);
   });
 
   it.each(["unfulfilled", "reservation_changed"] as const)(
@@ -979,32 +979,83 @@ describe("a saved payment outcome", () => {
     },
   );
 
-  it("redirects a confirmed outcome only once when an access response is repeated", () => {
-    const confirmed = drive(openReview(), synced(payment({ state: "confirmed", reservation })));
-    const request = ofType(confirmed.effects, "readCheckoutAccess")[0]!.request;
-    const event: FlowEvent = {
-      type: "accessRead",
-      request,
-      access: { token: ACCESS_TOKEN, expiresOn: "2026-12-01" },
-    };
-    const redirected = drive(confirmed.state, event);
-    expect(ofType(redirected.effects, "redirectToSummary")).toHaveLength(1);
-    expect(drive(redirected.state, event, { type: "accessCopyRequested" }).effects).toEqual([]);
-  });
+  it.each(["confirmed", "unfulfilled", "reservation_changed"] as const)(
+    "recovers unavailable access manually without overlapping reads or another payment for %s",
+    (paymentState) => {
+      const savedPayment = payment({ state: paymentState, reservation });
+      const saved = drive(openReview(), synced(savedPayment));
+      const request = ofType(saved.effects, "readCheckoutAccess")[0]!.request;
+      const failed = drive(saved.state, { type: "accessRead", request, access: null });
+      expect(failed.state.access.kind).toBe("unavailable");
+      expect(failed.state.payment?.reservation).toEqual(reservation);
+      const automatic = drive(failed.state, { type: "networkRestored" }, synced(savedPayment));
+      expect(ofType(automatic.effects, "readCheckoutAccess")).toEqual([]);
+      const retry = drive(automatic.state, { type: "accessRetryRequested" });
+      expect(retry.effects).toEqual([
+        { type: "readCheckoutAccess", token: "checkout-token", request: request + 1 },
+      ]);
+      expect(drive(retry.state, { type: "accessRetryRequested" }).effects).toEqual([]);
+      const recovered = drive(retry.state, {
+        type: "accessRead",
+        request: request + 1,
+        access: { token: ACCESS_TOKEN, expiresOn: "2026-12-01" },
+      });
+      expect(recovered.effects).toEqual([]);
+      expect(recovered.state.access.panel).toBe(true);
+      expect(drive(recovered.state, { type: "accessCopyRequested" }).effects).toEqual([
+        { type: "copyAccessLink", token: ACCESS_TOKEN },
+      ]);
+    },
+  );
 
-  it("ignores an access answer that belongs to an outdated outcome", () => {
-    const first = drive(openReview(), synced(payment({ state: "confirmed", reservation })));
-    const staleRequest = ofType(first.effects, "readCheckoutAccess")[0]!.request;
-    const later = drive(first.state, synced(payment({ state: "processing" })));
+  it.each(["submitted", "processing", "paid_awaiting_reservation"] as const)(
+    "ignores an outdated access answer once the outcome is %s, without confirming or offering to pay",
+    (paymentState) => {
+      const first = drive(openReview(), synced(payment({ state: "confirmed", reservation })));
+      const staleRequest = ofType(first.effects, "readCheckoutAccess")[0]!.request;
+      const later = drive(first.state, synced(payment({ state: paymentState })));
 
-    const { effects } = drive(later.state, {
+      const { state, effects } = drive(later.state, {
+        type: "accessRead",
+        request: staleRequest,
+        access: { token: ACCESS_TOKEN, expiresOn: "2026-12-01" },
+      });
+
+      expect(effects).toEqual([]);
+      expect(state.access).toMatchObject({ kind: "idle", token: null, panel: false });
+      expect(outcomePresentation(state.payment!).titleKey).toBe(
+        `reservation.outcome.${paymentState}.title`,
+      );
+      expect(outcomeActions(state).retry).toBe(false);
+    },
+  );
+
+  it("keeps the unfulfilled assistance and offers no new payment while recovering access", () => {
+    const unfulfilled = payment({ state: "unfulfilled", reservation });
+    const saved = drive(openReview(), synced(unfulfilled));
+    const request = ofType(saved.effects, "readCheckoutAccess")[0]!.request;
+    const failed = drive(saved.state, { type: "accessRead", request, access: null });
+    const retry = drive(failed.state, { type: "accessRetryRequested" });
+    const recovered = drive(retry.state, {
       type: "accessRead",
-      request: staleRequest,
+      request: request + 1,
       access: { token: ACCESS_TOKEN, expiresOn: "2026-12-01" },
     });
 
-    expect(effects).toEqual([]);
-    expect(later.state.access.panel).toBe(false);
+    for (const { state } of [failed, retry, recovered]) {
+      expect(outcomePresentation(state.payment!)).toMatchObject({
+        titleKey: "reservation.outcome.unfulfilled.title",
+        bodyKey: "reservation.outcome.unfulfilled.body",
+        rows: [
+          { labelKey: "reservation.outcome.supportReference", value: "HM-4821" },
+          { labelKey: "reservation.outcome.received", value: { cents: 15000 } },
+          { labelKey: "reservation.outcome.awaiting", value: { cents: 0 } },
+        ],
+      });
+      expect(outcomeActions(state).retry).toBe(false);
+    }
+    for (const charge of ["readSecurityToken", "openCardForm", "startPayment"])
+      expect(types([...retry.effects, ...recovered.effects])).not.toContain(charge);
   });
 });
 
