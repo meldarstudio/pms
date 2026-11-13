@@ -447,6 +447,20 @@ describe("automatic confirmation", () => {
     expect(sent.text).toContain('King & <img src="x" onerror="alert(1)">');
   });
 
+  it("sends an owed confirmation in the same scheduled run when payment reconciliation fails", async () => {
+    await confirmed();
+    configureResend();
+    await admitEmail(true);
+    const log = vi.spyOn(console, "error").mockImplementation(() => {});
+    db.sqlite.exec("ALTER TABLE payment_attempts RENAME TO unavailable_attempts");
+
+    await runScheduled();
+
+    expect(log.mock.calls).toEqual([["scheduled payment reconciliation failed"]]);
+    expect(posts()).toHaveLength(1);
+    expect(emails()[0]).toMatchObject({ status: "sent" });
+  });
+
   it("ignores a Resend address that is not on this machine", async () => {
     await confirmed();
     db.env.RESEND_API_KEY = RESEND_TEST_KEY;

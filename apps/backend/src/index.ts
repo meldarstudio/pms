@@ -96,10 +96,15 @@ export default {
   fetch: app.fetch,
   scheduled(_controller, env, ctx) {
     const db = getDb(env.DB);
+    const step = (name: string, run: () => Promise<unknown>) =>
+      run().catch(() => console.error(`scheduled ${name} failed`));
     ctx.waitUntil(
-      reconcilePaymentAttempts(db, paymentContext(env))
-        .then(() => sendConfirmationEmails(db, env))
-        .catch(() => console.error("scheduled recovery failed")),
+      (async () => {
+        await step("payment reconciliation", () =>
+          reconcilePaymentAttempts(db, paymentContext(env)),
+        );
+        await step("confirmation send", () => sendConfirmationEmails(db, env));
+      })(),
     );
   },
 } satisfies ExportedHandler<Env["Bindings"]>;
