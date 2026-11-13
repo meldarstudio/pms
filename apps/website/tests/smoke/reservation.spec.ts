@@ -309,7 +309,7 @@ test("a group no single room fits is told to change guests, not dates", async ({
     name: "Ninguna habitación se puede reservar en línea para esta búsqueda",
   });
   await expect(notice).toContainText(
-    "Suite Matrimonial y Doble Premium: sin capacidad para su grupo. Cambie el número de huéspedes; las reservas en línea son para una habitación.",
+    "Suite Matrimonial y Doble Premium: sin capacidad para su grupo. Cada reserva en línea es para una habitación: busque con menos huéspedes y reserve cada habitación por separado.",
   );
   await expect(notice).toContainText("Suite Familiar: sin reserva en línea.");
   await expect(notice).not.toContainText("fechas");

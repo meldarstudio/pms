@@ -394,9 +394,7 @@ test("a real Turnstile refusal stays distinct from sold-out or an uncertain char
   await expectConfirmed(page);
 });
 
-test("money received for dates the same contact already holds is shown as unconfirmed, not reserved", async ({
-  page,
-}) => {
+test("the same contact reserves a second room for dates they already hold", async ({ page }) => {
   const email = payerEmail();
   await fillCheckout(page, "flexible", email);
   await payButton(page, "100.00").click();
@@ -405,18 +403,14 @@ test("money received for dates the same contact already holds is shown as unconf
   await fillCheckout(page, "non_refundable", email);
   await payButton(page, "180.00").click();
 
-  await expect(
-    page.getByRole("heading", { name: "Pago recibido, pero su reserva no se pudo confirmar" }),
-  ).toBeVisible();
-  await expect(outcome(page)).toContainText(/Referencia de atención\s*[A-Z0-9]{6}/);
-  await expect(outcome(page)).toContainText(/Recibido\s*S\/\s180\.00/);
-  await expect(outcome(page)).toContainText(/Por resolver\s*S\/\s180\.00/);
-  await expect(outcome(page)).not.toContainText("confirmada");
-  await expect(page.getByRole("button", { name: "Copiar enlace" })).toBeVisible();
+  await expectConfirmed(page);
+  await expect(confirmation(page)).toContainText(/Pagado\s*S\/\s180\.00/);
+  expect(await confirmation(page).textContent()).not.toBe(first);
 });
 
 test("paying an expired unchanged quote refreshes it and charges once without asking again", async ({
   page,
+  const first = await confirmation(page).textContent();
   request,
 }) => {
   await acceptTerms(page, payerEmail());
