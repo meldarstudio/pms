@@ -56,6 +56,10 @@ const messages: Record<string, string> = {
   "payment date cannot be in the future": "La fecha del pago no puede ser futura.",
   "room is a different type": "La habitación debe ser del mismo tipo reservado.",
   "night price cannot be negative": "El precio de una noche no puede ser negativo.",
+  "invalid reservation status":
+    "La reserva no se guardó porque su estado no es válido. Recarga la reserva.",
+  "invalid payment attempt status":
+    "El intento de pago no se guardó porque su estado no es válido. Recarga los datos.",
   "no availability": "No hay disponibilidad para esas fechas.",
   "room is already assigned for those dates":
     "Esta habitación está ocupada para esas fechas. Cambia la habitación o las fechas.",

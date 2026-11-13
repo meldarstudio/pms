@@ -129,13 +129,23 @@ export const checkoutAcceptances = sqliteTable(
   (table) => [index("checkout_acceptances_checkout").on(table.checkoutId, table.acceptedAt)],
 );
 
+export const reservationStatuses = [
+  "confirmed",
+  "checked_in",
+  "checked_out",
+  "cancelled",
+  "no_show",
+  "unfulfilled",
+] as const;
+export type ReservationStatus = (typeof reservationStatuses)[number];
+
 export const reservations = sqliteTable(
   "reservations",
   {
     id: text("id").primaryKey(),
     revision: integer("revision").notNull().default(0),
     code: text("code").notNull().unique(),
-    status: text("status").notNull().default("confirmed"),
+    status: text("status").$type<ReservationStatus>().notNull().default("confirmed"),
     cancellationReason: text("cancellation_reason"),
     discountCents: integer("discount_cents").notNull().default(0),
     cancelledAt: text("cancelled_at"),
@@ -251,7 +261,8 @@ export const payments = sqliteTable(
   ],
 );
 
-export type AttemptStatus = "unknown" | "review" | "failed" | "succeeded" | "saved";
+export const attemptStatuses = ["unknown", "review", "failed", "succeeded", "saved"] as const;
+export type AttemptStatus = (typeof attemptStatuses)[number];
 
 export const paymentAttempts = sqliteTable(
   "payment_attempts",
