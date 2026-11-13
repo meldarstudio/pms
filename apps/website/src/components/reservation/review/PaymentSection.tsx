@@ -1,7 +1,8 @@
 import type { ChangeEvent, RefObject } from "react";
+import { CircleNotchIcon } from "@phosphor-icons/react";
 import type { CheckoutView } from "@/lib/reservation/checkout";
 import type { State } from "@/lib/reservation/checkout-flow";
-import { payActionVisible, payBusy } from "@/lib/reservation/checkout-selectors";
+import { payActionVisible, payBusy, sendingPayment } from "@/lib/reservation/checkout-selectors";
 import { Cancellation } from "./Cancellation";
 import { useReview } from "./context";
 import type { FocusRegistry } from "./focus";
@@ -26,6 +27,7 @@ export function PaymentSection({
   const [agreeBefore, agreeAfter] = say("reservation.review.agree").split("{terms}");
   const agreeError = state.fieldErrors.agree;
   const dueNow = view ? view.quote.requiredInitialPaymentCents : 0;
+  const busy = payBusy(state);
   return (
     <section className={card} aria-labelledby="review-payment">
       <h2 id="review-payment" className={cardTitle}>
@@ -119,10 +121,30 @@ export function PaymentSection({
           type="submit"
           className={`mt-4 w-full py-3 text-center ${primary}`}
           data-pay-button
-          disabled={payBusy(state)}
+          disabled={busy}
         >
-          {view && money ? say("reservation.pay.button", { amount: money(dueNow) }) : ""}
+          {busy ? (
+            <>
+              <CircleNotchIcon
+                aria-hidden="true"
+                className="size-4.5 shrink-0 animate-spin motion-reduce:animate-none"
+              />
+              {say("reservation.pay.busy")}
+            </>
+          ) : view && money ? (
+            say("reservation.pay.button", { amount: money(dueNow) })
+          ) : (
+            ""
+          )}
         </button>
+        <p
+          className="mt-3 text-center text-sm font-medium text-stone-900"
+          aria-hidden="true"
+          data-pay-progress
+          hidden={!sendingPayment(state)}
+        >
+          {say("reservation.pay.sending")}
+        </p>
         <p className="mt-3 text-center text-sm text-stone-600">{say("reservation.pay.provider")}</p>
       </div>
     </section>

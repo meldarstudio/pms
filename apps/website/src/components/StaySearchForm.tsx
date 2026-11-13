@@ -118,6 +118,24 @@ function guestSummary(copy: StaySearchCopy, adults: number, children: number) {
   return `${adultsLabel}, ${childrenLabel}`;
 }
 
+type StayProblem = {
+  field: "checkIn" | "checkOut";
+  problem: keyof StaySearchCopy["problems"];
+};
+
+function stayProblems(checkIn: string, checkOut: string): StayProblem[] {
+  if (checkIn && checkIn < firstOnlineArrival())
+    return [{ field: "checkIn", problem: "checkInTooSoon" }];
+  return searchProblems({
+    checkIn,
+    checkOut,
+    adults: DEFAULT_ADULTS,
+    children: DEFAULT_CHILDREN,
+    room: null,
+    plan: null,
+  });
+}
+
 function StayDayButton({ day, ...props }: ComponentProps<typeof CalendarDayButton>) {
   return <CalendarDayButton day={day} {...props} data-date={dateLabel(day.date)} />;
 }
@@ -432,9 +450,7 @@ export default function StaySearchForm({
   const [adults, setAdults] = useState(DEFAULT_ADULTS);
   const [children, setChildren] = useState(DEFAULT_CHILDREN);
   const [open, setOpen] = useState(false);
-  const [problems, setProblems] = useState<
-    { field: "checkIn" | "checkOut"; problem: keyof StaySearchCopy["problems"] }[]
-  >([]);
+  const [problems, setProblems] = useState<StayProblem[]>([]);
   const summary = guestSummary(copy, adults, children);
   const problemFor = (field: "checkIn" | "checkOut") => {
     const problem = problems.find((item) => item.field === field);
@@ -453,10 +469,7 @@ export default function StaySearchForm({
     event.preventDefault();
     setOpen(false);
     const search: StaySearch = { checkIn, checkOut, adults, children, room: null, plan: null };
-    const next: typeof problems =
-      checkIn && checkIn < firstOnlineArrival()
-        ? [{ field: "checkIn", problem: "checkInTooSoon" }]
-        : searchProblems(search);
+    const next = stayProblems(checkIn, checkOut);
     setProblems(next);
     if (next[0]?.field === "checkIn") checkInRef.current?.focus();
     else if (next[0]?.field === "checkOut") checkOutRef.current?.focus();
@@ -487,6 +500,7 @@ export default function StaySearchForm({
               onChange={(arrival, departure) => {
                 setCheckIn(arrival);
                 setCheckOut(departure);
+                setProblems((shown) => (shown.length ? stayProblems(arrival, departure) : shown));
               }}
             />
             <Field className={`col-span-2 ${styles.guests}`}>

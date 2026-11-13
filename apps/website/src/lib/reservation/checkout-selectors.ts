@@ -20,6 +20,11 @@ export function awaitingStatus(state: State) {
 
 export const payBusy = (state: State) => state.pay.kind !== "idle";
 
+export const SENDING_STATUS = "reservation.pay.sending";
+
+export const sendingPayment = (state: State) =>
+  payBusy(state) && state.status.key === SENDING_STATUS;
+
 export const formVisible = (state: State) =>
   state.paymentsEnabled && allowsNewPayment(state.payment);
 

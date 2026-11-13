@@ -9,7 +9,7 @@ import {
   type State,
 } from "./checkout-flow";
 import { outcomePresentation } from "./checkout-copy";
-import { outcomeActions, payBusy } from "./checkout-selectors";
+import { outcomeActions, payBusy, sendingPayment } from "./checkout-selectors";
 import { contactKey } from "./draft";
 import type { GuestPayment, PaymentOutcome } from "./payment";
 
@@ -518,6 +518,27 @@ describe("the card form", () => {
     expect(payBusy(state)).toBe(false);
   });
 
+  it("stops asking to wait for the security check once it passes", () => {
+    const waiting = drive(openReview(), ...toSecurityCheck, {
+      type: "securityTokenRead",
+      token: "",
+    });
+
+    const { state } = drive(waiting.state, { type: "securityCheckPassed" });
+
+    expect(state.formError).toBe("");
+  });
+
+  it("keeps saying the security check is unavailable when a later check passes", () => {
+    const { state } = drive(
+      openReview(),
+      { type: "securityCheckErrored" },
+      { type: "securityCheckPassed" },
+    );
+
+    expect(state.formError).toBe("reservation.pay.error.securityUnavailable");
+  });
+
   it("charges nothing and frees the button when the card form closes without a card", () => {
     const { state, effects } = drive(
       openReview(),
@@ -578,6 +599,7 @@ describe("the card form", () => {
       },
     ]);
     expect(state.status.key).toBe("reservation.pay.sending");
+    expect(sendingPayment(state)).toBe(true);
     expect(state.stored?.submitted).toBe("quote-1");
   });
 });
@@ -717,6 +739,7 @@ describe("a charge the server rejects as expired or replaced", () => {
     expect(ofType(effects, "startPayment")).toEqual([]);
     expect(state.formError).toBe("reservation.pay.error.limited");
     expect(state.status.key).toBe("");
+    expect(sendingPayment(state)).toBe(false);
     expect(payBusy(state)).toBe(false);
   });
 

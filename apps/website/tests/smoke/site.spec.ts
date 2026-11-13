@@ -144,6 +144,22 @@ test("homepage search keeps an empty stay on the page", async ({ page }) => {
   await expect(page.getByLabel("Llegada")).toHaveAttribute("aria-invalid", "true");
 });
 
+test("homepage search errors follow the dates as they are chosen", async ({ page }) => {
+  const stay = openStay();
+  await page.goto("/");
+  const form = page.locator("#availability");
+  await form.getByRole("button", { name: "Consultar disponibilidad" }).click();
+  await expect(page.getByText("Elija su fecha de llegada.")).toBeVisible();
+
+  await form.getByLabel("Llegada").click();
+  await pickRangeDate(page, stay.checkIn);
+  await expect(page.getByText("Elija su fecha de llegada.")).toBeHidden();
+  await expect(page.getByText("Elija su fecha de salida.")).toBeVisible();
+
+  await pickRangeDate(page, stay.checkOut);
+  await expect(page.getByText("Elija su fecha de salida.")).toBeHidden();
+});
+
 test("homepage range picker uses Peru's date and displays compact dates", async ({ page }) => {
   await page.clock.install({ time: new Date("2026-11-10T03:00:00Z") });
   await page.goto("/");
