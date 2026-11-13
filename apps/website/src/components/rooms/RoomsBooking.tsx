@@ -3,12 +3,22 @@ import StaySearchForm, { type StaySearchCopy } from "@/components/StaySearchForm
 import type { Lang } from "@/i18n/utils";
 import { resumeSearch, storeSearch } from "@/lib/reservation/draft";
 import { fill, formatList } from "@/lib/reservation/format";
-import { fetchOffers, type OfferSearchResult, type RoomTypeOffers } from "@/lib/reservation/offers";
-import { searchParams, type StaySearch } from "@/lib/reservation/search";
+import {
+  fetchOffers,
+  lowestOffer,
+  type OfferSearchResult,
+  type RoomTypeOffers,
+} from "@/lib/reservation/offers";
+import {
+  readSearch,
+  searchParams,
+  type RatePlanCode,
+  type StaySearch,
+} from "@/lib/reservation/search";
 import type { RoomId } from "@/lib/rooms";
 import type { StayDetails } from "./RoomCard";
 import type { RoomPhotoView } from "./RoomGallery";
-import { RoomOffers } from "./RoomOffers";
+import { belowHeader, RoomOffers } from "./RoomOffers";
 import type { RoomsBookingKey, RoomsBookingText } from "./text";
 
 export type RoomView = {
@@ -47,6 +57,35 @@ const backendProblems: Record<string, RoomsBookingKey> = {
   "invalid date": "reservation.problem.invalidDate",
 };
 
+type HistoryWrite = "push" | "replace" | "none";
+
+type PendingFocus = { kind: "rates" } | { kind: "room"; id: RoomId } | null;
+
+const openedRoom = (search: StaySearch | null) => (search?.plan ? search.room : null);
+
+const sameStay = (a: StaySearch, b: StaySearch) =>
+  a.checkIn === b.checkIn &&
+  a.checkOut === b.checkOut &&
+  a.adults === b.adults &&
+  a.children === b.children;
+
+const sameAddress = (a: StaySearch, b: StaySearch) =>
+  sameStay(a, b) && a.room === b.room && a.plan === b.plan;
+
+function focusAfter(previous: StaySearch | null, next: StaySearch): PendingFocus {
+  const before = openedRoom(previous);
+  const after = openedRoom(next);
+  if (after && after !== before) return { kind: "rates" };
+  if (!after && before) return { kind: "room", id: before };
+  return null;
+}
+
+/** Brings a just-answered search below the sticky header without moving focus. */
+function bringIntoView(element: Element | null) {
+  const reduce = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  element?.scrollIntoView({ block: "start", behavior: reduce ? "instant" : "smooth" });
+}
+
 const unavailableStates = ["sold_out", "too_many_guests", "offline"] as const;
 
 const primary =
@@ -63,32 +102,66 @@ export default function RoomsBooking({
   text,
   searchCopy,
 }: Props) {
-  const [preferred, setPreferred] = useState<RoomId | null>(null);
+  const [address, setAddress] = useState<StaySearch | null>(null);
   const [phase, setPhase] = useState<Phase>({ kind: "idle" });
   const [searchReady, setSearchReady] = useState(false);
-  const search = useRef<StaySearch | null>(null);
+  const [formKey, setFormKey] = useState(0);
+  const current = useRef<StaySearch | null>(null);
+  const loaded = useRef<{ search: StaySearch; result: OfferSearchResult | null } | null>(null);
   const request = useRef<AbortController | null>(null);
+  const pendingFocus = useRef<PendingFocus>(null);
+  const pendingPosition = useRef(false);
+  const problemPanel = useRef<HTMLDivElement>(null);
   const problemTitle = useRef<HTMLHeadingElement>(null);
+  const noticePanel = useRef<HTMLElement>(null);
   const say = (key: RoomsBookingKey, values: Record<string, string | number> = {}) =>
     fill(text[key], values);
+
+  function settle(next: StaySearch, found: OfferSearchResult): StaySearch {
+    if (!next.room || !next.plan) return next;
+    const room = rooms.find((candidate) => candidate.id === next.room);
+    const offers = found.roomTypes.find((type) => type.id === room?.pmsRoomTypeId);
+    const lowest = offers?.availability === "available" ? lowestOffer(offers) : undefined;
+    if (!lowest) return { ...next, plan: null };
+    return offers!.offers.some((offer) => offer.ratePlan === next.plan)
+      ? next
+      : { ...next, plan: lowest.ratePlan };
+  }
+
+  function commit(next: StaySearch, write: HistoryWrite) {
+    current.current = next;
+    setAddress(next);
+    const url = `?${searchParams(next).toString()}`;
+    if (write === "push") history.pushState(null, "", url);
+    else if (write === "replace") history.replaceState(history.state, "", url);
+  }
 
   async function load(next: StaySearch) {
     request.current?.abort();
     const controller = (request.current = new AbortController());
-    setPhase((current) => ({
+    loaded.current = { search: next, result: null };
+    setPhase((shown) => ({
       kind: "loading",
       search: next,
       previous:
-        current.kind === "found"
-          ? current.result
-          : current.kind === "loading"
-            ? current.previous
+        shown.kind === "found"
+          ? shown.result
+          : shown.kind === "loading"
+            ? shown.previous
             : undefined,
     }));
     const outcome = await fetchOffers(apiBase, next, controller.signal).catch(() => null);
     if (!outcome || controller.signal.aborted) return;
-    if (outcome.kind === "found") setPhase({ kind: "found", search: next, result: outcome.result });
-    else if (outcome.kind === "invalid")
+    if (outcome.kind === "found") {
+      loaded.current = { search: next, result: outcome.result };
+      const shown = current.current ?? next;
+      const settled = settle(shown, outcome.result);
+      if (!sameAddress(settled, shown)) commit(settled, "replace");
+      setPhase({ kind: "found", search: next, result: outcome.result });
+      return;
+    }
+    loaded.current = null;
+    if (outcome.kind === "invalid")
       setPhase({
         kind: "problem",
         title: "reservation.choose.invalid.title",
@@ -104,40 +177,78 @@ export default function RoomsBooking({
       });
   }
 
-  function show(next: StaySearch) {
-    search.current = next;
-    setPreferred(next.room);
+  function show(next: StaySearch, write: HistoryWrite, { fresh }: { fresh: boolean }) {
     if (!next.checkIn || !next.checkOut) {
       request.current?.abort();
+      loaded.current = null;
+      pendingFocus.current = null;
+      pendingPosition.current = false;
+      commit({ ...next, plan: null }, "none");
       setPhase({ kind: "idle" });
       return;
     }
     storeSearch(next);
-    const params = searchParams(next, { withChoice: false });
-    history.replaceState(history.state, "", `?${params.toString()}`);
-    void load(next);
+    pendingFocus.current = focusAfter(current.current, next);
+    const known = !fresh && loaded.current && sameStay(loaded.current.search, next);
+    if (known && loaded.current!.result) {
+      const settled = settle(next, loaded.current!.result);
+      commit(settled, write === "none" && !sameAddress(settled, next) ? "replace" : write);
+      return;
+    }
+    commit(next, write);
+    if (!known) void load(next);
+  }
+
+  function search(next: StaySearch) {
+    pendingPosition.current = true;
+    show(next, "replace", { fresh: true });
   }
 
   useEffect(() => {
-    show(
-      resumeSearch(
-        new URLSearchParams(window.location.search),
-        rooms.map((room) => room.id),
-      ),
-    );
+    const roomIds = rooms.map((room) => room.id);
+    search(resumeSearch(new URLSearchParams(window.location.search), roomIds));
     setSearchReady(true);
-    return () => request.current?.abort();
+    const onPopState = () => {
+      const next = readSearch(new URLSearchParams(window.location.search), roomIds);
+      if (current.current && sameAddress(current.current, next)) return;
+      if (current.current && !sameStay(current.current, next)) setFormKey((key) => key + 1);
+      show(next, "none", { fresh: false });
+    };
+    window.addEventListener("popstate", onPopState);
+    return () => {
+      window.removeEventListener("popstate", onPopState);
+      request.current?.abort();
+    };
   }, []);
 
   useEffect(() => {
-    if (phase.kind === "problem") problemTitle.current?.focus();
-  }, [phase]);
+    if (phase.kind === "idle" || phase.kind === "loading") return;
+    const focus = pendingFocus.current;
+    const position = pendingPosition.current;
+    pendingFocus.current = null;
+    pendingPosition.current = false;
+    if (phase.kind === "problem") {
+      if (position) bringIntoView(problemPanel.current);
+      problemTitle.current?.focus({ preventScroll: position });
+      return;
+    }
+    const heading = document.getElementById("room-rates-title");
+    if (focus?.kind === "rates" && heading) {
+      document.getElementById("offer-steps")?.scrollIntoView({ block: "start" });
+      heading.focus({ preventScroll: true });
+      return;
+    }
+    const button = focus?.kind === "room" && document.getElementById(`room-rates-${focus.id}`);
+    if (button) button.focus();
+    else if (position) bringIntoView(noticePanel.current ?? document.getElementById("offer-steps"));
+  }, [phase, address]);
 
   const result =
     phase.kind === "found" ? phase.result : phase.kind === "loading" ? phase.previous : undefined;
   const offersFor = (room: RoomView): RoomTypeOffers | undefined =>
     result?.roomTypes.find((type) => type.id === room.pmsRoomTypeId);
   const stateOf = (room: RoomView): RoomState => offersFor(room)?.availability ?? "offline";
+  const preferred = address?.room ?? null;
   const ordered = preferred
     ? [...rooms].sort((a, b) => Number(b.id === preferred) - Number(a.id === preferred))
     : rooms;
@@ -173,34 +284,49 @@ export default function RoomsBooking({
           ? say("reservation.choose.loaded")
           : "";
 
-  const onSearch = (next: StaySearch) => show({ ...next, room: preferred, plan: null });
+  const onSearch = (next: StaySearch) =>
+    search({ ...next, room: preferred, plan: address?.plan ?? null });
+
+  function openRoom(id: RoomId) {
+    const room = rooms.find((item) => item.id === id);
+    const offer = room && stateOf(room) === "available" ? lowestOffer(offersFor(room)) : undefined;
+    if (phase.kind !== "found" || !address || !offer) return;
+    show({ ...address, room: id, plan: offer.ratePlan }, "push", { fresh: false });
+  }
+
+  function changeRoom() {
+    if (address) show({ ...address, plan: null }, "push", { fresh: false });
+  }
+
+  function choosePlan(plan: RatePlanCode) {
+    if (address?.plan) commit({ ...address, plan }, "replace");
+  }
 
   return (
     <>
       <div className="bg-stone-100">
         <div className="mx-auto max-w-7xl px-4 pb-2 md:px-8">
           <div id="availability" className="scroll-offset">
-            <StaySearchForm lang={lang} copy={searchCopy} onSearch={onSearch} />
+            <StaySearchForm key={formKey} lang={lang} copy={searchCopy} onSearch={onSearch} />
           </div>
-          <p className="mt-4 text-stone-700" role="status">
-            <span className={phase.kind === "idle" ? undefined : "sr-only"}>{status}</span>
-            {phase.kind !== "idle" && (
-              <span aria-hidden="true" className="invisible">
-                {say("reservation.choose.missing")}
-              </span>
-            )}
+          <p
+            data-search-status
+            className={phase.kind === "idle" ? "mt-4 text-stone-700" : "sr-only"}
+            role="status"
+          >
+            {status}
           </p>
           {phase.kind === "problem" && (
-            <div className={`mt-6 ${panel}`}>
+            <div ref={problemPanel} className={`mt-6 ${belowHeader} ${panel}`}>
               <h2 ref={problemTitle} tabIndex={-1} className="text-xl font-semibold text-stone-900">
                 {say(phase.title)}
               </h2>
               <p className="mt-3 leading-relaxed text-stone-700">{say(phase.body)}</p>
-              {phase.retry && search.current && (
+              {phase.retry && address && (
                 <button
                   type="button"
                   className={`mt-6 ${primary}`}
-                  onClick={() => void load(search.current!)}
+                  onClick={() => current.current && search(current.current)}
                 >
                   {say("reservation.choose.retry")}
                 </button>
@@ -209,7 +335,8 @@ export default function RoomsBooking({
           )}
           {notice && (
             <section
-              className="mt-6 border-l-4 border-amber-600 bg-white p-4 text-stone-800"
+              ref={noticePanel}
+              className={`mt-6 ${belowHeader} border-l-4 border-amber-600 bg-white p-4 text-stone-800`}
               aria-labelledby="rooms-notice"
             >
               <p id="rooms-notice" className="font-semibold">
@@ -234,10 +361,14 @@ export default function RoomsBooking({
         rooms={ordered}
         details={details}
         phase={phase}
+        choice={address}
         searchReady={searchReady}
         offersFor={offersFor}
         stateOf={stateOf}
         onChooseDates={chooseDates}
+        onOpenRoom={openRoom}
+        onChangeRoom={changeRoom}
+        onPlan={choosePlan}
       />
     </>
   );

@@ -240,6 +240,9 @@ test("browser back shows the latest contact draft", async ({ page }) => {
   await page.getByLabel("Nombre completo").fill("Ana María Torres");
 
   await page.goBack();
+  await expect(page.getByRole("radio", { name: /Flexible/ })).toBeChecked();
+  await page.goBack();
+  await expect(page.getByRole("article")).toHaveCount(3);
   await page.goBack();
 
   await expect(page).toHaveURL(/\/reservar\/revisar\/\?/);
