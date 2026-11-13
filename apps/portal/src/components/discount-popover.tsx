@@ -1,4 +1,4 @@
-import { useEffect, useId, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 import { PencilIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Field, FieldError, FieldLabel } from "@/components/ui/field";
@@ -27,11 +27,15 @@ export function DiscountPopover({
 }) {
   const inputId = useId();
   const errorId = useId();
-  const [open, setOpen] = useState(false);
-  const [editedDraft, setEditedDraft] = useState<string | null>(null);
-  const draft = editedDraft ?? draftOf(appliedCents);
-  const [attempted, setAttempted] = useState(false);
-  const [applying, setApplying] = useState(false);
+  const [state, setState] = useState<
+    | { kind: "closed" | "editing"; draft: string | null; attempted: boolean }
+    | { kind: "applying"; draft: string; attempted: boolean }
+  >({ kind: "closed", draft: null, attempted: false });
+  const inFlight = useRef(false);
+  const open = state.kind !== "closed";
+  const applying = state.kind === "applying";
+  const attempted = state.attempted;
+  const draft = state.draft ?? draftOf(appliedCents);
   const parsed = discountSchema.safeParse({ amount: draft });
   const error = parsed.success ? null : (parsed.error.issues[0]?.message ?? null);
   const draftCents = parsed.success ? parseMajorToCents(draft.trim() || "0") : null;
@@ -40,21 +44,29 @@ export function DiscountPopover({
   useEffect(() => () => onBlockingChange?.(false), [onBlockingChange]);
 
   async function apply(cents: number | null) {
-    if (cents === null) return setAttempted(true);
-    setEditedDraft(cents === draftCents ? draft : draftOf(cents));
-    setApplying(true);
+    if (inFlight.current || state.kind !== "editing") return;
+    if (cents === null) return setState({ ...state, attempted: true });
+    inFlight.current = true;
+    setState({ ...state, kind: "applying", draft: cents === draftCents ? draft : draftOf(cents) });
     try {
       if ((await onApply(cents)) === false) return;
-      setEditedDraft(null);
-      setAttempted(false);
-      setOpen(false);
+      setState({ kind: "closed", draft: null, attempted: false });
     } finally {
-      setApplying(false);
+      inFlight.current = false;
+      setState((current) =>
+        current.kind === "applying" ? { ...current, kind: "editing" } : current,
+      );
     }
   }
 
   return (
-    <Popover open={open} onOpenChange={(next) => !applying && setOpen(next)}>
+    <Popover
+      open={open}
+      onOpenChange={(next) => {
+        if (inFlight.current) return;
+        setState((current) => ({ ...current, kind: next ? "editing" : "closed" }));
+      }}
+    >
       <PopoverTrigger
         disabled={disabled}
         render={
@@ -93,9 +105,11 @@ export function DiscountPopover({
               aria-invalid={(attempted && !!error) || undefined}
               aria-describedby={attempted && error ? errorId : undefined}
               onChange={(event) =>
-                setEditedDraft(
-                  event.target.value === draftOf(appliedCents) ? null : event.target.value,
-                )
+                setState({
+                  kind: "editing",
+                  attempted,
+                  draft: event.target.value === draftOf(appliedCents) ? null : event.target.value,
+                })
               }
               onKeyDown={(event) => {
                 if (event.key !== "Enter") return;

@@ -124,9 +124,13 @@ export function ReservationPageEditor({
 }) {
   const dirty = useRef(false);
   const [popup, setPopup] = useState<HTMLDivElement | null>(null);
-  const [leaving, setLeaving] = useState(false);
+  const [phase, setPhase] = useState<
+    | { kind: "editing" | "confirming-discard" }
+    | { kind: "coupon-issued"; coupon: ReservationCoupon }
+  >({ kind: "editing" });
+  const leaving = phase.kind === "confirming-discard";
+  const issued = phase.kind === "coupon-issued" ? phase.coupon : null;
   const { send, saving } = useReservationCommands(detail.id);
-  const [issued, setIssued] = useState<ReservationCoupon | null>(null);
   const fullScreen = ["stay", "contact", "notes", "guest", "payment"].includes(target.kind);
   const isMobile = useIsMobile();
   const [asSheet] = useState(() => isMobile && phoneSheetKinds.includes(target.kind));
@@ -169,7 +173,7 @@ export function ReservationPageEditor({
   );
   function close() {
     if (saving) return;
-    if (dirty.current) setLeaving(true);
+    if (dirty.current) setPhase({ kind: "confirming-discard" });
     else finish();
   }
   const title = issued ? "Cupón emitido" : editorTitle(target, detail);
@@ -234,7 +238,7 @@ export function ReservationPageEditor({
           onCancel={close}
           onCouponIssued={(coupon) => {
             handleDirty(false);
-            setIssued(coupon);
+            setPhase({ kind: "coupon-issued", coupon });
           }}
         />
       )
@@ -366,10 +370,10 @@ export function ReservationPageEditor({
       {leaving && (
         <DiscardChanges
           saving={saving}
-          onStay={() => setLeaving(false)}
+          onStay={() => setPhase({ kind: "editing" })}
           onLeave={() => {
             if (saving) return;
-            setLeaving(false);
+            setPhase({ kind: "editing" });
             finish();
           }}
         />

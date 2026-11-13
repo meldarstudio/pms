@@ -87,12 +87,23 @@ export function Inventory({
   const isMobile = useIsMobile();
   const queryClient = useQueryClient();
   const [pickerOpen, setPickerOpen] = useState(false);
-  const [selection, setSelection] = useState<Selection | null>(null);
-  const [editor, setEditor] = useState<Selection | null>(null);
+  const [interaction, setInteraction] = useState<
+    { kind: "idle" } | { kind: "selected" | "editing"; selection: Selection }
+  >({ kind: "idle" });
+  const selection = interaction.kind === "idle" ? null : interaction.selection;
+  const editor = interaction.kind === "editing" ? interaction.selection : null;
   const selectionRef = useRef<Selection | null>(null);
-  const dragging = useRef(false);
+  const drag = useRef<
+    { kind: "idle" } | { kind: "dragging"; anchor: Selection; cell: HTMLButtonElement }
+  >({ kind: "idle" });
   const anchor = useRef<Selection | null>(null);
-  const pointerCell = useRef<HTMLButtonElement | null>(null);
+  function setEditor(next: Selection | null) {
+    if (next) setInteraction({ kind: "editing", selection: next });
+    else
+      setInteraction((current) =>
+        current.kind === "editing" ? { ...current, kind: "selected" } : current,
+      );
+  }
   const from = format(start, "yyyy-MM-dd");
   const to = format(addDays(start, span - 1), "yyyy-MM-dd");
   const inventory = useInventory(from, to);
@@ -112,10 +123,12 @@ export function Inventory({
 
   useEffect(() => {
     function onUp(event: Event) {
-      if (!dragging.current) return;
-      dragging.current = false;
+      if (drag.current.kind !== "dragging") return;
+      const { cell } = drag.current;
+      drag.current = { kind: "idle" };
+      if (event.type === "pointercancel") return;
       const target = event.target;
-      const releasedOnStart = target instanceof Node && pointerCell.current?.contains(target);
+      const releasedOnStart = target instanceof Node && cell.contains(target);
       if (releasedOnStart) return;
       const current = selectionRef.current;
       if (current && current.dates.length > 0) setEditor(current);
@@ -130,11 +143,11 @@ export function Inventory({
 
   function choose(next: Selection | null) {
     selectionRef.current = next;
-    setSelection(next);
+    setInteraction(next ? { kind: "selected", selection: next } : { kind: "idle" });
   }
 
   function changeStart(next: Date) {
-    dragging.current = false;
+    drag.current = { kind: "idle" };
     choose(null);
     setEditor(null);
     onStartChange(startOfDay(next));
@@ -146,7 +159,6 @@ export function Inventory({
     date: string,
   ) {
     if (event.button !== 0) return;
-    pointerCell.current = event.currentTarget;
     if (event.shiftKey && anchor.current?.roomTypeId === roomTypeId) {
       const next = {
         roomTypeId,
@@ -158,14 +170,15 @@ export function Inventory({
     const next = { roomTypeId, dates: [date] };
     anchor.current = next;
     choose(next);
-    dragging.current = true;
+    drag.current = { kind: "dragging", anchor: next, cell: event.currentTarget };
   }
 
   function onCellPointerEnter(roomTypeId: string, date: string) {
-    if (!dragging.current || anchor.current?.roomTypeId !== roomTypeId) return;
+    const current = drag.current;
+    if (current.kind !== "dragging" || current.anchor.roomTypeId !== roomTypeId) return;
     choose({
       roomTypeId,
-      dates: datesBetween(dayIds, anchor.current.dates[0], date),
+      dates: datesBetween(dayIds, current.anchor.dates[0], date),
     });
   }
 
@@ -190,7 +203,7 @@ export function Inventory({
                 value={String(span)}
                 onValueChange={(value) => {
                   if (!value) return;
-                  dragging.current = false;
+                  drag.current = { kind: "idle" };
                   choose(null);
                   setEditor(null);
                   onSpanChange(Number(value) as 7 | 14);

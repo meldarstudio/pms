@@ -29,8 +29,16 @@ export function useReportEditorState(
 export function useConfigurationDraft(formId: string | undefined, onDiscard: () => void) {
   const [dirty, setDirty] = useState(false);
   const [saving, setSaving] = useState(false);
-  const [pending, setPending] = useState<{ run: () => void } | null>(null);
-  const afterSave = useRef<{ router: boolean; run: () => void } | null>(null);
+  type Navigation =
+    | { kind: "idle" }
+    | { kind: "confirming"; run: () => void }
+    | { kind: "after-save"; router: boolean; run: () => void };
+  const [navigation, setNavigation] = useState<Navigation>({ kind: "idle" });
+  const currentNavigation = useRef(navigation);
+  function navigate(next: Navigation) {
+    currentNavigation.current = next;
+    setNavigation(next);
+  }
   const blocker = useBlocker({
     shouldBlockFn: () => dirty || saving,
     enableBeforeUnload: () => dirty || saving,
@@ -42,13 +50,13 @@ export function useConfigurationDraft(formId: string | undefined, onDiscard: () 
   }, [blocker]);
 
   function stay() {
-    setPending(null);
+    navigate({ kind: "idle" });
     if (latestBlocker.current.status === "blocked") latestBlocker.current.reset();
   }
 
   function request(run: () => void) {
     if (saving) return;
-    if (dirty) setPending({ run });
+    if (dirty) navigate({ kind: "confirming", run });
     else run();
   }
 
@@ -58,18 +66,15 @@ export function useConfigurationDraft(formId: string | undefined, onDiscard: () 
     onSaved: () => {
       setDirty(false);
       setSaving(false);
-      const next = afterSave.current;
-      afterSave.current = null;
-      setPending(null);
+      const intent = currentNavigation.current;
+      const next = intent.kind === "after-save" ? intent : null;
+      navigate({ kind: "idle" });
       if (!next?.router && latestBlocker.current.status === "blocked")
         latestBlocker.current.reset();
       next?.run();
     },
     onSubmitFinished: () => {
-      if (afterSave.current) {
-        afterSave.current = null;
-        stay();
-      }
+      if (currentNavigation.current.kind === "after-save") stay();
     },
   };
 
@@ -79,7 +84,7 @@ export function useConfigurationDraft(formId: string | undefined, onDiscard: () 
     events,
     dialog: (
       <AlertDialog
-        open={pending !== null || blocker.status === "blocked"}
+        open={navigation.kind !== "idle" || blocker.status === "blocked"}
         onOpenChange={(open) => {
           if (!open && !saving) stay();
         }}
@@ -105,10 +110,10 @@ export function useConfigurationDraft(formId: string | undefined, onDiscard: () 
               onClick={() => {
                 setDirty(false);
                 onDiscard();
-                const next = pending;
-                setPending(null);
+                const next = currentNavigation.current;
+                navigate({ kind: "idle" });
                 if (blocker.status === "blocked") blocker.proceed();
-                else next?.run();
+                else if (next.kind !== "idle") next.run();
               }}
             >
               Descartar cambios
@@ -119,12 +124,10 @@ export function useConfigurationDraft(formId: string | undefined, onDiscard: () 
                 form={formId}
                 disabled={saving}
                 onClick={() => {
-                  afterSave.current =
-                    blocker.status === "blocked"
-                      ? { router: true, run: blocker.proceed }
-                      : pending
-                        ? { router: false, run: pending.run }
-                        : null;
+                  if (blocker.status === "blocked")
+                    navigate({ kind: "after-save", router: true, run: blocker.proceed });
+                  else if (navigation.kind === "confirming")
+                    navigate({ kind: "after-save", router: false, run: navigation.run });
                 }}
               >
                 Guardar y continuar

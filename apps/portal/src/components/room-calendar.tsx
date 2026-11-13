@@ -404,10 +404,22 @@ export function RoomCalendar({
   const roomColumnWidth = isMobile ? 9.5 : 10;
   const queryClient = useQueryClient();
   const [pickerOpen, setPickerOpen] = useState(false);
-  const [closureTarget, setClosureTarget] = useState<ClosureTarget | null>(null);
-  const [roomTarget, setRoomTarget] = useState<RoomEditTarget | null>(null);
-  const [bookingTarget, setBookingTarget] = useState<BookingTarget | null>(null);
-  const [summaryId, setSummaryId] = useState<string | null>(null);
+  const [dialog, setDialog] = useState<
+    | { kind: "closed" }
+    | { kind: "closure"; target: ClosureTarget }
+    | { kind: "room"; target: RoomEditTarget }
+    | { kind: "booking"; target: BookingTarget }
+    | { kind: "summary"; reservationId: string }
+  >({ kind: "closed" });
+  const closureTarget = dialog.kind === "closure" ? dialog.target : null;
+  const roomTarget = dialog.kind === "room" ? dialog.target : null;
+  const bookingTarget = dialog.kind === "booking" ? dialog.target : null;
+  const summaryId = dialog.kind === "summary" ? dialog.reservationId : null;
+  const closeDialog = () => setDialog({ kind: "closed" });
+  const setClosureTarget = (target: ClosureTarget) => setDialog({ kind: "closure", target });
+  const setRoomTarget = (target: RoomEditTarget) => setDialog({ kind: "room", target });
+  const setBookingTarget = (target: BookingTarget) => setDialog({ kind: "booking", target });
+  const setSummaryId = (reservationId: string) => setDialog({ kind: "summary", reservationId });
   const [unassignedOpen, setUnassignedOpen] = useState(false);
   const assignmentTriggerRef = useRef<HTMLButtonElement>(null);
   const gridScroller = useRef<HTMLDivElement>(null);
@@ -604,21 +616,21 @@ export function RoomCalendar({
   return (
     <div className="@container/toolbar flex min-h-0 min-w-0 flex-1 flex-col">
       {isMobile && newReservationButton}
-      <RoomClosureDialog target={closureTarget} onClose={() => setClosureTarget(null)} />
-      <RoomEditDialog target={roomTarget} onClose={() => setRoomTarget(null)} />
+      <RoomClosureDialog target={closureTarget} onClose={closeDialog} />
+      <RoomEditDialog target={roomTarget} onClose={closeDialog} />
       <RoomBookingDialog
         target={bookingTarget}
-        onClose={() => setBookingTarget(null)}
+        onClose={closeDialog}
         onCreated={(id) => {
-          setBookingTarget(null);
+          closeDialog();
           openReservation(id);
         }}
       />
       <ReservationSummary
         reservationId={summaryId}
-        onClose={() => setSummaryId(null)}
+        onClose={closeDialog}
         onEdit={(id) => {
-          setSummaryId(null);
+          closeDialog();
           openReservation(id);
         }}
       />

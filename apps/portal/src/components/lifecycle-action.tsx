@@ -14,6 +14,7 @@ import { formatMoney } from "@/lib/money";
 import { unsavedMessage, useReservationCommands } from "@/lib/reservation-commands";
 import { toast } from "sonner";
 import { toastError } from "@/lib/toast";
+import { useConfirmation } from "@/lib/use-confirmation";
 import { usePropertyCalendar } from "@/lib/use-property-calendar";
 
 export type LifecycleStep = {
@@ -63,10 +64,15 @@ export function useLifecycleAction(detail: ReservationDetail, blocked = false) {
   const { today } = usePropertyCalendar();
   const step = lifecycleStep(detail, today);
   const { send, saving } = useReservationCommands(detail.id);
-  const [running, setRunning] = useState(false);
+  const [phase, setPhase] = useState<"idle" | "confirming" | "saving">("idle");
+  const operation = useRef(phase);
+  function transition(next: typeof phase) {
+    operation.current = next;
+    setPhase(next);
+  }
+  const running = phase === "saving";
   const [confirmCheckIn, checkInDialog] = useDirtyRoomCheckIn();
-  const [owed, setOwed] = useState<number | null>(null);
-  const settleOwed = useRef<((proceed: boolean) => void) | null>(null);
+  const { value: owed, request: requestBalance, close: closeBalance } = useConfirmation<number>();
   const eligible = !blocked && !saving && !running;
   const current = useRef({ status: detail.status, eligible });
   useLayoutEffect(() => {
@@ -87,57 +93,52 @@ export function useLifecycleAction(detail: ReservationDetail, blocked = false) {
 
   function confirmBalance() {
     if (detail.balanceCents <= 0) return Promise.resolve(true);
-    settleOwed.current?.(false);
-    return new Promise<boolean>((resolve) => {
-      settleOwed.current = resolve;
-      setOwed(detail.balanceCents);
-    });
-  }
-
-  function closeBalance(proceed: boolean) {
-    settleOwed.current?.(proceed);
-    settleOwed.current = null;
-    setOwed(null);
+    return requestBalance(detail.balanceCents);
   }
 
   async function run() {
-    if (!step || !current.current.eligible) return;
-    const previous = detail.status === "checked_in" ? "checked_in" : "confirmed";
-    const proceed =
-      step.status === "checked_in"
-        ? await confirmCheckIn(detail, step.status)
-        : await confirmBalance();
-    if (!proceed || !current.current.eligible || current.current.status !== previous) return;
-    setRunning(true);
-    const result = await send([{ type: "set-status", status: step.status }]);
-    setRunning(false);
-    if (result.status !== "saved")
-      return toastError("No se pudo cambiar el estado", unsavedMessage(result));
-    const checkIn = step.status === "checked_in";
-    dismissUndo();
-    const entry: UndoEntry = {
-      id: crypto.randomUUID(),
-      status: step.status,
-      title: checkIn ? "Check-in registrado" : "Check-out registrado",
-      undo: async () => {
-        if (
-          undo.current !== entry ||
-          current.current.status !== entry.status ||
-          !current.current.eligible
-        )
-          return;
-        dismissUndo();
-        const undone = await send([{ type: "set-status", status: previous }]);
-        if (undone.status === "saved")
-          toast.success(checkIn ? "Check-in deshecho" : "Check-out deshecho");
-        else toastError("No se pudo deshacer", unsavedMessage(undone));
-      },
-      forget: () => {
-        if (undo.current === entry) undo.current = null;
-      },
-    };
-    undo.current = entry;
-    showUndo(entry, !current.current.eligible);
+    if (!step || !current.current.eligible || operation.current !== "idle") return;
+    transition("confirming");
+    try {
+      const previous = detail.status === "checked_in" ? "checked_in" : "confirmed";
+      const proceed =
+        step.status === "checked_in"
+          ? await confirmCheckIn(detail, step.status)
+          : await confirmBalance();
+      if (!proceed || !current.current.eligible || current.current.status !== previous) return;
+      transition("saving");
+      const result = await send([{ type: "set-status", status: step.status }]);
+
+      if (result.status !== "saved")
+        return toastError("No se pudo cambiar el estado", unsavedMessage(result));
+      const checkIn = step.status === "checked_in";
+      dismissUndo();
+      const entry: UndoEntry = {
+        id: crypto.randomUUID(),
+        status: step.status,
+        title: checkIn ? "Check-in registrado" : "Check-out registrado",
+        undo: async () => {
+          if (
+            undo.current !== entry ||
+            current.current.status !== entry.status ||
+            !current.current.eligible
+          )
+            return;
+          dismissUndo();
+          const undone = await send([{ type: "set-status", status: previous }]);
+          if (undone.status === "saved")
+            toast.success(checkIn ? "Check-in deshecho" : "Check-out deshecho");
+          else toastError("No se pudo deshacer", unsavedMessage(undone));
+        },
+        forget: () => {
+          if (undo.current === entry) undo.current = null;
+        },
+      };
+      undo.current = entry;
+      showUndo(entry, !current.current.eligible);
+    } finally {
+      transition("idle");
+    }
   }
 
   const dialogs = (
