@@ -979,6 +979,19 @@ describe("a saved payment outcome", () => {
     },
   );
 
+  it("redirects a confirmed outcome only once when an access response is repeated", () => {
+    const confirmed = drive(openReview(), synced(payment({ state: "confirmed", reservation })));
+    const request = ofType(confirmed.effects, "readCheckoutAccess")[0]!.request;
+    const event: FlowEvent = {
+      type: "accessRead",
+      request,
+      access: { token: ACCESS_TOKEN, expiresOn: "2026-12-01" },
+    };
+    const redirected = drive(confirmed.state, event);
+    expect(ofType(redirected.effects, "redirectToSummary")).toHaveLength(1);
+    expect(drive(redirected.state, event, { type: "accessCopyRequested" }).effects).toEqual([]);
+  });
+
   it("ignores an access answer that belongs to an outdated outcome", () => {
     const first = drive(openReview(), synced(payment({ state: "confirmed", reservation })));
     const staleRequest = ofType(first.effects, "readCheckoutAccess")[0]!.request;

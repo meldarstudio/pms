@@ -278,9 +278,13 @@ function StayDateFields({
   checkOutError?: string;
   onChange: (checkIn: string, checkOut: string) => void;
 }) {
-  const [open, setOpen] = useState(false);
-  const [triggerId, setTriggerId] = useState<string | null>(null);
-  const [selecting, setSelecting] = useState<"checkIn" | "checkOut">("checkIn");
+  const [picker, setPicker] = useState<
+    | { kind: "closed" }
+    | { kind: "open"; triggerId: string | null; selecting: "checkIn" | "checkOut" }
+  >({ kind: "closed" });
+  const open = picker.kind === "open";
+  const triggerId = picker.kind === "open" ? picker.triggerId : null;
+  const selecting = picker.kind === "open" ? picker.selecting : "checkIn";
   const [month, setMonth] = useState(() => new Date());
   const [mobile, setMobile] = useState(false);
   const [firstArrival, setFirstArrival] = useState(firstOnlineArrival);
@@ -290,7 +294,7 @@ function StayDateFields({
     const media = window.matchMedia("(min-width: 48rem)");
     setMobile(!media.matches);
     const update = () => {
-      setOpen(false);
+      setPicker({ kind: "closed" });
       setMobile(!media.matches);
     };
     media.addEventListener("change", update);
@@ -332,10 +336,12 @@ function StayDateFields({
         if (selecting === "checkOut" && dateLabel(date) === checkIn) return;
         if (selecting === "checkIn" || !checkIn) {
           onChange(dateLabel(date), "");
-          setSelecting("checkOut");
+          setPicker((current) =>
+            current.kind === "open" ? { ...current, selecting: "checkOut" } : current,
+          );
         } else {
           onChange(checkIn, dateLabel(date));
-          setOpen(false);
+          setPicker({ kind: "closed" });
         }
       }}
     />
@@ -352,10 +358,12 @@ function StayDateFields({
           const departure = details.trigger?.id === "stay-check-out" && Boolean(checkIn);
           const date = departure ? checkOut || checkIn : checkIn;
           setMonth(labelDate(date && date >= earliest ? date : earliest));
-          setSelecting(departure ? "checkOut" : "checkIn");
-          setTriggerId(details.trigger?.id ?? null);
-        }
-        setOpen(next);
+          setPicker({
+            kind: "open",
+            selecting: departure ? "checkOut" : "checkIn",
+            triggerId: details.trigger?.id ?? null,
+          });
+        } else setPicker({ kind: "closed" });
       }}
       {...(mobile ? { showSwipeHandle: true } : {})}
     >
@@ -487,7 +495,7 @@ export default function StaySearchForm({
       className={`stay-search overflow-visible border border-stone-200 bg-white font-source-sans-3 text-stone-900 shadow-none ring-0 ${styles.card}`}
     >
       <CardContent>
-        <form action={action} method="get" noValidate onSubmit={onSubmit}>
+        <form action={action} method="get" noValidate onSubmit={onSubmit} aria-busy={!ready}>
           <FieldSet disabled={!ready}>
             <FieldGroup className={`grid grid-cols-2 items-end gap-3 ${styles.grid}`}>
               <StayDateFields

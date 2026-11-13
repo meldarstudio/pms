@@ -30,6 +30,8 @@ function formatViolation(
 }
 
 async function runAxe(page: Page, pagePath: string) {
+  const search = page.locator(".stay-search form");
+  if (await search.count()) await expect(search).toHaveAttribute("aria-busy", "false");
   const results = await new AxeBuilder({ page })
     .withTags(["wcag2a", "wcag2aa", "wcag21a", "wcag21aa"])
     .analyze();
