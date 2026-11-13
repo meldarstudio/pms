@@ -435,6 +435,16 @@ export const ui = {
     "reservation.summary.possession":
       "Anyone holding this link can view this limited summary. Share it only with people who should see the stay.",
     "reservation.summary.copy": "Copy link",
+    "reservation.access.complete": "Checkout complete",
+    "reservation.access.atHotel": "The outstanding balance is payable at the hotel.",
+    "reservation.access.loading": "Loading your reservation link…",
+    "reservation.access.unavailable.confirmed":
+      "Your reservation is saved, but its link could not be loaded. You can try again without paying again.",
+    "reservation.access.unavailable.saved":
+      "This reservation outcome is saved, but its link could not be loaded. Try again or contact the hotel using your reference.",
+    "reservation.access.retry": "Try again",
+    "reservation.access.view": "View reservation",
+
     "reservation.summary.copied": "Link copied",
     "reservation.summary.staff":
       "Changes, cancellations and refunds are arranged with the hotel. This page cannot change the reservation, and it does not send an email.",
@@ -932,6 +942,16 @@ export const ui = {
     "reservation.summary.possession":
       "Quien tenga este enlace puede ver este resumen limitado. Compártalo solo con quienes deban ver la estadía.",
     "reservation.summary.copy": "Copiar enlace",
+    "reservation.access.complete": "Reserva completada",
+    "reservation.access.atHotel": "El saldo pendiente se paga en el hotel.",
+    "reservation.access.loading": "Cargando el enlace de su reserva…",
+    "reservation.access.unavailable.confirmed":
+      "Su reserva está guardada, pero no se pudo cargar su enlace. Puede intentarlo de nuevo sin volver a pagar.",
+    "reservation.access.unavailable.saved":
+      "El resultado de esta reserva está guardado, pero no se pudo cargar su enlace. Inténtelo de nuevo o contacte al hotel con su referencia.",
+    "reservation.access.retry": "Intentar de nuevo",
+    "reservation.access.view": "Ver reserva",
+
     "reservation.summary.copied": "Enlace copiado",
     "reservation.summary.staff":
       "Los cambios, las cancelaciones y los reembolsos se coordinan con el hotel. Esta página no puede modificar la reserva ni envía un correo.",

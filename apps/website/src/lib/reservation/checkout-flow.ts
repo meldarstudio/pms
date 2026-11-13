@@ -65,8 +65,7 @@ export type PayStep =
 export type StatusLine = { key: string; visible: boolean };
 
 export type AccessState = { request: number } & (
-  | { kind: "idle" | "loading"; token: null; panel: false; copied: false }
-  | { kind: "redirecting"; token: string; panel: false; copied: false }
+  | { kind: "idle" | "loading" | "unavailable"; token: null; panel: false; copied: false }
   | { kind: "available"; token: string; panel: true; copied: boolean }
 );
 
@@ -177,6 +176,7 @@ export type Event =
   | { type: "payAgainRequested" }
   | { type: "bankRequested" }
   | { type: "statusCheckRequested" }
+  | { type: "accessRetryRequested" }
   | { type: "accessCopyRequested" }
   | { type: "accessCopied"; copied: boolean }
   | { type: "pollElapsed" }
@@ -226,10 +226,8 @@ export type Effect =
   | { type: "clearCardSource"; key: string }
   | { type: "storeContact"; contact: ContactDraft }
   | { type: "clearContact" }
-  | { type: "storeConfirmedReservation"; code: string }
   | { type: "schedulePoll" }
   | { type: "cancelPoll" }
-  | { type: "redirectToSummary"; token: string }
   | { type: "copyAccessLink"; token: string }
   | { type: "focus"; target: FocusTarget };
 
@@ -432,9 +430,17 @@ function afterSync(c: Ctx, outcome: PaymentOutcome, after: Extract<PaymentThen, 
 }
 
 function showPayment(c: Ctx, payment: GuestPayment | null, focusOutcome: boolean) {
+  const previous = c.s.payment;
   c.s.payment = payment;
   c.s.outcomeShown = Boolean(payment);
-  showAccess(c, payment);
+  if (
+    previous?.attemptId !== payment?.attemptId ||
+    previous?.state !== payment?.state ||
+    previous?.reservation?.code !== payment?.reservation?.code ||
+    c.s.access.kind === "idle"
+  )
+    showAccess(c, payment);
+  if (payment?.state === "confirmed" && payment.reservation) c.fx.push({ type: "clearContact" });
   if (payment && CARD_RELEASED.includes(payment.state) && c.s.key) {
     c.s.card = null;
     c.fx.push({ type: "clearCardSource", key: c.s.key });
@@ -463,13 +469,9 @@ function showAccess(c: Ctx, payment: GuestPayment | null) {
 }
 
 function afterAccessRead(c: Ctx, request: number, access: CheckoutAccess | null) {
-  if (c.s.access.kind !== "loading" || request !== c.s.access.request || !access) return;
-  const payment = c.s.payment;
-  if (payment?.state === "confirmed" && payment.reservation) {
-    c.s.access = { kind: "redirecting", request, token: access.token, panel: false, copied: false };
-    c.fx.push({ type: "clearContact" });
-    c.fx.push({ type: "storeConfirmedReservation", code: payment.reservation.code });
-    c.fx.push({ type: "redirectToSummary", token: access.token });
+  if (c.s.access.kind !== "loading" || request !== c.s.access.request) return;
+  if (!access) {
+    c.s.access = { ...c.s.access, kind: "unavailable" };
     return;
   }
   c.s.access = { kind: "available", request, token: access.token, panel: true, copied: false };
@@ -985,6 +987,9 @@ function handle(c: Ctx, event: Event) {
       return focus(c, "payButton");
     case "bankRequested":
       return openBank(c);
+    case "accessRetryRequested":
+      if (c.s.access.kind === "unavailable") showAccess(c, c.s.payment);
+      return;
     case "accessCopyRequested":
       if (c.s.access.kind === "available")
         c.fx.push({ type: "copyAccessLink", token: c.s.access.token });

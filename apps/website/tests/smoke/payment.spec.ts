@@ -62,15 +62,15 @@ async function acceptTerms(page: Page, email: string) {
 
 const outcome = (page: Page) => page.locator("[data-outcome]");
 
-const confirmation = (page: Page) => page.locator("[data-summary]");
+const confirmation = outcome;
 
 async function expectConfirmed(page: Page, lang = "") {
-  await expect(page).toHaveURL(new RegExp(`${lang}/reservar/resumen/#[\\w-]{43}$`));
+  await expect(page).toHaveURL(new RegExp(`${lang}/reservar/revisar/\\?`));
   await expect(
     page.getByRole("heading", {
       name: lang ? "Your reservation is confirmed" : "Su reserva está confirmada",
     }),
-  ).toBeFocused();
+  ).toBeVisible();
 }
 
 async function serverPayment(page: Page, request: APIRequestContext) {
@@ -151,7 +151,7 @@ test("the complete English Non-refundable journey sends its saved confirmation a
   await page.getByRole("button", { name: "Copy link" }).click();
   await expect(page.getByText("Link copied")).toBeVisible();
   const copied = new URL(await page.evaluate(() => navigator.clipboard.readText()));
-  expect(copied.href).toBe(page.url());
+  expect(copied.href).toBe(await page.locator("[data-access-view]").getAttribute("href"));
 
   const login = await request.post(`${LOCAL_API_URL}/login`, {
     headers: { origin: "https://app.hotelmanantialchurin.com" },
@@ -262,6 +262,59 @@ test("paying the accepted Flexible quote confirms it with the paid amount and th
   await page.reload();
   await expectConfirmed(page);
   await expect(page.getByRole("button", { name: /^Pagar/ })).toHaveCount(0);
+});
+
+test("confirmation survives unavailable access, reload and manual retry without another charge", async ({
+  page,
+}) => {
+  let reads = 0;
+  let charges = 0;
+  let available = false;
+  let release: (() => void) | undefined;
+  page.on("request", (request) => {
+    if (request.url().endsWith("/public/checkout/payments") && request.method() === "POST")
+      charges++;
+  });
+  await page.route(`${LOCAL_API_URL}/public/checkout/access`, async (route) => {
+    reads++;
+    if (!available) return route.fulfill({ status: 503, body: "{}" });
+    await new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    await route.continue();
+  });
+  await fillCheckout(page, "flexible", payerEmail());
+  await payButton(page, "100.00").click();
+  await expectConfirmed(page);
+  await expect(page.locator("[data-outcome-title]")).toBeFocused();
+  const reference = (await confirmation(page).innerText()).match(/Referencia\s*([A-Z0-9]{6})/)?.[1];
+  expect(reference).toBeTruthy();
+  await expect(confirmation(page)).toContainText(/Pagado\s*S\/\s100\.00/);
+  await expect(confirmation(page)).toContainText(/Saldo pendiente\s*S\/\s100\.00/);
+  await expect(page.locator("[data-stay=room]")).toHaveText("Suite Matrimonial");
+  await expect(page.locator("[data-reservation-call]")).toBeVisible();
+  await expect(page.locator("[data-reservation-help]")).toBeVisible();
+  const retry = page.locator("[data-access-retry]");
+  await expect(retry).toBeVisible();
+  await page.evaluate(() => window.dispatchEvent(new Event("online")));
+  await expect(retry).toBeVisible();
+  expect(reads).toBe(1);
+  expect(await page.evaluate(() => sessionStorage.getItem("hm.reservation.contact"))).toBeNull();
+  await page.reload();
+  await expectConfirmed(page);
+  await expect(confirmation(page)).toContainText(reference!);
+  await expect(retry).toBeVisible();
+  expect(reads).toBe(2);
+  available = true;
+  await retry.click();
+  await expect(page.locator("[data-access-status]")).toContainText("Cargando");
+  await expect(retry).toHaveCount(0);
+  await expect.poll(() => release !== undefined).toBe(true);
+  release!();
+  await expect(page.locator("[data-access-view]")).toBeVisible();
+  await expect(page).toHaveURL(/\/reservar\/revisar\/\?/);
+  expect(reads).toBe(3);
+  expect(charges).toBe(1);
 });
 
 test("paying before the security check finishes shows progress, waits for it, and then pays", async ({
@@ -657,7 +710,10 @@ test("a saved reservation link can be copied and opened without putting the toke
   expect(copied.hash).toMatch(/^#[\w-]{43}$/);
   const token = copied.hash.slice(1);
   expect(copied.href.replace(copied.hash, "")).not.toContain(token);
-  expect(page.url()).toBe(copied.href);
+  expect(await page.locator("[data-access-view]").getAttribute("href")).toBe(copied.href);
+  await page.locator("[data-access-view]").click();
+  await expect(page).toHaveURL(copied.href);
+  await expect(page.getByRole("heading", { name: "Resumen de la reserva" })).toBeVisible();
 
   const fresh = await browser.newContext();
   const summary = await fresh.newPage();

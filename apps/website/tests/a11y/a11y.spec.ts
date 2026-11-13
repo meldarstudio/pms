@@ -201,7 +201,43 @@ test(`a11y: /reservar/revisar/ with money received but unconfirmed`, async ({ pa
   await runAxe(page, `/reservar/revisar/ (unfulfilled)`);
 });
 
-test(`a11y: /reservar/resumen/ reopened and just confirmed`, async ({ page }) => {
+test("a11y: confirmed Review with unavailable and available access", async ({ page }) => {
+  await stubPaymentScripts(page);
+  await useOwnSourceIp(page, test.info().workerIndex);
+  await page.route(`${LOCAL_API_URL}/public/checkout/payment`, (route) =>
+    route.fulfill({
+      json: {
+        payment: {
+          attemptId: "confirmed-attempt",
+          state: "confirmed",
+          amountCents: 10000,
+          currency: "PEN",
+          delayed: false,
+          reservation: {
+            code: "AB12CD",
+            paidCents: 10000,
+            outstandingCents: 10000,
+            refundDueCents: 0,
+          },
+        },
+      },
+    }),
+  );
+  let available = false;
+  await page.route(`${LOCAL_API_URL}/public/checkout/access`, (route) =>
+    route.fulfill({ json: available ? { token: "a".repeat(43), expiresOn: "2027-12-01" } : {} }),
+  );
+  const params = new URLSearchParams({ ...openStay(), adults: "2", children: "0" });
+  await page.goto(`/reservar/revisar/?${params.toString()}&room=king&plan=flexible`);
+  await expect(page.locator("[data-access-retry]")).toBeVisible();
+  await runAxe(page, "Review (confirmed, link unavailable)");
+  available = true;
+  await page.locator("[data-access-retry]").click();
+  await expect(page.locator("[data-access-view]")).toBeVisible();
+  await runAxe(page, "Review (confirmed, link available)");
+});
+
+test(`a11y: /reservar/resumen/ ordinary summary`, async ({ page }) => {
   const stay = openStay();
   await page.route(`${LOCAL_API_URL}/public/reservation`, (route) =>
     route.fulfill({
@@ -240,9 +276,4 @@ test(`a11y: /reservar/resumen/ reopened and just confirmed`, async ({ page }) =>
   await expect(page.getByText("AB12CD")).toBeVisible();
   await expect(page.getByRole("heading", { name: title })).toHaveCount(0);
   await runAxe(page, `/reservar/resumen/`);
-
-  await page.evaluate(() => sessionStorage.setItem("hm.reservation.confirmed", '"AB12CD"'));
-  await page.reload();
-  await expect(page.getByRole("heading", { name: title })).toBeFocused();
-  await runAxe(page, `/reservar/resumen/ (just confirmed)`);
 });

@@ -67,6 +67,7 @@ export default function Review({
     ? `${chooseHref}?${searchParams(search, { withChoice: false })}`
     : chooseHref;
   const { view } = state;
+  const confirmed = state.payment?.state === "confirmed";
   const whatsappLink =
     view && room
       ? (() => {
@@ -86,19 +87,20 @@ export default function Review({
 
   return (
     <ReviewContext value={context}>
-      <div className="md:mt-2">
+      <div className="md:mt-2" data-confirmed={confirmed}>
         <a
           href={ratesHref}
           className="font-source-sans-3 hover:text-accent-800 inline-flex min-h-11 items-center gap-2 text-xs font-medium tracking-widest text-stone-900 uppercase"
+          hidden={confirmed}
           data-back-to-rates
         >
           <ArrowLeftIcon aria-hidden="true" className="size-4 shrink-0" />
           {say("reservation.review.backToRates")}
         </a>
         <h1 className="mt-1 text-2xl font-semibold text-pretty text-stone-900 md:text-3xl">
-          {say("reservation.review.title")}
+          {say(confirmed ? "reservation.access.complete" : "reservation.review.title")}
         </h1>
-        <p className="mt-2 max-w-xl leading-relaxed text-stone-600">
+        <p hidden={confirmed} className="mt-2 max-w-xl leading-relaxed text-stone-600">
           {say(payments ? "reservation.review.lead" : "reservation.review.unavailableLead")}
         </p>
         <p
@@ -120,7 +122,13 @@ export default function Review({
           data-review
           hidden={!state.reviewShown}
         >
-          <ReviewSummary view={view} room={room} ratesHref={ratesHref} choiceHref={choiceHref} />
+          <ReviewSummary
+            view={view}
+            room={room}
+            ratesHref={ratesHref}
+            choiceHref={choiceHref}
+            completed={confirmed}
+          />
           <div
             className="min-w-0 border border-stone-200 bg-white lg:col-start-1 lg:row-start-1"
             data-workflow
@@ -158,6 +166,8 @@ export default function Review({
               onBank={() => dispatch({ type: "bankRequested" })}
               onCheck={() => dispatch({ type: "statusCheckRequested" })}
               onCopy={() => dispatch({ type: "accessCopyRequested" })}
+              onAccessRetry={() => dispatch({ type: "accessRetryRequested" })}
+              summaryHref={summaryHref}
             />
           </div>
         </div>

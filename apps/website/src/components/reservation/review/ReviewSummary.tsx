@@ -15,11 +15,13 @@ export function ReviewSummary({
   room,
   ratesHref,
   choiceHref,
+  completed,
 }: {
   view: CheckoutView | null;
   room: ReviewRoom | null;
   ratesHref: string;
   choiceHref: string;
+  completed: boolean;
 }) {
   const { say, lang } = useReview();
   const stay = view ? stayLabels(view, say, lang) : null;
@@ -109,7 +111,10 @@ export function ReviewSummary({
           </div>
         </dl>
       </div>
-      <div className="mt-3 flex flex-wrap gap-x-4 border-t border-stone-200 pt-2 lg:mt-5">
+      <div
+        hidden={completed}
+        className="mt-3 flex flex-wrap gap-x-4 border-t border-stone-200 pt-2 lg:mt-5"
+      >
         <a href={ratesHref} className={quietLink} data-back-to-rates>
           {say("reservation.review.changeRate")}
         </a>

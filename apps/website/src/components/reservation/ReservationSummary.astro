@@ -50,9 +50,6 @@ const link =
         >
           {t("reservation.summary.title")}
         </h1>
-        <p class="mt-4 text-lg leading-relaxed text-stone-700" data-confirmed-lead hidden>
-          {t("reservation.outcome.confirmed.body")}
-        </p>
         <p class="mt-4 leading-relaxed text-stone-700">{t("reservation.summary.possession")}</p>
         <button type="button" class={`mt-4 ${secondary}`} data-copy-link>
           {t("reservation.summary.copy")}
@@ -118,7 +115,6 @@ const link =
 <script>
   import type { Lang } from "@/i18n/utils";
   import { fill, formatDate, formatMoney } from "@/lib/reservation/format";
-  import { isJustConfirmed } from "@/lib/reservation/draft";
   import { readReservationSummary, type GuestReservationSummary } from "@/lib/reservation/summary";
   import { cancellationNodes } from "@/lib/reservation/terms";
 
@@ -169,21 +165,6 @@ const link =
       if (!summary) this.clearPrivate();
       this.show(summary);
       if (summary) this.render(summary);
-      this.greet(summary);
-    }
-
-    private greet(summary: GuestReservationSummary | null) {
-      const confirmed = Boolean(
-        summary && summary.status === "confirmed" && isJustConfirmed(summary.code),
-      );
-      const title = this.querySelector<HTMLElement>("[data-summary-title]");
-      const lead = this.querySelector<HTMLElement>("[data-confirmed-lead]");
-      if (title)
-        title.textContent = this.text(
-          confirmed ? "reservation.outcome.confirmed.title" : "reservation.summary.title",
-        );
-      if (lead) lead.hidden = !confirmed;
-      if (confirmed) title?.focus();
     }
 
     private show(summary: GuestReservationSummary | null) {
