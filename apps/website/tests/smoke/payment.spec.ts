@@ -24,6 +24,7 @@ import {
   stubPaymentScripts,
   useOwnSourceIp,
 } from "../support/payment";
+import { reservationSummary, summaryToken } from "../support/summary";
 import { selectRoomRate } from "../support/room-rate";
 
 declare global {
@@ -799,4 +800,167 @@ test("an invalid reservation link shows hotel assistance and no reservation deta
   await expect(page.locator("[data-assistance]").getByText(/992\s*755\s*015/)).toBeVisible();
   await expect(page.locator("[data-summary]")).toBeHidden();
   await expect(page.getByText(/Referencia\s*[A-Z0-9]{6}/)).toHaveCount(0);
+});
+
+for (const failure of ["network", "server", "throttled", "unreadable", "incomplete"] as const) {
+  test(`a ${failure} summary failure recovers manually without declaring the link invalid`, async ({
+    page,
+  }) => {
+    let reads = 0;
+    await page.route(`${LOCAL_API_URL}/public/reservation`, async (route) => {
+      reads++;
+      expect(route.request().headers().authorization).toBe(`Bearer ${summaryToken}`);
+      expect(route.request().headers().referer).toBeUndefined();
+      if (reads > 1) return route.fulfill({ json: reservationSummary() });
+      if (failure === "network") return route.abort();
+      if (failure === "unreadable")
+        return route.fulfill({ body: "{", contentType: "application/json" });
+      if (failure === "incomplete")
+        return route.fulfill({
+          json: {
+            code: "PRIVATE",
+            status: "confirmed",
+            currency: "PEN",
+            paidCents: 0,
+            rooms: [null],
+          },
+        });
+      return route.fulfill({ status: failure === "server" ? 503 : 429, json: {} });
+    });
+    await page.goto(`/en/reservar/resumen/#${summaryToken}`);
+    await expect(
+      page.getByRole("heading", { name: "The reservation summary could not be loaded" }),
+    ).toBeVisible();
+    await expect(page.getByRole("status")).toContainText(
+      "We could not load your reservation right now",
+    );
+    await expect(
+      page.getByText("This link is invalid or has expired", { exact: false }),
+    ).toHaveCount(0);
+    await expect(page.locator("[data-assistance] a")).toHaveCount(3);
+    for (const href of await page
+      .locator("[data-assistance] a")
+      .evaluateAll((links) => links.map((link) => link.getAttribute("href")))) {
+      expect(href).not.toContain(summaryToken);
+    }
+    expect(reads).toBe(1);
+    const retry = page.getByRole("button", { name: "Try again" });
+    await retry.focus();
+    await page.keyboard.press("Enter");
+    await expect(
+      page.getByRole("heading", { name: "Reservation summary", exact: true }),
+    ).toBeVisible();
+    await expect(page.getByText("AB12CD")).toBeVisible();
+    expect(reads).toBe(2);
+  });
+}
+
+test("a summary refresh failure clears private details and recovers when the connection returns", async ({
+  page,
+}) => {
+  let reads = 0;
+  await page.route(`${LOCAL_API_URL}/public/reservation`, (route) => {
+    reads++;
+    return reads === 2
+      ? route.fulfill({ status: 503, json: {} })
+      : route.fulfill({ json: reservationSummary() });
+  });
+  await page.goto(`/reservar/resumen/#${summaryToken}`);
+  await expect(page.getByText("AB12CD")).toBeVisible();
+  expect(reads).toBe(1);
+  await page.goto("/habitaciones/");
+  await page.goBack();
+  await expect(
+    page.getByRole("heading", { name: "No se pudo cargar el resumen de la reserva" }),
+  ).toBeVisible();
+  await expect(page.getByRole("status")).toContainText("No pudimos");
+  await expect(page.getByText("AB12CD")).toHaveCount(0);
+  await expect(page.getByText("Ana Torres")).toHaveCount(0);
+  expect(reads).toBe(2);
+  await page.evaluate(() => window.dispatchEvent(new Event("online")));
+  await expect(
+    page.getByRole("heading", { name: "Resumen de la reserva", exact: true }),
+  ).toBeVisible();
+  expect(reads).toBe(3);
+});
+
+test("a cached page restore clears details on failure and reports that refresh failed", async ({
+  page,
+}) => {
+  let available = true;
+  await page.route(`${LOCAL_API_URL}/public/reservation`, (route) =>
+    available
+      ? route.fulfill({ json: reservationSummary() })
+      : route.fulfill({ status: 503, json: {} }),
+  );
+  await page.goto(`/en/reservar/resumen/#${summaryToken}`);
+  await expect(page.getByText("AB12CD")).toBeVisible();
+  available = false;
+  await page.evaluate(() =>
+    window.dispatchEvent(new PageTransitionEvent("pageshow", { persisted: true })),
+  );
+  await expect(page.getByRole("status")).toContainText(
+    "We could not refresh your reservation summary",
+  );
+  await expect(page.getByText("AB12CD")).toHaveCount(0);
+  await expect(page.getByText("Ana Torres")).toHaveCount(0);
+});
+
+test("token changes discard delayed private answers, including a return to the original token", async ({
+  page,
+}) => {
+  let release!: () => void;
+  const delayed = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  let reads = 0;
+  await page.route(`${LOCAL_API_URL}/public/reservation`, async (route) => {
+    reads++;
+    if (reads === 1) {
+      await delayed;
+      await route.fulfill({ json: { ...reservationSummary(), code: "STALE" } });
+    } else if (route.request().headers().authorization === `Bearer ${"b".repeat(43)}`) {
+      await route.fulfill({ status: 401, json: {} });
+    } else {
+      await route.fulfill({ json: reservationSummary() });
+    }
+  });
+  await page.goto(`/en/reservar/resumen/#${summaryToken}`);
+  await expect.poll(() => reads).toBe(1);
+  await page.evaluate(() => {
+    location.hash = "b".repeat(43);
+  });
+  await expect(
+    page.getByRole("heading", { name: "The hotel can help with this reservation" }),
+  ).toBeVisible();
+  await expect(page.getByRole("button", { name: "Try again" })).toBeHidden();
+  await page.evaluate((token) => {
+    location.hash = token;
+  }, summaryToken);
+  await expect(page.getByText("AB12CD")).toBeVisible();
+  const staleResponse = page.waitForResponse(
+    async (response) =>
+      response.url() === `${LOCAL_API_URL}/public/reservation` &&
+      response.status() === 200 &&
+      (await response.json()).code === "STALE",
+  );
+  release();
+  await staleResponse;
+  await page.evaluate(
+    () =>
+      new Promise<void>((resolve) =>
+        requestAnimationFrame(() => requestAnimationFrame(() => resolve())),
+      ),
+  );
+  await expect(page.getByText("AB12CD")).toBeVisible();
+  await expect(page.getByText("STALE")).toHaveCount(0);
+  await page.evaluate(() => {
+    location.hash = "malformed";
+  });
+  await expect(
+    page.getByRole("heading", { name: "The hotel can help with this reservation" }),
+  ).toBeVisible();
+  await expect(page.getByText("AB12CD")).toHaveCount(0);
+  await page.evaluate(() => window.dispatchEvent(new Event("online")));
+  expect(reads).toBe(3);
 });
