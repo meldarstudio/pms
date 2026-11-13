@@ -293,7 +293,7 @@ export const ui = {
     "reservation.choose.noOffers.title": "No room can be reserved online for this search",
     "reservation.choose.reason.sold_out": "{rooms}: sold out for these dates. Try other dates.",
     "reservation.choose.reason.too_many_guests":
-      "{rooms}: not enough room for your group. Change the number of guests; online reservations are for one room.",
+      "{rooms}: not enough room for your group. Each online reservation is for one room: search with fewer guests and reserve each room separately.",
     "reservation.choose.reason.offline":
       "{rooms}: not bookable online. Message us on WhatsApp to book.",
     "reservation.meta.reviewTitle": "Review your reservation | Hotel Manantial",
@@ -790,7 +790,7 @@ export const ui = {
     "reservation.choose.reason.sold_out":
       "{rooms}: sin disponibilidad para estas fechas. Pruebe otras fechas.",
     "reservation.choose.reason.too_many_guests":
-      "{rooms}: sin capacidad para su grupo. Cambie el número de huéspedes; las reservas en línea son para una habitación.",
+      "{rooms}: sin capacidad para su grupo. Cada reserva en línea es para una habitación: busque con menos huéspedes y reserve cada habitación por separado.",
     "reservation.choose.reason.offline":
       "{rooms}: sin reserva en línea. Escríbanos por WhatsApp para reservar.",
     "reservation.meta.reviewTitle": "Revise su reserva | Hotel Manantial",

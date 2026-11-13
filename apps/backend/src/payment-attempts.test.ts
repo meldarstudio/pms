@@ -357,6 +357,16 @@ describe("payment attempts", () => {
     });
   });
 
+  it("confirms a second room for dates the same guest already holds", async () => {
+    seedRooms(db.sqlite, "type", { "room-102": "102" });
+    await pay(await quote());
+    vi.advanceTimersByTime(60_000);
+
+    const second = await pay(await quote());
+
+    expect(second).toMatchObject({ status: "saved", reservation: { status: "confirmed" } });
+  });
+
   it("saves a charge found after check-in has passed as Unfulfilled", async () => {
     culqi.next("POST /charges", "lose");
     const lost = await pay(await quote({ checkIn: "2026-10-11", checkOut: "2026-10-13" }));

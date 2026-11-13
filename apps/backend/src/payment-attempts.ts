@@ -1,5 +1,5 @@
 import type { PaymentAttemptCreate, PaymentAuthentication } from "@pms/shared";
-import { and, desc, eq, gt, inArray, isNull, lt, lte, ne, or, sql } from "drizzle-orm";
+import { and, desc, eq, gt, gte, inArray, isNull, lt, lte, ne, or, sql } from "drizzle-orm";
 import {
   culqiForEnv,
   isSuccessfulCharge,
@@ -357,7 +357,7 @@ async function fulfill(db: Db, attempt: Attempt, context: PaymentContext): Promi
     paymentDate: propertyCalendar(context.timeZone, new Date(attempt.calledAt)).today,
     culqiChargeId: attempt.culqiChargeId,
   };
-  const unfulfilled = quote.checkIn < today || (await rebooked(db, quote, attempt.email));
+  const unfulfilled = quote.checkIn < today || (await rebookedSince(db, quote, attempt));
   const saved = {
     payment,
     publicCheckoutId: attempt.checkoutId,
@@ -413,7 +413,7 @@ function confirmationProvenance(attempt: Attempt): ConfirmationProvenance | null
   };
 }
 
-async function rebooked(db: Db, quote: Quote, email: string) {
+async function rebookedSince(db: Db, quote: Quote, attempt: Pick<Attempt, "email" | "calledAt">) {
   const [row] = await db
     .select({ id: reservations.id })
     .from(reservations)
@@ -425,7 +425,8 @@ async function rebooked(db: Db, quote: Quote, email: string) {
         inArray(reservations.status, inventoryStatuses),
         lt(reservations.checkIn, quote.checkOut),
         gt(reservations.checkOut, quote.checkIn),
-        eq(sql`lower(${guests.email})`, email.toLowerCase()),
+        gte(reservations.createdAt, attempt.calledAt),
+        eq(sql`lower(${guests.email})`, attempt.email.toLowerCase()),
       ),
     )
     .limit(1);
