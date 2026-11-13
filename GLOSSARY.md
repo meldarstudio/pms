@@ -316,7 +316,7 @@ One queued message about a public reservation: the automatic confirmation, queue
 same save as a Confirmed reservation, or a resend that staff request for an explicit
 recipient. It is pending until the scheduled run sends it, then sent or failed. A transient
 provider error retries with the same idempotency key a few times before it fails; a refused
-message fails at once. Content is rendered when sent. A resend summarizes the reservation's
+message fails at once. Content is rendered at the first send and reused by its retries. A resend summarizes the reservation's
 current status, agreement and bill; it is not a new confirmation and does not extend access.
 Sent means the provider accepted it, not that it was delivered or read.
 _Avoid_: Delivery, notification, receipt

@@ -89,6 +89,8 @@ export function fakeResend() {
       if (scripted === "invalid")
         return json(409, { name: "invalid_idempotent_request", message: "payload changed" });
       const existing = emails.find((email) => email.key === key);
+      if (existing && existing.body !== body)
+        return json(409, { name: "invalid_idempotent_request", message: "payload changed" });
       if (scripted === "lose") {
         if (!existing) emails.push({ id: `email_${++sequence}`, key, body });
         throw new TypeError("Network connection lost.");

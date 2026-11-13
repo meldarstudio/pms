@@ -310,6 +310,7 @@ export const confirmationEmails = sqliteTable(
     nextAttemptAt: text("next_attempt_at"),
     providerMessageId: text("provider_message_id"),
     lastError: text("last_error"),
+    pendingRequest: text("pending_request"),
     requestedBy: text("requested_by").references(() => user.id),
     createdAt: text("created_at").notNull(),
     sentAt: text("sent_at"),

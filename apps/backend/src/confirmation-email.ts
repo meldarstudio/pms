@@ -270,6 +270,11 @@ function summaryRequest({
   };
   const status = statuses[state.reservation.status]?.[language];
   if (!status) throw new Error("unknown reservation status");
+  const terms = acceptedTerms(state.reservation);
+  const freeUntil = freeCancellationUntil(terms.cancellationPolicy, state.reservation.checkIn);
+  const charge = amount(
+    chargeableCents(terms.cancellationPolicy, state.lines, state.reservation.discountCents),
+  );
   const facts: ConfirmationEmailSection[] = [
     {
       title: language === "en" ? "Reservation status" : "Estado de la reserva",
@@ -285,7 +290,7 @@ function summaryRequest({
         checkIn: state.reservation.checkIn,
         checkOut: state.reservation.checkOut,
         room,
-        plan: PLAN_NAME[language][acceptedTerms(state.reservation).plan],
+        plan: PLAN_NAME[language][terms.plan],
       },
     },
     {
@@ -293,11 +298,11 @@ function summaryRequest({
         language === "en" ? "Accepted cancellation terms" : "Condiciones de cancelación aceptadas",
       lines: [
         language === "en"
-          ? `Accepted free-cancellation deadline: ${freeCancellationUntil(acceptedTerms(state.reservation).cancellationPolicy, state.reservation.checkIn) ?? "none"}`
-          : `Fecha límite de cancelación gratuita aceptada: ${freeCancellationUntil(acceptedTerms(state.reservation).cancellationPolicy, state.reservation.checkIn) ?? "ninguna"}`,
+          ? `Accepted free-cancellation deadline: ${freeUntil ?? "none"}`
+          : `Fecha límite de cancelación gratuita aceptada: ${freeUntil ?? "ninguna"}`,
         language === "en"
-          ? `Accepted policy charge: ${amount(chargeableCents(acceptedTerms(state.reservation).cancellationPolicy, state.lines, state.reservation.discountCents))}`
-          : `Cargo según la política aceptada: ${amount(chargeableCents(acceptedTerms(state.reservation).cancellationPolicy, state.lines, state.reservation.discountCents))}`,
+          ? `Accepted policy charge: ${charge}`
+          : `Cargo según la política aceptada: ${charge}`,
       ],
     },
     {

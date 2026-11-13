@@ -22,7 +22,7 @@ import { resendForEnv, type Resend, type ResendSendResult } from "./resend";
 const EMAILS_PER_RUN = 10;
 export const MAX_SEND_ATTEMPTS = 5;
 const RETRY_DELAYS_MS = [60_000, 5 * 60_000, 15 * 60_000, 60 * 60_000];
-const MAX_RETRY_AFTER_MS = 24 * 60 * 60_000;
+const MAX_RETRY_AFTER_MS = 60 * 60_000;
 
 type ConfirmationEmail = typeof confirmationEmails.$inferSelect;
 type SendEnv = Pick<
@@ -44,6 +44,7 @@ export function pendingConfirmationEmail(
     nextAttemptAt: now,
     providerMessageId: null,
     lastError: null,
+    pendingRequest: null,
     createdAt: now,
     sentAt: null,
   };
@@ -81,16 +82,41 @@ async function sendConfirmationEmail(
 ) {
   if (email.attempts >= MAX_SEND_ATTEMPTS)
     return settle(db, email, { status: "failed", lastError: email.lastError ?? "attempt_limit" });
+  const request = email.pendingRequest ?? (await firstRequest(db, email, env));
+  if (request === null) return;
+  const attempt = email.attempts + 1;
+  const [claimed] = await db
+    .update(confirmationEmails)
+    .set({ attempts: attempt, nextAttemptAt: retryAt(attempt, 0), pendingRequest: request })
+    .where(
+      and(
+        eq(confirmationEmails.id, email.id),
+        eq(confirmationEmails.status, "pending"),
+        eq(confirmationEmails.attempts, email.attempts),
+      ),
+    )
+    .returning();
+  if (!claimed) return;
+  const result = await resend.send({ idempotencyKey: email.id, body: request });
+  await settle(db, claimed, outcome(result, attempt));
+}
+
+async function firstRequest(db: Db, email: ConfirmationEmail, env: SendEnv) {
   const state = await loadReservation(db, email.reservationId);
-  if (email.kind === "automatic" && state.reservation.status !== "confirmed")
-    return settle(db, email, { status: "failed", lastError: "not_confirmed" });
+  if (email.kind === "automatic" && state.reservation.status !== "confirmed") {
+    await settle(db, email, { status: "failed", lastError: "not_confirmed" });
+    return null;
+  }
   const [access] = await db
     .select()
     .from(reservationAccess)
     .where(eq(reservationAccess.reservationId, email.reservationId));
-  if (!access) return settle(db, email, { status: "failed", lastError: "missing_access" });
+  if (!access) {
+    await settle(db, email, { status: "failed", lastError: "missing_access" });
+    return null;
+  }
   const { today } = propertyCalendar(env.PROPERTY_TIME_ZONE);
-  const body = JSON.stringify(
+  return JSON.stringify(
     confirmationMessage({
       state,
       kind: email.kind,
@@ -103,21 +129,6 @@ async function sendConfirmationEmail(
       today,
     }),
   );
-  const attempt = email.attempts + 1;
-  const [claimed] = await db
-    .update(confirmationEmails)
-    .set({ attempts: attempt, nextAttemptAt: retryAt(attempt, 0) })
-    .where(
-      and(
-        eq(confirmationEmails.id, email.id),
-        eq(confirmationEmails.status, "pending"),
-        eq(confirmationEmails.attempts, email.attempts),
-      ),
-    )
-    .returning();
-  if (!claimed) return;
-  const result = await resend.send({ idempotencyKey: email.id, body });
-  await settle(db, claimed, outcome(result, attempt));
 }
 
 function outcome(
@@ -154,7 +165,11 @@ async function settle(
 ) {
   await db
     .update(confirmationEmails)
-    .set(change.status === "pending" ? change : { nextAttemptAt: null, ...change })
+    .set(
+      change.status === "pending"
+        ? change
+        : { nextAttemptAt: null, pendingRequest: null, ...change },
+    )
     .where(
       and(
         eq(confirmationEmails.id, email.id),

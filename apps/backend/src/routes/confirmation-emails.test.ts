@@ -363,6 +363,37 @@ describe("automatic confirmation", () => {
     });
   });
 
+  it("resends the first request after a lost response, even when the reservation changed meanwhile", async () => {
+    const { saved } = await confirmed();
+    configureResend();
+    await admitEmail(true);
+    resend.next("lose");
+    await runScheduled();
+    await command(saved.id, [{ type: "set-discount", amountCents: 5000 }]);
+
+    vi.advanceTimersByTime(MINUTE);
+    await runScheduled();
+
+    expect(posts()).toHaveLength(2);
+    expect(posts()[1]!.body).toBe(posts()[0]!.body);
+    expect(resend.emails).toHaveLength(1);
+    expect(emails()[0]).toMatchObject({ status: "sent", provider_message_id: "email_1" });
+    expect(rows("SELECT pending_request FROM confirmation_emails")).toEqual([
+      { pending_request: null },
+    ]);
+  });
+
+  it("posts once when two scheduled runs overlap", async () => {
+    await confirmed();
+    configureResend();
+    await admitEmail(true);
+
+    await Promise.all([runScheduled(), runScheduled()]);
+
+    expect(posts()).toHaveLength(1);
+    expect(emails()[0]).toMatchObject({ status: "sent", attempts: 1 });
+  });
+
   it("fails at once when Resend refuses the message", async () => {
     await confirmed();
     configureResend();

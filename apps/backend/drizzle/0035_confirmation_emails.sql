@@ -9,6 +9,7 @@ CREATE TABLE `confirmation_emails` (
 	`next_attempt_at` text,
 	`provider_message_id` text,
 	`last_error` text,
+	`pending_request` text,
 	`requested_by` text,
 	`created_at` text NOT NULL,
 	`sent_at` text,

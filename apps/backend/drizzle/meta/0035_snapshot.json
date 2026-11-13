@@ -1,7 +1,7 @@
 {
   "version": "6",
   "dialect": "sqlite",
-  "id": "55e31287-7ddd-47b5-a9db-4d59d9fb54e2",
+  "id": "42a220b4-229b-4cca-a952-fcc7c20096f4",
   "prevId": "b3e8c175-2a2f-4317-bc22-53d5a4493807",
   "tables": {
     "account": {
@@ -397,6 +397,13 @@
         },
         "last_error": {
           "name": "last_error",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "pending_request": {
+          "name": "pending_request",
           "type": "text",
           "primaryKey": false,
           "notNull": false,
