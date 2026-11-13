@@ -18,7 +18,7 @@ afterEach(() => {
   vi.useRealTimers();
 });
 
-it("preserves populated pre-public money and receipts, the signed-in session and legacy scheduled recovery through the complete upgrade", async () => {
+it("preserves populated pre-public money and receipts, the signed-in session and settled legacy attempts through the complete upgrade", async () => {
   vi.useFakeTimers();
   vi.setSystemTime(new Date("2026-10-10T15:00:00Z"));
   db = await createTestDb({ migrateThrough: "0017_contact_nationality" });
@@ -64,10 +64,10 @@ it("preserves populated pre-public money and receipts, the signed-in session and
         '[{"date":"2026-10-20","priceCents":9000,"adjustmentCents":1000,"discountCents":0},{"date":"2026-10-21","priceCents":9000,"adjustmentCents":1000,"discountCents":0}]',
         '{"plan":"non_refundable","cancellationPolicy":{"chargeBasis":"full_stay","freeUntilDaysBeforeCheckIn":null},"paymentSchedule":"full_upfront","priceAdjustmentPercent":-10}',
         '2026-10-10T14:59:00.000Z', '2026-10-10T15:09:00.000Z');
-    INSERT INTO payment_attempts (id, quote_id, amount_cents, currency, email, guest, source_id, status, created_at, called_at)
+    INSERT INTO payment_attempts (id, quote_id, amount_cents, currency, email, guest, source_id, status, created_at, called_at, failure_code)
       VALUES ('old-attempt', 'old-quote', 18000, 'PEN', 'legacy@example.com',
         '{"fullName":"Legacy contact","email":"legacy@example.com","phone":"+51987654321"}',
-        'tkn_test_old', 'unknown', '2026-10-10T15:00:00.000Z', '2026-10-10T15:00:00.000Z');
+        'tkn_test_old', 'failed', '2026-10-10T15:00:00.000Z', '2026-10-10T15:00:00.000Z', 'card_declined');
   `);
   const command = { requestId: crypto.randomUUID(), actions: [{ type: "notes", notes: "kept" }] };
   db.sqlite
@@ -135,18 +135,6 @@ it("preserves populated pre-public money and receipts, the signed-in session and
 
   const culqi = fakeCulqi();
   const resend = fakeResend();
-  culqi.charges.push({
-    object: "charge",
-    id: "chr_test_old",
-    amount: 18000,
-    currency_code: "PEN",
-    email: "legacy@example.com",
-    source_id: "tkn_test_old",
-    creation_date: Date.now(),
-    outcome: { type: "venta_exitosa", code: "AUT0000" },
-    metadata: { attempt_id: "old-attempt" },
-    amount_refunded: 0,
-  });
   db.env.CULQI_SECRET_KEY = CULQI_TEST_KEY;
   db.env.RESEND_API_KEY = RESEND_TEST_KEY;
   db.env.RESEND_API_URL = RESEND_LOOPBACK;
@@ -170,38 +158,27 @@ it("preserves populated pre-public money and receipts, the signed-in session and
     } as unknown as ExecutionContext);
     await Promise.all(tasks);
   }
-  const attempt = db.sqlite
-    .prepare(
-      "SELECT status, reservation_id, checkout_id, confirmation_email_eligible FROM payment_attempts WHERE id = 'old-attempt'",
-    )
-    .get() as { reservation_id: string };
-  expect(attempt).toMatchObject({
-    status: "saved",
+  expect(
+    db.sqlite
+      .prepare(
+        "SELECT status, reservation_id, checkout_id, confirmation_email_eligible FROM payment_attempts WHERE id = 'old-attempt'",
+      )
+      .get(),
+  ).toEqual({
+    status: "failed",
+    reservation_id: null,
     checkout_id: null,
     confirmation_email_eligible: 0,
   });
-  expect(await (await db.request(`/reservations/${attempt.reservation_id}`)).json()).toMatchObject({
-    status: "confirmed",
-    totalCents: 18000,
-    paidCents: 18000,
-    balanceCents: 0,
-    ratePlan: { plan: "non_refundable" },
-  });
-  expect((await db.request(`/reservations/${attempt.reservation_id}/access`)).status).toBe(404);
-  expect((await db.request(`/reservations/${attempt.reservation_id}/confirmation`)).status).toBe(
-    404,
-  );
+  expect(
+    db.sqlite.prepare("SELECT count(*) AS n FROM reservations WHERE quote_id = 'old-quote'").get(),
+  ).toEqual({ n: 0 });
   expect(db.sqlite.prepare("SELECT count(*) AS n FROM reservation_access").get()).toEqual({ n: 0 });
-  expect(db.sqlite.prepare("SELECT count(*) AS n FROM confirmation_intents").get()).toEqual({
+  expect(db.sqlite.prepare("SELECT count(*) AS n FROM confirmation_emails").get()).toEqual({
     n: 0,
   });
   expect(resend.requests).toEqual([]);
-  expect(culqi.requests.every((request) => request.method === "GET")).toBe(true);
-  expect(
-    db.sqlite
-      .prepare("SELECT count(*) AS n FROM payments WHERE culqi_charge_id = 'chr_test_old'")
-      .get(),
-  ).toEqual({ n: 1 });
+  expect(culqi.requests).toEqual([]);
   const staffCreate = {
     requestId: crypto.randomUUID(),
     checkIn: "2026-10-10",

@@ -1,4 +1,8 @@
 import logo from "./confirmation-email-logo.json";
+import { chargeableCents, freeCancellationUntil } from "./lib/cancellation";
+import { acceptedTerms, type RatePlanCode } from "./lib/rate-plans";
+import { reservationBill } from "./lib/reservation-bill";
+import type { State } from "./reservation-read";
 
 export const confirmationEmailAttachments = [logo];
 
@@ -145,4 +149,288 @@ function escapeHtml(value: string) {
     .replaceAll("<", "&lt;")
     .replaceAll(">", "&gt;")
     .replaceAll('"', "&quot;");
+}
+
+const FROM = "Hotel Manantial <reservas@notificaciones.hotelmanantialchurin.com>";
+const REPLY_TO = "hotelmanantialchurinperu@gmail.com";
+const PHONE = "+51 992 755 015";
+const SITE = "https://www.hotelmanantialchurin.com";
+
+const PLAN_NAME: Record<"es" | "en", Record<RatePlanCode, string>> = {
+  es: { flexible: "Flexible", non_refundable: "No reembolsable" },
+  en: { flexible: "Flexible", non_refundable: "Non-refundable" },
+};
+
+export type ConfirmationMessageInput = {
+  state: State;
+  kind: "automatic" | "resend";
+  recipient: string;
+  language: "es" | "en";
+  room: string;
+  currency: string;
+  token: string | null;
+  expiresOn: string;
+  today: string;
+};
+
+export function confirmationMessage(input: ConfirmationMessageInput) {
+  return input.kind === "resend" ? summaryRequest(input) : confirmationRequest(input);
+}
+
+function confirmationRequest({
+  state,
+  language,
+  currency,
+  room,
+  recipient,
+  token,
+  expiresOn,
+}: ConfirmationMessageInput) {
+  const bill = reservationBill(state);
+  const terms = acceptedTerms(state.reservation);
+  const facts = messageFacts({
+    currency,
+    language,
+    checkIn: state.reservation.checkIn,
+    checkOut: state.reservation.checkOut,
+    room,
+    plan: PLAN_NAME[language][terms.plan],
+    freeUntil: freeCancellationUntil(terms.cancellationPolicy, state.reservation.checkIn),
+    chargeCents: chargeableCents(
+      terms.cancellationPolicy,
+      state.lines,
+      state.reservation.discountCents,
+    ),
+    totalCents: bill.totalCents,
+    paidCents: bill.paidCents,
+    outstandingCents: Math.max(0, bill.balanceCents),
+  });
+  return emailRequest({
+    recipient,
+    token,
+    expiresOn,
+    language,
+    code: state.reservation.code,
+    sections: facts,
+  });
+}
+
+function emailRequest(input: {
+  recipient: string;
+  language: "es" | "en";
+  code: string;
+  sections: ConfirmationEmailSection[];
+  token: string | null;
+  expiresOn: string;
+  kind?: "confirmation" | "summary";
+}) {
+  const { language, code, sections } = input;
+  const kind = input.kind ?? "confirmation";
+  const link = input.token ? summaryLink(language, input.token) : null;
+  const assistance =
+    language === "en"
+      ? `Online access expired on ${input.expiresOn}. Contact the hotel for assistance.`
+      : `El acceso en línea venció el ${input.expiresOn}. Contacta al hotel para obtener asistencia.`;
+  return {
+    from: FROM,
+    to: [input.recipient],
+    reply_to: REPLY_TO,
+    subject:
+      language === "en" ? `Reservation confirmation ${code}` : `Confirmación de reserva ${code}`,
+    html: renderConfirmationEmail({ language, code, kind, sections, link, assistance }),
+    text: [
+      language === "en" ? `Reference: ${code}` : `Reserva: ${code}`,
+      ...sections.flatMap((section) => confirmationEmailText(section, language)),
+      link ?? assistance,
+    ].join("\n"),
+    attachments: confirmationEmailAttachments,
+    tags: [{ name: "category", value: "confirmation" }],
+  };
+}
+
+function summaryRequest({
+  state,
+  language,
+  currency,
+  room,
+  today,
+  recipient,
+  token,
+  expiresOn,
+}: ConfirmationMessageInput) {
+  const bill = reservationBill(state);
+  const amount = (cents: number) => money(cents, currency);
+  const statuses: Record<string, { en: string; es: string }> = {
+    confirmed: { en: "Confirmed", es: "Confirmada" },
+    checked_in: { en: "Checked in", es: "Hospedada" },
+    checked_out: { en: "Checked out", es: "Finalizada" },
+    cancelled: { en: "Cancelled", es: "Cancelada" },
+    no_show: { en: "No-show", es: "No se presentó" },
+    unfulfilled: { en: "Unfulfilled — not confirmed", es: "Sin disponibilidad — no confirmada" },
+  };
+  const status = statuses[state.reservation.status]?.[language];
+  if (!status) throw new Error("unknown reservation status");
+  const terms = acceptedTerms(state.reservation);
+  const freeUntil = freeCancellationUntil(terms.cancellationPolicy, state.reservation.checkIn);
+  const charge = amount(
+    chargeableCents(terms.cancellationPolicy, state.lines, state.reservation.discountCents),
+  );
+  const facts: ConfirmationEmailSection[] = [
+    {
+      title: language === "en" ? "Reservation status" : "Estado de la reserva",
+      lines: [
+        language === "en"
+          ? `Summary as of ${today}. This is not a new confirmation.`
+          : `Resumen al ${today}. No es una nueva confirmación.`,
+        language === "en" ? `Status: ${status}` : `Estado: ${status}`,
+      ],
+    },
+    {
+      stay: {
+        checkIn: state.reservation.checkIn,
+        checkOut: state.reservation.checkOut,
+        room,
+        plan: PLAN_NAME[language][terms.plan],
+      },
+    },
+    {
+      title:
+        language === "en" ? "Accepted cancellation terms" : "Condiciones de cancelación aceptadas",
+      lines: [
+        language === "en"
+          ? `Accepted free-cancellation deadline: ${freeUntil ?? "none"}`
+          : `Fecha límite de cancelación gratuita aceptada: ${freeUntil ?? "ninguna"}`,
+        language === "en"
+          ? `Accepted policy charge: ${charge}`
+          : `Cargo según la política aceptada: ${charge}`,
+      ],
+    },
+    {
+      title: language === "en" ? "Payment and refunds" : "Pago y devoluciones",
+      lines: [
+        `Total: ${amount(bill.totalCents)}`,
+        language === "en" ? `Paid: ${amount(bill.paidCents)}` : `Pagado: ${amount(bill.paidCents)}`,
+        language === "en"
+          ? `Outstanding balance: ${amount(Math.max(0, bill.balanceCents))}`
+          : `Saldo pendiente: ${amount(Math.max(0, bill.balanceCents))}`,
+        language === "en"
+          ? `Refund due: ${amount(bill.refundDueCents)}`
+          : `Por devolver: ${amount(bill.refundDueCents)}`,
+        language === "en"
+          ? `Completed refunds: ${amount(bill.refundedCents)}`
+          : `Devoluciones completadas: ${amount(bill.refundedCents)}`,
+        language === "en"
+          ? `Pending refunds (not returned): ${amount(bill.pendingRefundCents)}`
+          : `Devoluciones pendientes (no devueltas): ${amount(bill.pendingRefundCents)}`,
+        language === "en"
+          ? `Coupon settlement (not cash): ${amount(bill.couponAppliedCents)}`
+          : `Pagado con cupón (no efectivo): ${amount(bill.couponAppliedCents)}`,
+        language === "en"
+          ? `Converted into coupons (not refunded): ${amount(bill.couponIssuedCents)}`
+          : `Pasado a cupón (no devuelto): ${amount(bill.couponIssuedCents)}`,
+      ],
+    },
+    { action: true },
+    {
+      title: language === "en" ? "Need help?" : "¿Necesitas ayuda?",
+      lines: [
+        language === "en"
+          ? `For current information and assistance, contact the hotel. Phone: ${PHONE}. Email: ${REPLY_TO}`
+          : `Para información actual y asistencia, contacta al hotel. Teléfono: ${PHONE}. Correo: ${REPLY_TO}`,
+      ],
+    },
+  ];
+  return {
+    ...emailRequest({
+      recipient,
+      token,
+      expiresOn,
+      language,
+      code: state.reservation.code,
+      sections: facts,
+      kind: "summary",
+    }),
+    subject:
+      language === "en"
+        ? `Reservation summary ${state.reservation.code}`
+        : `Resumen de reserva ${state.reservation.code}`,
+  };
+}
+
+function messageFacts(input: {
+  currency: string;
+  language: "es" | "en";
+  checkIn: string;
+  checkOut: string;
+  room: string;
+  plan: string;
+  freeUntil: string | null;
+  chargeCents: number;
+  totalCents: number;
+  paidCents: number;
+  outstandingCents: number;
+}): ConfirmationEmailSection[] {
+  const amount = (cents: number) => money(cents, input.currency);
+  const charge = amount(input.chargeCents);
+  const cancellation =
+    input.freeUntil === null
+      ? input.language === "en"
+        ? `No free cancellation. The charge is ${charge}.`
+        : `Sin cancelación gratuita. El cargo es ${charge}.`
+      : input.language === "en"
+        ? `Free cancellation until ${input.freeUntil}. After that, the charge is ${charge}.`
+        : `Cancelación sin cargo hasta el ${input.freeUntil}. Después, el cargo es ${charge}.`;
+  const paidInFull =
+    input.outstandingCents === 0
+      ? input.language === "en"
+        ? "Paid in full."
+        : "Pagado en su totalidad."
+      : null;
+  return [
+    {
+      stay: {
+        checkIn: input.checkIn,
+        checkOut: input.checkOut,
+        room: input.room,
+        plan: input.plan,
+      },
+    },
+    {
+      payment: [
+        { label: "Total", value: amount(input.totalCents) },
+        {
+          label: input.language === "en" ? "Paid" : "Pagado",
+          value: amount(input.paidCents),
+        },
+        {
+          label: input.language === "en" ? "Outstanding balance" : "Saldo pendiente",
+          value: amount(input.outstandingCents),
+          emphasis: true,
+        },
+      ],
+      note: paidInFull,
+    },
+    { action: true },
+    {
+      title: input.language === "en" ? "Cancellation" : "Cancelación",
+      lines: [cancellation],
+    },
+    {
+      title: input.language === "en" ? "Need help?" : "¿Necesitas ayuda?",
+      lines: [
+        input.language === "en" ? `Phone: ${PHONE}` : `Teléfono: ${PHONE}`,
+        input.language === "en" ? `Email: ${REPLY_TO}` : `Correo: ${REPLY_TO}`,
+      ],
+    },
+  ];
+}
+
+function summaryLink(language: "es" | "en", token: string) {
+  return `${SITE}${language === "en" ? "/en" : ""}/reservar/resumen/#${token}`;
+}
+
+function money(cents: number, currency: string) {
+  const negative = cents < 0;
+  const absolute = Math.abs(cents);
+  return `${negative ? "-" : ""}${currency} ${Math.floor(absolute / 100)}.${String(absolute % 100).padStart(2, "0")}`;
 }

@@ -149,8 +149,8 @@ async function paid(checkout: { token: string; quoteId: string }) {
 const rows = <T>(sql: string) => db.sqlite.prepare(sql).all() as T[];
 
 const accessRows = () =>
-  rows<{ reservation_id: string; token: string; token_hash: string; expires_on: string }>(
-    "SELECT reservation_id, token, token_hash, expires_on FROM reservation_access ORDER BY reservation_id",
+  rows<{ reservation_id: string; token: string; expires_on: string }>(
+    "SELECT reservation_id, token, expires_on FROM reservation_access ORDER BY reservation_id",
   );
 
 async function reservationId() {
@@ -455,6 +455,20 @@ describe("private reservation summary", () => {
     const session = await guest("/public/reservation", { cookie });
     expect(session.status).toBe(401);
     expect(await session.json()).toEqual({ error: "invalid reservation access" });
+    for (const authorization of [
+      firstLink.token,
+      `Basic ${firstLink.token}`,
+      `Bearer ${firstLink.token} extra`,
+      `Bearer ${firstLink.token.slice(1)}`,
+    ]) {
+      const malformed = await app.request(
+        "/public/reservation",
+        { headers: { origin: WEBSITE_ORIGIN, "cf-connecting-ip": "203.0.113.9", authorization } },
+        db.env,
+      );
+      expect(malformed.status).toBe(401);
+      expect(await malformed.json()).toEqual({ error: "invalid reservation access" });
+    }
     const queried = await guest(`/public/reservation?token=${firstLink.token}`);
     expect(queried.status).toBe(401);
     expect(await queried.json()).toEqual({ error: "invalid reservation access" });

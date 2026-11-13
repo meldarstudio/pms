@@ -34,8 +34,7 @@ import {
   previewCreate,
   type CommandContext,
 } from "../workflow";
-import { staffConfirmationIntent } from "../confirmation-intents";
-import { requestConfirmationResend } from "../confirmation-resends";
+import { requestConfirmationResend, reservationConfirmationEmails } from "../confirmation-emails";
 import { staffReservationAccess } from "../reservation-access";
 import { loadReservations, presentReservations, readReservation } from "../reservation-read";
 import { presentNight, type presentReservation } from "../present";
@@ -157,7 +156,7 @@ reservationRoutes.get("/:id", async (c) =>
 reservationRoutes.get("/:id/confirmation", async (c) => {
   c.header("Cache-Control", "private, no-store");
   try {
-    return c.json(await staffConfirmationIntent(getDb(c.env.DB), c.req.param("id")));
+    return c.json(await reservationConfirmationEmails(getDb(c.env.DB), c.req.param("id")));
   } catch (error) {
     if (!(error instanceof HttpError)) throw error;
     c.header("Cache-Control", "private, no-store");
@@ -196,10 +195,7 @@ reservationRoutes.post(
         c.var.account,
         c.get("propertyCalendar").today,
       );
-      return c.json(
-        { work: result.work, mayDuplicateEarlierDelivery: true },
-        result.replayed ? 200 : 201,
-      );
+      return c.json({ email: result.email }, result.replayed ? 200 : 201);
     } catch (error) {
       if (error instanceof HttpError) return c.json({ error: error.message }, error.status);
       console.error("confirmation resend command failed", c.req.param("id"));

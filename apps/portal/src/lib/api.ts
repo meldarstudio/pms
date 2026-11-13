@@ -546,115 +546,27 @@ export function getReservationAccess(id: string, signal?: AbortSignal) {
   return getJson<ReservationAccess>(`/reservations/${id}/access`, signal);
 }
 
-export type ConfirmationDelivery = {
-  accepted: boolean;
-  delivered: boolean;
-  delayed: boolean;
-  failed: boolean;
-  bounced: boolean;
-  permanentlyBounced: boolean;
-  complained: boolean;
-  suppressed: boolean;
-  uncertain: boolean;
-  conflict: boolean;
-  recipientBlocked: boolean;
-  history: {
-    eventId: string;
-    source: "callback" | "lookup" | "response";
-    type:
-      | "sent"
-      | "delivered"
-      | "delivery_delayed"
-      | "failed"
-      | "bounced"
-      | "complained"
-      | "suppressed";
-    providerMessageId: string;
-    messageId: string | null;
-    occurredAt: string | null;
-    observedAt: string;
-    conflict: boolean;
-    details: {
-      reason?: string;
-      bounceType?: string;
-      bounceSubType?: string;
-      permanent?: boolean;
-      suppressionType?: string;
-      eventIdConflict?: boolean;
-    } | null;
-  }[];
-};
-
-export type ConfirmationSubmission = {
+export type ConfirmationEmail = {
   id: string;
-  endpoint: string | null;
-  status: "uncertain" | "accepted" | "unsent" | "attention";
-  providerMessageId: string | null;
-  failureCode: string | null;
-  sendKey: string | null;
-  firstPossibleAt: string | null;
+  kind: "automatic" | "resend";
+  recipient: string;
+  language: "es" | "en";
+  status: "pending" | "sent" | "failed";
+  attempts: number;
   nextAttemptAt: string | null;
+  lastError: string | null;
+  providerMessageId: string | null;
+  requestedBy: { id: string; username: string | null } | null;
   createdAt: string;
-  possiblyAcceptedPosts: number;
-  snapshotRevision: number | null;
-  linkExpiresOn: string | null;
-  attempts: {
-    id: string;
-    startedAt: string;
-    completedAt: string | null;
-    outcome: "accepted" | "uncertain" | "unsent" | "attention" | "not_posted" | null;
-    failureCode: string | null;
-    providerMessageId: string | null;
-  }[];
-  delivery: ConfirmationDelivery;
-};
-
-export type DeliberateConfirmationResend = {
-  id: string;
-  kind: "deliberate_resend";
-  recipientEmail: string;
-  language: "es" | "en";
-  createdAt: string;
-  requestedBy: { id: string; username: string; role: "staff" | "owner" };
-  mayDuplicateEarlierDelivery: true;
-  submission: ConfirmationSubmission | null;
-};
-
-export type ReservationConfirmation = {
-  id: string;
-  recipientEmail: string;
-  language: "es" | "en";
-  attemptId: string;
-  acceptanceId: string;
-  createdAt: string;
-  reservation: { id: string; code: string; status: string };
-  submission: ConfirmationSubmission | null;
-  history: (
-    | DeliberateConfirmationResend
-    | {
-        id: string;
-        kind: "automatic";
-        recipientEmail: string;
-        language: "es" | "en";
-        createdAt: string;
-        requestedBy: null;
-        mayDuplicateEarlierDelivery: false;
-        submission: ConfirmationSubmission | null;
-      }
-  )[];
+  sentAt: string | null;
 };
 
 export function getReservationConfirmation(id: string, signal?: AbortSignal) {
-  return getJson<ReservationConfirmation>(`/reservations/${id}/confirmation`, signal);
+  return getJson<ConfirmationEmail[]>(`/reservations/${id}/confirmation`, signal);
 }
 
-export type ConfirmationResendResult = {
-  work: DeliberateConfirmationResend;
-  mayDuplicateEarlierDelivery: true;
-};
-
 export function requestConfirmationResend(id: string, input: ConfirmationResendRequest) {
-  return writeJson<ConfirmationResendResult>(
+  return writeJson<{ email: ConfirmationEmail }>(
     `/reservations/${id}/confirmation/resends`,
     "POST",
     input,

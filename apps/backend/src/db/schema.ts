@@ -1,9 +1,8 @@
 import { sql } from "drizzle-orm";
 import { check, index, integer, sqliteTable, text, uniqueIndex } from "drizzle-orm/sqlite-core";
-import type { CheckoutLanguage, GuestInput } from "@pms/shared";
+import type { CheckoutLanguage } from "@pms/shared";
 import type { PricedNight } from "../lib/pricing";
 import type { RatePlanCode, RatePlanTerms } from "../lib/rate-plans";
-import type { DeliveryType } from "../resend-reports";
 
 export const propertyWriteContext = sqliteTable(
   "property_write_context",
@@ -157,7 +156,6 @@ export const reservations = sqliteTable(
     priceAdjustmentPercent: integer("price_adjustment_percent").notNull().default(0),
     quoteId: text("quote_id").references(() => quotes.id),
     publicCheckoutId: text("public_checkout_id").references(() => publicCheckouts.id),
-    confirmationOwed: integer("confirmation_owed").notNull().default(0),
   },
   (table) => [
     index("reservations_dates").on(table.checkIn, table.checkOut),
@@ -170,7 +168,6 @@ export const reservationAccess = sqliteTable("reservation_access", {
   reservationId: text("reservation_id")
     .primaryKey()
     .references(() => reservations.id),
-  tokenHash: text("token_hash").notNull().unique(),
   token: text("token").notNull().unique(),
   expiresOn: text("expires_on").notNull(),
   createdAt: text("created_at").notNull(),
@@ -266,7 +263,6 @@ export const paymentAttempts = sqliteTable(
     amountCents: integer("amount_cents").notNull(),
     currency: text("currency").notNull(),
     email: text("email").notNull(),
-    guest: text("guest", { mode: "json" }).$type<GuestInput>().notNull(),
     sourceId: text("source_id").notNull(),
     deviceFingerprint: text("device_fingerprint"),
     status: text("status").$type<AttemptStatus>().notNull(),
@@ -296,144 +292,37 @@ export const paymentAttempts = sqliteTable(
   ],
 );
 
-export const confirmationIntents = sqliteTable("confirmation_intents", {
-  id: text("id").primaryKey(),
-  reservationId: text("reservation_id")
-    .notNull()
-    .unique()
-    .references(() => reservations.id),
-  attemptId: text("attempt_id")
-    .notNull()
-    .unique()
-    .references(() => paymentAttempts.id),
-  checkoutId: text("checkout_id")
-    .notNull()
-    .references(() => publicCheckouts.id),
-  acceptanceId: text("acceptance_id")
-    .notNull()
-    .references(() => checkoutAcceptances.id),
-  recipientEmail: text("recipient_email").notNull(),
-  language: text("language").$type<CheckoutLanguage>().notNull(),
-  createdAt: text("created_at").notNull(),
-});
+export type ConfirmationEmailKind = "automatic" | "resend";
+export type ConfirmationEmailStatus = "pending" | "sent" | "failed";
 
-export const confirmationSubmissions = sqliteTable(
-  "confirmation_submissions",
+export const confirmationEmails = sqliteTable(
+  "confirmation_emails",
   {
     id: text("id").primaryKey(),
-    intentId: text("intent_id")
+    reservationId: text("reservation_id")
       .notNull()
-      .references(() => confirmationIntents.id),
-    deliberateWorkId: text("deliberate_work_id")
-      .unique()
-      .references(() => confirmationResends.id),
-    snapshotRevision: integer("snapshot_revision"),
-    linkExpiresOn: text("link_expires_on"),
-    sendKey: text("send_key").unique(),
-    endpoint: text("endpoint"),
-    credentialFingerprint: text("credential_fingerprint"),
-    possiblyAcceptedPosts: integer("acceptance_possible").notNull().default(1),
-    requestJson: text("request_json"),
-    recipientEmail: text("recipient_email").notNull(),
+      .references(() => reservations.id),
+    recipient: text("recipient").notNull(),
     language: text("language").$type<CheckoutLanguage>().notNull(),
-    firstPossibleAt: text("first_possible_at"),
-    status: text("status").$type<"uncertain" | "accepted" | "unsent" | "attention">().notNull(),
-    providerMessageId: text("provider_message_id"),
-    reportConflict: integer("report_conflict", { mode: "boolean" }).notNull().default(false),
-    nextLookupAt: text("next_lookup_at"),
-    failureCode: text("failure_code"),
+    kind: text("kind").$type<ConfirmationEmailKind>().notNull(),
+    status: text("status").$type<ConfirmationEmailStatus>().notNull(),
+    attempts: integer("attempts").notNull().default(0),
     nextAttemptAt: text("next_attempt_at"),
-    createdAt: text("created_at").notNull(),
-    updatedAt: text("updated_at").notNull(),
-  },
-  (table) => [
-    uniqueIndex("confirmation_submission_original")
-      .on(table.intentId)
-      .where(sql`${table.deliberateWorkId} IS NULL`),
-    check(
-      "confirmation_submission_status",
-      sql`${table.status} in ('uncertain', 'accepted', 'unsent', 'attention')`,
-    ),
-    index("confirmation_submission_lookup_candidates")
-      .on(table.credentialFingerprint, table.firstPossibleAt)
-      .where(sql`${table.providerMessageId} IS NOT NULL`),
-  ],
-);
-
-export const confirmationResends = sqliteTable(
-  "confirmation_resends",
-  {
-    id: text("id")
-      .primaryKey()
-      .references(() => reservationRequests.id),
-    intentId: text("intent_id")
-      .notNull()
-      .references(() => confirmationIntents.id),
-    recipientEmail: text("recipient_email").notNull(),
-    language: text("language").$type<CheckoutLanguage>().notNull(),
-    accountId: text("account_id")
-      .notNull()
-      .references(() => user.id),
-    accountUsername: text("account_username").notNull(),
-    accountRole: text("account_role").$type<"staff" | "owner">().notNull(),
-    createdAt: text("created_at").notNull(),
-  },
-  (table) => [index("confirmation_resends_intent").on(table.intentId, table.createdAt)],
-);
-
-export const confirmationSubmissionAttempts = sqliteTable(
-  "confirmation_submission_attempts",
-  {
-    id: text("id").primaryKey(),
-    submissionId: text("submission_id")
-      .notNull()
-      .references(() => confirmationSubmissions.id),
-    startedAt: text("started_at").notNull(),
-    completedAt: text("completed_at"),
-    outcome: text("outcome").$type<
-      "accepted" | "uncertain" | "unsent" | "attention" | "not_posted"
-    >(),
-    failureCode: text("failure_code"),
     providerMessageId: text("provider_message_id"),
+    lastError: text("last_error"),
+    pendingRequest: text("pending_request"),
+    requestedBy: text("requested_by").references(() => user.id),
+    createdAt: text("created_at").notNull(),
+    sentAt: text("sent_at"),
   },
   (table) => [
-    index("confirmation_submission_attempts_submission").on(table.submissionId, table.startedAt),
-  ],
-);
-
-export const confirmationReports = sqliteTable(
-  "confirmation_reports",
-  {
-    id: text("id").primaryKey(),
-    context: text("context").notNull(),
-    eventId: text("event_id").notNull(),
-    bodyDigest: text("body_digest"),
-    source: text("source").$type<"callback" | "lookup" | "response">().notNull(),
-    type: text("type").$type<DeliveryType>().notNull(),
-    providerMessageId: text("provider_message_id").notNull(),
-    messageId: text("message_id"),
-    submissionTag: text("submission_tag"),
-    recipientEmail: text("recipient_email"),
-    sender: text("sender"),
-    category: text("category"),
-    occurredAt: text("occurred_at"),
-    observedAt: text("observed_at").notNull(),
-    details: text("details", { mode: "json" }).$type<{
-      reason?: string;
-      bounceType?: string;
-      bounceSubType?: string;
-      permanent?: boolean;
-      suppressionType?: string;
-      eventIdConflict?: boolean;
-    }>(),
-    submissionId: text("submission_id").references(() => confirmationSubmissions.id),
-    conflict: integer("conflict", { mode: "boolean" }).notNull().default(false),
-  },
-  (table) => [
-    uniqueIndex("confirmation_reports_event").on(table.context, table.eventId),
-    index("confirmation_reports_message").on(table.context, table.providerMessageId),
-    index("confirmation_reports_submission").on(table.submissionId),
-    index("confirmation_reports_recipient").on(table.context, table.recipientEmail),
+    uniqueIndex("confirmation_emails_automatic")
+      .on(table.reservationId)
+      .where(sql`${table.kind} = 'automatic'`),
+    index("confirmation_emails_reservation").on(table.reservationId, table.createdAt),
+    index("confirmation_emails_due").on(table.status, table.nextAttemptAt),
+    check("confirmation_emails_kind", sql`${table.kind} IN ('automatic', 'resend')`),
+    check("confirmation_emails_status", sql`${table.status} IN ('pending', 'sent', 'failed')`),
   ],
 );
 

@@ -13,6 +13,9 @@ const migration = (tag: string) => readFileSync(new URL(`${tag}.sql`, migrations
 const accessMigration = journal.entries.findIndex((entry) =>
   migration(entry.tag).includes("reservation_access"),
 );
+const singleTokenMigration = journal.entries.findIndex((entry) =>
+  migration(entry.tag).includes("ALTER TABLE `reservation_access` DROP COLUMN `token_hash`"),
+);
 
 let db: DatabaseSync;
 
@@ -67,5 +70,39 @@ describe("reservation access migration", () => {
     expect(
       db.prepare("SELECT reservation_id FROM reservation_access ORDER BY reservation_id").all(),
     ).toEqual([{ reservation_id: "later" }]);
+  });
+
+  it("keeps each established link's token and expiry when the stored hash is dropped", () => {
+    expect(singleTokenMigration).toBeGreaterThan(accessMigration);
+    for (const entry of journal.entries.slice(0, singleTokenMigration))
+      db.exec(migration(entry.tag));
+    db.exec(`
+      INSERT INTO room_types (id, name, max_occupancy, base_rate_cents, created_at)
+        VALUES ('type', 'Standard', 2, 10000, '2026-10-05');
+      INSERT INTO guests (id, full_name, created_at) VALUES ('contact', 'Ana', '2026-10-05');
+      INSERT INTO reservations (id, code, guest_id, check_in, check_out, source, created_at)
+        VALUES ('online', 'ONLINE', 'contact', '2026-10-20', '2026-10-21', 'online', '2026-10-05');
+      INSERT INTO reservation_access (reservation_id, token_hash, token, expires_on, created_at)
+        VALUES ('online', 'hash', 'guest-token', '2026-11-20', '2026-10-05');
+    `);
+
+    db.exec(migration(journal.entries[singleTokenMigration]!.tag));
+
+    expect(db.prepare("SELECT * FROM reservation_access").all()).toEqual([
+      {
+        reservation_id: "online",
+        token: "guest-token",
+        expires_on: "2026-11-20",
+        created_at: "2026-10-05",
+      },
+    ]);
+    expect(() =>
+      db.exec(`
+        INSERT INTO reservations (id, code, guest_id, check_in, check_out, source, created_at)
+          VALUES ('other', 'OTHER1', 'contact', '2026-10-22', '2026-10-23', 'online', '2026-10-05');
+        INSERT INTO reservation_access (reservation_id, token, expires_on, created_at)
+          VALUES ('other', 'guest-token', '2026-11-22', '2026-10-05');
+      `),
+    ).toThrow(/UNIQUE/);
   });
 });

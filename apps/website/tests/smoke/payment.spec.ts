@@ -210,10 +210,12 @@ test("the complete English Non-refundable journey sends its saved confirmation a
     await expect(summary.getByText(reference!)).toBeVisible();
     await expect(summary.locator("[data-summary]")).toContainText(/S\/\s180\.00/);
     await expect(summary.locator("[data-summary]")).not.toContainText(email);
-    executeSql(
-      localDatabase(localState),
-      `UPDATE reservation_access SET expires_on = '${daysFromToday(-1)}' WHERE reservation_id = (SELECT id FROM reservations WHERE code = '${reference!}');`,
-    );
+    await expect(() =>
+      executeSql(
+        localDatabase(localState),
+        `UPDATE reservation_access SET expires_on = '${daysFromToday(-1)}' WHERE reservation_id = (SELECT id FROM reservations WHERE code = '${reference!}');`,
+      ),
+    ).toPass();
     await summary.reload();
     await expect(
       summary.getByRole("heading", { name: "The hotel can help with this reservation" }),
@@ -588,11 +590,9 @@ test("accepting an expired quote charges the contact just submitted, not the one
 
   const charged = queryRows(
     localDatabase(localState),
-    `SELECT email, guest FROM payment_attempts WHERE email = '${updated}'`,
+    `SELECT a.full_name, a.email FROM payment_attempts p JOIN checkout_acceptances a ON a.id = p.acceptance_id WHERE p.email = '${updated}'`,
   );
-  expect(charged).toHaveLength(1);
-  const guest = JSON.parse(String(charged[0]!.guest)) as { fullName: string; email: string };
-  expect(guest).toMatchObject({ fullName: "Eva Soto", email: updated });
+  expect(charged).toEqual([{ full_name: "Eva Soto", email: updated }]);
   expect(
     queryRows(
       localDatabase(localState),

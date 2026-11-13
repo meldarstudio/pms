@@ -20,19 +20,14 @@ import { roomClosureRoutes } from "./routes/room-closures";
 import { roomRoutes } from "./routes/rooms";
 import { setupRoutes } from "./routes/setup";
 import { getDb } from "./db";
-import { repairConfirmationIntents } from "./confirmation-intents";
-import { sendConfirmationSubmissions } from "./confirmation-submissions";
+import { sendConfirmationEmails } from "./confirmation-emails";
 import { paymentContext, reconcilePaymentAttempts } from "./payment-attempts";
 import { requireSession } from "./session";
 import { propertyCalendar } from "./property-calendar";
-import { receiveConfirmationReport, reconcileConfirmationReports } from "./confirmation-reports";
-import { RESEND_REPORT_PATH } from "./resend-reports";
 
 const CHROME_MAX_PREFLIGHT_CACHE_SECONDS = 2 * 60 * 60;
 
 export const app = new Hono<Env>();
-
-app.post(RESEND_REPORT_PATH, receiveConfirmationReport);
 
 const exactOrigin = (setting: string | undefined, origin: string) =>
   (setting ?? "")
@@ -101,12 +96,15 @@ export default {
   fetch: app.fetch,
   scheduled(_controller, env, ctx) {
     const db = getDb(env.DB);
+    const step = (name: string, run: () => Promise<unknown>) =>
+      run().catch(() => console.error(`scheduled ${name} failed`));
     ctx.waitUntil(
-      reconcilePaymentAttempts(db, paymentContext(env))
-        .then(() => repairConfirmationIntents(db))
-        .then(() => sendConfirmationSubmissions(db, env))
-        .then(() => reconcileConfirmationReports(db, env))
-        .catch(() => console.error("scheduled recovery failed")),
+      (async () => {
+        await step("payment reconciliation", () =>
+          reconcilePaymentAttempts(db, paymentContext(env)),
+        );
+        await step("confirmation send", () => sendConfirmationEmails(db, env));
+      })(),
     );
   },
 } satisfies ExportedHandler<Env["Bindings"]>;

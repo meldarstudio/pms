@@ -26,8 +26,6 @@ export function fakeResend() {
   const scripts: Scripted[] = [];
   const befores: Array<() => unknown> = [];
   const retryAfters: Array<string | undefined> = [];
-  const lookups: { body: unknown; status: number }[] = [];
-  const lookupBefores: Array<() => unknown> = [];
   let sequence = 0;
 
   const json = (status: number, body: unknown, retryAfter?: string) =>
@@ -51,12 +49,6 @@ export function fakeResend() {
     retryAfter(value: string) {
       retryAfters.push(value);
     },
-    lookup(body: unknown, status = 200) {
-      lookups.push({ body, status });
-    },
-    duringNextLookup(run: () => unknown) {
-      lookupBefores.push(run);
-    },
     fetch: (async (input: RequestInfo | URL, init?: RequestInit) => {
       const url = new URL(input instanceof Request ? input.url : String(input));
       const method = init?.method ?? "GET";
@@ -65,13 +57,7 @@ export function fakeResend() {
       if (url.hostname !== "127.0.0.1" || !headers.get("authorization")?.startsWith("Bearer "))
         throw new Error(`unexpected request to ${url.href}`);
       requests.push({ method, url: url.href, headers, body });
-      if (method === "GET") {
-        await lookupBefores.shift()?.();
-        const scripted = lookups.shift();
-        if (scripted) return json(scripted.status, scripted.body);
-        const email = emails.find((item) => url.pathname === `/emails/${item.id}`);
-        return email ? json(200, { id: email.id }) : json(404, { name: "not_found" });
-      }
+      if (method !== "POST" || url.pathname !== "/emails") return json(404, { name: "not_found" });
       const scripted = scripts.shift();
       const retryAfter = retryAfters.shift();
       await befores.shift()?.();
@@ -87,7 +73,14 @@ export function fakeResend() {
       )
         return json(
           scripted,
-          { name: scripted === 429 ? "rate_limit_exceeded" : "api_error" },
+          {
+            name:
+              scripted === 429
+                ? "rate_limit_exceeded"
+                : scripted === 422
+                  ? "validation_error"
+                  : "api_error",
+          },
           retryAfter,
         );
       if (scripted === "empty") return new Response("", { status: 200 });
@@ -96,6 +89,8 @@ export function fakeResend() {
       if (scripted === "invalid")
         return json(409, { name: "invalid_idempotent_request", message: "payload changed" });
       const existing = emails.find((email) => email.key === key);
+      if (existing && existing.body !== body)
+        return json(409, { name: "invalid_idempotent_request", message: "payload changed" });
       if (scripted === "lose") {
         if (!existing) emails.push({ id: `email_${++sequence}`, key, body });
         throw new TypeError("Network connection lost.");

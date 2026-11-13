@@ -13,6 +13,9 @@ const migration = (tag: string) => readFileSync(new URL(`${tag}.sql`, migrations
 const paymentsMigration = journal.entries.findIndex(
   (entry) => entry.tag === "0019_public_payments",
 );
+const contactCopyMigration = journal.entries.findIndex((entry) =>
+  migration(entry.tag).includes("ALTER TABLE `payment_attempts` DROP COLUMN `guest`"),
+);
 
 let db: DatabaseSync;
 
@@ -59,6 +62,33 @@ describe("public payments migration", () => {
       })),
     );
     expect(db.prepare("SELECT * FROM operation_controls").all()).toEqual([]);
+    expect(db.prepare("PRAGMA foreign_key_check").all()).toEqual([]);
+  });
+
+  it("keeps every attempt and its acceptance when the contact copy is dropped", () => {
+    expect(contactCopyMigration).toBeGreaterThan(paymentsMigration);
+    for (const entry of journal.entries.slice(paymentsMigration, contactCopyMigration))
+      db.exec(migration(entry.tag));
+    db.exec(`
+      INSERT INTO public_checkouts (id, token_hash, room_type_id, check_in, check_out, adults, children, rate_plan, language, created_at)
+        VALUES ('checkout', 'hash', 'type', '2026-10-20', '2026-10-21', 2, 0, 'flexible', 'en', '2026-10-05');
+      UPDATE quotes SET checkout_id = 'checkout' WHERE id = 'old-quote';
+      INSERT INTO checkout_acceptances (id, checkout_id, quote_id, full_name, email, phone, language, accepted_at)
+        VALUES ('acceptance', 'checkout', 'old-quote', 'Ana López', 'ana@example.com', '+51987654321', 'en', '2026-10-05');
+      INSERT INTO payment_attempts (id, quote_id, amount_cents, currency, email, guest, source_id, status, created_at, called_at, checkout_id, acceptance_id, language, confirmation_email_eligible)
+        VALUES ('checkout-attempt', 'old-quote', 10000, 'PEN', 'ana@example.com',
+          '{"fullName":"Ana López","email":"ana@example.com","phone":"+51987654321"}',
+          'tkn_c', 'failed', '2026-10-05', '2026-10-05', 'checkout', 'acceptance', 'en', 1);
+    `);
+    const before = db.prepare("SELECT * FROM payment_attempts ORDER BY id").all();
+    const acceptances = db.prepare("SELECT * FROM checkout_acceptances").all();
+
+    db.exec(migration(journal.entries[contactCopyMigration]!.tag));
+
+    expect(db.prepare("SELECT * FROM payment_attempts ORDER BY id").all()).toEqual(
+      before.map(({ guest: _guest, ...row }) => row),
+    );
+    expect(db.prepare("SELECT * FROM checkout_acceptances").all()).toEqual(acceptances);
     expect(db.prepare("PRAGMA foreign_key_check").all()).toEqual([]);
   });
 });

@@ -1,9 +1,9 @@
-import type { GuestInput, QuoteCreate } from "@pms/shared";
+import type { CheckoutLanguage, GuestInput, QuoteCreate } from "@pms/shared";
 import { eq } from "drizzle-orm";
 import { runBatch, type Db } from "./db";
-import { confirmationIntentValues, type ConfirmationProvenance } from "./confirmation-intents";
+import { pendingConfirmationEmail } from "./confirmation-emails";
 import {
-  confirmationIntents,
+  confirmationEmails,
   guests,
   payments,
   quotes,
@@ -120,7 +120,7 @@ export async function saveQuote(
     status?: "confirmed" | "unfulfilled";
     payment?: QuotePayment;
     publicCheckoutId?: string | null;
-    confirmation?: ConfirmationProvenance | null;
+    confirmation?: { recipient: string; language: CheckoutLanguage } | null;
     notes?: string | null;
   } = {},
 ): Promise<string> {
@@ -133,14 +133,18 @@ export async function saveQuote(
     guestId = crypto.randomUUID();
   const phone = acceptPhone(guest.phone);
   const status = options.status ?? "confirmed";
-  const provenance = status === "confirmed" ? (options.confirmation ?? null) : null;
-  const intent = provenance
-    ? db.insert(confirmationIntents).values(confirmationIntentValues(id, provenance, now))
-    : null;
+  const recipient = status === "confirmed" ? (options.confirmation ?? null) : null;
+  const confirmation = recipient
+    ? [
+        db
+          .insert(confirmationEmails)
+          .values(
+            pendingConfirmationEmail({ reservationId: id, kind: "automatic", ...recipient }, now),
+          ),
+      ]
+    : [];
   const accessRow =
-    options.publicCheckoutId != null
-      ? await reservationAccessValues(id, quote.checkOut, now)
-      : null;
+    options.publicCheckoutId != null ? reservationAccessValues(id, quote.checkOut, now) : null;
   const access = accessRow ? [db.insert(reservationAccess).values(accessRow)] : [];
   try {
     await runBatch(db, [
@@ -155,7 +159,6 @@ export async function saveQuote(
         notes: options.notes ?? null,
         quoteId,
         publicCheckoutId: options.publicCheckoutId ?? null,
-        confirmationOwed: provenance === null ? 0 : 1,
         status,
         createdAt: now,
         ...termColumns(quote.terms),
@@ -185,7 +188,7 @@ export async function saveQuote(
         false,
       ),
       ...access,
-      ...(intent ? [intent] : []),
+      ...confirmation,
     ]);
   } catch (error) {
     const saved = await savedReservation(db, quoteId);

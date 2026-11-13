@@ -305,65 +305,26 @@ of earlier payment attempts, or completing bank authentication already waiting o
 _Avoid_: Maintenance mode, closing sales
 
 **Payment attempt**:
-A request to charge for a quote, recorded before contacting the provider. An unknown
-result is resolved by provider lookup, not another charge. Bank authentication continues
-that same attempt and source; a public checkout may finish it after the quote expires.
+A request to charge a public checkout's accepted quote, recorded before contacting the
+provider. Its contact is that checkout acceptance's. An unknown result is resolved by
+provider lookup, not another charge. Bank authentication continues that same attempt and
+source, even after the quote expires.
 _Avoid_: Payment, retry
 
-**Confirmation intent**:
-The one durable record that a saved Confirmed public reservation is owed an automatic
-confirmation. It keeps the booking-contact recipient and checkout language from the
-saving payment attempt, and is not itself a sent message.
-_Avoid_: Confirmation email, reservation access link, payment
+**Confirmation email**:
+One queued message about a public reservation: the automatic confirmation, queued in the
+same save as a Confirmed reservation, or a resend that staff request for an explicit
+recipient. It is pending until the scheduled run sends it, then sent or failed. A transient
+provider error retries with the same idempotency key a few times before it fails; a refused
+message fails at once. Content is rendered at the first send and reused by its retries. A resend summarizes the reservation's
+current status, agreement and bill; it is not a new confirmation and does not extend access.
+Sent means the provider accepted it, not that it was delivered or read.
+_Avoid_: Delivery, notification, receipt
 
 **Email submission admission**:
-The owner's switch for submitting confirmations and deliberate resends, off by default. Pausing it keeps
-confirmation intents and does not stop payment recovery. Resuming sends known-unsent work
-and does not give an uncertain submission a new key or window.
+The owner's switch for sending confirmation emails, off by default. Pausing it keeps
+emails pending and does not stop payment recovery or new resend requests.
 _Avoid_: Public payment admission, maintenance mode
-
-**Confirmation submission**:
-The immutable provider request recorded for an automatic intent or deliberate resend before any send.
-Known-unsent work can retry that same request; possible acceptance limits automatic
-retries to 20 hours from its first possible submission, without resetting on pause.
-Cancellation stops further automatic submission without erasing established acceptance
-or delivery facts. Acceptance is not delivery, and a retry is not a deliberate resend.
-_Avoid_: Confirmation intent, delivery, resend
-
-**Deliberate confirmation resend**:
-A separately requested message to an explicitly chosen recipient, attributed to the
-authenticated account and retaining the original confirmation history. It summarizes
-the reservation's current status, agreement and bill rather than confirming a cancelled
-stay. It may duplicate an earlier uncertain delivery; it is not proof that earlier mail
-was absent and does not extend private-link access.
-_Avoid_: Automatic retry, safe recovery, contact update, staff notification
-
-**Confirmation report**:
-A provider observation about a confirmation submission, retaining its source and
-occurrence or observation time. An authenticated callback, submission response, or
-known-message lookup can establish evidence; missing evidence does not establish no send.
-_Avoid_: Confirmation intent, guest confirmation, latest status
-
-**Delivery fact**:
-An established acceptance, recipient-server delivery, delay, failure, bounce, complaint,
-or suppression fact. These coexist rather than replace one another. Delivered means the
-recipient's server accepted the message, not inbox placement or reading; older or incomplete
-observations cannot erase established facts.
-_Avoid_: Read receipt, inbox delivery, latest status
-
-**Recipient blocked**:
-An address excluded from automatic confirmation submission in its provider context because
-of permanent-bounce, complaint, or suppression evidence. The block applies across messages
-and categories, including evidence from unrelated messages, not only one reservation.
-It does not rewrite historical stop reasons or automatically disappear after later delivery.
-_Avoid_: Cancelled reservation, failed payment, automatic unsuppression
-
-**Unresolved possible acceptance count**:
-The number of confirmation submission attempts that may have reached the provider
-without a definitive result. A known refusal resolves only its own attempt;
-earlier or concurrent uncertainty remains. Before positive acceptance, zero means
-known-unsent, not accepted or delivered.
-_Avoid_: Acceptance flag, retry count
 
 **Refund**:
 Money returned against a received payment. Only a completed refund has returned money;
