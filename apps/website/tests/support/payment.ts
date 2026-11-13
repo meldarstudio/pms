@@ -44,6 +44,16 @@ window.turnstile = {
 };
 `;
 
+const fakeHeldTurnstile = `
+window.turnstile = {
+  render(container, options) {
+    window.passSecurityCheck = () => options.callback("turnstile-pass");
+    return "0";
+  },
+  reset() {},
+};
+`;
+
 const fakeCulqi3DS = `
 window.culqi3DS ??= { devices: [], authentications: [], parameters: null, error: null };
 window.culqi3DS.devices ??= [];
@@ -83,6 +93,15 @@ export async function stubPaymentScripts(page: Page) {
     route.fulfill({ contentType: "text/javascript", body: fakeTurnstile }),
   );
 }
+
+export async function holdSecurityCheck(page: Page) {
+  await page.route("https://challenges.cloudflare.com/**", (route) =>
+    route.fulfill({ contentType: "text/javascript", body: fakeHeldTurnstile }),
+  );
+}
+
+export const passSecurityCheck = (page: Page) =>
+  page.evaluate(() => (window as unknown as { passSecurityCheck: () => void }).passSecurityCheck());
 
 let sourceIps = 0;
 

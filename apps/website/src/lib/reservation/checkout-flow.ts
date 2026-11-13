@@ -24,7 +24,7 @@ import {
   type FieldErrors,
   type ReviewField,
 } from "./checkout-form";
-import { awaitingStatus, cardFor, formVisible } from "./checkout-selectors";
+import { awaitingStatus, cardFor, formVisible, SENDING_STATUS } from "./checkout-selectors";
 import { contactKey, isStoredCard, type StoredCard, type StoredCheckout } from "./draft";
 import { allowsNewPayment, type GuestPayment, type PaymentOutcome } from "./payment";
 import type { AuthenticationParameters } from "./providers";
@@ -98,6 +98,7 @@ export type State = {
 };
 
 export const LOADING_STATUS = "reservation.review.loading";
+const SECURITY_PENDING_ERROR = "reservation.pay.error.security";
 export const SUBMITTED_POLLS = 12;
 
 export const initialState: State = {
@@ -190,6 +191,7 @@ export type Event =
   | { type: "accessRead"; request: number; access: CheckoutAccess | null }
   | { type: "securityCheckFailed" }
   | { type: "securityCheckErrored" }
+  | { type: "securityCheckPassed" }
   | { type: "securityTokenRead"; token: string }
   | { type: "cardFormResolved"; sourceId: string | null }
   | { type: "cardFormFailed" }
@@ -779,7 +781,7 @@ function afterSecurityToken(c: Ctx, token: string) {
   const view = c.s.view;
   if (c.s.pay.kind !== "securing" || !view) return;
   if (!token) {
-    c.s.formError = "reservation.pay.error.security";
+    c.s.formError = SECURITY_PENDING_ERROR;
     return release(c);
   }
   c.s.pay = { kind: "cardForm", turnstileToken: token };
@@ -799,7 +801,7 @@ function afterFingerprint(c: Ctx, fingerprint: string | null) {
   if (c.s.pay.kind !== "fingerprint" || !view) return;
   const { sourceId, turnstileToken } = c.s.pay;
   const charge: Charge = { sourceId, turnstileToken, fingerprint };
-  setStatus(c, "reservation.pay.sending");
+  setStatus(c, SENDING_STATUS);
   markSubmitted(c, view.quote.id);
   c.s.pay = { kind: "charging", charge };
   c.fx.push(startPaymentEffect(c, view.quote.id, charge));
@@ -1011,6 +1013,9 @@ function handle(c: Ctx, event: Event) {
       return;
     case "securityCheckErrored":
       c.s.formError = "reservation.pay.error.securityUnavailable";
+      return;
+    case "securityCheckPassed":
+      if (c.s.formError === SECURITY_PENDING_ERROR) c.s.formError = "";
       return;
     case "securityTokenRead":
       return afterSecurityToken(c, event.token);

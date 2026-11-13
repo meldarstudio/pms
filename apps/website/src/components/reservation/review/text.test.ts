@@ -9,7 +9,12 @@ const missing = (wanted: string[]) => wanted.filter((key) => !keys.has(key));
 
 describe("Review copy", () => {
   it("has every translation key the checkout flow can show", () => {
-    const literals = ["checkout-flow.ts", "checkout-copy.ts", "checkout-form.ts"].flatMap((file) =>
+    const literals = [
+      "checkout-flow.ts",
+      "checkout-copy.ts",
+      "checkout-form.ts",
+      "checkout-selectors.ts",
+    ].flatMap((file) =>
       [
         ...readFileSync(
           new URL(`../../../lib/reservation/${file}`, import.meta.url),

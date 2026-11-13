@@ -331,33 +331,53 @@ export async function openBankAuthentication(
   }
 }
 
-export type SecurityCheck = { token: () => string; reset: () => void };
+export type SecurityCheck = {
+  tokenWithin: (waitMs: number) => Promise<string>;
+  reset: () => void;
+};
 
 export async function renderSecurityCheck(
   container: HTMLElement,
-  options: { siteKey: string; lang: Lang; onError: () => void },
+  options: { siteKey: string; lang: Lang; onPassed: () => void; onError: () => void },
 ): Promise<SecurityCheck> {
   await loadScript(TURNSTILE_SCRIPT);
   const turnstile = window.turnstile;
   if (!turnstile) throw new Error("Turnstile is unavailable");
   let current = "";
+  let waiting: ((token: string) => void)[] = [];
+  const answer = (token: string) => {
+    current = token;
+    for (const finish of waiting) finish(token);
+  };
   const widget = turnstile.render(container, {
     sitekey: options.siteKey,
     action: "payment",
     language: options.lang,
     callback: (token) => {
-      current = token;
+      answer(token);
+      options.onPassed();
     },
     "expired-callback": () => {
       current = "";
     },
     "error-callback": () => {
-      current = "";
+      answer("");
       options.onError();
     },
   });
   return {
-    token: () => current,
+    tokenWithin: (waitMs) =>
+      current
+        ? Promise.resolve(current)
+        : new Promise((resolve) => {
+            const finish = (token: string) => {
+              clearTimeout(timeout);
+              waiting = waiting.filter((waiter) => waiter !== finish);
+              resolve(token);
+            };
+            const timeout = setTimeout(() => finish(""), waitMs);
+            waiting.push(finish);
+          }),
     reset: () => {
       current = "";
       turnstile.reset(widget);

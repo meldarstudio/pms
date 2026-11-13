@@ -78,6 +78,7 @@ export const reviewKeys = [
   "reservation.pay.provider",
   "reservation.pay.security",
   "reservation.pay.button",
+  "reservation.pay.busy",
   "reservation.pay.sending",
   "reservation.pay.error.security",
   "reservation.pay.error.securityFailed",

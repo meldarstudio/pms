@@ -367,6 +367,7 @@ export const ui = {
     "reservation.pay.provider": "Card payment is processed by Culqi.",
     "reservation.pay.security": "Security check before payment",
     "reservation.pay.button": "Pay {amount}",
+    "reservation.pay.busy": "Processing…",
     "reservation.pay.sending": "Sending your payment… Please wait on this page.",
     "reservation.pay.error.security": "Wait for the security check above to finish, then pay.",
     "reservation.pay.error.securityFailed":
@@ -864,6 +865,7 @@ export const ui = {
     "reservation.pay.provider": "El pago con tarjeta se procesa a través de Culqi.",
     "reservation.pay.security": "Verificación de seguridad antes del pago",
     "reservation.pay.button": "Pagar {amount}",
+    "reservation.pay.busy": "Procesando…",
     "reservation.pay.sending": "Enviando su pago… Espere en esta página.",
     "reservation.pay.error.security":
       "Espere a que termine la verificación de seguridad de arriba y luego pague.",

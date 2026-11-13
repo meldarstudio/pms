@@ -22,6 +22,7 @@ import {
 import { readCheckoutAccess, summaryLink } from "@/lib/reservation/summary";
 
 export const PAYMENT_POLL_MS = 5_000;
+export const SECURITY_CHECK_WAIT_MS = 10_000;
 
 export type CardPayments = { culqiPublicKey: string; turnstileSiteKey: string; title: string };
 
@@ -98,6 +99,7 @@ export function createCheckoutRunner(options: CheckoutRunnerOptions): CheckoutRu
         securityCheck = renderSecurityCheck(container, {
           siteKey: payments.turnstileSiteKey,
           lang: effect.lang,
+          onPassed: () => dispatch({ type: "securityCheckPassed" }),
           onError: () => dispatch({ type: "securityCheckErrored" }),
         })
           .then((check) => {
@@ -113,7 +115,8 @@ export function createCheckoutRunner(options: CheckoutRunnerOptions): CheckoutRu
       }
       case "readSecurityToken": {
         const check = await securityCheck;
-        return dispatch({ type: "securityTokenRead", token: check?.token() ?? "" });
+        const token = check ? await check.tokenWithin(SECURITY_CHECK_WAIT_MS) : "";
+        return dispatch({ type: "securityTokenRead", token });
       }
       case "resetSecurityCheck":
         return security?.reset();

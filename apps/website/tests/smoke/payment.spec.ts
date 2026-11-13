@@ -17,7 +17,9 @@ import {
 } from "../support/checkout";
 import {
   closeCardFormWithoutPaying,
+  holdSecurityCheck,
   nextCulqiCharge,
+  passSecurityCheck,
   recordedCulqi,
   stubPaymentScripts,
   useOwnSourceIp,
@@ -262,6 +264,20 @@ test("paying the accepted Flexible quote confirms it with the paid amount and th
   await expect(page.getByRole("button", { name: /^Pagar/ })).toHaveCount(0);
 });
 
+test("paying before the security check finishes shows progress, waits for it, and then pays", async ({
+  page,
+}) => {
+  await holdSecurityCheck(page);
+  await fillCheckout(page, "flexible", payerEmail());
+  await payButton(page, "100.00").click();
+
+  await expect(page.getByRole("button", { name: "Procesando…" })).toBeDisabled();
+  await expect(page.locator("[data-form-error]")).toBeEmpty();
+
+  await passSecurityCheck(page);
+  await expectConfirmed(page);
+});
+
 test("a declined card lets the guest pay with another card without re-entering details", async ({
   page,
 }) => {
@@ -399,6 +415,7 @@ test("the same contact reserves a second room for dates they already hold", asyn
   await fillCheckout(page, "flexible", email);
   await payButton(page, "100.00").click();
   await expectConfirmed(page);
+  const first = await confirmation(page).textContent();
 
   await fillCheckout(page, "non_refundable", email);
   await payButton(page, "180.00").click();
@@ -410,7 +427,6 @@ test("the same contact reserves a second room for dates they already hold", asyn
 
 test("paying an expired unchanged quote refreshes it and charges once without asking again", async ({
   page,
-  const first = await confirmation(page).textContent();
   request,
 }) => {
   await acceptTerms(page, payerEmail());

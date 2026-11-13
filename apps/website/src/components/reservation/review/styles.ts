@@ -1,6 +1,6 @@
 export const panel = "border border-stone-300 bg-white p-5 md:p-8";
 export const primary =
-  "font-source-sans-3 bg-accent-500 text-accent-950 hover:bg-accent-400 inline-flex min-h-12 cursor-pointer items-center justify-center gap-2 px-6 text-sm font-semibold tracking-widest uppercase";
+  "font-source-sans-3 bg-accent-500 text-accent-950 hover:bg-accent-400 inline-flex min-h-12 cursor-pointer items-center justify-center gap-2 px-6 text-sm font-semibold tracking-widest uppercase disabled:cursor-default disabled:bg-stone-200 disabled:text-stone-600 disabled:hover:bg-stone-200";
 export const secondary =
   "font-source-sans-3 inline-flex min-h-12 cursor-pointer items-center justify-center gap-2 border border-stone-900 px-6 text-sm font-semibold tracking-widest text-stone-900 uppercase hover:bg-stone-100";
 export const quietLink =
