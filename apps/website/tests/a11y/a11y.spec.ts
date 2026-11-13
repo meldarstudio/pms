@@ -235,6 +235,9 @@ test("a11y: confirmed Review with unavailable and available access", async ({ pa
   await page.locator("[data-access-retry]").click();
   await expect(page.locator("[data-access-view]")).toBeVisible();
   await runAxe(page, "Review (confirmed, link available)");
+  await page.emulateMedia({ media: "print" });
+  await expect(page.locator("[data-print-confirmation]")).toBeVisible();
+  await runAxe(page, "Review (printed confirmation)");
 });
 
 test(`a11y: /reservar/resumen/ ordinary summary`, async ({ page }) => {

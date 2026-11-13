@@ -68,7 +68,7 @@ async function expectConfirmed(page: Page, lang = "") {
   await expect(page).toHaveURL(new RegExp(`${lang}/reservar/revisar/\\?`));
   await expect(
     page.getByRole("heading", {
-      name: lang ? "Your reservation is confirmed" : "Su reserva está confirmada",
+      name: lang ? "See you in Churín." : "Nos vemos en Churín.",
     }),
   ).toBeVisible();
 }
@@ -126,7 +126,6 @@ test("the complete English Non-refundable journey sends its saved confirmation a
   request,
   browser,
 }) => {
-  await page.context().grantPermissions(["clipboard-read", "clipboard-write"]);
   const email = payerEmail();
   const stay = new URLSearchParams({
     checkIn: daysFromToday(250),
@@ -148,10 +147,9 @@ test("the complete English Non-refundable journey sends its saved confirmation a
   await expectConfirmed(page, "/en");
   const reference = (await confirmation(page).innerText()).match(/Reference\s*([A-Z0-9]{6})/)?.[1];
   expect(reference).toBeTruthy();
-  await page.getByRole("button", { name: "Copy link" }).click();
-  await expect(page.getByText("Link copied")).toBeVisible();
-  const copied = new URL(await page.evaluate(() => navigator.clipboard.readText()));
-  expect(copied.href).toBe(await page.locator("[data-access-view]").getAttribute("href"));
+  await expect(page.locator("[data-access-view]")).toBeVisible();
+  const savedLink = new URL((await page.locator("[data-access-view]").getAttribute("href"))!);
+  await expect(page.getByRole("button", { name: "Print confirmation" })).toBeEnabled();
 
   const login = await request.post(`${LOCAL_API_URL}/login`, {
     headers: { origin: "https://app.hotelmanantialchurin.com" },
@@ -202,8 +200,8 @@ test("the complete English Non-refundable journey sends its saved confirmation a
   expect(message!.text).toContain("Total: PEN 180.00");
   expect(message!.text).toContain("Paid: PEN 180.00");
   const mailed = new URL(message!.text.match(/https:\/\/www\.hotelmanantialchurin\.com\/\S+/)![0]);
-  expect(mailed.pathname).toBe(copied.pathname);
-  expect(mailed.hash === copied.hash).toBe(true);
+  expect(mailed.pathname).toBe(savedLink.pathname);
+  expect(mailed.hash === savedLink.hash).toBe(true);
   const fresh = await browser.newContext();
   try {
     const summary = await fresh.newPage();
@@ -252,6 +250,32 @@ test("paying the accepted Flexible quote confirms it with the paid amount and th
   await expect(confirmation(page)).toContainText(/Referencia\s*[A-Z0-9]{6}/);
   await expect(confirmation(page)).toContainText(/Pagado\s*S\/\s100\.00/);
   await expect(confirmation(page)).toContainText(/Saldo pendiente\s*S\/\s100\.00/);
+  const print = page.getByRole("button", { name: "Imprimir confirmación" });
+  await expect(print).toBeEnabled();
+  const title = await page.title();
+  await page.evaluate(() => {
+    window.print = () => {
+      document.documentElement.dataset.printedTitle = document.title;
+    };
+  });
+  await print.click();
+  await expect(page.locator("html")).toHaveAttribute(
+    "data-printed-title",
+    /Confirmación de reserva/,
+  );
+  await expect(page).toHaveTitle(title);
+  await page.emulateMedia({ media: "print" });
+  const printed = page.locator("[data-print-confirmation]");
+  await expect(printed).toBeVisible();
+  await expect(printed).toContainText(/Pagado\s*S\/\s100\.00/);
+  await expect(printed).toContainText(/Saldo pendiente\s*S\/\s100\.00/);
+  await expect(page.locator("[data-access-view]")).toBeHidden();
+  await page.pdf({
+    path: test.info().outputPath("confirmation.pdf"),
+    format: "A4",
+    printBackground: false,
+  });
+  await page.emulateMedia({ media: "screen" });
   expect((await recordedCulqi(page)).configs).toMatchObject([
     {
       settings: { amount: 10000, currency: "PEN" },
@@ -296,6 +320,11 @@ test("confirmation survives unavailable access, reload and manual retry without 
   await expect(page.locator("[data-reservation-help]")).toBeVisible();
   const retry = page.locator("[data-access-retry]");
   await expect(retry).toBeVisible();
+  await expect(page.getByRole("button", { name: "Imprimir confirmación" })).toBeEnabled();
+  await page.emulateMedia({ media: "print" });
+  await expect(page.locator("[data-print-confirmation]")).toContainText(reference!);
+  await expect(page.locator("[data-print-confirmation]")).toContainText(/Pagado\s*S\/\s100\.00/);
+  await page.emulateMedia({ media: "screen" });
   await page.evaluate(() => window.dispatchEvent(new Event("online")));
   await expect(retry).toBeVisible();
   expect(reads).toBe(1);
@@ -688,36 +717,38 @@ test("an unfinished bank window stays pending and can be opened again without pa
   expect(await serverPayment(page, request)).toMatchObject({ state: "authentication_required" });
 });
 
-test("a saved reservation link can be copied and opened without putting the token in support links", async ({
+test("a confirmed reservation opens and prints without putting its token in support links", async ({
   page,
   browser,
 }) => {
-  await page.context().grantPermissions(["clipboard-read", "clipboard-write"]);
   await fillCheckout(page, "flexible", payerEmail());
   await payButton(page, "100.00").click();
   await expectConfirmed(page);
   const reference = (await confirmation(page).innerText()).match(/Referencia\s*([A-Z0-9]{6})/)?.[1];
   expect(reference).toBeTruthy();
-  await expect(
-    page.getByText("Quien tenga este enlace puede ver este resumen limitado"),
-  ).toBeVisible();
-  await page.getByRole("button", { name: "Copiar enlace" }).click();
-  await expect(page.getByText("Enlace copiado")).toBeVisible();
-
-  const copied = new URL(await page.evaluate(() => navigator.clipboard.readText()));
-  expect(copied.pathname).toBe("/reservar/resumen/");
-  expect(copied.search).toBe("");
-  expect(copied.hash).toMatch(/^#[\w-]{43}$/);
-  const token = copied.hash.slice(1);
-  expect(copied.href.replace(copied.hash, "")).not.toContain(token);
-  expect(await page.locator("[data-access-view]").getAttribute("href")).toBe(copied.href);
+  await expect(page.locator("[data-access-view]")).toBeVisible();
+  const savedLink = new URL((await page.locator("[data-access-view]").getAttribute("href"))!);
+  expect(savedLink.pathname).toBe("/reservar/resumen/");
+  expect(savedLink.search).toBe("");
+  expect(savedLink.hash).toMatch(/^#[\w-]{43}$/);
+  const token = savedLink.hash.slice(1);
+  expect(savedLink.href.replace(savedLink.hash, "")).not.toContain(token);
+  expect(await page.locator("[data-access-view]").getAttribute("href")).toBe(savedLink.href);
+  await page.emulateMedia({ media: "print" });
+  await expect(page.locator("[data-print-confirmation]")).toContainText(reference!);
+  await expect(page.locator("[data-print-confirmation]")).not.toContainText(token);
+  const printLinks = await page
+    .locator("[data-print-confirmation] a")
+    .evaluateAll((links) => links.map((link) => link.getAttribute("href") ?? ""));
+  for (const href of printLinks) expect(href).not.toContain(token);
+  await page.emulateMedia({ media: "screen" });
   await page.locator("[data-access-view]").click();
-  await expect(page).toHaveURL(copied.href);
+  await expect(page).toHaveURL(savedLink.href);
   await expect(page.getByRole("heading", { name: "Resumen de la reserva" })).toBeVisible();
 
   const fresh = await browser.newContext();
   const summary = await fresh.newPage();
-  await summary.goto(copied.href);
+  await summary.goto(savedLink.href);
   await expect(summary.getByRole("heading", { name: "Resumen de la reserva" })).toBeVisible();
   await expect(summary.getByText(reference!)).toBeVisible();
   await expect(summary.getByText(/Pagado\s*S\/\s100\.00/)).toBeVisible();
@@ -729,13 +760,13 @@ test("a saved reservation link can be copied and opened without putting the toke
     expect(href).not.toContain(token);
     expect(href).not.toContain(reference!);
   }
-  expect(summary.url()).toContain(copied.hash);
+  expect(summary.url()).toContain(savedLink.hash);
 
   await summary.locator("#lang-select").selectOption({ label: "English" });
   await expect(summary.getByRole("heading", { name: "Reservation summary" })).toBeVisible();
   await expect(summary.getByRole("heading", { name: "King room" })).toBeVisible();
   await expect(summary.getByText(reference!)).toBeVisible();
-  expect(summary.url()).toContain(`/en/reservar/resumen/${copied.hash}`);
+  expect(summary.url()).toContain(`/en/reservar/resumen/${savedLink.hash}`);
   await summary.goBack();
   await expect(summary.getByRole("heading", { name: "Resumen de la reserva" })).toBeVisible();
   await expect(summary.getByText(reference!)).toBeVisible();
@@ -743,7 +774,7 @@ test("a saved reservation link can be copied and opened without putting the toke
   await summary.keyboard.press("Tab");
   await expect(summary.getByRole("link", { name: "Saltar al contenido principal" })).toBeFocused();
   await summary.keyboard.press("Enter");
-  expect(summary.url()).toContain(copied.hash);
+  expect(summary.url()).toContain(savedLink.hash);
   expect(summary.url()).not.toContain("main-content");
   expect(new URL(summary.url()).search).toBe("");
   await expect(summary.getByText(reference!)).toBeVisible();

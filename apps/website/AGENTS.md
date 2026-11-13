@@ -25,8 +25,12 @@ stays as completed checkout with the saved agreement, reference, authoritative
 amounts and hotel contact options. It clears the contact draft independently of
 the optional access-link read, retaining checkout credentials for outcome recovery.
 Each saved outcome reads access once; a failed or unestablished link can only be
-retried manually. Confirmed outcomes offer explicit summary navigation and copying;
-other saved outcomes offer copying. Link reads never redirect. The summary always
+retried manually. Confirmed outcomes use the welcome layout in `review/Confirmation.tsx`,
+with explicit summary navigation and browser printing; other saved outcomes retain copying.
+Link loading is announced to assistive technology, with explanatory copy visible only on failure.
+`review/PrintConfirmation.tsx` prints the saved agreement and backend reservation amounts,
+independently of access-link availability. Print styles exclude navigation, controls and private
+links. Phone and WhatsApp remain separate actions. Link reads never redirect. The summary always
 uses its ordinary greeting. The summary
 is not a wizard step and marketing pages do not link to it.
 `src/lib/rooms.ts` links each room to a PMS room-type ID; the API offers only types

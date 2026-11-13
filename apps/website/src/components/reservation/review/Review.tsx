@@ -18,6 +18,7 @@ import { sayFrom, type ReviewText } from "./text";
 import { quietLink } from "./styles";
 import { useCheckoutFlow } from "./useCheckoutFlow";
 import { WhatsAppFallback } from "./WhatsAppFallback";
+import { Confirmation } from "./Confirmation";
 
 type Props = {
   lang: Lang;
@@ -84,6 +85,23 @@ export default function Review({
           );
         })()
       : whatsappHref;
+
+  if (confirmed && state.payment?.reservation && view && room) {
+    return (
+      <ReviewContext value={context}>
+        <Confirmation
+          view={view}
+          room={room}
+          reservation={state.payment.reservation}
+          currency={state.payment.currency}
+          access={state.access}
+          titleRef={focus.ref("outcomeTitle")}
+          summaryHref={summaryHref}
+          onAccessRetry={() => dispatch({ type: "accessRetryRequested" })}
+        />
+      </ReviewContext>
+    );
+  }
 
   return (
     <ReviewContext value={context}>
