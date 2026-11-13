@@ -82,7 +82,10 @@ async function sendConfirmationEmail(
 ) {
   if (email.attempts >= MAX_SEND_ATTEMPTS)
     return settle(db, email, { status: "failed", lastError: email.lastError ?? "attempt_limit" });
-  const request = email.pendingRequest ?? (await firstRequest(db, email, env));
+  const state = await loadReservation(db, email.reservationId);
+  if (email.kind === "automatic" && state.reservation.status !== "confirmed")
+    return settle(db, email, { status: "failed", lastError: "not_confirmed" });
+  const request = email.pendingRequest ?? (await firstRequest(db, email, state, env));
   if (request === null) return;
   const attempt = email.attempts + 1;
   const [claimed] = await db
@@ -101,12 +104,7 @@ async function sendConfirmationEmail(
   await settle(db, claimed, outcome(result, attempt));
 }
 
-async function firstRequest(db: Db, email: ConfirmationEmail, env: SendEnv) {
-  const state = await loadReservation(db, email.reservationId);
-  if (email.kind === "automatic" && state.reservation.status !== "confirmed") {
-    await settle(db, email, { status: "failed", lastError: "not_confirmed" });
-    return null;
-  }
+async function firstRequest(db: Db, email: ConfirmationEmail, state: State, env: SendEnv) {
   const [access] = await db
     .select()
     .from(reservationAccess)

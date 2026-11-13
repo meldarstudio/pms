@@ -413,6 +413,40 @@ describe("automatic confirmation", () => {
     });
   });
 
+  it("fails at once when Resend rejects the API key", async () => {
+    await confirmed();
+    configureResend();
+    await admitEmail(true);
+    resend.next(401);
+
+    await runScheduled();
+    vi.advanceTimersByTime(60 * MINUTE);
+    await runScheduled();
+
+    expect(posts()).toHaveLength(1);
+    expect(emails()[0]).toMatchObject({ status: "failed", attempts: 1, next_attempt_at: null });
+  });
+
+  it("retries when Resend is still processing the same idempotency key", async () => {
+    await confirmed();
+    configureResend();
+    await admitEmail(true);
+    resend.next("concurrent");
+
+    await runScheduled();
+    expect(emails()[0]).toMatchObject({
+      status: "pending",
+      attempts: 1,
+      last_error: "concurrent_idempotent_requests",
+    });
+    vi.advanceTimersByTime(MINUTE);
+    await runScheduled();
+
+    expect(posts()).toHaveLength(2);
+    expect(resend.emails).toHaveLength(1);
+    expect(emails()[0]).toMatchObject({ status: "sent", attempts: 2 });
+  });
+
   it("waits at least Retry-After before trying again", async () => {
     await confirmed();
     configureResend();
@@ -460,6 +494,26 @@ describe("automatic confirmation", () => {
 
     expect(posts()).toEqual([]);
     expect(emails()[0]).toMatchObject({ status: "failed", last_error: "not_confirmed" });
+  });
+
+  it("stops retrying a confirmation once staff cancel the reservation between attempts", async () => {
+    const { saved } = await confirmed();
+    configureResend();
+    await admitEmail(true);
+    resend.next(500);
+    await runScheduled();
+    await command(saved.id, [{ type: "set-status", status: "cancelled" }]);
+
+    vi.advanceTimersByTime(MINUTE);
+    await runScheduled();
+
+    expect(posts()).toHaveLength(1);
+    expect(emails()[0]).toMatchObject({
+      status: "failed",
+      attempts: 1,
+      last_error: "not_confirmed",
+      next_attempt_at: null,
+    });
   });
 
   it("escapes room names in HTML while keeping them in the plain text", async () => {
