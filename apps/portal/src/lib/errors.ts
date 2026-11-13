@@ -12,11 +12,6 @@ const messages: Record<string, string> = {
   "invalid checkout token": "No se pudo verificar la reserva en curso. Vuelve a empezar.",
   "invalid reservation access": "No se pudo abrir el resumen de la reserva.",
   "reservation access was not established": "Esta reserva no tiene un enlace de resumen.",
-  "confirmation was not established":
-    "Esta reserva no tiene una confirmación automática registrada.",
-  "invalid email report": "No se pudo verificar el informe de entrega del correo.",
-  "deliberate resend may duplicate earlier delivery; acknowledgement is required":
-    "Debes aceptar que este nuevo correo podría duplicar una entrega anterior, aunque todavía sea incierta.",
   "agreement must be accepted": "Debes aceptar las condiciones de la reserva.",
   "too many acceptances for this checkout":
     "Esta reserva en curso se modificó demasiadas veces. Vuelve a empezar.",
@@ -114,8 +109,6 @@ const messages: Record<string, string> = {
   "quote is already paid": "Esta cotización ya está pagada.",
   "a payment for this quote is still being confirmed":
     "Todavía se está confirmando un pago para esta cotización.",
-  "payment is not waiting for authentication":
-    "Este pago ya no espera la verificación de la tarjeta.",
   "payment attempt not found": "No se encontró el intento de pago.",
   "guest acceptance is required": "Registra que el huésped aceptó el cupón en lugar del reembolso.",
   "coupon exceeds the refund due":

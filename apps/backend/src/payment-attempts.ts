@@ -22,7 +22,6 @@ import { HttpError, PAYMENT_PENDING, rethrowConflict } from "./http";
 import { quoteBill } from "./lib/reservation-bill";
 import { inventoryStatuses } from "./lib/statuses";
 import { propertyCalendar } from "./property-calendar";
-import type { ConfirmationProvenance } from "./confirmation-intents";
 import { quoteExpired, saveQuote } from "./quotes";
 
 export type Attempt = typeof paymentAttempts.$inferSelect;
@@ -313,7 +312,9 @@ async function fulfill(db: Db, attempt: Attempt, context: PaymentContext): Promi
   const saved = {
     payment,
     publicCheckoutId: attempt.checkoutId,
-    confirmation: confirmationProvenance(attempt),
+    confirmation: attempt.confirmationEmailEligible
+      ? { recipient: contact.email, language: attempt.language ?? "es" }
+      : null,
     notes,
   };
   let reservationId: string;
@@ -361,18 +362,6 @@ async function acceptedContact(db: Db, acceptanceId: string | null) {
 }
 
 type Contact = Awaited<ReturnType<typeof acceptedContact>>;
-
-function confirmationProvenance(attempt: Attempt): ConfirmationProvenance | null {
-  if (!attempt.confirmationEmailEligible || !attempt.checkoutId || !attempt.acceptanceId)
-    return null;
-  return {
-    attemptId: attempt.id,
-    checkoutId: attempt.checkoutId,
-    acceptanceId: attempt.acceptanceId,
-    recipientEmail: attempt.email,
-    language: attempt.language,
-  };
-}
 
 async function rebookedSince(db: Db, quote: Quote, attempt: Pick<Attempt, "email" | "calledAt">) {
   const [row] = await db

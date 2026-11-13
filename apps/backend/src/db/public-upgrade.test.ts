@@ -174,7 +174,7 @@ it("preserves populated pre-public money and receipts, the signed-in session and
     db.sqlite.prepare("SELECT count(*) AS n FROM reservations WHERE quote_id = 'old-quote'").get(),
   ).toEqual({ n: 0 });
   expect(db.sqlite.prepare("SELECT count(*) AS n FROM reservation_access").get()).toEqual({ n: 0 });
-  expect(db.sqlite.prepare("SELECT count(*) AS n FROM confirmation_intents").get()).toEqual({
+  expect(db.sqlite.prepare("SELECT count(*) AS n FROM confirmation_emails").get()).toEqual({
     n: 0,
   });
   expect(resend.requests).toEqual([]);

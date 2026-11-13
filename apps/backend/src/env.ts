@@ -25,7 +25,6 @@ export type Env = {
     CULQI_SECRET_KEY?: string;
     CULQI_API_URL?: string;
     RESEND_API_KEY?: string;
-    RESEND_WEBHOOK_SECRET?: string;
     RESEND_API_URL?: string;
     TURNSTILE_SECRET_KEY?: string;
     TURNSTILE_VERIFY_URL?: string;

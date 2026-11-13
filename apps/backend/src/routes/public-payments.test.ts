@@ -556,7 +556,7 @@ describe("payment outcomes", () => {
     expect(charges()).toHaveLength(1);
     expect(rows("SELECT status FROM reservations")).toEqual([{ status: "unfulfilled" }]);
     expect(rows("SELECT adults FROM reservation_rooms")).toEqual([{ adults: 2 }]);
-    expect(rows("SELECT id FROM confirmation_intents")).toEqual([]);
+    expect(rows("SELECT id FROM confirmation_emails")).toEqual([]);
     expect(rows("SELECT id FROM refunds")).toEqual([]);
     const [saved] = rows<{ id: string }>("SELECT id FROM reservations");
     expect(
@@ -1685,7 +1685,7 @@ describe("recovering an interrupted payment", () => {
     expect(rows("SELECT status FROM reservations")).toEqual([{ status: "confirmed" }]);
     expect(rows("SELECT status FROM payment_attempts")).toEqual([{ status: "saved" }]);
     expect(rows("SELECT id FROM payments")).toHaveLength(1);
-    expect(rows("SELECT id FROM confirmation_intents")).toHaveLength(1);
+    expect(rows("SELECT id FROM confirmation_emails")).toHaveLength(1);
     expect(charges()).toHaveLength(1);
     expect(await status(checkout.token)).toMatchObject({ state: "confirmed" });
   });
