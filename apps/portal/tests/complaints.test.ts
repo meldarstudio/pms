@@ -264,5 +264,8 @@ it("keeps selected evidence and the next reply draft after upload failure and re
   assert.equal(writes[0]!.path, writes[1]!.path);
   assert.equal(await writes[0]!.file.text(), await writes[1]!.file.text());
   assert.equal(page.container.querySelector("textarea")!.value, "Borrador de seguimiento");
-  assert.ok(page.container.querySelector('button[aria-label="Descargar Reembolso.pdf"]'));
+  await page.until(
+    () => Boolean(page.container.querySelector('button[aria-label="Descargar Reembolso.pdf"]')),
+    "Saved evidence becomes downloadable",
+  );
 });
