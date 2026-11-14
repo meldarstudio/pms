@@ -30,8 +30,10 @@ it("keeps the development book unavailable without configuration and on producti
   }
 });
 
-it("stores an unreserved foreign-document sheet once across retries and keeps receipts private", async () => {
+it("stores an unreserved foreign-document sheet once across retries, numbered in its property-time filing year, and keeps receipts private", async () => {
   db.env.COMPLAINT_BOOK_DEVELOPMENT = JSON.stringify(developmentBook);
+  vi.useFakeTimers({ toFake: ["Date"] });
+  vi.setSystemTime(new Date("2027-01-01T04:30:00Z"));
   const token = crypto.randomUUID() + crypto.randomUUID();
   const send = (body = complaintInput, bearer = token) =>
     app.request(
@@ -47,7 +49,8 @@ it("stores an unreserved foreign-document sheet once across retries and keeps re
   expect(response.status).toBe(201);
   const sheet = (await response.json()) as Sheet;
   expect(sheet).toMatchObject({
-    reference: "DEMO-000041",
+    bookId: "DEMO",
+    reference: "000000041-2026",
     input: complaintInput,
     email: { status: "pending" },
     provider: developmentBook.provider,
@@ -55,7 +58,7 @@ it("stores an unreserved foreign-document sheet once across retries and keeps re
   expect(await (await send()).json()).toEqual(sheet);
   expect((await send({ ...complaintInput, description: "Changed text" })).status).toBe(409);
   expect(
-    (await app.request("http://localhost/public/complaints/DEMO-000041", {}, db.env)).status,
+    (await app.request("http://localhost/public/complaints/000000041-2026", {}, db.env)).status,
   ).toBe(404);
   const read = await app.request(
     "http://localhost/public/complaints/receipt",
@@ -70,6 +73,8 @@ it("stores an unreserved foreign-document sheet once across retries and keeps re
 
 it("survives concurrent filing with unique consecutive references and one replayed sheet", async () => {
   db.env.COMPLAINT_BOOK_DEVELOPMENT = JSON.stringify(developmentBook);
+  vi.useFakeTimers({ toFake: ["Date"] });
+  vi.setSystemTime(new Date("2026-11-14T15:00:00Z"));
   const tokens = [
     crypto.randomUUID() + crypto.randomUUID(),
     crypto.randomUUID() + crypto.randomUUID(),
@@ -93,7 +98,7 @@ it("survives concurrent filing with unique consecutive references and one replay
   );
   expect(sheets[0].reference).toBe(sheets[2].reference);
   expect(new Set(sheets.map((sheet) => sheet.reference))).toEqual(
-    new Set(["DEMO-000041", "DEMO-000042"]),
+    new Set(["000000041-2026", "000000042-2026"]),
   );
 });
 
@@ -116,7 +121,7 @@ it("lets only the owner read and append actual responses and correction evidence
   await db.signIn("owner");
   const list = await (await db.request("/complaints")).json();
   expect(list).toMatchObject([
-    { id: sheet.id, reference: "DEMO-000041", responseStatus: "pending" },
+    { id: sheet.id, reference: sheet.reference, responseStatus: "pending" },
   ]);
   const response = {
     requestId: crypto.randomUUID(),
@@ -182,6 +187,7 @@ it("dates a transcribed physical sheet from its original filing and preserves it
   const saved = (await result.json()) as Sheet;
   expect(saved).toMatchObject({
     filedAt: body.filedAt,
+    reference: "000000041-2026",
     originalReference: body.originalReference,
     source: "physical",
     dueDate: "2026-12-25",
@@ -228,8 +234,12 @@ it("keeps registration after receipt failure and retries the same saved email sa
   expect(detail.email.status).toBe("sent");
   expect(provider.emails).toHaveLength(1);
   expect(provider.requests[0].body).toBe(provider.requests[1].body);
-  expect(JSON.parse(provider.emails[0].body).text).toContain(sheet.reference);
-  expect(JSON.parse(provider.emails[0].body).text).toContain(complaintInput.description);
+  const email = JSON.parse(provider.emails[0].body);
+  expect(email.subject).toBe(`Libro de Reclamaciones — Hoja de Reclamación Nº ${sheet.reference}`);
+  expect(email.text).toContain(`HOJA DE RECLAMACIÓN (complaint sheet) No. ${sheet.reference}`);
+  expect(email.text).toContain("Identification code: DEMO");
+  expect(email.text).toContain(complaintInput.description);
+  expect(email.text).toContain("Recipient: consumer");
 });
 
 it("rejects incomplete minor details accessibly and refuses production hosts", async () => {
@@ -277,7 +287,7 @@ it("rolls back the sheet and number if its email work cannot be stored", async (
   expect(await (await db.request("/complaints")).json()).toEqual([]);
   db.sqlite.exec("DROP TRIGGER fail_email;");
   expect(await (await send()).json()).toMatchObject({
-    reference: "DEMO-000041",
+    reference: expect.stringMatching(/^000000041-\d{4}$/),
     email: { status: "pending" },
   });
 });

@@ -1,3 +1,4 @@
+import { sql, type SQL } from "drizzle-orm";
 import { z } from "zod";
 import { HttpError } from "./http";
 import { loopbackUrl } from "./loopback";
@@ -36,14 +37,21 @@ export function developmentComplaintConfig(raw: string | undefined, requestUrl: 
 export const complaintCalendarSource =
   "Lunes a viernes; los feriados y días no laborables cuentan como hábiles, por lo que el plazo nunca es posterior al legal.";
 
-export function complaintResponseDueDate(filedAt: string, timeZone: string) {
-  const filedDate = new Intl.DateTimeFormat("en-CA", {
+function propertyDate(instant: string, timeZone: string) {
+  return new Intl.DateTimeFormat("en-CA", {
     timeZone,
     year: "numeric",
     month: "2-digit",
     day: "2-digit",
-  }).format(new Date(filedAt));
-  const day = new Date(`${filedDate}T00:00:00Z`);
+  }).format(new Date(instant));
+}
+
+export function complaintSheetReference(number: SQL<number>, filedAt: string, timeZone: string) {
+  return sql<string>`printf('%09d', ${number}) || '-' || ${propertyDate(filedAt, timeZone).slice(0, 4)}`;
+}
+
+export function complaintResponseDueDate(filedAt: string, timeZone: string) {
+  const day = new Date(`${propertyDate(filedAt, timeZone)}T00:00:00Z`);
   let remaining = 15;
   while (remaining > 0) {
     day.setUTCDate(day.getUTCDate() + 1);

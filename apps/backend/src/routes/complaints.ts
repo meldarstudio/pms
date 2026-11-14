@@ -12,6 +12,7 @@ import { Hono } from "hono";
 import type { Env } from "../env";
 import {
   complaintCalendarSource,
+  complaintSheetReference,
   complaintResponseDueDate,
   developmentComplaintConfig,
 } from "../complaint-config";
@@ -140,7 +141,7 @@ ownerComplaintRoutes.post("/backups", validate("json", complaintBackupSchema), a
       requestPayload: payload,
       bookId: config.bookId,
       number,
-      reference: sql`${config.bookId} || '-' || printf('%06d', ${number})`,
+      reference: complaintSheetReference(number, body.filedAt, c.env.PROPERTY_TIME_ZONE),
       establishmentId: config.establishmentId,
       provider: config.provider,
       input: body.input,

@@ -165,11 +165,13 @@ function ComplaintDetail({ sheet }: { sheet: ComplaintSheet }) {
   };
   return (
     <article className="complaint-owner-sheet flex flex-col gap-4">
-      <h2 className="text-xl font-semibold">{sheet.reference}</h2>
+      <h2 className="text-xl font-semibold">Hoja de Reclamación Nº {sheet.reference}</h2>
       <p>
-        {sheet.provider.legalName} · RUC {sheet.provider.ruc}
+        {sheet.provider.legalName} / RUC {sheet.provider.ruc}
         <br />
-        {sheet.provider.address} · {sheet.establishmentId}
+        {sheet.provider.address} / Código de identificación: {sheet.bookId}
+        <br />
+        {sheet.establishmentId}
       </p>
       <p>
         Presentado: {date(sheet.filedAt)}
@@ -227,7 +229,9 @@ function ComplaintDetail({ sheet }: { sheet: ComplaintSheet }) {
         </Button>
       )}
       {retry.error && <p role="alert">{problemText(retry.error)}</p>}
-      <h3 className="text-lg font-semibold">Historial de respuestas enviadas</h3>
+      <h3 className="text-lg font-semibold">
+        Observaciones y acciones adoptadas por el proveedor: respuestas enviadas
+      </h3>
       {sheet.responses.map((response) => (
         <section key={response.id} className="flex flex-col gap-2 rounded border p-4">
           <p>

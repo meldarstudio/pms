@@ -48,7 +48,7 @@ export async function sendComplaintEmails(db: Db, env: Env["Bindings"]) {
       JSON.stringify({
         from: config.emailFrom,
         to: [sheet.input.email],
-        subject: `Libro de Reclamaciones — ${sheet.reference}`,
+        subject: `Libro de Reclamaciones — Hoja de Reclamación Nº ${sheet.reference}`,
         text,
       });
     const nextAttemptAt = new Date(
@@ -176,18 +176,32 @@ function complaintEmailText(sheet: Awaited<ReturnType<typeof complaintView>>) {
     "policyVersion",
   ] as const;
   return [
-    "Libro de Reclamaciones",
-    sheet.reference,
+    "LIBRO DE RECLAMACIONES",
+    `${en ? "HOJA DE RECLAMACIÓN (complaint sheet) No." : "HOJA DE RECLAMACIÓN Nº"} ${sheet.reference}`,
+    `${sheet.provider.legalName} / RUC ${sheet.provider.ruc}`,
+    `${sheet.provider.address} / ${en ? "Identification code" : "Código de identificación"}: ${sheet.bookId}`,
     sheet.establishmentId,
-    sheet.provider.legalName,
-    `RUC: ${sheet.provider.ruc}`,
-    sheet.provider.address,
-    `${en ? "Registered" : "Registrado"}: ${new Intl.DateTimeFormat(en ? "en-GB" : "es-PE", { timeZone: sheet.timeZone, dateStyle: "full", timeStyle: "long" }).format(new Date(sheet.filedAt))}`,
+    `${en ? "Date" : "Fecha"}: ${new Intl.DateTimeFormat(en ? "en-GB" : "es-PE", { timeZone: sheet.timeZone, dateStyle: "full", timeStyle: "long" }).format(new Date(sheet.filedAt))}`,
     `${en ? "Response deadline" : "Fecha límite de respuesta"}: ${sheet.dueDate}`,
     `Moneda / Currency: ${sheet.currency}`,
     ...keys.map((key, index) => `${labels[index]}: ${String(sheet.input[key])}`),
     en
-      ? "Your sheet is registered. This email is a copy; email submission is not proof of delivery. The hotel must respond within 15 business days without extension. Filing does not prevent using Indecopi or other remedies."
-      : "Su hoja está registrada. Este correo es una copia; su envío no acredita la entrega. El hotel debe responder en 15 días hábiles sin prórroga. Puede acudir directamente a Indecopi u otras vías.",
+      ? "Your sheet is registered. This email is a copy; email submission is not proof of delivery."
+      : "Su hoja está registrada. Este correo es una copia; su envío no acredita la entrega.",
+    ...(en
+      ? [
+          "Reclamo: dissatisfaction related to the products or services.",
+          "Queja: dissatisfaction not related to the products or services, or discontent with customer service.",
+          "Filing a reclamo does not prevent using other dispute resolution channels, and it is not a prerequisite for filing a complaint with INDECOPI.",
+          "The provider must respond to the reclamo or queja within fifteen (15) business days, which cannot be extended.",
+          "Recipient: consumer",
+        ]
+      : [
+          "Reclamo: disconformidad relacionada a los productos o servicios.",
+          "Queja: disconformidad no relacionada a los productos o servicios; o, malestar o descontento respecto a la atención al público.",
+          "La formulación del reclamo no impide acudir a otras vías de solución de controversias ni es requisito previo para interponer una denuncia ante el INDECOPI.",
+          "El proveedor debe dar respuesta al reclamo o queja en un plazo no mayor a quince (15) días hábiles, el cual es improrrogable.",
+          "Destinatario: consumidor",
+        ]),
   ].join("\n\n");
 }

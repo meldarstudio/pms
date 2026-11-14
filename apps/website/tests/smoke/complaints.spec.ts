@@ -31,7 +31,8 @@ test("keeps the complaint draft and retry credential after a lost response, then
     return route.fulfill({
       json: {
         id: "sheet-1",
-        reference: "DEMO-000041",
+        bookId: "DEMO",
+        reference: "000000041-2026",
         provider: {
           legalName: "Development operator",
           ruc: "00000000000",
@@ -66,7 +67,14 @@ test("keeps the complaint draft and retry credential after a lost response, then
     "Service unavailable",
   );
   await page.getByRole("button", { name: "Retry same submission" }).click();
-  await expect(page.getByRole("heading", { name: "Registered: DEMO-000041" })).toBeVisible();
+  await expect(
+    page.getByRole("heading", { name: "Hoja de Reclamación (complaint sheet) No. 000000041-2026" }),
+  ).toBeVisible();
+  await expect(page.getByText("Identification code: DEMO")).toBeVisible();
+  await expect(
+    page.getByRole("heading", { name: "4. Provider's observations and actions taken" }),
+  ).toBeVisible();
+  await expect(page.getByText("Recipient: consumer")).toBeVisible();
   await expect(page.getByText("Email queued; delivery is not confirmed.")).toBeVisible();
   await expect(page.getByRole("button", { name: "Print sheet" })).toBeVisible();
   await page.emulateMedia({ media: "print" });
@@ -92,9 +100,13 @@ test("registers a minor's queja without a reservation, email or amount through t
   await page.getByLabel("Pedido", { exact: true }).fill("Respuesta escrita de prueba");
   await page.getByRole("combobox", { name: "Tipo", exact: true }).selectOption("queja");
   await page.getByRole("button", { name: "Registrar hoja" }).click();
-  await expect(page.getByRole("heading", { name: /Registrado: DEMO-/ })).toBeVisible();
+  await expect(
+    page.getByRole("heading", { name: /^Hoja de Reclamación Nº \d{9}-\d{4}$/ }),
+  ).toBeVisible();
   await expect(page.getByText("No conocido / no aplica", { exact: true })).toBeVisible();
   await expect(page.getByText("Sin correo automático.", { exact: true })).toBeVisible();
   await page.reload();
-  await expect(page.getByRole("heading", { name: /Registrado: DEMO-/ })).toBeVisible();
+  await expect(
+    page.getByRole("heading", { name: /^Hoja de Reclamación Nº \d{9}-\d{4}$/ }),
+  ).toBeVisible();
 });

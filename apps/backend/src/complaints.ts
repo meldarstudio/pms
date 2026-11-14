@@ -9,6 +9,7 @@ import {
 } from "./db/schema";
 import {
   complaintCalendarSource,
+  complaintSheetReference,
   complaintResponseDueDate,
   type ComplaintBookConfig,
 } from "./complaint-config";
@@ -106,7 +107,7 @@ export async function fileComplaint(
         requestPayload: payload,
         bookId: config.bookId,
         number,
-        reference: sql`${config.bookId} || '-' || printf('%06d', ${number})`,
+        reference: complaintSheetReference(number, now, timeZone),
         establishmentId: config.establishmentId,
         provider: config.provider,
         input,

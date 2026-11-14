@@ -35,7 +35,8 @@ it("retains a response draft after network failure and retries its evidence with
   };
   const sheet = {
     id: "sheet-1",
-    reference: "DEMO-000041",
+    bookId: "DEMO",
+    reference: "000000041-2026",
     provider: {
       legalName: "Development operator",
       ruc: "00000000000",
@@ -80,8 +81,8 @@ it("retains a response draft after network failure and retries its evidence with
     return Response.json(sheet);
   };
   await page.render(browser.React.createElement(screen.Complaints));
-  await page.until(() => page.container.textContent.includes("DEMO-000041"));
-  await page.click("DEMO-000041");
+  await page.until(() => page.container.textContent.includes("000000041-2026"));
+  await page.click("000000041-2026");
   await page.until(() => Boolean(page.container.querySelector("textarea")));
   await page.fill(page.container.querySelector("textarea")!, "Respuesta enviada");
   await page.fill("evidence", "Mensaje 123");
@@ -99,7 +100,8 @@ it("starts a new logical email retry after an acknowledged attempt fails again",
   const ids: string[] = [];
   const sheet = {
     id: "sheet-1",
-    reference: "DEMO-000041",
+    bookId: "DEMO",
+    reference: "000000041-2026",
     provider: { legalName: "Demo", ruc: "00000000000", address: "Demo" },
     establishmentId: "DEMO",
     filedAt: "2026-11-13T14:00:00Z",
@@ -133,8 +135,8 @@ it("starts a new logical email retry after an acknowledged attempt fails again",
     return Response.json(sheet);
   };
   await page.render(browser.React.createElement(screen.Complaints));
-  await page.until(() => page.container.textContent.includes("DEMO-000041"));
-  await page.click("DEMO-000041");
+  await page.until(() => page.container.textContent.includes("000000041-2026"));
+  await page.click("000000041-2026");
   await page.until(() => page.container.textContent.includes("Reintentar correo de constancia"));
   await page.click("Reintentar correo de constancia");
   await page.until(() => !page.button("Reintentar correo de constancia").disabled);
@@ -207,7 +209,8 @@ it("keeps selected evidence and the next reply draft after upload failure and re
   };
   const sheet = {
     id: "sheet-1",
-    reference: "DEMO-000041",
+    bookId: "DEMO",
+    reference: "000000041-2026",
     provider: { legalName: "Demo", ruc: "00000000000", address: "Demo" },
     establishmentId: "DEMO",
     filedAt: "2026-11-13T14:00:00Z",
@@ -245,8 +248,8 @@ it("keeps selected evidence and the next reply draft after upload failure and re
     return Response.json(sheet);
   };
   await page.render(browser.React.createElement(screen.Complaints));
-  await page.until(() => page.container.textContent.includes("DEMO-000041"));
-  await page.click("DEMO-000041");
+  await page.until(() => page.container.textContent.includes("000000041-2026"));
+  await page.click("000000041-2026");
   await page.until(() => Boolean(page.container.querySelector('input[type="file"]')));
   await page.fill(page.container.querySelector("textarea")!, "Borrador de seguimiento");
   const input = page.container.querySelector('input[type="file"]')!;

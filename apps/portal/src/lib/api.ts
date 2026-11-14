@@ -781,6 +781,7 @@ export type ComplaintAttachment = {
 };
 export type ComplaintSheet = {
   id: string;
+  bookId: string;
   reference: string;
   establishmentId: string;
   provider: { legalName: string; ruc: string; address: string };

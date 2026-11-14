@@ -33,6 +33,7 @@ export type ComplaintConfig = {
 };
 export type ComplaintReceipt = {
   id: string;
+  bookId: string;
   reference: string;
   establishmentId: string;
   provider: ComplaintConfig["provider"];

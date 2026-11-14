@@ -1,5 +1,5 @@
 import { useTranslations } from "@/i18n/utils";
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, type ReactNode } from "react";
 import { complaintLabels, type ComplaintReceipt as Receipt } from "@/lib/complaints";
 
 export function ComplaintReceipt({ sheet, language }: { sheet: Receipt; language: "es" | "en" }) {
@@ -14,51 +14,94 @@ export function ComplaintReceipt({ sheet, language }: { sheet: Receipt; language
       dateStyle: "long",
       timeStyle: "long",
     }).format(new Date(value));
+  const shown = {
+    ...sheet.input,
+    minor: t(sheet.input.minor ? "complaints.sheet.yes" : "complaints.sheet.no"),
+    category: sheet.input.category === "reclamo" ? "Reclamo" : "Queja",
+    responseChannel: t(
+      sheet.input.responseChannel === "email"
+        ? "complaints.email"
+        : "complaints.letterToTheAddressProvided",
+    ),
+  };
+  const field = (key: Exclude<keyof typeof labels, "amount">) => (
+    <div key={key}>
+      <dt className="font-semibold">{labels[key]}</dt>
+      <dd className="whitespace-pre-wrap break-words">{String(shown[key] ?? "")}</dd>
+    </div>
+  );
+  const section = (title: string, children: ReactNode) => (
+    <section className="flex flex-col gap-3 border-t border-stone-300 pt-4">
+      <h3 className="font-semibold uppercase">{title}</h3>
+      {children}
+    </section>
+  );
   return (
     <article className="complaint-sheet flex flex-col gap-4">
-      <h2 ref={heading} tabIndex={-1} className="text-2xl font-semibold">
-        {t("complaints.registered")}: {sheet.reference}
-      </h2>
-      <p>Libro de Reclamaciones · {sheet.establishmentId}</p>
+      <header className="flex flex-col gap-1">
+        <p className="font-semibold uppercase">Libro de Reclamaciones</p>
+        <h2 ref={heading} tabIndex={-1} className="text-2xl font-semibold">
+          {t("complaints.sheet.title")} {t("complaints.sheet.number")} {sheet.reference}
+        </h2>
+      </header>
       <p>
-        {sheet.provider.legalName}
-        <br />
-        RUC {sheet.provider.ruc}
-        <br />
-        {sheet.provider.address}
-      </p>
-      <p>
-        {t("complaints.filed")}: {date(sheet.filedAt)}
+        {t("complaints.sheet.date")}: {date(sheet.filedAt)}
         <br />
         {t("complaints.registered")}: {date(sheet.registeredAt)}
         <br />
         {t("complaints.responseDeadline")}: {sheet.dueDate} ({sheet.timeZone})
       </p>
-      <dl className="grid gap-3">
-        {Object.entries(labels)
-          .filter(([key]) => key !== "amount")
-          .map(([key, label]) => (
-            <div key={key}>
-              <dt className="font-semibold">{label}</dt>
-              <dd className="whitespace-pre-wrap break-words">
-                {String(sheet.input[key as keyof typeof sheet.input] ?? "")}
-              </dd>
-            </div>
-          ))}
-        <div>
-          <dt>{labels.amount}</dt>
-          <dd>
-            {sheet.input.amountCents === null
-              ? t("complaints.unknownNotApplicable")
-              : `${(sheet.input.amountCents / 100).toFixed(2)} ${sheet.currency}`}
-          </dd>
-        </div>
-        <div>
-          <dt>{t("complaints.privacyPolicyVersion")}</dt>
-          <dd>{sheet.input.policyVersion}</dd>
-        </div>
-      </dl>
       <p>
+        {sheet.provider.legalName} / RUC {sheet.provider.ruc}
+        <br />
+        {sheet.provider.address} / {t("complaints.sheet.identificationCode")}: {sheet.bookId}
+        <br />
+        {sheet.establishmentId}
+      </p>
+      {section(
+        t("complaints.sheet.consumer"),
+        <dl className="grid gap-3">
+          {(
+            [
+              "fullName",
+              "address",
+              "documentType",
+              "documentNumber",
+              "phone",
+              "email",
+              "minor",
+              "representative",
+            ] as const
+          ).map(field)}
+        </dl>,
+      )}
+      {section(
+        t("complaints.sheet.goods"),
+        <dl className="grid gap-3">
+          {field("product")}
+          <div>
+            <dt className="font-semibold">{labels.amount}</dt>
+            <dd>
+              {sheet.input.amountCents === null
+                ? t("complaints.unknownNotApplicable")
+                : `${(sheet.input.amountCents / 100).toFixed(2)} ${sheet.currency}`}
+            </dd>
+          </div>
+          {field("reservationReference")}
+        </dl>,
+      )}
+      {section(
+        t("complaints.sheet.detail"),
+        <dl className="grid gap-3">
+          {(["category", "description", "requestedRemedy", "responseChannel"] as const).map(field)}
+          <div>
+            <dt className="font-semibold">{t("complaints.privacyPolicyVersion")}</dt>
+            <dd>{sheet.input.policyVersion}</dd>
+          </div>
+        </dl>,
+      )}
+      {section(t("complaints.sheet.provider"), <p>{t("complaints.sheet.responseDate")}:</p>)}
+      <p className="print:hidden">
         {sheet.email.status === "sent"
           ? t("complaints.emailSubmittedDeliveryIsNotConfirmed")
           : sheet.email.status === "pending"
@@ -67,7 +110,13 @@ export function ComplaintReceipt({ sheet, language }: { sheet: Receipt; language
               ? t("complaints.emailFailedYourSheetRemainsRegisteredDo")
               : t("complaints.noAutomaticEmailRequested")}
       </p>
-      <p>{t("complaints.theHotelMustRespondWithin15Business")}</p>
+      <footer className="flex flex-col gap-1 border-t border-stone-300 pt-4 text-sm">
+        <p>{t("complaints.sheet.reclamoDefinition")}</p>
+        <p>{t("complaints.sheet.quejaDefinition")}</p>
+        <p>{t("complaints.sheet.otherRemedies")}</p>
+        <p>{t("complaints.sheet.deadline")}</p>
+        <p>{t("complaints.sheet.recipient")}</p>
+      </footer>
       <button
         className="min-h-11 rounded border px-4 print:hidden"
         type="button"

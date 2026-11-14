@@ -35,6 +35,26 @@ export const ui = {
       "Enter an email address for the written response.",
     "complaints.error.too_many_complaints_retry_in_one_minute":
       "Wait one minute and retry the same submission. Your draft is retained.",
+    "complaints.sheet.title": "Hoja de Reclamación (complaint sheet)",
+    "complaints.sheet.number": "No.",
+    "complaints.sheet.date": "Date",
+    "complaints.sheet.identificationCode": "Identification code",
+    "complaints.sheet.consumer": "1. Consumer identification",
+    "complaints.sheet.goods": "2. Product or service contracted",
+    "complaints.sheet.detail": "3. Complaint details and consumer's request",
+    "complaints.sheet.provider": "4. Provider's observations and actions taken",
+    "complaints.sheet.responseDate": "Date the response was communicated",
+    "complaints.sheet.yes": "Yes",
+    "complaints.sheet.no": "No",
+    "complaints.sheet.reclamoDefinition":
+      "Reclamo: dissatisfaction related to the products or services.",
+    "complaints.sheet.quejaDefinition":
+      "Queja: dissatisfaction not related to the products or services, or discontent with customer service.",
+    "complaints.sheet.otherRemedies":
+      "Filing a reclamo does not prevent using other dispute resolution channels, and it is not a prerequisite for filing a complaint with INDECOPI.",
+    "complaints.sheet.deadline":
+      "The provider must respond to the reclamo or queja within fifteen (15) business days, which cannot be extended.",
+    "complaints.sheet.recipient": "Recipient: consumer",
     "complaints.registered": "Registered",
     "complaints.filed": "Filed",
     "complaints.responseDeadline": "Response deadline",
@@ -46,8 +66,6 @@ export const ui = {
     "complaints.emailFailedYourSheetRemainsRegisteredDo":
       "Email failed. Your sheet remains registered. Do not file again.",
     "complaints.noAutomaticEmailRequested": "No automatic email requested.",
-    "complaints.theHotelMustRespondWithin15Business":
-      "The hotel must respond within 15 business days, without extension. Filing with the hotel does not prevent using Indecopi or other remedies directly.",
     "complaints.printSheet": "Print sheet",
     "complaints.couldNotRegisterTheSheetYourDraft":
       "Could not register the sheet. Your draft is retained; retry the same submission.",
@@ -646,6 +664,26 @@ export const ui = {
     "complaints.error.response_email_is_required": "Ingrese un correo para la respuesta escrita.",
     "complaints.error.too_many_complaints_retry_in_one_minute":
       "Espere un minuto y reintente el mismo envío. Se conserva el borrador.",
+    "complaints.sheet.title": "Hoja de Reclamación",
+    "complaints.sheet.number": "Nº",
+    "complaints.sheet.date": "Fecha",
+    "complaints.sheet.identificationCode": "Código de identificación",
+    "complaints.sheet.consumer": "1. Identificación del consumidor reclamante",
+    "complaints.sheet.goods": "2. Identificación del bien contratado",
+    "complaints.sheet.detail": "3. Detalle de la reclamación y pedido del consumidor",
+    "complaints.sheet.provider": "4. Observaciones y acciones adoptadas por el proveedor",
+    "complaints.sheet.responseDate": "Fecha de comunicación de la respuesta",
+    "complaints.sheet.yes": "Sí",
+    "complaints.sheet.no": "No",
+    "complaints.sheet.reclamoDefinition":
+      "Reclamo: disconformidad relacionada a los productos o servicios.",
+    "complaints.sheet.quejaDefinition":
+      "Queja: disconformidad no relacionada a los productos o servicios; o, malestar o descontento respecto a la atención al público.",
+    "complaints.sheet.otherRemedies":
+      "La formulación del reclamo no impide acudir a otras vías de solución de controversias ni es requisito previo para interponer una denuncia ante el INDECOPI.",
+    "complaints.sheet.deadline":
+      "El proveedor debe dar respuesta al reclamo o queja en un plazo no mayor a quince (15) días hábiles, el cual es improrrogable.",
+    "complaints.sheet.recipient": "Destinatario: consumidor",
     "complaints.registered": "Registrado",
     "complaints.filed": "Presentado",
     "complaints.responseDeadline": "Fecha límite de respuesta",
@@ -657,8 +695,6 @@ export const ui = {
     "complaints.emailFailedYourSheetRemainsRegisteredDo":
       "Falló el correo. Su hoja sigue registrada. No la vuelva a presentar.",
     "complaints.noAutomaticEmailRequested": "Sin correo automático.",
-    "complaints.theHotelMustRespondWithin15Business":
-      "El hotel debe responder en 15 días hábiles, sin prórroga. Presentar esta hoja al hotel no impide acudir directamente a Indecopi u otras vías.",
     "complaints.printSheet": "Imprimir hoja",
     "complaints.couldNotRegisterTheSheetYourDraft":
       "No se pudo registrar la hoja. Su borrador se conserva; reintente el mismo envío.",
