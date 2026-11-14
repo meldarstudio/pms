@@ -6,6 +6,7 @@ import {
   BroomIcon,
   CalendarDaysIcon,
   ClipboardListIcon,
+  CreditCardIcon,
   DoorOpenIcon,
   EllipsisVerticalIcon,
   LogOutIcon,
@@ -62,6 +63,7 @@ import { usePropertyCalendar } from "@/lib/use-property-calendar";
 const configurationIcons = {
   rooms: DoorOpenIcon,
   appearance: PaletteIcon,
+  payments: CreditCardIcon,
   accounts: ShieldCheckIcon,
 } satisfies Record<ConfigurationSection, LucideIcon>;
 

@@ -13,7 +13,6 @@ import {
 } from "./db/schema";
 import type { Env } from "./env";
 import { HttpError } from "./http";
-import { readEmailSubmissionAdmission } from "./operation-controls";
 import { propertyCalendar } from "./property-calendar";
 import { staffReservationAccess } from "./reservation-access";
 import { loadReservation, type State } from "./reservation-read";
@@ -52,7 +51,7 @@ export function pendingConfirmationEmail(
 
 export async function sendConfirmationEmails(db: Db, env: SendEnv) {
   const resend = resendForEnv(env);
-  if (!resend.configured || !(await readEmailSubmissionAdmission(db)).admitted) return;
+  if (!resend.configured) return;
   const due = await db
     .select()
     .from(confirmationEmails)
@@ -65,7 +64,6 @@ export async function sendConfirmationEmails(db: Db, env: SendEnv) {
     .orderBy(asc(confirmationEmails.nextAttemptAt), asc(confirmationEmails.createdAt))
     .limit(EMAILS_PER_RUN);
   for (const email of due) {
-    if (!(await readEmailSubmissionAdmission(db)).admitted) return;
     try {
       await sendConfirmationEmail(db, resend, email, env);
     } catch {
