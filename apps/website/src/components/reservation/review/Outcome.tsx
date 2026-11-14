@@ -6,7 +6,8 @@ import { outcomeActions } from "@/lib/reservation/checkout-selectors";
 import { formatMoney } from "@/lib/reservation/format";
 import { useReview } from "./context";
 import { useDroppedFocusRestore, type FocusRegistry } from "./focus";
-import { card, primary, secondary } from "./styles";
+import { card, secondary } from "./styles";
+import { CardOutcome } from "./CardOutcome";
 
 export function Outcome({
   state,
@@ -31,6 +32,17 @@ export function Outcome({
   const actions = outcomeActions(state);
   const titleRef: RefCallback<HTMLElement> = focus.ref("outcomeTitle");
   const replacedRetry = useDroppedFocusRestore();
+  if (payment && (payment.state === "authentication_required" || payment.state === "declined"))
+    return (
+      <CardOutcome
+        state={state}
+        payment={payment}
+        focus={focus}
+        onRetry={onRetry}
+        onBank={onBank}
+        onCheck={onCheck}
+      />
+    );
   return (
     <section
       className={`${card} border-stone-200 [[data-contact-form]:not([hidden])+&]:border-t`}
@@ -63,25 +75,6 @@ export function Outcome({
             ))}
         </dl>
         <div className="mt-4 flex flex-wrap gap-3">
-          <button
-            type="button"
-            className={primary}
-            data-outcome-retry
-            hidden={!actions.retry}
-            onClick={onRetry}
-          >
-            {say("reservation.outcome.retry")}
-          </button>
-          <button
-            ref={focus.ref("outcomeBank")}
-            type="button"
-            className={secondary}
-            data-outcome-bank
-            hidden={!actions.bank}
-            onClick={onBank}
-          >
-            {say("reservation.outcome.verifyBank")}
-          </button>
           <button
             type="button"
             className={secondary}

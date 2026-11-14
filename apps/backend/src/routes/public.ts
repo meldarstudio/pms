@@ -1,5 +1,6 @@
 import {
   checkoutAcceptanceSchema,
+  checkoutAuthenticationFailureSchema,
   checkoutAuthenticationSchema,
   checkoutPaymentSchema,
   publicCheckoutCreateSchema,
@@ -29,6 +30,7 @@ import {
   authenticateCheckout,
   chargeCheckout,
   checkoutPayment,
+  failCheckoutAuthentication,
   payableQuote,
   TOO_MANY_PAYMENTS,
 } from "../public-payments";
@@ -153,6 +155,21 @@ publicRoutes.post(
         c.var.checkout,
         c.req.valid("json"),
         paymentContext(c.env, c.executionCtx.waitUntil.bind(c.executionCtx)),
+      ),
+    }),
+);
+
+publicRoutes.post(
+  "/checkout/payment/authentication/failure",
+  requireCheckout,
+  validate("json", checkoutAuthenticationFailureSchema),
+  async (c) =>
+    c.json({
+      payment: await failCheckoutAuthentication(
+        getDb(c.env.DB),
+        c.var.checkout,
+        c.req.valid("json"),
+        paymentContext(c.env),
       ),
     }),
 );

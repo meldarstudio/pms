@@ -49,6 +49,8 @@ const DELAYED_AFTER = 2 * MINUTE;
 const LOOKUP_FOR = 48 * 60 * MINUTE;
 const LOOKUP_SLACK = MINUTE;
 export const LOOKUP_DELAY_MS = 10_000;
+const AUTHENTICATION_WINDOW = 24 * 60 * MINUTE;
+const EXPIRED_PER_RUN = 50;
 
 const PAID: AttemptStatus[] = ["succeeded", "saved"];
 const OPEN: AttemptStatus[] = ["unknown", "review", ...PAID];
@@ -164,6 +166,13 @@ export async function continuePublicAuthentication(
   return chargeAuthentication(db, attempt, authentication, context, new Date());
 }
 
+export async function failPublicAuthentication(db: Db, attempt: Attempt) {
+  await db
+    .update(paymentAttempts)
+    .set({ status: "failed", failureCode: "authentication_failed", failureMessage: null })
+    .where(and(eq(paymentAttempts.id, attempt.id), eq(paymentAttempts.status, "review")));
+}
+
 async function chargeAuthentication(
   db: Db,
   attempt: Attempt,
@@ -221,6 +230,20 @@ export async function reconcilePaymentAttempts(db: Db, context: PaymentContext) 
       console.error("payment attempt recovery failed", attempt.id);
     }
   }
+}
+
+export async function expireAuthentications(db: Db, now: Date) {
+  const startedBefore = new Date(now.getTime() - AUTHENTICATION_WINDOW).toISOString();
+  const unfinished = db
+    .select({ id: paymentAttempts.id })
+    .from(paymentAttempts)
+    .where(and(eq(paymentAttempts.status, "review"), lt(paymentAttempts.calledAt, startedBefore)))
+    .orderBy(paymentAttempts.calledAt)
+    .limit(EXPIRED_PER_RUN);
+  await db
+    .update(paymentAttempts)
+    .set({ status: "failed", failureCode: "authentication_expired", failureMessage: null })
+    .where(and(inArray(paymentAttempts.id, unfinished), eq(paymentAttempts.status, "review")));
 }
 
 async function resolve(db: Db, attempt: Attempt, context: PaymentContext): Promise<Attempt> {

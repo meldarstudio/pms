@@ -532,7 +532,7 @@ describe("automatic confirmation", () => {
     expect(sent.text).toContain('King & <img src="x" onerror="alert(1)">');
   });
 
-  it("sends an owed confirmation in the same scheduled run when payment reconciliation fails", async () => {
+  it("sends an owed confirmation in the same scheduled run when the payment steps fail", async () => {
     await confirmed();
     configureResend();
     await admitEmail(true);
@@ -541,7 +541,10 @@ describe("automatic confirmation", () => {
 
     await runScheduled();
 
-    expect(log.mock.calls).toEqual([["scheduled payment reconciliation failed"]]);
+    expect(log.mock.calls).toEqual([
+      ["scheduled payment reconciliation failed"],
+      ["scheduled authentication expiry failed"],
+    ]);
     expect(posts()).toHaveLength(1);
     expect(emails()[0]).toMatchObject({ status: "sent" });
   });

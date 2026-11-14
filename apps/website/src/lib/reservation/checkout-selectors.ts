@@ -26,7 +26,7 @@ export const sendingPayment = (state: State) =>
   payBusy(state) && state.status.key === SENDING_STATUS;
 
 export const formVisible = (state: State) =>
-  state.paymentsEnabled && allowsNewPayment(state.payment);
+  state.paymentsEnabled && allowsNewPayment(state.payment) && !state.outcomeShown;
 
 export const whatsappVisible = (state: State) => !state.payment;
 

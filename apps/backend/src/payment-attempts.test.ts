@@ -6,6 +6,7 @@ import worker from "./index";
 import { setPublicPaymentAdmission } from "./operation-controls";
 import {
   continuePublicAuthentication,
+  expireAuthentications,
   findAttempt,
   paymentAttemptStatus,
   reconcilePaymentAttempts,
@@ -403,5 +404,62 @@ describe("payment attempts", () => {
 
     const detail = await reservation(found.reservation!.id);
     expect(detail.payments).toMatchObject([{ paymentDate: "2026-10-10" }]);
+  });
+});
+
+describe("expiring bank authentication nobody finished", () => {
+  const HOUR = 60 * 60_000;
+  const started = new Date("2026-10-10T15:00:00Z");
+  const after = (ms: number) => new Date(started.getTime() + ms);
+  const authentication = {
+    eci: "05",
+    cavv: "cavv-1",
+    protocolVersion: "2.1.0",
+    directoryServerTransactionId: "ds-1",
+  };
+  const expire = (now: Date) => expireAuthentications(getDb(db.env.DB), now);
+  const stored = async (id: string) => {
+    const { status, failureCode } = await findAttempt(getDb(db.env.DB), id);
+    return { status, failureCode };
+  };
+
+  it("fails a check older than 24 hours and keeps a younger one", async () => {
+    const older = await pay(await quote(), { sourceId: "tkn_test_3ds" });
+    vi.setSystemTime(after(HOUR));
+    const younger = await pay(await quote({ checkIn: "2026-10-24", checkOut: "2026-10-25" }), {
+      sourceId: "tkn_test_3ds",
+    });
+
+    await expire(after(24 * HOUR));
+    expect(await stored(older.id)).toEqual({ status: "review", failureCode: null });
+
+    await expire(after(24 * HOUR + 1));
+    expect(await stored(older.id)).toEqual({
+      status: "failed",
+      failureCode: "authentication_expired",
+    });
+    expect(await stored(younger.id)).toEqual({ status: "review", failureCode: null });
+    expect(await poll(older.id)).toMatchObject({
+      status: "failed",
+      failure: { code: "authentication_expired", message: null },
+    });
+  });
+
+  it.each([
+    ["is still being charged", "timeout" as const, "unknown"],
+    ["was paid", undefined, "saved"],
+  ])("never changes an attempt whose authenticated charge %s", async (_name, reply, status) => {
+    const attempt = await pay(await quote(), { sourceId: "tkn_test_3ds" });
+    if (reply) culqi.next("POST /charges", reply);
+    await continuePublicAuthentication(
+      getDb(db.env.DB),
+      await findAttempt(getDb(db.env.DB), attempt.id),
+      authentication,
+      context(),
+    );
+
+    await expire(after(25 * HOUR));
+
+    expect(await stored(attempt.id)).toEqual({ status, failureCode: null });
   });
 });

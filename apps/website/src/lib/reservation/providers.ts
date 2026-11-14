@@ -268,6 +268,7 @@ export async function deviceFingerprint(options: BankCharge): Promise<string | n
 type BankHandler = {
   onParameters: (parameters: AuthenticationParameters) => void;
   onIncomplete: () => void;
+  onRefused: () => void;
 };
 
 let bankListening = false;
@@ -303,7 +304,7 @@ function ensureBankListener() {
     if (typeof data.error === "string" && data.error) {
       const handler = bankHandler;
       bankHandler = null;
-      handler.onIncomplete();
+      handler.onRefused();
     }
   });
 }
@@ -322,7 +323,11 @@ export async function openBankAuthentication(
   culqi3DS.reset();
   configureBank(culqi3DS, options);
   ensureBankListener();
-  bankHandler = { onParameters: options.onParameters, onIncomplete: options.onIncomplete };
+  bankHandler = {
+    onParameters: options.onParameters,
+    onIncomplete: options.onIncomplete,
+    onRefused: options.onRefused,
+  };
   culqi3DS.options = { closeModalAction: bankClosed, style: bankModalStyle };
   try {
     await culqi3DS.initAuthentication(options.sourceId);
