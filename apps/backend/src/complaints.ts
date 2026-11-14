@@ -7,7 +7,11 @@ import {
   complaintResponses,
   complaintSheets,
 } from "./db/schema";
-import { complaintDeadline, type ComplaintBookConfig } from "./complaint-config";
+import {
+  complaintCalendarSource,
+  complaintResponseDueDate,
+  type ComplaintBookConfig,
+} from "./complaint-config";
 import { HttpError } from "./http";
 
 export async function complaintTokenHash(authorization: string | undefined) {
@@ -110,8 +114,8 @@ export async function fileComplaint(
         timeZone,
         filedAt: now,
         registeredAt: now,
-        dueDate: complaintDeadline(now, timeZone, config),
-        calendarSource: config.calendar.source,
+        dueDate: complaintResponseDueDate(now, timeZone),
+        calendarSource: complaintCalendarSource,
         policy: JSON.stringify({
           version: config.policyVersion,
           collectionNotice: config.collectionNotice,

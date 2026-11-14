@@ -160,7 +160,7 @@ it("lets only the owner read and append actual responses and correction evidence
   ).toBe(400);
 });
 
-it("counts configured holidays and weekends in property time and preserves physical filing history", async () => {
+it("dates a transcribed physical sheet from its original filing and preserves its history", async () => {
   db.env.COMPLAINT_BOOK_DEVELOPMENT = JSON.stringify(developmentBook);
   await db.signIn("owner");
   vi.useFakeTimers();
@@ -184,7 +184,7 @@ it("counts configured holidays and weekends in property time and preserves physi
     filedAt: body.filedAt,
     originalReference: body.originalReference,
     source: "physical",
-    dueDate: "2026-12-30",
+    dueDate: "2026-12-25",
     email: { status: "not_requested" },
   });
   expect(((await (await db.request("/complaints/backups", "POST", body)).json()) as Sheet).id).toBe(
@@ -232,7 +232,7 @@ it("keeps registration after receipt failure and retries the same saved email sa
   expect(JSON.parse(provider.emails[0].body).text).toContain(complaintInput.description);
 });
 
-it("rejects incomplete minor details accessibly and refuses filing beyond the configured calendar", async () => {
+it("rejects incomplete minor details accessibly and refuses production hosts", async () => {
   db.env.COMPLAINT_BOOK_DEVELOPMENT = JSON.stringify(developmentBook);
   const send = (input: unknown) =>
     app.request(
@@ -250,11 +250,6 @@ it("rejects incomplete minor details accessibly and refuses filing beyond the co
   const invalid = await send({ ...complaintInput, minor: true });
   expect(invalid.status).toBe(400);
   expect(invalid.headers.get("X-Error-Field")).toBe("representative");
-  db.env.COMPLAINT_BOOK_DEVELOPMENT = JSON.stringify({
-    ...developmentBook,
-    calendar: { ...developmentBook.calendar, through: "2026-01-02" },
-  });
-  expect((await send(complaintInput)).status).toBe(503);
   expect(
     (await app.request("https://api.hotelmanantialchurin.com/public/complaints/config", {}, db.env))
       .status,

@@ -20,12 +20,5 @@
   "retentionAndDisposal": "Development fixture; production policy unresolved",
   "monitoredBy": "Development owner",
   "backupProcedure": "Development physical backup procedure",
-  "calendar": {
-    "source": "Explicit test calendar, not a verified production calendar",
-    "from": "2026-01-01",
-    "through": "2027-12-31",
-    "nonWorkingDates": ["2026-12-08", "2026-12-09", "2026-12-25", "2027-01-01"],
-    "countingConvention": "exclude-filing-date"
-  },
   "emailFrom": "test@example.com"
 }

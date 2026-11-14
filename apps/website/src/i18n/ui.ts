@@ -22,8 +22,6 @@ export const ui = {
     "complaints.field.minor": "Consumer is a minor",
     "complaints.error.complaint_book_unavailable":
       "Development book is not configured. Do not enter real personal data.",
-    "complaints.error.complaint_calendar_unavailable":
-      "The response calendar is not configured. Your draft is retained; retry later.",
     "complaints.error.complaint_privacy_information_changed":
       "Privacy information changed. Reload to review it; your draft is retained.",
     "complaints.error.complaint_retry_differs_from_saved_sheet":
@@ -636,8 +634,6 @@ export const ui = {
     "complaints.field.minor": "Consumidor menor de edad",
     "complaints.error.complaint_book_unavailable":
       "Libro de desarrollo no configurado. No ingrese datos reales.",
-    "complaints.error.complaint_calendar_unavailable":
-      "El calendario de respuesta no está configurado. Sus datos se conservan; reintente más tarde.",
     "complaints.error.complaint_privacy_information_changed":
       "La información de privacidad cambió. Recargue para revisarla; se conserva el borrador.",
     "complaints.error.complaint_retry_differs_from_saved_sheet":

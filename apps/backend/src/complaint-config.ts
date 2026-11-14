@@ -19,15 +19,6 @@ export const complaintBookConfigSchema = z
     retentionAndDisposal: content,
     monitoredBy: content,
     backupProcedure: content,
-    calendar: z
-      .object({
-        source: content,
-        from: z.iso.date(),
-        through: z.iso.date(),
-        nonWorkingDates: z.array(z.iso.date()).max(1000),
-        countingConvention: z.literal("exclude-filing-date"),
-      })
-      .strict(),
     emailFrom: z.string().email(),
   })
   .strict();
@@ -42,23 +33,21 @@ export function developmentComplaintConfig(raw: string | undefined, requestUrl: 
   }
 }
 
-export function complaintDeadline(filedAt: string, timeZone: string, config: ComplaintBookConfig) {
+export const complaintCalendarSource =
+  "Lunes a viernes; los feriados y días no laborables cuentan como hábiles, por lo que el plazo nunca es posterior al legal.";
+
+export function complaintResponseDueDate(filedAt: string, timeZone: string) {
   const filedDate = new Intl.DateTimeFormat("en-CA", {
     timeZone,
     year: "numeric",
     month: "2-digit",
     day: "2-digit",
   }).format(new Date(filedAt));
-  const calendar = config.calendar;
-  if (filedDate < calendar.from || filedDate > calendar.through)
-    throw new HttpError(503, "complaint calendar unavailable");
   const day = new Date(`${filedDate}T00:00:00Z`);
   let remaining = 15;
   while (remaining > 0) {
     day.setUTCDate(day.getUTCDate() + 1);
-    const label = day.toISOString().slice(0, 10);
-    if (label > calendar.through) throw new HttpError(503, "complaint calendar unavailable");
-    if (![0, 6].includes(day.getUTCDay()) && !calendar.nonWorkingDates.includes(label)) remaining--;
+    if (![0, 6].includes(day.getUTCDay())) remaining--;
   }
   return day.toISOString().slice(0, 10);
 }

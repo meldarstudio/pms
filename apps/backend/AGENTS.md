@@ -47,6 +47,8 @@ attachments. Use test data only. It replaces `dev:backend`
 for this preview; start the portal and website with their normal dev commands.
 The complaint routes require `COMPLAINT_BOOK_DEVELOPMENT` and a loopback request
 host; receipt sending additionally requires a loopback `RESEND_API_URL`. There
-is no production activation path. Production operator details, book continuity,
-verified calendar/counting rules, official notice design, privacy/retention and
-operational procedures remain release requirements under #295 and #294.
+is no production activation path. Response due dates count 15 weekdays after
+the property-time filing date; holidays count as business days, so the shown
+deadline is never later than the legal one. Production operator details, official notice design,
+privacy/retention and operational procedures remain release requirements under
+#295 and #294.

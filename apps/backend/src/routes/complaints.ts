@@ -4,14 +4,17 @@ import { and, asc, eq } from "drizzle-orm";
 import { requireOwner } from "../session";
 import { complaintResponseSchema, complaintBackupSchema } from "@pms/shared";
 import { runBatch } from "../db";
-import { complaintDeadline } from "../complaint-config";
 import { sql } from "drizzle-orm";
 import { getDb } from "../db";
 import { complaintView } from "../complaints";
 import { HttpError, currency, validate } from "../http";
 import { Hono } from "hono";
 import type { Env } from "../env";
-import { developmentComplaintConfig } from "../complaint-config";
+import {
+  complaintCalendarSource,
+  complaintResponseDueDate,
+  developmentComplaintConfig,
+} from "../complaint-config";
 import { complaintAttachmentRoutes } from "./complaint-attachments";
 
 export const ownerComplaintRoutes = new Hono<Env>();
@@ -145,8 +148,8 @@ ownerComplaintRoutes.post("/backups", validate("json", complaintBackupSchema), a
       timeZone: c.env.PROPERTY_TIME_ZONE,
       filedAt: body.filedAt,
       registeredAt: now,
-      dueDate: complaintDeadline(body.filedAt, c.env.PROPERTY_TIME_ZONE, config),
-      calendarSource: config.calendar.source,
+      dueDate: complaintResponseDueDate(body.filedAt, c.env.PROPERTY_TIME_ZONE),
+      calendarSource: complaintCalendarSource,
       policy: JSON.stringify({
         version: config.policyVersion,
         collectionNotice: config.collectionNotice,
