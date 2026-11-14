@@ -1,9 +1,10 @@
-import { complaintInputSchema } from "@pms/shared";
+import { complaintSubmissionSchema } from "@pms/shared";
 import { getDb } from "../db";
 import { complaintTokenHash, fileComplaint, receiptForToken } from "../complaints";
 import { zValidator } from "@hono/zod-validator";
 import { currency } from "../http";
-import { limitBySourceIp } from "../rate-limit";
+import { requireTurnstile } from "../turnstile";
+import { limitBySourceIp, trustedSourceIp } from "../rate-limit";
 import { Hono } from "hono";
 import type { Env } from "../env";
 import { developmentComplaintConfig } from "../complaint-config";
@@ -29,19 +30,33 @@ publicComplaintRoutes.get("/config", (c) => {
 publicComplaintRoutes.post(
   "/",
   limitBySourceIp("QUOTE_LIMITER", "too many complaints; retry in one minute"),
-  zValidator("json", complaintInputSchema, (result, c) => {
+  zValidator("json", complaintSubmissionSchema, (result, c) => {
     if (!result.success) {
       const field = result.error.issues[0]?.path[0];
       if (typeof field === "string") c.header("X-Error-Field", field);
-      return c.json({ error: "invalid complaint fields" }, 400);
+      return c.json(
+        {
+          error:
+            field === "turnstileToken"
+              ? "complaint security check failed"
+              : "invalid complaint fields",
+        },
+        400,
+      );
     }
   }),
   async (c) => {
     const tokenHash = await complaintTokenHash(c.req.header("authorization"));
+    const { turnstileToken, ...input } = c.req.valid("json");
+    await requireTurnstile(c.env, turnstileToken, trustedSourceIp(c), {
+      action: "complaint",
+      failed: "complaint security check failed",
+      unavailable: "complaint security check is unavailable",
+    });
     const config = developmentComplaintConfig(c.env.COMPLAINT_BOOK_DEVELOPMENT, c.req.url);
     const result = await fileComplaint(
       getDb(c.env.DB),
-      c.req.valid("json"),
+      input,
       tokenHash,
       config,
       currency(c),

@@ -1,4 +1,8 @@
 const messages: Record<string, string> = {
+  "complaint security check failed": "Complete la verificación de seguridad e inténtelo de nuevo.",
+  "complaint security check is unavailable":
+    "La verificación de seguridad no está disponible. Inténtelo de nuevo.",
+
   "invalid complaint attachment": "El identificador del archivo no es válido.",
   "complaint response not found": "No se encontró el registro de respuesta.",
   "complaint attachment storage is unavailable":

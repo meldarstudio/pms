@@ -1,3 +1,25 @@
+import "./complaints.css";
+import {
+  Accordion,
+  AccordionItem,
+  AccordionTrigger,
+  AccordionContent,
+} from "@/components/ui/accordion";
+import { cn } from "cn";
+import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
+import {
+  Field,
+  FieldError,
+  FieldDescription,
+  FieldGroup,
+  FieldLabel,
+  FieldLegend,
+  FieldSet,
+} from "@/components/ui/field";
+import { Input } from "@/components/ui/input";
+import { NativeSelect, NativeSelectOption } from "@/components/ui/native-select";
+import { Textarea } from "@/components/ui/textarea";
 import { useTranslations } from "@/i18n/utils";
 import { useEffect, useState } from "react";
 import { reservationApiUrl } from "@/lib/reservation/api";
@@ -6,8 +28,10 @@ import {
   complaintProblem,
   type ComplaintConfig,
   type ComplaintInput,
+  type ComplaintSubmission,
   type ComplaintReceipt as Receipt,
 } from "@/lib/complaints";
+import { ComplaintSecurity } from "./ComplaintSecurity";
 import { ComplaintReceipt } from "./ComplaintReceipt";
 
 const storageKey = "hm.complaint.development";
@@ -32,7 +56,13 @@ const emptyInput = (language: "es" | "en"): ComplaintInput => ({
   policyVersion: "",
 });
 
-export function ComplaintBook({ language }: { language: "es" | "en" }) {
+export function ComplaintBook({
+  language,
+  turnstileSiteKey,
+}: {
+  language: "es" | "en";
+  turnstileSiteKey: string | null;
+}) {
   const t = useTranslations(language);
   const labels = complaintLabels(language);
   const [config, setConfig] = useState<ComplaintConfig | null>(null);
@@ -47,11 +77,13 @@ export function ComplaintBook({ language }: { language: "es" | "en" }) {
   const [invalid, setInvalid] = useState("");
   const [busy, setBusy] = useState(false);
   const [ready, setReady] = useState(false);
+  const [securityToken, setSecurityToken] = useState("");
+  const [securityVersion, setSecurityVersion] = useState(0);
   function remember(next: Draft) {
     sessionStorage.setItem(storageKey, JSON.stringify(next));
     setDraft(next);
   }
-  async function request(path: string, token?: string, body?: ComplaintInput) {
+  async function request(path: string, token?: string, body?: ComplaintSubmission) {
     const response = await fetch(`${reservationApiUrl}/public/complaints${path}`, {
       method: body ? "POST" : "GET",
       credentials: "omit",
@@ -139,13 +171,16 @@ export function ComplaintBook({ language }: { language: "es" | "en" }) {
     remember({ ...draft, input: { ...draft.input, [key]: value } });
   }
   async function submit() {
+    if (busy || !securityToken) return;
     setBusy(true);
     setProblem("");
     setInvalid("");
     const next = { ...draft, attempted: true };
     try {
       remember(next);
-      const saved = (await (await request("", draft.token, draft.input)).json()) as Receipt;
+      const saved = (await (
+        await request("", draft.token, { ...draft.input, turnstileToken: securityToken })
+      ).json()) as Receipt;
       setSheet(saved);
       sessionStorage.setItem(storageKey, JSON.stringify({ ...next, saved: true }));
     } catch (error) {
@@ -155,8 +190,11 @@ export function ComplaintBook({ language }: { language: "es" | "en" }) {
           t("complaints.networkErrorYourDraftIsRetainedRetry"),
       );
       setInvalid(failure.field ?? "");
-      if (failure.status === 400) remember({ ...next, attempted: false });
+      if (!draft.attempted && (failure.status === 400 || failure.status === 403))
+        remember({ ...next, attempted: false });
     } finally {
+      setSecurityToken("");
+      setSecurityVersion((version) => version + 1);
       setBusy(false);
     }
   }
@@ -164,9 +202,10 @@ export function ComplaintBook({ language }: { language: "es" | "en" }) {
     return (
       <>
         <ComplaintReceipt sheet={sheet} language={language} />
-        <button
+        <Button
           type="button"
-          className="mt-6 min-h-11 rounded border px-4 print:hidden"
+          variant="outline"
+          className="mt-6 h-auto min-h-11 py-2 whitespace-normal print:hidden"
           onClick={() => {
             remember({
               token: crypto.randomUUID() + crypto.randomUUID(),
@@ -179,170 +218,219 @@ export function ComplaintBook({ language }: { language: "es" | "en" }) {
           }}
         >
           {t("complaints.startAnotherSheetSaveOrPrintThis")}
-        </button>
+        </Button>
       </>
     );
-  const fields = [
-    "fullName",
-    "address",
-    "documentType",
-    "documentNumber",
-    "phone",
-    "email",
-    "representative",
-    "product",
-    "description",
-    "requestedRemedy",
-    "reservationReference",
-  ] as const;
+  const fieldsDisabled = busy || draft.attempted;
+  const limits = {
+    fullName: 200,
+    address: 500,
+    documentType: 80,
+    documentNumber: 100,
+    phone: 60,
+    email: 200,
+    representative: 1000,
+    product: 2000,
+    description: 10000,
+    requestedRemedy: 5000,
+    reservationReference: 100,
+  };
+  function textField(key: keyof typeof limits, fullWidth = false) {
+    const required = key !== "email" || draft.input.responseChannel === "email";
+    const multiline = ["product", "description", "requestedRemedy", "representative"].includes(key);
+    const props = {
+      id: `complaint-${key}`,
+      disabled: fieldsDisabled,
+      required,
+      maxLength: limits[key],
+      value: draft.input[key],
+      "aria-invalid": invalid === key,
+      "aria-describedby":
+        invalid === key
+          ? "complaint-error"
+          : key === "email" && !required
+            ? "complaint-email-optional"
+            : key === "reservationReference"
+              ? "complaint-reference-hint"
+              : undefined,
+      onChange: (event: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) =>
+        update(key, event.target.value),
+    };
+    return (
+      <Field
+        key={key}
+        className={cn(fullWidth && "sm:col-span-2")}
+        data-invalid={invalid === key}
+        data-disabled={fieldsDisabled}
+      >
+        <FieldLabel htmlFor={props.id}>
+          {key === "email" && !required ? t("complaints.optionalEmailLabel") : labels[key]}
+        </FieldLabel>
+        {multiline ? (
+          <Textarea {...props} rows={key === "product" ? 2 : 4} />
+        ) : (
+          <Input {...props} type={key === "email" ? "email" : key === "phone" ? "tel" : "text"} />
+        )}
+        {key === "reservationReference" && (
+          <FieldDescription id="complaint-reference-hint">
+            {t("complaints.referenceHint")}
+          </FieldDescription>
+        )}
+        {key === "email" && !required && (
+          <FieldDescription id="complaint-email-optional">
+            {t("complaints.optionalEmail")}
+          </FieldDescription>
+        )}
+      </Field>
+    );
+  }
   return (
-    <section className="flex flex-col gap-6">
-      <p className="rounded border p-4">{t("complaints.developmentOnlyDoNotEnterRealPersonal")}</p>
-      <p>{t("complaints.reclamoAProblemWithAProductOr")}</p>
+    <section className="complaint-book flex flex-col gap-6">
+      <p className="complaint-intro">{t("complaints.reclamoAProblemWithAProductOr")}</p>
       {!ready && <p role="status">{t("complaints.loading")}</p>}
-      {problem && (
-        <p role="alert" id="complaint-error">
-          {problem}
-        </p>
-      )}
+      {problem && <FieldError id="complaint-error">{problem}</FieldError>}
       {config && (
         <>
-          <p>
-            {config.provider.legalName} · RUC {config.provider.ruc}
-            <br />
-            {config.provider.address}
-            <br />
-            {config.establishmentId}
-          </p>
-          <p>{config.collectionNotice[language]}</p>
-          <details>
-            <summary className="min-h-11 cursor-pointer underline">
-              {t("complaints.fullPrivacyInformation")}
-            </summary>
-            <p className="whitespace-pre-wrap">{config.privacyInformation[language]}</p>
-          </details>
+          <div className="complaint-provider">
+            <p className="font-semibold">
+              {config.provider.legalName} · RUC {config.provider.ruc}
+            </p>
+            <p>
+              {config.provider.address} · {config.establishmentId}
+            </p>
+          </div>
           <form
-            className="flex flex-col gap-4"
+            className="flex flex-col gap-8"
             onSubmit={(event) => {
               event.preventDefault();
               void submit();
             }}
           >
-            <fieldset disabled={busy || draft.attempted} className="flex flex-col gap-4">
-              <legend className="mb-4">{t("complaints.consumerAndComplaintDetails")}</legend>
-              {fields
-                .filter((key) => key !== "representative" || draft.input.minor)
-                .map((key) => (
-                  <label className="flex flex-col gap-1" key={key} htmlFor={`complaint-${key}`}>
-                    {labels[key]}
-                    {key === "description" ||
-                    key === "requestedRemedy" ||
-                    key === "product" ||
-                    key === "representative" ? (
-                      <textarea
-                        id={`complaint-${key}`}
-                        className="min-h-24 rounded border p-3"
-                        required
-                        maxLength={
-                          key === "description"
-                            ? 10000
-                            : key === "requestedRemedy"
-                              ? 5000
-                              : key === "product"
-                                ? 2000
-                                : 1000
-                        }
-                        value={draft.input[key]}
-                        aria-invalid={invalid === key}
-                        aria-describedby={invalid === key ? "complaint-error" : undefined}
-                        onChange={(event) => update(key, event.target.value)}
-                      />
-                    ) : (
-                      <input
-                        id={`complaint-${key}`}
-                        className="min-h-11 rounded border p-3"
-                        type={key === "email" ? "email" : "text"}
-                        required={
-                          !["phone", "reservationReference"].includes(key) &&
-                          (key !== "email" || draft.input.responseChannel === "email")
-                        }
-                        maxLength={
-                          key === "address"
-                            ? 500
-                            : key === "documentNumber" || key === "reservationReference"
-                              ? 100
-                              : key === "documentType"
-                                ? 80
-                                : key === "phone"
-                                  ? 60
-                                  : 200
-                        }
-                        value={draft.input[key]}
-                        aria-invalid={invalid === key}
-                        aria-describedby={invalid === key ? "complaint-error" : undefined}
-                        onChange={(event) => update(key, event.target.value)}
-                      />
-                    )}
-                  </label>
-                ))}
-              <label className="flex items-center gap-2">
-                <input
-                  type="checkbox"
-                  checked={draft.input.minor}
-                  onChange={(event) => update("minor", event.target.checked)}
-                />
-                {labels.minor}
-              </label>
-              <label className="flex flex-col gap-1">
-                {labels.amount} (PEN)
-                <input
-                  className="min-h-11 rounded border p-3"
-                  type="number"
-                  min="0"
-                  max="10000000"
-                  step="0.01"
-                  value={draft.input.amountCents === null ? "" : draft.input.amountCents / 100}
-                  onChange={(event) =>
-                    update(
-                      "amountCents",
-                      event.target.value === ""
-                        ? null
-                        : Math.round(Number(event.target.value) * 100),
-                    )
-                  }
-                />
-              </label>
-              <label className="flex flex-col gap-1">
-                {labels.category}
-                <select
-                  className="min-h-11 rounded border p-3"
-                  value={draft.input.category}
-                  onChange={(event) => update("category", event.target.value)}
+            <FieldSet disabled={fieldsDisabled}>
+              <FieldLegend>{t("complaints.consumerDetails")}</FieldLegend>
+              <FieldGroup className="grid gap-x-6 sm:grid-cols-2">
+                {textField("fullName", true)}
+                {textField("documentType")}
+                {textField("documentNumber")}
+                {textField("address", true)}
+                {textField("phone", true)}
+                <Field
+                  orientation="horizontal"
+                  data-disabled={fieldsDisabled}
+                  className="min-h-11 sm:col-span-2"
                 >
-                  <option value="reclamo">Reclamo</option>
-                  <option value="queja">Queja</option>
-                </select>
-              </label>
-              <label className="flex flex-col gap-1">
-                {labels.responseChannel}
-                <select
-                  className="min-h-11 rounded border p-3"
-                  value={draft.input.responseChannel}
-                  onChange={(event) => update("responseChannel", event.target.value)}
-                >
-                  <option value="email">{t("complaints.email")}</option>
-                  <option value="letter">{t("complaints.letterToTheAddressProvided")}</option>
-                </select>
-              </label>
-            </fieldset>
-            <p role="status" aria-live="polite">
-              {busy ? t("complaints.registering") : ""}
-            </p>
-            <button className="min-h-11 rounded border px-4 py-2" disabled={busy} type="submit">
-              {draft.attempted
-                ? t("complaints.retrySameSubmission")
-                : t("complaints.registerSheet")}
-            </button>
+                  <Checkbox
+                    id="complaint-minor"
+                    disabled={fieldsDisabled}
+                    checked={draft.input.minor}
+                    onCheckedChange={(checked) => update("minor", checked)}
+                  />
+                  <FieldLabel htmlFor="complaint-minor">{labels.minor}</FieldLabel>
+                </Field>
+                {draft.input.minor && textField("representative", true)}
+              </FieldGroup>
+            </FieldSet>
+            <FieldSet disabled={fieldsDisabled}>
+              <FieldLegend>{t("complaints.complaintDetails")}</FieldLegend>
+              <FieldGroup className="grid gap-x-6 sm:grid-cols-2">
+                <Field data-disabled={fieldsDisabled} className="sm:col-span-2">
+                  <FieldLabel htmlFor="complaint-category">{labels.category}</FieldLabel>
+                  <NativeSelect
+                    id="complaint-category"
+                    className="w-full"
+                    disabled={fieldsDisabled}
+                    value={draft.input.category}
+                    onChange={(event) => update("category", event.target.value)}
+                  >
+                    <NativeSelectOption value="reclamo">Reclamo</NativeSelectOption>
+                    <NativeSelectOption value="queja">Queja</NativeSelectOption>
+                  </NativeSelect>
+                </Field>
+                {textField("product", true)}
+                <Field data-invalid={invalid === "amountCents"} data-disabled={fieldsDisabled}>
+                  <FieldLabel htmlFor="complaint-amountCents">
+                    {t("complaints.amountLabel")} (PEN)
+                  </FieldLabel>
+                  <Input
+                    disabled={fieldsDisabled}
+                    id="complaint-amountCents"
+                    aria-invalid={invalid === "amountCents"}
+                    aria-describedby={invalid === "amountCents" ? "complaint-error" : undefined}
+                    type="number"
+                    min="0"
+                    max="10000000"
+                    step="0.01"
+                    value={draft.input.amountCents === null ? "" : draft.input.amountCents / 100}
+                    onChange={(event) =>
+                      update(
+                        "amountCents",
+                        event.target.value === ""
+                          ? null
+                          : Math.round(Number(event.target.value) * 100),
+                      )
+                    }
+                  />
+                  <FieldDescription>{t("complaints.amountHint")}</FieldDescription>
+                </Field>
+                {textField("reservationReference")}
+                {textField("description", true)}
+                {textField("requestedRemedy", true)}
+              </FieldGroup>
+            </FieldSet>
+            <FieldSet disabled={fieldsDisabled}>
+              <FieldLegend>{t("complaints.writtenResponse")}</FieldLegend>
+              <FieldGroup>
+                <Field data-disabled={fieldsDisabled}>
+                  <FieldLabel htmlFor="complaint-responseChannel">
+                    {labels.responseChannel}
+                  </FieldLabel>
+                  <NativeSelect
+                    id="complaint-responseChannel"
+                    className="w-full"
+                    disabled={fieldsDisabled}
+                    value={draft.input.responseChannel}
+                    onChange={(event) => update("responseChannel", event.target.value)}
+                  >
+                    <NativeSelectOption value="email">{t("complaints.email")}</NativeSelectOption>
+                    <NativeSelectOption value="letter">
+                      {t("complaints.letterToTheAddressProvided")}
+                    </NativeSelectOption>
+                  </NativeSelect>
+                </Field>
+                {textField("email")}
+              </FieldGroup>
+            </FieldSet>
+            <div className="flex flex-col gap-3">
+              <p className="complaint-hint whitespace-pre-wrap">
+                {config.collectionNotice[language]}
+              </p>
+              <Accordion>
+                <AccordionItem value="privacy">
+                  <AccordionTrigger variant="compact">
+                    {t("complaints.fullPrivacyInformation")}
+                  </AccordionTrigger>
+                  <AccordionContent>
+                    <p className="whitespace-pre-wrap">{config.privacyInformation[language]}</p>
+                  </AccordionContent>
+                </AccordionItem>
+              </Accordion>
+            </div>
+            <div className="flex flex-col gap-3 sm:items-start">
+              <ComplaintSecurity
+                key={securityVersion}
+                siteKey={turnstileSiteKey}
+                language={language}
+                onToken={setSecurityToken}
+              />
+              <p role="status" aria-live="polite" hidden={!busy}>
+                {busy ? t("complaints.registering") : ""}
+              </p>
+              <Button className="w-full sm:w-auto" disabled={busy || !securityToken} type="submit">
+                {draft.attempted
+                  ? t("complaints.retrySameSubmission")
+                  : t("complaints.registerSheet")}
+              </Button>
+            </div>
           </form>
         </>
       )}

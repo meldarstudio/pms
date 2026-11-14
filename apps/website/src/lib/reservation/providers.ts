@@ -21,11 +21,14 @@ type TurnstileOptions = {
   callback: (token: string) => void;
   "expired-callback": () => void;
   "error-callback": () => void;
+  size?: "compact" | "flexible";
+  theme?: "light";
 };
 
 type Turnstile = {
   render: (container: HTMLElement, options: TurnstileOptions) => string;
   reset: (widget: string) => void;
+  remove: (widget: string) => void;
 };
 
 export type AuthenticationParameters = {
@@ -339,11 +342,21 @@ export async function openBankAuthentication(
 export type SecurityCheck = {
   tokenWithin: (waitMs: number) => Promise<string>;
   reset: () => void;
+  dispose: () => void;
 };
 
 export async function renderSecurityCheck(
   container: HTMLElement,
-  options: { siteKey: string; lang: Lang; onPassed: () => void; onError: () => void },
+  options: {
+    siteKey: string;
+    lang: Lang;
+    action?: string;
+    size?: "compact" | "flexible";
+    theme?: "light";
+    onPassed: (token: string) => void;
+    onExpired?: () => void;
+    onError: () => void;
+  },
 ): Promise<SecurityCheck> {
   await loadScript(TURNSTILE_SCRIPT);
   const turnstile = window.turnstile;
@@ -356,14 +369,17 @@ export async function renderSecurityCheck(
   };
   const widget = turnstile.render(container, {
     sitekey: options.siteKey,
-    action: "payment",
+    action: options.action ?? "payment",
     language: options.lang,
+    size: options.size,
+    theme: options.theme,
     callback: (token) => {
       answer(token);
-      options.onPassed();
+      options.onPassed(token);
     },
     "expired-callback": () => {
       current = "";
+      options.onExpired?.();
     },
     "error-callback": () => {
       answer("");
@@ -386,6 +402,10 @@ export async function renderSecurityCheck(
     reset: () => {
       current = "";
       turnstile.reset(widget);
+    },
+    dispose: () => {
+      answer("");
+      turnstile.remove(widget);
     },
   };
 }

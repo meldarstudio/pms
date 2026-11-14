@@ -34,23 +34,27 @@ window.turnstile = {
     note.textContent = "Security check complete";
     container.append(note);
     this.widgets.push(options);
-    setTimeout(() => options.callback("turnstile-pass"), 0);
+    setTimeout(() => options.callback(options.action === "complaint" ? "complaint-turnstile-pass" : "turnstile-pass"), 0);
     return String(this.widgets.length - 1);
   },
   reset(widget) {
     const options = this.widgets[Number(widget)];
-    setTimeout(() => options.callback("turnstile-pass"), 0);
+    setTimeout(() => options.callback(options.action === "complaint" ? "complaint-turnstile-pass" : "turnstile-pass"), 0);
   },
+  remove(widget) {},
 };
 `;
 
 const fakeHeldTurnstile = `
 window.turnstile = {
   render(container, options) {
-    window.passSecurityCheck = () => options.callback("turnstile-pass");
+    window.passSecurityCheck = () => options.callback(options.action === "complaint" ? "complaint-turnstile-pass" : "turnstile-pass");
+    window.expireSecurityCheck = () => options["expired-callback"]();
+    window.failSecurityCheck = () => options["error-callback"]();
     return "0";
   },
   reset() {},
+  remove() {},
 };
 `;
 

@@ -1,5 +1,6 @@
 ---
 import { developmentComplaintPreview } from "@/lib/complaints";
+import ComplaintNotice from "@/components/complaints/ComplaintNotice.astro";
 import Logo from "@/assets/manantial-logo.svg";
 import { socials } from "@/constants";
 import {
@@ -37,7 +38,7 @@ const navLinks = [
 ---
 
 <footer class="border-t border-stone-200 bg-white pb-[env(safe-area-inset-bottom)]">
-  <div class="mx-auto grid max-w-7xl grid-cols-2 gap-x-6 gap-y-10 px-4 py-8 md:grid-cols-[auto_minmax(0,1.4fr)_minmax(0,1fr)_minmax(0,1fr)] md:gap-x-10 md:px-8 md:py-16 lg:gap-x-16 lg:py-24">
+  <div class="mx-auto grid max-w-7xl grid-cols-2 gap-x-6 gap-y-8 px-4 py-8 md:grid-cols-[auto_minmax(0,1.4fr)_minmax(0,1fr)_minmax(0,1fr)] md:gap-x-10 md:px-8 md:py-12 lg:gap-x-12 lg:py-16">
     <div class="hidden md:block">
       <a
         href={homeHref}
@@ -133,11 +134,12 @@ const navLinks = [
     </nav>
   </div>
   <div class="border-t border-stone-100">
-    <div class="mx-auto flex max-w-7xl flex-col gap-1 px-4 py-6 text-sm text-stone-600 md:flex-row md:items-center md:justify-between md:px-8">
-      <p>
+    <div class="mx-auto grid max-w-7xl grid-cols-[minmax(0,1fr)_auto] items-center gap-x-6 gap-y-3 px-4 py-5 text-sm text-stone-600 md:grid-cols-[minmax(0,1fr)_auto_auto] md:gap-x-8 md:px-8">
+      <p class="col-span-2 md:col-span-1">
         © {year} <span translate="no">{legalName}</span> {t("footer.rights")}.
       </p>
       <p translate="no">RUC {taxId}</p>
+      <ComplaintNotice />
     </div>
   </div>
 </footer>

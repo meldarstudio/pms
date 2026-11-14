@@ -1,24 +1,24 @@
 {
   "mode": "development",
   "bookId": "DEMO",
-  "establishmentId": "Development establishment",
+  "establishmentId": "Hotel Manantial · Churín",
   "firstNumber": 41,
   "provider": {
-    "legalName": "Development operator",
-    "ruc": "00000000000",
-    "address": "Development address"
+    "legalName": "Hotel Manantial de Churin E.I.R.L.",
+    "ruc": "20552108028",
+    "address": "Av. Víctor Larco Herrera N°138, Churín"
   },
   "collectionNotice": {
-    "es": "Datos de prueba para atender reclamos. No ingrese datos reales.",
-    "en": "Test data to handle complaints. Do not enter real personal data."
+    "es": "Usamos sus datos para registrar, atender y responder su reclamo o queja y conservar la constancia. Presentar una reclamación no autoriza comunicaciones comerciales.",
+    "en": "We use your data to record, handle and respond to your complaint and retain its record. Filing a complaint does not authorize marketing messages."
   },
   "privacyInformation": {
-    "es": "Política de prueba. No es un libro habilitado para producción.",
-    "en": "Test policy. This book is not enabled for production."
+    "es": "Responsable\nHotel Manantial de Churin E.I.R.L., RUC 20552108028, Av. Víctor Larco Herrera N°138, Churín. Contacto: hotelmanantialchurinperu@gmail.com.\n\nDatos y finalidad\nEl registro del Libro de Reclamaciones incluye su identificación, domicilio, datos de contacto, producto o servicio, detalle y pedido, y los datos del representante cuando corresponda. Se utiliza para registrar, gestionar y responder la reclamación, emitir su constancia y atender obligaciones legales. No se utiliza para autorizar publicidad. Cloudflare Turnstile verifica el navegador para limitar envíos automatizados; el servidor verifica su token y puede enviar la dirección IP a Cloudflare.\n\nDatos obligatorios y opcionales\nEl correo es obligatorio si solicita respuesta por correo electrónico; los datos del representante son obligatorios si el consumidor es menor de edad. El teléfono y la referencia de reserva son obligatorios. Si no tiene reserva, puede indicar «No aplica». El monto es opcional. Sin los datos obligatorios no se puede completar el registro.\n\nAcceso y conservación\nEl personal encargado del hotel accede al registro para atenderlo. Las autoridades competentes pueden recibirlo cuando lo requiera la ley. El servicio web y el envío de correos utilizan proveedores tecnológicos; la configuración prevista incluye Cloudflare y Resend y puede implicar tratamiento fuera del Perú. Las hojas y sus constancias deben conservarse al menos dos años, sin perjuicio de otras obligaciones legales.\n\nSus derechos\nPuede solicitar información, acceso, rectificación, cancelación u oposición, según corresponda, escribiendo a hotelmanantialchurinperu@gmail.com o en el domicilio indicado. La cancelación está sujeta a las obligaciones de conservación aplicables.\n\nBorrador en este navegador\nEl formulario guarda temporalmente el borrador y la credencial de recuperación en el almacenamiento de esta sesión del navegador para recuperar el envío ante una interrupción. En un dispositivo compartido, cierre la sesión de navegación al terminar.",
+    "en": "Controller\nHotel Manantial de Churin E.I.R.L., RUC 20552108028, Av. Víctor Larco Herrera N°138, Churín. Contact: hotelmanantialchurinperu@gmail.com.\n\nData and purpose\nThe complaints register includes your identification, address, contact information, product or service, complaint and requested remedy, and representative details when applicable. It is used to record, manage and respond to the complaint, issue your receipt and meet legal obligations. It does not authorize advertising. Cloudflare Turnstile checks the browser to limit automated submissions; the server verifies its token and may send the IP address to Cloudflare.\n\nRequired and optional information\nEmail is required for an email response; representative details are required for a minor. Phone and reservation reference are required. If you do not have a reservation, you may enter “Not applicable”. Amount is optional. Registration cannot be completed without the required information.\n\nAccess and retention\nHotel staff responsible for handling complaints can access the record. Competent authorities may receive it when legally required. The web service and email delivery use technology providers; the intended configuration includes Cloudflare and Resend and may involve processing outside Peru. Complaint sheets and their supporting records must be retained for at least two years, subject to other legal obligations.\n\nYour rights\nYou may request information, access, correction, cancellation or objection, as applicable, by writing to hotelmanantialchurinperu@gmail.com or the address above. Cancellation is subject to applicable record retention obligations.\n\nDraft in this browser\nThe form temporarily saves your draft and recovery credential in this browser session's storage to recover a submission after an interruption. On a shared device, close the browsing session when finished."
   },
-  "policyVersion": "development-1",
+  "policyVersion": "development-4",
   "retentionAndDisposal": "Development fixture; production policy unresolved",
-  "monitoredBy": "Development owner",
-  "backupProcedure": "Development physical backup procedure",
+  "monitoredBy": "Betty Amparo Cuellar Antialon. Revisión diaria de hojas pendientes, fechas límite y correos de constancia fallidos.",
+  "backupProcedure": "Libro de Reclamaciones de Respaldo disponible en recepción. Si el consumidor no puede usar el libro virtual, el personal de turno entrega la hoja física, da el original al consumidor, conserva la copia de Indecopi con el libro y entrega la copia del proveedor a Betty Amparo Cuellar Antialon. Betty transcribe la hoja en el portal dentro de un día calendario después de restablecido el servicio, conservando el número y la fecha originales.",
   "emailFrom": "test@example.com"
 }

@@ -23,6 +23,7 @@ export type ComplaintInput = {
   responseChannel: "email" | "letter";
   policyVersion: string;
 };
+export type ComplaintSubmission = ComplaintInput & { turnstileToken: string };
 export type ComplaintConfig = {
   development: true;
   provider: { legalName: string; ruc: string; address: string };
@@ -69,6 +70,8 @@ export function complaintLabels(language: "es" | "en") {
   };
 }
 const complaintProblemKeys = {
+  "complaint security check failed": "complaints.securityFailed",
+  "complaint security check is unavailable": "complaints.securityUnavailable",
   "complaint book unavailable": "complaints.error.complaint_book_unavailable",
   "complaint privacy information changed": "complaints.error.complaint_privacy_information_changed",
   "complaint retry differs from saved sheet":

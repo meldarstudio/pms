@@ -1,8 +1,10 @@
+import { holdSecurityCheck, passSecurityCheck, stubPaymentScripts } from "../support/payment";
 import { expect, test } from "@playwright/test";
 
 test("keeps the complaint draft and retry credential after a lost response, then prints the saved receipt", async ({
   page,
 }) => {
+  await stubPaymentScripts(page);
   const input: Record<string, unknown> = {};
   let credential = "";
   let submissions = 0;
@@ -26,7 +28,9 @@ test("keeps the complaint draft and retry credential after a lost response, then
     const token = route.request().headers().authorization;
     if (credential) expect(token).toBe(credential);
     credential = token;
-    Object.assign(input, route.request().postDataJSON());
+    const { turnstileToken, ...submitted } = route.request().postDataJSON();
+    expect(turnstileToken).toBe("complaint-turnstile-pass");
+    Object.assign(input, submitted);
     if (++submissions === 1) return route.abort();
     return route.fulfill({
       json: {
@@ -57,6 +61,8 @@ test("keeps the complaint draft and retry credential after a lost response, then
   await page.getByLabel("Address", { exact: true }).fill("Lima");
   await page.getByLabel("Document type", { exact: true }).fill("Passport");
   await page.getByLabel("Document number", { exact: true }).fill("AB123456");
+  await page.getByLabel("Phone", { exact: true }).fill("+51999999999");
+  await page.getByLabel("Reservation reference", { exact: true }).fill("BOOK-123");
   await page.getByLabel("Email", { exact: true }).fill("ana@example.com");
   await page.getByLabel("Product or service", { exact: true }).fill("Accommodation");
   await page.getByLabel("Description", { exact: true }).fill("Service unavailable");
@@ -66,6 +72,9 @@ test("keeps the complaint draft and retry credential after a lost response, then
   await expect(page.getByRole("textbox", { name: "Description", exact: true })).toHaveValue(
     "Service unavailable",
   );
+  await expect(page.getByLabel("Full name", { exact: true })).toBeDisabled();
+  await expect(page.getByRole("checkbox")).toBeDisabled();
+  await expect(page.getByLabel("Written response channel", { exact: true })).toBeDisabled();
   await page.getByRole("button", { name: "Retry same submission" }).click();
   await expect(
     page.getByRole("heading", { name: "Hoja de Reclamación (complaint sheet) No. 000000041-2026" }),
@@ -85,13 +94,34 @@ test("keeps the complaint draft and retry credential after a lost response, then
 test("registers a minor's queja without a reservation, email or amount through the local backend", async ({
   page,
 }) => {
+  await stubPaymentScripts(page);
+  await holdSecurityCheck(page);
   await page.goto("/libro-de-reclamaciones/");
+  await expect(
+    page.getByText("Hotel Manantial de Churin E.I.R.L. · RUC 20552108028"),
+  ).toBeVisible();
+  const privacy = page.getByRole("button", { name: "Información completa de privacidad" });
+  await privacy.click();
+  await expect(privacy).toHaveAttribute("aria-expanded", "true");
+  await expect(page.getByRole("region")).toContainText("hotelmanantialchurinperu@gmail.com");
+  await privacy.press("Enter");
+  await expect(privacy).toHaveAttribute("aria-expanded", "false");
   await page.getByLabel("Canal de respuesta escrita").selectOption("letter");
   await page.getByLabel("Nombre completo", { exact: true }).fill("Consumidor de prueba");
   await page.getByLabel("Domicilio", { exact: true }).fill("Dirección de prueba");
   await page.getByLabel("Tipo de documento", { exact: true }).fill("Pasaporte extranjero");
   await page.getByLabel("Número de documento", { exact: true }).fill("TEST123");
-  await page.getByLabel("Consumidor menor de edad").check();
+  await expect(page.getByLabel("Teléfono", { exact: true })).toHaveAttribute("required", "");
+  await page.getByLabel("Teléfono", { exact: true }).fill("+51999999999");
+  await expect(page.getByLabel("Referencia de reserva", { exact: true })).toHaveAttribute(
+    "required",
+    "",
+  );
+  await page.getByLabel("Referencia de reserva", { exact: true }).fill("No aplica");
+  await expect(
+    page.getByLabel("Correo electrónico (opcional)", { exact: true }),
+  ).not.toHaveAttribute("required", "");
+  await page.getByRole("checkbox", { name: "Consumidor menor de edad" }).check();
   await page
     .getByLabel("Padre o representante: nombre, documento, domicilio y contacto")
     .fill("Representante de prueba, TEST456, Dirección de prueba, 999999999");
@@ -99,7 +129,28 @@ test("registers a minor's queja without a reservation, email or amount through t
   await page.getByLabel("Detalle", { exact: true }).fill("Atención de prueba");
   await page.getByLabel("Pedido", { exact: true }).fill("Respuesta escrita de prueba");
   await page.getByRole("combobox", { name: "Tipo", exact: true }).selectOption("queja");
-  await page.getByRole("button", { name: "Registrar hoja" }).click();
+  const submit = page.getByRole("button", { name: "Registrar hoja" });
+  await expect(submit).toBeDisabled();
+  await passSecurityCheck(page);
+  await expect(submit).toBeEnabled();
+  await page.evaluate(() =>
+    (window as unknown as { expireSecurityCheck: () => void }).expireSecurityCheck(),
+  );
+  await expect(submit).toBeDisabled();
+  await expect(page.getByLabel("Nombre completo", { exact: true })).toHaveValue(
+    "Consumidor de prueba",
+  );
+  await page.evaluate(() =>
+    (window as unknown as { failSecurityCheck: () => void }).failSecurityCheck(),
+  );
+  await expect(page.getByRole("alert")).toContainText(
+    "verificación de seguridad no está disponible",
+  );
+  await page.getByRole("button", { name: "Reintentar verificación" }).click();
+  await expect(page.getByRole("alert")).toHaveCount(0);
+  await passSecurityCheck(page);
+  await expect(submit).toBeEnabled();
+  await submit.click();
   await expect(
     page.getByRole("heading", { name: /^Hoja de Reclamación Nº \d{9}-\d{4}$/ }),
   ).toBeVisible();

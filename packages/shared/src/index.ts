@@ -447,7 +447,7 @@ export type CheckoutAuthentication = z.infer<typeof checkoutAuthenticationSchema
 export type CheckoutAuthenticationFailure = z.infer<typeof checkoutAuthenticationFailureSchema>;
 
 const complaintText = (max: number) => z.string().trim().max(max, "invalid complaint fields");
-export const complaintInputSchema = z
+const recordedComplaintInputSchema = z
   .object({
     language: checkoutLanguageSchema,
     fullName: complaintText(200).min(1, "invalid complaint fields"),
@@ -479,6 +479,14 @@ export const complaintInputSchema = z
     error: "response email is required",
     path: ["email"],
   });
+export const complaintInputSchema = recordedComplaintInputSchema.safeExtend({
+  phone: complaintText(60).min(1, "invalid complaint fields"),
+  reservationReference: complaintText(100).min(1, "invalid complaint fields"),
+});
+export const complaintSubmissionSchema = complaintInputSchema.safeExtend({
+  turnstileToken: z.string().trim().min(1).max(2048),
+});
+export type ComplaintSubmissionRequest = z.input<typeof complaintSubmissionSchema>;
 export type ComplaintInput = z.infer<typeof complaintInputSchema>;
 export type ComplaintInputRequest = z.input<typeof complaintInputSchema>;
 export const complaintResponseSchema = z
@@ -531,7 +539,7 @@ export const complaintBackupSchema = z
     originalReference: complaintText(100).min(1),
     filedAt: z.iso.datetime({ offset: true }),
     restoredAt: z.iso.datetime({ offset: true }),
-    input: complaintInputSchema,
+    input: recordedComplaintInputSchema,
   })
   .strict();
 export type ComplaintBackupRequest = z.input<typeof complaintBackupSchema>;

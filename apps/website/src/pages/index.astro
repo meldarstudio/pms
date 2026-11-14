@@ -1,5 +1,4 @@
 ---
-import ComplaintNotice from "@/components/complaints/ComplaintNotice.astro";
 import Landing from "@/components/Landing.astro";
 import Layout from "@/layouts/Layout.astro";
 import Highlights from "@/components/Highlights.astro";
@@ -23,7 +22,6 @@ const hotelStructuredData = getHotelStructuredData(getAbsoluteLocaleUrl(lang, ""
     set:html={JSON.stringify(hotelStructuredData).replace(/</g, "\\u003c")}
   />
   <Landing />
-  <ComplaintNotice />
   <Highlights />
   <GuestReviews />
   <GettingThere />

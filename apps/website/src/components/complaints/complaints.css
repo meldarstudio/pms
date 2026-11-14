@@ -1,0 +1,83 @@
+.complaint-book {
+  --primary: var(--color-accent-500);
+  --primary-foreground: var(--color-accent-950);
+  --ring: var(--color-accent-700);
+  --input: var(--color-stone-300);
+  --muted-foreground: var(--color-stone-600);
+  font-family: var(--font-lora), serif;
+  color: var(--foreground);
+  font-size: 1rem;
+  line-height: 1.5;
+}
+
+.complaint-intro,
+.complaint-provider,
+.complaint-hint {
+  color: var(--muted-foreground);
+  font-size: 0.875rem;
+  line-height: 1.6;
+  overflow-wrap: anywhere;
+}
+
+.complaint-provider {
+  border-bottom: 1px solid var(--border);
+  padding-bottom: 1.5rem;
+}
+
+.complaint-book [data-slot="field-legend"] {
+  margin-bottom: 1.25rem;
+  font-family: var(--font-lora), serif;
+  font-size: 1.25rem;
+  font-weight: 600;
+}
+
+.complaint-book [data-slot="field-label"] {
+  font-family: var(--font-source-sans-3), sans-serif;
+  font-size: 0.875rem;
+  font-weight: 600;
+  line-height: 1.5;
+}
+
+.complaint-book :is([data-slot="field-description"], [data-slot="field-error"]) {
+  font-size: 0.875rem;
+}
+
+.complaint-book :is([data-slot="input"], [data-slot="native-select"], [data-slot="textarea"]) {
+  min-height: 3rem;
+  padding: 0.75rem;
+  font-size: 1rem;
+  line-height: 1.5;
+}
+
+.complaint-book [data-slot="native-select"] {
+  padding-right: 2.5rem;
+}
+
+.complaint-book
+  :is(
+    [data-slot="field-set"],
+    [data-slot="field-group"],
+    [data-slot="field"],
+    [data-slot="textarea"]
+  ) {
+  min-width: 0;
+}
+
+.complaint-book [data-slot="textarea"] {
+  field-sizing: fixed;
+  resize: vertical;
+}
+
+.complaint-book [data-slot="accordion-content"] {
+  overflow-wrap: anywhere;
+}
+
+.complaint-book [data-slot="button"] {
+  font-family: var(--font-source-sans-3), sans-serif;
+  min-height: 3rem;
+  padding-inline: 1.5rem;
+  font-size: 0.875rem;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}

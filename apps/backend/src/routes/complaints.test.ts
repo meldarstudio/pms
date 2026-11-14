@@ -1,3 +1,10 @@
+import {
+  fakeTurnstile,
+  TURNSTILE_ORIGIN,
+  TURNSTILE_PASS,
+  TURNSTILE_TEST_SECRET,
+  COMPLAINT_TURNSTILE_PASS,
+} from "../test-support/turnstile";
 import { afterEach, beforeEach, expect, it, vi } from "vite-plus/test";
 import type { complaintView } from "../complaints";
 import { getDb } from "../db";
@@ -6,12 +13,22 @@ import { fakeResend, RESEND_TEST_KEY, RESEND_LOOPBACK } from "../test-support/re
 import { app } from "../index";
 import { createTestDb, type TestDb } from "../test-support/d1";
 
-import { developmentBook, complaintInput } from "../test-support/complaints";
+import { developmentBook, complaintInput, complaintSubmission } from "../test-support/complaints";
 
 type Sheet = Awaited<ReturnType<typeof complaintView>>;
 let db: TestDb;
+function stubServices(mail?: { fetch: typeof fetch }) {
+  const security = fakeTurnstile();
+  vi.stubGlobal("fetch", ((input, init) => {
+    const url = new URL(input instanceof Request ? input.url : input);
+    return (url.origin === TURNSTILE_ORIGIN ? security : (mail ?? security)).fetch(input, init);
+  }) as typeof fetch);
+  return security;
+}
 beforeEach(async () => {
   db = await createTestDb();
+  db.env.TURNSTILE_SECRET_KEY = TURNSTILE_TEST_SECRET;
+  stubServices();
 });
 afterEach(() => {
   db.close();
@@ -41,7 +58,7 @@ it("stores an unreserved foreign-document sheet once across retries, numbered in
       {
         method: "POST",
         headers: { "content-type": "application/json", authorization: `Bearer ${bearer}` },
-        body: JSON.stringify(body),
+        body: JSON.stringify({ ...body, turnstileToken: COMPLAINT_TURNSTILE_PASS }),
       },
       db.env,
     );
@@ -71,6 +88,122 @@ it("stores an unreserved foreign-document sheet once across retries, numbered in
   );
 });
 
+it.each(["phone", "reservationReference"] as const)(
+  "requires %s when filing a public sheet",
+  async (field) => {
+    db.env.COMPLAINT_BOOK_DEVELOPMENT = JSON.stringify(developmentBook);
+    const token = crypto.randomUUID() + crypto.randomUUID();
+    const send = (input: typeof complaintInput) =>
+      app.request(
+        "http://localhost/public/complaints",
+        {
+          method: "POST",
+          headers: { "content-type": "application/json", authorization: `Bearer ${token}` },
+          body: JSON.stringify({ ...input, turnstileToken: COMPLAINT_TURNSTILE_PASS }),
+        },
+        db.env,
+      );
+    const rejected = await send({ ...complaintInput, [field]: "  " });
+    expect(rejected.status).toBe(400);
+    expect(rejected.headers.get("X-Error-Field")).toBe(field);
+    expect(await rejected.json()).toEqual({ error: "invalid complaint fields" });
+    expect((await send(complaintInput)).status).toBe(201);
+  },
+);
+
+it.each([
+  ["missing", undefined, 400],
+  ["invalid", "forged-token", 403],
+  ["payment action", TURNSTILE_PASS, 403],
+] as const)(
+  "rejects a %s security token before recording or queuing a sheet",
+  async (_name, turnstileToken, status) => {
+    db.env.COMPLAINT_BOOK_DEVELOPMENT = JSON.stringify(developmentBook);
+    const response = await app.request(
+      "http://localhost/public/complaints",
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          authorization: `Bearer ${crypto.randomUUID() + crypto.randomUUID()}`,
+        },
+        body: JSON.stringify({ ...complaintInput, turnstileToken }),
+      },
+      db.env,
+    );
+    expect(response.status).toBe(status);
+    expect(await response.json()).toEqual({ error: "complaint security check failed" });
+    expect(db.sqlite.prepare("SELECT count(*) AS count FROM complaint_sheets").get()).toEqual({
+      count: 0,
+    });
+    expect(db.sqlite.prepare("SELECT count(*) AS count FROM complaint_emails").get()).toEqual({
+      count: 0,
+    });
+  },
+);
+
+it("refuses a public submission when the verification secret is missing", async () => {
+  db.env.COMPLAINT_BOOK_DEVELOPMENT = JSON.stringify(developmentBook);
+  delete db.env.TURNSTILE_SECRET_KEY;
+  const response = await app.request(
+    "http://localhost/public/complaints",
+    {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        authorization: `Bearer ${crypto.randomUUID() + crypto.randomUUID()}`,
+      },
+      body: JSON.stringify(complaintSubmission),
+    },
+    db.env,
+  );
+  expect(response.status).toBe(503);
+  expect(await response.json()).toEqual({ error: "complaint security check is unavailable" });
+  expect(db.sqlite.prepare("SELECT count(*) AS count FROM complaint_sheets").get()).toEqual({
+    count: 0,
+  });
+});
+
+it("recovers after a security outage without storing challenge tokens or skipping verification on a replay", async () => {
+  db.env.COMPLAINT_BOOK_DEVELOPMENT = JSON.stringify(developmentBook);
+  const security = stubServices();
+  security.next("internal-error");
+  const token = crypto.randomUUID() + crypto.randomUUID();
+  const send = (turnstileToken = COMPLAINT_TURNSTILE_PASS) =>
+    app.request(
+      "http://localhost/public/complaints",
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          authorization: `Bearer ${token}`,
+          "cf-connecting-ip": "192.0.2.5",
+        },
+        body: JSON.stringify({ ...complaintInput, turnstileToken }),
+      },
+      db.env,
+    );
+  const failed = await send();
+  expect(failed.status).toBe(503);
+  expect(await failed.json()).toEqual({ error: "complaint security check is unavailable" });
+  const saved = await send();
+  expect(saved.status).toBe(201);
+  const sheet = (await saved.json()) as Sheet;
+  expect(sheet.input).toEqual(complaintInput);
+  expect(security.verifications.at(-1)).toMatchObject({ remoteip: "192.0.2.5" });
+  expect(
+    db.sqlite.prepare("SELECT request_payload AS payload FROM complaint_sheets").get()?.payload,
+  ).not.toContain(COMPLAINT_TURNSTILE_PASS);
+  expect((await send("expired-token")).status).toBe(403);
+  const recovered = await app.request(
+    "http://localhost/public/complaints/receipt",
+    { headers: { authorization: `Bearer ${token}` } },
+    db.env,
+  );
+  expect(await recovered.json()).toEqual(sheet);
+  expect((await send()).status).toBe(200);
+});
+
 it("survives concurrent filing with unique consecutive references and one replayed sheet", async () => {
   db.env.COMPLAINT_BOOK_DEVELOPMENT = JSON.stringify(developmentBook);
   vi.useFakeTimers({ toFake: ["Date"] });
@@ -86,7 +219,7 @@ it("survives concurrent filing with unique consecutive references and one replay
         {
           method: "POST",
           headers: { "content-type": "application/json", authorization: `Bearer ${token}` },
-          body: JSON.stringify(complaintInput),
+          body: JSON.stringify(complaintSubmission),
         },
         db.env,
       ),
@@ -112,7 +245,7 @@ it("lets only the owner read and append actual responses and correction evidence
         "content-type": "application/json",
         authorization: `Bearer ${crypto.randomUUID() + crypto.randomUUID()}`,
       },
-      body: JSON.stringify(complaintInput),
+      body: JSON.stringify(complaintSubmission),
     },
     db.env,
   );
@@ -177,6 +310,8 @@ it("dates a transcribed physical sheet from its original filing and preserves it
     restoredAt: "2026-12-07T13:00:00Z",
     input: {
       ...complaintInput,
+      phone: "",
+      reservationReference: "",
       minor: true,
       representative: "Parent: Rosa Torres, passport AA222, Lima, +51 999999999",
       category: "queja",
@@ -203,7 +338,7 @@ it("keeps registration after receipt failure and retries the same saved email sa
   db.env.RESEND_API_KEY = RESEND_TEST_KEY;
   db.env.RESEND_API_URL = RESEND_LOOPBACK;
   const provider = fakeResend();
-  vi.stubGlobal("fetch", provider.fetch);
+  stubServices(provider);
   provider.next(422);
   const filed = await app.request(
     "http://localhost/public/complaints",
@@ -213,7 +348,7 @@ it("keeps registration after receipt failure and retries the same saved email sa
         "content-type": "application/json",
         authorization: `Bearer ${crypto.randomUUID() + crypto.randomUUID()}`,
       },
-      body: JSON.stringify(complaintInput),
+      body: JSON.stringify(complaintSubmission),
     },
     db.env,
   );
@@ -244,7 +379,7 @@ it("keeps registration after receipt failure and retries the same saved email sa
 
 it("rejects incomplete minor details accessibly and refuses production hosts", async () => {
   db.env.COMPLAINT_BOOK_DEVELOPMENT = JSON.stringify(developmentBook);
-  const send = (input: unknown) =>
+  const send = (input: typeof complaintInput) =>
     app.request(
       "http://localhost/public/complaints",
       {
@@ -253,7 +388,7 @@ it("rejects incomplete minor details accessibly and refuses production hosts", a
           "content-type": "application/json",
           authorization: `Bearer ${crypto.randomUUID() + crypto.randomUUID()}`,
         },
-        body: JSON.stringify(input),
+        body: JSON.stringify({ ...input, turnstileToken: COMPLAINT_TURNSTILE_PASS }),
       },
       db.env,
     );
@@ -275,7 +410,7 @@ it("rolls back the sheet and number if its email work cannot be stored", async (
       {
         method: "POST",
         headers: { "content-type": "application/json", authorization: `Bearer ${token}` },
-        body: JSON.stringify(complaintInput),
+        body: JSON.stringify(complaintSubmission),
       },
       db.env,
     );
@@ -297,7 +432,7 @@ it("recovers an accepted email after a provider response is lost without duplica
   db.env.RESEND_API_KEY = RESEND_TEST_KEY;
   db.env.RESEND_API_URL = RESEND_LOOPBACK;
   const provider = fakeResend();
-  vi.stubGlobal("fetch", provider.fetch);
+  stubServices(provider);
   provider.next("lose");
   const filed = await app.request(
     "http://localhost/public/complaints",
@@ -307,7 +442,7 @@ it("recovers an accepted email after a provider response is lost without duplica
         "content-type": "application/json",
         authorization: `Bearer ${crypto.randomUUID() + crypto.randomUUID()}`,
       },
-      body: JSON.stringify(complaintInput),
+      body: JSON.stringify(complaintSubmission),
     },
     db.env,
   );
@@ -338,7 +473,7 @@ it("sends a previously untouched receipt after a day-long outage and retries a d
   db.env.RESEND_API_KEY = RESEND_TEST_KEY;
   db.env.RESEND_API_URL = RESEND_LOOPBACK;
   const provider = fakeResend();
-  vi.stubGlobal("fetch", provider.fetch);
+  stubServices(provider);
   const filed = await app.request(
     "http://localhost/public/complaints",
     {
@@ -347,7 +482,7 @@ it("sends a previously untouched receipt after a day-long outage and retries a d
         "content-type": "application/json",
         authorization: `Bearer ${crypto.randomUUID() + crypto.randomUUID()}`,
       },
-      body: JSON.stringify(complaintInput),
+      body: JSON.stringify(complaintSubmission),
     },
     db.env,
   );
@@ -385,7 +520,7 @@ it.each(["complaint_sheets", "complaint_responses"])(
           "content-type": "application/json",
           authorization: `Bearer ${crypto.randomUUID() + crypto.randomUUID()}`,
         },
-        body: JSON.stringify(complaintInput),
+        body: JSON.stringify(complaintSubmission),
       },
       db.env,
     );
@@ -422,7 +557,7 @@ it("holds an uncertain email for manual handling after provider deduplication ex
   db.env.RESEND_API_KEY = RESEND_TEST_KEY;
   db.env.RESEND_API_URL = RESEND_LOOPBACK;
   const provider = fakeResend();
-  vi.stubGlobal("fetch", provider.fetch);
+  stubServices(provider);
   provider.next("lose");
   const filed = await app.request(
     "http://localhost/public/complaints",
@@ -432,7 +567,7 @@ it("holds an uncertain email for manual handling after provider deduplication ex
         "content-type": "application/json",
         authorization: `Bearer ${crypto.randomUUID() + crypto.randomUUID()}`,
       },
-      body: JSON.stringify(complaintInput),
+      body: JSON.stringify(complaintSubmission),
     },
     db.env,
   );

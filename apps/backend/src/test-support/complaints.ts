@@ -1,3 +1,4 @@
+import { COMPLAINT_TURNSTILE_PASS } from "./turnstile";
 import type { ComplaintBookConfig } from "../complaint-config";
 
 import fixture from "./complaint-book.development.json";
@@ -9,7 +10,7 @@ export const complaintInput = {
   address: "Lima, Peru",
   documentType: "Passport",
   documentNumber: "AB123456",
-  phone: "",
+  phone: "+51999999999",
   email: "ana@example.com",
   minor: false,
   representative: "",
@@ -18,7 +19,9 @@ export const complaintInput = {
   category: "reclamo",
   description: "Room service was unavailable",
   requestedRemedy: "Please respond in writing",
-  reservationReference: "",
+  reservationReference: "No aplica",
   responseChannel: "email",
-  policyVersion: "development-1",
+  policyVersion: developmentBook.policyVersion,
 };
+
+export const complaintSubmission = { ...complaintInput, turnstileToken: COMPLAINT_TURNSTILE_PASS };

@@ -1,3 +1,4 @@
+import { Button } from "@/components/ui/button";
 import { useTranslations } from "@/i18n/utils";
 import { useEffect, useRef, type ReactNode } from "react";
 import { complaintLabels, type ComplaintReceipt as Receipt } from "@/lib/complaints";
@@ -117,13 +118,14 @@ export function ComplaintReceipt({ sheet, language }: { sheet: Receipt; language
         <p>{t("complaints.sheet.deadline")}</p>
         <p>{t("complaints.sheet.recipient")}</p>
       </footer>
-      <button
-        className="min-h-11 rounded border px-4 print:hidden"
+      <Button
+        variant="outline"
+        className="min-h-11 print:hidden"
         type="button"
         onClick={() => window.print()}
       >
         {t("complaints.printSheet")}
-      </button>
+      </Button>
     </article>
   );
 }

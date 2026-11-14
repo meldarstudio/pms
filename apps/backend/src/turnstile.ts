@@ -8,14 +8,17 @@ const TIMEOUT_MS = 10_000;
 export const SECURITY_CHECK_FAILED = "payment security check failed";
 export const SECURITY_CHECK_UNAVAILABLE = "payment security check is unavailable";
 
-type Siteverify = { success?: unknown; "error-codes"?: unknown };
+type Siteverify = { success?: unknown; action?: unknown; "error-codes"?: unknown };
 
 export async function requireTurnstile(
   env: Pick<Env["Bindings"], "TURNSTILE_SECRET_KEY" | "TURNSTILE_VERIFY_URL">,
   token: string,
   sourceIp: string,
+  options: { action?: string; failed?: string; unavailable?: string } = {},
 ) {
-  if (!env.TURNSTILE_SECRET_KEY) throw new HttpError(503, SECURITY_CHECK_UNAVAILABLE);
+  const failed = options.failed ?? SECURITY_CHECK_FAILED;
+  const unavailable = options.unavailable ?? SECURITY_CHECK_UNAVAILABLE;
+  if (!env.TURNSTILE_SECRET_KEY) throw new HttpError(503, unavailable);
   const form = new URLSearchParams({ secret: env.TURNSTILE_SECRET_KEY, response: token });
   if (sourceIp !== "unknown") form.set("remoteip", sourceIp);
   let body: Siteverify | null = null;
@@ -29,9 +32,11 @@ export async function requireTurnstile(
   } catch {
     body = null;
   }
-  if (body?.success === true) return;
+  if (body?.success === true) {
+    if (options.action && body.action !== options.action) throw new HttpError(403, failed);
+    return;
+  }
   const codes = Array.isArray(body?.["error-codes"]) ? body["error-codes"] : [];
-  if (!body || codes.includes("internal-error"))
-    throw new HttpError(503, SECURITY_CHECK_UNAVAILABLE);
-  throw new HttpError(403, SECURITY_CHECK_FAILED);
+  if (!body || codes.includes("internal-error")) throw new HttpError(503, unavailable);
+  throw new HttpError(403, failed);
 }

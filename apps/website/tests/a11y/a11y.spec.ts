@@ -58,10 +58,13 @@ async function runAxe(page: Page, pagePath: string) {
 
 for (const path of pages) {
   test(`a11y: ${path}`, async ({ page }) => {
+    if (path.includes("libro-de-reclamaciones")) await stubPaymentScripts(page);
     const response = await page.goto(path);
     expect(response?.ok() || response?.status() === 404).toBeTruthy();
-    if (path.includes("libro-de-reclamaciones"))
+    if (path.includes("libro-de-reclamaciones")) {
       await expect(page.locator("#complaint-fullName")).toBeVisible();
+      await page.getByRole("button", { name: /privacidad|privacy/ }).click();
+    }
     await runAxe(page, path);
   });
 }

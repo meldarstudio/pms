@@ -4,11 +4,27 @@ export const defaultLang = i18n?.defaultLocale === "en" ? "en" : "es";
 
 export const ui = {
   en: {
+    "complaints.securityCheck": "Security check",
+    "complaints.securityFailed":
+      "Complete the security check and try again. Your draft is retained.",
+    "complaints.securityUnavailable":
+      "The security check is unavailable. Your draft is retained; try again.",
+    "complaints.retrySecurityCheck": "Retry security check",
+
+    "complaints.optionalEmailLabel": "Email (optional)",
+    "complaints.referenceHint": "If you do not have a reservation, enter “Not applicable”.",
+    "complaints.amountLabel": "Amount (optional)",
+    "complaints.amountHint": "Leave blank if unknown or not applicable.",
+    "complaints.consumerDetails": "1. Consumer details",
+    "complaints.complaintDetails": "2. Complaint details",
+    "complaints.writtenResponse": "3. Written response",
+    "complaints.optionalEmail": "Optional when you choose a response by letter.",
+
     "complaints.field.fullName": "Full name",
     "complaints.field.address": "Address",
     "complaints.field.documentType": "Document type",
     "complaints.field.documentNumber": "Document number",
-    "complaints.field.phone": "Phone (optional)",
+    "complaints.field.phone": "Phone",
     "complaints.field.email": "Email",
     "complaints.field.representative":
       "Parent or representative: name, document, address and contact",
@@ -17,7 +33,7 @@ export const ui = {
     "complaints.field.category": "Category",
     "complaints.field.description": "Description",
     "complaints.field.requestedRemedy": "Requested remedy",
-    "complaints.field.reservationReference": "Reservation reference (optional)",
+    "complaints.field.reservationReference": "Reservation reference",
     "complaints.field.responseChannel": "Written response channel",
     "complaints.field.minor": "Consumer is a minor",
     "complaints.error.complaint_book_unavailable":
@@ -634,11 +650,27 @@ export const ui = {
       "This room doesn't fit your group. Go back and choose another room or change the guests.",
   },
   es: {
+    "complaints.securityCheck": "Verificación de seguridad",
+    "complaints.securityFailed":
+      "Complete la verificación de seguridad e inténtelo de nuevo. Se conserva su borrador.",
+    "complaints.securityUnavailable":
+      "La verificación de seguridad no está disponible. Se conserva su borrador; inténtelo de nuevo.",
+    "complaints.retrySecurityCheck": "Reintentar verificación",
+
+    "complaints.optionalEmailLabel": "Correo electrónico (opcional)",
+    "complaints.referenceHint": "Si no tiene una reserva, escriba «No aplica».",
+    "complaints.amountLabel": "Monto (opcional)",
+    "complaints.amountHint": "Déjelo vacío si no se conoce o no aplica.",
+    "complaints.consumerDetails": "1. Datos del consumidor",
+    "complaints.complaintDetails": "2. Datos de la reclamación",
+    "complaints.writtenResponse": "3. Respuesta escrita",
+    "complaints.optionalEmail": "Opcional si elige una respuesta por carta.",
+
     "complaints.field.fullName": "Nombre completo",
     "complaints.field.address": "Domicilio",
     "complaints.field.documentType": "Tipo de documento",
     "complaints.field.documentNumber": "Número de documento",
-    "complaints.field.phone": "Teléfono (opcional)",
+    "complaints.field.phone": "Teléfono",
     "complaints.field.email": "Correo electrónico",
     "complaints.field.representative":
       "Padre o representante: nombre, documento, domicilio y contacto",
@@ -647,7 +679,7 @@ export const ui = {
     "complaints.field.category": "Tipo",
     "complaints.field.description": "Detalle",
     "complaints.field.requestedRemedy": "Pedido",
-    "complaints.field.reservationReference": "Referencia de reserva (opcional)",
+    "complaints.field.reservationReference": "Referencia de reserva",
     "complaints.field.responseChannel": "Canal de respuesta escrita",
     "complaints.field.minor": "Consumidor menor de edad",
     "complaints.error.complaint_book_unavailable":

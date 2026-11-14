@@ -5,7 +5,7 @@ import { useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
-import { Field, FieldGroup, FieldLabel } from "@/components/ui/field";
+import { Field, FieldDescription, FieldGroup, FieldLabel } from "@/components/ui/field";
 import {
   Table,
   TableBody,
@@ -303,9 +303,9 @@ function ResponseForm({ sheet }: { sheet: ComplaintSheet }) {
     >
       <h3 className="text-lg font-semibold">Registrar respuesta ya enviada</h3>
       <p>
-        Envíe la respuesta por el canal escrito elegido antes de registrarla aquí. La fecha de envío
-        usa la zona horaria de este equipo. Después podrá adjuntar archivos de evidencia al
-        registro.
+        Revise el detalle y el pedido con recepción y los registros disponibles. Responda por el
+        canal escrito elegido antes de la fecha límite y registre aquí la respuesta ya enviada. La
+        fecha de envío usa la zona horaria de este equipo.
       </p>
       <fieldset disabled={save.isPending || locked}>
         <FieldGroup>
@@ -359,9 +359,17 @@ function ResponseForm({ sheet }: { sheet: ComplaintSheet }) {
               name="evidence"
               required
               maxLength={2000}
+              aria-describedby="complaint-evidence-help"
               value={draft.evidence}
               onChange={(event) => update("evidence", event.target.value)}
             />
+            <FieldDescription id="complaint-evidence-help">
+              {draft.channel === "email"
+                ? "Envíe desde hotelmanantialchurinperu@gmail.com. Identifique el mensaje enviado y guarde un PDF que incluya destinatario, fecha, hora y respuesta completa."
+                : "Identifique la constancia de despacho postal y conserve una copia de la carta enviada junto con esa constancia."}{" "}
+              Después de registrar la respuesta, adjunte la evidencia a ese registro. Si el envío
+              falla, resuélvalo antes de registrar una respuesta enviada.
+            </FieldDescription>
           </Field>
           <Field>
             <FieldLabel htmlFor="complaint-correction">Registro que corrige (opcional)</FieldLabel>

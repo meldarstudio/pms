@@ -1,9 +1,10 @@
+import { fakeTurnstile, TURNSTILE_TEST_SECRET } from "../test-support/turnstile";
 import { afterAll, afterEach, beforeAll, beforeEach, expect, it, vi } from "vite-plus/test";
 import { getPlatformProxy } from "wrangler";
 import { app } from "../index";
 import { signIn, PORTAL_ORIGIN } from "../test-support/auth";
 import { createTestDb, type TestDb } from "../test-support/d1";
-import { complaintInput, developmentBook } from "../test-support/complaints";
+import { complaintSubmission, developmentBook } from "../test-support/complaints";
 
 let platform: Awaited<ReturnType<typeof getPlatformProxy<{ COMPLAINT_ATTACHMENTS: R2Bucket }>>>;
 let db: TestDb;
@@ -24,6 +25,8 @@ beforeAll(async () => {
 afterAll(async () => platform?.dispose());
 beforeEach(async () => {
   db = await createTestDb();
+  db.env.TURNSTILE_SECRET_KEY = TURNSTILE_TEST_SECRET;
+  vi.stubGlobal("fetch", fakeTurnstile().fetch);
   db.env.COMPLAINT_BOOK_DEVELOPMENT = JSON.stringify(developmentBook);
   db.env.COMPLAINT_ATTACHMENTS = platform.env.COMPLAINT_ATTACHMENTS;
   token = crypto.randomUUID() + crypto.randomUUID();
@@ -32,7 +35,7 @@ beforeEach(async () => {
     {
       method: "POST",
       headers: { "content-type": "application/json", authorization: `Bearer ${token}` },
-      body: JSON.stringify(complaintInput),
+      body: JSON.stringify(complaintSubmission),
     },
     db.env,
   );
@@ -57,6 +60,7 @@ beforeEach(async () => {
 afterEach(() => {
   db.close();
   vi.restoreAllMocks();
+  vi.unstubAllGlobals();
 });
 
 const path = (id: string) => `/complaints/${complaintId}/responses/${responseId}/attachments/${id}`;
