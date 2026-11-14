@@ -79,12 +79,6 @@ async function admitPayments(admitted: boolean) {
   await db.signIn("staff");
 }
 
-async function admitEmail(admitted: boolean) {
-  await db.signIn("owner");
-  expect((await db.request("/controls/email-submission", "PUT", { admitted })).status).toBe(200);
-  await db.signIn("staff");
-}
-
 function configureResend() {
   db.env.RESEND_API_KEY = RESEND_TEST_KEY;
   db.env.RESEND_API_URL = RESEND_LOOPBACK;
@@ -206,7 +200,6 @@ describe("automatic confirmation", () => {
         }),
       ]);
       configureResend();
-      await admitEmail(true);
 
       await runScheduled();
       await runScheduled();
@@ -290,7 +283,6 @@ describe("automatic confirmation", () => {
     });
     expect(desk.status).toBe(201);
     configureResend();
-    await admitEmail(true);
 
     await runScheduled();
 
@@ -301,7 +293,6 @@ describe("automatic confirmation", () => {
   it("retries a transient failure with the same idempotency key and backoff, then fails after five attempts", async () => {
     await confirmed();
     configureResend();
-    await admitEmail(true);
     resend.next(500, "timeout", 429, 500, 500);
 
     await runScheduled();
@@ -345,7 +336,6 @@ describe("automatic confirmation", () => {
   it("records the original message when Resend accepted a send whose response was lost", async () => {
     await confirmed();
     configureResend();
-    await admitEmail(true);
     resend.next("lose");
 
     await runScheduled();
@@ -366,7 +356,6 @@ describe("automatic confirmation", () => {
   it("resends the first request after a lost response, even when the reservation changed meanwhile", async () => {
     const { saved } = await confirmed();
     configureResend();
-    await admitEmail(true);
     resend.next("lose");
     await runScheduled();
     await command(saved.id, [{ type: "set-discount", amountCents: 5000 }]);
@@ -386,7 +375,6 @@ describe("automatic confirmation", () => {
   it("posts once when two scheduled runs overlap", async () => {
     await confirmed();
     configureResend();
-    await admitEmail(true);
 
     await Promise.all([runScheduled(), runScheduled()]);
 
@@ -397,7 +385,6 @@ describe("automatic confirmation", () => {
   it("fails at once when Resend refuses the message", async () => {
     await confirmed();
     configureResend();
-    await admitEmail(true);
     resend.next(422);
 
     await runScheduled();
@@ -416,7 +403,6 @@ describe("automatic confirmation", () => {
   it("fails at once when Resend rejects the API key", async () => {
     await confirmed();
     configureResend();
-    await admitEmail(true);
     resend.next(401);
 
     await runScheduled();
@@ -430,7 +416,6 @@ describe("automatic confirmation", () => {
   it("retries when Resend is still processing the same idempotency key", async () => {
     await confirmed();
     configureResend();
-    await admitEmail(true);
     resend.next("concurrent");
 
     await runScheduled();
@@ -450,7 +435,6 @@ describe("automatic confirmation", () => {
   it("waits at least Retry-After before trying again", async () => {
     await confirmed();
     configureResend();
-    await admitEmail(true);
     resend.retryAfter("600");
     resend.next(429);
 
@@ -465,14 +449,9 @@ describe("automatic confirmation", () => {
     expect(emails()[0]).toMatchObject({ status: "sent", attempts: 2 });
   });
 
-  it("keeps the confirmation pending while sending is paused or Resend has no key, and sends it once both allow", async () => {
+  it("keeps the confirmation pending while Resend has no key, and sends it once the key is configured", async () => {
     await confirmed();
-    configureResend();
 
-    await runScheduled();
-    expect(emails()[0]).toMatchObject({ status: "pending", attempts: 0 });
-    db.env.RESEND_API_KEY = undefined;
-    await admitEmail(true);
     await runScheduled();
     expect(emails()[0]).toMatchObject({ status: "pending", attempts: 0 });
     expect(posts()).toEqual([]);
@@ -484,11 +463,22 @@ describe("automatic confirmation", () => {
     expect(emails()[0]).toMatchObject({ status: "sent" });
   });
 
+  it("sends a confirmation queued under the retired email pause while online payments are paused", async () => {
+    await confirmed();
+    db.sqlite.exec("UPDATE operation_controls SET email_submission_admitted = 0");
+    await admitPayments(false);
+    configureResend();
+
+    await runScheduled();
+
+    expect(posts()).toHaveLength(1);
+    expect(emails()[0]).toMatchObject({ status: "sent" });
+  });
+
   it("does not send a confirmation once staff cancel the reservation", async () => {
     const { saved } = await confirmed();
     await command(saved.id, [{ type: "set-status", status: "cancelled" }]);
     configureResend();
-    await admitEmail(true);
 
     await runScheduled();
 
@@ -499,7 +489,6 @@ describe("automatic confirmation", () => {
   it("stops retrying a confirmation once staff cancel the reservation between attempts", async () => {
     const { saved } = await confirmed();
     configureResend();
-    await admitEmail(true);
     resend.next(500);
     await runScheduled();
     await command(saved.id, [{ type: "set-status", status: "cancelled" }]);
@@ -522,7 +511,6 @@ describe("automatic confirmation", () => {
       .prepare("UPDATE room_types SET name = ? WHERE id = 'type-king'")
       .run('King & <img src="x" onerror="alert(1)">');
     configureResend();
-    await admitEmail(true);
 
     await runScheduled();
 
@@ -535,7 +523,6 @@ describe("automatic confirmation", () => {
   it("sends an owed confirmation in the same scheduled run when the payment steps fail", async () => {
     await confirmed();
     configureResend();
-    await admitEmail(true);
     const log = vi.spyOn(console, "error").mockImplementation(() => {});
     db.sqlite.exec("ALTER TABLE payment_attempts RENAME TO unavailable_attempts");
 
@@ -553,7 +540,6 @@ describe("automatic confirmation", () => {
     await confirmed();
     db.env.RESEND_API_KEY = RESEND_TEST_KEY;
     db.env.RESEND_API_URL = "https://resend.example.net";
-    await admitEmail(true);
     const seen: string[] = [];
     const original = globalThis.fetch;
     vi.stubGlobal("fetch", (async (input: RequestInfo | URL, init?: RequestInit) => {
@@ -576,7 +562,6 @@ describe("resending a confirmation", () => {
   it("queues a summary for an explicit recipient that the next run sends, and a replayed request queues it once", async () => {
     const { saved } = await confirmed();
     configureResend();
-    await admitEmail(true);
     await runScheduled();
     const path = `/reservations/${saved.id}/confirmation/resends`;
     const request = { requestId: crypto.randomUUID(), recipientEmail: "eva@example.com" };
@@ -630,7 +615,6 @@ describe("resending a confirmation", () => {
   it("uses assistance copy after access expires instead of an expired or renewed link", async () => {
     const { saved } = await confirmed();
     configureResend();
-    await admitEmail(true);
     await runScheduled();
     vi.setSystemTime(new Date("2026-11-22T15:00:00Z"));
     await db.signIn("staff");
@@ -720,40 +704,5 @@ describe("confirmation history", () => {
       );
       expect(hidden.status).toBe(401);
     }
-  });
-});
-
-describe("email submission admission", () => {
-  it("starts paused and does not change public payment admission", async () => {
-    db.sqlite.exec("DELETE FROM operation_controls");
-    await db.signIn("owner");
-
-    expect(await (await db.request("/controls/email-submission")).json()).toEqual({
-      admitted: false,
-      updatedAt: null,
-    });
-    expect((await db.request("/controls/public-payments", "PUT", { admitted: true })).status).toBe(
-      200,
-    );
-    const email = await db.request("/controls/email-submission", "PUT", { admitted: true });
-    expect(await email.json()).toMatchObject({ admitted: true });
-    const stopped = await db.request("/controls/email-submission", "PUT", { admitted: false });
-    expect(await stopped.json()).toMatchObject({ admitted: false });
-    expect(await (await db.request("/controls/public-payments")).json()).toMatchObject({
-      admitted: true,
-    });
-  });
-
-  it("lets only the owner read or change email submission", async () => {
-    await db.signIn("staff");
-
-    expect((await db.request("/controls/email-submission")).status).toBe(403);
-    expect((await db.request("/controls/email-submission", "PUT", { admitted: true })).status).toBe(
-      403,
-    );
-    expect(
-      (await db.request("/controls/email-submission", "GET", undefined, { signedIn: false }))
-        .status,
-    ).toBe(401);
   });
 });

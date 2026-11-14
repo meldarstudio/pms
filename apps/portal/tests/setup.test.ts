@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import type { HTMLElement } from "happy-dom";
 import { afterAll, afterEach, beforeAll, beforeEach, it, vi } from "vite-plus/test";
 import type { PropertySetupInput } from "../src/lib/api.ts";
 import { createBrowserTest, type BrowserTest, type BrowserPage } from "./browser.ts";
@@ -594,4 +595,109 @@ it("protects a draft when a mobile sidebar section link changes sections", async
   await click("Habitaciones");
   await openType();
   assert.equal(input("roomNumber").value, "");
+});
+
+function signedInAs(role: "owner" | "staff") {
+  api.on("GET", "/session", () => ({
+    username: role === "owner" ? "propietario" : "hotelmanantial",
+    role,
+    propertyTimeZone: "America/Lima",
+  }));
+}
+
+type PaymentAdmission = { admitted: boolean; updatedAt: string | null };
+
+function savedPaymentAdmission(initial: PaymentAdmission) {
+  let saved = initial;
+  api.on("GET", "/controls/public-payments", () => saved);
+  api.on<{ admitted: boolean }>("PUT", "/controls/public-payments", ({ body }) => {
+    saved = { admitted: body.admitted, updatedAt: "2026-11-13T20:45:00.000Z" };
+    return saved;
+  });
+  return api.bodies<{ admitted: boolean }>("PUT", "/controls/public-payments");
+}
+
+function paymentSwitch() {
+  const element = container.querySelector<HTMLElement>('[role="switch"]');
+  assert.ok(element, "The Pagos en línea switch must render");
+  return element;
+}
+
+async function togglePayments() {
+  const element = paymentSwitch();
+  await React.act(async () => element.click());
+}
+
+async function renderPayments() {
+  await render("/setup?section=payments");
+  await until(() => !!container.querySelector('[role="switch"]'), "Payment settings must load");
+}
+
+it("lets the owner pause online payments at once and resume them only after confirming, and keeps the saved state after a reload", async () => {
+  signedInAs("owner");
+  const saves = savedPaymentAdmission({ admitted: true, updatedAt: "2026-11-10T14:05:00.000Z" });
+  await renderPayments();
+  assert.equal(paymentSwitch().getAttribute("aria-checked"), "true");
+  assert.match(container.textContent, /Activados · Último cambio: 10 de noviembre de 2026/);
+
+  await togglePayments();
+  await until(() => paymentSwitch().getAttribute("aria-checked") === "false");
+  assert.deepEqual(saves, [{ admitted: false }]);
+  assert.match(container.textContent, /Pausados · Último cambio: 13 de noviembre de 2026/);
+
+  await togglePayments();
+  await until(() => !!window.document.querySelector('[role="alertdialog"]'));
+  await click("Cancelar");
+  await until(() => !window.document.querySelector('[role="alertdialog"]'));
+  assert.equal(paymentSwitch().getAttribute("aria-checked"), "false");
+  assert.equal(saves.length, 1, "Cancelling the confirmation must not resume payments");
+
+  await togglePayments();
+  await until(() => !!window.document.querySelector('[role="alertdialog"]'));
+  await click("Activar pagos");
+  await until(() => paymentSwitch().getAttribute("aria-checked") === "true");
+  assert.deepEqual(saves, [{ admitted: false }, { admitted: true }]);
+
+  await page.cleanup();
+  page = browser.createPage();
+  ({ api, container, until } = page);
+  signedInAs("owner");
+  savedPaymentAdmission({ admitted: true, updatedAt: "2026-11-13T20:45:00.000Z" });
+  await renderPayments();
+  assert.equal(paymentSwitch().getAttribute("aria-checked"), "true");
+  assert.match(container.textContent, /Activados · Último cambio: 13 de noviembre de 2026/);
+});
+
+it("shows a failed payment switch save in Spanish and keeps the saved position", async () => {
+  signedInAs("owner");
+  savedPaymentAdmission({ admitted: true, updatedAt: null });
+  api.failOnce("PUT", "/controls/public-payments", 403, { error: "owner account required" });
+  await renderPayments();
+  assert.match(container.textContent, /Activados/);
+
+  await togglePayments();
+  await until(() =>
+    container.textContent.includes("Solo la cuenta del propietario puede hacer esto."),
+  );
+  assert.equal(paymentSwitch().getAttribute("aria-checked"), "true");
+  assert.equal(paymentSwitch().hasAttribute("data-disabled"), false);
+});
+
+it("hides Pagos from staff and sends a direct visit to Habitaciones without reading the payment switch", async () => {
+  page.mobile();
+  signedInAs("staff");
+  await render("/setup?section=payments");
+  await until(
+    () => container.querySelector("main h1")?.textContent === "Habitaciones",
+    "Staff land on a section they can use",
+  );
+  assert.equal(router.state.location.search.section, undefined);
+  await click("Alternar navegación");
+  assert.deepEqual(
+    Array.from(
+      window.document.querySelectorAll('nav[aria-label="Navegación principal"] a[href^="/setup"]'),
+    ).map((link) => link.textContent.trim()),
+    ["Habitaciones", "Apariencia"],
+  );
+  assert.equal(api.requests("GET", "/controls/public-payments").length, 0);
 });

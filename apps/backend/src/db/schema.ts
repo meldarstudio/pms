@@ -20,7 +20,7 @@ export const operationControls = sqliteTable(
     publicPaymentsAdmitted: integer("public_payments_admitted", { mode: "boolean" })
       .notNull()
       .default(false),
-    emailSubmissionAdmitted: integer("email_submission_admitted", { mode: "boolean" })
+    retiredEmailSubmissionAdmitted: integer("email_submission_admitted", { mode: "boolean" })
       .notNull()
       .default(false),
     updatedAt: text("updated_at").notNull(),

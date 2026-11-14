@@ -153,49 +153,19 @@ test("the complete English Non-refundable journey sends its saved confirmation a
   const savedLink = new URL((await page.locator("[data-access-view]").getAttribute("href"))!);
   await expect(page.getByRole("button", { name: "Print confirmation" })).toBeEnabled();
 
-  const login = await request.post(`${LOCAL_API_URL}/login`, {
-    headers: { origin: "https://app.hotelmanantialchurin.com" },
-    data: { username: "kevin", password: "owner horse battery staple" },
-  });
-  expect(login.status()).toBe(200);
-  const cookie = login
-    .headersArray()
-    .filter(({ name }) => name.toLowerCase() === "set-cookie")
-    .map(({ value }) => value.split(";")[0])
-    .join("; ");
-  const headers = { cookie, origin: "https://app.hotelmanantialchurin.com" };
-  expect(
-    (
-      await request.put(`${LOCAL_API_URL}/controls/email-submission`, {
-        headers,
-        data: { admitted: true },
-      })
-    ).status(),
-  ).toBe(200);
   let message: { text: string; subject: string; to: string[] } | undefined;
-  try {
-    await expect
-      .poll(async () => {
-        expect((await request.get(`${LOCAL_API_URL}/cdn-cgi/local/scheduled`)).status()).toBe(200);
-        const sent = await request.get(
-          `${FAKE_PAYMENT_SERVICES_URL}/__resend/emails?recipient=${encodeURIComponent(email)}`,
-        );
-        expect(sent.status()).toBe(200);
-        const messages = (await sent.json()) as { text: string; subject: string; to: string[] }[];
-        message = messages[0];
-        return messages.length;
-      })
-      .toBe(1);
-  } finally {
-    expect(
-      (
-        await request.put(`${LOCAL_API_URL}/controls/email-submission`, {
-          headers,
-          data: { admitted: false },
-        })
-      ).status(),
-    ).toBe(200);
-  }
+  await expect
+    .poll(async () => {
+      expect((await request.get(`${LOCAL_API_URL}/cdn-cgi/local/scheduled`)).status()).toBe(200);
+      const sent = await request.get(
+        `${FAKE_PAYMENT_SERVICES_URL}/__resend/emails?recipient=${encodeURIComponent(email)}`,
+      );
+      expect(sent.status()).toBe(200);
+      const messages = (await sent.json()) as { text: string; subject: string; to: string[] }[];
+      message = messages[0];
+      return messages.length;
+    })
+    .toBe(1);
   expect(message!.to).toEqual([email]);
   expect(message!.subject).toContain("Reservation confirmation");
   expect(message!.text).toContain(reference!);
