@@ -1103,6 +1103,59 @@ describe("bank authentication", () => {
     expect(ofType(retried.effects, "openBank")).toHaveLength(1);
   });
 
+  it("reports a refused bank check for this attempt instead of keeping it pending", () => {
+    const opened = drive(withCard(), synced(authenticating));
+
+    const { state, effects } = drive(opened.state, { type: "bankRefused" });
+
+    expect(ofType(effects, "reportAuthenticationFailure")).toEqual([
+      { type: "reportAuthenticationFailure", token: TOKEN, attemptId: ATTEMPT },
+    ]);
+    expect(ofType(effects, "focus")).toEqual([]);
+    expect(types(effects)).not.toContain("openCardForm");
+    expect(state.stored?.submitted).toBeNull();
+  });
+
+  it("offers another card once the refused check is declined, keeping the contact and acceptance", () => {
+    const opened = drive(withCard(), synced(authenticating));
+    const refused = drive(opened.state, { type: "bankRefused" });
+
+    const { state, effects } = drive(refused.state, {
+      type: "authenticationFailureReported",
+      outcome: paymentOutcome(payment({ state: "declined" })),
+    });
+
+    expect(state.payment?.state).toBe("declined");
+    expect(outcomeActions(state)).toEqual({ retry: true, bank: false, check: false });
+    expect(state.card).toBeNull();
+    expect(ofType(effects, "clearCardSource")).toEqual([
+      { type: "clearCardSource", key: state.key },
+    ]);
+    expect(state.contact).toEqual(opened.state.contact);
+    expect(state.stored?.accepted).toEqual(opened.state.stored?.accepted);
+    expect(types(effects)).not.toContain("clearContact");
+  });
+
+  it("stays pending and can open the bank again when the refusal could not be reported", () => {
+    const opened = drive(withCard(), synced(authenticating));
+    const refused = drive(opened.state, { type: "bankRefused" });
+
+    const unreported = drive(refused.state, {
+      type: "authenticationFailureReported",
+      outcome: { kind: "unavailable" },
+    });
+    const { state } = drive(unreported.state, {
+      type: "paymentRead",
+      after: { kind: "settled", releasesPay: false },
+      outcome: paymentOutcome(authenticating),
+      now: NOW,
+    });
+
+    expect(ofType(unreported.effects, "readPayment")).toHaveLength(1);
+    expect(state.payment?.state).toBe("authentication_required");
+    expect(outcomeActions(state).bank).toBe(true);
+  });
+
   it("continues the same attempt with the bank parameters and no new card", () => {
     const opened = drive(withCard(), synced(authenticating));
     const parameters = {

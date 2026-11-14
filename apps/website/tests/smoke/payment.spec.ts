@@ -36,6 +36,7 @@ declare global {
       authentications: string[];
       parameters: Record<string, string> | null;
       error: string | null;
+      closes?: boolean;
     };
   }
 }
@@ -671,7 +672,52 @@ test("bank verification of the same card confirms the reservation once", async (
   expect((await recordedCulqi(page)).authentications).toEqual([sourceId]);
 });
 
-test("an unfinished bank window stays pending and can be opened again without paying again", async ({
+test("a bank refusing authentication declines the payment and the guest pays with another card", async ({
+  page,
+  request,
+}) => {
+  const failures: unknown[] = [];
+  page.on("request", (req) => {
+    if (
+      req.method() === "POST" &&
+      req.url().endsWith("/public/checkout/payment/authentication/failure")
+    )
+      failures.push(req.postDataJSON());
+  });
+  const sourceId = `tkn_test_3ds_${crypto.randomUUID()}`;
+  await fillCheckout(page, "flexible", payerEmail());
+  await page.evaluate((sourceId) => {
+    window.culqiCards = [sourceId];
+    window.culqi3DS = {
+      devices: [],
+      authentications: [],
+      parameters: null,
+      error: "Ha fallado la autenticación. Intente otro método de pago u otra tarjeta",
+    };
+  }, sourceId);
+
+  await payButton(page, "100.00").click();
+
+  await expect(page.getByRole("heading", { name: "Su tarjeta fue rechazada" })).toBeFocused();
+  await expect(outcome(page)).toContainText("No se cobró nada");
+  await expect(page.getByRole("button", { name: "Abrir la verificación del banco" })).toHaveCount(
+    0,
+  );
+  expect(failures).toEqual([{ attemptId: expect.stringMatching(/^[0-9a-f-]{36}$/i) }]);
+  expect(await serverPayment(page, request)).toMatchObject({ state: "declined" });
+  expect(
+    await page.evaluate(() => sessionStorage.getItem("hm.reservation.card-sources") ?? ""),
+  ).not.toContain(sourceId);
+
+  await page.getByRole("button", { name: "Pagar con otra tarjeta" }).click();
+  await expect(page.getByLabel("Nombre completo")).toHaveValue("Ana Torres");
+  await payButton(page, "100.00").click();
+
+  await expectConfirmed(page);
+  expect(await page.evaluate(() => window.culqi3DS?.authentications)).toEqual([sourceId]);
+});
+
+test("a closed bank window stays pending and can be opened again without paying again", async ({
   page,
   request,
 }) => {
@@ -688,7 +734,8 @@ test("an unfinished bank window stays pending and can be opened again without pa
       devices: [],
       authentications: [],
       parameters: null,
-      error: "Ha fallado la autenticación",
+      error: null,
+      closes: true,
     };
   }, sourceId);
 

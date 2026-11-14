@@ -308,7 +308,8 @@ _Avoid_: Maintenance mode, closing sales
 A request to charge a public checkout's accepted quote, recorded before contacting the
 provider. Its contact is that checkout acceptance's. An unknown result is resolved by
 provider lookup, not another charge. Bank authentication continues that same attempt and
-source, even after the quote expires.
+source, even after the quote expires; a bank refusing it, or 24 hours without finishing it,
+fails the attempt so another card can pay.
 _Avoid_: Payment, retry
 
 **Confirmation email**:

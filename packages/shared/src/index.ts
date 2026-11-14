@@ -443,5 +443,7 @@ export const paymentAuthenticationSchema = z
 export const checkoutAuthenticationSchema = paymentAuthenticationSchema
   .extend({ attemptId: z.uuid() })
   .strict();
+export const checkoutAuthenticationFailureSchema = z.object({ attemptId: z.uuid() }).strict();
 export type PaymentAuthentication = z.infer<typeof paymentAuthenticationSchema>;
 export type CheckoutAuthentication = z.infer<typeof checkoutAuthenticationSchema>;
+export type CheckoutAuthenticationFailure = z.infer<typeof checkoutAuthenticationFailureSchema>;

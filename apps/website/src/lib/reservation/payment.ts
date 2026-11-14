@@ -138,3 +138,10 @@ export const continuePayment = (
     token,
     body: authentication,
   });
+
+export const reportAuthenticationFailure = (apiBase: string, token: string, attemptId: string) =>
+  call(apiBase, "public/checkout/payment/authentication/failure", {
+    method: "POST",
+    token,
+    body: { attemptId },
+  });

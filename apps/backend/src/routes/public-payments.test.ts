@@ -1485,6 +1485,125 @@ describe("continuing bank authentication", () => {
   });
 });
 
+const reportFailedAuthentication = (token: string, attemptId?: string) =>
+  guest("/public/checkout/payment/authentication/failure", {
+    token,
+    body: {
+      attemptId:
+        attemptId ??
+        rows<{ id: string }>(
+          "SELECT id FROM payment_attempts ORDER BY created_at DESC, rowid DESC",
+        )[0]?.id,
+    },
+  });
+
+describe("a bank refusing authentication", () => {
+  it("declines the attempt without charging, and the next card is charged on the same checkout", async () => {
+    const checkout = await acceptedCheckout();
+    await paid(checkout, { sourceId: "tkn_test_3ds" });
+
+    const reported = await reportFailedAuthentication(checkout.token);
+
+    expect(reported.status).toBe(200);
+    expect(await reported.json()).toMatchObject({
+      payment: { state: "declined", reservation: null },
+    });
+    expect(rows("SELECT status, failure_code, failure_message FROM payment_attempts")).toEqual([
+      { status: "failed", failure_code: "authentication_failed", failure_message: null },
+    ]);
+    expect(charges()).toHaveLength(1);
+
+    expect(await paid(checkout)).toMatchObject({ state: "confirmed" });
+    expect(charges()).toHaveLength(2);
+    expect(charges()[1]!.body?.source_id).not.toBe("tkn_test_3ds");
+  });
+
+  it.each([
+    ["is still being charged", "timeout" as const, "processing", "unknown"],
+    ["was paid", undefined, "confirmed", "saved"],
+  ])(
+    "changes nothing once authentication continued and the charge %s",
+    async (_name, reply, state, stored) => {
+      const checkout = await acceptedCheckout();
+      await paid(checkout, { sourceId: "tkn_test_3ds" });
+      if (reply) culqi.next("POST /charges", reply);
+      expect((await continueAuthentication(checkout.token)).status).toBe(200);
+
+      const reported = await reportFailedAuthentication(checkout.token);
+
+      expect(reported.status).toBe(200);
+      expect(await reported.json()).toMatchObject({ payment: { state } });
+      expect(rows("SELECT status, failure_code FROM payment_attempts")).toEqual([
+        { status: stored, failure_code: null },
+      ]);
+      expect(charges()).toHaveLength(2);
+    },
+  );
+
+  it("fails only the checkout's named review attempt", async () => {
+    const checkout = await acceptedCheckout();
+    await paid(checkout, { sourceId: "tkn_test_decline" });
+    await paid(checkout, { sourceId: "tkn_test_3ds" });
+    const [declined, review] = rows<{ id: string }>(
+      "SELECT id FROM payment_attempts ORDER BY created_at, rowid",
+    );
+    const other = await acceptedCheckout({ checkIn: "2026-10-24", checkOut: "2026-10-25" });
+
+    const earlier = await reportFailedAuthentication(checkout.token, declined!.id);
+    const unknown = await reportFailedAuthentication(checkout.token, crypto.randomUUID());
+    const foreign = await reportFailedAuthentication(other.token, review!.id);
+    const guessed = await reportFailedAuthentication("a".repeat(43), review!.id);
+
+    expect(earlier.status).toBe(200);
+    expect(await earlier.json()).toMatchObject({
+      payment: { state: "authentication_required", attemptId: review!.id },
+    });
+    expect(unknown.status).toBe(200);
+    expect(await unknown.json()).toMatchObject({
+      payment: { state: "authentication_required", attemptId: review!.id },
+    });
+    expect(foreign.status).toBe(404);
+    expect(await foreign.json()).toEqual({ error: "payment attempt not found" });
+    expect(guessed.status).toBe(401);
+    expect(
+      rows("SELECT status, failure_code FROM payment_attempts ORDER BY created_at, rowid"),
+    ).toEqual([
+      { status: "failed", failure_code: "card_declined" },
+      { status: "review", failure_code: null },
+    ]);
+  });
+
+  it("does not charge a failed check that the bank later authenticates", async () => {
+    const checkout = await acceptedCheckout();
+    await paid(checkout, { sourceId: "tkn_test_3ds" });
+    await reportFailedAuthentication(checkout.token);
+
+    const continued = await continueAuthentication(checkout.token);
+
+    expect(continued.status).toBe(200);
+    expect(await continued.json()).toMatchObject({ payment: { state: "declined" } });
+    expect(charges()).toHaveLength(1);
+  });
+
+  it("either charges or fails the attempt when both reach the server at once, never both", async () => {
+    const checkout = await acceptedCheckout();
+    await paid(checkout, { sourceId: "tkn_test_3ds" });
+
+    const [continued, reported] = await Promise.all([
+      continueAuthentication(checkout.token),
+      reportFailedAuthentication(checkout.token),
+    ]);
+
+    expect([continued.status, reported.status]).toEqual([200, 200]);
+    const [{ status: stored }] = rows<{ status: string }>("SELECT status FROM payment_attempts");
+    expect(["saved", "failed"]).toContain(stored);
+    expect(charges()).toHaveLength(stored === "saved" ? 2 : 1);
+    expect(await status(checkout.token)).toMatchObject({
+      state: stored === "saved" ? "confirmed" : "declined",
+    });
+  });
+});
+
 describe("recovering an interrupted payment", () => {
   it("logs a safe scheduled failure when the recovery scan fails and recovers the charge on a later tick", async () => {
     const checkout = await acceptedCheckout();
@@ -1495,7 +1614,10 @@ describe("recovering an interrupted payment", () => {
 
     await runScheduled();
 
-    expect(log.mock.calls).toEqual([["scheduled payment reconciliation failed"]]);
+    expect(log.mock.calls).toEqual([
+      ["scheduled payment reconciliation failed"],
+      ["scheduled authentication expiry failed"],
+    ]);
     db.sqlite.exec("ALTER TABLE unavailable_attempts RENAME TO payment_attempts");
     await runScheduled();
     expect(await status(checkout.token)).toMatchObject({ state: "confirmed" });
@@ -1503,10 +1625,10 @@ describe("recovering an interrupted payment", () => {
     expect(rows("SELECT count(*) AS n FROM payments")).toEqual([{ n: 1 }]);
   });
 
-  it("keeps bank verification pending after the quote expires and the 48-hour horizon, and the guest can still finish it", async () => {
+  it("keeps bank verification pending through the scheduled run for a day after the quote expires, and the guest can still finish it", async () => {
     const checkout = await acceptedCheckout();
     await paid(checkout, { sourceId: "tkn_test_3ds" });
-    vi.advanceTimersByTime(48 * 60 * 60_000 + 1);
+    vi.advanceTimersByTime(24 * 60 * 60_000);
     await admitPayments(false);
     const consumed = failingLimiters();
 
@@ -1528,6 +1650,59 @@ describe("recovering an interrupted payment", () => {
     expect(charges()).toHaveLength(2);
     expect(consumed).toEqual([]);
     expect(turnstile.verifications).toHaveLength(1);
+  });
+
+  it("declines bank verification nobody finished within a day, and the guest can pay with another card", async () => {
+    const checkout = await acceptedCheckout();
+    await paid(checkout, { sourceId: "tkn_test_3ds" });
+    vi.advanceTimersByTime(24 * 60 * 60_000 + 1);
+
+    await runScheduled();
+
+    expect(await status(checkout.token)).toMatchObject({ state: "declined", reservation: null });
+    expect(rows("SELECT status, failure_code FROM payment_attempts")).toEqual([
+      { status: "failed", failure_code: "authentication_expired" },
+    ]);
+    const late = await continueAuthentication(checkout.token);
+    expect(await late.json()).toMatchObject({ payment: { state: "declined" } });
+    expect(charges()).toHaveLength(1);
+
+    const refreshed = await guest("/public/checkout/quotes", { token: checkout.token, body: {} });
+    expect(refreshed.status).toBe(201);
+    const { quote } = (await refreshed.json()) as { quote: { id: string } };
+    const accepted = await guest("/public/checkout/acceptances", {
+      token: checkout.token,
+      body: { quoteId: quote.id, language: "en", contact, agreed: true },
+    });
+    expect(accepted.status).toBe(201);
+    expect(await paid({ token: checkout.token, quoteId: quote.id })).toMatchObject({
+      state: "confirmed",
+    });
+    expect(charges()).toHaveLength(2);
+  });
+
+  it("confirms a lost charge when expiring bank checks fails, and expires them on a later run", async () => {
+    const lost = await acceptedCheckout();
+    culqi.next("POST /charges", "lose");
+    expect(await paid(lost)).toMatchObject({ state: "processing" });
+    const unfinished = await acceptedCheckout({ checkIn: "2026-10-24", checkOut: "2026-10-25" });
+    await paid(unfinished, { sourceId: "tkn_test_3ds" });
+    vi.advanceTimersByTime(24 * 60 * 60_000 + 1);
+    const log = vi.spyOn(console, "error").mockImplementation(() => {});
+    db.sqlite.exec(`CREATE TRIGGER refuse_expiry BEFORE UPDATE ON payment_attempts
+      WHEN NEW.failure_code = 'authentication_expired' BEGIN SELECT RAISE(ABORT, 'refused'); END`);
+
+    await runScheduled();
+
+    expect(log.mock.calls).toEqual([["scheduled authentication expiry failed"]]);
+    expect(await status(lost.token)).toMatchObject({ state: "confirmed" });
+    expect(await status(unfinished.token)).toMatchObject({ state: "authentication_required" });
+
+    db.sqlite.exec("DROP TRIGGER refuse_expiry");
+    await runScheduled();
+
+    expect(log.mock.calls).toHaveLength(1);
+    expect(await status(unfinished.token)).toMatchObject({ state: "declined" });
   });
 
   it("keeps an unresolved payment blocking after lookup ends, without charging again", async () => {
