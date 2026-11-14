@@ -2,6 +2,8 @@ import { Hono, type Context } from "hono";
 import { cors } from "hono/cors";
 import type { Env } from "./env";
 import { HttpError } from "./http";
+import { sendComplaintEmails } from "./complaint-emails";
+import { ownerComplaintRoutes } from "./routes/complaints";
 import { accountRoutes } from "./routes/accounts";
 import { authRoutes } from "./routes/auth";
 import { calendarRoutes } from "./routes/calendar";
@@ -95,6 +97,7 @@ app.route("/payments", paymentRoutes);
 app.route("/rate-plans", ratePlanRoutes);
 app.route("/coupons", couponRoutes);
 app.route("/controls", controlRoutes);
+app.route("/complaints", ownerComplaintRoutes);
 app.route(GUEST_PREFIX, publicRoutes);
 
 export default {
@@ -110,6 +113,7 @@ export default {
         );
         await step("authentication expiry", () => expireAuthentications(db, new Date()));
         await step("confirmation send", () => sendConfirmationEmails(db, env));
+        await step("complaint receipt send", () => sendComplaintEmails(db, env));
         await step("abandoned checkout purge", () => purgeAbandonedCheckouts(db, new Date()));
       })(),
     );

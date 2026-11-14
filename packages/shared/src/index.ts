@@ -445,3 +445,61 @@ export const checkoutAuthenticationFailureSchema = z.object({ attemptId: z.uuid(
 export type PaymentAuthentication = z.infer<typeof paymentAuthenticationSchema>;
 export type CheckoutAuthentication = z.infer<typeof checkoutAuthenticationSchema>;
 export type CheckoutAuthenticationFailure = z.infer<typeof checkoutAuthenticationFailureSchema>;
+
+const complaintText = (max: number) => z.string().trim().max(max, "invalid complaint fields");
+export const complaintInputSchema = z
+  .object({
+    language: checkoutLanguageSchema,
+    fullName: complaintText(200).min(1, "invalid complaint fields"),
+    address: complaintText(500).min(1, "invalid complaint fields"),
+    documentType: complaintText(80).min(1, "invalid complaint fields"),
+    documentNumber: complaintText(100).min(1, "invalid complaint fields"),
+    phone: complaintText(60),
+    email: complaintText(200).refine(
+      (value) => value === "" || EMAIL_ADDRESS.test(value),
+      "invalid complaint fields",
+    ),
+    minor: z.boolean(),
+    representative: complaintText(1000),
+    product: complaintText(2000).min(1, "invalid complaint fields"),
+    amountCents: z.number().int().min(0).max(1000000000).nullable(),
+    category: z.enum(["reclamo", "queja"]),
+    description: complaintText(10000).min(1, "invalid complaint fields"),
+    requestedRemedy: complaintText(5000).min(1, "invalid complaint fields"),
+    reservationReference: complaintText(100),
+    responseChannel: z.enum(["email", "letter"]),
+    policyVersion: complaintText(200).min(1, "invalid complaint fields"),
+  })
+  .strict()
+  .refine((input) => !input.minor || Boolean(input.representative), {
+    error: "minor representative is required",
+    path: ["representative"],
+  })
+  .refine((input) => input.responseChannel !== "email" || Boolean(input.email), {
+    error: "response email is required",
+    path: ["email"],
+  });
+export type ComplaintInput = z.infer<typeof complaintInputSchema>;
+export type ComplaintInputRequest = z.input<typeof complaintInputSchema>;
+export const complaintResponseSchema = z
+  .object({
+    requestId: z.uuid(),
+    text: complaintText(10000).min(1, "invalid complaint response"),
+    channel: z.enum(["email", "letter"]),
+    recipient: complaintText(500).min(1, "invalid complaint response"),
+    sentAt: z.iso.datetime({ offset: true }),
+    evidence: complaintText(2000).min(1, "invalid complaint response"),
+    correctsId: z.uuid().nullable(),
+  })
+  .strict();
+export type ComplaintResponseRequest = z.input<typeof complaintResponseSchema>;
+export const complaintBackupSchema = z
+  .object({
+    requestId: z.uuid(),
+    originalReference: complaintText(100).min(1),
+    filedAt: z.iso.datetime({ offset: true }),
+    restoredAt: z.iso.datetime({ offset: true }),
+    input: complaintInputSchema,
+  })
+  .strict();
+export type ComplaintBackupRequest = z.input<typeof complaintBackupSchema>;

@@ -37,6 +37,8 @@ import {
 import { limitBySourceIp, requireWithinLimit, trustedSourceIp } from "../rate-limit";
 import { requireTurnstile } from "../turnstile";
 
+import { publicComplaintRoutes } from "./public-complaints";
+
 export const GUEST_PREFIX = "/public";
 
 export const isGuestPath = (path: string) =>
@@ -46,7 +48,10 @@ export const publicRoutes = new Hono<Env>();
 
 publicRoutes.use("*", async (c, next) => {
   await next();
-  c.header("Cache-Control", "no-store");
+  c.header(
+    "Cache-Control",
+    c.req.path.startsWith("/public/complaints") ? "private, no-store" : "no-store",
+  );
 });
 
 const guestContext = (c: Context<Env>) => ({
@@ -197,3 +202,5 @@ publicRoutes.post(
     return c.json({ payment }, created ? 201 : 200);
   },
 );
+
+publicRoutes.route("/complaints", publicComplaintRoutes);

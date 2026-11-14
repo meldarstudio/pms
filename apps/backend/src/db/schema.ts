@@ -588,3 +588,72 @@ export const verification = sqliteTable(
   },
   (table) => [index("verification_identifier").on(table.identifier)],
 );
+
+export const complaintSheets = sqliteTable(
+  "complaint_sheets",
+  {
+    id: text("id").primaryKey(),
+    tokenHash: text("token_hash").unique(),
+    requestPayload: text("request_payload").notNull(),
+    bookId: text("book_id").notNull(),
+    number: integer("number").notNull(),
+    reference: text("reference").notNull().unique(),
+    establishmentId: text("establishment_id").notNull(),
+    provider: text("provider", { mode: "json" })
+      .$type<{ legalName: string; ruc: string; address: string }>()
+      .notNull(),
+    input: text("input", { mode: "json" }).$type<import("@pms/shared").ComplaintInput>().notNull(),
+    currency: text("currency").notNull(),
+    timeZone: text("time_zone").notNull(),
+    filedAt: text("filed_at").notNull(),
+    registeredAt: text("registered_at").notNull(),
+    dueDate: text("due_date").notNull(),
+    calendarSource: text("calendar_source").notNull(),
+    policy: text("policy").notNull(),
+    source: text("source").$type<"virtual" | "physical">().notNull(),
+    originalReference: text("original_reference").unique(),
+    restoredAt: text("restored_at"),
+  },
+  (table) => [uniqueIndex("complaint_book_number").on(table.bookId, table.number)],
+);
+
+export const complaintResponses = sqliteTable("complaint_responses", {
+  id: text("id").primaryKey(),
+  complaintId: text("complaint_id")
+    .notNull()
+    .references(() => complaintSheets.id),
+  payload: text("payload").notNull(),
+  text: text("text").notNull(),
+  channel: text("channel").notNull(),
+  recipient: text("recipient").notNull(),
+  sentAt: text("sent_at").notNull(),
+  evidence: text("evidence").notNull(),
+  correctsId: text("corrects_id"),
+  recordedAt: text("recorded_at").notNull(),
+  recordedBy: text("recorded_by")
+    .notNull()
+    .references(() => user.id),
+});
+
+export const complaintEmails = sqliteTable(
+  "complaint_emails",
+  {
+    id: text("id").primaryKey(),
+    complaintId: text("complaint_id")
+      .notNull()
+      .references(() => complaintSheets.id),
+    status: text("status").$type<"pending" | "sent" | "failed" | "not_requested">().notNull(),
+    attempts: integer("attempts").notNull().default(0),
+    nextAttemptAt: text("next_attempt_at"),
+    pendingRequest: text("pending_request"),
+    providerMessageId: text("provider_message_id"),
+    lastError: text("last_error"),
+    sentAt: text("sent_at"),
+    createdAt: text("created_at").notNull(),
+    retryRequestId: text("retry_request_id"),
+  },
+  (table) => [
+    uniqueIndex("complaint_receipt_email").on(table.complaintId),
+    index("complaint_emails_due").on(table.status, table.nextAttemptAt),
+  ],
+);

@@ -1,0 +1,31 @@
+{
+  "mode": "development",
+  "bookId": "DEMO",
+  "establishmentId": "Development establishment",
+  "firstNumber": 41,
+  "provider": {
+    "legalName": "Development operator",
+    "ruc": "00000000000",
+    "address": "Development address"
+  },
+  "collectionNotice": {
+    "es": "Datos de prueba para atender reclamos. No ingrese datos reales.",
+    "en": "Test data to handle complaints. Do not enter real personal data."
+  },
+  "privacyInformation": {
+    "es": "Política de prueba. No es un libro habilitado para producción.",
+    "en": "Test policy. This book is not enabled for production."
+  },
+  "policyVersion": "development-1",
+  "retentionAndDisposal": "Development fixture; production policy unresolved",
+  "monitoredBy": "Development owner",
+  "backupProcedure": "Development physical backup procedure",
+  "calendar": {
+    "source": "Explicit test calendar, not a verified production calendar",
+    "from": "2026-01-01",
+    "through": "2027-12-31",
+    "nonWorkingDates": ["2026-12-08", "2026-12-09", "2026-12-25", "2027-01-01"],
+    "countingConvention": "exclude-filing-date"
+  },
+  "emailFrom": "test@example.com"
+}

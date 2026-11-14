@@ -50,7 +50,8 @@ export default defineConfig({
   integrations: [
     react(),
     sitemap({
-      filter: (page) => !/^\/(en\/)?reservar\//.test(new URL(page).pathname),
+      filter: (page) =>
+        !/^\/(en\/)?(reservar\/|libro-de-reclamaciones\/)/.test(new URL(page).pathname),
       i18n: {
         defaultLocale: "es",
         locales: {

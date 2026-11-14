@@ -1,0 +1,30 @@
+---
+import Layout from "@/layouts/Layout.astro";
+import { getLang } from "@/i18n/utils";
+import { ComplaintBook } from "./ComplaintBook";
+const language = getLang(Astro.currentLocale);
+---
+
+<Layout title="Libro de Reclamaciones" noIndex>
+  <div class="mx-auto max-w-3xl px-4 py-12">
+    <h1 class="mb-8 text-3xl font-semibold">Libro de Reclamaciones</h1>
+    <ComplaintBook client:load language={language} />
+  </div>
+</Layout>
+<style is:global>
+  @media print {
+    body:has(.complaint-sheet) header,
+    body:has(.complaint-sheet) footer,
+    body:has(.complaint-sheet) nav {
+      display: none !important;
+    }
+    .complaint-sheet {
+      color: black;
+      background: white;
+      font-size: 11pt;
+    }
+    .complaint-sheet div {
+      break-inside: avoid;
+    }
+  }
+</style>

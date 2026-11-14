@@ -1,0 +1,25 @@
+---
+import { developmentComplaintPreview } from "@/lib/complaints";
+import { getRelativeLocaleUrl } from "astro:i18n";
+import { getLang } from "@/i18n/utils";
+const lang = getLang(Astro.currentLocale);
+---
+
+{developmentComplaintPreview && (
+  <aside
+    class="mx-auto max-w-7xl border-y border-stone-200 px-4 py-6 md:px-8"
+    aria-label="Libro de Reclamaciones"
+  >
+    <a
+      class="inline-flex min-h-11 items-center text-xl underline"
+      href={getRelativeLocaleUrl(lang, "libro-de-reclamaciones")}
+    >
+      Libro de Reclamaciones
+    </a>
+    <p>
+      {lang === "en"
+        ? "Development preview — not active for production."
+        : "Vista de desarrollo — no habilitado para producción."}
+    </p>
+  </aside>
+)}

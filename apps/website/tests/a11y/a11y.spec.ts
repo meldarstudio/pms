@@ -9,6 +9,8 @@ const pages = [
   "/",
   "/habitaciones/",
   "/churin/",
+  "/libro-de-reclamaciones/",
+  "/en/libro-de-reclamaciones/",
   "/404",
   "/en/",
   "/en/habitaciones/",
@@ -58,6 +60,8 @@ for (const path of pages) {
   test(`a11y: ${path}`, async ({ page }) => {
     const response = await page.goto(path);
     expect(response?.ok() || response?.status() === 404).toBeTruthy();
+    if (path.includes("libro-de-reclamaciones"))
+      await expect(page.locator("#complaint-fullName")).toBeVisible();
     await runAxe(page, path);
   });
 }

@@ -267,6 +267,20 @@
       "when": 1794611686803,
       "tag": "0037_abandoned_checkout_purge",
       "breakpoints": true
+    },
+    {
+      "idx": 38,
+      "version": "6",
+      "when": 1794628481576,
+      "tag": "0038_wild_shadow_king",
+      "breakpoints": true
+    },
+    {
+      "idx": 39,
+      "version": "6",
+      "when": 1794628689101,
+      "tag": "0039_complaint_preservation",
+      "breakpoints": true
     }
   ]
 }

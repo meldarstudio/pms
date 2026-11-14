@@ -37,3 +37,15 @@ Paths below are relative to `apps/backend` unless stated otherwise.
 Colocated `.test.ts` and `.test.mjs` suites use `vite-plus/test` and registered
 migrations against in-memory `node:sqlite`; no running Worker is needed.
 Like D1, the test database rejects statements with more than 100 bound parameters.
+
+## Development complaint book
+
+`pnpm dev:complaints` applies local migrations and starts the backend with the
+explicit test configuration in `src/test-support/complaint-book.development.json`
+and a loopback mock email provider. Use test data only. It replaces `dev:backend`
+for this preview; start the portal and website with their normal dev commands.
+The complaint routes require `COMPLAINT_BOOK_DEVELOPMENT` and a loopback request
+host; receipt sending additionally requires a loopback `RESEND_API_URL`. There
+is no production activation path. Production operator details, book continuity,
+verified calendar/counting rules, official notice design, privacy/retention and
+operational procedures remain release requirements under #295 and #294.

@@ -750,3 +750,73 @@ export function searchReservationsPage(params: ReservationListParams, signal?: A
   }
   return getJson<ReservationListPage>(`/reservations?${query}`, signal);
 }
+
+export type ComplaintInput = import("@pms/shared").ComplaintInputRequest;
+export type ComplaintResponseRequest = import("@pms/shared").ComplaintResponseRequest;
+export type ComplaintBackupRequest = import("@pms/shared").ComplaintBackupRequest;
+export type ComplaintEmail = {
+  status: "pending" | "sent" | "failed" | "not_requested";
+  attempts: number;
+  sentAt: string | null;
+  lastError: string | null;
+};
+export type ComplaintSummary = {
+  id: string;
+  reference: string;
+  fullName: string;
+  category: "reclamo" | "queja";
+  filedAt: string;
+  dueDate: string;
+  responseStatus: "pending" | "recorded";
+  overdue: boolean;
+  email: ComplaintEmail;
+};
+export type ComplaintSheet = {
+  id: string;
+  reference: string;
+  establishmentId: string;
+  provider: { legalName: string; ruc: string; address: string };
+  input: ComplaintInput;
+  currency: string;
+  timeZone: string;
+  filedAt: string;
+  registeredAt: string;
+  dueDate: string;
+  calendarSource: string;
+  policy: string;
+  source: "virtual" | "physical";
+  originalReference: string | null;
+  restoredAt: string | null;
+  email: ComplaintEmail;
+  responses: {
+    id: string;
+    text: string;
+    channel: string;
+    recipient: string;
+    sentAt: string;
+    evidence: string;
+    correctsId: string | null;
+    recordedAt: string;
+    recordedBy: string;
+  }[];
+};
+export const listComplaints = (signal?: AbortSignal) =>
+  getJson<ComplaintSummary[]>("/complaints", signal);
+export const getComplaint = (id: string, signal?: AbortSignal) =>
+  getJson<ComplaintSheet>(`/complaints/${encodeURIComponent(id)}`, signal);
+export const recordComplaintResponse = (id: string, input: ComplaintResponseRequest) =>
+  writeJson<ComplaintSheet>(`/complaints/${encodeURIComponent(id)}/responses`, "POST", input);
+export const retryComplaintEmail = (id: string, requestId: string) =>
+  writeJson<ComplaintSheet>(`/complaints/${encodeURIComponent(id)}/email-retry`, "POST", {
+    requestId,
+  });
+export const importComplaintBackup = (input: ComplaintBackupRequest) =>
+  writeJson<ComplaintSheet>("/complaints/backups", "POST", input);
+
+export const getComplaintConfiguration = (signal?: AbortSignal) =>
+  getJson<{
+    policyVersion: string;
+    monitoredBy: string;
+    backupProcedure: string;
+    retentionAndDisposal: string;
+  }>("/complaints/configuration", signal);

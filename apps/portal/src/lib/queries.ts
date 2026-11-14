@@ -12,6 +12,14 @@ import {
 import { addDateLabelDays } from "@/lib/dates";
 import { usePropertyCalendar } from "@/lib/use-property-calendar";
 import {
+  importComplaintBackup,
+  getComplaintConfiguration,
+  type ComplaintBackupRequest,
+  listComplaints,
+  getComplaint,
+  recordComplaintResponse,
+  retryComplaintEmail,
+  type ComplaintResponseRequest,
   type CalendarWindow,
   createRoomClosure,
   deleteRoomClosure,
@@ -538,5 +546,56 @@ export function useReservationList(params: ReservationListParams) {
     queryKey: ["reservations", "operations", params],
     queryFn: ({ signal }) => searchReservationsPage(params, signal),
     placeholderData: keepPreviousData,
+  });
+}
+
+export function useComplaints() {
+  const owner = useSession().data?.role === "owner";
+  return useQuery({
+    queryKey: ["complaints"],
+    queryFn: ({ signal }) => listComplaints(signal),
+    enabled: owner,
+  });
+}
+export function useComplaint(id: string | null) {
+  const owner = useSession().data?.role === "owner";
+  return useQuery({
+    queryKey: ["complaints", id],
+    queryFn: ({ signal }) => getComplaint(id!, signal),
+    enabled: owner && Boolean(id),
+  });
+}
+export function useComplaintResponse(id: string) {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: (input: ComplaintResponseRequest) => recordComplaintResponse(id, input),
+    onSuccess: (sheet) => {
+      client.setQueryData(["complaints", id], sheet);
+      void client.invalidateQueries({ queryKey: ["complaints"] });
+    },
+  });
+}
+export function useComplaintEmailRetry(id: string) {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: (requestId: string) => retryComplaintEmail(id, requestId),
+    onSuccess: (sheet) => {
+      client.setQueryData(["complaints", id], sheet);
+      void client.invalidateQueries({ queryKey: ["complaints"] });
+    },
+  });
+}
+
+export function useComplaintConfiguration() {
+  return useQuery({
+    queryKey: ["complaint-configuration"],
+    queryFn: ({ signal }) => getComplaintConfiguration(signal),
+  });
+}
+export function useComplaintBackup() {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: (input: ComplaintBackupRequest) => importComplaintBackup(input),
+    onSuccess: () => client.invalidateQueries({ queryKey: ["complaints"] }),
   });
 }
