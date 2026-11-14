@@ -214,7 +214,13 @@ function ComplaintDetail({ sheet }: { sheet: ComplaintSheet }) {
         <Button
           className="w-fit print:hidden"
           disabled={retry.isPending}
-          onClick={() => retry.mutate(retryId.current)}
+          onClick={() =>
+            retry.mutate(retryId.current, {
+              onSuccess: () => {
+                retryId.current = crypto.randomUUID();
+              },
+            })
+          }
         >
           Reintentar correo de constancia
         </Button>

@@ -644,6 +644,8 @@ export const complaintEmails = sqliteTable(
       .references(() => complaintSheets.id),
     status: text("status").$type<"pending" | "sent" | "failed" | "not_requested">().notNull(),
     attempts: integer("attempts").notNull().default(0),
+    firstAttemptAt: text("first_attempt_at"),
+    deliveryUncertain: integer("delivery_uncertain", { mode: "boolean" }).notNull().default(false),
     nextAttemptAt: text("next_attempt_at"),
     pendingRequest: text("pending_request"),
     providerMessageId: text("provider_message_id"),

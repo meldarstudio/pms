@@ -24,11 +24,21 @@ export async function sendComplaintEmails(db: Db, env: Env["Bindings"]) {
     .orderBy(asc(complaintEmails.nextAttemptAt))
     .limit(10);
   for (const row of due) {
-    if (Date.now() - Date.parse(row.createdAt) >= 23 * 60 * 60 * 1000) {
+    if (
+      row.deliveryUncertain &&
+      row.firstAttemptAt &&
+      Date.now() - Date.parse(row.firstAttemptAt) >= 23 * 60 * 60 * 1000
+    ) {
       await db
         .update(complaintEmails)
         .set({ status: "failed", lastError: "retry_window_expired", nextAttemptAt: null })
-        .where(and(eq(complaintEmails.id, row.id), eq(complaintEmails.attempts, row.attempts)));
+        .where(
+          and(
+            eq(complaintEmails.id, row.id),
+            eq(complaintEmails.attempts, row.attempts),
+            eq(complaintEmails.status, "pending"),
+          ),
+        );
       continue;
     }
     const sheet = await complaintView(db, row.complaintId);
@@ -46,7 +56,17 @@ export async function sendComplaintEmails(db: Db, env: Env["Bindings"]) {
     ).toISOString();
     const [claimed] = await db
       .update(complaintEmails)
-      .set({ pendingRequest: request, attempts: row.attempts + 1, nextAttemptAt })
+      .set({
+        pendingRequest: request,
+        attempts: row.attempts + 1,
+        nextAttemptAt,
+        deliveryUncertain: true,
+        firstAttemptAt:
+          row.firstAttemptAt &&
+          (row.deliveryUncertain || Date.now() - Date.parse(row.firstAttemptAt) < 23 * 3600000)
+            ? row.firstAttemptAt
+            : new Date().toISOString(),
+      })
       .where(
         and(
           eq(complaintEmails.id, row.id),
@@ -63,6 +83,7 @@ export async function sendComplaintEmails(db: Db, env: Env["Bindings"]) {
         result.kind === "sent"
           ? {
               status: "sent",
+              deliveryUncertain: false,
               sentAt: new Date().toISOString(),
               providerMessageId: result.id,
               nextAttemptAt: null,
@@ -71,6 +92,7 @@ export async function sendComplaintEmails(db: Db, env: Env["Bindings"]) {
           : {
               status: result.kind === "failed" || claimed.attempts >= 5 ? "failed" : "pending",
               lastError: result.error,
+              deliveryUncertain: result.kind === "retry" || row.deliveryUncertain,
               nextAttemptAt:
                 result.kind === "retry" && claimed.attempts < 5
                   ? new Date(

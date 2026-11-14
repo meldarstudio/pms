@@ -1,3 +1,4 @@
+import { useTranslations } from "@/i18n/utils";
 import { reservationApiUrl } from "./reservation/api";
 export const developmentComplaintPreview = ["localhost", "127.0.0.1", "[::1]"].includes(
   new URL(reservationApiUrl).hostname,
@@ -46,77 +47,40 @@ export type ComplaintReceipt = {
   email: { status: "pending" | "sent" | "failed" | "not_requested" };
   responses: unknown[];
 };
-export const complaintLabels = {
-  es: {
-    fullName: "Nombre completo",
-    address: "Domicilio",
-    documentType: "Tipo de documento",
-    documentNumber: "Número de documento",
-    phone: "Teléfono (opcional)",
-    email: "Correo electrónico",
-    representative: "Padre o representante: nombre, documento, domicilio y contacto",
-    product: "Producto o servicio",
-    amount: "Monto (opcional; dejar vacío si no se conoce o no aplica)",
-    category: "Tipo",
-    description: "Detalle",
-    requestedRemedy: "Pedido",
-    reservationReference: "Referencia de reserva (opcional)",
-    responseChannel: "Canal de respuesta escrita",
-    minor: "Consumidor menor de edad",
-  },
-  en: {
-    fullName: "Full name",
-    address: "Address",
-    documentType: "Document type",
-    documentNumber: "Document number",
-    phone: "Phone (optional)",
-    email: "Email",
-    representative: "Parent or representative: name, document, address and contact",
-    product: "Product or service",
-    amount: "Amount (optional; leave blank if unknown or not applicable)",
-    category: "Category",
-    description: "Description",
-    requestedRemedy: "Requested remedy",
-    reservationReference: "Reservation reference (optional)",
-    responseChannel: "Written response channel",
-    minor: "Consumer is a minor",
-  },
-};
-export const complaintProblems: Record<string, { es: string; en: string }> = {
-  "complaint book unavailable": {
-    es: "Libro de desarrollo no configurado. No ingrese datos reales.",
-    en: "Development book is not configured. Do not enter real personal data.",
-  },
-  "complaint calendar unavailable": {
-    es: "El calendario de respuesta no está configurado. Sus datos se conservan; reintente más tarde.",
-    en: "The response calendar is not configured. Your draft is retained; retry later.",
-  },
-  "complaint privacy information changed": {
-    es: "La información de privacidad cambió. Recargue para revisarla; se conserva el borrador.",
-    en: "Privacy information changed. Reload to review it; your draft is retained.",
-  },
-  "complaint retry differs from saved sheet": {
-    es: "Este envío ya tiene una hoja registrada. Recupere la constancia antes de enviar otra.",
-    en: "This submission already has a saved sheet. Recover its receipt before filing another.",
-  },
-  "invalid complaint receipt credential": {
-    es: "No se encontró una constancia para este envío.",
-    en: "No receipt was found for this submission.",
-  },
-  "invalid complaint fields": {
-    es: "Revise los campos indicados.",
-    en: "Review the indicated fields.",
-  },
-  "minor representative is required": {
-    es: "Ingrese los datos del padre o representante.",
-    en: "Enter the parent or representative details.",
-  },
-  "response email is required": {
-    es: "Ingrese un correo para la respuesta escrita.",
-    en: "Enter an email address for the written response.",
-  },
-  "too many complaints; retry in one minute": {
-    es: "Espere un minuto y reintente el mismo envío. Se conserva el borrador.",
-    en: "Wait one minute and retry the same submission. Your draft is retained.",
-  },
-};
+export function complaintLabels(language: "es" | "en") {
+  const t = useTranslations(language);
+  return {
+    fullName: t("complaints.field.fullName"),
+    address: t("complaints.field.address"),
+    documentType: t("complaints.field.documentType"),
+    documentNumber: t("complaints.field.documentNumber"),
+    phone: t("complaints.field.phone"),
+    email: t("complaints.field.email"),
+    representative: t("complaints.field.representative"),
+    product: t("complaints.field.product"),
+    amount: t("complaints.field.amount"),
+    category: t("complaints.field.category"),
+    description: t("complaints.field.description"),
+    requestedRemedy: t("complaints.field.requestedRemedy"),
+    reservationReference: t("complaints.field.reservationReference"),
+    responseChannel: t("complaints.field.responseChannel"),
+    minor: t("complaints.field.minor"),
+  };
+}
+const complaintProblemKeys = {
+  "complaint book unavailable": "complaints.error.complaint_book_unavailable",
+  "complaint calendar unavailable": "complaints.error.complaint_calendar_unavailable",
+  "complaint privacy information changed": "complaints.error.complaint_privacy_information_changed",
+  "complaint retry differs from saved sheet":
+    "complaints.error.complaint_retry_differs_from_saved_sheet",
+  "invalid complaint receipt credential": "complaints.error.invalid_complaint_receipt_credential",
+  "invalid complaint fields": "complaints.error.invalid_complaint_fields",
+  "minor representative is required": "complaints.error.minor_representative_is_required",
+  "response email is required": "complaints.error.response_email_is_required",
+  "too many complaints; retry in one minute":
+    "complaints.error.too_many_complaints_retry_in_one_minute",
+} as const;
+export function complaintProblem(message: string, language: "es" | "en") {
+  const key = complaintProblemKeys[message as keyof typeof complaintProblemKeys];
+  return key ? useTranslations(language)(key) : undefined;
+}

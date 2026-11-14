@@ -90,7 +90,7 @@ test("registers a minor's queja without a reservation, email or amount through t
   await page.getByLabel("Producto o servicio", { exact: true }).fill("Alojamiento de prueba");
   await page.getByLabel("Detalle", { exact: true }).fill("Atención de prueba");
   await page.getByLabel("Pedido", { exact: true }).fill("Respuesta escrita de prueba");
-  await page.getByLabel("Tipo", { exact: true }).selectOption("queja");
+  await page.getByRole("combobox", { name: "Tipo", exact: true }).selectOption("queja");
   await page.getByRole("button", { name: "Registrar hoja" }).click();
   await expect(page.getByRole("heading", { name: /Registrado: DEMO-/ })).toBeVisible();
   await expect(page.getByText("No conocido / no aplica", { exact: true })).toBeVisible();

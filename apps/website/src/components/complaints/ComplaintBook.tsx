@@ -1,8 +1,9 @@
+import { useTranslations } from "@/i18n/utils";
 import { useEffect, useState } from "react";
 import { reservationApiUrl } from "@/lib/reservation/api";
 import {
   complaintLabels,
-  complaintProblems,
+  complaintProblem,
   type ComplaintConfig,
   type ComplaintInput,
   type ComplaintReceipt as Receipt,
@@ -32,8 +33,8 @@ const emptyInput = (language: "es" | "en"): ComplaintInput => ({
 });
 
 export function ComplaintBook({ language }: { language: "es" | "en" }) {
-  const en = language === "en";
-  const labels = complaintLabels[language];
+  const t = useTranslations(language);
+  const labels = complaintLabels(language);
   const [config, setConfig] = useState<ComplaintConfig | null>(null);
   const [draft, setDraft] = useState<Draft>({
     token: "",
@@ -65,10 +66,7 @@ export function ComplaintBook({ language }: { language: "es" | "en" }) {
     if (!response.ok) {
       const data = (await response.json()) as { error: string };
       const error = new Error(
-        complaintProblems[data.error]?.[language] ??
-          (en
-            ? "Could not register the sheet. Your draft is retained; retry the same submission."
-            : "No se pudo registrar la hoja. Su borrador se conserva; reintente el mismo envío."),
+        complaintProblem(data.error, language) ?? t("complaints.couldNotRegisterTheSheetYourDraft"),
       );
       Object.assign(error, {
         status: response.status,
@@ -83,7 +81,7 @@ export function ComplaintBook({ language }: { language: "es" | "en" }) {
     void (async () => {
       try {
         if (!["localhost", "127.0.0.1", "[::1]"].includes(new URL(reservationApiUrl).hostname))
-          throw new Error(complaintProblems["complaint book unavailable"][language]);
+          throw new Error(complaintProblem("complaint book unavailable", language));
         const loaded = (await (await request("/config")).json()) as ComplaintConfig;
         if (!active) return;
         setConfig(loaded);
@@ -117,12 +115,7 @@ export function ComplaintBook({ language }: { language: "es" | "en" }) {
                 };
                 remember(refreshed);
               }
-              if (active)
-                setProblem(
-                  en
-                    ? "Your draft is retained. Retry the same submission to recover its receipt."
-                    : "Se conserva el borrador. Reintente el mismo envío para recuperar su constancia.",
-                );
+              if (active) setProblem(t("complaints.yourDraftIsRetainedRetryTheSame"));
             }
           }
         } else
@@ -159,9 +152,7 @@ export function ComplaintBook({ language }: { language: "es" | "en" }) {
       const failure = error as Error & { status?: number; field?: string };
       setProblem(
         (failure.status ? failure.message : undefined) ??
-          (en
-            ? "Network error. Your draft is retained; retry the same submission."
-            : "Error de red. Se conserva el borrador; reintente el mismo envío."),
+          t("complaints.networkErrorYourDraftIsRetainedRetry"),
       );
       setInvalid(failure.field ?? "");
       if (failure.status === 400) remember({ ...next, attempted: false });
@@ -187,9 +178,7 @@ export function ComplaintBook({ language }: { language: "es" | "en" }) {
             setProblem("");
           }}
         >
-          {en
-            ? "Start another sheet (save or print this one first)"
-            : "Iniciar otra hoja (guarde o imprima esta primero)"}
+          {t("complaints.startAnotherSheetSaveOrPrintThis")}
         </button>
       </>
     );
@@ -208,17 +197,9 @@ export function ComplaintBook({ language }: { language: "es" | "en" }) {
   ] as const;
   return (
     <section className="flex flex-col gap-6">
-      <p className="rounded border p-4">
-        {en
-          ? "Development only. Do not enter real personal data. This book is not active for production."
-          : "Solo desarrollo. No ingrese datos personales reales. Este libro no está habilitado para producción."}
-      </p>
-      <p>
-        {en
-          ? "Reclamo: a problem with a product or service. Queja: dissatisfaction with attention. The hotel must respond within 15 business days, without extension. Filing with the hotel does not prevent using Indecopi or other remedies directly."
-          : "Reclamo: disconformidad con el producto o servicio. Queja: disconformidad con la atención. El hotel debe responder en 15 días hábiles, sin prórroga. Esta hoja se presenta al hotel y no impide acudir directamente a Indecopi u otras vías."}
-      </p>
-      {!ready && <p role="status">{en ? "Loading…" : "Cargando…"}</p>}
+      <p className="rounded border p-4">{t("complaints.developmentOnlyDoNotEnterRealPersonal")}</p>
+      <p>{t("complaints.reclamoAProblemWithAProductOr")}</p>
+      {!ready && <p role="status">{t("complaints.loading")}</p>}
       {problem && (
         <p role="alert" id="complaint-error">
           {problem}
@@ -236,7 +217,7 @@ export function ComplaintBook({ language }: { language: "es" | "en" }) {
           <p>{config.collectionNotice[language]}</p>
           <details>
             <summary className="min-h-11 cursor-pointer underline">
-              {en ? "Full privacy information" : "Información completa de privacidad"}
+              {t("complaints.fullPrivacyInformation")}
             </summary>
             <p className="whitespace-pre-wrap">{config.privacyInformation[language]}</p>
           </details>
@@ -248,9 +229,7 @@ export function ComplaintBook({ language }: { language: "es" | "en" }) {
             }}
           >
             <fieldset disabled={busy || draft.attempted} className="flex flex-col gap-4">
-              <legend className="mb-4">
-                {en ? "Consumer and complaint details" : "Datos del consumidor y de la reclamación"}
-              </legend>
+              <legend className="mb-4">{t("complaints.consumerAndComplaintDetails")}</legend>
               {fields
                 .filter((key) => key !== "representative" || draft.input.minor)
                 .map((key) => (
@@ -351,24 +330,18 @@ export function ComplaintBook({ language }: { language: "es" | "en" }) {
                   value={draft.input.responseChannel}
                   onChange={(event) => update("responseChannel", event.target.value)}
                 >
-                  <option value="email">{en ? "Email" : "Correo electrónico"}</option>
-                  <option value="letter">
-                    {en ? "Letter to the address provided" : "Carta al domicilio indicado"}
-                  </option>
+                  <option value="email">{t("complaints.email")}</option>
+                  <option value="letter">{t("complaints.letterToTheAddressProvided")}</option>
                 </select>
               </label>
             </fieldset>
             <p role="status" aria-live="polite">
-              {busy ? (en ? "Registering…" : "Registrando…") : ""}
+              {busy ? t("complaints.registering") : ""}
             </p>
             <button className="min-h-11 rounded border px-4 py-2" disabled={busy} type="submit">
               {draft.attempted
-                ? en
-                  ? "Retry same submission"
-                  : "Reintentar el mismo envío"
-                : en
-                  ? "Register sheet"
-                  : "Registrar hoja"}
+                ? t("complaints.retrySameSubmission")
+                : t("complaints.registerSheet")}
             </button>
           </form>
         </>

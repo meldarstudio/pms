@@ -327,3 +327,127 @@ it("recovers an accepted email after a provider response is lost without duplica
   expect(provider.emails).toHaveLength(1);
   expect(provider.requests[0].body).toBe(provider.requests[1].body);
 });
+
+it("sends a previously untouched receipt after a day-long outage and retries a definitive rejection", async () => {
+  db.env.COMPLAINT_BOOK_DEVELOPMENT = JSON.stringify(developmentBook);
+  db.env.RESEND_API_KEY = RESEND_TEST_KEY;
+  db.env.RESEND_API_URL = RESEND_LOOPBACK;
+  const provider = fakeResend();
+  vi.stubGlobal("fetch", provider.fetch);
+  const filed = await app.request(
+    "http://localhost/public/complaints",
+    {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        authorization: `Bearer ${crypto.randomUUID() + crypto.randomUUID()}`,
+      },
+      body: JSON.stringify(complaintInput),
+    },
+    db.env,
+  );
+  const sheet = (await filed.json()) as Sheet;
+  vi.useFakeTimers();
+  vi.setSystemTime(new Date(Date.now() + 25 * 3600000));
+  provider.next(422);
+  await sendComplaintEmails(getDb(db.env.DB), db.env);
+  expect(provider.requests).toHaveLength(1);
+  vi.setSystemTime(new Date(Date.now() + 25 * 3600000));
+  await db.signIn("owner");
+  expect(
+    (
+      await db.request(`/complaints/${sheet.id}/email-retry`, "POST", {
+        requestId: crypto.randomUUID(),
+      })
+    ).status,
+  ).toBe(200);
+  await sendComplaintEmails(getDb(db.env.DB), db.env);
+  expect(await (await db.request(`/complaints/${sheet.id}`)).json()).toMatchObject({
+    email: { status: "sent" },
+    filedAt: sheet.filedAt,
+  });
+});
+
+it.each(["complaint_sheets", "complaint_responses"])(
+  "preserves filed %s against direct updates and deletion",
+  async (table) => {
+    db.env.COMPLAINT_BOOK_DEVELOPMENT = JSON.stringify(developmentBook);
+    const filed = await app.request(
+      "http://localhost/public/complaints",
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          authorization: `Bearer ${crypto.randomUUID() + crypto.randomUUID()}`,
+        },
+        body: JSON.stringify(complaintInput),
+      },
+      db.env,
+    );
+    const sheet = (await filed.json()) as Sheet;
+    await db.signIn("owner");
+    const requestId = crypto.randomUUID();
+    expect(
+      (
+        await db.request(`/complaints/${sheet.id}/responses`, "POST", {
+          requestId,
+          text: "Original written response",
+          channel: "email",
+          recipient: "ana@example.com",
+          sentAt: new Date().toISOString(),
+          evidence: "Original evidence",
+          correctsId: null,
+        })
+      ).status,
+    ).toBe(201);
+    const id = table === "complaint_sheets" ? sheet.id : requestId;
+    const original = db.sqlite.prepare(`SELECT * FROM ${table} WHERE id = ?`).get(id);
+    expect(() =>
+      db.sqlite.prepare(`UPDATE ${table} SET id = 'replacement' WHERE id = ?`).run(id),
+    ).toThrow("filed complaint records are immutable");
+    expect(() => db.sqlite.prepare(`DELETE FROM ${table} WHERE id = ?`).run(id)).toThrow(
+      "filed complaint records are immutable",
+    );
+    expect(db.sqlite.prepare(`SELECT * FROM ${table} WHERE id = ?`).get(id)).toEqual(original);
+  },
+);
+
+it("holds an uncertain email for manual handling after provider deduplication expires", async () => {
+  db.env.COMPLAINT_BOOK_DEVELOPMENT = JSON.stringify(developmentBook);
+  db.env.RESEND_API_KEY = RESEND_TEST_KEY;
+  db.env.RESEND_API_URL = RESEND_LOOPBACK;
+  const provider = fakeResend();
+  vi.stubGlobal("fetch", provider.fetch);
+  provider.next("lose");
+  const filed = await app.request(
+    "http://localhost/public/complaints",
+    {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        authorization: `Bearer ${crypto.randomUUID() + crypto.randomUUID()}`,
+      },
+      body: JSON.stringify(complaintInput),
+    },
+    db.env,
+  );
+  const sheet = (await filed.json()) as Sheet;
+  await sendComplaintEmails(getDb(db.env.DB), db.env);
+  vi.useFakeTimers();
+  vi.setSystemTime(new Date(Date.now() + 25 * 3600000));
+  await sendComplaintEmails(getDb(db.env.DB), db.env);
+  await db.signIn("owner");
+  expect(
+    (
+      await db.request(`/complaints/${sheet.id}/email-retry`, "POST", {
+        requestId: crypto.randomUUID(),
+      })
+    ).status,
+  ).toBe(409);
+  expect(await (await db.request(`/complaints/${sheet.id}`)).json()).toMatchObject({
+    filedAt: sheet.filedAt,
+    email: { status: "failed", lastError: "retry_window_expired" },
+  });
+  expect(provider.requests).toHaveLength(1);
+  expect(provider.emails).toHaveLength(1);
+});

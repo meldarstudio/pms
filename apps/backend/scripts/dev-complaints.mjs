@@ -48,8 +48,14 @@ const worker = spawn(
   ],
   { stdio: "inherit", env: { ...process.env, WRANGLER_SEND_METRICS: "false" } },
 );
+const scheduled = setInterval(() => {
+  void fetch("http://localhost:8788/cdn-cgi/local/scheduled", {
+    signal: AbortSignal.timeout(3000),
+  }).catch(() => {});
+}, 5000);
 for (const signal of ["SIGINT", "SIGTERM"]) process.on(signal, () => worker.kill(signal));
 worker.on("exit", (code) => {
+  clearInterval(scheduled);
   server.close();
   process.exit(code ?? 0);
 });

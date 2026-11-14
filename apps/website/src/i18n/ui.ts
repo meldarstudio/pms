@@ -4,6 +4,76 @@ export const defaultLang = i18n?.defaultLocale === "en" ? "en" : "es";
 
 export const ui = {
   en: {
+    "complaints.field.fullName": "Full name",
+    "complaints.field.address": "Address",
+    "complaints.field.documentType": "Document type",
+    "complaints.field.documentNumber": "Document number",
+    "complaints.field.phone": "Phone (optional)",
+    "complaints.field.email": "Email",
+    "complaints.field.representative":
+      "Parent or representative: name, document, address and contact",
+    "complaints.field.product": "Product or service",
+    "complaints.field.amount": "Amount (optional; leave blank if unknown or not applicable)",
+    "complaints.field.category": "Category",
+    "complaints.field.description": "Description",
+    "complaints.field.requestedRemedy": "Requested remedy",
+    "complaints.field.reservationReference": "Reservation reference (optional)",
+    "complaints.field.responseChannel": "Written response channel",
+    "complaints.field.minor": "Consumer is a minor",
+    "complaints.error.complaint_book_unavailable":
+      "Development book is not configured. Do not enter real personal data.",
+    "complaints.error.complaint_calendar_unavailable":
+      "The response calendar is not configured. Your draft is retained; retry later.",
+    "complaints.error.complaint_privacy_information_changed":
+      "Privacy information changed. Reload to review it; your draft is retained.",
+    "complaints.error.complaint_retry_differs_from_saved_sheet":
+      "This submission already has a saved sheet. Recover its receipt before filing another.",
+    "complaints.error.invalid_complaint_receipt_credential":
+      "No receipt was found for this submission.",
+    "complaints.error.invalid_complaint_fields": "Review the indicated fields.",
+    "complaints.error.minor_representative_is_required":
+      "Enter the parent or representative details.",
+    "complaints.error.response_email_is_required":
+      "Enter an email address for the written response.",
+    "complaints.error.too_many_complaints_retry_in_one_minute":
+      "Wait one minute and retry the same submission. Your draft is retained.",
+    "complaints.registered": "Registered",
+    "complaints.filed": "Filed",
+    "complaints.responseDeadline": "Response deadline",
+    "complaints.unknownNotApplicable": "Unknown / not applicable",
+    "complaints.privacyPolicyVersion": "Privacy policy version",
+    "complaints.emailSubmittedDeliveryIsNotConfirmed":
+      "Email submitted; delivery is not confirmed.",
+    "complaints.emailQueuedDeliveryIsNotConfirmed": "Email queued; delivery is not confirmed.",
+    "complaints.emailFailedYourSheetRemainsRegisteredDo":
+      "Email failed. Your sheet remains registered. Do not file again.",
+    "complaints.noAutomaticEmailRequested": "No automatic email requested.",
+    "complaints.theHotelMustRespondWithin15Business":
+      "The hotel must respond within 15 business days, without extension. Filing with the hotel does not prevent using Indecopi or other remedies directly.",
+    "complaints.printSheet": "Print sheet",
+    "complaints.couldNotRegisterTheSheetYourDraft":
+      "Could not register the sheet. Your draft is retained; retry the same submission.",
+    "complaints.yourDraftIsRetainedRetryTheSame":
+      "Your draft is retained. Retry the same submission to recover its receipt.",
+    "complaints.networkErrorYourDraftIsRetainedRetry":
+      "Network error. Your draft is retained; retry the same submission.",
+    "complaints.startAnotherSheetSaveOrPrintThis":
+      "Start another sheet (save or print this one first)",
+    "complaints.developmentOnlyDoNotEnterRealPersonal":
+      "Development only. Do not enter real personal data. This book is not active for production.",
+    "complaints.reclamoAProblemWithAProductOr":
+      "Reclamo: a problem with a product or service. Queja: dissatisfaction with attention. The hotel must respond within 15 business days, without extension. Filing with the hotel does not prevent using Indecopi or other remedies directly.",
+    "complaints.loading": "Loading…",
+    "complaints.fullPrivacyInformation": "Full privacy information",
+    "complaints.consumerAndComplaintDetails": "Consumer and complaint details",
+    "complaints.email": "Email",
+    "complaints.letterToTheAddressProvided": "Letter to the address provided",
+    "complaints.registering": "Registering…",
+    "complaints.retrySameSubmission": "Retry same submission",
+    "complaints.registerSheet": "Register sheet",
+    "complaints.developmentPreviewNotActiveForProduction":
+      "Development preview — not active for production.",
+
     "nav.home": "Home",
     "nav.rooms": "Rooms & rates",
     "nav.churin": "Churín",
@@ -548,6 +618,75 @@ export const ui = {
       "This room doesn't fit your group. Go back and choose another room or change the guests.",
   },
   es: {
+    "complaints.field.fullName": "Nombre completo",
+    "complaints.field.address": "Domicilio",
+    "complaints.field.documentType": "Tipo de documento",
+    "complaints.field.documentNumber": "Número de documento",
+    "complaints.field.phone": "Teléfono (opcional)",
+    "complaints.field.email": "Correo electrónico",
+    "complaints.field.representative":
+      "Padre o representante: nombre, documento, domicilio y contacto",
+    "complaints.field.product": "Producto o servicio",
+    "complaints.field.amount": "Monto (opcional; dejar vacío si no se conoce o no aplica)",
+    "complaints.field.category": "Tipo",
+    "complaints.field.description": "Detalle",
+    "complaints.field.requestedRemedy": "Pedido",
+    "complaints.field.reservationReference": "Referencia de reserva (opcional)",
+    "complaints.field.responseChannel": "Canal de respuesta escrita",
+    "complaints.field.minor": "Consumidor menor de edad",
+    "complaints.error.complaint_book_unavailable":
+      "Libro de desarrollo no configurado. No ingrese datos reales.",
+    "complaints.error.complaint_calendar_unavailable":
+      "El calendario de respuesta no está configurado. Sus datos se conservan; reintente más tarde.",
+    "complaints.error.complaint_privacy_information_changed":
+      "La información de privacidad cambió. Recargue para revisarla; se conserva el borrador.",
+    "complaints.error.complaint_retry_differs_from_saved_sheet":
+      "Este envío ya tiene una hoja registrada. Recupere la constancia antes de enviar otra.",
+    "complaints.error.invalid_complaint_receipt_credential":
+      "No se encontró una constancia para este envío.",
+    "complaints.error.invalid_complaint_fields": "Revise los campos indicados.",
+    "complaints.error.minor_representative_is_required":
+      "Ingrese los datos del padre o representante.",
+    "complaints.error.response_email_is_required": "Ingrese un correo para la respuesta escrita.",
+    "complaints.error.too_many_complaints_retry_in_one_minute":
+      "Espere un minuto y reintente el mismo envío. Se conserva el borrador.",
+    "complaints.registered": "Registrado",
+    "complaints.filed": "Presentado",
+    "complaints.responseDeadline": "Fecha límite de respuesta",
+    "complaints.unknownNotApplicable": "No conocido / no aplica",
+    "complaints.privacyPolicyVersion": "Versión de privacidad",
+    "complaints.emailSubmittedDeliveryIsNotConfirmed":
+      "Correo enviado al proveedor; entrega no confirmada.",
+    "complaints.emailQueuedDeliveryIsNotConfirmed": "Correo en cola; entrega no confirmada.",
+    "complaints.emailFailedYourSheetRemainsRegisteredDo":
+      "Falló el correo. Su hoja sigue registrada. No la vuelva a presentar.",
+    "complaints.noAutomaticEmailRequested": "Sin correo automático.",
+    "complaints.theHotelMustRespondWithin15Business":
+      "El hotel debe responder en 15 días hábiles, sin prórroga. Presentar esta hoja al hotel no impide acudir directamente a Indecopi u otras vías.",
+    "complaints.printSheet": "Imprimir hoja",
+    "complaints.couldNotRegisterTheSheetYourDraft":
+      "No se pudo registrar la hoja. Su borrador se conserva; reintente el mismo envío.",
+    "complaints.yourDraftIsRetainedRetryTheSame":
+      "Se conserva el borrador. Reintente el mismo envío para recuperar su constancia.",
+    "complaints.networkErrorYourDraftIsRetainedRetry":
+      "Error de red. Se conserva el borrador; reintente el mismo envío.",
+    "complaints.startAnotherSheetSaveOrPrintThis":
+      "Iniciar otra hoja (guarde o imprima esta primero)",
+    "complaints.developmentOnlyDoNotEnterRealPersonal":
+      "Solo desarrollo. No ingrese datos personales reales. Este libro no está habilitado para producción.",
+    "complaints.reclamoAProblemWithAProductOr":
+      "Reclamo: disconformidad con el producto o servicio. Queja: disconformidad con la atención. El hotel debe responder en 15 días hábiles, sin prórroga. Esta hoja se presenta al hotel y no impide acudir directamente a Indecopi u otras vías.",
+    "complaints.loading": "Cargando…",
+    "complaints.fullPrivacyInformation": "Información completa de privacidad",
+    "complaints.consumerAndComplaintDetails": "Datos del consumidor y de la reclamación",
+    "complaints.email": "Correo electrónico",
+    "complaints.letterToTheAddressProvided": "Carta al domicilio indicado",
+    "complaints.registering": "Registrando…",
+    "complaints.retrySameSubmission": "Reintentar el mismo envío",
+    "complaints.registerSheet": "Registrar hoja",
+    "complaints.developmentPreviewNotActiveForProduction":
+      "Vista de desarrollo — no habilitado para producción.",
+
     "nav.home": "Inicio",
     "nav.rooms": "Habitaciones y precios",
     "nav.churin": "Churín",

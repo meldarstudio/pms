@@ -178,7 +178,11 @@ ownerComplaintRoutes.post(
       .where(eq(complaintEmails.complaintId, sheet.id));
     if (email!.retryRequestId === requestId) return c.json(sheet);
     if (email!.status !== "failed") throw new HttpError(409, "complaint receipt is not failed");
-    if (Date.now() - Date.parse(email!.createdAt) >= 23 * 60 * 60 * 1000)
+    if (
+      email!.deliveryUncertain &&
+      email!.firstAttemptAt &&
+      Date.now() - Date.parse(email!.firstAttemptAt) >= 23 * 60 * 60 * 1000
+    )
       throw new HttpError(409, "complaint receipt retry window expired; send a copy manually");
     await db
       .update(complaintEmails)

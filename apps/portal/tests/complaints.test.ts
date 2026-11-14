@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { afterAll, afterEach, beforeAll, beforeEach, it } from "vite-plus/test";
+import { afterAll, afterEach, beforeAll, beforeEach, it, vi } from "vite-plus/test";
 import { createBrowserTest, type BrowserTest, type BrowserPage } from "./browser.ts";
 
 let browser: BrowserTest;
@@ -13,7 +13,10 @@ afterAll(async () => browser.close());
 beforeEach(() => {
   page = browser.createPage();
 });
-afterEach(async () => page.cleanup());
+afterEach(async () => {
+  await page.cleanup();
+  vi.unstubAllGlobals();
+});
 
 it("retains a response draft after network failure and retries its evidence with the same request id", async () => {
   let attempts = 0;
@@ -89,4 +92,94 @@ it("retains a response draft after network failure and retries its evidence with
   await page.until(() => page.container.textContent.includes("Respuesta registrada"));
   assert.equal(writes[0], writes[1]);
   assert.ok(page.container.textContent.includes("Mensaje 123"));
+});
+
+it("starts a new logical email retry after an acknowledged attempt fails again", async () => {
+  const ids: string[] = [];
+  const sheet = {
+    id: "sheet-1",
+    reference: "DEMO-000041",
+    provider: { legalName: "Demo", ruc: "00000000000", address: "Demo" },
+    establishmentId: "DEMO",
+    filedAt: "2026-11-13T14:00:00Z",
+    registeredAt: "2026-11-13T14:00:00Z",
+    dueDate: "2026-12-04",
+    timeZone: "America/Lima",
+    currency: "PEN",
+    input: { fullName: "Ana", email: "ana@example.com", responseChannel: "email" },
+    email: { status: "failed" },
+    responses: [],
+  };
+  page.client.setQueryData(["session"], { username: "owner", role: "owner" });
+  globalThis.fetch = async (url, options) => {
+    const path = new URL(url instanceof Request ? url.url : url instanceof URL ? url.href : url)
+      .pathname;
+    if (options?.method === "POST") {
+      ids.push((JSON.parse(options.body as string) as { requestId: string }).requestId);
+      return Response.json({ ...sheet, email: { status: "pending" } });
+    }
+    if (path === "/session") return Response.json({ username: "owner", role: "owner" });
+    if (path === "/complaints")
+      return Response.json([
+        {
+          ...sheet,
+          fullName: "Ana",
+          category: "reclamo",
+          responseStatus: "pending",
+          overdue: true,
+        },
+      ]);
+    return Response.json(sheet);
+  };
+  await page.render(browser.React.createElement(screen.Complaints));
+  await page.until(() => page.container.textContent.includes("DEMO-000041"));
+  await page.click("DEMO-000041");
+  await page.until(() => page.container.textContent.includes("Reintentar correo de constancia"));
+  await page.click("Reintentar correo de constancia");
+  await page.until(() => !page.button("Reintentar correo de constancia").disabled);
+  await page.click("Reintentar correo de constancia");
+  await page.until(() => ids.length === 2);
+  assert.notEqual(ids[0], ids[1]);
+});
+
+it("keeps a backup draft editable when its original reference was already imported", async () => {
+  vi.stubGlobal("FormData", browser.window.FormData);
+  const { ComplaintBackupForm } = (await browser.server.ssrLoadModule(
+    "/src/components/complaint-backup-form.tsx",
+  )) as typeof import("../src/components/complaint-backup-form.tsx");
+  globalThis.fetch = async (_url, options) =>
+    options?.method === "POST"
+      ? Response.json({ error: "physical complaint reference already imported" }, { status: 409 })
+      : Response.json({
+          policyVersion: "development-1",
+          monitoredBy: "Demo",
+          backupProcedure: "Demo",
+          retentionAndDisposal: "Demo",
+        });
+  await page.render(
+    browser.React.createElement(ComplaintBackupForm, {
+      onSaved: () => assert.fail("rejected sheet must not be saved"),
+    }),
+  );
+  await page.until(() => !page.button("Registrar transcripción").disabled);
+  for (const name of [
+    "originalReference",
+    "fullName",
+    "address",
+    "documentType",
+    "documentNumber",
+    "product",
+    "description",
+    "requestedRemedy",
+  ])
+    await page.fill(name, "Original data");
+  await page.fill("email", "ana@example.com");
+  await page.fill("filedAt", "2026-11-13T09:00");
+  await page.fill("restoredAt", "2026-11-13T10:00");
+  await page.click("Registrar transcripción");
+  await page.until(() => page.container.textContent.includes("ya fue transcrita"));
+  assert.equal(page.field("description").value, "Original data");
+  assert.equal(page.field("originalReference").disabled, false);
+  await page.fill("originalReference", "Corrected reference");
+  assert.equal(page.field("originalReference").value, "Corrected reference");
 });

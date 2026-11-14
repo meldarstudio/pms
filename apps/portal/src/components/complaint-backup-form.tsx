@@ -69,7 +69,11 @@ export function ComplaintBackupForm({ onSaved }: { onSaved: (sheet: ComplaintShe
       onSaved(await save.mutateAsync(command.current));
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "No se pudo transcribir la hoja.");
-      if (cause instanceof ApiError && cause.status === 400) {
+      if (
+        cause instanceof ApiError &&
+        (cause.status === 400 ||
+          (cause.status === 409 && cause.code === "physical complaint reference already imported"))
+      ) {
         command.current = null;
         setLocked(false);
       }

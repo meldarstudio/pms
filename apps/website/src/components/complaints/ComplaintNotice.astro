@@ -1,8 +1,9 @@
 ---
 import { developmentComplaintPreview } from "@/lib/complaints";
 import { getRelativeLocaleUrl } from "astro:i18n";
-import { getLang } from "@/i18n/utils";
+import { getLang, useTranslations } from "@/i18n/utils";
 const lang = getLang(Astro.currentLocale);
+const t = useTranslations(lang);
 ---
 
 {developmentComplaintPreview && (
@@ -16,10 +17,6 @@ const lang = getLang(Astro.currentLocale);
     >
       Libro de Reclamaciones
     </a>
-    <p>
-      {lang === "en"
-        ? "Development preview — not active for production."
-        : "Vista de desarrollo — no habilitado para producción."}
-    </p>
+    <p>{t("complaints.developmentPreviewNotActiveForProduction")}</p>
   </aside>
 )}
