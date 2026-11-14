@@ -11,6 +11,7 @@ export type PaymentState =
 export type GuestPayment = {
   attemptId: string;
   state: PaymentState;
+  declineReason?: "authentication_expired";
   amountCents: number;
   currency: string;
   delayed: boolean;

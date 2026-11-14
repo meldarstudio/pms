@@ -38,17 +38,20 @@ describe("Review copy", () => {
     };
     const reservation = { code: "AB12CD", paidCents: 1, outstandingCents: 1, refundDueCents: 1 };
     const wanted = Object.keys(states).flatMap((state) =>
-      [false, true].flatMap((delayed) => {
-        const outcome = outcomePresentation({
-          attemptId: "attempt",
-          state: state as GuestPayment["state"],
-          amountCents: 1,
-          currency: "PEN",
-          delayed,
-          reservation,
-        });
-        return [outcome.titleKey, outcome.bodyKey, ...outcome.rows.map((row) => row.labelKey)];
-      }),
+      [false, true].flatMap((delayed) =>
+        [undefined, "authentication_expired" as const].flatMap((declineReason) => {
+          const outcome = outcomePresentation({
+            attemptId: "attempt",
+            state: state as GuestPayment["state"],
+            amountCents: 1,
+            currency: "PEN",
+            delayed,
+            declineReason,
+            reservation,
+          });
+          return [outcome.titleKey, outcome.bodyKey, ...outcome.rows.map((row) => row.labelKey)];
+        }),
+      ),
     );
     expect(missing(wanted)).toEqual([]);
   });

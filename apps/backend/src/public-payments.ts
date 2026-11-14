@@ -157,6 +157,9 @@ async function presentGuestPayment(db: Db, attempt: Attempt) {
   return {
     attemptId: attempt.id,
     state: guestState(attempt, saved?.reservation.status ?? null),
+    ...(attempt.status === "failed" && attempt.failureCode === "authentication_expired"
+      ? { declineReason: "authentication_expired" as const }
+      : {}),
     amountCents: attempt.amountCents,
     currency: attempt.currency,
     delayed: paymentDelayed(attempt),

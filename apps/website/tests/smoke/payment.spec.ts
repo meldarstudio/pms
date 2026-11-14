@@ -705,6 +705,8 @@ test("a bank refusing authentication declines the payment and the guest pays wit
   );
   expect(failures).toEqual([{ attemptId: expect.stringMatching(/^[0-9a-f-]{36}$/i) }]);
   expect(await serverPayment(page, request)).toMatchObject({ state: "declined" });
+  await expect(page.getByLabel("Nombre completo")).toBeHidden();
+  await expect(page.locator("[data-outcome-contact]")).toContainText("Ana Torres");
   expect(
     await page.evaluate(() => sessionStorage.getItem("hm.reservation.card-sources") ?? ""),
   ).not.toContain(sourceId);
@@ -715,6 +717,48 @@ test("a bank refusing authentication declines the payment and the guest pays wit
 
   await expectConfirmed(page);
   expect(await page.evaluate(() => window.culqi3DS?.authentications)).toEqual([sourceId]);
+});
+
+test("expired bank verification explains the expiry and keeps another-card payment available", async ({
+  page,
+  request,
+}) => {
+  await fillCheckout(page, "flexible", payerEmail());
+  await page.evaluate(() => {
+    window.culqiCards = [`tkn_test_3ds_${crypto.randomUUID()}`];
+    window.culqi3DS = {
+      devices: [],
+      authentications: [],
+      parameters: null,
+      error: null,
+      closes: true,
+    };
+  });
+  await payButton(page, "100.00").click();
+  await expect(page.getByRole("button", { name: "Abrir la verificación del banco" })).toBeVisible();
+  const payment = await serverPayment(page, request);
+  executeSql(
+    localDatabase(localState),
+    `UPDATE payment_attempts SET called_at = '${new Date(Date.now() - 25 * 60 * 60_000).toISOString()}' WHERE id = '${payment!.attemptId}'`,
+  );
+  const scheduled = await request.get(`${LOCAL_API_URL}/cdn-cgi/local/scheduled`);
+  expect(scheduled.ok()).toBe(true);
+  await page.getByRole("button", { name: "Consultar estado" }).click();
+  await expect(
+    page.getByRole("heading", { name: "La verificación del banco venció" }),
+  ).toBeFocused();
+  await expect(outcome(page)).toContainText("No se cobró nada");
+  await expect(outcome(page)).toContainText("Monto del intento anterior");
+  await expect(page.getByRole("button", { name: "Abrir la verificación del banco" })).toHaveCount(
+    0,
+  );
+  await expect(page.getByLabel("Nombre completo")).toBeHidden();
+  await expect(page.locator("[data-outcome-contact]")).toContainText("Ana Torres");
+  await page.getByRole("button", { name: "Pagar con otra tarjeta" }).click();
+  await expect(page.getByLabel("Nombre completo")).toHaveValue("Ana Torres");
+  await expect(page.getByRole("checkbox", { name: /Acepto las condiciones/ })).toBeChecked();
+  await payButton(page, "100.00").click();
+  await expectConfirmed(page);
 });
 
 test("a closed bank window stays pending and can be opened again without paying again", async ({
@@ -745,7 +789,7 @@ test("a closed bank window stays pending and can be opened again without paying 
   await expect(
     page.getByRole("heading", { name: "Su banco necesita verificar este pago" }),
   ).toBeVisible();
-  await expect(outcome(page)).toContainText("No fue rechazado");
+  await expect(outcome(page)).toContainText("No vuelva a pagar");
   await expect(bank).toBeFocused();
   await expect(page.getByRole("button", { name: "Pagar con otra tarjeta" })).toHaveCount(0);
   await expect(page.getByRole("button", { name: /^Pagar S\// })).toHaveCount(0);

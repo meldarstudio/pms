@@ -396,10 +396,25 @@ export const ui = {
       "Your payment was received, and the hotel has since changed this reservation. Message us on WhatsApp or by email with your reference to confirm its current status.",
     "reservation.outcome.declined.title": "Your card was declined",
     "reservation.outcome.declined.body":
-      "Nothing was charged. You can pay with another card; your details and accepted terms are kept.",
+      "Nothing was charged. You can try paying with another card.",
     "reservation.outcome.authentication_required.title": "Your bank needs to verify this payment",
     "reservation.outcome.authentication_required.body":
-      "This payment is waiting for your bank's verification. It has not been declined, so please don't pay again. If the bank window closed before finishing, open it again. You can also check the status here, or message us on WhatsApp for help.",
+      "To complete the payment, finish your bank's verification. If you closed the window, you can open it again.",
+    "reservation.outcome.authentication_required.eyebrow": "Verification pending",
+    "reservation.outcome.authentication_required.reassurance":
+      "Continue with the same card. Do not pay again.",
+    "reservation.outcome.authentication_required.amount": "Pending payment",
+    "reservation.outcome.declined.eyebrow": "Payment not completed",
+    "reservation.outcome.declined.reassurance": "Your details and accepted terms are kept.",
+    "reservation.outcome.declined.amount": "Amount to pay",
+    "reservation.outcome.authentication_expired.title": "Your bank verification expired",
+    "reservation.outcome.authentication_expired.body":
+      "Verification was left unfinished and this payment attempt was closed. No charge was made.",
+    "reservation.outcome.authentication_expired.eyebrow": "Verification expired",
+    "reservation.outcome.authentication_expired.reassurance":
+      "Your details are kept. We will check the price again before payment.",
+    "reservation.outcome.authentication_expired.amount": "Previous payment attempt",
+    "reservation.outcome.contactSaved": "Contact saved · terms accepted",
     "reservation.outcome.processing.title": "Confirming your payment",
     "reservation.outcome.processing.body":
       "We're verifying your payment with the card processor. Please don't pay again: verification continues even if you close this page.",
@@ -930,10 +945,26 @@ export const ui = {
       "Recibimos su pago y luego el hotel modificó esta reserva. Escríbanos por WhatsApp o por correo con su referencia para confirmar su estado actual.",
     "reservation.outcome.declined.title": "Su tarjeta fue rechazada",
     "reservation.outcome.declined.body":
-      "No se cobró nada. Puede pagar con otra tarjeta; sus datos y las condiciones aceptadas se conservan.",
+      "No se cobró nada. Puede intentar el pago con otra tarjeta.",
     "reservation.outcome.authentication_required.title": "Su banco necesita verificar este pago",
     "reservation.outcome.authentication_required.body":
-      "Este pago espera la verificación de su banco. No fue rechazado, así que no pague de nuevo. Si la ventana del banco se cerró antes de terminar, ábrala de nuevo. También puede consultar el estado aquí o escribirnos por WhatsApp si necesita ayuda.",
+      "Para completar el pago, termine la verificación de su banco. Si cerró la ventana, puede abrirla de nuevo.",
+    "reservation.outcome.authentication_required.eyebrow": "Verificación pendiente",
+    "reservation.outcome.authentication_required.reassurance":
+      "Continúe con la misma tarjeta. No vuelva a pagar.",
+    "reservation.outcome.authentication_required.amount": "Pago pendiente",
+    "reservation.outcome.declined.eyebrow": "Pago no completado",
+    "reservation.outcome.declined.reassurance":
+      "Sus datos y las condiciones aceptadas se conservan.",
+    "reservation.outcome.declined.amount": "Monto por pagar",
+    "reservation.outcome.authentication_expired.title": "La verificación del banco venció",
+    "reservation.outcome.authentication_expired.body":
+      "La verificación quedó sin terminar y este intento de pago se cerró. No se cobró nada.",
+    "reservation.outcome.authentication_expired.eyebrow": "Verificación vencida",
+    "reservation.outcome.authentication_expired.reassurance":
+      "Sus datos se conservan. Revisaremos el precio antes de pagar.",
+    "reservation.outcome.authentication_expired.amount": "Monto del intento anterior",
+    "reservation.outcome.contactSaved": "Contacto guardado · condiciones aceptadas",
     "reservation.outcome.processing.title": "Confirmando su pago",
     "reservation.outcome.processing.body":
       "Estamos verificando su pago con el procesador de tarjetas. No pague de nuevo: la verificación continúa aunque cierre esta página.",

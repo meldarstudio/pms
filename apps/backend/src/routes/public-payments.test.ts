@@ -1659,12 +1659,18 @@ describe("recovering an interrupted payment", () => {
 
     await runScheduled();
 
-    expect(await status(checkout.token)).toMatchObject({ state: "declined", reservation: null });
+    expect(await status(checkout.token)).toMatchObject({
+      state: "declined",
+      declineReason: "authentication_expired",
+      reservation: null,
+    });
     expect(rows("SELECT status, failure_code FROM payment_attempts")).toEqual([
       { status: "failed", failure_code: "authentication_expired" },
     ]);
     const late = await continueAuthentication(checkout.token);
-    expect(await late.json()).toMatchObject({ payment: { state: "declined" } });
+    expect(await late.json()).toMatchObject({
+      payment: { state: "declined", declineReason: "authentication_expired" },
+    });
     expect(charges()).toHaveLength(1);
 
     const refreshed = await guest("/public/checkout/quotes", { token: checkout.token, body: {} });
@@ -1702,7 +1708,10 @@ describe("recovering an interrupted payment", () => {
     await runScheduled();
 
     expect(log.mock.calls).toHaveLength(1);
-    expect(await status(unfinished.token)).toMatchObject({ state: "declined" });
+    expect(await status(unfinished.token)).toMatchObject({
+      state: "declined",
+      declineReason: "authentication_expired",
+    });
   });
 
   it("keeps an unresolved payment blocking after lookup ends, without charging again", async () => {

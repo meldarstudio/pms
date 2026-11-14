@@ -9,7 +9,7 @@ import {
   type State,
 } from "./checkout-flow";
 import { outcomePresentation } from "./checkout-copy";
-import { outcomeActions, payBusy, sendingPayment } from "./checkout-selectors";
+import { formVisible, outcomeActions, payBusy, sendingPayment } from "./checkout-selectors";
 import { contactKey } from "./draft";
 import type { GuestPayment, PaymentOutcome } from "./payment";
 
@@ -423,16 +423,19 @@ describe("an open payment", () => {
     expect(types(effects)).not.toContain("readCheckoutAccess");
   });
 
-  it("lets a declined payment be retried with the card form", () => {
-    const { state, effects } = drive(
-      openReview(),
-      { type: "payRequested" },
-      confirmRead(payment({ state: "declined" })),
-    );
+  it.each([undefined, "authentication_expired"] as const)(
+    "lets a declined payment (%s) be retried with the card form",
+    (declineReason) => {
+      const { state, effects } = drive(
+        openReview(),
+        { type: "payRequested" },
+        confirmRead(payment({ state: "declined", declineReason })),
+      );
 
-    expect(types(effects)).toContain("readSecurityToken");
-    expect(state.pay).toEqual({ kind: "securing" });
-  });
+      expect(types(effects)).toContain("readSecurityToken");
+      expect(state.pay).toEqual({ kind: "securing" });
+    },
+  );
 });
 
 describe("paying an expired quote", () => {
@@ -1116,25 +1119,32 @@ describe("bank authentication", () => {
     expect(state.stored?.submitted).toBeNull();
   });
 
-  it("offers another card once the refused check is declined, keeping the contact and acceptance", () => {
-    const opened = drive(withCard(), synced(authenticating));
-    const refused = drive(opened.state, { type: "bankRefused" });
+  it.each([undefined, "authentication_expired"] as const)(
+    "offers another card after decline (%s), keeping the contact and acceptance",
+    (declineReason) => {
+      const opened = drive(withCard(), synced(authenticating));
+      const refused = drive(opened.state, { type: "bankRefused" });
 
-    const { state, effects } = drive(refused.state, {
-      type: "authenticationFailureReported",
-      outcome: paymentOutcome(payment({ state: "declined" })),
-    });
+      const { state, effects } = drive(refused.state, {
+        type: "authenticationFailureReported",
+        outcome: paymentOutcome(payment({ state: "declined", declineReason })),
+      });
 
-    expect(state.payment?.state).toBe("declined");
-    expect(outcomeActions(state)).toEqual({ retry: true, bank: false, check: false });
-    expect(state.card).toBeNull();
-    expect(ofType(effects, "clearCardSource")).toEqual([
-      { type: "clearCardSource", key: state.key },
-    ]);
-    expect(state.contact).toEqual(opened.state.contact);
-    expect(state.stored?.accepted).toEqual(opened.state.stored?.accepted);
-    expect(types(effects)).not.toContain("clearContact");
-  });
+      expect(state.payment?.state).toBe("declined");
+      expect(outcomeActions(state)).toEqual({ retry: true, bank: false, check: false });
+      expect(state.card).toBeNull();
+      expect(ofType(effects, "clearCardSource")).toEqual([
+        { type: "clearCardSource", key: state.key },
+      ]);
+      expect(formVisible(state)).toBe(false);
+      const retry = drive(state, { type: "payAgainRequested" });
+      expect(formVisible(retry.state)).toBe(true);
+      expect(retry.state.contact).toEqual(opened.state.contact);
+      expect(state.contact).toEqual(opened.state.contact);
+      expect(state.stored?.accepted).toEqual(opened.state.stored?.accepted);
+      expect(types(effects)).not.toContain("clearContact");
+    },
+  );
 
   it("stays pending and can open the bank again when the refusal could not be reported", () => {
     const opened = drive(withCard(), synced(authenticating));
