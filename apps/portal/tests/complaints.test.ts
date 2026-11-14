@@ -225,6 +225,7 @@ it("keeps selected evidence and the next reply draft after upload failure and re
     const path = new URL(url instanceof Request ? url.url : url instanceof URL ? url.href : url)
       .pathname;
     if (options?.method === "PUT") {
+      assert.equal(new Headers(options.headers).get("content-type"), "application/pdf");
       writes.push({ path, file: options.body as Blob });
       if (writes.length === 1) throw new TypeError("Connection lost after upload");
       response.attachments = [
@@ -249,9 +250,7 @@ it("keeps selected evidence and the next reply draft after upload failure and re
   await page.until(() => Boolean(page.container.querySelector('input[type="file"]')));
   await page.fill(page.container.querySelector("textarea")!, "Borrador de seguimiento");
   const input = page.container.querySelector('input[type="file"]')!;
-  const file = new File(["%PDF-1.7\nTest refund receipt\n%%EOF"], "Reembolso.pdf", {
-    type: "application/pdf",
-  });
+  const file = new File(["%PDF-1.7\nTest refund receipt\n%%EOF"], "Reembolso.pdf");
   await browser.React.act(async () => {
     Object.defineProperty(input, "files", { configurable: true, value: [file] });
     input.dispatchEvent(new browser.window.Event("change", { bubbles: true }));

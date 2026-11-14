@@ -824,7 +824,14 @@ export async function uploadComplaintAttachment(
   responseId: string,
   input: ComplaintAttachmentUpload,
 ) {
-  const contentType = input.file.type;
+  const typesByExtension: Record<string, string> = {
+    pdf: "application/pdf",
+    jpg: "image/jpeg",
+    jpeg: "image/jpeg",
+    png: "image/png",
+  };
+  const extension = input.file.name.split(".").at(-1)?.toLowerCase() ?? "";
+  const contentType = input.file.type || typesByExtension[extension] || "";
   if (
     contentType !== "application/pdf" &&
     contentType !== "image/jpeg" &&

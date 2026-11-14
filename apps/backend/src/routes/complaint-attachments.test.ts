@@ -81,7 +81,7 @@ const upload = (
     db.env,
   );
 
-it("preserves owner evidence once across retries and keeps downloads out of guest access", async () => {
+it("preserves owner evidence once across retries and downloads the original file", async () => {
   const id = crypto.randomUUID();
   const saved = await upload(id);
   expect(saved.status).toBe(201);
@@ -98,6 +98,11 @@ it("preserves owner evidence once across retries and keeps downloads out of gues
   expect(download.headers.get("content-disposition")).toContain("attachment;");
   expect(download.headers.get("x-content-type-options")).toBe("nosniff");
   expect(await download.text()).toBe(pdf);
+});
+
+it("keeps owner attachments out of public receipts and denies anonymous and staff access", async () => {
+  const id = crypto.randomUUID();
+  expect((await upload(id)).status).toBe(201);
   const receipt = await app.request(
     "http://localhost/public/complaints/receipt",
     { headers: { authorization: `Bearer ${token}` } },
@@ -105,15 +110,20 @@ it("preserves owner evidence once across retries and keeps downloads out of gues
   );
   expect((await receipt.json()) as unknown).toMatchObject({ responses: [] });
   expect((await db.request(path(id), "GET", undefined, { signedIn: false })).status).toBe(401);
+  expect(
+    (await app.request(`http://localhost${path(id)}`, { method: "PUT", body: pdf }, db.env)).status,
+  ).toBe(401);
   await db.signIn("staff");
   expect((await db.request(path(id))).status).toBe(403);
-  const ownerCookie = cookie;
   cookie = await signIn(db.env, "staff");
   expect((await upload(crypto.randomUUID())).status).toBe(403);
-  cookie = ownerCookie;
+});
+
+it("rejects changed bytes and names on retry without replacing the saved evidence", async () => {
+  const id = crypto.randomUUID();
+  expect((await upload(id)).status).toBe(201);
   expect((await upload(id, "%PDF-1.7\nChanged evidence\n%%EOF")).status).toBe(409);
   expect((await upload(id, pdf, "Renamed.pdf")).status).toBe(409);
-  await db.signIn("owner");
   expect(await (await db.request(path(id))).text()).toBe(pdf);
 });
 
