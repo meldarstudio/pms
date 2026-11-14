@@ -22,7 +22,11 @@ import { setupRoutes } from "./routes/setup";
 import { getDb } from "./db";
 import { purgeAbandonedCheckouts } from "./abandoned-checkouts";
 import { sendConfirmationEmails } from "./confirmation-emails";
-import { paymentContext, reconcilePaymentAttempts } from "./payment-attempts";
+import {
+  expireAuthentications,
+  paymentContext,
+  reconcilePaymentAttempts,
+} from "./payment-attempts";
 import { requireSession } from "./session";
 import { propertyCalendar } from "./property-calendar";
 
@@ -104,6 +108,7 @@ export default {
         await step("payment reconciliation", () =>
           reconcilePaymentAttempts(db, paymentContext(env)),
         );
+        await step("authentication expiry", () => expireAuthentications(db, new Date()));
         await step("confirmation send", () => sendConfirmationEmails(db, env));
         await step("abandoned checkout purge", () => purgeAbandonedCheckouts(db, new Date()));
       })(),

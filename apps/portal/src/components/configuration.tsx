@@ -5,6 +5,7 @@ import { AccountsSection } from "@/components/accounts";
 import { AppearanceSettings } from "@/components/appearance-settings";
 import { useConfigurationDraft } from "@/components/configuration-draft";
 import { PageTitle } from "@/components/page-title";
+import { PaymentSettings } from "@/components/payment-settings";
 import { RoomTypesSection, type RoomTypeEditorTarget } from "@/components/room-types-section";
 import {
   Breadcrumb,
@@ -109,6 +110,7 @@ export function Configuration({ section }: { section: ConfigurationSection }) {
           />
         )}
         {section === "appearance" && <AppearanceSettings />}
+        {section === "payments" && <PaymentSettings />}
         {section === "accounts" && (
           <AccountsSection account={account} onSelect={setAccount} {...draft.events} />
         )}

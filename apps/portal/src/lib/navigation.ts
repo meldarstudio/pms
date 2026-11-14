@@ -23,6 +23,11 @@ export const configurationSections = [
   },
   { id: "appearance", title: "Apariencia", description: "Elige cómo prefieres ver el portal." },
   {
+    id: "payments",
+    title: "Pagos",
+    description: "Pausa o reanuda los pagos con tarjeta de la web.",
+  },
+  {
     id: "accounts",
     title: "Cuentas",
     description: "Administra el acceso del personal y del propietario.",
@@ -44,7 +49,7 @@ export function canOpenConfigurationSection(
   section: ConfigurationSection,
   role: AccountRole | undefined,
 ) {
-  return section !== "accounts" || role === "owner";
+  return (section !== "accounts" && section !== "payments") || role === "owner";
 }
 
 export function activeConfigurationSection({ pathname, search }: ParsedLocation) {

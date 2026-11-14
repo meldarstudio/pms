@@ -304,8 +304,9 @@ unexpired quote. Refreshing a quote keeps that acceptance only when the replacem
 the same room, stay, occupancy, nightly prices and terms.
 _Avoid_: Payment, confirmation, reservation
 
-**Public payment admission**:
-The owner's server-enforced switch for new public card payments, off by default. Pausing it
+**Public payment admission / Pagos en línea**:
+The owner's server-enforced switch for new public card payments, off by default. The owner
+pauses it in Configuración for provider maintenance or outages. Pausing it
 stops new charges even in open public checkouts, but not status reads, staff work, recovery
 of earlier payment attempts, or completing bank authentication already waiting on an attempt.
 _Avoid_: Maintenance mode, closing sales
@@ -314,23 +315,20 @@ _Avoid_: Maintenance mode, closing sales
 A request to charge a public checkout's accepted quote, recorded before contacting the
 provider. Its contact is that checkout acceptance's. An unknown result is resolved by
 provider lookup, not another charge. Bank authentication continues that same attempt and
-source, even after the quote expires.
+source, even after the quote expires; a bank refusing it, or 24 hours without finishing it,
+fails the attempt so another card can pay.
 _Avoid_: Payment, retry
 
 **Confirmation email**:
 One queued message about a public reservation: the automatic confirmation, queued in the
 same save as a Confirmed reservation, or a resend that staff request for an explicit
-recipient. It is pending until the scheduled run sends it, then sent or failed. A transient
+recipient. It is pending until a scheduled run with the email provider configured sends it,
+then sent or failed; public payment admission does not hold it. A transient
 provider error retries with the same idempotency key a few times before it fails; a refused
 message fails at once. Content is rendered at the first send and reused by its retries. A resend summarizes the reservation's
 current status, agreement and bill; it is not a new confirmation and does not extend access.
 Sent means the provider accepted it, not that it was delivered or read.
 _Avoid_: Delivery, notification, receipt
-
-**Email submission admission**:
-The owner's switch for sending confirmation emails, off by default. Pausing it keeps
-emails pending and does not stop payment recovery or new resend requests.
-_Avoid_: Public payment admission, maintenance mode
 
 **Refund**:
 Money returned against a received payment. Only a completed refund has returned money;

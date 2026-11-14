@@ -153,9 +153,9 @@ it("lists Cuentas among the owner's sidebar configuration sections", async () =>
   const links = await configurationLinks();
   assert.deepEqual(
     links.map((link) => link.textContent.trim()),
-    ["Habitaciones", "Apariencia", "Cuentas"],
+    ["Habitaciones", "Apariencia", "Pagos", "Cuentas"],
   );
-  assert.equal(links[2].getAttribute("aria-current"), "page");
+  assert.equal(links[3].getAttribute("aria-current"), "page");
 });
 
 it("sends the staff account from account management to Habitaciones", async () => {

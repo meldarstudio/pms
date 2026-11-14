@@ -1,14 +1,9 @@
-import { emailSubmissionAdmissionSchema, publicPaymentAdmissionSchema } from "@pms/shared";
+import { publicPaymentAdmissionSchema } from "@pms/shared";
 import { Hono } from "hono";
 import { getDb } from "../db";
 import type { Env } from "../env";
 import { validate } from "../http";
-import {
-  readEmailSubmissionAdmission,
-  readPublicPaymentAdmission,
-  setEmailSubmissionAdmission,
-  setPublicPaymentAdmission,
-} from "../operation-controls";
+import { readPublicPaymentAdmission, setPublicPaymentAdmission } from "../operation-controls";
 import { requireOwner } from "../session";
 
 export const controlRoutes = new Hono<Env>();
@@ -24,23 +19,6 @@ controlRoutes.put(
   async (c) =>
     c.json(
       await setPublicPaymentAdmission(getDb(c.env.DB), c.req.valid("json").admitted, {
-        accountId: c.var.account.id,
-        now: new Date(),
-      }),
-    ),
-);
-
-controlRoutes.get("/email-submission", requireOwner, async (c) =>
-  c.json(await readEmailSubmissionAdmission(getDb(c.env.DB))),
-);
-
-controlRoutes.put(
-  "/email-submission",
-  requireOwner,
-  validate("json", emailSubmissionAdmissionSchema),
-  async (c) =>
-    c.json(
-      await setEmailSubmissionAdmission(getDb(c.env.DB), c.req.valid("json").admitted, {
         accountId: c.var.account.id,
         now: new Date(),
       }),

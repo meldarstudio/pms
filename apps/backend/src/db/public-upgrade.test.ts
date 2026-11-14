@@ -147,9 +147,6 @@ it("preserves populated pre-public money and receipts, the signed-in session and
   expect(await (await db.request("/controls/public-payments")).json()).toMatchObject({
     admitted: false,
   });
-  expect((await db.request("/controls/email-submission", "PUT", { admitted: true })).status).toBe(
-    200,
-  );
   vi.setSystemTime(new Date("2026-10-10T15:12:00Z"));
   for (let tick = 0; tick < 2; tick++) {
     const tasks: Promise<unknown>[] = [];

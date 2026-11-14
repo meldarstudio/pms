@@ -11,6 +11,7 @@ export type PaymentState =
 export type GuestPayment = {
   attemptId: string;
   state: PaymentState;
+  declineReason?: "authentication_expired";
   amountCents: number;
   currency: string;
   delayed: boolean;
@@ -137,4 +138,11 @@ export const continuePayment = (
     method: "POST",
     token,
     body: authentication,
+  });
+
+export const reportAuthenticationFailure = (apiBase: string, token: string, attemptId: string) =>
+  call(apiBase, "public/checkout/payment/authentication/failure", {
+    method: "POST",
+    token,
+    body: { attemptId },
   });

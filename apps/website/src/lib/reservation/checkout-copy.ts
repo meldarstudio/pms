@@ -115,7 +115,11 @@ export function problemPresentation(problem: Problem) {
 export type OutcomeRow = { labelKey: string; value: string | { cents: number } };
 
 export function outcomePresentation(payment: GuestPayment) {
-  const key = `reservation.outcome.${payment.state}`;
+  const copyState =
+    payment.state === "declined" && payment.declineReason === "authentication_expired"
+      ? "authentication_expired"
+      : payment.state;
+  const key = `reservation.outcome.${copyState}`;
   const { reservation } = payment;
   const rows: OutcomeRow[] =
     payment.state === "confirmed" && reservation
@@ -143,6 +147,7 @@ export function outcomePresentation(payment: GuestPayment) {
             ]
           : [{ labelKey: "reservation.outcome.amount", value: { cents: payment.amountCents } }];
   return {
+    copyKey: key,
     tone: outcomeTone[payment.state],
     titleKey: `${key}.title`,
     bodyKey:

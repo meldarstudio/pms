@@ -10,7 +10,12 @@ import {
   storedCheckout,
   storedContact,
 } from "@/lib/reservation/draft";
-import { continuePayment, readPayment, startPayment } from "@/lib/reservation/payment";
+import {
+  continuePayment,
+  readPayment,
+  reportAuthenticationFailure,
+  startPayment,
+} from "@/lib/reservation/payment";
 import {
   deviceFingerprint,
   openBankAuthentication,
@@ -88,6 +93,10 @@ export function createCheckoutRunner(options: CheckoutRunnerOptions): CheckoutRu
         const outcome = await continuePayment(apiBase, effect.token, effect.authentication);
         return dispatch({ type: "paymentContinued", outcome });
       }
+      case "reportAuthenticationFailure": {
+        const outcome = await reportAuthenticationFailure(apiBase, effect.token, effect.attemptId);
+        return dispatch({ type: "authenticationFailureReported", outcome });
+      }
       case "readCheckoutAccess": {
         const access = await readCheckoutAccess(apiBase, effect.token);
         return dispatch({ type: "accessRead", request: effect.request, access });
@@ -157,6 +166,7 @@ export function createCheckoutRunner(options: CheckoutRunnerOptions): CheckoutRu
             sourceId: effect.sourceId,
             onParameters: (parameters) => dispatch({ type: "bankParameters", parameters }),
             onIncomplete: () => dispatch({ type: "bankIncomplete" }),
+            onRefused: () => dispatch({ type: "bankRefused" }),
           });
         } catch {
           dispatch({ type: "bankIncomplete" });

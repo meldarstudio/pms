@@ -60,7 +60,7 @@ export function renderConfirmationEmail(input: {
         : "Te esperamos en Churín. Aquí encontrarás los detalles de tu estadía.";
   const action = input.link
     ? `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"><tr><td align="center" bgcolor="#f27b00" style="border-radius:3px;">
-<a href="${escapeHtml(input.link)}" style="display:block;padding:16px;font-family:Arial,Helvetica,sans-serif;font-size:12px;line-height:20px;font-weight:500;letter-spacing:1.8px;text-transform:uppercase;color:#1c1917;text-decoration:none;">${english ? "VIEW MY RESERVATION" : "VER MI RESERVA"} &nbsp; →</a>
+<a href="${escapeHtml(input.link)}" style="display:block;padding:16px;font-family:Arial,Helvetica,sans-serif;font-size:12px;line-height:20px;font-weight:500;letter-spacing:1.8px;text-transform:uppercase;color:#1c1917;text-decoration:none;">${english ? "VIEW MY RESERVATION" : "VER MI RESERVA"}</a>
 </td></tr></table>`
     : `<p style="margin:0;font-size:14px;line-height:23px;">${escapeHtml(input.assistance)}</p>`;
   const sections = input.sections

@@ -187,6 +187,7 @@ export type Event =
   | { type: "paymentRead"; after: PaymentThen; outcome: PaymentOutcome; now: number }
   | { type: "paymentStarted"; outcome: PaymentOutcome; now: number }
   | { type: "paymentContinued"; outcome: PaymentOutcome }
+  | { type: "authenticationFailureReported"; outcome: PaymentOutcome }
   | { type: "accessRead"; request: number; access: CheckoutAccess | null }
   | { type: "securityCheckFailed" }
   | { type: "securityCheckErrored" }
@@ -196,7 +197,8 @@ export type Event =
   | { type: "cardFormFailed" }
   | { type: "fingerprintRead"; fingerprint: string | null }
   | { type: "bankParameters"; parameters: AuthenticationParameters }
-  | { type: "bankIncomplete" };
+  | { type: "bankIncomplete" }
+  | { type: "bankRefused" };
 
 export type Effect =
   | { type: "readCheckout"; token: string; after: CheckoutThen }
@@ -214,6 +216,7 @@ export type Effect =
       token: string;
       authentication: AuthenticationParameters & { attemptId: string };
     }
+  | { type: "reportAuthenticationFailure"; token: string; attemptId: string }
   | { type: "readCheckoutAccess"; token: string; request: number }
   | { type: "startSecurityCheck"; lang: Lang }
   | { type: "readSecurityToken" }
@@ -520,6 +523,12 @@ function finishAuthentication(c: Ctx, parameters: AuthenticationParameters) {
     token: c.s.token,
     authentication: { ...parameters, attemptId },
   });
+}
+
+function reportAuthenticationFailure(c: Ctx) {
+  const attemptId = cardFor(c.s, c.s.payment) ? c.s.payment?.attemptId : null;
+  if (!c.s.token || !attemptId) return;
+  c.fx.push({ type: "reportAuthenticationFailure", token: c.s.token, attemptId });
 }
 
 function afterContinued(c: Ctx, outcome: PaymentOutcome) {
@@ -1010,6 +1019,7 @@ function handle(c: Ctx, event: Event) {
     case "paymentStarted":
       return afterPaymentStarted(c, event.outcome);
     case "paymentContinued":
+    case "authenticationFailureReported":
       return afterContinued(c, event.outcome);
     case "accessRead":
       return afterAccessRead(c, event.request, event.access);
@@ -1037,6 +1047,8 @@ function handle(c: Ctx, event: Event) {
       return finishAuthentication(c, event.parameters);
     case "bankIncomplete":
       return showAuthenticationIncomplete(c);
+    case "bankRefused":
+      return reportAuthenticationFailure(c);
   }
 }
 

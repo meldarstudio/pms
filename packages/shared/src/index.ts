@@ -404,7 +404,6 @@ export const checkoutPaymentSchema = z
   })
   .strict();
 export const publicPaymentAdmissionSchema = z.object({ admitted: z.boolean() }).strict();
-export const emailSubmissionAdmissionSchema = z.object({ admitted: z.boolean() }).strict();
 export const confirmationResendSchema = z
   .object({
     requestId: z.uuid(),
@@ -419,7 +418,6 @@ export type PublicCheckoutCreateRequest = z.input<typeof publicCheckoutCreateSch
 export type CheckoutAcceptance = z.infer<typeof checkoutAcceptanceSchema>;
 export type CheckoutPayment = z.infer<typeof checkoutPaymentSchema>;
 export type PublicPaymentAdmissionRequest = z.input<typeof publicPaymentAdmissionSchema>;
-export type EmailSubmissionAdmissionRequest = z.input<typeof emailSubmissionAdmissionSchema>;
 export type WorkflowAction = z.infer<typeof workflowActionSchema>;
 export type WorkflowCommand = z.infer<typeof workflowCommandSchema>;
 export type WorkflowCreate = z.infer<typeof workflowCreateSchema>;
@@ -443,5 +441,7 @@ export const paymentAuthenticationSchema = z
 export const checkoutAuthenticationSchema = paymentAuthenticationSchema
   .extend({ attemptId: z.uuid() })
   .strict();
+export const checkoutAuthenticationFailureSchema = z.object({ attemptId: z.uuid() }).strict();
 export type PaymentAuthentication = z.infer<typeof paymentAuthenticationSchema>;
 export type CheckoutAuthentication = z.infer<typeof checkoutAuthenticationSchema>;
+export type CheckoutAuthenticationFailure = z.infer<typeof checkoutAuthenticationFailureSchema>;

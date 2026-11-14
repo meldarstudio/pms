@@ -282,3 +282,44 @@ for (const locale of ["", "/en"]) {
     await runAxe(page, `${locale}/reservar/resumen/ (invalid)`);
   });
 }
+
+for (const outcome of ["authentication_required", "declined", "authentication_expired"] as const) {
+  test(`a11y: Review card outcome ${outcome}`, async ({ page }) => {
+    await stubPaymentScripts(page);
+    await useOwnSourceIp(page, test.info().workerIndex);
+    const params = new URLSearchParams({ ...openStay(), adults: "2", children: "0" });
+    await page.goto(`/reservar/revisar/?${params}&room=king&plan=flexible`);
+    await page.getByLabel("Nombre completo").fill("Ana Torres");
+    await page.getByLabel("Correo electrónico").fill("ana@example.com");
+    await page.getByLabel("Teléfono").fill("987654321");
+    await page.getByRole("checkbox", { name: /Acepto las condiciones/ }).check();
+    await page.route(`${LOCAL_API_URL}/public/checkout/payment`, (route) =>
+      route.fulfill({
+        json: {
+          payment: {
+            attemptId: "card-outcome-attempt",
+            state: outcome === "authentication_expired" ? "declined" : outcome,
+            ...(outcome === "authentication_expired"
+              ? { declineReason: "authentication_expired" }
+              : {}),
+            amountCents: 10000,
+            currency: "PEN",
+            delayed: false,
+            reservation: null,
+          },
+        },
+      }),
+    );
+    await page.reload();
+    await expect(page.locator("[data-outcome]")).toBeVisible();
+    await page.setViewportSize({ width: 1280, height: 900 });
+    await runAxe(page, `Review (${outcome}, desktop)`);
+    await page.setViewportSize({ width: 390, height: 844 });
+    await runAxe(page, `Review (${outcome}, phone)`);
+    if (outcome !== "authentication_required") {
+      await page.getByRole("button", { name: "Pagar con otra tarjeta" }).click();
+      await expect(page.locator("[data-pay-button]")).toBeFocused();
+      await expect(page.getByLabel("Nombre completo")).toHaveValue("Ana Torres");
+    }
+  });
+}

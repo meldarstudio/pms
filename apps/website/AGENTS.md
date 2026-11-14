@@ -45,8 +45,10 @@ load does not block a non-3DS card. A required bank check opens that library's m
 the card token stored for the attempt this request created (`hm.reservation.card-sources`),
 never the URL, and only while that attempt id still matches. The token stays until the
 payment is declined, confirmed, unfulfilled, changed, or saved.
-Parameters continue the same attempt; a browser error or closed window stays pending and
-can open the bank again, without another card. Browser tests stub the Culqi, Culqi3DS and
+Parameters continue the same attempt. A Culqi3DS error message is the bank refusing the
+check: Review reports it for that attempt and shows the declined outcome, so another card
+can pay. A closed window or a failure to load Culqi3DS stays pending and can open the bank
+again, without another card. Browser tests stub the Culqi, Culqi3DS and
 Turnstile scripts (`tests/support/payment.ts`), and the local API charges a fake Culqi and
 Turnstile served by `scripts/fake-payment-services.mjs`.
 

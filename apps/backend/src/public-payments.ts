@@ -1,10 +1,15 @@
-import type { CheckoutAuthentication, CheckoutPayment } from "@pms/shared";
+import type {
+  CheckoutAuthentication,
+  CheckoutAuthenticationFailure,
+  CheckoutPayment,
+} from "@pms/shared";
 import type { Db } from "./db";
 import { HttpError, PAYMENT_PENDING } from "./http";
 import { reservationBill } from "./lib/reservation-bill";
 import { requirePublicPaymentAdmission } from "./operation-controls";
 import {
   continuePublicAuthentication,
+  failPublicAuthentication,
   findAttempt,
   latestCheckoutAttempt,
   PAYMENT_NOT_ADMITTED,
@@ -74,6 +79,20 @@ export async function authenticateCheckout(
   return current;
 }
 
+export async function failCheckoutAuthentication(
+  db: Db,
+  checkout: PublicCheckout,
+  { attemptId }: CheckoutAuthenticationFailure,
+  context: PaymentContext,
+) {
+  const latest = await latestCheckoutAttempt(db, checkout.id);
+  if (!latest) throw new HttpError(404, "payment attempt not found");
+  if (latest.id === attemptId) await failPublicAuthentication(db, latest);
+  const current = await checkoutPayment(db, checkout, context);
+  if (!current) throw new HttpError(404, "payment attempt not found");
+  return current;
+}
+
 export async function chargeCheckout(
   db: Db,
   checkout: PublicCheckout,
@@ -138,6 +157,9 @@ async function presentGuestPayment(db: Db, attempt: Attempt) {
   return {
     attemptId: attempt.id,
     state: guestState(attempt, saved?.reservation.status ?? null),
+    ...(attempt.status === "failed" && attempt.failureCode === "authentication_expired"
+      ? { declineReason: "authentication_expired" as const }
+      : {}),
     amountCents: attempt.amountCents,
     currency: attempt.currency,
     delayed: paymentDelayed(attempt),

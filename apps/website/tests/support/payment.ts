@@ -55,7 +55,13 @@ window.turnstile = {
 `;
 
 const fakeCulqi3DS = `
-window.culqi3DS ??= { devices: [], authentications: [], parameters: null, error: null };
+window.culqi3DS ??= {
+  devices: [],
+  authentications: [],
+  parameters: null,
+  error: null,
+  closes: false,
+};
 window.culqi3DS.devices ??= [];
 window.culqi3DS.authentications ??= [];
 window.Culqi3DS = {
@@ -73,10 +79,11 @@ window.Culqi3DS = {
       "test.culqi3DS.authentications",
       JSON.stringify(window.culqi3DS.authentications),
     );
-    const { parameters, error } = window.culqi3DS;
+    const { parameters, error, closes } = window.culqi3DS;
     setTimeout(() => {
       if (parameters) window.postMessage({ parameters3DS: parameters }, window.location.origin);
       else if (error) window.postMessage({ error }, window.location.origin);
+      else if (closes) this.options.closeModalAction?.();
     }, 0);
   },
 };
