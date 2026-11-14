@@ -1,0 +1,5 @@
+{
+  "name": "complaint-files-test",
+  "compatibility_date": "2026-10-08",
+  "r2_buckets": [{ "binding": "COMPLAINT_ATTACHMENTS", "bucket_name": "complaint-files-test" }]
+}

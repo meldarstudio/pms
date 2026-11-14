@@ -771,6 +771,14 @@ export type ComplaintSummary = {
   overdue: boolean;
   email: ComplaintEmail;
 };
+export type ComplaintAttachment = {
+  id: string;
+  name: string;
+  contentType: string;
+  size: number;
+  uploadedAt: string;
+  uploadedBy: string;
+};
 export type ComplaintSheet = {
   id: string;
   reference: string;
@@ -798,6 +806,7 @@ export type ComplaintSheet = {
     correctsId: string | null;
     recordedAt: string;
     recordedBy: string;
+    attachments: ComplaintAttachment[];
   }[];
 };
 export const listComplaints = (signal?: AbortSignal) =>
@@ -806,6 +815,46 @@ export const getComplaint = (id: string, signal?: AbortSignal) =>
   getJson<ComplaintSheet>(`/complaints/${encodeURIComponent(id)}`, signal);
 export const recordComplaintResponse = (id: string, input: ComplaintResponseRequest) =>
   writeJson<ComplaintSheet>(`/complaints/${encodeURIComponent(id)}/responses`, "POST", input);
+function complaintAttachmentPath(id: string, responseId: string, attachmentId: string) {
+  return `/complaints/${encodeURIComponent(id)}/responses/${encodeURIComponent(responseId)}/attachments/${encodeURIComponent(attachmentId)}`;
+}
+export type ComplaintAttachmentUpload = { attachmentId: string; file: File };
+export async function uploadComplaintAttachment(
+  id: string,
+  responseId: string,
+  input: ComplaintAttachmentUpload,
+) {
+  const contentType = input.file.type;
+  if (
+    contentType !== "application/pdf" &&
+    contentType !== "image/jpeg" &&
+    contentType !== "image/png"
+  )
+    throw new ApiError(400, "unsupported complaint attachment type");
+  const metadata: import("@pms/shared").ComplaintAttachmentMetadata = {
+    name: input.file.name,
+    contentType,
+  };
+  const response = await request(complaintAttachmentPath(id, responseId, input.attachmentId), {
+    method: "PUT",
+    headers: {
+      "Content-Type": metadata.contentType,
+      "X-Attachment-Name": encodeURIComponent(metadata.name),
+    },
+    body: input.file,
+  });
+  if (!response.ok) throw await responseError(response);
+  return (await response.json()) as ComplaintSheet;
+}
+export async function downloadComplaintAttachment(
+  id: string,
+  responseId: string,
+  attachmentId: string,
+) {
+  const response = await request(complaintAttachmentPath(id, responseId, attachmentId), {});
+  if (!response.ok) throw await responseError(response);
+  return response.blob();
+}
 export const retryComplaintEmail = (id: string, requestId: string) =>
   writeJson<ComplaintSheet>(`/complaints/${encodeURIComponent(id)}/email-retry`, "POST", {
     requestId,

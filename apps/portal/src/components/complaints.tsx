@@ -1,5 +1,6 @@
 import { ApiError } from "@/lib/api-error";
 import { ComplaintBackupForm } from "./complaint-backup-form";
+import { ComplaintResponseAttachments } from "./complaint-response-attachments";
 import { useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -238,6 +239,11 @@ function ComplaintDetail({ sheet }: { sheet: ComplaintSheet }) {
             Registro: {date(response.recordedAt)} · {response.recordedBy}
           </p>
           {response.correctsId && <p>Corrige el registro {response.correctsId}</p>}
+          <ComplaintResponseAttachments
+            complaintId={sheet.id}
+            responseId={response.id}
+            attachments={response.attachments}
+          />
         </section>
       ))}
       <ResponseForm sheet={sheet} />
@@ -294,7 +300,8 @@ function ResponseForm({ sheet }: { sheet: ComplaintSheet }) {
       <h3 className="text-lg font-semibold">Registrar respuesta ya enviada</h3>
       <p>
         Envíe la respuesta por el canal escrito elegido antes de registrarla aquí. La fecha de envío
-        usa la zona horaria de este equipo.
+        usa la zona horaria de este equipo. Después podrá adjuntar archivos de evidencia al
+        registro.
       </p>
       <fieldset disabled={save.isPending || locked}>
         <FieldGroup>

@@ -1,4 +1,17 @@
 const messages: Record<string, string> = {
+  "invalid complaint attachment": "El identificador del archivo no es válido.",
+  "complaint response not found": "No se encontró el registro de respuesta.",
+  "complaint attachment storage is unavailable":
+    "El almacenamiento de archivos no está disponible. Intenta de nuevo.",
+  "complaint attachment exceeds 5 MB": "El archivo supera el límite de 5 MB.",
+  "invalid complaint attachment name":
+    "El nombre del archivo no es válido. Usa un nombre de hasta 200 caracteres sin barras.",
+  "unsupported complaint attachment type":
+    "Solo se admiten archivos PDF, JPG y PNG cuyo contenido coincida con el tipo y la extensión.",
+  "complaint attachment is empty": "El archivo está vacío.",
+  "complaint attachment retry differs":
+    "El reintento contiene un archivo diferente. Selecciona el archivo original o adjunta uno nuevo.",
+  "complaint attachment not found": "No se encontró el archivo adjunto.",
   "complaint book unavailable": "El libro de desarrollo no está configurado.",
   "complaint calendar unavailable": "El calendario de respuesta no está configurado.",
   "invalid complaint receipt credential": "No se pudo verificar la constancia.",

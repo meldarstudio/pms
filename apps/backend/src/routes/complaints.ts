@@ -12,6 +12,7 @@ import { HttpError, currency, validate } from "../http";
 import { Hono } from "hono";
 import type { Env } from "../env";
 import { developmentComplaintConfig } from "../complaint-config";
+import { complaintAttachmentRoutes } from "./complaint-attachments";
 
 export const ownerComplaintRoutes = new Hono<Env>();
 ownerComplaintRoutes.use("*", requireOwner);
@@ -20,6 +21,7 @@ ownerComplaintRoutes.use("*", async (c, next) => {
   developmentComplaintConfig(c.env.COMPLAINT_BOOK_DEVELOPMENT, c.req.url);
   await next();
 });
+ownerComplaintRoutes.route("/", complaintAttachmentRoutes);
 ownerComplaintRoutes.get("/", async (c) => {
   const db = getDb(c.env.DB);
   const rows = await db.select().from(complaintSheets).orderBy(asc(complaintSheets.dueDate));

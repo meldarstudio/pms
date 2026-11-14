@@ -635,6 +635,25 @@ export const complaintResponses = sqliteTable("complaint_responses", {
     .references(() => user.id),
 });
 
+export const complaintAttachments = sqliteTable(
+  "complaint_attachments",
+  {
+    id: text("id").primaryKey(),
+    responseId: text("response_id")
+      .notNull()
+      .references(() => complaintResponses.id),
+    name: text("name").notNull(),
+    contentType: text("content_type").notNull(),
+    size: integer("size").notNull(),
+    sha256: text("sha256").notNull(),
+    uploadedAt: text("uploaded_at").notNull(),
+    uploadedBy: text("uploaded_by")
+      .notNull()
+      .references(() => user.id),
+  },
+  (table) => [index("complaint_attachments_response").on(table.responseId)],
+);
+
 export const complaintEmails = sqliteTable(
   "complaint_emails",
   {

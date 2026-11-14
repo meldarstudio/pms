@@ -46,7 +46,10 @@ const worker = spawn(
     "--var",
     "RESEND_API_URL:http://127.0.0.1:8790",
   ],
-  { stdio: "inherit", env: { ...process.env, WRANGLER_SEND_METRICS: "false" } },
+  {
+    stdio: "inherit",
+    env: { ...process.env, WRANGLER_SEND_METRICS: "false", PMS_COMPLAINT_FILES_LOCAL: "1" },
+  },
 );
 const scheduled = setInterval(() => {
   void fetch("http://localhost:8788/cdn-cgi/local/scheduled", {

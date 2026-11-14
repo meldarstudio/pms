@@ -1,7 +1,12 @@
 import { and, asc, eq, sql } from "drizzle-orm";
 import type { ComplaintInput } from "@pms/shared";
 import { runBatch, type Db } from "./db";
-import { complaintEmails, complaintResponses, complaintSheets } from "./db/schema";
+import {
+  complaintAttachments,
+  complaintEmails,
+  complaintResponses,
+  complaintSheets,
+} from "./db/schema";
 import { complaintDeadline, type ComplaintBookConfig } from "./complaint-config";
 import { HttpError } from "./http";
 
@@ -40,7 +45,30 @@ export async function complaintView(db: Db, id: string) {
     .where(eq(complaintResponses.complaintId, id))
     .orderBy(asc(complaintResponses.recordedAt), asc(sql`${complaintResponses}.rowid`));
   const { tokenHash: _tokenHash, requestPayload: _requestPayload, ...saved } = sheet;
-  return { ...saved, email: email!, responses };
+  const attachments = await db
+    .select({
+      id: complaintAttachments.id,
+      responseId: complaintAttachments.responseId,
+      name: complaintAttachments.name,
+      contentType: complaintAttachments.contentType,
+      size: complaintAttachments.size,
+      uploadedAt: complaintAttachments.uploadedAt,
+      uploadedBy: complaintAttachments.uploadedBy,
+    })
+    .from(complaintAttachments)
+    .innerJoin(complaintResponses, eq(complaintResponses.id, complaintAttachments.responseId))
+    .where(eq(complaintResponses.complaintId, id))
+    .orderBy(asc(complaintAttachments.uploadedAt), asc(complaintAttachments.id));
+  return {
+    ...saved,
+    email: email!,
+    responses: responses.map((response) => ({
+      ...response,
+      attachments: attachments
+        .filter((attachment) => attachment.responseId === response.id)
+        .map(({ responseId: _responseId, ...attachment }) => attachment),
+    })),
+  };
 }
 
 export async function fileComplaint(

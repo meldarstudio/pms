@@ -18,6 +18,8 @@ import {
   listComplaints,
   getComplaint,
   recordComplaintResponse,
+  uploadComplaintAttachment,
+  type ComplaintAttachmentUpload,
   retryComplaintEmail,
   type ComplaintResponseRequest,
   type CalendarWindow,
@@ -582,6 +584,18 @@ export function useComplaintEmailRetry(id: string) {
     onSuccess: (sheet) => {
       client.setQueryData(["complaints", id], sheet);
       void client.invalidateQueries({ queryKey: ["complaints"] });
+    },
+  });
+}
+
+export function useComplaintAttachment(id: string, responseId: string) {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: (input: ComplaintAttachmentUpload) =>
+      uploadComplaintAttachment(id, responseId, input),
+    onSuccess: (sheet) => {
+      client.setQueryData(["complaints", id], sheet);
+      void client.invalidateQueries({ queryKey: ["complaints", id] });
     },
   });
 }

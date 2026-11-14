@@ -42,7 +42,8 @@ Like D1, the test database rejects statements with more than 100 bound parameter
 
 `pnpm dev:complaints` applies local migrations and starts the backend with the
 explicit test configuration in `src/test-support/complaint-book.development.json`
-and a loopback mock email provider. Use test data only. It replaces `dev:backend`
+and a loopback mock email provider with private local R2 storage for owner response
+attachments. Use test data only. It replaces `dev:backend`
 for this preview; start the portal and website with their normal dev commands.
 The complaint routes require `COMPLAINT_BOOK_DEVELOPMENT` and a loopback request
 host; receipt sending additionally requires a loopback `RESEND_API_URL`. There

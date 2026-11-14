@@ -12,6 +12,7 @@ export type Env = {
   Bindings: {
     DB: D1Database;
     COMPLAINT_BOOK_DEVELOPMENT?: string;
+    COMPLAINT_ATTACHMENTS?: R2Bucket;
     CURRENCY: string;
     PROPERTY_TIME_ZONE: string;
     SESSION_SECRET: string;

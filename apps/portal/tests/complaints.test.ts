@@ -31,6 +31,7 @@ it("retains a response draft after network failure and retries its evidence with
     recordedAt: "2026-11-13T16:00:00Z",
     recordedBy: "owner",
     correctsId: null,
+    attachments: [],
   };
   const sheet = {
     id: "sheet-1",
@@ -182,4 +183,87 @@ it("keeps a backup draft editable when its original reference was already import
   assert.equal(page.field("originalReference").disabled, false);
   await page.fill("originalReference", "Corrected reference");
   assert.equal(page.field("originalReference").value, "Corrected reference");
+});
+
+it("keeps selected evidence and the next reply draft after upload failure and retries the same file", async () => {
+  const response = {
+    id: "response-1",
+    text: "Respuesta enviada",
+    channel: "email",
+    recipient: "ana@example.com",
+    sentAt: "2026-11-13T15:00:00Z",
+    evidence: "Mensaje 123",
+    recordedAt: "2026-11-13T16:00:00Z",
+    recordedBy: "owner",
+    correctsId: null,
+    attachments: [] as {
+      id: string;
+      name: string;
+      size: number;
+      uploadedAt: string;
+      uploadedBy: string;
+      contentType: string;
+    }[],
+  };
+  const sheet = {
+    id: "sheet-1",
+    reference: "DEMO-000041",
+    provider: { legalName: "Demo", ruc: "00000000000", address: "Demo" },
+    establishmentId: "DEMO",
+    filedAt: "2026-11-13T14:00:00Z",
+    registeredAt: "2026-11-13T14:00:00Z",
+    dueDate: "2026-12-04",
+    timeZone: "America/Lima",
+    currency: "PEN",
+    input: { fullName: "Ana", email: "ana@example.com", responseChannel: "email" },
+    email: { status: "sent" },
+    responses: [response],
+  };
+  const writes: { path: string; file: Blob }[] = [];
+  page.client.setQueryData(["session"], { username: "owner", role: "owner" });
+  globalThis.fetch = async (url, options) => {
+    const path = new URL(url instanceof Request ? url.url : url instanceof URL ? url.href : url)
+      .pathname;
+    if (options?.method === "PUT") {
+      writes.push({ path, file: options.body as Blob });
+      if (writes.length === 1) throw new TypeError("Connection lost after upload");
+      response.attachments = [
+        {
+          id: "file-1",
+          name: "Reembolso.pdf",
+          size: 34,
+          contentType: "application/pdf",
+          uploadedAt: "2026-11-13T16:00:00Z",
+          uploadedBy: "owner",
+        },
+      ];
+      return Response.json(sheet);
+    }
+    if (path === "/complaints")
+      return Response.json([{ ...sheet, fullName: "Ana", responseStatus: "recorded" }]);
+    return Response.json(sheet);
+  };
+  await page.render(browser.React.createElement(screen.Complaints));
+  await page.until(() => page.container.textContent.includes("DEMO-000041"));
+  await page.click("DEMO-000041");
+  await page.until(() => Boolean(page.container.querySelector('input[type="file"]')));
+  await page.fill(page.container.querySelector("textarea")!, "Borrador de seguimiento");
+  const input = page.container.querySelector('input[type="file"]')!;
+  const file = new File(["%PDF-1.7\nTest refund receipt\n%%EOF"], "Reembolso.pdf", {
+    type: "application/pdf",
+  });
+  await browser.React.act(async () => {
+    Object.defineProperty(input, "files", { configurable: true, value: [file] });
+    input.dispatchEvent(new browser.window.Event("change", { bubbles: true }));
+  });
+  await page.click("Adjuntar archivo");
+  await page.until(() => page.container.textContent.includes("No se pudo adjuntar"));
+  assert.equal(page.container.querySelector("textarea")!.value, "Borrador de seguimiento");
+  assert.ok(page.container.textContent.includes("Reembolso.pdf"));
+  await page.click("Reintentar archivo");
+  await page.until(() => page.container.textContent.includes("Archivo adjuntado"));
+  assert.equal(writes[0]!.path, writes[1]!.path);
+  assert.equal(await writes[0]!.file.text(), await writes[1]!.file.text());
+  assert.equal(page.container.querySelector("textarea")!.value, "Borrador de seguimiento");
+  assert.ok(page.container.querySelector('button[aria-label="Descargar Reembolso.pdf"]'));
 });

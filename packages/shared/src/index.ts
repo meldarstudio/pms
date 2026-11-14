@@ -493,6 +493,38 @@ export const complaintResponseSchema = z
   })
   .strict();
 export type ComplaintResponseRequest = z.input<typeof complaintResponseSchema>;
+export const complaintAttachmentMetadataSchema = z
+  .object({
+    name: z
+      .string()
+      .min(1, "invalid complaint attachment name")
+      .max(200, "invalid complaint attachment name")
+      .refine(
+        (name) =>
+          Boolean(name.trim()) &&
+          !Array.from(name).some(
+            (character) =>
+              character.charCodeAt(0) < 32 ||
+              character.charCodeAt(0) === 127 ||
+              character === "/" ||
+              character === "\\",
+          ),
+        "invalid complaint attachment name",
+      ),
+    contentType: z.enum(["application/pdf", "image/jpeg", "image/png"], {
+      error: "unsupported complaint attachment type",
+    }),
+  })
+  .strict()
+  .refine(({ name, contentType }) => {
+    const extensions = {
+      "application/pdf": /\.pdf$/i,
+      "image/jpeg": /\.jpe?g$/i,
+      "image/png": /\.png$/i,
+    };
+    return extensions[contentType].test(name);
+  }, "unsupported complaint attachment type");
+export type ComplaintAttachmentMetadata = z.input<typeof complaintAttachmentMetadataSchema>;
 export const complaintBackupSchema = z
   .object({
     requestId: z.uuid(),
