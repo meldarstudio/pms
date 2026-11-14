@@ -1355,8 +1355,8 @@
           "notNull": true,
           "autoincrement": false
         },
-        "has_reservation": {
-          "name": "has_reservation",
+        "reserved_once": {
+          "name": "reserved_once",
           "type": "integer",
           "primaryKey": false,
           "notNull": true,
@@ -1372,13 +1372,13 @@
           ],
           "isUnique": true
         },
-        "public_checkouts_unreserved_age": {
-          "name": "public_checkouts_unreserved_age",
+        "public_checkouts_never_reserved_age": {
+          "name": "public_checkouts_never_reserved_age",
           "columns": [
             "created_at"
           ],
           "isUnique": false,
-          "where": "\"public_checkouts\".\"has_reservation\" = 0"
+          "where": "\"public_checkouts\".\"reserved_once\" = 0"
         }
       },
       "foreignKeys": {

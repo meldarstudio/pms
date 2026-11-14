@@ -9,7 +9,7 @@ import { offerAmounts } from "./public-offers";
 import { priceQuote, quoteExpired, type Quote } from "./quotes";
 import { acceptPhone, requireOnlineArrival } from "./rules";
 
-export type PublicCheckout = typeof publicCheckouts.$inferSelect;
+export type PublicCheckout = Omit<typeof publicCheckouts.$inferSelect, "reservedOnce">;
 
 type CheckoutAcceptanceRow = typeof checkoutAcceptances.$inferSelect;
 
@@ -63,7 +63,6 @@ export async function startCheckout(db: Db, input: PublicCheckoutCreate, context
     tokenHash: await tokenHash(token),
     ...input,
     createdAt: context.now.toISOString(),
-    hasReservation: false,
   };
   const quote = await availableQuote(db, checkout, context);
   await runBatch(db, [

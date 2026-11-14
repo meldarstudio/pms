@@ -1,4 +1,4 @@
-import { and, eq, sql, type SQL } from "drizzle-orm";
+import { and, eq, inArray, or, sql, type SQL } from "drizzle-orm";
 import type { Db } from "./db";
 import { checkoutAcceptances, paymentAttempts, publicCheckouts, quotes } from "./db/schema";
 
@@ -11,7 +11,8 @@ const noActivitySince = (checkout: SQL, cutoff: string) => sql`
   NOT EXISTS (SELECT 1 FROM reservations WHERE public_checkout_id = ${checkout})
   AND NOT EXISTS (SELECT 1 FROM reservations
     WHERE quote_id IN (SELECT id FROM quotes WHERE checkout_id = ${checkout}))
-  AND NOT EXISTS (SELECT 1 FROM payment_attempts WHERE checkout_id = ${checkout}
+  AND NOT EXISTS (SELECT 1 FROM payment_attempts
+    WHERE (checkout_id = ${checkout} OR quote_id IN (SELECT id FROM quotes WHERE checkout_id = ${checkout}))
     AND (status <> 'failed' OR called_at >= ${cutoff}))
   AND NOT EXISTS (SELECT 1 FROM quotes WHERE checkout_id = ${checkout} AND created_at >= ${cutoff})
   AND NOT EXISTS (SELECT 1 FROM checkout_acceptances
@@ -38,7 +39,7 @@ export async function purgeAbandonedCheckouts(db: Db, now: Date) {
       .select({ id: publicCheckouts.id })
       .from(publicCheckouts)
       .where(
-        sql`has_reservation = 0 AND created_at < ${cutoff}
+        sql`reserved_once = 0 AND created_at < ${cutoff}
           AND ${noActivitySince(sql`public_checkouts.id`, cutoff)}`,
       )
       .orderBy(publicCheckouts.createdAt)
@@ -72,7 +73,20 @@ export async function purgeAbandonedCheckouts(db: Db, now: Date) {
 async function deleteAbandonedCheckout(db: Db, id: string, cutoff: string) {
   const abandoned = abandonedCheckout(id, cutoff);
   await db.batch([
-    db.delete(paymentAttempts).where(and(eq(paymentAttempts.checkoutId, id), abandoned)),
+    db
+      .delete(paymentAttempts)
+      .where(
+        and(
+          or(
+            eq(paymentAttempts.checkoutId, id),
+            inArray(
+              paymentAttempts.quoteId,
+              db.select({ id: quotes.id }).from(quotes).where(eq(quotes.checkoutId, id)),
+            ),
+          ),
+          abandoned,
+        ),
+      ),
     db.delete(checkoutAcceptances).where(and(eq(checkoutAcceptances.checkoutId, id), abandoned)),
     db.delete(quotes).where(and(eq(quotes.checkoutId, id), abandoned)),
     db.delete(publicCheckouts).where(and(eq(publicCheckouts.id, id), abandoned)),

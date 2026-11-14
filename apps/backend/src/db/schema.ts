@@ -91,12 +91,12 @@ export const publicCheckouts = sqliteTable(
     ratePlan: text("rate_plan").$type<RatePlanCode>().notNull(),
     language: text("language").$type<CheckoutLanguage>().notNull(),
     createdAt: text("created_at").notNull(),
-    hasReservation: integer("has_reservation", { mode: "boolean" }).notNull().default(false),
+    reservedOnce: integer("reserved_once", { mode: "boolean" }).notNull().default(false),
   },
   (table) => [
-    index("public_checkouts_unreserved_age")
+    index("public_checkouts_never_reserved_age")
       .on(table.createdAt)
-      .where(sql`${table.hasReservation} = 0`),
+      .where(sql`${table.reservedOnce} = 0`),
   ],
 );
 

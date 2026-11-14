@@ -61,6 +61,7 @@ beforeEach(async () => {
 afterEach(() => {
   db.close();
   vi.useRealTimers();
+  vi.restoreAllMocks();
 });
 
 const purge = (now: Date) => purgeAbandonedCheckouts(getDb(db.env.DB), now);
@@ -284,6 +285,47 @@ describe("abandoned checkout purge", () => {
     },
   );
 
+  describe("attempts recorded against its quote before attempts named their checkout", () => {
+    async function checkoutWithQuoteAttempt(status: string) {
+      const opened = await checkout();
+      const { id: quoteId } = await latestQuote(getDb(db.env.DB), opened.id);
+      db.sqlite
+        .prepare(
+          `INSERT INTO payment_attempts (id, quote_id, amount_cents, currency, email, source_id, status, created_at, called_at)
+           VALUES ('quote-attempt', ?, 10000, 'PEN', 'ana@example.com', 'tkn_legacy', ?, ?, ?)`,
+        )
+        .run(quoteId, status, started.toISOString(), started.toISOString());
+      return opened.id;
+    }
+    const quoteAttempts = () =>
+      db.sqlite.prepare("SELECT count(*) n FROM payment_attempts WHERE id = 'quote-attempt'").get();
+
+    it("deletes a failed one with the checkout", async () => {
+      const opened = await checkoutWithQuoteAttempt("failed");
+      const failures = vi.spyOn(console, "error");
+
+      await purge(daysLater(31));
+
+      expect(failures).not.toHaveBeenCalled();
+      expect(checkoutRows(opened).checkouts).toBe(0);
+      expect(quoteAttempts()).toEqual({ n: 0 });
+    });
+
+    it.each(["unknown", "review", "succeeded", "saved"])(
+      "keeps the checkout with a %s one however old",
+      async (status) => {
+        await checkoutWithQuoteAttempt(status);
+        const before = history();
+        const failures = vi.spyOn(console, "error");
+
+        await purge(daysLater(400));
+
+        expect(failures).not.toHaveBeenCalled();
+        expect(history()).toEqual(before);
+      },
+    );
+  });
+
   it.each([
     {
       race: "the guest refreshes its quote",
@@ -368,7 +410,7 @@ describe("abandoned checkout purge", () => {
 
     expect(plans).toEqual([
       expect.stringMatching(
-        /^SEARCH public_checkouts USING INDEX public_checkouts_unreserved_age /,
+        /^SEARCH public_checkouts USING INDEX public_checkouts_never_reserved_age /,
       ),
       expect.stringMatching(
         /^SEARCH quotes USING INDEX quotes_checkout \(checkout_id=\? AND created_at<\?\)/,
@@ -377,7 +419,7 @@ describe("abandoned checkout purge", () => {
     expect(
       db.sqlite
         .prepare(
-          "SELECT id FROM public_checkouts INDEXED BY public_checkouts_unreserved_age WHERE has_reservation = 0 AND created_at < ?",
+          "SELECT id FROM public_checkouts INDEXED BY public_checkouts_never_reserved_age WHERE reserved_once = 0 AND created_at < ?",
         )
         .all(daysLater(400).toISOString()),
     ).toEqual([]);
@@ -401,7 +443,7 @@ describe("abandoned checkout purge", () => {
     expect(
       db.sqlite
         .prepare(
-          "SELECT id FROM public_checkouts INDEXED BY public_checkouts_unreserved_age WHERE has_reservation = 0 AND created_at < ?",
+          "SELECT id FROM public_checkouts INDEXED BY public_checkouts_never_reserved_age WHERE reserved_once = 0 AND created_at < ?",
         )
         .all(started.toISOString()),
     ).toEqual([{ id: "abandoned" }]);
