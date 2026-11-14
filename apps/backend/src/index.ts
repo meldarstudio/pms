@@ -20,6 +20,7 @@ import { roomClosureRoutes } from "./routes/room-closures";
 import { roomRoutes } from "./routes/rooms";
 import { setupRoutes } from "./routes/setup";
 import { getDb } from "./db";
+import { purgeAbandonedCheckouts } from "./abandoned-checkouts";
 import { sendConfirmationEmails } from "./confirmation-emails";
 import {
   expireAuthentications,
@@ -109,6 +110,7 @@ export default {
         );
         await step("authentication expiry", () => expireAuthentications(db, new Date()));
         await step("confirmation send", () => sendConfirmationEmails(db, env));
+        await step("abandoned checkout purge", () => purgeAbandonedCheckouts(db, new Date()));
       })(),
     );
   },

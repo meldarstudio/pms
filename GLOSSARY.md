@@ -291,6 +291,12 @@ reachable only with its secret token. It holds that selection's quotes and agree
 acceptances.
 _Avoid_: Cart, session, reservation
 
+**Abandoned public checkout**:
+A public checkout with no reservation and no payment attempt other than failed ones, whose
+latest activity (opening, quotes, acceptances, payment attempts) was over 30 days ago. It
+is deleted with its quotes, acceptances and failed attempts.
+_Avoid_: Expired checkout, cart abandonment
+
 **Agreement acceptance**:
 A booking contact's acceptance of one quote's terms within a public checkout, recorded
 before any payment. A new acceptance is explicit and only of the checkout's latest

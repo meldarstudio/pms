@@ -9,7 +9,7 @@ import { offerAmounts } from "./public-offers";
 import { priceQuote, quoteExpired, type Quote } from "./quotes";
 import { acceptPhone, requireOnlineArrival } from "./rules";
 
-export type PublicCheckout = typeof publicCheckouts.$inferSelect;
+export type PublicCheckout = Omit<typeof publicCheckouts.$inferSelect, "reservedOnce">;
 
 type CheckoutAcceptanceRow = typeof checkoutAcceptances.$inferSelect;
 

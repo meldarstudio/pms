@@ -76,20 +76,29 @@ export const guests = sqliteTable("guests", {
   createdAt: text("created_at").notNull(),
 });
 
-export const publicCheckouts = sqliteTable("public_checkouts", {
-  id: text("id").primaryKey(),
-  tokenHash: text("token_hash").notNull().unique(),
-  roomTypeId: text("room_type_id")
-    .notNull()
-    .references(() => roomTypes.id),
-  checkIn: text("check_in").notNull(),
-  checkOut: text("check_out").notNull(),
-  adults: integer("adults").notNull(),
-  children: integer("children").notNull(),
-  ratePlan: text("rate_plan").$type<RatePlanCode>().notNull(),
-  language: text("language").$type<CheckoutLanguage>().notNull(),
-  createdAt: text("created_at").notNull(),
-});
+export const publicCheckouts = sqliteTable(
+  "public_checkouts",
+  {
+    id: text("id").primaryKey(),
+    tokenHash: text("token_hash").notNull().unique(),
+    roomTypeId: text("room_type_id")
+      .notNull()
+      .references(() => roomTypes.id),
+    checkIn: text("check_in").notNull(),
+    checkOut: text("check_out").notNull(),
+    adults: integer("adults").notNull(),
+    children: integer("children").notNull(),
+    ratePlan: text("rate_plan").$type<RatePlanCode>().notNull(),
+    language: text("language").$type<CheckoutLanguage>().notNull(),
+    createdAt: text("created_at").notNull(),
+    reservedOnce: integer("reserved_once", { mode: "boolean" }).notNull().default(false),
+  },
+  (table) => [
+    index("public_checkouts_never_reserved_age")
+      .on(table.createdAt)
+      .where(sql`${table.reservedOnce} = 0`),
+  ],
+);
 
 export const quotes = sqliteTable(
   "quotes",
@@ -126,7 +135,10 @@ export const checkoutAcceptances = sqliteTable(
     language: text("language").$type<CheckoutLanguage>().notNull(),
     acceptedAt: text("accepted_at").notNull(),
   },
-  (table) => [index("checkout_acceptances_checkout").on(table.checkoutId, table.acceptedAt)],
+  (table) => [
+    index("checkout_acceptances_checkout").on(table.checkoutId, table.acceptedAt),
+    index("checkout_acceptances_quote").on(table.quoteId),
+  ],
 );
 
 export const reservationStatuses = [
@@ -171,6 +183,7 @@ export const reservations = sqliteTable(
     index("reservations_dates").on(table.checkIn, table.checkOut),
     index("reservations_guest").on(table.guestId),
     uniqueIndex("reservations_quote").on(table.quoteId),
+    index("reservations_public_checkout").on(table.publicCheckoutId),
   ],
 );
 
@@ -293,6 +306,8 @@ export const paymentAttempts = sqliteTable(
   (table) => [
     index("payment_attempts_status").on(table.status, table.calledAt),
     index("payment_attempts_checkout").on(table.checkoutId, table.createdAt),
+    index("payment_attempts_quote").on(table.quoteId),
+    index("payment_attempts_acceptance").on(table.acceptanceId),
     uniqueIndex("payment_attempts_checkout_open")
       .on(table.checkoutId)
       .where(sql`${table.status} IN ('unknown', 'review', 'succeeded', 'saved')`),

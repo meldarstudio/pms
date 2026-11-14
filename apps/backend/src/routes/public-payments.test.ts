@@ -1617,6 +1617,7 @@ describe("recovering an interrupted payment", () => {
     expect(log.mock.calls).toEqual([
       ["scheduled payment reconciliation failed"],
       ["scheduled authentication expiry failed"],
+      ["scheduled abandoned checkout purge failed"],
     ]);
     db.sqlite.exec("ALTER TABLE unavailable_attempts RENAME TO payment_attempts");
     await runScheduled();

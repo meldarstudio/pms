@@ -520,7 +520,7 @@ describe("automatic confirmation", () => {
     expect(sent.text).toContain('King & <img src="x" onerror="alert(1)">');
   });
 
-  it("sends an owed confirmation in the same scheduled run when the payment steps fail", async () => {
+  it("sends an owed confirmation in the same scheduled run when the payment steps and the checkout purge fail", async () => {
     await confirmed();
     configureResend();
     const log = vi.spyOn(console, "error").mockImplementation(() => {});
@@ -531,6 +531,7 @@ describe("automatic confirmation", () => {
     expect(log.mock.calls).toEqual([
       ["scheduled payment reconciliation failed"],
       ["scheduled authentication expiry failed"],
+      ["scheduled abandoned checkout purge failed"],
     ]);
     expect(posts()).toHaveLength(1);
     expect(emails()[0]).toMatchObject({ status: "sent" });
