@@ -37,7 +37,7 @@ export const ui = {
     "complaints.field.responseChannel": "Written response channel",
     "complaints.field.minor": "Consumer is a minor",
     "complaints.error.complaint_book_unavailable":
-      "Development book is not configured. Do not enter real personal data.",
+      "The complaints book is temporarily unavailable. Please try again later or ask at reception for the physical book.",
     "complaints.error.complaint_privacy_information_changed":
       "Privacy information changed. Reload to review it; your draft is retained.",
     "complaints.error.complaint_retry_differs_from_saved_sheet":
@@ -91,8 +91,6 @@ export const ui = {
       "Network error. Your draft is retained; retry the same submission.",
     "complaints.startAnotherSheetSaveOrPrintThis":
       "Start another sheet (save or print this one first)",
-    "complaints.developmentOnlyDoNotEnterRealPersonal":
-      "Development only. Do not enter real personal data. This book is not active for production.",
     "complaints.reclamoAProblemWithAProductOr":
       "Reclamo: a problem with a product or service. Queja: dissatisfaction with attention. The hotel must respond within 15 business days, without extension. Filing with the hotel does not prevent using Indecopi or other remedies directly.",
     "complaints.loading": "Loading…",
@@ -103,8 +101,6 @@ export const ui = {
     "complaints.registering": "Registering…",
     "complaints.retrySameSubmission": "Retry same submission",
     "complaints.registerSheet": "Register sheet",
-    "complaints.developmentPreviewNotActiveForProduction":
-      "Development preview — not active for production.",
 
     "nav.home": "Home",
     "nav.rooms": "Rooms & rates",
@@ -683,7 +679,7 @@ export const ui = {
     "complaints.field.responseChannel": "Canal de respuesta escrita",
     "complaints.field.minor": "Consumidor menor de edad",
     "complaints.error.complaint_book_unavailable":
-      "Libro de desarrollo no configurado. No ingrese datos reales.",
+      "El Libro de Reclamaciones no está disponible por el momento. Inténtelo más tarde o solicite el libro físico en recepción.",
     "complaints.error.complaint_privacy_information_changed":
       "La información de privacidad cambió. Recargue para revisarla; se conserva el borrador.",
     "complaints.error.complaint_retry_differs_from_saved_sheet":
@@ -736,8 +732,6 @@ export const ui = {
       "Error de red. Se conserva el borrador; reintente el mismo envío.",
     "complaints.startAnotherSheetSaveOrPrintThis":
       "Iniciar otra hoja (guarde o imprima esta primero)",
-    "complaints.developmentOnlyDoNotEnterRealPersonal":
-      "Solo desarrollo. No ingrese datos personales reales. Este libro no está habilitado para producción.",
     "complaints.reclamoAProblemWithAProductOr":
       "Reclamo: disconformidad con el producto o servicio. Queja: disconformidad con la atención. El hotel debe responder en 15 días hábiles, sin prórroga. Esta hoja se presenta al hotel y no impide acudir directamente a Indecopi u otras vías.",
     "complaints.loading": "Cargando…",
@@ -748,8 +742,6 @@ export const ui = {
     "complaints.registering": "Registrando…",
     "complaints.retrySameSubmission": "Reintentar el mismo envío",
     "complaints.registerSheet": "Registrar hoja",
-    "complaints.developmentPreviewNotActiveForProduction":
-      "Vista de desarrollo — no habilitado para producción.",
 
     "nav.home": "Inicio",
     "nav.rooms": "Habitaciones y precios",

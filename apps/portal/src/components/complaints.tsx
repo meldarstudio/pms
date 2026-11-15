@@ -14,7 +14,6 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { Alert, AlertDescription } from "@/components/ui/alert";
 import {
   useComplaint,
   useComplaints,
@@ -39,12 +38,6 @@ export function Complaints() {
   return (
     <main className="flex flex-1 flex-col gap-6 overflow-auto p-4 lg:p-6">
       <h1 className="text-2xl font-semibold print:hidden">Libro de Reclamaciones</h1>
-      <Alert className="print:hidden">
-        <AlertDescription>
-          Solo desarrollo. No ingrese datos reales. La activación requiere datos del operador,
-          continuidad de numeración, calendario y políticas verificados.
-        </AlertDescription>
-      </Alert>
       {list.error && <p role="alert">{problemText(list.error)}</p>}
       {!id && (
         <Button className="w-fit print:hidden" variant="outline" onClick={() => setBackup(!backup)}>

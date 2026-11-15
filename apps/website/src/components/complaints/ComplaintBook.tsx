@@ -112,8 +112,6 @@ export function ComplaintBook({
     let active = true;
     void (async () => {
       try {
-        if (!["localhost", "127.0.0.1", "[::1]"].includes(new URL(reservationApiUrl).hostname))
-          throw new Error(complaintProblem("complaint book unavailable", language));
         const loaded = (await (await request("/config")).json()) as ComplaintConfig;
         if (!active) return;
         setConfig(loaded);
