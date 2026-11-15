@@ -98,7 +98,7 @@ export function AppSidebar() {
     },
   ] as const;
   const visibleDestinations =
-    session?.role === "owner" && import.meta.env.DEV
+    session?.role === "owner"
       ? [...destinations, { ...appNavigation.complaints, icon: ClipboardListIcon, search: {} }]
       : destinations;
   const sections = configurationSections.filter(({ id }) =>

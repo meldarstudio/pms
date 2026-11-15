@@ -16,7 +16,7 @@ const messages: Record<string, string> = {
   "complaint attachment retry differs":
     "El reintento contiene un archivo diferente. Selecciona el archivo original o adjunta uno nuevo.",
   "complaint attachment not found": "No se encontró el archivo adjunto.",
-  "complaint book unavailable": "El libro de desarrollo no está configurado.",
+  "complaint book unavailable": "El Libro de Reclamaciones no está disponible.",
   "invalid complaint receipt credential": "No se pudo verificar la constancia.",
   "complaint not found": "No se encontró la hoja.",
   "complaint retry differs from saved sheet":
