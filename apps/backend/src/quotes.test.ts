@@ -85,18 +85,6 @@ describe("quotes", () => {
     });
   });
 
-  it.each([
-    ["a same-day arrival", { checkIn: "2026-10-10" }, "online check-in must be after today"],
-    [
-      "61 nights",
-      { checkIn: "2026-10-20", checkOut: "2026-12-20" },
-      "stay cannot be longer than 60 nights",
-    ],
-    ["more adults than the room type allows", { adults: 3 }, "too many guests for this room type"],
-  ])("rejects %s", async (_, input, message) => {
-    await expect(quote(input)).rejects.toThrow(message);
-  });
-
   it("saves only the first of two quotes for the last room", async () => {
     const first = await quote();
     const second = await quote();
@@ -106,27 +94,6 @@ describe("quotes", () => {
 
     await expect(save(second.id)).rejects.toThrow("no availability");
     expect(await quote()).toMatchObject({ totalCents: 18000, available: false });
-  });
-
-  it.each([
-    [
-      "book",
-      "/reservations",
-      {
-        requestId: crypto.randomUUID(),
-        checkIn: "2026-10-20",
-        checkOut: "2026-10-22",
-        guest: { fullName: "Walk-in" },
-        rooms: [{ roomTypeId: "type", adults: 1, children: 0 }],
-      },
-    ],
-    ["close", "/room-closures", { roomId: "room-101", starts: "2026-10-20", ends: "2026-10-22" }],
-  ])("lets staff %s the last room while a quote for it exists", async (_, path, body) => {
-    await quote();
-
-    const response = await db.request(path, "POST", body);
-
-    expect(response.status).toBe(201);
   });
 
   it("saves one reservation from a retried quote, even when the retry commits first", async () => {

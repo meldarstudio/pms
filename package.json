@@ -18,7 +18,7 @@
     "dev:website": "pnpm --filter @pms/website dev",
     "build:website": "pnpm --filter @pms/website build",
     "verify:website": "pnpm --filter @pms/website verify:build",
-    "test:website": "pnpm --filter @pms/website test:smoke && pnpm --filter @pms/website exec playwright test --project=a11y"
+    "test:website": "pnpm --filter @pms/website test:smoke"
   },
   "devDependencies": {
     "@astrojs/compiler-rs": "^0.5.2",

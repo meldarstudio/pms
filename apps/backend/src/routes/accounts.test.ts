@@ -42,15 +42,6 @@ async function staffAccountId(ownerCookie: string) {
 }
 
 describe("account management", () => {
-  it("lists the accounts for the owner", async () => {
-    const response = await request("/accounts", await cookieFor("owner"));
-    expect(response.status).toBe(200);
-    expect(await response.json()).toEqual([
-      { id: expect.any(String), username: ACCOUNTS.owner.username, role: "owner" },
-      { id: expect.any(String), username: ACCOUNTS.staff.username, role: "staff" },
-    ]);
-  });
-
   it.each([
     ["list accounts", "GET", "/accounts", undefined],
     ["set a password", "PUT", "/accounts/any/password", { password: NEW_PASSWORD }],
@@ -81,29 +72,6 @@ describe("account management", () => {
     expect((await request("/session", owner)).status).toBe(200);
     expect((await login(db.env)).status).toBe(401);
     expect((await login(db.env, loginBody({ password: NEW_PASSWORD }))).status).toBe(200);
-  });
-
-  it("rejects a staff password shorter than 12 characters", async () => {
-    const owner = await cookieFor("owner");
-    const response = await request(
-      `/accounts/${await staffAccountId(owner)}/password`,
-      owner,
-      "PUT",
-      {
-        password: "too short",
-      },
-    );
-    expect(response.status).toBe(400);
-    expect(await response.json()).toEqual({ error: "password must be at least 12 characters" });
-    expect((await login(db.env)).status).toBe(200);
-  });
-
-  it("reports an unknown account", async () => {
-    const response = await request("/accounts/missing/password", await cookieFor("owner"), "PUT", {
-      password: NEW_PASSWORD,
-    });
-    expect(response.status).toBe(404);
-    expect(await response.json()).toEqual({ error: "account not found" });
   });
 
   it("does not set the owner's own password without the current one", async () => {

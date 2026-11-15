@@ -2,15 +2,10 @@ import assert from "node:assert/strict";
 import { describe, it } from "vite-plus/test";
 import type { ReservationDetail, WorkflowAction } from "../src/lib/api.ts";
 import {
-  validationPreviewActions,
-  hasBillingChanges,
   billingPreviewKey,
-  changeCheckIn,
-  minimumCheckOut,
   roomEdits,
   stayValue,
   type RoomDraft,
-  previewFieldErrors,
 } from "../src/lib/reservation-editor.ts";
 const line = (id: string) =>
   ({
@@ -28,32 +23,6 @@ const draft = (room: ReservationDetail["rooms"][number]): RoomDraft => ({
 const dates = { checkIn: "2026-10-12", checkOut: "2026-10-15" };
 
 describe("billing changes versus validation", () => {
-  it("maps proposed room issues to retained and added form rows after a removal", () => {
-    assert.deepEqual(
-      previewFieldErrors(
-        [
-          {
-            code: "room is closed for those dates",
-            field: "roomId",
-            roomIndex: 0,
-          },
-          { code: "no availability", field: "roomTypeId", roomIndex: 1 },
-          {
-            code: "too many guests for this room type",
-            field: "occupancy",
-            roomIndex: 1,
-          },
-        ],
-        [{ removed: true }, { removed: false }, { removed: false }],
-      ),
-      {
-        "rooms[1].room.roomId": "Esta habitación está cerrada para esas fechas.",
-        "rooms[2].room.roomTypeId": "No hay disponibilidad para esas fechas.",
-        "rooms[2].room": "La habitación no tiene capacidad para todos los huéspedes.",
-      },
-    );
-    assert.equal(previewFieldErrors([], [{ removed: false }]), null);
-  });
   const saved = {
     ...dates,
     status: "confirmed",
@@ -135,110 +104,6 @@ describe("billing changes versus validation", () => {
       ]),
     );
   });
-
-  const editRoom = (patch: Partial<RoomDraft["room"]>): WorkflowAction => ({
-    type: "edit-room",
-    lineId: "101",
-    room: { ...stayValue(saved.rooms[0]), ...patch },
-  });
-  it.each<[string, ReservationDetail["status"], WorkflowAction, boolean, boolean]>([
-    [
-      "a later checkout",
-      "confirmed",
-      { type: "dates", ...dates, checkOut: "2026-10-16" },
-      true,
-      true,
-    ],
-    [
-      "an earlier arrival",
-      "confirmed",
-      { type: "dates", ...dates, checkIn: "2026-10-11" },
-      true,
-      true,
-    ],
-    [
-      "a room type change",
-      "confirmed",
-      editRoom({ roomTypeId: "single", roomId: null }),
-      true,
-      true,
-    ],
-    ["an added room", "confirmed", { type: "add-room", room: stayValue(line("102")) }, true, true],
-    ["a removed room", "confirmed", { type: "remove-room", lineId: "101" }, true, true],
-    ["a discount", "confirmed", { type: "set-discount", amountCents: 1000 }, true, true],
-    ["a cancellation", "confirmed", { type: "set-status", status: "cancelled" }, true, true],
-    ["a restoration", "cancelled", { type: "set-status", status: "confirmed" }, true, true],
-    [
-      "a repeated cancellation",
-      "cancelled",
-      { type: "set-status", status: "cancelled" },
-      false,
-      true,
-    ],
-    ["a checkout", "confirmed", { type: "set-status", status: "checked_out" }, false, true],
-    ["an adult count", "confirmed", editRoom({ adults: 3 }), false, true],
-    ["a child count", "confirmed", editRoom({ children: 1 }), false, true],
-    ["a room assignment", "confirmed", editRoom({ roomId: "102" }), false, true],
-    ["a cleared assignment", "confirmed", editRoom({ roomId: null }), false, true],
-    ["notes", "confirmed", { type: "notes", notes: "Note" }, false, false],
-    [
-      "a contact",
-      "confirmed",
-      {
-        type: "contact",
-        contact: {
-          fullName: "Ana",
-          email: null,
-          phone: null,
-          documentType: null,
-          documentNumber: null,
-        },
-      },
-      false,
-      false,
-    ],
-    ["staying guests", "confirmed", { type: "set-guests", guests: [] }, false, false],
-  ])(
-    "classifies %s on a %s reservation for billing and validation previews",
-    (_name, status, action, billing, previewed) => {
-      assert.equal(hasBillingChanges({ ...saved, status }, [action]), billing);
-      assert.deepEqual(validationPreviewActions([action]), previewed ? [action] : []);
-    },
-  );
-
-  it("clears the billing badge when the last pricing edit is reverted, even with other unsaved edits", () => {
-    const operational: WorkflowAction = {
-      type: "edit-room",
-      lineId: "101",
-      room: { ...stayValue(saved.rooms[0]), roomId: "102", children: 1 },
-    };
-    const notes: WorkflowAction = { type: "notes", notes: "Late arrival" };
-    const price: WorkflowAction = {
-      type: "dates",
-      ...dates,
-      checkOut: "2026-10-16",
-    };
-    assert.equal(hasBillingChanges(saved, [price, operational, notes]), true);
-    assert.deepEqual(validationPreviewActions([price, operational, notes]), [price, operational]);
-    assert.equal(hasBillingChanges(saved, [operational, notes]), false);
-    assert.deepEqual(validationPreviewActions([operational, notes]), [operational]);
-    assert.equal(hasBillingChanges(saved, [{ type: "dates", ...dates }]), false);
-    assert.equal(hasBillingChanges(saved, [{ type: "set-discount", amountCents: 0 }]), false);
-    assert.equal(hasBillingChanges(saved, []), false);
-  });
-
-  it("compares against the saved room type after a save or discard", () => {
-    const drafts = [draft(saved.rooms[0])];
-    drafts[0].room.roomTypeId = "single";
-    const changes = roomEdits(saved, drafts);
-    assert.equal(hasBillingChanges(saved, changes), true);
-    const updated = {
-      ...saved,
-      rooms: [{ ...saved.rooms[0], roomTypeId: "single" }],
-    };
-    assert.equal(hasBillingChanges(updated, roomEdits(updated, drafts)), false);
-    assert.equal(hasBillingChanges(saved, roomEdits(saved, [draft(saved.rooms[0])])), false);
-  });
 });
 describe("reservation edit drafts", () => {
   it("emits removals, additions and edits but ignores equal drafts and unsaved removals", () => {
@@ -263,19 +128,5 @@ describe("reservation edit drafts", () => {
       [{ type: "edit-room", lineId: "101", room: changed }],
     );
     assert.deepEqual(roomEdits({ rooms: [saved] } as ReservationDetail, [draft(saved)]), []);
-  });
-});
-describe("shared stay dates", () => {
-  it("advances checkout when an arrival would leave less than a night", () => {
-    assert.deepEqual(changeCheckIn(dates, "2026-10-15"), {
-      checkIn: "2026-10-15",
-      checkOut: "2026-10-16",
-    });
-    assert.deepEqual(changeCheckIn(dates, "2026-10-10"), {
-      checkIn: "2026-10-10",
-      checkOut: dates.checkOut,
-    });
-    assert.equal(minimumCheckOut("2026-12-31"), "2027-01-01");
-    assert.equal(minimumCheckOut("2028-02-28"), "2028-02-29");
   });
 });

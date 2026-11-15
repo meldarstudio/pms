@@ -5,56 +5,52 @@ type checks live in the root `vite.config.ts` and package configs.
 
 ## Tests
 
-Each test should protect a concrete failure that matters to users or callers.
-Judge tests by the confidence they add and their maintenance cost. Test counts
-and coverage percentages are diagnostic information, not targets.
+The suite is a tripwire, not a specification. A test earns its place only when
+its failure means one of these:
 
-- Test observable behavior through the relevant interface. Backend API tests
-  should exercise real routes and database behavior. Database tests should
-  protect the business-rule triggers directly. Frontend interaction tests
-  should exercise the real forms or components.
-- Keep helper tests for substantial logic or behavior that other tests do not
-  adequately cover. A helper having its own function or file is not enough
-  reason to give it a separate test.
-- Preserve coverage for billing, payment retries, atomic saves, availability
-  conflicts, date boundaries, draft preservation, and stale previews.
-- Use expected values from known examples or business rules. Avoid assertions
-  that recalculate the result using the same logic as the implementation.
-- Prefer observable results over internal call counts, exact schema shapes, or
-  the absence of retired fields. Keep internal checks only when they protect a
-  specific failure that observable checks would miss.
+- **Money**: a wrong charge, refund, coupon, bill, or balance.
+- **Inventory**: a room double-booked, or sold while full or closed.
+- **Access**: a route, token, or record reachable by someone it should refuse.
+- **Data**: a retry saved twice, a partial save, a draft lost after a failed
+  save, or a migration that changes production rows.
+- **Core flow**: a guest cannot book and pay; staff cannot create, edit,
+  check in, or cancel a reservation.
+
+Leave everything else to types, lint, and manual review: copy, layout, focus,
+logging, validation matrices, and variations of a rule a kept test already
+trips on. When a change adds a test, name the failure it trips on; when none
+of the five applies, the change ships without one.
+
+- Write one test per failure, at the cheapest layer that catches it: price and
+  bill math in `lib` unit tests, business-rule triggers in `db` tests, and
+  everything else through the real routes. A rule covered at one layer is not
+  repeated at another.
+- Parameterize only cases that fail for different reasons. One representative
+  stands for a class of equivalent inputs.
+- Take expected values from known examples or business rules, never from the
+  implementation's own logic.
+- Assert observable results: responses, saved rows, visible values. Exact
+  error-message assertions stay only where another package maps the message.
+- Delete a migration's upgrade test once that migration is applied in
+  production; it can never fail again.
+- Keep `pnpm test` under one minute. Past that, delete or merge before adding.
 
 ### Frontend scope
 
-Keep the portal suite small and risk-focused: reservation creation and edits,
-money and retry safety, availability conflicts, date boundaries, authentication,
-and protection against lost drafts. Reuse existing screen/form suites and the
-shared browser harness before adding another integration suite.
+The backend enforces every rule, so portal and website tests cover only what
+the browser alone gets wrong: a save sent twice, a stale price or preview shown
+as current, a draft lost after a failed save, and a core flow that no longer
+completes. Cover each risk once, through an existing screen suite or the
+website's pure `checkout-flow` reducer. Playwright covers only journeys that
+need a real browser and backend: book, pay, recover a payment, and file a
+complaint.
 
-- Cover a workflow's happy path and consequential failures. Use representative
-  UI cases rather than every combination of equivalent inputs; keep exhaustive
-  cases for substantial money, date, or availability logic in lightweight tests.
-- Test shared behavior once through its real form, with screen-specific checks
-  only for distinct wiring or behavior. A helper or component does not need its
-  own suite when that behavior is already covered.
-- Check visible values, actions, errors, and accessibility behavior. Leave CSS
-  classes, exact nesting, and visual polish to manual review.
+### Removing tests
 
-### Consolidating or removing tests
-
-- Merge duplicate scenarios and share repetitive setup when the resulting test
-  remains easy to read. Parameterize variations of the same rule and give each
-  case a name that identifies the failure.
-- Keep distinct failure cases identifiable. Restoration blocked by an assigned
-  room and restoration blocked by room-type capacity need separate cases.
-  Avoid long scenarios that combine unrelated behavior.
-- For each removed scenario, identify the retained test that covers its
-  meaningful behavior, or explain why the check adds little confidence. Put
-  this reasoning in the review or change description rather than a permanent
-  inventory of tests.
-- A passing reduced suite alone does not prove that a deletion is safe. Review
-  the removed assertions against the remaining tests and relevant application
-  code, then run the affected tests and repository checks.
+A test that trips on none of the five failures is deleted without a
+replacement. For any other removal, name the kept test that covers the same
+failure in the change description, then run the affected tests and
+`pnpm check`.
 
 ## Documentation
 

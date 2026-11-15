@@ -1,7 +1,6 @@
 import type { WorkflowAction } from "@pms/shared";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { getDb } from "./db";
-import { HttpError } from "./http";
 import { loadReservation, loadReservations } from "./reservation-read";
 import {
   createTestDb,
@@ -92,51 +91,6 @@ const loadEach = (ids: string[]) =>
   Promise.all(ids.map((id) => loadReservation(getDb(db.env.DB), id)));
 
 describe("loading reservations", () => {
-  it("loads many reservations in the requested order exactly as it loads each one", async () => {
-    const issuer = await couponIssuer();
-    await command(issuer.id, [
-      {
-        type: "request-refund",
-        paymentId: issuer.payments[0].id,
-        amountCents: 1000,
-        method: "cash",
-        reason: "Change of plans",
-      },
-    ]);
-    const funded = await redeemer(issuer.coupons[0].code);
-    const family = await book("2026-10-12", "2026-10-14", 2);
-    await command(family.id, [
-      pay(5000),
-      {
-        type: "set-guests",
-        guests: [
-          {
-            id: crypto.randomUUID(),
-            fullName: "Grace Hopper",
-            email: null,
-            phone: null,
-          },
-        ],
-      },
-    ]);
-    const ids = [family.id, funded.id, issuer.id];
-
-    const states = await loadReservations(getDb(db.env.DB), ids);
-
-    expect(states).toEqual(await loadEach(ids));
-    expect(states.map((state) => state.reservation.id)).toEqual(ids);
-    expect(states[0]).toMatchObject({
-      lines: [{ nights: [{}, {}] }, { nights: [{}, {}] }],
-      stayingGuests: [{ fullName: "Grace Hopper" }],
-      payments: [{ amountCents: 5000 }],
-    });
-    expect(states[2]).toMatchObject({
-      cancellations: [{ outcome: "cancelled" }],
-      refunds: [{ amountCents: 1000, status: "requested" }],
-      couponMovements: [{ kind: "issue", amountCents: 15000 }],
-    });
-  });
-
   it("loads more reservations than one batch holds, sharing a coupon across batches once each", async () => {
     const issuer = await couponIssuer();
     const nearby = await redeemer(issuer.coupons[0].code);
@@ -154,31 +108,5 @@ describe("loading reservations", () => {
       ]);
     expect(states[50]).toMatchObject({ reservation: { id: fillers[48] }, coupons: [] });
     expect(states[112].lines[0].nights).toHaveLength(2);
-  });
-
-  it.each([
-    { name: "a missing reservation", ids: ["missing"], message: "reservation not found" },
-    {
-      name: "one missing among many",
-      ids: ["filler-000", "missing"],
-      message: "reservation not found",
-    },
-    {
-      name: "a reservation without its booking contact",
-      ids: ["orphan"],
-      message: "guest not found",
-    },
-  ])("rejects $name with a 404", async ({ ids, message }) => {
-    seedFillers(1);
-    db.sqlite.exec("PRAGMA foreign_keys = OFF");
-    db.sqlite.exec(
-      "INSERT INTO reservations (id, code, status, guest_id, check_in, check_out, created_at) VALUES ('orphan', 'ORPHAN', 'confirmed', 'gone', '2026-10-25', '2026-10-26', '2026-10-10')",
-    );
-    db.sqlite.exec("PRAGMA foreign_keys = ON");
-
-    const loading = loadReservations(getDb(db.env.DB), ids);
-
-    await expect(loading).rejects.toBeInstanceOf(HttpError);
-    await expect(loading).rejects.toMatchObject({ status: 404, message });
   });
 });

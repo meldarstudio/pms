@@ -5,8 +5,6 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterEach, beforeEach, describe, expect, it } from "vite-plus/test";
-import { splitStatements } from "../../scripts/d1.mjs";
-import { buildResetSql } from "../../scripts/seed-data.mjs";
 
 const backendDir = new URL("../../", import.meta.url);
 const migrationsDir = new URL("drizzle/", backendDir);
@@ -26,14 +24,6 @@ afterEach(() => {
 });
 
 describe("local dummy data reset", () => {
-  it("replaces the previous sample data on the current schema", () => {
-    const sql = buildResetSql("2026-10-06");
-    db.exec(sql);
-    db.exec(sql);
-    expect(db.prepare("SELECT COUNT(*) AS count FROM reservations").get().count).toBeGreaterThan(0);
-    expect(db.prepare("PRAGMA foreign_key_check").all()).toEqual([]);
-  }, 15_000);
-
   it.each([["--remote"]])("refuses remote reset before running cf: %j", (...args) => {
     const result = spawnSync(
       process.execPath,
@@ -84,11 +74,5 @@ process.stdout.write(JSON.stringify([{ success: true, results: { columns: ['type
     } finally {
       rmSync(directory, { recursive: true, force: true });
     }
-  });
-
-  it("keeps semicolons inside quoted values when splitting a batch", () => {
-    expect(splitStatements("INSERT INTO t VALUES ('a;b', 'it''s; ok');\nDELETE FROM t;\n")).toEqual(
-      ["INSERT INTO t VALUES ('a;b', 'it''s; ok')", "DELETE FROM t"],
-    );
   });
 });

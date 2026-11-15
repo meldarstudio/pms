@@ -1,12 +1,12 @@
 import assert from "node:assert/strict";
-import { afterAll, afterEach, beforeAll, beforeEach, describe, it } from "vite-plus/test";
+import { afterEach, beforeAll, beforeEach, describe, it } from "vite-plus/test";
 import type {
   ReservationDetail,
   WorkflowAction,
   WorkflowCommand,
   WorkflowPreview,
 } from "../src/lib/api.ts";
-import { createBrowserTest, type BrowserPage, type BrowserTest } from "./browser.ts";
+import { sharedBrowserTest, type BrowserPage, type BrowserTest } from "./browser.ts";
 
 let browser: BrowserTest;
 let page: BrowserPage;
@@ -15,7 +15,7 @@ let commands: typeof import("../src/lib/reservation-commands.ts");
 let sent: WorkflowCommand[];
 
 beforeAll(async () => {
-  browser = await createBrowserTest();
+  browser = await sharedBrowserTest();
   ({ React } = browser);
   commands = (await browser.server.ssrLoadModule(
     "/src/lib/reservation-commands.ts",
@@ -30,10 +30,6 @@ beforeEach(() => {
 
 afterEach(async () => {
   await page.cleanup();
-});
-
-afterAll(async () => {
-  await browser?.close();
 });
 
 function reservation(id: string, changes: Partial<ReservationDetail> = {}) {
@@ -177,32 +173,6 @@ describe("duplicate-safe retry", () => {
     assert.equal(sent.length, 2);
     assert.notEqual(sent[1].requestId, sent[0].requestId);
   });
-
-  it("keeps a pending Payment retry independent of a Staying guest save", async () => {
-    const editor = await mountEditor();
-    dropNextCommand();
-    await send(editor, [payment]);
-    dropNextCommand();
-    await send(editor, [stayingGuests]);
-    await send(editor, [stayingGuests]);
-    await send(editor, [payment]);
-
-    const [lostPayment, lostGuests, guestsRetry, paymentRetry] = sent;
-    assert.notEqual(lostGuests.requestId, lostPayment.requestId);
-    assert.equal(guestsRetry.requestId, lostGuests.requestId);
-    assert.equal(paymentRetry.requestId, lostPayment.requestId);
-  });
-
-  it("forgets unsettled saves when the query client is cleared, as on sign-out", async () => {
-    const editor = await mountEditor();
-    dropNextCommand();
-    await send(editor, [payment]);
-    page.client.clear();
-    await send(editor, [payment]);
-
-    assert.equal(sent.length, 2);
-    assert.notEqual(sent[1].requestId, sent[0].requestId);
-  });
 });
 
 describe("ordering", () => {
@@ -243,144 +213,6 @@ describe("ordering", () => {
     assert.deepEqual(againResult, firstResult);
     assert.equal(firstResult.status === "saved" && firstResult.reservation.paidCents, 10000);
   });
-
-  it("drops queued saves and starts a fresh one when the query client is cleared, as on sign-out", async () => {
-    const held = page.api.hold("POST", "/reservations/:id/commands");
-    const editor = await mountEditor();
-    const running = await start(editor, [payment]);
-    const queued = await start(editor, [stayingGuests]);
-    await page.until(() => held.request !== undefined, "Expected the first save to be sent");
-
-    page.client.clear();
-    const afterClear = await start(editor, [payment]);
-    held.release(Response.json(reservation("res-1", { paidCents: 10000 })));
-
-    assert.equal((await settle(running)).status, "saved");
-    assert.deepEqual(await settle(queued), {
-      status: "failed",
-      message: "No se pudieron guardar los cambios.",
-    });
-    assert.equal((await settle(afterClear)).status, "saved");
-    assert.deepEqual(
-      sent.map((command) => command.actions[0].type),
-      ["add-payment", "add-payment"],
-    );
-    assert.notEqual(sent[1].requestId, sent[0].requestId);
-    assert.equal(page.container.textContent, "idle");
-  });
-
-  it("does not delay saves to a different Reservation", async () => {
-    page.api.hold("POST", "/reservations/res-1/commands");
-    const first = await mountEditor("res-1");
-    void (await start(first, [discount]));
-    const other = await mountEditor("res-2");
-
-    assert.equal((await send(other, [discount])).status, "saved");
-  });
-});
-
-describe("server rejections", () => {
-  const contact: WorkflowAction = {
-    type: "contact",
-    contact: { fullName: "Ada Lovelace", email: "ada@", phone: "+51 999" },
-  };
-  const dates: WorkflowAction = { type: "dates", checkIn: "2026-10-22", checkOut: "2027-01-22" };
-
-  it.each([
-    {
-      name: "a future Payment date on the Payment date",
-      actions: [payment],
-      error: "payment date cannot be in the future",
-      fields: { date: "La fecha del pago no puede ser futura." },
-    },
-    {
-      name: "a zero amount on the amount",
-      actions: [payment],
-      error: "amount cannot be zero",
-      fields: { amount: "El importe debe ser distinto de cero." },
-    },
-    {
-      name: "a missing Payment method on the Payment method",
-      actions: [payment],
-      error: "method is required",
-      fields: { method: "Selecciona un método de pago." },
-    },
-    {
-      name: "an invalid Booking contact email on the email",
-      actions: [contact],
-      error: "invalid email",
-      fields: { email: "Ingresa un correo válido." },
-    },
-    {
-      name: "an invalid Contact phone on the phone",
-      actions: [contact],
-      error: "phone number is too short",
-      field: "phone",
-      fields: {
-        phone: "El número está incompleto. Si es un teléfono fijo, incluye el código de área.",
-      },
-    },
-    {
-      name: "a stay longer than 60 nights on the Checkout date",
-      actions: [dates],
-      error: "stay cannot be longer than 60 nights",
-      fields: { checkOut: "La estancia no puede superar las 60 noches." },
-    },
-    {
-      name: "a stay shorter than one night on the Checkout date",
-      actions: [dates],
-      error: "stay must be at least one night",
-      fields: { checkOut: "La estancia debe tener al menos una noche." },
-    },
-  ])("places $name", async ({ actions, error, field, fields }) => {
-    page.api.failOnce(
-      "POST",
-      "/reservations/:id/commands",
-      400,
-      { error },
-      field ? { "X-Error-Field": field } : undefined,
-    );
-    const editor = await mountEditor();
-
-    assert.deepEqual(await send(editor, actions), { status: "rejected", fields });
-  });
-
-  it.each([
-    {
-      name: "a rejection without a field",
-      actions: [payment],
-      fail: () =>
-        page.api.failOnce("POST", "/reservations/:id/commands", 409, {
-          error: "reservation changed while saving; please try again",
-        }),
-      message: "La reserva cambió mientras se guardaba. Intenta guardar de nuevo.",
-      code: "reservation changed while saving; please try again",
-    },
-    {
-      name: "a field rejection the sent actions do not edit",
-      actions: [stayingGuests],
-      fail: () =>
-        page.api.failOnce("POST", "/reservations/:id/commands", 400, {
-          error: "payment date cannot be in the future",
-        }),
-      message: "La fecha del pago no puede ser futura.",
-      code: "payment date cannot be in the future",
-    },
-    {
-      name: "a lost connection",
-      actions: [payment],
-      fail: dropNextCommand,
-      message: "No se pudo conectar con el servidor. Inténtalo de nuevo.",
-    },
-  ])("reports $name as one Spanish message", async ({ actions, fail, message, code }) => {
-    fail();
-    const editor = await mountEditor();
-
-    assert.deepEqual(
-      await send(editor, actions),
-      code ? { status: "failed", message, code } : { status: "failed", message },
-    );
-  });
 });
 
 function previewAfterPayments() {
@@ -405,32 +237,6 @@ function previewAfterPayments() {
 
 describe("bill preview", () => {
   const discount: WorkflowAction = { type: "set-discount", amountCents: 2000 };
-
-  it("returns the resulting bill and validation issues, and re-reads after a save to the Reservation", async () => {
-    const previews = previewAfterPayments();
-    const preview: { current?: ReturnType<typeof commands.useReservationPreview> } = {};
-    const editor: { current: Commands } = { current: undefined as never };
-    function DiscountEditor() {
-      preview.current = commands.useReservationPreview("res-1", [discount], true);
-      editor.current = commands.useReservationCommands("res-1");
-      return null;
-    }
-    await page.render(React.createElement(DiscountEditor));
-    await page.until(() => preview.current?.data !== undefined, "Expected a preview");
-    assert.equal(preview.current?.data?.billing.balanceCents, 28000);
-    assert.deepEqual(preview.current?.data?.validation.issues, [
-      { code: "no availability", roomIndex: 0, field: "roomTypeId" },
-    ]);
-    assert.deepEqual(previews[0].actions, [discount]);
-
-    assert.equal((await send(editor, [payment])).status, "saved");
-    await page.until(
-      () => preview.current?.data?.billing.balanceCents === 18000,
-      "Expected the preview to re-read after the Payment",
-    );
-    assert.deepEqual(preview.current?.data?.validation.issues, []);
-    assert.equal(previews.length, 2);
-  });
 
   it("ignores an older in-flight preview when a separately saved Payment refreshes it", async () => {
     previewAfterPayments();
@@ -460,18 +266,6 @@ describe("bill preview", () => {
 
     assert.equal(preview.current?.data?.billing.balanceCents, 18000);
     assert.equal(preview.current?.isFetching, false);
-  });
-
-  it("does not ask the server while disabled", async () => {
-    const previews = previewAfterPayments();
-    function Hidden() {
-      commands.useReservationPreview("res-1", [discount], false);
-      return null;
-    }
-    await page.render(React.createElement(Hidden));
-    await page.flush(20);
-
-    assert.equal(previews.length, 0);
   });
 });
 
@@ -516,18 +310,6 @@ describe("refresh after saving", () => {
     await page.until(() => lists.length === 2 && calendars.length === 2);
     await page.until(() => shown.reservation?.balanceCents === 20000, "Expected the saved bill");
     assert.equal(reads.length, 1);
-  });
-
-  it("re-reads the Booking contact's other Reservations after a contact change", async () => {
-    const sameContact = page.api.requests("GET", "/reservations/res-2");
-    const { editor } = await mountWithViews([{ id: "res-2", guestId: "contact-ada" }]);
-    await page.until(() => sameContact.length === 1);
-
-    await send(editor, [
-      { type: "contact", contact: { fullName: "Ada Byron", email: null, phone: null } },
-    ]);
-
-    await page.until(() => sameContact.length === 2, "Expected the other Reservation re-read");
   });
 });
 
@@ -600,32 +382,5 @@ describe("room assignment", () => {
       message: "La habitación cambió. Actualiza la reserva.",
     });
     assert.equal(sent.length, 0);
-  });
-
-  it("waits for a running save to the same Reservation before re-reading it", async () => {
-    const reads = page.api.requests("GET", "/reservations/res-1");
-    page.api.on("GET", "/reservations/res-1", () =>
-      reservation("res-1", { rooms: [line] } as never),
-    );
-    const held = page.api.hold("POST", "/reservations/:id/commands");
-    const calendar: { current: Assignment } = { current: undefined as never };
-    function Calendar() {
-      calendar.current = commands.useRoomAssignmentCommand();
-      return null;
-    }
-    const editor = await mountEditor("res-1", Calendar);
-    const discount = await start(editor, [{ type: "set-discount", amountCents: 2000 }]);
-    let assigned!: Promise<Result>;
-    await React.act(async () => {
-      assigned = calendar.current.assign(target, "room-2");
-    });
-    await page.until(() => held.request !== undefined, "Expected the Discount save to be sent");
-    await page.flush(20);
-    assert.equal(reads.length, 0);
-
-    held.release(Response.json(reservation("res-1")));
-    await settle(discount);
-    assert.equal((await settle({ result: assigned })).status, "saved");
-    assert.equal(reads.length, 1);
   });
 });

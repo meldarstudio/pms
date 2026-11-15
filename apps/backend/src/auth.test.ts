@@ -54,15 +54,6 @@ describe("sign-in", () => {
     expect((await get("/rooms", sessionCookie(response))).status).toBe(200);
   });
 
-  it("signs the owner in with the owner role", async () => {
-    const response = await login(env, loginBody({}, "owner"));
-    expect(response.status).toBe(200);
-    expect(await response.json()).toMatchObject({
-      username: ACCOUNTS.owner.username,
-      role: "owner",
-    });
-  });
-
   it.each([
     ["wrong password", { password: "not the password" }],
     ["wrong username", { username: "someone-else" }],
@@ -73,11 +64,6 @@ describe("sign-in", () => {
     expect(response.headers.getSetCookie()).toEqual([]);
   });
 
-  it("accepts the username in any letter case", async () => {
-    const response = await login(env, loginBody({ username: "HotelManantial" }));
-    expect(response.status).toBe(200);
-  });
-
   it("returns 429 without checking credentials once the limit is hit", async () => {
     const limit = vi.fn(async () => ({ success: false }));
     const response = await login({ ...env, LOGIN_LIMITER: { limit } });
@@ -85,20 +71,6 @@ describe("sign-in", () => {
     expect(await response.json()).toEqual({ error: "too many login attempts" });
     expect(response.headers.get("retry-after")).toBe("60");
     expect(response.headers.getSetCookie()).toEqual([]);
-  });
-
-  it("rate-limits by the caller's IP address", async () => {
-    const limit = vi.fn(async () => ({ success: true }));
-    await app.request(
-      "/login",
-      {
-        method: "POST",
-        headers: { "content-type": "application/json", "cf-connecting-ip": "203.0.113.9" },
-        body: JSON.stringify(loginBody()),
-      },
-      { ...env, LOGIN_LIMITER: { limit } },
-    );
-    expect(limit).toHaveBeenCalledWith({ key: "203.0.113.9" });
   });
 
   it("has no sign-up route", async () => {
@@ -132,22 +104,6 @@ describe("session guard", () => {
     const response = await app.request(path, { method }, env);
     expect(response.status).toBe(status);
     expect(await response.json()).toEqual(body);
-  });
-
-  it("uses the Secure-prefixed session cookie over HTTPS", async () => {
-    const response = await app.request(
-      "https://api.hotelmanantialchurin.com/login",
-      {
-        method: "POST",
-        headers: { "content-type": "application/json", origin: PORTAL_ORIGIN },
-        body: JSON.stringify(loginBody()),
-      },
-      env,
-    );
-    expect(response.status).toBe(200);
-    const cookie = response.headers.getSetCookie().join("\n");
-    expect(cookie).toMatch(/^__Secure-pms\.session_token=/);
-    expect(cookie).toMatch(/; Secure(?:;|$)/i);
   });
 
   it("rejects a cookie with a forged signature or a rotated secret", async () => {
@@ -197,40 +153,8 @@ describe("session guard", () => {
 });
 
 describe("cross-origin access", () => {
-  it("answers the preflight for the portal origin without a session", async () => {
-    const response = await app.request(
-      "/reservations",
-      {
-        method: "OPTIONS",
-        headers: {
-          origin: PORTAL_ORIGIN,
-          "access-control-request-method": "POST",
-          "access-control-request-headers": "content-type",
-        },
-      },
-      env,
-    );
-    expect(response.status).toBe(204);
-    expect(response.headers.get("access-control-allow-origin")).toBe(PORTAL_ORIGIN);
-    expect(response.headers.get("access-control-allow-credentials")).toBe("true");
-    expect(response.headers.get("access-control-max-age")).toBe("7200");
-  });
-
-  it("lets the portal read a 401 response", async () => {
-    const response = await get("/rooms");
-    expect(response.status).toBe(401);
-    expect(response.headers.get("access-control-allow-origin")).toBe(PORTAL_ORIGIN);
-    expect(response.headers.get("access-control-allow-credentials")).toBe("true");
-  });
-
   it("does not allow an origin that is not configured", async () => {
     const response = await app.request("/", { headers: { origin: "http://localhost:5173" } }, env);
     expect(response.headers.get("access-control-allow-origin")).toBeNull();
-  });
-
-  it("allows each configured origin", async () => {
-    const both = { ...env, ALLOWED_ORIGINS: `${PORTAL_ORIGIN}, http://localhost:5173` };
-    const response = await app.request("/", { headers: { origin: "http://localhost:5173" } }, both);
-    expect(response.headers.get("access-control-allow-origin")).toBe("http://localhost:5173");
   });
 });

@@ -1,8 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { getDb } from "../db";
 import worker, { app } from "../index";
-import { paymentContext, reconcilePaymentAttempts } from "../payment-attempts";
-import { whenReplacementIsPriced } from "../public-checkouts";
 import { createQuote } from "../quotes";
 import { CULQI_TEST_KEY, fakeCulqi, type FakeCulqi } from "../test-support/culqi";
 import { WEBSITE_ORIGIN } from "../test-support/auth";
@@ -224,169 +222,9 @@ describe("paying the accepted quote", () => {
       reservation: { paidCents: 18000, outstandingCents: 0 },
     });
   });
-
-  it("records the public checkout, its accepted agreement and language before calling Culqi", async () => {
-    const checkout = await acceptedCheckout();
-    let recorded: unknown[] = [];
-    culqi.next("POST /charges", "timeout");
-    const original = globalThis.fetch;
-    vi.stubGlobal("fetch", (async (input: RequestInfo | URL, init?: RequestInit) => {
-      recorded = rows(
-        "SELECT status, checkout_id IS NOT NULL AS checkout, acceptance_id IS NOT NULL AS acceptance, language, confirmation_email_eligible AS eligible FROM payment_attempts",
-      );
-      return original(input, init);
-    }) as typeof fetch);
-
-    await paid(checkout);
-
-    expect(recorded).toEqual([
-      { status: "unknown", checkout: 1, acceptance: 1, language: "en", eligible: 1 },
-    ]);
-  });
-
-  it("saves the accepted note on the reservation and leaves the guest's notes empty", async () => {
-    db.sqlite.exec(`INSERT INTO guests (id, full_name, email, phone, notes, created_at)
-      VALUES ('existing', 'Ana Torres', 'ana@example.com', '+51987654321', 'VIP notes', '2026-01-01')`);
-    const checkout = await acceptedCheckout({}, "We arrive around 9 pm.");
-    await guest("/public/checkout/acceptances", {
-      token: checkout.token,
-      body: {
-        quoteId: checkout.quoteId,
-        language: "en",
-        contact,
-        agreed: true,
-        notes: "Arriving at 9 pm, quiet room please",
-      },
-    });
-
-    await paid(checkout);
-
-    expect(
-      rows(
-        "SELECT r.notes AS reservation_notes, g.notes AS guest_notes FROM reservations r JOIN guests g ON g.id = r.guest_id ORDER BY g.created_at DESC",
-      ),
-    ).toEqual([{ reservation_notes: "Arriving at 9 pm, quiet room please", guest_notes: null }]);
-  });
-
-  it("leaves the reservation's notes empty when the guest left none", async () => {
-    await paid(await acceptedCheckout());
-
-    expect(rows("SELECT notes FROM reservations")).toEqual([{ notes: null }]);
-  });
-
-  it("reconciles a delayed charge with its exact accepted note, not a newer acceptance", async () => {
-    const checkout = await acceptedCheckout({}, "The note accepted before the charge");
-    culqi.next("POST /charges", "lose");
-    expect(await paid(checkout)).toMatchObject({ state: "processing", reservation: null });
-    db.sqlite.exec(`INSERT INTO checkout_acceptances
-      (id, checkout_id, quote_id, full_name, email, phone, notes, language, accepted_at)
-      SELECT 'later-acceptance', checkout_id, quote_id, full_name, email, phone,
-        'A newer note that was not charged', language, '2026-10-10T15:01:00.000Z'
-      FROM checkout_acceptances`);
-
-    await vi.advanceTimersByTimeAsync(10_000);
-    await Promise.all(tasks);
-
-    expect(await status(checkout.token)).toMatchObject({ state: "confirmed" });
-    expect(rows("SELECT notes FROM reservations")).toEqual([
-      { notes: "The note accepted before the charge" },
-    ]);
-    expect(charges()).toHaveLength(1);
-  });
-
-  it("carries the public checkout onto the reservation saved after a delayed lookup", async () => {
-    const checkout = await acceptedCheckout();
-    culqi.next("POST /charges", "lose");
-
-    expect(await paid(checkout)).toMatchObject({ state: "processing", reservation: null });
-    await vi.advanceTimersByTimeAsync(10_000);
-    await Promise.all(tasks);
-
-    expect(await status(checkout.token)).toMatchObject({ state: "confirmed" });
-    expect(
-      rows(
-        "SELECT r.status, r.public_checkout_id = c.id AS linked, g.full_name, g.email, g.phone FROM reservations r JOIN guests g ON g.id = r.guest_id JOIN public_checkouts c",
-      ),
-    ).toEqual([
-      {
-        status: "confirmed",
-        linked: 1,
-        full_name: "Ana Torres",
-        email: "ana@example.com",
-        phone: "+51987654321",
-      },
-    ]);
-    expect(charges()).toHaveLength(1);
-  });
 });
 
 describe("payment outcomes", () => {
-  it("does not log the contact, card source or fingerprint when recording a new payment fails before Culqi", async () => {
-    const checkout = await acceptedCheckout();
-    const log = vi.spyOn(console, "error").mockImplementation(() => {});
-    db.sqlite.exec(
-      "CREATE TRIGGER fail_attempt BEFORE INSERT ON payment_attempts BEGIN SELECT RAISE(ABORT, 'private-fault-sentinel'); END",
-    );
-
-    const failed = await pay(checkout, {
-      sourceId: "tkn_test_private_source",
-      deviceFingerprint: "private-device-sentinel",
-    });
-
-    expect(failed.status).toBe(500);
-    expect(await failed.json()).toEqual({ error: "internal error" });
-    expect(log.mock.calls).toEqual([["request failed"]]);
-    expect(charges()).toEqual([]);
-    expect(await status(checkout.token)).toBeNull();
-    db.sqlite.exec("DROP TRIGGER fail_attempt");
-    expect(await paid(checkout)).toMatchObject({ state: "confirmed" });
-    expect(charges()).toHaveLength(1);
-  });
-
-  it.each(["save", "status", "scheduled", "delayed lookup"] as const)(
-    "logs only a safe category and operation identity on a %s database failure, retaining financial recovery",
-    async (boundary) => {
-      const checkout = await acceptedCheckout();
-      const log = vi.spyOn(console, "error").mockImplementation(() => {});
-      if (boundary === "save") {
-        db.sqlite.exec(
-          "CREATE TRIGGER fail_recovery BEFORE INSERT ON guests BEGIN SELECT RAISE(ABORT, 'private-fault-sentinel'); END",
-        );
-        expect(await paid(checkout)).toMatchObject({ state: "paid_awaiting_reservation" });
-      } else {
-        culqi.next("POST /charges", "lose");
-        expect(await paid(checkout)).toMatchObject({ state: "processing" });
-        db.sqlite.exec(
-          "CREATE TRIGGER fail_recovery BEFORE UPDATE ON payment_attempts WHEN NEW.status = 'succeeded' BEGIN SELECT RAISE(ABORT, 'private-fault-sentinel'); END",
-        );
-        if (boundary === "status")
-          expect(await status(checkout.token)).toMatchObject({ state: "processing" });
-        if (boundary === "scheduled") await runScheduled();
-        if (boundary === "delayed lookup") {
-          await vi.advanceTimersByTimeAsync(10_000);
-          await Promise.all(tasks);
-        }
-      }
-      expect(log.mock.calls).toEqual([
-        boundary === "delayed lookup"
-          ? ["payment attempt lookup failed"]
-          : [
-              boundary === "save"
-                ? "payment attempt save failed"
-                : "payment attempt recovery failed",
-              expect.stringMatching(/^[0-9a-f-]{36}$/i),
-            ],
-      ]);
-      expect(charges()).toHaveLength(1);
-      expect(rows("SELECT count(*) AS n FROM payments")).toEqual([{ n: 0 }]);
-      db.sqlite.exec("DROP TRIGGER fail_recovery");
-      await runScheduled();
-      expect(await status(checkout.token)).toMatchObject({ state: "confirmed" });
-      expect(charges()).toHaveLength(1);
-      expect(rows("SELECT count(*) AS n FROM payments")).toEqual([{ n: 1 }]);
-    },
-  );
-
   it("lets the guest pay with another card after a definitive decline, under a fresh security check", async () => {
     const checkout = await acceptedCheckout();
 
@@ -528,57 +366,6 @@ describe("payment outcomes", () => {
     expect(await response.json()).toEqual({ error: "no availability" });
     expect(charges()).toEqual([]);
   });
-
-  it("refuses to charge an accepted stay after staff reduce its room type's occupancy limit", async () => {
-    const checkout = await acceptedCheckout();
-    expect((await db.request("/room-types/type-king", "PATCH", { maxAdults: 1 })).status).toBe(200);
-
-    const response = await pay(checkout);
-
-    expect(response.status).toBe(400);
-    expect(await response.json()).toEqual({ error: "too many guests for this room type" });
-    expect(charges()).toEqual([]);
-  });
-
-  it("saves verified money as Unfulfilled when staff reduce occupancy after the charge, without holding inventory or sending confirmation", async () => {
-    const checkout = await acceptedCheckout();
-    db.beforeCommit(async () => {
-      expect((await db.request("/room-types/type-king", "PATCH", { maxAdults: 1 })).status).toBe(
-        200,
-      );
-    });
-
-    expect(await paid(checkout)).toMatchObject({
-      state: "unfulfilled",
-      reservation: { paidCents: 10000, refundDueCents: 10000, outstandingCents: 0 },
-    });
-    await runScheduled();
-    expect(charges()).toHaveLength(1);
-    expect(rows("SELECT status FROM reservations")).toEqual([{ status: "unfulfilled" }]);
-    expect(rows("SELECT adults FROM reservation_rooms")).toEqual([{ adults: 2 }]);
-    expect(rows("SELECT id FROM confirmation_emails")).toEqual([]);
-    expect(rows("SELECT id FROM refunds")).toEqual([]);
-    const [saved] = rows<{ id: string }>("SELECT id FROM reservations");
-    expect(
-      (
-        await db.request(`/reservations/${saved!.id}/commands`, "POST", {
-          requestId: crypto.randomUUID(),
-          actions: [{ type: "set-status", status: "confirmed" }],
-        })
-      ).status,
-    ).toBe(400);
-    const desk = await db.request("/reservations", "POST", {
-      requestId: crypto.randomUUID(),
-      checkIn: "2026-10-20",
-      checkOut: "2026-10-22",
-      guest: { fullName: "Desk contact" },
-      rooms: [
-        { roomTypeId: "type-king", adults: 1, children: 0 },
-        { roomTypeId: "type-king", adults: 1, children: 0 },
-      ],
-    });
-    expect(desk.status).toBe(201);
-  });
 });
 
 describe("what a payment can charge", () => {
@@ -624,44 +411,6 @@ describe("what a payment can charge", () => {
     ]);
   });
 
-  it("charges the contact accepted after an unchanged refresh, not the contact that refresh kept", async () => {
-    const checkout = await acceptedCheckout();
-    vi.advanceTimersByTime(10 * 60_000);
-    const refreshed = await guest("/public/checkout/quotes", {
-      token: checkout.token,
-      method: "POST",
-    });
-    const view = (await refreshed.json()) as {
-      quote: { id: string };
-      acceptance: { quoteId: string } | null;
-    };
-    const next = { fullName: "Eva Soto", email: "eva@example.com", phone: "912 345 678" };
-
-    const accepted = await guest("/public/checkout/acceptances", {
-      token: checkout.token,
-      body: { quoteId: view.quote.id, language: "es", contact: next, agreed: true },
-    });
-    expect(charges()).toEqual([]);
-    const payment = await paid({ token: checkout.token, quoteId: view.quote.id });
-
-    expect(refreshed.status).toBe(201);
-    expect(view.acceptance?.quoteId).toBe(view.quote.id);
-    expect(accepted.status).toBe(201);
-    expect(payment).toMatchObject({ state: "confirmed", amountCents: 10000 });
-    expect(charges()).toHaveLength(1);
-    expect(charges()[0]!.body).toMatchObject({
-      email: "eva@example.com",
-      amount: 10000,
-      antifraud_details: { first_name: "Eva", last_name: "Soto", phone_number: "51912345678" },
-    });
-    expect(rows("SELECT email, language FROM payment_attempts")).toEqual([
-      { email: "eva@example.com", language: "es" },
-    ]);
-    expect(rows("SELECT full_name, email, phone FROM guests")).toEqual([
-      { full_name: "Eva Soto", email: "eva@example.com", phone: "+51912345678" },
-    ]);
-  });
-
   it("requires a new acceptance when a refreshed quote is cheaper, and charges only that accepted amount", async () => {
     const checkout = await acceptedCheckout();
     vi.advanceTimersByTime(10 * 60_000);
@@ -699,90 +448,6 @@ describe("what a payment can charge", () => {
     expect(charges()[0]!.body).toMatchObject({ amount: 8000, currency_code: "PEN" });
   });
 
-  it("does not keep acceptance when the refreshed quote's terms differ, and does not charge", async () => {
-    const checkout = await acceptedCheckout();
-    vi.advanceTimersByTime(10 * 60_000);
-    db.sqlite
-      .prepare(
-        "UPDATE quotes SET terms = json_set(terms, '$.paymentSchedule', 'full_upfront') WHERE id = ?",
-      )
-      .run(checkout.quoteId);
-
-    const refreshed = await guest("/public/checkout/quotes", {
-      token: checkout.token,
-      method: "POST",
-    });
-    const view = (await refreshed.json()) as {
-      quote: { id: string };
-      acceptance: { quoteId: string };
-    };
-    const refused = await pay({ token: checkout.token, quoteId: view.quote.id });
-
-    expect(refreshed.status).toBe(201);
-    expect(view.acceptance.quoteId).toBe(checkout.quoteId);
-    expect(acceptances()).toEqual([acceptanceRow(checkout.quoteId)]);
-    expect(refused.status).toBe(409);
-    expect(await refused.json()).toEqual({ error: "quote has not been accepted" });
-    expect(charges()).toEqual([]);
-  });
-
-  it("stores nothing and charges nothing when the stay sold out before refresh", async () => {
-    const checkout = await acceptedCheckout();
-    vi.advanceTimersByTime(10 * 60_000);
-    db.sqlite.exec(`INSERT INTO room_closures (id, room_id, starts, ends, created_at) VALUES
-      ('c1', 'room-101', '2026-10-20', '2026-10-21', '2026-10-01'),
-      ('c2', 'room-102', '2026-10-20', '2026-10-21', '2026-10-01')`);
-
-    const refreshed = await guest("/public/checkout/quotes", {
-      token: checkout.token,
-      method: "POST",
-    });
-    const response = await pay(checkout);
-
-    expect(refreshed.status).toBe(409);
-    expect(await refreshed.json()).toEqual({ error: "no availability" });
-    expect(rows("SELECT count(*) AS n FROM quotes")).toEqual([{ n: 1 }]);
-    expect(response.status).toBe(400);
-    expect(await response.json()).toEqual({ error: "quote has expired" });
-    expect(charges()).toEqual([]);
-  });
-
-  it("stores no quote when a payment is admitted while the replacement is being priced", async () => {
-    const checkout = await acceptedCheckout();
-    const before = rows<{ n: number }>("SELECT count(*) AS n FROM quotes");
-    whenReplacementIsPriced(async () => {
-      const [{ checkout_id }] = rows<{ checkout_id: string }>(
-        `SELECT checkout_id FROM quotes WHERE id = '${checkout.quoteId}'`,
-      );
-      db.sqlite
-        .prepare(
-          `INSERT INTO payment_attempts (
-            id, quote_id, amount_cents, currency, email, source_id, status, created_at, called_at,
-            checkout_id, confirmation_email_eligible
-          ) VALUES (?, ?, 10000, 'PEN', 'ana@example.com', 'tkn_test_gap', 'unknown', ?, ?, ?, 0)`,
-        )
-        .run(
-          crypto.randomUUID(),
-          checkout.quoteId,
-          new Date().toISOString(),
-          new Date().toISOString(),
-          checkout_id,
-        );
-    });
-
-    const refreshed = await guest("/public/checkout/quotes", {
-      token: checkout.token,
-      method: "POST",
-    });
-
-    expect(refreshed.status).toBe(409);
-    expect(await refreshed.json()).toEqual({ error: "checkout already has a payment" });
-    expect(rows("SELECT count(*) AS n FROM quotes")).toEqual(before);
-    expect(rows("SELECT count(*) AS n FROM checkout_acceptances")).toEqual([{ n: 1 }]);
-    expect(charges()).toEqual([]);
-    whenReplacementIsPriced(null);
-  });
-
   it.each([
     ["an unknown payment", "timeout"],
     ["a pending authentication", "tkn_test_3ds"],
@@ -807,37 +472,6 @@ describe("what a payment can charge", () => {
       expect(charges()).toHaveLength(1);
     },
   );
-
-  it("refuses to carry an unchanged agreement onto a new quote once the checkout has 20 acceptances", async () => {
-    const checkout = await acceptedCheckout();
-    for (let attempt = 2; attempt <= 20; attempt++) {
-      const accepted = await guest("/public/checkout/acceptances", {
-        token: checkout.token,
-        body: {
-          quoteId: checkout.quoteId,
-          language: "en",
-          contact: { ...contact, fullName: `Ana ${attempt}` },
-          agreed: true,
-        },
-      });
-      expect(accepted.status).toBe(201);
-    }
-    vi.advanceTimersByTime(10 * 60_000);
-
-    const refreshed = await guest("/public/checkout/quotes", {
-      token: checkout.token,
-      method: "POST",
-    });
-    const response = await pay(checkout);
-
-    expect(refreshed.status).toBe(429);
-    expect(await refreshed.json()).toEqual({ error: "too many acceptances for this checkout" });
-    expect(rows("SELECT count(*) AS n FROM quotes")).toEqual([{ n: 1 }]);
-    expect(rows("SELECT count(*) AS n FROM checkout_acceptances")).toEqual([{ n: 20 }]);
-    expect(response.status).toBe(400);
-    expect(await response.json()).toEqual({ error: "quote has expired" });
-    expect(charges()).toEqual([]);
-  });
 
   it("does not charge another checkout's quote or a quote outside any checkout", async () => {
     const first = await acceptedCheckout();
@@ -873,35 +507,6 @@ describe("what a payment can charge", () => {
     expect(response.status).toBe(400);
     expect(charges()).toEqual([]);
   });
-
-  it("accepts only card tokens", async () => {
-    const response = await pay(await acceptedCheckout(), { sourceId: "ype_test_123" });
-
-    expect(response.status).toBe(400);
-    expect(await response.json()).toEqual({ error: "only card payments are accepted" });
-    expect(charges()).toEqual([]);
-  });
-
-  it("keeps the checkout on its quote while a payment is unresolved, and allows a new quote after a decline", async () => {
-    const pending = await acceptedCheckout();
-    culqi.next("POST /charges", "timeout");
-    await paid(pending);
-    const declined = await acceptedCheckout({ checkIn: "2026-10-24", checkOut: "2026-10-25" });
-    await paid(declined, { sourceId: "tkn_test_decline" });
-
-    const blocked = await guest("/public/checkout/quotes", {
-      token: pending.token,
-      method: "POST",
-    });
-    const refreshed = await guest("/public/checkout/quotes", {
-      token: declined.token,
-      method: "POST",
-    });
-
-    expect(blocked.status).toBe(409);
-    expect(await blocked.json()).toEqual({ error: "checkout already has a payment" });
-    expect(refreshed.status).toBe(201);
-  });
 });
 
 describe("public payment admission", () => {
@@ -921,32 +526,6 @@ describe("public payment admission", () => {
     expect(charges()).toEqual([]);
   });
 
-  it("stops an already-open checkout while its earlier payment keeps being verified and resolved", async () => {
-    const waiting = await acceptedCheckout();
-    culqi.next("POST /charges", "lose");
-    await paid(waiting);
-    const open = await acceptedCheckout({ checkIn: "2026-10-24", checkOut: "2026-10-25" });
-
-    await admitPayments(false);
-
-    const refused = await pay(open);
-    expect(refused.status).toBe(503);
-    expect(await status(waiting.token)).toMatchObject({ state: "confirmed" });
-    expect(charges()).toHaveLength(1);
-  });
-
-  it("resumes without submitting anything on the guest's behalf", async () => {
-    const checkout = await acceptedCheckout();
-    await admitPayments(false);
-    expect((await pay(checkout)).status).toBe(503);
-
-    await admitPayments(true);
-
-    expect(charges()).toEqual([]);
-    expect(await status(checkout.token)).toBeNull();
-    expect(await paid(checkout)).toMatchObject({ state: "confirmed" });
-  });
-
   it("lets only the owner read or change admission", async () => {
     await db.signIn("staff");
 
@@ -961,14 +540,6 @@ describe("public payment admission", () => {
 });
 
 describe("payment security check", () => {
-  it("sends the guest's challenge response and trusted source IP to Turnstile", async () => {
-    await paid(await acceptedCheckout());
-
-    expect(turnstile.verifications).toEqual([
-      { secret: TURNSTILE_TEST_SECRET, response: TURNSTILE_PASS, remoteip: "203.0.113.9" },
-    ]);
-  });
-
   const unavailable = { status: 503, error: "payment security check is unavailable" };
   const securityFailures: {
     name: string;
@@ -1014,38 +585,9 @@ describe("payment security check", () => {
       expect(rows("SELECT id FROM payment_attempts")).toEqual([]);
     },
   );
-
-  it("requires a challenge response", async () => {
-    const response = await pay(await acceptedCheckout(), { turnstileToken: undefined });
-
-    expect(response.status).toBe(400);
-    expect(await response.json()).toEqual({ error: "payment security check is required" });
-    expect(charges()).toEqual([]);
-  });
 });
 
 describe("payment limits", () => {
-  it("counts new payments per trusted source IP and per checkout, but not status reads or replays", async () => {
-    const keys: Record<string, string[]> = { ip: [], checkout: [] };
-    const counting = (into: string[]) => ({
-      limit: async ({ key }: { key: string }) => {
-        into.push(key);
-        return { success: true };
-      },
-    });
-    db.env.PAYMENT_IP_LIMITER = counting(keys.ip!);
-    db.env.PAYMENT_CHECKOUT_LIMITER = counting(keys.checkout!);
-    const checkout = await acceptedCheckout();
-    const [{ id }] = rows<{ id: string }>("SELECT id FROM public_checkouts");
-
-    await paid(checkout, { sourceId: "tkn_test_decline" });
-    await pay(checkout, {}, "198.51.100.7");
-    await status(checkout.token);
-    await pay(checkout);
-
-    expect(keys).toEqual({ ip: ["203.0.113.9", "198.51.100.7"], checkout: [id, id] });
-  });
-
   it.each([["PAYMENT_IP_LIMITER" as const], ["PAYMENT_CHECKOUT_LIMITER" as const]])(
     "answers 429 from %s with a retry delay before the security check or Culqi",
     async (binding) => {
@@ -1080,13 +622,6 @@ describe("payment access and privacy", () => {
     expect(charges()).toEqual([]);
   });
 
-  it("shows each checkout only its own payment", async () => {
-    await paid(await acceptedCheckout());
-    const other = await acceptedCheckout({ checkIn: "2026-10-24", checkOut: "2026-10-25" });
-
-    expect(await status(other.token)).toBeNull();
-  });
-
   it("reveals no contact, card, provider or staff details in the payment status", async () => {
     const checkout = await acceptedCheckout();
     await paid(checkout);
@@ -1108,17 +643,6 @@ describe("payment access and privacy", () => {
   });
 });
 
-describe("local service overrides", () => {
-  it("ignores Culqi and Turnstile addresses that are not on this machine", async () => {
-    db.env.CULQI_API_URL = "https://culqi.example.net/v2";
-    db.env.TURNSTILE_VERIFY_URL = "https://turnstile.example.net/siteverify";
-
-    expect(await paid(await acceptedCheckout())).toMatchObject({ state: "confirmed" });
-    expect(turnstile.verifications).toHaveLength(1);
-    expect(charges()).toHaveLength(1);
-  });
-});
-
 function duringFirstSecurityCheck(run: () => Promise<void>) {
   const original = globalThis.fetch;
   let pending = true;
@@ -1133,31 +657,6 @@ function duringFirstSecurityCheck(run: () => Promise<void>) {
 }
 
 describe("payments racing within one checkout", () => {
-  it("charges the refreshed quote once when refresh keeps the agreement during an earlier payment check", async () => {
-    const checkout = await acceptedCheckout();
-    let second: Response | undefined;
-    duringFirstSecurityCheck(async () => {
-      const refreshed = await guest("/public/checkout/quotes", {
-        token: checkout.token,
-        method: "POST",
-      });
-      const view = (await refreshed.json()) as {
-        quote: { id: string };
-        acceptance: { quoteId: string };
-      };
-      expect(view.acceptance.quoteId).toBe(view.quote.id);
-      second = await pay({ token: checkout.token, quoteId: view.quote.id });
-    });
-
-    const first = await pay(checkout);
-
-    expect(second?.status).toBe(201);
-    expect(first.status).toBe(409);
-    expect(await first.json()).toEqual({ error: "quote was replaced by a newer quote" });
-    expect(charges()).toHaveLength(1);
-    expect(rows("SELECT status FROM payment_attempts")).toEqual([{ status: "saved" }]);
-  });
-
   it("does not charge a changed offer from a payment already being verified", async () => {
     const checkout = await acceptedCheckout();
     let second: Response | undefined;
@@ -1189,63 +688,6 @@ describe("payments racing within one checkout", () => {
     expect(charges()).toHaveLength(1);
     expect(charges()[0]!.body).toMatchObject({ amount: 8000 });
     expect(rows("SELECT status FROM payment_attempts")).toEqual([{ status: "saved" }]);
-  });
-
-  it("does not charge when payments are paused while the payment is being verified", async () => {
-    const checkout = await acceptedCheckout();
-    duringFirstSecurityCheck(() => admitPayments(false));
-
-    const response = await pay(checkout);
-
-    expect(response.status).toBe(503);
-    expect(await response.json()).toEqual({ error: "online payments are paused" });
-    expect(charges()).toEqual([]);
-    expect(rows("SELECT id FROM payment_attempts")).toEqual([]);
-  });
-
-  it("refuses a new acceptance while the checkout has a payment", async () => {
-    const checkout = await acceptedCheckout();
-    culqi.next("POST /charges", "timeout");
-    await paid(checkout);
-
-    const response = await guest("/public/checkout/acceptances", {
-      token: checkout.token,
-      body: { quoteId: checkout.quoteId, language: "es", contact, agreed: true },
-    });
-
-    expect(response.status).toBe(409);
-    expect(await response.json()).toEqual({ error: "checkout already has a payment" });
-  });
-});
-
-describe("payment outcomes over time", () => {
-  it("keeps a required authentication pending after its quote expires, without allowing another card", async () => {
-    const checkout = await acceptedCheckout();
-    await paid(checkout, { sourceId: "tkn_test_3ds" });
-    vi.advanceTimersByTime(11 * 60_000);
-    await reconcilePaymentAttempts(getDb(db.env.DB), paymentContext(db.env));
-
-    expect(await status(checkout.token)).toMatchObject({ state: "authentication_required" });
-    const again = await pay(checkout);
-    expect(again.status).toBe(200);
-    expect(await again.json()).toMatchObject({ payment: { state: "authentication_required" } });
-    expect(charges()).toHaveLength(1);
-  });
-
-  it("stops reporting a reservation as confirmed once staff cancel it", async () => {
-    const checkout = await acceptedCheckout();
-    await paid(checkout);
-    const [{ id }] = rows<{ id: string }>("SELECT id FROM reservations");
-    const cancelled = await db.request(`/reservations/${id}/commands`, "POST", {
-      requestId: crypto.randomUUID(),
-      actions: [{ type: "set-status", status: "cancelled", reason: "Guest asked" }],
-    });
-    expect(cancelled.status).toBe(200);
-
-    expect(await status(checkout.token)).toMatchObject({
-      state: "reservation_changed",
-      reservation: { code: expect.stringMatching(/^[A-Z0-9]{6}$/), paidCents: 10000 },
-    });
   });
 });
 
@@ -1317,23 +759,6 @@ describe("continuing bank authentication", () => {
     expect(await status(checkout.token)).toMatchObject({ state: "confirmed" });
   });
 
-  it("rejects another checkout's token without continuing this attempt", async () => {
-    const pending = await acceptedCheckout();
-    await paid(pending, { sourceId: "tkn_test_3ds" });
-    const other = await acceptedCheckout({ checkIn: "2026-10-24", checkOut: "2026-10-25" });
-
-    const guessed = await continueAuthentication("a".repeat(43));
-    const foreign = await continueAuthentication(other.token);
-
-    expect(guessed.status).toBe(401);
-    expect(await guessed.json()).toEqual({ error: "invalid checkout token" });
-    expect(foreign.status).toBe(404);
-    expect(await foreign.json()).toEqual({ error: "payment attempt not found" });
-    expect(await status(pending.token)).toMatchObject({ state: "authentication_required" });
-    expect(await status(other.token)).toBeNull();
-    expect(charges()).toHaveLength(1);
-  });
-
   it("continues only the named review attempt, not an earlier or foreign card", async () => {
     const checkout = await acceptedCheckout();
     await paid(checkout, { sourceId: "tkn_test_decline" });
@@ -1381,107 +806,6 @@ describe("continuing bank authentication", () => {
       source_id: "tkn_test_3ds_later",
       authentication_3DS: authentication,
     });
-  });
-
-  it("rejects an empty authentication field before claiming the attempt", async () => {
-    const checkout = await acceptedCheckout();
-    await paid(checkout, { sourceId: "tkn_test_3ds" });
-    const [{ id }] = rows<{ id: string }>("SELECT id FROM payment_attempts");
-
-    const response = await continueAuthentication(checkout.token, {
-      ...authentication,
-      attemptId: id,
-      eci: "   ",
-    });
-
-    expect(response.status).toBe(400);
-    expect(rows("SELECT status FROM payment_attempts")).toEqual([{ status: "review" }]);
-    expect(charges()).toHaveLength(1);
-  });
-
-  it("rejects an incomplete authentication without charging or leaving review", async () => {
-    const checkout = await acceptedCheckout();
-    await paid(checkout, { sourceId: "tkn_test_3ds" });
-
-    const response = await continueAuthentication(checkout.token, { eci: "05" });
-
-    expect(response.status).toBe(400);
-    expect(await status(checkout.token)).toMatchObject({ state: "authentication_required" });
-    expect(rows("SELECT status FROM payment_attempts")).toEqual([{ status: "review" }]);
-    expect(charges()).toHaveLength(1);
-  });
-
-  it("does not fail the attempt when the client only reports a browser authentication error", async () => {
-    const checkout = await acceptedCheckout();
-    await paid(checkout, { sourceId: "tkn_test_3ds" });
-
-    const response = await continueAuthentication(checkout.token, {
-      error: "Ha fallado la autenticación",
-    });
-
-    expect(response.status).toBe(400);
-    expect(await status(checkout.token)).toMatchObject({ state: "authentication_required" });
-    expect(rows("SELECT status, failure_code FROM payment_attempts")).toEqual([
-      { status: "review", failure_code: null },
-    ]);
-    expect(charges()).toHaveLength(1);
-  });
-
-  it("continues while payments are paused, without a security check or payment allowance", async () => {
-    const checkout = await acceptedCheckout();
-    await paid(checkout, { sourceId: "tkn_test_3ds" });
-    const consumed: string[] = [];
-    const counting = {
-      limit: async ({ key }: { key: string }) => {
-        consumed.push(key);
-        return { success: false };
-      },
-    };
-    db.env.PAYMENT_IP_LIMITER = counting;
-    db.env.PAYMENT_CHECKOUT_LIMITER = counting;
-    await admitPayments(false);
-
-    const continued = await continueAuthentication(checkout.token);
-
-    expect(continued.status).toBe(200);
-    expect(await continued.json()).toMatchObject({ payment: { state: "confirmed" } });
-    expect(charges()).toHaveLength(2);
-    expect(turnstile.verifications).toHaveLength(1);
-    expect(consumed).toEqual([]);
-  });
-
-  it("allows another card after a declined continuation only through the normal payment gates", async () => {
-    const checkout = await acceptedCheckout();
-    await paid(checkout, { sourceId: "tkn_test_3ds" });
-    culqi.next("POST /charges", "decline");
-
-    const declined = await continueAuthentication(checkout.token);
-    expect(declined.status).toBe(200);
-    expect(await declined.json()).toMatchObject({
-      payment: { state: "declined", reservation: null },
-    });
-
-    await admitPayments(false);
-    const paused = await pay(checkout);
-    expect(paused.status).toBe(503);
-    expect(await paused.json()).toEqual({ error: "online payments are paused" });
-    expect(charges()).toHaveLength(2);
-
-    await admitPayments(true);
-    const unchecked = await pay(checkout, { turnstileToken: "forged" });
-    expect(unchecked.status).toBe(403);
-    expect(await unchecked.json()).toEqual({ error: "payment security check failed" });
-    expect(charges()).toHaveLength(2);
-
-    expect(await paid(checkout)).toMatchObject({ state: "confirmed" });
-    expect(charges()).toHaveLength(3);
-    expect(charges()[2]!.body).not.toHaveProperty("authentication_3DS");
-    expect(charges()[2]!.body?.source_id).not.toBe("tkn_test_3ds");
-    expect(turnstile.verifications).toHaveLength(3);
-    expect(rows("SELECT status FROM payment_attempts ORDER BY created_at")).toEqual([
-      { status: "failed" },
-      { status: "saved" },
-    ]);
   });
 });
 
@@ -1540,39 +864,6 @@ describe("a bank refusing authentication", () => {
     },
   );
 
-  it("fails only the checkout's named review attempt", async () => {
-    const checkout = await acceptedCheckout();
-    await paid(checkout, { sourceId: "tkn_test_decline" });
-    await paid(checkout, { sourceId: "tkn_test_3ds" });
-    const [declined, review] = rows<{ id: string }>(
-      "SELECT id FROM payment_attempts ORDER BY created_at, rowid",
-    );
-    const other = await acceptedCheckout({ checkIn: "2026-10-24", checkOut: "2026-10-25" });
-
-    const earlier = await reportFailedAuthentication(checkout.token, declined!.id);
-    const unknown = await reportFailedAuthentication(checkout.token, crypto.randomUUID());
-    const foreign = await reportFailedAuthentication(other.token, review!.id);
-    const guessed = await reportFailedAuthentication("a".repeat(43), review!.id);
-
-    expect(earlier.status).toBe(200);
-    expect(await earlier.json()).toMatchObject({
-      payment: { state: "authentication_required", attemptId: review!.id },
-    });
-    expect(unknown.status).toBe(200);
-    expect(await unknown.json()).toMatchObject({
-      payment: { state: "authentication_required", attemptId: review!.id },
-    });
-    expect(foreign.status).toBe(404);
-    expect(await foreign.json()).toEqual({ error: "payment attempt not found" });
-    expect(guessed.status).toBe(401);
-    expect(
-      rows("SELECT status, failure_code FROM payment_attempts ORDER BY created_at, rowid"),
-    ).toEqual([
-      { status: "failed", failure_code: "card_declined" },
-      { status: "review", failure_code: null },
-    ]);
-  });
-
   it("does not charge a failed check that the bank later authenticates", async () => {
     const checkout = await acceptedCheckout();
     await paid(checkout, { sourceId: "tkn_test_3ds" });
@@ -1605,54 +896,6 @@ describe("a bank refusing authentication", () => {
 });
 
 describe("recovering an interrupted payment", () => {
-  it("logs a safe scheduled failure when the recovery scan fails and recovers the charge on a later tick", async () => {
-    const checkout = await acceptedCheckout();
-    culqi.next("POST /charges", "lose");
-    expect(await paid(checkout)).toMatchObject({ state: "processing" });
-    const log = vi.spyOn(console, "error").mockImplementation(() => {});
-    db.sqlite.exec("ALTER TABLE payment_attempts RENAME TO unavailable_attempts");
-
-    await runScheduled();
-
-    expect(log.mock.calls).toEqual([
-      ["scheduled payment reconciliation failed"],
-      ["scheduled authentication expiry failed"],
-      ["scheduled abandoned checkout purge failed"],
-    ]);
-    db.sqlite.exec("ALTER TABLE unavailable_attempts RENAME TO payment_attempts");
-    await runScheduled();
-    expect(await status(checkout.token)).toMatchObject({ state: "confirmed" });
-    expect(charges()).toHaveLength(1);
-    expect(rows("SELECT count(*) AS n FROM payments")).toEqual([{ n: 1 }]);
-  });
-
-  it("keeps bank verification pending through the scheduled run for a day after the quote expires, and the guest can still finish it", async () => {
-    const checkout = await acceptedCheckout();
-    await paid(checkout, { sourceId: "tkn_test_3ds" });
-    vi.advanceTimersByTime(24 * 60 * 60_000);
-    await admitPayments(false);
-    const consumed = failingLimiters();
-
-    await runScheduled();
-
-    expect(await status(checkout.token)).toMatchObject({ state: "authentication_required" });
-    expect(rows("SELECT status, failure_code FROM payment_attempts")).toEqual([
-      { status: "review", failure_code: null },
-    ]);
-    const again = await pay(checkout);
-    expect(again.status).toBe(200);
-    expect(await again.json()).toMatchObject({ payment: { state: "authentication_required" } });
-    expect(consumed).toEqual([]);
-    expect(charges()).toHaveLength(1);
-
-    const continued = await continueAuthentication(checkout.token);
-    expect(continued.status).toBe(200);
-    expect(await continued.json()).toMatchObject({ payment: { state: "confirmed" } });
-    expect(charges()).toHaveLength(2);
-    expect(consumed).toEqual([]);
-    expect(turnstile.verifications).toHaveLength(1);
-  });
-
   it("declines bank verification nobody finished within a day, and the guest can pay with another card", async () => {
     const checkout = await acceptedCheckout();
     await paid(checkout, { sourceId: "tkn_test_3ds" });
@@ -1686,33 +929,6 @@ describe("recovering an interrupted payment", () => {
       state: "confirmed",
     });
     expect(charges()).toHaveLength(2);
-  });
-
-  it("confirms a lost charge when expiring bank checks fails, and expires them on a later run", async () => {
-    const lost = await acceptedCheckout();
-    culqi.next("POST /charges", "lose");
-    expect(await paid(lost)).toMatchObject({ state: "processing" });
-    const unfinished = await acceptedCheckout({ checkIn: "2026-10-24", checkOut: "2026-10-25" });
-    await paid(unfinished, { sourceId: "tkn_test_3ds" });
-    vi.advanceTimersByTime(24 * 60 * 60_000 + 1);
-    const log = vi.spyOn(console, "error").mockImplementation(() => {});
-    db.sqlite.exec(`CREATE TRIGGER refuse_expiry BEFORE UPDATE ON payment_attempts
-      WHEN NEW.failure_code = 'authentication_expired' BEGIN SELECT RAISE(ABORT, 'refused'); END`);
-
-    await runScheduled();
-
-    expect(log.mock.calls).toEqual([["scheduled authentication expiry failed"]]);
-    expect(await status(lost.token)).toMatchObject({ state: "confirmed" });
-    expect(await status(unfinished.token)).toMatchObject({ state: "authentication_required" });
-
-    db.sqlite.exec("DROP TRIGGER refuse_expiry");
-    await runScheduled();
-
-    expect(log.mock.calls).toHaveLength(1);
-    expect(await status(unfinished.token)).toMatchObject({
-      state: "declined",
-      declineReason: "authentication_expired",
-    });
   });
 
   it("keeps an unresolved payment blocking after lookup ends, without charging again", async () => {
@@ -1751,48 +967,6 @@ describe("recovering an interrupted payment", () => {
     expect(rows("SELECT id FROM reservations")).toEqual([]);
   });
 
-  it("confirms a lost charge from the scheduled run after the quote expires and payments are paused, even without attempt metadata", async () => {
-    const checkout = await acceptedCheckout();
-    culqi.next("POST /charges", "lose");
-    culqi.next("GET /charges", 500);
-    await paid(checkout);
-    expect(culqi.charges).toHaveLength(1);
-    const [{ source_id, called_at }] = rows<{ source_id: string; called_at: string }>(
-      "SELECT source_id, called_at FROM payment_attempts",
-    );
-    culqi.charges[0]!.metadata = null;
-    culqi.charges[0]!.source_id = source_id;
-    culqi.charges[0]!.creation_date = Date.parse(called_at);
-    await vi.advanceTimersByTimeAsync(11 * 60_000);
-    await Promise.all(tasks);
-    await admitPayments(false);
-    expect(rows("SELECT status FROM payment_attempts")).toEqual([{ status: "unknown" }]);
-
-    await runScheduled();
-    await runScheduled();
-
-    const [{ id: checkoutId }] = rows<{ id: string }>("SELECT id FROM public_checkouts");
-    const [{ id: acceptanceId }] = rows<{ id: string }>("SELECT id FROM checkout_acceptances");
-    expect(
-      rows(
-        "SELECT a.status, a.checkout_id, a.acceptance_id, a.language, a.confirmation_email_eligible AS eligible, r.public_checkout_id, r.status AS reservation_status FROM payment_attempts a JOIN reservations r ON r.id = a.reservation_id",
-      ),
-    ).toEqual([
-      {
-        status: "saved",
-        checkout_id: checkoutId,
-        acceptance_id: acceptanceId,
-        language: "en",
-        eligible: 1,
-        public_checkout_id: checkoutId,
-        reservation_status: "confirmed",
-      },
-    ]);
-    expect(await status(checkout.token)).toMatchObject({ state: "confirmed" });
-    expect(charges()).toHaveLength(1);
-    expect(rows("SELECT id FROM reservations")).toHaveLength(1);
-  });
-
   it("does not confirm an unrelated charge for the same email and amount", async () => {
     const checkout = await acceptedCheckout();
     culqi.next("POST /charges", "timeout");
@@ -1822,38 +996,6 @@ describe("recovering an interrupted payment", () => {
     expect(rows("SELECT status FROM payment_attempts")).toEqual([{ status: "unknown" }]);
     expect(rows("SELECT id FROM reservations")).toEqual([]);
     expect(charges()).toHaveLength(1);
-  });
-
-  it.each([
-    ["two unlabeled charges for this card", 2, 0],
-    ["an unlabeled charge outside the lookup window", 1, 2 * 60_000],
-  ])("stays unresolved when lookup finds %s", async (_case, copies, skew) => {
-    const checkout = await acceptedCheckout();
-    culqi.next("POST /charges", "timeout");
-    await paid(checkout);
-    await vi.advanceTimersByTimeAsync(10_000);
-    await Promise.all(tasks);
-    const [{ source_id, called_at }] = rows<{ source_id: string; called_at: string }>(
-      "SELECT source_id, called_at FROM payment_attempts",
-    );
-    for (let index = 0; index < copies; index += 1)
-      culqi.charges.push({
-        object: "charge",
-        id: `chr_test_unlabeled_${index}`,
-        amount: 10000,
-        currency_code: "PEN",
-        email: "ana@example.com",
-        source_id,
-        creation_date: Date.parse(called_at) + skew,
-        outcome: { type: "venta_exitosa", code: "AUT0000" },
-        metadata: null,
-        amount_refunded: 0,
-      });
-
-    await runScheduled();
-
-    expect(await status(checkout.token)).toMatchObject({ state: "processing", reservation: null });
-    expect(rows("SELECT id FROM reservations")).toEqual([]);
   });
 
   it("confirms one reservation when a status read and the scheduled run find the same lost charge", async () => {

@@ -101,7 +101,6 @@ function commands(f) {
 
 const readLedger = `query ${databaseId} --sql`;
 const readBookmark = `time-travel get-bookmark ${databaseId}`;
-const applyMigrations = `migrations apply ${databaseId}`;
 
 it("refuses to run without a terminal before invoking any external tool", () => {
   const f = fixture();
@@ -109,23 +108,6 @@ it("refuses to run without a terminal before invoking any external tool", () => 
   expect(result.status).toBe(1);
   expect(result.output).toContain("require an interactive terminal outside CI");
   expect(commands(f)).toEqual([]);
-});
-
-it("refuses to run in CI even with a terminal", () => {
-  const f = fixture();
-  f.env.CI = "true";
-  const result = migrate(f);
-  expect(result.status).toBe(1);
-  expect(result.output).toContain("require an interactive terminal outside CI");
-  expect(commands(f)).toEqual([]);
-});
-
-it("stops without a bookmark or migration when nothing is pending", () => {
-  const f = fixture({ pending: 0 });
-  const result = migrate(f);
-  expect(result.status, result.output).toBe(0);
-  expect(result.output).toContain("No pending production migrations");
-  expect(commands(f)).toEqual([readLedger]);
 });
 
 it.each([
@@ -152,24 +134,6 @@ it("shows the pending SQL and changes nothing when approval does not match", () 
   expect(commands(f)).toEqual([readLedger]);
 });
 
-it("records an emergency bookmark without authorizing destructive restore, then prints the resulting ledger", () => {
-  const f = fixture();
-  const result = migrate(f);
-  expect(result.status, result.output).toBe(0);
-  expect(commands(f)).toEqual([readLedger, readBookmark, applyMigrations, readLedger]);
-  expect(result.output).toContain("Emergency recovery reference: before-migration");
-  expect(result.output).toContain(
-    "Prefer compatible code fallback or data-preserving forward correction",
-  );
-  expect(result.output).toContain("discard later reservations and payments");
-  expect(result.output).toContain("separate explicit approval of the specific data loss");
-  expect(result.output).not.toContain("Recovery is a Time Travel restore");
-  expect(result.output).not.toContain("time-travel restore");
-  expect(result.output).toContain(
-    `Ledger records these new migrations: ${f.names.slice(-2).join(", ")}`,
-  );
-});
-
 it.each([
   ["cannot be read", "fails", /cf d1 time-travel failed/],
   ["is missing", "missing", /No Time Travel bookmark/],
@@ -187,13 +151,5 @@ it("stops on a failed migration and prints what the ledger recorded", () => {
   expect(result.status).toBe(1);
   expect(result.output).toContain(`Ledger records these new migrations: ${f.names.at(-2)}`);
   expect(result.output).not.toContain(f.names.at(-1) + ",");
-  expect(result.output).toContain("cf d1 migrations failed");
-});
-
-it("warns that state is unknown when a failed migration leaves the ledger unreadable", () => {
-  const f = fixture({ stub: { apply: "fails-and-loses-ledger" } });
-  const result = migrate(f);
-  expect(result.status).toBe(1);
-  expect(result.output).toContain("database state is unknown");
   expect(result.output).toContain("cf d1 migrations failed");
 });

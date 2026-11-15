@@ -40,6 +40,7 @@ export default defineConfig(({ command, mode }) => {
       environment: "node",
       include: ["tests/*.test.ts"],
       fileParallelism: false,
+      isolate: false,
       pool: "forks",
       execArgv: ["--max-old-space-size=1536"],
     },

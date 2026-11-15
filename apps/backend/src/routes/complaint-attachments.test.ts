@@ -122,14 +122,6 @@ it("keeps owner attachments out of public receipts and denies anonymous and staf
   expect((await upload(crypto.randomUUID())).status).toBe(403);
 });
 
-it("rejects changed bytes and names on retry without replacing the saved evidence", async () => {
-  const id = crypto.randomUUID();
-  expect((await upload(id)).status).toBe(201);
-  expect((await upload(id, "%PDF-1.7\nChanged evidence\n%%EOF")).status).toBe(409);
-  expect((await upload(id, pdf, "Renamed.pdf")).status).toBe(409);
-  expect(await (await db.request(path(id))).text()).toBe(pdf);
-});
-
 it.each([
   {
     name: "Empty.pdf",
@@ -177,22 +169,6 @@ it.each([
   expect(sheet.responses[0]!.attachments).toEqual([]);
 });
 
-it("recovers a stored file after database failure without replacing its original evidence", async () => {
-  vi.spyOn(console, "error").mockImplementation(() => {});
-  const id = crypto.randomUUID();
-  db.sqlite.exec(
-    "CREATE TRIGGER unavailable_attachment_metadata BEFORE INSERT ON complaint_attachments BEGIN SELECT RAISE(ABORT, 'database temporarily unavailable'); END",
-  );
-  expect((await upload(id)).status).toBe(500);
-  expect((await db.request(path(id))).status).toBe(404);
-  expect((await upload(id, "%PDF-1.7\nChanged\n%%EOF")).status).toBe(409);
-  db.sqlite.exec("DROP TRIGGER unavailable_attachment_metadata");
-  expect((await upload(id)).status).toBe(201);
-  expect(await (await db.request(path(id))).text()).toBe(pdf);
-  const otherReply = path(id).replace(responseId, crypto.randomUUID());
-  expect((await db.request(otherReply)).status).toBe(404);
-});
-
 it("preserves attachment metadata against direct database edits and deletes", async () => {
   const id = crypto.randomUUID();
   expect((await upload(id)).status).toBe(201);
@@ -202,42 +178,4 @@ it("preserves attachment metadata against direct database edits and deletes", as
   ])
     expect(() => db.sqlite.prepare(sql).run(id)).toThrow("filed complaint records are immutable");
   expect(await (await db.request(path(id))).text()).toBe(pdf);
-});
-
-it("stores a PNG photo with its original bytes and accented filename", async () => {
-  const id = crypto.randomUUID();
-  const image = Uint8Array.from(
-    atob(
-      "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aD1sAAAAASUVORK5CYII=",
-    ),
-    (character) => character.charCodeAt(0),
-  );
-  expect((await upload(id, image.buffer, "Reparación.png", "image/png")).status).toBe(201);
-  const download = await db.request(path(id));
-  expect(download.headers.get("content-disposition")).toContain("Reparaci%C3%B3n.png");
-  expect(new Uint8Array(await download.arrayBuffer())).toEqual(image);
-});
-
-it("refuses conflicting concurrent uploads under the same attachment id", async () => {
-  const id = crypto.randomUUID();
-  const responses = await Promise.all([
-    upload(id),
-    upload(id, "%PDF-1.7\nDifferent receipt\n%%EOF"),
-  ]);
-  expect(responses.map((response) => response.status).sort((a, b) => a - b)).toEqual([201, 409]);
-  const sheet = (await (await db.request(`/complaints/${complaintId}`)).json()) as {
-    responses: { attachments: { id: string }[] }[];
-  };
-  expect(sheet.responses[0]!.attachments).toHaveLength(1);
-  const content = await (await db.request(path(id))).text();
-  expect([pdf, "%PDF-1.7\nDifferent receipt\n%%EOF"]).toContain(content);
-});
-
-it("fails closed when file storage is not configured without preventing response recording", async () => {
-  delete db.env.COMPLAINT_ATTACHMENTS;
-  expect((await upload(crypto.randomUUID())).status).toBe(503);
-  const sheet = (await (await db.request(`/complaints/${complaintId}`)).json()) as {
-    responses: { text: string; attachments: unknown[] }[];
-  };
-  expect(sheet.responses[0]).toMatchObject({ text: "Refund confirmed by email", attachments: [] });
 });

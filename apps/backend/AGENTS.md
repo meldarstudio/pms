@@ -37,6 +37,10 @@ Paths below are relative to `apps/backend` unless stated otherwise.
 Colocated `.test.ts` and `.test.mjs` suites use `vite-plus/test` and registered
 migrations against in-memory `node:sqlite`; no running Worker is needed.
 Like D1, the test database rejects statements with more than 100 bound parameters.
+`createTestDb` signs in through the real login route once per role and clock instant
+in a file, then copies that session row into later databases, so suites under one
+fake time hash a password once. Use `login` from `src/test-support/auth.ts` when the
+sign-in itself is under test.
 
 ## Complaint book
 

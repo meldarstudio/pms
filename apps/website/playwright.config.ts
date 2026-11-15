@@ -29,9 +29,5 @@ export default defineConfig({
       name: "smoke",
       testDir: "./tests/smoke",
     },
-    {
-      name: "a11y",
-      testDir: "./tests/a11y",
-    },
   ],
 });

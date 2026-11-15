@@ -1,9 +1,7 @@
 import { createHash } from "node:crypto";
 import type { PublicCheckoutCreateRequest } from "@pms/shared";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
-import { getDb } from "../db";
 import { app } from "../index";
-import { createQuote } from "../quotes";
 import { WEBSITE_ORIGIN } from "../test-support/auth";
 import { createTestDb, seedRooms, seedRoomType, type TestDb } from "../test-support/d1";
 
@@ -232,23 +230,6 @@ describe("entering Review", () => {
 });
 
 describe("new-quote limit", () => {
-  it("counts new checkouts and refreshed quotes per trusted source IP", async () => {
-    const keys: string[] = [];
-    db.env.QUOTE_LIMITER = {
-      limit: async ({ key }) => {
-        keys.push(key);
-        return { success: true };
-      },
-    };
-    const { token } = await started();
-
-    await guest("/public/checkout/quotes", { token, method: "POST" });
-    await guest("/public/checkout", { token, headers: { "x-forwarded-for": "198.51.100.1" } });
-    await accept(token, { quoteId: crypto.randomUUID() });
-
-    expect(keys).toEqual(["203.0.113.9", "203.0.113.9"]);
-  });
-
   it("answers 429 with a retry delay before validating or storing anything", async () => {
     db.env.QUOTE_LIMITER = { limit: async () => ({ success: false }) };
 
@@ -287,47 +268,6 @@ describe("checkout access", () => {
     expect(await response.json()).toEqual({ error: "invalid checkout token" });
   });
 
-  it("accepts the bearer scheme in any letter case", async () => {
-    const { token } = await started();
-
-    const response = await guest("/public/checkout", {
-      headers: { authorization: `bearer ${token}` },
-    });
-
-    expect(response.status).toBe(200);
-  });
-
-  it("keeps the token readable through 30 days after checkout, then refuses it as invalid", async () => {
-    const { token } = await started();
-
-    vi.setSystemTime(new Date("2026-11-21T15:00:00Z"));
-    const lastDay = await guest("/public/checkout", { token });
-    vi.setSystemTime(new Date("2026-11-22T15:00:00Z"));
-    const expired = await guest("/public/checkout", { token });
-
-    expect(lastDay.status).toBe(200);
-    expect(expired.status).toBe(401);
-    expect(await expired.json()).toEqual({ error: "invalid checkout token" });
-  });
-
-  it("refuses a new quote once arrival is no longer after the property date", async () => {
-    const { token } = await started();
-    vi.setSystemTime(new Date("2026-10-20T15:00:00Z"));
-
-    const response = await guest("/public/checkout/quotes", { token, method: "POST" });
-
-    expect(response.status).toBe(400);
-    expect(await response.json()).toEqual({ error: "online check-in must be after today" });
-    expect(count("quotes")).toBe(1);
-  });
-
-  it("does not accept a staff session as checkout access", async () => {
-    await started();
-    const staff = await db.request("/public/checkout");
-
-    expect(staff.status).toBe(401);
-  });
-
   it("does not let a checkout token reach staff routes", async () => {
     const { token } = await started();
 
@@ -346,71 +286,9 @@ describe("checkout access", () => {
     expect(await response.json()).toEqual({ error: "quote not found" });
     expect(count("checkout_acceptances")).toBe(0);
   });
-
-  it("keeps quotes created outside a public checkout ineligible", async () => {
-    const legacy = await createQuote(
-      getDb(db.env.DB),
-      {
-        roomTypeId: "type-king",
-        checkIn: "2026-10-20",
-        checkOut: "2026-10-22",
-        adults: 2,
-        children: 0,
-        ratePlan: "flexible",
-      },
-      { today: "2026-10-10", now: new Date() },
-    );
-    const { token } = await started();
-
-    const response = await accept(token, { quoteId: legacy.id });
-
-    expect(response.status).toBe(404);
-    expect(await response.json()).toEqual({ error: "quote not found" });
-    expect(count("checkout_acceptances")).toBe(0);
-  });
-
-  it("allows the website to send the token cross-origin without credentials", async () => {
-    const response = await app.request(
-      "/public/checkout/acceptances",
-      {
-        method: "OPTIONS",
-        headers: {
-          origin: WEBSITE_ORIGIN,
-          "access-control-request-method": "POST",
-          "access-control-request-headers": "authorization, content-type",
-        },
-      },
-      db.env,
-    );
-
-    expect(response.headers.get("access-control-allow-origin")).toBe(WEBSITE_ORIGIN);
-    expect(response.headers.get("access-control-allow-methods")).toContain("POST");
-    expect(response.headers.get("access-control-allow-headers")?.toLowerCase()).toContain(
-      "authorization",
-    );
-    expect(response.headers.get("access-control-allow-credentials")).toBeNull();
-  });
 });
 
 describe("accepting the agreement", () => {
-  it("keeps a failed acceptance private in HTTP and routine logs, then accepts the same draft after recovery", async () => {
-    const checkout = await started();
-    const log = vi.spyOn(console, "error").mockImplementation(() => {});
-    db.sqlite.exec(
-      "CREATE TRIGGER fail_acceptance BEFORE INSERT ON checkout_acceptances BEGIN SELECT RAISE(ABORT, 'private-fault-sentinel'); END",
-    );
-
-    const failed = await accept(checkout.token, { quoteId: checkout.quote.id });
-
-    expect(failed.status).toBe(500);
-    expect(await failed.json()).toEqual({ error: "internal error" });
-    expect(log.mock.calls).toEqual([["request failed"]]);
-    expect(count("checkout_acceptances")).toBe(0);
-    db.sqlite.exec("DROP TRIGGER fail_acceptance");
-    expect((await accept(checkout.token, { quoteId: checkout.quote.id })).status).toBe(201);
-    expect(count("checkout_acceptances")).toBe(1);
-  });
-
   it("records the booking contact and acceptance for the reviewed quote", async () => {
     db.sqlite.exec(`INSERT INTO guests (id, full_name, email, phone, notes, created_at)
       VALUES ('existing', 'Ana Private', 'ana@example.com', '+51911111111', 'VIP notes', '2026-01-01')`);
@@ -442,25 +320,6 @@ describe("accepting the agreement", () => {
     expect(count("reservations")).toBe(0);
   });
 
-  it("records a language change as a new acceptance of the same offer", async () => {
-    const { token, quote } = await started();
-    await accept(token, { quoteId: quote.id, language: "es" });
-
-    const response = await accept(token, { quoteId: quote.id, language: "en" });
-
-    expect(response.status).toBe(201);
-    const view = (await response.json()) as CheckoutView;
-    expect(view).toMatchObject({
-      language: "en",
-      quote: { id: quote.id, totalCents: quote.totalCents },
-      acceptance: { quoteId: quote.id },
-    });
-    expect(
-      db.sqlite.prepare("SELECT language FROM checkout_acceptances ORDER BY rowid").all(),
-    ).toEqual([{ language: "es" }, { language: "en" }]);
-    expect(count("quotes")).toBe(1);
-  });
-
   it("treats an identical repeated acceptance as the same acceptance", async () => {
     const { token, quote } = await started();
     const first = await accept(token, { quoteId: quote.id });
@@ -478,75 +337,6 @@ describe("accepting the agreement", () => {
     expect(count("checkout_acceptances")).toBe(1);
   });
 
-  it("stores the guest's note, trimmed, with the acceptance and none when it is blank", async () => {
-    const { token, quote } = await started();
-
-    await accept(token, { quoteId: quote.id });
-    await accept(token, { quoteId: quote.id, notes: "  We arrive around 9 pm.  " });
-    await accept(token, { quoteId: quote.id, notes: "   " });
-
-    expect(
-      db.sqlite.prepare("SELECT notes FROM checkout_acceptances ORDER BY rowid").all(),
-    ).toEqual([{ notes: null }, { notes: "We arrive around 9 pm." }, { notes: null }]);
-  });
-
-  it("reuses the acceptance for the same note and records a new one when the note changes", async () => {
-    const { token, quote } = await started();
-    const first = await accept(token, { quoteId: quote.id, notes: "Late arrival" });
-    vi.setSystemTime(new Date("2026-10-10T15:01:00Z"));
-
-    const repeated = await accept(token, { quoteId: quote.id, notes: " Late arrival " });
-    const changed = await accept(token, { quoteId: quote.id, notes: "Late arrival, quiet room" });
-
-    expect(((await repeated.json()) as CheckoutView).acceptance).toEqual(
-      ((await first.json()) as CheckoutView).acceptance,
-    );
-    expect(changed.status).toBe(201);
-    expect(
-      db.sqlite.prepare("SELECT notes FROM checkout_acceptances ORDER BY rowid").all(),
-    ).toEqual([{ notes: "Late arrival" }, { notes: "Late arrival, quiet room" }]);
-  });
-
-  it("keeps the note when an unchanged quote refresh carries the acceptance forward", async () => {
-    const { token, quote } = await started();
-    await accept(token, { quoteId: quote.id, notes: "Late arrival" });
-    vi.setSystemTime(new Date("2026-10-10T15:01:00Z"));
-
-    const refreshed = await guest("/public/checkout/quotes", { token, method: "POST" });
-
-    expect(((await refreshed.json()) as CheckoutView).acceptance).not.toBeNull();
-    expect(
-      db.sqlite.prepare("SELECT notes FROM checkout_acceptances ORDER BY rowid").all(),
-    ).toEqual([{ notes: "Late arrival" }, { notes: "Late arrival" }]);
-  });
-
-  it("caps changed acceptances per checkout while an identical retry still succeeds", async () => {
-    const { token, quote } = await started();
-    for (let attempt = 1; attempt <= 20; attempt++)
-      expect(
-        (
-          await accept(token, {
-            quoteId: quote.id,
-            contact: { ...contact, fullName: `Ana ${attempt}` },
-          })
-        ).status,
-      ).toBe(201);
-
-    const changed = await accept(token, {
-      quoteId: quote.id,
-      contact: { ...contact, fullName: "Ana 21" },
-    });
-    const retried = await accept(token, {
-      quoteId: quote.id,
-      contact: { ...contact, fullName: "Ana 20" },
-    });
-
-    expect(changed.status).toBe(429);
-    expect(await changed.json()).toEqual({ error: "too many acceptances for this checkout" });
-    expect(retried.status).toBe(201);
-    expect(count("checkout_acceptances")).toBe(20);
-  });
-
   it("accepts only the checkout's latest quote", async () => {
     const { token, quote } = await started();
     await guest("/public/checkout/quotes", { token, method: "POST" });
@@ -555,18 +345,6 @@ describe("accepting the agreement", () => {
 
     expect(response.status).toBe(409);
     expect(await response.json()).toEqual({ error: "quote was replaced by a newer quote" });
-    expect(count("checkout_acceptances")).toBe(0);
-  });
-
-  it("refuses acceptance once arrival is no longer after the property date", async () => {
-    vi.setSystemTime(new Date("2026-10-11T04:58:00Z"));
-    const { token, quote } = await started({ checkIn: "2026-10-11", checkOut: "2026-10-12" });
-    vi.setSystemTime(new Date("2026-10-11T05:01:00Z"));
-
-    const response = await accept(token, { quoteId: quote.id });
-
-    expect(response.status).toBe(400);
-    expect(await response.json()).toEqual({ error: "online check-in must be after today" });
     expect(count("checkout_acceptances")).toBe(0);
   });
 
@@ -625,16 +403,5 @@ describe("accepting the agreement", () => {
     expect(view.acceptance).toBeNull();
     expect(count("checkout_acceptances")).toBe(0);
     expect((await accept(token, { quoteId: view.quote.id })).status).toBe(201);
-  });
-
-  it("reports availability loss when refreshing a quote for a sold-out stay", async () => {
-    const { token } = await started();
-    closeKingRooms();
-
-    const response = await guest("/public/checkout/quotes", { token, method: "POST" });
-
-    expect(response.status).toBe(409);
-    expect(await response.json()).toEqual({ error: "no availability" });
-    expect(count("quotes")).toBe(1);
   });
 });

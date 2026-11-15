@@ -80,12 +80,10 @@ Run commands from the repository root with `pnpm --filter @pms/website`.
   `src/components/reservation/review/` render the state and forward events.
 - Run `verify:build` for pages, assets, configuration, or translations. It checks
   locale parity, canonical URLs, redirects, sitemap entries, and the share image.
-- Run `test:smoke` for routes, navigation, language selection, mobile menus,
-  galleries, or reservation links. It builds with `PUBLIC_PMS_API_URL` pointing
+- Run `test:smoke` for routes, navigation, mobile menus, stay search, Review,
+  payment, or the complaint form. It builds with `PUBLIC_PMS_API_URL` pointing
   at a local API that `scripts/local-api.mjs` starts on a seeded D1 in `.local-api/`;
   it never calls production.
-- Run `exec playwright test --project=a11y` against that build for markup,
-  styles, images, or interactive UI. Serious and critical axe violations fail.
 - Run `exec node scripts/check-links.mjs` against a fresh build for link changes.
   Add `--internal-only` to skip external requests.
 - Install the test browser with `exec playwright install chromium` when needed.

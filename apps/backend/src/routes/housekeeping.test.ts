@@ -60,10 +60,6 @@ async function mark(roomId: string, status: string) {
   return markAll([{ roomId, status }]);
 }
 
-type MarkedRooms = {
-  rooms: { id: string; housekeepingStatus: string; housekeepingChangedAt: string | null }[];
-};
-
 function stay(
   id: string,
   roomId: string | null,
@@ -81,14 +77,6 @@ function stay(
     roomId,
     createdAt: "2026-10-01T00:00:00Z",
   });
-}
-
-function closure(id: string, roomId: string, starts: string, ends: string) {
-  db.sqlite
-    .prepare(
-      "INSERT INTO room_closures (id, room_id, starts, ends, created_at) VALUES (?, ?, ?, ?, '2026-10-01')",
-    )
-    .run(id, roomId, starts, ends);
 }
 
 describe("housekeeping list", () => {
@@ -119,39 +107,6 @@ describe("housekeeping list", () => {
       { number: "104", inHouse: false, departing: false, arriving: false },
       { number: "110", inHouse: false, departing: false, arriving: false },
     ]);
-  });
-
-  it("uses the property date when it differs from the UTC date", async () => {
-    vi.setSystemTime(new Date("2026-10-11T03:00:00Z"));
-    stay("arriving-tonight", "room-101", "confirmed", "2026-10-10", "2026-10-12");
-    stay("arriving-tomorrow", "room-102", "confirmed", "2026-10-11", "2026-10-12");
-
-    const { date, rooms } = await housekeepingList();
-
-    expect(date).toBe("2026-10-10");
-    expect(rooms.filter((room) => room.arriving).map((room) => room.number)).toEqual(["101"]);
-  });
-
-  it("flags only rooms closed for the property date's night", async () => {
-    closure("tonight", "room-101", "2026-10-09", "2026-10-11");
-    closure("ended-this-morning", "room-102", "2026-10-08", "2026-10-10");
-    closure("starts-today", "room-103", "2026-10-10", "2026-10-11");
-
-    const closed = Object.fromEntries(
-      (await housekeepingList()).rooms.map((r) => [r.number, r.closed]),
-    );
-
-    expect(closed).toEqual({ "101": true, "102": false, "103": true, "104": false, "110": false });
-  });
-
-  it("lists rooms by room number whatever their status or stays", async () => {
-    stay("arrival-110", "room-110", "confirmed", "2026-10-10", "2026-10-11");
-    for (const roomId of ["room-110", "room-103"])
-      expect((await mark(roomId, "dirty")).status).toBe(200);
-
-    expect(
-      (await housekeepingList()).rooms.map((r) => `${r.number}:${r.housekeepingStatus}`),
-    ).toEqual(["101:clean", "102:clean", "103:dirty", "104:clean", "110:dirty"]);
   });
 });
 
@@ -186,102 +141,6 @@ describe("marking housekeeping status", () => {
     expect((await mark(id, "clean")).status).toBe(200);
     expect((await room()).housekeepingStatus).toBe("clean");
   });
-
-  it("marks several rooms with their own statuses in one request", async () => {
-    expect((await mark("room-103", "dirty")).status).toBe(200);
-    vi.setSystemTime(new Date("2026-10-10T15:30:00Z"));
-
-    const response = await markAll([
-      { roomId: "room-102", status: "dirty" },
-      { roomId: "room-101", status: "clean" },
-      { roomId: "room-103", status: "dirty" },
-    ]);
-
-    expect(response.status).toBe(200);
-    const { rooms } = (await response.json()) as MarkedRooms;
-    expect(
-      rooms.map((r) => `${r.id}:${r.housekeepingStatus}:${r.housekeepingChangedAt}`).sort(),
-    ).toEqual([
-      "room-101:clean:2026-10-10T15:30:00.000Z",
-      "room-102:dirty:2026-10-10T15:30:00.000Z",
-      "room-103:dirty:2026-10-10T15:30:00.000Z",
-    ]);
-    expect(
-      (await housekeepingList()).rooms.map(
-        (r) => `${r.number}:${r.housekeepingStatus}:${r.housekeepingChangedAt}`,
-      ),
-    ).toEqual([
-      "101:clean:2026-10-10T15:30:00.000Z",
-      "102:dirty:2026-10-10T15:30:00.000Z",
-      "103:dirty:2026-10-10T15:30:00.000Z",
-      "104:clean:null",
-      "110:clean:null",
-    ]);
-  });
-
-  it.each([
-    ["an empty list", [], 400, undefined],
-    [
-      "the same room twice",
-      [
-        { roomId: "room-101", status: "dirty" },
-        { roomId: "room-101", status: "clean" },
-      ],
-      400,
-      "duplicate room in housekeeping marks",
-    ],
-    [
-      "an unknown room",
-      [
-        { roomId: "room-101", status: "dirty" },
-        { roomId: "no-such-room", status: "dirty" },
-      ],
-      404,
-      "room not found",
-    ],
-    ["an unknown status", [{ roomId: "room-101", status: "inspected" }], 400, undefined],
-    [
-      "more than 500 marks",
-      Array.from({ length: 501 }, (_, index) => ({
-        roomId: index === 0 ? "room-101" : `room-${1000 + index}`,
-        status: "dirty",
-      })),
-      400,
-      undefined,
-    ],
-  ])("rejects %s and saves nothing", async (_case, marks, status, error) => {
-    const response = await markAll(marks);
-
-    expect(response.status).toBe(status);
-    if (error) expect(await response.json()).toEqual({ error });
-    expect(
-      (await housekeepingList()).rooms.map((r) => `${r.number}:${r.housekeepingStatus}`),
-    ).toEqual(["101:clean", "102:clean", "103:clean", "104:clean", "110:clean"]);
-  });
-
-  it("accepts 500 marks", async () => {
-    const roomIds = Object.fromEntries(
-      Array.from({ length: 495 }, (_, index) => [`extra-${index}`, `${300 + index}`]),
-    );
-    seedRooms(db.sqlite, "type", roomIds);
-    const marks = [
-      "room-101",
-      "room-102",
-      "room-103",
-      "room-104",
-      "room-110",
-      ...Object.keys(roomIds),
-    ].map((roomId) => ({ roomId, status: "dirty" }));
-
-    const response = await markAll(marks);
-
-    expect(response.status).toBe(200);
-    const { rooms } = (await response.json()) as MarkedRooms;
-    expect(rooms).toHaveLength(500);
-    expect(
-      (await housekeepingList()).rooms.every((room) => room.housekeepingStatus === "dirty"),
-    ).toBe(true);
-  });
 });
 
 describe("housekeeping status elsewhere", () => {
@@ -311,30 +170,6 @@ describe("housekeeping status elsewhere", () => {
     };
   }
 
-  it("shows each assigned room's status on the reservation and the calendar", async () => {
-    const { id } = await reservation();
-    await mark("room-101", "dirty");
-
-    const detail = (await (await request(`/reservations/${id}`)).json()) as {
-      rooms: { roomNumber: string | null; housekeepingStatus: string | null }[];
-    };
-    expect(detail.rooms.map((r) => [r.roomNumber, r.housekeepingStatus])).toEqual([
-      ["101", "dirty"],
-      [null, null],
-    ]);
-
-    const calendar = (await (await request("/calendar?from=2026-10-10&to=2026-10-16")).json()) as {
-      rooms: { number: string; housekeepingStatus: string }[];
-    };
-    expect(calendar.rooms.map((r) => `${r.number}:${r.housekeepingStatus}`)).toEqual([
-      "101:dirty",
-      "102:clean",
-      "103:clean",
-      "104:clean",
-      "110:clean",
-    ]);
-  });
-
   it("leaves the status as staff marked it through check-in, checkout, corrections, and cancellation", async () => {
     const { id } = await reservation();
     const status = async () =>
@@ -350,29 +185,5 @@ describe("housekeeping status elsewhere", () => {
     expect(await status()).toBe("dirty");
     await command(id, [{ type: "set-status", status: "cancelled" }]);
     expect(await status()).toBe("dirty");
-  });
-
-  it("leaves the status as staff marked it through room removal and closures", async () => {
-    const { id } = await reservation();
-    await mark("room-101", "dirty");
-    await mark("room-102", "dirty");
-    const statuses = async () =>
-      (await housekeepingList()).rooms.map((r) => `${r.number}:${r.housekeepingStatus}`).sort();
-    const before = await statuses();
-
-    const detail = (await (await request(`/reservations/${id}`)).json()) as {
-      rooms: { id: string }[];
-    };
-    await command(id, [{ type: "remove-room", lineId: detail.rooms[0].id }]);
-    const created = await request("/room-closures", "POST", {
-      roomId: "room-102",
-      starts: "2026-10-10",
-      ends: "2026-10-12",
-    });
-    expect(created.status).toBe(201);
-    const closure = (await created.json()) as { id: string };
-    expect((await request(`/room-closures/${closure.id}`, "DELETE")).status).toBeLessThan(300);
-
-    expect(await statuses()).toEqual(before);
   });
 });

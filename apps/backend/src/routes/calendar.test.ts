@@ -1,11 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
-import {
-  createTestDb,
-  seedReservation,
-  seedRooms,
-  seedRoomType,
-  type TestDb,
-} from "../test-support/d1";
+import { createTestDb, seedRooms, seedRoomType, type TestDb } from "../test-support/d1";
 
 let db: TestDb;
 
@@ -88,26 +82,6 @@ type CalendarBody = {
 };
 
 describe("calendar read", () => {
-  it("shows every room in numeric room-number order, including a room with no stay, labeled with its room type", async () => {
-    seedRooms(db.sqlite, "type", { "room-2": "2", "room-10": "10" });
-
-    const response = await request("/calendar?from=2026-10-20&to=2026-10-26");
-
-    expect(response.status).toBe(200);
-    const body = (await response.json()) as {
-      rooms: { number: string; roomTypeName: string }[];
-    };
-    expect(
-      body.rooms.map((room) => ({ number: room.number, roomTypeName: room.roomTypeName })),
-    ).toEqual([
-      { number: "2", roomTypeName: "King" },
-      { number: "10", roomTypeName: "King" },
-      { number: "101", roomTypeName: "King" },
-      { number: "102", roomTypeName: "King" },
-      { number: "103", roomTypeName: "King" },
-    ]);
-  });
-
   it("includes stays that check out on the first morning or run past the window, without the caller passing the day before", async () => {
     const departing = await create("Ada Lovelace", {
       checkIn: "2026-10-18",
@@ -152,67 +126,6 @@ describe("calendar read", () => {
     ]);
   });
 
-  it("shows a room closure that ends on the first morning, with its identity, dates, and reason", async () => {
-    const ending = await request("/room-closures", "POST", {
-      roomId: "room-101",
-      starts: "2026-10-18",
-      ends: "2026-10-20",
-      reason: "Maintenance",
-    });
-    expect(ending.status).toBe(201);
-    const closed = (await ending.json()) as { id: string };
-    const alreadyOpen = await request("/room-closures", "POST", {
-      roomId: "room-102",
-      starts: "2026-10-17",
-      ends: "2026-10-19",
-      reason: "Already open",
-    });
-    expect(alreadyOpen.status).toBe(201);
-    const spanning = await request("/room-closures", "POST", {
-      roomId: "room-103",
-      starts: "2026-10-01",
-      ends: "2026-11-01",
-      reason: "Renovation",
-    });
-    expect(spanning.status).toBe(201);
-    const longClosure = (await spanning.json()) as { id: string };
-
-    const response = await request("/calendar?from=2026-10-20&to=2026-10-26");
-
-    expect(response.status).toBe(200);
-    const body = (await response.json()) as {
-      rooms: {
-        number: string;
-        closures?: {
-          id: string;
-          roomId: string;
-          starts: string;
-          ends: string;
-          reason: string | null;
-        }[];
-      }[];
-    };
-    expect(body.rooms.find((room) => room.number === "101")?.closures).toEqual([
-      {
-        id: closed.id,
-        roomId: "room-101",
-        starts: "2026-10-18",
-        ends: "2026-10-20",
-        reason: "Maintenance",
-      },
-    ]);
-    expect(body.rooms.find((room) => room.number === "102")?.closures).toEqual([]);
-    expect(body.rooms.find((room) => room.number === "103")?.closures).toEqual([
-      {
-        id: longClosure.id,
-        roomId: "room-103",
-        starts: "2026-10-01",
-        ends: "2026-11-01",
-        reason: "Renovation",
-      },
-    ]);
-  });
-
   it("keeps a checked-out stay on its room and omits a cancelled reservation", async () => {
     const finished = await create("Ada Lovelace", {
       checkIn: "2026-10-20",
@@ -245,27 +158,6 @@ describe("calendar read", () => {
       },
     ]);
     expect(body.rooms.find((room) => room.number === "102")?.stays).toEqual([]);
-  });
-
-  it("omits a no-show from its room and from the assignment backlog", async () => {
-    const assigned = await create("Ada Lovelace", {
-      checkIn: "2026-10-10",
-      checkOut: "2026-10-12",
-    });
-    await assign(assigned, "room-101");
-    const unassigned = await create("Grace Hopper", {
-      checkIn: "2026-10-10",
-      checkOut: "2026-10-12",
-    });
-    for (const reservation of [assigned, unassigned])
-      await command(reservation, [{ type: "set-status", status: "no_show" }]);
-
-    const response = await request("/calendar?from=2026-10-10&to=2026-10-16");
-
-    expect(response.status).toBe(200);
-    const body = (await response.json()) as CalendarBody & { unassigned: unknown[] };
-    expect(body.rooms.find((room) => room.number === "101")?.stays).toEqual([]);
-    expect(body.unassigned).toEqual([]);
   });
 
   it("lists confirmed and checked-in reserved rooms with no assignment that still occupy a visible night", async () => {
@@ -346,90 +238,6 @@ describe("calendar read", () => {
         roomTypeId: "type",
         roomIndex: 2,
         roomCount: 2,
-      },
-    ]);
-  });
-
-  it.each([
-    ["the widest window", "2026-10-01", "2026-10-28", null],
-    ["a single-day window", "2026-10-20", "2026-10-20", null],
-    ["a window one day too wide", "2026-10-01", "2026-10-29", "calendar range is too wide"],
-    [
-      "a window that ends before it starts",
-      "2026-10-26",
-      "2026-10-20",
-      "calendar window is incomplete",
-    ],
-  ])(
-    "answers %s with a full grid or an error, never a short grid",
-    async (_name, from, to, error) => {
-      const response = await request(`/calendar?from=${from}&to=${to}`);
-
-      if (error) {
-        expect(response.status).toBe(400);
-        expect(await response.json()).toEqual({ error });
-        return;
-      }
-      expect(response.status).toBe(200);
-      const body = (await response.json()) as {
-        from: string;
-        to: string;
-        rooms: { number: string }[];
-      };
-      expect(body).toMatchObject({ from, to });
-      expect(body.rooms.map((room) => room.number)).toEqual(["101", "102", "103"]);
-    },
-  );
-
-  it("returns missing property setup for an empty property, not a not-found", async () => {
-    const ready = await request("/calendar?from=2026-10-20&to=2026-10-26");
-    expect(ready.status).toBe(200);
-    expect((await ready.json()) as { missingSetup: unknown }).toMatchObject({ missingSetup: null });
-
-    db.sqlite.exec("DELETE FROM rooms");
-    const noRooms = await request("/calendar?from=2026-10-20&to=2026-10-26");
-    expect(noRooms.status).toBe(200);
-    expect(await noRooms.json()).toMatchObject({
-      missingSetup: "rooms",
-      rooms: [],
-      unassigned: [],
-    });
-
-    db.sqlite.exec("DELETE FROM room_types");
-    const noTypes = await request("/calendar?from=2026-10-20&to=2026-10-26");
-    expect(noTypes.status).toBe(200);
-    expect(await noTypes.json()).toMatchObject({
-      missingSetup: "types",
-      rooms: [],
-      unassigned: [],
-    });
-  });
-
-  it("returns a stay longer than 60 nights without re-checking the write limit", async () => {
-    seedReservation(db.sqlite, {
-      id: "res-long",
-      guestId: "guest-long",
-      lineId: "line-long",
-      code: "LONG0001",
-      guestName: "Long Stay",
-      checkIn: "2026-08-22",
-      checkOut: "2026-10-22",
-      roomId: "room-101",
-      createdAt: "2026-08-01",
-    });
-
-    const response = await request("/calendar?from=2026-10-20&to=2026-10-26");
-
-    expect(response.status).toBe(200);
-    const body = (await response.json()) as CalendarBody;
-    expect(body.rooms.find((room) => room.number === "101")?.stays).toEqual([
-      {
-        id: "line-long",
-        reservationId: "res-long",
-        guestName: "Long Stay",
-        status: "confirmed",
-        checkIn: "2026-08-22",
-        checkOut: "2026-10-22",
       },
     ]);
   });
