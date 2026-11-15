@@ -3,20 +3,12 @@ import type { Db } from "./db";
 import { complaintEmails } from "./db/schema";
 import { complaintReceiptMessage } from "./complaint-email";
 import { complaintView } from "./complaints";
-import { configuredComplaintBook } from "./complaint-config";
+import { complaintBook } from "./complaint-config";
 import type { Env } from "./env";
 import { resendForEnv } from "./resend";
-import { loopbackUrl } from "./loopback";
 
 export async function sendComplaintEmails(db: Db, env: Env["Bindings"]) {
-  const config = configuredComplaintBook(env.COMPLAINT_BOOK);
-  if (!config) return;
-  const simulatorUrl = loopbackUrl(env.RESEND_API_URL);
-  if (config.receiptDelivery === "simulated" && !simulatorUrl) return;
-  const resend = resendForEnv({
-    RESEND_API_KEY: env.RESEND_API_KEY,
-    RESEND_API_URL: config.receiptDelivery === "simulated" ? simulatorUrl : undefined,
-  });
+  const resend = resendForEnv(env);
   if (!resend.configured) return;
   const due = await db
     .select()
@@ -49,7 +41,7 @@ export async function sendComplaintEmails(db: Db, env: Env["Bindings"]) {
     }
     const sheet = await complaintView(db, row.complaintId);
     const request =
-      row.pendingRequest ?? JSON.stringify(complaintReceiptMessage(sheet, config.emailFrom));
+      row.pendingRequest ?? JSON.stringify(complaintReceiptMessage(sheet, complaintBook.emailFrom));
     const nextAttemptAt = new Date(
       Date.now() + 60000 * 2 ** Math.min(row.attempts, 5),
     ).toISOString();

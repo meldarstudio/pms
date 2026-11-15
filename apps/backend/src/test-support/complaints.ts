@@ -1,8 +1,5 @@
+import { complaintBook } from "../complaint-config";
 import { COMPLAINT_TURNSTILE_PASS } from "./turnstile";
-import type { ComplaintBookConfig } from "../complaint-config";
-
-import fixture from "./complaint-book.development.json";
-export const developmentBook = fixture as ComplaintBookConfig;
 
 export const complaintInput = {
   language: "en",
@@ -21,7 +18,7 @@ export const complaintInput = {
   requestedRemedy: "Please respond in writing",
   reservationReference: "No aplica",
   responseChannel: "email",
-  policyVersion: developmentBook.policyVersion,
+  policyVersion: complaintBook.policyVersion,
 };
 
 export const complaintSubmission = { ...complaintInput, turnstileToken: COMPLAINT_TURNSTILE_PASS };

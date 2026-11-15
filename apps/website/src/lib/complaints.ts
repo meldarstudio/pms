@@ -67,7 +67,6 @@ export function complaintLabels(language: "es" | "en") {
 const complaintProblemKeys = {
   "complaint security check failed": "complaints.securityFailed",
   "complaint security check is unavailable": "complaints.securityUnavailable",
-  "complaint book unavailable": "complaints.error.complaint_book_unavailable",
   "complaint privacy information changed": "complaints.error.complaint_privacy_information_changed",
   "complaint retry differs from saved sheet":
     "complaints.error.complaint_retry_differs_from_saved_sheet",

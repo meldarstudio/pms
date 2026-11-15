@@ -7,24 +7,22 @@ import { requireTurnstile } from "../turnstile";
 import { limitBySourceIp, trustedSourceIp } from "../rate-limit";
 import { Hono } from "hono";
 import type { Env } from "../env";
-import { complaintBookConfig } from "../complaint-config";
+import { complaintBook } from "../complaint-config";
 
 export const publicComplaintRoutes = new Hono<Env>();
 publicComplaintRoutes.use("*", async (c, next) => {
   c.header("Cache-Control", "private, no-store");
-  complaintBookConfig(c.env.COMPLAINT_BOOK, c.req.url);
   await next();
 });
-publicComplaintRoutes.get("/config", (c) => {
-  const config = complaintBookConfig(c.env.COMPLAINT_BOOK, c.req.url);
-  return c.json({
-    provider: config.provider,
-    establishmentId: config.establishmentId,
-    collectionNotice: config.collectionNotice,
-    privacyInformation: config.privacyInformation,
-    policyVersion: config.policyVersion,
-  });
-});
+publicComplaintRoutes.get("/config", (c) =>
+  c.json({
+    provider: complaintBook.provider,
+    establishmentId: complaintBook.establishmentId,
+    collectionNotice: complaintBook.collectionNotice,
+    privacyInformation: complaintBook.privacyInformation,
+    policyVersion: complaintBook.policyVersion,
+  }),
+);
 
 publicComplaintRoutes.post(
   "/",
@@ -52,12 +50,10 @@ publicComplaintRoutes.post(
       failed: "complaint security check failed",
       unavailable: "complaint security check is unavailable",
     });
-    const config = complaintBookConfig(c.env.COMPLAINT_BOOK, c.req.url);
     const result = await fileComplaint(
       getDb(c.env.DB),
       input,
       tokenHash,
-      config,
       currency(c),
       c.env.PROPERTY_TIME_ZONE,
     );

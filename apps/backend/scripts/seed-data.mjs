@@ -2,6 +2,15 @@ import { readFileSync } from "node:fs";
 
 const roomSeed = readFileSync(new URL("../seed.sql", import.meta.url), "utf8");
 
+const productionRoomTypeIds = {
+  "suite-matrimonial": "935c7f23-8acc-4c78-b456-9bc588cccc2d",
+  "doble-premium": "a50f22a2-c02c-4cb1-ab98-e9da48f0228d",
+  "suite-familiar": "e93f440e-5546-45b3-8969-68a871d4ae81",
+};
+const roomTypeNames = new Map(
+  Object.entries(productionRoomTypeIds).map(([name, id]) => [id, name]),
+);
+
 export function referenceDate(value = new Date().toISOString().slice(0, 10)) {
   const date = new Date(`${value}T00:00:00.000Z`);
   if (
@@ -440,8 +449,8 @@ const closures = [
 
 function busyExamples() {
   const inventory = Array.from(
-    roomSeed.matchAll(/\('room-([^']+)', '[^']+', 'type-([^']+)'\)/g),
-    ([, number, type]) => ({ number, type, blocked: new Set() }),
+    roomSeed.matchAll(/\('room-([^']+)', '[^']+', '([^']+)'\)/g),
+    ([, number, typeId]) => ({ number, type: roomTypeNames.get(typeId), blocked: new Set() }),
   );
   const occupied = new Map();
   const nights = (arrival, length) => Array.from({ length }, (_, index) => arrival + index);
@@ -648,8 +657,8 @@ export function buildResetSql(value) {
   ];
 
   const baseRates = new Map();
-  for (const match of roomSeed.matchAll(/\('type-([^']+)', '[^']+', \d+, (\d+),/g)) {
-    baseRates.set(match[1], Number(match[2]));
+  for (const [, typeId, baseRate] of roomSeed.matchAll(/\('([^']+)', '[^']+', \d+, (\d+),/g)) {
+    baseRates.set(roomTypeNames.get(typeId), Number(baseRate));
   }
   const overrides = new Map();
   const fridayAndSaturday = [5, 6];
@@ -663,7 +672,7 @@ export function buildResetSql(value) {
       statements.push(
         insert("room_type_rates", {
           id: `rate-${type}-${day}`,
-          room_type_id: `type-${type}`,
+          room_type_id: productionRoomTypeIds[type],
           date: day,
           price_cents: price,
         }),
@@ -752,7 +761,7 @@ export function buildResetSql(value) {
     let totalDiscount = 0;
     for (const [lineIndex, room] of example.rooms.entries()) {
       const baseRate = baseRates.get(room.type);
-      if (baseRate === undefined) throw new Error(`Missing type-${room.type} in seed.sql`);
+      if (baseRate === undefined) throw new Error(`Missing ${room.type} in seed.sql`);
       const lineId = `line-${example.id}-${lineIndex + 1}`;
       const nights = Array.from({ length: example.nights }, (_, night) => {
         const day = date(example.arrival + night);
@@ -774,7 +783,7 @@ export function buildResetSql(value) {
         insert("reservation_rooms", {
           id: lineId,
           reservation_id: reservationId,
-          room_type_id: `type-${room.type}`,
+          room_type_id: productionRoomTypeIds[room.type],
           room_id: room.room ? `room-${room.room}` : null,
           adults: room.adults,
           children: room.children ?? 0,

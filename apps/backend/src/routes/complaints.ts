@@ -14,7 +14,7 @@ import {
   complaintCalendarSource,
   complaintSheetReference,
   complaintResponseDueDate,
-  complaintBookConfig,
+  complaintBook,
 } from "../complaint-config";
 import { complaintAttachmentRoutes } from "./complaint-attachments";
 
@@ -22,7 +22,6 @@ export const ownerComplaintRoutes = new Hono<Env>();
 ownerComplaintRoutes.use("*", requireOwner);
 ownerComplaintRoutes.use("*", async (c, next) => {
   c.header("Cache-Control", "private, no-store");
-  complaintBookConfig(c.env.COMPLAINT_BOOK, c.req.url);
   await next();
 });
 ownerComplaintRoutes.route("/", complaintAttachmentRoutes);
@@ -51,9 +50,7 @@ ownerComplaintRoutes.get("/", async (c) => {
       ),
   );
 });
-ownerComplaintRoutes.get("/configuration", (c) =>
-  c.json(complaintBookConfig(c.env.COMPLAINT_BOOK, c.req.url)),
-);
+ownerComplaintRoutes.get("/configuration", (c) => c.json(complaintBook));
 ownerComplaintRoutes.get("/:id", async (c) =>
   c.json(await complaintView(getDb(c.env.DB), c.req.param("id"))),
 );
@@ -120,30 +117,29 @@ ownerComplaintRoutes.post("/backups", validate("json", complaintBackupSchema), a
       throw new HttpError(409, "complaint retry differs from saved sheet");
     return c.json(await complaintView(db, previous.id));
   }
-  const config = complaintBookConfig(c.env.COMPLAINT_BOOK, c.req.url);
   const now = new Date().toISOString();
   if (
     Date.parse(body.filedAt) > Date.parse(body.restoredAt) ||
     Date.parse(body.restoredAt) > Date.now()
   )
     throw new HttpError(400, "invalid complaint backup time");
-  if (body.input.policyVersion !== config.policyVersion)
+  if (body.input.policyVersion !== complaintBook.policyVersion)
     throw new HttpError(409, "complaint privacy information changed");
   const [duplicate] = await db
     .select()
     .from(complaintSheets)
     .where(eq(complaintSheets.originalReference, body.originalReference));
   if (duplicate) throw new HttpError(409, "physical complaint reference already imported");
-  const number = sql<number>`(SELECT coalesce(max(number), ${config.firstNumber - 1}) + 1 FROM complaint_sheets WHERE book_id = ${config.bookId})`;
+  const number = sql<number>`(SELECT coalesce(max(number), ${complaintBook.firstNumber - 1}) + 1 FROM complaint_sheets WHERE book_id = ${complaintBook.bookId})`;
   await runBatch(db, [
     db.insert(complaintSheets).values({
       id: body.requestId,
       requestPayload: payload,
-      bookId: config.bookId,
+      bookId: complaintBook.bookId,
       number,
       reference: complaintSheetReference(number, body.filedAt, c.env.PROPERTY_TIME_ZONE),
-      establishmentId: config.establishmentId,
-      provider: config.provider,
+      establishmentId: complaintBook.establishmentId,
+      provider: complaintBook.provider,
       input: body.input,
       currency: currency(c),
       timeZone: c.env.PROPERTY_TIME_ZONE,
@@ -152,10 +148,10 @@ ownerComplaintRoutes.post("/backups", validate("json", complaintBackupSchema), a
       dueDate: complaintResponseDueDate(body.filedAt, c.env.PROPERTY_TIME_ZONE),
       calendarSource: complaintCalendarSource,
       policy: JSON.stringify({
-        version: config.policyVersion,
-        collectionNotice: config.collectionNotice,
-        privacyInformation: config.privacyInformation,
-        retentionAndDisposal: config.retentionAndDisposal,
+        version: complaintBook.policyVersion,
+        collectionNotice: complaintBook.collectionNotice,
+        privacyInformation: complaintBook.privacyInformation,
+        retentionAndDisposal: complaintBook.retentionAndDisposal,
       }),
       source: "physical",
       originalReference: body.originalReference,

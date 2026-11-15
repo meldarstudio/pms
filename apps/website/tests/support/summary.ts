@@ -14,7 +14,7 @@ export function reservationSummary(): GuestReservationSummary {
     fullName: "Ana Torres",
     rooms: [
       {
-        roomTypeId: "type-suite-matrimonial",
+        roomTypeId: "935c7f23-8acc-4c78-b456-9bc588cccc2d",
         name: "Suite Matrimonial",
         adults: 2,
         children: 0,

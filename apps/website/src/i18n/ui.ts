@@ -36,8 +36,6 @@ export const ui = {
     "complaints.field.reservationReference": "Reservation reference",
     "complaints.field.responseChannel": "Written response channel",
     "complaints.field.minor": "Consumer is a minor",
-    "complaints.error.complaint_book_unavailable":
-      "The complaints book is temporarily unavailable. Please try again later or ask at reception for the physical book.",
     "complaints.error.complaint_privacy_information_changed":
       "Privacy information changed. Reload to review it; your draft is retained.",
     "complaints.error.complaint_retry_differs_from_saved_sheet":
@@ -678,8 +676,6 @@ export const ui = {
     "complaints.field.reservationReference": "Referencia de reserva",
     "complaints.field.responseChannel": "Canal de respuesta escrita",
     "complaints.field.minor": "Consumidor menor de edad",
-    "complaints.error.complaint_book_unavailable":
-      "El Libro de Reclamaciones no está disponible por el momento. Inténtelo más tarde o solicite el libro físico en recepción.",
     "complaints.error.complaint_privacy_information_changed":
       "La información de privacidad cambió. Recargue para revisarla; se conserva el borrador.",
     "complaints.error.complaint_retry_differs_from_saved_sheet":

@@ -88,21 +88,14 @@ Run commands from the repository root with `pnpm --filter @pms/website`.
   Add `--internal-only` to skip external requests.
 - Install the test browser with `exec playwright install chromium` when needed.
 
-The live website is still deployed from `meldarstudio/hotelmanantial` to the same
-Worker name as `wrangler.json` here, so deploying this directory replaces it: that is
-the cutover, and it also publishes online reservations. Do it only when explicitly
-requested, through the release workflow's `deploy_website` input, which runs `deploy`
-(`scripts/deploy-production.mjs`: refuses a build without the live
-`PUBLIC_TURNSTILE_SITE_KEY` or with `PUBLIC_PMS_API_URL` set, then `verify:build` and
-`wrangler deploy`). The workflow reads the two public build keys from repository
-variables. Until the old repository's build trigger is disconnected, a push there
-overwrites this site. Apply urgent production website fixes in both repositories until
-then.
+The release workflow deploys this site with the API and portal: `deploy` runs
+`verify:build` then `wrangler deploy`, and the workflow supplies
+`PUBLIC_TURNSTILE_SITE_KEY` and `PUBLIC_CULQI_PUBLIC_KEY` from repository variables.
 
 The footer of every page links the Libro de Reclamaciones and shows the Annex III notice
 (`src/components/complaints/`). The form reads its legal texts from
-`GET /public/complaints/config` and needs `PUBLIC_TURNSTILE_SITE_KEY`; release the
-backend with its book before this site.
+`GET /public/complaints/config` and submits only with `PUBLIC_TURNSTILE_SITE_KEY`;
+development falls back to Cloudflare's always-passing test key.
 
 `check` runs `astro sync` then `astro-check` directly. The workspace package
 extensions give the checker TypeScript 6 and its compatible WASM runtime;

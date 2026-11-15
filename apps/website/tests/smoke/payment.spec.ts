@@ -203,9 +203,9 @@ function expireQuote(quoteId: string, checkIn?: string) {
   if (!/^[0-9a-f-]{36}$/i.test(quoteId)) throw new Error("unexpected quote id");
   if (checkIn && !/^\d{4}-\d{2}-\d{2}$/.test(checkIn)) throw new Error("unexpected check-in");
   const cheaper = checkIn
-    ? `DELETE FROM room_type_rates WHERE room_type_id = 'type-suite-matrimonial' AND date = '${checkIn}';
+    ? `DELETE FROM room_type_rates WHERE room_type_id = '935c7f23-8acc-4c78-b456-9bc588cccc2d' AND date = '${checkIn}';
        INSERT INTO room_type_rates (id, room_type_id, date, price_cents)
-         VALUES ('refresh-${quoteId}', 'type-suite-matrimonial', '${checkIn}', 8000);`
+         VALUES ('refresh-${quoteId}', '935c7f23-8acc-4c78-b456-9bc588cccc2d', '${checkIn}', 8000);`
     : "";
   executeSql(
     localDatabase(localState),
