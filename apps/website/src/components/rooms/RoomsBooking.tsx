@@ -35,6 +35,7 @@ type Props = {
   lang: Lang;
   apiBase: string;
   reviewHref: string;
+  conditionsHref: string;
   rooms: RoomView[];
   details: StayDetails;
   text: RoomsBookingText;
@@ -107,6 +108,7 @@ export default function RoomsBooking({
   lang,
   apiBase,
   reviewHref,
+  conditionsHref,
   rooms,
   details,
   text,
@@ -380,6 +382,7 @@ export default function RoomsBooking({
         text={text}
         searchCopy={searchCopy}
         reviewHref={reviewHref}
+        conditionsHref={conditionsHref}
         rooms={
           phase.kind === "found"
             ? ordered.filter((room) => stateOf(room) !== "too_many_guests")

@@ -28,6 +28,8 @@ type Props = {
   chooseHref: string;
   summaryHref: string;
   whatsappHref: string;
+  privacyHref: string;
+  conditionsHref: string;
   text: ReviewText;
   rooms: Record<string, ReviewRoom>;
 };
@@ -40,11 +42,16 @@ export default function Review({
   chooseHref,
   summaryHref,
   whatsappHref,
+  privacyHref,
+  conditionsHref,
   text,
   rooms,
 }: Props) {
   const say = useMemo(() => sayFrom(text), [text]);
-  const context = useMemo(() => ({ lang, say }), [lang, say]);
+  const context = useMemo(
+    () => ({ lang, say, privacyHref, conditionsHref }),
+    [lang, say, privacyHref, conditionsHref],
+  );
   const roomTypeIds = useMemo(
     () => Object.fromEntries(Object.entries(rooms).map(([id, room]) => [id, room.pmsRoomTypeId])),
     [rooms],

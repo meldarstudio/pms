@@ -35,14 +35,21 @@ export function ContactFields({
   onEdit: (field: "fullName" | "email" | "notes", value: string) => void;
   onEditPhone: (phone: PhoneValue) => void;
 }) {
-  const { say } = useReview();
+  const { say, privacyHref } = useReview();
+  const [leadBefore, leadAfter] = say("reservation.review.contactLead").split("{privacy}");
   const [notesExpanded, setNotesExpanded] = useState<boolean | null>(null);
   return (
     <section className={card} aria-labelledby="review-contact">
       <h2 id="review-contact" className={cardTitle}>
         {say("reservation.review.contact")}
       </h2>
-      <p className="mt-2 leading-relaxed text-stone-600">{say("reservation.review.contactLead")}</p>
+      <p className="mt-2 leading-relaxed text-stone-600">
+        {leadBefore}
+        <a href={privacyHref} className="text-accent-800 underline underline-offset-4">
+          {say("reservation.review.privacyLink")}
+        </a>
+        {leadAfter}
+      </p>
       <div className="mt-4 flex flex-col gap-4 md:mt-6 md:gap-5">
         {textFields.map((id) => {
           const message = errors[id];

@@ -59,9 +59,11 @@ const emptyInput = (language: "es" | "en"): ComplaintInput => ({
 export function ComplaintBook({
   language,
   turnstileSiteKey,
+  privacyHref,
 }: {
   language: "es" | "en";
   turnstileSiteKey: string | null;
+  privacyHref: string;
 }) {
   const t = useTranslations(language);
   const labels = complaintLabels(language);
@@ -412,6 +414,12 @@ export function ComplaintBook({
                   </AccordionContent>
                 </AccordionItem>
               </Accordion>
+              <a
+                href={privacyHref}
+                className="inline-flex min-h-11 items-center underline underline-offset-4"
+              >
+                {t("complaints.privacyPage")}
+              </a>
             </div>
             <div className="flex flex-col gap-3 sm:items-start">
               <ComplaintSecurity

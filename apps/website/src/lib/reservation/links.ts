@@ -13,3 +13,7 @@ export function roomsHref(lang: Lang, room?: Room["id"]) {
 export const reviewStepHref = (lang: Lang) => getRelativeLocaleUrl(lang, "reservar/revisar");
 
 export const summaryStepHref = (lang: Lang) => getRelativeLocaleUrl(lang, "reservar/resumen");
+
+export const privacyHref = (lang: Lang) => getRelativeLocaleUrl(lang, "privacidad");
+
+export const conditionsHref = (lang: Lang) => getRelativeLocaleUrl(lang, "condiciones-de-reserva");

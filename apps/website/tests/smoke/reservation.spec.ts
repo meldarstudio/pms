@@ -165,7 +165,9 @@ test("the cancellation policy follows the selected rate", async ({ page }) => {
   await expect(cancellation).not.toContainText("Tarifa No reembolsable");
   await page.getByRole("radio", { name: /No reembolsable/ }).check();
   await expect(cancellation).toContainText("el importe total de la estadía se abona al reservar");
-  await expect(cancellation).toContainText("No se realizarán reembolsos");
+  await expect(cancellation).toContainText(
+    "no se devuelve lo pagado, salvo que el hotel no pueda prestar el servicio",
+  );
   await expect(cancellation).not.toContainText("Tarifa Flexible");
   await page.getByRole("radio", { name: /Flexible/ }).check();
   await expect(cancellation).toContainText("Tarifa Flexible");

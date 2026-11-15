@@ -1,0 +1,9 @@
+---
+import LegalPage from "@/components/legal/LegalPage.astro";
+import { getLang } from "@/i18n/utils";
+import { privacyInformation as document } from "@/lib/legal/privacy";
+
+const lang = getLang(Astro.currentLocale);
+---
+
+<LegalPage document={document[lang]} />

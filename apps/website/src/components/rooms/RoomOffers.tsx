@@ -37,6 +37,7 @@ type Props = {
   text: RoomsBookingText;
   searchCopy: StaySearchCopy;
   reviewHref: string;
+  conditionsHref: string;
   rooms: RoomView[];
   details: StayDetails;
   phase: Phase;
@@ -55,6 +56,7 @@ export function RoomOffers({
   text,
   searchCopy,
   reviewHref,
+  conditionsHref,
   rooms,
   details,
   phase,
@@ -112,6 +114,7 @@ export function RoomOffers({
               text={text}
               searchCopy={searchCopy}
               reviewHref={reviewHref}
+              conditionsHref={conditionsHref}
               room={room}
               phase={phase}
               rates={rates}
@@ -342,6 +345,7 @@ function RateStep({
   text,
   searchCopy,
   reviewHref,
+  conditionsHref,
   room,
   phase,
   rates,
@@ -352,6 +356,7 @@ function RateStep({
   text: RoomsBookingText;
   searchCopy: StaySearchCopy;
   reviewHref: string;
+  conditionsHref: string;
   room: RoomView;
   phase: Extract<Phase, { kind: "found" }>;
   rates: PlanOffer[];
@@ -540,6 +545,12 @@ function RateStep({
           </AccordionContent>
         </AccordionItem>
       </Accordion>
+      <a
+        href={conditionsHref}
+        className="inline-flex min-h-11 items-center underline decoration-stone-400 underline-offset-4 hover:decoration-stone-900 lg:col-start-1"
+      >
+        {text["rooms.policies.conditionsLink"]}
+      </a>
       <div
         data-continue-bar
         hidden={summaryContinueInView}
