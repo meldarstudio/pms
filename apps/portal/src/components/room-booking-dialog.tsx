@@ -37,11 +37,11 @@ export function RoomBookingDialog({
   onCreated: (reservationId: string) => void;
 }) {
   const client = useQueryClient();
-  const [creating, setCreating] = useState(false);
+  const [phase, setPhase] = useState<"editing" | "saving" | "confirming-discard">("editing");
+  const creating = phase === "saving";
   const popup = useRef<HTMLDivElement>(null);
   const open = target !== null;
   const dirty = useRef(false);
-  const [leave, setLeave] = useState<(() => void) | null>(null);
   const onDirtyChange = useCallback((value: boolean) => {
     dirty.current = value;
   }, []);
@@ -71,7 +71,7 @@ export function RoomBookingDialog({
   }, [creating, target]);
   function close() {
     if (creating) return;
-    if (dirty.current) setLeave(() => onClose);
+    if (dirty.current) setPhase("confirming-discard");
     else onClose();
   }
   return (
@@ -116,18 +116,22 @@ export function RoomBookingDialog({
             }}
             onCancel={close}
             onDirtyChange={onDirtyChange}
-            onSavingChange={setCreating}
+            onSavingChange={(saving) =>
+              setPhase((current) =>
+                saving ? "saving" : current === "saving" ? "editing" : current,
+              )
+            }
           />
         )}
       </DialogContent>
-      {leave && (
+      {phase === "confirming-discard" && (
         <DiscardChanges
-          onStay={() => setLeave(null)}
+          onStay={() => setPhase("editing")}
           onLeave={() => {
             if (creating) return;
             dirty.current = false;
-            setLeave(null);
-            leave();
+            setPhase("editing");
+            onClose();
           }}
         />
       )}

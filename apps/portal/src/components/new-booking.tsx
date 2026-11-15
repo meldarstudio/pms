@@ -94,12 +94,14 @@ export function NewBooking({
       ],
     };
   });
-  const [error, setError] = useState("");
   const [revealingRoomId, setRevealingRoomId] = useState<string | null>(null);
-  const [rejected, setRejected] = useState<{
-    rooms: NewBookingValues["rooms"];
-    fields: Record<string, string>;
-  } | null>(null);
+  const [failure, setFailure] = useState<
+    | { kind: "none" }
+    | { kind: "failed"; message: string }
+    | { kind: "rejected"; rooms: NewBookingValues["rooms"]; fields: Record<string, string> }
+  >({ kind: "none" });
+  const error = failure.kind === "failed" ? failure.message : "";
+  const rejected = failure.kind === "rejected" ? failure : null;
   const [discountBlocking, setDiscountBlocking] = useState(false);
   const retry = useRef<{ payload: string; requestId: string } | null>(null);
   const form = useReservationForm({
@@ -108,8 +110,7 @@ export function NewBooking({
     validators: { onDynamic: schema },
     onSubmit: async ({ value }) => {
       if (!ready) return;
-      setError("");
-      setRejected(null);
+      setFailure({ kind: "none" });
       const parsed = schema.parse(value);
       const phone = phonePayload(parsed.phone);
       const data = {
@@ -142,8 +143,12 @@ export function NewBooking({
           serverFieldErrors(cause, "details", "rooms") ?? serverFieldErrors(cause, "guest");
         if (fields) {
           setServerErrors(form, fields);
-          setRejected({ rooms: form.state.values.rooms, fields });
-        } else setError(cause instanceof Error ? cause.message : "No se pudo guardar.");
+          setFailure({ kind: "rejected", rooms: form.state.values.rooms, fields });
+        } else
+          setFailure({
+            kind: "failed",
+            message: cause instanceof Error ? cause.message : "No se pudo guardar.",
+          });
       }
     },
   });

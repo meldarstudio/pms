@@ -98,6 +98,13 @@ it("keeps inventory rate labels and submitted date ranges unchanged", async () =
     () => !!container.querySelector('button[aria-label^="Doble, 31 oct 2026"]'),
     "Saved rate loads",
   );
+  await React.act(async () => {
+    container
+      .querySelector<HTMLButtonElement>('button[aria-label^="Doble, 31 oct 2026"]')!
+      .dispatchEvent(new window.PointerEvent("pointerdown", { bubbles: true, button: 0 }));
+    window.dispatchEvent(new window.PointerEvent("pointercancel", { bubbles: true }));
+  });
+  assert.equal(window.document.querySelector('[name="price"]'), null);
   await React.act(async () =>
     container.querySelector<HTMLButtonElement>('button[aria-label^="Doble, 31 oct 2026"]')!.click(),
   );

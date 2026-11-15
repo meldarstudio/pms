@@ -180,8 +180,12 @@ it("saves a discount from its zero-valued row and then a payment without changin
   assert.equal(amount("Descuento"), "S/0");
   await openDiscount();
   await page.fill(discountInput()!, "50.50");
-  await click("Aplicar");
+  await browser.React.act(async () => {
+    page.button("Aplicar").click();
+    page.button("Aplicar").click();
+  });
   await page.until(() => !discountInput(), "A saved discount closes the popover");
+  assert.equal(page.api.bodies("POST", "/reservations/summary/commands").length, 1);
   assert.equal(amount("Subtotal"), "S/300.50");
   assert.equal(amount("Descuento"), "-S/50.50");
   assert.equal(amount("Total"), "S/250");

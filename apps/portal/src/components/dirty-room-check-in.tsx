@@ -1,4 +1,4 @@
-import { useRef, useState } from "react";
+import { useConfirmation } from "@/lib/use-confirmation";
 import {
   AlertDialog,
   AlertDialogContent,
@@ -15,8 +15,7 @@ const list = new Intl.ListFormat("es", { type: "conjunction" });
 type Status = Extract<WorkflowAction, { type: "set-status" }>["status"];
 
 export function useDirtyRoomCheckIn() {
-  const [dirtyRooms, setDirtyRooms] = useState<string[] | null>(null);
-  const settle = useRef<((proceed: boolean) => void) | null>(null);
+  const { value: dirtyRooms, request, close } = useConfirmation<string[]>();
 
   async function confirm(detail: ReservationDetail, status: Status) {
     if (status !== "checked_in" || detail.status === "checked_in") return true;
@@ -24,17 +23,7 @@ export function useDirtyRoomCheckIn() {
       .filter((room) => room.roomNumber && room.housekeepingStatus === "dirty")
       .map((room) => room.roomNumber!);
     if (dirty.length === 0) return true;
-    settle.current?.(false);
-    return new Promise<boolean>((resolve) => {
-      settle.current = resolve;
-      setDirtyRooms(dirty);
-    });
-  }
-
-  function close(proceed: boolean) {
-    settle.current?.(proceed);
-    settle.current = null;
-    setDirtyRooms(null);
+    return request(dirty);
   }
 
   const dialog = (

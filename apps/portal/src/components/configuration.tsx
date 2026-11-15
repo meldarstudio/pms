@@ -19,14 +19,17 @@ import type { Account } from "@/lib/api";
 import { configurationSections, type ConfigurationSection } from "@/lib/navigation";
 
 export function Configuration({ section }: { section: ConfigurationSection }) {
-  const [roomEditor, setRoomEditor] = useState<RoomTypeEditorTarget | null>(null);
-  const [account, setAccount] = useState<Account | null>(null);
-  const editorOpen = roomEditor !== null || account !== null;
+  const [editor, setEditor] = useState<
+    | { kind: "closed" }
+    | { kind: "room"; target: RoomTypeEditorTarget }
+    | { kind: "account"; account: Account }
+  >({ kind: "closed" });
+  const roomEditor = editor.kind === "room" ? editor.target : null;
+  const account = editor.kind === "account" ? editor.account : null;
+  const editorOpen = editor.kind !== "closed";
   const formId = roomEditor ? "property-setup-form" : account ? "account-password-form" : undefined;
-  const draft = useConfigurationDraft(formId, () => {
-    setRoomEditor(null);
-    setAccount(null);
-  });
+  const closeEditor = () => setEditor({ kind: "closed" });
+  const draft = useConfigurationDraft(formId, closeEditor);
   const active = configurationSections.find((item) => item.id === section)!;
   const title = roomEditor
     ? (roomEditor.type?.name ?? "Nuevo tipo")
@@ -34,10 +37,7 @@ export function Configuration({ section }: { section: ConfigurationSection }) {
       ? "Cambiar contraseña"
       : active.title;
   function close() {
-    draft.request(() => {
-      setRoomEditor(null);
-      setAccount(null);
-    });
+    draft.request(closeEditor);
   }
   return (
     <main className="flex min-h-0 flex-1 flex-col gap-6 overflow-y-auto p-4 lg:p-6">
@@ -102,9 +102,11 @@ export function Configuration({ section }: { section: ConfigurationSection }) {
         {section === "rooms" && (
           <RoomTypesSection
             editor={roomEditor}
-            onOpen={setRoomEditor}
+            onOpen={(target) => setEditor({ kind: "room", target })}
             onTypeSaved={(type, rooms) =>
-              setRoomEditor((current) => (current ? { type, rooms } : null))
+              setEditor((current) =>
+                current.kind === "room" ? { kind: "room", target: { type, rooms } } : current,
+              )
             }
             {...draft.events}
           />
@@ -112,7 +114,11 @@ export function Configuration({ section }: { section: ConfigurationSection }) {
         {section === "appearance" && <AppearanceSettings />}
         {section === "payments" && <PaymentSettings />}
         {section === "accounts" && (
-          <AccountsSection account={account} onSelect={setAccount} {...draft.events} />
+          <AccountsSection
+            account={account}
+            onSelect={(account) => setEditor({ kind: "account", account })}
+            {...draft.events}
+          />
         )}
       </section>
       {draft.dialog}

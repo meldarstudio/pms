@@ -145,15 +145,18 @@ function AccountPasswordEditor({
   const [currentPassword, setCurrentPassword] = useState("");
   const [password, setPassword] = useState("");
   const [confirmation, setConfirmation] = useState("");
-  const [errors, setErrors] = useState<{ currentPassword?: string; password?: string }>({});
-  const [saved, setSaved] = useState(false);
+  const [outcome, setOutcome] = useState<
+    | { kind: "editing" | "saved" }
+    | { kind: "invalid"; errors: { currentPassword?: string; password?: string } }
+  >({ kind: "editing" });
+  const errors = outcome.kind === "invalid" ? outcome.errors : {};
+  const saved = outcome.kind === "saved";
   const saving = own.isPending || staff.isPending;
   const dirty = !!(currentPassword || password || confirmation);
   useReportEditorState(events, dirty, saving);
   function edit(set: (value: string) => void) {
     return (event: ChangeEvent<HTMLInputElement>) => {
-      setErrors({});
-      setSaved(false);
+      setOutcome({ kind: "editing" });
       set(event.target.value);
     };
   }
@@ -172,8 +175,7 @@ function AccountPasswordEditor({
       ...(invalid ? { password: invalid } : {}),
       ...(owner && !currentPassword ? { currentPassword: "Indica tu contraseña actual." } : {}),
     };
-    setErrors(next);
-    setSaved(false);
+    setOutcome(Object.keys(next).length ? { kind: "invalid", errors: next } : { kind: "editing" });
     if (Object.keys(next).length) {
       events.onSubmitFinished();
       return;
@@ -184,15 +186,17 @@ function AccountPasswordEditor({
       setCurrentPassword("");
       setPassword("");
       setConfirmation("");
-      setSaved(true);
+      setOutcome({ kind: "saved" });
       events.onSaved();
     } catch (cause) {
       const message = cause instanceof Error ? cause.message : "No se pudo cambiar la contraseña.";
-      setErrors(
-        cause instanceof ApiError && cause.field === "currentPassword"
-          ? { currentPassword: message }
-          : { password: message },
-      );
+      setOutcome({
+        kind: "invalid",
+        errors:
+          cause instanceof ApiError && cause.field === "currentPassword"
+            ? { currentPassword: message }
+            : { password: message },
+      });
     } finally {
       events.onSubmitFinished();
     }
