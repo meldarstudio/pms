@@ -30,8 +30,9 @@ const messages: Record<string, string> = {
   "complaint response retry differs": "El reintento difiere de la respuesta guardada.",
   "invalid complaint response sending time":
     "La fecha de envío debe estar entre la presentación y el momento actual.",
-  "invalid complaint note": "Escriba el texto de la nota.",
-  "complaint note retry differs": "El reintento difiere de la nota guardada.",
+  "void reason is required": "Escriba el motivo de la anulación.",
+  "complaint response already voided": "La respuesta ya fue anulada con otro motivo.",
+  "complaint response is voided": "La respuesta está anulada; no se le puede adjuntar evidencia.",
   "invalid complaint backup time": "Revise las fechas de presentación y restauración.",
   "physical complaint reference already imported": "Esta hoja física ya fue transcrita.",
   "complaint receipt does not need attention":

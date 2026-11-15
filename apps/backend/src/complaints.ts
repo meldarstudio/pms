@@ -4,7 +4,7 @@ import { runBatch, type Db } from "./db";
 import {
   complaintAttachments,
   complaintEmails,
-  complaintNotes,
+  complaintResponseVoids,
   complaintResponses,
   complaintSheets,
 } from "./db/schema";
@@ -40,16 +40,6 @@ export async function complaintView(db: Db, id: string) {
     .from(complaintEmails)
     .where(eq(complaintEmails.complaintId, id))
     .orderBy(desc(complaintEmails.createdAt), desc(sql`${complaintEmails}.rowid`));
-  const notes = await db
-    .select({
-      id: complaintNotes.id,
-      text: complaintNotes.text,
-      recordedAt: complaintNotes.recordedAt,
-      recordedBy: complaintNotes.recordedBy,
-    })
-    .from(complaintNotes)
-    .where(eq(complaintNotes.complaintId, id))
-    .orderBy(asc(complaintNotes.recordedAt), asc(sql`${complaintNotes}.rowid`));
   const responses = await db
     .select({
       id: complaintResponses.id,
@@ -61,8 +51,12 @@ export async function complaintView(db: Db, id: string) {
       correctsId: complaintResponses.correctsId,
       recordedAt: complaintResponses.recordedAt,
       recordedBy: complaintResponses.recordedBy,
+      voidReason: complaintResponseVoids.reason,
+      voidedAt: complaintResponseVoids.voidedAt,
+      voidedBy: complaintResponseVoids.voidedBy,
     })
     .from(complaintResponses)
+    .leftJoin(complaintResponseVoids, eq(complaintResponseVoids.responseId, complaintResponses.id))
     .where(eq(complaintResponses.complaintId, id))
     .orderBy(asc(complaintResponses.recordedAt), asc(sql`${complaintResponses}.rowid`));
   const { tokenHash: _tokenHash, requestPayload: _requestPayload, ...saved } = sheet;
@@ -84,9 +78,12 @@ export async function complaintView(db: Db, id: string) {
     ...saved,
     email: emails[0]!,
     emails,
-    notes,
-    responses: responses.map((response) => ({
+    responses: responses.map(({ voidReason, voidedAt, voidedBy, ...response }) => ({
       ...response,
+      voided:
+        voidReason === null
+          ? null
+          : { reason: voidReason, voidedAt: voidedAt!, voidedBy: voidedBy! },
       attachments: attachments
         .filter((attachment) => attachment.responseId === response.id)
         .map(({ responseId: _responseId, ...attachment }) => attachment),
@@ -163,7 +160,6 @@ export async function fileComplaint(
 function guestReceipt({
   email,
   emails: _emails,
-  notes: _notes,
   ...sheet
 }: Awaited<ReturnType<typeof complaintView>>) {
   return { ...sheet, email: { status: email.status }, responses: [] };

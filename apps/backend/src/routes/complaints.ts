@@ -1,10 +1,15 @@
-import { complaintSheets, complaintResponses, complaintEmails, complaintNotes } from "../db/schema";
+import {
+  complaintSheets,
+  complaintResponses,
+  complaintResponseVoids,
+  complaintEmails,
+} from "../db/schema";
 import { asc, eq } from "drizzle-orm";
 import { requireOwner } from "../session";
 import {
   complaintResponseSchema,
   complaintBackupSchema,
-  complaintNoteSchema,
+  complaintResponseVoidSchema,
   complaintReceiptCopySchema,
 } from "@pms/shared";
 import { runBatch } from "../db";
@@ -43,8 +48,10 @@ ownerComplaintRoutes.get("/", async (c) => {
         category: sheet.input.category,
         filedAt: sheet.filedAt,
         dueDate: sheet.dueDate,
-        responseStatus: sheet.responses.length ? "recorded" : "pending",
-        overdue: !sheet.responses.length && sheet.dueDate < today,
+        responseStatus: sheet.responses.some((response) => !response.voided)
+          ? "recorded"
+          : "pending",
+        overdue: !sheet.responses.some((response) => !response.voided) && sheet.dueDate < today,
         email: sheet.email,
       }))
       .sort(
@@ -105,35 +112,35 @@ ownerComplaintRoutes.post(
   },
 );
 
-ownerComplaintRoutes.post("/:id/notes", validate("json", complaintNoteSchema), async (c) => {
-  const db = getDb(c.env.DB);
-  const input = c.req.valid("json");
-  const sheet = await complaintView(db, c.req.param("id"));
-  const payload = JSON.stringify(input);
-  const saved = async () => {
-    const [note] = await db
-      .select()
-      .from(complaintNotes)
-      .where(eq(complaintNotes.id, input.requestId));
-    if (note && (note.complaintId !== sheet.id || note.payload !== payload))
-      throw new HttpError(409, "complaint note retry differs");
-    return note;
-  };
-  if (await saved()) return c.json(sheet);
-  await db
-    .insert(complaintNotes)
-    .values({
-      id: input.requestId,
-      complaintId: sheet.id,
-      payload,
-      text: input.text,
-      recordedAt: new Date().toISOString(),
-      recordedBy: c.var.account.id,
-    })
-    .onConflictDoNothing();
-  await saved();
-  return c.json(await complaintView(db, sheet.id), 201);
-});
+ownerComplaintRoutes.post(
+  "/:id/responses/:responseId/void",
+  validate("json", complaintResponseVoidSchema),
+  async (c) => {
+    const db = getDb(c.env.DB);
+    const { reason } = c.req.valid("json");
+    const sheet = await complaintView(db, c.req.param("id"));
+    const response = sheet.responses.find(({ id }) => id === c.req.param("responseId"));
+    if (!response) throw new HttpError(404, "complaint response not found");
+    const settled = (voided: { reason: string } | null) => {
+      if (voided && voided.reason !== reason)
+        throw new HttpError(409, "complaint response already voided");
+      return voided;
+    };
+    if (settled(response.voided)) return c.json(sheet);
+    await db
+      .insert(complaintResponseVoids)
+      .values({
+        responseId: response.id,
+        reason,
+        voidedAt: new Date().toISOString(),
+        voidedBy: c.var.account.id,
+      })
+      .onConflictDoNothing();
+    const saved = await complaintView(db, sheet.id);
+    settled(saved.responses.find(({ id }) => id === response.id)!.voided);
+    return c.json(saved, 201);
+  },
+);
 
 ownerComplaintRoutes.post("/backups", validate("json", complaintBackupSchema), async (c) => {
   const db = getDb(c.env.DB);

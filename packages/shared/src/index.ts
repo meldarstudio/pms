@@ -500,13 +500,10 @@ export const complaintResponseSchema = z
   })
   .strict();
 export type ComplaintResponseRequest = z.input<typeof complaintResponseSchema>;
-export const complaintNoteSchema = z
-  .object({
-    requestId: z.uuid(),
-    text: complaintText(5000).min(1, "invalid complaint note"),
-  })
+export const complaintResponseVoidSchema = z
+  .object({ reason: complaintText(2000).min(1, "void reason is required") })
   .strict();
-export type ComplaintNoteRequest = z.input<typeof complaintNoteSchema>;
+export type ComplaintResponseVoidRequest = z.input<typeof complaintResponseVoidSchema>;
 export const complaintReceiptCopySchema = z.object({ requestId: z.uuid() }).strict();
 export type ComplaintReceiptCopyRequest = z.input<typeof complaintReceiptCopySchema>;
 export const complaintAttachmentMetadataSchema = z

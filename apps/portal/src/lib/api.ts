@@ -754,7 +754,7 @@ export function searchReservationsPage(params: ReservationListParams, signal?: A
 export type ComplaintInput = import("@pms/shared").ComplaintInputRequest;
 export type ComplaintResponseRequest = import("@pms/shared").ComplaintResponseRequest;
 export type ComplaintBackupRequest = import("@pms/shared").ComplaintBackupRequest;
-export type ComplaintNoteRequest = import("@pms/shared").ComplaintNoteRequest;
+export type ComplaintResponseVoidRequest = import("@pms/shared").ComplaintResponseVoidRequest;
 export type ComplaintReceiptCopyRequest = import("@pms/shared").ComplaintReceiptCopyRequest;
 export type ComplaintEmail = {
   id: string;
@@ -765,12 +765,6 @@ export type ComplaintEmail = {
   lastError: string | null;
   createdAt: string;
   requestedBy: string | null;
-};
-export type ComplaintNote = {
-  id: string;
-  text: string;
-  recordedAt: string;
-  recordedBy: string;
 };
 export type ComplaintSummary = {
   id: string;
@@ -810,7 +804,6 @@ export type ComplaintSheet = {
   restoredAt: string | null;
   email: ComplaintEmail;
   emails: ComplaintEmail[];
-  notes: ComplaintNote[];
   responses: {
     id: string;
     text: string;
@@ -821,6 +814,7 @@ export type ComplaintSheet = {
     correctsId: string | null;
     recordedAt: string;
     recordedBy: string;
+    voided: { reason: string; voidedAt: string; voidedBy: string } | null;
     attachments: ComplaintAttachment[];
   }[];
 };
@@ -833,8 +827,16 @@ export const recordComplaintResponse = (id: string, input: ComplaintResponseRequ
 function complaintAttachmentPath(id: string, responseId: string, attachmentId: string) {
   return `/complaints/${encodeURIComponent(id)}/responses/${encodeURIComponent(responseId)}/attachments/${encodeURIComponent(attachmentId)}`;
 }
-export const addComplaintNote = (id: string, input: ComplaintNoteRequest) =>
-  writeJson<ComplaintSheet>(`/complaints/${encodeURIComponent(id)}/notes`, "POST", input);
+export const voidComplaintResponse = (
+  id: string,
+  responseId: string,
+  input: ComplaintResponseVoidRequest,
+) =>
+  writeJson<ComplaintSheet>(
+    `/complaints/${encodeURIComponent(id)}/responses/${encodeURIComponent(responseId)}/void`,
+    "POST",
+    input,
+  );
 export type ComplaintAttachmentUpload = { responseId: string; attachmentId: string; file: File };
 export async function uploadComplaintAttachment(id: string, input: ComplaintAttachmentUpload) {
   const typesByExtension: Record<string, string> = {

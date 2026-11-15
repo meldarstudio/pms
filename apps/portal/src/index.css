@@ -251,8 +251,7 @@
       display: block;
     }
     body:has(.complaint-owner-sheet) [data-slot="sidebar"],
-    body:has(.complaint-owner-sheet) [data-slot="sidebar-gap"],
-    body:has(.complaint-owner-sheet) header {
+    body:has(.complaint-owner-sheet) [data-slot="sidebar-gap"] {
       display: none;
     }
     .complaint-owner-sheet {

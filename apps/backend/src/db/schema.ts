@@ -654,22 +654,16 @@ export const complaintAttachments = sqliteTable(
   (table) => [index("complaint_attachments_response").on(table.responseId)],
 );
 
-export const complaintNotes = sqliteTable(
-  "complaint_notes",
-  {
-    id: text("id").primaryKey(),
-    complaintId: text("complaint_id")
-      .notNull()
-      .references(() => complaintSheets.id),
-    payload: text("payload").notNull(),
-    text: text("text").notNull(),
-    recordedAt: text("recorded_at").notNull(),
-    recordedBy: text("recorded_by")
-      .notNull()
-      .references(() => user.id),
-  },
-  (table) => [index("complaint_notes_complaint").on(table.complaintId, table.recordedAt)],
-);
+export const complaintResponseVoids = sqliteTable("complaint_response_voids", {
+  responseId: text("response_id")
+    .primaryKey()
+    .references(() => complaintResponses.id),
+  reason: text("reason").notNull(),
+  voidedAt: text("voided_at").notNull(),
+  voidedBy: text("voided_by")
+    .notNull()
+    .references(() => user.id),
+});
 
 export const complaintEmails = sqliteTable(
   "complaint_emails",

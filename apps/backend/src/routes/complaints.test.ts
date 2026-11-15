@@ -137,7 +137,7 @@ it("survives concurrent filing with unique consecutive references and one replay
   );
 });
 
-it("lets only the owner append responses and dated notes once across retries, without notes answering the sheet", async () => {
+it("lets only the owner record responses and void each once with a reason, after which it no longer answers the sheet", async () => {
   const token = crypto.randomUUID() + crypto.randomUUID();
   const filed = await app.request(
     "http://localhost/public/complaints",
@@ -149,19 +149,6 @@ it("lets only the owner append responses and dated notes once across retries, wi
     db.env,
   );
   const sheet = (await filed.json()) as Sheet;
-  const note = { requestId: crypto.randomUUID(), text: "Guest called; reply goes by letter" };
-  expect((await db.request("/complaints")).status).toBe(403);
-  expect((await db.request(`/complaints/${sheet.id}/notes`, "POST", note)).status).toBe(403);
-  await db.signIn("owner");
-  expect((await db.request(`/complaints/${sheet.id}/notes`, "POST", note)).status).toBe(201);
-  expect((await db.request(`/complaints/${sheet.id}/notes`, "POST", note)).status).toBe(200);
-  expect(
-    (await db.request(`/complaints/${sheet.id}/notes`, "POST", { ...note, text: "Changed" }))
-      .status,
-  ).toBe(409);
-  expect(await (await db.request("/complaints")).json()).toMatchObject([
-    { id: sheet.id, dueDate: sheet.dueDate, responseStatus: "pending" },
-  ]);
   const response = {
     requestId: crypto.randomUUID(),
     text: "Written response sent",
@@ -170,43 +157,37 @@ it("lets only the owner append responses and dated notes once across retries, wi
     sentAt: new Date().toISOString(),
     evidence: "Owner mailbox / sent message 123",
   };
+  const voiding = { reason: "Recorded on the wrong sheet" };
+  const voidPath = `/complaints/${sheet.id}/responses/${response.requestId}/void`;
+  expect((await db.request("/complaints")).status).toBe(403);
+  expect((await db.request(voidPath, "POST", voiding)).status).toBe(403);
+  await db.signIn("owner");
   expect((await db.request(`/complaints/${sheet.id}/responses`, "POST", response)).status).toBe(
     201,
   );
   expect((await db.request(`/complaints/${sheet.id}/responses`, "POST", response)).status).toBe(
     200,
   );
-  const correction = {
-    requestId: crypto.randomUUID(),
-    text: "The response recorded yesterday was sent by letter, not email.",
-  };
-  expect((await db.request(`/complaints/${sheet.id}/notes`, "POST", correction)).status).toBe(201);
+  expect(await (await db.request("/complaints")).json()).toMatchObject([
+    { id: sheet.id, responseStatus: "recorded" },
+  ]);
+  expect((await db.request(voidPath, "POST", voiding)).status).toBe(201);
+  expect((await db.request(voidPath, "POST", voiding)).status).toBe(200);
+  expect((await db.request(voidPath, "POST", { reason: "Another reason" })).status).toBe(409);
+  expect(await (await db.request("/complaints")).json()).toMatchObject([
+    { id: sheet.id, dueDate: sheet.dueDate, responseStatus: "pending" },
+  ]);
   const detail = (await (await db.request(`/complaints/${sheet.id}`)).json()) as Sheet;
   expect(detail.input).toEqual(complaintInput);
-  expect(detail.dueDate).toBe(sheet.dueDate);
-  expect(detail.responses.map((entry) => entry.text)).toEqual([response.text]);
-  expect(detail.notes.map((entry) => entry.text)).toEqual([note.text, correction.text]);
-  expect(detail.notes[0]).toMatchObject({
-    recordedAt: expect.any(String),
-    recordedBy: expect.any(String),
-  });
-  expect(
-    (
-      await db.request(`/complaints/${sheet.id}/responses`, "POST", {
-        ...response,
-        requestId: crypto.randomUUID(),
-        sentAt: "2099-01-01T00:00:00Z",
-      })
-    ).status,
-  ).toBe(400);
+  expect(detail.responses).toMatchObject([
+    { text: response.text, voided: { reason: voiding.reason } },
+  ]);
   const receipt = await app.request(
     "http://localhost/public/complaints/receipt",
     { headers: { authorization: `Bearer ${token}` } },
     db.env,
   );
-  const guestView = (await receipt.json()) as Record<string, unknown>;
-  expect(guestView).not.toHaveProperty("notes");
-  expect(guestView.email).toEqual({ status: "pending" });
+  expect(await receipt.json()).toMatchObject({ responses: [] });
 });
 
 async function fileWithReceipt() {
@@ -354,7 +335,7 @@ it("rolls back the sheet and number if its email work cannot be stored", async (
   });
 });
 
-it.each(["complaint_sheets", "complaint_responses", "complaint_notes"])(
+it.each(["complaint_sheets", "complaint_responses", "complaint_response_voids"])(
   "preserves filed %s against direct updates and deletion",
   async (table) => {
     const filed = await app.request(
@@ -372,7 +353,6 @@ it.each(["complaint_sheets", "complaint_responses", "complaint_notes"])(
     const sheet = (await filed.json()) as Sheet;
     await db.signIn("owner");
     const requestId = crypto.randomUUID();
-    const noteId = crypto.randomUUID();
     expect(
       (
         await db.request(`/complaints/${sheet.id}/responses`, "POST", {
@@ -387,21 +367,21 @@ it.each(["complaint_sheets", "complaint_responses", "complaint_notes"])(
     ).toBe(201);
     expect(
       (
-        await db.request(`/complaints/${sheet.id}/notes`, "POST", {
-          requestId: noteId,
-          text: "Original note",
+        await db.request(`/complaints/${sheet.id}/responses/${requestId}/void`, "POST", {
+          reason: "Recorded by mistake",
         })
       ).status,
     ).toBe(201);
-    const id =
-      table === "complaint_sheets" ? sheet.id : table === "complaint_notes" ? noteId : requestId;
-    const original = db.sqlite.prepare(`SELECT * FROM ${table} WHERE id = ?`).get(id);
+    const id = table === "complaint_sheets" ? sheet.id : requestId;
+    const key = table === "complaint_response_voids" ? "response_id" : "id";
+    const original = db.sqlite.prepare(`SELECT * FROM ${table} WHERE ${key} = ?`).get(id);
+    expect(original).toBeDefined();
     expect(() =>
-      db.sqlite.prepare(`UPDATE ${table} SET id = 'replacement' WHERE id = ?`).run(id),
+      db.sqlite.prepare(`UPDATE ${table} SET ${key} = 'replacement' WHERE ${key} = ?`).run(id),
     ).toThrow("filed complaint records are immutable");
-    expect(() => db.sqlite.prepare(`DELETE FROM ${table} WHERE id = ?`).run(id)).toThrow(
+    expect(() => db.sqlite.prepare(`DELETE FROM ${table} WHERE ${key} = ?`).run(id)).toThrow(
       "filed complaint records are immutable",
     );
-    expect(db.sqlite.prepare(`SELECT * FROM ${table} WHERE id = ?`).get(id)).toEqual(original);
+    expect(db.sqlite.prepare(`SELECT * FROM ${table} WHERE ${key} = ?`).get(id)).toEqual(original);
   },
 );

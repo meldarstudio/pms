@@ -62,9 +62,10 @@ at once. `failed` is the portal's **Requiere atención**; nothing restarts it.
 `POST /complaints/:id/email-copies` queues a `copy` row, whose id is the request id, only
 while the latest row is `failed`, and a partial unique index allows one `pending` row per
 sheet. Rows stay `pending` while `RESEND_API_KEY` is unset. `delivery_uncertain` and
-`retry_request_id` are retired columns that nothing reads or writes. Owner notes
-(`complaint_notes`) are immutable dated text; they never count as a response or change the
-due date. `correctsId` on older responses stays readable, but new responses cannot set it.
+`retry_request_id` are retired columns that nothing reads or writes. The owner voids a
+response with a required reason through an append-only `complaint_response_voids` row; a voided
+response stays visible but no longer answers the sheet, and a void cannot be changed or undone.
+`correctsId` on older responses stays readable, but new responses cannot set it.
 Owner response attachments live in the private R2 bucket `pms-complaint-files`,
 bound as `COMPLAINT_ATTACHMENTS` and simulated locally. It has no lock rule yet;
 retention/disposal is #294. Response due dates count 15 weekdays after the property-time

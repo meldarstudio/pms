@@ -5,7 +5,7 @@ import { z } from "zod";
 import { complaintAttachmentMetadataSchema } from "@pms/shared";
 import type { Env } from "../env";
 import { getDb } from "../db";
-import { complaintAttachments, complaintResponses } from "../db/schema";
+import { complaintAttachments, complaintResponses, complaintResponseVoids } from "../db/schema";
 import { complaintView } from "../complaints";
 import { HttpError } from "../http";
 
@@ -68,6 +68,11 @@ complaintAttachmentRoutes.put(
     const attachmentId = c.req.param("attachmentId");
     const responseId = c.req.param("responseId");
     const db = getDb(c.env.DB);
+    const [voided] = await db
+      .select({ id: complaintResponseVoids.responseId })
+      .from(complaintResponseVoids)
+      .where(eq(complaintResponseVoids.responseId, responseId));
+    if (voided) throw new HttpError(409, "complaint response is voided");
     const metadata = { complaintId: c.req.param("id"), responseId, name, contentType, sha256 };
     const key = `complaint-evidence/${attachmentId}`;
     const bucket = c.env.COMPLAINT_ATTACHMENTS!;
