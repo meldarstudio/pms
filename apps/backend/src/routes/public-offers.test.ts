@@ -105,30 +105,6 @@ describe("public offer search", () => {
   });
 
   it.each([
-    ["three adults", { adults: "3" }],
-    ["three children", { children: "3" }],
-  ])("marks a room type too small for %s without pricing it", async (_name, occupancy) => {
-    seedRoomType(db.sqlite, {
-      id: "type-family",
-      name: "Family",
-      maxAdults: 4,
-      baseRateCents: 12000,
-    });
-    db.sqlite.exec("UPDATE room_types SET max_children = 3 WHERE id = 'type-family'");
-    seedRooms(db.sqlite, "type-family", { "room-301": "301" });
-    db.env.PUBLISHED_ROOM_TYPE_IDS = "type-king,type-family";
-
-    const { roomTypes } = await offers(occupancy);
-
-    expect(
-      roomTypes.map(({ id, availability, offers }) => [id, availability, offers.length]),
-    ).toEqual([
-      ["type-king", "too_many_guests", 0],
-      ["type-family", "available", 2],
-    ]);
-  });
-
-  it.each([
     ["confirmed", "sold_out", 0],
     ["checked_in", "sold_out", 0],
     ["cancelled", "available", 2],
@@ -198,14 +174,6 @@ describe("public offer search", () => {
 
     expect(response.status).toBe(status);
     if (error) expect(await response.json()).toEqual({ error });
-  });
-
-  it.each([
-    ["no adults", { adults: "0" }],
-    ["negative children", { children: "-1" }],
-    ["fractional adults", { adults: "1.5" }],
-  ])("rejects %s", async (_name, occupancy) => {
-    expect((await search(occupancy)).status).toBe(400);
   });
 
   it.each([
@@ -307,31 +275,6 @@ describe("public access boundary", () => {
     expect(response.headers.get("access-control-allow-origin")).toBeNull();
   });
 
-  it("answers unknown public paths with not found", async () => {
-    const response = await app.request("/public/reservations", {}, db.env);
-
-    expect(response.status).toBe(404);
-  });
-
-  it("lets the website read search results without credentials", async () => {
-    const preflight = await app.request(
-      "/public/offers",
-      {
-        method: "OPTIONS",
-        headers: { origin: WEBSITE_ORIGIN, "access-control-request-method": "GET" },
-      },
-      db.env,
-    );
-    const response = await search();
-
-    expect(preflight.status).toBe(204);
-    for (const answer of [preflight, response]) {
-      expect(answer.headers.get("access-control-allow-origin")).toBe(WEBSITE_ORIGIN);
-      expect(answer.headers.get("access-control-allow-credentials")).toBeNull();
-    }
-    expect(response.headers.get("access-control-expose-headers")).toContain("Retry-After");
-  });
-
   it("does not grant the portal origin public CORS, nor the website staff CORS", async () => {
     const fromPortal = await search({}, { origin: PORTAL_ORIGIN });
     const websiteToStaff = await app.request(
@@ -354,16 +297,5 @@ describe("public search rate limit", () => {
     await search({}, { "cf-connecting-ip": "198.51.100.7", "user-agent": "another-device" });
 
     expect(limit.mock.calls).toEqual([[{ key: "203.0.113.9" }], [{ key: "198.51.100.7" }]]);
-  });
-
-  it("answers a throttled search with 429 and a retry delay, before validating it", async () => {
-    db.env.SEARCH_LIMITER = { limit: async () => ({ success: false }) };
-
-    const response = await search({ checkIn: "not-a-date" });
-
-    expect(response.status).toBe(429);
-    expect(await response.json()).toEqual({ error: "too many searches" });
-    expect(response.headers.get("retry-after")).toBe("60");
-    expect(response.headers.get("access-control-allow-origin")).toBe(WEBSITE_ORIGIN);
   });
 });

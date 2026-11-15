@@ -27,3 +27,6 @@ The shared happy-dom/Vite SSR harness renders real screens and forms, substituti
 HTTP responses at fetch; no browser is needed. Reuse the existing suites under
 `tests/`, including `reservation-dialog.test.ts` and `reservation-page.test.ts`.
 These tests do not establish visual or physical-device correctness.
+Every suite runs in one worker and shares one happy-dom window and Vite server
+(`isolate: false`, `sharedBrowserTest` in `tests/browser.ts`), so module state outlives
+a file: restore timers, globals, `process.env`, and the viewport in `afterEach` or `afterAll`.

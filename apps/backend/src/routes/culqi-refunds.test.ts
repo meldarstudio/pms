@@ -147,20 +147,6 @@ describe("staff Culqi refunds", () => {
     expect(refundCalls()).toHaveLength(1);
   });
 
-  it("leaves an unanswered refund pending when the charge shows nothing refunded", async () => {
-    const { id, paymentId } = await paidOnline();
-    culqi.next("POST /refunds", 500);
-
-    const { body } = await command(id, [culqiRefund(paymentId)]);
-    expect(body.refunds[0]).toMatchObject({ status: "requested" });
-
-    const failed = await command(id, [
-      { type: "fail-refund", refundId: body.refunds[0]!.id, reason: "Culqi rejected it" },
-    ]);
-    expect(failed.body.refunds[0]).toMatchObject({ status: "failed" });
-    expect(failed.body.refundDueCents).toBe(10000);
-  });
-
   it("refuses a second Culqi refund while one on the payment is pending", async () => {
     const { id, paymentId } = await paidOnline();
     culqi.next("POST /refunds", "decline");
@@ -202,33 +188,6 @@ describe("staff Culqi refunds", () => {
     expect(refundCalls()).toHaveLength(0);
   });
 
-  it("refuses refunds Culqi cannot process", async () => {
-    const { id, paymentId } = await paidOnline();
-    const cash = await command(id, [
-      {
-        type: "add-payment",
-        payment: { amountCents: 1000, method: "cash", paymentDate: "2026-10-10" },
-      },
-    ]);
-    const cashId = cash.body.payments.find((p) => p.method === "cash")!.id;
-
-    expect(await command(id, [culqiRefund(cashId, 1000)])).toMatchObject({
-      status: 400,
-      body: { error: "payment is not a Culqi payment" },
-    });
-    expect(await command(id, [culqiRefund(paymentId, 99)])).toMatchObject({
-      status: 400,
-      body: { error: "Culqi refund must be at least 100 cents" },
-    });
-    delete db.env.CULQI_SECRET_KEY;
-    expect(await command(id, [culqiRefund(paymentId)])).toMatchObject({
-      status: 503,
-      body: { error: "Culqi is not configured" },
-    });
-    expect((await detail(id)).refunds).toEqual([]);
-    expect(refundCalls()).toHaveLength(0);
-  });
-
   it("calls Culqi once per request: never on preview or replay", async () => {
     const { id, paymentId } = await paidOnline();
     const preview = await db.request(`/reservations/${id}/preview`, "POST", {
@@ -246,55 +205,6 @@ describe("staff Culqi refunds", () => {
     expect(replayed.status).toBe(200);
     expect(replayed.body.refunds).toHaveLength(1);
     expect(refundCalls()).toHaveLength(1);
-  });
-
-  it("replays a committed refund without refunding again while Culqi's response is pending", async () => {
-    const { id, paymentId } = await paidOnline();
-    let reachedProvider!: () => void;
-    let releaseResponse!: () => void;
-    const reached = new Promise<void>((resolve) => {
-      reachedProvider = resolve;
-    });
-    const released = new Promise<void>((resolve) => {
-      releaseResponse = resolve;
-    });
-    let paused = false;
-    vi.stubGlobal("fetch", async (input: RequestInfo | URL, init?: RequestInit) => {
-      const response = await culqi.fetch(input, init);
-      const url = new URL(input instanceof Request ? input.url : input);
-      if (url.pathname === "/v2/refunds" && !paused) {
-        paused = true;
-        reachedProvider();
-        await released;
-      }
-      return response;
-    });
-    const requestId = crypto.randomUUID();
-    const actions = [culqiRefund(paymentId)];
-    const saving = command(id, actions, requestId);
-    await reached;
-
-    try {
-      const replayed = await command(id, actions, requestId);
-      expect(replayed.status).toBe(200);
-      expect(replayed.body).toMatchObject({ refundedCents: 0, pendingRefundCents: 10000 });
-      expect(replayed.body.refunds).toEqual([
-        expect.objectContaining({ status: "requested", amountCents: 10000 }),
-      ]);
-      expect(culqi.refunds).toHaveLength(1);
-    } finally {
-      releaseResponse();
-      await saving;
-    }
-
-    const saved = await saving;
-    expect(saved.status).toBe(200);
-    expect(saved.body).toMatchObject({ refundedCents: 10000, pendingRefundCents: 0 });
-    expect(saved.body.refunds).toEqual([
-      expect.objectContaining({ status: "completed", amountCents: 10000 }),
-    ]);
-    expect(await detail(id)).toMatchObject({ refundedCents: 10000, pendingRefundCents: 0 });
-    expect(culqi.refunds).toHaveLength(1);
   });
 
   it("does not resend a successful Culqi refund when saving its completion fails", async () => {

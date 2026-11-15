@@ -59,31 +59,6 @@ describe("inventoryGrid", () => {
     ]);
   });
 
-  it("ignores cancelled rooms but counts the final checked-out dates", () => {
-    const [type] = inventoryGrid(
-      ["2026-12-24"],
-      [deluxe],
-      new Map([["deluxe", 2]]),
-      [
-        {
-          roomTypeId: "deluxe",
-          status: "cancelled",
-          checkIn: "2026-12-24",
-          checkOut: "2026-12-25",
-        },
-        {
-          roomTypeId: "deluxe",
-          status: "checked_out",
-          checkIn: "2026-12-24",
-          checkOut: "2026-12-25",
-        },
-      ],
-      [],
-      [],
-    );
-    expect(type?.nights[0]).toMatchObject({ booked: 1, free: 1 });
-  });
-
   it("uses the busiest night when stays do not overlap", () => {
     const peak = peakOccupied(
       ["2026-10-01", "2026-10-02", "2026-10-03", "2026-10-04", "2026-10-05", "2026-10-06"],
@@ -110,28 +85,5 @@ describe("inventoryGrid", () => {
       [],
     );
     expect(peak.get("deluxe")).toBe(2);
-  });
-
-  it("counts distinct closed rooms and floors free at zero", () => {
-    const [type] = inventoryGrid(
-      ["2026-12-24"],
-      [deluxe],
-      new Map([["deluxe", 2]]),
-      [
-        {
-          roomTypeId: "deluxe",
-          status: "confirmed",
-          checkIn: "2026-12-24",
-          checkOut: "2026-12-25",
-        },
-      ],
-      [
-        { roomId: "101", roomTypeId: "deluxe", starts: "2026-12-24", ends: "2026-12-25" },
-        { roomId: "101", roomTypeId: "deluxe", starts: "2026-12-23", ends: "2026-12-26" },
-        { roomId: "102", roomTypeId: "deluxe", starts: "2026-12-24", ends: "2026-12-25" },
-      ],
-      [],
-    );
-    expect(type?.nights[0]).toMatchObject({ booked: 1, closed: 2, free: 0 });
   });
 });

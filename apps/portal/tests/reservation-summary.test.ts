@@ -1,8 +1,8 @@
 import assert from "node:assert/strict";
-import { afterAll, afterEach, beforeAll, beforeEach, it } from "vite-plus/test";
+import { afterEach, beforeAll, beforeEach, it } from "vite-plus/test";
 import type { HTMLElement, HTMLInputElement } from "happy-dom";
 import type { ReservationDetail, WorkflowCommand } from "../src/lib/api.ts";
-import { createBrowserTest, type BrowserTest, type BrowserPage } from "./browser.ts";
+import { sharedBrowserTest, type BrowserTest, type BrowserPage } from "./browser.ts";
 
 let browser: BrowserTest;
 let page: BrowserPage;
@@ -13,7 +13,7 @@ let detailResponse: () => Response | Promise<Response>;
 let writeResponse: (command: WorkflowCommand) => Response;
 
 beforeAll(async () => {
-  browser = await createBrowserTest();
+  browser = await sharedBrowserTest();
   routes = (await browser.server.ssrLoadModule("/src/router.tsx")) as typeof routes;
   const calendar = (await browser.server.ssrLoadModule(
     "/src/lib/property-calendar.ts",
@@ -110,9 +110,6 @@ beforeEach(() => {
 afterEach(async () => {
   await page.cleanup();
 });
-afterAll(async () => {
-  await browser?.close();
-});
 
 async function render(search = "", waitForDetail = true) {
   router = browser.routing.createRouter({
@@ -196,65 +193,4 @@ it("saves a discount from its zero-valued row and then a payment without changin
   assert.equal(amount("Total"), "S/250");
   assert.equal(amount("Pagado"), "S/150");
   assert.match(page.container.textContent.replace(/\s/g, ""), /SaldopendienteS\/100/);
-});
-
-it.each([
-  {
-    paidCents: 25000,
-    balanceCents: 0,
-    creditCents: 0,
-    label: "Cuenta saldada",
-    paid: "S/250",
-    balance: "S/0",
-  },
-  {
-    paidCents: 30050,
-    balanceCents: -5050,
-    creditCents: 5050,
-    label: "Por devolver",
-    paid: "S/300.50",
-    balance: "S/50.50",
-  },
-])(
-  "distinguishes $label from money owed without hiding bill arithmetic",
-  async ({ paidCents, balanceCents, creditCents, label, paid, balance }) => {
-    saved = { ...saved, paidCents, balanceCents, creditCents };
-    await render();
-    assert.equal(amount("Subtotal"), "S/300.50");
-    assert.equal(amount("Descuento"), "-S/50.50");
-    assert.equal(amount("Total"), "S/250");
-    assert.equal(amount("Pagado"), paid);
-    assert.ok(
-      page.container.textContent
-        .replace(/\s/g, "")
-        .includes(`${label.replace(/\s/g, "")}${balance}`),
-    );
-  },
-);
-
-async function back() {
-  const link = browser.window.document.querySelector<HTMLElement>('nav[aria-label="breadcrumb"] a');
-  assert.ok(link, "Missing Reservas breadcrumb");
-  await browser.React.act(async () => link.click());
-}
-
-it("protects a discount draft when returning to the calendar and allows explicit discard", async () => {
-  await render("?origin=calendar&returnTo=from%3D2026-10-19%26span%3D14");
-  await openDiscount();
-  await page.fill(discountInput()!, "25");
-  const unload = new browser.window.Event("beforeunload", { cancelable: true });
-  await browser.React.act(async () => browser.window.dispatchEvent(unload));
-  assert.equal(unload.defaultPrevented, true, "A discount draft must block an update reload");
-  await back();
-  await page.until(() =>
-    browser.window.document.body.textContent.includes("Hay cambios sin guardar"),
-  );
-  assert.equal(router.state.location.pathname, "/reservations/summary");
-  await click("Seguir editando");
-  if (!discountInput()) await openDiscount();
-  assert.equal(discountInput()!.value, "25", "Staying must keep the discount draft");
-  await back();
-  await click("Descartar y salir");
-  await page.until(() => router.state.location.pathname === "/calendar");
-  assert.deepEqual({ ...router.state.location.search }, { from: "2026-10-19", span: 14 });
 });

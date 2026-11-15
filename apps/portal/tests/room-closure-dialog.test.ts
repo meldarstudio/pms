@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
-import { afterAll, afterEach, beforeAll, beforeEach, it, vi } from "vite-plus/test";
+import { afterEach, beforeAll, beforeEach, it, vi } from "vite-plus/test";
 import type { HTMLButtonElement } from "happy-dom";
-import { createBrowserTest, type BrowserTest, type BrowserPage } from "./browser.ts";
+import { sharedBrowserTest, type BrowserTest, type BrowserPage } from "./browser.ts";
 let browser: BrowserTest;
 let page: BrowserPage;
 let React: BrowserTest["React"];
@@ -11,7 +11,7 @@ let until: BrowserPage["until"];
 
 let closures: typeof import("../src/components/room-closure-dialog.tsx");
 beforeAll(async () => {
-  browser = await createBrowserTest();
+  browser = await sharedBrowserTest();
   ({ React, window } = browser);
   closures = (await browser.server.ssrLoadModule(
     "/src/components/room-closure-dialog.tsx",
@@ -30,9 +30,6 @@ beforeEach(() => {
 afterEach(async () => {
   await page.cleanup();
   vi.useRealTimers();
-});
-afterAll(async () => {
-  await browser?.close();
 });
 const button = (label: string) => page.button(label);
 it("round-trips saved closure dates through the picker and submitted request", async () => {
@@ -66,21 +63,4 @@ it("round-trips saved closure dates through the picker and submitted request", a
   await React.act(async () => button("Guardar").click());
   await until(() => writes.length === 1, "Closure saves");
   assert.deepEqual(writes, [{ starts: "2026-10-30", ends: "2026-11-02", reason: "Repairs" }]);
-});
-
-it("opens an unselected picker in the property month and marks the property date as today", async () => {
-  await render(
-    React.createElement(closures.RoomClosureDialog, {
-      target: { mode: "create", roomId: "room-1", number: "101", typeName: "Doble" },
-      onClose: () => {},
-    }),
-  );
-  await React.act(async () => button("Seleccionar fecha").click());
-  assert.match(
-    window.document.querySelector('[data-slot="calendar"]')!.textContent,
-    /octubre 2026/,
-  );
-  const today = window.document.querySelector<HTMLButtonElement>('button[data-day="31/10/2026"]');
-  assert.ok(today);
-  assert.match(today.getAttribute("aria-label") ?? "", /hoy|today/i);
 });

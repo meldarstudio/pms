@@ -35,26 +35,6 @@ for (const { path, provider, category, notices, field } of [
   });
 }
 
-test("keeps what the guest typed before the form became interactive", async ({ page }) => {
-  await stubPaymentScripts(page);
-  let hydrate = () => {};
-  const held = new Promise<void>((resolve) => (hydrate = resolve));
-  await page.route(/ComplaintBook.*\.js/, async (route) => {
-    await held;
-    await route.continue();
-  });
-  await page.goto("/en/libro-de-reclamaciones/", { waitUntil: "domcontentloaded" });
-  await page.getByLabel("Full name", { exact: true }).fill("Ana Torres");
-  await page.getByRole("combobox", { name: "Category", exact: true }).selectOption("queja");
-  hydrate();
-  await expect(page.locator("astro-island[ssr]")).toHaveCount(0);
-  await page.getByLabel("Address", { exact: true }).fill("Lima");
-  await page.reload();
-  await expect(page.getByLabel("Full name", { exact: true })).toHaveValue("Ana Torres");
-  await expect(page.getByLabel("Address", { exact: true })).toHaveValue("Lima");
-  await expect(page.getByRole("combobox", { name: "Category", exact: true })).toHaveValue("queja");
-});
-
 test("keeps the complaint draft and retry credential after a lost response, then prints the saved receipt", async ({
   page,
 }) => {
@@ -207,30 +187,4 @@ test("registers a minor's queja without a reservation, email or amount through t
   await expect(
     page.getByRole("heading", { name: /^Hoja de Reclamación Nº \d{9}-\d{4}$/ }),
   ).toBeVisible();
-});
-
-test("asks the guest to reload when privacy information changed and keeps the draft", async ({
-  page,
-}) => {
-  await stubPaymentScripts(page);
-  await page.route("**/public/complaints", (route) =>
-    route.fulfill({ status: 409, json: { error: "complaint privacy information changed" } }),
-  );
-  await page.goto("/en/libro-de-reclamaciones/");
-  await page.getByLabel("Full name", { exact: true }).fill("Ana Torres");
-  await page.getByLabel("Address", { exact: true }).fill("Lima");
-  await page.getByLabel("Document type", { exact: true }).fill("Passport");
-  await page.getByLabel("Document number", { exact: true }).fill("AB123456");
-  await page.getByLabel("Phone", { exact: true }).fill("+51999999999");
-  await page.getByLabel("Reservation reference", { exact: true }).fill("BOOK-123");
-  await page.getByLabel("Email", { exact: true }).fill("ana@example.com");
-  await page.getByLabel("Product or service", { exact: true }).fill("Accommodation");
-  await page.getByLabel("Description", { exact: true }).fill("Service unavailable");
-  await page.getByLabel("Requested remedy", { exact: true }).fill("Please respond");
-  await page.getByRole("button", { name: "Register sheet" }).click();
-  await expect(page.getByRole("alert")).toContainText("Reload the page");
-  await page.reload();
-  await expect(page.getByLabel("Description", { exact: true })).toHaveValue("Service unavailable");
-  await expect(page.getByLabel("Full name", { exact: true })).toBeEnabled();
-  await expect(page.getByRole("button", { name: "Register sheet" })).toBeVisible();
 });

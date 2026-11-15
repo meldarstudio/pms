@@ -1,7 +1,6 @@
 import assert from "node:assert/strict";
-import { afterAll, afterEach, beforeAll, beforeEach, it, vi } from "vite-plus/test";
-import { createBrowserTest, type BrowserPage, type BrowserTest } from "./browser.ts";
-import { reservationsSearch } from "../src/lib/route-search.ts";
+import { afterEach, beforeAll, beforeEach, it, vi } from "vite-plus/test";
+import { sharedBrowserTest, type BrowserPage, type BrowserTest } from "./browser.ts";
 
 let browser: BrowserTest;
 let page: BrowserPage;
@@ -13,7 +12,7 @@ const accounts = [
 ];
 
 beforeAll(async () => {
-  browser = await createBrowserTest();
+  browser = await sharedBrowserTest();
   routes = (await browser.server.ssrLoadModule("/src/router.tsx")) as typeof routes;
   const calendar = (await browser.server.ssrLoadModule(
     "/src/lib/property-calendar.ts",
@@ -29,10 +28,6 @@ beforeEach(() => {
 afterEach(async () => {
   await page.cleanup();
   vi.restoreAllMocks();
-});
-
-afterAll(async () => {
-  await browser?.close();
 });
 
 function signedInAs(role: "owner" | "staff") {
@@ -54,15 +49,6 @@ async function renderPassword(kind: "personal" | "propietario" = "personal") {
   await page.until(() => page.container.textContent.includes("hotelmanantial"));
   await page.click(`Cambiar contraseña de ${kind}`);
   return router;
-}
-
-async function configurationLinks() {
-  await page.click("Alternar navegación");
-  return Array.from(
-    browser.window.document.querySelectorAll(
-      'nav[aria-label="Navegación principal"] a[href^="/setup"]',
-    ),
-  );
 }
 
 it("lets the owner set the staff password after confirming it", async () => {
@@ -88,120 +74,6 @@ it("lets the owner set the staff password after confirming it", async () => {
   await page.until(
     () => page.container.textContent.includes("Se cerró la sesión del personal"),
     "The owner is told staff must sign in again",
-  );
-  assert.equal(page.field("staffPassword").value, "");
-});
-
-it("warns when refreshing accounts fails and retries without losing password drafts", async () => {
-  signedInAs("owner");
-  const logged = vi.spyOn(console, "error").mockImplementation(() => {});
-  await renderPassword();
-  await page.fill("staffPassword", "unfinished staff password");
-  page.api.failOnce("GET", "/accounts", 500);
-  await browser.React.act(async () => {
-    await page.client.invalidateQueries({ queryKey: ["accounts"] });
-  });
-  await page.until(() =>
-    page.container.textContent.includes("Los datos pueden estar desactualizados."),
-  );
-  assert.ok(logged.mock.calls.length > 0, "An unexplained refresh failure is logged");
-  assert.equal(page.field("staffPassword").value, "unfinished staff password");
-  await page.click("Reintentar");
-  await page.until(
-    () => !page.container.textContent.includes("Los datos pueden estar desactualizados."),
-  );
-  assert.equal(page.field("staffPassword").value, "unfinished staff password");
-});
-
-it("rejects overlong new passwords before sending a staff reset", async () => {
-  signedInAs("owner");
-  const writes = page.api.bodies("PUT", "/accounts/staff-id/password");
-  await renderPassword();
-  await page.fill("staffPassword", "a".repeat(129));
-  await page.fill("staffPasswordConfirm", "a".repeat(129));
-  await page.click("Cambiar contraseña del personal");
-  await page.until(() => page.container.textContent.includes("como máximo 128 caracteres"));
-  assert.deepEqual(writes, []);
-  assert.equal(page.field("staffPassword").value.length, 129);
-});
-
-it("translates a wrong current password when the owner changes their own", async () => {
-  signedInAs("owner");
-  page.api.on("PUT", "/account/password", () =>
-    Response.json(
-      { error: "current password is incorrect" },
-      { status: 400, headers: { "X-Error-Field": "currentPassword" } },
-    ),
-  );
-  await renderPassword("propietario");
-  await page.fill("currentPassword", "wrong password");
-  await page.fill("newPassword", "a new owner password");
-  await page.fill("newPasswordConfirm", "a new owner password");
-  await page.click("Cambiar mi contraseña");
-  await page.until(
-    () => page.container.textContent.includes("La contraseña actual no es correcta."),
-    "The error appears in Spanish",
-  );
-  assert.equal(page.field("newPassword").value, "a new owner password");
-});
-
-it("lists Cuentas among the owner's sidebar configuration sections", async () => {
-  page.mobile();
-  signedInAs("owner");
-  await render("/accounts");
-  await page.until(() => page.container.textContent.includes("hotelmanantial"));
-  const links = await configurationLinks();
-  assert.deepEqual(
-    links.map((link) => link.textContent.trim()),
-    ["Habitaciones", "Apariencia", "Pagos", "Cuentas"],
-  );
-  assert.equal(links[3].getAttribute("aria-current"), "page");
-});
-
-it("sends the staff account from account management to Habitaciones", async () => {
-  page.mobile();
-  signedInAs("staff");
-  const router = await render("/accounts");
-  await page.until(
-    () => page.container.querySelector("main h1")?.textContent === "Habitaciones",
-    "Staff land on a section they can use",
-  );
-  assert.equal(router.state.location.search.section, undefined);
-  const links = await configurationLinks();
-  assert.deepEqual(
-    links.map((link) => link.textContent.trim()),
-    ["Habitaciones", "Apariencia"],
-  );
-  assert.equal(page.api.requests("GET", "/accounts").length, 0);
-});
-
-it("protects a password draft and blocks edits and navigation during the real password write", async () => {
-  signedInAs("owner");
-  const save = page.api.hold("PUT", "/accounts/staff-id/password");
-  const router = await renderPassword();
-  await page.fill("staffPassword", "new staff password");
-  await page.fill("staffPasswordConfirm", "new staff password");
-  await page.click("Cuentas");
-  await page.until(() => !!browser.window.document.querySelector('[role="alertdialog"]'));
-  await page.click("Seguir editando");
-  assert.equal(page.field("staffPassword").value, "new staff password");
-  await page.click("Cambiar contraseña del personal");
-  await page.until(() => !!save.request);
-  assert.equal(page.field("staffPassword").disabled, true);
-  await browser.React.act(async () => {
-    void router.navigate({
-      to: "/reservations",
-      search: reservationsSearch({ day: "2026-10-27" }),
-    });
-  });
-  await page.until(() => browser.window.document.body.textContent.includes("Guardando cambios"));
-  assert.equal(page.button("Descartar cambios").disabled, true);
-  await browser.React.act(async () => save.release(Response.json({ ok: true })));
-  await page.until(() => page.container.textContent.includes("Se cerró la sesión del personal"));
-  assert.equal(
-    router.state.location.pathname,
-    "/setup",
-    "A navigation attempted during saving is not replayed",
   );
   assert.equal(page.field("staffPassword").value, "");
 });

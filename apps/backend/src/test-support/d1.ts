@@ -29,6 +29,39 @@ const migrations = new URL("../../drizzle/", import.meta.url);
 
 const D1_MAX_BOUND_PARAMETERS = 100;
 
+type SignIn = { cookie: string; session: Record<string, SQLInputValue> };
+
+const signInsByRoleAndInstant = new Map<string, SignIn[]>();
+
+async function signInOncePerInstant(
+  sqlite: DatabaseSync,
+  env: Env["Bindings"],
+  role: AccountRole,
+  replayedInThisDatabase: Map<string, number>,
+): Promise<string> {
+  const key = `${role}@${Date.now()}`;
+  const known = signInsByRoleAndInstant.get(key) ?? [];
+  signInsByRoleAndInstant.set(key, known);
+  const index = replayedInThisDatabase.get(key) ?? 0;
+  replayedInThisDatabase.set(key, index + 1);
+  const earlier = known[index];
+  if (earlier) {
+    const columns = Object.keys(earlier.session);
+    sqlite
+      .prepare(
+        `INSERT INTO session (${columns.join(", ")}) VALUES (${columns.map(() => "?").join(", ")})`,
+      )
+      .run(...Object.values(earlier.session));
+    return earlier.cookie;
+  }
+  const cookie = await signIn(env, role);
+  const session = sqlite
+    .prepare("SELECT * FROM session ORDER BY rowid DESC LIMIT 1")
+    .get() as Record<string, SQLInputValue>;
+  known[index] = { cookie, session };
+  return cookie;
+}
+
 function statement(sqlite: DatabaseSync, sql: string, params: SQLInputValue[] = []) {
   if (params.length > D1_MAX_BOUND_PARAMETERS)
     throw new Error(`too many SQL variables: ${params.length} exceeds D1's limit`);
@@ -116,7 +149,8 @@ export async function createTestDb({
 
   await seedAccounts(sqlite);
   const env = authEnv(DB);
-  let cookie = await signIn(env);
+  const replayedSignIns = new Map<string, number>();
+  let cookie = await signInOncePerInstant(sqlite, env, "staff", replayedSignIns);
   return {
     sqlite,
     env,
@@ -134,8 +168,8 @@ export async function createTestDb({
         },
         env,
       ),
-    signIn: async (role) => {
-      cookie = await signIn(env, role);
+    signIn: async (role = "staff") => {
+      cookie = await signInOncePerInstant(sqlite, env, role, replayedSignIns);
     },
     beforeCommit: (run, { times = 1 } = {}) => {
       const hook = { run, times };

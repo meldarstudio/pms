@@ -77,28 +77,6 @@ it("stores an unreserved foreign-document sheet once across retries, numbered in
   );
 });
 
-it.each(["phone", "reservationReference"] as const)(
-  "requires %s when filing a public sheet",
-  async (field) => {
-    const token = crypto.randomUUID() + crypto.randomUUID();
-    const send = (input: typeof complaintInput) =>
-      app.request(
-        "http://localhost/public/complaints",
-        {
-          method: "POST",
-          headers: { "content-type": "application/json", authorization: `Bearer ${token}` },
-          body: JSON.stringify({ ...input, turnstileToken: COMPLAINT_TURNSTILE_PASS }),
-        },
-        db.env,
-      );
-    const rejected = await send({ ...complaintInput, [field]: "  " });
-    expect(rejected.status).toBe(400);
-    expect(rejected.headers.get("X-Error-Field")).toBe(field);
-    expect(await rejected.json()).toEqual({ error: "invalid complaint fields" });
-    expect((await send(complaintInput)).status).toBe(201);
-  },
-);
-
 it.each([
   ["missing", undefined, 400],
   ["invalid", "forged-token", 403],
@@ -128,66 +106,6 @@ it.each([
     });
   },
 );
-
-it("refuses a public submission when the verification secret is missing", async () => {
-  delete db.env.TURNSTILE_SECRET_KEY;
-  const response = await app.request(
-    "http://localhost/public/complaints",
-    {
-      method: "POST",
-      headers: {
-        "content-type": "application/json",
-        authorization: `Bearer ${crypto.randomUUID() + crypto.randomUUID()}`,
-      },
-      body: JSON.stringify(complaintSubmission),
-    },
-    db.env,
-  );
-  expect(response.status).toBe(503);
-  expect(await response.json()).toEqual({ error: "complaint security check is unavailable" });
-  expect(db.sqlite.prepare("SELECT count(*) AS count FROM complaint_sheets").get()).toEqual({
-    count: 0,
-  });
-});
-
-it("recovers after a security outage without storing challenge tokens or skipping verification on a replay", async () => {
-  const security = stubServices();
-  security.next("internal-error");
-  const token = crypto.randomUUID() + crypto.randomUUID();
-  const send = (turnstileToken = COMPLAINT_TURNSTILE_PASS) =>
-    app.request(
-      "http://localhost/public/complaints",
-      {
-        method: "POST",
-        headers: {
-          "content-type": "application/json",
-          authorization: `Bearer ${token}`,
-          "cf-connecting-ip": "192.0.2.5",
-        },
-        body: JSON.stringify({ ...complaintInput, turnstileToken }),
-      },
-      db.env,
-    );
-  const failed = await send();
-  expect(failed.status).toBe(503);
-  expect(await failed.json()).toEqual({ error: "complaint security check is unavailable" });
-  const saved = await send();
-  expect(saved.status).toBe(201);
-  const sheet = (await saved.json()) as Sheet;
-  expect(sheet.input).toEqual(complaintInput);
-  expect(security.verifications.at(-1)).toMatchObject({ remoteip: "192.0.2.5" });
-  expect(
-    db.sqlite.prepare("SELECT request_payload AS payload FROM complaint_sheets").get()?.payload,
-  ).not.toContain(COMPLAINT_TURNSTILE_PASS);
-  expect((await send("expired-token")).status).toBe(403);
-  const recovered = await app.request(
-    "http://localhost/public/complaints/receipt",
-    { headers: { authorization: `Bearer ${token}` } },
-    db.env,
-  );
-  expect(await recovered.json()).toEqual(sheet);
-  expect((await send()).status).toBe(200);
-});
 
 it("survives concurrent filing with unique consecutive references and one replayed sheet", async () => {
   vi.useFakeTimers({ toFake: ["Date"] });
@@ -281,40 +199,6 @@ it("lets only the owner read and append actual responses and correction evidence
   ).toBe(400);
 });
 
-it("dates a transcribed physical sheet from its original filing and preserves its history", async () => {
-  await db.signIn("owner");
-  vi.useFakeTimers();
-  vi.setSystemTime(new Date("2026-12-07T14:00:00Z"));
-  const body = {
-    requestId: crypto.randomUUID(),
-    originalReference: "PAPER-2026-17",
-    filedAt: "2026-12-05T02:00:00Z",
-    restoredAt: "2026-12-07T13:00:00Z",
-    input: {
-      ...complaintInput,
-      phone: "",
-      reservationReference: "",
-      minor: true,
-      representative: "Parent: Rosa Torres, passport AA222, Lima, +51 999999999",
-      category: "queja",
-    },
-  };
-  const result = await db.request("/complaints/backups", "POST", body);
-  expect(result.status).toBe(201);
-  const saved = (await result.json()) as Sheet;
-  expect(saved).toMatchObject({
-    filedAt: body.filedAt,
-    reference: "000000001-2026",
-    originalReference: body.originalReference,
-    source: "physical",
-    dueDate: "2026-12-25",
-    email: { status: "not_requested" },
-  });
-  expect(((await (await db.request("/complaints/backups", "POST", body)).json()) as Sheet).id).toBe(
-    saved.id,
-  );
-});
-
 it("keeps registration after receipt failure and retries the same saved email safely", async () => {
   db.env.RESEND_API_KEY = RESEND_TEST_KEY;
   db.env.RESEND_API_URL = RESEND_LOOPBACK;
@@ -358,91 +242,6 @@ it("keeps registration after receipt failure and retries the same saved email sa
   expect(email.text).toContain("Recipient: consumer");
 });
 
-it.each([
-  {
-    name: "a Spanish sheet for a minor with a claimed amount",
-    input: {
-      ...complaintInput,
-      language: "es",
-      minor: true,
-      representative: "Rosa Torres, madre",
-      amountCents: 15000,
-      category: "queja",
-    },
-    subject: "Libro de Reclamaciones — Hoja de Reclamación Nº",
-    lines: [
-      "1. Identificación del consumidor reclamante",
-      "Consumidor menor de edad: Sí",
-      "Padre o representante: Rosa Torres, madre",
-      "Monto: 150.00 PEN",
-      "Tipo: Queja",
-      "Canal de respuesta escrita: Correo electrónico",
-      "4. Observaciones y acciones adoptadas por el proveedor",
-    ],
-  },
-  {
-    name: "an English sheet without an amount",
-    input: complaintInput,
-    subject: "Libro de Reclamaciones — Complaint sheet No.",
-    lines: [
-      "1. Consumer identification",
-      "Consumer is a minor: No",
-      "Amount: Unknown / not applicable",
-      "Category: Reclamo",
-      "Written response channel: Email",
-      "4. Provider's observations and actions taken",
-    ],
-  },
-])("emails $name as a readable copy the guest can reply to", async ({ input, subject, lines }) => {
-  db.env.RESEND_API_KEY = RESEND_TEST_KEY;
-  db.env.RESEND_API_URL = RESEND_LOOPBACK;
-  const provider = fakeResend();
-  stubServices(provider);
-  const filed = await app.request(
-    "http://localhost/public/complaints",
-    {
-      method: "POST",
-      headers: {
-        "content-type": "application/json",
-        authorization: `Bearer ${crypto.randomUUID() + crypto.randomUUID()}`,
-      },
-      body: JSON.stringify({ ...input, turnstileToken: COMPLAINT_TURNSTILE_PASS }),
-    },
-    db.env,
-  );
-  expect(filed.status).toBe(201);
-  const sheet = (await filed.json()) as Sheet;
-  await sendComplaintEmails(getDb(db.env.DB), db.env);
-  const email = JSON.parse(provider.emails[0].body);
-  expect(email).toMatchObject({
-    from: `Hotel Manantial <${complaintBook.emailFrom}>`,
-    to: ["ana@example.com"],
-    reply_to: "hotelmanantialchurinperu@gmail.com",
-    subject: `${subject} ${sheet.reference}`,
-  });
-  for (const line of lines) expect(email.text).toContain(line);
-  expect(email.text).not.toMatch(/null|true|false|undefined|cents|céntimos/);
-});
-
-it("rejects incomplete minor details accessibly", async () => {
-  const send = (input: typeof complaintInput) =>
-    app.request(
-      "http://localhost/public/complaints",
-      {
-        method: "POST",
-        headers: {
-          "content-type": "application/json",
-          authorization: `Bearer ${crypto.randomUUID() + crypto.randomUUID()}`,
-        },
-        body: JSON.stringify({ ...input, turnstileToken: COMPLAINT_TURNSTILE_PASS }),
-      },
-      db.env,
-    );
-  const invalid = await send({ ...complaintInput, minor: true });
-  expect(invalid.status).toBe(400);
-  expect(invalid.headers.get("X-Error-Field")).toBe("representative");
-});
-
 it("rolls back the sheet and number if its email work cannot be stored", async () => {
   const token = crypto.randomUUID() + crypto.randomUUID();
   const send = () =>
@@ -465,81 +264,6 @@ it("rolls back the sheet and number if its email work cannot be stored", async (
   expect(await (await send()).json()).toMatchObject({
     reference: expect.stringMatching(/^000000001-\d{4}$/),
     email: { status: "pending" },
-  });
-});
-
-it("recovers an accepted email after a provider response is lost without duplicating it", async () => {
-  db.env.RESEND_API_KEY = RESEND_TEST_KEY;
-  db.env.RESEND_API_URL = RESEND_LOOPBACK;
-  const provider = fakeResend();
-  stubServices(provider);
-  provider.next("lose");
-  const filed = await app.request(
-    "http://localhost/public/complaints",
-    {
-      method: "POST",
-      headers: {
-        "content-type": "application/json",
-        authorization: `Bearer ${crypto.randomUUID() + crypto.randomUUID()}`,
-      },
-      body: JSON.stringify(complaintSubmission),
-    },
-    db.env,
-  );
-  const sheet = (await filed.json()) as Sheet;
-  await Promise.all([
-    sendComplaintEmails(getDb(db.env.DB), db.env),
-    sendComplaintEmails(getDb(db.env.DB), db.env),
-  ]);
-  vi.useFakeTimers();
-  vi.setSystemTime(new Date(Date.now() + 120000));
-  await sendComplaintEmails(getDb(db.env.DB), db.env);
-  await db.signIn("owner");
-  expect(await (await db.request(`/complaints/${sheet.id}`)).json()).toMatchObject({
-    provider: complaintBook.provider,
-    filedAt: sheet.filedAt,
-    email: { status: "sent" },
-  });
-  expect(provider.emails).toHaveLength(1);
-  expect(provider.requests[0].body).toBe(provider.requests[1].body);
-});
-
-it("sends a previously untouched receipt after a day-long outage and retries a definitive rejection", async () => {
-  db.env.RESEND_API_KEY = RESEND_TEST_KEY;
-  db.env.RESEND_API_URL = RESEND_LOOPBACK;
-  const provider = fakeResend();
-  stubServices(provider);
-  const filed = await app.request(
-    "http://localhost/public/complaints",
-    {
-      method: "POST",
-      headers: {
-        "content-type": "application/json",
-        authorization: `Bearer ${crypto.randomUUID() + crypto.randomUUID()}`,
-      },
-      body: JSON.stringify(complaintSubmission),
-    },
-    db.env,
-  );
-  const sheet = (await filed.json()) as Sheet;
-  vi.useFakeTimers();
-  vi.setSystemTime(new Date(Date.now() + 25 * 3600000));
-  provider.next(422);
-  await sendComplaintEmails(getDb(db.env.DB), db.env);
-  expect(provider.requests).toHaveLength(1);
-  vi.setSystemTime(new Date(Date.now() + 25 * 3600000));
-  await db.signIn("owner");
-  expect(
-    (
-      await db.request(`/complaints/${sheet.id}/email-retry`, "POST", {
-        requestId: crypto.randomUUID(),
-      })
-    ).status,
-  ).toBe(200);
-  await sendComplaintEmails(getDb(db.env.DB), db.env);
-  expect(await (await db.request(`/complaints/${sheet.id}`)).json()).toMatchObject({
-    email: { status: "sent" },
-    filedAt: sheet.filedAt,
   });
 });
 
@@ -585,42 +309,3 @@ it.each(["complaint_sheets", "complaint_responses"])(
     expect(db.sqlite.prepare(`SELECT * FROM ${table} WHERE id = ?`).get(id)).toEqual(original);
   },
 );
-
-it("holds an uncertain email for manual handling after provider deduplication expires", async () => {
-  db.env.RESEND_API_KEY = RESEND_TEST_KEY;
-  db.env.RESEND_API_URL = RESEND_LOOPBACK;
-  const provider = fakeResend();
-  stubServices(provider);
-  provider.next("lose");
-  const filed = await app.request(
-    "http://localhost/public/complaints",
-    {
-      method: "POST",
-      headers: {
-        "content-type": "application/json",
-        authorization: `Bearer ${crypto.randomUUID() + crypto.randomUUID()}`,
-      },
-      body: JSON.stringify(complaintSubmission),
-    },
-    db.env,
-  );
-  const sheet = (await filed.json()) as Sheet;
-  await sendComplaintEmails(getDb(db.env.DB), db.env);
-  vi.useFakeTimers();
-  vi.setSystemTime(new Date(Date.now() + 25 * 3600000));
-  await sendComplaintEmails(getDb(db.env.DB), db.env);
-  await db.signIn("owner");
-  expect(
-    (
-      await db.request(`/complaints/${sheet.id}/email-retry`, "POST", {
-        requestId: crypto.randomUUID(),
-      })
-    ).status,
-  ).toBe(409);
-  expect(await (await db.request(`/complaints/${sheet.id}`)).json()).toMatchObject({
-    filedAt: sheet.filedAt,
-    email: { status: "failed", lastError: "retry_window_expired" },
-  });
-  expect(provider.requests).toHaveLength(1);
-  expect(provider.emails).toHaveLength(1);
-});

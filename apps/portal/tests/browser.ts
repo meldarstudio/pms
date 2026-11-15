@@ -14,7 +14,14 @@ import { createFakeBackend } from "./fake-backend.ts";
 export const desktopViewport = { width: 1024, height: 768 };
 export const mobileViewport = { width: 390, height: 844 };
 
-export async function createBrowserTest() {
+let startedBrowserTest: ReturnType<typeof startBrowserTest> | undefined;
+
+export function sharedBrowserTest() {
+  startedBrowserTest ??= startBrowserTest();
+  return startedBrowserTest;
+}
+
+async function startBrowserTest() {
   const originalFetch = globalThis.fetch;
   const window = new Window({ url: "http://localhost:5173" });
   for (const name of [
@@ -205,13 +212,8 @@ export async function createBrowserTest() {
     };
   }
 
-  async function close() {
-    await server.close();
-    await window.happyDOM.close();
-  }
-
-  return { window, React, query, routing, server, withToasts, createPage, close };
+  return { window, React, query, routing, server, withToasts, createPage };
 }
 
-export type BrowserTest = Awaited<ReturnType<typeof createBrowserTest>>;
+export type BrowserTest = Awaited<ReturnType<typeof sharedBrowserTest>>;
 export type BrowserPage = ReturnType<BrowserTest["createPage"]>;

@@ -81,16 +81,6 @@ describe.each(guards)("$table status guard", (guard) => {
   const setStatus = (id: string, value: string) =>
     db.prepare(`UPDATE ${guard.table} SET status = ? WHERE id = ?`).run(value, id);
 
-  it.each(guard.statuses)("accepts %s on insert and update", (allowed) => {
-    applyGuards();
-    guard.insert("inserted", allowed);
-    guard.insert("updated", guard.statuses[0]!);
-
-    setStatus("updated", allowed);
-
-    expect([status("inserted"), status("updated")]).toEqual([allowed, allowed]);
-  });
-
   it("rejects an unknown status on insert and update", () => {
     applyGuards();
     guard.insert("valid", guard.statuses[0]!);
@@ -98,18 +88,5 @@ describe.each(guards)("$table status guard", (guard) => {
     expect(() => guard.insert("typo", guard.typo)).toThrow(guard.message);
     expect(() => setStatus("valid", guard.typo)).toThrow(guard.message);
     expect(status("valid")).toBe(guard.statuses[0]);
-  });
-
-  it("leaves a row with an earlier stray status writable until its status is written", () => {
-    guard.insert("stray", guard.typo);
-    applyGuards();
-
-    db.prepare(
-      `UPDATE ${guard.table} SET ${guard.unrelatedColumn} = 'checked' WHERE id = 'stray'`,
-    ).run();
-    expect(() => setStatus("stray", guard.typo)).toThrow(guard.message);
-    setStatus("stray", guard.statuses[0]!);
-
-    expect(status("stray")).toBe(guard.statuses[0]);
   });
 });

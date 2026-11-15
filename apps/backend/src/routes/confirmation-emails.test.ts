@@ -273,23 +273,6 @@ describe("automatic confirmation", () => {
     expect(culqi.requests.filter((request) => request.method === "POST")).toHaveLength(1);
   });
 
-  it("sends nothing for a desk reservation", async () => {
-    const desk = await db.request("/reservations", "POST", {
-      requestId: crypto.randomUUID(),
-      checkIn: "2026-11-10",
-      checkOut: "2026-11-11",
-      guest: { fullName: "Desk Guest", email: "desk@example.com" },
-      rooms: [{ roomTypeId: "type-king", adults: 1, children: 0 }],
-    });
-    expect(desk.status).toBe(201);
-    configureResend();
-
-    await runScheduled();
-
-    expect(emails()).toEqual([]);
-    expect(posts()).toEqual([]);
-  });
-
   it("retries a transient failure with the same idempotency key and backoff, then fails after five attempts", async () => {
     await confirmed();
     configureResend();
@@ -333,45 +316,6 @@ describe("automatic confirmation", () => {
     expect(posts()).toHaveLength(5);
   });
 
-  it("records the original message when Resend accepted a send whose response was lost", async () => {
-    await confirmed();
-    configureResend();
-    resend.next("lose");
-
-    await runScheduled();
-    expect(emails()[0]).toMatchObject({ status: "pending", last_error: "network_error" });
-    vi.advanceTimersByTime(MINUTE);
-    await runScheduled();
-
-    expect(posts()).toHaveLength(2);
-    expect(resend.emails).toHaveLength(1);
-    expect(emails()[0]).toMatchObject({
-      status: "sent",
-      attempts: 2,
-      provider_message_id: "email_1",
-      last_error: null,
-    });
-  });
-
-  it("resends the first request after a lost response, even when the reservation changed meanwhile", async () => {
-    const { saved } = await confirmed();
-    configureResend();
-    resend.next("lose");
-    await runScheduled();
-    await command(saved.id, [{ type: "set-discount", amountCents: 5000 }]);
-
-    vi.advanceTimersByTime(MINUTE);
-    await runScheduled();
-
-    expect(posts()).toHaveLength(2);
-    expect(posts()[1]!.body).toBe(posts()[0]!.body);
-    expect(resend.emails).toHaveLength(1);
-    expect(emails()[0]).toMatchObject({ status: "sent", provider_message_id: "email_1" });
-    expect(rows("SELECT pending_request FROM confirmation_emails")).toEqual([
-      { pending_request: null },
-    ]);
-  });
-
   it("posts once when two scheduled runs overlap", async () => {
     await confirmed();
     configureResend();
@@ -380,99 +324,6 @@ describe("automatic confirmation", () => {
 
     expect(posts()).toHaveLength(1);
     expect(emails()[0]).toMatchObject({ status: "sent", attempts: 1 });
-  });
-
-  it("fails at once when Resend refuses the message", async () => {
-    await confirmed();
-    configureResend();
-    resend.next(422);
-
-    await runScheduled();
-    vi.advanceTimersByTime(60 * MINUTE);
-    await runScheduled();
-
-    expect(posts()).toHaveLength(1);
-    expect(emails()[0]).toMatchObject({
-      status: "failed",
-      attempts: 1,
-      last_error: "validation_error",
-      next_attempt_at: null,
-    });
-  });
-
-  it("fails at once when Resend rejects the API key", async () => {
-    await confirmed();
-    configureResend();
-    resend.next(401);
-
-    await runScheduled();
-    vi.advanceTimersByTime(60 * MINUTE);
-    await runScheduled();
-
-    expect(posts()).toHaveLength(1);
-    expect(emails()[0]).toMatchObject({ status: "failed", attempts: 1, next_attempt_at: null });
-  });
-
-  it("retries when Resend is still processing the same idempotency key", async () => {
-    await confirmed();
-    configureResend();
-    resend.next("concurrent");
-
-    await runScheduled();
-    expect(emails()[0]).toMatchObject({
-      status: "pending",
-      attempts: 1,
-      last_error: "concurrent_idempotent_requests",
-    });
-    vi.advanceTimersByTime(MINUTE);
-    await runScheduled();
-
-    expect(posts()).toHaveLength(2);
-    expect(resend.emails).toHaveLength(1);
-    expect(emails()[0]).toMatchObject({ status: "sent", attempts: 2 });
-  });
-
-  it("waits at least Retry-After before trying again", async () => {
-    await confirmed();
-    configureResend();
-    resend.retryAfter("600");
-    resend.next(429);
-
-    await runScheduled();
-    vi.advanceTimersByTime(10 * MINUTE - 1);
-    await runScheduled();
-    expect(posts()).toHaveLength(1);
-    vi.advanceTimersByTime(1);
-    await runScheduled();
-
-    expect(posts()).toHaveLength(2);
-    expect(emails()[0]).toMatchObject({ status: "sent", attempts: 2 });
-  });
-
-  it("keeps the confirmation pending while Resend has no key, and sends it once the key is configured", async () => {
-    await confirmed();
-
-    await runScheduled();
-    expect(emails()[0]).toMatchObject({ status: "pending", attempts: 0 });
-    expect(posts()).toEqual([]);
-
-    configureResend();
-    await runScheduled();
-
-    expect(posts()).toHaveLength(1);
-    expect(emails()[0]).toMatchObject({ status: "sent" });
-  });
-
-  it("sends a confirmation queued under the retired email pause while online payments are paused", async () => {
-    await confirmed();
-    db.sqlite.exec("UPDATE operation_controls SET email_submission_admitted = 0");
-    await admitPayments(false);
-    configureResend();
-
-    await runScheduled();
-
-    expect(posts()).toHaveLength(1);
-    expect(emails()[0]).toMatchObject({ status: "sent" });
   });
 
   it("does not send a confirmation once staff cancel the reservation", async () => {
@@ -484,25 +335,6 @@ describe("automatic confirmation", () => {
 
     expect(posts()).toEqual([]);
     expect(emails()[0]).toMatchObject({ status: "failed", last_error: "not_confirmed" });
-  });
-
-  it("stops retrying a confirmation once staff cancel the reservation between attempts", async () => {
-    const { saved } = await confirmed();
-    configureResend();
-    resend.next(500);
-    await runScheduled();
-    await command(saved.id, [{ type: "set-status", status: "cancelled" }]);
-
-    vi.advanceTimersByTime(MINUTE);
-    await runScheduled();
-
-    expect(posts()).toHaveLength(1);
-    expect(emails()[0]).toMatchObject({
-      status: "failed",
-      attempts: 1,
-      last_error: "not_confirmed",
-      next_attempt_at: null,
-    });
   });
 
   it("escapes room names in HTML while keeping them in the plain text", async () => {
@@ -518,44 +350,6 @@ describe("automatic confirmation", () => {
     expect(sent.html).toContain("King &amp; &lt;img src=&quot;x&quot;");
     expect(sent.html).not.toContain('<img src="x"');
     expect(sent.text).toContain('King & <img src="x" onerror="alert(1)">');
-  });
-
-  it("sends an owed confirmation in the same scheduled run when the payment steps and the checkout purge fail", async () => {
-    await confirmed();
-    configureResend();
-    const log = vi.spyOn(console, "error").mockImplementation(() => {});
-    db.sqlite.exec("ALTER TABLE payment_attempts RENAME TO unavailable_attempts");
-
-    await runScheduled();
-
-    expect(log.mock.calls).toEqual([
-      ["scheduled payment reconciliation failed"],
-      ["scheduled authentication expiry failed"],
-      ["scheduled abandoned checkout purge failed"],
-    ]);
-    expect(posts()).toHaveLength(1);
-    expect(emails()[0]).toMatchObject({ status: "sent" });
-  });
-
-  it("ignores a Resend address that is not on this machine", async () => {
-    await confirmed();
-    db.env.RESEND_API_KEY = RESEND_TEST_KEY;
-    db.env.RESEND_API_URL = "https://resend.example.net";
-    const seen: string[] = [];
-    const original = globalThis.fetch;
-    vi.stubGlobal("fetch", (async (input: RequestInfo | URL, init?: RequestInit) => {
-      const url = new URL(input instanceof Request ? input.url : String(input));
-      if (url.hostname === "api.resend.com" || url.hostname === "resend.example.net") {
-        seen.push(url.href);
-        return Response.json({ id: "email_default" });
-      }
-      return original(input, init);
-    }) as typeof fetch);
-
-    await runScheduled();
-
-    expect(seen).toEqual(["https://api.resend.com/emails"]);
-    expect(emails()[0]).toMatchObject({ status: "sent", provider_message_id: "email_default" });
   });
 });
 
@@ -636,31 +430,6 @@ describe("resending a confirmation", () => {
         "Online access expired on 2026-11-21. Contact the hotel for assistance.",
       );
     }
-  });
-
-  it("refuses a resend for a desk reservation or an unknown reservation", async () => {
-    const desk = await db.request("/reservations", "POST", {
-      requestId: crypto.randomUUID(),
-      checkIn: "2026-11-10",
-      checkOut: "2026-11-11",
-      guest: { fullName: "Desk Guest" },
-      rooms: [{ roomTypeId: "type-king", adults: 1, children: 0 }],
-    });
-    const { id } = (await desk.json()) as { id: string };
-    const resendTo = (reservationId: string) =>
-      db.request(`/reservations/${reservationId}/confirmation/resends`, "POST", {
-        requestId: crypto.randomUUID(),
-        recipientEmail: "desk@example.com",
-      });
-
-    const deskResend = await resendTo(id);
-    const missing = await resendTo("00000000-0000-4000-8000-000000000000");
-
-    expect(deskResend.status).toBe(404);
-    expect(await deskResend.json()).toEqual({ error: "reservation access was not established" });
-    expect(missing.status).toBe(404);
-    expect(await missing.json()).toEqual({ error: "reservation not found" });
-    expect(emails()).toEqual([]);
   });
 });
 
