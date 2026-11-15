@@ -8,10 +8,10 @@ import {
   complaintSheets,
 } from "./db/schema";
 import {
+  complaintBook,
   complaintCalendarSource,
   complaintSheetReference,
   complaintResponseDueDate,
-  type ComplaintBookConfig,
 } from "./complaint-config";
 import { HttpError } from "./http";
 
@@ -80,7 +80,6 @@ export async function fileComplaint(
   db: Db,
   input: ComplaintInput,
   tokenHash: string,
-  config: ComplaintBookConfig,
   currency: string,
   timeZone: string,
 ) {
@@ -94,10 +93,10 @@ export async function fileComplaint(
       throw new HttpError(409, "complaint retry differs from saved sheet");
     return { created: false, sheet: await complaintView(db, existing[0].id) };
   }
-  if (input.policyVersion !== config.policyVersion)
+  if (input.policyVersion !== complaintBook.policyVersion)
     throw new HttpError(409, "complaint privacy information changed");
   const now = new Date().toISOString();
-  const number = sql<number>`(SELECT coalesce(max(number), ${config.firstNumber - 1}) + 1 FROM complaint_sheets WHERE book_id = ${config.bookId})`;
+  const number = sql<number>`(SELECT coalesce(max(number), ${complaintBook.firstNumber - 1}) + 1 FROM complaint_sheets WHERE book_id = ${complaintBook.bookId})`;
   await runBatch(db, [
     db
       .insert(complaintSheets)
@@ -105,11 +104,11 @@ export async function fileComplaint(
         id: tokenHash,
         tokenHash,
         requestPayload: payload,
-        bookId: config.bookId,
+        bookId: complaintBook.bookId,
         number,
         reference: complaintSheetReference(number, now, timeZone),
-        establishmentId: config.establishmentId,
-        provider: config.provider,
+        establishmentId: complaintBook.establishmentId,
+        provider: complaintBook.provider,
         input,
         currency,
         timeZone,
@@ -118,10 +117,10 @@ export async function fileComplaint(
         dueDate: complaintResponseDueDate(now, timeZone),
         calendarSource: complaintCalendarSource,
         policy: JSON.stringify({
-          version: config.policyVersion,
-          collectionNotice: config.collectionNotice,
-          privacyInformation: config.privacyInformation,
-          retentionAndDisposal: config.retentionAndDisposal,
+          version: complaintBook.policyVersion,
+          collectionNotice: complaintBook.collectionNotice,
+          privacyInformation: complaintBook.privacyInformation,
+          retentionAndDisposal: complaintBook.retentionAndDisposal,
         }),
         source: "virtual",
       })

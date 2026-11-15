@@ -4,7 +4,7 @@ import { getPlatformProxy } from "wrangler";
 import { app } from "../index";
 import { signIn, PORTAL_ORIGIN } from "../test-support/auth";
 import { createTestDb, type TestDb } from "../test-support/d1";
-import { complaintSubmission, developmentBook } from "../test-support/complaints";
+import { complaintSubmission } from "../test-support/complaints";
 
 let platform: Awaited<ReturnType<typeof getPlatformProxy<{ COMPLAINT_ATTACHMENTS: R2Bucket }>>>;
 let db: TestDb;
@@ -27,7 +27,6 @@ beforeEach(async () => {
   db = await createTestDb();
   db.env.TURNSTILE_SECRET_KEY = TURNSTILE_TEST_SECRET;
   vi.stubGlobal("fetch", fakeTurnstile().fetch);
-  db.env.COMPLAINT_BOOK = JSON.stringify(developmentBook);
   db.env.COMPLAINT_ATTACHMENTS = platform.env.COMPLAINT_ATTACHMENTS;
   token = crypto.randomUUID() + crypto.randomUUID();
   const filed = await app.request(

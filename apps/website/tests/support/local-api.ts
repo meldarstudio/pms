@@ -6,7 +6,10 @@ export const FAKE_PAYMENT_SERVICES_URL = "http://127.0.0.1:43989";
 export const CULQI_TEST_PUBLIC_KEY = "pk_test_website_local";
 export const TURNSTILE_TEST_SITE_KEY = "website-local-site-key";
 
-export const PUBLISHED_ROOM_TYPE_IDS = ["type-suite-matrimonial", "type-doble-premium"];
+export const PUBLISHED_ROOM_TYPE_IDS = [
+  "935c7f23-8acc-4c78-b456-9bc588cccc2d",
+  "a50f22a2-c02c-4cb1-ab98-e9da48f0228d",
+];
 
 export function propertyToday(now = new Date()) {
   return new Intl.DateTimeFormat("en-CA", {

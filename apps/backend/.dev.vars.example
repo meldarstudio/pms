@@ -10,14 +10,9 @@ PUBLIC_ALLOWED_ORIGINS=http://localhost:4321
 # only for pnpm culqi:sandbox, which creates test card tokens.
 CULQI_SECRET_KEY=
 CULQI_PUBLIC_KEY=
-# Turnstile secret for the website's payment challenge. Cloudflare's always-passing test
+# Turnstile secret for the website's payment and complaint challenges. Cloudflare's always-passing test
 # secret is 1x0000000000000000000000000000000AA.
 TURNSTILE_SECRET_KEY=
-# Optional. Unset keeps confirmation emails pending. RESEND_API_URL is ignored unless it is a loopback address.
+# Optional. Unset keeps confirmation emails and complaint receipts pending. RESEND_API_URL is ignored unless it is a loopback address.
 RESEND_API_KEY=
 RESEND_API_URL=
-# Optional, read only by pnpm dev:complaints. Set both to send complaint receipts through
-# real Resend to the address typed on each sheet; leave both empty to simulate them.
-# The sender must be on a domain verified in Resend.
-COMPLAINT_RECEIPT_RESEND_API_KEY=
-COMPLAINT_RECEIPT_EMAIL_FROM=

@@ -1,4 +1,3 @@
-import developmentBook from "../../backend/src/test-support/complaint-book.development.json" with { type: "json" };
 import { spawn, spawnSync } from "node:child_process";
 import { randomBytes } from "node:crypto";
 import { mkdirSync, rmSync, writeFileSync } from "node:fs";
@@ -38,7 +37,7 @@ const closeRooms = (label, stay, roomTypeIds) =>
 executeSql(
   localDatabase(state),
   [
-    closeRooms("double-sold-out", doubleSoldOutStay(), ["type-doble-premium"]),
+    closeRooms("double-sold-out", doubleSoldOutStay(), ["a50f22a2-c02c-4cb1-ab98-e9da48f0228d"]),
     closeRooms("all-sold-out", allSoldOutStay(), PUBLISHED_ROOM_TYPE_IDS),
     `INSERT INTO operation_controls (id, public_payments_admitted, updated_at, updated_by)
       VALUES (1, 1, '2026-01-01T00:00:00.000Z', 'website-tests');`,
@@ -48,7 +47,6 @@ executeSql(
 writeFileSync(
   vars,
   [
-    `COMPLAINT_BOOK='${JSON.stringify(developmentBook).replaceAll("'", "\\u0027")}'`,
     `SESSION_SECRET=${randomBytes(32).toString("hex")}`,
     `PUBLIC_ALLOWED_ORIGINS=${WEBSITE_URL}`,
     `PUBLISHED_ROOM_TYPE_IDS=${PUBLISHED_ROOM_TYPE_IDS.join(",")}`,

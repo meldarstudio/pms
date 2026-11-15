@@ -25,7 +25,6 @@ export default defineConfig({
     env: {
       CURRENCY: bindings.text("PEN"),
       PROPERTY_TIME_ZONE: bindings.text("America/Lima"),
-      COMPLAINT_BOOK: bindings.text("production"),
       COMPLAINT_ATTACHMENTS: bindings.r2({
         name: "pms-complaint-files",
         dev: { remote: false },
@@ -33,7 +32,7 @@ export default defineConfig({
       ALLOWED_ORIGINS: bindings.text("https://app.hotelmanantialchurin.com"),
       PUBLIC_ALLOWED_ORIGINS: bindings.text("https://www.hotelmanantialchurin.com"),
       PUBLISHED_ROOM_TYPE_IDS: bindings.text(
-        "type-suite-matrimonial,type-doble-premium,type-suite-familiar",
+        "935c7f23-8acc-4c78-b456-9bc588cccc2d,a50f22a2-c02c-4cb1-ab98-e9da48f0228d,e93f440e-5546-45b3-8969-68a871d4ae81",
       ),
       DB: bindings.d1({
         name: "pms-production",

@@ -74,7 +74,7 @@ const kingBalconyPhoto: RoomPhoto = {
 export const rooms: Room[] = [
   {
     id: "king",
-    pmsRoomTypeId: "type-suite-matrimonial",
+    pmsRoomTypeId: "935c7f23-8acc-4c78-b456-9bc588cccc2d",
     gallery: [kingBalconyPhoto, kingFrontViewPhoto, kingPhoto],
     nameKey: "rooms.king.name",
     leadKey: "rooms.king.lead",
@@ -85,7 +85,7 @@ export const rooms: Room[] = [
   },
   {
     id: "double",
-    pmsRoomTypeId: "type-doble-premium",
+    pmsRoomTypeId: "a50f22a2-c02c-4cb1-ab98-e9da48f0228d",
     gallery: [doubleSidePhoto, doubleTopPhoto, doubleClosePhoto],
     nameKey: "rooms.double.name",
     leadKey: "rooms.double.lead",
@@ -96,7 +96,7 @@ export const rooms: Room[] = [
   },
   {
     id: "family",
-    pmsRoomTypeId: "type-suite-familiar",
+    pmsRoomTypeId: "e93f440e-5546-45b3-8969-68a871d4ae81",
     gallery: [familyFrontPhoto, familySidePhoto, familyClosePhoto],
     nameKey: "rooms.family.name",
     leadKey: "rooms.family.lead",

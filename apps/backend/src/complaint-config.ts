@@ -1,14 +1,11 @@
 import { sql, type SQL } from "drizzle-orm";
 import { z } from "zod";
-import { HttpError } from "./http";
-import { loopbackUrl } from "./loopback";
-import productionBook from "./complaint-book.production.json";
+import book from "./complaint-book.json";
 
 const content = z.string().trim().min(1).max(20000);
 const translated = z.object({ es: content, en: content }).strict();
-export const complaintBookConfigSchema = z
+const complaintBookSchema = z
   .object({
-    mode: z.enum(["development", "production"]),
     bookId: z.string().regex(/^[A-Za-z0-9-]{1,40}$/),
     establishmentId: content,
     firstNumber: z.number().int().positive().max(1000000000),
@@ -22,30 +19,9 @@ export const complaintBookConfigSchema = z
     monitoredBy: content,
     backupProcedure: content,
     emailFrom: z.string().email(),
-    receiptDelivery: z.enum(["simulated", "resend"]),
   })
   .strict();
-export type ComplaintBookConfig = z.infer<typeof complaintBookConfigSchema>;
-
-export function configuredComplaintBook(selection: string | undefined) {
-  try {
-    if (selection === "production") {
-      const book = complaintBookConfigSchema.parse(productionBook);
-      return book.mode === "production" && book.receiptDelivery === "resend" ? book : undefined;
-    }
-    const book = complaintBookConfigSchema.parse(JSON.parse(selection ?? ""));
-    return book.mode === "development" ? book : undefined;
-  } catch {
-    return undefined;
-  }
-}
-
-export function complaintBookConfig(selection: string | undefined, requestUrl: string) {
-  const config = configuredComplaintBook(selection);
-  if (!config || (config.mode === "development" && !loopbackUrl(requestUrl)))
-    throw new HttpError(503, "complaint book unavailable");
-  return config;
-}
+export const complaintBook = complaintBookSchema.parse(book);
 
 export const complaintCalendarSource =
   "Lunes a viernes; los feriados y días no laborables cuentan como hábiles, por lo que el plazo nunca es posterior al legal.";
