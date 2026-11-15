@@ -54,8 +54,8 @@ test("returning to rates never shows the room list", async ({ page }) => {
     await expect(page.getByRole("radio", { name: /Flexible/ })).toBeChecked();
     await expect(page.getByRole("article")).toHaveCount(0);
     await page
-      .getByRole("button", { name: /Cambiar habitación/ })
-      .first()
+      .getByRole("navigation", { name: "Pasos de la reserva" })
+      .getByRole("button", { name: "Habitación", exact: true })
       .click();
     await expect(page.getByRole("article")).toHaveCount(3);
   } finally {
@@ -73,6 +73,12 @@ test("a room's dates button picks the stay on the rooms page and books a rate st
   await expect(page.getByText("Elija sus fechas para ver precios y disponibilidad.")).toBeVisible();
   await expect(page.getByRole("article")).toHaveCount(3);
   await expect(page.getByRole("article").first()).toHaveAccessibleName("Suite Matrimonial");
+  const steps = page.getByRole("navigation", { name: "Pasos de la reserva" });
+  await expect(steps.getByText("Habitación", { exact: true })).toBeVisible();
+  await expect(steps.getByText("Tarifa", { exact: true })).toBeVisible();
+  await expect(steps.getByText("Pago", { exact: true })).toBeVisible();
+  await expect(steps.getByRole("button")).toHaveCount(0);
+  await expect(steps.getByRole("link")).toHaveCount(0);
   const king = room(page, "Suite Matrimonial");
   await expect(page.getByRole("main")).not.toContainText(/S\/\s\d/);
   await king.getByRole("button", { name: "Elegir fechas" }).click();
@@ -90,7 +96,7 @@ test("a room's dates button picks the stay on the rooms page and books a rate st
   await expect(king).toContainText("Desde");
   await expect(king).toContainText(/S\/\s180\.00/);
   await expect(king).toContainText("Total por 2 noches");
-  await expect(king).toContainText("Flexible: cancelación gratis hasta el");
+  await expect(king).not.toContainText("cancelación");
   await expect(king.getByRole("heading", { name: "Flexible" })).toHaveCount(0);
   const family = room(page, "Suite Familiar");
   await expect(family).toContainText("Esta habitación no se puede reservar en línea");
@@ -108,9 +114,10 @@ test("a room's dates button picks the stay on the rooms page and books a rate st
   const flexible = page
     .locator("label")
     .filter({ has: page.getByRole("radio", { name: /Flexible/ }) });
-  await expect(
-    page.getByText("Suite Matrimonial · 2 noches · 2 adultos", { exact: true }),
-  ).toBeVisible();
+  const summary = page.getByRole("complementary", { name: "Su estadía" });
+  await expect(summary).toContainText("Suite Matrimonial");
+  await expect(summary).toContainText("2 noches");
+  await expect(summary).toContainText("2 adultos");
   await expect(flexible).toContainText(/S\/\s200\.00/);
   await expect(flexible).toContainText("Cancelación gratuita hasta el ");
   await expect(flexible.locator("time")).toHaveAttribute("datetime", daysFromToday(118));
@@ -124,7 +131,6 @@ test("a room's dates button picks the stay on the rooms page and books a rate st
   await expect(nonRefundable).toContainText(/A pagar al reservar\s*S\/\s180\.00/);
   await expect(nonRefundable).not.toContainText("Pago en el hotel");
   await expect(page.getByRole("radio", { name: /No reembolsable/ })).toBeChecked();
-  const summary = page.getByRole("complementary", { name: "Su estadía" });
   await expect(summary).toContainText("Precios en PEN, impuestos incluidos.");
   await expect(summary.getByRole("link")).toHaveText("Continuar");
   await page.getByRole("radio", { name: /Flexible/ }).check();
@@ -179,7 +185,7 @@ test("changing the stay refreshes the rooms without leaving the page", async ({ 
   await page.getByRole("button", { name: "Buscar" }).click();
 
   await expect(page).toHaveURL(/adults=3&children=0$/);
-  await expect(room(page, "Suite Matrimonial")).toContainText("admite hasta 2 adultos y 2 niños");
+  await expect(room(page, "Suite Matrimonial")).toHaveCount(0);
   await selectRoomRate(page, "Doble Premium", "Flexible");
   await expect(
     page.getByRole("link", { name: "Continuar con Doble Premium, tarifa Flexible" }),
@@ -236,12 +242,12 @@ test("the stay follows the guest across languages and pages", async ({ page }) =
   await expect(page.locator("#stay-guests-value")).toHaveText("2 adults, 1 child");
   await selectRoomRate(page, "Premium double", "Non-refundable");
   await expect(
-    page.getByText("Premium double · 2 nights · 2 adults, 1 child", { exact: true }),
-  ).toBeVisible();
-  await expect(
     page.locator("label").filter({ has: page.getByRole("radio", { name: /Non-refundable/ }) }),
   ).toContainText(/S\/\s216\.00/);
   const summary = page.getByRole("complementary", { name: "Your stay" });
+  await expect(summary).toContainText("Premium double");
+  await expect(summary).toContainText("2 nights");
+  await expect(summary).toContainText("2 adults, 1 child");
   await expect(summary).toContainText(/Due when booking\s*S\/\s216\.00/);
   await expect(summary).toContainText("Prices in PEN, taxes included.");
   await expect(summary.getByRole("link")).toHaveText("Continue");
@@ -279,7 +285,9 @@ test("a same-day arrival in the link is explained, not searched", async ({ page 
 
 test("sold-out rooms are shown as sold out, not as a service failure", async ({ page }) => {
   await page.goto(roomsPath(doubleSoldOutStay()));
-  await expect(room(page, "Doble Premium")).toContainText("Agotada para estas fechas.");
+  await expect(
+    room(page, "Doble Premium").getByRole("button", { name: "Agotada", exact: true }),
+  ).toBeDisabled();
   await expect(room(page, "Doble Premium").getByRole("link", { name: /^Reservar/ })).toHaveCount(0);
   await expect(
     room(page, "Doble Premium").getByRole("button", { name: /Ver tarifas/ }),
@@ -287,6 +295,34 @@ test("sold-out rooms are shown as sold out, not as a service failure", async ({ 
   await expect(
     room(page, "Suite Matrimonial").getByRole("button", { name: /Ver tarifas/ }),
   ).toBeVisible();
+
+  await page.locator("#stay-check-in").click();
+  await expect(page.getByRole("dialog")).toBeVisible();
+  const availableStay = openStay();
+  await pickRangeDate(page, availableStay.checkIn);
+  await pickRangeDate(page, availableStay.checkOut);
+  let release!: () => void;
+  const pending = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  await page.route(offersRoute, async (route) => {
+    await pending;
+    await route.continue();
+  });
+  try {
+    await page.getByRole("button", { name: "Buscar", exact: true }).click();
+    await expect(page.locator("[data-search-status]")).toContainText("Consultando disponibilidad");
+    const double = room(page, "Doble Premium");
+    await expect(double).not.toContainText("Agotada");
+    await expect(double.getByRole("button", { name: "Ver tarifas" })).toBeDisabled();
+    await expect(double).not.toContainText(/S\/\s\d/);
+  } finally {
+    release();
+  }
+  await expect(
+    room(page, "Doble Premium").getByRole("button", { name: "Ver tarifas" }),
+  ).toBeVisible();
+  await expect(room(page, "Doble Premium")).not.toContainText("Agotada");
 
   await page.goto(roomsPath(allSoldOutStay(), { room: "double" }));
   const notice = page.getByRole("region", {
@@ -313,6 +349,35 @@ test("a group no single room fits is told to change guests, not dates", async ({
   );
   await expect(notice).toContainText("Suite Familiar: sin reserva en línea.");
   await expect(notice).not.toContainText("fechas");
+  await expect(room(page, "Suite Matrimonial")).toHaveCount(0);
+  await expect(room(page, "Doble Premium")).toHaveCount(0);
+
+  await page.getByRole("button", { name: /Huéspedes/ }).click();
+  await page.getByRole("button", { name: "Reducir adultos" }).click();
+  await page.getByRole("button", { name: "Reducir adultos" }).click();
+  await page.getByRole("button", { name: "Reducir adultos" }).click();
+  await page.keyboard.press("Escape");
+  let release!: () => void;
+  const pending = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  await page.route(offersRoute, async (route) => {
+    await pending;
+    await route.continue();
+  });
+  try {
+    await page.getByRole("button", { name: "Buscar", exact: true }).click();
+    await expect(page.getByRole("status")).toContainText("Consultando disponibilidad");
+    await expect(page.getByRole("article")).toHaveCount(3);
+    await expect(
+      room(page, "Suite Matrimonial").getByRole("button", { name: "Ver tarifas" }),
+    ).toBeDisabled();
+    await expect(room(page, "Suite Matrimonial")).not.toContainText(/S\/\s\d/);
+  } finally {
+    release();
+  }
+  await expect(room(page, "Suite Matrimonial").getByText(/S\/\s180\.00/)).toBeVisible();
+  await expect(room(page, "Doble Premium").getByText(/^S\/\s/)).toBeVisible();
 });
 
 test("a preferred room that doesn't fit is never swapped for another", async ({ page }) => {
@@ -321,10 +386,10 @@ test("a preferred room that doesn't fit is never swapped for another", async ({ 
   await expect(
     page.getByText(/Su habitación preferida, Suite Matrimonial, no está disponible/),
   ).toBeVisible();
-  await expect(room(page, "Suite Matrimonial")).toContainText("admite hasta 2 adultos y 2 niños");
-  await expect(
-    room(page, "Suite Matrimonial").getByRole("button", { name: /Ver tarifas/ }),
-  ).toHaveCount(0);
+  await expect(room(page, "Suite Matrimonial")).toHaveCount(0);
+  await expect(page.getByRole("region", { name: /Su habitación preferida/ })).toContainText(
+    "Suite Matrimonial: sin capacidad para su grupo.",
+  );
   await expect(
     room(page, "Doble Premium").getByRole("button", { name: /Ver tarifas/ }),
   ).toBeVisible();
@@ -350,7 +415,7 @@ for (const [name, fail, title] of [
     await page.goto(roomsPath(openStay()));
 
     await expect(page.getByRole("heading", { name: title })).toBeFocused();
-    await expect(page.getByText("Agotada para estas fechas.")).toBeHidden();
+    await expect(page.getByRole("button", { name: "Agotada", exact: true })).toHaveCount(0);
 
     await page.unroute(offersRoute);
     await page.getByRole("button", { name: "Intentar de nuevo" }).click();
@@ -378,17 +443,19 @@ test("a reload on the rate step keeps the room and the chosen rate", async ({ pa
   await page.reload();
 
   await expect(page.getByRole("radio", { name: /Flexible/ })).toBeChecked();
-  await expect(
-    page.getByText("Suite Matrimonial · 2 noches · 2 adultos", { exact: true }),
-  ).toBeVisible();
+  const summary = page.getByRole("complementary", { name: "Su estadía" });
+  await expect(summary).toContainText("Suite Matrimonial");
+  await expect(summary).toContainText("2 noches");
+  await expect(summary).toContainText("2 adultos");
   await expect(rateHeading(page)).toBeFocused();
   await expect(page.getByRole("article")).toHaveCount(0);
 });
 
-test("browser back returns to the rooms for the same stay and forward reopens the rates", async ({
+test("on a phone, browser back and the room step preserve the stay and forward reopens the rates", async ({
   page,
 }) => {
   const stay = openStay();
+  await page.setViewportSize({ width: 375, height: 812 });
   await openKingFlexible(page, stay);
 
   await page.goBack();
@@ -403,8 +470,8 @@ test("browser back returns to the rooms for the same stay and forward reopens th
   await expect(page.getByRole("article")).toHaveCount(0);
 
   await page
-    .getByRole("button", { name: /Cambiar habitación/ })
-    .first()
+    .getByRole("navigation", { name: "Pasos de la reserva" })
+    .getByRole("button", { name: "Habitación", exact: true })
     .click();
   await expect(page).toHaveURL(/&room=king$/);
   await expect(page.getByRole("article").first()).toHaveAccessibleName("Suite Matrimonial");
@@ -485,9 +552,10 @@ test("a new search on the rate step keeps a room that is still offered", async (
   await pickRangeDate(page, daysFromToday(124));
   await page.getByRole("button", { name: "Buscar", exact: true }).click();
 
-  await expect(
-    page.getByText("Suite Matrimonial · 3 noches · 2 adultos", { exact: true }),
-  ).toBeVisible();
+  const summary = page.getByRole("complementary", { name: "Su estadía" });
+  await expect(summary).toContainText("Suite Matrimonial");
+  await expect(summary).toContainText("3 noches");
+  await expect(summary).toContainText("2 adultos");
   await expect(page.getByRole("radio", { name: /Flexible/ })).toBeChecked();
   await expect(page).toHaveURL(
     new RegExp(
@@ -512,7 +580,9 @@ test("a room sold out for the new search returns to the rooms with the notice", 
   await expect(
     page.getByText(/Su habitación preferida, Doble Premium, no está disponible/),
   ).toBeVisible();
-  await expect(room(page, "Doble Premium")).toContainText("Agotada para estas fechas.");
+  await expect(
+    room(page, "Doble Premium").getByRole("button", { name: "Agotada", exact: true }),
+  ).toBeDisabled();
   await expect(page.getByRole("radio")).toHaveCount(0);
   await expect(page).toHaveURL(new RegExp(`checkIn=${soldOut.checkIn}.*&room=double$`));
 });
@@ -531,17 +601,23 @@ test("a rate link whose stay can no longer be booked shows the rooms and the pro
   await expect(page.getByRole("radio")).toHaveCount(0);
 });
 
-test.describe("on a phone", () => {
-  test.use({ viewport: { width: 375, height: 812 } });
-
-  test("results, notices and problems are brought into view without moving focus", async ({
+for (const viewport of [
+  { width: 375, height: 667 },
+  { width: 375, height: 812 },
+  { width: 1280, height: 800 },
+]) {
+  test(`results show room names and prices at ${viewport.width}×${viewport.height} without moving focus`, async ({
     page,
   }) => {
+    await page.setViewportSize(viewport);
     await page.emulateMedia({ reducedMotion: "reduce" });
     await page.goto(roomsPath(openStay()));
     await expect(
       page.getByRole("article").first().getByRole("heading", { level: 2 }),
     ).toBeInViewport();
+    await expect(room(page, "Suite Matrimonial").getByText(/S\/\s180\.00/)).toBeInViewport({
+      ratio: 1,
+    });
 
     await page.evaluate(() => window.scrollTo(0, 0));
     await page.getByRole("button", { name: /Huéspedes/ }).click();
@@ -552,14 +628,17 @@ test.describe("on a phone", () => {
     await expect(
       room(page, "Doble Premium").getByRole("button", { name: /Ver tarifas/ }),
     ).toBeVisible();
-    await expect(
-      page.getByRole("article").first().getByRole("heading", { level: 2 }),
-    ).toBeInViewport();
+    await expect(room(page, "Doble Premium").getByRole("heading", { level: 2 })).toBeInViewport();
+    await expect(room(page, "Doble Premium").getByText(/^S\/\s/)).toBeInViewport({ ratio: 1 });
     await expect(page.getByRole("button", { name: "Buscar", exact: true })).toBeFocused();
 
     await page.goto(roomsPath({ checkIn: daysFromToday(0), checkOut: daysFromToday(2) }));
     await expect(page.getByRole("heading", { name: "Revise su búsqueda" })).toBeInViewport();
   });
+}
+
+test.describe("on a phone", () => {
+  test.use({ viewport: { width: 375, height: 812 } });
 
   test("the rooms page without dates stays on the search form", async ({ page }) => {
     await page.goto("/habitaciones/");

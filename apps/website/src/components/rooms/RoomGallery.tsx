@@ -131,7 +131,7 @@ export function RoomGallery({
                 ref={(button) => {
                   photoButtons.current[index] = button;
                 }}
-                className="block aspect-4/3 w-full cursor-zoom-in overflow-hidden bg-stone-200"
+                className="block aspect-video w-full cursor-zoom-in overflow-hidden bg-stone-200"
                 aria-label={`${room}: ${text["rooms.gallery.open"]} ${position(index)}`}
                 onClick={() => {
                   viewed.current = index;

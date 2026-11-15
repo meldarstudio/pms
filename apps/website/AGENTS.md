@@ -6,13 +6,15 @@ Reservation search is always visible. `PUBLIC_PMS_API_URL` is required;
 Choose is the rooms page (`/habitaciones/`): one React island
 (`src/components/rooms/RoomsBooking.tsx`) with the dates-and-guests form and every
 room, prerendered for search engines. It refreshes live offers from the PMS `/public`
-API in place, never in the HTML. A searched stay lists each room at its lowest total;
+API in place, never in the HTML. A searched stay hides rooms that cannot fit the group,
+shows available rooms at their lowest total, and keeps sold-out and offline rooms visible.
+Pending searches show loading placeholders instead of previous availability or prices;
 choosing a room replaces that list with the room's rate plans, lowest selected, and one
 Continue link to Review; phones repeat it with the total in a bottom bar while the summary's
 Continue is off screen. The address names the stay, the opened room and its rate plan:
 opening a room pushes history, choosing a plan or searching replaces it, and Back, Forward
-and reload show the step it names. A completed search scrolls its answer below the header
-without moving focus. The last
+and reload show the step it names. A completed search scrolls to its notice or far enough
+to show the first available room's full price, without moving focus. The last
 search is kept in `sessionStorage` (`src/lib/reservation/draft.ts`) so the homepage
 and Choose prefill it; dates before the first online arrival are dropped. Review (`/reservar/revisar/`) opens a private checkout, shows
 its server Quote, and records the booking contact's acceptance, including an
@@ -54,7 +56,7 @@ Turnstile served by `scripts/fake-payment-services.mjs`.
 
 Review is one React island, `src/components/reservation/review/Review.tsx`, mounted by
 `ReservationReview.astro` with build-time copy (`review/text.ts`), rooms and payment keys.
-The step bar stays in Astro; the phone and WhatsApp booking alternatives render in Review.
+Review renders the step bar with links to completed steps, and the phone and WhatsApp booking alternatives.
 `useCheckoutFlow.ts` runs `next` in a reducer whose state carries the pending effects;
 a layout effect hands them to one runner after React commits, so `focus` effects
 (mapped to refs by `focus.ts`) find rendered elements, and the runner is disposed on

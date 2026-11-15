@@ -1,6 +1,6 @@
 import type { CheckoutView } from "@/lib/reservation/checkout";
 import { useReview } from "./context";
-import { eyebrow, headline, quietLink } from "./styles";
+import { eyebrow, headline } from "./styles";
 import { stayLabels } from "./stay";
 
 export type ReviewRoom = {
@@ -13,13 +13,9 @@ export type ReviewRoom = {
 export function ReviewSummary({
   view,
   room,
-  ratesHref,
-  choiceHref,
 }: {
   view: CheckoutView | null;
   room: ReviewRoom | null;
-  ratesHref: string;
-  choiceHref: string;
 }) {
   const { say, lang } = useReview();
   const stay = view ? stayLabels(view, say, lang) : null;
@@ -108,14 +104,6 @@ export function ReviewSummary({
             </dd>
           </div>
         </dl>
-      </div>
-      <div className="mt-3 flex flex-wrap gap-x-4 border-t border-stone-200 pt-2 lg:mt-5">
-        <a href={ratesHref} className={quietLink} data-back-to-rates>
-          {say("reservation.review.changeRate")}
-        </a>
-        <a href={choiceHref} className={quietLink} data-change-choice>
-          {say("reservation.review.changeChoice")}
-        </a>
       </div>
     </aside>
   );

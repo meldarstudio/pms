@@ -9,11 +9,6 @@ import Review from "@/components/reservation/review/Review";
 import { reviewText } from "@/components/reservation/review/text";
 import { getWhatsAppLink } from "@/lib/constants";
 import { BUSINESS_NAME } from "@/constants";
-import {
-  BookingSteps,
-  bookingStepsKeys,
-  type BookingStepsText,
-} from "@/components/reservation/BookingSteps";
 import { getLang, useTranslations } from "@/i18n/utils";
 import { roomsHref, summaryStepHref } from "@/lib/reservation/links";
 import { rooms } from "@/lib/rooms";
@@ -55,12 +50,6 @@ const roomViews = Object.fromEntries(
 
 <section class="bg-stone-100" data-checkout>
   <div class="mx-auto max-w-7xl px-4 py-4 md:px-8 md:py-8">
-    <div data-booking-steps>
-      <BookingSteps
-        current="review"
-        text={Object.fromEntries(bookingStepsKeys.map((key) => [key, t(key)])) as BookingStepsText}
-      />
-    </div>
     <Review
       client:load
       lang={lang}
@@ -75,9 +64,3 @@ const roomViews = Object.fromEntries(
     />
   </div>
 </section>
-
-<style>
-  [data-checkout]:has([data-confirmed="true"]) [data-booking-steps] {
-    display: none;
-  }
-</style>

@@ -144,7 +144,7 @@ test("the Flexible checkout warns when free cancellation has ended", async ({ pa
   await expect(policy).toContainText("Si cancela o no llega, se cobra la primera noche:");
 });
 
-test("the mobile review keeps the charge and cancellation visible and opens terms without losing contact details", async ({
+test("the mobile review keeps payment details visible and navigates completed steps without losing contact details", async ({
   page,
 }) => {
   const stay = openStay();
@@ -167,8 +167,11 @@ test("the mobile review keeps the charge and cancellation visible and opens term
     "datetime",
     stay.checkOut,
   );
-  await expect(summary.getByRole("link", { name: "Cambiar tarifa", exact: true })).toBeVisible();
-  await expect(summary.locator("[data-change-choice]")).toBeVisible();
+  const steps = page.getByRole("navigation", { name: "Pasos de la reserva" });
+  await expect(steps.getByRole("link", { name: "Habitación", exact: true })).toBeVisible();
+  await expect(steps.getByRole("link", { name: "Tarifa", exact: true })).toBeVisible();
+  await expect(steps.getByRole("link")).toHaveCount(2);
+  await expect(summary.getByRole("link")).toHaveCount(0);
   await expect(
     page.getByRole("banner").getByRole("link", { name: "Reservar", exact: true }),
   ).toHaveCount(0);
@@ -195,6 +198,17 @@ test("the mobile review keeps the charge and cancellation visible and opens term
   await expect(termsLink).toBeFocused();
   await expect(page.getByRole("checkbox", { name: /Acepto/ })).not.toBeChecked();
   await expect(fullName).toHaveValue("Ana María Torres");
+  await steps.getByRole("link", { name: "Tarifa", exact: true }).click();
+  await expect(page.getByRole("radio", { name: /Flexible/ })).toBeChecked();
+  await summary
+    .getByRole("link", { name: "Continuar con Suite Matrimonial, tarifa Flexible" })
+    .click();
+  await expect(fullName).toHaveValue("Ana María Torres");
+  await steps.getByRole("link", { name: "Habitación", exact: true }).click();
+  await expect(page).toHaveURL(
+    new RegExp(`checkIn=${stay.checkIn}&checkOut=${stay.checkOut}&adults=2&children=0&room=king$`),
+  );
+  await expect(page.getByRole("article")).toHaveCount(3);
 });
 
 test("switching plan and back restores the earlier checkout and acceptance", async ({
@@ -205,7 +219,10 @@ test("switching plan and back restores the earlier checkout and acceptance", asy
   await acceptTerms(page);
   const flexible = await serverCheckout(page, request);
 
-  await page.getByRole("link", { name: "Volver a tarifas" }).click();
+  await page
+    .getByRole("navigation", { name: "Pasos de la reserva" })
+    .getByRole("link", { name: "Tarifa", exact: true })
+    .click();
   await expect(page.getByRole("radio", { name: /Flexible/ })).toBeChecked();
   await page.getByRole("radio", { name: /No reembolsable/ }).check();
   await page
@@ -215,7 +232,10 @@ test("switching plan and back restores the earlier checkout and acceptance", asy
   await expect(page.getByRole("checkbox", { name: /Acepto las condiciones/ })).not.toBeChecked();
   await expect(page.getByLabel("Correo electrónico")).toHaveValue("ana@example.com");
 
-  await page.getByRole("link", { name: "Volver a tarifas" }).click();
+  await page
+    .getByRole("navigation", { name: "Pasos de la reserva" })
+    .getByRole("link", { name: "Tarifa", exact: true })
+    .click();
   await expect(page.getByRole("radio", { name: /No reembolsable/ })).toBeChecked();
   await page.getByRole("radio", { name: /Flexible/ }).check();
   await page
@@ -232,7 +252,14 @@ test("switching plan and back restores the earlier checkout and acceptance", asy
 test("browser back shows the latest contact draft", async ({ page }) => {
   await page.goto(reviewPath(openStay(), { room: "king", plan: "flexible" }));
   await fillContact(page);
-  await page.getByRole("link", { name: "Cambiar fechas o habitación" }).click();
+  await page
+    .getByRole("navigation", { name: "Pasos de la reserva" })
+    .getByRole("link", { name: "Habitación", exact: true })
+    .click();
+  const stay = openStay();
+  await expect(page).toHaveURL(
+    new RegExp(`checkIn=${stay.checkIn}&checkOut=${stay.checkOut}&adults=2&children=0&room=king$`),
+  );
   await selectRoomRate(page, "Suite Matrimonial", "Flexible");
   await page
     .getByRole("link", { name: "Continuar con Suite Matrimonial, tarifa Flexible" })
@@ -258,7 +285,10 @@ test("a room lost before review returns to the rooms without picking another", a
   await expect(page.getByText(/Doble Premium ya no está disponible/)).toBeVisible();
   await expect(page.getByRole("form")).toBeHidden();
 
-  await page.getByRole("link", { name: "Volver a las habitaciones" }).click();
+  await page
+    .getByRole("navigation", { name: "Pasos de la reserva" })
+    .getByRole("link", { name: "Habitación", exact: true })
+    .click();
   await expect(page).toHaveURL(/\/habitaciones\/\?.*room=double$/);
   await expect(
     page.getByText(/Su habitación preferida, Doble Premium, no está disponible/),

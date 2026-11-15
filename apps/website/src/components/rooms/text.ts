@@ -24,7 +24,6 @@ export const roomsBookingKeys = [
   "reservation.problem.invalidDate",
   "reservation.room.chooseDates",
   "reservation.room.soldOut",
-  "reservation.room.tooManyGuests",
   "reservation.room.offline",
   "whatsapp.prefill",
   "reservation.room.preferredUnavailable",
@@ -76,7 +75,6 @@ export const roomsBookingKeys = [
   "rooms.hotel.title",
   "rooms.card.sleeps",
   "rooms.card.wifi",
-  "rooms.card.freeUntil",
   "rooms.details.open",
   "rooms.details.close",
 ] as const satisfies readonly (keyof (typeof ui)["es"])[];

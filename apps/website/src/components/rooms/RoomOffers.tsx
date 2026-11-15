@@ -20,14 +20,14 @@ import {
   type StaySearch,
 } from "@/lib/reservation/search";
 import type { RoomId } from "@/lib/rooms";
-import { RoomCard, roomGridColumns, type StayDetails } from "./RoomCard";
+import { RoomCard, type StayDetails } from "./RoomCard";
 import type { Phase, RoomState, RoomView } from "./RoomsBooking";
 import type { RoomsBookingKey, RoomsBookingText } from "./text";
 
-const primary =
-  "font-source-sans-3 bg-accent-500 text-accent-950 hover:bg-accent-400 inline-flex min-h-12 cursor-pointer items-center justify-center gap-2 px-6 text-sm font-semibold tracking-widest uppercase";
-const secondary =
-  "font-source-sans-3 border border-stone-900 text-stone-900 hover:border-accent-500 hover:bg-accent-500 hover:text-accent-950 inline-flex min-h-12 cursor-pointer items-center justify-center gap-2 px-6 text-sm font-semibold tracking-widest uppercase";
+const button =
+  "font-source-sans-3 inline-flex min-h-12 cursor-pointer items-center justify-center gap-2 px-6 text-sm font-semibold tracking-widest uppercase disabled:cursor-not-allowed";
+const primary = `${button} bg-accent-500 text-accent-950 hover:bg-accent-400`;
+const secondary = `${button} border border-stone-900 text-stone-900 hover:border-accent-500 hover:bg-accent-500 hover:text-accent-950`;
 
 export const belowHeader =
   "scroll-mt-[calc(8rem+env(safe-area-inset-top))] md:scroll-mt-[calc(9.5rem+env(safe-area-inset-top))]";
@@ -120,14 +120,13 @@ export function RoomOffers({
             />
           ) : (
             <ul
-              className={`grid gap-6 ${roomGridColumns(rooms.length)}`}
+              className="grid gap-6 md:grid-cols-2 lg:grid-cols-3"
               aria-busy={phase.kind === "loading"}
             >
               {rooms.map((item) => (
                 <RoomRow
                   key={item.id}
                   room={item}
-                  lang={lang}
                   text={text}
                   details={details}
                   phase={phase}
@@ -151,10 +150,6 @@ function RateStepLoading({ text }: { text: RoomsBookingText }) {
         <h2 className="text-2xl font-semibold text-pretty text-stone-900 md:text-3xl">
           {text["reservation.rate.choose"]}
         </h2>
-        <Skeleton
-          aria-hidden="true"
-          className="mt-2 h-6 w-80 max-w-full bg-stone-200 motion-reduce:animate-none"
-        />
         <div aria-hidden="true" className="mt-6 flex flex-col gap-3">
           {(["non_refundable", "flexible"] as const).map((plan) => (
             <div
@@ -247,7 +242,6 @@ function RateStepLoading({ text }: { text: RoomsBookingText }) {
 
 function RoomRow({
   room,
-  lang,
   text,
   details,
   phase,
@@ -256,7 +250,6 @@ function RoomRow({
   onOpen,
 }: {
   room: RoomView;
-  lang: Lang;
   text: RoomsBookingText;
   details: StayDetails;
   phase: Phase;
@@ -271,14 +264,7 @@ function RoomRow({
 
   return (
     <li>
-      <RoomCard
-        room={room}
-        lang={lang}
-        text={text}
-        details={details}
-        offers={offers}
-        loading={phase.kind === "loading"}
-      >
+      <RoomCard room={room} text={text} details={details} offers={offers}>
         <div className="text-right">
           {phase.kind === "idle" ? (
             <button type="button" className={`w-full ${secondary}`} onClick={onOpen}>
@@ -286,32 +272,31 @@ function RoomRow({
               {say("reservation.room.chooseDates")}
             </button>
           ) : phase.kind === "loading" ? (
-            phase.previous && state !== "available" ? (
-              <Skeleton
-                aria-hidden="true"
-                className="w-fit max-w-full bg-stone-200 text-left font-semibold text-transparent select-none motion-reduce:animate-none"
+            <>
+              <p className="text-sm text-stone-600">{say("reservation.rate.from")}</p>
+              <div className="text-3xl font-semibold">
+                <Skeleton
+                  aria-hidden="true"
+                  className="ml-auto h-lh w-40 bg-stone-200 motion-reduce:animate-none"
+                />
+              </div>
+              <p className="mt-1 text-sm text-stone-600">{totalLine(phase, text)}</p>
+              <button
+                type="button"
+                disabled
+                className={`mt-4 w-full ${primary} disabled:opacity-50`}
               >
-                {unavailableLine(state, offers, text)}
-              </Skeleton>
-            ) : (
-              <>
-                <p className="text-sm text-stone-600">{say("reservation.rate.from")}</p>
-                <div className="text-3xl font-semibold">
-                  <Skeleton
-                    aria-hidden="true"
-                    className="ml-auto h-lh w-40 bg-stone-200 motion-reduce:animate-none"
-                  />
-                </div>
-                <p className="mt-1 text-sm text-stone-600">{totalLine(phase, text)}</p>
-                <button
-                  type="button"
-                  disabled
-                  className={`mt-4 w-full ${primary} disabled:opacity-50`}
-                >
-                  {say("reservation.rate.see")}
-                </button>
-              </>
-            )
+                {say("reservation.rate.see")}
+              </button>
+            </>
+          ) : phase.kind === "found" && state === "sold_out" ? (
+            <button
+              type="button"
+              disabled
+              className={`${button} w-full bg-stone-100 text-stone-500`}
+            >
+              {say("reservation.room.soldOut")}
+            </button>
           ) : available ? (
             <>
               <p className="text-sm text-stone-600">{say("reservation.rate.from")}</p>
@@ -331,20 +316,18 @@ function RoomRow({
           ) : (
             phase.kind === "found" && (
               <p className="text-left font-semibold text-stone-900">
-                {state === "offline"
-                  ? fillParts(text["reservation.room.offline"], {
-                      whatsapp: (
-                        <a
-                          href={getWhatsAppLink(text["whatsapp.prefill"])}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="underline decoration-accent-500 decoration-2 underline-offset-4 hover:text-accent-800"
-                        >
-                          WhatsApp
-                        </a>
-                      ),
-                    })
-                  : unavailableLine(state, offers, text)}
+                {fillParts(text["reservation.room.offline"], {
+                  whatsapp: (
+                    <a
+                      href={getWhatsAppLink(text["whatsapp.prefill"])}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="underline decoration-accent-500 decoration-2 underline-offset-4 hover:text-accent-800"
+                    >
+                      WhatsApp
+                    </a>
+                  ),
+                })}
               </p>
             )
           )}
@@ -421,9 +404,6 @@ function RateStep({
         >
           {say("reservation.rate.choose")}
         </h2>
-        <p className="mt-2 text-stone-600">
-          {room.name} · {nightsLabel} · {guests}
-        </p>
         <fieldset className="mt-6 flex flex-col gap-3">
           <legend className="sr-only">{say("reservation.rate.choose")}</legend>
           {rates.map((offer) => {
@@ -627,19 +607,23 @@ function RateTerms({
   money: (cents: number) => string;
 }) {
   const terms =
-    cancellation.freeCancellation === "available" && cancellation.freeUntil
-      ? fillParts(text["reservation.rate.freeUntil"], {
+    cancellation.freeCancellation === "available" && cancellation.freeUntil ? (
+      <span className="font-semibold text-green-800">
+        {fillParts(text["reservation.rate.freeUntil"], {
           date: (
             <time dateTime={cancellation.freeUntil}>
               {formatDate(cancellation.freeUntil, lang)}
             </time>
           ),
-        })
-      : text[
-          cancellation.freeCancellation === "ended"
-            ? "reservation.rate.freeEnded"
-            : "reservation.rate.noFree"
-        ];
+        })}
+      </span>
+    ) : (
+      text[
+        cancellation.freeCancellation === "ended"
+          ? "reservation.rate.freeEnded"
+          : "reservation.rate.noFree"
+      ]
+    );
   return (
     <>
       {terms}
@@ -674,21 +658,6 @@ function nightsOf(phase: Extract<Phase, { kind: "found" | "loading" }>, text: Ro
 
 function totalLine(phase: Extract<Phase, { kind: "found" | "loading" }>, text: RoomsBookingText) {
   return fill(text["reservation.rate.total"], { nights: nightsOf(phase, text) });
-}
-
-function unavailableLine(
-  state: RoomState,
-  offers: RoomTypeOffers | undefined,
-  text: RoomsBookingText,
-) {
-  if (state === "sold_out") return text["reservation.room.soldOut"];
-  if (state === "too_many_guests" && offers) {
-    return fill(text["reservation.room.tooManyGuests"], {
-      adults: offers.maxAdults,
-      children: offers.maxChildren,
-    });
-  }
-  return fill(text["reservation.room.offline"], { whatsapp: "WhatsApp" });
 }
 
 function guestLine(copy: StaySearchCopy, adults: number, children: number) {

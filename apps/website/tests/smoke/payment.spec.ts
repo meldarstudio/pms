@@ -422,7 +422,10 @@ test("back to review shows the same payment and does not pay again", async ({ pa
   await expect(page.getByRole("heading", { name: "Confirmando su pago" })).toBeVisible();
   const pending = await serverPayment(page, request);
 
-  await page.getByRole("link", { name: "Cambiar fechas o habitación" }).click();
+  await page
+    .getByRole("navigation", { name: "Pasos de la reserva" })
+    .getByRole("link", { name: "Habitación", exact: true })
+    .click();
   await expect(page).toHaveURL(/\/habitaciones\/\?/);
   await page.goBack();
 

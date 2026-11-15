@@ -80,10 +80,20 @@ function focusAfter(previous: StaySearch | null, next: StaySearch): PendingFocus
   return null;
 }
 
-/** Brings a just-answered search below the sticky header without moving focus. */
-function bringIntoView(element: Element | null) {
+const resultsBottomGapPx = 24;
+
+function scrollToShow(start: Element | null, end?: Element | null) {
+  if (!start) return;
   const reduce = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-  element?.scrollIntoView({ block: "start", behavior: reduce ? "instant" : "smooth" });
+  const behavior = reduce ? "instant" : "smooth";
+  if (!end) {
+    start.scrollIntoView({ block: "start", behavior });
+    return;
+  }
+  const top =
+    start.getBoundingClientRect().top - parseFloat(getComputedStyle(start).scrollMarginTop);
+  const bottom = end.getBoundingClientRect().bottom - window.innerHeight + resultsBottomGapPx;
+  window.scrollTo({ top: window.scrollY + Math.max(top, bottom), behavior });
 }
 
 const unavailableStates = ["sold_out", "too_many_guests", "offline"] as const;
@@ -228,7 +238,7 @@ export default function RoomsBooking({
     pendingFocus.current = null;
     pendingPosition.current = false;
     if (phase.kind === "problem") {
-      if (position) bringIntoView(problemPanel.current);
+      if (position) scrollToShow(problemPanel.current);
       problemTitle.current?.focus({ preventScroll: position });
       return;
     }
@@ -240,7 +250,16 @@ export default function RoomsBooking({
     }
     const button = focus?.kind === "room" && document.getElementById(`room-rates-${focus.id}`);
     if (button) button.focus();
-    else if (position) bringIntoView(noticePanel.current ?? document.getElementById("offer-steps"));
+    else if (position) {
+      if (noticePanel.current) scrollToShow(noticePanel.current);
+      else {
+        const firstAvailableRoom = ordered.find((room) => stateOf(room) === "available");
+        const firstPriceButton = firstAvailableRoom
+          ? document.getElementById(`room-rates-${firstAvailableRoom.id}`)
+          : null;
+        scrollToShow(document.getElementById("offer-steps"), firstPriceButton);
+      }
+    }
   }, [phase, address]);
 
   const result =
@@ -270,7 +289,10 @@ export default function RoomsBooking({
       if (room && stateOf(room) !== "available")
         notice = {
           title: say("reservation.room.preferredUnavailable", { room: room.name }),
-          reasons: [],
+          reasons:
+            stateOf(room) === "too_many_guests"
+              ? [say("reservation.choose.reason.too_many_guests", { rooms: room.name })]
+              : [],
         };
     }
   }
@@ -358,7 +380,11 @@ export default function RoomsBooking({
         text={text}
         searchCopy={searchCopy}
         reviewHref={reviewHref}
-        rooms={ordered}
+        rooms={
+          phase.kind === "found"
+            ? ordered.filter((room) => stateOf(room) !== "too_many_guests")
+            : ordered
+        }
         details={details}
         phase={phase}
         choice={address}

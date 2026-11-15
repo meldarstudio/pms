@@ -1,8 +1,10 @@
 import type { ui } from "@/i18n/ui";
 import type { useTranslations } from "@/i18n/utils";
 import { fill } from "@/lib/reservation/format";
+import { bookingStepsKeys } from "@/components/reservation/BookingSteps";
 
 export const reviewKeys = [
+  ...bookingStepsKeys,
   "reservation.nights.one",
   "reservation.nights.other",
   "reservation.adults.one",
@@ -28,8 +30,6 @@ export const reviewKeys = [
   "reservation.review.title",
   "reservation.review.lead",
   "reservation.review.unavailableLead",
-  "reservation.review.backToRates",
-  "reservation.review.changeRate",
   "reservation.review.checkIn",
   "reservation.review.checkOut",
   "reservation.review.dueNow",
@@ -45,7 +45,6 @@ export const reviewKeys = [
   "reservation.review.stay",
   "reservation.review.guests",
   "reservation.review.plan",
-  "reservation.review.changeChoice",
   "reservation.review.contact",
   "reservation.review.contactLead",
   "reservation.review.fullName",
@@ -174,7 +173,6 @@ export const reviewKeys = [
   "reservation.review.missing.body",
   "reservation.review.soldOut.title",
   "reservation.review.soldOut.body",
-  "reservation.review.backToRooms",
   "reservation.review.throttled.title",
   "reservation.review.throttled.body",
   "reservation.review.unavailable.title",
