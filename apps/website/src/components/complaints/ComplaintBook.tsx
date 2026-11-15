@@ -36,7 +36,8 @@ import { ComplaintReceipt } from "./ComplaintReceipt";
 
 const storageKey = "hm.complaint.draft";
 type Draft = { token: string; input: ComplaintInput; attempted: boolean; saved: boolean };
-const emptyInput = (language: "es" | "en"): ComplaintInput => ({
+const newToken = () => crypto.randomUUID() + crypto.randomUUID();
+const emptyInput = (language: "es" | "en", policyVersion: string): ComplaintInput => ({
   language,
   fullName: "",
   address: "",
@@ -53,27 +54,62 @@ const emptyInput = (language: "es" | "en"): ComplaintInput => ({
   requestedRemedy: "",
   reservationReference: "",
   responseChannel: "email",
-  policyVersion: "",
+  policyVersion,
 });
+
+const typedBeforeHydrationKeys = [
+  "fullName",
+  "address",
+  "documentType",
+  "documentNumber",
+  "phone",
+  "email",
+  "product",
+  "description",
+  "requestedRemedy",
+  "reservationReference",
+  "category",
+  "responseChannel",
+] as const;
+function inputTypedBeforeHydration(): Partial<ComplaintInput> {
+  if (typeof document === "undefined") return {};
+  const typed: Record<string, string | number> = {};
+  for (const key of typedBeforeHydrationKeys) {
+    const element = document.getElementById(`complaint-${key}`);
+    const initial =
+      element instanceof HTMLSelectElement
+        ? ([...element.options].find((option) => option.defaultSelected) ?? element.options[0])
+            ?.value
+        : (element as HTMLInputElement | null)?.defaultValue;
+    const value = (element as HTMLInputElement | HTMLSelectElement | null)?.value;
+    if (value !== undefined && value !== initial) typed[key] = value;
+  }
+  const amount = document.getElementById("complaint-amountCents") as HTMLInputElement | null;
+  if (amount?.value) typed.amountCents = Math.round(Number(amount.value) * 100);
+  return typed as Partial<ComplaintInput>;
+}
 
 export function ComplaintBook({
   language,
   turnstileSiteKey,
   privacyHref,
+  initialConfig,
 }: {
   language: "es" | "en";
   turnstileSiteKey: string | null;
   privacyHref: string;
+  initialConfig: ComplaintConfig;
 }) {
   const t = useTranslations(language);
   const labels = complaintLabels(language);
-  const [config, setConfig] = useState<ComplaintConfig | null>(null);
-  const [draft, setDraft] = useState<Draft>({
+  const [config, setConfig] = useState(initialConfig);
+  const [typedBeforeHydration] = useState(inputTypedBeforeHydration);
+  const [draft, setDraft] = useState<Draft>(() => ({
     token: "",
-    input: emptyInput(language),
+    input: { ...emptyInput(language, initialConfig.policyVersion), ...typedBeforeHydration },
     attempted: false,
     saved: false,
-  });
+  }));
   const [sheet, setSheet] = useState<Receipt | null>(null);
   const [problem, setProblem] = useState("");
   const [invalid, setInvalid] = useState("");
@@ -104,6 +140,7 @@ export function ComplaintBook({
       );
       Object.assign(error, {
         status: response.status,
+        code: data.error,
         field: response.headers.get("X-Error-Field"),
       });
       throw error;
@@ -112,53 +149,42 @@ export function ComplaintBook({
   }
   useEffect(() => {
     let active = true;
+    let previous: Draft | null = null;
+    try {
+      previous = JSON.parse(sessionStorage.getItem(storageKey) ?? "null") as Draft | null;
+    } catch {
+      sessionStorage.removeItem(storageKey);
+    }
+    const typedEarly = Object.keys(typedBeforeHydration).length > 0;
+    if (!previous?.token || !previous.input) {
+      const fresh = { ...draft, token: newToken() };
+      if (typedEarly) remember(fresh);
+      else setDraft(fresh);
+      setReady(true);
+      return;
+    }
+    if (!previous.attempted && !previous.saved) {
+      const restored = {
+        ...previous,
+        input: {
+          ...previous.input,
+          ...typedBeforeHydration,
+          policyVersion: initialConfig.policyVersion,
+        },
+      };
+      if (typedEarly) remember(restored);
+      else setDraft(restored);
+      setReady(true);
+      return;
+    }
+    const recovering = previous;
+    setDraft(recovering);
     void (async () => {
       try {
-        const loaded = (await (await request("/config")).json()) as ComplaintConfig;
-        if (!active) return;
-        setConfig(loaded);
-        let previous: Draft | null = null;
-        try {
-          previous = JSON.parse(sessionStorage.getItem(storageKey) ?? "null") as Draft | null;
-        } catch {
-          sessionStorage.removeItem(storageKey);
-        }
-        if (previous?.token && previous.input) {
-          setDraft(
-            previous.attempted
-              ? previous
-              : { ...previous, input: { ...previous.input, policyVersion: loaded.policyVersion } },
-          );
-          if (previous.attempted || previous.saved) {
-            try {
-              const saved = (await (await request("/receipt", previous.token)).json()) as Receipt;
-              if (active) setSheet(saved);
-            } catch (error) {
-              if (
-                active &&
-                (error as Error & { status?: number }).status === 401 &&
-                previous.input.policyVersion !== loaded.policyVersion &&
-                !previous.saved
-              ) {
-                const refreshed = {
-                  ...previous,
-                  attempted: false,
-                  input: { ...previous.input, policyVersion: loaded.policyVersion },
-                };
-                remember(refreshed);
-              }
-              if (active) setProblem(t("complaints.yourDraftIsRetainedRetryTheSame"));
-            }
-          }
-        } else
-          setDraft({
-            token: crypto.randomUUID() + crypto.randomUUID(),
-            input: { ...emptyInput(language), policyVersion: loaded.policyVersion },
-            attempted: false,
-            saved: false,
-          });
-      } catch (error) {
-        if (active) setProblem(error instanceof Error ? error.message : String(error));
+        const saved = (await (await request("/receipt", recovering.token)).json()) as Receipt;
+        if (active) setSheet(saved);
+      } catch {
+        if (active) setProblem(t("complaints.yourDraftIsRetainedRetryTheSame"));
       } finally {
         if (active) setReady(true);
       }
@@ -167,11 +193,25 @@ export function ComplaintBook({
       active = false;
     };
   }, []);
+  async function refreshPolicy(next: Draft) {
+    try {
+      const latest = (await (await request("/config")).json()) as ComplaintConfig;
+      setConfig(latest);
+      remember({
+        ...next,
+        attempted: false,
+        input: { ...next.input, policyVersion: latest.policyVersion },
+      });
+      setProblem(t("complaints.privacyInformationUpdatedReviewAndRegisterAgain"));
+    } catch {
+      setProblem(t("complaints.privacyInformationChangedRetryToLoadIt"));
+    }
+  }
   function update(key: keyof ComplaintInput, value: string | boolean | number | null) {
     remember({ ...draft, input: { ...draft.input, [key]: value } });
   }
   async function submit() {
-    if (busy || !securityToken) return;
+    if (busy || !ready || !securityToken) return;
     setBusy(true);
     setProblem("");
     setInvalid("");
@@ -184,7 +224,11 @@ export function ComplaintBook({
       setSheet(saved);
       sessionStorage.setItem(storageKey, JSON.stringify({ ...next, saved: true }));
     } catch (error) {
-      const failure = error as Error & { status?: number; field?: string };
+      const failure = error as Error & { status?: number; code?: string; field?: string };
+      if (failure.code === "complaint privacy information changed") {
+        await refreshPolicy(next);
+        return;
+      }
       setProblem(
         (failure.status ? failure.message : undefined) ??
           t("complaints.networkErrorYourDraftIsRetainedRetry"),
@@ -208,8 +252,8 @@ export function ComplaintBook({
           className="mt-6 h-auto min-h-11 py-2 whitespace-normal print:hidden"
           onClick={() => {
             remember({
-              token: crypto.randomUUID() + crypto.randomUUID(),
-              input: { ...emptyInput(language), policyVersion: config!.policyVersion },
+              token: newToken(),
+              input: emptyInput(language, config.policyVersion),
               attempted: false,
               saved: false,
             });
@@ -286,160 +330,160 @@ export function ComplaintBook({
   }
   return (
     <section className="complaint-book flex flex-col gap-6">
-      <p className="complaint-intro">{t("complaints.reclamoAProblemWithAProductOr")}</p>
-      {!ready && <p role="status">{t("complaints.loading")}</p>}
+      {!ready && draft.attempted && <p role="status">{t("complaints.recoveringReceipt")}</p>}
       {problem && <FieldError id="complaint-error">{problem}</FieldError>}
-      {config && (
-        <>
-          <div className="complaint-provider">
-            <p className="font-semibold">
-              {config.provider.legalName} · RUC {config.provider.ruc}
-            </p>
-            <p>
-              {config.provider.address} · {config.establishmentId}
-            </p>
-          </div>
-          <form
-            className="flex flex-col gap-8"
-            onSubmit={(event) => {
-              event.preventDefault();
-              void submit();
-            }}
-          >
-            <FieldSet disabled={fieldsDisabled}>
-              <FieldLegend>{t("complaints.consumerDetails")}</FieldLegend>
-              <FieldGroup className="grid gap-x-6 sm:grid-cols-2">
-                {textField("fullName", true)}
-                {textField("documentType")}
-                {textField("documentNumber")}
-                {textField("address", true)}
-                {textField("phone", true)}
-                <Field
-                  orientation="horizontal"
-                  data-disabled={fieldsDisabled}
-                  className="min-h-11 sm:col-span-2"
-                >
-                  <Checkbox
-                    id="complaint-minor"
-                    disabled={fieldsDisabled}
-                    checked={draft.input.minor}
-                    onCheckedChange={(checked) => update("minor", checked)}
-                  />
-                  <FieldLabel htmlFor="complaint-minor">{labels.minor}</FieldLabel>
-                </Field>
-                {draft.input.minor && textField("representative", true)}
-              </FieldGroup>
-            </FieldSet>
-            <FieldSet disabled={fieldsDisabled}>
-              <FieldLegend>{t("complaints.complaintDetails")}</FieldLegend>
-              <FieldGroup className="grid gap-x-6 sm:grid-cols-2">
-                <Field data-disabled={fieldsDisabled} className="sm:col-span-2">
-                  <FieldLabel htmlFor="complaint-category">{labels.category}</FieldLabel>
-                  <NativeSelect
-                    id="complaint-category"
-                    className="w-full"
-                    disabled={fieldsDisabled}
-                    value={draft.input.category}
-                    onChange={(event) => update("category", event.target.value)}
-                  >
-                    <NativeSelectOption value="reclamo">Reclamo</NativeSelectOption>
-                    <NativeSelectOption value="queja">Queja</NativeSelectOption>
-                  </NativeSelect>
-                </Field>
-                {textField("product", true)}
-                <Field data-invalid={invalid === "amountCents"} data-disabled={fieldsDisabled}>
-                  <FieldLabel htmlFor="complaint-amountCents">
-                    {t("complaints.amountLabel")} (PEN)
-                  </FieldLabel>
-                  <Input
-                    disabled={fieldsDisabled}
-                    id="complaint-amountCents"
-                    aria-invalid={invalid === "amountCents"}
-                    aria-describedby={invalid === "amountCents" ? "complaint-error" : undefined}
-                    type="number"
-                    min="0"
-                    max="10000000"
-                    step="0.01"
-                    value={draft.input.amountCents === null ? "" : draft.input.amountCents / 100}
-                    onChange={(event) =>
-                      update(
-                        "amountCents",
-                        event.target.value === ""
-                          ? null
-                          : Math.round(Number(event.target.value) * 100),
-                      )
-                    }
-                  />
-                  <FieldDescription>{t("complaints.amountHint")}</FieldDescription>
-                </Field>
-                {textField("reservationReference")}
-                {textField("description", true)}
-                {textField("requestedRemedy", true)}
-              </FieldGroup>
-            </FieldSet>
-            <FieldSet disabled={fieldsDisabled}>
-              <FieldLegend>{t("complaints.writtenResponse")}</FieldLegend>
-              <FieldGroup>
-                <Field data-disabled={fieldsDisabled}>
-                  <FieldLabel htmlFor="complaint-responseChannel">
-                    {labels.responseChannel}
-                  </FieldLabel>
-                  <NativeSelect
-                    id="complaint-responseChannel"
-                    className="w-full"
-                    disabled={fieldsDisabled}
-                    value={draft.input.responseChannel}
-                    onChange={(event) => update("responseChannel", event.target.value)}
-                  >
-                    <NativeSelectOption value="email">{t("complaints.email")}</NativeSelectOption>
-                    <NativeSelectOption value="letter">
-                      {t("complaints.letterToTheAddressProvided")}
-                    </NativeSelectOption>
-                  </NativeSelect>
-                </Field>
-                {textField("email")}
-              </FieldGroup>
-            </FieldSet>
-            <div className="flex flex-col gap-3">
-              <p className="complaint-hint whitespace-pre-wrap">
-                {config.collectionNotice[language]}
-              </p>
-              <Accordion>
-                <AccordionItem value="privacy">
-                  <AccordionTrigger variant="compact">
-                    {t("complaints.fullPrivacyInformation")}
-                  </AccordionTrigger>
-                  <AccordionContent>
-                    <p className="whitespace-pre-wrap">{config.privacyInformation[language]}</p>
-                  </AccordionContent>
-                </AccordionItem>
-              </Accordion>
-              <a
-                href={privacyHref}
-                className="inline-flex min-h-11 items-center underline underline-offset-4"
-              >
-                {t("complaints.privacyPage")}
-              </a>
-            </div>
-            <div className="flex flex-col gap-3 sm:items-start">
-              <ComplaintSecurity
-                key={securityVersion}
-                siteKey={turnstileSiteKey}
-                language={language}
-                onToken={setSecurityToken}
+      <div className="complaint-provider">
+        <p className="font-semibold">
+          {config.provider.legalName} · RUC {config.provider.ruc}
+        </p>
+        <p>
+          {config.provider.address} · {config.establishmentId}
+        </p>
+      </div>
+      <form
+        className="flex flex-col gap-8"
+        onSubmit={(event) => {
+          event.preventDefault();
+          void submit();
+        }}
+      >
+        <FieldSet disabled={fieldsDisabled}>
+          <FieldLegend>{t("complaints.consumerDetails")}</FieldLegend>
+          <FieldGroup className="grid gap-x-6 sm:grid-cols-2">
+            {textField("fullName", true)}
+            {textField("documentType")}
+            {textField("documentNumber")}
+            {textField("address", true)}
+            {textField("phone", true)}
+            <Field
+              orientation="horizontal"
+              data-disabled={fieldsDisabled}
+              className="min-h-11 sm:col-span-2"
+            >
+              <Checkbox
+                id="complaint-minor"
+                disabled={fieldsDisabled}
+                checked={draft.input.minor}
+                onCheckedChange={(checked) => update("minor", checked)}
               />
-              <p role="status" aria-live="polite" hidden={!busy}>
-                {busy ? t("complaints.registering") : ""}
-              </p>
-              <Button className="w-full sm:w-auto" disabled={busy || !securityToken} type="submit">
-                {draft.attempted
-                  ? t("complaints.retrySameSubmission")
-                  : t("complaints.registerSheet")}
-              </Button>
-            </div>
-          </form>
-        </>
-      )}
+              <FieldLabel htmlFor="complaint-minor">{labels.minor}</FieldLabel>
+            </Field>
+            {draft.input.minor && textField("representative", true)}
+          </FieldGroup>
+        </FieldSet>
+        <FieldSet disabled={fieldsDisabled}>
+          <FieldLegend>{t("complaints.complaintDetails")}</FieldLegend>
+          <FieldGroup className="grid gap-x-6 sm:grid-cols-2">
+            <Field data-disabled={fieldsDisabled} className="sm:col-span-2">
+              <FieldLabel htmlFor="complaint-category">{labels.category}</FieldLabel>
+              <NativeSelect
+                id="complaint-category"
+                className="w-full"
+                disabled={fieldsDisabled}
+                value={draft.input.category}
+                aria-describedby="complaint-category-reclamo complaint-category-queja"
+                onChange={(event) => update("category", event.target.value)}
+              >
+                <NativeSelectOption value="reclamo">Reclamo</NativeSelectOption>
+                <NativeSelectOption value="queja">Queja</NativeSelectOption>
+              </NativeSelect>
+              <FieldDescription id="complaint-category-reclamo">
+                {t("complaints.sheet.reclamoDefinition")}
+              </FieldDescription>
+              <FieldDescription id="complaint-category-queja">
+                {t("complaints.sheet.quejaDefinition")}
+              </FieldDescription>
+            </Field>
+            {textField("product", true)}
+            <Field data-invalid={invalid === "amountCents"} data-disabled={fieldsDisabled}>
+              <FieldLabel htmlFor="complaint-amountCents">
+                {t("complaints.amountLabel")} (PEN)
+              </FieldLabel>
+              <Input
+                disabled={fieldsDisabled}
+                id="complaint-amountCents"
+                aria-invalid={invalid === "amountCents"}
+                aria-describedby={invalid === "amountCents" ? "complaint-error" : undefined}
+                type="number"
+                min="0"
+                max="10000000"
+                step="0.01"
+                value={draft.input.amountCents === null ? "" : draft.input.amountCents / 100}
+                onChange={(event) =>
+                  update(
+                    "amountCents",
+                    event.target.value === "" ? null : Math.round(Number(event.target.value) * 100),
+                  )
+                }
+              />
+              <FieldDescription>{t("complaints.amountHint")}</FieldDescription>
+            </Field>
+            {textField("reservationReference")}
+            {textField("description", true)}
+            {textField("requestedRemedy", true)}
+          </FieldGroup>
+        </FieldSet>
+        <FieldSet disabled={fieldsDisabled}>
+          <FieldLegend>{t("complaints.writtenResponse")}</FieldLegend>
+          <FieldGroup>
+            <Field data-disabled={fieldsDisabled}>
+              <FieldLabel htmlFor="complaint-responseChannel">{labels.responseChannel}</FieldLabel>
+              <NativeSelect
+                id="complaint-responseChannel"
+                className="w-full"
+                disabled={fieldsDisabled}
+                value={draft.input.responseChannel}
+                onChange={(event) => update("responseChannel", event.target.value)}
+              >
+                <NativeSelectOption value="email">{t("complaints.email")}</NativeSelectOption>
+                <NativeSelectOption value="letter">
+                  {t("complaints.letterToTheAddressProvided")}
+                </NativeSelectOption>
+              </NativeSelect>
+            </Field>
+            {textField("email")}
+          </FieldGroup>
+        </FieldSet>
+        <div className="flex flex-col gap-3">
+          <p className="complaint-hint">{t("complaints.sheet.deadline")}</p>
+          <p className="complaint-hint">{t("complaints.sheet.otherRemedies")}</p>
+          <p className="complaint-hint whitespace-pre-wrap">{config.collectionNotice[language]}</p>
+          <Accordion>
+            <AccordionItem value="privacy">
+              <AccordionTrigger variant="compact">
+                {t("complaints.fullPrivacyInformation")}
+              </AccordionTrigger>
+              <AccordionContent>
+                <p className="whitespace-pre-wrap">{config.privacyInformation[language]}</p>
+              </AccordionContent>
+            </AccordionItem>
+          </Accordion>
+          <a
+            href={privacyHref}
+            className="inline-flex min-h-11 items-center underline underline-offset-4"
+          >
+            {t("complaints.privacyPage")}
+          </a>
+        </div>
+        <div className="flex flex-col gap-3 sm:items-start">
+          <ComplaintSecurity
+            key={securityVersion}
+            siteKey={turnstileSiteKey}
+            language={language}
+            onToken={setSecurityToken}
+          />
+          <p role="status" aria-live="polite" hidden={!busy}>
+            {busy ? t("complaints.registering") : ""}
+          </p>
+          <Button
+            className="w-full sm:w-auto"
+            disabled={busy || !ready || !securityToken}
+            type="submit"
+          >
+            {draft.attempted ? t("complaints.retrySameSubmission") : t("complaints.registerSheet")}
+          </Button>
+        </div>
+      </form>
     </section>
   );
 }

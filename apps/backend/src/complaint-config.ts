@@ -1,6 +1,7 @@
 import { sql, type SQL } from "drizzle-orm";
 import { z } from "zod";
-import book from "./complaint-book.json";
+import publicContent from "@pms/shared/complaint-book.json";
+import operations from "./complaint-book-operations.json";
 
 const content = z.string().trim().min(1).max(20000);
 const translated = z.object({ es: content, en: content }).strict();
@@ -21,7 +22,7 @@ const complaintBookSchema = z
     emailFrom: z.string().email(),
   })
   .strict();
-export const complaintBook = complaintBookSchema.parse(book);
+export const complaintBook = complaintBookSchema.parse({ ...publicContent, ...operations });
 
 export const complaintCalendarSource =
   "Lunes a viernes; los feriados y días no laborables cuentan como hábiles, por lo que el plazo nunca es posterior al legal.";
