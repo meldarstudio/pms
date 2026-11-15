@@ -1,6 +1,60 @@
 import { holdSecurityCheck, passSecurityCheck, stubPaymentScripts } from "../support/payment";
 import { expect, test } from "@playwright/test";
 
+for (const { path, provider, category, notices, field } of [
+  {
+    path: "/libro-de-reclamaciones/",
+    provider: "Hotel Manantial de Churin E.I.R.L. · RUC 20552108028",
+    category: "Tipo",
+    notices: ["quince (15) días hábiles, el cual es improrrogable", "denuncia ante el INDECOPI"],
+    field: "Nombre completo",
+  },
+  {
+    path: "/en/libro-de-reclamaciones/",
+    provider: "Hotel Manantial de Churin E.I.R.L. · RUC 20552108028",
+    category: "Category",
+    notices: ["fifteen (15) business days, which cannot be extended", "complaint with INDECOPI"],
+    field: "Full name",
+  },
+]) {
+  test(`prerenders the complaint form and its notices at ${path}`, async ({ page, request }) => {
+    const html = await (await request.get(path)).text();
+    expect(html).toContain("Hotel Manantial de Churin E.I.R.L.");
+    expect(html).toContain("20552108028");
+    expect(html).toContain("hotelmanantialchurinperu@gmail.com");
+    expect(html).toContain('id="complaint-fullName"');
+    await stubPaymentScripts(page);
+    await page.route("**/public/complaints/config", (route) => route.abort());
+    await page.goto(path);
+    await expect(page.getByText(provider)).toBeVisible();
+    await expect(page.getByLabel(field, { exact: true })).toBeEnabled();
+    await expect(
+      page.getByRole("combobox", { name: category, exact: true }),
+    ).toHaveAccessibleDescription(/^Reclamo: .+ Queja: .+$/);
+    for (const notice of notices) await expect(page.getByText(notice)).toBeVisible();
+  });
+}
+
+test("keeps what the guest typed before the form became interactive", async ({ page }) => {
+  await stubPaymentScripts(page);
+  let hydrate = () => {};
+  const held = new Promise<void>((resolve) => (hydrate = resolve));
+  await page.route(/ComplaintBook.*\.js/, async (route) => {
+    await held;
+    await route.continue();
+  });
+  await page.goto("/en/libro-de-reclamaciones/", { waitUntil: "domcontentloaded" });
+  await page.getByLabel("Full name", { exact: true }).fill("Ana Torres");
+  await page.getByRole("combobox", { name: "Category", exact: true }).selectOption("queja");
+  hydrate();
+  await expect(page.locator("astro-island[ssr]")).toHaveCount(0);
+  await page.getByLabel("Address", { exact: true }).fill("Lima");
+  await page.reload();
+  await expect(page.getByLabel("Full name", { exact: true })).toHaveValue("Ana Torres");
+  await expect(page.getByLabel("Address", { exact: true })).toHaveValue("Lima");
+  await expect(page.getByRole("combobox", { name: "Category", exact: true })).toHaveValue("queja");
+});
+
 test("keeps the complaint draft and retry credential after a lost response, then prints the saved receipt", async ({
   page,
 }) => {
@@ -8,21 +62,11 @@ test("keeps the complaint draft and retry credential after a lost response, then
   const input: Record<string, unknown> = {};
   let credential = "";
   let submissions = 0;
-  await page.route("**/public/complaints/config", (route) =>
-    route.fulfill({
-      json: {
-        provider: {
-          legalName: "Development operator",
-          ruc: "00000000000",
-          address: "Development address",
-        },
-        establishmentId: "DEMO",
-        collectionNotice: { es: "Datos de prueba", en: "Test data only" },
-        privacyInformation: { es: "Privacidad de prueba", en: "Test privacy information" },
-        policyVersion: "development-1",
-      },
-    }),
-  );
+  const configRequests: string[] = [];
+  await page.route("**/public/complaints/config", (route) => {
+    configRequests.push(route.request().url());
+    return route.abort();
+  });
   await page.route("**/public/complaints", async (route) => {
     const token = route.request().headers().authorization;
     if (credential) expect(token).toBe(credential);
@@ -56,6 +100,9 @@ test("keeps the complaint draft and retry credential after a lost response, then
     });
   });
   await page.goto("/en/libro-de-reclamaciones/");
+  await expect(
+    page.getByText("Hotel Manantial de Churin E.I.R.L. · RUC 20552108028"),
+  ).toBeVisible();
   await page.getByLabel("Full name", { exact: true }).fill("Ana Torres");
   await page.getByLabel("Address", { exact: true }).fill("Lima");
   await page.getByLabel("Document type", { exact: true }).fill("Passport");
@@ -88,6 +135,7 @@ test("keeps the complaint draft and retry credential after a lost response, then
   await page.emulateMedia({ media: "print" });
   await expect(page.getByText("Service unavailable")).toBeVisible();
   await expect(page.getByText("Development operator", { exact: false }).last()).toBeVisible();
+  expect(configRequests).toEqual([]);
 });
 
 test("registers a minor's queja without a reservation, email or amount through the local backend", async ({
@@ -159,4 +207,30 @@ test("registers a minor's queja without a reservation, email or amount through t
   await expect(
     page.getByRole("heading", { name: /^Hoja de Reclamación Nº \d{9}-\d{4}$/ }),
   ).toBeVisible();
+});
+
+test("asks the guest to reload when privacy information changed and keeps the draft", async ({
+  page,
+}) => {
+  await stubPaymentScripts(page);
+  await page.route("**/public/complaints", (route) =>
+    route.fulfill({ status: 409, json: { error: "complaint privacy information changed" } }),
+  );
+  await page.goto("/en/libro-de-reclamaciones/");
+  await page.getByLabel("Full name", { exact: true }).fill("Ana Torres");
+  await page.getByLabel("Address", { exact: true }).fill("Lima");
+  await page.getByLabel("Document type", { exact: true }).fill("Passport");
+  await page.getByLabel("Document number", { exact: true }).fill("AB123456");
+  await page.getByLabel("Phone", { exact: true }).fill("+51999999999");
+  await page.getByLabel("Reservation reference", { exact: true }).fill("BOOK-123");
+  await page.getByLabel("Email", { exact: true }).fill("ana@example.com");
+  await page.getByLabel("Product or service", { exact: true }).fill("Accommodation");
+  await page.getByLabel("Description", { exact: true }).fill("Service unavailable");
+  await page.getByLabel("Requested remedy", { exact: true }).fill("Please respond");
+  await page.getByRole("button", { name: "Register sheet" }).click();
+  await expect(page.getByRole("alert")).toContainText("Reload the page");
+  await page.reload();
+  await expect(page.getByLabel("Description", { exact: true })).toHaveValue("Service unavailable");
+  await expect(page.getByLabel("Full name", { exact: true })).toBeEnabled();
+  await expect(page.getByRole("button", { name: "Register sheet" })).toBeVisible();
 });

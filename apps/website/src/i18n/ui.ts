@@ -37,7 +37,7 @@ export const ui = {
     "complaints.field.responseChannel": "Written response channel",
     "complaints.field.minor": "Consumer is a minor",
     "complaints.error.complaint_privacy_information_changed":
-      "Privacy information changed. Reload to review it; your draft is retained.",
+      "Privacy information changed. Reload the page to review it; your draft is retained.",
     "complaints.error.complaint_retry_differs_from_saved_sheet":
       "This submission already has a saved sheet. Recover its receipt before filing another.",
     "complaints.error.invalid_complaint_receipt_credential":
@@ -89,9 +89,7 @@ export const ui = {
       "Network error. Your draft is retained; retry the same submission.",
     "complaints.startAnotherSheetSaveOrPrintThis":
       "Start another sheet (save or print this one first)",
-    "complaints.reclamoAProblemWithAProductOr":
-      "Reclamo: a problem with a product or service. Queja: dissatisfaction with attention. The hotel must respond within 15 business days, without extension. Filing with the hotel does not prevent using Indecopi or other remedies directly.",
-    "complaints.loading": "Loading…",
+    "complaints.recoveringReceipt": "Recovering your saved sheet…",
     "complaints.fullPrivacyInformation": "Full privacy information",
     "complaints.privacyPage": "Privacy information for all our services",
     "complaints.consumerAndComplaintDetails": "Consumer and complaint details",
@@ -673,7 +671,7 @@ export const ui = {
     "complaints.field.responseChannel": "Canal de respuesta escrita",
     "complaints.field.minor": "Consumidor menor de edad",
     "complaints.error.complaint_privacy_information_changed":
-      "La información de privacidad cambió. Recargue para revisarla; se conserva el borrador.",
+      "La información de privacidad cambió. Recargue la página para revisarla; se conserva el borrador.",
     "complaints.error.complaint_retry_differs_from_saved_sheet":
       "Este envío ya tiene una hoja registrada. Recupere la constancia antes de enviar otra.",
     "complaints.error.invalid_complaint_receipt_credential":
@@ -724,9 +722,7 @@ export const ui = {
       "Error de red. Se conserva el borrador; reintente el mismo envío.",
     "complaints.startAnotherSheetSaveOrPrintThis":
       "Iniciar otra hoja (guarde o imprima esta primero)",
-    "complaints.reclamoAProblemWithAProductOr":
-      "Reclamo: disconformidad con el producto o servicio. Queja: disconformidad con la atención. El hotel debe responder en 15 días hábiles, sin prórroga. Esta hoja se presenta al hotel y no impide acudir directamente a Indecopi u otras vías.",
-    "complaints.loading": "Cargando…",
+    "complaints.recoveringReceipt": "Recuperando su hoja registrada…",
     "complaints.fullPrivacyInformation": "Información completa de privacidad",
     "complaints.privacyPage": "Información de privacidad de todos nuestros servicios",
     "complaints.consumerAndComplaintDetails": "Datos del consumidor y de la reclamación",

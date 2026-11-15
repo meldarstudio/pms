@@ -40,8 +40,11 @@ Like D1, the test database rejects statements with more than 100 bound parameter
 
 ## Complaint book
 
-The Libro de Reclamaciones is the committed `src/complaint-book.json` (book `LR` from
-sheet 1), validated when `src/complaint-config.ts` loads and served in every environment;
+The Libro de Reclamaciones is committed in two files that `src/complaint-config.ts` merges
+and validates when it loads: the guest-facing provider, notices and `policyVersion` in
+`packages/shared/src/complaint-book.json`, which the website also prerenders, and the
+internal `src/complaint-book-operations.json` (book `LR` from sheet 1, retention, monitoring,
+backup and sender), which must stay out of the website. It is served in every environment;
 local dev and tests file into that book against their own database. Changing
 `policyVersion` or the disclosures in that file is a reviewed release change: each sheet
 stores the disclosures it was filed under. The scheduled run sends receipts through the

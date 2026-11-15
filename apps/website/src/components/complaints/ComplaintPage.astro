@@ -3,6 +3,7 @@ import { PUBLIC_TURNSTILE_SITE_KEY } from "astro:env/client";
 import Layout from "@/layouts/Layout.astro";
 import { getLang } from "@/i18n/utils";
 import { privacyHref } from "@/lib/reservation/links";
+import complaintBook from "@pms/shared/complaint-book.json";
 import { ComplaintBook } from "./ComplaintBook";
 const language = getLang(Astro.currentLocale);
 ---
@@ -16,6 +17,7 @@ const language = getLang(Astro.currentLocale);
       client:load
       language={language}
       privacyHref={privacyHref(language)}
+      config={complaintBook}
       turnstileSiteKey={
         PUBLIC_TURNSTILE_SITE_KEY ?? (import.meta.env.DEV ? "1x00000000000000000000AA" : null)
       }
