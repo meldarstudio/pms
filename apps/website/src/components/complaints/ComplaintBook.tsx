@@ -93,20 +93,19 @@ export function ComplaintBook({
   language,
   turnstileSiteKey,
   privacyHref,
-  initialConfig,
+  config,
 }: {
   language: "es" | "en";
   turnstileSiteKey: string | null;
   privacyHref: string;
-  initialConfig: ComplaintConfig;
+  config: ComplaintConfig;
 }) {
   const t = useTranslations(language);
   const labels = complaintLabels(language);
-  const [config, setConfig] = useState(initialConfig);
   const [typedBeforeHydration] = useState(inputTypedBeforeHydration);
   const [draft, setDraft] = useState<Draft>(() => ({
     token: "",
-    input: { ...emptyInput(language, initialConfig.policyVersion), ...typedBeforeHydration },
+    input: { ...emptyInput(language, config.policyVersion), ...typedBeforeHydration },
     attempted: false,
     saved: false,
   }));
@@ -169,7 +168,7 @@ export function ComplaintBook({
         input: {
           ...previous.input,
           ...typedBeforeHydration,
-          policyVersion: initialConfig.policyVersion,
+          policyVersion: config.policyVersion,
         },
       };
       if (typedEarly) remember(restored);
@@ -193,20 +192,6 @@ export function ComplaintBook({
       active = false;
     };
   }, []);
-  async function refreshPolicy(next: Draft) {
-    try {
-      const latest = (await (await request("/config")).json()) as ComplaintConfig;
-      setConfig(latest);
-      remember({
-        ...next,
-        attempted: false,
-        input: { ...next.input, policyVersion: latest.policyVersion },
-      });
-      setProblem(t("complaints.privacyInformationUpdatedReviewAndRegisterAgain"));
-    } catch {
-      setProblem(t("complaints.privacyInformationChangedRetryToLoadIt"));
-    }
-  }
   function update(key: keyof ComplaintInput, value: string | boolean | number | null) {
     remember({ ...draft, input: { ...draft.input, [key]: value } });
   }
@@ -225,16 +210,15 @@ export function ComplaintBook({
       sessionStorage.setItem(storageKey, JSON.stringify({ ...next, saved: true }));
     } catch (error) {
       const failure = error as Error & { status?: number; code?: string; field?: string };
-      if (failure.code === "complaint privacy information changed") {
-        await refreshPolicy(next);
-        return;
-      }
       setProblem(
         (failure.status ? failure.message : undefined) ??
           t("complaints.networkErrorYourDraftIsRetainedRetry"),
       );
       setInvalid(failure.field ?? "");
-      if (!draft.attempted && (failure.status === 400 || failure.status === 403))
+      if (
+        failure.code === "complaint privacy information changed" ||
+        (!draft.attempted && (failure.status === 400 || failure.status === 403))
+      )
         remember({ ...next, attempted: false });
     } finally {
       setSecurityToken("");

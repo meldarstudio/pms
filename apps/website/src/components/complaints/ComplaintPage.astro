@@ -17,7 +17,7 @@ const language = getLang(Astro.currentLocale);
       client:load
       language={language}
       privacyHref={privacyHref(language)}
-      initialConfig={complaintBook}
+      config={complaintBook}
       turnstileSiteKey={
         PUBLIC_TURNSTILE_SITE_KEY ?? (import.meta.env.DEV ? "1x00000000000000000000AA" : null)
       }

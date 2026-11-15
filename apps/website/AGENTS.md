@@ -96,9 +96,8 @@ The release workflow deploys this site with the API and portal: `deploy` runs
 
 The footer of every page links the Libro de Reclamaciones and shows the Annex III notice
 (`src/components/complaints/`). The form is prerendered with the provider and privacy
-texts of `@pms/shared/complaint-book.json`; it fetches `GET /public/complaints/config` only
-after the backend rejects a submission's policy version, then shows the new texts and waits
-for the guest to register again. It submits only with `PUBLIC_TURNSTILE_SITE_KEY`;
+texts of `@pms/shared/complaint-book.json`; when the backend rejects its policy version, the
+guest reloads and the draft is restored. It submits only with `PUBLIC_TURNSTILE_SITE_KEY`;
 development falls back to Cloudflare's always-passing test key.
 
 `check` runs `astro sync` then `astro-check` directly. The workspace package

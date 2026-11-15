@@ -209,36 +209,13 @@ test("registers a minor's queja without a reservation, email or amount through t
   ).toBeVisible();
 });
 
-test("refreshes changed privacy information and files the retained draft only on an explicit retry", async ({
+test("asks the guest to reload when privacy information changed and keeps the draft", async ({
   page,
 }) => {
   await stubPaymentScripts(page);
-  const submitted: { token: string; policyVersion: string }[] = [];
-  await page.route("**/public/complaints/config", (route) =>
-    route.fulfill({
-      json: {
-        provider: {
-          legalName: "Hotel Manantial de Churin E.I.R.L.",
-          ruc: "20552108028",
-          address: "Av. Víctor Larco Herrera N°138, Churín",
-        },
-        establishmentId: "Hotel Manantial · Churín",
-        collectionNotice: { es: "Aviso actualizado", en: "Updated collection notice" },
-        privacyInformation: { es: "Privacidad actualizada", en: "Updated privacy information" },
-        policyVersion: "updated-policy",
-      },
-    }),
+  await page.route("**/public/complaints", (route) =>
+    route.fulfill({ status: 409, json: { error: "complaint privacy information changed" } }),
   );
-  await page.route("**/public/complaints", async (route) => {
-    const { policyVersion } = route.request().postDataJSON();
-    submitted.push({ token: route.request().headers().authorization, policyVersion });
-    if (submitted.length === 1)
-      return route.fulfill({
-        status: 409,
-        json: { error: "complaint privacy information changed" },
-      });
-    return route.fulfill({ status: 503, json: { error: "unavailable" } });
-  });
   await page.goto("/en/libro-de-reclamaciones/");
   await page.getByLabel("Full name", { exact: true }).fill("Ana Torres");
   await page.getByLabel("Address", { exact: true }).fill("Lima");
@@ -251,13 +228,9 @@ test("refreshes changed privacy information and files the retained draft only on
   await page.getByLabel("Description", { exact: true }).fill("Service unavailable");
   await page.getByLabel("Requested remedy", { exact: true }).fill("Please respond");
   await page.getByRole("button", { name: "Register sheet" }).click();
-  await expect(page.getByRole("alert")).toContainText("privacy information was updated");
-  await expect(page.getByText("Updated collection notice")).toBeVisible();
+  await expect(page.getByRole("alert")).toContainText("Reload the page");
+  await page.reload();
   await expect(page.getByLabel("Description", { exact: true })).toHaveValue("Service unavailable");
   await expect(page.getByLabel("Full name", { exact: true })).toBeEnabled();
-  expect(submitted).toHaveLength(1);
-  await page.getByRole("button", { name: "Register sheet" }).click();
-  await expect.poll(() => submitted.length).toBe(2);
-  expect(submitted[1]).toEqual({ token: submitted[0].token, policyVersion: "updated-policy" });
-  expect(submitted[0].policyVersion).not.toBe("updated-policy");
+  await expect(page.getByRole("button", { name: "Register sheet" })).toBeVisible();
 });
