@@ -22,7 +22,7 @@ import { NativeSelect, NativeSelectOption } from "@/components/ui/native-select"
 import { Textarea } from "@/components/ui/textarea";
 import { useTranslations } from "@/i18n/utils";
 import { useEffect, useState } from "react";
-import { reservationApiUrl } from "@/lib/reservation/api";
+import { PUBLIC_PMS_API_URL } from "astro:env/client";
 import {
   complaintLabels,
   complaintProblem,
@@ -84,7 +84,7 @@ export function ComplaintBook({
     setDraft(next);
   }
   async function request(path: string, token?: string, body?: ComplaintSubmission) {
-    const response = await fetch(`${reservationApiUrl}/public/complaints${path}`, {
+    const response = await fetch(`${PUBLIC_PMS_API_URL}/public/complaints${path}`, {
       method: body ? "POST" : "GET",
       credentials: "omit",
       cache: "no-store",

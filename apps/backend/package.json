@@ -13,8 +13,7 @@
     "db:migrate:remote": "node scripts/migrate-production.mjs",
     "db:reset:local": "node scripts/seed-reset.mjs",
     "auth:account": "node scripts/account.mjs",
-    "auth:secret": "node scripts/session-secret.mjs",
-    "culqi:sandbox": "node scripts/culqi-sandbox.mjs"
+    "auth:secret": "node scripts/session-secret.mjs"
   },
   "dependencies": {
     "@hono/zod-validator": "^0.9.1",

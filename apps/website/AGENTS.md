@@ -1,8 +1,8 @@
 # Website
 
 Static Astro site for Hotel Manantial in Churín, Peru. Cloudflare serves `dist/`.
-Reservation search is always visible. `PUBLIC_PMS_API_URL` overrides the API URL;
-development defaults to the local backend and builds to the production API.
+Reservation search is always visible. `PUBLIC_PMS_API_URL` is required;
+`.env.development` supplies the local backend URL, and the release workflow supplies the production URL.
 Choose is the rooms page (`/habitaciones/`): one React island
 (`src/components/rooms/RoomsBooking.tsx`) with the dates-and-guests form and every
 room, prerendered for search engines. It refreshes live offers from the PMS `/public`

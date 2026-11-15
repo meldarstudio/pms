@@ -6,10 +6,9 @@ PROPERTY_TIME_ZONE=America/Lima
 ALLOWED_ORIGINS=http://localhost:5173
 # The website's dev origin for guest routes under /public (non-credentialed CORS).
 PUBLIC_ALLOWED_ORIGINS=http://localhost:4321
-# Culqi sandbox keys from CulqiPanel. Never use live keys locally. The public key is
-# only for pnpm culqi:sandbox, which creates test card tokens.
+# Culqi sandbox secret from CulqiPanel. Never use live keys locally.
+# Set the matching public key as PUBLIC_CULQI_PUBLIC_KEY in the website's .env.development.local.
 CULQI_SECRET_KEY=
-CULQI_PUBLIC_KEY=
 # Turnstile secret for the website's payment and complaint challenges. Cloudflare's always-passing test
 # secret is 1x0000000000000000000000000000000AA.
 TURNSTILE_SECRET_KEY=

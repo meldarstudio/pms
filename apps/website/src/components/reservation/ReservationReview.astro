@@ -1,5 +1,9 @@
 ---
-import { PUBLIC_CULQI_PUBLIC_KEY, PUBLIC_TURNSTILE_SITE_KEY } from "astro:env/client";
+import {
+  PUBLIC_PMS_API_URL,
+  PUBLIC_CULQI_PUBLIC_KEY,
+  PUBLIC_TURNSTILE_SITE_KEY,
+} from "astro:env/client";
 import { getImage } from "astro:assets";
 import Review from "@/components/reservation/review/Review";
 import { reviewText } from "@/components/reservation/review/text";
@@ -12,7 +16,6 @@ import {
 } from "@/components/reservation/BookingSteps";
 import { getLang, useTranslations } from "@/i18n/utils";
 import { roomsHref, summaryStepHref } from "@/lib/reservation/links";
-import { reservationApiUrl } from "@/lib/reservation/api";
 import { rooms } from "@/lib/rooms";
 
 const lang = getLang(Astro.currentLocale);
@@ -61,7 +64,7 @@ const roomViews = Object.fromEntries(
     <Review
       client:load
       lang={lang}
-      apiBase={reservationApiUrl}
+      apiBase={PUBLIC_PMS_API_URL}
       payments={payments}
       devPayments={devPayments}
       chooseHref={roomsHref(lang)}
