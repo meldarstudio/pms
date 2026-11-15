@@ -38,17 +38,28 @@ Colocated `.test.ts` and `.test.mjs` suites use `vite-plus/test` and registered
 migrations against in-memory `node:sqlite`; no running Worker is needed.
 Like D1, the test database rejects statements with more than 100 bound parameters.
 
-## Development complaint book
+## Complaint book
+
+`COMPLAINT_BOOK` selects the Libro de Reclamaciones. `production`, set in
+`cloudflare.config.ts`, serves the committed `src/complaint-book.production.json`
+(book `LR` from sheet 1, real Resend receipts) on any host; that one variable is the
+activation, and plain `cf dev` serves the same book against the local database. A JSON
+value is accepted only as a `development` book on a loopback request host and can never
+claim production. Without a valid selection the complaint routes answer 503. Changing
+`policyVersion` or the disclosures in the production file is a reviewed release change:
+each sheet stores the disclosures it was filed under.
+Owner response attachments live in the private R2 bucket `pms-complaint-files`, bound as
+`COMPLAINT_ATTACHMENTS` and simulated locally. It has no lock rule yet; deletion
+protection is added once the book is live, and retention/disposal is #294.
 
 `pnpm dev:complaints` applies local migrations and starts the backend with the
-explicit test configuration in `src/test-support/complaint-book.development.json`
-and a loopback mock email provider with private local R2 storage for owner response
-attachments. Use test data only. It replaces `dev:backend`
-for this preview; start the portal and website with their normal dev commands.
-The complaint routes require `COMPLAINT_BOOK_DEVELOPMENT` and a loopback request
-host; receipt sending additionally requires a loopback `RESEND_API_URL`. There
-is no production activation path. Response due dates count 15 weekdays after
+test book in `src/test-support/complaint-book.development.json`, a loopback mock email
+provider, Turnstile test keys and a scheduler tick. Use test data only. It replaces
+`dev:backend` for this preview; start the portal and website with their normal dev
+commands. Receipt sending follows the book's `receiptDelivery`: `simulated` requires a
+loopback `RESEND_API_URL`; `resend` posts to real Resend and ignores that URL.
+`dev:complaints` uses `resend` only when `.dev.vars` or the environment sets both
+`COMPLAINT_RECEIPT_RESEND_API_KEY` and `COMPLAINT_RECEIPT_EMAIL_FROM`, and then real
+mail goes to the address typed on each sheet. Response due dates count 15 weekdays after
 the property-time filing date; holidays count as business days, so the shown
-deadline is never later than the legal one. Production operator details, official notice design,
-privacy/retention and operational procedures remain release requirements under
-#295 and #294.
+deadline is never later than the legal one.

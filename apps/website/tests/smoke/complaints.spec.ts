@@ -11,7 +11,6 @@ test("keeps the complaint draft and retry credential after a lost response, then
   await page.route("**/public/complaints/config", (route) =>
     route.fulfill({
       json: {
-        development: true,
         provider: {
           legalName: "Development operator",
           ruc: "00000000000",

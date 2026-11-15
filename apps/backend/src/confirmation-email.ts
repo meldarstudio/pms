@@ -152,7 +152,7 @@ function escapeHtml(value: string) {
 }
 
 const FROM = "Hotel Manantial <reservas@notificaciones.hotelmanantialchurin.com>";
-const REPLY_TO = "hotelmanantialchurinperu@gmail.com";
+export const REPLY_TO = "hotelmanantialchurinperu@gmail.com";
 const PHONE = "+51 992 755 015";
 const SITE = "https://www.hotelmanantialchurin.com";
 

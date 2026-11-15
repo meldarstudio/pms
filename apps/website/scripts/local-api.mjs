@@ -48,7 +48,7 @@ executeSql(
 writeFileSync(
   vars,
   [
-    `COMPLAINT_BOOK_DEVELOPMENT='${JSON.stringify(developmentBook).replaceAll("'", "\\u0027")}'`,
+    `COMPLAINT_BOOK='${JSON.stringify(developmentBook).replaceAll("'", "\\u0027")}'`,
     `SESSION_SECRET=${randomBytes(32).toString("hex")}`,
     `PUBLIC_ALLOWED_ORIGINS=${WEBSITE_URL}`,
     `PUBLISHED_ROOM_TYPE_IDS=${PUBLISHED_ROOM_TYPE_IDS.join(",")}`,

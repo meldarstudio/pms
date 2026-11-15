@@ -1,8 +1,4 @@
 import { useTranslations } from "@/i18n/utils";
-import { reservationApiUrl } from "./reservation/api";
-export const developmentComplaintPreview = ["localhost", "127.0.0.1", "[::1]"].includes(
-  new URL(reservationApiUrl).hostname,
-);
 
 export type ComplaintInput = {
   language: "es" | "en";
@@ -25,7 +21,6 @@ export type ComplaintInput = {
 };
 export type ComplaintSubmission = ComplaintInput & { turnstileToken: string };
 export type ComplaintConfig = {
-  development: true;
   provider: { legalName: string; ruc: string; address: string };
   establishmentId: string;
   collectionNotice: Record<"es" | "en", string>;

@@ -25,11 +25,10 @@ export default defineConfig({
     env: {
       CURRENCY: bindings.text("PEN"),
       PROPERTY_TIME_ZONE: bindings.text("America/Lima"),
-      ...(process.env.PMS_COMPLAINT_FILES_LOCAL === "1" && {
-        COMPLAINT_ATTACHMENTS: bindings.r2({
-          name: "complaint-files-development",
-          dev: { remote: false },
-        }),
+      COMPLAINT_BOOK: bindings.text("production"),
+      COMPLAINT_ATTACHMENTS: bindings.r2({
+        name: "pms-complaint-files",
+        dev: { remote: false },
       }),
       ALLOWED_ORIGINS: bindings.text("https://app.hotelmanantialchurin.com"),
       PUBLIC_ALLOWED_ORIGINS: bindings.text("https://www.hotelmanantialchurin.com"),

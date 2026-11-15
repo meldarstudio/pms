@@ -1,5 +1,4 @@
 ---
-import { developmentComplaintPreview } from "@/lib/complaints";
 import ComplaintNotice from "@/components/complaints/ComplaintNotice.astro";
 import Logo from "@/assets/manantial-logo.svg";
 import { socials } from "@/constants";
@@ -23,14 +22,10 @@ const bookHref = getWhatsAppLink(t("whatsapp.prefill"));
 const year = new Date().getFullYear();
 
 const navLinks = [
-  ...(developmentComplaintPreview
-    ? [
-        {
-          title: "Libro de Reclamaciones",
-          href: getRelativeLocaleUrl(lang, "libro-de-reclamaciones"),
-        },
-      ]
-    : []),
+  {
+    title: "Libro de Reclamaciones",
+    href: getRelativeLocaleUrl(lang, "libro-de-reclamaciones"),
+  },
   { title: t("nav.home"), href: homeHref },
   { title: t("nav.rooms"), href: getRelativeLocaleUrl(lang, "habitaciones") },
   { title: t("nav.churin"), href: getRelativeLocaleUrl(lang, "churin") },

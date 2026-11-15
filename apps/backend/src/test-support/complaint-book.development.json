@@ -20,5 +20,6 @@
   "retentionAndDisposal": "Development fixture; production policy unresolved",
   "monitoredBy": "Betty Amparo Cuellar Antialon. Revisión diaria de hojas pendientes, fechas límite y correos de constancia fallidos.",
   "backupProcedure": "Libro de Reclamaciones de Respaldo disponible en recepción. Si el consumidor no puede usar el libro virtual, el personal de turno entrega la hoja física, da el original al consumidor, conserva la copia de Indecopi con el libro y entrega la copia del proveedor a Betty Amparo Cuellar Antialon. Betty transcribe la hoja en el portal dentro de un día calendario después de restablecido el servicio, conservando el número y la fecha originales.",
-  "emailFrom": "test@example.com"
+  "emailFrom": "test@example.com",
+  "receiptDelivery": "simulated"
 }

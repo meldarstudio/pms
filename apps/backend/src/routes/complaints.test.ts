@@ -36,7 +36,7 @@ afterEach(() => {
   vi.useRealTimers();
 });
 
-it("keeps the development book unavailable without configuration and on production hosts", async () => {
+it("keeps the book unavailable without configuration", async () => {
   for (const url of [
     "http://localhost/public/complaints/config",
     "https://api.hotelmanantialchurin.com/public/complaints/config",
@@ -48,7 +48,7 @@ it("keeps the development book unavailable without configuration and on producti
 });
 
 it("stores an unreserved foreign-document sheet once across retries, numbered in its property-time filing year, and keeps receipts private", async () => {
-  db.env.COMPLAINT_BOOK_DEVELOPMENT = JSON.stringify(developmentBook);
+  db.env.COMPLAINT_BOOK = JSON.stringify(developmentBook);
   vi.useFakeTimers({ toFake: ["Date"] });
   vi.setSystemTime(new Date("2027-01-01T04:30:00Z"));
   const token = crypto.randomUUID() + crypto.randomUUID();
@@ -91,7 +91,7 @@ it("stores an unreserved foreign-document sheet once across retries, numbered in
 it.each(["phone", "reservationReference"] as const)(
   "requires %s when filing a public sheet",
   async (field) => {
-    db.env.COMPLAINT_BOOK_DEVELOPMENT = JSON.stringify(developmentBook);
+    db.env.COMPLAINT_BOOK = JSON.stringify(developmentBook);
     const token = crypto.randomUUID() + crypto.randomUUID();
     const send = (input: typeof complaintInput) =>
       app.request(
@@ -118,7 +118,7 @@ it.each([
 ] as const)(
   "rejects a %s security token before recording or queuing a sheet",
   async (_name, turnstileToken, status) => {
-    db.env.COMPLAINT_BOOK_DEVELOPMENT = JSON.stringify(developmentBook);
+    db.env.COMPLAINT_BOOK = JSON.stringify(developmentBook);
     const response = await app.request(
       "http://localhost/public/complaints",
       {
@@ -143,7 +143,7 @@ it.each([
 );
 
 it("refuses a public submission when the verification secret is missing", async () => {
-  db.env.COMPLAINT_BOOK_DEVELOPMENT = JSON.stringify(developmentBook);
+  db.env.COMPLAINT_BOOK = JSON.stringify(developmentBook);
   delete db.env.TURNSTILE_SECRET_KEY;
   const response = await app.request(
     "http://localhost/public/complaints",
@@ -165,7 +165,7 @@ it("refuses a public submission when the verification secret is missing", async 
 });
 
 it("recovers after a security outage without storing challenge tokens or skipping verification on a replay", async () => {
-  db.env.COMPLAINT_BOOK_DEVELOPMENT = JSON.stringify(developmentBook);
+  db.env.COMPLAINT_BOOK = JSON.stringify(developmentBook);
   const security = stubServices();
   security.next("internal-error");
   const token = crypto.randomUUID() + crypto.randomUUID();
@@ -205,7 +205,7 @@ it("recovers after a security outage without storing challenge tokens or skippin
 });
 
 it("survives concurrent filing with unique consecutive references and one replayed sheet", async () => {
-  db.env.COMPLAINT_BOOK_DEVELOPMENT = JSON.stringify(developmentBook);
+  db.env.COMPLAINT_BOOK = JSON.stringify(developmentBook);
   vi.useFakeTimers({ toFake: ["Date"] });
   vi.setSystemTime(new Date("2026-11-14T15:00:00Z"));
   const tokens = [
@@ -236,7 +236,7 @@ it("survives concurrent filing with unique consecutive references and one replay
 });
 
 it("lets only the owner read and append actual responses and correction evidence", async () => {
-  db.env.COMPLAINT_BOOK_DEVELOPMENT = JSON.stringify(developmentBook);
+  db.env.COMPLAINT_BOOK = JSON.stringify(developmentBook);
   const filed = await app.request(
     "http://localhost/public/complaints",
     {
@@ -299,7 +299,7 @@ it("lets only the owner read and append actual responses and correction evidence
 });
 
 it("dates a transcribed physical sheet from its original filing and preserves its history", async () => {
-  db.env.COMPLAINT_BOOK_DEVELOPMENT = JSON.stringify(developmentBook);
+  db.env.COMPLAINT_BOOK = JSON.stringify(developmentBook);
   await db.signIn("owner");
   vi.useFakeTimers();
   vi.setSystemTime(new Date("2026-12-07T14:00:00Z"));
@@ -334,7 +334,7 @@ it("dates a transcribed physical sheet from its original filing and preserves it
 });
 
 it("keeps registration after receipt failure and retries the same saved email safely", async () => {
-  db.env.COMPLAINT_BOOK_DEVELOPMENT = JSON.stringify(developmentBook);
+  db.env.COMPLAINT_BOOK = JSON.stringify(developmentBook);
   db.env.RESEND_API_KEY = RESEND_TEST_KEY;
   db.env.RESEND_API_URL = RESEND_LOOPBACK;
   const provider = fakeResend();
@@ -370,15 +370,183 @@ it("keeps registration after receipt failure and retries the same saved email sa
   expect(provider.emails).toHaveLength(1);
   expect(provider.requests[0].body).toBe(provider.requests[1].body);
   const email = JSON.parse(provider.emails[0].body);
-  expect(email.subject).toBe(`Libro de Reclamaciones — Hoja de Reclamación Nº ${sheet.reference}`);
+  expect(email.subject).toBe(`Libro de Reclamaciones — Complaint sheet No. ${sheet.reference}`);
   expect(email.text).toContain(`HOJA DE RECLAMACIÓN (complaint sheet) No. ${sheet.reference}`);
   expect(email.text).toContain("Identification code: DEMO");
   expect(email.text).toContain(complaintInput.description);
   expect(email.text).toContain("Recipient: consumer");
 });
 
+it.each([
+  {
+    name: "a Spanish sheet for a minor with a claimed amount",
+    input: {
+      ...complaintInput,
+      language: "es",
+      minor: true,
+      representative: "Rosa Torres, madre",
+      amountCents: 15000,
+      category: "queja",
+    },
+    subject: "Libro de Reclamaciones — Hoja de Reclamación Nº",
+    lines: [
+      "1. Identificación del consumidor reclamante",
+      "Consumidor menor de edad: Sí",
+      "Padre o representante: Rosa Torres, madre",
+      "Monto: 150.00 PEN",
+      "Tipo: Queja",
+      "Canal de respuesta escrita: Correo electrónico",
+      "4. Observaciones y acciones adoptadas por el proveedor",
+    ],
+  },
+  {
+    name: "an English sheet without an amount",
+    input: complaintInput,
+    subject: "Libro de Reclamaciones — Complaint sheet No.",
+    lines: [
+      "1. Consumer identification",
+      "Consumer is a minor: No",
+      "Amount: Unknown / not applicable",
+      "Category: Reclamo",
+      "Written response channel: Email",
+      "4. Provider's observations and actions taken",
+    ],
+  },
+])("emails $name as a readable copy the guest can reply to", async ({ input, subject, lines }) => {
+  db.env.COMPLAINT_BOOK = JSON.stringify(developmentBook);
+  db.env.RESEND_API_KEY = RESEND_TEST_KEY;
+  db.env.RESEND_API_URL = RESEND_LOOPBACK;
+  const provider = fakeResend();
+  stubServices(provider);
+  const filed = await app.request(
+    "http://localhost/public/complaints",
+    {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        authorization: `Bearer ${crypto.randomUUID() + crypto.randomUUID()}`,
+      },
+      body: JSON.stringify({ ...input, turnstileToken: COMPLAINT_TURNSTILE_PASS }),
+    },
+    db.env,
+  );
+  expect(filed.status).toBe(201);
+  const sheet = (await filed.json()) as Sheet;
+  await sendComplaintEmails(getDb(db.env.DB), db.env);
+  const email = JSON.parse(provider.emails[0].body);
+  expect(email).toMatchObject({
+    from: `Hotel Manantial <${developmentBook.emailFrom}>`,
+    to: ["ana@example.com"],
+    reply_to: "hotelmanantialchurinperu@gmail.com",
+    subject: `${subject} ${sheet.reference}`,
+  });
+  for (const line of lines) expect(email.text).toContain(line);
+  expect(email.text).not.toMatch(/null|true|false|undefined|cents|céntimos/);
+});
+
+it("sends receipts to the real provider only when the book opts in", async () => {
+  db.env.RESEND_API_KEY = RESEND_TEST_KEY;
+  const delivered: string[] = [];
+  stubServices({
+    fetch: (async (input) => {
+      delivered.push(new URL(input instanceof Request ? input.url : input).href);
+      return Response.json({ id: `email_${delivered.length}` });
+    }) as typeof fetch,
+  });
+  const file = async () => {
+    const filed = await app.request(
+      "http://localhost/public/complaints",
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          authorization: `Bearer ${crypto.randomUUID() + crypto.randomUUID()}`,
+        },
+        body: JSON.stringify(complaintSubmission),
+      },
+      db.env,
+    );
+    expect(filed.status).toBe(201);
+    await sendComplaintEmails(getDb(db.env.DB), db.env);
+    return (await filed.json()) as Sheet;
+  };
+  db.env.COMPLAINT_BOOK = JSON.stringify(developmentBook);
+  const simulated = await file();
+  expect(delivered).toEqual([]);
+
+  db.env.COMPLAINT_BOOK = JSON.stringify({
+    ...developmentBook,
+    receiptDelivery: "resend",
+  });
+  await sendComplaintEmails(getDb(db.env.DB), db.env);
+  expect(delivered).toEqual(["https://api.resend.com/emails"]);
+  await db.signIn("owner");
+  expect(await (await db.request(`/complaints/${simulated.id}`)).json()).toMatchObject({
+    email: { status: "sent" },
+  });
+});
+
+it("opens the production book on the live host, numbered from the first LR sheet with real receipts", async () => {
+  vi.useFakeTimers({ toFake: ["Date"] });
+  vi.setSystemTime(new Date("2026-12-01T15:00:00.000Z"));
+  db.env.COMPLAINT_BOOK = "production";
+  db.env.RESEND_API_KEY = RESEND_TEST_KEY;
+  db.env.RESEND_API_URL = RESEND_LOOPBACK;
+  const delivered: { url: string; from: unknown }[] = [];
+  stubServices({
+    fetch: (async (input, init) => {
+      delivered.push({
+        url: new URL(input instanceof Request ? input.url : input).href,
+        from: (JSON.parse(typeof init?.body === "string" ? init.body : "{}") as { from?: unknown })
+          .from,
+      });
+      return Response.json({ id: "email_1" });
+    }) as typeof fetch,
+  });
+  const live = "https://api.hotelmanantialchurin.com/public/complaints";
+  const book = (await (await app.request(`${live}/config`, {}, db.env)).json()) as {
+    policyVersion: string;
+    provider: unknown;
+  };
+  expect(book.provider).toEqual({
+    legalName: "Hotel Manantial de Churin E.I.R.L.",
+    ruc: "20552108028",
+    address: "Av. Víctor Larco Herrera N°138, Churín",
+  });
+  const filed = await app.request(
+    live,
+    {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        authorization: `Bearer ${crypto.randomUUID() + crypto.randomUUID()}`,
+      },
+      body: JSON.stringify({ ...complaintSubmission, policyVersion: book.policyVersion }),
+    },
+    db.env,
+  );
+  expect(filed.status).toBe(201);
+  expect(await filed.json()).toMatchObject({ bookId: "LR", reference: "000000001-2026" });
+  await sendComplaintEmails(getDb(db.env.DB), db.env);
+  expect(delivered).toEqual([
+    {
+      url: "https://api.resend.com/emails",
+      from: "Hotel Manantial <reclamaciones@notificaciones.hotelmanantialchurin.com>",
+    },
+  ]);
+});
+
+it("refuses a book that claims production through configuration text", async () => {
+  db.env.COMPLAINT_BOOK = JSON.stringify({ ...developmentBook, mode: "production" });
+  for (const url of [
+    "http://localhost/public/complaints/config",
+    "https://api.hotelmanantialchurin.com/public/complaints/config",
+  ])
+    expect((await app.request(url, {}, db.env)).status).toBe(503);
+});
+
 it("rejects incomplete minor details accessibly and refuses production hosts", async () => {
-  db.env.COMPLAINT_BOOK_DEVELOPMENT = JSON.stringify(developmentBook);
+  db.env.COMPLAINT_BOOK = JSON.stringify(developmentBook);
   const send = (input: typeof complaintInput) =>
     app.request(
       "http://localhost/public/complaints",
@@ -402,7 +570,7 @@ it("rejects incomplete minor details accessibly and refuses production hosts", a
 });
 
 it("rolls back the sheet and number if its email work cannot be stored", async () => {
-  db.env.COMPLAINT_BOOK_DEVELOPMENT = JSON.stringify(developmentBook);
+  db.env.COMPLAINT_BOOK = JSON.stringify(developmentBook);
   const token = crypto.randomUUID() + crypto.randomUUID();
   const send = () =>
     app.request(
@@ -428,7 +596,7 @@ it("rolls back the sheet and number if its email work cannot be stored", async (
 });
 
 it("recovers an accepted email after a provider response is lost without duplicating it", async () => {
-  db.env.COMPLAINT_BOOK_DEVELOPMENT = JSON.stringify(developmentBook);
+  db.env.COMPLAINT_BOOK = JSON.stringify(developmentBook);
   db.env.RESEND_API_KEY = RESEND_TEST_KEY;
   db.env.RESEND_API_URL = RESEND_LOOPBACK;
   const provider = fakeResend();
@@ -453,7 +621,7 @@ it("recovers an accepted email after a provider response is lost without duplica
   ]);
   vi.useFakeTimers();
   vi.setSystemTime(new Date(Date.now() + 120000));
-  db.env.COMPLAINT_BOOK_DEVELOPMENT = JSON.stringify({
+  db.env.COMPLAINT_BOOK = JSON.stringify({
     ...developmentBook,
     provider: { ...developmentBook.provider, legalName: "Changed development operator" },
   });
@@ -469,7 +637,7 @@ it("recovers an accepted email after a provider response is lost without duplica
 });
 
 it("sends a previously untouched receipt after a day-long outage and retries a definitive rejection", async () => {
-  db.env.COMPLAINT_BOOK_DEVELOPMENT = JSON.stringify(developmentBook);
+  db.env.COMPLAINT_BOOK = JSON.stringify(developmentBook);
   db.env.RESEND_API_KEY = RESEND_TEST_KEY;
   db.env.RESEND_API_URL = RESEND_LOOPBACK;
   const provider = fakeResend();
@@ -511,7 +679,7 @@ it("sends a previously untouched receipt after a day-long outage and retries a d
 it.each(["complaint_sheets", "complaint_responses"])(
   "preserves filed %s against direct updates and deletion",
   async (table) => {
-    db.env.COMPLAINT_BOOK_DEVELOPMENT = JSON.stringify(developmentBook);
+    db.env.COMPLAINT_BOOK = JSON.stringify(developmentBook);
     const filed = await app.request(
       "http://localhost/public/complaints",
       {
@@ -553,7 +721,7 @@ it.each(["complaint_sheets", "complaint_responses"])(
 );
 
 it("holds an uncertain email for manual handling after provider deduplication expires", async () => {
-  db.env.COMPLAINT_BOOK_DEVELOPMENT = JSON.stringify(developmentBook);
+  db.env.COMPLAINT_BOOK = JSON.stringify(developmentBook);
   db.env.RESEND_API_KEY = RESEND_TEST_KEY;
   db.env.RESEND_API_URL = RESEND_LOOPBACK;
   const provider = fakeResend();

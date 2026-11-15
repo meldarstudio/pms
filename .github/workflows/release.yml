@@ -7,6 +7,11 @@ on:
         description: Full commit SHA on main (validated before deployment)
         required: true
         type: string
+      deploy_website:
+        description: Also replace the live public website with apps/website
+        required: true
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -89,3 +94,12 @@ jobs:
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_DEPLOY_TOKEN }}
         run: pnpm --filter @pms/portal run deploy --tag "$RELEASE_TAG" --message "$RELEASE_MESSAGE"
+
+      - name: Deploy public website
+        if: ${{ inputs.deploy_website }}
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_DEPLOY_TOKEN }}
+          PUBLIC_TURNSTILE_SITE_KEY: ${{ vars.PUBLIC_TURNSTILE_SITE_KEY }}
+          PUBLIC_CULQI_PUBLIC_KEY: ${{ vars.PUBLIC_CULQI_PUBLIC_KEY }}
+        run: pnpm --filter @pms/website run deploy --tag "$RELEASE_TAG" --message "$RELEASE_MESSAGE"

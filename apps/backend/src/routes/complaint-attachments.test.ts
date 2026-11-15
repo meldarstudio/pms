@@ -27,7 +27,7 @@ beforeEach(async () => {
   db = await createTestDb();
   db.env.TURNSTILE_SECRET_KEY = TURNSTILE_TEST_SECRET;
   vi.stubGlobal("fetch", fakeTurnstile().fetch);
-  db.env.COMPLAINT_BOOK_DEVELOPMENT = JSON.stringify(developmentBook);
+  db.env.COMPLAINT_BOOK = JSON.stringify(developmentBook);
   db.env.COMPLAINT_ATTACHMENTS = platform.env.COMPLAINT_ATTACHMENTS;
   token = crypto.randomUUID() + crypto.randomUUID();
   const filed = await app.request(

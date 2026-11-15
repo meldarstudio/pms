@@ -14,7 +14,7 @@ import {
   complaintCalendarSource,
   complaintSheetReference,
   complaintResponseDueDate,
-  developmentComplaintConfig,
+  complaintBookConfig,
 } from "../complaint-config";
 import { complaintAttachmentRoutes } from "./complaint-attachments";
 
@@ -22,7 +22,7 @@ export const ownerComplaintRoutes = new Hono<Env>();
 ownerComplaintRoutes.use("*", requireOwner);
 ownerComplaintRoutes.use("*", async (c, next) => {
   c.header("Cache-Control", "private, no-store");
-  developmentComplaintConfig(c.env.COMPLAINT_BOOK_DEVELOPMENT, c.req.url);
+  complaintBookConfig(c.env.COMPLAINT_BOOK, c.req.url);
   await next();
 });
 ownerComplaintRoutes.route("/", complaintAttachmentRoutes);
@@ -52,7 +52,7 @@ ownerComplaintRoutes.get("/", async (c) => {
   );
 });
 ownerComplaintRoutes.get("/configuration", (c) =>
-  c.json(developmentComplaintConfig(c.env.COMPLAINT_BOOK_DEVELOPMENT, c.req.url)),
+  c.json(complaintBookConfig(c.env.COMPLAINT_BOOK, c.req.url)),
 );
 ownerComplaintRoutes.get("/:id", async (c) =>
   c.json(await complaintView(getDb(c.env.DB), c.req.param("id"))),
@@ -120,7 +120,7 @@ ownerComplaintRoutes.post("/backups", validate("json", complaintBackupSchema), a
       throw new HttpError(409, "complaint retry differs from saved sheet");
     return c.json(await complaintView(db, previous.id));
   }
-  const config = developmentComplaintConfig(c.env.COMPLAINT_BOOK_DEVELOPMENT, c.req.url);
+  const config = complaintBookConfig(c.env.COMPLAINT_BOOK, c.req.url);
   const now = new Date().toISOString();
   if (
     Date.parse(body.filedAt) > Date.parse(body.restoredAt) ||

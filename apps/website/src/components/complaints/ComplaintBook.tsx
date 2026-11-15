@@ -34,7 +34,7 @@ import {
 import { ComplaintSecurity } from "./ComplaintSecurity";
 import { ComplaintReceipt } from "./ComplaintReceipt";
 
-const storageKey = "hm.complaint.development";
+const storageKey = "hm.complaint.draft";
 type Draft = { token: string; input: ComplaintInput; attempted: boolean; saved: boolean };
 const emptyInput = (language: "es" | "en"): ComplaintInput => ({
   language,
