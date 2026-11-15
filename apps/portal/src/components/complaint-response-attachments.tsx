@@ -9,6 +9,7 @@ import {
 } from "@/lib/api";
 import { useComplaintAttachment } from "@/lib/queries";
 import { translateError } from "@/lib/errors";
+import { COMPLAINT_EVIDENCE_ACCEPT, complaintEvidenceProblem } from "@/lib/complaint-evidence";
 
 export function ComplaintResponseAttachments({
   complaintId,
@@ -21,7 +22,7 @@ export function ComplaintResponseAttachments({
 }) {
   const inputId = useId();
   const input = useRef<HTMLInputElement>(null);
-  const upload = useComplaintAttachment(complaintId, responseId);
+  const upload = useComplaintAttachment(complaintId);
   const [selected, setSelected] = useState<ComplaintAttachmentUpload | null>(null);
   const [validationError, setValidationError] = useState<string | null>(null);
   const [downloadError, setDownloadError] = useState<string | null>(null);
@@ -90,7 +91,7 @@ export function ComplaintResponseAttachments({
               id={inputId}
               ref={input}
               type="file"
-              accept=".pdf,.jpg,.jpeg,.png"
+              accept={COMPLAINT_EVIDENCE_ACCEPT}
               disabled={upload.isPending}
               aria-invalid={Boolean(validationError)}
               aria-describedby={`${inputId}-help`}
@@ -102,20 +103,13 @@ export function ComplaintResponseAttachments({
                   setSelected(null);
                   return;
                 }
-                const error =
-                  file.size > 5 * 1024 * 1024
-                    ? "complaint attachment exceeds 5 MB"
-                    : !file.size
-                      ? "complaint attachment is empty"
-                      : !/\.(pdf|jpe?g|png)$/i.test(file.name)
-                        ? "unsupported complaint attachment type"
-                        : null;
+                const error = complaintEvidenceProblem(file);
                 if (error) {
                   setSelected(null);
                   setValidationError(translateError(error));
                   return;
                 }
-                setSelected({ attachmentId: crypto.randomUUID(), file });
+                setSelected({ responseId, attachmentId: crypto.randomUUID(), file });
               }}
             />
             <FieldDescription id={`${inputId}-help`}>

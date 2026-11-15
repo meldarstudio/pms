@@ -654,6 +654,23 @@ export const complaintAttachments = sqliteTable(
   (table) => [index("complaint_attachments_response").on(table.responseId)],
 );
 
+export const complaintNotes = sqliteTable(
+  "complaint_notes",
+  {
+    id: text("id").primaryKey(),
+    complaintId: text("complaint_id")
+      .notNull()
+      .references(() => complaintSheets.id),
+    payload: text("payload").notNull(),
+    text: text("text").notNull(),
+    recordedAt: text("recorded_at").notNull(),
+    recordedBy: text("recorded_by")
+      .notNull()
+      .references(() => user.id),
+  },
+  (table) => [index("complaint_notes_complaint").on(table.complaintId, table.recordedAt)],
+);
+
 export const complaintEmails = sqliteTable(
   "complaint_emails",
   {
@@ -661,6 +678,8 @@ export const complaintEmails = sqliteTable(
     complaintId: text("complaint_id")
       .notNull()
       .references(() => complaintSheets.id),
+    kind: text("kind").$type<"automatic" | "copy">().notNull().default("automatic"),
+    requestedBy: text("requested_by").references(() => user.id),
     status: text("status").$type<"pending" | "sent" | "failed" | "not_requested">().notNull(),
     attempts: integer("attempts").notNull().default(0),
     firstAttemptAt: text("first_attempt_at"),
@@ -674,7 +693,12 @@ export const complaintEmails = sqliteTable(
     retryRequestId: text("retry_request_id"),
   },
   (table) => [
-    uniqueIndex("complaint_receipt_email").on(table.complaintId),
+    uniqueIndex("complaint_emails_automatic")
+      .on(table.complaintId)
+      .where(sql`${table.kind} = 'automatic'`),
+    uniqueIndex("complaint_emails_pending")
+      .on(table.complaintId)
+      .where(sql`${table.status} = 'pending'`),
     index("complaint_emails_due").on(table.status, table.nextAttemptAt),
   ],
 );

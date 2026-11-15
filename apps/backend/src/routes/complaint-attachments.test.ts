@@ -51,7 +51,6 @@ beforeEach(async () => {
         recipient: "ana@example.com",
         sentAt: new Date().toISOString(),
         evidence: "Sent email 123",
-        correctsId: null,
       })
     ).status,
   ).toBe(201);

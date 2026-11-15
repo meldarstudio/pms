@@ -20,7 +20,9 @@ import {
   recordComplaintResponse,
   uploadComplaintAttachment,
   type ComplaintAttachmentUpload,
-  retryComplaintEmail,
+  requestComplaintReceiptCopy,
+  addComplaintNote,
+  type ComplaintNoteRequest,
   type ComplaintResponseRequest,
   type CalendarWindow,
   createRoomClosure,
@@ -577,10 +579,17 @@ export function useComplaintResponse(id: string) {
     },
   });
 }
-export function useComplaintEmailRetry(id: string) {
+export function useComplaintNote(id: string) {
   const client = useQueryClient();
   return useMutation({
-    mutationFn: (requestId: string) => retryComplaintEmail(id, requestId),
+    mutationFn: (input: ComplaintNoteRequest) => addComplaintNote(id, input),
+    onSuccess: (sheet) => client.setQueryData(["complaints", id], sheet),
+  });
+}
+export function useComplaintReceiptCopy(id: string) {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: (requestId: string) => requestComplaintReceiptCopy(id, { requestId }),
     onSuccess: (sheet) => {
       client.setQueryData(["complaints", id], sheet);
       void client.invalidateQueries({ queryKey: ["complaints"] });
@@ -588,11 +597,10 @@ export function useComplaintEmailRetry(id: string) {
   });
 }
 
-export function useComplaintAttachment(id: string, responseId: string) {
+export function useComplaintAttachment(id: string) {
   const client = useQueryClient();
   return useMutation({
-    mutationFn: (input: ComplaintAttachmentUpload) =>
-      uploadComplaintAttachment(id, responseId, input),
+    mutationFn: (input: ComplaintAttachmentUpload) => uploadComplaintAttachment(id, input),
     onSuccess: (sheet) => {
       client.setQueryData(["complaints", id], sheet);
       void client.invalidateQueries({ queryKey: ["complaints", id] });

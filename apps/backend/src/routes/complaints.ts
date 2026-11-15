@@ -1,13 +1,17 @@
-import { complaintSheets, complaintResponses, complaintEmails } from "../db/schema";
-import { z } from "zod";
-import { and, asc, eq } from "drizzle-orm";
+import { complaintSheets, complaintResponses, complaintEmails, complaintNotes } from "../db/schema";
+import { asc, eq } from "drizzle-orm";
 import { requireOwner } from "../session";
-import { complaintResponseSchema, complaintBackupSchema } from "@pms/shared";
+import {
+  complaintResponseSchema,
+  complaintBackupSchema,
+  complaintNoteSchema,
+  complaintReceiptCopySchema,
+} from "@pms/shared";
 import { runBatch } from "../db";
 import { sql } from "drizzle-orm";
 import { getDb } from "../db";
 import { complaintView } from "../complaints";
-import { HttpError, currency, validate } from "../http";
+import { HttpError, currency, rethrowConflict, validate } from "../http";
 import { Hono } from "hono";
 import type { Env } from "../env";
 import {
@@ -76,8 +80,6 @@ ownerComplaintRoutes.post(
       Date.parse(input.sentAt) < Date.parse(sheet.filedAt)
     )
       throw new HttpError(400, "invalid complaint response sending time");
-    if (input.correctsId && !sheet.responses.some((response) => response.id === input.correctsId))
-      throw new HttpError(400, "invalid complaint response correction");
     await db
       .insert(complaintResponses)
       .values({
@@ -89,7 +91,6 @@ ownerComplaintRoutes.post(
         recipient: input.recipient,
         sentAt: new Date(input.sentAt).toISOString(),
         evidence: input.evidence,
-        correctsId: input.correctsId,
         recordedAt: new Date().toISOString(),
         recordedBy: c.var.account.id,
       })
@@ -103,6 +104,36 @@ ownerComplaintRoutes.post(
     return c.json(await complaintView(db, sheet.id), 201);
   },
 );
+
+ownerComplaintRoutes.post("/:id/notes", validate("json", complaintNoteSchema), async (c) => {
+  const db = getDb(c.env.DB);
+  const input = c.req.valid("json");
+  const sheet = await complaintView(db, c.req.param("id"));
+  const payload = JSON.stringify(input);
+  const saved = async () => {
+    const [note] = await db
+      .select()
+      .from(complaintNotes)
+      .where(eq(complaintNotes.id, input.requestId));
+    if (note && (note.complaintId !== sheet.id || note.payload !== payload))
+      throw new HttpError(409, "complaint note retry differs");
+    return note;
+  };
+  if (await saved()) return c.json(sheet);
+  await db
+    .insert(complaintNotes)
+    .values({
+      id: input.requestId,
+      complaintId: sheet.id,
+      payload,
+      text: input.text,
+      recordedAt: new Date().toISOString(),
+      recordedBy: c.var.account.id,
+    })
+    .onConflictDoNothing();
+  await saved();
+  return c.json(await complaintView(db, sheet.id), 201);
+});
 
 ownerComplaintRoutes.post("/backups", validate("json", complaintBackupSchema), async (c) => {
   const db = getDb(c.env.DB);
@@ -168,33 +199,39 @@ ownerComplaintRoutes.post("/backups", validate("json", complaintBackupSchema), a
 });
 
 ownerComplaintRoutes.post(
-  "/:id/email-retry",
-  validate("json", z.object({ requestId: z.uuid() }).strict()),
+  "/:id/email-copies",
+  validate("json", complaintReceiptCopySchema),
   async (c) => {
     const db = getDb(c.env.DB);
     const sheet = await complaintView(db, c.req.param("id"));
-    const requestId = c.req.valid("json").requestId;
-    const [email] = await db
-      .select()
-      .from(complaintEmails)
-      .where(eq(complaintEmails.complaintId, sheet.id));
-    if (email!.retryRequestId === requestId) return c.json(sheet);
-    if (email!.status !== "failed") throw new HttpError(409, "complaint receipt is not failed");
-    if (
-      email!.deliveryUncertain &&
-      email!.firstAttemptAt &&
-      Date.now() - Date.parse(email!.firstAttemptAt) >= 23 * 60 * 60 * 1000
-    )
-      throw new HttpError(409, "complaint receipt retry window expired; send a copy manually");
-    await db
-      .update(complaintEmails)
-      .set({
+    const { requestId } = c.req.valid("json");
+    const requested = async () => {
+      const [copy] = await db
+        .select({ complaintId: complaintEmails.complaintId, kind: complaintEmails.kind })
+        .from(complaintEmails)
+        .where(eq(complaintEmails.id, requestId));
+      if (copy && (copy.complaintId !== sheet.id || copy.kind !== "copy"))
+        throw new HttpError(409, "complaint receipt copy request differs");
+      return copy;
+    };
+    if (await requested()) return c.json(sheet);
+    if (sheet.email.status !== "failed")
+      throw new HttpError(409, "complaint receipt does not need attention");
+    const now = new Date().toISOString();
+    try {
+      await db.insert(complaintEmails).values({
+        id: requestId,
+        complaintId: sheet.id,
+        kind: "copy",
+        requestedBy: c.var.account.id,
         status: "pending",
-        lastError: null,
-        nextAttemptAt: new Date().toISOString(),
-        retryRequestId: requestId,
-      })
-      .where(and(eq(complaintEmails.id, email!.id), eq(complaintEmails.status, "failed")));
-    return c.json(await complaintView(db, sheet.id));
+        nextAttemptAt: now,
+        createdAt: now,
+      });
+    } catch (error) {
+      if (await requested()) return c.json(await complaintView(db, sheet.id));
+      rethrowConflict(error);
+    }
+    return c.json(await complaintView(db, sheet.id), 201);
   },
 );

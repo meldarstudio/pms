@@ -497,10 +497,18 @@ export const complaintResponseSchema = z
     recipient: complaintText(500).min(1, "invalid complaint response"),
     sentAt: z.iso.datetime({ offset: true }),
     evidence: complaintText(2000).min(1, "invalid complaint response"),
-    correctsId: z.uuid().nullable(),
   })
   .strict();
 export type ComplaintResponseRequest = z.input<typeof complaintResponseSchema>;
+export const complaintNoteSchema = z
+  .object({
+    requestId: z.uuid(),
+    text: complaintText(5000).min(1, "invalid complaint note"),
+  })
+  .strict();
+export type ComplaintNoteRequest = z.input<typeof complaintNoteSchema>;
+export const complaintReceiptCopySchema = z.object({ requestId: z.uuid() }).strict();
+export type ComplaintReceiptCopyRequest = z.input<typeof complaintReceiptCopySchema>;
 export const complaintAttachmentMetadataSchema = z
   .object({
     name: z

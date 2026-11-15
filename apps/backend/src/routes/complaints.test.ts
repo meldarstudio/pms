@@ -137,25 +137,30 @@ it("survives concurrent filing with unique consecutive references and one replay
   );
 });
 
-it("lets only the owner read and append actual responses and correction evidence", async () => {
+it("lets only the owner append responses and dated notes once across retries, without notes answering the sheet", async () => {
+  const token = crypto.randomUUID() + crypto.randomUUID();
   const filed = await app.request(
     "http://localhost/public/complaints",
     {
       method: "POST",
-      headers: {
-        "content-type": "application/json",
-        authorization: `Bearer ${crypto.randomUUID() + crypto.randomUUID()}`,
-      },
+      headers: { "content-type": "application/json", authorization: `Bearer ${token}` },
       body: JSON.stringify(complaintSubmission),
     },
     db.env,
   );
   const sheet = (await filed.json()) as Sheet;
+  const note = { requestId: crypto.randomUUID(), text: "Guest called; reply goes by letter" };
   expect((await db.request("/complaints")).status).toBe(403);
+  expect((await db.request(`/complaints/${sheet.id}/notes`, "POST", note)).status).toBe(403);
   await db.signIn("owner");
-  const list = await (await db.request("/complaints")).json();
-  expect(list).toMatchObject([
-    { id: sheet.id, reference: sheet.reference, responseStatus: "pending" },
+  expect((await db.request(`/complaints/${sheet.id}/notes`, "POST", note)).status).toBe(201);
+  expect((await db.request(`/complaints/${sheet.id}/notes`, "POST", note)).status).toBe(200);
+  expect(
+    (await db.request(`/complaints/${sheet.id}/notes`, "POST", { ...note, text: "Changed" }))
+      .status,
+  ).toBe(409);
+  expect(await (await db.request("/complaints")).json()).toMatchObject([
+    { id: sheet.id, dueDate: sheet.dueDate, responseStatus: "pending" },
   ]);
   const response = {
     requestId: crypto.randomUUID(),
@@ -164,7 +169,6 @@ it("lets only the owner read and append actual responses and correction evidence
     recipient: "ana@example.com",
     sentAt: new Date().toISOString(),
     evidence: "Owner mailbox / sent message 123",
-    correctsId: null,
   };
   expect((await db.request(`/complaints/${sheet.id}/responses`, "POST", response)).status).toBe(
     201,
@@ -173,21 +177,19 @@ it("lets only the owner read and append actual responses and correction evidence
     200,
   );
   const correction = {
-    ...response,
     requestId: crypto.randomUUID(),
-    correctsId: response.requestId,
-    text: "Corrected response evidence",
-    evidence: "Owner mailbox / sent message 124",
+    text: "The response recorded yesterday was sent by letter, not email.",
   };
-  expect((await db.request(`/complaints/${sheet.id}/responses`, "POST", correction)).status).toBe(
-    201,
-  );
+  expect((await db.request(`/complaints/${sheet.id}/notes`, "POST", correction)).status).toBe(201);
   const detail = (await (await db.request(`/complaints/${sheet.id}`)).json()) as Sheet;
   expect(detail.input).toEqual(complaintInput);
-  expect(detail.responses.map((entry: { text: string }) => entry.text)).toEqual([
-    response.text,
-    correction.text,
-  ]);
+  expect(detail.dueDate).toBe(sheet.dueDate);
+  expect(detail.responses.map((entry) => entry.text)).toEqual([response.text]);
+  expect(detail.notes.map((entry) => entry.text)).toEqual([note.text, correction.text]);
+  expect(detail.notes[0]).toMatchObject({
+    recordedAt: expect.any(String),
+    recordedBy: expect.any(String),
+  });
   expect(
     (
       await db.request(`/complaints/${sheet.id}/responses`, "POST", {
@@ -197,14 +199,21 @@ it("lets only the owner read and append actual responses and correction evidence
       })
     ).status,
   ).toBe(400);
+  const receipt = await app.request(
+    "http://localhost/public/complaints/receipt",
+    { headers: { authorization: `Bearer ${token}` } },
+    db.env,
+  );
+  const guestView = (await receipt.json()) as Record<string, unknown>;
+  expect(guestView).not.toHaveProperty("notes");
+  expect(guestView.email).toEqual({ status: "pending" });
 });
 
-it("keeps registration after receipt failure and retries the same saved email safely", async () => {
+async function fileWithReceipt() {
   db.env.RESEND_API_KEY = RESEND_TEST_KEY;
   db.env.RESEND_API_URL = RESEND_LOOPBACK;
   const provider = fakeResend();
   stubServices(provider);
-  provider.next(422);
   const filed = await app.request(
     "http://localhost/public/complaints",
     {
@@ -217,29 +226,107 @@ it("keeps registration after receipt failure and retries the same saved email sa
     },
     db.env,
   );
-  const sheet = (await filed.json()) as Sheet;
-  await sendComplaintEmails(getDb(db.env.DB), db.env);
+  return { provider, sheet: (await filed.json()) as Sheet };
+}
+const sendDue = () => sendComplaintEmails(getDb(db.env.DB), db.env);
+
+it("flags a refused receipt and sends one explicit copy of the same saved sheet under a new key", async () => {
+  const { provider, sheet } = await fileWithReceipt();
+  provider.next(422);
+  await sendDue();
+  await sendDue();
+  expect(provider.requests).toHaveLength(1);
   await db.signIn("owner");
   expect(await (await db.request(`/complaints/${sheet.id}`)).json()).toMatchObject({
     reference: sheet.reference,
     filedAt: sheet.filedAt,
     email: { status: "failed" },
   });
-  const retry = { requestId: crypto.randomUUID() };
-  expect((await db.request(`/complaints/${sheet.id}/email-retry`, "POST", retry)).status).toBe(200);
-  await sendComplaintEmails(getDb(db.env.DB), db.env);
-  expect((await db.request(`/complaints/${sheet.id}/email-retry`, "POST", retry)).status).toBe(200);
-  await sendComplaintEmails(getDb(db.env.DB), db.env);
+  const copy = { requestId: crypto.randomUUID() };
+  expect((await db.request(`/complaints/${sheet.id}/email-copies`, "POST", copy)).status).toBe(201);
+  expect((await db.request(`/complaints/${sheet.id}/email-copies`, "POST", copy)).status).toBe(200);
+  expect(
+    (
+      await db.request(`/complaints/${sheet.id}/email-copies`, "POST", {
+        requestId: crypto.randomUUID(),
+      })
+    ).status,
+  ).toBe(409);
+  await sendDue();
+  await sendDue();
   const detail = (await (await db.request(`/complaints/${sheet.id}`)).json()) as Sheet;
-  expect(detail.email.status).toBe("sent");
+  expect(detail).toMatchObject({
+    reference: sheet.reference,
+    filedAt: sheet.filedAt,
+    dueDate: sheet.dueDate,
+    email: { status: "sent" },
+  });
+  expect(detail.emails.map((email) => email.status)).toEqual(["sent", "failed"]);
+  expect(await (await db.request("/complaints")).json()).toMatchObject([
+    { id: sheet.id, responseStatus: "pending" },
+  ]);
+  expect(provider.requests).toHaveLength(2);
+  expect(provider.requests[1].headers.get("idempotency-key")).not.toBe(
+    provider.requests[0].headers.get("idempotency-key"),
+  );
+  expect(provider.requests[1].body).toBe(provider.requests[0].body);
   expect(provider.emails).toHaveLength(1);
-  expect(provider.requests[0].body).toBe(provider.requests[1].body);
-  const email = JSON.parse(provider.emails[0].body);
-  expect(email.subject).toBe(`Libro de Reclamaciones — Complaint sheet No. ${sheet.reference}`);
-  expect(email.text).toContain(`HOJA DE RECLAMACIÓN (complaint sheet) No. ${sheet.reference}`);
-  expect(email.text).toContain("Identification code: LR");
-  expect(email.text).toContain(complaintInput.description);
-  expect(email.text).toContain("Recipient: consumer");
+  expect(
+    (
+      await db.request(`/complaints/${sheet.id}/email-copies`, "POST", {
+        requestId: crypto.randomUUID(),
+      })
+    ).status,
+  ).toBe(409);
+});
+
+it.each([
+  { outcomes: ["lose", 500] as const, requests: 3, status: "sent" },
+  { outcomes: [500, 500, 500, 500, 500] as const, requests: 5, status: "failed" },
+])(
+  "retries a temporary handoff failure with the same key and message until it ends $status",
+  async ({ outcomes, requests, status }) => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date("2026-11-14T15:00:00Z"));
+    const { provider, sheet } = await fileWithReceipt();
+    provider.next(...outcomes);
+    for (let tick = 0; tick < 12; tick++) {
+      await sendDue();
+      vi.setSystemTime(Date.now() + 60 * 60_000);
+    }
+    expect(provider.requests).toHaveLength(requests);
+    expect(new Set(provider.requests.map((request) => request.body)).size).toBe(1);
+    expect(
+      new Set(provider.requests.map((request) => request.headers.get("idempotency-key"))).size,
+    ).toBe(1);
+    await db.signIn("owner");
+    expect(await (await db.request(`/complaints/${sheet.id}`)).json()).toMatchObject({
+      email: { status },
+    });
+  },
+);
+
+it("stops automatic retries once the provider's deduplication window may have passed, leaving an explicit copy", async () => {
+  vi.useFakeTimers({ toFake: ["Date"] });
+  vi.setSystemTime(new Date("2026-11-14T15:00:00Z"));
+  const { provider, sheet } = await fileWithReceipt();
+  provider.next("lose");
+  await sendDue();
+  vi.setSystemTime(new Date("2026-11-15T14:00:00Z"));
+  await sendDue();
+  expect(provider.requests).toHaveLength(1);
+  await db.signIn("owner");
+  expect(await (await db.request(`/complaints/${sheet.id}`)).json()).toMatchObject({
+    email: { status: "failed" },
+  });
+  const copy = { requestId: crypto.randomUUID() };
+  expect((await db.request(`/complaints/${sheet.id}/email-copies`, "POST", copy)).status).toBe(201);
+  await sendDue();
+  expect(provider.requests).toHaveLength(2);
+  expect(provider.requests[1].body).toBe(provider.requests[0].body);
+  expect(await (await db.request(`/complaints/${sheet.id}`)).json()).toMatchObject({
+    email: { status: "sent" },
+  });
 });
 
 it("rolls back the sheet and number if its email work cannot be stored", async () => {
@@ -267,7 +354,7 @@ it("rolls back the sheet and number if its email work cannot be stored", async (
   });
 });
 
-it.each(["complaint_sheets", "complaint_responses"])(
+it.each(["complaint_sheets", "complaint_responses", "complaint_notes"])(
   "preserves filed %s against direct updates and deletion",
   async (table) => {
     const filed = await app.request(
@@ -285,6 +372,7 @@ it.each(["complaint_sheets", "complaint_responses"])(
     const sheet = (await filed.json()) as Sheet;
     await db.signIn("owner");
     const requestId = crypto.randomUUID();
+    const noteId = crypto.randomUUID();
     expect(
       (
         await db.request(`/complaints/${sheet.id}/responses`, "POST", {
@@ -294,11 +382,19 @@ it.each(["complaint_sheets", "complaint_responses"])(
           recipient: "ana@example.com",
           sentAt: new Date().toISOString(),
           evidence: "Original evidence",
-          correctsId: null,
         })
       ).status,
     ).toBe(201);
-    const id = table === "complaint_sheets" ? sheet.id : requestId;
+    expect(
+      (
+        await db.request(`/complaints/${sheet.id}/notes`, "POST", {
+          requestId: noteId,
+          text: "Original note",
+        })
+      ).status,
+    ).toBe(201);
+    const id =
+      table === "complaint_sheets" ? sheet.id : table === "complaint_notes" ? noteId : requestId;
     const original = db.sqlite.prepare(`SELECT * FROM ${table} WHERE id = ?`).get(id);
     expect(() =>
       db.sqlite.prepare(`UPDATE ${table} SET id = 'replacement' WHERE id = ?`).run(id),
