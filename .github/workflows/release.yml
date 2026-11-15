@@ -92,6 +92,7 @@ jobs:
 
       - name: Deploy public website
         env:
+          PUBLIC_PMS_API_URL: https://api.hotelmanantialchurin.com
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_DEPLOY_TOKEN }}
           PUBLIC_TURNSTILE_SITE_KEY: ${{ vars.PUBLIC_TURNSTILE_SITE_KEY }}

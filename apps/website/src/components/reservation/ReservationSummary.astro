@@ -1,5 +1,5 @@
 ---
-import { reservationApiUrl } from "@/lib/reservation/api";
+import { PUBLIC_PMS_API_URL } from "astro:env/client";
 import { ui } from "@/i18n/ui";
 import { getLang, useTranslations } from "@/i18n/utils";
 import { email, getWhatsAppLink, phoneNumber } from "@/lib/constants";
@@ -13,7 +13,7 @@ const whatsapp = getWhatsAppLink(t("reservation.summary.whatsappPrefill"));
 const mailto = `mailto:${email}?subject=${encodeURIComponent(t("reservation.summary.emailSubject"))}`;
 const copy = {
   lang,
-  apiBase: reservationApiUrl,
+  apiBase: PUBLIC_PMS_API_URL,
   text: Object.fromEntries(
     (Object.keys(ui[lang]) as (keyof (typeof ui)[typeof lang])[])
       .filter((key) => key.startsWith("reservation."))

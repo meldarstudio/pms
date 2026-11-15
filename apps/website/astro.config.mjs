@@ -25,7 +25,6 @@ export default defineConfig({
       PUBLIC_PMS_API_URL: envField.string({
         context: "client",
         access: "public",
-        optional: true,
         url: true,
       }),
       PUBLIC_CULQI_PUBLIC_KEY: envField.string({
