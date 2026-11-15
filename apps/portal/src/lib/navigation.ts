@@ -6,6 +6,7 @@ export const appNavigation = {
   calendar: { to: "/calendar", label: "Calendario" },
   housekeeping: { to: "/housekeeping", label: "Limpieza" },
   inventory: { to: "/inventory", label: "Inventario y tarifas" },
+  complaints: { to: "/complaints", label: "Libro de Reclamaciones" },
   setup: { to: "/setup", label: "Configuración" },
 } as const;
 

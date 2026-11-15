@@ -11,6 +11,7 @@ import {
 import { useEffect } from "react";
 import { format, parseISO } from "date-fns";
 import { useNavigate } from "@tanstack/react-router";
+import { Complaints } from "@/components/complaints";
 import App from "@/App";
 import { RouteCrash } from "@/components/page-error";
 import { ReservationPage, type ReservationBack } from "@/components/reservation-page";
@@ -245,6 +246,12 @@ function SetupRoute() {
   return <Configuration key={`${section}:${historyEntryKey}`} section={section} />;
 }
 
+const complaintsRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/complaints",
+  component: Complaints,
+});
+
 const accountsRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/accounts",
@@ -262,6 +269,7 @@ const routeTree = rootRoute.addChildren([
   inventoryRoute,
   setupRoute,
   accountsRoute,
+  complaintsRoute,
 ]);
 
 export const router = createRouter({ routeTree, defaultErrorComponent: RouteCrash });

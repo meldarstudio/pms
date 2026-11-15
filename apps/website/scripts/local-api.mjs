@@ -1,3 +1,4 @@
+import developmentBook from "../../backend/src/test-support/complaint-book.development.json" with { type: "json" };
 import { spawn, spawnSync } from "node:child_process";
 import { randomBytes } from "node:crypto";
 import { mkdirSync, rmSync, writeFileSync } from "node:fs";
@@ -47,6 +48,7 @@ executeSql(
 writeFileSync(
   vars,
   [
+    `COMPLAINT_BOOK='${JSON.stringify(developmentBook).replaceAll("'", "\\u0027")}'`,
     `SESSION_SECRET=${randomBytes(32).toString("hex")}`,
     `PUBLIC_ALLOWED_ORIGINS=${WEBSITE_URL}`,
     `PUBLISHED_ROOM_TYPE_IDS=${PUBLISHED_ROOM_TYPE_IDS.join(",")}`,
@@ -69,6 +71,8 @@ const server = spawn(
     "wrangler",
     "dev",
     "--experimental-new-config",
+    "--local-upstream",
+    "localhost",
     "--ip",
     hostname,
     "--port",

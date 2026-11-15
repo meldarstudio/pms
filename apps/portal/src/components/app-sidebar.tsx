@@ -97,6 +97,10 @@ export function AppSidebar() {
       search: inventorySearch({ from: today }),
     },
   ] as const;
+  const visibleDestinations =
+    session?.role === "owner" && import.meta.env.DEV
+      ? [...destinations, { ...appNavigation.complaints, icon: ClipboardListIcon, search: {} }]
+      : destinations;
   const sections = configurationSections.filter(({ id }) =>
     canOpenConfigurationSection(id, session?.role),
   );
@@ -186,7 +190,7 @@ export function AppSidebar() {
             <SidebarGroup>
               <SidebarGroupContent>
                 <SidebarMenu className="gap-1">
-                  {destinations.map(({ to, label, icon: Icon, search }) => (
+                  {visibleDestinations.map(({ to, label, icon: Icon, search }) => (
                     <SidebarMenuItem key={to}>
                       <SidebarMenuButton
                         isActive={activeDestination?.to === to}

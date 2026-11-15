@@ -1,4 +1,42 @@
 const messages: Record<string, string> = {
+  "complaint security check failed": "Complete la verificación de seguridad e inténtelo de nuevo.",
+  "complaint security check is unavailable":
+    "La verificación de seguridad no está disponible. Inténtelo de nuevo.",
+
+  "invalid complaint attachment": "El identificador del archivo no es válido.",
+  "complaint response not found": "No se encontró el registro de respuesta.",
+  "complaint attachment storage is unavailable":
+    "El almacenamiento de archivos no está disponible. Intenta de nuevo.",
+  "complaint attachment exceeds 5 MB": "El archivo supera el límite de 5 MB.",
+  "invalid complaint attachment name":
+    "El nombre del archivo no es válido. Usa un nombre de hasta 200 caracteres sin barras.",
+  "unsupported complaint attachment type":
+    "Solo se admiten archivos PDF, JPG y PNG cuyo contenido coincida con el tipo y la extensión.",
+  "complaint attachment is empty": "El archivo está vacío.",
+  "complaint attachment retry differs":
+    "El reintento contiene un archivo diferente. Selecciona el archivo original o adjunta uno nuevo.",
+  "complaint attachment not found": "No se encontró el archivo adjunto.",
+  "complaint book unavailable": "El libro de desarrollo no está configurado.",
+  "invalid complaint receipt credential": "No se pudo verificar la constancia.",
+  "complaint not found": "No se encontró la hoja.",
+  "complaint retry differs from saved sheet":
+    "El reintento difiere de la hoja guardada. Recupere la constancia.",
+  "complaint privacy information changed":
+    "La información de privacidad cambió. Revísela antes de continuar.",
+  "invalid complaint fields": "Revise los campos de la reclamación.",
+  "minor representative is required": "Ingrese los datos del padre o representante.",
+  "response email is required": "Ingrese un correo para la respuesta.",
+  "too many complaints; retry in one minute": "Espere un minuto y reintente el mismo envío.",
+  "invalid complaint response": "Revise la respuesta enviada.",
+  "complaint response retry differs": "El reintento difiere de la respuesta guardada.",
+  "invalid complaint response sending time":
+    "La fecha de envío debe estar entre la presentación y el momento actual.",
+  "invalid complaint response correction": "Seleccione una respuesta de esta hoja para corregirla.",
+  "invalid complaint backup time": "Revise las fechas de presentación y restauración.",
+  "physical complaint reference already imported": "Esta hoja física ya fue transcrita.",
+  "complaint receipt is not failed": "Solo se pueden reintentar correos fallidos.",
+  "complaint receipt retry window expired; send a copy manually":
+    "Venció el plazo de reintento seguro. Envíe la copia manualmente y conserve la evidencia.",
   "Invalid input: expected a valid check-in date": "La fecha de llegada no es válida.",
   "Invalid input: expected a valid checkout date": "La fecha de salida no es válida.",
   "PROPERTY_TIME_ZONE must be a supported IANA timezone":

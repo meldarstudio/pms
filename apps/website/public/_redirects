@@ -13,3 +13,6 @@
 # Retired URL reported in Search Console (#73); send visitors to the homepage.
 /nosotros / 301
 /nosotros/ / 301
+
+/libro-de-reclamaciones /libro-de-reclamaciones/ 301
+/en/libro-de-reclamaciones /en/libro-de-reclamaciones/ 301

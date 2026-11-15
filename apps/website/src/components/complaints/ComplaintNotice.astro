@@ -1,0 +1,14 @@
+---
+import { Image } from "astro:assets";
+import { getRelativeLocaleUrl } from "astro:i18n";
+import { getLang } from "@/i18n/utils";
+import aviso from "@/assets/libro-de-reclamaciones-aviso.svg?url";
+const lang = getLang(Astro.currentLocale);
+---
+
+<a
+  class="block w-24 max-w-full focus-visible:outline-2 focus-visible:outline-offset-2"
+  href={getRelativeLocaleUrl(lang, "libro-de-reclamaciones")}
+>
+  <Image src={aviso} alt="Libro de Reclamaciones" width={424} height={276} class="h-auto w-full" />
+</a>

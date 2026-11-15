@@ -4,6 +4,7 @@ type Scripted = "lose" | 500 | "internal-error";
 
 export const TURNSTILE_TEST_SECRET = "turnstile-test-secret";
 export const TURNSTILE_PASS = "turnstile-pass";
+export const COMPLAINT_TURNSTILE_PASS = "complaint-turnstile-pass";
 export const TURNSTILE_ORIGIN = "https://challenges.cloudflare.com";
 
 export function fakeTurnstile() {
@@ -40,12 +41,21 @@ export function fakeTurnstile() {
       if (scripted === 500) return json(500, {});
       if (scripted === "internal-error")
         return json(200, { success: false, "error-codes": ["internal-error"] });
+      const complaintToken = [COMPLAINT_TURNSTILE_PASS, "XXXX.DUMMY.TOKEN.XXXX"].includes(
+        form.get("response") ?? "",
+      );
       const valid =
-        form.get("secret") === TURNSTILE_TEST_SECRET && form.get("response") === TURNSTILE_PASS;
+        form.get("secret") === TURNSTILE_TEST_SECRET &&
+        (form.get("response") === TURNSTILE_PASS || complaintToken);
       return json(
         200,
         valid
-          ? { success: true, "error-codes": [], action: "payment", hostname: "localhost" }
+          ? {
+              success: true,
+              "error-codes": [],
+              action: complaintToken ? "complaint" : "payment",
+              hostname: "localhost",
+            }
           : { success: false, "error-codes": ["invalid-input-response"] },
       );
     }) as typeof fetch,
