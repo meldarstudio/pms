@@ -1,7 +1,14 @@
 ---
-import ComplaintNotice from "@/components/complaints/ComplaintNotice.astro";
+import {
+  FacebookLogoIcon,
+  InstagramLogoIcon,
+  TiktokLogoIcon,
+} from "@phosphor-icons/react/dist/ssr";
+import { getRelativeLocaleUrl } from "astro:i18n";
 import Logo from "@/assets/manantial-logo.svg";
+import ComplaintNotice from "@/components/complaints/ComplaintNotice.astro";
 import { socials } from "@/constants";
+import { getLang, useTranslations } from "@/i18n/utils";
 import {
   address,
   email,
@@ -12,114 +19,68 @@ import {
   taxId,
 } from "@/lib/constants";
 import { formatPhoneNumber } from "@/lib/utils";
-import { getRelativeLocaleUrl } from "astro:i18n";
-import { getLang, useTranslations } from "@/i18n/utils";
 
 const lang = getLang(Astro.currentLocale);
 const t = useTranslations(lang);
-const homeHref = getRelativeLocaleUrl(lang);
-const bookHref = getWhatsAppLink(t("whatsapp.prefill"));
 const year = new Date().getFullYear();
 
-const navLinks = [
-  {
-    title: "Libro de Reclamaciones",
-    href: getRelativeLocaleUrl(lang, "libro-de-reclamaciones"),
-  },
-  { title: t("nav.home"), href: homeHref },
+const siteLinks = [
   { title: t("nav.rooms"), href: getRelativeLocaleUrl(lang, "habitaciones") },
   { title: t("nav.churin"), href: getRelativeLocaleUrl(lang, "churin") },
+  {
+    title: t("footer.whatsapp"),
+    href: getWhatsAppLink(t("whatsapp.prefill")),
+    label: t("footer.whatsappLabel").replace("{phone}", formatPhoneNumber(phoneNumber)),
+    external: true,
+  },
+  {
+    title: t("footer.email"),
+    href: `mailto:${email}`,
+    label: t("footer.emailLabel").replace("{email}", email),
+  },
 ];
+
+const legalLinks = [
+  { title: t("footer.conditions"), href: getRelativeLocaleUrl(lang, "condiciones-de-reserva") },
+  { title: t("footer.privacy"), href: getRelativeLocaleUrl(lang, "privacidad") },
+];
+
+const socialIcons = {
+  Facebook: FacebookLogoIcon,
+  Instagram: InstagramLogoIcon,
+  TikTok: TiktokLogoIcon,
+};
 ---
 
-<footer class="border-t border-stone-200 bg-white pb-[env(safe-area-inset-bottom)]">
-  <div class="mx-auto grid max-w-7xl grid-cols-2 gap-x-6 gap-y-8 px-4 py-8 md:grid-cols-[auto_minmax(0,1.4fr)_minmax(0,1fr)_minmax(0,1fr)] md:gap-x-10 md:px-8 md:py-12 lg:gap-x-12 lg:py-16">
-    <div class="hidden md:block">
-      <a
-        href={homeHref}
-        class="inline-flex items-center p-0.5"
-        aria-label={t("brand.name")}
-        translate="no"
-      >
-        <Logo class="h-10 w-auto text-stone-900" />
-      </a>
-    </div>
-
-    <div class="col-span-2 md:col-span-1">
-      <p class="font-source-sans-3 text-sm font-medium tracking-widest uppercase">
-        {t("footer.contact")}
-      </p>
-      <ul class="mt-4 flex flex-col gap-0 text-stone-600">
-        <li>
-          <a
-            href={bookHref}
-            target="_blank"
-            rel="noopener noreferrer"
-            class="inline-flex min-h-11 min-w-11 items-center underline-offset-2 hover:text-stone-700 hover:underline"
-            aria-label={t("footer.whatsappLabel").replace(
-              "{phone}",
-              formatPhoneNumber(phoneNumber),
-            )}
-            translate="no"
-          >
-            {t("footer.whatsapp")}
-          </a>
-        </li>
-        <li>
-          <a
-            href={`mailto:${email}`}
-            aria-label={t("footer.emailLabel").replace("{email}", email)}
-            class="inline-flex min-h-11 min-w-11 items-center underline-offset-2 hover:text-stone-700 hover:underline"
-          >
-            {t("footer.email")}
-          </a>
-        </li>
-        <li>
-          <a
-            href={mapsUrl}
-            aria-label={t("footer.addressLabel").replace("{address}", address)}
-            target="_blank"
-            rel="noopener noreferrer"
-            class="inline-flex min-h-11 items-center py-2.5 underline-offset-2 hover:text-stone-700 hover:underline"
-            translate="no"
-          >
-            {address}
-          </a>
-        </li>
-      </ul>
-    </div>
-
-    <div>
-      <p class="font-source-sans-3 text-sm font-medium tracking-widest uppercase">
-        {t("footer.socials")}
-      </p>
-      <ul class="mt-4 flex flex-col gap-0 text-stone-600">
-        {socials.map((social) => (
-          <li>
-            <a
-              href={social.href}
-              target="_blank"
-              rel="noopener noreferrer"
-              class="inline-flex min-h-11 min-w-11 items-center underline-offset-2 hover:text-stone-700 hover:underline"
-              translate="no"
-            >
-              {social.name}
-            </a>
-          </li>
-        ))}
-      </ul>
-    </div>
-
-    <nav aria-label={t("footer.explore")}>
-      <p class="font-source-sans-3 text-sm font-medium tracking-widest uppercase">
-        {t("footer.explore")}
-      </p>
-      <ul class="mt-4 flex flex-col gap-0 text-stone-600">
-        {navLinks.map((link) => (
+<footer class="border-t border-stone-200 bg-white pb-[env(safe-area-inset-bottom)] text-stone-600">
+  <div class="mx-auto flex max-w-7xl flex-col items-center gap-6 px-4 py-14 text-center md:px-8">
+    <a
+      href={getRelativeLocaleUrl(lang)}
+      class="inline-flex p-0.5"
+      aria-label={t("brand.name")}
+      translate="no"
+    >
+      <Logo class="h-12 w-auto text-stone-900" />
+    </a>
+    <a
+      href={mapsUrl}
+      target="_blank"
+      rel="noopener noreferrer"
+      aria-label={t("footer.addressLabel").replace("{address}", address)}
+      class="inline-flex min-h-11 items-center underline-offset-4 hover:text-stone-900 hover:underline"
+      translate="no"
+    >
+      {address}
+    </a>
+    <nav aria-label={t("footer.links")}>
+      <ul class="flex flex-wrap justify-center gap-x-8">
+        {siteLinks.map((link) => (
           <li>
             <a
               href={link.href}
-              class="inline-flex min-h-11 min-w-11 items-center underline-offset-2 hover:text-stone-700 hover:underline"
+              aria-label={link.label}
+              {...(link.external ? { target: "_blank", rel: "noopener noreferrer" } : {})}
+              class="font-source-sans-3 inline-flex min-h-11 items-center text-sm tracking-widest text-stone-900 uppercase underline-offset-4 hover:underline"
             >
               {link.title}
             </a>
@@ -127,14 +88,51 @@ const navLinks = [
         ))}
       </ul>
     </nav>
+    <ul class="flex gap-1" aria-label={t("footer.socials")}>
+      {socials.map((social) => {
+        const Icon = socialIcons[social.name as keyof typeof socialIcons];
+        return (
+          <li>
+            <a
+              href={social.href}
+              target="_blank"
+              rel="noopener noreferrer"
+              aria-label={social.name}
+              class="inline-flex size-11 items-center justify-center rounded-full text-stone-600 transition-colors hover:bg-stone-100 hover:text-stone-900"
+            >
+              <Icon size={22} aria-hidden="true" />
+            </a>
+          </li>
+        );
+      })}
+    </ul>
   </div>
-  <div class="border-t border-stone-100">
-    <div class="mx-auto grid max-w-7xl grid-cols-[minmax(0,1fr)_auto] items-center gap-x-6 gap-y-3 px-4 py-5 text-sm text-stone-600 md:grid-cols-[minmax(0,1fr)_auto_auto] md:gap-x-8 md:px-8">
-      <p class="col-span-2 md:col-span-1">
-        © {year} <span translate="no">{legalName}</span> {t("footer.rights")}.
-      </p>
-      <p translate="no">RUC {taxId}</p>
+  <div class="border-t border-stone-200">
+    <div class="mx-auto flex max-w-7xl flex-col items-center gap-3 px-4 py-6 text-center text-sm md:px-8">
       <ComplaintNotice />
+      <nav aria-label={t("footer.legal")}>
+        <ul class="flex flex-wrap justify-center gap-x-6">
+          {legalLinks.map((link) => (
+            <li>
+              <a
+                href={link.href}
+                class="inline-flex min-h-11 items-center underline-offset-4 hover:text-stone-900 hover:underline"
+              >
+                {link.title}
+              </a>
+            </li>
+          ))}
+        </ul>
+      </nav>
+      <p class="flex flex-col md:flex-row md:gap-2">
+        <span>
+          © {year} <span translate="no">{legalName}</span>
+        </span>
+        <span aria-hidden="true" class="hidden md:inline">
+          ·
+        </span>
+        <span translate="no">RUC {taxId}</span>
+      </p>
     </div>
   </div>
 </footer>

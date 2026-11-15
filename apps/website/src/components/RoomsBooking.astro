@@ -6,7 +6,7 @@ import { roomsBookingText } from "@/components/rooms/text";
 import { getLang, useTranslations } from "@/i18n/utils";
 import { hotelServices, roomAmenities, type StayDetailId } from "@/lib/included";
 import { PUBLIC_PMS_API_URL } from "astro:env/client";
-import { reviewStepHref } from "@/lib/reservation/links";
+import { conditionsHref, reviewStepHref } from "@/lib/reservation/links";
 import { ratePlanCodes } from "@/lib/reservation/search";
 import { staySearchCopy } from "@/lib/reservation/stay-copy";
 import { rooms } from "@/lib/rooms";
@@ -82,6 +82,7 @@ const details: StayDetails = {
     lang={lang}
     apiBase={PUBLIC_PMS_API_URL}
     reviewHref={reviewStepHref(lang)}
+    conditionsHref={conditionsHref(lang)}
     rooms={views}
     details={details}
     text={roomsBookingText(t)}

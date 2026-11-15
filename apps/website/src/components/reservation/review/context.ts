@@ -2,7 +2,7 @@ import { createContext, useContext } from "react";
 import type { Lang } from "@/i18n/utils";
 import type { Say } from "./text";
 
-export type ReviewContext = { lang: Lang; say: Say };
+export type ReviewContext = { lang: Lang; say: Say; privacyHref: string; conditionsHref: string };
 
 export const ReviewContext = createContext<ReviewContext | null>(null);
 

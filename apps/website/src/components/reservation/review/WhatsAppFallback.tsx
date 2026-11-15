@@ -1,9 +1,9 @@
 import { ArrowSquareOutIcon } from "@phosphor-icons/react";
 import { useReview } from "./context";
-import { card, cardTitle, primary } from "./styles";
+import { card, cardTitle, primary, quietLink } from "./styles";
 
 export function WhatsAppFallback({ href, hidden }: { href: string; hidden: boolean }) {
-  const { say } = useReview();
+  const { say, conditionsHref } = useReview();
   return (
     <section className={card} aria-labelledby="review-whatsapp" data-whatsapp hidden={hidden}>
       <h2 id="review-whatsapp" className={cardTitle}>
@@ -24,6 +24,9 @@ export function WhatsAppFallback({ href, hidden }: { href: string; hidden: boole
         <ArrowSquareOutIcon aria-hidden="true" className="size-4.5 shrink-0" />
       </a>
       <p className="mt-4 text-sm text-stone-600">{say("reservation.review.whatsapp.note")}</p>
+      <a href={conditionsHref} className={`mt-2 ${quietLink}`}>
+        {say("reservation.review.conditionsLink")}
+      </a>
     </section>
   );
 }

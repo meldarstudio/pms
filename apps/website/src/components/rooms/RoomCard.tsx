@@ -1,4 +1,4 @@
-import { useEffect, useState, type ReactNode } from "react";
+import type { ReactNode } from "react";
 import { cn } from "cn";
 import {
   BedIcon,
@@ -17,6 +17,7 @@ import {
   XIcon,
 } from "@phosphor-icons/react";
 import { Button } from "@/components/ui/button";
+import { useNarrowScreen } from "@/lib/use-narrow-screen";
 import {
   Dialog,
   DialogClose,
@@ -220,17 +221,4 @@ function RoomDetails({
       </DialogContent>
     </Dialog>
   );
-}
-
-/** Below the `md` breakpoint, matching the stay search's drawer. */
-function useNarrowScreen() {
-  const [narrow, setNarrow] = useState(false);
-  useEffect(() => {
-    const media = window.matchMedia("(min-width: 48rem)");
-    const update = () => setNarrow(!media.matches);
-    update();
-    media.addEventListener("change", update);
-    return () => media.removeEventListener("change", update);
-  }, []);
-  return narrow;
 }

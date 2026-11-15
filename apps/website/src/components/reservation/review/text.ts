@@ -47,6 +47,8 @@ export const reviewKeys = [
   "reservation.review.plan",
   "reservation.review.contact",
   "reservation.review.contactLead",
+  "reservation.review.privacyLink",
+  "reservation.review.conditionsLink",
   "reservation.review.fullName",
   "reservation.review.email",
   "reservation.review.phone",

@@ -10,7 +10,7 @@ import { reviewText } from "@/components/reservation/review/text";
 import { getWhatsAppLink } from "@/lib/constants";
 import { BUSINESS_NAME } from "@/constants";
 import { getLang, useTranslations } from "@/i18n/utils";
-import { roomsHref, summaryStepHref } from "@/lib/reservation/links";
+import { conditionsHref, privacyHref, roomsHref, summaryStepHref } from "@/lib/reservation/links";
 import { rooms } from "@/lib/rooms";
 
 const lang = getLang(Astro.currentLocale);
@@ -59,6 +59,8 @@ const roomViews = Object.fromEntries(
       chooseHref={roomsHref(lang)}
       summaryHref={summaryStepHref(lang)}
       whatsappHref={getWhatsAppLink(t("whatsapp.prefill"))}
+      privacyHref={privacyHref(lang)}
+      conditionsHref={conditionsHref(lang)}
       text={reviewText(t)}
       rooms={roomViews}
     />

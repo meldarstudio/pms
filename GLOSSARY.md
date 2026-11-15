@@ -31,6 +31,18 @@ It expires 30 days after the scheduled checkout and shows that reservation's
 guest-facing status and payment summary to whoever holds it.
 _Avoid_: Reservation code, guest account, payment link, checkout token
 
+### Published guest information
+
+**Privacy information / Información de privacidad**:
+The property's public disclosure of how it handles guests' and complainants' personal
+data; it is read, never accepted.
+_Avoid_: Privacy policy consent, privacy terms
+
+**Reservation conditions / Condiciones de reserva**:
+The property's published general rules for booking, changes, cancellation and refunds;
+each reservation's agreed terms remain those of its accepted quote.
+_Avoid_: Terms and conditions, cancellation policy, booking policy
+
 ### Reservations and dates
 
 **Reservation**:
