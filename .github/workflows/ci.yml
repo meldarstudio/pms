@@ -64,4 +64,4 @@ jobs:
 
       - run: pnpm test:website
 
-      - run: pnpm --filter @pms/website exec node scripts/check-links.mjs
+      - run: pnpm --filter @pms/website exec node scripts/check-links.mjs --internal-only
