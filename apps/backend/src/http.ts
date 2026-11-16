@@ -53,6 +53,8 @@ export function rethrowConflict(err: unknown): never {
     throw new HttpError(409, "invalid payment attempt status");
   if (text.includes("payment_attempts.quote_id") || text.includes("payment_attempts.checkout_id"))
     throw new HttpError(409, PAYMENT_PENDING);
+  if (text.includes("complaint_emails.complaint_id"))
+    throw new HttpError(409, "complaint receipt does not need attention");
   if (text.includes("no availability")) throw new HttpError(409, "no availability");
   if (text.includes("room taken"))
     throw new HttpError(409, "room is already assigned for those dates");

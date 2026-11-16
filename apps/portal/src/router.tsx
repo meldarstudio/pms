@@ -11,7 +11,7 @@ import {
 import { useEffect } from "react";
 import { format, parseISO } from "date-fns";
 import { useNavigate } from "@tanstack/react-router";
-import { Complaints } from "@/components/complaints";
+import { ComplaintBackupPage, ComplaintList, ComplaintPage } from "@/components/complaints";
 import App from "@/App";
 import { RouteCrash } from "@/components/page-error";
 import { ReservationPage, type ReservationBack } from "@/components/reservation-page";
@@ -249,8 +249,25 @@ function SetupRoute() {
 const complaintsRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/complaints",
-  component: Complaints,
+  component: ComplaintList,
 });
+
+const complaintBackupRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/complaints/backup",
+  component: ComplaintBackupPage,
+});
+
+const complaintRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/complaints/$complaintId",
+  component: ComplaintRoute,
+});
+
+function ComplaintRoute() {
+  const { complaintId } = complaintRoute.useParams();
+  return <ComplaintPage id={complaintId} />;
+}
 
 const accountsRoute = createRoute({
   getParentRoute: () => rootRoute,
@@ -270,6 +287,8 @@ const routeTree = rootRoute.addChildren([
   setupRoute,
   accountsRoute,
   complaintsRoute,
+  complaintBackupRoute,
+  complaintRoute,
 ]);
 
 export const router = createRouter({ routeTree, defaultErrorComponent: RouteCrash });

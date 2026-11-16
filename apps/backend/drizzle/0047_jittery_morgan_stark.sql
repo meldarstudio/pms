@@ -1,0 +1,1 @@
+ALTER TABLE `complaint_responses` RENAME COLUMN "sent_at" TO "sent_on";

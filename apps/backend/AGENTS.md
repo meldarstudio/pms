@@ -51,9 +51,22 @@ internal `src/complaint-book-operations.json` (book `LR` from sheet 1, retention
 backup and sender), which must stay out of the website. It is served in every environment;
 local dev and tests file into that book against their own database. Changing
 `policyVersion` or the disclosures in that file is a reviewed release change: each sheet
-stores the disclosures it was filed under. The scheduled run sends receipts through the
-same Resend client as confirmation emails; they stay `pending` while `RESEND_API_KEY` is
-unset. Owner response attachments live in the private R2 bucket `pms-complaint-files`,
+stores the disclosures it was filed under. Receipt emails (`src/complaint-emails.ts`) are
+an outbox, `complaint_emails`: filing queues one `automatic` row in the batch that saves the
+sheet, and the scheduled run hands due `pending` rows to Resend through the same client as
+confirmation emails, with `Idempotency-Key` set to the row id and the message kept in
+`pending_request`, so every retry posts the same payload under the same key. Transient errors
+retry with backoff up to `MAX_RECEIPT_HANDOFF_ATTEMPTS` and never past
+`RETRY_WINDOW_WITHIN_RESEND_DEDUPLICATION_MS` from the first attempt; a refused message fails
+at once. `failed` is the portal's **Requiere atención**; nothing restarts it.
+`POST /complaints/:id/email-copies` queues a `copy` row, whose id is the request id, only
+while the latest row is `failed`, and a partial unique index allows one `pending` row per
+sheet. Rows stay `pending` while `RESEND_API_KEY` is unset. `delivery_uncertain` and
+`retry_request_id` are retired columns that nothing reads or writes. The owner voids a
+response with a required reason through an append-only `complaint_response_voids` row; a voided
+response stays visible but no longer answers the sheet, and a void cannot be changed or undone.
+`correctsId` on older responses stays readable, but new responses cannot set it.
+Owner response attachments live in the private R2 bucket `pms-complaint-files`,
 bound as `COMPLAINT_ATTACHMENTS` and simulated locally. It has no lock rule yet;
 retention/disposal is #294. Response due dates count 15 weekdays after the property-time
 filing date; holidays count as business days, so the shown deadline is never later than

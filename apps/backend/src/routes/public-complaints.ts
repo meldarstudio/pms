@@ -57,7 +57,7 @@ publicComplaintRoutes.post(
       currency(c),
       c.env.PROPERTY_TIME_ZONE,
     );
-    return c.json({ ...result.sheet, responses: [] }, result.created ? 201 : 200);
+    return c.json(result.sheet, result.created ? 201 : 200);
   },
 );
 publicComplaintRoutes.get("/receipt", async (c) =>

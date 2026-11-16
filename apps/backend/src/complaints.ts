@@ -1,9 +1,10 @@
-import { and, asc, eq, sql } from "drizzle-orm";
+import { and, asc, desc, eq, sql } from "drizzle-orm";
 import type { ComplaintInput } from "@pms/shared";
 import { runBatch, type Db } from "./db";
 import {
   complaintAttachments,
   complaintEmails,
+  complaintResponseVoids,
   complaintResponses,
   complaintSheets,
 } from "./db/schema";
@@ -25,28 +26,37 @@ export async function complaintTokenHash(authorization: string | undefined) {
 export async function complaintView(db: Db, id: string) {
   const [sheet] = await db.select().from(complaintSheets).where(eq(complaintSheets.id, id));
   if (!sheet) throw new HttpError(404, "complaint not found");
-  const [email] = await db
+  const emails = await db
     .select({
+      id: complaintEmails.id,
+      kind: complaintEmails.kind,
       status: complaintEmails.status,
       attempts: complaintEmails.attempts,
       sentAt: complaintEmails.sentAt,
       lastError: complaintEmails.lastError,
+      createdAt: complaintEmails.createdAt,
+      requestedBy: complaintEmails.requestedBy,
     })
     .from(complaintEmails)
-    .where(eq(complaintEmails.complaintId, id));
+    .where(eq(complaintEmails.complaintId, id))
+    .orderBy(desc(complaintEmails.createdAt), desc(sql`${complaintEmails}.rowid`));
   const responses = await db
     .select({
       id: complaintResponses.id,
       text: complaintResponses.text,
       channel: complaintResponses.channel,
       recipient: complaintResponses.recipient,
-      sentAt: complaintResponses.sentAt,
+      sentOn: complaintResponses.sentOn,
       evidence: complaintResponses.evidence,
       correctsId: complaintResponses.correctsId,
       recordedAt: complaintResponses.recordedAt,
       recordedBy: complaintResponses.recordedBy,
+      voidReason: complaintResponseVoids.reason,
+      voidedAt: complaintResponseVoids.voidedAt,
+      voidedBy: complaintResponseVoids.voidedBy,
     })
     .from(complaintResponses)
+    .leftJoin(complaintResponseVoids, eq(complaintResponseVoids.responseId, complaintResponses.id))
     .where(eq(complaintResponses.complaintId, id))
     .orderBy(asc(complaintResponses.recordedAt), asc(sql`${complaintResponses}.rowid`));
   const { tokenHash: _tokenHash, requestPayload: _requestPayload, ...saved } = sheet;
@@ -66,9 +76,14 @@ export async function complaintView(db: Db, id: string) {
     .orderBy(asc(complaintAttachments.uploadedAt), asc(complaintAttachments.id));
   return {
     ...saved,
-    email: email!,
-    responses: responses.map((response) => ({
+    email: emails[0]!,
+    emails,
+    responses: responses.map(({ voidReason, voidedAt, voidedBy, ...response }) => ({
       ...response,
+      voided:
+        voidReason === null
+          ? null
+          : { reason: voidReason, voidedAt: voidedAt!, voidedBy: voidedBy! },
       attachments: attachments
         .filter((attachment) => attachment.responseId === response.id)
         .map(({ responseId: _responseId, ...attachment }) => attachment),
@@ -91,7 +106,7 @@ export async function fileComplaint(
   if (existing[0]) {
     if (existing[0].requestPayload !== payload)
       throw new HttpError(409, "complaint retry differs from saved sheet");
-    return { created: false, sheet: await complaintView(db, existing[0].id) };
+    return { created: false, sheet: guestReceipt(await complaintView(db, existing[0].id)) };
   }
   if (input.policyVersion !== complaintBook.policyVersion)
     throw new HttpError(409, "complaint privacy information changed");
@@ -134,12 +149,20 @@ export async function fileComplaint(
         nextAttemptAt: input.email ? now : null,
         createdAt: now,
       })
-      .onConflictDoNothing({ target: complaintEmails.complaintId }),
+      .onConflictDoNothing(),
   ]);
   const sheet = await complaintView(db, tokenHash);
   if (JSON.stringify(sheet.input) !== payload)
     throw new HttpError(409, "complaint retry differs from saved sheet");
-  return { created: true, sheet };
+  return { created: true, sheet: guestReceipt(sheet) };
+}
+
+function guestReceipt({
+  email,
+  emails: _emails,
+  ...sheet
+}: Awaited<ReturnType<typeof complaintView>>) {
+  return { ...sheet, email: { status: email.status }, responses: [] };
 }
 
 export async function receiptForToken(db: Db, tokenHash: string) {
@@ -148,6 +171,5 @@ export async function receiptForToken(db: Db, tokenHash: string) {
     .from(complaintSheets)
     .where(and(eq(complaintSheets.tokenHash, tokenHash), eq(complaintSheets.source, "virtual")));
   if (!sheet) throw new HttpError(401, "invalid complaint receipt credential");
-  const saved = await complaintView(db, sheet.id);
-  return { ...saved, responses: [] };
+  return guestReceipt(await complaintView(db, sheet.id));
 }

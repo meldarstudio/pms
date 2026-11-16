@@ -754,11 +754,17 @@ export function searchReservationsPage(params: ReservationListParams, signal?: A
 export type ComplaintInput = import("@pms/shared").ComplaintInputRequest;
 export type ComplaintResponseRequest = import("@pms/shared").ComplaintResponseRequest;
 export type ComplaintBackupRequest = import("@pms/shared").ComplaintBackupRequest;
+export type ComplaintResponseVoidRequest = import("@pms/shared").ComplaintResponseVoidRequest;
+export type ComplaintReceiptCopyRequest = import("@pms/shared").ComplaintReceiptCopyRequest;
 export type ComplaintEmail = {
+  id: string;
+  kind: "automatic" | "copy";
   status: "pending" | "sent" | "failed" | "not_requested";
   attempts: number;
   sentAt: string | null;
   lastError: string | null;
+  createdAt: string;
+  requestedBy: string | null;
 };
 export type ComplaintSummary = {
   id: string;
@@ -797,16 +803,18 @@ export type ComplaintSheet = {
   originalReference: string | null;
   restoredAt: string | null;
   email: ComplaintEmail;
+  emails: ComplaintEmail[];
   responses: {
     id: string;
     text: string;
     channel: string;
     recipient: string;
-    sentAt: string;
+    sentOn: string;
     evidence: string;
     correctsId: string | null;
     recordedAt: string;
     recordedBy: string;
+    voided: { reason: string; voidedAt: string; voidedBy: string } | null;
     attachments: ComplaintAttachment[];
   }[];
 };
@@ -819,12 +827,18 @@ export const recordComplaintResponse = (id: string, input: ComplaintResponseRequ
 function complaintAttachmentPath(id: string, responseId: string, attachmentId: string) {
   return `/complaints/${encodeURIComponent(id)}/responses/${encodeURIComponent(responseId)}/attachments/${encodeURIComponent(attachmentId)}`;
 }
-export type ComplaintAttachmentUpload = { attachmentId: string; file: File };
-export async function uploadComplaintAttachment(
+export const voidComplaintResponse = (
   id: string,
   responseId: string,
-  input: ComplaintAttachmentUpload,
-) {
+  input: ComplaintResponseVoidRequest,
+) =>
+  writeJson<ComplaintSheet>(
+    `/complaints/${encodeURIComponent(id)}/responses/${encodeURIComponent(responseId)}/void`,
+    "POST",
+    input,
+  );
+export type ComplaintAttachmentUpload = { responseId: string; attachmentId: string; file: File };
+export async function uploadComplaintAttachment(id: string, input: ComplaintAttachmentUpload) {
   const typesByExtension: Record<string, string> = {
     pdf: "application/pdf",
     jpg: "image/jpeg",
@@ -843,14 +857,17 @@ export async function uploadComplaintAttachment(
     name: input.file.name,
     contentType,
   };
-  const response = await request(complaintAttachmentPath(id, responseId, input.attachmentId), {
-    method: "PUT",
-    headers: {
-      "Content-Type": metadata.contentType,
-      "X-Attachment-Name": encodeURIComponent(metadata.name),
+  const response = await request(
+    complaintAttachmentPath(id, input.responseId, input.attachmentId),
+    {
+      method: "PUT",
+      headers: {
+        "Content-Type": metadata.contentType,
+        "X-Attachment-Name": encodeURIComponent(metadata.name),
+      },
+      body: input.file,
     },
-    body: input.file,
-  });
+  );
   if (!response.ok) throw await responseError(response);
   return (await response.json()) as ComplaintSheet;
 }
@@ -863,10 +880,8 @@ export async function downloadComplaintAttachment(
   if (!response.ok) throw await responseError(response);
   return response.blob();
 }
-export const retryComplaintEmail = (id: string, requestId: string) =>
-  writeJson<ComplaintSheet>(`/complaints/${encodeURIComponent(id)}/email-retry`, "POST", {
-    requestId,
-  });
+export const requestComplaintReceiptCopy = (id: string, input: ComplaintReceiptCopyRequest) =>
+  writeJson<ComplaintSheet>(`/complaints/${encodeURIComponent(id)}/email-copies`, "POST", input);
 export const importComplaintBackup = (input: ComplaintBackupRequest) =>
   writeJson<ComplaintSheet>("/complaints/backups", "POST", input);
 

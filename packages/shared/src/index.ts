@@ -495,12 +495,17 @@ export const complaintResponseSchema = z
     text: complaintText(10000).min(1, "invalid complaint response"),
     channel: z.enum(["email", "letter"]),
     recipient: complaintText(500).min(1, "invalid complaint response"),
-    sentAt: z.iso.datetime({ offset: true }),
+    sentOn: z.iso.date({ error: "invalid complaint response sending date" }),
     evidence: complaintText(2000).min(1, "invalid complaint response"),
-    correctsId: z.uuid().nullable(),
   })
   .strict();
 export type ComplaintResponseRequest = z.input<typeof complaintResponseSchema>;
+export const complaintResponseVoidSchema = z
+  .object({ reason: complaintText(2000).min(1, "void reason is required") })
+  .strict();
+export type ComplaintResponseVoidRequest = z.input<typeof complaintResponseVoidSchema>;
+export const complaintReceiptCopySchema = z.object({ requestId: z.uuid() }).strict();
+export type ComplaintReceiptCopyRequest = z.input<typeof complaintReceiptCopySchema>;
 export const complaintAttachmentMetadataSchema = z
   .object({
     name: z

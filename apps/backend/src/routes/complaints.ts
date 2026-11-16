@@ -1,13 +1,22 @@
-import { complaintSheets, complaintResponses, complaintEmails } from "../db/schema";
-import { z } from "zod";
-import { and, asc, eq } from "drizzle-orm";
+import {
+  complaintSheets,
+  complaintResponses,
+  complaintResponseVoids,
+  complaintEmails,
+} from "../db/schema";
+import { asc, eq } from "drizzle-orm";
 import { requireOwner } from "../session";
-import { complaintResponseSchema, complaintBackupSchema } from "@pms/shared";
+import {
+  complaintResponseSchema,
+  complaintBackupSchema,
+  complaintResponseVoidSchema,
+  complaintReceiptCopySchema,
+} from "@pms/shared";
 import { runBatch } from "../db";
 import { sql } from "drizzle-orm";
 import { getDb } from "../db";
 import { complaintView } from "../complaints";
-import { HttpError, currency, validate } from "../http";
+import { HttpError, currency, rethrowConflict, validate } from "../http";
 import { Hono } from "hono";
 import type { Env } from "../env";
 import {
@@ -17,6 +26,7 @@ import {
   complaintBook,
 } from "../complaint-config";
 import { complaintAttachmentRoutes } from "./complaint-attachments";
+import { propertyCalendar } from "../property-calendar";
 
 export const ownerComplaintRoutes = new Hono<Env>();
 ownerComplaintRoutes.use("*", requireOwner);
@@ -39,8 +49,10 @@ ownerComplaintRoutes.get("/", async (c) => {
         category: sheet.input.category,
         filedAt: sheet.filedAt,
         dueDate: sheet.dueDate,
-        responseStatus: sheet.responses.length ? "recorded" : "pending",
-        overdue: !sheet.responses.length && sheet.dueDate < today,
+        responseStatus: sheet.responses.some((response) => !response.voided)
+          ? "recorded"
+          : "pending",
+        overdue: !sheet.responses.some((response) => !response.voided) && sheet.dueDate < today,
         email: sheet.email,
       }))
       .sort(
@@ -72,12 +84,10 @@ ownerComplaintRoutes.post(
       return c.json(await complaintView(db, sheet.id));
     }
     if (
-      Date.parse(input.sentAt) > Date.now() ||
-      Date.parse(input.sentAt) < Date.parse(sheet.filedAt)
+      input.sentOn > c.var.propertyCalendar.today ||
+      input.sentOn < propertyCalendar(sheet.timeZone, new Date(sheet.filedAt)).today
     )
-      throw new HttpError(400, "invalid complaint response sending time");
-    if (input.correctsId && !sheet.responses.some((response) => response.id === input.correctsId))
-      throw new HttpError(400, "invalid complaint response correction");
+      throw new HttpError(400, "invalid complaint response sending date");
     await db
       .insert(complaintResponses)
       .values({
@@ -87,9 +97,8 @@ ownerComplaintRoutes.post(
         text: input.text,
         channel: input.channel,
         recipient: input.recipient,
-        sentAt: new Date(input.sentAt).toISOString(),
+        sentOn: input.sentOn,
         evidence: input.evidence,
-        correctsId: input.correctsId,
         recordedAt: new Date().toISOString(),
         recordedBy: c.var.account.id,
       })
@@ -101,6 +110,36 @@ ownerComplaintRoutes.post(
     if (saved!.complaintId !== sheet.id || saved!.payload !== payload)
       throw new HttpError(409, "complaint response retry differs");
     return c.json(await complaintView(db, sheet.id), 201);
+  },
+);
+
+ownerComplaintRoutes.post(
+  "/:id/responses/:responseId/void",
+  validate("json", complaintResponseVoidSchema),
+  async (c) => {
+    const db = getDb(c.env.DB);
+    const { reason } = c.req.valid("json");
+    const sheet = await complaintView(db, c.req.param("id"));
+    const response = sheet.responses.find(({ id }) => id === c.req.param("responseId"));
+    if (!response) throw new HttpError(404, "complaint response not found");
+    const settled = (voided: { reason: string } | null) => {
+      if (voided && voided.reason !== reason)
+        throw new HttpError(409, "complaint response already voided");
+      return voided;
+    };
+    if (settled(response.voided)) return c.json(sheet);
+    await db
+      .insert(complaintResponseVoids)
+      .values({
+        responseId: response.id,
+        reason,
+        voidedAt: new Date().toISOString(),
+        voidedBy: c.var.account.id,
+      })
+      .onConflictDoNothing();
+    const saved = await complaintView(db, sheet.id);
+    settled(saved.responses.find(({ id }) => id === response.id)!.voided);
+    return c.json(saved, 201);
   },
 );
 
@@ -168,33 +207,39 @@ ownerComplaintRoutes.post("/backups", validate("json", complaintBackupSchema), a
 });
 
 ownerComplaintRoutes.post(
-  "/:id/email-retry",
-  validate("json", z.object({ requestId: z.uuid() }).strict()),
+  "/:id/email-copies",
+  validate("json", complaintReceiptCopySchema),
   async (c) => {
     const db = getDb(c.env.DB);
     const sheet = await complaintView(db, c.req.param("id"));
-    const requestId = c.req.valid("json").requestId;
-    const [email] = await db
-      .select()
-      .from(complaintEmails)
-      .where(eq(complaintEmails.complaintId, sheet.id));
-    if (email!.retryRequestId === requestId) return c.json(sheet);
-    if (email!.status !== "failed") throw new HttpError(409, "complaint receipt is not failed");
-    if (
-      email!.deliveryUncertain &&
-      email!.firstAttemptAt &&
-      Date.now() - Date.parse(email!.firstAttemptAt) >= 23 * 60 * 60 * 1000
-    )
-      throw new HttpError(409, "complaint receipt retry window expired; send a copy manually");
-    await db
-      .update(complaintEmails)
-      .set({
+    const { requestId } = c.req.valid("json");
+    const requested = async () => {
+      const [copy] = await db
+        .select({ complaintId: complaintEmails.complaintId, kind: complaintEmails.kind })
+        .from(complaintEmails)
+        .where(eq(complaintEmails.id, requestId));
+      if (copy && (copy.complaintId !== sheet.id || copy.kind !== "copy"))
+        throw new HttpError(409, "complaint receipt copy request differs");
+      return copy;
+    };
+    if (await requested()) return c.json(sheet);
+    if (sheet.email.status !== "failed")
+      throw new HttpError(409, "complaint receipt does not need attention");
+    const now = new Date().toISOString();
+    try {
+      await db.insert(complaintEmails).values({
+        id: requestId,
+        complaintId: sheet.id,
+        kind: "copy",
+        requestedBy: c.var.account.id,
         status: "pending",
-        lastError: null,
-        nextAttemptAt: new Date().toISOString(),
-        retryRequestId: requestId,
-      })
-      .where(and(eq(complaintEmails.id, email!.id), eq(complaintEmails.status, "failed")));
-    return c.json(await complaintView(db, sheet.id));
+        nextAttemptAt: now,
+        createdAt: now,
+      });
+    } catch (error) {
+      if (await requested()) return c.json(await complaintView(db, sheet.id));
+      rethrowConflict(error);
+    }
+    return c.json(await complaintView(db, sheet.id), 201);
   },
 );

@@ -41,6 +41,21 @@ export function dateOnlyCarrier(day: string, carrierTimeZone?: "UTC") {
     : new Date(year, month - 1, date);
 }
 
+export function dayInZone(instant: string | number, zone: string) {
+  return new Intl.DateTimeFormat("en-CA", {
+    timeZone: zone,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(new Date(instant));
+}
+
+export function instantOnDay(day: string, zone: string, earliest: number, latest: number) {
+  const [year, month, date] = day.split("-").map(Number);
+  const noon = new TZDate(year!, month! - 1, date!, 12, 0, 0, zone).getTime();
+  return new Date(Math.min(latest, Math.max(earliest, noon))).toISOString();
+}
+
 export function nextPropertyDay(instant = Date.now()) {
   const today = propertyToday(instant);
   let low = instant;

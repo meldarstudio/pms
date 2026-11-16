@@ -626,7 +626,7 @@ export const complaintResponses = sqliteTable("complaint_responses", {
   text: text("text").notNull(),
   channel: text("channel").notNull(),
   recipient: text("recipient").notNull(),
-  sentAt: text("sent_at").notNull(),
+  sentOn: text("sent_on").notNull(),
   evidence: text("evidence").notNull(),
   correctsId: text("corrects_id"),
   recordedAt: text("recorded_at").notNull(),
@@ -654,6 +654,17 @@ export const complaintAttachments = sqliteTable(
   (table) => [index("complaint_attachments_response").on(table.responseId)],
 );
 
+export const complaintResponseVoids = sqliteTable("complaint_response_voids", {
+  responseId: text("response_id")
+    .primaryKey()
+    .references(() => complaintResponses.id),
+  reason: text("reason").notNull(),
+  voidedAt: text("voided_at").notNull(),
+  voidedBy: text("voided_by")
+    .notNull()
+    .references(() => user.id),
+});
+
 export const complaintEmails = sqliteTable(
   "complaint_emails",
   {
@@ -661,6 +672,8 @@ export const complaintEmails = sqliteTable(
     complaintId: text("complaint_id")
       .notNull()
       .references(() => complaintSheets.id),
+    kind: text("kind").$type<"automatic" | "copy">().notNull().default("automatic"),
+    requestedBy: text("requested_by").references(() => user.id),
     status: text("status").$type<"pending" | "sent" | "failed" | "not_requested">().notNull(),
     attempts: integer("attempts").notNull().default(0),
     firstAttemptAt: text("first_attempt_at"),
@@ -674,7 +687,12 @@ export const complaintEmails = sqliteTable(
     retryRequestId: text("retry_request_id"),
   },
   (table) => [
-    uniqueIndex("complaint_receipt_email").on(table.complaintId),
+    uniqueIndex("complaint_emails_automatic")
+      .on(table.complaintId)
+      .where(sql`${table.kind} = 'automatic'`),
+    uniqueIndex("complaint_emails_pending")
+      .on(table.complaintId)
+      .where(sql`${table.status} = 'pending'`),
     index("complaint_emails_due").on(table.status, table.nextAttemptAt),
   ],
 );

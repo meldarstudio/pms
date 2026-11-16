@@ -28,14 +28,17 @@ const messages: Record<string, string> = {
   "too many complaints; retry in one minute": "Espere un minuto y reintente el mismo envío.",
   "invalid complaint response": "Revise la respuesta enviada.",
   "complaint response retry differs": "El reintento difiere de la respuesta guardada.",
-  "invalid complaint response sending time":
-    "La fecha de envío debe estar entre la presentación y el momento actual.",
-  "invalid complaint response correction": "Seleccione una respuesta de esta hoja para corregirla.",
+  "invalid complaint response sending date":
+    "La fecha de envío debe estar entre la fecha de presentación y hoy.",
+  "void reason is required": "Escriba el motivo de la anulación.",
+  "complaint response already voided": "La respuesta ya fue anulada con otro motivo.",
+  "complaint response is voided": "La respuesta está anulada; no se le puede adjuntar evidencia.",
   "invalid complaint backup time": "Revise las fechas de presentación y restauración.",
   "physical complaint reference already imported": "Esta hoja física ya fue transcrita.",
-  "complaint receipt is not failed": "Solo se pueden reintentar correos fallidos.",
-  "complaint receipt retry window expired; send a copy manually":
-    "Venció el plazo de reintento seguro. Envíe la copia manualmente y conserve la evidencia.",
+  "complaint receipt does not need attention":
+    "Solo se puede enviar otra copia cuando la constancia requiere atención.",
+  "complaint receipt copy request differs":
+    "El reintento difiere de la solicitud de copia guardada. Recargue la hoja.",
   "Invalid input: expected a valid check-in date": "La fecha de llegada no es válida.",
   "Invalid input: expected a valid checkout date": "La fecha de salida no es válida.",
   "PROPERTY_TIME_ZONE must be a supported IANA timezone":
