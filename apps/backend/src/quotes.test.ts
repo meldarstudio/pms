@@ -1,8 +1,9 @@
-import type { QuoteCreate } from "@pms/shared";
+import type { PublicCheckoutCreate } from "@pms/shared";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { getDb } from "./db";
 import type { presentReservation } from "./present";
-import { createQuote, saveQuote } from "./quotes";
+import { startCheckout } from "./public-checkouts";
+import { saveQuote } from "./quotes";
 import { createTestDb, seedRooms, seedRoomType, type TestDb } from "./test-support/d1";
 
 type Detail = ReturnType<typeof presentReservation>;
@@ -22,18 +23,25 @@ afterEach(() => {
   vi.useRealTimers();
 });
 
-const stay: QuoteCreate = {
+const stay: PublicCheckoutCreate = {
   roomTypeId: "type",
   checkIn: "2026-10-20",
   checkOut: "2026-10-22",
   adults: 2,
   children: 0,
   ratePlan: "non_refundable",
+  language: "es",
 };
 const guest = { fullName: "Ana Torres", email: "ana@example.com" };
 
-const quote = (input: Partial<QuoteCreate> = {}) =>
-  createQuote(getDb(db.env.DB), { ...stay, ...input }, { today: "2026-10-10", now: new Date() });
+async function quote() {
+  const { view } = await startCheckout(getDb(db.env.DB), stay, {
+    today: "2026-10-10",
+    now: new Date(),
+    published: ["type"],
+  });
+  return view.quote;
+}
 const save = (quoteId: string) => saveQuote(getDb(db.env.DB), quoteId, guest);
 
 async function reservation(id: string) {
@@ -54,9 +62,8 @@ describe("quotes", () => {
       totalCents: 18000,
       requiredInitialPaymentCents: 18000,
       remainingScheduledCents: 0,
-      ratePlan: { plan: "non_refundable" },
       expiresAt: "2026-10-10T15:10:00.000Z",
-      available: true,
+      expired: false,
     });
   });
 
@@ -88,12 +95,11 @@ describe("quotes", () => {
   it("saves only the first of two quotes for the last room", async () => {
     const first = await quote();
     const second = await quote();
-    expect(second.available).toBe(true);
 
     await save(first.id);
 
     await expect(save(second.id)).rejects.toThrow("no availability");
-    expect(await quote()).toMatchObject({ totalCents: 18000, available: false });
+    await expect(quote()).rejects.toThrow("no availability");
   });
 
   it("saves one reservation from a retried quote, even when the retry commits first", async () => {

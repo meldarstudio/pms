@@ -15,7 +15,6 @@ import { HttpError, rethrowConflict } from "./http";
 import { occupiedCounts, roomCounts } from "./inventory";
 import { confirmationCode } from "./lib/codes";
 import { ratePlans, termColumns } from "./lib/rate-plans";
-import { quoteBill } from "./lib/reservation-bill";
 import { reservationAccessValues } from "./reservation-access";
 import { acceptPhone, requireOnlineArrival, requireStay } from "./rules";
 import { lineWrites } from "./workflow";
@@ -25,20 +24,10 @@ const QUOTE_MINUTES = 10;
 
 export type Quote = typeof quotes.$inferSelect;
 
-export async function createQuote(
-  db: Db,
-  input: QuoteCreate,
-  context: { today: string; now: Date },
-) {
-  const { quote, available } = await priceQuote(db, input, { ...context, checkoutId: null });
-  await db.insert(quotes).values(quote);
-  return presentQuote(quote, available);
-}
-
 export async function priceQuote(
   db: Db,
   input: QuoteCreate,
-  context: { today: string; now: Date; checkoutId: string | null },
+  context: { today: string; now: Date; checkoutId: string },
 ): Promise<{ quote: Quote; available: boolean }> {
   requireStay(input.checkIn, input.checkOut);
   requireOnlineArrival(input.checkIn, context.today);
@@ -87,25 +76,6 @@ export async function requireQuotedOccupancy(
 
 export const quoteExpired = (quote: Pick<Quote, "expiresAt">, now: Date) =>
   Date.parse(quote.expiresAt) <= now.getTime();
-
-function presentQuote(quote: Quote, available: boolean) {
-  const bill = quoteBill(quote);
-  return {
-    id: quote.id,
-    roomTypeId: quote.roomTypeId,
-    checkIn: quote.checkIn,
-    checkOut: quote.checkOut,
-    adults: quote.adults,
-    children: quote.children,
-    ratePlan: quote.terms,
-    nights: quote.nights.map(({ date, priceCents }) => ({ date, priceCents })),
-    totalCents: bill.totalCents,
-    requiredInitialPaymentCents: bill.requiredInitialPaymentCents,
-    remainingScheduledCents: bill.remainingScheduledCents,
-    expiresAt: quote.expiresAt,
-    available,
-  };
-}
 
 type QuotePayment = Pick<
   typeof payments.$inferInsert,

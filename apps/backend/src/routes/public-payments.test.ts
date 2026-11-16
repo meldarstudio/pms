@@ -1,7 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
-import { getDb } from "../db";
 import worker, { app } from "../index";
-import { createQuote } from "../quotes";
 import { CULQI_TEST_KEY, fakeCulqi, type FakeCulqi } from "../test-support/culqi";
 import { WEBSITE_ORIGIN } from "../test-support/auth";
 import { createTestDb, seedRooms, seedRoomType, type TestDb } from "../test-support/d1";
@@ -473,27 +471,14 @@ describe("what a payment can charge", () => {
     },
   );
 
-  it("does not charge another checkout's quote or a quote outside any checkout", async () => {
+  it("does not charge another checkout's quote", async () => {
     const first = await acceptedCheckout();
     const second = await acceptedCheckout({ checkIn: "2026-10-24", checkOut: "2026-10-25" });
-    const legacy = await createQuote(
-      getDb(db.env.DB),
-      {
-        roomTypeId: "type-king",
-        checkIn: "2026-10-20",
-        checkOut: "2026-10-22",
-        adults: 2,
-        children: 0,
-        ratePlan: "flexible",
-      },
-      { today: "2026-10-10", now: new Date() },
-    );
 
-    for (const quoteId of [first.quoteId, legacy.id]) {
-      const response = await pay({ token: second.token, quoteId });
-      expect(response.status).toBe(404);
-      expect(await response.json()).toEqual({ error: "quote not found" });
-    }
+    const response = await pay({ token: second.token, quoteId: first.quoteId });
+
+    expect(response.status).toBe(404);
+    expect(await response.json()).toEqual({ error: "quote not found" });
     expect(charges()).toEqual([]);
   });
 
