@@ -263,6 +263,15 @@ _Avoid_: Current rate
 The amount billed from a reserved room's saved nightly prices.
 _Avoid_: Payment
 
+**Extra**:
+A described fixed amount on a reservation bill for something agreed beyond the room
+nights, such as a late checkout; it is not a nightly price.
+_Avoid_: Additional charge, negative discount, rate override, surcharge
+
+**Custom extra / Extra personalizado**:
+An extra whose description and amount staff write for one reservation.
+_Avoid_: Side deal, manual charge
+
 **Cancellation charge**:
 The policy amount owed on cancellation or no-show, before staff waivers.
 _Avoid_: Deposit received, refund
@@ -274,14 +283,14 @@ _Avoid_: Refund, reservation discount
 ### Reservation bill
 
 **Reservation bill**:
-Room charges, discount, received payments, refunds, coupon movements, and resulting
-balance. Cancellation replaces room charges and discount with the final cancellation
-charge.
+Room charges, extras, discount, received payments, refunds, coupon movements, and
+resulting balance. Cancellation replaces room charges, extras, and discount with the final
+cancellation charge.
 _Avoid_: Invoice, payment receipt
 
 **Subtotal / total**:
-Room charges before discount / after the capped discount, before payments or coupon
-settlement. A cancelled reservation's total is its cancellation charge after waivers.
+Room charges and extras before discount / after the capped discount, before payments
+or coupon settlement. A cancelled reservation's total is its cancellation charge after waivers.
 _Avoid_: Balance, amount paid
 
 **Discount**:
