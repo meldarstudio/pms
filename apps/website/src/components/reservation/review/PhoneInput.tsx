@@ -1,6 +1,11 @@
 import { useEffect, useLayoutEffect, useRef, useState, type ClipboardEvent } from "react";
-import { phoneInputText, type PhoneValue } from "@/lib/reservation/phone";
-import { editPhone, phoneClipboardText, type PhoneEdit } from "@/lib/reservation/phone-mask";
+import {
+  editPhone,
+  phoneClipboardText,
+  phoneInputText,
+  type PhoneDraft,
+  type PhoneEdit,
+} from "@pms/shared/phone";
 
 const deletions: Partial<Record<string, PhoneEdit["deletion"]>> = {
   deleteContentBackward: "backward",
@@ -14,8 +19,8 @@ export function PhoneInput({
   className,
   ...props
 }: Omit<React.ComponentProps<"input">, "value" | "onChange" | "type" | "ref"> & {
-  value: PhoneValue;
-  onChange: (value: PhoneValue) => void;
+  value: PhoneDraft;
+  onChange: (value: PhoneDraft) => void;
   inputRef: React.RefCallback<HTMLInputElement>;
 }) {
   const input = useRef<HTMLInputElement | null>(null);

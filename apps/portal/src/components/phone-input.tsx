@@ -8,7 +8,7 @@ import {
 } from "react";
 import { Input } from "@/components/ui/input";
 import { phoneInputText, type PhoneValue } from "@/lib/phone";
-import { editPhone, phoneClipboardText, type PhoneEdit } from "@/lib/phone-mask";
+import { editPhone, phoneClipboardText, type PhoneEdit } from "@pms/shared/phone";
 
 const deletions: Partial<Record<string, PhoneEdit["deletion"]>> = {
   deleteContentBackward: "backward",
@@ -47,7 +47,7 @@ export function PhoneInput({
   }, []);
 
   function edit(element: HTMLInputElement, change: PhoneEdit) {
-    const next = editPhone(value, change);
+    const next = editPhone(value, change, phoneInputText);
     selection.current = next.caret;
     onChange(next.value);
     element.value = next.text;

@@ -30,7 +30,8 @@ import { allowsNewPayment, type GuestPayment, type PaymentOutcome } from "./paym
 import type { AuthenticationParameters } from "./providers";
 import type { StaySearch } from "./search";
 import type { CheckoutAccess } from "./summary";
-import { emptyPhone, type PhoneValue } from "./phone";
+import type { PhoneDraft } from "@pms/shared/phone";
+import { emptyPhone } from "./phone";
 
 export type FocusTarget =
   | ReviewField
@@ -169,7 +170,7 @@ export type Event =
   | { type: "pageShown"; persisted: boolean; draft: Draft }
   | { type: "networkRestored" }
   | { type: "contactEdited"; field: "fullName" | "email" | "notes"; value: string }
-  | { type: "phoneEdited"; phone: PhoneValue }
+  | { type: "phoneEdited"; phone: PhoneDraft }
   | { type: "agreeToggled"; agreed: boolean }
   | { type: "payRequested" }
   | { type: "loadRequested" }

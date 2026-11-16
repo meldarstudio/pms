@@ -1,6 +1,6 @@
 import type { Lang } from "@/i18n/utils";
 import type { FreeCancellation } from "./offers";
-import type { PhoneValue } from "./phone";
+import type { PhoneDraft } from "@pms/shared/phone";
 import type { RatePlanCode } from "./search";
 
 export type CheckoutSelection = {
@@ -26,7 +26,7 @@ export type BookingContact = { fullName: string; email: string; phone: string };
 export type ContactDraft = {
   fullName: string;
   email: string;
-  phone: PhoneValue;
+  phone: PhoneDraft;
   notes: string;
 };
 

@@ -27,7 +27,8 @@ import {
   ComboboxList,
   ComboboxTrigger,
 } from "@/components/ui/combobox";
-import { choosePhoneCountry, phoneCountries, phoneCountry, type PhoneValue } from "@/lib/phone";
+import { choosePhoneCountry } from "@pms/shared/phone";
+import { phoneCountries, phoneCountry, type PhoneValue } from "@/lib/phone";
 import { flagUrl, nationalities, nationalityName, type Nationality } from "@/lib/countries";
 import { Textarea } from "@/components/ui/textarea";
 import {
