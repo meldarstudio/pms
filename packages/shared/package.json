@@ -4,6 +4,7 @@
   "type": "module",
   "exports": {
     ".": "./src/index.ts",
+    "./phone": "./src/phone.ts",
     "./complaint-book.json": "./src/complaint-book.json"
   },
   "scripts": {

@@ -1,49 +1,27 @@
 import {
-  AsYouType,
-  getCountries,
-  getCountryCallingCode,
-  parsePhoneNumberFromString,
-  validatePhoneNumberLength,
+  checkPhone,
+  draftPhone,
+  internationalPhone,
+  isPhoneSyntax,
+  phoneCharacters,
+  phoneCountries as localizedPhoneCountries,
+  phoneCountry as localizedPhoneCountry,
+  phoneInputText as draftInputText,
   type CountryCode,
-  type PhoneNumber,
-} from "libphonenumber-js/max";
+  type PhoneDraft,
+  type PhoneProblem,
+} from "@pms/shared/phone";
 
-export type { CountryCode };
+export type PhoneValue = PhoneDraft & { saved: string | null };
 
-export type PhoneValue = { country: CountryCode; text: string; saved: string | null };
-
-const regionNames = new Intl.DisplayNames(["es"], { type: "region" });
-const phoneSyntax = /^\+?[\d\s().-]+$/;
-
-export const phoneCountries = getCountries()
-  .map((code) => ({
-    code,
-    name: regionNames.of(code) ?? code,
-    callingCode: `+${getCountryCallingCode(code)}`,
-  }))
-  .sort((a, b) => a.name.localeCompare(b.name, "es"));
+export const phoneCountries = localizedPhoneCountries("es");
 
 export function phoneCountry(code: CountryCode) {
-  return phoneCountries.find((country) => country.code === code) ?? phoneCountries[0];
-}
-
-function parseInternational(phone: string) {
-  const text = phone.trim();
-  return text.startsWith("+") && phoneSyntax.test(text)
-    ? parsePhoneNumberFromString(text, { extract: false })
-    : undefined;
-}
-
-function international(phone: string) {
-  const parsed = parseInternational(phone);
-  return parsed?.isValid() && !parsed.ext ? parsed : undefined;
+  return localizedPhoneCountry("es", code);
 }
 
 export function phoneDraft(saved: string | null | undefined): PhoneValue {
-  const parsed = saved ? international(saved) : undefined;
-  return parsed?.country
-    ? { country: parsed.country, text: nationalCharacters(parsed), saved: saved ?? null }
-    : { country: "PE", text: saved ?? "", saved: saved ?? null };
+  return { ...draftPhone(saved ?? ""), saved: saved ?? null };
 }
 
 function unchanged(value: PhoneValue) {
@@ -55,60 +33,22 @@ function comparable(text: string) {
   return isPhoneSyntax(text) ? phoneCharacters(text) : text;
 }
 
-export function typePhone(value: PhoneValue, text: string): PhoneValue {
-  const country = text.trim().startsWith("+") ? parsePhoneNumberFromString(text)?.country : null;
-  const parsed = international(text);
-  return {
-    ...value,
-    text: parsed?.country
-      ? nationalCharacters(parsed)
-      : isPhoneSyntax(text)
-        ? phoneCharacters(text)
-        : text,
-    country: country ?? value.country,
-  };
-}
-
-export function isPhoneSyntax(text: string) {
-  return phoneSyntax.test(text.trim());
-}
-
-export function phoneCharacters(text: string) {
-  return text.replace(/[^\d+]/g, "");
-}
-
-function nationalCharacters(phone: PhoneNumber) {
-  return phoneCharacters(phone.formatNational());
-}
-
 export function phoneInputText(value: PhoneValue): string {
-  if (value.saved && unchanged(value) && !international(value.saved)?.country) return value.saved;
-  if (!isPhoneSyntax(value.text)) return value.text;
-  return new AsYouType(value.country)
-    .input(value.text)
-    .replace(/[^\d+]+/g, " ")
-    .trim();
+  if (value.saved && unchanged(value) && !internationalPhone(value.saved)?.country)
+    return value.saved;
+  return draftInputText(value);
 }
 
-export function choosePhoneCountry(value: PhoneValue, country: CountryCode): PhoneValue {
-  const parsed = parseInternational(value.text);
-  return { ...value, country, text: parsed?.nationalNumber ?? value.text };
-}
+const problemMessages: Record<PhoneProblem, string> = {
+  extension: "No se admiten extensiones telefónicas.",
+  invalid: "Ingresa un teléfono válido para el país seleccionado.",
+  tooShort: "El número está incompleto. Si es un teléfono fijo, incluye el código de área.",
+  tooLong: "El número tiene demasiados dígitos para el país seleccionado.",
+};
 
 function normalize(value: PhoneValue): { phone: string } | { error: string } {
-  const parsed = parsePhoneNumberFromString(value.text, value.country);
-  if (parsed?.ext) return { error: "No se admiten extensiones telefónicas." };
-  const invalid = { error: "Ingresa un teléfono válido para el país seleccionado." };
-  if (!isPhoneSyntax(value.text)) return invalid;
-  if (parsed?.isValid()) return { phone: parsed.number };
-  const length = validatePhoneNumberLength(value.text, value.country);
-  if (length === "TOO_SHORT")
-    return {
-      error: "El número está incompleto. Si es un teléfono fijo, incluye el código de área.",
-    };
-  if (length === "TOO_LONG")
-    return { error: "El número tiene demasiados dígitos para el país seleccionado." };
-  return invalid;
+  const result = checkPhone(value.text, value.country);
+  return "phone" in result ? result : { error: problemMessages[result.problem] };
 }
 
 export function phoneError(value: PhoneValue): string | undefined {
@@ -126,7 +66,7 @@ export function phonePayload(value: PhoneValue): string | null {
 }
 
 export function phoneDisplay(phone: string) {
-  const parsed = international(phone);
+  const parsed = internationalPhone(phone);
   return parsed
     ? { text: parsed.formatInternational(), href: `tel:${parsed.number}` }
     : { text: phone, href: `tel:${phone}` };

@@ -265,9 +265,6 @@ importers:
       date-fns:
         specifier: ^4.4.0
         version: 4.4.0
-      libphonenumber-js:
-        specifier: ^1.13.15
-        version: 1.13.15
       lucide-react:
         specifier: ^1.52.0
         version: 1.52.0(@types/react@19.3.0)(react@19.3.0)
@@ -368,9 +365,6 @@ importers:
       embla-carousel-react:
         specifier: ^8.6.0
         version: 8.6.0(react@19.3.1)
-      libphonenumber-js:
-        specifier: ^1.13.15
-        version: 1.13.15
       react:
         specifier: ^19.3.1
         version: 19.3.1

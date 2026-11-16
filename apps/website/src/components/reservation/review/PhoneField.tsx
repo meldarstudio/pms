@@ -14,8 +14,8 @@ import {
   phoneCountries,
   phoneCountry,
   type PhoneCountry,
-  type PhoneValue,
-} from "@/lib/reservation/phone";
+  type PhoneDraft,
+} from "@pms/shared/phone";
 import type { FocusRegistry } from "./focus";
 import { useReview } from "./context";
 import { PhoneInput } from "./PhoneInput";
@@ -41,10 +41,10 @@ export function PhoneField({
   focus,
   onEdit,
 }: {
-  value: PhoneValue;
+  value: PhoneDraft;
   message: string | null;
   focus: FocusRegistry;
-  onEdit: (value: PhoneValue) => void;
+  onEdit: (value: PhoneDraft) => void;
 }) {
   const { say, lang } = useReview();
   const countries = useMemo(() => phoneCountries(lang), [lang]);

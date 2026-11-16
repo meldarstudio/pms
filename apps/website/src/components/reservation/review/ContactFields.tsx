@@ -7,7 +7,7 @@ import {
 } from "@/components/ui/accordion";
 import type { ContactDraft } from "@/lib/reservation/checkout";
 import type { FieldErrors } from "@/lib/reservation/checkout-form";
-import type { PhoneValue } from "@/lib/reservation/phone";
+import type { PhoneDraft } from "@pms/shared/phone";
 import type { FocusRegistry } from "./focus";
 import { useReview } from "./context";
 import { PhoneField } from "./PhoneField";
@@ -33,7 +33,7 @@ export function ContactFields({
   errors: FieldErrors;
   focus: FocusRegistry;
   onEdit: (field: "fullName" | "email" | "notes", value: string) => void;
-  onEditPhone: (phone: PhoneValue) => void;
+  onEditPhone: (phone: PhoneDraft) => void;
 }) {
   const { say, privacyHref } = useReview();
   const [leadBefore, leadAfter] = say("reservation.review.contactLead").split("{privacy}");

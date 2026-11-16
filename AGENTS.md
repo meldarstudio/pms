@@ -29,7 +29,7 @@ Sign in to the local portal as owner `kevin` with password `owner horse battery 
 - **Backend/API:** [apps/backend/AGENTS.md](apps/backend/AGENTS.md).
 - **Public website:** [apps/website/AGENTS.md](apps/website/AGENTS.md).
 - **Portal/UI:** [apps/portal/AGENTS.md](apps/portal/AGENTS.md).
-- **Shared schemas:** `packages/shared` (`@pms/shared`) supplies backend request schemas and `z.input` request body types. The portal imports those types but no runtime code from it, and maintains its own form schemas and response types; check both sides when changing a contract.
+- **Shared schemas:** `packages/shared` (`@pms/shared`) supplies backend request schemas and `z.input` request body types. `packages/shared/src/phone.ts` is the only phone parser, validator, and as-you-type mask: the backend validates through `normalizePhone` from `@pms/shared`, and the portal and website import the `@pms/shared/phone` subpath, adding only their country-name language, messages, and saved or stored drafts. Neither app depends on `libphonenumber-js` directly. Otherwise the portal imports only types from `@pms/shared`, and maintains its own form schemas and response types; check both sides when changing a contract.
 - **Domain/architecture:** [docs/agents/domain.md](docs/agents/domain.md); terms live in [GLOSSARY.md](GLOSSARY.md).
 - **Issues/specs:** [docs/agents/issue-tracker.md](docs/agents/issue-tracker.md). Use GitHub Issues in `meldarstudio/pms`.
 - **Triage:** [docs/agents/triage-labels.md](docs/agents/triage-labels.md).
