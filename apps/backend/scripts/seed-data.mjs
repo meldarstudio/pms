@@ -836,6 +836,7 @@ export function buildResetSql(value) {
           created_at: created,
           notes: payment.culqi ? "Pago en línea con Culqi." : "Pago de prueba.",
           culqi_charge_id: payment.culqi ?? null,
+          recorded_account_id: payment.culqi ? null : seedStaff,
         }),
       );
     }
@@ -852,6 +853,7 @@ export function buildResetSql(value) {
             payment_date: date(Math.min(0, example.arrival)),
             created_at: created,
             notes: `Pago ${part + 1} de 3.`,
+            recorded_account_id: seedStaff,
           }),
         );
       }
@@ -875,6 +877,7 @@ export function buildResetSql(value) {
             example.payment === "credit"
               ? "Pago con saldo a favor por salida anticipada."
               : "Pago de prueba.",
+          recorded_account_id: seedStaff,
         }),
       );
     }

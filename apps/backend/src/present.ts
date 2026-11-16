@@ -23,7 +23,16 @@ export const presentNight = (night: { date: string; priceCents: number }) => ({
 });
 
 export const presentPayment = ({ void: voided, ...payment }: Payment) => ({
-  ...payment,
+  id: payment.id,
+  reservationId: payment.reservationId,
+  amountCents: payment.amountCents,
+  method: payment.method,
+  reference: payment.reference,
+  paymentDate: payment.paymentDate,
+  createdAt: payment.createdAt,
+  notes: payment.notes,
+  culqiChargeId: payment.culqiChargeId,
+  recordedBy: payment.recordedBy,
   voidedAt: voided?.voidedAt ?? null,
   voidedBy: voided?.voidedBy ?? null,
   voidReason: voided?.reason ?? null,

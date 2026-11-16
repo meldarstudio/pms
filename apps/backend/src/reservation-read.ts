@@ -31,7 +31,10 @@ type Night = Pick<
 >;
 export type Stay = typeof reservationRooms.$inferSelect & { nights: Night[] };
 export type PaymentVoid = typeof paymentVoids.$inferSelect & { voidedBy: string | null };
-export type Payment = typeof payments.$inferSelect & { void: PaymentVoid | null };
+export type Payment = typeof payments.$inferSelect & {
+  recordedBy: string | null;
+  void: PaymentVoid | null;
+};
 export type State = {
   reservation: typeof reservations.$inferSelect;
   contact: typeof guests.$inferSelect;
@@ -124,10 +127,12 @@ async function loadBatch(db: Db, ids: string[]): Promise<State[]> {
     db
       .select({
         payment: payments,
+        recordedBy: sql<string | null>`${recorder.username}`.as("payment_recorded_by"),
         void: paymentVoids,
         voidedBy: sql<string | null>`${voider.username}`.as("payment_voided_by"),
       })
       .from(payments)
+      .leftJoin(recorder, eq(recorder.id, payments.recordedAccountId))
       .leftJoin(paymentVoids, eq(paymentVoids.paymentId, payments.id))
       .leftJoin(voider, eq(voider.id, paymentVoids.accountId))
       .where(inArray(payments.reservationId, ids)),
@@ -191,8 +196,9 @@ async function loadBatch(db: Db, ids: string[]): Promise<State[]> {
           discountCents,
         })),
       })),
-      payments: paymentsOf(id).map(({ payment, void: voided, voidedBy }) => ({
+      payments: paymentsOf(id).map(({ payment, recordedBy, void: voided, voidedBy }) => ({
         ...payment,
+        recordedBy,
         void: voided && { ...voided, voidedBy },
       })),
       cancellations: cancellationsOf(id).map(({ cancellation, recordedBy }) => ({
@@ -218,6 +224,7 @@ async function loadBatch(db: Db, ids: string[]): Promise<State[]> {
 
 const requester = alias(user, "refund_requester");
 const resolver = alias(user, "refund_resolver");
+const recorder = alias(user, "payment_recorder");
 const voider = alias(user, "payment_voider");
 
 function couponsUsedBy(db: Db, ids: string[]) {

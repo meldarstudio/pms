@@ -9,6 +9,7 @@ const tables = [
   "coupons",
   "refunds",
   "payment_attempts",
+  "payment_voids",
   "payments",
   "cancellation_waivers",
   "reservation_cancellations",

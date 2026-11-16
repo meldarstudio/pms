@@ -1065,11 +1065,18 @@ describe("voided payments", () => {
       expect.objectContaining({
         id: duplicate.id,
         amountCents: 30000,
+        recordedBy: "hotelmanantial",
         voidedAt: "2026-10-10T15:00:00.000Z",
         voidedBy: "hotelmanantial",
         voidReason: "Recorded twice",
       }),
-      expect.objectContaining({ id: kept.id, voidedAt: null, voidedBy: null, voidReason: null }),
+      expect.objectContaining({
+        id: kept.id,
+        recordedBy: "hotelmanantial",
+        voidedAt: null,
+        voidedBy: null,
+        voidReason: null,
+      }),
     ]);
     expect(await paged("balance=settled")).toMatchObject({ rows: [{ id: d.id }] });
     expect(await paged("balance=credit")).toMatchObject({ rows: [] });

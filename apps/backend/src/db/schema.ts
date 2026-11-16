@@ -266,6 +266,7 @@ export const payments = sqliteTable(
     createdAt: text("created_at").notNull(),
     notes: text("notes"),
     culqiChargeId: text("culqi_charge_id"),
+    recordedAccountId: text("recorded_account_id").references(() => user.id),
   },
   (table) => [
     index("payments_reservation").on(table.reservationId),

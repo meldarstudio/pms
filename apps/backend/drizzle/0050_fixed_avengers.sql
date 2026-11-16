@@ -1,0 +1,1 @@
+ALTER TABLE `payments` ADD `recorded_account_id` text REFERENCES user(id);

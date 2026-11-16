@@ -114,7 +114,7 @@ export function stayLine(
 const lineFor = ({ state }: PlanContext, id: string) =>
   state.lines.find((l) => l.id === id) ?? fail("room line not found");
 const newPayment = (
-  { state, today, now }: PlanContext,
+  { state, account, today, now }: PlanContext,
   input: Action<"add-payment">["payment"],
 ) => {
   if (input.paymentDate > today) fail("payment date cannot be in the future");
@@ -128,6 +128,8 @@ const newPayment = (
     notes: input.notes ?? null,
     createdAt: now,
     culqiChargeId: null,
+    recordedAccountId: account.id,
+    recordedBy: account.username,
     void: null,
   };
 };
