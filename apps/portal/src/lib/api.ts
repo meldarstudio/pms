@@ -220,7 +220,11 @@ export type ReservationPayment = {
   reference: string | null;
   notes: string | null;
   createdAt: string;
+  recordedBy: string | null;
   culqiChargeId: string | null;
+  voidedAt: string | null;
+  voidedBy: string | null;
+  voidReason: string | null;
 };
 
 export type RatePlanCode = "flexible" | "non_refundable";

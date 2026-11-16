@@ -276,6 +276,13 @@ export const paymentSchema = z.object({
   reason: optionalText(2000),
 });
 export type PaymentValues = z.input<typeof paymentSchema>;
+export const paymentVoidSchema = z.object({
+  voidReason: z
+    .string()
+    .trim()
+    .min(1, "Indica por qué el pago se registró por error.")
+    .max(2000, "Máximo 2000 caracteres."),
+});
 export const couponRedemptionSchema = z.object({
   amount: money(true),
   code: z.string().trim().min(1, "Introduce el código del cupón."),

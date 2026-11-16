@@ -4,7 +4,7 @@ import { XIcon } from "lucide-react";
 import { cn } from "cn";
 import { DiscardChanges } from "@/components/discard-changes";
 import { StayEditor } from "@/components/stay-editor";
-import { GuestEntryForm, PaymentForm, paymentMethods } from "@/components/reservation-entry-forms";
+import { GuestEntryForm, PaymentForm } from "@/components/reservation-entry-forms";
 import { CouponIssued, RefundForm, ResolveRefundForm } from "@/components/refund-forms";
 import { CancellationForm } from "@/components/cancellation-form";
 import { WaiverForm } from "@/components/waiver-form";
@@ -45,15 +45,11 @@ import {
   contactDefaults,
   contactPayload,
   notesSchema,
-  paymentSchema,
+  paymentVoidSchema,
   cancellationSchema,
-  paymentDefaults,
-  paymentPayload,
 } from "@/lib/reservation-form-schemas";
 import { setServerErrors } from "@/lib/form-errors";
-import { formatMajor, formatMoney } from "@/lib/money";
 import { reservationStatusLabel } from "@/lib/reservation-list";
-import { usePropertyCalendar } from "@/lib/use-property-calendar";
 import { translateError } from "@/lib/errors";
 import { toast } from "sonner";
 import { toastError } from "@/lib/toast";
@@ -62,11 +58,11 @@ export type ReservationEditorTarget =
   | { kind: "stay" }
   | { kind: "contact" | "notes" }
   | { kind: "guest"; id?: string }
-  | { kind: "payment"; id?: string }
+  | { kind: "payment" }
   | { kind: "refund" }
   | { kind: "waiver" }
   | { kind: "resolve-refund"; id: string; failing: boolean }
-  | { kind: "delete-payment" | "delete-guest"; id: string }
+  | { kind: "void-payment" | "delete-guest"; id: string }
   | { kind: "correct-status" }
   | { kind: "status"; status: Extract<WorkflowAction, { type: "set-status" }>["status"] };
 
@@ -83,13 +79,13 @@ function editorTitle(target: ReservationEditorTarget, detail: ReservationDetail)
     case "guest":
       return target.id ? "Editar huésped" : "Agregar huésped";
     case "payment":
-      return target.id ? "Editar pago" : "Registrar pago";
+      return "Registrar pago";
     case "refund":
       return "Devolver";
     case "resolve-refund":
       return target.failing ? "Marcar como fallido" : "Confirmar reembolso";
-    case "delete-payment":
-      return "Eliminar registro de pago";
+    case "void-payment":
+      return "Anular pago";
     case "delete-guest":
       return "Eliminar huésped";
     case "status":
@@ -202,7 +198,7 @@ export function ReservationPageEditor({
         onDone={finish}
         onCancel={close}
       />
-    ) : target.kind === "payment" && !target.id ? (
+    ) : target.kind === "payment" ? (
       <PaymentForm
         scrollable
         detail={detail}
@@ -389,7 +385,7 @@ function ReservationActionForm({
 }: {
   target: Exclude<
     ReservationEditorTarget,
-    { kind: "guest" | "stay" | "refund" | "resolve-refund" | "waiver" }
+    { kind: "guest" | "stay" | "payment" | "refund" | "resolve-refund" | "waiver" }
   >;
   detail: ReservationDetail;
   disabled: boolean;
@@ -398,34 +394,23 @@ function ReservationActionForm({
   onCancel: () => void;
   onDirtyChange: (dirty: boolean) => void;
 }) {
-  const { today } = usePropertyCalendar();
   const [selectedStatus, setSelectedStatus] = useState<
     Extract<WorkflowAction, { type: "set-status" }>["status"] | ""
   >(target.kind === "status" ? target.status : "");
   const [confirmCheckIn, checkInDialog] = useDirtyRoomCheckIn();
-  const payment =
-    "id" in target ? detail.payments.find((payment) => payment.id === target.id) : undefined;
   const [defaults] = useState(() => ({
     ...contactDefaults(detail),
     notes: detail.notes ?? "",
-    ...paymentDefaults(detail.balanceCents),
-    ...(payment
-      ? {
-          amount: formatMajor(payment.amountCents),
-          method: payment.method,
-          date: payment.paymentDate,
-          reference: payment.reference ?? "",
-          reason: payment.notes ?? "",
-        }
-      : {}),
+    reason: "",
+    voidReason: "",
   }));
   const schema =
     target.kind === "contact"
       ? contactSchema
       : target.kind === "notes"
         ? notesSchema
-        : target.kind === "payment"
-          ? paymentSchema
+        : target.kind === "void-payment"
+          ? paymentVoidSchema
           : cancellationSchema;
   const rejectedContact = useRef<{ key: string; fields: Record<string, string> } | null>(null);
   const form = useReservationForm({
@@ -460,15 +445,10 @@ function ReservationActionForm({
         case "notes":
           actions = [{ type: "notes", notes: value.notes }];
           break;
-        case "payment":
+        case "void-payment":
           actions = [
-            target.id
-              ? { type: "edit-payment", paymentId: target.id, payment: paymentPayload(value) }
-              : { type: "add-payment", payment: paymentPayload(value) },
+            { type: "void-payment", paymentId: target.id, reason: value.voidReason.trim() },
           ];
-          break;
-        case "delete-payment":
-          actions = [{ type: "delete-payment", paymentId: target.id }];
           break;
         case "delete-guest":
           actions = [
@@ -510,10 +490,6 @@ function ReservationActionForm({
   const statusEditor = target.kind === "status" || target.kind === "correct-status";
   const statusChanged = selectedStatus !== (target.kind === "status" ? target.status : "");
   useEffect(() => onDirtyChange(changed || statusChanged), [changed, statusChanged, onDirtyChange]);
-  useEffect(() => {
-    if (target.kind === "payment" && form.state.fieldMeta.date?.errors.length)
-      void form.validate("submit");
-  }, [today, form, target.kind]);
   const needsPreview = target.kind === "status";
   const status = target.kind === "status" ? selectedStatus : null;
   const previewActions = useMemo<WorkflowAction[]>(
@@ -527,7 +503,7 @@ function ReservationActionForm({
     preview.isSuccess &&
     !preview.isFetching &&
     preview.data.validation.issues.length === 0;
-  const destructive = target.kind === "delete-payment" || target.kind === "delete-guest";
+  const destructive = target.kind === "void-payment" || target.kind === "delete-guest";
   return (
     <form
       noValidate
@@ -560,35 +536,10 @@ function ReservationActionForm({
                 )}
               </form.AppField>
             )}
-            {target.kind === "payment" && (
-              <>
-                <form.AppField name="amount">
-                  {(field) => (
-                    <field.Text label={`Importe (${detail.currency})`} placeholder="0.00" />
-                  )}
-                </form.AppField>
-                <form.AppField name="method">
-                  {(field) => <field.Choice label="Método de pago" options={paymentMethods} />}
-                </form.AppField>
-                <form.AppField name="date">
-                  {(field) => (
-                    <field.Text label="Fecha del pago" type="date" max={today} required />
-                  )}
-                </form.AppField>
-                <form.AppField name="reference">
-                  {(field) => <field.Text label="Referencia · Opcional" />}
-                </form.AppField>
-                <form.AppField name="reason">
-                  {(field) => <field.Text label="Nota del pago" type="textarea" max={2000} />}
-                </form.AppField>
-              </>
-            )}
-            {target.kind === "delete-payment" && (
-              <FieldDescription>
-                Se eliminará el registro de{" "}
-                {formatMoney(payment?.amountCents ?? 0, detail.currency)}. Eliminar un registro no
-                representa un reembolso.
-              </FieldDescription>
+            {target.kind === "void-payment" && (
+              <form.AppField name="voidReason">
+                {(field) => <field.Text label="Motivo" type="textarea" required max={2000} />}
+              </form.AppField>
             )}
             {target.kind === "delete-guest" && (
               <FieldDescription>
@@ -675,7 +626,13 @@ function ReservationActionForm({
           variant={destructive ? "destructive" : "default"}
           disabled={saving || (statusEditor && !selectedStatus) || (needsPreview && !previewReady)}
         >
-          {saving ? "Guardando…" : destructive ? "Confirmar" : "Guardar cambios"}
+          {saving
+            ? "Guardando…"
+            : target.kind === "void-payment"
+              ? "Anular pago"
+              : destructive
+                ? "Confirmar"
+                : "Guardar cambios"}
         </Button>
       </DialogFooter>
     </form>

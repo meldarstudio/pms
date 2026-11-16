@@ -895,17 +895,13 @@ describe("refunds", () => {
     const requested = await command(cancelled, [requestRefund(cancelled, 5000)]);
     const [refund] = requested.refunds;
     const failed = await command(requested, [fail(refund.id)]);
-    for (const action of [
-      { type: "delete-payment", paymentId: payment.id },
-      {
-        type: "edit-payment",
-        paymentId: payment.id,
-        payment: { amountCents: 40000, method: "cash", paymentDate: "2026-10-10" },
-      },
-    ] as WorkflowAction[])
-      expect(await command(failed, [action], 400)).toEqual({
-        error: "payment with refunds cannot be changed",
-      });
+    expect(
+      await command(
+        failed,
+        [{ type: "void-payment", paymentId: payment.id, reason: "Wrong amount" }],
+        400,
+      ),
+    ).toEqual({ error: "payment with refunds cannot be changed" });
     for (const action of [fail(refund.id), complete(refund.id)])
       expect(await command(failed, [action], 400)).toEqual({
         error: "refund is already resolved",
@@ -1045,6 +1041,144 @@ describe("refunds", () => {
         },
       ]);
       expect(await (await request(`/reservations/${cancelled.id}`)).json()).toEqual(returned);
+    });
+  });
+});
+
+describe("voided payments", () => {
+  const voidPayment = (paymentId: string, reason = "Recorded twice"): WorkflowAction => ({
+    type: "void-payment",
+    paymentId,
+    reason,
+  });
+
+  it("drops a S/300 payment voided as a duplicate out of the bill, list balance, and payment report", async () => {
+    let d = await command(await create(), [pay(30000), pay(30000)]);
+    expect(d.balanceCents).toBe(-30000);
+    const [duplicate, kept] = d.payments;
+    d = await command(d, [voidPayment(duplicate.id)]);
+
+    expect(d).toMatchObject({ paidCents: 30000, balanceCents: 0 });
+    const fresh = (await (await request(`/reservations/${d.id}`)).json()) as Detail;
+    expect(fresh).toEqual(d);
+    expect(fresh.payments).toEqual([
+      expect.objectContaining({
+        id: duplicate.id,
+        amountCents: 30000,
+        recordedBy: "hotelmanantial",
+        voidedAt: "2026-10-10T15:00:00.000Z",
+        voidedBy: "hotelmanantial",
+        voidReason: "Recorded twice",
+      }),
+      expect.objectContaining({
+        id: kept.id,
+        recordedBy: "hotelmanantial",
+        voidedAt: null,
+        voidedBy: null,
+        voidReason: null,
+      }),
+    ]);
+    expect(await paged("balance=settled")).toMatchObject({ rows: [{ id: d.id }] });
+    expect(await paged("balance=credit")).toMatchObject({ rows: [] });
+    expect(await (await request("/payments?from=2026-10-10&to=2026-10-10")).json()).toMatchObject({
+      totalCents: 30000,
+      payments: [
+        { id: duplicate.id, voidedBy: "hotelmanantial", voidReason: "Recorded twice" },
+        { id: kept.id, voidedAt: null },
+      ],
+    });
+  });
+
+  it("corrects S/300 cash to S/200 card in one command that a replay or a failure never half-saves", async () => {
+    const d = await command(await create(), [pay(30000)]);
+    const [mistake] = d.payments;
+    const correction = (paymentDate: string): WorkflowAction[] => [
+      voidPayment(mistake.id, "Paid by card, not cash"),
+      { type: "add-payment", payment: { amountCents: 20000, method: "card", paymentDate } },
+    ];
+
+    expect(await command(d, correction("2026-10-11"), 400)).toEqual({
+      error: "payment date cannot be in the future",
+    });
+    expect(await (await request(`/reservations/${d.id}`)).json()).toEqual(d);
+
+    const body = { requestId: crypto.randomUUID(), actions: correction("2026-10-10") };
+    const first = await request(`/reservations/${d.id}/commands`, "POST", body);
+    const replay = await request(`/reservations/${d.id}/commands`, "POST", body);
+    expect([first.status, replay.status]).toEqual([200, 200]);
+    const saved = (await first.json()) as Detail;
+    expect(await replay.json()).toEqual(saved);
+    expect(saved).toMatchObject({ paidCents: 20000, balanceCents: 10000 });
+    expect(saved.payments).toMatchObject([
+      { id: mistake.id, amountCents: 30000, method: "cash", voidReason: "Paid by card, not cash" },
+      { amountCents: 20000, method: "card", voidedAt: null },
+    ]);
+  });
+
+  const refund = (paymentId: string): WorkflowAction => ({
+    type: "request-refund",
+    paymentId,
+    amountCents: 20000,
+    method: "transfer",
+    reason: "Cancelled stay",
+  });
+  const issueCoupon: WorkflowAction = {
+    type: "issue-coupon",
+    amountCents: 5000,
+    guestAccepted: true,
+  };
+  it.each([
+    {
+      name: "a refund requested after the void",
+      earlier: [],
+      actions: (id: string) => [voidPayment(id), refund(id)],
+      error: "voided payment cannot be refunded",
+    },
+    {
+      name: "a void after the refund request",
+      earlier: [],
+      actions: (id: string) => [refund(id), voidPayment(id)],
+      error: "payment with refunds cannot be changed",
+    },
+    {
+      name: "a void after issuing a coupon",
+      earlier: [issueCoupon],
+      actions: (id: string) => [voidPayment(id)],
+      error: "payment cannot be changed after issuing a coupon",
+    },
+  ])(
+    "rejects $name, keeping the S/200 owed back unchanged",
+    async ({ earlier, actions, error }) => {
+      let d = await stay("2026-10-20", "2026-10-22", 10000);
+      d = await command(d, [pay(20000), { type: "set-status", status: "cancelled" }, ...earlier]);
+      const [payment] = d.payments;
+
+      expect(await command(d, actions(payment.id), 400)).toEqual({ error });
+      const saved = (await (await request(`/reservations/${d.id}`)).json()) as Detail;
+      expect(saved).toEqual(d);
+      expect(saved).toMatchObject({ paidCents: 20000, refunds: [] });
+    },
+  );
+
+  it("re-plans a refund request that waited while the same payment was voided, and refuses it", async () => {
+    let d = await stay("2026-10-20", "2026-10-22", 10000);
+    d = await command(d, [pay(20000), { type: "set-status", status: "cancelled" }]);
+    const [payment] = d.payments;
+    const paused = pauseNextCommit();
+    const pending = request(`/reservations/${d.id}/commands`, "POST", {
+      requestId: crypto.randomUUID(),
+      actions: [refund(payment.id)],
+    });
+    await paused.ready;
+    await command(d, [voidPayment(payment.id)]);
+    paused.resume();
+
+    const refused = await pending;
+    expect(refused.status).toBe(400);
+    expect(await refused.json()).toEqual({ error: "voided payment cannot be refunded" });
+    expect(await (await request(`/reservations/${d.id}`)).json()).toMatchObject({
+      paidCents: 0,
+      refunds: [],
     });
   });
 });
@@ -1237,21 +1371,6 @@ describe("reservation workflow", () => {
       status: "checked_in",
       rooms: [{ roomId: "room-103" }],
     });
-  });
-  it("keeps payment and stay edits atomic when a later action fails", async () => {
-    let d = await command(await create(), [pay(11000)]);
-    const id = d.payments[0].id;
-    await command(
-      d,
-      [
-        { type: "delete-payment", paymentId: id },
-        { type: "dates", checkIn: d.checkIn, checkOut: "2026-10-09" },
-      ],
-      400,
-    );
-    d = (await (await request(`/reservations/${d.id}`)).json()) as Detail;
-    expect(d.paidCents).toBe(11000);
-    expect(d.payments[0].id).toBe(id);
   });
   it("deduplicates concurrent creation and rejects payload changes", async () => {
     const input = {

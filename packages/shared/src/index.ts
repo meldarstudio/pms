@@ -283,13 +283,8 @@ export const workflowActionSchema = z.discriminatedUnion("type", [
     })
     .strict(),
   z
-    .object({
-      type: z.literal("edit-payment"),
-      paymentId: z.string().min(1),
-      payment: paymentInputSchema,
-    })
+    .object({ type: z.literal("void-payment"), paymentId: z.string().min(1), reason: text(2000) })
     .strict(),
-  z.object({ type: z.literal("delete-payment"), paymentId: z.string().min(1) }).strict(),
   z
     .object({
       type: z.literal("waive-cancellation-charge"),

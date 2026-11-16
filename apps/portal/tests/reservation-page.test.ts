@@ -171,25 +171,30 @@ function mockApi(options: ApiOptions = {}) {
           paidCents: 10000,
           balanceCents: 20000,
           payments: [
-            {
+            ...saved.payments,
+            payment({
               ...action.payment,
               reference: action.payment.reference ?? null,
               notes: action.payment.notes ?? null,
-              id: "payment-1",
+              id: `payment-${saved.payments.length + 1}`,
               reservationId: saved.id,
-              createdAt: "2026-10-19T15:00:00Z",
-              culqiChargeId: null,
-            },
+            }),
           ],
         };
-      if (action.type === "edit-payment")
+      if (action.type === "void-payment")
         saved = {
           ...saved,
           payments: saved.payments.map((payment) =>
-            payment.id === action.paymentId ? { ...payment, ...action.payment } : payment,
+            payment.id === action.paymentId
+              ? {
+                  ...payment,
+                  voidedAt: "2026-10-19T16:00:00Z",
+                  voidedBy: "kevin",
+                  voidReason: action.reason,
+                }
+              : payment,
           ),
         };
-      if (action.type === "delete-payment") saved = { ...saved, payments: [] };
       if (action.type === "set-discount")
         saved = {
           ...saved,
@@ -484,6 +489,71 @@ it("records payments after a failed save and prevents dismissal or navigation du
   assert.match(page.container.textContent, /PagadoS\/\s*100/);
   assert.equal(await unloadPrevented(), false);
 });
+
+it("voids S/ 100 from its movement panel after a failed save, keeping why and who off the table", async () => {
+  saved = {
+    ...saved,
+    paidCents: 10000,
+    balanceCents: 20000,
+    payments: [payment({ notes: "Adelanto en recepción", recordedBy: "recepcion" })],
+  };
+  mockApi({
+    write: () =>
+      writes.length === 1
+        ? Response.json({ error: "response unavailable" }, { status: 503 })
+        : undefined,
+  });
+  await render();
+  assert.equal(
+    movementsCard().querySelectorAll("tbody button").length,
+    1,
+    "Actions live in the movement panel, not the row",
+  );
+  await openMovement("Ver pago");
+  assert.match(
+    text(movementPanel()!),
+    /Nota del pago Adelanto en recepción Registrado 19 oct 2026 Registrado por recepcion Anular pago$/,
+  );
+  await React.act(async () => panelButton("Anular pago")!.click());
+  await page.until(() => Boolean(window.document.querySelector('[role="dialog"] form')));
+  await fill("voidReason", "Pagó con tarjeta");
+  await submit();
+  await page.until(() => !button("Anular pago").disabled);
+  assert.equal(field("voidReason").value, "Pagó con tarjeta");
+  await submit();
+  await page.until(() => !window.document.querySelector('[role="dialog"] form'));
+  const voiding = [{ type: "void-payment", paymentId: "payment-1", reason: "Pagó con tarjeta" }];
+  assert.deepEqual(
+    writes.map((write) => write.actions),
+    [voiding, voiding],
+  );
+  const row = movementsCard().querySelector('table[aria-label="Movimientos"] tbody tr')!;
+  assert.match(text(row), /Pago anulado Efectivo — S\/ 100$/);
+  await openMovement("Ver pago");
+  assert.match(
+    text(movementPanel()!),
+    /Motivo de la anulación Pagó con tarjeta Anulado 19 oct 2026 Anulado por kevin Fecha/,
+  );
+});
+
+const movementPanel = () =>
+  window.document.querySelector('[data-slot="sheet-content"]:not([data-closed])');
+const panelButton = (label: string) =>
+  Array.from(movementPanel()?.querySelectorAll<HTMLElement>("button") ?? []).find(
+    (element) => element.textContent.trim() === label,
+  );
+async function openMovement(label: string) {
+  const row = movementsCard().querySelector<HTMLElement>(`button[aria-label^="${label}"]`);
+  assert.ok(row, `Missing movement ${label}`);
+  await React.act(async () => row.click());
+  await page.until(() => Boolean(movementPanel()));
+}
+async function chooseMovementAction(movement: string, label: string) {
+  await openMovement(movement);
+  const action = panelButton(label);
+  assert.ok(action, `Missing panel action ${label}`);
+  await React.act(async () => action.click());
+}
 
 async function back() {
   const link = window.document.querySelector<HTMLElement>('nav[aria-label="breadcrumb"] a');
@@ -1084,7 +1154,11 @@ function payment(fields: Partial<ReservationPayment> = {}): ReservationPayment {
     reference: null,
     notes: null,
     createdAt: "2026-10-19T15:00:00Z",
+    recordedBy: null,
     culqiChargeId: null,
+    voidedAt: null,
+    voidedBy: null,
+    voidReason: null,
     ...fields,
   };
 }
@@ -1452,7 +1526,7 @@ it("confirms a requested refund with its date and optional reference", async () 
   mockApi();
   await render();
   assert.equal(text(accountStatusLine()), "Reembolso solicitado S/ 100");
-  await chooseRowAction('[aria-label^="Acciones del reembolso"]', "Confirmar reembolso");
+  await chooseMovementAction("Ver reembolso solicitado de", "Confirmar reembolso");
   assert.match(text(popup()!), /S\/ 100 · Transferencia · Sobrepago/);
   assert.equal(popup()!.querySelector('[name="reason"]'), null, "Confirming asks no Motivo");
   await React.act(async () => dateTrigger("Fecha").click());
@@ -1471,7 +1545,7 @@ it("marks a requested refund failed with a reason, leaving the money owed back",
   requestedRefund();
   mockApi();
   await render();
-  await chooseRowAction('[aria-label^="Acciones del reembolso"]', "Marcar como fallido");
+  await chooseMovementAction("Ver reembolso solicitado de", "Marcar como fallido");
   assert.equal(text(popup()!.querySelector("h2")!), "Marcar como fallido");
   assert.match(text(popup()!), /el dinero sigue por devolver/);
   assert.equal(popup()!.querySelector('[name="reference"]'), null, "Failing asks no Referencia");
@@ -1485,7 +1559,7 @@ it("marks a requested refund failed with a reason, leaving the money owed back",
   ]);
   await page.until(() => text(accountStatusLine()) === "Por devolver S/ 100 Devolver…");
   const row = movementsCard().querySelector('table[aria-label="Movimientos"] tbody tr:last-child')!;
-  assert.match(text(row), /^\S+ \S+ \S+ Reembolso Fallido Transferencia/);
+  assert.match(text(row), /^\S+ \S+ \S+ Reembolso fallido Transferencia/);
   assert.equal(text(row.querySelector("del")!), "S/ 100", "A failed refund is struck through");
   assert.ok(!summaryRows().some((row) => row.startsWith("Reembolsado")));
 });
@@ -1571,7 +1645,7 @@ it.each([
   {
     outcome: "requested",
     line: "Reembolso solicitado S/ 100",
-    row: `19 oct 2026 Reembolso Solicitado ${culqiLine} Tarjeta — (S/ 100)`,
+    row: `19 oct 2026 Reembolso solicitado ${culqiLine} Tarjeta — (S/ 100)`,
     toast: "Reembolso solicitado",
   },
 ] as const)(
@@ -1619,12 +1693,13 @@ it.each([
       !/reintentar|de nuevo|otra vez/i.test(`${text(account())} ${text(movementsCard())}`),
       "A Culqi refund is never offered again",
     );
-    if (outcome === "requested")
-      assert.equal(
-        rows.at(-1)!.querySelector("button")?.getAttribute("aria-label")?.replace(/\s+/g, " "),
-        "Acciones del reembolso de S/ 100",
+    if (outcome === "requested") {
+      await openMovement("Ver reembolso solicitado de");
+      assert.ok(
+        panelButton("Confirmar reembolso") && panelButton("Marcar como fallido"),
         "Staff resolve it with Confirmar reembolso or Marcar como fallido",
       );
+    }
   },
 );
 

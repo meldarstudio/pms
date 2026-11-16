@@ -136,8 +136,9 @@ const messages: Record<string, string> = {
     "El reembolso supera lo que queda de este pago tras sus otros reembolsos.",
   "change leaves requested refunds above the refund due":
     "El cambio deja reembolsos solicitados por encima del monto por devolver. Márcalos como fallidos primero.",
-  "payment with refunds cannot be changed":
-    "Este pago tiene reembolsos y no se puede editar ni eliminar.",
+  "payment with refunds cannot be changed": "Este pago tiene reembolsos y no se puede anular.",
+  "payment is already voided": "Este pago ya fue anulado.",
+  "voided payment cannot be refunded": "Este pago fue anulado y no se puede reembolsar.",
   "reservation with refunds cannot be restored":
     "La reserva tiene reembolsos y no se puede restaurar. Crea una nueva reserva.",
   "a Culqi refund for this payment is pending":
@@ -145,7 +146,7 @@ const messages: Record<string, string> = {
   "Culqi refund must be at least 100 cents": "El reembolso a la tarjeta debe ser de al menos S/ 1.",
   "payment is not a Culqi payment":
     "Este pago no se hizo en línea y no se puede devolver a la tarjeta.",
-  "Culqi payment cannot be changed": "Los pagos en línea no se pueden editar ni eliminar.",
+  "Culqi payment cannot be changed": "Los pagos en línea no se pueden anular.",
   "Culqi is not configured": "Los pagos en línea no están configurados en el servidor.",
   "an unfulfilled reservation cannot change status":
     "Esta reserva se canceló porque no había disponibilidad al completarse el pago en línea. Su estado no se puede cambiar.",
@@ -171,7 +172,7 @@ const messages: Record<string, string> = {
   "reservation with coupons cannot be restored":
     "La reserva tiene movimientos de cupón y no se puede restaurar. Crea una nueva reserva.",
   "payment cannot be changed after issuing a coupon":
-    "La reserva emitió un cupón; sus pagos ya no se pueden editar ni eliminar.",
+    "La reserva emitió un cupón; sus pagos ya no se pueden anular.",
   "too many guests for this room type":
     "La habitación no tiene capacidad para todos los huéspedes.",
   "stay cannot be longer than 60 nights": "La estancia no puede superar las 60 noches.",

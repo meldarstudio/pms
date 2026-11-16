@@ -292,6 +292,11 @@ _Avoid_: Payment, refund, rate override
 Money received toward the bill, with a method and property-calendar payment date.
 _Avoid_: Discount, room charge
 
+**Voided payment / Pago anulado**:
+A payment marked as recorded by mistake, kept visible with its reason but no longer
+counted in the bill or amount paid. Voiding returns no money and cannot be undone.
+_Avoid_: Refund, deleted payment, payment correction
+
 **Quote**:
 An online price, rate plan, and amount-to-pay offer valid for 10 minutes, without
 holding inventory.

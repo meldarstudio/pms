@@ -1,15 +1,14 @@
-import type { ReactNode } from "react";
-import { CreditCardIcon, LockIcon, PencilIcon, ReceiptIcon, Undo2Icon } from "lucide-react";
+import { useState, type ReactNode } from "react";
+import { CreditCardIcon, LockIcon, PencilIcon, ReceiptIcon, Undo2Icon, XIcon } from "lucide-react";
 import { cn } from "cn";
 import { parseISO } from "date-fns";
 import { SummaryRow, accountStatus } from "@/components/balance-status";
 import { DiscountPopover } from "@/components/discount-popover";
 import { culqiPendingLine } from "@/components/refund-forms";
 import { paymentMethods } from "@/components/reservation-entry-forms";
-import { RowActions } from "@/components/reservation-records";
 import { ReservationSection, SectionHeading } from "@/components/reservation-section";
 import type { ReservationEditorTarget } from "@/components/reservation-page-editors";
-import { Badge } from "@/components/ui/badge";
+import { useResponsivePanel } from "@/components/responsive-panel";
 import { Button } from "@/components/ui/button";
 import {
   Empty,
@@ -183,82 +182,104 @@ function AccountSummary({
   );
 }
 
+type MovementFact = { label: string; value: ReactNode };
+type MovementAction = { label: string; destructive?: boolean; target: ReservationEditorTarget };
 type Movement = {
   key: string;
   at: string;
   date: string;
-  label: ReactNode;
+  kind: string;
+  hint?: ReactNode;
+  summary: string;
   method: string;
   reference: string | null;
   amount: ReactNode;
   muted?: boolean;
-  action: ReactNode;
+  facts: MovementFact[];
+  actions: MovementAction[];
+  lock?: string | null;
 };
 
 function paymentLock(detail: ReservationDetail, payment: ReservationPayment) {
-  if (payment.culqiChargeId) return "Pago en línea: no se puede editar";
+  if (payment.culqiChargeId) return "Pago en línea: no se puede anular";
   if (detail.refunds.some((refund) => refund.paymentId === payment.id))
-    return "Tiene reembolsos: no se puede editar";
-  if (detail.couponIssuedCents > 0) return "Se emitió un cupón: no se puede editar";
+    return "Tiene reembolsos: no se puede anular";
+  if (detail.couponIssuedCents > 0) return "Se emitió un cupón: no se puede anular";
   return null;
 }
 
-function movements(
-  detail: ReservationDetail,
-  edit: Props["edit"],
-  disabled: boolean,
-  resolveRefunds: boolean,
-): Movement[] {
+const code = (value: string) => <span className="font-mono">{value.toUpperCase()}</span>;
+const present = (facts: (MovementFact | false | null | "")[]) =>
+  facts.filter((fact): fact is MovementFact => Boolean(fact));
+const recorded = (label: string, at: string | null, by: string | null) =>
+  at
+    ? present([
+        { label, value: shortDate(propertyToday(new Date(at))) },
+        by && { label: `${label} por`, value: by },
+      ])
+    : [];
+
+function movements(detail: ReservationDetail, resolveRefunds: boolean): Movement[] {
   const money = (cents: number) => formatMoney(cents, detail.currency);
   const rows: Movement[] = [];
   for (const payment of detail.payments) {
-    const lock = paymentLock(detail, payment);
+    const amount = money(payment.amountCents);
+    const voided = payment.voidedAt !== null;
+    const lock = voided ? null : paymentLock(detail, payment);
+    const method = payment.culqiChargeId ? "Tarjeta" : methodLabel(payment.method);
+    const kind = voided ? "Pago anulado" : payment.culqiChargeId ? "Pago en línea" : "Pago";
     rows.push({
       key: payment.id,
       at: payment.createdAt,
       date: payment.paymentDate,
-      label: payment.culqiChargeId ? (
-        <span className="inline-flex items-center gap-1.5">
-          Pago <Badge variant="secondary">En línea</Badge>
-        </span>
-      ) : (
-        "Pago"
-      ),
-      method: payment.culqiChargeId ? "Tarjeta" : methodLabel(payment.method),
+      kind,
+      summary: `${kind.toLowerCase()} de ${amount} del ${shortDate(payment.paymentDate)}`,
+      method,
       reference: payment.reference,
-      amount: money(payment.amountCents),
-      action: lock ? (
-        <span role="img" aria-label={lock} title={lock} className="inline-flex px-2">
-          <LockIcon aria-hidden className="size-3.5 text-muted-foreground" />
-        </span>
-      ) : (
-        <RowActions
-          label={`Acciones del pago de ${money(payment.amountCents)} del ${payment.paymentDate}`}
-          disabled={disabled}
-          onEdit={() => edit({ kind: "payment", id: payment.id })}
-          onDelete={() => edit({ kind: "delete-payment", id: payment.id })}
-        />
-      ),
+      amount: voided ? <del aria-label={`${amount}, anulado`}>{amount}</del> : amount,
+      muted: voided,
+      facts: [
+        ...present([voided && { label: "Motivo de la anulación", value: payment.voidReason }]),
+        ...recorded("Anulado", payment.voidedAt, payment.voidedBy),
+        ...present([
+          { label: "Fecha del pago", value: shortDate(payment.paymentDate) },
+          { label: "Método", value: method },
+          payment.reference && { label: "Referencia", value: code(payment.reference) },
+          payment.notes && { label: "Nota del pago", value: payment.notes },
+        ]),
+        ...recorded("Registrado", payment.createdAt, payment.recordedBy),
+      ],
+      actions:
+        voided || lock
+          ? []
+          : [
+              {
+                label: "Anular pago",
+                destructive: true,
+                target: { kind: "void-payment", id: payment.id },
+              },
+            ],
+      lock,
     });
   }
   for (const refund of detail.refunds) {
     const amount = money(refund.amountCents);
+    const date = refund.refundDate ?? propertyToday(new Date(refund.requestedAt));
+    const pendingCulqi = refund.status === "requested" && refund.culqiChargeId;
+    const kind = {
+      requested: "Reembolso solicitado",
+      completed: "Reembolso",
+      failed: "Reembolso fallido",
+    }[refund.status];
     rows.push({
       key: refund.id,
       at: refund.requestedAt,
-      date: refund.refundDate ?? propertyToday(new Date(refund.requestedAt)),
-      label: (
-        <>
-          <span className="inline-flex flex-wrap items-center gap-1.5">
-            Reembolso
-            {refund.status === "requested" && <Badge variant="preview">Solicitado</Badge>}
-            {refund.status === "failed" && <Badge variant="secondary">Fallido</Badge>}
-          </span>
-          {refund.status === "requested" && refund.culqiChargeId && (
-            <span className="mt-1 block text-xs text-muted-foreground">{culqiPendingLine}</span>
-          )}
-        </>
+      date,
+      kind,
+      hint: pendingCulqi && (
+        <span className="mt-1 block text-xs text-muted-foreground">{culqiPendingLine}</span>
       ),
+      summary: `${kind.toLowerCase()} de ${amount} del ${shortDate(date)}`,
       method: methodLabel(refund.method),
       reference: refund.completionReference ?? refund.reference,
       amount:
@@ -270,32 +291,67 @@ function movements(
           `(${amount})`
         ),
       muted: refund.status !== "completed",
-      action:
-        resolveRefunds && refund.status === "requested" ? (
-          <RowActions
-            label={`Acciones del reembolso de ${amount}`}
-            disabled={disabled}
-            editLabel="Confirmar reembolso"
-            deleteLabel="Marcar como fallido"
-            onEdit={() => edit({ kind: "resolve-refund", id: refund.id, failing: false })}
-            onDelete={() => edit({ kind: "resolve-refund", id: refund.id, failing: true })}
-          />
-        ) : null,
+      facts: [
+        ...present([
+          pendingCulqi && { label: "Pendiente", value: culqiPendingLine },
+          refund.failureReason && { label: "Motivo del fallo", value: refund.failureReason },
+          { label: "Motivo", value: refund.reason },
+          { label: "Método", value: methodLabel(refund.method) },
+          refund.refundDate && {
+            label: "Fecha del reembolso",
+            value: shortDate(refund.refundDate),
+          },
+          refund.reference && { label: "Referencia", value: code(refund.reference) },
+          refund.completionReference && {
+            label: "Referencia de la devolución",
+            value: code(refund.completionReference),
+          },
+        ]),
+        ...recorded("Solicitado", refund.requestedAt, refund.requestedBy),
+        ...recorded(
+          refund.status === "failed" ? "Marcado como fallido" : "Confirmado",
+          refund.resolvedAt,
+          refund.resolvedBy,
+        ),
+      ],
+      actions:
+        resolveRefunds && refund.status === "requested"
+          ? [
+              {
+                label: "Confirmar reembolso",
+                target: { kind: "resolve-refund", id: refund.id, failing: false },
+              },
+              {
+                label: "Marcar como fallido",
+                destructive: true,
+                target: { kind: "resolve-refund", id: refund.id, failing: true },
+              },
+            ]
+          : [],
     });
   }
-  for (const movement of detail.couponMovements)
+  for (const movement of detail.couponMovements) {
+    const kind = { issue: "Cupón emitido", redeem: "Cupón aplicado", return: "Devuelto al cupón" }[
+      movement.kind
+    ];
     rows.push({
       key: movement.id,
       at: movement.recordedAt,
       date: movement.recordedOn,
-      label: { issue: "Cupón emitido", redeem: "Cupón aplicado", return: "Devuelto al cupón" }[
-        movement.kind
-      ],
+      kind,
+      summary: `${kind.toLowerCase()} de ${money(movement.amountCents)} del ${shortDate(movement.recordedOn)}`,
       method: "Cupón",
       reference: movement.code,
       amount: money(movement.kind === "redeem" ? movement.amountCents : -movement.amountCents),
-      action: null,
+      facts: [
+        { label: "Código", value: code(movement.code) },
+        { label: "Fecha", value: shortDate(movement.recordedOn) },
+        { label: "Vence", value: shortDate(movement.expiresOn) },
+        ...recorded("Registrado", movement.recordedAt, movement.recordedBy),
+      ],
+      actions: [],
     });
+  }
   return rows.sort((a, b) => a.at.localeCompare(b.at) || a.key.localeCompare(b.key));
 }
 
@@ -305,7 +361,15 @@ export function Movements({
   disabled = false,
   resolveRefunds = false,
 }: Props & { disabled?: boolean; resolveRefunds?: boolean }) {
-  const rows = movements(detail, edit, disabled, resolveRefunds);
+  const rows = movements(detail, resolveRefunds);
+  const [selected, setSelected] = useState<{ key: string; open: boolean } | null>(null);
+  const shown = selected && rows.find((row) => row.key === selected.key);
+  const open = Boolean(selected?.open && shown);
+  const close = () => setSelected((current) => current && { ...current, open: false });
+  function run(target: ReservationEditorTarget) {
+    close();
+    edit(target);
+  }
   if (!rows.length)
     return (
       <Empty className="border">
@@ -319,33 +383,148 @@ export function Movements({
       </Empty>
     );
   return (
-    <Table aria-label="Movimientos">
-      <TableHeader>
-        <TableRow>
-          <TableHead>Fecha</TableHead>
-          <TableHead>Movimiento</TableHead>
-          <TableHead className="@max-sm/mov:hidden">Método</TableHead>
-          <TableHead className="@max-lg/mov:hidden">Referencia</TableHead>
-          <TableHead className="text-right">Importe</TableHead>
-          <TableHead className="w-10">
-            <span className="sr-only">Acciones</span>
-          </TableHead>
-        </TableRow>
-      </TableHeader>
-      <TableBody>
-        {rows.map((row) => (
-          <TableRow key={row.key} className={cn(row.muted && "text-muted-foreground")}>
-            <TableCell className="text-muted-foreground">{shortDate(row.date)}</TableCell>
-            <TableCell className="whitespace-normal">{row.label}</TableCell>
-            <TableCell className="@max-sm/mov:hidden">{row.method}</TableCell>
-            <TableCell className="max-w-40 font-mono text-xs break-words whitespace-normal @max-lg/mov:hidden">
-              {row.reference?.toUpperCase() || "—"}
-            </TableCell>
-            <TableCell className="text-right tabular-nums">{row.amount}</TableCell>
-            <TableCell className="text-right">{row.action}</TableCell>
+    <>
+      <Table aria-label="Movimientos">
+        <TableHeader>
+          <TableRow>
+            <TableHead>Fecha</TableHead>
+            <TableHead>Movimiento</TableHead>
+            <TableHead className="@max-sm/mov:hidden">Método</TableHead>
+            <TableHead className="@max-lg/mov:hidden">Referencia</TableHead>
+            <TableHead className="text-right">Importe</TableHead>
           </TableRow>
-        ))}
-      </TableBody>
-    </Table>
+        </TableHeader>
+        <TableBody>
+          {rows.map((row) => (
+            <TableRow
+              key={row.key}
+              className={cn("relative cursor-pointer", row.muted && "text-muted-foreground")}
+            >
+              <TableCell className="text-muted-foreground">{shortDate(row.date)}</TableCell>
+              <TableCell className="whitespace-normal">
+                <button
+                  type="button"
+                  aria-label={`Ver ${row.summary}`}
+                  className="cursor-pointer rounded-sm text-left outline-none after:absolute after:inset-0 focus-visible:ring-3 focus-visible:ring-ring/50"
+                  onClick={() => setSelected({ key: row.key, open: true })}
+                >
+                  {row.kind}
+                  {row.hint}
+                </button>
+              </TableCell>
+              <TableCell className="@max-sm/mov:hidden">{row.method}</TableCell>
+              <TableCell className="max-w-40 font-mono text-xs break-words whitespace-normal @max-lg/mov:hidden">
+                {row.reference?.toUpperCase() || "—"}
+              </TableCell>
+              <TableCell className="text-right tabular-nums">{row.amount}</TableCell>
+            </TableRow>
+          ))}
+        </TableBody>
+      </Table>
+      <MovementPanel
+        movement={shown ?? null}
+        open={open}
+        disabled={disabled}
+        onClose={close}
+        onPick={run}
+      />
+    </>
+  );
+}
+
+function MovementPanel({
+  movement,
+  open,
+  disabled,
+  onClose,
+  onPick,
+}: {
+  movement: Movement | null;
+  open: boolean;
+  disabled: boolean;
+  onClose: () => void;
+  onPick: (target: ReservationEditorTarget) => void;
+}) {
+  const { asDrawer, surface } = useResponsivePanel(open && movement ? movement.key : null);
+  const { Root, Content, Header, Title, Description, Footer, Close } = surface;
+  return (
+    <Root
+      {...(asDrawer ? { showSwipeHandle: true } : {})}
+      open={open}
+      onOpenChange={(next) => {
+        if (!next) onClose();
+      }}
+    >
+      <Content
+        {...(asDrawer ? {} : { showCloseButton: false })}
+        className={cn(
+          "overflow-hidden",
+          asDrawer
+            ? "data-[swipe-axis=y]:max-h-[85dvh] pb-[env(safe-area-inset-bottom)]"
+            : "data-[side=right]:sm:max-w-md",
+        )}
+      >
+        {movement && (
+          <>
+            <Header className="relative shrink-0 gap-2 border-b p-5 pr-12 group-data-[swipe-axis=y]/drawer-popup:text-left">
+              <Title>{movement.kind}</Title>
+              <p
+                className={cn(
+                  "text-2xl font-semibold tracking-tight tabular-nums",
+                  movement.muted && "text-muted-foreground",
+                )}
+              >
+                {movement.amount}
+              </p>
+              <Description className="sr-only">{movement.summary}</Description>
+              <Close
+                render={
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon-sm"
+                    className="absolute top-3 right-3"
+                  />
+                }
+                aria-label="Cerrar"
+              >
+                <XIcon />
+              </Close>
+            </Header>
+            <div className="flex min-h-0 flex-col gap-4 overflow-y-auto overscroll-contain p-5">
+              <dl aria-label="Detalle del movimiento" className="flex flex-col gap-3">
+                {movement.facts.map((fact) => (
+                  <div key={fact.label} className="flex flex-col gap-0.5">
+                    <dt className="text-muted-foreground">{fact.label}</dt>
+                    <dd className="whitespace-pre-wrap wrap-anywhere">{fact.value}</dd>
+                  </div>
+                ))}
+              </dl>
+              {movement.lock && (
+                <p className="flex items-center gap-1.5 text-muted-foreground">
+                  <LockIcon aria-hidden className="size-3.5 shrink-0" />
+                  {movement.lock}
+                </p>
+              )}
+            </div>
+            {movement.actions.length > 0 && (
+              <Footer className="shrink-0 flex-row flex-wrap border-t p-5 [&>button]:flex-1">
+                {movement.actions.map((action) => (
+                  <Button
+                    key={action.label}
+                    type="button"
+                    variant={action.destructive ? "destructive" : "default"}
+                    disabled={disabled}
+                    onClick={() => onPick(action.target)}
+                  >
+                    {action.label}
+                  </Button>
+                ))}
+              </Footer>
+            )}
+          </>
+        )}
+      </Content>
+    </Root>
   );
 }

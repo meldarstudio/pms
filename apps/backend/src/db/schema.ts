@@ -266,6 +266,7 @@ export const payments = sqliteTable(
     createdAt: text("created_at").notNull(),
     notes: text("notes"),
     culqiChargeId: text("culqi_charge_id"),
+    recordedAccountId: text("recorded_account_id").references(() => user.id),
   },
   (table) => [
     index("payments_reservation").on(table.reservationId),
@@ -273,6 +274,17 @@ export const payments = sqliteTable(
     uniqueIndex("payments_culqi_charge").on(table.culqiChargeId),
   ],
 );
+
+export const paymentVoids = sqliteTable("payment_voids", {
+  paymentId: text("payment_id")
+    .primaryKey()
+    .references(() => payments.id),
+  reason: text("reason").notNull(),
+  voidedAt: text("voided_at").notNull(),
+  accountId: text("account_id")
+    .notNull()
+    .references(() => user.id),
+});
 
 export const attemptStatuses = ["unknown", "review", "failed", "succeeded", "saved"] as const;
 export type AttemptStatus = (typeof attemptStatuses)[number];

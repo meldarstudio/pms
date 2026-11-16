@@ -1,31 +1,13 @@
-import { useEffect, useId, useState } from "react";
+import { useEffect, useId } from "react";
 import { LogInIcon, LogOutIcon, PencilIcon, PhoneIcon, XIcon } from "lucide-react";
 import { cn } from "cn";
-import { useIsMobile } from "@/hooks/use-mobile";
 import { AccountStatusBanner, accountStatus, SummaryRow } from "@/components/balance-status";
 import { useLifecycleAction } from "@/components/lifecycle-action";
 import { StaleDataNotice } from "@/components/page-error";
 import { ReservationStatusBadge } from "@/components/reservation-status-badge";
 import { NationalityFlag } from "@/components/workflow-fields";
 import { Button } from "@/components/ui/button";
-import {
-  Sheet,
-  SheetClose,
-  SheetContent,
-  SheetDescription,
-  SheetFooter,
-  SheetHeader,
-  SheetTitle,
-} from "@/components/ui/sheet";
-import {
-  Drawer,
-  DrawerClose,
-  DrawerContent,
-  DrawerDescription,
-  DrawerFooter,
-  DrawerHeader,
-  DrawerTitle,
-} from "@/components/ui/drawer";
+import { useResponsivePanel, type PanelSurface } from "@/components/responsive-panel";
 import { FieldError } from "@/components/ui/field";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Separator } from "@/components/ui/separator";
@@ -37,28 +19,6 @@ import { phoneDisplay } from "@/lib/phone";
 import { useReservation } from "@/lib/queries";
 import { useReservationCommands } from "@/lib/reservation-commands";
 
-const surfaces = {
-  sheet: {
-    Root: Sheet,
-    Content: SheetContent,
-    Header: SheetHeader,
-    Title: SheetTitle,
-    Description: SheetDescription,
-    Footer: SheetFooter,
-    Close: SheetClose,
-  },
-  drawer: {
-    Root: Drawer,
-    Content: DrawerContent,
-    Header: DrawerHeader,
-    Title: DrawerTitle,
-    Description: DrawerDescription,
-    Footer: DrawerFooter,
-    Close: DrawerClose,
-  },
-};
-type SummarySurface = (typeof surfaces)[keyof typeof surfaces];
-
 export function ReservationSummary({
   reservationId,
   onClose,
@@ -68,12 +28,7 @@ export function ReservationSummary({
   onClose: () => void;
   onEdit: (reservationId: string) => void;
 }) {
-  const mobile = useIsMobile();
-  const [opening, setOpening] = useState({ reservationId, mobile });
-  if (opening.reservationId !== reservationId)
-    setOpening({ reservationId, mobile: reservationId === null ? opening.mobile : mobile });
-  const asDrawer = opening.mobile;
-  const surface = asDrawer ? surfaces.drawer : surfaces.sheet;
+  const { asDrawer, surface } = useResponsivePanel(reservationId);
   const { Root, Content } = surface;
   const { saving } = useReservationCommands(reservationId);
   useEffect(() => {
@@ -126,7 +81,7 @@ function SummaryContent({
 }: {
   reservationId: string;
   onEdit: () => void;
-  surface: SummarySurface;
+  surface: PanelSurface;
 }) {
   const { Header, Title, Description, Footer, Close } = surface;
   const query = useReservation(reservationId);
@@ -184,7 +139,7 @@ function LoadedSummary({
   refreshError: Error | null;
   onRetry: () => void;
   onEdit: () => void;
-  surface: SummarySurface;
+  surface: PanelSurface;
 }) {
   const { Header, Title, Description, Footer, Close } = surface;
   const { saving } = useReservationCommands(detail.id);
