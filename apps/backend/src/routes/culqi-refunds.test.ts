@@ -243,23 +243,12 @@ describe("staff Culqi refunds", () => {
     }
   });
 
-  it("never edits or deletes a Culqi payment", async () => {
+  it("never voids a Culqi payment", async () => {
     const { id, paymentId } = await paidOnline();
 
-    const edited = await command(id, [
-      {
-        type: "edit-payment",
-        paymentId,
-        payment: { amountCents: 100, method: "card", paymentDate: "2026-10-10" },
-      },
-    ]);
-    const deleted = await command(id, [{ type: "delete-payment", paymentId }]);
+    const voided = await command(id, [{ type: "void-payment", paymentId, reason: "Mistake" }]);
 
-    expect(edited).toMatchObject({
-      status: 400,
-      body: { error: "Culqi payment cannot be changed" },
-    });
-    expect(deleted).toMatchObject({
+    expect(voided).toMatchObject({
       status: 400,
       body: { error: "Culqi payment cannot be changed" },
     });

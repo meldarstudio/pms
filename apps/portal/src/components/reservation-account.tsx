@@ -196,10 +196,10 @@ type Movement = {
 };
 
 function paymentLock(detail: ReservationDetail, payment: ReservationPayment) {
-  if (payment.culqiChargeId) return "Pago en línea: no se puede editar";
+  if (payment.culqiChargeId) return "Pago en línea: no se puede corregir ni anular";
   if (detail.refunds.some((refund) => refund.paymentId === payment.id))
-    return "Tiene reembolsos: no se puede editar";
-  if (detail.couponIssuedCents > 0) return "Se emitió un cupón: no se puede editar";
+    return "Tiene reembolsos: no se puede corregir ni anular";
+  if (detail.couponIssuedCents > 0) return "Se emitió un cupón: no se puede corregir ni anular";
   return null;
 }
 
@@ -212,6 +212,31 @@ function movements(
   const money = (cents: number) => formatMoney(cents, detail.currency);
   const rows: Movement[] = [];
   for (const payment of detail.payments) {
+    if (payment.voidedAt) {
+      const amount = money(payment.amountCents);
+      rows.push({
+        key: payment.id,
+        at: payment.createdAt,
+        date: payment.paymentDate,
+        label: (
+          <>
+            <span className="inline-flex flex-wrap items-center gap-1.5">
+              Pago <Badge variant="secondary">Anulado</Badge>
+            </span>
+            <span className="mt-1 block text-xs text-muted-foreground">
+              {payment.voidReason} · anulado por {payment.voidedBy ?? "una cuenta eliminada"} el{" "}
+              {shortDate(propertyToday(new Date(payment.voidedAt)))}
+            </span>
+          </>
+        ),
+        method: methodLabel(payment.method),
+        reference: payment.reference,
+        amount: <del aria-label={`${amount}, anulado`}>{amount}</del>,
+        muted: true,
+        action: null,
+      });
+      continue;
+    }
     const lock = paymentLock(detail, payment);
     rows.push({
       key: payment.id,
@@ -235,8 +260,10 @@ function movements(
         <RowActions
           label={`Acciones del pago de ${money(payment.amountCents)} del ${payment.paymentDate}`}
           disabled={disabled}
+          editLabel="Corregir"
+          deleteLabel="Anular"
           onEdit={() => edit({ kind: "payment", id: payment.id })}
-          onDelete={() => edit({ kind: "delete-payment", id: payment.id })}
+          onDelete={() => edit({ kind: "void-payment", id: payment.id })}
         />
       ),
     });

@@ -221,6 +221,9 @@ export type ReservationPayment = {
   notes: string | null;
   createdAt: string;
   culqiChargeId: string | null;
+  voidedAt: string | null;
+  voidedBy: string | null;
+  voidReason: string | null;
 };
 
 export type RatePlanCode = "flexible" | "non_refundable";

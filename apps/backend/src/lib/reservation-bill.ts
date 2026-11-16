@@ -3,6 +3,7 @@ import {
   cancellationWaivers,
   couponMovements,
   payments,
+  paymentVoids,
   refunds,
   reservationCancellations,
   reservationRoomNights,
@@ -17,7 +18,7 @@ import type { Refund } from "./refunds";
 import { holdsInventory, inventoryStatuses } from "./statuses";
 
 type BillableRoom = { nights: { date: string; priceCents: number }[] };
-type PaymentMoney = { amountCents: number };
+type PaymentMoney = { amountCents: number; void?: object | null };
 type RefundMoney = Pick<Refund, "amountCents" | "status">;
 type ChargedCancellation = Pick<Cancellation, "policyChargeCents"> & {
   waivers: Pick<Waiver, "amountCents">[];
@@ -44,7 +45,7 @@ export function reservationBill(input: BillableReservation) {
     cancellationChargeCents: active ? cancellationCharge(active).finalChargeCents : 0,
     discountCents: input.reservation.discountCents,
     paymentSchedule: input.reservation.paymentSchedule as PaymentSchedule,
-    payments: input.payments,
+    payments: input.payments.filter((payment) => !payment.void),
     refunds: input.refunds,
     couponMovements: input.couponMovements,
   });
@@ -105,7 +106,9 @@ const finalChargeSql = sql<number>`coalesce((
 ), 0)`;
 const paidSql = sql<number>`coalesce((
   select sum(${payments.amountCents}) from ${payments}
-  where ${payments.reservationId} = ${reservations.id}
+  where ${payments.reservationId} = ${reservations.id} and not exists (
+    select 1 from ${paymentVoids} where ${paymentVoids.paymentId} = ${payments.id}
+  )
 ), 0)`;
 const refundedSql = sql<number>`coalesce((
   select sum(${refunds.amountCents}) from ${refunds}

@@ -5,6 +5,7 @@ type RefundSource = Pick<ReservationDetail, "payments" | "refunds">;
 
 function refundablePayments({ payments, refunds }: RefundSource) {
   return payments
+    .filter((payment) => !payment.voidedAt)
     .map((payment) => ({
       payment,
       leftCents:

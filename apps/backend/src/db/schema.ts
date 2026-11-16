@@ -274,6 +274,17 @@ export const payments = sqliteTable(
   ],
 );
 
+export const paymentVoids = sqliteTable("payment_voids", {
+  paymentId: text("payment_id")
+    .primaryKey()
+    .references(() => payments.id),
+  reason: text("reason").notNull(),
+  voidedAt: text("voided_at").notNull(),
+  accountId: text("account_id")
+    .notNull()
+    .references(() => user.id),
+});
+
 export const attemptStatuses = ["unknown", "review", "failed", "succeeded", "saved"] as const;
 export type AttemptStatus = (typeof attemptStatuses)[number];
 

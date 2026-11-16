@@ -337,6 +337,20 @@
       "when": 1794782819281,
       "tag": "0047_jittery_morgan_stark",
       "breakpoints": true
+    },
+    {
+      "idx": 48,
+      "version": "6",
+      "when": 1794795682857,
+      "tag": "0048_chemical_doctor_spectrum",
+      "breakpoints": true
+    },
+    {
+      "idx": 49,
+      "version": "6",
+      "when": 1794795683857,
+      "tag": "0049_payment_immutability",
+      "breakpoints": true
     }
   ]
 }

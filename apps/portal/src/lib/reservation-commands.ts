@@ -60,7 +60,6 @@ const scopeByAction: Partial<Record<WorkflowAction["type"], FieldScope>> = {
   "waive-cancellation-charge": "waiver",
   "redeem-coupon": "coupon",
   "add-payment": "payment",
-  "edit-payment": "payment",
   "request-refund": "refund",
   "request-culqi-refund": "refund",
   "issue-coupon": "refund",

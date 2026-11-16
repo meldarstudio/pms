@@ -7,6 +7,7 @@ import {
   coupons,
   guests,
   payments,
+  paymentVoids,
   refunds,
   reservationCancellations,
   reservationGuests,
@@ -29,12 +30,14 @@ type Night = Pick<
   "date" | "priceCents" | "adjustmentCents" | "discountCents"
 >;
 export type Stay = typeof reservationRooms.$inferSelect & { nights: Night[] };
+export type PaymentVoid = typeof paymentVoids.$inferSelect & { voidedBy: string | null };
+export type Payment = typeof payments.$inferSelect & { void: PaymentVoid | null };
 export type State = {
   reservation: typeof reservations.$inferSelect;
   contact: typeof guests.$inferSelect;
   stayingGuests: (typeof reservationGuests.$inferSelect)[];
   lines: Stay[];
-  payments: (typeof payments.$inferSelect)[];
+  payments: Payment[];
   cancellations: Cancellation[];
   refunds: Refund[];
   coupons: Coupon[];
@@ -118,7 +121,16 @@ async function loadBatch(db: Db, ids: string[]): Promise<State[]> {
       .from(reservationRoomNights)
       .innerJoin(reservationRooms, eq(reservationRooms.id, reservationRoomNights.reservationRoomId))
       .where(inArray(reservationRooms.reservationId, ids)),
-    db.select().from(payments).where(inArray(payments.reservationId, ids)),
+    db
+      .select({
+        payment: payments,
+        void: paymentVoids,
+        voidedBy: sql<string | null>`${voider.username}`.as("payment_voided_by"),
+      })
+      .from(payments)
+      .leftJoin(paymentVoids, eq(paymentVoids.paymentId, payments.id))
+      .leftJoin(voider, eq(voider.id, paymentVoids.accountId))
+      .where(inArray(payments.reservationId, ids)),
     db
       .select({ cancellation: reservationCancellations, recordedBy: user.username })
       .from(reservationCancellations)
@@ -149,7 +161,7 @@ async function loadBatch(db: Db, ids: string[]): Promise<State[]> {
   const guestsOf = groupBy(stayingGuests, (guest) => guest.reservationId);
   const linesOf = groupBy(lines, (line) => line.reservationId);
   const nightsOf = groupBy(nights, (night) => night.reservationRoomId);
-  const paymentsOf = groupBy(paymentRows, (payment) => payment.reservationId);
+  const paymentsOf = groupBy(paymentRows, (row) => row.payment.reservationId);
   const cancellationsOf = groupBy(cancellationRows, (row) => row.cancellation.reservationId);
   const waiversOf = groupBy(waiverRows, (row) => row.waiver.cancellationId);
   const refundsOf = groupBy(refundRows, (row) => row.refund.reservationId);
@@ -179,7 +191,10 @@ async function loadBatch(db: Db, ids: string[]): Promise<State[]> {
           discountCents,
         })),
       })),
-      payments: paymentsOf(id),
+      payments: paymentsOf(id).map(({ payment, void: voided, voidedBy }) => ({
+        ...payment,
+        void: voided && { ...voided, voidedBy },
+      })),
       cancellations: cancellationsOf(id).map(({ cancellation, recordedBy }) => ({
         ...cancellation,
         recordedBy,
@@ -203,6 +218,7 @@ async function loadBatch(db: Db, ids: string[]): Promise<State[]> {
 
 const requester = alias(user, "refund_requester");
 const resolver = alias(user, "refund_resolver");
+const voider = alias(user, "payment_voider");
 
 function couponsUsedBy(db: Db, ids: string[]) {
   const chosen = db

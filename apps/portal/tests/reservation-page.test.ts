@@ -171,25 +171,30 @@ function mockApi(options: ApiOptions = {}) {
           paidCents: 10000,
           balanceCents: 20000,
           payments: [
-            {
+            ...saved.payments,
+            payment({
               ...action.payment,
               reference: action.payment.reference ?? null,
               notes: action.payment.notes ?? null,
-              id: "payment-1",
+              id: `payment-${saved.payments.length + 1}`,
               reservationId: saved.id,
-              createdAt: "2026-10-19T15:00:00Z",
-              culqiChargeId: null,
-            },
+            }),
           ],
         };
-      if (action.type === "edit-payment")
+      if (action.type === "void-payment")
         saved = {
           ...saved,
           payments: saved.payments.map((payment) =>
-            payment.id === action.paymentId ? { ...payment, ...action.payment } : payment,
+            payment.id === action.paymentId
+              ? {
+                  ...payment,
+                  voidedAt: "2026-10-19T16:00:00Z",
+                  voidedBy: "kevin",
+                  voidReason: action.reason,
+                }
+              : payment,
           ),
         };
-      if (action.type === "delete-payment") saved = { ...saved, payments: [] };
       if (action.type === "set-discount")
         saved = {
           ...saved,
@@ -483,6 +488,43 @@ it("records payments after a failed save and prevents dismissal or navigation du
   ]);
   assert.match(page.container.textContent, /PagadoS\/\s*100/);
   assert.equal(await unloadPrevented(), false);
+});
+
+it("corrects S/ 100 cash to S/ 80 card after a failed save, sending the void and new payment together once", async () => {
+  saved = { ...saved, paidCents: 10000, balanceCents: 20000, payments: [payment()] };
+  mockApi({
+    write: () =>
+      writes.length === 1
+        ? Response.json({ error: "response unavailable" }, { status: 503 })
+        : undefined,
+  });
+  await render();
+  await chooseRowAction('[aria-label^="Acciones del pago de"]', "Corregir");
+  assert.equal(field("amount").value, "100.00", "Corregir starts from the saved payment");
+  await submit();
+  assert.equal(writes.length, 0, "A correction needs a reason");
+  await fill("voidReason", "Pagó con tarjeta");
+  await fill("amount", "80");
+  await React.act(async () => dateTrigger("Método de pago").click());
+  await React.act(async () => statusOption("Tarjeta").click());
+  await submit();
+  await page.until(() => !button("Guardar cambios").disabled);
+  assert.equal(field("voidReason").value, "Pagó con tarjeta");
+  assert.equal(field("amount").value, "80");
+  await submit();
+  await page.until(() => !popup());
+  const correction = [
+    { type: "void-payment", paymentId: "payment-1", reason: "Pagó con tarjeta" },
+    {
+      type: "add-payment",
+      payment: { amountCents: 8000, method: "card", paymentDate: "2026-10-19" },
+    },
+  ];
+  assert.deepEqual(
+    writes.map((write) => write.actions),
+    [correction, correction],
+  );
+  assert.match(text(movementsCard()), /Anulado Pagó con tarjeta · anulado por kevin/);
 });
 
 async function back() {
@@ -1085,6 +1127,9 @@ function payment(fields: Partial<ReservationPayment> = {}): ReservationPayment {
     notes: null,
     createdAt: "2026-10-19T15:00:00Z",
     culqiChargeId: null,
+    voidedAt: null,
+    voidedBy: null,
+    voidReason: null,
     ...fields,
   };
 }

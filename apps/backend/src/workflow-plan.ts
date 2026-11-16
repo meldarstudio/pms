@@ -128,29 +128,30 @@ const newPayment = (
     notes: input.notes ?? null,
     createdAt: now,
     culqiChargeId: null,
+    void: null,
   };
 };
 
-function changePayment(action: Action<"edit-payment" | "delete-payment">, ctx: PlanContext) {
-  const { state, refundActions } = ctx;
-  const index = state.payments.findIndex((payment) => payment.id === action.paymentId);
-  if (index === -1) fail("payment not found");
-  const payment = state.payments[index];
+function voidPayment(
+  action: Action<"void-payment">,
+  { state, refundActions, account, now }: PlanContext,
+) {
+  const payment =
+    state.payments.find((payment) => payment.id === action.paymentId) ?? fail("payment not found");
+  if (payment.void) fail("payment is already voided");
   if (payment.culqiChargeId) fail("Culqi payment cannot be changed");
   if (
     state.refunds.some((refund) => refund.paymentId === payment.id) ||
     refundActions.some((a) => requestsRefund(a) && a.paymentId === payment.id)
   )
     fail("payment with refunds cannot be changed");
-  if (action.type === "delete-payment") {
-    state.payments.splice(index, 1);
-  } else {
-    state.payments[index] = {
-      ...newPayment(ctx, action.payment),
-      id: payment.id,
-      createdAt: payment.createdAt,
-    };
-  }
+  payment.void = {
+    paymentId: payment.id,
+    reason: action.reason,
+    voidedAt: now,
+    accountId: account.id,
+    voidedBy: account.username,
+  };
 }
 
 const queueRefund = (action: RefundAction, { refundActions }: PlanContext) => {
@@ -248,8 +249,7 @@ const handlers: Handlers = {
     lineFor(ctx, action.lineId);
     state.lines = state.lines.filter((line) => line.id !== action.lineId);
   },
-  "edit-payment": changePayment,
-  "delete-payment": changePayment,
+  "void-payment": voidPayment,
   "set-discount"(action, { state }) {
     state.reservation.discountCents = action.amountCents;
   },
@@ -343,6 +343,7 @@ function applyRefunds({ state, refundActions, handedBack, account, today, now }:
       const payment =
         state.payments.find((payment) => payment.id === action.paymentId) ??
         fail("payment not found");
+      if (payment.void) fail("voided payment cannot be refunded");
       const culqi = action.type === "request-culqi-refund";
       if (culqi) {
         if (!payment.culqiChargeId) fail("payment is not a Culqi payment");

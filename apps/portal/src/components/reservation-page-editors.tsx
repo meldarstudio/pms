@@ -46,6 +46,8 @@ import {
   contactPayload,
   notesSchema,
   paymentSchema,
+  paymentCorrectionSchema,
+  paymentVoidSchema,
   cancellationSchema,
   paymentDefaults,
   paymentPayload,
@@ -66,7 +68,7 @@ export type ReservationEditorTarget =
   | { kind: "refund" }
   | { kind: "waiver" }
   | { kind: "resolve-refund"; id: string; failing: boolean }
-  | { kind: "delete-payment" | "delete-guest"; id: string }
+  | { kind: "void-payment" | "delete-guest"; id: string }
   | { kind: "correct-status" }
   | { kind: "status"; status: Extract<WorkflowAction, { type: "set-status" }>["status"] };
 
@@ -83,13 +85,13 @@ function editorTitle(target: ReservationEditorTarget, detail: ReservationDetail)
     case "guest":
       return target.id ? "Editar huésped" : "Agregar huésped";
     case "payment":
-      return target.id ? "Editar pago" : "Registrar pago";
+      return target.id ? "Corregir pago" : "Registrar pago";
     case "refund":
       return "Devolver";
     case "resolve-refund":
       return target.failing ? "Marcar como fallido" : "Confirmar reembolso";
-    case "delete-payment":
-      return "Eliminar registro de pago";
+    case "void-payment":
+      return "Anular pago";
     case "delete-guest":
       return "Eliminar huésped";
     case "status":
@@ -378,6 +380,12 @@ export function ReservationPageEditor({
   );
 }
 
+const voidAction = (paymentId: string, reason: string): WorkflowAction => ({
+  type: "void-payment",
+  paymentId,
+  reason: reason.trim(),
+});
+
 function ReservationActionForm({
   target,
   detail,
@@ -409,6 +417,7 @@ function ReservationActionForm({
     ...contactDefaults(detail),
     notes: detail.notes ?? "",
     ...paymentDefaults(detail.balanceCents),
+    voidReason: "",
     ...(payment
       ? {
           amount: formatMajor(payment.amountCents),
@@ -425,8 +434,12 @@ function ReservationActionForm({
       : target.kind === "notes"
         ? notesSchema
         : target.kind === "payment"
-          ? paymentSchema
-          : cancellationSchema;
+          ? target.id
+            ? paymentCorrectionSchema
+            : paymentSchema
+          : target.kind === "void-payment"
+            ? paymentVoidSchema
+            : cancellationSchema;
   const rejectedContact = useRef<{ key: string; fields: Record<string, string> } | null>(null);
   const form = useReservationForm({
     defaultValues: defaults,
@@ -462,13 +475,12 @@ function ReservationActionForm({
           break;
         case "payment":
           actions = [
-            target.id
-              ? { type: "edit-payment", paymentId: target.id, payment: paymentPayload(value) }
-              : { type: "add-payment", payment: paymentPayload(value) },
+            ...(target.id ? [voidAction(target.id, value.voidReason)] : []),
+            { type: "add-payment", payment: paymentPayload(value) },
           ];
           break;
-        case "delete-payment":
-          actions = [{ type: "delete-payment", paymentId: target.id }];
+        case "void-payment":
+          actions = [voidAction(target.id, value.voidReason)];
           break;
         case "delete-guest":
           actions = [
@@ -527,7 +539,7 @@ function ReservationActionForm({
     preview.isSuccess &&
     !preview.isFetching &&
     preview.data.validation.issues.length === 0;
-  const destructive = target.kind === "delete-payment" || target.kind === "delete-guest";
+  const destructive = target.kind === "void-payment" || target.kind === "delete-guest";
   return (
     <form
       noValidate
@@ -562,6 +574,24 @@ function ReservationActionForm({
             )}
             {target.kind === "payment" && (
               <>
+                {target.id && (
+                  <>
+                    <FieldDescription>
+                      El pago de {formatMoney(payment?.amountCents ?? 0, detail.currency)} queda
+                      anulado y este se registra en su lugar.
+                    </FieldDescription>
+                    <form.AppField name="voidReason">
+                      {(field) => (
+                        <field.Text
+                          label="Motivo de la corrección"
+                          type="textarea"
+                          required
+                          max={2000}
+                        />
+                      )}
+                    </form.AppField>
+                  </>
+                )}
                 <form.AppField name="amount">
                   {(field) => (
                     <field.Text label={`Importe (${detail.currency})`} placeholder="0.00" />
@@ -583,12 +613,17 @@ function ReservationActionForm({
                 </form.AppField>
               </>
             )}
-            {target.kind === "delete-payment" && (
-              <FieldDescription>
-                Se eliminará el registro de{" "}
-                {formatMoney(payment?.amountCents ?? 0, detail.currency)}. Eliminar un registro no
-                representa un reembolso.
-              </FieldDescription>
+            {target.kind === "void-payment" && (
+              <>
+                <FieldDescription>
+                  El pago de {formatMoney(payment?.amountCents ?? 0, detail.currency)} seguirá
+                  visible como anulado y dejará de contar en la cuenta. Anular no devuelve dinero ni
+                  se puede deshacer.
+                </FieldDescription>
+                <form.AppField name="voidReason">
+                  {(field) => <field.Text label="Motivo" type="textarea" required max={2000} />}
+                </form.AppField>
+              </>
             )}
             {target.kind === "delete-guest" && (
               <FieldDescription>
@@ -675,7 +710,13 @@ function ReservationActionForm({
           variant={destructive ? "destructive" : "default"}
           disabled={saving || (statusEditor && !selectedStatus) || (needsPreview && !previewReady)}
         >
-          {saving ? "Guardando…" : destructive ? "Confirmar" : "Guardar cambios"}
+          {saving
+            ? "Guardando…"
+            : target.kind === "void-payment"
+              ? "Anular pago"
+              : destructive
+                ? "Confirmar"
+                : "Guardar cambios"}
         </Button>
       </DialogFooter>
     </form>

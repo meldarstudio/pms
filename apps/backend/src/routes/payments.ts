@@ -1,5 +1,6 @@
 import { paymentListQuerySchema } from "@pms/shared";
 import { and, asc, eq, gte, lte, sql } from "drizzle-orm";
+import { alias } from "drizzle-orm/sqlite-core";
 import { Hono } from "hono";
 import { getDb } from "../db";
 import {
@@ -7,6 +8,7 @@ import {
   coupons,
   guests,
   payments,
+  paymentVoids,
   refunds,
   reservations,
   user,
@@ -17,6 +19,7 @@ import { currency, validate } from "../http";
 import { requireInclusiveRange } from "../rules";
 
 export const paymentRoutes = new Hono<Env>();
+const voider = alias(user, "payment_voider");
 
 paymentRoutes.get("/", validate("query", paymentListQuerySchema), async (c) => {
   const { from, to } = c.req.valid("query");
@@ -34,10 +37,15 @@ paymentRoutes.get("/", validate("query", paymentListQuerySchema), async (c) => {
         reference: payments.reference,
         paymentDate: payments.paymentDate,
         notes: payments.notes,
+        voidedAt: paymentVoids.voidedAt,
+        voidedBy: sql<string | null>`${voider.username}`.as("payment_voided_by"),
+        voidReason: paymentVoids.reason,
       })
       .from(payments)
       .innerJoin(reservations, eq(reservations.id, payments.reservationId))
       .innerJoin(guests, eq(guests.id, reservations.guestId))
+      .leftJoin(paymentVoids, eq(paymentVoids.paymentId, payments.id))
+      .leftJoin(voider, eq(voider.id, paymentVoids.accountId))
       .where(and(gte(payments.paymentDate, from), lte(payments.paymentDate, to)))
       .orderBy(asc(payments.paymentDate)),
     db
@@ -91,7 +99,7 @@ paymentRoutes.get("/", validate("query", paymentListQuerySchema), async (c) => {
     from,
     to,
     currency: currency(c),
-    totalCents: rows.reduce((sum, row) => sum + row.amountCents, 0),
+    totalCents: rows.reduce((sum, row) => sum + (row.voidedAt ? 0 : row.amountCents), 0),
     payments: rows,
     refundedCents: refundRows.reduce((sum, row) => sum + row.amountCents, 0),
     refunds: refundRows,

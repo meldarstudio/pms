@@ -8,6 +8,7 @@ import {
   couponMovements,
   coupons,
   payments,
+  paymentVoids,
   guests,
   refunds,
   reservationGuests,
@@ -217,18 +218,14 @@ async function executeAttempt(
           original.lines.some((o) => o.id === l.id),
         ),
       ),
-      ...original.payments
-        .filter((e) => !state.payments.some((saved) => saved.id === e.id))
-        .map((e) => db.delete(payments).where(eq(payments.id, e.id))),
       ...state.payments
-        .filter(
-          (e) => JSON.stringify(e) !== JSON.stringify(original.payments.find((o) => o.id === e.id)),
+        .filter((p) => !original.payments.some((o) => o.id === p.id))
+        .map((payment) => db.insert(payments).values(payment)),
+      ...state.payments
+        .flatMap((p) =>
+          p.void && !original.payments.some((o) => o.id === p.id && o.void) ? [p.void] : [],
         )
-        .map((e) =>
-          original.payments.some((o) => o.id === e.id)
-            ? db.update(payments).set(e).where(eq(payments.id, e.id))
-            : db.insert(payments).values(e),
-        ),
+        .map((voided) => db.insert(paymentVoids).values(voided)),
       ...state.cancellations
         .filter((c) =>
           original.cancellations.some((o) => o.id === c.id && o.restoredAt !== c.restoredAt),

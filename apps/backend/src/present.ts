@@ -6,7 +6,7 @@ import { presentRefunds } from "./lib/refunds";
 import { couponFields } from "./lib/coupons";
 import { holdsInventory } from "./lib/statuses";
 import { reservationBill, roomCharges } from "./lib/reservation-bill";
-import type { State } from "./reservation-read";
+import type { Payment, State } from "./reservation-read";
 
 type Guest = typeof guests.$inferSelect;
 type Reservation = State["reservation"];
@@ -20,6 +20,13 @@ const released = (reservation: Reservation) => !holdsInventory(reservation.statu
 export const presentNight = (night: { date: string; priceCents: number }) => ({
   date: night.date,
   priceCents: night.priceCents,
+});
+
+export const presentPayment = ({ void: voided, ...payment }: Payment) => ({
+  ...payment,
+  voidedAt: voided?.voidedAt ?? null,
+  voidedBy: voided?.voidedBy ?? null,
+  voidReason: voided?.reason ?? null,
 });
 
 export function presentGuest(guest: Omit<Guest, "revision">) {
@@ -75,7 +82,7 @@ export function presentReservation(input: State, lookups: RoomLookups, currency:
     ...cancellation,
     savedDiscountCents: input.reservation.discountCents,
     rooms: roomsOut,
-    payments: input.payments,
+    payments: input.payments.map(presentPayment),
     refunds: presentRefunds(input.refunds),
     ...couponFields(input.reservation.id, input.coupons, input.couponMovements),
   };
