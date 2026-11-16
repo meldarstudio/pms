@@ -44,6 +44,11 @@ sign-in itself is under test.
 
 ## Complaint book
 
+`src/complaint-book.ts` owns every database write to a complaint sheet and both reads: the
+plain sheet read behind the guest receipt and receipt emails, and the owner sheet read, which
+adds `responseStatus` and `overdue` and is what every owner route returns. Virtual filing and
+physical backup share one registration path.
+
 The Libro de Reclamaciones is committed in two files that `src/complaint-config.ts` merges
 and validates when it loads: the guest-facing provider, notices and `policyVersion` in
 `packages/shared/src/complaint-book.json`, which the website also prerenders, and the

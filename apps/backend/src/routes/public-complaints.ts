@@ -1,6 +1,6 @@
 import { complaintSubmissionSchema } from "@pms/shared";
 import { getDb } from "../db";
-import { complaintTokenHash, fileComplaint, receiptForToken } from "../complaints";
+import { complaintTokenHash, fileSheet, receiptForToken } from "../complaint-book";
 import { zValidator } from "@hono/zod-validator";
 import { currency } from "../http";
 import { requireTurnstile } from "../turnstile";
@@ -50,13 +50,10 @@ publicComplaintRoutes.post(
       failed: "complaint security check failed",
       unavailable: "complaint security check is unavailable",
     });
-    const result = await fileComplaint(
-      getDb(c.env.DB),
-      input,
-      tokenHash,
-      currency(c),
-      c.env.PROPERTY_TIME_ZONE,
-    );
+    const result = await fileSheet(getDb(c.env.DB), input, tokenHash, {
+      currency: currency(c),
+      timeZone: c.env.PROPERTY_TIME_ZONE,
+    });
     return c.json(result.sheet, result.created ? 201 : 200);
   },
 );

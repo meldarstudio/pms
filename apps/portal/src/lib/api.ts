@@ -806,6 +806,8 @@ export type ComplaintSheet = {
   source: "virtual" | "physical";
   originalReference: string | null;
   restoredAt: string | null;
+  responseStatus: "pending" | "recorded";
+  overdue: boolean;
   email: ComplaintEmail;
   emails: ComplaintEmail[];
   responses: {

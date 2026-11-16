@@ -409,3 +409,45 @@ _Avoid_: Money received, discount
 Refund due converted into future-stay coupon value with the guest's agreement instead
 of returning money.
 _Avoid_: Completed refund, coupon redemption
+
+### Complaint book
+
+**Complaint book / Libro de Reclamaciones**:
+The property's legally required register of guests' reclamos and quejas, kept as
+consecutively numbered complaint sheets.
+_Avoid_: Complaints inbox, ticket system
+
+**Complaint sheet / Hoja de reclamación**:
+One numbered entry in the complaint book, a reclamo or a queja, kept with the disclosures
+it was filed under. It is never edited or deleted.
+_Avoid_: Complaint alone, ticket, case
+
+**Physical backup sheet / Respaldo físico**:
+A complaint sheet filed on paper while the virtual book could not be used, transcribed
+afterwards by the owner with its original reference and filing time, and numbered in the
+same book.
+_Avoid_: Import, manual complaint
+
+**Response deadline**:
+The property date by which a sheet must be answered: 15 weekdays after its filing date.
+Holidays count as weekdays, so it is never later than the legal deadline.
+
+**Complaint response**:
+The owner's record of an answer already sent to the complainant: its text, channel,
+recipient and sending date. Recording it sends nothing.
+_Avoid_: Reply, message
+
+**Voided response**:
+A response marked as recorded by mistake, kept visible with its reason. It no longer
+answers the sheet and cannot be changed or undone.
+
+**Answered / overdue**:
+A sheet is answered while it has a response that is not voided, and overdue when it is
+unanswered after its response deadline.
+
+**Complaint receipt**:
+The complainant's copy of their filed sheet, shown privately after filing and emailed when
+they gave an address.
+
+**Receipt copy**:
+A further email of the same receipt, requested by the owner after the receipt email failed.

@@ -6,7 +6,7 @@ import {
   COMPLAINT_TURNSTILE_PASS,
 } from "../test-support/turnstile";
 import { afterEach, beforeEach, expect, it, vi } from "vite-plus/test";
-import type { complaintView } from "../complaints";
+import type { ComplaintSheet } from "../complaint-book";
 import { getDb } from "../db";
 import { sendComplaintEmails } from "../complaint-emails";
 import { fakeResend, RESEND_TEST_KEY, RESEND_LOOPBACK } from "../test-support/resend";
@@ -16,7 +16,7 @@ import { createTestDb, type TestDb } from "../test-support/d1";
 import { complaintBook } from "../complaint-config";
 import { complaintInput, complaintSubmission } from "../test-support/complaints";
 
-type Sheet = Awaited<ReturnType<typeof complaintView>>;
+type Sheet = ComplaintSheet;
 let db: TestDb;
 function stubServices(mail?: { fetch: typeof fetch }) {
   const security = fakeTurnstile();
@@ -135,6 +135,50 @@ it("survives concurrent filing with unique consecutive references and one replay
   expect(new Set(sheets.map((sheet) => sheet.reference))).toEqual(
     new Set(["000000001-2026", "000000002-2026"]),
   );
+});
+
+it("transcribes a physical backup sheet once when its retry commits first, numbered after the virtual sheets", async () => {
+  vi.useFakeTimers({ toFake: ["Date"] });
+  vi.setSystemTime(new Date("2026-11-14T15:00:00Z"));
+  const file = () =>
+    app.request(
+      "http://localhost/public/complaints",
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          authorization: `Bearer ${crypto.randomUUID() + crypto.randomUUID()}`,
+        },
+        body: JSON.stringify(complaintSubmission),
+      },
+      db.env,
+    );
+  expect(await (await file()).json()).toMatchObject({ reference: "000000001-2026" });
+  await db.signIn("owner");
+  const backup = {
+    requestId: crypto.randomUUID(),
+    originalReference: "RESPALDO-0007",
+    filedAt: "2026-11-10T15:00:00.000Z",
+    restoredAt: "2026-11-12T15:00:00.000Z",
+    input: complaintInput,
+  };
+  const transcribe = () => db.request("/complaints/backups", "POST", backup);
+  let retry: Promise<Response> | undefined;
+  db.beforeCommit(() => (retry = transcribe()));
+  const first = await transcribe();
+  const committed = await retry!;
+  expect([committed.status, first.status]).toEqual([201, 200]);
+  const saved = (await committed.json()) as Sheet;
+  const replayed = (await first.json()) as Sheet;
+  expect(saved).toMatchObject({
+    reference: "000000002-2026",
+    source: "physical",
+    originalReference: backup.originalReference,
+    filedAt: backup.filedAt,
+  });
+  expect(replayed).toEqual(saved);
+  expect((await transcribe()).status).toBe(200);
+  expect(await (await file()).json()).toMatchObject({ reference: "000000003-2026" });
 });
 
 it("lets only the owner record responses and void each once with a reason, after which it no longer answers the sheet", async () => {

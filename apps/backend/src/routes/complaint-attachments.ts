@@ -6,7 +6,7 @@ import { complaintAttachmentMetadataSchema } from "@pms/shared";
 import type { Env } from "../env";
 import { getDb } from "../db";
 import { complaintAttachments, complaintResponses, complaintResponseVoids } from "../db/schema";
-import { complaintView } from "../complaints";
+import { readOwnerSheet } from "../complaint-book";
 import { HttpError } from "../http";
 
 export const complaintAttachmentRoutes = new Hono<Env>();
@@ -101,7 +101,10 @@ complaintAttachmentRoutes.put(
         uploadedBy: object.customMetadata!.uploadedBy!,
       })
       .onConflictDoNothing();
-    return c.json(await complaintView(db, c.req.param("id")), prior ? 200 : 201);
+    return c.json(
+      await readOwnerSheet(db, c.req.param("id"), c.var.propertyCalendar.today),
+      prior ? 200 : 201,
+    );
   },
 );
 
