@@ -49,7 +49,7 @@ export async function sendConfirmationEmails(db: Db, env: SendEnv) {
   await sendDueEmails(db, resendForEnv(env), {
     table: confirmationEmails,
     failureLog: "confirmation email failed",
-    keepsSentRequest: false,
+    keepsRequestAfterSettling: false,
     prepare: (email) => prepareConfirmation(db, email, env),
   });
 }

@@ -27,7 +27,7 @@ export type Quote = typeof quotes.$inferSelect;
 export async function priceQuote(
   db: Db,
   input: QuoteCreate,
-  context: { today: string; now: Date; checkoutId: string | null },
+  context: { today: string; now: Date; checkoutId: string },
 ): Promise<{ quote: Quote; available: boolean }> {
   requireStay(input.checkIn, input.checkOut);
   requireOnlineArrival(input.checkIn, context.today);

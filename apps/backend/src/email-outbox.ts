@@ -17,9 +17,9 @@ export type Preparation = { request: string } | { failure: string };
 export type Outbox<T extends OutboxTable> = {
   table: T;
   failureLog: string;
-  keepsSentRequest: boolean;
+  keepsRequestAfterSettling: boolean;
   prepare(email: Row<T>): Promise<Preparation>;
-  claimChange?(email: Row<T>): Change;
+  claimChange?(email: Row<T>): Partial<T["$inferInsert"]>;
 };
 
 export async function sendDueEmails<T extends OutboxTable>(
@@ -60,7 +60,7 @@ async function sendEmail<T extends OutboxTable>(
     return settle(db, outbox, email, { status: "failed", lastError: prepared.failure });
   const attempt = email.attempts + 1;
   const [claimed] = await updatePending(db, outbox, email, {
-    ...outbox.claimChange?.(email),
+    ...(outbox.claimChange?.(email) as Change | undefined),
     attempts: attempt,
     nextAttemptAt: retryAt(attempt, 0),
     pendingRequest: prepared.request,
@@ -103,7 +103,10 @@ async function settle<T extends OutboxTable>(
   const settled =
     change.status === "pending"
       ? {}
-      : { nextAttemptAt: null, ...(outbox.keepsSentRequest ? {} : { pendingRequest: null }) };
+      : {
+          nextAttemptAt: null,
+          ...(outbox.keepsRequestAfterSettling ? {} : { pendingRequest: null }),
+        };
   await updatePending(db, outbox, email, { ...settled, ...change });
 }
 

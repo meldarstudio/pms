@@ -13,7 +13,7 @@ export async function sendComplaintEmails(db: Db, env: Env["Bindings"]) {
   await sendDueEmails(db, resendForEnv(env), {
     table: complaintEmails,
     failureLog: "complaint receipt handoff failed",
-    keepsSentRequest: true,
+    keepsRequestAfterSettling: true,
     async prepare(email) {
       if (
         email.firstAttemptAt &&
