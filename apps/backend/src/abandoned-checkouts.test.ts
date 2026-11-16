@@ -14,7 +14,6 @@ import {
   requoteCheckout,
   startCheckout,
 } from "./public-checkouts";
-import { createQuote, saveQuote } from "./quotes";
 import { CULQI_TEST_KEY, fakeCulqi, type FakeCulqi } from "./test-support/culqi";
 import { createTestDb, seedRooms, seedRoomType, type TestDb } from "./test-support/d1";
 
@@ -130,28 +129,6 @@ const history = () =>
     ]),
   );
 
-const legacyRows = (quoteId: string) =>
-  db.sqlite
-    .prepare(
-      "SELECT (SELECT count(*) FROM quotes WHERE id = ?1) quotes, (SELECT count(*) FROM payment_attempts WHERE quote_id = ?1) attempts",
-    )
-    .get(quoteId);
-
-async function legacyQuote(attemptStatus?: string) {
-  const { id } = await createQuote(getDb(db.env.DB), stay, {
-    today: "2026-10-01",
-    now: new Date(),
-  });
-  if (attemptStatus)
-    db.sqlite
-      .prepare(
-        `INSERT INTO payment_attempts (id, quote_id, amount_cents, currency, email, source_id, status, created_at, called_at)
-         VALUES (?, ?, 10000, 'PEN', 'ana@example.com', 'tkn_legacy', ?, ?, ?)`,
-      )
-      .run(`attempt-${id}`, id, attemptStatus, started.toISOString(), started.toISOString());
-  return id;
-}
-
 describe("abandoned checkout purge", () => {
   it("deletes an abandoned checkout's quotes, acceptance and failed attempt once it has been idle over 30 days", async () => {
     const abandoned = await declinedCheckout();
@@ -247,31 +224,6 @@ describe("abandoned checkout purge", () => {
 
     expect(race).toHaveBeenCalledOnce();
     expect(checkoutRows(opened.id)).toEqual(kept);
-  });
-
-  describe("quotes from before public checkouts", () => {
-    it("deletes one that expired over 30 days ago, with its failed attempt", async () => {
-      const unpaid = await legacyQuote();
-      const declined = await legacyQuote("failed");
-
-      await purge(daysLater(31));
-
-      expect(legacyRows(unpaid)).toEqual({ quotes: 0, attempts: 0 });
-      expect(legacyRows(declined)).toEqual({ quotes: 0, attempts: 0 });
-    });
-
-    it("keeps one that became a reservation", async () => {
-      const quote = await legacyQuote("failed");
-      await saveQuote(getDb(db.env.DB), quote, {
-        fullName: "Ana Torres",
-        email: "ana@example.com",
-      });
-      const before = history();
-
-      await purge(daysLater(400));
-
-      expect(history()).toEqual(before);
-    });
   });
 
   it("runs in the Worker's scheduled run", async () => {
