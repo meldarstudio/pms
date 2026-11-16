@@ -1,7 +1,5 @@
-import type { ComplaintSheet } from "./complaint-book";
+import type { ComplaintSheet as Sheet } from "./complaint-book";
 import { REPLY_TO } from "./confirmation-email";
-
-type Sheet = ComplaintSheet;
 
 const COPY = {
   es: {

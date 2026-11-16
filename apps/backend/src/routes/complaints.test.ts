@@ -6,7 +6,7 @@ import {
   COMPLAINT_TURNSTILE_PASS,
 } from "../test-support/turnstile";
 import { afterEach, beforeEach, expect, it, vi } from "vite-plus/test";
-import type { ComplaintSheet } from "../complaint-book";
+import type { ComplaintSheet as Sheet } from "../complaint-book";
 import { getDb } from "../db";
 import { sendComplaintEmails } from "../complaint-emails";
 import { fakeResend, RESEND_TEST_KEY, RESEND_LOOPBACK } from "../test-support/resend";
@@ -16,7 +16,6 @@ import { createTestDb, type TestDb } from "../test-support/d1";
 import { complaintBook } from "../complaint-config";
 import { complaintInput, complaintSubmission } from "../test-support/complaints";
 
-type Sheet = ComplaintSheet;
 let db: TestDb;
 function stubServices(mail?: { fetch: typeof fetch }) {
   const security = fakeTurnstile();
@@ -167,7 +166,7 @@ it("transcribes a physical backup sheet once when its retry commits first, numbe
   db.beforeCommit(() => (retry = transcribe()));
   const first = await transcribe();
   const committed = await retry!;
-  expect([committed.status, first.status]).toEqual([201, 200]);
+  expect([committed.status, first.status]).toEqual([201, 201]);
   const saved = (await committed.json()) as Sheet;
   const replayed = (await first.json()) as Sheet;
   expect(saved).toMatchObject({

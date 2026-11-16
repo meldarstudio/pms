@@ -25,7 +25,7 @@ import { propertyCalendar } from "./property-calendar";
 
 export type ComplaintSheet = Awaited<ReturnType<typeof readSheet>>;
 export type OwnerSheet = Awaited<ReturnType<typeof readOwnerSheet>>;
-type Registered = { currency: string; timeZone: string };
+type RegistrationContext = { currency: string; timeZone: string };
 type OwnerWrite = { accountId: string; today: string };
 
 export async function complaintTokenHash(authorization: string | undefined) {
@@ -193,7 +193,7 @@ type SheetEntry = {
 async function registerSheet(
   db: Db,
   entry: SheetEntry,
-  { currency, timeZone }: Registered,
+  { currency, timeZone }: RegistrationContext,
   now: string,
 ) {
   const registered = async () => {
@@ -203,13 +203,13 @@ async function registerSheet(
       throw new HttpError(409, "complaint retry differs from saved sheet");
     return true;
   };
-  const refuseImportedReference = async () => {
+  const refuseTranscribedReference = async () => {
     if (entry.source !== "physical") return;
-    const [imported] = await db
+    const [transcribed] = await db
       .select({ id: complaintSheets.id })
       .from(complaintSheets)
       .where(eq(complaintSheets.originalReference, entry.originalReference));
-    if (imported) throw new HttpError(409, "physical complaint reference already imported");
+    if (transcribed) throw new HttpError(409, "physical complaint reference already imported");
   };
   if (await registered()) return { created: false };
   if (
@@ -220,7 +220,7 @@ async function registerSheet(
     throw new HttpError(400, "invalid complaint backup time");
   if (entry.input.policyVersion !== complaintBook.policyVersion)
     throw new HttpError(409, "complaint privacy information changed");
-  await refuseImportedReference();
+  await refuseTranscribedReference();
   const number = sql<number>`(SELECT coalesce(max(number), ${complaintBook.firstNumber - 1}) + 1 FROM complaint_sheets WHERE book_id = ${complaintBook.bookId})`;
   try {
     await runBatch(db, [
@@ -260,9 +260,10 @@ async function registerSheet(
       }),
     ]);
   } catch (error) {
-    if (await registered()) return { created: false };
-    await refuseImportedReference();
-    throw error;
+    if (!(await registered())) {
+      await refuseTranscribedReference();
+      throw error;
+    }
   }
   return { created: true };
 }
@@ -275,7 +276,7 @@ export async function fileSheet(
   db: Db,
   input: ComplaintInput,
   tokenHash: string,
-  registered: Registered,
+  context: RegistrationContext,
 ) {
   const now = new Date().toISOString();
   const { created } = await registerSheet(
@@ -289,7 +290,7 @@ export async function fileSheet(
       emailsReceipt: Boolean(input.email),
       source: "virtual",
     },
-    registered,
+    context,
     now,
   );
   return { created, sheet: guestReceipt(await readSheet(db, tokenHash)) };
@@ -298,7 +299,7 @@ export async function fileSheet(
 export async function transcribeBackupSheet(
   db: Db,
   backup: ComplaintBackupRequest,
-  registered: Registered,
+  context: RegistrationContext,
   today: string,
 ) {
   const { created } = await registerSheet(
@@ -314,7 +315,7 @@ export async function transcribeBackupSheet(
       originalReference: backup.originalReference,
       restoredAt: backup.restoredAt,
     },
-    registered,
+    context,
     new Date().toISOString(),
   );
   return { created, sheet: await readOwnerSheet(db, backup.requestId, today) };

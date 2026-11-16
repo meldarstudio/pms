@@ -434,7 +434,7 @@ Holidays count as weekdays, so it is never later than the legal deadline.
 
 **Complaint response**:
 The owner's record of an answer already sent to the complainant: its text, channel,
-recipient and sending date. Recording it sends nothing.
+recipient, sending date and where the proof of sending is kept. Recording it sends nothing.
 _Avoid_: Reply, message
 
 **Voided response**:
