@@ -4,10 +4,7 @@ import {
   CircleAlertIcon,
   CircleCheckIcon,
   ClockIcon,
-  DownloadIcon,
-  EllipsisIcon,
   FileInputIcon,
-  PrinterIcon,
   PlusIcon,
   SendIcon,
 } from "lucide-react";
@@ -48,12 +45,6 @@ import {
   DrawerHeader,
   DrawerTitle,
 } from "@/components/ui/drawer";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
 import { Empty, EmptyHeader, EmptyMedia, EmptyTitle } from "@/components/ui/empty";
 import { Input } from "@/components/ui/input";
 import {
@@ -92,7 +83,7 @@ import type {
   ComplaintSummary,
 } from "@/lib/api";
 import { longDate } from "@/lib/dates";
-import { dayInZone, instantOnDay } from "@/lib/property-calendar";
+import { dayInZone } from "@/lib/property-calendar";
 import { usePropertyCalendar } from "@/lib/use-property-calendar";
 import { formatMoney } from "@/lib/money";
 import { translateError } from "@/lib/errors";
@@ -456,56 +447,20 @@ function ComplaintDetail({
   author: AuthorName;
 }) {
   const [responseOpen, setResponseOpen] = useState(false);
-  function exportSheet() {
-    const url = URL.createObjectURL(
-      new Blob([JSON.stringify(sheet, null, 2)], { type: "application/json" }),
-    );
-    const link = document.createElement("a");
-    link.href = url;
-    link.download = `${sheet.reference}.json`;
-    link.click();
-    URL.revokeObjectURL(url);
-  }
   const { input } = sheet;
   return (
-    <article className="complaint-owner-sheet flex w-full flex-col gap-8">
+    <article className="flex w-full flex-col gap-8">
       <header className="flex flex-col gap-4">
-        <div className="flex items-start justify-between gap-3">
-          <div className="flex min-w-0 flex-col gap-1">
-            <h1 className="text-xl font-semibold tracking-tight">
-              Hoja <span className="whitespace-nowrap">Nº {sheet.reference}</span>
-            </h1>
-            <p className="text-muted-foreground">
-              {categoryLabel(input.category)} ·{" "}
-              <span className="font-medium wrap-anywhere text-foreground">{input.fullName}</span> ·{" "}
-              {sheetDateFormatter(sheet)(sheet.filedAt)}
-              {sheet.source === "physical" && " · Respaldo físico"}
-            </p>
-          </div>
-          <DropdownMenu>
-            <DropdownMenuTrigger
-              render={
-                <Button
-                  variant="outline"
-                  size="icon-sm"
-                  aria-label="Más acciones"
-                  className="shrink-0 print:hidden"
-                />
-              }
-            >
-              <EllipsisIcon />
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end" className="w-auto">
-              <DropdownMenuItem onClick={() => window.print()}>
-                <PrinterIcon />
-                Imprimir hoja
-              </DropdownMenuItem>
-              <DropdownMenuItem onClick={exportSheet}>
-                <DownloadIcon />
-                Exportar hoja y respuestas
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
+        <div className="flex min-w-0 flex-col gap-1">
+          <h1 className="text-xl font-semibold tracking-tight">
+            Hoja <span className="whitespace-nowrap">Nº {sheet.reference}</span>
+          </h1>
+          <p className="text-muted-foreground">
+            {categoryLabel(input.category)} ·{" "}
+            <span className="font-medium wrap-anywhere text-foreground">{input.fullName}</span> ·{" "}
+            {sheetDateFormatter(sheet)(sheet.filedAt)}
+            {sheet.source === "physical" && " · Respaldo físico"}
+          </p>
         </div>
         <ResponseStatus sheet={sheet} overdue={overdue} onRespond={() => setResponseOpen(true)} />
       </header>
@@ -556,7 +511,7 @@ function ResponseStatus({
   const latest = sheet.responses
     .filter((response) => !response.voided)
     .reduce<ComplaintSheet["responses"][number] | undefined>(
-      (last, response) => (!last || response.sentAt > last.sentAt ? response : last),
+      (last, response) => (!last || response.sentOn > last.sentOn ? response : last),
       undefined,
     );
   return (
@@ -574,7 +529,7 @@ function ResponseStatus({
               <span className="font-medium">Respuesta registrada</span>
               <span className="text-muted-foreground">
                 {" "}
-                · última enviada el {sheetDateFormatter(sheet)(latest.sentAt)}
+                · última enviada el {longDate(latest.sentOn)}
               </span>
             </span>
           </p>
@@ -588,13 +543,13 @@ function ResponseStatus({
           </p>
         )}
         {!latest && (
-          <Button size="sm" className="print:hidden" onClick={onRespond}>
+          <Button size="sm" onClick={onRespond}>
             Registrar respuesta
           </Button>
         )}
       </div>
       {sheet.email.status === "failed" && (
-        <p className="flex flex-wrap items-center gap-x-2 text-destructive print:hidden">
+        <p className="flex flex-wrap items-center gap-x-2 text-destructive">
           <CircleAlertIcon aria-hidden className="size-3.5" />
           La constancia por correo requiere atención.
           <Button
@@ -639,14 +594,6 @@ function SheetDetails({ sheet }: { sheet: ComplaintSheet }) {
       <DetailSection id="complaint-record" title="Registro">
         <Facts>
           <Fact label="Presentada">{date(sheet.filedAt)}</Fact>
-          <div className="hidden print:contents">
-            <Fact label="Proveedor">
-              {sheet.provider.legalName} / RUC {sheet.provider.ruc}
-              {"\n"}
-              {sheet.provider.address}
-            </Fact>
-            <Fact label="Código de identificación">{sheet.bookId}</Fact>
-          </div>
           <Fact label="Fecha límite de respuesta">{longDate(sheet.dueDate)}</Fact>
           {sheet.source === "physical" && (
             <>
@@ -689,7 +636,7 @@ function Responses({
         <h2 id="complaint-responses" className="text-sm font-medium">
           Respuestas enviadas
         </h2>
-        <Button size="sm" variant="outline" className="print:hidden" onClick={onRespond}>
+        <Button size="sm" variant="outline" onClick={onRespond}>
           <PlusIcon aria-hidden />
           Agregar respuesta
         </Button>
@@ -727,13 +674,13 @@ function Responses({
                       "font-medium underline-offset-4 hover:underline",
                       response.voided && "line-through",
                     )}
-                    aria-label={`Ver respuesta del ${date(response.sentAt)}${response.voided ? " (anulada)" : ""}`}
+                    aria-label={`Ver respuesta del ${longDate(response.sentOn)}${response.voided ? " (anulada)" : ""}`}
                     onClick={(event) => {
                       event.stopPropagation();
                       open(response.id);
                     }}
                   >
-                    {date(response.sentAt)}
+                    {longDate(response.sentOn)}
                   </button>
                   <p className="text-muted-foreground sm:hidden">
                     {channelLabel(response.channel)}
@@ -771,7 +718,7 @@ function Responses({
         onOpenChange={(next) => {
           if (!next) setOpenId(null);
         }}
-        title={shown ? `Respuesta del ${date(shown.sentAt)}` : "Respuesta"}
+        title={shown ? `Respuesta del ${longDate(shown.sentOn)}` : "Respuesta"}
         description={shown ? `${channelLabel(shown.channel)} · Para ${shown.recipient}` : ""}
       >
         {shown && (
@@ -928,7 +875,7 @@ function ReceiptEmails({ sheet }: { sheet: ComplaintSheet }) {
       {failed && (
         <div className="flex flex-col gap-2">
           <Button
-            className="w-fit print:hidden"
+            className="w-fit"
             variant="outline"
             size="sm"
             disabled={copy.isPending}
@@ -979,7 +926,7 @@ function ResponseForm({
     text: "",
     channel: sheet.input.responseChannel,
     recipient: defaultRecipient(sheet.input.responseChannel),
-    sentAt: "",
+    sentOn: "",
     evidence: "",
   };
   const [draft, setDraft] = useState(blank);
@@ -1055,13 +1002,13 @@ function ResponseForm({
     try {
       let responseId = savedResponseId;
       if (!responseId) {
-        if (!draft.sentAt) return setDateMissing(true);
+        if (!draft.sentOn) return setDateMissing(true);
         command.current ??= {
           requestId: crypto.randomUUID(),
           text: draft.text,
           channel: draft.channel,
           recipient: draft.recipient,
-          sentAt: instantOnDay(draft.sentAt, sheet.timeZone, Date.parse(sheet.filedAt), Date.now()),
+          sentOn: draft.sentOn,
           evidence: draft.evidence,
         };
         setLocked(true);
@@ -1142,12 +1089,12 @@ function ResponseForm({
               type="date"
               min={dayInZone(sheet.filedAt, sheet.timeZone)}
               max={today}
-              value={draft.sentAt}
+              value={draft.sentOn}
               disabled={busy || locked}
               error={dateMissing ? "Seleccione la fecha de envío." : undefined}
               onChange={(value) => {
                 setDateMissing(false);
-                update("sentAt", value);
+                update("sentOn", value);
               }}
             />
             <Field>
@@ -1219,7 +1166,13 @@ function ResponseForm({
           <Alert variant="warning">
             <CircleAlertIcon />
             <AlertTitle>La respuesta se guardó, pero no se pudo adjuntar la evidencia.</AlertTitle>
-            {attach.error && <AlertDescription>{problemText(attach.error)}</AlertDescription>}
+            <AlertDescription>
+              <p>
+                Si eliges «Adjuntar después», la respuesta seguirá guardada, pero tendrás que
+                seleccionar el archivo de nuevo.
+              </p>
+              {attach.error && <p>{problemText(attach.error)}</p>}
+            </AlertDescription>
           </Alert>
         )}
         <div className="flex flex-wrap gap-2">

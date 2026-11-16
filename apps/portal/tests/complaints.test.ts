@@ -34,7 +34,7 @@ it("saves a response once across an uncertain retry and retries only its evidenc
     text: "Respuesta enviada",
     channel: "email",
     recipient: "ana@example.com",
-    sentAt: "2026-11-13T15:00:00Z",
+    sentOn: "2026-11-13",
     evidence: "Mensaje 123",
     recordedAt: "2026-11-13T16:00:00Z",
     recordedBy: "owner",
@@ -141,6 +141,8 @@ it("saves a response once across an uncertain retry and retries only its evidenc
     body().includes("La respuesta se guardó, pero no se pudo adjuntar la evidencia."),
   );
   assert.equal(writes[0], writes[1]);
+  assert.equal(JSON.parse(writes[0]!).sentOn, "2026-11-13");
+  assert.equal("sentAt" in JSON.parse(writes[0]!), false);
   await select();
   await page.click("Reintentar evidencia");
   await page.until(() => uploads.length === 2 && !body().includes("Reintentar evidencia"));

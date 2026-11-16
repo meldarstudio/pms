@@ -28,8 +28,8 @@ const messages: Record<string, string> = {
   "too many complaints; retry in one minute": "Espere un minuto y reintente el mismo envío.",
   "invalid complaint response": "Revise la respuesta enviada.",
   "complaint response retry differs": "El reintento difiere de la respuesta guardada.",
-  "invalid complaint response sending time":
-    "La fecha de envío debe estar entre la presentación y el momento actual.",
+  "invalid complaint response sending date":
+    "La fecha de envío debe estar entre la fecha de presentación y hoy.",
   "void reason is required": "Escriba el motivo de la anulación.",
   "complaint response already voided": "La respuesta ya fue anulada con otro motivo.",
   "complaint response is voided": "La respuesta está anulada; no se le puede adjuntar evidencia.",

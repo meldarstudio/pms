@@ -241,28 +241,6 @@
     @apply bg-background font-sans;
   }
   @media print {
-    body:has(.complaint-owner-sheet) [data-slot="sidebar-wrapper"],
-    body:has(.complaint-owner-sheet) [data-slot="sidebar-inset"],
-    body:has(.complaint-owner-sheet) [data-slot="sidebar-inset"] > div,
-    body:has(.complaint-owner-sheet) main {
-      position: static;
-      height: auto;
-      overflow: visible;
-      display: block;
-    }
-    body:has(.complaint-owner-sheet) [data-slot="sidebar"],
-    body:has(.complaint-owner-sheet) [data-slot="sidebar-gap"] {
-      display: none;
-    }
-    .complaint-owner-sheet {
-      color: black;
-      background: white;
-      font-size: 11pt;
-    }
-    .complaint-owner-sheet section,
-    .complaint-owner-sheet dl > div {
-      break-inside: avoid;
-    }
     body:has(> [data-print-sheet]) > :not([data-print-sheet]) {
       display: none;
     }

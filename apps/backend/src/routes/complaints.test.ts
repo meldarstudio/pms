@@ -138,6 +138,8 @@ it("survives concurrent filing with unique consecutive references and one replay
 });
 
 it("lets only the owner record responses and void each once with a reason, after which it no longer answers the sheet", async () => {
+  vi.useFakeTimers({ toFake: ["Date"] });
+  vi.setSystemTime(new Date("2026-11-15T02:00:00Z"));
   const token = crypto.randomUUID() + crypto.randomUUID();
   const filed = await app.request(
     "http://localhost/public/complaints",
@@ -154,7 +156,7 @@ it("lets only the owner record responses and void each once with a reason, after
     text: "Written response sent",
     channel: "email",
     recipient: "ana@example.com",
-    sentAt: new Date().toISOString(),
+    sentOn: "2026-11-14",
     evidence: "Owner mailbox / sent message 123",
   };
   const voiding = { reason: "Recorded on the wrong sheet" };
@@ -180,8 +182,17 @@ it("lets only the owner record responses and void each once with a reason, after
   const detail = (await (await db.request(`/complaints/${sheet.id}`)).json()) as Sheet;
   expect(detail.input).toEqual(complaintInput);
   expect(detail.responses).toMatchObject([
-    { text: response.text, voided: { reason: voiding.reason } },
+    {
+      text: response.text,
+      sentOn: "2026-11-14",
+      voided: { reason: voiding.reason },
+    },
   ]);
+  expect(
+    db.sqlite
+      .prepare("SELECT sent_on FROM complaint_responses WHERE id = ?")
+      .get(response.requestId),
+  ).toEqual({ sent_on: "2026-11-14" });
   const receipt = await app.request(
     "http://localhost/public/complaints/receipt",
     { headers: { authorization: `Bearer ${token}` } },
@@ -338,6 +349,8 @@ it("rolls back the sheet and number if its email work cannot be stored", async (
 it.each(["complaint_sheets", "complaint_responses", "complaint_response_voids"])(
   "preserves filed %s against direct updates and deletion",
   async (table) => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date("2026-11-14T15:00:00Z"));
     const filed = await app.request(
       "http://localhost/public/complaints",
       {
@@ -360,7 +373,7 @@ it.each(["complaint_sheets", "complaint_responses", "complaint_response_voids"])
           text: "Original written response",
           channel: "email",
           recipient: "ana@example.com",
-          sentAt: new Date().toISOString(),
+          sentOn: "2026-11-14",
           evidence: "Original evidence",
         })
       ).status,

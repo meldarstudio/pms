@@ -26,6 +26,7 @@ import {
   complaintBook,
 } from "../complaint-config";
 import { complaintAttachmentRoutes } from "./complaint-attachments";
+import { propertyCalendar } from "../property-calendar";
 
 export const ownerComplaintRoutes = new Hono<Env>();
 ownerComplaintRoutes.use("*", requireOwner);
@@ -83,10 +84,10 @@ ownerComplaintRoutes.post(
       return c.json(await complaintView(db, sheet.id));
     }
     if (
-      Date.parse(input.sentAt) > Date.now() ||
-      Date.parse(input.sentAt) < Date.parse(sheet.filedAt)
+      input.sentOn > c.var.propertyCalendar.today ||
+      input.sentOn < propertyCalendar(sheet.timeZone, new Date(sheet.filedAt)).today
     )
-      throw new HttpError(400, "invalid complaint response sending time");
+      throw new HttpError(400, "invalid complaint response sending date");
     await db
       .insert(complaintResponses)
       .values({
@@ -96,7 +97,7 @@ ownerComplaintRoutes.post(
         text: input.text,
         channel: input.channel,
         recipient: input.recipient,
-        sentAt: new Date(input.sentAt).toISOString(),
+        sentOn: input.sentOn,
         evidence: input.evidence,
         recordedAt: new Date().toISOString(),
         recordedBy: c.var.account.id,

@@ -809,7 +809,7 @@ export type ComplaintSheet = {
     text: string;
     channel: string;
     recipient: string;
-    sentAt: string;
+    sentOn: string;
     evidence: string;
     correctsId: string | null;
     recordedAt: string;

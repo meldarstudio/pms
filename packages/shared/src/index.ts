@@ -495,7 +495,7 @@ export const complaintResponseSchema = z
     text: complaintText(10000).min(1, "invalid complaint response"),
     channel: z.enum(["email", "letter"]),
     recipient: complaintText(500).min(1, "invalid complaint response"),
-    sentAt: z.iso.datetime({ offset: true }),
+    sentOn: z.iso.date({ error: "invalid complaint response sending date" }),
     evidence: complaintText(2000).min(1, "invalid complaint response"),
   })
   .strict();

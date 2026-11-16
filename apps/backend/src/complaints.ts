@@ -46,7 +46,7 @@ export async function complaintView(db: Db, id: string) {
       text: complaintResponses.text,
       channel: complaintResponses.channel,
       recipient: complaintResponses.recipient,
-      sentAt: complaintResponses.sentAt,
+      sentOn: complaintResponses.sentOn,
       evidence: complaintResponses.evidence,
       correctsId: complaintResponses.correctsId,
       recordedAt: complaintResponses.recordedAt,

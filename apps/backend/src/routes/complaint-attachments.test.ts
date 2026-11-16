@@ -24,6 +24,8 @@ beforeAll(async () => {
 }, 30000);
 afterAll(async () => platform?.dispose());
 beforeEach(async () => {
+  vi.useFakeTimers({ toFake: ["Date"] });
+  vi.setSystemTime(new Date("2026-11-14T15:00:00Z"));
   db = await createTestDb();
   db.env.TURNSTILE_SECRET_KEY = TURNSTILE_TEST_SECRET;
   vi.stubGlobal("fetch", fakeTurnstile().fetch);
@@ -49,7 +51,7 @@ beforeEach(async () => {
         text: "Refund confirmed by email",
         channel: "email",
         recipient: "ana@example.com",
-        sentAt: new Date().toISOString(),
+        sentOn: "2026-11-14",
         evidence: "Sent email 123",
       })
     ).status,
@@ -59,6 +61,7 @@ afterEach(() => {
   db.close();
   vi.restoreAllMocks();
   vi.unstubAllGlobals();
+  vi.useRealTimers();
 });
 
 const path = (id: string) => `/complaints/${complaintId}/responses/${responseId}/attachments/${id}`;

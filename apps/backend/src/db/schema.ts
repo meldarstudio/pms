@@ -626,7 +626,7 @@ export const complaintResponses = sqliteTable("complaint_responses", {
   text: text("text").notNull(),
   channel: text("channel").notNull(),
   recipient: text("recipient").notNull(),
-  sentAt: text("sent_at").notNull(),
+  sentOn: text("sent_on").notNull(),
   evidence: text("evidence").notNull(),
   correctsId: text("corrects_id"),
   recordedAt: text("recorded_at").notNull(),

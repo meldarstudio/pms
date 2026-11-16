@@ -42,7 +42,7 @@ export function App() {
     >
       <AppSidebar />
       <SidebarInset className="min-h-0 min-w-0 overflow-hidden pr-[env(safe-area-inset-right)] pb-[env(safe-area-inset-bottom)] pl-[env(safe-area-inset-left)]">
-        <header className="sticky top-0 z-10 flex h-[calc(3rem+env(safe-area-inset-top))] shrink-0 items-center gap-3 border-b bg-background px-2.5 pt-[env(safe-area-inset-top)] print:hidden">
+        <header className="sticky top-0 z-10 flex h-[calc(3rem+env(safe-area-inset-top))] shrink-0 items-center gap-3 border-b bg-background px-2.5 pt-[env(safe-area-inset-top)]">
           <SidebarTrigger />
           <Separator
             orientation="vertical"
