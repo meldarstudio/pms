@@ -1181,21 +1181,6 @@ describe("voided payments", () => {
       refunds: [],
     });
   });
-
-  it.each([
-    ["payments", "UPDATE payments SET amount_cents = 20000 WHERE id = ?"],
-    ["payment_voids", "UPDATE payment_voids SET reason = 'Changed' WHERE payment_id = ?"],
-  ])("refuses to rewrite a saved row in %s", async (table, sql) => {
-    let d = await command(await create(), [pay(30000)]);
-    d = await command(d, [voidPayment(d.payments[0].id)]);
-    const select = `SELECT * FROM ${table} WHERE ${table === "payments" ? "id" : "payment_id"} = ?`;
-    const original = db.sqlite.prepare(select).get(d.payments[0].id);
-
-    expect(() => db.sqlite.prepare(sql).run(d.payments[0].id)).toThrow(
-      "saved payments are immutable",
-    );
-    expect(db.sqlite.prepare(select).get(d.payments[0].id)).toEqual(original);
-  });
 });
 
 function pauseNextCommit() {

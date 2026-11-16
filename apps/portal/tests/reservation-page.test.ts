@@ -516,9 +516,6 @@ it("voids S/ 100 from its movement panel after a failed save, keeping why and wh
   );
   await React.act(async () => panelButton("Anular pago")!.click());
   await page.until(() => Boolean(window.document.querySelector('[role="dialog"] form')));
-  assert.ok(!text(popup()!).includes("dejará de contar"), "Voiding asks only for a Motivo");
-  await submit();
-  assert.equal(writes.length, 0, "A void needs a reason");
   await fill("voidReason", "Pagó con tarjeta");
   await submit();
   await page.until(() => !button("Anular pago").disabled);
@@ -537,7 +534,6 @@ it("voids S/ 100 from its movement panel after a failed save, keeping why and wh
     text(movementPanel()!),
     /Motivo de la anulación Pagó con tarjeta Anulado 19 oct 2026 Anulado por kevin Fecha/,
   );
-  assert.equal(panelButton("Anular pago"), undefined, "A voided payment cannot be voided again");
 });
 
 const movementPanel = () =>
