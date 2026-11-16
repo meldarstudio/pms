@@ -114,7 +114,7 @@ export function choosePhoneCountry<V extends PhoneDraft>(value: V, country: Coun
 
 export function checkPhone(
   text: string,
-  country: CountryCode = DEFAULT_PHONE_COUNTRY,
+  country: CountryCode,
 ): { phone: string } | { problem: PhoneProblem } {
   const parsed = parsePhoneNumberFromString(text, country);
   if (parsed?.ext) return { problem: "extension" };
@@ -141,7 +141,7 @@ export type PhoneEdit = MaskedText & { deletion?: "backward" | "forward" };
 export function editPhone<V extends PhoneDraft>(
   value: V,
   edit: PhoneEdit,
-  inputText: (value: V) => string = phoneInputText,
+  inputText: (value: V) => string,
 ): MaskedText & { value: V } {
   const { text, caret } = deleteBesideSeparator(inputText(value), edit);
   const next = typePhone(value, text);

@@ -4,7 +4,7 @@ import { address, email, phoneNumber } from "@/lib/constants";
 import type { CheckoutView } from "@/lib/reservation/checkout";
 import { formatMoney } from "@/lib/reservation/format";
 import type { GuestPayment } from "@/lib/reservation/payment";
-import { parsePhoneNumberFromString } from "libphonenumber-js/min";
+import { internationalPhone } from "@pms/shared/phone";
 import { useReview } from "./context";
 import type { ReviewRoom } from "./ReviewSummary";
 import { stayLabels } from "./stay";
@@ -20,7 +20,7 @@ export function PrintConfirmation({ view, room, reservation, currency }: SavedCo
   const { say, lang } = useReview();
   const stay = stayLabels(view, say, lang);
   const money = (cents: number) => formatMoney(cents, currency);
-  const hotelPhone = parsePhoneNumberFromString(phoneNumber)?.formatInternational() ?? phoneNumber;
+  const hotelPhone = internationalPhone(phoneNumber)?.formatInternational() ?? phoneNumber;
   return (
     <article
       className="confirmation-print-sheet"

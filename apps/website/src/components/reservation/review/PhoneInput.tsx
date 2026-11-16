@@ -47,7 +47,7 @@ export function PhoneInput({
   }, []);
 
   function edit(element: HTMLInputElement, change: PhoneEdit) {
-    const next = editPhone(value, change);
+    const next = editPhone(value, change, phoneInputText);
     selection.current = next.caret;
     onChange(next.value);
     element.value = next.text;
