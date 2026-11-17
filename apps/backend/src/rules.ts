@@ -13,8 +13,17 @@ export function requireStay(checkIn: string, checkOut: string): string[] {
   return nights;
 }
 
+export type OnlineArrivalCalendar = { today: string; firstNewArrival: string };
+
 export function requireOnlineArrival(checkIn: string, today: string) {
-  if (checkIn <= today) throw new HttpError(400, "online check-in must be after today", "checkIn");
+  if (checkIn < today)
+    throw new HttpError(400, "online check-in must not be before today", "checkIn");
+}
+
+export function requireNewOnlineArrival(checkIn: string, calendar: OnlineArrivalCalendar) {
+  requireOnlineArrival(checkIn, calendar.today);
+  if (checkIn < calendar.firstNewArrival)
+    throw new HttpError(400, "online same-day arrival has closed", "checkIn");
 }
 
 export function requireInclusiveRange(from: string, to: string, maxDays: number): string[] {

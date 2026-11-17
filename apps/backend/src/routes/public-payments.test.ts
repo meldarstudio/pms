@@ -1024,3 +1024,57 @@ describe("recovering an interrupted payment", () => {
     expect(await status(checkout.token)).toMatchObject({ state: "confirmed" });
   });
 });
+
+describe("an online same-day arrival", () => {
+  const LIMA_10_55_PM = new Date("2026-10-11T03:55:00Z");
+  const today = { checkIn: "2026-10-10", checkOut: "2026-10-11" };
+
+  it("charges a quote started before 11:00 p.m. after the close, but refuses to refresh it", async () => {
+    vi.setSystemTime(LIMA_10_55_PM);
+    const checkout = await acceptedCheckout(today);
+    vi.advanceTimersByTime(6 * 60_000);
+
+    const refreshed = await guest("/public/checkout/quotes", {
+      token: checkout.token,
+      method: "POST",
+    });
+    const payment = await paid(checkout);
+
+    expect(refreshed.status).toBe(400);
+    expect(await refreshed.json()).toEqual({ error: "online same-day arrival has closed" });
+    expect(rows("SELECT count(*) AS n FROM quotes")).toEqual([{ n: 1 }]);
+    expect(payment).toMatchObject({ state: "confirmed", amountCents: 10000 });
+    expect(
+      rows(
+        "SELECT r.check_in, r.source, r.status, rr.room_id FROM reservations r JOIN reservation_rooms rr ON rr.reservation_id = r.id",
+      ),
+    ).toEqual([{ check_in: "2026-10-10", source: "online", status: "confirmed", room_id: null }]);
+  });
+
+  it("confirms tomorrow's arrival paid just after Lima midnight", async () => {
+    vi.setSystemTime(new Date("2026-10-11T04:55:00Z"));
+    const checkout = await acceptedCheckout({ checkIn: "2026-10-11", checkOut: "2026-10-12" });
+    vi.advanceTimersByTime(6 * 60_000);
+
+    expect(await paid(checkout)).toMatchObject({ state: "confirmed" });
+  });
+
+  it.each([
+    ["still today confirms it", 35 * 60_000, "confirmed", 1],
+    ["after Lima midnight leaves it unfulfilled", 66 * 60_000, "unfulfilled", 0],
+  ])("a bank check finishing %s", async (_name, wait, state, confirmationEmails) => {
+    vi.setSystemTime(LIMA_10_55_PM);
+    const checkout = await acceptedCheckout(today);
+    await paid(checkout, { sourceId: "tkn_test_3ds" });
+    vi.advanceTimersByTime(wait);
+
+    const continued = await continueAuthentication(checkout.token);
+
+    expect(continued.status).toBe(200);
+    expect(await continued.json()).toMatchObject({
+      payment: { state, reservation: { paidCents: 10000 } },
+    });
+    expect(charges()).toHaveLength(2);
+    expect(rows("SELECT id FROM confirmation_emails")).toHaveLength(confirmationEmails);
+  });
+});

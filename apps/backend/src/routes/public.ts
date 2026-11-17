@@ -20,6 +20,7 @@ import {
 } from "../public-checkouts";
 import { requirePublicPaymentAdmission } from "../operation-controls";
 import { paymentContext } from "../payment-attempts";
+import { onlineArrivalCalendar } from "../property-calendar";
 import { publishedRoomTypeIds, searchOffers } from "../public-offers";
 import {
   checkoutReservationAccess,
@@ -54,11 +55,14 @@ publicRoutes.use("*", async (c, next) => {
   );
 });
 
-const guestContext = (c: Context<Env>) => ({
-  today: c.get("propertyCalendar").today,
-  now: new Date(),
-  published: publishedRoomTypeIds(c.env.PUBLISHED_ROOM_TYPE_IDS),
-});
+const guestContext = (c: Context<Env>) => {
+  const now = new Date();
+  return {
+    ...onlineArrivalCalendar(c.get("propertyCalendar").timeZone, now),
+    now,
+    published: publishedRoomTypeIds(c.env.PUBLISHED_ROOM_TYPE_IDS),
+  };
+};
 
 const limitNewQuotes = limitBySourceIp("QUOTE_LIMITER", "too many quotes");
 

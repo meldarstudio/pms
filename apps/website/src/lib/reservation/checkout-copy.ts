@@ -74,7 +74,8 @@ export const formErrorCopy: Partial<Record<Problem["kind"], string>> = {
 };
 
 export const backendProblems: Record<string, string> = {
-  "online check-in must be after today": "reservation.problem.checkInTooSoon",
+  "online check-in must not be before today": "reservation.problem.checkInPast",
+  "online same-day arrival has closed": "reservation.problem.sameDayClosed",
   "too many guests for this room type": "reservation.review.problem.tooManyGuests",
   "room type not found": "reservation.room.offline",
   "stay must be at least one night": "reservation.problem.checkOutBeforeCheckIn",

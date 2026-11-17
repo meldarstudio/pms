@@ -4,7 +4,7 @@ import { chargeableCents, freeCancellationUntil } from "./lib/cancellation";
 import { overridesFor, priceNights, totalCents, type PricedNight } from "./lib/pricing";
 import { ratePlans, type RatePlanCode, type RatePlanTerms } from "./lib/rate-plans";
 import { quoteBill } from "./lib/reservation-bill";
-import { requireOnlineArrival, requireStay } from "./rules";
+import { requireNewOnlineArrival, requireStay, type OnlineArrivalCalendar } from "./rules";
 
 export type OfferSearch = { checkIn: string; checkOut: string; adults: number; children: number };
 
@@ -28,10 +28,10 @@ const PLAN_ORDER: RatePlanCode[] = ["flexible", "non_refundable"];
 export async function searchOffers(
   db: Db,
   search: OfferSearch,
-  context: { today: string; published: string[] },
+  context: OnlineArrivalCalendar & { published: string[] },
 ) {
   const dates = requireStay(search.checkIn, search.checkOut);
-  requireOnlineArrival(search.checkIn, context.today);
+  requireNewOnlineArrival(search.checkIn, context);
   const loaded = await loadRoomTypes(db, context.published);
   const types = context.published.flatMap((id) => loaded.filter((type) => type.id === id));
   const [occupied, counts, rates] = await Promise.all([

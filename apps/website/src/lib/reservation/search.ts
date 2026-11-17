@@ -79,14 +79,40 @@ export function addDays(label: string, days: number) {
   return date.toISOString().slice(0, 10);
 }
 
-export function firstOnlineArrival() {
-  const today = new Intl.DateTimeFormat("en-CA", {
-    timeZone: "America/Lima",
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-  }).format(new Date());
-  return addDays(today, 1);
+const ONLINE_SAME_DAY_CLOSE_HOUR = 23;
+
+const propertyClock = new Intl.DateTimeFormat("en-US", {
+  timeZone: "America/Lima",
+  year: "numeric",
+  month: "2-digit",
+  day: "2-digit",
+  hour: "2-digit",
+  hourCycle: "h23",
+});
+
+function propertyNow() {
+  const parts = propertyClock.formatToParts(new Date());
+  const part = (type: Intl.DateTimeFormatPartTypes) =>
+    parts.find((value) => value.type === type)!.value;
+  return {
+    today: `${part("year")}-${part("month")}-${part("day")}`,
+    hour: Number(part("hour")),
+  };
+}
+
+export function onlineArrivalWindow() {
+  const { today, hour } = propertyNow();
+  return { today, first: hour < ONLINE_SAME_DAY_CLOSE_HOUR ? today : addDays(today, 1) };
+}
+
+export const firstOnlineArrival = () => onlineArrivalWindow().first;
+
+export type ArrivalProblem = "checkInPast" | "sameDayClosed";
+
+export function arrivalProblem(checkIn: string): ArrivalProblem | null {
+  const { today, first } = onlineArrivalWindow();
+  if (!checkIn || checkIn >= first) return null;
+  return checkIn < today ? "checkInPast" : "sameDayClosed";
 }
 
 export function searchProblems(search: StaySearch) {

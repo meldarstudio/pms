@@ -168,13 +168,13 @@ describe("entering Review", () => {
       },
     ],
     [
-      "a Flexible arrival tomorrow says free cancellation already ended",
-      { checkIn: "2026-10-11", checkOut: "2026-10-12" },
+      "a Flexible arrival today says free cancellation already ended",
+      { checkIn: "2026-10-10", checkOut: "2026-10-11" },
       {
         totalCents: 10000,
         requiredInitialPaymentCents: 10000,
         remainingScheduledCents: 0,
-        cancellation: { freeCancellation: "ended", freeUntil: "2026-10-09", chargeCents: 10000 },
+        cancellation: { freeCancellation: "ended", freeUntil: "2026-10-08", chargeCents: 10000 },
       },
     ],
   ])("%s", async (_name, overrides, amounts) => {
@@ -187,10 +187,10 @@ describe("entering Review", () => {
     ["an unpublished type", { roomTypeId: "type-queen" }, 404, "room type not found"],
     ["an unknown type", { roomTypeId: "type-missing" }, 404, "room type not found"],
     [
-      "an arrival today",
-      { checkIn: "2026-10-10", checkOut: "2026-10-11" },
+      "an arrival yesterday",
+      { checkIn: "2026-10-09", checkOut: "2026-10-11" },
       400,
-      "online check-in must be after today",
+      "online check-in must not be before today",
     ],
     ["61 nights", { checkOut: "2026-12-20" }, 400, "stay cannot be longer than 60 nights"],
     ["too many adults", { adults: 3 }, 400, "too many guests for this room type"],
@@ -215,6 +215,17 @@ describe("entering Review", () => {
 
     expect(response.status).toBe(400);
     expect(count("public_checkouts")).toBe(0);
+  });
+
+  it("refuses an arrival today from 11:00 p.m. Lima without creating a checkout", async () => {
+    vi.setSystemTime(new Date("2026-10-11T04:00:00Z"));
+
+    const response = await enterReview({ checkIn: "2026-10-10", checkOut: "2026-10-11" });
+
+    expect(response.status).toBe(400);
+    expect(await response.json()).toEqual({ error: "online same-day arrival has closed" });
+    expect(count("public_checkouts")).toBe(0);
+    expect(count("quotes")).toBe(0);
   });
 
   it("reports availability loss instead of offering a sold-out room", async () => {

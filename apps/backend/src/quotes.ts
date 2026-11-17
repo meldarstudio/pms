@@ -16,7 +16,12 @@ import { occupiedCounts, roomCounts } from "./inventory";
 import { confirmationCode } from "./lib/codes";
 import { ratePlans, termColumns } from "./lib/rate-plans";
 import { reservationAccessValues } from "./reservation-access";
-import { acceptPhone, requireOnlineArrival, requireStay } from "./rules";
+import {
+  acceptPhone,
+  requireNewOnlineArrival,
+  requireStay,
+  type OnlineArrivalCalendar,
+} from "./rules";
 import { lineWrites } from "./workflow";
 import { price } from "./workflow-plan";
 
@@ -27,10 +32,10 @@ export type Quote = typeof quotes.$inferSelect;
 export async function priceQuote(
   db: Db,
   input: QuoteCreate,
-  context: { today: string; now: Date; checkoutId: string },
+  context: OnlineArrivalCalendar & { now: Date; checkoutId: string },
 ): Promise<{ quote: Quote; available: boolean }> {
   requireStay(input.checkIn, input.checkOut);
-  requireOnlineArrival(input.checkIn, context.today);
+  requireNewOnlineArrival(input.checkIn, context);
   const [type] = await db.select().from(roomTypes).where(eq(roomTypes.id, input.roomTypeId));
   if (!type) throw new HttpError(404, "room type not found");
   if (input.adults > type.maxAdults || input.children > type.maxChildren)
