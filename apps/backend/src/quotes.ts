@@ -16,12 +16,8 @@ import { occupiedCounts, roomCounts } from "./inventory";
 import { confirmationCode } from "./lib/codes";
 import { ratePlans, termColumns } from "./lib/rate-plans";
 import { reservationAccessValues } from "./reservation-access";
-import {
-  acceptPhone,
-  requireNewOnlineArrival,
-  requireStay,
-  type OnlineArrivalCalendar,
-} from "./rules";
+import type { OnlineArrivalCalendar } from "./property-calendar";
+import { acceptPhone, requireNewOnlineArrival, requireStay } from "./rules";
 import { lineWrites } from "./workflow";
 import { price } from "./workflow-plan";
 

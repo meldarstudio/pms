@@ -39,7 +39,7 @@ import {
   MAX_ADULTS_CHOICE,
   MAX_CHILDREN_CHOICE,
   MAX_NIGHTS,
-  onlineArrivalWindow,
+  onlineArrivalCalendar,
   searchParams,
   searchProblems,
   type ArrivalProblem,
@@ -290,8 +290,8 @@ function StayDateFields({
   const selecting = picker.kind === "open" ? picker.selecting : "checkIn";
   const [month, setMonth] = useState(() => new Date());
   const [mobile, setMobile] = useState(false);
-  const [arrivalWindow, setArrivalWindow] = useState(onlineArrivalWindow);
-  const firstArrivalDate = labelDate(arrivalWindow.first);
+  const [arrivalCalendar, setArrivalCalendar] = useState(onlineArrivalCalendar);
+  const firstArrivalDate = labelDate(arrivalCalendar.firstNewArrival);
 
   useEffect(() => {
     const media = window.matchMedia("(min-width: 48rem)");
@@ -322,7 +322,7 @@ function StayDateFields({
       showOutsideDays={mobile}
       startMonth={new Date(firstArrivalDate.getFullYear(), firstArrivalDate.getMonth(), 1)}
       endMonth={new Date(firstArrivalDate.getFullYear() + 2, 11, 1)}
-      today={labelDate(arrivalWindow.today)}
+      today={labelDate(arrivalCalendar.today)}
       captionLayout="dropdown"
       min={1}
       max={MAX_NIGHTS}
@@ -356,11 +356,12 @@ function StayDateFields({
       triggerId={triggerId}
       onOpenChange={(next: boolean, details: { trigger?: Element | null }) => {
         if (next) {
-          const opened = onlineArrivalWindow();
-          setArrivalWindow(opened);
+          const opened = onlineArrivalCalendar();
+          setArrivalCalendar(opened);
           const departure = details.trigger?.id === "stay-check-out" && Boolean(checkIn);
           const date = departure ? checkOut || checkIn : checkIn;
-          setMonth(labelDate(date && date >= opened.first ? date : opened.first));
+          const earliest = opened.firstNewArrival;
+          setMonth(labelDate(date && date >= earliest ? date : earliest));
           setPicker({
             kind: "open",
             selecting: departure ? "checkOut" : "checkIn",

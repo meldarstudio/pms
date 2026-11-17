@@ -100,18 +100,21 @@ function propertyNow() {
   };
 }
 
-export function onlineArrivalWindow() {
+export function onlineArrivalCalendar() {
   const { today, hour } = propertyNow();
-  return { today, first: hour < ONLINE_SAME_DAY_CLOSE_HOUR ? today : addDays(today, 1) };
+  return {
+    today,
+    firstNewArrival: hour < ONLINE_SAME_DAY_CLOSE_HOUR ? today : addDays(today, 1),
+  };
 }
 
-export const firstOnlineArrival = () => onlineArrivalWindow().first;
+export const firstOnlineArrival = () => onlineArrivalCalendar().firstNewArrival;
 
 export type ArrivalProblem = "checkInPast" | "sameDayClosed";
 
 export function arrivalProblem(checkIn: string): ArrivalProblem | null {
-  const { today, first } = onlineArrivalWindow();
-  if (!checkIn || checkIn >= first) return null;
+  const { today, firstNewArrival } = onlineArrivalCalendar();
+  if (!checkIn || checkIn >= firstNewArrival) return null;
   return checkIn < today ? "checkInPast" : "sameDayClosed";
 }
 

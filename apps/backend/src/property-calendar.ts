@@ -3,6 +3,8 @@ import { addDays } from "./lib/dates";
 
 export type PropertyCalendar = { timeZone: string; today: string };
 
+export type OnlineArrivalCalendar = { today: string; firstNewArrival: string };
+
 const ONLINE_SAME_DAY_CLOSE_HOUR = 23;
 
 function propertyClock(timeZone: string, instant: Date) {
@@ -31,7 +33,7 @@ export function propertyCalendar(timeZone: string, instant = new Date()): Proper
   return { timeZone, today: propertyClock(timeZone, instant).today };
 }
 
-export function onlineArrivalCalendar(timeZone: string, instant: Date) {
+export function onlineArrivalCalendar(timeZone: string, instant: Date): OnlineArrivalCalendar {
   const { today, hour } = propertyClock(timeZone, instant);
   return {
     today,

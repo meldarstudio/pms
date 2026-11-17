@@ -4,7 +4,8 @@ import { chargeableCents, freeCancellationUntil } from "./lib/cancellation";
 import { overridesFor, priceNights, totalCents, type PricedNight } from "./lib/pricing";
 import { ratePlans, type RatePlanCode, type RatePlanTerms } from "./lib/rate-plans";
 import { quoteBill } from "./lib/reservation-bill";
-import { requireNewOnlineArrival, requireStay, type OnlineArrivalCalendar } from "./rules";
+import type { OnlineArrivalCalendar } from "./property-calendar";
+import { requireNewOnlineArrival, requireStay } from "./rules";
 
 export type OfferSearch = { checkIn: string; checkOut: string; adults: number; children: number };
 

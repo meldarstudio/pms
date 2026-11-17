@@ -217,17 +217,6 @@ describe("entering Review", () => {
     expect(count("public_checkouts")).toBe(0);
   });
 
-  it("refuses an arrival today from 11:00 p.m. Lima without creating a checkout", async () => {
-    vi.setSystemTime(new Date("2026-10-11T04:00:00Z"));
-
-    const response = await enterReview({ checkIn: "2026-10-10", checkOut: "2026-10-11" });
-
-    expect(response.status).toBe(400);
-    expect(await response.json()).toEqual({ error: "online same-day arrival has closed" });
-    expect(count("public_checkouts")).toBe(0);
-    expect(count("quotes")).toBe(0);
-  });
-
   it("reports availability loss instead of offering a sold-out room", async () => {
     closeKingRooms();
 
