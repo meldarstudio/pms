@@ -164,7 +164,6 @@ function mockApi(options: ApiOptions = {}) {
       if (action.type === "notes") saved = { ...saved, notes: action.notes };
       if (action.type === "contact")
         saved = { ...saved, guest: { ...saved.guest, ...action.contact } };
-      if (action.type === "notes") saved = { ...saved, notes: action.notes };
       if (action.type === "set-guests") saved = { ...saved, stayingGuests: action.guests };
       if (action.type === "add-payment")
         saved = {
@@ -1879,10 +1878,9 @@ it("issues a coupon and hands over its message", async () => {
     { type: "issue-coupon", amountCents: 10000, guestAccepted: true },
   ]);
   await page.until(() => text(popup()!.querySelector("h2")!) === "Cupón emitido");
-  assert.ok(
-    text(popup()!).includes(
-      `Cupón emitido K7Q2M9XPA4 Saldo S/ 100 · ${couponTerms} Copiar mensaje Listo`,
-    ),
+  assert.equal(
+    text(popup()!),
+    `Cupón emitido K7Q2M9XPA4 Saldo S/ 100 · ${couponTerms} Copiar mensaje Listo Cerrar`,
   );
   await click("Copiar mensaje");
   await page.until(() => !!popup()!.textContent.includes("Mensaje copiado"));

@@ -39,7 +39,7 @@ export function ReservationOverview({
   return (
     <fieldset disabled={disabled} aria-busy={disabled} className="min-w-0">
       <div className="grid min-w-0 gap-6 md:gap-8 group-data-[layout=columns]/reservation:-my-6 group-data-[layout=columns]/reservation:-mr-6 group-data-[layout=columns]/reservation:grid-cols-[minmax(0,1fr)_24rem] group-data-[layout=columns]/reservation:grid-rows-[auto_1fr] group-data-tablet/reservation:group-data-[layout=columns]/reservation:grid-cols-[minmax(0,1fr)_18rem]">
-        <div className="flex min-w-0 flex-col gap-6 md:gap-4 group-data-[layout=columns]/reservation:pt-6">
+        <div className="@container/overview-main flex min-w-0 flex-col gap-6 md:gap-4 group-data-[layout=columns]/reservation:pt-6">
           <header className="grid min-w-0 grid-cols-[minmax(0,1fr)_auto] items-start gap-3 md:gap-x-4">
             <div className="flex min-w-0 flex-col gap-1.5">
               <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5">
@@ -118,14 +118,14 @@ function ContactLine({ detail, edit }: Model) {
     <section
       role="region"
       aria-label="Contacto principal"
-      className="-mt-3 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-muted-foreground max-md:grid max-md:grid-cols-[minmax(0,1fr)_auto] max-md:gap-2 md:-mt-2"
+      className="-mt-3 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-muted-foreground @max-lg/overview-main:grid @max-lg/overview-main:grid-cols-[minmax(0,1fr)_auto] @max-lg/overview-main:gap-2 md:-mt-2"
     >
-      <div className="contents max-md:flex max-md:min-w-0 max-md:flex-wrap max-md:items-center max-md:gap-x-4">
+      <div className="contents @max-lg/overview-main:flex @max-lg/overview-main:min-w-0 @max-lg/overview-main:flex-wrap @max-lg/overview-main:items-center @max-lg/overview-main:gap-x-4">
         <span className="inline-flex min-w-0 items-center gap-1.5">
           <PhoneIcon aria-label="Teléfono" className="size-3.5 shrink-0" />
           {shown ? (
             <a
-              className="relative min-w-0 wrap-anywhere pointer-coarse:after:absolute pointer-coarse:after:inset-x-0 pointer-coarse:after:-inset-y-2.5 text-foreground max-md:py-1.5"
+              className="relative min-w-0 wrap-anywhere pointer-coarse:after:absolute pointer-coarse:after:inset-x-0 pointer-coarse:after:-inset-y-2.5 text-foreground pointer-coarse:py-1.5"
               href={shown.href}
             >
               {shown.text}
@@ -138,7 +138,7 @@ function ContactLine({ detail, edit }: Model) {
           <MailIcon aria-label="Correo electrónico" className="size-3.5 shrink-0" />
           {email ? (
             <a
-              className="relative min-w-0 pointer-coarse:after:absolute pointer-coarse:after:inset-x-0 pointer-coarse:after:-inset-y-2.5 wrap-anywhere text-foreground max-md:py-1.5"
+              className="relative min-w-0 pointer-coarse:after:absolute pointer-coarse:after:inset-x-0 pointer-coarse:after:-inset-y-2.5 wrap-anywhere text-foreground pointer-coarse:py-1.5"
               href={`mailto:${email}`}
             >
               {email}
@@ -151,7 +151,7 @@ function ContactLine({ detail, edit }: Model) {
       <Button
         variant="ghost"
         size="icon-xs"
-        className="-ml-2 max-md:ml-0 max-md:size-(--control-h-lg) md:max-xl:size-(--control-h-lg)"
+        className="-ml-2 pointer-coarse:size-(--control-h-lg) @max-lg/overview-main:ml-0"
         aria-label="Editar contacto y notas"
         title="Editar contacto y notas"
         onClick={() => edit({ kind: "contact" })}
@@ -199,7 +199,7 @@ function GuestsPanel({ detail, edit }: Model) {
           <Button
             variant="ghost"
             size="xs"
-            className="max-xl:min-h-(--control-h-lg)"
+            className="pointer-coarse:min-h-(--control-h-lg)"
             onClick={() => edit({ kind: "guest" })}
           >
             <PlusIcon data-icon="inline-start" />
@@ -246,7 +246,7 @@ function GuestsPanel({ detail, edit }: Model) {
 function StayOutcomeAlert({ detail }: { detail: ReservationDetail }) {
   if (detail.status === "unfulfilled")
     return (
-      <Alert variant="destructive" className="max-md:order-last">
+      <Alert variant="destructive" className="@max-lg/overview-main:order-last">
         <CircleAlertIcon />
         <AlertTitle>Reserva cancelada</AlertTitle>
         <AlertDescription>
@@ -258,7 +258,7 @@ function StayOutcomeAlert({ detail }: { detail: ReservationDetail }) {
   const at = detail.cancellation?.recordedAt ?? detail.cancelledAt;
   const date = at ? ` · ${format(parseISO(propertyToday(new Date(at))), "d MMM yyyy")}` : "";
   return (
-    <Alert variant="destructive" className="max-md:order-last">
+    <Alert variant="destructive" className="@max-lg/overview-main:order-last">
       <CircleAlertIcon />
       <AlertTitle>
         {detail.status === "no_show" ? "No se presentó" : "Reserva cancelada"}

@@ -26,7 +26,7 @@ export function StaySection({
         <Button
           variant="ghost"
           size="xs"
-          className="max-xl:min-h-(--control-h-lg)"
+          className="pointer-coarse:min-h-(--control-h-lg)"
           onClick={() => edit({ kind: "stay" })}
         >
           <PencilIcon data-icon="inline-start" />

@@ -1,6 +1,6 @@
 import * as React from "react";
 
-export function useMediaQuery(query: string) {
+function useMediaQuery(query: string) {
   const [matches, setMatches] = React.useState(() =>
     typeof window === "undefined" ? false : window.matchMedia(query).matches,
   );
@@ -22,7 +22,7 @@ export function useIsMobile() {
 }
 
 export function useIsTablet() {
-  return useMediaQuery("(min-width: 768px) and (max-width: 1279px)");
+  return useMediaQuery("(pointer: coarse) and (min-width: 768px) and (max-width: 1279px)");
 }
 
 export function useIsMobileSidebar() {
