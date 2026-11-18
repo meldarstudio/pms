@@ -2,7 +2,7 @@ import { asc, eq, inArray } from "drizzle-orm";
 import type { Db } from "./db";
 import { reservationAccess, reservations, roomTypes } from "./db/schema";
 import { HttpError } from "./http";
-import { freeCancellationUntil, chargeableCents } from "./lib/cancellation";
+import { chargeableCents, freeCancellationState, freeCancellationUntil } from "./lib/cancellation";
 import { addDays, nightsBetween } from "./lib/dates";
 import { acceptedTerms } from "./lib/rate-plans";
 import { reservationBill } from "./lib/reservation-bill";
@@ -62,7 +62,7 @@ export async function reservationSummary(db: Db, reservationId: string, today: s
     : [];
   const names = new Map(types.map((type) => [type.id, type.name]));
   const open = holdsInventory(reservation.status);
-  const freeCancellation = freeUntil === null ? "none" : today <= freeUntil ? "available" : "ended";
+  const freeCancellation = freeCancellationState(freeUntil, today);
   return {
     status: reservation.status,
     code: reservation.code,

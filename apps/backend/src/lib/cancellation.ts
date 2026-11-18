@@ -75,6 +75,13 @@ export function freeCancellationUntil(policy: CancellationPolicy, checkIn: strin
     : addDays(checkIn, -policy.freeUntilDaysBeforeCheckIn);
 }
 
+export type FreeCancellation = "available" | "ended" | "none";
+
+export function freeCancellationState(freeUntil: string | null, today: string): FreeCancellation {
+  if (freeUntil === null) return "none";
+  return today <= freeUntil ? "available" : "ended";
+}
+
 export function chargeableCents(
   policy: CancellationPolicy,
   rooms: BillableRoom[],

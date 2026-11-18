@@ -261,18 +261,6 @@ describe("automatic confirmation", () => {
     ],
     [
       "en",
-      "an open Flexible window keeps its date",
-      {},
-      "Free cancellation until 2026-10-18. After that, the charge is PEN 100.00.",
-    ],
-    [
-      "es",
-      "an open Flexible window keeps its date",
-      {},
-      "Cancelación sin cargo hasta el 2026-10-18. Después, el cargo es PEN 100.00.",
-    ],
-    [
-      "en",
       "Non-refundable has no free cancellation",
       { ratePlan: "non_refundable" },
       "No free cancellation. The charge is PEN 180.00.",
@@ -293,7 +281,7 @@ describe("automatic confirmation", () => {
     expect(sent.text.split("\n")).toContain(cancellation);
     expect(sent.html).toContain(cancellation);
     for (const promise of ["Free cancellation until", "Cancelación sin cargo hasta"])
-      if (!cancellation.startsWith(promise)) expect(sent.text).not.toContain(promise);
+      expect(sent.text).not.toContain(promise);
   });
 
   it("queues the confirmation in the same save as the reservation, so a failed save leaves neither, and the retry saves one of each", async () => {

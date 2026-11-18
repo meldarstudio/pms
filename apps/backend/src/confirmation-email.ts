@@ -1,5 +1,5 @@
 import logo from "./confirmation-email-logo.json";
-import { chargeableCents, freeCancellationUntil } from "./lib/cancellation";
+import { chargeableCents, freeCancellationState, freeCancellationUntil } from "./lib/cancellation";
 import { acceptedTerms, type RatePlanCode } from "./lib/rate-plans";
 import { reservationBill } from "./lib/reservation-bill";
 import type { State } from "./reservation-read";
@@ -375,12 +375,13 @@ function messageFacts(input: {
 }): ConfirmationEmailSection[] {
   const amount = (cents: number) => money(cents, input.currency);
   const charge = amount(input.chargeCents);
+  const freeCancellation = freeCancellationState(input.freeUntil, input.today);
   const cancellation =
-    input.freeUntil === null
+    freeCancellation === "none"
       ? input.language === "en"
         ? `No free cancellation. The charge is ${charge}.`
         : `Sin cancelación gratuita. El cargo es ${charge}.`
-      : input.freeUntil < input.today
+      : freeCancellation === "ended"
         ? input.language === "en"
           ? `Free cancellation has ended. The charge is ${charge}.`
           : `La cancelación sin cargo ya terminó. El cargo es ${charge}.`
