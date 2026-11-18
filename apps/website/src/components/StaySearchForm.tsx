@@ -332,7 +332,11 @@ function StayDateFields({
           ? [{ before: labelDate(checkIn) }, { after: labelDate(addDays(checkIn, MAX_NIGHTS)) }]
           : []),
       ]}
-      className="mx-auto p-3 [--cell-size:clamp(2rem,calc((100vw-2.5rem)/7),2.25rem)]"
+      className={
+        mobile
+          ? "@container w-full! px-4 py-3 [--cell-size:min(--spacing(9),calc(100cqi/7))]"
+          : "mx-auto p-3 [--cell-size:--spacing(9)]"
+      }
       components={{ DayButton: StayDayButton }}
       onSelect={(_, date) => {
         if (dateLabel(date) < firstOnlineArrival()) return;
