@@ -69,7 +69,7 @@ process.stdout.write(JSON.stringify([{ success: true, results: { columns: ['type
       for (const command of commands) {
         expect(command.slice(0, 3)).toEqual(["exec", "cf", "d1"]);
         expect(command).toContain("--local");
-        expect(command[command.indexOf("--persist-to") + 1]).toContain(".wrangler/state");
+        expect(command[command.indexOf("--persist-to") + 1]).toContain(".cloudflare/state");
       }
     } finally {
       rmSync(directory, { recursive: true, force: true });

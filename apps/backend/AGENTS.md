@@ -17,7 +17,7 @@ Paths below are relative to `apps/backend` unless stated otherwise.
 - The scheduled run's last step, `purgeAbandonedCheckouts` (`src/abandoned-checkouts.ts`), deletes up to a bounded number of abandoned public checkouts per tick, each in one batch with its failed attempts, acceptances and quotes. Quotes from before public checkouts (`checkout_id IS NULL`) are never deleted, and nothing creates them any more. Every delete re-checks the abandonment rule, so activity between choosing and deleting keeps the checkout. `public_checkouts.reserved_once`, set by a trigger on `reservations` and never cleared, only keeps reserved checkouts out of the age index the search walks; the rule itself still checks reservations.
 - `CULQI_API_URL` and `TURNSTILE_VERIFY_URL` only take effect for loopback addresses; the website's browser tests point them at local doubles.
 - `pnpm check` regenerates Worker types into git-ignored `.cloudflare/types`; refresh them alone with `pnpm --filter @pms/backend cf-typegen`.
-- `cf d1` commands reach production unless given `--local`, and `cf --local` defaults to a directory the dev server never reads. Run D1 commands through `scripts/d1.mjs`, which targets the `.wrangler/state` that `cf dev` uses.
+- `cf d1` commands reach production unless given `--local`. `scripts/d1.mjs` points local commands at the same `.cloudflare/state` as `cf dev`. Use `pnpm db:reset:local` to seed fresh local data.
 
 ## Reservation workflow
 
