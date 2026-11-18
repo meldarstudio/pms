@@ -6,7 +6,6 @@ import {
   PlusIcon,
   XIcon,
 } from "@phosphor-icons/react";
-import { getDefaultClassNames } from "react-day-picker";
 import { es, enUS } from "react-day-picker/locale";
 import { Button } from "@/components/ui/button";
 import { Calendar, CalendarDayButton } from "@/components/ui/calendar";
@@ -97,7 +96,6 @@ const labelClass =
   "font-source-sans-3 text-xs font-medium tracking-widest text-stone-600 uppercase";
 const fieldButton =
   "h-11 min-h-11 w-full justify-between border-stone-400 bg-white px-3 font-source-sans-3 text-sm font-normal text-stone-900 shadow-none hover:bg-white aria-expanded:bg-white aria-expanded:text-stone-900";
-const drawerCalendarRoot = `w-full ${getDefaultClassNames().root}`;
 const popoverSurface =
   "stay-search border border-stone-200 bg-white font-source-sans-3 text-sm text-stone-900 shadow-none ring-0";
 
@@ -332,9 +330,10 @@ function StayDateFields({
           : []),
       ]}
       className={
-        mobile ? "px-4 py-3 [--cell-size:--spacing(9)]" : "mx-auto p-3 [--cell-size:--spacing(9)]"
+        mobile
+          ? "@container w-full! px-4 py-3 [--cell-size:min(--spacing(9),calc(100cqi/7))]"
+          : "mx-auto p-3 [--cell-size:--spacing(9)]"
       }
-      classNames={mobile ? { root: drawerCalendarRoot } : undefined}
       components={{ DayButton: StayDayButton }}
       onSelect={(_, date) => {
         if (dateLabel(date) < firstOnlineArrival()) return;
