@@ -90,16 +90,6 @@ it("saves a response once across an uncertain retry and retries only its evidenc
     }
     if (path === "/session") return Response.json({ username: "owner", role: "owner" });
     if (path === "/accounts") return Response.json([]);
-    if (path === "/complaints")
-      return Response.json([
-        {
-          ...sheet,
-          fullName: "Ana",
-          category: "reclamo",
-          responseStatus: "pending",
-          overdue: true,
-        },
-      ]);
     return Response.json(sheet);
   };
   const body = () => browser.window.document.body.textContent;

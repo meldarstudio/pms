@@ -1,10 +1,3 @@
-import {
-  complaintSheets,
-  complaintResponses,
-  complaintResponseVoids,
-  complaintEmails,
-} from "../db/schema";
-import { asc, eq } from "drizzle-orm";
 import { requireOwner } from "../session";
 import {
   complaintResponseSchema,
@@ -12,21 +5,20 @@ import {
   complaintResponseVoidSchema,
   complaintReceiptCopySchema,
 } from "@pms/shared";
-import { runBatch } from "../db";
-import { sql } from "drizzle-orm";
 import { getDb } from "../db";
-import { complaintView } from "../complaints";
-import { HttpError, currency, rethrowConflict, validate } from "../http";
+import {
+  listSheets,
+  queueReceiptCopy,
+  readOwnerSheet,
+  recordSheetResponse,
+  transcribeBackupSheet,
+  voidSheetResponse,
+} from "../complaint-book";
+import { currency, validate } from "../http";
 import { Hono } from "hono";
 import type { Env } from "../env";
-import {
-  complaintCalendarSource,
-  complaintSheetReference,
-  complaintResponseDueDate,
-  complaintBook,
-} from "../complaint-config";
+import { complaintBook } from "../complaint-config";
 import { complaintAttachmentRoutes } from "./complaint-attachments";
-import { propertyCalendar } from "../property-calendar";
 
 export const ownerComplaintRoutes = new Hono<Env>();
 ownerComplaintRoutes.use("*", requireOwner);
@@ -35,81 +27,24 @@ ownerComplaintRoutes.use("*", async (c, next) => {
   await next();
 });
 ownerComplaintRoutes.route("/", complaintAttachmentRoutes);
-ownerComplaintRoutes.get("/", async (c) => {
-  const db = getDb(c.env.DB);
-  const rows = await db.select().from(complaintSheets).orderBy(asc(complaintSheets.dueDate));
-  const views = await Promise.all(rows.map((row) => complaintView(db, row.id)));
-  const today = c.var.propertyCalendar.today;
-  return c.json(
-    views
-      .map((sheet) => ({
-        id: sheet.id,
-        reference: sheet.reference,
-        fullName: sheet.input.fullName,
-        category: sheet.input.category,
-        filedAt: sheet.filedAt,
-        dueDate: sheet.dueDate,
-        responseStatus: sheet.responses.some((response) => !response.voided)
-          ? "recorded"
-          : "pending",
-        overdue: !sheet.responses.some((response) => !response.voided) && sheet.dueDate < today,
-        email: sheet.email,
-      }))
-      .sort(
-        (a, b) =>
-          Number(a.responseStatus === "recorded") - Number(b.responseStatus === "recorded") ||
-          a.dueDate.localeCompare(b.dueDate),
-      ),
-  );
-});
+ownerComplaintRoutes.get("/", async (c) =>
+  c.json(await listSheets(getDb(c.env.DB), c.var.propertyCalendar.today)),
+);
 ownerComplaintRoutes.get("/configuration", (c) => c.json(complaintBook));
 ownerComplaintRoutes.get("/:id", async (c) =>
-  c.json(await complaintView(getDb(c.env.DB), c.req.param("id"))),
+  c.json(await readOwnerSheet(getDb(c.env.DB), c.req.param("id"), c.var.propertyCalendar.today)),
 );
 ownerComplaintRoutes.post(
   "/:id/responses",
   validate("json", complaintResponseSchema),
   async (c) => {
-    const db = getDb(c.env.DB);
-    const input = c.req.valid("json");
-    const sheet = await complaintView(db, c.req.param("id"));
-    const payload = JSON.stringify(input);
-    const [prior] = await db
-      .select()
-      .from(complaintResponses)
-      .where(eq(complaintResponses.id, input.requestId));
-    if (prior) {
-      if (prior.complaintId !== sheet.id || prior.payload !== payload)
-        throw new HttpError(409, "complaint response retry differs");
-      return c.json(await complaintView(db, sheet.id));
-    }
-    if (
-      input.sentOn > c.var.propertyCalendar.today ||
-      input.sentOn < propertyCalendar(sheet.timeZone, new Date(sheet.filedAt)).today
-    )
-      throw new HttpError(400, "invalid complaint response sending date");
-    await db
-      .insert(complaintResponses)
-      .values({
-        id: input.requestId,
-        complaintId: sheet.id,
-        payload,
-        text: input.text,
-        channel: input.channel,
-        recipient: input.recipient,
-        sentOn: input.sentOn,
-        evidence: input.evidence,
-        recordedAt: new Date().toISOString(),
-        recordedBy: c.var.account.id,
-      })
-      .onConflictDoNothing();
-    const [saved] = await db
-      .select()
-      .from(complaintResponses)
-      .where(eq(complaintResponses.id, input.requestId));
-    if (saved!.complaintId !== sheet.id || saved!.payload !== payload)
-      throw new HttpError(409, "complaint response retry differs");
-    return c.json(await complaintView(db, sheet.id), 201);
+    const { created, sheet } = await recordSheetResponse(
+      getDb(c.env.DB),
+      c.req.param("id"),
+      c.req.valid("json"),
+      { accountId: c.var.account.id, today: c.var.propertyCalendar.today },
+    );
+    return c.json(sheet, created ? 201 : 200);
   },
 );
 
@@ -117,129 +52,37 @@ ownerComplaintRoutes.post(
   "/:id/responses/:responseId/void",
   validate("json", complaintResponseVoidSchema),
   async (c) => {
-    const db = getDb(c.env.DB);
-    const { reason } = c.req.valid("json");
-    const sheet = await complaintView(db, c.req.param("id"));
-    const response = sheet.responses.find(({ id }) => id === c.req.param("responseId"));
-    if (!response) throw new HttpError(404, "complaint response not found");
-    const settled = (voided: { reason: string } | null) => {
-      if (voided && voided.reason !== reason)
-        throw new HttpError(409, "complaint response already voided");
-      return voided;
-    };
-    if (settled(response.voided)) return c.json(sheet);
-    await db
-      .insert(complaintResponseVoids)
-      .values({
-        responseId: response.id,
-        reason,
-        voidedAt: new Date().toISOString(),
-        voidedBy: c.var.account.id,
-      })
-      .onConflictDoNothing();
-    const saved = await complaintView(db, sheet.id);
-    settled(saved.responses.find(({ id }) => id === response.id)!.voided);
-    return c.json(saved, 201);
+    const { created, sheet } = await voidSheetResponse(
+      getDb(c.env.DB),
+      c.req.param("id"),
+      c.req.param("responseId"),
+      c.req.valid("json"),
+      { accountId: c.var.account.id, today: c.var.propertyCalendar.today },
+    );
+    return c.json(sheet, created ? 201 : 200);
   },
 );
 
 ownerComplaintRoutes.post("/backups", validate("json", complaintBackupSchema), async (c) => {
-  const db = getDb(c.env.DB);
-  const body = c.req.valid("json");
-  const payload = JSON.stringify(body);
-  const [previous] = await db
-    .select()
-    .from(complaintSheets)
-    .where(eq(complaintSheets.id, body.requestId));
-  if (previous) {
-    if (previous.requestPayload !== payload || previous.source !== "physical")
-      throw new HttpError(409, "complaint retry differs from saved sheet");
-    return c.json(await complaintView(db, previous.id));
-  }
-  const now = new Date().toISOString();
-  if (
-    Date.parse(body.filedAt) > Date.parse(body.restoredAt) ||
-    Date.parse(body.restoredAt) > Date.now()
-  )
-    throw new HttpError(400, "invalid complaint backup time");
-  if (body.input.policyVersion !== complaintBook.policyVersion)
-    throw new HttpError(409, "complaint privacy information changed");
-  const [duplicate] = await db
-    .select()
-    .from(complaintSheets)
-    .where(eq(complaintSheets.originalReference, body.originalReference));
-  if (duplicate) throw new HttpError(409, "physical complaint reference already imported");
-  const number = sql<number>`(SELECT coalesce(max(number), ${complaintBook.firstNumber - 1}) + 1 FROM complaint_sheets WHERE book_id = ${complaintBook.bookId})`;
-  await runBatch(db, [
-    db.insert(complaintSheets).values({
-      id: body.requestId,
-      requestPayload: payload,
-      bookId: complaintBook.bookId,
-      number,
-      reference: complaintSheetReference(number, body.filedAt, c.env.PROPERTY_TIME_ZONE),
-      establishmentId: complaintBook.establishmentId,
-      provider: complaintBook.provider,
-      input: body.input,
-      currency: currency(c),
-      timeZone: c.env.PROPERTY_TIME_ZONE,
-      filedAt: body.filedAt,
-      registeredAt: now,
-      dueDate: complaintResponseDueDate(body.filedAt, c.env.PROPERTY_TIME_ZONE),
-      calendarSource: complaintCalendarSource,
-      policy: JSON.stringify({
-        version: complaintBook.policyVersion,
-        collectionNotice: complaintBook.collectionNotice,
-        privacyInformation: complaintBook.privacyInformation,
-        retentionAndDisposal: complaintBook.retentionAndDisposal,
-      }),
-      source: "physical",
-      originalReference: body.originalReference,
-      restoredAt: body.restoredAt,
-    }),
-    db.insert(complaintEmails).values({
-      id: crypto.randomUUID(),
-      complaintId: body.requestId,
-      status: "not_requested",
-      createdAt: now,
-    }),
-  ]);
-  return c.json(await complaintView(db, body.requestId), 201);
+  const { created, sheet } = await transcribeBackupSheet(
+    getDb(c.env.DB),
+    c.req.valid("json"),
+    { currency: currency(c), timeZone: c.env.PROPERTY_TIME_ZONE },
+    c.var.propertyCalendar.today,
+  );
+  return c.json(sheet, created ? 201 : 200);
 });
 
 ownerComplaintRoutes.post(
   "/:id/email-copies",
   validate("json", complaintReceiptCopySchema),
   async (c) => {
-    const db = getDb(c.env.DB);
-    const sheet = await complaintView(db, c.req.param("id"));
-    const { requestId } = c.req.valid("json");
-    const requested = async () => {
-      const [copy] = await db
-        .select({ complaintId: complaintEmails.complaintId, kind: complaintEmails.kind })
-        .from(complaintEmails)
-        .where(eq(complaintEmails.id, requestId));
-      if (copy && (copy.complaintId !== sheet.id || copy.kind !== "copy"))
-        throw new HttpError(409, "complaint receipt copy request differs");
-      return copy;
-    };
-    if (await requested()) return c.json(sheet);
-    if (sheet.email.status !== "failed")
-      throw new HttpError(409, "complaint receipt does not need attention");
-    const now = new Date().toISOString();
-    try {
-      await db.insert(complaintEmails).values({
-        id: requestId,
-        complaintId: sheet.id,
-        kind: "copy",
-        requestedBy: c.var.account.id,
-        status: "pending",
-        nextAttemptAt: now,
-        createdAt: now,
-      });
-    } catch (error) {
-      if (await requested()) return c.json(await complaintView(db, sheet.id));
-      rethrowConflict(error);
-    }
-    return c.json(await complaintView(db, sheet.id), 201);
+    const { created, sheet } = await queueReceiptCopy(
+      getDb(c.env.DB),
+      c.req.param("id"),
+      c.req.valid("json"),
+      { accountId: c.var.account.id, today: c.var.propertyCalendar.today },
+    );
+    return c.json(sheet, created ? 201 : 200);
   },
 );

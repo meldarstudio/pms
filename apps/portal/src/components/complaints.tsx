@@ -279,7 +279,6 @@ export function ComplaintBackupPage() {
 export function ComplaintPage({ id }: { id: string }) {
   const session = useSession();
   const owner = session.data?.role === "owner";
-  const list = useComplaints();
   const accounts = useAccounts(owner);
   const detail = useComplaint(id);
   if (!owner) return OWNER_REQUIRED;
@@ -304,14 +303,7 @@ export function ComplaintPage({ id }: { id: string }) {
           }}
         />
       )}
-      {detail.data && (
-        <ComplaintDetail
-          key={id}
-          sheet={detail.data}
-          overdue={list.data?.find((sheet) => sheet.id === id)?.overdue ?? false}
-          author={author}
-        />
-      )}
+      {detail.data && <ComplaintDetail key={id} sheet={detail.data} author={author} />}
     </main>
   );
 }
@@ -437,15 +429,7 @@ function DetailSection({
   );
 }
 
-function ComplaintDetail({
-  sheet,
-  overdue,
-  author,
-}: {
-  sheet: ComplaintSheet;
-  overdue: boolean;
-  author: AuthorName;
-}) {
+function ComplaintDetail({ sheet, author }: { sheet: ComplaintSheet; author: AuthorName }) {
   const [responseOpen, setResponseOpen] = useState(false);
   const { input } = sheet;
   return (
@@ -462,7 +446,7 @@ function ComplaintDetail({
             {sheet.source === "physical" && " · Respaldo físico"}
           </p>
         </div>
-        <ResponseStatus sheet={sheet} overdue={overdue} onRespond={() => setResponseOpen(true)} />
+        <ResponseStatus sheet={sheet} onRespond={() => setResponseOpen(true)} />
       </header>
       <div className="grid gap-8 lg:grid-cols-[minmax(0,1fr)_18rem] xl:grid-cols-[minmax(0,1fr)_20rem]">
         <div className="flex min-w-0 flex-col gap-8">
@@ -499,15 +483,8 @@ function ComplaintDetail({
   );
 }
 
-function ResponseStatus({
-  sheet,
-  overdue,
-  onRespond,
-}: {
-  sheet: ComplaintSheet;
-  overdue: boolean;
-  onRespond: () => void;
-}) {
+function ResponseStatus({ sheet, onRespond }: { sheet: ComplaintSheet; onRespond: () => void }) {
+  const { overdue } = sheet;
   const latest = sheet.responses
     .filter((response) => !response.voided)
     .reduce<ComplaintSheet["responses"][number] | undefined>(

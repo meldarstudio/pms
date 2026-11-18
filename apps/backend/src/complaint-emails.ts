@@ -1,7 +1,7 @@
 import type { Db } from "./db";
 import { complaintEmails } from "./db/schema";
 import { complaintReceiptMessage } from "./complaint-email";
-import { complaintView } from "./complaints";
+import { readSheet } from "./complaint-book";
 import { complaintBook } from "./complaint-config";
 import { sendDueEmails } from "./email-outbox";
 import type { Env } from "./env";
@@ -25,7 +25,7 @@ export async function sendComplaintEmails(db: Db, env: Env["Bindings"]) {
           email.pendingRequest ??
           JSON.stringify(
             complaintReceiptMessage(
-              await complaintView(db, email.complaintId),
+              await readSheet(db, email.complaintId),
               complaintBook.emailFrom,
             ),
           ),

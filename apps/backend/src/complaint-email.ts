@@ -1,7 +1,5 @@
-import type { complaintView } from "./complaints";
+import type { ComplaintSheet as Sheet } from "./complaint-book";
 import { REPLY_TO } from "./confirmation-email";
-
-type Sheet = Awaited<ReturnType<typeof complaintView>>;
 
 const COPY = {
   es: {
