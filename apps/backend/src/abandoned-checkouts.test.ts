@@ -66,6 +66,7 @@ const purge = (now: Date) => purgeAbandonedCheckouts(getDb(db.env.DB), now);
 
 const checkoutContext = () => ({
   today: new Date().toISOString().slice(0, 10),
+  firstNewArrival: new Date().toISOString().slice(0, 10),
   now: new Date(),
   published: ["type"],
 });

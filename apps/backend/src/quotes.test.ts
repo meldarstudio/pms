@@ -37,6 +37,7 @@ const guest = { fullName: "Ana Torres", email: "ana@example.com" };
 async function quote() {
   const { view } = await startCheckout(getDb(db.env.DB), stay, {
     today: "2026-10-10",
+    firstNewArrival: "2026-10-10",
     now: new Date(),
     published: ["type"],
   });

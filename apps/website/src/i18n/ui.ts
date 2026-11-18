@@ -329,8 +329,9 @@ export const ui = {
     "reservation.children.other": "{count} children",
     "reservation.problem.checkInRequired": "Choose your arrival date.",
     "reservation.problem.checkOutRequired": "Choose your departure date.",
-    "reservation.problem.checkInTooSoon":
-      "Online reservations start tomorrow, Peru time. To arrive today, message us on WhatsApp.",
+    "reservation.problem.checkInPast": "Choose today or a later date, Peru time.",
+    "reservation.problem.sameDayClosed":
+      "Online same-day booking has closed for today, Peru time. To arrive today, message us on WhatsApp or ask at the desk.",
     "reservation.problem.checkOutBeforeCheckIn":
       "Departure must be at least one night after arrival.",
     "reservation.problem.tooManyNights": "Online stays can last up to 60 nights.",
@@ -963,8 +964,9 @@ export const ui = {
     "reservation.children.other": "{count} niños",
     "reservation.problem.checkInRequired": "Elija su fecha de llegada.",
     "reservation.problem.checkOutRequired": "Elija su fecha de salida.",
-    "reservation.problem.checkInTooSoon":
-      "Las reservas en línea empiezan desde mañana, hora de Perú. Para llegar hoy, escríbanos por WhatsApp.",
+    "reservation.problem.checkInPast": "Elija hoy o una fecha posterior, hora de Perú.",
+    "reservation.problem.sameDayClosed":
+      "Las reservas en línea para llegar hoy cerraron, hora de Perú. Para llegar hoy, escríbanos por WhatsApp o en recepción.",
     "reservation.problem.checkOutBeforeCheckIn":
       "La salida debe ser al menos una noche después de la llegada.",
     "reservation.problem.tooManyNights": "Las estadías en línea pueden durar hasta 60 noches.",

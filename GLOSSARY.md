@@ -97,6 +97,16 @@ Calendar check-in and checkout dates shared by every reserved room, independent 
 the viewer's timezone. A stay night includes check-in and excludes checkout.
 _Avoid_: Arrival/departure timestamps
 
+**Same-day arrival**:
+A stay whose check-in is the property date and whose checkout is a later date.
+_Avoid_: Day use, zero-night stay
+
+**Online same-day close**:
+11:00 p.m. property time, from which no new online offer, quote or quote refresh is made
+for a same-day arrival. A quote started before it can still be paid until it expires. It
+is not check-in time and not reception closing; staff reservations ignore it.
+_Avoid_: Check-in cutoff, reception hours
+
 **Stay draft**:
 Unsaved proposed stay dates, reserved rooms, assignments, and occupancy.
 _Avoid_: Saved reservation, preview reservation
@@ -131,8 +141,8 @@ Returning a cancelled or no-show reservation to confirmed, checked in, or checke
 _Avoid_: Undelete, check-in
 
 **Unfulfilled**:
-An online reservation paid after its room type became unavailable, holding no
-inventory while its payment remains refund due.
+An online reservation paid after its room type became unavailable or its check-in
+date passed, holding no inventory while its payment remains refund due.
 _Avoid_: Cancelled, held, expired
 
 ### Rooms and availability

@@ -5,6 +5,7 @@
   "exports": {
     ".": "./src/index.ts",
     "./phone": "./src/phone.ts",
+    "./online-arrival": "./src/online-arrival.ts",
     "./complaint-book.json": "./src/complaint-book.json"
   },
   "scripts": {

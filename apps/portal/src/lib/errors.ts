@@ -112,7 +112,10 @@ const messages: Record<string, string> = {
   "room appears more than once": "Una habitación está repetida en la tabla.",
   "room type already exists": "Este tipo de habitación ya existe.",
   "room type not found": "Este tipo de habitación ya no existe.",
-  "online check-in must be after today": "Las reservas en línea deben llegar desde mañana.",
+  "online check-in must not be before today":
+    "Las reservas en línea no pueden llegar antes de hoy.",
+  "online same-day arrival has closed":
+    "Las reservas en línea para hoy cerraron a las 11:00 p. m., hora de Perú.",
   "quote not found": "Esta cotización ya no existe. Vuelve a consultar el precio.",
   "room not found": "Esta habitación ya no existe.",
   "duplicate room in housekeeping marks": "Una habitación está repetida en la limpieza.",

@@ -1,6 +1,7 @@
 import { normalizePhone } from "@pms/shared";
 import { inclusiveDates, isValidDate, nightsBetween } from "./lib/dates";
 import { HttpError } from "./http";
+import type { OnlineArrivalCalendar } from "./property-calendar";
 
 export function requireStay(checkIn: string, checkOut: string): string[] {
   if (!isValidDate(checkIn) || !isValidDate(checkOut)) throw new HttpError(400, "invalid date");
@@ -13,8 +14,15 @@ export function requireStay(checkIn: string, checkOut: string): string[] {
   return nights;
 }
 
-export function requireOnlineArrival(checkIn: string, today: string) {
-  if (checkIn <= today) throw new HttpError(400, "online check-in must be after today", "checkIn");
+export function requireOnlineArrivalNotPast(checkIn: string, today: string) {
+  if (checkIn < today)
+    throw new HttpError(400, "online check-in must not be before today", "checkIn");
+}
+
+export function requireNewOnlineArrival(checkIn: string, calendar: OnlineArrivalCalendar) {
+  requireOnlineArrivalNotPast(checkIn, calendar.today);
+  if (checkIn < calendar.firstNewArrival)
+    throw new HttpError(400, "online same-day arrival has closed", "checkIn");
 }
 
 export function requireInclusiveRange(from: string, to: string, maxDays: number): string[] {

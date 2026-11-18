@@ -7,13 +7,14 @@ import { latestCheckoutAttempt } from "./payment-attempts";
 import { addDays, nightsBetween } from "./lib/dates";
 import { offerAmounts } from "./public-offers";
 import { priceQuote, quoteExpired, type Quote } from "./quotes";
-import { acceptPhone, requireOnlineArrival } from "./rules";
+import type { OnlineArrivalCalendar } from "./property-calendar";
+import { acceptPhone, requireOnlineArrivalNotPast } from "./rules";
 
 export type PublicCheckout = Omit<typeof publicCheckouts.$inferSelect, "reservedOnce">;
 
 type CheckoutAcceptanceRow = typeof checkoutAcceptances.$inferSelect;
 
-type CheckoutContext = { today: string; now: Date; published: string[] };
+type CheckoutContext = OnlineArrivalCalendar & { now: Date; published: string[] };
 
 const TOKEN_BYTES = 32;
 const TOKEN_LENGTH = Math.ceil((TOKEN_BYTES * 4) / 3);
@@ -50,7 +51,7 @@ async function availableQuote(db: Db, checkout: PublicCheckout, context: Checkou
       children: checkout.children,
       ratePlan: checkout.ratePlan,
     },
-    { today: context.today, now: context.now, checkoutId: checkout.id },
+    { ...context, checkoutId: checkout.id },
   );
   if (!available) throw new HttpError(409, "no availability");
   return quote;
@@ -170,7 +171,7 @@ export async function requireCurrentQuote(
   quoteId: string,
   context: Pick<CheckoutContext, "today" | "now">,
 ) {
-  requireOnlineArrival(checkout.checkIn, context.today);
+  requireOnlineArrivalNotPast(checkout.checkIn, context.today);
   const quote = await latestQuote(db, checkout.id);
   if (quote.id !== quoteId) {
     const [older] = await db

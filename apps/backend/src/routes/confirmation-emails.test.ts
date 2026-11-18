@@ -84,7 +84,10 @@ function configureResend() {
   db.env.RESEND_API_URL = RESEND_LOOPBACK;
 }
 
-async function acceptedCheckout(language: "es" | "en" = "en") {
+async function acceptedCheckout(
+  language: "es" | "en" = "en",
+  selection: Record<string, unknown> = {},
+) {
   const created = await guest("/public/checkouts", {
     body: {
       roomTypeId: "type-king",
@@ -94,6 +97,7 @@ async function acceptedCheckout(language: "es" | "en" = "en") {
       children: 0,
       ratePlan: "flexible",
       language,
+      ...selection,
     },
   });
   expect(created.status).toBe(201);
@@ -116,8 +120,8 @@ const pay = (checkout: { token: string; quoteId: string }) =>
     },
   });
 
-async function confirmed(language: "es" | "en" = "en") {
-  const checkout = await acceptedCheckout(language);
+async function confirmed(language: "es" | "en" = "en", selection: Record<string, unknown> = {}) {
+  const checkout = await acceptedCheckout(language, selection);
   expect((await pay(checkout)).status).toBe(201);
   const access = await guest("/public/checkout/access", { token: checkout.token });
   expect(access.status).toBe(200);
@@ -241,6 +245,44 @@ describe("automatic confirmation", () => {
       expect(sent.subject).not.toContain(saved.token);
     },
   );
+
+  it.each([
+    [
+      "en",
+      "an arrival today on Flexible says free cancellation has ended",
+      { checkIn: "2026-10-10", checkOut: "2026-10-11" },
+      "Free cancellation has ended. The charge is PEN 100.00.",
+    ],
+    [
+      "es",
+      "an arrival today on Flexible says free cancellation has ended",
+      { checkIn: "2026-10-10", checkOut: "2026-10-11" },
+      "La cancelación sin cargo ya terminó. El cargo es PEN 100.00.",
+    ],
+    [
+      "en",
+      "Non-refundable has no free cancellation",
+      { ratePlan: "non_refundable" },
+      "No free cancellation. The charge is PEN 180.00.",
+    ],
+    [
+      "es",
+      "Non-refundable has no free cancellation",
+      { ratePlan: "non_refundable" },
+      "Sin cancelación gratuita. El cargo es PEN 180.00.",
+    ],
+  ] as const)("in %s, %s", async (language, _name, selection, cancellation) => {
+    await confirmed(language, selection);
+    configureResend();
+
+    await runScheduled();
+
+    const sent = message(0);
+    expect(sent.text.split("\n")).toContain(cancellation);
+    expect(sent.html).toContain(cancellation);
+    for (const promise of ["Free cancellation until", "Cancelación sin cargo hasta"])
+      expect(sent.text).not.toContain(promise);
+  });
 
   it("queues the confirmation in the same save as the reservation, so a failed save leaves neither, and the retry saves one of each", async () => {
     const checkout = await acceptedCheckout();

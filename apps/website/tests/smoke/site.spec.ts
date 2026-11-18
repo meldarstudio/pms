@@ -50,7 +50,9 @@ for (const path of ["/", "/en/"]) {
   });
 }
 
-test("homepage range picker uses Peru's date and displays compact dates", async ({ page }) => {
+test("homepage range picker uses Peru's date, closes today at 11:00 p.m., and displays compact dates", async ({
+  page,
+}) => {
   await page.clock.install({ time: new Date("2026-11-10T03:00:00Z") });
   await page.goto("/");
   await page.locator("#availability astro-island:not([ssr])").waitFor();
@@ -59,17 +61,16 @@ test("homepage range picker uses Peru's date and displays compact dates", async 
   await page.locator("#stay-check-in").click();
   const popup = page.getByRole("dialog");
   await expect(popup.locator('[data-date="2026-11-08"]').first()).toBeDisabled();
-  await expect(popup.locator('[data-date="2026-11-09"]').first()).toBeDisabled();
-  await popup.locator('[data-date="2026-11-10"]').first().click();
+  await popup.locator('[data-date="2026-11-09"]').first().click();
   await popup.locator('[data-date="2026-11-12"]').first().click();
   await expect(popup).toBeHidden();
-  await expect(page.locator("#stay-check-in")).toHaveText("10 nov. 2026");
+  await expect(page.locator("#stay-check-in")).toHaveText("9 nov. 2026");
   await expect(page.locator("#stay-check-out")).toHaveText("12 nov. 2026");
   await page.locator("#stay-check-out").click();
-  await expect(popup.locator('[data-date="2026-11-09"]').first()).toBeDisabled();
+  await expect(popup.locator('[data-date="2026-11-08"]').first()).toBeDisabled();
   await page.keyboard.press("Escape");
   await expect(popup).toBeHidden();
-  await page.clock.setSystemTime(new Date("2026-11-10T05:01:00Z"));
+  await page.clock.setSystemTime(new Date("2026-11-10T04:01:00Z"));
   await page.locator('#availability button[type="submit"]').click();
   await expect(page.locator("#stay-check-in")).toHaveAttribute("aria-invalid", "true");
   await expect(page.locator("#stay-check-in")).toBeFocused();

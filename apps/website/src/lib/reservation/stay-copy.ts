@@ -28,7 +28,8 @@ export function staySearchCopy(
     childrenOther: t("reservation.children.other"),
     problems: {
       checkInRequired: t("reservation.problem.checkInRequired"),
-      checkInTooSoon: t("reservation.problem.checkInTooSoon"),
+      checkInPast: t("reservation.problem.checkInPast"),
+      sameDayClosed: t("reservation.problem.sameDayClosed"),
       checkOutRequired: t("reservation.problem.checkOutRequired"),
       checkOutBeforeCheckIn: t("reservation.problem.checkOutBeforeCheckIn"),
       tooManyNights: t("reservation.problem.tooManyNights"),

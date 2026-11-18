@@ -141,18 +141,40 @@ describe("public offer search", () => {
     ).toBe("available");
   });
 
+  it("offers both rate plans for an arrival today until 10:59 p.m. Lima", async () => {
+    vi.setSystemTime(new Date("2026-10-11T03:59:59Z"));
+
+    const { roomTypes } = await offers({ checkIn: "2026-10-10", checkOut: "2026-10-11" });
+
+    expect(roomTypes[0]!.offers.map((offer) => offer.ratePlan)).toEqual([
+      "flexible",
+      "non_refundable",
+    ]);
+  });
+
   it.each([
-    ["Lima's 23:30 still allows tomorrow", "2026-10-11T04:30:00Z", "2026-10-11", 200],
-    ["Lima's midnight makes that date today", "2026-10-11T05:00:00Z", "2026-10-11", 400],
-    ["today is never offered", "2026-10-10T15:00:00Z", "2026-10-10", 400],
-  ])("follows the property calendar: %s", async (_name, now, checkIn, status) => {
+    [
+      "11:00 p.m. Lima closes an arrival today",
+      "2026-10-11T04:00:00Z",
+      "2026-10-10",
+      "online same-day arrival has closed",
+    ],
+    ["11:45 p.m. Lima still offers tomorrow", "2026-10-11T04:45:00Z", "2026-10-11", null],
+    [
+      "Lima's midnight makes yesterday past",
+      "2026-10-11T05:00:00Z",
+      "2026-10-10",
+      "online check-in must not be before today",
+    ],
+    ["Lima's midnight opens the new date", "2026-10-11T05:00:00Z", "2026-10-11", null],
+  ])("follows the property clock: %s", async (_name, now, checkIn, error) => {
     vi.setSystemTime(new Date(now));
 
     const response = await search({ checkIn, checkOut: "2026-10-13" });
 
-    expect(response.status).toBe(status);
-    if (status === 400) {
-      expect(await response.json()).toEqual({ error: "online check-in must be after today" });
+    expect(response.status).toBe(error ? 400 : 200);
+    if (error) {
+      expect(await response.json()).toEqual({ error });
       expect(response.headers.get("X-Error-Field")).toBe("checkIn");
     }
   });

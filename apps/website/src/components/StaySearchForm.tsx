@@ -32,14 +32,17 @@ import { resumeSearch, storeSearch } from "@/lib/reservation/draft";
 import { formatDate, fill } from "@/lib/reservation/format";
 import {
   addDays,
+  arrivalProblem,
   DEFAULT_ADULTS,
   DEFAULT_CHILDREN,
   firstOnlineArrival,
   MAX_ADULTS_CHOICE,
   MAX_CHILDREN_CHOICE,
   MAX_NIGHTS,
+  onlineArrivalCalendar,
   searchParams,
   searchProblems,
+  type ArrivalProblem,
   type SearchProblem,
   type StaySearch,
 } from "@/lib/reservation/search";
@@ -65,7 +68,7 @@ export type StaySearchCopy = {
   adultsOther: string;
   childrenOne: string;
   childrenOther: string;
-  problems: Record<SearchProblem | "checkInTooSoon", string>;
+  problems: Record<SearchProblem | ArrivalProblem, string>;
 };
 
 const limits = {
@@ -124,8 +127,8 @@ type StayProblem = {
 };
 
 function stayProblems(checkIn: string, checkOut: string): StayProblem[] {
-  if (checkIn && checkIn < firstOnlineArrival())
-    return [{ field: "checkIn", problem: "checkInTooSoon" }];
+  const arrival = arrivalProblem(checkIn);
+  if (arrival) return [{ field: "checkIn", problem: arrival }];
   return searchProblems({
     checkIn,
     checkOut,
@@ -287,8 +290,8 @@ function StayDateFields({
   const selecting = picker.kind === "open" ? picker.selecting : "checkIn";
   const [month, setMonth] = useState(() => new Date());
   const [mobile, setMobile] = useState(false);
-  const [firstArrival, setFirstArrival] = useState(firstOnlineArrival);
-  const firstArrivalDate = labelDate(firstArrival);
+  const [arrivalCalendar, setArrivalCalendar] = useState(onlineArrivalCalendar);
+  const firstArrivalDate = labelDate(arrivalCalendar.firstNewArrival);
 
   useEffect(() => {
     const media = window.matchMedia("(min-width: 48rem)");
@@ -319,7 +322,7 @@ function StayDateFields({
       showOutsideDays={mobile}
       startMonth={new Date(firstArrivalDate.getFullYear(), firstArrivalDate.getMonth(), 1)}
       endMonth={new Date(firstArrivalDate.getFullYear() + 2, 11, 1)}
-      today={labelDate(addDays(firstArrival, -1))}
+      today={labelDate(arrivalCalendar.today)}
       captionLayout="dropdown"
       min={1}
       max={MAX_NIGHTS}
@@ -353,10 +356,11 @@ function StayDateFields({
       triggerId={triggerId}
       onOpenChange={(next: boolean, details: { trigger?: Element | null }) => {
         if (next) {
-          const earliest = firstOnlineArrival();
-          setFirstArrival(earliest);
+          const opened = onlineArrivalCalendar();
+          setArrivalCalendar(opened);
           const departure = details.trigger?.id === "stay-check-out" && Boolean(checkIn);
           const date = departure ? checkOut || checkIn : checkIn;
+          const earliest = opened.firstNewArrival;
           setMonth(labelDate(date && date >= earliest ? date : earliest));
           setPicker({
             kind: "open",

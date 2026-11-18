@@ -1,3 +1,4 @@
+import { onlineArrivalCalendar as onlineArrivalCalendarIn } from "@pms/shared/online-arrival";
 import type { RoomId } from "@/lib/rooms";
 
 export const ratePlanCodes = ["flexible", "non_refundable"] as const;
@@ -79,14 +80,18 @@ export function addDays(label: string, days: number) {
   return date.toISOString().slice(0, 10);
 }
 
-export function firstOnlineArrival() {
-  const today = new Intl.DateTimeFormat("en-CA", {
-    timeZone: "America/Lima",
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-  }).format(new Date());
-  return addDays(today, 1);
+const PROPERTY_TIME_ZONE = "America/Lima";
+
+export const onlineArrivalCalendar = () => onlineArrivalCalendarIn(PROPERTY_TIME_ZONE, new Date());
+
+export const firstOnlineArrival = () => onlineArrivalCalendar().firstNewArrival;
+
+export type ArrivalProblem = "checkInPast" | "sameDayClosed";
+
+export function arrivalProblem(checkIn: string): ArrivalProblem | null {
+  const { today, firstNewArrival } = onlineArrivalCalendar();
+  if (!checkIn || checkIn >= firstNewArrival) return null;
+  return checkIn < today ? "checkInPast" : "sameDayClosed";
 }
 
 export function searchProblems(search: StaySearch) {

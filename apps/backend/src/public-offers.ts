@@ -1,16 +1,15 @@
 import type { Db } from "./db";
 import { loadRoomTypes, occupiedCounts, ratesBetween, roomCounts } from "./inventory";
-import { chargeableCents, freeCancellationUntil } from "./lib/cancellation";
+import { chargeableCents, freeCancellationState, freeCancellationUntil } from "./lib/cancellation";
 import { overridesFor, priceNights, totalCents, type PricedNight } from "./lib/pricing";
 import { ratePlans, type RatePlanCode, type RatePlanTerms } from "./lib/rate-plans";
 import { quoteBill } from "./lib/reservation-bill";
-import { requireOnlineArrival, requireStay } from "./rules";
+import type { OnlineArrivalCalendar } from "./property-calendar";
+import { requireNewOnlineArrival, requireStay } from "./rules";
 
 export type OfferSearch = { checkIn: string; checkOut: string; adults: number; children: number };
 
 export type RoomTypeAvailability = "available" | "sold_out" | "too_many_guests";
-
-export type FreeCancellation = "available" | "ended" | "none";
 
 export function publishedRoomTypeIds(setting: string | undefined): string[] {
   return [
@@ -28,10 +27,10 @@ const PLAN_ORDER: RatePlanCode[] = ["flexible", "non_refundable"];
 export async function searchOffers(
   db: Db,
   search: OfferSearch,
-  context: { today: string; published: string[] },
+  context: OnlineArrivalCalendar & { published: string[] },
 ) {
   const dates = requireStay(search.checkIn, search.checkOut);
-  requireOnlineArrival(search.checkIn, context.today);
+  requireNewOnlineArrival(search.checkIn, context);
   const loaded = await loadRoomTypes(db, context.published);
   const types = context.published.flatMap((id) => loaded.filter((type) => type.id === id));
   const [occupied, counts, rates] = await Promise.all([
@@ -112,14 +111,12 @@ export function offerAmounts(
   const { terms, nights } = offer;
   const bill = quoteBill({ nights, terms });
   const freeUntil = freeCancellationUntil(terms.cancellationPolicy, offer.checkIn);
-  const freeCancellation: FreeCancellation =
-    freeUntil === null ? "none" : today <= freeUntil ? "available" : "ended";
   return {
     totalCents: bill.totalCents,
     requiredInitialPaymentCents: bill.requiredInitialPaymentCents,
     remainingScheduledCents: bill.remainingScheduledCents,
     cancellation: {
-      freeCancellation,
+      freeCancellation: freeCancellationState(freeUntil, today),
       freeUntil,
       chargeCents: chargeableCents(terms.cancellationPolicy, [{ nights }], 0),
     },

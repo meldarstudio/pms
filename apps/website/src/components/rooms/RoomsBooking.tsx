@@ -52,7 +52,8 @@ export type RoomState = "available" | "sold_out" | "too_many_guests" | "offline"
 
 /** Backend validation messages (English, asserted by public-offers.test.ts) to guest copy. */
 const backendProblems: Record<string, RoomsBookingKey> = {
-  "online check-in must be after today": "reservation.problem.checkInTooSoon",
+  "online check-in must not be before today": "reservation.problem.checkInPast",
+  "online same-day arrival has closed": "reservation.problem.sameDayClosed",
   "stay must be at least one night": "reservation.problem.checkOutBeforeCheckIn",
   "stay cannot be longer than 60 nights": "reservation.problem.tooManyNights",
   "invalid date": "reservation.problem.invalidDate",
