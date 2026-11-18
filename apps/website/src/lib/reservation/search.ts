@@ -1,3 +1,4 @@
+import { onlineArrivalCalendar as onlineArrivalCalendarIn } from "@pms/shared/online-arrival";
 import type { RoomId } from "@/lib/rooms";
 
 export const ratePlanCodes = ["flexible", "non_refundable"] as const;
@@ -79,34 +80,9 @@ export function addDays(label: string, days: number) {
   return date.toISOString().slice(0, 10);
 }
 
-const ONLINE_SAME_DAY_CLOSE_HOUR = 23;
+const PROPERTY_TIME_ZONE = "America/Lima";
 
-const propertyClock = new Intl.DateTimeFormat("en-US", {
-  timeZone: "America/Lima",
-  year: "numeric",
-  month: "2-digit",
-  day: "2-digit",
-  hour: "2-digit",
-  hourCycle: "h23",
-});
-
-function propertyNow() {
-  const parts = propertyClock.formatToParts(new Date());
-  const part = (type: Intl.DateTimeFormatPartTypes) =>
-    parts.find((value) => value.type === type)!.value;
-  return {
-    today: `${part("year")}-${part("month")}-${part("day")}`,
-    hour: Number(part("hour")),
-  };
-}
-
-export function onlineArrivalCalendar() {
-  const { today, hour } = propertyNow();
-  return {
-    today,
-    firstNewArrival: hour < ONLINE_SAME_DAY_CLOSE_HOUR ? today : addDays(today, 1),
-  };
-}
+export const onlineArrivalCalendar = () => onlineArrivalCalendarIn(PROPERTY_TIME_ZONE, new Date());
 
 export const firstOnlineArrival = () => onlineArrivalCalendar().firstNewArrival;
 

@@ -4,5 +4,5 @@ Guests can reserve online for arrival on the property date (America/Lima) until 
 
 ## Consequences
 
-- The close hour is fixed in code, not a setting, and is defined in both the backend (`apps/backend/src/property-calendar.ts`) and the website (`apps/website/src/lib/reservation/search.ts`); the two must change together.
+- The close hour is fixed in code, not a setting, in `packages/shared/src/online-arrival.ts`, which both the backend and the website use. The guest and portal messages that name 11:00 p.m. are copy and change by hand.
 - Same-day guests compete for the last room with walk-ins under the ordinary inventory rules; nothing holds rooms back.
