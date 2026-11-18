@@ -14,6 +14,7 @@ export default defineConfig({
       url: `${LOCAL_API_URL}/`,
       reuseExistingServer: false,
       timeout: 120_000,
+      gracefulShutdown: { signal: "SIGTERM", timeout: 5_000 },
     },
     {
       // Keeps the server in the foreground. Astro otherwise backgrounds it in

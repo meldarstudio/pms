@@ -3,6 +3,7 @@ import { randomBytes } from "node:crypto";
 import { mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
+import cfPackage from "cf/package.json" with { type: "json" };
 import { executeSql, localDatabase } from "../../backend/scripts/d1.mjs";
 import { CULQI_TEST_KEY } from "../../backend/src/test-support/culqi.ts";
 import { TURNSTILE_TEST_SECRET } from "../../backend/src/test-support/turnstile.ts";
@@ -22,7 +23,7 @@ const workspace = fileURLToPath(new URL("../.local-api/", import.meta.url));
 rmSync(workspace, { recursive: true, force: true });
 mkdirSync(workspace, { recursive: true });
 const state = join(workspace, "state");
-const vars = join(workspace, "vars.env");
+const vars = join(workspace, ".dev.vars");
 
 const reset = spawnSync(process.execPath, ["scripts/seed-reset.mjs", "--persist-to", state], {
   cwd: backend,
@@ -62,33 +63,13 @@ writeFileSync(
 const paymentServices = startFakePaymentServices(FAKE_PAYMENT_SERVICES_URL);
 
 const { hostname, port } = new URL(LOCAL_API_URL);
-const server = spawn(
-  "pnpm",
-  [
-    "exec",
-    "wrangler",
-    "dev",
-    "--experimental-new-config",
-    "--local-upstream",
-    "localhost",
-    "--ip",
-    hostname,
-    "--port",
-    port,
-    "--persist-to",
-    state,
-    "--env-file",
-    vars,
-    "--show-interactive-dev-session=false",
-    "--log-level",
-    "warn",
-  ],
-  {
-    cwd: backend,
-    stdio: "inherit",
-    env: { ...process.env, WRANGLER_SEND_METRICS: "false", WRANGLER_WRITE_LOGS: "false" },
-  },
-);
+const cfBin = fileURLToPath(new URL(cfPackage.bin.cf, import.meta.resolve("cf/package.json")));
+const server = spawn(process.execPath, [cfBin, "dev", "--", "--host", hostname, "--port", port], {
+  cwd: backend,
+  detached: process.platform !== "win32",
+  stdio: "inherit",
+  env: { ...process.env, PMS_LOCAL_API_DIR: workspace },
+});
 for (const signal of ["SIGINT", "SIGTERM"]) process.on(signal, () => server.kill(signal));
 server.on("exit", (code) => {
   paymentServices.close();

@@ -1,12 +1,13 @@
 import { fakeTurnstile, TURNSTILE_TEST_SECRET } from "../test-support/turnstile";
 import { afterAll, afterEach, beforeAll, beforeEach, expect, it, vi } from "vite-plus/test";
-import { getPlatformProxy } from "wrangler";
+import { Miniflare } from "miniflare";
 import { app } from "../index";
 import { signIn, PORTAL_ORIGIN } from "../test-support/auth";
 import { createTestDb, type TestDb } from "../test-support/d1";
 import { complaintSubmission } from "../test-support/complaints";
 
-let platform: Awaited<ReturnType<typeof getPlatformProxy<{ COMPLAINT_ATTACHMENTS: R2Bucket }>>>;
+let platform: Miniflare;
+let attachments: R2Bucket;
 let db: TestDb;
 let cookie: string;
 let token: string;
@@ -15,12 +16,24 @@ let responseId: string;
 const pdf = "%PDF-1.7\nTest refund receipt\n%%EOF";
 
 beforeAll(async () => {
-  platform = await getPlatformProxy({
-    configPath: "src/test-support/complaint-files.wrangler.json",
-    persist: false,
-    remoteBindings: false,
-    envFiles: [],
+  platform = new Miniflare({
+    workers: [
+      {
+        config: {
+          name: "complaint-files-test",
+          compatibilityDate: "2026-10-08",
+          env: { COMPLAINT_ATTACHMENTS: { type: "r2", name: "complaint-files-test" } },
+          manifest: {
+            mainModule: "index.js",
+            modules: { "index.js": { type: "esm", contents: "export default {}" } },
+          },
+        },
+      },
+    ],
   });
+  ({ COMPLAINT_ATTACHMENTS: attachments } = await platform.getBindings<{
+    COMPLAINT_ATTACHMENTS: R2Bucket;
+  }>());
 }, 30000);
 afterAll(async () => platform?.dispose());
 beforeEach(async () => {
@@ -29,7 +42,7 @@ beforeEach(async () => {
   db = await createTestDb();
   db.env.TURNSTILE_SECRET_KEY = TURNSTILE_TEST_SECRET;
   vi.stubGlobal("fetch", fakeTurnstile().fetch);
-  db.env.COMPLAINT_ATTACHMENTS = platform.env.COMPLAINT_ATTACHMENTS;
+  db.env.COMPLAINT_ATTACHMENTS = attachments;
   token = crypto.randomUUID() + crypto.randomUUID();
   const filed = await app.request(
     "http://localhost/public/complaints",
