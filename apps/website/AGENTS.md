@@ -82,15 +82,15 @@ Run commands from the repository root with `pnpm --filter @pms/website`.
   locale parity, canonical URLs, redirects, sitemap entries, and the share image.
 - Run `test:smoke` for routes, navigation, mobile menus, stay search, Review,
   payment, or the complaint form. It builds with `PUBLIC_PMS_API_URL` pointing
-  at a local API that `scripts/local-api.mjs` starts on a seeded D1 in `.local-api/`;
-  it never calls production.
+  at a local API that `scripts/local-api.mjs` starts with the backend's `wrangler dev`
+  and a seeded D1 in `.local-api/`; it never calls production.
 - Run `exec node scripts/check-links.mjs` against a fresh build for link changes.
   Add `--internal-only` to skip external requests.
 - Install the test browser with `exec playwright install chromium` when needed.
 
-The release workflow deploys this site with the API and portal: `deploy` runs
-`verify:build` then `wrangler deploy`, and the workflow supplies
-`PUBLIC_TURNSTILE_SITE_KEY` and `PUBLIC_CULQI_PUBLIC_KEY` from repository variables.
+The release workflow supplies `PUBLIC_TURNSTILE_SITE_KEY` and `PUBLIC_CULQI_PUBLIC_KEY`
+from repository variables. Deploy the verified static build with `cf deploy ./dist`;
+without the directory, `cf` would try to build the Astro project itself.
 
 The footer of every page links the Libro de Reclamaciones and shows the Annex III notice
 (`src/components/complaints/`). The form is prerendered with the provider and privacy
