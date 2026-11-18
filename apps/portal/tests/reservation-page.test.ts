@@ -165,6 +165,17 @@ function mockApi(options: ApiOptions = {}) {
       if (action.type === "contact")
         saved = { ...saved, guest: { ...saved.guest, ...action.contact } };
       if (action.type === "set-guests") saved = { ...saved, stayingGuests: action.guests };
+      if (action.type === "edit-room") {
+        const room = page.api.catalog.rooms.find((entry) => entry.id === action.room.roomId);
+        saved = {
+          ...saved,
+          rooms: saved.rooms.map((line) =>
+            line.id === action.lineId
+              ? { ...line, roomId: room?.id ?? null, roomNumber: room?.number ?? null }
+              : line,
+          ),
+        };
+      }
       if (action.type === "add-payment")
         saved = {
           ...saved,
@@ -344,6 +355,70 @@ async function unloadPrevented() {
   });
   return event.defaultPrevented;
 }
+
+function assignedRoomFixture() {
+  page.api.catalog.rooms.push(
+    { id: "room-2", number: "102", roomTypeId: "double" },
+    { id: "room-3", number: "103", roomTypeId: "double" },
+  );
+  const room = saved.rooms[0];
+  saved = {
+    ...saved,
+    status: "checked_in",
+    rooms: [
+      { ...room, roomId: "room-1", roomNumber: "101" },
+      { ...room, id: "line-2", roomId: "room-3", roomNumber: "103" },
+    ],
+  };
+  page.api.on("GET", "/reservations", () => [saved]);
+  mockApi();
+}
+
+async function chooseReplacement() {
+  await click("Cambiar habitación 101");
+  await page.until(() => !!popup()?.querySelector('[aria-label="Seleccionar habitación 102"]'));
+  await click("Seleccionar habitación 102");
+}
+
+it("replaces only the selected assignment and writes once, after confirmation", async () => {
+  assignedRoomFixture();
+  await render();
+  await chooseReplacement();
+  assert.equal(writes.length, 0, "Selecting a replacement must not release the existing room");
+  const confirm = button("Cambiar a 102");
+  await React.act(async () => {
+    confirm.click();
+    confirm.click();
+  });
+  await page.until(() => !!page.container.querySelector('[aria-label="Cambiar habitación 102"]'));
+  assert.deepEqual(
+    writes.map((write) => write.actions),
+    [
+      [
+        {
+          type: "edit-room",
+          lineId: "line-1",
+          room: { roomTypeId: "double", roomId: "room-2", adults: 2, children: 0 },
+        },
+      ],
+    ],
+  );
+});
+
+it("does not overwrite an assignment that changed while the picker was open", async () => {
+  assignedRoomFixture();
+  await render();
+  await chooseReplacement();
+  saved = {
+    ...saved,
+    rooms: saved.rooms.map((line) =>
+      line.id === "line-1" ? { ...line, roomId: "room-new", roomNumber: "104" } : line,
+    ),
+  };
+  await click("Cambiar a 102");
+  await page.until(() => !!popup()?.querySelector('[role="alert"]'));
+  assert.equal(writes.length, 0, "Confirming against an old room must not send a command");
+});
 
 it("confirms the page check-out balance, sends nothing on Volver, and offers undo", async () => {
   saved = { ...saved, status: "checked_in", paidCents: 10000, balanceCents: 20000 };

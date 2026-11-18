@@ -9,6 +9,7 @@ export type ReservationStay = {
   checkIn: string;
   checkOut: string;
   roomId: string | null;
+  roomNumber?: string | null;
   roomTypeId: string;
   roomIndex: number;
   roomCount: number;
@@ -38,7 +39,7 @@ export const assignmentProblemLabels: Record<AssignmentProblem, string> = {
   closed: "Cerrada durante la estancia",
 };
 
-function receivesAssignments(status: string) {
+export function receivesAssignments(status: string) {
   return status === "confirmed" || status === "checked_in";
 }
 
@@ -81,9 +82,13 @@ export function targetProblem(
 ): TargetProblem | null {
   const reservation = reservations.find((item) => item.id === target.reservationId);
   const line = reservation?.rooms.find((item) => item.id === target.id);
-  if (!reservation || !line || !receivesAssignments(reservation.status)) return "not-awaiting";
-  if (line.roomId !== null) return "already-assigned";
+  const replacing = target.roomId !== null;
+  if (!reservation || !line || !receivesAssignments(reservation.status))
+    return replacing ? "stay-changed" : "not-awaiting";
+  if (!replacing && line.roomId !== null) return "already-assigned";
   if (
+    line.roomId !== target.roomId ||
+    (replacing && reservation.status !== target.status) ||
     reservation.checkIn !== target.checkIn ||
     reservation.checkOut !== target.checkOut ||
     line.roomTypeId !== target.roomTypeId

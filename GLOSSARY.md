@@ -168,7 +168,7 @@ _Avoid_: Quote, availability
 Unsaved proposed name, occupancy limits, base rate, and room numbers/additions for a type.
 
 **Room assignment**:
-Selection of a physical room for a reserved room over the stay dates.
+Selection or replacement of the physical room for one reserved room, for all nights of the stay.
 
 **Room closure**:
 A period when a physical room is unavailable, including the start night's date and

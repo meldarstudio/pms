@@ -32,6 +32,7 @@ export function useRoomAssignment(rooms: Room[] | null, unassigned: ReservationS
   const [target, setTarget] = useState<ReservationStay | null>(null);
   const latestUnassigned = useRef(unassigned);
   const assignedLines = useRef(new Set<string>());
+  const submitting = useRef(false);
   useEffect(() => {
     latestUnassigned.current = unassigned;
   }, [unassigned]);
@@ -66,7 +67,9 @@ export function useRoomAssignment(rooms: Room[] | null, unassigned: ReservationS
     ignoredReservedRoomIds: new Set([target.id]),
   };
   if (target && context && ready) {
-    for (const room of rooms ?? []) roomProblems.set(room.id, roomProblem(room, target, context));
+    for (const room of rooms ?? []) {
+      if (room.id !== target.roomId) roomProblems.set(room.id, roomProblem(room, target, context));
+    }
   }
   const cachedCheck =
     checking &&
@@ -75,7 +78,9 @@ export function useRoomAssignment(rooms: Room[] | null, unassigned: ReservationS
     !reservations.isPlaceholderData &&
     !closures.isPlaceholderData;
   const typeRooms = target
-    ? (rooms ?? []).filter((room) => room.roomTypeId === target.roomTypeId)
+    ? (rooms ?? []).filter(
+        (room) => room.roomTypeId === target.roomTypeId && room.id !== target.roomId,
+      )
     : [];
   const expectedCount =
     target && context && cachedCheck
@@ -127,35 +132,55 @@ export function useRoomAssignment(rooms: Room[] | null, unassigned: ReservationS
 
   async function assignRoom(id: string) {
     const room = rooms?.find((item) => item.id === id);
-    if (!target || !room || !ready || pending || roomProblems.get(room.id) !== null) return;
-    setSaveError(null);
-    const result = await assign(target, room.id);
-    if (result.status === "saved") {
-      toast.success("Habitación asignada", {
-        description: `${target.guestName} tiene asignada la habitación ${room.number}.`,
-      });
-      assignedLines.current.add(target.id);
-      const next = latestUnassigned.current.find(
-        (stay) =>
-          stay.reservationId === target.reservationId && !assignedLines.current.has(stay.id),
-      );
-      setTarget(next ?? null);
+    if (
+      !target ||
+      !room ||
+      !ready ||
+      pending ||
+      submitting.current ||
+      roomProblems.get(room.id) !== null
+    )
       return;
+    const replacing = target.roomId !== null;
+    setSaveError(null);
+    submitting.current = true;
+    try {
+      const result = await assign(target, room.id);
+      if (result.status === "saved") {
+        toast.success(replacing ? "Habitación cambiada" : "Habitación asignada", {
+          description: `${target.guestName} tiene asignada la habitación ${room.number}.`,
+        });
+        assignedLines.current.add(target.id);
+        const next = replacing
+          ? null
+          : latestUnassigned.current.find(
+              (stay) =>
+                stay.reservationId === target.reservationId && !assignedLines.current.has(stay.id),
+            );
+        setTarget(next ?? null);
+        return;
+      }
+      const fallback = replacing
+        ? "No se pudo cambiar la habitación"
+        : "No se pudo asignar la habitación";
+      const message = result.status === "failed" ? result.message : fallback;
+      const code = result.status === "failed" ? result.code : undefined;
+      setSaveError(message);
+      toast.error(fallback, {
+        description: (code && conflictCopy.get(code)) ?? message,
+      });
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["reservations"] }),
+        queryClient.invalidateQueries({ queryKey: ["room-closures"] }),
+        queryClient.invalidateQueries({ queryKey: ["rooms"] }),
+        queryClient.invalidateQueries({ queryKey: ["calendar"] }),
+        queryClient.invalidateQueries({ queryKey: ["availability"] }),
+        replacing &&
+          queryClient.invalidateQueries({ queryKey: ["reservation", target.reservationId] }),
+      ]);
+    } finally {
+      submitting.current = false;
     }
-    const message =
-      result.status === "failed" ? result.message : "No se pudo asignar la habitación.";
-    const code = result.status === "failed" ? result.code : undefined;
-    setSaveError(message);
-    toast.error("No se pudo asignar la habitación", {
-      description: (code && conflictCopy.get(code)) ?? message,
-    });
-    await Promise.all([
-      queryClient.invalidateQueries({ queryKey: ["reservations"] }),
-      queryClient.invalidateQueries({ queryKey: ["room-closures"] }),
-      queryClient.invalidateQueries({ queryKey: ["rooms"] }),
-      queryClient.invalidateQueries({ queryKey: ["calendar"] }),
-      queryClient.invalidateQueries({ queryKey: ["availability"] }),
-    ]);
   }
 
   return {
@@ -175,6 +200,7 @@ export function useRoomAssignment(rooms: Room[] | null, unassigned: ReservationS
     saveError,
     selectStay,
     assignRoom,
+    retryAvailability: () => Promise.all([reservations.refetch(), closures.refetch()]),
     cancel,
   };
 }
