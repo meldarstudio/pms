@@ -9,10 +9,10 @@ import { MIGRATIONS_DIR } from "./production-migrations.mjs";
 const backendDir = fileURLToPath(new URL("..", import.meta.url));
 const databaseId = config.worker.env.DB.id;
 
-const wranglerDevServerState = join(backendDir, ".wrangler/state");
+const devServerState = join(backendDir, ".cloudflare/state");
 
 export function localDatabase(persistTo) {
-  return ["--local", "--persist-to", persistTo ? resolve(persistTo) : wranglerDevServerState];
+  return ["--local", "--persist-to", persistTo ? resolve(persistTo) : devServerState];
 }
 export const productionDatabase = [];
 

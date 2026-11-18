@@ -37,8 +37,6 @@ jobs:
         run: pnpm build
 
       - name: Bundle API without deploying
-        env:
-          WRANGLER_WRITE_LOGS: "false"
         run: pnpm --filter @pms/backend exec cf deploy --dry-run
 
   website:

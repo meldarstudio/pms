@@ -82,7 +82,7 @@ Run commands from the repository root with `pnpm --filter @pms/website`.
   locale parity, canonical URLs, redirects, sitemap entries, and the share image.
 - Run `test:smoke` for routes, navigation, mobile menus, stay search, Review,
   payment, or the complaint form. It builds with `PUBLIC_PMS_API_URL` pointing
-  at a local API that `scripts/local-api.mjs` starts with the backend's `wrangler dev`
+  at a local API that `scripts/local-api.mjs` starts with the backend's `cf dev`
   and a seeded D1 in `.local-api/`; it never calls production.
 - Run `exec node scripts/check-links.mjs` against a fresh build for link changes.
   Add `--internal-only` to skip external requests.
