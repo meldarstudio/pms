@@ -19,7 +19,7 @@ import {
   SheetHeader,
   SheetTitle,
 } from "@/components/ui/sheet";
-import { useIsMobile } from "@/hooks/use-mobile";
+import { useResponsivePanel } from "@/components/responsive-panel";
 import type { ReservationDetail } from "@/lib/api";
 import type { ReservationStay } from "@/lib/assignment-availability";
 import { useHousekeeping } from "@/lib/queries";
@@ -73,16 +73,16 @@ function AssignableRooms({
   detail: ReservationDetail;
   stays: ReservationStay[];
 }) {
-  const isMobile = useIsMobile();
+  const housekeeping = useHousekeeping();
+  const rooms = housekeeping.data?.rooms ?? null;
+  const assignment = useRoomAssignment(rooms, stays);
+  const { asDrawer: isMobile } = useResponsivePanel(assignment.target, { tabletDrawer: true });
   const Panel = isMobile ? Drawer : Sheet;
   const PanelContent = isMobile ? DrawerContent : SheetContent;
   const PanelHeader = isMobile ? DrawerHeader : SheetHeader;
   const PanelTitle = isMobile ? DrawerTitle : SheetTitle;
   const PanelDescription = isMobile ? DrawerDescription : SheetDescription;
   const PanelClose = isMobile ? DrawerClose : SheetClose;
-  const housekeeping = useHousekeeping();
-  const rooms = housekeeping.data?.rooms ?? null;
-  const assignment = useRoomAssignment(rooms, stays);
   const typeNames = new Map(detail.rooms.map((line) => [line.roomTypeId, typeName(line)]));
   return (
     <>
@@ -102,7 +102,8 @@ function AssignableRooms({
           {...(isMobile ? {} : { showCloseButton: false })}
           className={cn(
             !isMobile && "overflow-hidden",
-            isMobile && "data-[swipe-axis=y]:max-h-[85dvh] pb-[env(safe-area-inset-bottom)]",
+            isMobile &&
+              "data-[swipe-axis=y]:max-h-[85dvh] pb-[env(safe-area-inset-bottom)] md:inset-x-[max(1rem,calc((100vw-40rem)/2))]",
           )}
         >
           <PanelHeader className="shrink-0 border-b pb-4">

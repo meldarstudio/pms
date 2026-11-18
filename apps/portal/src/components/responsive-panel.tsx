@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { useIsMobile } from "@/hooks/use-mobile";
+import { useIsMobile, useIsTablet } from "@/hooks/use-mobile";
 import {
   Sheet,
   SheetClose,
@@ -41,8 +41,10 @@ const surfaces = {
 };
 export type PanelSurface = (typeof surfaces)[keyof typeof surfaces];
 
-export function useResponsivePanel<T>(subject: T | null) {
-  const mobile = useIsMobile();
+export function useResponsivePanel<T>(subject: T | null, { tabletDrawer = false } = {}) {
+  const narrow = useIsMobile();
+  const tablet = useIsTablet();
+  const mobile = narrow || (tabletDrawer && tablet);
   const [opening, setOpening] = useState({ subject, mobile });
   if (opening.subject !== subject)
     setOpening({ subject, mobile: subject === null ? opening.mobile : mobile });

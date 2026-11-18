@@ -1,5 +1,14 @@
-import { useState, type ReactNode } from "react";
-import { CreditCardIcon, LockIcon, PencilIcon, ReceiptIcon, Undo2Icon, XIcon } from "lucide-react";
+import { useCallback, useLayoutEffect, useRef, useState, type ReactNode } from "react";
+import {
+  ArrowRightIcon,
+  ChevronUpIcon,
+  CreditCardIcon,
+  LockIcon,
+  PencilIcon,
+  ReceiptIcon,
+  Undo2Icon,
+  XIcon,
+} from "lucide-react";
 import { cn } from "cn";
 import { parseISO } from "date-fns";
 import { SummaryRow, accountStatus } from "@/components/balance-status";
@@ -10,13 +19,10 @@ import { ReservationSection, SectionHeading } from "@/components/reservation-sec
 import type { ReservationEditorTarget } from "@/components/reservation-page-editors";
 import { useResponsivePanel } from "@/components/responsive-panel";
 import { Button } from "@/components/ui/button";
-import {
-  Empty,
-  EmptyDescription,
-  EmptyHeader,
-  EmptyMedia,
-  EmptyTitle,
-} from "@/components/ui/empty";
+import { Separator } from "@/components/ui/separator";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
+import type { useLifecycleAction } from "@/components/lifecycle-action";
+import { Empty, EmptyHeader, EmptyMedia, EmptyTitle } from "@/components/ui/empty";
 import {
   Table,
   TableBody,
@@ -48,31 +54,157 @@ const methodLabel = (method: string) =>
 export function AccountPanel({
   detail,
   edit,
+  stacked,
+  disabled,
+  lifecycle,
+  lifecycleBlocked,
+  onHeightChange,
   onDiscountDraftChange,
-}: Props & { onDiscountDraftChange?: (changed: boolean) => void }) {
+}: Props & {
+  stacked: boolean;
+  disabled: boolean;
+  lifecycle: ReturnType<typeof useLifecycleAction>;
+  lifecycleBlocked: boolean;
+  onHeightChange: (height: number) => void;
+  onDiscountDraftChange?: (changed: boolean) => void;
+}) {
+  const [expanded, setExpanded] = useState(false);
+  const [discountBlocking, setDiscountBlocking] = useState(false);
+  const discountChange = useCallback(
+    (changed: boolean) => {
+      setDiscountBlocking(changed);
+      onDiscountDraftChange?.(changed);
+    },
+    [onDiscountDraftChange],
+  );
+  const footer = useRef<HTMLElement>(null);
+  const status = accountStatus(detail);
+  const payment =
+    status.state === "owing" ? "payment" : status.state === "owed-back" ? "refund" : null;
+  const lifecyclePrimary = lifecycle.step && (lifecycle.step.due || !payment);
+  useLayoutEffect(() => {
+    if (!stacked || !footer.current) return;
+    const element = footer.current;
+    const measure = () => onHeightChange(element.getBoundingClientRect().height);
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(element);
+    return () => observer.disconnect();
+  }, [stacked, onHeightChange]);
   return (
-    <section role="region" aria-label="Cuenta" className="flex min-w-0 flex-col">
-      <AccountBalance detail={detail} edit={edit} />
-      <div className="flex min-w-0 flex-col gap-3 p-4">
-        <SectionHeading title="Cuenta" />
-        <AccountSummary detail={detail} edit={edit} onDiscountDraftChange={onDiscountDraftChange} />
-      </div>
+    <section
+      ref={footer}
+      role="region"
+      aria-label="Cuenta"
+      className={cn(
+        "flex min-w-0 flex-col",
+        stacked &&
+          "fixed inset-x-0 bottom-0 z-20 gap-3 border-t bg-background px-4 pt-3 pb-[max(1rem,env(safe-area-inset-bottom))] md:right-auto md:left-(--reservation-content-left) md:w-(--reservation-content-width) md:px-6",
+      )}
+    >
+      {!stacked && <AccountBalance detail={detail} edit={edit} />}
+      <Collapsible open={!stacked || expanded} onOpenChange={setExpanded}>
+        <CollapsibleContent
+          keepMounted
+          className={cn(
+            "motion-reduce:transition-none",
+            stacked &&
+              "h-[var(--collapsible-panel-height)] overflow-hidden transition-[height] duration-200 data-ending-style:h-0 data-starting-style:h-0",
+          )}
+        >
+          <div
+            className={cn(
+              "flex min-w-0 flex-col gap-3",
+              stacked
+                ? "max-h-[min(35dvh,20rem)] overflow-y-auto overscroll-contain pt-1 pb-3"
+                : "px-6 pb-5",
+            )}
+          >
+            {!stacked && <SectionHeading title="Cuenta" />}
+            <AccountSummary detail={detail} edit={edit} onDiscountDraftChange={discountChange} />
+          </div>
+          {stacked && <Separator />}
+        </CollapsibleContent>
+        {stacked && (
+          <h2>
+            <CollapsibleTrigger
+              aria-label="Ver cuenta y desglose"
+              disabled={disabled || discountBlocking}
+              className="group flex min-h-11 w-full items-center justify-between gap-3 text-left outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            >
+              <span
+                className={cn(
+                  "text-xs font-medium",
+                  status.state === "owing" ? "text-destructive" : "text-muted-foreground",
+                )}
+              >
+                {status.label}
+              </span>
+              <span className="flex shrink-0 items-center gap-2">
+                <span className="text-sm font-semibold tabular-nums">
+                  {formatMoney(status.cents, detail.currency)}
+                </span>
+                <ChevronUpIcon
+                  aria-hidden
+                  className="size-4 text-muted-foreground transition-transform group-data-panel-open:rotate-180 motion-reduce:transition-none"
+                />
+              </span>
+            </CollapsibleTrigger>
+          </h2>
+        )}
+      </Collapsible>
+      {stacked && (payment || lifecycle.step) && (
+        <div
+          aria-label="Acciones de la reserva"
+          className={cn("grid gap-2", payment && lifecycle.step && "grid-cols-2")}
+        >
+          {payment && (
+            <Button
+              size="lg"
+              variant={lifecyclePrimary ? "outline" : "default"}
+              disabled={disabled || lifecycle.running}
+              onClick={() => edit({ kind: payment })}
+            >
+              {payment === "payment" ? (
+                <CreditCardIcon data-icon="inline-start" />
+              ) : (
+                <Undo2Icon data-icon="inline-start" />
+              )}
+              {payment === "payment" ? "Registrar pago" : "Devolver"}
+            </Button>
+          )}
+          {lifecycle.step && (
+            <Button
+              size="lg"
+              variant={lifecyclePrimary ? "default" : "outline"}
+              disabled={disabled || lifecycleBlocked || lifecycle.running}
+              onClick={() => void lifecycle.run()}
+            >
+              {lifecycle.step.label}
+              <ArrowRightIcon data-icon="inline-end" />
+            </Button>
+          )}
+        </div>
+      )}
     </section>
   );
 }
 
 function AccountBalance({ detail, edit }: Props) {
   const status = accountStatus(detail);
+  const textTone = {
+    owing: "text-destructive",
+    "owed-back": "text-credit-foreground",
+    "refund-requested": "text-preview-foreground",
+    settled: "text-booking-foreground",
+  }[status.state];
   return (
-    <section
-      aria-label="Estado de la cuenta"
-      className={cn("flex flex-col gap-1 px-4 py-6", status.tone)}
-    >
-      <p className="flex items-center gap-1.5 text-xs font-medium">
+    <section aria-label="Estado de la cuenta" className="flex flex-col gap-1 px-6 pt-6 pb-5">
+      <p className={cn("flex items-center gap-1.5 text-xs font-medium", textTone)}>
         <status.Icon aria-hidden className="size-3.5" />
         {status.label}
       </p>
-      <p className="text-3xl font-semibold tracking-tight tabular-nums">
+      <p className="text-2xl font-semibold tracking-tight tabular-nums">
         {formatMoney(status.cents, detail.currency)}
       </p>
       {status.state === "owing" && (
@@ -378,7 +510,6 @@ export function Movements({
             <ReceiptIcon />
           </EmptyMedia>
           <EmptyTitle>Sin movimientos todavía</EmptyTitle>
-          <EmptyDescription>Los pagos, reembolsos y cupones aparecerán aquí.</EmptyDescription>
         </EmptyHeader>
       </Empty>
     );
@@ -445,7 +576,9 @@ function MovementPanel({
   onClose: () => void;
   onPick: (target: ReservationEditorTarget) => void;
 }) {
-  const { asDrawer, surface } = useResponsivePanel(open && movement ? movement.key : null);
+  const { asDrawer, surface } = useResponsivePanel(open && movement ? movement.key : null, {
+    tabletDrawer: true,
+  });
   const { Root, Content, Header, Title, Description, Footer, Close } = surface;
   return (
     <Root
@@ -460,7 +593,7 @@ function MovementPanel({
         className={cn(
           "overflow-hidden",
           asDrawer
-            ? "data-[swipe-axis=y]:max-h-[85dvh] pb-[env(safe-area-inset-bottom)]"
+            ? "data-[swipe-axis=y]:max-h-[85dvh] pb-[env(safe-area-inset-bottom)] md:inset-x-[max(1rem,calc((100vw-40rem)/2))]"
             : "data-[side=right]:sm:max-w-md",
         )}
       >

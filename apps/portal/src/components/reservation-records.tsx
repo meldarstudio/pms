@@ -8,19 +8,19 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import {
-  Empty,
-  EmptyDescription,
-  EmptyHeader,
-  EmptyMedia,
-  EmptyTitle,
-} from "@/components/ui/empty";
+import { Empty, EmptyHeader, EmptyMedia, EmptyTitle } from "@/components/ui/empty";
 import type { StayingGuest } from "@/lib/api";
 import { phoneDisplay } from "@/lib/phone";
 
-export function NoStayingGuests({ framed = false }: { framed?: boolean }) {
+export function NoStayingGuests({
+  framed = false,
+  className,
+}: {
+  framed?: boolean;
+  className?: string;
+}) {
   return (
-    <Empty className={cn(framed && "border")}>
+    <Empty className={cn(framed && "border", className)}>
       <EmptyHeader>
         {framed && (
           <EmptyMedia variant="icon">
@@ -28,9 +28,6 @@ export function NoStayingGuests({ framed = false }: { framed?: boolean }) {
           </EmptyMedia>
         )}
         <EmptyTitle>Sin huéspedes registrados</EmptyTitle>
-        <EmptyDescription>
-          Agrega a las personas que se alojan. Pueden ser distintas del contacto principal.
-        </EmptyDescription>
       </EmptyHeader>
     </Empty>
   );
@@ -41,17 +38,9 @@ export function GuestLine({ guest, className }: { guest: StayingGuest; className
     [guest.documentType, guest.documentNumber].filter(Boolean).join(" "),
     guest.phone ? phoneDisplay(guest.phone).text : "",
   ].filter(Boolean);
-  if (!parts.length && !guest.email) return null;
+  if (!parts.length) return null;
   return (
-    <p className={cn("truncate text-xs text-muted-foreground", className)}>
-      {parts.join(" · ")}
-      {guest.email && (
-        <span className="max-md:hidden">
-          {parts.length ? " · " : ""}
-          {guest.email}
-        </span>
-      )}
-    </p>
+    <p className={cn("truncate text-xs text-muted-foreground", className)}>{parts.join(" · ")}</p>
   );
 }
 

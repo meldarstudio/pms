@@ -95,7 +95,7 @@ export function StayEditor({
   return (
     <div className="flex min-h-0 min-w-0 flex-1 flex-col gap-4 overflow-hidden">
       <div className="flex min-h-0 flex-col gap-4 overflow-y-auto max-sm:flex-1">
-        <div className="grid min-w-0 shrink-0 gap-6 p-px lg:grid-cols-[minmax(0,1fr)_280px]">
+        <div className="grid min-w-0 shrink-0 gap-6 p-px xl:grid-cols-[minmax(0,1fr)_280px]">
           <form
             id={formId}
             noValidate
@@ -103,7 +103,7 @@ export function StayEditor({
             onSubmit={(event) => void submitForm(event, () => form.handleSubmit())}
           >
             <fieldset disabled={busy} className="flex min-w-0 flex-col gap-5">
-              <FieldGroup className="grid grid-cols-1 gap-3 md:grid-cols-2">
+              <FieldGroup className="grid grid-cols-1 gap-3 xl:grid-cols-2">
                 <form.AppField
                   name="checkIn"
                   listeners={{

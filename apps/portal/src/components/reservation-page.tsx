@@ -17,6 +17,7 @@ import { PageError, StaleDataNotice } from "@/components/page-error";
 import { useReservation } from "@/lib/queries";
 import { useReservationCommands } from "@/lib/reservation-commands";
 import { ReservationOverview } from "@/components/reservation-overview";
+import { ReservationLayout } from "@/components/reservation-layout";
 import {
   ReservationPageEditor,
   type ReservationEditorTarget,
@@ -89,12 +90,12 @@ function ReservationPageContent({ id, back, onBack }: PageProps) {
             </BreadcrumbItem>
             <BreadcrumbSeparator />
             <BreadcrumbItem>
-              <BreadcrumbPage className="font-medium">Detalle</BreadcrumbPage>
+              <BreadcrumbPage className="font-medium">Detalles</BreadcrumbPage>
             </BreadcrumbItem>
           </BreadcrumbList>
         </Breadcrumb>
       </PageTitle>
-      <div className="flex w-full flex-col gap-4 p-4 lg:p-6">
+      <ReservationLayout>
         {query.isPending && <ReservationOverviewSkeleton />}
         {query.error &&
           (query.data ? (
@@ -127,7 +128,7 @@ function ReservationPageContent({ id, back, onBack }: PageProps) {
             }}
           />
         )}
-      </div>
+      </ReservationLayout>
       {editor && (
         <ReservationPageEditor
           target={editor.target}

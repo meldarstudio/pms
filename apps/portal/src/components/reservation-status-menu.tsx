@@ -5,7 +5,6 @@ import {
   DropdownMenuContent,
   DropdownMenuGroup,
   DropdownMenuItem,
-  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import type { ReservationEditorTarget } from "@/components/reservation-page-editors";
@@ -16,10 +15,12 @@ export function ReservationStatusMenu({
   detail,
   disabled,
   edit,
+  mobile,
 }: {
   detail: ReservationDetail;
   disabled: boolean;
   edit: (target: ReservationEditorTarget) => void;
+  mobile: boolean;
 }) {
   const { today } = usePropertyCalendar();
   const cancelled = detail.status === "cancelled";
@@ -31,8 +32,8 @@ export function ReservationStatusMenu({
       <DropdownMenuTrigger
         render={
           <Button
-            variant="ghost"
-            size="icon-sm"
+            variant="outline"
+            size={mobile ? "icon-lg" : "icon"}
             aria-label="Acciones de la reserva"
             disabled={disabled}
           />
@@ -41,12 +42,6 @@ export function ReservationStatusMenu({
         <EllipsisIcon />
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end">
-        <DropdownMenuGroup>
-          <DropdownMenuItem onClick={() => edit({ kind: "contact" })}>
-            Editar contacto
-          </DropdownMenuItem>
-        </DropdownMenuGroup>
-        {detail.status !== "unfulfilled" && <DropdownMenuSeparator />}
         <DropdownMenuGroup>
           {detail.status === "unfulfilled" ? null : cancelled || noShow ? (
             <>

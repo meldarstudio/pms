@@ -45,8 +45,8 @@ export function ReservationRoomRow({
         </h4>
         <RoomActionsMenu index={index} size="icon-sm" onRemove={count > 1 ? onRemove : undefined} />
       </div>
-      <FieldGroup className="grid grid-cols-3 gap-3 max-md:pointer-coarse:grid-cols-[minmax(0,1.6fr)_minmax(0,1fr)_minmax(0,1fr)] md:grid-cols-[minmax(0,1fr)_7rem_4rem_4rem] md:pointer-coarse:grid-cols-[minmax(0,1fr)_9rem_5rem_5rem]">
-        <div className="col-span-full min-w-0 md:col-span-1">{typeField}</div>
+      <FieldGroup className="grid grid-cols-3 gap-3 max-xl:pointer-coarse:grid-cols-[minmax(0,1.6fr)_minmax(0,1fr)_minmax(0,1fr)] xl:grid-cols-[minmax(0,1fr)_7rem_4rem_4rem]">
+        <div className="col-span-full min-w-0 xl:col-span-1">{typeField}</div>
         <div className="min-w-0">{roomField}</div>
         <div className="min-w-0">{adultsField}</div>
         <div className="min-w-0">{childrenField}</div>
