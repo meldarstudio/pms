@@ -226,13 +226,13 @@ function RoomList({
               {line.roomNumber !== null ? (
                 stay && onAssign ? (
                   <Button
-                    variant="link"
-                    className="h-full min-h-11 w-full px-1"
+                    variant="ghost"
+                    className="h-full min-h-11 w-full px-1 active:bg-muted"
                     aria-label={`Cambiar habitación ${line.roomNumber}`}
                     aria-haspopup="dialog"
                     onClick={(event) => onAssign(stay, event.currentTarget)}
                   >
-                    <span className="truncate text-xl underline sm:text-2xl">
+                    <span className="truncate text-xl font-semibold sm:text-2xl">
                       {line.roomNumber}
                     </span>
                   </Button>
