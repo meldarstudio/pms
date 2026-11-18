@@ -111,14 +111,25 @@ export function ReservationOverview({
   );
 }
 
-function ContactLine({ detail, edit }: Model) {
+export function ContactLine({
+  detail,
+  edit,
+  className,
+}: {
+  detail: ReservationDetail;
+  edit?: Model["edit"];
+  className?: string;
+}) {
   const { phone, email } = detail.guest;
   const shown = phone ? phoneDisplay(phone) : null;
   return (
     <section
       role="region"
       aria-label="Contacto principal"
-      className="-mt-3 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-muted-foreground @max-lg/overview-main:grid @max-lg/overview-main:grid-cols-[minmax(0,1fr)_auto] @max-lg/overview-main:gap-2 md:-mt-2"
+      className={cn(
+        "-mt-3 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-muted-foreground @max-lg/overview-main:grid @max-lg/overview-main:grid-cols-[minmax(0,1fr)_auto] @max-lg/overview-main:gap-2 md:-mt-2",
+        className,
+      )}
     >
       <div className="contents @max-lg/overview-main:flex @max-lg/overview-main:min-w-0 @max-lg/overview-main:flex-wrap @max-lg/overview-main:items-center @max-lg/overview-main:gap-x-4">
         <span className="inline-flex min-w-0 items-center gap-1.5">
@@ -148,21 +159,23 @@ function ContactLine({ detail, edit }: Model) {
           )}
         </span>
       </div>
-      <Button
-        variant="ghost"
-        size="icon-xs"
-        className="-ml-2 pointer-coarse:size-(--control-h-lg) @max-lg/overview-main:ml-0"
-        aria-label="Editar contacto y notas"
-        title="Editar contacto y notas"
-        onClick={() => edit({ kind: "contact" })}
-      >
-        <PencilIcon />
-      </Button>
+      {edit && (
+        <Button
+          variant="ghost"
+          size="icon-xs"
+          className="-ml-2 pointer-coarse:size-(--control-h-lg) @max-lg/overview-main:ml-0"
+          aria-label="Editar contacto y notas"
+          title="Editar contacto y notas"
+          onClick={() => edit({ kind: "contact" })}
+        >
+          <PencilIcon />
+        </Button>
+      )}
     </section>
   );
 }
 
-function NotesLine({ detail }: { detail: ReservationDetail }) {
+export function NotesLine({ detail }: { detail: ReservationDetail }) {
   const notes = detail.notes;
   if (!notes) return null;
   return (

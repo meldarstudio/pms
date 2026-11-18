@@ -1,9 +1,14 @@
-import { useEffect, useId } from "react";
-import { LogInIcon, LogOutIcon, PencilIcon, PhoneIcon, XIcon } from "lucide-react";
+import { useEffect } from "react";
+import { LogInIcon, LogOutIcon, PencilIcon, XIcon } from "lucide-react";
 import { cn } from "cn";
-import { AccountStatusBanner, accountStatus, SummaryRow } from "@/components/balance-status";
+import { ReservedRooms } from "@/components/assigned-rooms";
+import { SummaryRow } from "@/components/balance-status";
 import { useLifecycleAction } from "@/components/lifecycle-action";
 import { StaleDataNotice } from "@/components/page-error";
+import { AccountBalanceFigure } from "@/components/reservation-account";
+import { ContactLine, NotesLine } from "@/components/reservation-overview";
+import { ReservationSection } from "@/components/reservation-section";
+import { StayDates, StayFacts } from "@/components/reservation-stay";
 import { ReservationStatusBadge } from "@/components/reservation-status-badge";
 import { NationalityFlag } from "@/components/workflow-fields";
 import { Button } from "@/components/ui/button";
@@ -13,9 +18,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Separator } from "@/components/ui/separator";
 import { Spinner } from "@/components/ui/spinner";
 import type { ReservationDetail } from "@/lib/api";
-import { stayRange } from "@/lib/dates";
 import { formatMoney } from "@/lib/money";
-import { phoneDisplay } from "@/lib/phone";
 import { useReservation } from "@/lib/queries";
 import { useReservationCommands } from "@/lib/reservation-commands";
 
@@ -144,45 +147,24 @@ function LoadedSummary({
   const { Header, Title, Description, Footer, Close } = surface;
   const { saving } = useReservationCommands(detail.id);
   const lifecycle = useLifecycleAction(detail, refreshError !== null);
-  const status = accountStatus(detail);
-  const scopeId = useId();
-  const roomCount = detail.rooms.length;
-  const phone = detail.guest.phone ? phoneDisplay(detail.guest.phone) : null;
-  const notes = detail.notes?.trim();
+  const money = (cents: number) => formatMoney(cents, detail.currency);
   return (
     <>
       {lifecycle.dialogs}
-      <Header className="relative shrink-0 gap-3 border-b p-5 pr-12 group-data-[swipe-axis=y]/drawer-popup:text-left">
+      <Header className="relative shrink-0 gap-2 border-b p-5 pr-12 group-data-[swipe-axis=y]/drawer-popup:text-left">
         <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5">
-          <p className="font-mono text-xs wrap-anywhere text-muted-foreground">
+          <p className="font-mono text-xs tracking-widest wrap-anywhere text-muted-foreground uppercase">
             Reserva #{detail.code}
           </p>
           <ReservationStatusBadge status={detail.status} />
         </div>
-        <div className="flex min-w-0 flex-col gap-2">
-          <div className="flex min-w-0 items-start gap-2.5">
-            <NationalityFlag nationality={detail.guest.nationality} className="mt-1 h-4 w-6" />
-            <Title className="min-w-0 wrap-anywhere">
-              <span className="block text-xl/tight font-semibold tracking-tight">
-                {detail.guest.fullName.trim()}
-              </span>
-            </Title>
-          </div>
-          <section aria-label="Contacto principal" className="flex items-center gap-1.5">
-            <PhoneIcon aria-hidden className="size-3.5 shrink-0 text-muted-foreground" />
-            {phone ? (
-              <a
-                href={phone.href}
-                className="text-muted-foreground hover:text-foreground hover:underline"
-              >
-                <span className="sr-only">Llamar al </span>
-                {phone.text}
-              </a>
-            ) : (
-              <span className="text-muted-foreground">Sin teléfono</span>
-            )}
-          </section>
+        <div className="flex min-w-0 items-start gap-2.5">
+          <NationalityFlag nationality={detail.guest.nationality} className="mt-1.5 h-4 w-6" />
+          <Title className="min-w-0 text-xl/tight font-semibold tracking-tight wrap-anywhere">
+            {detail.guest.fullName.trim()}
+          </Title>
         </div>
+        <ContactLine detail={detail} className="mt-0 md:mt-0" />
         <Description className="sr-only">Resumen de la reserva.</Description>
         <Close
           disabled={saving}
@@ -201,93 +183,41 @@ function LoadedSummary({
       </Header>
       <div className="flex min-h-0 flex-col gap-6 overflow-y-auto overscroll-contain p-5">
         {refreshError && <StaleDataNotice error={refreshError} onRetry={onRetry} />}
-        <section aria-labelledby={`${scopeId}-stay`} className="flex flex-col gap-3">
-          <div className="flex flex-col gap-1.5">
-            <h3 id={`${scopeId}-stay`} className="font-medium">
-              Estadía
-            </h3>
-            <p className="text-sm font-medium">{stayRange(detail.checkIn, detail.checkOut)}</p>
+        <NotesLine detail={detail} />
+        <ReservationSection title="Estadía">
+          <StayDates detail={detail} />
+          <StayFacts detail={detail} />
+          <div className="pt-2">
+            <ReservedRooms detail={detail} />
           </div>
-          <h4 id={`${scopeId}-rooms`} className="text-muted-foreground">
-            {roomCount === 1 ? "Habitación reservada" : `${roomCount} habitaciones reservadas`}
-          </h4>
-          <ul aria-labelledby={`${scopeId}-rooms`} className="flex flex-col gap-3">
-            {detail.rooms.map((room) => (
-              <li key={room.id} className="flex min-w-0 flex-col gap-1">
-                <div className="flex min-w-0 flex-wrap items-baseline gap-x-2">
-                  <span className="font-medium wrap-anywhere">
-                    {room.roomNumber ? `Hab. ${room.roomNumber}` : "Sin asignar"}
-                  </span>
-                  <span className="wrap-anywhere text-muted-foreground">
-                    {room.roomTypeName || "Habitación"}
-                  </span>
-                </div>
-                <p className="text-muted-foreground">
-                  {room.adults} {room.adults === 1 ? "adulto" : "adultos"}
-                  {room.children > 0 &&
-                    ` · ${room.children} ${room.children === 1 ? "niño" : "niños"}`}
-                </p>
-              </li>
-            ))}
-          </ul>
-        </section>
-        <Separator />
-        <section aria-labelledby={`${scopeId}-account`} className="flex flex-col gap-3">
-          <h3 id={`${scopeId}-account`} className="font-medium">
-            Cuenta
-          </h3>
-          <section aria-label="Saldo de la reserva" className="text-base">
-            <AccountStatusBanner
-              status={status}
-              showIcon={false}
-              amount={formatMoney(status.cents, detail.currency)}
-            />
-          </section>
-          <dl className="flex flex-col gap-2 text-muted-foreground">
-            {detail.discountCents > 0 && (
-              <>
-                <SummaryRow
-                  label="Subtotal"
-                  value={formatMoney(detail.subtotalCents, detail.currency)}
-                />
-                <SummaryRow
-                  label="Descuento"
-                  value={formatMoney(-detail.discountCents, detail.currency)}
-                />
-              </>
-            )}
-            <SummaryRow label="Total" value={formatMoney(detail.totalCents, detail.currency)} />
-            <SummaryRow label="Pagado" value={formatMoney(detail.paidCents, detail.currency)} />
-            {detail.couponAppliedCents > 0 && (
-              <SummaryRow
-                label="Pagado con cupón"
-                value={formatMoney(detail.couponAppliedCents, detail.currency)}
-              />
-            )}
-            {detail.refundedCents > 0 && (
-              <SummaryRow
-                label="Reembolsado"
-                value={formatMoney(-detail.refundedCents, detail.currency)}
-              />
-            )}
-            {detail.couponIssuedCents > 0 && (
-              <SummaryRow
-                label="Pasado a cupón"
-                value={formatMoney(-detail.couponIssuedCents, detail.currency)}
-              />
-            )}
-          </dl>
-        </section>
-        {notes && (
-          <section aria-labelledby={`${scopeId}-notes`} className="flex min-w-0 flex-col gap-2">
-            <h3 id={`${scopeId}-notes`} className="font-medium">
-              Notas de la reserva
-            </h3>
-            <p className="leading-relaxed whitespace-pre-wrap wrap-anywhere text-muted-foreground">
-              {notes}
-            </p>
-          </section>
-        )}
+        </ReservationSection>
+        <ReservationSection title="Cuenta">
+          <div className="flex flex-col gap-3 border bg-muted/40 p-4">
+            <section aria-label="Estado de la cuenta" className="flex flex-col gap-1">
+              <AccountBalanceFigure detail={detail} />
+            </section>
+            <Separator />
+            <dl aria-label="Resumen de la cuenta" className="flex flex-col gap-2 text-xs">
+              {detail.discountCents > 0 && (
+                <>
+                  <SummaryRow label="Subtotal" value={money(detail.subtotalCents)} />
+                  <SummaryRow label="Descuento" value={money(-detail.discountCents)} />
+                </>
+              )}
+              <SummaryRow className="font-medium" label="Total" value={money(detail.totalCents)} />
+              <SummaryRow label="Pagado" value={money(detail.paidCents)} />
+              {detail.couponAppliedCents > 0 && (
+                <SummaryRow label="Pagado con cupón" value={money(detail.couponAppliedCents)} />
+              )}
+              {detail.refundedCents > 0 && (
+                <SummaryRow label="Reembolsado" value={money(-detail.refundedCents)} />
+              )}
+              {detail.couponIssuedCents > 0 && (
+                <SummaryRow label="Pasado a cupón" value={money(-detail.couponIssuedCents)} />
+              )}
+            </dl>
+          </div>
+        </ReservationSection>
       </div>
       <Footer className="shrink-0 flex-row flex-wrap border-t p-5 [&>button]:flex-1">
         {lifecycle.running && (

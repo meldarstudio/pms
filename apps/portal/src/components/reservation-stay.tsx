@@ -37,14 +37,7 @@ export function StaySection({
       <div className="max-md:py-2">
         <StayDates detail={detail} />
       </div>
-      <dl className="grid grid-cols-2 gap-4">
-        <StayFact label="Ocupantes" value={occupantsLabel(detail.rooms)} />
-        <StayFact
-          label="Tarifa"
-          value={ratePlanLabels[detail.ratePlan.plan]}
-          className="items-end text-right"
-        />
-      </dl>
+      <StayFacts detail={detail} />
       <div className="pt-2">
         <AssignedRooms detail={detail} />
       </div>
@@ -52,7 +45,7 @@ export function StaySection({
   );
 }
 
-function StayDates({ detail }: { detail: ReservationDetail }) {
+export function StayDates({ detail }: { detail: ReservationDetail }) {
   return (
     <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-4">
       <StayEnd day={detail.checkIn} label="Ingreso" />
@@ -61,6 +54,19 @@ function StayDates({ detail }: { detail: ReservationDetail }) {
       </span>
       <StayEnd day={detail.checkOut} label="Salida" className="items-end text-right" />
     </div>
+  );
+}
+
+export function StayFacts({ detail }: { detail: ReservationDetail }) {
+  return (
+    <dl className="grid grid-cols-2 gap-4">
+      <StayFact label="Ocupantes" value={occupantsLabel(detail.rooms)} />
+      <StayFact
+        label="Tarifa"
+        value={ratePlanLabels[detail.ratePlan.plan]}
+        className="items-end text-right"
+      />
+    </dl>
   );
 }
 

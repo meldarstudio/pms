@@ -66,6 +66,10 @@ export function AssignedRooms({ detail }: { detail: ReservationDetail }) {
   );
 }
 
+export function ReservedRooms({ detail }: { detail: ReservationDetail }) {
+  return <RoomList detail={detail} stays={unassignedStays(detail)} />;
+}
+
 function AssignableRooms({
   detail,
   stays,
