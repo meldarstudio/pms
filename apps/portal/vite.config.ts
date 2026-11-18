@@ -27,7 +27,6 @@ export default defineConfig(({ command, mode }) => {
         "public/**",
         "dist/**",
         "coverage/**",
-        ".wrangler/**",
         ".cloudflare/**",
         "**/.pnpm-store/**",
       ],
