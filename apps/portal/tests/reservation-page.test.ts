@@ -345,6 +345,14 @@ async function unloadPrevented() {
   return event.defaultPrevented;
 }
 
+function accountToggle() {
+  const toggle = window.document.querySelector<HTMLElement>(
+    '[aria-label="Cuenta"] h2 > button[aria-expanded]',
+  );
+  assert.ok(toggle, "The stacked account must have a balance toggle");
+  return toggle;
+}
+
 it("confirms the page check-out balance, sends nothing on Volver, and offers undo", async () => {
   page.mobile();
   saved = { ...saved, status: "checked_in", paidCents: 10000, balanceCents: 20000 };
@@ -496,7 +504,7 @@ it("records payments after a failed save and prevents dismissal or navigation du
       },
     },
   ]);
-  await click("Ver cuenta y desglose");
+  await React.act(async () => accountToggle().click());
   assert.match(page.container.textContent, /PagadoS\/\s*100/);
   assert.equal(await unloadPrevented(), false);
 });
@@ -707,7 +715,7 @@ it("applies and removes the discount from the Cuenta summary, keeping a rejected
   });
   await render();
   const trigger = discountTrigger;
-  await click("Ver cuenta y desglose");
+  await React.act(async () => accountToggle().click());
   const input = discountInput;
   const popoverButton = discountButton;
   assert.equal(text(trigger()), "Descuento S/ 0");

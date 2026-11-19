@@ -175,7 +175,6 @@ export function BalanceToggle({
   return (
     <h2>
       <CollapsibleTrigger
-        aria-label="Ver cuenta y desglose"
         disabled={disabled}
         className="group flex min-h-11 w-full items-center justify-between gap-3 text-left outline-none focus-visible:ring-2 focus-visible:ring-ring"
       >
@@ -186,7 +185,7 @@ export function BalanceToggle({
           )}
         >
           {status.label}
-        </span>
+        </span>{" "}
         <span className="flex shrink-0 items-center gap-2">
           <span className="text-sm font-semibold tabular-nums">
             {formatMoney(status.cents, detail.currency)}
@@ -606,7 +605,7 @@ function MovementPanel({
         className={cn(
           "overflow-hidden",
           asDrawer
-            ? "data-[swipe-axis=y]:max-h-[85dvh] pb-[env(safe-area-inset-bottom)] md:inset-x-[max(1rem,calc((100vw-40rem)/2))]"
+            ? "data-[swipe-axis=y]:max-h-[85dvh] pb-[env(safe-area-inset-bottom)]"
             : "data-[side=right]:sm:max-w-md",
         )}
       >

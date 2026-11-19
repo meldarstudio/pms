@@ -106,8 +106,7 @@ function AssignableRooms({
           {...(isMobile ? {} : { showCloseButton: false })}
           className={cn(
             !isMobile && "overflow-hidden",
-            isMobile &&
-              "data-[swipe-axis=y]:max-h-[85dvh] pb-[env(safe-area-inset-bottom)] md:inset-x-[max(1rem,calc((100vw-40rem)/2))]",
+            isMobile && "data-[swipe-axis=y]:max-h-[85dvh] pb-[env(safe-area-inset-bottom)]",
           )}
         >
           <PanelHeader className="shrink-0 border-b pb-4">

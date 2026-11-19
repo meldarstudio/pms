@@ -1245,10 +1245,14 @@ it("pins the phone summary's balance above its actions and expands the bill on r
   page.mobile();
   mockApi(async () => assert.fail("Reading the summary must not write"));
   await openSummaryWithToasts();
-  const toggle = summaryButton("Ver cuenta y desglose");
   const footer = summary()!.querySelector('[data-slot="drawer-footer"]')!;
-  assert.ok(footer.contains(toggle));
-  assert.match(toggle.textContent, /Saldo pendiente\s*S\/\s*300/);
+  const toggle = footer.querySelector<HTMLButtonElement>("h2 > button[aria-expanded]")!;
+  assert.ok(toggle, "The phone summary must pin a balance toggle in its footer");
+  assert.match(
+    toggle.getAttribute("aria-label") ?? toggle.textContent,
+    /Saldo pendiente\s*S\/\s*300/,
+    "The toggle's accessible name must announce the balance",
+  );
   assert.equal(toggle.getAttribute("aria-expanded"), "false");
   assert.deepEqual(footerActions(), ["Editar reserva", "Hacer check-in"]);
   await React.act(async () => toggle.click());

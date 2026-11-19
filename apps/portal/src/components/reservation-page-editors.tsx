@@ -305,7 +305,7 @@ export function ReservationPageEditor({
         >
           <DrawerContent
             ref={setPopup}
-            className="overflow-hidden pb-[env(safe-area-inset-bottom)] [--drawer-content-max-height:min(90dvh,calc(var(--reservation-viewport-height,100dvh)-1rem))] md:inset-x-[max(1rem,calc((100vw-42rem)/2))] data-[swipe-direction=down]:bottom-(--reservation-keyboard-inset,0px)"
+            className="overflow-hidden pb-[env(safe-area-inset-bottom)] data-[swipe-axis=y]:[--drawer-content-max-height:min(90dvh,calc(var(--reservation-viewport-height,100dvh)-1rem))] data-[swipe-direction=down]:bottom-(--reservation-keyboard-inset,0px)"
           >
             <DrawerHeader className="shrink-0 border-b pb-4 group-data-[swipe-axis=y]/drawer-popup:text-left">
               <div className="flex items-start gap-2">
