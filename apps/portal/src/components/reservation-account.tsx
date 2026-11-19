@@ -190,16 +190,18 @@ export function AccountPanel({
   );
 }
 
-export function AccountBalanceFigure({ detail }: { detail: ReservationDetail }) {
+export const balanceTone = {
+  owing: "text-destructive",
+  "owed-back": "text-credit-foreground",
+  "refund-requested": "text-preview-foreground",
+  settled: "text-booking-foreground",
+} satisfies Record<ReturnType<typeof accountStatus>["state"], string>;
+
+function AccountBalance({ detail, edit }: Props) {
   const status = accountStatus(detail);
-  const textTone = {
-    owing: "text-destructive",
-    "owed-back": "text-credit-foreground",
-    "refund-requested": "text-preview-foreground",
-    settled: "text-booking-foreground",
-  }[status.state];
+  const textTone = balanceTone[status.state];
   return (
-    <>
+    <section aria-label="Estado de la cuenta" className="flex flex-col gap-1 px-6 pt-6 pb-5">
       <p className={cn("flex items-center gap-1.5 text-xs font-medium", textTone)}>
         <status.Icon aria-hidden className="size-3.5" />
         {status.label}
@@ -207,15 +209,6 @@ export function AccountBalanceFigure({ detail }: { detail: ReservationDetail }) 
       <p className="text-2xl font-semibold tracking-tight tabular-nums">
         {formatMoney(status.cents, detail.currency)}
       </p>
-    </>
-  );
-}
-
-function AccountBalance({ detail, edit }: Props) {
-  const status = accountStatus(detail);
-  return (
-    <section aria-label="Estado de la cuenta" className="flex flex-col gap-1 px-6 pt-6 pb-5">
-      <AccountBalanceFigure detail={detail} />
       {status.state === "owing" && (
         <Button className="mt-2 w-full" onClick={() => edit({ kind: "payment" })}>
           <CreditCardIcon data-icon="inline-start" />

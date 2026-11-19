@@ -2,13 +2,11 @@ import { useEffect } from "react";
 import { LogInIcon, LogOutIcon, PencilIcon, XIcon } from "lucide-react";
 import { cn } from "cn";
 import { ReservedRooms } from "@/components/assigned-rooms";
-import { SummaryRow } from "@/components/balance-status";
+import { SummaryRow, accountStatus } from "@/components/balance-status";
 import { useLifecycleAction } from "@/components/lifecycle-action";
 import { StaleDataNotice } from "@/components/page-error";
-import { AccountBalanceFigure } from "@/components/reservation-account";
+import { balanceTone } from "@/components/reservation-account";
 import { ContactLine, NotesLine } from "@/components/reservation-overview";
-import { ReservationSection } from "@/components/reservation-section";
-import { StayDates, StayFacts } from "@/components/reservation-stay";
 import { ReservationStatusBadge } from "@/components/reservation-status-badge";
 import { NationalityFlag } from "@/components/workflow-fields";
 import { Button } from "@/components/ui/button";
@@ -18,6 +16,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Separator } from "@/components/ui/separator";
 import { Spinner } from "@/components/ui/spinner";
 import type { ReservationDetail } from "@/lib/api";
+import { stayRange } from "@/lib/dates";
 import { formatMoney } from "@/lib/money";
 import { useReservation } from "@/lib/queries";
 import { useReservationCommands } from "@/lib/reservation-commands";
@@ -148,6 +147,7 @@ function LoadedSummary({
   const { saving } = useReservationCommands(detail.id);
   const lifecycle = useLifecycleAction(detail, refreshError !== null);
   const money = (cents: number) => formatMoney(cents, detail.currency);
+  const status = accountStatus(detail);
   return (
     <>
       {lifecycle.dialogs}
@@ -181,43 +181,47 @@ function LoadedSummary({
           <XIcon />
         </Close>
       </Header>
-      <div className="flex min-h-0 flex-col gap-6 overflow-y-auto overscroll-contain p-5">
+      <div className="flex min-h-0 flex-col gap-5 overflow-y-auto overscroll-contain p-5">
         {refreshError && <StaleDataNotice error={refreshError} onRetry={onRetry} />}
+        <section role="region" aria-label="Estadía" className="flex flex-col gap-3">
+          <p className="text-sm font-medium">{stayRange(detail.checkIn, detail.checkOut)}</p>
+          <ReservedRooms detail={detail} />
+        </section>
         <NotesLine detail={detail} />
-        <ReservationSection title="Estadía">
-          <StayDates detail={detail} />
-          <StayFacts detail={detail} />
-          <div className="pt-2">
-            <ReservedRooms detail={detail} />
-          </div>
-        </ReservationSection>
-        <ReservationSection title="Cuenta">
-          <div className="flex flex-col gap-3 border bg-muted/40 p-4">
-            <section aria-label="Estado de la cuenta" className="flex flex-col gap-1">
-              <AccountBalanceFigure detail={detail} />
-            </section>
-            <Separator />
-            <dl aria-label="Resumen de la cuenta" className="flex flex-col gap-2 text-xs">
-              {detail.discountCents > 0 && (
-                <>
-                  <SummaryRow label="Subtotal" value={money(detail.subtotalCents)} />
-                  <SummaryRow label="Descuento" value={money(-detail.discountCents)} />
-                </>
-              )}
-              <SummaryRow className="font-medium" label="Total" value={money(detail.totalCents)} />
-              <SummaryRow label="Pagado" value={money(detail.paidCents)} />
-              {detail.couponAppliedCents > 0 && (
-                <SummaryRow label="Pagado con cupón" value={money(detail.couponAppliedCents)} />
-              )}
-              {detail.refundedCents > 0 && (
-                <SummaryRow label="Reembolsado" value={money(-detail.refundedCents)} />
-              )}
-              {detail.couponIssuedCents > 0 && (
-                <SummaryRow label="Pasado a cupón" value={money(-detail.couponIssuedCents)} />
-              )}
-            </dl>
-          </div>
-        </ReservationSection>
+        <Separator />
+        <section role="region" aria-label="Cuenta" className="flex flex-col gap-2 text-xs">
+          <p className="flex items-center justify-between gap-3">
+            <span
+              className={cn("flex items-center gap-1.5 font-medium", balanceTone[status.state])}
+            >
+              <status.Icon aria-hidden className="size-3.5" />
+              {status.label}
+            </span>
+            <span className="text-base font-semibold tabular-nums">{money(status.cents)}</span>
+          </p>
+          <dl
+            aria-label="Resumen de la cuenta"
+            className="flex flex-col gap-1.5 text-muted-foreground"
+          >
+            {detail.discountCents > 0 && (
+              <>
+                <SummaryRow label="Subtotal" value={money(detail.subtotalCents)} />
+                <SummaryRow label="Descuento" value={money(-detail.discountCents)} />
+              </>
+            )}
+            <SummaryRow label="Total" value={money(detail.totalCents)} />
+            <SummaryRow label="Pagado" value={money(detail.paidCents)} />
+            {detail.couponAppliedCents > 0 && (
+              <SummaryRow label="Pagado con cupón" value={money(detail.couponAppliedCents)} />
+            )}
+            {detail.refundedCents > 0 && (
+              <SummaryRow label="Reembolsado" value={money(-detail.refundedCents)} />
+            )}
+            {detail.couponIssuedCents > 0 && (
+              <SummaryRow label="Pasado a cupón" value={money(-detail.couponIssuedCents)} />
+            )}
+          </dl>
+        </section>
       </div>
       <Footer className="shrink-0 flex-row flex-wrap border-t p-5 [&>button]:flex-1">
         {lifecycle.running && (
