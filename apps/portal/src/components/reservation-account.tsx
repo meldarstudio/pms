@@ -125,33 +125,7 @@ export function AccountPanel({
           </div>
           {stacked && <Separator />}
         </CollapsibleContent>
-        {stacked && (
-          <h2>
-            <CollapsibleTrigger
-              aria-label="Ver cuenta y desglose"
-              disabled={disabled || discountBlocking}
-              className="group flex min-h-11 w-full items-center justify-between gap-3 text-left outline-none focus-visible:ring-2 focus-visible:ring-ring"
-            >
-              <span
-                className={cn(
-                  "text-xs font-medium",
-                  status.state === "owing" ? "text-destructive" : "text-muted-foreground",
-                )}
-              >
-                {status.label}
-              </span>
-              <span className="flex shrink-0 items-center gap-2">
-                <span className="text-sm font-semibold tabular-nums">
-                  {formatMoney(status.cents, detail.currency)}
-                </span>
-                <ChevronUpIcon
-                  aria-hidden
-                  className="size-4 text-muted-foreground transition-transform group-data-panel-open:rotate-180 motion-reduce:transition-none"
-                />
-              </span>
-            </CollapsibleTrigger>
-          </h2>
-        )}
+        {stacked && <BalanceToggle detail={detail} disabled={disabled || discountBlocking} />}
       </Collapsible>
       {stacked && (payment || lifecycle.step) && (
         <div
@@ -187,6 +161,43 @@ export function AccountPanel({
         </div>
       )}
     </section>
+  );
+}
+
+export function BalanceToggle({
+  detail,
+  disabled,
+}: {
+  detail: ReservationDetail;
+  disabled?: boolean;
+}) {
+  const status = accountStatus(detail);
+  return (
+    <h2>
+      <CollapsibleTrigger
+        aria-label="Ver cuenta y desglose"
+        disabled={disabled}
+        className="group flex min-h-11 w-full items-center justify-between gap-3 text-left outline-none focus-visible:ring-2 focus-visible:ring-ring"
+      >
+        <span
+          className={cn(
+            "text-xs font-medium",
+            status.state === "owing" ? "text-destructive" : "text-muted-foreground",
+          )}
+        >
+          {status.label}
+        </span>
+        <span className="flex shrink-0 items-center gap-2">
+          <span className="text-sm font-semibold tabular-nums">
+            {formatMoney(status.cents, detail.currency)}
+          </span>
+          <ChevronUpIcon
+            aria-hidden
+            className="size-4 text-muted-foreground transition-transform group-data-panel-open:rotate-180 motion-reduce:transition-none"
+          />
+        </span>
+      </CollapsibleTrigger>
+    </h2>
   );
 }
 

@@ -1241,6 +1241,27 @@ it("confirms an outstanding balance before checking out from the summary", async
   assert.deepEqual(footerActions(), ["Editar reserva"]);
 });
 
+it("pins the phone summary's balance above its actions and expands the bill on request", async () => {
+  page.mobile();
+  mockApi(async () => assert.fail("Reading the summary must not write"));
+  await openSummaryWithToasts();
+  const toggle = summaryButton("Ver cuenta y desglose");
+  const footer = summary()!.querySelector('[data-slot="drawer-footer"]')!;
+  assert.ok(footer.contains(toggle));
+  assert.match(toggle.textContent, /Saldo pendiente\s*S\/\s*300/);
+  assert.equal(toggle.getAttribute("aria-expanded"), "false");
+  assert.deepEqual(footerActions(), ["Editar reserva", "Hacer check-in"]);
+  await React.act(async () => toggle.click());
+  assert.equal(toggle.getAttribute("aria-expanded"), "true");
+  const bill = Object.fromEntries(
+    [...footer.querySelectorAll("dt")].map((term) => [
+      term.textContent,
+      term.nextElementSibling?.textContent.replace(/\s/g, ""),
+    ]),
+  );
+  assert.deepEqual(bill, { Total: "S/300", Pagado: "S/0" });
+});
+
 it("retries a failed stay preview without losing its draft", async () => {
   const previews: WorkflowCommand[] = [];
   mockApi(async (path, command) => {
