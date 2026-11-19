@@ -7,16 +7,16 @@ import { useLifecycleAction } from "@/components/lifecycle-action";
 import { StaleDataNotice } from "@/components/page-error";
 import { balanceTone } from "@/components/reservation-account";
 import { ContactLine, NotesLine } from "@/components/reservation-overview";
+import { ReservationSection } from "@/components/reservation-section";
+import { StayDates } from "@/components/reservation-stay";
 import { ReservationStatusBadge } from "@/components/reservation-status-badge";
 import { NationalityFlag } from "@/components/workflow-fields";
 import { Button } from "@/components/ui/button";
 import { useResponsivePanel, type PanelSurface } from "@/components/responsive-panel";
 import { FieldError } from "@/components/ui/field";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Separator } from "@/components/ui/separator";
 import { Spinner } from "@/components/ui/spinner";
 import type { ReservationDetail } from "@/lib/api";
-import { stayRange } from "@/lib/dates";
 import { formatMoney } from "@/lib/money";
 import { useReservation } from "@/lib/queries";
 import { useReservationCommands } from "@/lib/reservation-commands";
@@ -181,35 +181,31 @@ function LoadedSummary({
           <XIcon />
         </Close>
       </Header>
-      <div className="flex min-h-0 flex-col gap-5 overflow-y-auto overscroll-contain p-5">
+      <div className="flex min-h-0 flex-col gap-6 overflow-y-auto overscroll-contain p-5">
         {refreshError && <StaleDataNotice error={refreshError} onRetry={onRetry} />}
-        <section role="region" aria-label="Estadía" className="flex flex-col gap-3">
-          <p className="text-sm font-medium">{stayRange(detail.checkIn, detail.checkOut)}</p>
+        <ReservationSection title="Estadía">
+          <StayDates detail={detail} />
           <ReservedRooms detail={detail} />
-        </section>
+        </ReservationSection>
         <NotesLine detail={detail} />
-        <Separator />
-        <section role="region" aria-label="Cuenta" className="flex flex-col gap-2 text-xs">
-          <p className="flex items-center justify-between gap-3">
-            <span
-              className={cn("flex items-center gap-1.5 font-medium", balanceTone[status.state])}
-            >
+        <ReservationSection title="Cuenta" className="text-xs">
+          <div className="flex flex-col gap-0.5">
+            <p className={cn("flex items-center gap-1.5 font-medium", balanceTone[status.state])}>
               <status.Icon aria-hidden className="size-3.5" />
               {status.label}
-            </span>
-            <span className="text-base font-semibold tabular-nums">{money(status.cents)}</span>
-          </p>
-          <dl
-            aria-label="Resumen de la cuenta"
-            className="flex flex-col gap-1.5 text-muted-foreground"
-          >
+            </p>
+            <p className="text-2xl font-semibold tracking-tight tabular-nums">
+              {money(status.cents)}
+            </p>
+          </div>
+          <dl aria-label="Resumen de la cuenta" className="flex flex-col gap-1.5">
             {detail.discountCents > 0 && (
               <>
                 <SummaryRow label="Subtotal" value={money(detail.subtotalCents)} />
                 <SummaryRow label="Descuento" value={money(-detail.discountCents)} />
               </>
             )}
-            <SummaryRow label="Total" value={money(detail.totalCents)} />
+            <SummaryRow className="font-medium" label="Total" value={money(detail.totalCents)} />
             <SummaryRow label="Pagado" value={money(detail.paidCents)} />
             {detail.couponAppliedCents > 0 && (
               <SummaryRow label="Pagado con cupón" value={money(detail.couponAppliedCents)} />
@@ -221,7 +217,7 @@ function LoadedSummary({
               <SummaryRow label="Pasado a cupón" value={money(-detail.couponIssuedCents)} />
             )}
           </dl>
-        </section>
+        </ReservationSection>
       </div>
       <Footer className="shrink-0 flex-row flex-wrap border-t p-5 [&>button]:flex-1">
         {lifecycle.running && (
