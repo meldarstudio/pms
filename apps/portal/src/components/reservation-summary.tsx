@@ -183,11 +183,11 @@ function LoadedSummary({
       </Header>
       <div className="flex min-h-0 flex-col gap-6 overflow-y-auto overscroll-contain p-5">
         {refreshError && <StaleDataNotice error={refreshError} onRetry={onRetry} />}
+        <NotesLine detail={detail} />
         <ReservationSection title="Estadía">
           <StayDates detail={detail} />
           <ReservedRooms detail={detail} />
         </ReservationSection>
-        <NotesLine detail={detail} />
         <ReservationSection title="Cuenta" className="text-xs">
           <div className="flex flex-col gap-0.5">
             <p className={cn("flex items-center gap-1.5 font-medium", balanceTone[status.state])}>
