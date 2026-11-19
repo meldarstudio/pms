@@ -299,7 +299,7 @@ async function submit() {
 }
 const popup = () =>
   window.document.querySelector(
-    '[role="dialog"]:is([data-slot="dialog-content"], [data-slot="sheet-content"])',
+    '[role="dialog"]:is([data-slot="dialog-content"], [data-slot="drawer-popup"])',
   );
 async function chooseCharge(title: string) {
   const option = Array.from(popup()!.querySelectorAll<HTMLElement>('[role="radio"]')).find(
@@ -345,7 +345,16 @@ async function unloadPrevented() {
   return event.defaultPrevented;
 }
 
+function accountToggle() {
+  const toggle = window.document.querySelector<HTMLElement>(
+    '[aria-label="Cuenta"] h2 > button[aria-expanded]',
+  );
+  assert.ok(toggle, "The stacked account must have a balance toggle");
+  return toggle;
+}
+
 it("confirms the page check-out balance, sends nothing on Volver, and offers undo", async () => {
+  page.mobile();
   saved = { ...saved, status: "checked_in", paidCents: 10000, balanceCents: 20000 };
   mockApi();
   await render("", true, true);
@@ -397,7 +406,8 @@ it("invalidates check-in undo after cancellation, even when the status later ret
   assert.ok(!undo.isConnected || undo.disabled);
 });
 
-it("retains the contact draft after a failed save and a reconnect refresh", async () => {
+it("retains contact and notes drafts after a failed save and a reconnect refresh", async () => {
+  page.mobile();
   mockApi({
     write: () =>
       writes.length === 1
@@ -405,10 +415,11 @@ it("retains the contact draft after a failed save and a reconnect refresh", asyn
         : undefined,
   });
   await render();
-  await statusMenu("Editar contacto");
+  await click("Editar contacto y notas");
   await fill("fullName", "Ana María Pérez");
   await fill("phone", "999333444");
   await fill("email", "nuevo@example.com");
+  await fill("notes", "Llegada después de las 22:00");
   await page.until(() => !button("Guardar cambios").disabled);
   assert.equal(await unloadPrevented(), true);
   await submit();
@@ -424,6 +435,7 @@ it("retains the contact draft after a failed save and a reconnect refresh", asyn
   assert.equal(field("fullName").value, "Ana María Pérez");
   assert.equal(field("phone").value, "999 333 444");
   assert.equal(field("email").value, "nuevo@example.com");
+  assert.equal(field("notes").value, "Llegada después de las 22:00");
   await click("Cancelar");
   assert.match(window.document.body.textContent, /Hay cambios sin guardar/);
   await click("Seguir editando");
@@ -431,12 +443,18 @@ it("retains the contact draft after a failed save and a reconnect refresh", asyn
   await page.until(() => !popup());
   assert.match(page.container.querySelector("h1")!.textContent, /Ana María Pérez/);
   assert.deepEqual(writes[1].actions, writes[0].actions);
+  assert.equal(saved.notes, "Llegada después de las 22:00");
+  assert.deepEqual(
+    writes[1].actions.map((action) => action.type),
+    ["contact", "notes"],
+  );
   assert.equal(saved.checkOut, "2026-10-21");
   assert.equal(previews.length, 0);
   assert.equal(await unloadPrevented(), false);
 });
 
 it("records payments after a failed save and prevents dismissal or navigation during a save", async () => {
+  page.mobile();
   let finish!: (response: Response) => void;
   mockApi({
     write: () =>
@@ -486,6 +504,7 @@ it("records payments after a failed save and prevents dismissal or navigation du
       },
     },
   ]);
+  await React.act(async () => accountToggle().click());
   assert.match(page.container.textContent, /PagadoS\/\s*100/);
   assert.equal(await unloadPrevented(), false);
 });
@@ -537,7 +556,9 @@ it("voids S/ 100 from its movement panel after a failed save, keeping why and wh
 });
 
 const movementPanel = () =>
-  window.document.querySelector('[data-slot="sheet-content"]:not([data-closed])');
+  window.document.querySelector(
+    '[role="dialog"]:is([data-slot="sheet-content"], [data-slot="drawer-popup"]):not([data-closed])',
+  );
 const panelButton = (label: string) =>
   Array.from(movementPanel()?.querySelectorAll<HTMLElement>("button") ?? []).find(
     (element) => element.textContent.trim() === label,
@@ -590,7 +611,7 @@ it("validates and saves only contact changes without replacing guests or notes",
       writes.length === 1 ? Response.json({ error: "invalid email" }, { status: 400 }) : undefined,
   });
   await render();
-  await statusMenu("Editar contacto");
+  await click("Editar contacto y notas");
   assert.equal(popup()!.querySelector('[name="documentType"]') !== null, false);
   assert.equal(popup()!.querySelector('[name="documentNumber"]') !== null, false);
   assert.equal(nationalityFlag(), null);
@@ -629,6 +650,19 @@ it("validates and saves only contact changes without replacing guests or notes",
   ]);
   assert.equal(previews.length, 0);
   assert.equal(nationalityFlag()?.getAttribute("alt"), "Nacionalidad: Chile");
+});
+
+it("saves notes without overwriting an untouched contact changed elsewhere", async () => {
+  mockApi();
+  await render();
+  await click("Editar contacto y notas");
+  await fill("notes", "Llegada nocturna");
+  saved = { ...saved, guest: { ...saved.guest, fullName: "Cambio desde otra pantalla" } };
+  await submit();
+  await page.until(() => !popup());
+  assert.deepEqual(writes[0].actions, [{ type: "notes", notes: "Llegada nocturna" }]);
+  assert.equal(saved.guest.fullName, "Cambio desde otra pantalla");
+  assert.equal(saved.notes, "Llegada nocturna");
 });
 
 const nationalityFlag = () => header().querySelector('img[alt^="Nacionalidad"]');
@@ -672,6 +706,7 @@ function discountButton(label: string) {
 }
 
 it("applies and removes the discount from the Cuenta summary, keeping a rejected amount", async () => {
+  page.mobile();
   mockApi({
     write: () =>
       writes.length === 1
@@ -680,6 +715,7 @@ it("applies and removes the discount from the Cuenta summary, keeping a rejected
   });
   await render();
   const trigger = discountTrigger;
+  await React.act(async () => accountToggle().click());
   const input = discountInput;
   const popoverButton = discountButton;
   assert.equal(text(trigger()), "Descuento S/ 0");
@@ -768,6 +804,7 @@ it.each([
 );
 
 it("previews cancellation selected in the header before saving and shows the resulting refund due", async () => {
+  page.mobile();
   saved = { ...saved, paidCents: 20000, balanceCents: 10000 };
   const released = {
     ...saved,
@@ -818,7 +855,7 @@ it("previews cancellation selected in the header before saving and shows the res
   await page.until(() =>
     text(window.document.body).includes("Reserva cancelada · Por devolver S/ 76.55"),
   );
-  assert.ok(button("Devolver…"));
+  assert.ok(button("Devolver"));
 });
 
 it("requires one reason for an inline waiver and saves the cancellation and waiver atomically", async () => {
@@ -986,6 +1023,7 @@ it.each([false, true])("marks a stay as not presented with inline waiver = %s", 
 });
 
 it("saves stay changes independently with the current server bill", async () => {
+  page.mobile();
   let finish!: (response: Response) => void;
   mockApi({
     write: () =>
@@ -1106,6 +1144,7 @@ it("ignores stale stay previews and saves only after the current operational quo
 });
 
 it("protects a stay draft from background refresh, router navigation and dirty dismissal", async () => {
+  page.mobile();
   mockApi();
   await render("?origin=calendar&returnTo=from%3D2026-10-12%26span%3D14");
   await click("Editar estadía");
@@ -1927,12 +1966,7 @@ it("reads an Unfulfilled reservation as Cancelada with nothing to do but return 
     text(page.container.querySelector('[role="alert"]')!),
     "Reserva cancelada No había disponibilidad cuando se completó el pago en línea.",
   );
-  await click("Acciones de la reserva");
-  assert.deepEqual(
-    Array.from(window.document.querySelectorAll('[role="menuitem"]'), (item) => item.textContent),
-    ["Editar contacto"],
-    "No status actions or Restaurar reserva",
-  );
+  assert.equal(page.container.querySelector('button[aria-label="Acciones de la reserva"]'), null);
   assert.deepEqual(summaryRows(), ["Cargo por cancelación S/ 0", "Total S/ 0", "Pagado S/ 250"]);
   assert.equal(text(accountStatusLine()), "Por devolver S/ 250 Devolver…");
 });

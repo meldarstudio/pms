@@ -93,9 +93,9 @@ export function StayEditor({
   const removeRoom = (id: string) =>
     form.setFieldValue(`rooms[${values.rooms.findIndex((room) => room.id === id)}].removed`, true);
   return (
-    <div className="flex min-h-0 min-w-0 flex-1 flex-col gap-4 overflow-hidden">
+    <div className="@container/stay-editor flex min-h-0 min-w-0 flex-1 flex-col gap-4 overflow-hidden">
       <div className="flex min-h-0 flex-col gap-4 overflow-y-auto max-sm:flex-1">
-        <div className="grid min-w-0 shrink-0 gap-6 p-px lg:grid-cols-[minmax(0,1fr)_280px]">
+        <div className="grid min-w-0 shrink-0 gap-6 p-px @3xl/stay-editor:grid-cols-[minmax(0,1fr)_280px]">
           <form
             id={formId}
             noValidate
@@ -103,7 +103,7 @@ export function StayEditor({
             onSubmit={(event) => void submitForm(event, () => form.handleSubmit())}
           >
             <fieldset disabled={busy} className="flex min-w-0 flex-col gap-5">
-              <FieldGroup className="grid grid-cols-1 gap-3 md:grid-cols-2">
+              <FieldGroup className="grid grid-cols-1 gap-3 @lg/stay-editor:grid-cols-2">
                 <form.AppField
                   name="checkIn"
                   listeners={{
@@ -192,7 +192,7 @@ export function StayEditor({
               </form.Field>
             </fieldset>
           </form>
-          <aside className="min-w-0 md:self-start">
+          <aside className="min-w-0 @3xl/stay-editor:self-start">
             <BookingSummary
               cancelled={!holdsInventory(detail.status)}
               rooms={summary.rooms.map((room) => ({

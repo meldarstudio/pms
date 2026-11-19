@@ -7,10 +7,13 @@ import { PageTitleContext } from "@/components/page-title";
 import { Separator } from "@/components/ui/separator";
 import { SidebarInset, SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
 import { activeNavigation, appNavigation } from "@/lib/navigation";
+import { useIsTablet } from "@/hooks/use-mobile";
 
 const SIDEBAR_STORAGE_KEY = "pms.sidebar-open";
 
 export function App() {
+  const tablet = useIsTablet();
+  const [tabletSidebarOpen, setTabletSidebarOpen] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(() => {
     try {
       return window.localStorage.getItem(SIDEBAR_STORAGE_KEY) !== "false";
@@ -35,8 +38,8 @@ export function App() {
 
   return (
     <SidebarProvider
-      open={sidebarOpen}
-      onOpenChange={handleSidebarOpenChange}
+      open={tablet ? tabletSidebarOpen : sidebarOpen}
+      onOpenChange={tablet ? setTabletSidebarOpen : handleSidebarOpenChange}
       className="fixed inset-0 h-dvh min-h-0 overflow-hidden bg-background"
       style={{ "--sidebar-width": "14rem" } as CSSProperties}
     >

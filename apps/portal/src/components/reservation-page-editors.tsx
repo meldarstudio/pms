@@ -23,14 +23,14 @@ import {
   wideDialogContent,
 } from "@/components/ui/dialog";
 import {
-  Sheet,
-  SheetClose,
-  SheetContent,
-  SheetDescription,
-  SheetHeader,
-  SheetTitle,
-} from "@/components/ui/sheet";
-import { useIsMobile } from "@/hooks/use-mobile";
+  Drawer,
+  DrawerClose,
+  DrawerContent,
+  DrawerDescription,
+  DrawerHeader,
+  DrawerTitle,
+} from "@/components/ui/drawer";
+import { useIsMobile, useIsTablet } from "@/hooks/use-mobile";
 import { FieldGroup, FieldDescription, FieldError } from "@/components/ui/field";
 import type { ReservationCoupon, ReservationDetail, WorkflowAction } from "@/lib/api";
 import {
@@ -56,7 +56,7 @@ import { toastError } from "@/lib/toast";
 
 export type ReservationEditorTarget =
   | { kind: "stay" }
-  | { kind: "contact" | "notes" }
+  | { kind: "contact" }
   | { kind: "guest"; id?: string }
   | { kind: "payment" }
   | { kind: "refund" }
@@ -73,9 +73,7 @@ function editorTitle(target: ReservationEditorTarget, detail: ReservationDetail)
     case "stay":
       return "Editar estadía";
     case "contact":
-      return "Editar contacto";
-    case "notes":
-      return "Notas de la reserva";
+      return "Contacto y notas";
     case "guest":
       return target.id ? "Editar huésped" : "Agregar huésped";
     case "payment":
@@ -101,7 +99,7 @@ function editorTitle(target: ReservationEditorTarget, detail: ReservationDetail)
   }
 }
 
-const phoneSheetKinds: ReservationEditorTarget["kind"][] = ["payment", "contact", "guest", "notes"];
+const contactAndNotesSchema = contactSchema.extend(notesSchema.shape);
 
 export function ReservationPageEditor({
   target,
@@ -109,30 +107,29 @@ export function ReservationPageEditor({
   onClose,
   onDirtyChange,
   onSaved,
-  description,
 }: {
   target: ReservationEditorTarget;
   detail: ReservationDetail;
   onClose: () => void;
   onDirtyChange: (dirty: boolean) => void;
   onSaved?: (saved: ReservationDetail) => void;
-  description?: string;
 }) {
   const dirty = useRef(false);
   const [popup, setPopup] = useState<HTMLDivElement | null>(null);
   const [leaving, setLeaving] = useState(false);
   const { send, saving } = useReservationCommands(detail.id);
   const [issued, setIssued] = useState<ReservationCoupon | null>(null);
-  const fullScreen = ["stay", "contact", "notes", "guest", "payment"].includes(target.kind);
+  const fullScreen = ["stay", "contact", "guest", "payment"].includes(target.kind);
   const isMobile = useIsMobile();
-  const [asSheet] = useState(() => isMobile && phoneSheetKinds.includes(target.kind));
-  const [sheetOpen, setSheetOpen] = useState(false);
+  const isTablet = useIsTablet();
+  const [asDrawer] = useState(() => isMobile || isTablet);
+  const [drawerOpen, setDrawerOpen] = useState(false);
   useEffect(() => {
-    if (!asSheet) return;
-    const frame = requestAnimationFrame(() => setSheetOpen(true));
+    if (!asDrawer) return;
+    const frame = requestAnimationFrame(() => setDrawerOpen(true));
     return () => cancelAnimationFrame(frame);
-  }, [asSheet]);
-  const finish = asSheet ? () => setSheetOpen(false) : onClose;
+  }, [asDrawer]);
+  const finish = asDrawer ? () => setDrawerOpen(false) : onClose;
   const refund =
     target.kind === "resolve-refund"
       ? detail.refunds.find((entry) => entry.id === target.id && entry.status === "requested")
@@ -170,20 +167,13 @@ export function ReservationPageEditor({
   }
   const title = issued ? "Cupón emitido" : editorTitle(target, detail);
   const descriptionText =
-    description ??
-    (target.kind === "stay"
-      ? "Revisa las fechas, habitaciones y el importe antes de guardar."
-      : target.kind === "status" &&
-          target.status === "confirmed" &&
-          (detail.status === "cancelled" || detail.status === "no_show")
-        ? "Volverá a Confirmada."
-        : target.kind === "refund"
-          ? "Pasa el importe a un cupón para una próxima estadía o devuelve el dinero."
-          : target.kind === "resolve-refund"
-            ? target.failing
-              ? "El reembolso queda registrado como fallido y el dinero sigue por devolver."
-              : "Registra si el dinero llegó al huésped."
-            : "Los cambios se guardan al confirmar.");
+    target.kind === "status" &&
+    target.status === "confirmed" &&
+    (detail.status === "cancelled" || detail.status === "no_show")
+      ? "Volverá a Confirmada."
+      : target.kind === "resolve-refund" && target.failing
+        ? "El reembolso queda registrado como fallido y el dinero sigue por devolver."
+        : null;
   const body =
     target.kind === "stay" ? (
       <StayEditor detail={detail} onCancel={close} onDirtyChange={handleDirty} onSaved={finish} />
@@ -299,41 +289,45 @@ export function ReservationPageEditor({
     );
   return (
     <>
-      {asSheet ? (
-        <Sheet
-          open={sheetOpen}
-          onOpenChange={(open) => {
-            if (!open) close();
+      {asDrawer ? (
+        <Drawer
+          showSwipeHandle
+          open={drawerOpen}
+          onOpenChange={(open, details) => {
+            if (!open) {
+              if (saving || dirty.current) details.cancel();
+              close();
+            }
           }}
           onOpenChangeComplete={(open) => {
             if (!open) onClose();
           }}
         >
-          <SheetContent
+          <DrawerContent
             ref={setPopup}
-            side="bottom"
-            showCloseButton={false}
-            className="max-h-[min(90dvh,calc(var(--reservation-viewport-height,100dvh)-1rem))] overflow-hidden pb-[env(safe-area-inset-bottom)] data-[side=bottom]:bottom-(--reservation-keyboard-inset,0px)"
+            className="overflow-hidden pb-[env(safe-area-inset-bottom)] data-[swipe-axis=y]:[--drawer-content-max-height:min(90dvh,calc(var(--reservation-viewport-height,100dvh)-1rem))] data-[swipe-direction=down]:bottom-(--reservation-keyboard-inset,0px)"
           >
-            <SheetHeader className="shrink-0 border-b">
+            <DrawerHeader className="shrink-0 border-b pb-4 group-data-[swipe-axis=y]/drawer-popup:text-left">
               <div className="flex items-start gap-2">
                 <div className="flex min-w-0 flex-1 flex-col gap-0.5">
-                  <SheetTitle>{title}</SheetTitle>
-                  {!issued && <SheetDescription>{descriptionText}</SheetDescription>}
+                  <DrawerTitle>{title}</DrawerTitle>
+                  {!issued && descriptionText && (
+                    <DrawerDescription>{descriptionText}</DrawerDescription>
+                  )}
                 </div>
-                <SheetClose
+                <DrawerClose
                   render={<Button variant="ghost" size="icon-sm" disabled={saving} />}
                   aria-label="Cerrar"
                 >
                   <XIcon />
-                </SheetClose>
+                </DrawerClose>
               </div>
-            </SheetHeader>
+            </DrawerHeader>
             <div className="flex min-h-0 flex-1 flex-col overflow-y-auto overscroll-contain p-4">
               {body}
             </div>
-          </SheetContent>
-        </Sheet>
+          </DrawerContent>
+        </Drawer>
       ) : (
         <Dialog
           open
@@ -353,7 +347,9 @@ export function ReservationPageEditor({
           >
             <DialogHeader className="shrink-0">
               <DialogTitle>{title}</DialogTitle>
-              {!issued && <DialogDescription>{descriptionText}</DialogDescription>}
+              {!issued && descriptionText && (
+                <DialogDescription>{descriptionText}</DialogDescription>
+              )}
             </DialogHeader>
             {body}
           </DialogContent>
@@ -406,12 +402,10 @@ function ReservationActionForm({
   }));
   const schema =
     target.kind === "contact"
-      ? contactSchema
-      : target.kind === "notes"
-        ? notesSchema
-        : target.kind === "void-payment"
-          ? paymentVoidSchema
-          : cancellationSchema;
+      ? contactAndNotesSchema
+      : target.kind === "void-payment"
+        ? paymentVoidSchema
+        : cancellationSchema;
   const rejectedContact = useRef<{ key: string; fields: Record<string, string> } | null>(null);
   const form = useReservationForm({
     defaultValues: defaults,
@@ -424,10 +418,7 @@ function ReservationActionForm({
           : Object.fromEntries(
               result.error.issues.map((issue) => [issue.path.join("."), issue.message]),
             );
-        if (
-          target.kind === "contact" &&
-          rejectedContact.current?.key === JSON.stringify([value.email, value.phone])
-        )
+        if (target.kind === "contact" && rejectedContact.current?.key === JSON.stringify(value))
           Object.assign(fields, rejectedContact.current.fields);
         return Object.keys(fields).length ? { fields } : undefined;
       },
@@ -439,12 +430,16 @@ function ReservationActionForm({
       let actions: WorkflowAction[];
       switch (target.kind) {
         case "contact": {
-          actions = [{ type: "contact", contact: contactPayload(value) }];
+          actions = [];
+          if (
+            (["fullName", "phone", "email", "nationality"] as const).some(
+              (name) => JSON.stringify(value[name]) !== JSON.stringify(defaults[name]),
+            )
+          )
+            actions.push({ type: "contact", contact: contactPayload(value) });
+          if (value.notes !== defaults.notes) actions.push({ type: "notes", notes: value.notes });
           break;
         }
-        case "notes":
-          actions = [{ type: "notes", notes: value.notes }];
-          break;
         case "void-payment":
           actions = [
             { type: "void-payment", paymentId: target.id, reason: value.voidReason.trim() },
@@ -471,6 +466,10 @@ function ReservationActionForm({
         default:
           return;
       }
+      if (!actions.length) {
+        onSaved(detail);
+        return;
+      }
       const result = await onSave(actions);
       if (result.status === "saved") {
         toast.success("Cambios guardados");
@@ -478,7 +477,7 @@ function ReservationActionForm({
       } else if (result.status === "failed") toastError("No se pudo guardar", result.message);
       else if (target.kind === "contact") {
         const { fields } = result;
-        rejectedContact.current = { key: JSON.stringify([value.email, value.phone]), fields };
+        rejectedContact.current = { key: JSON.stringify(value), fields };
         form.setErrorMap({ onDynamic: { fields } });
       } else setServerErrors(form, result.fields);
     },
@@ -516,9 +515,6 @@ function ReservationActionForm({
           <FieldGroup>
             {target.kind === "contact" && (
               <>
-                <FieldDescription>
-                  Corrige los datos del contacto principal. La lista de huéspedes no cambia.
-                </FieldDescription>
                 <form.AppField name="fullName">
                   {(field) => <field.Text label="Nombre completo" required max={200} />}
                 </form.AppField>
@@ -527,14 +523,12 @@ function ReservationActionForm({
                 </form.AppField>
                 <form.AppField name="phone">{(field) => <field.Phone />}</form.AppField>
                 <form.AppField name="nationality">{(field) => <field.Nationality />}</form.AppField>
+                <form.AppField name="notes">
+                  {(field) => (
+                    <field.Text label="Notas para esta reserva" type="textarea" max={2000} />
+                  )}
+                </form.AppField>
               </>
-            )}
-            {target.kind === "notes" && (
-              <form.AppField name="notes">
-                {(field) => (
-                  <field.Text label="Notas para esta reserva" type="textarea" max={2000} />
-                )}
-              </form.AppField>
             )}
             {target.kind === "void-payment" && (
               <form.AppField name="voidReason">

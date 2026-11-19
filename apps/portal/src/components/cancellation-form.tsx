@@ -216,7 +216,6 @@ export function CancellationForm({
                   {
                     value: "part",
                     label: "Perdonar una parte",
-                    description: "Indica cuánto perdonas",
                   },
                 ]}
               />

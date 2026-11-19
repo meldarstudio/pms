@@ -1,4 +1,4 @@
-import { MoonIcon, PencilIcon } from "lucide-react";
+import { PencilIcon } from "lucide-react";
 import { cn } from "cn";
 import { parseISO } from "date-fns";
 import { AssignedRooms } from "@/components/assigned-rooms";
@@ -23,13 +23,20 @@ export function StaySection({
     <ReservationSection
       title="Estadía"
       action={
-        <Button variant="outline" size="sm" onClick={() => edit({ kind: "stay" })}>
+        <Button
+          variant="ghost"
+          size="xs"
+          className="pointer-coarse:min-h-(--control-h-lg)"
+          onClick={() => edit({ kind: "stay" })}
+        >
           <PencilIcon data-icon="inline-start" />
           Editar estadía
         </Button>
       }
     >
-      <StayDates detail={detail} />
+      <div className="max-md:py-2">
+        <StayDates detail={detail} />
+      </div>
       <dl className="grid grid-cols-2 gap-4">
         <StayFact label="Ocupantes" value={occupantsLabel(detail.rooms)} />
         <StayFact
@@ -45,21 +52,14 @@ export function StaySection({
   );
 }
 
-function StayDates({ detail }: { detail: ReservationDetail }) {
+export function StayDates({ detail }: { detail: ReservationDetail }) {
   return (
     <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-4">
       <StayEnd day={detail.checkIn} label="Ingreso" />
-      <div className="flex flex-col items-center gap-1.5 text-xs">
-        <span aria-hidden className="flex items-center gap-2 text-muted-foreground">
-          <span className="h-px w-6 bg-border sm:w-16" />
-          <MoonIcon className="size-3.5" />
-          <span className="h-px w-6 bg-border sm:w-16" />
-        </span>
-        <span className="font-medium">
-          {nightsLabel(nightsBetween(detail.checkIn, detail.checkOut))}
-        </span>
-      </div>
-      <StayEnd day={detail.checkOut} label="Egreso" className="items-end text-right" />
+      <span className="text-xs text-muted-foreground">
+        {nightsLabel(nightsBetween(detail.checkIn, detail.checkOut))}
+      </span>
+      <StayEnd day={detail.checkOut} label="Salida" className="items-end text-right" />
     </div>
   );
 }
@@ -67,12 +67,16 @@ function StayDates({ detail }: { detail: ReservationDetail }) {
 function StayEnd({ day, label, className }: { day: string; label: string; className?: string }) {
   const date = parseISO(day);
   return (
-    <p className={cn("flex min-w-0 flex-col", className)}>
-      <span className="sr-only">{label}: </span>
-      <span className="text-3xl font-semibold tracking-tight capitalize">
-        {format(date, "EEE d")}
+    <p className={cn("flex min-w-0 flex-col gap-1", className)}>
+      <span className="text-xs text-muted-foreground">
+        {label}
+        <span className="sr-only">: </span>
       </span>
-      <span className="text-xs text-muted-foreground capitalize">{format(date, "MMMM yyyy")}</span>
+      <span className="text-xl font-medium tracking-tight capitalize">{format(date, "EEE d")}</span>
+      <span className="text-xs text-muted-foreground capitalize">
+        <span className="md:hidden">{format(date, "MMM yyyy")}</span>
+        <span className="max-md:hidden">{format(date, "MMMM yyyy")}</span>
+      </span>
     </p>
   );
 }
@@ -88,10 +92,8 @@ function StayFact({
 }) {
   return (
     <div className={cn("flex min-w-0 flex-col gap-0.5", className)}>
-      <dt className="text-2xs font-semibold tracking-widest text-muted-foreground uppercase">
-        {label}
-      </dt>
-      <dd className="text-sm font-medium">{value}</dd>
+      <dt className="text-xs text-muted-foreground">{label}</dt>
+      <dd className="text-sm max-md:text-xs">{value}</dd>
     </div>
   );
 }
