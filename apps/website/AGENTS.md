@@ -128,6 +128,14 @@ the English 404 page to `dist/en/404.html` for Cloudflare.
 - Fonts are configured in `astro.config.mjs`, with Tailwind variables mapped
   by `@theme inline` in the global stylesheet.
 
+## UI SDK
+
+Svelte components build on `@ui-sdk/svelte`. Before using ui-sdk, follow the `ui-sdk` skill
+and read `node_modules/@ui-sdk/svelte/docs/llms.txt`. To build a new component, also search
+`node_modules/@ui-sdk/svelte/docs/core.md` by heading and read `rendering.md` next to it.
+The site does not load the SDK's `web.css` theme: style each part through its `data-slot`
+and state attributes, as `src/styles/global.css` centres dialogs.
+
 ## Agent sessions
 
 Astro backgrounds dev and preview servers in agent sessions. Check

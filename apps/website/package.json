@@ -19,6 +19,7 @@
     "@astrojs/svelte": "9.1.2",
     "@pms/shared": "workspace:*",
     "@tailwindcss/vite": "4.3.4",
+    "@ui-sdk/core": "0.1.0-beta.13",
     "@ui-sdk/svelte": "0.1.0-beta.13",
     "astro": "7.4.5",
     "country-flag-icons": "^1.6.20",
