@@ -66,3 +66,6 @@ packageExtensions:
   "svelte-check@4.7.8":
     dependencies:
       typescript: 6.0.3
+permissions:
+  '@ui-sdk/core':
+    skills: true
