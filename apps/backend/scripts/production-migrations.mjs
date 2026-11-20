@@ -2,11 +2,12 @@ import { lstatSync, readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 
 export const MIGRATIONS_DIR = "drizzle";
+const productionDatabaseId = "17e838dd-b2f9-4783-ad9b-f5d837701428";
 
 export function productionTarget(config) {
   const databases = Object.entries(config.worker.env).filter(
     ([binding, value]) =>
-      binding === "DB" || (value.type === "d1" && value.name === "pms-production"),
+      binding === "DB" || (value.type === "d1" && value.id === productionDatabaseId),
   );
   const [binding, database] = databases[0] ?? [];
   if (
@@ -14,8 +15,7 @@ export function productionTarget(config) {
     databases.length !== 1 ||
     binding !== "DB" ||
     database.type !== "d1" ||
-    database.name !== "pms-production" ||
-    !/^[a-f0-9]{8}-(?:[a-f0-9]{4}-){3}[a-f0-9]{12}$/i.test(database.id ?? "")
+    database.id !== productionDatabaseId
   ) {
     throw new Error("Unexpected production configuration; review the target before proceeding");
   }
