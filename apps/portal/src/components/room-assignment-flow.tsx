@@ -1,5 +1,6 @@
 import { differenceInCalendarDays, parseISO } from "date-fns";
-import { BedDoubleIcon, ChevronRightIcon } from "lucide-react";
+import { BedDoubleIcon, CheckIcon, ChevronRightIcon } from "lucide-react";
+import { cn } from "cn";
 
 import { Button } from "@/components/ui/button";
 import { Empty, EmptyDescription, EmptyHeader, EmptyTitle } from "@/components/ui/empty";
@@ -41,6 +42,7 @@ export type RoomAssignmentStepsProps = {
   onRetry: () => void;
   onRetryAssignment: () => void;
   onHighlightRoom?: (roomId: string | null) => void;
+  selection?: { roomId: string | null; select: (roomId: string) => void };
 };
 
 export function RoomAssignmentSteps({
@@ -54,10 +56,12 @@ export function RoomAssignmentSteps({
   onRetry,
   onRetryAssignment,
   onHighlightRoom,
+  selection,
 }: RoomAssignmentStepsProps) {
   const { today } = usePropertyCalendar();
   const { target, checking, ready, pending, eligibleCount, groupAssignments } = assignment;
-  const error = assignment.error ?? assignment.saveError;
+  const availabilityError = assignment.error ?? (selection && rooms === null ? listError : null);
+  const error = availabilityError ?? assignment.saveError;
   const availableRooms = ready
     ? (rooms ?? [])
         .filter(
@@ -87,8 +91,10 @@ export function RoomAssignmentSteps({
         </div>
         <p role="status" className="text-muted-foreground">
           {pending
-            ? "Asignando habitación…"
-            : checking
+            ? selection
+              ? "Cambiando habitación…"
+              : "Asignando habitación…"
+            : checking && !availabilityError
               ? "Consultando habitaciones para toda la estancia…"
               : ready
                 ? `${eligibleCount} ${eligibleCount === 1 ? "habitación disponible" : "habitaciones disponibles"} para toda la estancia.`
@@ -97,32 +103,43 @@ export function RoomAssignmentSteps({
         {error && (
           <div role="alert" className="flex flex-col gap-2">
             <p className="text-destructive">{error}</p>
-            {assignment.error && (
+            {availabilityError && (
               <Button variant="outline" disabled={pending} onClick={onRetryAssignment}>
                 Consultar de nuevo
               </Button>
             )}
           </div>
         )}
-        {checking && assignment.expectedCount > 0 && (
+        {checking && !availabilityError && assignment.expectedCount > 0 && (
           <AvailableRoomsSkeleton count={assignment.expectedCount} />
         )}
         {availableRooms.length > 0 && (
           <ul className="flex flex-col border" onMouseLeave={() => onHighlightRoom?.(null)}>
             {availableRooms.map((room, index) => {
               const showDirtyRoom = showDirty && room.housekeepingStatus === "dirty";
+              const selected = selection?.roomId === room.id;
               return (
                 <li key={room.id}>
                   {index > 0 && <Separator />}
                   <button
                     type="button"
-                    aria-label={`Asignar ${target.guestName} a habitación ${room.number}, ${target.checkIn} al ${target.checkOut}${showDirtyRoom ? ", sucia" : ""}`}
+                    aria-label={
+                      selection
+                        ? `Seleccionar habitación ${room.number}${showDirtyRoom ? ", sucia" : ""}`
+                        : `Asignar ${target.guestName} a habitación ${room.number}, ${target.checkIn} al ${target.checkOut}${showDirtyRoom ? ", sucia" : ""}`
+                    }
+                    aria-pressed={selection ? selected : undefined}
                     disabled={pending}
-                    onClick={() => void assignment.assignRoom(room.id)}
+                    onClick={() =>
+                      selection ? selection.select(room.id) : void assignment.assignRoom(room.id)
+                    }
                     onMouseEnter={() => onHighlightRoom?.(room.id)}
                     onFocus={() => onHighlightRoom?.(room.id)}
                     onBlur={() => onHighlightRoom?.(null)}
-                    className="flex w-full cursor-pointer items-center gap-2 p-2.5 text-left outline-none enabled:hover:bg-accent focus-visible:ring-1 focus-visible:ring-ring/50 disabled:cursor-default disabled:text-muted-foreground"
+                    className={cn(
+                      "flex w-full cursor-pointer items-center gap-2 p-2.5 text-left outline-none enabled:hover:bg-accent focus-visible:ring-1 focus-visible:ring-ring/50 disabled:cursor-default disabled:text-muted-foreground",
+                      selected && "bg-accent",
+                    )}
                   >
                     <BedDoubleIcon className="size-4 shrink-0" aria-hidden="true" />
                     <span className="flex min-w-0 flex-1 flex-col gap-0.5">
@@ -132,7 +149,11 @@ export function RoomAssignmentSteps({
                       </span>
                       <span className="text-muted-foreground">Disponible</span>
                     </span>
-                    <ChevronRightIcon className="size-4 shrink-0" aria-hidden="true" />
+                    {selection ? (
+                      selected && <CheckIcon className="size-4 shrink-0" aria-hidden="true" />
+                    ) : (
+                      <ChevronRightIcon className="size-4 shrink-0" aria-hidden="true" />
+                    )}
                   </button>
                 </li>
               );
@@ -144,8 +165,9 @@ export function RoomAssignmentSteps({
             <EmptyHeader>
               <EmptyTitle>Sin habitaciones disponibles</EmptyTitle>
               <EmptyDescription>
-                No hay habitaciones de este tipo disponibles para toda la estancia. Vuelve a la
-                lista para seleccionar otra habitación reservada.
+                No hay {selection ? "otras " : ""}habitaciones de este tipo disponibles para toda la
+                estancia.
+                {!selection && " Vuelve a la lista para seleccionar otra habitación reservada."}
               </EmptyDescription>
             </EmptyHeader>
           </Empty>
