@@ -271,6 +271,8 @@ const handlers: Handlers = {
     const { db, state } = ctx;
     const line = lineFor(ctx, action.lineId),
       room = action.room;
+    if (action.expectedRoomId !== undefined && line.roomId !== action.expectedRoomId)
+      throw new HttpError(409, "room assignment changed");
     const nights = await price(
       db,
       { ...room, ...state.reservation },

@@ -101,6 +101,7 @@ const messages: Record<string, string> = {
   "invalid payment attempt status":
     "El intento de pago no se guardó porque su estado no es válido. Recarga los datos.",
   "no availability": "No hay disponibilidad para esas fechas.",
+  "room assignment changed": "La habitación cambió. Actualiza la reserva.",
   "room is already assigned for those dates":
     "Esta habitación está ocupada para esas fechas. Cambia la habitación o las fechas.",
   "room is closed for those dates": "Esta habitación está cerrada para esas fechas.",

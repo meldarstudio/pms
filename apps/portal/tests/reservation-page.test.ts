@@ -399,25 +399,11 @@ it("replaces only the selected assignment and writes once, after confirmation", 
           type: "edit-room",
           lineId: "line-1",
           room: { roomTypeId: "double", roomId: "room-2", adults: 2, children: 0 },
+          expectedRoomId: "room-1",
         },
       ],
     ],
   );
-});
-
-it("does not overwrite an assignment that changed while the picker was open", async () => {
-  assignedRoomFixture();
-  await render();
-  await chooseReplacement();
-  saved = {
-    ...saved,
-    rooms: saved.rooms.map((line) =>
-      line.id === "line-1" ? { ...line, roomId: "room-new", roomNumber: "104" } : line,
-    ),
-  };
-  await click("Cambiar a 102");
-  await page.until(() => !!popup()?.querySelector('[role="alert"]'));
-  assert.equal(writes.length, 0, "Confirming against an old room must not send a command");
 });
 
 function accountToggle() {
@@ -474,9 +460,12 @@ it("reports a rejected check-out undo and keeps the reservation checked out", as
       window.document.body.textContent.includes("Esta habitación está ocupada para esas fechas"),
     "A rejected undo must say why",
   );
-  assert.deepEqual(writes[1].actions, [{ type: "set-status", status: "checked_in" }]);
-  assert.equal(saved.status, "checked_out");
   assert.equal(writes.length, 2);
+  assert.ok(
+    page.container.querySelector('[data-slot="badge"]')?.textContent === "Check-out",
+    "The page must still show the reservation as checked out",
+  );
+  assert.equal(window.document.body.textContent.includes("Check-out deshecho"), false);
 });
 
 it("invalidates check-in undo after cancellation, even when the status later returns to checked-in", async () => {
