@@ -1,7 +1,7 @@
 import type { ui } from "@/i18n/ui";
 import type { useTranslations } from "@/i18n/utils";
 import { fill } from "@/lib/reservation/format";
-import { bookingStepsKeys } from "@/components/reservation/BookingSteps";
+import { bookingStepsKeys } from "@/components/reservation/booking-steps";
 
 export const reviewKeys = [
   ...bookingStepsKeys,

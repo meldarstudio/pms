@@ -31,10 +31,10 @@ stays as completed checkout with the saved agreement, reference, authoritative
 amounts and hotel contact options. It clears the contact draft independently of
 the optional access-link read, retaining checkout credentials for outcome recovery.
 Each saved outcome reads access once; a failed or unestablished link can only be
-retried manually. Confirmed outcomes use the welcome layout in `review/Confirmation.tsx`,
+retried manually. Confirmed outcomes use the welcome layout in `review/Confirmation.svelte`,
 with explicit summary navigation and browser printing; other saved outcomes retain copying.
 Link loading is announced to assistive technology, with explanatory copy visible only on failure.
-`review/PrintConfirmation.tsx` prints the saved agreement and backend reservation amounts,
+`review/PrintConfirmation.svelte` prints the saved agreement and backend reservation amounts,
 independently of access-link availability. Print styles exclude navigation, controls and private
 links. The summary is not a wizard step and marketing pages do not link to it.
 `src/lib/rooms.ts` links each room to a PMS room-type ID; the API offers only types
@@ -54,14 +54,12 @@ again, without another card. Browser tests stub the Culqi, Culqi3DS and
 Turnstile scripts (`tests/support/payment.ts`), and the local API charges a fake Culqi and
 Turnstile served by `scripts/fake-payment-services.mjs`.
 
-Review is one React island, `src/components/reservation/review/Review.tsx`, mounted by
+Review is one Svelte island, `src/components/reservation/review/Review.svelte`, mounted by
 `ReservationReview.astro` with build-time copy (`review/text.ts`), rooms and payment keys.
 Review renders the step bar with links to completed steps, and the phone and WhatsApp booking alternatives.
-`useCheckoutFlow.ts` runs `next` in a reducer whose state carries the pending effects;
-a layout effect hands them to one runner after React commits, so `focus` effects
-(mapped to refs by `focus.ts`) find rendered elements, and the runner is disposed on
-unmount. In development `?payments=on|off` previews both payment modes
-(`paymentsPreview.tsx`).
+Review queues the effects from `next` and runs them after Svelte updates the DOM, so
+focus and the security check find their targets. It disposes the runner on unmount.
+In development `?payments=on|off` previews both payment modes.
 
 ## Content
 
@@ -76,7 +74,7 @@ Run commands from the repository root with `pnpm --filter @pms/website`.
 - Run `check` and root `pnpm check` for code changes, and `test` for the unit tests
   (`vp test run`). Review's checkout and payment decisions live in the pure
   `src/lib/reservation/checkout-flow.ts` (`next(state, event)` returns the next state
-  and effects); `checkout-runner.ts` performs the effects, and the React components in
+  and effects); `checkout-runner.ts` performs the effects, and the Svelte components in
   `src/components/reservation/review/` render the state and forward events.
 - Run `verify:build` for pages, assets, configuration, or translations. It checks
   locale parity, canonical URLs, redirects, sitemap entries, and the share image.
