@@ -8,6 +8,7 @@ import { GuestEntryForm, PaymentForm } from "@/components/reservation-entry-form
 import { CouponIssued, RefundForm, ResolveRefundForm } from "@/components/refund-forms";
 import { CancellationForm } from "@/components/cancellation-form";
 import { WaiverForm } from "@/components/waiver-form";
+import { RoomGuestsForm, roomGuestsTitle } from "@/components/room-guests-form";
 import { RestoreReservationForm } from "@/components/restore-reservation-form";
 import { WorkflowBill } from "@/components/workflow-bill";
 import { ChoiceField } from "@/components/workflow-fields";
@@ -56,6 +57,7 @@ import { toastError } from "@/lib/toast";
 
 export type ReservationEditorTarget =
   | { kind: "stay" }
+  | { kind: "room-guests"; lineId: string }
   | { kind: "contact" }
   | { kind: "guest"; id?: string }
   | { kind: "payment" }
@@ -72,6 +74,10 @@ function editorTitle(target: ReservationEditorTarget, detail: ReservationDetail)
       return "Perdonar cargo";
     case "stay":
       return "Editar estadía";
+    case "room-guests": {
+      const line = detail.rooms.find((entry) => entry.id === target.lineId);
+      return line ? roomGuestsTitle(line) : "Huéspedes";
+    }
     case "contact":
       return "Contacto y notas";
     case "guest":
@@ -166,6 +172,10 @@ export function ReservationPageEditor({
     else finish();
   }
   const title = issued ? "Cupón emitido" : editorTitle(target, detail);
+  const guestsLine =
+    target.kind === "room-guests"
+      ? detail.rooms.find((entry) => entry.id === target.lineId)
+      : undefined;
   const descriptionText =
     target.kind === "status" &&
     target.status === "confirmed" &&
@@ -177,6 +187,20 @@ export function ReservationPageEditor({
   const body =
     target.kind === "stay" ? (
       <StayEditor detail={detail} onCancel={close} onDirtyChange={handleDirty} onSaved={finish} />
+    ) : target.kind === "room-guests" ? (
+      guestsLine ? (
+        <RoomGuestsForm
+          reservationId={detail.id}
+          line={guestsLine}
+          disabled={saving}
+          onSave={send}
+          onDone={finish}
+          onCancel={close}
+          onDirtyChange={handleDirty}
+        />
+      ) : (
+        <FieldError>Esta habitación ya no está en la reserva.</FieldError>
+      )
     ) : target.kind === "guest" ? (
       <GuestEntryForm
         scrollable
@@ -343,6 +367,7 @@ export function ReservationPageEditor({
               fullScreen &&
                 "max-sm:top-(--reservation-viewport-top,0px) max-sm:left-0 max-sm:h-(--reservation-viewport-height,100dvh) max-sm:max-h-(--reservation-viewport-height,100dvh) max-sm:max-w-full max-sm:translate-x-0 max-sm:translate-y-0 max-sm:pt-[max(1rem,env(safe-area-inset-top))] max-sm:pb-[max(1rem,env(safe-area-inset-bottom))] max-sm:safe-area-padding-x max-sm:transition-none",
               target.kind === "stay" && wideDialogContent,
+              target.kind === "room-guests" && "sm:max-w-sm",
             )}
           >
             <DialogHeader className="shrink-0">

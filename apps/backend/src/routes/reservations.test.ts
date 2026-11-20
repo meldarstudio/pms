@@ -1284,24 +1284,32 @@ describe("concurrent reservation commands", () => {
     });
   });
 
-  it("refuses a room change whose expected room was replaced while it waited", async () => {
+  it.each([
+    ["its room was replaced", { roomId: "room-103" }],
+    ["its guest count changed", { adults: 2 }],
+  ])("refuses a room edit whose expected room changed while it waited: %s", async (_, change) => {
     let d = await create();
     d = await command(d, [roomEdit(d)]);
     const paused = pauseNextCommit();
     const pending = request(`/reservations/${d.id}/commands`, "POST", {
       requestId: crypto.randomUUID(),
-      actions: [{ ...roomEdit(d, 0, { roomId: "room-102" }), expectedRoomId: "room-101" }],
+      actions: [
+        {
+          ...roomEdit(d, 0, { roomId: "room-102" }),
+          expected: { roomTypeId: "type", roomId: "room-101", adults: 1, children: 0 },
+        },
+      ],
     });
     await paused.ready;
-    await command(d, [roomEdit(d, 0, { roomId: "room-103" })]);
+    await command(d, [roomEdit(d, 0, change)]);
     paused.resume();
 
     const refused = await pending;
     expect(refused.status).toBe(409);
-    expect(await refused.json()).toEqual({ error: "room assignment changed" });
+    expect(await refused.json()).toEqual({ error: "reserved room changed" });
     expect(
-      ((await (await request(`/reservations/${d.id}`)).json()) as Detail).rooms[0].roomId,
-    ).toBe("room-103");
+      ((await (await request(`/reservations/${d.id}`)).json()) as Detail).rooms[0],
+    ).toMatchObject({ roomId: "room-101", adults: 1, ...change });
   });
 
   it("keeps both distinct payments when a stale command retries", async () => {

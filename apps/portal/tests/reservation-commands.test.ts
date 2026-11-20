@@ -367,7 +367,7 @@ describe("room assignment", () => {
         type: "edit-room",
         lineId: "line-1",
         room: { roomTypeId: "double", roomId: "room-2", adults: 2, children: 0 },
-        expectedRoomId: null,
+        expected: { roomTypeId: "double", roomId: null, adults: 2, children: 0 },
       },
     ]);
   });

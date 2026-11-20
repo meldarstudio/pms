@@ -171,7 +171,13 @@ function mockApi(options: ApiOptions = {}) {
           ...saved,
           rooms: saved.rooms.map((line) =>
             line.id === action.lineId
-              ? { ...line, roomId: room?.id ?? null, roomNumber: room?.number ?? null }
+              ? {
+                  ...line,
+                  roomId: room?.id ?? null,
+                  roomNumber: room?.number ?? null,
+                  adults: action.room.adults,
+                  children: action.room.children,
+                }
               : line,
           ),
         };
@@ -399,11 +405,70 @@ it("replaces only the selected assignment and writes once, after confirmation", 
           type: "edit-room",
           lineId: "line-1",
           room: { roomTypeId: "double", roomId: "room-2", adults: 2, children: 0 },
-          expectedRoomId: "room-1",
+          expected: { roomTypeId: "double", roomId: "room-1", adults: 2, children: 0 },
         },
       ],
     ],
   );
+});
+
+const guestCounts = () =>
+  Array.from(window.document.querySelectorAll("button"))
+    .map((element) => element.getAttribute("aria-label") ?? "")
+    .filter((label) => label.startsWith("Cambiar huéspedes"));
+
+async function openGuestCount() {
+  await click("Cambiar huéspedes de habitación 101: 2 adultos");
+  await page.until(
+    () => !!window.document.querySelector('[aria-label="Agregar niños"]:not([disabled])'),
+  );
+}
+
+it("changes a room's guest count with one write, only after Guardar", async () => {
+  assignedRoomFixture();
+  await render();
+  await openGuestCount();
+  await click("Quitar adultos");
+  await click("Agregar niños");
+  assert.equal(writes.length, 0, "Stepping the counts must not save");
+  const save = button("Guardar");
+  await React.act(async () => {
+    save.click();
+    save.click();
+  });
+  await page.until(() =>
+    guestCounts().includes("Cambiar huéspedes de habitación 101: 1 adulto · 1 niño"),
+  );
+  assert.deepEqual(
+    writes.map((write) => write.actions),
+    [
+      [
+        {
+          type: "edit-room",
+          lineId: "line-1",
+          room: { roomTypeId: "double", roomId: "room-1", adults: 1, children: 1 },
+          expected: { roomTypeId: "double", roomId: "room-1", adults: 2, children: 0 },
+        },
+      ],
+    ],
+  );
+});
+
+it("shows the current guest count after a refused stale guest-count change", async () => {
+  assignedRoomFixture();
+  await render();
+  await openGuestCount();
+  saved = {
+    ...saved,
+    rooms: saved.rooms.map((line) => (line.id === "line-1" ? { ...line, adults: 1 } : line)),
+  };
+  page.api.on("POST", "/reservations/:id/commands", () =>
+    Response.json({ error: "reserved room changed" }, { status: 409 }),
+  );
+  await click("Agregar niños");
+  await click("Guardar");
+  await page.until(() => guestCounts().includes("Cambiar huéspedes de habitación 101: 1 adulto"));
+  await page.until(() => popup() === null);
 });
 
 function accountToggle() {

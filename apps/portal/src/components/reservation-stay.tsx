@@ -46,7 +46,10 @@ export function StaySection({
         />
       </dl>
       <div className="pt-2">
-        <AssignedRooms detail={detail} />
+        <AssignedRooms
+          detail={detail}
+          onEditGuests={(lineId) => edit({ kind: "room-guests", lineId })}
+        />
       </div>
     </ReservationSection>
   );

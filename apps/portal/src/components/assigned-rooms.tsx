@@ -32,8 +32,6 @@ import { useRoomAssignment } from "@/lib/use-room-assignment";
 
 type Line = ReservationDetail["rooms"][number];
 
-const nightsLabel = (count: number) => `${count} ${count === 1 ? "noche" : "noches"}`;
-
 function typeName(line: Line) {
   return line.roomTypeName || "Habitación";
 }
@@ -55,21 +53,31 @@ function assignableStays(detail: ReservationDetail): ReservationStay[] {
   }));
 }
 
-export function AssignedRooms({ detail }: { detail: ReservationDetail }) {
+type EditGuests = (lineId: string) => void;
+
+export function AssignedRooms({
+  detail,
+  onEditGuests,
+}: {
+  detail: ReservationDetail;
+  onEditGuests: EditGuests;
+}) {
   const stays = assignableStays(detail);
   return stays.length > 0 ? (
-    <AssignableRooms detail={detail} stays={stays} />
+    <AssignableRooms detail={detail} stays={stays} onEditGuests={onEditGuests} />
   ) : (
-    <RoomList detail={detail} stays={stays} />
+    <RoomList detail={detail} stays={stays} onEditGuests={onEditGuests} />
   );
 }
 
 function AssignableRooms({
   detail,
   stays,
+  onEditGuests,
 }: {
   detail: ReservationDetail;
   stays: ReservationStay[];
+  onEditGuests: EditGuests;
 }) {
   const housekeeping = useHousekeeping();
   const rooms = housekeeping.data?.rooms ?? null;
@@ -95,6 +103,7 @@ function AssignableRooms({
       <RoomList
         detail={detail}
         stays={stays}
+        onEditGuests={onEditGuests}
         onAssign={(stay, button) => {
           trigger.current = button;
           setSelectedRoomId(null);
@@ -193,10 +202,12 @@ function RoomList({
   detail,
   stays,
   onAssign,
+  onEditGuests,
 }: {
   detail: ReservationDetail;
   stays: ReservationStay[];
   onAssign?: (stay: ReservationStay, button: HTMLButtonElement) => void;
+  onEditGuests: EditGuests;
 }) {
   const money = (cents: number) => formatMoney(cents, detail.currency);
   const lines = detail.rooms.toSorted((a, b) =>
@@ -263,11 +274,19 @@ function RoomList({
                   {unassigned && <span className="text-xs font-normal">Sin asignar</span>}
                   {line.housekeepingStatus === "dirty" && <DirtyRoomBadge />}
                 </span>
-                <span
-                  className={cn("text-xs", unassigned ? "opacity-80" : "text-muted-foreground")}
+                <Button
+                  type="button"
+                  variant="ghost"
+                  className={cn(
+                    "h-auto w-fit justify-start border-0 px-0 py-0 text-xs font-normal pointer-coarse:min-h-(--control-h-xs) underline-offset-4 hover:bg-transparent hover:underline dark:hover:bg-transparent",
+                    unassigned ? "opacity-80" : "text-muted-foreground",
+                  )}
+                  aria-label={`Cambiar huéspedes de ${line.roomNumber ? `habitación ${line.roomNumber}` : typeName(line).toLowerCase()}: ${occupantsLabel([line])}`}
+                  aria-haspopup="dialog"
+                  onClick={() => onEditGuests(line.id)}
                 >
-                  {occupantsLabel([line])} · {nightsLabel(line.nights.length)}
-                </span>
+                  {occupantsLabel([line])}
+                </Button>
               </div>
               <span className="shrink-0 text-sm font-medium whitespace-nowrap tabular-nums">
                 {money(line.subtotalCents)}

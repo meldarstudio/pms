@@ -583,7 +583,12 @@ export async function assignRoom(target: ReservationStay, roomId: string) {
           adults: line.adults,
           children: line.children,
         },
-        expectedRoomId: target.roomId,
+        expected: {
+          roomTypeId: line.roomTypeId,
+          roomId: target.roomId,
+          adults: line.adults,
+          children: line.children,
+        },
       },
     ],
   });

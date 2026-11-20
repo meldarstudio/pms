@@ -543,7 +543,7 @@ it("assigns a reserved room from the mobile sheet without selecting a calendar b
       type: "edit-room",
       lineId: "line-open",
       room: { roomTypeId: "double", roomId: "room-2", adults: 1, children: 0 },
-      expectedRoomId: null,
+      expected: { roomTypeId: "double", roomId: null, adults: 1, children: 0 },
     },
   ]);
   assignment.release(Response.json({ id: "res-open" }));
