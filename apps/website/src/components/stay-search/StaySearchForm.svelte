@@ -46,7 +46,7 @@
     type StaySearchProps,
   } from "./stay-search";
 
-  let { action, lang, copy }: StaySearchProps = $props();
+  let { action, onSearch, lang, copy }: StaySearchProps = $props();
   const datePopup = createPopoverController<DateField>();
   const guestPopup = createPopoverController();
   let search = $state({ ...initialSearch });
@@ -93,7 +93,8 @@
     showProblems = true;
     const first = stayProblems(search)[0];
     if (first) document.getElementById(dateId(first.field))?.focus();
-    else submitSearch(action, search);
+    else if (onSearch) onSearch({ ...search, room: null, plan: null });
+    else if (action) submitSearch(action, search);
   }
 </script>
 

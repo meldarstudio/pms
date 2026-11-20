@@ -17,7 +17,10 @@ import {
 } from "@/lib/reservation/search";
 import { resumeSearch, storeSearch } from "@/lib/reservation/stay-search-storage";
 
-export type StaySearchProps = { lang: Lang; copy: StaySearchCopy; action: string };
+export type StaySearchProps = { lang: Lang; copy: StaySearchCopy } & (
+  | { action: string; onSearch?: never }
+  | { action?: never; onSearch: (search: StaySearch) => void }
+);
 export type DateField = "checkIn" | "checkOut";
 export type DatePicker = ReturnType<typeof openDatePicker>;
 
@@ -83,7 +86,10 @@ export function restoreSearch() {
   };
 }
 
-export function guestSummary(copy: StaySearchCopy, { adults, children }: StaySearch) {
+export function guestSummary(
+  copy: StaySearchCopy,
+  { adults, children }: Pick<StaySearch, "adults" | "children">,
+) {
   const adultsLabel = adults === 1 ? copy.adultsOne : fill(copy.adultsOther, { count: adults });
   if (!children) return adultsLabel;
   const childrenLabel =

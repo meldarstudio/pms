@@ -3,8 +3,8 @@
 Static Astro site for Hotel Manantial in Churín, Peru. Cloudflare serves `dist/`.
 The homepage always shows the prerendered Svelte stay search. `PUBLIC_PMS_API_URL` is required;
 `.env.development` supplies the local backend URL, and the release workflow supplies the production URL.
-Choose is the rooms page (`/habitaciones/`): one React island
-(`src/components/rooms/RoomsBooking.tsx`) with the dates-and-guests form and every
+Choose is the rooms page (`/habitaciones/`): one Svelte island
+(`src/components/rooms/RoomsBooking.svelte`) with the dates-and-guests form and every
 room, prerendered for search engines. It refreshes live offers from the PMS `/public`
 API in place, never in the HTML. A searched stay hides rooms that cannot fit the group,
 shows available rooms at their lowest total, and keeps sold-out and offline rooms visible.
