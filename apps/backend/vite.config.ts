@@ -57,7 +57,7 @@ export default defineConfig(({ command, mode }) => ({
       }),
   envDir: localApiDir,
   publicDir: false,
-  server: { port: 8788, strictPort: true },
+  server: { port: 8788, strictPort: true, cors: false },
   environments: { ssr: { build: { minify: true } } },
   lint: {
     ...lint,

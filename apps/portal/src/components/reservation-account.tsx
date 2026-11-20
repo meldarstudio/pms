@@ -164,13 +164,7 @@ export function AccountPanel({
   );
 }
 
-export function BalanceToggle({
-  detail,
-  disabled,
-}: {
-  detail: ReservationDetail;
-  disabled?: boolean;
-}) {
+function BalanceToggle({ detail, disabled }: { detail: ReservationDetail; disabled?: boolean }) {
   const status = accountStatus(detail);
   return (
     <h2>
@@ -200,7 +194,7 @@ export function BalanceToggle({
   );
 }
 
-export const balanceTone = {
+const balanceTone = {
   owing: "text-destructive",
   "owed-back": "text-credit-foreground",
   "refund-requested": "text-preview-foreground",

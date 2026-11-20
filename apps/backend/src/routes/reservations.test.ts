@@ -1284,6 +1284,26 @@ describe("concurrent reservation commands", () => {
     });
   });
 
+  it("refuses a room change whose expected room was replaced while it waited", async () => {
+    let d = await create();
+    d = await command(d, [roomEdit(d)]);
+    const paused = pauseNextCommit();
+    const pending = request(`/reservations/${d.id}/commands`, "POST", {
+      requestId: crypto.randomUUID(),
+      actions: [{ ...roomEdit(d, 0, { roomId: "room-102" }), expectedRoomId: "room-101" }],
+    });
+    await paused.ready;
+    await command(d, [roomEdit(d, 0, { roomId: "room-103" })]);
+    paused.resume();
+
+    const refused = await pending;
+    expect(refused.status).toBe(409);
+    expect(await refused.json()).toEqual({ error: "room assignment changed" });
+    expect(
+      ((await (await request(`/reservations/${d.id}`)).json()) as Detail).rooms[0].roomId,
+    ).toBe("room-103");
+  });
+
   it("keeps both distinct payments when a stale command retries", async () => {
     const d = await create();
     const paused = pauseNextCommit();

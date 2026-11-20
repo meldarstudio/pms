@@ -52,7 +52,7 @@ export function StaySection({
   );
 }
 
-export function StayDates({ detail }: { detail: ReservationDetail }) {
+function StayDates({ detail }: { detail: ReservationDetail }) {
   return (
     <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-4">
       <StayEnd day={detail.checkIn} label="Ingreso" />

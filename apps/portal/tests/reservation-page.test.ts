@@ -165,6 +165,17 @@ function mockApi(options: ApiOptions = {}) {
       if (action.type === "contact")
         saved = { ...saved, guest: { ...saved.guest, ...action.contact } };
       if (action.type === "set-guests") saved = { ...saved, stayingGuests: action.guests };
+      if (action.type === "edit-room") {
+        const room = page.api.catalog.rooms.find((entry) => entry.id === action.room.roomId);
+        saved = {
+          ...saved,
+          rooms: saved.rooms.map((line) =>
+            line.id === action.lineId
+              ? { ...line, roomId: room?.id ?? null, roomNumber: room?.number ?? null }
+              : line,
+          ),
+        };
+      }
       if (action.type === "add-payment")
         saved = {
           ...saved,
@@ -299,7 +310,7 @@ async function submit() {
 }
 const popup = () =>
   window.document.querySelector(
-    '[role="dialog"]:is([data-slot="dialog-content"], [data-slot="drawer-popup"])',
+    '[role="dialog"]:is([data-slot="dialog-content"], [data-slot="sheet-content"], [data-slot="drawer-popup"])',
   );
 async function chooseCharge(title: string) {
   const option = Array.from(popup()!.querySelectorAll<HTMLElement>('[role="radio"]')).find(
@@ -345,6 +356,56 @@ async function unloadPrevented() {
   return event.defaultPrevented;
 }
 
+function assignedRoomFixture() {
+  page.api.catalog.rooms.push(
+    { id: "room-2", number: "102", roomTypeId: "double" },
+    { id: "room-3", number: "103", roomTypeId: "double" },
+  );
+  const room = saved.rooms[0];
+  saved = {
+    ...saved,
+    status: "checked_in",
+    rooms: [
+      { ...room, roomId: "room-1", roomNumber: "101" },
+      { ...room, id: "line-2", roomId: "room-3", roomNumber: "103" },
+    ],
+  };
+  page.api.on("GET", "/reservations", () => [saved]);
+  mockApi();
+}
+
+async function chooseReplacement() {
+  await click("Cambiar habitación 101");
+  await page.until(() => !!popup()?.querySelector('[aria-label="Seleccionar habitación 102"]'));
+  await click("Seleccionar habitación 102");
+}
+
+it("replaces only the selected assignment and writes once, after confirmation", async () => {
+  assignedRoomFixture();
+  await render();
+  await chooseReplacement();
+  assert.equal(writes.length, 0, "Selecting a replacement must not release the existing room");
+  const confirm = button("Cambiar a 102");
+  await React.act(async () => {
+    confirm.click();
+    confirm.click();
+  });
+  await page.until(() => !!page.container.querySelector('[aria-label="Cambiar habitación 102"]'));
+  assert.deepEqual(
+    writes.map((write) => write.actions),
+    [
+      [
+        {
+          type: "edit-room",
+          lineId: "line-1",
+          room: { roomTypeId: "double", roomId: "room-2", adults: 2, children: 0 },
+          expectedRoomId: "room-1",
+        },
+      ],
+    ],
+  );
+});
+
 function accountToggle() {
   const toggle = window.document.querySelector<HTMLElement>(
     '[aria-label="Cuenta"] h2 > button[aria-expanded]',
@@ -379,6 +440,32 @@ it("confirms the page check-out balance, sends nothing on Volver, and offers und
   await page.until(() => window.document.body.textContent.includes("Check-out deshecho"));
   assert.deepEqual(writes[1].actions, [{ type: "set-status", status: "checked_in" }]);
   assert.equal(saved.balanceCents, 20000);
+});
+
+it("reports a rejected check-out undo and keeps the reservation checked out", async () => {
+  saved = { ...saved, status: "checked_in", paidCents: 30000, balanceCents: 0 };
+  mockApi({
+    write: () =>
+      writes.length === 2
+        ? Response.json({ error: "room is already assigned for those dates" }, { status: 409 })
+        : undefined,
+  });
+  await render("", true, true);
+  await click("Hacer check-out");
+  await page.until(() => window.document.body.textContent.includes("Check-out registrado"));
+  await page.until(() => !button("Deshacer").disabled);
+  await click("Deshacer");
+  await page.until(
+    () =>
+      window.document.body.textContent.includes("Esta habitación está ocupada para esas fechas"),
+    "A rejected undo must say why",
+  );
+  assert.equal(writes.length, 2);
+  assert.ok(
+    page.container.querySelector('[data-slot="badge"]')?.textContent === "Check-out",
+    "The page must still show the reservation as checked out",
+  );
+  assert.equal(window.document.body.textContent.includes("Check-out deshecho"), false);
 });
 
 it("invalidates check-in undo after cancellation, even when the status later returns to checked-in", async () => {

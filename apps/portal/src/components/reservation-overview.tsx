@@ -111,7 +111,7 @@ export function ReservationOverview({
   );
 }
 
-export function ContactLine({
+function ContactLine({
   detail,
   edit,
   className,
@@ -175,7 +175,7 @@ export function ContactLine({
   );
 }
 
-export function NotesLine({ detail }: { detail: ReservationDetail }) {
+function NotesLine({ detail }: { detail: ReservationDetail }) {
   const notes = detail.notes;
   if (!notes) return null;
   return (
