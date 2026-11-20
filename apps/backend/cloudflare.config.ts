@@ -35,7 +35,6 @@ export default defineConfig({
         "935c7f23-8acc-4c78-b456-9bc588cccc2d,a50f22a2-c02c-4cb1-ab98-e9da48f0228d,e93f440e-5546-45b3-8969-68a871d4ae81",
       ),
       DB: bindings.d1({
-        name: "pms-production",
         id: "17e838dd-b2f9-4783-ad9b-f5d837701428",
       }),
       LOGIN_LIMITER: bindings.rateLimit({

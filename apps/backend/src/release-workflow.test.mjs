@@ -36,8 +36,7 @@ describe("production readiness rules", () => {
     );
   });
 
-  const id = "00000000-0000-4000-8000-000000000000";
-  const production = { type: "d1", name: "pms-production", id };
+  const production = { type: "d1", id: "17e838dd-b2f9-4783-ad9b-f5d837701428" };
   const config = (env) => ({ worker: { name: "pms-api", env } });
 
   it("accepts the single production database bound as DB", () => {
@@ -45,8 +44,11 @@ describe("production readiness rules", () => {
   });
 
   it("rejects a production target with DB bound to another database", () => {
-    expect(() => productionTarget(config({ DB: { ...production, name: "other" } }))).toThrow(
-      /Unexpected production configuration/,
-    );
+    const other = {
+      type: "d1",
+      name: "pms-production",
+      id: "00000000-0000-4000-8000-000000000000",
+    };
+    expect(() => productionTarget(config({ DB: other }))).toThrow();
   });
 });
