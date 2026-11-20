@@ -1,0 +1,17 @@
+---
+import StaySearch from "./StaySearch.svelte";
+import "./stay-search.css";
+import { getLang, useTranslations } from "@/i18n/utils";
+import { staySearchCopy } from "@/lib/reservation/stay-copy";
+
+interface Props {
+  action: string;
+  submit: string;
+}
+
+const { action, submit } = Astro.props;
+const lang = getLang(Astro.currentLocale);
+const copy = staySearchCopy(useTranslations(lang), submit);
+---
+
+<StaySearch client:load {action} {lang} {copy} />
