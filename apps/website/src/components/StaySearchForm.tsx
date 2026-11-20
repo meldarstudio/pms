@@ -41,35 +41,10 @@ import {
   onlineArrivalCalendar,
   searchParams,
   searchProblems,
-  type ArrivalProblem,
-  type SearchProblem,
   type StaySearch,
 } from "@/lib/reservation/search";
+import type { StaySearchCopy } from "@/lib/reservation/stay-copy";
 import { resumeSearch, storeSearch } from "@/lib/reservation/stay-search-storage";
-
-export type StaySearchCopy = {
-  arrivalPlaceholder: string;
-  departurePlaceholder: string;
-  chooseArrival: string;
-  chooseDeparture: string;
-  stayHint: string;
-  closeCalendar: string;
-  checkIn: string;
-  checkOut: string;
-  guests: string;
-  adults: string;
-  children: string;
-  submit: string;
-  decreaseAdults: string;
-  increaseAdults: string;
-  decreaseChildren: string;
-  increaseChildren: string;
-  adultsOne: string;
-  adultsOther: string;
-  childrenOne: string;
-  childrenOther: string;
-  problems: Record<SearchProblem | ArrivalProblem, string>;
-};
 
 const limits = {
   adults: { min: 1, max: MAX_ADULTS_CHOICE },

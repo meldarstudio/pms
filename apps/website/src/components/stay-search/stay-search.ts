@@ -1,4 +1,4 @@
-import type { StaySearchCopy } from "@/components/StaySearchForm";
+import type { StaySearchCopy } from "@/lib/reservation/stay-copy";
 import type { Lang } from "@/i18n/utils";
 import { fill, formatDate } from "@/lib/reservation/format";
 import {
@@ -62,15 +62,15 @@ export const calendarCopy = {
     locale: "en-US",
     previous: "Previous month",
     next: "Next month",
-    month: "Month",
-    year: "Year",
+    month: "Choose the month",
+    year: "Choose the year",
   },
   es: {
     locale: "es-PE",
     previous: "Mes anterior",
     next: "Mes siguiente",
-    month: "Mes",
-    year: "Año",
+    month: "Elegir el mes",
+    year: "Elegir el año",
   },
 };
 

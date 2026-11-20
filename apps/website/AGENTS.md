@@ -1,7 +1,7 @@
 # Website
 
 Static Astro site for Hotel Manantial in Churín, Peru. Cloudflare serves `dist/`.
-Reservation search is always visible. `PUBLIC_PMS_API_URL` is required;
+The homepage always shows the prerendered Svelte stay search. `PUBLIC_PMS_API_URL` is required;
 `.env.development` supplies the local backend URL, and the release workflow supplies the production URL.
 Choose is the rooms page (`/habitaciones/`): one React island
 (`src/components/rooms/RoomsBooking.tsx`) with the dates-and-guests form and every
@@ -98,10 +98,9 @@ texts of `@pms/shared/complaint-book.json`; when the backend rejects its policy 
 guest reloads and the draft is restored. It submits only with `PUBLIC_TURNSTILE_SITE_KEY`;
 development falls back to Cloudflare's always-passing test key.
 
-`check` runs `astro sync` then `astro-check` directly. The workspace package
-extensions give the checker TypeScript 6 and its compatible WASM runtime;
-Astro's wrapper rejects the workspace's TypeScript 7, which lacks the checker's
-required programmatic API. Keep this compiler isolation when updating tooling.
+Keep `astro-check` and `svelte-check` isolated on TypeScript 6 through the workspace
+package extensions. They need the programmatic API unavailable in the workspace's
+TypeScript 7. Run `astro-check` directly because Astro's wrapper rejects TypeScript 7.
 
 ## Routes and translations
 

@@ -1,5 +1,5 @@
 ---
-import StaySearchForm from "@/components/StaySearchForm";
+import StaySearchForm from "./stay-search/StaySearchForm.svelte";
 import { getLang, useTranslations } from "@/i18n/utils";
 import { staySearchCopy } from "@/lib/reservation/stay-copy";
 
@@ -13,4 +13,4 @@ const lang = getLang(Astro.currentLocale);
 const copy = staySearchCopy(useTranslations(lang), submit);
 ---
 
-<StaySearchForm client:load action={action} lang={lang} copy={copy} />
+<StaySearchForm client:load {action} {lang} {copy} />

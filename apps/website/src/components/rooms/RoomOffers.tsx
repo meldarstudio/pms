@@ -1,6 +1,6 @@
 import { Fragment, useEffect, useRef, useState, type ReactNode } from "react";
 import { CalendarBlankIcon, CaretDownIcon } from "@phosphor-icons/react";
-import type { StaySearchCopy } from "@/components/StaySearchForm";
+import type { StaySearchCopy } from "@/lib/reservation/stay-copy";
 import {
   Accordion,
   AccordionContent,

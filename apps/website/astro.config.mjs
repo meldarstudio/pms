@@ -1,6 +1,7 @@
 import { copyFile } from "node:fs/promises";
 import { defineConfig, envField, fontProviders } from "astro/config";
 import react from "@astrojs/react";
+import svelte from "@astrojs/svelte";
 import tailwindcss from "@tailwindcss/vite";
 import sitemap from "@astrojs/sitemap";
 
@@ -48,6 +49,7 @@ export default defineConfig({
   },
   integrations: [
     react(),
+    svelte(),
     sitemap({
       filter: (page) =>
         !/^\/(en\/)?(reservar\/|libro-de-reclamaciones\/)/.test(new URL(page).pathname),
