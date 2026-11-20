@@ -8,6 +8,7 @@ export type StaySearchCopy = {
   chooseDeparture: string;
   stayHint: string;
   closeCalendar: string;
+  closeGuests: string;
   checkIn: string;
   checkOut: string;
   guests: string;
@@ -36,6 +37,7 @@ export function staySearchCopy(
     chooseDeparture: t("landing.chooseDeparture"),
     stayHint: t("landing.stayHint"),
     closeCalendar: t("landing.closeCalendar"),
+    closeGuests: t("landing.closeGuests"),
     checkIn: t("reservation.search.checkIn"),
     checkOut: t("reservation.search.checkOut"),
     guests: t("landing.guests"),

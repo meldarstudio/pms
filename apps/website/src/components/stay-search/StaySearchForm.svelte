@@ -30,7 +30,6 @@
     dateId,
     dayDisplay,
     departureBounds,
-    desktopCalendar,
     guestFields,
     guestSummary,
     initialSearch,
@@ -45,6 +44,7 @@
     type DatePicker,
     type StaySearchProps,
   } from "./stay-search";
+  import { wideScreen } from "@/lib/screen";
 
   let { action, onSearch, lang, copy }: StaySearchProps = $props();
   const datePopup = createPopoverController<DateField>();
@@ -59,9 +59,10 @@
   onMount(() => {
     search = restoreSearch();
     ready = true;
-    const media = matchMedia(desktopCalendar);
+    const media = matchMedia(wideScreen);
     const resize = () => {
       datePopup.close();
+      guestPopup.close();
       mobile = !media.matches;
     };
     mobile = !media.matches;
@@ -211,7 +212,7 @@
 
     <div class="lp-field lp-guests">
       <label id="stay-guests-label" for="stay-guests">{copy.guests}</label>
-      <Popover controller={guestPopup}>
+      <Popover controller={guestPopup} presentation={mobile ? "sheet" : "popover"}>
         <PopoverTrigger
           id="stay-guests"
           class="lp-trigger"
@@ -223,7 +224,12 @@
           </svg>
         </PopoverTrigger>
         <PopoverContent class="lp-surface lp-guest-popup" side="top" align="end">
-          <PopoverTitle class="lp-label">{copy.guests}</PopoverTitle>
+          <div class="lp-guest-header">
+            <PopoverTitle class="lp-label">{copy.guests}</PopoverTitle>
+            {#if mobile}
+              <PopoverClose class="lp-square" aria-label={copy.closeGuests}>×</PopoverClose>
+            {/if}
+          </div>
           {#each guestFields as guest (guest.name)}
             <div class="lp-stepper">
               <span class="lp-label">{copy[guest.name]}</span>

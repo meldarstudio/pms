@@ -140,6 +140,24 @@
   padding: 1rem;
 }
 
+.lp-guest-popup[data-presentation="sheet"] {
+  width: 100%;
+  padding-inline: 1.25rem;
+}
+
+.lp-guest-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+
+.lp-guest-header .lp-square {
+  border: 0;
+  min-height: 2.75rem;
+  margin-right: -0.75rem;
+}
+
 .lp-stepper {
   display: grid;
   grid-template-columns: 1fr 2.75rem 1.5rem 2.75rem;
@@ -213,7 +231,7 @@
 }
 
 .lp-months table {
-  width: min(16rem, 100%);
+  width: 16rem;
   table-layout: fixed;
   border-collapse: collapse;
 }
@@ -250,9 +268,12 @@
 }
 
 .lp-months [data-slot="calendar-day"][aria-disabled="true"] {
+  cursor: default;
+}
+
+.lp-months [data-slot="calendar-day"][aria-disabled="true"]:not([data-stay-range]) {
   color: var(--color-stone-500);
   opacity: 0.6;
-  cursor: default;
 }
 
 .lp-months [data-today] {

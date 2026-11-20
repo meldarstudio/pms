@@ -83,7 +83,7 @@
       {#each photos as photo, index (photo.src)}
         {@const number = index + 1}
         {@const shown = number === start || loaded.has(number)}
-        <CarouselItem aria-label={position(number)}>
+        <CarouselItem class="basis-full" aria-label={position(number)}>
           {#if fullscreen}
             <div
               class="relative flex h-dvh items-center justify-center pt-[max(4rem,env(safe-area-inset-top))] pr-[max(1rem,env(safe-area-inset-right))] pb-[max(4rem,env(safe-area-inset-bottom))] pl-[max(1rem,env(safe-area-inset-left))] md:px-20"

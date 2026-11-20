@@ -8,7 +8,9 @@
     DialogTrigger,
   } from "@ui-sdk/svelte/dialog";
   import type { Snippet } from "svelte";
+  import { MediaQuery } from "svelte/reactivity";
   import { fill } from "@/lib/reservation/format";
+  import { wideScreen } from "@/lib/screen";
   import type { RoomTypeOffers } from "@/lib/reservation/offers";
   import RoomGallery from "./RoomGallery.svelte";
   import RoomIcon from "./RoomIcon.svelte";
@@ -29,6 +31,7 @@
     children: Snippet;
   } = $props();
 
+  const wide = new MediaQuery(wideScreen, true);
   const nameId = $derived(`room-${room.id}-name`);
   const facts = $derived([
     { id: "area", label: room.area },
@@ -82,7 +85,7 @@
   <div class="flex grow flex-col p-5">
     <h2 id={nameId} class="text-xl font-semibold text-pretty text-stone-900">{room.name}</h2>
     {@render factList([...facts, { id: "wifi", label: text["rooms.card.wifi"] }], true)}
-    <Dialog presentation="auto">
+    <Dialog presentation={wide.current ? "dialog" : "sheet"}>
       <DialogTrigger
         class="mt-3 inline-flex min-h-11 cursor-pointer items-center gap-2 self-start font-source-sans-3 text-xs font-semibold tracking-widest text-stone-900 uppercase underline decoration-accent-500 decoration-2 underline-offset-[6px] hover:text-accent-800"
       >

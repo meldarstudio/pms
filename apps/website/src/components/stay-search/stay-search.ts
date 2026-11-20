@@ -51,7 +51,6 @@ export const initialSearch: StaySearch = {
   plan: null,
 };
 
-export const desktopCalendar = "(min-width: 48rem)";
 export const calendarFocus = '[data-slot="calendar-day"][tabindex="0"]';
 export const dayDisplay = (value: string, lang: Lang) =>
   formatDate(value, lang, { includeWeekday: false });

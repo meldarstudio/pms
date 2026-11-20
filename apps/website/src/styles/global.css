@@ -1,3 +1,4 @@
+@layer ui-sdk;
 @import "tailwindcss";
 
 @theme inline {
@@ -74,6 +75,12 @@ body[data-menu-expanded] #mobile-menu {
   :where(a, button, select, input, textarea, summary):focus-visible {
     outline: 2px solid var(--color-accent-700);
     outline-offset: 2px;
+  }
+
+  [data-slot="dialog-content"][data-presentation="dialog"] {
+    inset: 0;
+    height: fit-content;
+    margin: auto;
   }
 }
 
