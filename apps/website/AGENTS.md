@@ -15,7 +15,7 @@ Continue is off screen. The address names the stay, the opened room and its rate
 opening a room pushes history, choosing a plan or searching replaces it, and Back, Forward
 and reload show the step it names. A completed search scrolls to its notice or far enough
 to show the first available room's full price, without moving focus. The last
-search is kept in `sessionStorage` (`src/lib/reservation/draft.ts`) so the homepage
+search is kept in `sessionStorage` (`src/lib/reservation/stay-search-storage.ts`) so the homepage
 and Choose prefill it; dates before the first online arrival are dropped. Review (`/reservar/revisar/`) opens a private checkout, shows
 its server Quote, and records the booking contact's acceptance, including an
 optional note that the paid reservation keeps. Pay refreshes an
@@ -80,8 +80,8 @@ Run commands from the repository root with `pnpm --filter @pms/website`.
   `src/components/reservation/review/` render the state and forward events.
 - Run `verify:build` for pages, assets, configuration, or translations. It checks
   locale parity, canonical URLs, redirects, sitemap entries, and the share image.
-- Run `test:smoke` for routes, navigation, mobile menus, stay search, Review,
-  payment, or the complaint form. It builds with `PUBLIC_PMS_API_URL` pointing
+- Run `test:smoke` for stay search, Review, payment, or the complaint form.
+  Manually check mobile menu changes. Smoke builds with `PUBLIC_PMS_API_URL` pointing
   at a local API that `scripts/local-api.mjs` starts with the backend's `cf dev`
   and a seeded D1 in `.local-api/`; it never calls production.
 - Run `exec node scripts/check-links.mjs` against a fresh build for link changes.
@@ -123,7 +123,10 @@ the English 404 page to `dist/en/404.html` for Cloudflare.
 - `src/lib/constants.ts`: contact details, map values, WhatsApp URL builder.
 - `src/constants.ts`: brand name, socials, default metadata.
 - `src/lib/rooms.ts`: room data; `src/lib/structured-data.ts`: JSON-LD.
-- Import images from `src/assets` and use `astro:assets` Image with `layout`.
+- Import images from `src/assets` and use `astro:assets` `Image` or `Picture` with `layout`.
+- Reserve the top level of `/_astro/` for fingerprinted build output. If an image
+  encoder upgrade needs to replace a cached image, change its source or transform
+  so the generated URL changes.
 - Tailwind v4 uses `@tailwindcss/vite` and `src/styles/global.css`.
 - Fonts are configured in `astro.config.mjs`, with Tailwind variables mapped
   by `@theme inline` in the global stylesheet.

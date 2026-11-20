@@ -8,21 +8,28 @@ import { getLang, useTranslations } from "@/i18n/utils";
 const lang = getLang(Astro.currentLocale);
 const t = useTranslations(lang);
 const benefits = ["hero.parking", "hero.bathroom", "hero.reception"] as const;
-const portrait = await getImage({
-  src: portraitImage,
-  format: "webp",
-  widths: [640, 750, 828, portraitImage.width],
-});
+const portraits = await Promise.all(
+  (["avif", "webp"] as const).map(async (format) => ({
+    format,
+    image: await getImage({
+      src: portraitImage,
+      format,
+      widths: [640, 750, 828, portraitImage.width],
+    }),
+  })),
+);
 ---
 
 <section class="relative border-b border-stone-200">
   <picture class="absolute inset-0">
-    <source
-      media="(max-width: 767px) and (orientation: portrait)"
-      srcset={portrait.srcSet.attribute}
-      sizes="max(100vw, 56.25vh)"
-      type="image/webp"
-    />
+    {portraits.map(({ format, image }) => (
+      <source
+        media="(max-width: 767px) and (orientation: portrait)"
+        srcset={image.srcSet.attribute}
+        sizes="max(100vw, 56.25vh)"
+        type={`image/${format}`}
+      />
+    ))}
     <Image
       class="absolute inset-0 h-full w-full object-cover object-center"
       src={backgroundImage}

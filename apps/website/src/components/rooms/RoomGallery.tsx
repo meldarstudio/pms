@@ -38,8 +38,8 @@ type GalleryText = Pick<
 const overlayButton =
   "size-11 rounded-none border-0 bg-black/50 text-white hover:bg-black/70 hover:text-white focus-visible:outline-2 focus-visible:outline-white disabled:opacity-0 pointer-fine:opacity-0 pointer-fine:pointer-events-none pointer-fine:group-hover:opacity-100 pointer-fine:group-hover:pointer-events-auto pointer-fine:focus-visible:opacity-100 pointer-fine:focus-visible:pointer-events-auto [&_svg:not([class*='size-'])]:size-5";
 
-function useSelectedSlide(api: CarouselApi) {
-  const [selected, setSelected] = useState(0);
+function useSelectedSlide(api: CarouselApi, start = 0) {
+  const [selected, setSelected] = useState(start);
   useEffect(() => {
     if (!api) return;
     const onSelect = () => setSelected(api.selectedScrollSnap());
@@ -50,6 +50,39 @@ function useSelectedSlide(api: CarouselApi) {
     };
   }, [api]);
   return selected;
+}
+
+function useSlidesToRender(api: CarouselApi, start = 0) {
+  const [slides, setSlides] = useState(() => new Set([start]));
+  useEffect(() => {
+    if (!api) return;
+    const render = (index: number) =>
+      setSlides((previous) => (previous.has(index) ? previous : new Set([...previous, index])));
+    const renderSelected = () => render(api.selectedScrollSnap());
+    const visibilityThreshold = 0.1;
+    const slideIndexes = new Map<Element, number>(
+      api.slideNodes().map((node, index) => [node, index]),
+    );
+    const observer = new IntersectionObserver(
+      (entries) => {
+        for (const entry of entries) {
+          const index = slideIndexes.get(entry.target);
+          if (index === undefined || entry.intersectionRatio < visibilityThreshold) continue;
+          render(index);
+          observer.unobserve(entry.target);
+        }
+      },
+      { root: api.rootNode(), threshold: visibilityThreshold },
+    );
+    for (const node of slideIndexes.keys()) observer.observe(node);
+    renderSelected();
+    api.on("select", renderSelected);
+    return () => {
+      observer.disconnect();
+      api.off("select", renderSelected);
+    };
+  }, [api]);
+  return slides;
 }
 
 function GalleryDots({
@@ -110,6 +143,7 @@ export function RoomGallery({
   text: GalleryText;
 }) {
   const [api, setApi] = useState<CarouselApi>();
+  const slidesToRender = useSlidesToRender(api);
   const [lightbox, setLightbox] = useState<number | null>(null);
   const viewed = useRef(0);
   const photoButtons = useRef<(HTMLButtonElement | null)[]>([]);
@@ -138,17 +172,19 @@ export function RoomGallery({
                   setLightbox(index);
                 }}
               >
-                <img
-                  className="h-full w-full object-cover object-center"
-                  src={photo.src}
-                  srcSet={photo.srcSet}
-                  sizes={photo.sizes}
-                  width={photo.width}
-                  height={photo.height}
-                  alt={photo.alt}
-                  loading={index === 0 ? undefined : "lazy"}
-                  decoding="async"
-                />
+                {slidesToRender.has(index) && (
+                  <img
+                    className="h-full w-full object-cover object-center"
+                    src={photo.src}
+                    srcSet={photo.srcSet}
+                    sizes={photo.sizes}
+                    width={photo.width}
+                    height={photo.height}
+                    alt={photo.alt}
+                    loading="lazy"
+                    decoding="async"
+                  />
+                )}
               </button>
             </CarouselItem>
           ))}
@@ -208,7 +244,8 @@ function Lightbox({
   onView: (index: number) => void;
 }) {
   const [api, setApi] = useState<CarouselApi>();
-  const selected = useSelectedSlide(api);
+  const selected = useSelectedSlide(api, start);
+  const slidesToRender = useSlidesToRender(api, start);
   const close = useRef<HTMLButtonElement>(null);
   const photo = photos[selected] ?? photos[0]!;
   const position = `${selected + 1} ${text["rooms.gallery.of"]} ${photos.length}`;
@@ -239,14 +276,16 @@ function Lightbox({
             aria-label={`${index + 1} ${text["rooms.gallery.of"]} ${photos.length}`}
             onClick={closeOnBackdrop}
           >
-            <img
-              className="h-auto max-h-full w-auto max-w-full object-contain"
-              src={item.full}
-              width={item.width}
-              height={item.height}
-              alt={item.alt}
-              decoding="async"
-            />
+            {slidesToRender.has(index) && (
+              <img
+                className="h-auto max-h-full w-auto max-w-full object-contain"
+                src={item.full}
+                width={item.width}
+                height={item.height}
+                alt={item.alt}
+                decoding="async"
+              />
+            )}
           </CarouselItem>
         ))}
       </CarouselContent>

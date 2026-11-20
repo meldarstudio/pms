@@ -28,7 +28,6 @@ import {
   PopoverTrigger,
 } from "@/components/ui/popover";
 import type { Lang } from "@/i18n/utils";
-import { resumeSearch, storeSearch } from "@/lib/reservation/draft";
 import { formatDate, fill } from "@/lib/reservation/format";
 import {
   addDays,
@@ -46,6 +45,7 @@ import {
   type SearchProblem,
   type StaySearch,
 } from "@/lib/reservation/search";
+import { resumeSearch, storeSearch } from "@/lib/reservation/stay-search-storage";
 
 export type StaySearchCopy = {
   arrivalPlaceholder: string;

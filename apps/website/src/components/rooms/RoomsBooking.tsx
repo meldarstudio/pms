@@ -1,7 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import StaySearchForm, { type StaySearchCopy } from "@/components/StaySearchForm";
 import type { Lang } from "@/i18n/utils";
-import { resumeSearch, storeSearch } from "@/lib/reservation/draft";
 import { fill, formatList } from "@/lib/reservation/format";
 import {
   fetchOffers,
@@ -15,6 +14,7 @@ import {
   type RatePlanCode,
   type StaySearch,
 } from "@/lib/reservation/search";
+import { resumeSearch, storeSearch } from "@/lib/reservation/stay-search-storage";
 import type { RoomId } from "@/lib/rooms";
 import type { StayDetails } from "./RoomCard";
 import type { RoomPhotoView } from "./RoomGallery";

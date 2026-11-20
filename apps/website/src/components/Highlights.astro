@@ -2,7 +2,7 @@
 import churinImage from "@/assets/churin-plaza-armas.webp";
 import kingImage from "@/assets/king-front-view.webp";
 import garagePhoto from "@/assets/cochera-manantial.webp";
-import { Image } from "astro:assets";
+import { getImage, Image, Picture } from "astro:assets";
 import { getRelativeLocaleUrl } from "astro:i18n";
 import { getLang, useTranslations } from "@/i18n/utils";
 
@@ -10,6 +10,8 @@ const lang = getLang(Astro.currentLocale);
 const t = useTranslations(lang);
 const roomsHref = getRelativeLocaleUrl(lang, "habitaciones");
 const churinHref = getRelativeLocaleUrl(lang, "churin");
+const garageSizes = "(min-width: 80rem) 384px, (min-width: 48rem) 33vw, 100vw";
+const garageAvif = await getImage({ src: garagePhoto, format: "avif", layout: "constrained" });
 const outlineCta =
   "font-source-sans-3 mt-4 inline-flex min-h-11 w-full items-center justify-center border border-stone-900 px-5 text-center text-sm font-medium tracking-widest text-stone-900 uppercase hover:border-accent-500 hover:bg-accent-500 hover:text-accent-950 md:w-fit";
 ---
@@ -18,13 +20,16 @@ const outlineCta =
   <div class="mx-auto grid max-w-7xl grid-cols-1 gap-8 px-4 py-8 md:grid-cols-12 md:gap-x-8 md:gap-y-10 md:px-8 md:py-16 lg:gap-x-10 lg:py-24">
     <article class="md:col-span-12 md:grid md:grid-cols-12 md:gap-x-8 lg:gap-x-10">
       <div class="relative aspect-4/3 overflow-hidden md:col-span-8 md:aspect-2/1">
-        <Image
+        <Picture
           class="absolute inset-0 h-full w-full object-cover object-center"
           src={kingImage}
+          formats={["avif"]}
+          fallbackFormat="webp"
           widths={[480, 640, 800, 960, 1280, 1600]}
           sizes="(min-width: 80rem) 800px, (min-width: 48rem) 66vw, calc((100vw - 2rem) * 1.34)"
           layout="constrained"
           loading="lazy"
+          fetchpriority="low"
           alt={t("rooms.imageAlt")}
         />
       </div>
@@ -39,15 +44,19 @@ const outlineCta =
 
     <article class="min-w-0 md:col-span-4">
       <div class="relative aspect-5/4 overflow-hidden md:aspect-auto md:h-72">
-        <Image
-          class="absolute inset-0 h-full w-full object-cover object-center"
-          src={garagePhoto}
-          sizes="(min-width: 80rem) 384px, (min-width: 48rem) 33vw, 100vw"
-          quality={70}
-          layout="constrained"
-          loading="lazy"
-          alt={t("parking.imageAlt")}
-        />
+        <picture>
+          <source type="image/avif" srcset={garageAvif.srcSet.attribute} sizes={garageSizes} />
+          <Image
+            class="absolute inset-0 h-full w-full object-cover object-center"
+            src={garagePhoto}
+            sizes={garageSizes}
+            quality={70}
+            layout="constrained"
+            loading="lazy"
+            fetchpriority="low"
+            alt={t("parking.imageAlt")}
+          />
+        </picture>
       </div>
       <h2 class="mt-4 text-lg font-semibold text-pretty text-stone-900">{t("parking.title")}</h2>
       <p class="mt-2 leading-relaxed text-pretty text-stone-600">{t("parking.body")}</p>
@@ -55,13 +64,16 @@ const outlineCta =
 
     <article class="min-w-0 md:col-span-8">
       <div class="relative aspect-4/3 overflow-hidden md:aspect-auto md:h-72">
-        <Image
+        <Picture
           class="absolute inset-0 h-full w-full object-cover object-center"
           src={churinImage}
+          formats={["avif"]}
+          fallbackFormat="webp"
           widths={[640, 800, 960, 1280, 1600, 1920]}
           sizes="(min-width: 80rem) 800px, (min-width: 48rem) 66vw, calc((100vw - 2rem) * 1.78)"
           layout="constrained"
           loading="lazy"
+          fetchpriority="low"
           alt={t("churin.imageAlt")}
         />
       </div>

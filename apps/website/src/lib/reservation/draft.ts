@@ -1,11 +1,10 @@
 import type { ContactDraft } from "./checkout";
 import { phoneKey, storedPhone } from "./phone";
-import { firstOnlineArrival, readSearch, searchParams, type StaySearch } from "./search";
+import { readSession, writeSession } from "./session-storage";
 
 const CHECKOUTS_KEY = "hm.reservation.checkouts";
 const CONTACT_KEY = "hm.reservation.contact";
 const CARD_SOURCES_KEY = "hm.reservation.card-sources";
-const SEARCH_KEY = "hm.reservation.search";
 const MAX_STORED_CHECKOUTS = 10;
 
 export type StoredCheckout = {
@@ -23,24 +22,7 @@ export const contactKey = (contact: ContactDraft) =>
     contact.notes.trim(),
   ]);
 
-function read<T>(key: string): T | null {
-  try {
-    const value = sessionStorage.getItem(key);
-    return value ? (JSON.parse(value) as T) : null;
-  } catch {
-    return null;
-  }
-}
-
-function write(key: string, value: unknown) {
-  try {
-    sessionStorage.setItem(key, JSON.stringify(value));
-  } catch {
-    return;
-  }
-}
-
-const storedCheckouts = () => read<Record<string, StoredCheckout>>(CHECKOUTS_KEY) ?? {};
+const storedCheckouts = () => readSession<Record<string, StoredCheckout>>(CHECKOUTS_KEY) ?? {};
 
 export function storedCheckout(selection: string) {
   const stored = storedCheckouts()[selection];
@@ -51,11 +33,11 @@ export function storeCheckout(selection: string, checkout: StoredCheckout) {
   const others = storedCheckouts();
   delete others[selection];
   const kept = Object.entries(others).slice(1 - MAX_STORED_CHECKOUTS);
-  write(CHECKOUTS_KEY, Object.fromEntries([...kept, [selection, checkout]]));
+  writeSession(CHECKOUTS_KEY, Object.fromEntries([...kept, [selection, checkout]]));
 }
 
 export function storedContact(): ContactDraft {
-  const stored = read<Partial<ContactDraft>>(CONTACT_KEY);
+  const stored = readSession<Partial<ContactDraft>>(CONTACT_KEY);
   return {
     fullName: typeof stored?.fullName === "string" ? stored.fullName : "",
     email: typeof stored?.email === "string" ? stored.email : "",
@@ -64,7 +46,7 @@ export function storedContact(): ContactDraft {
   };
 }
 
-export const storeContact = (contact: ContactDraft) => write(CONTACT_KEY, contact);
+export const storeContact = (contact: ContactDraft) => writeSession(CONTACT_KEY, contact);
 
 export function clearContact() {
   try {
@@ -87,37 +69,18 @@ export function isStoredCard(value: unknown): value is StoredCard {
 }
 
 export function storedCard(selection: string) {
-  const card = read<Record<string, unknown>>(CARD_SOURCES_KEY)?.[selection];
+  const card = readSession<Record<string, unknown>>(CARD_SOURCES_KEY)?.[selection];
   return isStoredCard(card) ? card : null;
 }
 
 export function storeCard(selection: string, card: StoredCard) {
   if (!isStoredCard(card)) return;
-  const sources = read<Record<string, StoredCard>>(CARD_SOURCES_KEY) ?? {};
-  write(CARD_SOURCES_KEY, { ...sources, [selection]: card });
+  const sources = readSession<Record<string, StoredCard>>(CARD_SOURCES_KEY) ?? {};
+  writeSession(CARD_SOURCES_KEY, { ...sources, [selection]: card });
 }
 
 export function clearCardSource(selection: string) {
-  const sources = read<Record<string, string>>(CARD_SOURCES_KEY) ?? {};
+  const sources = readSession<Record<string, string>>(CARD_SOURCES_KEY) ?? {};
   delete sources[selection];
-  write(CARD_SOURCES_KEY, sources);
-}
-
-export function storeSearch(search: StaySearch) {
-  write(SEARCH_KEY, searchParams({ ...search, room: null, plan: null }).toString());
-}
-
-export function resumeSearch(params: URLSearchParams, roomIds: readonly string[]): StaySearch {
-  const requested = readSearch(params, roomIds);
-  const stored = read<unknown>(SEARCH_KEY);
-  if ((requested.checkIn && requested.checkOut) || typeof stored !== "string") return requested;
-  const kept = readSearch(new URLSearchParams(stored), []);
-  const datesStillBookable = Boolean(kept.checkIn) && kept.checkIn >= firstOnlineArrival();
-  return {
-    ...kept,
-    checkIn: datesStillBookable ? kept.checkIn : "",
-    checkOut: datesStillBookable ? kept.checkOut : "",
-    room: requested.room,
-    plan: null,
-  };
+  writeSession(CARD_SOURCES_KEY, sources);
 }
