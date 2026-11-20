@@ -19,7 +19,6 @@ import {
 } from "@/components/room-closure-dialog";
 import { RoomEditDialog, type RoomEditTarget } from "@/components/room-edit-dialog";
 import { RoomBookingDialog, type BookingTarget } from "@/components/room-booking-dialog";
-import { ReservationSummary } from "@/components/reservation-summary";
 import { groupRoomLabel } from "@/components/room-assignment-flow";
 import { RoomAssignmentPanel } from "@/components/room-assignment-panel";
 import { RoomAssignmentDrawer } from "@/components/room-assignment-drawer";
@@ -407,7 +406,6 @@ export function RoomCalendar({
   const [closureTarget, setClosureTarget] = useState<ClosureTarget | null>(null);
   const [roomTarget, setRoomTarget] = useState<RoomEditTarget | null>(null);
   const [bookingTarget, setBookingTarget] = useState<BookingTarget | null>(null);
-  const [summaryId, setSummaryId] = useState<string | null>(null);
   const [unassignedOpen, setUnassignedOpen] = useState(false);
   const assignmentTriggerRef = useRef<HTMLButtonElement>(null);
   const gridScroller = useRef<HTMLDivElement>(null);
@@ -611,14 +609,6 @@ export function RoomCalendar({
         onClose={() => setBookingTarget(null)}
         onCreated={(id) => {
           setBookingTarget(null);
-          openReservation(id);
-        }}
-      />
-      <ReservationSummary
-        reservationId={summaryId}
-        onClose={() => setSummaryId(null)}
-        onEdit={(id) => {
-          setSummaryId(null);
           openReservation(id);
         }}
       />
@@ -946,7 +936,7 @@ export function RoomCalendar({
                           })
                       : undefined
                   }
-                  onOpenStay={assignment.target ? undefined : setSummaryId}
+                  onOpenStay={assignment.target ? undefined : openReservation}
                   onOpenClosure={openClosure}
                   assignmentActive={assignment.target !== null}
                   assignmentReason={

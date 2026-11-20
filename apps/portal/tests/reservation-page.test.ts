@@ -381,6 +381,29 @@ it("confirms the page check-out balance, sends nothing on Volver, and offers und
   assert.equal(saved.balanceCents, 20000);
 });
 
+it("reports a rejected check-out undo and keeps the reservation checked out", async () => {
+  saved = { ...saved, status: "checked_in", paidCents: 30000, balanceCents: 0 };
+  mockApi({
+    write: () =>
+      writes.length === 2
+        ? Response.json({ error: "room is already assigned for those dates" }, { status: 409 })
+        : undefined,
+  });
+  await render("", true, true);
+  await click("Hacer check-out");
+  await page.until(() => window.document.body.textContent.includes("Check-out registrado"));
+  await page.until(() => !button("Deshacer").disabled);
+  await click("Deshacer");
+  await page.until(
+    () =>
+      window.document.body.textContent.includes("Esta habitación está ocupada para esas fechas"),
+    "A rejected undo must say why",
+  );
+  assert.deepEqual(writes[1].actions, [{ type: "set-status", status: "checked_in" }]);
+  assert.equal(saved.status, "checked_out");
+  assert.equal(writes.length, 2);
+});
+
 it("invalidates check-in undo after cancellation, even when the status later returns to checked-in", async () => {
   mockApi();
   await render("", true, true);

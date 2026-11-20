@@ -242,6 +242,27 @@ it("draws a checkout on the first morning at the edge of the hold", async () => 
   );
 });
 
+it.each(["desktop", "phone"] as const)(
+  "opens a stay's reservation page from its %s calendar bar without a summary panel",
+  async (viewport) => {
+    if (viewport === "phone") page.mobile();
+    const opened: string[] = [];
+    await render(
+      React.createElement(calendars.RoomCalendar, {
+        start: new Date(2026, 9, 20),
+        span: 7,
+        onStartChange: () => {},
+        onSpanChange: () => {},
+        onOpenReservation: (id: string) => opened.push(id),
+      }),
+    );
+    await until(() => !!adaBar(), "The calendar must load");
+    await React.act(async () => (adaBar() as HTMLElement).click());
+    assert.deepEqual(opened, ["res-ada"]);
+    assert.equal(window.document.querySelector('[role="dialog"]'), null);
+  },
+);
+
 function adaBar() {
   return container.querySelector('[aria-label="Ver reserva de Ada Lovelace · Confirmada"]');
 }

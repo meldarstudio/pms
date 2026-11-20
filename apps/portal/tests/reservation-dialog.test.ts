@@ -18,7 +18,6 @@ let React: BrowserTest["React"];
 let query: BrowserTest["query"];
 let forms: typeof import("../src/components/reservation-entry-forms.tsx");
 let dialogs: typeof import("../src/components/room-booking-dialog.tsx");
-let summaries: typeof import("../src/components/reservation-summary.tsx");
 let stayEditors: typeof import("../src/components/stay-editor.tsx");
 let newBookings: typeof import("../src/components/new-booking.tsx");
 let commands: typeof import("../src/lib/reservation-commands.ts");
@@ -44,9 +43,6 @@ beforeAll(async () => {
   dialogs = (await server.ssrLoadModule(
     "/src/components/room-booking-dialog.tsx",
   )) as typeof dialogs;
-  summaries = (await server.ssrLoadModule(
-    "/src/components/reservation-summary.tsx",
-  )) as typeof summaries;
   stayEditors = (await server.ssrLoadModule(
     "/src/components/stay-editor.tsx",
   )) as typeof stayEditors;
@@ -169,22 +165,6 @@ async function submit() {
 }
 
 const button = (label: string) => page.button(label);
-
-function summaryDialog({
-  onClose = () => {},
-  onEdit = () => {},
-}: { onClose?: () => void; onEdit?: (id: string) => void } = {}) {
-  return React.createElement(summaries.ReservationSummary, {
-    reservationId: "reservation-1",
-    onClose,
-    onEdit,
-  });
-}
-
-const summary = () =>
-  window.document.querySelector(
-    '[role="dialog"]:is([data-slot="sheet-content"], [data-slot="drawer-popup"])',
-  );
 
 const stayEditor = (reservation: ReservationDetail) =>
   React.createElement(stayEditors.StayEditor, {
@@ -1139,131 +1119,6 @@ it("keeps an extension price visible and identifies the conflicting room without
   assert.equal(window.document.body.textContent.includes("ocupada para esas fechas"), false);
   assert.equal(subtotal.nextElementSibling?.textContent.replace(/\s/g, ""), "S/450");
   assert.equal(previews.length, 2);
-});
-
-function footerActions() {
-  const edit = summaryButton("Editar reserva");
-  return [...edit.parentElement!.querySelectorAll("button")].map((item) => item.textContent.trim());
-}
-
-async function openSummaryWithToasts(handlers: Parameters<typeof summaryDialog>[0] = {}) {
-  await render(await browser.withToasts(summaryDialog(handlers)));
-  await until(() => !!summary()?.textContent.includes("#TEST0001"), "The summary must load");
-}
-
-function summaryButton(label: string) {
-  const found = [...(summary()?.querySelectorAll<HTMLButtonElement>("button") ?? [])].find(
-    (item) => (item.getAttribute("aria-label") ?? item.textContent.trim()) === label,
-  );
-  assert.ok(found, `Missing summary button ${label}`);
-  return found;
-}
-
-function alertButton(label: string) {
-  const found = [
-    ...window.document.querySelectorAll<HTMLButtonElement>('[role="alertdialog"] button'),
-  ].find((item) => item.textContent.trim() === label);
-  assert.ok(found, `Missing confirmation button ${label}`);
-  return found;
-}
-
-const bodyText = () => window.document.body.textContent;
-
-it.each([
-  {
-    from: "confirmed",
-    action: "Hacer check-in",
-    done: "Check-in registrado",
-    undoResponse: null,
-    outcome: "Check-in deshecho",
-  },
-  {
-    from: "checked_in",
-    action: "Hacer check-out",
-    done: "Check-out registrado",
-    undoResponse: "room is already assigned for those dates",
-    outcome: "Esta habitación está ocupada para esas fechas",
-  },
-] as const)(
-  "undoes a $action from its success toast by restoring the previous status",
-  async ({ from, action, done, undoResponse, outcome }) => {
-    let saved: ReservationDetail = { ...detail(), status: from, paidCents: 30000, balanceCents: 0 };
-    const writes: WorkflowCommand[] = [];
-    mockApi(
-      async (path, command) => {
-        if (path.endsWith("/preview")) return previewResponse(saved);
-        writes.push(command);
-        if (writes.length === 2 && undoResponse)
-          return Response.json({ error: undoResponse }, { status: 409 });
-        for (const item of command.actions)
-          if (item.type === "set-status") saved = { ...saved, status: item.status };
-        return Response.json(saved);
-      },
-      { reservation: () => saved },
-    );
-    await openSummaryWithToasts();
-    await React.act(async () => button(action).click());
-    await until(() => bodyText().includes(done), "The success toast must appear");
-    assert.notEqual(saved.status, from);
-    await until(() => !button("Deshacer").disabled);
-    await React.act(async () => button("Deshacer").click());
-    await until(() => bodyText().includes(outcome), "Undoing must report its outcome");
-    assert.deepEqual(writes[1].actions, [{ type: "set-status", status: from }]);
-    assert.equal(writes.length, 2);
-  },
-);
-
-it("confirms an outstanding balance before checking out from the summary", async () => {
-  let saved: ReservationDetail = { ...detail(), status: "checked_in" };
-  const writes: WorkflowCommand[] = [];
-  mockApi(
-    async (path, command) => {
-      assert.ok(path.endsWith("/commands"));
-      writes.push(command);
-      for (const action of command.actions)
-        if (action.type === "set-status") saved = { ...saved, status: action.status };
-      return Response.json(saved);
-    },
-    { reservation: () => saved },
-  );
-  await openSummaryWithToasts();
-  await React.act(async () => button("Hacer check-out").click());
-  assert.match(
-    window.document.querySelector('[role="alertdialog"]')!.textContent,
-    /Quedan S\/\s*300 por pagar\. ¿Hacer check-out de todos modos\?/,
-  );
-  await React.act(async () => alertButton("Volver").click());
-  assert.equal(writes.length, 0);
-  await React.act(async () => button("Hacer check-out").click());
-  await React.act(async () => alertButton("Hacer check-out").click());
-  await until(() => bodyText().includes("Check-out registrado"));
-  assert.deepEqual(writes[0].actions, [{ type: "set-status", status: "checked_out" }]);
-  assert.deepEqual(footerActions(), ["Editar reserva"]);
-});
-
-it("pins the phone summary's balance above its actions and expands the bill on request", async () => {
-  page.mobile();
-  mockApi(async () => assert.fail("Reading the summary must not write"));
-  await openSummaryWithToasts();
-  const footer = summary()!.querySelector('[data-slot="drawer-footer"]')!;
-  const toggle = footer.querySelector<HTMLButtonElement>("h2 > button[aria-expanded]")!;
-  assert.ok(toggle, "The phone summary must pin a balance toggle in its footer");
-  assert.match(
-    toggle.getAttribute("aria-label") ?? toggle.textContent,
-    /Saldo pendiente\s*S\/\s*300/,
-    "The toggle's accessible name must announce the balance",
-  );
-  assert.equal(toggle.getAttribute("aria-expanded"), "false");
-  assert.deepEqual(footerActions(), ["Editar reserva", "Hacer check-in"]);
-  await React.act(async () => toggle.click());
-  assert.equal(toggle.getAttribute("aria-expanded"), "true");
-  const bill = Object.fromEntries(
-    [...footer.querySelectorAll("dt")].map((term) => [
-      term.textContent,
-      term.nextElementSibling?.textContent.replace(/\s/g, ""),
-    ]),
-  );
-  assert.deepEqual(bill, { Total: "S/300", Pagado: "S/0" });
 });
 
 it("retries a failed stay preview without losing its draft", async () => {

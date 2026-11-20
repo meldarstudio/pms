@@ -39,7 +39,6 @@ const surfaces = {
     Close: DrawerClose,
   },
 };
-export type PanelSurface = (typeof surfaces)[keyof typeof surfaces];
 
 export function useResponsivePanel<T>(subject: T | null, { tabletDrawer = false } = {}) {
   const narrow = useIsMobile();
