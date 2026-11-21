@@ -124,6 +124,31 @@ it.each([
   },
 );
 
+it.each([
+  [
+    "a minor without a representative",
+    { minor: true },
+    "minor representative is required",
+    "representative",
+  ],
+  ["an email reply without an address", { email: "" }, "response email is required", "email"],
+] as const)("names the problem with %s", async (_name, change, error, field) => {
+  const response = await app.request(
+    "http://localhost/public/complaints",
+    {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        authorization: `Bearer ${crypto.randomUUID() + crypto.randomUUID()}`,
+      },
+      body: JSON.stringify({ ...complaintSubmission, ...change }),
+    },
+    db.env,
+  );
+  expect(response.status).toBe(400);
+  expect(response.headers.get("X-Error-Field")).toBe(field);
+  expect(await response.json()).toEqual({ error });
+});
 it("survives concurrent filing with unique consecutive references and one replayed sheet", async () => {
   vi.useFakeTimers({ toFake: ["Date"] });
   vi.setSystemTime(new Date("2026-11-14T15:00:00Z"));

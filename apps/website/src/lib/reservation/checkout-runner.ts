@@ -33,6 +33,8 @@ import { readCheckoutAccess, summaryLink } from "@/lib/reservation/summary";
 export const PAYMENT_POLL_MS = 5_000;
 export const SECURITY_CHECK_WAIT_MS = 10_000;
 
+const untilDispatchReturns = Effect.yieldNow;
+
 export type CardPayments = { culqiPublicKey: string; turnstileSiteKey: string; title: string };
 
 export type CheckoutRunnerOptions = {
@@ -152,7 +154,7 @@ export function createCheckoutRunner(options: CheckoutRunnerOptions): CheckoutRu
       case "readSecurityToken": {
         const rendering = securityCheck;
         return Effect.gen(function* () {
-          yield* Effect.yieldNow;
+          yield* untilDispatchReturns;
           const check = rendering ? yield* Deferred.await(rendering) : null;
           const token = check ? yield* check.token(SECURITY_CHECK_WAIT_MS) : "";
           dispatch({ type: "securityTokenRead", token });
