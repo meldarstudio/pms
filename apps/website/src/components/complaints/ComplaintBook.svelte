@@ -9,6 +9,8 @@
     AccordionTrigger,
   } from "@ui-sdk/svelte/accordion";
   import { Button } from "@ui-sdk/svelte/button";
+  import { Checkbox, CheckboxIndicator } from "@ui-sdk/svelte/checkbox";
+  import { Check } from "phosphor-svelte";
   import { onMount } from "svelte";
   import { useTranslations } from "@/i18n/utils";
   import {
@@ -302,11 +304,13 @@
           {@render textField("address", true)}
           {@render textField("phone", true)}
           <div class="flex min-h-11 items-center gap-2 sm:col-span-2">
-            <input
+            <Checkbox
               id="complaint-minor"
-              type="checkbox"
-              bind:checked={() => draft.input.minor, (checked) => update("minor", checked)}
-            />
+              checked={draft.input.minor}
+              onCheckedChange={(checked) => update("minor", checked === true)}
+            >
+              <CheckboxIndicator><Check weight="bold" aria-hidden="true" /></CheckboxIndicator>
+            </Checkbox>
             <label for="complaint-minor">{labels.minor}</label>
           </div>
           {#if draft.input.minor}{@render textField("representative", true)}{/if}

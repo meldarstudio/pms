@@ -37,7 +37,6 @@
       lang: language,
       action: "complaint",
       size: compact ? "compact" : "flexible",
-      theme: "light",
       onPassed: (token) => {
         if (!active) return;
         notify(token);

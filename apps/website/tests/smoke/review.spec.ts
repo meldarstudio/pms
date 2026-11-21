@@ -12,7 +12,7 @@ test.beforeEach(async ({ page }) => {
 async function acceptTerms(page: Page) {
   await fillContact(page);
   const agree = page.getByRole("checkbox", { name: /Acepto las condiciones/ });
-  await agree.press("Enter");
+  await agree.press("Space");
   await expect(agree).toBeChecked();
   await closeCardFormWithoutPaying(page, payButton(page));
 }

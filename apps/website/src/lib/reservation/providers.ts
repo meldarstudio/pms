@@ -22,7 +22,7 @@ type TurnstileOptions = {
   "expired-callback": () => void;
   "error-callback": () => void;
   size?: "compact" | "flexible";
-  theme?: "light";
+  theme: "light";
 };
 
 type Turnstile = {
@@ -352,7 +352,6 @@ export async function renderSecurityCheck(
     lang: Lang;
     action?: string;
     size?: "compact" | "flexible";
-    theme?: "light";
     onPassed: (token: string) => void;
     onExpired?: () => void;
     onError: () => void;
@@ -372,7 +371,8 @@ export async function renderSecurityCheck(
     action: options.action ?? "payment",
     language: options.lang,
     size: options.size,
-    theme: options.theme,
+    // The site has no dark mode; Turnstile's default "auto" follows the OS and turns dark.
+    theme: "light",
     callback: (token) => {
       answer(token);
       options.onPassed(token);

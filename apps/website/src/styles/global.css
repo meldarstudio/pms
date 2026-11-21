@@ -77,6 +77,39 @@ body[data-menu-expanded] #mobile-menu {
     outline-offset: 2px;
   }
 
+  [data-slot="checkbox"] {
+    display: inline-grid;
+    place-items: center;
+    padding: 0;
+    border: 1px solid var(--color-stone-500);
+    background: white;
+    color: white;
+    cursor: pointer;
+
+    &:hover {
+      border-color: var(--color-stone-700);
+    }
+
+    &[data-checked] {
+      border-color: var(--color-accent-700);
+      background: var(--color-accent-700);
+    }
+
+    &[data-disabled] {
+      cursor: not-allowed;
+      opacity: 0.5;
+    }
+  }
+
+  [data-slot="checkbox-indicator"] {
+    display: contents;
+
+    & svg {
+      width: 75%;
+      height: 75%;
+    }
+  }
+
   [data-slot="dialog-content"][data-presentation="dialog"] {
     inset: 0;
     height: fit-content;

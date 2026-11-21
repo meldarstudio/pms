@@ -1,5 +1,6 @@
 <script lang="ts">
-  import { CircleNotch } from "phosphor-svelte";
+  import { Checkbox, CheckboxIndicator } from "@ui-sdk/svelte/checkbox";
+  import { Check, CircleNotch } from "phosphor-svelte";
   import type { State } from "@/lib/reservation/checkout-flow";
   import { payActionVisible, payBusy, sendingPayment } from "@/lib/reservation/checkout-selectors";
   import Cancellation from "./Cancellation.svelte";
@@ -63,22 +64,18 @@
     {/if}
   </p>
   <div class="mt-5 flex items-start gap-3">
-    <input
+    <Checkbox
       id="agree"
       name="agree"
-      type="checkbox"
       required
-      class="accent-accent-700 mt-0.5 size-6 shrink-0"
+      class="mt-0.5 size-6 shrink-0"
       aria-describedby="agree-error"
       checked={checkout.agreed}
       data-checkout-focus="agree"
-      onkeydown={(event) => {
-        if (event.key !== "Enter") return;
-        event.preventDefault();
-        if (!event.repeat) event.currentTarget.click();
-      }}
-      onchange={(event) => onAgree(event.currentTarget.checked)}
-    />
+      onCheckedChange={(checked) => onAgree(checked === true)}
+    >
+      <CheckboxIndicator><Check weight="bold" aria-hidden="true" /></CheckboxIndicator>
+    </Checkbox>
     <label for="agree" class="cursor-pointer leading-relaxed text-stone-900">
       {agreeBefore}<a
         bind:this={termsLink}
