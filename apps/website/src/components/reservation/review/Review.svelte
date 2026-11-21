@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { onMount, untrack } from "svelte";
+  import { onMount, tick, untrack } from "svelte";
   import BookingSteps from "@/components/reservation/BookingSteps.svelte";
   import { getWhatsAppLink, phoneNumber } from "@/lib/constants";
   import { selectionKey } from "@/lib/reservation/checkout";
@@ -112,10 +112,8 @@
   $effect(() => {
     const pending = queue;
     if (!pending.length) return;
-    untrack(() => {
-      queue = [];
-      runner?.run(pending);
-    });
+    queue = [];
+    void tick().then(() => runner?.run(pending));
   });
 
   const room = $derived(search?.room ? (rooms[search.room] ?? null) : null);

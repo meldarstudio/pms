@@ -13,6 +13,7 @@
     CalendarWeekdays,
     CalendarWeeks,
     CalendarYearSelect,
+    type CalendarValue,
   } from "@ui-sdk/svelte/calendar";
   import {
     createPopoverController,
@@ -38,6 +39,7 @@
     rangePoint,
     restoreSearch,
     selectDate,
+    selectedStayDates,
     stayProblems,
     submitSearch,
     type DateField,
@@ -55,6 +57,7 @@
   let picker = $state<DatePicker>();
   let showProblems = $state(false);
   const labels = $derived(calendarCopy[lang]);
+  const selectedDates = $derived(selectedStayDates(search));
 
   onMount(() => {
     search = restoreSearch();
@@ -70,13 +73,14 @@
     return () => media.removeEventListener("change", resize);
   });
 
-  function startPicker(payload: unknown) {
-    if (payload === "checkIn" || payload === "checkOut") picker = openDatePicker(payload, search);
-  }
-
-  function chooseDate(value: unknown) {
-    if (!picker) return;
-    const next = selectDate(value, picker, search);
+  function chooseToggledDate(value: CalendarValue) {
+    if (!picker || !Array.isArray(value)) return;
+    const date =
+      value.length > selectedDates.length
+        ? value.find((day) => !selectedDates.includes(day))
+        : selectedDates.find((day) => !value.includes(day));
+    if (!date) return;
+    const next = selectDate(date, picker, search);
     if (!next) return;
     search = next;
     if (picker.selecting === "checkOut") datePopup.close();
@@ -91,8 +95,8 @@
   function submit(event: SubmitEvent) {
     event.preventDefault();
     guestPopup.close();
-    showProblems = true;
     const first = stayProblems(search)[0];
+    showProblems = Boolean(first);
     if (first) document.getElementById(dateId(first.field))?.focus();
     else if (onSearch) onSearch({ ...search, room: null, plan: null });
     else if (action) submitSearch(action, search);
@@ -108,11 +112,7 @@
   onsubmit={submit}
 >
   <fieldset class="lp-fields" disabled={!ready}>
-    <Popover
-      controller={datePopup}
-      presentation={mobile ? "sheet" : "popover"}
-      onPayloadChange={startPicker}
-    >
+    <Popover controller={datePopup} presentation={mobile ? "sheet" : "popover"}>
       {#each dateFields as field (field)}
         {@const id = dateId(field)}
         {@const error = errorFor(field)}
@@ -125,6 +125,7 @@
             aria-labelledby={`${id}-label ${id}-value`}
             aria-invalid={error ? true : undefined}
             aria-describedby={error ? `${id}-error` : undefined}
+            onclick={() => (picker = openDatePicker(field, search))}
           >
             <span id={`${id}-value`} class:lp-placeholder={!search[field]}>
               {search[field] ? dayDisplay(search[field], lang) : placeholder(copy, field)}
@@ -159,6 +160,7 @@
           </div>
           {#key picker.month}
             <Calendar
+              mode="multiple"
               defaultMonth={picker.month}
               today={picker.today}
               min={picker.firstNewArrival}
@@ -168,10 +170,13 @@
               weekStartsOn={lang === "es" ? 1 : 0}
               months={mobile ? 1 : 2}
               showOutsideDays={mobile}
-              value={search[picker.selecting] || null}
+              value={selectedDates}
               weekdayFormat="short"
               monthFormat="short"
-              onValueChange={chooseDate}
+              onValueChange={(value, details) => {
+                details.cancel();
+                chooseToggledDate(value);
+              }}
             >
               <div class="lp-calendar-nav">
                 <CalendarPrevious class="lp-square" aria-label={labels.previous}>
@@ -196,7 +201,6 @@
                             value={cell.date}
                             data-date={cell.date}
                             data-stay-range={rangePoint(cell.date, search)}
-                            aria-selected={Boolean(rangePoint(cell.date, search))}
                           />
                         {/snippet}
                       </CalendarWeeks>

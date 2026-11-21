@@ -10,6 +10,7 @@ import {
   MAX_ADULTS_CHOICE,
   MAX_CHILDREN_CHOICE,
   MAX_NIGHTS,
+  nightsBetween,
   onlineArrivalCalendar,
   searchParams,
   searchProblems,
@@ -123,11 +124,19 @@ export function departureBounds(picker: DatePicker, { checkIn }: StaySearch) {
     : undefined;
 }
 
-export function selectDate(value: unknown, picker: DatePicker, search: StaySearch) {
-  if (typeof value !== "string" || value < firstOnlineArrival()) return;
+export function selectDate(value: string, picker: DatePicker, search: StaySearch) {
+  if (value < firstOnlineArrival()) return;
   if (picker.selecting === "checkIn") return { ...search, checkIn: value, checkOut: "" };
   if (value <= search.checkIn || value > addDays(search.checkIn, MAX_NIGHTS)) return;
   return { ...search, checkOut: value };
+}
+
+export function selectedStayDates({ checkIn, checkOut }: StaySearch) {
+  if (!checkIn) return [];
+  const nights = nightsBetween(checkIn, checkOut) ?? 0;
+  return nights > 0 && nights <= MAX_NIGHTS
+    ? Array.from({ length: nights + 1 }, (_, offset) => addDays(checkIn, offset))
+    : [checkIn];
 }
 
 export function rangePoint(date: string, { checkIn, checkOut }: StaySearch) {

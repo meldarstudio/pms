@@ -67,5 +67,5 @@ packageExtensions:
     dependencies:
       typescript: 6.0.3
 permissions:
-  '@ui-sdk/core':
+  "@ui-sdk/core":
     skills: true

@@ -72,6 +72,11 @@
       aria-describedby="agree-error"
       checked={checkout.agreed}
       data-checkout-focus="agree"
+      onkeydown={(event) => {
+        if (event.key !== "Enter") return;
+        event.preventDefault();
+        if (!event.repeat) event.currentTarget.click();
+      }}
       onchange={(event) => onAgree(event.currentTarget.checked)}
     />
     <label for="agree" class="cursor-pointer leading-relaxed text-stone-900">

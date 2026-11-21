@@ -114,7 +114,11 @@ test("homepage search opens the rooms for the chosen stay and keeps it on return
 }) => {
   const stay = openStay();
   await page.goto("/");
-  await page.getByLabel("Llegada").click();
+  const arrival = page.getByLabel("Llegada");
+  await arrival.click();
+  await pickRangeDate(page, addDays(stay.checkIn, -1));
+  await pickRangeDate(page, stay.checkOut);
+  await arrival.click();
   await pickRangeDate(page, stay.checkIn);
   await pickRangeDate(page, stay.checkOut);
   await page.getByRole("button", { name: /Huéspedes/ }).click();

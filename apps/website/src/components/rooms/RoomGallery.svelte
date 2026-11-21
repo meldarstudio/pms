@@ -12,15 +12,17 @@
   let lightbox = $state(false);
   let start = $state(1);
   let viewed = 1;
+  let returningToPage: number | undefined;
 
   function open(page: number) {
+    returningToPage = undefined;
     start = viewed = page;
     lightbox = true;
   }
 
   function change(open: boolean) {
-    if (!open) card.setPage(viewed);
     lightbox = open;
+    if (!open && card.setPage(viewed)) returningToPage = viewed;
   }
 
   function finalFocus() {
@@ -32,8 +34,11 @@
   }
 
   function focusViewed(page: number) {
+    const returning = page === returningToPage;
+    returningToPage = undefined;
+    if (!returning || lightbox) return;
     const dot = gallery.querySelector(`[data-photo-dot="${page}"]`);
-    if (!lightbox && document.activeElement === dot)
+    if (document.activeElement === dot)
       gallery.querySelector<HTMLElement>(`[data-photo="${page}"]`)?.focus({ preventScroll: true });
   }
 </script>
