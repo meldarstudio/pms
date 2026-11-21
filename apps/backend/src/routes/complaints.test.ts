@@ -60,6 +60,24 @@ it("stores an unreserved foreign-document sheet once across retries, numbered in
     email: { status: "pending" },
     provider: complaintBook.provider,
   });
+  expect(Object.keys(sheet).sort()).toEqual([
+    "bookId",
+    "currency",
+    "dueDate",
+    "email",
+    "establishmentId",
+    "filedAt",
+    "id",
+    "input",
+    "originalReference",
+    "provider",
+    "reference",
+    "registeredAt",
+    "responses",
+    "source",
+    "timeZone",
+  ]);
+  expect(JSON.stringify(sheet)).not.toContain(complaintBook.retentionAndDisposal);
   expect(await (await send()).json()).toEqual(sheet);
   expect((await send({ ...complaintInput, description: "Changed text" })).status).toBe(409);
   expect(
@@ -105,6 +123,36 @@ it.each([
     });
   },
 );
+
+it.each([
+  [
+    "a minor without a representative",
+    { minor: true },
+    "minor representative is required",
+    "representative",
+  ],
+  ["an email reply without an address", { email: "" }, "response email is required", "email"],
+  ["a blank name", { fullName: " " }, "invalid complaint fields", "fullName"],
+] as const)("names the problem with %s", async (_name, change, error, field) => {
+  const response = await app.request(
+    "http://localhost/public/complaints",
+    {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        authorization: `Bearer ${crypto.randomUUID() + crypto.randomUUID()}`,
+      },
+      body: JSON.stringify({ ...complaintSubmission, ...change }),
+    },
+    db.env,
+  );
+  expect(response.status).toBe(400);
+  expect(response.headers.get("X-Error-Field")).toBe(field);
+  expect(await response.json()).toEqual({ error });
+  expect(db.sqlite.prepare("SELECT count(*) AS count FROM complaint_sheets").get()).toEqual({
+    count: 0,
+  });
+});
 
 it("survives concurrent filing with unique consecutive references and one replayed sheet", async () => {
   vi.useFakeTimers({ toFake: ["Date"] });
