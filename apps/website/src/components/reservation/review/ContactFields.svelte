@@ -67,7 +67,6 @@
     {/each}
     <PhoneField value={contact.phone} message={errors.phone} onEdit={onEditPhone} />
     <Accordion
-      class="border-t border-stone-200"
       value={openNotes ? ["notes"] : []}
       onValueChange={(value) => {
         notesExpanded = value.includes("notes");
@@ -78,16 +77,16 @@
       <AccordionItem value="notes">
         <AccordionHeader>
           <AccordionTrigger
-            class="group flex min-h-11 w-full cursor-pointer items-center justify-between gap-2 py-2 text-left font-medium text-stone-900 hover:text-accent-800"
+            class={`group -my-3 flex min-h-11 w-full cursor-pointer items-center gap-1.5 text-left hover:text-accent-800 ${label}`}
           >
             {say("reservation.review.notes")}
             <CaretDown
               aria-hidden="true"
-              class="size-4 shrink-0 text-stone-500 group-aria-expanded:rotate-180"
+              class="size-3.5 shrink-0 text-stone-500 transition-transform duration-170 ease-(--booking-ease-out) group-aria-expanded:rotate-180 motion-reduce:transition-none"
             />
           </AccordionTrigger>
         </AccordionHeader>
-        <AccordionPanel class="px-1 pb-1">
+        <AccordionPanel>
           <label for="notes" class="sr-only">{say("reservation.review.notes")}</label>
           <textarea
             id="notes"

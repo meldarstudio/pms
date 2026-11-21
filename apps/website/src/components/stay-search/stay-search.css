@@ -151,6 +151,12 @@
   --sheet-backdrop: rgb(0 0 0 / 0.15);
 }
 
+@supports (backdrop-filter: blur(0)) {
+  [data-slot="popover-viewport"]:has(.lp-surface[data-presentation="sheet"])::backdrop {
+    backdrop-filter: blur(4px);
+  }
+}
+
 .lp-surface[data-presentation="sheet"]::before {
   content: "";
   display: block;

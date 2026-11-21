@@ -20,6 +20,11 @@
     lightbox = true;
   }
 
+  function followLightbox(page: number) {
+    viewed = page;
+    if (card.setPage(page)) returningToPage = page;
+  }
+
   function change(open: boolean) {
     lightbox = open;
     if (!open && card.setPage(viewed)) returningToPage = viewed;
@@ -67,9 +72,7 @@
         {text}
         {start}
         fullscreen
-        onPage={(page) => {
-          viewed = page;
-        }}
+        onPage={followLightbox}
       />
     {/if}
   </DialogContent>

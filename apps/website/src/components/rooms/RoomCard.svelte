@@ -92,7 +92,9 @@
         <RoomIcon name="info" class="size-4 text-accent-700" />
         {text["rooms.details.open"]}
       </DialogTrigger>
-      <DialogBackdrop class="fixed inset-0 bg-black/40" />
+      <DialogBackdrop
+        class="fixed inset-0 bg-black/30 supports-backdrop-filter:backdrop-blur-xs"
+      />
       <DialogContent class="room-details-dialog bg-white text-base text-stone-800">
         <div class="flex items-start justify-between gap-3">
           <DialogTitle class="text-2xl font-semibold text-pretty text-stone-900">

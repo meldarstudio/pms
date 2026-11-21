@@ -83,13 +83,9 @@
               <span class={label}>{say("reservation.review.phone")}</span>
               {@render bar("mt-2 block h-12 w-full")}
             </div>
-            <div class="border-t border-stone-200">
-              <div
-                class="flex min-h-11 items-center justify-between gap-2 py-2 font-medium text-stone-900"
-              >
-                {say("reservation.review.notes")}
-                <CaretDown class="size-4 shrink-0 text-stone-500" />
-              </div>
+            <div class={`-my-3 flex min-h-11 items-center gap-1.5 ${label}`}>
+              {say("reservation.review.notes")}
+              <CaretDown class="size-3.5 shrink-0 text-stone-500" />
             </div>
           </div>
         </div>

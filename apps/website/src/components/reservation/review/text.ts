@@ -70,7 +70,6 @@ export const reviewKeys = [
   "reservation.review.terms",
   "reservation.review.termsLink",
   "reservation.review.closeTerms",
-  "reservation.review.nightly",
   "reservation.review.schedule.flexible",
   "reservation.review.schedule.non_refundable",
   "reservation.review.lifecycle",

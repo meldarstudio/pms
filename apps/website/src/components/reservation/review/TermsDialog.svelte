@@ -9,7 +9,6 @@
   import { X } from "phosphor-svelte";
   import { MediaQuery } from "svelte/reactivity";
   import type { CheckoutView } from "@/lib/reservation/checkout";
-  import { formatDate } from "@/lib/reservation/format";
   import { wideScreen } from "@/lib/screen";
   import Cancellation from "./Cancellation.svelte";
   import { getReview } from "./review-context";
@@ -31,7 +30,9 @@
 </script>
 
 <Dialog presentation={wide.current ? "dialog" : "sheet"} bind:open>
-  <DialogBackdrop class="fixed inset-0 bg-stone-950/60" />
+  <DialogBackdrop
+    class="fixed inset-0 bg-stone-950/60 supports-backdrop-filter:backdrop-blur-xs"
+  />
   <DialogContent
     data-terms
     {finalFocus}
@@ -51,16 +52,7 @@
     </div>
     <div class="min-h-0 overflow-y-auto overscroll-contain">
       <div class="px-6 pt-5 pb-[max(1.5rem,env(safe-area-inset-bottom))]">
-        <h3 class="font-semibold text-stone-900">{say("reservation.review.nightly")}</h3>
-        <ul class="mt-2 divide-y divide-stone-200 text-sm text-stone-800" data-nightly>
-          {#each view?.quote.nights ?? [] as night (night.date)}
-            <li class="flex justify-between gap-4 py-2">
-              <time datetime={night.date}>{formatDate(night.date, lang)}</time>
-              <span>{money?.(night.priceCents)}</span>
-            </li>
-          {/each}
-        </ul>
-        <div class="mt-5 flex flex-col gap-3 text-sm leading-relaxed text-stone-700">
+        <div class="flex flex-col gap-3 text-sm leading-relaxed text-stone-700">
           <p data-schedule>
             {view && money
               ? say(`reservation.review.schedule.${view.ratePlan}`, {

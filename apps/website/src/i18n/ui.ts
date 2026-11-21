@@ -450,7 +450,6 @@ export const ui = {
     "reservation.review.terms": "Reservation terms",
     "reservation.review.termsLink": "reservation terms",
     "reservation.review.closeTerms": "Close",
-    "reservation.review.nightly": "Price per night",
     "reservation.review.schedule.flexible":
       "Payment: the first night, {now}, is paid online; the remaining {remaining} is paid at the hotel.",
     "reservation.review.schedule.non_refundable":
@@ -1093,7 +1092,6 @@ export const ui = {
     "reservation.review.terms": "Condiciones de la reserva",
     "reservation.review.termsLink": "condiciones de la reserva",
     "reservation.review.closeTerms": "Cerrar",
-    "reservation.review.nightly": "Precio por noche",
     "reservation.review.schedule.flexible":
       "Pago: la primera noche, {now}, se paga en línea; el resto, {remaining}, se paga en el hotel.",
     "reservation.review.schedule.non_refundable":
