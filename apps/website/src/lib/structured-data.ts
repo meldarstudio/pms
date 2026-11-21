@@ -1,3 +1,8 @@
+import { getImage } from "astro:assets";
+import doubleRoom from "@/assets/double-side-view.webp";
+import familyRoom from "@/assets/family-room-front.webp";
+import heroImage from "@/assets/hero-image.webp";
+import kingRoom from "@/assets/king-front-view.webp";
 import { BUSINESS_NAME, socials } from "@/constants";
 import {
   address,
@@ -5,19 +10,48 @@ import {
   latitude,
   legalName,
   longitude,
+  mapsUrl,
   phoneNumber,
   taxId,
 } from "@/lib/constants";
 
-const amenities = ["Free parking", "24-hour front desk", "Elevator", "Free Wi-Fi"];
+const amenities = ["Free parking", "24-hour front desk", "Elevator", "Free Wi-Fi", "Pets allowed"];
+const hotelPhotos = [heroImage, kingRoom, doubleRoom, familyRoom];
+const minimumGooglePhotoWidth = 1200;
+const hotelPhotoWidth = 1600;
 
-export function getHotelStructuredData(url: string) {
+async function getHotelPhotoUrls(site: URL) {
+  return Promise.all(
+    hotelPhotos.map(async (src) => {
+      if (src.width < minimumGooglePhotoWidth) {
+        throw new Error(`${src.src} is narrower than Google's ${minimumGooglePhotoWidth}px`);
+      }
+      const photo = await getImage({
+        src,
+        width: Math.min(src.width, hotelPhotoWidth),
+        format: "webp",
+      });
+      return new URL(photo.src, site).href;
+    }),
+  );
+}
+
+interface HotelStructuredDataOptions {
+  url: string;
+  site: URL;
+  rates: { url: string; name: string };
+}
+
+export async function getHotelStructuredData({ url, site, rates }: HotelStructuredDataOptions) {
   return {
     "@context": "https://schema.org",
     "@type": "Hotel",
     "@id": `${url}#hotel`,
     name: BUSINESS_NAME,
     url,
+    image: await getHotelPhotoUrls(site),
+    starRating: { "@type": "Rating", ratingValue: "3" },
+    hasOfferCatalog: { "@type": "OfferCatalog", ...rates },
     telephone: phoneNumber,
     email,
     legalName,
@@ -43,7 +77,7 @@ export function getHotelStructuredData(url: string) {
       latitude,
       longitude,
     },
-    sameAs: socials.map(({ href }) => href),
+    sameAs: [...socials.map(({ href }) => href), mapsUrl],
   };
 }
 

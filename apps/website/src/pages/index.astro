@@ -11,7 +11,11 @@ import { getAbsoluteLocaleUrl } from "astro:i18n";
 
 const lang = getLang(Astro.currentLocale);
 const t = useTranslations(lang);
-const hotelStructuredData = getHotelStructuredData(getAbsoluteLocaleUrl(lang, ""));
+const hotelStructuredData = await getHotelStructuredData({
+  url: getAbsoluteLocaleUrl(lang, ""),
+  site: Astro.site ?? Astro.url,
+  rates: { url: getAbsoluteLocaleUrl(lang, "habitaciones"), name: t("nav.rooms") },
+});
 ---
 
 <Layout title={t("meta.home.title")} description={t("meta.home.description")}>
