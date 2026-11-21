@@ -10,17 +10,21 @@
   } from "@ui-sdk/svelte/accordion";
   import { Button } from "@ui-sdk/svelte/button";
   import { Checkbox, CheckboxIndicator } from "@ui-sdk/svelte/checkbox";
+  import { Effect, Result } from "effect";
   import { Check } from "phosphor-svelte";
   import { onMount } from "svelte";
   import { useTranslations } from "@/i18n/utils";
   import {
     complaintLabels,
     complaintProblem,
+    fileComplaint,
+    readComplaintReceipt,
     type ComplaintConfig,
     type ComplaintInput,
-    type ComplaintSubmission,
     type ComplaintReceipt as Receipt,
   } from "@/lib/complaints";
+  import { startIsland, type Island } from "@/lib/island";
+  import { PmsClient } from "@/lib/pms-client";
   import ComplaintReceipt from "./ComplaintReceipt.svelte";
   import ComplaintSecurity from "./ComplaintSecurity.svelte";
 
@@ -114,36 +118,19 @@
     draft = next;
   }
 
-  async function request(
-    path: string,
-    token: string,
-    body?: ComplaintSubmission,
-  ): Promise<Receipt> {
-    const response = await fetch(`${PUBLIC_PMS_API_URL}/public/complaints${path}`, {
-      method: body ? "POST" : "GET",
-      credentials: "omit",
-      cache: "no-store",
-      referrerPolicy: "no-referrer",
-      headers: {
-        authorization: `Bearer ${token}`,
-        ...(body ? { "content-type": "application/json" } : {}),
-      },
-      ...(body ? { body: JSON.stringify(body) } : {}),
-    });
-    if (!response.ok) {
-      const data = (await response.json()) as { error: string };
-      throw Object.assign(
-        new Error(
-          complaintProblem(data.error, language) ??
-            t("complaints.couldNotRegisterTheSheetYourDraft"),
-        ),
-        { status: response.status, code: data.error, field: response.headers.get("X-Error-Field") },
-      );
-    }
-    return (await response.json()) as Receipt;
-  }
+  let complaints: Island<PmsClient> | null = null;
 
   onMount(() => {
+    const island = startIsland(PmsClient.layer(PUBLIC_PMS_API_URL, { cache: "no-store" }));
+    complaints = island;
+    resumeDraft(island);
+    return () => {
+      complaints = null;
+      island.dispose();
+    };
+  });
+
+  function resumeDraft(island: Island<PmsClient>) {
     let previous: Draft | null = null;
     try {
       previous = JSON.parse(sessionStorage.getItem(storageKey) ?? "null") as Draft | null;
@@ -170,21 +157,22 @@
     }
 
     draft = previous;
-    let active = true;
-    void request("/receipt", previous.token)
-      .then((saved) => {
-        if (active) sheet = saved;
-      })
-      .catch(() => {
-        if (active) problem = t("complaints.yourDraftIsRetainedRetryTheSame");
-      })
-      .finally(() => {
-        if (active) ready = true;
-      });
-    return () => {
-      active = false;
-    };
-  });
+    island.fork(
+      readComplaintReceipt(previous.token).pipe(
+        Effect.match({
+          onSuccess: (saved) => {
+            sheet = saved;
+          },
+          onFailure: () => {
+            problem = t("complaints.yourDraftIsRetainedRetryTheSame");
+          },
+        }),
+        Effect.map(() => {
+          ready = true;
+        }),
+      ),
+    );
+  }
 
   function update<Key extends keyof ComplaintInput>(key: Key, value: ComplaintInput[Key]) {
     if (!ready || fieldsDisabled) return;
@@ -194,7 +182,7 @@
 
   async function submit(event: SubmitEvent) {
     event.preventDefault();
-    if (busy || !ready || !securityToken) return;
+    if (busy || !ready || !securityToken || !complaints) return;
     busy = true;
     problem = "";
     invalid = "";
@@ -202,13 +190,22 @@
     const next = { ...previous, attempted: true };
     try {
       remember(next);
-      sheet = await request("", next.token, { ...next.input, turnstileToken: securityToken });
-      remember({ ...next, saved: true });
-    } catch (error) {
-      const failure = error as Error & { status?: number; code?: string; field?: string };
+      const filed = await complaints.run(
+        Effect.result(fileComplaint(next.token, { ...next.input, turnstileToken: securityToken })),
+      );
+      if (Result.isSuccess(filed)) {
+        sheet = filed.success;
+        remember({ ...next, saved: true });
+        return;
+      }
+      const failure = filed.failure;
+      if (failure._tag === "ComplaintUnreachable") {
+        problem = t("complaints.networkErrorYourDraftIsRetainedRetry");
+        return;
+      }
       problem =
-        (failure.status ? failure.message : undefined) ??
-        t("complaints.networkErrorYourDraftIsRetainedRetry");
+        complaintProblem(failure.code ?? "", language) ??
+        t("complaints.couldNotRegisterTheSheetYourDraft");
       invalid = failure.field ?? "";
       if (
         failure.code === "complaint privacy information changed" ||
@@ -216,6 +213,8 @@
       ) {
         remember({ ...next, attempted: false });
       }
+    } catch {
+      problem = t("complaints.networkErrorYourDraftIsRetainedRetry");
     } finally {
       securityToken = "";
       securityVersion += 1;

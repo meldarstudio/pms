@@ -1,3 +1,4 @@
+import { Data, Deferred, Effect, Option, Schema, type Duration, type Scope } from "effect";
 import type { Lang } from "@/i18n/utils";
 
 export const CULQI_CHECKOUT_SCRIPT = "https://js.culqi.com/checkout-js";
@@ -64,26 +65,38 @@ declare global {
   }
 }
 
-const loading = new Map<string, Promise<void>>();
+export class ProviderUnavailable extends Data.TaggedError("ProviderUnavailable")<{
+  provider: string;
+}> {}
 
-function loadScript(src: string) {
-  const existing = loading.get(src);
-  if (existing) return existing;
-  const loaded = new Promise<void>((resolve, reject) => {
+const loading = new Map<string, Deferred.Deferred<void, ProviderUnavailable>>();
+
+const loadScript = (src: string) =>
+  Effect.suspend(() => {
+    const existing = loading.get(src);
+    if (existing) return Deferred.await(existing);
+    const loaded = Deferred.makeUnsafe<void, ProviderUnavailable>();
+    loading.set(src, loaded);
     const script = document.createElement("script");
     script.src = src;
     script.async = true;
-    script.addEventListener("load", () => resolve());
+    script.addEventListener("load", () => Deferred.doneUnsafe(loaded, Effect.void));
     script.addEventListener("error", () => {
       loading.delete(src);
       script.remove();
-      reject(new Error(`could not load ${src}`));
+      Deferred.doneUnsafe(loaded, Effect.fail(new ProviderUnavailable({ provider: src })));
     });
     document.head.append(script);
+    return Deferred.await(loaded);
   });
-  loading.set(src, loaded);
-  return loaded;
-}
+
+const fromWindow = <A>(provider: string, read: () => A | undefined) =>
+  Effect.flatMap(Effect.sync(read), (value): Effect.Effect<A, ProviderUnavailable> =>
+    value ? Effect.succeed(value) : Effect.fail(new ProviderUnavailable({ provider })),
+  );
+
+const attempt = <A>(provider: string, run: () => A) =>
+  Effect.try({ try: run, catch: () => new ProviderUnavailable({ provider }) });
 
 const cardAccent = "#f27b02";
 const cardAccentInk = "#37180a";
@@ -178,53 +191,57 @@ const cardAppearance = {
   },
 } as const;
 
-export async function openCardForm(options: {
+export const openCardForm = Effect.fnUntraced(function* (options: {
   publicKey: string;
   title: string;
   amountCents: number;
   currency: string;
   email: string;
   lang: Lang;
-}): Promise<string | null> {
-  await loadScript(CULQI_CHECKOUT_SCRIPT);
-  const Checkout = window.CulqiCheckout;
-  if (!Checkout) throw new Error("Culqi Checkout is unavailable");
-  return new Promise((resolve) => {
-    const checkout = new Checkout(options.publicKey, {
-      settings: {
-        title: options.title,
-        currency: options.currency,
-        amount: options.amountCents,
-      },
-      client: { email: options.email },
-      options: {
-        lang: options.lang,
-        installments: false,
-        modal: true,
-        paymentMethods: {
-          tarjeta: true,
-          yape: false,
-          billetera: false,
-          bancaMovil: false,
-          agente: false,
-          cuotealo: false,
+}): Effect.fn.Return<string | null, ProviderUnavailable> {
+  yield* loadScript(CULQI_CHECKOUT_SCRIPT);
+  const Checkout = yield* fromWindow(CULQI_CHECKOUT_SCRIPT, () => window.CulqiCheckout);
+  return yield* Effect.callback<string | null, ProviderUnavailable>((resume) => {
+    try {
+      const checkout = new Checkout(options.publicKey, {
+        settings: {
+          title: options.title,
+          currency: options.currency,
+          amount: options.amountCents,
         },
-        paymentMethodsSort: ["tarjeta"],
-      },
-      appearance: {
-        ...cardAppearance,
-        buttonCardPayText: options.lang === "en" ? "Pay" : "Pagar",
-      },
-    });
-    checkout.culqi = () => {
-      const token = checkout.token?.id ?? null;
-      checkout.close();
-      resolve(token);
-    };
-    checkout.closeCheckout = () => resolve(null);
-    checkout.open();
+        client: { email: options.email },
+        options: {
+          lang: options.lang,
+          installments: false,
+          modal: true,
+          paymentMethods: {
+            tarjeta: true,
+            yape: false,
+            billetera: false,
+            bancaMovil: false,
+            agente: false,
+            cuotealo: false,
+          },
+          paymentMethodsSort: ["tarjeta"],
+        },
+        appearance: {
+          ...cardAppearance,
+          buttonCardPayText: options.lang === "en" ? "Pay" : "Pagar",
+        },
+      });
+      checkout.culqi = () => {
+        const token = checkout.token?.id ?? null;
+        checkout.close();
+        resume(Effect.succeed(token));
+      };
+      checkout.closeCheckout = () => resume(Effect.succeed(null));
+      checkout.open();
+      return Effect.ignore(attempt(CULQI_CHECKOUT_SCRIPT, () => checkout.close()));
+    } catch {
+      resume(Effect.fail(new ProviderUnavailable({ provider: CULQI_CHECKOUT_SCRIPT })));
+    }
   });
-}
+});
 
 type BankCharge = {
   publicKey: string;
@@ -239,6 +256,7 @@ const bankModalStyle: BankModalStyle = {
 };
 
 function configureBank(culqi3DS: Culqi3DS, options: BankCharge) {
+  culqi3DS.reset();
   culqi3DS.publicKey = options.publicKey;
   culqi3DS.settings = {
     charge: {
@@ -250,102 +268,98 @@ function configureBank(culqi3DS: Culqi3DS, options: BankCharge) {
   };
 }
 
-async function culqi3DSLibrary() {
-  await loadScript(CULQI_3DS_SCRIPT);
-  return window.Culqi3DS ?? null;
-}
+const culqi3DSLibrary = loadScript(CULQI_3DS_SCRIPT).pipe(
+  Effect.andThen(fromWindow(CULQI_3DS_SCRIPT, () => window.Culqi3DS)),
+);
 
-export async function deviceFingerprint(options: BankCharge): Promise<string | null> {
-  try {
-    const culqi3DS = await culqi3DSLibrary();
-    if (!culqi3DS) return null;
-    culqi3DS.reset();
-    configureBank(culqi3DS, options);
-    const id = (await culqi3DS.generateDevice())?.trim() ?? "";
-    return id.length > 0 && id.length <= 200 ? id : null;
-  } catch {
-    return null;
-  }
-}
+export const deviceFingerprint = (options: BankCharge): Effect.Effect<string | null> =>
+  culqi3DSLibrary.pipe(
+    Effect.tap((culqi3DS) => attempt(CULQI_3DS_SCRIPT, () => configureBank(culqi3DS, options))),
+    Effect.flatMap((culqi3DS) =>
+      Effect.tryPromise({
+        try: () => culqi3DS.generateDevice(),
+        catch: () => new ProviderUnavailable({ provider: CULQI_3DS_SCRIPT }),
+      }),
+    ),
+    Effect.map((device) => {
+      const id = device?.trim() ?? "";
+      return id.length > 0 && id.length <= 200 ? id : null;
+    }),
+    Effect.orElseSucceed(() => null),
+  );
 
-type BankHandler = {
-  onParameters: (parameters: AuthenticationParameters) => void;
-  onIncomplete: () => void;
-  onRefused: () => void;
-};
+const decodeAuthenticationParameters = Schema.decodeUnknownOption(
+  Schema.Struct({
+    eci: Schema.NonEmptyString,
+    cavv: Schema.NonEmptyString,
+    protocolVersion: Schema.NonEmptyString,
+    directoryServerTransactionId: Schema.NonEmptyString,
+    xid: Schema.optionalKey(Schema.Unknown),
+  }),
+);
 
-let bankListening = false;
-let bankHandler: BankHandler | null = null;
+const decodeBankMessage = Schema.decodeUnknownOption(
+  Schema.Struct({
+    parameters3DS: Schema.optionalKey(Schema.Unknown),
+    error: Schema.optionalKey(Schema.Unknown),
+  }),
+);
 
-function authenticationParameters(value: unknown): AuthenticationParameters | null {
-  if (typeof value !== "object" || value === null) return null;
-  const fields = value as Record<string, unknown>;
-  const text = (key: string) => (typeof fields[key] === "string" ? fields[key] : "");
-  const eci = text("eci");
-  const cavv = text("cavv");
-  const protocolVersion = text("protocolVersion");
-  const directoryServerTransactionId = text("directoryServerTransactionId");
-  if (!eci || !cavv || !protocolVersion || !directoryServerTransactionId) return null;
-  const xid = text("xid");
-  return { eci, cavv, protocolVersion, directoryServerTransactionId, ...(xid ? { xid } : {}) };
-}
+const authenticationParameters = (value: unknown) =>
+  Option.map(
+    decodeAuthenticationParameters(value),
+    ({ xid, ...required }): AuthenticationParameters =>
+      typeof xid === "string" && xid ? { ...required, xid } : required,
+  );
 
-function ensureBankListener() {
-  if (bankListening) return;
-  bankListening = true;
-  window.addEventListener("message", (event) => {
-    if (event.origin !== window.location.origin || !bankHandler) return;
-    const data = event.data as { parameters3DS?: unknown; error?: unknown } | null;
-    if (!data || typeof data !== "object") return;
-    const parameters = authenticationParameters(data.parameters3DS);
-    if (parameters) {
-      const handler = bankHandler;
-      bankHandler = null;
-      handler.onParameters(parameters);
-      return;
+export type BankOutcome =
+  | { kind: "parameters"; parameters: AuthenticationParameters }
+  | { kind: "incomplete" }
+  | { kind: "refused" };
+
+export const authenticateWithBank = Effect.fnUntraced(function* (
+  options: BankCharge & { sourceId: string },
+): Effect.fn.Return<BankOutcome, ProviderUnavailable> {
+  const culqi3DS = yield* culqi3DSLibrary;
+  yield* attempt(CULQI_3DS_SCRIPT, () => configureBank(culqi3DS, options));
+  return yield* Effect.callback<BankOutcome>((resume) => {
+    const finish = (outcome: BankOutcome) => {
+      window.removeEventListener("message", onMessage);
+      resume(Effect.succeed(outcome));
+    };
+    const onMessage = (event: MessageEvent) => {
+      if (event.origin !== window.location.origin) return;
+      const message = decodeBankMessage(event.data);
+      if (Option.isNone(message)) return;
+      const parameters = authenticationParameters(message.value.parameters3DS);
+      if (Option.isSome(parameters)) finish({ kind: "parameters", parameters: parameters.value });
+      else if (typeof message.value.error === "string" && message.value.error)
+        finish({ kind: "refused" });
+    };
+    window.addEventListener("message", onMessage);
+    culqi3DS.options = {
+      closeModalAction: () => finish({ kind: "incomplete" }),
+      style: bankModalStyle,
+    };
+    try {
+      Promise.resolve(culqi3DS.initAuthentication(options.sourceId)).catch(() =>
+        finish({ kind: "incomplete" }),
+      );
+    } catch {
+      finish({ kind: "incomplete" });
     }
-    if (typeof data.error === "string" && data.error) {
-      const handler = bankHandler;
-      bankHandler = null;
-      handler.onRefused();
-    }
+    return Effect.sync(() => window.removeEventListener("message", onMessage)).pipe(
+      Effect.andThen(Effect.ignore(attempt(CULQI_3DS_SCRIPT, () => culqi3DS.reset()))),
+    );
   });
-}
-
-function bankClosed() {
-  const handler = bankHandler;
-  bankHandler = null;
-  handler?.onIncomplete();
-}
-
-export async function openBankAuthentication(
-  options: BankCharge & { sourceId: string } & BankHandler,
-) {
-  const culqi3DS = await culqi3DSLibrary();
-  if (!culqi3DS) throw new Error("Culqi3DS is unavailable");
-  culqi3DS.reset();
-  configureBank(culqi3DS, options);
-  ensureBankListener();
-  bankHandler = {
-    onParameters: options.onParameters,
-    onIncomplete: options.onIncomplete,
-    onRefused: options.onRefused,
-  };
-  culqi3DS.options = { closeModalAction: bankClosed, style: bankModalStyle };
-  try {
-    await culqi3DS.initAuthentication(options.sourceId);
-  } catch {
-    if (bankHandler) bankClosed();
-  }
-}
+});
 
 export type SecurityCheck = {
-  tokenWithin: (waitMs: number) => Promise<string>;
-  reset: () => void;
-  dispose: () => void;
+  token: (wait: Duration.Input) => Effect.Effect<string>;
+  reset: Effect.Effect<void>;
 };
 
-export async function renderSecurityCheck(
+export const renderSecurityCheck = Effect.fnUntraced(function* (
   container: HTMLElement,
   options: {
     siteKey: string;
@@ -356,55 +370,61 @@ export async function renderSecurityCheck(
     onExpired?: () => void;
     onError: () => void;
   },
-): Promise<SecurityCheck> {
-  await loadScript(TURNSTILE_SCRIPT);
-  const turnstile = window.turnstile;
-  if (!turnstile) throw new Error("Turnstile is unavailable");
+): Effect.fn.Return<SecurityCheck, ProviderUnavailable, Scope.Scope> {
+  yield* loadScript(TURNSTILE_SCRIPT);
+  const turnstile = yield* fromWindow(TURNSTILE_SCRIPT, () => window.turnstile);
   let current = "";
-  let waiting: ((token: string) => void)[] = [];
+  let removed = false;
+  let answered = Deferred.makeUnsafe<string>();
   const answer = (token: string) => {
     current = token;
-    for (const finish of waiting) finish(token);
+    Deferred.doneUnsafe(answered, Effect.succeed(token));
+    answered = Deferred.makeUnsafe<string>();
   };
-  const widget = turnstile.render(container, {
-    sitekey: options.siteKey,
-    action: options.action ?? "payment",
-    language: options.lang,
-    size: options.size,
-    theme: "light",
-    callback: (token) => {
-      answer(token);
-      options.onPassed(token);
-    },
-    "expired-callback": () => {
-      current = "";
-      options.onExpired?.();
-    },
-    "error-callback": () => {
-      answer("");
-      options.onError();
-    },
-  });
+  const widget = yield* Effect.acquireRelease(
+    attempt(TURNSTILE_SCRIPT, () =>
+      turnstile.render(container, {
+        sitekey: options.siteKey,
+        action: options.action ?? "payment",
+        language: options.lang,
+        size: options.size,
+        theme: "light",
+        callback: (token) => {
+          answer(token);
+          options.onPassed(token);
+        },
+        "expired-callback": () => {
+          current = "";
+          options.onExpired?.();
+        },
+        "error-callback": () => {
+          answer("");
+          options.onError();
+        },
+      }),
+    ),
+    (rendered) =>
+      Effect.sync(() => {
+        removed = true;
+        answer("");
+      }).pipe(
+        Effect.andThen(attempt(TURNSTILE_SCRIPT, () => turnstile.remove(rendered))),
+        Effect.ignore,
+      ),
+  );
   return {
-    tokenWithin: (waitMs) =>
-      current
-        ? Promise.resolve(current)
-        : new Promise((resolve) => {
-            const finish = (token: string) => {
-              clearTimeout(timeout);
-              waiting = waiting.filter((waiter) => waiter !== finish);
-              resolve(token);
-            };
-            const timeout = setTimeout(() => finish(""), waitMs);
-            waiting.push(finish);
-          }),
-    reset: () => {
+    token: (wait) =>
+      Effect.suspend(() =>
+        current || removed
+          ? Effect.succeed(current)
+          : Deferred.await(answered).pipe(
+              Effect.timeoutOrElse({ duration: wait, orElse: () => Effect.succeed("") }),
+            ),
+      ),
+    reset: Effect.suspend(() => {
+      if (removed) return Effect.void;
       current = "";
-      turnstile.reset(widget);
-    },
-    dispose: () => {
-      answer("");
-      turnstile.remove(widget);
-    },
+      return Effect.ignore(attempt(TURNSTILE_SCRIPT, () => turnstile.reset(widget)));
+    }),
   };
-}
+});

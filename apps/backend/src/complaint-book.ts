@@ -268,8 +268,24 @@ async function registerSheet(
   return { created: true };
 }
 
-function guestReceipt({ email, emails: _emails, ...sheet }: ComplaintSheet) {
-  return { ...sheet, email: { status: email.status }, responses: [] };
+function guestReceipt(sheet: ComplaintSheet) {
+  return {
+    id: sheet.id,
+    bookId: sheet.bookId,
+    reference: sheet.reference,
+    establishmentId: sheet.establishmentId,
+    provider: sheet.provider,
+    filedAt: sheet.filedAt,
+    registeredAt: sheet.registeredAt,
+    dueDate: sheet.dueDate,
+    timeZone: sheet.timeZone,
+    currency: sheet.currency,
+    source: sheet.source,
+    originalReference: sheet.originalReference,
+    input: sheet.input,
+    email: { status: sheet.email.status },
+    responses: [],
+  };
 }
 
 export async function fileSheet(

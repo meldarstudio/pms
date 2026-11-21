@@ -388,12 +388,17 @@ test("a lost payment response says the payment was sent and never invites paying
   page,
 }) => {
   await fillCheckout(page, "flexible", payerEmail());
-  await page.route(`${LOCAL_API_URL}/public/checkout/payments`, (route) => route.abort());
+  let paymentsSent = 0;
+  await page.route(`${LOCAL_API_URL}/public/checkout/payments`, (route) => {
+    paymentsSent += 1;
+    return route.abort();
+  });
 
   await payButton(page, "100.00").click();
 
   const sent = page.getByRole("heading", { name: "Pago enviado, consultando su estado" });
   await expect(sent).toBeFocused();
+  expect(paymentsSent).toBe(1);
   await expect(page.getByRole("button", { name: /^Pagar/ })).toHaveCount(0);
   await page.getByRole("button", { name: "Consultar estado" }).click();
   await expect(sent).toBeVisible();

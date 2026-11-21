@@ -9,6 +9,11 @@ import { Hono } from "hono";
 import type { Env } from "../env";
 import { complaintBook } from "../complaint-config";
 
+const namedComplaintProblems = new Set([
+  "minor representative is required",
+  "response email is required",
+]);
+
 export const publicComplaintRoutes = new Hono<Env>();
 publicComplaintRoutes.use("*", async (c, next) => {
   c.header("Cache-Control", "private, no-store");
@@ -29,14 +34,17 @@ publicComplaintRoutes.post(
   limitBySourceIp("QUOTE_LIMITER", "too many complaints; retry in one minute"),
   zValidator("json", complaintSubmissionSchema, (result, c) => {
     if (!result.success) {
-      const field = result.error.issues[0]?.path[0];
+      const issue = result.error.issues[0];
+      const field = issue?.path[0];
       if (typeof field === "string") c.header("X-Error-Field", field);
       return c.json(
         {
           error:
             field === "turnstileToken"
               ? "complaint security check failed"
-              : "invalid complaint fields",
+              : issue && namedComplaintProblems.has(issue.message)
+                ? issue.message
+                : "invalid complaint fields",
         },
         400,
       );
