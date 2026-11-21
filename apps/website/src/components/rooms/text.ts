@@ -65,7 +65,6 @@ export const roomsBookingKeys = [
   "rooms.policies.cancelNonRefundableBody",
   "rooms.policies.paymentTitle",
   "rooms.policies.paymentBody",
-  "rooms.policies.conditionsLink",
   "rooms.gallery.label",
   "rooms.gallery.open",
   "rooms.gallery.show",

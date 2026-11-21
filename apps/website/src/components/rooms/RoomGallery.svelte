@@ -57,7 +57,7 @@
   <DialogContent
     initialFocus="[data-lightbox-close]"
     {finalFocus}
-    class="h-dvh w-screen max-w-none overscroll-contain bg-stone-950 text-white"
+    class="room-lightbox h-dvh w-screen max-w-none overscroll-contain bg-stone-950 text-white"
   >
     <DialogTitle class="sr-only">{room}</DialogTitle>
     {#if lightbox}
@@ -74,3 +74,23 @@
     {/if}
   </DialogContent>
 </Dialog>
+
+<style>
+  :global(.room-lightbox::backdrop) {
+    background: transparent;
+  }
+
+  :global(.room-lightbox[data-open]) {
+    transition: opacity 220ms var(--booking-ease-out);
+  }
+
+  :global(.room-lightbox[data-starting-style]) {
+    opacity: 0;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    :global(.room-lightbox[data-open]) {
+      transition-duration: 80ms;
+    }
+  }
+</style>

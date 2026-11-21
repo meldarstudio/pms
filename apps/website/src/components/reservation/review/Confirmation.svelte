@@ -21,15 +21,18 @@
     access,
     summaryHref,
     onAccessRetry,
+    animateCheckmark,
   }: SavedConfirmation & {
     access: AccessState;
     summaryHref: string;
     onAccessRetry: () => void;
+    animateCheckmark: boolean;
   } = $props();
   const { say, lang } = getReview();
   const stay = $derived(stayLabels(view, say, lang));
   const money = (cents: number) => formatMoney(cents, currency);
   let statusRegionMounted = $state(false);
+  let checkmarkEntered = $state(false);
   onMount(() => {
     statusRegionMounted = true;
   });
@@ -61,8 +64,16 @@
 >
   <div class="confirmation-welcome">
     <header>
-      <p class="confirmation-kicker">
-        <Check aria-hidden="true" />
+      <p
+        class="confirmation-kicker"
+        onanimationend={() => {
+          checkmarkEntered = true;
+        }}
+      >
+        <Check
+          class={animateCheckmark && !checkmarkEntered ? "confirmation-check-enter" : undefined}
+          aria-hidden="true"
+        />
         {say("reservation.outcome.confirmed.title")}
       </p>
       <h1

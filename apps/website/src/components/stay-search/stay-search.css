@@ -119,6 +119,31 @@
   overscroll-behavior: contain;
 }
 
+.lp-surface[data-presentation="popover"] {
+  transform-origin: var(--transform-origin);
+  transition: opacity 80ms var(--booking-ease-out);
+
+  &:is([data-starting-style], [data-ending-style]) {
+    opacity: 0;
+  }
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .lp-surface[data-presentation="popover"] {
+    scale: 1;
+    transition-property: opacity, scale;
+    transition-duration: 150ms;
+
+    &:is([data-starting-style], [data-ending-style]) {
+      scale: 0.97;
+    }
+
+    &[data-ending-style] {
+      transition-duration: 100ms;
+    }
+  }
+}
+
 .lp-surface[data-presentation="sheet"] {
   max-width: none;
   overflow: clip;

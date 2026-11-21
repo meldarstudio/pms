@@ -21,13 +21,12 @@
     text,
     searchCopy,
     reviewHref,
-    conditionsHref,
     room,
     phase,
     rates,
     selected,
     onPlan,
-  }: Pick<RoomsBookingProps, "lang" | "text" | "searchCopy" | "reviewHref" | "conditionsHref"> & {
+  }: Pick<RoomsBookingProps, "lang" | "text" | "searchCopy" | "reviewHref"> & {
     room: RoomView;
     phase: Extract<Phase, { kind: "found" }>;
     rates: PlanOffer[];
@@ -122,11 +121,11 @@
         {text[key]}
         <RoomIcon
           name="down"
-          class="size-4 shrink-0 text-stone-500 group-aria-expanded:rotate-180"
+          class="size-4 shrink-0 text-stone-500 transition-transform duration-170 ease-(--booking-ease-out) group-aria-expanded:rotate-180 motion-reduce:transition-none"
         />
       </AccordionTrigger>
     </AccordionHeader>
-    <AccordionPanel class="text-sm leading-relaxed text-stone-700">
+    <AccordionPanel class="room-policy-panel text-sm leading-relaxed text-stone-700">
       <div class="pb-4">{@render body()}</div>
     </AccordionPanel>
   </AccordionItem>
@@ -246,12 +245,6 @@
     {@render policy("rooms.policies.petsTitle", pets)}
     {@render policy("rooms.policies.paymentTitle", payment)}
   </Accordion>
-  <a
-    href={conditionsHref}
-    class="inline-flex min-h-11 items-center underline decoration-stone-400 underline-offset-4 hover:decoration-stone-900 lg:col-start-1"
-  >
-    {text["rooms.policies.conditionsLink"]}
-  </a>
   <div
     data-continue-bar
     hidden={summaryContinueInView}
@@ -268,3 +261,32 @@
     </a>
   </div>
 </div>
+
+<style>
+  :global(.room-policy-panel) {
+    height: var(--accordion-panel-height);
+    overflow: clip;
+    transition:
+      height 170ms var(--booking-ease-out),
+      opacity 170ms var(--booking-ease-out);
+  }
+
+  :global(.room-policy-panel:is([data-starting-style], [data-ending-style])) {
+    height: 0;
+    opacity: 0.75;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    :global(.room-policy-panel) {
+      transition: none;
+    }
+
+    :global(.room-policy-panel[data-open]) {
+      transition: opacity 80ms var(--booking-ease-out);
+    }
+
+    :global(.room-policy-panel[data-starting-style]) {
+      height: var(--accordion-panel-height);
+    }
+  }
+</style>

@@ -25,7 +25,6 @@
     lang,
     apiBase,
     reviewHref,
-    conditionsHref,
     rooms,
     details,
     text,
@@ -350,7 +349,6 @@
   {text}
   {searchCopy}
   {reviewHref}
-  {conditionsHref}
   rooms={visibleRooms}
   {details}
   {phase}

@@ -223,7 +223,6 @@ export const ui = {
     "rooms.policies.petsTitle": "Pets",
     "rooms.policies.petsBody":
       "Pets are permitted. If you are travelling with a pet, please inform us when making your reservation.",
-    "rooms.policies.conditionsLink": "Full reservation conditions, changes and refunds",
     "rooms.policies.paymentTitle": "Paying at the hotel",
     "rooms.policies.paymentBody":
       "Any outstanding balance for your stay is due at check-in. We accept cash, cards, Yape and bank transfers. Payment at the hotel does not replace the initial payment required to confirm your reservation.",
@@ -864,7 +863,6 @@ export const ui = {
     "rooms.policies.petsTitle": "Mascotas",
     "rooms.policies.petsBody":
       "Se admiten mascotas. Si viaja con una mascota, infórmenos al realizar su reserva.",
-    "rooms.policies.conditionsLink": "Condiciones de reserva completas, cambios y devoluciones",
     "rooms.policies.paymentTitle": "Pago en el hotel",
     "rooms.policies.paymentBody":
       "Si queda un saldo pendiente de su estadía, deberá abonarlo al realizar el check-in. Aceptamos efectivo, tarjetas, Yape y transferencias bancarias. El pago en el hotel no sustituye el pago inicial requerido para confirmar su reserva.",

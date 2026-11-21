@@ -24,7 +24,13 @@ import {
   type FieldErrors,
   type ReviewField,
 } from "./checkout-form";
-import { awaitingStatus, cardFor, formVisible, SENDING_STATUS } from "./checkout-selectors";
+import {
+  awaitingStatus,
+  cardFor,
+  formVisible,
+  LOADING_STATUS,
+  SENDING_STATUS,
+} from "./checkout-selectors";
 import { contactKey, isStoredCard, type StoredCard, type StoredCheckout } from "./draft";
 import { allowsNewPayment, type GuestPayment, type PaymentOutcome } from "./payment";
 import type { AuthenticationParameters } from "./providers";
@@ -96,7 +102,6 @@ export type State = {
   access: AccessState;
 };
 
-export const LOADING_STATUS = "reservation.review.loading";
 const SECURITY_PENDING_ERROR = "reservation.pay.error.security";
 export const SUBMITTED_POLLS = 12;
 

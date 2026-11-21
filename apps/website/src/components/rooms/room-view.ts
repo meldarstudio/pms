@@ -33,7 +33,6 @@ export type RoomsBookingProps = {
   lang: Lang;
   apiBase: string;
   reviewHref: string;
-  conditionsHref: string;
   rooms: RoomView[];
   details: StayDetails;
   text: RoomsBookingText;

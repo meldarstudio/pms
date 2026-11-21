@@ -20,6 +20,8 @@ export function awaitingStatus(state: State) {
 
 export const payBusy = (state: State) => state.pay.kind !== "idle";
 
+export const LOADING_STATUS = "reservation.review.loading";
+
 export const SENDING_STATUS = "reservation.pay.sending";
 
 export const sendingPayment = (state: State) =>
@@ -27,6 +29,9 @@ export const sendingPayment = (state: State) =>
 
 export const formVisible = (state: State) =>
   state.paymentsEnabled && allowsNewPayment(state.payment) && !state.outcomeShown;
+
+export const reviewLoading = (state: State) =>
+  !state.reviewShown && !state.problem && state.status.key === LOADING_STATUS;
 
 export const whatsappVisible = (state: State) => !state.payment;
 

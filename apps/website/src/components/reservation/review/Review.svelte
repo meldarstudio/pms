@@ -14,13 +14,18 @@
     readDraft,
     type CheckoutRunner,
   } from "@/lib/reservation/checkout-runner";
-  import { formVisible, whatsappVisible } from "@/lib/reservation/checkout-selectors";
+  import {
+    formVisible,
+    reviewLoading,
+    whatsappVisible,
+  } from "@/lib/reservation/checkout-selectors";
   import { readSearch, searchParams, type StaySearch } from "@/lib/reservation/search";
   import Confirmation from "./Confirmation.svelte";
   import ContactFields from "./ContactFields.svelte";
   import Outcome from "./Outcome.svelte";
   import PaymentSection from "./PaymentSection.svelte";
   import ProblemPanel from "./ProblemPanel.svelte";
+  import ReviewLoading from "./ReviewLoading.svelte";
   import ReviewSummary from "./ReviewSummary.svelte";
   import WhatsAppFallback from "./WhatsAppFallback.svelte";
   import { setReview } from "./review-context";
@@ -49,6 +54,7 @@
   let search = $state.raw<StaySearch | null>(null);
   let checkout = $state.raw(initialState);
   let runner: CheckoutRunner | null = null;
+  let paymentSubmittedHere = $state(false);
   let previewMode = $state<string | null>(null);
   let previewHref = $state("");
   const payments = $derived(
@@ -60,6 +66,8 @@
     checkout = transition.state;
     if (!transition.effects.length) return;
     const pending = transition.effects;
+    if (pending.some((effect) => effect.type === "startPayment" || effect.type === "continuePayment"))
+      paymentSubmittedHere = true;
     if (pending.some((effect) => effect.type === "focus" || effect.type === "startSecurityCheck"))
       flushSync();
     runner?.run(pending);
@@ -98,8 +106,10 @@
       draft: readDraft(draftKey),
     });
 
-    const showPage = (event: PageTransitionEvent) =>
+    const showPage = (event: PageTransitionEvent) => {
+      if (event.persisted) paymentSubmittedHere = false;
       dispatch({ type: "pageShown", persisted: event.persisted, draft: readDraft(draftKey) });
+    };
     const restoreNetwork = () => dispatch({ type: "networkRestored" });
     window.addEventListener("pageshow", showPage);
     window.addEventListener("online", restoreNetwork);
@@ -135,6 +145,7 @@
     );
   });
   const retryAccess = () => dispatch({ type: "accessRetryRequested" });
+  const loading = $derived(reviewLoading(checkout));
 </script>
 
 <div bind:this={root}>
@@ -147,6 +158,7 @@
       access={checkout.access}
       {summaryHref}
       onAccessRetry={retryAccess}
+      animateCheckmark={paymentSubmittedHere}
     />
   {:else}
     <BookingSteps {text} current="review" hrefs={{ room: choiceHref, rate: ratesHref }} />
@@ -157,12 +169,18 @@
       {say(payments ? "reservation.review.lead" : "reservation.review.unavailableLead")}
     </p>
     <p
-      class={["mt-6 text-stone-700 empty:hidden", !checkout.status.visible && "sr-only"]}
+      class={[
+        "mt-6 text-stone-700 empty:hidden",
+        (!checkout.status.visible || loading) && "sr-only",
+      ]}
       role="status"
       data-status
     >
       {checkout.status.key ? say(checkout.status.key) : ""}
     </p>
+    {#if loading}
+      <ReviewLoading payments={Boolean(payments)} />
+    {/if}
     <ProblemPanel
       problem={checkout.problem}
       roomName={room?.name ?? ""}

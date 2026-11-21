@@ -25,7 +25,6 @@
     text,
     searchCopy,
     reviewHref,
-    conditionsHref,
     rooms,
     details,
     phase,
@@ -81,7 +80,6 @@
           {text}
           {searchCopy}
           {reviewHref}
-          {conditionsHref}
           {room}
           {phase}
           {rates}
