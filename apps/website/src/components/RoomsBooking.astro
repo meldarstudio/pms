@@ -107,7 +107,7 @@ const details: StayDetails = {
     white-space: nowrap;
   }
   @media (width < 48rem) {
-    body[data-continue-bar-space] {
+    body:has([data-continue-bar]) {
       padding-bottom: calc(4.5rem + env(safe-area-inset-bottom));
     }
   }

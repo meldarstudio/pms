@@ -155,7 +155,7 @@ test("changing dates hides the old prices and disables Ver tarifas until new pri
 
   try {
     await page.getByRole("button", { name: "Buscar", exact: true }).click();
-    await expect(page.getByRole("status")).toContainText("Consultando disponibilidad…");
+    await expect(page.locator("[data-search-status]")).toContainText("Consultando disponibilidad…");
     await expect(page.locator('[aria-busy="true"]')).toBeVisible();
     await expect(king.getByRole("heading", { name: "Suite Matrimonial" })).toBeVisible();
     await expect(king.getByRole("button", { name: /Ver tarifas/ })).toBeDisabled();

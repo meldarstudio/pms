@@ -57,8 +57,8 @@ Turnstile served by `scripts/fake-payment-services.mjs`.
 Review is one Svelte island, `src/components/reservation/review/Review.svelte`, mounted by
 `ReservationReview.astro` with build-time copy (`review/text.ts`), rooms and payment keys.
 Review renders the step bar with links to completed steps, and the phone and WhatsApp booking alternatives.
-Review applies each `next` transition and flushes the DOM before running its effects, so
-focus and the security check find their targets. It disposes the runner on unmount.
+Review applies each `next` transition and flushes the DOM only if its effects need to
+focus an element or start the security check. It disposes the runner on unmount.
 In development `?payments=on|off` previews both payment modes.
 
 ## Content

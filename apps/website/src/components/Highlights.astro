@@ -2,7 +2,7 @@
 import churinImage from "@/assets/churin-plaza-armas.webp";
 import kingImage from "@/assets/king-front-view.webp";
 import garagePhoto from "@/assets/cochera-manantial.webp";
-import { getImage, Image, Picture } from "astro:assets";
+import { Picture } from "astro:assets";
 import { getRelativeLocaleUrl } from "astro:i18n";
 import { getLang, useTranslations } from "@/i18n/utils";
 
@@ -10,8 +10,6 @@ const lang = getLang(Astro.currentLocale);
 const t = useTranslations(lang);
 const roomsHref = getRelativeLocaleUrl(lang, "habitaciones");
 const churinHref = getRelativeLocaleUrl(lang, "churin");
-const garageSizes = "(min-width: 80rem) 384px, (min-width: 48rem) 33vw, 100vw";
-const garageAvif = await getImage({ src: garagePhoto, format: "avif", layout: "constrained" });
 const outlineCta =
   "font-source-sans-3 mt-4 inline-flex min-h-11 w-full items-center justify-center border border-stone-900 px-5 text-center text-sm font-medium tracking-widest text-stone-900 uppercase hover:border-accent-500 hover:bg-accent-500 hover:text-accent-950 md:w-fit";
 ---
@@ -44,19 +42,18 @@ const outlineCta =
 
     <article class="min-w-0 md:col-span-4">
       <div class="relative aspect-5/4 overflow-hidden md:aspect-auto md:h-72">
-        <picture>
-          <source type="image/avif" srcset={garageAvif.srcSet.attribute} sizes={garageSizes} />
-          <Image
-            class="absolute inset-0 h-full w-full object-cover object-center"
-            src={garagePhoto}
-            sizes={garageSizes}
-            quality={70}
-            layout="constrained"
-            loading="lazy"
-            fetchpriority="low"
-            alt={t("parking.imageAlt")}
-          />
-        </picture>
+        <Picture
+          class="absolute inset-0 h-full w-full object-cover object-center"
+          src={garagePhoto}
+          formats={["avif"]}
+          fallbackFormat="webp"
+          sizes="(min-width: 80rem) 384px, (min-width: 48rem) 33vw, 100vw"
+          quality={70}
+          layout="constrained"
+          loading="lazy"
+          fetchpriority="low"
+          alt={t("parking.imageAlt")}
+        />
       </div>
       <h2 class="mt-4 text-lg font-semibold text-pretty text-stone-900">{t("parking.title")}</h2>
       <p class="mt-2 leading-relaxed text-pretty text-stone-600">{t("parking.body")}</p>

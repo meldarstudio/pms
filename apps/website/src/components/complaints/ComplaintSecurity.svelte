@@ -15,19 +15,10 @@
 
   const t = $derived(useTranslations(language));
   let container = $state<HTMLDivElement>();
-  let compact = $state<boolean | null>(null);
+  let width = $state<number>();
+  const compact = $derived(width === undefined ? null : width < 300);
   let failed = $state(false);
   let attempt = $state(0);
-
-  function watchWidth(node: HTMLDivElement) {
-    const measure = () => {
-      compact = node.clientWidth < 300;
-    };
-    measure();
-    const observer = new ResizeObserver(measure);
-    observer.observe(node);
-    return () => observer.disconnect();
-  }
 
   $effect(() => {
     if (!siteKey || !container || compact === null) return;
@@ -71,7 +62,7 @@
 </script>
 
 <div class="flex w-full flex-col gap-3" role="group" aria-label={t("complaints.securityCheck")}>
-  <div {@attach watchWidth}>
+  <div bind:clientWidth={width}>
     {#key attempt}<div bind:this={container}></div>{/key}
   </div>
   {#if !siteKey || failed}

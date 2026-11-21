@@ -7,8 +7,10 @@
     DialogTitle,
   } from "@ui-sdk/svelte/dialog";
   import { X } from "phosphor-svelte";
+  import { MediaQuery } from "svelte/reactivity";
   import type { CheckoutView } from "@/lib/reservation/checkout";
   import { formatDate } from "@/lib/reservation/format";
+  import { wideScreen } from "@/lib/screen";
   import Cancellation from "./Cancellation.svelte";
   import { getReview } from "./review-context";
   import { cardTitle, quietLink } from "./styles";
@@ -25,9 +27,10 @@
   } = $props();
   const { say, lang, conditionsHref } = getReview();
   const money = $derived(view ? stayLabels(view, say, lang).money : null);
+  const wide = new MediaQuery(wideScreen, true);
 </script>
 
-<Dialog presentation="auto" bind:open>
+<Dialog presentation={wide.current ? "dialog" : "sheet"} bind:open>
   <DialogBackdrop class="fixed inset-0 bg-stone-950/60" />
   <DialogContent
     data-terms

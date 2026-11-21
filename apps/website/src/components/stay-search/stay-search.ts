@@ -23,7 +23,7 @@ export type StaySearchProps = { lang: Lang; copy: StaySearchCopy } & (
   | { action?: never; onSearch: (search: StaySearch) => void }
 );
 export type DateField = "checkIn" | "checkOut";
-export type DatePicker = ReturnType<typeof openDatePicker>;
+export type DatePicker = Omit<ReturnType<typeof openDatePicker>, "month">;
 
 export const dateFields = ["checkIn", "checkOut"] as const;
 export const guestFields = [
@@ -59,23 +59,6 @@ export const dateId = (field: DateField) =>
   field === "checkIn" ? "stay-check-in" : "stay-check-out";
 export const placeholder = (copy: StaySearchCopy, field: DateField) =>
   field === "checkIn" ? copy.arrivalPlaceholder : copy.departurePlaceholder;
-
-export const calendarCopy = {
-  en: {
-    locale: "en-US",
-    previous: "Previous month",
-    next: "Next month",
-    month: "Choose the month",
-    year: "Choose the year",
-  },
-  es: {
-    locale: "es-PE",
-    previous: "Mes anterior",
-    next: "Mes siguiente",
-    month: "Elegir el mes",
-    year: "Elegir el año",
-  },
-};
 
 export function shownSearch(search: StaySearch) {
   return {

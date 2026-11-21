@@ -40,6 +40,7 @@
   const country = $derived(phoneCountry(lang, value.country));
   const combo = createComboboxController();
   let anchor = $state<HTMLDivElement>();
+  let query = $state("");
 </script>
 
 {#snippet flag(code: string)}
@@ -64,14 +65,16 @@
         items={countries}
         value={country.code}
         itemToLabel={(code) => labels.get(code) ?? code}
-        defaultQuery=""
+        bind:query
         autoHighlight
         onValueChange={(code) => {
           if (isPhoneCountry(code)) onEdit(choosePhoneCountry(value, code));
         }}
         onOpenChange={(open, { reason }) => {
-          if (open) void tick().then(() => combo.focus());
-          else if (reason === "item-press" || reason === "escape-key") {
+          if (open) {
+            query = "";
+            void tick().then(() => combo.focus());
+          } else if (reason === "item-press" || reason === "escape-key") {
             void tick().then(() => anchor?.querySelector("button")?.focus({ preventScroll: true }));
           }
         }}
@@ -103,7 +106,7 @@
           </ComboboxEmpty>
           <ComboboxList class="mt-1 max-h-60 overflow-y-auto overscroll-contain">
             {#snippet children(state)}
-              {#each state.items as item}
+              {#each state.items as item (typeof item === "object" && "value" in item ? item.value : item)}
                 {#if typeof item === "object" && "value" in item && isPhoneCountry(item.value)}
                   <ComboboxItem
                     value={item.value}

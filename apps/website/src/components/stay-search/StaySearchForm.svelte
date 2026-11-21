@@ -26,7 +26,6 @@
     PopoverTrigger,
   } from "@ui-sdk/svelte/popover";
   import {
-    calendarCopy,
     calendarFocus,
     dateFields,
     dateId,
@@ -49,6 +48,7 @@
     type StaySearchProps,
   } from "./stay-search";
   import { wideScreen } from "@/lib/screen";
+  import { fill } from "@/lib/reservation/format";
   import type { StaySearch } from "@/lib/reservation/search";
 
   let { action, onSearch, lang, copy }: StaySearchProps = $props();
@@ -58,9 +58,10 @@
   let search = $state({ ...initialSearch });
   let ready = $state(false);
   let picker = $state<DatePicker>();
+  let month = $state<string>();
   let showProblems = $state(false);
+  let announcement = $state("");
   const mobile = $derived(!wide.current);
-  const labels = $derived(calendarCopy[lang]);
   const selectedDates = $derived(selectedStayDates(search));
 
   export function replaceStay(stay: StaySearch) {
@@ -68,6 +69,7 @@
     guestPopup.close();
     picker = undefined;
     showProblems = false;
+    announcement = "";
     search = shownSearch(stay);
   }
 
@@ -89,6 +91,13 @@
     });
   });
 
+  function prepareDatePicker(field: DateField) {
+    const { month: initialMonth, ...nextPicker } = openDatePicker(field, search);
+    month = initialMonth;
+    picker = nextPicker;
+    announcement = "";
+  }
+
   function chooseToggledDate(value: CalendarValue) {
     if (!picker || !Array.isArray(value)) return;
     const date =
@@ -99,8 +108,14 @@
     const next = selectDate(date, picker, search);
     if (!next) return;
     search = next;
-    if (picker.selecting === "checkOut") datePopup.close();
-    else picker = { ...picker, selecting: "checkOut" };
+    if (picker.selecting === "checkOut") {
+      if (showProblems && !stayProblems(next).length) showProblems = false;
+      announcement = fill(copy.selectedStay, {
+        checkIn: dayDisplay(next.checkIn, lang),
+        checkOut: dayDisplay(next.checkOut, lang),
+      });
+      datePopup.close();
+    } else picker = { ...picker, selecting: "checkOut" };
   }
 
   function errorFor(field: DateField) {
@@ -141,7 +156,7 @@
             aria-labelledby={`${id}-label ${id}-value`}
             aria-invalid={error ? true : undefined}
             aria-describedby={error ? `${id}-error` : undefined}
-            onclick={() => (picker = openDatePicker(field, search))}
+            onclick={() => prepareDatePicker(field)}
           >
             <span id={`${id}-value`} class:lp-placeholder={!search[field]}>
               {search[field] ? dayDisplay(search[field], lang) : placeholder(copy, field)}
@@ -174,58 +189,56 @@
               </PopoverDescription>
             {/if}
           </div>
-          {#key picker.month}
-            <Calendar
-              mode="multiple"
-              defaultMonth={picker.month}
-              today={picker.today}
-              min={picker.firstNewArrival}
-              max={picker.lastDate}
-              unavailable={departureBounds(picker, search)}
-              locale={labels.locale}
-              weekStartsOn={lang === "es" ? 1 : 0}
-              months={mobile ? 1 : 2}
-              showOutsideDays={mobile}
-              value={selectedDates}
-              weekdayFormat="short"
-              monthFormat="short"
-              onValueChange={(value, details) => {
-                details.cancel();
-                chooseToggledDate(value);
-              }}
-            >
-              <div class="lp-calendar-nav">
-                <CalendarPrevious class="lp-square" aria-label={labels.previous}>
-                  ‹
-                </CalendarPrevious>
-                <CalendarHeading class="sr-only" />
-                <CalendarMonthSelect aria-label={labels.month} />
-                <CalendarYearSelect aria-label={labels.year} />
-                <CalendarNext class="lp-square" aria-label={labels.next}>›</CalendarNext>
-              </div>
-              <div class="lp-months">
-                {#each mobile ? [0] : [0, 1] as offset (offset)}
-                  <CalendarGrid {offset}>
-                    {#snippet children(state)}
-                      {#if !mobile}<caption>{state.label}</caption>{/if}
-                      <CalendarWeekdays>
-                        {#snippet children(index)}<CalendarWeekday {index} />{/snippet}
-                      </CalendarWeekdays>
-                      <CalendarWeeks>
-                        {#snippet children(cell)}
-                          <CalendarDay
-                            value={cell.date}
-                            data-date={cell.date}
-                            data-stay-range={rangePoint(cell.date, search)}
-                          />
-                        {/snippet}
-                      </CalendarWeeks>
-                    {/snippet}
-                  </CalendarGrid>
-                {/each}
-              </div>
-            </Calendar>
-          {/key}
+          <Calendar
+            mode="multiple"
+            bind:month
+            today={picker.today}
+            min={picker.firstNewArrival}
+            max={picker.lastDate}
+            unavailable={departureBounds(picker, search)}
+            locale={lang === "es" ? "es-PE" : "en-US"}
+            weekStartsOn={lang === "es" ? 1 : 0}
+            months={mobile ? 1 : 2}
+            showOutsideDays={mobile}
+            value={selectedDates}
+            weekdayFormat="short"
+            monthFormat="short"
+            onValueChange={(value, details) => {
+              details.cancel();
+              chooseToggledDate(value);
+            }}
+          >
+            <div class="lp-calendar-nav">
+              <CalendarPrevious class="lp-square" aria-label={copy.calendar.previousMonth}>
+                ‹
+              </CalendarPrevious>
+              <CalendarHeading class="sr-only" />
+              <CalendarMonthSelect aria-label={copy.calendar.chooseMonth} />
+              <CalendarYearSelect aria-label={copy.calendar.chooseYear} />
+              <CalendarNext class="lp-square" aria-label={copy.calendar.nextMonth}>›</CalendarNext>
+            </div>
+            <div class="lp-months">
+              {#each mobile ? [0] : [0, 1] as offset (offset)}
+                <CalendarGrid {offset}>
+                  {#snippet children(state)}
+                    {#if !mobile}<caption>{state.label}</caption>{/if}
+                    <CalendarWeekdays>
+                      {#snippet children(index)}<CalendarWeekday {index} />{/snippet}
+                    </CalendarWeekdays>
+                    <CalendarWeeks>
+                      {#snippet children(cell)}
+                        <CalendarDay
+                          value={cell.date}
+                          data-date={cell.date}
+                          data-stay-range={rangePoint(cell.date, search)}
+                        />
+                      {/snippet}
+                    </CalendarWeeks>
+                  {/snippet}
+                </CalendarGrid>
+              {/each}
+            </div>
+          </Calendar>
         {/if}
       </PopoverContent>
     </Popover>
@@ -282,4 +295,5 @@
       <input type="hidden" name={guest.name} value={search[guest.name]} />
     {/each}
   </fieldset>
+  <p class="sr-only" role="status" aria-atomic="true">{announcement}</p>
 </form>

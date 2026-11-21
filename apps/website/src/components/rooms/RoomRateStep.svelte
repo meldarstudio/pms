@@ -65,11 +65,7 @@
       { rootMargin: `-${Math.ceil(header)}px 0px 0px 0px`, threshold: [0, 1] },
     );
     observer.observe(node);
-    document.body.setAttribute("data-continue-bar-space", "");
-    return () => {
-      observer.disconnect();
-      document.body.removeAttribute("data-continue-bar-space");
-    };
+    return () => observer.disconnect();
   }
 </script>
 
